@@ -7,6 +7,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Value.h>
+#include <llvm/Support/ErrorHandling.h>
 
 #include <cstdint>
 #include <initializer_list>
@@ -54,6 +55,9 @@ constexpr char LLVM_BACKEND_VALUE_CALL_RESULT_SUFFIX[] = ".result";
 constexpr char LLVM_BACKEND_VALUE_FIELD_ADDRESS_SUFFIX[] = ".addr";
 constexpr char LLVM_BACKEND_VALUE_INDEX_ADDRESS_NAME[] = "index.addr";
 constexpr char LLVM_BACKEND_VALUE_GLOBAL_POINTER_SUFFIX[] = ".ptr";
+constexpr char LLVM_BACKEND_VALUE_UNHANDLED_BINARY_OP[] = "unhandled IR binary operation";
+constexpr char LLVM_BACKEND_VALUE_UNHANDLED_CAST_KIND[] = "unhandled IR cast kind";
+constexpr char LLVM_BACKEND_VALUE_UNHANDLED_UNARY_OP[] = "unhandled IR unary operation";
 constexpr unsigned LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX = 0U;
 constexpr unsigned LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX = 1U;
 constexpr unsigned LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX = 0U;
@@ -353,6 +357,7 @@ llvm::Constant* LlvmEmitter::emit_constant_binary(const Value& value) {
     case BinaryOp::logical_or:
         return fold_binary(llvm::Instruction::Or);
     }
+    llvm_unreachable(LLVM_BACKEND_VALUE_UNHANDLED_BINARY_OP);
 }
 
 llvm::Constant* LlvmEmitter::emit_constant_unary(const Value& value) {
@@ -499,6 +504,7 @@ llvm::Value* LlvmEmitter::emit_unary(const Value& value) {
     case UnaryOp::dereference:
         return operand;
     }
+    llvm_unreachable(LLVM_BACKEND_VALUE_UNHANDLED_UNARY_OP);
 }
 
 llvm::Value* LlvmEmitter::emit_binary(const Value& value) {
@@ -553,6 +559,7 @@ llvm::Value* LlvmEmitter::emit_binary(const Value& value) {
     case BinaryOp::logical_or:
         return this->builder_.CreateOr(lhs, rhs);
     }
+    llvm_unreachable(LLVM_BACKEND_VALUE_UNHANDLED_BINARY_OP);
 }
 
 llvm::Value* LlvmEmitter::emit_call(const Value& value) {
@@ -1168,6 +1175,7 @@ llvm::Value* LlvmEmitter::emit_cast(const Value& value) {
     case CastKind::paddr:
         return this->builder_.CreateIntToPtr(operand, target);
     }
+    llvm_unreachable(LLVM_BACKEND_VALUE_UNHANDLED_CAST_KIND);
 }
 
 llvm::Value* LlvmEmitter::emit_size_of(const sema::TypeHandle type) {

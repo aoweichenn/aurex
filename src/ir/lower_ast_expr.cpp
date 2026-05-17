@@ -56,7 +56,7 @@ template <typename T, typename Allocator>
 } // namespace
 
 Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcept {
-    ExprView view;
+    ExprView view {};
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->ast_.exprs.size()) {
         return view;
     }

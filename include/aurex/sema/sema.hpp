@@ -117,6 +117,9 @@ private:
         bool cache_syntax_types = true;
     };
 
+    struct FunctionBodyContextScope;
+    struct GenericAnalysisScope;
+
     struct PlaceInfo {
         TypeHandle type = INVALID_TYPE_HANDLE;
         bool is_place = false;

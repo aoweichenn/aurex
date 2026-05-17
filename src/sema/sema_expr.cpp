@@ -394,7 +394,7 @@ SemanticAnalyzer::TryShape SemanticAnalyzer::classify_try_shape(const TypeHandle
 }
 
 SemanticAnalyzer::ExprView SemanticAnalyzer::expr_view(const syntax::ExprId expr_id) const noexcept {
-    ExprView view;
+    ExprView view {};
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
         return view;
     }

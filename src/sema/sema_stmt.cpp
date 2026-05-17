@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace aurex::sema {
@@ -345,6 +346,52 @@ void evaluate_control_flow_if_statement(
 
 } // namespace
 
+struct SemanticAnalyzer::FunctionBodyContextScope {
+    FunctionBodyContextScope(
+        SemanticAnalyzer& analyzer,
+        const syntax::ModuleId module,
+        const TypeHandle return_type,
+        ReturnTypeInference* const return_inference,
+        const int loop_depth,
+        const int unsafe_context_depth,
+        SymbolTable symbols
+    )
+        : analyzer(analyzer),
+          previous_module(analyzer.current_module_),
+          previous_function_return_type(analyzer.current_function_return_type_),
+          previous_return_inference(analyzer.current_return_inference_),
+          previous_loop_depth(analyzer.loop_depth_),
+          previous_unsafe_context_depth(analyzer.unsafe_context_depth_),
+          previous_symbols(std::move(analyzer.symbols_)) {
+        this->analyzer.current_module_ = module;
+        this->analyzer.current_function_return_type_ = return_type;
+        this->analyzer.current_return_inference_ = return_inference;
+        this->analyzer.loop_depth_ = loop_depth;
+        this->analyzer.unsafe_context_depth_ = unsafe_context_depth;
+        this->analyzer.symbols_ = std::move(symbols);
+    }
+
+    FunctionBodyContextScope(const FunctionBodyContextScope&) = delete;
+    FunctionBodyContextScope& operator=(const FunctionBodyContextScope&) = delete;
+
+    ~FunctionBodyContextScope() {
+        this->analyzer.current_module_ = this->previous_module;
+        this->analyzer.current_function_return_type_ = this->previous_function_return_type;
+        this->analyzer.current_return_inference_ = this->previous_return_inference;
+        this->analyzer.loop_depth_ = this->previous_loop_depth;
+        this->analyzer.unsafe_context_depth_ = this->previous_unsafe_context_depth;
+        this->analyzer.symbols_ = std::move(this->previous_symbols);
+    }
+
+    SemanticAnalyzer& analyzer;
+    syntax::ModuleId previous_module;
+    TypeHandle previous_function_return_type = INVALID_TYPE_HANDLE;
+    ReturnTypeInference* previous_return_inference = nullptr;
+    int previous_loop_depth = SEMA_NO_LOOP_DEPTH;
+    int previous_unsafe_context_depth = 0;
+    SymbolTable previous_symbols;
+};
+
 void SemanticAnalyzer::analyze_function_body(
     const syntax::ItemNode& function,
     const syntax::ItemId function_id
@@ -363,48 +410,34 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
     const FunctionSignature& signature,
     FunctionBodyState& state
 ) {
-    const syntax::ModuleId previous_module = this->current_module_;
-    const TypeHandle previous_function_return_type = this->current_function_return_type_;
-    ReturnTypeInference* const previous_return_inference = this->current_return_inference_;
-    const int previous_loop_depth = this->loop_depth_;
-    const int previous_unsafe_depth = this->unsafe_context_depth_;
-    const SymbolTable previous_symbols = this->symbols_;
-    const auto restore_context = [&]() {
-        this->current_module_ = previous_module;
-        this->current_function_return_type_ = previous_function_return_type;
-        this->current_return_inference_ = previous_return_inference;
-        this->loop_depth_ = previous_loop_depth;
-        this->unsafe_context_depth_ = previous_unsafe_depth;
-        this->symbols_ = previous_symbols;
-    };
-    this->current_module_ = signature.module;
-    this->symbols_ = SymbolTable {};
     if (signature.has_conflict) {
-        restore_context();
         return;
     }
     if (state == FunctionBodyState::analyzing) {
         if (!is_valid(signature.return_type)) {
             this->report(function.range, std::string(SEMA_RECURSIVE_RETURN_INFER));
         }
-        restore_context();
         return;
     }
     if (state == FunctionBodyState::analyzed) {
-        restore_context();
         return;
     }
     state = FunctionBodyState::analyzing;
-    this->loop_depth_ = SEMA_NO_LOOP_DEPTH;
-    this->unsafe_context_depth_ = signature.is_unsafe ? previous_unsafe_depth + 1 : previous_unsafe_depth;
     const bool infer_return_type = !syntax::is_valid(function.return_type);
     ReturnTypeInference return_inference;
     TypeHandle expected_return = signature.return_type;
     if (infer_return_type) {
         expected_return = INVALID_TYPE_HANDLE;
     }
-    this->current_function_return_type_ = expected_return;
-    this->current_return_inference_ = infer_return_type ? &return_inference : nullptr;
+    FunctionBodyContextScope context(
+        *this,
+        signature.module,
+        expected_return,
+        infer_return_type ? &return_inference : nullptr,
+        SEMA_NO_LOOP_DEPTH,
+        signature.is_unsafe ? this->unsafe_context_depth_ + 1 : this->unsafe_context_depth_,
+        SymbolTable {}
+    );
 
     this->symbols_.push_scope(function.params.size());
     for (base::usize i = 0; i < function.params.size(); ++i) {
@@ -442,7 +475,6 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
         this->report(function.range, std::string(SEMA_NOT_ALL_PATHS_RETURN));
     }
     state = FunctionBodyState::analyzed;
-    restore_context();
 }
 
 void SemanticAnalyzer::analyze_block(

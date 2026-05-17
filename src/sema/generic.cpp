@@ -542,6 +542,41 @@ void assign_node_ids(SemaIndexTable& target, const std::vector<base::u32>& sourc
 
 } // namespace
 
+struct SemanticAnalyzer::GenericAnalysisScope {
+    GenericAnalysisScope(
+        SemanticAnalyzer& analyzer,
+        const syntax::ModuleId module,
+        GenericContext* const generic_context,
+        GenericSideTables* const side_tables = nullptr,
+        const bool cache_syntax_types = false
+    )
+        : analyzer(analyzer),
+          previous_module(analyzer.current_module_),
+          previous_generic_context(analyzer.current_generic_context_),
+          previous_side_tables(analyzer.current_side_tables_) {
+        this->analyzer.current_module_ = module;
+        this->analyzer.current_generic_context_ = generic_context;
+        if (side_tables != nullptr) {
+            this->analyzer.current_side_tables_.side_tables = side_tables;
+        }
+        this->analyzer.current_side_tables_.cache_syntax_types = cache_syntax_types;
+    }
+
+    GenericAnalysisScope(const GenericAnalysisScope&) = delete;
+    GenericAnalysisScope& operator=(const GenericAnalysisScope&) = delete;
+
+    ~GenericAnalysisScope() {
+        this->analyzer.current_module_ = this->previous_module;
+        this->analyzer.current_generic_context_ = this->previous_generic_context;
+        this->analyzer.current_side_tables_ = this->previous_side_tables;
+    }
+
+    SemanticAnalyzer& analyzer;
+    syntax::ModuleId previous_module;
+    GenericContext* previous_generic_context = nullptr;
+    GenericSideTableScope previous_side_tables {};
+};
+
 std::string_view capability_name(const CapabilityKind capability) noexcept {
     switch (capability) {
     case CapabilityKind::sized:
@@ -903,18 +938,12 @@ void SemanticAnalyzer::register_generic_template(
         this->report(item.range, std::string(SEMA_GENERIC_C_ABI_OR_PROTOTYPE_UNSUPPORTED));
     }
     if (syntax::is_valid(item.impl_type)) {
-        const syntax::ModuleId previous_module = this->current_module_;
         GenericContext generic_context = this->make_generic_context();
         this->populate_generic_placeholder_context(info, generic_context);
-        GenericContext* const previous_generic_context = this->current_generic_context_;
-        const GenericSideTableScope previous_side_tables = this->current_side_tables_;
-        this->current_module_ = owner;
-        this->current_generic_context_ = &generic_context;
-        this->current_side_tables_.cache_syntax_types = false;
-        info.impl_type_pattern = this->resolve_type(item.impl_type);
-        this->current_module_ = previous_module;
-        this->current_generic_context_ = previous_generic_context;
-        this->current_side_tables_ = previous_side_tables;
+        {
+            GenericAnalysisScope scope(*this, owner, &generic_context);
+            info.impl_type_pattern = this->resolve_type(item.impl_type);
+        }
         if (!is_valid(info.impl_type_pattern)) {
             return;
         }
@@ -1673,49 +1702,42 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(
         return is_valid(arg) && this->checked_.types.get(arg).kind == TypeKind::generic_param;
     });
 
-    const syntax::ModuleId previous_module = this->current_module_;
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
-    GenericContext* const previous_body_generic_context = this->current_generic_context_;
-    const GenericSideTableScope previous_side_tables = this->current_side_tables_;
-    this->current_module_ = info.module;
-    this->current_generic_context_ = &generic_context;
-    this->current_side_tables_.cache_syntax_types = false;
 
     bool contains_array = false;
-    std::unordered_set<IdentId, IdentIdHash> seen_fields;
-    for (const syntax::FieldDecl& field : item.fields) {
-        if (!seen_fields.insert(field.name_id).second) {
-            this->report(field.range, sema_duplicate_struct_field_message(field.name));
-            continue;
-        }
-        const TypeHandle field_type = this->resolve_type(field.type);
-        if (!this->is_valid_storage_type(field_type)) {
-            this->report(field.range, std::string(SEMA_FIELD_STORAGE));
-        }
-        if (this->checked_.types.contains_array(field_type)) {
-            contains_array = true;
-        }
-        struct_info.fields.push_back(StructFieldInfo {
-            this->source_name_text(field.name_id, field.name),
-            field.name_id,
-            {},
-            info.module,
-            field_type,
-            field.range,
-            field.visibility,
-            this->stable_member_key(
-                struct_info.stable_id,
-                StableSymbolKind::struct_field,
+    {
+        GenericAnalysisScope scope(*this, info.module, &generic_context);
+        std::unordered_set<IdentId, IdentIdHash> seen_fields;
+        for (const syntax::FieldDecl& field : item.fields) {
+            if (!seen_fields.insert(field.name_id).second) {
+                this->report(field.range, sema_duplicate_struct_field_message(field.name));
+                continue;
+            }
+            const TypeHandle field_type = this->resolve_type(field.type);
+            if (!this->is_valid_storage_type(field_type)) {
+                this->report(field.range, std::string(SEMA_FIELD_STORAGE));
+            }
+            if (this->checked_.types.contains_array(field_type)) {
+                contains_array = true;
+            }
+            struct_info.fields.push_back(StructFieldInfo {
+                this->source_name_text(field.name_id, field.name),
                 field.name_id,
-                field.name
-            ),
-        });
+                {},
+                info.module,
+                field_type,
+                field.range,
+                field.visibility,
+                this->stable_member_key(
+                    struct_info.stable_id,
+                    StableSymbolKind::struct_field,
+                    field.name_id,
+                    field.name
+                ),
+            });
+        }
     }
-
-    this->current_module_ = previous_module;
-    this->current_generic_context_ = previous_body_generic_context;
-    this->current_side_tables_ = previous_side_tables;
 
     this->checked_.types.set_record_contains_array(handle, contains_array);
     auto inserted = this->checked_.structs.emplace(ModuleLookupKey {info.module.value, instance_key_id}, std::move(struct_info));
@@ -1769,28 +1791,21 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(
     );
     this->generic_enum_instances_[instance_key_id] = handle;
 
-    const syntax::ModuleId previous_module = this->current_module_;
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
-    GenericContext* const previous_generic_context = this->current_generic_context_;
-    const GenericSideTableScope previous_side_tables = this->current_side_tables_;
-    this->current_module_ = info.module;
-    this->current_generic_context_ = &generic_context;
-    this->current_side_tables_.cache_syntax_types = false;
 
-    this->register_enum_cases_for_item(
-        item,
-        info.module,
-        handle,
-        std::string(item.name),
-        std::string(item.name) + abi_suffix + "_",
-        std::string(item.name) + abi_suffix + "_",
-        info.visibility
-    );
-
-    this->current_module_ = previous_module;
-    this->current_generic_context_ = previous_generic_context;
-    this->current_side_tables_ = previous_side_tables;
+    {
+        GenericAnalysisScope scope(*this, info.module, &generic_context);
+        this->register_enum_cases_for_item(
+            item,
+            info.module,
+            handle,
+            std::string(item.name),
+            std::string(item.name) + abi_suffix + "_",
+            std::string(item.name) + abi_suffix + "_",
+            info.visibility
+        );
+    }
     return handle;
 }
 
@@ -1832,20 +1847,14 @@ TypeHandle SemanticAnalyzer::instantiate_generic_type_alias(
 
     const syntax::ItemNode item = this->module_.items[info.item.value];
     this->resolving_type_aliases_.push_back(ModuleLookupKey {info.module.value, instance_key_id});
-    const syntax::ModuleId previous_module = this->current_module_;
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
-    GenericContext* const previous_generic_context = this->current_generic_context_;
-    const GenericSideTableScope previous_side_tables = this->current_side_tables_;
-    this->current_module_ = info.module;
-    this->current_generic_context_ = &generic_context;
-    this->current_side_tables_.cache_syntax_types = false;
 
-    const TypeHandle resolved = this->resolve_type(item.alias_type, opaque_allowed_as_pointee);
-
-    this->current_module_ = previous_module;
-    this->current_generic_context_ = previous_generic_context;
-    this->current_side_tables_ = previous_side_tables;
+    TypeHandle resolved = INVALID_TYPE_HANDLE;
+    {
+        GenericAnalysisScope scope(*this, info.module, &generic_context);
+        resolved = this->resolve_type(item.alias_type, opaque_allowed_as_pointee);
+    }
     this->resolving_type_aliases_.pop_back();
     this->resolved_generic_type_aliases_[instance_key_id] = resolved;
     return resolved;
@@ -1968,22 +1977,14 @@ bool SemanticAnalyzer::infer_generic_arguments(
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_placeholder_context(info, generic_context);
 
-    const syntax::ModuleId previous_module = this->current_module_;
-    GenericContext* const previous_body_generic_context = this->current_generic_context_;
-    const GenericSideTableScope previous_side_tables = this->current_side_tables_;
-    this->current_module_ = info.module;
-    this->current_generic_context_ = &generic_context;
-    this->current_side_tables_.cache_syntax_types = false;
-
     std::vector<TypeHandle> pattern_param_types;
     pattern_param_types.reserve(function.params.size());
-    for (const syntax::ParamDecl& param : function.params) {
-        pattern_param_types.push_back(this->resolve_type(param.type));
+    {
+        GenericAnalysisScope scope(*this, info.module, &generic_context);
+        for (const syntax::ParamDecl& param : function.params) {
+            pattern_param_types.push_back(this->resolve_type(param.type));
+        }
     }
-
-    this->current_module_ = previous_module;
-    this->current_generic_context_ = previous_body_generic_context;
-    this->current_side_tables_ = previous_side_tables;
 
     std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash> inferred;
     for (base::usize i = 0; i < call.args.size(); ++i) {
@@ -2038,45 +2039,38 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
 
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
-    const syntax::ModuleId previous_module = this->current_module_;
-    GenericContext* const previous_generic_context = this->current_generic_context_;
-    const GenericSideTableScope previous_side_tables = this->current_side_tables_;
-    this->current_module_ = info.module;
-    this->current_generic_context_ = &generic_context;
-    this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = this->source_name_text(info.name_id, info.name);
-    signature.name_id = info.name_id;
-    signature.c_name = signature.name;
-    signature.stable_id = info.stable_id;
-    signature.generic_args = this->checked_.copy_type_handle_list(args);
-    signature.module = info.module;
-    signature.return_type = syntax::is_valid(function.return_type)
-        ? this->resolve_type(function.return_type)
-        : INVALID_TYPE_HANDLE;
-    signature.range = function.range;
-    signature.is_unsafe = function.is_unsafe;
-    signature.has_definition = true;
-    signature.visibility = info.visibility;
-    signature.definition_item = info.item;
-    for (const syntax::ParamDecl& param : function.params) {
-        signature.param_types.push_back(this->resolve_type(param.type));
+    {
+        GenericAnalysisScope scope(*this, info.module, &generic_context);
+        signature.name = this->source_name_text(info.name_id, info.name);
+        signature.name_id = info.name_id;
+        signature.c_name = signature.name;
+        signature.stable_id = info.stable_id;
+        signature.generic_args = this->checked_.copy_type_handle_list(args);
+        signature.module = info.module;
+        signature.return_type = syntax::is_valid(function.return_type)
+            ? this->resolve_type(function.return_type)
+            : INVALID_TYPE_HANDLE;
+        signature.range = function.range;
+        signature.is_unsafe = function.is_unsafe;
+        signature.has_definition = true;
+        signature.visibility = info.visibility;
+        signature.definition_item = info.item;
+        for (const syntax::ParamDecl& param : function.params) {
+            signature.param_types.push_back(this->resolve_type(param.type));
+        }
+        signature.incremental_key = this->stable_incremental_key(
+            signature.stable_id,
+            this->function_incremental_fingerprint(
+                info.name,
+                signature.return_type,
+                signature.param_types,
+                false,
+                signature.is_variadic
+            )
+        );
     }
-    signature.incremental_key = this->stable_incremental_key(
-        signature.stable_id,
-        this->function_incremental_fingerprint(
-            info.name,
-            signature.return_type,
-            signature.param_types,
-            false,
-            signature.is_variadic
-        )
-    );
-
-    this->current_module_ = previous_module;
-    this->current_generic_context_ = previous_generic_context;
-    this->current_side_tables_ = previous_side_tables;
 
     const IdentId key_id = this->intern_generated_key(this->generic_function_instance_key(info, args));
     const FunctionLookupKey key = this->function_lookup_key(info.module, key_id);
@@ -2176,52 +2170,46 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
 
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
-    const syntax::ModuleId previous_module = this->current_module_;
-    GenericContext* const previous_generic_context = this->current_generic_context_;
-    const GenericSideTableScope previous_side_tables = this->current_side_tables_;
-    this->current_module_ = info.module;
-    this->current_generic_context_ = &generic_context;
-    this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = this->source_name_text(info.name_id, info.name);
-    signature.name_id = info.name_id;
-    signature.semantic_key = key;
-    signature.stable_id = sema::stable_definition_id(
-        this->stable_module_id(info.module),
-        StableSymbolKind::function,
-        this->generic_function_instance_key(info, args)
-    );
-    signature.c_name = this->checked_.intern_text(this->c_symbol_name(
-        info.module,
-        std::string(info.name.view()) + this->generic_instance_abi_suffix(args)
-    ));
-    signature.generic_args = this->checked_.copy_type_handle_list(args);
-    signature.module = info.module;
-    signature.return_type = syntax::is_valid(function.return_type)
-        ? this->resolve_type(function.return_type)
-        : INVALID_TYPE_HANDLE;
-    signature.range = function.range;
-    signature.is_unsafe = function.is_unsafe;
-    signature.has_definition = true;
-    signature.visibility = info.visibility;
-    signature.definition_item = info.item;
-    for (const syntax::ParamDecl& param : function.params) {
-        signature.param_types.push_back(this->resolve_type(param.type));
+    {
+        GenericAnalysisScope scope(*this, info.module, &generic_context);
+        signature.name = this->source_name_text(info.name_id, info.name);
+        signature.name_id = info.name_id;
+        signature.semantic_key = key;
+        signature.stable_id = sema::stable_definition_id(
+            this->stable_module_id(info.module),
+            StableSymbolKind::function,
+            this->generic_function_instance_key(info, args)
+        );
+        signature.c_name = this->checked_.intern_text(this->c_symbol_name(
+            info.module,
+            std::string(info.name.view()) + this->generic_instance_abi_suffix(args)
+        ));
+        signature.generic_args = this->checked_.copy_type_handle_list(args);
+        signature.module = info.module;
+        signature.return_type = syntax::is_valid(function.return_type)
+            ? this->resolve_type(function.return_type)
+            : INVALID_TYPE_HANDLE;
+        signature.range = function.range;
+        signature.is_unsafe = function.is_unsafe;
+        signature.has_definition = true;
+        signature.visibility = info.visibility;
+        signature.definition_item = info.item;
+        for (const syntax::ParamDecl& param : function.params) {
+            signature.param_types.push_back(this->resolve_type(param.type));
+        }
+        signature.incremental_key = this->stable_incremental_key(
+            signature.stable_id,
+            this->function_incremental_fingerprint(
+                info.name,
+                signature.return_type,
+                signature.param_types,
+                false,
+                signature.is_variadic
+            )
+        );
     }
-    signature.incremental_key = this->stable_incremental_key(
-        signature.stable_id,
-        this->function_incremental_fingerprint(
-            info.name,
-            signature.return_type,
-            signature.param_types,
-            false,
-            signature.is_variadic
-        )
-    );
-    this->current_module_ = previous_module;
-    this->current_generic_context_ = previous_generic_context;
-    this->current_side_tables_ = previous_side_tables;
 
     if (syntax::is_valid(function.return_type) && is_valid(signature.return_type)) {
         this->validate_function_return_type(function, signature.return_type);
@@ -2238,21 +2226,15 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
         GenericSideTables transient_side_tables = make_generic_side_tables(info);
         GenericContext body_context = this->make_generic_context();
         this->populate_generic_concrete_context(info, args, body_context);
-        GenericContext* const previous_body_generic_context = this->current_generic_context_;
-        const GenericSideTableScope previous_body_side_tables = this->current_side_tables_;
-        this->current_generic_context_ = &body_context;
-        this->current_side_tables_.side_tables = &transient_side_tables;
-        this->current_side_tables_.cache_syntax_types = false;
-        this->current_module_ = info.module;
-        this->analyze_function_body_with_signature(
-            function,
-            key,
-            function_inserted.first->second,
-            this->function_body_states_[key]
-        );
-        this->current_module_ = previous_module;
-        this->current_generic_context_ = previous_body_generic_context;
-        this->current_side_tables_ = previous_body_side_tables;
+        {
+            GenericAnalysisScope scope(*this, info.module, &body_context, &transient_side_tables);
+            this->analyze_function_body_with_signature(
+                function,
+                key,
+                function_inserted.first->second,
+                this->function_body_states_[key]
+            );
+        }
         return &this->checked_.functions.at(key);
     }
 
@@ -2284,21 +2266,20 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     this->function_body_states_[key] = FunctionBodyState::not_started;
     GenericContext body_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, body_context);
-    GenericContext* const previous_body_generic_context = this->current_generic_context_;
-    const GenericSideTableScope previous_body_side_tables = this->current_side_tables_;
-    this->current_generic_context_ = &body_context;
-    this->current_side_tables_.side_tables = &this->checked_.generic_function_instances[instance_index].side_tables;
-    this->current_side_tables_.cache_syntax_types = false;
-    this->current_module_ = info.module;
-    this->analyze_function_body_with_signature(
-        function,
-        key,
-        this->checked_.generic_function_instances[instance_index].signature,
-        this->function_body_states_[key]
-    );
-    this->current_module_ = previous_module;
-    this->current_generic_context_ = previous_body_generic_context;
-    this->current_side_tables_ = previous_body_side_tables;
+    {
+        GenericAnalysisScope scope(
+            *this,
+            info.module,
+            &body_context,
+            &this->checked_.generic_function_instances[instance_index].side_tables
+        );
+        this->analyze_function_body_with_signature(
+            function,
+            key,
+            this->checked_.generic_function_instances[instance_index].signature,
+            this->function_body_states_[key]
+        );
+    }
     this->checked_.generic_function_instances[instance_index].signature = this->checked_.functions.at(key);
     this->checked_.generic_function_instances[instance_index].side_tables.release_analysis_only_storage();
     return &this->checked_.generic_function_instances[instance_index].signature;
@@ -2334,53 +2315,46 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     const syntax::ItemNode function = this->module_.items[info.item.value];
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
-    const syntax::ModuleId previous_module = this->current_module_;
-    GenericContext* const previous_generic_context = this->current_generic_context_;
-    const GenericSideTableScope previous_side_tables = this->current_side_tables_;
-    this->current_module_ = info.module;
-    this->current_generic_context_ = &generic_context;
-    this->current_side_tables_.cache_syntax_types = false;
 
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = this->source_name_text(info.name_id, info.name);
-    signature.name_id = info.name_id;
-    signature.semantic_key = key;
-    signature.stable_id = sema::stable_definition_id(
-        this->stable_module_id(info.module),
-        StableSymbolKind::method,
-        this->checked_.types.display_name(owner_type) + "." + std::string(info.name.view())
-    );
-    signature.c_name = this->checked_.intern_text(this->method_c_symbol_name(owner_type, info.name));
-    signature.generic_args = this->checked_.copy_type_handle_list(args);
-    signature.module = info.module;
-    signature.method_owner_type = owner_type;
-    signature.return_type = syntax::is_valid(function.return_type)
-        ? this->resolve_type(function.return_type)
-        : INVALID_TYPE_HANDLE;
-    signature.range = function.range;
-    signature.is_unsafe = function.is_unsafe;
-    signature.has_definition = true;
-    signature.is_method = true;
-    signature.has_self_param = !function.params.empty() && function.params.front().name == "self";
-    signature.visibility = info.visibility;
-    signature.definition_item = info.item;
-    for (const syntax::ParamDecl& param : function.params) {
-        signature.param_types.push_back(this->resolve_type(param.type));
+    {
+        GenericAnalysisScope scope(*this, info.module, &generic_context);
+        signature.name = this->source_name_text(info.name_id, info.name);
+        signature.name_id = info.name_id;
+        signature.semantic_key = key;
+        signature.stable_id = sema::stable_definition_id(
+            this->stable_module_id(info.module),
+            StableSymbolKind::method,
+            this->checked_.types.display_name(owner_type) + "." + std::string(info.name.view())
+        );
+        signature.c_name = this->checked_.intern_text(this->method_c_symbol_name(owner_type, info.name));
+        signature.generic_args = this->checked_.copy_type_handle_list(args);
+        signature.module = info.module;
+        signature.method_owner_type = owner_type;
+        signature.return_type = syntax::is_valid(function.return_type)
+            ? this->resolve_type(function.return_type)
+            : INVALID_TYPE_HANDLE;
+        signature.range = function.range;
+        signature.is_unsafe = function.is_unsafe;
+        signature.has_definition = true;
+        signature.is_method = true;
+        signature.has_self_param = !function.params.empty() && function.params.front().name == "self";
+        signature.visibility = info.visibility;
+        signature.definition_item = info.item;
+        for (const syntax::ParamDecl& param : function.params) {
+            signature.param_types.push_back(this->resolve_type(param.type));
+        }
+        signature.incremental_key = this->stable_incremental_key(
+            signature.stable_id,
+            this->function_incremental_fingerprint(
+                info.name,
+                signature.return_type,
+                signature.param_types,
+                true,
+                signature.is_variadic
+            )
+        );
     }
-    signature.incremental_key = this->stable_incremental_key(
-        signature.stable_id,
-        this->function_incremental_fingerprint(
-            info.name,
-            signature.return_type,
-            signature.param_types,
-            true,
-            signature.is_variadic
-        )
-    );
-
-    this->current_module_ = previous_module;
-    this->current_generic_context_ = previous_generic_context;
-    this->current_side_tables_ = previous_side_tables;
 
     if (syntax::is_valid(function.return_type) && is_valid(signature.return_type)) {
         this->validate_function_return_type(function, signature.return_type);
@@ -2398,21 +2372,15 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
         GenericSideTables transient_side_tables = make_generic_side_tables(info);
         GenericContext body_context = this->make_generic_context();
         this->populate_generic_concrete_context(info, args, body_context);
-        GenericContext* const previous_body_generic_context = this->current_generic_context_;
-        const GenericSideTableScope previous_body_side_tables = this->current_side_tables_;
-        this->current_generic_context_ = &body_context;
-        this->current_side_tables_.side_tables = &transient_side_tables;
-        this->current_side_tables_.cache_syntax_types = false;
-        this->current_module_ = info.module;
-        this->analyze_function_body_with_signature(
-            function,
-            key,
-            function_inserted.first->second,
-            this->function_body_states_[key]
-        );
-        this->current_module_ = previous_module;
-        this->current_generic_context_ = previous_body_generic_context;
-        this->current_side_tables_ = previous_body_side_tables;
+        {
+            GenericAnalysisScope scope(*this, info.module, &body_context, &transient_side_tables);
+            this->analyze_function_body_with_signature(
+                function,
+                key,
+                function_inserted.first->second,
+                this->function_body_states_[key]
+            );
+        }
         return &this->checked_.functions.at(key);
     }
 
@@ -2445,21 +2413,20 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
 
     GenericContext body_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, body_context);
-    GenericContext* const previous_body_generic_context = this->current_generic_context_;
-    const GenericSideTableScope previous_body_side_tables = this->current_side_tables_;
-    this->current_generic_context_ = &body_context;
-    this->current_side_tables_.side_tables = &this->checked_.generic_function_instances[instance_index].side_tables;
-    this->current_side_tables_.cache_syntax_types = false;
-    this->current_module_ = info.module;
-    this->analyze_function_body_with_signature(
-        function,
-        key,
-        this->checked_.generic_function_instances[instance_index].signature,
-        this->function_body_states_[key]
-    );
-    this->current_module_ = previous_module;
-    this->current_generic_context_ = previous_body_generic_context;
-    this->current_side_tables_ = previous_body_side_tables;
+    {
+        GenericAnalysisScope scope(
+            *this,
+            info.module,
+            &body_context,
+            &this->checked_.generic_function_instances[instance_index].side_tables
+        );
+        this->analyze_function_body_with_signature(
+            function,
+            key,
+            this->checked_.generic_function_instances[instance_index].signature,
+            this->function_body_states_[key]
+        );
+    }
     this->checked_.generic_function_instances[instance_index].signature = this->checked_.functions.at(key);
     this->checked_.generic_function_instances[instance_index].side_tables.release_analysis_only_storage();
     return &this->checked_.functions.at(key);
@@ -2557,47 +2524,40 @@ void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplate
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_placeholder_context(info, generic_context);
 
-    const syntax::ModuleId previous_module = this->current_module_;
-    GenericContext* const previous_generic_context = this->current_generic_context_;
-    const GenericSideTableScope previous_side_tables = this->current_side_tables_;
-    this->current_module_ = info.module;
-    this->current_generic_context_ = &generic_context;
-    this->current_side_tables_.cache_syntax_types = false;
-
     FunctionSignature signature = this->checked_.make_function_signature();
-    signature.name = this->source_name_text(info.name_id, info.name);
-    signature.name_id = info.name_id;
-    signature.semantic_key = info.function_key;
-    signature.stable_id = info.stable_id;
-    signature.c_name = signature.name;
-    signature.module = info.module;
-    signature.return_type = syntax::is_valid(function.return_type)
-        ? this->resolve_type(function.return_type)
-        : INVALID_TYPE_HANDLE;
-    signature.range = function.range;
-    signature.is_unsafe = function.is_unsafe;
-    signature.has_definition = true;
-    signature.visibility = info.visibility;
-    for (const syntax::ParamDecl& param : function.params) {
-        signature.param_types.push_back(this->resolve_type(param.type));
+    {
+        GenericAnalysisScope scope(*this, info.module, &generic_context);
+        signature.name = this->source_name_text(info.name_id, info.name);
+        signature.name_id = info.name_id;
+        signature.semantic_key = info.function_key;
+        signature.stable_id = info.stable_id;
+        signature.c_name = signature.name;
+        signature.module = info.module;
+        signature.return_type = syntax::is_valid(function.return_type)
+            ? this->resolve_type(function.return_type)
+            : INVALID_TYPE_HANDLE;
+        signature.range = function.range;
+        signature.is_unsafe = function.is_unsafe;
+        signature.has_definition = true;
+        signature.visibility = info.visibility;
+        for (const syntax::ParamDecl& param : function.params) {
+            signature.param_types.push_back(this->resolve_type(param.type));
+        }
+        signature.incremental_key = this->stable_incremental_key(
+            signature.stable_id,
+            this->function_incremental_fingerprint(
+                info.name,
+                signature.return_type,
+                signature.param_types,
+                false,
+                signature.is_variadic
+            )
+        );
+        auto placeholder_inserted = this->generic_placeholder_functions_.emplace(info.function_key, signature);
+        if (!placeholder_inserted.second) {
+            placeholder_inserted.first->second = signature;
+        }
     }
-    signature.incremental_key = this->stable_incremental_key(
-        signature.stable_id,
-        this->function_incremental_fingerprint(
-            info.name,
-            signature.return_type,
-            signature.param_types,
-            false,
-            signature.is_variadic
-        )
-    );
-    auto placeholder_inserted = this->generic_placeholder_functions_.emplace(info.function_key, signature);
-    if (!placeholder_inserted.second) {
-        placeholder_inserted.first->second = signature;
-    }
-    this->current_module_ = previous_module;
-    this->current_generic_context_ = previous_generic_context;
-    this->current_side_tables_ = previous_side_tables;
 
     FunctionBodyState state = FunctionBodyState::not_started;
     this->analyze_generic_function_body(function, info, signature, state);
@@ -2611,18 +2571,9 @@ void SemanticAnalyzer::analyze_generic_function_body(
 ) {
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_placeholder_context(info, generic_context);
-    const syntax::ModuleId previous_module = this->current_module_;
-    GenericContext* const previous_generic_context = this->current_generic_context_;
     GenericSideTables side_tables = make_generic_side_tables(info);
-    GenericSideTableScope previous_side_tables = this->current_side_tables_;
-    this->current_generic_context_ = &generic_context;
-    this->current_side_tables_.side_tables = &side_tables;
-    this->current_side_tables_.cache_syntax_types = false;
-    this->current_module_ = info.module;
+    GenericAnalysisScope scope(*this, info.module, &generic_context, &side_tables);
     this->analyze_function_body_with_signature(function, info.function_key, signature, state);
-    this->current_module_ = previous_module;
-    this->current_generic_context_ = previous_generic_context;
-    this->current_side_tables_ = previous_side_tables;
 }
 
 } // namespace aurex::sema

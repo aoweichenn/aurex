@@ -20,6 +20,7 @@ const CASE_BYTES_PARITY: i32 = 1400;
 const CASE_UNICODE_CLUSTER: i32 = 1500;
 const CASE_SET_ALL_SPANS: i32 = 1600;
 const CASE_SET_LITERAL_TRIE: i32 = 1700;
+const CASE_INDUSTRIAL_API: i32 = 1800;
 
 const BUFFER_CAPACITY: usize = 256usize;
 const DATABASE_CAPACITY: usize = 4096usize;
@@ -1071,6 +1072,119 @@ fn require_regex_set_literal_trie_optimizer() -> i32 {
     );
 }
 
+fn require_industrial_api_surface() -> i32 {
+    var escaped_buffer: [256]u8 = [0u8; 256];
+    let escaped: regex.BufferResult = regex.escape_pattern("a+b (x)$", buffer_ptr(&mut escaped_buffer), BUFFER_CAPACITY);
+    if !escaped.ok() {
+        return CASE_INDUSTRIAL_API + 1 + regex.status_code(escaped.status);
+    }
+    let escaped_pattern: str = buffer_text(&mut escaped_buffer, escaped.written);
+    var quoted: regex.Regex = regex.compile(escaped_pattern);
+    defer regex.destroy(&mut quoted);
+    if !quoted.valid() || !regex.fullmatch_compiled(&quoted, "a+b (x)$").ok() {
+        return CASE_INDUSTRIAL_API + 2 + regex.status_code(quoted.status);
+    }
+
+    var replace_pattern: regex.Regex = regex.compile("(\\w+)");
+    defer regex.destroy(&mut replace_pattern);
+    var replacement_buffer: [256]u8 = [0u8; 256];
+    let replaced: regex.ReplaceResult = regex.replace_all(
+        &replace_pattern,
+        "cat",
+        "\\n$1\\t\\u{21}\\$",
+        buffer_ptr(&mut replacement_buffer),
+        BUFFER_CAPACITY
+    );
+    if !replaced.ok() || !same_text(buffer_text(&mut replacement_buffer, replaced.written), "\ncat\t!$") {
+        return CASE_INDUSTRIAL_API + 3 + regex.status_code(replaced.status);
+    }
+
+    var append_buffer: [256]u8 = [0u8; 256];
+    let prefix: CopyState = copy_text("prefix:", buffer_ptr(&mut append_buffer), BUFFER_CAPACITY, 0usize, 0usize);
+    let appended: regex.ReplaceResult = regex.replace_first_append(
+        &replace_pattern,
+        "dog",
+        "$1!",
+        buffer_ptr(&mut append_buffer),
+        BUFFER_CAPACITY,
+        prefix.required
+    );
+    if !appended.ok() || !same_text(buffer_text(&mut append_buffer, appended.written), "prefix:dog!") {
+        return CASE_INDUSTRIAL_API + 4 + regex.status_code(appended.status);
+    }
+
+    var db_regex: regex.Regex = regex.compile("(?<key>\\w+)=(\\d+)");
+    defer regex.destroy(&mut db_regex);
+    var database_buffer: [4096]u8 = [0u8; 4096];
+    let serialized: regex.DatabaseResult = regex.serialize_regex(&db_regex, database_ptr(&mut database_buffer), DATABASE_CAPACITY);
+    if !serialized.ok() || serialized.required != regex.regex_database_bytes(&db_regex) {
+        return CASE_INDUSTRIAL_API + 5 + regex.status_code(serialized.status);
+    }
+    let database_view: []const u8 = database_buffer[:serialized.written];
+    var loaded: regex.Regex = regex.deserialize_regex(database_view);
+    defer regex.destroy(&mut loaded);
+    if !loaded.valid() || regex.capture_index(&loaded, "key") != 1usize {
+        return CASE_INDUSTRIAL_API + 6 + regex.status_code(loaded.status);
+    }
+    var loaded_caps: regex.Captures = regex.captures_compiled(&loaded, "name=42");
+    defer regex.destroy_captures(&mut loaded_caps);
+    if !loaded_caps.ok() || !same_text(regex.capture_text("name=42", &loaded_caps, 1usize), "name") ||
+        !same_text(regex.capture_text("name=42", &loaded_caps, 2usize), "42") {
+        return CASE_INDUSTRIAL_API + 7 + regex.status_code(loaded_caps.status);
+    }
+
+    var anchor_re: regex.Regex = regex.compile("^word");
+    defer regex.destroy(&mut anchor_re);
+    var not_bol: regex.RegexMatchOptions = regex.match_options_not_bol(regex.default_match_options(), true);
+    let blocked_start: regex.MatchResult = regex.search_compiled_with_match_options(&anchor_re, "word", 0usize, not_bol);
+    if blocked_start.status != regex.RegexStatus.no_match {
+        return CASE_INDUSTRIAL_API + 8 + regex.status_code(blocked_start.status);
+    }
+
+    var word_re: regex.Regex = regex.compile("\\bword");
+    defer regex.destroy(&mut word_re);
+    var not_bow: regex.RegexMatchOptions = regex.match_options_not_bow(regex.default_match_options(), true);
+    let blocked_word: regex.MatchResult = regex.search_compiled_with_match_options(&word_re, "word", 0usize, not_bow);
+    if blocked_word.status != regex.RegexStatus.no_match {
+        return CASE_INDUSTRIAL_API + 9 + regex.status_code(blocked_word.status);
+    }
+
+    var continuous_re: regex.Regex = regex.compile("word");
+    defer regex.destroy(&mut continuous_re);
+    var continuous: regex.RegexMatchOptions = regex.match_options_continuous(regex.default_match_options(), true);
+    let blocked_continuous: regex.MatchResult = regex.search_compiled_with_match_options(&continuous_re, "xxword", 0usize, continuous);
+    if blocked_continuous.status != regex.RegexStatus.no_match {
+        return CASE_INDUSTRIAL_API + 10 + regex.status_code(blocked_continuous.status);
+    }
+    let found_continuous: regex.MatchResult = regex.search_compiled_with_match_options(&continuous_re, "xxword", 2usize, continuous);
+    if !found_continuous.ok() || found_continuous.start != 2usize || found_continuous.end != 6usize {
+        return CASE_INDUSTRIAL_API + 11 + regex.status_code(found_continuous.status);
+    }
+
+    var empty_re: regex.Regex = regex.compile("^");
+    defer regex.destroy(&mut empty_re);
+    var not_null: regex.RegexMatchOptions = regex.match_options_not_null(regex.default_match_options(), true);
+    let empty_blocked: regex.MatchResult = regex.search_compiled_with_match_options(&empty_re, "x", 0usize, not_null);
+    if empty_blocked.status != regex.RegexStatus.no_match {
+        return CASE_INDUSTRIAL_API + 12 + regex.status_code(empty_blocked.status);
+    }
+
+    var bad: regex.Regex = regex.compile("(");
+    defer regex.destroy(&mut bad);
+    let diag: regex.RegexDiagnostic = regex.diagnostic(&bad);
+    if diag.status != regex.RegexStatus.syntax_error || diag.error_kind_code != 2 || diag.pattern_len != 1usize {
+        return CASE_INDUSTRIAL_API + 13 + regex.status_code(diag.status);
+    }
+
+    var small_escape: [256]u8 = [0u8; 256];
+    let escaped_replacement: regex.BufferResult = regex.escape_replacement("$path\\tail", buffer_ptr(&mut small_escape), BUFFER_CAPACITY);
+    if !escaped_replacement.ok() ||
+        !same_text(buffer_text(&mut small_escape, escaped_replacement.written), "\\$path\\\\tail") {
+        return CASE_INDUSTRIAL_API + 14 + regex.status_code(escaped_replacement.status);
+    }
+    return 0;
+}
+
 fn main() -> i32 {
     let class_code: i32 = require_class_set_algebra();
     if class_code != 0 {
@@ -1136,5 +1250,9 @@ fn main() -> i32 {
     if set_span_code != 0 {
         return set_span_code;
     }
-    return require_regex_set_literal_trie_optimizer();
+    let literal_trie_code: i32 = require_regex_set_literal_trie_optimizer();
+    if literal_trie_code != 0 {
+        return literal_trie_code;
+    }
+    return require_industrial_api_surface();
 }

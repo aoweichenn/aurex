@@ -52,6 +52,7 @@ struct InputView {
     len: usize;
     mode: u8;
     newline_mode: u8;
+    match_flags: usize;
 }
 
 struct InputDecode {
@@ -87,6 +88,15 @@ pub fn search_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
 }
 
 pub fn search_compiled_from(compiled: &t.Regex, input: str, start_offset: usize) -> t.MatchResult {
+    return search_compiled_with_match_options(compiled, input, start_offset, t.default_match_options());
+}
+
+pub fn search_compiled_with_match_options(
+    compiled: &t.Regex,
+    input: str,
+    start_offset: usize,
+    match_options: t.RegexMatchOptions
+) -> t.MatchResult {
     if compiled.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, compiled.status);
     }
@@ -98,10 +108,18 @@ pub fn search_compiled_from(compiled: &t.Regex, input: str, start_offset: usize)
     if workspace.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, workspace.status);
     }
-    return search_with_workspace(compiled, text_input_with_options(input, compiled.options), start_offset, &mut workspace);
+    return search_with_match_options(compiled, text_input_with_options(input, compiled.options), start_offset, match_options, &mut workspace);
 }
 
 pub fn fullmatch_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
+    return fullmatch_compiled_with_match_options(compiled, input, t.default_match_options());
+}
+
+pub fn fullmatch_compiled_with_match_options(
+    compiled: &t.Regex,
+    input: str,
+    match_options: t.RegexMatchOptions
+) -> t.MatchResult {
     if compiled.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, compiled.status);
     }
@@ -113,7 +131,8 @@ pub fn fullmatch_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
     if workspace.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, workspace.status);
     }
-    return run_at(compiled, text_input_with_options(input, compiled.options), 0usize, true, &mut workspace);
+    let found: t.MatchResult = run_at(compiled, input_with_match_options(text_input_with_options(input, compiled.options), match_options), 0usize, true, &mut workspace);
+    return apply_not_null(found, match_options);
 }
 
 pub fn captures_compiled(compiled: &t.Regex, input: str) -> t.Captures {
@@ -121,6 +140,15 @@ pub fn captures_compiled(compiled: &t.Regex, input: str) -> t.Captures {
 }
 
 pub fn captures_compiled_from(compiled: &t.Regex, input: str, start_offset: usize) -> t.Captures {
+    return captures_compiled_with_match_options(compiled, input, start_offset, t.default_match_options());
+}
+
+pub fn captures_compiled_with_match_options(
+    compiled: &t.Regex,
+    input: str,
+    start_offset: usize,
+    match_options: t.RegexMatchOptions
+) -> t.Captures {
     if compiled.status != t.RegexStatus.ok {
         return t.empty_captures(compiled.status);
     }
@@ -132,12 +160,19 @@ pub fn captures_compiled_from(compiled: &t.Regex, input: str, start_offset: usiz
     if workspace.status != t.RegexStatus.ok {
         return t.empty_captures(workspace.status);
     }
-    var captures: t.Captures = t.empty_captures(t.RegexStatus.no_match);
-    captures_compiled_from_into(compiled, input, start_offset, &mut workspace, &mut captures);
-    return captures;
+    let found: t.MatchResult = search_with_match_options(compiled, text_input_with_options(input, compiled.options), start_offset, match_options, &mut workspace);
+    return captures_from_match(compiled, found, workspace.best_caps);
 }
 
 pub fn captures_fullmatch_compiled(compiled: &t.Regex, input: str) -> t.Captures {
+    return captures_fullmatch_compiled_with_match_options(compiled, input, t.default_match_options());
+}
+
+pub fn captures_fullmatch_compiled_with_match_options(
+    compiled: &t.Regex,
+    input: str,
+    match_options: t.RegexMatchOptions
+) -> t.Captures {
     if compiled.status != t.RegexStatus.ok {
         return t.empty_captures(compiled.status);
     }
@@ -149,7 +184,10 @@ pub fn captures_fullmatch_compiled(compiled: &t.Regex, input: str) -> t.Captures
     if workspace.status != t.RegexStatus.ok {
         return t.empty_captures(workspace.status);
     }
-    let found: t.MatchResult = run_at(compiled, text_input_with_options(input, compiled.options), 0usize, true, &mut workspace);
+    let found: t.MatchResult = apply_not_null(
+        run_at(compiled, input_with_match_options(text_input_with_options(input, compiled.options), match_options), 0usize, true, &mut workspace),
+        match_options
+    );
     return captures_from_match(compiled, found, workspace.best_caps);
 }
 
@@ -166,6 +204,15 @@ pub fn search_bytes_compiled(compiled: &t.Regex, input: []const u8) -> t.MatchRe
 }
 
 pub fn search_bytes_compiled_from(compiled: &t.Regex, input: []const u8, start_offset: usize) -> t.MatchResult {
+    return search_bytes_compiled_with_match_options(compiled, input, start_offset, t.default_match_options());
+}
+
+pub fn search_bytes_compiled_with_match_options(
+    compiled: &t.Regex,
+    input: []const u8,
+    start_offset: usize,
+    match_options: t.RegexMatchOptions
+) -> t.MatchResult {
     if compiled.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, compiled.status);
     }
@@ -177,10 +224,18 @@ pub fn search_bytes_compiled_from(compiled: &t.Regex, input: []const u8, start_o
     if workspace.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, workspace.status);
     }
-    return search_with_workspace(compiled, bytes_input_with_options(input, compiled.options), start_offset, &mut workspace);
+    return search_with_match_options(compiled, bytes_input_with_options(input, compiled.options), start_offset, match_options, &mut workspace);
 }
 
 pub fn fullmatch_bytes_compiled(compiled: &t.Regex, input: []const u8) -> t.MatchResult {
+    return fullmatch_bytes_compiled_with_match_options(compiled, input, t.default_match_options());
+}
+
+pub fn fullmatch_bytes_compiled_with_match_options(
+    compiled: &t.Regex,
+    input: []const u8,
+    match_options: t.RegexMatchOptions
+) -> t.MatchResult {
     if compiled.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, compiled.status);
     }
@@ -192,7 +247,8 @@ pub fn fullmatch_bytes_compiled(compiled: &t.Regex, input: []const u8) -> t.Matc
     if workspace.status != t.RegexStatus.ok {
         return t.match_result(false, 0usize, 0usize, workspace.status);
     }
-    return run_at(compiled, bytes_input_with_options(input, compiled.options), 0usize, true, &mut workspace);
+    let found: t.MatchResult = run_at(compiled, input_with_match_options(bytes_input_with_options(input, compiled.options), match_options), 0usize, true, &mut workspace);
+    return apply_not_null(found, match_options);
 }
 
 pub fn captures_bytes_compiled(compiled: &t.Regex, input: []const u8) -> t.Captures {
@@ -200,6 +256,15 @@ pub fn captures_bytes_compiled(compiled: &t.Regex, input: []const u8) -> t.Captu
 }
 
 pub fn captures_bytes_compiled_from(compiled: &t.Regex, input: []const u8, start_offset: usize) -> t.Captures {
+    return captures_bytes_compiled_with_match_options(compiled, input, start_offset, t.default_match_options());
+}
+
+pub fn captures_bytes_compiled_with_match_options(
+    compiled: &t.Regex,
+    input: []const u8,
+    start_offset: usize,
+    match_options: t.RegexMatchOptions
+) -> t.Captures {
     if compiled.status != t.RegexStatus.ok {
         return t.empty_captures(compiled.status);
     }
@@ -211,12 +276,19 @@ pub fn captures_bytes_compiled_from(compiled: &t.Regex, input: []const u8, start
     if workspace.status != t.RegexStatus.ok {
         return t.empty_captures(workspace.status);
     }
-    var captures: t.Captures = t.empty_captures(t.RegexStatus.no_match);
-    captures_bytes_compiled_from_into(compiled, input, start_offset, &mut workspace, &mut captures);
-    return captures;
+    let found: t.MatchResult = search_with_match_options(compiled, bytes_input_with_options(input, compiled.options), start_offset, match_options, &mut workspace);
+    return captures_from_match(compiled, found, workspace.best_caps);
 }
 
 pub fn captures_bytes_fullmatch_compiled(compiled: &t.Regex, input: []const u8) -> t.Captures {
+    return captures_bytes_fullmatch_compiled_with_match_options(compiled, input, t.default_match_options());
+}
+
+pub fn captures_bytes_fullmatch_compiled_with_match_options(
+    compiled: &t.Regex,
+    input: []const u8,
+    match_options: t.RegexMatchOptions
+) -> t.Captures {
     if compiled.status != t.RegexStatus.ok {
         return t.empty_captures(compiled.status);
     }
@@ -228,7 +300,10 @@ pub fn captures_bytes_fullmatch_compiled(compiled: &t.Regex, input: []const u8) 
     if workspace.status != t.RegexStatus.ok {
         return t.empty_captures(workspace.status);
     }
-    let found: t.MatchResult = run_at(compiled, bytes_input_with_options(input, compiled.options), 0usize, true, &mut workspace);
+    let found: t.MatchResult = apply_not_null(
+        run_at(compiled, input_with_match_options(bytes_input_with_options(input, compiled.options), match_options), 0usize, true, &mut workspace),
+        match_options
+    );
     return captures_from_match(compiled, found, workspace.best_caps);
 }
 
@@ -617,6 +692,42 @@ fn search_with_workspace(compiled: &t.Regex, input: InputView, start_offset: usi
         return run_at(compiled, input, 0usize, false, workspace);
     }
     return run_search(compiled, input, align_forward_boundary(input, start_offset), workspace);
+}
+
+fn search_with_match_options(
+    compiled: &t.Regex,
+    input: InputView,
+    start_offset: usize,
+    match_options: t.RegexMatchOptions,
+    workspace: &mut Workspace
+) -> t.MatchResult {
+    let configured: InputView = input_with_match_options(input, match_options);
+    if start_offset > configured.len {
+        return t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    let start: usize = align_forward_boundary(configured, start_offset);
+    if match_option_enabled(match_options, t.MATCH_ANCHORED) ||
+        match_option_enabled(match_options, t.MATCH_CONTINUOUS) {
+        return apply_not_null(run_at(compiled, configured, start, false, workspace), match_options);
+    }
+    if match_option_enabled(match_options, t.MATCH_NOT_NULL) {
+        var cursor: usize = start;
+        while cursor <= configured.len {
+            let found: t.MatchResult = search_with_workspace(compiled, configured, cursor, workspace);
+            if found.status != t.RegexStatus.ok || !found.matched {
+                return found;
+            }
+            if found.end > found.start {
+                return found;
+            }
+            if found.end >= configured.len {
+                return t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match);
+            }
+            cursor = next_boundary(configured, found.end);
+        }
+        return t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    return search_with_workspace(compiled, configured, start, workspace);
 }
 
 fn matches_set_input(
@@ -2444,11 +2555,11 @@ fn add_set_closure(
             push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out2 }, row);
             push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
         } else if opcode == t.OP_ASSERT_START {
-            if position == 0usize || (has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_MULTILINE) && is_line_start(input, position)) {
+            if assert_start_matches(input, position, unsafe { compiled.states[state_id].flags }) {
                 push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
             }
         } else if opcode == t.OP_ASSERT_END {
-            if position == input_len || (has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_MULTILINE) && is_line_end(input, position, input_len)) {
+            if assert_end_matches(input, position, input_len, unsafe { compiled.states[state_id].flags }) {
                 push_set_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
             }
         } else if opcode == t.OP_ASSERT_ABSOLUTE_START {
@@ -2747,11 +2858,11 @@ fn add_closure(
             }
             push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
         } else if opcode == t.OP_ASSERT_START {
-            if position == 0usize || (has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_MULTILINE) && is_line_start(input, position)) {
+            if assert_start_matches(input, position, unsafe { compiled.states[state_id].flags }) {
                 push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
             }
         } else if opcode == t.OP_ASSERT_END {
-            if position == input_len || (has_flag(unsafe { compiled.states[state_id].flags }, t.FLAG_MULTILINE) && is_line_end(input, position, input_len)) {
+            if assert_end_matches(input, position, input_len, unsafe { compiled.states[state_id].flags }) {
                 push_state(workspace, stack_len_ptr, stamp, unsafe { compiled.states[state_id].out1 }, row);
             }
         } else if opcode == t.OP_ASSERT_ABSOLUTE_START {
@@ -3312,9 +3423,29 @@ fn is_line_break_mode(newline_mode: u8, value: usize) -> bool {
     return unicode.is_line_break_scalar(value);
 }
 
+fn assert_start_matches(input: InputView, position: usize, flags: u8) -> bool {
+    if is_line_start(input, position) {
+        if position == 0usize {
+            return true;
+        }
+        return has_flag(flags, t.FLAG_MULTILINE);
+    }
+    return false;
+}
+
+fn assert_end_matches(input: InputView, position: usize, input_len: usize, flags: u8) -> bool {
+    if is_line_end(input, position, input_len) {
+        if position == input_len {
+            return true;
+        }
+        return has_flag(flags, t.FLAG_MULTILINE);
+    }
+    return false;
+}
+
 fn is_line_start(input: InputView, position: usize) -> bool {
     if position == 0usize {
-        return true;
+        return !input_match_flag_enabled(input, t.MATCH_NOT_BOL);
     }
     let previous: InputDecode = previous_decode(input, position);
     return previous.valid && is_line_break(input, previous.value);
@@ -3322,7 +3453,7 @@ fn is_line_start(input: InputView, position: usize) -> bool {
 
 fn is_line_end(input: InputView, position: usize, input_len: usize) -> bool {
     if position == input_len {
-        return true;
+        return !input_match_flag_enabled(input, t.MATCH_NOT_EOL);
     }
     let current: InputDecode = decode_at(input, position);
     return current.valid && is_line_break(input, current.value);
@@ -3333,11 +3464,21 @@ fn is_word_boundary_flags(input: InputView, position: usize, input_len: usize, f
     let right: InputDecode = decode_at(input, position);
     let left_is_word: bool = position > 0usize && left.valid && is_word_flags(input, left.value, flags);
     let right_is_word: bool = position < input_len && right.valid && is_word_flags(input, right.value, flags);
-    return left_is_word != right_is_word;
+    let boundary: bool = left_is_word != right_is_word;
+    if boundary && position == 0usize && right_is_word && input_match_flag_enabled(input, t.MATCH_NOT_BOW) {
+        return false;
+    }
+    if boundary && position == input_len && left_is_word && input_match_flag_enabled(input, t.MATCH_NOT_EOW) {
+        return false;
+    }
+    return boundary;
 }
 
 fn is_word_start_flags(input: InputView, position: usize, input_len: usize, flags: u8) -> bool {
     if position >= input_len {
+        return false;
+    }
+    if position == 0usize && input_match_flag_enabled(input, t.MATCH_NOT_BOW) {
         return false;
     }
     let left: InputDecode = previous_decode(input, position);
@@ -3349,6 +3490,9 @@ fn is_word_start_flags(input: InputView, position: usize, input_len: usize, flag
 
 fn is_word_end_flags(input: InputView, position: usize, input_len: usize, flags: u8) -> bool {
     if position == 0usize {
+        return false;
+    }
+    if position == input_len && input_match_flag_enabled(input, t.MATCH_NOT_EOW) {
         return false;
     }
     let left: InputDecode = previous_decode(input, position);
@@ -3665,7 +3809,34 @@ fn text_input_with_options(input: str, options: t.RegexOptions) -> InputView {
         len: strblen(input),
         mode: t.MODE_TEXT,
         newline_mode: options.newline_mode,
+        match_flags: t.MATCH_DEFAULT,
     };
+}
+
+fn input_with_match_options(input: InputView, match_options: t.RegexMatchOptions) -> InputView {
+    return InputView {
+        text: input.text,
+        data: input.data,
+        len: input.len,
+        mode: input.mode,
+        newline_mode: input.newline_mode,
+        match_flags: match_options.flags,
+    };
+}
+
+fn match_option_enabled(match_options: t.RegexMatchOptions, flag: usize) -> bool {
+    return (match_options.flags & flag) != 0usize;
+}
+
+fn input_match_flag_enabled(input: InputView, flag: usize) -> bool {
+    return (input.match_flags & flag) != 0usize;
+}
+
+fn apply_not_null(found: t.MatchResult, match_options: t.RegexMatchOptions) -> t.MatchResult {
+    if match_option_enabled(match_options, t.MATCH_NOT_NULL) && found.status == t.RegexStatus.ok && found.matched && found.start == found.end {
+        return t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    return found;
 }
 
 fn bytes_input_with_options(input: []const u8, options: t.RegexOptions) -> InputView {
@@ -3675,6 +3846,7 @@ fn bytes_input_with_options(input: []const u8, options: t.RegexOptions) -> Input
         len: slicelen(input),
         mode: t.MODE_BYTES,
         newline_mode: options.newline_mode,
+        match_flags: t.MATCH_DEFAULT,
     };
 }
 
@@ -3757,6 +3929,7 @@ fn raw_bytes_input(data: *const u8, len: usize, options: t.RegexOptions) -> Inpu
         len: len,
         mode: t.MODE_BYTES,
         newline_mode: options.newline_mode,
+        match_flags: t.MATCH_DEFAULT,
     };
 }
 
@@ -3767,6 +3940,7 @@ fn raw_text_input(data: *const u8, len: usize, options: t.RegexOptions) -> Input
         len: len,
         mode: t.MODE_TEXT,
         newline_mode: options.newline_mode,
+        match_flags: t.MATCH_DEFAULT,
     };
 }
 

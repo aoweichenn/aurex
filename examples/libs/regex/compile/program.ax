@@ -48,6 +48,7 @@ pub fn create_with_options(pattern: str, mode: u8, options: t.RegexOptions) -> t
     }
     return t.Regex {
         pattern: pattern,
+        owned_pattern: null,
         mode: mode,
         options: options,
         states: states,
@@ -71,6 +72,9 @@ pub fn destroy(compiled: &mut t.Regex) -> void {
     alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.states) });
     alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.ranges) });
     alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.captures) });
+    alloc.free_bytes(compiled.owned_pattern);
+    compiled.pattern = "";
+    compiled.owned_pattern = null;
     compiled.states = null;
     compiled.ranges = null;
     compiled.captures = null;
@@ -384,6 +388,7 @@ pub fn capture(compiled: &mut t.Regex, body: t.Fragment, capture_index: usize, s
 fn empty_with_status(pattern: str, mode: u8, options: t.RegexOptions, status: t.RegexStatus) -> t.Regex {
     return t.Regex {
         pattern: pattern,
+        owned_pattern: null,
         mode: mode,
         options: options,
         states: null,

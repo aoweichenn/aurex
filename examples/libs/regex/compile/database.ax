@@ -17,12 +17,15 @@ const DATABASE_VERSION: u8 = 3u8;
 const USIZE_BYTES: usize = 8usize;
 const STATE_ENCODED_BYTES: usize = 50usize;
 const RANGE_ENCODED_BYTES: usize = 17usize;
+const CAPTURE_ENCODED_BYTES: usize = 32usize;
 const LITERAL_NODE_ENCODED_BYTES: usize = 56usize;
 const LITERAL_TERMINAL_ENCODED_BYTES: usize = 24usize;
 const OPTIONS_USIZE_COUNT: usize = 7usize;
 const HEADER_BYTES: usize = MAGIC_BYTES + 4usize + USIZE_BYTES * (7usize + OPTIONS_USIZE_COUNT);
+const REGEX_HEADER_BYTES: usize = MAGIC_BYTES + 4usize + USIZE_BYTES * (6usize + OPTIONS_USIZE_COUNT);
 const BYTE_MASK: usize = 0xffusize;
 const BYTE_BITS: usize = 8usize;
+const REGEX_MAGIC_4: u8 = 0x47u8;
 
 struct ReadUsize {
     value: usize;
@@ -41,6 +44,56 @@ pub fn database_bytes(compiled: &t.RegexSet) -> usize {
         + compiled.literal_terminal_len * LITERAL_TERMINAL_ENCODED_BYTES;
 }
 
+pub fn regex_database_bytes(compiled: &t.Regex) -> usize {
+    if compiled.status != t.RegexStatus.ok {
+        return 0usize;
+    }
+    return REGEX_HEADER_BYTES
+        + strblen(compiled.pattern)
+        + compiled.state_len * STATE_ENCODED_BYTES
+        + compiled.range_len * RANGE_ENCODED_BYTES
+        + compiled.capture_len * CAPTURE_ENCODED_BYTES;
+}
+
+pub fn serialize_regex(compiled: &t.Regex, out: *mut u8, out_capacity: usize) -> t.DatabaseResult {
+    if compiled.status != t.RegexStatus.ok {
+        return t.database_result(compiled.status, 0usize, 0usize);
+    }
+    let required: usize = regex_database_bytes(compiled);
+    var cursor: usize = 0usize;
+    let cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
+    write_regex_magic(out, out_capacity, cursor_ptr);
+    write_u8(out, out_capacity, cursor_ptr, DATABASE_VERSION);
+    write_u8(out, out_capacity, cursor_ptr, compiled.mode);
+    write_options(out, out_capacity, cursor_ptr, compiled.options);
+    write_usize(out, out_capacity, cursor_ptr, strblen(compiled.pattern));
+    write_usize(out, out_capacity, cursor_ptr, compiled.start);
+    write_usize(out, out_capacity, cursor_ptr, compiled.accept);
+    write_usize(out, out_capacity, cursor_ptr, compiled.state_len);
+    write_usize(out, out_capacity, cursor_ptr, compiled.range_len);
+    write_usize(out, out_capacity, cursor_ptr, compiled.capture_len);
+    write_pattern_bytes(out, out_capacity, cursor_ptr, compiled.pattern);
+    var state: usize = 0usize;
+    while state < compiled.state_len {
+        write_state(out, out_capacity, cursor_ptr, unsafe { compiled.states[state] });
+        state += 1usize;
+    }
+    var range: usize = 0usize;
+    while range < compiled.range_len {
+        write_range(out, out_capacity, cursor_ptr, unsafe { compiled.ranges[range] });
+        range += 1usize;
+    }
+    var capture: usize = 0usize;
+    while capture < compiled.capture_len {
+        write_capture(out, out_capacity, cursor_ptr, unsafe { compiled.captures[capture] });
+        capture += 1usize;
+    }
+    if required > out_capacity {
+        return t.database_result(t.RegexStatus.buffer_too_small, out_capacity, required);
+    }
+    return t.database_result(t.RegexStatus.ok, required, required);
+}
+
 pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -> t.DatabaseResult {
     if compiled.status != t.RegexStatus.ok {
         return t.database_result(compiled.status, 0usize, 0usize);
@@ -48,7 +101,7 @@ pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -
     let required: usize = database_bytes(compiled);
     var cursor: usize = 0usize;
     let cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
-    write_magic(out, out_capacity, cursor_ptr);
+    write_set_magic(out, out_capacity, cursor_ptr);
     write_u8(out, out_capacity, cursor_ptr, DATABASE_VERSION);
     write_u8(out, out_capacity, cursor_ptr, compiled.mode);
     write_options(out, out_capacity, cursor_ptr, compiled.options);
@@ -85,10 +138,111 @@ pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -
     return t.database_result(t.RegexStatus.ok, required, required);
 }
 
+pub fn deserialize_regex(bytes: []const u8) -> t.Regex {
+    let data: *const u8 = sliceptr(bytes);
+    let len: usize = slicelen(bytes);
+    if len < REGEX_HEADER_BYTES || !has_regex_magic(data, len) {
+        return empty_regex(t.MODE_TEXT, t.RegexStatus.database_error);
+    }
+    var cursor: usize = MAGIC_BYTES;
+    let header_cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
+    let version: u8 = read_u8(data, len, header_cursor_ptr);
+    if version != DATABASE_VERSION {
+        return empty_regex(t.MODE_TEXT, t.RegexStatus.database_error);
+    }
+    let mode: u8 = read_u8(data, len, header_cursor_ptr);
+    if mode != t.MODE_TEXT && mode != t.MODE_BYTES {
+        return empty_regex(t.MODE_TEXT, t.RegexStatus.database_error);
+    }
+    let options: t.RegexOptions = read_options(data, len, header_cursor_ptr);
+    if !options_shape_is_valid(options) {
+        return empty_regex(mode, t.RegexStatus.database_error);
+    }
+    let pattern_len_read: ReadUsize = read_usize(data, len, cursor);
+    if !pattern_len_read.valid {
+        return empty_regex(mode, t.RegexStatus.database_error);
+    }
+    cursor = pattern_len_read.next;
+    let start_read: ReadUsize = read_usize(data, len, cursor);
+    if !start_read.valid {
+        return empty_regex(mode, t.RegexStatus.database_error);
+    }
+    cursor = start_read.next;
+    let accept_read: ReadUsize = read_usize(data, len, cursor);
+    if !accept_read.valid {
+        return empty_regex(mode, t.RegexStatus.database_error);
+    }
+    cursor = accept_read.next;
+    let state_len_read: ReadUsize = read_usize(data, len, cursor);
+    if !state_len_read.valid {
+        return empty_regex(mode, t.RegexStatus.database_error);
+    }
+    cursor = state_len_read.next;
+    let range_len_read: ReadUsize = read_usize(data, len, cursor);
+    if !range_len_read.valid {
+        return empty_regex(mode, t.RegexStatus.database_error);
+    }
+    cursor = range_len_read.next;
+    let capture_len_read: ReadUsize = read_usize(data, len, cursor);
+    if !capture_len_read.valid {
+        return empty_regex(mode, t.RegexStatus.database_error);
+    }
+    cursor = capture_len_read.next;
+    let pattern_len: usize = pattern_len_read.value;
+    let start: usize = start_read.value;
+    let accept: usize = accept_read.value;
+    let state_len: usize = state_len_read.value;
+    let range_len: usize = range_len_read.value;
+    let capture_len: usize = capture_len_read.value;
+    if !regex_database_shape_is_valid(pattern_len, start, accept, state_len, range_len, capture_len, len, options) {
+        return empty_regex(mode, t.RegexStatus.database_error);
+    }
+    var compiled: t.Regex = allocate_regex(mode, options, pattern_len, state_len, range_len, capture_len);
+    if compiled.status != t.RegexStatus.ok {
+        return compiled;
+    }
+    compiled.start = start;
+    compiled.accept = accept;
+    if pattern_len > 0usize {
+        copy_database_bytes(data, cursor, compiled.owned_pattern, pattern_len);
+        cursor += pattern_len;
+    }
+    let cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
+    var state: usize = 0usize;
+    while state < state_len {
+        if !read_state(data, len, cursor_ptr, unsafe { ptrat[*mut t.State](ptraddr(compiled.states) + state * sizeof[t.State]) }) {
+            destroy_regex_storage(&mut compiled);
+            return empty_regex(mode, t.RegexStatus.database_error);
+        }
+        state += 1usize;
+    }
+    var range: usize = 0usize;
+    while range < range_len {
+        if !read_range(data, len, cursor_ptr, unsafe { ptrat[*mut t.ClassRange](ptraddr(compiled.ranges) + range * sizeof[t.ClassRange]) }) {
+            destroy_regex_storage(&mut compiled);
+            return empty_regex(mode, t.RegexStatus.database_error);
+        }
+        range += 1usize;
+    }
+    var capture: usize = 0usize;
+    while capture < capture_len {
+        if !read_capture(data, len, cursor_ptr, unsafe { ptrat[*mut t.CaptureInfo](ptraddr(compiled.captures) + capture * sizeof[t.CaptureInfo]) }) {
+            destroy_regex_storage(&mut compiled);
+            return empty_regex(mode, t.RegexStatus.database_error);
+        }
+        capture += 1usize;
+    }
+    if cursor != len || !validate_regex_program(&compiled) {
+        destroy_regex_storage(&mut compiled);
+        return empty_regex(mode, t.RegexStatus.database_error);
+    }
+    return compiled;
+}
+
 pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
     let data: *const u8 = sliceptr(bytes);
     let len: usize = slicelen(bytes);
-    if len < HEADER_BYTES || !has_magic(data, len) {
+    if len < HEADER_BYTES || !has_set_magic(data, len) {
         return empty_set(t.MODE_TEXT, t.RegexStatus.database_error);
     }
     var cursor: usize = MAGIC_BYTES;
@@ -205,7 +359,7 @@ pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
     return compiled;
 }
 
-fn write_magic(out: *mut u8, out_capacity: usize, cursor: *mut usize) -> void {
+fn write_set_magic(out: *mut u8, out_capacity: usize, cursor: *mut usize) -> void {
     write_u8(out, out_capacity, cursor, MAGIC_0);
     write_u8(out, out_capacity, cursor, MAGIC_1);
     write_u8(out, out_capacity, cursor, MAGIC_2);
@@ -214,6 +368,26 @@ fn write_magic(out: *mut u8, out_capacity: usize, cursor: *mut usize) -> void {
     write_u8(out, out_capacity, cursor, MAGIC_5);
     write_u8(out, out_capacity, cursor, MAGIC_6);
     write_u8(out, out_capacity, cursor, MAGIC_7);
+}
+
+fn write_regex_magic(out: *mut u8, out_capacity: usize, cursor: *mut usize) -> void {
+    write_u8(out, out_capacity, cursor, MAGIC_0);
+    write_u8(out, out_capacity, cursor, MAGIC_1);
+    write_u8(out, out_capacity, cursor, MAGIC_2);
+    write_u8(out, out_capacity, cursor, MAGIC_3);
+    write_u8(out, out_capacity, cursor, REGEX_MAGIC_4);
+    write_u8(out, out_capacity, cursor, MAGIC_5);
+    write_u8(out, out_capacity, cursor, MAGIC_6);
+    write_u8(out, out_capacity, cursor, MAGIC_7);
+}
+
+fn write_pattern_bytes(out: *mut u8, out_capacity: usize, cursor: *mut usize, pattern: str) -> void {
+    let data: *const u8 = strptr(pattern);
+    var offset: usize = 0usize;
+    while offset < strblen(pattern) {
+        write_u8(out, out_capacity, cursor, unsafe { data[offset] });
+        offset += 1usize;
+    }
 }
 
 fn write_state(out: *mut u8, out_capacity: usize, cursor: *mut usize, state: t.State) -> void {
@@ -231,6 +405,13 @@ fn write_range(out: *mut u8, out_capacity: usize, cursor: *mut usize, range: t.C
     write_u8(out, out_capacity, cursor, range.kind);
     write_usize(out, out_capacity, cursor, range.first);
     write_usize(out, out_capacity, cursor, range.last);
+}
+
+fn write_capture(out: *mut u8, out_capacity: usize, cursor: *mut usize, capture: t.CaptureInfo) -> void {
+    write_usize(out, out_capacity, cursor, capture.name_start);
+    write_usize(out, out_capacity, cursor, capture.name_len);
+    write_usize(out, out_capacity, cursor, capture.source_start);
+    write_usize(out, out_capacity, cursor, capture.source_end);
 }
 
 fn write_literal_node(out: *mut u8, out_capacity: usize, cursor: *mut usize, node: t.SetLiteralNode) -> void {
@@ -424,6 +605,45 @@ fn read_range(data: *const u8, len: usize, cursor: *mut usize, range: *mut t.Cla
     return true;
 }
 
+fn read_capture(data: *const u8, len: usize, cursor: *mut usize, capture: *mut t.CaptureInfo) -> bool {
+    if unsafe { *cursor } + CAPTURE_ENCODED_BYTES > len {
+        return false;
+    }
+    let name_start: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !name_start.valid {
+        return false;
+    }
+    unsafe {
+        capture.name_start = name_start.value;
+        *cursor = name_start.next;
+    }
+    let name_len: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !name_len.valid {
+        return false;
+    }
+    unsafe {
+        capture.name_len = name_len.value;
+        *cursor = name_len.next;
+    }
+    let source_start: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !source_start.valid {
+        return false;
+    }
+    unsafe {
+        capture.source_start = source_start.value;
+        *cursor = source_start.next;
+    }
+    let source_end: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !source_end.valid {
+        return false;
+    }
+    unsafe {
+        capture.source_end = source_end.value;
+        *cursor = source_end.next;
+    }
+    return true;
+}
+
 fn read_literal_node(data: *const u8, len: usize, cursor: *mut usize, node: *mut t.SetLiteralNode) -> bool {
     if unsafe { *cursor } + LITERAL_NODE_ENCODED_BYTES > len {
         return false;
@@ -518,7 +738,7 @@ fn read_literal_terminal(data: *const u8, len: usize, cursor: *mut usize, termin
     return true;
 }
 
-fn has_magic(data: *const u8, len: usize) -> bool {
+fn has_set_magic(data: *const u8, len: usize) -> bool {
     if len < MAGIC_BYTES {
         return false;
     }
@@ -530,6 +750,52 @@ fn has_magic(data: *const u8, len: usize) -> bool {
         && unsafe { data[5usize] } == MAGIC_5
         && unsafe { data[6usize] } == MAGIC_6
         && unsafe { data[7usize] } == MAGIC_7;
+}
+
+fn has_regex_magic(data: *const u8, len: usize) -> bool {
+    if len < MAGIC_BYTES {
+        return false;
+    }
+    return unsafe { data[0usize] } == MAGIC_0
+        && unsafe { data[1usize] } == MAGIC_1
+        && unsafe { data[2usize] } == MAGIC_2
+        && unsafe { data[3usize] } == MAGIC_3
+        && unsafe { data[4usize] } == REGEX_MAGIC_4
+        && unsafe { data[5usize] } == MAGIC_5
+        && unsafe { data[6usize] } == MAGIC_6
+        && unsafe { data[7usize] } == MAGIC_7;
+}
+
+fn regex_database_shape_is_valid(
+    pattern_len: usize,
+    start: usize,
+    accept: usize,
+    state_len: usize,
+    range_len: usize,
+    capture_len: usize,
+    bytes_len: usize,
+    options: t.RegexOptions
+) -> bool {
+    if pattern_len > options.max_pattern_bytes ||
+        pattern_len > limits.MAX_PATTERN_BYTES ||
+        state_len == 0usize ||
+        state_len > options.max_state_capacity ||
+        state_len > limits.MAX_STATE_CAPACITY ||
+        range_len > options.max_range_capacity ||
+        range_len > limits.MAX_RANGE_CAPACITY ||
+        capture_len == 0usize ||
+        capture_len > options.max_capture_groups + limits.RESERVED_CAPTURE_INFO_COUNT ||
+        capture_len > limits.MAX_CAPTURE_GROUPS + limits.RESERVED_CAPTURE_INFO_COUNT {
+        return false;
+    }
+    if start == t.NO_STATE || start >= state_len || accept == t.NO_STATE || accept >= state_len {
+        return false;
+    }
+    return bytes_len == REGEX_HEADER_BYTES
+        + pattern_len
+        + state_len * STATE_ENCODED_BYTES
+        + range_len * RANGE_ENCODED_BYTES
+        + capture_len * CAPTURE_ENCODED_BYTES;
 }
 
 fn database_shape_is_valid(
@@ -583,6 +849,78 @@ fn options_shape_is_valid(options: t.RegexOptions) -> bool {
         return false;
     }
     return true;
+}
+
+fn allocate_regex(
+    mode: u8,
+    options: t.RegexOptions,
+    pattern_len: usize,
+    state_len: usize,
+    range_len: usize,
+    capture_len: usize
+) -> t.Regex {
+    var owned_pattern: *mut u8 = null;
+    var pattern: str = "";
+    if pattern_len > 0usize {
+        owned_pattern = alloc.alloc_zeroed_bytes(pattern_len, sizeof[u8]);
+        if owned_pattern == null {
+            return empty_regex(mode, t.RegexStatus.out_of_memory);
+        }
+        pattern = unsafe { strraw(ptrcast[*const u8](owned_pattern), pattern_len) };
+    }
+    var states: *mut t.State = null;
+    var ranges: *mut t.ClassRange = null;
+    var captures: *mut t.CaptureInfo = null;
+    if state_len > 0usize {
+        states = unsafe {
+            ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(state_len, sizeof[t.State]))
+        };
+        if states == null {
+            alloc.free_bytes(owned_pattern);
+            return empty_regex(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    if range_len > 0usize {
+        ranges = unsafe {
+            ptrcast[*mut t.ClassRange](alloc.alloc_zeroed_bytes(range_len, sizeof[t.ClassRange]))
+        };
+        if ranges == null {
+            alloc.free_bytes(owned_pattern);
+            alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
+            return empty_regex(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    if capture_len > 0usize {
+        captures = unsafe {
+            ptrcast[*mut t.CaptureInfo](alloc.alloc_zeroed_bytes(capture_len, sizeof[t.CaptureInfo]))
+        };
+        if captures == null {
+            alloc.free_bytes(owned_pattern);
+            alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
+            alloc.free_bytes(unsafe { ptrcast[*mut u8](ranges) });
+            return empty_regex(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    return t.Regex {
+        pattern: pattern,
+        owned_pattern: owned_pattern,
+        mode: mode,
+        options: options,
+        states: states,
+        state_len: state_len,
+        state_capacity: state_len,
+        ranges: ranges,
+        range_len: range_len,
+        range_capacity: range_len,
+        captures: captures,
+        capture_len: capture_len,
+        capture_capacity: capture_len,
+        start: t.NO_STATE,
+        accept: t.NO_STATE,
+        status: t.RegexStatus.ok,
+        error_offset: t.ERROR_OFFSET_NONE,
+        error_kind: t.ERROR_KIND_NONE,
+    };
 }
 
 fn allocate_set(
@@ -657,6 +995,29 @@ fn allocate_set(
     };
 }
 
+fn empty_regex(mode: u8, status: t.RegexStatus) -> t.Regex {
+    return t.Regex {
+        pattern: "",
+        owned_pattern: null,
+        mode: mode,
+        options: t.default_options(),
+        states: null,
+        state_len: 0usize,
+        state_capacity: 0usize,
+        ranges: null,
+        range_len: 0usize,
+        range_capacity: 0usize,
+        captures: null,
+        capture_len: 0usize,
+        capture_capacity: 0usize,
+        start: t.NO_STATE,
+        accept: t.NO_STATE,
+        status: status,
+        error_offset: t.ERROR_OFFSET_NONE,
+        error_kind: t.ERROR_KIND_NONE,
+    };
+}
+
 fn empty_set(mode: u8, status: t.RegexStatus) -> t.RegexSet {
     return t.RegexSet {
         mode: mode,
@@ -679,6 +1040,24 @@ fn empty_set(mode: u8, status: t.RegexStatus) -> t.RegexSet {
     };
 }
 
+fn destroy_regex_storage(compiled: &mut t.Regex) -> void {
+    alloc.free_bytes(compiled.owned_pattern);
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.states) });
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.ranges) });
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.captures) });
+    compiled.pattern = "";
+    compiled.owned_pattern = null;
+    compiled.states = null;
+    compiled.ranges = null;
+    compiled.captures = null;
+    compiled.state_len = 0usize;
+    compiled.state_capacity = 0usize;
+    compiled.range_len = 0usize;
+    compiled.range_capacity = 0usize;
+    compiled.capture_len = 0usize;
+    compiled.capture_capacity = 0usize;
+}
+
 fn destroy_set_storage(compiled: &mut t.RegexSet) -> void {
     alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.states) });
     alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.ranges) });
@@ -697,6 +1076,63 @@ fn destroy_set_storage(compiled: &mut t.RegexSet) -> void {
     compiled.literal_max_byte_len = 0usize;
 }
 
+fn validate_regex_program(compiled: &t.Regex) -> bool {
+    if compiled.state_len == 0usize ||
+        compiled.states == null ||
+        compiled.captures == null ||
+        compiled.accept >= compiled.state_len ||
+        unsafe { compiled.states[compiled.accept].opcode } != t.OP_MATCH {
+        return false;
+    }
+    var state: usize = 0usize;
+    while state < compiled.state_len {
+        if !validate_regex_state(compiled, unsafe { compiled.states[state] }) {
+            return false;
+        }
+        state += 1usize;
+    }
+    var capture: usize = 0usize;
+    while capture < compiled.capture_len {
+        if !validate_capture(compiled, unsafe { compiled.captures[capture] }) {
+            return false;
+        }
+        capture += 1usize;
+    }
+    return true;
+}
+
+fn validate_regex_state(compiled: &t.Regex, state: t.State) -> bool {
+    if state.out1 != t.NO_STATE && state.out1 >= compiled.state_len {
+        return false;
+    }
+    if state.out2 != t.NO_STATE && state.out2 >= compiled.state_len {
+        return false;
+    }
+    if state.opcode == t.OP_CLASS {
+        if state.class_start > compiled.range_len {
+            return false;
+        }
+        if state.class_len > compiled.range_len - state.class_start {
+            return false;
+        }
+    }
+    if state.opcode == t.OP_SAVE && state.class_start >= compiled.capture_len * 2usize {
+        return false;
+    }
+    return state.opcode <= t.OP_SAVE;
+}
+
+fn validate_capture(compiled: &t.Regex, capture: t.CaptureInfo) -> bool {
+    let pattern_len: usize = strblen(compiled.pattern);
+    if capture.name_start > pattern_len || capture.name_len > pattern_len - capture.name_start {
+        return false;
+    }
+    if capture.source_start > pattern_len || capture.source_end > pattern_len || capture.source_start > capture.source_end {
+        return false;
+    }
+    return true;
+}
+
 fn validate_set_program(compiled: &t.RegexSet) -> bool {
     if compiled.state_len == 0usize {
         return compiled.start == t.NO_STATE && validate_literal_automaton(compiled);
@@ -709,6 +1145,16 @@ fn validate_set_program(compiled: &t.RegexSet) -> bool {
         state += 1usize;
     }
     return validate_literal_automaton(compiled);
+}
+
+fn copy_database_bytes(data: *const u8, start: usize, out: *mut u8, len: usize) -> void {
+    var offset: usize = 0usize;
+    while offset < len {
+        unsafe {
+            out[offset] = data[start + offset];
+        }
+        offset += 1usize;
+    }
 }
 
 fn validate_state(compiled: &t.RegexSet, state: t.State) -> bool {

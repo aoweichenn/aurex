@@ -65,7 +65,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexLibraryCompilesAndRuns) {
     const std::string checked =
         require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_demo.ax")).output;
     expect_contains_all(checked, {
-        "struct Regex fields=17",
+        "struct Regex fields=18",
         "struct MatchResult fields=4",
         "struct Captures fields=7",
         "struct CaptureSpan fields=3",

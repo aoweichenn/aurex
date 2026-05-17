@@ -5,11 +5,13 @@ import regex.core.types as t;
 
 pub type Regex = t.Regex;
 pub type RegexOptions = t.RegexOptions;
+pub type RegexMatchOptions = t.RegexMatchOptions;
 pub type RegexBuilder = t.RegexBuilder;
 pub type MatchResult = t.MatchResult;
 pub type Captures = t.Captures;
 pub type CaptureSpan = t.CaptureSpan;
 pub type RegexStatus = t.RegexStatus;
+pub type RegexDiagnostic = t.RegexDiagnostic;
 pub type RegexSet = t.RegexSet;
 pub type SetMatchesResult = t.SetMatchesResult;
 pub type SetMatchSpan = t.SetMatchSpan;
@@ -22,6 +24,7 @@ pub type ReplaceResult = t.ReplaceResult;
 pub type ReplaceCallback = t.BytesReplaceCallback;
 pub type RegexStream = t.RegexStream;
 pub type DatabaseResult = t.DatabaseResult;
+pub type BufferResult = t.BufferResult;
 pub type RegexChunk = t.RegexChunk;
 
 pub fn compile(pattern: str) -> t.Regex {
@@ -42,6 +45,38 @@ pub fn compile_set_with_options(patterns: []const str, options: t.RegexOptions) 
 
 pub fn default_options() -> t.RegexOptions {
     return api.default_options();
+}
+
+pub fn default_match_options() -> t.RegexMatchOptions {
+    return api.default_match_options();
+}
+
+pub fn match_options_not_bol(value: t.RegexMatchOptions, enabled: bool) -> t.RegexMatchOptions {
+    return api.match_options_not_bol(value, enabled);
+}
+
+pub fn match_options_not_eol(value: t.RegexMatchOptions, enabled: bool) -> t.RegexMatchOptions {
+    return api.match_options_not_eol(value, enabled);
+}
+
+pub fn match_options_not_bow(value: t.RegexMatchOptions, enabled: bool) -> t.RegexMatchOptions {
+    return api.match_options_not_bow(value, enabled);
+}
+
+pub fn match_options_not_eow(value: t.RegexMatchOptions, enabled: bool) -> t.RegexMatchOptions {
+    return api.match_options_not_eow(value, enabled);
+}
+
+pub fn match_options_not_null(value: t.RegexMatchOptions, enabled: bool) -> t.RegexMatchOptions {
+    return api.match_options_not_null(value, enabled);
+}
+
+pub fn match_options_continuous(value: t.RegexMatchOptions, enabled: bool) -> t.RegexMatchOptions {
+    return api.match_options_continuous(value, enabled);
+}
+
+pub fn match_options_anchored(value: t.RegexMatchOptions, enabled: bool) -> t.RegexMatchOptions {
+    return api.match_options_anchored(value, enabled);
 }
 
 pub fn builder(pattern: str) -> t.RegexBuilder {
@@ -96,16 +131,50 @@ pub fn search_compiled_from(compiled: &t.Regex, input: []const u8, start_offset:
     return api.search_bytes_compiled_from(compiled, input, start_offset);
 }
 
+pub fn search_compiled_with_match_options(
+    compiled: &t.Regex,
+    input: []const u8,
+    start_offset: usize,
+    match_options: t.RegexMatchOptions
+) -> t.MatchResult {
+    return api.search_bytes_compiled_with_match_options(compiled, input, start_offset, match_options);
+}
+
 pub fn fullmatch_compiled(compiled: &t.Regex, input: []const u8) -> t.MatchResult {
     return api.fullmatch_bytes_compiled(compiled, input);
+}
+
+pub fn fullmatch_compiled_with_match_options(
+    compiled: &t.Regex,
+    input: []const u8,
+    match_options: t.RegexMatchOptions
+) -> t.MatchResult {
+    return api.fullmatch_bytes_compiled_with_match_options(compiled, input, match_options);
 }
 
 pub fn captures_compiled(compiled: &t.Regex, input: []const u8) -> t.Captures {
     return api.captures_bytes_compiled(compiled, input);
 }
 
+pub fn captures_compiled_with_match_options(
+    compiled: &t.Regex,
+    input: []const u8,
+    start_offset: usize,
+    match_options: t.RegexMatchOptions
+) -> t.Captures {
+    return api.captures_bytes_compiled_with_match_options(compiled, input, start_offset, match_options);
+}
+
 pub fn captures_fullmatch_compiled(compiled: &t.Regex, input: []const u8) -> t.Captures {
     return api.captures_bytes_fullmatch_compiled(compiled, input);
+}
+
+pub fn captures_fullmatch_compiled_with_match_options(
+    compiled: &t.Regex,
+    input: []const u8,
+    match_options: t.RegexMatchOptions
+) -> t.Captures {
+    return api.captures_bytes_fullmatch_compiled_with_match_options(compiled, input, match_options);
 }
 
 pub fn matches_set_compiled(
@@ -209,6 +278,40 @@ pub fn replace_n(
     return api.bytes_replace_n(compiled, input, replacement, limit, out, out_capacity);
 }
 
+pub fn replace_all_append(
+    compiled: &t.Regex,
+    input: []const u8,
+    replacement: str,
+    out: *mut u8,
+    out_capacity: usize,
+    initial_len: usize
+) -> t.ReplaceResult {
+    return api.bytes_replace_all_append(compiled, input, replacement, out, out_capacity, initial_len);
+}
+
+pub fn replace_first_append(
+    compiled: &t.Regex,
+    input: []const u8,
+    replacement: str,
+    out: *mut u8,
+    out_capacity: usize,
+    initial_len: usize
+) -> t.ReplaceResult {
+    return api.bytes_replace_first_append(compiled, input, replacement, out, out_capacity, initial_len);
+}
+
+pub fn replace_n_append(
+    compiled: &t.Regex,
+    input: []const u8,
+    replacement: str,
+    limit: usize,
+    out: *mut u8,
+    out_capacity: usize,
+    initial_len: usize
+) -> t.ReplaceResult {
+    return api.bytes_replace_n_append(compiled, input, replacement, limit, out, out_capacity, initial_len);
+}
+
 pub fn replace_all_with(
     compiled: &t.Regex,
     input: []const u8,
@@ -246,6 +349,38 @@ pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -
 
 pub fn deserialize_set(input: []const u8) -> t.RegexSet {
     return api.deserialize_set(input);
+}
+
+pub fn regex_database_bytes(compiled: &t.Regex) -> usize {
+    return api.regex_database_bytes(compiled);
+}
+
+pub fn serialize_regex(compiled: &t.Regex, out: *mut u8, out_capacity: usize) -> t.DatabaseResult {
+    return api.serialize_regex(compiled, out, out_capacity);
+}
+
+pub fn deserialize_regex(input: []const u8) -> t.Regex {
+    return api.deserialize_regex(input);
+}
+
+pub fn diagnostic(compiled: &t.Regex) -> t.RegexDiagnostic {
+    return api.diagnostic(compiled);
+}
+
+pub fn set_diagnostic(compiled: &t.RegexSet) -> t.RegexDiagnostic {
+    return api.set_diagnostic(compiled);
+}
+
+pub fn escape_pattern(input: str, out: *mut u8, out_capacity: usize) -> t.BufferResult {
+    return api.escape_pattern(input, out, out_capacity);
+}
+
+pub fn quote(input: str, out: *mut u8, out_capacity: usize) -> t.BufferResult {
+    return api.quote(input, out, out_capacity);
+}
+
+pub fn escape_replacement(input: str, out: *mut u8, out_capacity: usize) -> t.BufferResult {
+    return api.escape_replacement(input, out, out_capacity);
 }
 
 pub fn open_stream(compiled: &t.Regex) -> t.RegexStream {

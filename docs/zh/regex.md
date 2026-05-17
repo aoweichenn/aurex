@@ -64,7 +64,7 @@ build/tests/regex_stress
 - 显式所有权：`Regex` 和 `Captures` 都持有 FFI 堆内存，分别用 `destroy` 和 `destroy_captures` 释放。
 - 无魔法数字：ASCII byte、opcode、flag、错误 kind、容量策略、资源上限和 repeat 上限都使用命名常量。
 - 资源可见：公开状态数、range 数、捕获数、编译后程序内存估算和 VM 工作区内存估算。
-- API 可组合：提供 compiled API、便利 API、`RegexOptions`/`RegexBuilder`、text/bytes 双入口、find/captures 游标、split/splitn 游标、模板替换、回调替换、RegexSet 多模式扫描、first-match scan、all-span/overlap callback scan、vectored scan、可序列化 set database 和 text/bytes stream 状态接口。
+- API 可组合：提供 compiled API、便利 API、`RegexOptions`/`RegexBuilder`、`RegexMatchOptions`、text/bytes 双入口、find/captures 游标、split/splitn 游标、模板替换、回调替换、append-style 替换、pattern/replacement escaping、结构化诊断、RegexSet 多模式扫描、first-match scan、all-span/overlap callback scan、vectored scan、可序列化 Regex/RegexSet database 和 text/bytes stream 状态接口。
 - 语法面走 RE2/Rust regex 风格的安全路线：补齐 inline flags、scoped flags、lazy/ungreedy、word boundary、absolute/search-start anchors、hex/octal/control/unicode escapes、quoted literal、newline escape、POSIX/Unicode property classes，同时继续拒绝反向引用和 lookaround。
 - 向工业级演进：当前实现明确约束 pattern/program/workspace/capture/set 上限，避免灾难性回溯，并用 demo、phase1、industrial、advanced、stress 样例，以及 Python `re` 差分、Unicode 17.0 `CaseFolding.txt` / `GraphemeBreakTest.txt` 官方数据生成测试锁住行为。
 
@@ -203,6 +203,7 @@ pub type CaptureIter = regex.core.types.CaptureIter;
 pub type SplitIter = regex.core.types.SplitIter;
 pub type SplitPart = regex.core.types.SplitPart;
 pub type ReplaceResult = regex.core.types.ReplaceResult;
+pub type BufferResult = regex.core.types.BufferResult;
 pub type ReplaceCallback = regex.core.types.ReplaceCallback;
 pub type BytesReplaceCallback = regex.core.types.BytesReplaceCallback;
 pub type RegexSet = regex.core.types.RegexSet;
@@ -212,7 +213,9 @@ pub type SetScanCallback = regex.core.types.SetScanCallback;
 pub type RegexChunk = regex.core.types.RegexChunk;
 pub type TextChunk = regex.core.types.TextChunk;
 pub type RegexOptions = regex.core.types.RegexOptions;
+pub type RegexMatchOptions = regex.core.types.RegexMatchOptions;
 pub type RegexBuilder = regex.core.types.RegexBuilder;
+pub type RegexDiagnostic = regex.core.types.RegexDiagnostic;
 pub type RegexStream = regex.core.types.RegexStream;
 pub type DatabaseResult = regex.core.types.DatabaseResult;
 
@@ -241,6 +244,7 @@ pub fn set_range_count(compiled: &RegexSet) -> usize;
 pub fn set_program_bytes(compiled: &RegexSet) -> usize;
 pub fn set_workspace_bytes(compiled: &RegexSet) -> usize;
 pub fn database_bytes(compiled: &RegexSet) -> usize;
+pub fn regex_database_bytes(compiled: &Regex) -> usize;
 
 pub fn max_pattern_bytes() -> usize;
 pub fn max_state_capacity() -> usize;
@@ -251,7 +255,9 @@ pub fn max_capture_groups() -> usize;
 
 pub fn search_compiled(compiled: &Regex, input: str) -> MatchResult;
 pub fn search_compiled_from(compiled: &Regex, input: str, start_offset: usize) -> MatchResult;
+pub fn search_compiled_with_match_options(compiled: &Regex, input: str, start_offset: usize, match_options: RegexMatchOptions) -> MatchResult;
 pub fn fullmatch_compiled(compiled: &Regex, input: str) -> MatchResult;
+pub fn fullmatch_compiled_with_match_options(compiled: &Regex, input: str, match_options: RegexMatchOptions) -> MatchResult;
 pub fn search(pattern: str, input: str) -> bool;
 pub fn is_match(pattern: str, input: str) -> bool;
 pub fn find(pattern: str, input: str) -> MatchResult;
@@ -260,8 +266,10 @@ pub fn captures(pattern: str, input: str) -> Captures;
 pub fn replace(pattern: str, input: str, replacement: str, out: *mut u8, out_capacity: usize) -> ReplaceResult;
 
 pub fn captures_compiled(compiled: &Regex, input: str) -> Captures;
+pub fn captures_compiled_with_match_options(compiled: &Regex, input: str, start_offset: usize, match_options: RegexMatchOptions) -> Captures;
 pub fn captures_fullmatch_compiled(compiled: &Regex, input: str) -> Captures;
 pub fn search_bytes_compiled(compiled: &Regex, input: []const u8) -> MatchResult;
+pub fn search_bytes_compiled_with_match_options(compiled: &Regex, input: []const u8, start_offset: usize, match_options: RegexMatchOptions) -> MatchResult;
 pub fn fullmatch_bytes_compiled(compiled: &Regex, input: []const u8) -> MatchResult;
 pub fn captures_bytes_compiled(compiled: &Regex, input: []const u8) -> Captures;
 pub fn matches_set_compiled(compiled: &RegexSet, input: str, out_pattern_ids: *mut usize, out_capacity: usize) -> SetMatchesResult;
@@ -282,6 +290,8 @@ pub fn scan_set_overlapping_vectored_compiled(compiled: &RegexSet, chunks: []con
 pub fn scan_bytes_set_overlapping_vectored_compiled(compiled: &RegexSet, chunks: []const RegexChunk, callback: SetScanCallback) -> SetMatchesResult;
 pub fn serialize_set(compiled: &RegexSet, out: *mut u8, out_capacity: usize) -> DatabaseResult;
 pub fn deserialize_set(bytes: []const u8) -> RegexSet;
+pub fn serialize_regex(compiled: &Regex, out: *mut u8, out_capacity: usize) -> DatabaseResult;
+pub fn deserialize_regex(bytes: []const u8) -> Regex;
 pub fn destroy_captures(captures: &mut Captures) -> void;
 pub fn capture_at(captures: &Captures, index: usize) -> CaptureSpan;
 pub fn capture_text(input: str, captures: &Captures, index: usize) -> str;
@@ -305,11 +315,18 @@ pub fn bytes_split_next(iter: &mut BytesSplitIter) -> SplitPart;
 pub fn replace_all(compiled: &Regex, input: str, replacement: str, out: *mut u8, out_capacity: usize) -> ReplaceResult;
 pub fn replace_first(compiled: &Regex, input: str, replacement: str, out: *mut u8, out_capacity: usize) -> ReplaceResult;
 pub fn replace_n(compiled: &Regex, input: str, replacement: str, limit: usize, out: *mut u8, out_capacity: usize) -> ReplaceResult;
+pub fn replace_all_append(compiled: &Regex, input: str, replacement: str, out: *mut u8, out_capacity: usize, initial_len: usize) -> ReplaceResult;
+pub fn replace_first_append(compiled: &Regex, input: str, replacement: str, out: *mut u8, out_capacity: usize, initial_len: usize) -> ReplaceResult;
+pub fn replace_n_append(compiled: &Regex, input: str, replacement: str, limit: usize, out: *mut u8, out_capacity: usize, initial_len: usize) -> ReplaceResult;
 pub fn replace_all_with(compiled: &Regex, input: str, callback: ReplaceCallback, out: *mut u8, out_capacity: usize) -> ReplaceResult;
 pub fn replace_first_with(compiled: &Regex, input: str, callback: ReplaceCallback, out: *mut u8, out_capacity: usize) -> ReplaceResult;
 pub fn replace_n_with(compiled: &Regex, input: str, callback: ReplaceCallback, limit: usize, out: *mut u8, out_capacity: usize) -> ReplaceResult;
 pub fn bytes_replace_all(compiled: &Regex, input: []const u8, replacement: str, out: *mut u8, out_capacity: usize) -> ReplaceResult;
 pub fn bytes_replace_all_with(compiled: &Regex, input: []const u8, callback: BytesReplaceCallback, out: *mut u8, out_capacity: usize) -> ReplaceResult;
+
+pub fn escape_pattern(input: str, out: *mut u8, out_capacity: usize) -> BufferResult;
+pub fn quote(input: str, out: *mut u8, out_capacity: usize) -> BufferResult;
+pub fn escape_replacement(input: str, out: *mut u8, out_capacity: usize) -> BufferResult;
 
 pub fn open_stream(compiled: &Regex) -> RegexStream;
 pub fn open_bytes_stream(compiled: &Regex) -> RegexStream;
@@ -322,6 +339,8 @@ pub fn stream_buffer_bytes(stream: &RegexStream) -> usize;
 
 pub fn error_offset(compiled: &Regex) -> usize;
 pub fn error_kind(compiled: &Regex) -> u8;
+pub fn diagnostic(compiled: &Regex) -> RegexDiagnostic;
+pub fn set_diagnostic(compiled: &RegexSet) -> RegexDiagnostic;
 pub fn status_code(status: RegexStatus) -> i32;
 pub fn error_kind_code(kind: u8) -> i32;
 ```
@@ -759,6 +778,15 @@ a{2,4}?   lazy bounded repeat
 - 如果 `start_offset` 落在 UTF-8 continuation byte 中，会先前进到下一个 scalar boundary，不会在字符中间启动匹配。
 - `start_offset > strblen(input)` 时返回 `no_match`。
 
+`RegexMatchOptions`：
+
+- `default_match_options()` 返回默认匹配选项。
+- `match_options_not_bol` / `match_options_not_eol` 让 `^` / `$` 不把输入首尾当作行首/行尾，但不影响 `\A` / `\z`。
+- `match_options_not_bow` / `match_options_not_eow` 让 `\b` / `\b{start}` / `\b{end}` 不把输入首尾当作词边界。
+- `match_options_continuous` / `match_options_anchored` 只允许从给定 `start_offset` 起点匹配，不继续搜索后续起点。
+- `match_options_not_null` 拒绝零长度 match。
+- `search_compiled_with_match_options`、`fullmatch_compiled_with_match_options`、`captures_compiled_with_match_options` 和 bytes 对应入口使用这些选项。
+
 `MatchResult.start`、`MatchResult.end`、`CaptureSpan.start`、`CaptureSpan.end` 都是 byte offset。这个 API 选择与 C++ `std::regex` / iterator 风格相近：位置仍指向原始输入序列，消费语义则由 regex locale/traits 层决定；在 Aurex 文本 regex 中，这一层固定为 UTF-8 scalar value。由于 `str` 是 UTF-8 文本，offset 不一定是 Unicode 字符下标。
 
 Unicode 语义：
@@ -820,9 +848,16 @@ let result: regex.ReplaceResult = regex.replace_all(&compiled, input, "${domain}
   - `$1`、`$10`：编号捕获，支持多位编号
   - `${10}`：braced 编号捕获
   - `${name}`：命名捕获
+- replacement 还支持 backslash escape：`\n`、`\r`、`\t`、`\f`、`\v`、`\a`、`\e`、`\0`、`\\`、`\$`、`\xNN`、`\x{...}`、`\uNNNN`、`\u{...}`、`\UNNNNNNNN`、`\U{...}`；未知字母 escape 返回 `replacement_error`。
 - 无效模板或未知 name 返回 `replacement_error`。
 - `replace_first` 等价于 `replace_n(..., 1usize, ...)`。
+- `replace_all_append` / `replace_first_append` / `replace_n_append` 从调用方已有 `initial_len` 后追加输出，`required` 会把已有前缀计入总长度，适合复用 builder/buffer。
 - `replace_all_with` / `replace_first_with` / `replace_n_with` 接受 `ReplaceCallback = fn(str, &Captures, *mut u8, usize) -> ReplaceResult`，用于函数式替换。callback 负责写入提供的 replacement 子 buffer，并用 `required` 报告完整 replacement byte 数；外层仍会累计总 `required` 和 `replacements`。
+
+Literal escaping：
+
+- `escape_pattern` / `quote` 将任意输入转成默认/extended mode 下可安全当字面量编译的 pattern，元字符、`#`、ASCII 空白和控制字符会被转义。
+- `escape_replacement` 将任意输入转成 replacement 模板字面量，至少会转义 `$`、`\` 和控制字符，避免用户输入被解释成捕获引用或 escape。
 
 `split_iter` / `split_next`：
 
@@ -879,11 +914,18 @@ let bytes_needed: usize = regex.database_bytes(&set);
 let serialized: regex.DatabaseResult = regex.serialize_set(&set, out, cap);
 var loaded: regex.RegexSet = regex.deserialize_set(serialized_bytes);
 defer regex.destroy_set(&mut loaded);
+
+let regex_bytes: usize = regex.regex_database_bytes(&compiled);
+let regex_db: regex.DatabaseResult = regex.serialize_regex(&compiled, out, cap);
+var loaded_regex: regex.Regex = regex.deserialize_regex(serialized_regex_bytes);
+defer regex.destroy(&mut loaded_regex);
 ```
 
 - database 格式有 magic/version/mode/options/header，并以 little-endian 编码 state/range 字段。
 - `deserialize_set` 会验证 mode、容量、state 引用、class range 边界和 match pattern id；格式错误返回 `RegexStatus.database_error`。
-- database 表示的是 `RegexSet`，用于多模式预编译产物传递；单 pattern `Regex` 如需复用仍直接持有 compiled object。
+- `RegexSet` database 额外保留 exact-literal AC trie/failure/output 链，roundtrip 后不会退回通用 VM 路径。
+- `Regex` database 会保存 pattern bytes、mode、options、state/range/capture metadata；反序列化结果拥有 pattern 存储，命名捕获查询和 `destroy` 生命周期是自洽的。
+- `deserialize_regex` / `deserialize_set` 都会做 shape validation；格式错误、越界 state/range/capture 引用或版本不匹配返回 `RegexStatus.database_error`。
 
 Stream：
 
@@ -909,9 +951,12 @@ compiled.status
 regex.error_offset(&compiled)
 regex.error_kind(&compiled)
 regex.error_kind_code(regex.error_kind(&compiled))
+regex.diagnostic(&compiled)
 ```
 
 `error_offset` 是 pattern 的 byte offset。`error_kind_code` 当前映射：
+
+`RegexDiagnostic` 汇总 `status`、`status_code`、`error_offset`、`error_kind`、`error_kind_code`、`pattern_index` 和 `pattern_len`。单 pattern `Regex` 的 `pattern_index` 为 `CAPTURE_MISSING`；`RegexSet` 可通过 `set_diagnostic` 读取失败 pattern index。
 
 | code | kind | 说明 |
 | ---: | --- | --- |
@@ -1100,7 +1145,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - lookahead/lookbehind。
 - possessive 量词。
 - 原子组、条件组、递归/子例程调用等 PCRE-only 高复杂度语法。
-- replacement 中的复杂转义和条件替换；当前函数式替换已支持非捕获函数指针 callback，但没有 closure 捕获。
+- replacement 中的条件替换；当前已支持 backslash escape、append-style buffer API 和非捕获函数指针 callback，但没有 closure 捕获。
 - Hyperscan 级 SIMD codegen/JIT、bytes dense DFA/SIMD 专用表和真正的多平台 streaming compiler；当前已有 exact-literal RegexSet 标量 Aho-Corasick、vectored block scan 和 stream history budget，但不是 Hyperscan 级流式自动机。
 - 标准库风格 RAII；当前必须手动 destroy。
 

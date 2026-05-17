@@ -1,0 +1,150 @@
+module regex.ops.escape;
+
+import regex.core.types as t;
+import regex.syntax.ascii as ascii;
+
+const ASCII_DEL: u8 = 0x7fu8;
+const ASCII_CONTROL_LIMIT: u8 = 0x20u8;
+
+struct CopyState {
+    written: usize;
+    required: usize;
+}
+
+pub fn escape_pattern(input: str, out: *mut u8, out_capacity: usize) -> t.BufferResult {
+    let data: *const u8 = strptr(input);
+    var offset: usize = 0usize;
+    var written: usize = 0usize;
+    var required: usize = 0usize;
+    while offset < strblen(input) {
+        let value: u8 = unsafe { data[offset] };
+        let copied: CopyState = copy_pattern_byte(value, out, out_capacity, written, required);
+        written = copied.written;
+        required = copied.required;
+        offset += 1usize;
+    }
+    return finish_buffer_result(written, required, out_capacity);
+}
+
+pub fn quote(input: str, out: *mut u8, out_capacity: usize) -> t.BufferResult {
+    return escape_pattern(input, out, out_capacity);
+}
+
+pub fn escape_replacement(input: str, out: *mut u8, out_capacity: usize) -> t.BufferResult {
+    let data: *const u8 = strptr(input);
+    var offset: usize = 0usize;
+    var written: usize = 0usize;
+    var required: usize = 0usize;
+    while offset < strblen(input) {
+        let value: u8 = unsafe { data[offset] };
+        let copied: CopyState = copy_replacement_byte(value, out, out_capacity, written, required);
+        written = copied.written;
+        required = copied.required;
+        offset += 1usize;
+    }
+    return finish_buffer_result(written, required, out_capacity);
+}
+
+fn copy_pattern_byte(value: u8, out: *mut u8, out_capacity: usize, written: usize, required: usize) -> CopyState {
+    if value == ascii.LINE_FEED {
+        return copy_escape_pair(ascii.LOWER_N, out, out_capacity, written, required);
+    }
+    if value == ascii.CARRIAGE_RETURN {
+        return copy_escape_pair(ascii.LOWER_R, out, out_capacity, written, required);
+    }
+    if value == ascii.TAB {
+        return copy_escape_pair(ascii.LOWER_T, out, out_capacity, written, required);
+    }
+    if value == ascii.FORM_FEED {
+        return copy_escape_pair(ascii.LOWER_F, out, out_capacity, written, required);
+    }
+    if value == ascii.VERTICAL_TAB {
+        return copy_escape_pair(ascii.LOWER_V, out, out_capacity, written, required);
+    }
+    if value < ASCII_CONTROL_LIMIT || value == ASCII_DEL {
+        return copy_hex_byte(value, out, out_capacity, written, required);
+    }
+    if is_pattern_meta(value) || ascii.is_ascii_whitespace(value) || value == ascii.HASH {
+        return copy_escape_pair(value, out, out_capacity, written, required);
+    }
+    return copy_byte(value, out, out_capacity, written, required);
+}
+
+fn copy_replacement_byte(value: u8, out: *mut u8, out_capacity: usize, written: usize, required: usize) -> CopyState {
+    if value == ascii.LINE_FEED {
+        return copy_escape_pair(ascii.LOWER_N, out, out_capacity, written, required);
+    }
+    if value == ascii.CARRIAGE_RETURN {
+        return copy_escape_pair(ascii.LOWER_R, out, out_capacity, written, required);
+    }
+    if value == ascii.TAB {
+        return copy_escape_pair(ascii.LOWER_T, out, out_capacity, written, required);
+    }
+    if value == ascii.FORM_FEED {
+        return copy_escape_pair(ascii.LOWER_F, out, out_capacity, written, required);
+    }
+    if value == ascii.VERTICAL_TAB {
+        return copy_escape_pair(ascii.LOWER_V, out, out_capacity, written, required);
+    }
+    if value < ASCII_CONTROL_LIMIT || value == ASCII_DEL {
+        return copy_hex_byte(value, out, out_capacity, written, required);
+    }
+    if value == ascii.DOLLAR || value == ascii.BACKSLASH {
+        return copy_escape_pair(value, out, out_capacity, written, required);
+    }
+    return copy_byte(value, out, out_capacity, written, required);
+}
+
+fn copy_escape_pair(value: u8, out: *mut u8, out_capacity: usize, written: usize, required: usize) -> CopyState {
+    let slash: CopyState = copy_byte(ascii.BACKSLASH, out, out_capacity, written, required);
+    return copy_byte(value, out, out_capacity, slash.written, slash.required);
+}
+
+fn copy_hex_byte(value: u8, out: *mut u8, out_capacity: usize, written: usize, required: usize) -> CopyState {
+    let slash: CopyState = copy_byte(ascii.BACKSLASH, out, out_capacity, written, required);
+    let x: CopyState = copy_byte(ascii.LOWER_X, out, out_capacity, slash.written, slash.required);
+    let value_usize: usize = cast[usize](value);
+    let hi: CopyState = copy_byte(hex_digit(value_usize >> 4usize), out, out_capacity, x.written, x.required);
+    return copy_byte(hex_digit(value_usize & 0x0fusize), out, out_capacity, hi.written, hi.required);
+}
+
+fn copy_byte(value: u8, out: *mut u8, out_capacity: usize, written: usize, required: usize) -> CopyState {
+    if required < out_capacity && out != null {
+        unsafe {
+            out[required] = value;
+        }
+    }
+    let next_written: usize = if required < out_capacity { written + 1usize } else { written };
+    return CopyState { written: next_written, required: required + 1usize };
+}
+
+fn finish_buffer_result(written: usize, required: usize, out_capacity: usize) -> t.BufferResult {
+    if required > out_capacity {
+        return t.buffer_result(t.RegexStatus.buffer_too_small, written, required);
+    }
+    return t.buffer_result(t.RegexStatus.ok, written, required);
+}
+
+fn is_pattern_meta(value: u8) -> bool {
+    return value == ascii.BACKSLASH ||
+        value == ascii.DOT ||
+        value == ascii.PLUS ||
+        value == ascii.STAR ||
+        value == ascii.QUESTION ||
+        value == ascii.LPAREN ||
+        value == ascii.RPAREN ||
+        value == ascii.PIPE ||
+        value == ascii.LBRACKET ||
+        value == ascii.RBRACKET ||
+        value == ascii.LBRACE ||
+        value == ascii.RBRACE ||
+        value == ascii.CARET ||
+        value == ascii.DOLLAR;
+}
+
+fn hex_digit(value: usize) -> u8 {
+    if value < 10usize {
+        return ascii.DIGIT_0 + cast[u8](value);
+    }
+    return ascii.UPPER_A + cast[u8](value - 10usize);
+}

@@ -16,6 +16,15 @@ pub const FLAG_ASCII: u8 = 128u8;
 pub const MODE_TEXT: u8 = 0u8;
 pub const MODE_BYTES: u8 = 1u8;
 
+pub const MATCH_DEFAULT: usize = 0usize;
+pub const MATCH_NOT_BOL: usize = 1usize;
+pub const MATCH_NOT_EOL: usize = 2usize;
+pub const MATCH_NOT_BOW: usize = 4usize;
+pub const MATCH_NOT_EOW: usize = 8usize;
+pub const MATCH_NOT_NULL: usize = 16usize;
+pub const MATCH_CONTINUOUS: usize = 32usize;
+pub const MATCH_ANCHORED: usize = 64usize;
+
 pub const NEWLINE_UNICODE: u8 = 0u8;
 pub const NEWLINE_LF: u8 = 1u8;
 pub const NEWLINE_CRLF: u8 = 2u8;
@@ -136,6 +145,10 @@ pub struct RegexOptions {
     pub stream_history_limit: usize;
 }
 
+pub struct RegexMatchOptions {
+    pub flags: usize;
+}
+
 pub struct RegexBuilder {
     pub pattern: str;
     pub mode: u8;
@@ -157,6 +170,7 @@ pub struct Fragment {
 
 pub struct Regex {
     pub pattern: str;
+    pub owned_pattern: *mut u8;
     pub mode: u8;
     pub options: RegexOptions;
     pub states: *mut State;
@@ -329,6 +343,22 @@ pub struct DatabaseResult {
     pub required: usize;
 }
 
+pub struct BufferResult {
+    pub status: RegexStatus;
+    pub written: usize;
+    pub required: usize;
+}
+
+pub struct RegexDiagnostic {
+    pub status: RegexStatus;
+    pub status_code: i32;
+    pub error_offset: usize;
+    pub error_kind: u8;
+    pub error_kind_code: i32;
+    pub pattern_index: usize;
+    pub pattern_len: usize;
+}
+
 pub fn default_options() -> RegexOptions {
     return RegexOptions {
         flags: FLAGS_NONE,
@@ -343,11 +373,23 @@ pub fn default_options() -> RegexOptions {
     };
 }
 
+pub fn default_match_options() -> RegexMatchOptions {
+    return RegexMatchOptions { flags: MATCH_DEFAULT };
+}
+
 pub fn builder(pattern: str, mode: u8) -> RegexBuilder {
     return RegexBuilder {
         pattern: pattern,
         mode: mode,
         options: default_options(),
+    };
+}
+
+pub fn buffer_result(status: RegexStatus, written: usize, required: usize) -> BufferResult {
+    return BufferResult {
+        status: status,
+        written: written,
+        required: required,
     };
 }
 
@@ -472,6 +514,12 @@ impl RegexSet {
 
 impl DatabaseResult {
     pub fn ok(self: &DatabaseResult) -> bool {
+        return self.status == RegexStatus.ok;
+    }
+}
+
+impl BufferResult {
+    pub fn ok(self: &BufferResult) -> bool {
         return self.status == RegexStatus.ok;
     }
 }

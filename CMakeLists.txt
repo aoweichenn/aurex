@@ -13,12 +13,22 @@ option(AUREX_ENABLE_COVERAGE "Build Aurex with LLVM source-based coverage instru
 option(AUREX_BUILD_FUZZERS "Build Aurex libFuzzer targets" OFF)
 option(AUREX_BUILD_BENCHMARKS "Build Aurex Google Benchmark targets" OFF)
 option(AUREX_FRONTEND_ONLY "Build only frontend libraries and frontend tests without LLVM, IR, driver, or CLI targets" OFF)
+option(AUREX_ENABLE_LTO "Build Aurex targets with interprocedural/link-time optimization" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+
+if(AUREX_ENABLE_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT AUREX_IPO_SUPPORTED OUTPUT AUREX_IPO_ERROR LANGUAGES C CXX)
+    if(NOT AUREX_IPO_SUPPORTED)
+        message(FATAL_ERROR "AUREX_ENABLE_LTO requested but IPO/LTO is not supported: ${AUREX_IPO_ERROR}")
+    endif()
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+endif()
 
 if(AUREX_ENABLE_COVERAGE)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")

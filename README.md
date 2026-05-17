@@ -92,6 +92,9 @@ tools/run_tests.sh
 tools/bench.py
 make perf
 make perf-stress
+make perf-stress-threshold
+make perf-release-threshold
+make perf-release-lto-threshold
 make perf-ast-stress
 ```
 
@@ -102,20 +105,32 @@ lowering, native execution, import paths, and install-tree compiler execution.
 frontend hot-path measurements. `make perf` prints the lightweight JSON-derived
 Aurex frontend baseline and the Google Benchmark process-level comparison
 against available modern frontend drivers (`clang++`, `g++`, and `rustc`);
-`make perf-stress-threshold` and `make perf-release-threshold` enforce the
-local CI and release stress gates. Both threshold gates share
+`make perf-stress-threshold`, `make perf-release-threshold`, and
+`make perf-release-lto-threshold` enforce the local CI, release, and
+Release+LTO stress gates. `make perf-release-all-threshold` runs both release
+gates. These threshold gates share
 `AUREX_PERF_THRESHOLD_PROFILE` and `AUREX_PERF_THRESHOLD_SCALE`; the profile is
 recorded in each stress JSON file, and the positive scale factor multiplies the
 elapsed-time and peak-RSS thresholds for calibrated cross-machine runs without
 changing the baseline command lines. `make perf-compare` runs only the
-cross-frontend comparison lane. `make perf-stress` runs the generated
-500/1000/2000/5000 generic-instantiation baseline plus the AST bulk elapsed-time
-and peak-RSS baseline. `make perf-ast-stress` runs only the AST bulk lane. The
-`--check` path does not retain generic instance side tables; `--emit=typed`
-keeps typed generic bodies without lowering so retained-side-table memory can be
-stressed separately from IR/codegen. `tools/generic_stress.py --shape=templates`
-covers the many-distinct-generic-template 2000/5000+ case as well as the default
-many-instantiations case. The default sema path no longer copies or
+cross-frontend comparison lane. `make perf-stress` runs generated mixed-feature
+generic, AST bulk, and diagnostic baselines and records both elapsed time and
+peak RSS. `make perf-ast-stress` runs only the AST bulk lane. The three stress
+generators default to `--shape=mixed`: generic stress covers generic
+struct/enum/type-alias constraints, impl methods, pointer aliases, tuple/pair
+helpers, slices, and pattern matching; AST stress covers extern declarations,
+type aliases, structs/enums, impl/methods, generic constraints, tuples,
+arrays/slices, match/or-patterns, `let else`, `if is`, `try`, `defer`, loops,
+compound assignment, unsafe pointer/string builtins, and sampled large-module
+bulk expressions; diagnostic stress cycles unknown-name, type mismatch,
+call-arity/type, field/index, struct literal, enum payload, builtin, generic
+apply, array/void, operator, and match-arm failures. The `--check` path does
+not retain generic instance side tables; `--emit=typed` keeps typed generic
+bodies without lowering so retained-side-table memory can be stressed separately
+from IR/codegen. `tools/generic_stress.py --shape=templates` covers the
+many-distinct-generic-template 2000/5000+ case as a narrow comparison shape, and
+`--shape=instances` keeps the old many-instantiations shape. The default sema
+path no longer copies or
 retains a full normalized AST snapshot. The syntax AST now stores `TypeNode`, `ExprNode`, and `PatternNode`
 as compact 32-byte headers plus per-kind payload arenas; `StmtNode` and
 `ItemNode` now use the same compact header + per-kind payload arena layout.
@@ -134,10 +149,15 @@ interner vectors/hash nodes are now bump-backed; parser construction, module
 loading, and postfix materialization write compact expression headers plus
 per-kind payloads directly. Parser startup estimates AST storage from token
 shape and reserves hot payload arenas up front so bump-backed vectors do not
-retain repeated growth buffers on large modules. On the local AST bulk stress
-lane, the 100000-statement case is now roughly 158.4 MiB RSS / 74.4 ms after
-compact syntax storage, AST-native identifiers, and bump-backed AST arenas;
-Google Benchmark `sema_ast_bulk/1024` is roughly 128 ns/expr, and the local
+retain repeated growth buffers on large modules. On the local mixed AST bulk
+stress lane, the 100000-statement case is now roughly 96.3 MiB RSS / 77.9 ms,
+the Release 2M-statement gate is roughly 1465.3 MiB RSS / 1196.7 ms, and the
+Release+LTO 2M-statement gate is roughly 1466.9 MiB RSS / 950.8 ms. The mixed
+5000-generic Release gate is roughly 450.9 MiB RSS / 30275.8 ms, while
+Release+LTO is roughly 450.6 MiB RSS / 18144.0 ms; the mixed 5000-diagnostic
+Release gate is roughly 33.1 MiB RSS / 103.7 ms, while Release+LTO is roughly
+34.3 MiB RSS / 70.5 ms. Google Benchmark `sema_ast_bulk/1024` is roughly
+128 ns/expr, and the local
 `tools/frontend_compare.py` baseline has Aurex `--check` at about 10.1 ms for
 lookup/96 and 9.6 ms for generics/96 versus Clang++ at about 21.2 ms / 24.3 ms
 and G++ at about 25.1 ms / 24.3 ms. Generic side-table lifetime is now closed

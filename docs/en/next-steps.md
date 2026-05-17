@@ -116,10 +116,12 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    modules, and checked stable/incremental definition rows; `--check` reuses the
    cache only when every recorded source fingerprint still matches. Keep future
    work focused on query-level reuse, lossless syntax, IDE-native incrementality,
-   and heavier release stress threshold calibration (2M AST, 5000 generic, 5000
-   errors) rather than reintroducing whole-AST copies or per-node heap
-   string/vector side tables. The light generic/AST threshold gate is already
-   available through `make perf-stress-threshold` and CI.
+   and additional machine profiles for the existing mixed-feature release stress
+   gates rather than reintroducing whole-AST copies or per-node heap
+   string/vector side tables. The light generic/AST/diagnostic threshold gate is
+   available through `make perf-stress-threshold` and CI; the heavier 2M AST /
+   5000 generic / 5000 diagnostic Release and Release+LTO gates are available
+   through `make perf-release-threshold` and `make perf-release-lto-threshold`.
 
 11. Expression type-cache closure
 

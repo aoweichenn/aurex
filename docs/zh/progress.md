@@ -57,6 +57,8 @@ tools/bench.py
 make perf
 make perf-stress
 make perf-stress-threshold
+make perf-release-threshold
+make perf-release-lto-threshold
 make perf-ast-stress
 ```
 
@@ -74,16 +76,25 @@ make perf-ast-stress
 覆盖 lexer、lookup-heavy sema、generic-instantiation-heavy sema 和 AST bulk sema 路径，并运行
 Google Benchmark 的进程级现代前端对比通道，对可用的 `clang++`、`g++`、`rustc`
 做 frontend/check 模式基线；`make perf-compare` 只运行跨前端对比通道。
-`make perf-stress` 运行 `tools/generic_stress.py` 和 `tools/ast_stress.py`，生成 500/1000/2000/5000
-规模的泛型实例源码以及 10000/50000/100000 AST bulk statements 源码，并记录 `aurexc --check`
-elapsed time + peak RSS baseline；`make perf-ast-stress` 只运行 AST bulk RSS/time lane。
+`make perf-stress` 运行 `tools/generic_stress.py`、`tools/ast_stress.py` 和
+`tools/diagnostic_stress.py`，生成 mixed-feature 泛型、AST bulk 和 diagnostic
+源码，并记录 `aurexc --check` elapsed time + peak RSS baseline；`make perf-ast-stress`
+只运行 AST bulk RSS/time lane。三条 stress lane 默认使用 `--shape=mixed`：generic lane 覆盖
+generic struct/enum/type alias、where constraint、impl method、pointer alias、tuple/pair、slice
+和 pattern matching；AST lane 覆盖 extern、type alias、struct/enum、impl/method、generic
+constraint、tuple、array/slice、match/or-pattern、`let else`、`if is`、`try`、`defer`、
+for/while/range、compound assignment、unsafe pointer/string builtin，并在 2M bulk 中抽样保留复杂
+feature block；diagnostic lane 循环覆盖 unknown name、type mismatch、call arity/type、field/index、
+struct literal、enum payload、builtin、generic apply、array/void、operator 和 match-arm 类型错误。
 `tools/generic_stress.py` / `tools/ast_stress.py` / `tools/diagnostic_stress.py` 现在支持
 `--max-elapsed-ms`、`--max-rss-mib`、`--threshold-profile` 和 `--threshold-scale`；三条 lane 共用
 `tools/perf_thresholds.py`，把 raw thresholds、profile、scale、machine info 和 effective thresholds
 写入 JSON。`make perf-stress-threshold` 默认跑 100/200 generic + 1000/5000 AST bulk + 100/500 errors
 的轻量阈值门，GitHub Actions `stress-thresholds` job 固定
 `AUREX_PERF_THRESHOLD_PROFILE=github-ubuntu-24.04-fedora`；`make perf-release-threshold` 跑 2M AST、
-5000 generic 和 5000 errors，并可用 `AUREX_PERF_THRESHOLD_SCALE` 做跨机器校准。
+5000 generic 和 5000 errors；`make perf-release-lto-threshold` 使用独立 `build-perf-lto` 加
+`AUREX_STRESS_ENABLE_LTO=ON` 跑同一套 Release+LTO 阈值，`make perf-release-all-threshold`
+串行运行普通 Release 和 Release+LTO，两者都可用 `AUREX_PERF_THRESHOLD_SCALE` 做跨机器校准。
 generic function instance 签名、
 generic struct/enum `TypeInfo` 和 checked enum case display 已经把内部 semantic key / TypeHandle
 args 和展示名分离，`--check` 热路径不再为了 checked signature 或泛型类型实例生成
@@ -124,11 +135,14 @@ per-kind payload vector 接到 `BumpAllocatorAdapter`，`IdentifierInterner` 的
 局部名再复制进 checked C-name interner；`CheckedModule` move 只重绑原本属于自身 `c_names` 的
 `InternedText`，不会把 borrowed AST name 错绑到 checked interner，显式 copy 才重新 intern 到目标模块。
 ABI 校验也从临时 `IdentifierInterner` 改为 `std::string_view` key，避免校验阶段把所有 C symbol 再复制一遍。
-`tools/ast_stress.py --skip-build --counts 10000,50000,100000` 本机 baseline 中，100000 AST bulk statements
-从约 575 MiB RSS / 135 ms 收敛到约 140.8 MiB RSS / 72.4 ms；Google Benchmark `sema_ast_bulk/1024`
-约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex `--check` lookup/96 约 10.1 ms、
+`tools/ast_stress.py --skip-build --counts 100000 --shape mixed` 本机 baseline 中，100000 mixed AST
+bulk statements 约 96.3 MiB RSS / 77.9 ms；当前 mixed release gate 中，5000 generic 约 450.9 MiB /
+30275.8 ms，2M AST statements 约 1465.3 MiB / 1196.7 ms，5000 diagnostic errors 约 33.1 MiB /
+103.7 ms；Release+LTO gate 中，5000 generic 约 450.6 MiB / 18144.0 ms，2M AST statements
+约 1466.9 MiB / 950.8 ms，5000 diagnostic errors 约 34.3 MiB / 70.5 ms。Google Benchmark
+`sema_ast_bulk/1024` 约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex `--check` lookup/96 约 10.1 ms、
 generics/96 约 9.6 ms，Clang++ 分别约 21.2 ms / 24.3 ms，G++ 分别约 25.1 ms / 24.3 ms。
-generic side table 生命周期已在主路径收口：sema-only expected-type 和 pattern-case cache 进入可释放 arena 并在分析后丢弃；retained instance 只保留 lowering 需要的表；非连续 NodeSpan sparse ID mapping 按模板共享；小型 per-instance side table arena 从默认 64 KiB floor 降到 1 KiB block，覆盖 2000/5000+ 不同泛型模板的固定开销。跨模块 stable hash、parallel global ID、轻量 generic/AST/diagnostic 阈值门、5000 generic / 2M AST / 5000 errors release gate，以及 profile/scale 形式的跨机器阈值校准机制已接入；后续只保留新增机器 profile 数据和 query 级增量复用，不再缺身份或 release gate 主路径。
+generic side table 生命周期已在主路径收口：sema-only expected-type 和 pattern-case cache 进入可释放 arena 并在分析后丢弃；retained instance 只保留 lowering 需要的表；非连续 NodeSpan sparse ID mapping 按模板共享；小型 per-instance side table arena 从默认 64 KiB floor 降到 1 KiB block，覆盖 2000/5000+ 不同泛型模板的固定开销。跨模块 stable hash、parallel global ID、轻量 generic/AST/diagnostic 阈值门、5000 generic / 2M AST / 5000 errors release gate、同规格 Release+LTO gate，以及 profile/scale 形式的跨机器阈值校准机制已接入；后续只保留新增机器 profile 数据和 query 级增量复用，不再缺身份或 release gate 主路径。
 2026-05-16 后续表达式 P0 语义线把 expression type cache 从 final-only 记录拆为三层：
 `expr_intrinsic_types` 保存表达式自身类型，`expr_types` 继续保存当前语义使用的 contextual final type，
 `expr_expected_types` 作为 final cache key，`CoercionRecord` 记录 contextual integer/float literal、`null`

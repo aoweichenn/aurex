@@ -19,7 +19,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass
 
-from perf_thresholds import make_calibration, scaled_threshold
+from perf_thresholds import make_calibration, scaled_threshold, stress_build_options, stress_lto_enabled
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -35,7 +35,7 @@ OUTPUT_JSON = BUILD / "generic-stress.json"
 
 DEFAULT_COUNTS = (500, 1000, 2000, 5000)
 DEFAULT_EMIT_KIND = "check"
-DEFAULT_SHAPE = "instances"
+DEFAULT_SHAPE = "mixed"
 GENERIC_STRESS_EMIT_KINDS = {
     "check",
     "checked",
@@ -45,6 +45,7 @@ GENERIC_STRESS_EMIT_KINDS = {
 }
 GENERIC_STRESS_SHAPES = {
     "instances",
+    "mixed",
     "templates",
 }
 GENERIC_STRESS_TIME_PARSE_PATTERN = re.compile(
@@ -80,6 +81,7 @@ def configure() -> None:
         str(BUILD),
         "-DCMAKE_BUILD_TYPE=Release",
         "-DAUREX_BUILD_BENCHMARKS=ON",
+        f"-DAUREX_ENABLE_LTO={'ON' if stress_lto_enabled() else 'OFF'}",
     ]
     cc = os.environ.get("CC")
     cxx = os.environ.get("CXX")
@@ -178,7 +180,136 @@ def make_distinct_generic_template_stress_source(template_count: int) -> str:
     return "".join(source)
 
 
+def append_mixed_payload_record(source: list[str], index: int) -> None:
+    suffix = str(index)
+    source.append(
+        f"struct Payload{suffix} {{\n"
+        "    value: i32;\n"
+        "    extra: i32;\n"
+        "}\n\n"
+    )
+
+
+def append_mixed_payload_use_function(source: list[str], index: int) -> None:
+    suffix = str(index)
+    extra = index % 17
+    source.append(
+        f"fn use_payload{suffix}(seed: i32) -> i32 {{\n"
+        f"    let payload: Payload{suffix} = Payload{suffix} {{ value: seed, extra: seed + {extra} }};\n"
+        f"    let boxed: Box[Payload{suffix}] = make_box[Payload{suffix}](payload);\n"
+        f"    let nested: Box[Box[Payload{suffix}]] = make_box[Box[Payload{suffix}]](boxed);\n"
+        f"    let unwrapped: Payload{suffix} = unwrap_box[Payload{suffix}](unwrap_box[Box[Payload{suffix}]](nested));\n"
+        f"    let maybe: Maybe[Payload{suffix}] = Maybe[Payload{suffix}].some(unwrapped);\n"
+        f"    let result: Outcome[Payload{suffix}, i32] = Outcome[Payload{suffix}, i32].ok(unwrapped);\n"
+        f"    let pair: Pair[Payload{suffix}, i32] = make_pair[Payload{suffix}, i32](unwrapped, seed);\n"
+        "    let maybe_score: i32 = match maybe {\n"
+        "        .some(inner) => inner.value + inner.extra,\n"
+        "        .none => 0,\n"
+        "    };\n"
+        "    let result_score: i32 = match result {\n"
+        "        .ok(inner) => inner.value,\n"
+        "        .err(code) => code,\n"
+        "    };\n"
+        "    let values: [3]i32 = [seed, maybe_score, result_score];\n"
+        "    let view: []const i32 = values[:];\n"
+        "    let ptr: ConstPtr[i32] = const_ptr(&seed);\n"
+        "    let sized: SizedPtr[i32] = read_sized_ptr(ptr);\n"
+        "    let left_box: Box[i32] = make_box[i32](second(pair));\n"
+        "    let right_box: Box[i32] = make_box[i32](seed);\n"
+        "    if ptraddr(sized) != 0usize && left_box.same_value(&right_box) && same(seed, seed) && lower(seed, seed + 1) {\n"
+        "        return maybe_score + result_score + edge_sum(view) + hashable(seed);\n"
+        "    }\n"
+        "    return maybe_score + result_score + edge_sum(view);\n"
+        "}\n\n"
+    )
+
+
+def make_mixed_generic_stress_source(instance_count: int) -> str:
+    source: list[str] = []
+    source.append(
+        "module perf.generic_stress;\n\n"
+        "type ConstPtr[T] = *const T;\n"
+        "type SizedPtr[T] where T: Sized = *const T;\n\n"
+        "struct Box[T] {\n"
+        "    value: T;\n"
+        "}\n\n"
+        "struct Pair[T, U] {\n"
+        "    left: T;\n"
+        "    right: U;\n"
+        "}\n\n"
+        "enum Maybe[T] {\n"
+        "    some(T),\n"
+        "    none,\n"
+        "}\n\n"
+        "enum Outcome[T, E] {\n"
+        "    ok(T),\n"
+        "    err(E),\n"
+        "}\n\n"
+        "impl[T] Box[T] {\n"
+        "    fn get(self: &Box[T]) -> T {\n"
+        "        return self.value;\n"
+        "    }\n"
+        "}\n\n"
+        "impl[T] Box[T] where T: Eq {\n"
+        "    fn same_value(self: &Box[T], other: &Box[T]) -> bool {\n"
+        "        return self.value == other.value;\n"
+        "    }\n"
+        "}\n\n"
+        "fn id[T](value: T) -> T {\n"
+        "    return value;\n"
+        "}\n\n"
+        "fn make_box[T](value: T) -> Box[T] {\n"
+        "    return Box[T] { value: value };\n"
+        "}\n\n"
+        "fn unwrap_box[T](box: Box[T]) -> T {\n"
+        "    return box.value;\n"
+        "}\n\n"
+        "fn make_pair[T, U](left: T, right: U) -> Pair[T, U] {\n"
+        "    return Pair[T, U] { left: left, right: right };\n"
+        "}\n\n"
+        "fn first[T, U](pair: Pair[T, U]) -> T {\n"
+        "    return pair.left;\n"
+        "}\n\n"
+        "fn second[T, U](pair: Pair[T, U]) -> U {\n"
+        "    return pair.right;\n"
+        "}\n\n"
+        "fn same[T](left: T, right: T) -> bool where T: Eq {\n"
+        "    return left == right;\n"
+        "}\n\n"
+        "fn lower[T](left: T, right: T) -> bool where T: Ord {\n"
+        "    return left < right;\n"
+        "}\n\n"
+        "fn hashable[T](value: T) -> i32 where T: Hash {\n"
+        "    return 1;\n"
+        "}\n\n"
+        "fn const_ptr[T](value: &T) -> *const T {\n"
+        "    return unsafe { ptrat[*const T](ptraddr(value)) };\n"
+        "}\n\n"
+        "fn read_sized_ptr[T](value: SizedPtr[T]) -> SizedPtr[T] where T: Sized {\n"
+        "    return value;\n"
+        "}\n\n"
+        "fn edge_sum(values: []const i32) -> i32 {\n"
+        "    return match values {\n"
+        "        [head, .., tail] => head + tail,\n"
+        "        [single] => single,\n"
+        "        _ => 0,\n"
+        "    };\n"
+        "}\n\n"
+    )
+    for index in range(instance_count):
+        append_mixed_payload_record(source, index)
+    for index in range(instance_count):
+        append_mixed_payload_use_function(source, index)
+    source.append("fn main() -> i32 {\n    var total: i32 = 0;\n")
+    for index in range(instance_count):
+        source.append(f"    total += use_payload{index}({index});\n")
+    source.append("    return total;\n}\n")
+    return "".join(source)
+
+
 def make_stress_source(instance_count: int, shape: str) -> str:
+    if shape == "mixed":
+        return make_mixed_generic_stress_source(instance_count)
     if shape == "templates":
         return make_distinct_generic_template_stress_source(instance_count)
     return make_generic_stress_source(instance_count)
@@ -336,6 +467,7 @@ def write_json(
     payload = {
         "build": str(BUILD),
         "aurexc": str(AUREXC),
+        "build_options": stress_build_options(),
         "machine": calibration.machine,
         "threshold_calibration": calibration.to_json(),
         "raw_thresholds": asdict(raw_thresholds),
@@ -350,6 +482,7 @@ def write_json(
 def print_report(rows: list[StressRow], thresholds: StressThresholds, calibration, violations: list[str]) -> None:
     print("Aurex generic instantiation stress")
     print(f"build: {BUILD}")
+    print(f"build_options: Release, LTO={'on' if stress_lto_enabled() else 'off'}")
     print(f"raw_json: {OUTPUT_JSON}")
     print()
     print(f"threshold_profile: {calibration.profile}")
@@ -398,7 +531,7 @@ def main() -> int:
     parser.add_argument(
         "--shape",
         default=os.environ.get("AUREX_GENERIC_STRESS_SHAPE", DEFAULT_SHAPE),
-        help="stress source shape: instances reuses a few templates over many types; templates creates many distinct generic functions; default: instances",
+        help="stress source shape: mixed covers generic constraints plus broad syntax; instances/templates keep narrow comparison shapes; default: mixed",
     )
     parser.add_argument(
         "--skip-build",

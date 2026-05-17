@@ -21,7 +21,7 @@ import sys
 import time
 from dataclasses import asdict, dataclass
 
-from perf_thresholds import make_calibration, scaled_threshold
+from perf_thresholds import make_calibration, scaled_threshold, stress_build_options, stress_lto_enabled
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -36,6 +36,11 @@ GENERATED_ROOT = BUILD / "generated" / "diagnostic-stress"
 OUTPUT_JSON = BUILD / "diagnostic-stress.json"
 
 DEFAULT_COUNTS = (100, 1000, 5000)
+DEFAULT_SHAPE = "mixed"
+DIAGNOSTIC_STRESS_SHAPES = {
+    "mixed",
+    "missing",
+}
 DIAGNOSTIC_STRESS_TIME_PARSE_PATTERN = re.compile(
     r"(?:maximum resident set size:\s+(\d+)|(\d+)\s+maximum resident set size)",
     re.IGNORECASE,
@@ -49,6 +54,7 @@ DIAGNOSTIC_STRESS_GNU_TIME_PATTERN = re.compile(
 @dataclass(frozen=True)
 class StressRow:
     requested_errors: int
+    shape: str
     source_bytes: int
     elapsed_ms: float
     max_rss_mib: float | None
@@ -73,6 +79,7 @@ def configure() -> None:
         str(BUILD),
         "-DCMAKE_BUILD_TYPE=Release",
         "-DAUREX_BUILD_BENCHMARKS=ON",
+        f"-DAUREX_ENABLE_LTO={'ON' if stress_lto_enabled() else 'OFF'}",
     ]
     cc = os.environ.get("CC")
     cxx = os.environ.get("CXX")
@@ -99,7 +106,7 @@ def build_compiler() -> None:
     )
 
 
-def make_diagnostic_stress_source(error_count: int) -> str:
+def make_missing_diagnostic_stress_source(error_count: int) -> str:
     source: list[str] = [
         "module perf.diagnostic_stress;\n\n",
         "fn main() -> i32 {\n",
@@ -111,10 +118,97 @@ def make_diagnostic_stress_source(error_count: int) -> str:
     return "".join(source)
 
 
-def write_source(error_count: int) -> pathlib.Path:
+def diagnostic_templates(index: int) -> list[str]:
+    suffix = str(index)
+    templates = [
+        f"    let missing_{suffix}: i32 = missing_value_{suffix};\n",
+        f"    let mismatch_{suffix}: i32 = true;\n",
+        "    takes();\n",
+        "    takes(true, pair);\n",
+        f"    let bad_call_{suffix} = (1 + 2)();\n",
+        f"    let bad_field_{suffix} = pair.missing_{suffix};\n",
+        f"    let bad_index_value_{suffix} = anchor[0];\n",
+        f"    let bad_index_type_{suffix} = (&x)[true];\n",
+        f"    let bad_struct_{suffix} = Pair {{ left: 1, missing_{suffix}: 2 }};\n",
+        f"    let bad_struct_field_type_{suffix} = Pair {{ left: true, right: 2 }};\n",
+        f"    let bad_empty_payload_{suffix} = Payload.none(1);\n",
+        f"    let bad_payload_field_{suffix} = Payload.item;\n",
+        f"    let bad_payload_arity_{suffix} = Payload.item(1, 2);\n",
+        f"    let bad_addr_{suffix} = ptraddr(1);\n",
+        f"    let bad_from_{suffix} = ptrat[i32](true);\n",
+        f"    let bad_sizeof_void_{suffix}: usize = sizeof[void];\n",
+        f"    let bad_strptr_{suffix} = strptr(1);\n",
+        f"    let bad_strblen_{suffix} = strblen(1);\n",
+        f"    let bad_strfrom_{suffix} = strfromutf8(1);\n",
+        f"    let bad_strraw_data_{suffix} = strraw(1, cast[usize](1));\n",
+        f"    let bad_strraw_len_{suffix} = strraw(c\"bytes\", true);\n",
+        f"    let bad_generic_apply_{suffix} = id[i32];\n",
+        f"    let bad_array_unknown_{suffix} = [missing_name_{suffix}];\n",
+        f"    let bad_array_storage_{suffix} = [touch()];\n",
+        f"    let bad_if_void_{suffix} = if true {{ touch() }} else {{ touch() }};\n",
+        f"    let bad_logic_{suffix} = !1;\n",
+        f"    let bad_neg_{suffix} = -pair;\n",
+        f"    let bad_deref_{suffix} = *1;\n",
+        f"    let bad_addr_lvalue_{suffix} = &(1 + 2);\n",
+        f"    let bad_equal_{suffix} = pair == other;\n",
+        f"    let bad_int_{suffix} = true & false;\n",
+        f"    let bad_compare_{suffix} = pair < other;\n",
+        f"    let bad_match_{suffix}: i32 = match Payload.none {{ .item(value) => value.left, .none => false }};\n",
+    ]
+    return templates
+
+
+def make_mixed_diagnostic_stress_source(error_count: int) -> str:
+    source: list[str] = [
+        "module perf.diagnostic_stress;\n\n",
+        "struct Pair {\n"
+        "    left: i32;\n"
+        "    right: i32;\n"
+        "}\n\n",
+        "enum Payload: u8 {\n"
+        "    item(Pair) = 1,\n"
+        "    none = 2,\n"
+        "}\n\n",
+        "fn touch() -> void {\n"
+        "    return;\n"
+        "}\n\n",
+        "fn takes(value: i32, pair: Pair) -> i32 {\n"
+        "    return value;\n"
+        "}\n\n",
+        "fn id[T](value: T) -> T {\n"
+        "    return value;\n"
+        "}\n\n",
+        "fn main() -> i32 {\n",
+        "    let anchor: i32 = 0;\n",
+        "    var x: i32 = 1;\n",
+        "    let pair = Pair { left: 1, right: 2 };\n",
+        "    let other = Pair { left: 3, right: 4 };\n",
+    ]
+    templates = diagnostic_templates(0)
+    for index in range(error_count):
+        source.append(diagnostic_templates(index)[index % len(templates)])
+    source.append("    return anchor + x;\n}\n")
+    return "".join(source)
+
+
+def parse_shape(text: str | None) -> str:
+    shape = DEFAULT_SHAPE if text is None else text.strip()
+    if shape not in DIAGNOSTIC_STRESS_SHAPES:
+        valid = ", ".join(sorted(DIAGNOSTIC_STRESS_SHAPES))
+        raise ValueError(f"unsupported diagnostic stress shape: {shape}; expected one of: {valid}")
+    return shape
+
+
+def make_diagnostic_stress_source(error_count: int, shape: str) -> str:
+    if shape == "missing":
+        return make_missing_diagnostic_stress_source(error_count)
+    return make_mixed_diagnostic_stress_source(error_count)
+
+
+def write_source(error_count: int, shape: str) -> pathlib.Path:
     GENERATED_ROOT.mkdir(parents=True, exist_ok=True)
-    path = GENERATED_ROOT / f"diagnostic_stress_{error_count}.ax"
-    source = make_diagnostic_stress_source(error_count)
+    path = GENERATED_ROOT / f"diagnostic_stress_{shape}_{error_count}.ax"
+    source = make_diagnostic_stress_source(error_count, shape)
     path.write_text(source, encoding="utf-8")
     return path
 
@@ -205,14 +299,15 @@ def display_path(path: pathlib.Path) -> str:
         return str(path)
 
 
-def run_stress(counts: list[int]) -> list[StressRow]:
+def run_stress(counts: list[int], shape: str) -> list[StressRow]:
     rows: list[StressRow] = []
     for count in counts:
-        source = write_source(count)
+        source = write_source(count, shape)
         elapsed_ms, max_rss_mib, output = timed_command(source)
         rows.append(
             StressRow(
                 requested_errors=count,
+                shape=shape,
                 source_bytes=source.stat().st_size,
                 elapsed_ms=elapsed_ms,
                 max_rss_mib=max_rss_mib,
@@ -260,6 +355,7 @@ def write_json(
     payload = {
         "build": str(BUILD),
         "aurexc": str(AUREXC),
+        "build_options": stress_build_options(),
         "machine": calibration.machine,
         "threshold_calibration": calibration.to_json(),
         "raw_thresholds": asdict(raw_thresholds),
@@ -274,6 +370,7 @@ def write_json(
 def print_report(rows: list[StressRow], thresholds: StressThresholds, calibration, violations: list[str]) -> None:
     print("Aurex diagnostic stress")
     print(f"build: {BUILD}")
+    print(f"build_options: Release, LTO={'on' if stress_lto_enabled() else 'off'}")
     print(f"raw_json: {OUTPUT_JSON}")
     print()
     print(f"threshold_profile: {calibration.profile}")
@@ -288,18 +385,19 @@ def print_report(rows: list[StressRow], thresholds: StressThresholds, calibratio
     print("RSS is peak process resident set size when /usr/bin/time exposes it.")
     print()
     print(
-        f"{'errors':>8} {'source_KiB':>12} {'elapsed_ms':>12} "
+        f"{'errors':>8} {'shape':>8} {'source_KiB':>12} {'elapsed_ms':>12} "
         f"{'peak_RSS_MiB':>14} {'printed':>8} {'suppressed':>10} "
         f"{'output_KiB':>12} {'source':<36}"
     )
     print(
-        f"{'-' * 8} {'-' * 12} {'-' * 12} {'-' * 14} "
+        f"{'-' * 8} {'-' * 8} {'-' * 12} {'-' * 12} {'-' * 14} "
         f"{'-' * 8} {'-' * 10} {'-' * 12} {'-' * 36}"
     )
     for row in rows:
         rss = "n/a" if row.max_rss_mib is None else f"{row.max_rss_mib:.1f}"
         print(
             f"{row.requested_errors:>8} "
+            f"{row.shape:>8} "
             f"{row.source_bytes / 1024.0:>12.1f} "
             f"{row.elapsed_ms:>12.3f} "
             f"{rss:>14} "
@@ -321,6 +419,11 @@ def main() -> int:
         "--counts",
         default=os.environ.get("AUREX_DIAGNOSTIC_STRESS_COUNTS"),
         help="comma-separated diagnostic counts; default: 100,1000,5000",
+    )
+    parser.add_argument(
+        "--shape",
+        default=os.environ.get("AUREX_DIAGNOSTIC_STRESS_SHAPE", DEFAULT_SHAPE),
+        help="stress source shape: mixed cycles semantic diagnostic families; missing keeps the old missing-name lane; default: mixed",
     )
     parser.add_argument("--skip-build", action="store_true", help="reuse the existing build-perf aurexc binary")
     parser.add_argument(
@@ -346,6 +449,7 @@ def main() -> int:
     args = parser.parse_args()
 
     counts = parse_counts(args.counts)
+    shape = parse_shape(args.shape)
     calibration = make_calibration(args.threshold_profile, args.threshold_scale)
     raw_thresholds = StressThresholds(
         max_elapsed_ms=parse_optional_float(args.max_elapsed_ms, "--max-elapsed-ms"),
@@ -360,7 +464,7 @@ def main() -> int:
     if not AUREXC.exists():
         raise RuntimeError(f"aurexc not found: {AUREXC}")
 
-    rows = run_stress(counts)
+    rows = run_stress(counts, shape)
     violations = threshold_violations(rows, thresholds)
     write_json(rows, raw_thresholds, thresholds, calibration, violations)
     print_report(rows, thresholds, calibration, violations)

@@ -12,14 +12,22 @@ import argparse
 import json
 import os
 import pathlib
-import platform
-import re
 import subprocess
 import sys
-import time
 from dataclasses import asdict, dataclass
 
-from perf_thresholds import make_calibration, scaled_threshold, stress_build_options, stress_lto_enabled
+from perf_thresholds import (
+    ProcessMetrics,
+    format_optional_float,
+    format_optional_int,
+    load_compiler_profile,
+    make_calibration,
+    print_compiler_phase_report,
+    run_timed_command,
+    scaled_threshold,
+    stress_build_options,
+    stress_lto_enabled,
+)
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -48,11 +56,6 @@ GENERIC_STRESS_SHAPES = {
     "mixed",
     "templates",
 }
-GENERIC_STRESS_TIME_PARSE_PATTERN = re.compile(
-    r"(?:maximum resident set size:\s+(\d+)|(\d+)\s+maximum resident set size)",
-    re.IGNORECASE,
-)
-GENERIC_STRESS_GNU_TIME_PATTERN = re.compile(r"Maximum resident set size \(kbytes\):\s+(\d+)", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,9 @@ class StressRow:
     source_bytes: int
     elapsed_ms: float
     max_rss_mib: float | None
+    process_metrics: dict[str, object]
+    compiler_profile_path: str
+    compiler_profile: dict[str, object] | None
     source: str
 
 
@@ -323,47 +329,25 @@ def write_source(instance_count: int, shape: str) -> pathlib.Path:
     return path
 
 
-def parse_peak_rss_mib(stderr: str) -> float | None:
-    if platform.system() == "Darwin":
-        match = GENERIC_STRESS_TIME_PARSE_PATTERN.search(stderr)
-        if match is None:
-            return None
-        rss_bytes = int(next(group for group in match.groups() if group is not None))
-        return rss_bytes / (1024.0 * 1024.0)
-    match = GENERIC_STRESS_GNU_TIME_PATTERN.search(stderr)
-    if match is None:
-        return None
-    rss_kib = int(match.group(1))
-    return rss_kib / 1024.0
-
-
-def timed_command(source: pathlib.Path, emit_kind: str) -> tuple[float, float | None]:
-    time_tool = pathlib.Path("/usr/bin/time")
-    base_cmd = [str(AUREXC), f"--emit={emit_kind}", str(source)]
-    if time_tool.exists() and os.access(time_tool, os.X_OK):
-        if platform.system() == "Darwin":
-            cmd = [str(time_tool), "-l", *base_cmd]
-        else:
-            cmd = [str(time_tool), "-v", *base_cmd]
-    else:
-        cmd = base_cmd
-
-    started = time.perf_counter()
-    completed = subprocess.run(
-        cmd,
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    elapsed_ms = (time.perf_counter() - started) * 1000.0
+def timed_command(
+    source: pathlib.Path,
+    emit_kind: str,
+    profile: pathlib.Path,
+) -> tuple[ProcessMetrics, dict[str, object] | None]:
+    if profile.exists():
+        profile.unlink()
+    base_cmd = [str(AUREXC), "--profile-output", str(profile), f"--emit={emit_kind}", str(source)]
+    completed, metrics = run_timed_command(base_cmd, ROOT)
     if completed.returncode != 0:
         raise RuntimeError(
             f"command failed: {' '.join(base_cmd)}\n"
             f"stdout:\n{completed.stdout}\n"
             f"stderr:\n{completed.stderr}"
         )
-    return elapsed_ms, parse_peak_rss_mib(completed.stderr)
+    compiler_profile = load_compiler_profile(profile)
+    if compiler_profile is None:
+        raise RuntimeError(f"compiler profile was not written: {profile}")
+    return metrics, compiler_profile
 
 
 def parse_counts(text: str | None) -> list[int]:
@@ -419,15 +403,19 @@ def run_stress(counts: list[int], emit_kind: str, shape: str) -> list[StressRow]
     rows: list[StressRow] = []
     for count in counts:
         source = write_source(count, shape)
-        elapsed_ms, max_rss_mib = timed_command(source, emit_kind)
+        profile = GENERATED_ROOT / f"generic_profile_{shape}_{emit_kind}_{count}.json"
+        metrics, compiler_profile = timed_command(source, emit_kind, profile)
         rows.append(
             StressRow(
                 instances=count,
                 emit_kind=emit_kind,
                 shape=shape,
                 source_bytes=source.stat().st_size,
-                elapsed_ms=elapsed_ms,
-                max_rss_mib=max_rss_mib,
+                elapsed_ms=metrics.elapsed_ms,
+                max_rss_mib=metrics.max_rss_mib,
+                process_metrics=metrics.to_json(),
+                compiler_profile_path=display_path(profile),
+                compiler_profile=compiler_profile,
                 source=display_path(source),
             )
         )
@@ -494,20 +482,40 @@ def print_report(rows: list[StressRow], thresholds: StressThresholds, calibratio
         threshold_parts.append(f"RSS <= {thresholds.max_rss_mib:.1f} MiB")
     threshold_text = ", ".join(threshold_parts) if threshold_parts else "none"
     print(f"thresholds: {threshold_text}")
-    print("RSS is peak process resident set size when /usr/bin/time exposes it.")
+    print("Process RSS/page-fault metrics come from /usr/bin/time when available.")
+    print("Compiler phase RSS is cumulative max RSS after each recorded phase, not isolated per-phase allocation.")
     print()
-    print(f"{'instances':>10} {'emit':>8} {'shape':>10} {'source_KiB':>12} {'elapsed_ms':>12} {'peak_RSS_MiB':>14} {'source':<36}")
-    print(f"{'-' * 10} {'-' * 8} {'-' * 10} {'-' * 12} {'-' * 12} {'-' * 14} {'-' * 36}")
+    print(
+        f"{'instances':>10} {'emit':>8} {'shape':>10} {'source_KiB':>12} "
+        f"{'wall_ms':>12} {'user_s':>9} {'sys_s':>9} {'peak_RSS_MiB':>14} "
+        f"{'minor_pf':>10} {'major_pf':>10} {'source':<36}"
+    )
+    print(
+        f"{'-' * 10} {'-' * 8} {'-' * 10} {'-' * 12} "
+        f"{'-' * 12} {'-' * 9} {'-' * 9} {'-' * 14} "
+        f"{'-' * 10} {'-' * 10} {'-' * 36}"
+    )
     for row in rows:
         rss = "n/a" if row.max_rss_mib is None else f"{row.max_rss_mib:.1f}"
+        metrics = row.process_metrics
         print(
             f"{row.instances:>10} "
             f"{row.emit_kind:>8} "
             f"{row.shape:>10} "
             f"{row.source_bytes / 1024.0:>12.1f} "
             f"{row.elapsed_ms:>12.3f} "
+            f"{format_optional_float(metrics.get('user_time_s') if isinstance(metrics.get('user_time_s'), (float, int)) else None):>9} "
+            f"{format_optional_float(metrics.get('system_time_s') if isinstance(metrics.get('system_time_s'), (float, int)) else None):>9} "
             f"{rss:>14} "
+            f"{format_optional_int(metrics.get('minor_page_faults') if isinstance(metrics.get('minor_page_faults'), int) else None):>10} "
+            f"{format_optional_int(metrics.get('major_page_faults') if isinstance(metrics.get('major_page_faults'), int) else None):>10} "
             f"{row.source:<36}"
+        )
+    for row in rows:
+        print_compiler_phase_report(
+            f"{row.instances} {row.shape}/{row.emit_kind} generic instances",
+            row.compiler_profile_path,
+            row.compiler_profile,
         )
     if violations:
         print()

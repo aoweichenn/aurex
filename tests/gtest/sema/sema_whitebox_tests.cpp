@@ -4260,6 +4260,9 @@ TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds) {
     sema::SymbolTable copied_symbols(symbols);
     EXPECT_NE(copied_symbols.find(inner_id), nullptr);
     EXPECT_NE(copied_symbols.find(outer_id), nullptr);
+    sema::SymbolTable& symbols_ref = symbols;
+    symbols = symbols_ref;
+    EXPECT_NE(symbols.find(inner_id), nullptr);
     sema::SymbolTable assigned_symbols;
     assigned_symbols = symbols;
     EXPECT_NE(assigned_symbols.find(inner_id), nullptr);
@@ -4267,6 +4270,9 @@ TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds) {
     EXPECT_NE(moved_symbols.find(outer_id), nullptr);
     sema::SymbolTable move_assigned_symbols;
     move_assigned_symbols = std::move(assigned_symbols);
+    EXPECT_NE(move_assigned_symbols.find(inner_id), nullptr);
+    sema::SymbolTable& move_assigned_symbols_ref = move_assigned_symbols;
+    move_assigned_symbols = std::move(move_assigned_symbols_ref);
     EXPECT_NE(move_assigned_symbols.find(inner_id), nullptr);
 
     const auto duplicate_name_inserted = symbols.insert(

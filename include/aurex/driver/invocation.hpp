@@ -32,6 +32,7 @@ struct CompilerInvocation {
     std::filesystem::path tool_path;
     std::filesystem::path output_path;
     std::filesystem::path incremental_cache_path;
+    std::filesystem::path profile_output_path;
     EmitKind emit_kind = EmitKind::executable;
     std::vector<std::filesystem::path> import_paths;
     std::string clang_path = "clang";

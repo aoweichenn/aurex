@@ -13,14 +13,22 @@ import argparse
 import json
 import os
 import pathlib
-import platform
-import re
 import subprocess
 import sys
-import time
 from dataclasses import asdict, dataclass
 
-from perf_thresholds import make_calibration, scaled_threshold, stress_build_options, stress_lto_enabled
+from perf_thresholds import (
+    ProcessMetrics,
+    format_optional_float,
+    format_optional_int,
+    load_compiler_profile,
+    make_calibration,
+    print_compiler_phase_report,
+    run_timed_command,
+    scaled_threshold,
+    stress_build_options,
+    stress_lto_enabled,
+)
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -41,15 +49,7 @@ AST_STRESS_SHAPES = {
     "simple",
 }
 AST_MIXED_VALUE_MODULUS = 97
-AST_MIXED_DISPATCH_CASES = 8
-AST_MIXED_FEATURE_INTERVAL = 4096
-AST_MIXED_HEAVY_EXPRESSION_INTERVAL = 16
-AST_MIXED_LIGHT_STATE_INTERVAL = 4
-AST_STRESS_TIME_PARSE_PATTERN = re.compile(
-    r"(?:maximum resident set size:\s+(\d+)|(\d+)\s+maximum resident set size)",
-    re.IGNORECASE,
-)
-AST_STRESS_GNU_TIME_PATTERN = re.compile(r"Maximum resident set size \(kbytes\):\s+(\d+)", re.IGNORECASE)
+AST_MIXED_DISPATCH_CASES = 12
 
 
 @dataclass(frozen=True)
@@ -59,6 +59,9 @@ class StressRow:
     source_bytes: int
     elapsed_ms: float
     max_rss_mib: float | None
+    process_metrics: dict[str, object]
+    compiler_profile_path: str
+    compiler_profile: dict[str, object] | None
     source: str
 
 
@@ -373,49 +376,7 @@ def append_ast_feature_block(source: list[str]) -> None:
 
 def append_mixed_statement(source: list[str], index: int, remaining: int) -> int:
     value = index % AST_MIXED_VALUE_MODULUS
-    periodic_feature = index > 0 and index % AST_MIXED_FEATURE_INTERVAL == 0
-    if periodic_feature:
-        feature_case = (index // AST_MIXED_FEATURE_INTERVAL) % 3
-        if feature_case == 0 and remaining >= 4:
-            suffix = str(index)
-            source.append(
-                "    {\n"
-                f"        let local_values_{suffix}: [3]i32 = [{value}, {value + 1}, {value + 2}];\n"
-                f"        let local_slice_{suffix}: []const i32 = local_values_{suffix}[:];\n"
-                f"        let [first_{suffix}, .., last_{suffix}] = local_values_{suffix};\n"
-                f"        total += first_{suffix} + last_{suffix} + edge_sum(local_slice_{suffix});\n"
-                "    }\n"
-            )
-            return 4
-        if feature_case == 1 and remaining >= 3:
-            suffix = str(index)
-            source.append(
-                "    {\n"
-                f"        let tuple_{suffix}: (i32, bool) = make_pair({value});\n"
-                f"        let (tuple_value_{suffix}, tuple_ok_{suffix}) = tuple_{suffix};\n"
-                f"        if tuple_ok_{suffix} {{ total += tuple_value_{suffix}; }} else {{ total -= 1; }}\n"
-                "    }\n"
-            )
-            return 3
-        if feature_case == 2 and remaining >= 3:
-            suffix = str(index)
-            source.append(
-                "    {\n"
-                f"        let box_{suffix}: Box[i32] = make_box[i32]({value});\n"
-                f"        let maybe_{suffix}: Maybe[i32] = Maybe[i32].some(box_{suffix}.get());\n"
-                f"        total += unwrap_maybe(maybe_{suffix}, 0);\n"
-                "    }\n"
-            )
-            return 3
-
-    if index % AST_MIXED_HEAVY_EXPRESSION_INTERVAL != 0:
-        if index % AST_MIXED_LIGHT_STATE_INTERVAL == 0:
-            source.append(f"    state = (state + {value}) % 997;\n")
-        else:
-            source.append(f"    total += {value};\n")
-        return 1
-
-    case = (index // AST_MIXED_HEAVY_EXPRESSION_INTERVAL) % AST_MIXED_DISPATCH_CASES
+    case = index % AST_MIXED_DISPATCH_CASES
     if case == 0:
         source.append(f"    total += (state + {value}) & 255;\n")
         return 1
@@ -440,6 +401,37 @@ def append_mixed_statement(source: list[str], index: int, remaining: int) -> int
     if case == 7:
         source.append(f"    total += id[i32]({value});\n")
         return 1
+    if case == 8 and remaining >= 4:
+        suffix = str(index)
+        source.append(
+            "    {\n"
+            f"        let local_values_{suffix}: [3]i32 = [{value}, {value + 1}, {value + 2}];\n"
+            f"        let local_slice_{suffix}: []const i32 = local_values_{suffix}[:];\n"
+            f"        let [first_{suffix}, .., last_{suffix}] = local_values_{suffix};\n"
+            f"        total += first_{suffix} + last_{suffix} + edge_sum(local_slice_{suffix});\n"
+            "    }\n"
+        )
+        return 4
+    if case == 9 and remaining >= 3:
+        suffix = str(index)
+        source.append(
+            "    {\n"
+            f"        let tuple_{suffix}: (i32, bool) = make_pair({value});\n"
+            f"        let (tuple_value_{suffix}, tuple_ok_{suffix}) = tuple_{suffix};\n"
+            f"        if tuple_ok_{suffix} {{ total += tuple_value_{suffix}; }} else {{ total -= 1; }}\n"
+            "    }\n"
+        )
+        return 3
+    if case == 10 and remaining >= 3:
+        suffix = str(index)
+        source.append(
+            "    {\n"
+            f"        let box_{suffix}: Box[i32] = make_box[i32]({value});\n"
+            f"        let maybe_{suffix}: Maybe[i32] = Maybe[i32].some(box_{suffix}.get());\n"
+            f"        total += unwrap_maybe(maybe_{suffix}, 0);\n"
+            "    }\n"
+        )
+        return 3
     source.append("    if (state & 1) == 0 { total += 1; } else { total -= 1; }\n")
     return 1
 
@@ -486,47 +478,21 @@ def write_source(statement_count: int, shape: str) -> pathlib.Path:
     return path
 
 
-def parse_peak_rss_mib(stderr: str) -> float | None:
-    if platform.system() == "Darwin":
-        match = AST_STRESS_TIME_PARSE_PATTERN.search(stderr)
-        if match is None:
-            return None
-        rss_bytes = int(next(group for group in match.groups() if group is not None))
-        return rss_bytes / (1024.0 * 1024.0)
-    match = AST_STRESS_GNU_TIME_PATTERN.search(stderr)
-    if match is None:
-        return None
-    rss_kib = int(match.group(1))
-    return rss_kib / 1024.0
-
-
-def timed_command(source: pathlib.Path) -> tuple[float, float | None]:
-    time_tool = pathlib.Path("/usr/bin/time")
-    base_cmd = [str(AUREXC), "--check", str(source)]
-    if time_tool.exists() and os.access(time_tool, os.X_OK):
-        if platform.system() == "Darwin":
-            cmd = [str(time_tool), "-l", *base_cmd]
-        else:
-            cmd = [str(time_tool), "-v", *base_cmd]
-    else:
-        cmd = base_cmd
-
-    started = time.perf_counter()
-    completed = subprocess.run(
-        cmd,
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    elapsed_ms = (time.perf_counter() - started) * 1000.0
+def timed_command(source: pathlib.Path, profile: pathlib.Path) -> tuple[ProcessMetrics, dict[str, object] | None]:
+    if profile.exists():
+        profile.unlink()
+    base_cmd = [str(AUREXC), "--profile-output", str(profile), "--check", str(source)]
+    completed, metrics = run_timed_command(base_cmd, ROOT)
     if completed.returncode != 0:
         raise RuntimeError(
             f"command failed: {' '.join(base_cmd)}\n"
             f"stdout:\n{completed.stdout}\n"
             f"stderr:\n{completed.stderr}"
         )
-    return elapsed_ms, parse_peak_rss_mib(completed.stderr)
+    compiler_profile = load_compiler_profile(profile)
+    if compiler_profile is None:
+        raise RuntimeError(f"compiler profile was not written: {profile}")
+    return metrics, compiler_profile
 
 
 def parse_counts(text: str | None) -> list[int]:
@@ -566,14 +532,18 @@ def run_stress(counts: list[int], shape: str) -> list[StressRow]:
     rows: list[StressRow] = []
     for count in counts:
         source = write_source(count, shape)
-        elapsed_ms, max_rss_mib = timed_command(source)
+        profile = GENERATED_ROOT / f"ast_profile_{shape}_{count}.json"
+        metrics, compiler_profile = timed_command(source, profile)
         rows.append(
             StressRow(
                 statements=count,
                 shape=shape,
                 source_bytes=source.stat().st_size,
-                elapsed_ms=elapsed_ms,
-                max_rss_mib=max_rss_mib,
+                elapsed_ms=metrics.elapsed_ms,
+                max_rss_mib=metrics.max_rss_mib,
+                process_metrics=metrics.to_json(),
+                compiler_profile_path=display_path(profile),
+                compiler_profile=compiler_profile,
                 source=display_path(source),
             )
         )
@@ -640,19 +610,39 @@ def print_report(rows: list[StressRow], thresholds: StressThresholds, calibratio
         threshold_parts.append(f"RSS <= {thresholds.max_rss_mib:.1f} MiB")
     threshold_text = ", ".join(threshold_parts) if threshold_parts else "none"
     print(f"thresholds: {threshold_text}")
-    print("RSS is peak process resident set size when /usr/bin/time exposes it.")
+    print("Process RSS/page-fault metrics come from /usr/bin/time when available.")
+    print("Compiler phase RSS is cumulative max RSS after each recorded phase, not isolated per-phase allocation.")
     print()
-    print(f"{'statements':>10} {'shape':>8} {'source_KiB':>12} {'elapsed_ms':>12} {'peak_RSS_MiB':>14} {'source':<36}")
-    print(f"{'-' * 10} {'-' * 8} {'-' * 12} {'-' * 12} {'-' * 14} {'-' * 36}")
+    print(
+        f"{'statements':>10} {'shape':>8} {'source_KiB':>12} {'wall_ms':>12} "
+        f"{'user_s':>9} {'sys_s':>9} {'peak_RSS_MiB':>14} {'minor_pf':>10} "
+        f"{'major_pf':>10} {'source':<36}"
+    )
+    print(
+        f"{'-' * 10} {'-' * 8} {'-' * 12} {'-' * 12} "
+        f"{'-' * 9} {'-' * 9} {'-' * 14} {'-' * 10} "
+        f"{'-' * 10} {'-' * 36}"
+    )
     for row in rows:
         rss = "n/a" if row.max_rss_mib is None else f"{row.max_rss_mib:.1f}"
+        metrics = row.process_metrics
         print(
             f"{row.statements:>10} "
             f"{row.shape:>8} "
             f"{row.source_bytes / 1024.0:>12.1f} "
             f"{row.elapsed_ms:>12.3f} "
+            f"{format_optional_float(metrics.get('user_time_s') if isinstance(metrics.get('user_time_s'), (float, int)) else None):>9} "
+            f"{format_optional_float(metrics.get('system_time_s') if isinstance(metrics.get('system_time_s'), (float, int)) else None):>9} "
             f"{rss:>14} "
+            f"{format_optional_int(metrics.get('minor_page_faults') if isinstance(metrics.get('minor_page_faults'), int) else None):>10} "
+            f"{format_optional_int(metrics.get('major_page_faults') if isinstance(metrics.get('major_page_faults'), int) else None):>10} "
             f"{row.source:<36}"
+        )
+    for row in rows:
+        print_compiler_phase_report(
+            f"{row.statements} {row.shape} AST statements",
+            row.compiler_profile_path,
+            row.compiler_profile,
         )
     if violations:
         print()

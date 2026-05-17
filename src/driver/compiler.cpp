@@ -8,6 +8,7 @@
 #include <aurex/driver/file_cache.hpp>
 #include <aurex/driver/incremental_cache.hpp>
 #include <aurex/driver/native_toolchain.hpp>
+#include <aurex/driver/profile.hpp>
 #include <aurex/ir/ir_dump.hpp>
 #include <aurex/ir/lower_ast.hpp>
 #include <aurex/ir/pass_pipeline.hpp>
@@ -339,17 +340,48 @@ void print_diagnostics(
     };
 }
 
+class CompilerRunProfile final {
+public:
+    explicit CompilerRunProfile(const CompilerInvocation& invocation)
+        : invocation_(invocation),
+          profiler_(!invocation.profile_output_path.empty()) {}
+
+    [[nodiscard]] CompilationProfiler* profiler() noexcept {
+        return &this->profiler_;
+    }
+
+    [[nodiscard]] base::Result<void> finish(base::Result<void> result) const {
+        if (this->invocation_.profile_output_path.empty()) {
+            return result;
+        }
+        auto profile_result = this->profiler_.write_json(this->invocation_.profile_output_path);
+        if (!profile_result && result) {
+            return base::Result<void>::fail(profile_result.error());
+        }
+        return result;
+    }
+
+private:
+    const CompilerInvocation& invocation_;
+    CompilationProfiler profiler_;
+};
+
 } // namespace
 
 base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
 {
+    CompilerRunProfile run_profile(invocation);
+
     if (invocation.emit_kind == EmitKind::check) {
-        auto cache_result = try_reuse_incremental_check_cache(invocation);
+        auto cache_result = [&] {
+            ScopedCompilationPhase phase(run_profile.profiler(), "incremental_cache.lookup");
+            return try_reuse_incremental_check_cache(invocation);
+        }();
         if (!cache_result) {
-            return base::Result<void>::fail(cache_result.error());
+            return run_profile.finish(base::Result<void>::fail(cache_result.error()));
         }
         if (cache_result.value()) {
-            return base::Result<void>::ok();
+            return run_profile.finish(base::Result<void>::ok());
         }
     }
 
@@ -357,135 +389,185 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
     base::DiagnosticSink diagnostics;
 
     if (invocation.emit_kind == EmitKind::tokens) {
-        auto source_result = read_text_file(invocation.input_path);
+        auto source_result = [&] {
+            ScopedCompilationPhase phase(run_profile.profiler(), "source.read");
+            return read_text_file(invocation.input_path);
+        }();
         if (!source_result) {
-            return base::Result<void>::fail(source_result.error());
+            return run_profile.finish(base::Result<void>::fail(source_result.error()));
         }
         const base::SourceId source_id = sources.add_source(invocation.input_path.string(), source_result.take_value());
         lex::Lexer lexer(source_id, sources.text(source_id), diagnostics);
-        auto token_result = lexer.tokenize();
+        auto token_result = [&] {
+            ScopedCompilationPhase phase(run_profile.profiler(), "tokens.lex");
+            return lexer.tokenize();
+        }();
         if (!token_result) {
             print_diagnostics(sources, diagnostics, invocation.diagnostic_format);
-            return base::Result<void>::fail(token_result.error());
+            return run_profile.finish(base::Result<void>::fail(token_result.error()));
         }
-        std::cout << syntax::dump_tokens(token_result.value());
-        return base::Result<void>::ok();
+        {
+            ScopedCompilationPhase phase(run_profile.profiler(), "tokens.dump");
+            std::cout << syntax::dump_tokens(token_result.value());
+        }
+        return run_profile.finish(base::Result<void>::ok());
     }
 
-    ModuleLoader loader(invocation, sources, diagnostics);
+    ModuleLoader loader(invocation, sources, diagnostics, run_profile.profiler());
     auto ast_result = loader.load_root();
 
     if (!ast_result) {
         print_diagnostics(sources, diagnostics, invocation.diagnostic_format);
-        return base::Result<void>::fail(
+        return run_profile.finish(base::Result<void>::fail(
             diagnostics.diagnostics().empty() ? ast_result.error() : remap_diagnostic_loader_error(ast_result.error())
-        );
+        ));
     }
     syntax::AstModule ast = ast_result.take_value();
 
     if (invocation.emit_kind == EmitKind::ast) {
-        std::cout << syntax::dump_ast(ast);
-        return base::Result<void>::ok();
+        {
+            ScopedCompilationPhase phase(run_profile.profiler(), "ast.dump");
+            std::cout << syntax::dump_ast(ast);
+        }
+        return run_profile.finish(base::Result<void>::ok());
     }
 
     if (invocation.emit_kind == EmitKind::modules) {
-        std::cout << "modules\n";
-        for (const ModuleRecord& record : loader.modules()) {
-            std::cout << "  " << record.name << " " << record.path.string() << "\n";
+        {
+            ScopedCompilationPhase phase(run_profile.profiler(), "modules.dump");
+            std::cout << "modules\n";
+            for (const ModuleRecord& record : loader.modules()) {
+                std::cout << "  " << record.name << " " << record.path.string() << "\n";
+            }
         }
-        return base::Result<void>::ok();
+        return run_profile.finish(base::Result<void>::ok());
     }
 
     sema::SemanticOptions sema_options;
     sema_options.retain_generic_side_tables =
         emit_kind_requires_ir_lowering(invocation.emit_kind) ||
         invocation.emit_kind == EmitKind::typed;
-    sema::SemanticAnalyzer analyzer(ast, diagnostics, sema_options);
-    auto checked_result = analyzer.analyze();
+    auto checked_result = [&] {
+        ScopedCompilationPhase phase(run_profile.profiler(), "sema.analyze");
+        sema::SemanticAnalyzer analyzer(ast, diagnostics, sema_options);
+        return analyzer.analyze();
+    }();
     if (!checked_result) {
         print_diagnostics(sources, diagnostics, invocation.diagnostic_format);
-        return base::Result<void>::fail(checked_result.error());
+        return run_profile.finish(base::Result<void>::fail(checked_result.error()));
     }
 
-    auto incremental_cache_result =
-        write_incremental_cache(invocation, sources, loader.modules(), checked_result.value());
+    auto incremental_cache_result = [&] {
+        ScopedCompilationPhase phase(run_profile.profiler(), "incremental_cache.write");
+        return write_incremental_cache(invocation, sources, loader.modules(), checked_result.value());
+    }();
     if (!incremental_cache_result) {
-        return base::Result<void>::fail(incremental_cache_result.error());
+        return run_profile.finish(base::Result<void>::fail(incremental_cache_result.error()));
     }
 
     if (invocation.emit_kind == EmitKind::check) {
-        return base::Result<void>::ok();
+        return run_profile.finish(base::Result<void>::ok());
     }
 
     if (invocation.emit_kind == EmitKind::typed) {
-        return base::Result<void>::ok();
+        return run_profile.finish(base::Result<void>::ok());
     }
 
     if (invocation.emit_kind == EmitKind::checked) {
-        std::cout << sema::dump_checked_module(checked_result.value());
-        return base::Result<void>::ok();
+        {
+            ScopedCompilationPhase phase(run_profile.profiler(), "checked.dump");
+            std::cout << sema::dump_checked_module(checked_result.value());
+        }
+        return run_profile.finish(base::Result<void>::ok());
     }
 
     if (invocation.emit_kind == EmitKind::ir || invocation.emit_kind == EmitKind::llvm_ir) {
-        auto ir_result = ir::lower_ast(ast, checked_result.value());
+        auto ir_result = [&] {
+            ScopedCompilationPhase phase(run_profile.profiler(), "ir.lower");
+            return ir::lower_ast(ast, checked_result.value());
+        }();
         if (!ir_result) {
-            return base::Result<void>::fail(ir_result.error());
+            return run_profile.finish(base::Result<void>::fail(ir_result.error()));
         }
-        auto pipeline_result = ir::run_pass_pipeline(ir_result.value(), ir::PassPipelineOptions {
-            invocation.optimization_level,
-            true,
-            true,
-            true,
-            true,
-        });
+        auto pipeline_result = [&] {
+            ScopedCompilationPhase phase(run_profile.profiler(), "ir.pass_pipeline");
+            return ir::run_pass_pipeline(ir_result.value(), ir::PassPipelineOptions {
+                invocation.optimization_level,
+                true,
+                true,
+                true,
+                true,
+            });
+        }();
         if (!pipeline_result) {
-            return pipeline_result;
+            return run_profile.finish(base::Result<void>::fail(pipeline_result.error()));
         }
         if (invocation.emit_kind == EmitKind::ir) {
-            std::cout << ir::dump_module(ir_result.value());
-            return base::Result<void>::ok();
+            {
+                ScopedCompilationPhase phase(run_profile.profiler(), "ir.dump");
+                std::cout << ir::dump_module(ir_result.value());
+            }
+            return run_profile.finish(base::Result<void>::ok());
         }
-        auto llvm_result = backend::emit_llvm_ir(backend::LlvmEmitRequest {
-            &ir_result.value(),
-            invocation.input_path.stem().string(),
-        });
+        auto llvm_result = [&] {
+            ScopedCompilationPhase phase(run_profile.profiler(), "llvm.emit_ir");
+            return backend::emit_llvm_ir(backend::LlvmEmitRequest {
+                &ir_result.value(),
+                invocation.input_path.stem().string(),
+            });
+        }();
         if (!llvm_result) {
-            return base::Result<void>::fail(llvm_result.error());
+            return run_profile.finish(base::Result<void>::fail(llvm_result.error()));
         }
-        std::cout << llvm_result.value().text;
-        return base::Result<void>::ok();
+        {
+            ScopedCompilationPhase phase(run_profile.profiler(), "llvm_ir.dump");
+            std::cout << llvm_result.value().text;
+        }
+        return run_profile.finish(base::Result<void>::ok());
     }
 
     if (invocation.emit_kind == EmitKind::assembly ||
         invocation.emit_kind == EmitKind::object ||
         invocation.emit_kind == EmitKind::executable) {
         if (invocation.output_path.empty()) {
-            return base::Result<void>::fail({base::ErrorCode::io_error, std::string(DRIVER_NATIVE_OUTPUT_REQUIRES_OUTPUT_PATH)});
+            return run_profile.finish(base::Result<void>::fail({base::ErrorCode::io_error, std::string(DRIVER_NATIVE_OUTPUT_REQUIRES_OUTPUT_PATH)}));
         }
-        auto ir_result = ir::lower_ast(ast, checked_result.value());
+        auto ir_result = [&] {
+            ScopedCompilationPhase phase(run_profile.profiler(), "ir.lower");
+            return ir::lower_ast(ast, checked_result.value());
+        }();
         if (!ir_result) {
-            return base::Result<void>::fail(ir_result.error());
+            return run_profile.finish(base::Result<void>::fail(ir_result.error()));
         }
-        auto pipeline_result = ir::run_pass_pipeline(ir_result.value(), ir::PassPipelineOptions {
-            invocation.optimization_level,
-            true,
-            true,
-            true,
-            true,
-        });
+        auto pipeline_result = [&] {
+            ScopedCompilationPhase phase(run_profile.profiler(), "ir.pass_pipeline");
+            return ir::run_pass_pipeline(ir_result.value(), ir::PassPipelineOptions {
+                invocation.optimization_level,
+                true,
+                true,
+                true,
+                true,
+            });
+        }();
         if (!pipeline_result) {
-            return pipeline_result;
+            return run_profile.finish(base::Result<void>::fail(pipeline_result.error()));
         }
-        auto llvm_result = backend::emit_llvm_ir(backend::LlvmEmitRequest {
-            &ir_result.value(),
-            invocation.input_path.stem().string(),
-        });
+        auto llvm_result = [&] {
+            ScopedCompilationPhase phase(run_profile.profiler(), "llvm.emit_ir");
+            return backend::emit_llvm_ir(backend::LlvmEmitRequest {
+                &ir_result.value(),
+                invocation.input_path.stem().string(),
+            });
+        }();
         if (!llvm_result) {
-            return base::Result<void>::fail(llvm_result.error());
+            return run_profile.finish(base::Result<void>::fail(llvm_result.error()));
         }
-        auto temp_ir_result = write_temporary_llvm_file(llvm_result.value().text);
+        auto temp_ir_result = [&] {
+            ScopedCompilationPhase phase(run_profile.profiler(), "llvm.write_temp");
+            return write_temporary_llvm_file(llvm_result.value().text);
+        }();
         if (!temp_ir_result) {
-            return base::Result<void>::fail(temp_ir_result.error());
+            return run_profile.finish(base::Result<void>::fail(temp_ir_result.error()));
         }
         NativeCompileRequest request;
         request.clang_path = invocation.clang_path;
@@ -494,16 +576,19 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
         request.output_path = invocation.output_path;
         request.emit_kind = invocation.emit_kind;
         request.input_is_llvm_ir = true;
-        auto native_result = invoke_clang(request);
+        auto native_result = [&] {
+            ScopedCompilationPhase phase(run_profile.profiler(), "native.clang");
+            return invoke_clang(request);
+        }();
         std::error_code remove_error;
         std::filesystem::remove(temp_ir_result.value(), remove_error);
         if (!native_result) {
-            return native_result;
+            return run_profile.finish(base::Result<void>::fail(native_result.error()));
         }
-        return base::Result<void>::ok();
+        return run_profile.finish(base::Result<void>::ok());
     }
 
-    return base::Result<void>::fail({base::ErrorCode::codegen_error, std::string(DRIVER_UNSUPPORTED_EMISSION_MODE)});
+    return run_profile.finish(base::Result<void>::fail({base::ErrorCode::codegen_error, std::string(DRIVER_UNSUPPORTED_EMISSION_MODE)}));
 }
 
 } // namespace aurex::driver

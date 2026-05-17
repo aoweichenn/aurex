@@ -3,11 +3,13 @@
 #include <aurex/driver/compiler.hpp>
 #include <aurex/driver/file_cache.hpp>
 #include <aurex/driver/incremental_cache.hpp>
+#include <aurex/driver/profile.hpp>
 #include <support/test_support.hpp>
 
 #include <cerrno>
 #include <cstring>
 #include <fstream>
+#include <chrono>
 #include <sstream>
 #include <sys/stat.h>
 #include <thread>
@@ -199,6 +201,8 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
         "--opt-level=O2",
         "--incremental-cache",
         "build/hello.axic",
+        "--profile-output",
+        "build/hello.profile.json",
         "examples/hello.ax",
     };
     const driver::CliParseResult object_parse = require_parse_cli(object_args);
@@ -212,6 +216,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     EXPECT_EQ(object_parse.invocation.clang_args.front(), "-fno-color-diagnostics");
     EXPECT_EQ(object_parse.invocation.optimization_level, ir::OptimizationLevel::standard);
     EXPECT_EQ(object_parse.invocation.incremental_cache_path, fs::path("build/hello.axic"));
+    EXPECT_EQ(object_parse.invocation.profile_output_path, fs::path("build/hello.profile.json"));
 
     const std::vector<std::string_view> assembly_args {
         "aurexc",
@@ -285,6 +290,216 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     };
     const driver::CliParseResult option_end_parse = require_parse_cli(option_end_args);
     EXPECT_EQ(option_end_parse.invocation.input_path, fs::path("-strange.ax"));
+}
+
+TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput) {
+    {
+        const fs::path profile = tmp_root() / "hello.profile.json";
+        driver::CompilerInvocation invocation;
+        invocation.input_path = source_root() / "examples" / "hello.ax";
+        invocation.emit_kind = driver::EmitKind::check;
+        invocation.profile_output_path = profile;
+
+        driver::Compiler compiler;
+        const auto result = compiler.run(invocation);
+        ASSERT_TRUE(result) << result.error().message;
+
+        const std::string profile_text = read_text(profile);
+        expect_contains_all(profile_text, {
+            "\"format\": \"aurex-profile-v1\"",
+            "\"phases\"",
+            "\"name\": \"module.read\"",
+            "\"name\": \"module.lex\"",
+            "\"name\": \"module.parse\"",
+            "\"name\": \"sema.analyze\"",
+            "\"rss_mib_after\"",
+            "\"rss_delta_mib\"",
+        });
+    }
+
+    {
+        const fs::path invalid = tmp_root() / "invalid_profile.ax";
+        const fs::path profile = tmp_root() / "invalid.profile.json";
+        std::ofstream out(invalid);
+        out << "module invalid_profile;\nfn main() -> i32 { let value: i32 = true; return value; }\n";
+        out.close();
+
+        driver::CompilerInvocation invocation;
+        invocation.input_path = invalid;
+        invocation.emit_kind = driver::EmitKind::check;
+        invocation.profile_output_path = profile;
+
+        driver::Compiler compiler;
+        testing::internal::CaptureStderr();
+        const auto result = compiler.run(invocation);
+        static_cast<void>(testing::internal::GetCapturedStderr());
+        ASSERT_FALSE(result);
+
+        const std::string profile_text = read_text(profile);
+        expect_contains_all(profile_text, {
+            "\"format\": \"aurex-profile-v1\"",
+            "\"name\": \"module.parse\"",
+            "\"name\": \"sema.analyze\"",
+        });
+    }
+}
+
+TEST_F(AurexIntegrationTest, CompilerProfileCoversJsonAndErrorPaths) {
+    {
+        driver::CompilationProfiler disabled;
+        EXPECT_FALSE(disabled.enabled());
+        disabled.record("ignored", std::chrono::milliseconds(1));
+        EXPECT_TRUE(disabled.phases().empty());
+        const fs::path disabled_path = tmp_root() / "disabled.profile.json";
+        const auto result = disabled.write_json(disabled_path);
+        ASSERT_TRUE(result) << result.error().message;
+        EXPECT_FALSE(fs::exists(disabled_path));
+    }
+
+    {
+        driver::CompilationProfiler profiler(true);
+        ASSERT_TRUE(profiler.enabled());
+        profiler.record(
+            "phase\n\"\\",
+            std::string_view {"detail\t\r\x01", 9},
+            std::chrono::milliseconds(2)
+        );
+        ASSERT_EQ(profiler.phases().size(), 1U);
+        EXPECT_EQ(profiler.phases().front().name, "phase\n\"\\");
+
+        const fs::path profile = tmp_root() / "nested" / "phase.profile.json";
+        const auto result = profiler.write_json(profile);
+        ASSERT_TRUE(result) << result.error().message;
+        const std::string profile_text = read_text(profile);
+        expect_contains_all(profile_text, {
+            "\"format\": \"aurex-profile-v1\"",
+            "\\n",
+            "\\\"",
+            "\\\\",
+            "\\t",
+            "\\r",
+            "\\u0001",
+            "\"elapsed_ms\":",
+            "\"rss_mib_after\":",
+            "\"rss_delta_mib\":",
+        });
+
+        const fs::path relative_profile = "profile-no-parent-test.json";
+        std::error_code remove_error;
+        fs::remove(relative_profile, remove_error);
+        const auto relative_result = profiler.write_json(relative_profile);
+        ASSERT_TRUE(relative_result) << relative_result.error().message;
+        EXPECT_TRUE(fs::exists(relative_profile));
+        fs::remove(relative_profile, remove_error);
+    }
+
+    {
+        driver::CompilationProfiler profiler(true);
+        profiler.record("phase", std::chrono::milliseconds(1));
+        const fs::path file_parent = tmp_root() / "profile-parent-file";
+        {
+            std::ofstream out(file_parent);
+            out << "not a directory";
+        }
+        const auto result = profiler.write_json(file_parent / "profile.json");
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, base::ErrorCode::io_error);
+        expect_contains(result.error().message, "profile output directory");
+    }
+
+    {
+        driver::CompilationProfiler profiler(true);
+        profiler.record("phase", std::chrono::milliseconds(1));
+        const fs::path directory_target = tmp_root() / "profile-directory-target";
+        fs::create_directories(directory_target);
+        const auto result = profiler.write_json(directory_target);
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, base::ErrorCode::io_error);
+        expect_contains(result.error().message, "profile output file");
+    }
+
+    {
+        driver::ScopedCompilationPhase phase(nullptr, "ignored");
+    }
+}
+
+TEST_F(AurexIntegrationTest, CompilerProfileCoversCacheHitWriteFailureAndJsonSuppression) {
+    driver::clear_file_cache();
+
+    {
+        const fs::path cache_dir = tmp_root() / "profile-cache-hit";
+        fs::create_directories(cache_dir);
+        const fs::path source = cache_dir / "main.ax";
+        const fs::path cache = cache_dir / "main.axic";
+        {
+            std::ofstream out(source, std::ios::binary | std::ios::trunc);
+            out << DRIVER_INCREMENTAL_CACHE_FIRST_SOURCE;
+        }
+
+        driver::CompilerInvocation invocation;
+        invocation.input_path = source;
+        invocation.emit_kind = driver::EmitKind::check;
+        invocation.incremental_cache_path = cache;
+
+        driver::Compiler compiler;
+        auto first = compiler.run(invocation);
+        ASSERT_TRUE(first) << first.error().message;
+
+        invocation.profile_output_path = cache_dir / "cache-hit.profile.json";
+        auto second = compiler.run(invocation);
+        ASSERT_TRUE(second) << second.error().message;
+        const std::string profile_text = read_text(invocation.profile_output_path);
+        expect_contains(profile_text, "\"name\": \"incremental_cache.lookup\"");
+        EXPECT_EQ(profile_text.find("\"name\": \"module.read\""), std::string::npos);
+    }
+
+    {
+        const fs::path file_parent = tmp_root() / "compiler-profile-parent-file";
+        {
+            std::ofstream out(file_parent);
+            out << "not a directory";
+        }
+
+        driver::CompilerInvocation invocation;
+        invocation.input_path = source_root() / "examples" / "hello.ax";
+        invocation.emit_kind = driver::EmitKind::check;
+        invocation.profile_output_path = file_parent / "profile.json";
+
+        driver::Compiler compiler;
+        auto result = compiler.run(invocation);
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, base::ErrorCode::io_error);
+        expect_contains(result.error().message, "profile output directory");
+    }
+
+    {
+        const fs::path source = tmp_root() / "json_suppressed_diagnostics.ax";
+        std::ofstream out(source);
+        out << "module json_suppressed_diagnostics;\nfn main() -> i32 {\n";
+        for (int index = 0; index < 150; ++index) {
+            out << "    let value_" << index << ": i32 = true;\n";
+        }
+        out << "    return 0;\n}\n";
+        out.close();
+
+        driver::CompilerInvocation invocation;
+        invocation.input_path = source;
+        invocation.emit_kind = driver::EmitKind::check;
+        invocation.diagnostic_format = driver::DiagnosticOutputFormat::json;
+
+        driver::Compiler compiler;
+        testing::internal::CaptureStderr();
+        const auto result = compiler.run(invocation);
+        const std::string diagnostics = testing::internal::GetCapturedStderr();
+        ASSERT_FALSE(result);
+        expect_contains_all(diagnostics, {
+            "\"format\": \"aurex-diagnostics-v1\"",
+            "\"suppressed\": ",
+        });
+        EXPECT_EQ(diagnostics.find("\"suppressed\": 0"), std::string::npos);
+    }
+
+    driver::clear_file_cache();
 }
 
 TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors) {

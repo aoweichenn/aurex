@@ -4,6 +4,7 @@
 
 #include <aurex/base/config.hpp>
 #include <aurex/driver/file_cache.hpp>
+#include <aurex/driver/profile.hpp>
 #include <aurex/lex/lexer.hpp>
 #include <aurex/parse/parser.hpp>
 #include <aurex/syntax/module.hpp>
@@ -40,16 +41,24 @@ void push_error(base::DiagnosticSink& diagnostics, const base::SourceRange& rang
 [[nodiscard]] base::Result<syntax::AstModule> lex_and_parse_module(
     const base::SourceId source_id,
     const std::string_view source_text,
-    base::DiagnosticSink& diagnostics
+    base::DiagnosticSink& diagnostics,
+    CompilationProfiler* const profiler,
+    const std::string_view detail
 ) {
     lex::Lexer lexer(source_id, source_text, diagnostics);
-    auto token_result = lexer.tokenize();
+    auto token_result = [&] {
+        ScopedCompilationPhase phase(profiler, "module.lex", detail);
+        return lexer.tokenize();
+    }();
     if (!token_result) {
         return base::Result<syntax::AstModule>::fail(token_result.error());
     }
 
     parse::Parser parser(token_result.value(), diagnostics);
-    auto ast_result = parser.parse_module();
+    auto ast_result = [&] {
+        ScopedCompilationPhase phase(profiler, "module.parse", detail);
+        return parser.parse_module();
+    }();
     if (!ast_result) {
         return base::Result<syntax::AstModule>::fail(ast_result.error());
     }
@@ -635,11 +644,13 @@ void append_module_into(
 ModuleLoader::ModuleLoader(
     const CompilerInvocation& invocation,
     base::SourceManager& sources,
-    base::DiagnosticSink& diagnostics
+    base::DiagnosticSink& diagnostics,
+    CompilationProfiler* const profiler
 ) noexcept
     : invocation_(invocation),
       sources_(sources),
       diagnostics_(diagnostics),
+      profiler_(profiler),
       import_paths_(invocation.import_paths) {}
 
 base::Result<syntax::AstModule> ModuleLoader::load_root() {
@@ -700,14 +711,23 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
     }
     this->loading_files_.insert(key);
 
-    auto source_result = read_text_file(canonical);
+    auto source_result = [&] {
+        ScopedCompilationPhase phase(this->profiler_, "module.read", key);
+        return read_text_file(canonical);
+    }();
     if (!source_result) {
         this->loading_files_.erase(key);
         return base::Result<syntax::ModuleId>::fail(source_result.error());
     }
 
     const base::SourceId source_id = this->sources_.add_source(canonical.string(), source_result.take_value());
-    auto ast_result = lex_and_parse_module(source_id, this->sources_.text(source_id), this->diagnostics_);
+    auto ast_result = lex_and_parse_module(
+        source_id,
+        this->sources_.text(source_id),
+        this->diagnostics_,
+        this->profiler_,
+        key
+    );
     if (!ast_result) {
         this->loading_files_.erase(key);
         return base::Result<syntax::ModuleId>::fail(ast_result.error());
@@ -795,17 +815,20 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
         combined.intern_resolved_import(resolved);
         direct_imports.push_back(resolved);
     }
-    if (is_root &&
-        imports.empty() &&
-        module_id.value == 0 &&
-        combined.modules.size() == 1 &&
-        ast_payloads_empty(combined)) {
-        move_root_module_into_empty_combined(combined, std::move(module), module_id);
-    } else {
-        if (syntax::is_valid(module_id) && module_id.value < combined.modules.size()) {
-            combined.modules[module_id.value].imports = std::move(direct_imports);
+    {
+        ScopedCompilationPhase phase(this->profiler_, "module.append", module_name);
+        if (is_root &&
+            imports.empty() &&
+            module_id.value == 0 &&
+            combined.modules.size() == 1 &&
+            ast_payloads_empty(combined)) {
+            move_root_module_into_empty_combined(combined, std::move(module), module_id);
+        } else {
+            if (syntax::is_valid(module_id) && module_id.value < combined.modules.size()) {
+                combined.modules[module_id.value].imports = std::move(direct_imports);
+            }
+            append_module_into(combined, std::move(module), is_root, module_id);
         }
-        append_module_into(combined, std::move(module), is_root, module_id);
     }
     this->loading_files_.erase(key);
     this->loaded_file_modules_.emplace(key, module_id);

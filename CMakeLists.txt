@@ -13,7 +13,11 @@ option(AUREX_ENABLE_COVERAGE "Build Aurex with LLVM source-based coverage instru
 option(AUREX_BUILD_FUZZERS "Build Aurex libFuzzer targets" OFF)
 option(AUREX_BUILD_BENCHMARKS "Build Aurex Google Benchmark targets" OFF)
 option(AUREX_FRONTEND_ONLY "Build only frontend libraries and frontend tests without LLVM, IR, driver, or CLI targets" OFF)
-option(AUREX_ENABLE_LTO "Build Aurex targets with interprocedural/link-time optimization" OFF)
+set(AUREX_ENABLE_LTO_DEFAULT OFF)
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(AUREX_ENABLE_LTO_DEFAULT ON)
+endif()
+option(AUREX_ENABLE_LTO "Build Aurex targets with interprocedural/link-time optimization" ${AUREX_ENABLE_LTO_DEFAULT})
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

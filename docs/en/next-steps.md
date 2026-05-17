@@ -119,9 +119,12 @@ after core syntax, types, modules, and ABI boundaries stabilize.
    and additional machine profiles for the existing mixed-feature release stress
    gates rather than reintroducing whole-AST copies or per-node heap
    string/vector side tables. The light generic/AST/diagnostic threshold gate is
-   available through `make perf-stress-threshold` and CI; the heavier 2M AST /
-   5000 generic / 5000 diagnostic Release and Release+LTO gates are available
-   through `make perf-release-threshold` and `make perf-release-lto-threshold`.
+   available through `make perf-stress-threshold` and CI; the heavier 2M
+   high-complexity AST / 5000 generic / 5000 diagnostic release gate is
+   available through `make perf-release-threshold`, which now runs Release+LTO
+   from `build-perf-lto` by default and records process metrics plus compiler
+   phase profile JSON. `make perf-release-lto-threshold` remains a compatibility
+   alias for the same gate.
 
 11. Expression type-cache closure
 

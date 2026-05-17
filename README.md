@@ -94,7 +94,6 @@ make perf
 make perf-stress
 make perf-stress-threshold
 make perf-release-threshold
-make perf-release-lto-threshold
 make perf-ast-stress
 ```
 
@@ -105,15 +104,21 @@ lowering, native execution, import paths, and install-tree compiler execution.
 frontend hot-path measurements. `make perf` prints the lightweight JSON-derived
 Aurex frontend baseline and the Google Benchmark process-level comparison
 against available modern frontend drivers (`clang++`, `g++`, and `rustc`);
-`make perf-stress-threshold`, `make perf-release-threshold`, and
-`make perf-release-lto-threshold` enforce the local CI, release, and
-Release+LTO stress gates. `make perf-release-all-threshold` runs both release
-gates. These threshold gates share
+`make perf-stress-threshold` enforces the local CI stress gate, while
+`make perf-release-threshold` now builds and runs the release gate as
+Release+LTO from `build-perf-lto` by default. `make perf-release-lto-threshold`
+and `make perf-release-all-threshold` are compatibility aliases for that same
+release gate, not a second non-LTO lane. These threshold gates share
 `AUREX_PERF_THRESHOLD_PROFILE` and `AUREX_PERF_THRESHOLD_SCALE`; the profile is
 recorded in each stress JSON file, and the positive scale factor multiplies the
 elapsed-time and peak-RSS thresholds for calibrated cross-machine runs without
-changing the baseline command lines. `make perf-compare` runs only the
-cross-frontend comparison lane. `make perf-stress` runs generated mixed-feature
+changing the baseline command lines. The stress tools now also pass
+`--profile-output` to `aurexc` and persist `aurex-profile-v1` phase JSON for
+module read/lex/parse/append, sema, cache, IR, LLVM, and native backend phases;
+the console report includes process wall/user/sys time, peak RSS, page faults,
+and per-phase elapsed time plus cumulative RSS-after / RSS-delta values.
+`make perf-compare` runs only the cross-frontend comparison lane.
+`make perf-stress` runs generated mixed-feature
 generic, AST bulk, and diagnostic baselines and records both elapsed time and
 peak RSS. `make perf-ast-stress` runs only the AST bulk lane. The three stress
 generators default to `--shape=mixed`: generic stress covers generic
@@ -149,15 +154,17 @@ interner vectors/hash nodes are now bump-backed; parser construction, module
 loading, and postfix materialization write compact expression headers plus
 per-kind payloads directly. Parser startup estimates AST storage from token
 shape and reserves hot payload arenas up front so bump-backed vectors do not
-retain repeated growth buffers on large modules. On the local mixed AST bulk
-stress lane, the 100000-statement case is now roughly 96.3 MiB RSS / 77.9 ms,
-the Release 2M-statement gate is roughly 1465.3 MiB RSS / 1196.7 ms, and the
-Release+LTO 2M-statement gate is roughly 1466.9 MiB RSS / 950.8 ms. The mixed
-5000-generic Release gate is roughly 450.9 MiB RSS / 30275.8 ms, while
-Release+LTO is roughly 450.6 MiB RSS / 18144.0 ms; the mixed 5000-diagnostic
-Release gate is roughly 33.1 MiB RSS / 103.7 ms, while Release+LTO is roughly
-34.3 MiB RSS / 70.5 ms. Google Benchmark `sema_ast_bulk/1024` is roughly
-128 ns/expr, and the local
+retain repeated growth buffers on large modules. The release AST threshold is
+8192 MiB RSS so the gate can use the deliberately over-complex mixed source
+rather than a throttled toy program. On the local Release+LTO release gate,
+5000 mixed generic instances are roughly 450.5 MiB RSS / 13073.0 ms, the
+2M-statement mixed AST source is about 106820 KiB and runs at roughly
+4325.9 MiB RSS / 2841.3 ms, and 5000 mixed diagnostic errors are roughly
+32.9 MiB RSS / 66.7 ms. The AST phase profile for that 2M case records about
+27.2 ms / 227.1 MiB after module.read, 247.7 ms / 1291.3 MiB after module.lex,
+1130.0 ms / 3468.1 MiB after module.parse, and 1141.8 ms / 4325.9 MiB after
+sema.analyze. Google Benchmark `sema_ast_bulk/1024` is roughly 128 ns/expr,
+and the local
 `tools/frontend_compare.py` baseline has Aurex `--check` at about 10.1 ms for
 lookup/96 and 9.6 ms for generics/96 versus Clang++ at about 21.2 ms / 24.3 ms
 and G++ at about 25.1 ms / 24.3 ms. Generic side-table lifetime is now closed

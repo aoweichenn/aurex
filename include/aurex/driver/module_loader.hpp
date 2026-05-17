@@ -15,6 +15,8 @@
 
 namespace aurex::driver {
 
+class CompilationProfiler;
+
 struct ModuleRecord {
     std::string name;
     std::filesystem::path path;
@@ -25,7 +27,8 @@ public:
     ModuleLoader(
         const CompilerInvocation& invocation,
         base::SourceManager& sources,
-        base::DiagnosticSink& diagnostics
+        base::DiagnosticSink& diagnostics,
+        CompilationProfiler* profiler = nullptr
     ) noexcept;
 
     [[nodiscard]] base::Result<syntax::AstModule> load_root();
@@ -49,6 +52,7 @@ private:
     const CompilerInvocation& invocation_;
     base::SourceManager& sources_;
     base::DiagnosticSink& diagnostics_;
+    CompilationProfiler* profiler_ = nullptr;
     std::vector<std::filesystem::path> import_paths_;
     std::unordered_set<std::string> loading_files_;
     std::unordered_map<std::string, syntax::ModuleId> loaded_file_modules_;

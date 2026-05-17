@@ -93,7 +93,6 @@ make perf
 make perf-stress
 make perf-stress-threshold
 make perf-release-threshold
-make perf-release-lto-threshold
 make perf-ast-stress
 ```
 
@@ -116,12 +115,15 @@ stress scripts accept `--max-elapsed-ms`, `--max-rss-mib`,
 `--threshold-profile`, and `--threshold-scale`; `make perf-stress-threshold`
 runs the default mixed-feature light gate (100/200 generic plus 1000/5000 AST
 bulk plus 100/500 diagnostic errors), and CI runs the same gate in the
-`stress-thresholds` job. `make perf-release-threshold` runs the 5000 generic,
-2M AST, and 5000 diagnostic mixed-feature Release gate; `make
-perf-release-lto-threshold` runs the same threshold set from an isolated
-`build-perf-lto` Release+LTO build, and `make perf-release-all-threshold` runs
-both release gates. The stress JSON records raw/effective thresholds, machine
-info, profile/scale calibration, and Release/LTO build options. Generic
+`stress-thresholds` job. `make perf-release-threshold` now runs the 5000
+generic, 2M high-complexity AST, and 5000 diagnostic mixed-feature release gate
+as Release+LTO from `build-perf-lto` by default. `make
+perf-release-lto-threshold` and `make perf-release-all-threshold` are
+compatibility aliases for that same release gate. The stress JSON records
+raw/effective thresholds, machine info, profile/scale calibration,
+Release/LTO build options, process wall/user/sys/RSS/page-fault metrics, and
+the `aurex-profile-v1` compiler phase profile emitted by `--profile-output`.
+Generic
 function instance signatures, generic struct/enum
 `TypeInfo`, and checked enum case display now keep internal semantic keys and
 TypeHandle arguments separate from display names, so `--check` does not format
@@ -139,11 +141,15 @@ expressions; diagnostic stress cycles multiple semantic error families instead
 of only missing names. `tools/generic_stress.py --shape=templates` covers many
 distinct generic templates at 2000/5000+ scale, while `--shape=instances`
 keeps the old many-instantiations comparison shape. IR/native output mode keeps
-the lowering tables so codegen behavior stays unchanged. Current local
-mixed-feature measurements are about 450.9 MiB / 30275.8 ms for 5000 generic,
-1465.3 MiB / 1196.7 ms for 2M AST, and 33.1 MiB / 103.7 ms for 5000
-diagnostics in Release; Release+LTO is about 450.6 MiB / 18144.0 ms, 1466.9
-MiB / 950.8 ms, and 34.3 MiB / 70.5 ms respectively.
+the lowering tables so codegen behavior stays unchanged. The release AST RSS
+threshold is 8192 MiB so the gate can keep the deliberately over-complex mixed
+source instead of falling back to a throttled toy input. Current local
+Release+LTO measurements are about 450.5 MiB / 13073.0 ms for 5000 generic,
+4325.9 MiB / 2841.3 ms for the 2M AST source of about 106820 KiB, and
+32.9 MiB / 66.7 ms for 5000 diagnostics. The 2M AST phase profile records
+about 27.2 ms / 227.1 MiB after module.read, 247.7 ms / 1291.3 MiB after
+module.lex, 1130.0 ms / 3468.1 MiB after module.parse, and 1141.8 ms /
+4325.9 MiB after sema.analyze.
 The expression P0 semantics line now separates intrinsic and final expression
 types. Checked and generic side tables contain `expr_intrinsic_types` for
 context-free expression types, `expr_types` for contextual final types,

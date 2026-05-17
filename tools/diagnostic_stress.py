@@ -14,14 +14,23 @@ import argparse
 import json
 import os
 import pathlib
-import platform
 import re
 import subprocess
 import sys
-import time
 from dataclasses import asdict, dataclass
 
-from perf_thresholds import make_calibration, scaled_threshold, stress_build_options, stress_lto_enabled
+from perf_thresholds import (
+    ProcessMetrics,
+    format_optional_float,
+    format_optional_int,
+    load_compiler_profile,
+    make_calibration,
+    print_compiler_phase_report,
+    run_timed_command,
+    scaled_threshold,
+    stress_build_options,
+    stress_lto_enabled,
+)
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -41,14 +50,6 @@ DIAGNOSTIC_STRESS_SHAPES = {
     "mixed",
     "missing",
 }
-DIAGNOSTIC_STRESS_TIME_PARSE_PATTERN = re.compile(
-    r"(?:maximum resident set size:\s+(\d+)|(\d+)\s+maximum resident set size)",
-    re.IGNORECASE,
-)
-DIAGNOSTIC_STRESS_GNU_TIME_PATTERN = re.compile(
-    r"Maximum resident set size \(kbytes\):\s+(\d+)",
-    re.IGNORECASE,
-)
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,9 @@ class StressRow:
     printed_errors: int
     suppressed: int
     output_bytes: int
+    process_metrics: dict[str, object]
+    compiler_profile_path: str
+    compiler_profile: dict[str, object] | None
     source: str
 
 
@@ -213,45 +217,19 @@ def write_source(error_count: int, shape: str) -> pathlib.Path:
     return path
 
 
-def parse_peak_rss_mib(stderr: str) -> float | None:
-    if platform.system() == "Darwin":
-        match = DIAGNOSTIC_STRESS_TIME_PARSE_PATTERN.search(stderr)
-        if match is None:
-            return None
-        rss_bytes = int(next(group for group in match.groups() if group is not None))
-        return rss_bytes / (1024.0 * 1024.0)
-    match = DIAGNOSTIC_STRESS_GNU_TIME_PATTERN.search(stderr)
-    if match is None:
-        return None
-    rss_kib = int(match.group(1))
-    return rss_kib / 1024.0
-
-
 def parse_suppressed_diagnostics(output: str) -> int:
     match = re.search(r"suppressing\s+(\d+)\s+additional diagnostics", output)
     return 0 if match is None else int(match.group(1))
 
 
-def timed_command(source: pathlib.Path) -> tuple[float, float | None, str]:
-    time_tool = pathlib.Path("/usr/bin/time")
-    base_cmd = [str(AUREXC), "--check", str(source)]
-    if time_tool.exists() and os.access(time_tool, os.X_OK):
-        if platform.system() == "Darwin":
-            cmd = [str(time_tool), "-l", *base_cmd]
-        else:
-            cmd = [str(time_tool), "-v", *base_cmd]
-    else:
-        cmd = base_cmd
-
-    started = time.perf_counter()
-    completed = subprocess.run(
-        cmd,
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    elapsed_ms = (time.perf_counter() - started) * 1000.0
+def timed_command(
+    source: pathlib.Path,
+    profile: pathlib.Path,
+) -> tuple[ProcessMetrics, dict[str, object] | None, str]:
+    if profile.exists():
+        profile.unlink()
+    base_cmd = [str(AUREXC), "--profile-output", str(profile), "--check", str(source)]
+    completed, metrics = run_timed_command(base_cmd, ROOT)
     output = completed.stdout + completed.stderr
     if completed.returncode == 0:
         raise RuntimeError(
@@ -263,7 +241,10 @@ def timed_command(source: pathlib.Path) -> tuple[float, float | None, str]:
             f"diagnostic stress failed without diagnostics: {' '.join(base_cmd)}\n"
             f"output:\n{output}"
         )
-    return elapsed_ms, parse_peak_rss_mib(completed.stderr), output
+    compiler_profile = load_compiler_profile(profile)
+    if compiler_profile is None:
+        raise RuntimeError(f"compiler profile was not written: {profile}")
+    return metrics, compiler_profile, output
 
 
 def parse_counts(text: str | None) -> list[int]:
@@ -303,17 +284,21 @@ def run_stress(counts: list[int], shape: str) -> list[StressRow]:
     rows: list[StressRow] = []
     for count in counts:
         source = write_source(count, shape)
-        elapsed_ms, max_rss_mib, output = timed_command(source)
+        profile = GENERATED_ROOT / f"diagnostic_profile_{shape}_{count}.json"
+        metrics, compiler_profile, output = timed_command(source, profile)
         rows.append(
             StressRow(
                 requested_errors=count,
                 shape=shape,
                 source_bytes=source.stat().st_size,
-                elapsed_ms=elapsed_ms,
-                max_rss_mib=max_rss_mib,
+                elapsed_ms=metrics.elapsed_ms,
+                max_rss_mib=metrics.max_rss_mib,
                 printed_errors=output.count("error:") + output.count("\033[1;31merror\033[0m"),
                 suppressed=parse_suppressed_diagnostics(output),
                 output_bytes=len(output.encode("utf-8")),
+                process_metrics=metrics.to_json(),
+                compiler_profile_path=display_path(profile),
+                compiler_profile=compiler_profile,
                 source=display_path(source),
             )
         )
@@ -382,29 +367,43 @@ def print_report(rows: list[StressRow], thresholds: StressThresholds, calibratio
         threshold_parts.append(f"RSS <= {thresholds.max_rss_mib:.1f} MiB")
     threshold_text = ", ".join(threshold_parts) if threshold_parts else "none"
     print(f"thresholds: {threshold_text}")
-    print("RSS is peak process resident set size when /usr/bin/time exposes it.")
+    print("Process RSS/page-fault metrics come from /usr/bin/time when available.")
+    print("Compiler phase RSS is cumulative max RSS after each recorded phase, not isolated per-phase allocation.")
     print()
     print(
-        f"{'errors':>8} {'shape':>8} {'source_KiB':>12} {'elapsed_ms':>12} "
-        f"{'peak_RSS_MiB':>14} {'printed':>8} {'suppressed':>10} "
-        f"{'output_KiB':>12} {'source':<36}"
+        f"{'errors':>8} {'shape':>8} {'source_KiB':>12} {'wall_ms':>12} "
+        f"{'user_s':>9} {'sys_s':>9} {'peak_RSS_MiB':>14} {'minor_pf':>10} "
+        f"{'major_pf':>10} {'printed':>8} {'suppressed':>10} {'output_KiB':>12} "
+        f"{'source':<36}"
     )
     print(
-        f"{'-' * 8} {'-' * 8} {'-' * 12} {'-' * 12} {'-' * 14} "
-        f"{'-' * 8} {'-' * 10} {'-' * 12} {'-' * 36}"
+        f"{'-' * 8} {'-' * 8} {'-' * 12} {'-' * 12} "
+        f"{'-' * 9} {'-' * 9} {'-' * 14} {'-' * 10} "
+        f"{'-' * 10} {'-' * 8} {'-' * 10} {'-' * 12} {'-' * 36}"
     )
     for row in rows:
         rss = "n/a" if row.max_rss_mib is None else f"{row.max_rss_mib:.1f}"
+        metrics = row.process_metrics
         print(
             f"{row.requested_errors:>8} "
             f"{row.shape:>8} "
             f"{row.source_bytes / 1024.0:>12.1f} "
             f"{row.elapsed_ms:>12.3f} "
+            f"{format_optional_float(metrics.get('user_time_s') if isinstance(metrics.get('user_time_s'), (float, int)) else None):>9} "
+            f"{format_optional_float(metrics.get('system_time_s') if isinstance(metrics.get('system_time_s'), (float, int)) else None):>9} "
             f"{rss:>14} "
+            f"{format_optional_int(metrics.get('minor_page_faults') if isinstance(metrics.get('minor_page_faults'), int) else None):>10} "
+            f"{format_optional_int(metrics.get('major_page_faults') if isinstance(metrics.get('major_page_faults'), int) else None):>10} "
             f"{row.printed_errors:>8} "
             f"{row.suppressed:>10} "
             f"{row.output_bytes / 1024.0:>12.1f} "
             f"{row.source:<36}"
+        )
+    for row in rows:
+        print_compiler_phase_report(
+            f"{row.requested_errors} {row.shape} diagnostic errors",
+            row.compiler_profile_path,
+            row.compiler_profile,
         )
     if violations:
         print()

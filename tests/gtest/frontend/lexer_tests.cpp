@@ -20,6 +20,8 @@ namespace aurex::test {
 namespace {
 
 using base::DiagnosticSink;
+using base::DiagnosticCategory;
+using base::DiagnosticCode;
 using base::ErrorCode;
 using syntax::Token;
 using syntax::TokenKind;
@@ -385,6 +387,8 @@ TEST(CoreUnit, LexerRejectsNonAsciiBytesOutsideStrings) {
     EXPECT_EQ(result.error().code, ErrorCode::lex_error);
     ASSERT_EQ(diagnostics.diagnostics().size(), 1U);
     EXPECT_EQ(diagnostics.diagnostics().front().message, "invalid character");
+    EXPECT_EQ(diagnostics.diagnostics().front().category, DiagnosticCategory::lexer);
+    EXPECT_EQ(diagnostics.diagnostics().front().code, DiagnosticCode::lexer_invalid_token);
     EXPECT_EQ(diagnostics.diagnostics().front().range.begin, 0U);
     EXPECT_EQ(diagnostics.diagnostics().front().range.end, 1U);
 }
@@ -402,6 +406,8 @@ TEST(CoreUnit, LexerAggregatesInvalidByteRunsAndCapsDiagnostics) {
     ASSERT_FALSE(run_result);
     ASSERT_EQ(run_diagnostics.diagnostics().size(), 1U);
     EXPECT_EQ(run_diagnostics.diagnostics().front().message, "invalid character");
+    EXPECT_EQ(run_diagnostics.diagnostics().front().category, DiagnosticCategory::lexer);
+    EXPECT_EQ(run_diagnostics.diagnostics().front().code, DiagnosticCode::lexer_invalid_token);
     EXPECT_EQ(run_diagnostics.diagnostics().front().range.begin, 0U);
     EXPECT_EQ(run_diagnostics.diagnostics().front().range.end, LEXER_TEST_BINARY_BYTES);
 
@@ -417,6 +423,8 @@ TEST(CoreUnit, LexerAggregatesInvalidByteRunsAndCapsDiagnostics) {
     ASSERT_FALSE(budget_result);
     ASSERT_EQ(budget_diagnostics.diagnostics().size(), LEXER_TEST_BUDGET_MESSAGE_DIAGNOSTIC_COUNT);
     EXPECT_EQ(budget_diagnostics.diagnostics().back().message, "too many lexical errors; suppressing further lexer diagnostics");
+    EXPECT_EQ(budget_diagnostics.diagnostics().back().category, DiagnosticCategory::lexer);
+    EXPECT_EQ(budget_diagnostics.diagnostics().back().code, DiagnosticCode::lexer_error_budget);
 }
 
 TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches) {

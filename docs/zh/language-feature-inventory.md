@@ -810,7 +810,7 @@ M2 已删除：
 
 - range pattern。
 - string/byte pattern。
-- match guard 已区分无 guard、字面量 true/false 和动态表达式；slice / 开放域 exhaustiveness 仍可继续细化。
+- match guard 已区分无 guard、字面量 true/false 和动态表达式；dynamic slice 代表长度 witness 和 open integer literal usefulness 已进入穷尽/不可达主路径。
 - lambda / closure。
 - operator overloading。
 - user-defined implicit conversion。
@@ -965,7 +965,7 @@ let all = bytes[:];
    }
    ```
 
-   `let ... else`、slice pattern、binding or-pattern alternatives、guard literal truth 建模和有限结构化穷尽性已补齐；后续继续改进 slice 和开放域 structural exhaustiveness / unreachable 诊断。
+   `let ... else`、slice pattern、binding or-pattern alternatives、guard literal truth 建模、dynamic slice 代表长度 witness、open integer literal usefulness 和有限结构化穷尽性已补齐。
 
 ### P2：已冻结或中等优先级
 
@@ -1025,7 +1025,7 @@ let all = bytes[:];
 
 1. 保持当前 grammar 的 EBNF、syntax matrix、parser/sema tests 同步。
 2. 继续保持最小 `where` capability 的文档、测试和诊断同步；资源语义和完整 borrow/lifetime 体系暂缓。
-3. 继续完善 slice 和开放域 structural exhaustiveness / unreachable 诊断，并保持 guard 精确覆盖规则的测试。
+3. 继续保持 match witness、dynamic slice/open integer 回归样例和 guard 精确覆盖规则的测试同步。
 4. 继续把 unsafe 维持在最小边界，不扩展到 unsafe trait/impl/extern block 或资源模型。
 
 ## 参考

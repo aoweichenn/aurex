@@ -16,11 +16,15 @@ namespace aurex::test {
 namespace {
 
 using base::Diagnostic;
+using base::DiagnosticCategory;
+using base::DiagnosticCode;
 using base::DiagnosticSink;
 using base::ErrorCode;
 using base::Severity;
 
 constexpr int BASE_TEST_UNKNOWN_SEVERITY_VALUE = 99;
+constexpr int BASE_TEST_UNKNOWN_DIAGNOSTIC_CATEGORY_VALUE = 99;
+constexpr int BASE_TEST_UNKNOWN_DIAGNOSTIC_CODE_VALUE = 99;
 constexpr base::usize BASE_TEST_BUMP_SMALL_BLOCK_BYTES = 32;
 constexpr base::usize BASE_TEST_BUMP_ALIGNMENT = 16;
 constexpr base::usize BASE_TEST_BUMP_NON_POWER_ALIGNMENT = 24;
@@ -61,10 +65,18 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
     diagnostics.push(Diagnostic {Severity::help, forward, "help"});
     diagnostics.push(Diagnostic {Severity::warning, forward, "warning"});
     EXPECT_FALSE(diagnostics.has_error());
-    diagnostics.push(Diagnostic {Severity::error, forward, "error"});
+    diagnostics.push(Diagnostic {
+        Severity::error,
+        forward,
+        "error",
+        DiagnosticCategory::semantic,
+        DiagnosticCode::semantic_error,
+    });
     EXPECT_TRUE(diagnostics.has_error());
     diagnostics.push(Diagnostic {Severity::fatal, forward, "fatal"});
     ASSERT_EQ(diagnostics.diagnostics().size(), 5U);
+    EXPECT_EQ(diagnostics.diagnostics()[3].category, DiagnosticCategory::semantic);
+    EXPECT_EQ(diagnostics.diagnostics()[3].code, DiagnosticCode::semantic_error);
 
     EXPECT_EQ(base::severity_name(Severity::note), "note");
     EXPECT_EQ(base::severity_name(Severity::help), "help");
@@ -72,6 +84,47 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
     EXPECT_EQ(base::severity_name(Severity::error), "error");
     EXPECT_EQ(base::severity_name(Severity::fatal), "fatal");
     EXPECT_EQ(base::severity_name(static_cast<Severity>(BASE_TEST_UNKNOWN_SEVERITY_VALUE)), "unknown");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::general), "general");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::lexer), "lexer");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::parser), "parser");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::semantic), "semantic");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::type), "type");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::name_resolution), "name_resolution");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::visibility), "visibility");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::pattern), "pattern");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::safety), "safety");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::unsupported), "unsupported");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::capability), "capability");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::module), "module");
+    EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::internal), "internal");
+    EXPECT_EQ(
+        base::diagnostic_category_name(
+            static_cast<DiagnosticCategory>(BASE_TEST_UNKNOWN_DIAGNOSTIC_CATEGORY_VALUE)
+        ),
+        "unknown"
+    );
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::none), "none");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::lexer_invalid_token), "LEX0001");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::lexer_error_budget), "LEX0002");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::parser_syntax), "PAR0001");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::parser_note), "PAR0002");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_error), "SEM0001");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_type_mismatch), "SEM0100");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_lookup), "SEM0200");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_duplicate), "SEM0201");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_visibility), "SEM0202");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_unsupported), "SEM0300");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_unsafe_required), "SEM0400");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_capability), "SEM0450");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_pattern), "SEM0500");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_pattern_exhaustiveness), "SEM0501");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_pattern_unreachable), "SEM0502");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::module_error), "MOD0001");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::internal_contract), "INT0001");
+    EXPECT_EQ(
+        base::diagnostic_code_name(static_cast<DiagnosticCode>(BASE_TEST_UNKNOWN_DIAGNOSTIC_CODE_VALUE)),
+        "unknown"
+    );
 
     auto ok_int = base::Result<int>::ok(11);
     ASSERT_TRUE(ok_int);

@@ -62,12 +62,16 @@ base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& 
             base::Severity::error,
             symbol.range,
             std::string(SEMA_DUPLICATE_DEFINITION_OR_SHADOWING) + std::string(symbol.name.view()),
+            base::DiagnosticCategory::name_resolution,
+            base::DiagnosticCode::semantic_duplicate,
         });
         if (const Symbol* previous = this->get(existing->second); previous != nullptr) {
             diagnostics.push(base::Diagnostic {
                 base::Severity::note,
                 previous->range,
                 sema_previous_declaration_note_message(symbol.name.view()),
+                base::DiagnosticCategory::name_resolution,
+                base::DiagnosticCode::semantic_duplicate,
             });
         }
         return base::Result<SymbolId>::fail({base::ErrorCode::sema_error, std::string(SEMA_DUPLICATE_SYMBOL)});

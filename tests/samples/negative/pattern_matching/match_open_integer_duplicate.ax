@@ -1,0 +1,13 @@
+module match_open_integer_duplicate;
+
+fn score(value: i32) -> i32 {
+    return match value {
+        1 => 10,
+        1 => 20,
+        _ => 0,
+    };
+}
+
+fn main() -> i32 {
+    return score(1);
+}

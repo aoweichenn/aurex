@@ -571,11 +571,12 @@ void SemanticAnalyzer::validate_generic_parameter_list(const syntax::ItemNode& i
         const auto [first, inserted] = seen.emplace(param.name_id, param.range);
         if (!inserted) {
             this->report(param.range, sema_duplicate_generic_parameter_message(param.name));
-            this->diagnostics_.push(base::Diagnostic {
-                base::Severity::note,
+            this->report_note(
                 first->second,
                 sema_first_generic_parameter_message(param.name),
-            });
+                base::DiagnosticCategory::name_resolution,
+                base::DiagnosticCode::semantic_duplicate
+            );
         }
     }
 }

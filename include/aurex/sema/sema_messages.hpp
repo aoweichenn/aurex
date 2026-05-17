@@ -490,6 +490,9 @@ inline constexpr std::string_view SEMA_MATCH_PAYLOAD_CASE =
 inline constexpr std::string_view SEMA_MATCH_INTEGER_BOOL_WILDCARD =
     "match expression over integer or bool requires a wildcard arm";
 
+inline constexpr std::string_view SEMA_MATCH_OPEN_INTEGER_WILDCARD =
+    "match expression over open integer domain requires a wildcard arm";
+
 inline constexpr std::string_view SEMA_MATCH_RESULT_VOID =
     "match expression result cannot be void";
 
@@ -502,8 +505,14 @@ inline constexpr std::string_view SEMA_OR_PATTERN_BINDING_TYPES =
 inline constexpr std::string_view SEMA_MATCH_NON_ENUM_IRREFUTABLE =
     "match expression over tuple, struct, array, or slice requires an irrefutable arm";
 
+inline constexpr std::string_view SEMA_MATCH_DYNAMIC_SLICE_WITNESS =
+    "match expression over dynamic slice is missing length or element coverage";
+
+inline constexpr std::string_view SEMA_MATCH_ARM_UNREACHABLE =
+    "match arm is unreachable";
+
 inline constexpr std::string_view SEMA_MATCH_WILDCARD_UNREACHABLE =
-    "match arm is unreachable after wildcard pattern";
+    SEMA_MATCH_ARM_UNREACHABLE;
 
 inline constexpr std::string_view SEMA_ENUM_MATCH_PATTERN =
     "enum match pattern must be an enum case or wildcard";

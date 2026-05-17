@@ -19,6 +19,8 @@ namespace aurex::test {
 namespace {
 
 using base::DiagnosticSink;
+using base::DiagnosticCategory;
+using base::DiagnosticCode;
 
 constexpr base::usize PARSER_TEST_DEEP_PREFIX_CHAIN_DEPTH = 8;
 constexpr base::usize PARSER_TEST_LONG_BINARY_TERM_COUNT = 3'000;
@@ -1600,9 +1602,17 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters) {
     ASSERT_TRUE(diagnostics.has_error());
 
     std::string messages;
+    bool found_parser_error = false;
+    bool found_parser_note = false;
     for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
         messages += diagnostic.message;
         messages += '\n';
+        found_parser_error = found_parser_error ||
+            (diagnostic.category == DiagnosticCategory::parser &&
+             diagnostic.code == DiagnosticCode::parser_syntax);
+        found_parser_note = found_parser_note ||
+            (diagnostic.category == DiagnosticCategory::parser &&
+             diagnostic.code == DiagnosticCode::parser_note);
     }
     expect_contains(messages, "expected ')' after expression");
     expect_contains(messages, "expected ',' or ']' after generic type argument");
@@ -1610,6 +1620,8 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters) {
     expect_contains(messages, "expected ',' or ')' after argument");
     expect_contains(messages, "opening delimiter is here");
     expect_contains(messages, "expected expression");
+    EXPECT_TRUE(found_parser_error);
+    EXPECT_TRUE(found_parser_note);
 }
 
 TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeAndPatternDelimiters) {

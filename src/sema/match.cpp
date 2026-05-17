@@ -20,6 +20,9 @@ constexpr std::string_view SEMA_MATCH_BOOL_TRUE_NAME = "true";
 constexpr std::string_view SEMA_MATCH_BOOL_FALSE_NAME = "false";
 constexpr base::u64 SEMA_MATCH_U8_DOMAIN_SIZE = 256;
 constexpr base::u64 SEMA_MATCH_MATRIX_MAX_ARRAY_COLUMNS = 4096;
+constexpr base::usize SEMA_MATCH_SLICE_WITNESS_BOUND_EXTRA = 1;
+constexpr base::usize SEMA_MATCH_SYMBOLIC_SLICE_MAX_LENGTH =
+    static_cast<base::usize>(SEMA_MATCH_MATRIX_MAX_ARRAY_COLUMNS);
 
 enum class MatchGuardTruth {
     none,
@@ -79,6 +82,14 @@ enum class MatchGuardTruth {
         return MatchGuardTruth::always_false;
     }
     return MatchGuardTruth::dynamic;
+}
+
+[[nodiscard]] bool match_type_is_u8(const TypeTable& types, const TypeHandle type) noexcept {
+    if (!is_valid(type) || !types.is_integer(type)) {
+        return false;
+    }
+    const TypeInfo& info = types.get(type);
+    return info.kind == TypeKind::builtin && info.builtin == BuiltinType::u8;
 }
 
 } // namespace
@@ -572,6 +583,11 @@ struct SemanticAnalyzer::MatchUsefulnessChecker final {
         std::vector<TypeHandle> types;
     };
 
+    struct SliceLengthCandidates {
+        std::vector<base::usize> lengths;
+        bool overflow = false;
+    };
+
     MatchUsefulnessChecker(
         SemanticAnalyzer& analyzer,
         const TypeHandle matched,
@@ -597,7 +613,7 @@ struct SemanticAnalyzer::MatchUsefulnessChecker final {
             this->coverage_matrix_.push_back(std::move(row));
         }
         if (!arm_is_useful) {
-            this->analyzer_.report(pattern->range, std::string(SEMA_MATCH_WILDCARD_UNREACHABLE));
+            this->analyzer_.report(pattern->range, std::string(SEMA_MATCH_ARM_UNREACHABLE));
         }
         this->record_enum_case_coverage(root);
     }
@@ -708,7 +724,7 @@ private:
         }
 
         const TypeInfo& info = this->analyzer_.checked_.types.get(type);
-        if (info.kind == TypeKind::builtin && info.builtin == BuiltinType::u8) {
+        if (match_type_is_u8(this->analyzer_.checked_.types, type)) {
             constructors.reserve(static_cast<base::usize>(SEMA_MATCH_U8_DOMAIN_SIZE));
             for (base::u64 value = 0; value < SEMA_MATCH_U8_DOMAIN_SIZE; ++value) {
                 constructors.push_back(MatrixConstructor {
@@ -807,8 +823,7 @@ private:
         }
 
         const TypeInfo& info = this->analyzer_.checked_.types.get(type);
-        if (info.kind == TypeKind::builtin &&
-            info.builtin == BuiltinType::u8 &&
+        if (this->analyzer_.checked_.types.is_integer(type) &&
             pattern->kind == syntax::PatternKind::literal) {
             if (pattern->case_name == SEMA_MATCH_BOOL_TRUE_NAME ||
                 pattern->case_name == SEMA_MATCH_BOOL_FALSE_NAME ||
@@ -986,6 +1001,141 @@ private:
             }
         }
         return row;
+    }
+
+    [[nodiscard]] bool slice_pattern_accepts_length(
+        const syntax::PatternNode& pattern,
+        const base::usize length
+    ) const noexcept {
+        if (pattern.kind != syntax::PatternKind::slice) {
+            return false;
+        }
+        if (!pattern.has_slice_rest) {
+            return pattern.elements.size() == length;
+        }
+        return pattern.elements.size() <= length;
+    }
+
+    [[nodiscard]] std::optional<MatrixRow> specialize_slice_slot_by_length(
+        const MatrixSlot& slot,
+        const base::usize length
+    ) const {
+        if (this->slot_is_any(slot)) {
+            return MatchUsefulnessChecker::wildcard_row(length);
+        }
+        const syntax::PatternNode* pattern = this->slot_node(slot);
+        if (pattern == nullptr || !this->slice_pattern_accepts_length(*pattern, length)) {
+            return std::nullopt;
+        }
+        if (!pattern->has_slice_rest) {
+            MatrixRow row;
+            row.reserve(pattern->elements.size());
+            for (const syntax::PatternId element : pattern->elements) {
+                row.push_back(MatchUsefulnessChecker::pattern_slot(element));
+            }
+            return row;
+        }
+
+        const base::usize prefix_count = std::min(pattern->slice_rest_index, pattern->elements.size());
+        const base::usize suffix_count = pattern->elements.size() - prefix_count;
+        if (prefix_count + suffix_count > length) {
+            return std::nullopt;
+        }
+
+        MatrixRow row;
+        row.reserve(length);
+        for (base::usize i = 0; i < length; ++i) {
+            if (i < prefix_count) {
+                row.push_back(MatchUsefulnessChecker::pattern_slot(pattern->elements[i]));
+            } else if (i >= length - suffix_count) {
+                const base::usize suffix_index = prefix_count + (i - (length - suffix_count));
+                row.push_back(MatchUsefulnessChecker::pattern_slot(pattern->elements[suffix_index]));
+            } else {
+                row.push_back(MatchUsefulnessChecker::wildcard_slot());
+            }
+        }
+        return row;
+    }
+
+    void collect_slice_length_bound(
+        const MatrixSlot& slot,
+        base::usize& max_explicit_elements,
+        bool& overflow
+    ) const noexcept {
+        if (this->slot_is_any(slot)) {
+            return;
+        }
+        const syntax::PatternNode* pattern = this->slot_node(slot);
+        if (pattern == nullptr || pattern->kind != syntax::PatternKind::slice) {
+            return;
+        }
+        if (pattern->elements.size() > SEMA_MATCH_SYMBOLIC_SLICE_MAX_LENGTH) {
+            overflow = true;
+            return;
+        }
+        max_explicit_elements = std::max(max_explicit_elements, pattern->elements.size());
+    }
+
+    [[nodiscard]] SliceLengthCandidates slice_length_candidates(
+        const PatternMatrix& matrix,
+        const MatrixSlot& row_slot
+    ) const {
+        base::usize max_explicit_elements = 0;
+        bool overflow = false;
+        this->collect_slice_length_bound(row_slot, max_explicit_elements, overflow);
+        for (const MatrixRow& row : matrix) {
+            if (row.empty()) {
+                continue;
+            }
+            this->collect_slice_length_bound(row.front(), max_explicit_elements, overflow);
+        }
+        if (overflow) {
+            return SliceLengthCandidates {{}, true};
+        }
+
+        const base::usize bound = std::min(
+            max_explicit_elements + SEMA_MATCH_SLICE_WITNESS_BOUND_EXTRA,
+            SEMA_MATCH_SYMBOLIC_SLICE_MAX_LENGTH
+        );
+        SliceLengthCandidates candidates;
+        candidates.lengths.reserve(bound + 1);
+        for (base::usize length = 0; length <= bound; ++length) {
+            candidates.lengths.push_back(length);
+        }
+        return candidates;
+    }
+
+    [[nodiscard]] std::vector<TypeHandle> slice_field_types(
+        const TypeHandle type,
+        const base::usize length
+    ) const {
+        const TypeInfo& info = this->analyzer_.checked_.types.get(type);
+        return std::vector<TypeHandle>(length, info.slice_element);
+    }
+
+    [[nodiscard]] PatternMatrix specialize_slice_matrix_by_length(
+        const PatternMatrix& matrix,
+        const base::usize length
+    ) const {
+        PatternMatrix specialized;
+        for (const MatrixRow& row : matrix) {
+            if (row.empty()) {
+                continue;
+            }
+            std::optional<MatrixRow> prefix = this->specialize_slice_slot_by_length(row.front(), length);
+            if (!prefix.has_value()) {
+                continue;
+            }
+            std::vector<MatrixRow> expanded_rows = this->expand_or_rows(
+                MatchUsefulnessChecker::append_row(std::move(*prefix), MatchUsefulnessChecker::tail_row(row))
+            );
+            specialized.insert(
+                specialized.end(),
+                std::make_move_iterator(expanded_rows.begin()),
+                std::make_move_iterator(expanded_rows.end())
+            );
+        }
+        return specialized;
     }
 
     [[nodiscard]] std::optional<MatrixRow> specialize_enum_case_pattern(
@@ -1175,6 +1325,36 @@ private:
 
             const TypeHandle column_type = state.types.front();
             const MatrixSlot column_pattern = state.row.front();
+            if (this->analyzer_.checked_.types.is_slice(column_type)) {
+                const SliceLengthCandidates candidates = this->slice_length_candidates(state.matrix, column_pattern);
+                if (candidates.overflow) {
+                    return true;
+                }
+                bool considered_length = false;
+                for (auto length = candidates.lengths.rbegin(); length != candidates.lengths.rend(); ++length) {
+                    std::optional<MatrixRow> specialized_row =
+                        this->specialize_slice_slot_by_length(column_pattern, *length);
+                    if (!specialized_row.has_value()) {
+                        continue;
+                    }
+                    considered_length = true;
+                    pending.push_back(UsefulnessState {
+                        this->specialize_slice_matrix_by_length(state.matrix, *length),
+                        MatchUsefulnessChecker::append_row(
+                            std::move(*specialized_row),
+                            MatchUsefulnessChecker::tail_row(state.row)
+                        ),
+                        MatchUsefulnessChecker::append_types(
+                            this->slice_field_types(column_type, *length),
+                            MatchUsefulnessChecker::tail_types(state.types)
+                        ),
+                    });
+                }
+                if (considered_length) {
+                    continue;
+                }
+                continue;
+            }
             if (std::optional<MatrixConstructor> constructor = this->pattern_constructor(column_pattern, column_type);
                 constructor.has_value()) {
                 std::optional<MatrixRow> specialized_row =
@@ -1420,8 +1600,14 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
                 this->report(expr.range, std::string(SEMA_MATCH_NON_ENUM_IRREFUTABLE));
             }
         } else if (literal_match) {
-            this->report(expr.range, std::string(SEMA_MATCH_INTEGER_BOOL_WILDCARD));
-        } else if (tuple_match || struct_match || array_match || slice_match) {
+            if (this->checked_.types.is_integer(matched) && !match_type_is_u8(this->checked_.types, matched)) {
+                this->report(expr.range, std::string(SEMA_MATCH_OPEN_INTEGER_WILDCARD));
+            } else {
+                this->report(expr.range, std::string(SEMA_MATCH_INTEGER_BOOL_WILDCARD));
+            }
+        } else if (slice_match) {
+            this->report(expr.range, std::string(SEMA_MATCH_DYNAMIC_SLICE_WITNESS));
+        } else if (tuple_match || struct_match || array_match) {
             this->report(expr.range, std::string(SEMA_MATCH_NON_ENUM_IRREFUTABLE));
         }
     }
@@ -1448,7 +1634,7 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_value_pattern(
     }
     const syntax::PatternNode& pattern = this->module_.patterns[pattern_id.value];
     if (saw_wildcard) {
-        this->report(pattern.range, std::string(SEMA_MATCH_WILDCARD_UNREACHABLE));
+        this->report(pattern.range, std::string(SEMA_MATCH_ARM_UNREACHABLE));
     }
     if (pattern.kind == syntax::PatternKind::wildcard) {
         saw_wildcard = true;

@@ -20,6 +20,7 @@
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
+#include <aurex/sema/sema_messages.hpp>
 
 #include <gtest/gtest.h>
 
@@ -27,6 +28,8 @@ namespace aurex::test {
 namespace {
 
 using base::u32;
+using base::DiagnosticCategory;
+using base::DiagnosticCode;
 using sema::BuiltinType;
 using sema::EnumCaseInfo;
 using sema::FunctionSignature;
@@ -482,6 +485,41 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
 }
 
 } // namespace
+
+TEST(CoreUnit, SemanticWhiteBoxDiagnosticMetadataClassifiesSemaReports) {
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    const base::SourceRange range {{1}, 0, 1};
+
+    analyzer.report(range, std::string(sema::SEMA_MATCH_DYNAMIC_SLICE_WITNESS));
+    analyzer.report(range, std::string(sema::SEMA_UNSAFE_DEREF));
+    analyzer.report_type_mismatch(
+        range,
+        std::string(sema::SEMA_INITIALIZER_TYPE_MISMATCH),
+        analyzer.checked_.types.builtin(BuiltinType::bool_),
+        analyzer.checked_.types.builtin(BuiltinType::i32)
+    );
+    analyzer.report_note(range, sema::sema_previous_declaration_note_message("value"));
+    analyzer.report_lookup_suggestion(range, "value");
+
+    ASSERT_EQ(diagnostics.diagnostics().size(), 7U);
+    EXPECT_EQ(diagnostics.diagnostics()[0].category, DiagnosticCategory::pattern);
+    EXPECT_EQ(diagnostics.diagnostics()[0].code, DiagnosticCode::semantic_pattern_exhaustiveness);
+    EXPECT_EQ(diagnostics.diagnostics()[1].category, DiagnosticCategory::safety);
+    EXPECT_EQ(diagnostics.diagnostics()[1].code, DiagnosticCode::semantic_unsafe_required);
+    EXPECT_EQ(diagnostics.diagnostics()[2].category, DiagnosticCategory::type);
+    EXPECT_EQ(diagnostics.diagnostics()[2].code, DiagnosticCode::semantic_type_mismatch);
+    EXPECT_EQ(diagnostics.diagnostics()[3].category, DiagnosticCategory::type);
+    EXPECT_EQ(diagnostics.diagnostics()[3].code, DiagnosticCode::semantic_type_mismatch);
+    EXPECT_EQ(diagnostics.diagnostics()[4].category, DiagnosticCategory::type);
+    EXPECT_EQ(diagnostics.diagnostics()[4].code, DiagnosticCode::semantic_type_mismatch);
+    EXPECT_EQ(diagnostics.diagnostics()[5].category, DiagnosticCategory::name_resolution);
+    EXPECT_EQ(diagnostics.diagnostics()[5].code, DiagnosticCode::semantic_duplicate);
+    EXPECT_EQ(diagnostics.diagnostics()[6].category, DiagnosticCategory::name_resolution);
+    EXPECT_EQ(diagnostics.diagnostics()[6].code, DiagnosticCode::semantic_lookup);
+}
 
 TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {
     syntax::AstModule module;

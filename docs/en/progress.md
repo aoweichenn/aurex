@@ -242,12 +242,14 @@ syntax, LSP-native incrementality, and 2M-node / 5000-generic / 5000-error
 cross-machine threshold calibration remain later work.
 The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator and 4096-combination cap with a pattern matrix /
-usefulness witness search. Bool, enum payloads, tuples, structs, and fixed
-arrays are checked through constructor specialization and default matrices;
-unguarded arms and literal `if true` guards contribute to exhaustiveness,
-literal `if false` and dynamic guards do not, while dynamic slices and open
-integer domains still require a wildcard or irrefutable arm under the current
-M2 boundary.
+usefulness witness search. Bool, enum payloads, tuples, structs, fixed arrays,
+open integer literals, and dynamic slices are checked through constructor
+specialization, default matrices, and symbolic representative slice lengths.
+Unguarded arms and literal `if true` guards contribute to exhaustiveness,
+literal `if false` and dynamic guards do not. Dynamic slices no longer require
+a single catch-all arm when finite length partitions prove coverage, and open
+integer duplicate literal arms are rejected as unreachable while missing
+remaining integer domains get an open-domain wildcard diagnostic.
 
 ## M2 Gaps
 

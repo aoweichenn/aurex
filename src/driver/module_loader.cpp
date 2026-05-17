@@ -32,6 +32,8 @@ void push_error(base::DiagnosticSink& diagnostics, const base::SourceRange& rang
         base::Severity::error,
         range,
         std::move(message),
+        base::DiagnosticCategory::module,
+        base::DiagnosticCode::module_error,
     });
 }
 

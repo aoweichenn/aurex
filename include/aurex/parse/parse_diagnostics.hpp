@@ -26,6 +26,8 @@ public:
             base::Severity::error,
             token.range,
             std::move(message),
+            base::DiagnosticCategory::parser,
+            base::DiagnosticCode::parser_syntax,
         });
     }
 
@@ -34,6 +36,8 @@ public:
             base::Severity::note,
             token.range,
             std::move(message),
+            base::DiagnosticCategory::parser,
+            base::DiagnosticCode::parser_note,
         });
     }
 

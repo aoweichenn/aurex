@@ -1,0 +1,22 @@
+module slice_dynamic_length_exhaustive;
+
+fn first_or_empty(values: []const i32) -> i32 {
+    return match values {
+        [] => 0,
+        [head, ..] => head,
+    };
+}
+
+fn bool_head_score(values: []const bool) -> i32 {
+    return match values {
+        [] => 0,
+        [true, ..] => 1,
+        [false, ..] => 2,
+    };
+}
+
+fn main() -> i32 {
+    let numbers: [2]i32 = [7, 8];
+    let flags: [2]bool = [true, false];
+    return first_or_empty(numbers[:]) + bool_head_score(flags[:]) - 8;
+}

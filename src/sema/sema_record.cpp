@@ -2,11 +2,215 @@
 
 #include <aurex/sema/sema_messages.hpp>
 
+#include <string_view>
 #include <utility>
 
 namespace aurex::sema {
 
 namespace {
+
+struct DiagnosticMetadata {
+    base::DiagnosticCategory category = base::DiagnosticCategory::semantic;
+    base::DiagnosticCode code = base::DiagnosticCode::semantic_error;
+};
+
+constexpr std::string_view SEMA_DIAGNOSTIC_UNSAFE_CONTEXT_PHRASE = "requires unsafe context";
+constexpr std::string_view SEMA_DIAGNOSTIC_DUPLICATE_PREFIX = "duplicate ";
+constexpr std::string_view SEMA_DIAGNOSTIC_UNKNOWN_PREFIX = "unknown ";
+constexpr std::string_view SEMA_DIAGNOSTIC_AMBIGUOUS_PREFIX = "ambiguous ";
+constexpr std::string_view SEMA_DIAGNOSTIC_PRIVATE_PREFIX = "private ";
+constexpr std::string_view SEMA_DIAGNOSTIC_IS_PRIVATE_PHRASE = " is private";
+constexpr std::string_view SEMA_DIAGNOSTIC_TYPE_MISMATCH_PHRASE = "type mismatch";
+constexpr std::string_view SEMA_DIAGNOSTIC_UNSUPPORTED_PHRASE = "not supported";
+constexpr std::string_view SEMA_DIAGNOSTIC_EXPECTED_TYPE_NOTE_PREFIX = "expected type:";
+constexpr std::string_view SEMA_DIAGNOSTIC_ACTUAL_TYPE_NOTE_PREFIX = "actual type:";
+constexpr std::string_view SEMA_DIAGNOSTIC_PREVIOUS_DECLARATION_PREFIX = "previous declaration";
+constexpr std::string_view SEMA_DIAGNOSTIC_DID_YOU_MEAN_PREFIX = "did you mean";
+constexpr std::string_view SEMA_DIAGNOSTIC_MATCH_EXHAUSTIVE_PREFIX = "match expression is not exhaustive";
+constexpr std::string_view SEMA_DIAGNOSTIC_DUPLICATE_MATCH_PREFIX = "duplicate match arm";
+constexpr std::string_view SEMA_DIAGNOSTIC_CAPABILITY_PHRASE = "capability";
+
+[[nodiscard]] bool starts_with_text(
+    const std::string_view text,
+    const std::string_view prefix
+) noexcept {
+    return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
+}
+
+[[nodiscard]] bool contains_text(
+    const std::string_view text,
+    const std::string_view needle
+) noexcept {
+    return text.find(needle) != std::string_view::npos;
+}
+
+[[nodiscard]] bool is_internal_contract_diagnostic(const std::string_view message) noexcept {
+    return message == SEMA_AST_ITEM_MODULE_CONTRACT ||
+           message == SEMA_AST_ITEM_MODULE_INVALID;
+}
+
+[[nodiscard]] bool is_type_diagnostic(const std::string_view message) noexcept {
+    return contains_text(message, SEMA_DIAGNOSTIC_TYPE_MISMATCH_PHRASE) ||
+           starts_with_text(message, SEMA_DIAGNOSTIC_EXPECTED_TYPE_NOTE_PREFIX) ||
+           starts_with_text(message, SEMA_DIAGNOSTIC_ACTUAL_TYPE_NOTE_PREFIX);
+}
+
+[[nodiscard]] bool is_duplicate_diagnostic(const std::string_view message) noexcept {
+    return message == SEMA_DUPLICATE_SYMBOL ||
+           starts_with_text(message, SEMA_DIAGNOSTIC_DUPLICATE_PREFIX) ||
+           starts_with_text(message, SEMA_DIAGNOSTIC_PREVIOUS_DECLARATION_PREFIX);
+}
+
+[[nodiscard]] bool is_lookup_diagnostic(const std::string_view message) noexcept {
+    return starts_with_text(message, SEMA_DIAGNOSTIC_UNKNOWN_PREFIX) ||
+           starts_with_text(message, SEMA_DIAGNOSTIC_AMBIGUOUS_PREFIX) ||
+           starts_with_text(message, SEMA_DIAGNOSTIC_DID_YOU_MEAN_PREFIX);
+}
+
+[[nodiscard]] bool is_visibility_diagnostic(const std::string_view message) noexcept {
+    return starts_with_text(message, SEMA_DIAGNOSTIC_PRIVATE_PREFIX) ||
+           contains_text(message, SEMA_DIAGNOSTIC_IS_PRIVATE_PHRASE);
+}
+
+[[nodiscard]] bool is_unsupported_diagnostic(const std::string_view message) noexcept {
+    return message == SEMA_GENERIC_PARAMS_UNSUPPORTED_ON_ITEM ||
+           message == SEMA_GENERIC_C_ABI_OR_PROTOTYPE_UNSUPPORTED ||
+           message == SEMA_GENERIC_METHODS_UNSUPPORTED ||
+           message == SEMA_GENERIC_RESOURCE_CAPABILITY_UNSUPPORTED ||
+           message == SEMA_ARRAY_PARAMETER_UNSUPPORTED ||
+           message == SEMA_ARRAY_FUNCTION_TYPE_PARAMETER_UNSUPPORTED ||
+           message == SEMA_ARRAY_FUNCTION_TYPE_RETURN_UNSUPPORTED ||
+           message == SEMA_ARRAY_STRUCT_PARAMETER_UNSUPPORTED ||
+           message == SEMA_ARRAY_ASSIGNMENT_UNSUPPORTED ||
+           message == SEMA_ARRAY_RETURN_UNSUPPORTED ||
+           message == SEMA_ARRAY_STRUCT_RETURN_UNSUPPORTED ||
+           message == SEMA_ENUM_PAYLOAD_ARRAY_UNSUPPORTED ||
+           message == SEMA_ENUM_PAYLOAD_ARRAY_ARGUMENT_UNSUPPORTED ||
+           message == SEMA_ARGUMENT_ARRAY_UNSUPPORTED ||
+           message == SEMA_TUPLE_FIELD_ACCESS_UNSUPPORTED ||
+           message == SEMA_UNSUPPORTED_LITERAL_PATTERN ||
+           contains_text(message, SEMA_DIAGNOSTIC_UNSUPPORTED_PHRASE);
+}
+
+[[nodiscard]] bool is_pattern_exhaustiveness_diagnostic(const std::string_view message) noexcept {
+    return message == SEMA_MATCH_INTEGER_BOOL_WILDCARD ||
+           message == SEMA_MATCH_OPEN_INTEGER_WILDCARD ||
+           message == SEMA_MATCH_NON_ENUM_IRREFUTABLE ||
+           message == SEMA_MATCH_DYNAMIC_SLICE_WITNESS ||
+           starts_with_text(message, SEMA_DIAGNOSTIC_MATCH_EXHAUSTIVE_PREFIX);
+}
+
+[[nodiscard]] bool is_pattern_unreachable_diagnostic(const std::string_view message) noexcept {
+    return message == SEMA_MATCH_ARM_UNREACHABLE ||
+           starts_with_text(message, SEMA_DIAGNOSTIC_DUPLICATE_MATCH_PREFIX);
+}
+
+[[nodiscard]] bool is_pattern_diagnostic(const std::string_view message) noexcept {
+    return message == SEMA_MATCH_VALUE_TYPE ||
+           message == SEMA_MATCH_ARM_REQUIRED ||
+           message == SEMA_MATCH_ARM_TYPE ||
+           message == SEMA_MATCH_GUARD_BOOL ||
+           message == SEMA_MATCH_PAYLOAD_CASE ||
+           message == SEMA_MATCH_RESULT_VOID ||
+           message == SEMA_ENUM_MATCH_PATTERN ||
+           message == SEMA_ENUM_PATTERN_TYPE ||
+           message == SEMA_MATCH_CASE_WRONG_ENUM ||
+           message == SEMA_INTEGER_BOOL_PATTERN ||
+           message == SEMA_BOOL_PATTERN ||
+           message == SEMA_INTEGER_PATTERN ||
+           message == SEMA_INTEGER_PATTERN_RANGE ||
+           message == SEMA_STRUCT_PATTERN_TYPE ||
+           message == SEMA_STRUCT_PATTERN_FIELD ||
+           message == SEMA_STRUCT_PATTERN_DUPLICATE_FIELD ||
+           message == SEMA_SLICE_PATTERN_TYPE ||
+           message == SEMA_SLICE_PATTERN_LENGTH ||
+           starts_with_text(message, SEMA_DIAGNOSTIC_DUPLICATE_MATCH_PREFIX);
+}
+
+[[nodiscard]] DiagnosticMetadata classify_semantic_diagnostic(const std::string_view message) noexcept {
+    if (is_internal_contract_diagnostic(message)) {
+        return DiagnosticMetadata {
+            base::DiagnosticCategory::internal,
+            base::DiagnosticCode::internal_contract,
+        };
+    }
+    if (is_pattern_unreachable_diagnostic(message)) {
+        return DiagnosticMetadata {
+            base::DiagnosticCategory::pattern,
+            base::DiagnosticCode::semantic_pattern_unreachable,
+        };
+    }
+    if (is_pattern_exhaustiveness_diagnostic(message)) {
+        return DiagnosticMetadata {
+            base::DiagnosticCategory::pattern,
+            base::DiagnosticCode::semantic_pattern_exhaustiveness,
+        };
+    }
+    if (is_pattern_diagnostic(message)) {
+        return DiagnosticMetadata {
+            base::DiagnosticCategory::pattern,
+            base::DiagnosticCode::semantic_pattern,
+        };
+    }
+    if (contains_text(message, SEMA_DIAGNOSTIC_UNSAFE_CONTEXT_PHRASE)) {
+        return DiagnosticMetadata {
+            base::DiagnosticCategory::safety,
+            base::DiagnosticCode::semantic_unsafe_required,
+        };
+    }
+    if (is_type_diagnostic(message)) {
+        return DiagnosticMetadata {
+            base::DiagnosticCategory::type,
+            base::DiagnosticCode::semantic_type_mismatch,
+        };
+    }
+    if (is_duplicate_diagnostic(message)) {
+        return DiagnosticMetadata {
+            base::DiagnosticCategory::name_resolution,
+            base::DiagnosticCode::semantic_duplicate,
+        };
+    }
+    if (is_visibility_diagnostic(message)) {
+        return DiagnosticMetadata {
+            base::DiagnosticCategory::visibility,
+            base::DiagnosticCode::semantic_visibility,
+        };
+    }
+    if (is_lookup_diagnostic(message)) {
+        return DiagnosticMetadata {
+            base::DiagnosticCategory::name_resolution,
+            base::DiagnosticCode::semantic_lookup,
+        };
+    }
+    if (is_unsupported_diagnostic(message)) {
+        return DiagnosticMetadata {
+            base::DiagnosticCategory::unsupported,
+            base::DiagnosticCode::semantic_unsupported,
+        };
+    }
+    if (contains_text(message, SEMA_DIAGNOSTIC_CAPABILITY_PHRASE)) {
+        return DiagnosticMetadata {
+            base::DiagnosticCategory::capability,
+            base::DiagnosticCode::semantic_capability,
+        };
+    }
+    return DiagnosticMetadata {};
+}
+
+[[nodiscard]] DiagnosticMetadata classify_semantic_secondary_diagnostic(
+    const std::string_view message,
+    const base::DiagnosticCategory category,
+    const base::DiagnosticCode code
+) noexcept {
+    if (category != base::DiagnosticCategory::semantic || code != base::DiagnosticCode::none) {
+        return DiagnosticMetadata {category, code};
+    }
+    DiagnosticMetadata metadata = classify_semantic_diagnostic(message);
+    if (metadata.code == base::DiagnosticCode::semantic_error) {
+        metadata.code = base::DiagnosticCode::none;
+    }
+    return metadata;
+}
 
 template <typename T>
 void ensure_side_table_slot(
@@ -546,28 +750,57 @@ SemaTypeTable& SemanticAnalyzer::active_stmt_local_types() noexcept {
 
 void SemanticAnalyzer::report(const base::SourceRange& range, std::string message) const
 {
+    const DiagnosticMetadata metadata = classify_semantic_diagnostic(message);
+    this->report(range, std::move(message), metadata.category, metadata.code);
+}
+
+void SemanticAnalyzer::report(
+    const base::SourceRange& range,
+    std::string message,
+    const base::DiagnosticCategory category,
+    const base::DiagnosticCode code
+) const
+{
     this->diagnostics_.push(base::Diagnostic {
         base::Severity::error,
         range,
         std::move(message),
+        category,
+        code,
     });
 }
 
-void SemanticAnalyzer::report_note(const base::SourceRange& range, std::string message) const
+void SemanticAnalyzer::report_note(
+    const base::SourceRange& range,
+    std::string message,
+    const base::DiagnosticCategory category,
+    const base::DiagnosticCode code
+) const
 {
+    const DiagnosticMetadata metadata = classify_semantic_secondary_diagnostic(message, category, code);
     this->diagnostics_.push(base::Diagnostic {
         base::Severity::note,
         range,
         std::move(message),
+        metadata.category,
+        metadata.code,
     });
 }
 
-void SemanticAnalyzer::report_help(const base::SourceRange& range, std::string message) const
+void SemanticAnalyzer::report_help(
+    const base::SourceRange& range,
+    std::string message,
+    const base::DiagnosticCategory category,
+    const base::DiagnosticCode code
+) const
 {
+    const DiagnosticMetadata metadata = classify_semantic_secondary_diagnostic(message, category, code);
     this->diagnostics_.push(base::Diagnostic {
         base::Severity::help,
         range,
         std::move(message),
+        metadata.category,
+        metadata.code,
     });
 }
 
@@ -578,12 +811,27 @@ void SemanticAnalyzer::report_type_mismatch(
     const TypeHandle actual
 ) const
 {
-    this->report(range, std::move(message));
+    this->report(
+        range,
+        std::move(message),
+        base::DiagnosticCategory::type,
+        base::DiagnosticCode::semantic_type_mismatch
+    );
     if (is_valid(expected)) {
-        this->report_note(range, sema_expected_type_note_message(this->checked_.types.display_name(expected)));
+        this->report_note(
+            range,
+            sema_expected_type_note_message(this->checked_.types.display_name(expected)),
+            base::DiagnosticCategory::type,
+            base::DiagnosticCode::semantic_type_mismatch
+        );
     }
     if (is_valid(actual)) {
-        this->report_note(range, sema_actual_type_note_message(this->checked_.types.display_name(actual)));
+        this->report_note(
+            range,
+            sema_actual_type_note_message(this->checked_.types.display_name(actual)),
+            base::DiagnosticCategory::type,
+            base::DiagnosticCode::semantic_type_mismatch
+        );
     }
 }
 
@@ -593,7 +841,12 @@ void SemanticAnalyzer::report_lookup_suggestion(
 ) const
 {
     if (!suggestion.empty()) {
-        this->report_help(range, sema_did_you_mean_message(suggestion));
+        this->report_help(
+            range,
+            sema_did_you_mean_message(suggestion),
+            base::DiagnosticCategory::name_resolution,
+            base::DiagnosticCode::semantic_lookup
+        );
     }
 }
 

@@ -101,8 +101,9 @@ lowering, native execution, import paths, and install-tree compiler execution.
 `tools/bench.py` uses a Release `build-perf` tree and Google Benchmark for
 frontend hot-path measurements. `make perf` prints the lightweight JSON-derived
 Aurex frontend baseline and the Google Benchmark process-level comparison
-against available modern frontend drivers (`clang++`, `g++`, and `rustc`)
-without enforcing thresholds yet. `make perf-compare` runs only the
+against available modern frontend drivers (`clang++`, `g++`, and `rustc`);
+`make perf-stress-threshold` and `make perf-release-threshold` enforce the
+local CI and release stress gates. `make perf-compare` runs only the
 cross-frontend comparison lane. `make perf-stress` runs the generated
 500/1000/2000/5000 generic-instantiation baseline plus the AST bulk elapsed-time
 and peak-RSS baseline. `make perf-ast-stress` runs only the AST bulk lane. The
@@ -150,8 +151,11 @@ records final checked types, `expr_expected_types` keys final-cache reuse, and
 the old expected-type cache-pollution path without changing IR lowering, which
 continues to consume final `expr_types`.
 Match exhaustiveness now uses a pattern matrix / usefulness witness search for
-bool, enum payload, tuple, struct, and fixed-array patterns instead of
-enumerating structural cartesian products or relying on a 4096-combination cap.
+bool, enum payload, tuple, struct, fixed-array, dynamic-slice, and open integer
+patterns instead of enumerating structural cartesian products or relying on a
+4096-combination cap. Dynamic slices are checked through symbolic representative
+lengths plus element matrices, so `[]` + `[_, ..]` and bool head partitions are
+accepted without requiring a catch-all wildcard.
 
 ## Stage Status
 

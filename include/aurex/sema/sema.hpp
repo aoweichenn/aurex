@@ -925,8 +925,24 @@ private:
     [[nodiscard]] EnumCaseList& enum_case_type_bucket(TypeHandle enum_type);
     [[nodiscard]] ModuleIdList make_module_id_list() const;
     void report(const base::SourceRange& range, std::string message) const;
-    void report_note(const base::SourceRange& range, std::string message) const;
-    void report_help(const base::SourceRange& range, std::string message) const;
+    void report(
+        const base::SourceRange& range,
+        std::string message,
+        base::DiagnosticCategory category,
+        base::DiagnosticCode code
+    ) const;
+    void report_note(
+        const base::SourceRange& range,
+        std::string message,
+        base::DiagnosticCategory category = base::DiagnosticCategory::semantic,
+        base::DiagnosticCode code = base::DiagnosticCode::none
+    ) const;
+    void report_help(
+        const base::SourceRange& range,
+        std::string message,
+        base::DiagnosticCategory category = base::DiagnosticCategory::semantic,
+        base::DiagnosticCode code = base::DiagnosticCode::none
+    ) const;
     void report_type_mismatch(
         const base::SourceRange& range,
         std::string message,

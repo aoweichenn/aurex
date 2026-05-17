@@ -5,11 +5,15 @@
 #include <aurex/sema/sema.hpp>
 #include <aurex/sema/symbol.hpp>
 
+#include <string_view>
 #include <utility>
 
 namespace aurex::sema {
 
 namespace {
+
+constexpr std::string_view SEMA_FUNCTION_REGISTRY_SIGNATURE_MISMATCH_PREFIX =
+    "function prototype and definition signatures do not match";
 
 [[nodiscard]] std::string abi_or_c_name(const syntax::ItemNode& item, const std::string& c_name) {
     if (!item.abi_name.empty()) {
@@ -30,6 +34,27 @@ namespace {
         signature.param_types,
         signature.return_type
     );
+}
+
+[[nodiscard]] bool function_registry_message_starts_with(
+    const std::string_view text,
+    const std::string_view prefix
+) noexcept {
+    return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
+}
+
+[[nodiscard]] base::DiagnosticCode function_registry_code(const std::string_view message) noexcept {
+    if (function_registry_message_starts_with(message, SEMA_FUNCTION_REGISTRY_SIGNATURE_MISMATCH_PREFIX)) {
+        return base::DiagnosticCode::semantic_type_mismatch;
+    }
+    return base::DiagnosticCode::semantic_duplicate;
+}
+
+[[nodiscard]] base::DiagnosticCategory function_registry_category(const base::DiagnosticCode code) noexcept {
+    if (code == base::DiagnosticCode::semantic_type_mismatch) {
+        return base::DiagnosticCategory::type;
+    }
+    return base::DiagnosticCategory::name_resolution;
 }
 
 } // namespace
@@ -205,6 +230,8 @@ void FunctionRegistry::insert_function_value(const FunctionLookupKey& key, const
             base::Severity::note,
             value_inserted.first->second.range,
             sema_previous_declaration_note_message(signature.name),
+            base::DiagnosticCategory::name_resolution,
+            base::DiagnosticCode::semantic_duplicate,
         });
     }
 }
@@ -223,10 +250,13 @@ void FunctionRegistry::refresh_function_value(const FunctionLookupKey& key, cons
 
 void FunctionRegistry::report(const base::SourceRange& range, std::string message) const
 {
+    const base::DiagnosticCode code = function_registry_code(message);
     this->diagnostics_.push(base::Diagnostic {
         base::Severity::error,
         range,
         std::move(message),
+        function_registry_category(code),
+        code,
     });
 }
 
@@ -236,6 +266,8 @@ void FunctionRegistry::report_previous_declaration(const FunctionSignature& sign
         base::Severity::note,
         signature.range,
         sema_previous_declaration_note_message(signature.name),
+        base::DiagnosticCategory::name_resolution,
+        base::DiagnosticCode::semantic_duplicate,
     });
 }
 

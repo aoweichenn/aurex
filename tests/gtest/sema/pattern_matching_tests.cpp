@@ -53,7 +53,7 @@ TEST_F(AurexIntegrationTest, MatchExpression) {
     );
     expect_contains(
         require_failure(aurexc() + " --check " + q(bool_wildcard_unreachable)).output,
-        "match arm is unreachable after wildcard pattern"
+        "match arm is unreachable"
     );
 
     const fs::path mismatch = negative_sample("pattern_matching", "match_expression_type_mismatch.ax");
@@ -140,7 +140,7 @@ TEST_F(AurexIntegrationTest, MatchWildcardAndScopedCases) {
     require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path unreachable = negative_sample("pattern_matching", "match_wildcard_unreachable.ax");
-    expect_contains(require_failure(aurexc() + " --check " + q(unreachable)).output, "match arm is unreachable after wildcard pattern");
+    expect_contains(require_failure(aurexc() + " --check " + q(unreachable)).output, "match arm is unreachable");
 
     const fs::path wrong_enum = negative_sample("pattern_matching", "match_scoped_wrong_enum.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(wrong_enum)).output, "match arm case does not belong to matched enum");
@@ -159,7 +159,7 @@ TEST_F(AurexIntegrationTest, StructuralMatchExhaustiveness) {
     const fs::path unreachable = negative_sample("pattern_matching", "structural_match_unreachable.ax");
     expect_contains(
         require_failure(aurexc() + " --check " + q(unreachable)).output,
-        "match arm is unreachable after wildcard pattern"
+        "match arm is unreachable"
     );
 
     const fs::path guarded = negative_sample("pattern_matching", "structural_match_guard_not_exhaustive.ax");
@@ -190,7 +190,18 @@ TEST_F(AurexIntegrationTest, StructuralMatchExhaustiveness) {
     const fs::path slice_missing = negative_sample("pattern_matching", "slice_missing_witness.ax");
     expect_contains(
         require_failure(aurexc() + " --check " + q(slice_missing)).output,
-        "match expression over tuple, struct, array, or slice requires an irrefutable arm"
+        "match expression over dynamic slice is missing length or element coverage"
+    );
+
+    const fs::path slice_dynamic_length =
+        positive_sample("pattern_matching", "slice_dynamic_length_exhaustive.ax");
+    require_success(aurexc() + " --check " + q(slice_dynamic_length));
+
+    const fs::path slice_dynamic_missing =
+        negative_sample("pattern_matching", "slice_dynamic_length_missing_empty.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(slice_dynamic_missing)).output,
+        "match expression over dynamic slice is missing length or element coverage"
     );
 
     const fs::path limit = negative_sample("pattern_matching", "structural_match_exhaustiveness_limit.ax");
@@ -293,7 +304,16 @@ TEST_F(AurexIntegrationTest, MatchLiteralPattern) {
     require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
     const fs::path missing_wildcard = negative_sample("pattern_matching", "match_literal_missing_wildcard.ax");
-    expect_contains(require_failure(aurexc() + " --check " + q(missing_wildcard)).output, "match expression over integer or bool requires a wildcard arm");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(missing_wildcard)).output,
+        "match expression over open integer domain requires a wildcard arm"
+    );
+
+    const fs::path duplicate_integer = negative_sample("pattern_matching", "match_open_integer_duplicate.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(duplicate_integer)).output,
+        "match arm is unreachable"
+    );
 
     const fs::path type_mismatch = negative_sample("pattern_matching", "match_literal_type_mismatch.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(type_mismatch)).output, "bool match pattern must be true or false");

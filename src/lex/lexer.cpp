@@ -445,6 +445,8 @@ void Lexer::report(const base::usize begin, const base::usize end, const std::st
                 base::Severity::error,
                 this->range(begin, end),
                 std::string(LEXER_ERROR_BUDGET_EXHAUSTED_MESSAGE),
+                base::DiagnosticCategory::lexer,
+                base::DiagnosticCode::lexer_error_budget,
             });
             this->lexical_error_budget_reported_ = true;
         }
@@ -455,6 +457,8 @@ void Lexer::report(const base::usize begin, const base::usize end, const std::st
         base::Severity::error,
         this->range(begin, end),
         std::string(message),
+        base::DiagnosticCategory::lexer,
+        base::DiagnosticCode::lexer_invalid_token,
     });
 }
 

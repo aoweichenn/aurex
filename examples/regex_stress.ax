@@ -13,6 +13,7 @@ const CASE_FEATURE_BASE: i32 = 500;
 const CASE_CAPTURE_BASE: i32 = 600;
 const CASE_LINEAR_SEARCH_BASE: i32 = 700;
 const CASE_PREFIX_SEARCH_BASE: i32 = 800;
+const CASE_SET_PREFILTER_BASE: i32 = 900;
 
 const STRESS_SEARCH_ITERATIONS: usize = 512usize;
 const STRESS_FULLMATCH_ITERATIONS: usize = 256usize;
@@ -25,6 +26,7 @@ const MAX_REQUIRED_BOUNDED_REPEAT: usize = 32usize;
 const MAX_REQUIRED_CAPTURE_GROUPS: usize = 64usize;
 const REPLACE_BUFFER_CAPACITY: usize = 128usize;
 const EXPECTED_REPLACE_BYTES: usize = 29usize;
+const SET_ID_CAPACITY: usize = 8usize;
 
 struct StressCase {
     pattern: str;
@@ -38,6 +40,10 @@ fn ensure(code: i32, passed: bool) -> i32 {
         return 0;
     }
     return code;
+}
+
+fn ids_ptr(ids: &mut [8]usize) -> *mut usize {
+    return unsafe { ptrcast[*mut usize](ptrat[*mut [8]usize](ptraddr(ids))) };
 }
 
 fn status_offset(status: regex.RegexStatus) -> i32 {
@@ -250,6 +256,30 @@ fn require_prefix_prefilter_surface() -> i32 {
     return 0;
 }
 
+fn require_set_start_byte_prefilter_surface() -> i32 {
+    let patterns: [4]str = ["alphaXYZ", "betaXYZ", "gammaXYZ", "deltaXYZ"];
+    var compiled: regex.RegexSet = regex.compile_set(patterns[:]);
+    defer regex.destroy_set(&mut compiled);
+    if !compiled.valid() {
+        return CASE_SET_PREFILTER_BASE + regex.status_code(compiled.status);
+    }
+    var iteration: usize = 0usize;
+    while iteration < STRESS_SEARCH_ITERATIONS {
+        var ids: [8]usize = [0usize; 8];
+        let matches: regex.SetMatchesResult = regex.matches_set_compiled(
+            &compiled,
+            "trace trace trace trace trace trace trace trace trace trace gammaXYZ",
+            ids_ptr(&mut ids),
+            SET_ID_CAPACITY
+        );
+        if matches.status != regex.RegexStatus.ok || matches.count != 1usize || ids[0usize] != 2usize {
+            return CASE_SET_PREFILTER_BASE + 20 + regex.status_code(matches.status);
+        }
+        iteration += 1usize;
+    }
+    return 0;
+}
+
 fn main() -> i32 {
     var search_pattern: regex.Regex = regex.compile("(error|warn|info|debug):\\s+\\w+@\\w+\\.(com|net|org)");
     defer regex.destroy(&mut search_pattern);
@@ -307,5 +337,9 @@ fn main() -> i32 {
     if linear_code != 0 {
         return linear_code;
     }
-    return require_prefix_prefilter_surface();
+    let prefix_code: i32 = require_prefix_prefilter_surface();
+    if prefix_code != 0 {
+        return prefix_code;
+    }
+    return require_set_start_byte_prefilter_surface();
 }

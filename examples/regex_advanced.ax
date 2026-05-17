@@ -216,8 +216,21 @@ fn require_bytes_api() -> i32 {
     if set_result.status != bytes.RegexStatus.ok || set_result.count != 1usize || ids[0usize] != 0usize {
         return CASE_BYTES + 8 + bytes.status_code(set_result.status);
     }
+    let scan_patterns: [3]str = ["\\x01A", "\\xffZ", "\\xc3\\xa9"];
+    var scan_set: bytes.RegexSet = bytes.compile_set(scan_patterns[:]);
+    defer bytes.destroy_set(&mut scan_set);
+    if !scan_set.valid() {
+        return CASE_BYTES + 9 + bytes.status_code(scan_set.status);
+    }
+    let scan_value: [8]u8 = [0x00u8, 0x10u8, 0x20u8, 0xffu8, 0x5au8, 0x00u8, 0x01u8, 0x42u8];
+    let scan_view: []const u8 = scan_value[:];
+    var scan_ids: [8]usize = [0usize; 8];
+    let scan_result: bytes.SetMatchesResult = bytes.matches_set_compiled(&scan_set, scan_view, ids_ptr(&mut scan_ids), SET_ID_CAPACITY);
+    if scan_result.status != bytes.RegexStatus.ok || scan_result.count != 1usize || scan_ids[0usize] != 1usize {
+        return CASE_BYTES + 10 + bytes.status_code(scan_result.status);
+    }
     let text_api_rejects: regex.MatchResult = regex.fullmatch_compiled(&compiled, "é");
-    return ensure(CASE_BYTES + 9 + regex.status_code(text_api_rejects.status), text_api_rejects.status == regex.RegexStatus.unsupported);
+    return ensure(CASE_BYTES + 11 + regex.status_code(text_api_rejects.status), text_api_rejects.status == regex.RegexStatus.unsupported);
 }
 
 fn require_regex_set() -> i32 {
@@ -482,6 +495,41 @@ fn require_prefilter_surface() -> i32 {
     );
     if matches.status != regex.RegexStatus.ok || matches.count != 1usize || ids[0usize] != 0usize {
         return CASE_PREFILTER + 4 + regex.status_code(matches.status);
+    }
+
+    let multi_patterns: [4]str = ["alphaXYZ", "betaXYZ", "gammaXYZ", "deltaXYZ"];
+    var multi_set: regex.RegexSet = regex.compile_set(multi_patterns[:]);
+    defer regex.destroy_set(&mut multi_set);
+    if !multi_set.valid() {
+        return CASE_PREFILTER + 5 + regex.status_code(multi_set.status);
+    }
+    var multi_ids: [8]usize = [0usize; 8];
+    let multi_matches: regex.SetMatchesResult = regex.matches_set_compiled(
+        &multi_set,
+        "................................ gammaXYZ tail",
+        ids_ptr(&mut multi_ids),
+        SET_ID_CAPACITY
+    );
+    if multi_matches.status != regex.RegexStatus.ok || multi_matches.count != 1usize || multi_ids[0usize] != 2usize {
+        return CASE_PREFILTER + 6 + regex.status_code(multi_matches.status);
+    }
+
+    var class_prefilter: regex.Regex = regex.compile("[0-9]needle");
+    defer regex.destroy(&mut class_prefilter);
+    let class_result: regex.MatchResult = regex.search_compiled(&class_prefilter, "aaaaaaaaaaaaaaaa7needle");
+    if !class_result.ok() ||
+        class_result.start != strblen("aaaaaaaaaaaaaaaa") ||
+        class_result.end != strblen("aaaaaaaaaaaaaaaa7needle") {
+        return CASE_PREFILTER + 7 + regex.status_code(class_result.status);
+    }
+
+    var unicode_literal: regex.Regex = regex.compile("Ωmega");
+    defer regex.destroy(&mut unicode_literal);
+    let unicode_result: regex.MatchResult = regex.search_compiled(&unicode_literal, "ascii prefix Ωmega");
+    if !unicode_result.ok() ||
+        unicode_result.start != strblen("ascii prefix ") ||
+        unicode_result.end != strblen("ascii prefix Ωmega") {
+        return CASE_PREFILTER + 8 + regex.status_code(unicode_result.status);
     }
     return 0;
 }

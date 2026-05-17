@@ -185,6 +185,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexStressCompilesAndRuns) {
         "fn priv require_budget -> i32",
         "fn priv require_linear_search_surface -> i32",
         "fn priv require_prefix_prefilter_surface -> i32",
+        "fn priv require_set_start_byte_prefilter_surface -> i32",
         "fn state_count -> usize",
         "fn range_count -> usize",
         "fn program_bytes -> usize",

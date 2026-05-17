@@ -12,6 +12,7 @@
 - [API 接口文档](api.md)
 - [Aurex M2 语言语法说明书](language-manual.md)
 - [Aurex 正则库语法和实现说明](regex.md)
+- [Aurex 正则库工业化现状报告](regex-industrial-report.md)
 - [字符串基础类型设计草案](string-primitive-design.md)
 - [Aurex 当前语法与特性清单](language-feature-inventory.md)
 - [Aurex 基础语法地基评估](basic-syntax-foundation-review.md)

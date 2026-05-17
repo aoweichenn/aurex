@@ -279,13 +279,13 @@ bool SemanticAnalyzer::analyze_pattern(
                 bool covered_true = false;
                 bool covered_false = false;
                 bool saw_wildcard = false;
-                static_cast<void>(this->analyze_single_value_pattern(
+                this->analyze_single_value_pattern(
                     frame.pattern,
                     frame.type,
                     covered_true,
                     covered_false,
                     saw_wildcard
-                ));
+                );
                 break;
             }
             case syntax::PatternKind::const_: {
@@ -1621,7 +1621,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
     return this->record_expr_types(expr_id, intrinsic_result, result);
 }
 
-const EnumCaseInfo* SemanticAnalyzer::analyze_single_value_pattern(
+void SemanticAnalyzer::analyze_single_value_pattern(
     const syntax::PatternId pattern_id,
     const TypeHandle matched,
     bool& covered_true,
@@ -1630,7 +1630,7 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_value_pattern(
 ) const
 {
     if (!syntax::is_valid(pattern_id) || pattern_id.value >= this->module_.patterns.size()) {
-        return nullptr;
+        return;
     }
     const syntax::PatternNode& pattern = this->module_.patterns[pattern_id.value];
     if (saw_wildcard) {
@@ -1638,11 +1638,11 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_value_pattern(
     }
     if (pattern.kind == syntax::PatternKind::wildcard) {
         saw_wildcard = true;
-        return nullptr;
+        return;
     }
     if (pattern.kind != syntax::PatternKind::literal) {
         this->report(pattern.range, std::string(SEMA_INTEGER_BOOL_PATTERN));
-        return nullptr;
+        return;
     }
     if (this->checked_.types.is_bool(matched)) {
         if (pattern.case_name != SEMA_MATCH_BOOL_TRUE_NAME && pattern.case_name != SEMA_MATCH_BOOL_FALSE_NAME) {
@@ -1652,7 +1652,7 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_value_pattern(
         } else {
             covered_false = true;
         }
-        return nullptr;
+        return;
     }
     if (this->checked_.types.is_integer(matched)) {
         if (pattern.case_name == SEMA_MATCH_BOOL_TRUE_NAME || pattern.case_name == SEMA_MATCH_BOOL_FALSE_NAME) {
@@ -1660,10 +1660,9 @@ const EnumCaseInfo* SemanticAnalyzer::analyze_single_value_pattern(
         } else if (!this->integer_literal_fits_type(matched, pattern.case_name)) {
             this->report(pattern.range, std::string(SEMA_INTEGER_PATTERN_RANGE));
         }
-        return nullptr;
+        return;
     }
     this->report(pattern.range, std::string(SEMA_UNSUPPORTED_LITERAL_PATTERN));
-    return nullptr;
 }
 
 } // namespace aurex::sema

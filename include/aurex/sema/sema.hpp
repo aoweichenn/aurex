@@ -488,7 +488,7 @@ private:
     );
     [[nodiscard]] bool pattern_is_irrefutable(syntax::PatternId pattern, TypeHandle matched) const;
     void define_pattern_bindings(const std::vector<PatternBinding>& bindings, bool is_mutable);
-    [[nodiscard]] const EnumCaseInfo* analyze_single_value_pattern(
+    void analyze_single_value_pattern(
         syntax::PatternId pattern,
         TypeHandle matched,
         bool& covered_true,

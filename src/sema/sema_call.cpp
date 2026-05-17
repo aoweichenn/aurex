@@ -533,10 +533,6 @@ TypeHandle SemanticAnalyzer::analyze_explicit_generic_function_call_expr(
             : this->find_function_in_visible_modules(selector.name_id, name, callee_range, false);
         if (signature != nullptr) {
             this->report(callee_range, sema_function_not_generic_message(name));
-        } else if (generic_lookup.qualified) {
-            static_cast<void>(this->find_generic_function_selector(generic_lookup, callee_range, true));
-        } else if (selector.qualified && syntax::is_valid(generic_lookup.module)) {
-            this->report(callee_range, sema_unknown_function_in_module_message(this->module_name(generic_lookup.module), name));
         } else {
             static_cast<void>(this->find_generic_function_selector(generic_lookup, callee_range, true));
         }
@@ -634,13 +630,13 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
                 );
         }
         if (signature == nullptr) {
-            signature = this->find_method_in_visible_modules(
+            static_cast<void>(this->find_method_in_visible_modules(
                 associated_owner,
                 callee.field_name_id,
                 callee.field_name,
                 callee.range,
                 false
-            );
+            ));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
             if (signature->has_self_param) {
@@ -682,13 +678,13 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
             if (this->checked_.types.is_function(callee_type)) {
                 return this->analyze_function_value_call_expr(expr_id, expr, name);
             }
-            signature = this->find_method_in_visible_modules(
+            static_cast<void>(this->find_method_in_visible_modules(
                 owner_type,
                 callee.field_name_id,
                 callee.field_name,
                 callee.range,
                 true
-            );
+            ));
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         receiver_valid = this->method_receiver_matches(*signature, receiver_type, callee.object);

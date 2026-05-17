@@ -3690,43 +3690,44 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges) {
     bool covered_true = false;
     bool covered_false = false;
     bool value_saw_wildcard = false;
-    EXPECT_EQ(analyzer.analyze_single_value_pattern(
+    analyzer.analyze_single_value_pattern(
         syntax::INVALID_PATTERN_ID,
         types.builtin(BuiltinType::bool_),
         covered_true,
         covered_false,
         value_saw_wildcard
-    ), nullptr);
-    EXPECT_EQ(analyzer.analyze_single_value_pattern(
+    );
+    analyzer.analyze_single_value_pattern(
         unsupported_literal_pattern_id,
         record_type,
         covered_true,
         covered_false,
         value_saw_wildcard
-    ), nullptr);
+    );
     value_saw_wildcard = true;
-    EXPECT_EQ(analyzer.analyze_single_value_pattern(
+    analyzer.analyze_single_value_pattern(
         unsupported_literal_pattern_id,
         types.builtin(BuiltinType::bool_),
         covered_true,
         covered_false,
         value_saw_wildcard
-    ), nullptr);
+    );
     value_saw_wildcard = false;
-    EXPECT_EQ(analyzer.analyze_single_value_pattern(
+    analyzer.analyze_single_value_pattern(
         wildcard_pattern_id,
         types.builtin(BuiltinType::bool_),
         covered_true,
         covered_false,
         value_saw_wildcard
-    ), nullptr);
-    EXPECT_EQ(analyzer.analyze_single_value_pattern(
+    );
+    EXPECT_TRUE(value_saw_wildcard);
+    analyzer.analyze_single_value_pattern(
         payload_pattern_id,
         types.builtin(BuiltinType::bool_),
         covered_true,
         covered_false,
         value_saw_wildcard
-    ), nullptr);
+    );
 }
 
 TEST(CoreUnit, SemanticWhiteBoxMatchGuardTruthAndU8FiniteDomain) {

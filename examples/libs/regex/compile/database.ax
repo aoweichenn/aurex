@@ -13,12 +13,14 @@ const MAGIC_5: u8 = 0x44u8;
 const MAGIC_6: u8 = 0x42u8;
 const MAGIC_7: u8 = 0x31u8;
 const MAGIC_BYTES: usize = 8usize;
-const DATABASE_VERSION: u8 = 2u8;
+const DATABASE_VERSION: u8 = 3u8;
 const USIZE_BYTES: usize = 8usize;
 const STATE_ENCODED_BYTES: usize = 50usize;
 const RANGE_ENCODED_BYTES: usize = 17usize;
+const LITERAL_NODE_ENCODED_BYTES: usize = 56usize;
+const LITERAL_TERMINAL_ENCODED_BYTES: usize = 24usize;
 const OPTIONS_USIZE_COUNT: usize = 7usize;
-const HEADER_BYTES: usize = MAGIC_BYTES + 4usize + USIZE_BYTES * (4usize + OPTIONS_USIZE_COUNT);
+const HEADER_BYTES: usize = MAGIC_BYTES + 4usize + USIZE_BYTES * (7usize + OPTIONS_USIZE_COUNT);
 const BYTE_MASK: usize = 0xffusize;
 const BYTE_BITS: usize = 8usize;
 
@@ -34,7 +36,9 @@ pub fn database_bytes(compiled: &t.RegexSet) -> usize {
     }
     return HEADER_BYTES
         + compiled.state_len * STATE_ENCODED_BYTES
-        + compiled.range_len * RANGE_ENCODED_BYTES;
+        + compiled.range_len * RANGE_ENCODED_BYTES
+        + compiled.literal_node_len * LITERAL_NODE_ENCODED_BYTES
+        + compiled.literal_terminal_len * LITERAL_TERMINAL_ENCODED_BYTES;
 }
 
 pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -> t.DatabaseResult {
@@ -52,6 +56,9 @@ pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -
     write_usize(out, out_capacity, cursor_ptr, compiled.start);
     write_usize(out, out_capacity, cursor_ptr, compiled.state_len);
     write_usize(out, out_capacity, cursor_ptr, compiled.range_len);
+    write_usize(out, out_capacity, cursor_ptr, compiled.literal_node_len);
+    write_usize(out, out_capacity, cursor_ptr, compiled.literal_terminal_len);
+    write_usize(out, out_capacity, cursor_ptr, compiled.literal_max_byte_len);
     var state: usize = 0usize;
     while state < compiled.state_len {
         write_state(out, out_capacity, cursor_ptr, unsafe { compiled.states[state] });
@@ -61,6 +68,16 @@ pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -
     while range < compiled.range_len {
         write_range(out, out_capacity, cursor_ptr, unsafe { compiled.ranges[range] });
         range += 1usize;
+    }
+    var node: usize = 0usize;
+    while node < compiled.literal_node_len {
+        write_literal_node(out, out_capacity, cursor_ptr, unsafe { compiled.literal_nodes[node] });
+        node += 1usize;
+    }
+    var terminal: usize = 0usize;
+    while terminal < compiled.literal_terminal_len {
+        write_literal_terminal(out, out_capacity, cursor_ptr, unsafe { compiled.literal_terminals[terminal] });
+        terminal += 1usize;
     }
     if required > out_capacity {
         return t.database_result(t.RegexStatus.buffer_too_small, out_capacity, required);
@@ -108,18 +125,46 @@ pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
         return empty_set(mode, t.RegexStatus.database_error);
     }
     cursor = range_len_read.next;
+    let literal_node_len_read: ReadUsize = read_usize(data, len, cursor);
+    if !literal_node_len_read.valid {
+        return empty_set(mode, t.RegexStatus.database_error);
+    }
+    cursor = literal_node_len_read.next;
+    let literal_terminal_len_read: ReadUsize = read_usize(data, len, cursor);
+    if !literal_terminal_len_read.valid {
+        return empty_set(mode, t.RegexStatus.database_error);
+    }
+    cursor = literal_terminal_len_read.next;
+    let literal_max_byte_len_read: ReadUsize = read_usize(data, len, cursor);
+    if !literal_max_byte_len_read.valid {
+        return empty_set(mode, t.RegexStatus.database_error);
+    }
+    cursor = literal_max_byte_len_read.next;
     let pattern_count: usize = pattern_count_read.value;
     let start: usize = start_read.value;
     let state_len: usize = state_len_read.value;
     let range_len: usize = range_len_read.value;
-    if !database_shape_is_valid(pattern_count, start, state_len, range_len, len) {
+    let literal_node_len: usize = literal_node_len_read.value;
+    let literal_terminal_len: usize = literal_terminal_len_read.value;
+    let literal_max_byte_len: usize = literal_max_byte_len_read.value;
+    if !database_shape_is_valid(
+        pattern_count,
+        start,
+        state_len,
+        range_len,
+        literal_node_len,
+        literal_terminal_len,
+        literal_max_byte_len,
+        len
+    ) {
         return empty_set(mode, t.RegexStatus.database_error);
     }
-    var compiled: t.RegexSet = allocate_set(mode, options, pattern_count, state_len, range_len);
+    var compiled: t.RegexSet = allocate_set(mode, options, pattern_count, state_len, range_len, literal_node_len, literal_terminal_len);
     if compiled.status != t.RegexStatus.ok {
         return compiled;
     }
     compiled.start = start;
+    compiled.literal_max_byte_len = literal_max_byte_len;
     let cursor_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut cursor)) };
     var state: usize = 0usize;
     while state < state_len {
@@ -136,6 +181,22 @@ pub fn deserialize_set(bytes: []const u8) -> t.RegexSet {
             return empty_set(mode, t.RegexStatus.database_error);
         }
         range += 1usize;
+    }
+    var node: usize = 0usize;
+    while node < literal_node_len {
+        if !read_literal_node(data, len, cursor_ptr, unsafe { ptrat[*mut t.SetLiteralNode](ptraddr(compiled.literal_nodes) + node * sizeof[t.SetLiteralNode]) }) {
+            destroy_set_storage(&mut compiled);
+            return empty_set(mode, t.RegexStatus.database_error);
+        }
+        node += 1usize;
+    }
+    var terminal: usize = 0usize;
+    while terminal < literal_terminal_len {
+        if !read_literal_terminal(data, len, cursor_ptr, unsafe { ptrat[*mut t.SetLiteralTerminal](ptraddr(compiled.literal_terminals) + terminal * sizeof[t.SetLiteralTerminal]) }) {
+            destroy_set_storage(&mut compiled);
+            return empty_set(mode, t.RegexStatus.database_error);
+        }
+        terminal += 1usize;
     }
     if cursor != len || !validate_set_program(&compiled) {
         destroy_set_storage(&mut compiled);
@@ -170,6 +231,22 @@ fn write_range(out: *mut u8, out_capacity: usize, cursor: *mut usize, range: t.C
     write_u8(out, out_capacity, cursor, range.kind);
     write_usize(out, out_capacity, cursor, range.first);
     write_usize(out, out_capacity, cursor, range.last);
+}
+
+fn write_literal_node(out: *mut u8, out_capacity: usize, cursor: *mut usize, node: t.SetLiteralNode) -> void {
+    write_usize(out, out_capacity, cursor, node.value);
+    write_usize(out, out_capacity, cursor, node.first_child);
+    write_usize(out, out_capacity, cursor, node.next_sibling);
+    write_usize(out, out_capacity, cursor, node.first_terminal);
+    write_usize(out, out_capacity, cursor, node.last_terminal);
+    write_usize(out, out_capacity, cursor, node.fail);
+    write_usize(out, out_capacity, cursor, node.output);
+}
+
+fn write_literal_terminal(out: *mut u8, out_capacity: usize, cursor: *mut usize, terminal: t.SetLiteralTerminal) -> void {
+    write_usize(out, out_capacity, cursor, terminal.pattern_id);
+    write_usize(out, out_capacity, cursor, terminal.byte_len);
+    write_usize(out, out_capacity, cursor, terminal.next);
 }
 
 fn write_options(out: *mut u8, out_capacity: usize, cursor: *mut usize, options: t.RegexOptions) -> void {
@@ -347,6 +424,100 @@ fn read_range(data: *const u8, len: usize, cursor: *mut usize, range: *mut t.Cla
     return true;
 }
 
+fn read_literal_node(data: *const u8, len: usize, cursor: *mut usize, node: *mut t.SetLiteralNode) -> bool {
+    if unsafe { *cursor } + LITERAL_NODE_ENCODED_BYTES > len {
+        return false;
+    }
+    let value: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !value.valid {
+        return false;
+    }
+    unsafe {
+        node.value = value.value;
+        *cursor = value.next;
+    }
+    let first_child: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !first_child.valid {
+        return false;
+    }
+    unsafe {
+        node.first_child = first_child.value;
+        *cursor = first_child.next;
+    }
+    let next_sibling: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !next_sibling.valid {
+        return false;
+    }
+    unsafe {
+        node.next_sibling = next_sibling.value;
+        *cursor = next_sibling.next;
+    }
+    let first_terminal: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !first_terminal.valid {
+        return false;
+    }
+    unsafe {
+        node.first_terminal = first_terminal.value;
+        *cursor = first_terminal.next;
+    }
+    let last_terminal: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !last_terminal.valid {
+        return false;
+    }
+    unsafe {
+        node.last_terminal = last_terminal.value;
+        *cursor = last_terminal.next;
+    }
+    let fail: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !fail.valid {
+        return false;
+    }
+    unsafe {
+        node.fail = fail.value;
+        *cursor = fail.next;
+    }
+    let output: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !output.valid {
+        return false;
+    }
+    unsafe {
+        node.output = output.value;
+        *cursor = output.next;
+    }
+    return true;
+}
+
+fn read_literal_terminal(data: *const u8, len: usize, cursor: *mut usize, terminal: *mut t.SetLiteralTerminal) -> bool {
+    if unsafe { *cursor } + LITERAL_TERMINAL_ENCODED_BYTES > len {
+        return false;
+    }
+    let pattern_id: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !pattern_id.valid {
+        return false;
+    }
+    unsafe {
+        terminal.pattern_id = pattern_id.value;
+        *cursor = pattern_id.next;
+    }
+    let byte_len: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !byte_len.valid {
+        return false;
+    }
+    unsafe {
+        terminal.byte_len = byte_len.value;
+        *cursor = byte_len.next;
+    }
+    let next: ReadUsize = read_usize(data, len, unsafe { *cursor });
+    if !next.valid {
+        return false;
+    }
+    unsafe {
+        terminal.next = next.value;
+        *cursor = next.next;
+    }
+    return true;
+}
+
 fn has_magic(data: *const u8, len: usize) -> bool {
     if len < MAGIC_BYTES {
         return false;
@@ -366,6 +537,9 @@ fn database_shape_is_valid(
     start: usize,
     state_len: usize,
     range_len: usize,
+    literal_node_len: usize,
+    literal_terminal_len: usize,
+    literal_max_byte_len: usize,
     bytes_len: usize
 ) -> bool {
     if pattern_count > limits.MAX_SET_PATTERNS ||
@@ -379,7 +553,23 @@ fn database_shape_is_valid(
     if pattern_count == 0usize && (state_len != 0usize || range_len != 0usize || start != t.NO_STATE) {
         return false;
     }
-    return bytes_len == HEADER_BYTES + state_len * STATE_ENCODED_BYTES + range_len * RANGE_ENCODED_BYTES;
+    if literal_node_len == 0usize {
+        if literal_terminal_len != 0usize || literal_max_byte_len != 0usize {
+            return false;
+        }
+    } else {
+        if literal_terminal_len == 0usize ||
+            literal_terminal_len > pattern_count ||
+            literal_node_len > state_len ||
+            literal_max_byte_len == 0usize {
+            return false;
+        }
+    }
+    return bytes_len == HEADER_BYTES
+        + state_len * STATE_ENCODED_BYTES
+        + range_len * RANGE_ENCODED_BYTES
+        + literal_node_len * LITERAL_NODE_ENCODED_BYTES
+        + literal_terminal_len * LITERAL_TERMINAL_ENCODED_BYTES;
 }
 
 fn options_shape_is_valid(options: t.RegexOptions) -> bool {
@@ -395,9 +585,19 @@ fn options_shape_is_valid(options: t.RegexOptions) -> bool {
     return true;
 }
 
-fn allocate_set(mode: u8, options: t.RegexOptions, pattern_count: usize, state_len: usize, range_len: usize) -> t.RegexSet {
+fn allocate_set(
+    mode: u8,
+    options: t.RegexOptions,
+    pattern_count: usize,
+    state_len: usize,
+    range_len: usize,
+    literal_node_len: usize,
+    literal_terminal_len: usize
+) -> t.RegexSet {
     var states: *mut t.State = null;
     var ranges: *mut t.ClassRange = null;
+    var literal_nodes: *mut t.SetLiteralNode = null;
+    var literal_terminals: *mut t.SetLiteralTerminal = null;
     if state_len > 0usize {
         states = unsafe {
             ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(state_len, sizeof[t.State]))
@@ -415,6 +615,27 @@ fn allocate_set(mode: u8, options: t.RegexOptions, pattern_count: usize, state_l
             return empty_set(mode, t.RegexStatus.out_of_memory);
         }
     }
+    if literal_node_len > 0usize {
+        literal_nodes = unsafe {
+            ptrcast[*mut t.SetLiteralNode](alloc.alloc_zeroed_bytes(literal_node_len, sizeof[t.SetLiteralNode]))
+        };
+        if literal_nodes == null {
+            alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
+            alloc.free_bytes(unsafe { ptrcast[*mut u8](ranges) });
+            return empty_set(mode, t.RegexStatus.out_of_memory);
+        }
+    }
+    if literal_terminal_len > 0usize {
+        literal_terminals = unsafe {
+            ptrcast[*mut t.SetLiteralTerminal](alloc.alloc_zeroed_bytes(literal_terminal_len, sizeof[t.SetLiteralTerminal]))
+        };
+        if literal_terminals == null {
+            alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
+            alloc.free_bytes(unsafe { ptrcast[*mut u8](ranges) });
+            alloc.free_bytes(unsafe { ptrcast[*mut u8](literal_nodes) });
+            return empty_set(mode, t.RegexStatus.out_of_memory);
+        }
+    }
     return t.RegexSet {
         mode: mode,
         options: options,
@@ -425,6 +646,11 @@ fn allocate_set(mode: u8, options: t.RegexOptions, pattern_count: usize, state_l
         range_len: range_len,
         range_capacity: range_len,
         pattern_count: pattern_count,
+        literal_nodes: literal_nodes,
+        literal_node_len: literal_node_len,
+        literal_terminals: literal_terminals,
+        literal_terminal_len: literal_terminal_len,
+        literal_max_byte_len: 0usize,
         start: t.NO_STATE,
         status: t.RegexStatus.ok,
         error_index: t.CAPTURE_MISSING,
@@ -442,6 +668,11 @@ fn empty_set(mode: u8, status: t.RegexStatus) -> t.RegexSet {
         range_len: 0usize,
         range_capacity: 0usize,
         pattern_count: 0usize,
+        literal_nodes: null,
+        literal_node_len: 0usize,
+        literal_terminals: null,
+        literal_terminal_len: 0usize,
+        literal_max_byte_len: 0usize,
         start: t.NO_STATE,
         status: status,
         error_index: t.CAPTURE_MISSING,
@@ -451,17 +682,24 @@ fn empty_set(mode: u8, status: t.RegexStatus) -> t.RegexSet {
 fn destroy_set_storage(compiled: &mut t.RegexSet) -> void {
     alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.states) });
     alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.ranges) });
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.literal_nodes) });
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.literal_terminals) });
     compiled.states = null;
     compiled.ranges = null;
+    compiled.literal_nodes = null;
+    compiled.literal_terminals = null;
     compiled.state_len = 0usize;
     compiled.state_capacity = 0usize;
     compiled.range_len = 0usize;
     compiled.range_capacity = 0usize;
+    compiled.literal_node_len = 0usize;
+    compiled.literal_terminal_len = 0usize;
+    compiled.literal_max_byte_len = 0usize;
 }
 
 fn validate_set_program(compiled: &t.RegexSet) -> bool {
     if compiled.state_len == 0usize {
-        return compiled.start == t.NO_STATE;
+        return compiled.start == t.NO_STATE && validate_literal_automaton(compiled);
     }
     var state: usize = 0usize;
     while state < compiled.state_len {
@@ -470,7 +708,7 @@ fn validate_set_program(compiled: &t.RegexSet) -> bool {
         }
         state += 1usize;
     }
-    return true;
+    return validate_literal_automaton(compiled);
 }
 
 fn validate_state(compiled: &t.RegexSet, state: t.State) -> bool {
@@ -492,4 +730,68 @@ fn validate_state(compiled: &t.RegexSet, state: t.State) -> bool {
         return false;
     }
     return state.opcode <= t.OP_SAVE;
+}
+
+fn validate_literal_automaton(compiled: &t.RegexSet) -> bool {
+    if compiled.literal_node_len == 0usize {
+        return compiled.literal_nodes == null &&
+            compiled.literal_terminals == null &&
+            compiled.literal_terminal_len == 0usize &&
+            compiled.literal_max_byte_len == 0usize;
+    }
+    if compiled.literal_nodes == null ||
+        compiled.literal_terminals == null ||
+        compiled.literal_terminal_len == 0usize ||
+        compiled.literal_max_byte_len == 0usize ||
+        compiled.literal_terminal_len > compiled.pattern_count {
+        return false;
+    }
+    if unsafe { compiled.literal_nodes[0usize].fail } != 0usize {
+        return false;
+    }
+    var node: usize = 0usize;
+    while node < compiled.literal_node_len {
+        if !validate_literal_node(compiled, unsafe { compiled.literal_nodes[node] }) {
+            return false;
+        }
+        node += 1usize;
+    }
+    var terminal: usize = 0usize;
+    while terminal < compiled.literal_terminal_len {
+        if !validate_literal_terminal(compiled, unsafe { compiled.literal_terminals[terminal] }) {
+            return false;
+        }
+        terminal += 1usize;
+    }
+    return true;
+}
+
+fn validate_literal_node(compiled: &t.RegexSet, node: t.SetLiteralNode) -> bool {
+    if !literal_node_ref_is_valid(node.first_child, compiled.literal_node_len) ||
+        !literal_node_ref_is_valid(node.next_sibling, compiled.literal_node_len) ||
+        !literal_terminal_ref_is_valid(node.first_terminal, compiled.literal_terminal_len) ||
+        !literal_terminal_ref_is_valid(node.last_terminal, compiled.literal_terminal_len) ||
+        node.fail >= compiled.literal_node_len ||
+        !literal_node_ref_is_valid(node.output, compiled.literal_node_len) {
+        return false;
+    }
+    return true;
+}
+
+fn validate_literal_terminal(compiled: &t.RegexSet, terminal: t.SetLiteralTerminal) -> bool {
+    if terminal.pattern_id >= compiled.pattern_count ||
+        terminal.byte_len == 0usize ||
+        terminal.byte_len > compiled.literal_max_byte_len ||
+        !literal_terminal_ref_is_valid(terminal.next, compiled.literal_terminal_len) {
+        return false;
+    }
+    return true;
+}
+
+fn literal_node_ref_is_valid(value: usize, node_len: usize) -> bool {
+    return value == t.CAPTURE_MISSING || value < node_len;
+}
+
+fn literal_terminal_ref_is_valid(value: usize, terminal_len: usize) -> bool {
+    return value == t.CAPTURE_MISSING || value < terminal_len;
 }

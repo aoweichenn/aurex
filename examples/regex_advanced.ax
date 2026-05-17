@@ -984,6 +984,9 @@ fn require_regex_set_literal_trie_optimizer() -> i32 {
         decoded_found.start != 2usize || decoded_found.end != 4usize {
         return CASE_SET_LITERAL_TRIE + 7 + regex.status_code(decoded_found.status);
     }
+    if regex.set_workspace_bytes(&compiled) > 16usize || regex.set_workspace_bytes(&decoded) > 16usize {
+        return CASE_SET_LITERAL_TRIE + 15;
+    }
 
     var byte_set: bytes.RegexSet = bytes.compile_set(patterns[:]);
     defer bytes.destroy_set(&mut byte_set);
@@ -1027,9 +1030,44 @@ fn require_regex_set_literal_trie_optimizer() -> i32 {
         "xaa",
         set_literal_trie_duplicate_callback
     );
-    return ensure(
+    let duplicate_code: i32 = ensure(
         CASE_SET_LITERAL_TRIE + 14 + regex.status_code(duplicate_spans.status),
         duplicate_spans.status == regex.RegexStatus.ok && duplicate_spans.count == 2usize
+    );
+    if duplicate_code != 0 {
+        return duplicate_code;
+    }
+
+    let unicode_patterns: [3]str = ["é", "éx", "x"];
+    var unicode_set: regex.RegexSet = regex.compile_set(unicode_patterns[:]);
+    defer regex.destroy_set(&mut unicode_set);
+    if !unicode_set.valid() {
+        return CASE_SET_LITERAL_TRIE + 16 + regex.status_code(unicode_set.status);
+    }
+    let unicode_found: regex.SetMatchSpan = regex.find_set_compiled(&unicode_set, "zzéx");
+    if unicode_found.status != regex.RegexStatus.ok || !unicode_found.matched || unicode_found.pattern_id != 0usize ||
+        unicode_found.start != 2usize || unicode_found.end != 4usize {
+        return CASE_SET_LITERAL_TRIE + 17 + regex.status_code(unicode_found.status);
+    }
+
+    let suffix_patterns: [4]str = ["abcd", "bcd", "cd", "d"];
+    var suffix_set: regex.RegexSet = regex.compile_set(suffix_patterns[:]);
+    defer regex.destroy_set(&mut suffix_set);
+    if !suffix_set.valid() {
+        return CASE_SET_LITERAL_TRIE + 18 + regex.status_code(suffix_set.status);
+    }
+    var suffix_ids: [8]usize = [0usize; 8];
+    let suffix_matches: regex.SetMatchesResult = regex.matches_set_compiled(&suffix_set, "xabcd", ids_ptr(&mut suffix_ids), SET_ID_CAPACITY);
+    if suffix_matches.status != regex.RegexStatus.ok || suffix_matches.count != 4usize ||
+        suffix_ids[0usize] != 0usize || suffix_ids[1usize] != 1usize || suffix_ids[2usize] != 2usize ||
+        suffix_ids[3usize] != 3usize {
+        return CASE_SET_LITERAL_TRIE + 19 + regex.status_code(suffix_matches.status);
+    }
+    let suffix_found: regex.SetMatchSpan = regex.find_set_compiled(&suffix_set, "xabcd");
+    return ensure(
+        CASE_SET_LITERAL_TRIE + 20 + regex.status_code(suffix_found.status),
+        suffix_found.status == regex.RegexStatus.ok && suffix_found.matched && suffix_found.pattern_id == 0usize &&
+            suffix_found.start == 1usize && suffix_found.end == 5usize
     );
 }
 

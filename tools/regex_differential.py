@@ -3,6 +3,8 @@
 
 The generated Aurex program covers:
 - a Python `re` differential corpus restricted to regular, linear-time syntax;
+- deterministic property-style Python `re` cases over the same safe subset;
+- exact-literal RegexSet property cases for AC/trie set semantics;
 - Unicode 17 CaseFolding.txt full case-fold mappings;
 - Unicode 17 GraphemeBreakTest.txt extended grapheme cluster boundaries.
 """
@@ -11,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import random
 import re
 import subprocess
 import sys
@@ -120,7 +123,100 @@ def python_differential_cases() -> list[tuple[str, str, bool, int, int, bool]]:
             -1 if search is None else search.end(),
             full is not None,
         ))
+    cases.extend(random_python_differential_cases(96))
     return cases
+
+
+def random_python_differential_cases(count: int) -> list[tuple[str, str, bool, int, int, bool]]:
+    rng = random.Random(0xA17E17)
+    literals = ["a", "b", "ab", "ba", "cat", "dog", "foo", "bar", "id", "2026", "warn", "err"]
+    classes = ["[abc]", "[a-z]", "[0-9]", "[A-F0-9]", "[^xyz]"]
+    chunks = ["a", "b", "ab", "ba", "cat", "dog", "foo", "bar", "id", "2026", "warn", "err", " ", "_", "-", "x", "y"]
+    cases: list[tuple[str, str, bool, int, int, bool]] = []
+    for index in range(count):
+        left = rng.choice(literals)
+        right = rng.choice(literals)
+        middle = rng.choice(literals)
+        cls = rng.choice(classes)
+        width = rng.randint(1, 4)
+        variant = index % 8
+        if variant == 0:
+            pattern = f"{left}{right}"
+        elif variant == 1:
+            pattern = f"{left}+"
+        elif variant == 2:
+            pattern = f"(?:{left}|{right}){middle}"
+        elif variant == 3:
+            pattern = f"{cls}{{{width}}}"
+        elif variant == 4:
+            pattern = f"{left}.{right}"
+        elif variant == 5:
+            pattern = f"{left}[0-9]+"
+        elif variant == 6:
+            pattern = f"(?:{left}{right}|{right}{left})"
+        else:
+            pattern = f"{cls}{{1,{width}}}{middle}"
+        text = "".join(rng.choice(chunks) for _ in range(rng.randint(4, 10)))
+        search = re.search(pattern, text)
+        full = re.fullmatch(pattern, text)
+        cases.append(
+            (
+                pattern,
+                text,
+                search is not None,
+                -1 if search is None else len(text[: search.start()].encode("utf-8")),
+                -1 if search is None else len(text[: search.end()].encode("utf-8")),
+                full is not None,
+            )
+        )
+    return cases
+
+
+def regex_set_property_cases() -> list[tuple[list[str], str, list[int], tuple[int, int, int] | None, int]]:
+    fixed = [
+        (["he", "her", "hers", "his"], "ushers history"),
+        (["aba", "ba", "a"], "ababa"),
+        (["abcd", "bcd", "cd", "d"], "xabcd"),
+        (["aa", "aa", "ab"], "xaa"),
+        (["é", "éx", "x"], "zzéx"),
+        (["warn", "error", "info"], "trace debug"),
+    ]
+    rng = random.Random(0x5E7A11)
+    atoms = ["a", "b", "ab", "ba", "aba", "bab", "cat", "dog", "warn", "err", "id", "xy"]
+    generated: list[tuple[list[str], str]] = []
+    for _ in range(24):
+        pattern_count = rng.randint(3, 7)
+        patterns = [rng.choice(atoms) + ("" if rng.randrange(3) else rng.choice(["", "x", "y"])) for _ in range(pattern_count)]
+        text = "".join(rng.choice(atoms + ["_", "-", " "]) for _ in range(rng.randint(5, 12)))
+        generated.append((patterns, text))
+    return [regex_set_expected(patterns, text) for patterns, text in fixed + generated]
+
+
+def regex_set_expected(
+    patterns: list[str], text: str
+) -> tuple[list[str], str, list[int], tuple[int, int, int] | None, int]:
+    matched_ids: list[int] = []
+    spans: list[tuple[int, int, int]] = []
+    for pattern_id, pattern in enumerate(patterns):
+        start = text.find(pattern)
+        if start >= 0:
+            matched_ids.append(pattern_id)
+        cursor = 0
+        while True:
+            found = text.find(pattern, cursor)
+            if found < 0:
+                break
+            end = found + len(pattern)
+            spans.append(
+                (
+                    pattern_id,
+                    len(text[:found].encode("utf-8")),
+                    len(text[:end].encode("utf-8")),
+                )
+            )
+            cursor = found + 1
+    best = None if not spans else min(spans, key=lambda item: (item[1], item[2], item[0]))
+    return patterns, text, matched_ids, best, len(spans)
 
 
 def emit_python_differential(lines: list[str]) -> None:
@@ -148,6 +244,75 @@ def emit_python_differential(lines: list[str]) -> None:
         else:
             lines.append(f"    if full_{index}.status != regex.RegexStatus.no_match {{")
             lines.append(f"        return {code + 1} + regex.status_code(full_{index}.status);")
+            lines.append("    }")
+    lines.append("    return 0;")
+    lines.append("}")
+    lines.append("")
+
+
+def emit_regex_set_properties(lines: list[str]) -> None:
+    lines.append("fn regex_set_property_callback(pattern_id: usize, start: usize, end: usize) -> regex.RegexStatus {")
+    lines.append("    return regex.RegexStatus.ok;")
+    lines.append("}")
+    lines.append("")
+    lines.append("fn require_regex_set_properties() -> i32 {")
+    for index, (patterns, text, matched_ids, best, span_count) in enumerate(regex_set_property_cases()):
+        code = 7000 + index * 20
+        pattern_items = ", ".join(aurex_string(pattern) for pattern in patterns)
+        capacity = max(len(patterns), 1) + 2
+        lines.append(f"    let set_patterns_{index}: [{len(patterns)}]str = [{pattern_items}];")
+        lines.append(f"    var set_{index}: regex.RegexSet = regex.compile_set(set_patterns_{index}[:]);")
+        lines.append(f"    defer regex.destroy_set(&mut set_{index});")
+        lines.append(f"    if !set_{index}.valid() {{")
+        lines.append(f"        return {code} + regex.status_code(set_{index}.status);")
+        lines.append("    }")
+        lines.append(f"    var set_ids_{index}: [{capacity}]usize = [0usize; {capacity}];")
+        lines.append(
+            f"    let set_matches_{index}: regex.SetMatchesResult = regex.matches_set_compiled("
+            f"&set_{index}, {aurex_string(text)}, unsafe {{ ptrcast[*mut usize](ptrat[*mut [{capacity}]usize](ptraddr(&mut set_ids_{index}))) }}, {capacity}usize);"
+        )
+        if matched_ids:
+            lines.append(
+                f"    if set_matches_{index}.status != regex.RegexStatus.ok || "
+                f"set_matches_{index}.count != {len(matched_ids)}usize || set_matches_{index}.written != {len(matched_ids)}usize {{"
+            )
+            lines.append(f"        return {code + 1} + regex.status_code(set_matches_{index}.status);")
+            lines.append("    }")
+            for output_index, pattern_id in enumerate(matched_ids):
+                lines.append(f"    if set_ids_{index}[{output_index}usize] != {pattern_id}usize {{")
+                lines.append(f"        return {code + 2 + output_index};")
+                lines.append("    }")
+        else:
+            lines.append(f"    if set_matches_{index}.status != regex.RegexStatus.no_match || set_matches_{index}.count != 0usize {{")
+            lines.append(f"        return {code + 1} + regex.status_code(set_matches_{index}.status);")
+            lines.append("    }")
+        lines.append(f"    let set_found_{index}: regex.SetMatchSpan = regex.find_set_compiled(&set_{index}, {aurex_string(text)});")
+        if best is None:
+            lines.append(f"    if set_found_{index}.status != regex.RegexStatus.no_match {{")
+            lines.append(f"        return {code + 10} + regex.status_code(set_found_{index}.status);")
+            lines.append("    }")
+        else:
+            pattern_id, start, end = best
+            lines.append(
+                f"    if set_found_{index}.status != regex.RegexStatus.ok || !set_found_{index}.matched || "
+                f"set_found_{index}.pattern_id != {pattern_id}usize || set_found_{index}.start != {start}usize || "
+                f"set_found_{index}.end != {end}usize {{"
+            )
+            lines.append(f"        return {code + 10} + regex.status_code(set_found_{index}.status);")
+            lines.append("    }")
+        lines.append(
+            f"    let set_spans_{index}: regex.SetMatchesResult = regex.scan_set_spans_compiled("
+            f"&set_{index}, {aurex_string(text)}, regex_set_property_callback);"
+        )
+        if span_count == 0:
+            lines.append(f"    if set_spans_{index}.status != regex.RegexStatus.no_match || set_spans_{index}.count != 0usize {{")
+            lines.append(f"        return {code + 11} + regex.status_code(set_spans_{index}.status);")
+            lines.append("    }")
+        else:
+            lines.append(
+                f"    if set_spans_{index}.status != regex.RegexStatus.ok || set_spans_{index}.count != {span_count}usize {{"
+            )
+            lines.append(f"        return {code + 11} + regex.status_code(set_spans_{index}.status);")
             lines.append("    }")
     lines.append("    return 0;")
     lines.append("}")
@@ -243,6 +408,7 @@ def generate_source(fold_start: int, fold_end: int, grapheme_start: int, graphem
         "",
     ]
     emit_python_differential(lines)
+    emit_regex_set_properties(lines)
     emit_case_folding(lines, folds)
     emit_grapheme(lines, graphemes)
     lines.extend(
@@ -251,6 +417,10 @@ def generate_source(fold_start: int, fold_end: int, grapheme_start: int, graphem
             "    let diff: i32 = require_python_differential();",
             "    if diff != 0 {",
             "        return diff;",
+            "    }",
+            "    let set_props: i32 = require_regex_set_properties();",
+            "    if set_props != 0 {",
+            "        return set_props;",
             "    }",
             "    let fold: i32 = require_case_folding();",
             "    if fold != 0 {",

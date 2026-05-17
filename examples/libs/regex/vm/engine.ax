@@ -75,6 +75,13 @@ struct FlatInput {
     status: t.RegexStatus;
 }
 
+struct LiteralSetBest {
+    matched: bool;
+    pattern_id: usize;
+    start: usize;
+    end: usize;
+}
+
 pub fn search_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
     return search_compiled_from(compiled, input, 0usize);
 }
@@ -258,6 +265,9 @@ pub fn captures_bytes_raw_compiled_from(compiled: &t.Regex, data: *const u8, len
 }
 
 pub fn set_workspace_bytes(compiled: &t.RegexSet) -> usize {
+    if set_has_literal_automaton(compiled) {
+        return compiled.pattern_count * sizeof[bool];
+    }
     return workspace_bytes_for(compiled.state_len, 2usize) + compiled.pattern_count * sizeof[bool];
 }
 
@@ -626,6 +636,20 @@ fn matches_set_input(
     }
     defer alloc.free_bytes(unsafe { ptrcast[*mut u8](matched) });
 
+    if set_has_literal_automaton(compiled) {
+        var literal_matched_count: usize = 0usize;
+        let literal_matched_count_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut literal_matched_count)) };
+        let literal_status: t.RegexStatus = run_literal_set_search(compiled, input, matched, literal_matched_count_ptr);
+        if literal_status != t.RegexStatus.ok {
+            return t.set_matches_result(literal_status, false, literal_matched_count, 0usize);
+        }
+        if literal_matched_count == 0usize {
+            return t.set_matches_result(t.RegexStatus.no_match, false, 0usize, 0usize);
+        }
+        let literal_written: usize = write_set_matches(matched, compiled.pattern_count, out_pattern_ids, out_capacity);
+        return t.set_matches_result(t.RegexStatus.ok, true, literal_matched_count, literal_written);
+    }
+
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, 2usize, compiled.options.max_workspace_states);
     defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
@@ -652,6 +676,9 @@ fn find_set_input(compiled: &t.RegexSet, input: InputView, start_offset: usize) 
     if start_offset > input.len {
         return t.set_match_span(false, t.NO_CAPTURE, 0usize, 0usize, t.RegexStatus.no_match);
     }
+    if set_has_literal_automaton(compiled) {
+        return run_literal_set_find(compiled, input, align_forward_boundary(input, start_offset));
+    }
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, 2usize, compiled.options.max_workspace_states);
     defer destroy_workspace(&mut workspace);
     if workspace.status != t.RegexStatus.ok {
@@ -661,6 +688,9 @@ fn find_set_input(compiled: &t.RegexSet, input: InputView, start_offset: usize) 
 }
 
 fn scan_set_input(compiled: &t.RegexSet, input: InputView, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    if set_has_literal_automaton(compiled) {
+        return scan_literal_set_input(compiled, input, callback);
+    }
     var cursor: usize = 0usize;
     var count: usize = 0usize;
     while cursor <= input.len {
@@ -690,6 +720,9 @@ fn scan_set_input(compiled: &t.RegexSet, input: InputView, callback: t.SetScanCa
 fn scan_set_all_spans_input(compiled: &t.RegexSet, input: InputView, callback: t.SetScanCallback) -> t.SetMatchesResult {
     if compiled.pattern_count == 0usize {
         return t.set_matches_result(t.RegexStatus.no_match, false, 0usize, 0usize);
+    }
+    if set_has_literal_automaton(compiled) {
+        return scan_literal_set_all_spans(compiled, input, callback);
     }
     let emitted: *mut bool = alloc_bool_array(compiled.pattern_count);
     if emitted == null {
@@ -725,6 +758,338 @@ fn scan_set_all_spans_input(compiled: &t.RegexSet, input: InputView, callback: t
         return t.set_matches_result(t.RegexStatus.no_match, false, 0usize, 0usize);
     }
     return t.set_matches_result(t.RegexStatus.ok, true, count, count);
+}
+
+fn set_has_literal_automaton(compiled: &t.RegexSet) -> bool {
+    return compiled.literal_nodes != null &&
+        compiled.literal_node_len > 0usize &&
+        compiled.literal_terminals != null &&
+        compiled.literal_terminal_len > 0usize &&
+        compiled.literal_max_byte_len > 0usize;
+}
+
+fn run_literal_set_search(
+    compiled: &t.RegexSet,
+    input: InputView,
+    matched: *mut bool,
+    matched_count: *mut usize
+) -> t.RegexStatus {
+    var state: usize = 0usize;
+    var position: usize = 0usize;
+    while position < input.len {
+        let decoded: InputDecode = decode_at(input, position);
+        if decoded.next <= position {
+            return t.RegexStatus.ok;
+        }
+        state = literal_set_transition(compiled, state, decoded.value);
+        let status: t.RegexStatus = mark_literal_outputs(compiled, state, matched, matched_count);
+        if status != t.RegexStatus.ok {
+            return status;
+        }
+        if unsafe { *matched_count } >= compiled.pattern_count {
+            return t.RegexStatus.ok;
+        }
+        position = decoded.next;
+    }
+    return t.RegexStatus.ok;
+}
+
+fn run_literal_set_find(compiled: &t.RegexSet, input: InputView, start: usize) -> t.SetMatchSpan {
+    if start >= input.len {
+        return t.set_match_span(false, t.NO_CAPTURE, 0usize, 0usize, t.RegexStatus.no_match);
+    }
+    var best: LiteralSetBest = LiteralSetBest {
+        matched: false,
+        pattern_id: t.NO_CAPTURE,
+        start: start,
+        end: start,
+    };
+    let best_ptr: *mut LiteralSetBest = unsafe { ptrat[*mut LiteralSetBest](ptraddr(&mut best)) };
+    var state: usize = 0usize;
+    var position: usize = start;
+    while position < input.len {
+        let decoded: InputDecode = decode_at(input, position);
+        if decoded.next <= position {
+            break;
+        }
+        state = literal_set_transition(compiled, state, decoded.value);
+        let status: t.RegexStatus = update_literal_best_outputs(compiled, state, decoded.next, best_ptr);
+        if status != t.RegexStatus.ok {
+            return t.set_match_span(false, t.NO_CAPTURE, position, position, status);
+        }
+        if best.matched && literal_find_can_stop(input.len, best.start, compiled.literal_max_byte_len, decoded.next) {
+            return t.set_match_span(true, best.pattern_id, best.start, best.end, t.RegexStatus.ok);
+        }
+        position = decoded.next;
+    }
+    if best.matched {
+        return t.set_match_span(true, best.pattern_id, best.start, best.end, t.RegexStatus.ok);
+    }
+    return t.set_match_span(false, t.NO_CAPTURE, 0usize, 0usize, t.RegexStatus.no_match);
+}
+
+fn scan_literal_set_input(compiled: &t.RegexSet, input: InputView, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    var cursor: usize = 0usize;
+    var count: usize = 0usize;
+    while cursor <= input.len {
+        let found: t.SetMatchSpan = run_literal_set_find(compiled, input, align_forward_boundary(input, cursor));
+        if found.status == t.RegexStatus.no_match || !found.matched {
+            if count == 0usize {
+                return t.set_matches_result(t.RegexStatus.no_match, false, 0usize, 0usize);
+            }
+            return t.set_matches_result(t.RegexStatus.ok, true, count, count);
+        }
+        if found.status != t.RegexStatus.ok {
+            return t.set_matches_result(found.status, count > 0usize, count, count);
+        }
+        let status: t.RegexStatus = callback(found.pattern_id, found.start, found.end);
+        if status != t.RegexStatus.ok {
+            return t.set_matches_result(status, count > 0usize, count, count);
+        }
+        count += 1usize;
+        cursor = next_match_cursor(input, found.start, found.end);
+    }
+    if count == 0usize {
+        return t.set_matches_result(t.RegexStatus.no_match, false, 0usize, 0usize);
+    }
+    return t.set_matches_result(t.RegexStatus.ok, true, count, count);
+}
+
+fn scan_literal_set_all_spans(compiled: &t.RegexSet, input: InputView, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    var count: usize = 0usize;
+    let count_ptr: *mut usize = unsafe { ptrat[*mut usize](ptraddr(&mut count)) };
+    var state: usize = 0usize;
+    var position: usize = 0usize;
+    while position < input.len {
+        let decoded: InputDecode = decode_at(input, position);
+        if decoded.next <= position {
+            break;
+        }
+        state = literal_set_transition(compiled, state, decoded.value);
+        let status: t.RegexStatus = emit_literal_outputs(compiled, state, decoded.next, callback, count_ptr);
+        if status != t.RegexStatus.ok {
+            return t.set_matches_result(status, count > 0usize, count, count);
+        }
+        position = decoded.next;
+    }
+    if count == 0usize {
+        return t.set_matches_result(t.RegexStatus.no_match, false, 0usize, 0usize);
+    }
+    return t.set_matches_result(t.RegexStatus.ok, true, count, count);
+}
+
+fn literal_set_transition(compiled: &t.RegexSet, state: usize, value: usize) -> usize {
+    var current: usize = if state < compiled.literal_node_len { state } else { 0usize };
+    var target: usize = literal_set_child(compiled, current, value);
+    var steps: usize = 0usize;
+    while current != 0usize && target == t.CAPTURE_MISSING && steps <= compiled.literal_node_len {
+        current = unsafe { compiled.literal_nodes[current].fail };
+        if current >= compiled.literal_node_len {
+            current = 0usize;
+        }
+        target = literal_set_child(compiled, current, value);
+        steps += 1usize;
+    }
+    if target != t.CAPTURE_MISSING {
+        return target;
+    }
+    return 0usize;
+}
+
+fn literal_set_child(compiled: &t.RegexSet, parent: usize, value: usize) -> usize {
+    if parent >= compiled.literal_node_len {
+        return t.CAPTURE_MISSING;
+    }
+    var child: usize = unsafe { compiled.literal_nodes[parent].first_child };
+    var steps: usize = 0usize;
+    while child != t.CAPTURE_MISSING && child < compiled.literal_node_len && steps <= compiled.literal_node_len {
+        let child_value: usize = unsafe { compiled.literal_nodes[child].value };
+        if child_value == value {
+            return child;
+        }
+        if child_value > value {
+            return t.CAPTURE_MISSING;
+        }
+        child = unsafe { compiled.literal_nodes[child].next_sibling };
+        steps += 1usize;
+    }
+    return t.CAPTURE_MISSING;
+}
+
+fn mark_literal_outputs(
+    compiled: &t.RegexSet,
+    state: usize,
+    matched: *mut bool,
+    matched_count: *mut usize
+) -> t.RegexStatus {
+    var node: usize = state;
+    var steps: usize = 0usize;
+    while node != t.CAPTURE_MISSING && node < compiled.literal_node_len && steps <= compiled.literal_node_len {
+        let status: t.RegexStatus = mark_literal_node_terminals(compiled, node, matched, matched_count);
+        if status != t.RegexStatus.ok {
+            return status;
+        }
+        node = unsafe { compiled.literal_nodes[node].output };
+        steps += 1usize;
+    }
+    if node != t.CAPTURE_MISSING {
+        return t.RegexStatus.database_error;
+    }
+    return t.RegexStatus.ok;
+}
+
+fn mark_literal_node_terminals(
+    compiled: &t.RegexSet,
+    node: usize,
+    matched: *mut bool,
+    matched_count: *mut usize
+) -> t.RegexStatus {
+    var terminal: usize = unsafe { compiled.literal_nodes[node].first_terminal };
+    var steps: usize = 0usize;
+    while terminal != t.CAPTURE_MISSING && terminal < compiled.literal_terminal_len && steps <= compiled.literal_terminal_len {
+        let pattern_id: usize = unsafe { compiled.literal_terminals[terminal].pattern_id };
+        if pattern_id >= compiled.pattern_count {
+            return t.RegexStatus.database_error;
+        }
+        if !unsafe { matched[pattern_id] } {
+            unsafe {
+                matched[pattern_id] = true;
+                *matched_count = *matched_count + 1usize;
+            }
+        }
+        terminal = unsafe { compiled.literal_terminals[terminal].next };
+        steps += 1usize;
+    }
+    if terminal != t.CAPTURE_MISSING {
+        return t.RegexStatus.database_error;
+    }
+    return t.RegexStatus.ok;
+}
+
+fn update_literal_best_outputs(
+    compiled: &t.RegexSet,
+    state: usize,
+    end: usize,
+    best: *mut LiteralSetBest
+) -> t.RegexStatus {
+    var node: usize = state;
+    var steps: usize = 0usize;
+    while node != t.CAPTURE_MISSING && node < compiled.literal_node_len && steps <= compiled.literal_node_len {
+        let status: t.RegexStatus = update_literal_best_node_terminals(compiled, node, end, best);
+        if status != t.RegexStatus.ok {
+            return status;
+        }
+        node = unsafe { compiled.literal_nodes[node].output };
+        steps += 1usize;
+    }
+    if node != t.CAPTURE_MISSING {
+        return t.RegexStatus.database_error;
+    }
+    return t.RegexStatus.ok;
+}
+
+fn update_literal_best_node_terminals(
+    compiled: &t.RegexSet,
+    node: usize,
+    end: usize,
+    best: *mut LiteralSetBest
+) -> t.RegexStatus {
+    var terminal: usize = unsafe { compiled.literal_nodes[node].first_terminal };
+    var steps: usize = 0usize;
+    while terminal != t.CAPTURE_MISSING && terminal < compiled.literal_terminal_len && steps <= compiled.literal_terminal_len {
+        let pattern_id: usize = unsafe { compiled.literal_terminals[terminal].pattern_id };
+        let byte_len: usize = unsafe { compiled.literal_terminals[terminal].byte_len };
+        if pattern_id >= compiled.pattern_count || byte_len == 0usize || byte_len > end {
+            return t.RegexStatus.database_error;
+        }
+        let start: usize = end - byte_len;
+        if literal_candidate_replaces(unsafe { *best }, pattern_id, start, end) {
+            unsafe {
+                best.matched = true;
+                best.pattern_id = pattern_id;
+                best.start = start;
+                best.end = end;
+            }
+        }
+        terminal = unsafe { compiled.literal_terminals[terminal].next };
+        steps += 1usize;
+    }
+    if terminal != t.CAPTURE_MISSING {
+        return t.RegexStatus.database_error;
+    }
+    return t.RegexStatus.ok;
+}
+
+fn emit_literal_outputs(
+    compiled: &t.RegexSet,
+    state: usize,
+    end: usize,
+    callback: t.SetScanCallback,
+    count: *mut usize
+) -> t.RegexStatus {
+    var node: usize = state;
+    var steps: usize = 0usize;
+    while node != t.CAPTURE_MISSING && node < compiled.literal_node_len && steps <= compiled.literal_node_len {
+        let status: t.RegexStatus = emit_literal_node_terminals(compiled, node, end, callback, count);
+        if status != t.RegexStatus.ok {
+            return status;
+        }
+        node = unsafe { compiled.literal_nodes[node].output };
+        steps += 1usize;
+    }
+    if node != t.CAPTURE_MISSING {
+        return t.RegexStatus.database_error;
+    }
+    return t.RegexStatus.ok;
+}
+
+fn emit_literal_node_terminals(
+    compiled: &t.RegexSet,
+    node: usize,
+    end: usize,
+    callback: t.SetScanCallback,
+    count: *mut usize
+) -> t.RegexStatus {
+    var terminal: usize = unsafe { compiled.literal_nodes[node].first_terminal };
+    var steps: usize = 0usize;
+    while terminal != t.CAPTURE_MISSING && terminal < compiled.literal_terminal_len && steps <= compiled.literal_terminal_len {
+        let pattern_id: usize = unsafe { compiled.literal_terminals[terminal].pattern_id };
+        let byte_len: usize = unsafe { compiled.literal_terminals[terminal].byte_len };
+        if pattern_id >= compiled.pattern_count || byte_len == 0usize || byte_len > end {
+            return t.RegexStatus.database_error;
+        }
+        let status: t.RegexStatus = callback(pattern_id, end - byte_len, end);
+        if status != t.RegexStatus.ok {
+            return status;
+        }
+        unsafe {
+            *count = *count + 1usize;
+        }
+        terminal = unsafe { compiled.literal_terminals[terminal].next };
+        steps += 1usize;
+    }
+    if terminal != t.CAPTURE_MISSING {
+        return t.RegexStatus.database_error;
+    }
+    return t.RegexStatus.ok;
+}
+
+fn literal_candidate_replaces(best: LiteralSetBest, pattern_id: usize, start: usize, end: usize) -> bool {
+    return !best.matched ||
+        start < best.start ||
+        (start == best.start && end < best.end) ||
+        (start == best.start && end == best.end && pattern_id < best.pattern_id);
+}
+
+fn literal_find_can_stop(input_len: usize, best_start: usize, max_byte_len: usize, end: usize) -> bool {
+    if best_start >= input_len {
+        return true;
+    }
+    let remaining: usize = input_len - best_start;
+    if max_byte_len >= remaining {
+        return end >= input_len;
+    }
+    return end >= best_start + max_byte_len;
 }
 
 fn run_set_collect_at(

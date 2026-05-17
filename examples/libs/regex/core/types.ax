@@ -108,6 +108,22 @@ pub struct CaptureInfo {
     pub source_end: usize;
 }
 
+pub struct SetLiteralNode {
+    pub value: usize;
+    pub first_child: usize;
+    pub next_sibling: usize;
+    pub first_terminal: usize;
+    pub last_terminal: usize;
+    pub fail: usize;
+    pub output: usize;
+}
+
+pub struct SetLiteralTerminal {
+    pub pattern_id: usize;
+    pub byte_len: usize;
+    pub next: usize;
+}
+
 pub struct RegexOptions {
     pub flags: u8;
     pub newline_mode: u8;
@@ -258,6 +274,11 @@ pub struct RegexSet {
     pub range_len: usize;
     pub range_capacity: usize;
     pub pattern_count: usize;
+    pub literal_nodes: *mut SetLiteralNode;
+    pub literal_node_len: usize;
+    pub literal_terminals: *mut SetLiteralTerminal;
+    pub literal_terminal_len: usize;
+    pub literal_max_byte_len: usize;
     pub start: usize;
     pub status: RegexStatus;
     pub error_index: usize;

@@ -1100,7 +1100,7 @@ fn main() -> i32 {
 当前正则库的有意边界：
 
 - 不支持反向引用、lookaround、原子组、条件组、递归/子例程调用和带 closure 捕获的复杂替换回调；当前支持非捕获函数指针 callback。
-- `unicode.ucd` 模块提供可复用 UTF-8 scalar 解码、Unicode 17.0 general category/binary/script property、simple/full case folding 和 Grapheme_Cluster_Break 支撑；当前 text regex 支持多 scalar full case fold 和显式 `\X` extended grapheme cluster atom。regex 另有 raw byte facade、exact-literal `RegexSet` trie、database 和 stream API。
+- `unicode.ucd` 模块提供可复用 UTF-8 scalar 解码、Unicode 17.0 general category/binary/script property、simple/full case folding 和 Grapheme_Cluster_Break 支撑；当前 text regex 支持多 scalar full case fold 和显式 `\X` extended grapheme cluster atom。regex 另有 raw byte facade、exact-literal `RegexSet` 标量 Aho-Corasick fast path、database 和 stream API。
 - 不支持 possessive 量词。
 - `{m,n}` 展开上限是实现常量，超出返回 `RegexStatus.repeat_too_large`。
 - pattern、program、capture 和 VM workspace 都有显式上限，超出分别返回 `pattern_too_large`、`program_too_large`、`capture_too_large` 或 `workspace_too_large`。

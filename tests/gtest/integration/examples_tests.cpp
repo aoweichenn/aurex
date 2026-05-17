@@ -148,7 +148,7 @@ TEST_F(AurexIntegrationTest, ExamplesRegexAdvancedSurfaceCompilesAndRuns) {
     const std::string checked =
         require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_advanced.ax")).output;
     expect_contains_all(checked, {
-        "struct RegexSet fields=12",
+        "struct RegexSet fields=17",
         "struct SetMatchesResult fields=4",
         "struct RegexStream fields=10",
         "struct SetMatchSpan fields=5",

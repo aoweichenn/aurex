@@ -1,0 +1,71 @@
+module regex.ascii;
+
+pub const NUL: u8 = 0u8;
+pub const TAB: u8 = b'\t';
+pub const LINE_FEED: u8 = b'\n';
+pub const VERTICAL_TAB: u8 = 0x0bu8;
+pub const FORM_FEED: u8 = 0x0cu8;
+pub const CARRIAGE_RETURN: u8 = b'\r';
+pub const SPACE: u8 = b' ';
+pub const EXCLAMATION: u8 = b'!';
+pub const DOLLAR: u8 = b'$';
+pub const LPAREN: u8 = b'(';
+pub const RPAREN: u8 = b')';
+pub const STAR: u8 = b'*';
+pub const PLUS: u8 = b'+';
+pub const COMMA: u8 = b',';
+pub const HYPHEN: u8 = b'-';
+pub const DOT: u8 = b'.';
+pub const DIGIT_0: u8 = b'0';
+pub const DIGIT_9: u8 = b'9';
+pub const QUESTION: u8 = b'?';
+pub const UPPER_A: u8 = b'A';
+pub const UPPER_D: u8 = b'D';
+pub const UPPER_S: u8 = b'S';
+pub const UPPER_W: u8 = b'W';
+pub const UPPER_Z: u8 = b'Z';
+pub const LBRACKET: u8 = b'[';
+pub const BACKSLASH: u8 = b'\\';
+pub const RBRACKET: u8 = b']';
+pub const CARET: u8 = b'^';
+pub const UNDERSCORE: u8 = b'_';
+pub const LOWER_A: u8 = b'a';
+pub const LOWER_D: u8 = b'd';
+pub const LOWER_N: u8 = b'n';
+pub const LOWER_R: u8 = b'r';
+pub const LOWER_S: u8 = b's';
+pub const LOWER_T: u8 = b't';
+pub const LOWER_W: u8 = b'w';
+pub const LOWER_Z: u8 = b'z';
+pub const LBRACE: u8 = b'{';
+pub const PIPE: u8 = b'|';
+pub const RBRACE: u8 = b'}';
+
+pub fn byte_at(text_value: str, index: usize) -> u8 {
+    let data: *const u8 = strptr(text_value);
+    return unsafe { data[index] };
+}
+
+pub fn is_digit(value: u8) -> bool {
+    return DIGIT_0 <= value && value <= DIGIT_9;
+}
+
+pub fn decimal_value(value: u8) -> usize {
+    return cast[usize](value - DIGIT_0);
+}
+
+pub fn escaped_byte(value: u8) -> u8 {
+    if value == LOWER_N {
+        return LINE_FEED;
+    }
+    if value == LOWER_R {
+        return CARRIAGE_RETURN;
+    }
+    if value == LOWER_T {
+        return TAB;
+    }
+    if value == DIGIT_0 {
+        return NUL;
+    }
+    return value;
+}

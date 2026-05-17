@@ -1,0 +1,16 @@
+module regex.alloc;
+
+extern c {
+    fn calloc(count: usize, size: usize) -> *mut void @name("calloc");
+    fn free(ptr: *mut void) -> void @name("free");
+}
+
+pub fn alloc_zeroed_bytes(count: usize, element_size: usize) -> *mut u8 {
+    return unsafe { ptrcast[*mut u8](calloc(count, element_size)) };
+}
+
+pub fn free_bytes(ptr: *mut u8) -> void {
+    if ptr != null {
+        free(unsafe { ptrcast[*mut void](ptr) });
+    }
+}

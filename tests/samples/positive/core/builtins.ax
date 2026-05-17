@@ -5,6 +5,24 @@ struct Pair {
     b: i32;
 }
 
+struct Padded {
+    tag: u8;
+    value: u64;
+}
+
+enum Tiny: u16 {
+    zero = 0,
+    one = 1,
+}
+
+fn sum_checked_text(bytes: []const u8) -> i32 {
+    if !strvalid(bytes) {
+        return -1;
+    }
+    let text: str = strfromutf8(bytes);
+    return cast[i32](strblen(text));
+}
+
 fn main() -> i32 {
     var pair: Pair = Pair { a: 1, b: 2 };
     let addr: usize = ptraddr(&pair);
@@ -14,5 +32,48 @@ fn main() -> i32 {
     if pointer_size == cast[usize](0) || pointer_align == cast[usize](0) {
         return 1;
     }
+
+    if cast[i32](true) != 1 || cast[bool](2) != true {
+        return 2;
+    }
+
+    let erased: *const void = unsafe { ptrcast[*const void](&pair) };
+    let restored: *const Pair = unsafe { ptrcast[*const Pair](erased) };
+    if ptraddr(restored) != addr {
+        return 3;
+    }
+
+    let zero_bits: f32 = unsafe { bitcast[f32](cast[u32](0)) };
+    if zero_bits != 0.0f32 {
+        return 4;
+    }
+
+    if sizeof[Padded] != cast[usize](16) || alignof[Padded] != cast[usize](8) {
+        return 5;
+    }
+    if sizeof[Tiny] != cast[usize](2) || alignof[Tiny] != cast[usize](2) {
+        return 6;
+    }
+
+    let ascii_bytes: [2]u8 = b"ok";
+    let ascii: []const u8 = ascii_bytes[:];
+    if sum_checked_text(ascii) != 2 {
+        return 7;
+    }
+
+    let invalid_bytes: [1]u8 = [0x80u8];
+    let invalid: []const u8 = invalid_bytes[:];
+    if strvalid(invalid) {
+        return 8;
+    }
+    if strblen(strfromutf8(invalid)) != 0usize {
+        return 9;
+    }
+
+    let raw: str = unsafe { strraw(strptr("raw"), strblen("raw")) };
+    if strblen(raw) != 3usize {
+        return 10;
+    }
+
     return unsafe { pair_ptr.a + pair_ptr.b } - 3;
 }

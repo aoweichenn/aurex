@@ -1,0 +1,97 @@
+module regex.types;
+
+pub const NO_STATE: usize = 0usize;
+pub const FLAGS_NONE: u8 = 0u8;
+pub const FLAG_CLASS_NEGATED: u8 = 1u8;
+
+pub const OP_EMPTY: u8 = 0u8;
+pub const OP_EPSILON: u8 = 1u8;
+pub const OP_SPLIT: u8 = 2u8;
+pub const OP_LITERAL: u8 = 3u8;
+pub const OP_ANY: u8 = 4u8;
+pub const OP_CLASS: u8 = 5u8;
+pub const OP_ASSERT_START: u8 = 6u8;
+pub const OP_ASSERT_END: u8 = 7u8;
+pub const OP_MATCH: u8 = 8u8;
+
+pub enum RegexStatus: u8 {
+    ok = 0,
+    no_match = 1,
+    syntax_error = 2,
+    unsupported = 3,
+    out_of_memory = 4,
+    repeat_too_large = 5,
+}
+
+pub struct State {
+    pub opcode: u8;
+    pub flags: u8;
+    pub value: u8;
+    pub value_to: u8;
+    pub out1: usize;
+    pub out2: usize;
+    pub class_start: usize;
+    pub class_len: usize;
+}
+
+pub struct ClassRange {
+    pub first: u8;
+    pub last: u8;
+}
+
+pub struct Fragment {
+    pub start: usize;
+    pub end: usize;
+    pub source_start: usize;
+    pub source_end: usize;
+}
+
+pub struct Regex {
+    pub pattern: str;
+    pub states: *mut State;
+    pub state_len: usize;
+    pub state_capacity: usize;
+    pub ranges: *mut ClassRange;
+    pub range_len: usize;
+    pub range_capacity: usize;
+    pub start: usize;
+    pub accept: usize;
+    pub status: RegexStatus;
+}
+
+pub struct MatchResult {
+    pub matched: bool;
+    pub start: usize;
+    pub end: usize;
+    pub status: RegexStatus;
+}
+
+pub fn invalid_fragment() -> Fragment {
+    return Fragment {
+        start: NO_STATE,
+        end: NO_STATE,
+        source_start: 0usize,
+        source_end: 0usize,
+    };
+}
+
+pub fn match_result(matched: bool, start: usize, end: usize, status: RegexStatus) -> MatchResult {
+    return MatchResult {
+        matched: matched,
+        start: start,
+        end: end,
+        status: status,
+    };
+}
+
+impl Regex {
+    pub fn valid(self: &Regex) -> bool {
+        return self.status == RegexStatus.ok;
+    }
+}
+
+impl MatchResult {
+    pub fn ok(self: &MatchResult) -> bool {
+        return self.status == RegexStatus.ok && self.matched;
+    }
+}

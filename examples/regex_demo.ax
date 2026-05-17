@@ -1,0 +1,104 @@
+module regex_demo;
+
+import regex.api as regex;
+
+type Matcher = fn(str, str) -> bool;
+
+const CASE_BASIC: i32 = 1;
+const CASE_OPTIONAL: i32 = 2;
+const CASE_DOT_PLUS: i32 = 3;
+const CASE_DIGIT_REPEAT: i32 = 4;
+const CASE_REPEAT_TOO_SHORT: i32 = 5;
+const CASE_GROUP_ALTERNATION: i32 = 6;
+const CASE_NEGATED_CLASS: i32 = 7;
+const CASE_EMAIL_SEARCH: i32 = 8;
+const CASE_SYNTAX_REJECT: i32 = 9;
+const CASE_COMPILED_BASE: i32 = 10;
+const CASE_COMPILED_MATCH: i32 = 20;
+const CASE_COMPILED_SPAN: i32 = 21;
+const CASE_REPEAT_LIMIT_BASE: i32 = 22;
+
+struct Case {
+    code: i32;
+    passed: bool;
+}
+
+fn ensure(code: i32, passed: bool) -> i32 {
+    if passed {
+        return 0;
+    }
+    return code;
+}
+
+fn require_match(code: i32, result: regex.MatchResult) -> i32 {
+    if result.ok() {
+        return 0;
+    }
+    return match result.status {
+        .no_match => code,
+        _ => code + regex.status_code(result.status),
+    };
+}
+
+fn main() -> i32 {
+    let searcher: Matcher = regex.search;
+    let fullmatcher: Matcher = regex.fullmatch;
+
+    let basic: Case = Case {
+        code: CASE_BASIC,
+        passed: fullmatcher("^h[ae]llo+$", "hellooo"),
+    };
+    let basic_result: i32 = ensure(basic.code, basic.passed);
+    if basic_result != 0 {
+        return basic_result;
+    }
+
+    if ensure(CASE_OPTIONAL, regex.search("colou?r", "the color token")) != 0 {
+        return CASE_OPTIONAL;
+    }
+    if ensure(CASE_DOT_PLUS, searcher("a.+z", "aaaz")) != 0 {
+        return CASE_DOT_PLUS;
+    }
+    if ensure(CASE_DIGIT_REPEAT, fullmatcher("\\d{2,4}", "2026")) != 0 {
+        return CASE_DIGIT_REPEAT;
+    }
+    if ensure(CASE_REPEAT_TOO_SHORT, !fullmatcher("\\d{2,4}", "7")) != 0 {
+        return CASE_REPEAT_TOO_SHORT;
+    }
+    if ensure(CASE_GROUP_ALTERNATION, fullmatcher("(cat|dog)s?", "dogs")) != 0 {
+        return CASE_GROUP_ALTERNATION;
+    }
+    if ensure(CASE_NEGATED_CLASS, fullmatcher("[^0-9]+", "abc_")) != 0 {
+        return CASE_NEGATED_CLASS;
+    }
+    if ensure(CASE_EMAIL_SEARCH, searcher("\\w+@\\w+\\.com", "mail: team@example.com;")) != 0 {
+        return CASE_EMAIL_SEARCH;
+    }
+    if ensure(CASE_SYNTAX_REJECT, !regex.search("[abc", "a")) != 0 {
+        return CASE_SYNTAX_REJECT;
+    }
+
+    var compiled: regex.Regex = regex.compile("^(ab|cd){2,3}$");
+    defer regex.destroy(&mut compiled);
+    if !compiled.valid() {
+        return CASE_COMPILED_BASE + regex.status_code(compiled.status);
+    }
+    let result: regex.MatchResult = regex.fullmatch_compiled(&compiled, "abcdab");
+    if require_match(CASE_COMPILED_MATCH, result) != 0 {
+        return CASE_COMPILED_MATCH;
+    }
+    if result.start != 0usize || result.end != strblen("abcdab") {
+        return CASE_COMPILED_SPAN;
+    }
+
+    var bad: regex.Regex = regex.compile("a{33}");
+    defer regex.destroy(&mut bad);
+    let rejected_large_repeat: bool = match bad.status {
+        .repeat_too_large => true,
+        _ => false,
+    };
+    if !rejected_large_repeat {
+        return CASE_REPEAT_LIMIT_BASE + regex.status_code(bad.status);
+    }
+    return 0;
+}

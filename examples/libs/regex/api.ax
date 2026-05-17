@@ -1,0 +1,55 @@
+module regex.api;
+
+import regex.engine as engine;
+import regex.parser as parser;
+import regex.program as program;
+import regex.types as t;
+
+pub type Regex = t.Regex;
+pub type MatchResult = t.MatchResult;
+pub type RegexStatus = t.RegexStatus;
+
+pub fn compile(pattern: str) -> t.Regex {
+    return parser.compile(pattern);
+}
+
+pub fn destroy(compiled: &mut t.Regex) -> void {
+    program.destroy(compiled);
+}
+
+pub fn is_valid(compiled: &t.Regex) -> bool {
+    return compiled.status == t.RegexStatus.ok;
+}
+
+pub fn search_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
+    return engine.search_compiled(compiled, input);
+}
+
+pub fn fullmatch_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
+    return engine.fullmatch_compiled(compiled, input);
+}
+
+pub fn search(pattern: str, input: str) -> bool {
+    var compiled: t.Regex = compile(pattern);
+    defer destroy(&mut compiled);
+    let result: t.MatchResult = search_compiled(&compiled, input);
+    return result.status == t.RegexStatus.ok && result.matched;
+}
+
+pub fn fullmatch(pattern: str, input: str) -> bool {
+    var compiled: t.Regex = compile(pattern);
+    defer destroy(&mut compiled);
+    let result: t.MatchResult = fullmatch_compiled(&compiled, input);
+    return result.status == t.RegexStatus.ok && result.matched;
+}
+
+pub fn status_code(status: t.RegexStatus) -> i32 {
+    return match status {
+        .ok => 0,
+        .no_match => 1,
+        .syntax_error => 2,
+        .unsupported => 3,
+        .out_of_memory => 4,
+        .repeat_too_large => 5,
+    };
+}

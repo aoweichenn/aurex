@@ -1,0 +1,297 @@
+module regex.program;
+
+import regex.alloc as alloc;
+import regex.types as t;
+
+const MIN_STATE_CAPACITY: usize = 16usize;
+const MIN_RANGE_CAPACITY: usize = 16usize;
+const STATES_PER_PATTERN_BYTE: usize = 4usize;
+const RANGES_PER_PATTERN_BYTE: usize = 2usize;
+const CAPACITY_GROWTH_FACTOR: usize = 2usize;
+const RESERVED_STATE_COUNT: usize = 1usize;
+
+pub fn create(pattern: str) -> t.Regex {
+    let pattern_len: usize = strblen(pattern);
+    let state_capacity: usize = MIN_STATE_CAPACITY + pattern_len * STATES_PER_PATTERN_BYTE;
+    let range_capacity: usize = MIN_RANGE_CAPACITY + pattern_len * RANGES_PER_PATTERN_BYTE;
+    let states: *mut t.State = unsafe {
+        ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(state_capacity, sizeof[t.State]))
+    };
+    if states == null {
+        return empty_with_status(pattern, t.RegexStatus.out_of_memory);
+    }
+    let ranges: *mut t.ClassRange = unsafe {
+        ptrcast[*mut t.ClassRange](alloc.alloc_zeroed_bytes(range_capacity, sizeof[t.ClassRange]))
+    };
+    if ranges == null {
+        alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
+        return empty_with_status(pattern, t.RegexStatus.out_of_memory);
+    }
+    return t.Regex {
+        pattern: pattern,
+        states: states,
+        state_len: RESERVED_STATE_COUNT,
+        state_capacity: state_capacity,
+        ranges: ranges,
+        range_len: 0usize,
+        range_capacity: range_capacity,
+        start: t.NO_STATE,
+        accept: t.NO_STATE,
+        status: t.RegexStatus.ok,
+    };
+}
+
+pub fn destroy(compiled: &mut t.Regex) -> void {
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.states) });
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.ranges) });
+    compiled.states = null;
+    compiled.ranges = null;
+    compiled.state_len = 0usize;
+    compiled.state_capacity = 0usize;
+    compiled.range_len = 0usize;
+    compiled.range_capacity = 0usize;
+    compiled.start = t.NO_STATE;
+    compiled.accept = t.NO_STATE;
+    compiled.status = t.RegexStatus.unsupported;
+}
+
+pub fn set_status(compiled: &mut t.Regex, status: t.RegexStatus) -> void {
+    if compiled.status == t.RegexStatus.ok {
+        compiled.status = status;
+    }
+}
+
+pub fn add_epsilon(compiled: &mut t.Regex) -> usize {
+    return add_state(compiled, t.OP_EPSILON, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
+pub fn add_split(compiled: &mut t.Regex, out1: usize, out2: usize) -> usize {
+    return add_state(compiled, t.OP_SPLIT, t.FLAGS_NONE, 0u8, 0u8, out1, out2, 0usize, 0usize);
+}
+
+pub fn add_literal(compiled: &mut t.Regex, value: u8) -> usize {
+    return add_state(compiled, t.OP_LITERAL, t.FLAGS_NONE, value, value, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
+pub fn add_any(compiled: &mut t.Regex) -> usize {
+    return add_state(compiled, t.OP_ANY, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
+pub fn add_class(compiled: &mut t.Regex, class_start: usize, class_len: usize, negated: bool) -> usize {
+    let flags: u8 = if negated {
+        t.FLAG_CLASS_NEGATED
+    } else {
+        t.FLAGS_NONE
+    };
+    return add_state(compiled, t.OP_CLASS, flags, 0u8, 0u8, t.NO_STATE, t.NO_STATE, class_start, class_len);
+}
+
+pub fn add_assert_start(compiled: &mut t.Regex) -> usize {
+    return add_state(compiled, t.OP_ASSERT_START, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
+pub fn add_assert_end(compiled: &mut t.Regex) -> usize {
+    return add_state(compiled, t.OP_ASSERT_END, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
+pub fn add_match(compiled: &mut t.Regex) -> usize {
+    return add_state(compiled, t.OP_MATCH, t.FLAGS_NONE, 0u8, 0u8, t.NO_STATE, t.NO_STATE, 0usize, 0usize);
+}
+
+pub fn add_range(compiled: &mut t.Regex, first: u8, last: u8) -> bool {
+    if !ensure_range_capacity(compiled, 1usize) {
+        return false;
+    }
+    let index: usize = compiled.range_len;
+    unsafe {
+        compiled.ranges[index].first = first;
+        compiled.ranges[index].last = last;
+    }
+    compiled.range_len += 1usize;
+    return true;
+}
+
+pub fn patch(compiled: &mut t.Regex, state_id: usize, target: usize) -> void {
+    if state_id == t.NO_STATE || state_id >= compiled.state_len {
+        set_status(compiled, t.RegexStatus.syntax_error);
+        return;
+    }
+    unsafe {
+        compiled.states[state_id].out1 = target;
+    }
+}
+
+pub fn fragment(start: usize, end: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    return t.Fragment {
+        start: start,
+        end: end,
+        source_start: source_start,
+        source_end: source_end,
+    };
+}
+
+pub fn empty_fragment(compiled: &mut t.Regex, source_at: usize) -> t.Fragment {
+    let state: usize = add_epsilon(compiled);
+    return fragment(state, state, source_at, source_at);
+}
+
+pub fn concat(compiled: &mut t.Regex, left: t.Fragment, right: t.Fragment) -> t.Fragment {
+    patch(compiled, left.end, right.start);
+    return fragment(left.start, right.end, left.source_start, right.source_end);
+}
+
+pub fn alternate(compiled: &mut t.Regex, left: t.Fragment, right: t.Fragment) -> t.Fragment {
+    let start: usize = add_split(compiled, left.start, right.start);
+    let end: usize = add_epsilon(compiled);
+    patch(compiled, left.end, end);
+    patch(compiled, right.end, end);
+    return fragment(start, end, left.source_start, right.source_end);
+}
+
+pub fn zero_or_more(compiled: &mut t.Regex, body: t.Fragment) -> t.Fragment {
+    let start: usize = add_split(compiled, body.start, t.NO_STATE);
+    let end: usize = add_epsilon(compiled);
+    unsafe {
+        compiled.states[start].out2 = end;
+    }
+    patch(compiled, body.end, start);
+    return fragment(start, end, body.source_start, body.source_end);
+}
+
+pub fn one_or_more(compiled: &mut t.Regex, body: t.Fragment) -> t.Fragment {
+    let split: usize = add_split(compiled, body.start, t.NO_STATE);
+    let end: usize = add_epsilon(compiled);
+    unsafe {
+        compiled.states[split].out2 = end;
+    }
+    patch(compiled, body.end, split);
+    return fragment(body.start, end, body.source_start, body.source_end);
+}
+
+pub fn zero_or_one(compiled: &mut t.Regex, body: t.Fragment) -> t.Fragment {
+    let start: usize = add_split(compiled, body.start, t.NO_STATE);
+    let end: usize = add_epsilon(compiled);
+    unsafe {
+        compiled.states[start].out2 = end;
+    }
+    patch(compiled, body.end, end);
+    return fragment(start, end, body.source_start, body.source_end);
+}
+
+fn empty_with_status(pattern: str, status: t.RegexStatus) -> t.Regex {
+    return t.Regex {
+        pattern: pattern,
+        states: null,
+        state_len: 0usize,
+        state_capacity: 0usize,
+        ranges: null,
+        range_len: 0usize,
+        range_capacity: 0usize,
+        start: t.NO_STATE,
+        accept: t.NO_STATE,
+        status: status,
+    };
+}
+
+fn add_state(
+    compiled: &mut t.Regex,
+    opcode: u8,
+    flags: u8,
+    value: u8,
+    value_to: u8,
+    out1: usize,
+    out2: usize,
+    class_start: usize,
+    class_len: usize
+) -> usize {
+    if !ensure_state_capacity(compiled, 1usize) {
+        return t.NO_STATE;
+    }
+    let index: usize = compiled.state_len;
+    unsafe {
+        compiled.states[index].opcode = opcode;
+        compiled.states[index].flags = flags;
+        compiled.states[index].value = value;
+        compiled.states[index].value_to = value_to;
+        compiled.states[index].out1 = out1;
+        compiled.states[index].out2 = out2;
+        compiled.states[index].class_start = class_start;
+        compiled.states[index].class_len = class_len;
+    }
+    compiled.state_len += 1usize;
+    return index;
+}
+
+fn ensure_state_capacity(compiled: &mut t.Regex, additional: usize) -> bool {
+    let needed: usize = compiled.state_len + additional;
+    if needed <= compiled.state_capacity {
+        return true;
+    }
+    var next_capacity: usize = compiled.state_capacity * CAPACITY_GROWTH_FACTOR;
+    while next_capacity < needed {
+        next_capacity *= CAPACITY_GROWTH_FACTOR;
+    }
+    let next: *mut t.State = unsafe {
+        ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(next_capacity, sizeof[t.State]))
+    };
+    if next == null {
+        set_status(compiled, t.RegexStatus.out_of_memory);
+        return false;
+    }
+    copy_states(next, compiled.states, compiled.state_len);
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.states) });
+    compiled.states = next;
+    compiled.state_capacity = next_capacity;
+    return true;
+}
+
+fn ensure_range_capacity(compiled: &mut t.Regex, additional: usize) -> bool {
+    let needed: usize = compiled.range_len + additional;
+    if needed <= compiled.range_capacity {
+        return true;
+    }
+    var next_capacity: usize = compiled.range_capacity * CAPACITY_GROWTH_FACTOR;
+    while next_capacity < needed {
+        next_capacity *= CAPACITY_GROWTH_FACTOR;
+    }
+    let next: *mut t.ClassRange = unsafe {
+        ptrcast[*mut t.ClassRange](alloc.alloc_zeroed_bytes(next_capacity, sizeof[t.ClassRange]))
+    };
+    if next == null {
+        set_status(compiled, t.RegexStatus.out_of_memory);
+        return false;
+    }
+    copy_ranges(next, compiled.ranges, compiled.range_len);
+    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.ranges) });
+    compiled.ranges = next;
+    compiled.range_capacity = next_capacity;
+    return true;
+}
+
+fn copy_states(dst: *mut t.State, src: *mut t.State, count: usize) -> void {
+    var index: usize = 0usize;
+    while index < count {
+        unsafe {
+            dst[index].opcode = src[index].opcode;
+            dst[index].flags = src[index].flags;
+            dst[index].value = src[index].value;
+            dst[index].value_to = src[index].value_to;
+            dst[index].out1 = src[index].out1;
+            dst[index].out2 = src[index].out2;
+            dst[index].class_start = src[index].class_start;
+            dst[index].class_len = src[index].class_len;
+        }
+        index += 1usize;
+    }
+}
+
+fn copy_ranges(dst: *mut t.ClassRange, src: *mut t.ClassRange, count: usize) -> void {
+    var index: usize = 0usize;
+    while index < count {
+        unsafe {
+            dst[index].first = src[index].first;
+            dst[index].last = src[index].last;
+        }
+        index += 1usize;
+    }
+}

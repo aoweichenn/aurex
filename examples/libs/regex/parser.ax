@@ -1,0 +1,490 @@
+module regex.parser;
+
+import regex.ascii as ascii;
+import regex.program as prog;
+import regex.types as t;
+
+const MAX_BOUNDED_REPEAT: usize = 32usize;
+const CLASS_ITEM_BYTE: u8 = 1u8;
+const CLASS_ITEM_DIGIT: u8 = 2u8;
+const CLASS_ITEM_WORD: u8 = 3u8;
+const CLASS_ITEM_SPACE: u8 = 4u8;
+
+struct Parser {
+    pattern: str;
+    at: usize;
+    compiled: t.Regex;
+}
+
+struct ClassItem {
+    kind: u8;
+    value: u8;
+}
+
+struct RepeatSpec {
+    min: usize;
+    max: usize;
+    unbounded: bool;
+    valid: bool;
+}
+
+pub fn compile(pattern: str) -> t.Regex {
+    let compiled: t.Regex = prog.create(pattern);
+    if compiled.status != t.RegexStatus.ok {
+        return compiled;
+    }
+    var parser: Parser = Parser {
+        pattern: pattern,
+        at: 0usize,
+        compiled: compiled,
+    };
+    let body: t.Fragment = parse_expression(&mut parser);
+    if parser.compiled.status == t.RegexStatus.ok && parser.at != strblen(pattern) {
+        prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+    }
+    if parser.compiled.status == t.RegexStatus.ok {
+        let accept: usize = prog.add_match(&mut parser.compiled);
+        prog.patch(&mut parser.compiled, body.end, accept);
+        parser.compiled.start = body.start;
+        parser.compiled.accept = accept;
+    }
+    return parser.compiled;
+}
+
+fn parse_expression(parser: &mut Parser) -> t.Fragment {
+    var left: t.Fragment = parse_sequence(parser);
+    while parser.compiled.status == t.RegexStatus.ok && peek(parser) == ascii.PIPE {
+        advance(parser);
+        let right: t.Fragment = parse_sequence(parser);
+        left = prog.alternate(&mut parser.compiled, left, right);
+    }
+    return left;
+}
+
+fn parse_sequence(parser: &mut Parser) -> t.Fragment {
+    var has_piece: bool = false;
+    var result: t.Fragment = t.invalid_fragment();
+    while parser.compiled.status == t.RegexStatus.ok && !at_end(parser) && !is_sequence_end(peek(parser)) {
+        let piece: t.Fragment = parse_piece(parser);
+        if has_piece {
+            result = prog.concat(&mut parser.compiled, result, piece);
+        } else {
+            result = piece;
+            has_piece = true;
+        }
+    }
+    if has_piece {
+        return result;
+    }
+    return prog.empty_fragment(&mut parser.compiled, parser.at);
+}
+
+fn parse_piece(parser: &mut Parser) -> t.Fragment {
+    let atom: t.Fragment = parse_atom(parser);
+    if parser.compiled.status != t.RegexStatus.ok {
+        return atom;
+    }
+    if at_end(parser) || is_sequence_end(peek(parser)) {
+        return atom;
+    }
+    let quantifier: u8 = peek(parser);
+    var result: t.Fragment = atom;
+    if quantifier == ascii.STAR {
+        advance(parser);
+        result = prog.zero_or_more(&mut parser.compiled, atom);
+    } else if quantifier == ascii.PLUS {
+        advance(parser);
+        result = prog.one_or_more(&mut parser.compiled, atom);
+    } else if quantifier == ascii.QUESTION {
+        advance(parser);
+        result = prog.zero_or_one(&mut parser.compiled, atom);
+    } else if quantifier == ascii.LBRACE {
+        let repeat: RepeatSpec = parse_repeat_spec(parser);
+        if !repeat.valid {
+            prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+            return result;
+        }
+        result = apply_repeat(parser, atom, repeat);
+    }
+    if parser.compiled.status == t.RegexStatus.ok && !at_end(parser) && starts_quantifier(peek(parser)) {
+        prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+    }
+    return result;
+}
+
+fn parse_atom(parser: &mut Parser) -> t.Fragment {
+    let source_start: usize = parser.at;
+    if at_end(parser) {
+        prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+        return t.invalid_fragment();
+    }
+    let value: u8 = peek(parser);
+    if starts_quantifier(value) || value == ascii.RBRACE {
+        prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+        return t.invalid_fragment();
+    }
+    if value == ascii.LPAREN {
+        advance(parser);
+        let nested: t.Fragment = parse_expression(parser);
+        if parser.compiled.status != t.RegexStatus.ok {
+            return nested;
+        }
+        if at_end(parser) || peek(parser) != ascii.RPAREN {
+            prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+            return nested;
+        }
+        advance(parser);
+        return prog.fragment(nested.start, nested.end, source_start, parser.at);
+    }
+    if value == ascii.LBRACKET {
+        return parse_class_atom(parser, source_start);
+    }
+    if value == ascii.DOT {
+        advance(parser);
+        return single_state_atom(parser, prog.add_any(&mut parser.compiled), source_start, parser.at);
+    }
+    if value == ascii.CARET {
+        advance(parser);
+        return single_state_atom(parser, prog.add_assert_start(&mut parser.compiled), source_start, parser.at);
+    }
+    if value == ascii.DOLLAR {
+        advance(parser);
+        return single_state_atom(parser, prog.add_assert_end(&mut parser.compiled), source_start, parser.at);
+    }
+    if value == ascii.BACKSLASH {
+        return parse_escape_atom(parser, source_start);
+    }
+    if value == ascii.PIPE || value == ascii.RPAREN {
+        prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+        return t.invalid_fragment();
+    }
+    advance(parser);
+    return literal_atom(parser, value, source_start, parser.at);
+}
+
+fn parse_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    advance(parser);
+    if at_end(parser) {
+        prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+        return t.invalid_fragment();
+    }
+    let escaped: u8 = peek(parser);
+    advance(parser);
+    if escaped == ascii.LOWER_D {
+        return predefined_class_atom(parser, CLASS_ITEM_DIGIT, false, source_start, parser.at);
+    }
+    if escaped == ascii.UPPER_D {
+        return predefined_class_atom(parser, CLASS_ITEM_DIGIT, true, source_start, parser.at);
+    }
+    if escaped == ascii.LOWER_W {
+        return predefined_class_atom(parser, CLASS_ITEM_WORD, false, source_start, parser.at);
+    }
+    if escaped == ascii.UPPER_W {
+        return predefined_class_atom(parser, CLASS_ITEM_WORD, true, source_start, parser.at);
+    }
+    if escaped == ascii.LOWER_S {
+        return predefined_class_atom(parser, CLASS_ITEM_SPACE, false, source_start, parser.at);
+    }
+    if escaped == ascii.UPPER_S {
+        return predefined_class_atom(parser, CLASS_ITEM_SPACE, true, source_start, parser.at);
+    }
+    return literal_atom(parser, ascii.escaped_byte(escaped), source_start, parser.at);
+}
+
+fn parse_class_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
+    advance(parser);
+    var negated: bool = false;
+    if !at_end(parser) && peek(parser) == ascii.CARET {
+        negated = true;
+        advance(parser);
+    }
+    let range_start: usize = parser.compiled.range_len;
+    var range_count: usize = 0usize;
+    while parser.compiled.status == t.RegexStatus.ok && !at_end(parser) {
+        if peek(parser) == ascii.RBRACKET && range_count > 0usize {
+            break;
+        }
+        let item: ClassItem = parse_class_item(parser);
+        if parser.compiled.status != t.RegexStatus.ok {
+            return t.invalid_fragment();
+        }
+        if can_start_range(parser, item) {
+            advance(parser);
+            let last: ClassItem = parse_class_item(parser);
+            if parser.compiled.status != t.RegexStatus.ok {
+                return t.invalid_fragment();
+            }
+            if item.kind != CLASS_ITEM_BYTE || last.kind != CLASS_ITEM_BYTE || last.value < item.value {
+                prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+                return t.invalid_fragment();
+            }
+            if prog.add_range(&mut parser.compiled, item.value, last.value) {
+                range_count += 1usize;
+            }
+        } else {
+            range_count += add_class_item_ranges(parser, item);
+        }
+    }
+    if parser.compiled.status != t.RegexStatus.ok {
+        return t.invalid_fragment();
+    }
+    if at_end(parser) || peek(parser) != ascii.RBRACKET || range_count == 0usize {
+        prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+        return t.invalid_fragment();
+    }
+    advance(parser);
+    let state: usize = prog.add_class(&mut parser.compiled, range_start, range_count, negated);
+    return single_state_atom(parser, state, source_start, parser.at);
+}
+
+fn parse_class_item(parser: &mut Parser) -> ClassItem {
+    if at_end(parser) {
+        prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+        return ClassItem { kind: CLASS_ITEM_BYTE, value: ascii.NUL };
+    }
+    let value: u8 = peek(parser);
+    if value == ascii.BACKSLASH {
+        advance(parser);
+        if at_end(parser) {
+            prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+            return ClassItem { kind: CLASS_ITEM_BYTE, value: ascii.NUL };
+        }
+        let escaped: u8 = peek(parser);
+        advance(parser);
+        if escaped == ascii.LOWER_D {
+            return ClassItem { kind: CLASS_ITEM_DIGIT, value: ascii.NUL };
+        }
+        if escaped == ascii.LOWER_W {
+            return ClassItem { kind: CLASS_ITEM_WORD, value: ascii.NUL };
+        }
+        if escaped == ascii.LOWER_S {
+            return ClassItem { kind: CLASS_ITEM_SPACE, value: ascii.NUL };
+        }
+        if escaped == ascii.UPPER_D || escaped == ascii.UPPER_W || escaped == ascii.UPPER_S {
+            prog.set_status(&mut parser.compiled, t.RegexStatus.unsupported);
+            return ClassItem { kind: CLASS_ITEM_BYTE, value: ascii.NUL };
+        }
+        return ClassItem { kind: CLASS_ITEM_BYTE, value: ascii.escaped_byte(escaped) };
+    }
+    advance(parser);
+    return ClassItem { kind: CLASS_ITEM_BYTE, value: value };
+}
+
+fn apply_repeat(parser: &mut Parser, atom: t.Fragment, repeat: RepeatSpec) -> t.Fragment {
+    if repeat.min > MAX_BOUNDED_REPEAT || (!repeat.unbounded && repeat.max > MAX_BOUNDED_REPEAT) {
+        prog.set_status(&mut parser.compiled, t.RegexStatus.repeat_too_large);
+        return atom;
+    }
+    if repeat.unbounded {
+        return apply_unbounded_repeat(parser, atom, repeat.min);
+    }
+    return apply_bounded_repeat(parser, atom, repeat.min, repeat.max);
+}
+
+fn apply_unbounded_repeat(parser: &mut Parser, atom: t.Fragment, min_count: usize) -> t.Fragment {
+    if min_count == 0usize {
+        return prog.zero_or_more(&mut parser.compiled, atom);
+    }
+    var result: t.Fragment = atom;
+    var count: usize = 1usize;
+    while count < min_count {
+        let copy: t.Fragment = compile_atom_copy(parser, atom);
+        result = prog.concat(&mut parser.compiled, result, copy);
+        count += 1usize;
+    }
+    let tail: t.Fragment = prog.zero_or_more(&mut parser.compiled, compile_atom_copy(parser, atom));
+    return prog.concat(&mut parser.compiled, result, tail);
+}
+
+fn apply_bounded_repeat(parser: &mut Parser, atom: t.Fragment, min_count: usize, max_count: usize) -> t.Fragment {
+    if max_count == 0usize {
+        let empty: t.Fragment = prog.empty_fragment(&mut parser.compiled, atom.source_start);
+        return prog.fragment(empty.start, empty.end, atom.source_start, atom.source_end);
+    }
+    var result: t.Fragment = atom;
+    if min_count == 0usize {
+        result = prog.zero_or_one(&mut parser.compiled, result);
+    }
+    var count: usize = 1usize;
+    while count < min_count {
+        let copy: t.Fragment = compile_atom_copy(parser, atom);
+        result = prog.concat(&mut parser.compiled, result, copy);
+        count += 1usize;
+    }
+    while count < max_count {
+        let optional_copy: t.Fragment = prog.zero_or_one(&mut parser.compiled, compile_atom_copy(parser, atom));
+        result = prog.concat(&mut parser.compiled, result, optional_copy);
+        count += 1usize;
+    }
+    return result;
+}
+
+fn compile_atom_copy(parser: &mut Parser, atom: t.Fragment) -> t.Fragment {
+    let saved_at: usize = parser.at;
+    parser.at = atom.source_start;
+    let copy: t.Fragment = parse_atom(parser);
+    if parser.compiled.status == t.RegexStatus.ok && parser.at != atom.source_end {
+        prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+    }
+    parser.at = saved_at;
+    return copy;
+}
+
+fn parse_repeat_spec(parser: &mut Parser) -> RepeatSpec {
+    advance(parser);
+    if at_end(parser) || !ascii.is_digit(peek(parser)) {
+        return invalid_repeat();
+    }
+    let min_count: usize = parse_decimal(parser);
+    if at_end(parser) {
+        return invalid_repeat();
+    }
+    if peek(parser) == ascii.RBRACE {
+        advance(parser);
+        return RepeatSpec { min: min_count, max: min_count, unbounded: false, valid: true };
+    }
+    if peek(parser) != ascii.COMMA {
+        return invalid_repeat();
+    }
+    advance(parser);
+    if at_end(parser) {
+        return invalid_repeat();
+    }
+    if peek(parser) == ascii.RBRACE {
+        advance(parser);
+        return RepeatSpec { min: min_count, max: min_count, unbounded: true, valid: true };
+    }
+    if !ascii.is_digit(peek(parser)) {
+        return invalid_repeat();
+    }
+    let max_count: usize = parse_decimal(parser);
+    if at_end(parser) || peek(parser) != ascii.RBRACE || max_count < min_count {
+        return invalid_repeat();
+    }
+    advance(parser);
+    return RepeatSpec { min: min_count, max: max_count, unbounded: false, valid: true };
+}
+
+fn parse_decimal(parser: &mut Parser) -> usize {
+    var value: usize = 0usize;
+    while !at_end(parser) && ascii.is_digit(peek(parser)) {
+        value = value * 10usize + ascii.decimal_value(peek(parser));
+        advance(parser);
+    }
+    return value;
+}
+
+fn predefined_class_atom(parser: &mut Parser, kind: u8, negated: bool, source_start: usize, source_end: usize) -> t.Fragment {
+    let range_start: usize = parser.compiled.range_len;
+    let ranges: usize = add_predefined_ranges(parser, kind);
+    let state: usize = prog.add_class(&mut parser.compiled, range_start, ranges, negated);
+    return single_state_atom(parser, state, source_start, source_end);
+}
+
+fn add_class_item_ranges(parser: &mut Parser, item: ClassItem) -> usize {
+    if item.kind == CLASS_ITEM_BYTE {
+        if prog.add_range(&mut parser.compiled, item.value, item.value) {
+            return 1usize;
+        }
+        return 0usize;
+    }
+    return add_predefined_ranges(parser, item.kind);
+}
+
+fn add_predefined_ranges(parser: &mut Parser, kind: u8) -> usize {
+    if kind == CLASS_ITEM_DIGIT {
+        if prog.add_range(&mut parser.compiled, ascii.DIGIT_0, ascii.DIGIT_9) {
+            return 1usize;
+        }
+        return 0usize;
+    }
+    if kind == CLASS_ITEM_WORD {
+        var added: usize = 0usize;
+        if prog.add_range(&mut parser.compiled, ascii.DIGIT_0, ascii.DIGIT_9) {
+            added += 1usize;
+        }
+        if prog.add_range(&mut parser.compiled, ascii.UPPER_A, ascii.UPPER_Z) {
+            added += 1usize;
+        }
+        if prog.add_range(&mut parser.compiled, ascii.LOWER_A, ascii.LOWER_Z) {
+            added += 1usize;
+        }
+        if prog.add_range(&mut parser.compiled, ascii.UNDERSCORE, ascii.UNDERSCORE) {
+            added += 1usize;
+        }
+        return added;
+    }
+    if kind == CLASS_ITEM_SPACE {
+        var added: usize = 0usize;
+        if prog.add_range(&mut parser.compiled, ascii.SPACE, ascii.SPACE) {
+            added += 1usize;
+        }
+        if prog.add_range(&mut parser.compiled, ascii.TAB, ascii.TAB) {
+            added += 1usize;
+        }
+        if prog.add_range(&mut parser.compiled, ascii.LINE_FEED, ascii.LINE_FEED) {
+            added += 1usize;
+        }
+        if prog.add_range(&mut parser.compiled, ascii.CARRIAGE_RETURN, ascii.CARRIAGE_RETURN) {
+            added += 1usize;
+        }
+        if prog.add_range(&mut parser.compiled, ascii.FORM_FEED, ascii.FORM_FEED) {
+            added += 1usize;
+        }
+        if prog.add_range(&mut parser.compiled, ascii.VERTICAL_TAB, ascii.VERTICAL_TAB) {
+            added += 1usize;
+        }
+        return added;
+    }
+    prog.set_status(&mut parser.compiled, t.RegexStatus.syntax_error);
+    return 0usize;
+}
+
+fn literal_atom(parser: &mut Parser, value: u8, source_start: usize, source_end: usize) -> t.Fragment {
+    let state: usize = prog.add_literal(&mut parser.compiled, value);
+    return single_state_atom(parser, state, source_start, source_end);
+}
+
+fn single_state_atom(parser: &mut Parser, state: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    let end: usize = prog.add_epsilon(&mut parser.compiled);
+    prog.patch(&mut parser.compiled, state, end);
+    return prog.fragment(state, end, source_start, source_end);
+}
+
+fn can_start_range(parser: &Parser, item: ClassItem) -> bool {
+    if item.kind != CLASS_ITEM_BYTE {
+        return false;
+    }
+    if parser.at >= strblen(parser.pattern) || peek(parser) != ascii.HYPHEN {
+        return false;
+    }
+    let next_at: usize = parser.at + 1usize;
+    if next_at >= strblen(parser.pattern) {
+        return false;
+    }
+    return ascii.byte_at(parser.pattern, next_at) != ascii.RBRACKET;
+}
+
+fn invalid_repeat() -> RepeatSpec {
+    return RepeatSpec { min: 0usize, max: 0usize, unbounded: false, valid: false };
+}
+
+fn starts_quantifier(value: u8) -> bool {
+    return value == ascii.STAR || value == ascii.PLUS || value == ascii.QUESTION || value == ascii.LBRACE;
+}
+
+fn is_sequence_end(value: u8) -> bool {
+    return value == ascii.PIPE || value == ascii.RPAREN;
+}
+
+fn at_end(parser: &Parser) -> bool {
+    return parser.at >= strblen(parser.pattern);
+}
+
+fn peek(parser: &Parser) -> u8 {
+    return ascii.byte_at(parser.pattern, parser.at);
+}
+
+fn advance(parser: &mut Parser) -> void {
+    parser.at += 1usize;
+}

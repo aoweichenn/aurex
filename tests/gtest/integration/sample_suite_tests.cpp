@@ -296,6 +296,10 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_const_binary) {
     run_positive_runtime_smoke_sample("types", "const_binary.ax");
 }
 
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_builtins) {
+    run_positive_runtime_smoke_sample("core", "builtins.ax");
+}
+
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_compound_assignment) {
     run_positive_runtime_smoke_sample("expressions", "compound_assignment.ax");
 }

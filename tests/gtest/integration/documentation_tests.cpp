@@ -12,6 +12,8 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable) {
         "docs/zh/requirements.md",
         "docs/zh/runtime-flow.md",
         "docs/zh/api.md",
+        "docs/zh/language-manual.md",
+        "docs/zh/regex.md",
         "docs/zh/implementation.md",
         "docs/zh/usage.md",
         "docs/zh/introduction.md",

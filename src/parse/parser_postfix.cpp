@@ -47,6 +47,14 @@ constexpr base::usize PARSER_TYPE_EXPR_CHAIN_INLINE_CAPACITY = 8;
     return first >= PARSER_TYPE_LIKE_FIRST_UPPER && first <= PARSER_TYPE_LIKE_LAST_UPPER;
 }
 
+[[nodiscard]] bool token_is_generic_call_or_literal_continuation(
+    const TokenKind kind,
+    const ExprContext context
+) noexcept {
+    return kind == TokenKind::l_paren ||
+           (context == ExprContext::normal && kind == TokenKind::l_brace);
+}
+
 [[nodiscard]] bool is_primitive_type_token(const TokenKind kind) noexcept {
     switch (kind) {
     case TokenKind::kw_void:
@@ -187,24 +195,15 @@ syntax::ExprId PostfixExprParser::parse_bracket_suffix(
     const bool has_type_only_arg = this->bracket_args_contain_type_only(args);
     const bool type_like_base = this->bracket_arg_expr_is_type_like(base);
     const bool type_like_args = this->bracket_args_are_type_like(args);
-    const bool call_or_literal_continuation =
-        this->check(TokenKind::l_paren) || (context == ExprContext::normal && this->check(TokenKind::l_brace));
-    const bool field_continuation = this->check(TokenKind::dot) && type_like_base && type_like_args;
-    const bool nested_generic_type_context =
-        this->check(TokenKind::r_bracket) &&
-        this->bracket_suffix_is_inside_generic_continuation() &&
-        type_like_base &&
-        type_like_args;
-    if (has_type_only_arg || call_or_literal_continuation || field_continuation || nested_generic_type_context) {
+    const bool type_argument_context =
+        this->bracket_suffix_is_type_argument_context(base, args, has_type_only_arg, context);
+    if (type_argument_context) {
         std::optional<syntax::AstArenaVector<syntax::TypeId>> type_args =
-            this->bracket_args_to_type_args(
-                args,
-                has_type_only_arg || call_or_literal_continuation || nested_generic_type_context
-            );
+            this->bracket_args_to_type_args(args, has_type_only_arg || !type_like_base || !type_like_args);
         if (type_args.has_value()) {
             return this->session_.module.push_generic_apply_expr(range, base, std::move(type_args.value()));
         }
-        if (has_type_only_arg || call_or_literal_continuation || nested_generic_type_context) {
+        if (has_type_only_arg || !type_like_base || !type_like_args) {
             return this->session_.module.push_generic_apply_expr(
                 range,
                 base,
@@ -377,6 +376,31 @@ bool PostfixExprParser::bracket_arg_expr_is_type_like(const syntax::ExprId expr)
         }
     }
     return true;
+}
+
+bool PostfixExprParser::bracket_suffix_is_type_argument_context(
+    const syntax::ExprId base,
+    const std::span<const BracketArg> args,
+    const bool has_type_only_arg,
+    const ExprContext context
+) const {
+    if (has_type_only_arg) {
+        return true;
+    }
+
+    const bool type_like_base = this->bracket_arg_expr_is_type_like(base);
+    const bool type_like_args = this->bracket_args_are_type_like(args);
+    const TokenKind continuation = this->peek().kind;
+    if (token_is_generic_call_or_literal_continuation(continuation, context)) {
+        return true;
+    }
+    if (continuation == TokenKind::dot) {
+        return type_like_base && type_like_args;
+    }
+    return continuation == TokenKind::r_bracket &&
+           this->bracket_suffix_is_inside_generic_continuation() &&
+           type_like_base &&
+           type_like_args;
 }
 
 std::optional<syntax::AstArenaVector<syntax::TypeId>> PostfixExprParser::bracket_args_to_type_args(

@@ -56,6 +56,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"increment_syntax", "increment operator is not supported"},
     {"enum_payload_bool_missing_witness", "match expression is not exhaustive for enum case"},
     {"import_alias_namespace_conflict", "duplicate module member across namespaces in module import_alias_namespace_conflict: util"},
+    {"large_array_match_requires_irrefutable", "fixed-array match exhaustiveness for arrays longer than 4096 elements requires an irrefutable arm"},
     {"local_shadow_generic_type_parameter", "local name shadows generic type parameter: T"},
     {"local_shadow_import_alias", "local name shadows import alias: util"},
     {"local_shadow_root_module", "local name shadows visible root module: samplelib"},

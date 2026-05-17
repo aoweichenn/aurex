@@ -2990,6 +2990,58 @@ TEST(CoreUnit, ParserKeepsGenericTypeSelectorWithGenericParamBeforeField) {
     ASSERT_EQ(apply->type_args.size(), 1U);
 }
 
+TEST(CoreUnit, ParserClassifiesBracketSuffixesByExplicitM2Contract) {
+    constexpr std::string_view source =
+        "module parser.bracket_contract;\n"
+        "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
+        "struct Box[T] { value: T; }\n"
+        "fn id[T](value: T) -> T { return value; }\n"
+        "fn main() -> i32 {\n"
+        "  let boxes: [1]Box[i32] = [Box[i32] { value: 1 }];\n"
+        "  let value: usize = 0;\n"
+        "  let picked = boxes[value].value;\n"
+        "  let made = Maybe[i32].some(id[i32](picked));\n"
+        "  let nested: Box[Maybe[i32]] = Box[Maybe[i32]] { value: made };\n"
+        "  return picked;\n"
+        "}\n";
+
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast, {
+        "index",
+        "generic_apply[i32]",
+        "generic_apply[Maybe[i32]]",
+        " .some",
+    });
+
+    const syntax::ItemNode* const main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_TRUE(syntax::is_valid(main->body));
+    const syntax::StmtNode& body = module.stmts[main->body.value];
+    ASSERT_GE(body.statements.size(), 4U);
+
+    const syntax::StmtNode& picked_stmt = module.stmts[body.statements[2].value];
+    ASSERT_TRUE(syntax::is_valid(picked_stmt.init));
+    ASSERT_EQ(module.exprs.kind(picked_stmt.init.value), syntax::ExprKind::field);
+    const syntax::FieldExprPayload* const picked_field =
+        module.exprs.field_payload(picked_stmt.init.value);
+    ASSERT_NE(picked_field, nullptr);
+    ASSERT_TRUE(syntax::is_valid(picked_field->object));
+    ASSERT_EQ(module.exprs.kind(picked_field->object.value), syntax::ExprKind::index);
+
+    const syntax::StmtNode& made_stmt = module.stmts[body.statements[3].value];
+    ASSERT_TRUE(syntax::is_valid(made_stmt.init));
+    ASSERT_EQ(module.exprs.kind(made_stmt.init.value), syntax::ExprKind::call);
+    const syntax::CallExprPayload* const call = module.exprs.call_payload(made_stmt.init.value);
+    ASSERT_NE(call, nullptr);
+    ASSERT_TRUE(syntax::is_valid(call->callee));
+    ASSERT_EQ(module.exprs.kind(call->callee.value), syntax::ExprKind::field);
+    const syntax::FieldExprPayload* const field = module.exprs.field_payload(call->callee.value);
+    ASSERT_NE(field, nullptr);
+    ASSERT_TRUE(syntax::is_valid(field->object));
+    ASSERT_EQ(module.exprs.kind(field->object.value), syntax::ExprKind::generic_apply);
+}
+
 TEST(CoreUnit, ParserRejectsEmptyGenericLists) {
     expect_parse_error(
         "module parser.empty_generic_fn;\n"

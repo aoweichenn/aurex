@@ -92,6 +92,16 @@ enum class MatchGuardTruth {
     return info.kind == TypeKind::builtin && info.builtin == BuiltinType::u8;
 }
 
+[[nodiscard]] bool match_array_exceeds_matrix_limit(
+    const TypeTable& types,
+    const TypeHandle type
+) noexcept {
+    if (!is_valid(type) || !types.is_array(type)) {
+        return false;
+    }
+    return types.get(type).array_count > SEMA_MATCH_MATRIX_MAX_ARRAY_COLUMNS;
+}
+
 } // namespace
 
 bool SemanticAnalyzer::pattern_is_irrefutable(
@@ -1610,6 +1620,8 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             }
         } else if (slice_match) {
             this->report_pattern_exhaustiveness(expr.range, std::string(SEMA_MATCH_DYNAMIC_SLICE_WITNESS));
+        } else if (array_match && match_array_exceeds_matrix_limit(this->checked_.types, matched)) {
+            this->report_pattern_exhaustiveness(expr.range, std::string(SEMA_MATCH_LARGE_ARRAY_IRREFUTABLE));
         } else if (tuple_match || struct_match || array_match) {
             this->report_pattern_exhaustiveness(expr.range, std::string(SEMA_MATCH_NON_ENUM_IRREFUTABLE));
         }

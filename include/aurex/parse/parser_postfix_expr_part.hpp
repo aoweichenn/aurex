@@ -32,6 +32,12 @@ private:
     [[nodiscard]] bool bracket_args_contain_type_only(std::span<const BracketArg> args) const noexcept;
     [[nodiscard]] bool bracket_args_are_type_like(std::span<const BracketArg> args) const;
     [[nodiscard]] bool bracket_arg_expr_is_type_like(syntax::ExprId expr) const;
+    [[nodiscard]] bool bracket_suffix_is_type_argument_context(
+        syntax::ExprId base,
+        std::span<const BracketArg> args,
+        bool has_type_only_arg,
+        ExprContext context
+    ) const;
     [[nodiscard]] std::optional<syntax::AstArenaVector<syntax::TypeId>> bracket_args_to_type_args(
         std::span<const BracketArg> args,
         bool report_errors

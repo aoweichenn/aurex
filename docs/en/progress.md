@@ -277,15 +277,17 @@ output, and later diagnostics-query / LSP adapters will consume the same event
 semantics. The next M2.5 work moves to query keys, dependency tracking, lossless
 syntax, and IDE-native entry points instead of expanding the language surface.
 The follow-up match-exhaustiveness pass replaced the former structural
-cartesian-product enumerator and 4096-combination cap with a pattern matrix /
-usefulness witness search. Bool, enum payloads, tuples, structs, fixed arrays,
-open integer literals, and dynamic slices are checked through constructor
-specialization, default matrices, and symbolic representative slice lengths.
-Unguarded arms and literal `if true` guards contribute to exhaustiveness,
-literal `if false` and dynamic guards do not. Dynamic slices no longer require
-a single catch-all arm when finite length partitions prove coverage, and open
-integer duplicate literal arms are rejected as unreachable while missing
-remaining integer domains get an open-domain wildcard diagnostic.
+cartesian-product enumerator with a pattern matrix / usefulness witness search.
+Bool, enum payloads, tuples, structs, fixed arrays up to the explicit 4096-column
+M2.1 boundary, open integer literals, and dynamic slices are checked through
+constructor specialization, default matrices, and symbolic representative slice
+lengths. Larger fixed arrays now require an irrefutable arm instead of silently
+falling through a hidden implementation limit. Unguarded arms and literal
+`if true` guards contribute to exhaustiveness, literal `if false` and dynamic
+guards do not. Dynamic slices no longer require a single catch-all arm when
+finite length partitions prove coverage, and open integer duplicate literal arms
+are rejected as unreachable while missing remaining integer domains get an
+open-domain wildcard diagnostic.
 
 ## M2 Gaps
 

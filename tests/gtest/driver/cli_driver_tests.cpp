@@ -1,5 +1,6 @@
 #include <aurex/driver/cli.hpp>
 #include <aurex/base/config.hpp>
+#include <aurex/driver/cli_llvm.hpp>
 #include <aurex/driver/compiler.hpp>
 #include <aurex/driver/file_cache.hpp>
 #include <aurex/driver/incremental_cache.hpp>
@@ -745,11 +746,22 @@ TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches) {
         invocation.emit_kind = driver::EmitKind::object;
         invocation.output_path = tmp_root() / "bad_clang.o";
         invocation.clang_path = "/definitely/not/a/real/clang";
-        driver::Compiler compiler;
+        driver::Compiler compiler(driver::llvm_backend_ir_emitter());
         const auto result = compiler.run(invocation);
         ASSERT_FALSE(result);
         EXPECT_EQ(result.error().code, base::ErrorCode::codegen_error);
         expect_contains(result.error().message, "exit code 127");
+    }
+
+    {
+        driver::CompilerInvocation invocation;
+        invocation.input_path = source_root() / "examples" / "hello.ax";
+        invocation.emit_kind = driver::EmitKind::llvm_ir;
+        driver::Compiler compiler;
+        const auto result = compiler.run(invocation);
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, base::ErrorCode::codegen_error);
+        expect_contains(result.error().message, "LLVM backend is unavailable");
     }
 
 }

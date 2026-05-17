@@ -1,6 +1,7 @@
 #include <support/test_support.hpp>
 
 #include <aurex/driver/cli.hpp>
+#include <aurex/driver/cli_llvm.hpp>
 #include <aurex/driver/compiler.hpp>
 
 #include <algorithm>
@@ -697,7 +698,7 @@ CommandResult run_compiler(const driver::CompilerInvocation& invocation) {
     }
 
     CompilerOutputCapture output;
-    driver::Compiler compiler;
+    driver::Compiler compiler(driver::llvm_backend_ir_emitter());
     auto result = compiler.run(invocation);
     if (!result) {
         const bool suppress_driver_error =

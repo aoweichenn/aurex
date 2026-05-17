@@ -750,7 +750,7 @@ enum 名字不特殊，形状才重要。
 
 - 算术和位运算要求相应数值类型。
 - 逻辑运算要求 `bool`。
-- `&place` 产生 safe reference，除少数 legacy raw-pointer context 兼容路径外，不等同于 raw pointer。
+- `&place` 只产生 safe reference；不会因为 expected type 是 raw pointer 而退化为 `*const T` / `*mut T`。
 - `*raw_pointer` 要求 unsafe；`*reference` 是 safe projection。
 - 不支持 `++` / `--`。
 

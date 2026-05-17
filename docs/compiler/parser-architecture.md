@@ -54,12 +54,14 @@ The shared parser-part bridge is layered deliberately:
   and diagnostic forwarding.
 - `parser_source_ranges.cpp` owns source-range composition.
 - Postfix suffixes are emitted directly as compact AST nodes. `parser_postfix.cpp`
-  keeps `[]` disambiguation local: slice syntax always emits `slice`, clear
+  keeps `[]` disambiguation local: colon syntax always emits `slice`, clear
   type-argument continuations emit `generic_apply`, and value-shaped bracket
-  syntax emits `index`. Selector continuations only force generic type-selector
-  parsing for type-shaped bases/arguments, so `Type[T].case` remains a generic
-  selector while `items[index].field` remains value indexing. Later stages
-  consume those explicit nodes instead of a second materialization path.
+  syntax emits `index`. M2.1 deliberately uses a syntactic type-shaped contract
+  for selector continuations: generic selectors require an uppercase/type-like
+  base and uppercase/type-like or type-only arguments, so `Type[T].case`
+  remains a generic selector while `items[index].field` remains value indexing.
+  Later stages consume those explicit nodes instead of a second materialization
+  path.
 
 Recovery token sets are split into source-private start-token, list-boundary,
 and delimiter-boundary files. The public recovery API should stay limited to
@@ -210,8 +212,8 @@ Postfix `[]` uses one delimiter for generic type arguments and value indexing,
 so the parser applies conservative syntactic guardrails before emitting the
 final AST node. Type-only arguments and generic-call/type-literal continuations
 become `generic_apply`; selector continuations become `generic_apply` only when
-the base and arguments are type-shaped; colon syntax becomes `slice`; the
-remaining value form becomes `index`.
+the base and arguments satisfy the M2.1 type-shaped contract; colon syntax
+becomes `slice`; the remaining value form becomes `index`.
 
 Protected cases:
 
@@ -219,6 +221,10 @@ Protected cases:
 - Array literals and repeat literals such as `[1, 2, 3]` and `[0; 128]`.
 - Index expressions such as `items[index]`, including selector chains such as
   `items[index].field`.
+- Type-selector expressions such as `Option[T].some` and `core.mem.Box[T].new`
+  when the selector base and bracket arguments are syntactically type-shaped.
+  Lowercase value selectors are intentionally kept as value indexing in M2.1
+  because the parser does not depend on semantic symbol tables.
 - Builtin type arguments such as `cast[i32](value)` and `sizeof[T]`.
 - Explicit generic function calls such as `id[i32](value)`. The parser emits a
   `generic_apply` callee followed by a `call` suffix, so sema no longer owns a

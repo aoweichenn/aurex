@@ -2,7 +2,6 @@
 
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/base/source.hpp>
-#include <aurex/backend/llvm_backend.hpp>
 #include <aurex/driver/driver_messages.hpp>
 #include <aurex/driver/module_loader.hpp>
 #include <aurex/driver/file_cache.hpp>
@@ -23,6 +22,7 @@
 #include <iostream>
 #include <span>
 #include <string>
+#include <utility>
 
 #include <unistd.h>
 
@@ -85,6 +85,20 @@ constexpr char DRIVER_JSON_HEX_DIGITS[] = "0123456789abcdef";
         return base::Result<std::filesystem::path>::fail(write_result.error());
     }
     return base::Result<std::filesystem::path>::ok(path);
+}
+
+[[nodiscard]] base::Result<LlvmIrOutput> emit_llvm_ir(
+    const LlvmIrEmitter emitter,
+    const ir::Module& module,
+    std::string module_name
+) {
+    if (emitter == nullptr) {
+        return base::Result<LlvmIrOutput>::fail({
+            base::ErrorCode::codegen_error,
+            std::string(DRIVER_LLVM_BACKEND_UNAVAILABLE),
+        });
+    }
+    return emitter(LlvmIrEmitRequest {&module, std::move(module_name)});
 }
 
 [[nodiscard]] bool env_equals(const char* const value, const std::string_view expected) noexcept {
@@ -367,6 +381,9 @@ private:
 
 } // namespace
 
+Compiler::Compiler(const LlvmIrEmitter llvm_ir_emitter) noexcept
+    : llvm_ir_emitter_(llvm_ir_emitter) {}
+
 base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
 {
     CompilerRunProfile run_profile(invocation);
@@ -510,10 +527,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
         }
         auto llvm_result = [&] {
             ScopedCompilationPhase phase(run_profile.profiler(), "llvm.emit_ir");
-            return backend::emit_llvm_ir(backend::LlvmEmitRequest {
-                &ir_result.value(),
-                invocation.input_path.stem().string(),
-            });
+            return emit_llvm_ir(this->llvm_ir_emitter_, ir_result.value(), invocation.input_path.stem().string());
         }();
         if (!llvm_result) {
             return run_profile.finish(base::Result<void>::fail(llvm_result.error()));
@@ -553,10 +567,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
         }
         auto llvm_result = [&] {
             ScopedCompilationPhase phase(run_profile.profiler(), "llvm.emit_ir");
-            return backend::emit_llvm_ir(backend::LlvmEmitRequest {
-                &ir_result.value(),
-                invocation.input_path.stem().string(),
-            });
+            return emit_llvm_ir(this->llvm_ir_emitter_, ir_result.value(), invocation.input_path.stem().string());
         }();
         if (!llvm_result) {
             return run_profile.finish(base::Result<void>::fail(llvm_result.error()));

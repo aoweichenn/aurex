@@ -514,6 +514,9 @@ inline constexpr std::string_view SEMA_MATCH_NON_ENUM_IRREFUTABLE =
 inline constexpr std::string_view SEMA_MATCH_DYNAMIC_SLICE_WITNESS =
     "match expression over dynamic slice is missing length or element coverage";
 
+inline constexpr std::string_view SEMA_MATCH_LARGE_ARRAY_IRREFUTABLE =
+    "fixed-array match exhaustiveness for arrays longer than 4096 elements requires an irrefutable arm";
+
 inline constexpr std::string_view SEMA_MATCH_ARM_UNREACHABLE =
     "match arm is unreachable";
 

@@ -3,6 +3,9 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * 0"
 
 jobs:
   coverage:
@@ -24,10 +27,31 @@ jobs:
           } >> "${GITHUB_ENV}"
       - name: Check coverage
         env:
-          AUREX_COVERAGE_LINE_THRESHOLD: "90"
-          AUREX_COVERAGE_FUNCTION_THRESHOLD: "90"
-          AUREX_COVERAGE_REGION_THRESHOLD: "90"
+          AUREX_COVERAGE_LINE_THRESHOLD: "95"
+          AUREX_COVERAGE_FUNCTION_THRESHOLD: "95"
+          AUREX_COVERAGE_REGION_THRESHOLD: "95"
         run: tools/check_coverage.sh
+  frontend-only:
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install frontend-only dependencies
+        run: |
+          dnf install -y clang cmake gcc-c++ git gtest-devel make
+      - name: Configure tool paths
+        run: |
+          {
+            echo "CC=$(command -v clang)"
+            echo "CXX=$(command -v clang++)"
+          } >> "${GITHUB_ENV}"
+      - name: Configure frontend-only build
+        run: cmake -S . -B build-frontend-only -DAUREX_FRONTEND_ONLY=ON
+      - name: Build frontend-only targets
+        run: cmake --build build-frontend-only -j
+      - name: Run frontend-only tests
+        run: ctest --test-dir build-frontend-only --output-on-failure
   stress-thresholds:
     runs-on: ubuntu-24.04
     container:
@@ -60,3 +84,24 @@ jobs:
           AUREX_DIAGNOSTIC_STRESS_MAX_RSS_MIB: "512"
           AUREX_DIAGNOSTIC_STRESS_MAX_ELAPSED_MS: "30000"
         run: make perf-stress-threshold
+  release-stress-thresholds:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          dnf install -y clang cmake gcc-c++ git gtest-devel llvm llvm-devel make time
+      - name: Configure tool paths
+        run: |
+          {
+            echo "CC=$(command -v clang)"
+            echo "CXX=$(command -v clang++)"
+          } >> "${GITHUB_ENV}"
+      - name: Check release stress thresholds
+        env:
+          AUREX_PERF_THRESHOLD_PROFILE: "github-ubuntu-24.04-fedora-release"
+          AUREX_PERF_THRESHOLD_SCALE: "1.0"
+        run: make perf-release-threshold

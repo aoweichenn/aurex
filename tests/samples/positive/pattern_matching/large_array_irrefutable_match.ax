@@ -1,0 +1,8 @@
+module large_array_irrefutable_match;
+
+fn main() -> i32 {
+    let values: [4097]bool = [false; 4097];
+    return match values {
+        [..] => 0,
+    };
+}

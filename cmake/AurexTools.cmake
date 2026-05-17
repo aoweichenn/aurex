@@ -1,7 +1,7 @@
 add_executable(aurexc
     src/cli/main.cpp
 )
-target_link_libraries(aurexc PRIVATE aurex_driver)
+target_link_libraries(aurexc PRIVATE aurex_driver_llvm)
 
 add_executable(aurex_lex_bench EXCLUDE_FROM_ALL
     tools/lex_bench.cpp

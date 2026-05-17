@@ -959,7 +959,8 @@ void print_cli_usage(std::ostream& out, const std::string_view tool_name) {
 int run_cli(
     const std::span<const std::string_view> arguments,
     std::ostream& out,
-    std::ostream& err
+    std::ostream& err,
+    const LlvmIrEmitter llvm_ir_emitter
 ) {
     auto parse_result = parse_cli_arguments(arguments);
     const std::string_view tool_name = arguments.empty() ? CLI_DEFAULT_TOOL_NAME : arguments.front();
@@ -979,7 +980,7 @@ int run_cli(
         return CLI_SUCCESS_EXIT_CODE;
     }
 
-    Compiler compiler;
+    Compiler compiler(llvm_ir_emitter);
     const auto compile_result = compiler.run(parsed.invocation);
     if (!compile_result) {
         if (parsed.invocation.diagnostic_format == DiagnosticOutputFormat::json) {
@@ -992,6 +993,14 @@ int run_cli(
         return CLI_COMPILATION_FAILURE_EXIT_CODE;
     }
     return CLI_SUCCESS_EXIT_CODE;
+}
+
+int run_cli(
+    const std::span<const std::string_view> arguments,
+    std::ostream& out,
+    std::ostream& err
+) {
+    return run_cli(arguments, out, err, nullptr);
 }
 
 } // namespace aurex::driver

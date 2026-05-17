@@ -17,6 +17,9 @@ inline constexpr std::string_view DRIVER_NATIVE_OUTPUT_REQUIRES_OUTPUT_PATH =
 inline constexpr std::string_view DRIVER_UNSUPPORTED_EMISSION_MODE =
     "unsupported emission mode";
 
+inline constexpr std::string_view DRIVER_LLVM_BACKEND_UNAVAILABLE =
+    "LLVM backend is unavailable for this compiler build";
+
 inline constexpr std::string_view DRIVER_INPUT_OPEN_FAILED =
     "failed to open input file";
 

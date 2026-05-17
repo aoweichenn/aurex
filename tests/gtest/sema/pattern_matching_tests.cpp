@@ -213,6 +213,17 @@ TEST_F(AurexIntegrationTest, StructuralMatchExhaustiveness) {
         require_failure(aurexc() + " --check " + q(limit)).output,
         "match expression over tuple, struct, array, or slice requires an irrefutable arm"
     );
+
+    const fs::path large_array_irrefutable =
+        positive_sample("pattern_matching", "large_array_irrefutable_match.ax");
+    require_success(aurexc() + " --check " + q(large_array_irrefutable));
+
+    const fs::path large_array_missing =
+        negative_sample("pattern_matching", "large_array_match_requires_irrefutable.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(large_array_missing)).output,
+        "fixed-array match exhaustiveness for arrays longer than 4096 elements requires an irrefutable arm"
+    );
 }
 
 TEST_F(AurexIntegrationTest, MatchOrPattern) {

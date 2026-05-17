@@ -65,10 +65,12 @@ fi
 
 "${LLVM_PROFDATA}" merge -sparse "${PROFRAW_FILES[@]}" -o "${PROFDATA}"
 
-OBJECT_ARGS=(
-    --object "${BUILD_DIR}/bin/aurex_tests"
-    --object "${BUILD_DIR}/bin/aurexc"
-)
+COVERAGE_OBJECT="${BUILD_DIR}/bin/aurex_tests"
+if [[ ! -x "${COVERAGE_OBJECT}" ]]; then
+    printf 'coverage failed: missing coverage object: %s\n' "${COVERAGE_OBJECT}" >&2
+    exit 1
+fi
+OBJECT_ARGS=(--object "${COVERAGE_OBJECT}")
 IGNORE_REGEX='(/tests/|/build[^/]*/|/opt/|/usr/|gtest|gmock|googletest)'
 SOURCE_FILES=()
 while IFS= read -r source_file; do

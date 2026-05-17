@@ -1,4 +1,4 @@
-#include <aurex/driver/cli.hpp>
+#include <aurex/driver/cli_llvm.hpp>
 
 #include <iostream>
 #include <string_view>
@@ -10,5 +10,5 @@ int main(const int argc, char** argv) {
     for (int i = 0; i < argc; ++i) {
         arguments.emplace_back(argv[i] == nullptr ? std::string_view {} : std::string_view {argv[i]});
     }
-    return aurex::driver::run_cli(arguments, std::cout, std::cerr);
+    return aurex::driver::run_cli_with_llvm_backend(arguments, std::cout, std::cerr);
 }

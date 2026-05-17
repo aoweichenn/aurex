@@ -538,8 +538,12 @@ guardrails: type-only arguments and generic call/type-literal continuations
 emit `generic_apply`; selector continuations emit `generic_apply` only for
 type-shaped bases and arguments, preserving value selectors such as
 `items[index].field`; colon syntax emits `slice`; remaining value syntax emits
-`index`. Later stages consume those nodes directly instead of running any second
-raw-chain lowering step.
+`index`. In M2.1 a type-shaped selector base or bare type argument is
+syntactic: it begins with an uppercase identifier or uses a type-only form such
+as a primitive, pointer, reference, tuple, slice, array, or function type.
+Lowercase `name[index].field` is always parsed as value indexing followed by a
+field selector. Later stages consume those nodes directly instead of running any
+second raw-chain lowering step.
 
 The postfix `?` operator is accepted only for structurally recognized
 result-like and option-like enums. A result-like enum must have exactly
@@ -672,11 +676,13 @@ Safe operations include address-of `&place`, `ptraddr(p_or_ref)`, `strptr(s)`,
 `strblen(s)`, `strvalid(bytes)`, `strfromutf8(bytes)`, `sizeof[T]`,
 `alignof[T]`, and checked numeric `cast[T](x)`.
 
-`&place` creates `&T` unless a legacy raw-pointer context explicitly expects a
-`*const T` or `*mut T`; that compatibility path exists for current M2 pointer
-samples. `&mut place` creates `&mut T` and does not silently become a raw
-pointer. Unary `*` on a safe reference is a safe load or place projection;
-unary `*` on a raw pointer remains unsafe-only.
+`&place` always creates `&T`; `&mut place` always creates `&mut T` and requires
+a writable place. Address-of does not silently become a raw pointer in
+initializers, calls, returns, struct literals, or any other expected-type
+context. Code that needs a raw pointer address must use the explicit
+`ptraddr(...)` / `ptrat[T](...)` raw-pointer boundary. Unary `*` on a safe
+reference is a safe load or place projection; unary `*` on a raw pointer remains
+unsafe-only.
 
 `strvalid(bytes)` accepts a `[]const u8` or `[]mut u8` borrowed byte slice and
 returns `bool`. `strfromutf8(bytes)` accepts the same slice shape and returns
@@ -770,8 +776,10 @@ Rules:
 - Tuple, struct, and fixed-array matches can be proven exhaustive when all
   structural slots are finite leaf domains such as `bool` or no-payload enum
   values. Unguarded arms and literal `if true` guards contribute to
-  exhaustiveness; literal `if false` and dynamic guards do not. Other tuple,
-  struct, array, and slice shapes still require an irrefutable arm.
+  exhaustiveness; literal `if false` and dynamic guards do not. Fixed arrays
+  longer than 4096 elements have an explicit M2.1 boundary and require an
+  irrefutable arm. Other tuple, struct, array, and slice shapes still require an
+  irrefutable arm.
 
 ## 13. Basic Generics
 

@@ -109,6 +109,7 @@ if(BUILD_TESTING)
             aurex_ir
             aurex_backend_llvm
             aurex_driver
+            aurex_driver_llvm
         )
         target_include_directories(aurex_tests PRIVATE
             tests

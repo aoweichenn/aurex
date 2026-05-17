@@ -327,7 +327,7 @@ WhereClause   = "where" Identifier ":" Capability ("+" Capability)*
 - `impl[T] Box[T]` 这类 owner generic impl 支持；method-local generic parameter 仍不支持。
 - parser 阶段直接生成显式 postfix AST：`generic_apply`、`index`、`slice`、`field`、`call`、`struct_literal` 和 `try_expr`。
 - `id[i32](value)` 解析为 `generic_apply` callee 后接 `call`；`Option[i32].some` 和 `Option[T].some` 这类 type-shaped selector 解析为泛型类型选择后接字段/enum case 选择；`values[0].field` 和 `values[index].field` 解析为 value `index` 后接字段选择。
-- `name[index]` 默认是 value index；只有 type-only argument 或明显的 call / struct literal / selector 延续会把 bracket 作为 type args。
+- `name[index]` 默认是 value index；只有 type-only argument、明显的 call / struct literal 延续，或满足 M2.1 type-shaped selector 契约的 selector 延续会把 bracket 作为 type args。type-shaped 是语法契约：base 或裸 type arg 以大写 identifier 开头，或者 type arg 使用 primitive / pointer / reference / tuple / slice / array / function type 等 type-only 形式；lowercase `name[index].field` 不依赖 sema 猜测，固定解析为 value index。
 - 类型注解支持 `Name`、`alias.Name` 和可见模块路径形式 `core.mem.File` / `core.mem.Box[i32]`；表达式侧同样支持 `core.mem.PAGE_SIZE`、`core.mem.make()`、`core.mem.File.new()` 这类多段模块 selector。一段 qualifier 仍按 import alias 解析，多段 qualifier 按 visible module path 解析。
 
 enum：

@@ -42,6 +42,27 @@ constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_U32 = "u32";
 constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_U64 = "u64";
 constexpr std::string_view PARSER_TYPE_INTEGER_SUFFIX_USIZE = "usize";
 constexpr base::usize PARSER_TYPE_CONSTRUCTOR_STACK_INITIAL_CAPACITY = 8;
+constexpr base::usize PARSER_MAX_TYPE_NESTING_DEPTH = 512;
+
+class TypeNestingGuard final {
+public:
+    explicit TypeNestingGuard(ParseSession& session) noexcept
+        : session_(&session) {
+        ++this->session_->type_nesting_depth;
+    }
+
+    ~TypeNestingGuard() noexcept {
+        --this->session_->type_nesting_depth;
+    }
+
+    TypeNestingGuard(const TypeNestingGuard&) = delete;
+    TypeNestingGuard& operator=(const TypeNestingGuard&) = delete;
+    TypeNestingGuard(TypeNestingGuard&&) = delete;
+    TypeNestingGuard& operator=(TypeNestingGuard&&) = delete;
+
+private:
+    ParseSession* session_;
+};
 
 [[nodiscard]] bool is_primitive_type_token(const TokenKind kind) noexcept {
     switch (kind) {
@@ -172,6 +193,17 @@ constexpr base::usize PARSER_TYPE_CONSTRUCTOR_STACK_INITIAL_CAPACITY = 8;
 
 syntax::TypeId TypeParser::parse_type() {
     this->reset_panic();
+    if (this->session_.type_nesting_depth >= PARSER_MAX_TYPE_NESTING_DEPTH) {
+        const base::SourceRange range = this->peek().range;
+        this->report_here(std::string(PARSER_TYPE_NESTING_LIMIT));
+        this->synchronize(RecoveryContext::type_annotation);
+        syntax::TypeNode type;
+        type.kind = syntax::TypeKind::primitive;
+        type.primitive = syntax::PrimitiveTypeKind::void_;
+        type.range = range;
+        return this->session_.module.push_type(type);
+    }
+    const TypeNestingGuard nesting_guard(this->session_);
     enum class TypeConstructorKind {
         pointer,
         reference,

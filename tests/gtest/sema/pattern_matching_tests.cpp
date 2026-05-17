@@ -57,7 +57,11 @@ TEST_F(AurexIntegrationTest, MatchExpression) {
     );
 
     const fs::path mismatch = negative_sample("pattern_matching", "match_expression_type_mismatch.ax");
-    expect_contains(require_failure(aurexc() + " --check " + q(mismatch)).output, "match expression arms must have the same type");
+    expect_contains_all(require_failure(aurexc() + " --check " + q(mismatch)).output, {
+        "match expression arms must have the same type",
+        "note: expected type: i32",
+        "note: actual type: bool",
+    });
 }
 
 TEST_F(AurexIntegrationTest, EnumPayloadAndMatchBinding) {

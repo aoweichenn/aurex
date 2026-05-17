@@ -397,6 +397,12 @@ inline constexpr std::string_view PARSER_EXPECT_GROUPED_EXPR_END =
 inline constexpr std::string_view PARSER_EXPRESSION_NESTING_LIMIT =
     "expression nesting exceeds M2 parser limit";
 
+inline constexpr std::string_view PARSER_TYPE_NESTING_LIMIT =
+    "type nesting exceeds M2 parser limit";
+
+inline constexpr std::string_view PARSER_PATTERN_NESTING_LIMIT =
+    "pattern nesting exceeds M2 parser limit";
+
 inline constexpr std::string_view PARSER_EXPECT_GENERIC_APPLY_SCOPE =
     "expected callee before generic type arguments";
 

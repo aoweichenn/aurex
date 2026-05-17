@@ -240,6 +240,26 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     const driver::CliParseResult typed_emit_parse = require_parse_cli(typed_emit_args);
     EXPECT_EQ(typed_emit_parse.invocation.emit_kind, driver::EmitKind::typed);
 
+    const std::vector<std::string_view> json_diagnostic_args {
+        "aurexc",
+        "--check",
+        "--diagnostics=json",
+        "examples/hello.ax",
+    };
+    const driver::CliParseResult json_diagnostic_parse = require_parse_cli(json_diagnostic_args);
+    EXPECT_EQ(json_diagnostic_parse.invocation.emit_kind, driver::EmitKind::check);
+    EXPECT_EQ(json_diagnostic_parse.invocation.diagnostic_format, driver::DiagnosticOutputFormat::json);
+
+    const std::vector<std::string_view> text_diagnostic_args {
+        "aurexc",
+        "--check",
+        "--diagnostics",
+        "text",
+        "examples/hello.ax",
+    };
+    const driver::CliParseResult text_diagnostic_parse = require_parse_cli(text_diagnostic_args);
+    EXPECT_EQ(text_diagnostic_parse.invocation.diagnostic_format, driver::DiagnosticOutputFormat::text);
+
     const std::vector<std::string_view> inference_reset_args {
         "aurexc",
         "-S",
@@ -303,6 +323,15 @@ TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors) {
     ASSERT_FALSE(inapplicable_native_backend);
     expect_contains(inapplicable_native_backend.error().message, "option requires native output: --clang");
 
+    const std::vector<std::string_view> invalid_diagnostic_format_args {
+        "aurexc",
+        "--diagnostics=xml",
+        "examples/hello.ax",
+    };
+    const auto invalid_diagnostic_format = driver::parse_cli_arguments(invalid_diagnostic_format_args);
+    ASSERT_FALSE(invalid_diagnostic_format);
+    expect_contains(invalid_diagnostic_format.error().message, "invalid diagnostic output format");
+
     std::ostringstream out;
     std::ostringstream err;
     const std::vector<std::string_view> missing_file_args {
@@ -339,6 +368,7 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
         "--emit=exe",
         "--dump-modules",
         "--incremental-cache",
+        "--diagnostics",
         "--opt-level",
     });
 
@@ -370,9 +400,102 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
         require_success(aurexc() + " --emit=ir " + q(positive_sample("pointers", "pointer_field_write.ax"))).output;
     expect_contains(pointer_field, "field_addr ");
     expect_contains(pointer_field, ".value");
+
+    const fs::path json_diagnostics = tmp_root() / "json\"\\diagnostics.ax";
+    {
+        std::ofstream out(json_diagnostics, std::ios::binary);
+        out << "module json_diagnostics;\nfn main() -> i32 { let value: i32 = true; return value; }\n";
+    }
+    const std::string json_output =
+        require_failure(aurexc() + " --check --diagnostics=json " + q(json_diagnostics)).output;
+    expect_contains_all(json_output, {
+        "\"format\": \"aurex-diagnostics-v1\"",
+        "\"severity\": \"error\"",
+        "\"category\": \"type\"",
+        "\"code\": \"SEM0100\"",
+        "\"message\": \"initializer type does not match declared type\"",
+        "\"message\": \"expected type: i32\"",
+        "\"message\": \"actual type: bool\"",
+        "json\\\"\\\\diagnostics.ax",
+        "\"range\": {",
+        "\"suppressed\": 0",
+    });
+    EXPECT_EQ(json_output.find("aurexc:"), std::string::npos);
 }
 
 TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches) {
+    {
+        const fs::path invalid = tmp_root() / "invalid_json_cli.ax";
+        std::ofstream out(invalid);
+        out << "module invalid_json_cli;\nfn main() -> i32 { let value: i32 = true; return value; }\n";
+        out.close();
+
+        std::ostringstream stdout_capture;
+        std::ostringstream stderr_capture;
+        const std::string invalid_path = invalid.string();
+        const std::vector<std::string_view> args {
+            "aurexc",
+            "--check",
+            "--diagnostics=json",
+            invalid_path,
+        };
+        testing::internal::CaptureStderr();
+        const int exit_code = driver::run_cli(args, stdout_capture, stderr_capture);
+        const std::string diagnostics = testing::internal::GetCapturedStderr();
+        EXPECT_EQ(exit_code, 1);
+        expect_contains(diagnostics, "\"format\": \"aurex-diagnostics-v1\"");
+        EXPECT_TRUE(stderr_capture.str().empty());
+    }
+
+    {
+        const fs::path escaped_path = tmp_root() / std::string("json\n\r\t\x01\"\\diagnostics.ax");
+        std::ofstream out(escaped_path, std::ios::binary);
+        out << "module escaped_json_diagnostics;\n"
+               "fn main() -> i32 { let value: i32 = true; return value; }\n";
+        out.close();
+
+        driver::CompilerInvocation invocation;
+        invocation.input_path = escaped_path;
+        invocation.emit_kind = driver::EmitKind::check;
+        invocation.diagnostic_format = driver::DiagnosticOutputFormat::json;
+        driver::Compiler compiler;
+        testing::internal::CaptureStderr();
+        const auto result = compiler.run(invocation);
+        const std::string diagnostics = testing::internal::GetCapturedStderr();
+        ASSERT_FALSE(result);
+        expect_contains_all(diagnostics, {
+            "\\n",
+            "\\r",
+            "\\t",
+            "\\u0001",
+            "\\\"",
+            "\\\\",
+        });
+    }
+
+    {
+        std::ostringstream stdout_capture;
+        std::ostringstream stderr_capture;
+        const std::string missing_path = (tmp_root() / "definitely_missing.ax").string();
+        const std::vector<std::string_view> args {
+            "aurexc",
+            "--check",
+            "--diagnostics=json",
+            missing_path,
+        };
+        testing::internal::CaptureStderr();
+        const int exit_code = driver::run_cli(args, stdout_capture, stderr_capture);
+        const std::string diagnostics = testing::internal::GetCapturedStderr();
+        EXPECT_EQ(exit_code, 1);
+        EXPECT_TRUE(diagnostics.empty());
+        expect_contains_all(stderr_capture.str(), {
+            "\"format\": \"aurex-diagnostics-v1\"",
+            "\"severity\": \"fatal\"",
+            "\"message\": \"failed to open input file\"",
+            "\"range\": null",
+        });
+    }
+
     {
         const fs::path invalid = tmp_root() / "invalid_tokens.ax";
         std::ofstream out(invalid);

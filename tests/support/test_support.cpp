@@ -449,6 +449,12 @@ private:
            emit_kind == driver::EmitKind::executable;
 }
 
+[[nodiscard]] bool compiler_error_already_printed_diagnostics(const base::ErrorCode code) noexcept {
+    return code == base::ErrorCode::lex_error ||
+           code == base::ErrorCode::parse_error ||
+           code == base::ErrorCode::sema_error;
+}
+
 [[nodiscard]] fs::path canonical_or_absolute(const fs::path& path) {
     std::error_code canonical_error;
     fs::path canonical = fs::weakly_canonical(path, canonical_error);
@@ -525,6 +531,9 @@ void append_path_list_identity(std::string& key, const std::vector<fs::path>& pa
     }
     key += "opt=";
     key += std::to_string(static_cast<int>(invocation.optimization_level));
+    key.push_back('\n');
+    key += "diagnostics=";
+    key += std::to_string(static_cast<int>(invocation.diagnostic_format));
     key.push_back('\n');
     return key;
 }
@@ -691,7 +700,12 @@ CommandResult run_compiler(const driver::CompilerInvocation& invocation) {
     driver::Compiler compiler;
     auto result = compiler.run(invocation);
     if (!result) {
-        std::cerr << "aurexc: " << result.error().message << "\n";
+        const bool suppress_driver_error =
+            invocation.diagnostic_format == driver::DiagnosticOutputFormat::json &&
+            compiler_error_already_printed_diagnostics(result.error().code);
+        if (!suppress_driver_error) {
+            std::cerr << "aurexc: " << result.error().message << "\n";
+        }
     }
     CommandResult command_result {result ? 0 : 1, output.finish()};
     if (cache_key) {

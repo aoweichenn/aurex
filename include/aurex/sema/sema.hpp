@@ -302,8 +302,8 @@ private:
         syntax::ModuleId owner,
         TypeHandle named_enum_type,
         std::string enum_display_name,
-        std::string case_prefix,
-        std::string c_prefix,
+        const std::string& case_prefix,
+        const std::string& c_prefix,
         syntax::Visibility visibility
     );
     void validate_function_prototypes() const;

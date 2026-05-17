@@ -172,6 +172,8 @@ struct ParseSession final {
     ParseDiagnostics diagnostics;
     syntax::AstModule module;
     base::usize expression_nesting_depth = 0;
+    base::usize type_nesting_depth = 0;
+    base::usize pattern_nesting_depth = 0;
 
     ParseSession(
         std::span<const syntax::Token> tokens,

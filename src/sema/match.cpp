@@ -1583,7 +1583,7 @@ TypeHandle SemanticAnalyzer::analyze_match_expr(
             result = arm_type;
             resolve_pending_null_arms();
         } else if (!this->checked_.types.same(result, arm_type)) {
-            this->report(arm.range, std::string(SEMA_MATCH_ARM_TYPE));
+            this->report_type_mismatch(arm.range, std::string(SEMA_MATCH_ARM_TYPE), result, arm_type);
         }
     }
 

@@ -21,6 +21,8 @@ import sys
 import time
 from dataclasses import asdict, dataclass
 
+from perf_thresholds import make_calibration, scaled_threshold
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BUILD = pathlib.Path(
@@ -248,16 +250,19 @@ def threshold_violations(rows: list[StressRow], thresholds: StressThresholds) ->
     return violations
 
 
-def write_json(rows: list[StressRow], thresholds: StressThresholds, violations: list[str]) -> None:
+def write_json(
+    rows: list[StressRow],
+    raw_thresholds: StressThresholds,
+    thresholds: StressThresholds,
+    calibration,
+    violations: list[str],
+) -> None:
     payload = {
         "build": str(BUILD),
         "aurexc": str(AUREXC),
-        "machine": {
-            "system": platform.system(),
-            "release": platform.release(),
-            "machine": platform.machine(),
-            "processor": platform.processor(),
-        },
+        "machine": calibration.machine,
+        "threshold_calibration": calibration.to_json(),
+        "raw_thresholds": asdict(raw_thresholds),
         "thresholds": asdict(thresholds),
         "threshold_violations": violations,
         "rows": [asdict(row) for row in rows],
@@ -266,11 +271,13 @@ def write_json(rows: list[StressRow], thresholds: StressThresholds, violations: 
     OUTPUT_JSON.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def print_report(rows: list[StressRow], thresholds: StressThresholds, violations: list[str]) -> None:
+def print_report(rows: list[StressRow], thresholds: StressThresholds, calibration, violations: list[str]) -> None:
     print("Aurex diagnostic stress")
     print(f"build: {BUILD}")
     print(f"raw_json: {OUTPUT_JSON}")
     print()
+    print(f"threshold_profile: {calibration.profile}")
+    print(f"threshold_scale: {calibration.scale:.3f}")
     threshold_parts: list[str] = []
     if thresholds.max_elapsed_ms is not None:
         threshold_parts.append(f"elapsed <= {thresholds.max_elapsed_ms:.3f} ms")
@@ -326,12 +333,27 @@ def main() -> int:
         default=os.environ.get("AUREX_DIAGNOSTIC_STRESS_MAX_RSS_MIB"),
         help="fail if any row exceeds this peak RSS in MiB",
     )
+    parser.add_argument(
+        "--threshold-profile",
+        default=os.environ.get("AUREX_PERF_THRESHOLD_PROFILE"),
+        help="machine/profile label written to stress JSON; default: local",
+    )
+    parser.add_argument(
+        "--threshold-scale",
+        default=os.environ.get("AUREX_PERF_THRESHOLD_SCALE"),
+        help="positive multiplier applied to elapsed and RSS thresholds; default: 1.0",
+    )
     args = parser.parse_args()
 
     counts = parse_counts(args.counts)
-    thresholds = StressThresholds(
+    calibration = make_calibration(args.threshold_profile, args.threshold_scale)
+    raw_thresholds = StressThresholds(
         max_elapsed_ms=parse_optional_float(args.max_elapsed_ms, "--max-elapsed-ms"),
         max_rss_mib=parse_optional_float(args.max_rss_mib, "--max-rss-mib"),
+    )
+    thresholds = StressThresholds(
+        max_elapsed_ms=scaled_threshold(raw_thresholds.max_elapsed_ms, calibration),
+        max_rss_mib=scaled_threshold(raw_thresholds.max_rss_mib, calibration),
     )
     if not args.skip_build:
         build_compiler()
@@ -340,8 +362,8 @@ def main() -> int:
 
     rows = run_stress(counts)
     violations = threshold_violations(rows, thresholds)
-    write_json(rows, thresholds, violations)
-    print_report(rows, thresholds, violations)
+    write_json(rows, raw_thresholds, thresholds, calibration, violations)
+    print_report(rows, thresholds, calibration, violations)
     return 1 if violations else 0
 
 

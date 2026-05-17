@@ -12,9 +12,46 @@ namespace {
 
 using syntax::TokenKind;
 
+constexpr base::usize PARSER_MAX_PATTERN_NESTING_DEPTH = 512;
+
+class PatternNestingGuard final {
+public:
+    explicit PatternNestingGuard(ParseSession& session) noexcept
+        : session_(&session) {
+        ++this->session_->pattern_nesting_depth;
+    }
+
+    ~PatternNestingGuard() noexcept {
+        --this->session_->pattern_nesting_depth;
+    }
+
+    PatternNestingGuard(const PatternNestingGuard&) = delete;
+    PatternNestingGuard& operator=(const PatternNestingGuard&) = delete;
+    PatternNestingGuard(PatternNestingGuard&&) = delete;
+    PatternNestingGuard& operator=(PatternNestingGuard&&) = delete;
+
+private:
+    ParseSession* session_;
+};
+
+[[nodiscard]] syntax::PatternId push_wildcard_pattern(ParseSession& session, const base::SourceRange& range) {
+    syntax::PatternNode pattern;
+    pattern.kind = syntax::PatternKind::wildcard;
+    pattern.range = range;
+    return session.module.push_pattern(pattern);
+}
+
 } // namespace
 
 syntax::PatternId PatternParser::parse_pattern() {
+    this->reset_panic();
+    if (this->session_.pattern_nesting_depth >= PARSER_MAX_PATTERN_NESTING_DEPTH) {
+        const base::SourceRange range = this->peek().range;
+        this->report_here(std::string(PARSER_PATTERN_NESTING_LIMIT));
+        this->synchronize(RecoveryContext::pattern_payload);
+        return push_wildcard_pattern(this->session_, range);
+    }
+    const PatternNestingGuard nesting_guard(this->session_);
     const syntax::PatternId first = this->parse_pattern_atom();
     if (!this->match(TokenKind::pipe)) {
         return first;
@@ -35,6 +72,13 @@ syntax::PatternId PatternParser::parse_pattern() {
 }
 
 syntax::PatternId PatternParser::parse_pattern_atom() {
+    if (this->session_.pattern_nesting_depth >= PARSER_MAX_PATTERN_NESTING_DEPTH) {
+        const base::SourceRange range = this->peek().range;
+        this->report_here(std::string(PARSER_PATTERN_NESTING_LIMIT));
+        this->synchronize(RecoveryContext::pattern_payload);
+        return push_wildcard_pattern(this->session_, range);
+    }
+    const PatternNestingGuard nesting_guard(this->session_);
     if (this->check(TokenKind::l_paren)) {
         return this->parse_tuple_pattern();
     }

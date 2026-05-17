@@ -124,6 +124,23 @@ TEST_F(AurexIntegrationTest, VariadicExternCFunctions) {
     expect_contains(require_failure(aurexc() + " --check " + q(not_last)).output, "variadic marker must be last in parameter list");
 }
 
+TEST_F(AurexIntegrationTest, AbiCollisionDiagnosticsIncludePreviousDeclaration) {
+    const fs::path extern_mismatch = negative_sample("functions", "extern_abi_signature_mismatch.ax");
+    expect_contains_all(require_failure(aurexc() + " --check " + q(extern_mismatch)).output, {
+        "extern C ABI symbol redeclared with incompatible signature: same_extern_symbol",
+        "note: previous declaration of `same_extern_symbol` is here",
+    });
+
+    const fs::path method_collision = negative_sample("functions", "method_abi_collision.ax");
+    expect_contains_all(
+        require_failure(aurexc() + " --check " + sample_import_flags() + " " + q(method_collision)).output,
+        {
+            "duplicate ABI symbol",
+            "note: previous declaration",
+        }
+    );
+}
+
 TEST_F(AurexIntegrationTest, FunctionTypesAndIndirectCalls) {
     const fs::path basic = positive_sample("functions", "function_type_basic.ax");
     const std::string basic_checked = require_success(aurexc() + " --emit=checked " + q(basic)).output;

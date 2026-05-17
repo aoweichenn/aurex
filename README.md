@@ -103,7 +103,11 @@ frontend hot-path measurements. `make perf` prints the lightweight JSON-derived
 Aurex frontend baseline and the Google Benchmark process-level comparison
 against available modern frontend drivers (`clang++`, `g++`, and `rustc`);
 `make perf-stress-threshold` and `make perf-release-threshold` enforce the
-local CI and release stress gates. `make perf-compare` runs only the
+local CI and release stress gates. Both threshold gates share
+`AUREX_PERF_THRESHOLD_PROFILE` and `AUREX_PERF_THRESHOLD_SCALE`; the profile is
+recorded in each stress JSON file, and the positive scale factor multiplies the
+elapsed-time and peak-RSS thresholds for calibrated cross-machine runs without
+changing the baseline command lines. `make perf-compare` runs only the
 cross-frontend comparison lane. `make perf-stress` runs the generated
 500/1000/2000/5000 generic-instantiation baseline plus the AST bulk elapsed-time
 and peak-RSS baseline. `make perf-ast-stress` runs only the AST bulk lane. The
@@ -142,8 +146,9 @@ share module-level sparse NodeSpan layouts only when a template needs
 non-contiguous node-id mappings, release sema-only expected-type and
 pattern-case caches after analysis, and use 1 KiB per-instance side-table
 blocks to keep 2000/5000+ mixed-template stress from paying a 64 KiB floor per
-instance. The remaining work is measurement policy and CI thresholds, not a
-known whole-module side-table retention path.
+instance. The remaining work is adding more calibrated machine profiles as data
+comes in, not a known whole-module side-table retention path or missing perf
+gate mechanism.
 Expression typing now keeps intrinsic and contextual final types separate:
 `expr_intrinsic_types` records context-free expression types, `expr_types`
 records final checked types, `expr_expected_types` keys final-cache reuse, and

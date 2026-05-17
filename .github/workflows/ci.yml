@@ -45,6 +45,8 @@ jobs:
           } >> "${GITHUB_ENV}"
       - name: Check stress thresholds
         env:
+          AUREX_PERF_THRESHOLD_PROFILE: "github-ubuntu-24.04-fedora"
+          AUREX_PERF_THRESHOLD_SCALE: "1.0"
           AUREX_GENERIC_STRESS_COUNTS: "100,200"
           AUREX_GENERIC_STRESS_MAX_RSS_MIB: "512"
           AUREX_GENERIC_STRESS_MAX_ELAPSED_MS: "30000"

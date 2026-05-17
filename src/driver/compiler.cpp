@@ -43,6 +43,16 @@ constexpr std::string_view DRIVER_COLOR_WARNING = "\033[1;33m";
 constexpr std::string_view DRIVER_COLOR_NOTE = "\033[1;36m";
 constexpr std::string_view DRIVER_COLOR_HELP = "\033[1;32m";
 constexpr std::string_view DRIVER_COLOR_CARET = "\033[1;32m";
+constexpr char DRIVER_JSON_QUOTE = '"';
+constexpr char DRIVER_JSON_BACKSLASH = '\\';
+constexpr char DRIVER_JSON_NEWLINE = '\n';
+constexpr char DRIVER_JSON_CARRIAGE_RETURN = '\r';
+constexpr char DRIVER_JSON_TAB = '\t';
+constexpr unsigned int DRIVER_JSON_CONTROL_CHAR_LIMIT = 0x20U;
+constexpr unsigned int DRIVER_JSON_BYTE_MASK = 0xffU;
+constexpr unsigned int DRIVER_JSON_NIBBLE_BITS = 4U;
+constexpr unsigned int DRIVER_JSON_LOW_NIBBLE_MASK = 0x0fU;
+constexpr char DRIVER_JSON_HEX_DIGITS[] = "0123456789abcdef";
 
 [[nodiscard]] bool emit_kind_requires_ir_lowering(const EmitKind emit_kind) noexcept {
     return emit_kind == EmitKind::ir ||
@@ -191,7 +201,103 @@ void print_diagnostic_source(
     }
 }
 
-void print_diagnostics(const base::SourceManager& sources, const base::DiagnosticSink& diagnostics) {
+void print_json_escaped(const std::string_view text) {
+    std::cerr << DRIVER_JSON_QUOTE;
+    for (const unsigned char byte : text) {
+        switch (byte) {
+        case DRIVER_JSON_QUOTE:
+            std::cerr << "\\\"";
+            break;
+        case DRIVER_JSON_BACKSLASH:
+            std::cerr << "\\\\";
+            break;
+        case DRIVER_JSON_NEWLINE:
+            std::cerr << "\\n";
+            break;
+        case DRIVER_JSON_CARRIAGE_RETURN:
+            std::cerr << "\\r";
+            break;
+        case DRIVER_JSON_TAB:
+            std::cerr << "\\t";
+            break;
+        default:
+            if (byte < DRIVER_JSON_CONTROL_CHAR_LIMIT) {
+                std::cerr << "\\u00"
+                          << DRIVER_JSON_HEX_DIGITS[(byte >> DRIVER_JSON_NIBBLE_BITS) & DRIVER_JSON_LOW_NIBBLE_MASK]
+                          << DRIVER_JSON_HEX_DIGITS[byte & DRIVER_JSON_LOW_NIBBLE_MASK];
+            } else {
+                std::cerr << static_cast<char>(byte & DRIVER_JSON_BYTE_MASK);
+            }
+            break;
+        }
+    }
+    std::cerr << DRIVER_JSON_QUOTE;
+}
+
+void print_json_string_field(
+    const std::string_view key,
+    const std::string_view value,
+    const bool trailing_comma
+) {
+    print_json_escaped(key);
+    std::cerr << ": ";
+    print_json_escaped(value);
+    if (trailing_comma) {
+        std::cerr << ",";
+    }
+    std::cerr << "\n";
+}
+
+void print_json_range(const base::SourceFile& file, const base::SourceRange& range) {
+    const base::LineColumn start = file.line_column(range.begin);
+    const base::LineColumn end = file.line_column(range.end);
+    std::cerr << "      \"range\": {\n";
+    std::cerr << "        \"source_id\": " << range.source.value << ",\n";
+    std::cerr << "        \"path\": ";
+    print_json_escaped(file.path());
+    std::cerr << ",\n";
+    std::cerr << "        \"start\": {\"byte\": " << range.begin
+              << ", \"line\": " << start.line
+              << ", \"column\": " << start.column << "},\n";
+    std::cerr << "        \"end\": {\"byte\": " << range.end
+              << ", \"line\": " << end.line
+              << ", \"column\": " << end.column << "}\n";
+    std::cerr << "      }\n";
+}
+
+void print_json_diagnostics(const base::SourceManager& sources, const base::DiagnosticSink& diagnostics) {
+    const std::span<const base::Diagnostic> all = diagnostics.diagnostics();
+    const base::usize count = std::min<base::usize>(all.size(), DRIVER_MAX_PRINTED_DIAGNOSTICS);
+    std::cerr << "{\n";
+    std::cerr << "  \"format\": \"aurex-diagnostics-v1\",\n";
+    std::cerr << "  \"diagnostics\": [\n";
+    for (base::usize index = 0; index < count; ++index) {
+        const base::Diagnostic& diagnostic = all[index];
+        const base::SourceFile& file = sources.get(diagnostic.range.source);
+        std::cerr << "    {\n";
+        std::cerr << "      ";
+        print_json_string_field("severity", base::severity_name(diagnostic.severity), true);
+        std::cerr << "      ";
+        print_json_string_field("category", base::diagnostic_category_name(diagnostic.category), true);
+        std::cerr << "      ";
+        print_json_string_field("code", base::diagnostic_code_name(diagnostic.code), true);
+        std::cerr << "      ";
+        print_json_string_field("message", diagnostic.message, true);
+        print_json_range(file, diagnostic.range);
+        std::cerr << "    }";
+        if (index + 1 < count) {
+            std::cerr << ",";
+        }
+        std::cerr << "\n";
+    }
+    std::cerr << "  ],\n";
+    std::cerr << "  \"suppressed\": "
+              << (all.size() > DRIVER_MAX_PRINTED_DIAGNOSTICS ? all.size() - DRIVER_MAX_PRINTED_DIAGNOSTICS : 0)
+              << "\n";
+    std::cerr << "}\n";
+}
+
+void print_text_diagnostics(const base::SourceManager& sources, const base::DiagnosticSink& diagnostics) {
     const std::span<const base::Diagnostic> all = diagnostics.diagnostics();
     const base::usize count = std::min<base::usize>(all.size(), DRIVER_MAX_PRINTED_DIAGNOSTICS);
     const bool color = diagnostic_color_enabled();
@@ -209,6 +315,28 @@ void print_diagnostics(const base::SourceManager& sources, const base::Diagnosti
                   << (all.size() - DRIVER_MAX_PRINTED_DIAGNOSTICS)
                   << " additional diagnostics\n";
     }
+}
+
+void print_diagnostics(
+    const base::SourceManager& sources,
+    const base::DiagnosticSink& diagnostics,
+    const DiagnosticOutputFormat format
+) {
+    if (diagnostics.diagnostics().empty()) {
+        return;
+    }
+    if (format == DiagnosticOutputFormat::json) {
+        print_json_diagnostics(sources, diagnostics);
+        return;
+    }
+    print_text_diagnostics(sources, diagnostics);
+}
+
+[[nodiscard]] base::Error remap_diagnostic_loader_error(const base::Error& error) {
+    return {
+        error.code == base::ErrorCode::io_error ? base::ErrorCode::parse_error : error.code,
+        error.message,
+    };
 }
 
 } // namespace
@@ -237,7 +365,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
         lex::Lexer lexer(source_id, sources.text(source_id), diagnostics);
         auto token_result = lexer.tokenize();
         if (!token_result) {
-            print_diagnostics(sources, diagnostics);
+            print_diagnostics(sources, diagnostics, invocation.diagnostic_format);
             return base::Result<void>::fail(token_result.error());
         }
         std::cout << syntax::dump_tokens(token_result.value());
@@ -248,8 +376,10 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
     auto ast_result = loader.load_root();
 
     if (!ast_result) {
-        print_diagnostics(sources, diagnostics);
-        return base::Result<void>::fail(ast_result.error());
+        print_diagnostics(sources, diagnostics, invocation.diagnostic_format);
+        return base::Result<void>::fail(
+            diagnostics.diagnostics().empty() ? ast_result.error() : remap_diagnostic_loader_error(ast_result.error())
+        );
     }
     syntax::AstModule ast = ast_result.take_value();
 
@@ -273,7 +403,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
     sema::SemanticAnalyzer analyzer(ast, diagnostics, sema_options);
     auto checked_result = analyzer.analyze();
     if (!checked_result) {
-        print_diagnostics(sources, diagnostics);
+        print_diagnostics(sources, diagnostics, invocation.diagnostic_format);
         return base::Result<void>::fail(checked_result.error());
     }
 

@@ -22,6 +22,11 @@ enum class EmitKind {
     executable,
 };
 
+enum class DiagnosticOutputFormat {
+    text,
+    json,
+};
+
 struct CompilerInvocation {
     std::filesystem::path input_path;
     std::filesystem::path tool_path;
@@ -32,6 +37,7 @@ struct CompilerInvocation {
     std::string clang_path = "clang";
     std::vector<std::string> clang_args;
     ir::OptimizationLevel optimization_level = ir::OptimizationLevel::none;
+    DiagnosticOutputFormat diagnostic_format = DiagnosticOutputFormat::text;
 };
 
 } // namespace aurex::driver

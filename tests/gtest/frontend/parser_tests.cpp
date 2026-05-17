@@ -25,6 +25,8 @@ using base::DiagnosticCode;
 constexpr base::usize PARSER_TEST_DEEP_PREFIX_CHAIN_DEPTH = 8;
 constexpr base::usize PARSER_TEST_LONG_BINARY_TERM_COUNT = 3'000;
 constexpr base::usize PARSER_TEST_EXPRESSION_NESTING_LIMIT_DEPTH = 600;
+constexpr base::usize PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH = 600;
+constexpr base::usize PARSER_TEST_PATTERN_NESTING_LIMIT_DEPTH = 600;
 
 void expect_parse_error(const std::string_view source, const std::string_view message) {
     DiagnosticSink diagnostics;
@@ -2091,6 +2093,38 @@ TEST(CoreUnit, ParserRejectsExcessivelyNestedGroupedExpressionsWithoutCrashing) 
     source += ";\n}\n";
 
     expect_parse_error(source, "expression nesting exceeds M2 parser limit");
+}
+
+TEST(CoreUnit, ParserRejectsExcessivelyNestedTypesWithoutCrashing) {
+    std::string source = "module parser.deep_type_nesting;\ntype Deep = ";
+    source.append(PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH, '(');
+    source += "i32";
+    source.append(PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH, ')');
+    source += ";\n";
+
+    expect_parse_error(source, "type nesting exceeds M2 parser limit");
+}
+
+TEST(CoreUnit, ParserRejectsExcessivelyNestedGenericTypeArgumentsWithoutCrashing) {
+    std::string source = "module parser.deep_generic_type_nesting;\ntype Deep = ";
+    for (base::usize depth = 0; depth < PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH; ++depth) {
+        source += "Box[";
+    }
+    source += "i32";
+    source.append(PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH, ']');
+    source += ";\n";
+
+    expect_parse_error(source, "type nesting exceeds M2 parser limit");
+}
+
+TEST(CoreUnit, ParserRejectsExcessivelyNestedPatternsWithoutCrashing) {
+    std::string source = "module parser.deep_pattern_nesting;\nfn main() -> i32 {\n  let ";
+    source.append(PARSER_TEST_PATTERN_NESTING_LIMIT_DEPTH, '(');
+    source += "value";
+    source.append(PARSER_TEST_PATTERN_NESTING_LIMIT_DEPTH, ')');
+    source += " = 1;\n  return value;\n}\n";
+
+    expect_parse_error(source, "pattern nesting exceeds M2 parser limit");
 }
 
 TEST(CoreUnit, ParserParsesReferenceTypesAndMutableReferenceExpression) {

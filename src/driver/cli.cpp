@@ -26,6 +26,15 @@ inline constexpr std::string_view CLI_HELP_OPTION_INDENT = "    ";
 inline constexpr std::string_view CLI_OUTPUT_OBJECT_EXTENSION = ".o";
 inline constexpr std::string_view CLI_OUTPUT_ASSEMBLY_EXTENSION = ".s";
 inline constexpr std::string_view CLI_LONG_OPTION_PREFIX = "--";
+inline constexpr char CLI_JSON_QUOTE = '"';
+inline constexpr char CLI_JSON_BACKSLASH = '\\';
+inline constexpr char CLI_JSON_NEWLINE = '\n';
+inline constexpr char CLI_JSON_CARRIAGE_RETURN = '\r';
+inline constexpr char CLI_JSON_TAB = '\t';
+inline constexpr unsigned int CLI_JSON_CONTROL_CHAR_LIMIT = 0x20U;
+inline constexpr unsigned int CLI_JSON_NIBBLE_BITS = 4U;
+inline constexpr unsigned int CLI_JSON_LOW_NIBBLE_MASK = 0x0fU;
+inline constexpr char CLI_JSON_HEX_DIGITS[] = "0123456789abcdef";
 
 enum class OptionLevel {
     primary,
@@ -39,6 +48,7 @@ enum class OptionGroup {
     output,
     search_path,
     incremental,
+    diagnostics,
     optimization,
     native_backend,
 };
@@ -69,6 +79,7 @@ enum class OptionEffectKind {
     set_incremental_cache_path,
     set_clang_path,
     append_clang_arg,
+    parse_diagnostic_output_format,
     parse_optimization_level,
 };
 
@@ -181,6 +192,9 @@ inline constexpr OptionEffect CLI_EFFECT_APPEND_IMPORT_PATH {OptionEffectKind::a
 inline constexpr OptionEffect CLI_EFFECT_SET_INCREMENTAL_CACHE_PATH {OptionEffectKind::set_incremental_cache_path};
 inline constexpr OptionEffect CLI_EFFECT_SET_CLANG_PATH {OptionEffectKind::set_clang_path};
 inline constexpr OptionEffect CLI_EFFECT_APPEND_CLANG_ARG {OptionEffectKind::append_clang_arg};
+inline constexpr OptionEffect CLI_EFFECT_PARSE_DIAGNOSTIC_OUTPUT_FORMAT {
+    OptionEffectKind::parse_diagnostic_output_format
+};
 inline constexpr OptionEffect CLI_EFFECT_PARSE_OPTIMIZATION_LEVEL {OptionEffectKind::parse_optimization_level};
 
 inline constexpr auto OPTION_LEVEL_SPECS = std::to_array<OptionLevelSpec>({
@@ -195,6 +209,7 @@ inline constexpr auto OPTION_GROUP_SPECS = std::to_array<OptionGroupSpec>({
     {OptionLevel::secondary, OptionGroup::output, "output"},
     {OptionLevel::secondary, OptionGroup::search_path, "search paths"},
     {OptionLevel::secondary, OptionGroup::incremental, "incremental"},
+    {OptionLevel::secondary, OptionGroup::diagnostics, "diagnostics"},
     {OptionLevel::secondary, OptionGroup::optimization, "optimization"},
     {OptionLevel::secondary, OptionGroup::native_backend, "native backend"},
 });
@@ -394,6 +409,16 @@ inline constexpr auto OPTION_SPECS = std::to_array<OptionSpec>({
     },
     {
         OptionLevel::secondary,
+        OptionGroup::diagnostics,
+        OptionApplicability::any,
+        "--diagnostics",
+        OptionValueStyle::separate,
+        CLI_EFFECT_PARSE_DIAGNOSTIC_OUTPUT_FORMAT,
+        "format",
+        "diagnostic output format: text or json",
+    },
+    {
+        OptionLevel::secondary,
         OptionGroup::native_backend,
         OptionApplicability::native_output,
         "--clang",
@@ -465,6 +490,10 @@ struct ParsedOption {
 
 [[nodiscard]] std::string cli_invalid_emit_kind_message(const std::string_view kind) {
     return "invalid emit kind: " + std::string(kind);
+}
+
+[[nodiscard]] std::string cli_invalid_diagnostic_format_message(const std::string_view format) {
+    return "invalid diagnostic output format: " + std::string(format);
 }
 
 [[nodiscard]] std::string cli_inapplicable_option_message(const std::string_view option) {
@@ -566,10 +595,82 @@ struct ParsedOption {
     return false;
 }
 
+[[nodiscard]] bool parse_diagnostic_output_format(
+    const std::string_view format,
+    DiagnosticOutputFormat& diagnostic_format
+) noexcept {
+    if (format == "text") {
+        diagnostic_format = DiagnosticOutputFormat::text;
+        return true;
+    }
+    if (format == "json") {
+        diagnostic_format = DiagnosticOutputFormat::json;
+        return true;
+    }
+    return false;
+}
+
 [[nodiscard]] bool is_native_emit_kind(const EmitKind emit_kind) noexcept {
     return emit_kind == EmitKind::assembly ||
            emit_kind == EmitKind::object ||
            emit_kind == EmitKind::executable;
+}
+
+[[nodiscard]] bool compiler_error_already_printed_diagnostics(const base::ErrorCode code) noexcept {
+    return code == base::ErrorCode::lex_error ||
+           code == base::ErrorCode::parse_error ||
+           code == base::ErrorCode::sema_error;
+}
+
+void print_cli_json_escaped(std::ostream& out, const std::string_view text) {
+    out << CLI_JSON_QUOTE;
+    for (const unsigned char byte : text) {
+        switch (byte) {
+        case CLI_JSON_QUOTE:
+            out << "\\\"";
+            break;
+        case CLI_JSON_BACKSLASH:
+            out << "\\\\";
+            break;
+        case CLI_JSON_NEWLINE:
+            out << "\\n";
+            break;
+        case CLI_JSON_CARRIAGE_RETURN:
+            out << "\\r";
+            break;
+        case CLI_JSON_TAB:
+            out << "\\t";
+            break;
+        default:
+            if (byte < CLI_JSON_CONTROL_CHAR_LIMIT) {
+                out << "\\u00"
+                    << CLI_JSON_HEX_DIGITS[(byte >> CLI_JSON_NIBBLE_BITS) & CLI_JSON_LOW_NIBBLE_MASK]
+                    << CLI_JSON_HEX_DIGITS[byte & CLI_JSON_LOW_NIBBLE_MASK];
+            } else {
+                out << static_cast<char>(byte);
+            }
+            break;
+        }
+    }
+    out << CLI_JSON_QUOTE;
+}
+
+void print_cli_driver_error_json(std::ostream& err, const std::string_view message) {
+    err << "{\n";
+    err << "  \"format\": \"aurex-diagnostics-v1\",\n";
+    err << "  \"diagnostics\": [\n";
+    err << "    {\n";
+    err << "      \"severity\": \"fatal\",\n";
+    err << "      \"category\": \"general\",\n";
+    err << "      \"code\": \"none\",\n";
+    err << "      \"message\": ";
+    print_cli_json_escaped(err, message);
+    err << ",\n";
+    err << "      \"range\": null\n";
+    err << "    }\n";
+    err << "  ],\n";
+    err << "  \"suppressed\": 0\n";
+    err << "}\n";
 }
 
 [[nodiscard]] std::filesystem::path inferred_native_output_path(
@@ -750,6 +851,8 @@ private:
         case OptionEffectKind::append_clang_arg:
             result.invocation.clang_args.push_back(std::string(option.value));
             return base::Result<void>::ok();
+        case OptionEffectKind::parse_diagnostic_output_format:
+            return this->apply_diagnostic_output_format(result, option.value);
         case OptionEffectKind::parse_optimization_level:
             return this->apply_optimization_level(result, option.value);
         }
@@ -775,6 +878,16 @@ private:
     ) const {
         if (!parse_optimization_level(level, result.invocation.optimization_level)) {
             return fail_option_apply(driver_invalid_optimization_level_message(level));
+        }
+        return base::Result<void>::ok();
+    }
+
+    [[nodiscard]] base::Result<void> apply_diagnostic_output_format(
+        CliParseResult& result,
+        const std::string_view format
+    ) const {
+        if (!parse_diagnostic_output_format(format, result.invocation.diagnostic_format)) {
+            return fail_option_apply(cli_invalid_diagnostic_format_message(format));
         }
         return base::Result<void>::ok();
     }
@@ -852,7 +965,13 @@ int run_cli(
     Compiler compiler;
     auto compile_result = compiler.run(parsed.invocation);
     if (!compile_result) {
-        err << DRIVER_ERROR_PREFIX << compile_result.error().message << "\n";
+        if (parsed.invocation.diagnostic_format == DiagnosticOutputFormat::json) {
+            if (!compiler_error_already_printed_diagnostics(compile_result.error().code)) {
+                print_cli_driver_error_json(err, compile_result.error().message);
+            }
+        } else {
+            err << DRIVER_ERROR_PREFIX << compile_result.error().message << "\n";
+        }
         return CLI_COMPILATION_FAILURE_EXIT_CODE;
     }
     return CLI_SUCCESS_EXIT_CODE;

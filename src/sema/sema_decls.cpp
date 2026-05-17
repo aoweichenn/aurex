@@ -347,8 +347,8 @@ void SemanticAnalyzer::register_enum_cases_for_item(
     const syntax::ModuleId owner,
     const TypeHandle named_enum_type,
     std::string enum_display_name,
-    std::string case_prefix,
-    std::string c_prefix,
+    const std::string& case_prefix,
+    const std::string& c_prefix,
     const syntax::Visibility visibility
 ) {
     const auto make_enum_display_name = [&]() {
@@ -790,6 +790,15 @@ void SemanticAnalyzer::validate_abi_symbols() const
         return true;
     };
 
+    const auto report_previous_abi_declaration = [&](const std::string_view symbol, const AbiSymbolInfo& prior) {
+        report_note(
+            prior.range,
+            sema_previous_declaration_note_message(symbol),
+            base::DiagnosticCategory::name_resolution,
+            base::DiagnosticCode::semantic_duplicate
+        );
+    };
+
     const auto insert_function = [&](const std::string_view symbol, AbiFunctionInfo function) {
         if (symbol.empty()) {
             return;
@@ -809,10 +818,12 @@ void SemanticAnalyzer::validate_abi_symbols() const
         if (prior.is_function && prior.function.is_extern_c && function.is_extern_c) {
             if (!same_function_type(prior.function, function)) {
                 report(function.range, sema_extern_c_abi_conflict_message(symbol));
+                report_previous_abi_declaration(symbol, prior);
             }
             return;
         }
         report(function.range, sema_duplicate_abi_symbol_message(symbol));
+        report_previous_abi_declaration(symbol, prior);
     };
 
     for (const auto& entry : checked_.functions) {
@@ -846,6 +857,7 @@ void SemanticAnalyzer::validate_abi_symbols() const
             continue;
         }
         report(symbol.range, sema_duplicate_abi_symbol_message(symbol.c_name));
+        report_previous_abi_declaration(symbol_name, found->second);
     }
 }
 

@@ -1840,7 +1840,7 @@ TypeHandle SemanticAnalyzer::analyze_if_expr(
         }
     }
     if (!this->checked_.types.same(then_type, else_type)) {
-        this->report(expr.range, std::string(SEMA_IF_EXPR_BRANCH_TYPE));
+        this->report_type_mismatch(expr.range, std::string(SEMA_IF_EXPR_BRANCH_TYPE), then_type, else_type);
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     if (is_valid(then_type) && this->checked_.types.is_void(then_type)) {

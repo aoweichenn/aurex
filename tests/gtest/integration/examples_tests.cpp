@@ -159,6 +159,9 @@ TEST_F(AurexIntegrationTest, ExamplesRegexAdvancedSurfaceCompilesAndRuns) {
         "fn compile_set_bytes -> regex.core.types.RegexSet",
         "fn find_set_compiled -> regex.core.types.SetMatchSpan",
         "fn scan_set_compiled -> regex.core.types.SetMatchesResult",
+        "fn scan_set_spans_compiled -> regex.core.types.SetMatchesResult",
+        "fn scan_set_overlapping_compiled -> regex.core.types.SetMatchesResult",
+        "fn scan_set_spans_vectored_compiled -> regex.core.types.SetMatchesResult",
         "fn search_vectored_compiled -> regex.core.types.MatchResult",
         "fn matches_set_compiled -> regex.core.types.SetMatchesResult",
         "fn serialize_set -> regex.core.types.DatabaseResult",
@@ -174,6 +177,8 @@ TEST_F(AurexIntegrationTest, ExamplesRegexAdvancedSurfaceCompilesAndRuns) {
         "fn priv require_submatch_precedence -> i32",
         "fn priv require_linear_search -> i32",
         "fn priv require_prefilter_surface -> i32",
+        "fn priv require_unicode_full_fold_and_grapheme -> i32",
+        "fn priv require_regex_set_all_span_and_overlap -> i32",
         "fn captures_compiled_from_into -> regex.core.types.RegexStatus",
         "fn match_workspace_status -> regex.core.types.RegexStatus",
     });

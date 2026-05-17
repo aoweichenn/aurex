@@ -321,8 +321,24 @@ pub fn scan_set_compiled(compiled: &t.RegexSet, input: str, callback: t.SetScanC
     return engine.scan_set_compiled(compiled, input, callback);
 }
 
+pub fn scan_set_spans_compiled(compiled: &t.RegexSet, input: str, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return engine.scan_set_spans_compiled(compiled, input, callback);
+}
+
+pub fn scan_set_overlapping_compiled(compiled: &t.RegexSet, input: str, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return engine.scan_set_overlapping_compiled(compiled, input, callback);
+}
+
 pub fn scan_bytes_set_compiled(compiled: &t.RegexSet, input: []const u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
     return engine.scan_bytes_set_compiled(compiled, input, callback);
+}
+
+pub fn scan_bytes_set_spans_compiled(compiled: &t.RegexSet, input: []const u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return engine.scan_bytes_set_spans_compiled(compiled, input, callback);
+}
+
+pub fn scan_bytes_set_overlapping_compiled(compiled: &t.RegexSet, input: []const u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return engine.scan_bytes_set_overlapping_compiled(compiled, input, callback);
 }
 
 pub fn search_vectored_compiled(compiled: &t.Regex, chunks: []const t.TextChunk) -> t.MatchResult {
@@ -355,8 +371,24 @@ pub fn find_set_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.TextC
     return engine.find_set_vectored_compiled(compiled, chunks);
 }
 
+pub fn scan_set_spans_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.TextChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return engine.scan_set_spans_vectored_compiled(compiled, chunks, callback);
+}
+
+pub fn scan_set_overlapping_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.TextChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return engine.scan_set_overlapping_vectored_compiled(compiled, chunks, callback);
+}
+
 pub fn find_bytes_set_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.RegexChunk) -> t.SetMatchSpan {
     return engine.find_bytes_set_vectored_compiled(compiled, chunks);
+}
+
+pub fn scan_bytes_set_spans_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.RegexChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return engine.scan_bytes_set_spans_vectored_compiled(compiled, chunks, callback);
+}
+
+pub fn scan_bytes_set_overlapping_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.RegexChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return engine.scan_bytes_set_overlapping_vectored_compiled(compiled, chunks, callback);
 }
 
 pub fn serialize_set(compiled: &t.RegexSet, out: *mut u8, out_capacity: usize) -> t.DatabaseResult {

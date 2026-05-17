@@ -17,6 +17,8 @@ const CASE_PREFILTER: i32 = 1100;
 const CASE_OPTIONS: i32 = 1200;
 const CASE_SET_SCAN: i32 = 1300;
 const CASE_BYTES_PARITY: i32 = 1400;
+const CASE_UNICODE_CLUSTER: i32 = 1500;
+const CASE_SET_ALL_SPANS: i32 = 1600;
 
 const BUFFER_CAPACITY: usize = 256usize;
 const DATABASE_CAPACITY: usize = 4096usize;
@@ -138,6 +140,21 @@ fn bytes_constant_callback(data: *const u8, len: usize, captures: &bytes.Capture
 
 fn set_scan_callback(pattern_id: usize, start: usize, end: usize) -> regex.RegexStatus {
     return regex.RegexStatus.ok;
+}
+
+fn set_all_spans_callback(pattern_id: usize, start: usize, end: usize) -> regex.RegexStatus {
+    if pattern_id == 0usize && ((start == 0usize && end == 3usize) || (start == 2usize && end == 5usize)) {
+        return regex.RegexStatus.ok;
+    }
+    if pattern_id == 1usize && ((start == 1usize && end == 3usize) || (start == 3usize && end == 5usize)) {
+        return regex.RegexStatus.ok;
+    }
+    if pattern_id == 2usize && ((start == 0usize && end == 1usize) ||
+        (start == 2usize && end == 3usize) ||
+        (start == 4usize && end == 5usize)) {
+        return regex.RegexStatus.ok;
+    }
+    return regex.RegexStatus.replacement_error;
 }
 
 fn require_class_set_algebra() -> i32 {
@@ -764,6 +781,146 @@ fn require_prefilter_surface() -> i32 {
     return 0;
 }
 
+fn require_unicode_full_fold_and_grapheme() -> i32 {
+    var sharp_s: regex.Regex = regex.compile("(?i)ß");
+    defer regex.destroy(&mut sharp_s);
+    if !sharp_s.valid() {
+        return CASE_UNICODE_CLUSTER + 1 + regex.status_code(sharp_s.status);
+    }
+    let sharp_to_ascii: regex.MatchResult = regex.fullmatch_compiled(&sharp_s, "SS");
+    if !sharp_to_ascii.ok() {
+        return CASE_UNICODE_CLUSTER + 2 + regex.status_code(sharp_to_ascii.status);
+    }
+
+    var ascii_ss: regex.Regex = regex.compile("(?i)ss");
+    defer regex.destroy(&mut ascii_ss);
+    let ascii_to_sharp: regex.MatchResult = regex.fullmatch_compiled(&ascii_ss, "ẞ");
+    if !ascii_to_sharp.ok() {
+        return CASE_UNICODE_CLUSTER + 3 + regex.status_code(ascii_to_sharp.status);
+    }
+
+    var ligature: regex.Regex = regex.compile("(?i)ﬃ");
+    defer regex.destroy(&mut ligature);
+    let ligature_to_ascii: regex.MatchResult = regex.fullmatch_compiled(&ligature, "FFI");
+    if !ligature_to_ascii.ok() {
+        return CASE_UNICODE_CLUSTER + 4 + regex.status_code(ligature_to_ascii.status);
+    }
+
+    var ascii_ligature: regex.Regex = regex.compile("(?i)ffi");
+    defer regex.destroy(&mut ascii_ligature);
+    let ascii_to_ligature: regex.MatchResult = regex.fullmatch_compiled(&ascii_ligature, "ﬃ");
+    if !ascii_to_ligature.ok() {
+        return CASE_UNICODE_CLUSTER + 5 + regex.status_code(ascii_to_ligature.status);
+    }
+
+    var dotted_i: regex.Regex = regex.compile("(?i)İ");
+    defer regex.destroy(&mut dotted_i);
+    let dotted_to_ascii: regex.MatchResult = regex.fullmatch_compiled(&dotted_i, "i\u{0307}");
+    if !dotted_to_ascii.ok() {
+        return CASE_UNICODE_CLUSTER + 6 + regex.status_code(dotted_to_ascii.status);
+    }
+
+    var ascii_dotted_i: regex.Regex = regex.compile("(?i)i\u{0307}");
+    defer regex.destroy(&mut ascii_dotted_i);
+    let ascii_to_dotted: regex.MatchResult = regex.fullmatch_compiled(&ascii_dotted_i, "İ");
+    if !ascii_to_dotted.ok() {
+        return CASE_UNICODE_CLUSTER + 7 + regex.status_code(ascii_to_dotted.status);
+    }
+
+    let ascii_mode_rejects: i32 = ensure(
+        CASE_UNICODE_CLUSTER + 8,
+        !regex.fullmatch("(?a)(?i)ß", "ss") && !regex.fullmatch("(?a)(?i)ss", "ß")
+    );
+    if ascii_mode_rejects != 0 {
+        return ascii_mode_rejects;
+    }
+
+    var cluster: regex.Regex = regex.compile("\\X");
+    defer regex.destroy(&mut cluster);
+    if !cluster.valid() {
+        return CASE_UNICODE_CLUSTER + 9 + regex.status_code(cluster.status);
+    }
+    let decomposed: regex.MatchResult = regex.search_compiled(&cluster, "e\u{0301}x");
+    if !decomposed.ok() || decomposed.start != 0usize || decomposed.end != strblen("e\u{0301}") {
+        return CASE_UNICODE_CLUSTER + 10 + regex.status_code(decomposed.status);
+    }
+    let emoji: regex.MatchResult = regex.fullmatch_compiled(&cluster, "👩‍💻");
+    if !emoji.ok() {
+        return CASE_UNICODE_CLUSTER + 11 + regex.status_code(emoji.status);
+    }
+    let flag: regex.MatchResult = regex.fullmatch_compiled(&cluster, "🇺🇸");
+    if !flag.ok() {
+        return CASE_UNICODE_CLUSTER + 12 + regex.status_code(flag.status);
+    }
+    let hangul: regex.MatchResult = regex.fullmatch_compiled(&cluster, "각");
+    if !hangul.ok() {
+        return CASE_UNICODE_CLUSTER + 13 + regex.status_code(hangul.status);
+    }
+    let prepend: regex.MatchResult = regex.fullmatch_compiled(&cluster, "\u{0600}a");
+    if !prepend.ok() {
+        return CASE_UNICODE_CLUSTER + 14 + regex.status_code(prepend.status);
+    }
+    let spacing_mark: regex.MatchResult = regex.fullmatch_compiled(&cluster, "\u{0915}\u{093E}");
+    if !spacing_mark.ok() {
+        return CASE_UNICODE_CLUSTER + 15 + regex.status_code(spacing_mark.status);
+    }
+    let indic: regex.MatchResult = regex.fullmatch_compiled(&cluster, "\u{0915}\u{094D}\u{0915}");
+    if !indic.ok() {
+        return CASE_UNICODE_CLUSTER + 16 + regex.status_code(indic.status);
+    }
+    let crlf: regex.MatchResult = regex.fullmatch_compiled(&cluster, "\r\n");
+    if !crlf.ok() {
+        return CASE_UNICODE_CLUSTER + 17 + regex.status_code(crlf.status);
+    }
+    var byte_cluster: bytes.Regex = bytes.compile("\\X");
+    defer bytes.destroy(&mut byte_cluster);
+    return ensure(CASE_UNICODE_CLUSTER + 18 + bytes.status_code(byte_cluster.status), byte_cluster.status == bytes.RegexStatus.unsupported);
+}
+
+fn require_regex_set_all_span_and_overlap() -> i32 {
+    let patterns: [3]str = ["aba", "ba", "a"];
+    var compiled: regex.RegexSet = regex.compile_set(patterns[:]);
+    defer regex.destroy_set(&mut compiled);
+    if !compiled.valid() {
+        return CASE_SET_ALL_SPANS + 1 + regex.status_code(compiled.status);
+    }
+    let spans: regex.SetMatchesResult = regex.scan_set_spans_compiled(&compiled, "ababa", set_all_spans_callback);
+    if spans.status != regex.RegexStatus.ok || spans.count != 7usize || spans.written != 7usize {
+        return CASE_SET_ALL_SPANS + 2 + regex.status_code(spans.status);
+    }
+    let overlapping: regex.SetMatchesResult = regex.scan_set_overlapping_compiled(&compiled, "ababa", set_all_spans_callback);
+    if overlapping.status != regex.RegexStatus.ok || overlapping.count != 7usize || overlapping.written != 7usize {
+        return CASE_SET_ALL_SPANS + 3 + regex.status_code(overlapping.status);
+    }
+
+    let text_chunks: [2]regex.TextChunk = [
+        regex.TextChunk { text: "ab" },
+        regex.TextChunk { text: "aba" },
+    ];
+    let vectored: regex.SetMatchesResult = regex.scan_set_spans_vectored_compiled(&compiled, text_chunks[:], set_all_spans_callback);
+    if vectored.status != regex.RegexStatus.ok || vectored.count != 7usize {
+        return CASE_SET_ALL_SPANS + 4 + regex.status_code(vectored.status);
+    }
+
+    let bytes_left: [2]u8 = [0x61u8, 0x62u8];
+    let bytes_right: [3]u8 = [0x61u8, 0x62u8, 0x61u8];
+    let left_view: []const u8 = bytes_left[:];
+    let right_view: []const u8 = bytes_right[:];
+    let byte_chunks: [2]bytes.RegexChunk = [
+        bytes.RegexChunk { data: sliceptr(left_view), len: slicelen(left_view) },
+        bytes.RegexChunk { data: sliceptr(right_view), len: slicelen(right_view) },
+    ];
+    var byte_set: bytes.RegexSet = bytes.compile_set(patterns[:]);
+    defer bytes.destroy_set(&mut byte_set);
+    let byte_spans: bytes.SetMatchesResult = bytes.scan_set_spans_vectored_compiled(&byte_set, byte_chunks[:], set_all_spans_callback);
+    if byte_spans.status != bytes.RegexStatus.ok || byte_spans.count != 7usize {
+        return CASE_SET_ALL_SPANS + 5 + bytes.status_code(byte_spans.status);
+    }
+    let bytes_input: []const u8 = bytes_right[:];
+    let byte_overlap: bytes.SetMatchesResult = bytes.scan_set_overlapping_compiled(&byte_set, bytes_input, set_all_spans_callback);
+    return ensure(CASE_SET_ALL_SPANS + 6 + bytes.status_code(byte_overlap.status), byte_overlap.status == bytes.RegexStatus.ok && byte_overlap.count == 4usize);
+}
+
 fn main() -> i32 {
     let class_code: i32 = require_class_set_algebra();
     if class_code != 0 {
@@ -817,5 +974,13 @@ fn main() -> i32 {
     if linear_code != 0 {
         return linear_code;
     }
-    return require_prefilter_surface();
+    let prefilter_code: i32 = require_prefilter_surface();
+    if prefilter_code != 0 {
+        return prefilter_code;
+    }
+    let unicode_code: i32 = require_unicode_full_fold_and_grapheme();
+    if unicode_code != 0 {
+        return unicode_code;
+    }
+    return require_regex_set_all_span_and_overlap();
 }

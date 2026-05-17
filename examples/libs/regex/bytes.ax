@@ -129,6 +129,14 @@ pub fn scan_set_compiled(compiled: &t.RegexSet, input: []const u8, callback: t.S
     return api.scan_bytes_set_compiled(compiled, input, callback);
 }
 
+pub fn scan_set_spans_compiled(compiled: &t.RegexSet, input: []const u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return api.scan_bytes_set_spans_compiled(compiled, input, callback);
+}
+
+pub fn scan_set_overlapping_compiled(compiled: &t.RegexSet, input: []const u8, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return api.scan_bytes_set_overlapping_compiled(compiled, input, callback);
+}
+
 pub fn search_vectored_compiled(compiled: &t.Regex, chunks: []const t.RegexChunk) -> t.MatchResult {
     return api.search_bytes_vectored_compiled(compiled, chunks);
 }
@@ -144,6 +152,14 @@ pub fn matches_set_vectored_compiled(
 
 pub fn find_set_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.RegexChunk) -> t.SetMatchSpan {
     return api.find_bytes_set_vectored_compiled(compiled, chunks);
+}
+
+pub fn scan_set_spans_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.RegexChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return api.scan_bytes_set_spans_vectored_compiled(compiled, chunks, callback);
+}
+
+pub fn scan_set_overlapping_vectored_compiled(compiled: &t.RegexSet, chunks: []const t.RegexChunk, callback: t.SetScanCallback) -> t.SetMatchesResult {
+    return api.scan_bytes_set_overlapping_vectored_compiled(compiled, chunks, callback);
 }
 
 pub fn find_iter(compiled: &t.Regex, input: []const u8) -> t.BytesFindIter {

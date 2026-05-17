@@ -306,6 +306,9 @@ fn parse_escape_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {
     if escaped == ascii.UPPER_R {
         return newline_sequence_atom(parser, source_start, parser.at);
     }
+    if escaped == ascii.UPPER_X {
+        return grapheme_cluster_atom(parser, source_start, parser.at);
+    }
     if escaped == ascii.UPPER_Q {
         return quoted_literal_atom(parser, source_start);
     }
@@ -703,8 +706,47 @@ fn emit_class_item(parser: &mut Parser, item: ClassItem) -> ClassExpr {
 }
 
 fn literal_atom(parser: &mut Parser, value: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    let literal: t.Fragment = single_literal_atom(parser, value, source_start, source_end);
+    if !should_full_fold_literal(parser, value) {
+        return literal;
+    }
+    let folded: t.Fragment = full_fold_sequence_atom(parser, value, source_start, source_end);
+    if parser.compiled.status != t.RegexStatus.ok {
+        return folded;
+    }
+    return prog.alternate(&mut parser.compiled, literal, folded);
+}
+
+fn single_literal_atom(parser: &mut Parser, value: usize, source_start: usize, source_end: usize) -> t.Fragment {
     let state: usize = prog.add_literal_flags(&mut parser.compiled, value, literal_flags(parser));
     return single_state_atom(parser, state, source_start, source_end);
+}
+
+fn should_full_fold_literal(parser: &Parser, value: usize) -> bool {
+    return !is_bytes_mode(parser) &&
+        has_flag(parser.flags, t.FLAG_CASE_INSENSITIVE) &&
+        !has_flag(parser.flags, t.FLAG_ASCII) &&
+        unicode.full_fold_len(value) > 1usize;
+}
+
+fn full_fold_sequence_atom(parser: &mut Parser, value: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    let len: usize = unicode.full_fold_len(value);
+    var offset: usize = 0usize;
+    var result: t.Fragment = t.invalid_fragment();
+    while offset < len {
+        let folded: usize = unicode.full_fold_at(value, offset);
+        let piece: t.Fragment = single_literal_atom(parser, folded, source_start, source_end);
+        if parser.compiled.status != t.RegexStatus.ok {
+            return piece;
+        }
+        if offset == 0usize {
+            result = piece;
+        } else {
+            result = prog.concat(&mut parser.compiled, result, piece);
+        }
+        offset += 1usize;
+    }
+    return result;
 }
 
 fn single_state_atom(parser: &mut Parser, state: usize, source_start: usize, source_end: usize) -> t.Fragment {
@@ -962,6 +1004,273 @@ fn newline_sequence_atom(parser: &mut Parser, source_start: usize, source_end: u
     result = prog.alternate(&mut parser.compiled, result, next_line);
     result = prog.alternate(&mut parser.compiled, result, line_separator);
     return prog.alternate(&mut parser.compiled, result, paragraph_separator);
+}
+
+fn grapheme_cluster_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    if is_bytes_mode(parser) {
+        prog.set_error(&mut parser.compiled, t.RegexStatus.unsupported, source_start, t.ERROR_KIND_UNSUPPORTED_ESCAPE);
+        return t.invalid_fragment();
+    }
+    let crlf: t.Fragment = prog.concat(
+        &mut parser.compiled,
+        single_literal_atom(parser, unicode.CARRIAGE_RETURN, source_start, source_end),
+        single_literal_atom(parser, unicode.LINE_FEED, source_start, source_end)
+    );
+    let control: t.Fragment = gcb_control_atom(parser, source_start, source_end);
+    let non_control: t.Fragment = grapheme_non_control_cluster_atom(parser, source_start, source_end);
+    return prog.alternate(&mut parser.compiled, prog.alternate(&mut parser.compiled, crlf, control), non_control);
+}
+
+fn grapheme_non_control_cluster_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    let prepends: t.Fragment = prog.zero_or_more(
+        &mut parser.compiled,
+        gcb_property_atom(parser, unicode.PROPERTY_GCB_PREPEND, source_start, source_end)
+    );
+    let core: t.Fragment = grapheme_core_atom(parser, source_start, source_end);
+    let tail: t.Fragment = prog.zero_or_more(&mut parser.compiled, grapheme_tail_atom(parser, source_start, source_end));
+    return prog.concat(&mut parser.compiled, prog.concat(&mut parser.compiled, prepends, core), tail);
+}
+
+fn grapheme_core_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    let emoji: t.Fragment = grapheme_emoji_zwj_atom(parser, source_start, source_end);
+    let indic: t.Fragment = grapheme_indic_conjunct_atom(parser, source_start, source_end);
+    let hangul: t.Fragment = grapheme_hangul_atom(parser, source_start, source_end);
+    let regional: t.Fragment = grapheme_regional_indicator_atom(parser, source_start, source_end);
+    let fallback: t.Fragment = gcb_not_control_atom(parser, source_start, source_end);
+    var result: t.Fragment = prog.alternate(&mut parser.compiled, emoji, indic);
+    result = prog.alternate(&mut parser.compiled, result, hangul);
+    result = prog.alternate(&mut parser.compiled, result, regional);
+    return prog.alternate(&mut parser.compiled, result, fallback);
+}
+
+fn grapheme_emoji_zwj_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    let pictograph: t.Fragment = internal_property_atom(parser, unicode.PROPERTY_EXTENDED_PICTOGRAPHIC, source_start, source_end);
+    let extend_after_first: t.Fragment = prog.zero_or_more(
+        &mut parser.compiled,
+        gcb_property_atom(parser, unicode.PROPERTY_GCB_EXTEND, source_start, source_end)
+    );
+    let zwj: t.Fragment = gcb_property_atom(parser, unicode.PROPERTY_GCB_ZWJ, source_start, source_end);
+    let next_pictograph: t.Fragment = internal_property_atom(parser, unicode.PROPERTY_EXTENDED_PICTOGRAPHIC, source_start, source_end);
+    let extend_after_next: t.Fragment = prog.zero_or_more(
+        &mut parser.compiled,
+        gcb_property_atom(parser, unicode.PROPERTY_GCB_EXTEND, source_start, source_end)
+    );
+    let segment_body: t.Fragment = prog.concat(
+        &mut parser.compiled,
+        prog.concat(&mut parser.compiled, zwj, next_pictograph),
+        extend_after_next
+    );
+    let segments: t.Fragment = prog.zero_or_more(&mut parser.compiled, segment_body);
+    return prog.concat(&mut parser.compiled, prog.concat(&mut parser.compiled, pictograph, extend_after_first), segments);
+}
+
+fn grapheme_indic_conjunct_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    let consonant: t.Fragment = internal_property_atom(parser, unicode.PROPERTY_INCB_CONSONANT, source_start, source_end);
+    let segment: t.Fragment = grapheme_indic_linked_segment_atom(parser, source_start, source_end);
+    return prog.concat(&mut parser.compiled, consonant, prog.one_or_more(&mut parser.compiled, segment));
+}
+
+fn grapheme_indic_linked_segment_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    let before_linker: t.Fragment = prog.zero_or_more(&mut parser.compiled, grapheme_indic_extend_or_linker_atom(parser, source_start, source_end));
+    let linker: t.Fragment = internal_property_atom(parser, unicode.PROPERTY_INCB_LINKER, source_start, source_end);
+    let after_linker: t.Fragment = prog.zero_or_more(&mut parser.compiled, grapheme_indic_extend_or_linker_atom(parser, source_start, source_end));
+    let consonant: t.Fragment = internal_property_atom(parser, unicode.PROPERTY_INCB_CONSONANT, source_start, source_end);
+    let left: t.Fragment = prog.concat(&mut parser.compiled, before_linker, linker);
+    let right: t.Fragment = prog.concat(&mut parser.compiled, after_linker, consonant);
+    return prog.concat(&mut parser.compiled, left, right);
+}
+
+fn grapheme_indic_extend_or_linker_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    return internal_properties_class_atom(
+        parser,
+        unicode.PROPERTY_INCB_EXTEND,
+        unicode.PROPERTY_INCB_LINKER,
+        unicode.PROPERTY_NONE,
+        unicode.PROPERTY_NONE,
+        2usize,
+        false,
+        source_start,
+        source_end
+    );
+}
+
+fn grapheme_hangul_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    let leading: t.Fragment = grapheme_hangul_leading_atom(parser, source_start, source_end);
+    let vowel_or_syllable: t.Fragment = prog.zero_or_one(&mut parser.compiled, grapheme_hangul_vowel_or_syllable_atom(parser, source_start, source_end));
+    let trailing_after_leading: t.Fragment = prog.zero_or_more(
+        &mut parser.compiled,
+        gcb_property_atom(parser, unicode.PROPERTY_GCB_T, source_start, source_end)
+    );
+    let leading_branch: t.Fragment = prog.concat(
+        &mut parser.compiled,
+        prog.concat(&mut parser.compiled, leading, vowel_or_syllable),
+        trailing_after_leading
+    );
+
+    let lv_or_v: t.Fragment = internal_properties_class_atom(
+        parser,
+        unicode.PROPERTY_GCB_LV,
+        unicode.PROPERTY_GCB_V,
+        unicode.PROPERTY_NONE,
+        unicode.PROPERTY_NONE,
+        2usize,
+        false,
+        source_start,
+        source_end
+    );
+    let extra_vowels: t.Fragment = prog.zero_or_more(
+        &mut parser.compiled,
+        gcb_property_atom(parser, unicode.PROPERTY_GCB_V, source_start, source_end)
+    );
+    let trailing_after_vowel: t.Fragment = prog.zero_or_more(
+        &mut parser.compiled,
+        gcb_property_atom(parser, unicode.PROPERTY_GCB_T, source_start, source_end)
+    );
+    let vowel_branch: t.Fragment = prog.concat(
+        &mut parser.compiled,
+        prog.concat(&mut parser.compiled, lv_or_v, extra_vowels),
+        trailing_after_vowel
+    );
+
+    let lvt_or_t: t.Fragment = internal_properties_class_atom(
+        parser,
+        unicode.PROPERTY_GCB_LVT,
+        unicode.PROPERTY_GCB_T,
+        unicode.PROPERTY_NONE,
+        unicode.PROPERTY_NONE,
+        2usize,
+        false,
+        source_start,
+        source_end
+    );
+    let extra_trailing: t.Fragment = prog.zero_or_more(
+        &mut parser.compiled,
+        gcb_property_atom(parser, unicode.PROPERTY_GCB_T, source_start, source_end)
+    );
+    let trailing_branch: t.Fragment = prog.concat(&mut parser.compiled, lvt_or_t, extra_trailing);
+    return prog.alternate(&mut parser.compiled, prog.alternate(&mut parser.compiled, leading_branch, vowel_branch), trailing_branch);
+}
+
+fn grapheme_hangul_leading_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    return prog.one_or_more(&mut parser.compiled, gcb_property_atom(parser, unicode.PROPERTY_GCB_L, source_start, source_end));
+}
+
+fn grapheme_hangul_vowel_or_syllable_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    let vowels: t.Fragment = prog.one_or_more(&mut parser.compiled, gcb_property_atom(parser, unicode.PROPERTY_GCB_V, source_start, source_end));
+    let lv: t.Fragment = gcb_property_atom(parser, unicode.PROPERTY_GCB_LV, source_start, source_end);
+    let extra_vowels: t.Fragment = prog.zero_or_more(
+        &mut parser.compiled,
+        gcb_property_atom(parser, unicode.PROPERTY_GCB_V, source_start, source_end)
+    );
+    let lv_with_vowels: t.Fragment = prog.concat(&mut parser.compiled, lv, extra_vowels);
+    return prog.alternate(&mut parser.compiled, vowels, prog.alternate(&mut parser.compiled, lv_with_vowels, gcb_property_atom(parser, unicode.PROPERTY_GCB_LVT, source_start, source_end)));
+}
+
+fn grapheme_regional_indicator_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    let first: t.Fragment = gcb_property_atom(parser, unicode.PROPERTY_GCB_REGIONAL_INDICATOR, source_start, source_end);
+    let second: t.Fragment = prog.zero_or_one(
+        &mut parser.compiled,
+        gcb_property_atom(parser, unicode.PROPERTY_GCB_REGIONAL_INDICATOR, source_start, source_end)
+    );
+    return prog.concat(&mut parser.compiled, first, second);
+}
+
+fn grapheme_tail_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    return internal_properties_class_atom(
+        parser,
+        unicode.PROPERTY_GCB_EXTEND,
+        unicode.PROPERTY_GCB_ZWJ,
+        unicode.PROPERTY_GCB_SPACINGMARK,
+        unicode.PROPERTY_NONE,
+        3usize,
+        false,
+        source_start,
+        source_end
+    );
+}
+
+fn gcb_control_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    return internal_properties_class_atom(
+        parser,
+        unicode.PROPERTY_GCB_CR,
+        unicode.PROPERTY_GCB_LF,
+        unicode.PROPERTY_GCB_CONTROL,
+        unicode.PROPERTY_NONE,
+        3usize,
+        false,
+        source_start,
+        source_end
+    );
+}
+
+fn gcb_not_control_atom(parser: &mut Parser, source_start: usize, source_end: usize) -> t.Fragment {
+    return internal_properties_class_atom(
+        parser,
+        unicode.PROPERTY_GCB_CR,
+        unicode.PROPERTY_GCB_LF,
+        unicode.PROPERTY_GCB_CONTROL,
+        unicode.PROPERTY_NONE,
+        3usize,
+        true,
+        source_start,
+        source_end
+    );
+}
+
+fn gcb_property_atom(parser: &mut Parser, property_kind: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    return internal_property_atom(parser, property_kind, source_start, source_end);
+}
+
+fn internal_property_atom(parser: &mut Parser, property_kind: usize, source_start: usize, source_end: usize) -> t.Fragment {
+    return internal_properties_class_atom(
+        parser,
+        property_kind,
+        unicode.PROPERTY_NONE,
+        unicode.PROPERTY_NONE,
+        unicode.PROPERTY_NONE,
+        1usize,
+        false,
+        source_start,
+        source_end
+    );
+}
+
+fn internal_properties_class_atom(
+    parser: &mut Parser,
+    first: usize,
+    second: usize,
+    third: usize,
+    fourth: usize,
+    count: usize,
+    negated: bool,
+    source_start: usize,
+    source_end: usize
+) -> t.Fragment {
+    let range_start: usize = parser.compiled.range_len;
+    var ranges: usize = 0usize;
+    if count > 0usize && prog.add_property(&mut parser.compiled, first, false) {
+        ranges += 1usize;
+    }
+    if count > 1usize && prog.add_property(&mut parser.compiled, second, false) {
+        ranges += 1usize;
+        if prog.add_class_expr_op(&mut parser.compiled, t.CLASS_EXPR_UNION) {
+            ranges += 1usize;
+        }
+    }
+    if count > 2usize && prog.add_property(&mut parser.compiled, third, false) {
+        ranges += 1usize;
+        if prog.add_class_expr_op(&mut parser.compiled, t.CLASS_EXPR_UNION) {
+            ranges += 1usize;
+        }
+    }
+    if count > 3usize && prog.add_property(&mut parser.compiled, fourth, false) {
+        ranges += 1usize;
+        if prog.add_class_expr_op(&mut parser.compiled, t.CLASS_EXPR_UNION) {
+            ranges += 1usize;
+        }
+    }
+    let state: usize = prog.add_class_flags(&mut parser.compiled, range_start, ranges, negated, t.FLAGS_NONE);
+    return single_state_atom(parser, state, source_start, source_end);
 }
 
 fn word_boundary_atom(parser: &mut Parser, source_start: usize) -> t.Fragment {

@@ -64,7 +64,7 @@ build/tests/regex_stress
 - 显式所有权：`Regex` 和 `Captures` 都持有 FFI 堆内存，分别用 `destroy` 和 `destroy_captures` 释放。
 - 无魔法数字：ASCII byte、opcode、flag、错误 kind、容量策略、资源上限和 repeat 上限都使用命名常量。
 - 资源可见：公开状态数、range 数、捕获数、编译后程序内存估算和 VM 工作区内存估算。
-- API 可组合：提供 compiled API、便利 API、`RegexOptions`/`RegexBuilder`、text/bytes 双入口、find/captures 游标、split/splitn 游标、模板替换、回调替换、RegexSet 多模式扫描、span/callback scan、vectored scan、可序列化 set database 和 text/bytes stream 状态接口。
+- API 可组合：提供 compiled API、便利 API、`RegexOptions`/`RegexBuilder`、text/bytes 双入口、find/captures 游标、split/splitn 游标、模板替换、回调替换、RegexSet 多模式扫描、first-match scan、all-span/overlap callback scan、vectored scan、可序列化 set database 和 text/bytes stream 状态接口。
 - 语法面走 RE2/Rust regex 风格的安全路线：补齐 inline flags、scoped flags、lazy/ungreedy、word boundary、absolute/search-start anchors、hex/octal/control/unicode escapes、quoted literal、newline escape、POSIX/Unicode property classes，同时继续拒绝反向引用和 lookaround。
 - 向工业级演进：当前实现明确约束 pattern/program/workspace/capture/set 上限，避免灾难性回溯，并用 demo、phase1、industrial、advanced、stress 样例锁住行为。
 
@@ -112,7 +112,7 @@ build/tests/regex_stress
 `unicode.ascii` / `unicode.ucd`
 
 - 独立于 regex 的可复用 Unicode 底层模块。
-- `unicode.ascii` 提供基础 ASCII byte helper；`unicode.ucd` 提供 UTF-8 scalar 解码、前后边界推进、Unicode 17.0 属性表、script/script extensions、simple case folding 和 Unicode word 判断。
+- `unicode.ascii` 提供基础 ASCII byte helper；`unicode.ucd` 提供 UTF-8 scalar 解码、前后边界推进、Unicode 17.0 属性表、script/script extensions、simple/full case folding、Grapheme_Cluster_Break 表和 Unicode word 判断。
 - regex 只保存 byte offset，对 literal、`.`、量词、字符类、`\b` / `\B` 的消费单位则统一使用 Unicode scalar value。
 
 `regex.runtime.alloc`
@@ -268,8 +268,16 @@ pub fn find_set_compiled(compiled: &RegexSet, input: str) -> SetMatchSpan;
 pub fn find_bytes_set_compiled(compiled: &RegexSet, input: []const u8) -> SetMatchSpan;
 pub fn scan_set_compiled(compiled: &RegexSet, input: str, callback: SetScanCallback) -> SetMatchesResult;
 pub fn scan_bytes_set_compiled(compiled: &RegexSet, input: []const u8, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_set_spans_compiled(compiled: &RegexSet, input: str, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_bytes_set_spans_compiled(compiled: &RegexSet, input: []const u8, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_set_overlapping_compiled(compiled: &RegexSet, input: str, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_bytes_set_overlapping_compiled(compiled: &RegexSet, input: []const u8, callback: SetScanCallback) -> SetMatchesResult;
 pub fn search_vectored_compiled(compiled: &Regex, chunks: []const TextChunk) -> MatchResult;
 pub fn search_bytes_vectored_compiled(compiled: &Regex, chunks: []const RegexChunk) -> MatchResult;
+pub fn scan_set_spans_vectored_compiled(compiled: &RegexSet, chunks: []const TextChunk, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_bytes_set_spans_vectored_compiled(compiled: &RegexSet, chunks: []const RegexChunk, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_set_overlapping_vectored_compiled(compiled: &RegexSet, chunks: []const TextChunk, callback: SetScanCallback) -> SetMatchesResult;
+pub fn scan_bytes_set_overlapping_vectored_compiled(compiled: &RegexSet, chunks: []const RegexChunk, callback: SetScanCallback) -> SetMatchesResult;
 pub fn serialize_set(compiled: &RegexSet, out: *mut u8, out_capacity: usize) -> DatabaseResult;
 pub fn deserialize_set(bytes: []const u8) -> RegexSet;
 pub fn destroy_captures(captures: &mut Captures) -> void;
@@ -436,7 +444,7 @@ pub struct DatabaseResult {
 
 ## 5. 正则语法
 
-Text regex 的匹配消费单位是 UTF-8 `str` 的 Unicode scalar value，公开 span 仍是 byte offset；bytes regex 的匹配消费单位是 `[]const u8` 的 raw byte。两者都不是 grapheme cluster 级 API。
+Text regex 默认匹配消费单位是 UTF-8 `str` 的 Unicode scalar value，公开 span 仍是 byte offset；`\X` 是显式 grapheme cluster atom，按 Unicode 17.0 UAX #29 extended grapheme cluster 规则消费一个 cluster。bytes regex 的匹配消费单位是 `[]const u8` 的 raw byte，bytes 模式不支持 `\X`。
 
 ### 5.1 顶层文法
 
@@ -521,6 +529,7 @@ hello
 \UNNNNNNNN  8 位 Unicode codepoint
 \U{H...}    braced Unicode codepoint
 \Q...\E     quoted literal，区间内元字符按字面量处理
+\X          Unicode extended grapheme cluster
 ```
 
 在 `compile_bytes` / `regex.bytes.compile` 中，literal、`.` 和字符类都按 raw byte 消费；`\xNN` 对 `0x00..0xff` 匹配单个 byte，超过 `0xff` 的 braced Unicode codepoint 会按 UTF-8 byte 序列展开。
@@ -567,7 +576,7 @@ $     默认仅在输入结尾成功；`(?m)` multiline 下也在 Unicode line b
 支持全局后续生效和 scoped 两种形式：
 
 ```text
-(?i)abc          // 从当前位置开始使用 Unicode simple case folding
+(?i)abc          // 从当前位置开始使用 Unicode case folding
 (?i:a)b          // 只在 scoped group 内忽略大小写
 (?i)abc(?-i:de)  // 局部关闭 i
 ```
@@ -576,7 +585,7 @@ $     默认仅在输入结尾成功；`(?m)` multiline 下也在 Unicode line b
 
 | flag | 语义 |
 | --- | --- |
-| `i` | Unicode simple case-insensitive，用 Unicode 17.0 simple case folding 比较 literal 和 class |
+| `i` | Unicode case-insensitive，用 Unicode 17.0 simple/full case folding 比较 literal，class 保持单 scalar fold 语义 |
 | `m` | multiline，使 `^`/`$` 识别行首/行尾 |
 | `s` | dotall，使 `.` 匹配任意 Unicode scalar |
 | `x` | extended，忽略 pattern 中 Unicode `White_Space`，`#` 到行尾为注释；转义空格 `\ ` 仍是字面量 |
@@ -730,11 +739,11 @@ a{2,4}?   lazy bounded repeat
 
 Unicode 语义：
 
-- literal、`.`、量词和字符类都按 Unicode scalar value 工作；`\x{...}`、`\uNNNN`、`\u{...}` 直接编译成一个 scalar literal。
+- literal、`.`、量词和字符类都按 Unicode scalar value 工作；`\x{...}`、`\uNNNN`、`\u{...}` 直接编译成一个 scalar literal；`\X` 显式匹配一个 Unicode extended grapheme cluster。
 - `.` 默认拒绝 Unicode line break scalar，`(?s)` 下匹配任意 scalar。
 - `\d` / `\D` 使用 Unicode `Nd`；`\w` / `\W` 使用 Unicode word 定义；`\s` / `\S` 使用 Unicode `White_Space`。
 - `\p{...}` / `\P{...}` 支持 Unicode general category、binary property、script、`gc=...`、`sc=...` 和 `scx=...`；POSIX 名称会映射到 Unicode 属性而不是旧的 ASCII 子集。
-- `(?i)` 使用 Unicode simple case folding，覆盖 Unicode 17.0 `CaseFolding.txt` 中的一对一 `C` / `S` fold；多 scalar full fold 不在单 scalar regex 语义里展开。
+- `(?i)` 使用 Unicode 17.0 case folding：单 scalar 路径继续用 simple fold；literal atom 会展开 full fold 多 scalar 序列，VM 也会在连续 literal 状态上识别输入侧 full fold 序列，因此 `(?i)ß` 可匹配 `ss` / `SS`，`(?i)ss` 也可匹配 `ß` / `ẞ`。字符类仍是单 scalar predicate，使用 scalar fold 语义。
 - `\b` / `\B` 基于 Unicode word 判断；public span 继续保留 byte offset，便于对原始 UTF-8 `str` 做切片。
 
 捕获实现说明：
@@ -836,7 +845,7 @@ let result: regex.SetMatchesResult =
 - `RegexSet` 是多 pattern 共享 NFA program，不是循环调用多个 `Regex`。
 - `matches_set_compiled` 在一次 set VM 扫描中标记所有匹配的 pattern id，并按升序写入调用方 `usize` buffer。
 - `result.count` 是匹配到的 pattern 总数，`result.written` 是实际写入的 id 数；buffer 小时仍可通过 `count` 判断还有多少结果。
-- `find_set_compiled` 返回第一个 set match 的 `pattern_id/start/end`；`scan_set_compiled` 用 callback 逐个扫描 match；`*_vectored_compiled` 接受 `TextChunk` / `RegexChunk` 拼接视图后扫描。
+- `find_set_compiled` 返回第一个 set match 的 `pattern_id/start/end`；`scan_set_compiled` 保持 first-match non-overlap callback 语义；`scan_set_spans_compiled` / `scan_set_overlapping_compiled` 对每个合法起点运行共享 set NFA，回调所有 pattern/span 组合，覆盖重叠命中；`*_vectored_compiled` 接受 `TextChunk` / `RegexChunk` 拼接视图后扫描。
 - `compile_set_bytes` / `matches_bytes_set_compiled` / `find_bytes_set_compiled` / `scan_bytes_set_compiled` 提供 raw byte 版本。
 
 Database：
@@ -927,6 +936,7 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - `fullmatch_compiled` 匹配时间：`O(input_scalars * active_state_count * capture_slots)`，capture row copy 是常数上限内的线性 slot 拷贝。
 - `search_compiled` 匹配时间：未锚定 pattern 采用共享 active-list search，每个 scalar boundary 至多注入一次起点 closure，最坏为 `O(input_scalars * active_state_count * capture_slots)`；同一位置同一 state 只保留最高优先级线程，继续保持 leftmost + ordered Thompson 子匹配语义。以非 multiline `^` 或 `\A` 开头时仍只尝试起点 `0`；确定性 literal prefix 和 start-byte bitset 会把无 active 线程区间快速推进到下一处候选起点。
 - `matches_set_compiled` 使用共享 set NFA 和同样的单次 active-list 扫描，同时推进所有 pattern；结果去重后升序写出 pattern id。多起点 `RegexSet` 共享 start-byte bitset，因此多个 literal/class/bytes pattern 不再需要在每个输入位置重复扫描起点状态。
+- `scan_set_spans_compiled` / `scan_set_overlapping_compiled` 以输入边界为起点复用同一份 compiled set program 和 VM workspace，不循环调用多个单 pattern regex；这是面向审计、IDS、日志扫描等场景的 all-span/overlap 语义，结果量可能随 pattern 与输入本身增长。
 - `serialize_set` 时间和输出大小都是 `O(state_len + range_len)`；deserialize 额外做同阶结构校验。
 - stream 当前保留内部 buffer，并在已消费前缀足够大时压缩和收缩容量；`RegexOptions.stream_history_limit` 让保留历史有显式上限，超过预算返回 `workspace_too_large`。它是有内存预算的增量 API，不是 Hyperscan 级别的 streaming compiler。
 - 同一起点采用有序线程接受策略：greedy 量词保留后备较长结果，lazy/ungreedy 量词可优先接受较短结果。
@@ -938,14 +948,14 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - `examples/regex_demo.ax`：基础语法和 compiled API。
 - `examples/regex_phase1.ax`：捕获、命名捕获、find/captures iterator、replace、split、错误 offset/kind。
 - `examples/regex_industrial.ax`：flags、lazy、边界断言、扩展 escape、Unicode scalar/property/case-fold、便利 API 和非法 escape 诊断。
-- `examples/regex_advanced.ax`：nested class set algebra、options/builder、bytes API parity、RegexSet span/callback/vectored、database roundtrip、replace callback、splitn、stream、submatch precedence、线性 search、literal prefix 和 start-byte prefilter 语义。
+- `examples/regex_advanced.ax`：nested class set algebra、options/builder、bytes API parity、Unicode full fold、`\X`、RegexSet span/callback/all-span/overlap/vectored、database roundtrip、replace callback、splitn、stream、submatch precedence、线性 search、literal prefix 和 start-byte prefilter 语义。
 - `examples/regex_stress.ax`：数百次重复 compiled search/fullmatch、长前缀线性 search、literal prefix / RegexSet start-byte prefilter 压力、资源预算和错误路径。
 
 后续向工业级继续推进时，优先级如下：
 
 - `RegexSet` 后续可继续增加多 pattern literal trie、bytes set SIMD/bitset 专用加速，进一步降低候选命中后的常数。
 - stream 后续可演进为 bounded-history automaton，进一步减少长流上对历史上下文的保留。
-- 如果后续增加 grapheme API，需要继续把 byte offset、scalar 消费和 grapheme cluster 三层语义分开，不把当前 text regex 的 scalar 规则偷偷改成用户可见的 grapheme 规则。
+- grapheme 后续还可以增加 cluster iterator / split API；当前只把 `\X` 作为显式 atom，仍保持 byte offset、scalar 消费和 grapheme cluster 三层语义分开。
 - 增加 fuzz、差分测试和长输入基准，把正确性、峰值内存和吞吐纳入自动化。
 
 ## 11. 与工业级引擎对比
@@ -953,10 +963,10 @@ regex.error_kind_code(regex.error_kind(&compiled))
 | 引擎 | 核心定位 | 复杂度/性能特点 | 功能范围 | Aurex 当前差距 |
 | --- | --- | --- | --- | --- |
 | RE2 | 生产级 C++ 正则引擎，偏有限自动机语义 | 以避免回溯爆炸为核心设计，匹配时间受输入规模约束 | 捕获、命名捕获、替换、迭代、flags、边界、丰富 ASCII/Unicode 语法；不支持反向引用、lookaround 等会破坏线性时间保证的特性 | Aurex 也避免回溯，并有 Unicode 17.0 scalar/property/case-fold、ordered Thompson 子匹配语义和资源预算，但仍缺少成熟 DFA/NFA 混合优化和多年工程验证 |
-| Rust `regex` crate | Rust 生态常用正则库 | 文档承诺搜索复杂度可界定，通常用 NFA/DFA/literal 加速组合 | captures、find_iter、captures_iter、replace、split、flags、Unicode/bytes API、RegexSet | Aurex API 方向接近，已补 text/bytes、RegexSet、splitn、replace callback、database roundtrip、RegexSet span/callback scan、vectored scan、线性 active-list search 和 start-byte literal/class 候选加速，但还没有成熟 DFA/literal optimizer、完整 fuzz/差分测试和多年工程验证 |
+| Rust `regex` crate | Rust 生态常用正则库 | 文档承诺搜索复杂度可界定，通常用 NFA/DFA/literal 加速组合 | captures、find_iter、captures_iter、replace、split、flags、Unicode/bytes API、RegexSet | Aurex API 方向接近，已补 text/bytes、RegexSet、splitn、replace callback、database roundtrip、RegexSet span/callback/all-span/overlap scan、vectored scan、Unicode full fold、`\X`、线性 active-list search 和 start-byte literal/class 候选加速，但还没有成熟 DFA/literal optimizer、完整 fuzz/差分测试和多年工程验证 |
 | PCRE2 | Perl-compatible 功能优先引擎 | 功能很全，可使用 JIT；回溯模型需要限制资源避免病态 pattern | 捕获、命名组、反向引用、lookaround、条件、丰富选项 | Aurex 不追求 PCRE 兼容，暂不支持这些会明显增加复杂度或破坏线性保证的语法 |
 | Hyperscan | 高吞吐多 pattern 扫描库 | 面向 block/stream/vectored 扫描和预编译 database，适合 IDS/日志类高吞吐场景 | 支持 PCRE-like 子集和多 pattern 批量匹配 | Aurex 现在已有共享 RegexSet、序列化 database、text/bytes stream、vectored block scan 和 stream history budget，但没有 SIMD、平台级向量化或 Hyperscan 级 streaming compiler |
-| Aurex regex | Aurex M2 写成的独立多模块正则库 | 编译 NFA + 有序 Thompson VM，无灾难性回溯；有资源上限和 stress/industrial/advanced 样例 | UTF-8 scalar text regex、raw bytes regex、Unicode 17.0 属性、simple case folding、flags、RegexOptions/Builder、lazy/ungreedy、边界、锚点、search-start anchor、nested class algebra、捕获/命名捕获、迭代、替换、分割、RegexSet、database、stream、vectored scan、错误 offset/kind | 目标是验证语言工程能力并逐步演进，不把当前实现包装成已经经受多年生产流量验证的工业完成品 |
+| Aurex regex | Aurex M2 写成的独立多模块正则库 | 编译 NFA + 有序 Thompson VM，无灾难性回溯；有资源上限和 stress/industrial/advanced 样例 | UTF-8 scalar text regex、显式 `\X` grapheme cluster、raw bytes regex、Unicode 17.0 属性、simple/full case folding、flags、RegexOptions/Builder、lazy/ungreedy、边界、锚点、search-start anchor、nested class algebra、捕获/命名捕获、迭代、替换、分割、RegexSet、database、stream、vectored scan、错误 offset/kind | 目标是验证语言工程能力并逐步演进，不把当前实现包装成已经经受多年生产流量验证的工业完成品 |
 
 这个对比用于确定路线：Aurex 当前应优先学习 RE2/Rust regex 的“可界定复杂度、拒绝破坏线性时间的语法、显式资源预算、稳定 API”路线，而不是先追 PCRE2 的全部语法。
 
@@ -1024,9 +1034,9 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - scoped flags：`(?i:a)` 和 `(?-i:...)`。
 - greedy/lazy/ungreedy span 行为：`a.*b`、`a.*?b`、`(?U)a.*b`。
 - 边界断言：`\A`、`\z`、`\b`、`\B`。
-- 扩展 escape：`\xNN`、`\x{...}`、`\uNNNN`、`\u{...}`、`\Q...\E`、`\N`、`\R`。
+- 扩展 escape：`\xNN`、`\x{...}`、`\uNNNN`、`\u{...}`、`\Q...\E`、`\N`、`\R`、`\X`。
 - 类语法：类内 `\D`、POSIX class、Unicode general category / script property、case-insensitive class。
-- Unicode 语义：scalar `.`、Unicode range、`\p{L}` / `\p{sc=Greek}`、Unicode `\d`、simple case folding、Unicode word boundary 和 byte span 保持。
+- Unicode 语义：scalar `.`、Unicode range、`\p{L}` / `\p{sc=Greek}`、Unicode `\d`、simple/full case folding、Unicode word boundary 和 byte span 保持。
 - convenience API：`is_match`、`find`、`captures`、`replace`。
 - invalid escape 诊断：`\y`、不完整 `\x`。
 
@@ -1036,6 +1046,8 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - 兼容语法：`(?P<name>...)`、`(?#...)`、`\U00000041` / `\U{...}`、`\b{start}` / `\b{end}`。
 - `regex.bytes`：raw byte 模式下 `.` 不按 UTF-8 scalar 合并。
 - `RegexSet`：共享多 pattern program、升序 pattern id 输出、set 资源查询。
+- RegexSet all-span / overlap scan：`scan_set_spans_compiled`、`scan_set_overlapping_compiled` 和 text/bytes vectored 入口。
+- Unicode 高级语义：full case folding 多 scalar 展开和 `\X` extended grapheme cluster。
 - database：`serialize_set` / `deserialize_set` roundtrip。
 - replacement：`$10`、`${10}`、`replace_first`、`replace_n` 和 `replace_all_with`。
 - `splitn_iter`。
@@ -1062,8 +1074,6 @@ regex.error_kind_code(regex.error_kind(&compiled))
 - lookahead/lookbehind。
 - possessive 量词。
 - 原子组、条件组、递归/子例程调用等 PCRE-only 高复杂度语法。
-- full case folding 的多 scalar 展开，例如 `ß` 到 `ss`；当前 `(?i)` 固定使用一对一 simple fold。
-- grapheme cluster 级匹配；当前 text regex 的消费单位是 Unicode scalar，公开 offset 仍是 UTF-8 byte offset。
 - replacement 中的复杂转义和条件替换；当前函数式替换已支持非捕获函数指针 callback，但没有 closure 捕获。
 - Hyperscan 级 SIMD codegen/JIT、literal trie/DFA 混合优化和真正的多平台 streaming compiler；当前已有 vectored block scan 和 stream history budget，但不是 Hyperscan 级流式自动机。
 - 标准库风格 RAII；当前必须手动 destroy。

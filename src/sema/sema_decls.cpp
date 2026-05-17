@@ -860,7 +860,7 @@ void SemanticAnalyzer::validate_abi_symbols() const
 
 void SemanticAnalyzer::analyze_entry_points() const
 {
-    const syntax::ModuleId root_module {0};
+    constexpr syntax::ModuleId root_module {0};
     const FunctionSignature* aurex_entry = nullptr;
     const FunctionSignature* c_entry = nullptr;
 
@@ -935,7 +935,7 @@ void SemanticAnalyzer::analyze_struct_properties() {
             struct_info->fields.reserve(item.fields.size());
         }
         for (const syntax::FieldDecl& field : item.fields) {
-            auto inserted_field = seen_fields.emplace(field.name_id, field.range);
+            const auto inserted_field = seen_fields.emplace(field.name_id, field.range);
             if (!inserted_field.second) {
                 this->report(field.range, sema_duplicate_struct_field_message(field.name));
                 this->report_note(inserted_field.first->second, sema_previous_declaration_note_message(field.name));
@@ -1104,7 +1104,7 @@ bool SemanticAnalyzer::is_const_evaluable_expr(
     std::vector<bool> values;
     stack.push_back(ConstEvalFrame {expr_id, ConstEvalStage::ENTER, 0});
     while (!stack.empty()) {
-        ConstEvalFrame frame = stack.back();
+        const ConstEvalFrame frame = stack.back();
         stack.pop_back();
 
         if (!syntax::is_valid(frame.expr_id) || frame.expr_id.value >= this->module_.exprs.size()) {

@@ -224,7 +224,7 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value) {
 
 llvm::Value* LlvmEmitter::emit_constant_ref(const Value& value) {
     const GlobalConstant* constant = find_global_constant(this->source_, value.constant);
-    auto found = this->constants_.find(value.constant.value);
+    const auto found = this->constants_.find(value.constant.value);
     return this->builder_.CreateLoad(
         this->llvm_type(constant->type),
         found->second,
@@ -1179,7 +1179,7 @@ llvm::Value* LlvmEmitter::emit_cast(const Value& value) {
 }
 
 llvm::Value* LlvmEmitter::emit_size_of(const sema::TypeHandle type) {
-    llvm::TypeSize size = this->data_layout().getTypeAllocSize(this->llvm_type(type));
+    const llvm::TypeSize size = this->data_layout().getTypeAllocSize(this->llvm_type(type));
     return llvm::ConstantInt::get(
         this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize)),
         size.getFixedValue()
@@ -1187,7 +1187,7 @@ llvm::Value* LlvmEmitter::emit_size_of(const sema::TypeHandle type) {
 }
 
 llvm::Value* LlvmEmitter::emit_align_of(const sema::TypeHandle type) {
-    llvm::Align align = this->data_layout().getABITypeAlign(this->llvm_type(type));
+    const llvm::Align align = this->data_layout().getABITypeAlign(this->llvm_type(type));
     return llvm::ConstantInt::get(
         this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize)),
         align.value()

@@ -885,7 +885,7 @@ void SemanticAnalyzer::register_generic_template(
             this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             return;
         }
-        auto inserted = this->generic_struct_templates_.emplace(info.key, std::move(info));
+        const auto inserted = this->generic_struct_templates_.emplace(info.key, std::move(info));
         if (inserted.second) {
             this->index_generic_struct_template(inserted.first->second);
         }
@@ -901,7 +901,7 @@ void SemanticAnalyzer::register_generic_template(
             this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             return;
         }
-        auto inserted = this->generic_enum_templates_.emplace(info.key, std::move(info));
+        const auto inserted = this->generic_enum_templates_.emplace(info.key, std::move(info));
         if (inserted.second) {
             this->index_generic_enum_template(inserted.first->second);
         }
@@ -917,7 +917,7 @@ void SemanticAnalyzer::register_generic_template(
             this->report(item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             return;
         }
-        auto inserted = this->generic_type_alias_templates_.emplace(info.key, std::move(info));
+        const auto inserted = this->generic_type_alias_templates_.emplace(info.key, std::move(info));
         if (inserted.second) {
             this->index_generic_type_alias_template(inserted.first->second);
         }
@@ -1012,7 +1012,7 @@ void SemanticAnalyzer::register_generic_template(
             );
             return;
         }
-        auto inserted = this->generic_method_templates_.emplace(info.function_key, std::move(info));
+        const auto inserted = this->generic_method_templates_.emplace(info.function_key, std::move(info));
         if (inserted.second) {
             this->index_generic_method_template(inserted.first->second);
         }
@@ -1022,7 +1022,7 @@ void SemanticAnalyzer::register_generic_template(
         this->report(item.range, sema_duplicate_function_definition_message(this->module_name(owner), item.name));
         return;
     }
-    auto inserted = this->generic_function_templates_.emplace(info.key, std::move(info));
+    const auto inserted = this->generic_function_templates_.emplace(info.key, std::move(info));
     if (inserted.second) {
         this->index_generic_function_template(inserted.first->second);
     }
@@ -2074,7 +2074,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     const IdentId key_id = this->intern_generated_key(this->generic_function_instance_key(info, args));
     const FunctionLookupKey key = this->function_lookup_key(info.module, key_id);
     signature.semantic_key = key;
-    auto inserted = this->generic_placeholder_functions_.emplace(key, std::move(signature));
+    const auto inserted = this->generic_placeholder_functions_.emplace(key, std::move(signature));
     return &inserted.first->second;
 }
 
@@ -2215,7 +2215,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     }
 
     if (!this->options_.retain_generic_side_tables) {
-        auto function_inserted = this->checked_.functions.emplace(key, signature);
+        const auto function_inserted = this->checked_.functions.emplace(key, signature);
         if (!function_inserted.second) {
             function_inserted.first->second = signature;
         } else {
@@ -2256,7 +2256,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     this->generic_function_instances_[key] = instance_index;
 
     FunctionSignature checked_signature = this->checked_.generic_function_instances[instance_index].signature;
-    auto function_inserted = this->checked_.functions.emplace(key, checked_signature);
+    const auto function_inserted = this->checked_.functions.emplace(key, checked_signature);
     if (!function_inserted.second) {
         function_inserted.first->second = checked_signature;
     } else {
@@ -2360,7 +2360,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     }
 
     if (!this->options_.retain_generic_side_tables) {
-        auto function_inserted = this->checked_.functions.emplace(key, signature);
+        const auto function_inserted = this->checked_.functions.emplace(key, signature);
         if (!function_inserted.second) {
             function_inserted.first->second = signature;
         }
@@ -2402,7 +2402,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(
     this->generic_function_instances_[key] = instance_index;
 
     FunctionSignature checked_signature = this->checked_.generic_function_instances[instance_index].signature;
-    auto function_inserted = this->checked_.functions.emplace(key, checked_signature);
+    const auto function_inserted = this->checked_.functions.emplace(key, checked_signature);
     if (!function_inserted.second) {
         function_inserted.first->second = checked_signature;
     }
@@ -2552,7 +2552,7 @@ void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplate
                 signature.is_variadic
             )
         );
-        auto placeholder_inserted = this->generic_placeholder_functions_.emplace(info.function_key, signature);
+        const auto placeholder_inserted = this->generic_placeholder_functions_.emplace(info.function_key, signature);
         if (!placeholder_inserted.second) {
             placeholder_inserted.first->second = signature;
         }

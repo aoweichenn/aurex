@@ -784,14 +784,14 @@ private:
         base::u32 disambiguator = 0
     ) const;
     [[nodiscard]] StableMemberKey stable_member_key(
-        StableDefId owner,
+        const StableDefId& owner,
         StableSymbolKind kind,
         IdentId name_id,
         std::string_view fallback_name,
         base::u32 disambiguator = 0
     ) const;
     [[nodiscard]] IncrementalKey stable_incremental_key(
-        StableDefId definition,
+        const StableDefId& definition,
         std::string_view semantic_fingerprint
     ) const;
     [[nodiscard]] std::string function_incremental_fingerprint(

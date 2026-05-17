@@ -3,7 +3,6 @@
 #include <aurex/base/string_literal.hpp>
 
 #include <charconv>
-#include <optional>
 #include <string_view>
 #include <utility>
 

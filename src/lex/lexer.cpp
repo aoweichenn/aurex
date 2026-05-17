@@ -182,7 +182,7 @@ inline constexpr std::array TOKEN_START_ACTIONS = build_token_start_actions();
 }
 
 [[nodiscard]] base::usize estimate_token_capacity(const std::string_view source) noexcept {
-    const base::usize configured_minimum = base::config::AUREX_INITIAL_TOKEN_CAPACITY;
+    constexpr base::usize configured_minimum = base::config::AUREX_INITIAL_TOKEN_CAPACITY;
     base::usize tokens = LEXER_TOKEN_ESTIMATE_EOF_TOKEN;
     base::usize index = 0;
     while (index < source.size()) {

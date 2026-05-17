@@ -31,8 +31,8 @@ public:
         TypeHandle return_type,
         std::span<const TypeHandle> param_types,
         syntax::ItemId item_id,
-        StableDefId stable_id,
-        IncrementalKey incremental_key
+        const StableDefId& stable_id,
+        const IncrementalKey& incremental_key
     );
 
 private:

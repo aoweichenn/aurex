@@ -1,6 +1,5 @@
 #include <aurex/sema/function_registry.hpp>
 
-#include <aurex/base/abi.hpp>
 #include <aurex/sema/sema_messages.hpp>
 #include <aurex/sema/sema.hpp>
 #include <aurex/sema/symbol.hpp>
@@ -79,8 +78,8 @@ void FunctionRegistry::register_function(
     const TypeHandle return_type,
     const std::span<const TypeHandle> param_types,
     const syntax::ItemId item_id,
-    const StableDefId stable_id,
-    const IncrementalKey incremental_key
+    const StableDefId& stable_id,
+    const IncrementalKey& incremental_key
 ) {
     const bool is_prototype = item.is_prototype;
 
@@ -122,7 +121,7 @@ void FunctionRegistry::merge_function(
 ) {
     const auto existing = this->checked_.functions.find(key);
     if (existing == this->checked_.functions.end()) {
-        auto inserted = this->checked_.functions.emplace(key, std::move(signature));
+        const auto inserted = this->checked_.functions.emplace(key, std::move(signature));
         this->insert_function_value(inserted.first->first, inserted.first->second);
         return;
     }

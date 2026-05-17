@@ -145,7 +145,7 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
     std::vector<syntax::Token> parts;
     parts.push_back(first);
 
-    const auto make_pattern = [&](syntax::TypeId enum_type, const syntax::Token& case_name) {
+    const auto make_pattern = [&](const syntax::TypeId enum_type, const syntax::Token& case_name) {
         syntax::PatternNode pattern;
         pattern.kind = syntax::PatternKind::enum_case;
         pattern.enum_type = enum_type;

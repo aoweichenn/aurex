@@ -38,11 +38,11 @@ std::string LlvmEmitter::suffixed_name(const IrTextId id, const std::string_view
 }
 
 base::Result<LlvmIrOutput> LlvmEmitter::run() {
-    if (auto verified = verify_module(source_); !verified) {
+    if (const auto verified = verify_module(source_); !verified) {
         return base::Result<LlvmIrOutput>::fail(verified.error());
     }
 
-    if (auto target = configure_target(); !target) {
+    if (const auto target = configure_target(); !target) {
         return base::Result<LlvmIrOutput>::fail(target.error());
     }
     declare_records();

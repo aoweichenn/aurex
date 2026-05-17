@@ -91,7 +91,7 @@ CNameIdSet& PatternCaseNameTable::operator[](const base::u32 pattern) {
     if (const auto found = this->names_.find(pattern); found != this->names_.end()) {
         return found->second;
     }
-    auto inserted = this->names_.emplace(pattern, this->make_bucket());
+    const auto inserted = this->names_.emplace(pattern, this->make_bucket());
     return inserted.first->second;
 }
 
@@ -626,7 +626,7 @@ TypeHandleList CheckedModule::make_type_handle_list() const
     return make_sema_vector<TypeHandle>(*this->arena_);
 }
 
-TypeHandleList CheckedModule::copy_type_handle_list(const std::span<const TypeHandle> values) {
+TypeHandleList CheckedModule::copy_type_handle_list(const std::span<const TypeHandle> values) const {
     TypeHandleList copy = this->make_type_handle_list();
     copy.reserve(values.size());
     copy.insert(copy.end(), values.begin(), values.end());
@@ -669,20 +669,20 @@ SemaIndexTable CheckedModule::copy_index_table(const std::span<const base::u32> 
     return copy;
 }
 
-FunctionSignature CheckedModule::make_function_signature() {
+FunctionSignature CheckedModule::make_function_signature() const {
     FunctionSignature signature;
     signature.param_types = this->make_type_handle_list();
     signature.generic_args = this->make_type_handle_list();
     return signature;
 }
 
-StructInfo CheckedModule::make_struct_info() {
+StructInfo CheckedModule::make_struct_info() const {
     StructInfo info;
     info.fields = this->make_struct_field_list();
     return info;
 }
 
-EnumCaseInfo CheckedModule::make_enum_case_info() {
+EnumCaseInfo CheckedModule::make_enum_case_info() const {
     EnumCaseInfo info;
     info.payload_types = this->make_type_handle_list();
     return info;

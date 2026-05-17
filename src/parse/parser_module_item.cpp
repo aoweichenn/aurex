@@ -15,7 +15,7 @@ using syntax::TokenKind;
 
 syntax::ModulePath ItemParser::parse_path() {
     syntax::ModulePath path;
-    std::optional<syntax::Token> first = this->parse_path_segment(std::string(PARSER_EXPECT_PATH_IDENTIFIER));
+    const std::optional<syntax::Token> first = this->parse_path_segment(std::string(PARSER_EXPECT_PATH_IDENTIFIER));
     base::SourceRange range = first.has_value() ? first->range : this->peek().range;
     if (first.has_value()) {
         path.parts.push_back(first->text());

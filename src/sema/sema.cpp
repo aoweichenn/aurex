@@ -312,7 +312,7 @@ SemanticAnalyzer::GenericTemplateList& SemanticAnalyzer::generic_method_template
         return found->second;
     }
     auto bucket = make_sema_vector<const GenericTemplateInfo*>(*this->arena_);
-    auto inserted = this->generic_method_templates_by_name_.emplace(key, std::move(bucket));
+    const auto inserted = this->generic_method_templates_by_name_.emplace(key, std::move(bucket));
     return inserted.first->second;
 }
 
@@ -322,7 +322,7 @@ SemanticAnalyzer::EnumCaseList& SemanticAnalyzer::enum_case_type_bucket(const Ty
         return found->second;
     }
     auto bucket = make_sema_vector<const EnumCaseInfo*>(*this->arena_);
-    auto inserted = this->enum_cases_by_type_.emplace(enum_type.value, std::move(bucket));
+    const auto inserted = this->enum_cases_by_type_.emplace(enum_type.value, std::move(bucket));
     return inserted.first->second;
 }
 
@@ -381,7 +381,7 @@ SemanticAnalyzer::CapabilitySet& SemanticAnalyzer::capability_bucket(
     if (const auto found = map.find(key); found != map.end()) {
         return found->second;
     }
-    auto inserted = map.emplace(key, this->make_capability_set());
+    const auto inserted = map.emplace(key, this->make_capability_set());
     return inserted.first->second;
 }
 
@@ -392,7 +392,7 @@ SemanticAnalyzer::CapabilitySet& SemanticAnalyzer::capability_bucket(
     if (const auto found = map.find(key); found != map.end()) {
         return found->second;
     }
-    auto inserted = map.emplace(key, this->make_capability_set());
+    const auto inserted = map.emplace(key, this->make_capability_set());
     return inserted.first->second;
 }
 

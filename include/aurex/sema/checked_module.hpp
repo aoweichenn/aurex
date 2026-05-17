@@ -416,14 +416,14 @@ public:
     }
 
     [[nodiscard]] TypeHandleList make_type_handle_list() const;
-    [[nodiscard]] TypeHandleList copy_type_handle_list(std::span<const TypeHandle> values);
+    [[nodiscard]] TypeHandleList copy_type_handle_list(std::span<const TypeHandle> values) const;
     [[nodiscard]] SemaVector<StructFieldInfo> make_struct_field_list() const;
     [[nodiscard]] SemaVector<StructFieldInfo> copy_struct_field_list(std::span<const StructFieldInfo> values);
     [[nodiscard]] SemaIndexTable make_index_table() const;
     [[nodiscard]] SemaIndexTable copy_index_table(std::span<const base::u32> values) const;
-    [[nodiscard]] FunctionSignature make_function_signature();
-    [[nodiscard]] StructInfo make_struct_info();
-    [[nodiscard]] EnumCaseInfo make_enum_case_info();
+    [[nodiscard]] FunctionSignature make_function_signature() const;
+    [[nodiscard]] StructInfo make_struct_info() const;
+    [[nodiscard]] EnumCaseInfo make_enum_case_info() const;
     [[nodiscard]] GenericSideTableLayout make_generic_side_table_layout(
         GenericNodeSpan expr,
         GenericNodeSpan pattern,

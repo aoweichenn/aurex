@@ -980,7 +980,7 @@ int run_cli(
     }
 
     Compiler compiler;
-    auto compile_result = compiler.run(parsed.invocation);
+    const auto compile_result = compiler.run(parsed.invocation);
     if (!compile_result) {
         if (parsed.invocation.diagnostic_format == DiagnosticOutputFormat::json) {
             if (!compiler_error_already_printed_diagnostics(compile_result.error().code)) {

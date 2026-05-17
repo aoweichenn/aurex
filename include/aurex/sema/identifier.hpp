@@ -245,19 +245,19 @@ struct IncrementalKey {
 [[nodiscard]] StableFingerprint128 stable_fingerprint(std::span<const std::string_view> parts) noexcept;
 [[nodiscard]] StableModuleId stable_module_id(std::span<const std::string_view> module_path) noexcept;
 [[nodiscard]] StableDefId stable_definition_id(
-    StableModuleId module,
+    const StableModuleId& module,
     StableSymbolKind kind,
     std::string_view name,
     base::u32 disambiguator = 0
 ) noexcept;
 [[nodiscard]] StableMemberKey stable_member_key(
-    StableDefId owner,
+    const StableDefId& owner,
     StableSymbolKind kind,
     std::string_view member_name,
     base::u32 disambiguator = 0
 ) noexcept;
 [[nodiscard]] IncrementalKey stable_incremental_key(
-    StableDefId definition,
+    const StableDefId& definition,
     std::string_view semantic_fingerprint
 ) noexcept;
 

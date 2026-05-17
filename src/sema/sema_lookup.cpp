@@ -195,7 +195,7 @@ const SemanticAnalyzer::ModuleIdList& SemanticAnalyzer::visible_modules(const sy
         ModuleIdList result = this->make_module_id_list();
         result.reserve(1);
         result.push_back(module);
-        auto inserted = this->visible_modules_cache_.emplace(module.value, std::move(result));
+        const auto inserted = this->visible_modules_cache_.emplace(module.value, std::move(result));
         return inserted.first->second;
     }
     const base::usize import_count = this->module_.modules[module.value].imports.size();
@@ -214,7 +214,7 @@ const SemanticAnalyzer::ModuleIdList& SemanticAnalyzer::visible_modules(const sy
         }
         append_public_reexports(import.module, result, seen);
     }
-    auto inserted = this->visible_modules_cache_.emplace(module.value, std::move(result));
+    const auto inserted = this->visible_modules_cache_.emplace(module.value, std::move(result));
     return inserted.first->second;
 }
 
@@ -323,7 +323,7 @@ const SemanticAnalyzer::ModuleIdList& SemanticAnalyzer::module_export_modules(co
         ModuleIdList result = this->make_module_id_list();
         result.reserve(1);
         result.push_back(module);
-        auto inserted = this->module_export_modules_cache_.emplace(module.value, std::move(result));
+        const auto inserted = this->module_export_modules_cache_.emplace(module.value, std::move(result));
         return inserted.first->second;
     }
     const base::usize import_count = this->module_.modules[module.value].imports.size();
@@ -334,7 +334,7 @@ const SemanticAnalyzer::ModuleIdList& SemanticAnalyzer::module_export_modules(co
     seen.reserve(import_count + 1);
     seen.insert(module.value);
     this->append_public_reexports(module, result, seen);
-    auto inserted = this->module_export_modules_cache_.emplace(module.value, std::move(result));
+    const auto inserted = this->module_export_modules_cache_.emplace(module.value, std::move(result));
     return inserted.first->second;
 }
 
@@ -724,7 +724,7 @@ StableDefId SemanticAnalyzer::stable_definition_id(
 }
 
 StableMemberKey SemanticAnalyzer::stable_member_key(
-    const StableDefId owner,
+    const StableDefId& owner,
     const StableSymbolKind kind,
     const IdentId name_id,
     const std::string_view fallback_name,
@@ -737,7 +737,7 @@ StableMemberKey SemanticAnalyzer::stable_member_key(
 }
 
 IncrementalKey SemanticAnalyzer::stable_incremental_key(
-    const StableDefId definition,
+    const StableDefId& definition,
     const std::string_view semantic_fingerprint
 ) const {
     return sema::stable_incremental_key(definition, semantic_fingerprint);

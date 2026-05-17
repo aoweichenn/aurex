@@ -4,8 +4,6 @@
 
 #include <backend/llvm/llvm_backend_internal.hpp>
 
-#include <utility>
-
 namespace aurex::backend {
 
 base::Result<LlvmIrOutput> emit_llvm_ir(const LlvmEmitRequest& request) {

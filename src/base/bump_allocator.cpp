@@ -113,7 +113,7 @@ void BumpAllocator::reserve(const usize bytes) {
         return;
     }
     if (!this->blocks_.empty()) {
-        Block& block = this->blocks_.back();
+        const Block& block = this->blocks_.back();
         if (block.capacity - block.used >= bytes) {
             return;
         }
@@ -126,7 +126,7 @@ void BumpAllocator::reserve_touched(const usize bytes) {
         return;
     }
     if (!this->blocks_.empty()) {
-        Block& block = this->blocks_.back();
+        const Block& block = this->blocks_.back();
         if (block.capacity - block.used >= bytes) {
             touch_memory(block.data + block.used, bytes);
             return;
@@ -162,7 +162,7 @@ usize BumpAllocator::align_address(const usize address, const usize alignment) n
 }
 
 usize BumpAllocator::normalize_alignment(const usize alignment) noexcept {
-    usize normalized = std::max(alignment, BASE_BUMP_ALIGNMENT_FLOOR);
+    const usize normalized = std::max(alignment, BASE_BUMP_ALIGNMENT_FLOOR);
     if ((normalized & (normalized - 1U)) == 0U) {
         return normalized;
     }

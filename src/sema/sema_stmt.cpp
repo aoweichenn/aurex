@@ -136,7 +136,7 @@ struct ControlFlowFrame {
 void finish_control_flow_frame(
     std::vector<ControlFlowFrame>& stack,
     const ControlFlowQuery query,
-    bool result,
+    const bool result,
     bool& has_result,
     bool& final_result
 ) {

@@ -355,7 +355,7 @@ std::string type_label(const AstModule& module, const TypeId id) {
         break;
     case TypeKind::named:
         if (!type.scope_parts.empty()) {
-            for (std::string_view part : type.scope_parts) {
+            for (const std::string_view part : type.scope_parts) {
                 out << part << ".";
             }
         } else if (!type.scope_name.empty()) {
@@ -693,7 +693,7 @@ void dump_stmt(std::ostringstream& out, const AstModule& module, const StmtId id
     if (is_valid(stmt.return_value)) {
         dump_expr(out, module, stmt.return_value, depth + 1);
     }
-    for (StmtId child : stmt.statements) {
+    for (const StmtId child : stmt.statements) {
         dump_stmt(out, module, child, depth + 1);
     }
 }
@@ -772,7 +772,7 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     if (is_valid(expr.callee)) {
         dump_expr(out, module, expr.callee, depth + 1);
     }
-    for (ExprId arg : expr.args) {
+    for (const ExprId arg : expr.args) {
         dump_expr(out, module, arg, depth + 1);
     }
     if (is_valid(expr.condition)) {
@@ -807,12 +807,12 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
         }
         dump_expr(out, module, arm.value, depth + 2);
     }
-    for (ExprId element : expr.array_elements) {
+    for (const ExprId element : expr.array_elements) {
         indent(out, depth + 1);
         out << "array_element\n";
         dump_expr(out, module, element, depth + 2);
     }
-    for (ExprId element : expr.tuple_elements) {
+    for (const ExprId element : expr.tuple_elements) {
         indent(out, depth + 1);
         out << "tuple_element\n";
         dump_expr(out, module, element, depth + 2);
@@ -959,10 +959,10 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     if (is_valid(item.body)) {
         dump_stmt(out, module, item.body, depth + 1);
     }
-    for (ItemId extern_item : item.extern_items) {
+    for (const ItemId extern_item : item.extern_items) {
         dump_item(out, module, extern_item, depth + 1);
     }
-    for (ItemId impl_item : item.impl_items) {
+    for (const ItemId impl_item : item.impl_items) {
         dump_item(out, module, impl_item, depth + 1);
     }
 }

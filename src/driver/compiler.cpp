@@ -18,7 +18,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -81,7 +80,7 @@ constexpr char DRIVER_JSON_HEX_DIGITS[] = "0123456789abcdef";
         ("aurex_llvm_" +
          std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
          ".ll");
-    auto write_result = write_file(path, text);
+    const auto write_result = write_file(path, text);
     if (!write_result) {
         return base::Result<std::filesystem::path>::fail(write_result.error());
     }
@@ -354,7 +353,7 @@ public:
         if (this->invocation_.profile_output_path.empty()) {
             return result;
         }
-        auto profile_result = this->profiler_.write_json(this->invocation_.profile_output_path);
+        const auto profile_result = this->profiler_.write_json(this->invocation_.profile_output_path);
         if (!profile_result && result) {
             return base::Result<void>::fail(profile_result.error());
         }

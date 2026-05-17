@@ -160,7 +160,7 @@ struct ParsedCache {
 [[nodiscard]] std::optional<SourceFingerprintRecord> fingerprint_file(
     const std::filesystem::path& path
 ) {
-    std::optional<std::string> text = read_file_for_fingerprint(path);
+    const std::optional<std::string> text = read_file_for_fingerprint(path);
     if (!text) {
         return std::nullopt;
     }
@@ -252,7 +252,7 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
 }
 
 [[nodiscard]] std::optional<std::filesystem::path> decode_path(const std::string_view encoded) {
-    std::optional<std::string> decoded = decode_hex_string(encoded);
+    const std::optional<std::string> decoded = decode_hex_string(encoded);
     if (!decoded) {
         return std::nullopt;
     }
@@ -318,7 +318,7 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
         return true;
     }
     if (kind == INCREMENTAL_CACHE_FIELD_ROOT) {
-        std::optional<std::filesystem::path> path = decode_path(value);
+        const std::optional<std::filesystem::path> path = decode_path(value);
         if (!path || !cache.root_path.empty()) {
             return false;
         }
@@ -348,7 +348,7 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
         fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_IMPORT_PATH) {
         return false;
     }
-    std::optional<std::filesystem::path> path = decode_path(fields[INCREMENTAL_CACHE_FIRST_VALUE_FIELD]);
+    const std::optional<std::filesystem::path> path = decode_path(fields[INCREMENTAL_CACHE_FIRST_VALUE_FIELD]);
     if (!path) {
         return false;
     }
@@ -376,7 +376,7 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     }
     record.size = static_cast<base::usize>(size);
 
-    std::optional<std::filesystem::path> path = decode_path(fields[INCREMENTAL_CACHE_SOURCE_PATH_FIELD]);
+    const std::optional<std::filesystem::path> path = decode_path(fields[INCREMENTAL_CACHE_SOURCE_PATH_FIELD]);
     if (!path) {
         return false;
     }
@@ -602,8 +602,8 @@ void push_definition(
     std::vector<DefinitionRecord>& records,
     const std::string_view category,
     const std::string_view name,
-    const sema::StableDefId stable_id,
-    const sema::IncrementalKey incremental_key
+    const sema::StableDefId& stable_id,
+    const sema::IncrementalKey& incremental_key
 ) {
     records.push_back(DefinitionRecord {
         std::string(category),
@@ -782,7 +782,7 @@ base::Result<bool> try_reuse_incremental_check_cache(
         return base::Result<bool>::ok(false);
     }
 
-    std::optional<ParsedCache> cache = read_incremental_cache(invocation.incremental_cache_path);
+    const std::optional<ParsedCache> cache = read_incremental_cache(invocation.incremental_cache_path);
     if (!cache) {
         return base::Result<bool>::ok(false);
     }

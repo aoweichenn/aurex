@@ -307,7 +307,7 @@ std::string dump_module(const Module& module) {
         out << " -> " << module.types.display_name(function.return_type) << " {\n";
         if (!function.param_values.empty()) {
             out << "  params";
-            for (ValueId param : function.param_values) {
+            for (const ValueId param : function.param_values) {
                 const Value& value = module.values[param.value];
                 out << " " << value_ref(param) << ":" << module.types.display_name(value.type);
             }
@@ -315,7 +315,7 @@ std::string dump_module(const Module& module) {
         }
         for (const BasicBlock& block : function.blocks) {
             out << "  ^" << module.text(block.name) << ":\n";
-            for (ValueId value : block.values) {
+            for (const ValueId value : block.values) {
                 dump_value(out, module, function, value);
             }
             dump_terminator(out, module, function, block.terminator);

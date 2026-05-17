@@ -74,7 +74,7 @@ syntax::ItemId ItemParser::parse_item() {
             this->report_here(std::string(PARSER_EXPECT_EXPORT_C_FN));
             return syntax::INVALID_ITEM_ID;
         }
-        syntax::ItemId id = this->parse_fn_decl(true, false, is_unsafe);
+        const syntax::ItemId id = this->parse_fn_decl(true, false, is_unsafe);
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_range_begin(id.value, begin.range.begin);
             this->session_.module.items.set_visibility(id.value, syntax::Visibility::public_);

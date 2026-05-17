@@ -655,7 +655,7 @@ ModuleLoader::ModuleLoader(
 
 base::Result<syntax::AstModule> ModuleLoader::load_root() {
     syntax::AstModule combined;
-    auto result = this->load_file(canonical_or_absolute(this->invocation_.input_path), combined, 0, true, nullptr);
+    const auto result = this->load_file(canonical_or_absolute(this->invocation_.input_path), combined, 0, true, nullptr);
     if (!result) {
         return base::Result<syntax::AstModule>::fail(result.error());
     }

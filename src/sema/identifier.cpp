@@ -115,7 +115,7 @@ StableModuleId stable_module_id(const std::span<const std::string_view> module_p
 }
 
 StableDefId stable_definition_id(
-    const StableModuleId module,
+    const StableModuleId& module,
     const StableSymbolKind kind,
     const std::string_view name,
     const base::u32 disambiguator
@@ -136,7 +136,7 @@ StableDefId stable_definition_id(
 }
 
 StableMemberKey stable_member_key(
-    const StableDefId owner,
+    const StableDefId& owner,
     const StableSymbolKind kind,
     const std::string_view member_name,
     const base::u32 disambiguator
@@ -157,7 +157,7 @@ StableMemberKey stable_member_key(
 }
 
 IncrementalKey stable_incremental_key(
-    const StableDefId definition,
+    const StableDefId& definition,
     const std::string_view semantic_fingerprint
 ) noexcept {
     const StableFingerprint128 fingerprint = stable_fingerprint(semantic_fingerprint);

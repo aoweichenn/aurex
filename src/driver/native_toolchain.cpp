@@ -3,7 +3,6 @@
 #include <aurex/driver/driver_messages.hpp>
 
 #include <cerrno>
-#include <cstring>
 #include <filesystem>
 #include <sstream>
 #include <string>

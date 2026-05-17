@@ -581,7 +581,7 @@ TEST(CoreUnit, LexerValidatesStringLiteralEscapesUtf8AndCStringNul) {
         expect_contains(messages, needle);
     };
 
-    expect_lex_error("const text: str = \"\\q\";", "invalid escape sequence");
+    expect_lex_error(R"(const text: str = "\q";)", "invalid escape sequence");
     expect_lex_error("const text: str = \"line\nbreak\";", "unterminated string literal");
     expect_lex_error("const text: str = \"\\u{D800}\";", "not a valid Unicode scalar");
     expect_lex_error("const text: str = \"\\u{}\";", "unicode escape has no digits");

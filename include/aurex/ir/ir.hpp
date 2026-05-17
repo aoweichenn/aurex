@@ -337,10 +337,10 @@ private:
     void ensure_arena();
 };
 
-[[nodiscard]] ValueId add_value(Module& module, Value value);
-[[nodiscard]] GlobalConstantId add_global_constant(Module& module, GlobalConstant constant);
-[[nodiscard]] FunctionId add_function(Module& module, Function function);
-[[nodiscard]] base::u32 add_record(Module& module, RecordLayout record);
+[[nodiscard]] ValueId add_value(Module& module, const Value& value);
+[[nodiscard]] GlobalConstantId add_global_constant(Module& module, const GlobalConstant& constant);
+[[nodiscard]] FunctionId add_function(Module& module, const Function& function);
+[[nodiscard]] base::u32 add_record(Module& module, const RecordLayout& record);
 [[nodiscard]] BlockId add_block(Module& module, Function& function, std::string_view name);
 [[nodiscard]] const GlobalConstant* find_global_constant(const Module& module, GlobalConstantId id) noexcept;
 [[nodiscard]] const RecordLayout* find_record(const Module& module, sema::TypeHandle type) noexcept;

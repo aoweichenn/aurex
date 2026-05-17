@@ -21,10 +21,10 @@
 
 namespace aurex::backend {
 
-LlvmEmitter::LlvmEmitter(const Module& module, std::string module_name)
+LlvmEmitter::LlvmEmitter(const Module& module, const std::string_view module_name)
     : source_(module),
       context_(),
-      module_(std::make_unique<llvm::Module>(std::move(module_name), context_)),
+      module_(std::make_unique<llvm::Module>(module_name, context_)),
       builder_(context_) {}
 
 std::string_view LlvmEmitter::text(const IrTextId id) const noexcept {

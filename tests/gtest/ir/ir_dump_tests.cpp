@@ -28,7 +28,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     const TypeHandle opaque_type = module.types.opaque_struct("dump.Opaque", "dump_Opaque");
     RecordLayout record = record_layout(module, record_type, "dump.Record", "dump_Record", false);
     record.fields.push_back(record_field(module, "value", i32));
-    append_record(module, std::move(record));
+    append_record(module, record);
     append_record(module, record_layout(module, opaque_type, "dump.Opaque", "dump_Opaque", true));
 
     static_cast<void>(add_global_constant(module, GlobalConstant {"broken", "dump_broken", i32, INVALID_VALUE_ID}));

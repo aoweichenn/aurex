@@ -191,7 +191,7 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     RecordLayout record = record_layout(module, record_type, "unit.Pair", "unit_Pair", false);
     record.fields.push_back(record_field(module, "left", i32));
     record.fields.push_back(record_field(module, "right", ptr_i32));
-    append_record(module, std::move(record));
+    append_record(module, record);
     const RecordLayout& stored_record = module.records.back();
 
     EXPECT_NE(ir::find_record(module, record_type), nullptr);
@@ -233,7 +233,7 @@ TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads) {
 
     Value literal = integer_value(module, i32, "99");
     set_name(module, literal, "literal");
-    const ValueId literal_id = add_value(module, std::move(literal));
+    const ValueId literal_id = add_value(module, literal);
 
     Value aggregate = module.make_value();
     aggregate.kind = ValueKind::aggregate;
@@ -243,11 +243,11 @@ TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads) {
     aggregate.fields.push_back(field_value(module, "left", literal_id));
     aggregate.incoming.push_back(PhiInput {BlockId {IR_MODULE_COPY_TEST_ENTRY_INDEX}, literal_id});
     aggregate.elements.push_back(literal_id);
-    const ValueId aggregate_id = add_value(module, std::move(aggregate));
+    const ValueId aggregate_id = add_value(module, aggregate);
 
     RecordLayout record = record_layout(module, record_type, "copy.Pair", "copy_Pair", false);
     record.fields.push_back(record_field(module, "left", i32));
-    const base::u32 record_index = add_record(module, std::move(record));
+    const base::u32 record_index = add_record(module, record);
     ASSERT_EQ(record_index, IR_MODULE_COPY_TEST_RECORD_INDEX);
     module.record_indices.emplace(record_type.value, record_index);
 
@@ -263,7 +263,7 @@ TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads) {
     function.blocks[entry.value].values.push_back(aggregate_id);
     function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
     function.blocks[entry.value].terminator.value = aggregate_id;
-    append_function(module, std::move(function));
+    append_function(module, function);
 
     Module copied(module);
     ASSERT_EQ(copied.values.size(), module.values.size());

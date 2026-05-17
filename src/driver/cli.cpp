@@ -500,20 +500,20 @@ struct ParsedOption {
     return "option requires native output: " + std::string(option);
 }
 
-[[nodiscard]] base::Error cli_argument_error(const std::string& message) {
+[[nodiscard]] base::Error cli_argument_error(const std::string_view message) {
     return {base::ErrorCode::invalid_source, cli_argument_error_message(message)};
 }
 
-[[nodiscard]] base::Result<CliParseResult> fail_cli_parse(std::string message) {
-    return base::Result<CliParseResult>::fail(cli_argument_error(std::move(message)));
+[[nodiscard]] base::Result<CliParseResult> fail_cli_parse(const std::string_view message) {
+    return base::Result<CliParseResult>::fail(cli_argument_error(message));
 }
 
-[[nodiscard]] base::Result<ParsedOption> fail_option_parse(std::string message) {
-    return base::Result<ParsedOption>::fail(cli_argument_error(std::move(message)));
+[[nodiscard]] base::Result<ParsedOption> fail_option_parse(const std::string_view message) {
+    return base::Result<ParsedOption>::fail(cli_argument_error(message));
 }
 
-[[nodiscard]] base::Result<void> fail_option_apply(std::string message) {
-    return base::Result<void>::fail(cli_argument_error(std::move(message)));
+[[nodiscard]] base::Result<void> fail_option_apply(const std::string_view message) {
+    return base::Result<void>::fail(cli_argument_error(message));
 }
 
 [[nodiscard]] const OptionSpec* find_exact_option(const std::string_view spelling) noexcept {
@@ -744,7 +744,7 @@ private:
         const std::string_view path
     ) const {
         if (!result.invocation.input_path.empty()) {
-            return fail_option_apply(std::string(DRIVER_MULTIPLE_INPUT_FILES_UNSUPPORTED));
+            return fail_option_apply(DRIVER_MULTIPLE_INPUT_FILES_UNSUPPORTED);
         }
         result.invocation.input_path = path;
         return base::Result<void>::ok();

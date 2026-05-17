@@ -89,7 +89,7 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
         const TypeHandle ptr_record = ptr(module, PointerMutability::mut, record_type);
         RecordLayout record = record_layout(module, record_type, "unit.Record", "unit_Record", false);
         record.fields.push_back(record_field(module, "x", i32));
-        append_record(module, std::move(record));
+        append_record(module, record);
         Function function = make_function(module, "escape_uses", i32);
         FunctionBuilder builder {module, function};
         Value slot = module.make_value();
@@ -382,7 +382,7 @@ TEST(CoreUnit, PassPipelineRewritesAggregatePhiAndConstantsAfterMem2Reg) {
     const TypeHandle record_type = module.types.named_struct("unit.Box", "unit_Box", false);
     RecordLayout record = record_layout(module, record_type, "unit.Box", "unit_Box", false);
     record.fields.push_back(record_field(module, "value", i32));
-    append_record(module, std::move(record));
+    append_record(module, record);
 
     Function function = make_function(module, "rewrite_uses", i32);
     FunctionBuilder builder {module, function};

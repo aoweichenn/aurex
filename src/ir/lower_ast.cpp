@@ -148,7 +148,7 @@ void Lowerer::lower_record_layouts() {
         if (sema::is_valid(record.type)) {
             this->module_.record_indices[record.type.value] = static_cast<base::u32>(this->module_.records.size());
         }
-        static_cast<void>(add_record(this->module_, std::move(record)));
+        static_cast<void>(add_record(this->module_, record));
     }
 
     for (base::usize i = 0; i < this->module_.types.size(); ++i) {
@@ -169,7 +169,7 @@ void Lowerer::lower_record_layouts() {
             });
         }
         this->module_.record_indices[type.value] = static_cast<base::u32>(this->module_.records.size());
-        static_cast<void>(add_record(this->module_, std::move(record)));
+        static_cast<void>(add_record(this->module_, record));
     }
 
     std::unordered_set<base::u32> lowered_enum_types;
@@ -185,7 +185,7 @@ void Lowerer::lower_record_layouts() {
         if (sema::is_valid(record.type)) {
             this->module_.record_indices[record.type.value] = static_cast<base::u32>(this->module_.records.size());
         }
-        static_cast<void>(add_record(this->module_, std::move(record)));
+        static_cast<void>(add_record(this->module_, record));
     }
 }
 
@@ -213,7 +213,7 @@ void Lowerer::declare_global_constants() {
             constant.name = this->module_.intern(item.name);
             constant.symbol = this->item_symbol(index, item);
             constant.type = syntax_type(item.const_type);
-            const GlobalConstantId id = add_global_constant(module_, std::move(constant));
+            const GlobalConstantId id = add_global_constant(module_, constant);
             constant_symbols_[module_.constants[id.value].symbol] = id;
             pending_constants_.push_back(PendingConstant {
                 id,
@@ -239,7 +239,7 @@ void Lowerer::declare_global_constants() {
             constant.name = this->module_.intern(std::string(item.name) + "_" + std::string(enum_case.name));
             constant.symbol = this->enum_case_symbol(index, item, enum_case);
             constant.type = case_type;
-            const GlobalConstantId id = add_global_constant(module_, std::move(constant));
+            const GlobalConstantId id = add_global_constant(module_, constant);
             constant_symbols_[module_.constants[id.value].symbol] = id;
             pending_constants_.push_back(PendingConstant {
                 id,
@@ -263,7 +263,7 @@ void Lowerer::declare_global_constants() {
         constant.name = this->module_.intern(sema::enum_case_display_name(this->checked_.types, enum_case));
         constant.symbol = this->module_.intern(enum_case.c_name);
         constant.type = enum_case.type;
-        const GlobalConstantId id = add_global_constant(module_, std::move(constant));
+        const GlobalConstantId id = add_global_constant(module_, constant);
         constant_symbols_[module_.constants[id.value].symbol] = id;
         pending_constants_.push_back(PendingConstant {
             id,
@@ -301,7 +301,7 @@ void Lowerer::lower_function_declarations() {
                 this->syntax_type(param.type),
             });
         }
-        const FunctionId function_id = add_function(this->module_, std::move(function));
+        const FunctionId function_id = add_function(this->module_, function);
         this->item_functions_[index] = function_id;
         this->function_symbols_[this->module_.functions[function_id.value].symbol] = function_id;
     }
@@ -329,7 +329,7 @@ void Lowerer::lower_function_declarations() {
                 });
             }
         }
-        const FunctionId function_id = add_function(this->module_, std::move(function));
+        const FunctionId function_id = add_function(this->module_, function);
         this->generic_instance_functions_[index] = function_id;
         this->function_symbols_[this->module_.functions[function_id.value].symbol] = function_id;
     }

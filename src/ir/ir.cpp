@@ -240,25 +240,25 @@ void Module::ensure_arena() {
     this->record_indices = this->make_map<base::u32, base::u32>();
 }
 
-ValueId add_value(Module& module, Value value) {
+ValueId add_value(Module& module, const Value& value) {
     const ValueId id {static_cast<base::u32>(module.values.size())};
     module.values.push_back(module.clone_value(value));
     return id;
 }
 
-GlobalConstantId add_global_constant(Module& module, GlobalConstant constant) {
+GlobalConstantId add_global_constant(Module& module, const GlobalConstant& constant) {
     const GlobalConstantId id {static_cast<base::u32>(module.constants.size())};
     module.constants.push_back(constant);
     return id;
 }
 
-FunctionId add_function(Module& module, Function function) {
+FunctionId add_function(Module& module, const Function& function) {
     const FunctionId id {static_cast<base::u32>(module.functions.size())};
     module.functions.push_back(module.clone_function(function));
     return id;
 }
 
-base::u32 add_record(Module& module, RecordLayout record) {
+base::u32 add_record(Module& module, const RecordLayout& record) {
     const base::u32 index = static_cast<base::u32>(module.records.size());
     module.records.push_back(module.clone_record_layout(record));
     return index;

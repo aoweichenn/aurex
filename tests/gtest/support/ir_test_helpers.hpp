@@ -61,14 +61,14 @@ struct FunctionBuilder {
     Module& module;
     Function& function;
 
-    [[nodiscard]] ValueId add(Value value) const
+    [[nodiscard]] ValueId add(const Value& value) const
     {
-        return add_value(module, std::move(value));
+        return add_value(module, value);
     }
 
-    [[nodiscard]] BlockId block(std::string name) const
+    [[nodiscard]] BlockId block(const std::string_view name) const
     {
-        return add_block(module, function, std::move(name));
+        return add_block(module, function, name);
     }
 };
 
@@ -151,12 +151,12 @@ inline void set_symbol(Module& module, Function& function, const std::string_vie
     return record;
 }
 
-inline void append_function(Module& module, Function function) {
-    static_cast<void>(add_function(module, std::move(function)));
+inline void append_function(Module& module, const Function& function) {
+    static_cast<void>(add_function(module, function));
 }
 
-inline void append_record(Module& module, RecordLayout record) {
-    static_cast<void>(add_record(module, std::move(record)));
+inline void append_record(Module& module, const RecordLayout& record) {
+    static_cast<void>(add_record(module, record));
 }
 
 inline void append_record_with_fields(
@@ -170,7 +170,7 @@ inline void append_record_with_fields(
     RecordLayout record = record_layout(module, type, name, symbol, is_opaque);
     record.fields.reserve(fields.size());
     record.fields.insert(record.fields.end(), fields.begin(), fields.end());
-    append_record(module, std::move(record));
+    append_record(module, record);
 }
 
 template <typename T>

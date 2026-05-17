@@ -67,12 +67,12 @@ void push_error(base::DiagnosticSink& diagnostics, const base::SourceRange& rang
         return std::filesystem::exists(candidate, error) && !error;
     };
 
-    const std::filesystem::path importer_candidate = importer_dir / relative;
+    std::filesystem::path importer_candidate = importer_dir / relative;
     if (exists(importer_candidate)) {
         return importer_candidate;
     }
     for (const std::filesystem::path& import_path : import_paths) {
-        const std::filesystem::path candidate = import_path / relative;
+        std::filesystem::path candidate = import_path / relative;
         if (exists(candidate)) {
             return candidate;
         }
@@ -793,7 +793,7 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(
             import.alias_id,
         };
         combined.intern_resolved_import(resolved);
-        direct_imports.push_back(std::move(resolved));
+        direct_imports.push_back(resolved);
     }
     if (is_root &&
         imports.empty() &&

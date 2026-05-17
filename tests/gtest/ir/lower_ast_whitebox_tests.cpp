@@ -230,7 +230,7 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
     function.return_type = i32;
     const BlockId entry = add_block(lowerer.module_, function, "entry");
     const BlockId exit = add_block(lowerer.module_, function, "exit");
-    const FunctionId function_id = add_function(lowerer.module_, std::move(function));
+    const FunctionId function_id = add_function(lowerer.module_, function);
     lowerer.current_function_ = &lowerer.module_.functions[function_id.value];
     lowerer.current_block_ = entry;
 

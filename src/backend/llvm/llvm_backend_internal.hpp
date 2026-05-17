@@ -54,7 +54,7 @@ using aurex::ir::record_field_index;
 
 class LlvmEmitter final {
 public:
-    LlvmEmitter(const Module& module, std::string module_name);
+    LlvmEmitter(const Module& module, std::string_view module_name);
 
     [[nodiscard]] base::Result<LlvmIrOutput> run();
 

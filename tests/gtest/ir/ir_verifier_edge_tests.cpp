@@ -206,7 +206,7 @@ TEST(CoreUnit, IrVerifierReportsRuntimeShapeErrors) {
     RecordLayout pair_record = record_layout(module, pair_type, "unit.Pair", "unit_Pair", false);
     pair_record.fields.push_back(record_field(module, "left", i32));
     pair_record.fields.push_back(record_field(module, "right", i32));
-    append_record(module, std::move(pair_record));
+    append_record(module, pair_record);
 
     Value constant_value = integer_value(module, i32, "1");
     const GlobalConstantId constant =

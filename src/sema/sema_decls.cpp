@@ -253,7 +253,7 @@ void SemanticAnalyzer::register_type_names() {
                 alias.stable_id,
                 std::string(item.name) + std::string(SEMA_STABLE_TYPE_ALIAS_INCREMENTAL_TAG)
             );
-            auto alias_inserted = this->checked_.type_aliases.emplace(key, std::move(alias));
+            auto alias_inserted = this->checked_.type_aliases.emplace(key, alias);
             if (!alias_inserted.second) {
                 report_duplicate_type(key, owner, item.range, item.name);
             } else {
@@ -1058,7 +1058,7 @@ void SemanticAnalyzer::analyze_const_decls() {
         }
         stack.push_back(ConstDependencyFrame {entry.first, false});
         while (!stack.empty()) {
-            ConstDependencyFrame frame = std::move(stack.back());
+            ConstDependencyFrame frame = stack.back();
             stack.pop_back();
 
             base::u8& state = states[frame.key];

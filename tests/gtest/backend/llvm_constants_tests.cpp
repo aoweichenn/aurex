@@ -50,7 +50,7 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
         RecordLayout pair_record = record_layout(module, pair_type, "unit.Pair", "unit_Pair", false);
         pair_record.fields.push_back(record_field(module, "left", i32));
         pair_record.fields.push_back(record_field(module, "right", i32));
-        append_record(module, std::move(pair_record));
+        append_record(module, pair_record);
 
         const ValueId true_id = add_value(module, bool_value(module, true));
         [[maybe_unused]] const GlobalConstantId flag_constant =

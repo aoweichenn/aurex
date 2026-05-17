@@ -545,25 +545,25 @@ public:
         this->headers_.reserve(size);
     }
 
-    void push_back(TypeNode node) {
-        static_cast<void>(this->append(std::move(node)));
+    void push_back(const TypeNode& node) {
+        static_cast<void>(this->append(node));
     }
 
-    [[nodiscard]] TypeId append(TypeNode node) {
+    [[nodiscard]] TypeId append(const TypeNode& node) {
         const TypeId id {static_cast<base::u32>(this->headers_.size())};
         TypeNodeHeader header;
         header.kind = node.kind;
         header.range = node.range;
-        header.payload = this->store_payload(std::move(node));
+        header.payload = this->store_payload(node);
         this->headers_.push_back(header);
         return id;
     }
 
-    void set(const base::usize index, TypeNode node) {
+    void set(const base::usize index, const TypeNode& node) {
         TypeNodeHeader header;
         header.kind = node.kind;
         header.range = node.range;
-        header.payload = this->store_payload(std::move(node));
+        header.payload = this->store_payload(node);
         this->headers_[index] = header;
     }
 
@@ -581,7 +581,7 @@ private:
         return copy_ast_arena_vector(*this->arena_, values);
     }
 
-    [[nodiscard]] base::u32 store_payload(TypeNode node) {
+    [[nodiscard]] base::u32 store_payload(const TypeNode& node) {
         switch (node.kind) {
         case TypeKind::primitive:
             return this->push_payload(this->payloads_.primitives, node.primitive);
@@ -2205,25 +2205,25 @@ public:
         this->headers_.reserve(size);
     }
 
-    void push_back(PatternNode node) {
-        static_cast<void>(this->append(std::move(node)));
+    void push_back(const PatternNode& node) {
+        static_cast<void>(this->append(node));
     }
 
-    [[nodiscard]] PatternId append(PatternNode node) {
+    [[nodiscard]] PatternId append(const PatternNode& node) {
         const PatternId id {static_cast<base::u32>(this->headers_.size())};
         PatternNodeHeader header;
         header.kind = node.kind;
         header.range = node.range;
-        header.payload = this->store_payload(std::move(node));
+        header.payload = this->store_payload(node);
         this->headers_.push_back(header);
         return id;
     }
 
-    void set(const base::usize index, PatternNode node) {
+    void set(const base::usize index, const PatternNode& node) {
         PatternNodeHeader header;
         header.kind = node.kind;
         header.range = node.range;
-        header.payload = this->store_payload(std::move(node));
+        header.payload = this->store_payload(node);
         this->headers_[index] = header;
         this->invalidate_materialized(index);
     }
@@ -2250,7 +2250,7 @@ private:
         return copy_ast_arena_vector(*this->arena_, values);
     }
 
-    [[nodiscard]] base::u32 store_payload(PatternNode node) {
+    [[nodiscard]] base::u32 store_payload(const PatternNode& node) {
         switch (node.kind) {
         case PatternKind::binding:
         case PatternKind::const_:
@@ -3946,7 +3946,7 @@ struct AstModule {
 
     [[nodiscard]] TypeId push_type(TypeNode node) {
         this->intern_type_node(node);
-        return this->types.append(std::move(node));
+        return this->types.append(node);
     }
 
     [[nodiscard]] ExprId push_invalid_expr(const base::SourceRange& range) {
@@ -4240,7 +4240,7 @@ struct AstModule {
 
     [[nodiscard]] PatternId push_pattern(PatternNode node) {
         this->intern_pattern_node(node);
-        return this->patterns.append(std::move(node));
+        return this->patterns.append(node);
     }
 
     [[nodiscard]] StmtId push_stmt(StmtNode node) {
@@ -4430,7 +4430,7 @@ struct AstModule {
         for (base::usize i = 0; i < this->types.size(); ++i) {
             TypeNode node = this->types.take(i);
             this->intern_type_node(node);
-            this->types.set(i, std::move(node));
+            this->types.set(i, node);
         }
         for (base::usize i = 0; i < this->exprs.size(); ++i) {
             this->intern_expr_payload(i);
@@ -4438,7 +4438,7 @@ struct AstModule {
         for (base::usize i = 0; i < this->patterns.size(); ++i) {
             PatternNode node = this->patterns.take(i);
             this->intern_pattern_node(node);
-            this->patterns.set(i, std::move(node));
+            this->patterns.set(i, node);
         }
         for (base::usize i = 0; i < this->stmts.size(); ++i) {
             StmtNode node = this->stmts.take(i);

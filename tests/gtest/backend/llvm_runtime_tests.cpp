@@ -36,7 +36,7 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     RecordLayout pair_record = record_layout(module, pair_type, "unit.Pair", "unit_Pair", false);
     pair_record.fields.push_back(record_field(module, "left", i32));
     pair_record.fields.push_back(record_field(module, "right", i32));
-    append_record(module, std::move(pair_record));
+    append_record(module, pair_record);
     const TypeHandle ptr_pair = ptr(module, PointerMutability::mut, pair_type);
     const TypeHandle ptr_ptr_pair = ptr(module, PointerMutability::mut, ptr_pair);
 
@@ -185,8 +185,8 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     ops.param_values = {op_flag, op_lhs, op_rhs, op_unsigned, op_unsigned_rhs, op_float, op_pointer};
 
     std::vector<ValueId> values;
-    auto add_and_keep = [&](Value value) {
-        const ValueId id = builder.add(std::move(value));
+    auto add_and_keep = [&](const Value& value) {
+        const ValueId id = builder.add(value);
         values.push_back(id);
         return id;
     };
@@ -447,8 +447,8 @@ TEST(CoreUnit, LlvmBackendCoversRuntimeStringProjectionAndBinaryEdges) {
     function.param_values = {int_lhs, int_rhs, float_lhs, float_rhs, text};
 
     std::vector<ValueId> values;
-    auto add_and_keep = [&](Value value) {
-        const ValueId id = builder.add(std::move(value));
+    auto add_and_keep = [&](const Value& value) {
+        const ValueId id = builder.add(value);
         values.push_back(id);
         return id;
     };

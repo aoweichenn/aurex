@@ -39,3 +39,17 @@ Before designing any future library layer, the language needs the current core a
   protocols remain a later design track.
 - Resource semantics: `Copy`, `Drop`, borrow checking, and move-out remain a
   later design track, not a current architecture prerequisite.
+
+## M2.5 Frontend Direction
+
+The M2.5 architecture line is stable-ID-driven query work, not an LSP adapter
+layer added first:
+
+- Existing sema results become explicit typed identities, explicit diagnostic
+  kinds, and stable fingerprints.
+- File parse, module graph, item signature, function body, generic instance,
+  and diagnostics move into queries incrementally.
+- Lossless CST / GreenTree storage preserves trivia while AST remains the
+  lowered semantic structure consumed by later stages.
+- CLI, JSON, and future IDE consumers share structured diagnostics instead of
+  deriving semantics from message text.

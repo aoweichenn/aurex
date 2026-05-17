@@ -1,4 +1,4 @@
-module regex.ascii;
+module regex.syntax.ascii;
 
 pub const NUL: u8 = 0u8;
 pub const TAB: u8 = b'\t';

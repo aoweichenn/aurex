@@ -1,4 +1,4 @@
-module regex.alloc;
+module regex.runtime.alloc;
 
 extern c {
     fn calloc(count: usize, size: usize) -> *mut void @name("calloc");

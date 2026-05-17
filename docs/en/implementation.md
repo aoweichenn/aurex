@@ -25,11 +25,25 @@ Sema currently handles:
   returns, assignment targets, or enum payloads.
 - Control-flow constraints for `for`, `defer`, `break`, and `continue`.
 
+Diagnostics carry an explicit semantic kind plus `DiagnosticCategory` and
+`DiagnosticCode` at creation time. Message text is presentation only; it no
+longer participates in semantic classification. CLI text, `--diagnostics=json`,
+and later LSP / diagnostics-query consumers can therefore share one event
+stream.
+
 The M1 `noncopy` / `move` / use-after-move semantics have been removed from the
 current M2 implementation. std-specific ownership hardcodes have also been
 removed. The current implementation does not track language-level copy/drop/move
 state; future resource constraints should be redesigned as a separate
 resource-semantics track.
+
+## M2.5 Frontend Direction
+
+M2.5 first freezes the current typed identities and diagnostic metadata into
+query-safe data, then splits file parse, module graph, item signature, function
+body, generic instance, and diagnostics into queries. Lossless CSTs, local
+incremental parsing, and IDE-native entry points build on that path instead of
+creating a second parallel frontend.
 
 ## Backend
 

@@ -6,20 +6,33 @@ the language-core layer.
 ## Layout
 
 - `hello.ax`: minimal native ABI smoke example.
+- `diagnostic_showcase.ax`: intentionally invalid program that emits a compact
+  set of representative semantic diagnostics in one run.
 - `libs/common`: small reusable modules for imports, visibility, concrete enums,
   methods, aliases, recursion, and match guards.
-- `libs/regex`: multi-module compiled regex library written in Aurex. It uses
-  FFI heap allocation for the compiled NFA program and supports anchors, `.`,
-  escaped literals, character classes, predefined ASCII classes, grouping,
-  alternation, and `*`, `+`, `?`, `{m}`, `{m,n}`, `{m,}` quantifiers.
+- `libs/regex`: multi-directory compiled regex library written in Aurex. Its
+  stable facade is `regex.api`; internals are split across `core`, `config`,
+  `syntax`, `runtime`, `compile`, and `vm`. It uses FFI heap allocation for
+  the compiled NFA program and supports anchors, `.`, escaped literals,
+  character classes, predefined ASCII classes, grouping, alternation, and `*`,
+  `+`, `?`, `{m}`, `{m,n}`, `{m,}` quantifiers.
 - `regex_demo.ax`: imports `regex.api` and runs full-match/search cases against
   both convenience APIs and a precompiled regex object.
+- `regex_stress.ax`: runs repeated compiled regex searches/fullmatches and
+  checks the regex resource budget APIs.
 
 Build the native hello example:
 
 ```sh
 build/bin/aurexc examples/hello.ax -o build/tests/hello
 build/tests/hello
+```
+
+Print a representative batch of diagnostics:
+
+```sh
+build/bin/aurexc --check examples/diagnostic_showcase.ax
+build/bin/aurexc --check --diagnostics=json examples/diagnostic_showcase.ax
 ```
 
 Compile a file that imports the shared example modules with:
@@ -33,4 +46,6 @@ Build and run the regex example with:
 ```sh
 build/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
 build/tests/regex_demo
+build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
+build/tests/regex_stress
 ```

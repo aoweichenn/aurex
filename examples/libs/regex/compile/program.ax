@@ -1,19 +1,19 @@
-module regex.program;
+module regex.compile.program;
 
-import regex.alloc as alloc;
-import regex.types as t;
-
-const MIN_STATE_CAPACITY: usize = 16usize;
-const MIN_RANGE_CAPACITY: usize = 16usize;
-const STATES_PER_PATTERN_BYTE: usize = 4usize;
-const RANGES_PER_PATTERN_BYTE: usize = 2usize;
-const CAPACITY_GROWTH_FACTOR: usize = 2usize;
-const RESERVED_STATE_COUNT: usize = 1usize;
+import regex.config.limits as limits;
+import regex.core.types as t;
+import regex.runtime.alloc as alloc;
 
 pub fn create(pattern: str) -> t.Regex {
     let pattern_len: usize = strblen(pattern);
-    let state_capacity: usize = MIN_STATE_CAPACITY + pattern_len * STATES_PER_PATTERN_BYTE;
-    let range_capacity: usize = MIN_RANGE_CAPACITY + pattern_len * RANGES_PER_PATTERN_BYTE;
+    if pattern_len > limits.MAX_PATTERN_BYTES {
+        return empty_with_status(pattern, t.RegexStatus.pattern_too_large);
+    }
+    let state_capacity: usize = limits.MIN_STATE_CAPACITY + pattern_len * limits.STATES_PER_PATTERN_BYTE;
+    let range_capacity: usize = limits.MIN_RANGE_CAPACITY + pattern_len * limits.RANGES_PER_PATTERN_BYTE;
+    if state_capacity > limits.MAX_STATE_CAPACITY || range_capacity > limits.MAX_RANGE_CAPACITY {
+        return empty_with_status(pattern, t.RegexStatus.program_too_large);
+    }
     let states: *mut t.State = unsafe {
         ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(state_capacity, sizeof[t.State]))
     };
@@ -30,7 +30,7 @@ pub fn create(pattern: str) -> t.Regex {
     return t.Regex {
         pattern: pattern,
         states: states,
-        state_len: RESERVED_STATE_COUNT,
+        state_len: limits.RESERVED_STATE_COUNT,
         state_capacity: state_capacity,
         ranges: ranges,
         range_len: 0usize,
@@ -109,6 +109,18 @@ pub fn add_range(compiled: &mut t.Regex, first: u8, last: u8) -> bool {
     }
     compiled.range_len += 1usize;
     return true;
+}
+
+pub fn state_count(compiled: &t.Regex) -> usize {
+    return compiled.state_len;
+}
+
+pub fn range_count(compiled: &t.Regex) -> usize {
+    return compiled.range_len;
+}
+
+pub fn program_bytes(compiled: &t.Regex) -> usize {
+    return compiled.state_capacity * sizeof[t.State] + compiled.range_capacity * sizeof[t.ClassRange];
 }
 
 pub fn patch(compiled: &mut t.Regex, state_id: usize, target: usize) -> void {
@@ -227,9 +239,16 @@ fn ensure_state_capacity(compiled: &mut t.Regex, additional: usize) -> bool {
     if needed <= compiled.state_capacity {
         return true;
     }
-    var next_capacity: usize = compiled.state_capacity * CAPACITY_GROWTH_FACTOR;
+    if needed > limits.MAX_STATE_CAPACITY {
+        set_status(compiled, t.RegexStatus.program_too_large);
+        return false;
+    }
+    var next_capacity: usize = compiled.state_capacity * limits.CAPACITY_GROWTH_FACTOR;
     while next_capacity < needed {
-        next_capacity *= CAPACITY_GROWTH_FACTOR;
+        next_capacity *= limits.CAPACITY_GROWTH_FACTOR;
+    }
+    if next_capacity > limits.MAX_STATE_CAPACITY {
+        next_capacity = limits.MAX_STATE_CAPACITY;
     }
     let next: *mut t.State = unsafe {
         ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(next_capacity, sizeof[t.State]))
@@ -250,9 +269,16 @@ fn ensure_range_capacity(compiled: &mut t.Regex, additional: usize) -> bool {
     if needed <= compiled.range_capacity {
         return true;
     }
-    var next_capacity: usize = compiled.range_capacity * CAPACITY_GROWTH_FACTOR;
+    if needed > limits.MAX_RANGE_CAPACITY {
+        set_status(compiled, t.RegexStatus.program_too_large);
+        return false;
+    }
+    var next_capacity: usize = compiled.range_capacity * limits.CAPACITY_GROWTH_FACTOR;
     while next_capacity < needed {
-        next_capacity *= CAPACITY_GROWTH_FACTOR;
+        next_capacity *= limits.CAPACITY_GROWTH_FACTOR;
+    }
+    if next_capacity > limits.MAX_RANGE_CAPACITY {
+        next_capacity = limits.MAX_RANGE_CAPACITY;
     }
     let next: *mut t.ClassRange = unsafe {
         ptrcast[*mut t.ClassRange](alloc.alloc_zeroed_bytes(next_capacity, sizeof[t.ClassRange]))

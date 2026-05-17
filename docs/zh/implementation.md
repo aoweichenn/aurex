@@ -17,7 +17,18 @@
 - 普通值语义检查，以及数组/含数组类型不能作为函数 by-value 参数/返回、赋值目标或 enum payload 的限制。
 - `for`、`defer`、`break`、`continue` 的控制流和 lowering 前约束。
 
+诊断在创建时直接携带结构化 kind、`DiagnosticCategory` 和
+`DiagnosticCode`。message 只负责面向用户的展示，不再参与语义分类；这样 CLI 文本、
+`--diagnostics=json` 和后续 LSP / diagnostics query 可以复用同一事件流。
+
 M1 的 `noncopy` / `move` / use-after-move 语义已从 M2 当前实现删除。std 专用 ownership hardcode 也已移除。当前实现不维护语言级 copy/drop/move 状态；后续资源约束作为独立资源语义专题重新设计。
+
+## M2.5 前端方向
+
+M2.5 先把当前 typed identity 和 diagnostics 元数据固定为 query-safe 数据，再按
+file parse、module graph、item signature、function body、generic instance、diagnostics
+顺序拆出 query。lossless CST、局部增量解析和 IDE-native 入口建立在这条主线上，
+不保留第二套并行前端。
 
 ## 后端
 

@@ -1,0 +1,78 @@
+module diagnostic_showcase;
+
+const duplicate_answer: i32 = 1;
+const duplicate_answer: i32 = 2;
+
+struct Pair {
+    left: i32;
+    right: i32;
+}
+
+enum Choice: u8 {
+    zero = 0,
+    one = 1,
+}
+
+fn phantom[T](value: i32) -> i32 {
+    return value;
+}
+
+fn as_const_ptr(value: &i32) -> *const i32 {
+    return unsafe { ptrat[*const i32](ptraddr(value)) };
+}
+
+unsafe fn read_raw(value: *const i32) -> i32 {
+    return *value;
+}
+
+fn type_examples() -> i32 {
+    let count: i32 = true;
+    let pair = Pair { left: true, missing: 2 };
+    let bytes: [2]u8 = [1, 300];
+    return count + pair.left + cast[i32](bytes[0]);
+}
+
+fn expression_examples() -> i32 {
+    let pair = Pair { left: 1, right: 2 };
+    let other = Pair { left: 3, right: 4 };
+    let bad_logic = !1;
+    let bad_compare = pair < other;
+    let bad_field = pair.missing;
+    let missing_value: i32 = typo_value;
+    return 0;
+}
+
+fn control_flow_examples() -> i32 {
+    if 1 {
+        return 1;
+    }
+    break;
+    return 0;
+}
+
+fn generic_examples() -> i32 {
+    return phantom(1);
+}
+
+fn safety_examples() -> i32 {
+    var value: i32 = 1;
+    let ptr: *const i32 = as_const_ptr(&value);
+    let direct = *ptr;
+    return direct + read_raw(ptr);
+}
+
+fn pattern_examples() -> i32 {
+    return match Choice.zero {
+        .zero => 0,
+    };
+}
+
+fn main() -> i32 {
+    return type_examples()
+        + expression_examples()
+        + control_flow_examples()
+        + generic_examples()
+        + safety_examples()
+        + pattern_examples()
+        + duplicate_answer;
+}

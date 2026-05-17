@@ -1,9 +1,10 @@
 module regex.api;
 
-import regex.engine as engine;
-import regex.parser as parser;
-import regex.program as program;
-import regex.types as t;
+import regex.compile.parser as parser;
+import regex.compile.program as program;
+import regex.config.limits as limits;
+import regex.core.types as t;
+import regex.vm.engine as engine;
 
 pub type Regex = t.Regex;
 pub type MatchResult = t.MatchResult;
@@ -19,6 +20,42 @@ pub fn destroy(compiled: &mut t.Regex) -> void {
 
 pub fn is_valid(compiled: &t.Regex) -> bool {
     return compiled.status == t.RegexStatus.ok;
+}
+
+pub fn state_count(compiled: &t.Regex) -> usize {
+    return program.state_count(compiled);
+}
+
+pub fn range_count(compiled: &t.Regex) -> usize {
+    return program.range_count(compiled);
+}
+
+pub fn program_bytes(compiled: &t.Regex) -> usize {
+    return program.program_bytes(compiled);
+}
+
+pub fn workspace_bytes(compiled: &t.Regex) -> usize {
+    return engine.workspace_bytes(compiled);
+}
+
+pub fn max_pattern_bytes() -> usize {
+    return limits.MAX_PATTERN_BYTES;
+}
+
+pub fn max_state_capacity() -> usize {
+    return limits.MAX_STATE_CAPACITY;
+}
+
+pub fn max_range_capacity() -> usize {
+    return limits.MAX_RANGE_CAPACITY;
+}
+
+pub fn max_workspace_states() -> usize {
+    return limits.MAX_WORKSPACE_STATES;
+}
+
+pub fn max_bounded_repeat() -> usize {
+    return limits.MAX_BOUNDED_REPEAT;
 }
 
 pub fn search_compiled(compiled: &t.Regex, input: str) -> t.MatchResult {
@@ -51,5 +88,8 @@ pub fn status_code(status: t.RegexStatus) -> i32 {
         .unsupported => 3,
         .out_of_memory => 4,
         .repeat_too_large => 5,
+        .pattern_too_large => 6,
+        .program_too_large => 7,
+        .workspace_too_large => 8,
     };
 }

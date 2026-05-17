@@ -32,3 +32,13 @@ M2 `language-core-no-std` 移除了标准库层：
 - array/slice/string/function type：补齐不依赖 std 的基础值和 ABI 表达。
 - trait/where：最小非资源类 `where` capability 已落地；完整 trait / protocol 后置。
 - 资源语义：`Copy` / `Drop` / borrow / move-out 暂缓为后续专题，不作为当前架构前置条件。
+
+## M2.5 前端方向
+
+M2.5 的架构主线是 stable-ID-driven query，而不是先堆一层 LSP 适配器：
+
+- 现有 sema 结果先固定为显式 typed identity、显式诊断 kind 和稳定 fingerprint。
+- file parse、module graph、item signature、function body、generic instance、
+  diagnostics 逐步改为 query。
+- lossless CST / GreenTree 保留 trivia，AST 继续作为语义层消费的 lowered 结构。
+- CLI、JSON 和后续 IDE 统一消费结构化 diagnostics，不依赖 message 文本反推语义。

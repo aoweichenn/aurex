@@ -1,6 +1,7 @@
 # Aurex Documentation
 
-Documentation baseline: **M2 language-core-no-std**.
+Documentation baseline: **M2.5 frontend-foundation**, built on the closed
+**M2 language-core-no-std** baseline.
 
 This directory is organized by language. The main Chinese and English trees use
 the same document names so readers can switch languages without learning a
@@ -21,6 +22,7 @@ language they were written in.
 - [Aurex 语法现状与设计评估](zh/language-syntax-and-design-review.md)
 - [设计实现文档](zh/implementation.md)
 - [当前进度文档](zh/progress.md)
+- [M2.5 路线图](zh/m2.5-roadmap.md)
 - [使用文档](zh/usage.md)
 - [版本文档](zh/version.md)
 - [下一步计划文档](zh/next-steps.md)
@@ -34,6 +36,7 @@ language they were written in.
 - [API Reference](en/api.md)
 - [Design And Implementation](en/implementation.md)
 - [Current Progress](en/progress.md)
+- [M2.5 Roadmap](en/m2.5-roadmap.md)
 - [Usage Guide](en/usage.md)
 - [Version Document](en/version.md)
 - [Next Steps](en/next-steps.md)

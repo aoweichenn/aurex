@@ -1,10 +1,10 @@
-module regex.parser;
+module regex.compile.parser;
 
-import regex.ascii as ascii;
-import regex.program as prog;
-import regex.types as t;
+import regex.compile.program as prog;
+import regex.config.limits as limits;
+import regex.core.types as t;
+import regex.syntax.ascii as ascii;
 
-const MAX_BOUNDED_REPEAT: usize = 32usize;
 const CLASS_ITEM_BYTE: u8 = 1u8;
 const CLASS_ITEM_DIGIT: u8 = 2u8;
 const CLASS_ITEM_WORD: u8 = 3u8;
@@ -271,7 +271,7 @@ fn parse_class_item(parser: &mut Parser) -> ClassItem {
 }
 
 fn apply_repeat(parser: &mut Parser, atom: t.Fragment, repeat: RepeatSpec) -> t.Fragment {
-    if repeat.min > MAX_BOUNDED_REPEAT || (!repeat.unbounded && repeat.max > MAX_BOUNDED_REPEAT) {
+    if repeat.min > limits.MAX_BOUNDED_REPEAT || (!repeat.unbounded && repeat.max > limits.MAX_BOUNDED_REPEAT) {
         prog.set_status(&mut parser.compiled, t.RegexStatus.repeat_too_large);
         return atom;
     }

@@ -1,4 +1,4 @@
-module regex.types;
+module regex.core.types;
 
 pub const NO_STATE: usize = 0usize;
 pub const FLAGS_NONE: u8 = 0u8;
@@ -21,6 +21,9 @@ pub enum RegexStatus: u8 {
     unsupported = 3,
     out_of_memory = 4,
     repeat_too_large = 5,
+    pattern_too_large = 6,
+    program_too_large = 7,
+    workspace_too_large = 8,
 }
 
 pub struct State {

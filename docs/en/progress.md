@@ -1,13 +1,16 @@
 # Current Progress
 
 Version: 0.1.2
-Stage: M2 language-core-no-std
+Stage: M2.5 frontend-foundation
 
 ## Overall Status
 
-The repository is now in the M2 stage. M2 does not continue the abandoned M1
-track. It recenters the project on the language core by removing the standard
-library and M1 system examples from the active tree.
+The repository has moved from the closed M2 language-core-no-std baseline into
+the M2.5 frontend-foundation stage. M2 does not continue the abandoned M1 track.
+It recenters the project on the language core by removing the standard library
+and M1 system examples from the active tree. M2.5 builds on that closed line and
+starts the structured frontend work needed for queries, lossless syntax, and
+IDE-native consumption.
 
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,
@@ -34,7 +37,9 @@ notes are design input only, not current progress.
   functions, and types emit `did you mean` help where a scoped candidate exists;
   common type mismatches emit expected/actual notes; duplicate main paths emit
   previous-declaration notes; parser paired-delimiter recovery emits opening
-  delimiter notes.
+  delimiter notes. The first M2.5 item is now complete: sema diagnostics carry
+  explicit kind/category/code metadata at creation time instead of deriving
+  machine metadata from message text.
 - M2 baseline generics with `[]` syntax only, including explicit `id[T](x)`
   calls and non-empty generic parameter/type-argument lists.
 - Literal system support for ordinary strings, C strings, raw/multiline raw
@@ -265,6 +270,12 @@ stable/incremental definition rows, and `--check` safely reuses the cache when
 all recorded source fingerprints still match. Query-level reuse, lossless
 syntax, LSP-native incrementality, and 2M-node / 5000-generic / 5000-error
 cross-machine threshold calibration remain later work.
+On 2026-05-17, M2.5 started by closing the diagnostic protocol boundary:
+semantic diagnostics now map from explicit semantic kinds to stable
+category/code values, while message text is presentation only. CLI text, JSON
+output, and later diagnostics-query / LSP adapters will consume the same event
+semantics. The next M2.5 work moves to query keys, dependency tracking, lossless
+syntax, and IDE-native entry points instead of expanding the language surface.
 The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator and 4096-combination cap with a pattern matrix /
 usefulness witness search. Bool, enum payloads, tuples, structs, fixed arrays,

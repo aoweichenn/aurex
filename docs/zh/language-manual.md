@@ -992,8 +992,15 @@ value++              // 不支持自增
 子模块，而是独立的 `regex` 模块目录：
 
 - 入口模块：`examples/libs/regex/api.ax`
-- 内部模块：`regex.ascii`、`regex.alloc`、`regex.types`、`regex.program`、`regex.parser`、`regex.engine`
+- 内部目录：
+  `regex/core` 放类型和 opcode，
+  `regex/config` 放资源上限，
+  `regex/syntax` 放 ASCII byte 语法工具，
+  `regex/runtime` 放 FFI 分配，
+  `regex/compile` 放 parser 和 NFA program 构造，
+  `regex/vm` 放匹配引擎。
 - 演示程序：`examples/regex_demo.ax`
+- 压力程序：`examples/regex_stress.ax`
 - 详细语法/API/模块说明：`docs/zh/regex.md`
 
 编译方式：
@@ -1001,6 +1008,8 @@ value++              // 不支持自增
 ```sh
 build/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
 build/tests/regex_demo
+build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
+build/tests/regex_stress
 ```
 
 最小调用示例：
@@ -1045,6 +1054,8 @@ fn main() -> i32 {
 - match：状态码和演示结果判定使用 enum pattern。
 - 函数类型：演示中使用 `type Matcher = fn(str, str) -> bool`。
 - `str` 内建：`strblen`、`strptr` 参与 byte 级解析和匹配。
+- 资源预算 API：`state_count`、`range_count`、`program_bytes`、`workspace_bytes`。
+- 压力测试：`regex_stress.ax` 通过数百次重复匹配验证 compiled API 复用、内存预算和错误路径。
 
 当前正则语法是一个明确的 ASCII byte 级语法，详细定义见
 `docs/zh/regex.md`。概要如下：
@@ -1065,6 +1076,7 @@ fn main() -> i32 {
 - 不支持 Unicode scalar、grapheme、Unicode property；匹配单位是 `str` 的 UTF-8 byte。
 - 不支持懒惰量词或 possessive 量词。
 - `{m,n}` 展开上限是实现常量，超出返回 `RegexStatus.repeat_too_large`。
+- pattern、program 和 VM workspace 都有显式上限，超出分别返回 `pattern_too_large`、`program_too_large` 或 `workspace_too_large`。
 - 没有标准库 RAII，`compile` 得到的 `Regex` 必须手动 `destroy` 或 `defer destroy`。
 
 ## 16. 内建函数测试位置

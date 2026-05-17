@@ -7,6 +7,25 @@ or use std samples to prove language features. New features should be validated
 with self-contained `.ax` samples first. Design any future library layer only
 after core syntax, types, modules, and ABI boundaries stabilize.
 
+## Current M2.5 Route
+
+M2.1 Semantic + Performance + Security Closure is complete. The active stage is
+now M2.5 frontend-foundation. M2.5 does not widen std or the language surface
+first; it makes the frontend query-safe, lossless-syntax-ready, and
+IDE-native-ready:
+
+1. Explicit semantic diagnostic metadata: completed. Sema writes stable
+   kind/category/code values when diagnostics are created instead of inferring
+   them from message text.
+2. Query keys and dependency graph: next. Normalize stable keys and invalidation
+   boundaries for files, modules, definitions, bodies, generics, and
+   diagnostics.
+3. Lossless syntax and IDE-native route: after that. Trivia-preserving CST,
+   local incremental parsing, diagnostics queries, and LSP consumers build on
+   the first two steps.
+
+See [M2.5 Roadmap](m2.5-roadmap.md) for the dedicated plan.
+
 ## Priority Route
 
 1. Modern builtin spelling

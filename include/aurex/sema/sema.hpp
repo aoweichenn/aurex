@@ -360,8 +360,8 @@ private:
         std::vector<StatementAnalysisAction>& stack
     );
     void analyze_for_condition(syntax::StmtId stmt);
-    [[nodiscard]] TypeHandle analyze_for_range_bounds(syntax::StmtId stmt, const syntax::StmtNode& node);
-    void define_for_range_local(const syntax::StmtNode& node, TypeHandle type);
+    [[nodiscard]] TypeHandle analyze_for_range_bounds(syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
+    void define_for_range_local(const syntax::StmtNode& stmt, TypeHandle type);
     [[nodiscard]] TypeHandle analyze_assignment_target(syntax::ExprId expr);
     [[nodiscard]] bool block_guarantees_return(syntax::StmtId block) const;
     [[nodiscard]] bool stmt_guarantees_return(syntax::StmtId stmt) const;

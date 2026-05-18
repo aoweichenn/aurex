@@ -1,0 +1,85 @@
+module regex.ops.input;
+
+import regex.core.types as t;
+import regex.vm.engine as engine;
+import unicode.ucd as unicode;
+
+pub struct RegexInput {
+    pub mode: u8;
+    pub text: str;
+    pub data: *const u8;
+    pub len: usize;
+}
+
+pub fn text(value: str) -> RegexInput {
+    return RegexInput {
+        mode: t.MODE_TEXT,
+        text: value,
+        data: null,
+        len: strblen(value),
+    };
+}
+
+pub fn bytes(value: []const u8) -> RegexInput {
+    return bytes_raw(sliceptr(value), slicelen(value));
+}
+
+pub fn bytes_raw(data: *const u8, len: usize) -> RegexInput {
+    return RegexInput {
+        mode: t.MODE_BYTES,
+        text: "",
+        data: data,
+        len: len,
+    };
+}
+
+impl RegexInput {
+    pub fn search_compiled(self: &RegexInput, compiled: &t.Regex, start: usize) -> t.MatchResult {
+        if self.mode == t.MODE_BYTES {
+            return engine.search_bytes_raw_compiled_from(compiled, self.data, self.len, start);
+        }
+        return engine.search_compiled_from(compiled, self.text, start);
+    }
+
+    pub fn captures_compiled(self: &RegexInput, compiled: &t.Regex, start: usize) -> t.Captures {
+        if self.mode == t.MODE_BYTES {
+            return engine.captures_bytes_raw_compiled_from(compiled, self.data, self.len, start);
+        }
+        return engine.captures_compiled_from(compiled, self.text, start);
+    }
+
+    pub fn captures_compiled_into(
+        self: &RegexInput,
+        compiled: &t.Regex,
+        start: usize,
+        workspace: &mut engine.Workspace,
+        captures: &mut t.Captures
+    ) -> void {
+        if self.mode == t.MODE_BYTES {
+            engine.captures_bytes_raw_compiled_from_into(compiled, self.data, self.len, start, workspace, captures);
+            return;
+        }
+        engine.captures_compiled_from_into(compiled, self.text, start, workspace, captures);
+    }
+
+    pub fn byte_at(self: &RegexInput, offset: usize) -> u8 {
+        if self.mode == t.MODE_BYTES {
+            return unsafe { self.data[offset] };
+        }
+        let data: *const u8 = strptr(self.text);
+        return unsafe { data[offset] };
+    }
+
+    pub fn next_match_start(self: &RegexInput, start: usize, end: usize) -> usize {
+        if end > start {
+            return end;
+        }
+        if end >= self.len {
+            return self.len + 1usize;
+        }
+        if self.mode == t.MODE_BYTES {
+            return end + 1usize;
+        }
+        return unicode.next_boundary(self.text, end);
+    }
+}

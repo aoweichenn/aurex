@@ -23,6 +23,11 @@ IDE-native-ready:
 3. Lossless syntax and IDE-native route: after that. Trivia-preserving CST,
    local incremental parsing, diagnostics queries, and LSP consumers build on
    the first two steps.
+4. Language / library expressiveness: newly added to the M2.5 roadmap as a
+   P0/P1 design-freeze track from the regex-class systems-library audit. It does
+   not replace the query/lossless/IDE line or restart old std; only features
+   that support stable keys, module boundaries, generic lowering, trait/static
+   dispatch, or resource invariants are admitted.
 
 See [M2.5 Roadmap](m2.5-roadmap.md) for the dedicated plan.
 

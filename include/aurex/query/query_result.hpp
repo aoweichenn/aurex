@@ -1,0 +1,38 @@
+#pragma once
+
+#include <aurex/query/generic_instance_key.hpp>
+#include <aurex/query/stable_identity.hpp>
+
+#include <optional>
+#include <string>
+
+namespace aurex::query {
+
+struct QueryResultFingerprint {
+    StableFingerprint128 fingerprint;
+    base::u64 global_id = 0;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        QueryResultFingerprint lhs, QueryResultFingerprint rhs) noexcept = default;
+};
+
+struct QueryRecord {
+    QueryKey key;
+    QueryResultFingerprint result;
+    std::string stable_key_bytes;
+};
+
+[[nodiscard]] bool is_valid(QueryResultFingerprint result) noexcept;
+[[nodiscard]] bool is_valid(const QueryRecord& record) noexcept;
+
+[[nodiscard]] QueryResultFingerprint query_result_fingerprint(IncrementalKey incremental_key) noexcept;
+
+[[nodiscard]] std::optional<QueryRecord> query_record(QueryKind kind, StableFingerprint128 key_payload,
+    std::string stable_key_bytes, QueryResultFingerprint result);
+
+[[nodiscard]] std::optional<QueryRecord> item_signature_query_record(DefKey key, QueryResultFingerprint result);
+
+[[nodiscard]] std::optional<QueryRecord> generic_instance_signature_query_record(
+    const GenericInstanceKey& key, QueryResultFingerprint result);
+
+} // namespace aurex::query

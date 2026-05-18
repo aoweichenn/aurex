@@ -1,7 +1,6 @@
 #include <aurex/base/config.hpp>
 #include <aurex/driver/incremental_cache.hpp>
-#include <aurex/query/generic_instance_key.hpp>
-#include <aurex/query/query_key.hpp>
+#include <aurex/query/query_result.hpp>
 
 #include <algorithm>
 #include <array>
@@ -108,14 +107,6 @@ struct DefinitionRecord {
     std::string name;
     sema::StableDefId stable_id;
     sema::IncrementalKey incremental_key;
-};
-
-struct QueryCacheRecord {
-    query::QueryKind kind = query::QueryKind::invalid;
-    query::QueryKey key;
-    sema::StableFingerprint128 result_fingerprint;
-    base::u64 result_global_id = 0;
-    std::string stable_key_bytes;
 };
 
 struct ParsedCache {
@@ -709,40 +700,31 @@ void push_definition(std::vector<DefinitionRecord>& records, const std::string_v
     });
 }
 
-void push_query_cache_record(std::vector<QueryCacheRecord>& records, const query::QueryKind kind,
-    const sema::StableFingerprint128 key_payload, std::string stable_key_bytes,
-    const sema::IncrementalKey& incremental_key)
+void push_query_record(std::vector<query::QueryRecord>& records, std::optional<query::QueryRecord> record)
 {
-    const query::QueryKey key = query::query_key(kind, key_payload);
-    records.push_back(QueryCacheRecord{
-        kind,
-        key,
-        incremental_key.fingerprint,
-        incremental_key.global_id,
-        std::move(stable_key_bytes),
-    });
+    if (!record) {
+        return;
+    }
+    records.push_back(std::move(*record));
 }
 
-void push_item_signature_query_record(std::vector<QueryCacheRecord>& records, const sema::StableDefId& stable_id,
+void push_item_signature_query_record(std::vector<query::QueryRecord>& records, const sema::StableDefId& stable_id,
     const sema::IncrementalKey& incremental_key, const query::DefNamespace name_space, const query::DefKind kind)
 {
-    if (!query::is_valid(stable_id) || !query::is_valid(incremental_key)) {
+    if (!query::is_valid(stable_id)) {
         return;
     }
     const query::DefKey key = query_def_key_from_stable_id(stable_id, name_space, kind);
-    push_query_cache_record(records, query::QueryKind::item_signature, query::stable_key_fingerprint(key),
-        query::stable_serialize(key), incremental_key);
+    push_query_record(
+        records, query::item_signature_query_record(key, query::query_result_fingerprint(incremental_key)));
 }
 
-void push_generic_instance_signature_query_record(std::vector<QueryCacheRecord>& records,
+void push_generic_instance_signature_query_record(std::vector<query::QueryRecord>& records,
     const query::GenericInstanceKey& generic_instance_key, const sema::IncrementalKey& incremental_key)
 {
-    if (!query::is_valid(generic_instance_key) || !query::is_valid(incremental_key)) {
-        return;
-    }
-    push_query_cache_record(records, query::QueryKind::generic_instance_signature,
-        query::stable_key_fingerprint(generic_instance_key), query::stable_serialize(generic_instance_key),
-        incremental_key);
+    push_query_record(records,
+        query::generic_instance_signature_query_record(
+            generic_instance_key, query::query_result_fingerprint(incremental_key)));
 }
 
 [[nodiscard]] std::vector<DefinitionRecord> collect_definitions(const sema::CheckedModule& checked)
@@ -791,9 +773,9 @@ void push_generic_instance_signature_query_record(std::vector<QueryCacheRecord>&
     return records;
 }
 
-[[nodiscard]] std::vector<QueryCacheRecord> collect_query_records(const sema::CheckedModule& checked)
+[[nodiscard]] std::vector<query::QueryRecord> collect_query_records(const sema::CheckedModule& checked)
 {
-    std::vector<QueryCacheRecord> records;
+    std::vector<query::QueryRecord> records;
     records.reserve(checked.functions.size() + checked.generic_function_instances.size() + checked.structs.size()
         + checked.enum_cases.size() + checked.type_aliases.size());
 
@@ -823,15 +805,15 @@ void push_generic_instance_signature_query_record(std::vector<QueryCacheRecord>&
             records, info.stable_id, info.incremental_key, query::DefNamespace::type, query::DefKind::type_alias);
     }
 
-    std::sort(records.begin(), records.end(), [](const QueryCacheRecord& lhs, const QueryCacheRecord& rhs) {
-        if (lhs.kind != rhs.kind) {
-            return static_cast<base::u8>(lhs.kind) < static_cast<base::u8>(rhs.kind);
+    std::sort(records.begin(), records.end(), [](const query::QueryRecord& lhs, const query::QueryRecord& rhs) {
+        if (lhs.key.kind != rhs.key.kind) {
+            return static_cast<base::u8>(lhs.key.kind) < static_cast<base::u8>(rhs.key.kind);
         }
         if (lhs.key.global_id != rhs.key.global_id) {
             return lhs.key.global_id < rhs.key.global_id;
         }
-        if (lhs.result_global_id != rhs.result_global_id) {
-            return lhs.result_global_id < rhs.result_global_id;
+        if (lhs.result.global_id != rhs.result.global_id) {
+            return lhs.result.global_id < rhs.result.global_id;
         }
         return lhs.stable_key_bytes < rhs.stable_key_bytes;
     });
@@ -887,15 +869,15 @@ void write_definition_record(std::ostream& out, const DefinitionRecord& record)
     out << '\n';
 }
 
-void write_query_record(std::ostream& out, const QueryCacheRecord& record)
+void write_query_record(std::ostream& out, const query::QueryRecord& record)
 {
-    out << INCREMENTAL_CACHE_FIELD_QUERY << INCREMENTAL_CACHE_SEPARATOR << query_kind_name(record.kind)
+    out << INCREMENTAL_CACHE_FIELD_QUERY << INCREMENTAL_CACHE_SEPARATOR << query_kind_name(record.key.kind)
         << INCREMENTAL_CACHE_SEPARATOR << record.key.schema << INCREMENTAL_CACHE_SEPARATOR << record.key.global_id
         << INCREMENTAL_CACHE_SEPARATOR << record.key.payload.primary << INCREMENTAL_CACHE_SEPARATOR
         << record.key.payload.secondary << INCREMENTAL_CACHE_SEPARATOR << record.key.payload.byte_count
-        << INCREMENTAL_CACHE_SEPARATOR << record.result_global_id << INCREMENTAL_CACHE_SEPARATOR
-        << record.result_fingerprint.primary << INCREMENTAL_CACHE_SEPARATOR << record.result_fingerprint.secondary
-        << INCREMENTAL_CACHE_SEPARATOR << record.result_fingerprint.byte_count << INCREMENTAL_CACHE_SEPARATOR;
+        << INCREMENTAL_CACHE_SEPARATOR << record.result.global_id << INCREMENTAL_CACHE_SEPARATOR
+        << record.result.fingerprint.primary << INCREMENTAL_CACHE_SEPARATOR << record.result.fingerprint.secondary
+        << INCREMENTAL_CACHE_SEPARATOR << record.result.fingerprint.byte_count << INCREMENTAL_CACHE_SEPARATOR;
     write_hex_field(out, record.stable_key_bytes);
     out << '\n';
 }
@@ -961,7 +943,7 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     const std::vector<SourceFingerprintRecord> source_records = collect_source_fingerprints(sources);
     const std::vector<ModuleRecord> module_records = sorted_modules(modules);
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
-    const std::vector<QueryCacheRecord> query_records = collect_query_records(checked);
+    const std::vector<query::QueryRecord> query_records = collect_query_records(checked);
 
     const std::filesystem::path temporary_path = temporary_cache_path(cache_path);
     {
@@ -996,7 +978,7 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
             write_definition_record(out, record);
         }
         write_header_field(out, INCREMENTAL_CACHE_FIELD_QUERIES, std::to_string(query_records.size()));
-        for (const QueryCacheRecord& record : query_records) {
+        for (const query::QueryRecord& record : query_records) {
             write_query_record(out, record);
         }
 

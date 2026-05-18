@@ -1,7 +1,9 @@
 #include <aurex/query/generic_instance_key.hpp>
+#include <aurex/query/query_result.hpp>
 #include <aurex/query/stable_identity.hpp>
 
 #include <array>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -302,6 +304,57 @@ TEST(QueryUnit, LegacyStableIdentityLivesInQueryLayer)
     EXPECT_FALSE(query::is_valid(query::StableDefId{}));
     EXPECT_FALSE(query::is_valid(query::StableMemberKey{}));
     EXPECT_FALSE(query::is_valid(query::IncrementalKey{}));
+}
+
+TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey function_def = test_function_def(module);
+    const std::array<std::string_view, 2> stable_module_path{"regex", "vm"};
+    const query::StableModuleId stable_module = query::stable_module_id(stable_module_path);
+    const query::StableDefId legacy_function_id =
+        query::stable_definition_id(stable_module, query::StableSymbolKind::function, "compute");
+    const query::IncrementalKey incremental_key = query::stable_incremental_key(legacy_function_id, "signature:i32");
+    const query::QueryResultFingerprint result = query::query_result_fingerprint(incremental_key);
+
+    ASSERT_TRUE(query::is_valid(result));
+    EXPECT_EQ(result.fingerprint, incremental_key.fingerprint);
+    EXPECT_EQ(result.global_id, incremental_key.global_id);
+
+    const std::optional<query::QueryRecord> item_record = query::item_signature_query_record(function_def, result);
+    ASSERT_TRUE(item_record.has_value());
+    EXPECT_TRUE(query::is_valid(*item_record));
+    EXPECT_EQ(item_record->key.kind, query::QueryKind::item_signature);
+    EXPECT_EQ(item_record->key.payload, query::stable_key_fingerprint(function_def));
+    EXPECT_EQ(item_record->stable_key_bytes, query::stable_serialize(function_def));
+    EXPECT_EQ(item_record->result, result);
+
+    const query::DefKey vector_template = test_template_def(module);
+    const query::CanonicalTypeKey i32 = query::canonical_builtin(query::BuiltinTypeKey::i32);
+    const std::array<query::CanonicalTypeKey, 1> type_args{i32};
+    const query::GenericInstanceKey instance = query::generic_instance_key(vector_template, type_args,
+        std::span<const query::StableFingerprint128>{}, query::param_env_key(std::span<const std::string_view>{}));
+    const std::optional<query::QueryRecord> instance_record =
+        query::generic_instance_signature_query_record(instance, result);
+    ASSERT_TRUE(instance_record.has_value());
+    EXPECT_TRUE(query::is_valid(*instance_record));
+    EXPECT_EQ(instance_record->key.kind, query::QueryKind::generic_instance_signature);
+    EXPECT_EQ(instance_record->key.payload, query::stable_key_fingerprint(instance));
+    EXPECT_EQ(instance_record->stable_key_bytes, query::stable_serialize(instance));
+
+    EXPECT_FALSE(query::is_valid(query::QueryResultFingerprint{}));
+    EXPECT_FALSE(query::is_valid(query::QueryRecord{}));
+    EXPECT_FALSE(query::is_valid(query::query_result_fingerprint(query::IncrementalKey{})));
+    EXPECT_FALSE(query::query_record(query::QueryKind::invalid, query::stable_key_fingerprint(function_def),
+        query::stable_serialize(function_def), result)
+            .has_value());
+    EXPECT_FALSE(
+        query::query_record(query::QueryKind::item_signature, query::stable_key_fingerprint(function_def), "", result)
+            .has_value());
+    EXPECT_FALSE(query::item_signature_query_record(query::DefKey{}, result).has_value());
+    EXPECT_FALSE(query::item_signature_query_record(function_def, query::QueryResultFingerprint{}).has_value());
+    EXPECT_FALSE(query::generic_instance_signature_query_record(query::GenericInstanceKey{}, result).has_value());
 }
 
 TEST(QueryUnit, CanonicalTypeKeyIsStructuralAndHandleFree)

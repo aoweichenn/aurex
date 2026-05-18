@@ -6,6 +6,7 @@ add_library(aurex_sema
     src/sema/function.cpp
     src/sema/function_registry.cpp
     src/sema/generic.cpp
+    src/sema/generic_instance_identity.cpp
     src/sema/checked_module.cpp
     src/sema/match.cpp
     src/sema/sema_call.cpp

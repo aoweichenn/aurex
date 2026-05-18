@@ -319,6 +319,27 @@ private:
     return key;
 }
 
+[[nodiscard]] const StructInfo& add_struct_info(sema::SemanticAnalyzer& analyzer, const ModuleId module,
+    const std::string_view name, const TypeHandle type,
+    const syntax::Visibility visibility = syntax::Visibility::public_)
+{
+    const IdentId name_id = intern_identifier(analyzer, name);
+    const sema::ModuleLookupKey key = analyzer.module_lookup_key(module, name_id);
+    StructInfo info = analyzer.checked_.make_struct_info();
+    info.name = analyzer.checked_.intern_text(name);
+    info.name_id = name_id;
+    info.c_name = analyzer.checked_.intern_text(name);
+    info.module = module;
+    info.type = type;
+    info.visibility = visibility;
+    info.stable_id = analyzer.stable_definition_id(module, sema::StableSymbolKind::type, name_id, name);
+    info.incremental_key = analyzer.stable_incremental_key(info.stable_id, name);
+    const auto inserted = analyzer.checked_.structs.emplace(key, std::move(info));
+    analyzer.struct_infos_by_type_[type.value] = &inserted.first->second;
+    static_cast<void>(add_named_type(analyzer, module, name, type, visibility));
+    return inserted.first->second;
+}
+
 [[nodiscard]] sema::FunctionLookupKey add_function(sema::SemanticAnalyzer& analyzer, FunctionSignature signature)
 {
     if (!is_valid(signature.name_id)) {
@@ -2216,7 +2237,13 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables)
     ASSERT_TRUE(checked_result) << checked_result.error().message;
     const sema::CheckedModule& checked = checked_result.value();
     ASSERT_EQ(checked.generic_function_instances.size(), 1U);
-    const sema::FunctionSignature& signature = checked.generic_function_instances.front().signature;
+    const sema::GenericFunctionInstanceInfo& instance = checked.generic_function_instances.front();
+    EXPECT_TRUE(query::is_valid(instance.generic_instance_key));
+    ASSERT_EQ(instance.generic_instance_key.type_args.size(), 1U);
+    EXPECT_EQ(instance.generic_instance_key.type_args.front(), query::canonical_builtin(query::BuiltinTypeKey::i32));
+    EXPECT_EQ(instance.generic_instance_key.param_env.predicate_count, 0U);
+
+    const sema::FunctionSignature& signature = instance.signature;
     EXPECT_EQ(signature.name, "id");
     EXPECT_TRUE(sema::is_valid(signature.semantic_key));
     ASSERT_EQ(signature.generic_args.size(), 1U);
@@ -2263,6 +2290,285 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables)
     ASSERT_TRUE(discard_result) << discard_result.error().message;
     EXPECT_TRUE(discard_result.value().generic_function_instances.empty());
     EXPECT_TRUE(discard_result.value().functions.contains(signature.semantic_key));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxGenericInstanceQueryKeysIgnoreSessionTypeHandles)
+{
+    syntax::AstModule first_module;
+    first_module.modules = {module_info({"stable_generic"})};
+    base::DiagnosticSink first_diagnostics;
+    sema::SemanticAnalyzer first_analyzer(first_module, first_diagnostics);
+    const TypeHandle first_payload =
+        first_analyzer.checked_.types.named_struct("stable_generic.Payload", "Payload", false);
+    static_cast<void>(add_struct_info(first_analyzer, module_id(0), "Payload", first_payload));
+    sema::SemanticAnalyzer::GenericTemplateInfo first_template =
+        generic_template_info(first_analyzer, module_id(0), "Wrap");
+    sema::SemanticAnalyzer::CapabilitySet first_constraints = first_analyzer.make_capability_set();
+    first_constraints.insert(sema::CapabilityKind::eq);
+    first_template.constraints.emplace(first_template.params.front(), std::move(first_constraints));
+    const std::array<TypeHandle, 1> first_args{first_payload};
+
+    syntax::AstModule second_module;
+    second_module.modules = {module_info({"stable_generic"})};
+    base::DiagnosticSink second_diagnostics;
+    sema::SemanticAnalyzer second_analyzer(second_module, second_diagnostics);
+    const TypeHandle extra_payload =
+        second_analyzer.checked_.types.named_struct("stable_generic.Extra", "Extra", false);
+    static_cast<void>(add_struct_info(second_analyzer, module_id(0), "Extra", extra_payload));
+    const TypeHandle second_payload =
+        second_analyzer.checked_.types.named_struct("stable_generic.Payload", "Payload", false);
+    static_cast<void>(add_struct_info(second_analyzer, module_id(0), "Payload", second_payload));
+    sema::SemanticAnalyzer::GenericTemplateInfo second_template =
+        generic_template_info(second_analyzer, module_id(0), "Wrap");
+    sema::SemanticAnalyzer::CapabilitySet second_constraints = second_analyzer.make_capability_set();
+    second_constraints.insert(sema::CapabilityKind::eq);
+    second_template.constraints.emplace(second_template.params.front(), std::move(second_constraints));
+    const std::array<TypeHandle, 1> second_args{second_payload};
+
+    ASSERT_NE(first_payload.value, second_payload.value);
+    EXPECT_NE(first_analyzer.generic_instance_key_suffix({first_payload}),
+        second_analyzer.generic_instance_key_suffix({second_payload}));
+
+    base::Result<sema::SemanticAnalyzer::GenericInstanceIdentity> first_identity =
+        first_analyzer.generic_instance_identity(first_template, first_args, query::DefNamespace::type);
+    base::Result<sema::SemanticAnalyzer::GenericInstanceIdentity> second_identity =
+        second_analyzer.generic_instance_identity(second_template, second_args, query::DefNamespace::type);
+    ASSERT_TRUE(first_identity) << first_identity.error().message;
+    ASSERT_TRUE(second_identity) << second_identity.error().message;
+
+    EXPECT_EQ(first_identity.value().fingerprint_text, second_identity.value().fingerprint_text);
+    EXPECT_EQ(first_identity.value().key, second_identity.value().key);
+    EXPECT_EQ(query::stable_key_fingerprint(first_identity.value().key),
+        query::stable_key_fingerprint(second_identity.value().key));
+    EXPECT_EQ(first_identity.value().key.param_env.predicate_count, 1U);
+    ASSERT_EQ(first_identity.value().key.type_args.size(), 1U);
+    ASSERT_EQ(second_identity.value().key.type_args.size(), 1U);
+    EXPECT_EQ(first_identity.value().key.type_args.front(), second_identity.value().key.type_args.front());
+}
+
+TEST(CoreUnit, SemanticWhiteBoxGenericInstanceResolverCoversIdentityEdges)
+{
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_MODULE = "identity_edges";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_OWNER = "Owner";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_INVALID_INDEX = "InvalidIndex";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_OUTER = "Outer";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_INNER = "Inner";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_PAYLOAD = "Payload";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_GENERIC_PAYLOAD = "GenericPayload";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_GENERIC_PAYLOAD_ORIGIN = "0:GenericPayload";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_MODE = "Mode";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_CHOICE = "Choice";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_CHOICE_CASE = "Choice_some";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_CHOICE_CASE_NAME = "some";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_MALFORMED_ORIGIN = "BadOrigin";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_NON_NUMERIC_ORIGIN = "x:BadOrigin";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_OUT_OF_RANGE_ORIGIN = "99:BadOrigin";
+    constexpr std::string_view SEMA_TEST_QUERY_EDGE_MISSING_GENERIC_IDENTITY = "identity_edges.Missing.T";
+
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_QUERY_EDGE_MODULE})};
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+
+    const query::ModuleKey empty_module =
+        query::module_key(query::package_key(std::span<const std::string_view>{}), std::span<const std::string_view>{});
+    EXPECT_EQ(analyzer.query_module_key(syntax::INVALID_MODULE_ID), empty_module);
+    EXPECT_EQ(analyzer.query_module_key(module_id(SEMA_TEST_MISSING_MODULE_INDEX)), empty_module);
+
+    sema::SemanticAnalyzer::GenericTemplateInfo owner =
+        generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_OWNER);
+    analyzer.populate_generic_param_identities(owner);
+    const query::DefKey owner_key = analyzer.generic_template_query_key(owner, query::DefNamespace::type);
+
+    sema::SemanticAnalyzer::GenericTemplateInfo invalid_index_owner =
+        generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_INVALID_INDEX);
+    invalid_index_owner.param_identities.push_back(sema::INVALID_GENERIC_PARAM_IDENTITY);
+    analyzer.index_generic_param_query_keys(invalid_index_owner, query::DefNamespace::type);
+
+    sema::TypeInfo invalid_generic_info;
+    EXPECT_FALSE(analyzer.canonical_generic_param_query_key(owner, owner_key, invalid_generic_info).has_value());
+
+    const TypeHandle owner_param =
+        analyzer.checked_.types.generic_param(owner.param_identities.front(), SEMA_TEST_GENERIC_PARAM_NAME);
+    const std::optional<query::GenericParamKey> owner_param_key =
+        analyzer.canonical_generic_param_query_key(owner, owner_key, analyzer.checked_.types.get(owner_param));
+    ASSERT_TRUE(owner_param_key.has_value());
+    EXPECT_EQ(owner_param_key.value(), query::generic_param_key(owner_key, 0));
+
+    sema::SemanticAnalyzer::GenericTemplateInfo outer =
+        generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_OUTER);
+    analyzer.populate_generic_param_identities(outer);
+    analyzer.index_generic_param_query_keys(outer, query::DefNamespace::value);
+    sema::SemanticAnalyzer::GenericTemplateInfo inner =
+        generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_INNER);
+    analyzer.populate_generic_param_identities(inner);
+    const query::DefKey inner_key = analyzer.generic_template_query_key(inner, query::DefNamespace::value);
+    const TypeHandle outer_param =
+        analyzer.checked_.types.generic_param(outer.param_identities.front(), SEMA_TEST_GENERIC_PARAM_NAME);
+    const std::optional<query::GenericParamKey> fallback_param_key =
+        analyzer.canonical_generic_param_query_key(inner, inner_key, analyzer.checked_.types.get(outer_param));
+    ASSERT_TRUE(fallback_param_key.has_value());
+    EXPECT_EQ(fallback_param_key.value(),
+        query::generic_param_key(analyzer.generic_template_query_key(outer, query::DefNamespace::value), 0));
+
+    sema::TypeInfo missing_generic_info;
+    missing_generic_info.generic_identity =
+        sema::generic_param_identity_from_text(SEMA_TEST_QUERY_EDGE_MISSING_GENERIC_IDENTITY);
+    EXPECT_FALSE(analyzer.canonical_generic_param_query_key(owner, owner_key, missing_generic_info).has_value());
+
+    const TypeHandle payload =
+        analyzer.checked_.types.named_struct("identity_edges.Payload", SEMA_TEST_QUERY_EDGE_PAYLOAD, false);
+    static_cast<void>(add_struct_info(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_PAYLOAD, payload));
+    EXPECT_TRUE(analyzer.canonical_nominal_type_query_key(payload, analyzer.checked_.types.get(payload)).has_value());
+
+    const TypeHandle generic_payload = analyzer.checked_.types.named_struct(
+        "identity_edges.GenericPayload", SEMA_TEST_QUERY_EDGE_GENERIC_PAYLOAD, false);
+    analyzer.checked_.types.set_generic_instance(generic_payload, SEMA_TEST_QUERY_EDGE_GENERIC_PAYLOAD_ORIGIN, {});
+    const std::optional<query::DefKey> generic_payload_key =
+        analyzer.canonical_nominal_type_query_key(generic_payload, analyzer.checked_.types.get(generic_payload));
+    ASSERT_TRUE(generic_payload_key.has_value());
+    EXPECT_EQ(generic_payload_key->kind, query::DefKind::generic_template);
+
+    analyzer.struct_infos_by_type_[payload.value] = nullptr;
+    EXPECT_FALSE(analyzer.canonical_nominal_type_query_key(payload, analyzer.checked_.types.get(payload)).has_value());
+
+    const TypeHandle malformed_origin =
+        analyzer.checked_.types.named_struct("identity_edges.Malformed", "Malformed", false);
+    analyzer.checked_.types.set_generic_instance(malformed_origin, SEMA_TEST_QUERY_EDGE_MALFORMED_ORIGIN, {});
+    EXPECT_FALSE(
+        analyzer.canonical_nominal_type_query_key(malformed_origin, analyzer.checked_.types.get(malformed_origin))
+            .has_value());
+
+    const TypeHandle non_numeric_origin =
+        analyzer.checked_.types.named_struct("identity_edges.NonNumeric", "NonNumeric", false);
+    analyzer.checked_.types.set_generic_instance(non_numeric_origin, SEMA_TEST_QUERY_EDGE_NON_NUMERIC_ORIGIN, {});
+    EXPECT_FALSE(
+        analyzer.canonical_nominal_type_query_key(non_numeric_origin, analyzer.checked_.types.get(non_numeric_origin))
+            .has_value());
+
+    const TypeHandle out_of_range_origin =
+        analyzer.checked_.types.named_struct("identity_edges.OutOfRange", "OutOfRange", false);
+    analyzer.checked_.types.set_generic_instance(out_of_range_origin, SEMA_TEST_QUERY_EDGE_OUT_OF_RANGE_ORIGIN, {});
+    EXPECT_FALSE(
+        analyzer.canonical_nominal_type_query_key(out_of_range_origin, analyzer.checked_.types.get(out_of_range_origin))
+            .has_value());
+
+    const TypeHandle named_enum = analyzer.checked_.types.named_enum("identity_edges.Mode", SEMA_TEST_QUERY_EDGE_MODE);
+    static_cast<void>(add_named_type(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_MODE, named_enum));
+    const std::optional<query::DefKey> named_enum_key =
+        analyzer.canonical_nominal_type_query_key(named_enum, analyzer.checked_.types.get(named_enum));
+    ASSERT_TRUE(named_enum_key.has_value());
+    EXPECT_EQ(named_enum_key->kind, query::DefKind::enum_);
+
+    const TypeHandle case_only_enum =
+        analyzer.checked_.types.named_enum("identity_edges.Choice", SEMA_TEST_QUERY_EDGE_CHOICE);
+    EnumCaseInfo case_info = analyzer.checked_.make_enum_case_info();
+    case_info.name = checked_text(analyzer.checked_, SEMA_TEST_QUERY_EDGE_CHOICE_CASE);
+    case_info.name_id = intern_identifier(analyzer, SEMA_TEST_QUERY_EDGE_CHOICE_CASE);
+    case_info.module = module_id(0);
+    case_info.type = case_only_enum;
+    case_info.enum_name = checked_text(analyzer.checked_, SEMA_TEST_QUERY_EDGE_CHOICE);
+    case_info.case_name = checked_text(analyzer.checked_, SEMA_TEST_QUERY_EDGE_CHOICE_CASE_NAME);
+    analyzer.checked_.enum_cases.emplace(
+        semantic_module_key(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_CHOICE_CASE), std::move(case_info));
+    const std::optional<query::DefKey> case_only_enum_key =
+        analyzer.canonical_nominal_type_query_key(case_only_enum, analyzer.checked_.types.get(case_only_enum));
+    ASSERT_TRUE(case_only_enum_key.has_value());
+    EXPECT_EQ(case_only_enum_key->kind, query::DefKind::enum_);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxGenericParamEnvKeySortsPredicates)
+{
+    constexpr std::string_view SEMA_TEST_QUERY_ENV_MODULE = "identity_env";
+    constexpr std::string_view SEMA_TEST_QUERY_ENV_TEMPLATE = "Constrained";
+    constexpr std::string_view SEMA_TEST_QUERY_ENV_SECOND_PARAM = "U";
+
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_QUERY_ENV_MODULE})};
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+
+    sema::SemanticAnalyzer::GenericTemplateInfo first =
+        generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_ENV_TEMPLATE);
+    first.params.push_back(intern_identifier(analyzer, SEMA_TEST_QUERY_ENV_SECOND_PARAM));
+    sema::SemanticAnalyzer::CapabilitySet first_constraints = analyzer.make_capability_set();
+    first_constraints.insert(sema::CapabilityKind::hash);
+    first_constraints.insert(sema::CapabilityKind::sized);
+    first_constraints.insert(sema::CapabilityKind::eq);
+    first.constraints.emplace(first.params.front(), std::move(first_constraints));
+
+    sema::SemanticAnalyzer::GenericTemplateInfo second =
+        generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_ENV_TEMPLATE);
+    second.params.push_back(intern_identifier(analyzer, SEMA_TEST_QUERY_ENV_SECOND_PARAM));
+    sema::SemanticAnalyzer::CapabilitySet second_constraints = analyzer.make_capability_set();
+    second_constraints.insert(sema::CapabilityKind::eq);
+    second_constraints.insert(sema::CapabilityKind::hash);
+    second_constraints.insert(sema::CapabilityKind::sized);
+    second.constraints.emplace(second.params.front(), std::move(second_constraints));
+
+    const query::ParamEnvKey first_key = analyzer.generic_param_env_key(first);
+    const query::ParamEnvKey second_key = analyzer.generic_param_env_key(second);
+    EXPECT_EQ(first_key, second_key);
+    EXPECT_EQ(first_key.predicate_count, 3U);
+    EXPECT_TRUE(query::is_valid(first_key));
+
+    sema::SemanticAnalyzer::GenericTemplateInfo unconstrained =
+        generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_ENV_TEMPLATE);
+    const query::ParamEnvKey unconstrained_key = analyzer.generic_param_env_key(unconstrained);
+    EXPECT_EQ(unconstrained_key.predicate_count, 0U);
+    EXPECT_TRUE(query::is_valid(unconstrained_key));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxGenericInstanceIdentityReportsCanonicalizationErrors)
+{
+    constexpr std::string_view SEMA_TEST_QUERY_ERROR_MODULE = "identity_errors";
+    constexpr std::string_view SEMA_TEST_QUERY_ERROR_TEMPLATE = "Failing";
+
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_QUERY_ERROR_MODULE})};
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    sema::SemanticAnalyzer::GenericTemplateInfo info =
+        generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_ERROR_TEMPLATE);
+    analyzer.populate_generic_param_identities(info);
+
+    sema::TypeTable& types = analyzer.checked_.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle unresolved_nominal = types.named_struct("identity_errors.Missing", "Missing", false);
+    const std::array<TypeHandle, 1> unresolved_nominal_args{unresolved_nominal};
+    base::Result<sema::SemanticAnalyzer::GenericInstanceIdentity> unresolved_nominal_identity =
+        analyzer.generic_instance_identity(info, unresolved_nominal_args, query::DefNamespace::type);
+    ASSERT_FALSE(unresolved_nominal_identity.has_value());
+    EXPECT_NE(unresolved_nominal_identity.error().message.find("unresolved nominal type key"), std::string::npos);
+
+    const sema::GenericParamIdentity unregistered_identity =
+        sema::generic_param_identity_from_text("identity_errors.Unregistered.T");
+    const TypeHandle unresolved_generic = types.generic_param(unregistered_identity, SEMA_TEST_GENERIC_PARAM_NAME);
+    const std::array<TypeHandle, 1> unresolved_generic_args{unresolved_generic};
+    base::Result<sema::SemanticAnalyzer::GenericInstanceIdentity> unresolved_generic_identity =
+        analyzer.generic_instance_identity(info, unresolved_generic_args, query::DefNamespace::type);
+    ASSERT_FALSE(unresolved_generic_identity.has_value());
+    EXPECT_NE(unresolved_generic_identity.error().message.find("unresolved generic parameter key"), std::string::npos);
+
+    base::Result<sema::SemanticAnalyzer::GenericInstanceIdentity> identity =
+        analyzer.generic_instance_identity(info, std::span<const TypeHandle>{}, query::DefNamespace::value);
+    ASSERT_TRUE(identity.has_value()) << identity.error().message;
+
+    const TypeHandle unknown_type{static_cast<base::u32>(types.size() + SEMA_TEST_MISSING_MODULE_INDEX)};
+    base::Result<std::string> bad_return_signature = analyzer.generic_instance_signature_fingerprint(
+        info, identity.value(), unknown_type, std::span<const TypeHandle>{}, false, false);
+    ASSERT_FALSE(bad_return_signature.has_value());
+    EXPECT_NE(bad_return_signature.error().message.find("unknown type handle"), std::string::npos);
+
+    const std::array<TypeHandle, 1> bad_param_types{unknown_type};
+    base::Result<std::string> bad_param_signature =
+        analyzer.generic_instance_signature_fingerprint(info, identity.value(), i32, bad_param_types, true, true);
+    ASSERT_FALSE(bad_param_signature.has_value());
+    EXPECT_NE(bad_param_signature.error().message.find("unknown type handle"), std::string::npos);
+
+    base::Result<std::string> invalid_return_signature = analyzer.generic_instance_signature_fingerprint(
+        info, identity.value(), INVALID_TYPE_HANDLE, std::span<const TypeHandle>{}, false, false);
+    ASSERT_TRUE(invalid_return_signature.has_value()) << invalid_return_signature.error().message;
 }
 
 TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
@@ -2337,6 +2643,10 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     }
     ASSERT_NE(generic_box, nullptr);
     EXPECT_EQ(generic_box->name, "Box");
+    EXPECT_TRUE(query::is_valid(generic_box->generic_instance_key));
+    ASSERT_EQ(generic_box->generic_instance_key.type_args.size(), 1U);
+    EXPECT_EQ(
+        generic_box->generic_instance_key.type_args.front(), query::canonical_builtin(query::BuiltinTypeKey::i32));
     EXPECT_EQ(checked.types.get(generic_box->type).name, "generic_type_display.Box");
     EXPECT_EQ(checked.types.display_name(generic_box->type), "generic_type_display.Box[i32]");
 

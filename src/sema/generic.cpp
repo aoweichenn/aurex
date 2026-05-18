@@ -853,6 +853,12 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
     this->populate_generic_template_node_spans(info, item);
     this->populate_generic_param_identities(info);
     this->validate_generic_constraints(item, info);
+    query::DefNamespace generic_param_owner_namespace = query::DefNamespace::type;
+    if (item.kind == syntax::ItemKind::fn_decl) {
+        generic_param_owner_namespace =
+            syntax::is_valid(item.impl_type) ? query::DefNamespace::member : query::DefNamespace::value;
+    }
+    this->index_generic_param_query_keys(info, generic_param_owner_namespace);
 
     if (item.kind == syntax::ItemKind::struct_decl) {
         if (this->named_types_.contains(info.key) || this->checked_.type_aliases.contains(info.key)
@@ -1557,12 +1563,18 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(const GenericTemplateInf
     if (!this->validate_generic_arguments(info, args, use_type.range)) {
         return INVALID_TYPE_HANDLE;
     }
-
     const std::string instance_key = this->generic_struct_instance_key(info, args);
     const IdentId instance_key_id = this->intern_generated_key(instance_key);
     if (const auto found = this->generic_struct_instances_.find(instance_key_id);
         found != this->generic_struct_instances_.end()) {
         return found->second;
+    }
+
+    base::Result<GenericInstanceIdentity> instance_identity =
+        this->generic_instance_identity(info, args, query::DefNamespace::type);
+    if (!instance_identity) {
+        this->report_internal_contract(use_type.range, instance_identity.error().message);
+        return INVALID_TYPE_HANDLE;
     }
 
     const syntax::ItemNode item = this->module_.items[info.item.value];
@@ -1577,14 +1589,16 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(const GenericTemplateInf
 
     StructInfo struct_info = this->checked_.make_struct_info();
     struct_info.name = this->source_name_text(item.name_id, item.name);
+    struct_info.name_id = item.name_id;
     struct_info.c_name = this->checked_.intern_text(c_name);
     struct_info.module = info.module;
     struct_info.type = handle;
     struct_info.visibility = info.visibility;
     struct_info.stable_id = sema::stable_definition_id(
-        this->stable_module_id(info.module), StableSymbolKind::type, this->generic_struct_instance_key(info, args));
+        this->stable_module_id(info.module), StableSymbolKind::type, instance_identity.value().fingerprint_text);
     struct_info.incremental_key =
-        this->stable_incremental_key(struct_info.stable_id, this->generic_instance_key(info, args));
+        this->stable_incremental_key(struct_info.stable_id, instance_identity.value().fingerprint_text);
+    struct_info.generic_instance_key = std::move(instance_identity.value().key);
     struct_info.is_generic_placeholder = std::ranges::any_of(args, [&](const TypeHandle arg) {
         return is_valid(arg) && this->checked_.types.get(arg).kind == TypeKind::generic_param;
     });
@@ -2006,6 +2020,13 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
             return &found->second;
         }
     }
+    base::Result<GenericInstanceIdentity> instance_identity =
+        this->generic_instance_identity(info, args, query::DefNamespace::value);
+    if (!instance_identity) {
+        this->report_internal_contract(use_range, instance_identity.error().message);
+        return nullptr;
+    }
+
     const syntax::ItemNode function = this->module_.items[info.item.value];
 
     GenericContext generic_context = this->make_generic_context();
@@ -2018,7 +2039,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
         signature.name_id = info.name_id;
         signature.semantic_key = key;
         signature.stable_id = sema::stable_definition_id(this->stable_module_id(info.module),
-            StableSymbolKind::function, this->generic_function_instance_key(info, args));
+            StableSymbolKind::function, instance_identity.value().fingerprint_text);
         signature.c_name = this->checked_.intern_text(
             this->c_symbol_name(info.module, std::string(info.name.view()) + this->generic_instance_abi_suffix(args)));
         signature.generic_args = this->checked_.copy_type_handle_list(args);
@@ -2033,10 +2054,15 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
         for (const syntax::ParamDecl& param : function.params) {
             signature.param_types.push_back(this->resolve_type(param.type));
         }
-        signature.incremental_key = this->stable_incremental_key(signature.stable_id,
-            this->function_incremental_fingerprint(
-                info.name, signature.return_type, signature.param_types, false, signature.is_variadic));
     }
+
+    base::Result<std::string> signature_fingerprint = this->generic_instance_signature_fingerprint(
+        info, instance_identity.value(), signature.return_type, signature.param_types, false, signature.is_variadic);
+    if (!signature_fingerprint) {
+        this->report_internal_contract(use_range, signature_fingerprint.error().message);
+        return nullptr;
+    }
+    signature.incremental_key = this->stable_incremental_key(signature.stable_id, signature_fingerprint.value());
 
     if (syntax::is_valid(function.return_type) && is_valid(signature.return_type)) {
         this->validate_function_return_type(function, signature.return_type);
@@ -2064,6 +2090,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     GenericFunctionInstanceInfo instance;
     instance.key = key;
     instance.item = info.item;
+    instance.generic_instance_key = std::move(instance_identity.value().key);
     instance.signature = std::move(signature);
     if (info.has_sparse_node_ids()) {
         instance.side_table_layout_index = this->generic_side_table_layout_index(info);
@@ -2122,6 +2149,17 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(const GenericTem
         return &found->second;
     }
 
+    std::vector<TypeHandle> method_identity_args;
+    method_identity_args.reserve(args.size() + 1U);
+    method_identity_args.push_back(owner_type);
+    method_identity_args.insert(method_identity_args.end(), args.begin(), args.end());
+    base::Result<GenericInstanceIdentity> instance_identity =
+        this->generic_instance_identity(info, method_identity_args, query::DefNamespace::member);
+    if (!instance_identity) {
+        this->report_internal_contract(use_range, instance_identity.error().message);
+        return nullptr;
+    }
+
     const syntax::ItemNode function = this->module_.items[info.item.value];
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
@@ -2132,8 +2170,8 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(const GenericTem
         signature.name = this->source_name_text(info.name_id, info.name);
         signature.name_id = info.name_id;
         signature.semantic_key = key;
-        signature.stable_id = sema::stable_definition_id(this->stable_module_id(info.module), StableSymbolKind::method,
-            this->checked_.types.display_name(owner_type) + "." + std::string(info.name.view()));
+        signature.stable_id = sema::stable_definition_id(
+            this->stable_module_id(info.module), StableSymbolKind::method, instance_identity.value().fingerprint_text);
         signature.c_name = this->checked_.intern_text(this->method_c_symbol_name(owner_type, info.name));
         signature.generic_args = this->checked_.copy_type_handle_list(args);
         signature.module = info.module;
@@ -2150,10 +2188,15 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(const GenericTem
         for (const syntax::ParamDecl& param : function.params) {
             signature.param_types.push_back(this->resolve_type(param.type));
         }
-        signature.incremental_key = this->stable_incremental_key(signature.stable_id,
-            this->function_incremental_fingerprint(
-                info.name, signature.return_type, signature.param_types, true, signature.is_variadic));
     }
+
+    base::Result<std::string> signature_fingerprint = this->generic_instance_signature_fingerprint(
+        info, instance_identity.value(), signature.return_type, signature.param_types, true, signature.is_variadic);
+    if (!signature_fingerprint) {
+        this->report_internal_contract(use_range, signature_fingerprint.error().message);
+        return nullptr;
+    }
+    signature.incremental_key = this->stable_incremental_key(signature.stable_id, signature_fingerprint.value());
 
     if (syntax::is_valid(function.return_type) && is_valid(signature.return_type)) {
         this->validate_function_return_type(function, signature.return_type);
@@ -2182,6 +2225,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(const GenericTem
     GenericFunctionInstanceInfo instance;
     instance.key = key;
     instance.item = info.item;
+    instance.generic_instance_key = std::move(instance_identity.value().key);
     instance.signature = std::move(signature);
     if (info.has_sparse_node_ids()) {
         instance.side_table_layout_index = this->generic_side_table_layout_index(info);

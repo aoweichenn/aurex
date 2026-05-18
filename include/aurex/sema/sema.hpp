@@ -120,8 +120,14 @@ private:
         bool cache_syntax_types = true;
     };
 
+    struct GenericInstanceIdentity {
+        query::GenericInstanceKey key;
+        std::string fingerprint_text;
+    };
+
     struct FunctionBodyContextScope;
     struct GenericAnalysisScope;
+    class GenericInstanceCanonicalResolver;
 
     struct PlaceInfo {
         TypeHandle type = INVALID_TYPE_HANDLE;
@@ -279,6 +285,7 @@ private:
     void populate_generic_template_node_spans(GenericTemplateInfo& info, const syntax::ItemNode& item) const;
     [[nodiscard]] GenericSideTables make_generic_instance_side_tables(const GenericTemplateInfo& info);
     [[nodiscard]] base::usize generic_side_table_layout_index(const GenericTemplateInfo& info);
+    void index_generic_param_query_keys(const GenericTemplateInfo& info, query::DefNamespace name_space);
     [[nodiscard]] GenericContext make_generic_context() const;
     [[nodiscard]] CapabilitySet make_capability_set() const;
     [[nodiscard]] CapabilitySet copy_capability_set(const CapabilitySet& source) const;
@@ -500,6 +507,19 @@ private:
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_function_instance_key(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] query::ModuleKey query_module_key(syntax::ModuleId module) const noexcept;
+    [[nodiscard]] query::DefKey generic_template_query_key(
+        const GenericTemplateInfo& info, query::DefNamespace name_space) const noexcept;
+    [[nodiscard]] std::optional<query::DefKey> canonical_nominal_type_query_key(
+        TypeHandle handle, const TypeInfo& info) const;
+    [[nodiscard]] std::optional<query::GenericParamKey> canonical_generic_param_query_key(
+        const GenericTemplateInfo& owner, query::DefKey owner_key, const TypeInfo& info) const;
+    [[nodiscard]] query::ParamEnvKey generic_param_env_key(const GenericTemplateInfo& info) const;
+    [[nodiscard]] base::Result<GenericInstanceIdentity> generic_instance_identity(
+        const GenericTemplateInfo& info, std::span<const TypeHandle> args, query::DefNamespace name_space) const;
+    [[nodiscard]] base::Result<std::string> generic_instance_signature_fingerprint(const GenericTemplateInfo& info,
+        const GenericInstanceIdentity& identity, TypeHandle return_type, std::span<const TypeHandle> param_types,
+        bool is_method, bool is_variadic) const;
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const;
     [[nodiscard]] bool check_m2_value_abi(
@@ -738,6 +758,7 @@ private:
     SemaMap<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash> generic_type_alias_templates_;
     SemaMap<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash> generic_function_templates_;
     SemaMap<FunctionLookupKey, GenericTemplateInfo, FunctionLookupKeyHash> generic_method_templates_;
+    SemaMap<GenericParamIdentity, query::GenericParamKey, GenericParamIdentityHash> generic_param_query_keys_;
     SemaMap<IdentId, TypeHandle, IdentIdHash> generic_struct_instances_;
     SemaMap<IdentId, TypeHandle, IdentIdHash> generic_enum_instances_;
     SemaMap<IdentId, TypeHandle, IdentIdHash> resolved_generic_type_aliases_;

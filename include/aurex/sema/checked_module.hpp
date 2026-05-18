@@ -1,5 +1,6 @@
 #pragma once
 
+#include <aurex/query/generic_instance_key.hpp>
 #include <aurex/sema/function.hpp>
 #include <aurex/sema/storage.hpp>
 #include <aurex/sema/type.hpp>
@@ -88,6 +89,7 @@ struct StructInfo {
     syntax::Visibility visibility = syntax::Visibility::public_;
     StableDefId stable_id;
     IncrementalKey incremental_key;
+    query::GenericInstanceKey generic_instance_key;
 };
 
 struct EnumCaseInfo {
@@ -346,6 +348,7 @@ private:
 struct GenericFunctionInstanceInfo {
     FunctionLookupKey key;
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    query::GenericInstanceKey generic_instance_key;
     FunctionSignature signature;
     base::usize side_table_layout_index = SEMA_GENERIC_SIDE_TABLE_INVALID_LAYOUT_INDEX;
     GenericSideTables side_tables;

@@ -150,6 +150,8 @@ SemanticAnalyzer::SemanticAnalyzer(
           *this->arena_, ModuleLookupKeyHash{})),
       generic_method_templates_(make_sema_map<FunctionLookupKey, GenericTemplateInfo, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
+      generic_param_query_keys_(make_sema_map<GenericParamIdentity, query::GenericParamKey, GenericParamIdentityHash>(
+          *this->arena_, GenericParamIdentityHash{})),
       generic_struct_instances_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash{})),
       generic_enum_instances_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash{})),
       resolved_generic_type_aliases_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash{})),
@@ -217,6 +219,8 @@ SemanticAnalyzer::SemanticAnalyzer(
           *this->arena_, ModuleLookupKeyHash{})),
       generic_method_templates_(make_sema_map<FunctionLookupKey, GenericTemplateInfo, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
+      generic_param_query_keys_(make_sema_map<GenericParamIdentity, query::GenericParamKey, GenericParamIdentityHash>(
+          *this->arena_, GenericParamIdentityHash{})),
       generic_struct_instances_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash{})),
       generic_enum_instances_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash{})),
       resolved_generic_type_aliases_(make_sema_map<IdentId, TypeHandle, IdentIdHash>(*this->arena_, IdentIdHash{})),

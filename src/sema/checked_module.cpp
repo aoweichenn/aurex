@@ -775,6 +775,7 @@ StructInfo CheckedModule::clone_struct_info(const StructInfo& other)
     copy.visibility = other.visibility;
     copy.stable_id = other.stable_id;
     copy.incremental_key = other.incremental_key;
+    copy.generic_instance_key = other.generic_instance_key;
     return copy;
 }
 
@@ -811,6 +812,7 @@ GenericFunctionInstanceInfo CheckedModule::clone_generic_function_instance(const
     GenericFunctionInstanceInfo copy;
     copy.key = other.key;
     copy.item = other.item;
+    copy.generic_instance_key = other.generic_instance_key;
     copy.signature = this->clone_function_signature(other.signature);
     copy.side_table_layout_index = other.side_table_layout_index;
     copy.side_tables = other.side_tables;

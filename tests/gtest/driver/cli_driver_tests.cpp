@@ -73,7 +73,6 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SIGNATURE_CHANGE_SECOND_SOUR
     "module incremental_cache_signature_change;\n"
     "fn helper(value: i32, extra: i32) -> i32 { return value + extra; }\n"
     "fn main() -> i32 { return helper(40, 1); }\n";
-constexpr base::u32 CACHE_TEST_DEF_KEY_PATH_COMPONENT_COUNT = 1;
 constexpr base::usize CACHE_TEST_QUERY_ROW_KIND_FIELD = 0;
 constexpr base::usize CACHE_TEST_QUERY_KIND_FIELD = 1;
 constexpr base::usize CACHE_TEST_QUERY_RESULT_GLOBAL_FIELD = 7;
@@ -331,33 +330,6 @@ struct CacheTestQueryResultFingerprint {
     const std::string_view cache_text, const std::string_view encoded_stable_key)
 {
     return cache_test_query_result(cache_text, CACHE_TEST_QUERY_ITEM_SIGNATURE, encoded_stable_key);
-}
-
-[[nodiscard]] query::ModuleKey cache_test_query_module_key_from_stable_id(
-    const sema::StableModuleId stable_module) noexcept
-{
-    const query::PackageKey package = query::package_key(std::span<const std::string_view>{});
-    return query::ModuleKey{
-        package,
-        stable_module.path,
-        stable_module.part_count,
-        query::ModuleKind::source,
-        stable_module.global_id,
-    };
-}
-
-[[nodiscard]] query::DefKey cache_test_query_def_key_from_stable_id(
-    const sema::StableDefId& stable_id, const query::DefNamespace name_space, const query::DefKind kind) noexcept
-{
-    return query::DefKey{
-        cache_test_query_module_key_from_stable_id(stable_id.module),
-        stable_id.name,
-        CACHE_TEST_DEF_KEY_PATH_COMPONENT_COUNT,
-        name_space,
-        kind,
-        stable_id.disambiguator,
-        stable_id.global_id,
-    };
 }
 
 } // namespace
@@ -1168,8 +1140,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     expect_contains(cache_text, "queries\t3");
     expect_contains(cache_text, "query\titem_signature");
     expect_contains(cache_text, "query\tgeneric_instance_signature");
-    const query::DefKey expected_item_signature_key = cache_test_query_def_key_from_stable_id(
-        duplicate_stable_id, query::DefNamespace::value, query::DefKind::function);
+    const query::DefKey expected_item_signature_key =
+        query::def_key_from_stable_id(duplicate_stable_id, query::DefNamespace::value, query::DefKind::function);
     expect_contains(cache_text, hex_encode_cache_test_field(query::stable_serialize(expected_item_signature_key)));
     const std::string encoded_generic_instance_key =
         hex_encode_cache_test_field(query::stable_serialize(generic_instance_key));
@@ -1225,7 +1197,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheItemSignatureIgnoresBodyOnlyChanges
     const sema::StableDefId helper_stable_id =
         sema::stable_definition_id(stable_module, sema::StableSymbolKind::function, "helper");
     const query::DefKey helper_def_key =
-        cache_test_query_def_key_from_stable_id(helper_stable_id, query::DefNamespace::value, query::DefKind::function);
+        query::def_key_from_stable_id(helper_stable_id, query::DefNamespace::value, query::DefKind::function);
     const std::string encoded_helper_key = hex_encode_cache_test_field(query::stable_serialize(helper_def_key));
 
     driver::CompilerInvocation invocation;
@@ -1273,7 +1245,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheItemSignatureChangesWhenSignatureCh
     const sema::StableDefId helper_stable_id =
         sema::stable_definition_id(stable_module, sema::StableSymbolKind::function, "helper");
     const query::DefKey helper_def_key =
-        cache_test_query_def_key_from_stable_id(helper_stable_id, query::DefNamespace::value, query::DefKind::function);
+        query::def_key_from_stable_id(helper_stable_id, query::DefNamespace::value, query::DefKind::function);
     const std::string encoded_helper_key = hex_encode_cache_test_field(query::stable_serialize(helper_def_key));
 
     driver::CompilerInvocation invocation;
@@ -1338,7 +1310,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
         const sema::StableDefId stable_id =
             sema::stable_definition_id(stable_module, sema::StableSymbolKind::function, "helper");
         const query::DefKey def_key =
-            cache_test_query_def_key_from_stable_id(stable_id, query::DefNamespace::value, query::DefKind::function);
+            query::def_key_from_stable_id(stable_id, query::DefNamespace::value, query::DefKind::function);
         const query::QueryResultFingerprint result =
             query::query_result_fingerprint(sema::stable_incremental_key(stable_id, "signature:i32"));
         const std::optional<query::QueryRecord> record = query::item_signature_query_record(def_key, result);

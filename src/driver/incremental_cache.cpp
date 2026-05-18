@@ -1,6 +1,7 @@
 #include <aurex/base/config.hpp>
 #include <aurex/driver/incremental_cache.hpp>
 #include <aurex/driver/profile.hpp>
+#include <aurex/query/item_signature_query.hpp>
 #include <aurex/query/query_result.hpp>
 
 #include <algorithm>
@@ -14,6 +15,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace aurex::driver {
@@ -67,7 +69,6 @@ constexpr base::usize INCREMENTAL_CACHE_QUERY_RESULT_PRIMARY_FIELD = 8;
 constexpr base::usize INCREMENTAL_CACHE_QUERY_RESULT_SECONDARY_FIELD = 9;
 constexpr base::usize INCREMENTAL_CACHE_QUERY_RESULT_BYTES_FIELD = 10;
 constexpr base::usize INCREMENTAL_CACHE_QUERY_STABLE_KEY_FIELD = 11;
-constexpr base::u32 INCREMENTAL_CACHE_DEF_KEY_PATH_COMPONENT_COUNT = 1;
 
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_SCHEMA = "schema";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_COMPILER = "compiler";
@@ -841,32 +842,6 @@ void record_query_record_diff_summary(CompilationProfiler* const profiler, const
     return {};
 }
 
-[[nodiscard]] query::ModuleKey query_module_key_from_stable_id(const sema::StableModuleId stable_module) noexcept
-{
-    const query::PackageKey package = query::package_key(std::span<const std::string_view>{});
-    return query::ModuleKey{
-        package,
-        stable_module.path,
-        stable_module.part_count,
-        query::ModuleKind::source,
-        stable_module.global_id,
-    };
-}
-
-[[nodiscard]] query::DefKey query_def_key_from_stable_id(
-    const sema::StableDefId& stable_id, const query::DefNamespace name_space, const query::DefKind kind) noexcept
-{
-    return query::DefKey{
-        query_module_key_from_stable_id(stable_id.module),
-        stable_id.name,
-        INCREMENTAL_CACHE_DEF_KEY_PATH_COMPONENT_COUNT,
-        name_space,
-        kind,
-        stable_id.disambiguator,
-        stable_id.global_id,
-    };
-}
-
 [[nodiscard]] query::DefKind function_signature_def_kind(const sema::FunctionSignature& signature) noexcept
 {
     return signature.is_method ? query::DefKind::method : query::DefKind::function;
@@ -883,17 +858,22 @@ void push_definition(std::vector<DefinitionRecord>& records, const std::string_v
     });
 }
 
+void push_query_record(std::vector<query::QueryRecord>& records, query::QueryRecord record)
+{
+    for (const query::QueryRecord& existing : records) {
+        if (existing.key.kind == record.key.kind && existing.stable_key_bytes == record.stable_key_bytes) {
+            return;
+        }
+    }
+    records.push_back(std::move(record));
+}
+
 void push_query_record(std::vector<query::QueryRecord>& records, std::optional<query::QueryRecord> record)
 {
     if (!record) {
         return;
     }
-    for (const query::QueryRecord& existing : records) {
-        if (existing.key.kind == record->key.kind && existing.stable_key_bytes == record->stable_key_bytes) {
-            return;
-        }
-    }
-    records.push_back(std::move(*record));
+    push_query_record(records, std::move(*record));
 }
 
 void push_item_signature_query_subject(std::vector<ItemSignatureQuerySubject>& subjects,
@@ -917,22 +897,6 @@ void push_generic_instance_signature_query_subject(std::vector<GenericInstanceSi
     });
 }
 
-[[nodiscard]] std::optional<query::ItemSignatureQueryInput> item_signature_query_input(
-    const ItemSignatureQuerySubject& subject)
-{
-    if (subject.kind == query::DefKind::invalid || !query::is_valid(subject.stable_id)) {
-        return std::nullopt;
-    }
-    const query::QueryResultFingerprint result = query::query_result_fingerprint(subject.incremental_key);
-    if (!query::is_valid(result)) {
-        return std::nullopt;
-    }
-    return query::ItemSignatureQueryInput{
-        query_def_key_from_stable_id(subject.stable_id, subject.name_space, subject.kind),
-        result,
-    };
-}
-
 [[nodiscard]] std::optional<query::GenericInstanceSignatureQueryInput> generic_instance_signature_query_input(
     const GenericInstanceSignatureQuerySubject& subject)
 {
@@ -949,11 +913,15 @@ void push_generic_instance_signature_query_subject(std::vector<GenericInstanceSi
 void push_item_signature_query_record(
     std::vector<query::QueryRecord>& records, const ItemSignatureQuerySubject& subject)
 {
-    const std::optional<query::ItemSignatureQueryInput> input = item_signature_query_input(subject);
-    if (!input) {
+    const query::ItemSignatureProviderInput input{
+        query::def_key_from_stable_id(subject.stable_id, subject.name_space, subject.kind),
+        subject.incremental_key,
+    };
+    std::optional<query::ItemSignatureProviderOutput> output = query::provide_item_signature_query(input);
+    if (!output) {
         return;
     }
-    push_query_record(records, query::item_signature_query_record(*input));
+    push_query_record(records, std::move(output->record));
 }
 
 void push_generic_instance_signature_query_record(

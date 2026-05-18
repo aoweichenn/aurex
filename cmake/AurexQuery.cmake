@@ -3,6 +3,7 @@ add_library(aurex_query
     src/query/stable_identity.cpp
     src/query/query_key.cpp
     src/query/query_result.cpp
+    src/query/item_signature_query.cpp
     src/query/canonical_type_key.cpp
     src/query/generic_instance_key.cpp
 )

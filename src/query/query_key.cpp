@@ -14,19 +14,20 @@ constexpr base::u64 QUERY_MEMBER_KEY_MARKER = 0x514d454d4b455931ULL;
 constexpr base::u64 QUERY_BODY_KEY_MARKER = 0x51424f4459303031ULL;
 constexpr base::u64 QUERY_GENERIC_PARAM_KEY_MARKER = 0x51475041524d3031ULL;
 constexpr base::u64 QUERY_QUERY_KEY_MARKER = 0x51554552594b3031ULL;
-
-[[nodiscard]] base::u64 nonzero_global_id(const base::u64 marker, const StableFingerprint128 fingerprint) noexcept
-{
-    base::u64 global_id = stable_mix(marker, fingerprint.primary);
-    global_id = stable_mix(global_id, fingerprint.secondary);
-    global_id = stable_mix(global_id, fingerprint.byte_count);
-    return global_id == 0 ? marker : global_id;
-}
+constexpr base::u32 QUERY_DEF_KEY_STABLE_ID_PATH_COMPONENT_COUNT = 1;
 
 [[nodiscard]] base::u64 mix_key_field(const base::u64 seed, const base::u64 value) noexcept
 {
     const base::u64 result = stable_mix(seed, value);
     return result == 0 ? seed : result;
+}
+
+[[nodiscard]] base::u64 nonzero_global_id(const base::u64 marker, const StableFingerprint128 fingerprint) noexcept
+{
+    base::u64 global_id = mix_key_field(marker, fingerprint.primary);
+    global_id = mix_key_field(global_id, fingerprint.secondary);
+    global_id = mix_key_field(global_id, fingerprint.byte_count);
+    return global_id;
 }
 
 [[nodiscard]] base::u64 mix_key_fingerprint(base::u64 seed, const StableFingerprint128 fingerprint) noexcept
@@ -126,7 +127,7 @@ FileKey file_key(const PackageKey package, const std::string_view canonical_path
         path,
         virtual_id,
         role,
-        global_id == 0 ? QUERY_FILE_KEY_MARKER : global_id,
+        global_id,
     };
 }
 
@@ -143,7 +144,7 @@ ModuleKey module_key(
         path,
         static_cast<base::u32>(module_path.size()),
         kind,
-        global_id == 0 ? QUERY_MODULE_KEY_MARKER : global_id,
+        global_id,
     };
 }
 
@@ -162,7 +163,7 @@ ModulePartKey module_part_key(const ModuleKey module, const FileKey file, const 
         part_name,
         stable_index,
         kind,
-        global_id == 0 ? QUERY_MODULE_PART_KEY_MARKER : global_id,
+        global_id,
     };
 }
 
@@ -183,7 +184,7 @@ DefKey def_key(const ModuleKey module, const DefNamespace name_space, const DefK
         name_space,
         kind,
         disambiguator,
-        global_id == 0 ? QUERY_DEF_KEY_MARKER : global_id,
+        global_id,
     };
 }
 
@@ -200,7 +201,7 @@ MemberKey member_key(
         member_name,
         kind,
         ordinal,
-        global_id == 0 ? QUERY_MEMBER_KEY_MARKER : global_id,
+        global_id,
     };
 }
 
@@ -213,7 +214,7 @@ BodyKey body_key(const DefKey owner, const BodySlotKind slot, const base::u32 or
         owner,
         slot,
         ordinal,
-        global_id == 0 ? QUERY_BODY_KEY_MARKER : global_id,
+        global_id,
     };
 }
 
@@ -226,7 +227,7 @@ GenericParamKey generic_param_key(const DefKey owner, const base::u32 index, con
         owner,
         index,
         kind,
-        global_id == 0 ? QUERY_GENERIC_PARAM_KEY_MARKER : global_id,
+        global_id,
     };
 }
 
@@ -239,7 +240,32 @@ QueryKey query_key(const QueryKind kind, const StableFingerprint128 payload, con
         kind,
         schema,
         payload,
-        global_id == 0 ? QUERY_QUERY_KEY_MARKER : global_id,
+        global_id,
+    };
+}
+
+ModuleKey module_key_from_stable_id(const StableModuleId stable_module) noexcept
+{
+    const PackageKey package = package_key(std::span<const std::string_view>{});
+    return ModuleKey{
+        package,
+        stable_module.path,
+        stable_module.part_count,
+        ModuleKind::source,
+        stable_module.global_id,
+    };
+}
+
+DefKey def_key_from_stable_id(const StableDefId stable_id, const DefNamespace name_space, const DefKind kind) noexcept
+{
+    return DefKey{
+        module_key_from_stable_id(stable_id.module),
+        stable_id.name,
+        QUERY_DEF_KEY_STABLE_ID_PATH_COMPONENT_COUNT,
+        name_space,
+        kind,
+        stable_id.disambiguator,
+        stable_id.global_id,
     };
 }
 

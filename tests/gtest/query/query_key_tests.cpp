@@ -1,4 +1,5 @@
 #include <aurex/query/generic_instance_key.hpp>
+#include <aurex/query/item_signature_query.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/query/stable_identity.hpp>
 
@@ -30,6 +31,8 @@ constexpr base::u64 QUERY_TEST_LEGACY_FIELD_GLOBAL_ID = 0x1f522697ad2bd81cULL;
 constexpr base::u64 QUERY_TEST_LEGACY_INCREMENTAL_GLOBAL_ID = 0x55dd4e219a7521c0ULL;
 constexpr base::u32 QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_BYTES = 8;
 constexpr base::u32 QUERY_TEST_LEGACY_DOTTED_MODULE_PATH_BYTES = 28;
+constexpr std::string_view QUERY_TEST_PROVIDER_SIGNATURE = "signature:i32";
+constexpr std::string_view QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE = "signature:mismatched-provider-output";
 
 [[nodiscard]] query::PackageKey test_package()
 {
@@ -397,6 +400,57 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     const query::QueryRecord invalid_cached_record;
     EXPECT_EQ(query::query_record_change_status(&invalid_cached_record, *item_record),
         query::QueryRecordChangeStatus::malformed);
+}
+
+TEST(QueryUnit, ItemSignatureProviderBuildsRecordFromStableDefinition)
+{
+    const std::array<std::string_view, 2> stable_module_path{"regex", "vm"};
+    const query::StableModuleId stable_module = query::stable_module_id(stable_module_path);
+    const query::StableDefId stable_function =
+        query::stable_definition_id(stable_module, query::StableSymbolKind::function, "compute");
+    const query::DefKey function_def =
+        query::def_key_from_stable_id(stable_function, query::DefNamespace::value, query::DefKind::function);
+    const query::IncrementalKey signature =
+        query::stable_incremental_key(stable_function, QUERY_TEST_PROVIDER_SIGNATURE);
+
+    ASSERT_TRUE(query::is_valid(function_def));
+    EXPECT_EQ(function_def.module.global_id, stable_module.global_id);
+    EXPECT_EQ(function_def.module.path, stable_module.path);
+    EXPECT_EQ(function_def.module.path_component_count, stable_module.part_count);
+    EXPECT_EQ(function_def.path, stable_function.name);
+    EXPECT_EQ(function_def.disambiguator, stable_function.disambiguator);
+    EXPECT_EQ(function_def.global_id, stable_function.global_id);
+
+    const query::ItemSignatureProviderInput input{
+        function_def,
+        signature,
+    };
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::ItemSignatureProviderOutput> output = query::provide_item_signature_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    EXPECT_TRUE(output->dependencies.empty());
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::item_signature);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(function_def));
+    EXPECT_EQ(output->result, query::query_result_fingerprint(signature));
+    EXPECT_EQ(output->record.result, output->result);
+
+    EXPECT_FALSE(query::is_valid(query::ItemSignatureProviderInput{}));
+    EXPECT_FALSE(
+        query::provide_item_signature_query(query::ItemSignatureProviderInput{query::DefKey{}, signature}).has_value());
+    EXPECT_FALSE(
+        query::provide_item_signature_query(query::ItemSignatureProviderInput{function_def, query::IncrementalKey{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::ItemSignatureProviderOutput{}));
+
+    query::ItemSignatureProviderOutput invalid_dependency_output = *output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::ItemSignatureProviderOutput mismatched_result_output = *output;
+    mismatched_result_output.result = query::query_result_fingerprint(
+        query::stable_incremental_key(stable_function, QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
+    EXPECT_FALSE(query::is_valid(mismatched_result_output));
 }
 
 TEST(QueryUnit, CanonicalTypeKeyIsStructuralAndHandleFree)

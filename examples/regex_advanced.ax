@@ -21,6 +21,7 @@ const CASE_UNICODE_CLUSTER: i32 = 1500;
 const CASE_SET_ALL_SPANS: i32 = 1600;
 const CASE_SET_LITERAL_TRIE: i32 = 1700;
 const CASE_INDUSTRIAL_API: i32 = 1800;
+const CASE_INPUT_CURSOR: i32 = 1900;
 
 const BUFFER_CAPACITY: usize = 256usize;
 const DATABASE_CAPACITY: usize = 4096usize;
@@ -133,6 +134,21 @@ fn bytes_constant_callback(data: *const u8, len: usize, captures: &bytes.Capture
         bytes.RegexStatus.ok
     };
     return bytes.ReplaceResult {
+        status: status,
+        written: copied.written,
+        required: copied.required,
+        replacements: 1usize,
+    };
+}
+
+fn constant_callback(input: str, captures: &regex.Captures, out: *mut u8, out_capacity: usize) -> regex.ReplaceResult {
+    let copied: CopyState = copy_text("C", out, out_capacity, 0usize, 0usize);
+    let status: regex.RegexStatus = if copied.required > out_capacity {
+        regex.RegexStatus.buffer_too_small
+    } else {
+        regex.RegexStatus.ok
+    };
+    return regex.ReplaceResult {
         status: status,
         written: copied.written,
         required: copied.required,
@@ -628,6 +644,149 @@ fn require_splitn() -> i32 {
     }
     let done: regex.SplitPart = regex.split_next(&mut iter);
     return ensure(CASE_SPLIT + 3 + regex.status_code(done.status), done.status == regex.RegexStatus.no_match);
+}
+
+fn require_input_cursor_boundaries() -> i32 {
+    var zero_text: regex.Regex = regex.compile("a*");
+    defer regex.destroy(&mut zero_text);
+    if !zero_text.valid() {
+        return CASE_INPUT_CURSOR + 1 + regex.status_code(zero_text.status);
+    }
+    var text_iter: regex.FindIter = regex.find_iter(&zero_text, "é");
+    let text_first: regex.MatchResult = regex.find_next(&mut text_iter);
+    if !text_first.ok() || text_first.start != 0usize || text_first.end != 0usize {
+        return CASE_INPUT_CURSOR + 2 + regex.status_code(text_first.status);
+    }
+    let text_second: regex.MatchResult = regex.find_next(&mut text_iter);
+    if !text_second.ok() || text_second.start != 2usize || text_second.end != 2usize {
+        return CASE_INPUT_CURSOR + 3 + regex.status_code(text_second.status);
+    }
+    let text_done: regex.MatchResult = regex.find_next(&mut text_iter);
+    if text_done.status != regex.RegexStatus.no_match {
+        return CASE_INPUT_CURSOR + 4 + regex.status_code(text_done.status);
+    }
+
+    var text_buffer: [256]u8 = [0u8; 256];
+    let text_replaced: regex.ReplaceResult = regex.replace_all(
+        &zero_text,
+        "é",
+        "X",
+        buffer_ptr(&mut text_buffer),
+        BUFFER_CAPACITY
+    );
+    if !text_replaced.ok() || text_replaced.replacements != 2usize ||
+        !same_text(buffer_text(&mut text_buffer, text_replaced.written), "XéX") {
+        return CASE_INPUT_CURSOR + 5 + regex.status_code(text_replaced.status);
+    }
+
+    var callback_buffer: [256]u8 = [0u8; 256];
+    let callback_replaced: regex.ReplaceResult = regex.replace_all_with(
+        &zero_text,
+        "é",
+        constant_callback,
+        buffer_ptr(&mut callback_buffer),
+        BUFFER_CAPACITY
+    );
+    if !callback_replaced.ok() || callback_replaced.replacements != 2usize ||
+        !same_text(buffer_text(&mut callback_buffer, callback_replaced.written), "CéC") {
+        return CASE_INPUT_CURSOR + 6 + regex.status_code(callback_replaced.status);
+    }
+
+    var text_split: regex.SplitIter = regex.split_iter(&zero_text, "é");
+    let text_split_first: regex.SplitPart = regex.split_next(&mut text_split);
+    if !text_split_first.ok() || text_split_first.start != 0usize || text_split_first.end != 0usize {
+        return CASE_INPUT_CURSOR + 7 + regex.status_code(text_split_first.status);
+    }
+    let text_split_middle: regex.SplitPart = regex.split_next(&mut text_split);
+    if !text_split_middle.ok() || !same_text("é"[text_split_middle.start:text_split_middle.end], "é") {
+        return CASE_INPUT_CURSOR + 8 + regex.status_code(text_split_middle.status);
+    }
+    let text_split_tail: regex.SplitPart = regex.split_next(&mut text_split);
+    if !text_split_tail.ok() || text_split_tail.start != 2usize || text_split_tail.end != 2usize {
+        return CASE_INPUT_CURSOR + 9 + regex.status_code(text_split_tail.status);
+    }
+    let text_split_done: regex.SplitPart = regex.split_next(&mut text_split);
+    if text_split_done.status != regex.RegexStatus.no_match {
+        return CASE_INPUT_CURSOR + 10 + regex.status_code(text_split_done.status);
+    }
+
+    let bytes_value: [2]u8 = [0xc3u8, 0xa9u8];
+    let bytes_view: []const u8 = bytes_value[:];
+    var zero_bytes: bytes.Regex = bytes.compile("a*");
+    defer bytes.destroy(&mut zero_bytes);
+    if !zero_bytes.valid() {
+        return CASE_INPUT_CURSOR + 11 + bytes.status_code(zero_bytes.status);
+    }
+    var bytes_iter: bytes.FindIter = bytes.find_iter(&zero_bytes, bytes_view);
+    let bytes_first: bytes.MatchResult = bytes.find_next(&mut bytes_iter);
+    if !bytes_first.ok() || bytes_first.start != 0usize || bytes_first.end != 0usize {
+        return CASE_INPUT_CURSOR + 12 + bytes.status_code(bytes_first.status);
+    }
+    let bytes_second: bytes.MatchResult = bytes.find_next(&mut bytes_iter);
+    if !bytes_second.ok() || bytes_second.start != 1usize || bytes_second.end != 1usize {
+        return CASE_INPUT_CURSOR + 13 + bytes.status_code(bytes_second.status);
+    }
+    let bytes_third: bytes.MatchResult = bytes.find_next(&mut bytes_iter);
+    if !bytes_third.ok() || bytes_third.start != 2usize || bytes_third.end != 2usize {
+        return CASE_INPUT_CURSOR + 14 + bytes.status_code(bytes_third.status);
+    }
+    let bytes_done: bytes.MatchResult = bytes.find_next(&mut bytes_iter);
+    if bytes_done.status != bytes.RegexStatus.no_match {
+        return CASE_INPUT_CURSOR + 15 + bytes.status_code(bytes_done.status);
+    }
+
+    var bytes_split: bytes.SplitIter = bytes.split_iter(&zero_bytes, bytes_view);
+    let bytes_split_first: bytes.SplitPart = bytes.split_next(&mut bytes_split);
+    if !bytes_split_first.ok() || bytes_split_first.start != 0usize || bytes_split_first.end != 0usize {
+        return CASE_INPUT_CURSOR + 16 + bytes.status_code(bytes_split_first.status);
+    }
+    let bytes_split_second: bytes.SplitPart = bytes.split_next(&mut bytes_split);
+    if !bytes_split_second.ok() || bytes_split_second.start != 0usize || bytes_split_second.end != 1usize {
+        return CASE_INPUT_CURSOR + 17 + bytes.status_code(bytes_split_second.status);
+    }
+    let bytes_split_third: bytes.SplitPart = bytes.split_next(&mut bytes_split);
+    if !bytes_split_third.ok() || bytes_split_third.start != 1usize || bytes_split_third.end != 2usize {
+        return CASE_INPUT_CURSOR + 18 + bytes.status_code(bytes_split_third.status);
+    }
+    let bytes_split_tail: bytes.SplitPart = bytes.split_next(&mut bytes_split);
+    if !bytes_split_tail.ok() || bytes_split_tail.start != 2usize || bytes_split_tail.end != 2usize {
+        return CASE_INPUT_CURSOR + 19 + bytes.status_code(bytes_split_tail.status);
+    }
+    let bytes_split_done: bytes.SplitPart = bytes.split_next(&mut bytes_split);
+    if bytes_split_done.status != bytes.RegexStatus.no_match {
+        return CASE_INPUT_CURSOR + 20 + bytes.status_code(bytes_split_done.status);
+    }
+
+    var bytes_buffer: [256]u8 = [0u8; 256];
+    let bytes_replaced: bytes.ReplaceResult = bytes.replace_all(
+        &zero_bytes,
+        bytes_view,
+        "X",
+        buffer_ptr(&mut bytes_buffer),
+        BUFFER_CAPACITY
+    );
+    if !bytes_replaced.ok() || bytes_replaced.replacements != 3usize || bytes_replaced.written != 5usize ||
+        bytes_buffer[0usize] != 0x58u8 || bytes_buffer[1usize] != 0xc3u8 || bytes_buffer[2usize] != 0x58u8 ||
+        bytes_buffer[3usize] != 0xa9u8 || bytes_buffer[4usize] != 0x58u8 {
+        return CASE_INPUT_CURSOR + 21 + bytes.status_code(bytes_replaced.status);
+    }
+
+    var bytes_callback_buffer: [256]u8 = [0u8; 256];
+    let bytes_callback: bytes.ReplaceResult = bytes.replace_all_with(
+        &zero_bytes,
+        bytes_view,
+        bytes_constant_callback,
+        buffer_ptr(&mut bytes_callback_buffer),
+        BUFFER_CAPACITY
+    );
+    if !bytes_callback.ok() || bytes_callback.replacements != 3usize || bytes_callback.written != 8usize ||
+        bytes_callback_buffer[0usize] != 0x43u8 || bytes_callback_buffer[1usize] != 0x42u8 ||
+        bytes_callback_buffer[2usize] != 0xc3u8 || bytes_callback_buffer[3usize] != 0x43u8 ||
+        bytes_callback_buffer[4usize] != 0x42u8 || bytes_callback_buffer[5usize] != 0xa9u8 ||
+        bytes_callback_buffer[6usize] != 0x43u8 || bytes_callback_buffer[7usize] != 0x42u8 {
+        return CASE_INPUT_CURSOR + 22 + bytes.status_code(bytes_callback.status);
+    }
+    return 0;
 }
 
 fn require_streaming() -> i32 {
@@ -1225,6 +1384,10 @@ fn main() -> i32 {
     let split_code: i32 = require_splitn();
     if split_code != 0 {
         return split_code;
+    }
+    let input_cursor_code: i32 = require_input_cursor_boundaries();
+    if input_cursor_code != 0 {
+        return input_cursor_code;
     }
     let stream_code: i32 = require_streaming();
     if stream_code != 0 {

@@ -9,8 +9,27 @@ pub fn alloc_zeroed_bytes(count: usize, element_size: usize) -> *mut u8 {
     return unsafe { ptrcast[*mut u8](calloc(count, element_size)) };
 }
 
+// element_size stays explicit until generic sizeof[T] is lowered past checked IR.
+pub fn alloc_zeroed[T](count: usize, element_size: usize) -> *mut T where T: Sized {
+    return unsafe { ptrcast[*mut T](alloc_zeroed_bytes(count, element_size)) };
+}
+
 pub fn free_bytes(ptr: *mut u8) -> void {
     if ptr != null {
         free(unsafe { ptrcast[*mut void](ptr) });
+    }
+}
+
+pub fn free_typed[T](ptr: *mut T) -> void where T: Sized {
+    free_bytes(unsafe { ptrcast[*mut u8](ptr) });
+}
+
+pub fn copy_items[T](dst: *mut T, src: *const T, count: usize) -> void where T: Sized {
+    var index: usize = 0usize;
+    while index < count {
+        unsafe {
+            dst[index] = src[index];
+        }
+        index += 1usize;
     }
 }

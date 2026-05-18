@@ -1,8 +1,17 @@
 module regex.ops.split;
 
 import regex.core.types as t;
-import regex.vm.engine as engine;
-import unicode.ucd as unicode;
+import regex.ops.input as input_ops;
+
+struct SplitStep {
+    part: t.SplitPart;
+    next_start: usize;
+    search_start: usize;
+    remaining_parts: usize;
+    pending_tail: bool;
+    finished: bool;
+    status: t.RegexStatus;
+}
 
 pub fn split_iter(compiled: &t.Regex, input: str) -> t.SplitIter {
     return splitn_iter(compiled, input, t.CAPTURE_MISSING);
@@ -14,6 +23,7 @@ pub fn splitn_iter(compiled: &t.Regex, input: str, limit: usize) -> t.SplitIter 
         compiled: compiled_ptr,
         input: input,
         next_start: 0usize,
+        search_start: 0usize,
         remaining_parts: limit,
         pending_tail: true,
         finished: false,
@@ -22,64 +32,22 @@ pub fn splitn_iter(compiled: &t.Regex, input: str, limit: usize) -> t.SplitIter 
 }
 
 pub fn split_next(iter: &mut t.SplitIter) -> t.SplitPart {
-    if iter.finished {
-        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
-    }
-    let compiled: *const t.Regex = iter.compiled;
-    if compiled == null {
-        iter.finished = true;
-        iter.status = t.RegexStatus.unsupported;
-        return t.split_part(false, 0usize, 0usize, t.RegexStatus.unsupported);
-    }
-    let input_len: usize = strblen(iter.input);
-    if !iter.pending_tail {
-        iter.finished = true;
-        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
-    }
-    if iter.remaining_parts == 0usize {
-        iter.pending_tail = false;
-        iter.finished = true;
-        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
-    }
-    if iter.remaining_parts == 1usize {
-        let tail_limited: t.SplitPart = t.split_part(true, iter.next_start, input_len, t.RegexStatus.ok);
-        iter.remaining_parts = 0usize;
-        iter.pending_tail = false;
-        return tail_limited;
-    }
-    if iter.next_start > input_len {
-        iter.pending_tail = false;
-        iter.finished = true;
-        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
-    }
-    let found: t.MatchResult = unsafe { engine.search_compiled_from(&*compiled, iter.input, iter.next_start) };
-    iter.status = found.status;
-    if found.status != t.RegexStatus.ok {
-        if found.status == t.RegexStatus.no_match {
-            let tail: t.SplitPart = t.split_part(true, iter.next_start, input_len, t.RegexStatus.ok);
-            if iter.remaining_parts != t.CAPTURE_MISSING {
-                iter.remaining_parts -= 1usize;
-            }
-            iter.pending_tail = false;
-            return tail;
-        }
-        iter.finished = true;
-        return t.split_part(false, 0usize, 0usize, found.status);
-    }
-    if !found.matched {
-        let tail_part: t.SplitPart = t.split_part(true, iter.next_start, input_len, t.RegexStatus.ok);
-        if iter.remaining_parts != t.CAPTURE_MISSING {
-            iter.remaining_parts -= 1usize;
-        }
-        iter.pending_tail = false;
-        return tail_part;
-    }
-    let part: t.SplitPart = t.split_part(true, iter.next_start, found.start, t.RegexStatus.ok);
-    if iter.remaining_parts != t.CAPTURE_MISSING {
-        iter.remaining_parts -= 1usize;
-    }
-    iter.next_start = next_split_start(iter.input, found.start, found.end);
-    return part;
+    let step: SplitStep = split_step(
+        iter.compiled,
+        input_ops.text(iter.input),
+        iter.next_start,
+        iter.search_start,
+        iter.remaining_parts,
+        iter.pending_tail,
+        iter.finished
+    );
+    iter.next_start = step.next_start;
+    iter.search_start = step.search_start;
+    iter.remaining_parts = step.remaining_parts;
+    iter.pending_tail = step.pending_tail;
+    iter.finished = step.finished;
+    iter.status = step.status;
+    return step.part;
 }
 
 pub fn bytes_split_iter(compiled: &t.Regex, input: []const u8) -> t.BytesSplitIter {
@@ -93,6 +61,7 @@ pub fn bytes_splitn_iter(compiled: &t.Regex, input: []const u8, limit: usize) ->
         data: sliceptr(input),
         len: slicelen(input),
         next_start: 0usize,
+        search_start: 0usize,
         remaining_parts: limit,
         pending_tail: true,
         finished: false,
@@ -101,84 +70,166 @@ pub fn bytes_splitn_iter(compiled: &t.Regex, input: []const u8, limit: usize) ->
 }
 
 pub fn bytes_split_next(iter: &mut t.BytesSplitIter) -> t.SplitPart {
-    if iter.finished {
-        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
+    let step: SplitStep = split_step(
+        iter.compiled,
+        input_ops.bytes_raw(iter.data, iter.len),
+        iter.next_start,
+        iter.search_start,
+        iter.remaining_parts,
+        iter.pending_tail,
+        iter.finished
+    );
+    iter.next_start = step.next_start;
+    iter.search_start = step.search_start;
+    iter.remaining_parts = step.remaining_parts;
+    iter.pending_tail = step.pending_tail;
+    iter.finished = step.finished;
+    iter.status = step.status;
+    return step.part;
+}
+
+fn split_step(
+    compiled: *const t.Regex,
+    input: input_ops.RegexInput,
+    next_start: usize,
+    search_start: usize,
+    remaining_parts: usize,
+    pending_tail: bool,
+    finished: bool
+) -> SplitStep {
+    if finished {
+        return split_step_result(
+            t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match),
+            next_start,
+            search_start,
+            remaining_parts,
+            pending_tail,
+            true,
+            t.RegexStatus.no_match
+        );
     }
-    let compiled: *const t.Regex = iter.compiled;
     if compiled == null {
-        iter.finished = true;
-        iter.status = t.RegexStatus.unsupported;
-        return t.split_part(false, 0usize, 0usize, t.RegexStatus.unsupported);
+        return split_step_result(
+            t.split_part(false, 0usize, 0usize, t.RegexStatus.unsupported),
+            next_start,
+            search_start,
+            remaining_parts,
+            pending_tail,
+            true,
+            t.RegexStatus.unsupported
+        );
     }
-    if !iter.pending_tail {
-        iter.finished = true;
-        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
+    if !pending_tail {
+        return split_step_result(
+            t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match),
+            next_start,
+            search_start,
+            remaining_parts,
+            pending_tail,
+            true,
+            t.RegexStatus.no_match
+        );
     }
-    if iter.remaining_parts == 0usize {
-        iter.pending_tail = false;
-        iter.finished = true;
-        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
+    if remaining_parts == 0usize {
+        return split_step_result(
+            t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match),
+            next_start,
+            search_start,
+            remaining_parts,
+            false,
+            true,
+            t.RegexStatus.ok
+        );
     }
-    if iter.remaining_parts == 1usize {
-        let tail_limited: t.SplitPart = t.split_part(true, iter.next_start, iter.len, t.RegexStatus.ok);
-        iter.remaining_parts = 0usize;
-        iter.pending_tail = false;
-        return tail_limited;
+    if remaining_parts == 1usize {
+        return split_step_result(
+            t.split_part(true, next_start, input.len, t.RegexStatus.ok),
+            next_start,
+            search_start,
+            0usize,
+            false,
+            false,
+            t.RegexStatus.ok
+        );
     }
-    if iter.next_start > iter.len {
-        iter.pending_tail = false;
-        iter.finished = true;
-        return t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match);
+    if next_start > input.len {
+        return split_step_result(
+            t.split_part(false, 0usize, 0usize, t.RegexStatus.no_match),
+            next_start,
+            search_start,
+            remaining_parts,
+            false,
+            true,
+            t.RegexStatus.no_match
+        );
     }
-    let found: t.MatchResult = unsafe {
-        engine.search_bytes_raw_compiled_from(&*compiled, iter.data, iter.len, iter.next_start)
-    };
-    iter.status = found.status;
+    if search_start > input.len {
+        return split_tail_step(input, next_start, search_start, remaining_parts);
+    }
+    let found: t.MatchResult = unsafe { input.search_compiled(&*compiled, search_start) };
     if found.status != t.RegexStatus.ok {
         if found.status == t.RegexStatus.no_match {
-            let tail: t.SplitPart = t.split_part(true, iter.next_start, iter.len, t.RegexStatus.ok);
-            if iter.remaining_parts != t.CAPTURE_MISSING {
-                iter.remaining_parts -= 1usize;
-            }
-            iter.pending_tail = false;
-            return tail;
+            return split_tail_step(input, next_start, search_start, remaining_parts);
         }
-        iter.finished = true;
-        return t.split_part(false, 0usize, 0usize, found.status);
+        return split_step_result(
+            t.split_part(false, 0usize, 0usize, found.status),
+            next_start,
+            search_start,
+            remaining_parts,
+            pending_tail,
+            true,
+            found.status
+        );
     }
     if !found.matched {
-        let tail_part: t.SplitPart = t.split_part(true, iter.next_start, iter.len, t.RegexStatus.ok);
-        if iter.remaining_parts != t.CAPTURE_MISSING {
-            iter.remaining_parts -= 1usize;
-        }
-        iter.pending_tail = false;
-        return tail_part;
+        return split_tail_step(input, next_start, search_start, remaining_parts);
     }
-    let part: t.SplitPart = t.split_part(true, iter.next_start, found.start, t.RegexStatus.ok);
-    if iter.remaining_parts != t.CAPTURE_MISSING {
-        iter.remaining_parts -= 1usize;
-    }
-    iter.next_start = next_bytes_split_start(iter.len, found.start, found.end);
-    return part;
+    return split_step_result(
+        t.split_part(true, next_start, found.start, t.RegexStatus.ok),
+        found.end,
+        input.next_match_start(found.start, found.end),
+        decrement_remaining_parts(remaining_parts),
+        true,
+        false,
+        t.RegexStatus.ok
+    );
 }
 
-fn next_split_start(input: str, start: usize, end: usize) -> usize {
-    if end > start {
-        return end;
-    }
-    let input_len: usize = strblen(input);
-    if end >= input_len {
-        return input_len + 1usize;
-    }
-    return unicode.next_boundary(input, end);
+fn split_tail_step(input: input_ops.RegexInput, next_start: usize, search_start: usize, remaining_parts: usize) -> SplitStep {
+    return split_step_result(
+        t.split_part(true, next_start, input.len, t.RegexStatus.ok),
+        next_start,
+        search_start,
+        decrement_remaining_parts(remaining_parts),
+        false,
+        false,
+        t.RegexStatus.ok
+    );
 }
 
-fn next_bytes_split_start(input_len: usize, start: usize, end: usize) -> usize {
-    if end > start {
-        return end;
+fn split_step_result(
+    part: t.SplitPart,
+    next_start: usize,
+    search_start: usize,
+    remaining_parts: usize,
+    pending_tail: bool,
+    finished: bool,
+    status: t.RegexStatus
+) -> SplitStep {
+    return SplitStep {
+        part: part,
+        next_start: next_start,
+        search_start: search_start,
+        remaining_parts: remaining_parts,
+        pending_tail: pending_tail,
+        finished: finished,
+        status: status,
+    };
+}
+
+fn decrement_remaining_parts(remaining_parts: usize) -> usize {
+    if remaining_parts == t.CAPTURE_MISSING {
+        return remaining_parts;
     }
-    if end >= input_len {
-        return input_len + 1usize;
-    }
-    return end + 1usize;
+    return remaining_parts - 1usize;
 }

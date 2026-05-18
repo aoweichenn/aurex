@@ -27,6 +27,8 @@ pub type DatabaseResult = t.DatabaseResult;
 pub type BufferResult = t.BufferResult;
 pub type RegexChunk = t.RegexChunk;
 
+type BytesMatchCheck = fn(&t.Regex, []const u8) -> t.MatchResult;
+
 pub fn compile(pattern: str) -> t.Regex {
     return api.compile_bytes(pattern);
 }
@@ -424,15 +426,16 @@ pub fn status_code(status: t.RegexStatus) -> i32 {
 }
 
 pub fn search(pattern: str, input: []const u8) -> bool {
-    var compiled: t.Regex = compile(pattern);
-    defer destroy(&mut compiled);
-    let result: t.MatchResult = search_compiled(&compiled, input);
-    return result.status == t.RegexStatus.ok && result.matched;
+    return match_once(pattern, input, search_compiled);
 }
 
 pub fn fullmatch(pattern: str, input: []const u8) -> bool {
+    return match_once(pattern, input, fullmatch_compiled);
+}
+
+fn match_once(pattern: str, input: []const u8, check: BytesMatchCheck) -> bool {
     var compiled: t.Regex = compile(pattern);
     defer destroy(&mut compiled);
-    let result: t.MatchResult = fullmatch_compiled(&compiled, input);
+    let result: t.MatchResult = check(&compiled, input);
     return result.status == t.RegexStatus.ok && result.matched;
 }

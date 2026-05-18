@@ -739,13 +739,11 @@ fn matches_set_input(
     if compiled.pattern_count == 0usize {
         return t.set_matches_result(t.RegexStatus.no_match, false, 0usize, 0usize);
     }
-    let matched: *mut bool = unsafe {
-        ptrcast[*mut bool](alloc.alloc_zeroed_bytes(compiled.pattern_count, sizeof[bool]))
-    };
+    let matched: *mut bool = alloc.alloc_zeroed[bool](compiled.pattern_count, sizeof[bool]);
     if matched == null {
         return t.set_matches_result(t.RegexStatus.out_of_memory, false, 0usize, 0usize);
     }
-    defer alloc.free_bytes(unsafe { ptrcast[*mut u8](matched) });
+    defer alloc.free_typed[bool](matched);
 
     if set_has_literal_automaton(compiled) {
         var literal_matched_count: usize = 0usize;
@@ -835,11 +833,11 @@ fn scan_set_all_spans_input(compiled: &t.RegexSet, input: InputView, callback: t
     if set_has_literal_automaton(compiled) {
         return scan_literal_set_all_spans(compiled, input, callback);
     }
-    let emitted: *mut bool = alloc_bool_array(compiled.pattern_count);
+    let emitted: *mut bool = alloc.alloc_zeroed[bool](compiled.pattern_count, sizeof[bool]);
     if emitted == null {
         return t.set_matches_result(t.RegexStatus.out_of_memory, false, 0usize, 0usize);
     }
-    defer alloc.free_bytes(unsafe { ptrcast[*mut u8](emitted) });
+    defer alloc.free_typed[bool](emitted);
 
     var workspace: Workspace = create_workspace_with_limit(compiled.state_len, 2usize, compiled.options.max_workspace_states);
     defer destroy_workspace(&mut workspace);
@@ -3506,83 +3504,83 @@ fn create_workspace_with_limit(capacity: usize, slots: usize, max_workspace_stat
     if capacity > max_workspace_states {
         return empty_workspace(t.RegexStatus.workspace_too_large);
     }
-    let current: *mut usize = alloc_usize_array(capacity);
+    let current: *mut usize = alloc.alloc_zeroed[usize](capacity, sizeof[usize]);
     if current == null {
         return empty_workspace(t.RegexStatus.out_of_memory);
     }
-    let next: *mut usize = alloc_usize_array(capacity);
+    let next: *mut usize = alloc.alloc_zeroed[usize](capacity, sizeof[usize]);
     if next == null {
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](current) });
+        alloc.free_typed[usize](current);
         return empty_workspace(t.RegexStatus.out_of_memory);
     }
-    let marks: *mut usize = alloc_usize_array(capacity);
+    let marks: *mut usize = alloc.alloc_zeroed[usize](capacity, sizeof[usize]);
     if marks == null {
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](current) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](next) });
+        alloc.free_typed[usize](current);
+        alloc.free_typed[usize](next);
         return empty_workspace(t.RegexStatus.out_of_memory);
     }
-    let stack: *mut usize = alloc_usize_array(capacity);
+    let stack: *mut usize = alloc.alloc_zeroed[usize](capacity, sizeof[usize]);
     if stack == null {
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](current) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](next) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](marks) });
+        alloc.free_typed[usize](current);
+        alloc.free_typed[usize](next);
+        alloc.free_typed[usize](marks);
         return empty_workspace(t.RegexStatus.out_of_memory);
     }
-    let start_states: *mut usize = alloc_usize_array(capacity);
+    let start_states: *mut usize = alloc.alloc_zeroed[usize](capacity, sizeof[usize]);
     if start_states == null {
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](current) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](next) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](marks) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](stack) });
+        alloc.free_typed[usize](current);
+        alloc.free_typed[usize](next);
+        alloc.free_typed[usize](marks);
+        alloc.free_typed[usize](stack);
         return empty_workspace(t.RegexStatus.out_of_memory);
     }
-    let start_bytes: *mut bool = alloc_bool_array(limits.START_BYTE_COUNT);
+    let start_bytes: *mut bool = alloc.alloc_zeroed[bool](limits.START_BYTE_COUNT, sizeof[bool]);
     if start_bytes == null {
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](current) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](next) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](marks) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](stack) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](start_states) });
+        alloc.free_typed[usize](current);
+        alloc.free_typed[usize](next);
+        alloc.free_typed[usize](marks);
+        alloc.free_typed[usize](stack);
+        alloc.free_typed[usize](start_states);
         return empty_workspace(t.RegexStatus.out_of_memory);
     }
     let row_count: usize = capacity * slots;
-    let current_caps: *mut usize = alloc_usize_array(row_count);
+    let current_caps: *mut usize = alloc.alloc_zeroed[usize](row_count, sizeof[usize]);
     if current_caps == null {
         return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
     }
-    let next_caps: *mut usize = alloc_usize_array(row_count);
+    let next_caps: *mut usize = alloc.alloc_zeroed[usize](row_count, sizeof[usize]);
     if next_caps == null {
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](current_caps) });
+        alloc.free_typed[usize](current_caps);
         return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
     }
-    let stack_caps: *mut usize = alloc_usize_array(row_count);
+    let stack_caps: *mut usize = alloc.alloc_zeroed[usize](row_count, sizeof[usize]);
     if stack_caps == null {
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](current_caps) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](next_caps) });
+        alloc.free_typed[usize](current_caps);
+        alloc.free_typed[usize](next_caps);
         return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
     }
-    let best_caps: *mut usize = alloc_usize_array(slots);
+    let best_caps: *mut usize = alloc.alloc_zeroed[usize](slots, sizeof[usize]);
     if best_caps == null {
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](current_caps) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](next_caps) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](stack_caps) });
+        alloc.free_typed[usize](current_caps);
+        alloc.free_typed[usize](next_caps);
+        alloc.free_typed[usize](stack_caps);
         return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
     }
-    let seed_caps: *mut usize = alloc_usize_array(slots);
+    let seed_caps: *mut usize = alloc.alloc_zeroed[usize](slots, sizeof[usize]);
     if seed_caps == null {
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](current_caps) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](next_caps) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](stack_caps) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](best_caps) });
+        alloc.free_typed[usize](current_caps);
+        alloc.free_typed[usize](next_caps);
+        alloc.free_typed[usize](stack_caps);
+        alloc.free_typed[usize](best_caps);
         return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
     }
-    let class_stack: *mut bool = alloc_bool_array(limits.MAX_RANGE_CAPACITY);
+    let class_stack: *mut bool = alloc.alloc_zeroed[bool](limits.MAX_RANGE_CAPACITY, sizeof[bool]);
     if class_stack == null {
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](current_caps) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](next_caps) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](stack_caps) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](best_caps) });
-        alloc.free_bytes(unsafe { ptrcast[*mut u8](seed_caps) });
+        alloc.free_typed[usize](current_caps);
+        alloc.free_typed[usize](next_caps);
+        alloc.free_typed[usize](stack_caps);
+        alloc.free_typed[usize](best_caps);
+        alloc.free_typed[usize](seed_caps);
         return free_base_workspace(current, next, marks, stack, start_states, start_bytes, t.RegexStatus.out_of_memory);
     }
     return Workspace {
@@ -3607,18 +3605,18 @@ fn create_workspace_with_limit(capacity: usize, slots: usize, max_workspace_stat
 }
 
 fn destroy_workspace(workspace: &mut Workspace) -> void {
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.current) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.next) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.marks) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.stack) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.start_states) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.start_bytes) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.current_caps) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.next_caps) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.stack_caps) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.best_caps) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.seed_caps) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](workspace.class_stack) });
+    alloc.free_typed[usize](workspace.current);
+    alloc.free_typed[usize](workspace.next);
+    alloc.free_typed[usize](workspace.marks);
+    alloc.free_typed[usize](workspace.stack);
+    alloc.free_typed[usize](workspace.start_states);
+    alloc.free_typed[bool](workspace.start_bytes);
+    alloc.free_typed[usize](workspace.current_caps);
+    alloc.free_typed[usize](workspace.next_caps);
+    alloc.free_typed[usize](workspace.stack_caps);
+    alloc.free_typed[usize](workspace.best_caps);
+    alloc.free_typed[usize](workspace.seed_caps);
+    alloc.free_typed[bool](workspace.class_stack);
     workspace.current = null;
     workspace.next = null;
     workspace.marks = null;
@@ -3647,12 +3645,12 @@ fn free_base_workspace(
     start_bytes: *mut bool,
     status: t.RegexStatus
 ) -> Workspace {
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](current) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](next) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](marks) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](stack) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](start_states) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](start_bytes) });
+    alloc.free_typed[usize](current);
+    alloc.free_typed[usize](next);
+    alloc.free_typed[usize](marks);
+    alloc.free_typed[usize](stack);
+    alloc.free_typed[usize](start_states);
+    alloc.free_typed[bool](start_bytes);
     return empty_workspace(status);
 }
 
@@ -3738,18 +3736,6 @@ fn write_set_matches(matched: *mut bool, pattern_count: usize, out_pattern_ids: 
     return written;
 }
 
-fn alloc_usize_array(count: usize) -> *mut usize {
-    return unsafe {
-        ptrcast[*mut usize](alloc.alloc_zeroed_bytes(count, sizeof[usize]))
-    };
-}
-
-fn alloc_bool_array(count: usize) -> *mut bool {
-    return unsafe {
-        ptrcast[*mut bool](alloc.alloc_zeroed_bytes(count, sizeof[bool]))
-    };
-}
-
 fn init_capture_seed(row: *mut usize, slot_count: usize, start: usize) -> void {
     init_capture_seed_with_search_start(row, slot_count, start, start);
 }
@@ -3775,13 +3761,7 @@ fn init_capture_seed_with_search_start(row: *mut usize, slot_count: usize, start
 }
 
 fn copy_capture_row(dst: *mut usize, src: *mut usize, slot_count: usize) -> void {
-    var slot: usize = 0usize;
-    while slot < slot_count {
-        unsafe {
-            dst[slot] = src[slot];
-        }
-        slot += 1usize;
-    }
+    alloc.copy_items[usize](dst, src, slot_count);
 }
 
 fn capture_row_ptr(base: *mut usize, row: usize, slot_count: usize) -> *mut usize {
@@ -3863,7 +3843,7 @@ fn flatten_text_chunks(chunks: []const t.TextChunk) -> FlatInput {
 
 fn flatten_text_chunks_with_len(chunks: []const t.TextChunk, total: usize) -> FlatInput {
     let allocation_len: usize = if total == 0usize { 1usize } else { total };
-    let data: *mut u8 = alloc.alloc_zeroed_bytes(allocation_len, sizeof[u8]);
+    let data: *mut u8 = alloc.alloc_zeroed[u8](allocation_len, sizeof[u8]);
     if data == null {
         return FlatInput { data: null, len: 0usize, status: t.RegexStatus.out_of_memory };
     }
@@ -3894,7 +3874,7 @@ fn flatten_byte_chunks(chunks: []const t.RegexChunk) -> FlatInput {
         index += 1usize;
     }
     let allocation_len: usize = if total == 0usize { 1usize } else { total };
-    let data: *mut u8 = alloc.alloc_zeroed_bytes(allocation_len, sizeof[u8]);
+    let data: *mut u8 = alloc.alloc_zeroed[u8](allocation_len, sizeof[u8]);
     if data == null {
         return FlatInput { data: null, len: 0usize, status: t.RegexStatus.out_of_memory };
     }

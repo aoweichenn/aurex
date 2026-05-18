@@ -244,6 +244,7 @@ pub struct SplitIter {
     pub compiled: *const Regex;
     pub input: str;
     pub next_start: usize;
+    pub search_start: usize;
     pub remaining_parts: usize;
     pub pending_tail: bool;
     pub finished: bool;
@@ -255,6 +256,7 @@ pub struct BytesSplitIter {
     pub data: *const u8;
     pub len: usize;
     pub next_start: usize;
+    pub search_start: usize;
     pub remaining_parts: usize;
     pub pending_tail: bool;
     pub finished: bool;

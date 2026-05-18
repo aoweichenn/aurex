@@ -1,9 +1,21 @@
 module regex.ops.iter;
 
-import regex.core.results as results;
 import regex.core.types as t;
-import regex.vm.engine as engine;
-import unicode.ucd as unicode;
+import regex.ops.input as input_ops;
+
+struct MatchStep {
+    result: t.MatchResult;
+    next_start: usize;
+    finished: bool;
+    status: t.RegexStatus;
+}
+
+struct CapturesStep {
+    captures: t.Captures;
+    next_start: usize;
+    finished: bool;
+    status: t.RegexStatus;
+}
 
 pub fn find_iter(compiled: &t.Regex, input: str) -> t.FindIter {
     let compiled_ptr: *const t.Regex = unsafe { ptrat[*const t.Regex](ptraddr(compiled)) };
@@ -17,27 +29,16 @@ pub fn find_iter(compiled: &t.Regex, input: str) -> t.FindIter {
 }
 
 pub fn find_next(iter: &mut t.FindIter) -> t.MatchResult {
-    if iter.finished {
-        return t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match);
-    }
-    let compiled: *const t.Regex = iter.compiled;
-    if compiled == null {
-        iter.finished = true;
-        iter.status = t.RegexStatus.unsupported;
-        return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
-    }
-    let result: t.MatchResult = unsafe { engine.search_compiled_from(&*compiled, iter.input, iter.next_start) };
-    iter.status = result.status;
-    if result.status != t.RegexStatus.ok {
-        iter.finished = true;
-        return result;
-    }
-    if !result.matched {
-        iter.finished = true;
-        return result;
-    }
-    iter.next_start = next_search_start(iter.input, result.start, result.end);
-    return result;
+    let step: MatchStep = find_step(
+        iter.compiled,
+        input_ops.text(iter.input),
+        iter.next_start,
+        iter.finished
+    );
+    iter.next_start = step.next_start;
+    iter.finished = step.finished;
+    iter.status = step.status;
+    return step.result;
 }
 
 pub fn bytes_find_iter(compiled: &t.Regex, input: []const u8) -> t.BytesFindIter {
@@ -53,29 +54,16 @@ pub fn bytes_find_iter(compiled: &t.Regex, input: []const u8) -> t.BytesFindIter
 }
 
 pub fn bytes_find_next(iter: &mut t.BytesFindIter) -> t.MatchResult {
-    if iter.finished {
-        return t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match);
-    }
-    let compiled: *const t.Regex = iter.compiled;
-    if compiled == null {
-        iter.finished = true;
-        iter.status = t.RegexStatus.unsupported;
-        return t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported);
-    }
-    let result: t.MatchResult = unsafe {
-        engine.search_bytes_raw_compiled_from(&*compiled, iter.data, iter.len, iter.next_start)
-    };
-    iter.status = result.status;
-    if result.status != t.RegexStatus.ok {
-        iter.finished = true;
-        return result;
-    }
-    if !result.matched {
-        iter.finished = true;
-        return result;
-    }
-    iter.next_start = next_bytes_search_start(iter.len, result.start, result.end);
-    return result;
+    let step: MatchStep = find_step(
+        iter.compiled,
+        input_ops.bytes_raw(iter.data, iter.len),
+        iter.next_start,
+        iter.finished
+    );
+    iter.next_start = step.next_start;
+    iter.finished = step.finished;
+    iter.status = step.status;
+    return step.result;
 }
 
 pub fn captures_iter(compiled: &t.Regex, input: str) -> t.CaptureIter {
@@ -90,27 +78,16 @@ pub fn captures_iter(compiled: &t.Regex, input: str) -> t.CaptureIter {
 }
 
 pub fn captures_next(iter: &mut t.CaptureIter) -> t.Captures {
-    if iter.finished {
-        return t.empty_captures(t.RegexStatus.no_match);
-    }
-    let compiled: *const t.Regex = iter.compiled;
-    if compiled == null {
-        iter.finished = true;
-        iter.status = t.RegexStatus.unsupported;
-        return t.empty_captures(t.RegexStatus.unsupported);
-    }
-    var captures: t.Captures = unsafe { engine.captures_compiled_from(&*compiled, iter.input, iter.next_start) };
-    iter.status = captures.status;
-    if captures.status != t.RegexStatus.ok {
-        iter.finished = true;
-        return captures;
-    }
-    if !captures.matched {
-        iter.finished = true;
-        return captures;
-    }
-    iter.next_start = next_search_start(iter.input, captures.start, captures.end);
-    return captures;
+    let step: CapturesStep = captures_step(
+        iter.compiled,
+        input_ops.text(iter.input),
+        iter.next_start,
+        iter.finished
+    );
+    iter.next_start = step.next_start;
+    iter.finished = step.finished;
+    iter.status = step.status;
+    return step.captures;
 }
 
 pub fn bytes_captures_iter(compiled: &t.Regex, input: []const u8) -> t.BytesCaptureIter {
@@ -126,48 +103,60 @@ pub fn bytes_captures_iter(compiled: &t.Regex, input: []const u8) -> t.BytesCapt
 }
 
 pub fn bytes_captures_next(iter: &mut t.BytesCaptureIter) -> t.Captures {
-    if iter.finished {
-        return t.empty_captures(t.RegexStatus.no_match);
+    let step: CapturesStep = captures_step(
+        iter.compiled,
+        input_ops.bytes_raw(iter.data, iter.len),
+        iter.next_start,
+        iter.finished
+    );
+    iter.next_start = step.next_start;
+    iter.finished = step.finished;
+    iter.status = step.status;
+    return step.captures;
+}
+
+fn find_step(compiled: *const t.Regex, input: input_ops.RegexInput, next_start: usize, finished: bool) -> MatchStep {
+    if finished {
+        return match_step_result(t.match_result(false, 0usize, 0usize, t.RegexStatus.no_match), next_start, true);
     }
-    let compiled: *const t.Regex = iter.compiled;
     if compiled == null {
-        iter.finished = true;
-        iter.status = t.RegexStatus.unsupported;
-        return t.empty_captures(t.RegexStatus.unsupported);
+        return match_step_result(t.match_result(false, 0usize, 0usize, t.RegexStatus.unsupported), next_start, true);
     }
-    var captures: t.Captures = unsafe {
-        engine.captures_bytes_raw_compiled_from(&*compiled, iter.data, iter.len, iter.next_start)
+    let result: t.MatchResult = unsafe { input.search_compiled(&*compiled, next_start) };
+    if result.status != t.RegexStatus.ok || !result.matched {
+        return match_step_result(result, next_start, true);
+    }
+    return match_step_result(result, input.next_match_start(result.start, result.end), false);
+}
+
+fn captures_step(compiled: *const t.Regex, input: input_ops.RegexInput, next_start: usize, finished: bool) -> CapturesStep {
+    if finished {
+        return captures_step_result(t.empty_captures(t.RegexStatus.no_match), next_start, true);
+    }
+    if compiled == null {
+        return captures_step_result(t.empty_captures(t.RegexStatus.unsupported), next_start, true);
+    }
+    let captures: t.Captures = unsafe { input.captures_compiled(&*compiled, next_start) };
+    if captures.status != t.RegexStatus.ok || !captures.matched {
+        return captures_step_result(captures, next_start, true);
+    }
+    return captures_step_result(captures, input.next_match_start(captures.start, captures.end), false);
+}
+
+fn match_step_result(result: t.MatchResult, next_start: usize, finished: bool) -> MatchStep {
+    return MatchStep {
+        result: result,
+        next_start: next_start,
+        finished: finished,
+        status: result.status,
     };
-    iter.status = captures.status;
-    if captures.status != t.RegexStatus.ok {
-        iter.finished = true;
-        return captures;
-    }
-    if !captures.matched {
-        iter.finished = true;
-        return captures;
-    }
-    iter.next_start = next_bytes_search_start(iter.len, captures.start, captures.end);
-    return captures;
 }
 
-fn next_search_start(input: str, start: usize, end: usize) -> usize {
-    if end > start {
-        return end;
-    }
-    let input_len: usize = strblen(input);
-    if end >= input_len {
-        return input_len + 1usize;
-    }
-    return unicode.next_boundary(input, end);
-}
-
-fn next_bytes_search_start(input_len: usize, start: usize, end: usize) -> usize {
-    if end > start {
-        return end;
-    }
-    if end >= input_len {
-        return input_len + 1usize;
-    }
-    return end + 1usize;
+fn captures_step_result(captures: t.Captures, next_start: usize, finished: bool) -> CapturesStep {
+    return CapturesStep {
+        captures: captures,
+        next_start: next_start,
+        finished: finished,
+        status: captures.status,
+    };
 }

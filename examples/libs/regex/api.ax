@@ -43,6 +43,9 @@ pub type RegexStream = t.RegexStream;
 pub type DatabaseResult = t.DatabaseResult;
 pub type BufferResult = t.BufferResult;
 
+type TextMatchCheck = fn(&t.Regex, str) -> t.MatchResult;
+type TextCapturesCheck = fn(&t.Regex, str) -> t.Captures;
+
 pub fn default_options() -> t.RegexOptions {
     return t.default_options();
 }
@@ -840,10 +843,7 @@ pub fn stream_buffer_bytes(stream: &t.RegexStream) -> usize {
 }
 
 pub fn search(pattern: str, input: str) -> bool {
-    var compiled: t.Regex = compile(pattern);
-    defer destroy(&mut compiled);
-    let result: t.MatchResult = search_compiled(&compiled, input);
-    return result.status == t.RegexStatus.ok && result.matched;
+    return match_once(pattern, input, search_compiled);
 }
 
 pub fn is_match(pattern: str, input: str) -> bool {
@@ -851,22 +851,34 @@ pub fn is_match(pattern: str, input: str) -> bool {
 }
 
 pub fn find(pattern: str, input: str) -> t.MatchResult {
-    var compiled: t.Regex = compile(pattern);
-    defer destroy(&mut compiled);
-    return search_compiled(&compiled, input);
+    return match_result_once(pattern, input, search_compiled);
 }
 
 pub fn fullmatch(pattern: str, input: str) -> bool {
-    var compiled: t.Regex = compile(pattern);
-    defer destroy(&mut compiled);
-    let result: t.MatchResult = fullmatch_compiled(&compiled, input);
-    return result.status == t.RegexStatus.ok && result.matched;
+    return match_once(pattern, input, fullmatch_compiled);
 }
 
 pub fn captures(pattern: str, input: str) -> t.Captures {
+    return captures_once(pattern, input, captures_compiled);
+}
+
+fn match_once(pattern: str, input: str, check: TextMatchCheck) -> bool {
     var compiled: t.Regex = compile(pattern);
     defer destroy(&mut compiled);
-    return captures_compiled(&compiled, input);
+    let result: t.MatchResult = check(&compiled, input);
+    return result.status == t.RegexStatus.ok && result.matched;
+}
+
+fn match_result_once(pattern: str, input: str, check: TextMatchCheck) -> t.MatchResult {
+    var compiled: t.Regex = compile(pattern);
+    defer destroy(&mut compiled);
+    return check(&compiled, input);
+}
+
+fn captures_once(pattern: str, input: str, check: TextCapturesCheck) -> t.Captures {
+    var compiled: t.Regex = compile(pattern);
+    defer destroy(&mut compiled);
+    return check(&compiled, input);
 }
 
 pub fn replace(pattern: str, input: str, replacement: str, out: *mut u8, out_capacity: usize) -> t.ReplaceResult {

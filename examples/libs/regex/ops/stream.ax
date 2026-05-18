@@ -2,51 +2,32 @@ module regex.ops.stream;
 
 import regex.config.limits as limits;
 import regex.core.types as t;
+import regex.ops.input as input_ops;
 import regex.runtime.alloc as alloc;
-import regex.vm.engine as engine;
-import unicode.ucd as unicode;
 
 pub fn open_stream(compiled: &t.Regex) -> t.RegexStream {
-    let compiled_ptr: *const t.Regex = unsafe { ptrat[*const t.Regex](ptraddr(compiled)) };
-    if compiled.status != t.RegexStatus.ok {
-        return empty_stream(compiled_ptr, compiled.status);
-    }
-    if compiled.mode != t.MODE_TEXT {
-        return empty_stream(compiled_ptr, t.RegexStatus.unsupported);
-    }
-    let buffer: *mut u8 = alloc.alloc_zeroed_bytes(limits.MIN_STREAM_CAPACITY, sizeof[u8]);
-    if buffer == null {
-        return empty_stream(compiled_ptr, t.RegexStatus.out_of_memory);
-    }
-    return t.RegexStream {
-        compiled: compiled_ptr,
-        mode: t.MODE_TEXT,
-        buffer: buffer,
-        len: 0usize,
-        capacity: limits.MIN_STREAM_CAPACITY,
-        base_offset: 0usize,
-        next_start: 0usize,
-        finished: false,
-        history_limit: compiled.options.stream_history_limit,
-        status: t.RegexStatus.ok,
-    };
+    return open_stream_with_mode(compiled, t.MODE_TEXT);
 }
 
 pub fn open_bytes_stream(compiled: &t.Regex) -> t.RegexStream {
+    return open_stream_with_mode(compiled, t.MODE_BYTES);
+}
+
+fn open_stream_with_mode(compiled: &t.Regex, mode: u8) -> t.RegexStream {
     let compiled_ptr: *const t.Regex = unsafe { ptrat[*const t.Regex](ptraddr(compiled)) };
     if compiled.status != t.RegexStatus.ok {
         return empty_stream(compiled_ptr, compiled.status);
     }
-    if compiled.mode != t.MODE_BYTES {
+    if compiled.mode != mode {
         return empty_stream(compiled_ptr, t.RegexStatus.unsupported);
     }
-    let buffer: *mut u8 = alloc.alloc_zeroed_bytes(limits.MIN_STREAM_CAPACITY, sizeof[u8]);
+    let buffer: *mut u8 = alloc.alloc_zeroed[u8](limits.MIN_STREAM_CAPACITY, sizeof[u8]);
     if buffer == null {
         return empty_stream(compiled_ptr, t.RegexStatus.out_of_memory);
     }
     return t.RegexStream {
         compiled: compiled_ptr,
-        mode: t.MODE_BYTES,
+        mode: mode,
         buffer: buffer,
         len: 0usize,
         capacity: limits.MIN_STREAM_CAPACITY,
@@ -135,24 +116,15 @@ pub fn stream_next(stream: &mut t.RegexStream) -> t.MatchResult {
         return t.match_result(false, stream.base_offset + stream.len, stream.base_offset + stream.len, t.RegexStatus.no_match);
     }
     let data_ptr: *const u8 = unsafe { ptrcast[*const u8](stream.buffer) };
-    var found: t.MatchResult = if stream.mode == t.MODE_BYTES {
-        unsafe { engine.search_bytes_raw_compiled_from(&*stream.compiled, data_ptr, stream.len, stream.next_start) }
-    } else {
-        let text: str = unsafe { strraw(data_ptr, stream.len) };
-        unsafe { engine.search_compiled_from(&*stream.compiled, text, stream.next_start) }
-    };
+    let input: input_ops.RegexInput = stream_input(stream, data_ptr);
+    var found: t.MatchResult = unsafe { input.search_compiled(&*stream.compiled, stream.next_start) };
     if found.status != t.RegexStatus.ok || !found.matched {
         return found;
     }
     if !stream.finished && found.end == stream.len {
         return t.match_result(false, stream.base_offset + found.start, stream.base_offset + found.end, t.RegexStatus.no_match);
     }
-    stream.next_start = if stream.mode == t.MODE_BYTES {
-        next_bytes_search_start(stream.len, found.start, found.end)
-    } else {
-        let text_again: str = unsafe { strraw(data_ptr, stream.len) };
-        next_search_start(text_again, found.start, found.end)
-    };
+    stream.next_start = input.next_match_start(found.start, found.end);
     found.start += stream.base_offset;
     found.end += stream.base_offset;
     compact_stream(stream);
@@ -178,6 +150,13 @@ fn empty_stream(compiled: *const t.Regex, status: t.RegexStatus) -> t.RegexStrea
     };
 }
 
+fn stream_input(stream: &t.RegexStream, data: *const u8) -> input_ops.RegexInput {
+    if stream.mode == t.MODE_BYTES {
+        return input_ops.bytes_raw(data, stream.len);
+    }
+    return input_ops.text(unsafe { strraw(data, stream.len) });
+}
+
 fn ensure_capacity(stream: &mut t.RegexStream, needed: usize) -> bool {
     if stream.history_limit > 0usize && needed > stream.history_limit {
         stream.status = t.RegexStatus.workspace_too_large;
@@ -197,7 +176,7 @@ fn ensure_capacity(stream: &mut t.RegexStream, needed: usize) -> bool {
     if stream.history_limit > 0usize && next_capacity > stream.history_limit {
         next_capacity = stream.history_limit;
     }
-    let next: *mut u8 = alloc.alloc_zeroed_bytes(next_capacity, sizeof[u8]);
+    let next: *mut u8 = alloc.alloc_zeroed[u8](next_capacity, sizeof[u8]);
     if next == null {
         stream.status = t.RegexStatus.out_of_memory;
         return false;
@@ -216,7 +195,7 @@ fn compact_stream(stream: &mut t.RegexStream) -> void {
     let remaining: usize = stream.len - stream.next_start;
     let target_capacity: usize = compact_capacity(remaining);
     if target_capacity < stream.capacity {
-        let next: *mut u8 = alloc.alloc_zeroed_bytes(target_capacity, sizeof[u8]);
+        let next: *mut u8 = alloc.alloc_zeroed[u8](target_capacity, sizeof[u8]);
         if next != null {
             copy_bytes(next, 0usize, stream.buffer, stream.next_start, remaining);
             alloc.free_bytes(stream.buffer);
@@ -277,25 +256,4 @@ fn copy_const_bytes(dst: *mut u8, dst_start: usize, src: *const u8, src_start: u
         }
         index += 1usize;
     }
-}
-
-fn next_search_start(input: str, start: usize, end: usize) -> usize {
-    if end > start {
-        return end;
-    }
-    let input_len: usize = strblen(input);
-    if end >= input_len {
-        return input_len + 1usize;
-    }
-    return unicode.next_boundary(input, end);
-}
-
-fn next_bytes_search_start(input_len: usize, start: usize, end: usize) -> usize {
-    if end > start {
-        return end;
-    }
-    if end >= input_len {
-        return input_len + 1usize;
-    }
-    return end + 1usize;
 }

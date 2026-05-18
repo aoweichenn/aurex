@@ -862,7 +862,7 @@ fn allocate_regex(
     var owned_pattern: *mut u8 = null;
     var pattern: str = "";
     if pattern_len > 0usize {
-        owned_pattern = alloc.alloc_zeroed_bytes(pattern_len, sizeof[u8]);
+        owned_pattern = alloc.alloc_zeroed[u8](pattern_len, sizeof[u8]);
         if owned_pattern == null {
             return empty_regex(mode, t.RegexStatus.out_of_memory);
         }
@@ -872,32 +872,26 @@ fn allocate_regex(
     var ranges: *mut t.ClassRange = null;
     var captures: *mut t.CaptureInfo = null;
     if state_len > 0usize {
-        states = unsafe {
-            ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(state_len, sizeof[t.State]))
-        };
+        states = alloc.alloc_zeroed[t.State](state_len, sizeof[t.State]);
         if states == null {
             alloc.free_bytes(owned_pattern);
             return empty_regex(mode, t.RegexStatus.out_of_memory);
         }
     }
     if range_len > 0usize {
-        ranges = unsafe {
-            ptrcast[*mut t.ClassRange](alloc.alloc_zeroed_bytes(range_len, sizeof[t.ClassRange]))
-        };
+        ranges = alloc.alloc_zeroed[t.ClassRange](range_len, sizeof[t.ClassRange]);
         if ranges == null {
             alloc.free_bytes(owned_pattern);
-            alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
+            alloc.free_typed[t.State](states);
             return empty_regex(mode, t.RegexStatus.out_of_memory);
         }
     }
     if capture_len > 0usize {
-        captures = unsafe {
-            ptrcast[*mut t.CaptureInfo](alloc.alloc_zeroed_bytes(capture_len, sizeof[t.CaptureInfo]))
-        };
+        captures = alloc.alloc_zeroed[t.CaptureInfo](capture_len, sizeof[t.CaptureInfo]);
         if captures == null {
             alloc.free_bytes(owned_pattern);
-            alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
-            alloc.free_bytes(unsafe { ptrcast[*mut u8](ranges) });
+            alloc.free_typed[t.State](states);
+            alloc.free_typed[t.ClassRange](ranges);
             return empty_regex(mode, t.RegexStatus.out_of_memory);
         }
     }
@@ -937,40 +931,32 @@ fn allocate_set(
     var literal_nodes: *mut t.SetLiteralNode = null;
     var literal_terminals: *mut t.SetLiteralTerminal = null;
     if state_len > 0usize {
-        states = unsafe {
-            ptrcast[*mut t.State](alloc.alloc_zeroed_bytes(state_len, sizeof[t.State]))
-        };
+        states = alloc.alloc_zeroed[t.State](state_len, sizeof[t.State]);
         if states == null {
             return empty_set(mode, t.RegexStatus.out_of_memory);
         }
     }
     if range_len > 0usize {
-        ranges = unsafe {
-            ptrcast[*mut t.ClassRange](alloc.alloc_zeroed_bytes(range_len, sizeof[t.ClassRange]))
-        };
+        ranges = alloc.alloc_zeroed[t.ClassRange](range_len, sizeof[t.ClassRange]);
         if ranges == null {
-            alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
+            alloc.free_typed[t.State](states);
             return empty_set(mode, t.RegexStatus.out_of_memory);
         }
     }
     if literal_node_len > 0usize {
-        literal_nodes = unsafe {
-            ptrcast[*mut t.SetLiteralNode](alloc.alloc_zeroed_bytes(literal_node_len, sizeof[t.SetLiteralNode]))
-        };
+        literal_nodes = alloc.alloc_zeroed[t.SetLiteralNode](literal_node_len, sizeof[t.SetLiteralNode]);
         if literal_nodes == null {
-            alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
-            alloc.free_bytes(unsafe { ptrcast[*mut u8](ranges) });
+            alloc.free_typed[t.State](states);
+            alloc.free_typed[t.ClassRange](ranges);
             return empty_set(mode, t.RegexStatus.out_of_memory);
         }
     }
     if literal_terminal_len > 0usize {
-        literal_terminals = unsafe {
-            ptrcast[*mut t.SetLiteralTerminal](alloc.alloc_zeroed_bytes(literal_terminal_len, sizeof[t.SetLiteralTerminal]))
-        };
+        literal_terminals = alloc.alloc_zeroed[t.SetLiteralTerminal](literal_terminal_len, sizeof[t.SetLiteralTerminal]);
         if literal_terminals == null {
-            alloc.free_bytes(unsafe { ptrcast[*mut u8](states) });
-            alloc.free_bytes(unsafe { ptrcast[*mut u8](ranges) });
-            alloc.free_bytes(unsafe { ptrcast[*mut u8](literal_nodes) });
+            alloc.free_typed[t.State](states);
+            alloc.free_typed[t.ClassRange](ranges);
+            alloc.free_typed[t.SetLiteralNode](literal_nodes);
             return empty_set(mode, t.RegexStatus.out_of_memory);
         }
     }
@@ -1042,9 +1028,9 @@ fn empty_set(mode: u8, status: t.RegexStatus) -> t.RegexSet {
 
 fn destroy_regex_storage(compiled: &mut t.Regex) -> void {
     alloc.free_bytes(compiled.owned_pattern);
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.states) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.ranges) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.captures) });
+    alloc.free_typed[t.State](compiled.states);
+    alloc.free_typed[t.ClassRange](compiled.ranges);
+    alloc.free_typed[t.CaptureInfo](compiled.captures);
     compiled.pattern = "";
     compiled.owned_pattern = null;
     compiled.states = null;
@@ -1059,10 +1045,10 @@ fn destroy_regex_storage(compiled: &mut t.Regex) -> void {
 }
 
 fn destroy_set_storage(compiled: &mut t.RegexSet) -> void {
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.states) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.ranges) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.literal_nodes) });
-    alloc.free_bytes(unsafe { ptrcast[*mut u8](compiled.literal_terminals) });
+    alloc.free_typed[t.State](compiled.states);
+    alloc.free_typed[t.ClassRange](compiled.ranges);
+    alloc.free_typed[t.SetLiteralNode](compiled.literal_nodes);
+    alloc.free_typed[t.SetLiteralTerminal](compiled.literal_terminals);
     compiled.states = null;
     compiled.ranges = null;
     compiled.literal_nodes = null;

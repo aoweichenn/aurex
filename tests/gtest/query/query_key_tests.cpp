@@ -340,8 +340,13 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     const std::array<query::CanonicalTypeKey, 1> type_args{i32};
     const query::GenericInstanceKey instance = query::generic_instance_key(vector_template, type_args,
         std::span<const query::StableFingerprint128>{}, query::param_env_key(std::span<const std::string_view>{}));
+    const query::GenericInstanceSignatureQueryInput generic_input{
+        instance,
+        result,
+    };
+    EXPECT_TRUE(query::is_valid(generic_input));
     const std::optional<query::QueryRecord> instance_record =
-        query::generic_instance_signature_query_record(instance, result);
+        query::generic_instance_signature_query_record(generic_input);
     ASSERT_TRUE(instance_record.has_value());
     EXPECT_TRUE(query::is_valid(*instance_record));
     EXPECT_EQ(instance_record->key.kind, query::QueryKind::generic_instance_signature);
@@ -362,6 +367,13 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
         query::item_signature_query_record(query::ItemSignatureQueryInput{query::DefKey{}, result}).has_value());
     EXPECT_FALSE(query::item_signature_query_record(
         query::ItemSignatureQueryInput{function_def, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::GenericInstanceSignatureQueryInput{}));
+    EXPECT_FALSE(query::generic_instance_signature_query_record(
+        query::GenericInstanceSignatureQueryInput{query::GenericInstanceKey{}, result})
+            .has_value());
+    EXPECT_FALSE(query::generic_instance_signature_query_record(
+        query::GenericInstanceSignatureQueryInput{instance, query::QueryResultFingerprint{}})
             .has_value());
     EXPECT_FALSE(query::item_signature_query_record(query::DefKey{}, result).has_value());
     EXPECT_FALSE(query::item_signature_query_record(function_def, query::QueryResultFingerprint{}).has_value());

@@ -27,9 +27,15 @@ struct ItemSignatureQueryInput {
     QueryResultFingerprint result;
 };
 
+struct GenericInstanceSignatureQueryInput {
+    GenericInstanceKey key;
+    QueryResultFingerprint result;
+};
+
 [[nodiscard]] bool is_valid(QueryResultFingerprint result) noexcept;
 [[nodiscard]] bool is_valid(const QueryRecord& record) noexcept;
 [[nodiscard]] bool is_valid(const ItemSignatureQueryInput& input) noexcept;
+[[nodiscard]] bool is_valid(const GenericInstanceSignatureQueryInput& input) noexcept;
 
 [[nodiscard]] QueryResultFingerprint query_result_fingerprint(IncrementalKey incremental_key) noexcept;
 
@@ -39,6 +45,8 @@ struct ItemSignatureQueryInput {
 [[nodiscard]] std::optional<QueryRecord> item_signature_query_record(const ItemSignatureQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> item_signature_query_record(DefKey key, QueryResultFingerprint result);
 
+[[nodiscard]] std::optional<QueryRecord> generic_instance_signature_query_record(
+    const GenericInstanceSignatureQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> generic_instance_signature_query_record(
     const GenericInstanceKey& key, QueryResultFingerprint result);
 

@@ -19,6 +19,11 @@ bool is_valid(const ItemSignatureQueryInput& input) noexcept
     return is_valid(input.key) && is_valid(input.result);
 }
 
+bool is_valid(const GenericInstanceSignatureQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
 QueryResultFingerprint query_result_fingerprint(const IncrementalKey incremental_key) noexcept
 {
     if (!is_valid(incremental_key)) {
@@ -61,14 +66,22 @@ std::optional<QueryRecord> item_signature_query_record(const DefKey key, const Q
     });
 }
 
+std::optional<QueryRecord> generic_instance_signature_query_record(const GenericInstanceSignatureQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(QueryKind::generic_instance_signature, stable_key_fingerprint(input.key),
+        stable_serialize(input.key), input.result);
+}
+
 std::optional<QueryRecord> generic_instance_signature_query_record(
     const GenericInstanceKey& key, const QueryResultFingerprint result)
 {
-    if (!is_valid(key)) {
-        return std::nullopt;
-    }
-    return query_record(
-        QueryKind::generic_instance_signature, stable_key_fingerprint(key), stable_serialize(key), result);
+    return generic_instance_signature_query_record(GenericInstanceSignatureQueryInput{
+        key,
+        result,
+    });
 }
 
 } // namespace aurex::query

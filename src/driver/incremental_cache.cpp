@@ -116,6 +116,11 @@ struct ItemSignatureQuerySubject {
     query::DefKind kind = query::DefKind::invalid;
 };
 
+struct GenericInstanceSignatureQuerySubject {
+    query::GenericInstanceKey key;
+    sema::IncrementalKey incremental_key;
+};
+
 struct ParsedCache {
     base::u64 schema = 0;
     std::string compiler_version;
@@ -727,6 +732,15 @@ void push_item_signature_query_subject(std::vector<ItemSignatureQuerySubject>& s
     });
 }
 
+void push_generic_instance_signature_query_subject(std::vector<GenericInstanceSignatureQuerySubject>& subjects,
+    const query::GenericInstanceKey& key, const sema::IncrementalKey& incremental_key)
+{
+    subjects.push_back(GenericInstanceSignatureQuerySubject{
+        key,
+        incremental_key,
+    });
+}
+
 [[nodiscard]] std::optional<query::ItemSignatureQueryInput> item_signature_query_input(
     const ItemSignatureQuerySubject& subject)
 {
@@ -743,6 +757,19 @@ void push_item_signature_query_subject(std::vector<ItemSignatureQuerySubject>& s
     };
 }
 
+[[nodiscard]] std::optional<query::GenericInstanceSignatureQueryInput> generic_instance_signature_query_input(
+    const GenericInstanceSignatureQuerySubject& subject)
+{
+    const query::GenericInstanceSignatureQueryInput input{
+        subject.key,
+        query::query_result_fingerprint(subject.incremental_key),
+    };
+    if (!query::is_valid(input)) {
+        return std::nullopt;
+    }
+    return input;
+}
+
 void push_item_signature_query_record(
     std::vector<query::QueryRecord>& records, const ItemSignatureQuerySubject& subject)
 {
@@ -753,12 +780,15 @@ void push_item_signature_query_record(
     push_query_record(records, query::item_signature_query_record(*input));
 }
 
-void push_generic_instance_signature_query_record(std::vector<query::QueryRecord>& records,
-    const query::GenericInstanceKey& generic_instance_key, const sema::IncrementalKey& incremental_key)
+void push_generic_instance_signature_query_record(
+    std::vector<query::QueryRecord>& records, const GenericInstanceSignatureQuerySubject& subject)
 {
-    push_query_record(records,
-        query::generic_instance_signature_query_record(
-            generic_instance_key, query::query_result_fingerprint(incremental_key)));
+    const std::optional<query::GenericInstanceSignatureQueryInput> input =
+        generic_instance_signature_query_input(subject);
+    if (!input) {
+        return;
+    }
+    push_query_record(records, query::generic_instance_signature_query_record(*input));
 }
 
 [[nodiscard]] std::vector<ItemSignatureQuerySubject> collect_item_signature_query_subjects(
@@ -791,6 +821,23 @@ void push_generic_instance_signature_query_record(std::vector<query::QueryRecord
     return subjects;
 }
 
+[[nodiscard]] std::vector<GenericInstanceSignatureQuerySubject> collect_generic_instance_signature_query_subjects(
+    const sema::CheckedModule& checked)
+{
+    std::vector<GenericInstanceSignatureQuerySubject> subjects;
+    subjects.reserve(checked.generic_function_instances.size() + checked.structs.size());
+
+    for (const sema::GenericFunctionInstanceInfo& instance : checked.generic_function_instances) {
+        push_generic_instance_signature_query_subject(
+            subjects, instance.generic_instance_key, instance.signature.incremental_key);
+    }
+    for (const auto& entry : checked.structs) {
+        const sema::StructInfo& info = entry.second;
+        push_generic_instance_signature_query_subject(subjects, info.generic_instance_key, info.incremental_key);
+    }
+    return subjects;
+}
+
 void push_item_signature_query_records(
     std::vector<query::QueryRecord>& records, const std::vector<ItemSignatureQuerySubject>& subjects)
 {
@@ -800,15 +847,10 @@ void push_item_signature_query_records(
 }
 
 void push_generic_instance_signature_query_records(
-    std::vector<query::QueryRecord>& records, const sema::CheckedModule& checked)
+    std::vector<query::QueryRecord>& records, const std::vector<GenericInstanceSignatureQuerySubject>& subjects)
 {
-    for (const sema::GenericFunctionInstanceInfo& instance : checked.generic_function_instances) {
-        push_generic_instance_signature_query_record(
-            records, instance.generic_instance_key, instance.signature.incremental_key);
-    }
-    for (const auto& entry : checked.structs) {
-        const sema::StructInfo& info = entry.second;
-        push_generic_instance_signature_query_record(records, info.generic_instance_key, info.incremental_key);
+    for (const GenericInstanceSignatureQuerySubject& subject : subjects) {
+        push_generic_instance_signature_query_record(records, subject);
     }
 }
 
@@ -860,13 +902,14 @@ void push_generic_instance_signature_query_records(
 
 [[nodiscard]] std::vector<query::QueryRecord> collect_query_records(const sema::CheckedModule& checked)
 {
-    std::vector<query::QueryRecord> records;
-    records.reserve(checked.functions.size() + checked.generic_function_instances.size() + checked.structs.size()
-        + checked.enum_cases.size() + checked.type_aliases.size());
-
     const std::vector<ItemSignatureQuerySubject> item_subjects = collect_item_signature_query_subjects(checked);
+    const std::vector<GenericInstanceSignatureQuerySubject> generic_subjects =
+        collect_generic_instance_signature_query_subjects(checked);
+
+    std::vector<query::QueryRecord> records;
+    records.reserve(item_subjects.size() + generic_subjects.size());
     push_item_signature_query_records(records, item_subjects);
-    push_generic_instance_signature_query_records(records, checked);
+    push_generic_instance_signature_query_records(records, generic_subjects);
 
     std::sort(records.begin(), records.end(), [](const query::QueryRecord& lhs, const query::QueryRecord& rhs) {
         if (lhs.key.kind != rhs.key.kind) {

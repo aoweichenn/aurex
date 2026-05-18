@@ -1,24 +1,66 @@
-BasedOnStyle: LLVM
+---
 Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+
+UseTab: Never
+TabWidth: 4
+IndentWidth: 4
+ContinuationIndentWidth: 4
 AccessModifierOffset: -4
+IndentCaseLabels: true
+NamespaceIndentation: None
+
+ColumnLimit: 120
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+BreakBeforeBinaryOperators: NonAssignment
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+BreakTemplateDeclarations: Yes
+
 AlignAfterOpenBracket: DontAlign
 AlignOperands: DontAlign
-AllowShortCaseLabelsOnASingleLine: true
-AllowShortFunctionsOnASingleLine: InlineOnly
-AlwaysBreakTemplateDeclarations: Yes
-BinPackArguments: false
-BinPackParameters: false
-BreakBeforeBinaryOperators: NonAssignment
-BreakBeforeBraces: Attach
-ColumnLimit: 0
-ContinuationIndentWidth: 4
-Cpp11BracedListStyle: true
+AlignTrailingComments: Always
 DerivePointerAlignment: false
-IndentCaseLabels: false
-IndentWidth: 4
-NamespaceIndentation: None
 PointerAlignment: Left
 ReferenceAlignment: Left
-SpaceBeforeCpp11BracedList: true
-SortIncludes: Never
+QualifierAlignment: Leave
+
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: Empty
+AllowShortLoopsOnASingleLine: false
+
+BinPackArguments: true
+BinPackParameters: BinPack
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+Cpp11BracedListStyle: AlignFirstComment
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeParens: ControlStatements
 SpacesInAngles: Never
+
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<aurex/'
+    Priority: 1
+  - Regex: '^<(backend|ir|lex|parse|support)/'
+    Priority: 2
+  - Regex: '^<([a-z_]+|[a-z_]+\.h)>$|^<sys/'
+    Priority: 3
+  - Regex: '^<(gtest|gmock|llvm)/'
+    Priority: 4
+  - Regex: '.*'
+    Priority: 5
+SortIncludes: CaseSensitive
+SortUsingDeclarations: LexicographicNumeric
+
+ReflowComments: true
+SpacesBeforeTrailingComments: 1
+MaxEmptyLinesToKeep: 1
+InsertNewlineAtEOF: true

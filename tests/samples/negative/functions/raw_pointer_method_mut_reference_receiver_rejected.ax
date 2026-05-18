@@ -1,0 +1,22 @@
+module raw_pointer_method_mut_reference_receiver_rejected;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn set(self: &mut Box, value: i32) -> i32 {
+        self.value = value;
+        return self.value;
+    }
+}
+
+fn as_mut_ptr(value: &mut Box) -> *mut Box {
+    return unsafe { ptrat[*mut Box](ptraddr(value)) };
+}
+
+fn main() -> i32 {
+    var box: Box = Box { value: 7 };
+    let ptr: *mut Box = as_mut_ptr(&mut box);
+    return ptr.set(9);
+}

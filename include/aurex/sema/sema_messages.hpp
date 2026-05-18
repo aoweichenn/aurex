@@ -600,22 +600,19 @@ inline constexpr std::string_view SEMA_ENUM_STORAGE_OVERFLOW =
 
 [[nodiscard]] inline std::string sema_duplicate_type_definition_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "duplicate type definition in module " + std::string(module) + ": " + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_duplicate_struct_definition_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "duplicate struct definition in module " + std::string(module) + ": " + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_duplicate_function_definition_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "duplicate function definition in module " + std::string(module) + ": " + std::string(name);
 }
 
@@ -656,8 +653,7 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_duplicate_value_definition_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "duplicate value definition in module " + std::string(module) + ": " + std::string(name);
 }
 
@@ -667,23 +663,19 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_duplicate_namespace_member_message(
     const std::string_view module,
-    const std::string_view name
-) {
-    return "duplicate module member across namespaces in module " +
-           std::string(module) + ": " + std::string(name);
+    const std::string_view name) {
+    return "duplicate module member across namespaces in module " + std::string(module) + ": " + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_duplicate_enum_case_message(
     const std::string_view enum_name,
-    const std::string_view case_name
-) {
+    const std::string_view case_name) {
     return "duplicate enum case: " + std::string(enum_name) + "." + std::string(case_name);
 }
 
 [[nodiscard]] inline std::string sema_duplicate_type_member_message(
     const std::string_view type_name,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "duplicate type member: " + std::string(type_name) + "." + std::string(name);
 }
 
@@ -721,8 +713,7 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_method_requires_receiver_message(
     const std::string_view owner,
-    const std::string_view method
-) {
+    const std::string_view method) {
     return "method requires a receiver: " + std::string(owner) + "." + std::string(method);
 }
 
@@ -768,18 +759,14 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_duplicate_capability_message(
     const std::string_view param,
-    const std::string_view capability
-) {
-    return "duplicate capability `" + std::string(capability) +
-           "` for generic parameter `" + std::string(param) + "`";
+    const std::string_view capability) {
+    return "duplicate capability `" + std::string(capability) + "` for generic parameter `" + std::string(param) + "`";
 }
 
 [[nodiscard]] inline std::string sema_generic_capability_not_satisfied_message(
     const std::string_view type_name,
-    const std::string_view capability
-) {
-    return "type " + std::string(type_name) + " does not satisfy capability `" +
-           std::string(capability) + "`";
+    const std::string_view capability) {
+    return "type " + std::string(type_name) + " does not satisfy capability `" + std::string(capability) + "`";
 }
 
 [[nodiscard]] inline std::string sema_cyclic_type_alias_message(const std::string_view name) {
@@ -792,8 +779,7 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_unknown_scoped_enum_case_message(
     const std::string_view enum_name,
-    const std::string_view case_name
-) {
+    const std::string_view case_name) {
     return "unknown enum case: " + std::string(enum_name) + "." + std::string(case_name);
 }
 
@@ -811,10 +797,8 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_enum_payload_constructor_argument_count_message(
     const std::string_view case_name,
-    const base::usize count
-) {
-    return "enum payload constructor requires " + std::to_string(count) +
-           " arguments: " + std::string(case_name);
+    const base::usize count) {
+    return "enum payload constructor requires " + std::to_string(count) + " arguments: " + std::string(case_name);
 }
 
 [[nodiscard]] inline std::string sema_match_missing_enum_case_message(const std::string_view case_name) {
@@ -830,8 +814,7 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 }
 
 [[nodiscard]] inline std::string sema_enum_payload_pattern_binding_count_message(const base::usize count) {
-    return "enum payload pattern requires " + std::to_string(count) +
-           " binding" + (count == 1 ? "" : "s");
+    return "enum payload pattern requires " + std::to_string(count) + " binding" + (count == 1 ? "" : "s");
 }
 
 [[nodiscard]] inline std::string sema_integer_literal_out_of_range_message(const std::string_view type_name) {
@@ -844,10 +827,8 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_integer_literal_suffix_type_mismatch_message(
     const std::string_view suffix_type,
-    const std::string_view expected_type
-) {
-    return "integer literal suffix type " + std::string(suffix_type) +
-           " does not match expected " + std::string(expected_type);
+    const std::string_view expected_type) {
+    return "integer literal suffix type " + std::string(suffix_type) + " does not match expected " + std::string(expected_type);
 }
 
 [[nodiscard]] inline std::string sema_generic_comparison_operator_message(const std::string_view type_name) {
@@ -868,15 +849,12 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_array_literal_length_mismatch_message(
     const base::u64 expected,
-    const base::u64 actual
-) {
-    return "array literal length mismatch: expected " + std::to_string(expected) +
-           ", got " + std::to_string(actual);
+    const base::u64 actual) {
+    return "array literal length mismatch: expected " + std::to_string(expected) + ", got " + std::to_string(actual);
 }
 
 [[nodiscard]] inline std::string sema_cyclic_const_initializer_message(
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "cyclic const initializer: " + std::string(name);
 }
 
@@ -884,8 +862,7 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
     const std::string_view subject,
     const std::string_view name,
     const base::usize actual,
-    const base::usize expected
-) {
+    const base::usize expected) {
     std::string message = actual < expected ? "too few " : "too many ";
     message += std::string(subject);
     message += " for ";
@@ -900,10 +877,8 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 [[nodiscard]] inline std::string sema_ambiguous_generic_type_name_message(
     const std::string_view name,
     const std::string_view first_module,
-    const std::string_view second_module
-) {
-    return "ambiguous generic type name '" + std::string(name) + "' from modules " +
-           std::string(first_module) + " and " + std::string(second_module);
+    const std::string_view second_module) {
+    return "ambiguous generic type name '" + std::string(name) + "' from modules " + std::string(first_module) + " and " + std::string(second_module);
 }
 
 [[nodiscard]] inline std::string sema_unknown_generic_type_message(const std::string_view name) {
@@ -912,25 +887,21 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_unknown_generic_type_in_module_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "unknown generic type in module " + std::string(module) + ": " + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_private_generic_type_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "generic type is private: " + std::string(module) + "." + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_ambiguous_generic_function_name_message(
     const std::string_view name,
     const std::string_view first_module,
-    const std::string_view second_module
-) {
-    return "ambiguous generic function name '" + std::string(name) + "' from modules " +
-           std::string(first_module) + " and " + std::string(second_module);
+    const std::string_view second_module) {
+    return "ambiguous generic function name '" + std::string(name) + "' from modules " + std::string(first_module) + " and " + std::string(second_module);
 }
 
 [[nodiscard]] inline std::string sema_unknown_generic_function_message(const std::string_view name) {
@@ -939,24 +910,20 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_unknown_generic_function_in_module_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "unknown generic function in module " + std::string(module) + ": " + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_private_generic_function_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "generic function is private: " + std::string(module) + "." + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_generic_call_argument_infer_message(
     const std::string_view parameter,
-    const std::string_view function_name
-) {
-    return "cannot infer generic type argument `" + std::string(parameter) +
-           "` for call to " + std::string(function_name);
+    const std::string_view function_name) {
+    return "cannot infer generic type argument `" + std::string(parameter) + "` for call to " + std::string(function_name);
 }
 
 [[nodiscard]] inline std::string sema_generic_call_argument_unify_message(const std::string_view function_name) {
@@ -973,10 +940,8 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_float_literal_suffix_type_mismatch_message(
     const std::string_view suffix_type,
-    const std::string_view expected_type
-) {
-    return "float literal suffix type " + std::string(suffix_type) +
-           " does not match expected " + std::string(expected_type);
+    const std::string_view expected_type) {
+    return "float literal suffix type " + std::string(suffix_type) + " does not match expected " + std::string(expected_type);
 }
 
 [[nodiscard]] inline std::string sema_unknown_import_alias_message(const std::string_view alias) {
@@ -1010,6 +975,9 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_POINTER =
     "mutable method receiver requires mutable pointer";
 
+inline constexpr std::string_view SEMA_METHOD_RECEIVER_TYPE_MISMATCH =
+    "method receiver type mismatch";
+
 inline constexpr std::string_view SEMA_METHOD_RECEIVER_PLACE =
     "method receiver must be a place expression";
 
@@ -1020,33 +988,27 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
     const std::string_view owner,
     const std::string_view name,
     const std::string_view first_module,
-    const std::string_view second_module
-) {
-    return "ambiguous method '" + std::string(owner) + "." + std::string(name) +
-           "' from modules " + std::string(first_module) + " and " + std::string(second_module);
+    const std::string_view second_module) {
+    return "ambiguous method '" + std::string(owner) + "." + std::string(name) + "' from modules " + std::string(first_module) + " and " + std::string(second_module);
 }
 
 [[nodiscard]] inline std::string sema_private_method_message(
     const std::string_view owner,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "method is private: " + std::string(owner) + "." + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_unknown_method_message(
     const std::string_view owner,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "unknown method: " + std::string(owner) + "." + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_ambiguous_type_name_message(
     const std::string_view name,
     const std::string_view first_module,
-    const std::string_view second_module
-) {
-    return "ambiguous type name '" + std::string(name) + "' from modules " +
-           std::string(first_module) + " and " + std::string(second_module);
+    const std::string_view second_module) {
+    return "ambiguous type name '" + std::string(name) + "' from modules " + std::string(first_module) + " and " + std::string(second_module);
 }
 
 [[nodiscard]] inline std::string sema_unknown_type_message(const std::string_view name) {
@@ -1055,25 +1017,21 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
 
 [[nodiscard]] inline std::string sema_private_type_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "type is private: " + std::string(module) + "." + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_unknown_type_in_module_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "unknown type in module " + std::string(module) + ": " + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_ambiguous_function_name_message(
     const std::string_view name,
     const std::string_view first_module,
-    const std::string_view second_module
-) {
-    return "ambiguous function name '" + std::string(name) + "' from modules " +
-           std::string(first_module) + " and " + std::string(second_module);
+    const std::string_view second_module) {
+    return "ambiguous function name '" + std::string(name) + "' from modules " + std::string(first_module) + " and " + std::string(second_module);
 }
 
 [[nodiscard]] inline std::string sema_unknown_function_message(const std::string_view name) {
@@ -1082,25 +1040,21 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
 
 [[nodiscard]] inline std::string sema_unknown_function_in_module_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "unknown function in module " + std::string(module) + ": " + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_private_function_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "function is private: " + std::string(module) + "." + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_ambiguous_enum_case_message(
     const std::string_view name,
     const std::string_view first_module,
-    const std::string_view second_module
-) {
-    return "ambiguous enum case '" + std::string(name) + "' from modules " +
-           std::string(first_module) + " and " + std::string(second_module);
+    const std::string_view second_module) {
+    return "ambiguous enum case '" + std::string(name) + "' from modules " + std::string(first_module) + " and " + std::string(second_module);
 }
 
 inline constexpr std::string_view SEMA_ENUM_CASE_SCOPE_TYPE =
@@ -1109,10 +1063,8 @@ inline constexpr std::string_view SEMA_ENUM_CASE_SCOPE_TYPE =
 [[nodiscard]] inline std::string sema_ambiguous_name_message(
     const std::string_view name,
     const std::string_view first_module,
-    const std::string_view second_module
-) {
-    return "ambiguous name '" + std::string(name) + "' from modules " +
-           std::string(first_module) + " and " + std::string(second_module);
+    const std::string_view second_module) {
+    return "ambiguous name '" + std::string(name) + "' from modules " + std::string(first_module) + " and " + std::string(second_module);
 }
 
 [[nodiscard]] inline std::string sema_unknown_name_message(const std::string_view name) {
@@ -1121,15 +1073,13 @@ inline constexpr std::string_view SEMA_ENUM_CASE_SCOPE_TYPE =
 
 [[nodiscard]] inline std::string sema_unknown_name_in_module_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "unknown name in module " + std::string(module) + ": " + std::string(name);
 }
 
 [[nodiscard]] inline std::string sema_private_name_message(
     const std::string_view module,
-    const std::string_view name
-) {
+    const std::string_view name) {
     return "name is private: " + std::string(module) + "." + std::string(name);
 }
 

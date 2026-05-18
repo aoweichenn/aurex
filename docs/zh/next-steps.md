@@ -69,7 +69,7 @@ query-safe、lossless-syntax-ready、IDE-native-ready 的结构化系统：
 
 | 项目 | 当前状态 | 已落地边界 | 后续保留 |
 |:-----|:---------|:-----------|:---------|
-| raw pointer projection unsafe | 已关闭 | `*p`、`p.field`、`p.field = v`、`p[i]`、`p[i] = v` 统一要求 unsafe；reference projection 保持 safe | 后续 borrow/lifetime 设计不属于 M2.1 |
+| raw pointer projection unsafe | 已关闭 | `*p`、`p.field`、`p.field = v`、`p[i]`、`p[i] = v` 统一要求 unsafe；reference projection 保持 safe；method receiver 不允许把 raw pointer 静默当作 `&T` / `&mut T`，也不允许把 safe reference 静默当作 raw pointer self | 后续 borrow/lifetime 设计不属于 M2.1 |
 | `&expr` 双语义 | 已关闭 | `&place` / `&mut place` 只产生 safe reference；raw pointer 地址必须显式走 `ptraddr` / `ptrat` 等边界 | 后续可设计更完整的 address-of/raw-pointer conversion API |
 | contextual expression cache | 已关闭 | checked/generic side table 已拆出 `expr_intrinsic_types`、`expr_types` final table、`expr_expected_types` final-cache key 和 `CoercionRecord` overlay；integer/float/null、unary/binary、slice、array/tuple literal、if/block/match 在 expected type 下会保留 intrinsic type，并把 contextual final type 与 coercion/adjustment 单独记录；`analyze_expr` 入口已拆成缓存入口、分类调度和 literal/value/control/aggregate/projection/operator/builtin helper，binary expression 内部也拆为 operand contextual typing、类型不匹配诊断、常量 hazard 检查和 operator result 记录 | 后续只保留更丰富 coercion kind，不再是 P0 缓存污染问题 |
 | `[]` 多义 | 已关闭在 parser AST 层 | parser 直接按保守语法 guardrail 生成 `generic_apply`、`index`、`slice`、`field`、`call`、`struct_literal`、`try_expr` 等显式 compact 节点；旧 raw postfix 链路和 sema 二次 lowering 路径已删除；M2.1 明确 type-shaped selector 契约，`Type[T].case` 仍走 generic selector，`items[index].field` 和 lowercase `name[index].field` 保持 value index | 后续只保留更细的诊断和跨模块语义消歧增强，不再保留第二套 postfix lowering |
@@ -279,7 +279,7 @@ M2.1 至少新增或更新以下测试类别：
 
 | 类别 | 必须覆盖 |
 |:-----|:---------|
-| unsafe/raw pointer | raw pointer field/index/read/write 需要 unsafe；reference field/index 不误报；unsafe block 内通过 |
+| unsafe/raw pointer | raw pointer field/index/read/write 需要 unsafe；raw pointer field slice 需要 unsafe；raw pointer / safe reference method receiver 不互相隐式满足；reference field/index 不误报；unsafe block 内通过 |
 | contextual typing | literal/null/reference/generic call/aggregate literal 在不同 expected type 下不读旧 final cache |
 | capability/generic | reference capability 拒绝；Hash marker-only 边界；float 支持直接比较 operator 但不满足 `Eq` / `Ord`；imported generic lookup；generic param identity；mangling collision |
 | `[]` 语义 | generic apply、type apply、index、slice 的正反例和诊断区分 |

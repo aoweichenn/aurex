@@ -1,0 +1,15 @@
+module enum_hash_rejected;
+
+enum Flag {
+    no,
+    yes,
+}
+
+fn accept_hash[T](value: T) -> i32 where T: Hash {
+    return 1;
+}
+
+fn main() -> i32 {
+    let flag: Flag = Flag.yes;
+    return accept_hash(flag);
+}

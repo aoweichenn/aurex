@@ -1026,7 +1026,7 @@ regex.diagnostic(&compiled)
 - `RegexSet` exact literal 标量 Aho-Corasick fast path 已落地；后续可继续增加 bytes dense DFA table、SIMD/bitset 专用加速和跨平台吞吐基线，进一步降低 sparse transition 常数。
 - stream 后续可演进为 bounded-history automaton，进一步减少长流上对历史上下文的保留。
 - grapheme 后续还可以增加 cluster iterator / split API；当前只把 `\X` 作为显式 atom，仍保持 byte offset、scalar 消费和 grapheme cluster 三层语义分开。
-- 当前已有 `tools/regex_differential.py` 生成固定 + deterministic property Python `re` 差分、RegexSet exact-literal property cases、Unicode 17.0 full case-fold 和 UAX #29 grapheme break conformance 程序，并接入 CTest 慢速 conformance 入口；后续继续扩充长输入吞吐和跨机器峰值内存基线。
+- 当前已有 `tools/regex_differential.py` 生成固定 + deterministic property Python `re` 差分、RegexSet exact-literal property cases、Unicode 17.0 full case-fold 和 UAX #29 grapheme break conformance 程序；该慢速 conformance 入口只在 CMake 显式启用 `-DAUREX_ENABLE_REGEX_CONFORMANCE=ON` 时注册进 CTest，默认主项目验证不运行它。后续继续扩充长输入吞吐和跨机器峰值内存基线。
 
 ## 11. 与工业级引擎对比
 

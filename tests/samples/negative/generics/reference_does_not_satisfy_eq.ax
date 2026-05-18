@@ -1,0 +1,11 @@
+module reference_does_not_satisfy_eq;
+
+fn accept_eq[T](value: T) -> i32 where T: Eq {
+    return 1;
+}
+
+fn main() -> i32 {
+    var value: i32 = 1;
+    let borrowed: &i32 = &value;
+    return accept_eq(borrowed);
+}

@@ -1,0 +1,21 @@
+module raw_pointer_method_reference_receiver_rejected;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn get(self: &Box) -> i32 {
+        return self.value;
+    }
+}
+
+fn as_ptr(value: &Box) -> *const Box {
+    return unsafe { ptrat[*const Box](ptraddr(value)) };
+}
+
+fn main() -> i32 {
+    let box: Box = Box { value: 7 };
+    let ptr: *const Box = as_ptr(&box);
+    return ptr.get();
+}

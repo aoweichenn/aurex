@@ -177,17 +177,19 @@ if(BUILD_TESTING)
             LABELS "slow;sample-suite"
             TIMEOUT 300
         )
-        add_test(
-            NAME aurex_regex_differential_conformance
-            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/regex_differential.py"
-        )
-        set_tests_properties(
-            aurex_regex_differential_conformance
-            PROPERTIES
-            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-            LABELS "slow;regex;conformance"
-            TIMEOUT 900
-        )
+        if(AUREX_ENABLE_REGEX_CONFORMANCE)
+            add_test(
+                NAME aurex_regex_differential_conformance
+                COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/regex_differential.py"
+            )
+            set_tests_properties(
+                aurex_regex_differential_conformance
+                PROPERTIES
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                LABELS "slow;regex;conformance"
+                TIMEOUT 900
+            )
+        endif()
     endif()
 
     if(AUREX_BUILD_FUZZERS AND NOT AUREX_FRONTEND_ONLY)

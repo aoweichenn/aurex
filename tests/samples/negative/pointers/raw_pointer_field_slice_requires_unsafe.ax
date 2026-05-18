@@ -1,0 +1,16 @@
+module raw_pointer_field_slice_requires_unsafe;
+
+struct Bag {
+    values: [2]i32;
+}
+
+fn as_ptr(value: &Bag) -> *const Bag {
+    return unsafe { ptrat[*const Bag](ptraddr(value)) };
+}
+
+fn main() -> i32 {
+    let bag: Bag = Bag { values: [1, 2] };
+    let ptr: *const Bag = as_ptr(&bag);
+    let view = ptr.values[:];
+    return view[0];
+}

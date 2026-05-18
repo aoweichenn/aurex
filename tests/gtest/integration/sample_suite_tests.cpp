@@ -53,6 +53,10 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"const_pattern_struct_unsupported", "unsupported literal match pattern"},
     {"const_pattern_type_mismatch", "match pattern for integer or bool value must be a literal or wildcard"},
     {"duplicate_type_member_enum_case_method", "duplicate type member: duplicate_type_member_enum_case_method.Option.some"},
+    {"enum_hash_rejected", "does not satisfy capability `Hash`"},
+    {"float_eq_rejected", "type f64 does not satisfy capability `Eq`"},
+    {"float_ord_rejected", "type f64 does not satisfy capability `Ord`"},
+    {"generic_raw_pointer_method_reference_receiver_rejected", "method receiver type mismatch"},
     {"increment_syntax", "increment operator is not supported"},
     {"enum_payload_bool_missing_witness", "match expression is not exhaustive for enum case"},
     {"import_alias_namespace_conflict", "duplicate module member across namespaces in module import_alias_namespace_conflict: util"},
@@ -81,9 +85,15 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"reference_mut_from_immutable", "mutable reference requires a writable place expression"},
     {"reference_mut_not_raw_pointer", "initializer type does not match declared type"},
     {"raw_pointer_field_requires_unsafe", "raw pointer projection requires unsafe context"},
+    {"raw_pointer_field_slice_requires_unsafe", "raw pointer projection requires unsafe context"},
     {"raw_pointer_field_write_requires_unsafe", "raw pointer projection requires unsafe context"},
     {"raw_pointer_index_requires_unsafe", "raw pointer projection requires unsafe context"},
     {"raw_pointer_index_write_requires_unsafe", "raw pointer projection requires unsafe context"},
+    {"raw_pointer_method_mut_reference_receiver_rejected", "method receiver type mismatch"},
+    {"raw_pointer_method_reference_receiver_rejected", "method receiver type mismatch"},
+    {"reference_does_not_satisfy_eq", "type &i32 does not satisfy capability `Eq`"},
+    {"reference_hash_rejected", "type &i32 does not satisfy capability `Hash`"},
+    {"reference_method_raw_pointer_receiver_rejected", "method receiver type mismatch"},
     {"implicit_address_to_raw_pointer_rejected", "initializer type does not match declared type"},
     {"return_inference_null_non_pointer", "inferred function return types do not match"},
     {"str_slice_bound_non_integer", "slice bound must be an integer"},
@@ -104,6 +114,7 @@ inline constexpr auto CROSS_STAGE_NEGATIVE_SAMPLES = std::to_array<CrossStageNeg
     {"types", "array_literal_empty_infer.ax", "empty array literal requires an array type context"},
     {"pattern_matching", "match_expression_missing_case.ax", "match expression is not exhaustive for enum case"},
     {"functions", "unsafe_fn_call_required.ax", "call to unsafe function read_raw requires unsafe context"},
+    {"functions", "raw_pointer_method_reference_receiver_rejected.ax", "method receiver type mismatch"},
     {"error_handling", "try_result_return_mismatch.ax", "try expression on result-like enum requires enclosing function"},
 });
 
@@ -134,9 +145,7 @@ driver::CompilerInvocation sample_invocation(const fs::path& src, const driver::
 }
 
 [[nodiscard]] bool is_native_emit_kind(const driver::EmitKind emit_kind) noexcept {
-    return emit_kind == driver::EmitKind::assembly ||
-           emit_kind == driver::EmitKind::object ||
-           emit_kind == driver::EmitKind::executable;
+    return emit_kind == driver::EmitKind::assembly || emit_kind == driver::EmitKind::object || emit_kind == driver::EmitKind::executable;
 }
 
 [[nodiscard]] bool sample_uses_import_path(const fs::path& src) {
@@ -163,8 +172,7 @@ void compile_sample_native(
     const fs::path& src,
     const fs::path& output,
     const driver::EmitKind emit_kind,
-    const bool use_sample_imports
-) {
+    const bool use_sample_imports) {
     driver::CompilerInvocation invocation = sample_invocation(src, emit_kind);
     invocation.output_path = output;
     if (use_sample_imports) {
@@ -196,8 +204,8 @@ void run_positive_runtime_smoke_sample(const std::string_view area, const std::s
 
 void verify_const_enum_lowering() {
     const std::string const_enum = require_compiler_success(
-        sample_invocation(positive_sample("types", "const_enum.ax"), driver::EmitKind::llvm_ir)
-    ).output;
+        sample_invocation(positive_sample("types", "const_enum.ax"), driver::EmitKind::llvm_ir))
+                                       .output;
     expect_contains(const_enum, "@m0_const_enum_answer = internal unnamed_addr constant i32 42");
     expect_contains(const_enum, "load i32, ptr @m0_const_enum_answer");
 }
@@ -227,8 +235,7 @@ void verify_negative_sample_diagnostics() {
 void verify_negative_sample_fails_in_emit_kind(
     const fs::path& src,
     const driver::EmitKind emit_kind,
-    const std::string_view diagnostic
-) {
+    const std::string_view diagnostic) {
     driver::CompilerInvocation invocation = sample_invocation(src, emit_kind);
     configure_sample_imports_if_needed(invocation);
     if (is_native_emit_kind(emit_kind)) {

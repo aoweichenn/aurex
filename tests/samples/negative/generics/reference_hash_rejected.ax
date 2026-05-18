@@ -1,0 +1,11 @@
+module reference_hash_rejected;
+
+fn accept_hash[T](value: T) -> i32 where T: Hash {
+    return 1;
+}
+
+fn main() -> i32 {
+    var value: i32 = 1;
+    let borrowed: &i32 = &value;
+    return accept_hash(borrowed);
+}

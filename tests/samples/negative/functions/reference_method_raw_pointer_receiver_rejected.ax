@@ -1,0 +1,17 @@
+module reference_method_raw_pointer_receiver_rejected;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn get_raw(self: *const Box) -> i32 {
+        return unsafe { self.value };
+    }
+}
+
+fn main() -> i32 {
+    let box: Box = Box { value: 7 };
+    let borrowed: &Box = &box;
+    return borrowed.get_raw();
+}

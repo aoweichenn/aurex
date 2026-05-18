@@ -6,6 +6,7 @@
 #include <aurex/driver/incremental_cache.hpp>
 #include <aurex/driver/profile.hpp>
 #include <aurex/query/generic_instance_key.hpp>
+#include <aurex/query/query_result.hpp>
 
 #include <support/test_support.hpp>
 
@@ -252,6 +253,27 @@ struct CacheTestQueryResultFingerprint {
     row += encoded_stable_key;
     row += "\n";
     return row;
+}
+
+[[nodiscard]] std::string_view cache_test_query_kind_name(const query::QueryKind kind) noexcept
+{
+    if (kind == query::QueryKind::item_signature) {
+        return CACHE_TEST_QUERY_ITEM_SIGNATURE;
+    }
+    if (kind == query::QueryKind::generic_instance_signature) {
+        return CACHE_TEST_QUERY_GENERIC_INSTANCE_SIGNATURE;
+    }
+    return {};
+}
+
+[[nodiscard]] std::string cache_test_query_row(const query::QueryRecord& record)
+{
+    return cache_test_query_row(cache_test_query_kind_name(record.key.kind), std::to_string(record.key.schema),
+        std::to_string(record.key.global_id), std::to_string(record.key.payload.primary),
+        std::to_string(record.key.payload.secondary), std::to_string(record.key.payload.byte_count),
+        std::to_string(record.result.global_id), std::to_string(record.result.fingerprint.primary),
+        std::to_string(record.result.fingerprint.secondary), std::to_string(record.result.fingerprint.byte_count),
+        hex_encode_cache_test_field(record.stable_key_bytes));
 }
 
 [[nodiscard]] std::vector<std::string_view> split_cache_test_fields(const std::string_view line)
@@ -1124,7 +1146,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     auto write_result = driver::write_incremental_cache(invocation, sources, modules, checked);
     ASSERT_TRUE(write_result) << write_result.error().message;
     const std::string cache_text = read_text(cache);
-    expect_contains(cache_text, "queries\t4");
+    expect_contains(cache_text, "queries\t3");
     expect_contains(cache_text, "query\titem_signature");
     expect_contains(cache_text, "query\tgeneric_instance_signature");
     const query::DefKey expected_item_signature_key = cache_test_query_def_key_from_stable_id(
@@ -1271,6 +1293,19 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
         auto reuse = driver::try_reuse_incremental_check_cache(invocation);
         ASSERT_TRUE(reuse) << reuse.error().message;
         EXPECT_FALSE(reuse.value());
+    };
+    const auto valid_query_row = [&]() -> std::string {
+        const std::array<std::string_view, 1> module_parts{"incremental_cache_malformed"};
+        const sema::StableModuleId stable_module = sema::stable_module_id(module_parts);
+        const sema::StableDefId stable_id =
+            sema::stable_definition_id(stable_module, sema::StableSymbolKind::function, "helper");
+        const query::DefKey def_key =
+            cache_test_query_def_key_from_stable_id(stable_id, query::DefNamespace::value, query::DefKind::function);
+        const query::QueryResultFingerprint result =
+            query::query_result_fingerprint(sema::stable_incremental_key(stable_id, "signature:i32"));
+        const std::optional<query::QueryRecord> record = query::item_signature_query_record(def_key, result);
+        EXPECT_TRUE(record.has_value());
+        return record.has_value() ? cache_test_query_row(*record) : std::string{};
     };
 
     expect_not_reused();
@@ -1504,6 +1539,17 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
     write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
         + cache_test_query_row("item_signature", "1", "1", "0", "0", "0", "1", "0", "0", "0", ""));
     expect_not_reused();
+
+    {
+        const std::string row = valid_query_row();
+        ASSERT_FALSE(row.empty());
+        write_cache(
+            cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t2\n" + row + row);
+        expect_not_reused();
+
+        write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t2\n" + row);
+        expect_not_reused();
+    }
 
     write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t2\n"
         + cache_test_query_row("item_signature", "1", "1", "0", "0", "0", "1", "0", "0", "0", "00"));

@@ -109,6 +109,12 @@ struct DefinitionRecord {
     sema::IncrementalKey incremental_key;
 };
 
+struct ParsedQueryRecord {
+    query::QueryKey key;
+    query::QueryResultFingerprint result;
+    std::string stable_key_bytes;
+};
+
 struct ItemSignatureQuerySubject {
     sema::StableDefId stable_id;
     sema::IncrementalKey incremental_key;
@@ -128,9 +134,9 @@ struct ParsedCache {
     std::filesystem::path root_path;
     std::vector<std::filesystem::path> import_paths;
     std::vector<SourceFingerprintRecord> sources;
+    std::vector<ParsedQueryRecord> queries;
     base::usize module_count = 0;
     base::usize definition_count = 0;
-    base::usize query_count = 0;
     std::optional<base::usize> expected_import_paths;
     std::optional<base::usize> expected_sources;
     std::optional<base::usize> expected_modules;
@@ -464,11 +470,37 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return std::nullopt;
 }
 
+[[nodiscard]] std::optional<base::usize> parsed_query_record_index(
+    const ParsedCache& cache, const query::QueryKind kind, const std::string_view stable_key_bytes)
+{
+    for (base::usize index = 0; index < cache.queries.size(); ++index) {
+        const ParsedQueryRecord& record = cache.queries[index];
+        if (record.key.kind == kind && record.stable_key_bytes == stable_key_bytes) {
+            return index;
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] bool push_parsed_query_record(ParsedCache& cache, ParsedQueryRecord record)
+{
+    if (parsed_query_record_index(cache, record.key.kind, record.stable_key_bytes)) {
+        return false;
+    }
+    cache.queries.push_back(std::move(record));
+    return true;
+}
+
 [[nodiscard]] bool parse_query_line(ParsedCache& cache, const std::vector<std::string_view>& fields)
 {
     if (fields.size() != INCREMENTAL_CACHE_QUERY_FIELD_COUNT
-        || fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_QUERY
-        || !parse_query_kind_name(fields[INCREMENTAL_CACHE_QUERY_KIND_FIELD]).has_value()) {
+        || fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_QUERY) {
+        return false;
+    }
+
+    const std::optional<query::QueryKind> query_kind =
+        parse_query_kind_name(fields[INCREMENTAL_CACHE_QUERY_KIND_FIELD]);
+    if (!query_kind.has_value()) {
         return false;
     }
 
@@ -481,8 +513,7 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     base::u64 result_primary = 0;
     base::u64 result_secondary = 0;
     base::u32 result_bytes = 0;
-    const std::optional<std::string> stable_key_bytes =
-        decode_hex_string(fields[INCREMENTAL_CACHE_QUERY_STABLE_KEY_FIELD]);
+    std::optional<std::string> stable_key_bytes = decode_hex_string(fields[INCREMENTAL_CACHE_QUERY_STABLE_KEY_FIELD]);
     if (!parse_u32(fields[INCREMENTAL_CACHE_QUERY_SCHEMA_FIELD], schema) || schema != query::QUERY_KEY_SCHEMA_VERSION
         || !parse_u64(fields[INCREMENTAL_CACHE_QUERY_GLOBAL_FIELD], query_global)
         || !parse_u64(fields[INCREMENTAL_CACHE_QUERY_PAYLOAD_PRIMARY_FIELD], payload_primary)
@@ -495,8 +526,42 @@ void append_hex_string(std::ostream& out, const std::string_view value)
         || result_global == 0 || !stable_key_bytes || stable_key_bytes->empty()) {
         return false;
     }
-    cache.query_count += 1;
-    return true;
+
+    const query::StableFingerprint128 payload{
+        payload_primary,
+        payload_secondary,
+        payload_bytes,
+    };
+    if (payload != query::stable_fingerprint(*stable_key_bytes)) {
+        return false;
+    }
+
+    query::QueryKey key = query::query_key(*query_kind, payload, static_cast<base::u16>(schema));
+    if (key.global_id != query_global) {
+        return false;
+    }
+
+    const query::StableFingerprint128 result_fingerprint{
+        result_primary,
+        result_secondary,
+        result_bytes,
+    };
+    if (result_fingerprint.byte_count == 0) {
+        return false;
+    }
+
+    ParsedQueryRecord record{
+        key,
+        query::QueryResultFingerprint{
+            result_fingerprint,
+            result_global,
+        },
+        std::move(*stable_key_bytes),
+    };
+    if (!query::is_valid(record.key) || !query::is_valid(record.result)) {
+        return false;
+    }
+    return push_parsed_query_record(cache, std::move(record));
 }
 
 [[nodiscard]] bool parse_cache_line(ParsedCache& cache, const std::string_view line)
@@ -528,7 +593,7 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 [[nodiscard]] bool parsed_cache_counts_match(const ParsedCache& cache) noexcept
 {
     const bool queries_match =
-        cache.expected_queries.has_value() ? cache.query_count == *cache.expected_queries : cache.query_count == 0;
+        cache.expected_queries.has_value() ? cache.queries.size() == *cache.expected_queries : cache.queries.empty();
     return cache.expected_import_paths && cache.expected_sources && cache.expected_modules && cache.expected_definitions
         && cache.import_paths.size() == *cache.expected_import_paths && cache.sources.size() == *cache.expected_sources
         && cache.module_count == *cache.expected_modules && cache.definition_count == *cache.expected_definitions
@@ -716,6 +781,11 @@ void push_query_record(std::vector<query::QueryRecord>& records, std::optional<q
 {
     if (!record) {
         return;
+    }
+    for (const query::QueryRecord& existing : records) {
+        if (existing.key.kind == record->key.kind && existing.stable_key_bytes == record->stable_key_bytes) {
+            return;
+        }
     }
     records.push_back(std::move(*record));
 }

@@ -322,7 +322,12 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_EQ(result.fingerprint, incremental_key.fingerprint);
     EXPECT_EQ(result.global_id, incremental_key.global_id);
 
-    const std::optional<query::QueryRecord> item_record = query::item_signature_query_record(function_def, result);
+    const query::ItemSignatureQueryInput item_input{
+        function_def,
+        result,
+    };
+    EXPECT_TRUE(query::is_valid(item_input));
+    const std::optional<query::QueryRecord> item_record = query::item_signature_query_record(item_input);
     ASSERT_TRUE(item_record.has_value());
     EXPECT_TRUE(query::is_valid(*item_record));
     EXPECT_EQ(item_record->key.kind, query::QueryKind::item_signature);
@@ -351,6 +356,12 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
             .has_value());
     EXPECT_FALSE(
         query::query_record(query::QueryKind::item_signature, query::stable_key_fingerprint(function_def), "", result)
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::ItemSignatureQueryInput{}));
+    EXPECT_FALSE(
+        query::item_signature_query_record(query::ItemSignatureQueryInput{query::DefKey{}, result}).has_value());
+    EXPECT_FALSE(query::item_signature_query_record(
+        query::ItemSignatureQueryInput{function_def, query::QueryResultFingerprint{}})
             .has_value());
     EXPECT_FALSE(query::item_signature_query_record(query::DefKey{}, result).has_value());
     EXPECT_FALSE(query::item_signature_query_record(function_def, query::QueryResultFingerprint{}).has_value());

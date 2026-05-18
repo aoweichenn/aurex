@@ -109,6 +109,13 @@ struct DefinitionRecord {
     sema::IncrementalKey incremental_key;
 };
 
+struct ItemSignatureQuerySubject {
+    sema::StableDefId stable_id;
+    sema::IncrementalKey incremental_key;
+    query::DefNamespace name_space = query::DefNamespace::value;
+    query::DefKind kind = query::DefKind::invalid;
+};
+
 struct ParsedCache {
     base::u64 schema = 0;
     std::string compiler_version;
@@ -708,15 +715,42 @@ void push_query_record(std::vector<query::QueryRecord>& records, std::optional<q
     records.push_back(std::move(*record));
 }
 
-void push_item_signature_query_record(std::vector<query::QueryRecord>& records, const sema::StableDefId& stable_id,
-    const sema::IncrementalKey& incremental_key, const query::DefNamespace name_space, const query::DefKind kind)
+void push_item_signature_query_subject(std::vector<ItemSignatureQuerySubject>& subjects,
+    const sema::StableDefId& stable_id, const sema::IncrementalKey& incremental_key,
+    const query::DefNamespace name_space, const query::DefKind kind)
 {
-    if (!query::is_valid(stable_id)) {
+    subjects.push_back(ItemSignatureQuerySubject{
+        stable_id,
+        incremental_key,
+        name_space,
+        kind,
+    });
+}
+
+[[nodiscard]] std::optional<query::ItemSignatureQueryInput> item_signature_query_input(
+    const ItemSignatureQuerySubject& subject)
+{
+    if (subject.kind == query::DefKind::invalid || !query::is_valid(subject.stable_id)) {
+        return std::nullopt;
+    }
+    const query::QueryResultFingerprint result = query::query_result_fingerprint(subject.incremental_key);
+    if (!query::is_valid(result)) {
+        return std::nullopt;
+    }
+    return query::ItemSignatureQueryInput{
+        query_def_key_from_stable_id(subject.stable_id, subject.name_space, subject.kind),
+        result,
+    };
+}
+
+void push_item_signature_query_record(
+    std::vector<query::QueryRecord>& records, const ItemSignatureQuerySubject& subject)
+{
+    const std::optional<query::ItemSignatureQueryInput> input = item_signature_query_input(subject);
+    if (!input) {
         return;
     }
-    const query::DefKey key = query_def_key_from_stable_id(stable_id, name_space, kind);
-    push_query_record(
-        records, query::item_signature_query_record(key, query::query_result_fingerprint(incremental_key)));
+    push_query_record(records, query::item_signature_query_record(*input));
 }
 
 void push_generic_instance_signature_query_record(std::vector<query::QueryRecord>& records,
@@ -725,6 +759,57 @@ void push_generic_instance_signature_query_record(std::vector<query::QueryRecord
     push_query_record(records,
         query::generic_instance_signature_query_record(
             generic_instance_key, query::query_result_fingerprint(incremental_key)));
+}
+
+[[nodiscard]] std::vector<ItemSignatureQuerySubject> collect_item_signature_query_subjects(
+    const sema::CheckedModule& checked)
+{
+    std::vector<ItemSignatureQuerySubject> subjects;
+    subjects.reserve(
+        checked.functions.size() + checked.structs.size() + checked.enum_cases.size() + checked.type_aliases.size());
+
+    for (const auto& entry : checked.functions) {
+        const sema::FunctionSignature& signature = entry.second;
+        push_item_signature_query_subject(subjects, signature.stable_id, signature.incremental_key,
+            query::DefNamespace::value, function_signature_def_kind(signature));
+    }
+    for (const auto& entry : checked.structs) {
+        const sema::StructInfo& info = entry.second;
+        push_item_signature_query_subject(
+            subjects, info.stable_id, info.incremental_key, query::DefNamespace::type, query::DefKind::struct_);
+    }
+    for (const auto& entry : checked.enum_cases) {
+        const sema::EnumCaseInfo& info = entry.second;
+        push_item_signature_query_subject(
+            subjects, info.stable_id, info.incremental_key, query::DefNamespace::value, query::DefKind::enum_case);
+    }
+    for (const auto& entry : checked.type_aliases) {
+        const sema::TypeAliasInfo& info = entry.second;
+        push_item_signature_query_subject(
+            subjects, info.stable_id, info.incremental_key, query::DefNamespace::type, query::DefKind::type_alias);
+    }
+    return subjects;
+}
+
+void push_item_signature_query_records(
+    std::vector<query::QueryRecord>& records, const std::vector<ItemSignatureQuerySubject>& subjects)
+{
+    for (const ItemSignatureQuerySubject& subject : subjects) {
+        push_item_signature_query_record(records, subject);
+    }
+}
+
+void push_generic_instance_signature_query_records(
+    std::vector<query::QueryRecord>& records, const sema::CheckedModule& checked)
+{
+    for (const sema::GenericFunctionInstanceInfo& instance : checked.generic_function_instances) {
+        push_generic_instance_signature_query_record(
+            records, instance.generic_instance_key, instance.signature.incremental_key);
+    }
+    for (const auto& entry : checked.structs) {
+        const sema::StructInfo& info = entry.second;
+        push_generic_instance_signature_query_record(records, info.generic_instance_key, info.incremental_key);
+    }
 }
 
 [[nodiscard]] std::vector<DefinitionRecord> collect_definitions(const sema::CheckedModule& checked)
@@ -779,31 +864,9 @@ void push_generic_instance_signature_query_record(std::vector<query::QueryRecord
     records.reserve(checked.functions.size() + checked.generic_function_instances.size() + checked.structs.size()
         + checked.enum_cases.size() + checked.type_aliases.size());
 
-    for (const auto& entry : checked.functions) {
-        const sema::FunctionSignature& signature = entry.second;
-        push_item_signature_query_record(records, signature.stable_id, signature.incremental_key,
-            query::DefNamespace::value, function_signature_def_kind(signature));
-    }
-    for (const sema::GenericFunctionInstanceInfo& instance : checked.generic_function_instances) {
-        push_generic_instance_signature_query_record(
-            records, instance.generic_instance_key, instance.signature.incremental_key);
-    }
-    for (const auto& entry : checked.structs) {
-        const sema::StructInfo& info = entry.second;
-        push_item_signature_query_record(
-            records, info.stable_id, info.incremental_key, query::DefNamespace::type, query::DefKind::struct_);
-        push_generic_instance_signature_query_record(records, info.generic_instance_key, info.incremental_key);
-    }
-    for (const auto& entry : checked.enum_cases) {
-        const sema::EnumCaseInfo& info = entry.second;
-        push_item_signature_query_record(
-            records, info.stable_id, info.incremental_key, query::DefNamespace::value, query::DefKind::enum_case);
-    }
-    for (const auto& entry : checked.type_aliases) {
-        const sema::TypeAliasInfo& info = entry.second;
-        push_item_signature_query_record(
-            records, info.stable_id, info.incremental_key, query::DefNamespace::type, query::DefKind::type_alias);
-    }
+    const std::vector<ItemSignatureQuerySubject> item_subjects = collect_item_signature_query_subjects(checked);
+    push_item_signature_query_records(records, item_subjects);
+    push_generic_instance_signature_query_records(records, checked);
 
     std::sort(records.begin(), records.end(), [](const query::QueryRecord& lhs, const query::QueryRecord& rhs) {
         if (lhs.key.kind != rhs.key.kind) {

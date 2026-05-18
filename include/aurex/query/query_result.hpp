@@ -22,14 +22,21 @@ struct QueryRecord {
     std::string stable_key_bytes;
 };
 
+struct ItemSignatureQueryInput {
+    DefKey key;
+    QueryResultFingerprint result;
+};
+
 [[nodiscard]] bool is_valid(QueryResultFingerprint result) noexcept;
 [[nodiscard]] bool is_valid(const QueryRecord& record) noexcept;
+[[nodiscard]] bool is_valid(const ItemSignatureQueryInput& input) noexcept;
 
 [[nodiscard]] QueryResultFingerprint query_result_fingerprint(IncrementalKey incremental_key) noexcept;
 
 [[nodiscard]] std::optional<QueryRecord> query_record(QueryKind kind, StableFingerprint128 key_payload,
     std::string stable_key_bytes, QueryResultFingerprint result);
 
+[[nodiscard]] std::optional<QueryRecord> item_signature_query_record(const ItemSignatureQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> item_signature_query_record(DefKey key, QueryResultFingerprint result);
 
 [[nodiscard]] std::optional<QueryRecord> generic_instance_signature_query_record(

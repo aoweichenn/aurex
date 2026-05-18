@@ -1,8 +1,7 @@
-#include <aurex/parse/parser_stmt_part.hpp>
-
 #include <aurex/parse/parser_control_stmt_part.hpp>
 #include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/parser_pattern_part.hpp>
+#include <aurex/parse/parser_stmt_part.hpp>
 
 #include <utility>
 
@@ -14,19 +13,14 @@ using syntax::TokenKind;
 
 } // namespace
 
-syntax::StmtId StmtParser::parse_stmt() {
+syntax::StmtId StmtParser::parse_stmt()
+{
     this->reset_panic();
     if (this->check(TokenKind::kw_let)) {
-        return this->parse_let_or_var_stmt(
-            syntax::StmtKind::let,
-            StatementTerminatorRecovery::synchronize
-        );
+        return this->parse_let_or_var_stmt(syntax::StmtKind::let, StatementTerminatorRecovery::synchronize);
     }
     if (this->check(TokenKind::kw_var)) {
-        return this->parse_let_or_var_stmt(
-            syntax::StmtKind::var,
-            StatementTerminatorRecovery::synchronize
-        );
+        return this->parse_let_or_var_stmt(syntax::StmtKind::var, StatementTerminatorRecovery::synchronize);
     }
     if (this->check(TokenKind::kw_if)) {
         return ControlStmtParser(this->parser_).parse_if_stmt();
@@ -58,18 +52,16 @@ syntax::StmtId StmtParser::parse_stmt() {
     return this->parse_expr_or_assign_stmt();
 }
 
-bool StmtParser::starts_local_pattern() const noexcept {
-    if (this->check(TokenKind::l_paren) ||
-        this->check(TokenKind::l_bracket) ||
-        this->check(TokenKind::dot)) {
+bool StmtParser::starts_local_pattern() const noexcept
+{
+    if (this->check(TokenKind::l_paren) || this->check(TokenKind::l_bracket) || this->check(TokenKind::dot)) {
         return true;
     }
     if (!this->check(TokenKind::identifier)) {
         return false;
     }
-    return this->check_next(TokenKind::l_brace) ||
-           this->check_next(TokenKind::dot) ||
-           this->check_next(TokenKind::l_paren);
+    return this->check_next(TokenKind::l_brace) || this->check_next(TokenKind::dot)
+        || this->check_next(TokenKind::l_paren);
 }
 
 syntax::StmtId StmtParser::parse_unsafe_block_stmt() const
@@ -86,9 +78,8 @@ syntax::StmtId StmtParser::parse_unsafe_block_stmt() const
 }
 
 syntax::StmtId StmtParser::parse_let_or_var_stmt(
-    const syntax::StmtKind kind,
-    const StatementTerminatorRecovery recovery
-) {
+    const syntax::StmtKind kind, const StatementTerminatorRecovery recovery)
+{
     const syntax::Token& begin = this->advance();
     syntax::Token name;
     syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
@@ -104,7 +95,7 @@ syntax::StmtId StmtParser::parse_let_or_var_stmt(
     this->expect_initializer_equal(std::string(PARSER_EXPECT_INITIALIZER));
     const syntax::ExprId init = this->parse_expr();
     syntax::StmtId else_block = syntax::INVALID_STMT_ID;
-    base::SourceRange end_range {};
+    base::SourceRange end_range{};
     if (this->match(TokenKind::kw_else)) {
         if (!syntax::is_valid(pattern)) {
             this->report_at(name, std::string(PARSER_LET_ELSE_REQUIRES_PATTERN));
@@ -113,16 +104,12 @@ syntax::StmtId StmtParser::parse_let_or_var_stmt(
             this->report_here(std::string(PARSER_EXPECT_LET_ELSE_BLOCK));
         }
         else_block = this->parse_block();
-        const syntax::Token& end = this->expect_statement_semicolon(
-            std::string(PARSER_EXPECT_LET_ELSE_TERMINATOR),
-            recovery
-        );
+        const syntax::Token& end =
+            this->expect_statement_semicolon(std::string(PARSER_EXPECT_LET_ELSE_TERMINATOR), recovery);
         end_range = end.range;
     } else {
-        const syntax::Token& end = this->expect_statement_semicolon(
-            std::string(PARSER_EXPECT_LOCAL_DECL_TERMINATOR),
-            recovery
-        );
+        const syntax::Token& end =
+            this->expect_statement_semicolon(std::string(PARSER_EXPECT_LOCAL_DECL_TERMINATOR), recovery);
         end_range = end.range;
     }
 
@@ -137,25 +124,20 @@ syntax::StmtId StmtParser::parse_let_or_var_stmt(
     return this->session_.module.push_stmt(std::move(stmt));
 }
 
-syntax::StmtId StmtParser::parse_expr_or_assign_stmt() {
-    return this->parse_expr_or_assign_stmt(
-        true,
-        StatementTerminatorRecovery::synchronize
-    );
+syntax::StmtId StmtParser::parse_expr_or_assign_stmt()
+{
+    return this->parse_expr_or_assign_stmt(true, StatementTerminatorRecovery::synchronize);
 }
 
 syntax::StmtId StmtParser::parse_expr_or_assign_stmt(
-    const bool require_semicolon,
-    const StatementTerminatorRecovery recovery
-) {
+    const bool require_semicolon, const StatementTerminatorRecovery recovery)
+{
     return this->parse_expr_or_assign_stmt(ExprContext::normal, require_semicolon, recovery);
 }
 
 syntax::StmtId StmtParser::parse_expr_or_assign_stmt(
-    const ExprContext context,
-    const bool require_semicolon,
-    const StatementTerminatorRecovery recovery
-) {
+    const ExprContext context, const bool require_semicolon, const StatementTerminatorRecovery recovery)
+{
     const syntax::ExprId lhs = this->parse_expr(context);
     syntax::AssignOp op = syntax::AssignOp::assign;
     if (this->match_assignment_operator(op)) {
@@ -167,10 +149,8 @@ syntax::StmtId StmtParser::parse_expr_or_assign_stmt(
     stmt.init = lhs;
     base::SourceRange end_range = this->expr_range_or(lhs, this->peek().range);
     if (require_semicolon) {
-        const syntax::Token& end = this->expect_statement_semicolon(
-            std::string(PARSER_EXPECT_EXPR_STMT_TERMINATOR),
-            recovery
-        );
+        const syntax::Token& end =
+            this->expect_statement_semicolon(std::string(PARSER_EXPECT_EXPR_STMT_TERMINATOR), recovery);
         end_range = end.range;
     } else {
         end_range = this->expr_range_or(stmt.init, end_range);
@@ -179,7 +159,8 @@ syntax::StmtId StmtParser::parse_expr_or_assign_stmt(
     return this->session_.module.push_stmt(std::move(stmt));
 }
 
-bool StmtParser::match_assignment_operator(syntax::AssignOp& op) const noexcept {
+bool StmtParser::match_assignment_operator(syntax::AssignOp& op) const noexcept
+{
     if (this->match(TokenKind::equal)) {
         op = syntax::AssignOp::assign;
         return true;
@@ -227,13 +208,9 @@ bool StmtParser::match_assignment_operator(syntax::AssignOp& op) const noexcept 
     return false;
 }
 
-syntax::StmtId StmtParser::parse_assignment_tail(
-    const syntax::ExprId lhs,
-    const ExprContext context,
-    const syntax::AssignOp op,
-    const bool require_semicolon,
-    const StatementTerminatorRecovery recovery
-) {
+syntax::StmtId StmtParser::parse_assignment_tail(const syntax::ExprId lhs, const ExprContext context,
+    const syntax::AssignOp op, const bool require_semicolon, const StatementTerminatorRecovery recovery)
+{
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::assign;
     stmt.assign_op = op;
@@ -242,10 +219,8 @@ syntax::StmtId StmtParser::parse_assignment_tail(
 
     base::SourceRange end_range = this->expr_range_or(stmt.rhs, this->expr_range_or(lhs, this->peek().range));
     if (require_semicolon) {
-        const syntax::Token& end = this->expect_statement_semicolon(
-            std::string(PARSER_EXPECT_ASSIGNMENT_TERMINATOR),
-            recovery
-        );
+        const syntax::Token& end =
+            this->expect_statement_semicolon(std::string(PARSER_EXPECT_ASSIGNMENT_TERMINATOR), recovery);
         end_range = end.range;
     }
     stmt.range = this->merge(this->expr_range_or(lhs, end_range), end_range);
@@ -253,19 +228,14 @@ syntax::StmtId StmtParser::parse_assignment_tail(
 }
 
 const syntax::Token& StmtParser::expect_statement_semicolon(
-    std::string message,
-    const StatementTerminatorRecovery recovery
-) const
+    std::string message, const StatementTerminatorRecovery recovery) const
 {
     switch (recovery) {
-    case StatementTerminatorRecovery::direct:
-        return this->expect(TokenKind::semicolon, std::move(message));
-    case StatementTerminatorRecovery::synchronize:
-        return this->expect_recovered(
-            TokenKind::semicolon,
-            std::move(message),
-            RecoveryContext::statement_terminator
-        );
+        case StatementTerminatorRecovery::direct:
+            return this->expect(TokenKind::semicolon, std::move(message));
+        case StatementTerminatorRecovery::synchronize:
+            return this->expect_recovered(
+                TokenKind::semicolon, std::move(message), RecoveryContext::statement_terminator);
     }
     return this->expect(TokenKind::semicolon, std::move(message));
 }

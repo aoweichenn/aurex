@@ -1,17 +1,7 @@
-#include <backend/llvm/llvm_backend_internal.hpp>
-
 #include <aurex/backend/backend_messages.hpp>
 #include <aurex/ir/verify.hpp>
 
-#include <llvm/IR/BasicBlock.h>
-#include <llvm/IR/Function.h>
-#include <llvm/IR/Verifier.h>
-#include <llvm/MC/TargetRegistry.h>
-#include <llvm/TargetParser/Host.h>
-#include <llvm/Support/TargetSelect.h>
-#include <llvm/Support/raw_ostream.h>
-#include <llvm/Target/TargetMachine.h>
-#include <llvm/TargetParser/Triple.h>
+#include <backend/llvm/llvm_backend_internal.hpp>
 
 #include <memory>
 #include <optional>
@@ -19,25 +9,37 @@
 #include <utility>
 #include <vector>
 
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/MC/TargetRegistry.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/raw_ostream.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/TargetParser/Host.h>
+#include <llvm/TargetParser/Triple.h>
+
 namespace aurex::backend {
 
 LlvmEmitter::LlvmEmitter(const Module& module, const std::string_view module_name)
-    : source_(module),
-      context_(),
-      module_(std::make_unique<llvm::Module>(module_name, context_)),
-      builder_(context_) {}
+    : source_(module), context_(), module_(std::make_unique<llvm::Module>(module_name, context_)), builder_(context_)
+{
+}
 
-std::string_view LlvmEmitter::text(const IrTextId id) const noexcept {
+std::string_view LlvmEmitter::text(const IrTextId id) const noexcept
+{
     return this->source_.text(id);
 }
 
-std::string LlvmEmitter::suffixed_name(const IrTextId id, const std::string_view suffix) const {
+std::string LlvmEmitter::suffixed_name(const IrTextId id, const std::string_view suffix) const
+{
     std::string result(this->text(id));
     result.append(suffix);
     return result;
 }
 
-base::Result<LlvmIrOutput> LlvmEmitter::run() {
+base::Result<LlvmIrOutput> LlvmEmitter::run()
+{
     if (const auto verified = verify_module(source_); !verified) {
         return base::Result<LlvmIrOutput>::fail(verified.error());
     }
@@ -51,7 +53,7 @@ base::Result<LlvmIrOutput> LlvmEmitter::run() {
     for (base::u32 i = 0; i < source_.functions.size(); ++i) {
         const Function& function = source_.functions[i];
         if (function.linkage != Linkage::extern_c) {
-            emit_function(FunctionId {i}, function);
+            emit_function(FunctionId{i}, function);
         }
     }
 
@@ -66,10 +68,11 @@ base::Result<LlvmIrOutput> LlvmEmitter::run() {
     llvm::raw_string_ostream out(text);
     module_->print(out, nullptr);
     out.flush();
-    return base::Result<LlvmIrOutput>::ok(LlvmIrOutput {std::move(text)});
+    return base::Result<LlvmIrOutput>::ok(LlvmIrOutput{std::move(text)});
 }
 
-base::Result<void> LlvmEmitter::configure_target() {
+base::Result<void> LlvmEmitter::configure_target()
+{
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
 
@@ -80,54 +83,42 @@ base::Result<void> LlvmEmitter::configure_target() {
     std::string error;
     const llvm::Target* target = llvm::TargetRegistry::lookupTarget(triple, error);
     if (target == nullptr) {
-        return base::Result<void>::fail({
-            base::ErrorCode::codegen_error,
-            backend_llvm_target_lookup_failed_message(triple_text, error)
-        });
+        return base::Result<void>::fail(
+            {base::ErrorCode::codegen_error, backend_llvm_target_lookup_failed_message(triple_text, error)});
     }
 
-    target_machine_.reset(target->createTargetMachine(
-        triple,
-        llvm::sys::getHostCPUName(),
-        "",
-        llvm::TargetOptions {},
-        std::nullopt
-    ));
+    target_machine_.reset(
+        target->createTargetMachine(triple, llvm::sys::getHostCPUName(), "", llvm::TargetOptions{}, std::nullopt));
     if (target_machine_ == nullptr) {
-        return base::Result<void>::fail({
-            base::ErrorCode::codegen_error,
-            backend_llvm_target_machine_creation_failed_message(triple_text)
-        });
+        return base::Result<void>::fail(
+            {base::ErrorCode::codegen_error, backend_llvm_target_machine_creation_failed_message(triple_text)});
     }
     module_->setDataLayout(target_machine_->createDataLayout());
     return base::Result<void>::ok();
 }
 
-void LlvmEmitter::declare_constants() {
+void LlvmEmitter::declare_constants()
+{
     for (base::u32 i = 0; i < source_.constants.size(); ++i) {
         const GlobalConstant& constant = source_.constants[i];
         llvm::Constant* initializer = emit_constant_initializer(source_.values[constant.initializer.value]);
-        llvm::GlobalVariable* global = new llvm::GlobalVariable(
-            *module_,
-            llvm_type(constant.type),
-            true,
-            llvm::GlobalValue::InternalLinkage,
-            initializer,
-            this->text(constant.symbol)
-        );
+        llvm::GlobalVariable* global = new llvm::GlobalVariable(*module_, llvm_type(constant.type), true,
+            llvm::GlobalValue::InternalLinkage, initializer, this->text(constant.symbol));
         global->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
         constants_[i] = global;
     }
 }
 
-void LlvmEmitter::declare_functions() {
+void LlvmEmitter::declare_functions()
+{
     for (base::u32 i = 0; i < source_.functions.size(); ++i) {
-        functions_[i] = declare_function(FunctionId {i}, source_.functions[i]);
+        functions_[i] = declare_function(FunctionId{i}, source_.functions[i]);
     }
     declare_main_wrapper();
 }
 
-llvm::Function* LlvmEmitter::declare_function(const FunctionId function_id, const Function& function) {
+llvm::Function* LlvmEmitter::declare_function(const FunctionId function_id, const Function& function)
+{
     llvm::FunctionType* function_type = this->llvm_function_type(function);
 
     if (function.linkage == Linkage::extern_c) {
@@ -140,12 +131,9 @@ llvm::Function* LlvmEmitter::declare_function(const FunctionId function_id, cons
         }
     }
 
-    llvm::Function* llvm_function = llvm::Function::Create(
-        function_type,
+    llvm::Function* llvm_function = llvm::Function::Create(function_type,
         function.linkage == Linkage::internal ? llvm::GlobalValue::InternalLinkage : llvm::GlobalValue::ExternalLinkage,
-        this->text(function.symbol),
-        module_.get()
-    );
+        this->text(function.symbol), module_.get());
     llvm_function->setCallingConv(llvm::CallingConv::C);
     llvm_function->addFnAttr("aurex.ir.fn_id", std::to_string(function_id.value));
     if (function.linkage == Linkage::extern_c) {
@@ -154,23 +142,17 @@ llvm::Function* LlvmEmitter::declare_function(const FunctionId function_id, cons
     return llvm_function;
 }
 
-void LlvmEmitter::declare_main_wrapper() {
+void LlvmEmitter::declare_main_wrapper()
+{
     for (base::u32 i = 0; i < source_.functions.size(); ++i) {
         const Function& function = source_.functions[i];
         if (!function.is_entry) {
             continue;
         }
-        llvm::FunctionType* main_type = llvm::FunctionType::get(
-            llvm::Type::getInt32Ty(context_),
-            {llvm::Type::getInt32Ty(context_), llvm::PointerType::get(context_, 0)},
-            false
-        );
-        llvm::Function* wrapper = llvm::Function::Create(
-            main_type,
-            llvm::GlobalValue::ExternalLinkage,
-            "main",
-            module_.get()
-        );
+        llvm::FunctionType* main_type = llvm::FunctionType::get(llvm::Type::getInt32Ty(context_),
+            {llvm::Type::getInt32Ty(context_), llvm::PointerType::get(context_, 0)}, false);
+        llvm::Function* wrapper =
+            llvm::Function::Create(main_type, llvm::GlobalValue::ExternalLinkage, "main", module_.get());
         llvm::BasicBlock* entry = llvm::BasicBlock::Create(context_, "entry", wrapper);
         builder_.SetInsertPoint(entry);
         std::vector<llvm::Value*> args;

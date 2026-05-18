@@ -1,5 +1,4 @@
 #include <aurex/parse/parser_item_part.hpp>
-
 #include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/recovery.hpp>
 
@@ -15,7 +14,8 @@ using syntax::TokenKind;
 constexpr base::usize PARSER_FN_STRING_DELIMITER_SIZE = 1;
 constexpr base::usize PARSER_FN_STRING_DELIMITER_PAIR_SIZE = PARSER_FN_STRING_DELIMITER_SIZE * 2;
 
-[[nodiscard]] std::string_view unquote_string_literal(const std::string_view text) noexcept {
+[[nodiscard]] std::string_view unquote_string_literal(const std::string_view text) noexcept
+{
     if (text.size() < PARSER_FN_STRING_DELIMITER_PAIR_SIZE) {
         return {};
     }
@@ -24,7 +24,8 @@ constexpr base::usize PARSER_FN_STRING_DELIMITER_PAIR_SIZE = PARSER_FN_STRING_DE
 
 } // namespace
 
-syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_extern_c, const bool is_unsafe) {
+syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_extern_c, const bool is_unsafe)
+{
     base::SourceRange begin_range = this->peek().range;
     if (is_unsafe) {
         const syntax::Token& unsafe = this->expect(TokenKind::kw_unsafe, std::string(PARSER_EXPECT_UNSAFE_KEYWORD));
@@ -43,10 +44,7 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
         params = this->parse_param_list(is_variadic);
     }
     this->expect_recovered(
-        TokenKind::r_paren,
-        std::string(PARSER_EXPECT_FN_PARAM_LIST_END),
-        RecoveryContext::parameter
-    );
+        TokenKind::r_paren, std::string(PARSER_EXPECT_FN_PARAM_LIST_END), RecoveryContext::parameter);
     const syntax::TypeId return_type = this->parse_optional_return_type();
 
     syntax::ItemNode item;
@@ -64,9 +62,7 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     item.where_constraints = this->parse_optional_where_constraints();
 
     if (is_extern_c) {
-        const syntax::Token& end = this->expect_item_terminator(
-            std::string(PARSER_EXPECT_EXTERN_FN_TERMINATOR)
-        );
+        const syntax::Token& end = this->expect_item_terminator(std::string(PARSER_EXPECT_EXTERN_FN_TERMINATOR));
         item.range = this->merge(begin_range, end.range);
     } else if (this->match(TokenKind::semicolon)) {
         item.is_prototype = true;
@@ -80,7 +76,8 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     return this->session_.module.push_item(std::move(item));
 }
 
-std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params() {
+std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params()
+{
     std::vector<syntax::GenericParamDecl> params;
     if (this->check(TokenKind::less)) {
         this->reject_legacy_angle_generic_params();
@@ -94,10 +91,7 @@ std::vector<syntax::GenericParamDecl> ItemParser::parse_optional_generic_params(
     }
     this->parse_generic_params(params);
     this->expect_recovered(
-        TokenKind::r_bracket,
-        std::string(PARSER_EXPECT_GENERIC_PARAM_LIST_END),
-        RecoveryContext::generic_parameter
-    );
+        TokenKind::r_bracket, std::string(PARSER_EXPECT_GENERIC_PARAM_LIST_END), RecoveryContext::generic_parameter);
     return params;
 }
 
@@ -110,10 +104,8 @@ void ItemParser::reject_legacy_angle_generic_params() const
             this->reset_panic();
             return;
         }
-        if (this->check(TokenKind::l_paren) ||
-            this->check(TokenKind::l_brace) ||
-            this->check(TokenKind::equal) ||
-            this->check(TokenKind::semicolon)) {
+        if (this->check(TokenKind::l_paren) || this->check(TokenKind::l_brace) || this->check(TokenKind::equal)
+            || this->check(TokenKind::semicolon)) {
             this->reset_panic();
             return;
         }
@@ -121,7 +113,8 @@ void ItemParser::reject_legacy_angle_generic_params() const
     }
 }
 
-void ItemParser::parse_generic_params(std::vector<syntax::GenericParamDecl>& params) {
+void ItemParser::parse_generic_params(std::vector<syntax::GenericParamDecl>& params)
+{
     while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
         if (std::optional<syntax::GenericParamDecl> param = this->parse_generic_param()) {
             params.push_back(param.value());
@@ -133,17 +126,17 @@ void ItemParser::parse_generic_params(std::vector<syntax::GenericParamDecl>& par
     }
 }
 
-std::optional<syntax::GenericParamDecl> ItemParser::parse_generic_param() {
-    const syntax::Token& name = this->expect_identifier_recovered(
-        std::string(PARSER_EXPECT_GENERIC_TYPE_PARAMETER_NAME)
-    );
+std::optional<syntax::GenericParamDecl> ItemParser::parse_generic_param()
+{
+    const syntax::Token& name =
+        this->expect_identifier_recovered(std::string(PARSER_EXPECT_GENERIC_TYPE_PARAMETER_NAME));
     if (name.kind != TokenKind::identifier) {
         return std::nullopt;
     }
     if (this->check(TokenKind::colon)) {
         this->report_here(std::string(PARSER_M2_GENERIC_BOUNDS_UNSUPPORTED));
     }
-    return syntax::GenericParamDecl {
+    return syntax::GenericParamDecl{
         name.text(),
         name.range,
     };
@@ -173,14 +166,11 @@ bool ItemParser::recover_generic_param_separator() const
 
 void ItemParser::expect_param_list_start(std::string message) const
 {
-    this->expect_recovered(
-        TokenKind::l_paren,
-        std::move(message),
-        RecoveryContext::parameter_list_start
-    );
+    this->expect_recovered(TokenKind::l_paren, std::move(message), RecoveryContext::parameter_list_start);
 }
 
-std::vector<syntax::ParamDecl> ItemParser::parse_param_list(bool& is_variadic) {
+std::vector<syntax::ParamDecl> ItemParser::parse_param_list(bool& is_variadic)
+{
     std::vector<syntax::ParamDecl> params;
     while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
         if (this->match(TokenKind::ellipsis)) {
@@ -202,14 +192,15 @@ std::vector<syntax::ParamDecl> ItemParser::parse_param_list(bool& is_variadic) {
     return params;
 }
 
-std::optional<syntax::ParamDecl> ItemParser::parse_param() {
+std::optional<syntax::ParamDecl> ItemParser::parse_param()
+{
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_PARAMETER_NAME));
     this->expect_type_annotation_colon(std::string(PARSER_EXPECT_PARAMETER_TYPE_COLON));
     const syntax::TypeId type = this->parse_type();
     if (name.kind != TokenKind::identifier) {
         return std::nullopt;
     }
-    return syntax::ParamDecl {
+    return syntax::ParamDecl{
         name.text(),
         type,
         this->merge(name.range, this->type_range_or(type, name.range)),
@@ -254,7 +245,8 @@ syntax::TypeId ItemParser::parse_optional_return_type() const
     return this->parse_type();
 }
 
-void ItemParser::parse_optional_abi_name(syntax::ItemNode& item) {
+void ItemParser::parse_optional_abi_name(syntax::ItemNode& item)
+{
     if (!this->match(TokenKind::at)) {
         return;
     }
@@ -268,21 +260,18 @@ void ItemParser::parse_optional_abi_name(syntax::ItemNode& item) {
     this->reset_panic();
 }
 
-std::vector<syntax::GenericConstraintDecl> ItemParser::parse_optional_where_constraints() {
+std::vector<syntax::GenericConstraintDecl> ItemParser::parse_optional_where_constraints()
+{
     std::vector<syntax::GenericConstraintDecl> constraints;
     if (!this->match(TokenKind::kw_where)) {
         return constraints;
     }
-    if (this->check(TokenKind::l_brace) ||
-        this->check(TokenKind::semicolon) ||
-        this->check(TokenKind::equal)) {
+    if (this->check(TokenKind::l_brace) || this->check(TokenKind::semicolon) || this->check(TokenKind::equal)) {
         this->report_here(std::string(PARSER_EXPECT_WHERE_GENERIC_PARAM));
         return constraints;
     }
-    while (!this->is_eof() &&
-           !this->check(TokenKind::l_brace) &&
-           !this->check(TokenKind::semicolon) &&
-           !this->check(TokenKind::equal)) {
+    while (!this->is_eof() && !this->check(TokenKind::l_brace) && !this->check(TokenKind::semicolon)
+        && !this->check(TokenKind::equal)) {
         if (std::optional<syntax::GenericConstraintDecl> constraint = this->parse_where_constraint()) {
             constraints.push_back(std::move(constraint.value()));
         }
@@ -294,13 +283,11 @@ std::vector<syntax::GenericConstraintDecl> ItemParser::parse_optional_where_cons
     return constraints;
 }
 
-std::optional<syntax::GenericConstraintDecl> ItemParser::parse_where_constraint() {
+std::optional<syntax::GenericConstraintDecl> ItemParser::parse_where_constraint()
+{
     const syntax::Token& param = this->expect_identifier_recovered(std::string(PARSER_EXPECT_WHERE_GENERIC_PARAM));
     this->expect_recovered(
-        TokenKind::colon,
-        std::string(PARSER_EXPECT_WHERE_GENERIC_PARAM_COLON),
-        RecoveryContext::item
-    );
+        TokenKind::colon, std::string(PARSER_EXPECT_WHERE_GENERIC_PARAM_COLON), RecoveryContext::item);
     if (param.kind != TokenKind::identifier) {
         return std::nullopt;
     }
@@ -319,7 +306,8 @@ std::optional<syntax::GenericConstraintDecl> ItemParser::parse_where_constraint(
     return constraint;
 }
 
-void ItemParser::parse_where_capabilities(syntax::GenericConstraintDecl& constraint) {
+void ItemParser::parse_where_capabilities(syntax::GenericConstraintDecl& constraint)
+{
     while (!this->is_eof()) {
         const syntax::Token& capability =
             this->expect_identifier_recovered(std::string(PARSER_EXPECT_WHERE_CAPABILITY));
@@ -335,22 +323,16 @@ void ItemParser::parse_where_capabilities(syntax::GenericConstraintDecl& constra
 
 bool ItemParser::recover_where_constraint_separator() const
 {
-    if (this->check(TokenKind::l_brace) ||
-        this->check(TokenKind::semicolon) ||
-        this->check(TokenKind::equal)) {
+    if (this->check(TokenKind::l_brace) || this->check(TokenKind::semicolon) || this->check(TokenKind::equal)) {
         return false;
     }
     if (this->match(TokenKind::comma)) {
         this->reset_panic();
-        if (this->check(TokenKind::l_brace) ||
-            this->check(TokenKind::semicolon) ||
-            this->check(TokenKind::equal)) {
+        if (this->check(TokenKind::l_brace) || this->check(TokenKind::semicolon) || this->check(TokenKind::equal)) {
             this->report_here(std::string(PARSER_EXPECT_WHERE_GENERIC_PARAM));
             return false;
         }
-        return !this->check(TokenKind::l_brace) &&
-               !this->check(TokenKind::semicolon) &&
-               !this->check(TokenKind::equal);
+        return !this->check(TokenKind::l_brace) && !this->check(TokenKind::semicolon) && !this->check(TokenKind::equal);
     }
 
     this->report_here(std::string(PARSER_EXPECT_WHERE_SEPARATOR));
@@ -362,10 +344,7 @@ bool ItemParser::recover_where_constraint_separator() const
 void ItemParser::expect_abi_attribute_argument_start() const
 {
     this->expect_recovered(
-        TokenKind::l_paren,
-        std::string(PARSER_EXPECT_ABI_ATTRIBUTE_START),
-        RecoveryContext::abi_attribute_start
-    );
+        TokenKind::l_paren, std::string(PARSER_EXPECT_ABI_ATTRIBUTE_START), RecoveryContext::abi_attribute_start);
 }
 
 void ItemParser::parse_abi_name_argument(syntax::ItemNode& item) const

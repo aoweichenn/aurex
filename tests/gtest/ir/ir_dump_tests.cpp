@@ -1,7 +1,8 @@
 #include <aurex/ir/ir_dump.hpp>
-#include <gtest/support/ir_test_helpers.hpp>
 
 #include <utility>
+
+#include <gtest/support/ir_test_helpers.hpp>
 
 namespace aurex::test {
 namespace {
@@ -10,7 +11,8 @@ using namespace irtest;
 
 } // namespace
 
-TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
+TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames)
+{
     Module module;
     const TypeHandle void_type = builtin(module, BuiltinType::void_);
     const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
@@ -31,14 +33,14 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     append_record(module, record);
     append_record(module, record_layout(module, opaque_type, "dump.Opaque", "dump_Opaque", true));
 
-    static_cast<void>(add_global_constant(module, GlobalConstant {"broken", "dump_broken", i32, INVALID_VALUE_ID}));
+    static_cast<void>(add_global_constant(module, GlobalConstant{"broken", "dump_broken", i32, INVALID_VALUE_ID}));
 
     Function exported = make_function(module, "exported", void_type, Linkage::export_c, AbiCallConv::c);
     set_symbol(module, exported, "dump_exported");
     append_function(module, exported);
 
     Function function = make_function(module, "dump_ops", i32);
-    FunctionBuilder builder {module, function};
+    FunctionBuilder builder{module, function};
     const ValueId lhs = builder.add(integer_value(module, i32, "7"));
     const ValueId rhs = builder.add(integer_value(module, i32, "3"));
     const ValueId len = builder.add(integer_value(module, usize, "2"));
@@ -135,7 +137,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     slice_len.object = slice_value;
     const ValueId slice_len_value = builder.add(slice_len);
 
-    std::vector<ValueId> values {
+    std::vector<ValueId> values{
         lhs,
         rhs,
         len,
@@ -212,50 +214,51 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames) {
     assign_ir_vector(function.blocks[entry.value].values, values);
     function.blocks[entry.value].terminator.kind = TerminatorKind::none;
     function.blocks[dead.value].terminator.kind = TerminatorKind::branch;
-    function.blocks[dead.value].terminator.target = BlockId {99};
+    function.blocks[dead.value].terminator.target = BlockId{99};
     append_function(module, function);
 
     const std::string dump = ir::dump_module(module);
-    expect_contains_all(dump, {
-        "const broken @dump_broken: i32 = %invalid",
-        "linkage(export_c)",
-        "abi(c)",
-        "record dump.Opaque @dump_Opaque opaque",
-        "null",
-        "string \"dump\"",
-        "strptr",
-        "strblen",
-        "strraw",
-        "strvalid",
-        "strfromutf8",
-        "strslice.checked",
-        "const_ref @fallback_constant",
-        "function_ref @dump_callback",
-        "call %",
-        "aggregate [",
-        "slice ",
-        "slice_data",
-        "slice_len",
-        "bitnot",
-        "addr_of",
-        "deref",
-        "mul",
-        "div",
-        "mod",
-        "shl",
-        "shr",
-        "le",
-        "ge",
-        "bitand",
-        "bitxor",
-        "bitor",
-        "and",
-        "bitcast",
-        "ptrat",
-        "ptraddr",
-        "unreachable",
-        "br ^invalid",
-    });
+    expect_contains_all(dump,
+        {
+            "const broken @dump_broken: i32 = %invalid",
+            "linkage(export_c)",
+            "abi(c)",
+            "record dump.Opaque @dump_Opaque opaque",
+            "null",
+            "string \"dump\"",
+            "strptr",
+            "strblen",
+            "strraw",
+            "strvalid",
+            "strfromutf8",
+            "strslice.checked",
+            "const_ref @fallback_constant",
+            "function_ref @dump_callback",
+            "call %",
+            "aggregate [",
+            "slice ",
+            "slice_data",
+            "slice_len",
+            "bitnot",
+            "addr_of",
+            "deref",
+            "mul",
+            "div",
+            "mod",
+            "shl",
+            "shr",
+            "le",
+            "ge",
+            "bitand",
+            "bitxor",
+            "bitor",
+            "and",
+            "bitcast",
+            "ptrat",
+            "ptraddr",
+            "unreachable",
+            "br ^invalid",
+        });
 }
 
 } // namespace aurex::test

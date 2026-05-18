@@ -9,40 +9,48 @@ namespace aurex::parse {
 
 class TokenCursor final {
 public:
-    explicit TokenCursor(std::span<const syntax::Token> tokens) noexcept
-        : tokens_(tokens) {}
+    explicit TokenCursor(std::span<const syntax::Token> tokens) noexcept : tokens_(tokens)
+    {
+    }
 
-    [[nodiscard]] bool is_eof() const noexcept {
+    [[nodiscard]] bool is_eof() const noexcept
+    {
         return this->peek().kind == syntax::TokenKind::eof;
     }
 
-    [[nodiscard]] const syntax::Token& peek() const noexcept {
+    [[nodiscard]] const syntax::Token& peek() const noexcept
+    {
         if (this->current_ >= this->tokens_.size()) {
             return this->tokens_.back();
         }
         return this->tokens_[this->current_];
     }
 
-    [[nodiscard]] const syntax::Token& previous() const noexcept {
+    [[nodiscard]] const syntax::Token& previous() const noexcept
+    {
         if (this->current_ == 0) {
             return this->tokens_.front();
         }
         return this->tokens_[this->current_ - 1];
     }
 
-    [[nodiscard]] std::span<const syntax::Token> tokens() const noexcept {
+    [[nodiscard]] std::span<const syntax::Token> tokens() const noexcept
+    {
         return this->tokens_;
     }
 
-    [[nodiscard]] base::usize position() const noexcept {
+    [[nodiscard]] base::usize position() const noexcept
+    {
         return this->current_;
     }
 
-    [[nodiscard]] bool check(const syntax::TokenKind kind) const noexcept {
+    [[nodiscard]] bool check(const syntax::TokenKind kind) const noexcept
+    {
         return this->peek().kind == kind;
     }
 
-    [[nodiscard]] bool check_next(const syntax::TokenKind kind) const noexcept {
+    [[nodiscard]] bool check_next(const syntax::TokenKind kind) const noexcept
+    {
         const base::usize next = this->current_ + 1;
         if (next >= this->tokens_.size()) {
             return false;
@@ -50,7 +58,8 @@ public:
         return this->tokens_[next].kind == kind;
     }
 
-    [[nodiscard]] const syntax::Token& peek_at(const base::usize offset) const noexcept {
+    [[nodiscard]] const syntax::Token& peek_at(const base::usize offset) const noexcept
+    {
         const base::usize index = this->current_ + offset;
         if (index >= this->tokens_.size()) {
             return this->tokens_.back();
@@ -58,15 +67,18 @@ public:
         return this->tokens_[index];
     }
 
-    [[nodiscard]] base::usize mark() const noexcept {
+    [[nodiscard]] base::usize mark() const noexcept
+    {
         return this->current_;
     }
 
-    void rewind(const base::usize position) noexcept {
+    void rewind(const base::usize position) noexcept
+    {
         this->current_ = position < this->tokens_.size() ? position : this->tokens_.size() - 1;
     }
 
-    bool match(const syntax::TokenKind kind) noexcept {
+    bool match(const syntax::TokenKind kind) noexcept
+    {
         if (!this->check(kind)) {
             return false;
         }
@@ -74,7 +86,8 @@ public:
         return true;
     }
 
-    const syntax::Token& advance() noexcept {
+    const syntax::Token& advance() noexcept
+    {
         if (!this->is_eof()) {
             ++this->current_;
         }

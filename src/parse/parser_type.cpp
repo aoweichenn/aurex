@@ -1,6 +1,5 @@
-#include <aurex/parse/parser_type_part.hpp>
-
 #include <aurex/parse/parser_messages.hpp>
+#include <aurex/parse/parser_type_part.hpp>
 #include <aurex/parse/recovery.hpp>
 
 #include <limits>
@@ -46,12 +45,13 @@ constexpr base::usize PARSER_MAX_TYPE_NESTING_DEPTH = 512;
 
 class TypeNestingGuard final {
 public:
-    explicit TypeNestingGuard(ParseSession& session) noexcept
-        : session_(&session) {
+    explicit TypeNestingGuard(ParseSession& session) noexcept : session_(&session)
+    {
         ++this->session_->type_nesting_depth;
     }
 
-    ~TypeNestingGuard() noexcept {
+    ~TypeNestingGuard() noexcept
+    {
         --this->session_->type_nesting_depth;
     }
 
@@ -64,81 +64,93 @@ private:
     ParseSession* session_;
 };
 
-[[nodiscard]] bool is_primitive_type_token(const TokenKind kind) noexcept {
+[[nodiscard]] bool is_primitive_type_token(const TokenKind kind) noexcept
+{
     switch (kind) {
-    case TokenKind::kw_void:
-    case TokenKind::kw_bool:
-    case TokenKind::kw_i8:
-    case TokenKind::kw_u8:
-    case TokenKind::kw_i16:
-    case TokenKind::kw_u16:
-    case TokenKind::kw_i32:
-    case TokenKind::kw_u32:
-    case TokenKind::kw_i64:
-    case TokenKind::kw_u64:
-    case TokenKind::kw_isize:
-    case TokenKind::kw_usize:
-    case TokenKind::kw_f32:
-    case TokenKind::kw_f64:
-    case TokenKind::kw_str:
-    case TokenKind::kw_char:
-        return true;
-    default:
-        return false;
+        case TokenKind::kw_void:
+        case TokenKind::kw_bool:
+        case TokenKind::kw_i8:
+        case TokenKind::kw_u8:
+        case TokenKind::kw_i16:
+        case TokenKind::kw_u16:
+        case TokenKind::kw_i32:
+        case TokenKind::kw_u32:
+        case TokenKind::kw_i64:
+        case TokenKind::kw_u64:
+        case TokenKind::kw_isize:
+        case TokenKind::kw_usize:
+        case TokenKind::kw_f32:
+        case TokenKind::kw_f64:
+        case TokenKind::kw_str:
+        case TokenKind::kw_char:
+            return true;
+        default:
+            return false;
     }
 }
 
-[[nodiscard]] syntax::PrimitiveTypeKind primitive_from_token(const TokenKind kind) noexcept {
+[[nodiscard]] syntax::PrimitiveTypeKind primitive_from_token(const TokenKind kind) noexcept
+{
     switch (kind) {
-    case TokenKind::kw_void: return syntax::PrimitiveTypeKind::void_;
-    case TokenKind::kw_bool: return syntax::PrimitiveTypeKind::bool_;
-    case TokenKind::kw_i8: return syntax::PrimitiveTypeKind::i8;
-    case TokenKind::kw_u8: return syntax::PrimitiveTypeKind::u8;
-    case TokenKind::kw_i16: return syntax::PrimitiveTypeKind::i16;
-    case TokenKind::kw_u16: return syntax::PrimitiveTypeKind::u16;
-    case TokenKind::kw_i32: return syntax::PrimitiveTypeKind::i32;
-    case TokenKind::kw_u32: return syntax::PrimitiveTypeKind::u32;
-    case TokenKind::kw_i64: return syntax::PrimitiveTypeKind::i64;
-    case TokenKind::kw_u64: return syntax::PrimitiveTypeKind::u64;
-    case TokenKind::kw_isize: return syntax::PrimitiveTypeKind::isize;
-    case TokenKind::kw_usize: return syntax::PrimitiveTypeKind::usize;
-    case TokenKind::kw_f32: return syntax::PrimitiveTypeKind::f32;
-    case TokenKind::kw_f64: return syntax::PrimitiveTypeKind::f64;
-    case TokenKind::kw_str: return syntax::PrimitiveTypeKind::str;
-    case TokenKind::kw_char: return syntax::PrimitiveTypeKind::char_;
-    default: return syntax::PrimitiveTypeKind::void_;
+        case TokenKind::kw_void:
+            return syntax::PrimitiveTypeKind::void_;
+        case TokenKind::kw_bool:
+            return syntax::PrimitiveTypeKind::bool_;
+        case TokenKind::kw_i8:
+            return syntax::PrimitiveTypeKind::i8;
+        case TokenKind::kw_u8:
+            return syntax::PrimitiveTypeKind::u8;
+        case TokenKind::kw_i16:
+            return syntax::PrimitiveTypeKind::i16;
+        case TokenKind::kw_u16:
+            return syntax::PrimitiveTypeKind::u16;
+        case TokenKind::kw_i32:
+            return syntax::PrimitiveTypeKind::i32;
+        case TokenKind::kw_u32:
+            return syntax::PrimitiveTypeKind::u32;
+        case TokenKind::kw_i64:
+            return syntax::PrimitiveTypeKind::i64;
+        case TokenKind::kw_u64:
+            return syntax::PrimitiveTypeKind::u64;
+        case TokenKind::kw_isize:
+            return syntax::PrimitiveTypeKind::isize;
+        case TokenKind::kw_usize:
+            return syntax::PrimitiveTypeKind::usize;
+        case TokenKind::kw_f32:
+            return syntax::PrimitiveTypeKind::f32;
+        case TokenKind::kw_f64:
+            return syntax::PrimitiveTypeKind::f64;
+        case TokenKind::kw_str:
+            return syntax::PrimitiveTypeKind::str;
+        case TokenKind::kw_char:
+            return syntax::PrimitiveTypeKind::char_;
+        default:
+            return syntax::PrimitiveTypeKind::void_;
     }
 }
 
-[[nodiscard]] bool parse_u64_literal(const std::string_view text, base::u64& value) noexcept {
+[[nodiscard]] bool parse_u64_literal(const std::string_view text, base::u64& value) noexcept
+{
     value = 0;
     int radix = PARSER_TYPE_DECIMAL_RADIX;
     base::usize begin = 0;
-    if (text.size() > PARSER_TYPE_RADIX_PREFIX_LENGTH &&
-        text.front() == PARSER_TYPE_ASCII_ZERO &&
-        (text[PARSER_TYPE_RADIX_MARKER_OFFSET] == PARSER_TYPE_ASCII_HEX_PREFIX_LOWER ||
-         text[PARSER_TYPE_RADIX_MARKER_OFFSET] == PARSER_TYPE_ASCII_HEX_PREFIX_UPPER)) {
+    if (text.size() > PARSER_TYPE_RADIX_PREFIX_LENGTH && text.front() == PARSER_TYPE_ASCII_ZERO
+        && (text[PARSER_TYPE_RADIX_MARKER_OFFSET] == PARSER_TYPE_ASCII_HEX_PREFIX_LOWER
+            || text[PARSER_TYPE_RADIX_MARKER_OFFSET] == PARSER_TYPE_ASCII_HEX_PREFIX_UPPER)) {
         radix = PARSER_TYPE_HEX_RADIX;
         begin = PARSER_TYPE_RADIX_PREFIX_LENGTH;
-    } else if (text.size() > PARSER_TYPE_RADIX_PREFIX_LENGTH &&
-               text.front() == PARSER_TYPE_ASCII_ZERO &&
-               (text[PARSER_TYPE_RADIX_MARKER_OFFSET] == PARSER_TYPE_ASCII_BINARY_PREFIX_LOWER ||
-                text[PARSER_TYPE_RADIX_MARKER_OFFSET] == PARSER_TYPE_ASCII_BINARY_PREFIX_UPPER)) {
+    } else if (text.size() > PARSER_TYPE_RADIX_PREFIX_LENGTH && text.front() == PARSER_TYPE_ASCII_ZERO
+        && (text[PARSER_TYPE_RADIX_MARKER_OFFSET] == PARSER_TYPE_ASCII_BINARY_PREFIX_LOWER
+            || text[PARSER_TYPE_RADIX_MARKER_OFFSET] == PARSER_TYPE_ASCII_BINARY_PREFIX_UPPER)) {
         radix = PARSER_TYPE_BINARY_RADIX;
         begin = PARSER_TYPE_RADIX_PREFIX_LENGTH;
     }
     const auto suffix_is_valid = [](const std::string_view suffix) noexcept {
-        return suffix.empty() ||
-               suffix == PARSER_TYPE_INTEGER_SUFFIX_I8 ||
-               suffix == PARSER_TYPE_INTEGER_SUFFIX_I16 ||
-               suffix == PARSER_TYPE_INTEGER_SUFFIX_I32 ||
-               suffix == PARSER_TYPE_INTEGER_SUFFIX_I64 ||
-               suffix == PARSER_TYPE_INTEGER_SUFFIX_ISIZE ||
-               suffix == PARSER_TYPE_INTEGER_SUFFIX_U8 ||
-               suffix == PARSER_TYPE_INTEGER_SUFFIX_U16 ||
-               suffix == PARSER_TYPE_INTEGER_SUFFIX_U32 ||
-               suffix == PARSER_TYPE_INTEGER_SUFFIX_U64 ||
-               suffix == PARSER_TYPE_INTEGER_SUFFIX_USIZE;
+        return suffix.empty() || suffix == PARSER_TYPE_INTEGER_SUFFIX_I8 || suffix == PARSER_TYPE_INTEGER_SUFFIX_I16
+            || suffix == PARSER_TYPE_INTEGER_SUFFIX_I32 || suffix == PARSER_TYPE_INTEGER_SUFFIX_I64
+            || suffix == PARSER_TYPE_INTEGER_SUFFIX_ISIZE || suffix == PARSER_TYPE_INTEGER_SUFFIX_U8
+            || suffix == PARSER_TYPE_INTEGER_SUFFIX_U16 || suffix == PARSER_TYPE_INTEGER_SUFFIX_U32
+            || suffix == PARSER_TYPE_INTEGER_SUFFIX_U64 || suffix == PARSER_TYPE_INTEGER_SUFFIX_USIZE;
     };
     base::usize digit_end = begin;
     for (; digit_end < text.size(); ++digit_end) {
@@ -191,7 +203,8 @@ private:
 
 } // namespace
 
-syntax::TypeId TypeParser::parse_type() {
+syntax::TypeId TypeParser::parse_type()
+{
     this->reset_panic();
     if (this->session_.type_nesting_depth >= PARSER_MAX_TYPE_NESTING_DEPTH) {
         const base::SourceRange range = this->peek().range;
@@ -213,7 +226,7 @@ syntax::TypeId TypeParser::parse_type() {
 
     struct TypeConstructor {
         TypeConstructorKind kind = TypeConstructorKind::pointer;
-        base::SourceRange begin_range {};
+        base::SourceRange begin_range{};
         syntax::PointerMutability pointer_mutability = syntax::PointerMutability::const_;
         base::u64 array_count = 0;
     };
@@ -231,7 +244,7 @@ syntax::TypeId TypeParser::parse_type() {
             } else {
                 this->report_here(std::string(PARSER_EXPECT_TYPE_POINTER_MUTABILITY));
             }
-            constructors.push_back(TypeConstructor {
+            constructors.push_back(TypeConstructor{
                 TypeConstructorKind::pointer,
                 begin.range,
                 mutability,
@@ -246,7 +259,7 @@ syntax::TypeId TypeParser::parse_type() {
             if (this->match(TokenKind::kw_mut)) {
                 mutability = syntax::PointerMutability::mut;
             }
-            constructors.push_back(TypeConstructor {
+            constructors.push_back(TypeConstructor{
                 TypeConstructorKind::reference,
                 begin.range,
                 mutability,
@@ -266,7 +279,7 @@ syntax::TypeId TypeParser::parse_type() {
                 } else {
                     this->report_here(std::string(PARSER_EXPECT_TYPE_SLICE_MUTABILITY));
                 }
-                constructors.push_back(TypeConstructor {
+                constructors.push_back(TypeConstructor{
                     TypeConstructorKind::slice,
                     begin.range,
                     mutability,
@@ -274,13 +287,14 @@ syntax::TypeId TypeParser::parse_type() {
                 });
                 continue;
             }
-            const syntax::Token& count = this->expect(TokenKind::integer_literal, std::string(PARSER_EXPECT_ARRAY_LENGTH));
+            const syntax::Token& count =
+                this->expect(TokenKind::integer_literal, std::string(PARSER_EXPECT_ARRAY_LENGTH));
             this->expect_array_length_end();
             base::u64 array_count = 0;
             if (count.kind == TokenKind::integer_literal && !parse_u64_literal(count.text(), array_count)) {
                 this->report_at(count, std::string(PARSER_ARRAY_LENGTH_OUT_OF_RANGE));
             }
-            constructors.push_back(TypeConstructor {
+            constructors.push_back(TypeConstructor{
                 TypeConstructorKind::array,
                 begin.range,
                 syntax::PointerMutability::const_,
@@ -318,7 +332,8 @@ syntax::TypeId TypeParser::parse_type() {
     return type;
 }
 
-syntax::TypeId TypeParser::parse_type_atom() {
+syntax::TypeId TypeParser::parse_type_atom()
+{
     if (this->check(TokenKind::kw_fn) || this->check(TokenKind::kw_extern) || this->check(TokenKind::kw_unsafe)) {
         return this->parse_function_type();
     }
@@ -340,7 +355,8 @@ syntax::TypeId TypeParser::parse_type_atom() {
     return this->session_.module.push_type(type);
 }
 
-syntax::TypeId TypeParser::parse_named_type() {
+syntax::TypeId TypeParser::parse_named_type()
+{
     std::vector<syntax::Token> parts;
     parts.push_back(this->advance());
     while (this->match(TokenKind::dot)) {
@@ -366,12 +382,8 @@ syntax::TypeId TypeParser::parse_named_type() {
             this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
         }
         this->parse_generic_type_args(type.type_args);
-        const syntax::Token& end = this->expect_recovered_after(
-            TokenKind::r_bracket,
-            std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END),
-            RecoveryContext::generic_type_argument,
-            generic_begin
-        );
+        const syntax::Token& end = this->expect_recovered_after(TokenKind::r_bracket,
+            std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END), RecoveryContext::generic_type_argument, generic_begin);
         type.range = this->merge(type.range, end.range);
     } else if (this->check(TokenKind::less)) {
         this->reject_legacy_angle_type_args();
@@ -379,7 +391,8 @@ syntax::TypeId TypeParser::parse_named_type() {
     return this->session_.module.push_type(type);
 }
 
-syntax::TypeId TypeParser::parse_tuple_or_parenthesized_type() {
+syntax::TypeId TypeParser::parse_tuple_or_parenthesized_type()
+{
     const syntax::Token& begin = this->expect(TokenKind::l_paren, std::string(PARSER_EXPECT_TUPLE_TYPE_END));
     if (this->check(TokenKind::r_paren)) {
         this->report_here(std::string(PARSER_EMPTY_TUPLE_TYPE_UNSUPPORTED));
@@ -437,14 +450,11 @@ bool TypeParser::recover_tuple_type_separator() const
 const syntax::Token& TypeParser::expect_tuple_type_end(const syntax::Token& opening) const
 {
     return this->expect_recovered_after(
-        TokenKind::r_paren,
-        std::string(PARSER_EXPECT_TUPLE_TYPE_END),
-        RecoveryContext::type_annotation,
-        opening
-    );
+        TokenKind::r_paren, std::string(PARSER_EXPECT_TUPLE_TYPE_END), RecoveryContext::type_annotation, opening);
 }
 
-void TypeParser::parse_generic_type_args(std::vector<syntax::TypeId>& args) {
+void TypeParser::parse_generic_type_args(std::vector<syntax::TypeId>& args)
+{
     while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
         args.push_back(this->parse_type());
         this->reset_panic();
@@ -476,7 +486,8 @@ bool TypeParser::recover_generic_type_arg_separator() const
     return false;
 }
 
-syntax::TypeId TypeParser::parse_function_type() {
+syntax::TypeId TypeParser::parse_function_type()
+{
     syntax::FunctionCallConv call_conv = syntax::FunctionCallConv::aurex;
     bool is_unsafe = false;
     base::SourceRange begin_range = this->peek().range;
@@ -490,14 +501,9 @@ syntax::TypeId TypeParser::parse_function_type() {
         }
         call_conv = syntax::FunctionCallConv::c;
         this->expect_contextual_c_keyword_recovered(
-            std::string(PARSER_EXPECT_C_AFTER_EXTERN_FUNCTION_TYPE),
-            RecoveryContext::type_annotation
-        );
-        this->expect_recovered(
-            TokenKind::kw_fn,
-            std::string(PARSER_EXPECT_FN_AFTER_EXTERN_C_FUNCTION_TYPE),
-            RecoveryContext::parameter_list_start
-        );
+            std::string(PARSER_EXPECT_C_AFTER_EXTERN_FUNCTION_TYPE), RecoveryContext::type_annotation);
+        this->expect_recovered(TokenKind::kw_fn, std::string(PARSER_EXPECT_FN_AFTER_EXTERN_C_FUNCTION_TYPE),
+            RecoveryContext::parameter_list_start);
         return this->parse_function_type_after_fn(begin_range, call_conv, is_unsafe);
     }
 
@@ -506,30 +512,19 @@ syntax::TypeId TypeParser::parse_function_type() {
 }
 
 syntax::TypeId TypeParser::parse_function_type_after_fn(
-    const base::SourceRange& begin_range,
-    const syntax::FunctionCallConv call_conv,
-    const bool is_unsafe
-) {
+    const base::SourceRange& begin_range, const syntax::FunctionCallConv call_conv, const bool is_unsafe)
+{
     this->expect_recovered(
-        TokenKind::l_paren,
-        std::string(PARSER_EXPECT_FUNCTION_TYPE_PARAM_LIST),
-        RecoveryContext::parameter_list_start
-    );
+        TokenKind::l_paren, std::string(PARSER_EXPECT_FUNCTION_TYPE_PARAM_LIST), RecoveryContext::parameter_list_start);
     std::vector<syntax::TypeId> params;
     bool is_variadic = false;
     if (!this->check(TokenKind::r_paren)) {
         this->parse_function_type_params(params, is_variadic);
     }
     this->expect_recovered(
-        TokenKind::r_paren,
-        std::string(PARSER_EXPECT_FUNCTION_TYPE_PARAM_LIST_END),
-        RecoveryContext::parameter
-    );
+        TokenKind::r_paren, std::string(PARSER_EXPECT_FUNCTION_TYPE_PARAM_LIST_END), RecoveryContext::parameter);
     const syntax::Token& arrow = this->expect_recovered(
-        TokenKind::arrow,
-        std::string(PARSER_EXPECT_FUNCTION_TYPE_RETURN_ARROW),
-        RecoveryContext::type_annotation
-    );
+        TokenKind::arrow, std::string(PARSER_EXPECT_FUNCTION_TYPE_RETURN_ARROW), RecoveryContext::type_annotation);
     const syntax::TypeId return_type = this->parse_type();
 
     syntax::TypeNode type;
@@ -543,7 +538,8 @@ syntax::TypeId TypeParser::parse_function_type_after_fn(
     return this->session_.module.push_type(std::move(type));
 }
 
-void TypeParser::parse_function_type_params(std::vector<syntax::TypeId>& params, bool& is_variadic) {
+void TypeParser::parse_function_type_params(std::vector<syntax::TypeId>& params, bool& is_variadic)
+{
     while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
         if (this->match(TokenKind::ellipsis)) {
             is_variadic = true;
@@ -604,11 +600,8 @@ void TypeParser::reject_legacy_angle_type_args() const
             this->reset_panic();
             return;
         }
-        if (this->check(TokenKind::r_paren) ||
-            this->check(TokenKind::r_brace) ||
-            this->check(TokenKind::r_bracket) ||
-            this->check(TokenKind::equal) ||
-            this->check(TokenKind::semicolon)) {
+        if (this->check(TokenKind::r_paren) || this->check(TokenKind::r_brace) || this->check(TokenKind::r_bracket)
+            || this->check(TokenKind::equal) || this->check(TokenKind::semicolon)) {
             this->reset_panic();
             return;
         }
@@ -619,10 +612,7 @@ void TypeParser::reject_legacy_angle_type_args() const
 void TypeParser::expect_array_length_end() const
 {
     this->expect_recovered(
-        TokenKind::r_bracket,
-        std::string(PARSER_EXPECT_ARRAY_LENGTH_END),
-        RecoveryContext::array_type_length
-    );
+        TokenKind::r_bracket, std::string(PARSER_EXPECT_ARRAY_LENGTH_END), RecoveryContext::array_type_length);
 }
 
 syntax::TypeId TypeParser::parse_primitive_type() const

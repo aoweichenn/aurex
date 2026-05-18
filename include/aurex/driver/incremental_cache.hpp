@@ -10,15 +10,9 @@
 
 namespace aurex::driver {
 
-[[nodiscard]] base::Result<bool> try_reuse_incremental_check_cache(
-    const CompilerInvocation& invocation
-);
+[[nodiscard]] base::Result<bool> try_reuse_incremental_check_cache(const CompilerInvocation& invocation);
 
-[[nodiscard]] base::Result<void> write_incremental_cache(
-    const CompilerInvocation& invocation,
-    const base::SourceManager& sources,
-    std::span<const ModuleRecord> modules,
-    const sema::CheckedModule& checked
-);
+[[nodiscard]] base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
+    const base::SourceManager& sources, std::span<const ModuleRecord> modules, const sema::CheckedModule& checked);
 
 } // namespace aurex::driver

@@ -1,7 +1,8 @@
 #include <aurex/ir/pass_pipeline.hpp>
-#include <gtest/support/ir_test_helpers.hpp>
 
 #include <utility>
+
+#include <gtest/support/ir_test_helpers.hpp>
 
 namespace aurex::test {
 namespace {
@@ -10,13 +11,14 @@ using namespace irtest;
 
 } // namespace
 
-TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
+TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures)
+{
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         Function function = make_function(module, "local_slot", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value slot = module.make_value();
         slot.kind = ValueKind::alloca;
         slot.type = ptr_i32;
@@ -55,7 +57,7 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "same_target", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         const ValueId condition = builder.add(bool_value(module, true));
         const ValueId result = builder.add(integer_value(module, i32, "3"));
         const BlockId entry = builder.block("entry");
@@ -91,7 +93,7 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
         record.fields.push_back(record_field(module, "x", i32));
         append_record(module, record);
         Function function = make_function(module, "escape_uses", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value slot = module.make_value();
         slot.kind = ValueKind::alloca;
         slot.type = ptr_record;
@@ -135,7 +137,8 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
     }
     {
         Module module;
-        Function function = make_function(module, "empty", builtin(module, BuiltinType::i32), Linkage::extern_c, AbiCallConv::c);
+        Function function =
+            make_function(module, "empty", builtin(module, BuiltinType::i32), Linkage::extern_c, AbiCallConv::c);
         append_function(module, function);
         PassPipelineOptions options;
         options.optimization_level = ir::OptimizationLevel::basic;
@@ -143,11 +146,12 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures) {
     }
 }
 
-TEST(CoreUnit, PassPipelineRemovesUnreachableBlocksAndRewritesPhiInputs) {
+TEST(CoreUnit, PassPipelineRemovesUnreachableBlocksAndRewritesPhiInputs)
+{
     Module module;
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     Function function = make_function(module, "unreachable_phi", i32);
-    FunctionBuilder builder {module, function};
+    FunctionBuilder builder{module, function};
     const ValueId one = builder.add(integer_value(module, i32, "1"));
     const ValueId two = builder.add(integer_value(module, i32, "2"));
     const BlockId entry = builder.block("entry");
@@ -162,7 +166,7 @@ TEST(CoreUnit, PassPipelineRemovesUnreachableBlocksAndRewritesPhiInputs) {
     Value phi = module.make_value();
     phi.kind = ValueKind::phi;
     phi.type = i32;
-    phi.incoming = {PhiInput {entry, one}, PhiInput {dead, two}};
+    phi.incoming = {PhiInput{entry, one}, PhiInput{dead, two}};
     const ValueId phi_id = builder.add(phi);
     function.blocks[join.value].values = {phi_id};
     function.blocks[join.value].terminator.kind = TerminatorKind::return_;
@@ -178,7 +182,8 @@ TEST(CoreUnit, PassPipelineRemovesUnreachableBlocksAndRewritesPhiInputs) {
     EXPECT_EQ(rewritten_phi.incoming[0].predecessor.value, 0U);
 }
 
-TEST(CoreUnit, PassPipelineCoversScalarPromotionKindsAndRedirectedBranchMerging) {
+TEST(CoreUnit, PassPipelineCoversScalarPromotionKindsAndRedirectedBranchMerging)
+{
     Module module;
     const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
     const TypeHandle u8 = builtin(module, BuiltinType::u8);
@@ -197,7 +202,7 @@ TEST(CoreUnit, PassPipelineCoversScalarPromotionKindsAndRedirectedBranchMerging)
     const TypeHandle const_u8_ptr = ptr(module, PointerMutability::const_, u8);
 
     Function function = make_function(module, "scalar_kinds", i32);
-    FunctionBuilder builder {module, function};
+    FunctionBuilder builder{module, function};
     Value text_value = module.make_value();
     text_value.kind = ValueKind::string_literal;
     text_value.type = str_type;
@@ -266,7 +271,8 @@ TEST(CoreUnit, PassPipelineCoversScalarPromotionKindsAndRedirectedBranchMerging)
     ASSERT_EQ(module.functions[0].blocks.size(), 1U);
 }
 
-TEST(CoreUnit, PassPipelineRecordsSliceAndArrayAggregateUses) {
+TEST(CoreUnit, PassPipelineRecordsSliceAndArrayAggregateUses)
+{
     Module module;
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     const TypeHandle usize = builtin(module, BuiltinType::usize);
@@ -275,7 +281,7 @@ TEST(CoreUnit, PassPipelineRecordsSliceAndArrayAggregateUses) {
     const TypeHandle slice_i32 = module.types.slice(PointerMutability::mut, i32);
 
     Function function = make_function(module, "slice_uses", i32);
-    FunctionBuilder builder {module, function};
+    FunctionBuilder builder{module, function};
     Value pointer_slot = module.make_value();
     pointer_slot.kind = ValueKind::alloca;
     pointer_slot.type = ptr(module, PointerMutability::mut, ptr_i32);
@@ -343,11 +349,12 @@ TEST(CoreUnit, PassPipelineRecordsSliceAndArrayAggregateUses) {
     EXPECT_EQ(module.functions[0].blocks[0].values.size(), 9U);
 }
 
-TEST(CoreUnit, PassPipelineMergesEmptyRedirectedBranchesIntoASingleBranch) {
+TEST(CoreUnit, PassPipelineMergesEmptyRedirectedBranchesIntoASingleBranch)
+{
     Module module;
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     Function function = make_function(module, "merge_redirects", i32);
-    FunctionBuilder builder {module, function};
+    FunctionBuilder builder{module, function};
     const ValueId result = builder.add(integer_value(module, i32, "7"));
     const ValueId condition = builder.add(bool_value(module, true));
     const BlockId entry = builder.block("entry");
@@ -375,7 +382,8 @@ TEST(CoreUnit, PassPipelineMergesEmptyRedirectedBranchesIntoASingleBranch) {
     EXPECT_EQ(module.functions[0].blocks[0].terminator.target.value, 1U);
 }
 
-TEST(CoreUnit, PassPipelineRewritesAggregatePhiAndConstantsAfterMem2Reg) {
+TEST(CoreUnit, PassPipelineRewritesAggregatePhiAndConstantsAfterMem2Reg)
+{
     Module module;
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
@@ -385,7 +393,7 @@ TEST(CoreUnit, PassPipelineRewritesAggregatePhiAndConstantsAfterMem2Reg) {
     append_record(module, record);
 
     Function function = make_function(module, "rewrite_uses", i32);
-    FunctionBuilder builder {module, function};
+    FunctionBuilder builder{module, function};
     Value slot = module.make_value();
     slot.kind = ValueKind::alloca;
     slot.type = ptr_i32;
@@ -411,13 +419,14 @@ TEST(CoreUnit, PassPipelineRewritesAggregatePhiAndConstantsAfterMem2Reg) {
     phi.kind = ValueKind::phi;
     phi.type = i32;
     const BlockId entry = builder.block("entry");
-    phi.incoming = {PhiInput {entry, load_id}, PhiInput {entry, one}};
+    phi.incoming = {PhiInput{entry, load_id}, PhiInput{entry, one}};
     const ValueId phi_id = builder.add(phi);
     function.blocks[entry.value].values = {slot_id, one, store_id, load_id, aggregate_id, phi_id};
     function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
     function.blocks[entry.value].terminator.value = load_id;
     append_function(module, function);
-    const GlobalConstantId constant = add_global_constant(module, GlobalConstant {"folded", "unit_folded", i32, load_id});
+    const GlobalConstantId constant =
+        add_global_constant(module, GlobalConstant{"folded", "unit_folded", i32, load_id});
 
     PassPipelineOptions options;
     options.verify_input = false;
@@ -430,13 +439,14 @@ TEST(CoreUnit, PassPipelineRewritesAggregatePhiAndConstantsAfterMem2Reg) {
     EXPECT_EQ(module.functions[0].blocks[0].terminator.value.value, one.value);
 }
 
-TEST(CoreUnit, PassPipelineCoversNonPromotableEscapeAndInvalidValueTolerance) {
+TEST(CoreUnit, PassPipelineCoversNonPromotableEscapeAndInvalidValueTolerance)
+{
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         Function function = make_function(module, "escape_shapes", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value slot = module.make_value();
         slot.kind = ValueKind::alloca;
         slot.type = ptr_i32;
@@ -471,7 +481,7 @@ TEST(CoreUnit, PassPipelineCoversNonPromotableEscapeAndInvalidValueTolerance) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         Function function = make_function(module, "invalid_kept", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value slot = module.make_value();
         slot.kind = ValueKind::alloca;
         slot.type = ptr_i32;
@@ -489,7 +499,7 @@ TEST(CoreUnit, PassPipelineCoversNonPromotableEscapeAndInvalidValueTolerance) {
         load.object = slot_id;
         const ValueId load_id = builder.add(load);
         const BlockId entry = builder.block("entry");
-        function.blocks[entry.value].values = {slot_id, ValueId {999}, one, store_id, load_id};
+        function.blocks[entry.value].values = {slot_id, ValueId{999}, one, store_id, load_id};
         function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
         function.blocks[entry.value].terminator.value = load_id;
         append_function(module, function);
@@ -504,11 +514,12 @@ TEST(CoreUnit, PassPipelineCoversNonPromotableEscapeAndInvalidValueTolerance) {
     }
 }
 
-TEST(CoreUnit, PassPipelineSkipsEmptyBranchMergeWhenTargetHasPhi) {
+TEST(CoreUnit, PassPipelineSkipsEmptyBranchMergeWhenTargetHasPhi)
+{
     Module module;
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     Function function = make_function(module, "phi_target", i32);
-    FunctionBuilder builder {module, function};
+    FunctionBuilder builder{module, function};
     const ValueId one = builder.add(integer_value(module, i32, "1"));
     const BlockId entry = builder.block("entry");
     const BlockId empty = builder.block("empty");
@@ -521,7 +532,7 @@ TEST(CoreUnit, PassPipelineSkipsEmptyBranchMergeWhenTargetHasPhi) {
     Value phi = module.make_value();
     phi.kind = ValueKind::phi;
     phi.type = i32;
-    phi.incoming = {PhiInput {empty, one}};
+    phi.incoming = {PhiInput{empty, one}};
     const ValueId phi_id = builder.add(phi);
     function.blocks[join.value].values = {phi_id};
     function.blocks[join.value].terminator.kind = TerminatorKind::return_;

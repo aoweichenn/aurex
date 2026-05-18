@@ -1,5 +1,4 @@
 #include <aurex/parse/parser.hpp>
-
 #include <aurex/parse/recovery.hpp>
 
 #include <string_view>
@@ -12,39 +11,38 @@ using syntax::TokenKind;
 namespace {
 
 constexpr std::string_view PARSER_CONTEXTUAL_C_KEYWORD_TEXT = "c";
-constexpr std::string_view PARSER_OPENING_DELIMITER_NOTE =
-    "opening delimiter is here";
+constexpr std::string_view PARSER_OPENING_DELIMITER_NOTE = "opening delimiter is here";
 
 } // namespace
 
-bool Parser::check_contextual_c_keyword() const noexcept {
+bool Parser::check_contextual_c_keyword() const noexcept
+{
     const syntax::Token& token = this->peek();
-    return token.kind == TokenKind::identifier &&
-           token.text() == PARSER_CONTEXTUAL_C_KEYWORD_TEXT;
+    return token.kind == TokenKind::identifier && token.text() == PARSER_CONTEXTUAL_C_KEYWORD_TEXT;
 }
 
-const syntax::Token& Parser::expect(const TokenKind kind, std::string message) {
+const syntax::Token& Parser::expect(const TokenKind kind, std::string message)
+{
     if (this->check(kind)) {
         return this->advance();
     }
     this->report_here(std::move(message));
-    static const syntax::Token fallback {};
+    static const syntax::Token fallback{};
     return fallback;
 }
 
-const syntax::Token& Parser::expect_contextual_c_keyword(std::string message) {
+const syntax::Token& Parser::expect_contextual_c_keyword(std::string message)
+{
     if (this->check_contextual_c_keyword()) {
         return this->advance();
     }
     this->report_here(std::move(message));
-    static const syntax::Token fallback {};
+    static const syntax::Token fallback{};
     return fallback;
 }
 
-const syntax::Token& Parser::expect_contextual_c_keyword_recovered(
-    std::string message,
-    const RecoveryContext context
-) {
+const syntax::Token& Parser::expect_contextual_c_keyword_recovered(std::string message, const RecoveryContext context)
+{
     if (this->check_contextual_c_keyword()) {
         return this->advance();
     }
@@ -59,15 +57,12 @@ const syntax::Token& Parser::expect_contextual_c_keyword_recovered(
         return token;
     }
     this->reset_panic();
-    static const syntax::Token fallback {};
+    static const syntax::Token fallback{};
     return fallback;
 }
 
-const syntax::Token& Parser::expect_recovered(
-    const TokenKind kind,
-    std::string message,
-    const RecoveryContext context
-) {
+const syntax::Token& Parser::expect_recovered(const TokenKind kind, std::string message, const RecoveryContext context)
+{
     if (this->check(kind)) {
         return this->advance();
     }
@@ -82,16 +77,13 @@ const syntax::Token& Parser::expect_recovered(
         return token;
     }
     this->reset_panic();
-    static const syntax::Token fallback {};
+    static const syntax::Token fallback{};
     return fallback;
 }
 
 const syntax::Token& Parser::expect_recovered_after(
-    const TokenKind kind,
-    std::string message,
-    const RecoveryContext context,
-    const syntax::Token& opening
-) {
+    const TokenKind kind, std::string message, const RecoveryContext context, const syntax::Token& opening)
+{
     if (this->check(kind)) {
         return this->advance();
     }
@@ -107,11 +99,12 @@ const syntax::Token& Parser::expect_recovered_after(
         return token;
     }
     this->reset_panic();
-    static const syntax::Token fallback {};
+    static const syntax::Token fallback{};
     return fallback;
 }
 
-void Parser::synchronize(const RecoveryContext context) {
+void Parser::synchronize(const RecoveryContext context)
+{
     this->reset_panic();
     if (this->is_eof()) {
         return;
@@ -128,19 +121,23 @@ void Parser::synchronize(const RecoveryContext context) {
     }
 }
 
-void Parser::report_here(std::string message) {
+void Parser::report_here(std::string message)
+{
     this->report_at(this->peek(), std::move(message));
 }
 
-void Parser::report_at(const syntax::Token& token, std::string message) {
+void Parser::report_at(const syntax::Token& token, std::string message)
+{
     this->session_.diagnostics.report_at(token, std::move(message));
 }
 
-void Parser::report_note_at(const syntax::Token& token, std::string message) {
+void Parser::report_note_at(const syntax::Token& token, std::string message)
+{
     this->session_.diagnostics.report_note_at(token, std::move(message));
 }
 
-void Parser::reset_panic() noexcept {
+void Parser::reset_panic() noexcept
+{
     this->session_.diagnostics.reset_panic();
 }
 

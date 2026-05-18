@@ -12,9 +12,6 @@ namespace aurex::parse {
 [[nodiscard]] bool token_starts_enum_case(syntax::TokenKind kind) noexcept;
 [[nodiscard]] bool token_starts_path_segment(syntax::TokenKind kind) noexcept;
 
-[[nodiscard]] bool token_matches_recovery_context(
-    syntax::TokenKind kind,
-    RecoveryContext context
-) noexcept;
+[[nodiscard]] bool token_matches_recovery_context(syntax::TokenKind kind, RecoveryContext context) noexcept;
 
 } // namespace aurex::parse

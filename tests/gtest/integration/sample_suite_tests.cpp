@@ -47,20 +47,24 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"array_slice_bound_out_of_bounds", "array constant slice bound is out of bounds"},
     {"array_slice_bounds_order", "array constant slice start exceeds end"},
     {"bare_enum_case_constructor", "unknown function: some"},
-    {"bare_enum_case_pattern", "bare enum case patterns are not supported; use '.case' or explicit 'Type.case' / 'Type[Args].case'"},
+    {"bare_enum_case_pattern",
+        "bare enum case patterns are not supported; use '.case' or explicit 'Type.case' / 'Type[Args].case'"},
     {"const_pattern_enum_value", "enum match pattern must be an enum case or wildcard"},
     {"const_pattern_non_const_name", "unsupported literal match pattern"},
     {"const_pattern_struct_unsupported", "unsupported literal match pattern"},
     {"const_pattern_type_mismatch", "match pattern for integer or bool value must be a literal or wildcard"},
-    {"duplicate_type_member_enum_case_method", "duplicate type member: duplicate_type_member_enum_case_method.Option.some"},
+    {"duplicate_type_member_enum_case_method",
+        "duplicate type member: duplicate_type_member_enum_case_method.Option.some"},
     {"enum_hash_rejected", "does not satisfy capability `Hash`"},
     {"float_eq_rejected", "type f64 does not satisfy capability `Eq`"},
     {"float_ord_rejected", "type f64 does not satisfy capability `Ord`"},
     {"generic_raw_pointer_method_reference_receiver_rejected", "method receiver type mismatch"},
     {"increment_syntax", "increment operator is not supported"},
     {"enum_payload_bool_missing_witness", "match expression is not exhaustive for enum case"},
-    {"import_alias_namespace_conflict", "duplicate module member across namespaces in module import_alias_namespace_conflict: util"},
-    {"large_array_match_requires_irrefutable", "fixed-array match exhaustiveness for arrays longer than 4096 elements requires an irrefutable arm"},
+    {"import_alias_namespace_conflict",
+        "duplicate module member across namespaces in module import_alias_namespace_conflict: util"},
+    {"large_array_match_requires_irrefutable",
+        "fixed-array match exhaustiveness for arrays longer than 4096 elements requires an irrefutable arm"},
     {"local_shadow_generic_type_parameter", "local name shadows generic type parameter: T"},
     {"local_shadow_import_alias", "local name shadows import alias: util"},
     {"local_shadow_root_module", "local name shadows visible root module: samplelib"},
@@ -71,11 +75,15 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"match_open_integer_duplicate", "match arm is unreachable"},
     {"slice_dynamic_length_missing_empty", "match expression over dynamic slice is missing length or element coverage"},
     {"slice_missing_witness", "match expression over dynamic slice is missing length or element coverage"},
-    {"structural_match_exhaustiveness_limit", "match expression over tuple, struct, array, or slice requires an irrefutable arm"},
-    {"tuple_bool_wildcard_tail_missing_witness", "match expression over tuple, struct, array, or slice requires an irrefutable arm"},
-    {"tuple_open_domain_bool_missing_witness", "match expression over tuple, struct, array, or slice requires an irrefutable arm"},
+    {"structural_match_exhaustiveness_limit",
+        "match expression over tuple, struct, array, or slice requires an irrefutable arm"},
+    {"tuple_bool_wildcard_tail_missing_witness",
+        "match expression over tuple, struct, array, or slice requires an irrefutable arm"},
+    {"tuple_open_domain_bool_missing_witness",
+        "match expression over tuple, struct, array, or slice requires an irrefutable arm"},
     {"method_abi_collision", "duplicate ABI symbol"},
-    {"module_member_namespace_conflict", "duplicate module member across namespaces in module module_member_namespace_conflict: File"},
+    {"module_member_namespace_conflict",
+        "duplicate module member across namespaces in module module_member_namespace_conflict: File"},
     {"module_name_mismatch", "does not match import 'bad.name'"},
     {"private_field_access", "field is private: secret"},
     {"private_function_import", "unknown function: add_secret"},
@@ -115,7 +123,8 @@ inline constexpr auto CROSS_STAGE_NEGATIVE_SAMPLES = std::to_array<CrossStageNeg
     {"pattern_matching", "match_expression_missing_case.ax", "match expression is not exhaustive for enum case"},
     {"functions", "unsafe_fn_call_required.ax", "call to unsafe function read_raw requires unsafe context"},
     {"functions", "raw_pointer_method_reference_receiver_rejected.ax", "method receiver type mismatch"},
-    {"error_handling", "try_result_return_mismatch.ax", "try expression on result-like enum requires enclosing function"},
+    {"error_handling", "try_result_return_mismatch.ax",
+        "try expression on result-like enum requires enclosing function"},
 });
 
 inline constexpr auto CROSS_STAGE_EMIT_KINDS = std::to_array<driver::EmitKind>({
@@ -136,7 +145,8 @@ inline constexpr auto IMPORT_RUNTIME_SAMPLES = std::to_array<ImportRuntimeSample
     {"visibility", "visibility_import.ax"},
 });
 
-driver::CompilerInvocation sample_invocation(const fs::path& src, const driver::EmitKind emit_kind) {
+driver::CompilerInvocation sample_invocation(const fs::path& src, const driver::EmitKind emit_kind)
+{
     driver::CompilerInvocation invocation;
     invocation.tool_path = aurexc_path();
     invocation.input_path = src;
@@ -144,11 +154,14 @@ driver::CompilerInvocation sample_invocation(const fs::path& src, const driver::
     return invocation;
 }
 
-[[nodiscard]] bool is_native_emit_kind(const driver::EmitKind emit_kind) noexcept {
-    return emit_kind == driver::EmitKind::assembly || emit_kind == driver::EmitKind::object || emit_kind == driver::EmitKind::executable;
+[[nodiscard]] bool is_native_emit_kind(const driver::EmitKind emit_kind) noexcept
+{
+    return emit_kind == driver::EmitKind::assembly || emit_kind == driver::EmitKind::object
+        || emit_kind == driver::EmitKind::executable;
 }
 
-[[nodiscard]] bool sample_uses_import_path(const fs::path& src) {
+[[nodiscard]] bool sample_uses_import_path(const fs::path& src)
+{
     const std::string source = read_text(src);
     for (const std::string_view marker : SAMPLE_IMPORT_MARKERS) {
         if (source.find(marker) != std::string::npos) {
@@ -158,21 +171,21 @@ driver::CompilerInvocation sample_invocation(const fs::path& src, const driver::
     return false;
 }
 
-void add_sample_import_path(driver::CompilerInvocation& invocation) {
+void add_sample_import_path(driver::CompilerInvocation& invocation)
+{
     invocation.import_paths.push_back(imports_root());
 }
 
-void configure_sample_imports_if_needed(driver::CompilerInvocation& invocation) {
+void configure_sample_imports_if_needed(driver::CompilerInvocation& invocation)
+{
     if (sample_uses_import_path(invocation.input_path)) {
         add_sample_import_path(invocation);
     }
 }
 
 void compile_sample_native(
-    const fs::path& src,
-    const fs::path& output,
-    const driver::EmitKind emit_kind,
-    const bool use_sample_imports) {
+    const fs::path& src, const fs::path& output, const driver::EmitKind emit_kind, const bool use_sample_imports)
+{
     driver::CompilerInvocation invocation = sample_invocation(src, emit_kind);
     invocation.output_path = output;
     if (use_sample_imports) {
@@ -181,7 +194,8 @@ void compile_sample_native(
     require_compiler_success(invocation);
 }
 
-void verify_sample_llvm_ir(const fs::path& src, const bool use_sample_imports) {
+void verify_sample_llvm_ir(const fs::path& src, const bool use_sample_imports)
+{
     driver::CompilerInvocation invocation = sample_invocation(src, driver::EmitKind::llvm_ir);
     if (use_sample_imports) {
         add_sample_import_path(invocation);
@@ -189,20 +203,23 @@ void verify_sample_llvm_ir(const fs::path& src, const bool use_sample_imports) {
     require_compiler_success(invocation);
 }
 
-void verify_positive_samples_llvm_ir() {
+void verify_positive_samples_llvm_ir()
+{
     for (const fs::path& src : sorted_files(positive_samples_root(), ".ax")) {
         verify_sample_llvm_ir(src, sample_uses_import_path(src));
     }
 }
 
-void run_positive_runtime_smoke_sample(const std::string_view area, const std::string_view filename) {
+void run_positive_runtime_smoke_sample(const std::string_view area, const std::string_view filename)
+{
     const fs::path src = positive_sample(area, filename);
     const fs::path bin = test_bin_root() / stem(src);
     compile_sample_native(src, bin, driver::EmitKind::executable, true);
     require_success(q(bin));
 }
 
-void verify_const_enum_lowering() {
+void verify_const_enum_lowering()
+{
     const std::string const_enum = require_compiler_success(
         sample_invocation(positive_sample("types", "const_enum.ax"), driver::EmitKind::llvm_ir))
                                        .output;
@@ -210,7 +227,8 @@ void verify_const_enum_lowering() {
     expect_contains(const_enum, "load i32, ptr @m0_const_enum_answer");
 }
 
-[[nodiscard]] std::optional<std::string_view> expected_negative_diagnostic(const fs::path& src) {
+[[nodiscard]] std::optional<std::string_view> expected_negative_diagnostic(const fs::path& src)
+{
     const std::string name = stem(src);
     for (const ExpectedDiagnostic& expected : EXPECTED_NEGATIVE_DIAGNOSTICS) {
         if (expected.sample_stem == name) {
@@ -220,7 +238,8 @@ void verify_const_enum_lowering() {
     return std::nullopt;
 }
 
-void verify_negative_sample_diagnostics() {
+void verify_negative_sample_diagnostics()
+{
     for (const fs::path& src : sorted_files(negative_samples_root(), ".ax")) {
         driver::CompilerInvocation invocation = sample_invocation(src, driver::EmitKind::check);
         configure_sample_imports_if_needed(invocation);
@@ -233,9 +252,8 @@ void verify_negative_sample_diagnostics() {
 }
 
 void verify_negative_sample_fails_in_emit_kind(
-    const fs::path& src,
-    const driver::EmitKind emit_kind,
-    const std::string_view diagnostic) {
+    const fs::path& src, const driver::EmitKind emit_kind, const std::string_view diagnostic)
+{
     driver::CompilerInvocation invocation = sample_invocation(src, emit_kind);
     configure_sample_imports_if_needed(invocation);
     if (is_native_emit_kind(emit_kind)) {
@@ -245,7 +263,8 @@ void verify_negative_sample_fails_in_emit_kind(
     expect_contains(result.output, diagnostic);
 }
 
-void verify_cross_stage_negative_samples() {
+void verify_cross_stage_negative_samples()
+{
     for (const CrossStageNegativeSample& sample : CROSS_STAGE_NEGATIVE_SAMPLES) {
         const fs::path src = negative_sample(sample.area, sample.filename);
         for (const driver::EmitKind emit_kind : CROSS_STAGE_EMIT_KINDS) {
@@ -254,7 +273,8 @@ void verify_cross_stage_negative_samples() {
     }
 }
 
-void verify_import_runtime_sample(const ImportRuntimeSample& sample) {
+void verify_import_runtime_sample(const ImportRuntimeSample& sample)
+{
     const fs::path src = positive_sample(sample.area, sample.filename);
 
     driver::CompilerInvocation modules = sample_invocation(src, driver::EmitKind::modules);
@@ -279,7 +299,8 @@ void verify_import_runtime_sample(const ImportRuntimeSample& sample) {
     EXPECT_EQ(require_success(q(bin)).output, "");
 }
 
-void verify_import_runtime_samples() {
+void verify_import_runtime_samples()
+{
     for (const ImportRuntimeSample& sample : IMPORT_RUNTIME_SAMPLES) {
         verify_import_runtime_sample(sample);
     }
@@ -287,68 +308,84 @@ void verify_import_runtime_samples() {
 
 } // namespace
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveSamples) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveSamples)
+{
     verify_positive_samples_llvm_ir();
     verify_const_enum_lowering();
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pointer_field_write) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pointer_field_write)
+{
     run_positive_runtime_smoke_sample("pointers", "pointer_field_write.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_eval_order_assign) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_eval_order_assign)
+{
     run_positive_runtime_smoke_sample("evaluation", "eval_order_assign.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_const_binary) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_const_binary)
+{
     run_positive_runtime_smoke_sample("types", "const_binary.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_builtins) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_builtins)
+{
     run_positive_runtime_smoke_sample("core", "builtins.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_compound_assignment) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_compound_assignment)
+{
     run_positive_runtime_smoke_sample("expressions", "compound_assignment.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_block_expression) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_block_expression)
+{
     run_positive_runtime_smoke_sample("expressions", "block_expression.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_tuple_basic) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_tuple_basic)
+{
     run_positive_runtime_smoke_sample("types", "tuple_basic.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_str_checked) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_str_checked)
+{
     run_positive_runtime_smoke_sample("types", "str_checked.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_str_slice) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_str_slice)
+{
     run_positive_runtime_smoke_sample("types", "str_slice.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pattern_ergonomics) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pattern_ergonomics)
+{
     run_positive_runtime_smoke_sample("pattern_matching", "pattern_ergonomics.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pattern_remaining) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pattern_remaining)
+{
     run_positive_runtime_smoke_sample("pattern_matching", "pattern_remaining.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_const_pattern) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_const_pattern)
+{
     run_positive_runtime_smoke_sample("pattern_matching", "const_pattern.ax");
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_imported_samples) {
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_imported_samples)
+{
     verify_import_runtime_samples();
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_NegativeSamples) {
+TEST_F(AurexIntegrationTest, SampleSuite_NegativeSamples)
+{
     verify_negative_sample_diagnostics();
 }
 
-TEST_F(AurexIntegrationTest, SampleSuite_NegativeCrossStageSamples) {
+TEST_F(AurexIntegrationTest, SampleSuite_NegativeCrossStageSamples)
+{
     verify_cross_stage_negative_samples();
 }
 

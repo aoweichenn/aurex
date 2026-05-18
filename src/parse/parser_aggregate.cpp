@@ -1,5 +1,4 @@
 #include <aurex/parse/parser_item_part.hpp>
-
 #include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/recovery.hpp>
 
@@ -14,7 +13,8 @@ using syntax::TokenKind;
 
 } // namespace
 
-syntax::ItemId ItemParser::parse_struct_decl() {
+syntax::ItemId ItemParser::parse_struct_decl()
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_struct, std::string(PARSER_EXPECT_STRUCT_KEYWORD));
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_STRUCT_NAME));
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
@@ -43,7 +43,8 @@ syntax::ItemId ItemParser::parse_struct_decl() {
     return this->session_.module.push_item(std::move(item));
 }
 
-syntax::ItemId ItemParser::parse_enum_decl() {
+syntax::ItemId ItemParser::parse_enum_decl()
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_enum, std::string(PARSER_EXPECT_ENUM_KEYWORD));
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_NAME));
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
@@ -81,7 +82,8 @@ syntax::ItemId ItemParser::parse_enum_decl() {
     return this->session_.module.push_item(std::move(item));
 }
 
-std::optional<syntax::FieldDecl> ItemParser::parse_struct_field_decl() {
+std::optional<syntax::FieldDecl> ItemParser::parse_struct_field_decl()
+{
     const ParsedVisibility field_visibility = this->parse_visibility();
     const syntax::Token& field_name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_FIELD_NAME));
     this->expect_type_annotation_colon(std::string(PARSER_EXPECT_FIELD_TYPE_COLON));
@@ -92,7 +94,7 @@ std::optional<syntax::FieldDecl> ItemParser::parse_struct_field_decl() {
     const base::SourceRange end_range = this->check(TokenKind::semicolon) || this->check(TokenKind::comma)
         ? this->peek().range
         : this->type_range_or(field_type, field_name.range);
-    return syntax::FieldDecl {
+    return syntax::FieldDecl{
         field_name.text(),
         field_type,
         this->merge(field_name.range, end_range),
@@ -122,7 +124,8 @@ bool ItemParser::recover_struct_field_decl_separator() const
     return token_starts_struct_decl_field(this->peek().kind);
 }
 
-std::optional<syntax::EnumCaseDecl> ItemParser::parse_enum_case_decl() {
+std::optional<syntax::EnumCaseDecl> ItemParser::parse_enum_case_decl()
+{
     const syntax::Token& case_name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_NAME));
     syntax::TypeId payload_type = syntax::INVALID_TYPE_ID;
     syntax::AstArenaVector<syntax::TypeId> payload_types = this->session_.module.make_item_list<syntax::TypeId>();
@@ -144,10 +147,7 @@ std::optional<syntax::EnumCaseDecl> ItemParser::parse_enum_case_decl() {
             }
         }
         this->expect_recovered(
-            TokenKind::r_paren,
-            std::string(PARSER_EXPECT_ENUM_CASE_PAYLOAD_END),
-            RecoveryContext::enum_case_payload
-        );
+            TokenKind::r_paren, std::string(PARSER_EXPECT_ENUM_CASE_PAYLOAD_END), RecoveryContext::enum_case_payload);
     }
     std::string_view value_text;
     base::SourceRange value_range = payload_types.empty() ? case_name.range : payload_end_range;
@@ -159,10 +159,9 @@ std::optional<syntax::EnumCaseDecl> ItemParser::parse_enum_case_decl() {
     if (case_name.kind != TokenKind::identifier) {
         return std::nullopt;
     }
-    const base::SourceRange end_range = this->check(TokenKind::comma) || this->check(TokenKind::semicolon)
-        ? this->peek().range
-        : value_range;
-    return syntax::EnumCaseDecl {
+    const base::SourceRange end_range =
+        this->check(TokenKind::comma) || this->check(TokenKind::semicolon) ? this->peek().range : value_range;
+    return syntax::EnumCaseDecl{
         case_name.text(),
         payload_type,
         std::move(payload_types),
@@ -193,7 +192,8 @@ bool ItemParser::recover_enum_case_separator() const
     return token_starts_enum_case(this->peek().kind);
 }
 
-syntax::ItemId ItemParser::parse_opaque_struct_decl() {
+syntax::ItemId ItemParser::parse_opaque_struct_decl()
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_opaque, std::string(PARSER_EXPECT_OPAQUE_KEYWORD));
     this->expect(TokenKind::kw_struct, std::string(PARSER_EXPECT_STRUCT_AFTER_OPAQUE));
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_OPAQUE_STRUCT_NAME));

@@ -8,8 +8,9 @@ namespace aurex::parse {
 
 class ParserPartRouter : protected ParserPartCore {
 protected:
-    explicit ParserPartRouter(Parser& parser) noexcept
-        : ParserPartCore(parser) {}
+    explicit ParserPartRouter(Parser& parser) noexcept : ParserPartCore(parser)
+    {
+    }
 
     [[nodiscard]] syntax::TypeId parse_type() const;
     [[nodiscard]] syntax::StmtId parse_block() const;

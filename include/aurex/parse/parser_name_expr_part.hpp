@@ -6,8 +6,9 @@ namespace aurex::parse {
 
 class NameExprParser final : private ParserPartBase {
 public:
-    explicit NameExprParser(Parser& parser) noexcept
-        : ParserPartBase(parser) {}
+    explicit NameExprParser(Parser& parser) noexcept : ParserPartBase(parser)
+    {
+    }
 
     [[nodiscard]] syntax::ExprId parse_name_or_struct_literal(ExprContext context);
 

@@ -79,18 +79,13 @@ struct CanonicalTypeKey {
 [[nodiscard]] CanonicalTypeKey canonical_array(base::u64 count, CanonicalTypeKey element);
 [[nodiscard]] CanonicalTypeKey canonical_slice(PointerMutabilityKey mutability, CanonicalTypeKey element);
 [[nodiscard]] CanonicalTypeKey canonical_tuple(std::span<const CanonicalTypeKey> elements);
-[[nodiscard]] CanonicalTypeKey canonical_function(
-    FunctionCallConvKey call_conv,
-    bool is_unsafe,
-    bool is_variadic,
-    std::span<const CanonicalTypeKey> params,
-    const CanonicalTypeKey& return_type);
+[[nodiscard]] CanonicalTypeKey canonical_function(FunctionCallConvKey call_conv, bool is_unsafe, bool is_variadic,
+    std::span<const CanonicalTypeKey> params, const CanonicalTypeKey& return_type);
 [[nodiscard]] CanonicalTypeKey canonical_nominal(DefKey definition, std::span<const CanonicalTypeKey> args);
 [[nodiscard]] CanonicalTypeKey canonical_generic_param(GenericParamKey parameter);
 [[nodiscard]] CanonicalTypeKey canonical_const_arg(StableFingerprint128 value);
 [[nodiscard]] CanonicalTypeKey canonical_associated_type_projection(
-    CanonicalTypeKey base_type,
-    MemberKey associated_member);
+    CanonicalTypeKey base_type, MemberKey associated_member);
 
 void append_stable_key(StableKeyWriter& writer, const CanonicalTypeKey& key);
 

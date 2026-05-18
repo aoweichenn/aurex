@@ -22,7 +22,7 @@ struct FunctionSignature {
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     TypeHandleList param_types;
     TypeHandleList generic_args;
-    base::SourceRange range {};
+    base::SourceRange range{};
     bool is_extern_c = false;
     bool is_export_c = false;
     bool is_unsafe = false;

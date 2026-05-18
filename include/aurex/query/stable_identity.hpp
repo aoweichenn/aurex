@@ -13,9 +13,7 @@ struct StableModuleId {
     base::u32 part_count = 0;
     base::u64 global_id = 0;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        StableModuleId lhs,
-        StableModuleId rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(StableModuleId lhs, StableModuleId rhs) noexcept = default;
 };
 
 enum class StableSymbolKind : base::u8 {
@@ -37,9 +35,7 @@ struct StableDefId {
     base::u32 disambiguator = 0;
     StableSymbolKind kind = StableSymbolKind::invalid;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        StableDefId lhs,
-        StableDefId rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(StableDefId lhs, StableDefId rhs) noexcept = default;
 };
 
 struct StableMemberKey {
@@ -49,9 +45,7 @@ struct StableMemberKey {
     base::u32 disambiguator = 0;
     StableSymbolKind kind = StableSymbolKind::invalid;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        StableMemberKey lhs,
-        StableMemberKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(StableMemberKey lhs, StableMemberKey rhs) noexcept = default;
 };
 
 struct IncrementalKey {
@@ -59,9 +53,7 @@ struct IncrementalKey {
     StableFingerprint128 fingerprint;
     base::u64 global_id = 0;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        IncrementalKey lhs,
-        IncrementalKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(IncrementalKey lhs, IncrementalKey rhs) noexcept = default;
 };
 
 [[nodiscard]] bool is_valid(StableModuleId id) noexcept;
@@ -72,18 +64,11 @@ struct IncrementalKey {
 [[nodiscard]] StableFingerprint128 stable_identity_fingerprint(std::span<const std::string_view> parts) noexcept;
 [[nodiscard]] StableModuleId stable_module_id(std::span<const std::string_view> module_path) noexcept;
 [[nodiscard]] StableDefId stable_definition_id(
-    const StableModuleId& module,
-    StableSymbolKind kind,
-    std::string_view name,
-    base::u32 disambiguator = 0) noexcept;
-[[nodiscard]] StableMemberKey stable_member_key(
-    const StableDefId& owner,
-    StableSymbolKind kind,
-    std::string_view member_name,
-    base::u32 disambiguator = 0) noexcept;
+    const StableModuleId& module, StableSymbolKind kind, std::string_view name, base::u32 disambiguator = 0) noexcept;
+[[nodiscard]] StableMemberKey stable_member_key(const StableDefId& owner, StableSymbolKind kind,
+    std::string_view member_name, base::u32 disambiguator = 0) noexcept;
 [[nodiscard]] IncrementalKey stable_incremental_key(
-    const StableDefId& definition,
-    std::string_view semantic_fingerprint) noexcept;
+    const StableDefId& definition, std::string_view semantic_fingerprint) noexcept;
 
 void append_stable_key(StableKeyWriter& writer, StableModuleId id);
 void append_stable_key(StableKeyWriter& writer, StableDefId id);

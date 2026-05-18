@@ -1,7 +1,7 @@
-#include <aurex/lex/lexer.hpp>
-
 #include <aurex/base/string_literal.hpp>
 #include <aurex/base/string_literal_messages.hpp>
+#include <aurex/lex/lexer.hpp>
+
 #include <lex/lexeme.hpp>
 
 #include <string_view>
@@ -12,59 +12,43 @@ namespace {
 
 constexpr unsigned char LEXER_ASCII_SINGLE_BYTE_MAX = 0x7F;
 
-[[nodiscard]] bool is_non_ascii_byte(const char c) noexcept {
+[[nodiscard]] bool is_non_ascii_byte(const char c) noexcept
+{
     return static_cast<unsigned char>(c) > LEXER_ASCII_SINGLE_BYTE_MAX;
 }
 
 } // namespace
 
-void Lexer::scan_string(const base::usize begin) {
+void Lexer::scan_string(const base::usize begin)
+{
     this->scan_string_body(
-        begin,
-        syntax::TokenKind::string_literal,
-        base::StringLiteralKind::string,
-        LEXEME_UNTERMINATED_STRING_MESSAGE
-    );
+        begin, syntax::TokenKind::string_literal, base::StringLiteralKind::string, LEXEME_UNTERMINATED_STRING_MESSAGE);
 }
 
-void Lexer::scan_c_string(const base::usize begin) {
+void Lexer::scan_c_string(const base::usize begin)
+{
     this->advance_bytes(LEXEME_C_STRING_PREFIX.size());
-    this->scan_string_body(
-        begin,
-        syntax::TokenKind::c_string_literal,
-        base::StringLiteralKind::c_string,
-        LEXEME_UNTERMINATED_C_STRING_MESSAGE
-    );
+    this->scan_string_body(begin, syntax::TokenKind::c_string_literal, base::StringLiteralKind::c_string,
+        LEXEME_UNTERMINATED_C_STRING_MESSAGE);
 }
 
-void Lexer::scan_raw_string(const base::usize begin) {
+void Lexer::scan_raw_string(const base::usize begin)
+{
     this->advance_bytes(LEXEME_RAW_STRING_PREFIX.size());
-    this->scan_string_body(
-        begin,
-        syntax::TokenKind::raw_string_literal,
-        base::StringLiteralKind::raw_string,
-        LEXEME_UNTERMINATED_RAW_STRING_MESSAGE,
-        true
-    );
+    this->scan_string_body(begin, syntax::TokenKind::raw_string_literal, base::StringLiteralKind::raw_string,
+        LEXEME_UNTERMINATED_RAW_STRING_MESSAGE, true);
 }
 
-void Lexer::scan_byte_string(const base::usize begin) {
+void Lexer::scan_byte_string(const base::usize begin)
+{
     this->advance_bytes(LEXEME_BYTE_STRING_PREFIX.size());
-    this->scan_string_body(
-        begin,
-        syntax::TokenKind::byte_string_literal,
-        base::StringLiteralKind::byte_string,
-        LEXEME_UNTERMINATED_BYTE_STRING_MESSAGE
-    );
+    this->scan_string_body(begin, syntax::TokenKind::byte_string_literal, base::StringLiteralKind::byte_string,
+        LEXEME_UNTERMINATED_BYTE_STRING_MESSAGE);
 }
 
-void Lexer::scan_string_body(
-    const base::usize begin,
-    const syntax::TokenKind token_kind,
-    const base::StringLiteralKind literal_kind,
-    const std::string_view unterminated_message,
-    const bool allow_newline
-) {
+void Lexer::scan_string_body(const base::usize begin, const syntax::TokenKind token_kind,
+    const base::StringLiteralKind literal_kind, const std::string_view unterminated_message, const bool allow_newline)
+{
     const bool is_raw_string = literal_kind == base::StringLiteralKind::raw_string;
     bool escaped = false;
     bool needs_decode_validation = false;
@@ -85,10 +69,8 @@ void Lexer::scan_string_body(
                 this->add_nonempty_token(token_kind, begin, this->cursor_.offset());
                 return;
             }
-            const base::StringLiteralDecode decoded = base::decode_string_literal(
-                this->cursor_.slice(begin, this->cursor_.offset()),
-                literal_kind
-            );
+            const base::StringLiteralDecode decoded =
+                base::decode_string_literal(this->cursor_.slice(begin, this->cursor_.offset()), literal_kind);
             for (const base::StringLiteralError& error : decoded.errors) {
                 this->report(begin + error.begin, begin + error.end, error.message);
             }
@@ -99,8 +81,7 @@ void Lexer::scan_string_body(
             }
             return;
         }
-        if (is_non_ascii_byte(c) ||
-            (literal_kind == base::StringLiteralKind::c_string && c == LEXEME_NUL)) {
+        if (is_non_ascii_byte(c) || (literal_kind == base::StringLiteralKind::c_string && c == LEXEME_NUL)) {
             needs_decode_validation = true;
         }
         if (!allow_newline && c == LEXEME_LINE_FEED) {
@@ -113,7 +94,8 @@ void Lexer::scan_string_body(
     this->finish_invalid_token(begin, this->cursor_.offset());
 }
 
-void Lexer::scan_byte(const base::usize begin) {
+void Lexer::scan_byte(const base::usize begin)
+{
     this->advance_bytes(LEXEME_BYTE_LITERAL_PREFIX.size());
 
     bool escaped = false;
@@ -155,7 +137,8 @@ void Lexer::scan_byte(const base::usize begin) {
     this->finish_invalid_token(begin, this->cursor_.offset());
 }
 
-void Lexer::scan_char(const base::usize begin) {
+void Lexer::scan_char(const base::usize begin)
+{
     bool escaped = false;
     while (!this->is_at_end()) {
         const char c = this->advance();

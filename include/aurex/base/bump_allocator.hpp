@@ -75,14 +75,17 @@ public:
 
     BumpAllocatorAdapter() noexcept = default;
 
-    explicit BumpAllocatorAdapter(BumpAllocator& arena) noexcept
-        : arena_(&arena) {}
+    explicit BumpAllocatorAdapter(BumpAllocator& arena) noexcept : arena_(&arena)
+    {
+    }
 
     template <typename U>
-    BumpAllocatorAdapter(const BumpAllocatorAdapter<U>& other) noexcept
-        : arena_(other.arena_) {}
+    BumpAllocatorAdapter(const BumpAllocatorAdapter<U>& other) noexcept : arena_(other.arena_)
+    {
+    }
 
-    [[nodiscard]] T* allocate(const std::size_t count) {
+    [[nodiscard]] T* allocate(const std::size_t count)
+    {
         if (count == 0) {
             return nullptr;
         }
@@ -91,30 +94,27 @@ public:
         }
         const std::size_t bytes = count * sizeof(T);
         if (this->arena_ == nullptr) {
-            return static_cast<T*>(::operator new(bytes, std::align_val_t {alignof(T)}));
+            return static_cast<T*>(::operator new(bytes, std::align_val_t{alignof(T)}));
         }
         return static_cast<T*>(this->arena_->allocate(bytes, alignof(T)));
     }
 
-    void deallocate(T* const pointer, const std::size_t) noexcept {
+    void deallocate(T* const pointer, const std::size_t) noexcept
+    {
         if (this->arena_ == nullptr) {
-            ::operator delete(pointer, std::align_val_t {alignof(T)});
+            ::operator delete(pointer, std::align_val_t{alignof(T)});
         }
     }
 
     template <typename U>
-    [[nodiscard]] friend bool operator==(
-        const BumpAllocatorAdapter& lhs,
-        const BumpAllocatorAdapter<U>& rhs
-    ) noexcept {
+    [[nodiscard]] friend bool operator==(const BumpAllocatorAdapter& lhs, const BumpAllocatorAdapter<U>& rhs) noexcept
+    {
         return lhs.arena_ == rhs.arena_;
     }
 
     template <typename U>
-    [[nodiscard]] friend bool operator!=(
-        const BumpAllocatorAdapter& lhs,
-        const BumpAllocatorAdapter<U>& rhs
-    ) noexcept {
+    [[nodiscard]] friend bool operator!=(const BumpAllocatorAdapter& lhs, const BumpAllocatorAdapter<U>& rhs) noexcept
+    {
         return !(lhs == rhs);
     }
 
@@ -133,26 +133,11 @@ using BumpDeque = std::deque<T, BumpAllocatorAdapter<T>>;
 
 using BumpString = std::basic_string<char, std::char_traits<char>, BumpAllocatorAdapter<char>>;
 
-template <
-    typename Key,
-    typename Value,
-    typename Hash = std::hash<Key>,
-    typename KeyEqual = std::equal_to<Key>>
-using BumpUnorderedMap = std::unordered_map<
-    Key,
-    Value,
-    Hash,
-    KeyEqual,
-    BumpAllocatorAdapter<std::pair<const Key, Value>>>;
+template <typename Key, typename Value, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
+using BumpUnorderedMap =
+    std::unordered_map<Key, Value, Hash, KeyEqual, BumpAllocatorAdapter<std::pair<const Key, Value>>>;
 
-template <
-    typename Key,
-    typename Hash = std::hash<Key>,
-    typename KeyEqual = std::equal_to<Key>>
-using BumpUnorderedSet = std::unordered_set<
-    Key,
-    Hash,
-    KeyEqual,
-    BumpAllocatorAdapter<Key>>;
+template <typename Key, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
+using BumpUnorderedSet = std::unordered_set<Key, Hash, KeyEqual, BumpAllocatorAdapter<Key>>;
 
 } // namespace aurex::base

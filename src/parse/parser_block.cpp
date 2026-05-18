@@ -1,8 +1,7 @@
 #include <aurex/parse/parser_block_part.hpp>
-
 #include <aurex/parse/parser_messages.hpp>
-#include <aurex/parse/recovery.hpp>
 #include <aurex/parse/parser_stmt_part.hpp>
+#include <aurex/parse/recovery.hpp>
 
 #include <span>
 #include <utility>
@@ -16,31 +15,23 @@ using syntax::TokenKind;
 constexpr int PARSER_BLOCK_NO_DELIMITER_DEPTH = 0;
 
 [[nodiscard]] bool stmt_is_kind(
-    const syntax::AstModule& module,
-    const syntax::StmtId stmt,
-    const syntax::StmtKind kind
-) noexcept {
-    return syntax::is_valid(stmt) &&
-           stmt.value < module.stmts.size() &&
-           module.stmts.kind(stmt.value) == kind;
+    const syntax::AstModule& module, const syntax::StmtId stmt, const syntax::StmtKind kind) noexcept
+{
+    return syntax::is_valid(stmt) && stmt.value < module.stmts.size() && module.stmts.kind(stmt.value) == kind;
 }
 
-[[nodiscard]] bool token_opens_delimiter(const TokenKind kind) noexcept {
-    return kind == TokenKind::l_paren ||
-           kind == TokenKind::l_brace ||
-           kind == TokenKind::l_bracket;
+[[nodiscard]] bool token_opens_delimiter(const TokenKind kind) noexcept
+{
+    return kind == TokenKind::l_paren || kind == TokenKind::l_brace || kind == TokenKind::l_bracket;
 }
 
-[[nodiscard]] bool token_closes_delimiter(const TokenKind kind) noexcept {
-    return kind == TokenKind::r_paren ||
-           kind == TokenKind::r_brace ||
-           kind == TokenKind::r_bracket;
+[[nodiscard]] bool token_closes_delimiter(const TokenKind kind) noexcept
+{
+    return kind == TokenKind::r_paren || kind == TokenKind::r_brace || kind == TokenKind::r_bracket;
 }
 
-[[nodiscard]] bool scan_balanced_delimited(
-    const std::span<const syntax::Token> tokens,
-    base::usize& index
-) noexcept {
+[[nodiscard]] bool scan_balanced_delimited(const std::span<const syntax::Token> tokens, base::usize& index) noexcept
+{
     if (index >= tokens.size() || !token_opens_delimiter(tokens[index].kind)) {
         return false;
     }
@@ -62,17 +53,14 @@ constexpr int PARSER_BLOCK_NO_DELIMITER_DEPTH = 0;
     return false;
 }
 
-[[nodiscard]] bool scan_if_expression_tail(
-    const std::span<const syntax::Token> tokens,
-    base::usize& index
-) noexcept {
+[[nodiscard]] bool scan_if_expression_tail(const std::span<const syntax::Token> tokens, base::usize& index) noexcept
+{
     while (index < tokens.size() && tokens[index].kind == TokenKind::kw_if) {
         ++index;
 
         while (index < tokens.size() && tokens[index].kind != TokenKind::l_brace) {
-            if (tokens[index].kind == TokenKind::semicolon ||
-                tokens[index].kind == TokenKind::r_brace ||
-                tokens[index].kind == TokenKind::eof) {
+            if (tokens[index].kind == TokenKind::semicolon || tokens[index].kind == TokenKind::r_brace
+                || tokens[index].kind == TokenKind::eof) {
                 return false;
             }
             ++index;
@@ -94,34 +82,26 @@ constexpr int PARSER_BLOCK_NO_DELIMITER_DEPTH = 0;
 
 } // namespace
 
-syntax::StmtId BlockParser::parse_block() {
-    return this->parse_block_body(
-        BlockBodyMode::statement,
-        ExprContext::normal,
-        PARSER_EXPECT_BLOCK,
-        PARSER_EXPECT_BLOCK_END
-    ).block;
+syntax::StmtId BlockParser::parse_block()
+{
+    return this
+        ->parse_block_body(BlockBodyMode::statement, ExprContext::normal, PARSER_EXPECT_BLOCK, PARSER_EXPECT_BLOCK_END)
+        .block;
 }
 
-syntax::ExprId BlockParser::parse_block_expr(const ExprContext context) {
+syntax::ExprId BlockParser::parse_block_expr(const ExprContext context)
+{
     const BlockBody body = this->parse_block_body(
-        BlockBodyMode::expression,
-        context,
-        PARSER_EXPECT_BLOCK_EXPR,
-        PARSER_EXPECT_BLOCK_EXPR_END
-    );
+        BlockBodyMode::expression, context, PARSER_EXPECT_BLOCK_EXPR, PARSER_EXPECT_BLOCK_EXPR_END);
 
     const base::SourceRange block_range = this->stmt_range_or(body.block, this->previous().range);
     this->reset_panic();
     return this->session_.module.push_block_expr(syntax::ExprKind::block_expr, block_range, body.block, body.result);
 }
 
-BlockParser::BlockBody BlockParser::parse_block_body(
-    const BlockBodyMode mode,
-    const ExprContext context,
-    const std::string_view start_message,
-    const std::string_view end_message
-) {
+BlockParser::BlockBody BlockParser::parse_block_body(const BlockBodyMode mode, const ExprContext context,
+    const std::string_view start_message, const std::string_view end_message)
+{
     const syntax::Token& begin = this->expect_block_start(std::string(start_message));
     syntax::StmtNode block;
     block.kind = syntax::StmtKind::block;
@@ -152,15 +132,10 @@ BlockParser::BlockBody BlockParser::parse_block_body(
 
         const syntax::StmtId stmt = StmtParser(this->parser_).parse_expr_or_assign_stmt(context, false);
         if (stmt_is_kind(this->session_.module, stmt, syntax::StmtKind::assign)) {
-            const syntax::Token& end = this->expect_recovered(
-                TokenKind::semicolon,
-                std::string(PARSER_M2_BLOCK_RESULT_ASSIGNMENT),
-                RecoveryContext::statement_terminator
-            );
+            const syntax::Token& end = this->expect_recovered(TokenKind::semicolon,
+                std::string(PARSER_M2_BLOCK_RESULT_ASSIGNMENT), RecoveryContext::statement_terminator);
             this->session_.module.stmts.set_range(
-                stmt.value,
-                this->merge(this->stmt_range_or(stmt, end.range), end.range)
-            );
+                stmt.value, this->merge(this->stmt_range_or(stmt, end.range), end.range));
             block.statements.push_back(stmt);
             this->reset_panic();
             continue;
@@ -169,9 +144,7 @@ BlockParser::BlockBody BlockParser::parse_block_body(
         if (this->match(TokenKind::semicolon)) {
             if (syntax::is_valid(stmt) && stmt.value < this->session_.module.stmts.size()) {
                 this->session_.module.stmts.set_range(
-                    stmt.value,
-                    this->merge(this->stmt_range_or(stmt, this->previous().range), this->previous().range)
-                );
+                    stmt.value, this->merge(this->stmt_range_or(stmt, this->previous().range), this->previous().range));
                 block.statements.push_back(stmt);
             }
             this->reset_panic();
@@ -187,13 +160,14 @@ BlockParser::BlockBody BlockParser::parse_block_body(
     const syntax::Token& end = this->expect_block_end(std::string(end_message));
     block.range = this->merge(begin.range, end.range);
     this->reset_panic();
-    return BlockBody {
+    return BlockBody{
         this->session_.module.push_stmt(std::move(block)),
         result,
     };
 }
 
-bool BlockParser::token_starts_tail_expression() const noexcept {
+bool BlockParser::token_starts_tail_expression() const noexcept
+{
     if (this->check(TokenKind::kw_if)) {
         return this->next_if_is_tail_expression();
     }
@@ -205,113 +179,110 @@ bool BlockParser::token_starts_tail_expression() const noexcept {
     }
 
     switch (this->peek().kind) {
-    case TokenKind::identifier:
-    case TokenKind::integer_literal:
-    case TokenKind::float_literal:
-    case TokenKind::string_literal:
-    case TokenKind::c_string_literal:
-    case TokenKind::raw_string_literal:
-    case TokenKind::byte_string_literal:
-    case TokenKind::byte_literal:
-    case TokenKind::char_literal:
-    case TokenKind::kw_if:
-    case TokenKind::kw_match:
-    case TokenKind::kw_true:
-    case TokenKind::kw_false:
-    case TokenKind::kw_null:
-    case TokenKind::kw_cast:
-    case TokenKind::kw_ptrcast:
-    case TokenKind::kw_bitcast:
-    case TokenKind::kw_sizeof:
-    case TokenKind::kw_alignof:
-    case TokenKind::kw_ptraddr:
-    case TokenKind::kw_ptrat:
-    case TokenKind::kw_sliceptr:
-    case TokenKind::kw_slicelen:
-    case TokenKind::kw_strptr:
-    case TokenKind::kw_strblen:
-    case TokenKind::kw_strvalid:
-    case TokenKind::kw_strfromutf8:
-    case TokenKind::kw_strraw:
-    case TokenKind::l_paren:
-    case TokenKind::minus:
-    case TokenKind::star:
-    case TokenKind::amp:
-    case TokenKind::tilde:
-    case TokenKind::bang:
-        return true;
-    default:
-        return false;
+        case TokenKind::identifier:
+        case TokenKind::integer_literal:
+        case TokenKind::float_literal:
+        case TokenKind::string_literal:
+        case TokenKind::c_string_literal:
+        case TokenKind::raw_string_literal:
+        case TokenKind::byte_string_literal:
+        case TokenKind::byte_literal:
+        case TokenKind::char_literal:
+        case TokenKind::kw_if:
+        case TokenKind::kw_match:
+        case TokenKind::kw_true:
+        case TokenKind::kw_false:
+        case TokenKind::kw_null:
+        case TokenKind::kw_cast:
+        case TokenKind::kw_ptrcast:
+        case TokenKind::kw_bitcast:
+        case TokenKind::kw_sizeof:
+        case TokenKind::kw_alignof:
+        case TokenKind::kw_ptraddr:
+        case TokenKind::kw_ptrat:
+        case TokenKind::kw_sliceptr:
+        case TokenKind::kw_slicelen:
+        case TokenKind::kw_strptr:
+        case TokenKind::kw_strblen:
+        case TokenKind::kw_strvalid:
+        case TokenKind::kw_strfromutf8:
+        case TokenKind::kw_strraw:
+        case TokenKind::l_paren:
+        case TokenKind::minus:
+        case TokenKind::star:
+        case TokenKind::amp:
+        case TokenKind::tilde:
+        case TokenKind::bang:
+            return true;
+        default:
+            return false;
     }
 }
 
-bool BlockParser::token_starts_required_statement() const noexcept {
+bool BlockParser::token_starts_required_statement() const noexcept
+{
     switch (this->peek().kind) {
-    case TokenKind::kw_let:
-    case TokenKind::kw_var:
-    case TokenKind::kw_for:
-    case TokenKind::kw_while:
-    case TokenKind::kw_break:
-    case TokenKind::kw_continue:
-    case TokenKind::kw_defer:
-    case TokenKind::kw_return:
-        return true;
-    default:
-        return false;
+        case TokenKind::kw_let:
+        case TokenKind::kw_var:
+        case TokenKind::kw_for:
+        case TokenKind::kw_while:
+        case TokenKind::kw_break:
+        case TokenKind::kw_continue:
+        case TokenKind::kw_defer:
+        case TokenKind::kw_return:
+            return true;
+        default:
+            return false;
     }
 }
 
-bool BlockParser::next_if_is_tail_expression() const noexcept {
+bool BlockParser::next_if_is_tail_expression() const noexcept
+{
     base::usize index = this->session_.cursor.position();
     if (!scan_if_expression_tail(this->session_.cursor.tokens(), index)) {
         return false;
     }
-    return index < this->session_.cursor.tokens().size() &&
-           this->session_.cursor.tokens()[index].kind == TokenKind::r_brace;
+    return index < this->session_.cursor.tokens().size()
+        && this->session_.cursor.tokens()[index].kind == TokenKind::r_brace;
 }
 
-bool BlockParser::next_block_is_tail_expression() const noexcept {
+bool BlockParser::next_block_is_tail_expression() const noexcept
+{
     base::usize index = this->session_.cursor.position();
     if (!scan_balanced_delimited(this->session_.cursor.tokens(), index)) {
         return false;
     }
-    return index < this->session_.cursor.tokens().size() &&
-           this->session_.cursor.tokens()[index].kind == TokenKind::r_brace;
+    return index < this->session_.cursor.tokens().size()
+        && this->session_.cursor.tokens()[index].kind == TokenKind::r_brace;
 }
 
-bool BlockParser::next_unsafe_block_is_tail_expression() const noexcept {
+bool BlockParser::next_unsafe_block_is_tail_expression() const noexcept
+{
     base::usize index = this->session_.cursor.position();
-    if (index >= this->session_.cursor.tokens().size() ||
-        this->session_.cursor.tokens()[index].kind != TokenKind::kw_unsafe) {
+    if (index >= this->session_.cursor.tokens().size()
+        || this->session_.cursor.tokens()[index].kind != TokenKind::kw_unsafe) {
         return false;
     }
     ++index;
     if (!scan_balanced_delimited(this->session_.cursor.tokens(), index)) {
         return false;
     }
-    return index < this->session_.cursor.tokens().size() &&
-           this->session_.cursor.tokens()[index].kind == TokenKind::r_brace;
+    return index < this->session_.cursor.tokens().size()
+        && this->session_.cursor.tokens()[index].kind == TokenKind::r_brace;
 }
 
 const syntax::Token& BlockParser::expect_block_start(std::string message) const
 {
-    return this->expect_recovered(
-        TokenKind::l_brace,
-        std::move(message),
-        RecoveryContext::block_start
-    );
+    return this->expect_recovered(TokenKind::l_brace, std::move(message), RecoveryContext::block_start);
 }
 
 const syntax::Token& BlockParser::expect_block_end(std::string message) const
 {
-    return this->expect_recovered(
-        TokenKind::r_brace,
-        std::move(message),
-        RecoveryContext::block_end
-    );
+    return this->expect_recovered(TokenKind::r_brace, std::move(message), RecoveryContext::block_end);
 }
 
-bool BlockParser::at_block_recovery_boundary() const noexcept {
+bool BlockParser::at_block_recovery_boundary() const noexcept
+{
     if (this->check(TokenKind::kw_unsafe) && !this->check_next(TokenKind::kw_fn)) {
         return false;
     }

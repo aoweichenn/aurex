@@ -1,5 +1,6 @@
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/driver/native_toolchain.hpp>
+
 #include <support/test_support.hpp>
 
 #include <cstdlib>
@@ -16,7 +17,8 @@ constexpr std::string_view NATIVE_TOOLCHAIN_SIGNAL_SCRIPT = "#!/bin/sh\nkill -TE
 
 class ScopedPathEnvironment final {
 public:
-    explicit ScopedPathEnvironment(const std::filesystem::path& prefix) {
+    explicit ScopedPathEnvironment(const std::filesystem::path& prefix)
+    {
         const char* existing = std::getenv("PATH");
         if (existing != nullptr) {
             this->old_value_ = existing;
@@ -34,7 +36,8 @@ public:
     ScopedPathEnvironment(const ScopedPathEnvironment&) = delete;
     ScopedPathEnvironment& operator=(const ScopedPathEnvironment&) = delete;
 
-    ~ScopedPathEnvironment() {
+    ~ScopedPathEnvironment()
+    {
         if (this->had_old_value_) {
             ::setenv("PATH", this->old_value_.c_str(), 1);
         } else {
@@ -47,7 +50,8 @@ private:
     bool had_old_value_ = false;
 };
 
-void write_executable_script(const fs::path& path, const std::string_view contents) {
+void write_executable_script(const fs::path& path, const std::string_view contents)
+{
     fs::create_directories(path.parent_path());
     {
         std::ofstream out(path, std::ios::binary);
@@ -60,7 +64,8 @@ void write_executable_script(const fs::path& path, const std::string_view conten
 
 } // namespace
 
-TEST(CoreUnit, NativeToolchainRejectsSupportSourcesForNonExecutableAndReportsMissingClang) {
+TEST(CoreUnit, NativeToolchainRejectsSupportSourcesForNonExecutableAndReportsMissingClang)
+{
     driver::NativeCompileRequest unsupported;
     unsupported.emit_kind = driver::EmitKind::object;
     unsupported.input_path = source_root() / "examples" / "hello.ax";
@@ -82,7 +87,8 @@ TEST(CoreUnit, NativeToolchainRejectsSupportSourcesForNonExecutableAndReportsMis
     EXPECT_TRUE(fs::exists(tmp_root() / "missing"));
 }
 
-TEST(CoreUnit, NativeToolchainCoversDefaultClangPathSupportSourcesAndEmptyOutputParent) {
+TEST(CoreUnit, NativeToolchainCoversDefaultClangPathSupportSourcesAndEmptyOutputParent)
+{
     const fs::path clang_dir = tmp_root() / "native_toolchain_clang";
     const fs::path clang_script = clang_dir / "clang";
     write_executable_script(clang_script, NATIVE_TOOLCHAIN_SUCCESS_SCRIPT);
@@ -111,7 +117,8 @@ TEST(CoreUnit, NativeToolchainCoversDefaultClangPathSupportSourcesAndEmptyOutput
     ASSERT_TRUE(result) << result.error().message;
 }
 
-TEST(CoreUnit, NativeToolchainReportsDirectoryCreationAndSignalFailures) {
+TEST(CoreUnit, NativeToolchainReportsDirectoryCreationAndSignalFailures)
+{
     const fs::path input = tmp_root() / "native_toolchain_signal_input.ll";
     {
         std::ofstream out(input, std::ios::binary);

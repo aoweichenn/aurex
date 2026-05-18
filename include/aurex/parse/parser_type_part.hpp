@@ -6,8 +6,9 @@ namespace aurex::parse {
 
 class TypeParser final : private ParserPartBase {
 public:
-    explicit TypeParser(Parser& parser) noexcept
-        : ParserPartBase(parser) {}
+    explicit TypeParser(Parser& parser) noexcept : ParserPartBase(parser)
+    {
+    }
 
     [[nodiscard]] syntax::TypeId parse_type();
 
@@ -19,10 +20,7 @@ private:
     [[nodiscard]] const syntax::Token& expect_tuple_type_end(const syntax::Token& opening) const;
     [[nodiscard]] syntax::TypeId parse_function_type();
     [[nodiscard]] syntax::TypeId parse_function_type_after_fn(
-        const base::SourceRange& begin_range,
-        syntax::FunctionCallConv call_conv,
-        bool is_unsafe
-    );
+        const base::SourceRange& begin_range, syntax::FunctionCallConv call_conv, bool is_unsafe);
     void parse_function_type_params(std::vector<syntax::TypeId>& params, bool& is_variadic);
     [[nodiscard]] bool recover_function_type_param_separator(bool& is_variadic) const;
     [[nodiscard]] syntax::TypeId parse_primitive_type() const;

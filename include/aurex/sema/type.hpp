@@ -19,11 +19,12 @@ struct TypeHandle {
     static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
-inline constexpr TypeHandle INVALID_TYPE_HANDLE {TypeHandle::INVALID_VALUE};
+inline constexpr TypeHandle INVALID_TYPE_HANDLE{TypeHandle::INVALID_VALUE};
 
 using TypeHandleList = SemaVector<TypeHandle>;
 
-[[nodiscard]] inline constexpr bool is_valid(const TypeHandle handle) noexcept {
+[[nodiscard]] inline constexpr bool is_valid(const TypeHandle handle) noexcept
+{
     return handle.value != TypeHandle::INVALID_VALUE;
 }
 
@@ -114,45 +115,18 @@ public:
     [[nodiscard]] TypeHandle tuple(std::span<const TypeHandle> elements);
     [[nodiscard]] TypeHandle tuple(const std::vector<TypeHandle>& elements);
     [[nodiscard]] TypeHandle tuple(std::initializer_list<TypeHandle> elements);
+    [[nodiscard]] TypeHandle function(FunctionCallConv call_conv, bool is_unsafe, bool is_variadic,
+        std::span<const TypeHandle> params, TypeHandle return_type);
+    [[nodiscard]] TypeHandle function(FunctionCallConv call_conv, bool is_unsafe, bool is_variadic,
+        const std::vector<TypeHandle>& params, TypeHandle return_type);
+    [[nodiscard]] TypeHandle function(FunctionCallConv call_conv, bool is_unsafe, bool is_variadic,
+        std::initializer_list<TypeHandle> params, TypeHandle return_type);
     [[nodiscard]] TypeHandle function(
-        FunctionCallConv call_conv,
-        bool is_unsafe,
-        bool is_variadic,
-        std::span<const TypeHandle> params,
-        TypeHandle return_type
-    );
+        FunctionCallConv call_conv, bool is_variadic, std::span<const TypeHandle> params, TypeHandle return_type);
     [[nodiscard]] TypeHandle function(
-        FunctionCallConv call_conv,
-        bool is_unsafe,
-        bool is_variadic,
-        const std::vector<TypeHandle>& params,
-        TypeHandle return_type
-    );
+        FunctionCallConv call_conv, bool is_variadic, const std::vector<TypeHandle>& params, TypeHandle return_type);
     [[nodiscard]] TypeHandle function(
-        FunctionCallConv call_conv,
-        bool is_unsafe,
-        bool is_variadic,
-        std::initializer_list<TypeHandle> params,
-        TypeHandle return_type
-    );
-    [[nodiscard]] TypeHandle function(
-        FunctionCallConv call_conv,
-        bool is_variadic,
-        std::span<const TypeHandle> params,
-        TypeHandle return_type
-    );
-    [[nodiscard]] TypeHandle function(
-        FunctionCallConv call_conv,
-        bool is_variadic,
-        const std::vector<TypeHandle>& params,
-        TypeHandle return_type
-    );
-    [[nodiscard]] TypeHandle function(
-        FunctionCallConv call_conv,
-        bool is_variadic,
-        std::initializer_list<TypeHandle> params,
-        TypeHandle return_type
-    );
+        FunctionCallConv call_conv, bool is_variadic, std::initializer_list<TypeHandle> params, TypeHandle return_type);
     [[nodiscard]] TypeHandle named_struct(std::string_view name, std::string_view c_name, bool contains_array);
     [[nodiscard]] TypeHandle named_enum(std::string_view name, std::string_view c_name);
     [[nodiscard]] TypeHandle opaque_struct(std::string_view name, std::string_view c_name);
@@ -161,7 +135,8 @@ public:
 
     void set_record_contains_array(TypeHandle handle, bool contains_array) noexcept;
     void set_enum_underlying(TypeHandle handle, TypeHandle underlying) noexcept;
-    void set_enum_payload_layout(TypeHandle handle, TypeHandle storage, base::u64 payload_size, base::u64 payload_align) noexcept;
+    void set_enum_payload_layout(
+        TypeHandle handle, TypeHandle storage, base::u64 payload_size, base::u64 payload_align) noexcept;
     void set_generic_instance(TypeHandle handle, std::string_view origin_key, std::span<const TypeHandle> args);
     void set_generic_instance(TypeHandle handle, std::string_view origin_key, const std::vector<TypeHandle>& args);
     void set_generic_instance(TypeHandle handle, std::string_view origin_key, std::initializer_list<TypeHandle> args);
@@ -191,7 +166,8 @@ private:
         base::u32 pointee = TypeHandle::INVALID_VALUE;
         PointerMutability mutability = PointerMutability::const_;
 
-        [[nodiscard]] bool operator==(const PointerKey& other) const noexcept {
+        [[nodiscard]] bool operator==(const PointerKey& other) const noexcept
+        {
             return pointee == other.pointee && mutability == other.mutability;
         }
     };
@@ -200,7 +176,8 @@ private:
         base::u64 count = 0;
         base::u32 element = TypeHandle::INVALID_VALUE;
 
-        [[nodiscard]] bool operator==(const ArrayKey& other) const noexcept {
+        [[nodiscard]] bool operator==(const ArrayKey& other) const noexcept
+        {
             return count == other.count && element == other.element;
         }
     };
@@ -209,7 +186,8 @@ private:
         base::u32 element = TypeHandle::INVALID_VALUE;
         PointerMutability mutability = PointerMutability::const_;
 
-        [[nodiscard]] bool operator==(const SliceKey& other) const noexcept {
+        [[nodiscard]] bool operator==(const SliceKey& other) const noexcept
+        {
             return element == other.element && mutability == other.mutability;
         }
     };
@@ -221,19 +199,18 @@ private:
         SemaVector<base::u32> params;
         base::u32 return_type = TypeHandle::INVALID_VALUE;
 
-        [[nodiscard]] bool operator==(const FunctionKey& other) const noexcept {
-            return call_conv == other.call_conv &&
-                   is_unsafe == other.is_unsafe &&
-                   is_variadic == other.is_variadic &&
-                   params == other.params &&
-                   return_type == other.return_type;
+        [[nodiscard]] bool operator==(const FunctionKey& other) const noexcept
+        {
+            return call_conv == other.call_conv && is_unsafe == other.is_unsafe && is_variadic == other.is_variadic
+                && params == other.params && return_type == other.return_type;
         }
     };
 
     struct TupleKey {
         SemaVector<base::u32> elements;
 
-        [[nodiscard]] bool operator==(const TupleKey& other) const noexcept {
+        [[nodiscard]] bool operator==(const TupleKey& other) const noexcept
+        {
             return elements == other.elements;
         }
     };

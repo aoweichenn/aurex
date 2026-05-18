@@ -15,7 +15,7 @@ struct SourceId {
 };
 
 struct SourceRange {
-    SourceId source {};
+    SourceId source{};
     usize begin = 0;
     usize end = 0;
 

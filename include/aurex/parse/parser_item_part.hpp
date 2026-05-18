@@ -14,8 +14,9 @@ struct ParsedVisibility {
 
 class ItemParser final : private ParserPartBase {
 public:
-    explicit ItemParser(Parser& parser) noexcept
-        : ParserPartBase(parser) {}
+    explicit ItemParser(Parser& parser) noexcept : ParserPartBase(parser)
+    {
+    }
 
     [[nodiscard]] syntax::ModulePath parse_path();
     [[nodiscard]] syntax::ImportDecl parse_import_decl();

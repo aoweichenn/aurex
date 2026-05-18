@@ -12,21 +12,21 @@ template <typename T>
 using AstArenaVector = base::BumpVector<T>;
 
 template <typename T>
-[[nodiscard]] AstArenaVector<T> make_ast_arena_vector(base::BumpAllocator& arena) {
-    return AstArenaVector<T>(base::BumpAllocatorAdapter<T> {arena});
+[[nodiscard]] AstArenaVector<T> make_ast_arena_vector(base::BumpAllocator& arena)
+{
+    return AstArenaVector<T>(base::BumpAllocatorAdapter<T>{arena});
 }
 
 template <typename T>
-[[nodiscard]] bool ast_arena_vector_uses_arena(
-    const AstArenaVector<T>& values,
-    base::BumpAllocator& arena) noexcept {
-    return values.get_allocator() == base::BumpAllocatorAdapter<T> {arena};
+[[nodiscard]] bool ast_arena_vector_uses_arena(const AstArenaVector<T>& values, base::BumpAllocator& arena) noexcept
+{
+    return values.get_allocator() == base::BumpAllocatorAdapter<T>{arena};
 }
 
 template <typename T, typename Allocator>
 [[nodiscard]] AstArenaVector<T> copy_ast_arena_vector(
-    base::BumpAllocator& arena,
-    const std::vector<T, Allocator>& values) {
+    base::BumpAllocator& arena, const std::vector<T, Allocator>& values)
+{
     AstArenaVector<T> copy = make_ast_arena_vector<T>(arena);
     copy.reserve(values.size());
     copy.insert(copy.end(), values.begin(), values.end());
@@ -34,9 +34,8 @@ template <typename T, typename Allocator>
 }
 
 template <typename T>
-[[nodiscard]] AstArenaVector<T> move_or_copy_ast_arena_vector(
-    base::BumpAllocator& arena,
-    AstArenaVector<T>&& values) {
+[[nodiscard]] AstArenaVector<T> move_or_copy_ast_arena_vector(base::BumpAllocator& arena, AstArenaVector<T>&& values)
+{
     if (ast_arena_vector_uses_arena(values, arena)) {
         return std::move(values);
     }
@@ -44,7 +43,8 @@ template <typename T>
 }
 
 template <typename T, typename Allocator>
-[[nodiscard]] std::vector<T> copy_std_vector(const std::vector<T, Allocator>& values) {
+[[nodiscard]] std::vector<T> copy_std_vector(const std::vector<T, Allocator>& values)
+{
     std::vector<T> copy;
     copy.reserve(values.size());
     copy.insert(copy.end(), values.begin(), values.end());
@@ -52,7 +52,8 @@ template <typename T, typename Allocator>
 }
 
 template <typename T, typename Allocator>
-[[nodiscard]] AstArenaVector<T> copy_detached_ast_vector(const std::vector<T, Allocator>& values) {
+[[nodiscard]] AstArenaVector<T> copy_detached_ast_vector(const std::vector<T, Allocator>& values)
+{
     AstArenaVector<T> copy;
     copy.reserve(values.size());
     copy.insert(copy.end(), values.begin(), values.end());
@@ -75,21 +76,19 @@ inline constexpr base::usize SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR = 8;
 inline constexpr base::usize SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR = 32;
 inline constexpr base::usize SYNTAX_AST_ARENA_ALLOCATION_PADDING_BYTES = alignof(std::max_align_t);
 
-[[nodiscard]] constexpr base::usize ast_reserve_fraction(
-    const base::usize size,
-    const base::usize divisor) noexcept {
+[[nodiscard]] constexpr base::usize ast_reserve_fraction(const base::usize size, const base::usize divisor) noexcept
+{
     return size == 0 ? 0 : ((size - 1) / divisor) + 1;
 }
 
 [[nodiscard]] constexpr base::usize ast_reserve_at_least(
-    const base::usize minimum,
-    const base::usize estimated) noexcept {
+    const base::usize minimum, const base::usize estimated) noexcept
+{
     return estimated < minimum ? minimum : estimated;
 }
 
-[[nodiscard]] constexpr base::usize ast_reserve_larger(
-    const base::usize lhs,
-    const base::usize rhs) noexcept {
+[[nodiscard]] constexpr base::usize ast_reserve_larger(const base::usize lhs, const base::usize rhs) noexcept
+{
     return lhs < rhs ? rhs : lhs;
 }
 
@@ -124,9 +123,9 @@ struct AstReserveEstimate {
     Exprs exprs;
 };
 
-[[nodiscard]] constexpr AstReserveEstimate::Exprs ast_expr_reserve_for_node_capacity(
-    const base::usize size) noexcept {
-    return AstReserveEstimate::Exprs {
+[[nodiscard]] constexpr AstReserveEstimate::Exprs ast_expr_reserve_for_node_capacity(const base::usize size) noexcept
+{
+    return AstReserveEstimate::Exprs{
         size,
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_EXPR_NAME_DIVISOR),

@@ -12,7 +12,8 @@ constexpr std::string_view CLI_ARGUMENT_TEST_SUCCESS_SCRIPT = "#!/bin/sh\nexit 0
 constexpr std::string_view CLI_ARGUMENT_TEST_HELLO = "hello.ax";
 constexpr std::string_view CLI_ARGUMENT_TEST_INVALID_OPT_LEVEL = "bad";
 
-void write_executable_script(const fs::path& path, const std::string_view contents) {
+void write_executable_script(const fs::path& path, const std::string_view contents)
+{
     fs::create_directories(path.parent_path());
     {
         std::ofstream out(path, std::ios::binary);
@@ -24,13 +25,15 @@ void write_executable_script(const fs::path& path, const std::string_view conten
     ASSERT_FALSE(error) << error.message();
 }
 
-[[nodiscard]] std::string real_aurexc(const std::string& args = "") {
-    return "/bin/sh -c " + q(std::string_view {aurexc_path().string() + args});
+[[nodiscard]] std::string real_aurexc(const std::string& args = "")
+{
+    return "/bin/sh -c " + q(std::string_view{aurexc_path().string() + args});
 }
 
 } // namespace
 
-TEST_F(AurexIntegrationTest, CliArgumentDiagnosticsCoverParseBranches) {
+TEST_F(AurexIntegrationTest, CliArgumentDiagnosticsCoverParseBranches)
+{
     expect_contains(require_success(aurexc() + " -h").output, "usage:");
 
     expect_contains(require_failure(aurexc()).output, "usage:");
@@ -40,43 +43,36 @@ TEST_F(AurexIntegrationTest, CliArgumentDiagnosticsCoverParseBranches) {
     expect_contains(require_failure(aurexc() + " --clang").output, "usage:");
     expect_contains(require_failure(aurexc() + " --clang-arg").output, "usage:");
     expect_contains(require_failure(aurexc() + " --opt-level").output, "usage:");
+    expect_contains(require_failure(aurexc() + " --opt-level " + std::string(CLI_ARGUMENT_TEST_INVALID_OPT_LEVEL) + " "
+                        + q(source_root() / "examples" / fs::path(CLI_ARGUMENT_TEST_HELLO)))
+                        .output,
+        "invalid optimization level");
     expect_contains(
-        require_failure(
-            aurexc() + " --opt-level " + std::string(CLI_ARGUMENT_TEST_INVALID_OPT_LEVEL) + " " +
-            q(source_root() / "examples" / fs::path(CLI_ARGUMENT_TEST_HELLO))
-        ).output,
-        "invalid optimization level"
-    );
-    expect_contains(
-        require_failure(aurexc() + " --emit=obj " + q(source_root() / "examples" / fs::path(CLI_ARGUMENT_TEST_HELLO))).output,
-        "native output requires -o"
-    );
-    expect_contains(require_failure(aurexc() + " --dump-tokens " + q(tmp_root() / "missing.ax")).output, "failed to open input file");
-    expect_contains(
-        require_failure(
-            aurexc() + " " + q(source_root() / "examples" / fs::path(CLI_ARGUMENT_TEST_HELLO)) +
-            " " + q(source_root() / "examples" / fs::path(CLI_ARGUMENT_TEST_HELLO))
-        ).output,
-        "multiple input files are not supported"
-    );
+        require_failure(aurexc() + " --emit=obj " + q(source_root() / "examples" / fs::path(CLI_ARGUMENT_TEST_HELLO)))
+            .output,
+        "native output requires -o");
+    expect_contains(require_failure(aurexc() + " --dump-tokens " + q(tmp_root() / "missing.ax")).output,
+        "failed to open input file");
+    expect_contains(require_failure(aurexc() + " " + q(source_root() / "examples" / fs::path(CLI_ARGUMENT_TEST_HELLO))
+                        + " " + q(source_root() / "examples" / fs::path(CLI_ARGUMENT_TEST_HELLO)))
+                        .output,
+        "multiple input files are not supported");
 
     const fs::path hello = source_root() / "examples" / fs::path(CLI_ARGUMENT_TEST_HELLO);
     const fs::path out = test_bin_root() / "cli_args";
-    require_success(
-        aurexc() + " -I" + q(imports_root()) +
-        " --emit=object --clang-arg -fno-color-diagnostics -O2 " +
-        q(hello) + " -o " + q(out)
-    );
+    require_success(aurexc() + " -I" + q(imports_root()) + " --emit=object --clang-arg -fno-color-diagnostics -O2 "
+        + q(hello) + " -o " + q(out));
     EXPECT_GT(fs::file_size(out), 0U);
 }
 
-TEST_F(AurexIntegrationTest, CliArgumentFormsCoverOptimizationAndNativeEmissionAliases) {
+TEST_F(AurexIntegrationTest, CliArgumentFormsCoverOptimizationAndNativeEmissionAliases)
+{
     const fs::path hello = source_root() / "examples" / fs::path(CLI_ARGUMENT_TEST_HELLO);
     const fs::path import_source = positive_sample("modules", "import_path.ax");
     const fs::path clang_script = tmp_root() / "fake_clang" / "clang";
     write_executable_script(clang_script, CLI_ARGUMENT_TEST_SUCCESS_SCRIPT);
 
-    const std::vector<std::string> check_commands {
+    const std::vector<std::string> check_commands{
         " --emit=tokens " + q(hello),
         " --emit=ast " + q(hello),
         " --emit=modules " + q(hello),
@@ -111,34 +107,18 @@ TEST_F(AurexIntegrationTest, CliArgumentFormsCoverOptimizationAndNativeEmissionA
     const fs::path object_output = tmp_root() / "native_aliases" / "hello.o";
     const fs::path exe_output = tmp_root() / "native_aliases" / "hello";
 
+    require_success(aurexc() + " --clang " + q(clang_script) + " --emit=asm " + q(hello) + " -o " + q(asm_output));
+    require_success(aurexc() + " --clang=" + q(clang_script) + " -S " + q(hello) + " -o "
+        + q(tmp_root() / "native_aliases" / "hello.driver.s"));
     require_success(
-        aurexc() + " --clang " + q(clang_script) +
-        " --emit=asm " + q(hello) +
-        " -o " + q(asm_output)
-    );
-    require_success(
-        aurexc() + " --clang=" + q(clang_script) +
-        " -S " + q(hello) +
-        " -o " + q(tmp_root() / "native_aliases" / "hello.driver.s")
-    );
-    require_success(
-        aurexc() + " --clang " + q(clang_script) +
-        " --emit=object " + q(hello) +
-        " -o " + q(object_output)
-    );
-    require_success(
-        aurexc() + " --clang=" + q(clang_script) +
-        " --clang-arg=-fno-color-diagnostics -c " + q(hello) +
-        " -o " + q(tmp_root() / "native_aliases" / "hello.driver.o")
-    );
-    require_success(
-        aurexc() + " --clang " + q(clang_script) +
-        " --emit=exe " + q(hello) +
-        " -o " + q(exe_output)
-    );
+        aurexc() + " --clang " + q(clang_script) + " --emit=object " + q(hello) + " -o " + q(object_output));
+    require_success(aurexc() + " --clang=" + q(clang_script) + " --clang-arg=-fno-color-diagnostics -c " + q(hello)
+        + " -o " + q(tmp_root() / "native_aliases" / "hello.driver.o"));
+    require_success(aurexc() + " --clang " + q(clang_script) + " --emit=exe " + q(hello) + " -o " + q(exe_output));
 }
 
-TEST_F(AurexIntegrationTest, CliArgumentDirectBinaryExecutionCoversMainParserBranches) {
+TEST_F(AurexIntegrationTest, CliArgumentDirectBinaryExecutionCoversMainParserBranches)
+{
     const fs::path hello = source_root() / "examples" / fs::path(CLI_ARGUMENT_TEST_HELLO);
     const fs::path import_source = positive_sample("modules", "import_path.ax");
     const fs::path clang_script = tmp_root() / "fake_clang_direct" / "clang";
@@ -165,27 +145,12 @@ TEST_F(AurexIntegrationTest, CliArgumentDirectBinaryExecutionCoversMainParserBra
     const fs::path asm_output = tmp_root() / "main_parser" / "hello.s";
     const fs::path object_output = tmp_root() / "main_parser" / "hello.o";
     const fs::path exe_output = tmp_root() / "main_parser" / "hello";
-    require_success(
-        real_aurexc(
-            " --clang " + q(clang_script) +
-            " --clang-arg -fno-color-diagnostics --emit=asm " +
-            q(hello) + " -o " + q(asm_output)
-        )
-    );
-    require_success(
-        real_aurexc(
-            " --clang " + q(clang_script) +
-            " --clang-arg -fno-color-diagnostics --emit=obj " +
-            q(hello) + " -o " + q(object_output)
-        )
-    );
-    require_success(
-        real_aurexc(
-            " --clang " + q(clang_script) +
-            " --clang-arg -fno-color-diagnostics --emit=exe " +
-            q(hello) + " -o " + q(exe_output)
-        )
-    );
+    require_success(real_aurexc(" --clang " + q(clang_script) + " --clang-arg -fno-color-diagnostics --emit=asm "
+        + q(hello) + " -o " + q(asm_output)));
+    require_success(real_aurexc(" --clang " + q(clang_script) + " --clang-arg -fno-color-diagnostics --emit=obj "
+        + q(hello) + " -o " + q(object_output)));
+    require_success(real_aurexc(" --clang " + q(clang_script) + " --clang-arg -fno-color-diagnostics --emit=exe "
+        + q(hello) + " -o " + q(exe_output)));
 
     expect_contains(require_failure(real_aurexc()).output, "usage:");
     expect_contains(require_failure(real_aurexc(" --unknown")).output, "usage:");
@@ -195,7 +160,8 @@ TEST_F(AurexIntegrationTest, CliArgumentDirectBinaryExecutionCoversMainParserBra
     expect_contains(require_failure(real_aurexc(" --clang-arg")).output, "usage:");
     expect_contains(require_failure(real_aurexc(" --opt-level")).output, "usage:");
     expect_contains(require_failure(real_aurexc(" --opt-level bad " + q(hello))).output, "invalid optimization level");
-    expect_contains(require_failure(real_aurexc(" " + q(hello) + " " + q(hello))).output, "multiple input files are not supported");
+    expect_contains(
+        require_failure(real_aurexc(" " + q(hello) + " " + q(hello))).output, "multiple input files are not supported");
 }
 
 } // namespace aurex::test

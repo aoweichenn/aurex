@@ -1,6 +1,5 @@
-#include <aurex/parse/parser_postfix_expr_part.hpp>
-
 #include <aurex/parse/parser_messages.hpp>
+#include <aurex/parse/parser_postfix_expr_part.hpp>
 #include <aurex/parse/parser_primary_expr_part.hpp>
 #include <aurex/parse/recovery.hpp>
 
@@ -24,11 +23,11 @@ constexpr char PARSER_TYPE_LIKE_FIRST_UPPER = 'A';
 constexpr char PARSER_TYPE_LIKE_LAST_UPPER = 'Z';
 constexpr base::usize PARSER_TYPE_EXPR_CHAIN_INLINE_CAPACITY = 8;
 
-[[nodiscard]] bool is_leading_dot_numeric_field_token(const syntax::Token& token) noexcept {
+[[nodiscard]] bool is_leading_dot_numeric_field_token(const syntax::Token& token) noexcept
+{
     const std::string_view text = token.text();
-    if (token.kind != TokenKind::float_literal ||
-        text.size() <= PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH ||
-        text.front() != PARSER_TUPLE_FIELD_DOT) {
+    if (token.kind != TokenKind::float_literal || text.size() <= PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH
+        || text.front() != PARSER_TUPLE_FIELD_DOT) {
         return false;
     }
     for (const char c : text.substr(PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH)) {
@@ -39,7 +38,8 @@ constexpr base::usize PARSER_TYPE_EXPR_CHAIN_INLINE_CAPACITY = 8;
     return true;
 }
 
-[[nodiscard]] bool identifier_text_is_type_like(const std::string_view text) noexcept {
+[[nodiscard]] bool identifier_text_is_type_like(const std::string_view text) noexcept
+{
     if (text.empty()) {
         return false;
     }
@@ -48,40 +48,40 @@ constexpr base::usize PARSER_TYPE_EXPR_CHAIN_INLINE_CAPACITY = 8;
 }
 
 [[nodiscard]] bool token_is_generic_call_or_literal_continuation(
-    const TokenKind kind,
-    const ExprContext context
-) noexcept {
-    return kind == TokenKind::l_paren ||
-           (context == ExprContext::normal && kind == TokenKind::l_brace);
+    const TokenKind kind, const ExprContext context) noexcept
+{
+    return kind == TokenKind::l_paren || (context == ExprContext::normal && kind == TokenKind::l_brace);
 }
 
-[[nodiscard]] bool is_primitive_type_token(const TokenKind kind) noexcept {
+[[nodiscard]] bool is_primitive_type_token(const TokenKind kind) noexcept
+{
     switch (kind) {
-    case TokenKind::kw_void:
-    case TokenKind::kw_bool:
-    case TokenKind::kw_i8:
-    case TokenKind::kw_u8:
-    case TokenKind::kw_i16:
-    case TokenKind::kw_u16:
-    case TokenKind::kw_i32:
-    case TokenKind::kw_u32:
-    case TokenKind::kw_i64:
-    case TokenKind::kw_u64:
-    case TokenKind::kw_isize:
-    case TokenKind::kw_usize:
-    case TokenKind::kw_f32:
-    case TokenKind::kw_f64:
-    case TokenKind::kw_str:
-    case TokenKind::kw_char:
-        return true;
-    default:
-        return false;
+        case TokenKind::kw_void:
+        case TokenKind::kw_bool:
+        case TokenKind::kw_i8:
+        case TokenKind::kw_u8:
+        case TokenKind::kw_i16:
+        case TokenKind::kw_u16:
+        case TokenKind::kw_i32:
+        case TokenKind::kw_u32:
+        case TokenKind::kw_i64:
+        case TokenKind::kw_u64:
+        case TokenKind::kw_isize:
+        case TokenKind::kw_usize:
+        case TokenKind::kw_f32:
+        case TokenKind::kw_f64:
+        case TokenKind::kw_str:
+        case TokenKind::kw_char:
+            return true;
+        default:
+            return false;
     }
 }
 
 } // namespace
 
-syntax::ExprId PostfixExprParser::parse_postfix(const ExprContext context) {
+syntax::ExprId PostfixExprParser::parse_postfix(const ExprContext context)
+{
     syntax::ExprId current = PrimaryExprParser(this->parser_).parse_primary(context);
     while (std::optional<syntax::ExprId> next = this->parse_next_suffix(current, context)) {
         current = next.value();
@@ -90,10 +90,8 @@ syntax::ExprId PostfixExprParser::parse_postfix(const ExprContext context) {
     return current;
 }
 
-std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(
-    const syntax::ExprId base,
-    const ExprContext context
-) {
+std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(const syntax::ExprId base, const ExprContext context)
+{
     if (context == ExprContext::normal && this->check(TokenKind::l_brace)) {
         return this->parse_struct_literal_suffix(base, context);
     }
@@ -117,27 +115,17 @@ std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(
     }
     if (this->check(TokenKind::plus_plus)) {
         return this->parse_rejected_update_suffix(
-            base,
-            this->peek().range,
-            TokenKind::plus_plus,
-            std::string(PARSER_INCREMENT_UNSUPPORTED)
-        );
+            base, this->peek().range, TokenKind::plus_plus, std::string(PARSER_INCREMENT_UNSUPPORTED));
     }
     if (this->check(TokenKind::minus_minus)) {
         return this->parse_rejected_update_suffix(
-            base,
-            this->peek().range,
-            TokenKind::minus_minus,
-            std::string(PARSER_DECREMENT_UNSUPPORTED)
-        );
+            base, this->peek().range, TokenKind::minus_minus, std::string(PARSER_DECREMENT_UNSUPPORTED));
     }
     return std::nullopt;
 }
 
-syntax::ExprId PostfixExprParser::parse_bracket_suffix(
-    const syntax::ExprId base,
-    const ExprContext context
-) {
+syntax::ExprId PostfixExprParser::parse_bracket_suffix(const syntax::ExprId base, const ExprContext context)
+{
     const syntax::Token& begin = this->previous();
     syntax::AstArenaVector<BracketArg> args = this->session_.module.make_expr_list<BracketArg>();
 
@@ -146,17 +134,11 @@ syntax::ExprId PostfixExprParser::parse_bracket_suffix(
         const syntax::Token& end = this->expect_index_suffix_end(begin);
         const base::SourceRange range = this->merge(begin.range, end.range);
         if (this->check(TokenKind::l_paren) || this->check(TokenKind::l_brace)) {
-            return this->session_.module.push_generic_apply_expr(
-                this->merge(this->expr_range_or(base, range), range),
-                base,
-                this->session_.module.make_expr_list<syntax::TypeId>()
-            );
+            return this->session_.module.push_generic_apply_expr(this->merge(this->expr_range_or(base, range), range),
+                base, this->session_.module.make_expr_list<syntax::TypeId>());
         }
         return this->session_.module.push_index_expr(
-            this->merge(this->expr_range_or(base, range), range),
-            base,
-            syntax::INVALID_EXPR_ID
-        );
+            this->merge(this->expr_range_or(base, range), range), base, syntax::INVALID_EXPR_ID);
     }
 
     BracketArg first;
@@ -174,11 +156,7 @@ syntax::ExprId PostfixExprParser::parse_bracket_suffix(
         const syntax::Token& end = this->expect_slice_suffix_end(begin);
         const base::SourceRange range = this->merge(begin.range, end.range);
         return this->session_.module.push_slice_expr(
-            this->merge(this->expr_range_or(base, range), range),
-            base,
-            first.expr,
-            end_expr
-        );
+            this->merge(this->expr_range_or(base, range), range), base, first.expr, end_expr);
     }
 
     args.push_back(first);
@@ -205,10 +183,7 @@ syntax::ExprId PostfixExprParser::parse_bracket_suffix(
         }
         if (has_type_only_arg || !type_like_base || !type_like_args) {
             return this->session_.module.push_generic_apply_expr(
-                range,
-                base,
-                this->session_.module.make_expr_list<syntax::TypeId>()
-            );
+                range, base, this->session_.module.make_expr_list<syntax::TypeId>());
         }
     }
 
@@ -218,16 +193,16 @@ syntax::ExprId PostfixExprParser::parse_bracket_suffix(
     }
     if (args.size() > 1) {
         this->session_.diagnostics.report_at(
-            syntax::Token {TokenKind::invalid, bracket_range, {}},
-            std::string(PARSER_INDEX_EXPECTS_ONE_ARGUMENT));
+            syntax::Token{TokenKind::invalid, bracket_range, {}}, std::string(PARSER_INDEX_EXPECTS_ONE_ARGUMENT));
     }
     return this->session_.module.push_index_expr(range, base, index);
 }
 
-PostfixExprParser::BracketArg PostfixExprParser::parse_bracket_arg(const ExprContext context) {
+PostfixExprParser::BracketArg PostfixExprParser::parse_bracket_arg(const ExprContext context)
+{
     if (this->bracket_arg_starts_type_only()) {
         const syntax::TypeId type = this->parse_type();
-        return BracketArg {
+        return BracketArg{
             syntax::INVALID_EXPR_ID,
             type,
             this->type_range_or(type, this->previous().range),
@@ -235,19 +210,18 @@ PostfixExprParser::BracketArg PostfixExprParser::parse_bracket_arg(const ExprCon
     }
 
     const syntax::ExprId expr = this->parse_expr(context);
-    return BracketArg {
+    return BracketArg{
         expr,
         syntax::INVALID_TYPE_ID,
         this->expr_range_or(expr, this->previous().range),
     };
 }
 
-bool PostfixExprParser::bracket_arg_starts_type_only() const noexcept {
+bool PostfixExprParser::bracket_arg_starts_type_only() const noexcept
+{
     const TokenKind kind = this->peek().kind;
-    if (is_primitive_type_token(kind) ||
-        kind == TokenKind::kw_fn ||
-        kind == TokenKind::kw_extern ||
-        kind == TokenKind::kw_unsafe) {
+    if (is_primitive_type_token(kind) || kind == TokenKind::kw_fn || kind == TokenKind::kw_extern
+        || kind == TokenKind::kw_unsafe) {
         return true;
     }
     if (kind == TokenKind::star) {
@@ -264,7 +238,8 @@ bool PostfixExprParser::bracket_arg_starts_type_only() const noexcept {
     return false;
 }
 
-bool PostfixExprParser::bracket_parenthesized_arg_is_type() const noexcept {
+bool PostfixExprParser::bracket_parenthesized_arg_is_type() const noexcept
+{
     base::usize depth = 0;
     bool saw_comma_at_outer_depth = false;
     for (base::usize offset = 0; true; ++offset) {
@@ -292,18 +267,18 @@ bool PostfixExprParser::bracket_parenthesized_arg_is_type() const noexcept {
     }
 }
 
-bool PostfixExprParser::bracket_suffix_is_inside_generic_continuation() const noexcept {
+bool PostfixExprParser::bracket_suffix_is_inside_generic_continuation() const noexcept
+{
     base::usize offset = 0;
     while (this->peek_at(offset).kind == TokenKind::r_bracket) {
         ++offset;
     }
     const TokenKind continuation = this->peek_at(offset).kind;
-    return continuation == TokenKind::l_paren ||
-           continuation == TokenKind::l_brace ||
-           continuation == TokenKind::dot;
+    return continuation == TokenKind::l_paren || continuation == TokenKind::l_brace || continuation == TokenKind::dot;
 }
 
-bool PostfixExprParser::bracket_args_contain_type_only(const std::span<const BracketArg> args) const noexcept {
+bool PostfixExprParser::bracket_args_contain_type_only(const std::span<const BracketArg> args) const noexcept
+{
     for (const BracketArg& arg : args) {
         if (syntax::is_valid(arg.type)) {
             return true;
@@ -312,7 +287,8 @@ bool PostfixExprParser::bracket_args_contain_type_only(const std::span<const Bra
     return false;
 }
 
-bool PostfixExprParser::bracket_args_are_type_like(const std::span<const BracketArg> args) const {
+bool PostfixExprParser::bracket_args_are_type_like(const std::span<const BracketArg> args) const
+{
     for (const BracketArg& arg : args) {
         if (syntax::is_valid(arg.type)) {
             continue;
@@ -324,7 +300,8 @@ bool PostfixExprParser::bracket_args_are_type_like(const std::span<const Bracket
     return !args.empty();
 }
 
-bool PostfixExprParser::bracket_arg_expr_is_type_like(const syntax::ExprId expr) const {
+bool PostfixExprParser::bracket_arg_expr_is_type_like(const syntax::ExprId expr) const
+{
     std::vector<syntax::ExprId> pending;
     pending.push_back(expr);
     while (!pending.empty()) {
@@ -335,54 +312,50 @@ bool PostfixExprParser::bracket_arg_expr_is_type_like(const syntax::ExprId expr)
         }
         const syntax::ExprKind kind = this->session_.module.exprs.kind(current.value);
         switch (kind) {
-        case syntax::ExprKind::name: {
-            const syntax::NameExprPayload* const payload =
-                this->session_.module.exprs.name_payload(current.value);
-            if (payload == nullptr || !identifier_text_is_type_like(payload->text)) {
-                return false;
+            case syntax::ExprKind::name: {
+                const syntax::NameExprPayload* const payload = this->session_.module.exprs.name_payload(current.value);
+                if (payload == nullptr || !identifier_text_is_type_like(payload->text)) {
+                    return false;
+                }
+                break;
             }
-            break;
-        }
-        case syntax::ExprKind::field: {
-            const syntax::FieldExprPayload* const payload =
-                this->session_.module.exprs.field_payload(current.value);
-            if (payload == nullptr || !identifier_text_is_type_like(payload->field_name)) {
-                return false;
+            case syntax::ExprKind::field: {
+                const syntax::FieldExprPayload* const payload =
+                    this->session_.module.exprs.field_payload(current.value);
+                if (payload == nullptr || !identifier_text_is_type_like(payload->field_name)) {
+                    return false;
+                }
+                break;
             }
-            break;
-        }
-        case syntax::ExprKind::generic_apply: {
-            const syntax::GenericApplyExprPayload* const payload =
-                this->session_.module.exprs.generic_apply_payload(current.value);
-            if (payload == nullptr) {
-                return false;
+            case syntax::ExprKind::generic_apply: {
+                const syntax::GenericApplyExprPayload* const payload =
+                    this->session_.module.exprs.generic_apply_payload(current.value);
+                if (payload == nullptr) {
+                    return false;
+                }
+                pending.push_back(payload->callee);
+                break;
             }
-            pending.push_back(payload->callee);
-            break;
-        }
-        case syntax::ExprKind::unary: {
-            const syntax::UnaryExprPayload* const payload =
-                this->session_.module.exprs.unary_payload(current.value);
-            if (payload == nullptr ||
-                (payload->op != syntax::UnaryOp::address_of && payload->op != syntax::UnaryOp::address_of_mut)) {
-                return false;
+            case syntax::ExprKind::unary: {
+                const syntax::UnaryExprPayload* const payload =
+                    this->session_.module.exprs.unary_payload(current.value);
+                if (payload == nullptr
+                    || (payload->op != syntax::UnaryOp::address_of && payload->op != syntax::UnaryOp::address_of_mut)) {
+                    return false;
+                }
+                pending.push_back(payload->operand);
+                break;
             }
-            pending.push_back(payload->operand);
-            break;
-        }
-        default:
-            return false;
+            default:
+                return false;
         }
     }
     return true;
 }
 
-bool PostfixExprParser::bracket_suffix_is_type_argument_context(
-    const syntax::ExprId base,
-    const std::span<const BracketArg> args,
-    const bool has_type_only_arg,
-    const ExprContext context
-) const {
+bool PostfixExprParser::bracket_suffix_is_type_argument_context(const syntax::ExprId base,
+    const std::span<const BracketArg> args, const bool has_type_only_arg, const ExprContext context) const
+{
     if (has_type_only_arg) {
         return true;
     }
@@ -396,16 +369,13 @@ bool PostfixExprParser::bracket_suffix_is_type_argument_context(
     if (continuation == TokenKind::dot) {
         return type_like_base && type_like_args;
     }
-    return continuation == TokenKind::r_bracket &&
-           this->bracket_suffix_is_inside_generic_continuation() &&
-           type_like_base &&
-           type_like_args;
+    return continuation == TokenKind::r_bracket && this->bracket_suffix_is_inside_generic_continuation()
+        && type_like_base && type_like_args;
 }
 
 std::optional<syntax::AstArenaVector<syntax::TypeId>> PostfixExprParser::bracket_args_to_type_args(
-    const std::span<const BracketArg> args,
-    const bool report_errors
-) {
+    const std::span<const BracketArg> args, const bool report_errors)
+{
     syntax::AstArenaVector<syntax::TypeId> type_args = this->session_.module.make_expr_list<syntax::TypeId>();
     type_args.reserve(args.size());
     for (const BracketArg& arg : args) {
@@ -422,20 +392,19 @@ std::optional<syntax::AstArenaVector<syntax::TypeId>> PostfixExprParser::bracket
     return type_args;
 }
 
-syntax::TypeId PostfixExprParser::bracket_arg_expr_to_type(
-    const syntax::ExprId expr,
-    const bool report_errors
-) {
+syntax::TypeId PostfixExprParser::bracket_arg_expr_to_type(const syntax::ExprId expr, const bool report_errors)
+{
     if (!syntax::is_valid(expr) || expr.value >= this->session_.module.exprs.size()) {
         return syntax::INVALID_TYPE_ID;
     }
 
     struct TypeExprChain {
-        std::array<syntax::ExprId, PARSER_TYPE_EXPR_CHAIN_INLINE_CAPACITY> inline_exprs {};
+        std::array<syntax::ExprId, PARSER_TYPE_EXPR_CHAIN_INLINE_CAPACITY> inline_exprs{};
         std::vector<syntax::ExprId> overflow;
         base::usize size = 0;
 
-        void push(const syntax::ExprId value) {
+        void push(const syntax::ExprId value)
+        {
             if (this->size < this->inline_exprs.size()) {
                 this->inline_exprs[this->size] = value;
             } else {
@@ -444,7 +413,8 @@ syntax::TypeId PostfixExprParser::bracket_arg_expr_to_type(
             ++this->size;
         }
 
-        [[nodiscard]] syntax::ExprId at(const base::usize index) const noexcept {
+        [[nodiscard]] syntax::ExprId at(const base::usize index) const noexcept
+        {
             if (index < this->inline_exprs.size()) {
                 return this->inline_exprs[index];
             }
@@ -467,8 +437,7 @@ syntax::TypeId PostfixExprParser::bracket_arg_expr_to_type(
             break;
         }
         if (kind == syntax::ExprKind::field) {
-            const syntax::FieldExprPayload* const payload =
-                this->session_.module.exprs.field_payload(current.value);
+            const syntax::FieldExprPayload* const payload = this->session_.module.exprs.field_payload(current.value);
             if (payload == nullptr || !syntax::is_valid(payload->object)) {
                 failed = true;
                 break;
@@ -487,12 +456,10 @@ syntax::TypeId PostfixExprParser::bracket_arg_expr_to_type(
             continue;
         }
         if (kind == syntax::ExprKind::unary) {
-            const syntax::UnaryExprPayload* const payload =
-                this->session_.module.exprs.unary_payload(current.value);
-            if (payload == nullptr ||
-                (payload->op != syntax::UnaryOp::address_of &&
-                 payload->op != syntax::UnaryOp::address_of_mut) ||
-                !syntax::is_valid(payload->operand)) {
+            const syntax::UnaryExprPayload* const payload = this->session_.module.exprs.unary_payload(current.value);
+            if (payload == nullptr
+                || (payload->op != syntax::UnaryOp::address_of && payload->op != syntax::UnaryOp::address_of_mut)
+                || !syntax::is_valid(payload->operand)) {
                 failed = true;
                 break;
             }
@@ -507,79 +474,75 @@ syntax::TypeId PostfixExprParser::bracket_arg_expr_to_type(
         const syntax::ExprId chain_expr = chain.at(remaining - 1);
         const syntax::ExprKind kind = this->session_.module.exprs.kind(chain_expr.value);
         switch (kind) {
-        case syntax::ExprKind::name: {
-            const syntax::NameExprPayload* const payload =
-                this->session_.module.exprs.name_payload(chain_expr.value);
-            if (payload == nullptr) {
-                failed = true;
+            case syntax::ExprKind::name: {
+                const syntax::NameExprPayload* const payload =
+                    this->session_.module.exprs.name_payload(chain_expr.value);
+                if (payload == nullptr) {
+                    failed = true;
+                    break;
+                }
+                syntax::TypeNode type;
+                type.kind = syntax::TypeKind::named;
+                type.range = this->session_.module.exprs.range(chain_expr.value);
+                type.scope_name = payload->scope_name;
+                type.scope_range = payload->scope_range;
+                if (!payload->scope_name.empty()) {
+                    type.scope_parts.push_back(payload->scope_name);
+                }
+                type.name = payload->text;
+                converted = this->session_.module.push_type(std::move(type));
                 break;
             }
-            syntax::TypeNode type;
-            type.kind = syntax::TypeKind::named;
-            type.range = this->session_.module.exprs.range(chain_expr.value);
-            type.scope_name = payload->scope_name;
-            type.scope_range = payload->scope_range;
-            if (!payload->scope_name.empty()) {
-                type.scope_parts.push_back(payload->scope_name);
-            }
-            type.name = payload->text;
-            converted = this->session_.module.push_type(std::move(type));
-            break;
-        }
-        case syntax::ExprKind::field: {
-            const syntax::FieldExprPayload* const payload =
-                this->session_.module.exprs.field_payload(chain_expr.value);
-            if (payload == nullptr) {
-                failed = true;
+            case syntax::ExprKind::field: {
+                const syntax::FieldExprPayload* const payload =
+                    this->session_.module.exprs.field_payload(chain_expr.value);
+                if (payload == nullptr) {
+                    failed = true;
+                    break;
+                }
+                converted = this->append_type_selector(
+                    converted, payload->field_name, this->session_.module.exprs.range(chain_expr.value), report_errors);
+                failed = !syntax::is_valid(converted);
                 break;
             }
-            converted = this->append_type_selector(
-                converted,
-                payload->field_name,
-                this->session_.module.exprs.range(chain_expr.value),
-                report_errors
-            );
-            failed = !syntax::is_valid(converted);
-            break;
-        }
-        case syntax::ExprKind::generic_apply: {
-            const syntax::GenericApplyExprPayload* const payload =
-                this->session_.module.exprs.generic_apply_payload(chain_expr.value);
-            if (payload == nullptr || !syntax::is_valid(converted) ||
-                converted.value >= this->session_.module.types.size()) {
-                failed = true;
+            case syntax::ExprKind::generic_apply: {
+                const syntax::GenericApplyExprPayload* const payload =
+                    this->session_.module.exprs.generic_apply_payload(chain_expr.value);
+                if (payload == nullptr || !syntax::is_valid(converted)
+                    || converted.value >= this->session_.module.types.size()) {
+                    failed = true;
+                    break;
+                }
+                syntax::TypeNode type = this->session_.module.types[converted.value];
+                if (type.kind != syntax::TypeKind::named) {
+                    failed = true;
+                    break;
+                }
+                type.range = this->session_.module.exprs.range(chain_expr.value);
+                type.type_args.assign(payload->type_args.begin(), payload->type_args.end());
+                converted = this->session_.module.push_type(std::move(type));
                 break;
             }
-            syntax::TypeNode type = this->session_.module.types[converted.value];
-            if (type.kind != syntax::TypeKind::named) {
-                failed = true;
+            case syntax::ExprKind::unary: {
+                const syntax::UnaryExprPayload* const payload =
+                    this->session_.module.exprs.unary_payload(chain_expr.value);
+                if (payload == nullptr || !syntax::is_valid(converted)) {
+                    failed = true;
+                    break;
+                }
+                syntax::TypeNode type;
+                type.kind = syntax::TypeKind::reference;
+                type.range = this->session_.module.exprs.range(chain_expr.value);
+                type.pointer_mutability = payload->op == syntax::UnaryOp::address_of_mut
+                    ? syntax::PointerMutability::mut
+                    : syntax::PointerMutability::const_;
+                type.pointee = converted;
+                converted = this->session_.module.push_type(std::move(type));
                 break;
             }
-            type.range = this->session_.module.exprs.range(chain_expr.value);
-            type.type_args.assign(payload->type_args.begin(), payload->type_args.end());
-            converted = this->session_.module.push_type(std::move(type));
-            break;
-        }
-        case syntax::ExprKind::unary: {
-            const syntax::UnaryExprPayload* const payload =
-                this->session_.module.exprs.unary_payload(chain_expr.value);
-            if (payload == nullptr || !syntax::is_valid(converted)) {
+            default:
                 failed = true;
                 break;
-            }
-            syntax::TypeNode type;
-            type.kind = syntax::TypeKind::reference;
-            type.range = this->session_.module.exprs.range(chain_expr.value);
-            type.pointer_mutability = payload->op == syntax::UnaryOp::address_of_mut
-                ? syntax::PointerMutability::mut
-                : syntax::PointerMutability::const_;
-            type.pointee = converted;
-            converted = this->session_.module.push_type(std::move(type));
-            break;
-        }
-        default:
-            failed = true;
-            break;
         }
     }
 
@@ -589,19 +552,15 @@ syntax::TypeId PostfixExprParser::bracket_arg_expr_to_type(
 
     if (report_errors) {
         this->session_.diagnostics.report_at(
-            syntax::Token {TokenKind::invalid, this->session_.module.exprs.range(expr.value), {}},
-            std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT)
-        );
+            syntax::Token{TokenKind::invalid, this->session_.module.exprs.range(expr.value), {}},
+            std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
     }
     return syntax::INVALID_TYPE_ID;
 }
 
 syntax::TypeId PostfixExprParser::append_type_selector(
-    const syntax::TypeId base,
-    const std::string_view name,
-    const base::SourceRange& range,
-    const bool report_errors
-) {
+    const syntax::TypeId base, const std::string_view name, const base::SourceRange& range, const bool report_errors)
+{
     if (!syntax::is_valid(base) || base.value >= this->session_.module.types.size()) {
         return syntax::INVALID_TYPE_ID;
     }
@@ -609,9 +568,7 @@ syntax::TypeId PostfixExprParser::append_type_selector(
     if (base_type.kind != syntax::TypeKind::named || !base_type.type_args.empty()) {
         if (report_errors) {
             this->session_.diagnostics.report_at(
-                syntax::Token {TokenKind::invalid, range, {}},
-                std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT)
-            );
+                syntax::Token{TokenKind::invalid, range, {}}, std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
         }
         return syntax::INVALID_TYPE_ID;
     }
@@ -636,7 +593,8 @@ syntax::TypeId PostfixExprParser::append_type_selector(
     return this->session_.module.push_type(std::move(type));
 }
 
-bool PostfixExprParser::recover_bracket_arg_separator() {
+bool PostfixExprParser::recover_bracket_arg_separator()
+{
     if (this->check(TokenKind::r_bracket)) {
         return false;
     }
@@ -657,56 +615,41 @@ bool PostfixExprParser::recover_bracket_arg_separator() {
     return false;
 }
 
-syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId base) {
+syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId base)
+{
     if (this->check(TokenKind::integer_literal)) {
         return this->parse_rejected_numeric_tuple_field_suffix(base, this->peek().range);
     }
     const syntax::Token& field = this->expect_identifier_recovered(std::string(PARSER_EXPECT_FIELD_AFTER_DOT));
     return this->session_.module.push_field_expr(
-        this->merge(this->expr_range_or(base, field.range), field.range),
-        base,
-        field.text()
-    );
+        this->merge(this->expr_range_or(base, field.range), field.range), base, field.text());
 }
 
 syntax::ExprId PostfixExprParser::parse_rejected_legacy_scope_suffix(
-    const syntax::ExprId base,
-    const base::SourceRange& fallback_range
-) {
+    const syntax::ExprId base, const base::SourceRange& fallback_range)
+{
     const syntax::Token& scope = this->advance();
     this->report_at(scope, std::string(PARSER_DOT_ONLY_SELECTOR));
     const base::SourceRange range = this->merge(fallback_range, scope.range);
     return this->session_.module.push_invalid_expr(this->merge(this->expr_range_or(base, range), range));
 }
 
-syntax::ExprId PostfixExprParser::parse_struct_literal_suffix(
-    const syntax::ExprId base,
-    const ExprContext context
-) {
+syntax::ExprId PostfixExprParser::parse_struct_literal_suffix(const syntax::ExprId base, const ExprContext context)
+{
     const syntax::Token& begin = this->expect(TokenKind::l_brace, std::string(PARSER_EXPECT_STRUCT_LITERAL_END));
     syntax::AstArenaVector<syntax::FieldInit> field_inits = this->session_.module.make_expr_list<syntax::FieldInit>();
     this->parse_struct_fields(field_inits, context);
     const syntax::Token& end = this->expect_recovered(
-        TokenKind::r_brace,
-        std::string(PARSER_EXPECT_STRUCT_LITERAL_END),
-        RecoveryContext::struct_field
-    );
+        TokenKind::r_brace, std::string(PARSER_EXPECT_STRUCT_LITERAL_END), RecoveryContext::struct_field);
     const base::SourceRange literal_range = this->merge(begin.range, end.range);
     return this->session_.module.push_struct_literal_expr(
-        this->merge(this->expr_range_or(base, literal_range), literal_range),
-        base,
-        {},
-        {},
-        {},
-        this->session_.module.make_expr_list<syntax::TypeId>(),
-        std::move(field_inits)
-    );
+        this->merge(this->expr_range_or(base, literal_range), literal_range), base, {}, {}, {},
+        this->session_.module.make_expr_list<syntax::TypeId>(), std::move(field_inits));
 }
 
 void PostfixExprParser::parse_struct_fields(
-    syntax::AstArenaVector<syntax::FieldInit>& fields,
-    const ExprContext context
-) {
+    syntax::AstArenaVector<syntax::FieldInit>& fields, const ExprContext context)
+{
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
         fields.push_back(this->parse_struct_field(context));
         this->reset_panic();
@@ -716,19 +659,20 @@ void PostfixExprParser::parse_struct_fields(
     }
 }
 
-syntax::FieldInit PostfixExprParser::parse_struct_field(const ExprContext context) {
-    const syntax::Token& field =
-        this->expect_identifier_recovered(std::string(PARSER_EXPECT_STRUCT_LITERAL_FIELD));
+syntax::FieldInit PostfixExprParser::parse_struct_field(const ExprContext context)
+{
+    const syntax::Token& field = this->expect_identifier_recovered(std::string(PARSER_EXPECT_STRUCT_LITERAL_FIELD));
     this->expect_type_annotation_colon(std::string(PARSER_EXPECT_FIELD_TYPE_COLON));
     const syntax::ExprId value = this->parse_expr(context);
-    return syntax::FieldInit {
+    return syntax::FieldInit{
         field.text(),
         value,
         this->merge(field.range, this->expr_range_or(value, field.range)),
     };
 }
 
-bool PostfixExprParser::recover_struct_field_separator() {
+bool PostfixExprParser::recover_struct_field_separator()
+{
     if (this->check(TokenKind::r_brace)) {
         return false;
     }
@@ -750,59 +694,40 @@ bool PostfixExprParser::recover_struct_field_separator() {
 }
 
 syntax::ExprId PostfixExprParser::parse_rejected_numeric_tuple_field_suffix(
-    const syntax::ExprId base,
-    const base::SourceRange& fallback_range
-) {
+    const syntax::ExprId base, const base::SourceRange& fallback_range)
+{
     const syntax::Token& field = this->advance();
     this->report_at(field, std::string(PARSER_TUPLE_FIELD_ACCESS_UNSUPPORTED));
     const base::SourceRange range = this->merge(fallback_range, field.range);
     return this->session_.module.push_invalid_expr(this->merge(this->expr_range_or(base, range), range));
 }
 
-const syntax::Token& PostfixExprParser::expect_index_suffix_end(const syntax::Token& opening) {
+const syntax::Token& PostfixExprParser::expect_index_suffix_end(const syntax::Token& opening)
+{
     return this->expect_recovered_after(
-        TokenKind::r_bracket,
-        std::string(PARSER_EXPECT_INDEX_END),
-        RecoveryContext::index_expression,
-        opening
-    );
+        TokenKind::r_bracket, std::string(PARSER_EXPECT_INDEX_END), RecoveryContext::index_expression, opening);
 }
 
-const syntax::Token& PostfixExprParser::expect_slice_suffix_end(const syntax::Token& opening) {
+const syntax::Token& PostfixExprParser::expect_slice_suffix_end(const syntax::Token& opening)
+{
     return this->expect_recovered_after(
-        TokenKind::r_bracket,
-        std::string(PARSER_EXPECT_SLICE_END),
-        RecoveryContext::index_expression,
-        opening
-    );
+        TokenKind::r_bracket, std::string(PARSER_EXPECT_SLICE_END), RecoveryContext::index_expression, opening);
 }
 
-syntax::ExprId PostfixExprParser::parse_call_suffix(
-    const syntax::ExprId base,
-    const ExprContext context
-) {
+syntax::ExprId PostfixExprParser::parse_call_suffix(const syntax::ExprId base, const ExprContext context)
+{
     const syntax::Token& begin = this->previous();
     syntax::AstArenaVector<syntax::ExprId> args = this->session_.module.make_expr_list<syntax::ExprId>();
     this->parse_call_args(args, context);
     const syntax::Token& end = this->expect_recovered_after(
-        TokenKind::r_paren,
-        std::string(PARSER_EXPECT_CALL_ARGUMENTS_END),
-        RecoveryContext::call_argument,
-        begin
-    );
+        TokenKind::r_paren, std::string(PARSER_EXPECT_CALL_ARGUMENTS_END), RecoveryContext::call_argument, begin);
     const base::SourceRange call_range = this->merge(begin.range, end.range);
     return this->session_.module.push_call_expr(
-        syntax::ExprKind::call,
-        this->merge(this->expr_range_or(base, call_range), call_range),
-        base,
-        std::move(args)
-    );
+        syntax::ExprKind::call, this->merge(this->expr_range_or(base, call_range), call_range), base, std::move(args));
 }
 
-void PostfixExprParser::parse_call_args(
-    syntax::AstArenaVector<syntax::ExprId>& args,
-    const ExprContext
-) {
+void PostfixExprParser::parse_call_args(syntax::AstArenaVector<syntax::ExprId>& args, const ExprContext)
+{
     while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
         args.push_back(this->parse_expr(ExprContext::normal));
         this->reset_panic();
@@ -812,7 +737,8 @@ void PostfixExprParser::parse_call_args(
     }
 }
 
-bool PostfixExprParser::recover_call_arg_separator() {
+bool PostfixExprParser::recover_call_arg_separator()
+{
     if (this->check(TokenKind::r_paren)) {
         return false;
     }
@@ -837,16 +763,12 @@ syntax::ExprId PostfixExprParser::parse_try_suffix(const syntax::ExprId base)
 {
     const syntax::Token& question = this->previous();
     return this->session_.module.push_try_expr(
-        this->merge(this->expr_range_or(base, question.range), question.range),
-        base);
+        this->merge(this->expr_range_or(base, question.range), question.range), base);
 }
 
 syntax::ExprId PostfixExprParser::parse_rejected_update_suffix(
-    const syntax::ExprId base,
-    const base::SourceRange& fallback_range,
-    const TokenKind kind,
-    std::string message
-) {
+    const syntax::ExprId base, const base::SourceRange& fallback_range, const TokenKind kind, std::string message)
+{
     const syntax::Token& op_token = this->expect(kind, std::string(PARSER_EXPECT_UNSUPPORTED_UPDATE));
     this->report_at(op_token, std::move(message));
 

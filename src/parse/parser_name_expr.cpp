@@ -1,6 +1,5 @@
-#include <aurex/parse/parser_name_expr_part.hpp>
-
 #include <aurex/parse/parser_messages.hpp>
+#include <aurex/parse/parser_name_expr_part.hpp>
 
 namespace aurex::parse {
 
@@ -10,7 +9,8 @@ using syntax::TokenKind;
 
 } // namespace
 
-syntax::ExprId NameExprParser::parse_name_or_struct_literal(const ExprContext context) {
+syntax::ExprId NameExprParser::parse_name_or_struct_literal(const ExprContext context)
+{
     static_cast<void>(context);
     return this->make_name_expr(this->expect(TokenKind::identifier, std::string(PARSER_EXPECT_EXPRESSION_NAME)));
 }

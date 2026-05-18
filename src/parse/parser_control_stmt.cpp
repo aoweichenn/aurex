@@ -1,5 +1,4 @@
 #include <aurex/parse/parser_control_stmt_part.hpp>
-
 #include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/parser_pattern_part.hpp>
 #include <aurex/parse/parser_stmt_part.hpp>
@@ -22,7 +21,8 @@ constexpr base::usize PARSER_FOR_RANGE_MAX_ARG_COUNT = PARSER_FOR_RANGE_STEP_ARG
 
 } // namespace
 
-syntax::StmtId ControlStmtParser::parse_if_stmt() {
+syntax::StmtId ControlStmtParser::parse_if_stmt()
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_if, std::string(PARSER_EXPECT_IF));
     const syntax::ExprId condition = this->parse_expr(ExprContext::no_struct_literal);
     syntax::PatternId condition_pattern = syntax::INVALID_PATTERN_ID;
@@ -76,7 +76,8 @@ syntax::StmtId ControlStmtParser::parse_while_stmt() const
     return this->session_.module.push_stmt(std::move(stmt));
 }
 
-syntax::StmtId ControlStmtParser::parse_for_stmt() {
+syntax::StmtId ControlStmtParser::parse_for_stmt()
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_for, std::string(PARSER_EXPECT_FOR));
     if (this->next_for_is_range_loop()) {
         return this->parse_for_range_stmt(begin);
@@ -87,11 +88,8 @@ syntax::StmtId ControlStmtParser::parse_for_stmt() {
     if (!this->check(TokenKind::semicolon)) {
         condition = this->parse_expr(ExprContext::no_struct_literal);
     }
-    this->expect_recovered(
-        TokenKind::semicolon,
-        std::string(PARSER_EXPECT_FOR_CONDITION_TERMINATOR),
-        RecoveryContext::for_clause_separator
-    );
+    this->expect_recovered(TokenKind::semicolon, std::string(PARSER_EXPECT_FOR_CONDITION_TERMINATOR),
+        RecoveryContext::for_clause_separator);
 
     const syntax::StmtId update = this->parse_for_update_clause();
     const syntax::StmtId body = this->parse_block();
@@ -106,11 +104,13 @@ syntax::StmtId ControlStmtParser::parse_for_stmt() {
     return this->session_.module.push_stmt(std::move(stmt));
 }
 
-bool ControlStmtParser::next_for_is_range_loop() const noexcept {
+bool ControlStmtParser::next_for_is_range_loop() const noexcept
+{
     return this->check(TokenKind::identifier) && this->check_next(TokenKind::kw_in);
 }
 
-syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begin) {
+syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begin)
+{
     const syntax::Token& name = this->expect(TokenKind::identifier, std::string(PARSER_EXPECT_FOR_RANGE_VARIABLE));
     this->expect(TokenKind::kw_in, std::string(PARSER_EXPECT_IN_AFTER_LOOP_VARIABLE));
     const syntax::Token& callee = this->expect_identifier_recovered(std::string(PARSER_EXPECT_RANGE_AFTER_IN));
@@ -124,10 +124,7 @@ syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begi
     if (has_range_arguments) {
         this->parse_range_args(args);
         end = &this->expect_recovered(
-            TokenKind::r_paren,
-            std::string(PARSER_EXPECT_RANGE_ARGUMENTS_END),
-            RecoveryContext::call_argument
-        );
+            TokenKind::r_paren, std::string(PARSER_EXPECT_RANGE_ARGUMENTS_END), RecoveryContext::call_argument);
     }
     if (args.size() < PARSER_FOR_RANGE_MIN_ARG_COUNT || args.size() > PARSER_FOR_RANGE_MAX_ARG_COUNT) {
         this->report_at(callee, std::string(PARSER_FOR_RANGE_ARITY));
@@ -152,7 +149,8 @@ syntax::StmtId ControlStmtParser::parse_for_range_stmt(const syntax::Token& begi
     return this->session_.module.push_stmt(std::move(stmt));
 }
 
-void ControlStmtParser::parse_range_args(std::vector<syntax::ExprId>& args) {
+void ControlStmtParser::parse_range_args(std::vector<syntax::ExprId>& args)
+{
     while (!this->is_eof() && !this->check(TokenKind::r_paren)) {
         args.push_back(this->parse_expr(ExprContext::no_struct_literal));
         this->reset_panic();
@@ -186,10 +184,7 @@ syntax::StmtId ControlStmtParser::parse_break_stmt() const
 {
     const syntax::Token& begin = this->expect(TokenKind::kw_break, std::string(PARSER_EXPECT_BREAK));
     const syntax::Token& end = this->expect_recovered(
-        TokenKind::semicolon,
-        std::string(PARSER_EXPECT_BREAK_TERMINATOR),
-        RecoveryContext::statement_terminator
-    );
+        TokenKind::semicolon, std::string(PARSER_EXPECT_BREAK_TERMINATOR), RecoveryContext::statement_terminator);
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::break_;
     stmt.range = this->merge(begin.range, end.range);
@@ -200,10 +195,7 @@ syntax::StmtId ControlStmtParser::parse_continue_stmt() const
 {
     const syntax::Token& begin = this->expect(TokenKind::kw_continue, std::string(PARSER_EXPECT_CONTINUE));
     const syntax::Token& end = this->expect_recovered(
-        TokenKind::semicolon,
-        std::string(PARSER_EXPECT_CONTINUE_TERMINATOR),
-        RecoveryContext::statement_terminator
-    );
+        TokenKind::semicolon, std::string(PARSER_EXPECT_CONTINUE_TERMINATOR), RecoveryContext::statement_terminator);
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::continue_;
     stmt.range = this->merge(begin.range, end.range);
@@ -215,10 +207,7 @@ syntax::StmtId ControlStmtParser::parse_defer_stmt() const
     const syntax::Token& begin = this->expect(TokenKind::kw_defer, std::string(PARSER_EXPECT_DEFER));
     const syntax::ExprId value = this->parse_expr();
     const syntax::Token& end = this->expect_recovered(
-        TokenKind::semicolon,
-        std::string(PARSER_EXPECT_DEFER_TERMINATOR),
-        RecoveryContext::statement_terminator
-    );
+        TokenKind::semicolon, std::string(PARSER_EXPECT_DEFER_TERMINATOR), RecoveryContext::statement_terminator);
 
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::defer;
@@ -235,10 +224,7 @@ syntax::StmtId ControlStmtParser::parse_return_stmt() const
         value = this->parse_expr();
     }
     const syntax::Token& end = this->expect_recovered(
-        TokenKind::semicolon,
-        std::string(PARSER_EXPECT_RETURN_TERMINATOR),
-        RecoveryContext::statement_terminator
-    );
+        TokenKind::semicolon, std::string(PARSER_EXPECT_RETURN_TERMINATOR), RecoveryContext::statement_terminator);
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::return_;
     stmt.range = this->merge(begin.range, end.range);

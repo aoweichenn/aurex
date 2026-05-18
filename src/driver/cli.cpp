@@ -1,6 +1,5 @@
-#include <aurex/driver/cli.hpp>
-
 #include <aurex/base/config.hpp>
+#include <aurex/driver/cli.hpp>
 #include <aurex/driver/compiler.hpp>
 #include <aurex/driver/driver_messages.hpp>
 
@@ -116,89 +115,88 @@ struct OptionGroupSpec {
     std::string_view title;
 };
 
-inline constexpr OptionEffect CLI_EFFECT_END_OPTIONS {OptionEffectKind::end_options};
-inline constexpr OptionEffect CLI_EFFECT_HELP {OptionEffectKind::set_cli_action, CliAction::help};
-inline constexpr OptionEffect CLI_EFFECT_VERSION {OptionEffectKind::set_cli_action, CliAction::version};
-inline constexpr OptionEffect CLI_EFFECT_EMIT_CHECK {
+inline constexpr OptionEffect CLI_EFFECT_END_OPTIONS{OptionEffectKind::end_options};
+inline constexpr OptionEffect CLI_EFFECT_HELP{OptionEffectKind::set_cli_action, CliAction::help};
+inline constexpr OptionEffect CLI_EFFECT_VERSION{OptionEffectKind::set_cli_action, CliAction::version};
+inline constexpr OptionEffect CLI_EFFECT_EMIT_CHECK{
     OptionEffectKind::set_emit_kind,
     CliAction::compile,
     EmitKind::check,
     false,
     OptionConflictGroup::primary_action,
 };
-inline constexpr OptionEffect CLI_EFFECT_EMIT_OBJECT_INFER {
+inline constexpr OptionEffect CLI_EFFECT_EMIT_OBJECT_INFER{
     OptionEffectKind::set_emit_kind,
     CliAction::compile,
     EmitKind::object,
     true,
     OptionConflictGroup::primary_action,
 };
-inline constexpr OptionEffect CLI_EFFECT_EMIT_ASSEMBLY_INFER {
+inline constexpr OptionEffect CLI_EFFECT_EMIT_ASSEMBLY_INFER{
     OptionEffectKind::set_emit_kind,
     CliAction::compile,
     EmitKind::assembly,
     true,
     OptionConflictGroup::primary_action,
 };
-inline constexpr OptionEffect CLI_EFFECT_EMIT_TOKENS {
+inline constexpr OptionEffect CLI_EFFECT_EMIT_TOKENS{
     OptionEffectKind::set_emit_kind,
     CliAction::compile,
     EmitKind::tokens,
     false,
     OptionConflictGroup::primary_action,
 };
-inline constexpr OptionEffect CLI_EFFECT_EMIT_AST {
+inline constexpr OptionEffect CLI_EFFECT_EMIT_AST{
     OptionEffectKind::set_emit_kind,
     CliAction::compile,
     EmitKind::ast,
     false,
     OptionConflictGroup::primary_action,
 };
-inline constexpr OptionEffect CLI_EFFECT_EMIT_MODULES {
+inline constexpr OptionEffect CLI_EFFECT_EMIT_MODULES{
     OptionEffectKind::set_emit_kind,
     CliAction::compile,
     EmitKind::modules,
     false,
     OptionConflictGroup::primary_action,
 };
-inline constexpr OptionEffect CLI_EFFECT_EMIT_CHECKED {
+inline constexpr OptionEffect CLI_EFFECT_EMIT_CHECKED{
     OptionEffectKind::set_emit_kind,
     CliAction::compile,
     EmitKind::checked,
     false,
     OptionConflictGroup::primary_action,
 };
-inline constexpr OptionEffect CLI_EFFECT_EMIT_IR {
+inline constexpr OptionEffect CLI_EFFECT_EMIT_IR{
     OptionEffectKind::set_emit_kind,
     CliAction::compile,
     EmitKind::ir,
     false,
     OptionConflictGroup::primary_action,
 };
-inline constexpr OptionEffect CLI_EFFECT_EMIT_LLVM_IR {
+inline constexpr OptionEffect CLI_EFFECT_EMIT_LLVM_IR{
     OptionEffectKind::set_emit_kind,
     CliAction::compile,
     EmitKind::llvm_ir,
     false,
     OptionConflictGroup::primary_action,
 };
-inline constexpr OptionEffect CLI_EFFECT_PARSE_EMIT_KIND {
+inline constexpr OptionEffect CLI_EFFECT_PARSE_EMIT_KIND{
     OptionEffectKind::parse_emit_kind,
     CliAction::compile,
     EmitKind::executable,
     false,
     OptionConflictGroup::primary_action,
 };
-inline constexpr OptionEffect CLI_EFFECT_SET_OUTPUT_PATH {OptionEffectKind::set_output_path};
-inline constexpr OptionEffect CLI_EFFECT_APPEND_IMPORT_PATH {OptionEffectKind::append_import_path};
-inline constexpr OptionEffect CLI_EFFECT_SET_INCREMENTAL_CACHE_PATH {OptionEffectKind::set_incremental_cache_path};
-inline constexpr OptionEffect CLI_EFFECT_SET_PROFILE_OUTPUT_PATH {OptionEffectKind::set_profile_output_path};
-inline constexpr OptionEffect CLI_EFFECT_SET_CLANG_PATH {OptionEffectKind::set_clang_path};
-inline constexpr OptionEffect CLI_EFFECT_APPEND_CLANG_ARG {OptionEffectKind::append_clang_arg};
-inline constexpr OptionEffect CLI_EFFECT_PARSE_DIAGNOSTIC_OUTPUT_FORMAT {
-    OptionEffectKind::parse_diagnostic_output_format
-};
-inline constexpr OptionEffect CLI_EFFECT_PARSE_OPTIMIZATION_LEVEL {OptionEffectKind::parse_optimization_level};
+inline constexpr OptionEffect CLI_EFFECT_SET_OUTPUT_PATH{OptionEffectKind::set_output_path};
+inline constexpr OptionEffect CLI_EFFECT_APPEND_IMPORT_PATH{OptionEffectKind::append_import_path};
+inline constexpr OptionEffect CLI_EFFECT_SET_INCREMENTAL_CACHE_PATH{OptionEffectKind::set_incremental_cache_path};
+inline constexpr OptionEffect CLI_EFFECT_SET_PROFILE_OUTPUT_PATH{OptionEffectKind::set_profile_output_path};
+inline constexpr OptionEffect CLI_EFFECT_SET_CLANG_PATH{OptionEffectKind::set_clang_path};
+inline constexpr OptionEffect CLI_EFFECT_APPEND_CLANG_ARG{OptionEffectKind::append_clang_arg};
+inline constexpr OptionEffect CLI_EFFECT_PARSE_DIAGNOSTIC_OUTPUT_FORMAT{
+    OptionEffectKind::parse_diagnostic_output_format};
+inline constexpr OptionEffect CLI_EFFECT_PARSE_OPTIMIZATION_LEVEL{OptionEffectKind::parse_optimization_level};
 
 inline constexpr auto OPTION_LEVEL_SPECS = std::to_array<OptionLevelSpec>({
     {OptionLevel::primary, "primary options"},
@@ -369,7 +367,8 @@ inline constexpr auto OPTION_SPECS = std::to_array<OptionSpec>({
         OptionValueStyle::separate,
         CLI_EFFECT_PARSE_EMIT_KIND,
         "kind",
-        "emit kind; examples: --emit=ast, --emit=checked, --emit=typed, --emit=ir, --emit=llvm-ir, --emit=asm, --emit=obj, --emit=exe",
+        "emit kind; examples: --emit=ast, --emit=checked, --emit=typed, --emit=ir, --emit=llvm-ir, --emit=asm, "
+        "--emit=obj, --emit=exe",
     },
     {
         OptionLevel::secondary,
@@ -478,59 +477,73 @@ struct ParsedOption {
     std::string_view value;
 };
 
-[[nodiscard]] bool starts_with(const std::string_view value, const std::string_view prefix) noexcept {
+[[nodiscard]] bool starts_with(const std::string_view value, const std::string_view prefix) noexcept
+{
     return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
 }
 
-[[nodiscard]] bool is_long_option(const std::string_view value) noexcept {
+[[nodiscard]] bool is_long_option(const std::string_view value) noexcept
+{
     return starts_with(value, CLI_LONG_OPTION_PREFIX);
 }
 
-[[nodiscard]] std::string cli_argument_error_message(const std::string_view message) {
+[[nodiscard]] std::string cli_argument_error_message(const std::string_view message)
+{
     return "argument error: " + std::string(message);
 }
 
-[[nodiscard]] std::string cli_missing_value_message(const std::string_view option) {
+[[nodiscard]] std::string cli_missing_value_message(const std::string_view option)
+{
     return "missing value for option: " + std::string(option);
 }
 
-[[nodiscard]] std::string cli_unknown_option_message(const std::string_view option) {
+[[nodiscard]] std::string cli_unknown_option_message(const std::string_view option)
+{
     return "unknown option: " + std::string(option);
 }
 
-[[nodiscard]] std::string cli_unexpected_value_message(const std::string_view option) {
+[[nodiscard]] std::string cli_unexpected_value_message(const std::string_view option)
+{
     return "option does not take a value: " + std::string(option);
 }
 
-[[nodiscard]] std::string cli_invalid_emit_kind_message(const std::string_view kind) {
+[[nodiscard]] std::string cli_invalid_emit_kind_message(const std::string_view kind)
+{
     return "invalid emit kind: " + std::string(kind);
 }
 
-[[nodiscard]] std::string cli_invalid_diagnostic_format_message(const std::string_view format) {
+[[nodiscard]] std::string cli_invalid_diagnostic_format_message(const std::string_view format)
+{
     return "invalid diagnostic output format: " + std::string(format);
 }
 
-[[nodiscard]] std::string cli_inapplicable_option_message(const std::string_view option) {
+[[nodiscard]] std::string cli_inapplicable_option_message(const std::string_view option)
+{
     return "option requires native output: " + std::string(option);
 }
 
-[[nodiscard]] base::Error cli_argument_error(const std::string_view message) {
+[[nodiscard]] base::Error cli_argument_error(const std::string_view message)
+{
     return {base::ErrorCode::invalid_source, cli_argument_error_message(message)};
 }
 
-[[nodiscard]] base::Result<CliParseResult> fail_cli_parse(const std::string_view message) {
+[[nodiscard]] base::Result<CliParseResult> fail_cli_parse(const std::string_view message)
+{
     return base::Result<CliParseResult>::fail(cli_argument_error(message));
 }
 
-[[nodiscard]] base::Result<ParsedOption> fail_option_parse(const std::string_view message) {
+[[nodiscard]] base::Result<ParsedOption> fail_option_parse(const std::string_view message)
+{
     return base::Result<ParsedOption>::fail(cli_argument_error(message));
 }
 
-[[nodiscard]] base::Result<void> fail_option_apply(const std::string_view message) {
+[[nodiscard]] base::Result<void> fail_option_apply(const std::string_view message)
+{
     return base::Result<void>::fail(cli_argument_error(message));
 }
 
-[[nodiscard]] const OptionSpec* find_exact_option(const std::string_view spelling) noexcept {
+[[nodiscard]] const OptionSpec* find_exact_option(const std::string_view spelling) noexcept
+{
     for (const OptionSpec& spec : OPTION_SPECS) {
         if (spec.spelling == spelling) {
             return &spec;
@@ -539,18 +552,19 @@ struct ParsedOption {
     return nullptr;
 }
 
-[[nodiscard]] const OptionSpec* find_joined_option(const std::string_view spelling) noexcept {
+[[nodiscard]] const OptionSpec* find_joined_option(const std::string_view spelling) noexcept
+{
     for (const OptionSpec& spec : OPTION_SPECS) {
-        if (spec.value_style == OptionValueStyle::joined_or_separate &&
-            starts_with(spelling, spec.spelling) &&
-            spelling.size() > spec.spelling.size()) {
+        if (spec.value_style == OptionValueStyle::joined_or_separate && starts_with(spelling, spec.spelling)
+            && spelling.size() > spec.spelling.size()) {
             return &spec;
         }
     }
     return nullptr;
 }
 
-[[nodiscard]] bool parse_emit_kind(const std::string_view kind, EmitKind& emit_kind) noexcept {
+[[nodiscard]] bool parse_emit_kind(const std::string_view kind, EmitKind& emit_kind) noexcept
+{
     struct EmitKindSpec {
         std::string_view spelling;
         EmitKind emit_kind;
@@ -581,9 +595,8 @@ struct ParsedOption {
 }
 
 [[nodiscard]] bool parse_optimization_level(
-    const std::string_view level,
-    ir::OptimizationLevel& optimization_level
-) noexcept {
+    const std::string_view level, ir::OptimizationLevel& optimization_level) noexcept
+{
     struct OptimizationLevelSpec {
         std::string_view spelling;
         ir::OptimizationLevel level;
@@ -610,9 +623,8 @@ struct ParsedOption {
 }
 
 [[nodiscard]] bool parse_diagnostic_output_format(
-    const std::string_view format,
-    DiagnosticOutputFormat& diagnostic_format
-) noexcept {
+    const std::string_view format, DiagnosticOutputFormat& diagnostic_format) noexcept
+{
     if (format == "text") {
         diagnostic_format = DiagnosticOutputFormat::text;
         return true;
@@ -624,52 +636,52 @@ struct ParsedOption {
     return false;
 }
 
-[[nodiscard]] bool is_native_emit_kind(const EmitKind emit_kind) noexcept {
-    return emit_kind == EmitKind::assembly ||
-           emit_kind == EmitKind::object ||
-           emit_kind == EmitKind::executable;
+[[nodiscard]] bool is_native_emit_kind(const EmitKind emit_kind) noexcept
+{
+    return emit_kind == EmitKind::assembly || emit_kind == EmitKind::object || emit_kind == EmitKind::executable;
 }
 
-[[nodiscard]] bool compiler_error_already_printed_diagnostics(const base::ErrorCode code) noexcept {
-    return code == base::ErrorCode::lex_error ||
-           code == base::ErrorCode::parse_error ||
-           code == base::ErrorCode::sema_error;
+[[nodiscard]] bool compiler_error_already_printed_diagnostics(const base::ErrorCode code) noexcept
+{
+    return code == base::ErrorCode::lex_error || code == base::ErrorCode::parse_error
+        || code == base::ErrorCode::sema_error;
 }
 
-void print_cli_json_escaped(std::ostream& out, const std::string_view text) {
+void print_cli_json_escaped(std::ostream& out, const std::string_view text)
+{
     out << CLI_JSON_QUOTE;
     for (const unsigned char byte : text) {
         switch (byte) {
-        case CLI_JSON_QUOTE:
-            out << "\\\"";
-            break;
-        case CLI_JSON_BACKSLASH:
-            out << "\\\\";
-            break;
-        case CLI_JSON_NEWLINE:
-            out << "\\n";
-            break;
-        case CLI_JSON_CARRIAGE_RETURN:
-            out << "\\r";
-            break;
-        case CLI_JSON_TAB:
-            out << "\\t";
-            break;
-        default:
-            if (byte < CLI_JSON_CONTROL_CHAR_LIMIT) {
-                out << "\\u00"
-                    << CLI_JSON_HEX_DIGITS[(byte >> CLI_JSON_NIBBLE_BITS) & CLI_JSON_LOW_NIBBLE_MASK]
-                    << CLI_JSON_HEX_DIGITS[byte & CLI_JSON_LOW_NIBBLE_MASK];
-            } else {
-                out << static_cast<char>(byte);
-            }
-            break;
+            case CLI_JSON_QUOTE:
+                out << "\\\"";
+                break;
+            case CLI_JSON_BACKSLASH:
+                out << "\\\\";
+                break;
+            case CLI_JSON_NEWLINE:
+                out << "\\n";
+                break;
+            case CLI_JSON_CARRIAGE_RETURN:
+                out << "\\r";
+                break;
+            case CLI_JSON_TAB:
+                out << "\\t";
+                break;
+            default:
+                if (byte < CLI_JSON_CONTROL_CHAR_LIMIT) {
+                    out << "\\u00" << CLI_JSON_HEX_DIGITS[(byte >> CLI_JSON_NIBBLE_BITS) & CLI_JSON_LOW_NIBBLE_MASK]
+                        << CLI_JSON_HEX_DIGITS[byte & CLI_JSON_LOW_NIBBLE_MASK];
+                } else {
+                    out << static_cast<char>(byte);
+                }
+                break;
         }
     }
     out << CLI_JSON_QUOTE;
 }
 
-void print_cli_driver_error_json(std::ostream& err, const std::string_view message) {
+void print_cli_driver_error_json(std::ostream& err, const std::string_view message)
+{
     err << "{\n";
     err << "  \"format\": \"aurex-diagnostics-v1\",\n";
     err << "  \"diagnostics\": [\n";
@@ -688,20 +700,22 @@ void print_cli_driver_error_json(std::ostream& err, const std::string_view messa
 }
 
 [[nodiscard]] std::filesystem::path inferred_native_output_path(
-    const std::filesystem::path& input_path,
-    const EmitKind emit_kind
-) {
+    const std::filesystem::path& input_path, const EmitKind emit_kind)
+{
     std::filesystem::path output = input_path.filename();
-    output.replace_extension(emit_kind == EmitKind::assembly ? CLI_OUTPUT_ASSEMBLY_EXTENSION : CLI_OUTPUT_OBJECT_EXTENSION);
+    output.replace_extension(
+        emit_kind == EmitKind::assembly ? CLI_OUTPUT_ASSEMBLY_EXTENSION : CLI_OUTPUT_OBJECT_EXTENSION);
     return output;
 }
 
 class CliParser final {
 public:
-    explicit CliParser(const std::span<const std::string_view> arguments) noexcept
-        : arguments_(arguments) {}
+    explicit CliParser(const std::span<const std::string_view> arguments) noexcept : arguments_(arguments)
+    {
+    }
 
-    [[nodiscard]] base::Result<CliParseResult> parse() {
+    [[nodiscard]] base::Result<CliParseResult> parse()
+    {
         CliParseResult result;
         result.invocation.tool_path = this->tool_name();
 
@@ -735,9 +749,8 @@ public:
         if (!applicability_result) {
             return base::Result<CliParseResult>::fail(applicability_result.error());
         }
-        if (this->infer_native_output_ &&
-            result.invocation.output_path.empty() &&
-            is_native_emit_kind(result.invocation.emit_kind)) {
+        if (this->infer_native_output_ && result.invocation.output_path.empty()
+            && is_native_emit_kind(result.invocation.emit_kind)) {
             result.invocation.output_path =
                 inferred_native_output_path(result.invocation.input_path, result.invocation.emit_kind);
         }
@@ -745,18 +758,18 @@ public:
     }
 
 private:
-    [[nodiscard]] std::string_view tool_name() const noexcept {
+    [[nodiscard]] std::string_view tool_name() const noexcept
+    {
         return this->arguments_.empty() ? CLI_DEFAULT_TOOL_NAME : this->arguments_.front();
     }
 
-    [[nodiscard]] bool is_input_argument(const std::string_view arg) const noexcept {
+    [[nodiscard]] bool is_input_argument(const std::string_view arg) const noexcept
+    {
         return this->after_option_end_ || arg.empty() || arg.front() != '-';
     }
 
-    [[nodiscard]] base::Result<void> set_input_path(
-        CliParseResult& result,
-        const std::string_view path
-    ) const {
+    [[nodiscard]] base::Result<void> set_input_path(CliParseResult& result, const std::string_view path) const
+    {
         if (!result.invocation.input_path.empty()) {
             return fail_option_apply(DRIVER_MULTIPLE_INPUT_FILES_UNSUPPORTED);
         }
@@ -764,23 +777,24 @@ private:
         return base::Result<void>::ok();
     }
 
-    void record_applicability(const OptionSpec& spec) noexcept {
-        if (spec.applicability == OptionApplicability::native_output &&
-            !this->has_native_backend_option_) {
+    void record_applicability(const OptionSpec& spec) noexcept
+    {
+        if (spec.applicability == OptionApplicability::native_output && !this->has_native_backend_option_) {
             this->has_native_backend_option_ = true;
             this->first_native_backend_option_ = spec.spelling;
         }
     }
 
-    [[nodiscard]] base::Result<void> validate_applicability(const CliParseResult& result) const {
-        if (this->has_native_backend_option_ &&
-            !is_native_emit_kind(result.invocation.emit_kind)) {
+    [[nodiscard]] base::Result<void> validate_applicability(const CliParseResult& result) const
+    {
+        if (this->has_native_backend_option_ && !is_native_emit_kind(result.invocation.emit_kind)) {
             return fail_option_apply(cli_inapplicable_option_message(this->first_native_backend_option_));
         }
         return base::Result<void>::ok();
     }
 
-    [[nodiscard]] base::Result<std::string_view> take_value(const OptionSpec& spec) {
+    [[nodiscard]] base::Result<std::string_view> take_value(const OptionSpec& spec)
+    {
         if (this->index_ + 1 >= this->arguments_.size()) {
             return base::Result<std::string_view>::fail(cli_argument_error(cli_missing_value_message(spec.spelling)));
         }
@@ -788,7 +802,8 @@ private:
         return base::Result<std::string_view>::ok(this->arguments_[this->index_]);
     }
 
-    [[nodiscard]] base::Result<ParsedOption> parse_current_option(const std::string_view arg) {
+    [[nodiscard]] base::Result<ParsedOption> parse_current_option(const std::string_view arg)
+    {
         if (const auto equal = arg.find('='); equal != std::string_view::npos && is_long_option(arg)) {
             return this->parse_equal_option(arg, equal);
         }
@@ -796,15 +811,14 @@ private:
             return this->parse_exact_option(*spec);
         }
         if (const OptionSpec* spec = find_joined_option(arg); spec != nullptr) {
-            return base::Result<ParsedOption>::ok(ParsedOption {spec, arg.substr(spec->spelling.size())});
+            return base::Result<ParsedOption>::ok(ParsedOption{spec, arg.substr(spec->spelling.size())});
         }
         return fail_option_parse(cli_unknown_option_message(arg));
     }
 
     [[nodiscard]] base::Result<ParsedOption> parse_equal_option(
-        const std::string_view arg,
-        const std::size_t equal
-    ) const {
+        const std::string_view arg, const std::size_t equal) const
+    {
         const std::string_view spelling = arg.substr(0, equal);
         const OptionSpec* spec = find_exact_option(spelling);
         if (spec == nullptr) {
@@ -813,24 +827,23 @@ private:
         if (spec->value_style == OptionValueStyle::flag) {
             return fail_option_parse(cli_unexpected_value_message(spelling));
         }
-        return base::Result<ParsedOption>::ok(ParsedOption {spec, arg.substr(equal + 1)});
+        return base::Result<ParsedOption>::ok(ParsedOption{spec, arg.substr(equal + 1)});
     }
 
-    [[nodiscard]] base::Result<ParsedOption> parse_exact_option(const OptionSpec& spec) {
+    [[nodiscard]] base::Result<ParsedOption> parse_exact_option(const OptionSpec& spec)
+    {
         if (spec.value_style == OptionValueStyle::flag) {
-            return base::Result<ParsedOption>::ok(ParsedOption {&spec, {}});
+            return base::Result<ParsedOption>::ok(ParsedOption{&spec, {}});
         }
         auto value_result = this->take_value(spec);
         if (!value_result) {
             return base::Result<ParsedOption>::fail(value_result.error());
         }
-        return base::Result<ParsedOption>::ok(ParsedOption {&spec, value_result.value()});
+        return base::Result<ParsedOption>::ok(ParsedOption{&spec, value_result.value()});
     }
 
-    [[nodiscard]] base::Result<void> apply_option(
-        CliParseResult& result,
-        const ParsedOption& option
-    ) {
+    [[nodiscard]] base::Result<void> apply_option(CliParseResult& result, const ParsedOption& option)
+    {
         this->record_applicability(*option.spec);
 
         const OptionEffect& effect = option.spec->effect;
@@ -838,48 +851,46 @@ private:
             this->infer_native_output_ = false;
         }
         switch (effect.kind) {
-        case OptionEffectKind::end_options:
-            this->after_option_end_ = true;
-            return base::Result<void>::ok();
-        case OptionEffectKind::set_cli_action:
-            result.action = effect.action;
-            return base::Result<void>::ok();
-        case OptionEffectKind::set_emit_kind:
-            result.invocation.emit_kind = effect.emit_kind;
-            this->infer_native_output_ = effect.infer_native_output;
-            return base::Result<void>::ok();
-        case OptionEffectKind::parse_emit_kind:
-            return this->apply_emit_kind(result, option.value);
-        case OptionEffectKind::set_output_path:
-            result.invocation.output_path = option.value;
-            return base::Result<void>::ok();
-        case OptionEffectKind::append_import_path:
-            result.invocation.import_paths.push_back(std::filesystem::path(option.value));
-            return base::Result<void>::ok();
-        case OptionEffectKind::set_incremental_cache_path:
-            result.invocation.incremental_cache_path = std::filesystem::path(option.value);
-            return base::Result<void>::ok();
-        case OptionEffectKind::set_profile_output_path:
-            result.invocation.profile_output_path = std::filesystem::path(option.value);
-            return base::Result<void>::ok();
-        case OptionEffectKind::set_clang_path:
-            result.invocation.clang_path = option.value;
-            return base::Result<void>::ok();
-        case OptionEffectKind::append_clang_arg:
-            result.invocation.clang_args.push_back(std::string(option.value));
-            return base::Result<void>::ok();
-        case OptionEffectKind::parse_diagnostic_output_format:
-            return this->apply_diagnostic_output_format(result, option.value);
-        case OptionEffectKind::parse_optimization_level:
-            return this->apply_optimization_level(result, option.value);
+            case OptionEffectKind::end_options:
+                this->after_option_end_ = true;
+                return base::Result<void>::ok();
+            case OptionEffectKind::set_cli_action:
+                result.action = effect.action;
+                return base::Result<void>::ok();
+            case OptionEffectKind::set_emit_kind:
+                result.invocation.emit_kind = effect.emit_kind;
+                this->infer_native_output_ = effect.infer_native_output;
+                return base::Result<void>::ok();
+            case OptionEffectKind::parse_emit_kind:
+                return this->apply_emit_kind(result, option.value);
+            case OptionEffectKind::set_output_path:
+                result.invocation.output_path = option.value;
+                return base::Result<void>::ok();
+            case OptionEffectKind::append_import_path:
+                result.invocation.import_paths.push_back(std::filesystem::path(option.value));
+                return base::Result<void>::ok();
+            case OptionEffectKind::set_incremental_cache_path:
+                result.invocation.incremental_cache_path = std::filesystem::path(option.value);
+                return base::Result<void>::ok();
+            case OptionEffectKind::set_profile_output_path:
+                result.invocation.profile_output_path = std::filesystem::path(option.value);
+                return base::Result<void>::ok();
+            case OptionEffectKind::set_clang_path:
+                result.invocation.clang_path = option.value;
+                return base::Result<void>::ok();
+            case OptionEffectKind::append_clang_arg:
+                result.invocation.clang_args.push_back(std::string(option.value));
+                return base::Result<void>::ok();
+            case OptionEffectKind::parse_diagnostic_output_format:
+                return this->apply_diagnostic_output_format(result, option.value);
+            case OptionEffectKind::parse_optimization_level:
+                return this->apply_optimization_level(result, option.value);
         }
         return fail_option_apply("unsupported option");
     }
 
-    [[nodiscard]] base::Result<void> apply_emit_kind(
-        CliParseResult& result,
-        const std::string_view kind
-    ) {
+    [[nodiscard]] base::Result<void> apply_emit_kind(CliParseResult& result, const std::string_view kind)
+    {
         EmitKind emit_kind = result.invocation.emit_kind;
         if (!parse_emit_kind(kind, emit_kind)) {
             return fail_option_apply(cli_invalid_emit_kind_message(kind));
@@ -890,9 +901,8 @@ private:
     }
 
     [[nodiscard]] base::Result<void> apply_optimization_level(
-        CliParseResult& result,
-        const std::string_view level
-    ) const {
+        CliParseResult& result, const std::string_view level) const
+    {
         if (!parse_optimization_level(level, result.invocation.optimization_level)) {
             return fail_option_apply(driver_invalid_optimization_level_message(level));
         }
@@ -900,9 +910,8 @@ private:
     }
 
     [[nodiscard]] base::Result<void> apply_diagnostic_output_format(
-        CliParseResult& result,
-        const std::string_view format
-    ) const {
+        CliParseResult& result, const std::string_view format) const
+    {
         if (!parse_diagnostic_output_format(format, result.invocation.diagnostic_format)) {
             return fail_option_apply(cli_invalid_diagnostic_format_message(format));
         }
@@ -919,12 +928,14 @@ private:
 
 } // namespace
 
-base::Result<CliParseResult> parse_cli_arguments(const std::span<const std::string_view> arguments) {
+base::Result<CliParseResult> parse_cli_arguments(const std::span<const std::string_view> arguments)
+{
     CliParser parser(arguments);
     return parser.parse();
 }
 
-void print_cli_usage(std::ostream& out, const std::string_view tool_name) {
+void print_cli_usage(std::ostream& out, const std::string_view tool_name)
+{
     const std::string_view displayed_tool = tool_name.empty() ? CLI_DEFAULT_TOOL_NAME : tool_name;
     out << "usage: " << displayed_tool << " [primary-option] [secondary-options] input.ax [-o output]\n";
     for (const OptionLevelSpec& level : OPTION_LEVEL_SPECS) {
@@ -944,9 +955,8 @@ void print_cli_usage(std::ostream& out, const std::string_view tool_name) {
                 }
                 const std::size_t option_width =
                     spec.spelling.size() + (spec.value_name.empty() ? 0 : 1 + spec.value_name.size());
-                const std::size_t padding = option_width < CLI_HELP_OPTION_COLUMN_WIDTH ?
-                    CLI_HELP_OPTION_COLUMN_WIDTH - option_width :
-                    1;
+                const std::size_t padding =
+                    option_width < CLI_HELP_OPTION_COLUMN_WIDTH ? CLI_HELP_OPTION_COLUMN_WIDTH - option_width : 1;
                 for (std::size_t i = 0; i < padding; ++i) {
                     out << ' ';
                 }
@@ -956,12 +966,9 @@ void print_cli_usage(std::ostream& out, const std::string_view tool_name) {
     }
 }
 
-int run_cli(
-    const std::span<const std::string_view> arguments,
-    std::ostream& out,
-    std::ostream& err,
-    const LlvmIrEmitter llvm_ir_emitter
-) {
+int run_cli(const std::span<const std::string_view> arguments, std::ostream& out, std::ostream& err,
+    const LlvmIrEmitter llvm_ir_emitter)
+{
     auto parse_result = parse_cli_arguments(arguments);
     const std::string_view tool_name = arguments.empty() ? CLI_DEFAULT_TOOL_NAME : arguments.front();
     if (!parse_result) {
@@ -995,11 +1002,8 @@ int run_cli(
     return CLI_SUCCESS_EXIT_CODE;
 }
 
-int run_cli(
-    const std::span<const std::string_view> arguments,
-    std::ostream& out,
-    std::ostream& err
-) {
+int run_cli(const std::span<const std::string_view> arguments, std::ostream& out, std::ostream& err)
+{
     return run_cli(arguments, out, err, nullptr);
 }
 

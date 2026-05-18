@@ -36,18 +36,19 @@ constexpr char BASE_TEST_BUMP_FILL_CHAR = 'x';
 
 } // namespace
 
-TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
+TEST(CoreUnit, BaseDiagnosticsSourcesAndResult)
+{
     EXPECT_EQ(base::abi::AUREX_INTERNAL_SYMBOL_PREFIX, "m0");
 
-    base::SourceRange forward {{7}, 3, 9};
+    base::SourceRange forward{{7}, 3, 9};
     EXPECT_EQ(forward.length(), 6U);
     EXPECT_FALSE(forward.empty());
 
-    base::SourceRange reversed {{7}, 9, 3};
+    base::SourceRange reversed{{7}, 9, 3};
     EXPECT_EQ(reversed.length(), 0U);
     EXPECT_FALSE(reversed.empty());
 
-    base::SourceRange empty {{7}, 3, 3};
+    base::SourceRange empty{{7}, 3, 3};
     EXPECT_EQ(empty.length(), 0U);
     EXPECT_TRUE(empty.empty());
 
@@ -61,11 +62,11 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
 
     DiagnosticSink diagnostics;
     EXPECT_FALSE(diagnostics.has_error());
-    diagnostics.push(Diagnostic {Severity::note, forward, "note"});
-    diagnostics.push(Diagnostic {Severity::help, forward, "help"});
-    diagnostics.push(Diagnostic {Severity::warning, forward, "warning"});
+    diagnostics.push(Diagnostic{Severity::note, forward, "note"});
+    diagnostics.push(Diagnostic{Severity::help, forward, "help"});
+    diagnostics.push(Diagnostic{Severity::warning, forward, "warning"});
     EXPECT_FALSE(diagnostics.has_error());
-    diagnostics.push(Diagnostic {
+    diagnostics.push(Diagnostic{
         Severity::error,
         forward,
         "error",
@@ -73,7 +74,7 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
         DiagnosticCode::semantic_error,
     });
     EXPECT_TRUE(diagnostics.has_error());
-    diagnostics.push(Diagnostic {Severity::fatal, forward, "fatal"});
+    diagnostics.push(Diagnostic{Severity::fatal, forward, "fatal"});
     ASSERT_EQ(diagnostics.diagnostics().size(), 5U);
     EXPECT_EQ(diagnostics.diagnostics()[3].category, DiagnosticCategory::semantic);
     EXPECT_EQ(diagnostics.diagnostics()[3].code, DiagnosticCode::semantic_error);
@@ -98,11 +99,8 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
     EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::module), "module");
     EXPECT_EQ(base::diagnostic_category_name(DiagnosticCategory::internal), "internal");
     EXPECT_EQ(
-        base::diagnostic_category_name(
-            static_cast<DiagnosticCategory>(BASE_TEST_UNKNOWN_DIAGNOSTIC_CATEGORY_VALUE)
-        ),
-        "unknown"
-    );
+        base::diagnostic_category_name(static_cast<DiagnosticCategory>(BASE_TEST_UNKNOWN_DIAGNOSTIC_CATEGORY_VALUE)),
+        "unknown");
     EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::none), "none");
     EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::lexer_invalid_token), "LEX0001");
     EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::lexer_error_budget), "LEX0002");
@@ -122,9 +120,7 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
     EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::module_error), "MOD0001");
     EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::internal_contract), "INT0001");
     EXPECT_EQ(
-        base::diagnostic_code_name(static_cast<DiagnosticCode>(BASE_TEST_UNKNOWN_DIAGNOSTIC_CODE_VALUE)),
-        "unknown"
-    );
+        base::diagnostic_code_name(static_cast<DiagnosticCode>(BASE_TEST_UNKNOWN_DIAGNOSTIC_CODE_VALUE)), "unknown");
 
     auto ok_int = base::Result<int>::ok(11);
     ASSERT_TRUE(ok_int);
@@ -141,7 +137,8 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult) {
     EXPECT_EQ(failed_void.error().code, ErrorCode::internal_error);
 }
 
-TEST(CoreUnit, SourceFileLineTableHandlesOffsetsAndExtents) {
+TEST(CoreUnit, SourceFileLineTableHandlesOffsetsAndExtents)
+{
     base::SourceManager sources;
     const base::SourceId id = sources.add_source("lines.ax", "first\nsecond\nthird");
     const base::SourceFile& file = sources.get(id);
@@ -171,7 +168,8 @@ TEST(CoreUnit, SourceFileLineTableHandlesOffsetsAndExtents) {
     EXPECT_EQ(file.text().substr(third.begin, third.end - third.begin), "third");
 }
 
-TEST(CoreUnit, BumpAllocatorCopiesStringsAndResetsWholeArena) {
+TEST(CoreUnit, BumpAllocatorCopiesStringsAndResetsWholeArena)
+{
     base::BumpAllocator arena(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
 
     EXPECT_EQ(arena.allocate(0), nullptr);
@@ -208,7 +206,8 @@ TEST(CoreUnit, BumpAllocatorCopiesStringsAndResetsWholeArena) {
     EXPECT_EQ(arena.copy_string(""), "");
 }
 
-TEST(CoreUnit, BumpAllocatorMoveTransfersBlocksAndStats) {
+TEST(CoreUnit, BumpAllocatorMoveTransfersBlocksAndStats)
+{
     base::BumpAllocator source(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
     const std::string_view copied = source.copy_string("move-source");
     ASSERT_EQ(copied, "move-source");
@@ -228,7 +227,8 @@ TEST(CoreUnit, BumpAllocatorMoveTransfersBlocksAndStats) {
     EXPECT_EQ(moved.allocated_bytes(), 0U);
 }
 
-TEST(CoreUnit, BumpAllocatorTouchedReservePreallocatesWritableStorage) {
+TEST(CoreUnit, BumpAllocatorTouchedReservePreallocatesWritableStorage)
+{
     base::BumpAllocator arena(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
 
     arena.reserve_touched(0);
@@ -248,9 +248,10 @@ TEST(CoreUnit, BumpAllocatorTouchedReservePreallocatesWritableStorage) {
     EXPECT_EQ(arena.block_count(), blocks_after_first_alloc);
 }
 
-TEST(CoreUnit, BumpAllocatorAdapterBacksStandardVectors) {
+TEST(CoreUnit, BumpAllocatorAdapterBacksStandardVectors)
+{
     base::BumpAllocator arena(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
-    base::BumpVector<int> values {base::BumpAllocatorAdapter<int> {arena}};
+    base::BumpVector<int> values{base::BumpAllocatorAdapter<int>{arena}};
     values.reserve(4);
     values.push_back(1);
     values.push_back(2);
@@ -261,7 +262,7 @@ TEST(CoreUnit, BumpAllocatorAdapterBacksStandardVectors) {
     EXPECT_EQ(values.back(), 3);
 
     base::BumpAllocator copy_arena(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
-    base::BumpVector<int> copied {base::BumpAllocatorAdapter<int> {copy_arena}};
+    base::BumpVector<int> copied{base::BumpAllocatorAdapter<int>{copy_arena}};
     copied = values;
 
     ASSERT_EQ(copied.size(), values.size());
@@ -270,37 +271,29 @@ TEST(CoreUnit, BumpAllocatorAdapterBacksStandardVectors) {
     EXPECT_GT(copy_arena.allocated_bytes(), 0U);
 }
 
-TEST(CoreUnit, BumpAllocatorAdapterBacksStandardContainers) {
+TEST(CoreUnit, BumpAllocatorAdapterBacksStandardContainers)
+{
     base::BumpAllocator arena(BASE_TEST_BUMP_SMALL_BLOCK_BYTES);
 
-    base::BumpDeque<int> queue {base::BumpAllocatorAdapter<int> {arena}};
+    base::BumpDeque<int> queue{base::BumpAllocatorAdapter<int>{arena}};
     queue.push_back(7);
     queue.push_front(3);
     ASSERT_EQ(queue.size(), 2U);
     EXPECT_EQ(queue.front(), 3);
     EXPECT_EQ(queue.back(), 7);
 
-    base::BumpString text {base::BumpAllocatorAdapter<char> {arena}};
+    base::BumpString text{base::BumpAllocatorAdapter<char>{arena}};
     text.assign("arena-text");
     EXPECT_EQ(text, "arena-text");
 
-    base::BumpUnorderedMap<int, int> values {
-        0,
-        std::hash<int> {},
-        std::equal_to<int> {},
-        base::BumpAllocatorAdapter<std::pair<const int, int>> {arena}
-    };
+    base::BumpUnorderedMap<int, int> values{
+        0, std::hash<int>{}, std::equal_to<int>{}, base::BumpAllocatorAdapter<std::pair<const int, int>>{arena}};
     values.emplace(1, 11);
     values.emplace(2, 22);
     ASSERT_EQ(values.size(), 2U);
     EXPECT_EQ(values.at(2), 22);
 
-    base::BumpUnorderedSet<int> keys {
-        0,
-        std::hash<int> {},
-        std::equal_to<int> {},
-        base::BumpAllocatorAdapter<int> {arena}
-    };
+    base::BumpUnorderedSet<int> keys{0, std::hash<int>{}, std::equal_to<int>{}, base::BumpAllocatorAdapter<int>{arena}};
     keys.insert(5);
     keys.insert(9);
     EXPECT_TRUE(keys.contains(5));

@@ -1,6 +1,5 @@
-#include <aurex/driver/incremental_cache.hpp>
-
 #include <aurex/base/config.hpp>
+#include <aurex/driver/incremental_cache.hpp>
 
 #include <algorithm>
 #include <array>
@@ -74,14 +73,10 @@ constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_STRUCT = "struct";
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_ENUM_CASE = "enum_case";
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_TYPE_ALIAS = "type_alias";
 
-constexpr std::string_view INCREMENTAL_CACHE_WRITE_OPEN_FAILED =
-    "failed to open incremental cache file for writing";
-constexpr std::string_view INCREMENTAL_CACHE_WRITE_FAILED =
-    "failed to write incremental cache file";
-constexpr std::string_view INCREMENTAL_CACHE_RENAME_FAILED =
-    "failed to publish incremental cache file";
-constexpr std::string_view INCREMENTAL_CACHE_DIRECTORY_FAILED =
-    "failed to create incremental cache directory";
+constexpr std::string_view INCREMENTAL_CACHE_WRITE_OPEN_FAILED = "failed to open incremental cache file for writing";
+constexpr std::string_view INCREMENTAL_CACHE_WRITE_FAILED = "failed to write incremental cache file";
+constexpr std::string_view INCREMENTAL_CACHE_RENAME_FAILED = "failed to publish incremental cache file";
+constexpr std::string_view INCREMENTAL_CACHE_DIRECTORY_FAILED = "failed to create incremental cache directory";
 
 struct SourceFingerprintRecord {
     std::filesystem::path path;
@@ -111,7 +106,8 @@ struct ParsedCache {
     std::optional<base::usize> expected_definitions;
 };
 
-[[nodiscard]] std::filesystem::path canonical_or_absolute(const std::filesystem::path& path) {
+[[nodiscard]] std::filesystem::path canonical_or_absolute(const std::filesystem::path& path)
+{
     std::error_code canonical_error;
     std::filesystem::path canonical = std::filesystem::weakly_canonical(path, canonical_error);
     if (!canonical_error) {
@@ -123,13 +119,13 @@ struct ParsedCache {
     return absolute_error ? path : absolute;
 }
 
-[[nodiscard]] sema::StableFingerprint128 fingerprint_text(const std::string_view text) noexcept {
+[[nodiscard]] sema::StableFingerprint128 fingerprint_text(const std::string_view text) noexcept
+{
     return sema::stable_fingerprint(text);
 }
 
-[[nodiscard]] std::optional<std::string> read_file_for_fingerprint(
-    const std::filesystem::path& path
-) {
+[[nodiscard]] std::optional<std::string> read_file_for_fingerprint(const std::filesystem::path& path)
+{
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         return std::nullopt;
@@ -157,43 +153,41 @@ struct ParsedCache {
     return buffer.str();
 }
 
-[[nodiscard]] std::optional<SourceFingerprintRecord> fingerprint_file(
-    const std::filesystem::path& path
-) {
+[[nodiscard]] std::optional<SourceFingerprintRecord> fingerprint_file(const std::filesystem::path& path)
+{
     const std::optional<std::string> text = read_file_for_fingerprint(path);
     if (!text) {
         return std::nullopt;
     }
-    return SourceFingerprintRecord {
+    return SourceFingerprintRecord{
         canonical_or_absolute(path),
         text->size(),
         fingerprint_text(*text),
     };
 }
 
-[[nodiscard]] bool same_fingerprint(
-    const SourceFingerprintRecord& lhs,
-    const SourceFingerprintRecord& rhs
-) noexcept {
-    return lhs.size == rhs.size &&
-           lhs.fingerprint.primary == rhs.fingerprint.primary &&
-           lhs.fingerprint.secondary == rhs.fingerprint.secondary &&
-           lhs.fingerprint.byte_count == rhs.fingerprint.byte_count;
+[[nodiscard]] bool same_fingerprint(const SourceFingerprintRecord& lhs, const SourceFingerprintRecord& rhs) noexcept
+{
+    return lhs.size == rhs.size && lhs.fingerprint.primary == rhs.fingerprint.primary
+        && lhs.fingerprint.secondary == rhs.fingerprint.secondary
+        && lhs.fingerprint.byte_count == rhs.fingerprint.byte_count;
 }
 
-[[nodiscard]] bool parse_u64(const std::string_view text, base::u64& value) noexcept {
+[[nodiscard]] bool parse_u64(const std::string_view text, base::u64& value) noexcept
+{
     base::u64 parsed = 0;
     const char* const begin = text.data();
     const char* const end = text.data() + text.size();
     const auto result = std::from_chars(begin, end, parsed, INCREMENTAL_CACHE_DECIMAL_BASE);
-    if (result.ec != std::errc {} || result.ptr != end) {
+    if (result.ec != std::errc{} || result.ptr != end) {
         return false;
     }
     value = parsed;
     return true;
 }
 
-[[nodiscard]] bool parse_usize(const std::string_view text, base::usize& value) noexcept {
+[[nodiscard]] bool parse_usize(const std::string_view text, base::usize& value) noexcept
+{
     base::u64 parsed = 0;
     if (!parse_u64(text, parsed) || parsed > std::numeric_limits<base::usize>::max()) {
         return false;
@@ -202,7 +196,8 @@ struct ParsedCache {
     return true;
 }
 
-[[nodiscard]] bool parse_u32(const std::string_view text, base::u32& value) noexcept {
+[[nodiscard]] bool parse_u32(const std::string_view text, base::u32& value) noexcept
+{
     base::u64 parsed = 0;
     if (!parse_u64(text, parsed) || parsed > std::numeric_limits<base::u32>::max()) {
         return false;
@@ -211,7 +206,8 @@ struct ParsedCache {
     return true;
 }
 
-[[nodiscard]] int hex_nibble(const char value) noexcept {
+[[nodiscard]] int hex_nibble(const char value) noexcept
+{
     if (value >= '0' && value <= '9') {
         return value - INCREMENTAL_CACHE_HEX_DIGIT_PREFIX;
     }
@@ -224,15 +220,16 @@ struct ParsedCache {
     return INCREMENTAL_CACHE_INVALID_HEX_NIBBLE;
 }
 
-void append_hex_string(std::ostream& out, const std::string_view value) {
+void append_hex_string(std::ostream& out, const std::string_view value)
+{
     static constexpr char DIGITS[] = "0123456789abcdef";
     for (const unsigned char byte : value) {
-        out << DIGITS[byte >> INCREMENTAL_CACHE_HEX_BYTE_SHIFT]
-            << DIGITS[byte & INCREMENTAL_CACHE_HEX_LOW_MASK];
+        out << DIGITS[byte >> INCREMENTAL_CACHE_HEX_BYTE_SHIFT] << DIGITS[byte & INCREMENTAL_CACHE_HEX_LOW_MASK];
     }
 }
 
-[[nodiscard]] std::optional<std::string> decode_hex_string(const std::string_view encoded) {
+[[nodiscard]] std::optional<std::string> decode_hex_string(const std::string_view encoded)
+{
     if (encoded.size() % INCREMENTAL_CACHE_HEX_BYTE_WIDTH != 0) {
         return std::nullopt;
     }
@@ -242,8 +239,7 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     for (base::usize index = 0; index < encoded.size(); index += INCREMENTAL_CACHE_HEX_BYTE_WIDTH) {
         const int high = hex_nibble(encoded[index]);
         const int low = hex_nibble(encoded[index + 1]);
-        if (high == INCREMENTAL_CACHE_INVALID_HEX_NIBBLE ||
-            low == INCREMENTAL_CACHE_INVALID_HEX_NIBBLE) {
+        if (high == INCREMENTAL_CACHE_INVALID_HEX_NIBBLE || low == INCREMENTAL_CACHE_INVALID_HEX_NIBBLE) {
             return std::nullopt;
         }
         decoded.push_back(static_cast<char>((high << INCREMENTAL_CACHE_HEX_BYTE_SHIFT) | low));
@@ -251,7 +247,8 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return decoded;
 }
 
-[[nodiscard]] std::optional<std::filesystem::path> decode_path(const std::string_view encoded) {
+[[nodiscard]] std::optional<std::filesystem::path> decode_path(const std::string_view encoded)
+{
     const std::optional<std::string> decoded = decode_hex_string(encoded);
     if (!decoded) {
         return std::nullopt;
@@ -259,7 +256,8 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return std::filesystem::path(*decoded);
 }
 
-[[nodiscard]] std::vector<std::string_view> split_cache_fields(const std::string_view line) {
+[[nodiscard]] std::vector<std::string_view> split_cache_fields(const std::string_view line)
+{
     std::vector<std::string_view> fields;
     base::usize begin = 0;
     for (;;) {
@@ -273,10 +271,8 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     }
 }
 
-[[nodiscard]] bool assign_count(
-    std::optional<base::usize>& target,
-    const std::string_view value
-) noexcept {
+[[nodiscard]] bool assign_count(std::optional<base::usize>& target, const std::string_view value) noexcept
+{
     if (target) {
         return false;
     }
@@ -288,10 +284,8 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return true;
 }
 
-[[nodiscard]] bool parse_header_line(
-    ParsedCache& cache,
-    const std::vector<std::string_view>& fields
-) {
+[[nodiscard]] bool parse_header_line(ParsedCache& cache, const std::vector<std::string_view>& fields)
+{
     if (fields.size() != INCREMENTAL_CACHE_HEADER_FIELD_COUNT) {
         return false;
     }
@@ -340,12 +334,10 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return false;
 }
 
-[[nodiscard]] bool parse_import_path_line(
-    ParsedCache& cache,
-    const std::vector<std::string_view>& fields
-) {
-    if (fields.size() != INCREMENTAL_CACHE_HEADER_FIELD_COUNT ||
-        fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_IMPORT_PATH) {
+[[nodiscard]] bool parse_import_path_line(ParsedCache& cache, const std::vector<std::string_view>& fields)
+{
+    if (fields.size() != INCREMENTAL_CACHE_HEADER_FIELD_COUNT
+        || fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_IMPORT_PATH) {
         return false;
     }
     const std::optional<std::filesystem::path> path = decode_path(fields[INCREMENTAL_CACHE_FIRST_VALUE_FIELD]);
@@ -356,22 +348,19 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return true;
 }
 
-[[nodiscard]] bool parse_source_line(
-    ParsedCache& cache,
-    const std::vector<std::string_view>& fields
-) {
-    if (fields.size() != INCREMENTAL_CACHE_SOURCE_FIELD_COUNT ||
-        fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_SOURCE) {
+[[nodiscard]] bool parse_source_line(ParsedCache& cache, const std::vector<std::string_view>& fields)
+{
+    if (fields.size() != INCREMENTAL_CACHE_SOURCE_FIELD_COUNT
+        || fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_SOURCE) {
         return false;
     }
 
     SourceFingerprintRecord record;
     base::u64 size = 0;
-    if (!parse_u64(fields[INCREMENTAL_CACHE_SOURCE_SIZE_FIELD], size) ||
-        size > std::numeric_limits<base::usize>::max() ||
-        !parse_u64(fields[INCREMENTAL_CACHE_SOURCE_PRIMARY_FIELD], record.fingerprint.primary) ||
-        !parse_u64(fields[INCREMENTAL_CACHE_SOURCE_SECONDARY_FIELD], record.fingerprint.secondary) ||
-        !parse_u32(fields[INCREMENTAL_CACHE_SOURCE_BYTES_FIELD], record.fingerprint.byte_count)) {
+    if (!parse_u64(fields[INCREMENTAL_CACHE_SOURCE_SIZE_FIELD], size) || size > std::numeric_limits<base::usize>::max()
+        || !parse_u64(fields[INCREMENTAL_CACHE_SOURCE_PRIMARY_FIELD], record.fingerprint.primary)
+        || !parse_u64(fields[INCREMENTAL_CACHE_SOURCE_SECONDARY_FIELD], record.fingerprint.secondary)
+        || !parse_u32(fields[INCREMENTAL_CACHE_SOURCE_BYTES_FIELD], record.fingerprint.byte_count)) {
         return false;
     }
     record.size = static_cast<base::usize>(size);
@@ -385,29 +374,25 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return true;
 }
 
-[[nodiscard]] bool parse_module_line(
-    ParsedCache& cache,
-    const std::vector<std::string_view>& fields
-) {
-    if (fields.size() != INCREMENTAL_CACHE_MODULE_FIELD_COUNT ||
-        fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_MODULE ||
-        !decode_hex_string(fields[INCREMENTAL_CACHE_MODULE_NAME_FIELD]) ||
-        !decode_path(fields[INCREMENTAL_CACHE_MODULE_PATH_FIELD])) {
+[[nodiscard]] bool parse_module_line(ParsedCache& cache, const std::vector<std::string_view>& fields)
+{
+    if (fields.size() != INCREMENTAL_CACHE_MODULE_FIELD_COUNT
+        || fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_MODULE
+        || !decode_hex_string(fields[INCREMENTAL_CACHE_MODULE_NAME_FIELD])
+        || !decode_path(fields[INCREMENTAL_CACHE_MODULE_PATH_FIELD])) {
         return false;
     }
     cache.module_count += 1;
     return true;
 }
 
-[[nodiscard]] bool parse_definition_line(
-    ParsedCache& cache,
-    const std::vector<std::string_view>& fields
-) {
-    if (fields.size() != INCREMENTAL_CACHE_DEF_FIELD_COUNT ||
-        fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_DEF ||
-        fields[INCREMENTAL_CACHE_DEF_CATEGORY_FIELD].empty() ||
-        fields[INCREMENTAL_CACHE_DEF_STABLE_KIND_FIELD].empty() ||
-        !decode_hex_string(fields[INCREMENTAL_CACHE_DEF_NAME_FIELD])) {
+[[nodiscard]] bool parse_definition_line(ParsedCache& cache, const std::vector<std::string_view>& fields)
+{
+    if (fields.size() != INCREMENTAL_CACHE_DEF_FIELD_COUNT
+        || fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_DEF
+        || fields[INCREMENTAL_CACHE_DEF_CATEGORY_FIELD].empty()
+        || fields[INCREMENTAL_CACHE_DEF_STABLE_KIND_FIELD].empty()
+        || !decode_hex_string(fields[INCREMENTAL_CACHE_DEF_NAME_FIELD])) {
         return false;
     }
 
@@ -419,24 +404,22 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     base::u64 incremental_primary = 0;
     base::u64 incremental_secondary = 0;
     base::u32 incremental_bytes = 0;
-    if (!parse_u64(fields[INCREMENTAL_CACHE_DEF_STABLE_GLOBAL_FIELD], stable_global) ||
-        !parse_u64(fields[INCREMENTAL_CACHE_DEF_STABLE_PRIMARY_FIELD], stable_primary) ||
-        !parse_u64(fields[INCREMENTAL_CACHE_DEF_STABLE_SECONDARY_FIELD], stable_secondary) ||
-        !parse_u32(fields[INCREMENTAL_CACHE_DEF_STABLE_BYTES_FIELD], stable_bytes) ||
-        !parse_u64(fields[INCREMENTAL_CACHE_DEF_INCREMENTAL_GLOBAL_FIELD], incremental_global) ||
-        !parse_u64(fields[INCREMENTAL_CACHE_DEF_INCREMENTAL_PRIMARY_FIELD], incremental_primary) ||
-        !parse_u64(fields[INCREMENTAL_CACHE_DEF_INCREMENTAL_SECONDARY_FIELD], incremental_secondary) ||
-        !parse_u32(fields[INCREMENTAL_CACHE_DEF_INCREMENTAL_BYTES_FIELD], incremental_bytes)) {
+    if (!parse_u64(fields[INCREMENTAL_CACHE_DEF_STABLE_GLOBAL_FIELD], stable_global)
+        || !parse_u64(fields[INCREMENTAL_CACHE_DEF_STABLE_PRIMARY_FIELD], stable_primary)
+        || !parse_u64(fields[INCREMENTAL_CACHE_DEF_STABLE_SECONDARY_FIELD], stable_secondary)
+        || !parse_u32(fields[INCREMENTAL_CACHE_DEF_STABLE_BYTES_FIELD], stable_bytes)
+        || !parse_u64(fields[INCREMENTAL_CACHE_DEF_INCREMENTAL_GLOBAL_FIELD], incremental_global)
+        || !parse_u64(fields[INCREMENTAL_CACHE_DEF_INCREMENTAL_PRIMARY_FIELD], incremental_primary)
+        || !parse_u64(fields[INCREMENTAL_CACHE_DEF_INCREMENTAL_SECONDARY_FIELD], incremental_secondary)
+        || !parse_u32(fields[INCREMENTAL_CACHE_DEF_INCREMENTAL_BYTES_FIELD], incremental_bytes)) {
         return false;
     }
     cache.definition_count += 1;
     return true;
 }
 
-[[nodiscard]] bool parse_cache_line(
-    ParsedCache& cache,
-    const std::string_view line
-) {
+[[nodiscard]] bool parse_cache_line(ParsedCache& cache, const std::string_view line)
+{
     if (line.empty()) {
         return true;
     }
@@ -458,26 +441,18 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return parse_header_line(cache, fields);
 }
 
-[[nodiscard]] bool parsed_cache_counts_match(const ParsedCache& cache) noexcept {
-    return cache.expected_import_paths &&
-           cache.expected_sources &&
-           cache.expected_modules &&
-           cache.expected_definitions &&
-           cache.import_paths.size() == *cache.expected_import_paths &&
-           cache.sources.size() == *cache.expected_sources &&
-           cache.module_count == *cache.expected_modules &&
-           cache.definition_count == *cache.expected_definitions;
+[[nodiscard]] bool parsed_cache_counts_match(const ParsedCache& cache) noexcept
+{
+    return cache.expected_import_paths && cache.expected_sources && cache.expected_modules && cache.expected_definitions
+        && cache.import_paths.size() == *cache.expected_import_paths && cache.sources.size() == *cache.expected_sources
+        && cache.module_count == *cache.expected_modules && cache.definition_count == *cache.expected_definitions;
 }
 
-[[nodiscard]] bool parsed_cache_header_matches(
-    const ParsedCache& cache,
-    const CompilerInvocation& invocation
-) {
-    if (cache.schema != INCREMENTAL_CACHE_SCHEMA_VERSION ||
-        cache.compiler_version != base::config::AUREX_VERSION_STRING ||
-        cache.mode != INCREMENTAL_CACHE_MODE_SEMANTIC_OK ||
-        cache.root_path != canonical_or_absolute(invocation.input_path) ||
-        !parsed_cache_counts_match(cache)) {
+[[nodiscard]] bool parsed_cache_header_matches(const ParsedCache& cache, const CompilerInvocation& invocation)
+{
+    if (cache.schema != INCREMENTAL_CACHE_SCHEMA_VERSION || cache.compiler_version != base::config::AUREX_VERSION_STRING
+        || cache.mode != INCREMENTAL_CACHE_MODE_SEMANTIC_OK
+        || cache.root_path != canonical_or_absolute(invocation.input_path) || !parsed_cache_counts_match(cache)) {
         return false;
     }
 
@@ -492,9 +467,8 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return true;
 }
 
-[[nodiscard]] std::optional<ParsedCache> read_incremental_cache(
-    const std::filesystem::path& cache_path
-) {
+[[nodiscard]] std::optional<ParsedCache> read_incremental_cache(const std::filesystem::path& cache_path)
+{
     std::error_code exists_error;
     if (!std::filesystem::exists(cache_path, exists_error) || exists_error) {
         return std::nullopt;
@@ -522,7 +496,8 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return cache;
 }
 
-[[nodiscard]] bool cache_sources_match(const ParsedCache& cache) {
+[[nodiscard]] bool cache_sources_match(const ParsedCache& cache)
+{
     bool has_root_source = false;
     for (const SourceFingerprintRecord& cached_source : cache.sources) {
         if (cached_source.path == cache.root_path) {
@@ -536,9 +511,8 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return has_root_source;
 }
 
-[[nodiscard]] std::vector<std::filesystem::path> normalized_import_paths(
-    const CompilerInvocation& invocation
-) {
+[[nodiscard]] std::vector<std::filesystem::path> normalized_import_paths(const CompilerInvocation& invocation)
+{
     std::vector<std::filesystem::path> paths;
     paths.reserve(invocation.import_paths.size());
     for (const std::filesystem::path& path : invocation.import_paths) {
@@ -547,31 +521,30 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return paths;
 }
 
-[[nodiscard]] std::vector<SourceFingerprintRecord> collect_source_fingerprints(
-    const base::SourceManager& sources
-) {
+[[nodiscard]] std::vector<SourceFingerprintRecord> collect_source_fingerprints(const base::SourceManager& sources)
+{
     std::vector<SourceFingerprintRecord> records;
     records.reserve(sources.files().size());
     for (const base::SourceFile& file : sources.files()) {
-        records.push_back(SourceFingerprintRecord {
+        records.push_back(SourceFingerprintRecord{
             canonical_or_absolute(std::filesystem::path(file.path())),
             file.text().size(),
             fingerprint_text(file.text()),
         });
     }
-    std::sort(records.begin(), records.end(), [](const SourceFingerprintRecord& lhs, const SourceFingerprintRecord& rhs) {
-        return lhs.path.string() < rhs.path.string();
-    });
+    std::sort(
+        records.begin(), records.end(), [](const SourceFingerprintRecord& lhs, const SourceFingerprintRecord& rhs) {
+            return lhs.path.string() < rhs.path.string();
+        });
     return records;
 }
 
-[[nodiscard]] std::vector<ModuleRecord> sorted_modules(
-    const std::span<const ModuleRecord> modules
-) {
+[[nodiscard]] std::vector<ModuleRecord> sorted_modules(const std::span<const ModuleRecord> modules)
+{
     std::vector<ModuleRecord> sorted;
     sorted.reserve(modules.size());
     for (const ModuleRecord& module : modules) {
-        sorted.push_back(ModuleRecord {module.name, canonical_or_absolute(module.path)});
+        sorted.push_back(ModuleRecord{module.name, canonical_or_absolute(module.path)});
     }
     std::sort(sorted.begin(), sorted.end(), [](const ModuleRecord& lhs, const ModuleRecord& rhs) {
         if (lhs.name != rhs.name) {
@@ -582,7 +555,8 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return sorted;
 }
 
-[[nodiscard]] std::string_view stable_symbol_kind_name(const sema::StableSymbolKind kind) noexcept {
+[[nodiscard]] std::string_view stable_symbol_kind_name(const sema::StableSymbolKind kind) noexcept
+{
     static constexpr auto NAMES = std::to_array<std::string_view>({
         "invalid",
         "type",
@@ -598,14 +572,10 @@ void append_hex_string(std::ostream& out, const std::string_view value) {
     return index < NAMES.size() ? NAMES[index] : NAMES.front();
 }
 
-void push_definition(
-    std::vector<DefinitionRecord>& records,
-    const std::string_view category,
-    const std::string_view name,
-    const sema::StableDefId& stable_id,
-    const sema::IncrementalKey& incremental_key
-) {
-    records.push_back(DefinitionRecord {
+void push_definition(std::vector<DefinitionRecord>& records, const std::string_view category,
+    const std::string_view name, const sema::StableDefId& stable_id, const sema::IncrementalKey& incremental_key)
+{
+    records.push_back(DefinitionRecord{
         std::string(category),
         std::string(name),
         stable_id,
@@ -613,66 +583,35 @@ void push_definition(
     });
 }
 
-[[nodiscard]] std::vector<DefinitionRecord> collect_definitions(
-    const sema::CheckedModule& checked
-) {
+[[nodiscard]] std::vector<DefinitionRecord> collect_definitions(const sema::CheckedModule& checked)
+{
     std::vector<DefinitionRecord> records;
-    records.reserve(
-        checked.functions.size() +
-        checked.generic_function_instances.size() +
-        checked.structs.size() +
-        checked.enum_cases.size() +
-        checked.type_aliases.size()
-    );
+    records.reserve(checked.functions.size() + checked.generic_function_instances.size() + checked.structs.size()
+        + checked.enum_cases.size() + checked.type_aliases.size());
 
     for (const auto& entry : checked.functions) {
         const sema::FunctionSignature& signature = entry.second;
-        push_definition(
-            records,
-            INCREMENTAL_CACHE_CATEGORY_FUNCTION,
-            signature.name.view(),
-            signature.stable_id,
-            signature.incremental_key
-        );
+        push_definition(records, INCREMENTAL_CACHE_CATEGORY_FUNCTION, signature.name.view(), signature.stable_id,
+            signature.incremental_key);
     }
     for (const sema::GenericFunctionInstanceInfo& instance : checked.generic_function_instances) {
-        push_definition(
-            records,
-            INCREMENTAL_CACHE_CATEGORY_GENERIC_FUNCTION_INSTANCE,
-            instance.signature.name.view(),
-            instance.signature.stable_id,
-            instance.signature.incremental_key
-        );
+        push_definition(records, INCREMENTAL_CACHE_CATEGORY_GENERIC_FUNCTION_INSTANCE, instance.signature.name.view(),
+            instance.signature.stable_id, instance.signature.incremental_key);
     }
     for (const auto& entry : checked.structs) {
         const sema::StructInfo& info = entry.second;
         push_definition(
-            records,
-            INCREMENTAL_CACHE_CATEGORY_STRUCT,
-            info.name.view(),
-            info.stable_id,
-            info.incremental_key
-        );
+            records, INCREMENTAL_CACHE_CATEGORY_STRUCT, info.name.view(), info.stable_id, info.incremental_key);
     }
     for (const auto& entry : checked.enum_cases) {
         const sema::EnumCaseInfo& info = entry.second;
         push_definition(
-            records,
-            INCREMENTAL_CACHE_CATEGORY_ENUM_CASE,
-            info.name.view(),
-            info.stable_id,
-            info.incremental_key
-        );
+            records, INCREMENTAL_CACHE_CATEGORY_ENUM_CASE, info.name.view(), info.stable_id, info.incremental_key);
     }
     for (const auto& entry : checked.type_aliases) {
         const sema::TypeAliasInfo& info = entry.second;
         push_definition(
-            records,
-            INCREMENTAL_CACHE_CATEGORY_TYPE_ALIAS,
-            info.name.view(),
-            info.stable_id,
-            info.incremental_key
-        );
+            records, INCREMENTAL_CACHE_CATEGORY_TYPE_ALIAS, info.name.view(), info.stable_id, info.incremental_key);
     }
 
     std::sort(records.begin(), records.end(), [](const DefinitionRecord& lhs, const DefinitionRecord& rhs) {
@@ -690,40 +629,34 @@ void push_definition(
     return records;
 }
 
-void write_hex_field(std::ostream& out, const std::string_view value) {
+void write_hex_field(std::ostream& out, const std::string_view value)
+{
     append_hex_string(out, value);
 }
 
-void write_header_field(
-    std::ostream& out,
-    const std::string_view name,
-    const std::string_view encoded_value
-) {
+void write_header_field(std::ostream& out, const std::string_view name, const std::string_view encoded_value)
+{
     out << name << INCREMENTAL_CACHE_SEPARATOR << encoded_value << '\n';
 }
 
-void write_encoded_header_field(
-    std::ostream& out,
-    const std::string_view name,
-    const std::string_view value
-) {
+void write_encoded_header_field(std::ostream& out, const std::string_view name, const std::string_view value)
+{
     out << name << INCREMENTAL_CACHE_SEPARATOR;
     write_hex_field(out, value);
     out << '\n';
 }
 
-void write_source_record(std::ostream& out, const SourceFingerprintRecord& record) {
-    out << INCREMENTAL_CACHE_FIELD_SOURCE
-        << INCREMENTAL_CACHE_SEPARATOR << record.size
-        << INCREMENTAL_CACHE_SEPARATOR << record.fingerprint.primary
-        << INCREMENTAL_CACHE_SEPARATOR << record.fingerprint.secondary
-        << INCREMENTAL_CACHE_SEPARATOR << record.fingerprint.byte_count
-        << INCREMENTAL_CACHE_SEPARATOR;
+void write_source_record(std::ostream& out, const SourceFingerprintRecord& record)
+{
+    out << INCREMENTAL_CACHE_FIELD_SOURCE << INCREMENTAL_CACHE_SEPARATOR << record.size << INCREMENTAL_CACHE_SEPARATOR
+        << record.fingerprint.primary << INCREMENTAL_CACHE_SEPARATOR << record.fingerprint.secondary
+        << INCREMENTAL_CACHE_SEPARATOR << record.fingerprint.byte_count << INCREMENTAL_CACHE_SEPARATOR;
     write_hex_field(out, record.path.string());
     out << '\n';
 }
 
-void write_module_record(std::ostream& out, const ModuleRecord& record) {
+void write_module_record(std::ostream& out, const ModuleRecord& record)
+{
     out << INCREMENTAL_CACHE_FIELD_MODULE << INCREMENTAL_CACHE_SEPARATOR;
     write_hex_field(out, record.name);
     out << INCREMENTAL_CACHE_SEPARATOR;
@@ -731,24 +664,22 @@ void write_module_record(std::ostream& out, const ModuleRecord& record) {
     out << '\n';
 }
 
-void write_definition_record(std::ostream& out, const DefinitionRecord& record) {
-    out << INCREMENTAL_CACHE_FIELD_DEF
-        << INCREMENTAL_CACHE_SEPARATOR << record.category
-        << INCREMENTAL_CACHE_SEPARATOR << stable_symbol_kind_name(record.stable_id.kind)
-        << INCREMENTAL_CACHE_SEPARATOR << record.stable_id.global_id
-        << INCREMENTAL_CACHE_SEPARATOR << record.stable_id.name.primary
-        << INCREMENTAL_CACHE_SEPARATOR << record.stable_id.name.secondary
-        << INCREMENTAL_CACHE_SEPARATOR << record.stable_id.name.byte_count
-        << INCREMENTAL_CACHE_SEPARATOR << record.incremental_key.global_id
-        << INCREMENTAL_CACHE_SEPARATOR << record.incremental_key.fingerprint.primary
-        << INCREMENTAL_CACHE_SEPARATOR << record.incremental_key.fingerprint.secondary
-        << INCREMENTAL_CACHE_SEPARATOR << record.incremental_key.fingerprint.byte_count
-        << INCREMENTAL_CACHE_SEPARATOR;
+void write_definition_record(std::ostream& out, const DefinitionRecord& record)
+{
+    out << INCREMENTAL_CACHE_FIELD_DEF << INCREMENTAL_CACHE_SEPARATOR << record.category << INCREMENTAL_CACHE_SEPARATOR
+        << stable_symbol_kind_name(record.stable_id.kind) << INCREMENTAL_CACHE_SEPARATOR << record.stable_id.global_id
+        << INCREMENTAL_CACHE_SEPARATOR << record.stable_id.name.primary << INCREMENTAL_CACHE_SEPARATOR
+        << record.stable_id.name.secondary << INCREMENTAL_CACHE_SEPARATOR << record.stable_id.name.byte_count
+        << INCREMENTAL_CACHE_SEPARATOR << record.incremental_key.global_id << INCREMENTAL_CACHE_SEPARATOR
+        << record.incremental_key.fingerprint.primary << INCREMENTAL_CACHE_SEPARATOR
+        << record.incremental_key.fingerprint.secondary << INCREMENTAL_CACHE_SEPARATOR
+        << record.incremental_key.fingerprint.byte_count << INCREMENTAL_CACHE_SEPARATOR;
     write_hex_field(out, record.name);
     out << '\n';
 }
 
-[[nodiscard]] std::filesystem::path temporary_cache_path(const std::filesystem::path& cache_path) {
+[[nodiscard]] std::filesystem::path temporary_cache_path(const std::filesystem::path& cache_path)
+{
     std::filesystem::path temporary = cache_path;
     temporary += ".tmp.";
     temporary += std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -756,29 +687,23 @@ void write_definition_record(std::ostream& out, const DefinitionRecord& record) 
 }
 
 [[nodiscard]] base::Result<void> publish_cache_file(
-    const std::filesystem::path& temporary_path,
-    const std::filesystem::path& cache_path
-) {
+    const std::filesystem::path& temporary_path, const std::filesystem::path& cache_path)
+{
     std::error_code rename_error;
     std::filesystem::rename(temporary_path, cache_path, rename_error);
     if (rename_error) {
         std::error_code remove_error;
         std::filesystem::remove(temporary_path, remove_error);
-        return base::Result<void>::fail({
-            base::ErrorCode::io_error,
-            std::string(INCREMENTAL_CACHE_RENAME_FAILED)
-        });
+        return base::Result<void>::fail({base::ErrorCode::io_error, std::string(INCREMENTAL_CACHE_RENAME_FAILED)});
     }
     return base::Result<void>::ok();
 }
 
 } // namespace
 
-base::Result<bool> try_reuse_incremental_check_cache(
-    const CompilerInvocation& invocation
-) {
-    if (invocation.incremental_cache_path.empty() ||
-        invocation.emit_kind != EmitKind::check) {
+base::Result<bool> try_reuse_incremental_check_cache(const CompilerInvocation& invocation)
+{
+    if (invocation.incremental_cache_path.empty() || invocation.emit_kind != EmitKind::check) {
         return base::Result<bool>::ok(false);
     }
 
@@ -786,19 +711,15 @@ base::Result<bool> try_reuse_incremental_check_cache(
     if (!cache) {
         return base::Result<bool>::ok(false);
     }
-    if (!parsed_cache_header_matches(*cache, invocation) ||
-        !cache_sources_match(*cache)) {
+    if (!parsed_cache_header_matches(*cache, invocation) || !cache_sources_match(*cache)) {
         return base::Result<bool>::ok(false);
     }
     return base::Result<bool>::ok(true);
 }
 
-base::Result<void> write_incremental_cache(
-    const CompilerInvocation& invocation,
-    const base::SourceManager& sources,
-    const std::span<const ModuleRecord> modules,
-    const sema::CheckedModule& checked
-) {
+base::Result<void> write_incremental_cache(const CompilerInvocation& invocation, const base::SourceManager& sources,
+    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked)
+{
     if (invocation.incremental_cache_path.empty()) {
         return base::Result<void>::ok();
     }
@@ -809,10 +730,8 @@ base::Result<void> write_incremental_cache(
         std::error_code directory_error;
         std::filesystem::create_directories(parent, directory_error);
         if (directory_error) {
-            return base::Result<void>::fail({
-                base::ErrorCode::io_error,
-                std::string(INCREMENTAL_CACHE_DIRECTORY_FAILED)
-            });
+            return base::Result<void>::fail(
+                {base::ErrorCode::io_error, std::string(INCREMENTAL_CACHE_DIRECTORY_FAILED)});
         }
     }
 
@@ -825,17 +744,16 @@ base::Result<void> write_incremental_cache(
     {
         std::ofstream out(temporary_path, std::ios::binary | std::ios::trunc);
         if (!out) {
-            return base::Result<void>::fail({
-                base::ErrorCode::io_error,
-                std::string(INCREMENTAL_CACHE_WRITE_OPEN_FAILED)
-            });
+            return base::Result<void>::fail(
+                {base::ErrorCode::io_error, std::string(INCREMENTAL_CACHE_WRITE_OPEN_FAILED)});
         }
 
         out << INCREMENTAL_CACHE_MAGIC << '\n';
         write_header_field(out, INCREMENTAL_CACHE_FIELD_SCHEMA, std::to_string(INCREMENTAL_CACHE_SCHEMA_VERSION));
         write_encoded_header_field(out, INCREMENTAL_CACHE_FIELD_COMPILER, base::config::AUREX_VERSION_STRING);
         write_encoded_header_field(out, INCREMENTAL_CACHE_FIELD_MODE, INCREMENTAL_CACHE_MODE_SEMANTIC_OK);
-        write_encoded_header_field(out, INCREMENTAL_CACHE_FIELD_ROOT, canonical_or_absolute(invocation.input_path).string());
+        write_encoded_header_field(
+            out, INCREMENTAL_CACHE_FIELD_ROOT, canonical_or_absolute(invocation.input_path).string());
         write_header_field(out, INCREMENTAL_CACHE_FIELD_IMPORT_PATHS, std::to_string(imports.size()));
         for (const std::filesystem::path& import_path : imports) {
             out << INCREMENTAL_CACHE_FIELD_IMPORT_PATH << INCREMENTAL_CACHE_SEPARATOR;
@@ -856,10 +774,7 @@ base::Result<void> write_incremental_cache(
         }
 
         if (!out) {
-            return base::Result<void>::fail({
-                base::ErrorCode::io_error,
-                std::string(INCREMENTAL_CACHE_WRITE_FAILED)
-            });
+            return base::Result<void>::fail({base::ErrorCode::io_error, std::string(INCREMENTAL_CACHE_WRITE_FAILED)});
         }
     }
 

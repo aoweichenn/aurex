@@ -1,6 +1,5 @@
-#include <aurex/sema/symbol.hpp>
-
 #include <aurex/sema/sema_messages.hpp>
+#include <aurex/sema/symbol.hpp>
 
 #include <cassert>
 #include <memory>
@@ -10,20 +9,21 @@
 namespace aurex::sema {
 
 SymbolTable::SymbolTable()
-    : arena_(std::make_unique<base::BumpAllocator>()),
-      symbols_(make_sema_vector<Symbol>(*this->arena_)),
-      scopes_(make_sema_vector<IdentSymbolMap>(*this->arena_)) {
+    : arena_(std::make_unique<base::BumpAllocator>()), symbols_(make_sema_vector<Symbol>(*this->arena_)),
+      scopes_(make_sema_vector<IdentSymbolMap>(*this->arena_))
+{
     this->push_scope();
 }
 
 SymbolTable::SymbolTable(const SymbolTable& other)
-    : arena_(std::make_unique<base::BumpAllocator>()),
-      symbols_(make_sema_vector<Symbol>(*this->arena_)),
-      scopes_(make_sema_vector<IdentSymbolMap>(*this->arena_)) {
+    : arena_(std::make_unique<base::BumpAllocator>()), symbols_(make_sema_vector<Symbol>(*this->arena_)),
+      scopes_(make_sema_vector<IdentSymbolMap>(*this->arena_))
+{
     this->copy_from(other);
 }
 
-SymbolTable& SymbolTable::operator=(const SymbolTable& other) {
+SymbolTable& SymbolTable::operator=(const SymbolTable& other)
+{
     if (this == &other) {
         return *this;
     }
@@ -33,11 +33,12 @@ SymbolTable& SymbolTable::operator=(const SymbolTable& other) {
 }
 
 SymbolTable::SymbolTable(SymbolTable&& other) noexcept
-    : arena_(std::move(other.arena_)),
-      symbols_(std::move(other.symbols_)),
-      scopes_(std::move(other.scopes_)) {}
+    : arena_(std::move(other.arena_)), symbols_(std::move(other.symbols_)), scopes_(std::move(other.scopes_))
+{
+}
 
-SymbolTable& SymbolTable::operator=(SymbolTable&& other) noexcept {
+SymbolTable& SymbolTable::operator=(SymbolTable&& other) noexcept
+{
     if (this == &other) {
         return *this;
     }
@@ -45,20 +46,23 @@ SymbolTable& SymbolTable::operator=(SymbolTable&& other) noexcept {
     return *this;
 }
 
-void SymbolTable::push_scope(const base::usize expected_symbols) {
+void SymbolTable::push_scope(const base::usize expected_symbols)
+{
     this->scopes_.push_back(this->make_scope(expected_symbols));
 }
 
-void SymbolTable::pop_scope() noexcept {
+void SymbolTable::pop_scope() noexcept
+{
     assert(!this->scopes_.empty());
     this->scopes_.pop_back();
 }
 
-base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& diagnostics) {
+base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& diagnostics)
+{
     assert(!this->scopes_.empty());
     const auto existing = this->scopes_.back().find(symbol.name_id);
     if (existing != this->scopes_.back().end()) {
-        diagnostics.push(base::Diagnostic {
+        diagnostics.push(base::Diagnostic{
             base::Severity::error,
             symbol.range,
             std::string(SEMA_DUPLICATE_DEFINITION_OR_SHADOWING) + std::string(symbol.name.view()),
@@ -66,7 +70,7 @@ base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& 
             base::DiagnosticCode::semantic_duplicate,
         });
         if (const Symbol* previous = this->get(existing->second); previous != nullptr) {
-            diagnostics.push(base::Diagnostic {
+            diagnostics.push(base::Diagnostic{
                 base::Severity::note,
                 previous->range,
                 sema_previous_declaration_note_message(symbol.name.view()),
@@ -77,14 +81,15 @@ base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& 
         return base::Result<SymbolId>::fail({base::ErrorCode::sema_error, std::string(SEMA_DUPLICATE_SYMBOL)});
     }
 
-    const SymbolId id {static_cast<base::u32>(this->symbols_.size())};
+    const SymbolId id{static_cast<base::u32>(this->symbols_.size())};
     const IdentId name = symbol.name_id;
     this->symbols_.push_back(symbol);
     this->scopes_.back().emplace(name, id);
     return base::Result<SymbolId>::ok(id);
 }
 
-const Symbol* SymbolTable::find(const IdentId name) const noexcept {
+const Symbol* SymbolTable::find(const IdentId name) const noexcept
+{
     if (!is_valid(name)) {
         return nullptr;
     }
@@ -97,14 +102,16 @@ const Symbol* SymbolTable::find(const IdentId name) const noexcept {
     return nullptr;
 }
 
-const Symbol* SymbolTable::get(const SymbolId id) const noexcept {
+const Symbol* SymbolTable::get(const SymbolId id) const noexcept
+{
     if (!is_valid(id) || id.value >= this->symbols_.size()) {
         return nullptr;
     }
     return &this->symbols_[id.value];
 }
 
-void SymbolTable::append_visible_names(std::vector<std::string_view>& names) const {
+void SymbolTable::append_visible_names(std::vector<std::string_view>& names) const
+{
     std::unordered_set<IdentId, IdentIdHash> seen;
     for (auto scope = this->scopes_.rbegin(); scope != this->scopes_.rend(); ++scope) {
         seen.reserve(seen.size() + scope->size());
@@ -122,12 +129,13 @@ void SymbolTable::append_visible_names(std::vector<std::string_view>& names) con
 
 IdentSymbolMap SymbolTable::make_scope(const base::usize expected_symbols) const
 {
-    IdentSymbolMap scope = make_sema_map<IdentId, SymbolId, IdentIdHash>(*this->arena_, IdentIdHash {});
+    IdentSymbolMap scope = make_sema_map<IdentId, SymbolId, IdentIdHash>(*this->arena_, IdentIdHash{});
     scope.reserve(expected_symbols);
     return scope;
 }
 
-void SymbolTable::copy_from(const SymbolTable& other) {
+void SymbolTable::copy_from(const SymbolTable& other)
+{
     this->symbols_.clear();
     this->symbols_.reserve(other.symbols_.size());
     this->symbols_.insert(this->symbols_.end(), other.symbols_.begin(), other.symbols_.end());
@@ -140,7 +148,8 @@ void SymbolTable::copy_from(const SymbolTable& other) {
     }
 }
 
-void SymbolTable::swap(SymbolTable& other) noexcept {
+void SymbolTable::swap(SymbolTable& other) noexcept
+{
     using std::swap;
     this->symbols_.swap(other.symbols_);
     this->scopes_.swap(other.scopes_);

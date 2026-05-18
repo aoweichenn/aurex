@@ -4,7 +4,8 @@
 
 namespace aurex::test {
 
-TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable) {
+TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
+{
     const std::vector<fs::path> required = {
         "docs/README.md",
         "docs/zh/README.md",

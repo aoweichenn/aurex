@@ -16,21 +16,21 @@ enum class NumberScanState {
     EXPONENT,
 };
 
-[[nodiscard]] bool is_float_state(const NumberScanState state) noexcept {
+[[nodiscard]] bool is_float_state(const NumberScanState state) noexcept
+{
     return state == NumberScanState::FRACTION || state == NumberScanState::EXPONENT;
 }
 
-[[nodiscard]] bool can_start_integer_suffix(const char c) noexcept {
+[[nodiscard]] bool can_start_integer_suffix(const char c) noexcept
+{
     return c == 'i' || c == 'u';
 }
 
 } // namespace
 
 template <typename IsDigit>
-Lexer::DigitScanResult Lexer::scan_digits_matching(
-    const IsDigit is_digit,
-    const std::string_view literal_kind
-) {
+Lexer::DigitScanResult Lexer::scan_digits_matching(const IsDigit is_digit, const std::string_view literal_kind)
+{
     DigitScanResult result;
     bool previous_was_digit = false;
     bool previous_was_separator = false;
@@ -59,10 +59,7 @@ Lexer::DigitScanResult Lexer::scan_digits_matching(
         if (!previous_was_digit) {
             result.had_error = true;
             this->report(
-                separator_begin,
-                separator_begin + LEXEME_SINGLE_BYTE_WIDTH,
-                LEXEME_MALFORMED_DIGIT_SEPARATOR_MESSAGE
-            );
+                separator_begin, separator_begin + LEXEME_SINGLE_BYTE_WIDTH, LEXEME_MALFORMED_DIGIT_SEPARATOR_MESSAGE);
         }
         previous_separator_begin = separator_begin;
         previous_was_digit = false;
@@ -72,28 +69,20 @@ Lexer::DigitScanResult Lexer::scan_digits_matching(
     this->advance_bytes(width);
     if (previous_was_separator) {
         result.had_error = true;
-        this->report(
-            previous_separator_begin,
-            previous_separator_begin + LEXEME_SINGLE_BYTE_WIDTH,
-            LEXEME_MALFORMED_DIGIT_SEPARATOR_MESSAGE
-        );
+        this->report(previous_separator_begin, previous_separator_begin + LEXEME_SINGLE_BYTE_WIDTH,
+            LEXEME_MALFORMED_DIGIT_SEPARATOR_MESSAGE);
     }
     if (!result.saw_digit) {
         result.had_error = true;
         this->report(
-            begin + width,
-            begin + width,
-            std::string(literal_kind) + std::string(LEXEME_LITERAL_NO_DIGITS_SUFFIX)
-        );
+            begin + width, begin + width, std::string(literal_kind) + std::string(LEXEME_LITERAL_NO_DIGITS_SUFFIX));
     }
     return result;
 }
 
 template <typename IsValidDigit>
-bool Lexer::scan_invalid_radix_tail_matching(
-    const IsValidDigit is_valid_digit,
-    const std::string_view message
-) {
+bool Lexer::scan_invalid_radix_tail_matching(const IsValidDigit is_valid_digit, const std::string_view message)
+{
     const char first = this->peek();
     if (first != LEXEME_DIGIT_SEPARATOR && !is_ident_continue(first)) {
         return false;
@@ -104,8 +93,8 @@ bool Lexer::scan_invalid_radix_tail_matching(
     const base::usize begin = this->cursor_.offset();
     const std::string_view remaining = this->cursor_.remaining_text();
     base::usize width = 0;
-    while (width < remaining.size() &&
-           (remaining[width] == LEXEME_DIGIT_SEPARATOR || is_ident_continue(remaining[width]))) {
+    while (width < remaining.size()
+        && (remaining[width] == LEXEME_DIGIT_SEPARATOR || is_ident_continue(remaining[width]))) {
         const char c = remaining[width];
         if (c != LEXEME_DIGIT_SEPARATOR && !is_valid_digit(c) && !reported) {
             this->report(begin + width, begin + width + LEXEME_SINGLE_BYTE_WIDTH, message);
@@ -118,7 +107,8 @@ bool Lexer::scan_invalid_radix_tail_matching(
     return had_error;
 }
 
-bool Lexer::scan_fraction_part(bool& had_error) {
+bool Lexer::scan_fraction_part(bool& had_error)
+{
     if (this->peek() != LEXEME_DOT) {
         return false;
     }
@@ -132,14 +122,16 @@ bool Lexer::scan_fraction_part(bool& had_error) {
     }
     this->advance();
     const DigitScanResult digits = this->scan_digits_matching(
-        [](const char c) noexcept { return is_decimal_digit(c); },
-        LEXEME_FLOAT_LITERAL_KIND
-    );
+        [](const char c) noexcept {
+            return is_decimal_digit(c);
+        },
+        LEXEME_FLOAT_LITERAL_KIND);
     had_error = had_error || digits.had_error;
     return true;
 }
 
-void Lexer::scan_numeric_suffix() {
+void Lexer::scan_numeric_suffix()
+{
     if (!is_ident_start(this->peek())) {
         return;
     }
@@ -151,7 +143,8 @@ void Lexer::scan_numeric_suffix() {
     this->advance_bytes(width);
 }
 
-bool Lexer::scan_integer_suffix() {
+bool Lexer::scan_integer_suffix()
+{
     if (!can_start_integer_suffix(this->peek())) {
         return false;
     }
@@ -159,13 +152,15 @@ bool Lexer::scan_integer_suffix() {
     return true;
 }
 
-void Lexer::scan_leading_dot_float(const base::usize begin) {
+void Lexer::scan_leading_dot_float(const base::usize begin)
+{
     bool had_error = false;
     this->advance();
     const DigitScanResult digits = this->scan_digits_matching(
-        [](const char c) noexcept { return is_decimal_digit(c); },
-        LEXEME_FLOAT_LITERAL_KIND
-    );
+        [](const char c) noexcept {
+            return is_decimal_digit(c);
+        },
+        LEXEME_FLOAT_LITERAL_KIND);
     had_error = digits.had_error;
     static_cast<void>(this->scan_exponent_part(had_error));
     this->scan_numeric_suffix();
@@ -176,7 +171,8 @@ void Lexer::scan_leading_dot_float(const base::usize begin) {
     this->add_nonempty_token(syntax::TokenKind::float_literal, begin, this->cursor_.offset());
 }
 
-bool Lexer::scan_exponent_part(bool& had_error) {
+bool Lexer::scan_exponent_part(bool& had_error)
+{
     const char exponent_marker = this->peek();
     if (exponent_marker != LEXEME_FLOAT_EXPONENT_LOWER && exponent_marker != LEXEME_FLOAT_EXPONENT_UPPER) {
         return false;
@@ -189,9 +185,10 @@ bool Lexer::scan_exponent_part(bool& had_error) {
         }
         this->advance();
         const DigitScanResult digits = this->scan_digits_matching(
-            [](const char c) noexcept { return is_decimal_digit(c); },
-            LEXEME_FLOAT_EXPONENT_LITERAL_KIND
-        );
+            [](const char c) noexcept {
+                return is_decimal_digit(c);
+            },
+            LEXEME_FLOAT_EXPONENT_LITERAL_KIND);
         had_error = had_error || digits.had_error;
         return true;
     }
@@ -201,55 +198,65 @@ bool Lexer::scan_exponent_part(bool& had_error) {
         this->advance();
     }
     const DigitScanResult digits = this->scan_digits_matching(
-        [](const char c) noexcept { return is_decimal_digit(c); },
-        LEXEME_FLOAT_EXPONENT_LITERAL_KIND
-    );
+        [](const char c) noexcept {
+            return is_decimal_digit(c);
+        },
+        LEXEME_FLOAT_EXPONENT_LITERAL_KIND);
     had_error = had_error || digits.had_error;
     return true;
 }
 
-void Lexer::scan_number() {
+void Lexer::scan_number()
+{
     const base::usize begin = this->cursor_.offset();
     const char first = this->peek();
     const char second = this->peek_next();
     NumberScanState state = NumberScanState::DECIMAL_INTEGER;
     bool had_error = false;
 
-    if (first == LEXEME_HEX_INTEGER_PREFIX_LOWER.front() &&
-        (second == LEXEME_HEX_INTEGER_PREFIX_LOWER.back() || second == LEXEME_HEX_INTEGER_PREFIX_UPPER.back())) {
+    if (first == LEXEME_HEX_INTEGER_PREFIX_LOWER.front()
+        && (second == LEXEME_HEX_INTEGER_PREFIX_LOWER.back() || second == LEXEME_HEX_INTEGER_PREFIX_UPPER.back())) {
         state = NumberScanState::RADIX_INTEGER;
         this->advance_bytes(LEXEME_HEX_INTEGER_PREFIX_LOWER.size());
         const DigitScanResult digits = this->scan_digits_matching(
-            [](const char c) noexcept { return is_hex_digit(c); },
-            LEXEME_INTEGER_LITERAL_KIND
-        );
+            [](const char c) noexcept {
+                return is_hex_digit(c);
+            },
+            LEXEME_INTEGER_LITERAL_KIND);
         had_error = digits.had_error;
         if (!this->scan_integer_suffix()) {
             had_error = this->scan_invalid_radix_tail_matching(
-                [](const char c) noexcept { return is_hex_digit(c); },
-                LEXEME_INVALID_HEXADECIMAL_DIGIT_MESSAGE
-            ) || had_error;
+                            [](const char c) noexcept {
+                                return is_hex_digit(c);
+                            },
+                            LEXEME_INVALID_HEXADECIMAL_DIGIT_MESSAGE)
+                || had_error;
         }
-    } else if (first == LEXEME_BINARY_INTEGER_PREFIX_LOWER.front() &&
-               (second == LEXEME_BINARY_INTEGER_PREFIX_LOWER.back() || second == LEXEME_BINARY_INTEGER_PREFIX_UPPER.back())) {
+    } else if (first == LEXEME_BINARY_INTEGER_PREFIX_LOWER.front()
+        && (second == LEXEME_BINARY_INTEGER_PREFIX_LOWER.back()
+            || second == LEXEME_BINARY_INTEGER_PREFIX_UPPER.back())) {
         state = NumberScanState::RADIX_INTEGER;
         this->advance_bytes(LEXEME_BINARY_INTEGER_PREFIX_LOWER.size());
         const DigitScanResult digits = this->scan_digits_matching(
-            [](const char c) noexcept { return is_binary_digit(c); },
-            LEXEME_INTEGER_LITERAL_KIND
-        );
+            [](const char c) noexcept {
+                return is_binary_digit(c);
+            },
+            LEXEME_INTEGER_LITERAL_KIND);
         had_error = digits.had_error;
         if (!this->scan_integer_suffix()) {
             had_error = this->scan_invalid_radix_tail_matching(
-                [](const char c) noexcept { return is_binary_digit(c); },
-                LEXEME_INVALID_BINARY_DIGIT_MESSAGE
-            ) || had_error;
+                            [](const char c) noexcept {
+                                return is_binary_digit(c);
+                            },
+                            LEXEME_INVALID_BINARY_DIGIT_MESSAGE)
+                || had_error;
         }
     } else {
         const DigitScanResult digits = this->scan_digits_matching(
-            [](const char c) noexcept { return is_decimal_digit(c); },
-            LEXEME_INTEGER_LITERAL_KIND
-        );
+            [](const char c) noexcept {
+                return is_decimal_digit(c);
+            },
+            LEXEME_INTEGER_LITERAL_KIND);
         had_error = digits.had_error;
         if (this->scan_fraction_part(had_error)) {
             state = NumberScanState::FRACTION;
@@ -265,10 +272,8 @@ void Lexer::scan_number() {
         return;
     }
     this->add_nonempty_token(
-        is_float_state(state) ? syntax::TokenKind::float_literal : syntax::TokenKind::integer_literal,
-        begin,
-        this->cursor_.offset()
-    );
+        is_float_state(state) ? syntax::TokenKind::float_literal : syntax::TokenKind::integer_literal, begin,
+        this->cursor_.offset());
 }
 
 } // namespace aurex::lex

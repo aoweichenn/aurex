@@ -57,26 +57,26 @@ enum class TypeKind {
 
 struct GenericParamDecl {
     std::string_view name;
-    base::SourceRange range {};
+    base::SourceRange range{};
     IdentId name_id = INVALID_IDENT_ID;
 };
 
 struct GenericConstraintDecl {
     std::string_view param_name;
-    base::SourceRange param_range {};
+    base::SourceRange param_range{};
     AstArenaVector<std::string_view> capability_names;
     AstArenaVector<base::SourceRange> capability_ranges;
-    base::SourceRange range {};
+    base::SourceRange range{};
     IdentId param_name_id = INVALID_IDENT_ID;
     AstArenaVector<IdentId> capability_name_ids;
 };
 
 struct TypeNode {
     TypeKind kind = TypeKind::named;
-    base::SourceRange range {};
+    base::SourceRange range{};
     PrimitiveTypeKind primitive = PrimitiveTypeKind::void_;
     std::string_view scope_name;
-    base::SourceRange scope_range {};
+    base::SourceRange scope_range{};
     std::vector<std::string_view> scope_parts;
     std::string_view name;
     IdentId scope_name_id = INVALID_IDENT_ID;
@@ -200,13 +200,13 @@ enum class PatternKind {
 struct FieldPattern {
     std::string_view name;
     PatternId pattern = INVALID_PATTERN_ID;
-    base::SourceRange range {};
+    base::SourceRange range{};
     IdentId name_id = INVALID_IDENT_ID;
 };
 
 struct PatternNode {
     PatternKind kind = PatternKind::wildcard;
-    base::SourceRange range {};
+    base::SourceRange range{};
     std::string_view binding_name;
     std::string_view enum_name;
     std::string_view case_name;
@@ -230,7 +230,7 @@ struct PatternNode {
 struct FieldInit {
     std::string_view name;
     ExprId value = INVALID_EXPR_ID;
-    base::SourceRange range {};
+    base::SourceRange range{};
     IdentId name_id = INVALID_IDENT_ID;
 };
 
@@ -238,7 +238,7 @@ struct MatchArm {
     PatternId pattern = INVALID_PATTERN_ID;
     ExprId guard = INVALID_EXPR_ID;
     ExprId value = INVALID_EXPR_ID;
-    base::SourceRange range {};
+    base::SourceRange range{};
 };
 
 } // namespace aurex::syntax

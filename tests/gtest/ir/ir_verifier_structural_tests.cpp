@@ -1,9 +1,10 @@
 #include <aurex/ir/verify.hpp>
-#include <gtest/support/ir_test_helpers.hpp>
 
 #include <initializer_list>
 #include <string>
 #include <utility>
+
+#include <gtest/support/ir_test_helpers.hpp>
 
 namespace aurex::test {
 namespace {
@@ -19,11 +20,8 @@ constexpr base::u64 IR_VERIFIER_NESTED_ARRAY_INNER_COUNT = 3;
 constexpr base::u64 IR_VERIFIER_NESTED_ARRAY_OUTER_COUNT = 2;
 
 [[nodiscard]] Value typed_value(
-    Module& module,
-    const ValueKind kind,
-    const TypeHandle type,
-    const std::string_view text = {}
-) {
+    Module& module, const ValueKind kind, const TypeHandle type, const std::string_view text = {})
+{
     Value value = module.make_value();
     value.kind = kind;
     value.type = type;
@@ -33,26 +31,25 @@ constexpr base::u64 IR_VERIFIER_NESTED_ARRAY_OUTER_COUNT = 2;
     return value;
 }
 
-[[nodiscard]] Value alloca_value(Module& module, const TypeHandle type) {
+[[nodiscard]] Value alloca_value(Module& module, const TypeHandle type)
+{
     Value value = module.make_value();
     value.kind = ValueKind::alloca;
     value.type = type;
     return value;
 }
 
-void append_return_block(
-    FunctionBuilder& builder,
-    Function& function,
-    const std::initializer_list<ValueId> values,
-    const ValueId return_value
-) {
+void append_return_block(FunctionBuilder& builder, Function& function, const std::initializer_list<ValueId> values,
+    const ValueId return_value)
+{
     const BlockId entry = builder.block("entry");
     function.blocks[entry.value].values = values;
     function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
     function.blocks[entry.value].terminator.value = return_value;
 }
 
-[[nodiscard]] Value slice_value(Module& module, const TypeHandle type, const ValueId data, const ValueId length) {
+[[nodiscard]] Value slice_value(Module& module, const TypeHandle type, const ValueId data, const ValueId length)
+{
     Value value = module.make_value();
     value.kind = ValueKind::slice;
     value.type = type;
@@ -61,7 +58,8 @@ void append_return_block(
     return value;
 }
 
-[[nodiscard]] Value slice_data_value(Module& module, const TypeHandle type, const ValueId object) {
+[[nodiscard]] Value slice_data_value(Module& module, const TypeHandle type, const ValueId object)
+{
     Value value = module.make_value();
     value.kind = ValueKind::slice_data;
     value.type = type;
@@ -69,7 +67,8 @@ void append_return_block(
     return value;
 }
 
-[[nodiscard]] Value slice_len_value(Module& module, const TypeHandle type, const ValueId object) {
+[[nodiscard]] Value slice_len_value(Module& module, const TypeHandle type, const ValueId object)
+{
     Value value = module.make_value();
     value.kind = ValueKind::slice_len;
     value.type = type;
@@ -79,7 +78,8 @@ void append_return_block(
 
 } // namespace
 
-TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
+TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors)
+{
     {
         Module module = make_simple_module();
         EXPECT_TRUE(ir::verify_module(module));
@@ -110,11 +110,11 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         cast.cast_kind = CastKind::numeric;
         const ValueId cast_id = add_value(module, cast);
         [[maybe_unused]] const GlobalConstantId unary_constant =
-            add_global_constant(module, GlobalConstant {"unary", "unit_unary", i32, unary_id});
+            add_global_constant(module, GlobalConstant{"unary", "unit_unary", i32, unary_id});
         [[maybe_unused]] const GlobalConstantId binary_constant =
-            add_global_constant(module, GlobalConstant {"binary", "unit_binary", i32, binary_id});
+            add_global_constant(module, GlobalConstant{"binary", "unit_binary", i32, binary_id});
         [[maybe_unused]] const GlobalConstantId cast_constant =
-            add_global_constant(module, GlobalConstant {"cast", "unit_cast", i32, cast_id});
+            add_global_constant(module, GlobalConstant{"cast", "unit_cast", i32, cast_id});
         EXPECT_TRUE(ir::verify_module(module));
     }
     {
@@ -154,10 +154,11 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         append_function(module, function);
         const auto result = ir::verify_module(module);
         ASSERT_FALSE(result);
-        expect_contains_all(result.error().message, {
-            "must use internal linkage",
-            "must return i32 or void",
-        });
+        expect_contains_all(result.error().message,
+            {
+                "must use internal linkage",
+                "must return i32 or void",
+            });
     }
     {
         Module module;
@@ -186,7 +187,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
     {
         Module module;
         Function function = make_function(module, "void_value", builtin(module, BuiltinType::void_));
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         const ValueId value = builder.add(integer_value(module, builtin(module, BuiltinType::i32), "1"));
         const BlockId entry = builder.block("entry");
         function.blocks[entry.value].values.push_back(value);
@@ -199,12 +200,12 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "bad_branch", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         const ValueId value = builder.add(integer_value(module, i32, "1"));
         const BlockId entry = builder.block("entry");
         function.blocks[entry.value].values.push_back(value);
         function.blocks[entry.value].terminator.kind = TerminatorKind::branch;
-        function.blocks[entry.value].terminator.target = BlockId {42};
+        function.blocks[entry.value].terminator.target = BlockId{42};
         append_function(module, function);
         expect_error_contains(ir::verify_module(module), "branch target block id is invalid");
     }
@@ -212,7 +213,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "bad_cond", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         const ValueId value = builder.add(integer_value(module, i32, "1"));
         const BlockId entry = builder.block("entry");
         function.blocks[entry.value].values.push_back(value);
@@ -227,7 +228,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "empty_phi", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value phi = module.make_value();
         phi.kind = ValueKind::phi;
         phi.type = i32;
@@ -245,11 +246,11 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         Function target = make_function(module, "target", i32);
         append_function(module, target);
         Function caller = make_function(module, "caller", i32);
-        FunctionBuilder builder {module, caller};
+        FunctionBuilder builder{module, caller};
         Value call = module.make_value();
         call.kind = ValueKind::call;
         call.type = i32;
-        call.call_target = FunctionId {0};
+        call.call_target = FunctionId{0};
         call.args.push_back(builder.add(integer_value(module, i32, "1")));
         const ValueId call_id = builder.add(call);
         const BlockId entry = builder.block("entry");
@@ -264,7 +265,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "bad_load", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         const ValueId not_pointer = builder.add(integer_value(module, i32, "1"));
         Value load = module.make_value();
         load.kind = ValueKind::load;
@@ -284,7 +285,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         Function function = make_function(module, "bad_load_result", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value object = module.make_value();
         object.kind = ValueKind::alloca;
         object.type = ptr_i32;
@@ -306,7 +307,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "bad_alloca", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value object = module.make_value();
         object.kind = ValueKind::alloca;
         object.type = i32;
@@ -325,7 +326,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         const TypeHandle void_type = builtin(module, BuiltinType::void_);
         const TypeHandle const_ptr_i32 = ptr(module, PointerMutability::const_, i32);
         Function function = make_function(module, "bad_store_const_target", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value object = module.make_value();
         object.kind = ValueKind::null_literal;
         object.type = const_ptr_i32;
@@ -351,7 +352,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         const TypeHandle usize = builtin(module, BuiltinType::usize);
         const TypeHandle void_type = builtin(module, BuiltinType::void_);
         Function function = make_function(module, "bad_scalar_shapes", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value null_value = module.make_value();
         null_value.kind = ValueKind::null_literal;
         null_value.type = i32;
@@ -374,11 +375,12 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         append_function(module, function);
         const auto verify = ir::verify_module(module);
         ASSERT_FALSE(verify);
-        expect_contains_all(verify.error().message, {
-            "null literal type must be pointer",
-            "bool literal type must be bool",
-            "sizeof target type is not valid storage",
-        });
+        expect_contains_all(verify.error().message,
+            {
+                "null literal type must be pointer",
+                "bool literal type must be bool",
+                "sizeof target type is not valid storage",
+            });
     }
     {
         Module module;
@@ -388,7 +390,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         const TypeHandle inner_array = module.types.array(IR_VERIFIER_NESTED_ARRAY_INNER_COUNT, void_type);
         const TypeHandle nested_array = module.types.array(IR_VERIFIER_NESTED_ARRAY_OUTER_COUNT, inner_array);
         Function function = make_function(module, "nested_storage", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value sizeof_value = module.make_value();
         sizeof_value.kind = ValueKind::size_of;
         sizeof_value.type = usize;
@@ -407,7 +409,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         Function function = make_function(module, "bad_field", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value object = module.make_value();
         object.kind = ValueKind::alloca;
         object.type = ptr_i32;
@@ -431,9 +433,10 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
         const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
-        append_record_with_fields(module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "value", i32)});
+        append_record_with_fields(
+            module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "value", i32)});
         Function function = make_function(module, "bad_field_type", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value object = module.make_value();
         object.kind = ValueKind::alloca;
         object.type = ptr(module, PointerMutability::mut, record_type);
@@ -456,9 +459,10 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
-        append_record_with_fields(module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "value", i32)});
+        append_record_with_fields(
+            module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "value", i32)});
         Function function = make_function(module, "bad_field_mutability", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value object = module.make_value();
         object.kind = ValueKind::param;
         object.type = ptr(module, PointerMutability::const_, record_type);
@@ -485,7 +489,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
         const TypeHandle array_i32 = module.types.array(4, i32);
         Function function = make_function(module, "bad_index_type", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value object = module.make_value();
         object.kind = ValueKind::alloca;
         object.type = ptr(module, PointerMutability::mut, array_i32);
@@ -511,17 +515,17 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         Value first_ref = module.make_value();
         first_ref.kind = ValueKind::constant_ref;
         first_ref.type = i32;
-        first_ref.constant = GlobalConstantId {1};
+        first_ref.constant = GlobalConstantId{1};
         const ValueId first = add_value(module, first_ref);
         Value second_ref = module.make_value();
         second_ref.kind = ValueKind::constant_ref;
         second_ref.type = i32;
-        second_ref.constant = GlobalConstantId {0};
+        second_ref.constant = GlobalConstantId{0};
         const ValueId second = add_value(module, second_ref);
         [[maybe_unused]] const GlobalConstantId first_constant =
-            add_global_constant(module, GlobalConstant {"a", "unit_a", i32, first});
+            add_global_constant(module, GlobalConstant{"a", "unit_a", i32, first});
         [[maybe_unused]] const GlobalConstantId second_constant =
-            add_global_constant(module, GlobalConstant {"b", "unit_b", i32, second});
+            add_global_constant(module, GlobalConstant{"b", "unit_b", i32, second});
         expect_error_contains(ir::verify_module(module), "cyclic constant reference");
     }
     {
@@ -530,10 +534,10 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         Value ref = module.make_value();
         ref.kind = ValueKind::constant_ref;
         ref.type = i32;
-        ref.constant = GlobalConstantId {42};
+        ref.constant = GlobalConstantId{42};
         const ValueId invalid_ref = add_value(module, ref);
         [[maybe_unused]] const GlobalConstantId constant =
-            add_global_constant(module, GlobalConstant {"bad", "unit_bad", i32, invalid_ref});
+            add_global_constant(module, GlobalConstant{"bad", "unit_bad", i32, invalid_ref});
         expect_error_contains(ir::verify_module(module), "constant reference id is invalid");
     }
     {
@@ -542,14 +546,15 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
         const ValueId value = add_value(module, integer_value(module, i32, "1"));
         [[maybe_unused]] const GlobalConstantId constant =
-            add_global_constant(module, GlobalConstant {"mismatch", "unit_mismatch", bool_type, value});
+            add_global_constant(module, GlobalConstant{"mismatch", "unit_mismatch", bool_type, value});
         expect_error_contains(ir::verify_module(module), "constant initializer type mismatch");
     }
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
-        append_record_with_fields(module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "x", i32), record_field(module, "y", i32)});
+        append_record_with_fields(module, record_type, "unit.Record", "unit_Record", false,
+            {record_field(module, "x", i32), record_field(module, "y", i32)});
         Value aggregate = module.make_value();
         aggregate.kind = ValueKind::aggregate;
         aggregate.type = record_type;
@@ -560,26 +565,28 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         };
         const ValueId aggregate_id = add_value(module, aggregate);
         [[maybe_unused]] const GlobalConstantId constant =
-            add_global_constant(module, GlobalConstant {"bad_record", "unit_bad_record", record_type, aggregate_id});
+            add_global_constant(module, GlobalConstant{"bad_record", "unit_bad_record", record_type, aggregate_id});
         const auto result = ir::verify_module(module);
         ASSERT_FALSE(result);
-        expect_contains_all(result.error().message, {
-            "duplicate aggregate field x",
-            "unknown aggregate field missing",
-        });
+        expect_contains_all(result.error().message,
+            {
+                "duplicate aggregate field x",
+                "unknown aggregate field missing",
+            });
     }
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
-        append_record_with_fields(module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "x", i32), record_field(module, "y", i32)});
+        append_record_with_fields(module, record_type, "unit.Record", "unit_Record", false,
+            {record_field(module, "x", i32), record_field(module, "y", i32)});
         Value aggregate = module.make_value();
         aggregate.kind = ValueKind::aggregate;
         aggregate.type = record_type;
         aggregate.fields = {field_value(module, "x", add_value(module, integer_value(module, i32, "1")))};
         const ValueId aggregate_id = add_value(module, aggregate);
         [[maybe_unused]] const GlobalConstantId constant =
-            add_global_constant(module, GlobalConstant {"incomplete", "unit_incomplete", record_type, aggregate_id});
+            add_global_constant(module, GlobalConstant{"incomplete", "unit_incomplete", record_type, aggregate_id});
         expect_error_contains(ir::verify_module(module), "aggregate constant does not initialize every field");
     }
     {
@@ -595,7 +602,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         };
         const ValueId aggregate_id = add_value(module, aggregate);
         [[maybe_unused]] const GlobalConstantId constant =
-            add_global_constant(module, GlobalConstant {"array", "unit_array", array_type, aggregate_id});
+            add_global_constant(module, GlobalConstant{"array", "unit_array", array_type, aggregate_id});
         EXPECT_TRUE(ir::verify_module(module));
     }
     {
@@ -608,7 +615,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         aggregate.elements = {add_value(module, integer_value(module, i32, "1"))};
         const ValueId aggregate_id = add_value(module, aggregate);
         [[maybe_unused]] const GlobalConstantId constant =
-            add_global_constant(module, GlobalConstant {"bad_array", "unit_bad_array", array_type, aggregate_id});
+            add_global_constant(module, GlobalConstant{"bad_array", "unit_bad_array", array_type, aggregate_id});
         expect_error_contains(ir::verify_module(module), "array aggregate constant element count mismatch");
     }
     {
@@ -621,16 +628,15 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         aggregate.fields = {field_value(module, "x", add_value(module, integer_value(module, i32, "1")))};
         const ValueId aggregate_id = add_value(module, aggregate);
         [[maybe_unused]] const GlobalConstantId constant = add_global_constant(
-            module,
-            GlobalConstant {"bad_array_fields", "unit_bad_array_fields", array_type, aggregate_id}
-        );
+            module, GlobalConstant{"bad_array_fields", "unit_bad_array_fields", array_type, aggregate_id});
         expect_error_contains(ir::verify_module(module), "array aggregate constant cannot contain named fields");
     }
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
-        append_record_with_fields(module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "x", i32)});
+        append_record_with_fields(
+            module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "x", i32)});
         Value aggregate = module.make_value();
         aggregate.kind = ValueKind::aggregate;
         aggregate.type = record_type;
@@ -638,16 +644,14 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         aggregate.elements = {add_value(module, integer_value(module, i32, "2"))};
         const ValueId aggregate_id = add_value(module, aggregate);
         [[maybe_unused]] const GlobalConstantId constant = add_global_constant(
-            module,
-            GlobalConstant {"bad_record_elements", "unit_bad_record_elements", record_type, aggregate_id}
-        );
+            module, GlobalConstant{"bad_record_elements", "unit_bad_record_elements", record_type, aggregate_id});
         expect_error_contains(ir::verify_module(module), "record aggregate constant cannot contain array elements");
     }
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "extern_with_body", i32, Linkage::extern_c, AbiCallConv::c);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         const ValueId result = builder.add(integer_value(module, i32, "0"));
         const BlockId entry = builder.block("entry");
         function.blocks[entry.value].values.push_back(result);
@@ -660,7 +664,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "param_mismatch", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value param = module.make_value();
         param.kind = ValueKind::param;
         param.type = builtin(module, BuiltinType::bool_);
@@ -682,12 +686,12 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         target.signature_params.push_back(function_param(module, "x", i32));
         append_function(module, target);
         Function caller = make_function(module, "caller_bad_arg", i32);
-        FunctionBuilder builder {module, caller};
+        FunctionBuilder builder{module, caller};
         const ValueId arg = builder.add(bool_value(module, true));
         Value call = module.make_value();
         call.kind = ValueKind::call;
         call.type = builtin(module, BuiltinType::bool_);
-        call.call_target = FunctionId {0};
+        call.call_target = FunctionId{0};
         call.args.push_back(arg);
         const ValueId call_id = builder.add(call);
         const ValueId result = builder.add(integer_value(module, i32, "0"));
@@ -698,18 +702,20 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         append_function(module, caller);
         const auto verify = ir::verify_module(module);
         ASSERT_FALSE(verify);
-        expect_contains_all(verify.error().message, {
-            "call argument type mismatch",
-            "call to @test_target result type mismatch",
-        });
+        expect_contains_all(verify.error().message,
+            {
+                "call argument type mismatch",
+                "call to @test_target result type mismatch",
+            });
     }
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
-        append_record_with_fields(module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "x", i32), record_field(module, "y", i32)});
+        append_record_with_fields(module, record_type, "unit.Record", "unit_Record", false,
+            {record_field(module, "x", i32), record_field(module, "y", i32)});
         Function function = make_function(module, "bad_aggregate", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value aggregate = module.make_value();
         aggregate.kind = ValueKind::aggregate;
         aggregate.type = record_type;
@@ -731,17 +737,18 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         append_function(module, function);
         const auto verify = ir::verify_module(module);
         ASSERT_FALSE(verify);
-        expect_contains_all(verify.error().message, {
-            "duplicate aggregate field x",
-            "aggregate does not initialize every field",
-        });
+        expect_contains_all(verify.error().message,
+            {
+                "duplicate aggregate field x",
+                "aggregate does not initialize every field",
+            });
     }
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle array_type = module.types.array(2, i32);
         Function function = make_function(module, "bad_array_aggregate_fields", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value aggregate = module.make_value();
         aggregate.kind = ValueKind::aggregate;
         aggregate.type = array_type;
@@ -770,7 +777,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle array_type = module.types.array(2, i32);
         Function function = make_function(module, "bad_array_aggregate_count", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value aggregate = module.make_value();
         aggregate.kind = ValueKind::aggregate;
         aggregate.type = array_type;
@@ -794,9 +801,10 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle record_type = module.types.named_struct("unit.Record", "unit_Record", false);
-        append_record_with_fields(module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "x", i32)});
+        append_record_with_fields(
+            module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "x", i32)});
         Function function = make_function(module, "bad_record_aggregate_elements", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value aggregate = module.make_value();
         aggregate.kind = ValueKind::aggregate;
         aggregate.type = record_type;
@@ -822,7 +830,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         const TypeHandle void_type = builtin(module, BuiltinType::void_);
         const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
         Function function = make_function(module, "bad_store_source", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value slot = module.make_value();
         slot.kind = ValueKind::alloca;
         slot.type = ptr_i32;
@@ -846,7 +854,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function function = make_function(module, "bad_binary_operands", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         const ValueId lhs = builder.add(integer_value(module, i32, "1"));
         const ValueId rhs = builder.add(bool_value(module, false));
         Value binary = module.make_value();
@@ -869,7 +877,7 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
         Function function = make_function(module, "bad_binary_result", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         const ValueId lhs = builder.add(integer_value(module, i32, "1"));
         const ValueId rhs = builder.add(integer_value(module, i32, "2"));
         Value binary = module.make_value();
@@ -889,7 +897,8 @@ TEST(CoreUnit, IrVerifierReportsRepresentativeStructuralErrors) {
     }
 }
 
-TEST(CoreUnit, IrVerifierAcceptsStringAndLayoutValues) {
+TEST(CoreUnit, IrVerifierAcceptsStringAndLayoutValues)
+{
     Module module;
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     const TypeHandle usize = builtin(module, BuiltinType::usize);
@@ -899,17 +908,15 @@ TEST(CoreUnit, IrVerifierAcceptsStringAndLayoutValues) {
     const TypeHandle const_u8_ptr = ptr(module, PointerMutability::const_, u8);
 
     Function function = make_function(module, "string_and_layout", str);
-    FunctionBuilder builder {module, function};
+    FunctionBuilder builder{module, function};
 
     const ValueId string_value =
         builder.add(typed_value(module, ValueKind::string_literal, str, IR_VERIFIER_STRING_LITERAL_BYTES));
     const ValueId raw_string_value =
         builder.add(typed_value(module, ValueKind::raw_string_literal, str, IR_VERIFIER_STRING_LITERAL_BYTES));
-    const ValueId char_value =
-        builder.add(typed_value(module, ValueKind::char_literal, char_type, "'\\u{03BB}'"));
-    const ValueId c_string_value = builder.add(
-        typed_value(module, ValueKind::c_string_literal, const_u8_ptr, IR_VERIFIER_C_STRING_LITERAL_BYTES)
-    );
+    const ValueId char_value = builder.add(typed_value(module, ValueKind::char_literal, char_type, "'\\u{03BB}'"));
+    const ValueId c_string_value =
+        builder.add(typed_value(module, ValueKind::c_string_literal, const_u8_ptr, IR_VERIFIER_C_STRING_LITERAL_BYTES));
 
     Value size_of_value = typed_value(module, ValueKind::size_of, usize);
     size_of_value.target_type = i32;
@@ -936,9 +943,7 @@ TEST(CoreUnit, IrVerifierAcceptsStringAndLayoutValues) {
     str_slice_value.rhs = str_len_id;
     const ValueId str_slice_id = builder.add(str_slice_value);
 
-    append_return_block(
-        builder,
-        function,
+    append_return_block(builder, function,
         {
             string_value,
             raw_string_value,
@@ -951,14 +956,14 @@ TEST(CoreUnit, IrVerifierAcceptsStringAndLayoutValues) {
             from_bytes_id,
             str_slice_id,
         },
-        from_bytes_id
-    );
+        from_bytes_id);
     append_function(module, function);
 
     EXPECT_TRUE(ir::verify_module(module));
 }
 
-TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
+TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors)
+{
     Module module;
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     const TypeHandle usize = builtin(module, BuiltinType::usize);
@@ -970,19 +975,19 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
     const TypeHandle u8_slice = module.types.slice(PointerMutability::const_, u8);
 
     Function function = make_function(module, "bad_string_builtins", i32);
-    FunctionBuilder builder {module, function};
+    FunctionBuilder builder{module, function};
 
     const ValueId bad_string_literal =
         builder.add(typed_value(module, ValueKind::string_literal, i32, IR_VERIFIER_STRING_LITERAL_BYTES));
     const ValueId bad_c_string_literal =
         builder.add(typed_value(module, ValueKind::c_string_literal, i32, IR_VERIFIER_C_STRING_LITERAL_BYTES));
-    const ValueId bad_byte_literal = builder.add(typed_value(module, ValueKind::byte_literal, i32, IR_VERIFIER_LITERAL_ONE));
+    const ValueId bad_byte_literal =
+        builder.add(typed_value(module, ValueKind::byte_literal, i32, IR_VERIFIER_LITERAL_ONE));
     const ValueId bad_undef = builder.add(typed_value(module, ValueKind::undef, builtin(module, BuiltinType::void_)));
     const ValueId good_string_value =
         builder.add(typed_value(module, ValueKind::string_literal, str, IR_VERIFIER_STRING_LITERAL_BYTES));
-    const ValueId good_c_string_value = builder.add(
-        typed_value(module, ValueKind::c_string_literal, const_u8_ptr, IR_VERIFIER_C_STRING_LITERAL_BYTES)
-    );
+    const ValueId good_c_string_value =
+        builder.add(typed_value(module, ValueKind::c_string_literal, const_u8_ptr, IR_VERIFIER_C_STRING_LITERAL_BYTES));
     const ValueId bad_mut_ptr_value = builder.add(typed_value(module, ValueKind::undef, mut_u8_ptr));
     const ValueId usize_one = builder.add(integer_value(module, usize, IR_VERIFIER_LITERAL_ONE));
     const ValueId bool_value_id = builder.add(bool_value(module, true));
@@ -1064,9 +1069,7 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
     const ValueId bad_from_length_id = builder.add(bad_from_length);
 
     const ValueId result = builder.add(integer_value(module, i32, IR_VERIFIER_LITERAL_ZERO));
-    append_return_block(
-        builder,
-        function,
+    append_return_block(builder, function,
         {
             bad_string_literal,
             bad_c_string_literal,
@@ -1096,36 +1099,37 @@ TEST(CoreUnit, IrVerifierReportsStringBuiltinShapeErrors) {
             bad_from_length_id,
             result,
         },
-        result
-    );
+        result);
     append_function(module, function);
 
     const auto verify = ir::verify_module(module);
     ASSERT_FALSE(verify);
-    expect_contains_all(verify.error().message, {
-        "string literal type must be str",
-        "c string literal type must be *const u8",
-        "byte literal type must be u8",
-        "undef value cannot have void type",
-        "strptr result must be *const u8",
-        "strptr operand type mismatch",
-        "strblen result must be usize",
-        "strblen operand type mismatch",
-        "strvalid result must be bool",
-        "str UTF-8 builtin operand must be a []const u8 or []mut u8 byte slice",
-        "strfromutf8 result must be str",
-        "str slice result must be str",
-        "str slice object type mismatch",
-        "str slice start type mismatch",
-        "str slice end type mismatch",
-        "strraw requires data and length arguments",
-        "strraw result must be str",
-        "strraw data must be *const u8",
-        "strraw length type mismatch",
-    });
+    expect_contains_all(verify.error().message,
+        {
+            "string literal type must be str",
+            "c string literal type must be *const u8",
+            "byte literal type must be u8",
+            "undef value cannot have void type",
+            "strptr result must be *const u8",
+            "strptr operand type mismatch",
+            "strblen result must be usize",
+            "strblen operand type mismatch",
+            "strvalid result must be bool",
+            "str UTF-8 builtin operand must be a []const u8 or []mut u8 byte slice",
+            "strfromutf8 result must be str",
+            "str slice result must be str",
+            "str slice object type mismatch",
+            "str slice start type mismatch",
+            "str slice end type mismatch",
+            "strraw requires data and length arguments",
+            "strraw result must be str",
+            "strraw data must be *const u8",
+            "strraw length type mismatch",
+        });
 }
 
-TEST(CoreUnit, IrVerifierReportsOperatorAndStorageShapeErrors) {
+TEST(CoreUnit, IrVerifierReportsOperatorAndStorageShapeErrors)
+{
     Module module;
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
@@ -1140,18 +1144,19 @@ TEST(CoreUnit, IrVerifierReportsOperatorAndStorageShapeErrors) {
     const TypeHandle const_array_ptr = ptr(module, PointerMutability::const_, array_i32);
     const TypeHandle mut_bool_ptr = ptr(module, PointerMutability::mut, bool_type);
 
-    append_record_with_fields(module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "x", i32)});
+    append_record_with_fields(
+        module, record_type, "unit.Record", "unit_Record", false, {record_field(module, "x", i32)});
 
     Function function = make_function(module, "operators_and_storage", i32);
-    FunctionBuilder builder {module, function};
+    FunctionBuilder builder{module, function};
 
     const ValueId bool_true = builder.add(bool_value(module, true));
     const ValueId bool_false = builder.add(bool_value(module, false));
     const ValueId i32_one = builder.add(integer_value(module, i32, IR_VERIFIER_LITERAL_ONE));
     const ValueId i32_two = builder.add(integer_value(module, i32, IR_VERIFIER_LITERAL_TWO));
     const ValueId usize_one = builder.add(integer_value(module, usize, IR_VERIFIER_LITERAL_ONE));
-    const ValueId invalid_typed_literal =
-        builder.add(typed_value(module, ValueKind::integer_literal, sema::INVALID_TYPE_HANDLE, IR_VERIFIER_LITERAL_ONE));
+    const ValueId invalid_typed_literal = builder.add(
+        typed_value(module, ValueKind::integer_literal, sema::INVALID_TYPE_HANDLE, IR_VERIFIER_LITERAL_ONE));
     const ValueId record_value = builder.add(typed_value(module, ValueKind::undef, record_type));
 
     const ValueId alloca_not_pointer = builder.add(alloca_value(module, i32));
@@ -1181,9 +1186,8 @@ TEST(CoreUnit, IrVerifierReportsOperatorAndStorageShapeErrors) {
     const ValueId field_not_pointer_id = builder.add(field_not_pointer);
 
     Value field_mismatch = typed_value(module, ValueKind::field_addr, ptr(module, PointerMutability::mut, bool_type));
-    field_mismatch.object = builder.add(
-        typed_value(module, ValueKind::undef, ptr(module, PointerMutability::const_, record_type))
-    );
+    field_mismatch.object =
+        builder.add(typed_value(module, ValueKind::undef, ptr(module, PointerMutability::const_, record_type)));
     set_name(module, field_mismatch, "x");
     const ValueId field_mismatch_id = builder.add(field_mismatch);
 
@@ -1192,8 +1196,7 @@ TEST(CoreUnit, IrVerifierReportsOperatorAndStorageShapeErrors) {
     index_not_pointer.index = i32_one;
     const ValueId index_not_pointer_id = builder.add(index_not_pointer);
 
-    const ValueId const_array_object =
-        builder.add(typed_value(module, ValueKind::undef, const_array_ptr));
+    const ValueId const_array_object = builder.add(typed_value(module, ValueKind::undef, const_array_ptr));
 
     Value index_bad = typed_value(module, ValueKind::index_addr, mut_bool_ptr);
     index_bad.object = const_array_object;
@@ -1285,9 +1288,7 @@ TEST(CoreUnit, IrVerifierReportsOperatorAndStorageShapeErrors) {
     const ValueId binary_numeric_bad_operand_id = builder.add(binary_numeric_bad_operand);
 
     const ValueId result = builder.add(integer_value(module, i32, IR_VERIFIER_LITERAL_ZERO));
-    append_return_block(
-        builder,
-        function,
+    append_return_block(builder, function,
         {
             bool_true,
             bool_false,
@@ -1325,46 +1326,47 @@ TEST(CoreUnit, IrVerifierReportsOperatorAndStorageShapeErrors) {
             binary_numeric_bad_operand_id,
             result,
         },
-        result
-    );
+        result);
     append_function(module, function);
 
     const auto verify = ir::verify_module(module);
     ASSERT_FALSE(verify);
-    expect_contains_all(verify.error().message, {
-        "alloca result must be a pointer",
-        "alloca result must be a mutable pointer",
-        "alloca pointee type is invalid",
-        "alloca pointee type is not valid storage",
-        "load result must not be void",
-        "store result must be void",
-        "cast result type must match cast target type",
-        "field address result is not a pointer",
-        "field address result type mismatch",
-        "field address cannot be mutable through const object",
-        "index address result is not a pointer",
-        "index must be an integer",
-        "index address result type mismatch",
-        "index address cannot be mutable through const object",
-        "unary operand value id is invalid",
-        "unary operand type is invalid",
-        "logical unary operator requires bool operand and result",
-        "numeric unary operator requires matching numeric operand and result",
-        "bitwise unary operator requires matching integer operand and result",
-        "address/dereference unary passthrough type mismatch",
-        "comparison binary result must be bool",
-        "comparison binary operands must be numeric",
-        "equality binary result must be bool",
-        "equality binary operands must be scalar",
-        "logical binary operator requires bool operands and result",
-        "integer binary result must match operand type",
-        "integer binary operator requires integer operands",
-        "numeric binary result must match operand type",
-        "numeric binary operator requires numeric operands",
-    });
+    expect_contains_all(verify.error().message,
+        {
+            "alloca result must be a pointer",
+            "alloca result must be a mutable pointer",
+            "alloca pointee type is invalid",
+            "alloca pointee type is not valid storage",
+            "load result must not be void",
+            "store result must be void",
+            "cast result type must match cast target type",
+            "field address result is not a pointer",
+            "field address result type mismatch",
+            "field address cannot be mutable through const object",
+            "index address result is not a pointer",
+            "index must be an integer",
+            "index address result type mismatch",
+            "index address cannot be mutable through const object",
+            "unary operand value id is invalid",
+            "unary operand type is invalid",
+            "logical unary operator requires bool operand and result",
+            "numeric unary operator requires matching numeric operand and result",
+            "bitwise unary operator requires matching integer operand and result",
+            "address/dereference unary passthrough type mismatch",
+            "comparison binary result must be bool",
+            "comparison binary operands must be numeric",
+            "equality binary result must be bool",
+            "equality binary operands must be scalar",
+            "logical binary operator requires bool operands and result",
+            "integer binary result must match operand type",
+            "integer binary operator requires integer operands",
+            "numeric binary result must match operand type",
+            "numeric binary operator requires numeric operands",
+        });
 }
 
-TEST(CoreUnit, IrVerifierReportsExternDeclarationMismatches) {
+TEST(CoreUnit, IrVerifierReportsExternDeclarationMismatches)
+{
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
@@ -1376,9 +1378,7 @@ TEST(CoreUnit, IrVerifierReportsExternDeclarationMismatches) {
         append_function(module, first);
         append_function(module, second);
         expect_error_contains(
-            ir::verify_module(module),
-            "extern function @unit_extern_return has inconsistent declarations"
-        );
+            ir::verify_module(module), "extern function @unit_extern_return has inconsistent declarations");
     }
     {
         Module module;
@@ -1393,13 +1393,12 @@ TEST(CoreUnit, IrVerifierReportsExternDeclarationMismatches) {
         append_function(module, first);
         append_function(module, second);
         expect_error_contains(
-            ir::verify_module(module),
-            "extern function @unit_extern_param has inconsistent declarations"
-        );
+            ir::verify_module(module), "extern function @unit_extern_param has inconsistent declarations");
     }
 }
 
-TEST(CoreUnit, IrVerifierChecksSliceStructuralRules) {
+TEST(CoreUnit, IrVerifierChecksSliceStructuralRules)
+{
     Module module;
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
@@ -1411,7 +1410,7 @@ TEST(CoreUnit, IrVerifierChecksSliceStructuralRules) {
     const TypeHandle mut_slice_i32 = module.types.slice(PointerMutability::mut, i32);
 
     Function function = make_function(module, "bad_slices", i32);
-    FunctionBuilder builder {module, function};
+    FunctionBuilder builder{module, function};
     const ValueId zero = builder.add(integer_value(module, i32, IR_VERIFIER_LITERAL_ZERO));
     const ValueId length = builder.add(integer_value(module, usize, IR_VERIFIER_LITERAL_ONE));
     const ValueId bool_length = builder.add(bool_value(module, true));
@@ -1427,7 +1426,8 @@ TEST(CoreUnit, IrVerifierChecksSliceStructuralRules) {
     const ValueId bad_mut_slice_const_data = builder.add(slice_value(module, mut_slice_i32, const_data, length));
     const ValueId bad_slice_non_pointer_data = builder.add(slice_value(module, const_slice_i32, zero, length));
     const ValueId bad_slice_missing_data = builder.add(slice_value(module, const_slice_i32, INVALID_VALUE_ID, length));
-    const ValueId bad_slice_missing_length = builder.add(slice_value(module, const_slice_i32, mut_data, INVALID_VALUE_ID));
+    const ValueId bad_slice_missing_length =
+        builder.add(slice_value(module, const_slice_i32, mut_data, INVALID_VALUE_ID));
     const ValueId bad_data_object = builder.add(slice_data_value(module, const_ptr_i32, zero));
     const ValueId bad_data_result = builder.add(slice_data_value(module, mut_ptr_i32, const_slice));
     const ValueId bad_data_element = builder.add(slice_data_value(module, mut_ptr_bool, mut_slice));
@@ -1437,9 +1437,7 @@ TEST(CoreUnit, IrVerifierChecksSliceStructuralRules) {
     const ValueId missing_len_object = builder.add(slice_len_value(module, usize, INVALID_VALUE_ID));
     const ValueId missing_data_object = builder.add(slice_data_value(module, const_ptr_i32, INVALID_VALUE_ID));
 
-    append_return_block(
-        builder,
-        function,
+    append_return_block(builder, function,
         {
             zero,
             length,
@@ -1465,26 +1463,27 @@ TEST(CoreUnit, IrVerifierChecksSliceStructuralRules) {
             missing_len_object,
             missing_data_object,
         },
-        zero
-    );
+        zero);
     append_function(module, function);
 
     const auto result = ir::verify_module(module);
     ASSERT_FALSE(result);
-    expect_contains_all(result.error().message, {
-        "slice value result must be a slice",
-        "slice data must be pointer to slice element",
-        "slice length must be usize",
-        "slice data value id is invalid",
-        "slice data result must be pointer to slice element",
-        "slice length result must be usize",
-        "slice length value id is invalid",
-        "slice_data object value id is invalid",
-        "slice_len object value id is invalid",
-    });
+    expect_contains_all(result.error().message,
+        {
+            "slice value result must be a slice",
+            "slice data must be pointer to slice element",
+            "slice length must be usize",
+            "slice data value id is invalid",
+            "slice data result must be pointer to slice element",
+            "slice length result must be usize",
+            "slice length value id is invalid",
+            "slice_data object value id is invalid",
+            "slice_len object value id is invalid",
+        });
 }
 
-TEST(CoreUnit, IrVerifierChecksFunctionRefsAndIndirectCalls) {
+TEST(CoreUnit, IrVerifierChecksFunctionRefsAndIndirectCalls)
+{
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
@@ -1496,10 +1495,10 @@ TEST(CoreUnit, IrVerifierChecksFunctionRefsAndIndirectCalls) {
         function_ref.kind = ValueKind::function_ref;
         function_ref.type = callback;
         function_ref.name = module.functions[0].symbol;
-        function_ref.call_target = FunctionId {0};
+        function_ref.call_target = FunctionId{0};
         const ValueId ref_id = add_value(module, function_ref);
         [[maybe_unused]] const GlobalConstantId constant =
-            add_global_constant(module, GlobalConstant {"target", "test_target_ref", callback, ref_id});
+            add_global_constant(module, GlobalConstant{"target", "test_target_ref", callback, ref_id});
         EXPECT_TRUE(ir::verify_module(module));
     }
     {
@@ -1507,7 +1506,7 @@ TEST(CoreUnit, IrVerifierChecksFunctionRefsAndIndirectCalls) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle callback = module.types.function(sema::FunctionCallConv::aurex, false, {}, i32);
         Function caller = make_function(module, "caller", i32);
-        FunctionBuilder builder {module, caller};
+        FunctionBuilder builder{module, caller};
         const ValueId callee = builder.add(typed_value(module, ValueKind::undef, callback));
         Value call = module.make_value();
         call.kind = ValueKind::call;
@@ -1529,17 +1528,18 @@ TEST(CoreUnit, IrVerifierChecksFunctionRefsAndIndirectCalls) {
         function_ref.kind = ValueKind::function_ref;
         function_ref.type = callback;
         function_ref.name = module.functions[0].symbol;
-        function_ref.call_target = FunctionId {0};
+        function_ref.call_target = FunctionId{0};
         const ValueId ref_id = add_value(module, function_ref);
         [[maybe_unused]] const GlobalConstantId constant =
-            add_global_constant(module, GlobalConstant {"target", "test_bad_target_ref", callback, ref_id});
-        expect_error_contains(ir::verify_module(module), "function reference result type does not match target signature");
+            add_global_constant(module, GlobalConstant{"target", "test_bad_target_ref", callback, ref_id});
+        expect_error_contains(
+            ir::verify_module(module), "function reference result type does not match target signature");
     }
     {
         Module module;
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         Function caller = make_function(module, "caller", i32);
-        FunctionBuilder builder {module, caller};
+        FunctionBuilder builder{module, caller};
         const ValueId callee = builder.add(integer_value(module, i32, IR_VERIFIER_LITERAL_ONE));
         Value call = module.make_value();
         call.kind = ValueKind::call;
@@ -1555,7 +1555,7 @@ TEST(CoreUnit, IrVerifierChecksFunctionRefsAndIndirectCalls) {
         const TypeHandle i32 = builtin(module, BuiltinType::i32);
         const TypeHandle callback = module.types.function(sema::FunctionCallConv::aurex, false, {i32}, i32);
         Function caller = make_function(module, "caller", i32);
-        FunctionBuilder builder {module, caller};
+        FunctionBuilder builder{module, caller};
         const ValueId callee = builder.add(typed_value(module, ValueKind::undef, callback));
         Value call = module.make_value();
         call.kind = ValueKind::call;

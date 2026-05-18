@@ -21,7 +21,7 @@ struct IdentId {
     [[nodiscard]] friend constexpr bool operator==(IdentId lhs, IdentId rhs) noexcept = default;
 };
 
-inline constexpr IdentId INVALID_IDENT_ID {IdentId::INVALID_VALUE};
+inline constexpr IdentId INVALID_IDENT_ID{IdentId::INVALID_VALUE};
 
 struct StableHash64 {
     base::u64 value = 0;
@@ -29,7 +29,8 @@ struct StableHash64 {
     [[nodiscard]] friend constexpr bool operator==(StableHash64 lhs, StableHash64 rhs) noexcept = default;
 };
 
-[[nodiscard]] inline constexpr bool is_valid(const IdentId id) noexcept {
+[[nodiscard]] inline constexpr bool is_valid(const IdentId id) noexcept
+{
     return id.value != IdentId::INVALID_VALUE;
 }
 
@@ -61,13 +62,8 @@ public:
 private:
     using TextVector = base::BumpVector<std::string_view>;
     using IdMapEntry = std::pair<const std::string_view, IdentId>;
-    using IdMap = std::unordered_map<
-        std::string_view,
-        IdentId,
-        IdentifierTextHash,
-        std::equal_to<>,
-        base::BumpAllocatorAdapter<IdMapEntry>
-    >;
+    using IdMap = std::unordered_map<std::string_view, IdentId, IdentifierTextHash, std::equal_to<>,
+        base::BumpAllocatorAdapter<IdMapEntry>>;
 
     void ensure_storage();
 

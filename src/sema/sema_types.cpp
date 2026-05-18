@@ -1,5 +1,4 @@
 #include <aurex/sema/sema.hpp>
-
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
@@ -72,7 +71,7 @@ enum class TypeLayoutVisitState {
 
 struct TypeLayoutFrame {
     TypeHandle type = INVALID_TYPE_HANDLE;
-    base::SourceRange range {};
+    base::SourceRange range{};
     TypeLayoutFrameStage stage = TypeLayoutFrameStage::enter;
 };
 
@@ -94,7 +93,7 @@ struct TypeResolveAction {
     syntax::FunctionCallConv function_call_conv = syntax::FunctionCallConv::aurex;
     bool function_is_unsafe = false;
     bool function_is_variadic = false;
-    std::optional<base::u64> array_count {};
+    std::optional<base::u64> array_count{};
     base::usize tuple_element_count = 0;
     base::usize function_param_count = 0;
 };
@@ -115,9 +114,8 @@ struct PlaceIntegerLiteralExpr {
 };
 
 [[nodiscard]] PlaceIntegerLiteralExpr place_integer_literal_expr(
-    const syntax::AstModule& module,
-    const syntax::ExprId candidate
-) noexcept {
+    const syntax::AstModule& module, const syntax::ExprId candidate) noexcept
+{
     if (!syntax::is_valid(candidate) || candidate.value >= module.exprs.size()) {
         return {};
     }
@@ -126,117 +124,142 @@ struct PlaceIntegerLiteralExpr {
         return {candidate, false};
     }
     const syntax::UnaryExprPayload* const unary = module.exprs.unary_payload(candidate.value);
-    if (kind == syntax::ExprKind::unary &&
-        unary != nullptr &&
-        unary->op == syntax::UnaryOp::numeric_negate &&
-        syntax::is_valid(unary->operand) &&
-        unary->operand.value < module.exprs.size() &&
-        module.exprs.kind(unary->operand.value) == syntax::ExprKind::integer_literal) {
+    if (kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::numeric_negate
+        && syntax::is_valid(unary->operand) && unary->operand.value < module.exprs.size()
+        && module.exprs.kind(unary->operand.value) == syntax::ExprKind::integer_literal) {
         return {unary->operand, true};
     }
     return {};
 }
 
 [[nodiscard]] base::SourceRange place_expr_range_or(
-    const syntax::AstModule& module,
-    const syntax::ExprId expr,
-    const base::SourceRange& fallback
-) noexcept {
-    return syntax::is_valid(expr) && expr.value < module.exprs.size()
-        ? module.exprs.range(expr.value)
-        : fallback;
+    const syntax::AstModule& module, const syntax::ExprId expr, const base::SourceRange& fallback) noexcept
+{
+    return syntax::is_valid(expr) && expr.value < module.exprs.size() ? module.exprs.range(expr.value) : fallback;
 }
 
-[[nodiscard]] BuiltinType map_builtin(const syntax::PrimitiveTypeKind kind) noexcept {
+[[nodiscard]] BuiltinType map_builtin(const syntax::PrimitiveTypeKind kind) noexcept
+{
     switch (kind) {
-    case syntax::PrimitiveTypeKind::void_: return BuiltinType::void_;
-    case syntax::PrimitiveTypeKind::bool_: return BuiltinType::bool_;
-    case syntax::PrimitiveTypeKind::i8: return BuiltinType::i8;
-    case syntax::PrimitiveTypeKind::u8: return BuiltinType::u8;
-    case syntax::PrimitiveTypeKind::i16: return BuiltinType::i16;
-    case syntax::PrimitiveTypeKind::u16: return BuiltinType::u16;
-    case syntax::PrimitiveTypeKind::i32: return BuiltinType::i32;
-    case syntax::PrimitiveTypeKind::u32: return BuiltinType::u32;
-    case syntax::PrimitiveTypeKind::i64: return BuiltinType::i64;
-    case syntax::PrimitiveTypeKind::u64: return BuiltinType::u64;
-    case syntax::PrimitiveTypeKind::isize: return BuiltinType::isize;
-    case syntax::PrimitiveTypeKind::usize: return BuiltinType::usize;
-    case syntax::PrimitiveTypeKind::f32: return BuiltinType::f32;
-    case syntax::PrimitiveTypeKind::f64: return BuiltinType::f64;
-    case syntax::PrimitiveTypeKind::str: return BuiltinType::str;
-    case syntax::PrimitiveTypeKind::char_: return BuiltinType::char_;
+        case syntax::PrimitiveTypeKind::void_:
+            return BuiltinType::void_;
+        case syntax::PrimitiveTypeKind::bool_:
+            return BuiltinType::bool_;
+        case syntax::PrimitiveTypeKind::i8:
+            return BuiltinType::i8;
+        case syntax::PrimitiveTypeKind::u8:
+            return BuiltinType::u8;
+        case syntax::PrimitiveTypeKind::i16:
+            return BuiltinType::i16;
+        case syntax::PrimitiveTypeKind::u16:
+            return BuiltinType::u16;
+        case syntax::PrimitiveTypeKind::i32:
+            return BuiltinType::i32;
+        case syntax::PrimitiveTypeKind::u32:
+            return BuiltinType::u32;
+        case syntax::PrimitiveTypeKind::i64:
+            return BuiltinType::i64;
+        case syntax::PrimitiveTypeKind::u64:
+            return BuiltinType::u64;
+        case syntax::PrimitiveTypeKind::isize:
+            return BuiltinType::isize;
+        case syntax::PrimitiveTypeKind::usize:
+            return BuiltinType::usize;
+        case syntax::PrimitiveTypeKind::f32:
+            return BuiltinType::f32;
+        case syntax::PrimitiveTypeKind::f64:
+            return BuiltinType::f64;
+        case syntax::PrimitiveTypeKind::str:
+            return BuiltinType::str;
+        case syntax::PrimitiveTypeKind::char_:
+            return BuiltinType::char_;
     }
     return BuiltinType::void_;
 }
 
-[[nodiscard]] PointerMutability map_mutability(const syntax::PointerMutability mutability) noexcept {
+[[nodiscard]] PointerMutability map_mutability(const syntax::PointerMutability mutability) noexcept
+{
     return mutability == syntax::PointerMutability::mut ? PointerMutability::mut : PointerMutability::const_;
 }
 
-[[nodiscard]] FunctionCallConv map_function_call_conv(const syntax::FunctionCallConv call_conv) noexcept {
+[[nodiscard]] FunctionCallConv map_function_call_conv(const syntax::FunctionCallConv call_conv) noexcept
+{
     return call_conv == syntax::FunctionCallConv::c ? FunctionCallConv::c : FunctionCallConv::aurex;
 }
 
-[[nodiscard]] bool builtin_is_unsigned(const BuiltinType type) noexcept {
+[[nodiscard]] bool builtin_is_unsigned(const BuiltinType type) noexcept
+{
     switch (type) {
-    case BuiltinType::u8:
-    case BuiltinType::u16:
-    case BuiltinType::u32:
-    case BuiltinType::u64:
-    case BuiltinType::usize:
-        return true;
-    default:
-        return false;
+        case BuiltinType::u8:
+        case BuiltinType::u16:
+        case BuiltinType::u32:
+        case BuiltinType::u64:
+        case BuiltinType::usize:
+            return true;
+        default:
+            return false;
     }
 }
 
-[[nodiscard]] base::u32 builtin_integer_bits(const BuiltinType type) noexcept {
+[[nodiscard]] base::u32 builtin_integer_bits(const BuiltinType type) noexcept
+{
     switch (type) {
-    case BuiltinType::i8:
-    case BuiltinType::u8: return std::numeric_limits<std::uint8_t>::digits;
-    case BuiltinType::i16:
-    case BuiltinType::u16: return std::numeric_limits<std::uint16_t>::digits;
-    case BuiltinType::i32:
-    case BuiltinType::u32: return std::numeric_limits<std::uint32_t>::digits;
-    case BuiltinType::i64:
-    case BuiltinType::u64: return std::numeric_limits<std::uint64_t>::digits;
-    case BuiltinType::isize: return std::numeric_limits<std::ptrdiff_t>::digits;
-    case BuiltinType::usize: return std::numeric_limits<std::size_t>::digits;
-    default: return SEMA_INTEGER_LITERAL_INVALID_BITS;
+        case BuiltinType::i8:
+        case BuiltinType::u8:
+            return std::numeric_limits<std::uint8_t>::digits;
+        case BuiltinType::i16:
+        case BuiltinType::u16:
+            return std::numeric_limits<std::uint16_t>::digits;
+        case BuiltinType::i32:
+        case BuiltinType::u32:
+            return std::numeric_limits<std::uint32_t>::digits;
+        case BuiltinType::i64:
+        case BuiltinType::u64:
+            return std::numeric_limits<std::uint64_t>::digits;
+        case BuiltinType::isize:
+            return std::numeric_limits<std::ptrdiff_t>::digits;
+        case BuiltinType::usize:
+            return std::numeric_limits<std::size_t>::digits;
+        default:
+            return SEMA_INTEGER_LITERAL_INVALID_BITS;
     }
 }
 
-[[nodiscard]] bool parse_integer_literal_digit(const char c, const int radix, base::u64& digit) noexcept {
+[[nodiscard]] bool parse_integer_literal_digit(const char c, const int radix, base::u64& digit) noexcept
+{
     if (c >= SEMA_INTEGER_LITERAL_DECIMAL_FIRST_CHAR && c <= SEMA_INTEGER_LITERAL_DECIMAL_LAST_CHAR) {
         digit = static_cast<base::u64>(c - SEMA_INTEGER_LITERAL_DECIMAL_FIRST_CHAR);
         return digit < static_cast<base::u64>(radix);
     }
     if (c >= SEMA_INTEGER_LITERAL_HEX_LOWER_FIRST_CHAR && c <= SEMA_INTEGER_LITERAL_HEX_LOWER_LAST_CHAR) {
-        digit = static_cast<base::u64>(SEMA_INTEGER_LITERAL_HEX_DIGIT_OFFSET +
-            static_cast<base::u64>(c - SEMA_INTEGER_LITERAL_HEX_LOWER_FIRST_CHAR));
+        digit = static_cast<base::u64>(SEMA_INTEGER_LITERAL_HEX_DIGIT_OFFSET
+            + static_cast<base::u64>(c - SEMA_INTEGER_LITERAL_HEX_LOWER_FIRST_CHAR));
         return digit < static_cast<base::u64>(radix);
     }
     if (c >= SEMA_INTEGER_LITERAL_HEX_UPPER_FIRST_CHAR && c <= SEMA_INTEGER_LITERAL_HEX_UPPER_LAST_CHAR) {
-        digit = static_cast<base::u64>(SEMA_INTEGER_LITERAL_HEX_DIGIT_OFFSET +
-            static_cast<base::u64>(c - SEMA_INTEGER_LITERAL_HEX_UPPER_FIRST_CHAR));
+        digit = static_cast<base::u64>(SEMA_INTEGER_LITERAL_HEX_DIGIT_OFFSET
+            + static_cast<base::u64>(c - SEMA_INTEGER_LITERAL_HEX_UPPER_FIRST_CHAR));
         return digit < static_cast<base::u64>(radix);
     }
     return false;
 }
 
-[[nodiscard]] bool is_decimal_digit_char(const char c) noexcept {
+[[nodiscard]] bool is_decimal_digit_char(const char c) noexcept
+{
     return c >= SEMA_INTEGER_LITERAL_DECIMAL_FIRST_CHAR && c <= SEMA_INTEGER_LITERAL_DECIMAL_LAST_CHAR;
 }
 
-[[nodiscard]] IntegerLiteralParts split_integer_literal_text(const std::string_view text) noexcept {
+[[nodiscard]] IntegerLiteralParts split_integer_literal_text(const std::string_view text) noexcept
+{
     int radix = SEMA_INTEGER_LITERAL_DECIMAL_BASE;
     base::usize index = 0;
     if (text.size() > SEMA_INTEGER_LITERAL_PREFIX_LENGTH && text[0] == SEMA_INTEGER_LITERAL_ZERO_CHAR) {
-        if (text[1] == SEMA_INTEGER_LITERAL_HEX_LOWER_PREFIX_CHAR || text[1] == SEMA_INTEGER_LITERAL_HEX_UPPER_PREFIX_CHAR) {
+        if (text[1] == SEMA_INTEGER_LITERAL_HEX_LOWER_PREFIX_CHAR
+            || text[1] == SEMA_INTEGER_LITERAL_HEX_UPPER_PREFIX_CHAR) {
             radix = SEMA_INTEGER_LITERAL_HEX_BASE;
             index = SEMA_INTEGER_LITERAL_PREFIX_LENGTH;
-        } else if (text[1] == SEMA_INTEGER_LITERAL_BINARY_LOWER_PREFIX_CHAR ||
-            text[1] == SEMA_INTEGER_LITERAL_BINARY_UPPER_PREFIX_CHAR) {
+        } else if (text[1] == SEMA_INTEGER_LITERAL_BINARY_LOWER_PREFIX_CHAR
+            || text[1] == SEMA_INTEGER_LITERAL_BINARY_UPPER_PREFIX_CHAR) {
             radix = SEMA_INTEGER_LITERAL_BINARY_BASE;
             index = SEMA_INTEGER_LITERAL_PREFIX_LENGTH;
         }
@@ -253,14 +276,15 @@ struct PlaceIntegerLiteralExpr {
         }
         ++index;
     }
-    return IntegerLiteralParts {text.substr(0, index), text.substr(index)};
+    return IntegerLiteralParts{text.substr(0, index), text.substr(index)};
 }
 
-[[nodiscard]] FloatLiteralParts split_float_literal_text(const std::string_view text) noexcept {
+[[nodiscard]] FloatLiteralParts split_float_literal_text(const std::string_view text) noexcept
+{
     base::usize index = 0;
     const auto consume_digits = [&]() noexcept {
-        while (index < text.size() &&
-               (is_decimal_digit_char(text[index]) || text[index] == SEMA_INTEGER_LITERAL_UNDERSCORE_CHAR)) {
+        while (index < text.size()
+            && (is_decimal_digit_char(text[index]) || text[index] == SEMA_INTEGER_LITERAL_UNDERSCORE_CHAR)) {
             ++index;
         }
     };
@@ -273,19 +297,20 @@ struct PlaceIntegerLiteralExpr {
         ++index;
         consume_digits();
     }
-    if (index < text.size() &&
-        (text[index] == SEMA_FLOAT_LITERAL_EXPONENT_LOWER || text[index] == SEMA_FLOAT_LITERAL_EXPONENT_UPPER)) {
+    if (index < text.size()
+        && (text[index] == SEMA_FLOAT_LITERAL_EXPONENT_LOWER || text[index] == SEMA_FLOAT_LITERAL_EXPONENT_UPPER)) {
         ++index;
-        if (index < text.size() &&
-            (text[index] == SEMA_FLOAT_LITERAL_PLUS || text[index] == SEMA_FLOAT_LITERAL_MINUS)) {
+        if (index < text.size()
+            && (text[index] == SEMA_FLOAT_LITERAL_PLUS || text[index] == SEMA_FLOAT_LITERAL_MINUS)) {
             ++index;
         }
         consume_digits();
     }
-    return FloatLiteralParts {text.substr(0, index), text.substr(index)};
+    return FloatLiteralParts{text.substr(0, index), text.substr(index)};
 }
 
-[[nodiscard]] std::optional<BuiltinType> integer_suffix_type(const std::string_view suffix) noexcept {
+[[nodiscard]] std::optional<BuiltinType> integer_suffix_type(const std::string_view suffix) noexcept
+{
     if (suffix == SEMA_INTEGER_LITERAL_SUFFIX_I8) {
         return BuiltinType::i8;
     }
@@ -319,7 +344,8 @@ struct PlaceIntegerLiteralExpr {
     return std::nullopt;
 }
 
-[[nodiscard]] std::optional<BuiltinType> float_suffix_type(const std::string_view suffix) noexcept {
+[[nodiscard]] std::optional<BuiltinType> float_suffix_type(const std::string_view suffix) noexcept
+{
     if (suffix == SEMA_FLOAT_LITERAL_SUFFIX_F32) {
         return BuiltinType::f32;
     }
@@ -329,15 +355,17 @@ struct PlaceIntegerLiteralExpr {
     return std::nullopt;
 }
 
-[[nodiscard]] bool parse_u64_literal_checked(const std::string_view text, base::u64& value) noexcept {
+[[nodiscard]] bool parse_u64_literal_checked(const std::string_view text, base::u64& value) noexcept
+{
     int radix = SEMA_INTEGER_LITERAL_DECIMAL_BASE;
     base::usize index = 0;
     if (text.size() > SEMA_INTEGER_LITERAL_PREFIX_LENGTH && text[0] == SEMA_INTEGER_LITERAL_ZERO_CHAR) {
-        if (text[1] == SEMA_INTEGER_LITERAL_HEX_LOWER_PREFIX_CHAR || text[1] == SEMA_INTEGER_LITERAL_HEX_UPPER_PREFIX_CHAR) {
+        if (text[1] == SEMA_INTEGER_LITERAL_HEX_LOWER_PREFIX_CHAR
+            || text[1] == SEMA_INTEGER_LITERAL_HEX_UPPER_PREFIX_CHAR) {
             radix = SEMA_INTEGER_LITERAL_HEX_BASE;
             index = SEMA_INTEGER_LITERAL_PREFIX_LENGTH;
-        } else if (text[1] == SEMA_INTEGER_LITERAL_BINARY_LOWER_PREFIX_CHAR ||
-            text[1] == SEMA_INTEGER_LITERAL_BINARY_UPPER_PREFIX_CHAR) {
+        } else if (text[1] == SEMA_INTEGER_LITERAL_BINARY_LOWER_PREFIX_CHAR
+            || text[1] == SEMA_INTEGER_LITERAL_BINARY_UPPER_PREFIX_CHAR) {
             radix = SEMA_INTEGER_LITERAL_BINARY_BASE;
             index = SEMA_INTEGER_LITERAL_PREFIX_LENGTH;
         }
@@ -365,7 +393,8 @@ struct PlaceIntegerLiteralExpr {
 }
 
 template <typename Float>
-[[nodiscard]] bool parse_float_literal_checked(const std::string_view text) noexcept {
+[[nodiscard]] bool parse_float_literal_checked(const std::string_view text) noexcept
+{
     const FloatLiteralParts parts = split_float_literal_text(text);
     if (!parts.suffix.empty() && !float_suffix_type(parts.suffix).has_value()) {
         return false;
@@ -377,18 +406,16 @@ template <typename Float>
             digits.push_back(c);
         }
     }
-    Float value {};
+    Float value{};
     const char* const begin = digits.data();
     const char* const end = digits.data() + digits.size();
     const auto result = std::from_chars(begin, end, value);
-    return result.ec == std::errc {} && result.ptr == end && std::isfinite(value);
+    return result.ec == std::errc{} && result.ptr == end && std::isfinite(value);
 }
 
 [[nodiscard]] bool literal_fits_integer_type(
-    const TypeTable& types,
-    const TypeHandle destination,
-    const std::string_view text
-) noexcept {
+    const TypeTable& types, const TypeHandle destination, const std::string_view text) noexcept
+{
     if (!types.is_integer(destination)) {
         return false;
     }
@@ -413,19 +440,17 @@ template <typename Float>
         if (bits >= SEMA_INTEGER_LITERAL_MAX_BITS) {
             return true;
         }
-        return value <= ((base::u64 {1} << bits) - 1);
+        return value <= ((base::u64{1} << bits) - 1);
     }
     if (bits >= SEMA_INTEGER_LITERAL_MAX_BITS) {
         return value <= static_cast<base::u64>(std::numeric_limits<std::int64_t>::max());
     }
-    return value <= ((base::u64 {1} << (bits - 1)) - 1);
+    return value <= ((base::u64{1} << (bits - 1)) - 1);
 }
 
 [[nodiscard]] bool negative_literal_fits_integer_type(
-    const TypeTable& types,
-    const TypeHandle destination,
-    const std::string_view text
-) noexcept {
+    const TypeTable& types, const TypeHandle destination, const std::string_view text) noexcept
+{
     if (!types.is_integer(destination)) {
         return false;
     }
@@ -447,12 +472,13 @@ template <typename Float>
         return false;
     }
     if (bits >= SEMA_INTEGER_LITERAL_MAX_BITS) {
-        return value <= (base::u64 {1} << SEMA_INTEGER_LITERAL_SIGN_BIT_SHIFT);
+        return value <= (base::u64{1} << SEMA_INTEGER_LITERAL_SIGN_BIT_SHIFT);
     }
-    return value <= (base::u64 {1} << (bits - 1));
+    return value <= (base::u64{1} << (bits - 1));
 }
 
-[[nodiscard]] base::u64 align_forward(const base::u64 offset, const base::u64 alignment) noexcept {
+[[nodiscard]] base::u64 align_forward(const base::u64 offset, const base::u64 alignment) noexcept
+{
     if (alignment == 0) {
         return offset;
     }
@@ -463,7 +489,8 @@ template <typename Float>
     return (offset + mask) & ~mask;
 }
 
-[[nodiscard]] bool checked_add_u64(const base::u64 lhs, const base::u64 rhs, base::u64& result) noexcept {
+[[nodiscard]] bool checked_add_u64(const base::u64 lhs, const base::u64 rhs, base::u64& result) noexcept
+{
     if (lhs > std::numeric_limits<base::u64>::max() - rhs) {
         result = std::numeric_limits<base::u64>::max();
         return false;
@@ -472,7 +499,8 @@ template <typename Float>
     return true;
 }
 
-[[nodiscard]] bool checked_mul_u64(const base::u64 lhs, const base::u64 rhs, base::u64& result) noexcept {
+[[nodiscard]] bool checked_mul_u64(const base::u64 lhs, const base::u64 rhs, base::u64& result) noexcept
+{
     if (lhs != 0 && rhs > std::numeric_limits<base::u64>::max() / lhs) {
         result = std::numeric_limits<base::u64>::max();
         return false;
@@ -481,11 +509,8 @@ template <typename Float>
     return true;
 }
 
-[[nodiscard]] bool checked_align_forward(
-    const base::u64 offset,
-    const base::u64 alignment,
-    base::u64& result
-) noexcept {
+[[nodiscard]] bool checked_align_forward(const base::u64 offset, const base::u64 alignment, base::u64& result) noexcept
+{
     if (alignment == 0) {
         result = offset;
         return true;
@@ -499,30 +524,32 @@ template <typename Float>
     return true;
 }
 
-[[nodiscard]] base::u64 add_saturating(const base::u64 lhs, const base::u64 rhs) noexcept {
+[[nodiscard]] base::u64 add_saturating(const base::u64 lhs, const base::u64 rhs) noexcept
+{
     base::u64 result = SEMA_ABI_INVALID_SIZE;
     static_cast<void>(checked_add_u64(lhs, rhs, result));
     return result;
 }
 
-[[nodiscard]] base::u64 mul_saturating(const base::u64 lhs, const base::u64 rhs) noexcept {
+[[nodiscard]] base::u64 mul_saturating(const base::u64 lhs, const base::u64 rhs) noexcept
+{
     base::u64 result = SEMA_ABI_INVALID_SIZE;
     static_cast<void>(checked_mul_u64(lhs, rhs, result));
     return result;
 }
 
-[[nodiscard]] bool is_builtin_scalar_bcast_type(const TypeTable& types, const TypeHandle type) noexcept {
+[[nodiscard]] bool is_builtin_scalar_bcast_type(const TypeTable& types, const TypeHandle type) noexcept
+{
     if (!is_valid(type)) {
         return false;
     }
     const TypeInfo& info = types.get(type);
-    return info.kind == TypeKind::builtin &&
-           info.builtin != BuiltinType::void_ &&
-           info.builtin != BuiltinType::bool_ &&
-           info.builtin != BuiltinType::str;
+    return info.kind == TypeKind::builtin && info.builtin != BuiltinType::void_ && info.builtin != BuiltinType::bool_
+        && info.builtin != BuiltinType::str;
 }
 
-[[nodiscard]] bool is_bitcast_type(const TypeTable& types, const TypeHandle type) noexcept {
+[[nodiscard]] bool is_bitcast_type(const TypeTable& types, const TypeHandle type) noexcept
+{
     if (!is_valid(type)) {
         return false;
     }
@@ -531,11 +558,13 @@ template <typename Float>
 
 } // namespace
 
-TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id) {
+TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id)
+{
     return this->resolve_type(type_id, false);
 }
 
-TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bool opaque_allowed_as_pointee) {
+TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bool opaque_allowed_as_pointee)
+{
     std::vector<TypeResolveAction> actions;
     std::vector<TypeHandle> values;
     actions.reserve(SEMA_TYPE_LAYOUT_INITIAL_STACK_CAPACITY);
@@ -550,253 +579,231 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
         const TypeResolveAction action = actions.back();
         actions.pop_back();
         switch (action.kind) {
-        case TypeResolveActionKind::resolve: {
-            if (!syntax::is_valid(action.type) || action.type.value >= this->module_.types.size()) {
-                values.push_back(INVALID_TYPE_HANDLE);
-                break;
-            }
-
-            const TypeHandle cached = this->cached_syntax_type(action.type);
-            if (is_valid(cached)) {
-                if (this->checked_.types.get(cached).kind == TypeKind::opaque_struct &&
-                    !action.opaque_allowed_as_pointee) {
-                    this->report_general(
-                        this->module_.types[action.type.value].range,
-                        "opaque struct can only be used as a pointer target"
-                    );
+            case TypeResolveActionKind::resolve: {
+                if (!syntax::is_valid(action.type) || action.type.value >= this->module_.types.size()) {
+                    values.push_back(INVALID_TYPE_HANDLE);
+                    break;
                 }
-                values.push_back(cached);
+
+                const TypeHandle cached = this->cached_syntax_type(action.type);
+                if (is_valid(cached)) {
+                    if (this->checked_.types.get(cached).kind == TypeKind::opaque_struct
+                        && !action.opaque_allowed_as_pointee) {
+                        this->report_general(this->module_.types[action.type.value].range,
+                            "opaque struct can only be used as a pointer target");
+                    }
+                    values.push_back(cached);
+                    break;
+                }
+
+                const syntax::TypeNode& type = this->module_.types[action.type.value];
+                switch (type.kind) {
+                    case syntax::TypeKind::primitive: {
+                        const TypeHandle resolved = this->checked_.types.builtin(map_builtin(type.primitive));
+                        this->record_syntax_type_handle(action.type, resolved);
+                        values.push_back(resolved);
+                        break;
+                    }
+                    case syntax::TypeKind::pointer: {
+                        TypeResolveAction build;
+                        build.kind = TypeResolveActionKind::build_pointer;
+                        build.type = action.type;
+                        build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                        build.pointer_mutability = type.pointer_mutability;
+                        actions.push_back(build);
+                        TypeResolveAction resolve_pointee;
+                        resolve_pointee.kind = TypeResolveActionKind::resolve;
+                        resolve_pointee.type = type.pointee;
+                        resolve_pointee.opaque_allowed_as_pointee = true;
+                        actions.push_back(resolve_pointee);
+                        break;
+                    }
+                    case syntax::TypeKind::reference: {
+                        TypeResolveAction build;
+                        build.kind = TypeResolveActionKind::build_reference;
+                        build.type = action.type;
+                        build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                        build.pointer_mutability = type.pointer_mutability;
+                        actions.push_back(build);
+                        TypeResolveAction resolve_pointee;
+                        resolve_pointee.kind = TypeResolveActionKind::resolve;
+                        resolve_pointee.type = type.pointee;
+                        resolve_pointee.opaque_allowed_as_pointee = false;
+                        actions.push_back(resolve_pointee);
+                        break;
+                    }
+                    case syntax::TypeKind::array: {
+                        TypeResolveAction build;
+                        build.kind = TypeResolveActionKind::build_array;
+                        build.type = action.type;
+                        build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                        build.array_count = type.array_count;
+                        actions.push_back(build);
+                        TypeResolveAction resolve_element;
+                        resolve_element.kind = TypeResolveActionKind::resolve;
+                        resolve_element.type = type.array_element;
+                        actions.push_back(resolve_element);
+                        break;
+                    }
+                    case syntax::TypeKind::slice: {
+                        TypeResolveAction build;
+                        build.kind = TypeResolveActionKind::build_slice;
+                        build.type = action.type;
+                        build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                        build.pointer_mutability = type.slice_mutability;
+                        actions.push_back(build);
+                        TypeResolveAction resolve_element;
+                        resolve_element.kind = TypeResolveActionKind::resolve;
+                        resolve_element.type = type.slice_element;
+                        actions.push_back(resolve_element);
+                        break;
+                    }
+                    case syntax::TypeKind::tuple: {
+                        TypeResolveAction build;
+                        build.kind = TypeResolveActionKind::build_tuple;
+                        build.type = action.type;
+                        build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                        build.tuple_element_count = type.tuple_elements.size();
+                        actions.push_back(build);
+                        for (base::usize index = type.tuple_elements.size(); index > 0; --index) {
+                            TypeResolveAction resolve_element;
+                            resolve_element.kind = TypeResolveActionKind::resolve;
+                            resolve_element.type = type.tuple_elements[index - 1];
+                            actions.push_back(resolve_element);
+                        }
+                        break;
+                    }
+                    case syntax::TypeKind::function: {
+                        TypeResolveAction build;
+                        build.kind = TypeResolveActionKind::build_function;
+                        build.type = action.type;
+                        build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
+                        build.function_call_conv = type.function_call_conv;
+                        build.function_is_unsafe = type.function_is_unsafe;
+                        build.function_is_variadic = type.function_is_variadic;
+                        build.function_param_count = type.function_params.size();
+                        actions.push_back(build);
+                        TypeResolveAction resolve_return;
+                        resolve_return.kind = TypeResolveActionKind::resolve;
+                        resolve_return.type = type.function_return;
+                        actions.push_back(resolve_return);
+                        for (base::usize index = type.function_params.size(); index > 0; --index) {
+                            TypeResolveAction resolve_param;
+                            resolve_param.kind = TypeResolveActionKind::resolve;
+                            resolve_param.type = type.function_params[index - 1];
+                            actions.push_back(resolve_param);
+                        }
+                        break;
+                    }
+                    case syntax::TypeKind::named: {
+                        const TypeHandle resolved =
+                            this->resolve_named_type(action.type, type, action.opaque_allowed_as_pointee);
+                        this->record_syntax_type_handle(action.type, resolved);
+                        values.push_back(resolved);
+                        break;
+                    }
+                }
                 break;
             }
-
-            const syntax::TypeNode& type = this->module_.types[action.type.value];
-            switch (type.kind) {
-            case syntax::TypeKind::primitive: {
-                const TypeHandle resolved = this->checked_.types.builtin(map_builtin(type.primitive));
+            case TypeResolveActionKind::build_pointer: {
+                const TypeHandle pointee = values.back();
+                values.pop_back();
+                const TypeHandle resolved =
+                    this->checked_.types.pointer(map_mutability(action.pointer_mutability), pointee);
                 this->record_syntax_type_handle(action.type, resolved);
                 values.push_back(resolved);
                 break;
             }
-            case syntax::TypeKind::pointer:
-            {
-                TypeResolveAction build;
-                build.kind = TypeResolveActionKind::build_pointer;
-                build.type = action.type;
-                build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
-                build.pointer_mutability = type.pointer_mutability;
-                actions.push_back(build);
-                TypeResolveAction resolve_pointee;
-                resolve_pointee.kind = TypeResolveActionKind::resolve;
-                resolve_pointee.type = type.pointee;
-                resolve_pointee.opaque_allowed_as_pointee = true;
-                actions.push_back(resolve_pointee);
-                break;
-            }
-            case syntax::TypeKind::reference:
-            {
-                TypeResolveAction build;
-                build.kind = TypeResolveActionKind::build_reference;
-                build.type = action.type;
-                build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
-                build.pointer_mutability = type.pointer_mutability;
-                actions.push_back(build);
-                TypeResolveAction resolve_pointee;
-                resolve_pointee.kind = TypeResolveActionKind::resolve;
-                resolve_pointee.type = type.pointee;
-                resolve_pointee.opaque_allowed_as_pointee = false;
-                actions.push_back(resolve_pointee);
-                break;
-            }
-            case syntax::TypeKind::array:
-            {
-                TypeResolveAction build;
-                build.kind = TypeResolveActionKind::build_array;
-                build.type = action.type;
-                build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
-                build.array_count = type.array_count;
-                actions.push_back(build);
-                TypeResolveAction resolve_element;
-                resolve_element.kind = TypeResolveActionKind::resolve;
-                resolve_element.type = type.array_element;
-                actions.push_back(resolve_element);
-                break;
-            }
-            case syntax::TypeKind::slice:
-            {
-                TypeResolveAction build;
-                build.kind = TypeResolveActionKind::build_slice;
-                build.type = action.type;
-                build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
-                build.pointer_mutability = type.slice_mutability;
-                actions.push_back(build);
-                TypeResolveAction resolve_element;
-                resolve_element.kind = TypeResolveActionKind::resolve;
-                resolve_element.type = type.slice_element;
-                actions.push_back(resolve_element);
-                break;
-            }
-            case syntax::TypeKind::tuple:
-            {
-                TypeResolveAction build;
-                build.kind = TypeResolveActionKind::build_tuple;
-                build.type = action.type;
-                build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
-                build.tuple_element_count = type.tuple_elements.size();
-                actions.push_back(build);
-                for (base::usize index = type.tuple_elements.size(); index > 0; --index) {
-                    TypeResolveAction resolve_element;
-                    resolve_element.kind = TypeResolveActionKind::resolve;
-                    resolve_element.type = type.tuple_elements[index - 1];
-                    actions.push_back(resolve_element);
+            case TypeResolveActionKind::build_reference: {
+                const TypeHandle pointee = values.back();
+                values.pop_back();
+                if (!this->is_valid_storage_type(pointee)) {
+                    this->report_general(
+                        this->module_.types[action.type.value].range, std::string(SEMA_REFERENCE_STORAGE));
                 }
-                break;
-            }
-            case syntax::TypeKind::function:
-            {
-                TypeResolveAction build;
-                build.kind = TypeResolveActionKind::build_function;
-                build.type = action.type;
-                build.opaque_allowed_as_pointee = action.opaque_allowed_as_pointee;
-                build.function_call_conv = type.function_call_conv;
-                build.function_is_unsafe = type.function_is_unsafe;
-                build.function_is_variadic = type.function_is_variadic;
-                build.function_param_count = type.function_params.size();
-                actions.push_back(build);
-                TypeResolveAction resolve_return;
-                resolve_return.kind = TypeResolveActionKind::resolve;
-                resolve_return.type = type.function_return;
-                actions.push_back(resolve_return);
-                for (base::usize index = type.function_params.size(); index > 0; --index) {
-                    TypeResolveAction resolve_param;
-                    resolve_param.kind = TypeResolveActionKind::resolve;
-                    resolve_param.type = type.function_params[index - 1];
-                    actions.push_back(resolve_param);
-                }
-                break;
-            }
-            case syntax::TypeKind::named: {
-                const TypeHandle resolved = this->resolve_named_type(
-                    action.type,
-                    type,
-                    action.opaque_allowed_as_pointee
-                );
+                const TypeHandle resolved =
+                    this->checked_.types.reference(map_mutability(action.pointer_mutability), pointee);
                 this->record_syntax_type_handle(action.type, resolved);
                 values.push_back(resolved);
                 break;
             }
-            }
-            break;
-        }
-        case TypeResolveActionKind::build_pointer: {
-            const TypeHandle pointee = values.back();
-            values.pop_back();
-            const TypeHandle resolved = this->checked_.types.pointer(map_mutability(action.pointer_mutability), pointee);
-            this->record_syntax_type_handle(action.type, resolved);
-            values.push_back(resolved);
-            break;
-        }
-        case TypeResolveActionKind::build_reference: {
-            const TypeHandle pointee = values.back();
-            values.pop_back();
-            if (!this->is_valid_storage_type(pointee)) {
-                this->report_general(this->module_.types[action.type.value].range, std::string(SEMA_REFERENCE_STORAGE));
-            }
-            const TypeHandle resolved = this->checked_.types.reference(map_mutability(action.pointer_mutability), pointee);
-            this->record_syntax_type_handle(action.type, resolved);
-            values.push_back(resolved);
-            break;
-        }
-        case TypeResolveActionKind::build_array: {
-            const TypeHandle element = values.back();
-            values.pop_back();
-            const TypeHandle resolved = this->checked_.types.array(*action.array_count, element);
-            this->record_syntax_type_handle(action.type, resolved);
-            values.push_back(resolved);
-            break;
-        }
-        case TypeResolveActionKind::build_slice: {
-            const TypeHandle element = values.back();
-            values.pop_back();
-            const TypeHandle resolved = this->checked_.types.slice(map_mutability(action.pointer_mutability), element);
-            this->record_syntax_type_handle(action.type, resolved);
-            values.push_back(resolved);
-            break;
-        }
-        case TypeResolveActionKind::build_tuple: {
-            std::vector<TypeHandle> elements(action.tuple_element_count, INVALID_TYPE_HANDLE);
-            for (base::usize index = action.tuple_element_count; index > 0; --index) {
-                if (values.empty()) {
-                    break;
-                }
-                elements[index - 1] = values.back();
+            case TypeResolveActionKind::build_array: {
+                const TypeHandle element = values.back();
                 values.pop_back();
+                const TypeHandle resolved = this->checked_.types.array(*action.array_count, element);
+                this->record_syntax_type_handle(action.type, resolved);
+                values.push_back(resolved);
+                break;
             }
-            for (const TypeHandle element : elements) {
-                if (!this->is_valid_storage_type(element)) {
-                    this->report_general(this->module_.types[action.type.value].range, std::string(SEMA_FIELD_STORAGE));
-                }
-            }
-            const TypeHandle resolved = this->checked_.types.tuple(elements);
-            this->record_syntax_type_handle(action.type, resolved);
-            values.push_back(resolved);
-            break;
-        }
-        case TypeResolveActionKind::build_function: {
-            std::vector<TypeHandle> params(action.function_param_count, INVALID_TYPE_HANDLE);
-            TypeHandle return_type = INVALID_TYPE_HANDLE;
-            if (!values.empty()) {
-                return_type = values.back();
+            case TypeResolveActionKind::build_slice: {
+                const TypeHandle element = values.back();
                 values.pop_back();
+                const TypeHandle resolved =
+                    this->checked_.types.slice(map_mutability(action.pointer_mutability), element);
+                this->record_syntax_type_handle(action.type, resolved);
+                values.push_back(resolved);
+                break;
             }
-            for (base::usize index = action.function_param_count; index > 0; --index) {
-                if (values.empty()) {
-                    break;
+            case TypeResolveActionKind::build_tuple: {
+                std::vector<TypeHandle> elements(action.tuple_element_count, INVALID_TYPE_HANDLE);
+                for (base::usize index = action.tuple_element_count; index > 0; --index) {
+                    if (values.empty()) {
+                        break;
+                    }
+                    elements[index - 1] = values.back();
+                    values.pop_back();
                 }
-                params[index - 1] = values.back();
-                values.pop_back();
+                for (const TypeHandle element : elements) {
+                    if (!this->is_valid_storage_type(element)) {
+                        this->report_general(
+                            this->module_.types[action.type.value].range, std::string(SEMA_FIELD_STORAGE));
+                    }
+                }
+                const TypeHandle resolved = this->checked_.types.tuple(elements);
+                this->record_syntax_type_handle(action.type, resolved);
+                values.push_back(resolved);
+                break;
             }
-            if (action.function_is_variadic &&
-                action.function_call_conv != syntax::FunctionCallConv::c) {
-                this->report_general(
-                    this->module_.types[action.type.value].range,
-                    std::string(SEMA_VARIADIC_FUNCTION_TYPE_EXTERN_C_ONLY)
-                );
-            }
-            for (const TypeHandle param : params) {
-                if (!this->is_valid_storage_type(param)) {
+            case TypeResolveActionKind::build_function: {
+                std::vector<TypeHandle> params(action.function_param_count, INVALID_TYPE_HANDLE);
+                TypeHandle return_type = INVALID_TYPE_HANDLE;
+                if (!values.empty()) {
+                    return_type = values.back();
+                    values.pop_back();
+                }
+                for (base::usize index = action.function_param_count; index > 0; --index) {
+                    if (values.empty()) {
+                        break;
+                    }
+                    params[index - 1] = values.back();
+                    values.pop_back();
+                }
+                if (action.function_is_variadic && action.function_call_conv != syntax::FunctionCallConv::c) {
+                    this->report_general(this->module_.types[action.type.value].range,
+                        std::string(SEMA_VARIADIC_FUNCTION_TYPE_EXTERN_C_ONLY));
+                }
+                for (const TypeHandle param : params) {
+                    if (!this->is_valid_storage_type(param)) {
+                        this->report_general(this->module_.types[action.type.value].range,
+                            std::string(SEMA_FUNCTION_TYPE_PARAMETER_STORAGE));
+                    }
+                    static_cast<void>(this->check_m2_value_abi(
+                        param, ValueAbiContext::function_type_parameter, this->module_.types[action.type.value].range));
+                }
+                if (is_valid(return_type) && !this->checked_.types.is_void(return_type)
+                    && !this->is_valid_storage_type(return_type)) {
                     this->report_general(
-                        this->module_.types[action.type.value].range,
-                        std::string(SEMA_FUNCTION_TYPE_PARAMETER_STORAGE)
-                    );
+                        this->module_.types[action.type.value].range, std::string(SEMA_FUNCTION_TYPE_RETURN_STORAGE));
                 }
                 static_cast<void>(this->check_m2_value_abi(
-                    param,
-                    ValueAbiContext::function_type_parameter,
-                    this->module_.types[action.type.value].range));
+                    return_type, ValueAbiContext::function_type_return, this->module_.types[action.type.value].range));
+                const TypeHandle resolved =
+                    this->checked_.types.function(map_function_call_conv(action.function_call_conv),
+                        action.function_is_unsafe, action.function_is_variadic, params, return_type);
+                this->record_syntax_type_handle(action.type, resolved);
+                values.push_back(resolved);
+                break;
             }
-            if (is_valid(return_type) &&
-                !this->checked_.types.is_void(return_type) &&
-                !this->is_valid_storage_type(return_type)) {
-                this->report_general(
-                    this->module_.types[action.type.value].range,
-                    std::string(SEMA_FUNCTION_TYPE_RETURN_STORAGE)
-                );
-            }
-            static_cast<void>(this->check_m2_value_abi(
-                return_type,
-                ValueAbiContext::function_type_return,
-                this->module_.types[action.type.value].range));
-            const TypeHandle resolved = this->checked_.types.function(
-                map_function_call_conv(action.function_call_conv),
-                action.function_is_unsafe,
-                action.function_is_variadic,
-                params,
-                return_type
-            );
-            this->record_syntax_type_handle(action.type, resolved);
-            values.push_back(resolved);
-            break;
-        }
         }
     }
 
@@ -806,10 +813,8 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
 }
 
 TypeHandle SemanticAnalyzer::resolve_named_type(
-    const syntax::TypeId type_id,
-    const syntax::TypeNode& type,
-    const bool opaque_allowed_as_pointee
-) {
+    const syntax::TypeId type_id, const syntax::TypeNode& type, const bool opaque_allowed_as_pointee)
+{
     const std::vector<std::string_view> scope_parts = this->type_scope_parts(type);
     const bool qualified = !scope_parts.empty();
     syntax::ModuleId scope_module = syntax::INVALID_MODULE_ID;
@@ -847,12 +852,14 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
     return this->resolve_named_type_selector_type(selector, opaque_allowed_as_pointee, true);
 }
 
-TypeHandle SemanticAnalyzer::resolve_type_alias(const TypeAliasInfo& alias, const bool opaque_allowed_as_pointee) {
+TypeHandle SemanticAnalyzer::resolve_type_alias(const TypeAliasInfo& alias, const bool opaque_allowed_as_pointee)
+{
     const ModuleLookupKey key = this->module_lookup_key(alias.module, alias.name_id);
     if (const auto found = resolved_type_aliases_.find(key); found != resolved_type_aliases_.end()) {
         return found->second;
     }
-    if (std::find(resolving_type_aliases_.begin(), resolving_type_aliases_.end(), key) != resolving_type_aliases_.end()) {
+    if (std::find(resolving_type_aliases_.begin(), resolving_type_aliases_.end(), key)
+        != resolving_type_aliases_.end()) {
         this->report_general(alias.range, sema_cyclic_type_alias_message(alias.name));
         resolved_type_aliases_[key] = INVALID_TYPE_HANDLE;
         return INVALID_TYPE_HANDLE;
@@ -867,26 +874,28 @@ TypeHandle SemanticAnalyzer::resolve_type_alias(const TypeAliasInfo& alias, cons
     return resolved;
 }
 
-bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, const syntax::ExprId value) const noexcept {
+bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, const syntax::ExprId value) const noexcept
+{
     if (!is_valid(dst) || !is_valid(src)) {
         return is_valid(dst) && this->is_null_literal(value) && this->checked_.types.is_pointer(dst);
     }
-    if (this->checked_.types.get(dst).kind == TypeKind::generic_param ||
-        this->checked_.types.get(src).kind == TypeKind::generic_param) {
+    if (this->checked_.types.get(dst).kind == TypeKind::generic_param
+        || this->checked_.types.get(src).kind == TypeKind::generic_param) {
         return this->checked_.types.same(dst, src);
     }
-    if (this->checked_.types.is_integer(dst) && this->checked_.types.is_integer(src) && this->is_integer_literal(value)) {
+    if (this->checked_.types.is_integer(dst) && this->checked_.types.is_integer(src)
+        && this->is_integer_literal(value)) {
         const syntax::LiteralExprPayload* const literal =
             syntax::is_valid(value) && value.value < this->module_.exprs.size()
-                ? this->module_.exprs.literal_payload(value.value)
-                : nullptr;
+            ? this->module_.exprs.literal_payload(value.value)
+            : nullptr;
         return literal != nullptr && this->integer_literal_fits_type(dst, literal->text);
     }
     if (this->checked_.types.is_pointer(dst) && this->checked_.types.is_pointer(src)) {
         const TypeInfo& dst_info = this->checked_.types.get(dst);
         const TypeInfo& src_info = this->checked_.types.get(src);
-        if (dst_info.pointer_mutability == PointerMutability::const_ &&
-            this->checked_.types.same(dst_info.pointee, src_info.pointee)) {
+        if (dst_info.pointer_mutability == PointerMutability::const_
+            && this->checked_.types.same(dst_info.pointee, src_info.pointee)) {
             return true;
         }
     }
@@ -896,8 +905,8 @@ bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, co
         if (!this->checked_.types.same(dst_info.pointee, src_info.pointee)) {
             return false;
         }
-        return dst_info.pointer_mutability == PointerMutability::const_ ||
-               src_info.pointer_mutability == PointerMutability::mut;
+        return dst_info.pointer_mutability == PointerMutability::const_
+            || src_info.pointer_mutability == PointerMutability::mut;
     }
     if (this->checked_.types.is_slice(dst) && this->checked_.types.is_slice(src)) {
         const TypeInfo& dst_info = this->checked_.types.get(dst);
@@ -905,13 +914,14 @@ bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, co
         if (!this->checked_.types.same(dst_info.slice_element, src_info.slice_element)) {
             return false;
         }
-        return dst_info.slice_mutability == PointerMutability::const_ ||
-               src_info.slice_mutability == PointerMutability::mut;
+        return dst_info.slice_mutability == PointerMutability::const_
+            || src_info.slice_mutability == PointerMutability::mut;
     }
     return this->checked_.types.same(dst, src);
 }
 
-bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const {
+bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const
+{
     std::vector<TypeHandle> pending;
     pending.push_back(type);
     while (!pending.empty()) {
@@ -954,75 +964,75 @@ bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const {
 }
 
 bool SemanticAnalyzer::check_m2_value_abi(
-    const TypeHandle type,
-    const ValueAbiContext context,
-    const base::SourceRange& range) const {
+    const TypeHandle type, const ValueAbiContext context, const base::SourceRange& range) const
+{
     if (!is_valid(type)) {
         return true;
     }
 
     switch (context) {
-    case ValueAbiContext::parameter:
-        if (this->checked_.types.is_array(type)) {
-            this->report_unsupported(range, std::string(SEMA_ARRAY_PARAMETER_UNSUPPORTED));
-            return false;
-        }
-        if (this->checked_.types.contains_array(type)) {
-            this->report_unsupported(range, std::string(SEMA_ARRAY_STRUCT_PARAMETER_UNSUPPORTED));
-            return false;
-        }
-        return true;
-    case ValueAbiContext::function_type_parameter:
-        if (this->checked_.types.is_array(type) || this->checked_.types.contains_array(type)) {
-            this->report_unsupported(range, std::string(SEMA_ARRAY_FUNCTION_TYPE_PARAMETER_UNSUPPORTED));
-            return false;
-        }
-        return true;
-    case ValueAbiContext::function_type_return:
-        if (this->checked_.types.is_array(type) || this->checked_.types.contains_array(type)) {
-            this->report_unsupported(range, std::string(SEMA_ARRAY_FUNCTION_TYPE_RETURN_UNSUPPORTED));
-            return false;
-        }
-        return true;
-    case ValueAbiContext::return_value:
-        if (this->checked_.types.is_array(type)) {
-            this->report_unsupported(range, std::string(SEMA_ARRAY_RETURN_UNSUPPORTED));
-            return false;
-        }
-        if (this->checked_.types.contains_array(type)) {
-            this->report_unsupported(range, std::string(SEMA_ARRAY_STRUCT_RETURN_UNSUPPORTED));
-            return false;
-        }
-        return true;
-    case ValueAbiContext::assignment:
-        if (this->checked_.types.contains_array(type)) {
-            this->report_unsupported(range, std::string(SEMA_ARRAY_ASSIGNMENT_UNSUPPORTED));
-            return false;
-        }
-        return true;
-    case ValueAbiContext::enum_payload:
-        if (this->checked_.types.contains_array(type)) {
-            this->report_unsupported(range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_UNSUPPORTED));
-            return false;
-        }
-        return true;
-    case ValueAbiContext::enum_payload_argument:
-        if (this->checked_.types.contains_array(type)) {
-            this->report_unsupported(range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_ARGUMENT_UNSUPPORTED));
-            return false;
-        }
-        return true;
-    case ValueAbiContext::argument:
-        if (this->checked_.types.contains_array(type)) {
-            this->report_unsupported(range, std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
-            return false;
-        }
-        return true;
+        case ValueAbiContext::parameter:
+            if (this->checked_.types.is_array(type)) {
+                this->report_unsupported(range, std::string(SEMA_ARRAY_PARAMETER_UNSUPPORTED));
+                return false;
+            }
+            if (this->checked_.types.contains_array(type)) {
+                this->report_unsupported(range, std::string(SEMA_ARRAY_STRUCT_PARAMETER_UNSUPPORTED));
+                return false;
+            }
+            return true;
+        case ValueAbiContext::function_type_parameter:
+            if (this->checked_.types.is_array(type) || this->checked_.types.contains_array(type)) {
+                this->report_unsupported(range, std::string(SEMA_ARRAY_FUNCTION_TYPE_PARAMETER_UNSUPPORTED));
+                return false;
+            }
+            return true;
+        case ValueAbiContext::function_type_return:
+            if (this->checked_.types.is_array(type) || this->checked_.types.contains_array(type)) {
+                this->report_unsupported(range, std::string(SEMA_ARRAY_FUNCTION_TYPE_RETURN_UNSUPPORTED));
+                return false;
+            }
+            return true;
+        case ValueAbiContext::return_value:
+            if (this->checked_.types.is_array(type)) {
+                this->report_unsupported(range, std::string(SEMA_ARRAY_RETURN_UNSUPPORTED));
+                return false;
+            }
+            if (this->checked_.types.contains_array(type)) {
+                this->report_unsupported(range, std::string(SEMA_ARRAY_STRUCT_RETURN_UNSUPPORTED));
+                return false;
+            }
+            return true;
+        case ValueAbiContext::assignment:
+            if (this->checked_.types.contains_array(type)) {
+                this->report_unsupported(range, std::string(SEMA_ARRAY_ASSIGNMENT_UNSUPPORTED));
+                return false;
+            }
+            return true;
+        case ValueAbiContext::enum_payload:
+            if (this->checked_.types.contains_array(type)) {
+                this->report_unsupported(range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_UNSUPPORTED));
+                return false;
+            }
+            return true;
+        case ValueAbiContext::enum_payload_argument:
+            if (this->checked_.types.contains_array(type)) {
+                this->report_unsupported(range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_ARGUMENT_UNSUPPORTED));
+                return false;
+            }
+            return true;
+        case ValueAbiContext::argument:
+            if (this->checked_.types.contains_array(type)) {
+                this->report_unsupported(range, std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
+                return false;
+            }
+            return true;
     }
     return true;
 }
 
-void SemanticAnalyzer::validate_type_layouts() {
+void SemanticAnalyzer::validate_type_layouts()
+{
     struct LayoutResult {
         base::u64 size = SEMA_ABI_INVALID_SIZE;
         base::u64 align = SEMA_ABI_MIN_ALIGNMENT;
@@ -1038,7 +1048,7 @@ void SemanticAnalyzer::validate_type_layouts() {
             return {};
         }
         const TypeAbiLayout layout = this->abi_layout(type);
-        return LayoutResult {layout.size, layout.align, true};
+        return LayoutResult{layout.size, layout.align, true};
     };
 
     const auto cached_result = [&](const TypeHandle type) -> LayoutResult {
@@ -1046,19 +1056,16 @@ void SemanticAnalyzer::validate_type_layouts() {
             return {};
         }
         const TypeInfo& info = this->checked_.types.get(type);
-        if (info.kind == TypeKind::builtin ||
-            info.kind == TypeKind::pointer ||
-            info.kind == TypeKind::reference ||
-            info.kind == TypeKind::slice ||
-            info.kind == TypeKind::function ||
-            info.kind == TypeKind::generic_param) {
+        if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::reference
+            || info.kind == TypeKind::slice || info.kind == TypeKind::function
+            || info.kind == TypeKind::generic_param) {
             return primitive_layout(type);
         }
         if (info.kind == TypeKind::opaque_struct) {
             return {};
         }
         const auto found = results.find(type.value);
-        return found == results.end() ? LayoutResult {} : found->second;
+        return found == results.end() ? LayoutResult{} : found->second;
     };
 
     const auto finish_type = [&](const TypeHandle type, const base::SourceRange& range) -> LayoutResult {
@@ -1068,7 +1075,7 @@ void SemanticAnalyzer::validate_type_layouts() {
         if (info.kind == TypeKind::array) {
             const LayoutResult element = cached_result(info.array_element);
             if (!element.ok) {
-                result = LayoutResult {
+                result = LayoutResult{
                     SEMA_ABI_INVALID_SIZE,
                     std::max(SEMA_ABI_MIN_ALIGNMENT, element.align),
                     false,
@@ -1078,10 +1085,10 @@ void SemanticAnalyzer::validate_type_layouts() {
             base::u64 size = SEMA_ABI_INVALID_SIZE;
             if (!checked_mul_u64(info.array_count, element.size, size)) {
                 this->report_general(range, std::string(SEMA_ARRAY_STORAGE_OVERFLOW));
-                result = LayoutResult {size, element.align, false};
+                result = LayoutResult{size, element.align, false};
                 return result;
             }
-            result = LayoutResult {size, element.align, true};
+            result = LayoutResult{size, element.align, true};
             return result;
         }
         if (info.kind == TypeKind::tuple) {
@@ -1170,8 +1177,7 @@ void SemanticAnalyzer::validate_type_layouts() {
                     result.ok = false;
                     continue;
                 }
-                if (payload.size > payload_size ||
-                    (payload.size == payload_size && payload.align > payload_align)) {
+                if (payload.size > payload_size || (payload.size == payload_size && payload.align > payload_align)) {
                     payload_size = payload.size;
                     payload_align = payload.align;
                 }
@@ -1201,43 +1207,31 @@ void SemanticAnalyzer::validate_type_layouts() {
         return result;
     };
 
-    const auto push_dependency = [&](
-        std::vector<TypeLayoutFrame>& stack,
-        const TypeHandle dependency,
-        const base::SourceRange& dependency_range
-    ) {
+    const auto push_dependency = [&](std::vector<TypeLayoutFrame>& stack, const TypeHandle dependency,
+                                     const base::SourceRange& dependency_range) {
         if (!is_valid(dependency)) {
             return;
         }
         const TypeInfo& dependency_info = this->checked_.types.get(dependency);
-        if (dependency_info.kind == TypeKind::builtin ||
-            dependency_info.kind == TypeKind::pointer ||
-            dependency_info.kind == TypeKind::reference ||
-            dependency_info.kind == TypeKind::slice ||
-            dependency_info.kind == TypeKind::function ||
-            dependency_info.kind == TypeKind::generic_param ||
-            dependency_info.kind == TypeKind::opaque_struct ||
-            results.contains(dependency.value)) {
+        if (dependency_info.kind == TypeKind::builtin || dependency_info.kind == TypeKind::pointer
+            || dependency_info.kind == TypeKind::reference || dependency_info.kind == TypeKind::slice
+            || dependency_info.kind == TypeKind::function || dependency_info.kind == TypeKind::generic_param
+            || dependency_info.kind == TypeKind::opaque_struct || results.contains(dependency.value)) {
             return;
         }
         const auto state = states.find(dependency.value);
         if (state != states.end() && state->second == TypeLayoutVisitState::visiting) {
-            this->report_general(
-                dependency_range,
-                "recursive value type is not valid storage: " + this->checked_.types.display_name(dependency)
-            );
+            this->report_general(dependency_range,
+                "recursive value type is not valid storage: " + this->checked_.types.display_name(dependency));
             results[dependency.value] = {};
             states[dependency.value] = TypeLayoutVisitState::done;
             return;
         }
-        stack.push_back(TypeLayoutFrame {dependency, dependency_range, TypeLayoutFrameStage::enter});
+        stack.push_back(TypeLayoutFrame{dependency, dependency_range, TypeLayoutFrameStage::enter});
     };
 
-    const auto push_children = [&](
-        std::vector<TypeLayoutFrame>& stack,
-        const TypeHandle type,
-        const base::SourceRange& range
-    ) {
+    const auto push_children = [&](std::vector<TypeLayoutFrame>& stack, const TypeHandle type,
+                                   const base::SourceRange& range) {
         const TypeInfo& info = this->checked_.types.get(type);
         if (info.kind == TypeKind::array) {
             push_dependency(stack, info.array_element, range);
@@ -1275,12 +1269,9 @@ void SemanticAnalyzer::validate_type_layouts() {
             return {};
         }
         const TypeInfo& info = this->checked_.types.get(type);
-        if (info.kind == TypeKind::builtin ||
-            info.kind == TypeKind::pointer ||
-            info.kind == TypeKind::reference ||
-            info.kind == TypeKind::slice ||
-            info.kind == TypeKind::function ||
-            info.kind == TypeKind::generic_param) {
+        if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::reference
+            || info.kind == TypeKind::slice || info.kind == TypeKind::function
+            || info.kind == TypeKind::generic_param) {
             return primitive_layout(type);
         }
         if (info.kind == TypeKind::opaque_struct) {
@@ -1292,7 +1283,7 @@ void SemanticAnalyzer::validate_type_layouts() {
 
         std::vector<TypeLayoutFrame> stack;
         stack.reserve(SEMA_TYPE_LAYOUT_INITIAL_STACK_CAPACITY);
-        stack.push_back(TypeLayoutFrame {type, range, TypeLayoutFrameStage::enter});
+        stack.push_back(TypeLayoutFrame{type, range, TypeLayoutFrameStage::enter});
         while (!stack.empty()) {
             const TypeLayoutFrame frame = stack.back();
             stack.pop_back();
@@ -1308,7 +1299,7 @@ void SemanticAnalyzer::validate_type_layouts() {
                 continue;
             }
             states[frame.type.value] = TypeLayoutVisitState::visiting;
-            stack.push_back(TypeLayoutFrame {frame.type, frame.range, TypeLayoutFrameStage::finish});
+            stack.push_back(TypeLayoutFrame{frame.type, frame.range, TypeLayoutFrameStage::finish});
             push_children(stack, frame.type, frame.range);
         }
         return results.at(type.value);
@@ -1317,7 +1308,7 @@ void SemanticAnalyzer::validate_type_layouts() {
     for (const auto& entry : this->checked_.structs) {
         const StructInfo& info = entry.second;
         if (!info.is_opaque) {
-            const base::SourceRange range = info.fields.empty() ? base::SourceRange {} : info.fields.front().range;
+            const base::SourceRange range = info.fields.empty() ? base::SourceRange{} : info.fields.front().range;
             static_cast<void>(compute(info.type, range));
         }
     }
@@ -1325,9 +1316,8 @@ void SemanticAnalyzer::validate_type_layouts() {
     std::unordered_set<base::u32> seen_enums;
     for (const auto& entry : this->named_types_) {
         const TypeHandle type = entry.second;
-        if (is_valid(type) &&
-            this->checked_.types.get(type).kind == TypeKind::enum_ &&
-            seen_enums.insert(type.value).second) {
+        if (is_valid(type) && this->checked_.types.get(type).kind == TypeKind::enum_
+            && seen_enums.insert(type.value).second) {
             static_cast<void>(compute(type, {}));
         }
     }
@@ -1339,7 +1329,8 @@ void SemanticAnalyzer::validate_type_layouts() {
     }
 }
 
-bool SemanticAnalyzer::parse_integer_literal_text(const std::string_view text, base::u64& value) const noexcept {
+bool SemanticAnalyzer::parse_integer_literal_text(const std::string_view text, base::u64& value) const noexcept
+{
     const IntegerLiteralParts parts = split_integer_literal_text(text);
     if (!parts.suffix.empty() && !integer_suffix_type(parts.suffix).has_value()) {
         return false;
@@ -1347,23 +1338,21 @@ bool SemanticAnalyzer::parse_integer_literal_text(const std::string_view text, b
     return parse_u64_literal_checked(parts.digits, value);
 }
 
-bool SemanticAnalyzer::integer_literal_fits_type(const TypeHandle destination, const std::string_view text) const noexcept {
+bool SemanticAnalyzer::integer_literal_fits_type(
+    const TypeHandle destination, const std::string_view text) const noexcept
+{
     return literal_fits_integer_type(checked_.types, destination, text);
 }
 
 bool SemanticAnalyzer::negative_integer_literal_fits_type(
-    const TypeHandle destination,
-    const std::string_view text
-) const noexcept {
+    const TypeHandle destination, const std::string_view text) const noexcept
+{
     return negative_literal_fits_integer_type(checked_.types, destination, text);
 }
 
-TypeHandle SemanticAnalyzer::analyze_integer_literal(
-    const syntax::ExprId expr_id,
-    const std::string_view text,
-    const base::SourceRange& range,
-    const TypeHandle expected_type
-) {
+TypeHandle SemanticAnalyzer::analyze_integer_literal(const syntax::ExprId expr_id, const std::string_view text,
+    const base::SourceRange& range, const TypeHandle expected_type)
+{
     const TypeHandle default_type = checked_.types.builtin(BuiltinType::i32);
     TypeHandle natural_type = default_type;
     TypeHandle literal_type = checked_.types.is_integer(expected_type) ? expected_type : natural_type;
@@ -1380,38 +1369,26 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(
             natural_type = checked_.types.builtin(*suffix);
             literal_type = natural_type;
             if (checked_.types.is_integer(expected_type) && !checked_.types.same(literal_type, expected_type)) {
-                this->report_type(
-                    range,
+                this->report_type(range,
                     sema_integer_literal_suffix_type_mismatch_message(
-                        checked_.types.display_name(literal_type),
-                        checked_.types.display_name(expected_type)
-                    )
-                );
+                        checked_.types.display_name(literal_type), checked_.types.display_name(expected_type)));
             }
         }
     }
     if (suffix_valid && !integer_literal_fits_type(literal_type, text)) {
         this->report_general(
-            range,
-            sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type))
-        );
+            range, sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type)));
     }
-    if (suffix_valid &&
-        !has_suffix &&
-        checked_.types.is_integer(expected_type) &&
-        !checked_.types.same(default_type, expected_type) &&
-        integer_literal_fits_type(default_type, text)) {
+    if (suffix_valid && !has_suffix && checked_.types.is_integer(expected_type)
+        && !checked_.types.same(default_type, expected_type) && integer_literal_fits_type(default_type, text)) {
         this->record_coercion(expr_id, default_type, expected_type, CoercionKind::contextual_integer_literal);
     }
     return this->record_expr_types(expr_id, natural_type, literal_type);
 }
 
-TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
-    const syntax::ExprId expr_id,
-    const std::string_view text,
-    const base::SourceRange& range,
-    const TypeHandle expected_type
-) {
+TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(const syntax::ExprId expr_id, const std::string_view text,
+    const base::SourceRange& range, const TypeHandle expected_type)
+{
     const TypeHandle default_type = checked_.types.builtin(BuiltinType::i32);
     TypeHandle natural_type = default_type;
     TypeHandle literal_type = checked_.types.is_integer(expected_type) ? expected_type : natural_type;
@@ -1428,38 +1405,27 @@ TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(
             natural_type = checked_.types.builtin(*suffix);
             literal_type = natural_type;
             if (checked_.types.is_integer(expected_type) && !checked_.types.same(literal_type, expected_type)) {
-                this->report_type(
-                    range,
+                this->report_type(range,
                     sema_integer_literal_suffix_type_mismatch_message(
-                        checked_.types.display_name(literal_type),
-                        checked_.types.display_name(expected_type)
-                    )
-                );
+                        checked_.types.display_name(literal_type), checked_.types.display_name(expected_type)));
             }
         }
     }
     if (suffix_valid && !negative_integer_literal_fits_type(literal_type, text)) {
         this->report_general(
-            range,
-            sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type))
-        );
+            range, sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type)));
     }
-    if (suffix_valid &&
-        !has_suffix &&
-        checked_.types.is_integer(expected_type) &&
-        !checked_.types.same(default_type, expected_type) &&
-        negative_integer_literal_fits_type(default_type, text)) {
+    if (suffix_valid && !has_suffix && checked_.types.is_integer(expected_type)
+        && !checked_.types.same(default_type, expected_type)
+        && negative_integer_literal_fits_type(default_type, text)) {
         this->record_coercion(expr_id, default_type, expected_type, CoercionKind::contextual_integer_literal);
     }
     return this->record_expr_types(expr_id, natural_type, literal_type);
 }
 
-TypeHandle SemanticAnalyzer::analyze_float_literal(
-    const syntax::ExprId expr_id,
-    const std::string_view text,
-    const base::SourceRange& range,
-    const TypeHandle expected_type
-) {
+TypeHandle SemanticAnalyzer::analyze_float_literal(const syntax::ExprId expr_id, const std::string_view text,
+    const base::SourceRange& range, const TypeHandle expected_type)
+{
     const TypeHandle default_type = checked_.types.builtin(BuiltinType::f64);
     TypeHandle natural_type = default_type;
     TypeHandle literal_type = checked_.types.is_float(expected_type) ? expected_type : natural_type;
@@ -1476,64 +1442,56 @@ TypeHandle SemanticAnalyzer::analyze_float_literal(
             natural_type = checked_.types.builtin(*suffix);
             literal_type = natural_type;
             if (checked_.types.is_float(expected_type) && !checked_.types.same(literal_type, expected_type)) {
-                this->report_type(
-                    range,
+                this->report_type(range,
                     sema_float_literal_suffix_type_mismatch_message(
-                        checked_.types.display_name(literal_type),
-                        checked_.types.display_name(expected_type)
-                    )
-                );
+                        checked_.types.display_name(literal_type), checked_.types.display_name(expected_type)));
             }
         }
     }
-    const bool fits = !suffix_valid ||
-        (checked_.types.same(literal_type, checked_.types.builtin(BuiltinType::f32))
-        ? parse_float_literal_checked<float>(text)
-        : parse_float_literal_checked<double>(text));
+    const bool fits = !suffix_valid
+        || (checked_.types.same(literal_type, checked_.types.builtin(BuiltinType::f32))
+                ? parse_float_literal_checked<float>(text)
+                : parse_float_literal_checked<double>(text));
     if (suffix_valid && !fits) {
-        this->report_general(
-            range,
-            sema_float_literal_out_of_range_message(checked_.types.display_name(literal_type))
-        );
+        this->report_general(range, sema_float_literal_out_of_range_message(checked_.types.display_name(literal_type)));
     }
-    if (suffix_valid &&
-        !has_suffix &&
-        checked_.types.is_float(expected_type) &&
-        !checked_.types.same(default_type, expected_type) &&
-        parse_float_literal_checked<double>(text)) {
+    if (suffix_valid && !has_suffix && checked_.types.is_float(expected_type)
+        && !checked_.types.same(default_type, expected_type) && parse_float_literal_checked<double>(text)) {
         this->record_coercion(expr_id, default_type, expected_type, CoercionKind::contextual_float_literal);
     }
     return this->record_expr_types(expr_id, natural_type, literal_type);
 }
 
-bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHandle dst, const TypeHandle src) const {
+bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHandle dst, const TypeHandle src) const
+{
     if (!is_valid(dst) || !is_valid(src)) {
         return false;
     }
-    if (this->checked_.types.get(dst).kind == TypeKind::generic_param ||
-        this->checked_.types.get(src).kind == TypeKind::generic_param) {
+    if (this->checked_.types.get(dst).kind == TypeKind::generic_param
+        || this->checked_.types.get(src).kind == TypeKind::generic_param) {
         return false;
     }
 
     if (kind == syntax::ExprKind::cast) {
-        return (this->checked_.types.is_integer(dst) || this->checked_.types.is_float(dst) || this->checked_.types.is_bool(dst)) &&
-               (this->checked_.types.is_integer(src) || this->checked_.types.is_float(src) || this->checked_.types.is_bool(src));
+        return (this->checked_.types.is_integer(dst) || this->checked_.types.is_float(dst)
+                   || this->checked_.types.is_bool(dst))
+            && (this->checked_.types.is_integer(src) || this->checked_.types.is_float(src)
+                || this->checked_.types.is_bool(src));
     }
     if (kind == syntax::ExprKind::pcast) {
-        return this->checked_.types.is_pointer(dst) &&
-               (this->checked_.types.is_pointer(src) || this->checked_.types.is_reference(src));
+        return this->checked_.types.is_pointer(dst)
+            && (this->checked_.types.is_pointer(src) || this->checked_.types.is_reference(src));
     }
     if (kind == syntax::ExprKind::bcast) {
         if (this->checked_.types.same(dst, src)) {
             return is_bitcast_type(this->checked_.types, dst);
         }
-        if (!is_bitcast_type(this->checked_.types, dst) ||
-            !is_bitcast_type(this->checked_.types, src) ||
-            this->abi_size(dst) != this->abi_size(src)) {
+        if (!is_bitcast_type(this->checked_.types, dst) || !is_bitcast_type(this->checked_.types, src)
+            || this->abi_size(dst) != this->abi_size(src)) {
             return false;
         }
-        if (is_builtin_scalar_bcast_type(this->checked_.types, dst) &&
-            is_builtin_scalar_bcast_type(this->checked_.types, src)) {
+        if (is_builtin_scalar_bcast_type(this->checked_.types, dst)
+            && is_builtin_scalar_bcast_type(this->checked_.types, src)) {
             return true;
         }
         return this->checked_.types.is_pointer(dst) && this->checked_.types.is_pointer(src);
@@ -1541,175 +1499,180 @@ bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHand
     return false;
 }
 
-SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle type) const {
+SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle type) const
+{
     const auto builtin_layout = [](const BuiltinType builtin) noexcept -> TypeAbiLayout {
         switch (builtin) {
-        case BuiltinType::void_: return TypeAbiLayout {SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
-        case BuiltinType::bool_: return TypeAbiLayout {sizeof(bool), alignof(bool)};
-        case BuiltinType::i8:
-        case BuiltinType::u8: return TypeAbiLayout {sizeof(std::uint8_t), alignof(std::uint8_t)};
-        case BuiltinType::i16:
-        case BuiltinType::u16: return TypeAbiLayout {sizeof(std::uint16_t), alignof(std::uint16_t)};
-        case BuiltinType::i32:
-        case BuiltinType::u32: return TypeAbiLayout {sizeof(std::uint32_t), alignof(std::uint32_t)};
-        case BuiltinType::i64:
-        case BuiltinType::u64: return TypeAbiLayout {sizeof(std::uint64_t), alignof(std::uint64_t)};
-        case BuiltinType::isize: return TypeAbiLayout {sizeof(std::ptrdiff_t), alignof(std::ptrdiff_t)};
-        case BuiltinType::usize: return TypeAbiLayout {sizeof(std::size_t), alignof(std::size_t)};
-        case BuiltinType::f32: return TypeAbiLayout {sizeof(float), alignof(float)};
-        case BuiltinType::f64: return TypeAbiLayout {sizeof(double), alignof(double)};
-        case BuiltinType::str: return TypeAbiLayout {sizeof(void*) + sizeof(std::size_t), alignof(void*)};
-        case BuiltinType::char_: return TypeAbiLayout {sizeof(std::uint32_t), alignof(std::uint32_t)};
+            case BuiltinType::void_:
+                return TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
+            case BuiltinType::bool_:
+                return TypeAbiLayout{sizeof(bool), alignof(bool)};
+            case BuiltinType::i8:
+            case BuiltinType::u8:
+                return TypeAbiLayout{sizeof(std::uint8_t), alignof(std::uint8_t)};
+            case BuiltinType::i16:
+            case BuiltinType::u16:
+                return TypeAbiLayout{sizeof(std::uint16_t), alignof(std::uint16_t)};
+            case BuiltinType::i32:
+            case BuiltinType::u32:
+                return TypeAbiLayout{sizeof(std::uint32_t), alignof(std::uint32_t)};
+            case BuiltinType::i64:
+            case BuiltinType::u64:
+                return TypeAbiLayout{sizeof(std::uint64_t), alignof(std::uint64_t)};
+            case BuiltinType::isize:
+                return TypeAbiLayout{sizeof(std::ptrdiff_t), alignof(std::ptrdiff_t)};
+            case BuiltinType::usize:
+                return TypeAbiLayout{sizeof(std::size_t), alignof(std::size_t)};
+            case BuiltinType::f32:
+                return TypeAbiLayout{sizeof(float), alignof(float)};
+            case BuiltinType::f64:
+                return TypeAbiLayout{sizeof(double), alignof(double)};
+            case BuiltinType::str:
+                return TypeAbiLayout{sizeof(void*) + sizeof(std::size_t), alignof(void*)};
+            case BuiltinType::char_:
+                return TypeAbiLayout{sizeof(std::uint32_t), alignof(std::uint32_t)};
         }
-        return TypeAbiLayout {SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
+        return TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
     };
 
-    const auto cached = [](const std::unordered_map<base::u32, TypeAbiLayout>& layouts, const TypeHandle current) noexcept {
+    const auto cached = [](const std::unordered_map<base::u32, TypeAbiLayout>& layouts,
+                            const TypeHandle current) noexcept {
         const auto found = layouts.find(current.value);
-        return found == layouts.end() ? TypeAbiLayout {SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT} : found->second;
+        return found == layouts.end() ? TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT} : found->second;
     };
 
-    const auto finish_type = [&](const TypeHandle current, const std::unordered_map<base::u32, TypeAbiLayout>& layouts) {
+    const auto finish_type = [&](const TypeHandle current,
+                                 const std::unordered_map<base::u32, TypeAbiLayout>& layouts) {
         const TypeInfo& info = this->checked_.types.get(current);
         switch (info.kind) {
-        case TypeKind::builtin:
-            return builtin_layout(info.builtin);
-        case TypeKind::pointer:
-        case TypeKind::reference:
-            return TypeAbiLayout {sizeof(void*), alignof(void*)};
-        case TypeKind::function:
-            return TypeAbiLayout {sizeof(void*), alignof(void*)};
-        case TypeKind::slice:
-            return TypeAbiLayout {sizeof(void*) + sizeof(std::size_t), alignof(void*)};
-        case TypeKind::array: {
-            const TypeAbiLayout element = cached(layouts, info.array_element);
-            return TypeAbiLayout {
-                mul_saturating(info.array_count, element.size),
-                element.align,
-            };
-        }
-        case TypeKind::tuple: {
-            base::u64 offset = SEMA_ABI_INVALID_SIZE;
-            base::u64 max_align = SEMA_ABI_MIN_ALIGNMENT;
-            for (const TypeHandle element_type : info.tuple_elements) {
-                const TypeAbiLayout element = cached(layouts, element_type);
-                max_align = std::max(max_align, element.align);
-                offset = align_forward(offset, element.align);
-                offset = add_saturating(offset, element.size);
+            case TypeKind::builtin:
+                return builtin_layout(info.builtin);
+            case TypeKind::pointer:
+            case TypeKind::reference:
+                return TypeAbiLayout{sizeof(void*), alignof(void*)};
+            case TypeKind::function:
+                return TypeAbiLayout{sizeof(void*), alignof(void*)};
+            case TypeKind::slice:
+                return TypeAbiLayout{sizeof(void*) + sizeof(std::size_t), alignof(void*)};
+            case TypeKind::array: {
+                const TypeAbiLayout element = cached(layouts, info.array_element);
+                return TypeAbiLayout{
+                    mul_saturating(info.array_count, element.size),
+                    element.align,
+                };
             }
-            return TypeAbiLayout {align_forward(offset, max_align), max_align};
-        }
-        case TypeKind::enum_: {
-            const TypeAbiLayout tag = cached(layouts, info.enum_underlying);
-            if (!is_valid(info.enum_payload_storage)) {
-                return tag;
+            case TypeKind::tuple: {
+                base::u64 offset = SEMA_ABI_INVALID_SIZE;
+                base::u64 max_align = SEMA_ABI_MIN_ALIGNMENT;
+                for (const TypeHandle element_type : info.tuple_elements) {
+                    const TypeAbiLayout element = cached(layouts, element_type);
+                    max_align = std::max(max_align, element.align);
+                    offset = align_forward(offset, element.align);
+                    offset = add_saturating(offset, element.size);
+                }
+                return TypeAbiLayout{align_forward(offset, max_align), max_align};
             }
-            const TypeAbiLayout storage = cached(layouts, info.enum_payload_storage);
-            const base::u64 max_align = std::max(tag.align, info.enum_payload_align);
-            const base::u64 storage_offset = align_forward(tag.size, info.enum_payload_align);
-            return TypeAbiLayout {
-                align_forward(add_saturating(storage_offset, storage.size), max_align),
-                max_align,
-            };
-        }
-        case TypeKind::struct_: {
-            const StructInfo* struct_info = this->find_struct(current);
-            if (struct_info == nullptr) {
-                return TypeAbiLayout {SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
+            case TypeKind::enum_: {
+                const TypeAbiLayout tag = cached(layouts, info.enum_underlying);
+                if (!is_valid(info.enum_payload_storage)) {
+                    return tag;
+                }
+                const TypeAbiLayout storage = cached(layouts, info.enum_payload_storage);
+                const base::u64 max_align = std::max(tag.align, info.enum_payload_align);
+                const base::u64 storage_offset = align_forward(tag.size, info.enum_payload_align);
+                return TypeAbiLayout{
+                    align_forward(add_saturating(storage_offset, storage.size), max_align),
+                    max_align,
+                };
             }
-            base::u64 offset = SEMA_ABI_INVALID_SIZE;
-            base::u64 max_align = SEMA_ABI_MIN_ALIGNMENT;
-            for (const StructFieldInfo& field : struct_info->fields) {
-                const TypeAbiLayout field_layout = cached(layouts, field.type);
-                max_align = std::max(max_align, field_layout.align);
-                offset = align_forward(offset, field_layout.align);
-                offset = add_saturating(offset, field_layout.size);
+            case TypeKind::struct_: {
+                const StructInfo* struct_info = this->find_struct(current);
+                if (struct_info == nullptr) {
+                    return TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
+                }
+                base::u64 offset = SEMA_ABI_INVALID_SIZE;
+                base::u64 max_align = SEMA_ABI_MIN_ALIGNMENT;
+                for (const StructFieldInfo& field : struct_info->fields) {
+                    const TypeAbiLayout field_layout = cached(layouts, field.type);
+                    max_align = std::max(max_align, field_layout.align);
+                    offset = align_forward(offset, field_layout.align);
+                    offset = add_saturating(offset, field_layout.size);
+                }
+                return TypeAbiLayout{align_forward(offset, max_align), max_align};
             }
-            return TypeAbiLayout {align_forward(offset, max_align), max_align};
+            case TypeKind::opaque_struct:
+            case TypeKind::generic_param:
+                return TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
         }
-        case TypeKind::opaque_struct:
-        case TypeKind::generic_param:
-            return TypeAbiLayout {SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
-        }
-        return TypeAbiLayout {SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
+        return TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
     };
 
-    const auto push_dependency = [&](
-        std::vector<TypeLayoutFrame>& stack,
-        const TypeHandle dependency,
-        std::unordered_map<base::u32, TypeLayoutVisitState>& states,
-        const std::unordered_map<base::u32, TypeAbiLayout>& layouts
-    ) {
+    const auto push_dependency = [&](std::vector<TypeLayoutFrame>& stack, const TypeHandle dependency,
+                                     std::unordered_map<base::u32, TypeLayoutVisitState>& states,
+                                     const std::unordered_map<base::u32, TypeAbiLayout>& layouts) {
         if (!is_valid(dependency) || layouts.contains(dependency.value)) {
             return;
         }
         const TypeInfo& info = this->checked_.types.get(dependency);
-        if (info.kind == TypeKind::builtin ||
-            info.kind == TypeKind::pointer ||
-            info.kind == TypeKind::reference ||
-            info.kind == TypeKind::slice ||
-            info.kind == TypeKind::function ||
-            info.kind == TypeKind::generic_param ||
-            info.kind == TypeKind::opaque_struct) {
-            stack.push_back(TypeLayoutFrame {dependency, {}, TypeLayoutFrameStage::enter});
+        if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::reference
+            || info.kind == TypeKind::slice || info.kind == TypeKind::function || info.kind == TypeKind::generic_param
+            || info.kind == TypeKind::opaque_struct) {
+            stack.push_back(TypeLayoutFrame{dependency, {}, TypeLayoutFrameStage::enter});
             return;
         }
         const auto found = states.find(dependency.value);
         if (found != states.end() && found->second == TypeLayoutVisitState::visiting) {
             return;
         }
-        stack.push_back(TypeLayoutFrame {dependency, {}, TypeLayoutFrameStage::enter});
+        stack.push_back(TypeLayoutFrame{dependency, {}, TypeLayoutFrameStage::enter});
     };
 
-    const auto push_children = [&](
-        std::vector<TypeLayoutFrame>& stack,
-        const TypeHandle current,
-        std::unordered_map<base::u32, TypeLayoutVisitState>& states,
-        const std::unordered_map<base::u32, TypeAbiLayout>& layouts
-    ) {
+    const auto push_children = [&](std::vector<TypeLayoutFrame>& stack, const TypeHandle current,
+                                   std::unordered_map<base::u32, TypeLayoutVisitState>& states,
+                                   const std::unordered_map<base::u32, TypeAbiLayout>& layouts) {
         const TypeInfo& info = this->checked_.types.get(current);
         switch (info.kind) {
-        case TypeKind::array:
-            push_dependency(stack, info.array_element, states, layouts);
-            break;
-        case TypeKind::tuple:
-            for (auto element = info.tuple_elements.rbegin(); element != info.tuple_elements.rend(); ++element) {
-                push_dependency(stack, *element, states, layouts);
-            }
-            break;
-        case TypeKind::enum_:
-            push_dependency(stack, info.enum_underlying, states, layouts);
-            push_dependency(stack, info.enum_payload_storage, states, layouts);
-            break;
-        case TypeKind::struct_: {
-            const StructInfo* struct_info = this->find_struct(current);
-            if (struct_info != nullptr) {
-                for (auto field = struct_info->fields.rbegin(); field != struct_info->fields.rend(); ++field) {
-                    push_dependency(stack, field->type, states, layouts);
+            case TypeKind::array:
+                push_dependency(stack, info.array_element, states, layouts);
+                break;
+            case TypeKind::tuple:
+                for (auto element = info.tuple_elements.rbegin(); element != info.tuple_elements.rend(); ++element) {
+                    push_dependency(stack, *element, states, layouts);
                 }
+                break;
+            case TypeKind::enum_:
+                push_dependency(stack, info.enum_underlying, states, layouts);
+                push_dependency(stack, info.enum_payload_storage, states, layouts);
+                break;
+            case TypeKind::struct_: {
+                const StructInfo* struct_info = this->find_struct(current);
+                if (struct_info != nullptr) {
+                    for (auto field = struct_info->fields.rbegin(); field != struct_info->fields.rend(); ++field) {
+                        push_dependency(stack, field->type, states, layouts);
+                    }
+                }
+                break;
             }
-            break;
-        }
-        case TypeKind::builtin:
-        case TypeKind::pointer:
-        case TypeKind::reference:
-        case TypeKind::slice:
-        case TypeKind::function:
-        case TypeKind::generic_param:
-        case TypeKind::opaque_struct:
-            break;
+            case TypeKind::builtin:
+            case TypeKind::pointer:
+            case TypeKind::reference:
+            case TypeKind::slice:
+            case TypeKind::function:
+            case TypeKind::generic_param:
+            case TypeKind::opaque_struct:
+                break;
         }
     };
 
     if (!is_valid(type)) {
-        return TypeAbiLayout {SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
+        return TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
     }
 
     std::unordered_map<base::u32, TypeAbiLayout> layouts;
     std::unordered_map<base::u32, TypeLayoutVisitState> states;
     std::vector<TypeLayoutFrame> stack;
     stack.reserve(SEMA_TYPE_LAYOUT_INITIAL_STACK_CAPACITY);
-    stack.push_back(TypeLayoutFrame {type, {}, TypeLayoutFrameStage::enter});
+    stack.push_back(TypeLayoutFrame{type, {}, TypeLayoutFrameStage::enter});
     while (!stack.empty()) {
         const TypeLayoutFrame frame = stack.back();
         stack.pop_back();
@@ -1722,64 +1685,61 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
             states[frame.type.value] = TypeLayoutVisitState::done;
             continue;
         }
-        if (info.kind == TypeKind::builtin ||
-            info.kind == TypeKind::pointer ||
-            info.kind == TypeKind::reference ||
-            info.kind == TypeKind::slice ||
-            info.kind == TypeKind::function ||
-            info.kind == TypeKind::generic_param ||
-            info.kind == TypeKind::opaque_struct) {
+        if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::reference
+            || info.kind == TypeKind::slice || info.kind == TypeKind::function || info.kind == TypeKind::generic_param
+            || info.kind == TypeKind::opaque_struct) {
             layouts[frame.type.value] = finish_type(frame.type, layouts);
             states[frame.type.value] = TypeLayoutVisitState::done;
             continue;
         }
         const auto state = states.find(frame.type.value);
         if (state != states.end() && state->second == TypeLayoutVisitState::visiting) {
-            layouts[frame.type.value] = TypeAbiLayout {SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
+            layouts[frame.type.value] = TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
             states[frame.type.value] = TypeLayoutVisitState::done;
             continue;
         }
         states[frame.type.value] = TypeLayoutVisitState::visiting;
-        stack.push_back(TypeLayoutFrame {frame.type, {}, TypeLayoutFrameStage::finish});
+        stack.push_back(TypeLayoutFrame{frame.type, {}, TypeLayoutFrameStage::finish});
         push_children(stack, frame.type, states, layouts);
     }
     return cached(layouts, type);
 }
 
-base::u64 SemanticAnalyzer::abi_size(const TypeHandle type) const {
+base::u64 SemanticAnalyzer::abi_size(const TypeHandle type) const
+{
     return this->abi_layout(type).size;
 }
 
-base::u64 SemanticAnalyzer::abi_align(const TypeHandle type) const {
+base::u64 SemanticAnalyzer::abi_align(const TypeHandle type) const
+{
     return this->abi_layout(type).align;
 }
 
-bool SemanticAnalyzer::is_integer_literal(const syntax::ExprId expr_id) const noexcept {
-    return syntax::is_valid(expr_id) &&
-           expr_id.value < this->module_.exprs.size() &&
-           this->module_.exprs.kind(expr_id.value) == syntax::ExprKind::integer_literal;
+bool SemanticAnalyzer::is_integer_literal(const syntax::ExprId expr_id) const noexcept
+{
+    return syntax::is_valid(expr_id) && expr_id.value < this->module_.exprs.size()
+        && this->module_.exprs.kind(expr_id.value) == syntax::ExprKind::integer_literal;
 }
 
-bool SemanticAnalyzer::is_null_literal(const syntax::ExprId expr_id) const noexcept {
-    return syntax::is_valid(expr_id) &&
-           expr_id.value < this->module_.exprs.size() &&
-           this->module_.exprs.kind(expr_id.value) == syntax::ExprKind::null_literal;
+bool SemanticAnalyzer::is_null_literal(const syntax::ExprId expr_id) const noexcept
+{
+    return syntax::is_valid(expr_id) && expr_id.value < this->module_.exprs.size()
+        && this->module_.exprs.kind(expr_id.value) == syntax::ExprKind::null_literal;
 }
 
-bool SemanticAnalyzer::is_null_result_expr(const syntax::ExprId expr_id) const noexcept {
+bool SemanticAnalyzer::is_null_result_expr(const syntax::ExprId expr_id) const noexcept
+{
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
         return false;
     }
     const syntax::ExprKind kind = this->module_.exprs.kind(expr_id.value);
     const syntax::BlockExprPayload* const block = this->module_.exprs.block_payload(expr_id.value);
-    return kind == syntax::ExprKind::null_literal ||
-           (block != nullptr && this->is_null_literal(block->result));
+    return kind == syntax::ExprKind::null_literal || (block != nullptr && this->is_null_literal(block->result));
 }
 
 SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
-    const syntax::ExprId expr_id,
-    const bool emit_diagnostics
-) {
+    const syntax::ExprId expr_id, const bool emit_diagnostics)
+{
     enum class PendingProjectionKind {
         deref,
         field,
@@ -1797,19 +1757,19 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
         const syntax::ExprKind kind = this->module_.exprs.kind(current.value);
         if (const syntax::FieldExprPayload* const field = this->module_.exprs.field_payload(current.value);
             kind == syntax::ExprKind::field && field != nullptr) {
-            pending.push_back(PendingProjection {PendingProjectionKind::field, current});
+            pending.push_back(PendingProjection{PendingProjectionKind::field, current});
             current = field->object;
             continue;
         }
         if (const syntax::IndexExprPayload* const index = this->module_.exprs.index_payload(current.value);
             kind == syntax::ExprKind::index && index != nullptr) {
-            pending.push_back(PendingProjection {PendingProjectionKind::index, current});
+            pending.push_back(PendingProjection{PendingProjectionKind::index, current});
             current = index->object;
             continue;
         }
         if (const syntax::UnaryExprPayload* const unary = this->module_.exprs.unary_payload(current.value);
             kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::dereference) {
-            pending.push_back(PendingProjection {PendingProjectionKind::deref, current});
+            pending.push_back(PendingProjection{PendingProjectionKind::deref, current});
             current = unary->operand;
             continue;
         }
@@ -1848,8 +1808,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
     }
 
     for (auto projection = pending.rbegin(); projection != pending.rend(); ++projection) {
-        if (!syntax::is_valid(projection->expr) ||
-            projection->expr.value >= this->module_.exprs.size()) {
+        if (!syntax::is_valid(projection->expr) || projection->expr.value >= this->module_.exprs.size()) {
             place.type = INVALID_TYPE_HANDLE;
             place.is_place = false;
             place.is_writable = false;
@@ -1880,8 +1839,10 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
         } else if (projection->kind == PendingProjectionKind::field) {
             const syntax::FieldExprPayload* const projection_expr =
                 this->module_.exprs.field_payload(projection->expr.value);
-            const std::string_view field_name = projection_expr == nullptr ? std::string_view {} : projection_expr->field_name;
-            const IdentId field_name_id = projection_expr == nullptr ? INVALID_IDENT_ID : projection_expr->field_name_id;
+            const std::string_view field_name =
+                projection_expr == nullptr ? std::string_view{} : projection_expr->field_name;
+            const IdentId field_name_id =
+                projection_expr == nullptr ? INVALID_IDENT_ID : projection_expr->field_name_id;
             TypeHandle object_type = input_type;
             bool projection_is_indirect = false;
             output_is_writable = place.is_writable;
@@ -1920,10 +1881,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                 }
                 if (!saw_field && emit_diagnostics) {
                     this->report_lookup(projection_range, sema_unknown_field_message(field_name));
-                    this->report_lookup_suggestion(
-                        projection_range,
-                        this->nearest_field_name(*info, field_name)
-                    );
+                    this->report_lookup_suggestion(projection_range, this->nearest_field_name(*info, field_name));
                 }
             } else if (emit_diagnostics) {
                 this->report_general(projection_range, std::string(SEMA_FIELD_STRUCT_VALUE));
@@ -1931,30 +1889,26 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
         } else {
             const syntax::IndexExprPayload* const projection_expr =
                 this->module_.exprs.index_payload(projection->expr.value);
-            const syntax::ExprId index_expr = projection_expr == nullptr ? syntax::INVALID_EXPR_ID : projection_expr->index;
+            const syntax::ExprId index_expr =
+                projection_expr == nullptr ? syntax::INVALID_EXPR_ID : projection_expr->index;
             const TypeHandle index_type = this->analyze_expr(index_expr);
             if (emit_diagnostics && !this->checked_.types.is_integer(index_type)) {
-                this->report_general(
-                    place_expr_range_or(this->module_, index_expr, projection_range),
-                    std::string(SEMA_ARRAY_INDEX_INTEGER)
-                );
+                this->report_general(place_expr_range_or(this->module_, index_expr, projection_range),
+                    std::string(SEMA_ARRAY_INDEX_INTEGER));
             }
             if (this->checked_.types.is_array(input_type)) {
-                const PlaceIntegerLiteralExpr literal_index =
-                    place_integer_literal_expr(this->module_, index_expr);
+                const PlaceIntegerLiteralExpr literal_index = place_integer_literal_expr(this->module_, index_expr);
                 if (emit_diagnostics && syntax::is_valid(literal_index.literal)) {
                     base::u64 index_value = 0;
                     const syntax::LiteralExprPayload* const literal_expr =
                         this->module_.exprs.literal_payload(literal_index.literal.value);
                     if (literal_expr != nullptr && this->parse_integer_literal_text(literal_expr->text, index_value)) {
-                        const bool out_of_bounds =
-                            (literal_index.negated && index_value != 0) ||
-                            (!literal_index.negated && index_value >= this->checked_.types.get(input_type).array_count);
+                        const bool out_of_bounds = (literal_index.negated && index_value != 0)
+                            || (!literal_index.negated
+                                && index_value >= this->checked_.types.get(input_type).array_count);
                         if (out_of_bounds) {
-                            this->report_general(
-                                place_expr_range_or(this->module_, index_expr, projection_range),
-                                std::string(SEMA_ARRAY_INDEX_OUT_OF_BOUNDS)
-                            );
+                            this->report_general(place_expr_range_or(this->module_, index_expr, projection_range),
+                                std::string(SEMA_ARRAY_INDEX_OUT_OF_BOUNDS));
                         }
                     }
                 }
@@ -2012,28 +1966,30 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
     return place;
 }
 
-void SemanticAnalyzer::require_place_projection_safety(
-    const PlaceInfo& place,
-    const base::SourceRange& range
-) {
+void SemanticAnalyzer::require_place_projection_safety(const PlaceInfo& place, const base::SourceRange& range)
+{
     if (place.crosses_raw_pointer) {
         this->require_unsafe_context(range, SEMA_UNSAFE_RAW_POINTER_PROJECTION);
     }
 }
 
-bool SemanticAnalyzer::is_place_expr(const syntax::ExprId expr_id) {
+bool SemanticAnalyzer::is_place_expr(const syntax::ExprId expr_id)
+{
     return this->analyze_place_info(expr_id, false).is_place;
 }
 
-bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id) {
+bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id)
+{
     return this->analyze_place_info(expr_id, false).is_writable;
 }
 
-bool SemanticAnalyzer::is_array_containing_value_type(const TypeHandle type) const noexcept {
+bool SemanticAnalyzer::is_array_containing_value_type(const TypeHandle type) const noexcept
+{
     return is_valid(type) && this->checked_.types.contains_array(type);
 }
 
-const StructInfo* SemanticAnalyzer::find_struct(const TypeHandle type) const noexcept {
+const StructInfo* SemanticAnalyzer::find_struct(const TypeHandle type) const noexcept
+{
     if (!is_valid(type)) {
         return nullptr;
     }

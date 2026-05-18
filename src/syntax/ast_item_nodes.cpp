@@ -8,16 +8,17 @@ namespace aurex::syntax {
 
 ItemNodeList::ItemNodeList()
     : arena_(std::make_unique<base::BumpAllocator>()),
-      headers_(base::BumpAllocatorAdapter<ItemNodeHeader> {*this->arena_}),
-      payloads_(*this->arena_) {
+      headers_(base::BumpAllocatorAdapter<ItemNodeHeader>{*this->arena_}), payloads_(*this->arena_)
+{
 }
 
-ItemNodeList::ItemNodeList(const ItemNodeList& other)
-    : ItemNodeList() {
+ItemNodeList::ItemNodeList(const ItemNodeList& other) : ItemNodeList()
+{
     this->copy_from(other);
 }
 
-ItemNodeList& ItemNodeList::operator=(const ItemNodeList& other) {
+ItemNodeList& ItemNodeList::operator=(const ItemNodeList& other)
+{
     if (this == &other) {
         return *this;
     }
@@ -27,16 +28,16 @@ ItemNodeList& ItemNodeList::operator=(const ItemNodeList& other) {
 }
 
 ItemNodeList::ItemNodeList(ItemNodeList&& other) noexcept
-    : arena_(std::move(other.arena_)),
-      headers_(std::move(other.headers_)),
-      payloads_(std::move(other.payloads_)) {
-    other.headers_ = AstArenaVector<ItemNodeHeader> {};
-    other.payloads_ = ItemNodePayloadArena {};
+    : arena_(std::move(other.arena_)), headers_(std::move(other.headers_)), payloads_(std::move(other.payloads_))
+{
+    other.headers_ = AstArenaVector<ItemNodeHeader>{};
+    other.payloads_ = ItemNodePayloadArena{};
     other.materialized_.clear();
     other.materialized_valid_.clear();
 }
 
-ItemNodeList& ItemNodeList::operator=(ItemNodeList&& other) noexcept {
+ItemNodeList& ItemNodeList::operator=(ItemNodeList&& other) noexcept
+{
     if (this == &other) {
         return *this;
     }
@@ -46,39 +47,48 @@ ItemNodeList& ItemNodeList::operator=(ItemNodeList&& other) noexcept {
 
 ItemNodeList::~ItemNodeList() = default;
 
-base::usize ItemNodeList::size() const noexcept {
+base::usize ItemNodeList::size() const noexcept
+{
     return this->headers_.size();
 }
 
-bool ItemNodeList::empty() const noexcept {
+bool ItemNodeList::empty() const noexcept
+{
     return this->headers_.empty();
 }
 
-ItemKind ItemNodeList::kind(const base::usize index) const noexcept {
+ItemKind ItemNodeList::kind(const base::usize index) const noexcept
+{
     return static_cast<ItemKind>(this->headers_[index].kind);
 }
 
-base::usize ItemNodeList::arena_bytes() const noexcept {
+base::usize ItemNodeList::arena_bytes() const noexcept
+{
     return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
 }
 
-base::usize ItemNodeList::arena_used_bytes() const noexcept {
+base::usize ItemNodeList::arena_used_bytes() const noexcept
+{
     return this->arena_ == nullptr ? 0 : this->arena_->used_bytes();
 }
 
-base::usize ItemNodeList::arena_blocks() const noexcept {
+base::usize ItemNodeList::arena_blocks() const noexcept
+{
     return this->arena_ == nullptr ? 0 : this->arena_->block_count();
 }
 
-base::SourceRange ItemNodeList::range(const base::usize index) const noexcept {
+base::SourceRange ItemNodeList::range(const base::usize index) const noexcept
+{
     return this->headers_[index].range;
 }
 
-Visibility ItemNodeList::visibility(const base::usize index) const noexcept {
+Visibility ItemNodeList::visibility(const base::usize index) const noexcept
+{
     return static_cast<Visibility>(this->headers_[index].visibility);
 }
 
-void ItemNodeList::reserve(const base::usize size) {
+void ItemNodeList::reserve(const base::usize size)
+{
     this->reserve_headers(size);
     const base::usize primary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR);
     const base::usize secondary = ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR);
@@ -94,16 +104,19 @@ void ItemNodeList::reserve(const base::usize size) {
     this->payloads_.unknowns.reserve(rare);
 }
 
-void ItemNodeList::reserve_headers(const base::usize size) {
+void ItemNodeList::reserve_headers(const base::usize size)
+{
     this->headers_.reserve(size);
 }
 
-void ItemNodeList::push_back(ItemNode node) {
+void ItemNodeList::push_back(ItemNode node)
+{
     static_cast<void>(this->append(std::move(node)));
 }
 
-ItemId ItemNodeList::append(ItemNode node) {
-    const ItemId id {static_cast<base::u32>(this->headers_.size())};
+ItemId ItemNodeList::append(ItemNode node)
+{
+    const ItemId id{static_cast<base::u32>(this->headers_.size())};
     ItemNodeHeader header;
     header.kind = pack_kind(node.kind);
     header.range = node.range;
@@ -114,7 +127,8 @@ ItemId ItemNodeList::append(ItemNode node) {
     return id;
 }
 
-void ItemNodeList::set(const base::usize index, ItemNode node) {
+void ItemNodeList::set(const base::usize index, ItemNode node)
+{
     ItemNodeHeader header;
     header.kind = pack_kind(node.kind);
     header.range = node.range;
@@ -125,45 +139,54 @@ void ItemNodeList::set(const base::usize index, ItemNode node) {
     this->invalidate_materialized(index);
 }
 
-void ItemNodeList::set_range_begin(const base::usize index, const base::usize begin) {
+void ItemNodeList::set_range_begin(const base::usize index, const base::usize begin)
+{
     this->headers_[index].range.begin = begin;
     this->invalidate_materialized(index);
 }
 
-void ItemNodeList::set_visibility(const base::usize index, const Visibility visibility) {
+void ItemNodeList::set_visibility(const base::usize index, const Visibility visibility)
+{
     this->headers_[index].visibility = pack_visibility(visibility);
     this->invalidate_materialized(index);
 }
 
-ItemNode ItemNodeList::take(const base::usize index) {
+ItemNode ItemNodeList::take(const base::usize index)
+{
     this->invalidate_materialized(index);
     return this->load_moved(index);
 }
 
-ItemNode ItemNodeList::operator[](const base::usize index) const {
+ItemNode ItemNodeList::operator[](const base::usize index) const
+{
     return this->load(index);
 }
 
-const ItemNode* ItemNodeList::ptr(const base::usize index) const {
+const ItemNode* ItemNodeList::ptr(const base::usize index) const
+{
     if (index >= this->headers_.size()) {
         return nullptr;
     }
     return &this->materialized(index);
 }
 
-base::u8 ItemNodeList::pack_kind(const ItemKind kind) noexcept {
+base::u8 ItemNodeList::pack_kind(const ItemKind kind) noexcept
+{
     return static_cast<base::u8>(kind);
 }
 
-base::u8 ItemNodeList::pack_visibility(const Visibility visibility) noexcept {
+base::u8 ItemNodeList::pack_visibility(const Visibility visibility) noexcept
+{
     return static_cast<base::u8>(visibility);
 }
 
-bool ItemNodeList::has_flag(const base::u8 flags, const base::u8 flag) noexcept {
+bool ItemNodeList::has_flag(const base::u8 flags, const base::u8 flag) noexcept
+{
     return (flags & flag) != 0;
 }
 
-base::u8 ItemNodeList::pack_flags(const ItemNode& node) noexcept {
+base::u8 ItemNodeList::pack_flags(const ItemNode& node) noexcept
+{
     base::u8 flags = 0;
     if (node.is_export_c) {
         flags |= ITEM_NODE_FLAG_EXPORT_C;
@@ -183,7 +206,8 @@ base::u8 ItemNodeList::pack_flags(const ItemNode& node) noexcept {
     return flags;
 }
 
-GenericConstraintDecl ItemNodeList::copy_generic_constraint(const GenericConstraintDecl& constraint) {
+GenericConstraintDecl ItemNodeList::copy_generic_constraint(const GenericConstraintDecl& constraint)
+{
     GenericConstraintDecl copy;
     copy.param_name = constraint.param_name;
     copy.param_range = constraint.param_range;
@@ -195,7 +219,8 @@ GenericConstraintDecl ItemNodeList::copy_generic_constraint(const GenericConstra
     return copy;
 }
 
-GenericConstraintDecl ItemNodeList::copy_or_move_generic_constraint(GenericConstraintDecl&& constraint) {
+GenericConstraintDecl ItemNodeList::copy_or_move_generic_constraint(GenericConstraintDecl&& constraint)
+{
     GenericConstraintDecl copy;
     copy.param_name = constraint.param_name;
     copy.param_range = constraint.param_range;
@@ -207,7 +232,8 @@ GenericConstraintDecl ItemNodeList::copy_or_move_generic_constraint(GenericConst
     return copy;
 }
 
-EnumCaseDecl ItemNodeList::copy_enum_case(const EnumCaseDecl& enum_case) {
+EnumCaseDecl ItemNodeList::copy_enum_case(const EnumCaseDecl& enum_case)
+{
     EnumCaseDecl copy;
     copy.name = enum_case.name;
     copy.payload_type = enum_case.payload_type;
@@ -218,7 +244,8 @@ EnumCaseDecl ItemNodeList::copy_enum_case(const EnumCaseDecl& enum_case) {
     return copy;
 }
 
-EnumCaseDecl ItemNodeList::copy_or_move_enum_case(EnumCaseDecl&& enum_case) {
+EnumCaseDecl ItemNodeList::copy_or_move_enum_case(EnumCaseDecl&& enum_case)
+{
     EnumCaseDecl copy;
     copy.name = enum_case.name;
     copy.payload_type = enum_case.payload_type;
@@ -229,7 +256,8 @@ EnumCaseDecl ItemNodeList::copy_or_move_enum_case(EnumCaseDecl&& enum_case) {
     return copy;
 }
 
-GenericConstraintDecl ItemNodeList::detach_generic_constraint(const GenericConstraintDecl& constraint) const {
+GenericConstraintDecl ItemNodeList::detach_generic_constraint(const GenericConstraintDecl& constraint) const
+{
     GenericConstraintDecl copy;
     copy.param_name = constraint.param_name;
     copy.param_range = constraint.param_range;
@@ -241,7 +269,8 @@ GenericConstraintDecl ItemNodeList::detach_generic_constraint(const GenericConst
     return copy;
 }
 
-EnumCaseDecl ItemNodeList::detach_enum_case(const EnumCaseDecl& enum_case) const {
+EnumCaseDecl ItemNodeList::detach_enum_case(const EnumCaseDecl& enum_case) const
+{
     EnumCaseDecl copy;
     copy.name = enum_case.name;
     copy.payload_type = enum_case.payload_type;
@@ -252,73 +281,83 @@ EnumCaseDecl ItemNodeList::detach_enum_case(const EnumCaseDecl& enum_case) const
     return copy;
 }
 
-base::u32 ItemNodeList::store_payload(ItemNode node) {
+base::u32 ItemNodeList::store_payload(ItemNode node)
+{
     switch (node.kind) {
-    case ItemKind::const_decl:
-        return this->push_payload(this->payloads_.consts, ConstItemPayload {
-                                                              node.name,
-                                                              node.name_id,
-                                                              node.const_type,
-                                                              node.const_value,
-                                                          });
-    case ItemKind::type_alias:
-        return this->push_payload(this->payloads_.type_aliases, TypeAliasItemPayload {
-                                                                    node.name,
-                                                                    node.name_id,
-                                                                    this->copy_list(node.generic_params),
-                                                                    this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
-                                                                    node.alias_type,
-                                                                });
-    case ItemKind::struct_decl:
-        return this->push_payload(this->payloads_.structs, StructItemPayload {
-                                                               node.name,
-                                                               node.name_id,
-                                                               this->copy_list(node.generic_params),
-                                                               this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
-                                                               this->copy_list(node.fields),
-                                                           });
-    case ItemKind::enum_decl:
-        return this->push_payload(this->payloads_.enums, EnumItemPayload {
-                                                             node.name,
-                                                             node.name_id,
-                                                             this->copy_list(node.generic_params),
-                                                             this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
-                                                             node.enum_base_type,
-                                                             this->copy_or_move_enum_cases(std::move(node.enum_cases)),
-                                                         });
-    case ItemKind::opaque_struct_decl:
-        return this->push_payload(this->payloads_.opaque_structs, OpaqueStructItemPayload {
-                                                                      node.name,
-                                                                      node.name_id,
-                                                                  });
-    case ItemKind::fn_decl:
-        return this->push_payload(this->payloads_.functions, FunctionItemPayload {
-                                                                 node.name,
-                                                                 node.name_id,
-                                                                 this->copy_list(node.generic_params),
-                                                                 this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
-                                                                 this->copy_list(node.params),
-                                                                 node.return_type,
-                                                                 node.body,
-                                                                 node.impl_type,
-                                                                 node.abi_name,
-                                                             });
-    case ItemKind::extern_block:
-        return this->push_payload(this->payloads_.extern_blocks, ExternBlockItemPayload {
-                                                                     this->copy_list(node.extern_items),
-                                                                 });
-    case ItemKind::impl_block:
-        return this->push_payload(this->payloads_.impl_blocks, ImplBlockItemPayload {
-                                                                   this->copy_list(node.generic_params),
-                                                                   this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
-                                                                   node.impl_type,
-                                                                   this->copy_list(node.impl_items),
-                                                               });
+        case ItemKind::const_decl:
+            return this->push_payload(this->payloads_.consts,
+                ConstItemPayload{
+                    node.name,
+                    node.name_id,
+                    node.const_type,
+                    node.const_value,
+                });
+        case ItemKind::type_alias:
+            return this->push_payload(this->payloads_.type_aliases,
+                TypeAliasItemPayload{
+                    node.name,
+                    node.name_id,
+                    this->copy_list(node.generic_params),
+                    this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
+                    node.alias_type,
+                });
+        case ItemKind::struct_decl:
+            return this->push_payload(this->payloads_.structs,
+                StructItemPayload{
+                    node.name,
+                    node.name_id,
+                    this->copy_list(node.generic_params),
+                    this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
+                    this->copy_list(node.fields),
+                });
+        case ItemKind::enum_decl:
+            return this->push_payload(this->payloads_.enums,
+                EnumItemPayload{
+                    node.name,
+                    node.name_id,
+                    this->copy_list(node.generic_params),
+                    this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
+                    node.enum_base_type,
+                    this->copy_or_move_enum_cases(std::move(node.enum_cases)),
+                });
+        case ItemKind::opaque_struct_decl:
+            return this->push_payload(this->payloads_.opaque_structs,
+                OpaqueStructItemPayload{
+                    node.name,
+                    node.name_id,
+                });
+        case ItemKind::fn_decl:
+            return this->push_payload(this->payloads_.functions,
+                FunctionItemPayload{
+                    node.name,
+                    node.name_id,
+                    this->copy_list(node.generic_params),
+                    this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
+                    this->copy_list(node.params),
+                    node.return_type,
+                    node.body,
+                    node.impl_type,
+                    node.abi_name,
+                });
+        case ItemKind::extern_block:
+            return this->push_payload(this->payloads_.extern_blocks,
+                ExternBlockItemPayload{
+                    this->copy_list(node.extern_items),
+                });
+        case ItemKind::impl_block:
+            return this->push_payload(this->payloads_.impl_blocks,
+                ImplBlockItemPayload{
+                    this->copy_list(node.generic_params),
+                    this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
+                    node.impl_type,
+                    this->copy_list(node.impl_items),
+                });
     }
     return this->push_payload(this->payloads_.unknowns, std::move(node));
 }
 
-void ItemNodeList::load_header(const ItemNodeHeader& header, ItemNode& node) const noexcept {
+void ItemNodeList::load_header(const ItemNodeHeader& header, ItemNode& node) const noexcept
+{
     node.kind = static_cast<ItemKind>(header.kind);
     node.range = header.range;
     node.visibility = static_cast<Visibility>(header.visibility);
@@ -329,161 +368,164 @@ void ItemNodeList::load_header(const ItemNodeHeader& header, ItemNode& node) con
     node.is_prototype = has_flag(header.flags, ITEM_NODE_FLAG_PROTOTYPE);
 }
 
-ItemNode ItemNodeList::load(const base::usize index) const {
+ItemNode ItemNodeList::load(const base::usize index) const
+{
     const ItemNodeHeader& header = this->headers_[index];
     ItemNode node;
     this->load_header(header, node);
     switch (node.kind) {
-    case ItemKind::const_decl: {
-        const ConstItemPayload& payload = this->payloads_.consts[header.payload];
-        node.name = payload.name;
-        node.name_id = payload.name_id;
-        node.const_type = payload.type;
-        node.const_value = payload.value;
-        break;
-    }
-    case ItemKind::type_alias: {
-        const TypeAliasItemPayload& payload = this->payloads_.type_aliases[header.payload];
-        node.name = payload.name;
-        node.name_id = payload.name_id;
-        node.generic_params = copy_std_vector(payload.generic_params);
-        node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
-        node.alias_type = payload.target;
-        break;
-    }
-    case ItemKind::struct_decl: {
-        const StructItemPayload& payload = this->payloads_.structs[header.payload];
-        node.name = payload.name;
-        node.name_id = payload.name_id;
-        node.generic_params = copy_std_vector(payload.generic_params);
-        node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
-        node.fields = copy_std_vector(payload.fields);
-        break;
-    }
-    case ItemKind::enum_decl: {
-        const EnumItemPayload& payload = this->payloads_.enums[header.payload];
-        node.name = payload.name;
-        node.name_id = payload.name_id;
-        node.generic_params = copy_std_vector(payload.generic_params);
-        node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
-        node.enum_base_type = payload.base_type;
-        node.enum_cases = this->detach_enum_cases(payload.cases);
-        break;
-    }
-    case ItemKind::opaque_struct_decl:
-        node.name = this->payloads_.opaque_structs[header.payload].name;
-        node.name_id = this->payloads_.opaque_structs[header.payload].name_id;
-        break;
-    case ItemKind::fn_decl: {
-        const FunctionItemPayload& payload = this->payloads_.functions[header.payload];
-        node.name = payload.name;
-        node.name_id = payload.name_id;
-        node.generic_params = copy_std_vector(payload.generic_params);
-        node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
-        node.params = copy_std_vector(payload.params);
-        node.return_type = payload.return_type;
-        node.body = payload.body;
-        node.impl_type = payload.impl_type;
-        node.abi_name = payload.abi_name;
-        break;
-    }
-    case ItemKind::extern_block:
-        node.extern_items = copy_std_vector(this->payloads_.extern_blocks[header.payload].items);
-        break;
-    case ItemKind::impl_block: {
-        const ImplBlockItemPayload& payload = this->payloads_.impl_blocks[header.payload];
-        node.generic_params = copy_std_vector(payload.generic_params);
-        node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
-        node.impl_type = payload.impl_type;
-        node.impl_items = copy_std_vector(payload.items);
-        break;
-    }
-    default:
-        node = this->payloads_.unknowns[header.payload];
-        this->load_header(header, node);
-        break;
+        case ItemKind::const_decl: {
+            const ConstItemPayload& payload = this->payloads_.consts[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.const_type = payload.type;
+            node.const_value = payload.value;
+            break;
+        }
+        case ItemKind::type_alias: {
+            const TypeAliasItemPayload& payload = this->payloads_.type_aliases[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.alias_type = payload.target;
+            break;
+        }
+        case ItemKind::struct_decl: {
+            const StructItemPayload& payload = this->payloads_.structs[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.fields = copy_std_vector(payload.fields);
+            break;
+        }
+        case ItemKind::enum_decl: {
+            const EnumItemPayload& payload = this->payloads_.enums[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.enum_base_type = payload.base_type;
+            node.enum_cases = this->detach_enum_cases(payload.cases);
+            break;
+        }
+        case ItemKind::opaque_struct_decl:
+            node.name = this->payloads_.opaque_structs[header.payload].name;
+            node.name_id = this->payloads_.opaque_structs[header.payload].name_id;
+            break;
+        case ItemKind::fn_decl: {
+            const FunctionItemPayload& payload = this->payloads_.functions[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.params = copy_std_vector(payload.params);
+            node.return_type = payload.return_type;
+            node.body = payload.body;
+            node.impl_type = payload.impl_type;
+            node.abi_name = payload.abi_name;
+            break;
+        }
+        case ItemKind::extern_block:
+            node.extern_items = copy_std_vector(this->payloads_.extern_blocks[header.payload].items);
+            break;
+        case ItemKind::impl_block: {
+            const ImplBlockItemPayload& payload = this->payloads_.impl_blocks[header.payload];
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.impl_type = payload.impl_type;
+            node.impl_items = copy_std_vector(payload.items);
+            break;
+        }
+        default:
+            node = this->payloads_.unknowns[header.payload];
+            this->load_header(header, node);
+            break;
     }
     return node;
 }
 
-ItemNode ItemNodeList::load_moved(const base::usize index) {
+ItemNode ItemNodeList::load_moved(const base::usize index)
+{
     const ItemNodeHeader& header = this->headers_[index];
     ItemNode node;
     this->load_header(header, node);
     switch (node.kind) {
-    case ItemKind::const_decl: {
-        const ConstItemPayload& payload = this->payloads_.consts[header.payload];
-        node.name = payload.name;
-        node.name_id = payload.name_id;
-        node.const_type = payload.type;
-        node.const_value = payload.value;
-        break;
-    }
-    case ItemKind::type_alias: {
-        TypeAliasItemPayload& payload = this->payloads_.type_aliases[header.payload];
-        node.name = payload.name;
-        node.name_id = payload.name_id;
-        node.generic_params = copy_std_vector(payload.generic_params);
-        node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
-        node.alias_type = payload.target;
-        break;
-    }
-    case ItemKind::struct_decl: {
-        StructItemPayload& payload = this->payloads_.structs[header.payload];
-        node.name = payload.name;
-        node.name_id = payload.name_id;
-        node.generic_params = copy_std_vector(payload.generic_params);
-        node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
-        node.fields = copy_std_vector(payload.fields);
-        break;
-    }
-    case ItemKind::enum_decl: {
-        EnumItemPayload& payload = this->payloads_.enums[header.payload];
-        node.name = payload.name;
-        node.name_id = payload.name_id;
-        node.generic_params = copy_std_vector(payload.generic_params);
-        node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
-        node.enum_base_type = payload.base_type;
-        node.enum_cases = this->detach_enum_cases(payload.cases);
-        break;
-    }
-    case ItemKind::opaque_struct_decl:
-        node.name = this->payloads_.opaque_structs[header.payload].name;
-        node.name_id = this->payloads_.opaque_structs[header.payload].name_id;
-        break;
-    case ItemKind::fn_decl: {
-        FunctionItemPayload& payload = this->payloads_.functions[header.payload];
-        node.name = payload.name;
-        node.name_id = payload.name_id;
-        node.generic_params = copy_std_vector(payload.generic_params);
-        node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
-        node.params = copy_std_vector(payload.params);
-        node.return_type = payload.return_type;
-        node.body = payload.body;
-        node.impl_type = payload.impl_type;
-        node.abi_name = payload.abi_name;
-        break;
-    }
-    case ItemKind::extern_block:
-        node.extern_items = copy_std_vector(this->payloads_.extern_blocks[header.payload].items);
-        break;
-    case ItemKind::impl_block: {
-        ImplBlockItemPayload& payload = this->payloads_.impl_blocks[header.payload];
-        node.generic_params = copy_std_vector(payload.generic_params);
-        node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
-        node.impl_type = payload.impl_type;
-        node.impl_items = copy_std_vector(payload.items);
-        break;
-    }
-    default:
-        node = std::move(this->payloads_.unknowns[header.payload]);
-        this->load_header(header, node);
-        break;
+        case ItemKind::const_decl: {
+            const ConstItemPayload& payload = this->payloads_.consts[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.const_type = payload.type;
+            node.const_value = payload.value;
+            break;
+        }
+        case ItemKind::type_alias: {
+            TypeAliasItemPayload& payload = this->payloads_.type_aliases[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.alias_type = payload.target;
+            break;
+        }
+        case ItemKind::struct_decl: {
+            StructItemPayload& payload = this->payloads_.structs[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.fields = copy_std_vector(payload.fields);
+            break;
+        }
+        case ItemKind::enum_decl: {
+            EnumItemPayload& payload = this->payloads_.enums[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.enum_base_type = payload.base_type;
+            node.enum_cases = this->detach_enum_cases(payload.cases);
+            break;
+        }
+        case ItemKind::opaque_struct_decl:
+            node.name = this->payloads_.opaque_structs[header.payload].name;
+            node.name_id = this->payloads_.opaque_structs[header.payload].name_id;
+            break;
+        case ItemKind::fn_decl: {
+            FunctionItemPayload& payload = this->payloads_.functions[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.params = copy_std_vector(payload.params);
+            node.return_type = payload.return_type;
+            node.body = payload.body;
+            node.impl_type = payload.impl_type;
+            node.abi_name = payload.abi_name;
+            break;
+        }
+        case ItemKind::extern_block:
+            node.extern_items = copy_std_vector(this->payloads_.extern_blocks[header.payload].items);
+            break;
+        case ItemKind::impl_block: {
+            ImplBlockItemPayload& payload = this->payloads_.impl_blocks[header.payload];
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.impl_type = payload.impl_type;
+            node.impl_items = copy_std_vector(payload.items);
+            break;
+        }
+        default:
+            node = std::move(this->payloads_.unknowns[header.payload]);
+            this->load_header(header, node);
+            break;
     }
     return node;
 }
 
-const ItemNode& ItemNodeList::materialized(const base::usize index) const {
+const ItemNode& ItemNodeList::materialized(const base::usize index) const
+{
     this->ensure_materialized_capacity(index + 1);
     if (!this->materialized_valid_[index]) {
         this->materialized_[index] = this->load(index);
@@ -492,7 +534,8 @@ const ItemNode& ItemNodeList::materialized(const base::usize index) const {
     return this->materialized_[index];
 }
 
-void ItemNodeList::ensure_materialized_capacity(const base::usize size) const {
+void ItemNodeList::ensure_materialized_capacity(const base::usize size) const
+{
     if (this->materialized_.size() < size) {
         this->materialized_.resize(size);
     }
@@ -501,20 +544,23 @@ void ItemNodeList::ensure_materialized_capacity(const base::usize size) const {
     }
 }
 
-void ItemNodeList::invalidate_materialized(const base::usize index) const {
+void ItemNodeList::invalidate_materialized(const base::usize index) const
+{
     if (index < this->materialized_valid_.size()) {
         this->materialized_valid_[index] = false;
     }
 }
 
-void ItemNodeList::copy_from(const ItemNodeList& other) {
+void ItemNodeList::copy_from(const ItemNodeList& other)
+{
     this->reserve(other.size());
     for (base::usize i = 0; i < other.size(); ++i) {
         static_cast<void>(this->append(other.load(i)));
     }
 }
 
-void ItemNodeList::swap(ItemNodeList& other) noexcept {
+void ItemNodeList::swap(ItemNodeList& other) noexcept
+{
     using std::swap;
     swap(this->arena_, other.arena_);
     this->headers_.swap(other.headers_);

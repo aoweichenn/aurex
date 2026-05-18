@@ -1,7 +1,7 @@
+#include <aurex/driver/invocation.hpp>
+
 #include <support/randomized_source.hpp>
 #include <support/test_support.hpp>
-
-#include <aurex/driver/invocation.hpp>
 
 #include <fstream>
 #include <string>
@@ -9,14 +9,16 @@
 namespace aurex::test {
 namespace {
 
-void write_source(const fs::path& path, const std::string& source) {
+void write_source(const fs::path& path, const std::string& source)
+{
     std::ofstream output(path, std::ios::binary);
     ASSERT_TRUE(output) << "failed to create " << path;
     output << source;
     ASSERT_TRUE(output) << "failed to write " << path;
 }
 
-driver::CompilerInvocation randomized_invocation(const fs::path& source, const driver::EmitKind emit_kind) {
+driver::CompilerInvocation randomized_invocation(const fs::path& source, const driver::EmitKind emit_kind)
+{
     driver::CompilerInvocation invocation;
     invocation.input_path = source;
     invocation.tool_path = aurexc_path();
@@ -27,7 +29,8 @@ driver::CompilerInvocation randomized_invocation(const fs::path& source, const d
 
 } // namespace
 
-TEST_F(AurexIntegrationTest, RandomizedGeneratedModulesPassDriverCheckAndIrEmission) {
+TEST_F(AurexIntegrationTest, RandomizedGeneratedModulesPassDriverCheckAndIrEmission)
+{
     randomized::DeterministicRandom random(randomized::RANDOM_SOURCE_LEGAL_PROGRAM_SEED);
     for (base::usize index = 0; index < randomized::RANDOM_SOURCE_INTEGRATION_PROGRAM_COUNT; ++index) {
         SCOPED_TRACE("randomized driver integration case " + std::to_string(index));
@@ -40,7 +43,8 @@ TEST_F(AurexIntegrationTest, RandomizedGeneratedModulesPassDriverCheckAndIrEmiss
     }
 }
 
-TEST_F(AurexIntegrationTest, RandomizedMalformedModulesFailCleanlyThroughDriverCheck) {
+TEST_F(AurexIntegrationTest, RandomizedMalformedModulesFailCleanlyThroughDriverCheck)
+{
     randomized::DeterministicRandom random(randomized::RANDOM_SOURCE_PARSER_RECOVERY_SEED);
     for (base::usize index = 0; index < randomized::RANDOM_SOURCE_INTEGRATION_PROGRAM_COUNT; ++index) {
         SCOPED_TRACE("randomized malformed driver case " + std::to_string(index));

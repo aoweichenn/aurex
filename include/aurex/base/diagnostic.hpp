@@ -55,7 +55,7 @@ enum class DiagnosticCode {
 
 struct Diagnostic {
     Severity severity = Severity::error;
-    SourceRange range {};
+    SourceRange range{};
     std::string message;
     DiagnosticCategory category = DiagnosticCategory::general;
     DiagnosticCode code = DiagnosticCode::none;

@@ -23,12 +23,8 @@ class Lexer final {
 public:
     // The lexer is a small state machine over bytes. It never owns the source
     // text; every token text is a string_view into SourceManager storage.
-    Lexer(
-        base::SourceId source_id,
-        std::string_view source_text,
-        base::DiagnosticSink& diagnostics,
-        LexerOptions options = {}
-    ) noexcept;
+    Lexer(base::SourceId source_id, std::string_view source_text, base::DiagnosticSink& diagnostics,
+        LexerOptions options = {}) noexcept;
 
     [[nodiscard]] base::Result<TokenBuffer> tokenize();
 
@@ -60,13 +56,8 @@ private:
     void scan_leading_dot_float(base::usize begin);
     void scan_numeric_suffix();
     [[nodiscard]] bool scan_integer_suffix();
-    void scan_string_body(
-        base::usize begin,
-        syntax::TokenKind token_kind,
-        base::StringLiteralKind literal_kind,
-        std::string_view unterminated_message,
-        bool allow_newline = false
-    );
+    void scan_string_body(base::usize begin, syntax::TokenKind token_kind, base::StringLiteralKind literal_kind,
+        std::string_view unterminated_message, bool allow_newline = false);
     void scan_string(base::usize begin);
     void scan_c_string(base::usize begin);
     void scan_raw_string(base::usize begin);

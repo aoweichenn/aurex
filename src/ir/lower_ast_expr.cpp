@@ -1,7 +1,7 @@
-#include <ir/lower_ast_internal.hpp>
-
 #include <aurex/base/string_literal.hpp>
 #include <aurex/ir/enum_layout.hpp>
+
+#include <ir/lower_ast_internal.hpp>
 
 #include <algorithm>
 
@@ -13,50 +13,78 @@ constexpr base::usize IR_METHOD_RECEIVER_PARAM_COUNT = 1;
 constexpr base::usize IR_STR_FROM_BYTES_UNCHECKED_ARG_COUNT = 2;
 
 template <typename T, typename Allocator>
-[[nodiscard]] std::span<const T> readonly_span(const std::vector<T, Allocator>& values) noexcept {
+[[nodiscard]] std::span<const T> readonly_span(const std::vector<T, Allocator>& values) noexcept
+{
     return {values.data(), values.size()};
 }
 
-[[nodiscard]] UnaryOp map_unary(const syntax::UnaryOp op) noexcept {
+[[nodiscard]] UnaryOp map_unary(const syntax::UnaryOp op) noexcept
+{
     switch (op) {
-    case syntax::UnaryOp::logical_not: return UnaryOp::logical_not;
-    case syntax::UnaryOp::numeric_negate: return UnaryOp::numeric_negate;
-    case syntax::UnaryOp::bitwise_not: return UnaryOp::bitwise_not;
-    case syntax::UnaryOp::address_of: return UnaryOp::address_of;
-    case syntax::UnaryOp::address_of_mut: return UnaryOp::address_of;
-    case syntax::UnaryOp::dereference: return UnaryOp::dereference;
+        case syntax::UnaryOp::logical_not:
+            return UnaryOp::logical_not;
+        case syntax::UnaryOp::numeric_negate:
+            return UnaryOp::numeric_negate;
+        case syntax::UnaryOp::bitwise_not:
+            return UnaryOp::bitwise_not;
+        case syntax::UnaryOp::address_of:
+            return UnaryOp::address_of;
+        case syntax::UnaryOp::address_of_mut:
+            return UnaryOp::address_of;
+        case syntax::UnaryOp::dereference:
+            return UnaryOp::dereference;
     }
     return UnaryOp::logical_not;
 }
 
-[[nodiscard]] BinaryOp map_binary(const syntax::BinaryOp op) noexcept {
+[[nodiscard]] BinaryOp map_binary(const syntax::BinaryOp op) noexcept
+{
     switch (op) {
-    case syntax::BinaryOp::add: return BinaryOp::add;
-    case syntax::BinaryOp::sub: return BinaryOp::sub;
-    case syntax::BinaryOp::mul: return BinaryOp::mul;
-    case syntax::BinaryOp::div: return BinaryOp::div;
-    case syntax::BinaryOp::mod: return BinaryOp::mod;
-    case syntax::BinaryOp::shl: return BinaryOp::shl;
-    case syntax::BinaryOp::shr: return BinaryOp::shr;
-    case syntax::BinaryOp::less: return BinaryOp::less;
-    case syntax::BinaryOp::less_equal: return BinaryOp::less_equal;
-    case syntax::BinaryOp::greater: return BinaryOp::greater;
-    case syntax::BinaryOp::greater_equal: return BinaryOp::greater_equal;
-    case syntax::BinaryOp::equal: return BinaryOp::equal;
-    case syntax::BinaryOp::not_equal: return BinaryOp::not_equal;
-    case syntax::BinaryOp::bit_and: return BinaryOp::bit_and;
-    case syntax::BinaryOp::bit_xor: return BinaryOp::bit_xor;
-    case syntax::BinaryOp::bit_or: return BinaryOp::bit_or;
-    case syntax::BinaryOp::logical_and: return BinaryOp::logical_and;
-    case syntax::BinaryOp::logical_or: return BinaryOp::logical_or;
+        case syntax::BinaryOp::add:
+            return BinaryOp::add;
+        case syntax::BinaryOp::sub:
+            return BinaryOp::sub;
+        case syntax::BinaryOp::mul:
+            return BinaryOp::mul;
+        case syntax::BinaryOp::div:
+            return BinaryOp::div;
+        case syntax::BinaryOp::mod:
+            return BinaryOp::mod;
+        case syntax::BinaryOp::shl:
+            return BinaryOp::shl;
+        case syntax::BinaryOp::shr:
+            return BinaryOp::shr;
+        case syntax::BinaryOp::less:
+            return BinaryOp::less;
+        case syntax::BinaryOp::less_equal:
+            return BinaryOp::less_equal;
+        case syntax::BinaryOp::greater:
+            return BinaryOp::greater;
+        case syntax::BinaryOp::greater_equal:
+            return BinaryOp::greater_equal;
+        case syntax::BinaryOp::equal:
+            return BinaryOp::equal;
+        case syntax::BinaryOp::not_equal:
+            return BinaryOp::not_equal;
+        case syntax::BinaryOp::bit_and:
+            return BinaryOp::bit_and;
+        case syntax::BinaryOp::bit_xor:
+            return BinaryOp::bit_xor;
+        case syntax::BinaryOp::bit_or:
+            return BinaryOp::bit_or;
+        case syntax::BinaryOp::logical_and:
+            return BinaryOp::logical_and;
+        case syntax::BinaryOp::logical_or:
+            return BinaryOp::logical_or;
     }
     return BinaryOp::add;
 }
 
 } // namespace
 
-Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcept {
-    ExprView view {};
+Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcept
+{
+    ExprView view{};
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->ast_.exprs.size()) {
         return view;
     }
@@ -68,148 +96,150 @@ Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcep
         view.text = literal->text;
         return view;
     }
-    if (const syntax::CastExprPayload* const cast = this->ast_.exprs.cast_payload(expr_id.value);
-        cast != nullptr) {
+    if (const syntax::CastExprPayload* const cast = this->ast_.exprs.cast_payload(expr_id.value); cast != nullptr) {
         view.cast_type = cast->type;
         view.cast_expr = cast->expr;
         return view;
     }
 
     switch (view.kind) {
-    case syntax::ExprKind::name: {
-        const syntax::NameExprPayload& payload = *this->ast_.exprs.name_payload(expr_id.value);
-        view.scope_name = payload.scope_name;
-        view.scope_range = payload.scope_range;
-        view.text = payload.text;
-        view.scope_name_id = payload.scope_name_id;
-        view.text_id = payload.text_id;
-        break;
-    }
-    case syntax::ExprKind::unary: {
-        const syntax::UnaryExprPayload& payload = *this->ast_.exprs.unary_payload(expr_id.value);
-        view.unary_op = payload.op;
-        view.unary_operand = payload.operand;
-        break;
-    }
-    case syntax::ExprKind::try_expr: {
-        const syntax::TryExprPayload& payload = *this->ast_.exprs.try_payload(expr_id.value);
-        view.try_operand = payload.operand;
-        break;
-    }
-    case syntax::ExprKind::binary: {
-        const syntax::BinaryExprPayload& payload = *this->ast_.exprs.binary_payload(expr_id.value);
-        view.binary_op = payload.op;
-        view.binary_lhs = payload.lhs;
-        view.binary_rhs = payload.rhs;
-        break;
-    }
-    case syntax::ExprKind::call:
-    case syntax::ExprKind::str_from_bytes_unchecked: {
-        const syntax::CallExprPayload& payload = *this->ast_.exprs.call_payload(expr_id.value);
-        view.callee = payload.callee;
-        view.args = readonly_span(payload.args);
-        break;
-    }
-    case syntax::ExprKind::if_expr: {
-        const syntax::IfExprPayload& payload = *this->ast_.exprs.if_payload(expr_id.value);
-        view.condition = payload.condition;
-        view.condition_pattern = payload.condition_pattern;
-        view.then_expr = payload.then_expr;
-        view.else_expr = payload.else_expr;
-        break;
-    }
-    case syntax::ExprKind::block_expr:
-    case syntax::ExprKind::unsafe_block: {
-        const syntax::BlockExprPayload& payload = *this->ast_.exprs.block_payload(expr_id.value);
-        view.block = payload.block;
-        view.block_result = payload.result;
-        break;
-    }
-    case syntax::ExprKind::match_expr: {
-        const syntax::MatchExprPayload& payload = *this->ast_.exprs.match_payload(expr_id.value);
-        view.match_value = payload.value;
-        view.match_arms = readonly_span(payload.arms);
-        break;
-    }
-    case syntax::ExprKind::array_literal: {
-        const syntax::ArrayExprPayload& payload = *this->ast_.exprs.array_payload(expr_id.value);
-        view.array_elements = readonly_span(payload.elements);
-        view.array_repeat_value = payload.repeat_value;
-        view.array_repeat_count = payload.repeat_count;
-        break;
-    }
-    case syntax::ExprKind::tuple_literal: {
-        const syntax::AstArenaVector<syntax::ExprId>& payload = *this->ast_.exprs.tuple_elements(expr_id.value);
-        view.tuple_elements = readonly_span(payload);
-        break;
-    }
-    case syntax::ExprKind::field: {
-        const syntax::FieldExprPayload& payload = *this->ast_.exprs.field_payload(expr_id.value);
-        view.object = payload.object;
-        view.field_name = payload.field_name;
-        view.field_name_id = payload.field_name_id;
-        break;
-    }
-    case syntax::ExprKind::index: {
-        const syntax::IndexExprPayload& payload = *this->ast_.exprs.index_payload(expr_id.value);
-        view.object = payload.object;
-        view.index = payload.index;
-        break;
-    }
-    case syntax::ExprKind::slice: {
-        const syntax::SliceExprPayload& payload = *this->ast_.exprs.slice_payload(expr_id.value);
-        view.object = payload.object;
-        view.slice_start = payload.start;
-        view.slice_end = payload.end;
-        break;
-    }
-    case syntax::ExprKind::struct_literal: {
-        const syntax::StructLiteralExprPayload& payload = *this->ast_.exprs.struct_literal_payload(expr_id.value);
-        view.object = payload.object;
-        view.scope_name = payload.scope_name;
-        view.scope_range = payload.scope_range;
-        view.text = payload.name;
-        view.scope_name_id = payload.scope_name_id;
-        view.text_id = payload.name_id;
-        view.field_inits = readonly_span(payload.field_inits);
-        break;
-    }
-    case syntax::ExprKind::invalid:
-    case syntax::ExprKind::generic_apply:
-    case syntax::ExprKind::integer_literal:
-    case syntax::ExprKind::float_literal:
-    case syntax::ExprKind::bool_literal:
-    case syntax::ExprKind::null_literal:
-    case syntax::ExprKind::string_literal:
-    case syntax::ExprKind::c_string_literal:
-    case syntax::ExprKind::raw_string_literal:
-    case syntax::ExprKind::byte_string_literal:
-    case syntax::ExprKind::byte_literal:
-    case syntax::ExprKind::char_literal:
-    case syntax::ExprKind::cast:
-    case syntax::ExprKind::pcast:
-    case syntax::ExprKind::bcast:
-    case syntax::ExprKind::size_of:
-    case syntax::ExprKind::align_of:
-    case syntax::ExprKind::ptr_addr:
-    case syntax::ExprKind::paddr:
-    case syntax::ExprKind::slice_data:
-    case syntax::ExprKind::slice_len:
-    case syntax::ExprKind::str_data:
-    case syntax::ExprKind::str_byte_len:
-    case syntax::ExprKind::str_is_valid_utf8:
-    case syntax::ExprKind::str_from_utf8_checked:
-        break;
+        case syntax::ExprKind::name: {
+            const syntax::NameExprPayload& payload = *this->ast_.exprs.name_payload(expr_id.value);
+            view.scope_name = payload.scope_name;
+            view.scope_range = payload.scope_range;
+            view.text = payload.text;
+            view.scope_name_id = payload.scope_name_id;
+            view.text_id = payload.text_id;
+            break;
+        }
+        case syntax::ExprKind::unary: {
+            const syntax::UnaryExprPayload& payload = *this->ast_.exprs.unary_payload(expr_id.value);
+            view.unary_op = payload.op;
+            view.unary_operand = payload.operand;
+            break;
+        }
+        case syntax::ExprKind::try_expr: {
+            const syntax::TryExprPayload& payload = *this->ast_.exprs.try_payload(expr_id.value);
+            view.try_operand = payload.operand;
+            break;
+        }
+        case syntax::ExprKind::binary: {
+            const syntax::BinaryExprPayload& payload = *this->ast_.exprs.binary_payload(expr_id.value);
+            view.binary_op = payload.op;
+            view.binary_lhs = payload.lhs;
+            view.binary_rhs = payload.rhs;
+            break;
+        }
+        case syntax::ExprKind::call:
+        case syntax::ExprKind::str_from_bytes_unchecked: {
+            const syntax::CallExprPayload& payload = *this->ast_.exprs.call_payload(expr_id.value);
+            view.callee = payload.callee;
+            view.args = readonly_span(payload.args);
+            break;
+        }
+        case syntax::ExprKind::if_expr: {
+            const syntax::IfExprPayload& payload = *this->ast_.exprs.if_payload(expr_id.value);
+            view.condition = payload.condition;
+            view.condition_pattern = payload.condition_pattern;
+            view.then_expr = payload.then_expr;
+            view.else_expr = payload.else_expr;
+            break;
+        }
+        case syntax::ExprKind::block_expr:
+        case syntax::ExprKind::unsafe_block: {
+            const syntax::BlockExprPayload& payload = *this->ast_.exprs.block_payload(expr_id.value);
+            view.block = payload.block;
+            view.block_result = payload.result;
+            break;
+        }
+        case syntax::ExprKind::match_expr: {
+            const syntax::MatchExprPayload& payload = *this->ast_.exprs.match_payload(expr_id.value);
+            view.match_value = payload.value;
+            view.match_arms = readonly_span(payload.arms);
+            break;
+        }
+        case syntax::ExprKind::array_literal: {
+            const syntax::ArrayExprPayload& payload = *this->ast_.exprs.array_payload(expr_id.value);
+            view.array_elements = readonly_span(payload.elements);
+            view.array_repeat_value = payload.repeat_value;
+            view.array_repeat_count = payload.repeat_count;
+            break;
+        }
+        case syntax::ExprKind::tuple_literal: {
+            const syntax::AstArenaVector<syntax::ExprId>& payload = *this->ast_.exprs.tuple_elements(expr_id.value);
+            view.tuple_elements = readonly_span(payload);
+            break;
+        }
+        case syntax::ExprKind::field: {
+            const syntax::FieldExprPayload& payload = *this->ast_.exprs.field_payload(expr_id.value);
+            view.object = payload.object;
+            view.field_name = payload.field_name;
+            view.field_name_id = payload.field_name_id;
+            break;
+        }
+        case syntax::ExprKind::index: {
+            const syntax::IndexExprPayload& payload = *this->ast_.exprs.index_payload(expr_id.value);
+            view.object = payload.object;
+            view.index = payload.index;
+            break;
+        }
+        case syntax::ExprKind::slice: {
+            const syntax::SliceExprPayload& payload = *this->ast_.exprs.slice_payload(expr_id.value);
+            view.object = payload.object;
+            view.slice_start = payload.start;
+            view.slice_end = payload.end;
+            break;
+        }
+        case syntax::ExprKind::struct_literal: {
+            const syntax::StructLiteralExprPayload& payload = *this->ast_.exprs.struct_literal_payload(expr_id.value);
+            view.object = payload.object;
+            view.scope_name = payload.scope_name;
+            view.scope_range = payload.scope_range;
+            view.text = payload.name;
+            view.scope_name_id = payload.scope_name_id;
+            view.text_id = payload.name_id;
+            view.field_inits = readonly_span(payload.field_inits);
+            break;
+        }
+        case syntax::ExprKind::invalid:
+        case syntax::ExprKind::generic_apply:
+        case syntax::ExprKind::integer_literal:
+        case syntax::ExprKind::float_literal:
+        case syntax::ExprKind::bool_literal:
+        case syntax::ExprKind::null_literal:
+        case syntax::ExprKind::string_literal:
+        case syntax::ExprKind::c_string_literal:
+        case syntax::ExprKind::raw_string_literal:
+        case syntax::ExprKind::byte_string_literal:
+        case syntax::ExprKind::byte_literal:
+        case syntax::ExprKind::char_literal:
+        case syntax::ExprKind::cast:
+        case syntax::ExprKind::pcast:
+        case syntax::ExprKind::bcast:
+        case syntax::ExprKind::size_of:
+        case syntax::ExprKind::align_of:
+        case syntax::ExprKind::ptr_addr:
+        case syntax::ExprKind::paddr:
+        case syntax::ExprKind::slice_data:
+        case syntax::ExprKind::slice_len:
+        case syntax::ExprKind::str_data:
+        case syntax::ExprKind::str_byte_len:
+        case syntax::ExprKind::str_is_valid_utf8:
+        case syntax::ExprKind::str_from_utf8_checked:
+            break;
     }
     return view;
 }
 
-ValueId Lowerer::lower_short_circuit_expr(const syntax::ExprId expr_id, const ExprView& expr) {
+ValueId Lowerer::lower_short_circuit_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     const ValueId lhs = lower_expr(expr.binary_lhs);
     const BlockId lhs_block = current_block_;
 
-    const BlockId rhs_block = add_block(this->module_, *current_function_, "logical.rhs" + std::to_string(current_function_->blocks.size()));
-    const BlockId exit_block = add_block(this->module_, *current_function_, "logical.exit" + std::to_string(current_function_->blocks.size()));
+    const BlockId rhs_block =
+        add_block(this->module_, *current_function_, "logical.rhs" + std::to_string(current_function_->blocks.size()));
+    const BlockId exit_block =
+        add_block(this->module_, *current_function_, "logical.exit" + std::to_string(current_function_->blocks.size()));
 
     Terminator cond;
     cond.kind = TerminatorKind::cond_branch;
@@ -232,12 +262,13 @@ ValueId Lowerer::lower_short_circuit_expr(const syntax::ExprId expr_id, const Ex
     Value result = this->module_.make_value();
     result.kind = ValueKind::phi;
     result.type = expr_type(expr_id);
-    result.incoming.push_back(PhiInput {lhs_block, lhs});
-    result.incoming.push_back(PhiInput {rhs_tail_block, rhs});
+    result.incoming.push_back(PhiInput{lhs_block, lhs});
+    result.incoming.push_back(PhiInput{rhs_tail_block, rhs});
     return append_value(result);
 }
 
-ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const ExprView& expr) {
+ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     if (current_function_ == nullptr || !is_valid(current_block_)) {
         return INVALID_VALUE_ID;
     }
@@ -251,9 +282,12 @@ ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const ExprView& exp
     } else {
         condition = lower_expr(expr.condition);
     }
-    const BlockId then_block = add_block(this->module_, *current_function_, "if.expr.then" + std::to_string(current_function_->blocks.size()));
-    const BlockId else_block = add_block(this->module_, *current_function_, "if.expr.else" + std::to_string(current_function_->blocks.size()));
-    const BlockId join_block = add_block(this->module_, *current_function_, "if.expr.join" + std::to_string(current_function_->blocks.size()));
+    const BlockId then_block =
+        add_block(this->module_, *current_function_, "if.expr.then" + std::to_string(current_function_->blocks.size()));
+    const BlockId else_block =
+        add_block(this->module_, *current_function_, "if.expr.else" + std::to_string(current_function_->blocks.size()));
+    const BlockId join_block =
+        add_block(this->module_, *current_function_, "if.expr.join" + std::to_string(current_function_->blocks.size()));
 
     Terminator cond;
     cond.kind = TerminatorKind::cond_branch;
@@ -281,12 +315,13 @@ ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const ExprView& exp
     Value result = this->module_.make_value();
     result.kind = ValueKind::phi;
     result.type = expr_type(expr_id);
-    result.incoming.push_back(PhiInput {then_tail_block, then_value});
-    result.incoming.push_back(PhiInput {else_tail_block, else_value});
+    result.incoming.push_back(PhiInput{then_tail_block, then_value});
+    result.incoming.push_back(PhiInput{else_tail_block, else_value});
     return append_value(result);
 }
 
-ValueId Lowerer::lower_block_expr(const syntax::ExprId expr_id, const ExprView& expr) {
+ValueId Lowerer::lower_block_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     this->push_local_scope();
     const base::usize scope_depth = this->defer_scopes_.size();
     this->defer_scopes_.push_back({});
@@ -303,94 +338,95 @@ ValueId Lowerer::lower_block_expr(const syntax::ExprId expr_id, const ExprView& 
     return result;
 }
 
-ValueId Lowerer::lower_expr(const syntax::ExprId expr_id) {
+ValueId Lowerer::lower_expr(const syntax::ExprId expr_id)
+{
     return this->lower_expr(expr_id, sema::INVALID_TYPE_HANDLE);
 }
 
-ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle expected_type) {
+ValueId Lowerer::lower_expr(const syntax::ExprId expr_id, const sema::TypeHandle expected_type)
+{
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->ast_.exprs.size()) {
         return INVALID_VALUE_ID;
     }
     const ExprView expr = this->expr_view(expr_id);
     switch (expr.kind) {
-    case syntax::ExprKind::integer_literal:
-    case syntax::ExprKind::float_literal:
-    case syntax::ExprKind::bool_literal:
-    case syntax::ExprKind::byte_literal:
-    case syntax::ExprKind::char_literal:
-    case syntax::ExprKind::null_literal:
-        return this->lower_literal_expr(expr_id, expr, expected_type);
-    case syntax::ExprKind::string_literal:
-    case syntax::ExprKind::raw_string_literal:
-    case syntax::ExprKind::c_string_literal:
-    case syntax::ExprKind::byte_string_literal:
-        return this->lower_literal_expr(expr_id, expr, expected_type);
-    case syntax::ExprKind::name:
-        return this->lower_name(expr_id, expr);
-    case syntax::ExprKind::generic_apply:
-        return INVALID_VALUE_ID;
-    case syntax::ExprKind::unary:
-        return this->lower_unary_expr(expr_id, expr);
-    case syntax::ExprKind::binary:
-        return this->lower_binary_expr(expr_id, expr);
-    case syntax::ExprKind::call:
-        return this->lower_call_expr(expr_id, expr);
-    case syntax::ExprKind::try_expr:
-        return this->lower_try_expr(expr_id, expr);
-    case syntax::ExprKind::if_expr:
-        return this->lower_if_expr(expr_id, expr);
-    case syntax::ExprKind::block_expr:
-        return this->lower_block_expr(expr_id, expr);
-    case syntax::ExprKind::unsafe_block:
-        return this->lower_block_expr(expr_id, expr);
-    case syntax::ExprKind::match_expr:
-        return this->lower_match_expr(expr_id, expr);
-    case syntax::ExprKind::array_literal:
-        return this->lower_array_literal_expr(expr_id, expr);
-    case syntax::ExprKind::tuple_literal:
-        return this->lower_tuple_literal_expr(expr_id, expr);
-    case syntax::ExprKind::slice:
-        return this->lower_slice_expr(expr_id, expr);
-    case syntax::ExprKind::field:
-        if (const ValueId value = this->lower_bound_value_ref(expr_id, this->value_symbol(expr_id, expr)); is_valid(value)) {
-            return value;
-        }
-        [[fallthrough]];
-    case syntax::ExprKind::index:
-        return this->lower_load_expr(expr_id);
-    case syntax::ExprKind::struct_literal:
-        return this->lower_struct_literal_expr(expr_id, expr);
-    case syntax::ExprKind::cast:
-    case syntax::ExprKind::pcast:
-    case syntax::ExprKind::bcast:
-    case syntax::ExprKind::ptr_addr:
-    case syntax::ExprKind::paddr:
-        return this->lower_cast_expr(expr_id, expr);
-    case syntax::ExprKind::size_of:
-    case syntax::ExprKind::align_of:
-        return this->lower_size_or_align_expr(expr_id, expr);
-    case syntax::ExprKind::slice_data:
-    case syntax::ExprKind::slice_len:
-        return this->lower_slice_projection_expr(expr_id, expr);
-    case syntax::ExprKind::str_data:
-    case syntax::ExprKind::str_byte_len:
-        return this->lower_str_projection_expr(expr_id, expr);
-    case syntax::ExprKind::str_is_valid_utf8:
-    case syntax::ExprKind::str_from_utf8_checked:
-        return this->lower_str_utf8_slice_expr(expr_id, expr);
-    case syntax::ExprKind::str_from_bytes_unchecked:
-        return this->lower_str_from_bytes_unchecked_expr(expr_id, expr);
-    case syntax::ExprKind::invalid:
-        return INVALID_VALUE_ID;
+        case syntax::ExprKind::integer_literal:
+        case syntax::ExprKind::float_literal:
+        case syntax::ExprKind::bool_literal:
+        case syntax::ExprKind::byte_literal:
+        case syntax::ExprKind::char_literal:
+        case syntax::ExprKind::null_literal:
+            return this->lower_literal_expr(expr_id, expr, expected_type);
+        case syntax::ExprKind::string_literal:
+        case syntax::ExprKind::raw_string_literal:
+        case syntax::ExprKind::c_string_literal:
+        case syntax::ExprKind::byte_string_literal:
+            return this->lower_literal_expr(expr_id, expr, expected_type);
+        case syntax::ExprKind::name:
+            return this->lower_name(expr_id, expr);
+        case syntax::ExprKind::generic_apply:
+            return INVALID_VALUE_ID;
+        case syntax::ExprKind::unary:
+            return this->lower_unary_expr(expr_id, expr);
+        case syntax::ExprKind::binary:
+            return this->lower_binary_expr(expr_id, expr);
+        case syntax::ExprKind::call:
+            return this->lower_call_expr(expr_id, expr);
+        case syntax::ExprKind::try_expr:
+            return this->lower_try_expr(expr_id, expr);
+        case syntax::ExprKind::if_expr:
+            return this->lower_if_expr(expr_id, expr);
+        case syntax::ExprKind::block_expr:
+            return this->lower_block_expr(expr_id, expr);
+        case syntax::ExprKind::unsafe_block:
+            return this->lower_block_expr(expr_id, expr);
+        case syntax::ExprKind::match_expr:
+            return this->lower_match_expr(expr_id, expr);
+        case syntax::ExprKind::array_literal:
+            return this->lower_array_literal_expr(expr_id, expr);
+        case syntax::ExprKind::tuple_literal:
+            return this->lower_tuple_literal_expr(expr_id, expr);
+        case syntax::ExprKind::slice:
+            return this->lower_slice_expr(expr_id, expr);
+        case syntax::ExprKind::field:
+            if (const ValueId value = this->lower_bound_value_ref(expr_id, this->value_symbol(expr_id, expr));
+                is_valid(value)) {
+                return value;
+            }
+            [[fallthrough]];
+        case syntax::ExprKind::index:
+            return this->lower_load_expr(expr_id);
+        case syntax::ExprKind::struct_literal:
+            return this->lower_struct_literal_expr(expr_id, expr);
+        case syntax::ExprKind::cast:
+        case syntax::ExprKind::pcast:
+        case syntax::ExprKind::bcast:
+        case syntax::ExprKind::ptr_addr:
+        case syntax::ExprKind::paddr:
+            return this->lower_cast_expr(expr_id, expr);
+        case syntax::ExprKind::size_of:
+        case syntax::ExprKind::align_of:
+            return this->lower_size_or_align_expr(expr_id, expr);
+        case syntax::ExprKind::slice_data:
+        case syntax::ExprKind::slice_len:
+            return this->lower_slice_projection_expr(expr_id, expr);
+        case syntax::ExprKind::str_data:
+        case syntax::ExprKind::str_byte_len:
+            return this->lower_str_projection_expr(expr_id, expr);
+        case syntax::ExprKind::str_is_valid_utf8:
+        case syntax::ExprKind::str_from_utf8_checked:
+            return this->lower_str_utf8_slice_expr(expr_id, expr);
+        case syntax::ExprKind::str_from_bytes_unchecked:
+            return this->lower_str_from_bytes_unchecked_expr(expr_id, expr);
+        case syntax::ExprKind::invalid:
+            return INVALID_VALUE_ID;
     }
     return INVALID_VALUE_ID;
 }
 
 ValueId Lowerer::lower_literal_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr,
-    const sema::TypeHandle expected_type
-) {
+    const syntax::ExprId expr_id, const ExprView& expr, const sema::TypeHandle expected_type)
+{
     if (expr.kind == syntax::ExprKind::byte_string_literal) {
         const base::StringLiteralDecode decoded =
             base::decode_string_literal(expr.text, base::StringLiteralKind::byte_string);
@@ -403,7 +439,8 @@ ValueId Lowerer::lower_literal_expr(
             Value element = this->module_.make_value();
             element.kind = ValueKind::integer_literal;
             element.type = byte_type;
-            element.text = this->module_.intern(std::to_string(static_cast<unsigned>(static_cast<unsigned char>(byte))));
+            element.text =
+                this->module_.intern(std::to_string(static_cast<unsigned>(static_cast<unsigned char>(byte))));
             aggregate.elements.push_back(this->append_value(element));
         }
         return this->append_value(aggregate);
@@ -436,15 +473,13 @@ ValueId Lowerer::lower_literal_expr(
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_bound_value_ref(const syntax::ExprId expr_id, const IrTextId symbol) {
-    if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(symbol);
-        enum_case != nullptr &&
-        !sema::is_valid(enum_case->payload_type) &&
-        is_payload_enum(this->module_.types, enum_case->type)) {
+ValueId Lowerer::lower_bound_value_ref(const syntax::ExprId expr_id, const IrTextId symbol)
+{
+    if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(symbol); enum_case != nullptr
+        && !sema::is_valid(enum_case->payload_type) && is_payload_enum(this->module_.types, enum_case->type)) {
         return this->lower_enum_constructor(*enum_case, syntax::INVALID_EXPR_ID);
     }
-    if (const auto constant = this->constant_symbols_.find(symbol);
-        constant != this->constant_symbols_.end()) {
+    if (const auto constant = this->constant_symbols_.find(symbol); constant != this->constant_symbols_.end()) {
         Value value = this->module_.make_value();
         value.kind = ValueKind::constant_ref;
         value.name = symbol;
@@ -452,8 +487,7 @@ ValueId Lowerer::lower_bound_value_ref(const syntax::ExprId expr_id, const IrTex
         value.type = this->module_.constants[constant->second.value].type;
         return this->append_value(value);
     }
-    if (const auto function = this->function_symbols_.find(symbol);
-        function != this->function_symbols_.end()) {
+    if (const auto function = this->function_symbols_.find(symbol); function != this->function_symbols_.end()) {
         Value value = this->module_.make_value();
         value.kind = ValueKind::function_ref;
         value.name = symbol;
@@ -464,7 +498,8 @@ ValueId Lowerer::lower_bound_value_ref(const syntax::ExprId expr_id, const IrTex
     return INVALID_VALUE_ID;
 }
 
-ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const ExprView& expr) {
+ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const ExprView& expr)
+{
     const auto local = expr.scope_name.empty() ? this->locals_.find(expr.text_id) : this->locals_.end();
     if (local != this->locals_.end()) {
         Value value = this->module_.make_value();
@@ -480,15 +515,13 @@ ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const ExprView& expr) 
     }
     Value value = this->module_.make_value();
     value.kind = ValueKind::load;
-    value.name = this->module_.intern(expr.text.empty() ? std::string_view {"<global>"} : expr.text);
+    value.name = this->module_.intern(expr.text.empty() ? std::string_view{"<global>"} : expr.text);
     value.type = sema::INVALID_TYPE_HANDLE;
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_unary_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_unary_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     if (expr.unary_op == syntax::UnaryOp::address_of || expr.unary_op == syntax::UnaryOp::address_of_mut) {
         return this->coerce_value(this->lower_place_addr(expr.unary_operand), this->expr_type(expr_id));
     }
@@ -507,12 +540,10 @@ ValueId Lowerer::lower_unary_expr(
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_binary_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
-    if (!this->lowering_constant_initializer_ &&
-        (expr.binary_op == syntax::BinaryOp::logical_and || expr.binary_op == syntax::BinaryOp::logical_or)) {
+ValueId Lowerer::lower_binary_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
+    if (!this->lowering_constant_initializer_
+        && (expr.binary_op == syntax::BinaryOp::logical_and || expr.binary_op == syntax::BinaryOp::logical_or)) {
         return this->lower_short_circuit_expr(expr_id, expr);
     }
     Value value = this->module_.make_value();
@@ -521,21 +552,17 @@ ValueId Lowerer::lower_binary_expr(
     value.binary_op = map_binary(expr.binary_op);
     const sema::TypeHandle lhs_type = this->expr_type(expr.binary_lhs);
     const sema::TypeHandle rhs_type = this->expr_type(expr.binary_rhs);
-    const sema::TypeHandle lhs_expected = !sema::is_valid(lhs_type) && this->module_.types.is_pointer(rhs_type)
-        ? rhs_type
-        : sema::INVALID_TYPE_HANDLE;
-    const sema::TypeHandle rhs_expected = !sema::is_valid(rhs_type) && this->module_.types.is_pointer(lhs_type)
-        ? lhs_type
-        : sema::INVALID_TYPE_HANDLE;
+    const sema::TypeHandle lhs_expected =
+        !sema::is_valid(lhs_type) && this->module_.types.is_pointer(rhs_type) ? rhs_type : sema::INVALID_TYPE_HANDLE;
+    const sema::TypeHandle rhs_expected =
+        !sema::is_valid(rhs_type) && this->module_.types.is_pointer(lhs_type) ? lhs_type : sema::INVALID_TYPE_HANDLE;
     value.lhs = this->lower_expr(expr.binary_lhs, lhs_expected);
     value.rhs = this->lower_expr(expr.binary_rhs, rhs_expected);
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_call_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_call_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     const IrTextId symbol = this->call_symbol(expr.callee);
     if (const sema::EnumCaseInfo* enum_case = this->enum_case_info(symbol);
         enum_case != nullptr && !enum_case->payload_types.empty()) {
@@ -546,31 +573,26 @@ ValueId Lowerer::lower_call_expr(
     value.type = this->expr_type(expr_id);
     const CallTarget target = this->call_target(expr.callee);
     const sema::TypeHandle callee_type = this->expr_type(expr.callee);
-    if (!is_valid(target.function) &&
-        sema::is_valid(callee_type) &&
-        this->module_.types.is_function(callee_type)) {
+    if (!is_valid(target.function) && sema::is_valid(callee_type) && this->module_.types.is_function(callee_type)) {
         return this->lower_indirect_call_expr(expr_id, expr, callee_type);
     }
     value.name = target.symbol;
     value.call_target = target.function;
     base::usize param_offset = 0;
-    const syntax::FieldExprPayload* const callee_field = syntax::is_valid(expr.callee) &&
-            expr.callee.value < this->ast_.exprs.size()
+    const syntax::FieldExprPayload* const callee_field =
+        syntax::is_valid(expr.callee) && expr.callee.value < this->ast_.exprs.size()
         ? this->ast_.exprs.field_payload(expr.callee.value)
         : nullptr;
-    if (callee_field != nullptr &&
-        is_valid(target.function) &&
-        target.function.value < this->module_.functions.size() &&
-        this->module_.functions[target.function.value].signature_params.size() == expr.args.size() + IR_METHOD_RECEIVER_PARAM_COUNT) {
+    if (callee_field != nullptr && is_valid(target.function) && target.function.value < this->module_.functions.size()
+        && this->module_.functions[target.function.value].signature_params.size()
+            == expr.args.size() + IR_METHOD_RECEIVER_PARAM_COUNT) {
         const sema::TypeHandle receiver_type = this->expr_type(callee_field->object);
         const sema::TypeHandle param_type = this->call_param_type(target.function, 0);
         ValueId receiver = INVALID_VALUE_ID;
-        const bool param_is_indirect =
-            sema::is_valid(param_type) &&
-            (this->module_.types.is_pointer(param_type) || this->module_.types.is_reference(param_type));
-        const bool receiver_is_indirect =
-            sema::is_valid(receiver_type) &&
-            (this->module_.types.is_pointer(receiver_type) || this->module_.types.is_reference(receiver_type));
+        const bool param_is_indirect = sema::is_valid(param_type)
+            && (this->module_.types.is_pointer(param_type) || this->module_.types.is_reference(param_type));
+        const bool receiver_is_indirect = sema::is_valid(receiver_type)
+            && (this->module_.types.is_pointer(receiver_type) || this->module_.types.is_reference(receiver_type));
         if (param_is_indirect && !receiver_is_indirect) {
             const sema::TypeInfo& param_info = this->module_.types.get(param_type);
             receiver = param_info.pointer_mutability == sema::PointerMutability::mut
@@ -582,10 +604,8 @@ ValueId Lowerer::lower_call_expr(
         value.args.push_back(this->coerce_value(receiver, param_type));
         param_offset = IR_METHOD_RECEIVER_PARAM_COUNT;
     }
-    const bool variadic_call =
-        is_valid(target.function) &&
-        target.function.value < this->module_.functions.size() &&
-        this->module_.functions[target.function.value].is_variadic;
+    const bool variadic_call = is_valid(target.function) && target.function.value < this->module_.functions.size()
+        && this->module_.functions[target.function.value].is_variadic;
     for (base::usize i = 0; i < expr.args.size(); ++i) {
         sema::TypeHandle param_type = this->call_param_type(target.function, i + param_offset);
         const ValueId arg = this->lower_expr(expr.args[i], param_type);
@@ -598,10 +618,8 @@ ValueId Lowerer::lower_call_expr(
 }
 
 ValueId Lowerer::lower_indirect_call_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr,
-    const sema::TypeHandle callee_type
-) {
+    const syntax::ExprId expr_id, const ExprView& expr, const sema::TypeHandle callee_type)
+{
     const sema::TypeInfo& function = this->module_.types.get(callee_type);
     Value value = this->module_.make_value();
     value.kind = ValueKind::call;
@@ -610,9 +628,8 @@ ValueId Lowerer::lower_indirect_call_expr(
     value.name = this->module_.intern("<indirect>");
     const bool variadic_call = function.function_is_variadic;
     for (base::usize i = 0; i < expr.args.size(); ++i) {
-        sema::TypeHandle param_type = i < function.function_params.size()
-            ? function.function_params[i]
-            : sema::INVALID_TYPE_HANDLE;
+        sema::TypeHandle param_type =
+            i < function.function_params.size() ? function.function_params[i] : sema::INVALID_TYPE_HANDLE;
         const ValueId arg = this->lower_expr(expr.args[i], param_type);
         if (variadic_call && !sema::is_valid(param_type) && is_valid(arg) && arg.value < this->module_.values.size()) {
             param_type = this->variadic_argument_type(this->module_.values[arg.value].type);
@@ -622,10 +639,8 @@ ValueId Lowerer::lower_indirect_call_expr(
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_array_literal_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_array_literal_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     Value value = this->module_.make_value();
     value.kind = ValueKind::aggregate;
     value.type = this->expr_type(expr_id);
@@ -638,10 +653,8 @@ ValueId Lowerer::lower_array_literal_expr(
         if (array.array_count == 0) {
             return this->append_value(value);
         }
-        const ValueId repeated = this->coerce_value(
-            this->lower_expr(expr.array_repeat_value, array.array_element),
-            array.array_element
-        );
+        const ValueId repeated =
+            this->coerce_value(this->lower_expr(expr.array_repeat_value, array.array_element), array.array_element);
         value.elements.reserve(static_cast<base::usize>(array.array_count));
         for (base::u64 index = 0; index < array.array_count; ++index) {
             value.elements.push_back(repeated);
@@ -651,18 +664,14 @@ ValueId Lowerer::lower_array_literal_expr(
 
     value.elements.reserve(expr.array_elements.size());
     for (const syntax::ExprId element : expr.array_elements) {
-        value.elements.push_back(this->coerce_value(
-            this->lower_expr(element, array.array_element),
-            array.array_element
-        ));
+        value.elements.push_back(
+            this->coerce_value(this->lower_expr(element, array.array_element), array.array_element));
     }
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_tuple_literal_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_tuple_literal_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     Value value = this->module_.make_value();
     value.kind = ValueKind::aggregate;
     value.type = this->expr_type(expr_id);
@@ -675,7 +684,7 @@ ValueId Lowerer::lower_tuple_literal_expr(
     value.fields.reserve(count);
     for (base::usize i = 0; i < count; ++i) {
         const sema::TypeHandle element_type = tuple.tuple_elements[i];
-        value.fields.push_back(FieldValue {
+        value.fields.push_back(FieldValue{
             this->module_.intern(std::to_string(i)),
             this->coerce_value(this->lower_expr(expr.tuple_elements[i], element_type), element_type),
         });
@@ -683,10 +692,8 @@ ValueId Lowerer::lower_tuple_literal_expr(
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_slice_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_slice_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     const sema::TypeHandle result_type = this->expr_type(expr_id);
     if (!sema::is_valid(result_type)) {
         Value invalid = this->module_.make_value();
@@ -728,7 +735,8 @@ ValueId Lowerer::lower_slice_expr(
             : this->append_integer_literal(std::to_string(array.array_count), usize_type);
     } else if (sema::is_valid(object_type) && this->module_.types.is_slice(object_type)) {
         const ValueId source = this->lower_expr(expr.object);
-        const ValueId source_data = this->append_slice_data(source, result_slice.slice_mutability, result_slice.slice_element);
+        const ValueId source_data =
+            this->append_slice_data(source, result_slice.slice_mutability, result_slice.slice_element);
         Value data = this->module_.make_value();
         data.kind = ValueKind::index_addr;
         data.type = this->module_.types.pointer(result_slice.slice_mutability, result_slice.slice_element);
@@ -749,10 +757,8 @@ ValueId Lowerer::lower_slice_expr(
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_str_slice_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_str_slice_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     const sema::TypeHandle result_type = this->expr_type(expr_id);
     const sema::TypeHandle object_type = this->expr_type(expr.object);
     if (!sema::is_valid(object_type) || !this->module_.types.is_str(object_type)) {
@@ -789,7 +795,8 @@ ValueId Lowerer::lower_str_slice_expr(
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_load_expr(const syntax::ExprId expr_id) {
+ValueId Lowerer::lower_load_expr(const syntax::ExprId expr_id)
+{
     Value value = this->module_.make_value();
     value.kind = ValueKind::load;
     value.type = this->expr_type(expr_id);
@@ -797,16 +804,14 @@ ValueId Lowerer::lower_load_expr(const syntax::ExprId expr_id) {
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_struct_literal_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_struct_literal_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     Value value = this->module_.make_value();
     value.kind = ValueKind::aggregate;
     value.type = this->expr_type(expr_id);
     for (const syntax::FieldInit& init : expr.field_inits) {
         const sema::TypeHandle field_type = this->aggregate_field_type(value.type, init.name);
-        value.fields.push_back(FieldValue {
+        value.fields.push_back(FieldValue{
             this->module_.intern(init.name),
             this->coerce_value(this->lower_expr(init.value, field_type), field_type),
         });
@@ -814,10 +819,8 @@ ValueId Lowerer::lower_struct_literal_expr(
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_cast_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_cast_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     Value value = this->module_.make_value();
     value.kind = ValueKind::cast;
     value.type = this->expr_type(expr_id);
@@ -835,10 +838,8 @@ ValueId Lowerer::lower_cast_expr(
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_size_or_align_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_size_or_align_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     Value value = this->module_.make_value();
     value.kind = expr.kind == syntax::ExprKind::size_of ? ValueKind::size_of : ValueKind::align_of;
     value.type = this->expr_type(expr_id);
@@ -846,10 +847,8 @@ ValueId Lowerer::lower_size_or_align_expr(
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_str_projection_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_str_projection_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     Value value = this->module_.make_value();
     value.kind = expr.kind == syntax::ExprKind::str_data ? ValueKind::str_data : ValueKind::str_byte_len;
     value.type = this->expr_type(expr_id);
@@ -857,10 +856,8 @@ ValueId Lowerer::lower_str_projection_expr(
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_slice_projection_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_slice_projection_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     const ValueId slice = this->lower_expr(expr.cast_expr, this->expr_type(expr.cast_expr));
     if (expr.kind == syntax::ExprKind::slice_data) {
         const sema::TypeHandle result_type = this->expr_type(expr_id);
@@ -870,23 +867,18 @@ ValueId Lowerer::lower_slice_projection_expr(
     return this->append_slice_len(slice);
 }
 
-ValueId Lowerer::lower_str_utf8_slice_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_str_utf8_slice_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     Value value = this->module_.make_value();
-    value.kind = expr.kind == syntax::ExprKind::str_is_valid_utf8
-        ? ValueKind::str_is_valid_utf8
-        : ValueKind::str_from_utf8_checked;
+    value.kind = expr.kind == syntax::ExprKind::str_is_valid_utf8 ? ValueKind::str_is_valid_utf8
+                                                                  : ValueKind::str_from_utf8_checked;
     value.type = this->expr_type(expr_id);
     value.object = this->lower_expr(expr.cast_expr, this->expr_type(expr.cast_expr));
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_str_from_bytes_unchecked_expr(
-    const syntax::ExprId expr_id,
-    const ExprView& expr
-) {
+ValueId Lowerer::lower_str_from_bytes_unchecked_expr(const syntax::ExprId expr_id, const ExprView& expr)
+{
     Value value = this->module_.make_value();
     value.kind = ValueKind::str_from_bytes_unchecked;
     value.type = this->expr_type(expr_id);
@@ -897,11 +889,13 @@ ValueId Lowerer::lower_str_from_bytes_unchecked_expr(
     return this->append_value(value);
 }
 
-ValueId Lowerer::lower_place_addr(const syntax::ExprId expr_id) {
+ValueId Lowerer::lower_place_addr(const syntax::ExprId expr_id)
+{
     return this->lower_place_address(expr_id).address;
 }
 
-PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id) {
+PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id)
+{
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->ast_.exprs.size()) {
         return {};
     }
@@ -911,22 +905,21 @@ PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id) {
         if (found == this->locals_.end()) {
             return {};
         }
-        return PlaceAddress {found->second.slot, found->second.is_mutable};
+        return PlaceAddress{found->second.slot, found->second.is_mutable};
     }
     if (expr.kind == syntax::ExprKind::unary && expr.unary_op == syntax::UnaryOp::dereference) {
-        return PlaceAddress {this->lower_expr(expr.unary_operand), this->pointee_is_mutable(expr.unary_operand)};
+        return PlaceAddress{this->lower_expr(expr.unary_operand), this->pointee_is_mutable(expr.unary_operand)};
     }
     if (expr.kind == syntax::ExprKind::field) {
         const PlaceAddress object = this->lower_object_place_or_value(expr.object);
-        const sema::PointerMutability mutability = object.is_mutable
-            ? sema::PointerMutability::mut
-            : sema::PointerMutability::const_;
+        const sema::PointerMutability mutability =
+            object.is_mutable ? sema::PointerMutability::mut : sema::PointerMutability::const_;
         Value value = this->module_.make_value();
         value.kind = ValueKind::field_addr;
         value.type = this->module_.types.pointer(mutability, this->expr_type(expr_id));
         value.name = this->module_.intern(expr.field_name);
         value.object = object.address;
-        return PlaceAddress {this->append_value(value), object.is_mutable};
+        return PlaceAddress{this->append_value(value), object.is_mutable};
     }
     if (expr.kind == syntax::ExprKind::index) {
         const sema::TypeHandle object_type = this->expr_type(expr.object);
@@ -944,44 +937,40 @@ PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id) {
                 value.type = this->module_.types.pointer(slice.slice_mutability, this->expr_type(expr_id));
                 value.object = data_pointer;
                 value.index = this->lower_expr(expr.index);
-                return PlaceAddress {
-                    this->append_value(value),
-                    slice.slice_mutability == sema::PointerMutability::mut
-                };
+                return PlaceAddress{this->append_value(value), slice.slice_mutability == sema::PointerMutability::mut};
             }
         }
         if (sema::is_valid(object_type) && this->module_.types.is_slice(object_type)) {
             const sema::TypeInfo& slice = this->module_.types.get(object_type);
             const ValueId slice_value = this->lower_expr(expr.object);
-            const ValueId data_pointer = this->append_slice_data(slice_value, slice.slice_mutability, slice.slice_element);
+            const ValueId data_pointer =
+                this->append_slice_data(slice_value, slice.slice_mutability, slice.slice_element);
             Value value = this->module_.make_value();
             value.kind = ValueKind::index_addr;
             value.type = this->module_.types.pointer(slice.slice_mutability, this->expr_type(expr_id));
             value.object = data_pointer;
             value.index = this->lower_expr(expr.index);
-            return PlaceAddress {this->append_value(value), slice.slice_mutability == sema::PointerMutability::mut};
+            return PlaceAddress{this->append_value(value), slice.slice_mutability == sema::PointerMutability::mut};
         }
         const PlaceAddress object = this->lower_object_place_or_value(expr.object);
-        const sema::PointerMutability mutability = object.is_mutable
-            ? sema::PointerMutability::mut
-            : sema::PointerMutability::const_;
+        const sema::PointerMutability mutability =
+            object.is_mutable ? sema::PointerMutability::mut : sema::PointerMutability::const_;
         Value value = this->module_.make_value();
         value.kind = ValueKind::index_addr;
         value.type = this->module_.types.pointer(mutability, this->expr_type(expr_id));
         value.object = object.address;
         value.index = this->lower_expr(expr.index);
-        return PlaceAddress {this->append_value(value), object.is_mutable};
+        return PlaceAddress{this->append_value(value), object.is_mutable};
     }
     return {};
 }
 
-PlaceAddress Lowerer::lower_object_place_or_value(const syntax::ExprId expr_id) {
+PlaceAddress Lowerer::lower_object_place_or_value(const syntax::ExprId expr_id)
+{
     const sema::TypeHandle type = this->expr_type(expr_id);
     if (sema::is_valid(type) && (this->module_.types.is_pointer(type) || this->module_.types.is_reference(type))) {
-        return PlaceAddress {
-            this->lower_expr(expr_id),
-            this->module_.types.get(type).pointer_mutability == sema::PointerMutability::mut
-        };
+        return PlaceAddress{this->lower_expr(expr_id),
+            this->module_.types.get(type).pointer_mutability == sema::PointerMutability::mut};
     }
     const PlaceAddress place = this->lower_place_address(expr_id);
     if (is_valid(place.address)) {
@@ -996,27 +985,25 @@ PlaceAddress Lowerer::lower_object_place_or_value(const syntax::ExprId expr_id) 
     }
     const ValueId slot = this->append_temp_alloca("field.object", type);
     this->append_store(slot, value);
-    return PlaceAddress {slot, false};
+    return PlaceAddress{slot, false};
 }
 
-bool Lowerer::is_local_slot_type(const sema::TypeHandle type) const noexcept {
-    return sema::is_valid(type) &&
-           this->module_.types.is_pointer(type) &&
-           this->module_.types.get(type).pointer_mutability == sema::PointerMutability::mut;
+bool Lowerer::is_local_slot_type(const sema::TypeHandle type) const noexcept
+{
+    return sema::is_valid(type) && this->module_.types.is_pointer(type)
+        && this->module_.types.get(type).pointer_mutability == sema::PointerMutability::mut;
 }
 
-bool Lowerer::pointee_is_mutable(const syntax::ExprId expr_id) const noexcept {
+bool Lowerer::pointee_is_mutable(const syntax::ExprId expr_id) const noexcept
+{
     const sema::TypeHandle type = this->expr_type(expr_id);
-    return sema::is_valid(type) &&
-           (this->module_.types.is_pointer(type) || this->module_.types.is_reference(type)) &&
-           this->module_.types.get(type).pointer_mutability == sema::PointerMutability::mut;
+    return sema::is_valid(type) && (this->module_.types.is_pointer(type) || this->module_.types.is_reference(type))
+        && this->module_.types.get(type).pointer_mutability == sema::PointerMutability::mut;
 }
 
 ValueId Lowerer::append_slice_data(
-    const ValueId slice_value,
-    const sema::PointerMutability mutability,
-    const sema::TypeHandle element_type
-) {
+    const ValueId slice_value, const sema::PointerMutability mutability, const sema::TypeHandle element_type)
+{
     Value value = this->module_.make_value();
     value.kind = ValueKind::slice_data;
     value.type = this->module_.types.pointer(mutability, element_type);
@@ -1024,7 +1011,8 @@ ValueId Lowerer::append_slice_data(
     return this->append_value(value);
 }
 
-ValueId Lowerer::append_slice_len(const ValueId slice_value) {
+ValueId Lowerer::append_slice_len(const ValueId slice_value)
+{
     Value value = this->module_.make_value();
     value.kind = ValueKind::slice_len;
     value.type = this->module_.types.builtin(sema::BuiltinType::usize);
@@ -1032,23 +1020,23 @@ ValueId Lowerer::append_slice_len(const ValueId slice_value) {
     return this->append_value(value);
 }
 
-CallTarget Lowerer::call_target(const syntax::ExprId callee) {
+CallTarget Lowerer::call_target(const syntax::ExprId callee)
+{
     const IrTextId symbol = this->call_symbol(callee);
     const auto found = this->function_symbols_.find(symbol);
     if (found != function_symbols_.end()) {
-        return CallTarget {found->second, symbol};
+        return CallTarget{found->second, symbol};
     }
-    return CallTarget {INVALID_FUNCTION_ID, symbol};
+    return CallTarget{INVALID_FUNCTION_ID, symbol};
 }
 
-IrTextId Lowerer::call_symbol(const syntax::ExprId callee) {
-    if (syntax::is_valid(callee) &&
-        this->active_side_tables_.generic != nullptr &&
-        this->active_side_tables_.generic->sparse) {
+IrTextId Lowerer::call_symbol(const syntax::ExprId callee)
+{
+    if (syntax::is_valid(callee) && this->active_side_tables_.generic != nullptr
+        && this->active_side_tables_.generic->sparse) {
         const base::usize local = this->active_side_tables_.generic->local_expr_index(callee);
-        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
-            this->active_side_tables_.expr_c_name_ids != nullptr &&
-            local < this->active_side_tables_.expr_c_name_ids->size()) {
+        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX && this->active_side_tables_.expr_c_name_ids != nullptr
+            && local < this->active_side_tables_.expr_c_name_ids->size()) {
             if (const std::string_view c_name =
                     this->checked_.c_name_text((*this->active_side_tables_.expr_c_name_ids)[local]);
                 !c_name.empty()) {
@@ -1062,10 +1050,10 @@ IrTextId Lowerer::call_symbol(const syntax::ExprId callee) {
             }
         }
     }
-    if (syntax::is_valid(callee) &&
-        this->active_side_tables_.expr_c_name_ids != nullptr &&
-        callee.value < this->active_side_tables_.expr_c_name_ids->size()) {
-        const std::string_view c_name = this->checked_.c_name_text((*this->active_side_tables_.expr_c_name_ids)[callee.value]);
+    if (syntax::is_valid(callee) && this->active_side_tables_.expr_c_name_ids != nullptr
+        && callee.value < this->active_side_tables_.expr_c_name_ids->size()) {
+        const std::string_view c_name =
+            this->checked_.c_name_text((*this->active_side_tables_.expr_c_name_ids)[callee.value]);
         if (!c_name.empty()) {
             return this->module_.intern(c_name);
         }
@@ -1076,14 +1064,13 @@ IrTextId Lowerer::call_symbol(const syntax::ExprId callee) {
     return this->module_.intern("<invalid>");
 }
 
-IrTextId Lowerer::value_symbol(const syntax::ExprId expr_id, const ExprView& expr) {
-    if (syntax::is_valid(expr_id) &&
-        this->active_side_tables_.generic != nullptr &&
-        this->active_side_tables_.generic->sparse) {
+IrTextId Lowerer::value_symbol(const syntax::ExprId expr_id, const ExprView& expr)
+{
+    if (syntax::is_valid(expr_id) && this->active_side_tables_.generic != nullptr
+        && this->active_side_tables_.generic->sparse) {
         const base::usize local = this->active_side_tables_.generic->local_expr_index(expr_id);
-        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
-            this->active_side_tables_.expr_c_name_ids != nullptr &&
-            local < this->active_side_tables_.expr_c_name_ids->size()) {
+        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX && this->active_side_tables_.expr_c_name_ids != nullptr
+            && local < this->active_side_tables_.expr_c_name_ids->size()) {
             if (const std::string_view c_name =
                     this->checked_.c_name_text((*this->active_side_tables_.expr_c_name_ids)[local]);
                 !c_name.empty()) {
@@ -1097,10 +1084,10 @@ IrTextId Lowerer::value_symbol(const syntax::ExprId expr_id, const ExprView& exp
             }
         }
     }
-    if (syntax::is_valid(expr_id) &&
-        this->active_side_tables_.expr_c_name_ids != nullptr &&
-        expr_id.value < this->active_side_tables_.expr_c_name_ids->size()) {
-        const std::string_view c_name = this->checked_.c_name_text((*this->active_side_tables_.expr_c_name_ids)[expr_id.value]);
+    if (syntax::is_valid(expr_id) && this->active_side_tables_.expr_c_name_ids != nullptr
+        && expr_id.value < this->active_side_tables_.expr_c_name_ids->size()) {
+        const std::string_view c_name =
+            this->checked_.c_name_text((*this->active_side_tables_.expr_c_name_ids)[expr_id.value]);
         if (!c_name.empty()) {
             return this->module_.intern(c_name);
         }
@@ -1111,7 +1098,8 @@ IrTextId Lowerer::value_symbol(const syntax::ExprId expr_id, const ExprView& exp
     return this->module_.intern(expr.text);
 }
 
-sema::TypeHandle Lowerer::call_param_type(const FunctionId function_id, const base::usize index) const noexcept {
+sema::TypeHandle Lowerer::call_param_type(const FunctionId function_id, const base::usize index) const noexcept
+{
     if (!is_valid(function_id) || function_id.value >= module_.functions.size()) {
         return sema::INVALID_TYPE_HANDLE;
     }
@@ -1122,7 +1110,8 @@ sema::TypeHandle Lowerer::call_param_type(const FunctionId function_id, const ba
     return function.signature_params[index].type;
 }
 
-sema::TypeHandle Lowerer::variadic_argument_type(const sema::TypeHandle source_type) const noexcept {
+sema::TypeHandle Lowerer::variadic_argument_type(const sema::TypeHandle source_type) const noexcept
+{
     if (!sema::is_valid(source_type)) {
         return source_type;
     }
@@ -1131,27 +1120,26 @@ sema::TypeHandle Lowerer::variadic_argument_type(const sema::TypeHandle source_t
         return source_type;
     }
     switch (info.builtin) {
-    case sema::BuiltinType::bool_:
-    case sema::BuiltinType::i8:
-    case sema::BuiltinType::u8:
-    case sema::BuiltinType::i16:
-    case sema::BuiltinType::u16:
-        return module_.types.builtin(sema::BuiltinType::i32);
-    case sema::BuiltinType::f32:
-        return module_.types.builtin(sema::BuiltinType::f64);
-    default:
-        return source_type;
+        case sema::BuiltinType::bool_:
+        case sema::BuiltinType::i8:
+        case sema::BuiltinType::u8:
+        case sema::BuiltinType::i16:
+        case sema::BuiltinType::u16:
+            return module_.types.builtin(sema::BuiltinType::i32);
+        case sema::BuiltinType::f32:
+            return module_.types.builtin(sema::BuiltinType::f64);
+        default:
+            return source_type;
     }
 }
 
-sema::TypeHandle Lowerer::expr_type(const syntax::ExprId expr) const noexcept {
-    if (syntax::is_valid(expr) &&
-        this->active_side_tables_.generic != nullptr &&
-        this->active_side_tables_.generic->sparse) {
+sema::TypeHandle Lowerer::expr_type(const syntax::ExprId expr) const noexcept
+{
+    if (syntax::is_valid(expr) && this->active_side_tables_.generic != nullptr
+        && this->active_side_tables_.generic->sparse) {
         const base::usize local = this->active_side_tables_.generic->local_expr_index(expr);
-        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
-            this->active_side_tables_.expr_types != nullptr &&
-            local < this->active_side_tables_.expr_types->size()) {
+        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX && this->active_side_tables_.expr_types != nullptr
+            && local < this->active_side_tables_.expr_types->size()) {
             const sema::TypeHandle type = (*this->active_side_tables_.expr_types)[local];
             if (sema::is_valid(type)) {
                 return type;
@@ -1162,22 +1150,21 @@ sema::TypeHandle Lowerer::expr_type(const syntax::ExprId expr) const noexcept {
             return found->second;
         }
     }
-    if (!syntax::is_valid(expr) ||
-        this->active_side_tables_.expr_types == nullptr ||
-        expr.value >= this->active_side_tables_.expr_types->size()) {
+    if (!syntax::is_valid(expr) || this->active_side_tables_.expr_types == nullptr
+        || expr.value >= this->active_side_tables_.expr_types->size()) {
         return sema::INVALID_TYPE_HANDLE;
     }
     return (*this->active_side_tables_.expr_types)[expr.value];
 }
 
-sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept {
-    if (syntax::is_valid(type) &&
-        this->active_side_tables_.generic != nullptr &&
-        this->active_side_tables_.generic->sparse) {
+sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept
+{
+    if (syntax::is_valid(type) && this->active_side_tables_.generic != nullptr
+        && this->active_side_tables_.generic->sparse) {
         const base::usize local = this->active_side_tables_.generic->local_type_index(type);
-        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
-            this->active_side_tables_.syntax_type_handles != nullptr &&
-            local < this->active_side_tables_.syntax_type_handles->size()) {
+        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
+            && this->active_side_tables_.syntax_type_handles != nullptr
+            && local < this->active_side_tables_.syntax_type_handles->size()) {
             const sema::TypeHandle resolved = (*this->active_side_tables_.syntax_type_handles)[local];
             if (sema::is_valid(resolved)) {
                 return resolved;
@@ -1188,22 +1175,21 @@ sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept 
             return found->second;
         }
     }
-    if (!syntax::is_valid(type) ||
-        this->active_side_tables_.syntax_type_handles == nullptr ||
-        type.value >= this->active_side_tables_.syntax_type_handles->size()) {
+    if (!syntax::is_valid(type) || this->active_side_tables_.syntax_type_handles == nullptr
+        || type.value >= this->active_side_tables_.syntax_type_handles->size()) {
         return sema::INVALID_TYPE_HANDLE;
     }
     return (*this->active_side_tables_.syntax_type_handles)[type.value];
 }
 
-sema::TypeHandle Lowerer::stmt_local_type(const syntax::StmtId stmt) const noexcept {
-    if (syntax::is_valid(stmt) &&
-        this->active_side_tables_.generic != nullptr &&
-        this->active_side_tables_.generic->sparse) {
+sema::TypeHandle Lowerer::stmt_local_type(const syntax::StmtId stmt) const noexcept
+{
+    if (syntax::is_valid(stmt) && this->active_side_tables_.generic != nullptr
+        && this->active_side_tables_.generic->sparse) {
         const base::usize local = this->active_side_tables_.generic->local_stmt_index(stmt);
-        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX &&
-            this->active_side_tables_.stmt_local_types != nullptr &&
-            local < this->active_side_tables_.stmt_local_types->size()) {
+        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
+            && this->active_side_tables_.stmt_local_types != nullptr
+            && local < this->active_side_tables_.stmt_local_types->size()) {
             const sema::TypeHandle type = (*this->active_side_tables_.stmt_local_types)[local];
             if (sema::is_valid(type)) {
                 return type;
@@ -1214,54 +1200,54 @@ sema::TypeHandle Lowerer::stmt_local_type(const syntax::StmtId stmt) const noexc
             return found->second;
         }
     }
-    if (!syntax::is_valid(stmt) ||
-        this->active_side_tables_.stmt_local_types == nullptr ||
-        stmt.value >= this->active_side_tables_.stmt_local_types->size()) {
+    if (!syntax::is_valid(stmt) || this->active_side_tables_.stmt_local_types == nullptr
+        || stmt.value >= this->active_side_tables_.stmt_local_types->size()) {
         return sema::INVALID_TYPE_HANDLE;
     }
     return (*this->active_side_tables_.stmt_local_types)[stmt.value];
 }
 
 sema::TypeHandle Lowerer::aggregate_field_type(
-    const sema::TypeHandle aggregate_type,
-    const std::string_view name
-) const noexcept {
+    const sema::TypeHandle aggregate_type, const std::string_view name) const noexcept
+{
     const RecordField* field = find_record_field(this->module_, aggregate_type, this->module_.find_text(name));
     return field == nullptr ? sema::INVALID_TYPE_HANDLE : field->type;
 }
 
-sema::TypeHandle Lowerer::local_load_type(const ValueId slot) const noexcept {
+sema::TypeHandle Lowerer::local_load_type(const ValueId slot) const noexcept
+{
     if (!is_valid(slot) || slot.value >= module_.values.size()) {
         return sema::INVALID_TYPE_HANDLE;
     }
     const sema::TypeHandle slot_type = module_.values[slot.value].type;
-    if (!sema::is_valid(slot_type) || (!module_.types.is_pointer(slot_type) && !module_.types.is_reference(slot_type))) {
+    if (!sema::is_valid(slot_type)
+        || (!module_.types.is_pointer(slot_type) && !module_.types.is_reference(slot_type))) {
         return sema::INVALID_TYPE_HANDLE;
     }
     return module_.types.get(slot_type).pointee;
 }
 
-ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle target_type) {
+ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle target_type)
+{
     if (!is_valid(value_id) || value_id.value >= module_.values.size()) {
         return value_id;
     }
     const sema::TypeHandle source_type = module_.values[value_id.value].type;
-    if (!sema::is_valid(source_type) &&
-        module_.values[value_id.value].kind == ValueKind::null_literal &&
-        sema::is_valid(target_type) &&
-        module_.types.is_pointer(target_type)) {
+    if (!sema::is_valid(source_type) && module_.values[value_id.value].kind == ValueKind::null_literal
+        && sema::is_valid(target_type) && module_.types.is_pointer(target_type)) {
         module_.values[value_id.value].type = target_type;
         return value_id;
     }
-    if (!sema::is_valid(target_type) || !sema::is_valid(source_type) || this->module_.types.same(source_type, target_type)) {
+    if (!sema::is_valid(target_type) || !sema::is_valid(source_type)
+        || this->module_.types.same(source_type, target_type)) {
         return value_id;
     }
     if (this->module_.types.is_slice(source_type) && this->module_.types.is_slice(target_type)) {
         const sema::TypeInfo& source = this->module_.types.get(source_type);
         const sema::TypeInfo& target = this->module_.types.get(target_type);
-        if (target.slice_mutability == sema::PointerMutability::const_ &&
-            source.slice_mutability == sema::PointerMutability::mut &&
-            this->module_.types.same(source.slice_element, target.slice_element)) {
+        if (target.slice_mutability == sema::PointerMutability::const_
+            && source.slice_mutability == sema::PointerMutability::mut
+            && this->module_.types.same(source.slice_element, target.slice_element)) {
             Value value = this->module_.make_value();
             value.kind = ValueKind::slice;
             value.type = target_type;
@@ -1273,9 +1259,9 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
     if (this->module_.types.is_reference(source_type) && this->module_.types.is_reference(target_type)) {
         const sema::TypeInfo& source = this->module_.types.get(source_type);
         const sema::TypeInfo& target = this->module_.types.get(target_type);
-        if (target.pointer_mutability == sema::PointerMutability::const_ &&
-            source.pointer_mutability == sema::PointerMutability::mut &&
-            this->module_.types.same(source.pointee, target.pointee)) {
+        if (target.pointer_mutability == sema::PointerMutability::const_
+            && source.pointer_mutability == sema::PointerMutability::mut
+            && this->module_.types.same(source.pointee, target.pointee)) {
             Value value = this->module_.make_value();
             value.kind = ValueKind::cast;
             value.type = target_type;
@@ -1288,9 +1274,9 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
     if (this->module_.types.is_pointer(source_type) && this->module_.types.is_reference(target_type)) {
         const sema::TypeInfo& source = this->module_.types.get(source_type);
         const sema::TypeInfo& target = this->module_.types.get(target_type);
-        if (this->module_.types.same(source.pointee, target.pointee) &&
-            (target.pointer_mutability == sema::PointerMutability::const_ ||
-             source.pointer_mutability == sema::PointerMutability::mut)) {
+        if (this->module_.types.same(source.pointee, target.pointee)
+            && (target.pointer_mutability == sema::PointerMutability::const_
+                || source.pointer_mutability == sema::PointerMutability::mut)) {
             Value value = this->module_.make_value();
             value.kind = ValueKind::cast;
             value.type = target_type;
@@ -1300,14 +1286,10 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
             return this->append_value(value);
         }
     }
-    const bool source_numeric =
-        module_.types.is_integer(source_type) ||
-        module_.types.is_float(source_type) ||
-        module_.types.is_bool(source_type);
-    const bool target_numeric =
-        module_.types.is_integer(target_type) ||
-        module_.types.is_float(target_type) ||
-        module_.types.is_bool(target_type);
+    const bool source_numeric = module_.types.is_integer(source_type) || module_.types.is_float(source_type)
+        || module_.types.is_bool(source_type);
+    const bool target_numeric = module_.types.is_integer(target_type) || module_.types.is_float(target_type)
+        || module_.types.is_bool(target_type);
     if (source_numeric && target_numeric) {
         Value value = this->module_.make_value();
         value.kind = ValueKind::cast;
@@ -1329,7 +1311,8 @@ ValueId Lowerer::coerce_value(const ValueId value_id, const sema::TypeHandle tar
     return value_id;
 }
 
-ValueId Lowerer::append_value(const Value& value) {
+ValueId Lowerer::append_value(const Value& value)
+{
     const ValueId id = add_value(module_, value);
     if (current_function_ != nullptr && is_valid(current_block_)) {
         current_function_->blocks[current_block_.value].values.push_back(id);
@@ -1337,7 +1320,8 @@ ValueId Lowerer::append_value(const Value& value) {
     return id;
 }
 
-void Lowerer::append_store(const ValueId target, const ValueId source) {
+void Lowerer::append_store(const ValueId target, const ValueId source)
+{
     Value value = this->module_.make_value();
     value.kind = ValueKind::store;
     value.type = module_.types.builtin(sema::BuiltinType::void_);
@@ -1346,7 +1330,8 @@ void Lowerer::append_store(const ValueId target, const ValueId source) {
     static_cast<void>(append_value(value));
 }
 
-void Lowerer::append_branch_if_open(const BlockId target) {
+void Lowerer::append_branch_if_open(const BlockId target)
+{
     if (has_terminator(current_block_)) {
         return;
     }
@@ -1356,7 +1341,8 @@ void Lowerer::append_branch_if_open(const BlockId target) {
     set_terminator(current_block_, term);
 }
 
-bool Lowerer::has_terminator(const BlockId block) const {
+bool Lowerer::has_terminator(const BlockId block) const
+{
     if (current_function_ == nullptr || !is_valid(block) || block.value >= current_function_->blocks.size()) {
         return true;
     }

@@ -1,5 +1,4 @@
 #include <aurex/parse/parser_item_part.hpp>
-
 #include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/recovery.hpp>
 
@@ -13,7 +12,8 @@ using syntax::TokenKind;
 
 } // namespace
 
-syntax::ItemId ItemParser::parse_item() {
+syntax::ItemId ItemParser::parse_item()
+{
     this->reset_panic();
     const ParsedVisibility visibility = this->parse_visibility();
     if (this->check(TokenKind::kw_const)) {
@@ -106,7 +106,8 @@ syntax::ItemId ItemParser::parse_item() {
     return syntax::INVALID_ITEM_ID;
 }
 
-syntax::ItemId ItemParser::parse_const_decl() {
+syntax::ItemId ItemParser::parse_const_decl()
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_const, std::string(PARSER_EXPECT_CONST_KEYWORD));
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_CONST_NAME));
     this->expect_type_annotation_colon(std::string(PARSER_EXPECT_CONST_TYPE_COLON));
@@ -125,7 +126,8 @@ syntax::ItemId ItemParser::parse_const_decl() {
     return this->session_.module.push_item(std::move(item));
 }
 
-syntax::ItemId ItemParser::parse_type_alias_decl() {
+syntax::ItemId ItemParser::parse_type_alias_decl()
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_type, std::string(PARSER_EXPECT_TYPE_KEYWORD));
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE_ALIAS_NAME));
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();

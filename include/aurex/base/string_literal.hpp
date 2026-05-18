@@ -25,7 +25,8 @@ struct StringLiteralDecode {
     std::string decoded;
     std::vector<StringLiteralError> errors;
 
-    [[nodiscard]] bool ok() const noexcept {
+    [[nodiscard]] bool ok() const noexcept
+    {
         return errors.empty();
     }
 };
@@ -34,7 +35,8 @@ struct ByteLiteralDecode {
     u8 value = 0;
     std::vector<StringLiteralError> errors;
 
-    [[nodiscard]] bool ok() const noexcept {
+    [[nodiscard]] bool ok() const noexcept
+    {
         return errors.empty();
     }
 };
@@ -43,7 +45,8 @@ struct CharLiteralDecode {
     u32 value = 0;
     std::vector<StringLiteralError> errors;
 
-    [[nodiscard]] bool ok() const noexcept {
+    [[nodiscard]] bool ok() const noexcept
+    {
         return errors.empty();
     }
 };

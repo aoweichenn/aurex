@@ -1,9 +1,10 @@
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/lex/lexer.hpp>
-#include <aurex/parse/recovery.hpp>
-#include <aurex/parse/parser_part_ranges.hpp>
 #include <aurex/parse/parser.hpp>
+#include <aurex/parse/parser_part_ranges.hpp>
+#include <aurex/parse/recovery.hpp>
 #include <aurex/syntax/ast_dump.hpp>
+
 #include <support/frontend_test_support.hpp>
 
 #include <array>
@@ -31,9 +32,9 @@
 namespace aurex::test {
 namespace {
 
-using base::DiagnosticSink;
 using base::DiagnosticCategory;
 using base::DiagnosticCode;
+using base::DiagnosticSink;
 
 constexpr base::usize PARSER_TEST_DEEP_PREFIX_CHAIN_DEPTH = 8;
 constexpr base::usize PARSER_TEST_DEEP_TYPE_SELECTOR_OVERFLOW_DEPTH = 10;
@@ -41,9 +42,10 @@ constexpr base::usize PARSER_TEST_LONG_BINARY_TERM_COUNT = 3'000;
 constexpr base::usize PARSER_TEST_EXPRESSION_NESTING_LIMIT_DEPTH = 600;
 constexpr base::usize PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH = 600;
 constexpr base::usize PARSER_TEST_PATTERN_NESTING_LIMIT_DEPTH = 600;
-constexpr base::SourceId PARSER_TEST_PROBE_SOURCE_ID {99};
+constexpr base::SourceId PARSER_TEST_PROBE_SOURCE_ID{99};
 
-void expect_parse_error(const std::string_view source, const std::string_view message) {
+void expect_parse_error(const std::string_view source, const std::string_view message)
+{
     DiagnosticSink diagnostics;
     lex::Lexer lexer({6}, source, diagnostics);
     auto tokens = lexer.tokenize();
@@ -63,7 +65,8 @@ void expect_parse_error(const std::string_view source, const std::string_view me
     EXPECT_TRUE(found) << "missing diagnostic: " << message;
 }
 
-void expect_parse_diagnostic(const std::string_view source, const std::string_view message) {
+void expect_parse_diagnostic(const std::string_view source, const std::string_view message)
+{
     DiagnosticSink diagnostics;
     lex::Lexer lexer({6}, source, diagnostics);
     auto tokens = lexer.tokenize();
@@ -82,7 +85,8 @@ void expect_parse_diagnostic(const std::string_view source, const std::string_vi
     EXPECT_TRUE(found) << "missing diagnostic: " << message;
 }
 
-[[nodiscard]] syntax::AstModule parse_success(const std::string_view source) {
+[[nodiscard]] syntax::AstModule parse_success(const std::string_view source)
+{
     DiagnosticSink diagnostics;
     lex::Lexer lexer({7}, source, diagnostics);
     auto tokens = lexer.tokenize();
@@ -106,10 +110,8 @@ void expect_parse_diagnostic(const std::string_view source, const std::string_vi
     return parsed.take_value();
 }
 
-[[nodiscard]] const syntax::ItemNode* find_item(
-    const syntax::AstModule& module,
-    const std::string_view name
-) noexcept {
+[[nodiscard]] const syntax::ItemNode* find_item(const syntax::AstModule& module, const std::string_view name) noexcept
+{
     for (base::usize i = 0; i < module.items.size(); ++i) {
         const syntax::ItemNode* item = module.items.ptr(i);
         if (item != nullptr && item->name == name) {
@@ -121,10 +123,12 @@ void expect_parse_diagnostic(const std::string_view source, const std::string_vi
 
 class ParserPartRangeReaderProbe final : public parse::ParserPartRangeReader {
 public:
-    explicit ParserPartRangeReaderProbe(parse::Parser& parser) noexcept
-        : parse::ParserPartRangeReader(parser) {}
+    explicit ParserPartRangeReaderProbe(parse::Parser& parser) noexcept : parse::ParserPartRangeReader(parser)
+    {
+    }
 
-    [[nodiscard]] syntax::AstModule& module() const noexcept {
+    [[nodiscard]] syntax::AstModule& module() const noexcept
+    {
         return this->session_.module;
     }
 
@@ -137,31 +141,29 @@ public:
 
 class ParserPostfixProbe final {
 public:
-    explicit ParserPostfixProbe(parse::Parser& parser) noexcept
-        : reader_(parser),
-          postfix_(parser) {}
+    explicit ParserPostfixProbe(parse::Parser& parser) noexcept : reader_(parser), postfix_(parser)
+    {
+    }
 
-    [[nodiscard]] syntax::AstModule& module() const noexcept {
+    [[nodiscard]] syntax::AstModule& module() const noexcept
+    {
         return this->reader_.module();
     }
 
-    [[nodiscard]] bool type_like(const syntax::ExprId expr) {
+    [[nodiscard]] bool type_like(const syntax::ExprId expr)
+    {
         return this->postfix_.bracket_arg_expr_is_type_like(expr);
     }
 
-    [[nodiscard]] syntax::TypeId convert_type_arg(
-        const syntax::ExprId expr,
-        const bool report_errors
-    ) {
+    [[nodiscard]] syntax::TypeId convert_type_arg(const syntax::ExprId expr, const bool report_errors)
+    {
         return this->postfix_.bracket_arg_expr_to_type(expr, report_errors);
     }
 
     [[nodiscard]] syntax::TypeId append_selector(
-        const syntax::TypeId base,
-        const std::string_view name,
-        const bool report_errors
-    ) {
-        return this->postfix_.append_type_selector(base, name, base::SourceRange {}, report_errors);
+        const syntax::TypeId base, const std::string_view name, const bool report_errors)
+    {
+        return this->postfix_.append_type_selector(base, name, base::SourceRange{}, report_errors);
     }
 
 private:
@@ -169,15 +171,17 @@ private:
     parse::PostfixExprParser postfix_;
 };
 
-[[nodiscard]] std::vector<syntax::Token> probe_tokens(std::string_view text = "module probe;") {
+[[nodiscard]] std::vector<syntax::Token> probe_tokens(std::string_view text = "module probe;")
+{
     std::vector<syntax::Token> tokens;
-    tokens.emplace_back(syntax::TokenKind::eof, base::SourceRange {PARSER_TEST_PROBE_SOURCE_ID, 0, 0}, text);
+    tokens.emplace_back(syntax::TokenKind::eof, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 0, 0}, text);
     return tokens;
 }
 
 } // namespace
 
-TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
+TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
+{
     constexpr std::string_view source =
         "module parser.dump;\n"
         "pub import c.host;\n"
@@ -268,75 +272,78 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches) {
     EXPECT_FALSE(diagnostics.has_error());
 
     const std::string token_dump = syntax::dump_tokens(tokens.value());
-    expect_contains_all(token_dump, {
-        "kw_export",
-        "kw_impl",
-        "kw_opaque",
-        "kw_while",
-        "kw_for",
-        "kw_break",
-        "kw_continue",
-        "kw_defer",
-        "kw_unsafe",
-        "kw_null",
-        "kw_ptrcast",
-        "kw_bitcast",
-        "kw_alignof",
-        "kw_ptraddr",
-        "kw_ptrat",
-        "kw_sliceptr",
-        "kw_slicelen",
-        "ellipsis",
-        "byte_literal",
-        "byte_string_literal",
-        "char_literal",
-        "raw_string_literal",
-        "string_literal",
-    });
+    expect_contains_all(token_dump,
+        {
+            "kw_export",
+            "kw_impl",
+            "kw_opaque",
+            "kw_while",
+            "kw_for",
+            "kw_break",
+            "kw_continue",
+            "kw_defer",
+            "kw_unsafe",
+            "kw_null",
+            "kw_ptrcast",
+            "kw_bitcast",
+            "kw_alignof",
+            "kw_ptraddr",
+            "kw_ptrat",
+            "kw_sliceptr",
+            "kw_slicelen",
+            "ellipsis",
+            "byte_literal",
+            "byte_string_literal",
+            "char_literal",
+            "raw_string_literal",
+            "string_literal",
+        });
 
     const std::string ast = syntax::dump_ast(parsed.value());
-    expect_contains_all(ast, {
-        "pub import c.host",
-        "opaque_struct Handle extern_c",
-        "fn printf extern_c variadic @name=printf",
-        "impl for Counter",
-        "struct Owner",
-        "enum Token",
-        "case span(usize, usize)",
-        "alias unsafe fn(*const u8, usize) -> str",
-        "fn unchecked_string unsafe",
-        "fn inc for Counter",
-        "fn exported export_c @name=exported",
-        "struct_literal",
-        "stmt #",
-        "while",
-        "for",
-        "break",
-        "continue",
-        "defer",
-        "expr #",
-        "unsafe_block",
-        "null_literal",
-        "string_literal",
-        "raw_string_literal",
-        "byte_string_literal",
-        "byte_literal",
-        "char_literal",
-        "array_literal",
-        "array_repeat_value",
-        "array_repeat_count",
-        "index",
-        "ptrcast",
-        "bitcast",
-        "alignof",
-        "ptraddr",
-        "ptrat",
-        "sliceptr",
-        "slicelen",
-    });
+    expect_contains_all(ast,
+        {
+            "pub import c.host",
+            "opaque_struct Handle extern_c",
+            "fn printf extern_c variadic @name=printf",
+            "impl for Counter",
+            "struct Owner",
+            "enum Token",
+            "case span(usize, usize)",
+            "alias unsafe fn(*const u8, usize) -> str",
+            "fn unchecked_string unsafe",
+            "fn inc for Counter",
+            "fn exported export_c @name=exported",
+            "struct_literal",
+            "stmt #",
+            "while",
+            "for",
+            "break",
+            "continue",
+            "defer",
+            "expr #",
+            "unsafe_block",
+            "null_literal",
+            "string_literal",
+            "raw_string_literal",
+            "byte_string_literal",
+            "byte_literal",
+            "char_literal",
+            "array_literal",
+            "array_repeat_value",
+            "array_repeat_count",
+            "index",
+            "ptrcast",
+            "bitcast",
+            "alignof",
+            "ptraddr",
+            "ptrat",
+            "sliceptr",
+            "slicelen",
+        });
 }
 
-TEST(CoreUnit, ParserExpressionStorageDoesNotGrowArenaAfterInitialReserve) {
+TEST(CoreUnit, ParserExpressionStorageDoesNotGrowArenaAfterInitialReserve)
+{
     constexpr std::string_view source =
         "module parser.expr_arena;\n"
         "struct Pair { left: i32; right: i32; }\n"
@@ -377,66 +384,68 @@ TEST(CoreUnit, ParserExpressionStorageDoesNotGrowArenaAfterInitialReserve) {
     EXPECT_EQ(module.exprs.arena_blocks(), arena_blocks_after_reserve);
 }
 
-TEST(CoreUnit, ParserAcceptsSliceTypesAndExpressions) {
-    constexpr std::string_view source =
-        "module parser.slices;\n"
-        "type ConstSlice = []const i32;\n"
-        "type MutSlice = []mut i32;\n"
-        "fn use(values: []const i32, mut_values: []mut i32) -> i32 {\n"
-        "  let all = values[:];\n"
-        "  let prefix = values[:2];\n"
-        "  let suffix = values[1:];\n"
-        "  let middle = mut_values[1:2];\n"
-        "  return all[0] + prefix[0] + suffix[0] + middle[0];\n"
-        "}\n";
+TEST(CoreUnit, ParserAcceptsSliceTypesAndExpressions)
+{
+    constexpr std::string_view source = "module parser.slices;\n"
+                                        "type ConstSlice = []const i32;\n"
+                                        "type MutSlice = []mut i32;\n"
+                                        "fn use(values: []const i32, mut_values: []mut i32) -> i32 {\n"
+                                        "  let all = values[:];\n"
+                                        "  let prefix = values[:2];\n"
+                                        "  let suffix = values[1:];\n"
+                                        "  let middle = mut_values[1:2];\n"
+                                        "  return all[0] + prefix[0] + suffix[0] + middle[0];\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "alias []const i32",
-        "alias []mut i32",
-        "slice",
-        "slice_start",
-        "slice_end",
-        "index",
-    });
+    expect_contains_all(ast,
+        {
+            "alias []const i32",
+            "alias []mut i32",
+            "slice",
+            "slice_start",
+            "slice_end",
+            "index",
+        });
 }
 
-TEST(CoreUnit, ParserAcceptsFunctionTypes) {
-    constexpr std::string_view source =
-        "module parser.function_types;\n"
-        "type BinaryOp = fn(left: i32, right: i32) -> i32;\n"
-        "type Callback = extern c fn(*mut void, ...) -> void;\n"
-        "type UnsafeOp = unsafe fn(i32) -> i32;\n"
-        "type UnsafeCallback = unsafe extern c fn(*mut void) -> void;\n"
-        "struct Ops { run: fn(i32) -> i32; }\n"
-        "fn apply(op: fn(i32, i32) -> i32, value: i32) -> i32 {\n"
-        "  return op(value, value);\n"
-        "}\n";
+TEST(CoreUnit, ParserAcceptsFunctionTypes)
+{
+    constexpr std::string_view source = "module parser.function_types;\n"
+                                        "type BinaryOp = fn(left: i32, right: i32) -> i32;\n"
+                                        "type Callback = extern c fn(*mut void, ...) -> void;\n"
+                                        "type UnsafeOp = unsafe fn(i32) -> i32;\n"
+                                        "type UnsafeCallback = unsafe extern c fn(*mut void) -> void;\n"
+                                        "struct Ops { run: fn(i32) -> i32; }\n"
+                                        "fn apply(op: fn(i32, i32) -> i32, value: i32) -> i32 {\n"
+                                        "  return op(value, value);\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "alias fn(i32, i32) -> i32",
-        "alias extern c fn(*mut void, ...) -> void",
-        "alias unsafe fn(i32) -> i32",
-        "alias unsafe extern c fn(*mut void) -> void",
-        "field priv run : fn(i32) -> i32",
-        "param op : fn(i32, i32) -> i32",
-    });
+    expect_contains_all(ast,
+        {
+            "alias fn(i32, i32) -> i32",
+            "alias extern c fn(*mut void, ...) -> void",
+            "alias unsafe fn(i32) -> i32",
+            "alias unsafe extern c fn(*mut void) -> void",
+            "field priv run : fn(i32) -> i32",
+            "param op : fn(i32, i32) -> i32",
+        });
 }
 
-TEST(CoreUnit, ParserAcceptsCAsOrdinaryIdentifier) {
-    constexpr std::string_view source =
-        "module parser.c_identifier;\n"
-        "fn c(value: i32) -> i32 { return value; }\n"
-        "fn mul_add(a: i32, b: i32, c: i32) -> i32 {\n"
-        "  return a * b + c;\n"
-        "}\n"
-        "fn use_local(seed: i32) -> i32 {\n"
-        "  let c: i32 = seed;\n"
-        "  return c;\n"
-        "}\n";
+TEST(CoreUnit, ParserAcceptsCAsOrdinaryIdentifier)
+{
+    constexpr std::string_view source = "module parser.c_identifier;\n"
+                                        "fn c(value: i32) -> i32 { return value; }\n"
+                                        "fn mul_add(a: i32, b: i32, c: i32) -> i32 {\n"
+                                        "  return a * b + c;\n"
+                                        "}\n"
+                                        "fn use_local(seed: i32) -> i32 {\n"
+                                        "  let c: i32 = seed;\n"
+                                        "  return c;\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* const function = find_item(module, "mul_add");
@@ -445,41 +454,40 @@ TEST(CoreUnit, ParserAcceptsCAsOrdinaryIdentifier) {
     EXPECT_EQ(function->params[2].name, "c");
 
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "priv fn c",
-        "param c : i32",
-        "let c : i32",
-        "name `c`",
-    });
+    expect_contains_all(ast,
+        {
+            "priv fn c",
+            "param c : i32",
+            "let c : i32",
+            "name `c`",
+        });
 }
 
-TEST(CoreUnit, ParserRejectsBareSliceType) {
-    expect_parse_error(
-        "module parser.bad_slice_type;\n"
-        "type Bad = []i32;\n",
-        "expected 'mut' or 'const' after '[]'"
-    );
+TEST(CoreUnit, ParserRejectsBareSliceType)
+{
+    expect_parse_error("module parser.bad_slice_type;\n"
+                       "type Bad = []i32;\n",
+        "expected 'mut' or 'const' after '[]'");
 }
 
-TEST(CoreUnit, ParserRejectsUnsafeWithoutBlock) {
-    expect_parse_error(
-        "module parser.bad_unsafe_block;\n"
-        "fn value() -> i32 {\n"
-        "  return {\n"
-        "    unsafe 1\n"
-        "  };\n"
-        "}\n",
-        "expected block after 'unsafe'"
-    );
+TEST(CoreUnit, ParserRejectsUnsafeWithoutBlock)
+{
+    expect_parse_error("module parser.bad_unsafe_block;\n"
+                       "fn value() -> i32 {\n"
+                       "  return {\n"
+                       "    unsafe 1\n"
+                       "  };\n"
+                       "}\n",
+        "expected block after 'unsafe'");
 }
 
-TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndShiftLookahead) {
+TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndShiftLookahead)
+{
     {
         DiagnosticSink diagnostics;
-        constexpr std::string_view source =
-            "module parser.recover;\n"
-            "let top_level = 1;\n"
-            "fn ok() -> i32 { return 0; }\n";
+        constexpr std::string_view source = "module parser.recover;\n"
+                                            "let top_level = 1;\n"
+                                            "fn ok() -> i32 { return 0; }\n";
         lex::Lexer lexer({4}, source, diagnostics);
         auto tokens = lexer.tokenize();
         ASSERT_TRUE(tokens) << tokens.error().message;
@@ -494,36 +502,35 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndShiftLookahead) {
 
     {
         DiagnosticSink diagnostics;
-        constexpr std::string_view source =
-            "module parser.numeric;\n"
-            "type VoidAlias = void;\n"
-            "type BoolAlias = bool;\n"
-            "type I8Alias = i8;\n"
-            "type I16Alias = i16;\n"
-            "type U16Alias = u16;\n"
-            "type U32Alias = u32;\n"
-            "type I64Alias = i64;\n"
-            "type U64Alias = u64;\n"
-            "type IsizeAlias = isize;\n"
-            "type UsizeAlias = usize;\n"
-            "type F32Alias = f32;\n"
-            "type F64Alias = f64;\n"
-            "type HexBytes = [0x2A]u8;\n"
-            "type UpperHexBytes = [0X2A]u8;\n"
-            "type LowerHexBytes = [0x2a]u8;\n"
-            "type BinBytes = [0b1010]u8;\n"
-            "type UpperBinBytes = [0B1010]u8;\n"
-            "type DecBytes = [1_000]u8;\n"
-            "enum Code: u16 { hex = 0x2A, bin = 0b1010, dec = 1_000, }\n"
-            "struct Wrap { value: i32; }\n"
-            "struct Outer { value: Wrap; }\n"
-            "enum ResultI32Bool: u8 { ok(i32) = 1, err(bool) = 2, }\n"
-            "fn main() -> i32 {\n"
-            "  let nested: Outer = Outer { value: Wrap { value: 1 } };\n"
-            "  let ok = ResultI32Bool.err(false)?;\n"
-            "  let shifted: i32 = 8 >> 1;\n"
-            "  return 0;\n"
-            "}\n";
+        constexpr std::string_view source = "module parser.numeric;\n"
+                                            "type VoidAlias = void;\n"
+                                            "type BoolAlias = bool;\n"
+                                            "type I8Alias = i8;\n"
+                                            "type I16Alias = i16;\n"
+                                            "type U16Alias = u16;\n"
+                                            "type U32Alias = u32;\n"
+                                            "type I64Alias = i64;\n"
+                                            "type U64Alias = u64;\n"
+                                            "type IsizeAlias = isize;\n"
+                                            "type UsizeAlias = usize;\n"
+                                            "type F32Alias = f32;\n"
+                                            "type F64Alias = f64;\n"
+                                            "type HexBytes = [0x2A]u8;\n"
+                                            "type UpperHexBytes = [0X2A]u8;\n"
+                                            "type LowerHexBytes = [0x2a]u8;\n"
+                                            "type BinBytes = [0b1010]u8;\n"
+                                            "type UpperBinBytes = [0B1010]u8;\n"
+                                            "type DecBytes = [1_000]u8;\n"
+                                            "enum Code: u16 { hex = 0x2A, bin = 0b1010, dec = 1_000, }\n"
+                                            "struct Wrap { value: i32; }\n"
+                                            "struct Outer { value: Wrap; }\n"
+                                            "enum ResultI32Bool: u8 { ok(i32) = 1, err(bool) = 2, }\n"
+                                            "fn main() -> i32 {\n"
+                                            "  let nested: Outer = Outer { value: Wrap { value: 1 } };\n"
+                                            "  let ok = ResultI32Bool.err(false)?;\n"
+                                            "  let shifted: i32 = 8 >> 1;\n"
+                                            "  return 0;\n"
+                                            "}\n";
         lex::Lexer lexer({5}, source, diagnostics);
         auto tokens = lexer.tokenize();
         ASSERT_TRUE(tokens) << tokens.error().message;
@@ -534,41 +541,42 @@ TEST(CoreUnit, ParserCoversRecoveryNumericEnumValuesAndShiftLookahead) {
         EXPECT_FALSE(diagnostics.has_error());
 
         const std::string ast = syntax::dump_ast(parsed.value());
-        expect_contains_all(ast, {
-            "alias void",
-            "alias bool",
-            "alias i8",
-            "alias i16",
-            "alias u16",
-            "alias u32",
-            "alias i64",
-            "alias u64",
-            "alias isize",
-            "alias usize",
-            "alias f32",
-            "alias f64",
-            "alias [42]u8",
-            "alias [42]u8",
-            "alias [42]u8",
-            "alias [10]u8",
-            "alias [10]u8",
-            "alias [1000]u8",
-            "struct_literal",
-            "try_expr",
-            "binary",
-        });
+        expect_contains_all(ast,
+            {
+                "alias void",
+                "alias bool",
+                "alias i8",
+                "alias i16",
+                "alias u16",
+                "alias u32",
+                "alias i64",
+                "alias u64",
+                "alias isize",
+                "alias usize",
+                "alias f32",
+                "alias f64",
+                "alias [42]u8",
+                "alias [42]u8",
+                "alias [42]u8",
+                "alias [10]u8",
+                "alias [10]u8",
+                "alias [1000]u8",
+                "struct_literal",
+                "try_expr",
+                "binary",
+            });
     }
 }
 
-TEST(CoreUnit, ParserRecoveryStopsAtNextItemWithoutSemicolon) {
-    constexpr base::SourceId PARSER_TEST_RECOVERY_SOURCE_ID {8};
-    constexpr std::string_view source =
-        "module parser.recovery_boundary;\n"
-        "let top_level = 1\n"
-        "fn recovered() -> i32 {\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryStopsAtNextItemWithoutSemicolon)
+{
+    constexpr base::SourceId PARSER_TEST_RECOVERY_SOURCE_ID{8};
+    constexpr std::string_view source = "module parser.recovery_boundary;\n"
+                                        "let top_level = 1\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -589,23 +597,23 @@ TEST(CoreUnit, ParserRecoveryStopsAtNextItemWithoutSemicolon) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserAcceptsFrozenTrailingSeparatorPolicy) {
-    constexpr std::string_view source =
-        "module parser.trailing_separators;\n"
-        "struct Pair { left: i32; right: bool; }\n"
-        "enum Choice: u8 { ok = 1, err(bool) = 2 }\n"
-        "fn choose(first: i32, second: bool,) -> Choice {\n"
-        "  let pair = Pair { left: first, right: second, };\n"
-        "  if pair.left == first { return Choice.ok; }\n"
-        "  return Choice.err(pair.right);\n"
-        "}\n"
-        "fn score() -> i32 {\n"
-        "  let value = choose(41, false,);\n"
-        "  return match value {\n"
-        "    .ok => 41,\n"
-        "    .err(flag) => if flag { 1 } else { 0 }\n"
-        "  };\n"
-        "}\n";
+TEST(CoreUnit, ParserAcceptsFrozenTrailingSeparatorPolicy)
+{
+    constexpr std::string_view source = "module parser.trailing_separators;\n"
+                                        "struct Pair { left: i32; right: bool; }\n"
+                                        "enum Choice: u8 { ok = 1, err(bool) = 2 }\n"
+                                        "fn choose(first: i32, second: bool,) -> Choice {\n"
+                                        "  let pair = Pair { left: first, right: second, };\n"
+                                        "  if pair.left == first { return Choice.ok; }\n"
+                                        "  return Choice.err(pair.right);\n"
+                                        "}\n"
+                                        "fn score() -> i32 {\n"
+                                        "  let value = choose(41, false,);\n"
+                                        "  return match value {\n"
+                                        "    .ok => 41,\n"
+                                        "    .err(flag) => if flag { 1 } else { 0 }\n"
+                                        "  };\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* pair = find_item(module, "Pair");
@@ -621,22 +629,22 @@ TEST(CoreUnit, ParserAcceptsFrozenTrailingSeparatorPolicy) {
     EXPECT_EQ(choose->params.size(), 2U);
 }
 
-TEST(CoreUnit, ParserAcceptsTupleTypesLiteralsAndDestructuring) {
-    constexpr std::string_view source =
-        "module parser.tuples;\n"
-        "type Pair = (i32, bool);\n"
-        "type Single = (i32,);\n"
-        "fn make_pair(value: i32) -> (i32, bool) {\n"
-        "  let pair: Pair = (value, value > 0);\n"
-        "  let (x, ok) = pair;\n"
-        "  let (single,) = (x,);\n"
-        "  return (single, ok);\n"
-        "}\n"
-        "fn main() -> i32 {\n"
-        "  let pair = make_pair(1);\n"
-        "  let (value, _) = pair;\n"
-        "  return value;\n"
-        "}\n";
+TEST(CoreUnit, ParserAcceptsTupleTypesLiteralsAndDestructuring)
+{
+    constexpr std::string_view source = "module parser.tuples;\n"
+                                        "type Pair = (i32, bool);\n"
+                                        "type Single = (i32,);\n"
+                                        "fn make_pair(value: i32) -> (i32, bool) {\n"
+                                        "  let pair: Pair = (value, value > 0);\n"
+                                        "  let (x, ok) = pair;\n"
+                                        "  let (single,) = (x,);\n"
+                                        "  return (single, ok);\n"
+                                        "}\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let pair = make_pair(1);\n"
+                                        "  let (value, _) = pair;\n"
+                                        "  return value;\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* pair_alias = find_item(module, "Pair");
@@ -686,24 +694,25 @@ TEST(CoreUnit, ParserAcceptsTupleTypesLiteralsAndDestructuring) {
     const syntax::ItemNode* main = find_item(module, "main");
     ASSERT_NE(main, nullptr);
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "alias (i32, bool)",
-        "alias (i32,)",
-        "tuple_literal",
-        "tuple_element",
-        "stmt #",
-        "(x, ok)",
-        "(single,)",
-    });
+    expect_contains_all(ast,
+        {
+            "alias (i32, bool)",
+            "alias (i32,)",
+            "tuple_literal",
+            "tuple_element",
+            "stmt #",
+            "(x, ok)",
+            "(single,)",
+        });
 }
 
-TEST(CoreUnit, ParserAcceptsMultiSegmentQualifiedTypeAnnotations) {
-    constexpr std::string_view source =
-        "module parser.qualified_types;\n"
-        "type FileBox = core.mem.Box[core.mem.File];\n"
-        "fn use(file: core.mem.File) -> core.mem.Box[core.mem.File] {\n"
-        "  return file;\n"
-        "}\n";
+TEST(CoreUnit, ParserAcceptsMultiSegmentQualifiedTypeAnnotations)
+{
+    constexpr std::string_view source = "module parser.qualified_types;\n"
+                                        "type FileBox = core.mem.Box[core.mem.File];\n"
+                                        "fn use(file: core.mem.File) -> core.mem.Box[core.mem.File] {\n"
+                                        "  return file;\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* file_box = find_item(module, "FileBox");
@@ -730,92 +739,90 @@ TEST(CoreUnit, ParserAcceptsMultiSegmentQualifiedTypeAnnotations) {
     EXPECT_EQ(param_type.name, "File");
 
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "alias core.mem.Box[core.mem.File]",
-        "param file : core.mem.File",
-        "return core.mem.Box[core.mem.File]",
-    });
+    expect_contains_all(ast,
+        {
+            "alias core.mem.Box[core.mem.File]",
+            "param file : core.mem.File",
+            "return core.mem.Box[core.mem.File]",
+        });
 }
 
-TEST(CoreUnit, ParserRejectsEmptyTupleForms) {
-    expect_parse_error(
-        "module parser.empty_tuple_type;\n"
-        "type Empty = ();\n",
-        "empty tuple type is not part of M2 syntax"
-    );
-    expect_parse_error(
-        "module parser.empty_tuple_literal;\n"
-        "fn main() -> i32 {\n"
-        "  let value = ();\n"
-        "  return 0;\n"
-        "}\n",
-        "empty tuple literal is not part of M2 syntax"
-    );
-    expect_parse_error(
-        "module parser.empty_tuple_pattern;\n"
-        "fn main() -> i32 {\n"
-        "  let () = 1;\n"
-        "  return 0;\n"
-        "}\n",
-        "empty tuple pattern is not part of M2 syntax"
-    );
+TEST(CoreUnit, ParserRejectsEmptyTupleForms)
+{
+    expect_parse_error("module parser.empty_tuple_type;\n"
+                       "type Empty = ();\n",
+        "empty tuple type is not part of M2 syntax");
+    expect_parse_error("module parser.empty_tuple_literal;\n"
+                       "fn main() -> i32 {\n"
+                       "  let value = ();\n"
+                       "  return 0;\n"
+                       "}\n",
+        "empty tuple literal is not part of M2 syntax");
+    expect_parse_error("module parser.empty_tuple_pattern;\n"
+                       "fn main() -> i32 {\n"
+                       "  let () = 1;\n"
+                       "  return 0;\n"
+                       "}\n",
+        "empty tuple pattern is not part of M2 syntax");
 }
 
-TEST(CoreUnit, ParserAcceptsSlicePatternsAndLetElse) {
-    constexpr std::string_view source =
-        "module parser.slice_patterns;\n"
-        "enum Maybe { some(i32), none }\n"
-        "fn main() -> i32 {\n"
-        "  let values: [3]i32 = [1, 2, 3];\n"
-        "  let [..] = values;\n"
-        "  let [.., last] = values;\n"
-        "  let [[nested], ..] = values;\n"
-        "  let [dot_case, .none] = values;\n"
-        "  let [head, .., tail] = values;\n"
-        "  let .some(value) = Maybe.some(head) else {\n"
-        "    return tail;\n"
-        "  };\n"
-        "  let .some(.some(inner)) = Maybe.some(head) else {\n"
-        "    return 0;\n"
-        "  };\n"
-        "  let .some(Wrapper { _ }) = Maybe.some(head) else {\n"
-        "    return 0;\n"
-        "  };\n"
-        "  let .some(choice) | .none | .some(fallback) = Maybe.some(value) else {\n"
-        "    return dot_case;\n"
-        "  };\n"
-        "  return value + inner;\n"
-        "}\n";
+TEST(CoreUnit, ParserAcceptsSlicePatternsAndLetElse)
+{
+    constexpr std::string_view source = "module parser.slice_patterns;\n"
+                                        "enum Maybe { some(i32), none }\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let values: [3]i32 = [1, 2, 3];\n"
+                                        "  let [..] = values;\n"
+                                        "  let [.., last] = values;\n"
+                                        "  let [[nested], ..] = values;\n"
+                                        "  let [dot_case, .none] = values;\n"
+                                        "  let [head, .., tail] = values;\n"
+                                        "  let .some(value) = Maybe.some(head) else {\n"
+                                        "    return tail;\n"
+                                        "  };\n"
+                                        "  let .some(.some(inner)) = Maybe.some(head) else {\n"
+                                        "    return 0;\n"
+                                        "  };\n"
+                                        "  let .some(Wrapper { _ }) = Maybe.some(head) else {\n"
+                                        "    return 0;\n"
+                                        "  };\n"
+                                        "  let .some(choice) | .none | .some(fallback) = Maybe.some(value) else {\n"
+                                        "    return dot_case;\n"
+                                        "  };\n"
+                                        "  return value + inner;\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "[..]",
-        "[.., last]",
-        "[[nested], ..]",
-        "[dot_case, .none]",
-        "[head, .., tail]",
-        ".some(value)",
-        ".some(.some(inner))",
-        ".some(choice) | .none | .some(fallback)",
-    });
+    expect_contains_all(ast,
+        {
+            "[..]",
+            "[.., last]",
+            "[[nested], ..]",
+            "[dot_case, .none]",
+            "[head, .., tail]",
+            ".some(value)",
+            ".some(.some(inner))",
+            ".some(choice) | .none | .some(fallback)",
+        });
 }
 
-TEST(CoreUnit, ParserKeepsPatternEnumCasesInExplicitTypeNamespace) {
-    constexpr std::string_view source =
-        "module parser.generic_enum_case_patterns;\n"
-        "enum Option[T] { some(T), none }\n"
-        "fn main(opt: Option[i32]) -> i32 {\n"
-        "  return match opt {\n"
-        "    Option[i32].some(value) => value,\n"
-        "    Option[i32].none => 0,\n"
-        "  };\n"
-        "}\n";
+TEST(CoreUnit, ParserKeepsPatternEnumCasesInExplicitTypeNamespace)
+{
+    constexpr std::string_view source = "module parser.generic_enum_case_patterns;\n"
+                                        "enum Option[T] { some(T), none }\n"
+                                        "fn main(opt: Option[i32]) -> i32 {\n"
+                                        "  return match opt {\n"
+                                        "    Option[i32].some(value) => value,\n"
+                                        "    Option[i32].none => 0,\n"
+                                        "  };\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "Option[i32].some(value)",
-        "Option[i32].none",
-    });
+    expect_contains_all(ast,
+        {
+            "Option[i32].some(value)",
+            "Option[i32].none",
+        });
 
     const syntax::ItemNode* main = find_item(module, "main");
     ASSERT_NE(main, nullptr);
@@ -827,8 +834,7 @@ TEST(CoreUnit, ParserKeepsPatternEnumCasesInExplicitTypeNamespace) {
     ASSERT_EQ(return_stmt.kind, syntax::StmtKind::return_);
     ASSERT_TRUE(syntax::is_valid(return_stmt.return_value));
     ASSERT_EQ(module.exprs.kind(return_stmt.return_value.value), syntax::ExprKind::match_expr);
-    const syntax::MatchExprPayload* const match_expr =
-        module.exprs.match_payload(return_stmt.return_value.value);
+    const syntax::MatchExprPayload* const match_expr = module.exprs.match_payload(return_stmt.return_value.value);
     ASSERT_NE(match_expr, nullptr);
     ASSERT_EQ(match_expr->arms.size(), 2U);
 
@@ -853,7 +859,8 @@ TEST(CoreUnit, ParserKeepsPatternEnumCasesInExplicitTypeNamespace) {
     EXPECT_EQ(value.binding_name, "value");
 }
 
-TEST(CoreUnit, ParserAcceptsQualifiedGenericExplicitEnumCasePattern) {
+TEST(CoreUnit, ParserAcceptsQualifiedGenericExplicitEnumCasePattern)
+{
     constexpr std::string_view source =
         "module parser.qualified_generic_enum_case_patterns;\n"
         "enum Option[T] { some(T), none }\n"
@@ -865,58 +872,54 @@ TEST(CoreUnit, ParserAcceptsQualifiedGenericExplicitEnumCasePattern) {
         "}\n";
     const syntax::AstModule module = parse_success(source);
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "parser.qualified_generic_enum_case_patterns.Option[i32].some(value)",
-        "parser.qualified_generic_enum_case_patterns.Option[i32].none",
-    });
+    expect_contains_all(ast,
+        {
+            "parser.qualified_generic_enum_case_patterns.Option[i32].some(value)",
+            "parser.qualified_generic_enum_case_patterns.Option[i32].none",
+        });
 }
 
-TEST(CoreUnit, ParserRecoversMalformedExplicitEnumCasePatternTypeArgs) {
-    expect_parse_error(
-        "module parser.malformed_explicit_enum_case_pattern;\n"
-        "enum Option[T] { some(T), none }\n"
-        "fn main(opt: Option[i32]) -> i32 {\n"
-        "  return match opt {\n"
-        "    Option[].some(value) => value,\n"
-        "    Option[i32].none => 0,\n"
-        "  };\n"
-        "}\n",
-        "expected generic type argument"
-    );
-    expect_parse_error(
-        "module parser.missing_explicit_enum_case_dot;\n"
-        "enum Option[T] { some(T), none }\n"
-        "fn main(opt: Option[i32]) -> i32 {\n"
-        "  return match opt {\n"
-        "    Option[i32] => 0,\n"
-        "  };\n"
-        "}\n",
-        "expected '.' before enum case pattern name"
-    );
-    expect_parse_error(
-        "module parser.malformed_explicit_enum_case_args;\n"
-        "enum Pair[A, B] { some(A, B), none }\n"
-        "fn main(opt: Pair[i32, i32]) -> i32 {\n"
-        "  return match opt {\n"
-        "    Pair[i32 @ i32].some(left, right) => left + right,\n"
-        "    Pair[i32, i32].none => 0,\n"
-        "  };\n"
-        "}\n",
-        "expected ',' or ']' after generic type argument"
-    );
+TEST(CoreUnit, ParserRecoversMalformedExplicitEnumCasePatternTypeArgs)
+{
+    expect_parse_error("module parser.malformed_explicit_enum_case_pattern;\n"
+                       "enum Option[T] { some(T), none }\n"
+                       "fn main(opt: Option[i32]) -> i32 {\n"
+                       "  return match opt {\n"
+                       "    Option[].some(value) => value,\n"
+                       "    Option[i32].none => 0,\n"
+                       "  };\n"
+                       "}\n",
+        "expected generic type argument");
+    expect_parse_error("module parser.missing_explicit_enum_case_dot;\n"
+                       "enum Option[T] { some(T), none }\n"
+                       "fn main(opt: Option[i32]) -> i32 {\n"
+                       "  return match opt {\n"
+                       "    Option[i32] => 0,\n"
+                       "  };\n"
+                       "}\n",
+        "expected '.' before enum case pattern name");
+    expect_parse_error("module parser.malformed_explicit_enum_case_args;\n"
+                       "enum Pair[A, B] { some(A, B), none }\n"
+                       "fn main(opt: Pair[i32, i32]) -> i32 {\n"
+                       "  return match opt {\n"
+                       "    Pair[i32 @ i32].some(left, right) => left + right,\n"
+                       "    Pair[i32, i32].none => 0,\n"
+                       "  };\n"
+                       "}\n",
+        "expected ',' or ']' after generic type argument");
 }
 
-TEST(CoreUnit, ParserRejectsBareEnumCasePatternButRecoversAsBinding) {
-    constexpr base::SourceId PARSER_TEST_BARE_ENUM_CASE_PATTERN_SOURCE_ID {31};
-    constexpr std::string_view source =
-        "module parser.bare_enum_case_pattern;\n"
-        "enum Option { some(i32), none }\n"
-        "fn main(opt: Option) -> i32 {\n"
-        "  return match opt {\n"
-        "    some(value) => value,\n"
-        "    .none => 0,\n"
-        "  };\n"
-        "}\n";
+TEST(CoreUnit, ParserRejectsBareEnumCasePatternButRecoversAsBinding)
+{
+    constexpr base::SourceId PARSER_TEST_BARE_ENUM_CASE_PATTERN_SOURCE_ID{31};
+    constexpr std::string_view source = "module parser.bare_enum_case_pattern;\n"
+                                        "enum Option { some(i32), none }\n"
+                                        "fn main(opt: Option) -> i32 {\n"
+                                        "  return match opt {\n"
+                                        "    some(value) => value,\n"
+                                        "    .none => 0,\n"
+                                        "  };\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_BARE_ENUM_CASE_PATTERN_SOURCE_ID, source, diagnostics);
@@ -938,59 +941,50 @@ TEST(CoreUnit, ParserRejectsBareEnumCasePatternButRecoversAsBinding) {
     EXPECT_TRUE(found);
 }
 
-TEST(CoreUnit, ParserRejectsMalformedSlicePatternRest) {
-    expect_parse_error(
-        "module parser.slice_pattern_rest;\n"
-        "fn main() -> i32 {\n"
-        "  let [head, .., ..] = [1, 2];\n"
-        "  return head;\n"
-        "}\n",
-        "slice pattern can contain at most one '..' rest marker"
-    );
-    expect_parse_error(
-        "module parser.slice_pattern_ellipsis;\n"
-        "fn main() -> i32 {\n"
-        "  let [head, ...] = [1, 2];\n"
-        "  return head;\n"
-        "}\n",
-        "slice pattern rest marker is '..'"
-    );
-    expect_parse_error(
-        "module parser.slice_pattern_separator;\n"
-        "fn main() -> i32 {\n"
-        "  let [head tail] = [1, 2];\n"
-        "  return head;\n"
-        "}\n",
-        "expected ',' or ']' after slice pattern element"
-    );
-    expect_parse_error(
-        "module parser.slice_pattern_separator_recovery;\n"
-        "fn main() -> i32 {\n"
-        "  let [head tail, other] = [1, 2, 3];\n"
-        "  return head;\n"
-        "}\n",
-        "expected ',' or ']' after slice pattern element"
-    );
-    expect_parse_error(
-        "module parser.let_else_name;\n"
-        "fn main() -> i32 {\n"
-        "  let value = 1 else { return 0; };\n"
-        "  return value;\n"
-        "}\n",
-        "let-else requires a destructuring or refutable pattern"
-    );
+TEST(CoreUnit, ParserRejectsMalformedSlicePatternRest)
+{
+    expect_parse_error("module parser.slice_pattern_rest;\n"
+                       "fn main() -> i32 {\n"
+                       "  let [head, .., ..] = [1, 2];\n"
+                       "  return head;\n"
+                       "}\n",
+        "slice pattern can contain at most one '..' rest marker");
+    expect_parse_error("module parser.slice_pattern_ellipsis;\n"
+                       "fn main() -> i32 {\n"
+                       "  let [head, ...] = [1, 2];\n"
+                       "  return head;\n"
+                       "}\n",
+        "slice pattern rest marker is '..'");
+    expect_parse_error("module parser.slice_pattern_separator;\n"
+                       "fn main() -> i32 {\n"
+                       "  let [head tail] = [1, 2];\n"
+                       "  return head;\n"
+                       "}\n",
+        "expected ',' or ']' after slice pattern element");
+    expect_parse_error("module parser.slice_pattern_separator_recovery;\n"
+                       "fn main() -> i32 {\n"
+                       "  let [head tail, other] = [1, 2, 3];\n"
+                       "  return head;\n"
+                       "}\n",
+        "expected ',' or ']' after slice pattern element");
+    expect_parse_error("module parser.let_else_name;\n"
+                       "fn main() -> i32 {\n"
+                       "  let value = 1 else { return 0; };\n"
+                       "  return value;\n"
+                       "}\n",
+        "let-else requires a destructuring or refutable pattern");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedTupleSeparators) {
-    constexpr base::SourceId PARSER_TEST_TUPLE_RECOVERY_SOURCE_ID {33};
-    constexpr std::string_view source =
-        "module parser.tuple_recovery;\n"
-        "type Bad = (i32, bool i32);\n"
-        "fn recovered() -> i32 {\n"
-        "  let bad_literal = (1, true false);\n"
-        "  let (a, b extra) = (1, 2);\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedTupleSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_TUPLE_RECOVERY_SOURCE_ID{33};
+    constexpr std::string_view source = "module parser.tuple_recovery;\n"
+                                        "type Bad = (i32, bool i32);\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let bad_literal = (1, true false);\n"
+                                        "  let (a, b extra) = (1, 2);\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_TUPLE_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1012,28 +1006,28 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedTupleSeparators) {
     expect_contains(messages, "expected ',' or ')' after tuple pattern element");
 }
 
-TEST(CoreUnit, ParserRecoveryCoversTupleSynchronizationAndFunctionTypeVariadics) {
-    constexpr base::SourceId PARSER_TEST_TUPLE_SYNC_RECOVERY_SOURCE_ID {34};
-    constexpr std::string_view source =
-        "module parser.tuple_sync_recovery;\n"
-        "type SizedA = [4usize]i32;\n"
-        "type SizedB = [0b10u8]u8;\n"
-        "type BadSize = [4bad]i32;\n"
-        "type BadGeneric = Pair[i32 +, bool];\n"
-        "type BadTuple = (i32, bool +, u8);\n"
-        "type BadFnA = fn(..., i32) -> i32;\n"
-        "type BadFnB = fn(i32, ..., bool) -> i32;\n"
-        "type BadFnC = fn(i32 +, bool) -> i32;\n"
-        "fn recovered(value: i32) -> i32 {\n"
-        "  let (only) = value;\n"
-        "  let missing_repeat = [0;];\n"
-        "  let bad_array = [1 ->, 2];\n"
-        "  let bad_literal = (1, true ->, 2);\n"
-        "  let (a, b +, c) = (1, 2, 3);\n"
-        "  let bad_apply = value[i32 +, bool](1);\n"
-        "  let bad_payload = match value { .some() => 0, .some(name,) => 1, _ => 2 };\n"
-        "  return value;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryCoversTupleSynchronizationAndFunctionTypeVariadics)
+{
+    constexpr base::SourceId PARSER_TEST_TUPLE_SYNC_RECOVERY_SOURCE_ID{34};
+    constexpr std::string_view source = "module parser.tuple_sync_recovery;\n"
+                                        "type SizedA = [4usize]i32;\n"
+                                        "type SizedB = [0b10u8]u8;\n"
+                                        "type BadSize = [4bad]i32;\n"
+                                        "type BadGeneric = Pair[i32 +, bool];\n"
+                                        "type BadTuple = (i32, bool +, u8);\n"
+                                        "type BadFnA = fn(..., i32) -> i32;\n"
+                                        "type BadFnB = fn(i32, ..., bool) -> i32;\n"
+                                        "type BadFnC = fn(i32 +, bool) -> i32;\n"
+                                        "fn recovered(value: i32) -> i32 {\n"
+                                        "  let (only) = value;\n"
+                                        "  let missing_repeat = [0;];\n"
+                                        "  let bad_array = [1 ->, 2];\n"
+                                        "  let bad_literal = (1, true ->, 2);\n"
+                                        "  let (a, b +, c) = (1, 2, 3);\n"
+                                        "  let bad_apply = value[i32 +, bool](1);\n"
+                                        "  let bad_payload = match value { .some() => 0, .some(name,) => 1, _ => 2 };\n"
+                                        "  return value;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_TUPLE_SYNC_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1061,59 +1055,55 @@ TEST(CoreUnit, ParserRecoveryCoversTupleSynchronizationAndFunctionTypeVariadics)
     expect_contains(messages, "variadic marker must be last in parameter list");
 }
 
-TEST(CoreUnit, ParserRejectsNumericTupleFieldAccess) {
-    expect_parse_error(
-        "module parser.numeric_tuple_field_boundary;\n"
-        "fn main() -> i32 {\n"
-        "  let pair = (1, false);\n"
-        "  return pair.0;\n"
-        "}\n",
-        "tuple fields are not directly accessible; destructure the tuple or use a named struct"
-    );
-    expect_parse_error(
-        "module parser.spaced_numeric_tuple_field_boundary;\n"
-        "fn main() -> i32 {\n"
-        "  let pair = (1, false);\n"
-        "  return pair . 0;\n"
-        "}\n",
-        "tuple fields are not directly accessible; destructure the tuple or use a named struct"
-    );
+TEST(CoreUnit, ParserRejectsNumericTupleFieldAccess)
+{
+    expect_parse_error("module parser.numeric_tuple_field_boundary;\n"
+                       "fn main() -> i32 {\n"
+                       "  let pair = (1, false);\n"
+                       "  return pair.0;\n"
+                       "}\n",
+        "tuple fields are not directly accessible; destructure the tuple or use a named struct");
+    expect_parse_error("module parser.spaced_numeric_tuple_field_boundary;\n"
+                       "fn main() -> i32 {\n"
+                       "  let pair = (1, false);\n"
+                       "  return pair . 0;\n"
+                       "}\n",
+        "tuple fields are not directly accessible; destructure the tuple or use a named struct");
 }
 
-TEST(CoreUnit, ParserDoesNotTreatSuffixedFloatAsTupleField) {
-    expect_parse_error(
-        "module parser.float_tuple_field_boundary;\n"
-        "fn main() -> i32 {\n"
-        "  let pair = (1, false);\n"
-        "  return pair.0f32;\n"
-        "}\n",
-        "expected ';' after return"
-    );
+TEST(CoreUnit, ParserDoesNotTreatSuffixedFloatAsTupleField)
+{
+    expect_parse_error("module parser.float_tuple_field_boundary;\n"
+                       "fn main() -> i32 {\n"
+                       "  let pair = (1, false);\n"
+                       "  return pair.0f32;\n"
+                       "}\n",
+        "expected ';' after return");
 }
 
-TEST(CoreUnit, ParserAcceptsUnifiedBlockExpressionBody) {
-    constexpr std::string_view source =
-        "module parser.block_body;\n"
-        "fn main() -> i32 {\n"
-        "  let value = {\n"
-        "    var total: i32 = 0;\n"
-        "    if total == 0 {\n"
-        "      total += 1;\n"
-        "    }\n"
-        "    while total < 2 {\n"
-        "      total += 1;\n"
-        "    }\n"
-        "    for var i: i32 = 0; i < 3; i += 1 {\n"
-        "      if i == 1 { continue; }\n"
-        "      total += i;\n"
-        "    }\n"
-        "    {\n"
-        "      total += 10;\n"
-        "    }\n"
-        "    if total == 14 { total } else { 0 }\n"
-        "  };\n"
-        "  return value;\n"
-        "}\n";
+TEST(CoreUnit, ParserAcceptsUnifiedBlockExpressionBody)
+{
+    constexpr std::string_view source = "module parser.block_body;\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let value = {\n"
+                                        "    var total: i32 = 0;\n"
+                                        "    if total == 0 {\n"
+                                        "      total += 1;\n"
+                                        "    }\n"
+                                        "    while total < 2 {\n"
+                                        "      total += 1;\n"
+                                        "    }\n"
+                                        "    for var i: i32 = 0; i < 3; i += 1 {\n"
+                                        "      if i == 1 { continue; }\n"
+                                        "      total += i;\n"
+                                        "    }\n"
+                                        "    {\n"
+                                        "      total += 10;\n"
+                                        "    }\n"
+                                        "    if total == 14 { total } else { 0 }\n"
+                                        "  };\n"
+                                        "  return value;\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* main = find_item(module, "main");
@@ -1139,15 +1129,15 @@ TEST(CoreUnit, ParserAcceptsUnifiedBlockExpressionBody) {
     EXPECT_EQ(module.exprs.kind(block_expr->result.value), syntax::ExprKind::if_expr);
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedArrayTypeSeparators) {
-    constexpr base::SourceId PARSER_TEST_ARRAY_TYPE_RECOVERY_SOURCE_ID {9};
-    constexpr std::string_view source =
-        "module parser.array_type_recovery;\n"
-        "type Broken = [2 i32;\n"
-        "fn recovered() -> i32 {\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedArrayTypeSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_ARRAY_TYPE_RECOVERY_SOURCE_ID{9};
+    constexpr std::string_view source = "module parser.array_type_recovery;\n"
+                                        "type Broken = [2 i32;\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_ARRAY_TYPE_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1168,18 +1158,18 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedArrayTypeSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedMatchArmSeparators) {
-    constexpr base::SourceId PARSER_TEST_MATCH_ARM_RECOVERY_SOURCE_ID {10};
-    constexpr std::string_view source =
-        "module parser.match_arm_recovery;\n"
-        "fn recovered(value: i32) -> i32 {\n"
-        "  let matched = match value {\n"
-        "    0 => 0 @\n"
-        "    1 => 1,\n"
-        "  };\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedMatchArmSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_MATCH_ARM_RECOVERY_SOURCE_ID{10};
+    constexpr std::string_view source = "module parser.match_arm_recovery;\n"
+                                        "fn recovered(value: i32) -> i32 {\n"
+                                        "  let matched = match value {\n"
+                                        "    0 => 0 @\n"
+                                        "    1 => 1,\n"
+                                        "  };\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_MATCH_ARM_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1200,15 +1190,15 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedMatchArmSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedCallArgumentSeparators) {
-    constexpr base::SourceId PARSER_TEST_CALL_ARG_RECOVERY_SOURCE_ID {11};
-    constexpr std::string_view source =
-        "module parser.call_arg_recovery;\n"
-        "fn recovered() -> i32 {\n"
-        "  let value = id(1 @ 2, 3);\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedCallArgumentSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_CALL_ARG_RECOVERY_SOURCE_ID{11};
+    constexpr std::string_view source = "module parser.call_arg_recovery;\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let value = id(1 @ 2, 3);\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_CALL_ARG_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1229,15 +1219,15 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedCallArgumentSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedArrayLiteralSeparators) {
-    constexpr base::SourceId PARSER_TEST_ARRAY_LITERAL_RECOVERY_SOURCE_ID {32};
-    constexpr std::string_view source =
-        "module parser.array_literal_recovery;\n"
-        "fn recovered() -> i32 {\n"
-        "  let value: [3]i32 = [1 @ 2, 3];\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedArrayLiteralSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_ARRAY_LITERAL_RECOVERY_SOURCE_ID{32};
+    constexpr std::string_view source = "module parser.array_literal_recovery;\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let value: [3]i32 = [1 @ 2, 3];\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_ARRAY_LITERAL_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1258,16 +1248,16 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedArrayLiteralSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedStructLiteralFieldSeparators) {
-    constexpr base::SourceId PARSER_TEST_STRUCT_FIELD_RECOVERY_SOURCE_ID {12};
-    constexpr std::string_view source =
-        "module parser.struct_field_recovery;\n"
-        "struct Pair { a: i32; b: i32; }\n"
-        "fn recovered() -> i32 {\n"
-        "  let value = Pair { a: 1 @ b: 2 };\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedStructLiteralFieldSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_STRUCT_FIELD_RECOVERY_SOURCE_ID{12};
+    constexpr std::string_view source = "module parser.struct_field_recovery;\n"
+                                        "struct Pair { a: i32; b: i32; }\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let value = Pair { a: 1 @ b: 2 };\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_STRUCT_FIELD_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1288,14 +1278,14 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedStructLiteralFieldSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedParameterSeparators) {
-    constexpr base::SourceId PARSER_TEST_PARAM_RECOVERY_SOURCE_ID {13};
-    constexpr std::string_view source =
-        "module parser.parameter_recovery;\n"
-        "fn recovered(a: i32 @ b: i32) -> i32 {\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedParameterSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_PARAM_RECOVERY_SOURCE_ID{13};
+    constexpr std::string_view source = "module parser.parameter_recovery;\n"
+                                        "fn recovered(a: i32 @ b: i32) -> i32 {\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_PARAM_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1316,15 +1306,15 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedParameterSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedStructDeclarationFieldSeparators) {
-    constexpr base::SourceId PARSER_TEST_STRUCT_DECL_FIELD_RECOVERY_SOURCE_ID {14};
-    constexpr std::string_view source =
-        "module parser.struct_decl_field_recovery;\n"
-        "struct Pair { a: i32 @ b: i32; }\n"
-        "fn recovered() -> i32 {\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedStructDeclarationFieldSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_STRUCT_DECL_FIELD_RECOVERY_SOURCE_ID{14};
+    constexpr std::string_view source = "module parser.struct_decl_field_recovery;\n"
+                                        "struct Pair { a: i32 @ b: i32; }\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_STRUCT_DECL_FIELD_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1345,15 +1335,15 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedStructDeclarationFieldSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedEnumCaseSeparators) {
-    constexpr base::SourceId PARSER_TEST_ENUM_CASE_RECOVERY_SOURCE_ID {15};
-    constexpr std::string_view source =
-        "module parser.enum_case_recovery;\n"
-        "enum Code: u8 { a = 1 @ b = 2, }\n"
-        "fn recovered() -> i32 {\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedEnumCaseSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_ENUM_CASE_RECOVERY_SOURCE_ID{15};
+    constexpr std::string_view source = "module parser.enum_case_recovery;\n"
+                                        "enum Code: u8 { a = 1 @ b = 2, }\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_ENUM_CASE_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1374,15 +1364,15 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedEnumCaseSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedStructFieldSeparators) {
-    constexpr base::SourceId PARSER_TEST_STRUCT_FIELD_RECOVERY_SOURCE_ID {16};
-    constexpr std::string_view source =
-        "module parser.struct_field_recovery;\n"
-        "struct Box { value: i32 @ other: bool; }\n"
-        "fn recovered() -> i32 {\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedStructFieldSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_STRUCT_FIELD_RECOVERY_SOURCE_ID{16};
+    constexpr std::string_view source = "module parser.struct_field_recovery;\n"
+                                        "struct Box { value: i32 @ other: bool; }\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_STRUCT_FIELD_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1403,15 +1393,15 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedStructFieldSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedAbiAttributeArguments) {
-    constexpr base::SourceId PARSER_TEST_ABI_ARGUMENT_RECOVERY_SOURCE_ID {17};
-    constexpr std::string_view source =
-        "module parser.abi_argument_recovery;\n"
-        "extern c { fn puts(s: *const u8) -> i32 @name(\"puts\" @); }\n"
-        "fn recovered() -> i32 {\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedAbiAttributeArguments)
+{
+    constexpr base::SourceId PARSER_TEST_ABI_ARGUMENT_RECOVERY_SOURCE_ID{17};
+    constexpr std::string_view source = "module parser.abi_argument_recovery;\n"
+                                        "extern c { fn puts(s: *const u8) -> i32 @name(\"puts\" @); }\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_ABI_ARGUMENT_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1432,15 +1422,15 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedAbiAttributeArguments) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedImportPathSegments) {
-    constexpr base::SourceId PARSER_TEST_PATH_RECOVERY_SOURCE_ID {18};
-    constexpr std::string_view source =
-        "module parser.path_recovery;\n"
-        "import c.@;\n"
-        "fn recovered() -> i32 {\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedImportPathSegments)
+{
+    constexpr base::SourceId PARSER_TEST_PATH_RECOVERY_SOURCE_ID{18};
+    constexpr std::string_view source = "module parser.path_recovery;\n"
+                                        "import c.@;\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_PATH_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1461,15 +1451,15 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedImportPathSegments) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators) {
-    constexpr base::SourceId PARSER_TEST_BUILTIN_ARG_RECOVERY_SOURCE_ID {19};
-    constexpr std::string_view source =
-        "module parser.builtin_arg_recovery;\n"
-        "fn recovered(argc: i32) -> i32 {\n"
-        "  let value = cast[i32 @](argc);\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_BUILTIN_ARG_RECOVERY_SOURCE_ID{19};
+    constexpr std::string_view source = "module parser.builtin_arg_recovery;\n"
+                                        "fn recovered(argc: i32) -> i32 {\n"
+                                        "  let value = cast[i32 @](argc);\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_BUILTIN_ARG_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1490,15 +1480,15 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBuiltinArgumentSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedImportAliases) {
-    constexpr base::SourceId PARSER_TEST_IMPORT_ALIAS_RECOVERY_SOURCE_ID {20};
-    constexpr std::string_view source =
-        "module parser.import_alias_recovery;\n"
-        "import c.host as @;\n"
-        "fn recovered() -> i32 {\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedImportAliases)
+{
+    constexpr base::SourceId PARSER_TEST_IMPORT_ALIAS_RECOVERY_SOURCE_ID{20};
+    constexpr std::string_view source = "module parser.import_alias_recovery;\n"
+                                        "import c.host as @;\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_IMPORT_ALIAS_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1519,16 +1509,16 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedImportAliases) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedStatementTerminators) {
-    constexpr base::SourceId PARSER_TEST_STATEMENT_TERMINATOR_RECOVERY_SOURCE_ID {21};
-    constexpr std::string_view source =
-        "module parser.statement_terminator_recovery;\n"
-        "fn recovered() -> i32 {\n"
-        "  let value = 1 @;\n"
-        "  value @;\n"
-        "  return 1 @;\n"
-        "  let broken = ;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedStatementTerminators)
+{
+    constexpr base::SourceId PARSER_TEST_STATEMENT_TERMINATOR_RECOVERY_SOURCE_ID{21};
+    constexpr std::string_view source = "module parser.statement_terminator_recovery;\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  let value = 1 @;\n"
+                                        "  value @;\n"
+                                        "  return 1 @;\n"
+                                        "  let broken = ;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_STATEMENT_TERMINATOR_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1551,16 +1541,16 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedStatementTerminators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedForClauseSeparators) {
-    constexpr base::SourceId PARSER_TEST_FOR_CLAUSE_RECOVERY_SOURCE_ID {22};
-    constexpr std::string_view source =
-        "module parser.for_clause_recovery;\n"
-        "fn recovered() -> i32 {\n"
-        "  for var i: i32 = 0; i < 3 @; i = i + 1 {\n"
-        "  }\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedForClauseSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_FOR_CLAUSE_RECOVERY_SOURCE_ID{22};
+    constexpr std::string_view source = "module parser.for_clause_recovery;\n"
+                                        "fn recovered() -> i32 {\n"
+                                        "  for var i: i32 = 0; i < 3 @; i = i + 1 {\n"
+                                        "  }\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_FOR_CLAUSE_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1581,17 +1571,17 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedForClauseSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedBlockOpeners) {
-    constexpr base::SourceId PARSER_TEST_BLOCK_OPENER_RECOVERY_SOURCE_ID {23};
-    constexpr std::string_view source =
-        "module parser.block_opener_recovery;\n"
-        "fn recovered(value: i32) -> i32 {\n"
-        "  if value > 0 @ {\n"
-        "    return 1;\n"
-        "  }\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedBlockOpeners)
+{
+    constexpr base::SourceId PARSER_TEST_BLOCK_OPENER_RECOVERY_SOURCE_ID{23};
+    constexpr std::string_view source = "module parser.block_opener_recovery;\n"
+                                        "fn recovered(value: i32) -> i32 {\n"
+                                        "  if value > 0 @ {\n"
+                                        "    return 1;\n"
+                                        "  }\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_BLOCK_OPENER_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1612,16 +1602,16 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedBlockOpeners) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryStopsMissingBlockEndAtNextItem) {
-    constexpr base::SourceId PARSER_TEST_BLOCK_END_RECOVERY_SOURCE_ID {24};
-    constexpr std::string_view source =
-        "module parser.block_end_recovery;\n"
-        "fn first() -> i32 {\n"
-        "  return 1;\n"
-        "fn second() -> i32 {\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryStopsMissingBlockEndAtNextItem)
+{
+    constexpr base::SourceId PARSER_TEST_BLOCK_END_RECOVERY_SOURCE_ID{24};
+    constexpr std::string_view source = "module parser.block_end_recovery;\n"
+                                        "fn first() -> i32 {\n"
+                                        "  return 1;\n"
+                                        "fn second() -> i32 {\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_BLOCK_END_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1642,18 +1632,18 @@ TEST(CoreUnit, ParserRecoveryStopsMissingBlockEndAtNextItem) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters) {
-    constexpr base::SourceId PARSER_TEST_EXPRESSION_DELIMITER_RECOVERY_SOURCE_ID {25};
-    constexpr std::string_view source =
-        "module parser.expression_delimiter_recovery;\n"
-        "fn recovered(values: *mut i32) -> i32 {\n"
-        "  let grouped = (1 @);\n"
-        "  let indexed = values[0 @];\n"
-        "  let builtin = ptraddr(values @);\n"
-        "  let called = id(1 @);\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters)
+{
+    constexpr base::SourceId PARSER_TEST_EXPRESSION_DELIMITER_RECOVERY_SOURCE_ID{25};
+    constexpr std::string_view source = "module parser.expression_delimiter_recovery;\n"
+                                        "fn recovered(values: *mut i32) -> i32 {\n"
+                                        "  let grouped = (1 @);\n"
+                                        "  let indexed = values[0 @];\n"
+                                        "  let builtin = ptraddr(values @);\n"
+                                        "  let called = id(1 @);\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_EXPRESSION_DELIMITER_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1671,12 +1661,10 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters) {
     for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
         messages += diagnostic.message;
         messages += '\n';
-        found_parser_error = found_parser_error ||
-            (diagnostic.category == DiagnosticCategory::parser &&
-             diagnostic.code == DiagnosticCode::parser_syntax);
-        found_parser_note = found_parser_note ||
-            (diagnostic.category == DiagnosticCategory::parser &&
-             diagnostic.code == DiagnosticCode::parser_note);
+        found_parser_error = found_parser_error
+            || (diagnostic.category == DiagnosticCategory::parser && diagnostic.code == DiagnosticCode::parser_syntax);
+        found_parser_note = found_parser_note
+            || (diagnostic.category == DiagnosticCategory::parser && diagnostic.code == DiagnosticCode::parser_note);
     }
     expect_contains(messages, "expected ')' after expression");
     expect_contains(messages, "expected ',' or ']' after generic type argument");
@@ -1688,20 +1676,20 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedExpressionDelimiters) {
     EXPECT_TRUE(found_parser_note);
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeAndPatternDelimiters) {
-    constexpr base::SourceId PARSER_TEST_TYPE_PATTERN_DELIMITER_RECOVERY_SOURCE_ID {26};
-    constexpr std::string_view source =
-        "module parser.type_pattern_delimiter_recovery;\n"
-        "type Bytes = [4 @]u8;\n"
-        "enum Maybe: u8 { some(i32 @) = 1, none = 2, }\n"
-        "fn recovered(value: Maybe) -> i32 {\n"
-        "  let matched = match value {\n"
-        "    .some(payload @) => 1,\n"
-        "    .none => 0,\n"
-        "  };\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeAndPatternDelimiters)
+{
+    constexpr base::SourceId PARSER_TEST_TYPE_PATTERN_DELIMITER_RECOVERY_SOURCE_ID{26};
+    constexpr std::string_view source = "module parser.type_pattern_delimiter_recovery;\n"
+                                        "type Bytes = [4 @]u8;\n"
+                                        "enum Maybe: u8 { some(i32 @) = 1, none = 2, }\n"
+                                        "fn recovered(value: Maybe) -> i32 {\n"
+                                        "  let matched = match value {\n"
+                                        "    .some(payload @) => 1,\n"
+                                        "    .none => 0,\n"
+                                        "  };\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_TYPE_PATTERN_DELIMITER_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1724,25 +1712,25 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedTypeAndPatternDelimiters) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedDeclarationDelimiters) {
-    constexpr base::SourceId PARSER_TEST_DECLARATION_DELIMITER_RECOVERY_SOURCE_ID {27};
-    constexpr std::string_view source =
-        "module parser.declaration_delimiter_recovery;\n"
-        "import c.host @;\n"
-        "type Alias = i32 @;\n"
-        "struct Pair @ { value: i32; }\n"
-        "enum Code: u8 @ { ok = 1, }\n"
-        "extern c @ {\n"
-        "  opaque struct Handle @;\n"
-        "  fn puts(s: *const u8) -> i32 @name(\"puts\") @;\n"
-        "}\n"
-        "impl Pair @ {\n"
-        "  fn value(self: *const Pair) -> i32 { return 0; }\n"
-        "}\n"
-        "fn recovered(a: i32 @) -> i32 {\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedDeclarationDelimiters)
+{
+    constexpr base::SourceId PARSER_TEST_DECLARATION_DELIMITER_RECOVERY_SOURCE_ID{27};
+    constexpr std::string_view source = "module parser.declaration_delimiter_recovery;\n"
+                                        "import c.host @;\n"
+                                        "type Alias = i32 @;\n"
+                                        "struct Pair @ { value: i32; }\n"
+                                        "enum Code: u8 @ { ok = 1, }\n"
+                                        "extern c @ {\n"
+                                        "  opaque struct Handle @;\n"
+                                        "  fn puts(s: *const u8) -> i32 @name(\"puts\") @;\n"
+                                        "}\n"
+                                        "impl Pair @ {\n"
+                                        "  fn value(self: *const Pair) -> i32 { return 0; }\n"
+                                        "}\n"
+                                        "fn recovered(a: i32 @) -> i32 {\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_DECLARATION_DELIMITER_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1771,19 +1759,19 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedDeclarationDelimiters) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedCoreSeparators) {
-    constexpr base::SourceId PARSER_TEST_CORE_SEPARATOR_RECOVERY_SOURCE_ID {28};
-    constexpr std::string_view source =
-        "module parser.core_separator_recovery @;\n"
-        "const Broken: i32 @= 1;\n"
-        "type Alias @= i32;\n"
-        "struct Pair { value @: i32; }\n"
-        "enum Code @: u8 { ok @= 1, }\n"
-        "fn recovered(a @: i32) -> i32 {\n"
-        "  let value: i32 @= 1;\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedCoreSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_CORE_SEPARATOR_RECOVERY_SOURCE_ID{28};
+    constexpr std::string_view source = "module parser.core_separator_recovery @;\n"
+                                        "const Broken: i32 @= 1;\n"
+                                        "type Alias @= i32;\n"
+                                        "struct Pair { value @: i32; }\n"
+                                        "enum Code @: u8 { ok @= 1, }\n"
+                                        "fn recovered(a @: i32) -> i32 {\n"
+                                        "  let value: i32 @= 1;\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_CORE_SEPARATOR_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1809,47 +1797,39 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedCoreSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericSeparators) {
-    expect_parse_error(
-        "module parser.generic_bound_recovery;\n"
-        "struct Box[T: Copy] { value: T; }\n",
-        "generic bounds are not part of M2 syntax"
-    );
-    expect_parse_error(
-        "module parser.generic_param_recovery;\n"
-        "fn id[T U](value: T) -> T { return value; }\n",
-        "expected ',' or ']' after generic parameter"
-    );
-    expect_parse_error(
-        "module parser.generic_type_arg_recovery;\n"
-        "type Bad = Pair[i32 bool];\n",
-        "expected ',' or ']' after generic type argument"
-    );
-    expect_parse_error(
-        "module parser.generic_expr_arg_recovery;\n"
-        "fn main() -> i32 { return id[i32 bool](1); }\n",
-        "expected ',' or ']' after generic type argument"
-    );
+TEST(CoreUnit, ParserRecoveryHandlesMalformedGenericSeparators)
+{
+    expect_parse_error("module parser.generic_bound_recovery;\n"
+                       "struct Box[T: Copy] { value: T; }\n",
+        "generic bounds are not part of M2 syntax");
+    expect_parse_error("module parser.generic_param_recovery;\n"
+                       "fn id[T U](value: T) -> T { return value; }\n",
+        "expected ',' or ']' after generic parameter");
+    expect_parse_error("module parser.generic_type_arg_recovery;\n"
+                       "type Bad = Pair[i32 bool];\n",
+        "expected ',' or ']' after generic type argument");
+    expect_parse_error("module parser.generic_expr_arg_recovery;\n"
+                       "fn main() -> i32 { return id[i32 bool](1); }\n",
+        "expected ',' or ']' after generic type argument");
     expect_parse_error(
         "module parser.generic_struct_literal_arg_recovery;\n"
         "fn main() -> i32 { let value = Pair[i32 bool] { first: 1, second: true }; return value.first; }\n",
-        "expected ',' or ']' after generic type argument"
-    );
+        "expected ',' or ']' after generic type argument");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedControlSeparators) {
-    constexpr base::SourceId PARSER_TEST_CONTROL_SEPARATOR_RECOVERY_SOURCE_ID {29};
-    constexpr std::string_view source =
-        "module parser.control_separator_recovery;\n"
-        "fn recovered(value: i32) -> i32 {\n"
-        "  let selected = if value > 0 { 1 } @ else { 0 };\n"
-        "  let matched = match value {\n"
-        "    0 @=> 1,\n"
-        "    1 => 2,\n"
-        "  };\n"
-        "  let broken = ;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedControlSeparators)
+{
+    constexpr base::SourceId PARSER_TEST_CONTROL_SEPARATOR_RECOVERY_SOURCE_ID{29};
+    constexpr std::string_view source = "module parser.control_separator_recovery;\n"
+                                        "fn recovered(value: i32) -> i32 {\n"
+                                        "  let selected = if value > 0 { 1 } @ else { 0 };\n"
+                                        "  let matched = match value {\n"
+                                        "    0 @=> 1,\n"
+                                        "    1 => 2,\n"
+                                        "  };\n"
+                                        "  let broken = ;\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_CONTROL_SEPARATOR_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1871,20 +1851,20 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedControlSeparators) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters) {
-    constexpr base::SourceId PARSER_TEST_OPENING_DELIMITER_RECOVERY_SOURCE_ID {30};
-    constexpr std::string_view source =
-        "module parser.opening_delimiter_recovery;\n"
-        "extern c {\n"
-        "  fn puts(s: *const u8) -> i32 @name @(\"puts\");\n"
-        "}\n"
-        "fn opened @(a: i32) -> i32 { return a; }\n"
-        "fn recovered(value: i32) -> i32 {\n"
-        "  let casted = cast @[i32](value);\n"
-        "  let broken_builtin = ptrat @[*mut i32](casted);\n"
-        "  let broken = ;\n"
-        "  return casted;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters)
+{
+    constexpr base::SourceId PARSER_TEST_OPENING_DELIMITER_RECOVERY_SOURCE_ID{30};
+    constexpr std::string_view source = "module parser.opening_delimiter_recovery;\n"
+                                        "extern c {\n"
+                                        "  fn puts(s: *const u8) -> i32 @name @(\"puts\");\n"
+                                        "}\n"
+                                        "fn opened @(a: i32) -> i32 { return a; }\n"
+                                        "fn recovered(value: i32) -> i32 {\n"
+                                        "  let casted = cast @[i32](value);\n"
+                                        "  let broken_builtin = ptrat @[*mut i32](casted);\n"
+                                        "  let broken = ;\n"
+                                        "  return casted;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_OPENING_DELIMITER_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1908,22 +1888,22 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserRecoveryHandlesMalformedIdentifiers) {
-    constexpr base::SourceId PARSER_TEST_IDENTIFIER_RECOVERY_SOURCE_ID {31};
-    constexpr std::string_view source =
-        "module parser.identifier_recovery;\n"
-        "import c.host as @host;\n"
-        "struct @Pair { @value: i32; }\n"
-        "enum @Code: u8 { @ok = 1, }\n"
-        "fn @recovered(@value: i32) -> i32 {\n"
-        "  let @local = value;\n"
-        "  let field = local.@value;\n"
-        "  let matched = match 1 {\n"
-        "    .@ok => 1,\n"
-        "  };\n"
-        "  let broken = ;\n"
-        "  return matched;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoveryHandlesMalformedIdentifiers)
+{
+    constexpr base::SourceId PARSER_TEST_IDENTIFIER_RECOVERY_SOURCE_ID{31};
+    constexpr std::string_view source = "module parser.identifier_recovery;\n"
+                                        "import c.host as @host;\n"
+                                        "struct @Pair { @value: i32; }\n"
+                                        "enum @Code: u8 { @ok = 1, }\n"
+                                        "fn @recovered(@value: i32) -> i32 {\n"
+                                        "  let @local = value;\n"
+                                        "  let field = local.@value;\n"
+                                        "  let matched = match 1 {\n"
+                                        "    .@ok => 1,\n"
+                                        "  };\n"
+                                        "  let broken = ;\n"
+                                        "  return matched;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer(PARSER_TEST_IDENTIFIER_RECOVERY_SOURCE_ID, source, diagnostics);
@@ -1953,17 +1933,17 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedIdentifiers) {
     expect_contains(messages, "expected expression");
 }
 
-TEST(CoreUnit, ParserCoversShiftAndScopedEnumRegressions) {
-    constexpr std::string_view source =
-        "module parser.shift_enum;\n"
-        "struct Wrap { value: i32; }\n"
-        "enum ResultI32: u8 { ok(i32) = 1, err(i32) = 2, }\n"
-        "fn main() -> i32 {\n"
-        "  let call = ResultI32.ok(1)?;\n"
-        "  let literal: Wrap = Wrap { value: 2 };\n"
-        "  let shifted: i32 = 16 >> 2;\n"
-        "  return shifted;\n"
-        "}\n";
+TEST(CoreUnit, ParserCoversShiftAndScopedEnumRegressions)
+{
+    constexpr std::string_view source = "module parser.shift_enum;\n"
+                                        "struct Wrap { value: i32; }\n"
+                                        "enum ResultI32: u8 { ok(i32) = 1, err(i32) = 2, }\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let call = ResultI32.ok(1)?;\n"
+                                        "  let literal: Wrap = Wrap { value: 2 };\n"
+                                        "  let shifted: i32 = 16 >> 2;\n"
+                                        "  return shifted;\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* main = find_item(module, "main");
@@ -2015,14 +1995,14 @@ TEST(CoreUnit, ParserCoversShiftAndScopedEnumRegressions) {
     EXPECT_EQ(shifted->op, syntax::BinaryOp::shr);
 }
 
-TEST(CoreUnit, ParserPreservesBinaryPrecedenceAndLeftAssociativity) {
-    constexpr std::string_view source =
-        "module parser.precedence;\n"
-        "fn main() -> i32 {\n"
-        "  let chain: i32 = 1 - 2 - 3;\n"
-        "  let mixed: bool = 1 + 2 * 3 < 10 && false || true;\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserPreservesBinaryPrecedenceAndLeftAssociativity)
+{
+    constexpr std::string_view source = "module parser.precedence;\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let chain: i32 = 1 - 2 - 3;\n"
+                                        "  let mixed: bool = 1 + 2 * 3 < 10 && false || true;\n"
+                                        "  return 0;\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* main = find_item(module, "main");
@@ -2071,16 +2051,16 @@ TEST(CoreUnit, ParserPreservesBinaryPrecedenceAndLeftAssociativity) {
     EXPECT_EQ(multiplication->op, syntax::BinaryOp::mul);
 }
 
-TEST(CoreUnit, ParserHandlesLongOperatorAndTypePrefixChainsIteratively) {
-    constexpr std::string_view source =
-        "module parser.deep_prefix_chains;\n"
-        "type DeepPtr = *mut *const *mut *const *mut *const *mut *const i32;\n"
-        "type DeepArray = [1][2][3][4][5][6][7][8]u8;\n"
-        "fn main() -> i32 {\n"
-        "  let unary: i32 = - - - - - - - -1;\n"
-        "  let binary: i32 = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9;\n"
-        "  return unary + binary;\n"
-        "}\n";
+TEST(CoreUnit, ParserHandlesLongOperatorAndTypePrefixChainsIteratively)
+{
+    constexpr std::string_view source = "module parser.deep_prefix_chains;\n"
+                                        "type DeepPtr = *mut *const *mut *const *mut *const *mut *const i32;\n"
+                                        "type DeepArray = [1][2][3][4][5][6][7][8]u8;\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let unary: i32 = - - - - - - - -1;\n"
+                                        "  let binary: i32 = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9;\n"
+                                        "  return unary + binary;\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* deep_ptr = find_item(module, "DeepPtr");
@@ -2132,7 +2112,8 @@ TEST(CoreUnit, ParserHandlesLongOperatorAndTypePrefixChainsIteratively) {
     EXPECT_EQ(module.exprs.kind(binary.value), syntax::ExprKind::integer_literal);
 }
 
-TEST(CoreUnit, ParserHandlesLongBinaryChainsWithoutRecursiveDescent) {
+TEST(CoreUnit, ParserHandlesLongBinaryChainsWithoutRecursiveDescent)
+{
     std::string source = "module parser.long_binary_chain;\nfn main() -> i32 {\n  return ";
     for (base::usize index = 0; index < PARSER_TEST_LONG_BINARY_TERM_COUNT; ++index) {
         if (index != 0) {
@@ -2146,7 +2127,8 @@ TEST(CoreUnit, ParserHandlesLongBinaryChainsWithoutRecursiveDescent) {
     EXPECT_GT(module.exprs.size(), PARSER_TEST_LONG_BINARY_TERM_COUNT);
 }
 
-TEST(CoreUnit, ParserRejectsExcessivelyNestedGroupedExpressionsWithoutCrashing) {
+TEST(CoreUnit, ParserRejectsExcessivelyNestedGroupedExpressionsWithoutCrashing)
+{
     std::string source = "module parser.deep_grouped_expression;\nfn main() -> i32 {\n  return ";
     source.append(PARSER_TEST_EXPRESSION_NESTING_LIMIT_DEPTH, '(');
     source += "1";
@@ -2156,7 +2138,8 @@ TEST(CoreUnit, ParserRejectsExcessivelyNestedGroupedExpressionsWithoutCrashing) 
     expect_parse_error(source, "expression nesting exceeds M2 parser limit");
 }
 
-TEST(CoreUnit, ParserRejectsExcessivelyNestedTypesWithoutCrashing) {
+TEST(CoreUnit, ParserRejectsExcessivelyNestedTypesWithoutCrashing)
+{
     std::string source = "module parser.deep_type_nesting;\ntype Deep = ";
     source.append(PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH, '(');
     source += "i32";
@@ -2166,7 +2149,8 @@ TEST(CoreUnit, ParserRejectsExcessivelyNestedTypesWithoutCrashing) {
     expect_parse_error(source, "type nesting exceeds M2 parser limit");
 }
 
-TEST(CoreUnit, ParserRejectsExcessivelyNestedGenericTypeArgumentsWithoutCrashing) {
+TEST(CoreUnit, ParserRejectsExcessivelyNestedGenericTypeArgumentsWithoutCrashing)
+{
     std::string source = "module parser.deep_generic_type_nesting;\ntype Deep = ";
     for (base::usize depth = 0; depth < PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH; ++depth) {
         source += "Box[";
@@ -2178,7 +2162,8 @@ TEST(CoreUnit, ParserRejectsExcessivelyNestedGenericTypeArgumentsWithoutCrashing
     expect_parse_error(source, "type nesting exceeds M2 parser limit");
 }
 
-TEST(CoreUnit, ParserRejectsExcessivelyNestedPatternsWithoutCrashing) {
+TEST(CoreUnit, ParserRejectsExcessivelyNestedPatternsWithoutCrashing)
+{
     std::string source = "module parser.deep_pattern_nesting;\nfn main() -> i32 {\n  let ";
     source.append(PARSER_TEST_PATTERN_NESTING_LIMIT_DEPTH, '(');
     source += "value";
@@ -2188,14 +2173,14 @@ TEST(CoreUnit, ParserRejectsExcessivelyNestedPatternsWithoutCrashing) {
     expect_parse_error(source, "pattern nesting exceeds M2 parser limit");
 }
 
-TEST(CoreUnit, ParserParsesReferenceTypesAndMutableReferenceExpression) {
-    constexpr std::string_view source =
-        "module parser.references;\n"
-        "fn borrow(shared: &i32, unique: &mut i32) -> &i32 {\n"
-        "  var value: i32 = 1;\n"
-        "  let unique_ref: &mut i32 = &mut value;\n"
-        "  return &value;\n"
-        "}\n";
+TEST(CoreUnit, ParserParsesReferenceTypesAndMutableReferenceExpression)
+{
+    constexpr std::string_view source = "module parser.references;\n"
+                                        "fn borrow(shared: &i32, unique: &mut i32) -> &i32 {\n"
+                                        "  var value: i32 = 1;\n"
+                                        "  let unique_ref: &mut i32 = &mut value;\n"
+                                        "  return &value;\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* borrow = find_item(module, "borrow");
@@ -2223,19 +2208,19 @@ TEST(CoreUnit, ParserParsesReferenceTypesAndMutableReferenceExpression) {
     EXPECT_EQ(init->op, syntax::UnaryOp::address_of_mut);
 }
 
-TEST(CoreUnit, ParserCoversCompoundAssignmentStatements) {
-    constexpr std::string_view source =
-        "module parser.assign_ops;\n"
-        "fn main() -> i32 {\n"
-        "  var value: i32 = 1;\n"
-        "  value += 2;\n"
-        "  value <<= 1;\n"
-        "  value -= 1;\n"
-        "  for var i: i32 = 0; i < 2; i += 1 {\n"
-        "    value |= i;\n"
-        "  }\n"
-        "  return value;\n"
-        "}\n";
+TEST(CoreUnit, ParserCoversCompoundAssignmentStatements)
+{
+    constexpr std::string_view source = "module parser.assign_ops;\n"
+                                        "fn main() -> i32 {\n"
+                                        "  var value: i32 = 1;\n"
+                                        "  value += 2;\n"
+                                        "  value <<= 1;\n"
+                                        "  value -= 1;\n"
+                                        "  for var i: i32 = 0; i < 2; i += 1 {\n"
+                                        "    value |= i;\n"
+                                        "  }\n"
+                                        "  return value;\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* main = find_item(module, "main");
@@ -2264,22 +2249,22 @@ TEST(CoreUnit, ParserCoversCompoundAssignmentStatements) {
     EXPECT_EQ(update.assign_op, syntax::AssignOp::add);
 }
 
-TEST(CoreUnit, ParserParsesForRangeStatements) {
-    constexpr std::string_view source =
-        "module parser.for_range;\n"
-        "fn main(limit: i32) -> i32 {\n"
-        "  var total: i32 = 0;\n"
-        "  for i in range(limit) {\n"
-        "    total += i;\n"
-        "  }\n"
-        "  for j in range(1, limit) {\n"
-        "    total += j;\n"
-        "  }\n"
-        "  for k in range(1, limit, 2) {\n"
-        "    total += k;\n"
-        "  }\n"
-        "  return total;\n"
-        "}\n";
+TEST(CoreUnit, ParserParsesForRangeStatements)
+{
+    constexpr std::string_view source = "module parser.for_range;\n"
+                                        "fn main(limit: i32) -> i32 {\n"
+                                        "  var total: i32 = 0;\n"
+                                        "  for i in range(limit) {\n"
+                                        "    total += i;\n"
+                                        "  }\n"
+                                        "  for j in range(1, limit) {\n"
+                                        "    total += j;\n"
+                                        "  }\n"
+                                        "  for k in range(1, limit, 2) {\n"
+                                        "    total += k;\n"
+                                        "  }\n"
+                                        "  return total;\n"
+                                        "}\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* main = find_item(module, "main");
@@ -2313,123 +2298,105 @@ TEST(CoreUnit, ParserParsesForRangeStatements) {
     EXPECT_TRUE(syntax::is_valid(stepped_loop.body));
 }
 
-TEST(CoreUnit, ParserReportsMalformedForRangeSyntax) {
-    expect_parse_error(
-        "module parser.for_range_separator;\n"
-        "fn main() -> i32 {\n"
-        "  for i in range(0 3) {\n"
-        "  }\n"
-        "  return 0;\n"
-        "}\n",
-        "expected ',' or ')' after range argument"
-    );
-    expect_parse_error(
-        "module parser.for_range_missing_args;\n"
-        "fn main() -> i32 {\n"
-        "  for i in range {\n"
-        "  }\n"
-        "  return 0;\n"
-        "}\n",
-        "expected '(' after range"
-    );
-    expect_parse_error(
-        "module parser.for_range_too_many_args;\n"
-        "fn main() -> i32 {\n"
-        "  for i in range(0, 3, 1, 1) {\n"
-        "  }\n"
-        "  return 0;\n"
-        "}\n",
-        "range expects 1 to 3 arguments"
-    );
+TEST(CoreUnit, ParserReportsMalformedForRangeSyntax)
+{
+    expect_parse_error("module parser.for_range_separator;\n"
+                       "fn main() -> i32 {\n"
+                       "  for i in range(0 3) {\n"
+                       "  }\n"
+                       "  return 0;\n"
+                       "}\n",
+        "expected ',' or ')' after range argument");
+    expect_parse_error("module parser.for_range_missing_args;\n"
+                       "fn main() -> i32 {\n"
+                       "  for i in range {\n"
+                       "  }\n"
+                       "  return 0;\n"
+                       "}\n",
+        "expected '(' after range");
+    expect_parse_error("module parser.for_range_too_many_args;\n"
+                       "fn main() -> i32 {\n"
+                       "  for i in range(0, 3, 1, 1) {\n"
+                       "  }\n"
+                       "  return 0;\n"
+                       "}\n",
+        "range expects 1 to 3 arguments");
 }
 
-TEST(CoreUnit, ParserRejectsIncrementAndDecrementSyntax) {
-    expect_parse_error(
-        "module parser.increment_syntax;\n"
-        "fn main() -> i32 {\n"
-        "  var value: i32 = 0;\n"
-        "  value++;\n"
-        "  return value;\n"
-        "}\n",
-        "increment operator is not supported; use '+= 1'"
-    );
-    expect_parse_error(
-        "module parser.increment_expr_syntax;\n"
-        "fn main() -> i32 {\n"
-        "  var value: i32 = 0;\n"
-        "  let old: i32 = value++;\n"
-        "  return old;\n"
-        "}\n",
-        "increment operator is not supported; use '+= 1'"
-    );
-    expect_parse_error(
-        "module parser.decrement_syntax;\n"
-        "fn main() -> i32 {\n"
-        "  var value: i32 = 0;\n"
-        "  value--;\n"
-        "  return value;\n"
-        "}\n",
-        "decrement operator is not supported; use '-= 1'"
-    );
-    expect_parse_error(
-        "module parser.prefix_increment_syntax;\n"
-        "fn main() -> i32 {\n"
-        "  var value: i32 = 0;\n"
-        "  ++value;\n"
-        "  return value;\n"
-        "}\n",
-        "increment operator is not supported; use '+= 1'"
-    );
-    expect_parse_error(
-        "module parser.prefix_decrement_syntax;\n"
-        "fn main() -> i32 {\n"
-        "  var value: i32 = 0;\n"
-        "  --value;\n"
-        "  return value;\n"
-        "}\n",
-        "decrement operator is not supported; use '-= 1'"
-    );
+TEST(CoreUnit, ParserRejectsIncrementAndDecrementSyntax)
+{
+    expect_parse_error("module parser.increment_syntax;\n"
+                       "fn main() -> i32 {\n"
+                       "  var value: i32 = 0;\n"
+                       "  value++;\n"
+                       "  return value;\n"
+                       "}\n",
+        "increment operator is not supported; use '+= 1'");
+    expect_parse_error("module parser.increment_expr_syntax;\n"
+                       "fn main() -> i32 {\n"
+                       "  var value: i32 = 0;\n"
+                       "  let old: i32 = value++;\n"
+                       "  return old;\n"
+                       "}\n",
+        "increment operator is not supported; use '+= 1'");
+    expect_parse_error("module parser.decrement_syntax;\n"
+                       "fn main() -> i32 {\n"
+                       "  var value: i32 = 0;\n"
+                       "  value--;\n"
+                       "  return value;\n"
+                       "}\n",
+        "decrement operator is not supported; use '-= 1'");
+    expect_parse_error("module parser.prefix_increment_syntax;\n"
+                       "fn main() -> i32 {\n"
+                       "  var value: i32 = 0;\n"
+                       "  ++value;\n"
+                       "  return value;\n"
+                       "}\n",
+        "increment operator is not supported; use '+= 1'");
+    expect_parse_error("module parser.prefix_decrement_syntax;\n"
+                       "fn main() -> i32 {\n"
+                       "  var value: i32 = 0;\n"
+                       "  --value;\n"
+                       "  return value;\n"
+                       "}\n",
+        "decrement operator is not supported; use '-= 1'");
 }
 
-TEST(CoreUnit, ParserRejectsStructLiteralInControlConditions) {
-    expect_parse_error(
-        "module parser.condition_struct_literal;\n"
-        "struct Flag { value: bool; }\n"
-        "fn main() -> i32 {\n"
-        "  if Flag { value: true } { return 1; }\n"
-        "  return 0;\n"
-        "}\n",
-        "expected ';' after expression statement"
-    );
+TEST(CoreUnit, ParserRejectsStructLiteralInControlConditions)
+{
+    expect_parse_error("module parser.condition_struct_literal;\n"
+                       "struct Flag { value: bool; }\n"
+                       "fn main() -> i32 {\n"
+                       "  if Flag { value: true } { return 1; }\n"
+                       "  return 0;\n"
+                       "}\n",
+        "expected ';' after expression statement");
 }
 
-TEST(CoreUnit, ParserReportsIncompleteExpressionsWithoutCrashing) {
-    expect_parse_error(
-        "module parser.incomplete_struct_literal;\n"
-        "struct Pair { value: i32; }\n"
-        "fn main() -> i32 {\n"
-        "  let value = Pair { value: };\n"
-        "  return 0;\n"
-        "}\n",
-        "expected expression"
-    );
-    expect_parse_error(
-        "module parser.incomplete_binary;\n"
-        "fn main() -> i32 {\n"
-        "  let value = (1 + );\n"
-        "  return 0;\n"
-        "}\n",
-        "expected expression"
-    );
+TEST(CoreUnit, ParserReportsIncompleteExpressionsWithoutCrashing)
+{
+    expect_parse_error("module parser.incomplete_struct_literal;\n"
+                       "struct Pair { value: i32; }\n"
+                       "fn main() -> i32 {\n"
+                       "  let value = Pair { value: };\n"
+                       "  return 0;\n"
+                       "}\n",
+        "expected expression");
+    expect_parse_error("module parser.incomplete_binary;\n"
+                       "fn main() -> i32 {\n"
+                       "  let value = (1 + );\n"
+                       "  return 0;\n"
+                       "}\n",
+        "expected expression");
 }
 
-TEST(CoreUnit, ParserCoversAbiNamesAndArrayRadicesDirectly) {
-    constexpr std::string_view source =
-        "module parser.abi_radix;\n"
-        "extern c { fn c_puts(s: *const u8) -> i32 @name(\"puts\"); }\n"
-        "type BinBytes = [0b1010]u8;\n"
-        "type HexBytes = [0x2A]u8;\n"
-        "type DecBytes = [1_000]u8;\n";
+TEST(CoreUnit, ParserCoversAbiNamesAndArrayRadicesDirectly)
+{
+    constexpr std::string_view source = "module parser.abi_radix;\n"
+                                        "extern c { fn c_puts(s: *const u8) -> i32 @name(\"puts\"); }\n"
+                                        "type BinBytes = [0b1010]u8;\n"
+                                        "type HexBytes = [0x2A]u8;\n"
+                                        "type DecBytes = [1_000]u8;\n";
     const syntax::AstModule module = parse_success(source);
 
     const syntax::ItemNode* c_puts = find_item(module, "c_puts");
@@ -2450,82 +2417,56 @@ TEST(CoreUnit, ParserCoversAbiNamesAndArrayRadicesDirectly) {
     EXPECT_EQ(module.types[dec->alias_type.value].array_count, 1000U);
 }
 
-TEST(CoreUnit, ParserCoversAdditionalDiagnosticBranches) {
-    expect_parse_error(
-        "module parser.private_impl;\n"
-        "struct Box {}\n"
-        "priv impl Box { fn value(self: Box) -> i32 { return 1; } }\n",
-        "impl block cannot be private"
-    );
-    expect_parse_error(
-        "module parser.private_extern;\n"
-        "priv extern c { fn puts(s: *const u8) -> i32; }\n",
-        "extern block cannot be private"
-    );
-    expect_parse_error(
-        "module parser.private_export;\n"
-        "priv export c fn main() -> i32 { return 0; }\n",
-        "exported C function cannot be private"
-    );
-    expect_parse_error(
-        "module parser.bad_export;\n"
-        "export c;\n",
-        "expected function declaration after 'export c'"
-    );
-    expect_parse_error(
-        "module parser.bad_export_abi;\n"
-        "export x fn main() -> i32 { return 0; }\n",
-        "expected 'c' after 'export'"
-    );
-    expect_parse_error(
-        "module parser.bad_extern_abi;\n"
-        "extern x { fn puts(s: *const u8) -> i32; }\n",
-        "expected 'c' after 'extern'"
-    );
-    expect_parse_error(
-        "module parser.bad_function_type_abi;\n"
-        "type Bad = extern x fn(i32) -> i32;\n",
-        "expected 'c' after 'extern' in function type"
-    );
-    expect_parse_error(
-        "module parser.recovered_function_type_abi;\n"
-        "type Bad = extern @ c fn(i32) -> i32;\n",
-        "expected 'c' after 'extern' in function type"
-    );
-    expect_parse_error(
-        "module parser.bad_abi;\n"
-        "fn f() -> i32 @wrong(\"x\") { return 0; }\n",
-        "expected ABI attribute 'name'"
-    );
-    expect_parse_error(
-        "module parser.bad_pointer;\n"
-        "type Bad = *i32;\n",
-        "expected 'mut' or 'const' after '*'"
-    );
-    expect_parse_error(
-        "module parser.bad_extern_item;\n"
-        "extern c { const answer: i32 = 1; }\n",
-        "expected extern item"
-    );
-    expect_parse_error(
-        "module parser.bad_impl_item;\n"
-        "struct Box {}\n"
-        "impl Box { const answer: i32 = 1; }\n",
-        "expected function declaration in impl block"
-    );
-    expect_parse_error(
-        "module parser.bad_type;\n"
-        "fn f(value: ) -> i32 { return 0; }\n",
-        "expected type"
-    );
-    expect_parse_error(
-        "module parser.bad_import;\n"
-        "import c.;\n",
-        "expected identifier after '.'"
-    );
+TEST(CoreUnit, ParserCoversAdditionalDiagnosticBranches)
+{
+    expect_parse_error("module parser.private_impl;\n"
+                       "struct Box {}\n"
+                       "priv impl Box { fn value(self: Box) -> i32 { return 1; } }\n",
+        "impl block cannot be private");
+    expect_parse_error("module parser.private_extern;\n"
+                       "priv extern c { fn puts(s: *const u8) -> i32; }\n",
+        "extern block cannot be private");
+    expect_parse_error("module parser.private_export;\n"
+                       "priv export c fn main() -> i32 { return 0; }\n",
+        "exported C function cannot be private");
+    expect_parse_error("module parser.bad_export;\n"
+                       "export c;\n",
+        "expected function declaration after 'export c'");
+    expect_parse_error("module parser.bad_export_abi;\n"
+                       "export x fn main() -> i32 { return 0; }\n",
+        "expected 'c' after 'export'");
+    expect_parse_error("module parser.bad_extern_abi;\n"
+                       "extern x { fn puts(s: *const u8) -> i32; }\n",
+        "expected 'c' after 'extern'");
+    expect_parse_error("module parser.bad_function_type_abi;\n"
+                       "type Bad = extern x fn(i32) -> i32;\n",
+        "expected 'c' after 'extern' in function type");
+    expect_parse_error("module parser.recovered_function_type_abi;\n"
+                       "type Bad = extern @ c fn(i32) -> i32;\n",
+        "expected 'c' after 'extern' in function type");
+    expect_parse_error("module parser.bad_abi;\n"
+                       "fn f() -> i32 @wrong(\"x\") { return 0; }\n",
+        "expected ABI attribute 'name'");
+    expect_parse_error("module parser.bad_pointer;\n"
+                       "type Bad = *i32;\n",
+        "expected 'mut' or 'const' after '*'");
+    expect_parse_error("module parser.bad_extern_item;\n"
+                       "extern c { const answer: i32 = 1; }\n",
+        "expected extern item");
+    expect_parse_error("module parser.bad_impl_item;\n"
+                       "struct Box {}\n"
+                       "impl Box { const answer: i32 = 1; }\n",
+        "expected function declaration in impl block");
+    expect_parse_error("module parser.bad_type;\n"
+                       "fn f(value: ) -> i32 { return 0; }\n",
+        "expected type");
+    expect_parse_error("module parser.bad_import;\n"
+                       "import c.;\n",
+        "expected identifier after '.'");
 }
 
-TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
+TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets)
+{
     using syntax::TokenKind;
 
     const auto expect_true_all = [](const auto predicate, const std::initializer_list<TokenKind> kinds) {
@@ -2537,8 +2478,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
         EXPECT_FALSE(predicate(kind)) << static_cast<int>(kind);
     };
 
-    expect_true_all(
-        parse::detail::token_starts_item,
+    expect_true_all(parse::detail::token_starts_item,
         {
             TokenKind::r_brace,
             TokenKind::kw_fn,
@@ -2554,12 +2494,10 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_export,
             TokenKind::kw_import,
             TokenKind::kw_unsafe,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_starts_item, TokenKind::identifier);
 
-    expect_true_all(
-        parse::detail::token_starts_expression,
+    expect_true_all(parse::detail::token_starts_expression,
         {
             TokenKind::identifier,
             TokenKind::integer_literal,
@@ -2594,13 +2532,11 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::amp,
             TokenKind::tilde,
             TokenKind::bang,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_starts_expression, TokenKind::kw_module);
 
     EXPECT_TRUE(parse::detail::token_starts_statement(TokenKind::identifier));
-    expect_true_all(
-        parse::detail::token_starts_statement,
+    expect_true_all(parse::detail::token_starts_statement,
         {
             TokenKind::kw_let,
             TokenKind::kw_var,
@@ -2611,12 +2547,10 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_defer,
             TokenKind::kw_return,
             TokenKind::kw_unsafe,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_starts_statement, TokenKind::semicolon);
 
-    expect_true_all(
-        parse::detail::token_starts_non_expression_statement,
+    expect_true_all(parse::detail::token_starts_non_expression_statement,
         {
             TokenKind::kw_let,
             TokenKind::kw_var,
@@ -2628,12 +2562,10 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_defer,
             TokenKind::kw_return,
             TokenKind::kw_unsafe,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_starts_non_expression_statement, TokenKind::identifier);
 
-    expect_true_all(
-        parse::detail::token_starts_type,
+    expect_true_all(parse::detail::token_starts_type,
         {
             TokenKind::identifier,
             TokenKind::star,
@@ -2656,12 +2588,10 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_f32,
             TokenKind::kw_f64,
             TokenKind::kw_str,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_starts_type, TokenKind::kw_module);
 
-    expect_true_all(
-        parse::token_starts_match_arm,
+    expect_true_all(parse::token_starts_match_arm,
         {
             TokenKind::identifier,
             TokenKind::integer_literal,
@@ -2670,8 +2600,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::dot,
             TokenKind::l_paren,
             TokenKind::l_bracket,
-        }
-    );
+        });
     expect_false_on(parse::token_starts_match_arm, TokenKind::kw_let);
 
     expect_true_all(parse::token_starts_struct_field, {TokenKind::identifier});
@@ -2681,49 +2610,39 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
     expect_false_on(parse::token_starts_parameter, TokenKind::kw_fn);
 
     expect_true_all(
-        parse::token_starts_struct_decl_field,
-        {TokenKind::identifier, TokenKind::kw_pub, TokenKind::kw_priv}
-    );
+        parse::token_starts_struct_decl_field, {TokenKind::identifier, TokenKind::kw_pub, TokenKind::kw_priv});
     expect_false_on(parse::token_starts_struct_decl_field, TokenKind::kw_fn);
 
     expect_true_all(parse::token_starts_enum_case, {TokenKind::identifier});
     expect_false_on(parse::token_starts_enum_case, TokenKind::kw_fn);
 
-    expect_true_all(
-        parse::token_starts_path_segment,
-        {TokenKind::identifier, TokenKind::kw_str}
-    );
+    expect_true_all(parse::token_starts_path_segment, {TokenKind::identifier, TokenKind::kw_str});
     expect_false_on(parse::token_starts_path_segment, TokenKind::kw_fn);
 
     expect_true_all(parse::detail::token_ends_match_arm, {TokenKind::comma, TokenKind::r_brace});
     expect_false_on(parse::detail::token_ends_match_arm, TokenKind::identifier);
 
-    expect_true_all(
-        parse::detail::token_ends_call_argument,
+    expect_true_all(parse::detail::token_ends_call_argument,
         {
             TokenKind::comma,
             TokenKind::r_paren,
             TokenKind::semicolon,
             TokenKind::r_bracket,
             TokenKind::r_brace,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_ends_call_argument, TokenKind::identifier);
 
-    expect_true_all(
-        parse::detail::token_ends_struct_field,
+    expect_true_all(parse::detail::token_ends_struct_field,
         {
             TokenKind::comma,
             TokenKind::r_brace,
             TokenKind::semicolon,
             TokenKind::r_paren,
             TokenKind::r_bracket,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_ends_struct_field, TokenKind::identifier);
 
-    expect_true_all(
-        parse::detail::token_ends_parameter,
+    expect_true_all(parse::detail::token_ends_parameter,
         {
             TokenKind::comma,
             TokenKind::r_paren,
@@ -2731,12 +2650,10 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::l_brace,
             TokenKind::semicolon,
             TokenKind::r_brace,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_ends_parameter, TokenKind::identifier);
 
-    expect_true_all(
-        parse::detail::token_ends_struct_decl_field,
+    expect_true_all(parse::detail::token_ends_struct_decl_field,
         {
             TokenKind::semicolon,
             TokenKind::comma,
@@ -2747,12 +2664,10 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_impl,
             TokenKind::kw_extern,
             TokenKind::kw_export,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_ends_struct_decl_field, TokenKind::identifier);
 
-    expect_true_all(
-        parse::detail::token_ends_enum_case,
+    expect_true_all(parse::detail::token_ends_enum_case,
         {
             TokenKind::comma,
             TokenKind::semicolon,
@@ -2763,24 +2678,20 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::kw_impl,
             TokenKind::kw_extern,
             TokenKind::kw_export,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_ends_enum_case, TokenKind::identifier);
 
-    expect_true_all(
-        parse::detail::token_ends_builtin_argument,
+    expect_true_all(parse::detail::token_ends_builtin_argument,
         {
             TokenKind::comma,
             TokenKind::r_paren,
             TokenKind::semicolon,
             TokenKind::r_bracket,
             TokenKind::r_brace,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_ends_builtin_argument, TokenKind::identifier);
 
-    expect_true_all(
-        parse::detail::token_ends_generic_type_argument,
+    expect_true_all(parse::detail::token_ends_generic_type_argument,
         {
             TokenKind::comma,
             TokenKind::r_bracket,
@@ -2788,12 +2699,10 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::l_brace,
             TokenKind::r_brace,
             TokenKind::semicolon,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_ends_generic_type_argument, TokenKind::identifier);
 
-    expect_true_all(
-        parse::detail::token_ends_generic_parameter,
+    expect_true_all(parse::detail::token_ends_generic_parameter,
         {
             TokenKind::comma,
             TokenKind::r_bracket,
@@ -2801,15 +2710,14 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets) {
             TokenKind::l_brace,
             TokenKind::r_brace,
             TokenKind::semicolon,
-        }
-    );
+        });
     expect_false_on(parse::detail::token_ends_generic_parameter, TokenKind::identifier);
 }
 
-TEST(CoreUnit, ParserPartRangeReaderCoversRangeFallbacks) {
-    constexpr std::string_view source =
-        "module parser.ranges;\n"
-        "fn main() -> i32 { return 0; }\n";
+TEST(CoreUnit, ParserPartRangeReaderCoversRangeFallbacks)
+{
+    constexpr std::string_view source = "module parser.ranges;\n"
+                                        "fn main() -> i32 { return 0; }\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer({18}, source, diagnostics);
@@ -2829,31 +2737,25 @@ TEST(CoreUnit, ParserPartRangeReaderCoversRangeFallbacks) {
 
     const syntax::ExprId expr_id =
         reader.module().push_literal_expr(syntax::ExprKind::integer_literal, begin_range, "0");
-    const syntax::StmtId stmt_id = reader.module().push_stmt(
-        [&] {
-            syntax::StmtNode stmt;
-            stmt.kind = syntax::StmtKind::expr;
-            stmt.range = end_range;
-            return stmt;
-        }()
-    );
-    const syntax::TypeId type_id = reader.module().push_type(
-        [&] {
-            syntax::TypeNode type;
-            type.kind = syntax::TypeKind::primitive;
-            type.range = begin_range;
-            type.primitive = syntax::PrimitiveTypeKind::i32;
-            return type;
-        }()
-    );
-    const syntax::PatternId pattern_id = reader.module().push_pattern(
-        [&] {
-            syntax::PatternNode pattern;
-            pattern.kind = syntax::PatternKind::wildcard;
-            pattern.range = end_range;
-            return pattern;
-        }()
-    );
+    const syntax::StmtId stmt_id = reader.module().push_stmt([&] {
+        syntax::StmtNode stmt;
+        stmt.kind = syntax::StmtKind::expr;
+        stmt.range = end_range;
+        return stmt;
+    }());
+    const syntax::TypeId type_id = reader.module().push_type([&] {
+        syntax::TypeNode type;
+        type.kind = syntax::TypeKind::primitive;
+        type.range = begin_range;
+        type.primitive = syntax::PrimitiveTypeKind::i32;
+        return type;
+    }());
+    const syntax::PatternId pattern_id = reader.module().push_pattern([&] {
+        syntax::PatternNode pattern;
+        pattern.kind = syntax::PatternKind::wildcard;
+        pattern.range = end_range;
+        return pattern;
+    }());
 
     const base::SourceRange merged = reader.merge(begin_range, end_range);
     EXPECT_EQ(merged.source.value, source_id.value);
@@ -2868,32 +2770,40 @@ TEST(CoreUnit, ParserPartRangeReaderCoversRangeFallbacks) {
 
     expect_range(reader.expr_range_or(expr_id, fallback_range), begin_range);
     expect_range(reader.expr_range_or(syntax::INVALID_EXPR_ID, fallback_range), fallback_range);
-    expect_range(reader.expr_range_or(syntax::ExprId {expr_id.value + PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET}, fallback_range), fallback_range);
+    expect_range(
+        reader.expr_range_or(syntax::ExprId{expr_id.value + PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET}, fallback_range),
+        fallback_range);
 
     expect_range(reader.stmt_range_or(stmt_id, fallback_range), end_range);
     expect_range(reader.stmt_range_or(syntax::INVALID_STMT_ID, fallback_range), fallback_range);
-    expect_range(reader.stmt_range_or(syntax::StmtId {stmt_id.value + PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET}, fallback_range), fallback_range);
+    expect_range(
+        reader.stmt_range_or(syntax::StmtId{stmt_id.value + PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET}, fallback_range),
+        fallback_range);
 
     expect_range(reader.type_range_or(type_id, fallback_range), begin_range);
     expect_range(reader.type_range_or(syntax::INVALID_TYPE_ID, fallback_range), fallback_range);
-    expect_range(reader.type_range_or(syntax::TypeId {type_id.value + PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET}, fallback_range), fallback_range);
+    expect_range(
+        reader.type_range_or(syntax::TypeId{type_id.value + PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET}, fallback_range),
+        fallback_range);
 
     expect_range(reader.pattern_range_or(pattern_id, fallback_range), end_range);
     expect_range(reader.pattern_range_or(syntax::INVALID_PATTERN_ID, fallback_range), fallback_range);
-    expect_range(reader.pattern_range_or(syntax::PatternId {pattern_id.value + PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET}, fallback_range), fallback_range);
+    expect_range(reader.pattern_range_or(
+                     syntax::PatternId{pattern_id.value + PARSER_RANGE_TEST_OUT_OF_RANGE_OFFSET}, fallback_range),
+        fallback_range);
 }
 
-TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators) {
-    constexpr std::string_view source =
-        "module parser.builtin_recovery;\n"
-        "fn main() -> i32 {\n"
-        "  let text: str = \"hello\";\n"
-        "  let data: *const u8 = strptr(text);\n"
-        "  let len: usize = strblen(text);\n"
-        "  let broken_cast: i32 = cast[i32](1 @);\n"
-        "  let broken_str: str = strraw(data len);\n"
-        "  return 0;\n"
-        "}\n";
+TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators)
+{
+    constexpr std::string_view source = "module parser.builtin_recovery;\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let text: str = \"hello\";\n"
+                                        "  let data: *const u8 = strptr(text);\n"
+                                        "  let len: usize = strblen(text);\n"
+                                        "  let broken_cast: i32 = cast[i32](1 @);\n"
+                                        "  let broken_str: str = strraw(data len);\n"
+                                        "  return 0;\n"
+                                        "}\n";
 
     DiagnosticSink diagnostics;
     lex::Lexer lexer({19}, source, diagnostics);
@@ -2914,7 +2824,8 @@ TEST(CoreUnit, ParserRecoversBuiltinArgumentSeparators) {
     expect_contains(messages, "expected ',' after strraw data");
 }
 
-TEST(CoreUnit, ParserM2GenericSyntax) {
+TEST(CoreUnit, ParserM2GenericSyntax)
+{
     constexpr std::string_view source =
         "module parser.generics;\n"
         "type Alias[T] = T;\n"
@@ -2945,42 +2856,43 @@ TEST(CoreUnit, ParserM2GenericSyntax) {
 
     const syntax::AstModule module = parse_success(source);
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "type_alias Alias[T]",
-        "alias T",
-        "struct Box[T]",
-        "field priv value : T",
-        "struct Pair[A, B]",
-        "enum Maybe[T]",
-        "case some(T) = 1",
-        "type_alias Unary[T]",
-        "fn id[T]",
-        "fn keep_fn[T]",
-        "fn keep_ref[T]",
-        "fn keep_mut_ref[T]",
-        "fn keep_tuple[T]",
-        "param x : T",
-        "return T",
-        "Box[i32]",
-        "Pair[i32, bool]",
-        "Unary[T]",
-        "generic_apply[Unary[T]]",
-        "generic_apply[&T]",
-        "generic_apply[&mut T]",
-        "generic_apply[(T, (bool, i32))]",
-        "generic_apply[i32]",
-    });
+    expect_contains_all(ast,
+        {
+            "type_alias Alias[T]",
+            "alias T",
+            "struct Box[T]",
+            "field priv value : T",
+            "struct Pair[A, B]",
+            "enum Maybe[T]",
+            "case some(T) = 1",
+            "type_alias Unary[T]",
+            "fn id[T]",
+            "fn keep_fn[T]",
+            "fn keep_ref[T]",
+            "fn keep_mut_ref[T]",
+            "fn keep_tuple[T]",
+            "param x : T",
+            "return T",
+            "Box[i32]",
+            "Pair[i32, bool]",
+            "Unary[T]",
+            "generic_apply[Unary[T]]",
+            "generic_apply[&T]",
+            "generic_apply[&mut T]",
+            "generic_apply[(T, (bool, i32))]",
+            "generic_apply[i32]",
+        });
 }
 
-TEST(CoreUnit, ParserKeepsNameIndexBeforeFieldAsValueIndex) {
-    constexpr std::string_view source =
-        "module parser.index_field;\n"
-        "struct Box { value: i32; }\n"
-        "fn main() -> i32 {\n"
-        "  let boxes: [1]Box = [Box { value: 41 }];\n"
-        "  let index: usize = 0;\n"
-        "  return boxes[index].value;\n"
-        "}\n";
+TEST(CoreUnit, ParserKeepsNameIndexBeforeFieldAsValueIndex)
+{
+    constexpr std::string_view source = "module parser.index_field;\n"
+                                        "struct Box { value: i32; }\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let boxes: [1]Box = [Box { value: 41 }];\n"
+                                        "  let index: usize = 0;\n"
+                                        "  return boxes[index].value;\n"
+                                        "}\n";
 
     const syntax::AstModule module = parse_success(source);
     const syntax::ItemNode* const main = find_item(module, "main");
@@ -2993,8 +2905,7 @@ TEST(CoreUnit, ParserKeepsNameIndexBeforeFieldAsValueIndex) {
     ASSERT_EQ(return_stmt.kind, syntax::StmtKind::return_);
     ASSERT_TRUE(syntax::is_valid(return_stmt.return_value));
     ASSERT_EQ(module.exprs.kind(return_stmt.return_value.value), syntax::ExprKind::field);
-    const syntax::FieldExprPayload* const field =
-        module.exprs.field_payload(return_stmt.return_value.value);
+    const syntax::FieldExprPayload* const field = module.exprs.field_payload(return_stmt.return_value.value);
     ASSERT_NE(field, nullptr);
     EXPECT_EQ(field->field_name, "value");
     ASSERT_TRUE(syntax::is_valid(field->object));
@@ -3009,13 +2920,13 @@ TEST(CoreUnit, ParserKeepsNameIndexBeforeFieldAsValueIndex) {
     EXPECT_EQ(index_name->text, "index");
 }
 
-TEST(CoreUnit, ParserKeepsGenericTypeSelectorWithGenericParamBeforeField) {
-    constexpr std::string_view source =
-        "module parser.generic_selector;\n"
-        "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
-        "fn make_some[T](value: T) -> Maybe[T] {\n"
-        "  return Maybe[T].some(value);\n"
-        "}\n";
+TEST(CoreUnit, ParserKeepsGenericTypeSelectorWithGenericParamBeforeField)
+{
+    constexpr std::string_view source = "module parser.generic_selector;\n"
+                                        "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
+                                        "fn make_some[T](value: T) -> Maybe[T] {\n"
+                                        "  return Maybe[T].some(value);\n"
+                                        "}\n";
 
     const syntax::AstModule module = parse_success(source);
     const syntax::ItemNode* const make_some = find_item(module, "make_some");
@@ -3038,35 +2949,35 @@ TEST(CoreUnit, ParserKeepsGenericTypeSelectorWithGenericParamBeforeField) {
     EXPECT_EQ(field->field_name, "some");
     ASSERT_TRUE(syntax::is_valid(field->object));
     ASSERT_EQ(module.exprs.kind(field->object.value), syntax::ExprKind::generic_apply);
-    const syntax::GenericApplyExprPayload* const apply =
-        module.exprs.generic_apply_payload(field->object.value);
+    const syntax::GenericApplyExprPayload* const apply = module.exprs.generic_apply_payload(field->object.value);
     ASSERT_NE(apply, nullptr);
     ASSERT_EQ(apply->type_args.size(), 1U);
 }
 
-TEST(CoreUnit, ParserClassifiesBracketSuffixesByExplicitM2Contract) {
-    constexpr std::string_view source =
-        "module parser.bracket_contract;\n"
-        "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
-        "struct Box[T] { value: T; }\n"
-        "fn id[T](value: T) -> T { return value; }\n"
-        "fn main() -> i32 {\n"
-        "  let boxes: [1]Box[i32] = [Box[i32] { value: 1 }];\n"
-        "  let value: usize = 0;\n"
-        "  let picked = boxes[value].value;\n"
-        "  let made = Maybe[i32].some(id[i32](picked));\n"
-        "  let nested: Box[Maybe[i32]] = Box[Maybe[i32]] { value: made };\n"
-        "  return picked;\n"
-        "}\n";
+TEST(CoreUnit, ParserClassifiesBracketSuffixesByExplicitM2Contract)
+{
+    constexpr std::string_view source = "module parser.bracket_contract;\n"
+                                        "enum Maybe[T]: u8 { some(T) = 1, none = 2, }\n"
+                                        "struct Box[T] { value: T; }\n"
+                                        "fn id[T](value: T) -> T { return value; }\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let boxes: [1]Box[i32] = [Box[i32] { value: 1 }];\n"
+                                        "  let value: usize = 0;\n"
+                                        "  let picked = boxes[value].value;\n"
+                                        "  let made = Maybe[i32].some(id[i32](picked));\n"
+                                        "  let nested: Box[Maybe[i32]] = Box[Maybe[i32]] { value: made };\n"
+                                        "  return picked;\n"
+                                        "}\n";
 
     const syntax::AstModule module = parse_success(source);
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "index",
-        "generic_apply[i32]",
-        "generic_apply[Maybe[i32]]",
-        " .some",
-    });
+    expect_contains_all(ast,
+        {
+            "index",
+            "generic_apply[i32]",
+            "generic_apply[Maybe[i32]]",
+            " .some",
+        });
 
     const syntax::ItemNode* const main = find_item(module, "main");
     ASSERT_NE(main, nullptr);
@@ -3077,8 +2988,7 @@ TEST(CoreUnit, ParserClassifiesBracketSuffixesByExplicitM2Contract) {
     const syntax::StmtNode& picked_stmt = module.stmts[body.statements[2].value];
     ASSERT_TRUE(syntax::is_valid(picked_stmt.init));
     ASSERT_EQ(module.exprs.kind(picked_stmt.init.value), syntax::ExprKind::field);
-    const syntax::FieldExprPayload* const picked_field =
-        module.exprs.field_payload(picked_stmt.init.value);
+    const syntax::FieldExprPayload* const picked_field = module.exprs.field_payload(picked_stmt.init.value);
     ASSERT_NE(picked_field, nullptr);
     ASSERT_TRUE(syntax::is_valid(picked_field->object));
     ASSERT_EQ(module.exprs.kind(picked_field->object.value), syntax::ExprKind::index);
@@ -3096,25 +3006,26 @@ TEST(CoreUnit, ParserClassifiesBracketSuffixesByExplicitM2Contract) {
     ASSERT_EQ(module.exprs.kind(field->object.value), syntax::ExprKind::generic_apply);
 }
 
-TEST(CoreUnit, ParserClassifiesNestedGenericSelectorsAndVoidTypeArgs) {
-    constexpr std::string_view source =
-        "module parser.bracket_postfix_edges;\n"
-        "struct Inner[T] { value: T; }\n"
-        "struct Outer[T] { value: T; }\n"
-        "fn wrap[T](value: i32) -> i32 { return value; }\n"
-        "fn main() -> i32 {\n"
-        "  let selected = Outer[Inner[i32]].make;\n"
-        "  let ignored = wrap[void](0);\n"
-        "  return ignored;\n"
-        "}\n";
+TEST(CoreUnit, ParserClassifiesNestedGenericSelectorsAndVoidTypeArgs)
+{
+    constexpr std::string_view source = "module parser.bracket_postfix_edges;\n"
+                                        "struct Inner[T] { value: T; }\n"
+                                        "struct Outer[T] { value: T; }\n"
+                                        "fn wrap[T](value: i32) -> i32 { return value; }\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let selected = Outer[Inner[i32]].make;\n"
+                                        "  let ignored = wrap[void](0);\n"
+                                        "  return ignored;\n"
+                                        "}\n";
 
     const syntax::AstModule module = parse_success(source);
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "generic_apply[Inner[i32]]",
-        "generic_apply[void]",
-        " .make",
-    });
+    expect_contains_all(ast,
+        {
+            "generic_apply[Inner[i32]]",
+            "generic_apply[void]",
+            " .make",
+        });
 
     const syntax::ItemNode* const main = find_item(module, "main");
     ASSERT_NE(main, nullptr);
@@ -3125,8 +3036,7 @@ TEST(CoreUnit, ParserClassifiesNestedGenericSelectorsAndVoidTypeArgs) {
     const syntax::StmtNode& selected_stmt = module.stmts[body.statements[0].value];
     ASSERT_TRUE(syntax::is_valid(selected_stmt.init));
     ASSERT_EQ(module.exprs.kind(selected_stmt.init.value), syntax::ExprKind::field);
-    const syntax::FieldExprPayload* const selected_field =
-        module.exprs.field_payload(selected_stmt.init.value);
+    const syntax::FieldExprPayload* const selected_field = module.exprs.field_payload(selected_stmt.init.value);
     ASSERT_NE(selected_field, nullptr);
     ASSERT_TRUE(syntax::is_valid(selected_field->object));
     ASSERT_EQ(module.exprs.kind(selected_field->object.value), syntax::ExprKind::generic_apply);
@@ -3138,19 +3048,18 @@ TEST(CoreUnit, ParserClassifiesNestedGenericSelectorsAndVoidTypeArgs) {
     ASSERT_NE(call, nullptr);
     ASSERT_TRUE(syntax::is_valid(call->callee));
     ASSERT_EQ(module.exprs.kind(call->callee.value), syntax::ExprKind::generic_apply);
-    const syntax::GenericApplyExprPayload* const apply =
-        module.exprs.generic_apply_payload(call->callee.value);
+    const syntax::GenericApplyExprPayload* const apply = module.exprs.generic_apply_payload(call->callee.value);
     ASSERT_NE(apply, nullptr);
     ASSERT_EQ(apply->type_args.size(), 1U);
     ASSERT_EQ(module.types[apply->type_args.front().value].kind, syntax::TypeKind::primitive);
     EXPECT_EQ(module.types[apply->type_args.front().value].primitive, syntax::PrimitiveTypeKind::void_);
 }
 
-TEST(CoreUnit, ParserConvertsDeepSelectorGenericArgWithOverflowStorage) {
-    std::string source =
-        "module parser.deep_selector_generic_arg;\n"
-        "fn id[T](value: i32) -> i32 { return value; }\n"
-        "fn main() -> i32 { return id[A";
+TEST(CoreUnit, ParserConvertsDeepSelectorGenericArgWithOverflowStorage)
+{
+    std::string source = "module parser.deep_selector_generic_arg;\n"
+                         "fn id[T](value: i32) -> i32 { return value; }\n"
+                         "fn main() -> i32 { return id[A";
     for (base::usize depth = 0; depth < PARSER_TEST_DEEP_TYPE_SELECTOR_OVERFLOW_DEPTH; ++depth) {
         source += ".B";
     }
@@ -3172,8 +3081,7 @@ TEST(CoreUnit, ParserConvertsDeepSelectorGenericArgWithOverflowStorage) {
     ASSERT_NE(call, nullptr);
     ASSERT_TRUE(syntax::is_valid(call->callee));
     ASSERT_EQ(module.exprs.kind(call->callee.value), syntax::ExprKind::generic_apply);
-    const syntax::GenericApplyExprPayload* const apply =
-        module.exprs.generic_apply_payload(call->callee.value);
+    const syntax::GenericApplyExprPayload* const apply = module.exprs.generic_apply_payload(call->callee.value);
     ASSERT_NE(apply, nullptr);
     ASSERT_EQ(apply->type_args.size(), 1U);
     const syntax::TypeNode& type = module.types[apply->type_args.front().value];
@@ -3182,7 +3090,8 @@ TEST(CoreUnit, ParserConvertsDeepSelectorGenericArgWithOverflowStorage) {
     EXPECT_EQ(type.name, "B");
 }
 
-TEST(CoreUnit, ParserPostfixWhiteBoxRejectsInvalidTypeLikeExpressions) {
+TEST(CoreUnit, ParserPostfixWhiteBoxRejectsInvalidTypeLikeExpressions)
+{
     std::vector<syntax::Token> tokens = probe_tokens();
     DiagnosticSink diagnostics;
     parse::Parser parser(tokens, diagnostics);
@@ -3191,14 +3100,10 @@ TEST(CoreUnit, ParserPostfixWhiteBoxRejectsInvalidTypeLikeExpressions) {
 
     const syntax::ExprId empty_name = module.push_name_expr({}, "");
     const syntax::ExprId invalid_generic =
-        module.push_generic_apply_expr({}, syntax::INVALID_EXPR_ID, std::vector<syntax::TypeId> {});
+        module.push_generic_apply_expr({}, syntax::INVALID_EXPR_ID, std::vector<syntax::TypeId>{});
     const syntax::ExprId number = module.push_literal_expr(syntax::ExprKind::integer_literal, {}, "1");
-    const syntax::ExprId invalid_unary = module.push_unary_expr(
-        syntax::ExprKind::unary,
-        {},
-        syntax::UnaryOp::numeric_negate,
-        number
-    );
+    const syntax::ExprId invalid_unary =
+        module.push_unary_expr(syntax::ExprKind::unary, {}, syntax::UnaryOp::numeric_negate, number);
 
     EXPECT_FALSE(probe.type_like(syntax::INVALID_EXPR_ID));
     EXPECT_FALSE(probe.type_like(empty_name));
@@ -3208,7 +3113,8 @@ TEST(CoreUnit, ParserPostfixWhiteBoxRejectsInvalidTypeLikeExpressions) {
     EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(number, false)));
 }
 
-TEST(CoreUnit, ParserPostfixWhiteBoxConvertsScopedNamesAndRejectsBadSelectors) {
+TEST(CoreUnit, ParserPostfixWhiteBoxConvertsScopedNamesAndRejectsBadSelectors)
+{
     std::vector<syntax::Token> tokens = probe_tokens();
     DiagnosticSink diagnostics;
     parse::Parser parser(tokens, diagnostics);
@@ -3239,7 +3145,7 @@ TEST(CoreUnit, ParserPostfixWhiteBoxConvertsScopedNamesAndRejectsBadSelectors) {
     const syntax::TypeId selector_id = probe.append_selector(scoped_base_id, "Inner", true);
     ASSERT_TRUE(syntax::is_valid(selector_id));
     const syntax::TypeNode& selector = module.types[selector_id.value];
-    const std::vector<std::string_view> expected_scope_parts {"pkg", "Outer"};
+    const std::vector<std::string_view> expected_scope_parts{"pkg", "Outer"};
     EXPECT_EQ(selector.scope_parts, expected_scope_parts);
     EXPECT_EQ(selector.scope_name, "pkg");
     EXPECT_EQ(selector.name, "Inner");
@@ -3247,133 +3153,95 @@ TEST(CoreUnit, ParserPostfixWhiteBoxConvertsScopedNamesAndRejectsBadSelectors) {
     EXPECT_FALSE(syntax::is_valid(probe.append_selector(syntax::INVALID_TYPE_ID, "Inner", false)));
 }
 
-TEST(CoreUnit, ParserRejectsEmptyGenericLists) {
-    expect_parse_error(
-        "module parser.empty_generic_fn;\n"
-        "fn f[]() -> i32 { return 0; }\n",
-        "expected generic type parameter"
-    );
-    expect_parse_error(
-        "module parser.empty_generic_struct;\n"
-        "struct Box[] { value: i32; }\n",
-        "expected generic type parameter"
-    );
-    expect_parse_error(
-        "module parser.empty_type_args;\n"
-        "struct Box[T] { value: T; }\n"
-        "fn main() -> i32 { let value: Box[] = Box[i32] { value: 1 }; return value.value; }\n",
-        "expected generic type argument"
-    );
-    expect_parse_error(
-        "module parser.empty_generic_call;\n"
-        "fn id[T](value: T) -> T { return value; }\n"
-        "fn main() -> i32 { return id[](1); }\n",
-        "expected generic type argument"
-    );
-    expect_parse_error(
-        "module parser.empty_struct_literal_args;\n"
-        "struct Box[T] { value: T; }\n"
-        "fn main() -> i32 { let value = Box[] { value: 1 }; return value.value; }\n",
-        "expected generic type argument"
-    );
-    expect_parse_error(
-        "module parser.empty_index_args;\n"
-        "fn main() -> i32 { let values: [1]i32 = [1]; return values[]; }\n",
-        "expected generic type argument"
-    );
-    expect_parse_error(
-        "module parser.multi_index_args;\n"
-        "fn main() -> i32 { let values: [2]i32 = [1, 2]; return values[0, 1]; }\n",
-        "index expression expects one argument"
-    );
-    expect_parse_error(
-        "module parser.type_slice_start;\n"
-        "fn main() -> []const i32 { let values: [2]i32 = [1, 2]; return values[i32:]; }\n",
-        "expected expression"
-    );
-    expect_parse_diagnostic(
-        "module parser.literal_generic_arg;\n"
-        "fn id[T](value: T) -> T { return value; }\n"
-        "fn main() -> i32 { return id[1](1); }\n",
-        "expected generic type argument"
-    );
-    expect_parse_diagnostic(
-        "module parser.parenthesized_generic_arg;\n"
-        "fn id[T](value: T) -> T { return value; }\n"
-        "fn main() -> i32 { return id[(1)](1); }\n",
-        "expected generic type argument"
-    );
-    expect_parse_diagnostic(
-        "module parser.unary_expr_generic_arg;\n"
-        "fn id[T](value: T) -> T { return value; }\n"
-        "fn main() -> i32 { let value = 1; return id[-value](value); }\n",
-        "expected generic type argument"
-    );
-    expect_parse_diagnostic(
-        "module parser.invalid_selected_generic_arg;\n"
-        "struct Box[T] { value: T; }\n"
-        "fn id[T](value: i32) -> i32 { return value; }\n"
-        "fn main() -> i32 { return id[Box[i32].Inner](1); }\n",
-        "expected generic type argument"
-    );
-    expect_parse_diagnostic(
-        "module parser.parenthesized_generic_arg_eof;\n"
-        "fn id[T](value: T) -> T { return value; }\n"
-        "fn main() -> i32 { return id[(i32,\n",
-        "expected expression"
-    );
-    expect_parse_diagnostic(
-        "module parser.generic_arg_separator_reaches_bracket;\n"
-        "fn id[T](value: i32) -> i32 { return value; }\n"
-        "fn main() -> i32 { return id[A B](1); }\n",
-        "expected ',' or ']' after generic type argument"
-    );
-    expect_parse_diagnostic(
-        "module parser.struct_field_separator_reaches_comma;\n"
-        "struct Box { a: i32; b: i32; }\n"
-        "fn main() -> i32 { let box = Box { a: 1 @, b: 2 }; return box.a; }\n",
-        "expected ',' or '}' after struct literal field"
-    );
-    expect_parse_diagnostic(
-        "module parser.match_arm_separator_reaches_comma;\n"
-        "fn main() -> i32 { return match true { true => 1 @, false => 0 }; }\n",
-        "expected ',' or '}' after match arm"
-    );
+TEST(CoreUnit, ParserRejectsEmptyGenericLists)
+{
+    expect_parse_error("module parser.empty_generic_fn;\n"
+                       "fn f[]() -> i32 { return 0; }\n",
+        "expected generic type parameter");
+    expect_parse_error("module parser.empty_generic_struct;\n"
+                       "struct Box[] { value: i32; }\n",
+        "expected generic type parameter");
+    expect_parse_error("module parser.empty_type_args;\n"
+                       "struct Box[T] { value: T; }\n"
+                       "fn main() -> i32 { let value: Box[] = Box[i32] { value: 1 }; return value.value; }\n",
+        "expected generic type argument");
+    expect_parse_error("module parser.empty_generic_call;\n"
+                       "fn id[T](value: T) -> T { return value; }\n"
+                       "fn main() -> i32 { return id[](1); }\n",
+        "expected generic type argument");
+    expect_parse_error("module parser.empty_struct_literal_args;\n"
+                       "struct Box[T] { value: T; }\n"
+                       "fn main() -> i32 { let value = Box[] { value: 1 }; return value.value; }\n",
+        "expected generic type argument");
+    expect_parse_error("module parser.empty_index_args;\n"
+                       "fn main() -> i32 { let values: [1]i32 = [1]; return values[]; }\n",
+        "expected generic type argument");
+    expect_parse_error("module parser.multi_index_args;\n"
+                       "fn main() -> i32 { let values: [2]i32 = [1, 2]; return values[0, 1]; }\n",
+        "index expression expects one argument");
+    expect_parse_error("module parser.type_slice_start;\n"
+                       "fn main() -> []const i32 { let values: [2]i32 = [1, 2]; return values[i32:]; }\n",
+        "expected expression");
+    expect_parse_diagnostic("module parser.literal_generic_arg;\n"
+                            "fn id[T](value: T) -> T { return value; }\n"
+                            "fn main() -> i32 { return id[1](1); }\n",
+        "expected generic type argument");
+    expect_parse_diagnostic("module parser.parenthesized_generic_arg;\n"
+                            "fn id[T](value: T) -> T { return value; }\n"
+                            "fn main() -> i32 { return id[(1)](1); }\n",
+        "expected generic type argument");
+    expect_parse_diagnostic("module parser.unary_expr_generic_arg;\n"
+                            "fn id[T](value: T) -> T { return value; }\n"
+                            "fn main() -> i32 { let value = 1; return id[-value](value); }\n",
+        "expected generic type argument");
+    expect_parse_diagnostic("module parser.invalid_selected_generic_arg;\n"
+                            "struct Box[T] { value: T; }\n"
+                            "fn id[T](value: i32) -> i32 { return value; }\n"
+                            "fn main() -> i32 { return id[Box[i32].Inner](1); }\n",
+        "expected generic type argument");
+    expect_parse_diagnostic("module parser.parenthesized_generic_arg_eof;\n"
+                            "fn id[T](value: T) -> T { return value; }\n"
+                            "fn main() -> i32 { return id[(i32,\n",
+        "expected expression");
+    expect_parse_diagnostic("module parser.generic_arg_separator_reaches_bracket;\n"
+                            "fn id[T](value: i32) -> i32 { return value; }\n"
+                            "fn main() -> i32 { return id[A B](1); }\n",
+        "expected ',' or ']' after generic type argument");
+    expect_parse_diagnostic("module parser.struct_field_separator_reaches_comma;\n"
+                            "struct Box { a: i32; b: i32; }\n"
+                            "fn main() -> i32 { let box = Box { a: 1 @, b: 2 }; return box.a; }\n",
+        "expected ',' or '}' after struct literal field");
+    expect_parse_diagnostic("module parser.match_arm_separator_reaches_comma;\n"
+                            "fn main() -> i32 { return match true { true => 1 @, false => 0 }; }\n",
+        "expected ',' or '}' after match arm");
 }
 
-TEST(CoreUnit, ParserRejectsLegacyAngleGenericSyntax) {
-    expect_parse_error(
-        "module parser.legacy_angle_generic_params;\n"
-        "fn id<T>(x: T) -> T { return x; }\n",
-        "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters"
-    );
-    expect_parse_error(
-        "module parser.legacy_angle_type_args;\n"
-        "struct Pair[A, B] { first: A; second: B; }\n"
-        "type Bad = Pair<i32, bool>;\n",
-        "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters"
-    );
+TEST(CoreUnit, ParserRejectsLegacyAngleGenericSyntax)
+{
+    expect_parse_error("module parser.legacy_angle_generic_params;\n"
+                       "fn id<T>(x: T) -> T { return x; }\n",
+        "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters");
+    expect_parse_error("module parser.legacy_angle_type_args;\n"
+                       "struct Pair[A, B] { first: A; second: B; }\n"
+                       "type Bad = Pair<i32, bool>;\n",
+        "Aurex generics use '[' and ']'; '<' and '>' are not generic delimiters");
 }
 
-TEST(CoreUnit, ParserRejectsLegacyScopeSelectorSyntax) {
-    expect_parse_error(
-        "module parser.legacy_scope_value;\n"
-        "fn main() -> i32 { return vis::answer; }\n",
-        "Aurex selectors use '.', not '::'"
-    );
-    expect_parse_error(
-        "module parser.legacy_scope_generic_call;\n"
-        "fn id[T](x: T) -> T { return x; }\n"
-        "fn main() -> i32 { return id::[i32](1); }\n",
-        "Aurex selectors use '.', not '::'"
-    );
+TEST(CoreUnit, ParserRejectsLegacyScopeSelectorSyntax)
+{
+    expect_parse_error("module parser.legacy_scope_value;\n"
+                       "fn main() -> i32 { return vis::answer; }\n",
+        "Aurex selectors use '.', not '::'");
+    expect_parse_error("module parser.legacy_scope_generic_call;\n"
+                       "fn id[T](x: T) -> T { return x; }\n"
+                       "fn main() -> i32 { return id::[i32](1); }\n",
+        "Aurex selectors use '.', not '::'");
 }
 
-TEST(CoreUnit, ParserParsesWhereCapabilityClauses) {
-    syntax::AstModule module = parse_success(
-        "module parser.where_clause;\n"
-        "fn id[T](value: T) -> T where T: Eq + Hash { return value; }\n"
-    );
+TEST(CoreUnit, ParserParsesWhereCapabilityClauses)
+{
+    syntax::AstModule module = parse_success("module parser.where_clause;\n"
+                                             "fn id[T](value: T) -> T where T: Eq + Hash { return value; }\n");
     const syntax::ItemNode* id = find_item(module, "id");
     ASSERT_NE(id, nullptr);
     ASSERT_EQ(id->where_constraints.size(), 1U);

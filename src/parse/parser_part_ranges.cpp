@@ -1,20 +1,17 @@
-#include <aurex/parse/parser_part_ranges.hpp>
-
 #include <aurex/parse/parser.hpp>
+#include <aurex/parse/parser_part_ranges.hpp>
 
 namespace aurex::parse {
 
 base::SourceRange ParserPartRangeReader::merge(
-    const base::SourceRange& begin,
-    const base::SourceRange& end
-) const noexcept {
+    const base::SourceRange& begin, const base::SourceRange& end) const noexcept
+{
     return this->parser_.merge(begin, end);
 }
 
 base::SourceRange ParserPartRangeReader::expr_range_or(
-    const syntax::ExprId id,
-    const base::SourceRange& fallback
-) const noexcept {
+    const syntax::ExprId id, const base::SourceRange& fallback) const noexcept
+{
     if (!syntax::is_valid(id) || id.value >= this->session_.module.exprs.size()) {
         return fallback;
     }
@@ -22,9 +19,8 @@ base::SourceRange ParserPartRangeReader::expr_range_or(
 }
 
 base::SourceRange ParserPartRangeReader::stmt_range_or(
-    const syntax::StmtId id,
-    const base::SourceRange& fallback
-) const noexcept {
+    const syntax::StmtId id, const base::SourceRange& fallback) const noexcept
+{
     if (!syntax::is_valid(id) || id.value >= this->session_.module.stmts.size()) {
         return fallback;
     }
@@ -32,9 +28,8 @@ base::SourceRange ParserPartRangeReader::stmt_range_or(
 }
 
 base::SourceRange ParserPartRangeReader::type_range_or(
-    const syntax::TypeId id,
-    const base::SourceRange& fallback
-) const noexcept {
+    const syntax::TypeId id, const base::SourceRange& fallback) const noexcept
+{
     if (!syntax::is_valid(id) || id.value >= this->session_.module.types.size()) {
         return fallback;
     }
@@ -42,9 +37,8 @@ base::SourceRange ParserPartRangeReader::type_range_or(
 }
 
 base::SourceRange ParserPartRangeReader::pattern_range_or(
-    const syntax::PatternId id,
-    const base::SourceRange& fallback
-) const noexcept {
+    const syntax::PatternId id, const base::SourceRange& fallback) const noexcept
+{
     if (!syntax::is_valid(id) || id.value >= this->session_.module.patterns.size()) {
         return fallback;
     }

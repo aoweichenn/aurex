@@ -6,8 +6,9 @@ namespace aurex::parse {
 
 class BuiltinExprParser final : private ParserPartBase {
 public:
-    explicit BuiltinExprParser(Parser& parser) noexcept
-        : ParserPartBase(parser) {}
+    explicit BuiltinExprParser(Parser& parser) noexcept : ParserPartBase(parser)
+    {
+    }
 
     [[nodiscard]] syntax::ExprId parse_cast(syntax::ExprKind kind, ExprContext context);
     [[nodiscard]] syntax::ExprId parse_type_builtin(syntax::ExprKind kind);

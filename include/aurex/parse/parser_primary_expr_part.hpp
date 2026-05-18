@@ -6,8 +6,9 @@ namespace aurex::parse {
 
 class PrimaryExprParser final : private ParserPartBase {
 public:
-    explicit PrimaryExprParser(Parser& parser) noexcept
-        : ParserPartBase(parser) {}
+    explicit PrimaryExprParser(Parser& parser) noexcept : ParserPartBase(parser)
+    {
+    }
 
     [[nodiscard]] syntax::ExprId parse_primary(ExprContext context);
 

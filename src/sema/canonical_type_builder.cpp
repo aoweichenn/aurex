@@ -1,8 +1,8 @@
 #include <aurex/sema/canonical_type_builder.hpp>
 
+#include <optional>
 #include <string>
 #include <string_view>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -19,49 +19,72 @@ constexpr std::string_view SEMA_CANONICAL_TYPE_UNSUPPORTED_MUTABILITY = "unsuppo
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNSUPPORTED_CALL_CONV = "unsupported function call convention";
 constexpr base::usize SEMA_CANONICAL_TYPE_BUILD_STACK_RESERVE = 16;
 
-[[nodiscard]] base::Result<query::CanonicalTypeKey> canonical_type_error(const std::string_view message) {
+[[nodiscard]] base::Result<query::CanonicalTypeKey> canonical_type_error(const std::string_view message)
+{
     return base::Result<query::CanonicalTypeKey>::fail({
         base::ErrorCode::internal_error,
         std::string(message),
     });
 }
 
-[[nodiscard]] std::optional<query::BuiltinTypeKey> canonical_builtin_type(const BuiltinType type) noexcept {
+[[nodiscard]] std::optional<query::BuiltinTypeKey> canonical_builtin_type(const BuiltinType type) noexcept
+{
     switch (type) {
-    case BuiltinType::void_: return query::BuiltinTypeKey::void_;
-    case BuiltinType::bool_: return query::BuiltinTypeKey::bool_;
-    case BuiltinType::i8: return query::BuiltinTypeKey::i8;
-    case BuiltinType::u8: return query::BuiltinTypeKey::u8;
-    case BuiltinType::i16: return query::BuiltinTypeKey::i16;
-    case BuiltinType::u16: return query::BuiltinTypeKey::u16;
-    case BuiltinType::i32: return query::BuiltinTypeKey::i32;
-    case BuiltinType::u32: return query::BuiltinTypeKey::u32;
-    case BuiltinType::i64: return query::BuiltinTypeKey::i64;
-    case BuiltinType::u64: return query::BuiltinTypeKey::u64;
-    case BuiltinType::isize: return query::BuiltinTypeKey::isize;
-    case BuiltinType::usize: return query::BuiltinTypeKey::usize;
-    case BuiltinType::f32: return query::BuiltinTypeKey::f32;
-    case BuiltinType::f64: return query::BuiltinTypeKey::f64;
-    case BuiltinType::str: return query::BuiltinTypeKey::str;
-    case BuiltinType::char_: return query::BuiltinTypeKey::char_;
+        case BuiltinType::void_:
+            return query::BuiltinTypeKey::void_;
+        case BuiltinType::bool_:
+            return query::BuiltinTypeKey::bool_;
+        case BuiltinType::i8:
+            return query::BuiltinTypeKey::i8;
+        case BuiltinType::u8:
+            return query::BuiltinTypeKey::u8;
+        case BuiltinType::i16:
+            return query::BuiltinTypeKey::i16;
+        case BuiltinType::u16:
+            return query::BuiltinTypeKey::u16;
+        case BuiltinType::i32:
+            return query::BuiltinTypeKey::i32;
+        case BuiltinType::u32:
+            return query::BuiltinTypeKey::u32;
+        case BuiltinType::i64:
+            return query::BuiltinTypeKey::i64;
+        case BuiltinType::u64:
+            return query::BuiltinTypeKey::u64;
+        case BuiltinType::isize:
+            return query::BuiltinTypeKey::isize;
+        case BuiltinType::usize:
+            return query::BuiltinTypeKey::usize;
+        case BuiltinType::f32:
+            return query::BuiltinTypeKey::f32;
+        case BuiltinType::f64:
+            return query::BuiltinTypeKey::f64;
+        case BuiltinType::str:
+            return query::BuiltinTypeKey::str;
+        case BuiltinType::char_:
+            return query::BuiltinTypeKey::char_;
     }
     return std::nullopt;
 }
 
 [[nodiscard]] std::optional<query::PointerMutabilityKey> canonical_mutability(
-    const PointerMutability mutability) noexcept {
+    const PointerMutability mutability) noexcept
+{
     switch (mutability) {
-    case PointerMutability::mut: return query::PointerMutabilityKey::mut;
-    case PointerMutability::const_: return query::PointerMutabilityKey::const_;
+        case PointerMutability::mut:
+            return query::PointerMutabilityKey::mut;
+        case PointerMutability::const_:
+            return query::PointerMutabilityKey::const_;
     }
     return std::nullopt;
 }
 
-[[nodiscard]] std::optional<query::FunctionCallConvKey> canonical_call_conv(
-    const FunctionCallConv call_conv) noexcept {
+[[nodiscard]] std::optional<query::FunctionCallConvKey> canonical_call_conv(const FunctionCallConv call_conv) noexcept
+{
     switch (call_conv) {
-    case FunctionCallConv::aurex: return query::FunctionCallConvKey::aurex;
-    case FunctionCallConv::c: return query::FunctionCallConvKey::c;
+        case FunctionCallConv::aurex:
+            return query::FunctionCallConvKey::aurex;
+        case FunctionCallConv::c:
+            return query::FunctionCallConvKey::c;
     }
     return std::nullopt;
 }
@@ -71,25 +94,21 @@ struct TypeBuildFrame {
     query::CanonicalTypeKey* target = nullptr;
 };
 
-void push_child(
-    std::vector<TypeBuildFrame>& pending,
-    const TypeHandle source,
-    query::CanonicalTypeKey& target) {
-    pending.push_back(TypeBuildFrame {source, &target});
+void push_child(std::vector<TypeBuildFrame>& pending, const TypeHandle source, query::CanonicalTypeKey& target)
+{
+    pending.push_back(TypeBuildFrame{source, &target});
 }
 
 void push_children_reverse(
-    std::vector<TypeBuildFrame>& pending,
-    const TypeHandleList& sources,
-    std::vector<query::CanonicalTypeKey>& targets) {
+    std::vector<TypeBuildFrame>& pending, const TypeHandleList& sources, std::vector<query::CanonicalTypeKey>& targets)
+{
     for (base::usize index = sources.size(); index > 0; --index) {
         push_child(pending, sources[index - 1], targets[index - 1]);
     }
 }
 
-[[nodiscard]] base::Result<void> lower_builtin_type(
-    const TypeInfo& info,
-    query::CanonicalTypeKey& target) {
+[[nodiscard]] base::Result<void> lower_builtin_type(const TypeInfo& info, query::CanonicalTypeKey& target)
+{
     const std::optional<query::BuiltinTypeKey> builtin = canonical_builtin_type(info.builtin);
     if (!builtin.has_value()) {
         return base::Result<void>::fail({
@@ -102,9 +121,8 @@ void push_children_reverse(
 }
 
 [[nodiscard]] base::Result<void> lower_pointer_type(
-    std::vector<TypeBuildFrame>& pending,
-    const TypeInfo& info,
-    query::CanonicalTypeKey& target) {
+    std::vector<TypeBuildFrame>& pending, const TypeInfo& info, query::CanonicalTypeKey& target)
+{
     const std::optional<query::PointerMutabilityKey> mutability = canonical_mutability(info.pointer_mutability);
     if (!mutability.has_value()) {
         return base::Result<void>::fail({
@@ -120,9 +138,8 @@ void push_children_reverse(
 }
 
 [[nodiscard]] base::Result<void> lower_reference_type(
-    std::vector<TypeBuildFrame>& pending,
-    const TypeInfo& info,
-    query::CanonicalTypeKey& target) {
+    std::vector<TypeBuildFrame>& pending, const TypeInfo& info, query::CanonicalTypeKey& target)
+{
     const std::optional<query::PointerMutabilityKey> mutability = canonical_mutability(info.pointer_mutability);
     if (!mutability.has_value()) {
         return base::Result<void>::fail({
@@ -138,9 +155,8 @@ void push_children_reverse(
 }
 
 [[nodiscard]] base::Result<void> lower_array_type(
-    std::vector<TypeBuildFrame>& pending,
-    const TypeInfo& info,
-    query::CanonicalTypeKey& target) {
+    std::vector<TypeBuildFrame>& pending, const TypeInfo& info, query::CanonicalTypeKey& target)
+{
     target.kind = query::CanonicalTypeKind::array;
     target.array_count = info.array_count;
     target.children.resize(1);
@@ -149,9 +165,8 @@ void push_children_reverse(
 }
 
 [[nodiscard]] base::Result<void> lower_slice_type(
-    std::vector<TypeBuildFrame>& pending,
-    const TypeInfo& info,
-    query::CanonicalTypeKey& target) {
+    std::vector<TypeBuildFrame>& pending, const TypeInfo& info, query::CanonicalTypeKey& target)
+{
     const std::optional<query::PointerMutabilityKey> mutability = canonical_mutability(info.slice_mutability);
     if (!mutability.has_value()) {
         return base::Result<void>::fail({
@@ -167,9 +182,8 @@ void push_children_reverse(
 }
 
 [[nodiscard]] base::Result<void> lower_tuple_type(
-    std::vector<TypeBuildFrame>& pending,
-    const TypeInfo& info,
-    query::CanonicalTypeKey& target) {
+    std::vector<TypeBuildFrame>& pending, const TypeInfo& info, query::CanonicalTypeKey& target)
+{
     target.kind = query::CanonicalTypeKind::tuple;
     target.children.resize(info.tuple_elements.size());
     push_children_reverse(pending, info.tuple_elements, target.children);
@@ -177,9 +191,8 @@ void push_children_reverse(
 }
 
 [[nodiscard]] base::Result<void> lower_function_type(
-    std::vector<TypeBuildFrame>& pending,
-    const TypeInfo& info,
-    query::CanonicalTypeKey& target) {
+    std::vector<TypeBuildFrame>& pending, const TypeInfo& info, query::CanonicalTypeKey& target)
+{
     const std::optional<query::FunctionCallConvKey> call_conv = canonical_call_conv(info.function_call_conv);
     if (!call_conv.has_value()) {
         return base::Result<void>::fail({
@@ -198,12 +211,10 @@ void push_children_reverse(
     return base::Result<void>::ok();
 }
 
-[[nodiscard]] base::Result<void> lower_nominal_type(
-    std::vector<TypeBuildFrame>& pending,
-    const CanonicalTypeKeyResolver& resolver,
-    const TypeHandle handle,
-    const TypeInfo& info,
-    query::CanonicalTypeKey& target) {
+[[nodiscard]] base::Result<void> lower_nominal_type(std::vector<TypeBuildFrame>& pending,
+    const CanonicalTypeKeyResolver& resolver, const TypeHandle handle, const TypeInfo& info,
+    query::CanonicalTypeKey& target)
+{
     const std::optional<query::DefKey> definition = resolver.nominal_type_key(handle, info);
     if (!definition.has_value()) {
         return base::Result<void>::fail({
@@ -218,11 +229,9 @@ void push_children_reverse(
     return base::Result<void>::ok();
 }
 
-[[nodiscard]] base::Result<void> lower_generic_param_type(
-    const CanonicalTypeKeyResolver& resolver,
-    const TypeHandle handle,
-    const TypeInfo& info,
-    query::CanonicalTypeKey& target) {
+[[nodiscard]] base::Result<void> lower_generic_param_type(const CanonicalTypeKeyResolver& resolver,
+    const TypeHandle handle, const TypeInfo& info, query::CanonicalTypeKey& target)
+{
     const std::optional<query::GenericParamKey> parameter = resolver.generic_param_key(handle, info);
     if (!parameter.has_value()) {
         return base::Result<void>::fail({
@@ -234,11 +243,9 @@ void push_children_reverse(
     return base::Result<void>::ok();
 }
 
-[[nodiscard]] base::Result<void> lower_type_frame(
-    std::vector<TypeBuildFrame>& pending,
-    const TypeTable& types,
-    const CanonicalTypeKeyResolver& resolver,
-    const TypeBuildFrame frame) {
+[[nodiscard]] base::Result<void> lower_type_frame(std::vector<TypeBuildFrame>& pending, const TypeTable& types,
+    const CanonicalTypeKeyResolver& resolver, const TypeBuildFrame frame)
+{
     if (!is_valid(frame.source)) {
         return base::Result<void>::fail({
             base::ErrorCode::internal_error,
@@ -254,26 +261,26 @@ void push_children_reverse(
 
     const TypeInfo& info = types.get(frame.source);
     switch (info.kind) {
-    case TypeKind::builtin:
-        return lower_builtin_type(info, *frame.target);
-    case TypeKind::pointer:
-        return lower_pointer_type(pending, info, *frame.target);
-    case TypeKind::reference:
-        return lower_reference_type(pending, info, *frame.target);
-    case TypeKind::array:
-        return lower_array_type(pending, info, *frame.target);
-    case TypeKind::slice:
-        return lower_slice_type(pending, info, *frame.target);
-    case TypeKind::tuple:
-        return lower_tuple_type(pending, info, *frame.target);
-    case TypeKind::function:
-        return lower_function_type(pending, info, *frame.target);
-    case TypeKind::struct_:
-    case TypeKind::enum_:
-    case TypeKind::opaque_struct:
-        return lower_nominal_type(pending, resolver, frame.source, info, *frame.target);
-    case TypeKind::generic_param:
-        return lower_generic_param_type(resolver, frame.source, info, *frame.target);
+        case TypeKind::builtin:
+            return lower_builtin_type(info, *frame.target);
+        case TypeKind::pointer:
+            return lower_pointer_type(pending, info, *frame.target);
+        case TypeKind::reference:
+            return lower_reference_type(pending, info, *frame.target);
+        case TypeKind::array:
+            return lower_array_type(pending, info, *frame.target);
+        case TypeKind::slice:
+            return lower_slice_type(pending, info, *frame.target);
+        case TypeKind::tuple:
+            return lower_tuple_type(pending, info, *frame.target);
+        case TypeKind::function:
+            return lower_function_type(pending, info, *frame.target);
+        case TypeKind::struct_:
+        case TypeKind::enum_:
+        case TypeKind::opaque_struct:
+            return lower_nominal_type(pending, resolver, frame.source, info, *frame.target);
+        case TypeKind::generic_param:
+            return lower_generic_param_type(resolver, frame.source, info, *frame.target);
     }
     return base::Result<void>::fail({
         base::ErrorCode::internal_error,
@@ -284,9 +291,8 @@ void push_children_reverse(
 } // namespace
 
 base::Result<query::CanonicalTypeKey> build_canonical_type_key(
-    const TypeTable& types,
-    const TypeHandle type,
-    const CanonicalTypeKeyResolver& resolver) {
+    const TypeTable& types, const TypeHandle type, const CanonicalTypeKeyResolver& resolver)
+{
     if (!is_valid(type)) {
         return canonical_type_error(SEMA_CANONICAL_TYPE_INVALID_HANDLE);
     }
@@ -294,7 +300,7 @@ base::Result<query::CanonicalTypeKey> build_canonical_type_key(
     query::CanonicalTypeKey root;
     std::vector<TypeBuildFrame> pending;
     pending.reserve(SEMA_CANONICAL_TYPE_BUILD_STACK_RESERVE);
-    pending.push_back(TypeBuildFrame {type, &root});
+    pending.push_back(TypeBuildFrame{type, &root});
 
     while (!pending.empty()) {
         const TypeBuildFrame frame = pending.back();

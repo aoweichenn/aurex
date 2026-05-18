@@ -24,15 +24,7 @@ struct CliParseResult {
 [[nodiscard]] base::Result<CliParseResult> parse_cli_arguments(std::span<const std::string_view> arguments);
 void print_cli_usage(std::ostream& out, std::string_view tool_name);
 [[nodiscard]] int run_cli(
-    std::span<const std::string_view> arguments,
-    std::ostream& out,
-    std::ostream& err,
-    LlvmIrEmitter llvm_ir_emitter
-);
-[[nodiscard]] int run_cli(
-    std::span<const std::string_view> arguments,
-    std::ostream& out,
-    std::ostream& err
-);
+    std::span<const std::string_view> arguments, std::ostream& out, std::ostream& err, LlvmIrEmitter llvm_ir_emitter);
+[[nodiscard]] int run_cli(std::span<const std::string_view> arguments, std::ostream& out, std::ostream& err);
 
 } // namespace aurex::driver

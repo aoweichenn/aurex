@@ -12,33 +12,32 @@ constexpr usize BASE_BUMP_MIN_BLOCK_BYTES = 1024U;
 constexpr usize BASE_BUMP_STRING_NUL_BYTES = 1U;
 constexpr usize BASE_BUMP_ALIGNMENT_FLOOR = alignof(std::max_align_t);
 constexpr usize BASE_BUMP_TOUCH_PAGE_BYTES = 4096U;
-constexpr std::byte BASE_BUMP_TOUCH_VALUE {0};
+constexpr std::byte BASE_BUMP_TOUCH_VALUE{0};
 
 } // namespace
 
-BumpAllocator::Block::Block(
-    std::byte* const data,
-    const usize capacity,
-    const usize alignment
-) noexcept
-    : data(data), capacity(capacity), alignment(alignment) {}
-
-BumpAllocator::Block::Block(Block&& other) noexcept
-    : data(std::exchange(other.data, nullptr)),
-      capacity(std::exchange(other.capacity, 0)),
-      used(std::exchange(other.used, 0)),
-      alignment(std::exchange(other.alignment, BASE_BUMP_ALIGNMENT_FLOOR)) {
+BumpAllocator::Block::Block(std::byte* const data, const usize capacity, const usize alignment) noexcept
+    : data(data), capacity(capacity), alignment(alignment)
+{
 }
 
-BumpAllocator::Block::~Block() {
+BumpAllocator::Block::Block(Block&& other) noexcept
+    : data(std::exchange(other.data, nullptr)), capacity(std::exchange(other.capacity, 0)),
+      used(std::exchange(other.used, 0)), alignment(std::exchange(other.alignment, BASE_BUMP_ALIGNMENT_FLOOR))
+{
+}
+
+BumpAllocator::Block::~Block()
+{
     this->release();
 }
 
-void BumpAllocator::Block::release() noexcept {
+void BumpAllocator::Block::release() noexcept
+{
     if (this->data == nullptr) {
         return;
     }
-    ::operator delete(this->data, std::align_val_t {this->alignment});
+    ::operator delete(this->data, std::align_val_t{this->alignment});
     this->data = nullptr;
     this->capacity = 0;
     this->used = 0;
@@ -46,15 +45,18 @@ void BumpAllocator::Block::release() noexcept {
 }
 
 BumpAllocator::BumpAllocator(const usize block_size) noexcept
-    : block_size_(std::max(block_size, BASE_BUMP_MIN_BLOCK_BYTES)) {}
-
-BumpAllocator::BumpAllocator(BumpAllocator&& other) noexcept
-    : block_size_(std::exchange(other.block_size_, BASE_BUMP_MIN_BLOCK_BYTES)),
-      blocks_(std::move(other.blocks_)),
-      allocated_bytes_(std::exchange(other.allocated_bytes_, 0)) {
+    : block_size_(std::max(block_size, BASE_BUMP_MIN_BLOCK_BYTES))
+{
 }
 
-BumpAllocator& BumpAllocator::operator=(BumpAllocator&& other) noexcept {
+BumpAllocator::BumpAllocator(BumpAllocator&& other) noexcept
+    : block_size_(std::exchange(other.block_size_, BASE_BUMP_MIN_BLOCK_BYTES)), blocks_(std::move(other.blocks_)),
+      allocated_bytes_(std::exchange(other.allocated_bytes_, 0))
+{
+}
+
+BumpAllocator& BumpAllocator::operator=(BumpAllocator&& other) noexcept
+{
     if (this == &other) {
         return *this;
     }
@@ -65,7 +67,8 @@ BumpAllocator& BumpAllocator::operator=(BumpAllocator&& other) noexcept {
     return *this;
 }
 
-void* BumpAllocator::allocate(const usize size, const usize alignment) {
+void* BumpAllocator::allocate(const usize size, const usize alignment)
+{
     if (size == 0) {
         return nullptr;
     }
@@ -89,19 +92,19 @@ void* BumpAllocator::allocate(const usize size, const usize alignment) {
     return result;
 }
 
-std::string_view BumpAllocator::copy_string(const std::string_view text) {
+std::string_view BumpAllocator::copy_string(const std::string_view text)
+{
     if (text.empty()) {
         return {};
     }
-    char* const storage = static_cast<char*>(
-        this->allocate(text.size() + BASE_BUMP_STRING_NUL_BYTES, alignof(char))
-    );
+    char* const storage = static_cast<char*>(this->allocate(text.size() + BASE_BUMP_STRING_NUL_BYTES, alignof(char)));
     std::copy_n(text.data(), text.size(), storage);
     storage[text.size()] = '\0';
     return {storage, text.size()};
 }
 
-void BumpAllocator::reserve(const usize bytes) {
+void BumpAllocator::reserve(const usize bytes)
+{
     if (bytes == 0) {
         return;
     }
@@ -114,7 +117,8 @@ void BumpAllocator::reserve(const usize bytes) {
     this->add_block(bytes, BASE_BUMP_ALIGNMENT_FLOOR);
 }
 
-void BumpAllocator::reserve_touched(const usize bytes) {
+void BumpAllocator::reserve_touched(const usize bytes)
+{
     if (bytes == 0) {
         return;
     }
@@ -128,16 +132,19 @@ void BumpAllocator::reserve_touched(const usize bytes) {
     this->add_block(bytes, BASE_BUMP_ALIGNMENT_FLOOR, true);
 }
 
-void BumpAllocator::reset() noexcept {
+void BumpAllocator::reset() noexcept
+{
     this->blocks_.clear();
     this->allocated_bytes_ = 0;
 }
 
-usize BumpAllocator::allocated_bytes() const noexcept {
+usize BumpAllocator::allocated_bytes() const noexcept
+{
     return this->allocated_bytes_;
 }
 
-usize BumpAllocator::used_bytes() const noexcept {
+usize BumpAllocator::used_bytes() const noexcept
+{
     usize used = 0;
     for (const Block& block : this->blocks_) {
         used += block.used;
@@ -145,16 +152,19 @@ usize BumpAllocator::used_bytes() const noexcept {
     return used;
 }
 
-usize BumpAllocator::block_count() const noexcept {
+usize BumpAllocator::block_count() const noexcept
+{
     return this->blocks_.size();
 }
 
-usize BumpAllocator::align_address(const usize address, const usize alignment) noexcept {
+usize BumpAllocator::align_address(const usize address, const usize alignment) noexcept
+{
     const usize remainder = address % alignment;
     return remainder == 0 ? address : address + (alignment - remainder);
 }
 
-usize BumpAllocator::normalize_alignment(const usize alignment) noexcept {
+usize BumpAllocator::normalize_alignment(const usize alignment) noexcept
+{
     const usize normalized = std::max(alignment, BASE_BUMP_ALIGNMENT_FLOOR);
     if ((normalized & (normalized - 1U)) == 0U) {
         return normalized;
@@ -166,7 +176,8 @@ usize BumpAllocator::normalize_alignment(const usize alignment) noexcept {
     return power;
 }
 
-void BumpAllocator::touch_memory(std::byte* const data, const usize bytes) noexcept {
+void BumpAllocator::touch_memory(std::byte* const data, const usize bytes) noexcept
+{
     if (data == nullptr || bytes == 0) {
         return;
     }
@@ -177,16 +188,15 @@ void BumpAllocator::touch_memory(std::byte* const data, const usize bytes) noexc
     touched[bytes - 1U] = BASE_BUMP_TOUCH_VALUE;
 }
 
-void BumpAllocator::add_block(const usize min_capacity, const usize alignment, const bool touch_pages) {
+void BumpAllocator::add_block(const usize min_capacity, const usize alignment, const bool touch_pages)
+{
     const usize block_alignment = normalize_alignment(alignment);
     const usize capacity = std::max(this->block_size_, min_capacity);
-    auto* const data = static_cast<std::byte*>(
-        ::operator new(capacity, std::align_val_t {block_alignment})
-    );
+    auto* const data = static_cast<std::byte*>(::operator new(capacity, std::align_val_t{block_alignment}));
     if (touch_pages) {
         touch_memory(data, capacity);
     }
-    this->blocks_.push_back(Block {data, capacity, block_alignment});
+    this->blocks_.push_back(Block{data, capacity, block_alignment});
     this->allocated_bytes_ += capacity;
 }
 

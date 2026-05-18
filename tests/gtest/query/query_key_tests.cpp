@@ -29,37 +29,34 @@ constexpr base::u64 QUERY_TEST_LEGACY_INCREMENTAL_GLOBAL_ID = 0x55dd4e219a7521c0
 constexpr base::u32 QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_BYTES = 8;
 constexpr base::u32 QUERY_TEST_LEGACY_DOTTED_MODULE_PATH_BYTES = 28;
 
-[[nodiscard]] query::PackageKey test_package() {
-    const std::array<std::string_view, 2> parts {"workspace", "root"};
+[[nodiscard]] query::PackageKey test_package()
+{
+    const std::array<std::string_view, 2> parts{"workspace", "root"};
     return query::package_key(parts);
 }
 
-[[nodiscard]] query::ModuleKey test_module(const query::PackageKey package) {
-    const std::array<std::string_view, 2> path {"regex", "vm"};
+[[nodiscard]] query::ModuleKey test_module(const query::PackageKey package)
+{
+    const std::array<std::string_view, 2> path{"regex", "vm"};
     return query::module_key(package, path);
 }
 
-[[nodiscard]] query::DefKey test_template_def(const query::ModuleKey module) {
-    const std::array<std::string_view, 1> path {"Vec"};
-    return query::def_key(
-        module,
-        query::DefNamespace::type,
-        query::DefKind::generic_template,
-        path);
+[[nodiscard]] query::DefKey test_template_def(const query::ModuleKey module)
+{
+    const std::array<std::string_view, 1> path{"Vec"};
+    return query::def_key(module, query::DefNamespace::type, query::DefKind::generic_template, path);
 }
 
-[[nodiscard]] query::DefKey test_function_def(const query::ModuleKey module) {
-    const std::array<std::string_view, 1> path {"compute"};
-    return query::def_key(
-        module,
-        query::DefNamespace::value,
-        query::DefKind::function,
-        path);
+[[nodiscard]] query::DefKey test_function_def(const query::ModuleKey module)
+{
+    const std::array<std::string_view, 1> path{"compute"};
+    return query::def_key(module, query::DefNamespace::value, query::DefKind::function, path);
 }
 
 } // namespace
 
-TEST(QueryUnit, StableHashAndWriterSerializationAreDeterministic) {
+TEST(QueryUnit, StableHashAndWriterSerializationAreDeterministic)
+{
     const query::StableFingerprint128 alpha = query::stable_fingerprint("alpha");
     const query::StableFingerprint128 repeated_alpha = query::stable_fingerprint("alpha");
     const query::StableFingerprint128 beta = query::stable_fingerprint("beta");
@@ -67,8 +64,8 @@ TEST(QueryUnit, StableHashAndWriterSerializationAreDeterministic) {
     EXPECT_NE(alpha, beta);
     EXPECT_GT(alpha.byte_count, 0U);
 
-    const std::array<std::string_view, 2> split_a {"a", "bc"};
-    const std::array<std::string_view, 2> split_b {"ab", "c"};
+    const std::array<std::string_view, 2> split_a{"a", "bc"};
+    const std::array<std::string_view, 2> split_b{"ab", "c"};
     EXPECT_NE(query::stable_fingerprint(split_a), query::stable_fingerprint(split_b));
 
     query::StableKeyWriter writer;
@@ -113,52 +110,41 @@ TEST(QueryUnit, StableHashWriterCoversPrimitiveAndFingerprintFields)
     EXPECT_EQ(query::StableFingerprintHash{}(fingerprint), query::stable_hash_value(fingerprint));
 }
 
-TEST(QueryUnit, StableSemanticKeysSeparateFilesModulesDefinitionsAndBodies) {
+TEST(QueryUnit, StableSemanticKeysSeparateFilesModulesDefinitionsAndBodies)
+{
     const query::PackageKey package = test_package();
     ASSERT_TRUE(query::is_valid(package));
 
     const query::FileKey source_file = query::file_key(package, "/workspace/root/regex/vm.ax");
-    const query::FileKey virtual_file = query::file_key(
-        package,
-        "/workspace/root/regex/vm.ax",
-        query::SourceRole::virtual_buffer,
-        "buffer:1");
+    const query::FileKey virtual_file =
+        query::file_key(package, "/workspace/root/regex/vm.ax", query::SourceRole::virtual_buffer, "buffer:1");
     EXPECT_TRUE(query::is_valid(source_file));
     EXPECT_NE(source_file, virtual_file);
     EXPECT_NE(query::stable_key_fingerprint(source_file), query::stable_key_fingerprint(virtual_file));
 
     const query::ModuleKey module = test_module(package);
-    const std::array<std::string_view, 2> other_path {"regex_vm", "root"};
+    const std::array<std::string_view, 2> other_path{"regex_vm", "root"};
     const query::ModuleKey other_module = query::module_key(package, other_path);
     EXPECT_TRUE(query::is_valid(module));
     EXPECT_NE(module, other_module);
 
     const query::DefKey function_def = test_function_def(module);
-    const std::array<std::string_view, 1> duplicate_path {"compute"};
+    const std::array<std::string_view, 1> duplicate_path{"compute"};
     const query::DefKey overloaded_function_def = query::def_key(
-        module,
-        query::DefNamespace::value,
-        query::DefKind::function,
-        duplicate_path,
-        QUERY_TEST_DISAMBIGUATOR);
+        module, query::DefNamespace::value, query::DefKind::function, duplicate_path, QUERY_TEST_DISAMBIGUATOR);
     EXPECT_TRUE(query::is_valid(function_def));
     EXPECT_NE(function_def, overloaded_function_def);
     EXPECT_EQ(query::stable_serialize(function_def), query::stable_serialize(function_def));
 
-    const query::BodyKey function_body = query::body_key(
-        function_def,
-        query::BodySlotKind::function_body,
-        QUERY_TEST_STABLE_ORDINAL);
-    const query::BodyKey default_arg_body = query::body_key(
-        function_def,
-        query::BodySlotKind::default_argument,
-        QUERY_TEST_STABLE_ORDINAL);
+    const query::BodyKey function_body =
+        query::body_key(function_def, query::BodySlotKind::function_body, QUERY_TEST_STABLE_ORDINAL);
+    const query::BodyKey default_arg_body =
+        query::body_key(function_def, query::BodySlotKind::default_argument, QUERY_TEST_STABLE_ORDINAL);
     EXPECT_TRUE(query::is_valid(function_body));
     EXPECT_NE(function_body, default_arg_body);
 
-    const query::QueryKey signature_query = query::query_key(
-        query::QueryKind::item_signature,
-        query::stable_key_fingerprint(function_def));
+    const query::QueryKey signature_query =
+        query::query_key(query::QueryKind::item_signature, query::stable_key_fingerprint(function_def));
     EXPECT_TRUE(query::is_valid(signature_query));
     EXPECT_NE(query::debug_string(signature_query).find("QueryKey"), std::string::npos);
 }
@@ -261,10 +247,11 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_NE(query::QueryKeyHash{}(diagnostics_query), 0U);
 }
 
-TEST(QueryUnit, LegacyStableIdentityLivesInQueryLayer) {
-    const query::StableModuleId empty_module = query::stable_module_id(std::span<const std::string_view> {});
-    const std::array<std::string_view, 2> dotted_path {"a", "b_c"};
-    const std::array<std::string_view, 2> underscore_path {"a_b", "c"};
+TEST(QueryUnit, LegacyStableIdentityLivesInQueryLayer)
+{
+    const query::StableModuleId empty_module = query::stable_module_id(std::span<const std::string_view>{});
+    const std::array<std::string_view, 2> dotted_path{"a", "b_c"};
+    const std::array<std::string_view, 2> underscore_path{"a_b", "c"};
     const query::StableModuleId dotted_module = query::stable_module_id(dotted_path);
     const query::StableModuleId repeated_dotted_module = query::stable_module_id(dotted_path);
     const query::StableModuleId underscore_module = query::stable_module_id(underscore_path);
@@ -282,23 +269,17 @@ TEST(QueryUnit, LegacyStableIdentityLivesInQueryLayer) {
     EXPECT_EQ(dotted_module, repeated_dotted_module);
     EXPECT_NE(dotted_module, underscore_module);
 
-    const query::StableDefId function_id = query::stable_definition_id(
-        dotted_module,
-        query::StableSymbolKind::function,
-        "compute");
-    const query::StableDefId value_id = query::stable_definition_id(
-        dotted_module,
-        query::StableSymbolKind::value,
-        "compute");
+    const query::StableDefId function_id =
+        query::stable_definition_id(dotted_module, query::StableSymbolKind::function, "compute");
+    const query::StableDefId value_id =
+        query::stable_definition_id(dotted_module, query::StableSymbolKind::value, "compute");
     EXPECT_TRUE(query::is_valid(function_id));
     EXPECT_NE(function_id, value_id);
     EXPECT_EQ(function_id.global_id, QUERY_TEST_LEGACY_FUNCTION_GLOBAL_ID);
     EXPECT_EQ(value_id.global_id, QUERY_TEST_LEGACY_VALUE_GLOBAL_ID);
 
-    const query::StableMemberKey field_key = query::stable_member_key(
-        function_id,
-        query::StableSymbolKind::struct_field,
-        "x");
+    const query::StableMemberKey field_key =
+        query::stable_member_key(function_id, query::StableSymbolKind::struct_field, "x");
     EXPECT_TRUE(query::is_valid(field_key));
     EXPECT_EQ(field_key.global_id, QUERY_TEST_LEGACY_FIELD_GLOBAL_ID);
 
@@ -323,39 +304,32 @@ TEST(QueryUnit, LegacyStableIdentityLivesInQueryLayer) {
     EXPECT_FALSE(query::is_valid(query::IncrementalKey{}));
 }
 
-TEST(QueryUnit, CanonicalTypeKeyIsStructuralAndHandleFree) {
+TEST(QueryUnit, CanonicalTypeKeyIsStructuralAndHandleFree)
+{
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
     const query::DefKey vector_template = test_template_def(module);
     const query::DefKey function_def = test_function_def(module);
-    const query::GenericParamKey type_param = query::generic_param_key(
-        function_def,
-        QUERY_TEST_GENERIC_PARAM_INDEX,
-        query::GenericParamKind::type);
+    const query::GenericParamKey type_param =
+        query::generic_param_key(function_def, QUERY_TEST_GENERIC_PARAM_INDEX, query::GenericParamKind::type);
 
     const query::CanonicalTypeKey i32 = query::canonical_builtin(query::BuiltinTypeKey::i32);
     const query::CanonicalTypeKey i64 = query::canonical_builtin(query::BuiltinTypeKey::i64);
     const query::CanonicalTypeKey type_t = query::canonical_generic_param(type_param);
-    const std::array<query::CanonicalTypeKey, 1> vector_args {type_t};
+    const std::array<query::CanonicalTypeKey, 1> vector_args{type_t};
     const query::CanonicalTypeKey vector_t = query::canonical_nominal(vector_template, vector_args);
     const query::CanonicalTypeKey repeated_vector_t = query::canonical_nominal(vector_template, vector_args);
     EXPECT_EQ(vector_t, repeated_vector_t);
     EXPECT_EQ(query::stable_key_fingerprint(vector_t), query::stable_key_fingerprint(repeated_vector_t));
 
-    const query::CanonicalTypeKey ptr_i32 = query::canonical_pointer(
-        query::PointerMutabilityKey::const_,
-        i32);
+    const query::CanonicalTypeKey ptr_i32 = query::canonical_pointer(query::PointerMutabilityKey::const_, i32);
     const query::CanonicalTypeKey array_i32 = query::canonical_array(QUERY_TEST_ARRAY_COUNT, i32);
     EXPECT_NE(i32, i64);
     EXPECT_NE(ptr_i32, array_i32);
 
-    const std::array<query::CanonicalTypeKey, 2> params {ptr_i32, vector_t};
-    const query::CanonicalTypeKey function_type = query::canonical_function(
-        query::FunctionCallConvKey::aurex,
-        false,
-        false,
-        params,
-        i32);
+    const std::array<query::CanonicalTypeKey, 2> params{ptr_i32, vector_t};
+    const query::CanonicalTypeKey function_type =
+        query::canonical_function(query::FunctionCallConvKey::aurex, false, false, params, i32);
     EXPECT_TRUE(query::is_valid(function_type));
     EXPECT_NE(query::debug_string(function_type).find("function"), std::string::npos);
 }
@@ -463,41 +437,30 @@ TEST(QueryUnit, CanonicalTypeKeyEqualityRejectsEveryShallowFieldAndNestedChild)
         query::canonical_pointer(query::PointerMutabilityKey::const_, i64));
 }
 
-TEST(QueryUnit, GenericInstanceKeyUsesCanonicalArgumentsAndParamEnvironment) {
+TEST(QueryUnit, GenericInstanceKeyUsesCanonicalArgumentsAndParamEnvironment)
+{
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
     const query::DefKey vector_template = test_template_def(module);
 
     const query::CanonicalTypeKey i32 = query::canonical_builtin(query::BuiltinTypeKey::i32);
     const query::CanonicalTypeKey str = query::canonical_builtin(query::BuiltinTypeKey::str);
-    const std::array<query::CanonicalTypeKey, 1> i32_args {i32};
-    const std::array<query::CanonicalTypeKey, 1> str_args {str};
-    const std::array<std::string_view, 2> predicates {"T: Eq", "T: Hash"};
-    const std::array<std::string_view, 1> weaker_predicates {"T: Eq"};
+    const std::array<query::CanonicalTypeKey, 1> i32_args{i32};
+    const std::array<query::CanonicalTypeKey, 1> str_args{str};
+    const std::array<std::string_view, 2> predicates{"T: Eq", "T: Hash"};
+    const std::array<std::string_view, 1> weaker_predicates{"T: Eq"};
     const query::ParamEnvKey param_env = query::param_env_key(predicates);
     const query::ParamEnvKey weaker_param_env = query::param_env_key(weaker_predicates);
     const std::array<query::StableFingerprint128, 1> const_args{query::stable_fingerprint("N=4")};
 
     const query::GenericInstanceKey vec_i32 = query::generic_instance_key(
-        vector_template,
-        i32_args,
-        std::span<const query::StableFingerprint128> {},
-        param_env);
+        vector_template, i32_args, std::span<const query::StableFingerprint128>{}, param_env);
     const query::GenericInstanceKey repeated_vec_i32 = query::generic_instance_key(
-        vector_template,
-        i32_args,
-        std::span<const query::StableFingerprint128> {},
-        param_env);
+        vector_template, i32_args, std::span<const query::StableFingerprint128>{}, param_env);
     const query::GenericInstanceKey vec_str = query::generic_instance_key(
-        vector_template,
-        str_args,
-        std::span<const query::StableFingerprint128> {},
-        param_env);
+        vector_template, str_args, std::span<const query::StableFingerprint128>{}, param_env);
     const query::GenericInstanceKey vec_i32_weaker_env = query::generic_instance_key(
-        vector_template,
-        i32_args,
-        std::span<const query::StableFingerprint128> {},
-        weaker_param_env);
+        vector_template, i32_args, std::span<const query::StableFingerprint128>{}, weaker_param_env);
     const query::GenericInstanceKey vec_i32_const =
         query::generic_instance_key(vector_template, i32_args, const_args, param_env);
     query::GenericInstanceKey changed_type_arg = repeated_vec_i32;

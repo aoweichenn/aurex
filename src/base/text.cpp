@@ -10,8 +10,9 @@ constexpr usize TEXT_FIRST_COLUMN = 1;
 
 } // namespace
 
-LineColumn line_column(const std::string_view text, const usize offset) noexcept {
-    LineColumn result {};
+LineColumn line_column(const std::string_view text, const usize offset) noexcept
+{
+    LineColumn result{};
     result.line = TEXT_FIRST_LINE;
     result.column = TEXT_FIRST_COLUMN;
     const usize limit = offset < text.size() ? offset : text.size();

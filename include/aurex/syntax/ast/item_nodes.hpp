@@ -13,14 +13,14 @@ namespace aurex::syntax {
 struct ParamDecl {
     std::string_view name;
     TypeId type = INVALID_TYPE_ID;
-    base::SourceRange range {};
+    base::SourceRange range{};
     IdentId name_id = INVALID_IDENT_ID;
 };
 
 struct FieldDecl {
     std::string_view name;
     TypeId type = INVALID_TYPE_ID;
-    base::SourceRange range {};
+    base::SourceRange range{};
     Visibility visibility = Visibility::private_;
     IdentId name_id = INVALID_IDENT_ID;
 };
@@ -30,7 +30,7 @@ struct EnumCaseDecl {
     TypeId payload_type = INVALID_TYPE_ID;
     AstArenaVector<TypeId> payload_types;
     std::string_view value_text;
-    base::SourceRange range {};
+    base::SourceRange range{};
     IdentId name_id = INVALID_IDENT_ID;
 };
 
@@ -47,7 +47,7 @@ enum class ItemKind {
 
 struct ItemNode {
     ItemKind kind = ItemKind::fn_decl;
-    base::SourceRange range {};
+    base::SourceRange range{};
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
     std::vector<GenericParamDecl> generic_params;
@@ -74,7 +74,7 @@ struct ItemNode {
 };
 
 struct ItemNodeHeader {
-    base::SourceRange range {};
+    base::SourceRange range{};
     base::u32 payload = UINT32_MAX;
     base::u8 kind = static_cast<base::u8>(ItemKind::fn_decl);
     base::u8 visibility = static_cast<base::u8>(Visibility::private_);
@@ -145,17 +145,20 @@ struct ItemNodePayloadArena {
     ItemNodePayloadArena() = default;
 
     explicit ItemNodePayloadArena(base::BumpAllocator& arena)
-        : consts(base::BumpAllocatorAdapter<ConstItemPayload> {arena}),
-          type_aliases(base::BumpAllocatorAdapter<TypeAliasItemPayload> {arena}),
-          structs(base::BumpAllocatorAdapter<StructItemPayload> {arena}),
-          enums(base::BumpAllocatorAdapter<EnumItemPayload> {arena}),
-          opaque_structs(base::BumpAllocatorAdapter<OpaqueStructItemPayload> {arena}),
-          functions(base::BumpAllocatorAdapter<FunctionItemPayload> {arena}),
-          extern_blocks(base::BumpAllocatorAdapter<ExternBlockItemPayload> {arena}),
-          impl_blocks(base::BumpAllocatorAdapter<ImplBlockItemPayload> {arena}),
-          unknowns(base::BumpAllocatorAdapter<ItemNode> {arena}) {}
+        : consts(base::BumpAllocatorAdapter<ConstItemPayload>{arena}),
+          type_aliases(base::BumpAllocatorAdapter<TypeAliasItemPayload>{arena}),
+          structs(base::BumpAllocatorAdapter<StructItemPayload>{arena}),
+          enums(base::BumpAllocatorAdapter<EnumItemPayload>{arena}),
+          opaque_structs(base::BumpAllocatorAdapter<OpaqueStructItemPayload>{arena}),
+          functions(base::BumpAllocatorAdapter<FunctionItemPayload>{arena}),
+          extern_blocks(base::BumpAllocatorAdapter<ExternBlockItemPayload>{arena}),
+          impl_blocks(base::BumpAllocatorAdapter<ImplBlockItemPayload>{arena}),
+          unknowns(base::BumpAllocatorAdapter<ItemNode>{arena})
+    {
+    }
 
-    void swap(ItemNodePayloadArena& other) noexcept {
+    void swap(ItemNodePayloadArena& other) noexcept
+    {
         this->consts.swap(other.consts);
         this->type_aliases.swap(other.type_aliases);
         this->structs.swap(other.structs);
@@ -197,7 +200,8 @@ public:
     [[nodiscard]] Visibility visibility(base::usize index) const noexcept;
 
     template <typename T>
-    [[nodiscard]] AstArenaVector<T> make_list() {
+    [[nodiscard]] AstArenaVector<T> make_list()
+    {
         return make_ast_arena_vector<T>(*this->arena_);
     }
 
@@ -225,17 +229,20 @@ private:
     [[nodiscard]] static base::u8 pack_flags(const ItemNode& node) noexcept;
 
     template <typename T, typename Allocator>
-    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values) {
+    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values)
+    {
         return copy_ast_arena_vector(*this->arena_, values);
     }
 
     template <typename T>
-    [[nodiscard]] AstArenaVector<T> copy_or_move_list(AstArenaVector<T>&& values) {
+    [[nodiscard]] AstArenaVector<T> copy_or_move_list(AstArenaVector<T>&& values)
+    {
         return move_or_copy_ast_arena_vector(*this->arena_, std::move(values));
     }
 
     template <typename T, typename Allocator>
-    [[nodiscard]] AstArenaVector<T> copy_or_move_list(std::vector<T, Allocator>&& values) {
+    [[nodiscard]] AstArenaVector<T> copy_or_move_list(std::vector<T, Allocator>&& values)
+    {
         return this->copy_list(values);
     }
 
@@ -244,7 +251,8 @@ private:
 
     template <typename Allocator>
     [[nodiscard]] AstArenaVector<GenericConstraintDecl> copy_generic_constraints(
-        const std::vector<GenericConstraintDecl, Allocator>& constraints) {
+        const std::vector<GenericConstraintDecl, Allocator>& constraints)
+    {
         AstArenaVector<GenericConstraintDecl> copy = make_ast_arena_vector<GenericConstraintDecl>(*this->arena_);
         copy.reserve(constraints.size());
         for (const GenericConstraintDecl& constraint : constraints) {
@@ -255,7 +263,8 @@ private:
 
     template <typename Allocator>
     [[nodiscard]] AstArenaVector<GenericConstraintDecl> copy_or_move_generic_constraints(
-        std::vector<GenericConstraintDecl, Allocator>&& constraints) {
+        std::vector<GenericConstraintDecl, Allocator>&& constraints)
+    {
         AstArenaVector<GenericConstraintDecl> copy = make_ast_arena_vector<GenericConstraintDecl>(*this->arena_);
         copy.reserve(constraints.size());
         for (GenericConstraintDecl& constraint : constraints) {
@@ -268,8 +277,8 @@ private:
     [[nodiscard]] EnumCaseDecl copy_or_move_enum_case(EnumCaseDecl&& enum_case);
 
     template <typename Allocator>
-    [[nodiscard]] AstArenaVector<EnumCaseDecl> copy_enum_cases(
-        const std::vector<EnumCaseDecl, Allocator>& cases) {
+    [[nodiscard]] AstArenaVector<EnumCaseDecl> copy_enum_cases(const std::vector<EnumCaseDecl, Allocator>& cases)
+    {
         AstArenaVector<EnumCaseDecl> copy = make_ast_arena_vector<EnumCaseDecl>(*this->arena_);
         copy.reserve(cases.size());
         for (const EnumCaseDecl& enum_case : cases) {
@@ -279,8 +288,8 @@ private:
     }
 
     template <typename Allocator>
-    [[nodiscard]] AstArenaVector<EnumCaseDecl> copy_or_move_enum_cases(
-        std::vector<EnumCaseDecl, Allocator>&& cases) {
+    [[nodiscard]] AstArenaVector<EnumCaseDecl> copy_or_move_enum_cases(std::vector<EnumCaseDecl, Allocator>&& cases)
+    {
         AstArenaVector<EnumCaseDecl> copy = make_ast_arena_vector<EnumCaseDecl>(*this->arena_);
         copy.reserve(cases.size());
         for (EnumCaseDecl& enum_case : cases) {
@@ -293,7 +302,8 @@ private:
 
     template <typename Allocator>
     [[nodiscard]] std::vector<GenericConstraintDecl> detach_generic_constraints(
-        const std::vector<GenericConstraintDecl, Allocator>& constraints) const {
+        const std::vector<GenericConstraintDecl, Allocator>& constraints) const
+    {
         std::vector<GenericConstraintDecl> copy;
         copy.reserve(constraints.size());
         for (const GenericConstraintDecl& constraint : constraints) {
@@ -305,8 +315,8 @@ private:
     [[nodiscard]] EnumCaseDecl detach_enum_case(const EnumCaseDecl& enum_case) const;
 
     template <typename Allocator>
-    [[nodiscard]] std::vector<EnumCaseDecl> detach_enum_cases(
-        const std::vector<EnumCaseDecl, Allocator>& cases) const {
+    [[nodiscard]] std::vector<EnumCaseDecl> detach_enum_cases(const std::vector<EnumCaseDecl, Allocator>& cases) const
+    {
         std::vector<EnumCaseDecl> copy;
         copy.reserve(cases.size());
         for (const EnumCaseDecl& enum_case : cases) {
@@ -324,7 +334,8 @@ private:
     void invalidate_materialized(base::usize index) const;
 
     template <typename T>
-    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload) {
+    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload)
+    {
         const base::u32 index = static_cast<base::u32>(payloads.size());
         payloads.push_back(std::move(payload));
         return index;

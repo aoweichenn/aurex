@@ -11,7 +11,7 @@
 namespace aurex::syntax {
 
 struct PatternNodeHeader {
-    base::SourceRange range {};
+    base::SourceRange range{};
     base::u32 payload = UINT32_MAX;
     PatternKind kind = PatternKind::wildcard;
 };
@@ -56,15 +56,18 @@ struct PatternNodePayloadArena {
     PatternNodePayloadArena() = default;
 
     explicit PatternNodePayloadArena(base::BumpAllocator& arena)
-        : bindings(base::BumpAllocatorAdapter<BindingPatternPayload> {arena}),
-          literals(base::BumpAllocatorAdapter<LiteralPatternPayload> {arena}),
-          enum_cases(base::BumpAllocatorAdapter<EnumCasePatternPayload> {arena}),
-          tuples(base::BumpAllocatorAdapter<AstArenaVector<PatternId>> {arena}),
-          slices(base::BumpAllocatorAdapter<SlicePatternPayload> {arena}),
-          structs(base::BumpAllocatorAdapter<StructPatternPayload> {arena}),
-          alternatives(base::BumpAllocatorAdapter<AstArenaVector<PatternId>> {arena}) {}
+        : bindings(base::BumpAllocatorAdapter<BindingPatternPayload>{arena}),
+          literals(base::BumpAllocatorAdapter<LiteralPatternPayload>{arena}),
+          enum_cases(base::BumpAllocatorAdapter<EnumCasePatternPayload>{arena}),
+          tuples(base::BumpAllocatorAdapter<AstArenaVector<PatternId>>{arena}),
+          slices(base::BumpAllocatorAdapter<SlicePatternPayload>{arena}),
+          structs(base::BumpAllocatorAdapter<StructPatternPayload>{arena}),
+          alternatives(base::BumpAllocatorAdapter<AstArenaVector<PatternId>>{arena})
+    {
+    }
 
-    void swap(PatternNodePayloadArena& other) noexcept {
+    void swap(PatternNodePayloadArena& other) noexcept
+    {
         this->bindings.swap(other.bindings);
         this->literals.swap(other.literals);
         this->enum_cases.swap(other.enum_cases);
@@ -111,7 +114,8 @@ public:
 
 private:
     template <typename T, typename Allocator>
-    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values) {
+    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values)
+    {
         return copy_ast_arena_vector(*this->arena_, values);
     }
 
@@ -123,7 +127,8 @@ private:
     void invalidate_materialized(base::usize index) const;
 
     template <typename T>
-    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload) {
+    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload)
+    {
         const base::u32 index = static_cast<base::u32>(payloads.size());
         payloads.push_back(std::move(payload));
         return index;

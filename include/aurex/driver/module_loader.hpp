@@ -24,12 +24,8 @@ struct ModuleRecord {
 
 class ModuleLoader final {
 public:
-    ModuleLoader(
-        const CompilerInvocation& invocation,
-        base::SourceManager& sources,
-        base::DiagnosticSink& diagnostics,
-        CompilationProfiler* profiler = nullptr
-    ) noexcept;
+    ModuleLoader(const CompilerInvocation& invocation, base::SourceManager& sources, base::DiagnosticSink& diagnostics,
+        CompilationProfiler* profiler = nullptr) noexcept;
 
     [[nodiscard]] base::Result<syntax::AstModule> load_root();
     [[nodiscard]] std::span<const ModuleRecord> modules() const noexcept;
@@ -38,16 +34,11 @@ private:
     struct LoadedModule {
         std::filesystem::path path;
         syntax::ModuleId id = syntax::INVALID_MODULE_ID;
-        base::SourceRange range {};
+        base::SourceRange range{};
     };
 
-    [[nodiscard]] base::Result<syntax::ModuleId> load_file(
-        const std::filesystem::path& path,
-        syntax::AstModule& combined,
-        base::usize depth,
-        bool is_root,
-        const syntax::ModulePath* expected_module
-    );
+    [[nodiscard]] base::Result<syntax::ModuleId> load_file(const std::filesystem::path& path,
+        syntax::AstModule& combined, base::usize depth, bool is_root, const syntax::ModulePath* expected_module);
 
     const CompilerInvocation& invocation_;
     base::SourceManager& sources_;

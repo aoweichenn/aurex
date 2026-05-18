@@ -1,5 +1,4 @@
 #include <aurex/parse/parser_expr_part.hpp>
-
 #include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/parser_pattern_part.hpp>
 #include <aurex/parse/parser_postfix_expr_part.hpp>
@@ -61,11 +60,13 @@ constexpr BinaryOperatorSyntax PARSER_EXPR_BINARY_OPERATORS[] = {
     {TokenKind::percent, syntax::BinaryOp::mod, BinaryPrecedence::MULTIPLICATIVE},
 };
 
-[[nodiscard]] int precedence_rank(const BinaryPrecedence precedence) noexcept {
+[[nodiscard]] int precedence_rank(const BinaryPrecedence precedence) noexcept
+{
     return static_cast<int>(precedence);
 }
 
-[[nodiscard]] const BinaryOperatorSyntax* binary_operator_for(const TokenKind kind) noexcept {
+[[nodiscard]] const BinaryOperatorSyntax* binary_operator_for(const TokenKind kind) noexcept
+{
     for (const BinaryOperatorSyntax& op : PARSER_EXPR_BINARY_OPERATORS) {
         if (op.token == kind) {
             return &op;
@@ -74,26 +75,28 @@ constexpr BinaryOperatorSyntax PARSER_EXPR_BINARY_OPERATORS[] = {
     return nullptr;
 }
 
-[[nodiscard]] std::optional<syntax::UnaryOp> unary_op_for(const TokenKind kind) noexcept {
+[[nodiscard]] std::optional<syntax::UnaryOp> unary_op_for(const TokenKind kind) noexcept
+{
     switch (kind) {
-    case TokenKind::bang:
-        return syntax::UnaryOp::logical_not;
-    case TokenKind::minus:
-        return syntax::UnaryOp::numeric_negate;
-    case TokenKind::tilde:
-        return syntax::UnaryOp::bitwise_not;
-    case TokenKind::amp:
-        return syntax::UnaryOp::address_of;
-    case TokenKind::star:
-        return syntax::UnaryOp::dereference;
-    default:
-        return std::nullopt;
+        case TokenKind::bang:
+            return syntax::UnaryOp::logical_not;
+        case TokenKind::minus:
+            return syntax::UnaryOp::numeric_negate;
+        case TokenKind::tilde:
+            return syntax::UnaryOp::bitwise_not;
+        case TokenKind::amp:
+            return syntax::UnaryOp::address_of;
+        case TokenKind::star:
+            return syntax::UnaryOp::dereference;
+        default:
+            return std::nullopt;
     }
 }
 
 } // namespace
 
-syntax::ExprId ExprParser::parse_expr(const ExprContext context) {
+syntax::ExprId ExprParser::parse_expr(const ExprContext context)
+{
     if (this->check(TokenKind::kw_if)) {
         return this->parse_if_expr(context);
     }
@@ -103,7 +106,8 @@ syntax::ExprId ExprParser::parse_expr(const ExprContext context) {
     return this->parse_binary_expr(context);
 }
 
-syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
+syntax::ExprId ExprParser::parse_if_expr(const ExprContext context)
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_if, std::string(PARSER_EXPECT_IF));
     const syntax::ExprId condition = this->parse_expr(ExprContext::no_struct_literal);
     syntax::PatternId condition_pattern = syntax::INVALID_PATTERN_ID;
@@ -112,32 +116,19 @@ syntax::ExprId ExprParser::parse_if_expr(const ExprContext context) {
     }
 
     const syntax::ExprId then_expr = this->parse_block_expr(context);
-    this->expect_recovered(
-        TokenKind::kw_else,
-        std::string(PARSER_M2_IF_EXPR_REQUIRES_ELSE),
-        RecoveryContext::if_else
-    );
-    const syntax::ExprId else_expr = this->check(TokenKind::kw_if)
-        ? this->parse_if_expr(context)
-        : this->parse_block_expr(context);
+    this->expect_recovered(TokenKind::kw_else, std::string(PARSER_M2_IF_EXPR_REQUIRES_ELSE), RecoveryContext::if_else);
+    const syntax::ExprId else_expr =
+        this->check(TokenKind::kw_if) ? this->parse_if_expr(context) : this->parse_block_expr(context);
 
-    return this->session_.module.push_if_expr(
-        this->merge(begin.range, this->expr_range_or(else_expr, begin.range)),
-        condition,
-        condition_pattern,
-        then_expr,
-        else_expr
-    );
+    return this->session_.module.push_if_expr(this->merge(begin.range, this->expr_range_or(else_expr, begin.range)),
+        condition, condition_pattern, then_expr, else_expr);
 }
 
-syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
+syntax::ExprId ExprParser::parse_match_expr(const ExprContext context)
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_match, std::string(PARSER_EXPECT_MATCH));
     const syntax::ExprId value = this->parse_expr(ExprContext::no_struct_literal);
-    this->expect_recovered(
-        TokenKind::l_brace,
-        std::string(PARSER_EXPECT_MATCH_BODY),
-        RecoveryContext::block_start
-    );
+    this->expect_recovered(TokenKind::l_brace, std::string(PARSER_EXPECT_MATCH_BODY), RecoveryContext::block_start);
 
     syntax::AstArenaVector<syntax::MatchArm> arms = this->session_.module.make_expr_list<syntax::MatchArm>();
 
@@ -148,35 +139,27 @@ syntax::ExprId ExprParser::parse_match_expr(const ExprContext context) {
         }
     }
 
-    const syntax::Token& end = this->expect_recovered(
-        TokenKind::r_brace,
-        std::string(PARSER_EXPECT_MATCH_END),
-        RecoveryContext::match_arm
-    );
+    const syntax::Token& end =
+        this->expect_recovered(TokenKind::r_brace, std::string(PARSER_EXPECT_MATCH_END), RecoveryContext::match_arm);
     this->reset_panic();
     return this->session_.module.push_match_expr(this->merge(begin.range, end.range), value, std::move(arms));
 }
 
-syntax::MatchArm ExprParser::parse_match_arm(
-    const ExprContext context,
-    const base::SourceRange& fallback_range
-) {
+syntax::MatchArm ExprParser::parse_match_arm(const ExprContext context, const base::SourceRange& fallback_range)
+{
     const syntax::PatternId pattern = this->parse_pattern();
     syntax::ExprId guard = syntax::INVALID_EXPR_ID;
     if (this->match(TokenKind::kw_if)) {
         guard = this->parse_expr(context);
     }
     this->expect_recovered(
-        TokenKind::fat_arrow,
-        std::string(PARSER_EXPECT_MATCH_ARM_ARROW),
-        RecoveryContext::match_arm_arrow
-    );
+        TokenKind::fat_arrow, std::string(PARSER_EXPECT_MATCH_ARM_ARROW), RecoveryContext::match_arm_arrow);
     const syntax::ExprId arm_value = this->parse_expr(context);
     const base::SourceRange pattern_range = this->pattern_range_or(pattern, fallback_range);
     const base::SourceRange arm_range = syntax::is_valid(arm_value)
         ? this->merge(pattern_range, this->expr_range_or(arm_value, pattern_range))
         : pattern_range;
-    return syntax::MatchArm {
+    return syntax::MatchArm{
         pattern,
         guard,
         arm_value,
@@ -206,7 +189,8 @@ bool ExprParser::recover_match_arm_separator() const
     return token_starts_match_arm(this->peek().kind);
 }
 
-syntax::ExprId ExprParser::parse_binary_expr(const ExprContext context) {
+syntax::ExprId ExprParser::parse_binary_expr(const ExprContext context)
+{
     std::vector<syntax::ExprId> operands;
     std::vector<const BinaryOperatorSyntax*> operators;
     operands.reserve(PARSER_EXPR_OPERAND_STACK_INITIAL_CAPACITY);
@@ -227,8 +211,7 @@ syntax::ExprId ExprParser::parse_binary_expr(const ExprContext context) {
     operands.push_back(this->parse_unary(context));
     while (const BinaryOperatorSyntax* op = binary_operator_for(this->peek().kind)) {
         this->advance();
-        while (!operators.empty() &&
-               precedence_rank(operators.back()->precedence) >= precedence_rank(op->precedence)) {
+        while (!operators.empty() && precedence_rank(operators.back()->precedence) >= precedence_rank(op->precedence)) {
             reduce_top_operator();
         }
         operators.push_back(op);
@@ -246,7 +229,7 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) const
         syntax::TokenKind token_kind = TokenKind::invalid;
         syntax::UnaryOp unary_op = syntax::UnaryOp::logical_not;
         std::string_view text;
-        base::SourceRange range {};
+        base::SourceRange range{};
     };
 
     std::vector<PrefixOperator> prefixes;
@@ -256,12 +239,8 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) const
             const syntax::Token& op = this->advance();
             const bool increment = op.kind == TokenKind::plus_plus;
             this->report_at(
-                op,
-                increment
-                    ? std::string(PARSER_INCREMENT_UNSUPPORTED)
-                    : std::string(PARSER_DECREMENT_UNSUPPORTED)
-            );
-            prefixes.push_back(PrefixOperator {
+                op, increment ? std::string(PARSER_INCREMENT_UNSUPPORTED) : std::string(PARSER_DECREMENT_UNSUPPORTED));
+            prefixes.push_back(PrefixOperator{
                 op.kind,
                 syntax::UnaryOp::logical_not,
                 op.text(),
@@ -278,7 +257,7 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) const
                 unary_op = syntax::UnaryOp::address_of_mut;
                 range = this->merge(op.range, this->previous().range);
             }
-            prefixes.push_back(PrefixOperator {
+            prefixes.push_back(PrefixOperator{
                 op.kind,
                 unary_op,
                 op.text(),
@@ -292,7 +271,7 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) const
             break;
         }
         const syntax::Token& op = this->advance();
-        prefixes.push_back(PrefixOperator {
+        prefixes.push_back(PrefixOperator{
             op.kind,
             unary_op.value(),
             op.text(),
@@ -313,7 +292,8 @@ syntax::ExprId ExprParser::parse_unary(const ExprContext context) const
     return expr;
 }
 
-syntax::ExprId ExprParser::make_binary(const syntax::BinaryOp op, const syntax::ExprId lhs, const syntax::ExprId rhs) const
+syntax::ExprId ExprParser::make_binary(
+    const syntax::BinaryOp op, const syntax::ExprId lhs, const syntax::ExprId rhs) const
 {
     const base::SourceRange lhs_range = this->expr_range_or(lhs, this->expr_range_or(rhs, this->peek().range));
     const base::SourceRange rhs_range = this->expr_range_or(rhs, lhs_range);

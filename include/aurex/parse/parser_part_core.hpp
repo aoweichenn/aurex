@@ -26,21 +26,10 @@ protected:
     const syntax::Token& advance() const noexcept;
     const syntax::Token& expect(syntax::TokenKind kind, std::string message) const;
     const syntax::Token& expect_contextual_c_keyword(std::string message) const;
-    const syntax::Token& expect_contextual_c_keyword_recovered(
-        std::string message,
-        RecoveryContext context
-    ) const;
-    const syntax::Token& expect_recovered(
-        syntax::TokenKind kind,
-        std::string message,
-        RecoveryContext context
-    ) const;
+    const syntax::Token& expect_contextual_c_keyword_recovered(std::string message, RecoveryContext context) const;
+    const syntax::Token& expect_recovered(syntax::TokenKind kind, std::string message, RecoveryContext context) const;
     const syntax::Token& expect_recovered_after(
-        syntax::TokenKind kind,
-        std::string message,
-        RecoveryContext context,
-        const syntax::Token& opening
-    ) const;
+        syntax::TokenKind kind, std::string message, RecoveryContext context, const syntax::Token& opening) const;
     const syntax::Token& expect_identifier_recovered(std::string message);
     const syntax::Token& expect_type_annotation_colon(std::string message);
     const syntax::Token& expect_initializer_equal(std::string message);

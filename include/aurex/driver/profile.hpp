@@ -24,11 +24,7 @@ public:
     explicit CompilationProfiler(bool enabled = false);
 
     [[nodiscard]] bool enabled() const noexcept;
-    void record(
-        std::string_view name,
-        std::string_view detail,
-        std::chrono::steady_clock::duration elapsed
-    );
+    void record(std::string_view name, std::string_view detail, std::chrono::steady_clock::duration elapsed);
     void record(std::string_view name, std::chrono::steady_clock::duration elapsed);
     [[nodiscard]] std::span<const CompilationPhaseProfile> phases() const noexcept;
     [[nodiscard]] base::Result<void> write_json(const std::filesystem::path& path) const;
@@ -41,11 +37,7 @@ private:
 
 class ScopedCompilationPhase final {
 public:
-    ScopedCompilationPhase(
-        CompilationProfiler* profiler,
-        std::string_view name,
-        std::string_view detail = {}
-    ) noexcept;
+    ScopedCompilationPhase(CompilationProfiler* profiler, std::string_view name, std::string_view detail = {}) noexcept;
     ScopedCompilationPhase(const ScopedCompilationPhase&) = delete;
     ScopedCompilationPhase& operator=(const ScopedCompilationPhase&) = delete;
     ScopedCompilationPhase(ScopedCompilationPhase&&) = delete;

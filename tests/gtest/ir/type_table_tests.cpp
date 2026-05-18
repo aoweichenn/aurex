@@ -1,8 +1,9 @@
+#include <aurex/ir/enum_layout.hpp>
+
 #include <array>
 #include <utility>
 #include <vector>
 
-#include <aurex/ir/enum_layout.hpp>
 #include <gtest/support/ir_test_helpers.hpp>
 
 namespace aurex::test {
@@ -26,7 +27,8 @@ constexpr base::u32 IR_MODULE_COPY_TEST_MISSING_TEXT_OFFSET = 1;
 
 } // namespace
 
-TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
+TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths)
+{
     Module module;
     const TypeHandle void_type = builtin(module, BuiltinType::void_);
     const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
@@ -46,62 +48,32 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     const TypeHandle const_slice_i32 = module.types.slice(PointerMutability::const_, i32);
     const TypeHandle const_slice_i32_again = module.types.slice(PointerMutability::const_, i32);
     const TypeHandle mut_slice_i32 = module.types.slice(PointerMutability::mut, i32);
-    const TypeHandle tuple_i32_bool = module.types.tuple(std::vector<TypeHandle> {i32, bool_type});
-    const TypeHandle tuple_i32_bool_again = module.types.tuple(std::vector<TypeHandle> {i32, bool_type});
-    const TypeHandle single_tuple_i32 = module.types.tuple(std::vector<TypeHandle> {i32});
-    const TypeHandle tuple_with_array = module.types.tuple(std::vector<TypeHandle> {array_i32, bool_type});
-    const TypeHandle function_i32_u32 = module.types.function(
-        sema::FunctionCallConv::aurex,
-        false,
-        std::vector<TypeHandle> {i32, u32},
-        i32
-    );
-    const TypeHandle function_i32_u32_again = module.types.function(
-        sema::FunctionCallConv::aurex,
-        false,
-        std::vector<TypeHandle> {i32, u32},
-        i32
-    );
-    const TypeHandle unsafe_function_i32_u32 = module.types.function(
-        sema::FunctionCallConv::aurex,
-        true,
-        false,
-        std::vector<TypeHandle> {i32, u32},
-        i32
-    );
-    const TypeHandle unsafe_extern_function = module.types.function(
-        sema::FunctionCallConv::c,
-        true,
-        false,
-        std::vector<TypeHandle> {const_ptr_i32},
-        i32
-    );
-    const TypeHandle extern_variadic_function = module.types.function(
-        sema::FunctionCallConv::c,
-        true,
-        std::vector<TypeHandle> {const_ptr_i32},
-        i32
-    );
-    const TypeHandle function_void = module.types.function(
-        sema::FunctionCallConv::aurex,
-        false,
-        std::vector<TypeHandle> {},
-        void_type
-    );
-    const TypeHandle extern_variadic_void = module.types.function(
-        sema::FunctionCallConv::c,
-        true,
-        std::vector<TypeHandle> {},
-        void_type
-    );
+    const TypeHandle tuple_i32_bool = module.types.tuple(std::vector<TypeHandle>{i32, bool_type});
+    const TypeHandle tuple_i32_bool_again = module.types.tuple(std::vector<TypeHandle>{i32, bool_type});
+    const TypeHandle single_tuple_i32 = module.types.tuple(std::vector<TypeHandle>{i32});
+    const TypeHandle tuple_with_array = module.types.tuple(std::vector<TypeHandle>{array_i32, bool_type});
+    const TypeHandle function_i32_u32 =
+        module.types.function(sema::FunctionCallConv::aurex, false, std::vector<TypeHandle>{i32, u32}, i32);
+    const TypeHandle function_i32_u32_again =
+        module.types.function(sema::FunctionCallConv::aurex, false, std::vector<TypeHandle>{i32, u32}, i32);
+    const TypeHandle unsafe_function_i32_u32 =
+        module.types.function(sema::FunctionCallConv::aurex, true, false, std::vector<TypeHandle>{i32, u32}, i32);
+    const TypeHandle unsafe_extern_function =
+        module.types.function(sema::FunctionCallConv::c, true, false, std::vector<TypeHandle>{const_ptr_i32}, i32);
+    const TypeHandle extern_variadic_function =
+        module.types.function(sema::FunctionCallConv::c, true, std::vector<TypeHandle>{const_ptr_i32}, i32);
+    const TypeHandle function_void =
+        module.types.function(sema::FunctionCallConv::aurex, false, std::vector<TypeHandle>{}, void_type);
+    const TypeHandle extern_variadic_void =
+        module.types.function(sema::FunctionCallConv::c, true, std::vector<TypeHandle>{}, void_type);
     const std::string array_display = "[" + std::to_string(TYPE_TABLE_TEST_ARRAY_COUNT) + "]";
     const TypeHandle record_type = module.types.named_struct("unit.Pair", "unit_Pair", false);
     const TypeHandle enum_type = module.types.named_enum("unit.Tag", "unit_Tag");
     const TypeHandle opaque = module.types.opaque_struct("unit.Opaque", "unit_Opaque");
     const TypeHandle generic_record = module.types.named_struct("unit.Box", "unit_Box__aurexg_t2", false);
-    module.types.set_generic_instance(generic_record, "unit:Box", std::vector<TypeHandle> {i32});
+    module.types.set_generic_instance(generic_record, "unit:Box", std::vector<TypeHandle>{i32});
     const TypeHandle generic_enum = module.types.named_enum("unit.Maybe", "unit_Maybe__aurexg_t2");
-    module.types.set_generic_instance(generic_enum, "unit:Maybe", std::vector<TypeHandle> {i32});
+    module.types.set_generic_instance(generic_enum, "unit:Maybe", std::vector<TypeHandle>{i32});
 
     EXPECT_TRUE(module.types.same(ptr_i32, ptr_i32_again));
     EXPECT_FALSE(module.types.same(ptr_i32, const_ptr_i32));
@@ -165,11 +137,7 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     module.types.set_record_contains_array(record_type, true);
     module.types.set_enum_underlying(enum_type, u32);
     module.types.set_enum_payload_layout(
-        enum_type,
-        record_type,
-        TYPE_TABLE_TEST_ENUM_PAYLOAD_SIZE,
-        TYPE_TABLE_TEST_ENUM_PAYLOAD_ALIGNMENT
-    );
+        enum_type, record_type, TYPE_TABLE_TEST_ENUM_PAYLOAD_SIZE, TYPE_TABLE_TEST_ENUM_PAYLOAD_ALIGNMENT);
     EXPECT_TRUE(module.types.contains_array(record_type));
     EXPECT_EQ(module.types.get(enum_type).enum_payload_size, TYPE_TABLE_TEST_ENUM_PAYLOAD_SIZE);
     EXPECT_TRUE(ir::is_payload_enum(module.types, enum_type));
@@ -179,7 +147,8 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_EQ(ir::enum_tag_type(module.types, sema::INVALID_TYPE_HANDLE).value, sema::INVALID_TYPE_HANDLE.value);
     EXPECT_EQ(ir::enum_payload_storage_type(module.types, enum_type).value, record_type.value);
     EXPECT_EQ(ir::enum_payload_storage_type(module.types, record_type).value, sema::INVALID_TYPE_HANDLE.value);
-    EXPECT_EQ(ir::enum_payload_storage_type(module.types, sema::INVALID_TYPE_HANDLE).value, sema::INVALID_TYPE_HANDLE.value);
+    EXPECT_EQ(
+        ir::enum_payload_storage_type(module.types, sema::INVALID_TYPE_HANDLE).value, sema::INVALID_TYPE_HANDLE.value);
 
     const RecordLayout payload_record = ir::make_payload_enum_record(module, enum_type);
     ASSERT_EQ(payload_record.fields.size(), TYPE_TABLE_TEST_ENUM_LAYOUT_FIELD_COUNT);
@@ -202,7 +171,7 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_EQ(ir::record_field_index(stored_record, text_id(module, "missing")), static_cast<base::usize>(-1));
 
     const ValueId literal = add_value(module, integer_value(module, i32, "7"));
-    const GlobalConstantId constant = add_global_constant(module, GlobalConstant {"seven", "unit_seven", i32, literal});
+    const GlobalConstantId constant = add_global_constant(module, GlobalConstant{"seven", "unit_seven", i32, literal});
     EXPECT_TRUE(is_valid(literal));
     EXPECT_TRUE(is_valid(constant));
     EXPECT_NE(ir::find_global_constant(module, constant), nullptr);
@@ -214,21 +183,18 @@ TEST(CoreUnit, TypeTableAndIrHelpersCoverInvalidAndCompositePaths) {
     EXPECT_FALSE(is_valid(INVALID_BLOCK_ID));
 }
 
-TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads) {
+TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads)
+{
     Module module;
-    module.reserve(
-        IR_MODULE_COPY_TEST_VALUE_RESERVE,
-        IR_MODULE_COPY_TEST_FUNCTION_RESERVE,
-        IR_MODULE_COPY_TEST_RECORD_RESERVE,
-        IR_MODULE_COPY_TEST_CONSTANT_RESERVE
-    );
+    module.reserve(IR_MODULE_COPY_TEST_VALUE_RESERVE, IR_MODULE_COPY_TEST_FUNCTION_RESERVE,
+        IR_MODULE_COPY_TEST_RECORD_RESERVE, IR_MODULE_COPY_TEST_CONSTANT_RESERVE);
 
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
     const TypeHandle record_type = module.types.named_struct("copy.Pair", "copy_Pair", false);
     const IrTextId payload_text = text_id(module, "payload");
     EXPECT_TRUE(module.has_text(payload_text));
     EXPECT_EQ(module.find_text("payload").value, payload_text.value);
-    EXPECT_FALSE(module.has_text(IrTextId {payload_text.value + IR_MODULE_COPY_TEST_MISSING_TEXT_OFFSET}));
+    EXPECT_FALSE(module.has_text(IrTextId{payload_text.value + IR_MODULE_COPY_TEST_MISSING_TEXT_OFFSET}));
     EXPECT_FALSE(module.has_text(module.find_text("missing")));
 
     Value literal = integer_value(module, i32, "99");
@@ -241,7 +207,7 @@ TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads) {
     set_name(module, aggregate, "aggregate");
     aggregate.args.push_back(literal_id);
     aggregate.fields.push_back(field_value(module, "left", literal_id));
-    aggregate.incoming.push_back(PhiInput {BlockId {IR_MODULE_COPY_TEST_ENTRY_INDEX}, literal_id});
+    aggregate.incoming.push_back(PhiInput{BlockId{IR_MODULE_COPY_TEST_ENTRY_INDEX}, literal_id});
     aggregate.elements.push_back(literal_id);
     const ValueId aggregate_id = add_value(module, aggregate);
 
@@ -251,10 +217,8 @@ TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads) {
     ASSERT_EQ(record_index, IR_MODULE_COPY_TEST_RECORD_INDEX);
     module.record_indices.emplace(record_type.value, record_index);
 
-    const GlobalConstantId constant_id = add_global_constant(
-        module,
-        GlobalConstant {"global", "copy_global", i32, literal_id}
-    );
+    const GlobalConstantId constant_id =
+        add_global_constant(module, GlobalConstant{"global", "copy_global", i32, literal_id});
 
     Function function = make_function(module, "copy", i32);
     function.signature_params.push_back(function_param(module, "input", i32));
@@ -308,7 +272,8 @@ TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads) {
     EXPECT_EQ(move_assigned.functions.front().blocks.front().terminator.value.value, aggregate_id.value);
 }
 
-TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {
+TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates)
+{
     Module module;
 
     const TypeHandle void_type = builtin(module, BuiltinType::void_);
@@ -372,7 +337,7 @@ TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {
     EXPECT_FALSE(module.types.is_integer(char_type));
     EXPECT_FALSE(module.types.is_float(i32));
 
-    const TypeHandle out_of_range {TYPE_TABLE_TEST_OUT_OF_RANGE_TYPE};
+    const TypeHandle out_of_range{TYPE_TABLE_TEST_OUT_OF_RANGE_TYPE};
     EXPECT_FALSE(module.types.is_bool(sema::INVALID_TYPE_HANDLE));
     EXPECT_FALSE(module.types.is_bool(out_of_range));
     EXPECT_FALSE(module.types.is_str(sema::INVALID_TYPE_HANDLE));
@@ -399,13 +364,12 @@ TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates) {
     EXPECT_EQ(module.types.c_name(out_of_range), "void");
 }
 
-TEST(CoreUnit, TypeTableGenericParamsUseStableIdentities) {
+TEST(CoreUnit, TypeTableGenericParamsUseStableIdentities)
+{
     Module module;
 
-    const sema::GenericParamIdentity first_identity =
-        sema::generic_param_identity_from_text("template_a#param:0:T");
-    const sema::GenericParamIdentity second_identity =
-        sema::generic_param_identity_from_text("template_b#param:0:T");
+    const sema::GenericParamIdentity first_identity = sema::generic_param_identity_from_text("template_a#param:0:T");
+    const sema::GenericParamIdentity second_identity = sema::generic_param_identity_from_text("template_b#param:0:T");
     const TypeHandle first = module.types.generic_param(first_identity, "T");
     const TypeHandle second = module.types.generic_param(second_identity, "T");
     const TypeHandle first_again = module.types.generic_param(first_identity, "T");

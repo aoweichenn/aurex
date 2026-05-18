@@ -1,14 +1,15 @@
 #pragma once
 
 #include <aurex/driver/invocation.hpp>
-#include <support/frontend_test_support.hpp>
 
-#include <gtest/gtest.h>
+#include <support/frontend_test_support.hpp>
 
 #include <filesystem>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 namespace aurex::test {
 

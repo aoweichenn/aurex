@@ -71,7 +71,7 @@ struct StructFieldInfo {
     InternedText c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle type = INVALID_TYPE_HANDLE;
-    base::SourceRange range {};
+    base::SourceRange range{};
     syntax::Visibility visibility = syntax::Visibility::public_;
     StableMemberKey stable_key;
 };
@@ -99,7 +99,7 @@ struct EnumCaseInfo {
     TypeHandle payload_type = INVALID_TYPE_HANDLE;
     TypeHandleList payload_types;
     InternedText value_text;
-    base::SourceRange range {};
+    base::SourceRange range{};
     InternedText enum_name;
     InternedText case_name;
     IdentId case_name_id = INVALID_IDENT_ID;
@@ -114,7 +114,7 @@ struct TypeAliasInfo {
     IdentId name_id = INVALID_IDENT_ID;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     syntax::TypeId target = syntax::INVALID_TYPE_ID;
-    base::SourceRange range {};
+    base::SourceRange range{};
     syntax::Visibility visibility = syntax::Visibility::public_;
     StableDefId stable_id;
     IncrementalKey incremental_key;
@@ -143,18 +143,20 @@ struct GenericNodeSpan {
     base::u32 begin = 0;
     base::u32 count = 0;
 
-    [[nodiscard]] bool empty() const noexcept {
+    [[nodiscard]] bool empty() const noexcept
+    {
         return this->count == 0;
     }
 
-    [[nodiscard]] bool contains(const base::u32 value) const noexcept {
+    [[nodiscard]] bool contains(const base::u32 value) const noexcept
+    {
         return value >= this->begin && value - this->begin < this->count;
     }
 
-    [[nodiscard]] base::usize local_index(const base::u32 value) const noexcept {
-        return this->contains(value)
-            ? static_cast<base::usize>(value - this->begin)
-            : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
+    [[nodiscard]] base::usize local_index(const base::u32 value) const noexcept
+    {
+        return this->contains(value) ? static_cast<base::usize>(value - this->begin)
+                                     : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
     }
 };
 
@@ -179,18 +181,15 @@ struct GenericSparseFallbackStats {
     base::usize syntax_type_handles = 0;
     base::usize stmt_local_types = 0;
 
-    [[nodiscard]] base::usize total() const noexcept {
-        return this->expr_intrinsic_types +
-               this->expr_types +
-               this->expr_expected_types +
-               this->expr_c_name_ids +
-               this->pattern_c_name_ids +
-               this->pattern_case_name_ids +
-               this->syntax_type_handles +
-               this->stmt_local_types;
+    [[nodiscard]] base::usize total() const noexcept
+    {
+        return this->expr_intrinsic_types + this->expr_types + this->expr_expected_types + this->expr_c_name_ids
+            + this->pattern_c_name_ids + this->pattern_case_name_ids + this->syntax_type_handles
+            + this->stmt_local_types;
     }
 
-    [[nodiscard]] bool empty() const noexcept {
+    [[nodiscard]] bool empty() const noexcept
+    {
         return this->total() == 0;
     }
 };
@@ -251,95 +250,93 @@ public:
     [[nodiscard]] base::usize arena_blocks() const noexcept;
     void record_sparse_fallback(GenericSparseFallbackKind kind) noexcept;
     void configure_local_dense(
-        GenericNodeSpan expr,
-        GenericNodeSpan pattern,
-        GenericNodeSpan type,
-        GenericNodeSpan stmt
-    );
-    void configure_local_dense(
-        GenericNodeSpan expr,
-        GenericNodeSpan pattern,
-        GenericNodeSpan type,
-        GenericNodeSpan stmt,
-        std::span<const base::u32> expr_ids,
-        std::span<const base::u32> pattern_ids,
-        std::span<const base::u32> type_ids,
-        std::span<const base::u32> stmt_ids
-    );
+        GenericNodeSpan expr, GenericNodeSpan pattern, GenericNodeSpan type, GenericNodeSpan stmt);
+    void configure_local_dense(GenericNodeSpan expr, GenericNodeSpan pattern, GenericNodeSpan type,
+        GenericNodeSpan stmt, std::span<const base::u32> expr_ids, std::span<const base::u32> pattern_ids,
+        std::span<const base::u32> type_ids, std::span<const base::u32> stmt_ids);
     void configure_local_dense(const GenericSideTableLayout& shared_layout);
     void bind_local_dense_layout(const GenericSideTableLayout& shared_layout) noexcept;
     void prepare_analysis_only_storage(base::usize expr_count);
     void release_analysis_only_storage();
 
-    [[nodiscard]] base::usize local_expr_index(syntax::ExprId expr) const noexcept {
+    [[nodiscard]] base::usize local_expr_index(syntax::ExprId expr) const noexcept
+    {
         return syntax::is_valid(expr) && this->local_dense
             ? this->local_index(expr.value, this->active_expr_span(), this->active_expr_node_ids())
             : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
     }
 
-    [[nodiscard]] base::usize local_pattern_index(syntax::PatternId pattern) const noexcept {
+    [[nodiscard]] base::usize local_pattern_index(syntax::PatternId pattern) const noexcept
+    {
         return syntax::is_valid(pattern) && this->local_dense
             ? this->local_index(pattern.value, this->active_pattern_span(), this->active_pattern_node_ids())
             : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
     }
 
-    [[nodiscard]] base::usize local_type_index(syntax::TypeId type) const noexcept {
+    [[nodiscard]] base::usize local_type_index(syntax::TypeId type) const noexcept
+    {
         return syntax::is_valid(type) && this->local_dense
             ? this->local_index(type.value, this->active_type_span(), this->active_type_node_ids())
             : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
     }
 
-    [[nodiscard]] base::usize local_stmt_index(syntax::StmtId stmt) const noexcept {
+    [[nodiscard]] base::usize local_stmt_index(syntax::StmtId stmt) const noexcept
+    {
         return syntax::is_valid(stmt) && this->local_dense
             ? this->local_index(stmt.value, this->active_stmt_span(), this->active_stmt_node_ids())
             : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
     }
 
 private:
-    [[nodiscard]] GenericNodeSpan active_expr_span() const noexcept {
+    [[nodiscard]] GenericNodeSpan active_expr_span() const noexcept
+    {
         return this->layout == nullptr ? this->expr_span : this->layout->expr_span;
     }
 
-    [[nodiscard]] GenericNodeSpan active_pattern_span() const noexcept {
+    [[nodiscard]] GenericNodeSpan active_pattern_span() const noexcept
+    {
         return this->layout == nullptr ? this->pattern_span : this->layout->pattern_span;
     }
 
-    [[nodiscard]] GenericNodeSpan active_type_span() const noexcept {
+    [[nodiscard]] GenericNodeSpan active_type_span() const noexcept
+    {
         return this->layout == nullptr ? this->type_span : this->layout->type_span;
     }
 
-    [[nodiscard]] GenericNodeSpan active_stmt_span() const noexcept {
+    [[nodiscard]] GenericNodeSpan active_stmt_span() const noexcept
+    {
         return this->layout == nullptr ? this->stmt_span : this->layout->stmt_span;
     }
 
-    [[nodiscard]] const SemaIndexTable& active_expr_node_ids() const noexcept {
+    [[nodiscard]] const SemaIndexTable& active_expr_node_ids() const noexcept
+    {
         return this->layout == nullptr ? this->expr_node_ids : this->layout->expr_node_ids;
     }
 
-    [[nodiscard]] const SemaIndexTable& active_pattern_node_ids() const noexcept {
+    [[nodiscard]] const SemaIndexTable& active_pattern_node_ids() const noexcept
+    {
         return this->layout == nullptr ? this->pattern_node_ids : this->layout->pattern_node_ids;
     }
 
-    [[nodiscard]] const SemaIndexTable& active_type_node_ids() const noexcept {
+    [[nodiscard]] const SemaIndexTable& active_type_node_ids() const noexcept
+    {
         return this->layout == nullptr ? this->type_node_ids : this->layout->type_node_ids;
     }
 
-    [[nodiscard]] const SemaIndexTable& active_stmt_node_ids() const noexcept {
+    [[nodiscard]] const SemaIndexTable& active_stmt_node_ids() const noexcept
+    {
         return this->layout == nullptr ? this->stmt_node_ids : this->layout->stmt_node_ids;
     }
 
     [[nodiscard]] static base::usize local_index(
-        base::u32 value,
-        GenericNodeSpan span,
-        const SemaIndexTable& ids
-    ) noexcept {
+        base::u32 value, GenericNodeSpan span, const SemaIndexTable& ids) noexcept
+    {
         if (ids.empty()) {
             return span.local_index(value);
         }
         const auto found = std::ranges::lower_bound(ids, value);
-        return found != ids.end() && *found == value
-            ? static_cast<base::usize>(found - ids.begin())
-            : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
+        return found != ids.end() && *found == value ? static_cast<base::usize>(found - ids.begin())
+                                                     : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
     }
 
     void swap(GenericSideTables& other) noexcept;
@@ -363,7 +360,8 @@ struct NormalizedAstOverlay {
     base::usize final_type_count = 0;
     bool parser_only_module_contract_added = false;
 
-    [[nodiscard]] bool added_syntax_nodes() const noexcept {
+    [[nodiscard]] bool added_syntax_nodes() const noexcept
+    {
         return final_expr_count > original_expr_count || final_type_count > original_type_count;
     }
 };
@@ -403,15 +401,18 @@ public:
     SemaDeque<GenericFunctionInstanceInfo> generic_function_instances;
     NormalizedAstOverlay normalized_ast;
 
-    [[nodiscard]] IdentId intern_c_name(const std::string_view c_name) {
+    [[nodiscard]] IdentId intern_c_name(const std::string_view c_name)
+    {
         return this->intern_text(c_name).id;
     }
 
-    [[nodiscard]] InternedText intern_text(const std::string_view text) {
+    [[nodiscard]] InternedText intern_text(const std::string_view text)
+    {
         return sema::intern_text(this->c_names, text);
     }
 
-    [[nodiscard]] std::string_view c_name_text(const IdentId id) const noexcept {
+    [[nodiscard]] std::string_view c_name_text(const IdentId id) const noexcept
+    {
         return this->c_names.text(id);
     }
 
@@ -424,26 +425,14 @@ public:
     [[nodiscard]] FunctionSignature make_function_signature() const;
     [[nodiscard]] StructInfo make_struct_info() const;
     [[nodiscard]] EnumCaseInfo make_enum_case_info() const;
-    [[nodiscard]] GenericSideTableLayout make_generic_side_table_layout(
-        GenericNodeSpan expr,
-        GenericNodeSpan pattern,
-        GenericNodeSpan type,
-        GenericNodeSpan stmt,
-        std::span<const base::u32> expr_ids,
-        std::span<const base::u32> pattern_ids,
-        std::span<const base::u32> type_ids,
-        std::span<const base::u32> stmt_ids
-    ) const;
-    [[nodiscard]] base::usize append_generic_side_table_layout(
-        GenericNodeSpan expr,
-        GenericNodeSpan pattern,
-        GenericNodeSpan type,
-        GenericNodeSpan stmt,
-        std::span<const base::u32> expr_ids,
-        std::span<const base::u32> pattern_ids,
-        std::span<const base::u32> type_ids,
-        std::span<const base::u32> stmt_ids
-    );
+    [[nodiscard]] GenericSideTableLayout make_generic_side_table_layout(GenericNodeSpan expr, GenericNodeSpan pattern,
+        GenericNodeSpan type, GenericNodeSpan stmt, std::span<const base::u32> expr_ids,
+        std::span<const base::u32> pattern_ids, std::span<const base::u32> type_ids,
+        std::span<const base::u32> stmt_ids) const;
+    [[nodiscard]] base::usize append_generic_side_table_layout(GenericNodeSpan expr, GenericNodeSpan pattern,
+        GenericNodeSpan type, GenericNodeSpan stmt, std::span<const base::u32> expr_ids,
+        std::span<const base::u32> pattern_ids, std::span<const base::u32> type_ids,
+        std::span<const base::u32> stmt_ids);
     [[nodiscard]] const GenericSideTableLayout* generic_side_table_layout(base::usize index) const noexcept;
     [[nodiscard]] FunctionSignature clone_function_signature(const FunctionSignature& other);
     [[nodiscard]] StructInfo clone_struct_info(const StructInfo& other);
@@ -452,13 +441,8 @@ public:
     [[nodiscard]] GenericFunctionInstanceInfo clone_generic_function_instance(const GenericFunctionInstanceInfo& other);
     void prepare_analysis_only_storage(base::usize expr_count);
     void release_analysis_only_storage();
-    void reserve_side_table_storage(
-        base::usize expr_count,
-        base::usize pattern_count,
-        base::usize type_count,
-        base::usize stmt_count,
-        base::usize item_count
-    ) const;
+    void reserve_side_table_storage(base::usize expr_count, base::usize pattern_count, base::usize type_count,
+        base::usize stmt_count, base::usize item_count) const;
 
     [[nodiscard]] base::usize arena_bytes() const noexcept;
     [[nodiscard]] base::usize arena_blocks() const noexcept;

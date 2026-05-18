@@ -1,6 +1,5 @@
-#include <aurex/driver/file_cache.hpp>
-
 #include <aurex/driver/driver_messages.hpp>
+#include <aurex/driver/file_cache.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -18,24 +17,27 @@ namespace {
 struct FileCacheKey {
     std::filesystem::path path;
 
-    [[nodiscard]] bool operator==(const FileCacheKey& other) const noexcept {
+    [[nodiscard]] bool operator==(const FileCacheKey& other) const noexcept
+    {
         return path == other.path;
     }
 };
 
 struct FileCacheKeyHash {
-    [[nodiscard]] std::size_t operator()(const FileCacheKey& key) const noexcept {
+    [[nodiscard]] std::size_t operator()(const FileCacheKey& key) const noexcept
+    {
         return std::filesystem::hash_value(key.path);
     }
 };
 
 struct FileCacheEntry {
-    std::filesystem::file_time_type modified {};
+    std::filesystem::file_time_type modified{};
     std::uintmax_t size = 0;
     std::string text;
 };
 
-[[nodiscard]] std::filesystem::path cache_path_key(const std::filesystem::path& path) {
+[[nodiscard]] std::filesystem::path cache_path_key(const std::filesystem::path& path)
+{
     std::error_code error;
     std::filesystem::path canonical = std::filesystem::weakly_canonical(path, error);
     if (!error) {
@@ -44,7 +46,8 @@ struct FileCacheEntry {
     return std::filesystem::absolute(path);
 }
 
-[[nodiscard]] base::Result<std::string> read_text_file_uncached(const std::filesystem::path& path) {
+[[nodiscard]] base::Result<std::string> read_text_file_uncached(const std::filesystem::path& path)
+{
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         return base::Result<std::string>::fail({base::ErrorCode::io_error, std::string(DRIVER_INPUT_OPEN_FAILED)});
@@ -58,7 +61,8 @@ struct FileCacheEntry {
         if (!text.empty()) {
             input.read(text.data(), static_cast<std::streamsize>(text.size()));
             if (!input) {
-                return base::Result<std::string>::fail({base::ErrorCode::io_error, std::string(DRIVER_INPUT_READ_FAILED)});
+                return base::Result<std::string>::fail(
+                    {base::ErrorCode::io_error, std::string(DRIVER_INPUT_READ_FAILED)});
             }
         }
         return base::Result<std::string>::ok(std::move(text));
@@ -74,7 +78,8 @@ std::unordered_map<FileCacheKey, FileCacheEntry, FileCacheKeyHash> file_cache;
 
 } // namespace
 
-base::Result<std::string> read_text_file(const std::filesystem::path& path) {
+base::Result<std::string> read_text_file(const std::filesystem::path& path)
+{
     std::error_code size_error;
     std::error_code modified_error;
     const std::filesystem::path key_path = cache_path_key(path);
@@ -84,12 +89,11 @@ base::Result<std::string> read_text_file(const std::filesystem::path& path) {
         return read_text_file_uncached(path);
     }
 
-    const FileCacheKey key {key_path};
+    const FileCacheKey key{key_path};
     {
         std::lock_guard lock(file_cache_mutex);
-        if (const auto found = file_cache.find(key); found != file_cache.end() &&
-            found->second.size == size &&
-            found->second.modified == modified) {
+        if (const auto found = file_cache.find(key);
+            found != file_cache.end() && found->second.size == size && found->second.modified == modified) {
             return base::Result<std::string>::ok(found->second.text);
         }
     }
@@ -102,7 +106,7 @@ base::Result<std::string> read_text_file(const std::filesystem::path& path) {
     std::string text = read_result.take_value();
     {
         std::lock_guard lock(file_cache_mutex);
-        file_cache[key] = FileCacheEntry {
+        file_cache[key] = FileCacheEntry{
             modified,
             size,
             text,
@@ -111,7 +115,8 @@ base::Result<std::string> read_text_file(const std::filesystem::path& path) {
     return base::Result<std::string>::ok(std::move(text));
 }
 
-void clear_file_cache() {
+void clear_file_cache()
+{
     std::lock_guard lock(file_cache_mutex);
     file_cache.clear();
 }

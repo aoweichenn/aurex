@@ -1,8 +1,7 @@
-#include <aurex/parse/parser_primary_expr_part.hpp>
-
 #include <aurex/parse/parser_builtin_expr_part.hpp>
 #include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/parser_name_expr_part.hpp>
+#include <aurex/parse/parser_primary_expr_part.hpp>
 #include <aurex/parse/recovery.hpp>
 
 #include <optional>
@@ -64,7 +63,8 @@ constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
     },
 };
 
-[[nodiscard]] const BuiltinExprSyntax* builtin_expr_for(const TokenKind kind) noexcept {
+[[nodiscard]] const BuiltinExprSyntax* builtin_expr_for(const TokenKind kind) noexcept
+{
     for (const BuiltinExprSyntax& builtin : PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX) {
         if (builtin.token == kind) {
             return &builtin;
@@ -73,33 +73,34 @@ constexpr BuiltinExprSyntax PARSER_PRIMARY_BUILTIN_EXPR_SYNTAX[] = {
     return nullptr;
 }
 
-[[nodiscard]] std::optional<TokenKind> closing_delimiter_for(const TokenKind kind) noexcept {
+[[nodiscard]] std::optional<TokenKind> closing_delimiter_for(const TokenKind kind) noexcept
+{
     switch (kind) {
-    case TokenKind::l_paren:
-        return TokenKind::r_paren;
-    case TokenKind::l_bracket:
-        return TokenKind::r_bracket;
-    case TokenKind::l_brace:
-        return TokenKind::r_brace;
-    default:
-        return std::nullopt;
+        case TokenKind::l_paren:
+            return TokenKind::r_paren;
+        case TokenKind::l_bracket:
+            return TokenKind::r_bracket;
+        case TokenKind::l_brace:
+            return TokenKind::r_brace;
+        default:
+            return std::nullopt;
     }
 }
 
-[[nodiscard]] bool token_is_closing_delimiter(const TokenKind kind) noexcept {
-    return kind == TokenKind::r_paren ||
-           kind == TokenKind::r_bracket ||
-           kind == TokenKind::r_brace;
+[[nodiscard]] bool token_is_closing_delimiter(const TokenKind kind) noexcept
+{
+    return kind == TokenKind::r_paren || kind == TokenKind::r_bracket || kind == TokenKind::r_brace;
 }
 
 class ExpressionNestingGuard final {
 public:
-    explicit ExpressionNestingGuard(ParseSession& session) noexcept
-        : session_(&session) {
+    explicit ExpressionNestingGuard(ParseSession& session) noexcept : session_(&session)
+    {
         ++this->session_->expression_nesting_depth;
     }
 
-    ~ExpressionNestingGuard() noexcept {
+    ~ExpressionNestingGuard() noexcept
+    {
         --this->session_->expression_nesting_depth;
     }
 
@@ -114,7 +115,8 @@ private:
 
 } // namespace
 
-syntax::ExprId PrimaryExprParser::parse_primary(const ExprContext context) {
+syntax::ExprId PrimaryExprParser::parse_primary(const ExprContext context)
+{
     if (this->check(TokenKind::identifier)) {
         return NameExprParser(this->parser_).parse_name_or_struct_literal(context);
     }
@@ -169,7 +171,8 @@ syntax::ExprId PrimaryExprParser::parse_primary(const ExprContext context) {
     return this->make_invalid_expr();
 }
 
-syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context) {
+syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context)
+{
     const BuiltinExprSyntax* builtin = builtin_expr_for(this->peek().kind);
     if (builtin == nullptr) {
         return syntax::INVALID_EXPR_ID;
@@ -178,27 +181,28 @@ syntax::ExprId PrimaryExprParser::parse_builtin_expr(const ExprContext context) 
     this->advance();
     BuiltinExprParser parser(this->parser_);
     switch (builtin->shape) {
-    case BuiltinExprShape::CAST:
-        return parser.parse_cast(builtin->expr_kind, context);
-    case BuiltinExprShape::TYPE:
-        return parser.parse_type_builtin(builtin->expr_kind);
-    case BuiltinExprShape::PTRADDR:
-        return parser.parse_ptraddr(context);
-    case BuiltinExprShape::PTRAT:
-        return parser.parse_ptrat(context);
-    case BuiltinExprShape::SLICE_UNARY:
-        return parser.parse_slice_unary(builtin->expr_kind, context);
-    case BuiltinExprShape::STR_UNARY:
-        return parser.parse_str_unary(context);
-    case BuiltinExprShape::STR_SLICE_UNARY:
-        return parser.parse_str_slice_unary(builtin->expr_kind, context);
-    case BuiltinExprShape::STRRAW:
-        return parser.parse_strraw(context);
+        case BuiltinExprShape::CAST:
+            return parser.parse_cast(builtin->expr_kind, context);
+        case BuiltinExprShape::TYPE:
+            return parser.parse_type_builtin(builtin->expr_kind);
+        case BuiltinExprShape::PTRADDR:
+            return parser.parse_ptraddr(context);
+        case BuiltinExprShape::PTRAT:
+            return parser.parse_ptrat(context);
+        case BuiltinExprShape::SLICE_UNARY:
+            return parser.parse_slice_unary(builtin->expr_kind, context);
+        case BuiltinExprShape::STR_UNARY:
+            return parser.parse_str_unary(context);
+        case BuiltinExprShape::STR_SLICE_UNARY:
+            return parser.parse_str_slice_unary(builtin->expr_kind, context);
+        case BuiltinExprShape::STRRAW:
+            return parser.parse_strraw(context);
     }
     return syntax::INVALID_EXPR_ID;
 }
 
-syntax::ExprId PrimaryExprParser::parse_unsafe_block_expr(const ExprContext context) {
+syntax::ExprId PrimaryExprParser::parse_unsafe_block_expr(const ExprContext context)
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_unsafe, std::string(PARSER_EXPECT_UNSAFE_KEYWORD));
     if (!this->check(TokenKind::l_brace)) {
         this->report_here(std::string(PARSER_EXPECT_UNSAFE_BLOCK));
@@ -206,16 +210,14 @@ syntax::ExprId PrimaryExprParser::parse_unsafe_block_expr(const ExprContext cont
     const syntax::ExprId block = this->parse_block_expr(context);
     if (syntax::is_valid(block) && block.value < this->session_.module.exprs.size()) {
         const base::SourceRange range = this->merge(begin.range, this->session_.module.exprs.range(block.value));
-        static_cast<void>(this->session_.module.exprs.retag_block_expr(
-            block.value,
-            syntax::ExprKind::unsafe_block,
-            range
-        ));
+        static_cast<void>(
+            this->session_.module.exprs.retag_block_expr(block.value, syntax::ExprKind::unsafe_block, range));
     }
     return block;
 }
 
-syntax::ExprId PrimaryExprParser::parse_array_literal(const ExprContext) {
+syntax::ExprId PrimaryExprParser::parse_array_literal(const ExprContext)
+{
     const syntax::Token& begin = this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_ARRAY_LITERAL_START));
     syntax::AstArenaVector<syntax::ExprId> elements = this->session_.module.make_expr_list<syntax::ExprId>();
     syntax::ExprId repeat_value = syntax::INVALID_EXPR_ID;
@@ -245,14 +247,11 @@ syntax::ExprId PrimaryExprParser::parse_array_literal(const ExprContext) {
     const syntax::Token& end = this->expect_array_literal_end(begin);
     this->reset_panic();
     return this->session_.module.push_array_expr(
-        this->merge(begin.range, end.range),
-        std::move(elements),
-        repeat_value,
-        repeat_count
-    );
+        this->merge(begin.range, end.range), std::move(elements), repeat_value, repeat_count);
 }
 
-bool PrimaryExprParser::recover_array_literal_separator() {
+bool PrimaryExprParser::recover_array_literal_separator()
+{
     if (this->check(TokenKind::r_bracket)) {
         return false;
     }
@@ -273,16 +272,14 @@ bool PrimaryExprParser::recover_array_literal_separator() {
     return false;
 }
 
-const syntax::Token& PrimaryExprParser::expect_array_literal_end(const syntax::Token& opening) {
+const syntax::Token& PrimaryExprParser::expect_array_literal_end(const syntax::Token& opening)
+{
     return this->expect_recovered_after(
-        TokenKind::r_bracket,
-        std::string(PARSER_EXPECT_ARRAY_LITERAL_END),
-        RecoveryContext::array_literal,
-        opening
-    );
+        TokenKind::r_bracket, std::string(PARSER_EXPECT_ARRAY_LITERAL_END), RecoveryContext::array_literal, opening);
 }
 
-syntax::ExprId PrimaryExprParser::parse_tuple_or_grouped_expr(const ExprContext context) {
+syntax::ExprId PrimaryExprParser::parse_tuple_or_grouped_expr(const ExprContext context)
+{
     const syntax::Token& begin = this->expect(TokenKind::l_paren, std::string(PARSER_EXPECT_GROUPED_EXPR_END));
     if (this->session_.expression_nesting_depth >= PARSER_MAX_EXPRESSION_NESTING_DEPTH) {
         this->report_at(begin, std::string(PARSER_EXPRESSION_NESTING_LIMIT));
@@ -318,7 +315,8 @@ syntax::ExprId PrimaryExprParser::parse_tuple_or_grouped_expr(const ExprContext 
     return this->session_.module.push_tuple_expr(this->merge(begin.range, end.range), std::move(elements));
 }
 
-bool PrimaryExprParser::recover_tuple_literal_separator() {
+bool PrimaryExprParser::recover_tuple_literal_separator()
+{
     if (this->check(TokenKind::r_paren)) {
         return false;
     }
@@ -339,25 +337,20 @@ bool PrimaryExprParser::recover_tuple_literal_separator() {
     return false;
 }
 
-const syntax::Token& PrimaryExprParser::expect_tuple_literal_end(const syntax::Token& opening) {
+const syntax::Token& PrimaryExprParser::expect_tuple_literal_end(const syntax::Token& opening)
+{
     return this->expect_recovered_after(
-        TokenKind::r_paren,
-        std::string(PARSER_EXPECT_TUPLE_LITERAL_END),
-        RecoveryContext::grouped_expression,
-        opening
-    );
+        TokenKind::r_paren, std::string(PARSER_EXPECT_TUPLE_LITERAL_END), RecoveryContext::grouped_expression, opening);
 }
 
-void PrimaryExprParser::expect_grouped_expression_end(const syntax::Token& opening) {
+void PrimaryExprParser::expect_grouped_expression_end(const syntax::Token& opening)
+{
     this->expect_recovered_after(
-        TokenKind::r_paren,
-        std::string(PARSER_EXPECT_GROUPED_EXPR_END),
-        RecoveryContext::grouped_expression,
-        opening
-    );
+        TokenKind::r_paren, std::string(PARSER_EXPECT_GROUPED_EXPR_END), RecoveryContext::grouped_expression, opening);
 }
 
-void PrimaryExprParser::skip_grouped_expression_remainder() {
+void PrimaryExprParser::skip_grouped_expression_remainder()
+{
     std::vector<TokenKind> expected_closers;
     expected_closers.reserve(PARSER_GROUPED_RECOVERY_STACK_INITIAL_CAPACITY);
     expected_closers.push_back(TokenKind::r_paren);
@@ -392,7 +385,8 @@ syntax::ExprId PrimaryExprParser::parse_literal(const syntax::ExprKind kind) con
     return this->session_.module.push_literal_expr(kind, token.range, token.text());
 }
 
-syntax::ExprId PrimaryExprParser::make_invalid_expr() {
+syntax::ExprId PrimaryExprParser::make_invalid_expr()
+{
     const base::SourceRange range = this->peek().range;
     if (!this->is_eof()) {
         this->advance();

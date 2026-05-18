@@ -21,50 +21,54 @@ namespace aurex::test {
 namespace {
 
 using ir::AbiCallConv;
+using ir::add_block;
+using ir::add_function;
 using ir::BinaryOp;
 using ir::BlockId;
 using ir::Function;
 using ir::FunctionId;
+using ir::INVALID_BLOCK_ID;
+using ir::INVALID_FUNCTION_ID;
+using ir::INVALID_VALUE_ID;
+using ir::is_valid;
 using ir::Linkage;
-using ir::add_function;
 using ir::Terminator;
 using ir::TerminatorKind;
 using ir::Value;
 using ir::ValueId;
 using ir::ValueKind;
-using ir::add_block;
 using ir::detail::Lowerer;
-using ir::INVALID_BLOCK_ID;
-using ir::INVALID_FUNCTION_ID;
-using ir::INVALID_VALUE_ID;
-using ir::is_valid;
 using sema::BuiltinType;
 using sema::CheckedModule;
 using sema::EnumCaseInfo;
+using sema::INVALID_TYPE_HANDLE;
 using sema::PointerMutability;
 using sema::TypeHandle;
-using sema::INVALID_TYPE_HANDLE;
 using syntax::ExprId;
 using syntax::ExprKind;
 using syntax::StmtId;
 using syntax::TypeId;
 
-[[nodiscard]] ExprId push_name(syntax::AstModule& ast, const std::string_view text) {
+[[nodiscard]] ExprId push_name(syntax::AstModule& ast, const std::string_view text)
+{
     syntax::NameExprPayload payload;
     payload.text = text;
     payload.text_id = ast.intern_identifier(text);
     return ast.push_name_expr({}, std::move(payload));
 }
 
-[[nodiscard]] ExprId push_integer(syntax::AstModule& ast, const std::string_view text = "1") {
+[[nodiscard]] ExprId push_integer(syntax::AstModule& ast, const std::string_view text = "1")
+{
     return ast.push_literal_expr(ExprKind::integer_literal, {}, text);
 }
 
-[[nodiscard]] ExprId push_invalid_expr(syntax::AstModule& ast) {
+[[nodiscard]] ExprId push_invalid_expr(syntax::AstModule& ast)
+{
     return ast.push_invalid_expr({});
 }
 
-void set_expr_type(CheckedModule& checked, const ExprId expr, const TypeHandle type) {
+void set_expr_type(CheckedModule& checked, const ExprId expr, const TypeHandle type)
+{
     if (checked.expr_types.size() <= expr.value) {
         checked.expr_types.resize(expr.value + 1, INVALID_TYPE_HANDLE);
     }
@@ -75,11 +79,8 @@ void set_expr_type(CheckedModule& checked, const ExprId expr, const TypeHandle t
 }
 
 [[nodiscard]] Value typed_value(
-    ir::Module& module,
-    const ValueKind kind,
-    const TypeHandle type,
-    const std::string_view text = {}
-) {
+    ir::Module& module, const ValueKind kind, const TypeHandle type, const std::string_view text = {})
+{
     Value value = module.make_value();
     value.kind = kind;
     value.type = type;
@@ -91,7 +92,8 @@ void set_expr_type(CheckedModule& checked, const ExprId expr, const TypeHandle t
 
 } // namespace
 
-TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
+TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions)
+{
     syntax::AstModule ast;
     CheckedModule checked;
 
@@ -113,7 +115,7 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
     none_case.enum_name = checked.intern_text("OptionI32");
     none_case.case_name = checked.intern_text("None");
     none_case.case_name_id = none_case.name_id;
-    checked.enum_cases.emplace(sema::ModuleLookupKey {0, none_case.name_id}, none_case);
+    checked.enum_cases.emplace(sema::ModuleLookupKey{0, none_case.name_id}, none_case);
 
     const ExprId missing_name = push_name(ast, "missing");
     const ExprId none_name = push_name(ast, "None");
@@ -129,11 +131,11 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
     Lowerer lowerer(ast, checked);
 
     EXPECT_FALSE(sema::is_valid(lowerer.expr_type(syntax::INVALID_EXPR_ID)));
-    EXPECT_FALSE(sema::is_valid(lowerer.expr_type(ExprId {999})));
+    EXPECT_FALSE(sema::is_valid(lowerer.expr_type(ExprId{999})));
     EXPECT_FALSE(sema::is_valid(lowerer.syntax_type(syntax::INVALID_TYPE_ID)));
-    EXPECT_FALSE(sema::is_valid(lowerer.syntax_type(TypeId {999})));
+    EXPECT_FALSE(sema::is_valid(lowerer.syntax_type(TypeId{999})));
     EXPECT_FALSE(sema::is_valid(lowerer.stmt_local_type(syntax::INVALID_STMT_ID)));
-    EXPECT_FALSE(sema::is_valid(lowerer.stmt_local_type(StmtId {999})));
+    EXPECT_FALSE(sema::is_valid(lowerer.stmt_local_type(StmtId{999})));
 
     EXPECT_EQ(lowerer.lower_expr(syntax::INVALID_EXPR_ID).value, INVALID_VALUE_ID.value);
     EXPECT_EQ(lowerer.lower_expr(invalid_expr).value, INVALID_VALUE_ID.value);
@@ -160,11 +162,12 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
     EXPECT_EQ(lowerer.module_.text(lowerer.value_symbol(missing_name, lowerer.expr_view(missing_name))), "missing");
 
     EXPECT_FALSE(sema::is_valid(lowerer.call_param_type(INVALID_FUNCTION_ID, 0)));
-    EXPECT_FALSE(sema::is_valid(lowerer.call_param_type(FunctionId {999}, 0)));
+    EXPECT_FALSE(sema::is_valid(lowerer.call_param_type(FunctionId{999}, 0)));
     EXPECT_FALSE(sema::is_valid(lowerer.variadic_argument_type(INVALID_TYPE_HANDLE)));
 
     EXPECT_FALSE(sema::is_valid(lowerer.local_load_type(INVALID_VALUE_ID)));
-    const ValueId str_value = lowerer.append_value(typed_value(lowerer.module_, ValueKind::string_literal, str, "text"));
+    const ValueId str_value =
+        lowerer.append_value(typed_value(lowerer.module_, ValueKind::string_literal, str, "text"));
     ASSERT_TRUE(is_valid(str_value));
     EXPECT_FALSE(sema::is_valid(lowerer.local_load_type(str_value)));
 
@@ -181,7 +184,8 @@ TEST(CoreUnit, LowerAstWhiteBoxExpressionFallbacksAndCoercions) {
     EXPECT_EQ(lowerer.coerce_value(const_pointer, i32).value, const_pointer.value);
 }
 
-TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
+TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators)
+{
     syntax::AstModule ast;
     CheckedModule checked;
 
@@ -193,14 +197,12 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
     const ExprId integer = push_integer(ast);
     const ExprId condition_lhs = push_integer(ast, "0");
     const ExprId condition_rhs = push_integer(ast, "1");
-    const ExprId logical = ast.push_binary_expr(
-        {},
-        syntax::BinaryExprPayload {
+    const ExprId logical = ast.push_binary_expr({},
+        syntax::BinaryExprPayload{
             syntax::BinaryOp::logical_and,
             condition_lhs,
             condition_rhs,
-        }
-    );
+        });
 
     set_expr_type(checked, missing_place, i32);
     set_expr_type(checked, integer, i32);
@@ -211,7 +213,7 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
     Lowerer lowerer(ast, checked);
 
     EXPECT_EQ(lowerer.lower_place_address(syntax::INVALID_EXPR_ID).address.value, INVALID_VALUE_ID.value);
-    EXPECT_EQ(lowerer.lower_place_address(ExprId {999}).address.value, INVALID_VALUE_ID.value);
+    EXPECT_EQ(lowerer.lower_place_address(ExprId{999}).address.value, INVALID_VALUE_ID.value);
     EXPECT_EQ(lowerer.lower_place_address(missing_place).address.value, INVALID_VALUE_ID.value);
     EXPECT_EQ(lowerer.lower_place_address(integer).address.value, INVALID_VALUE_ID.value);
 
@@ -219,7 +221,7 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
     slot_value.kind = ValueKind::alloca;
     slot_value.type = ptr_i32;
     const ValueId slot_id = lowerer.append_value(slot_value);
-    lowerer.locals_.emplace(ast.find_identifier("slot"), ir::detail::LocalBinding {slot_id, true});
+    lowerer.locals_.emplace(ast.find_identifier("slot"), ir::detail::LocalBinding{slot_id, true});
     const ir::detail::PlaceAddress slot_address = lowerer.lower_place_address(missing_place);
     EXPECT_EQ(slot_address.address.value, slot_id.value);
     EXPECT_TRUE(slot_address.is_mutable);
@@ -236,8 +238,8 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
 
     Terminator ret;
     ret.kind = TerminatorKind::return_;
-    lowerer.set_terminator(BlockId {999}, ret);
-    EXPECT_TRUE(lowerer.has_terminator(BlockId {999}));
+    lowerer.set_terminator(BlockId{999}, ret);
+    EXPECT_TRUE(lowerer.has_terminator(BlockId{999}));
 
     lowerer.set_terminator(entry, ret);
     lowerer.append_branch_if_open(exit);
@@ -259,7 +261,8 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators) {
     EXPECT_EQ(lowerer.current_function_->blocks[entry.value].terminator.kind, TerminatorKind::cond_branch);
 }
 
-TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
+TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins)
+{
     syntax::AstModule ast;
     CheckedModule checked;
 
@@ -272,37 +275,20 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
 
     const ExprId str_value_id = ast.push_literal_expr(ExprKind::string_literal, {}, "\"bytes\"");
     const ExprId length_value_id = ast.push_literal_expr(ExprKind::integer_literal, {}, "5");
-    const ExprId str_data_id = ast.push_cast_like_expr(
-        ExprKind::str_data,
-        {},
-        syntax::CastExprPayload {syntax::INVALID_TYPE_ID, str_value_id}
-    );
+    const ExprId str_data_id =
+        ast.push_cast_like_expr(ExprKind::str_data, {}, syntax::CastExprPayload{syntax::INVALID_TYPE_ID, str_value_id});
     const ExprId str_byte_len_id = ast.push_cast_like_expr(
-        ExprKind::str_byte_len,
-        {},
-        syntax::CastExprPayload {syntax::INVALID_TYPE_ID, str_value_id}
-    );
-    const ExprId str_from_bytes_id = ast.push_call_expr(
-        ExprKind::str_from_bytes_unchecked,
-        {},
-        syntax::CallExprPayload {syntax::INVALID_EXPR_ID, {str_data_id, length_value_id}}
-    );
-    const ExprId str_slice_id = ast.push_slice_expr(
-        {},
-        syntax::SliceExprPayload {str_value_id, length_value_id, length_value_id}
-    );
-    const ExprId str_suffix_id = ast.push_slice_expr(
-        {},
-        syntax::SliceExprPayload {str_value_id, length_value_id, syntax::INVALID_EXPR_ID}
-    );
+        ExprKind::str_byte_len, {}, syntax::CastExprPayload{syntax::INVALID_TYPE_ID, str_value_id});
+    const ExprId str_from_bytes_id = ast.push_call_expr(ExprKind::str_from_bytes_unchecked, {},
+        syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {str_data_id, length_value_id}});
+    const ExprId str_slice_id =
+        ast.push_slice_expr({}, syntax::SliceExprPayload{str_value_id, length_value_id, length_value_id});
+    const ExprId str_suffix_id =
+        ast.push_slice_expr({}, syntax::SliceExprPayload{str_value_id, length_value_id, syntax::INVALID_EXPR_ID});
     const ExprId malformed_str_from_bytes_id = ast.push_call_expr(
-        ExprKind::str_from_bytes_unchecked,
-        {},
-        syntax::CallExprPayload {syntax::INVALID_EXPR_ID, {str_data_id}}
-    );
+        ExprKind::str_from_bytes_unchecked, {}, syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {str_data_id}});
     const ExprId raw_literal_id = ast.push_literal_expr(ExprKind::raw_string_literal, {}, "r\"C:\\tmp\\a\"");
-    const ExprId byte_string_literal_id =
-        ast.push_literal_expr(ExprKind::byte_string_literal, {}, "b\"a\\n\\0\"");
+    const ExprId byte_string_literal_id = ast.push_literal_expr(ExprKind::byte_string_literal, {}, "b\"a\\n\\0\"");
     const ExprId char_literal_id = ast.push_literal_expr(ExprKind::char_literal, {}, "'\\u{03BB}'");
 
     set_expr_type(checked, str_value_id, str);
@@ -353,7 +339,8 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins) {
     EXPECT_EQ(lowerer.module_.values[char_value.value].kind, ValueKind::char_literal);
 }
 
-TEST(CoreUnit, LowerAstWhiteBoxDeclarationFallbacks) {
+TEST(CoreUnit, LowerAstWhiteBoxDeclarationFallbacks)
+{
     syntax::AstModule ast;
     CheckedModule checked;
 
@@ -368,7 +355,7 @@ TEST(CoreUnit, LowerAstWhiteBoxDeclarationFallbacks) {
     exported.return_type = return_type;
     exported.is_export_c = true;
     static_cast<void>(ast.push_item(exported));
-    ast.item_modules[0] = syntax::ModuleId {0};
+    ast.item_modules[0] = syntax::ModuleId{0};
 
     checked.syntax_type_handles.resize(return_type.value + 1, INVALID_TYPE_HANDLE);
     checked.syntax_type_handles[return_type.value] = checked.types.builtin(BuiltinType::i32);
@@ -381,7 +368,8 @@ TEST(CoreUnit, LowerAstWhiteBoxDeclarationFallbacks) {
     EXPECT_EQ(lowerer.module_.text(lowerer.module_.functions[0].symbol), "exported");
     EXPECT_EQ(lowerer.module_.functions[0].linkage, Linkage::export_c);
     EXPECT_EQ(lowerer.module_.functions[0].call_conv, AbiCallConv::c);
-    EXPECT_TRUE(lowerer.module_.types.same(lowerer.module_.functions[0].return_type, checked.syntax_type_handles[return_type.value]));
+    EXPECT_TRUE(lowerer.module_.types.same(
+        lowerer.module_.functions[0].return_type, checked.syntax_type_handles[return_type.value]));
 
     syntax::ItemNode abi_named;
     abi_named.name = "plain";

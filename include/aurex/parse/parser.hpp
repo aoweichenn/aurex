@@ -26,10 +26,7 @@ class Parser final {
 public:
     // Parser depends only on tokens, not on Lexer. This keeps syntax tests and
     // future parser replacements independent from the scanning implementation.
-    Parser(
-        std::span<const syntax::Token> tokens,
-        base::DiagnosticSink& diagnostics
-    );
+    Parser(std::span<const syntax::Token> tokens, base::DiagnosticSink& diagnostics);
 
     [[nodiscard]] base::Result<syntax::AstModule> parse_module();
 
@@ -47,21 +44,10 @@ private:
     [[nodiscard]] bool check_contextual_c_keyword() const noexcept;
     const syntax::Token& expect(syntax::TokenKind kind, std::string message);
     const syntax::Token& expect_contextual_c_keyword(std::string message);
-    const syntax::Token& expect_contextual_c_keyword_recovered(
-        std::string message,
-        RecoveryContext context
-    );
-    const syntax::Token& expect_recovered(
-        syntax::TokenKind kind,
-        std::string message,
-        RecoveryContext context
-    );
+    const syntax::Token& expect_contextual_c_keyword_recovered(std::string message, RecoveryContext context);
+    const syntax::Token& expect_recovered(syntax::TokenKind kind, std::string message, RecoveryContext context);
     const syntax::Token& expect_recovered_after(
-        syntax::TokenKind kind,
-        std::string message,
-        RecoveryContext context,
-        const syntax::Token& opening
-    );
+        syntax::TokenKind kind, std::string message, RecoveryContext context, const syntax::Token& opening);
     void synchronize(RecoveryContext context);
     void report_here(std::string message);
     void report_at(const syntax::Token& token, std::string message);

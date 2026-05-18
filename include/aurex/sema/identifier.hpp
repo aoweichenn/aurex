@@ -30,12 +30,13 @@ using syntax::INVALID_IDENT_ID;
 using syntax::is_valid;
 using syntax::StableHash64;
 
-[[nodiscard]] inline StableFingerprint128 stable_fingerprint(const std::string_view text) noexcept {
+[[nodiscard]] inline StableFingerprint128 stable_fingerprint(const std::string_view text) noexcept
+{
     return query::stable_fingerprint(text);
 }
 
-[[nodiscard]] inline StableFingerprint128 stable_fingerprint(
-    const std::span<const std::string_view> parts) noexcept {
+[[nodiscard]] inline StableFingerprint128 stable_fingerprint(const std::span<const std::string_view> parts) noexcept
+{
     return query::stable_identity_fingerprint(parts);
 }
 
@@ -43,20 +44,20 @@ struct GenericParamIdentity {
     base::u64 value = 0;
 
     [[nodiscard]] friend constexpr bool operator==(
-        GenericParamIdentity lhs,
-        GenericParamIdentity rhs) noexcept = default;
+        GenericParamIdentity lhs, GenericParamIdentity rhs) noexcept = default;
 };
 
-inline constexpr GenericParamIdentity INVALID_GENERIC_PARAM_IDENTITY {};
+inline constexpr GenericParamIdentity INVALID_GENERIC_PARAM_IDENTITY{};
 
-[[nodiscard]] inline constexpr bool is_valid(const GenericParamIdentity identity) noexcept {
+[[nodiscard]] inline constexpr bool is_valid(const GenericParamIdentity identity) noexcept
+{
     return identity.value != 0;
 }
 
-[[nodiscard]] inline GenericParamIdentity generic_param_identity_from_text(
-    const std::string_view text) noexcept {
+[[nodiscard]] inline GenericParamIdentity generic_param_identity_from_text(const std::string_view text) noexcept
+{
     const StableHash64 hash = syntax::stable_hash_text(text);
-    return GenericParamIdentity {hash.value == 0 ? 1 : hash.value};
+    return GenericParamIdentity{hash.value == 0 ? 1 : hash.value};
 }
 
 struct InternedText {
@@ -66,96 +67,114 @@ struct InternedText {
     InternedText() = default;
 
     constexpr InternedText(const IdentId text_id, const IdentifierInterner* const owner) noexcept
-        : id(text_id),
-          interner(owner) {}
+        : id(text_id), interner(owner)
+    {
+    }
 
-    [[nodiscard]] bool empty() const noexcept {
+    [[nodiscard]] bool empty() const noexcept
+    {
         return this->view().empty();
     }
 
-    [[nodiscard]] base::usize size() const noexcept {
+    [[nodiscard]] base::usize size() const noexcept
+    {
         return this->view().size();
     }
 
-    [[nodiscard]] const char* data() const noexcept {
+    [[nodiscard]] const char* data() const noexcept
+    {
         return this->view().data();
     }
 
-    [[nodiscard]] std::string_view view() const noexcept {
-        return this->interner == nullptr ? std::string_view {} : this->interner->text(this->id);
+    [[nodiscard]] std::string_view view() const noexcept
+    {
+        return this->interner == nullptr ? std::string_view{} : this->interner->text(this->id);
     }
 
-    [[nodiscard]] operator std::string_view() const noexcept {
+    [[nodiscard]] operator std::string_view() const noexcept
+    {
         return this->view();
     }
 
-    [[nodiscard]] friend bool operator==(const InternedText lhs, const InternedText rhs) noexcept {
+    [[nodiscard]] friend bool operator==(const InternedText lhs, const InternedText rhs) noexcept
+    {
         if (lhs.interner == rhs.interner) {
             return lhs.id == rhs.id;
         }
         return lhs.view() == rhs.view();
     }
 
-    [[nodiscard]] friend bool operator!=(const InternedText lhs, const InternedText rhs) noexcept {
+    [[nodiscard]] friend bool operator!=(const InternedText lhs, const InternedText rhs) noexcept
+    {
         return !(lhs == rhs);
     }
 
-    [[nodiscard]] friend bool operator==(const InternedText lhs, const std::string_view rhs) noexcept {
+    [[nodiscard]] friend bool operator==(const InternedText lhs, const std::string_view rhs) noexcept
+    {
         return lhs.view() == rhs;
     }
 
-    [[nodiscard]] friend bool operator==(const std::string_view lhs, const InternedText rhs) noexcept {
+    [[nodiscard]] friend bool operator==(const std::string_view lhs, const InternedText rhs) noexcept
+    {
         return lhs == rhs.view();
     }
 
-    [[nodiscard]] friend bool operator==(const InternedText lhs, const char* const rhs) noexcept {
-        return lhs.view() == (rhs == nullptr ? std::string_view {} : std::string_view {rhs});
+    [[nodiscard]] friend bool operator==(const InternedText lhs, const char* const rhs) noexcept
+    {
+        return lhs.view() == (rhs == nullptr ? std::string_view{} : std::string_view{rhs});
     }
 
-    [[nodiscard]] friend bool operator==(const char* const lhs, const InternedText rhs) noexcept {
-        return (lhs == nullptr ? std::string_view {} : std::string_view {lhs}) == rhs.view();
+    [[nodiscard]] friend bool operator==(const char* const lhs, const InternedText rhs) noexcept
+    {
+        return (lhs == nullptr ? std::string_view{} : std::string_view{lhs}) == rhs.view();
     }
 
-    [[nodiscard]] friend bool operator!=(const InternedText lhs, const std::string_view rhs) noexcept {
+    [[nodiscard]] friend bool operator!=(const InternedText lhs, const std::string_view rhs) noexcept
+    {
         return !(lhs == rhs);
     }
 
-    [[nodiscard]] friend bool operator!=(const std::string_view lhs, const InternedText rhs) noexcept {
+    [[nodiscard]] friend bool operator!=(const std::string_view lhs, const InternedText rhs) noexcept
+    {
         return !(lhs == rhs);
     }
 
-    [[nodiscard]] friend bool operator!=(const InternedText lhs, const char* const rhs) noexcept {
+    [[nodiscard]] friend bool operator!=(const InternedText lhs, const char* const rhs) noexcept
+    {
         return !(lhs == rhs);
     }
 
-    [[nodiscard]] friend bool operator!=(const char* const lhs, const InternedText rhs) noexcept {
+    [[nodiscard]] friend bool operator!=(const char* const lhs, const InternedText rhs) noexcept
+    {
         return !(lhs == rhs);
     }
 };
 
-inline std::ostream& operator<<(std::ostream& out, const InternedText text) {
+inline std::ostream& operator<<(std::ostream& out, const InternedText text)
+{
     out << text.view();
     return out;
 }
 
-[[nodiscard]] inline InternedText intern_text(IdentifierInterner& interner, const std::string_view text) {
+[[nodiscard]] inline InternedText intern_text(IdentifierInterner& interner, const std::string_view text)
+{
     if (text.empty()) {
         return {};
     }
     const IdentId id = interner.intern(text);
-    return InternedText {id, &interner};
+    return InternedText{id, &interner};
 }
 
-inline void rebind_interned_text(InternedText& text, const IdentifierInterner& interner) noexcept {
+inline void rebind_interned_text(InternedText& text, const IdentifierInterner& interner) noexcept
+{
     if (is_valid(text.id)) {
         text.interner = &interner;
     }
 }
 
 inline void rebind_interned_text(
-    InternedText& text,
-    const IdentifierInterner* const from,
-    const IdentifierInterner& to) noexcept {
+    InternedText& text, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
+{
     if (is_valid(text.id) && text.interner == from) {
         text.interner = &to;
     }
@@ -165,12 +184,11 @@ struct ModuleLookupKey {
     base::u32 module = SEMA_LOOKUP_INVALID_KEY_PART;
     IdentId name = INVALID_IDENT_ID;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        ModuleLookupKey lhs,
-        ModuleLookupKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(ModuleLookupKey lhs, ModuleLookupKey rhs) noexcept = default;
 };
 
-[[nodiscard]] inline constexpr bool is_valid(const ModuleLookupKey key) noexcept {
+[[nodiscard]] inline constexpr bool is_valid(const ModuleLookupKey key) noexcept
+{
     return key.module != SEMA_LOOKUP_INVALID_KEY_PART && is_valid(key.name);
 }
 
@@ -191,13 +209,13 @@ struct MethodLookupKey {
     base::u32 owner_type = SEMA_LOOKUP_INVALID_KEY_PART;
     IdentId name = INVALID_IDENT_ID;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        MethodLookupKey lhs,
-        MethodLookupKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(MethodLookupKey lhs, MethodLookupKey rhs) noexcept = default;
 };
 
-[[nodiscard]] inline constexpr bool is_valid(const MethodLookupKey key) noexcept {
-    return key.module != SEMA_LOOKUP_INVALID_KEY_PART && key.owner_type != SEMA_LOOKUP_INVALID_KEY_PART && is_valid(key.name);
+[[nodiscard]] inline constexpr bool is_valid(const MethodLookupKey key) noexcept
+{
+    return key.module != SEMA_LOOKUP_INVALID_KEY_PART && key.owner_type != SEMA_LOOKUP_INVALID_KEY_PART
+        && is_valid(key.name);
 }
 
 struct MethodLookupKeyHash {
@@ -209,12 +227,11 @@ struct FunctionLookupKey {
     base::u32 owner_type = SEMA_LOOKUP_INVALID_KEY_PART;
     IdentId name = INVALID_IDENT_ID;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        FunctionLookupKey lhs,
-        FunctionLookupKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(FunctionLookupKey lhs, FunctionLookupKey rhs) noexcept = default;
 };
 
-[[nodiscard]] inline constexpr bool is_valid(const FunctionLookupKey key) noexcept {
+[[nodiscard]] inline constexpr bool is_valid(const FunctionLookupKey key) noexcept
+{
     return key.module != SEMA_LOOKUP_INVALID_KEY_PART && is_valid(key.name);
 }
 
@@ -226,9 +243,7 @@ struct EnumCaseLookupKey {
     base::u32 enum_type = SEMA_LOOKUP_INVALID_KEY_PART;
     IdentId case_name = INVALID_IDENT_ID;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        EnumCaseLookupKey lhs,
-        EnumCaseLookupKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(EnumCaseLookupKey lhs, EnumCaseLookupKey rhs) noexcept = default;
 };
 
 struct EnumCaseLookupKeyHash {

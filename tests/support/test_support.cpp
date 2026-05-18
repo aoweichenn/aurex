@@ -1,14 +1,14 @@
-#include <support/test_support.hpp>
-
 #include <aurex/driver/cli.hpp>
 #include <aurex/driver/cli_llvm.hpp>
 #include <aurex/driver/compiler.hpp>
 
+#include <support/test_support.hpp>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <cerrno>
 #include <cctype>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -18,16 +18,15 @@
 #include <optional>
 #include <sstream>
 #include <stdexcept>
-#include <unordered_map>
-
-#include <unistd.h>
 #include <sys/wait.h>
+#include <unistd.h>
+#include <unordered_map>
 
 namespace aurex::test {
 
 namespace {
 
-std::atomic<std::uint64_t> test_run_counter {0};
+std::atomic<std::uint64_t> test_run_counter{0};
 fs::path current_test_run_root;
 
 struct TestContext {
@@ -48,24 +47,25 @@ struct TestContext {
     std::uint64_t native_output_cache_counter = 0;
 };
 
-TestContext& test_context() {
+TestContext& test_context()
+{
     static TestContext context;
     return context;
 }
 
-std::string sanitize_test_name(const std::string_view name) {
+std::string sanitize_test_name(const std::string_view name)
+{
     std::string result;
     result.reserve(name.size());
     for (const char ch : name) {
-        const bool ok = (ch >= 'a' && ch <= 'z') ||
-                        (ch >= 'A' && ch <= 'Z') ||
-                        (ch >= '0' && ch <= '9');
+        const bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
         result += ok ? ch : '_';
     }
     return result;
 }
 
-fs::path make_test_run_root() {
+fs::path make_test_run_root()
+{
     const ::testing::TestInfo* info = ::testing::UnitTest::GetInstance()->current_test_info();
     std::string test_name = "suite";
     if (info != nullptr) {
@@ -78,66 +78,81 @@ fs::path make_test_run_root() {
 
 } // namespace
 
-fs::path source_root() {
+fs::path source_root()
+{
     return test_context().source_root;
 }
 
-fs::path build_root() {
+fs::path build_root()
+{
     return test_context().build_root;
 }
 
-fs::path work_root() {
+fs::path work_root()
+{
     return test_context().work_root;
 }
 
-fs::path test_run_root() {
+fs::path test_run_root()
+{
     if (current_test_run_root.empty()) {
         current_test_run_root = make_test_run_root();
     }
     return current_test_run_root;
 }
 
-fs::path test_bin_root() {
+fs::path test_bin_root()
+{
     return test_run_root() / "tests";
 }
 
-fs::path tmp_root() {
+fs::path tmp_root()
+{
     return test_run_root() / "tmp";
 }
 
-fs::path aurexc_path() {
+fs::path aurexc_path()
+{
     return test_context().aurexc_path;
 }
 
-fs::path samples_root() {
+fs::path samples_root()
+{
     return test_context().samples_root;
 }
 
-fs::path positive_samples_root() {
+fs::path positive_samples_root()
+{
     return test_context().positive_samples_root;
 }
 
-fs::path negative_samples_root() {
+fs::path negative_samples_root()
+{
     return test_context().negative_samples_root;
 }
 
-fs::path imports_root() {
+fs::path imports_root()
+{
     return test_context().imports_root;
 }
 
-fs::path golden_root() {
+fs::path golden_root()
+{
     return test_context().golden_root;
 }
 
-fs::path positive_sample(const std::string_view area, const std::string_view filename) {
+fs::path positive_sample(const std::string_view area, const std::string_view filename)
+{
     return positive_samples_root() / std::string(area) / std::string(filename);
 }
 
-fs::path negative_sample(const std::string_view area, const std::string_view filename) {
+fs::path negative_sample(const std::string_view area, const std::string_view filename)
+{
     return negative_samples_root() / std::string(area) / std::string(filename);
 }
 
-std::string shell_quote(const std::string_view value) {
+std::string shell_quote(const std::string_view value)
+{
     std::string quoted = "'";
     for (const char ch : value) {
         if (ch == '\'') {
@@ -150,17 +165,20 @@ std::string shell_quote(const std::string_view value) {
     return quoted;
 }
 
-std::string q(const fs::path& path) {
+std::string q(const fs::path& path)
+{
     return shell_quote(path.string());
 }
 
-std::string q(const std::string_view value) {
+std::string q(const std::string_view value)
+{
     return shell_quote(value);
 }
 
 namespace {
 
-[[nodiscard]] int decode_status(const int status) {
+[[nodiscard]] int decode_status(const int status)
+{
     if (WIFEXITED(status)) {
         return WEXITSTATUS(status);
     }
@@ -172,12 +190,13 @@ namespace {
 
 class CompilerOutputCapture final {
 public:
-    CompilerOutputCapture() {
-        std::string path_template =
-            (fs::temp_directory_path() / "aurex_compiler_capture_XXXXXX").string();
+    CompilerOutputCapture()
+    {
+        std::string path_template = (fs::temp_directory_path() / "aurex_compiler_capture_XXXXXX").string();
         capture_fd_ = ::mkstemp(path_template.data());
         if (capture_fd_ < 0) {
-            throw std::runtime_error("failed to create compiler output capture file: " + std::string(std::strerror(errno)));
+            throw std::runtime_error(
+                "failed to create compiler output capture file: " + std::string(std::strerror(errno)));
         }
         capture_path_ = path_template;
 
@@ -206,17 +225,19 @@ public:
     CompilerOutputCapture(const CompilerOutputCapture&) = delete;
     CompilerOutputCapture& operator=(const CompilerOutputCapture&) = delete;
 
-    ~CompilerOutputCapture() {
+    ~CompilerOutputCapture()
+    {
         restore();
         close_open_files();
     }
 
-    [[nodiscard]] std::string finish() {
+    [[nodiscard]] std::string finish()
+    {
         restore();
         std::string output = cxx_output_.str();
         if (capture_fd_ >= 0) {
             static_cast<void>(::lseek(capture_fd_, 0, SEEK_SET));
-            std::array<char, 4096> buffer {};
+            std::array<char, 4096> buffer{};
             ssize_t count = 0;
             while ((count = ::read(capture_fd_, buffer.data(), buffer.size())) > 0) {
                 output.append(buffer.data(), static_cast<std::size_t>(count));
@@ -226,7 +247,8 @@ public:
     }
 
 private:
-    void restore() {
+    void restore()
+    {
         if (!active_) {
             return;
         }
@@ -240,7 +262,8 @@ private:
         active_ = false;
     }
 
-    void restore_file_descriptors() {
+    void restore_file_descriptors()
+    {
         if (stdout_fd_ >= 0) {
             static_cast<void>(::dup2(stdout_fd_, STDOUT_FILENO));
             ::close(stdout_fd_);
@@ -253,7 +276,8 @@ private:
         }
     }
 
-    void close_open_files() {
+    void close_open_files()
+    {
         restore_file_descriptors();
         if (capture_fd_ >= 0) {
             ::close(capture_fd_);
@@ -276,7 +300,8 @@ private:
     bool active_ = false;
 };
 
-[[nodiscard]] std::optional<std::vector<std::string>> split_shell_words(const std::string_view command) {
+[[nodiscard]] std::optional<std::vector<std::string>> split_shell_words(const std::string_view command)
+{
     std::vector<std::string> words;
     std::string current;
     bool in_single_quote = false;
@@ -346,7 +371,8 @@ private:
     return words;
 }
 
-[[nodiscard]] std::optional<CommandResult> try_run_aurexc_command(const std::string& command) {
+[[nodiscard]] std::optional<CommandResult> try_run_aurexc_command(const std::string& command)
+{
     const std::optional<std::vector<std::string>> parsed = split_shell_words(command);
     if (!parsed || parsed->empty() || parsed->front() != aurexc_path().string()) {
         return std::nullopt;
@@ -365,14 +391,14 @@ private:
     return run_compiler(parse_result.take_value().invocation);
 }
 
-[[nodiscard]] bool command_may_need_shell_expansion(const std::string_view command) noexcept {
-    return command.find('*') != std::string_view::npos ||
-           command.find('?') != std::string_view::npos ||
-           command.find('[') != std::string_view::npos ||
-           command.find('~') != std::string_view::npos;
+[[nodiscard]] bool command_may_need_shell_expansion(const std::string_view command) noexcept
+{
+    return command.find('*') != std::string_view::npos || command.find('?') != std::string_view::npos
+        || command.find('[') != std::string_view::npos || command.find('~') != std::string_view::npos;
 }
 
-[[nodiscard]] std::optional<CommandResult> try_run_direct_process_command(const std::string& command) {
+[[nodiscard]] std::optional<CommandResult> try_run_direct_process_command(const std::string& command)
+{
     if (command_may_need_shell_expansion(command)) {
         return std::nullopt;
     }
@@ -389,7 +415,7 @@ private:
 
     int pipe_fds[2] = {-1, -1};
     if (::pipe(pipe_fds) != 0) {
-        return CommandResult {126, "failed to create command output pipe: " + std::string(std::strerror(errno)) + "\n"};
+        return CommandResult{126, "failed to create command output pipe: " + std::string(std::strerror(errno)) + "\n"};
     }
 
     const pid_t pid = ::fork();
@@ -397,13 +423,12 @@ private:
         const std::string message = "failed to fork command: " + std::string(std::strerror(errno)) + "\n";
         ::close(pipe_fds[0]);
         ::close(pipe_fds[1]);
-        return CommandResult {126, message};
+        return CommandResult{126, message};
     }
 
     if (pid == 0) {
         ::close(pipe_fds[0]);
-        if (::dup2(pipe_fds[1], STDOUT_FILENO) < 0 ||
-            ::dup2(pipe_fds[1], STDERR_FILENO) < 0) {
+        if (::dup2(pipe_fds[1], STDOUT_FILENO) < 0 || ::dup2(pipe_fds[1], STDERR_FILENO) < 0) {
             _exit(126);
         }
         ::close(pipe_fds[1]);
@@ -419,7 +444,7 @@ private:
     }
 
     ::close(pipe_fds[1]);
-    std::array<char, 4096> buffer {};
+    std::array<char, 4096> buffer{};
     std::string output;
     while (true) {
         const ssize_t count = ::read(pipe_fds[0], buffer.data(), buffer.size());
@@ -439,24 +464,25 @@ private:
         if (errno == EINTR) {
             continue;
         }
-        return CommandResult {126, output + "failed to wait for command: " + std::string(std::strerror(errno)) + "\n"};
+        return CommandResult{126, output + "failed to wait for command: " + std::string(std::strerror(errno)) + "\n"};
     }
-    return CommandResult {decode_status(status), output};
+    return CommandResult{decode_status(status), output};
 }
 
-[[nodiscard]] bool is_native_emit_kind(const driver::EmitKind emit_kind) noexcept {
-    return emit_kind == driver::EmitKind::assembly ||
-           emit_kind == driver::EmitKind::object ||
-           emit_kind == driver::EmitKind::executable;
+[[nodiscard]] bool is_native_emit_kind(const driver::EmitKind emit_kind) noexcept
+{
+    return emit_kind == driver::EmitKind::assembly || emit_kind == driver::EmitKind::object
+        || emit_kind == driver::EmitKind::executable;
 }
 
-[[nodiscard]] bool compiler_error_already_printed_diagnostics(const base::ErrorCode code) noexcept {
-    return code == base::ErrorCode::lex_error ||
-           code == base::ErrorCode::parse_error ||
-           code == base::ErrorCode::sema_error;
+[[nodiscard]] bool compiler_error_already_printed_diagnostics(const base::ErrorCode code) noexcept
+{
+    return code == base::ErrorCode::lex_error || code == base::ErrorCode::parse_error
+        || code == base::ErrorCode::sema_error;
 }
 
-[[nodiscard]] fs::path canonical_or_absolute(const fs::path& path) {
+[[nodiscard]] fs::path canonical_or_absolute(const fs::path& path)
+{
     std::error_code canonical_error;
     fs::path canonical = fs::weakly_canonical(path, canonical_error);
     if (!canonical_error) {
@@ -468,7 +494,8 @@ private:
     return absolute_error ? path : absolute;
 }
 
-[[nodiscard]] bool append_file_identity(std::string& key, const fs::path& path) {
+[[nodiscard]] bool append_file_identity(std::string& key, const fs::path& path)
+{
     const fs::path resolved = canonical_or_absolute(path);
     key += resolved.string();
     key.push_back('\n');
@@ -489,7 +516,8 @@ private:
     return true;
 }
 
-void append_path_list_identity(std::string& key, const std::vector<fs::path>& paths) {
+void append_path_list_identity(std::string& key, const std::vector<fs::path>& paths)
+{
     key += "paths=";
     key += std::to_string(paths.size());
     key.push_back('\n');
@@ -499,7 +527,8 @@ void append_path_list_identity(std::string& key, const std::vector<fs::path>& pa
     }
 }
 
-[[nodiscard]] std::optional<std::string> compiler_cache_key(const driver::CompilerInvocation& invocation) {
+[[nodiscard]] std::optional<std::string> compiler_cache_key(const driver::CompilerInvocation& invocation)
+{
     if (!invocation.incremental_cache_path.empty()) {
         return std::nullopt;
     }
@@ -540,22 +569,24 @@ void append_path_list_identity(std::string& key, const std::vector<fs::path>& pa
 }
 
 [[nodiscard]] std::optional<CommandResult> try_restore_cached_compiler_result(
-    const driver::CompilerInvocation& invocation,
-    const std::string& cache_key
-) {
+    const driver::CompilerInvocation& invocation, const std::string& cache_key)
+{
     if (is_native_emit_kind(invocation.emit_kind)) {
         return std::nullopt;
     }
 
     TestContext& context = test_context();
     std::lock_guard lock(context.compiler_cache_mutex);
-    if (const auto found = context.compiler_result_cache.find(cache_key); found != context.compiler_result_cache.end()) {
+    if (const auto found = context.compiler_result_cache.find(cache_key);
+        found != context.compiler_result_cache.end()) {
         return found->second;
     }
     return std::nullopt;
 }
 
-[[nodiscard]] bool copy_file_to_output(const fs::path& source, const fs::path& destination, const driver::EmitKind emit_kind) {
+[[nodiscard]] bool copy_file_to_output(
+    const fs::path& source, const fs::path& destination, const driver::EmitKind emit_kind)
+{
     if (destination.empty()) {
         return false;
     }
@@ -572,12 +603,8 @@ void append_path_list_identity(std::string& key, const std::vector<fs::path>& pa
         return false;
     }
     if (emit_kind == driver::EmitKind::executable) {
-        fs::permissions(
-            destination,
-            fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
-            fs::perm_options::add,
-            error
-        );
+        fs::permissions(destination, fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
+            fs::perm_options::add, error);
         if (error) {
             return false;
         }
@@ -586,9 +613,8 @@ void append_path_list_identity(std::string& key, const std::vector<fs::path>& pa
 }
 
 [[nodiscard]] std::optional<CommandResult> try_restore_cached_native_output(
-    const driver::CompilerInvocation& invocation,
-    const std::string& cache_key
-) {
+    const driver::CompilerInvocation& invocation, const std::string& cache_key)
+{
     if (!is_native_emit_kind(invocation.emit_kind) || invocation.output_path.empty()) {
         return std::nullopt;
     }
@@ -597,22 +623,20 @@ void append_path_list_identity(std::string& key, const std::vector<fs::path>& pa
     {
         TestContext& context = test_context();
         std::lock_guard lock(context.compiler_cache_mutex);
-        if (const auto found = context.native_output_cache.find(cache_key); found != context.native_output_cache.end()) {
+        if (const auto found = context.native_output_cache.find(cache_key);
+            found != context.native_output_cache.end()) {
             cached_output = found->second;
         }
     }
-    if (cached_output.empty() ||
-        !copy_file_to_output(cached_output, invocation.output_path, invocation.emit_kind)) {
+    if (cached_output.empty() || !copy_file_to_output(cached_output, invocation.output_path, invocation.emit_kind)) {
         return std::nullopt;
     }
-    return CommandResult {0, ""};
+    return CommandResult{0, ""};
 }
 
 void remember_compiler_result(
-    const driver::CompilerInvocation& invocation,
-    const std::string& cache_key,
-    const CommandResult& result
-) {
+    const driver::CompilerInvocation& invocation, const std::string& cache_key, const CommandResult& result)
+{
     if (is_native_emit_kind(invocation.emit_kind)) {
         return;
     }
@@ -623,14 +647,10 @@ void remember_compiler_result(
 }
 
 void remember_native_output(
-    const driver::CompilerInvocation& invocation,
-    const std::string& cache_key,
-    const CommandResult& result
-) {
-    if (!is_native_emit_kind(invocation.emit_kind) ||
-        invocation.output_path.empty() ||
-        result.exit_code != 0 ||
-        !fs::exists(invocation.output_path)) {
+    const driver::CompilerInvocation& invocation, const std::string& cache_key, const CommandResult& result)
+{
+    if (!is_native_emit_kind(invocation.emit_kind) || invocation.output_path.empty() || result.exit_code != 0
+        || !fs::exists(invocation.output_path)) {
         return;
     }
 
@@ -642,17 +662,14 @@ void remember_native_output(
             return;
         }
         const fs::path cache_dir = work_root() / "native-cache";
-        cache_path = cache_dir / (
-            "artifact_" +
-            std::to_string(context.native_output_cache_counter++) +
-            invocation.output_path.extension().string()
-        );
+        cache_path = cache_dir
+            / ("artifact_" + std::to_string(context.native_output_cache_counter++)
+                + invocation.output_path.extension().string());
     }
 
     std::error_code error;
     fs::create_directories(cache_path.parent_path(), error);
-    if (error ||
-        !copy_file_to_output(invocation.output_path, cache_path, invocation.emit_kind)) {
+    if (error || !copy_file_to_output(invocation.output_path, cache_path, invocation.emit_kind)) {
         return;
     }
 
@@ -662,7 +679,8 @@ void remember_native_output(
 
 } // namespace
 
-CommandResult run_command(const std::string& command) {
+CommandResult run_command(const std::string& command)
+{
     if (std::optional<CommandResult> fast_result = try_run_aurexc_command(command)) {
         return *fast_result;
     }
@@ -670,7 +688,7 @@ CommandResult run_command(const std::string& command) {
         return *direct_result;
     }
 
-    std::array<char, 4096> buffer {};
+    std::array<char, 4096> buffer{};
     std::string output;
     const std::string full_command = command + " 2>&1";
     FILE* pipe = popen(full_command.c_str(), "r");
@@ -681,18 +699,17 @@ CommandResult run_command(const std::string& command) {
         output += buffer.data();
     }
     const int status = pclose(pipe);
-    return CommandResult {decode_status(status), output};
+    return CommandResult{decode_status(status), output};
 }
 
-CommandResult run_compiler(const driver::CompilerInvocation& invocation) {
+CommandResult run_compiler(const driver::CompilerInvocation& invocation)
+{
     const std::optional<std::string> cache_key = compiler_cache_key(invocation);
     if (cache_key) {
-        if (std::optional<CommandResult> cached_result =
-                try_restore_cached_compiler_result(invocation, *cache_key)) {
+        if (std::optional<CommandResult> cached_result = try_restore_cached_compiler_result(invocation, *cache_key)) {
             return *cached_result;
         }
-        if (std::optional<CommandResult> cached_native =
-                try_restore_cached_native_output(invocation, *cache_key)) {
+        if (std::optional<CommandResult> cached_native = try_restore_cached_native_output(invocation, *cache_key)) {
             return *cached_native;
         }
     }
@@ -701,14 +718,13 @@ CommandResult run_compiler(const driver::CompilerInvocation& invocation) {
     driver::Compiler compiler(driver::llvm_backend_ir_emitter());
     auto result = compiler.run(invocation);
     if (!result) {
-        const bool suppress_driver_error =
-            invocation.diagnostic_format == driver::DiagnosticOutputFormat::json &&
-            compiler_error_already_printed_diagnostics(result.error().code);
+        const bool suppress_driver_error = invocation.diagnostic_format == driver::DiagnosticOutputFormat::json
+            && compiler_error_already_printed_diagnostics(result.error().code);
         if (!suppress_driver_error) {
             std::cerr << "aurexc: " << result.error().message << "\n";
         }
     }
-    CommandResult command_result {result ? 0 : 1, output.finish()};
+    CommandResult command_result{result ? 0 : 1, output.finish()};
     if (cache_key) {
         remember_compiler_result(invocation, *cache_key, command_result);
         remember_native_output(invocation, *cache_key, command_result);
@@ -716,29 +732,28 @@ CommandResult run_compiler(const driver::CompilerInvocation& invocation) {
     return command_result;
 }
 
-CommandResult require_success(const std::string& command) {
+CommandResult require_success(const std::string& command)
+{
     CommandResult result = run_command(command);
     if (result.exit_code != 0) {
-        throw std::runtime_error(
-            "command failed with exit code " + std::to_string(result.exit_code) + "\n" +
-            command + "\n" + result.output
-        );
+        throw std::runtime_error("command failed with exit code " + std::to_string(result.exit_code) + "\n" + command
+            + "\n" + result.output);
     }
     return result;
 }
 
-CommandResult require_compiler_success(const driver::CompilerInvocation& invocation) {
+CommandResult require_compiler_success(const driver::CompilerInvocation& invocation)
+{
     CommandResult result = run_compiler(invocation);
     if (result.exit_code != 0) {
-        throw std::runtime_error(
-            "compiler invocation failed with exit code " + std::to_string(result.exit_code) + "\n" +
-            invocation.input_path.string() + "\n" + result.output
-        );
+        throw std::runtime_error("compiler invocation failed with exit code " + std::to_string(result.exit_code) + "\n"
+            + invocation.input_path.string() + "\n" + result.output);
     }
     return result;
 }
 
-CommandResult require_failure(const std::string& command) {
+CommandResult require_failure(const std::string& command)
+{
     CommandResult result = run_command(command);
     if (result.exit_code == 0) {
         throw std::runtime_error("command unexpectedly succeeded\n" + command + "\n" + result.output);
@@ -746,15 +761,18 @@ CommandResult require_failure(const std::string& command) {
     return result;
 }
 
-CommandResult require_compiler_failure(const driver::CompilerInvocation& invocation) {
+CommandResult require_compiler_failure(const driver::CompilerInvocation& invocation)
+{
     CommandResult result = run_compiler(invocation);
     if (result.exit_code == 0) {
-        throw std::runtime_error("compiler invocation unexpectedly succeeded\n" + invocation.input_path.string() + "\n" + result.output);
+        throw std::runtime_error(
+            "compiler invocation unexpectedly succeeded\n" + invocation.input_path.string() + "\n" + result.output);
     }
     return result;
 }
 
-std::string read_text(const fs::path& path) {
+std::string read_text(const fs::path& path)
+{
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         throw std::runtime_error("failed to open " + path.string());
@@ -764,7 +782,8 @@ std::string read_text(const fs::path& path) {
     return buffer.str();
 }
 
-std::vector<fs::path> sorted_files(const fs::path& dir, const std::string_view extension) {
+std::vector<fs::path> sorted_files(const fs::path& dir, const std::string_view extension)
+{
     TestContext& context = test_context();
     const std::string cache_key = dir.string() + "\n" + std::string(extension);
     {
@@ -788,29 +807,35 @@ std::vector<fs::path> sorted_files(const fs::path& dir, const std::string_view e
     return files;
 }
 
-std::string stem(const fs::path& path) {
+std::string stem(const fs::path& path)
+{
     return path.stem().string();
 }
 
-std::string aurexc() {
+std::string aurexc()
+{
     return q(aurexc_path());
 }
 
-std::string sample_import_flags() {
+std::string sample_import_flags()
+{
     return "-I " + q(imports_root());
 }
 
-std::string tests_import_flags() {
+std::string tests_import_flags()
+{
     return sample_import_flags();
 }
 
-void AurexIntegrationTest::SetUpTestSuite() {
+void AurexIntegrationTest::SetUpTestSuite()
+{
     if (!fs::exists(aurexc_path())) {
         throw std::runtime_error("missing aurexc binary: " + aurexc_path().string());
     }
 }
 
-void AurexIntegrationTest::SetUp() {
+void AurexIntegrationTest::SetUp()
+{
     current_test_run_root = make_test_run_root();
     fs::create_directories(test_bin_root());
     fs::create_directories(tmp_root());

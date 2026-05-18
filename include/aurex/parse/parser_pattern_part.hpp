@@ -8,8 +8,9 @@ namespace aurex::parse {
 
 class PatternParser final : private ParserPartBase {
 public:
-    explicit PatternParser(Parser& parser) noexcept
-        : ParserPartBase(parser) {}
+    explicit PatternParser(Parser& parser) noexcept : ParserPartBase(parser)
+    {
+    }
 
     [[nodiscard]] syntax::PatternId parse_pattern();
 
@@ -21,12 +22,8 @@ private:
     [[nodiscard]] syntax::PatternId parse_shorthand_enum_case_pattern(const syntax::Token& dot);
     [[nodiscard]] syntax::PatternId parse_literal_pattern(const syntax::Token& token) const;
     [[nodiscard]] syntax::PatternId parse_fallback_wildcard_pattern() const;
-    [[nodiscard]] syntax::TypeId push_explicit_enum_case_type(
-        const std::vector<syntax::Token>& parts,
-        base::usize type_part_count,
-        std::vector<syntax::TypeId> type_args,
-        const base::SourceRange& type_range
-    ) const;
+    [[nodiscard]] syntax::TypeId push_explicit_enum_case_type(const std::vector<syntax::Token>& parts,
+        base::usize type_part_count, std::vector<syntax::TypeId> type_args, const base::SourceRange& type_range) const;
     [[nodiscard]] syntax::PatternId parse_tuple_pattern();
     [[nodiscard]] syntax::PatternId parse_slice_pattern();
     [[nodiscard]] syntax::PatternId parse_struct_pattern(const syntax::Token& name);

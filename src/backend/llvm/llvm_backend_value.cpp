@@ -1,5 +1,10 @@
 #include <backend/llvm/llvm_backend_internal.hpp>
 
+#include <cstdint>
+#include <initializer_list>
+#include <string>
+#include <vector>
+
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/ConstantFold.h>
 #include <llvm/IR/Constants.h>
@@ -8,11 +13,6 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Value.h>
 #include <llvm/Support/ErrorHandling.h>
-
-#include <cstdint>
-#include <initializer_list>
-#include <string>
-#include <vector>
 
 namespace aurex::backend {
 namespace {
@@ -98,138 +98,116 @@ struct Utf8ByteRange {
 
 } // namespace
 
-llvm::Value* LlvmEmitter::emit_value(const ValueId id) {
+llvm::Value* LlvmEmitter::emit_value(const ValueId id)
+{
     return this->emit_runtime_value(this->source_.values[id.value]);
 }
 
-llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value) {
+llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value)
+{
     switch (value.kind) {
-    case ValueKind::integer_literal:
-        return this->integer_constant(value.type, this->text(value.text));
-    case ValueKind::float_literal:
-        return this->float_constant(value.type, this->text(value.text));
-    case ValueKind::bool_literal:
-        return llvm::ConstantInt::get(
-            this->llvm_type(value.type),
-            this->text(value.text) == LLVM_BACKEND_VALUE_BOOL_TRUE_TEXT
-                ? LLVM_BACKEND_VALUE_BOOL_TRUE_INTEGER
-                : LLVM_BACKEND_VALUE_ZERO_INTEGER,
-            false
-        );
-    case ValueKind::char_literal:
-        return llvm::ConstantInt::get(this->llvm_type(value.type), parse_char_literal(this->text(value.text)), false);
-    case ValueKind::byte_literal:
-        return llvm::ConstantInt::get(this->llvm_type(value.type), parse_byte_literal(this->text(value.text)), false);
-    case ValueKind::undef:
-        return llvm::UndefValue::get(this->llvm_type(value.type));
-    case ValueKind::null_literal:
-        return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(this->llvm_type(value.type)));
-    case ValueKind::string_literal:
-        return this->emit_string_literal(this->text(value.text), false);
-    case ValueKind::raw_string_literal:
-        return this->emit_raw_string_literal(this->text(value.text));
-    case ValueKind::c_string_literal:
-        return this->emit_string_literal(this->text(value.text), true);
-    case ValueKind::constant_ref:
-        return this->emit_constant_ref(value);
-    case ValueKind::function_ref:
-        return this->emit_function_ref(value);
-    case ValueKind::alloca:
-        return this->builder_.CreateAlloca(this->pointee_llvm_type(value.type), nullptr, this->text(value.name));
-    case ValueKind::load:
-        return this->builder_.CreateLoad(this->llvm_type(value.type), this->get(value.object), this->text(value.name));
-    case ValueKind::store:
-        return this->builder_.CreateStore(this->get(value.lhs), this->get(value.object));
-    case ValueKind::unary:
-        return this->emit_unary(value);
-    case ValueKind::binary:
-        return this->emit_binary(value);
-    case ValueKind::call:
-        return this->emit_call(value);
-    case ValueKind::field_addr:
-        return this->emit_field_addr(value);
-    case ValueKind::index_addr:
-        return this->emit_index_addr(value);
-    case ValueKind::aggregate:
-        return this->emit_aggregate(value);
-    case ValueKind::slice: {
-        llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
-        result = this->builder_.CreateInsertValue(
-            result,
-            this->get(value.lhs),
-            {LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX}
-        );
-        result = this->builder_.CreateInsertValue(
-            result,
-            this->get(value.rhs),
-            {LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX}
-        );
-        return result;
-    }
-    case ValueKind::slice_data:
-        return this->builder_.CreateExtractValue(
-            this->get(value.object),
-            {LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX},
-            LLVM_BACKEND_VALUE_SLICE_DATA_NAME
-        );
-    case ValueKind::slice_len:
-        return this->builder_.CreateExtractValue(
-            this->get(value.object),
-            {LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX},
-            LLVM_BACKEND_VALUE_SLICE_LENGTH_NAME
-        );
-    case ValueKind::cast:
-        return this->emit_cast(value);
-    case ValueKind::size_of:
-        return this->emit_size_of(value.target_type);
-    case ValueKind::align_of:
-        return this->emit_align_of(value.target_type);
-    case ValueKind::str_data:
-        return this->builder_.CreateExtractValue(
-            this->get(value.object),
-            {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX},
-            LLVM_BACKEND_VALUE_STRING_DATA_NAME
-        );
-    case ValueKind::str_byte_len:
-        return this->builder_.CreateExtractValue(
-            this->get(value.object),
-            {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX},
-            LLVM_BACKEND_VALUE_STRING_LENGTH_NAME
-        );
-    case ValueKind::str_is_valid_utf8:
-        return this->emit_str_is_valid_utf8(value);
-    case ValueKind::str_from_utf8_checked:
-        return this->emit_str_from_utf8_checked(value);
-    case ValueKind::str_slice_checked:
-        return this->emit_str_slice_checked(value);
-    case ValueKind::str_from_bytes_unchecked: {
-        llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
-        result = this->builder_.CreateInsertValue(
-            result,
-            this->get(value.args[LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX]),
-            {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX}
-        );
-        result = this->builder_.CreateInsertValue(
-            result,
-            this->get(value.args[LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX]),
-            {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX}
-        );
-        return result;
-    }
-    default:
-        break;
+        case ValueKind::integer_literal:
+            return this->integer_constant(value.type, this->text(value.text));
+        case ValueKind::float_literal:
+            return this->float_constant(value.type, this->text(value.text));
+        case ValueKind::bool_literal:
+            return llvm::ConstantInt::get(this->llvm_type(value.type),
+                this->text(value.text) == LLVM_BACKEND_VALUE_BOOL_TRUE_TEXT ? LLVM_BACKEND_VALUE_BOOL_TRUE_INTEGER
+                                                                            : LLVM_BACKEND_VALUE_ZERO_INTEGER,
+                false);
+        case ValueKind::char_literal:
+            return llvm::ConstantInt::get(
+                this->llvm_type(value.type), parse_char_literal(this->text(value.text)), false);
+        case ValueKind::byte_literal:
+            return llvm::ConstantInt::get(
+                this->llvm_type(value.type), parse_byte_literal(this->text(value.text)), false);
+        case ValueKind::undef:
+            return llvm::UndefValue::get(this->llvm_type(value.type));
+        case ValueKind::null_literal:
+            return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(this->llvm_type(value.type)));
+        case ValueKind::string_literal:
+            return this->emit_string_literal(this->text(value.text), false);
+        case ValueKind::raw_string_literal:
+            return this->emit_raw_string_literal(this->text(value.text));
+        case ValueKind::c_string_literal:
+            return this->emit_string_literal(this->text(value.text), true);
+        case ValueKind::constant_ref:
+            return this->emit_constant_ref(value);
+        case ValueKind::function_ref:
+            return this->emit_function_ref(value);
+        case ValueKind::alloca:
+            return this->builder_.CreateAlloca(this->pointee_llvm_type(value.type), nullptr, this->text(value.name));
+        case ValueKind::load:
+            return this->builder_.CreateLoad(
+                this->llvm_type(value.type), this->get(value.object), this->text(value.name));
+        case ValueKind::store:
+            return this->builder_.CreateStore(this->get(value.lhs), this->get(value.object));
+        case ValueKind::unary:
+            return this->emit_unary(value);
+        case ValueKind::binary:
+            return this->emit_binary(value);
+        case ValueKind::call:
+            return this->emit_call(value);
+        case ValueKind::field_addr:
+            return this->emit_field_addr(value);
+        case ValueKind::index_addr:
+            return this->emit_index_addr(value);
+        case ValueKind::aggregate:
+            return this->emit_aggregate(value);
+        case ValueKind::slice: {
+            llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
+            result = this->builder_.CreateInsertValue(
+                result, this->get(value.lhs), {LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX});
+            result = this->builder_.CreateInsertValue(
+                result, this->get(value.rhs), {LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX});
+            return result;
+        }
+        case ValueKind::slice_data:
+            return this->builder_.CreateExtractValue(this->get(value.object),
+                {LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX}, LLVM_BACKEND_VALUE_SLICE_DATA_NAME);
+        case ValueKind::slice_len:
+            return this->builder_.CreateExtractValue(this->get(value.object),
+                {LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX}, LLVM_BACKEND_VALUE_SLICE_LENGTH_NAME);
+        case ValueKind::cast:
+            return this->emit_cast(value);
+        case ValueKind::size_of:
+            return this->emit_size_of(value.target_type);
+        case ValueKind::align_of:
+            return this->emit_align_of(value.target_type);
+        case ValueKind::str_data:
+            return this->builder_.CreateExtractValue(this->get(value.object),
+                {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX}, LLVM_BACKEND_VALUE_STRING_DATA_NAME);
+        case ValueKind::str_byte_len:
+            return this->builder_.CreateExtractValue(this->get(value.object),
+                {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX}, LLVM_BACKEND_VALUE_STRING_LENGTH_NAME);
+        case ValueKind::str_is_valid_utf8:
+            return this->emit_str_is_valid_utf8(value);
+        case ValueKind::str_from_utf8_checked:
+            return this->emit_str_from_utf8_checked(value);
+        case ValueKind::str_slice_checked:
+            return this->emit_str_slice_checked(value);
+        case ValueKind::str_from_bytes_unchecked: {
+            llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
+            result = this->builder_.CreateInsertValue(result,
+                this->get(value.args[LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX]),
+                {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX});
+            result = this->builder_.CreateInsertValue(result,
+                this->get(value.args[LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX]),
+                {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX});
+            return result;
+        }
+        default:
+            break;
     }
     return llvm::UndefValue::get(this->llvm_type(value.type));
 }
 
-llvm::Value* LlvmEmitter::emit_constant_ref(const Value& value) {
+llvm::Value* LlvmEmitter::emit_constant_ref(const Value& value)
+{
     const GlobalConstant* constant = find_global_constant(this->source_, value.constant);
     const auto found = this->constants_.find(value.constant.value);
-    return this->builder_.CreateLoad(
-        this->llvm_type(constant->type),
-        found->second,
-        this->suffixed_name(constant->symbol, LLVM_BACKEND_VALUE_CONSTANT_VALUE_SUFFIX)
-    );
+    return this->builder_.CreateLoad(this->llvm_type(constant->type), found->second,
+        this->suffixed_name(constant->symbol, LLVM_BACKEND_VALUE_CONSTANT_VALUE_SUFFIX));
 }
 
 llvm::Value* LlvmEmitter::emit_function_ref(const Value& value) const
@@ -237,59 +215,60 @@ llvm::Value* LlvmEmitter::emit_function_ref(const Value& value) const
     return this->functions_.at(value.call_target.value);
 }
 
-llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value) {
+llvm::Constant* LlvmEmitter::emit_constant_initializer(const Value& value)
+{
     switch (value.kind) {
-    case ValueKind::integer_literal:
-        return llvm::cast<llvm::Constant>(this->integer_constant(value.type, this->text(value.text)));
-    case ValueKind::float_literal:
-        return llvm::cast<llvm::Constant>(this->float_constant(value.type, this->text(value.text)));
-    case ValueKind::bool_literal:
-        return llvm::ConstantInt::get(
-            this->llvm_type(value.type),
-            this->text(value.text) == LLVM_BACKEND_VALUE_BOOL_TRUE_TEXT
-                ? LLVM_BACKEND_VALUE_BOOL_TRUE_INTEGER
-                : LLVM_BACKEND_VALUE_ZERO_INTEGER,
-            false
-        );
-    case ValueKind::char_literal:
-        return llvm::ConstantInt::get(this->llvm_type(value.type), parse_char_literal(this->text(value.text)), false);
-    case ValueKind::byte_literal:
-        return llvm::ConstantInt::get(this->llvm_type(value.type), parse_byte_literal(this->text(value.text)), false);
-    case ValueKind::undef:
-        return llvm::UndefValue::get(this->llvm_type(value.type));
-    case ValueKind::null_literal:
-        return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(this->llvm_type(value.type)));
-    case ValueKind::string_literal:
-        return this->emit_constant_string(this->text(value.text), false);
-    case ValueKind::raw_string_literal:
-        return this->emit_constant_raw_string(this->text(value.text));
-    case ValueKind::c_string_literal:
-        return this->emit_constant_string(this->text(value.text), true);
-    case ValueKind::constant_ref: {
-        const GlobalConstant* constant = find_global_constant(this->source_, value.constant);
-        return this->emit_constant_initializer(this->source_.values[constant->initializer.value]);
-    }
-    case ValueKind::function_ref:
-        return llvm::cast<llvm::Constant>(this->emit_function_ref(value));
-    case ValueKind::unary:
-        return this->emit_constant_unary(value);
-    case ValueKind::binary:
-        return this->emit_constant_binary(value);
-    case ValueKind::aggregate:
-        return this->emit_constant_aggregate(value);
-    case ValueKind::cast:
-        return this->emit_constant_cast(value);
-    case ValueKind::size_of:
-        return llvm::cast<llvm::Constant>(this->emit_size_of(value.target_type));
-    case ValueKind::align_of:
-        return llvm::cast<llvm::Constant>(this->emit_align_of(value.target_type));
-    default:
-        break;
+        case ValueKind::integer_literal:
+            return llvm::cast<llvm::Constant>(this->integer_constant(value.type, this->text(value.text)));
+        case ValueKind::float_literal:
+            return llvm::cast<llvm::Constant>(this->float_constant(value.type, this->text(value.text)));
+        case ValueKind::bool_literal:
+            return llvm::ConstantInt::get(this->llvm_type(value.type),
+                this->text(value.text) == LLVM_BACKEND_VALUE_BOOL_TRUE_TEXT ? LLVM_BACKEND_VALUE_BOOL_TRUE_INTEGER
+                                                                            : LLVM_BACKEND_VALUE_ZERO_INTEGER,
+                false);
+        case ValueKind::char_literal:
+            return llvm::ConstantInt::get(
+                this->llvm_type(value.type), parse_char_literal(this->text(value.text)), false);
+        case ValueKind::byte_literal:
+            return llvm::ConstantInt::get(
+                this->llvm_type(value.type), parse_byte_literal(this->text(value.text)), false);
+        case ValueKind::undef:
+            return llvm::UndefValue::get(this->llvm_type(value.type));
+        case ValueKind::null_literal:
+            return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(this->llvm_type(value.type)));
+        case ValueKind::string_literal:
+            return this->emit_constant_string(this->text(value.text), false);
+        case ValueKind::raw_string_literal:
+            return this->emit_constant_raw_string(this->text(value.text));
+        case ValueKind::c_string_literal:
+            return this->emit_constant_string(this->text(value.text), true);
+        case ValueKind::constant_ref: {
+            const GlobalConstant* constant = find_global_constant(this->source_, value.constant);
+            return this->emit_constant_initializer(this->source_.values[constant->initializer.value]);
+        }
+        case ValueKind::function_ref:
+            return llvm::cast<llvm::Constant>(this->emit_function_ref(value));
+        case ValueKind::unary:
+            return this->emit_constant_unary(value);
+        case ValueKind::binary:
+            return this->emit_constant_binary(value);
+        case ValueKind::aggregate:
+            return this->emit_constant_aggregate(value);
+        case ValueKind::cast:
+            return this->emit_constant_cast(value);
+        case ValueKind::size_of:
+            return llvm::cast<llvm::Constant>(this->emit_size_of(value.target_type));
+        case ValueKind::align_of:
+            return llvm::cast<llvm::Constant>(this->emit_align_of(value.target_type));
+        default:
+            break;
     }
     return llvm::UndefValue::get(this->llvm_type(value.type));
 }
 
-llvm::Constant* LlvmEmitter::emit_constant_binary(const Value& value) {
+llvm::Constant* LlvmEmitter::emit_constant_binary(const Value& value)
+{
     llvm::Constant* lhs = this->emit_constant_initializer(this->source_.values[value.lhs.value]);
     llvm::Constant* rhs = this->emit_constant_initializer(this->source_.values[value.rhs.value]);
     const sema::TypeHandle operand_type = this->source_.values[value.lhs.value].type;
@@ -297,92 +276,87 @@ llvm::Constant* LlvmEmitter::emit_constant_binary(const Value& value) {
     const bool is_unsigned = this->is_unsigned_integer(operand_type);
 
     const auto fold_binary = [&](const unsigned opcode) -> llvm::Constant* {
-        if (llvm::Constant* folded = llvm::ConstantFoldBinaryInstruction(opcode, lhs, rhs);
-            folded != nullptr) {
+        if (llvm::Constant* folded = llvm::ConstantFoldBinaryInstruction(opcode, lhs, rhs); folded != nullptr) {
             return folded;
         }
         return llvm::UndefValue::get(this->llvm_type(value.type));
     };
     const auto fold_compare = [&](const llvm::CmpInst::Predicate predicate) -> llvm::Constant* {
-        if (llvm::Constant* folded = llvm::ConstantFoldCompareInstruction(predicate, lhs, rhs);
-            folded != nullptr) {
+        if (llvm::Constant* folded = llvm::ConstantFoldCompareInstruction(predicate, lhs, rhs); folded != nullptr) {
             return folded;
         }
         return llvm::UndefValue::get(this->llvm_type(value.type));
     };
 
     switch (value.binary_op) {
-    case BinaryOp::add:
-        return fold_binary(is_float ? llvm::Instruction::FAdd : llvm::Instruction::Add);
-    case BinaryOp::sub:
-        return fold_binary(is_float ? llvm::Instruction::FSub : llvm::Instruction::Sub);
-    case BinaryOp::mul:
-        return fold_binary(is_float ? llvm::Instruction::FMul : llvm::Instruction::Mul);
-    case BinaryOp::div:
-        return fold_binary(is_float
-            ? llvm::Instruction::FDiv
-            : (is_unsigned ? llvm::Instruction::UDiv : llvm::Instruction::SDiv));
-    case BinaryOp::mod:
-        return fold_binary(is_unsigned ? llvm::Instruction::URem : llvm::Instruction::SRem);
-    case BinaryOp::shl:
-        return fold_binary(llvm::Instruction::Shl);
-    case BinaryOp::shr:
-        return fold_binary(is_unsigned ? llvm::Instruction::LShr : llvm::Instruction::AShr);
-    case BinaryOp::less:
-        return fold_compare(is_float
-            ? llvm::CmpInst::FCMP_OLT
-            : (is_unsigned ? llvm::CmpInst::ICMP_ULT : llvm::CmpInst::ICMP_SLT));
-    case BinaryOp::less_equal:
-        return fold_compare(is_float
-            ? llvm::CmpInst::FCMP_OLE
-            : (is_unsigned ? llvm::CmpInst::ICMP_ULE : llvm::CmpInst::ICMP_SLE));
-    case BinaryOp::greater:
-        return fold_compare(is_float
-            ? llvm::CmpInst::FCMP_OGT
-            : (is_unsigned ? llvm::CmpInst::ICMP_UGT : llvm::CmpInst::ICMP_SGT));
-    case BinaryOp::greater_equal:
-        return fold_compare(is_float
-            ? llvm::CmpInst::FCMP_OGE
-            : (is_unsigned ? llvm::CmpInst::ICMP_UGE : llvm::CmpInst::ICMP_SGE));
-    case BinaryOp::equal:
-        return fold_compare(is_float ? llvm::CmpInst::FCMP_OEQ : llvm::CmpInst::ICMP_EQ);
-    case BinaryOp::not_equal:
-        return fold_compare(is_float ? llvm::CmpInst::FCMP_UNE : llvm::CmpInst::ICMP_NE);
-    case BinaryOp::bit_and:
-    case BinaryOp::logical_and:
-        return fold_binary(llvm::Instruction::And);
-    case BinaryOp::bit_xor:
-        return fold_binary(llvm::Instruction::Xor);
-    case BinaryOp::bit_or:
-    case BinaryOp::logical_or:
-        return fold_binary(llvm::Instruction::Or);
+        case BinaryOp::add:
+            return fold_binary(is_float ? llvm::Instruction::FAdd : llvm::Instruction::Add);
+        case BinaryOp::sub:
+            return fold_binary(is_float ? llvm::Instruction::FSub : llvm::Instruction::Sub);
+        case BinaryOp::mul:
+            return fold_binary(is_float ? llvm::Instruction::FMul : llvm::Instruction::Mul);
+        case BinaryOp::div:
+            return fold_binary(
+                is_float ? llvm::Instruction::FDiv : (is_unsigned ? llvm::Instruction::UDiv : llvm::Instruction::SDiv));
+        case BinaryOp::mod:
+            return fold_binary(is_unsigned ? llvm::Instruction::URem : llvm::Instruction::SRem);
+        case BinaryOp::shl:
+            return fold_binary(llvm::Instruction::Shl);
+        case BinaryOp::shr:
+            return fold_binary(is_unsigned ? llvm::Instruction::LShr : llvm::Instruction::AShr);
+        case BinaryOp::less:
+            return fold_compare(
+                is_float ? llvm::CmpInst::FCMP_OLT : (is_unsigned ? llvm::CmpInst::ICMP_ULT : llvm::CmpInst::ICMP_SLT));
+        case BinaryOp::less_equal:
+            return fold_compare(
+                is_float ? llvm::CmpInst::FCMP_OLE : (is_unsigned ? llvm::CmpInst::ICMP_ULE : llvm::CmpInst::ICMP_SLE));
+        case BinaryOp::greater:
+            return fold_compare(
+                is_float ? llvm::CmpInst::FCMP_OGT : (is_unsigned ? llvm::CmpInst::ICMP_UGT : llvm::CmpInst::ICMP_SGT));
+        case BinaryOp::greater_equal:
+            return fold_compare(
+                is_float ? llvm::CmpInst::FCMP_OGE : (is_unsigned ? llvm::CmpInst::ICMP_UGE : llvm::CmpInst::ICMP_SGE));
+        case BinaryOp::equal:
+            return fold_compare(is_float ? llvm::CmpInst::FCMP_OEQ : llvm::CmpInst::ICMP_EQ);
+        case BinaryOp::not_equal:
+            return fold_compare(is_float ? llvm::CmpInst::FCMP_UNE : llvm::CmpInst::ICMP_NE);
+        case BinaryOp::bit_and:
+        case BinaryOp::logical_and:
+            return fold_binary(llvm::Instruction::And);
+        case BinaryOp::bit_xor:
+            return fold_binary(llvm::Instruction::Xor);
+        case BinaryOp::bit_or:
+        case BinaryOp::logical_or:
+            return fold_binary(llvm::Instruction::Or);
     }
     llvm_unreachable(LLVM_BACKEND_VALUE_UNHANDLED_BINARY_OP);
 }
 
-llvm::Constant* LlvmEmitter::emit_constant_unary(const Value& value) {
+llvm::Constant* LlvmEmitter::emit_constant_unary(const Value& value)
+{
     llvm::Constant* operand = this->emit_constant_initializer(this->source_.values[value.lhs.value]);
     switch (value.unary_op) {
-    case UnaryOp::logical_not:
-    case UnaryOp::bitwise_not:
-        return llvm::ConstantExpr::getNot(operand);
-    case UnaryOp::numeric_negate:
-        if (this->source_.types.is_float(value.type)) {
-            if (llvm::Constant* folded = llvm::ConstantFoldUnaryInstruction(llvm::Instruction::FNeg, operand);
-                folded != nullptr) {
-                return folded;
+        case UnaryOp::logical_not:
+        case UnaryOp::bitwise_not:
+            return llvm::ConstantExpr::getNot(operand);
+        case UnaryOp::numeric_negate:
+            if (this->source_.types.is_float(value.type)) {
+                if (llvm::Constant* folded = llvm::ConstantFoldUnaryInstruction(llvm::Instruction::FNeg, operand);
+                    folded != nullptr) {
+                    return folded;
+                }
+                return llvm::UndefValue::get(this->llvm_type(value.type));
             }
-            return llvm::UndefValue::get(this->llvm_type(value.type));
-        }
-        return llvm::ConstantExpr::getNeg(operand);
-    case UnaryOp::address_of:
-    case UnaryOp::dereference:
-        break;
+            return llvm::ConstantExpr::getNeg(operand);
+        case UnaryOp::address_of:
+        case UnaryOp::dereference:
+            break;
     }
     return llvm::UndefValue::get(this->llvm_type(value.type));
 }
 
-llvm::Constant* LlvmEmitter::emit_constant_cast(const Value& value) {
+llvm::Constant* LlvmEmitter::emit_constant_cast(const Value& value)
+{
     llvm::Constant* operand = this->emit_constant_initializer(this->source_.values[value.lhs.value]);
     llvm::Type* target = this->llvm_type(value.target_type);
     if (value.cast_kind != CastKind::pointer && operand->getType() == target) {
@@ -391,71 +365,67 @@ llvm::Constant* LlvmEmitter::emit_constant_cast(const Value& value) {
     const bool source_unsigned = this->is_unsigned_integer(this->source_.values[value.lhs.value].type);
     unsigned opcode = llvm::Instruction::BitCast;
     switch (value.cast_kind) {
-    case CastKind::numeric:
-        if (this->source_.types.is_bool(value.target_type)) {
-            if (operand->getType()->isIntegerTy()) {
-                if (llvm::Constant* folded = llvm::ConstantFoldCompareInstruction(
-                        llvm::CmpInst::ICMP_NE,
-                        operand,
-                        llvm::ConstantInt::get(operand->getType(), LLVM_BACKEND_VALUE_ZERO_INTEGER)
-                    );
-                    folded != nullptr) {
-                    return folded;
+        case CastKind::numeric:
+            if (this->source_.types.is_bool(value.target_type)) {
+                if (operand->getType()->isIntegerTy()) {
+                    if (llvm::Constant* folded = llvm::ConstantFoldCompareInstruction(llvm::CmpInst::ICMP_NE, operand,
+                            llvm::ConstantInt::get(operand->getType(), LLVM_BACKEND_VALUE_ZERO_INTEGER));
+                        folded != nullptr) {
+                        return folded;
+                    }
+                    return llvm::UndefValue::get(target);
                 }
-                return llvm::UndefValue::get(target);
-            }
-            if (operand->getType()->isFloatingPointTy()) {
-                if (llvm::Constant* folded = llvm::ConstantFoldCompareInstruction(
-                        llvm::CmpInst::FCMP_UNE,
-                        operand,
-                        llvm::ConstantFP::get(operand->getType(), LLVM_BACKEND_VALUE_ZERO_FLOAT)
-                    );
-                    folded != nullptr) {
-                    return folded;
+                if (operand->getType()->isFloatingPointTy()) {
+                    if (llvm::Constant* folded = llvm::ConstantFoldCompareInstruction(llvm::CmpInst::FCMP_UNE, operand,
+                            llvm::ConstantFP::get(operand->getType(), LLVM_BACKEND_VALUE_ZERO_FLOAT));
+                        folded != nullptr) {
+                        return folded;
+                    }
+                    return llvm::UndefValue::get(target);
                 }
-                return llvm::UndefValue::get(target);
             }
-        }
-        if (operand->getType()->isIntegerTy() && target->isIntegerTy()) {
-            const unsigned source_bits = operand->getType()->getIntegerBitWidth();
-            const unsigned target_bits = target->getIntegerBitWidth();
-            opcode = target_bits < source_bits
-                ? llvm::Instruction::Trunc
-                : (source_unsigned ? llvm::Instruction::ZExt : llvm::Instruction::SExt);
+            if (operand->getType()->isIntegerTy() && target->isIntegerTy()) {
+                const unsigned source_bits = operand->getType()->getIntegerBitWidth();
+                const unsigned target_bits = target->getIntegerBitWidth();
+                opcode = target_bits < source_bits
+                    ? llvm::Instruction::Trunc
+                    : (source_unsigned ? llvm::Instruction::ZExt : llvm::Instruction::SExt);
+                break;
+            }
+            if (operand->getType()->isIntegerTy() && target->isFloatingPointTy()) {
+                opcode = source_unsigned ? llvm::Instruction::UIToFP : llvm::Instruction::SIToFP;
+                break;
+            }
+            if (operand->getType()->isFloatingPointTy() && target->isIntegerTy()) {
+                opcode = this->is_unsigned_integer(value.target_type) ? llvm::Instruction::FPToUI
+                                                                      : llvm::Instruction::FPToSI;
+                break;
+            }
+            if (operand->getType()->isFloatingPointTy() && target->isFloatingPointTy()) {
+                const unsigned source_bits = operand->getType()->getScalarSizeInBits();
+                const unsigned target_bits = target->getScalarSizeInBits();
+                opcode = target_bits < source_bits ? llvm::Instruction::FPTrunc : llvm::Instruction::FPExt;
+                break;
+            }
+            return operand;
+        case CastKind::pointer:
+            return operand;
+        case CastKind::bcast:
+            opcode = llvm::Instruction::BitCast;
             break;
-        }
-        if (operand->getType()->isIntegerTy() && target->isFloatingPointTy()) {
-            opcode = source_unsigned ? llvm::Instruction::UIToFP : llvm::Instruction::SIToFP;
+        case CastKind::ptr_addr:
+            opcode = llvm::Instruction::PtrToInt;
             break;
-        }
-        if (operand->getType()->isFloatingPointTy() && target->isIntegerTy()) {
-            opcode = this->is_unsigned_integer(value.target_type) ? llvm::Instruction::FPToUI : llvm::Instruction::FPToSI;
+        case CastKind::paddr:
+            opcode = llvm::Instruction::IntToPtr;
             break;
-        }
-        if (operand->getType()->isFloatingPointTy() && target->isFloatingPointTy()) {
-            const unsigned source_bits = operand->getType()->getScalarSizeInBits();
-            const unsigned target_bits = target->getScalarSizeInBits();
-            opcode = target_bits < source_bits ? llvm::Instruction::FPTrunc : llvm::Instruction::FPExt;
-            break;
-        }
-        return operand;
-    case CastKind::pointer:
-        return operand;
-    case CastKind::bcast:
-        opcode = llvm::Instruction::BitCast;
-        break;
-    case CastKind::ptr_addr:
-        opcode = llvm::Instruction::PtrToInt;
-        break;
-    case CastKind::paddr:
-        opcode = llvm::Instruction::IntToPtr;
-        break;
     }
     llvm::Constant* folded = llvm::ConstantFoldCastInstruction(opcode, operand, target);
     return folded == nullptr ? llvm::UndefValue::get(target) : folded;
 }
 
-llvm::Constant* LlvmEmitter::emit_constant_aggregate(const Value& value) {
+llvm::Constant* LlvmEmitter::emit_constant_aggregate(const Value& value)
+{
     if (this->source_.types.is_array(value.type)) {
         llvm::ArrayType* type = llvm::cast<llvm::ArrayType>(this->llvm_type(value.type));
         std::vector<llvm::Constant*> elements;
@@ -476,93 +446,97 @@ llvm::Constant* LlvmEmitter::emit_constant_aggregate(const Value& value) {
     return llvm::ConstantStruct::get(type, fields);
 }
 
-llvm::Constant* LlvmEmitter::emit_constant_string(const std::string_view literal, const bool c_string) {
+llvm::Constant* LlvmEmitter::emit_constant_string(const std::string_view literal, const bool c_string)
+{
     if (c_string) {
         std::string decoded = decode_string_literal(literal, true);
         decoded.push_back(LLVM_BACKEND_VALUE_NULL_TERMINATOR);
         return llvm::cast<llvm::Constant>(
-            this->global_string_pointer(decoded, LLVM_BACKEND_VALUE_CONSTANT_C_STRING_NAME, false)
-        );
+            this->global_string_pointer(decoded, LLVM_BACKEND_VALUE_CONSTANT_C_STRING_NAME, false));
     }
     return llvm::cast<llvm::Constant>(this->emit_string_literal(literal, false));
 }
 
-llvm::Constant* LlvmEmitter::emit_constant_raw_string(const std::string_view literal) {
+llvm::Constant* LlvmEmitter::emit_constant_raw_string(const std::string_view literal)
+{
     return llvm::cast<llvm::Constant>(this->emit_raw_string_literal(literal));
 }
 
-llvm::Value* LlvmEmitter::emit_unary(const Value& value) {
+llvm::Value* LlvmEmitter::emit_unary(const Value& value)
+{
     llvm::Value* operand = this->get(value.lhs);
     switch (value.unary_op) {
-    case UnaryOp::logical_not:
-        return this->builder_.CreateNot(operand);
-    case UnaryOp::numeric_negate:
-        return this->source_.types.is_float(value.type) ? this->builder_.CreateFNeg(operand) : this->builder_.CreateNeg(operand);
-    case UnaryOp::bitwise_not:
-        return this->builder_.CreateNot(operand);
-    case UnaryOp::address_of:
-    case UnaryOp::dereference:
-        return operand;
+        case UnaryOp::logical_not:
+            return this->builder_.CreateNot(operand);
+        case UnaryOp::numeric_negate:
+            return this->source_.types.is_float(value.type) ? this->builder_.CreateFNeg(operand)
+                                                            : this->builder_.CreateNeg(operand);
+        case UnaryOp::bitwise_not:
+            return this->builder_.CreateNot(operand);
+        case UnaryOp::address_of:
+        case UnaryOp::dereference:
+            return operand;
     }
     llvm_unreachable(LLVM_BACKEND_VALUE_UNHANDLED_UNARY_OP);
 }
 
-llvm::Value* LlvmEmitter::emit_binary(const Value& value) {
+llvm::Value* LlvmEmitter::emit_binary(const Value& value)
+{
     llvm::Value* lhs = this->get(value.lhs);
     llvm::Value* rhs = this->get(value.rhs);
     const sema::TypeHandle operand_type = this->source_.values[value.lhs.value].type;
     const bool is_float = this->source_.types.is_float(operand_type);
     const bool is_unsigned = this->is_unsigned_integer(operand_type);
     switch (value.binary_op) {
-    case BinaryOp::add:
-        return is_float ? this->builder_.CreateFAdd(lhs, rhs) : this->builder_.CreateAdd(lhs, rhs);
-    case BinaryOp::sub:
-        return is_float ? this->builder_.CreateFSub(lhs, rhs) : this->builder_.CreateSub(lhs, rhs);
-    case BinaryOp::mul:
-        return is_float ? this->builder_.CreateFMul(lhs, rhs) : this->builder_.CreateMul(lhs, rhs);
-    case BinaryOp::div:
-        return is_float
-            ? this->builder_.CreateFDiv(lhs, rhs)
-            : (is_unsigned ? this->builder_.CreateUDiv(lhs, rhs) : this->builder_.CreateSDiv(lhs, rhs));
-    case BinaryOp::mod:
-        return is_unsigned ? this->builder_.CreateURem(lhs, rhs) : this->builder_.CreateSRem(lhs, rhs);
-    case BinaryOp::shl:
-        return this->builder_.CreateShl(lhs, rhs);
-    case BinaryOp::shr:
-        return is_unsigned ? this->builder_.CreateLShr(lhs, rhs) : this->builder_.CreateAShr(lhs, rhs);
-    case BinaryOp::less:
-        return is_float
-            ? this->builder_.CreateFCmpOLT(lhs, rhs)
-            : (is_unsigned ? this->builder_.CreateICmpULT(lhs, rhs) : this->builder_.CreateICmpSLT(lhs, rhs));
-    case BinaryOp::less_equal:
-        return is_float
-            ? this->builder_.CreateFCmpOLE(lhs, rhs)
-            : (is_unsigned ? this->builder_.CreateICmpULE(lhs, rhs) : this->builder_.CreateICmpSLE(lhs, rhs));
-    case BinaryOp::greater:
-        return is_float
-            ? this->builder_.CreateFCmpOGT(lhs, rhs)
-            : (is_unsigned ? this->builder_.CreateICmpUGT(lhs, rhs) : this->builder_.CreateICmpSGT(lhs, rhs));
-    case BinaryOp::greater_equal:
-        return is_float
-            ? this->builder_.CreateFCmpOGE(lhs, rhs)
-            : (is_unsigned ? this->builder_.CreateICmpUGE(lhs, rhs) : this->builder_.CreateICmpSGE(lhs, rhs));
-    case BinaryOp::equal:
-        return is_float ? this->builder_.CreateFCmpOEQ(lhs, rhs) : this->builder_.CreateICmpEQ(lhs, rhs);
-    case BinaryOp::not_equal:
-        return is_float ? this->builder_.CreateFCmpUNE(lhs, rhs) : this->builder_.CreateICmpNE(lhs, rhs);
-    case BinaryOp::bit_and:
-    case BinaryOp::logical_and:
-        return this->builder_.CreateAnd(lhs, rhs);
-    case BinaryOp::bit_xor:
-        return this->builder_.CreateXor(lhs, rhs);
-    case BinaryOp::bit_or:
-    case BinaryOp::logical_or:
-        return this->builder_.CreateOr(lhs, rhs);
+        case BinaryOp::add:
+            return is_float ? this->builder_.CreateFAdd(lhs, rhs) : this->builder_.CreateAdd(lhs, rhs);
+        case BinaryOp::sub:
+            return is_float ? this->builder_.CreateFSub(lhs, rhs) : this->builder_.CreateSub(lhs, rhs);
+        case BinaryOp::mul:
+            return is_float ? this->builder_.CreateFMul(lhs, rhs) : this->builder_.CreateMul(lhs, rhs);
+        case BinaryOp::div:
+            return is_float ? this->builder_.CreateFDiv(lhs, rhs)
+                            : (is_unsigned ? this->builder_.CreateUDiv(lhs, rhs) : this->builder_.CreateSDiv(lhs, rhs));
+        case BinaryOp::mod:
+            return is_unsigned ? this->builder_.CreateURem(lhs, rhs) : this->builder_.CreateSRem(lhs, rhs);
+        case BinaryOp::shl:
+            return this->builder_.CreateShl(lhs, rhs);
+        case BinaryOp::shr:
+            return is_unsigned ? this->builder_.CreateLShr(lhs, rhs) : this->builder_.CreateAShr(lhs, rhs);
+        case BinaryOp::less:
+            return is_float
+                ? this->builder_.CreateFCmpOLT(lhs, rhs)
+                : (is_unsigned ? this->builder_.CreateICmpULT(lhs, rhs) : this->builder_.CreateICmpSLT(lhs, rhs));
+        case BinaryOp::less_equal:
+            return is_float
+                ? this->builder_.CreateFCmpOLE(lhs, rhs)
+                : (is_unsigned ? this->builder_.CreateICmpULE(lhs, rhs) : this->builder_.CreateICmpSLE(lhs, rhs));
+        case BinaryOp::greater:
+            return is_float
+                ? this->builder_.CreateFCmpOGT(lhs, rhs)
+                : (is_unsigned ? this->builder_.CreateICmpUGT(lhs, rhs) : this->builder_.CreateICmpSGT(lhs, rhs));
+        case BinaryOp::greater_equal:
+            return is_float
+                ? this->builder_.CreateFCmpOGE(lhs, rhs)
+                : (is_unsigned ? this->builder_.CreateICmpUGE(lhs, rhs) : this->builder_.CreateICmpSGE(lhs, rhs));
+        case BinaryOp::equal:
+            return is_float ? this->builder_.CreateFCmpOEQ(lhs, rhs) : this->builder_.CreateICmpEQ(lhs, rhs);
+        case BinaryOp::not_equal:
+            return is_float ? this->builder_.CreateFCmpUNE(lhs, rhs) : this->builder_.CreateICmpNE(lhs, rhs);
+        case BinaryOp::bit_and:
+        case BinaryOp::logical_and:
+            return this->builder_.CreateAnd(lhs, rhs);
+        case BinaryOp::bit_xor:
+            return this->builder_.CreateXor(lhs, rhs);
+        case BinaryOp::bit_or:
+        case BinaryOp::logical_or:
+            return this->builder_.CreateOr(lhs, rhs);
     }
     llvm_unreachable(LLVM_BACKEND_VALUE_UNHANDLED_BINARY_OP);
 }
 
-llvm::Value* LlvmEmitter::emit_call(const Value& value) {
+llvm::Value* LlvmEmitter::emit_call(const Value& value)
+{
     std::vector<llvm::Value*> args;
     args.reserve(value.args.size());
     for (const ValueId arg : value.args) {
@@ -575,14 +549,9 @@ llvm::Value* LlvmEmitter::emit_call(const Value& value) {
             return this->builder_.CreateCall(type, callee, args);
         }
         const std::string result_name = this->text(value.name).empty()
-            ? std::string {}
+            ? std::string{}
             : this->suffixed_name(value.name, LLVM_BACKEND_VALUE_CALL_RESULT_SUFFIX);
-        return this->builder_.CreateCall(
-            type,
-            callee,
-            args,
-            result_name
-        );
+        return this->builder_.CreateCall(type, callee, args, result_name);
     }
 
     llvm::Function* target = this->functions_.at(value.call_target.value);
@@ -590,16 +559,13 @@ llvm::Value* LlvmEmitter::emit_call(const Value& value) {
         return this->builder_.CreateCall(target, args);
     }
     const std::string result_name = this->text(value.name).empty()
-        ? std::string {}
+        ? std::string{}
         : this->suffixed_name(value.name, LLVM_BACKEND_VALUE_CALL_RESULT_SUFFIX);
-    return this->builder_.CreateCall(
-        target,
-        args,
-        result_name
-    );
+    return this->builder_.CreateCall(target, args, result_name);
 }
 
-llvm::Value* LlvmEmitter::emit_field_addr(const Value& value) {
+llvm::Value* LlvmEmitter::emit_field_addr(const Value& value)
+{
     const sema::TypeHandle object_pointee = this->pointee_type(value.object);
     const sema::TypeHandle record_type =
         (this->source_.types.is_pointer(object_pointee) || this->source_.types.is_reference(object_pointee))
@@ -607,42 +573,32 @@ llvm::Value* LlvmEmitter::emit_field_addr(const Value& value) {
         : object_pointee;
     const RecordLayout* record = find_record(this->source_, record_type);
     const base::usize index = record_field_index(*record, value.name);
-    return this->builder_.CreateStructGEP(
-        this->llvm_type(record_type),
-        this->get(value.object),
-        static_cast<unsigned>(index),
-        this->suffixed_name(value.name, LLVM_BACKEND_VALUE_FIELD_ADDRESS_SUFFIX)
-    );
+    return this->builder_.CreateStructGEP(this->llvm_type(record_type), this->get(value.object),
+        static_cast<unsigned>(index), this->suffixed_name(value.name, LLVM_BACKEND_VALUE_FIELD_ADDRESS_SUFFIX));
 }
 
-llvm::Value* LlvmEmitter::emit_index_addr(const Value& value) {
+llvm::Value* LlvmEmitter::emit_index_addr(const Value& value)
+{
     const sema::TypeHandle object_pointee = this->pointee_type(value.object);
     llvm::Value* object = this->get(value.object);
     llvm::Value* index = this->get(value.index);
     if (this->source_.types.is_array(object_pointee)) {
-        llvm::Value* zero = llvm::ConstantInt::get(
-            llvm::Type::getInt64Ty(this->context_),
-            LLVM_BACKEND_VALUE_ZERO_INTEGER
-        );
+        llvm::Value* zero =
+            llvm::ConstantInt::get(llvm::Type::getInt64Ty(this->context_), LLVM_BACKEND_VALUE_ZERO_INTEGER);
         return this->builder_.CreateGEP(
-            this->llvm_type(object_pointee),
-            object,
-            {zero, index},
-            LLVM_BACKEND_VALUE_INDEX_ADDRESS_NAME
-        );
+            this->llvm_type(object_pointee), object, {zero, index}, LLVM_BACKEND_VALUE_INDEX_ADDRESS_NAME);
     }
-    return this->builder_.CreateGEP(this->llvm_type(object_pointee), object, index, LLVM_BACKEND_VALUE_INDEX_ADDRESS_NAME);
+    return this->builder_.CreateGEP(
+        this->llvm_type(object_pointee), object, index, LLVM_BACKEND_VALUE_INDEX_ADDRESS_NAME);
 }
 
-llvm::Value* LlvmEmitter::emit_aggregate(const Value& value) {
+llvm::Value* LlvmEmitter::emit_aggregate(const Value& value)
+{
     llvm::Value* aggregate = llvm::UndefValue::get(this->llvm_type(value.type));
     if (this->source_.types.is_array(value.type)) {
         for (base::usize index = 0; index < value.elements.size(); ++index) {
             aggregate = this->builder_.CreateInsertValue(
-                aggregate,
-                this->get(value.elements[index]),
-                {static_cast<unsigned>(index)}
-            );
+                aggregate, this->get(value.elements[index]), {static_cast<unsigned>(index)});
         }
         return aggregate;
     }
@@ -655,33 +611,23 @@ llvm::Value* LlvmEmitter::emit_aggregate(const Value& value) {
     return aggregate;
 }
 
-llvm::Value* LlvmEmitter::emit_str_is_valid_utf8(const Value& value) {
+llvm::Value* LlvmEmitter::emit_str_is_valid_utf8(const Value& value)
+{
     llvm::Value* slice = this->get(value.object);
     llvm::Value* data = this->builder_.CreateExtractValue(
-        slice,
-        {LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX},
-        LLVM_BACKEND_VALUE_SLICE_DATA_NAME
-    );
+        slice, {LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX}, LLVM_BACKEND_VALUE_SLICE_DATA_NAME);
     llvm::Value* length = this->builder_.CreateExtractValue(
-        slice,
-        {LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX},
-        LLVM_BACKEND_VALUE_SLICE_LENGTH_NAME
-    );
+        slice, {LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX}, LLVM_BACKEND_VALUE_SLICE_LENGTH_NAME);
     return this->emit_utf8_validation_call(data, length);
 }
 
-llvm::Value* LlvmEmitter::emit_str_from_utf8_checked(const Value& value) {
+llvm::Value* LlvmEmitter::emit_str_from_utf8_checked(const Value& value)
+{
     llvm::Value* slice = this->get(value.object);
     llvm::Value* data = this->builder_.CreateExtractValue(
-        slice,
-        {LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX},
-        LLVM_BACKEND_VALUE_SLICE_DATA_NAME
-    );
+        slice, {LLVM_BACKEND_VALUE_SLICE_DATA_FIELD_INDEX}, LLVM_BACKEND_VALUE_SLICE_DATA_NAME);
     llvm::Value* length = this->builder_.CreateExtractValue(
-        slice,
-        {LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX},
-        LLVM_BACKEND_VALUE_SLICE_LENGTH_NAME
-    );
+        slice, {LLVM_BACKEND_VALUE_SLICE_LENGTH_FIELD_INDEX}, LLVM_BACKEND_VALUE_SLICE_LENGTH_NAME);
     llvm::Value* valid = this->emit_utf8_validation_call(data, length);
 
     llvm::Value* empty_data = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(data->getType()));
@@ -691,32 +637,19 @@ llvm::Value* LlvmEmitter::emit_str_from_utf8_checked(const Value& value) {
 
     llvm::Value* text = llvm::UndefValue::get(this->llvm_type(value.type));
     text = this->builder_.CreateInsertValue(
-        text,
-        checked_data,
-        {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX},
-        LLVM_BACKEND_VALUE_UTF8_STR_NAME
-    );
+        text, checked_data, {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX}, LLVM_BACKEND_VALUE_UTF8_STR_NAME);
     text = this->builder_.CreateInsertValue(
-        text,
-        checked_length,
-        {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX},
-        LLVM_BACKEND_VALUE_UTF8_STR_NAME
-    );
+        text, checked_length, {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX}, LLVM_BACKEND_VALUE_UTF8_STR_NAME);
     return text;
 }
 
-llvm::Value* LlvmEmitter::emit_str_slice_checked(const Value& value) {
+llvm::Value* LlvmEmitter::emit_str_slice_checked(const Value& value)
+{
     llvm::Value* source = this->get(value.object);
     llvm::Value* data = this->builder_.CreateExtractValue(
-        source,
-        {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX},
-        LLVM_BACKEND_VALUE_STRING_DATA_NAME
-    );
+        source, {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX}, LLVM_BACKEND_VALUE_STRING_DATA_NAME);
     llvm::Value* length = this->builder_.CreateExtractValue(
-        source,
-        {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX},
-        LLVM_BACKEND_VALUE_STRING_LENGTH_NAME
-    );
+        source, {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX}, LLVM_BACKEND_VALUE_STRING_LENGTH_NAME);
     llvm::Value* start = this->get(value.lhs);
     llvm::Value* end = this->get(value.rhs);
 
@@ -728,30 +661,17 @@ llvm::Value* LlvmEmitter::emit_str_slice_checked(const Value& value) {
     llvm::Value* source_storage_ok = this->builder_.CreateOr(empty_source, data_present);
     llvm::Value* ordered_bounds = this->builder_.CreateICmpULE(start, end);
     llvm::Value* end_in_bounds = this->builder_.CreateICmpULE(end, length);
-    llvm::Value* start_boundary = this->emit_utf8_boundary_check(
-        data,
-        length,
-        start,
-        std::string(LLVM_BACKEND_VALUE_STR_SLICE_NAME) + LLVM_BACKEND_VALUE_STR_SLICE_START_BOUNDARY_SUFFIX
-    );
-    llvm::Value* end_boundary = this->emit_utf8_boundary_check(
-        data,
-        length,
-        end,
-        std::string(LLVM_BACKEND_VALUE_STR_SLICE_NAME) + LLVM_BACKEND_VALUE_STR_SLICE_END_BOUNDARY_SUFFIX
-    );
+    llvm::Value* start_boundary = this->emit_utf8_boundary_check(data, length, start,
+        std::string(LLVM_BACKEND_VALUE_STR_SLICE_NAME) + LLVM_BACKEND_VALUE_STR_SLICE_START_BOUNDARY_SUFFIX);
+    llvm::Value* end_boundary = this->emit_utf8_boundary_check(data, length, end,
+        std::string(LLVM_BACKEND_VALUE_STR_SLICE_NAME) + LLVM_BACKEND_VALUE_STR_SLICE_END_BOUNDARY_SUFFIX);
 
     llvm::Value* success = this->builder_.CreateAnd(source_storage_ok, ordered_bounds);
     success = this->builder_.CreateAnd(success, end_in_bounds);
     success = this->builder_.CreateAnd(success, start_boundary);
     success = this->builder_.CreateAnd(success, end_boundary, LLVM_BACKEND_VALUE_STR_SLICE_SUCCESS_NAME);
 
-    llvm::Value* slice_data = this->builder_.CreateGEP(
-        byte_type,
-        data,
-        start,
-        LLVM_BACKEND_VALUE_STR_SLICE_DATA_NAME
-    );
+    llvm::Value* slice_data = this->builder_.CreateGEP(byte_type, data, start, LLVM_BACKEND_VALUE_STR_SLICE_DATA_NAME);
     llvm::Value* slice_length = this->builder_.CreateSub(end, start, LLVM_BACKEND_VALUE_STR_SLICE_LENGTH_NAME);
     llvm::Value* empty_length = llvm::ConstantInt::get(length->getType(), LLVM_BACKEND_VALUE_ZERO_INTEGER);
     llvm::Value* checked_data = this->builder_.CreateSelect(success, slice_data, null_data);
@@ -759,42 +679,26 @@ llvm::Value* LlvmEmitter::emit_str_slice_checked(const Value& value) {
 
     llvm::Value* result = llvm::UndefValue::get(this->llvm_type(value.type));
     result = this->builder_.CreateInsertValue(
-        result,
-        checked_data,
-        {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX},
-        LLVM_BACKEND_VALUE_STR_SLICE_NAME
-    );
+        result, checked_data, {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX}, LLVM_BACKEND_VALUE_STR_SLICE_NAME);
     result = this->builder_.CreateInsertValue(
-        result,
-        checked_length,
-        {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX},
-        LLVM_BACKEND_VALUE_STR_SLICE_NAME
-    );
+        result, checked_length, {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX}, LLVM_BACKEND_VALUE_STR_SLICE_NAME);
     return result;
 }
 
-llvm::Value* LlvmEmitter::emit_utf8_validation_call(llvm::Value* data, llvm::Value* length) {
+llvm::Value* LlvmEmitter::emit_utf8_validation_call(llvm::Value* data, llvm::Value* length)
+{
     return this->builder_.CreateCall(
-        this->utf8_validator_function(),
-        {data, length},
-        LLVM_BACKEND_VALUE_UTF8_VALID_NAME
-    );
+        this->utf8_validator_function(), {data, length}, LLVM_BACKEND_VALUE_UTF8_VALID_NAME);
 }
 
 llvm::Value* LlvmEmitter::emit_utf8_boundary_check(
-    llvm::Value* data,
-    llvm::Value* length,
-    llvm::Value* index,
-    const std::string& name
-) {
-    return this->builder_.CreateCall(
-        this->utf8_boundary_function(),
-        {data, length, index},
-        name
-    );
+    llvm::Value* data, llvm::Value* length, llvm::Value* index, const std::string& name)
+{
+    return this->builder_.CreateCall(this->utf8_boundary_function(), {data, length, index}, name);
 }
 
-llvm::Function* LlvmEmitter::utf8_boundary_function() {
+llvm::Function* LlvmEmitter::utf8_boundary_function()
+{
     if (llvm::Function* existing = this->module_->getFunction(LLVM_BACKEND_VALUE_UTF8_BOUNDARY_HELPER_NAME);
         existing != nullptr) {
         return existing;
@@ -803,18 +707,12 @@ llvm::Function* LlvmEmitter::utf8_boundary_function() {
     llvm::Type* byte_type = llvm::Type::getInt8Ty(this->context_);
     llvm::Type* bool_type = llvm::Type::getInt1Ty(this->context_);
     llvm::Type* size_type = this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize));
-    llvm::PointerType* byte_pointer_type = llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE);
-    llvm::FunctionType* function_type = llvm::FunctionType::get(
-        bool_type,
-        {byte_pointer_type, size_type, size_type},
-        false
-    );
-    llvm::Function* function = llvm::Function::Create(
-        function_type,
-        llvm::GlobalValue::InternalLinkage,
-        LLVM_BACKEND_VALUE_UTF8_BOUNDARY_HELPER_NAME,
-        this->module_.get()
-    );
+    llvm::PointerType* byte_pointer_type =
+        llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE);
+    llvm::FunctionType* function_type =
+        llvm::FunctionType::get(bool_type, {byte_pointer_type, size_type, size_type}, false);
+    llvm::Function* function = llvm::Function::Create(function_type, llvm::GlobalValue::InternalLinkage,
+        LLVM_BACKEND_VALUE_UTF8_BOUNDARY_HELPER_NAME, this->module_.get());
 
     auto argument = function->arg_begin();
     llvm::Value* data = &*argument++;
@@ -822,36 +720,18 @@ llvm::Function* LlvmEmitter::utf8_boundary_function() {
     llvm::Value* index = &*argument;
 
     const llvm::IRBuilderBase::InsertPoint saved_insert_point = this->builder_.saveIP();
-    llvm::BasicBlock* entry_block = llvm::BasicBlock::Create(
-        this->context_,
-        LLVM_BACKEND_VALUE_UTF8_ENTRY_BLOCK,
-        function
-    );
-    llvm::BasicBlock* edge_block = llvm::BasicBlock::Create(
-        this->context_,
-        LLVM_BACKEND_VALUE_UTF8_BOUNDARY_EDGE_BLOCK,
-        function
-    );
-    llvm::BasicBlock* probe_block = llvm::BasicBlock::Create(
-        this->context_,
-        LLVM_BACKEND_VALUE_UTF8_BOUNDARY_PROBE_BLOCK,
-        function
-    );
-    llvm::BasicBlock* load_block = llvm::BasicBlock::Create(
-        this->context_,
-        LLVM_BACKEND_VALUE_UTF8_BOUNDARY_LOAD_BLOCK,
-        function
-    );
-    llvm::BasicBlock* valid_block = llvm::BasicBlock::Create(
-        this->context_,
-        LLVM_BACKEND_VALUE_UTF8_VALID_BLOCK,
-        function
-    );
-    llvm::BasicBlock* invalid_block = llvm::BasicBlock::Create(
-        this->context_,
-        LLVM_BACKEND_VALUE_UTF8_INVALID_BLOCK,
-        function
-    );
+    llvm::BasicBlock* entry_block =
+        llvm::BasicBlock::Create(this->context_, LLVM_BACKEND_VALUE_UTF8_ENTRY_BLOCK, function);
+    llvm::BasicBlock* edge_block =
+        llvm::BasicBlock::Create(this->context_, LLVM_BACKEND_VALUE_UTF8_BOUNDARY_EDGE_BLOCK, function);
+    llvm::BasicBlock* probe_block =
+        llvm::BasicBlock::Create(this->context_, LLVM_BACKEND_VALUE_UTF8_BOUNDARY_PROBE_BLOCK, function);
+    llvm::BasicBlock* load_block =
+        llvm::BasicBlock::Create(this->context_, LLVM_BACKEND_VALUE_UTF8_BOUNDARY_LOAD_BLOCK, function);
+    llvm::BasicBlock* valid_block =
+        llvm::BasicBlock::Create(this->context_, LLVM_BACKEND_VALUE_UTF8_VALID_BLOCK, function);
+    llvm::BasicBlock* invalid_block =
+        llvm::BasicBlock::Create(this->context_, LLVM_BACKEND_VALUE_UTF8_INVALID_BLOCK, function);
 
     const auto size_constant = [&](const std::uint64_t value) {
         return llvm::ConstantInt::get(size_type, value);
@@ -895,7 +775,8 @@ llvm::Function* LlvmEmitter::utf8_boundary_function() {
     return function;
 }
 
-llvm::Function* LlvmEmitter::utf8_validator_function() {
+llvm::Function* LlvmEmitter::utf8_validator_function()
+{
     if (llvm::Function* existing = this->module_->getFunction(LLVM_BACKEND_VALUE_UTF8_HELPER_NAME);
         existing != nullptr) {
         return existing;
@@ -904,54 +785,29 @@ llvm::Function* LlvmEmitter::utf8_validator_function() {
     llvm::Type* byte_type = llvm::Type::getInt8Ty(this->context_);
     llvm::Type* bool_type = llvm::Type::getInt1Ty(this->context_);
     llvm::Type* size_type = this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize));
-    llvm::PointerType* byte_pointer_type = llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE);
-    llvm::FunctionType* function_type = llvm::FunctionType::get(
-        bool_type,
-        {byte_pointer_type, size_type},
-        false
-    );
+    llvm::PointerType* byte_pointer_type =
+        llvm::PointerType::get(this->context_, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE);
+    llvm::FunctionType* function_type = llvm::FunctionType::get(bool_type, {byte_pointer_type, size_type}, false);
     llvm::Function* function = llvm::Function::Create(
-        function_type,
-        llvm::GlobalValue::InternalLinkage,
-        LLVM_BACKEND_VALUE_UTF8_HELPER_NAME,
-        this->module_.get()
-    );
+        function_type, llvm::GlobalValue::InternalLinkage, LLVM_BACKEND_VALUE_UTF8_HELPER_NAME, this->module_.get());
 
     auto argument = function->arg_begin();
     llvm::Value* data = &*argument++;
     llvm::Value* length = &*argument;
 
     const llvm::IRBuilderBase::InsertPoint saved_insert_point = this->builder_.saveIP();
-    llvm::BasicBlock* entry_block = llvm::BasicBlock::Create(
-        this->context_,
-        LLVM_BACKEND_VALUE_UTF8_ENTRY_BLOCK,
-        function
-    );
-    llvm::BasicBlock* null_check_block = llvm::BasicBlock::Create(
-        this->context_,
-        LLVM_BACKEND_VALUE_UTF8_NULL_CHECK_BLOCK,
-        function
-    );
-    llvm::BasicBlock* loop_block = llvm::BasicBlock::Create(
-        this->context_,
-        LLVM_BACKEND_VALUE_UTF8_LOOP_BLOCK,
-        function
-    );
-    llvm::BasicBlock* scan_block = llvm::BasicBlock::Create(
-        this->context_,
-        LLVM_BACKEND_VALUE_UTF8_SCAN_BLOCK,
-        function
-    );
-    llvm::BasicBlock* valid_block = llvm::BasicBlock::Create(
-        this->context_,
-        LLVM_BACKEND_VALUE_UTF8_VALID_BLOCK,
-        function
-    );
-    llvm::BasicBlock* invalid_block = llvm::BasicBlock::Create(
-        this->context_,
-        LLVM_BACKEND_VALUE_UTF8_INVALID_BLOCK,
-        function
-    );
+    llvm::BasicBlock* entry_block =
+        llvm::BasicBlock::Create(this->context_, LLVM_BACKEND_VALUE_UTF8_ENTRY_BLOCK, function);
+    llvm::BasicBlock* null_check_block =
+        llvm::BasicBlock::Create(this->context_, LLVM_BACKEND_VALUE_UTF8_NULL_CHECK_BLOCK, function);
+    llvm::BasicBlock* loop_block =
+        llvm::BasicBlock::Create(this->context_, LLVM_BACKEND_VALUE_UTF8_LOOP_BLOCK, function);
+    llvm::BasicBlock* scan_block =
+        llvm::BasicBlock::Create(this->context_, LLVM_BACKEND_VALUE_UTF8_SCAN_BLOCK, function);
+    llvm::BasicBlock* valid_block =
+        llvm::BasicBlock::Create(this->context_, LLVM_BACKEND_VALUE_UTF8_VALID_BLOCK, function);
+    llvm::BasicBlock* invalid_block =
+        llvm::BasicBlock::Create(this->context_, LLVM_BACKEND_VALUE_UTF8_INVALID_BLOCK, function);
 
     const auto size_constant = [&](const std::uint64_t value) {
         return llvm::ConstantInt::get(size_type, value);
@@ -989,32 +845,16 @@ llvm::Function* LlvmEmitter::utf8_validator_function() {
     llvm::Value* first = byte_at(index);
     first->setName(LLVM_BACKEND_VALUE_UTF8_FIRST_NAME);
 
-    const auto append_case = [&](
-        const std::string& name,
-        llvm::Value* first_matches,
-        const std::uint64_t width,
-        const std::initializer_list<Utf8ByteRange> continuation_ranges
-    ) {
-        llvm::BasicBlock* match_block = llvm::BasicBlock::Create(
-            this->context_,
-            name + LLVM_BACKEND_VALUE_UTF8_CASE_MATCH_SUFFIX,
-            function
-        );
-        llvm::BasicBlock* bytes_block = llvm::BasicBlock::Create(
-            this->context_,
-            name + LLVM_BACKEND_VALUE_UTF8_CASE_BYTES_SUFFIX,
-            function
-        );
-        llvm::BasicBlock* success_block = llvm::BasicBlock::Create(
-            this->context_,
-            name + LLVM_BACKEND_VALUE_UTF8_CASE_SUCCESS_SUFFIX,
-            function
-        );
-        llvm::BasicBlock* miss_block = llvm::BasicBlock::Create(
-            this->context_,
-            name + LLVM_BACKEND_VALUE_UTF8_CASE_MISS_SUFFIX,
-            function
-        );
+    const auto append_case = [&](const std::string& name, llvm::Value* first_matches, const std::uint64_t width,
+                                 const std::initializer_list<Utf8ByteRange> continuation_ranges) {
+        llvm::BasicBlock* match_block =
+            llvm::BasicBlock::Create(this->context_, name + LLVM_BACKEND_VALUE_UTF8_CASE_MATCH_SUFFIX, function);
+        llvm::BasicBlock* bytes_block =
+            llvm::BasicBlock::Create(this->context_, name + LLVM_BACKEND_VALUE_UTF8_CASE_BYTES_SUFFIX, function);
+        llvm::BasicBlock* success_block =
+            llvm::BasicBlock::Create(this->context_, name + LLVM_BACKEND_VALUE_UTF8_CASE_SUCCESS_SUFFIX, function);
+        llvm::BasicBlock* miss_block =
+            llvm::BasicBlock::Create(this->context_, name + LLVM_BACKEND_VALUE_UTF8_CASE_MISS_SUFFIX, function);
 
         this->builder_.CreateCondBr(first_matches, match_block, miss_block);
 
@@ -1042,84 +882,58 @@ llvm::Function* LlvmEmitter::utf8_validator_function() {
         this->builder_.SetInsertPoint(miss_block);
     };
 
-    append_case(
-        "utf8.ascii",
-        this->builder_.CreateICmpULE(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_ASCII_MAX)),
-        LLVM_BACKEND_VALUE_UTF8_WIDTH_ONE,
-        {}
-    );
-    append_case(
-        "utf8.two",
-        byte_in_range(first, {LLVM_BACKEND_VALUE_UTF8_TWO_MIN, LLVM_BACKEND_VALUE_UTF8_TWO_MAX}),
-        LLVM_BACKEND_VALUE_UTF8_WIDTH_TWO,
-        {{LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX}}
-    );
-    append_case(
-        "utf8.three.e0",
-        this->builder_.CreateICmpEQ(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_THREE_E0)),
+    append_case("utf8.ascii", this->builder_.CreateICmpULE(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_ASCII_MAX)),
+        LLVM_BACKEND_VALUE_UTF8_WIDTH_ONE, {});
+    append_case("utf8.two", byte_in_range(first, {LLVM_BACKEND_VALUE_UTF8_TWO_MIN, LLVM_BACKEND_VALUE_UTF8_TWO_MAX}),
+        LLVM_BACKEND_VALUE_UTF8_WIDTH_TWO, {{LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX}});
+    append_case("utf8.three.e0", this->builder_.CreateICmpEQ(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_THREE_E0)),
         LLVM_BACKEND_VALUE_UTF8_WIDTH_THREE,
         {
             {LLVM_BACKEND_VALUE_UTF8_THREE_E0_SECOND_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
-        }
-    );
-    append_case(
-        "utf8.three.mid",
+        });
+    append_case("utf8.three.mid",
         byte_in_range(first, {LLVM_BACKEND_VALUE_UTF8_THREE_E1_MIN, LLVM_BACKEND_VALUE_UTF8_THREE_EC_MAX}),
         LLVM_BACKEND_VALUE_UTF8_WIDTH_THREE,
         {
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
-        }
-    );
-    append_case(
-        "utf8.three.ed",
-        this->builder_.CreateICmpEQ(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_THREE_ED)),
+        });
+    append_case("utf8.three.ed", this->builder_.CreateICmpEQ(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_THREE_ED)),
         LLVM_BACKEND_VALUE_UTF8_WIDTH_THREE,
         {
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_THREE_ED_SECOND_MAX},
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
-        }
-    );
-    append_case(
-        "utf8.three.high",
+        });
+    append_case("utf8.three.high",
         byte_in_range(first, {LLVM_BACKEND_VALUE_UTF8_THREE_EE_MIN, LLVM_BACKEND_VALUE_UTF8_THREE_EF_MAX}),
         LLVM_BACKEND_VALUE_UTF8_WIDTH_THREE,
         {
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
-        }
-    );
-    append_case(
-        "utf8.four.f0",
-        this->builder_.CreateICmpEQ(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_FOUR_F0)),
+        });
+    append_case("utf8.four.f0", this->builder_.CreateICmpEQ(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_FOUR_F0)),
         LLVM_BACKEND_VALUE_UTF8_WIDTH_FOUR,
         {
             {LLVM_BACKEND_VALUE_UTF8_FOUR_F0_SECOND_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
-        }
-    );
-    append_case(
-        "utf8.four.mid",
+        });
+    append_case("utf8.four.mid",
         byte_in_range(first, {LLVM_BACKEND_VALUE_UTF8_FOUR_F1_MIN, LLVM_BACKEND_VALUE_UTF8_FOUR_F3_MAX}),
         LLVM_BACKEND_VALUE_UTF8_WIDTH_FOUR,
         {
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
-        }
-    );
-    append_case(
-        "utf8.four.f4",
-        this->builder_.CreateICmpEQ(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_FOUR_F4)),
+        });
+    append_case("utf8.four.f4", this->builder_.CreateICmpEQ(first, byte_constant(LLVM_BACKEND_VALUE_UTF8_FOUR_F4)),
         LLVM_BACKEND_VALUE_UTF8_WIDTH_FOUR,
         {
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_FOUR_F4_SECOND_MAX},
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
             {LLVM_BACKEND_VALUE_UTF8_CONT_MIN, LLVM_BACKEND_VALUE_UTF8_CONT_MAX},
-        }
-    );
+        });
     this->builder_.CreateBr(invalid_block);
 
     this->builder_.SetInsertPoint(valid_block);
@@ -1132,81 +946,79 @@ llvm::Function* LlvmEmitter::utf8_validator_function() {
     return function;
 }
 
-llvm::Value* LlvmEmitter::emit_cast(const Value& value) {
+llvm::Value* LlvmEmitter::emit_cast(const Value& value)
+{
     llvm::Value* operand = this->get(value.lhs);
     llvm::Type* target = this->llvm_type(value.target_type);
     const bool source_unsigned = this->is_unsigned_integer(this->source_.values[value.lhs.value].type);
     switch (value.cast_kind) {
-    case CastKind::numeric:
-        if (this->source_.types.is_bool(value.target_type)) {
-            if (operand->getType()->isIntegerTy()) {
-                return this->builder_.CreateICmpNE(
-                    operand,
-                    llvm::ConstantInt::get(operand->getType(), LLVM_BACKEND_VALUE_ZERO_INTEGER)
-                );
+        case CastKind::numeric:
+            if (this->source_.types.is_bool(value.target_type)) {
+                if (operand->getType()->isIntegerTy()) {
+                    return this->builder_.CreateICmpNE(
+                        operand, llvm::ConstantInt::get(operand->getType(), LLVM_BACKEND_VALUE_ZERO_INTEGER));
+                }
+                if (operand->getType()->isFloatingPointTy()) {
+                    return this->builder_.CreateFCmpUNE(
+                        operand, llvm::ConstantFP::get(operand->getType(), LLVM_BACKEND_VALUE_ZERO_FLOAT));
+                }
             }
-            if (operand->getType()->isFloatingPointTy()) {
-                return this->builder_.CreateFCmpUNE(
-                    operand,
-                    llvm::ConstantFP::get(operand->getType(), LLVM_BACKEND_VALUE_ZERO_FLOAT)
-                );
+            if (operand->getType()->isIntegerTy() && target->isIntegerTy()) {
+                return this->builder_.CreateIntCast(operand, target, !source_unsigned);
             }
-        }
-        if (operand->getType()->isIntegerTy() && target->isIntegerTy()) {
-            return this->builder_.CreateIntCast(operand, target, !source_unsigned);
-        }
-        if (operand->getType()->isIntegerTy() && target->isFloatingPointTy()) {
-            return source_unsigned ? this->builder_.CreateUIToFP(operand, target) : this->builder_.CreateSIToFP(operand, target);
-        }
-        if (operand->getType()->isFloatingPointTy() && target->isIntegerTy()) {
-            return this->is_unsigned_integer(value.target_type)
-                ? this->builder_.CreateFPToUI(operand, target)
-                : this->builder_.CreateFPToSI(operand, target);
-        }
-        if (operand->getType()->isFloatingPointTy() && target->isFloatingPointTy()) {
-            return this->builder_.CreateFPCast(operand, target);
-        }
-        return operand;
-    case CastKind::pointer:
-    case CastKind::bcast:
-        return this->builder_.CreateBitCast(operand, target);
-    case CastKind::ptr_addr:
-        return this->builder_.CreatePtrToInt(operand, target);
-    case CastKind::paddr:
-        return this->builder_.CreateIntToPtr(operand, target);
+            if (operand->getType()->isIntegerTy() && target->isFloatingPointTy()) {
+                return source_unsigned ? this->builder_.CreateUIToFP(operand, target)
+                                       : this->builder_.CreateSIToFP(operand, target);
+            }
+            if (operand->getType()->isFloatingPointTy() && target->isIntegerTy()) {
+                return this->is_unsigned_integer(value.target_type) ? this->builder_.CreateFPToUI(operand, target)
+                                                                    : this->builder_.CreateFPToSI(operand, target);
+            }
+            if (operand->getType()->isFloatingPointTy() && target->isFloatingPointTy()) {
+                return this->builder_.CreateFPCast(operand, target);
+            }
+            return operand;
+        case CastKind::pointer:
+        case CastKind::bcast:
+            return this->builder_.CreateBitCast(operand, target);
+        case CastKind::ptr_addr:
+            return this->builder_.CreatePtrToInt(operand, target);
+        case CastKind::paddr:
+            return this->builder_.CreateIntToPtr(operand, target);
     }
     llvm_unreachable(LLVM_BACKEND_VALUE_UNHANDLED_CAST_KIND);
 }
 
-llvm::Value* LlvmEmitter::emit_size_of(const sema::TypeHandle type) {
+llvm::Value* LlvmEmitter::emit_size_of(const sema::TypeHandle type)
+{
     const llvm::TypeSize size = this->data_layout().getTypeAllocSize(this->llvm_type(type));
     return llvm::ConstantInt::get(
-        this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize)),
-        size.getFixedValue()
-    );
+        this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize)), size.getFixedValue());
 }
 
-llvm::Value* LlvmEmitter::emit_align_of(const sema::TypeHandle type) {
+llvm::Value* LlvmEmitter::emit_align_of(const sema::TypeHandle type)
+{
     const llvm::Align align = this->data_layout().getABITypeAlign(this->llvm_type(type));
     return llvm::ConstantInt::get(
-        this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize)),
-        align.value()
-    );
+        this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize)), align.value());
 }
 
-llvm::Value* LlvmEmitter::integer_constant(const sema::TypeHandle type, const std::string_view text) {
+llvm::Value* LlvmEmitter::integer_constant(const sema::TypeHandle type, const std::string_view text)
+{
     std::uint64_t value = LLVM_BACKEND_VALUE_ZERO_INTEGER;
     static_cast<void>(parse_u64(text, value));
     return llvm::ConstantInt::get(this->llvm_type(type), value, !this->is_unsigned_integer(type));
 }
 
-llvm::Value* LlvmEmitter::float_constant(const sema::TypeHandle type, const std::string_view text) {
+llvm::Value* LlvmEmitter::float_constant(const sema::TypeHandle type, const std::string_view text)
+{
     double value = LLVM_BACKEND_VALUE_ZERO_FLOAT;
     static_cast<void>(parse_f64(text, value));
     return llvm::ConstantFP::get(this->llvm_type(type), value);
 }
 
-llvm::Value* LlvmEmitter::emit_string_literal(const std::string_view literal, const bool c_string) {
+llvm::Value* LlvmEmitter::emit_string_literal(const std::string_view literal, const bool c_string)
+{
     std::string decoded = decode_string_literal(literal, c_string);
     if (c_string) {
         decoded.push_back(LLVM_BACKEND_VALUE_NULL_TERMINATOR);
@@ -1217,43 +1029,32 @@ llvm::Value* LlvmEmitter::emit_string_literal(const std::string_view literal, co
     const sema::TypeHandle str_type = this->source_.types.builtin(sema::BuiltinType::str);
     llvm::Value* result = llvm::UndefValue::get(this->llvm_type(str_type));
     result = this->builder_.CreateInsertValue(result, data, {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX});
-    result = this->builder_.CreateInsertValue(
-        result,
+    result = this->builder_.CreateInsertValue(result,
         llvm::ConstantInt::get(this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize)), decoded.size()),
-        {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX}
-    );
+        {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX});
     return result;
 }
 
-llvm::Value* LlvmEmitter::emit_raw_string_literal(const std::string_view literal) {
+llvm::Value* LlvmEmitter::emit_raw_string_literal(const std::string_view literal)
+{
     const std::string decoded = decode_raw_string_literal(literal);
     llvm::Value* data = this->global_string_pointer(decoded, LLVM_BACKEND_VALUE_STRING_DATA_NAME, false);
     const sema::TypeHandle str_type = this->source_.types.builtin(sema::BuiltinType::str);
     llvm::Value* result = llvm::UndefValue::get(this->llvm_type(str_type));
     result = this->builder_.CreateInsertValue(result, data, {LLVM_BACKEND_VALUE_STRING_DATA_FIELD_INDEX});
-    result = this->builder_.CreateInsertValue(
-        result,
+    result = this->builder_.CreateInsertValue(result,
         llvm::ConstantInt::get(this->llvm_type(this->source_.types.builtin(sema::BuiltinType::usize)), decoded.size()),
-        {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX}
-    );
+        {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX});
     return result;
 }
 
-llvm::Value* LlvmEmitter::global_string_pointer(const std::string& text, const std::string& name, const bool add_null) {
+llvm::Value* LlvmEmitter::global_string_pointer(const std::string& text, const std::string& name, const bool add_null)
+{
     llvm::GlobalVariable* global = this->builder_.CreateGlobalString(
-        text,
-        name,
-        LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE,
-        this->module_.get(),
-        add_null
-    );
+        text, name, LLVM_BACKEND_VALUE_GLOBAL_STRING_ADDRESS_SPACE, this->module_.get(), add_null);
     llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(this->context_), LLVM_BACKEND_VALUE_ZERO_INTEGER);
     return this->builder_.CreateInBoundsGEP(
-        global->getValueType(),
-        global,
-        {zero, zero},
-        name + LLVM_BACKEND_VALUE_GLOBAL_POINTER_SUFFIX
-    );
+        global->getValueType(), global, {zero, zero}, name + LLVM_BACKEND_VALUE_GLOBAL_POINTER_SUFFIX);
 }
 
 } // namespace aurex::backend

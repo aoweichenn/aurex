@@ -1,5 +1,3 @@
-#include <support/randomized_source.hpp>
-
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/ir/ir_dump.hpp>
 #include <aurex/ir/lower_ast.hpp>
@@ -9,21 +7,24 @@
 #include <aurex/sema/sema.hpp>
 #include <aurex/syntax/ast_dump.hpp>
 
-#include <gtest/gtest.h>
+#include <support/randomized_source.hpp>
 
 #include <string>
 #include <string_view>
+
+#include <gtest/gtest.h>
 
 namespace aurex::test {
 namespace {
 
 using base::DiagnosticSink;
 
-constexpr base::SourceId RANDOMIZED_FRONTEND_LEXER_SOURCE_ID {1};
-constexpr base::SourceId RANDOMIZED_FRONTEND_PARSER_SOURCE_ID {2};
-constexpr base::SourceId RANDOMIZED_FRONTEND_PIPELINE_SOURCE_ID {3};
+constexpr base::SourceId RANDOMIZED_FRONTEND_LEXER_SOURCE_ID{1};
+constexpr base::SourceId RANDOMIZED_FRONTEND_PARSER_SOURCE_ID{2};
+constexpr base::SourceId RANDOMIZED_FRONTEND_PIPELINE_SOURCE_ID{3};
 
-void exercise_lexer_only(const std::string_view source) {
+void exercise_lexer_only(const std::string_view source)
+{
     DiagnosticSink diagnostics;
     lex::Lexer lexer(RANDOMIZED_FRONTEND_LEXER_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
@@ -35,7 +36,8 @@ void exercise_lexer_only(const std::string_view source) {
     }
 }
 
-void exercise_parser_recovery(const std::string_view source) {
+void exercise_parser_recovery(const std::string_view source)
+{
     DiagnosticSink diagnostics;
     lex::Lexer lexer(RANDOMIZED_FRONTEND_PARSER_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
@@ -53,7 +55,8 @@ void exercise_parser_recovery(const std::string_view source) {
     }
 }
 
-void exercise_module_pipeline(const std::string_view source) {
+void exercise_module_pipeline(const std::string_view source)
+{
     DiagnosticSink diagnostics;
     lex::Lexer lexer(RANDOMIZED_FRONTEND_PIPELINE_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
@@ -79,20 +82,22 @@ void exercise_module_pipeline(const std::string_view source) {
 
     auto lowered = ir::lower_ast(parsed.value(), checked.value());
     ASSERT_TRUE(lowered) << lowered.error().message << "\n" << source;
-    auto optimized = ir::run_pass_pipeline(lowered.value(), ir::PassPipelineOptions {
-        ir::OptimizationLevel::basic,
-        true,
-        true,
-        true,
-        true,
-    });
+    auto optimized = ir::run_pass_pipeline(lowered.value(),
+        ir::PassPipelineOptions{
+            ir::OptimizationLevel::basic,
+            true,
+            true,
+            true,
+            true,
+        });
     ASSERT_TRUE(optimized) << optimized.error().message << "\n" << source;
     static_cast<void>(ir::dump_module(lowered.value()));
 }
 
 } // namespace
 
-TEST(CoreUnit, RandomizedLexerHandlesMixedNoiseDeterministically) {
+TEST(CoreUnit, RandomizedLexerHandlesMixedNoiseDeterministically)
+{
     randomized::DeterministicRandom random(randomized::RANDOM_SOURCE_LEXER_NOISE_SEED);
     for (base::usize index = 0; index < randomized::RANDOM_SOURCE_DEFAULT_LEXER_NOISE_COUNT; ++index) {
         SCOPED_TRACE("random lexer noise case " + std::to_string(index));
@@ -100,7 +105,8 @@ TEST(CoreUnit, RandomizedLexerHandlesMixedNoiseDeterministically) {
     }
 }
 
-TEST(CoreUnit, RandomizedParserRecoversFromMixedInvalidSourcesDeterministically) {
+TEST(CoreUnit, RandomizedParserRecoversFromMixedInvalidSourcesDeterministically)
+{
     randomized::DeterministicRandom random(randomized::RANDOM_SOURCE_PARSER_RECOVERY_SEED);
     for (base::usize index = 0; index < randomized::RANDOM_SOURCE_DEFAULT_PARSER_RECOVERY_COUNT; ++index) {
         SCOPED_TRACE("random parser recovery case " + std::to_string(index));
@@ -108,7 +114,8 @@ TEST(CoreUnit, RandomizedParserRecoversFromMixedInvalidSourcesDeterministically)
     }
 }
 
-TEST(CoreUnit, RandomizedFrontendPipelineAcceptsMixedValidModulesDeterministically) {
+TEST(CoreUnit, RandomizedFrontendPipelineAcceptsMixedValidModulesDeterministically)
+{
     randomized::DeterministicRandom random(randomized::RANDOM_SOURCE_LEGAL_PROGRAM_SEED);
     for (base::usize index = 0; index < randomized::RANDOM_SOURCE_DEFAULT_LEGAL_PROGRAM_COUNT; ++index) {
         SCOPED_TRACE("random valid module case " + std::to_string(index));

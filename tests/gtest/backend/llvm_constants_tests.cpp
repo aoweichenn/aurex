@@ -1,10 +1,11 @@
 #include <aurex/backend/llvm_backend.hpp>
-#include <gtest/support/ir_test_helpers.hpp>
 
 #include <cstdint>
 #include <string>
 #include <tuple>
 #include <vector>
+
+#include <gtest/support/ir_test_helpers.hpp>
 
 namespace aurex::backend {
 [[nodiscard]] bool parse_u64(std::string_view text, std::uint64_t& out) noexcept;
@@ -20,7 +21,8 @@ using namespace irtest;
 
 } // namespace
 
-TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
+TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule)
+{
     {
         auto result = backend::emit_llvm_ir({nullptr, "null"});
         ASSERT_FALSE(result);
@@ -54,41 +56,41 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
 
         const ValueId true_id = add_value(module, bool_value(module, true));
         [[maybe_unused]] const GlobalConstantId flag_constant =
-            add_global_constant(module, GlobalConstant {"flag", "unit_flag", bool_type, true_id});
+            add_global_constant(module, GlobalConstant{"flag", "unit_flag", bool_type, true_id});
         Value byte = module.make_value();
         byte.kind = ValueKind::byte_literal;
         byte.type = u8;
         set_text(module, byte, "b'\\n'");
         const ValueId byte_id = add_value(module, byte);
         [[maybe_unused]] const GlobalConstantId byte_constant =
-            add_global_constant(module, GlobalConstant {"byte", "unit_byte", u8, byte_id});
+            add_global_constant(module, GlobalConstant{"byte", "unit_byte", u8, byte_id});
         Value null_value = module.make_value();
         null_value.kind = ValueKind::null_literal;
         null_value.type = ptr_i32;
         const ValueId null_id = add_value(module, null_value);
         [[maybe_unused]] const GlobalConstantId ptr_constant =
-            add_global_constant(module, GlobalConstant {"ptr", "unit_ptr", ptr_i32, null_id});
+            add_global_constant(module, GlobalConstant{"ptr", "unit_ptr", ptr_i32, null_id});
         Value cstr = module.make_value();
         cstr.kind = ValueKind::c_string_literal;
         cstr.type = ptr(module, PointerMutability::const_, u8);
         set_text(module, cstr, "c\"abc\"");
         const ValueId cstr_id = add_value(module, cstr);
         [[maybe_unused]] const GlobalConstantId cstr_constant =
-            add_global_constant(module, GlobalConstant {"cstr", "unit_cstr", cstr.type, cstr_id});
+            add_global_constant(module, GlobalConstant{"cstr", "unit_cstr", cstr.type, cstr_id});
         Value raw_str = module.make_value();
         raw_str.kind = ValueKind::raw_string_literal;
         raw_str.type = str_type;
         set_text(module, raw_str, "r\"C:\\tmp\\a\"");
         const ValueId raw_str_id = add_value(module, raw_str);
         [[maybe_unused]] const GlobalConstantId raw_str_constant =
-            add_global_constant(module, GlobalConstant {"raw_str", "unit_raw_str", str_type, raw_str_id});
+            add_global_constant(module, GlobalConstant{"raw_str", "unit_raw_str", str_type, raw_str_id});
         Value char_value = module.make_value();
         char_value.kind = ValueKind::char_literal;
         char_value.type = char_type;
         set_text(module, char_value, "'\\u{03BB}'");
         const ValueId char_id = add_value(module, char_value);
         [[maybe_unused]] const GlobalConstantId char_constant =
-            add_global_constant(module, GlobalConstant {"char_value", "unit_char_value", char_type, char_id});
+            add_global_constant(module, GlobalConstant{"char_value", "unit_char_value", char_type, char_id});
         Value cast = module.make_value();
         cast.kind = ValueKind::cast;
         cast.type = i64;
@@ -97,22 +99,17 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
         cast.lhs = add_value(module, integer_value(module, i32, "9"));
         const ValueId cast_id = add_value(module, cast);
         [[maybe_unused]] const GlobalConstantId wide_constant =
-            add_global_constant(module, GlobalConstant {"wide", "unit_wide", i64, cast_id});
+            add_global_constant(module, GlobalConstant{"wide", "unit_wide", i64, cast_id});
 
-        auto add_cast_constant = [&](
-                                     const std::string& name,
-                                     const std::string& symbol,
-                                     const TypeHandle target_type,
-                                     const ValueId operand,
-                                     const CastKind cast_kind = CastKind::numeric
-                                 ) {
+        auto add_cast_constant = [&](const std::string& name, const std::string& symbol, const TypeHandle target_type,
+                                     const ValueId operand, const CastKind cast_kind = CastKind::numeric) {
             Value value = module.make_value();
             value.kind = ValueKind::cast;
             value.type = target_type;
             value.target_type = target_type;
             value.cast_kind = cast_kind;
             value.lhs = operand;
-            return add_global_constant(module, GlobalConstant {name, symbol, target_type, add_value(module, value)});
+            return add_global_constant(module, GlobalConstant{name, symbol, target_type, add_value(module, value)});
         };
         [[maybe_unused]] const GlobalConstantId same_constant =
             add_cast_constant("same_i32", "unit_same_i32", i32, add_value(module, integer_value(module, i32, "5")));
@@ -120,18 +117,18 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
             add_cast_constant("trunc_i8", "unit_trunc_i8", i8, add_value(module, integer_value(module, i64, "257")));
         [[maybe_unused]] const GlobalConstantId zext_constant =
             add_cast_constant("zext_u64", "unit_zext_u64", u64, add_value(module, integer_value(module, u32, "9")));
-        [[maybe_unused]] const GlobalConstantId unsigned_float_constant =
-            add_cast_constant("u32_to_f64", "unit_u32_to_f64", f64, add_value(module, integer_value(module, u32, "11")));
-        const GlobalConstantId f32_constant =
-            add_cast_constant("i32_to_f32", "unit_i32_to_f32", f32, add_value(module, integer_value(module, i32, "13")));
+        [[maybe_unused]] const GlobalConstantId unsigned_float_constant = add_cast_constant(
+            "u32_to_f64", "unit_u32_to_f64", f64, add_value(module, integer_value(module, u32, "11")));
+        const GlobalConstantId f32_constant = add_cast_constant(
+            "i32_to_f32", "unit_i32_to_f32", f32, add_value(module, integer_value(module, i32, "13")));
         Value f32_ref = module.make_value();
         f32_ref.kind = ValueKind::constant_ref;
         f32_ref.type = f32;
         f32_ref.constant = f32_constant;
         [[maybe_unused]] const GlobalConstantId f32_to_f64_constant =
             add_cast_constant("f32_to_f64", "unit_f32_to_f64", f64, add_value(module, f32_ref));
-        const GlobalConstantId f64_constant =
-            add_cast_constant("i32_to_f64", "unit_i32_to_f64", f64, add_value(module, integer_value(module, i32, "17")));
+        const GlobalConstantId f64_constant = add_cast_constant(
+            "i32_to_f64", "unit_i32_to_f64", f64, add_value(module, integer_value(module, i32, "17")));
         Value f64_ref = module.make_value();
         f64_ref.kind = ValueKind::constant_ref;
         f64_ref.type = f64;
@@ -140,12 +137,13 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
             add_cast_constant("f64_to_u32", "unit_f64_to_u32", u32, add_value(module, f64_ref));
         [[maybe_unused]] const GlobalConstantId f64_to_f32_constant =
             add_cast_constant("f64_to_f32", "unit_f64_to_f32", f32, add_value(module, f64_ref));
-        [[maybe_unused]] const GlobalConstantId bcast_constant =
-            add_cast_constant("u32_to_f32_bits", "unit_u32_to_f32_bits", f32, add_value(module, integer_value(module, u32, "0")), CastKind::bcast);
-        [[maybe_unused]] const GlobalConstantId ptrat_constant =
-            add_cast_constant("ptrat", "unit_ptrat", ptr_i32, add_value(module, integer_value(module, usize, "4096")), CastKind::paddr);
-        [[maybe_unused]] const GlobalConstantId tag_constant =
-            add_global_constant(module, GlobalConstant {"tag", "unit_tag", tag_enum_type, add_value(module, integer_value(module, tag_enum_type, "1"))});
+        [[maybe_unused]] const GlobalConstantId bcast_constant = add_cast_constant("u32_to_f32_bits",
+            "unit_u32_to_f32_bits", f32, add_value(module, integer_value(module, u32, "0")), CastKind::bcast);
+        [[maybe_unused]] const GlobalConstantId ptrat_constant = add_cast_constant(
+            "ptrat", "unit_ptrat", ptr_i32, add_value(module, integer_value(module, usize, "4096")), CastKind::paddr);
+        [[maybe_unused]] const GlobalConstantId tag_constant = add_global_constant(module,
+            GlobalConstant{
+                "tag", "unit_tag", tag_enum_type, add_value(module, integer_value(module, tag_enum_type, "1"))});
 
         Value aggregate = module.make_value();
         aggregate.kind = ValueKind::aggregate;
@@ -156,27 +154,27 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
         };
         const ValueId aggregate_id = add_value(module, aggregate);
         [[maybe_unused]] const GlobalConstantId pair_constant =
-            add_global_constant(module, GlobalConstant {"pair", "unit_pair", pair_type, aggregate_id});
+            add_global_constant(module, GlobalConstant{"pair", "unit_pair", pair_type, aggregate_id});
         Value sizeof_value = module.make_value();
         sizeof_value.kind = ValueKind::size_of;
         sizeof_value.type = builtin(module, BuiltinType::usize);
         sizeof_value.target_type = nested_array_i32;
         const ValueId size_id = add_value(module, sizeof_value);
         [[maybe_unused]] const GlobalConstantId size_constant =
-            add_global_constant(module, GlobalConstant {"size", "unit_size", sizeof_value.type, size_id});
+            add_global_constant(module, GlobalConstant{"size", "unit_size", sizeof_value.type, size_id});
         Value align_value = sizeof_value;
         align_value.kind = ValueKind::align_of;
         align_value.target_type = pair_type;
         const ValueId align_id = add_value(module, align_value);
         [[maybe_unused]] const GlobalConstantId align_constant =
-            add_global_constant(module, GlobalConstant {"align", "unit_align", align_value.type, align_id});
+            add_global_constant(module, GlobalConstant{"align", "unit_align", align_value.type, align_id});
 
         Function external = make_function(module, "external", i32, Linkage::extern_c, AbiCallConv::c);
         set_symbol(module, external, "unit_external");
         append_function(module, external);
 
         Function function = make_function(module, "exercise", i32);
-        FunctionBuilder builder {module, function};
+        FunctionBuilder builder{module, function};
         Value lhs_param = module.make_value();
         lhs_param.kind = ValueKind::param;
         lhs_param.type = i32;
@@ -271,7 +269,7 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
         call_name.kind = ValueKind::call;
         call_name.type = i32;
         set_name(module, call_name, "named_external");
-        call_name.call_target = FunctionId {0};
+        call_name.call_target = FunctionId{0};
         values.push_back(builder.add(call_name));
         const ValueId result = builder.add(integer_value(module, i32, "0"));
         values.push_back(result);
@@ -283,40 +281,42 @@ TEST(CoreUnit, LlvmBackendCoversConstantsCastsStringsAndNullModule) {
 
         auto llvm_ir = backend::emit_llvm_ir({&module, "unit_backend"});
         ASSERT_TRUE(llvm_ir) << llvm_ir.error().message;
-        expect_contains_all(llvm_ir.value().text, {
-            "@unit_flag",
-            "@unit_byte",
-            "@unit_ptr",
-            "@unit_raw_str",
-            "@unit_char_value",
-            "@unit_pair",
-            "@unit_size",
-            "@unit_align",
-            "@unit_tag",
-            "@unit_same_i32",
-            "@unit_trunc_i8",
-            "@unit_zext_u64",
-            "@unit_u32_to_f64",
-            "@unit_f32_to_f64",
-            "@unit_f64_to_u32",
-            "@unit_f64_to_f32",
-            "@unit_u32_to_f32_bits",
-            "@unit_ptrat",
-            "%unit_Pair = type",
-            "and",
-            "xor",
-            "shl",
-            "lshr",
-            "srem",
-            "udiv",
-            "urem",
-            "getelementptr",
-            "str.data",
-        });
+        expect_contains_all(llvm_ir.value().text,
+            {
+                "@unit_flag",
+                "@unit_byte",
+                "@unit_ptr",
+                "@unit_raw_str",
+                "@unit_char_value",
+                "@unit_pair",
+                "@unit_size",
+                "@unit_align",
+                "@unit_tag",
+                "@unit_same_i32",
+                "@unit_trunc_i8",
+                "@unit_zext_u64",
+                "@unit_u32_to_f64",
+                "@unit_f32_to_f64",
+                "@unit_f64_to_u32",
+                "@unit_f64_to_f32",
+                "@unit_u32_to_f32_bits",
+                "@unit_ptrat",
+                "%unit_Pair = type",
+                "and",
+                "xor",
+                "shl",
+                "lshr",
+                "srem",
+                "udiv",
+                "urem",
+                "getelementptr",
+                "str.data",
+            });
     }
 }
 
-TEST(CoreUnit, LlvmBackendCoversConstantBinaryCastAndFloatLiteralEdges) {
+TEST(CoreUnit, LlvmBackendCoversConstantBinaryCastAndFloatLiteralEdges)
+{
     Module module;
     const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
@@ -333,50 +333,34 @@ TEST(CoreUnit, LlvmBackendCoversConstantBinaryCastAndFloatLiteralEdges) {
         set_text(module, value, text);
         return add_value(module, value);
     };
-    auto add_binary_constant = [&](
-                                   const std::string& name,
-                                   const std::string& symbol,
-                                   const TypeHandle result_type,
-                                   const BinaryOp op,
-                                   const ValueId lhs,
-                                   const ValueId rhs
-                               ) {
+    auto add_binary_constant = [&](const std::string& name, const std::string& symbol, const TypeHandle result_type,
+                                   const BinaryOp op, const ValueId lhs, const ValueId rhs) {
         Value value = module.make_value();
         value.kind = ValueKind::binary;
         value.type = result_type;
         value.binary_op = op;
         value.lhs = lhs;
         value.rhs = rhs;
-        return add_global_constant(module, GlobalConstant {name, symbol, result_type, add_value(module, value)});
+        return add_global_constant(module, GlobalConstant{name, symbol, result_type, add_value(module, value)});
     };
-    auto add_cast_constant = [&](
-                                 const std::string& name,
-                                 const std::string& symbol,
-                                 const TypeHandle result_type,
-                                 const ValueId operand,
-                                 const CastKind cast_kind = CastKind::numeric
-                             ) {
+    auto add_cast_constant = [&](const std::string& name, const std::string& symbol, const TypeHandle result_type,
+                                 const ValueId operand, const CastKind cast_kind = CastKind::numeric) {
         Value value = module.make_value();
         value.kind = ValueKind::cast;
         value.type = result_type;
         value.target_type = result_type;
         value.cast_kind = cast_kind;
         value.lhs = operand;
-        return add_global_constant(module, GlobalConstant {name, symbol, result_type, add_value(module, value)});
+        return add_global_constant(module, GlobalConstant{name, symbol, result_type, add_value(module, value)});
     };
-    auto add_unary_constant = [&](
-                                 const std::string& name,
-                                 const std::string& symbol,
-                                 const TypeHandle result_type,
-                                 const UnaryOp unary_op,
-                                 const ValueId operand
-                             ) {
+    auto add_unary_constant = [&](const std::string& name, const std::string& symbol, const TypeHandle result_type,
+                                  const UnaryOp unary_op, const ValueId operand) {
         Value value = module.make_value();
         value.kind = ValueKind::unary;
         value.type = result_type;
         value.unary_op = unary_op;
         value.lhs = operand;
-        return add_global_constant(module, GlobalConstant {name, symbol, result_type, add_value(module, value)});
+        return add_global_constant(module, GlobalConstant{name, symbol, result_type, add_value(module, value)});
     };
 
     const ValueId int_one = add_value(module, integer_value(module, i32, "1"));
@@ -394,14 +378,14 @@ TEST(CoreUnit, LlvmBackendCoversConstantBinaryCastAndFloatLiteralEdges) {
         add_binary_constant("float_less", "unit_float_less", bool_type, BinaryOp::less, float_one, float_two);
     [[maybe_unused]] const GlobalConstantId int_less_constant =
         add_binary_constant("int_less", "unit_int_less", bool_type, BinaryOp::less, int_one, int_two);
-    [[maybe_unused]] const GlobalConstantId float_less_equal_constant =
-        add_binary_constant("float_less_equal", "unit_float_less_equal", bool_type, BinaryOp::less_equal, float_one, float_two);
+    [[maybe_unused]] const GlobalConstantId float_less_equal_constant = add_binary_constant(
+        "float_less_equal", "unit_float_less_equal", bool_type, BinaryOp::less_equal, float_one, float_two);
     [[maybe_unused]] const GlobalConstantId int_less_equal_constant =
         add_binary_constant("int_less_equal", "unit_int_less_equal", bool_type, BinaryOp::less_equal, int_one, int_two);
-    [[maybe_unused]] const GlobalConstantId float_greater_equal_constant =
-        add_binary_constant("float_greater_equal", "unit_float_greater_equal", bool_type, BinaryOp::greater_equal, float_two, float_one);
-    [[maybe_unused]] const GlobalConstantId int_greater_equal_constant =
-        add_binary_constant("int_greater_equal", "unit_int_greater_equal", bool_type, BinaryOp::greater_equal, int_two, int_one);
+    [[maybe_unused]] const GlobalConstantId float_greater_equal_constant = add_binary_constant(
+        "float_greater_equal", "unit_float_greater_equal", bool_type, BinaryOp::greater_equal, float_two, float_one);
+    [[maybe_unused]] const GlobalConstantId int_greater_equal_constant = add_binary_constant(
+        "int_greater_equal", "unit_int_greater_equal", bool_type, BinaryOp::greater_equal, int_two, int_one);
     [[maybe_unused]] const GlobalConstantId float_greater_constant =
         add_binary_constant("float_greater", "unit_float_greater", bool_type, BinaryOp::greater, float_two, float_one);
     [[maybe_unused]] const GlobalConstantId int_greater_constant =
@@ -410,40 +394,42 @@ TEST(CoreUnit, LlvmBackendCoversConstantBinaryCastAndFloatLiteralEdges) {
         add_binary_constant("float_equal", "unit_float_equal", bool_type, BinaryOp::equal, float_same, float_same);
     [[maybe_unused]] const GlobalConstantId int_equal_constant =
         add_binary_constant("int_equal", "unit_int_equal", bool_type, BinaryOp::equal, int_three, int_three);
-    [[maybe_unused]] const GlobalConstantId float_not_equal_constant =
-        add_binary_constant("float_not_equal", "unit_float_not_equal", bool_type, BinaryOp::not_equal, float_one, float_two);
+    [[maybe_unused]] const GlobalConstantId float_not_equal_constant = add_binary_constant(
+        "float_not_equal", "unit_float_not_equal", bool_type, BinaryOp::not_equal, float_one, float_two);
     [[maybe_unused]] const GlobalConstantId int_not_equal_constant =
         add_binary_constant("int_not_equal", "unit_int_not_equal", bool_type, BinaryOp::not_equal, int_one, int_two);
-    [[maybe_unused]] const GlobalConstantId u32_xor_constant = add_binary_constant(
-        "u32_xor",
-        "unit_u32_xor",
-        u32,
-        BinaryOp::bit_xor,
-        add_value(module, integer_value(module, u32, "10")),
-        add_value(module, integer_value(module, u32, "12"))
-    );
-    [[maybe_unused]] const GlobalConstantId float_add_constant =
-        add_binary_constant("float_add", "unit_float_add", f64, BinaryOp::add, add_float_literal("1.25"), add_float_literal("2.5"));
-    [[maybe_unused]] const GlobalConstantId float_sub_constant =
-        add_binary_constant("float_sub", "unit_float_sub", f64, BinaryOp::sub, add_float_literal("7.5"), add_float_literal("2.25"));
-    [[maybe_unused]] const GlobalConstantId float_mul_constant =
-        add_binary_constant("float_mul", "unit_float_mul", f64, BinaryOp::mul, add_float_literal("1.5"), add_float_literal("4.0"));
-    [[maybe_unused]] const GlobalConstantId float_div_constant =
-        add_binary_constant("float_div", "unit_float_div", f64, BinaryOp::div, add_float_literal("9.0"), add_float_literal("3.0"));
+    [[maybe_unused]] const GlobalConstantId u32_xor_constant =
+        add_binary_constant("u32_xor", "unit_u32_xor", u32, BinaryOp::bit_xor,
+            add_value(module, integer_value(module, u32, "10")), add_value(module, integer_value(module, u32, "12")));
+    [[maybe_unused]] const GlobalConstantId float_add_constant = add_binary_constant(
+        "float_add", "unit_float_add", f64, BinaryOp::add, add_float_literal("1.25"), add_float_literal("2.5"));
+    [[maybe_unused]] const GlobalConstantId float_sub_constant = add_binary_constant(
+        "float_sub", "unit_float_sub", f64, BinaryOp::sub, add_float_literal("7.5"), add_float_literal("2.25"));
+    [[maybe_unused]] const GlobalConstantId float_mul_constant = add_binary_constant(
+        "float_mul", "unit_float_mul", f64, BinaryOp::mul, add_float_literal("1.5"), add_float_literal("4.0"));
+    [[maybe_unused]] const GlobalConstantId float_div_constant = add_binary_constant(
+        "float_div", "unit_float_div", f64, BinaryOp::div, add_float_literal("9.0"), add_float_literal("3.0"));
     [[maybe_unused]] const GlobalConstantId u32_div_constant =
-        add_binary_constant("u32_div", "unit_u32_div", u32, BinaryOp::div, add_value(module, integer_value(module, u32, "21")), add_value(module, integer_value(module, u32, "3")));
+        add_binary_constant("u32_div", "unit_u32_div", u32, BinaryOp::div,
+            add_value(module, integer_value(module, u32, "21")), add_value(module, integer_value(module, u32, "3")));
     [[maybe_unused]] const GlobalConstantId u32_mod_constant =
-        add_binary_constant("u32_mod", "unit_u32_mod", u32, BinaryOp::mod, add_value(module, integer_value(module, u32, "22")), add_value(module, integer_value(module, u32, "5")));
+        add_binary_constant("u32_mod", "unit_u32_mod", u32, BinaryOp::mod,
+            add_value(module, integer_value(module, u32, "22")), add_value(module, integer_value(module, u32, "5")));
     [[maybe_unused]] const GlobalConstantId u32_shr_constant =
-        add_binary_constant("u32_shr", "unit_u32_shr", u32, BinaryOp::shr, add_value(module, integer_value(module, u32, "32")), add_value(module, integer_value(module, u32, "2")));
+        add_binary_constant("u32_shr", "unit_u32_shr", u32, BinaryOp::shr,
+            add_value(module, integer_value(module, u32, "32")), add_value(module, integer_value(module, u32, "2")));
     [[maybe_unused]] const GlobalConstantId u32_less_equal_constant =
-        add_binary_constant("u32_less_equal", "unit_u32_less_equal", bool_type, BinaryOp::less_equal, add_value(module, integer_value(module, u32, "5")), add_value(module, integer_value(module, u32, "5")));
+        add_binary_constant("u32_less_equal", "unit_u32_less_equal", bool_type, BinaryOp::less_equal,
+            add_value(module, integer_value(module, u32, "5")), add_value(module, integer_value(module, u32, "5")));
     [[maybe_unused]] const GlobalConstantId u32_greater_constant =
-        add_binary_constant("u32_greater", "unit_u32_greater", bool_type, BinaryOp::greater, add_value(module, integer_value(module, u32, "9")), add_value(module, integer_value(module, u32, "4")));
+        add_binary_constant("u32_greater", "unit_u32_greater", bool_type, BinaryOp::greater,
+            add_value(module, integer_value(module, u32, "9")), add_value(module, integer_value(module, u32, "4")));
     [[maybe_unused]] const GlobalConstantId u32_greater_equal_constant =
-        add_binary_constant("u32_greater_equal", "unit_u32_greater_equal", bool_type, BinaryOp::greater_equal, add_value(module, integer_value(module, u32, "9")), add_value(module, integer_value(module, u32, "9")));
+        add_binary_constant("u32_greater_equal", "unit_u32_greater_equal", bool_type, BinaryOp::greater_equal,
+            add_value(module, integer_value(module, u32, "9")), add_value(module, integer_value(module, u32, "9")));
     [[maybe_unused]] const GlobalConstantId u32_bit_or_constant =
-        add_binary_constant("u32_bit_or", "unit_u32_bit_or", u32, BinaryOp::bit_or, add_value(module, integer_value(module, u32, "10")), add_value(module, integer_value(module, u32, "12")));
+        add_binary_constant("u32_bit_or", "unit_u32_bit_or", u32, BinaryOp::bit_or,
+            add_value(module, integer_value(module, u32, "10")), add_value(module, integer_value(module, u32, "12")));
     [[maybe_unused]] const GlobalConstantId float_neg_constant =
         add_unary_constant("float_neg", "unit_float_neg", f64, UnaryOp::numeric_negate, add_float_literal("8.0"));
     [[maybe_unused]] const GlobalConstantId float_to_bool_constant =
@@ -453,35 +439,36 @@ TEST(CoreUnit, LlvmBackendCoversConstantBinaryCastAndFloatLiteralEdges) {
 
     auto llvm_ir = backend::emit_llvm_ir({&module, "unit_backend_edges"});
     ASSERT_TRUE(llvm_ir) << llvm_ir.error().message;
-    expect_contains_all(llvm_ir.value().text, {
-        "@unit_float_less",
-        "@unit_int_less",
-        "@unit_float_less_equal",
-        "@unit_int_less_equal",
-        "@unit_float_greater_equal",
-        "@unit_int_greater_equal",
-        "@unit_float_greater",
-        "@unit_int_greater",
-        "@unit_float_equal",
-        "@unit_int_equal",
-        "@unit_float_not_equal",
-        "@unit_int_not_equal",
-        "@unit_u32_xor",
-        "@unit_float_add",
-        "@unit_float_sub",
-        "@unit_float_mul",
-        "@unit_float_div",
-        "@unit_u32_div",
-        "@unit_u32_mod",
-        "@unit_u32_shr",
-        "@unit_u32_less_equal",
-        "@unit_u32_greater",
-        "@unit_u32_greater_equal",
-        "@unit_u32_bit_or",
-        "@unit_float_neg",
-        "@unit_float_to_bool",
-        "@unit_pointer_cast",
-    });
+    expect_contains_all(llvm_ir.value().text,
+        {
+            "@unit_float_less",
+            "@unit_int_less",
+            "@unit_float_less_equal",
+            "@unit_int_less_equal",
+            "@unit_float_greater_equal",
+            "@unit_int_greater_equal",
+            "@unit_float_greater",
+            "@unit_int_greater",
+            "@unit_float_equal",
+            "@unit_int_equal",
+            "@unit_float_not_equal",
+            "@unit_int_not_equal",
+            "@unit_u32_xor",
+            "@unit_float_add",
+            "@unit_float_sub",
+            "@unit_float_mul",
+            "@unit_float_div",
+            "@unit_u32_div",
+            "@unit_u32_mod",
+            "@unit_u32_shr",
+            "@unit_u32_less_equal",
+            "@unit_u32_greater",
+            "@unit_u32_greater_equal",
+            "@unit_u32_bit_or",
+            "@unit_float_neg",
+            "@unit_float_to_bool",
+            "@unit_pointer_cast",
+        });
 }
 
 } // namespace aurex::test

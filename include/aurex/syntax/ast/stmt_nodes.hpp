@@ -27,7 +27,7 @@ enum class StmtKind {
 
 struct StmtNode {
     StmtKind kind = StmtKind::expr;
-    base::SourceRange range {};
+    base::SourceRange range{};
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
     PatternId pattern = INVALID_PATTERN_ID;
@@ -51,7 +51,7 @@ struct StmtNode {
 };
 
 struct StmtNodeHeader {
-    base::SourceRange range {};
+    base::SourceRange range{};
     base::u32 payload = UINT32_MAX;
     base::u8 kind = static_cast<base::u8>(StmtKind::expr);
 };
@@ -109,19 +109,22 @@ struct StmtNodePayloadArena {
     StmtNodePayloadArena() = default;
 
     explicit StmtNodePayloadArena(base::BumpAllocator& arena)
-        : locals(base::BumpAllocatorAdapter<LocalStmtPayload> {arena}),
-          assigns(base::BumpAllocatorAdapter<AssignStmtPayload> {arena}),
-          ifs(base::BumpAllocatorAdapter<IfStmtPayload> {arena}),
-          fors(base::BumpAllocatorAdapter<ForStmtPayload> {arena}),
-          for_ranges(base::BumpAllocatorAdapter<ForRangeStmtPayload> {arena}),
-          whiles(base::BumpAllocatorAdapter<WhileStmtPayload> {arena}),
-          exprs(base::BumpAllocatorAdapter<ExprStmtPayload> {arena}),
-          defers(base::BumpAllocatorAdapter<ExprStmtPayload> {arena}),
-          returns(base::BumpAllocatorAdapter<ExprStmtPayload> {arena}),
-          blocks(base::BumpAllocatorAdapter<AstArenaVector<StmtId>> {arena}),
-          unknowns(base::BumpAllocatorAdapter<StmtNode> {arena}) {}
+        : locals(base::BumpAllocatorAdapter<LocalStmtPayload>{arena}),
+          assigns(base::BumpAllocatorAdapter<AssignStmtPayload>{arena}),
+          ifs(base::BumpAllocatorAdapter<IfStmtPayload>{arena}),
+          fors(base::BumpAllocatorAdapter<ForStmtPayload>{arena}),
+          for_ranges(base::BumpAllocatorAdapter<ForRangeStmtPayload>{arena}),
+          whiles(base::BumpAllocatorAdapter<WhileStmtPayload>{arena}),
+          exprs(base::BumpAllocatorAdapter<ExprStmtPayload>{arena}),
+          defers(base::BumpAllocatorAdapter<ExprStmtPayload>{arena}),
+          returns(base::BumpAllocatorAdapter<ExprStmtPayload>{arena}),
+          blocks(base::BumpAllocatorAdapter<AstArenaVector<StmtId>>{arena}),
+          unknowns(base::BumpAllocatorAdapter<StmtNode>{arena})
+    {
+    }
 
-    void swap(StmtNodePayloadArena& other) noexcept {
+    void swap(StmtNodePayloadArena& other) noexcept
+    {
         this->locals.swap(other.locals);
         this->assigns.swap(other.assigns);
         this->ifs.swap(other.ifs);
@@ -177,7 +180,8 @@ public:
 
 private:
     template <typename T, typename Allocator>
-    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values) {
+    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values)
+    {
         return copy_ast_arena_vector(*this->arena_, values);
     }
 
@@ -188,7 +192,8 @@ private:
     [[nodiscard]] StmtNode load_moved(base::usize index);
 
     template <typename T>
-    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload) {
+    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload)
+    {
         const base::u32 index = static_cast<base::u32>(payloads.size());
         payloads.push_back(std::move(payload));
         return index;

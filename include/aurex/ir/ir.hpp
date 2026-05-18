@@ -20,11 +20,7 @@ inline constexpr IrTextId INVALID_IR_TEXT_ID = sema::INVALID_IDENT_ID;
 template <typename T>
 using IrVector = base::BumpVector<T>;
 
-template <
-    typename Key,
-    typename Value,
-    typename Hash = std::hash<Key>,
-    typename KeyEqual = std::equal_to<Key>>
+template <typename Key, typename Value, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
 using IrMap = base::BumpUnorderedMap<Key, Value, Hash, KeyEqual>;
 
 struct ValueId {
@@ -47,24 +43,28 @@ struct GlobalConstantId {
     static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
-inline constexpr ValueId INVALID_VALUE_ID {ValueId::INVALID_VALUE};
-inline constexpr BlockId INVALID_BLOCK_ID {BlockId::INVALID_VALUE};
-inline constexpr FunctionId INVALID_FUNCTION_ID {FunctionId::INVALID_VALUE};
-inline constexpr GlobalConstantId INVALID_GLOBAL_CONSTANT_ID {GlobalConstantId::INVALID_VALUE};
+inline constexpr ValueId INVALID_VALUE_ID{ValueId::INVALID_VALUE};
+inline constexpr BlockId INVALID_BLOCK_ID{BlockId::INVALID_VALUE};
+inline constexpr FunctionId INVALID_FUNCTION_ID{FunctionId::INVALID_VALUE};
+inline constexpr GlobalConstantId INVALID_GLOBAL_CONSTANT_ID{GlobalConstantId::INVALID_VALUE};
 
-[[nodiscard]] inline constexpr bool is_valid(const ValueId id) noexcept {
+[[nodiscard]] inline constexpr bool is_valid(const ValueId id) noexcept
+{
     return id.value != ValueId::INVALID_VALUE;
 }
 
-[[nodiscard]] inline constexpr bool is_valid(const BlockId id) noexcept {
+[[nodiscard]] inline constexpr bool is_valid(const BlockId id) noexcept
+{
     return id.value != BlockId::INVALID_VALUE;
 }
 
-[[nodiscard]] inline constexpr bool is_valid(const FunctionId id) noexcept {
+[[nodiscard]] inline constexpr bool is_valid(const FunctionId id) noexcept
+{
     return id.value != FunctionId::INVALID_VALUE;
 }
 
-[[nodiscard]] inline constexpr bool is_valid(const GlobalConstantId id) noexcept {
+[[nodiscard]] inline constexpr bool is_valid(const GlobalConstantId id) noexcept
+{
     return id.value != GlobalConstantId::INVALID_VALUE;
 }
 
@@ -273,25 +273,16 @@ public:
     ~Module() = default;
 
     template <typename T>
-    [[nodiscard]] IrVector<T> make_vector() {
-        return IrVector<T> {base::BumpAllocatorAdapter<T> {*this->arena_}};
+    [[nodiscard]] IrVector<T> make_vector()
+    {
+        return IrVector<T>{base::BumpAllocatorAdapter<T>{*this->arena_}};
     }
 
-    template <
-        typename Key,
-        typename Value,
-        typename Hash = std::hash<Key>,
-        typename KeyEqual = std::equal_to<Key>>
-    [[nodiscard]] IrMap<Key, Value, Hash, KeyEqual> make_map(
-        Hash hash = Hash {},
-        KeyEqual equal = KeyEqual {}
-    ) {
-        return IrMap<Key, Value, Hash, KeyEqual>(
-            0,
-            std::move(hash),
-            std::move(equal),
-            base::BumpAllocatorAdapter<std::pair<const Key, Value>> {*this->arena_}
-        );
+    template <typename Key, typename Value, typename Hash = std::hash<Key>, typename KeyEqual = std::equal_to<Key>>
+    [[nodiscard]] IrMap<Key, Value, Hash, KeyEqual> make_map(Hash hash = Hash{}, KeyEqual equal = KeyEqual{})
+    {
+        return IrMap<Key, Value, Hash, KeyEqual>(0, std::move(hash), std::move(equal),
+            base::BumpAllocatorAdapter<std::pair<const Key, Value>>{*this->arena_});
     }
 
     [[nodiscard]] IrTextId intern(std::string_view text);
@@ -309,7 +300,8 @@ public:
     [[nodiscard]] RecordLayout clone_record_layout(const RecordLayout& other);
 
     template <typename T>
-    [[nodiscard]] IrVector<T> copy_vector(const std::span<const T> values) {
+    [[nodiscard]] IrVector<T> copy_vector(const std::span<const T> values)
+    {
         IrVector<T> copy = this->make_vector<T>();
         copy.reserve(values.size());
         copy.insert(copy.end(), values.begin(), values.end());
@@ -317,11 +309,7 @@ public:
     }
 
     void reserve(
-        base::usize value_count,
-        base::usize function_count,
-        base::usize record_count,
-        base::usize constant_count
-    );
+        base::usize value_count, base::usize function_count, base::usize record_count, base::usize constant_count);
 
     sema::TypeTable types;
     sema::IdentifierInterner identifiers;
@@ -344,7 +332,8 @@ private:
 [[nodiscard]] BlockId add_block(Module& module, Function& function, std::string_view name);
 [[nodiscard]] const GlobalConstant* find_global_constant(const Module& module, GlobalConstantId id) noexcept;
 [[nodiscard]] const RecordLayout* find_record(const Module& module, sema::TypeHandle type) noexcept;
-[[nodiscard]] const RecordField* find_record_field(Module& module, sema::TypeHandle type, std::string_view name) noexcept;
+[[nodiscard]] const RecordField* find_record_field(
+    Module& module, sema::TypeHandle type, std::string_view name) noexcept;
 [[nodiscard]] const RecordField* find_record_field(const Module& module, sema::TypeHandle type, IrTextId name) noexcept;
 [[nodiscard]] base::usize record_field_index(const RecordLayout& record, IrTextId name) noexcept;
 

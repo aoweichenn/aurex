@@ -15,8 +15,7 @@ struct StableFingerprint128 {
     base::u32 byte_count = 0;
 
     [[nodiscard]] friend constexpr bool operator==(
-        StableFingerprint128 lhs,
-        StableFingerprint128 rhs) noexcept = default;
+        StableFingerprint128 lhs, StableFingerprint128 rhs) noexcept = default;
 };
 
 [[nodiscard]] base::u64 stable_mix(base::u64 seed, base::u64 value) noexcept;

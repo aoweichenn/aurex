@@ -8,11 +8,13 @@
 namespace aurex::test {
 namespace {
 
-[[nodiscard]] fs::path examples_root() {
+[[nodiscard]] fs::path examples_root()
+{
     return source_root() / "examples";
 }
 
-[[nodiscard]] std::string examples_import_flags() {
+[[nodiscard]] std::string examples_import_flags()
+{
     return "-I " + q(examples_root() / "libs");
 }
 
@@ -21,17 +23,18 @@ constexpr std::size_t REGEX_OVERSIZED_PATTERN_BYTES = REGEX_MAX_PATTERN_BYTES + 
 
 } // namespace
 
-TEST_F(AurexIntegrationTest, ExamplesHelloCompilesAndRuns) {
+TEST_F(AurexIntegrationTest, ExamplesHelloCompilesAndRuns)
+{
     const fs::path output = test_bin_root() / "hello_example";
     require_success(aurexc() + " " + q(examples_root() / "hello.ax") + " -o " + q(output));
     EXPECT_EQ(require_success(q(output)).output, "hello from Aurex M2\n");
 }
 
-TEST_F(AurexIntegrationTest, ExamplesCommonLibrariesRemainLanguageCoreOnly) {
+TEST_F(AurexIntegrationTest, ExamplesCommonLibrariesRemainLanguageCoreOnly)
+{
     const fs::path source = tmp_root() / "examples_common_usage.ax";
     std::ofstream out(source);
-    out
-        << "module examples_common_usage;\n"
+    out << "module examples_common_usage;\n"
         << "import common.algorithms as algorithms;\n"
         << "import common.metrics as metrics;\n"
         << "import common.result as result;\n"
@@ -47,188 +50,209 @@ TEST_F(AurexIntegrationTest, ExamplesCommonLibrariesRemainLanguageCoreOnly) {
         << "}\n";
     out.close();
 
-    const std::string checked = require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(source)).output;
-    expect_contains_all(checked, {
-        "case Health_degraded : common.status.Health",
-        "struct CounterI32 fields=3",
-        "case OutcomeI32_ok",
-        "fn is_even -> bool",
-    });
+    const std::string checked =
+        require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(source)).output;
+    expect_contains_all(checked,
+        {
+            "case Health_degraded : common.status.Health",
+            "struct CounterI32 fields=3",
+            "case OutcomeI32_ok",
+            "fn is_even -> bool",
+        });
 
     const fs::path output = test_bin_root() / "examples_common_usage";
     require_success(aurexc() + " " + examples_import_flags() + " " + q(source) + " -o " + q(output));
     EXPECT_EQ(require_success(q(output)).output, "");
 }
 
-TEST_F(AurexIntegrationTest, ExamplesRegexLibraryCompilesAndRuns) {
+TEST_F(AurexIntegrationTest, ExamplesRegexLibraryCompilesAndRuns)
+{
     const fs::path output = test_bin_root() / "regex_demo";
-    const std::string checked =
-        require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_demo.ax")).output;
-    expect_contains_all(checked, {
-                                     "struct Regex fields=18",
-                                     "struct MatchResult fields=4",
-                                     "struct Captures fields=7",
-                                     "struct CaptureSpan fields=3",
-                                     "struct FindIter fields=5",
-                                     "struct SplitIter fields=8",
-                                     "struct ReplaceResult fields=4",
-                                     "case RegexStatus_pattern_too_large",
-                                     "case RegexStatus_program_too_large",
-                                     "case RegexStatus_repeat_too_large",
-                                     "case RegexStatus_workspace_too_large",
-                                     "case RegexStatus_buffer_too_small",
-                                     "fn compile -> regex.core.types.Regex",
-                                     "fn search_compiled -> regex.core.types.MatchResult",
-                                     "fn captures_compiled -> regex.core.types.Captures",
-                                     "fn replace_all -> regex.core.types.ReplaceResult",
-                                     "fn is_match -> bool",
-                                     "fn find -> regex.core.types.MatchResult",
-                                     "fn captures -> regex.core.types.Captures",
-                                     "fn replace -> regex.core.types.ReplaceResult",
-                                     "fn program_bytes -> usize",
-                                     "fn workspace_bytes -> usize",
-                                     "fn max_bounded_repeat -> usize",
-                                     "fn method regex.core.types.Regex.valid -> bool",
-                                     "fn method regex.core.types.MatchResult.ok -> bool",
-                                     "type priv Matcher = fn(str, str) -> bool",
-                                 });
-    require_success(aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_demo.ax") + " -o " + q(output));
+    const std::string checked = require_success(
+        aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_demo.ax"))
+                                    .output;
+    expect_contains_all(checked,
+        {
+            "struct Regex fields=18",
+            "struct MatchResult fields=4",
+            "struct Captures fields=7",
+            "struct CaptureSpan fields=3",
+            "struct FindIter fields=5",
+            "struct SplitIter fields=8",
+            "struct ReplaceResult fields=4",
+            "case RegexStatus_pattern_too_large",
+            "case RegexStatus_program_too_large",
+            "case RegexStatus_repeat_too_large",
+            "case RegexStatus_workspace_too_large",
+            "case RegexStatus_buffer_too_small",
+            "fn compile -> regex.core.types.Regex",
+            "fn search_compiled -> regex.core.types.MatchResult",
+            "fn captures_compiled -> regex.core.types.Captures",
+            "fn replace_all -> regex.core.types.ReplaceResult",
+            "fn is_match -> bool",
+            "fn find -> regex.core.types.MatchResult",
+            "fn captures -> regex.core.types.Captures",
+            "fn replace -> regex.core.types.ReplaceResult",
+            "fn program_bytes -> usize",
+            "fn workspace_bytes -> usize",
+            "fn max_bounded_repeat -> usize",
+            "fn method regex.core.types.Regex.valid -> bool",
+            "fn method regex.core.types.MatchResult.ok -> bool",
+            "type priv Matcher = fn(str, str) -> bool",
+        });
+    require_success(
+        aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_demo.ax") + " -o " + q(output));
     EXPECT_EQ(require_success(q(output)).output, "");
 }
 
-TEST_F(AurexIntegrationTest, ExamplesRegexPhase1CompilesAndRuns) {
+TEST_F(AurexIntegrationTest, ExamplesRegexPhase1CompilesAndRuns)
+{
     const fs::path output = test_bin_root() / "regex_phase1";
-    const std::string checked =
-        require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_phase1.ax")).output;
-    expect_contains_all(checked, {
-        "struct Captures fields=7",
-        "struct FindIter fields=5",
-        "struct CaptureIter fields=5",
-        "struct SplitPart fields=4",
-        "struct ReplaceResult fields=4",
-        "case RegexStatus_invalid_group_name",
-        "case RegexStatus_buffer_too_small",
-        "fn capture_index -> usize",
-        "fn capture_text -> str",
-        "fn find_iter -> regex.core.types.FindIter",
-        "fn captures_iter -> regex.core.types.CaptureIter",
-        "fn split_iter -> regex.core.types.SplitIter",
-        "fn replace_all -> regex.core.types.ReplaceResult",
-        "fn error_offset -> usize",
-        "fn error_kind_code -> i32",
-    });
-    require_success(aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_phase1.ax") + " -o " + q(output));
+    const std::string checked = require_success(
+        aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_phase1.ax"))
+                                    .output;
+    expect_contains_all(checked,
+        {
+            "struct Captures fields=7",
+            "struct FindIter fields=5",
+            "struct CaptureIter fields=5",
+            "struct SplitPart fields=4",
+            "struct ReplaceResult fields=4",
+            "case RegexStatus_invalid_group_name",
+            "case RegexStatus_buffer_too_small",
+            "fn capture_index -> usize",
+            "fn capture_text -> str",
+            "fn find_iter -> regex.core.types.FindIter",
+            "fn captures_iter -> regex.core.types.CaptureIter",
+            "fn split_iter -> regex.core.types.SplitIter",
+            "fn replace_all -> regex.core.types.ReplaceResult",
+            "fn error_offset -> usize",
+            "fn error_kind_code -> i32",
+        });
+    require_success(
+        aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_phase1.ax") + " -o " + q(output));
     EXPECT_EQ(require_success(q(output)).output, "");
 }
 
-TEST_F(AurexIntegrationTest, ExamplesRegexIndustrialSurfaceCompilesAndRuns) {
+TEST_F(AurexIntegrationTest, ExamplesRegexIndustrialSurfaceCompilesAndRuns)
+{
     const fs::path output = test_bin_root() / "regex_industrial";
-    const std::string checked =
-        require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_industrial.ax")).output;
-    expect_contains_all(checked, {
-        "fn priv require_flags -> i32",
-        "fn priv require_lazy -> i32",
-        "fn priv require_boundaries -> i32",
-        "fn priv require_escapes -> i32",
-        "fn priv require_classes -> i32",
-        "fn priv require_unicode -> i32",
-        "fn priv require_convenience_api -> i32",
-        "fn is_match -> bool",
-        "fn find -> regex.core.types.MatchResult",
-        "fn captures -> regex.core.types.Captures",
-        "fn replace -> regex.core.types.ReplaceResult",
-        "case RegexStatus_unsupported",
-    });
-    require_success(aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_industrial.ax") + " -o " + q(output));
+    const std::string checked = require_success(
+        aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_industrial.ax"))
+                                    .output;
+    expect_contains_all(checked,
+        {
+            "fn priv require_flags -> i32",
+            "fn priv require_lazy -> i32",
+            "fn priv require_boundaries -> i32",
+            "fn priv require_escapes -> i32",
+            "fn priv require_classes -> i32",
+            "fn priv require_unicode -> i32",
+            "fn priv require_convenience_api -> i32",
+            "fn is_match -> bool",
+            "fn find -> regex.core.types.MatchResult",
+            "fn captures -> regex.core.types.Captures",
+            "fn replace -> regex.core.types.ReplaceResult",
+            "case RegexStatus_unsupported",
+        });
+    require_success(aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_industrial.ax") + " -o "
+        + q(output));
     EXPECT_EQ(require_success(q(output)).output, "");
 }
 
-TEST_F(AurexIntegrationTest, ExamplesRegexAdvancedSurfaceCompilesAndRuns) {
+TEST_F(AurexIntegrationTest, ExamplesRegexAdvancedSurfaceCompilesAndRuns)
+{
     const fs::path output = test_bin_root() / "regex_advanced";
-    const std::string checked =
-        require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_advanced.ax")).output;
-    expect_contains_all(checked, {
-                                     "struct RegexSet fields=17",
-                                     "struct SetMatchesResult fields=4",
-                                     "struct RegexStream fields=10",
-                                     "struct SetMatchSpan fields=5",
-                                     "struct DatabaseResult fields=3",
-                                     "type ReplaceCallback = fn(str, &regex.core.types.Captures, *mut u8, usize) -> regex.core.types.ReplaceResult",
-                                     "type BytesReplaceCallback = fn(*const u8, usize, &regex.core.types.Captures, *mut u8, usize) -> regex.core.types.ReplaceResult",
-                                     "fn compile_set -> regex.core.types.RegexSet",
-                                     "fn compile_set_bytes -> regex.core.types.RegexSet",
-                                     "fn find_set_compiled -> regex.core.types.SetMatchSpan",
-                                     "fn scan_set_compiled -> regex.core.types.SetMatchesResult",
-                                     "fn scan_set_spans_compiled -> regex.core.types.SetMatchesResult",
-                                     "fn scan_set_overlapping_compiled -> regex.core.types.SetMatchesResult",
-                                     "fn scan_set_spans_vectored_compiled -> regex.core.types.SetMatchesResult",
-                                     "fn search_vectored_compiled -> regex.core.types.MatchResult",
-                                     "fn matches_set_compiled -> regex.core.types.SetMatchesResult",
-                                     "fn serialize_set -> regex.core.types.DatabaseResult",
-                                     "fn deserialize_set -> regex.core.types.RegexSet",
-                                     "fn replace_all_with -> regex.core.types.ReplaceResult",
-                                     "fn open_stream -> regex.core.types.RegexStream",
-                                     "fn stream_next -> regex.core.types.MatchResult",
-                                     "fn priv require_class_set_algebra -> i32",
-                                     "fn priv require_options_builder -> i32",
-                                     "fn priv require_bytes_parity -> i32",
-                                     "fn priv require_regex_set_scan_and_vectored -> i32",
-                                     "fn priv require_database_roundtrip -> i32",
-                                     "fn priv require_input_cursor_boundaries -> i32",
-                                     "fn priv require_submatch_precedence -> i32",
-                                     "fn priv require_linear_search -> i32",
-                                     "fn priv require_prefilter_surface -> i32",
-                                     "fn priv require_unicode_full_fold_and_grapheme -> i32",
-                                     "fn priv require_regex_set_all_span_and_overlap -> i32",
-                                     "fn priv require_regex_set_literal_trie_optimizer -> i32",
-                                     "fn captures_compiled_from_into -> regex.core.types.RegexStatus",
-                                     "fn match_workspace_status -> regex.core.types.RegexStatus",
-                                 });
-    require_success(aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_advanced.ax") + " -o " + q(output));
+    const std::string checked = require_success(
+        aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_advanced.ax"))
+                                    .output;
+    expect_contains_all(checked,
+        {
+            "struct RegexSet fields=17",
+            "struct SetMatchesResult fields=4",
+            "struct RegexStream fields=10",
+            "struct SetMatchSpan fields=5",
+            "struct DatabaseResult fields=3",
+            "type ReplaceCallback = fn(str, &regex.core.types.Captures, *mut u8, usize) -> "
+            "regex.core.types.ReplaceResult",
+            "type BytesReplaceCallback = fn(*const u8, usize, &regex.core.types.Captures, *mut u8, usize) -> "
+            "regex.core.types.ReplaceResult",
+            "fn compile_set -> regex.core.types.RegexSet",
+            "fn compile_set_bytes -> regex.core.types.RegexSet",
+            "fn find_set_compiled -> regex.core.types.SetMatchSpan",
+            "fn scan_set_compiled -> regex.core.types.SetMatchesResult",
+            "fn scan_set_spans_compiled -> regex.core.types.SetMatchesResult",
+            "fn scan_set_overlapping_compiled -> regex.core.types.SetMatchesResult",
+            "fn scan_set_spans_vectored_compiled -> regex.core.types.SetMatchesResult",
+            "fn search_vectored_compiled -> regex.core.types.MatchResult",
+            "fn matches_set_compiled -> regex.core.types.SetMatchesResult",
+            "fn serialize_set -> regex.core.types.DatabaseResult",
+            "fn deserialize_set -> regex.core.types.RegexSet",
+            "fn replace_all_with -> regex.core.types.ReplaceResult",
+            "fn open_stream -> regex.core.types.RegexStream",
+            "fn stream_next -> regex.core.types.MatchResult",
+            "fn priv require_class_set_algebra -> i32",
+            "fn priv require_options_builder -> i32",
+            "fn priv require_bytes_parity -> i32",
+            "fn priv require_regex_set_scan_and_vectored -> i32",
+            "fn priv require_database_roundtrip -> i32",
+            "fn priv require_input_cursor_boundaries -> i32",
+            "fn priv require_submatch_precedence -> i32",
+            "fn priv require_linear_search -> i32",
+            "fn priv require_prefilter_surface -> i32",
+            "fn priv require_unicode_full_fold_and_grapheme -> i32",
+            "fn priv require_regex_set_all_span_and_overlap -> i32",
+            "fn priv require_regex_set_literal_trie_optimizer -> i32",
+            "fn captures_compiled_from_into -> regex.core.types.RegexStatus",
+            "fn match_workspace_status -> regex.core.types.RegexStatus",
+        });
+    require_success(
+        aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_advanced.ax") + " -o " + q(output));
     EXPECT_EQ(require_success(q(output)).output, "");
 }
 
-TEST_F(AurexIntegrationTest, ExamplesRegexStressCompilesAndRuns) {
+TEST_F(AurexIntegrationTest, ExamplesRegexStressCompilesAndRuns)
+{
     const fs::path output = test_bin_root() / "regex_stress";
-    const std::string checked =
-        require_success(aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_stress.ax")).output;
-    expect_contains_all(checked, {
-        "type priv CompiledCheck = fn(&regex.core.types.Regex, str) -> regex.core.types.MatchResult",
-        "struct priv StressCase fields=4",
-        "fn priv run_repeated_searches -> i32",
-        "fn priv run_repeated_fullmatches -> i32",
-        "fn priv require_budget -> i32",
-        "fn priv require_linear_search_surface -> i32",
-        "fn priv require_prefix_prefilter_surface -> i32",
-        "fn priv require_set_start_byte_prefilter_surface -> i32",
-        "fn state_count -> usize",
-        "fn range_count -> usize",
-        "fn program_bytes -> usize",
-        "fn workspace_bytes -> usize",
-        "fn max_state_capacity -> usize",
-    });
-    require_success(aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_stress.ax") + " -o " + q(output));
+    const std::string checked = require_success(
+        aurexc() + " " + examples_import_flags() + " --emit=checked " + q(examples_root() / "regex_stress.ax"))
+                                    .output;
+    expect_contains_all(checked,
+        {
+            "type priv CompiledCheck = fn(&regex.core.types.Regex, str) -> regex.core.types.MatchResult",
+            "struct priv StressCase fields=4",
+            "fn priv run_repeated_searches -> i32",
+            "fn priv run_repeated_fullmatches -> i32",
+            "fn priv require_budget -> i32",
+            "fn priv require_linear_search_surface -> i32",
+            "fn priv require_prefix_prefilter_surface -> i32",
+            "fn priv require_set_start_byte_prefilter_surface -> i32",
+            "fn state_count -> usize",
+            "fn range_count -> usize",
+            "fn program_bytes -> usize",
+            "fn workspace_bytes -> usize",
+            "fn max_state_capacity -> usize",
+        });
+    require_success(
+        aurexc() + " " + examples_import_flags() + " " + q(examples_root() / "regex_stress.ax") + " -o " + q(output));
     EXPECT_EQ(require_success(q(output)).output, "");
 }
 
-TEST_F(AurexIntegrationTest, ExamplesRegexRejectsOversizedPattern) {
+TEST_F(AurexIntegrationTest, ExamplesRegexRejectsOversizedPattern)
+{
     const fs::path source = tmp_root() / "regex_oversized_pattern.ax";
     std::ofstream out(source);
-    out
-        << "module regex_oversized_pattern;\n"
+    out << "module regex_oversized_pattern;\n"
         << "import regex.api as regex;\n"
         << "fn main() -> i32 {\n"
-        << "    var compiled: regex.Regex = regex.compile(\""
-        << std::string(REGEX_OVERSIZED_PATTERN_BYTES, 'a')
+        << "    var compiled: regex.Regex = regex.compile(\"" << std::string(REGEX_OVERSIZED_PATTERN_BYTES, 'a')
         << "\");\n"
         << "    defer regex.destroy(&mut compiled);\n"
         << "    let rejected: bool = match compiled.status {\n"
         << "        .pattern_too_large => true,\n"
         << "        _ => false,\n"
         << "    };\n"
-        << "    if rejected && regex.max_pattern_bytes() == "
-        << REGEX_MAX_PATTERN_BYTES
-        << "usize {\n"
+        << "    if rejected && regex.max_pattern_bytes() == " << REGEX_MAX_PATTERN_BYTES << "usize {\n"
         << "        return 0;\n"
         << "    }\n"
         << "    return 1 + regex.status_code(compiled.status);\n"
@@ -240,45 +264,47 @@ TEST_F(AurexIntegrationTest, ExamplesRegexRejectsOversizedPattern) {
     EXPECT_EQ(require_success(q(output)).output, "");
 }
 
-TEST_F(AurexIntegrationTest, ExamplesDiagnosticShowcaseEmitsRepresentativeDiagnostics) {
+TEST_F(AurexIntegrationTest, ExamplesDiagnosticShowcaseEmitsRepresentativeDiagnostics)
+{
     const fs::path showcase = examples_root() / "diagnostic_showcase.ax";
     const std::string text = require_failure(aurexc() + " --check " + q(showcase)).output;
-    expect_contains_all(text, {
-        "duplicate value definition in module diagnostic_showcase: duplicate_answer",
-        "previous declaration of `duplicate_answer` is here",
-        "initializer type does not match declared type",
-        "unknown field in struct literal: missing",
-        "integer literal out of range for u8",
-        "logical not requires bool operand",
-        "comparison operator requires numeric operands",
-        "unknown name: typo_value",
-        "if condition must be bool",
-        "break and continue are only valid inside loops",
-        "cannot infer generic type argument `T` for call to phantom",
-        "raw pointer dereference requires unsafe context",
-        "call to unsafe function read_raw requires unsafe context",
-        "match expression is not exhaustive for enum case: Choice_one",
-    });
+    expect_contains_all(text,
+        {
+            "duplicate value definition in module diagnostic_showcase: duplicate_answer",
+            "previous declaration of `duplicate_answer` is here",
+            "initializer type does not match declared type",
+            "unknown field in struct literal: missing",
+            "integer literal out of range for u8",
+            "logical not requires bool operand",
+            "comparison operator requires numeric operands",
+            "unknown name: typo_value",
+            "if condition must be bool",
+            "break and continue are only valid inside loops",
+            "cannot infer generic type argument `T` for call to phantom",
+            "raw pointer dereference requires unsafe context",
+            "call to unsafe function read_raw requires unsafe context",
+            "match expression is not exhaustive for enum case: Choice_one",
+        });
 
-    const std::string json = require_failure(
-        aurexc() + " --check --diagnostics=json " + q(showcase)
-    ).output;
-    expect_contains_all(json, {
-        "\"format\": \"aurex-diagnostics-v1\"",
-        "\"category\": \"name_resolution\"",
-        "\"category\": \"type\"",
-        "\"category\": \"semantic\"",
-        "\"category\": \"safety\"",
-        "\"category\": \"pattern\"",
-        "\"code\": \"SEM0201\"",
-        "\"code\": \"SEM0100\"",
-        "\"code\": \"SEM0400\"",
-        "\"code\": \"SEM0501\"",
-        "\"suppressed\": 0",
-    });
+    const std::string json = require_failure(aurexc() + " --check --diagnostics=json " + q(showcase)).output;
+    expect_contains_all(json,
+        {
+            "\"format\": \"aurex-diagnostics-v1\"",
+            "\"category\": \"name_resolution\"",
+            "\"category\": \"type\"",
+            "\"category\": \"semantic\"",
+            "\"category\": \"safety\"",
+            "\"category\": \"pattern\"",
+            "\"code\": \"SEM0201\"",
+            "\"code\": \"SEM0100\"",
+            "\"code\": \"SEM0400\"",
+            "\"code\": \"SEM0501\"",
+            "\"suppressed\": 0",
+        });
 }
 
-TEST_F(AurexIntegrationTest, ExamplesDocumentationAndLibrariesArePresent) {
+TEST_F(AurexIntegrationTest, ExamplesDocumentationAndLibrariesArePresent)
+{
     EXPECT_TRUE(fs::exists(examples_root() / "README.md"));
     EXPECT_TRUE(fs::exists(examples_root() / "hello.ax"));
     EXPECT_TRUE(fs::exists(examples_root() / "diagnostic_showcase.ax"));

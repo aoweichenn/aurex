@@ -1,5 +1,4 @@
 #include <aurex/ir/pass_pipeline.hpp>
-
 #include <aurex/ir/verify.hpp>
 
 #include <algorithm>
@@ -16,7 +15,8 @@ namespace {
 using ValueReplacementMap = std::unordered_map<base::u32, ValueId>;
 using BlockMap = std::vector<BlockId>;
 
-[[nodiscard]] ValueId resolve_replacement(ValueId id, const ValueReplacementMap& replacements) {
+[[nodiscard]] ValueId resolve_replacement(ValueId id, const ValueReplacementMap& replacements)
+{
     std::unordered_set<base::u32> seen;
     while (is_valid(id)) {
         const auto found = replacements.find(id.value);
@@ -31,13 +31,15 @@ using BlockMap = std::vector<BlockId>;
     return id;
 }
 
-void rewrite_value_id(ValueId& id, const ValueReplacementMap& replacements) {
+void rewrite_value_id(ValueId& id, const ValueReplacementMap& replacements)
+{
     if (is_valid(id)) {
         id = resolve_replacement(id, replacements);
     }
 }
 
-void rewrite_value(Value& value, const ValueReplacementMap& replacements) {
+void rewrite_value(Value& value, const ValueReplacementMap& replacements)
+{
     rewrite_value_id(value.lhs, replacements);
     rewrite_value_id(value.rhs, replacements);
     rewrite_value_id(value.object, replacements);
@@ -56,12 +58,14 @@ void rewrite_value(Value& value, const ValueReplacementMap& replacements) {
     }
 }
 
-void rewrite_terminator(Terminator& terminator, const ValueReplacementMap& replacements) {
+void rewrite_terminator(Terminator& terminator, const ValueReplacementMap& replacements)
+{
     rewrite_value_id(terminator.condition, replacements);
     rewrite_value_id(terminator.value, replacements);
 }
 
-[[nodiscard]] bool is_scalar_promotable_type(const Module& module, const sema::TypeHandle type) {
+[[nodiscard]] bool is_scalar_promotable_type(const Module& module, const sema::TypeHandle type)
+{
     if (!sema::is_valid(type) || !module.types.is_pointer(type)) {
         return false;
     }
@@ -69,20 +73,17 @@ void rewrite_terminator(Terminator& terminator, const ValueReplacementMap& repla
     if (!sema::is_valid(pointee)) {
         return false;
     }
-    return module.types.is_bool(pointee) ||
-           module.types.is_integer(pointee) ||
-           module.types.is_float(pointee) ||
-           module.types.is_pointer(pointee) ||
-           module.types.is_reference(pointee) ||
-           module.types.is_function(pointee) ||
-           module.types.get(pointee).kind == sema::TypeKind::enum_;
+    return module.types.is_bool(pointee) || module.types.is_integer(pointee) || module.types.is_float(pointee)
+        || module.types.is_pointer(pointee) || module.types.is_reference(pointee) || module.types.is_function(pointee)
+        || module.types.get(pointee).kind == sema::TypeKind::enum_;
 }
 
 struct FunctionUseInfo {
     std::unordered_map<base::u32, base::u32> promotable_slots;
 };
 
-[[nodiscard]] FunctionUseInfo collect_promotable_slots(const Module& module, const Function& function) {
+[[nodiscard]] FunctionUseInfo collect_promotable_slots(const Module& module, const Function& function)
+{
     FunctionUseInfo info;
 
     std::unordered_map<base::u32, base::u32> alloca_blocks;
@@ -105,7 +106,8 @@ struct FunctionUseInfo {
         use_blocks[entry.first] = std::nullopt;
     }
 
-    const auto record_slot_use = [&](const ValueId value_id, const base::u32 block_index, const bool allowed_memory_use) {
+    const auto record_slot_use = [&](const ValueId value_id, const base::u32 block_index,
+                                     const bool allowed_memory_use) {
         if (!is_valid(value_id)) {
             return;
         }
@@ -133,90 +135,90 @@ struct FunctionUseInfo {
             }
             const Value& value = module.values[value_id.value];
             switch (value.kind) {
-            case ValueKind::load:
-                record_slot_use(value.object, block_index, true);
-                break;
-            case ValueKind::store:
-                record_slot_use(value.object, block_index, true);
-                record_slot_use(value.lhs, block_index, false);
-                break;
-            case ValueKind::unary:
-                record_slot_use(value.lhs, block_index, false);
-                break;
-            case ValueKind::binary:
-                record_slot_use(value.lhs, block_index, false);
-                record_slot_use(value.rhs, block_index, false);
-                break;
-            case ValueKind::phi:
-                for (const PhiInput& incoming : value.incoming) {
-                    record_slot_use(incoming.value, block_index, false);
-                }
-                break;
-            case ValueKind::call:
-                record_slot_use(value.object, block_index, false);
-                for (const ValueId arg : value.args) {
-                    record_slot_use(arg, block_index, false);
-                }
-                break;
-            case ValueKind::field_addr:
-                record_slot_use(value.object, block_index, false);
-                break;
-            case ValueKind::index_addr:
-                record_slot_use(value.object, block_index, false);
-                record_slot_use(value.index, block_index, false);
-                break;
-            case ValueKind::aggregate:
-                for (const ValueId element : value.elements) {
-                    record_slot_use(element, block_index, false);
-                }
-                for (const FieldValue& field : value.fields) {
-                    record_slot_use(field.value, block_index, false);
-                }
-                break;
-            case ValueKind::slice:
-                record_slot_use(value.lhs, block_index, false);
-                record_slot_use(value.rhs, block_index, false);
-                break;
-            case ValueKind::slice_data:
-            case ValueKind::slice_len:
-                record_slot_use(value.object, block_index, false);
-                break;
-            case ValueKind::cast:
-                record_slot_use(value.lhs, block_index, false);
-                break;
-            case ValueKind::str_data:
-            case ValueKind::str_byte_len:
-            case ValueKind::str_is_valid_utf8:
-            case ValueKind::str_from_utf8_checked:
-                record_slot_use(value.object, block_index, false);
-                break;
-            case ValueKind::str_slice_checked:
-                record_slot_use(value.object, block_index, false);
-                record_slot_use(value.lhs, block_index, false);
-                record_slot_use(value.rhs, block_index, false);
-                break;
-            case ValueKind::str_from_bytes_unchecked:
-                for (const ValueId arg : value.args) {
-                    record_slot_use(arg, block_index, false);
-                }
-                break;
-            case ValueKind::param:
-            case ValueKind::integer_literal:
-            case ValueKind::float_literal:
-            case ValueKind::bool_literal:
-            case ValueKind::char_literal:
-            case ValueKind::null_literal:
-            case ValueKind::string_literal:
-            case ValueKind::raw_string_literal:
-            case ValueKind::c_string_literal:
-            case ValueKind::byte_literal:
-            case ValueKind::undef:
-            case ValueKind::constant_ref:
-            case ValueKind::function_ref:
-            case ValueKind::alloca:
-            case ValueKind::size_of:
-            case ValueKind::align_of:
-                break;
+                case ValueKind::load:
+                    record_slot_use(value.object, block_index, true);
+                    break;
+                case ValueKind::store:
+                    record_slot_use(value.object, block_index, true);
+                    record_slot_use(value.lhs, block_index, false);
+                    break;
+                case ValueKind::unary:
+                    record_slot_use(value.lhs, block_index, false);
+                    break;
+                case ValueKind::binary:
+                    record_slot_use(value.lhs, block_index, false);
+                    record_slot_use(value.rhs, block_index, false);
+                    break;
+                case ValueKind::phi:
+                    for (const PhiInput& incoming : value.incoming) {
+                        record_slot_use(incoming.value, block_index, false);
+                    }
+                    break;
+                case ValueKind::call:
+                    record_slot_use(value.object, block_index, false);
+                    for (const ValueId arg : value.args) {
+                        record_slot_use(arg, block_index, false);
+                    }
+                    break;
+                case ValueKind::field_addr:
+                    record_slot_use(value.object, block_index, false);
+                    break;
+                case ValueKind::index_addr:
+                    record_slot_use(value.object, block_index, false);
+                    record_slot_use(value.index, block_index, false);
+                    break;
+                case ValueKind::aggregate:
+                    for (const ValueId element : value.elements) {
+                        record_slot_use(element, block_index, false);
+                    }
+                    for (const FieldValue& field : value.fields) {
+                        record_slot_use(field.value, block_index, false);
+                    }
+                    break;
+                case ValueKind::slice:
+                    record_slot_use(value.lhs, block_index, false);
+                    record_slot_use(value.rhs, block_index, false);
+                    break;
+                case ValueKind::slice_data:
+                case ValueKind::slice_len:
+                    record_slot_use(value.object, block_index, false);
+                    break;
+                case ValueKind::cast:
+                    record_slot_use(value.lhs, block_index, false);
+                    break;
+                case ValueKind::str_data:
+                case ValueKind::str_byte_len:
+                case ValueKind::str_is_valid_utf8:
+                case ValueKind::str_from_utf8_checked:
+                    record_slot_use(value.object, block_index, false);
+                    break;
+                case ValueKind::str_slice_checked:
+                    record_slot_use(value.object, block_index, false);
+                    record_slot_use(value.lhs, block_index, false);
+                    record_slot_use(value.rhs, block_index, false);
+                    break;
+                case ValueKind::str_from_bytes_unchecked:
+                    for (const ValueId arg : value.args) {
+                        record_slot_use(arg, block_index, false);
+                    }
+                    break;
+                case ValueKind::param:
+                case ValueKind::integer_literal:
+                case ValueKind::float_literal:
+                case ValueKind::bool_literal:
+                case ValueKind::char_literal:
+                case ValueKind::null_literal:
+                case ValueKind::string_literal:
+                case ValueKind::raw_string_literal:
+                case ValueKind::c_string_literal:
+                case ValueKind::byte_literal:
+                case ValueKind::undef:
+                case ValueKind::constant_ref:
+                case ValueKind::function_ref:
+                case ValueKind::alloca:
+                case ValueKind::size_of:
+                case ValueKind::align_of:
+                    break;
             }
         }
         record_slot_use(block.terminator.condition, block_index, false);
@@ -235,7 +237,8 @@ struct FunctionUseInfo {
     return info;
 }
 
-void run_local_mem2reg(Module& module) {
+void run_local_mem2reg(Module& module)
+{
     ValueReplacementMap replacements;
     for (Function& function : module.functions) {
         if (function.linkage == Linkage::extern_c || function.blocks.empty()) {
@@ -309,7 +312,8 @@ void run_local_mem2reg(Module& module) {
     }
 }
 
-void mark_reachable(const Function& function, const BlockId block, std::vector<bool>& reachable) {
+void mark_reachable(const Function& function, const BlockId block, std::vector<bool>& reachable)
+{
     std::vector<BlockId> pending;
     pending.push_back(block);
     while (!pending.empty()) {
@@ -321,21 +325,22 @@ void mark_reachable(const Function& function, const BlockId block, std::vector<b
         reachable[current.value] = true;
         const Terminator& term = function.blocks[current.value].terminator;
         switch (term.kind) {
-        case TerminatorKind::branch:
-            pending.push_back(term.target);
-            break;
-        case TerminatorKind::cond_branch:
-            pending.push_back(term.then_target);
-            pending.push_back(term.else_target);
-            break;
-        case TerminatorKind::none:
-        case TerminatorKind::return_:
-            break;
+            case TerminatorKind::branch:
+                pending.push_back(term.target);
+                break;
+            case TerminatorKind::cond_branch:
+                pending.push_back(term.then_target);
+                pending.push_back(term.else_target);
+                break;
+            case TerminatorKind::none:
+            case TerminatorKind::return_:
+                break;
         }
     }
 }
 
-void rewrite_block_id(BlockId& id, const BlockMap& block_map) {
+void rewrite_block_id(BlockId& id, const BlockMap& block_map)
+{
     if (!is_valid(id) || id.value >= block_map.size()) {
         id = INVALID_BLOCK_ID;
         return;
@@ -343,7 +348,8 @@ void rewrite_block_id(BlockId& id, const BlockMap& block_map) {
     id = block_map[id.value];
 }
 
-void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& block_map) {
+void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& block_map)
+{
     for (BasicBlock& block : function.blocks) {
         for (const ValueId value_id : block.values) {
             if (!is_valid(value_id) || value_id.value >= module.values.size()) {
@@ -366,14 +372,17 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
     }
 }
 
-[[nodiscard]] bool remove_unreachable_blocks(Module& module, Function& function) {
+[[nodiscard]] bool remove_unreachable_blocks(Module& module, Function& function)
+{
     if (function.blocks.empty()) {
         return false;
     }
 
     std::vector<bool> reachable(function.blocks.size(), false);
-    mark_reachable(function, BlockId {0}, reachable);
-    if (std::all_of(reachable.begin(), reachable.end(), [](const bool value) { return value; })) {
+    mark_reachable(function, BlockId{0}, reachable);
+    if (std::all_of(reachable.begin(), reachable.end(), [](const bool value) {
+            return value;
+        })) {
         return false;
     }
 
@@ -384,7 +393,7 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
         if (!reachable[i]) {
             continue;
         }
-        block_map[i] = BlockId {static_cast<base::u32>(kept.size())};
+        block_map[i] = BlockId{static_cast<base::u32>(kept.size())};
         kept.push_back(std::move(function.blocks[i]));
     }
 
@@ -398,18 +407,19 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
     return true;
 }
 
-[[nodiscard]] bool block_has_phi(const Module& module, const BasicBlock& block) {
+[[nodiscard]] bool block_has_phi(const Module& module, const BasicBlock& block)
+{
     for (const ValueId value_id : block.values) {
-        if (is_valid(value_id) &&
-            value_id.value < module.values.size() &&
-            module.values[value_id.value].kind == ValueKind::phi) {
+        if (is_valid(value_id) && value_id.value < module.values.size()
+            && module.values[value_id.value].kind == ValueKind::phi) {
             return true;
         }
     }
     return false;
 }
 
-[[nodiscard]] std::optional<BlockId> empty_branch_target(const Function& function, const base::u32 block_index) {
+[[nodiscard]] std::optional<BlockId> empty_branch_target(const Function& function, const base::u32 block_index)
+{
     if (block_index == 0 || block_index >= function.blocks.size()) {
         return std::nullopt;
     }
@@ -423,7 +433,8 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
     return block.terminator.target;
 }
 
-[[nodiscard]] BlockId redirect_target(BlockId target, const std::vector<std::optional<BlockId>>& redirects) {
+[[nodiscard]] BlockId redirect_target(BlockId target, const std::vector<std::optional<BlockId>>& redirects)
+{
     std::unordered_set<base::u32> seen;
     while (is_valid(target) && target.value < redirects.size() && redirects[target.value].has_value()) {
         if (!seen.insert(target.value).second) {
@@ -434,7 +445,8 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
     return target;
 }
 
-[[nodiscard]] bool merge_empty_branch_blocks(Module& module, Function& function) {
+[[nodiscard]] bool merge_empty_branch_blocks(Module& module, Function& function)
+{
     std::vector<std::optional<BlockId>> redirects(function.blocks.size());
     bool changed = false;
     for (base::u32 block_index = 1; block_index < function.blocks.size(); ++block_index) {
@@ -476,7 +488,8 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
     return remove_unreachable_blocks(module, function) || changed;
 }
 
-void run_cfg_cleanup(Module& module) {
+void run_cfg_cleanup(Module& module)
+{
     bool changed = true;
     while (changed) {
         changed = false;
@@ -485,8 +498,8 @@ void run_cfg_cleanup(Module& module) {
                 continue;
             }
             for (BasicBlock& block : function.blocks) {
-                if (block.terminator.kind == TerminatorKind::cond_branch &&
-                    block.terminator.then_target.value == block.terminator.else_target.value) {
+                if (block.terminator.kind == TerminatorKind::cond_branch
+                    && block.terminator.then_target.value == block.terminator.else_target.value) {
                     block.terminator.kind = TerminatorKind::branch;
                     block.terminator.target = block.terminator.then_target;
                     block.terminator.condition = INVALID_VALUE_ID;
@@ -503,17 +516,23 @@ void run_cfg_cleanup(Module& module) {
 
 } // namespace
 
-std::string_view optimization_level_name(const OptimizationLevel level) noexcept {
+std::string_view optimization_level_name(const OptimizationLevel level) noexcept
+{
     switch (level) {
-    case OptimizationLevel::none: return "O0";
-    case OptimizationLevel::basic: return "O1";
-    case OptimizationLevel::standard: return "O2";
-    case OptimizationLevel::aggressive: return "O3";
+        case OptimizationLevel::none:
+            return "O0";
+        case OptimizationLevel::basic:
+            return "O1";
+        case OptimizationLevel::standard:
+            return "O2";
+        case OptimizationLevel::aggressive:
+            return "O3";
     }
     return "O0";
 }
 
-base::Result<void> run_pass_pipeline(Module& module, const PassPipelineOptions& options) {
+base::Result<void> run_pass_pipeline(Module& module, const PassPipelineOptions& options)
+{
     if (options.verify_input) {
         if (auto verified = verify_module(module); !verified) {
             return verified;

@@ -10,14 +10,14 @@
 namespace aurex::syntax {
 
 struct TypeNodeHeader {
-    base::SourceRange range {};
+    base::SourceRange range{};
     base::u32 payload = UINT32_MAX;
     TypeKind kind = TypeKind::named;
 };
 
 struct NamedTypePayload {
     std::string_view scope_name;
-    base::SourceRange scope_range {};
+    base::SourceRange scope_range{};
     AstArenaVector<std::string_view> scope_parts;
     std::string_view name;
     IdentId scope_name_id = INVALID_IDENT_ID;
@@ -53,16 +53,19 @@ struct TypeNodePayloadArena {
     TypeNodePayloadArena() = default;
 
     explicit TypeNodePayloadArena(base::BumpAllocator& arena)
-        : primitives(base::BumpAllocatorAdapter<PrimitiveTypeKind> {arena}),
-          named(base::BumpAllocatorAdapter<NamedTypePayload> {arena}),
-          pointers(base::BumpAllocatorAdapter<PointerTypePayload> {arena}),
-          references(base::BumpAllocatorAdapter<PointerTypePayload> {arena}),
-          arrays(base::BumpAllocatorAdapter<ArrayTypePayload> {arena}),
-          slices(base::BumpAllocatorAdapter<SliceTypePayload> {arena}),
-          tuples(base::BumpAllocatorAdapter<AstArenaVector<TypeId>> {arena}),
-          functions(base::BumpAllocatorAdapter<FunctionTypePayload> {arena}) {}
+        : primitives(base::BumpAllocatorAdapter<PrimitiveTypeKind>{arena}),
+          named(base::BumpAllocatorAdapter<NamedTypePayload>{arena}),
+          pointers(base::BumpAllocatorAdapter<PointerTypePayload>{arena}),
+          references(base::BumpAllocatorAdapter<PointerTypePayload>{arena}),
+          arrays(base::BumpAllocatorAdapter<ArrayTypePayload>{arena}),
+          slices(base::BumpAllocatorAdapter<SliceTypePayload>{arena}),
+          tuples(base::BumpAllocatorAdapter<AstArenaVector<TypeId>>{arena}),
+          functions(base::BumpAllocatorAdapter<FunctionTypePayload>{arena})
+    {
+    }
 
-    void swap(TypeNodePayloadArena& other) noexcept {
+    void swap(TypeNodePayloadArena& other) noexcept
+    {
         this->primitives.swap(other.primitives);
         this->named.swap(other.named);
         this->pointers.swap(other.pointers);
@@ -110,7 +113,8 @@ public:
 
 private:
     template <typename T, typename Allocator>
-    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values) {
+    [[nodiscard]] AstArenaVector<T> copy_list(const std::vector<T, Allocator>& values)
+    {
         return copy_ast_arena_vector(*this->arena_, values);
     }
 
@@ -119,7 +123,8 @@ private:
     [[nodiscard]] TypeNode load_moved(base::usize index);
 
     template <typename T>
-    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload) {
+    [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload)
+    {
         const base::u32 index = static_cast<base::u32>(payloads.size());
         payloads.push_back(std::move(payload));
         return index;

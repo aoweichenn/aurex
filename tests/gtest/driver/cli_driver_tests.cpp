@@ -1,21 +1,22 @@
-#include <aurex/driver/cli.hpp>
 #include <aurex/base/config.hpp>
+#include <aurex/driver/cli.hpp>
 #include <aurex/driver/cli_llvm.hpp>
 #include <aurex/driver/compiler.hpp>
 #include <aurex/driver/file_cache.hpp>
 #include <aurex/driver/incremental_cache.hpp>
 #include <aurex/driver/profile.hpp>
+
 #include <support/test_support.hpp>
 
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <fstream>
-#include <chrono>
 #include <sstream>
-#include <sys/stat.h>
-#include <thread>
 #include <string>
 #include <string_view>
+#include <sys/stat.h>
+#include <thread>
 #include <vector>
 
 namespace aurex::test {
@@ -53,13 +54,15 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE =
     "module shared.util;\n"
     "pub fn twice(value: i32) -> i32 { return value + 21; }\n";
 
-[[nodiscard]] driver::CliParseResult require_parse_cli(const std::vector<std::string_view>& args) {
+[[nodiscard]] driver::CliParseResult require_parse_cli(const std::vector<std::string_view>& args)
+{
     auto result = driver::parse_cli_arguments(args);
     EXPECT_TRUE(result) << result.error().message;
     return result.value();
 }
 
-[[nodiscard]] std::string hex_encode_cache_test_field(const std::string_view value) {
+[[nodiscard]] std::string hex_encode_cache_test_field(const std::string_view value)
+{
     constexpr char DIGITS[] = "0123456789abcdef";
     constexpr unsigned int HIGH_NIBBLE_SHIFT = 4;
     constexpr unsigned int LOW_NIBBLE_MASK = 0x0fU;
@@ -73,7 +76,8 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE =
     return encoded;
 }
 
-[[nodiscard]] std::string uppercase_hex_cache_test_field(std::string encoded) {
+[[nodiscard]] std::string uppercase_hex_cache_test_field(std::string encoded)
+{
     constexpr char LOWER_HEX_FIRST = 'a';
     constexpr char LOWER_HEX_LAST = 'f';
     constexpr char HEX_CASE_OFFSET = 'A' - 'a';
@@ -85,10 +89,8 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE =
     return encoded;
 }
 
-[[nodiscard]] std::string cache_test_header(
-    const fs::path& root,
-    const std::vector<fs::path>& import_paths = {}
-) {
+[[nodiscard]] std::string cache_test_header(const fs::path& root, const std::vector<fs::path>& import_paths = {})
+{
     std::string cache;
     cache += "aurex-incremental-cache-v1\n";
     cache += "schema\t1\n";
@@ -103,10 +105,8 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE =
 }
 
 [[nodiscard]] std::string cache_test_header_with_compiler_and_mode(
-    const fs::path& root,
-    const std::string_view compiler_version,
-    const std::string_view mode
-) {
+    const fs::path& root, const std::string_view compiler_version, const std::string_view mode)
+{
     std::string cache;
     cache += "aurex-incremental-cache-v1\n";
     cache += "schema\t1\n";
@@ -118,9 +118,8 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE =
 }
 
 [[nodiscard]] std::string minimal_cache_without_sources(
-    const fs::path& root,
-    const std::vector<fs::path>& import_paths = {}
-) {
+    const fs::path& root, const std::vector<fs::path>& import_paths = {})
+{
     std::string cache = cache_test_header(root, import_paths);
     cache += "sources\t0\n";
     cache += "modules\t0\n";
@@ -128,13 +127,9 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE =
     return cache;
 }
 
-[[nodiscard]] std::string cache_test_source_row(
-    const fs::path& path,
-    const std::string_view size,
-    const std::string_view primary,
-    const std::string_view secondary,
-    const std::string_view byte_count
-) {
+[[nodiscard]] std::string cache_test_source_row(const fs::path& path, const std::string_view size,
+    const std::string_view primary, const std::string_view secondary, const std::string_view byte_count)
+{
     std::string row;
     row += "source\t";
     row += size;
@@ -150,19 +145,13 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE =
     return row;
 }
 
-[[nodiscard]] std::string cache_test_def_row(
-    const std::string_view category,
-    const std::string_view stable_kind,
-    const std::string_view stable_global,
-    const std::string_view stable_primary,
-    const std::string_view stable_secondary,
-    const std::string_view stable_bytes,
-    const std::string_view incremental_global,
-    const std::string_view incremental_primary,
-    const std::string_view incremental_secondary,
-    const std::string_view incremental_bytes,
-    const std::string_view encoded_name
-) {
+[[nodiscard]] std::string cache_test_def_row(const std::string_view category, const std::string_view stable_kind,
+    const std::string_view stable_global, const std::string_view stable_primary,
+    const std::string_view stable_secondary, const std::string_view stable_bytes,
+    const std::string_view incremental_global, const std::string_view incremental_primary,
+    const std::string_view incremental_secondary, const std::string_view incremental_bytes,
+    const std::string_view encoded_name)
+{
     std::string row;
     row += "def\t";
     row += category;
@@ -192,8 +181,9 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE =
 
 } // namespace
 
-TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
-    const std::vector<std::string_view> object_args {
+TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms)
+{
+    const std::vector<std::string_view> object_args{
         "aurexc",
         "-c",
         "-Itests/samples/imports",
@@ -219,7 +209,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     EXPECT_EQ(object_parse.invocation.incremental_cache_path, fs::path("build/hello.axic"));
     EXPECT_EQ(object_parse.invocation.profile_output_path, fs::path("build/hello.profile.json"));
 
-    const std::vector<std::string_view> assembly_args {
+    const std::vector<std::string_view> assembly_args{
         "aurexc",
         "-S",
         "examples/hello.ax",
@@ -228,7 +218,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     EXPECT_EQ(assembly_parse.invocation.emit_kind, driver::EmitKind::assembly);
     EXPECT_EQ(assembly_parse.invocation.output_path, fs::path("hello.s"));
 
-    const std::vector<std::string_view> separate_emit_args {
+    const std::vector<std::string_view> separate_emit_args{
         "aurexc",
         "--emit",
         "llvm-ir",
@@ -238,7 +228,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     const driver::CliParseResult separate_emit_parse = require_parse_cli(separate_emit_args);
     EXPECT_EQ(separate_emit_parse.invocation.emit_kind, driver::EmitKind::check);
 
-    const std::vector<std::string_view> typed_emit_args {
+    const std::vector<std::string_view> typed_emit_args{
         "aurexc",
         "--emit=typed",
         "examples/hello.ax",
@@ -246,7 +236,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     const driver::CliParseResult typed_emit_parse = require_parse_cli(typed_emit_args);
     EXPECT_EQ(typed_emit_parse.invocation.emit_kind, driver::EmitKind::typed);
 
-    const std::vector<std::string_view> json_diagnostic_args {
+    const std::vector<std::string_view> json_diagnostic_args{
         "aurexc",
         "--check",
         "--diagnostics=json",
@@ -256,7 +246,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     EXPECT_EQ(json_diagnostic_parse.invocation.emit_kind, driver::EmitKind::check);
     EXPECT_EQ(json_diagnostic_parse.invocation.diagnostic_format, driver::DiagnosticOutputFormat::json);
 
-    const std::vector<std::string_view> text_diagnostic_args {
+    const std::vector<std::string_view> text_diagnostic_args{
         "aurexc",
         "--check",
         "--diagnostics",
@@ -266,7 +256,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     const driver::CliParseResult text_diagnostic_parse = require_parse_cli(text_diagnostic_args);
     EXPECT_EQ(text_diagnostic_parse.invocation.diagnostic_format, driver::DiagnosticOutputFormat::text);
 
-    const std::vector<std::string_view> inference_reset_args {
+    const std::vector<std::string_view> inference_reset_args{
         "aurexc",
         "-S",
         "--emit=ir",
@@ -276,7 +266,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     EXPECT_EQ(inference_reset_parse.invocation.emit_kind, driver::EmitKind::ir);
     EXPECT_TRUE(inference_reset_parse.invocation.output_path.empty());
 
-    const std::vector<std::string_view> dump_llvm_ir_args {
+    const std::vector<std::string_view> dump_llvm_ir_args{
         "aurexc",
         "--dump-llvm-ir",
         "examples/hello.ax",
@@ -284,7 +274,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     const driver::CliParseResult dump_llvm_ir_parse = require_parse_cli(dump_llvm_ir_args);
     EXPECT_EQ(dump_llvm_ir_parse.invocation.emit_kind, driver::EmitKind::llvm_ir);
 
-    const std::vector<std::string_view> option_end_args {
+    const std::vector<std::string_view> option_end_args{
         "aurexc",
         "--",
         "-strange.ax",
@@ -293,7 +283,8 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms) {
     EXPECT_EQ(option_end_parse.invocation.input_path, fs::path("-strange.ax"));
 }
 
-TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput) {
+TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
+{
     {
         const fs::path profile = tmp_root() / "hello.profile.json";
         driver::CompilerInvocation invocation;
@@ -306,16 +297,17 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput) {
         ASSERT_TRUE(result) << result.error().message;
 
         const std::string profile_text = read_text(profile);
-        expect_contains_all(profile_text, {
-            "\"format\": \"aurex-profile-v1\"",
-            "\"phases\"",
-            "\"name\": \"module.read\"",
-            "\"name\": \"module.lex\"",
-            "\"name\": \"module.parse\"",
-            "\"name\": \"sema.analyze\"",
-            "\"rss_mib_after\"",
-            "\"rss_delta_mib\"",
-        });
+        expect_contains_all(profile_text,
+            {
+                "\"format\": \"aurex-profile-v1\"",
+                "\"phases\"",
+                "\"name\": \"module.read\"",
+                "\"name\": \"module.lex\"",
+                "\"name\": \"module.parse\"",
+                "\"name\": \"sema.analyze\"",
+                "\"rss_mib_after\"",
+                "\"rss_delta_mib\"",
+            });
     }
 
     {
@@ -337,15 +329,17 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput) {
         ASSERT_FALSE(result);
 
         const std::string profile_text = read_text(profile);
-        expect_contains_all(profile_text, {
-            "\"format\": \"aurex-profile-v1\"",
-            "\"name\": \"module.parse\"",
-            "\"name\": \"sema.analyze\"",
-        });
+        expect_contains_all(profile_text,
+            {
+                "\"format\": \"aurex-profile-v1\"",
+                "\"name\": \"module.parse\"",
+                "\"name\": \"sema.analyze\"",
+            });
     }
 }
 
-TEST_F(AurexIntegrationTest, CompilerProfileCoversJsonAndErrorPaths) {
+TEST_F(AurexIntegrationTest, CompilerProfileCoversJsonAndErrorPaths)
+{
     {
         driver::CompilationProfiler disabled;
         EXPECT_FALSE(disabled.enabled());
@@ -360,11 +354,7 @@ TEST_F(AurexIntegrationTest, CompilerProfileCoversJsonAndErrorPaths) {
     {
         driver::CompilationProfiler profiler(true);
         ASSERT_TRUE(profiler.enabled());
-        profiler.record(
-            "phase\n\"\\",
-            std::string_view {"detail\t\r\x01", 9},
-            std::chrono::milliseconds(2)
-        );
+        profiler.record("phase\n\"\\", std::string_view{"detail\t\r\x01", 9}, std::chrono::milliseconds(2));
         ASSERT_EQ(profiler.phases().size(), 1U);
         EXPECT_EQ(profiler.phases().front().name, "phase\n\"\\");
 
@@ -372,18 +362,19 @@ TEST_F(AurexIntegrationTest, CompilerProfileCoversJsonAndErrorPaths) {
         const auto result = profiler.write_json(profile);
         ASSERT_TRUE(result) << result.error().message;
         const std::string profile_text = read_text(profile);
-        expect_contains_all(profile_text, {
-            "\"format\": \"aurex-profile-v1\"",
-            "\\n",
-            "\\\"",
-            "\\\\",
-            "\\t",
-            "\\r",
-            "\\u0001",
-            "\"elapsed_ms\":",
-            "\"rss_mib_after\":",
-            "\"rss_delta_mib\":",
-        });
+        expect_contains_all(profile_text,
+            {
+                "\"format\": \"aurex-profile-v1\"",
+                "\\n",
+                "\\\"",
+                "\\\\",
+                "\\t",
+                "\\r",
+                "\\u0001",
+                "\"elapsed_ms\":",
+                "\"rss_mib_after\":",
+                "\"rss_delta_mib\":",
+            });
 
         const fs::path relative_profile = "profile-no-parent-test.json";
         std::error_code remove_error;
@@ -424,7 +415,8 @@ TEST_F(AurexIntegrationTest, CompilerProfileCoversJsonAndErrorPaths) {
     }
 }
 
-TEST_F(AurexIntegrationTest, CompilerProfileCoversCacheHitWriteFailureAndJsonSuppression) {
+TEST_F(AurexIntegrationTest, CompilerProfileCoversCacheHitWriteFailureAndJsonSuppression)
+{
     driver::clear_file_cache();
 
     {
@@ -493,18 +485,20 @@ TEST_F(AurexIntegrationTest, CompilerProfileCoversCacheHitWriteFailureAndJsonSup
         const auto result = compiler.run(invocation);
         const std::string diagnostics = testing::internal::GetCapturedStderr();
         ASSERT_FALSE(result);
-        expect_contains_all(diagnostics, {
-            "\"format\": \"aurex-diagnostics-v1\"",
-            "\"suppressed\": ",
-        });
+        expect_contains_all(diagnostics,
+            {
+                "\"format\": \"aurex-diagnostics-v1\"",
+                "\"suppressed\": ",
+            });
         EXPECT_EQ(diagnostics.find("\"suppressed\": 0"), std::string::npos);
     }
 
     driver::clear_file_cache();
 }
 
-TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors) {
-    const std::vector<std::string_view> invalid_emit_args {
+TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors)
+{
+    const std::vector<std::string_view> invalid_emit_args{
         "aurexc",
         "--emit=not-a-kind",
         "examples/hello.ax",
@@ -513,7 +507,7 @@ TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors) {
     ASSERT_FALSE(invalid_emit);
     expect_contains(invalid_emit.error().message, "invalid emit kind");
 
-    const std::vector<std::string_view> unexpected_value_args {
+    const std::vector<std::string_view> unexpected_value_args{
         "aurexc",
         "--help=true",
     };
@@ -521,7 +515,7 @@ TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors) {
     ASSERT_FALSE(unexpected_value);
     expect_contains(unexpected_value.error().message, "does not take a value");
 
-    const std::vector<std::string_view> unknown_equal_args {
+    const std::vector<std::string_view> unknown_equal_args{
         "aurexc",
         "--unknown=value",
     };
@@ -529,7 +523,7 @@ TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors) {
     ASSERT_FALSE(unknown_equal);
     expect_contains(unknown_equal.error().message, "unknown option: --unknown");
 
-    const std::vector<std::string_view> inapplicable_native_backend_args {
+    const std::vector<std::string_view> inapplicable_native_backend_args{
         "aurexc",
         "--clang=/usr/bin/clang",
         "--emit=ir",
@@ -539,7 +533,7 @@ TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors) {
     ASSERT_FALSE(inapplicable_native_backend);
     expect_contains(inapplicable_native_backend.error().message, "option requires native output: --clang");
 
-    const std::vector<std::string_view> invalid_diagnostic_format_args {
+    const std::vector<std::string_view> invalid_diagnostic_format_args{
         "aurexc",
         "--diagnostics=xml",
         "examples/hello.ax",
@@ -550,7 +544,7 @@ TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors) {
 
     std::ostringstream out;
     std::ostringstream err;
-    const std::vector<std::string_view> missing_file_args {
+    const std::vector<std::string_view> missing_file_args{
         "aurexc",
         "--check",
         "missing.ax",
@@ -565,28 +559,30 @@ TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors) {
     expect_contains(empty_err.str(), "usage: aurexc");
 }
 
-TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
+TEST_F(AurexIntegrationTest, CliAndFrontendDumps)
+{
     expect_contains(require_success(aurexc() + " --version").output, "0.1.2");
 
     const std::string help = require_success(aurexc() + " --help").output;
-    expect_contains_all(help, {
-        "primary options:",
-        "secondary options:",
-        "frontend and debug output:",
-        "native backend:",
-        "--check",
-        "--emit=ast",
-        "--emit=typed",
-        "--emit=ir",
-        "--emit=llvm-ir",
-        "--emit=asm",
-        "--emit=obj",
-        "--emit=exe",
-        "--dump-modules",
-        "--incremental-cache",
-        "--diagnostics",
-        "--opt-level",
-    });
+    expect_contains_all(help,
+        {
+            "primary options:",
+            "secondary options:",
+            "frontend and debug output:",
+            "native backend:",
+            "--check",
+            "--emit=ast",
+            "--emit=typed",
+            "--emit=ir",
+            "--emit=llvm-ir",
+            "--emit=asm",
+            "--emit=obj",
+            "--emit=exe",
+            "--dump-modules",
+            "--incremental-cache",
+            "--diagnostics",
+            "--opt-level",
+        });
 
     const fs::path hello = source_root() / "examples" / "hello.ax";
     require_success(aurexc() + " --check " + q(hello));
@@ -608,8 +604,9 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
     expect_contains(ir, "call puts");
     expect_contains(llvm_ir, "define i32 @main");
 
-    const std::string eval_order =
-        require_success(aurexc() + " --emit=ir --opt-level O1 " + q(positive_sample("evaluation", "eval_order_assign.ax"))).output;
+    const std::string eval_order = require_success(
+        aurexc() + " --emit=ir --opt-level O1 " + q(positive_sample("evaluation", "eval_order_assign.ax")))
+                                       .output;
     expect_contains(eval_order, "call m0_eval_order_assign_next(%");
 
     const std::string pointer_field =
@@ -624,22 +621,24 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps) {
     }
     const std::string json_output =
         require_failure(aurexc() + " --check --diagnostics=json " + q(json_diagnostics)).output;
-    expect_contains_all(json_output, {
-        "\"format\": \"aurex-diagnostics-v1\"",
-        "\"severity\": \"error\"",
-        "\"category\": \"type\"",
-        "\"code\": \"SEM0100\"",
-        "\"message\": \"initializer type does not match declared type\"",
-        "\"message\": \"expected type: i32\"",
-        "\"message\": \"actual type: bool\"",
-        "json\\\"\\\\diagnostics.ax",
-        "\"range\": {",
-        "\"suppressed\": 0",
-    });
+    expect_contains_all(json_output,
+        {
+            "\"format\": \"aurex-diagnostics-v1\"",
+            "\"severity\": \"error\"",
+            "\"category\": \"type\"",
+            "\"code\": \"SEM0100\"",
+            "\"message\": \"initializer type does not match declared type\"",
+            "\"message\": \"expected type: i32\"",
+            "\"message\": \"actual type: bool\"",
+            "json\\\"\\\\diagnostics.ax",
+            "\"range\": {",
+            "\"suppressed\": 0",
+        });
     EXPECT_EQ(json_output.find("aurexc:"), std::string::npos);
 }
 
-TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches) {
+TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches)
+{
     {
         const fs::path invalid = tmp_root() / "invalid_json_cli.ax";
         std::ofstream out(invalid);
@@ -649,7 +648,7 @@ TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches) {
         std::ostringstream stdout_capture;
         std::ostringstream stderr_capture;
         const std::string invalid_path = invalid.string();
-        const std::vector<std::string_view> args {
+        const std::vector<std::string_view> args{
             "aurexc",
             "--check",
             "--diagnostics=json",
@@ -679,21 +678,22 @@ TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches) {
         const auto result = compiler.run(invocation);
         const std::string diagnostics = testing::internal::GetCapturedStderr();
         ASSERT_FALSE(result);
-        expect_contains_all(diagnostics, {
-            "\\n",
-            "\\r",
-            "\\t",
-            "\\u0001",
-            "\\\"",
-            "\\\\",
-        });
+        expect_contains_all(diagnostics,
+            {
+                "\\n",
+                "\\r",
+                "\\t",
+                "\\u0001",
+                "\\\"",
+                "\\\\",
+            });
     }
 
     {
         std::ostringstream stdout_capture;
         std::ostringstream stderr_capture;
         const std::string missing_path = (tmp_root() / "definitely_missing.ax").string();
-        const std::vector<std::string_view> args {
+        const std::vector<std::string_view> args{
             "aurexc",
             "--check",
             "--diagnostics=json",
@@ -704,12 +704,13 @@ TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches) {
         const std::string diagnostics = testing::internal::GetCapturedStderr();
         EXPECT_EQ(exit_code, 1);
         EXPECT_TRUE(diagnostics.empty());
-        expect_contains_all(stderr_capture.str(), {
-            "\"format\": \"aurex-diagnostics-v1\"",
-            "\"severity\": \"fatal\"",
-            "\"message\": \"failed to open input file\"",
-            "\"range\": null",
-        });
+        expect_contains_all(stderr_capture.str(),
+            {
+                "\"format\": \"aurex-diagnostics-v1\"",
+                "\"severity\": \"fatal\"",
+                "\"message\": \"failed to open input file\"",
+                "\"range\": null",
+            });
     }
 
     {
@@ -763,10 +764,10 @@ TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches) {
         EXPECT_EQ(result.error().code, base::ErrorCode::codegen_error);
         expect_contains(result.error().message, "LLVM backend is unavailable");
     }
-
 }
 
-TEST_F(AurexIntegrationTest, CliFileCacheCoversMissHitClearAndEmptyFiles) {
+TEST_F(AurexIntegrationTest, CliFileCacheCoversMissHitClearAndEmptyFiles)
+{
     driver::clear_file_cache();
 
     const fs::path missing = tmp_root() / "missing.ax";
@@ -823,7 +824,8 @@ TEST_F(AurexIntegrationTest, CliFileCacheCoversMissHitClearAndEmptyFiles) {
     driver::clear_file_cache();
 }
 
-TEST_F(AurexIntegrationTest, IncrementalCacheWritesValidatesInvalidatesAndReusesCheck) {
+TEST_F(AurexIntegrationTest, IncrementalCacheWritesValidatesInvalidatesAndReusesCheck)
+{
     driver::clear_file_cache();
 
     const fs::path cache_dir = tmp_root() / "incremental-cache";
@@ -884,7 +886,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesValidatesInvalidatesAndReuses
     driver::clear_file_cache();
 }
 
-TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlockedCacheFiles) {
+TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlockedCacheFiles)
+{
     driver::clear_file_cache();
 
     const fs::path cache_dir = tmp_root() / "incremental-cache-malformed";
@@ -985,12 +988,11 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
     write_cache(cache_test_header(canonical_source) + "import_paths\t0\n");
     expect_not_reused();
 
-    write_cache(cache_test_header(canonical_source) + "mode\t"
-        + hex_encode_cache_test_field("semantic-ok") + "\n");
+    write_cache(cache_test_header(canonical_source) + "mode\t" + hex_encode_cache_test_field("semantic-ok") + "\n");
     expect_not_reused();
 
-    write_cache(cache_test_header(canonical_source) + "root\t"
-        + hex_encode_cache_test_field(canonical_source.string()) + "\n");
+    write_cache(
+        cache_test_header(canonical_source) + "root\t" + hex_encode_cache_test_field(canonical_source.string()) + "\n");
     expect_not_reused();
 
     write_cache(cache_test_header(canonical_source) + "sources\t1\nsource\tbad\t0\t0\t0\t"
@@ -1002,42 +1004,34 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
     expect_not_reused();
 
     write_cache(cache_test_header(canonical_source) + "sources\t1\n"
-        + cache_test_source_row(canonical_source, "1", "bad", "0", "0")
-        + "modules\t0\ndefinitions\t0\n");
+        + cache_test_source_row(canonical_source, "1", "bad", "0", "0") + "modules\t0\ndefinitions\t0\n");
     expect_not_reused();
 
     write_cache(cache_test_header(canonical_source) + "sources\t1\n"
-        + cache_test_source_row(canonical_source, "1", "0", "bad", "0")
-        + "modules\t0\ndefinitions\t0\n");
+        + cache_test_source_row(canonical_source, "1", "0", "bad", "0") + "modules\t0\ndefinitions\t0\n");
     expect_not_reused();
 
     write_cache(cache_test_header(canonical_source) + "sources\t1\n"
-        + cache_test_source_row(canonical_source, "1", "0", "0", "4294967296")
-        + "modules\t0\ndefinitions\t0\n");
+        + cache_test_source_row(canonical_source, "1", "0", "0", "4294967296") + "modules\t0\ndefinitions\t0\n");
     expect_not_reused();
 
-    write_cache(cache_test_header(canonical_source) + "sources\t1\nsource\t1\t0\t0\t1\t0\n"
-        + "modules\t0\ndefinitions\t0\n");
+    write_cache(
+        cache_test_header(canonical_source) + "sources\t1\nsource\t1\t0\t0\t1\t0\n" + "modules\t0\ndefinitions\t0\n");
     expect_not_reused();
 
-    write_cache(cache_test_header(canonical_source) + "sources\t1\nsource\ttoo-few\n"
-        + "modules\t0\ndefinitions\t0\n");
+    write_cache(cache_test_header(canonical_source) + "sources\t1\nsource\ttoo-few\n" + "modules\t0\ndefinitions\t0\n");
     expect_not_reused();
 
-    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t1\nmodule\tbad\n"
-        + "definitions\t0\n");
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t1\nmodule\tbad\n" + "definitions\t0\n");
     expect_not_reused();
 
-    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t1\nmodule\t00\t0\n"
-        + "definitions\t0\n");
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t1\nmodule\t00\t0\n" + "definitions\t0\n");
     expect_not_reused();
 
-    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t1\nmodule\t0\t00\n"
-        + "definitions\t0\n");
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t1\nmodule\t0\t00\n" + "definitions\t0\n");
     expect_not_reused();
 
-    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t1\n"
-        + "def\ttoo-few\n");
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t1\n" + "def\ttoo-few\n");
     expect_not_reused();
 
     write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t1\n"
@@ -1087,13 +1081,12 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
     const fs::path null_device("/dev/null");
     if (fs::exists(null_device)) {
         write_cache(cache_test_header(canonical_source) + "sources\t1\n"
-            + cache_test_source_row(null_device, "1", "0", "0", "1")
-            + "modules\t0\ndefinitions\t0\n");
+            + cache_test_source_row(null_device, "1", "0", "0", "1") + "modules\t0\ndefinitions\t0\n");
         expect_not_reused();
     }
 
-    write_cache(cache_test_header(canonical_source, {cache_dir / "imports-a"}) +
-        "sources\t0\nmodules\t0\ndefinitions\t0\n");
+    write_cache(
+        cache_test_header(canonical_source, {cache_dir / "imports-a"}) + "sources\t0\nmodules\t0\ndefinitions\t0\n");
     driver::CompilerInvocation wrong_import_value = invocation;
     wrong_import_value.import_paths.push_back(cache_dir / "imports-b");
     auto wrong_import_value_reuse = driver::try_reuse_incremental_check_cache(wrong_import_value);
@@ -1151,7 +1144,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
     driver::clear_file_cache();
 }
 
-TEST_F(AurexIntegrationTest, IncrementalCacheTracksImportPathAndDependencyFingerprints) {
+TEST_F(AurexIntegrationTest, IncrementalCacheTracksImportPathAndDependencyFingerprints)
+{
     driver::clear_file_cache();
 
     const fs::path cache_dir = tmp_root() / "incremental-cache-imports";

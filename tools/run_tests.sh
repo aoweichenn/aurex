@@ -19,8 +19,8 @@ fi
 
 if [[ -z "${CTEST_JOBS}" || ! "${CTEST_JOBS}" =~ ^[0-9]+$ || "${CTEST_JOBS}" -lt 1 ]]; then
     CTEST_JOBS="2"
-elif [[ -z "${AUREX_CTEST_JOBS:-}" && "${CTEST_JOBS}" -gt 4 ]]; then
-    CTEST_JOBS="4"
+elif [[ -z "${AUREX_CTEST_JOBS:-}" && "${CTEST_JOBS}" -gt 32 ]]; then
+    CTEST_JOBS="32"
 fi
 
 cmake -S "${ROOT}" -B "${BUILD_DIR}" \

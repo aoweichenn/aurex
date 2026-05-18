@@ -16,14 +16,14 @@ namespace aurex::syntax {
 
 struct ModulePath {
     std::vector<std::string_view> parts;
-    base::SourceRange range {};
+    base::SourceRange range{};
     std::vector<IdentId> part_ids;
 };
 
 struct ImportDecl {
     ModulePath path;
     std::string_view alias;
-    base::SourceRange alias_range {};
+    base::SourceRange alias_range{};
     Visibility visibility = Visibility::private_;
     bool explicit_visibility = false;
     IdentId alias_id = INVALID_IDENT_ID;
@@ -32,7 +32,7 @@ struct ImportDecl {
 struct ResolvedImport {
     ModuleId module = INVALID_MODULE_ID;
     std::string_view alias;
-    base::SourceRange alias_range {};
+    base::SourceRange alias_range{};
     Visibility visibility = Visibility::private_;
     IdentId alias_id = INVALID_IDENT_ID;
 };
@@ -67,39 +67,26 @@ struct AstModule {
     [[nodiscard]] TypeId push_type(TypeNode node);
     [[nodiscard]] ExprId push_invalid_expr(const base::SourceRange& range);
 
-    [[nodiscard]] ExprId push_literal_expr(
-        ExprKind kind,
-        const base::SourceRange& range,
-        std::string_view text);
+    [[nodiscard]] ExprId push_literal_expr(ExprKind kind, const base::SourceRange& range, std::string_view text);
 
     [[nodiscard]] ExprId push_name_expr(const base::SourceRange& range, NameExprPayload payload);
 
     template <typename TypeArgAllocator = std::allocator<TypeId>>
-    [[nodiscard]] ExprId push_name_expr(
-        const base::SourceRange& range,
-        std::string_view scope_name,
-        const base::SourceRange& scope_range,
-        std::string_view text,
-        std::vector<TypeId, TypeArgAllocator> type_args = std::vector<TypeId, TypeArgAllocator> {},
-        IdentId scope_name_id = INVALID_IDENT_ID,
-        IdentId text_id = INVALID_IDENT_ID) {
+    [[nodiscard]] ExprId push_name_expr(const base::SourceRange& range, std::string_view scope_name,
+        const base::SourceRange& scope_range, std::string_view text,
+        std::vector<TypeId, TypeArgAllocator> type_args = std::vector<TypeId, TypeArgAllocator>{},
+        IdentId scope_name_id = INVALID_IDENT_ID, IdentId text_id = INVALID_IDENT_ID)
+    {
         this->intern_identifier_text(scope_name, scope_name_id);
         this->intern_identifier_text(text, text_id);
         return this->exprs.append_name(
-            range,
-            scope_name,
-            scope_range,
-            text,
-            scope_name_id,
-            text_id,
-            std::move(type_args));
+            range, scope_name, scope_range, text, scope_name_id, text_id, std::move(type_args));
     }
 
     template <typename TypeArgAllocator = std::allocator<TypeId>>
-    [[nodiscard]] ExprId push_name_expr(
-        const base::SourceRange& range,
-        const std::string_view text,
-        std::vector<TypeId, TypeArgAllocator> type_args = std::vector<TypeId, TypeArgAllocator> {}) {
+    [[nodiscard]] ExprId push_name_expr(const base::SourceRange& range, const std::string_view text,
+        std::vector<TypeId, TypeArgAllocator> type_args = std::vector<TypeId, TypeArgAllocator>{})
+    {
         return this->push_name_expr(range, {}, {}, text, std::move(type_args));
     }
 
@@ -107,9 +94,8 @@ struct AstModule {
 
     template <typename TypeArgAllocator>
     [[nodiscard]] ExprId push_generic_apply_expr(
-        const base::SourceRange& range,
-        const ExprId callee,
-        std::vector<TypeId, TypeArgAllocator> type_args) {
+        const base::SourceRange& range, const ExprId callee, std::vector<TypeId, TypeArgAllocator> type_args)
+    {
         return this->exprs.append_generic_apply(range, callee, std::move(type_args));
     }
 
@@ -122,28 +108,19 @@ struct AstModule {
     [[nodiscard]] ExprId push_binary_expr(const base::SourceRange& range, BinaryExprPayload payload);
     [[nodiscard]] ExprId push_binary_expr(const base::SourceRange& range, BinaryOp op, ExprId lhs, ExprId rhs);
 
-    [[nodiscard]] ExprId push_call_expr(
-        ExprKind kind,
-        const base::SourceRange& range,
-        CallExprPayload payload);
+    [[nodiscard]] ExprId push_call_expr(ExprKind kind, const base::SourceRange& range, CallExprPayload payload);
 
     template <typename ArgAllocator>
-    [[nodiscard]] ExprId push_call_expr(
-        const ExprKind kind,
-        const base::SourceRange& range,
-        const ExprId callee,
-        std::vector<ExprId, ArgAllocator> args) {
+    [[nodiscard]] ExprId push_call_expr(const ExprKind kind, const base::SourceRange& range, const ExprId callee,
+        std::vector<ExprId, ArgAllocator> args)
+    {
         return this->exprs.append_call(kind, range, callee, std::move(args));
     }
 
     [[nodiscard]] ExprId push_if_expr(const base::SourceRange& range, IfExprPayload payload);
 
-    [[nodiscard]] ExprId push_if_expr(
-        const base::SourceRange& range,
-        ExprId condition,
-        PatternId condition_pattern,
-        ExprId then_expr,
-        ExprId else_expr);
+    [[nodiscard]] ExprId push_if_expr(const base::SourceRange& range, ExprId condition, PatternId condition_pattern,
+        ExprId then_expr, ExprId else_expr);
 
     [[nodiscard]] ExprId push_block_expr(ExprKind kind, const base::SourceRange& range, BlockExprPayload payload);
     [[nodiscard]] ExprId push_block_expr(ExprKind kind, const base::SourceRange& range, StmtId block, ExprId result);
@@ -152,34 +129,29 @@ struct AstModule {
 
     template <typename ArmAllocator>
     [[nodiscard]] ExprId push_match_expr(
-        const base::SourceRange& range,
-        const ExprId value,
-        std::vector<MatchArm, ArmAllocator> arms) {
+        const base::SourceRange& range, const ExprId value, std::vector<MatchArm, ArmAllocator> arms)
+    {
         return this->exprs.append_match(range, value, std::move(arms));
     }
 
     [[nodiscard]] ExprId push_array_expr(const base::SourceRange& range, ArrayExprPayload payload);
 
     template <typename ElementAllocator>
-    [[nodiscard]] ExprId push_array_expr(
-        const base::SourceRange& range,
-        std::vector<ExprId, ElementAllocator> elements,
-        const ExprId repeat_value = INVALID_EXPR_ID,
-        const ExprId repeat_count = INVALID_EXPR_ID) {
+    [[nodiscard]] ExprId push_array_expr(const base::SourceRange& range, std::vector<ExprId, ElementAllocator> elements,
+        const ExprId repeat_value = INVALID_EXPR_ID, const ExprId repeat_count = INVALID_EXPR_ID)
+    {
         return this->exprs.append_array(range, std::move(elements), repeat_value, repeat_count);
     }
 
     template <typename ElementAllocator>
-    [[nodiscard]] ExprId push_tuple_expr(const base::SourceRange& range, std::vector<ExprId, ElementAllocator> elements) {
+    [[nodiscard]] ExprId push_tuple_expr(const base::SourceRange& range, std::vector<ExprId, ElementAllocator> elements)
+    {
         return this->exprs.append_tuple(range, std::move(elements));
     }
 
     [[nodiscard]] ExprId push_field_expr(const base::SourceRange& range, const FieldExprPayload& payload);
 
-    [[nodiscard]] ExprId push_field_expr(
-        const base::SourceRange& range,
-        ExprId object,
-        std::string_view field_name,
+    [[nodiscard]] ExprId push_field_expr(const base::SourceRange& range, ExprId object, std::string_view field_name,
         IdentId field_name_id = INVALID_IDENT_ID);
 
     [[nodiscard]] ExprId push_index_expr(const base::SourceRange& range, IndexExprPayload payload);
@@ -191,29 +163,16 @@ struct AstModule {
     [[nodiscard]] ExprId push_struct_literal_expr(const base::SourceRange& range, StructLiteralExprPayload payload);
 
     template <typename TypeArgAllocator, typename FieldInitAllocator>
-    [[nodiscard]] ExprId push_struct_literal_expr(
-        const base::SourceRange& range,
-        const ExprId object,
-        std::string_view scope_name,
-        const base::SourceRange& scope_range,
-        std::string_view name,
-        std::vector<TypeId, TypeArgAllocator> type_args,
-        std::vector<FieldInit, FieldInitAllocator> field_inits,
-        IdentId scope_name_id = INVALID_IDENT_ID,
-        IdentId name_id = INVALID_IDENT_ID) {
+    [[nodiscard]] ExprId push_struct_literal_expr(const base::SourceRange& range, const ExprId object,
+        std::string_view scope_name, const base::SourceRange& scope_range, std::string_view name,
+        std::vector<TypeId, TypeArgAllocator> type_args, std::vector<FieldInit, FieldInitAllocator> field_inits,
+        IdentId scope_name_id = INVALID_IDENT_ID, IdentId name_id = INVALID_IDENT_ID)
+    {
         this->intern_identifier_text(scope_name, scope_name_id);
         this->intern_identifier_text(name, name_id);
         this->intern_field_inits(field_inits);
-        return this->exprs.append_struct_literal(
-            range,
-            object,
-            scope_name,
-            scope_range,
-            name,
-            scope_name_id,
-            name_id,
-            std::move(type_args),
-            std::move(field_inits));
+        return this->exprs.append_struct_literal(range, object, scope_name, scope_range, name, scope_name_id, name_id,
+            std::move(type_args), std::move(field_inits));
     }
 
     [[nodiscard]] ExprId push_cast_like_expr(ExprKind kind, const base::SourceRange& range, CastExprPayload payload);
@@ -229,11 +188,9 @@ struct AstModule {
     void set_generic_apply_expr(base::usize index, const base::SourceRange& range, GenericApplyExprPayload payload);
 
     template <typename TypeArgAllocator>
-    void set_generic_apply_expr(
-        const base::usize index,
-        const base::SourceRange& range,
-        const ExprId callee,
-        std::vector<TypeId, TypeArgAllocator> type_args) {
+    void set_generic_apply_expr(const base::usize index, const base::SourceRange& range, const ExprId callee,
+        std::vector<TypeId, TypeArgAllocator> type_args)
+    {
         this->exprs.set_generic_apply(index, range, callee, std::move(type_args));
     }
 
@@ -246,22 +203,15 @@ struct AstModule {
     void set_call_expr(base::usize index, ExprKind kind, const base::SourceRange& range, CallExprPayload payload);
 
     template <typename ArgAllocator>
-    void set_call_expr(
-        const base::usize index,
-        const ExprKind kind,
-        const base::SourceRange& range,
-        const ExprId callee,
-        std::vector<ExprId, ArgAllocator> args) {
+    void set_call_expr(const base::usize index, const ExprKind kind, const base::SourceRange& range,
+        const ExprId callee, std::vector<ExprId, ArgAllocator> args)
+    {
         this->exprs.set_call(index, kind, range, callee, std::move(args));
     }
 
     void set_field_expr(base::usize index, const base::SourceRange& range, FieldExprPayload payload);
 
-    void set_field_expr(
-        base::usize index,
-        const base::SourceRange& range,
-        ExprId object,
-        std::string_view field_name,
+    void set_field_expr(base::usize index, const base::SourceRange& range, ExprId object, std::string_view field_name,
         IdentId field_name_id = INVALID_IDENT_ID);
 
     void set_index_expr(base::usize index, const base::SourceRange& range, IndexExprPayload payload);
@@ -273,31 +223,16 @@ struct AstModule {
     void set_struct_literal_expr(base::usize index, const base::SourceRange& range, StructLiteralExprPayload payload);
 
     template <typename TypeArgAllocator, typename FieldInitAllocator>
-    void set_struct_literal_expr(
-        const base::usize index,
-        const base::SourceRange& range,
-        const ExprId object,
-        std::string_view scope_name,
-        const base::SourceRange& scope_range,
-        std::string_view name,
-        std::vector<TypeId, TypeArgAllocator> type_args,
-        std::vector<FieldInit, FieldInitAllocator> field_inits,
-        IdentId scope_name_id = INVALID_IDENT_ID,
-        IdentId name_id = INVALID_IDENT_ID) {
+    void set_struct_literal_expr(const base::usize index, const base::SourceRange& range, const ExprId object,
+        std::string_view scope_name, const base::SourceRange& scope_range, std::string_view name,
+        std::vector<TypeId, TypeArgAllocator> type_args, std::vector<FieldInit, FieldInitAllocator> field_inits,
+        IdentId scope_name_id = INVALID_IDENT_ID, IdentId name_id = INVALID_IDENT_ID)
+    {
         this->intern_identifier_text(scope_name, scope_name_id);
         this->intern_identifier_text(name, name_id);
         this->intern_field_inits(field_inits);
-        this->exprs.set_struct_literal(
-            index,
-            range,
-            object,
-            scope_name,
-            scope_range,
-            name,
-            scope_name_id,
-            name_id,
-            std::move(type_args),
-            std::move(field_inits));
+        this->exprs.set_struct_literal(index, range, object, scope_name, scope_range, name, scope_name_id, name_id,
+            std::move(type_args), std::move(field_inits));
     }
 
     void set_item(base::usize index, ItemNode node);
@@ -307,12 +242,14 @@ struct AstModule {
     [[nodiscard]] std::string_view identifier_text(IdentId id) const noexcept;
 
     template <typename T>
-    [[nodiscard]] AstArenaVector<T> make_expr_list() {
+    [[nodiscard]] AstArenaVector<T> make_expr_list()
+    {
         return this->exprs.make_list<T>();
     }
 
     template <typename T>
-    [[nodiscard]] AstArenaVector<T> make_item_list() {
+    [[nodiscard]] AstArenaVector<T> make_item_list()
+    {
         return this->items.make_list<T>();
     }
 
@@ -331,8 +268,8 @@ private:
 
     template <typename TextAllocator, typename IdAllocator>
     void intern_identifier_list(
-        std::vector<std::string_view, TextAllocator>& texts,
-        std::vector<IdentId, IdAllocator>& ids) {
+        std::vector<std::string_view, TextAllocator>& texts, std::vector<IdentId, IdAllocator>& ids)
+    {
         ids.resize(texts.size(), INVALID_IDENT_ID);
         for (base::usize i = 0; i < texts.size(); ++i) {
             this->intern_identifier_text(texts[i], ids[i]);
@@ -340,14 +277,16 @@ private:
     }
 
     template <typename Allocator>
-    void intern_generic_params(std::vector<GenericParamDecl, Allocator>& params) {
+    void intern_generic_params(std::vector<GenericParamDecl, Allocator>& params)
+    {
         for (GenericParamDecl& param : params) {
             this->intern_identifier_text(param.name, param.name_id);
         }
     }
 
     template <typename Allocator>
-    void intern_generic_constraints(std::vector<GenericConstraintDecl, Allocator>& constraints) {
+    void intern_generic_constraints(std::vector<GenericConstraintDecl, Allocator>& constraints)
+    {
         for (GenericConstraintDecl& constraint : constraints) {
             this->intern_identifier_text(constraint.param_name, constraint.param_name_id);
             this->intern_identifier_list(constraint.capability_names, constraint.capability_name_ids);
@@ -357,7 +296,8 @@ private:
     void intern_type_node(TypeNode& node);
 
     template <typename Allocator>
-    void intern_field_inits(std::vector<FieldInit, Allocator>& inits) {
+    void intern_field_inits(std::vector<FieldInit, Allocator>& inits)
+    {
         for (FieldInit& init : inits) {
             this->intern_identifier_text(init.name, init.name_id);
         }
@@ -369,7 +309,8 @@ private:
     void intern_expr_payload(base::usize index);
 
     template <typename Allocator>
-    void intern_field_patterns(std::vector<FieldPattern, Allocator>& fields) {
+    void intern_field_patterns(std::vector<FieldPattern, Allocator>& fields)
+    {
         for (FieldPattern& field : fields) {
             this->intern_identifier_text(field.name, field.name_id);
         }
@@ -379,21 +320,24 @@ private:
     void intern_stmt_node(StmtNode& node);
 
     template <typename Allocator>
-    void intern_param_decls(std::vector<ParamDecl, Allocator>& params) {
+    void intern_param_decls(std::vector<ParamDecl, Allocator>& params)
+    {
         for (ParamDecl& param : params) {
             this->intern_identifier_text(param.name, param.name_id);
         }
     }
 
     template <typename Allocator>
-    void intern_field_decls(std::vector<FieldDecl, Allocator>& fields) {
+    void intern_field_decls(std::vector<FieldDecl, Allocator>& fields)
+    {
         for (FieldDecl& field : fields) {
             this->intern_identifier_text(field.name, field.name_id);
         }
     }
 
     template <typename Allocator>
-    void intern_enum_case_decls(std::vector<EnumCaseDecl, Allocator>& cases) {
+    void intern_enum_case_decls(std::vector<EnumCaseDecl, Allocator>& cases)
+    {
         for (EnumCaseDecl& enum_case : cases) {
             this->intern_identifier_text(enum_case.name, enum_case.name_id);
         }

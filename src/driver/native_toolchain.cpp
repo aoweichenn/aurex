@@ -1,6 +1,5 @@
-#include <aurex/driver/native_toolchain.hpp>
-
 #include <aurex/driver/driver_messages.hpp>
+#include <aurex/driver/native_toolchain.hpp>
 
 #include <cerrno>
 #include <filesystem>
@@ -14,7 +13,8 @@ namespace aurex::driver {
 
 namespace {
 
-[[nodiscard]] std::string shell_hint(const std::vector<std::string>& args) {
+[[nodiscard]] std::string shell_hint(const std::vector<std::string>& args)
+{
     std::ostringstream out;
     for (std::size_t i = 0; i < args.size(); ++i) {
         if (i != 0) {
@@ -25,7 +25,8 @@ namespace {
     return out.str();
 }
 
-[[nodiscard]] base::Result<void> ensure_output_parent_exists(const std::filesystem::path& output_path) {
+[[nodiscard]] base::Result<void> ensure_output_parent_exists(const std::filesystem::path& output_path)
+{
     const std::filesystem::path parent = output_path.parent_path();
     if (parent.empty()) {
         return base::Result<void>::ok();
@@ -34,22 +35,19 @@ namespace {
     std::error_code error;
     std::filesystem::create_directories(parent, error);
     if (error) {
-        return base::Result<void>::fail({
-            base::ErrorCode::io_error,
-            driver_native_output_directory_failed_message(parent.string())
-        });
+        return base::Result<void>::fail(
+            {base::ErrorCode::io_error, driver_native_output_directory_failed_message(parent.string())});
     }
     return base::Result<void>::ok();
 }
 
 } // namespace
 
-base::Result<void> invoke_clang(const NativeCompileRequest& request) {
+base::Result<void> invoke_clang(const NativeCompileRequest& request)
+{
     if (!request.support_source_paths.empty() && request.emit_kind != EmitKind::executable) {
-        return base::Result<void>::fail({
-            base::ErrorCode::codegen_error,
-            std::string(DRIVER_NATIVE_SUPPORT_SOURCES_EXECUTABLE_ONLY)
-        });
+        return base::Result<void>::fail(
+            {base::ErrorCode::codegen_error, std::string(DRIVER_NATIVE_SUPPORT_SOURCES_EXECUTABLE_ONLY)});
     }
     auto output_parent_result = ensure_output_parent_exists(request.output_path);
     if (!output_parent_result) {

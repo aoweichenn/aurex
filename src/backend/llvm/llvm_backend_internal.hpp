@@ -2,15 +2,15 @@
 
 #include <aurex/backend/llvm_backend.hpp>
 
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Module.h>
-#include <llvm/Target/TargetMachine.h>
-
 #include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/Target/TargetMachine.h>
 
 namespace llvm {
 class BasicBlock;
@@ -30,15 +30,19 @@ using aurex::ir::BinaryOp;
 using aurex::ir::BlockId;
 using aurex::ir::CastKind;
 using aurex::ir::FieldValue;
+using aurex::ir::find_global_constant;
+using aurex::ir::find_record;
 using aurex::ir::Function;
 using aurex::ir::FunctionId;
 using aurex::ir::FunctionParam;
 using aurex::ir::GlobalConstant;
 using aurex::ir::GlobalConstantId;
 using aurex::ir::IrTextId;
+using aurex::ir::is_valid;
 using aurex::ir::Linkage;
 using aurex::ir::Module;
 using aurex::ir::PhiInput;
+using aurex::ir::record_field_index;
 using aurex::ir::RecordField;
 using aurex::ir::RecordLayout;
 using aurex::ir::Terminator;
@@ -47,10 +51,6 @@ using aurex::ir::UnaryOp;
 using aurex::ir::Value;
 using aurex::ir::ValueId;
 using aurex::ir::ValueKind;
-using aurex::ir::find_global_constant;
-using aurex::ir::find_record;
-using aurex::ir::is_valid;
-using aurex::ir::record_field_index;
 
 class LlvmEmitter final {
 public:
@@ -91,11 +91,7 @@ private:
     [[nodiscard]] llvm::Value* emit_str_slice_checked(const Value& value);
     [[nodiscard]] llvm::Value* emit_utf8_validation_call(llvm::Value* data, llvm::Value* length);
     [[nodiscard]] llvm::Value* emit_utf8_boundary_check(
-        llvm::Value* data,
-        llvm::Value* length,
-        llvm::Value* index,
-        const std::string& name
-    );
+        llvm::Value* data, llvm::Value* length, llvm::Value* index, const std::string& name);
     [[nodiscard]] llvm::Function* utf8_validator_function();
     [[nodiscard]] llvm::Function* utf8_boundary_function();
     [[nodiscard]] llvm::Value* emit_cast(const Value& value);

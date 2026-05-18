@@ -5,8 +5,6 @@
 
 #include <lex/keyword.hpp>
 
-#include <gtest/gtest.h>
-
 #include <algorithm>
 #include <cstddef>
 #include <iterator>
@@ -16,19 +14,22 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 namespace aurex::test {
 namespace {
 
-using base::DiagnosticSink;
 using base::DiagnosticCategory;
 using base::DiagnosticCode;
+using base::DiagnosticSink;
 using base::ErrorCode;
 using syntax::Token;
 using syntax::TokenKind;
 
 constexpr base::usize LEXER_TEST_TOKEN_BUFFER_RESERVE = 128;
 
-std::vector<TokenKind> token_kinds(const std::span<const Token> tokens) {
+std::vector<TokenKind> token_kinds(const std::span<const Token> tokens)
+{
     std::vector<TokenKind> kinds;
     kinds.reserve(tokens.size());
     for (const Token& token : tokens) {
@@ -37,12 +38,14 @@ std::vector<TokenKind> token_kinds(const std::span<const Token> tokens) {
     return kinds;
 }
 
-void expect_contains(const std::string_view text, const std::string_view needle) {
-    EXPECT_NE(text.find(needle), std::string_view::npos)
-        << "expected text to contain: " << needle << "\nactual text:\n" << text;
+void expect_contains(const std::string_view text, const std::string_view needle)
+{
+    EXPECT_NE(text.find(needle), std::string_view::npos) << "expected text to contain: " << needle << "\nactual text:\n"
+                                                         << text;
 }
 
-void expect_contains_all(const std::string_view text, const std::vector<std::string_view>& needles) {
+void expect_contains_all(const std::string_view text, const std::vector<std::string_view>& needles)
+{
     for (const std::string_view needle : needles) {
         expect_contains(text, needle);
     }
@@ -50,14 +53,15 @@ void expect_contains_all(const std::string_view text, const std::vector<std::str
 
 } // namespace
 
-TEST(CoreUnit, LexerTokenBufferUsesBumpArenaStorage) {
+TEST(CoreUnit, LexerTokenBufferUsesBumpArenaStorage)
+{
     lex::TokenBuffer buffer;
     buffer.reserve(LEXER_TEST_TOKEN_BUFFER_RESERVE);
     EXPECT_GT(buffer.arena_bytes(), 0U);
     EXPECT_GT(buffer.arena_blocks(), 0U);
 
-    buffer.push_back(Token {TokenKind::identifier, {{1}, 0, 5}, "alpha"});
-    buffer.push_back(Token {TokenKind::eof, {{1}, 5, 5}, {}});
+    buffer.push_back(Token{TokenKind::identifier, {{1}, 0, 5}, "alpha"});
+    buffer.push_back(Token{TokenKind::eof, {{1}, 5, 5}, {}});
     ASSERT_EQ(buffer.size(), 2U);
     EXPECT_EQ(buffer.front().text(), "alpha");
     EXPECT_EQ(buffer.back().kind, TokenKind::eof);
@@ -83,7 +87,7 @@ TEST(CoreUnit, LexerTokenBufferUsesBumpArenaStorage) {
 
     EXPECT_TRUE(buffer.empty());
     EXPECT_EQ(buffer.arena_blocks(), 0U);
-    buffer.push_back(Token {TokenKind::identifier, {{1}, 0, 4}, "beta"});
+    buffer.push_back(Token{TokenKind::identifier, {{1}, 0, 4}, "beta"});
     ASSERT_EQ(buffer.size(), 1U);
     EXPECT_EQ(buffer.front().text(), "beta");
     EXPECT_GT(buffer.arena_blocks(), 0U);
@@ -105,7 +109,8 @@ TEST(CoreUnit, LexerTokenBufferUsesBumpArenaStorage) {
     EXPECT_EQ(move_assigned.back().kind, TokenKind::eof);
 }
 
-TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
+TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors)
+{
     DiagnosticSink diagnostics;
     constexpr std::string_view source =
         "// line comment\n"
@@ -172,47 +177,48 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
     EXPECT_EQ(kinds.back(), TokenKind::eof);
 
     const std::string token_dump = syntax::dump_tokens(result.value());
-    expect_contains_all(token_dump, {
-        "kw_true",
-        "kw_false",
-        "kw_as",
-        "kw_void",
-        "kw_bool",
-        "kw_i8",
-        "kw_i16",
-        "kw_u16",
-        "kw_u32",
-        "kw_i64",
-        "kw_u64",
-        "kw_isize",
-        "kw_usize",
-        "kw_f32",
-        "kw_f64",
-        "kw_char",
-        "kw_impl",
-        "kw_defer",
-        "kw_for",
-        "float_literal",
-        "raw_string_literal",
-        "byte_string_literal",
-        "char_literal",
-        "slash",
-        "percent",
-        "pipe",
-        "caret",
-        "tilde",
-        "bang",
-        "bang_equal",
-        "less_equal",
-        "greater",
-        "greater_equal",
-        "less_less",
-        "greater_greater",
-        "amp_amp",
-        "pipe_pipe",
-        "question",
-        "ellipsis",
-    });
+    expect_contains_all(token_dump,
+        {
+            "kw_true",
+            "kw_false",
+            "kw_as",
+            "kw_void",
+            "kw_bool",
+            "kw_i8",
+            "kw_i16",
+            "kw_u16",
+            "kw_u32",
+            "kw_i64",
+            "kw_u64",
+            "kw_isize",
+            "kw_usize",
+            "kw_f32",
+            "kw_f64",
+            "kw_char",
+            "kw_impl",
+            "kw_defer",
+            "kw_for",
+            "float_literal",
+            "raw_string_literal",
+            "byte_string_literal",
+            "char_literal",
+            "slash",
+            "percent",
+            "pipe",
+            "caret",
+            "tilde",
+            "bang",
+            "bang_equal",
+            "less_equal",
+            "greater",
+            "greater_equal",
+            "less_less",
+            "greater_greater",
+            "amp_amp",
+            "pipe_pipe",
+            "question",
+            "ellipsis",
+        });
 
     DiagnosticSink invalid_diagnostics;
     lex::Lexer invalid({2}, "@#$ \"unterminated\n c\"unterminated\n b'wide' /* unterminated", invalid_diagnostics);
@@ -223,7 +229,8 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors) {
     EXPECT_GE(invalid_diagnostics.diagnostics().size(), 4U);
 }
 
-TEST(CoreUnit, LexerTokenizesEmptySourceToEofOnly) {
+TEST(CoreUnit, LexerTokenizesEmptySourceToEofOnly)
+{
     DiagnosticSink diagnostics;
     lex::Lexer lexer({13}, "", diagnostics);
     auto result = lexer.tokenize();
@@ -236,28 +243,30 @@ TEST(CoreUnit, LexerTokenizesEmptySourceToEofOnly) {
     EXPECT_EQ(result.value().front().range.end, 0U);
 }
 
-TEST(CoreUnit, LexerSkipsNestedBlockComments) {
+TEST(CoreUnit, LexerSkipsNestedBlockComments)
+{
     DiagnosticSink diagnostics;
-    constexpr std::string_view source =
-        "module nested.comments;\n"
-        "/* outer /* inner */ still outer */\n"
-        "fn main() -> i32 { return 0; }\n";
+    constexpr std::string_view source = "module nested.comments;\n"
+                                        "/* outer /* inner */ still outer */\n"
+                                        "fn main() -> i32 { return 0; }\n";
     lex::Lexer lexer({14}, source, diagnostics);
     auto result = lexer.tokenize();
     ASSERT_TRUE(result) << result.error().message;
     EXPECT_FALSE(diagnostics.has_error());
 
     const std::string token_dump = syntax::dump_tokens(result.value());
-    expect_contains_all(token_dump, {
-        "kw_module",
-        "identifier `nested`",
-        "kw_fn",
-        "identifier `main`",
-        "integer_literal `0`",
-    });
+    expect_contains_all(token_dump,
+        {
+            "kw_module",
+            "identifier `nested`",
+            "kw_fn",
+            "identifier `main`",
+            "integer_literal `0`",
+        });
 }
 
-TEST(CoreUnit, LexerSkipsLineCommentAtEndOfFile) {
+TEST(CoreUnit, LexerSkipsLineCommentAtEndOfFile)
+{
     DiagnosticSink diagnostics;
     constexpr std::string_view source = "// line comment without newline";
     lex::Lexer lexer({15}, source, diagnostics);
@@ -268,7 +277,8 @@ TEST(CoreUnit, LexerSkipsLineCommentAtEndOfFile) {
     EXPECT_EQ(result.value().front().kind, TokenKind::eof);
 }
 
-TEST(CoreUnit, LexerKeywordLookupCoversIdentifierEdges) {
+TEST(CoreUnit, LexerKeywordLookupCoversIdentifierEdges)
+{
     EXPECT_EQ(lex::keyword_kind(""), TokenKind::identifier);
     EXPECT_EQ(lex::keyword_kind("identifier_name"), TokenKind::identifier);
     EXPECT_EQ(lex::keyword_kind("\xFF"), TokenKind::identifier);
@@ -277,7 +287,8 @@ TEST(CoreUnit, LexerKeywordLookupCoversIdentifierEdges) {
     EXPECT_EQ(lex::keyword_kind("module"), TokenKind::kw_module);
 }
 
-TEST(CoreUnit, LexerRecognizesEveryKeyword) {
+TEST(CoreUnit, LexerRecognizesEveryKeyword)
+{
     DiagnosticSink diagnostics;
     constexpr std::string_view source =
         "module import as pub priv extern export fn struct opaque enum const type impl match "
@@ -289,7 +300,7 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
     ASSERT_TRUE(result) << result.error().message;
     EXPECT_FALSE(diagnostics.has_error());
 
-    const std::vector<TokenKind> expected {
+    const std::vector<TokenKind> expected{
         TokenKind::kw_module,
         TokenKind::kw_import,
         TokenKind::kw_as,
@@ -357,16 +368,16 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword) {
     EXPECT_EQ(token_kinds(result.value()), expected);
 }
 
-TEST(CoreUnit, LexerKeepsKeywordLikeIdentifiersAsIdentifiers) {
+TEST(CoreUnit, LexerKeepsKeywordLikeIdentifiersAsIdentifiers)
+{
     DiagnosticSink diagnostics;
-    constexpr std::string_view source =
-        "modulee importable pub_ fnx for2 strptrx strlen_bytes ptraddress";
+    constexpr std::string_view source = "modulee importable pub_ fnx for2 strptrx strlen_bytes ptraddress";
     lex::Lexer lexer({11}, source, diagnostics);
     auto result = lexer.tokenize();
     ASSERT_TRUE(result) << result.error().message;
     EXPECT_FALSE(diagnostics.has_error());
 
-    const std::vector<TokenKind> expected {
+    const std::vector<TokenKind> expected{
         TokenKind::identifier,
         TokenKind::identifier,
         TokenKind::identifier,
@@ -380,7 +391,8 @@ TEST(CoreUnit, LexerKeepsKeywordLikeIdentifiersAsIdentifiers) {
     EXPECT_EQ(token_kinds(result.value()), expected);
 }
 
-TEST(CoreUnit, LexerRejectsNonAsciiBytesOutsideStrings) {
+TEST(CoreUnit, LexerRejectsNonAsciiBytesOutsideStrings)
+{
     DiagnosticSink diagnostics;
     std::string source;
     source.push_back(static_cast<char>(0xC3));
@@ -396,11 +408,11 @@ TEST(CoreUnit, LexerRejectsNonAsciiBytesOutsideStrings) {
     EXPECT_EQ(diagnostics.diagnostics().front().range.end, 1U);
 }
 
-TEST(CoreUnit, LexerAggregatesInvalidByteRunsAndCapsDiagnostics) {
+TEST(CoreUnit, LexerAggregatesInvalidByteRunsAndCapsDiagnostics)
+{
     constexpr std::size_t LEXER_TEST_BINARY_BYTES = 10 * 1024;
     constexpr std::size_t LEXER_TEST_MAX_ERROR_DIAGNOSTICS = 128;
-    constexpr std::size_t LEXER_TEST_BUDGET_MESSAGE_DIAGNOSTIC_COUNT =
-        LEXER_TEST_MAX_ERROR_DIAGNOSTICS + 1;
+    constexpr std::size_t LEXER_TEST_BUDGET_MESSAGE_DIAGNOSTIC_COUNT = LEXER_TEST_MAX_ERROR_DIAGNOSTICS + 1;
     std::string continuous_invalid(LEXER_TEST_BINARY_BYTES, '\0');
 
     DiagnosticSink run_diagnostics;
@@ -425,22 +437,23 @@ TEST(CoreUnit, LexerAggregatesInvalidByteRunsAndCapsDiagnostics) {
     auto budget_result = budget_lexer.tokenize();
     ASSERT_FALSE(budget_result);
     ASSERT_EQ(budget_diagnostics.diagnostics().size(), LEXER_TEST_BUDGET_MESSAGE_DIAGNOSTIC_COUNT);
-    EXPECT_EQ(budget_diagnostics.diagnostics().back().message, "too many lexical errors; suppressing further lexer diagnostics");
+    EXPECT_EQ(budget_diagnostics.diagnostics().back().message,
+        "too many lexical errors; suppressing further lexer diagnostics");
     EXPECT_EQ(budget_diagnostics.diagnostics().back().category, DiagnosticCategory::lexer);
     EXPECT_EQ(budget_diagnostics.diagnostics().back().code, DiagnosticCode::lexer_error_budget);
 }
 
-TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches) {
+TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches)
+{
     DiagnosticSink diagnostics;
-    constexpr std::string_view source =
-        "... . :: : -> -= -- - => == = != ! <= <<= << < >= >>= >> > && &= & || |= | "
-        "( ) { } [ ] , ; ++ += + *= * /= / %= % ^= ^ ~ @ ?";
+    constexpr std::string_view source = "... . :: : -> -= -- - => == = != ! <= <<= << < >= >>= >> > && &= & || |= | "
+                                        "( ) { } [ ] , ; ++ += + *= * /= / %= % ^= ^ ~ @ ?";
     lex::Lexer lexer({9}, source, diagnostics);
     auto result = lexer.tokenize();
     ASSERT_TRUE(result) << result.error().message;
     EXPECT_FALSE(diagnostics.has_error());
 
-    const std::vector<TokenKind> expected {
+    const std::vector<TokenKind> expected{
         TokenKind::ellipsis,
         TokenKind::dot,
         TokenKind::colon_colon,
@@ -495,16 +508,16 @@ TEST(CoreUnit, LexerRecognizesLongestPunctuatorMatches) {
     EXPECT_EQ(token_kinds(result.value()), expected);
 }
 
-TEST(CoreUnit, LexerRejectsMalformedNumericSeparatorsAndFloatExponents) {
+TEST(CoreUnit, LexerRejectsMalformedNumericSeparatorsAndFloatExponents)
+{
     DiagnosticSink diagnostics;
-    constexpr std::string_view source =
-        "module bad.numbers;\n"
-        "const trailing: i32 = 1_;\n"
-        "const repeated: i32 = 1__2;\n"
-        "const hex: i32 = 0x_FF;\n"
-        "const bin: i32 = 0b_1010;\n"
-        "const frac: f64 = 1.0_;\n"
-        "const exp: f64 = 1e+;\n";
+    constexpr std::string_view source = "module bad.numbers;\n"
+                                        "const trailing: i32 = 1_;\n"
+                                        "const repeated: i32 = 1__2;\n"
+                                        "const hex: i32 = 0x_FF;\n"
+                                        "const bin: i32 = 0b_1010;\n"
+                                        "const frac: f64 = 1.0_;\n"
+                                        "const exp: f64 = 1e+;\n";
     lex::Lexer lexer({7}, source, diagnostics);
     auto result = lexer.tokenize();
     ASSERT_FALSE(result);
@@ -513,7 +526,8 @@ TEST(CoreUnit, LexerRejectsMalformedNumericSeparatorsAndFloatExponents) {
     expect_contains(diagnostics.diagnostics().front().message, "digit separator must be between digits");
 }
 
-TEST(CoreUnit, LexerPreservesNumericDiagnosticRanges) {
+TEST(CoreUnit, LexerPreservesNumericDiagnosticRanges)
+{
     DiagnosticSink diagnostics;
     constexpr std::string_view source = "0x_FF 0b102 1e+";
     lex::Lexer lexer({10}, source, diagnostics);
@@ -537,8 +551,9 @@ TEST(CoreUnit, LexerPreservesNumericDiagnosticRanges) {
     EXPECT_EQ(missing_exponent_digits.range.end, source.size());
 }
 
-TEST(CoreUnit, LexerRejectsNumericLiteralEdgeForms) {
-    const std::vector<std::pair<std::string_view, std::string_view>> cases {
+TEST(CoreUnit, LexerRejectsNumericLiteralEdgeForms)
+{
+    const std::vector<std::pair<std::string_view, std::string_view>> cases{
         {"0xG", "invalid digit in hexadecimal literal"},
         {"1e_", "digit separator must be between digits"},
         {"1e#", "float exponent literal has no digits"},
@@ -560,12 +575,12 @@ TEST(CoreUnit, LexerRejectsNumericLiteralEdgeForms) {
     }
 }
 
-TEST(CoreUnit, LexerValidatesStringLiteralEscapesUtf8AndCStringNul) {
+TEST(CoreUnit, LexerValidatesStringLiteralEscapesUtf8AndCStringNul)
+{
     DiagnosticSink good_diagnostics;
-    constexpr std::string_view good_source =
-        "module string.lex;\n"
-        "const text: str = \"hi \\u{03A9}\\0\";\n"
-        "const c_text: *const u8 = c\"hi \\u{03A9}\";\n";
+    constexpr std::string_view good_source = "module string.lex;\n"
+                                             "const text: str = \"hi \\u{03A9}\\0\";\n"
+                                             "const c_text: *const u8 = c\"hi \\u{03A9}\";\n";
     lex::Lexer good({3}, good_source, good_diagnostics);
     auto good_result = good.tokenize();
     ASSERT_TRUE(good_result) << good_result.error().message;
@@ -610,7 +625,8 @@ TEST(CoreUnit, LexerValidatesStringLiteralEscapesUtf8AndCStringNul) {
     expect_lex_error(invalid_utf8, "valid UTF-8");
 }
 
-TEST(CoreUnit, LexerPreservesStringAndByteRecoveryBoundaries) {
+TEST(CoreUnit, LexerPreservesStringAndByteRecoveryBoundaries)
+{
     DiagnosticSink diagnostics;
     constexpr std::string_view source = "\"escaped\\\nmissing\" b'wide' b'unterminated\nnext";
     lex::Lexer lexer({14}, source, diagnostics);

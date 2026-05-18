@@ -134,24 +134,21 @@ enum class TokenKind {
 
 struct Token {
     TokenKind kind = TokenKind::invalid;
-    base::SourceRange range {};
+    base::SourceRange range{};
 
     Token() = default;
 
-    Token(
-        const TokenKind token_kind,
-        const base::SourceRange token_range,
-        const std::string_view token_text
-    ) noexcept
-        : kind(token_kind),
-          range(token_range),
-          text_data_(token_text.empty() ? nullptr : token_text.data()) {}
+    Token(const TokenKind token_kind, const base::SourceRange token_range, const std::string_view token_text) noexcept
+        : kind(token_kind), range(token_range), text_data_(token_text.empty() ? nullptr : token_text.data())
+    {
+    }
 
-    [[nodiscard]] std::string_view text() const noexcept {
+    [[nodiscard]] std::string_view text() const noexcept
+    {
         if (this->text_data_ == nullptr) {
             return {};
         }
-        return std::string_view {this->text_data_, this->range.length()};
+        return std::string_view{this->text_data_, this->range.length()};
     }
 
 private:

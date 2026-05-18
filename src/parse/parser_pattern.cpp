@@ -1,6 +1,5 @@
-#include <aurex/parse/parser_pattern_part.hpp>
-
 #include <aurex/parse/parser_messages.hpp>
+#include <aurex/parse/parser_pattern_part.hpp>
 #include <aurex/parse/recovery.hpp>
 
 #include <utility>
@@ -16,12 +15,13 @@ constexpr base::usize PARSER_MAX_PATTERN_NESTING_DEPTH = 512;
 
 class PatternNestingGuard final {
 public:
-    explicit PatternNestingGuard(ParseSession& session) noexcept
-        : session_(&session) {
+    explicit PatternNestingGuard(ParseSession& session) noexcept : session_(&session)
+    {
         ++this->session_->pattern_nesting_depth;
     }
 
-    ~PatternNestingGuard() noexcept {
+    ~PatternNestingGuard() noexcept
+    {
         --this->session_->pattern_nesting_depth;
     }
 
@@ -34,7 +34,8 @@ private:
     ParseSession* session_;
 };
 
-[[nodiscard]] syntax::PatternId push_wildcard_pattern(ParseSession& session, const base::SourceRange& range) {
+[[nodiscard]] syntax::PatternId push_wildcard_pattern(ParseSession& session, const base::SourceRange& range)
+{
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::wildcard;
     pattern.range = range;
@@ -43,7 +44,8 @@ private:
 
 } // namespace
 
-syntax::PatternId PatternParser::parse_pattern() {
+syntax::PatternId PatternParser::parse_pattern()
+{
     this->reset_panic();
     if (this->session_.pattern_nesting_depth >= PARSER_MAX_PATTERN_NESTING_DEPTH) {
         const base::SourceRange range = this->peek().range;
@@ -71,7 +73,8 @@ syntax::PatternId PatternParser::parse_pattern() {
     return this->session_.module.push_pattern(std::move(pattern));
 }
 
-syntax::PatternId PatternParser::parse_pattern_atom() {
+syntax::PatternId PatternParser::parse_pattern_atom()
+{
     if (this->session_.pattern_nesting_depth >= PARSER_MAX_PATTERN_NESTING_DEPTH) {
         const base::SourceRange range = this->peek().range;
         this->report_here(std::string(PARSER_PATTERN_NESTING_LIMIT));
@@ -87,8 +90,7 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
     }
     if (this->match(TokenKind::kw_const)) {
         const syntax::Token& keyword = this->previous();
-        const syntax::Token& name =
-            this->expect_identifier_recovered(std::string(PARSER_EXPECT_CONST_NAME));
+        const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_CONST_NAME));
         syntax::PatternNode pattern;
         pattern.kind = syntax::PatternKind::const_;
         pattern.binding_name = name.text();
@@ -98,7 +100,8 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
     if (this->match(TokenKind::identifier)) {
         return this->parse_identifier_pattern(this->previous());
     }
-    if (this->match(TokenKind::integer_literal) || this->match(TokenKind::kw_true) || this->match(TokenKind::kw_false)) {
+    if (this->match(TokenKind::integer_literal) || this->match(TokenKind::kw_true)
+        || this->match(TokenKind::kw_false)) {
         return this->parse_literal_pattern(this->previous());
     }
     if (this->match(TokenKind::dot)) {
@@ -107,11 +110,13 @@ syntax::PatternId PatternParser::parse_pattern_atom() {
     return this->parse_fallback_wildcard_pattern();
 }
 
-syntax::PatternId PatternParser::parse_destructure_pattern_atom() {
+syntax::PatternId PatternParser::parse_destructure_pattern_atom()
+{
     return this->parse_pattern_atom();
 }
 
-syntax::PatternId PatternParser::parse_identifier_pattern(const syntax::Token& first) {
+syntax::PatternId PatternParser::parse_identifier_pattern(const syntax::Token& first)
+{
     if (first.text() == "_") {
         syntax::PatternNode pattern;
         pattern.kind = syntax::PatternKind::wildcard;
@@ -141,7 +146,8 @@ syntax::PatternId PatternParser::parse_identifier_pattern(const syntax::Token& f
     return this->session_.module.push_pattern(std::move(pattern));
 }
 
-syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::Token& first) {
+syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::Token& first)
+{
     std::vector<syntax::Token> parts;
     parts.push_back(first);
 
@@ -164,11 +170,7 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
         this->parse_pattern_generic_type_args(type_args);
         const syntax::Token& end = this->expect_generic_type_args_end(generic_begin);
         const syntax::TypeId enum_type = this->push_explicit_enum_case_type(
-            parts,
-            parts.size(),
-            std::move(type_args),
-            this->merge(first.range, end.range)
-        );
+            parts, parts.size(), std::move(type_args), this->merge(first.range, end.range));
         if (!this->match(TokenKind::dot)) {
             this->report_here(std::string(PARSER_EXPECT_ENUM_CASE_PATTERN_DOT));
             syntax::PatternNode pattern;
@@ -190,11 +192,7 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
             this->parse_pattern_generic_type_args(type_args);
             const syntax::Token& end = this->expect_generic_type_args_end(generic_begin);
             const syntax::TypeId enum_type = this->push_explicit_enum_case_type(
-                parts,
-                parts.size(),
-                std::move(type_args),
-                this->merge(parts.front().range, end.range)
-            );
+                parts, parts.size(), std::move(type_args), this->merge(parts.front().range, end.range));
             if (!this->match(TokenKind::dot)) {
                 this->report_here(std::string(PARSER_EXPECT_ENUM_CASE_PATTERN_DOT));
                 syntax::PatternNode pattern;
@@ -211,18 +209,14 @@ syntax::PatternId PatternParser::parse_explicit_enum_case_pattern(const syntax::
 
     const base::usize type_part_count = parts.size() > 1 ? parts.size() - 1 : parts.size();
     const syntax::TypeId enum_type = this->push_explicit_enum_case_type(
-        parts,
-        type_part_count,
-        {},
-        this->merge(parts.front().range, parts[type_part_count - 1].range)
-    );
+        parts, type_part_count, {}, this->merge(parts.front().range, parts[type_part_count - 1].range));
     const syntax::Token& case_name = parts.back();
     return make_pattern(enum_type, case_name);
 }
 
-syntax::PatternId PatternParser::parse_shorthand_enum_case_pattern(const syntax::Token& dot) {
-    const syntax::Token& case_name =
-        this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
+syntax::PatternId PatternParser::parse_shorthand_enum_case_pattern(const syntax::Token& dot)
+{
+    const syntax::Token& case_name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_ENUM_CASE_AFTER_DOT));
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::enum_case;
     pattern.case_name = case_name.text();
@@ -253,12 +247,8 @@ syntax::PatternId PatternParser::parse_fallback_wildcard_pattern() const
     return this->session_.module.push_pattern(pattern);
 }
 
-syntax::TypeId PatternParser::push_explicit_enum_case_type(
-    const std::vector<syntax::Token>& parts,
-    const base::usize type_part_count,
-    std::vector<syntax::TypeId> type_args,
-    const base::SourceRange& type_range
-) const
+syntax::TypeId PatternParser::push_explicit_enum_case_type(const std::vector<syntax::Token>& parts,
+    const base::usize type_part_count, std::vector<syntax::TypeId> type_args, const base::SourceRange& type_range) const
 {
     syntax::TypeNode type;
     type.kind = syntax::TypeKind::named;
@@ -276,7 +266,8 @@ syntax::TypeId PatternParser::push_explicit_enum_case_type(
     return this->session_.module.push_type(std::move(type));
 }
 
-syntax::PatternId PatternParser::parse_tuple_pattern() {
+syntax::PatternId PatternParser::parse_tuple_pattern()
+{
     const syntax::Token& begin = this->expect(TokenKind::l_paren, std::string(PARSER_EXPECT_TUPLE_PATTERN_END));
     if (this->check(TokenKind::r_paren)) {
         this->report_here(std::string(PARSER_EMPTY_TUPLE_PATTERN_UNSUPPORTED));
@@ -308,7 +299,8 @@ syntax::PatternId PatternParser::parse_tuple_pattern() {
     return this->session_.module.push_pattern(std::move(pattern));
 }
 
-syntax::PatternId PatternParser::parse_slice_pattern() {
+syntax::PatternId PatternParser::parse_slice_pattern()
+{
     const syntax::Token& begin = this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_SLICE_PATTERN_END));
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::slice;
@@ -342,7 +334,8 @@ syntax::PatternId PatternParser::parse_slice_pattern() {
     return this->session_.module.push_pattern(std::move(pattern));
 }
 
-syntax::PatternId PatternParser::parse_struct_pattern(const syntax::Token& name) {
+syntax::PatternId PatternParser::parse_struct_pattern(const syntax::Token& name)
+{
     const syntax::Token& begin = this->expect(TokenKind::l_brace, std::string(PARSER_EXPECT_STRUCT_PATTERN_END));
     syntax::PatternNode pattern;
     pattern.kind = syntax::PatternKind::struct_;
@@ -357,11 +350,11 @@ syntax::PatternId PatternParser::parse_struct_pattern(const syntax::Token& name)
         } else {
             syntax::PatternNode binding;
             binding.kind = field_name.text() == "_" ? syntax::PatternKind::wildcard : syntax::PatternKind::binding;
-            binding.binding_name = field_name.text() == "_" ? std::string_view {} : field_name.text();
+            binding.binding_name = field_name.text() == "_" ? std::string_view{} : field_name.text();
             binding.range = field_name.range;
             field_pattern = this->session_.module.push_pattern(binding);
         }
-        pattern.field_patterns.push_back(syntax::FieldPattern {
+        pattern.field_patterns.push_back(syntax::FieldPattern{
             field_name.text(),
             field_pattern,
             this->merge(field_name.range, this->pattern_range_or(field_pattern, field_name.range)),
@@ -474,7 +467,8 @@ bool PatternParser::match_slice_rest_marker() const
     return true;
 }
 
-void PatternParser::parse_pattern_generic_type_args(std::vector<syntax::TypeId>& args) {
+void PatternParser::parse_pattern_generic_type_args(std::vector<syntax::TypeId>& args)
+{
     if (this->check(TokenKind::r_bracket)) {
         this->report_here(std::string(PARSER_EXPECT_GENERIC_TYPE_ARGUMENT));
         return;
@@ -488,7 +482,8 @@ void PatternParser::parse_pattern_generic_type_args(std::vector<syntax::TypeId>&
     }
 }
 
-void PatternParser::parse_payload_patterns(syntax::PatternNode& pattern, const syntax::Token& opening) {
+void PatternParser::parse_payload_patterns(syntax::PatternNode& pattern, const syntax::Token& opening)
+{
     if (this->check(TokenKind::r_paren)) {
         this->report_here(std::string(PARSER_EXPECT_PAYLOAD_BINDING));
     } else {
@@ -513,10 +508,8 @@ void PatternParser::parse_payload_patterns(syntax::PatternNode& pattern, const s
     pattern.range = this->merge(pattern.range, end.range);
 }
 
-void PatternParser::consume_bare_enum_case_payload_recovery(
-    const syntax::Token& first,
-    base::SourceRange& range
-) {
+void PatternParser::consume_bare_enum_case_payload_recovery(const syntax::Token& first, base::SourceRange& range)
+{
     syntax::PatternNode recovery;
     recovery.kind = syntax::PatternKind::enum_case;
     recovery.case_name = first.text();
@@ -528,52 +521,32 @@ void PatternParser::consume_bare_enum_case_payload_recovery(
 
 const syntax::Token& PatternParser::expect_generic_type_args_end(const syntax::Token& opening) const
 {
-    return this->expect_recovered_after(
-        TokenKind::r_bracket,
-        std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END),
-        RecoveryContext::generic_type_argument,
-        opening
-    );
+    return this->expect_recovered_after(TokenKind::r_bracket, std::string(PARSER_EXPECT_GENERIC_TYPE_ARGS_END),
+        RecoveryContext::generic_type_argument, opening);
 }
 
 const syntax::Token& PatternParser::expect_tuple_pattern_end(const syntax::Token& opening) const
 {
     return this->expect_recovered_after(
-        TokenKind::r_paren,
-        std::string(PARSER_EXPECT_TUPLE_PATTERN_END),
-        RecoveryContext::pattern_payload,
-        opening
-    );
+        TokenKind::r_paren, std::string(PARSER_EXPECT_TUPLE_PATTERN_END), RecoveryContext::pattern_payload, opening);
 }
 
 const syntax::Token& PatternParser::expect_slice_pattern_end(const syntax::Token& opening) const
 {
     return this->expect_recovered_after(
-        TokenKind::r_bracket,
-        std::string(PARSER_EXPECT_SLICE_PATTERN_END),
-        RecoveryContext::pattern_payload,
-        opening
-    );
+        TokenKind::r_bracket, std::string(PARSER_EXPECT_SLICE_PATTERN_END), RecoveryContext::pattern_payload, opening);
 }
 
 const syntax::Token& PatternParser::expect_payload_pattern_end(const syntax::Token& opening) const
 {
     return this->expect_recovered_after(
-        TokenKind::r_paren,
-        std::string(PARSER_EXPECT_PAYLOAD_BINDING_END),
-        RecoveryContext::pattern_payload,
-        opening
-    );
+        TokenKind::r_paren, std::string(PARSER_EXPECT_PAYLOAD_BINDING_END), RecoveryContext::pattern_payload, opening);
 }
 
 const syntax::Token& PatternParser::expect_struct_pattern_end(const syntax::Token& opening) const
 {
     return this->expect_recovered_after(
-        TokenKind::r_brace,
-        std::string(PARSER_EXPECT_STRUCT_PATTERN_END),
-        RecoveryContext::pattern_payload,
-        opening
-    );
+        TokenKind::r_brace, std::string(PARSER_EXPECT_STRUCT_PATTERN_END), RecoveryContext::pattern_payload, opening);
 }
 
 } // namespace aurex::parse

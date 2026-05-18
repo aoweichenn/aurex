@@ -1,5 +1,4 @@
 #include <aurex/sema/sema.hpp>
-
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
@@ -40,10 +39,8 @@ struct ControlFlowFrame {
     ControlFlowIfStage if_stage = ControlFlowIfStage::evaluate_then;
 };
 
-[[nodiscard]] std::optional<syntax::StmtNode> statement_node(
-    const syntax::AstModule& module,
-    const syntax::StmtId stmt
-) {
+[[nodiscard]] std::optional<syntax::StmtNode> statement_node(const syntax::AstModule& module, const syntax::StmtId stmt)
+{
     if (!syntax::is_valid(stmt) || stmt.value >= module.stmts.size()) {
         return std::nullopt;
     }
@@ -51,38 +48,35 @@ struct ControlFlowFrame {
 }
 
 [[nodiscard]] base::SourceRange expr_range_or(
-    const syntax::AstModule& module,
-    const syntax::ExprId expr,
-    const base::SourceRange& fallback
-) noexcept {
+    const syntax::AstModule& module, const syntax::ExprId expr, const base::SourceRange& fallback) noexcept
+{
     if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
         return fallback;
     }
     return module.exprs.range(expr.value);
 }
 
-[[nodiscard]] bool statement_binary_result_uses_operand_type(const syntax::BinaryOp op) noexcept {
+[[nodiscard]] bool statement_binary_result_uses_operand_type(const syntax::BinaryOp op) noexcept
+{
     switch (op) {
-    case syntax::BinaryOp::add:
-    case syntax::BinaryOp::sub:
-    case syntax::BinaryOp::mul:
-    case syntax::BinaryOp::div:
-    case syntax::BinaryOp::mod:
-    case syntax::BinaryOp::shl:
-    case syntax::BinaryOp::shr:
-    case syntax::BinaryOp::bit_and:
-    case syntax::BinaryOp::bit_xor:
-    case syntax::BinaryOp::bit_or:
-        return true;
-    default:
-        return false;
+        case syntax::BinaryOp::add:
+        case syntax::BinaryOp::sub:
+        case syntax::BinaryOp::mul:
+        case syntax::BinaryOp::div:
+        case syntax::BinaryOp::mod:
+        case syntax::BinaryOp::shl:
+        case syntax::BinaryOp::shr:
+        case syntax::BinaryOp::bit_and:
+        case syntax::BinaryOp::bit_xor:
+        case syntax::BinaryOp::bit_or:
+            return true;
+        default:
+            return false;
     }
 }
 
-[[nodiscard]] bool statement_contextual_integer_expr(
-    const syntax::AstModule& module,
-    const syntax::ExprId candidate
-) {
+[[nodiscard]] bool statement_contextual_integer_expr(const syntax::AstModule& module, const syntax::ExprId candidate)
+{
     std::vector<syntax::ExprId> pending;
     pending.push_back(candidate);
     while (!pending.empty()) {
@@ -101,7 +95,8 @@ struct ControlFlowFrame {
             continue;
         }
         if (const syntax::BinaryExprPayload* const binary = module.exprs.binary_payload(current.value);
-            kind == syntax::ExprKind::binary && binary != nullptr && statement_binary_result_uses_operand_type(binary->op)) {
+            kind == syntax::ExprKind::binary && binary != nullptr
+            && statement_binary_result_uses_operand_type(binary->op)) {
             pending.push_back(binary->lhs);
             pending.push_back(binary->rhs);
             continue;
@@ -111,75 +106,68 @@ struct ControlFlowFrame {
     return true;
 }
 
-[[nodiscard]] bool default_control_flow_result(const ControlFlowQuery query) noexcept {
+[[nodiscard]] bool default_control_flow_result(const ControlFlowQuery query) noexcept
+{
     return query == ControlFlowQuery::may_fallthrough;
 }
 
-[[nodiscard]] bool block_short_circuits(const ControlFlowQuery query, const bool child_result) noexcept {
+[[nodiscard]] bool block_short_circuits(const ControlFlowQuery query, const bool child_result) noexcept
+{
     return query == ControlFlowQuery::guarantees_return ? child_result : !child_result;
 }
 
-[[nodiscard]] bool if_then_short_circuits(const ControlFlowQuery query, const bool then_result) noexcept {
+[[nodiscard]] bool if_then_short_circuits(const ControlFlowQuery query, const bool then_result) noexcept
+{
     return query == ControlFlowQuery::guarantees_return ? !then_result : then_result;
 }
 
-[[nodiscard]] bool abrupt_stmt_result(
-    const ControlFlowQuery query,
-    const syntax::StmtKind kind
-) noexcept {
+[[nodiscard]] bool abrupt_stmt_result(const ControlFlowQuery query, const syntax::StmtKind kind) noexcept
+{
     if (query == ControlFlowQuery::guarantees_return) {
         return kind == syntax::StmtKind::return_;
     }
     return false;
 }
 
-void finish_control_flow_frame(
-    std::vector<ControlFlowFrame>& stack,
-    const ControlFlowQuery query,
-    const bool result,
-    bool& has_result,
-    bool& final_result
-) {
+void finish_control_flow_frame(std::vector<ControlFlowFrame>& stack, const ControlFlowQuery query, const bool result,
+    bool& has_result, bool& final_result)
+{
     stack.pop_back();
     while (!stack.empty()) {
         ControlFlowFrame& parent = stack.back();
         switch (parent.kind) {
-        case ControlFlowFrameKind::block:
-            if (block_short_circuits(query, result)) {
-                stack.pop_back();
-                continue;
-            }
-            ++parent.next_child;
-            return;
-        case ControlFlowFrameKind::if_statement:
-            if (parent.if_stage == ControlFlowIfStage::after_then) {
-                if (if_then_short_circuits(query, result)) {
+            case ControlFlowFrameKind::block:
+                if (block_short_circuits(query, result)) {
                     stack.pop_back();
                     continue;
                 }
-                parent.if_stage = ControlFlowIfStage::evaluate_alternate;
+                ++parent.next_child;
                 return;
-            }
-            if (parent.if_stage == ControlFlowIfStage::after_alternate) {
-                stack.pop_back();
-                continue;
-            }
-            return;
-        case ControlFlowFrameKind::statement:
-            return;
+            case ControlFlowFrameKind::if_statement:
+                if (parent.if_stage == ControlFlowIfStage::after_then) {
+                    if (if_then_short_circuits(query, result)) {
+                        stack.pop_back();
+                        continue;
+                    }
+                    parent.if_stage = ControlFlowIfStage::evaluate_alternate;
+                    return;
+                }
+                if (parent.if_stage == ControlFlowIfStage::after_alternate) {
+                    stack.pop_back();
+                    continue;
+                }
+                return;
+            case ControlFlowFrameKind::statement:
+                return;
         }
     }
     has_result = true;
     final_result = result;
 }
 
-void evaluate_control_flow_statement(
-    const syntax::AstModule& module,
-    std::vector<ControlFlowFrame>& stack,
-    const ControlFlowQuery query,
-    bool& has_result,
-    bool& final_result
-) {
+void evaluate_control_flow_statement(const syntax::AstModule& module, std::vector<ControlFlowFrame>& stack,
+    const ControlFlowQuery query, bool& has_result, bool& final_result)
+{
     ControlFlowFrame& frame = stack.back();
     if (!syntax::is_valid(frame.stmt) || frame.stmt.value >= module.stmts.size()) {
         finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
@@ -187,32 +175,28 @@ void evaluate_control_flow_statement(
     }
     const syntax::StmtKind kind = module.stmts.kind(frame.stmt.value);
     switch (kind) {
-    case syntax::StmtKind::return_:
-    case syntax::StmtKind::break_:
-    case syntax::StmtKind::continue_:
-        finish_control_flow_frame(stack, query, abrupt_stmt_result(query, kind), has_result, final_result);
-        break;
-    case syntax::StmtKind::block:
-        frame.kind = ControlFlowFrameKind::block;
-        frame.next_child = SEMA_CONTROL_FLOW_FIRST_CHILD_INDEX;
-        break;
-    case syntax::StmtKind::if_:
-        frame.kind = ControlFlowFrameKind::if_statement;
-        frame.if_stage = ControlFlowIfStage::evaluate_then;
-        break;
-    default:
-        finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
-        break;
+        case syntax::StmtKind::return_:
+        case syntax::StmtKind::break_:
+        case syntax::StmtKind::continue_:
+            finish_control_flow_frame(stack, query, abrupt_stmt_result(query, kind), has_result, final_result);
+            break;
+        case syntax::StmtKind::block:
+            frame.kind = ControlFlowFrameKind::block;
+            frame.next_child = SEMA_CONTROL_FLOW_FIRST_CHILD_INDEX;
+            break;
+        case syntax::StmtKind::if_:
+            frame.kind = ControlFlowFrameKind::if_statement;
+            frame.if_stage = ControlFlowIfStage::evaluate_then;
+            break;
+        default:
+            finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+            break;
     }
 }
 
-void evaluate_control_flow_block(
-    const syntax::AstModule& module,
-    std::vector<ControlFlowFrame>& stack,
-    const ControlFlowQuery query,
-    bool& has_result,
-    bool& final_result
-) {
+void evaluate_control_flow_block(const syntax::AstModule& module, std::vector<ControlFlowFrame>& stack,
+    const ControlFlowQuery query, bool& has_result, bool& final_result)
+{
     ControlFlowFrame& frame = stack.back();
     if (!syntax::is_valid(frame.stmt) || frame.stmt.value >= module.stmts.size()) {
         finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
@@ -227,16 +211,12 @@ void evaluate_control_flow_block(
         finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
         return;
     }
-    stack.push_back(ControlFlowFrame {ControlFlowFrameKind::statement, (*statements)[frame.next_child]});
+    stack.push_back(ControlFlowFrame{ControlFlowFrameKind::statement, (*statements)[frame.next_child]});
 }
 
-void evaluate_control_flow_if_statement(
-    const syntax::AstModule& module,
-    std::vector<ControlFlowFrame>& stack,
-    const ControlFlowQuery query,
-    bool& has_result,
-    bool& final_result
-) {
+void evaluate_control_flow_if_statement(const syntax::AstModule& module, std::vector<ControlFlowFrame>& stack,
+    const ControlFlowQuery query, bool& has_result, bool& final_result)
+{
     ControlFlowFrame& frame = stack.back();
     const std::optional<syntax::StmtNode> node = statement_node(module, frame.stmt);
     if (!node.has_value() || node->kind != syntax::StmtKind::if_) {
@@ -245,101 +225,94 @@ void evaluate_control_flow_if_statement(
     }
     if (frame.if_stage == ControlFlowIfStage::evaluate_then) {
         frame.if_stage = ControlFlowIfStage::after_then;
-        stack.push_back(ControlFlowFrame {ControlFlowFrameKind::block, node->then_block});
+        stack.push_back(ControlFlowFrame{ControlFlowFrameKind::block, node->then_block});
         return;
     }
     if (frame.if_stage == ControlFlowIfStage::evaluate_alternate) {
         frame.if_stage = ControlFlowIfStage::after_alternate;
         if (syntax::is_valid(node->else_block)) {
-            stack.push_back(ControlFlowFrame {ControlFlowFrameKind::block, node->else_block});
+            stack.push_back(ControlFlowFrame{ControlFlowFrameKind::block, node->else_block});
             return;
         }
         if (syntax::is_valid(node->else_if)) {
-            stack.push_back(ControlFlowFrame {ControlFlowFrameKind::statement, node->else_if});
+            stack.push_back(ControlFlowFrame{ControlFlowFrameKind::statement, node->else_if});
             return;
         }
         finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
     }
 }
 
-[[nodiscard]] bool evaluate_control_flow(
-    const syntax::AstModule& module,
-    const syntax::StmtId stmt,
-    const ControlFlowFrameKind root_kind,
-    const ControlFlowQuery query
-) {
+[[nodiscard]] bool evaluate_control_flow(const syntax::AstModule& module, const syntax::StmtId stmt,
+    const ControlFlowFrameKind root_kind, const ControlFlowQuery query)
+{
     std::vector<ControlFlowFrame> stack;
     stack.reserve(SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY);
-    stack.push_back(ControlFlowFrame {root_kind, stmt});
+    stack.push_back(ControlFlowFrame{root_kind, stmt});
 
     bool has_result = false;
     bool final_result = default_control_flow_result(query);
     while (!has_result && !stack.empty()) {
         switch (stack.back().kind) {
-        case ControlFlowFrameKind::statement:
-            evaluate_control_flow_statement(module, stack, query, has_result, final_result);
-            break;
-        case ControlFlowFrameKind::block:
-            evaluate_control_flow_block(module, stack, query, has_result, final_result);
-            break;
-        case ControlFlowFrameKind::if_statement:
-            evaluate_control_flow_if_statement(module, stack, query, has_result, final_result);
-            break;
+            case ControlFlowFrameKind::statement:
+                evaluate_control_flow_statement(module, stack, query, has_result, final_result);
+                break;
+            case ControlFlowFrameKind::block:
+                evaluate_control_flow_block(module, stack, query, has_result, final_result);
+                break;
+            case ControlFlowFrameKind::if_statement:
+                evaluate_control_flow_if_statement(module, stack, query, has_result, final_result);
+                break;
         }
     }
     return final_result;
 }
 
 [[nodiscard]] bool is_allowed_expression_statement(
-    const syntax::AstModule& module,
-    const syntax::ExprId expr_id
-) noexcept {
+    const syntax::AstModule& module, const syntax::ExprId expr_id) noexcept
+{
     if (!syntax::is_valid(expr_id) || expr_id.value >= module.exprs.size()) {
         return false;
     }
     const syntax::ExprKind kind = module.exprs.kind(expr_id.value);
-    return kind == syntax::ExprKind::call ||
-           kind == syntax::ExprKind::try_expr ||
-           kind == syntax::ExprKind::unsafe_block;
+    return kind == syntax::ExprKind::call || kind == syntax::ExprKind::try_expr
+        || kind == syntax::ExprKind::unsafe_block;
 }
 
-[[nodiscard]] bool compound_assignment_binary_op(
-    const syntax::AssignOp op,
-    syntax::BinaryOp& binary_op
-) noexcept {
+[[nodiscard]] bool compound_assignment_binary_op(const syntax::AssignOp op, syntax::BinaryOp& binary_op) noexcept
+{
     switch (op) {
-    case syntax::AssignOp::add:
-        binary_op = syntax::BinaryOp::add;
-        return true;
-    case syntax::AssignOp::sub:
-        binary_op = syntax::BinaryOp::sub;
-        return true;
-    case syntax::AssignOp::mul:
-        binary_op = syntax::BinaryOp::mul;
-        return true;
-    case syntax::AssignOp::div:
-        binary_op = syntax::BinaryOp::div;
-        return true;
-    case syntax::AssignOp::mod:
-        binary_op = syntax::BinaryOp::mod;
-        return true;
-    case syntax::AssignOp::shl:
-        binary_op = syntax::BinaryOp::shl;
-        return true;
-    case syntax::AssignOp::shr:
-        binary_op = syntax::BinaryOp::shr;
-        return true;
-    case syntax::AssignOp::bit_and:
-        binary_op = syntax::BinaryOp::bit_and;
-        return true;
-    case syntax::AssignOp::bit_xor:
-        binary_op = syntax::BinaryOp::bit_xor;
-        return true;
-    case syntax::AssignOp::bit_or:
-        binary_op = syntax::BinaryOp::bit_or;
-        return true;
-    case syntax::AssignOp::assign:
-        return false;
+        case syntax::AssignOp::add:
+            binary_op = syntax::BinaryOp::add;
+            return true;
+        case syntax::AssignOp::sub:
+            binary_op = syntax::BinaryOp::sub;
+            return true;
+        case syntax::AssignOp::mul:
+            binary_op = syntax::BinaryOp::mul;
+            return true;
+        case syntax::AssignOp::div:
+            binary_op = syntax::BinaryOp::div;
+            return true;
+        case syntax::AssignOp::mod:
+            binary_op = syntax::BinaryOp::mod;
+            return true;
+        case syntax::AssignOp::shl:
+            binary_op = syntax::BinaryOp::shl;
+            return true;
+        case syntax::AssignOp::shr:
+            binary_op = syntax::BinaryOp::shr;
+            return true;
+        case syntax::AssignOp::bit_and:
+            binary_op = syntax::BinaryOp::bit_and;
+            return true;
+        case syntax::AssignOp::bit_xor:
+            binary_op = syntax::BinaryOp::bit_xor;
+            return true;
+        case syntax::AssignOp::bit_or:
+            binary_op = syntax::BinaryOp::bit_or;
+            return true;
+        case syntax::AssignOp::assign:
+            return false;
     }
     return false;
 }
@@ -347,22 +320,14 @@ void evaluate_control_flow_if_statement(
 } // namespace
 
 struct SemanticAnalyzer::FunctionBodyContextScope {
-    FunctionBodyContextScope(
-        SemanticAnalyzer& analyzer,
-        const syntax::ModuleId module,
-        const TypeHandle return_type,
-        ReturnTypeInference* const return_inference,
-        const int loop_depth,
-        const int unsafe_context_depth,
-        SymbolTable symbols
-    )
-        : analyzer(analyzer),
-          previous_module(analyzer.current_module_),
+    FunctionBodyContextScope(SemanticAnalyzer& analyzer, const syntax::ModuleId module, const TypeHandle return_type,
+        ReturnTypeInference* const return_inference, const int loop_depth, const int unsafe_context_depth,
+        SymbolTable symbols)
+        : analyzer(analyzer), previous_module(analyzer.current_module_),
           previous_function_return_type(analyzer.current_function_return_type_),
-          previous_return_inference(analyzer.current_return_inference_),
-          previous_loop_depth(analyzer.loop_depth_),
-          previous_unsafe_context_depth(analyzer.unsafe_context_depth_),
-          previous_symbols(std::move(analyzer.symbols_)) {
+          previous_return_inference(analyzer.current_return_inference_), previous_loop_depth(analyzer.loop_depth_),
+          previous_unsafe_context_depth(analyzer.unsafe_context_depth_), previous_symbols(std::move(analyzer.symbols_))
+    {
         this->analyzer.current_module_ = module;
         this->analyzer.current_function_return_type_ = return_type;
         this->analyzer.current_return_inference_ = return_inference;
@@ -374,7 +339,8 @@ struct SemanticAnalyzer::FunctionBodyContextScope {
     FunctionBodyContextScope(const FunctionBodyContextScope&) = delete;
     FunctionBodyContextScope& operator=(const FunctionBodyContextScope&) = delete;
 
-    ~FunctionBodyContextScope() {
+    ~FunctionBodyContextScope()
+    {
         this->analyzer.current_module_ = this->previous_module;
         this->analyzer.current_function_return_type_ = this->previous_function_return_type;
         this->analyzer.current_return_inference_ = this->previous_return_inference;
@@ -392,10 +358,8 @@ struct SemanticAnalyzer::FunctionBodyContextScope {
     SymbolTable previous_symbols;
 };
 
-void SemanticAnalyzer::analyze_function_body(
-    const syntax::ItemNode& function,
-    const syntax::ItemId function_id
-) {
+void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function, const syntax::ItemId function_id)
+{
     const FunctionLookupKey key = this->function_key(function, function_id);
     const auto found = this->checked_.functions.find(key);
     if (found == this->checked_.functions.end()) {
@@ -404,12 +368,9 @@ void SemanticAnalyzer::analyze_function_body(
     this->analyze_function_body_with_signature(function, key, found->second, this->function_body_states_[key]);
 }
 
-void SemanticAnalyzer::analyze_function_body_with_signature(
-    const syntax::ItemNode& function,
-    const FunctionLookupKey& key,
-    const FunctionSignature& signature,
-    FunctionBodyState& state
-) {
+void SemanticAnalyzer::analyze_function_body_with_signature(const syntax::ItemNode& function,
+    const FunctionLookupKey& key, const FunctionSignature& signature, FunctionBodyState& state)
+{
     if (signature.has_conflict) {
         return;
     }
@@ -429,71 +390,61 @@ void SemanticAnalyzer::analyze_function_body_with_signature(
     if (infer_return_type) {
         expected_return = INVALID_TYPE_HANDLE;
     }
-    FunctionBodyContextScope context(
-        *this,
-        signature.module,
-        expected_return,
-        infer_return_type ? &return_inference : nullptr,
-        SEMA_NO_LOOP_DEPTH,
-        signature.is_unsafe ? this->unsafe_context_depth_ + 1 : this->unsafe_context_depth_,
-        SymbolTable {}
-    );
+    FunctionBodyContextScope context(*this, signature.module, expected_return,
+        infer_return_type ? &return_inference : nullptr, SEMA_NO_LOOP_DEPTH,
+        signature.is_unsafe ? this->unsafe_context_depth_ + 1 : this->unsafe_context_depth_, SymbolTable{});
 
     this->symbols_.push_scope(function.params.size());
     for (base::usize i = 0; i < function.params.size(); ++i) {
         const syntax::ParamDecl& param = function.params[i];
-        const TypeHandle param_type = i < signature.param_types.size()
-            ? signature.param_types[i]
-            : this->resolve_type(param.type);
+        const TypeHandle param_type =
+            i < signature.param_types.size() ? signature.param_types[i] : this->resolve_type(param.type);
         static_cast<void>(this->can_define_local_name(param.name_id, param.name, param.range));
-        const auto inserted = this->symbols_.insert(Symbol {
-            SymbolKind::parameter,
-            this->source_name_text(param.name_id, param.name),
-            param.name_id,
-            {},
-            syntax::INVALID_MODULE_ID,
-            param_type,
-            param.range,
-            false,
-            syntax::Visibility::private_,
-            {},
-        }, this->diagnostics_);
+        const auto inserted = this->symbols_.insert(
+            Symbol{
+                SymbolKind::parameter,
+                this->source_name_text(param.name_id, param.name),
+                param.name_id,
+                {},
+                syntax::INVALID_MODULE_ID,
+                param_type,
+                param.range,
+                false,
+                syntax::Visibility::private_,
+                {},
+            },
+            this->diagnostics_);
         static_cast<void>(inserted);
     }
     this->analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
     this->symbols_.pop_scope();
     if (infer_return_type) {
         this->finalize_inferred_return(function, key, return_inference);
-        if (is_valid(return_inference.inferred_type) &&
-            !this->checked_.types.is_void(return_inference.inferred_type) &&
-            !this->block_guarantees_return(function.body)) {
+        if (is_valid(return_inference.inferred_type) && !this->checked_.types.is_void(return_inference.inferred_type)
+            && !this->block_guarantees_return(function.body)) {
             this->report_general(function.range, std::string(SEMA_NOT_ALL_PATHS_RETURN));
         }
-    } else if (is_valid(expected_return) &&
-        !this->checked_.types.is_void(expected_return) &&
-        !this->block_guarantees_return(function.body)) {
+    } else if (is_valid(expected_return) && !this->checked_.types.is_void(expected_return)
+        && !this->block_guarantees_return(function.body)) {
         this->report_general(function.range, std::string(SEMA_NOT_ALL_PATHS_RETURN));
     }
     state = FunctionBodyState::analyzed;
 }
 
 void SemanticAnalyzer::analyze_block(
-    const syntax::StmtId block,
-    const TypeHandle expected_return,
-    ReturnTypeInference* const return_inference
-) {
+    const syntax::StmtId block, const TypeHandle expected_return, ReturnTypeInference* const return_inference)
+{
     this->analyze_statement_tree(block, expected_return, return_inference, StatementAnalysisRootKind::scoped_block);
 }
 
 void SemanticAnalyzer::analyze_block_statements(
-    const syntax::StmtId block,
-    const TypeHandle expected_return,
-    ReturnTypeInference* const return_inference
-) {
+    const syntax::StmtId block, const TypeHandle expected_return, ReturnTypeInference* const return_inference)
+{
     this->analyze_statement_tree(block, expected_return, return_inference, StatementAnalysisRootKind::block_statements);
 }
 
-TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr_id) {
+TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr_id)
+{
     if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
         return INVALID_TYPE_HANDLE;
     }
@@ -515,31 +466,26 @@ TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr
 }
 
 void SemanticAnalyzer::analyze_stmt(
-    const syntax::StmtId stmt_id,
-    const TypeHandle expected_return,
-    ReturnTypeInference* const return_inference
-) {
+    const syntax::StmtId stmt_id, const TypeHandle expected_return, ReturnTypeInference* const return_inference)
+{
     this->analyze_statement_tree(stmt_id, expected_return, return_inference, StatementAnalysisRootKind::statement);
 }
 
-void SemanticAnalyzer::analyze_statement_tree(
-    const syntax::StmtId root,
-    const TypeHandle expected_return,
-    ReturnTypeInference* const return_inference,
-    const StatementAnalysisRootKind root_kind
-) {
+void SemanticAnalyzer::analyze_statement_tree(const syntax::StmtId root, const TypeHandle expected_return,
+    ReturnTypeInference* const return_inference, const StatementAnalysisRootKind root_kind)
+{
     std::vector<StatementAnalysisAction> stack;
     stack.reserve(SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY);
     switch (root_kind) {
-    case StatementAnalysisRootKind::statement:
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::statement, root});
-        break;
-    case StatementAnalysisRootKind::scoped_block:
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, root});
-        break;
-    case StatementAnalysisRootKind::block_statements:
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::block_statements, root});
-        break;
+        case StatementAnalysisRootKind::statement:
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::statement, root});
+            break;
+        case StatementAnalysisRootKind::scoped_block:
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::scoped_block, root});
+            break;
+        case StatementAnalysisRootKind::block_statements:
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::block_statements, root});
+            break;
     }
     while (!stack.empty()) {
         const StatementAnalysisAction action = stack.back();
@@ -548,49 +494,45 @@ void SemanticAnalyzer::analyze_statement_tree(
     }
 }
 
-void SemanticAnalyzer::analyze_statement_action(
-    const StatementAnalysisAction& action,
-    std::vector<StatementAnalysisAction>& stack,
-    const TypeHandle expected_return,
-    ReturnTypeInference* const return_inference
-) {
+void SemanticAnalyzer::analyze_statement_action(const StatementAnalysisAction& action,
+    std::vector<StatementAnalysisAction>& stack, const TypeHandle expected_return,
+    ReturnTypeInference* const return_inference)
+{
     switch (action.kind) {
-    case StatementAnalysisActionKind::statement:
-        this->analyze_statement_node(action.stmt, stack, expected_return, return_inference);
-        break;
-    case StatementAnalysisActionKind::scoped_block:
-        this->symbols_.push_scope();
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::pop_scope});
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::block_statements, action.stmt});
-        break;
-    case StatementAnalysisActionKind::pattern_scoped_block:
-        this->analyze_pattern_scoped_block(action.pattern, action.pattern_type, action.block, stack);
-        break;
-    case StatementAnalysisActionKind::local_pattern:
-        this->define_local_pattern(action.pattern, action.pattern_type, action.is_mutable, action.allow_refutable);
-        break;
-    case StatementAnalysisActionKind::block_statements:
-        this->analyze_statement_block(action.stmt, stack);
-        break;
-    case StatementAnalysisActionKind::pop_scope:
-        this->symbols_.pop_scope();
-        break;
-    case StatementAnalysisActionKind::enter_loop:
-        ++this->loop_depth_;
-        break;
-    case StatementAnalysisActionKind::exit_loop:
-        --this->loop_depth_;
-        break;
-    case StatementAnalysisActionKind::for_condition:
-        this->analyze_for_condition(action.stmt);
-        break;
+        case StatementAnalysisActionKind::statement:
+            this->analyze_statement_node(action.stmt, stack, expected_return, return_inference);
+            break;
+        case StatementAnalysisActionKind::scoped_block:
+            this->symbols_.push_scope();
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::pop_scope});
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::block_statements, action.stmt});
+            break;
+        case StatementAnalysisActionKind::pattern_scoped_block:
+            this->analyze_pattern_scoped_block(action.pattern, action.pattern_type, action.block, stack);
+            break;
+        case StatementAnalysisActionKind::local_pattern:
+            this->define_local_pattern(action.pattern, action.pattern_type, action.is_mutable, action.allow_refutable);
+            break;
+        case StatementAnalysisActionKind::block_statements:
+            this->analyze_statement_block(action.stmt, stack);
+            break;
+        case StatementAnalysisActionKind::pop_scope:
+            this->symbols_.pop_scope();
+            break;
+        case StatementAnalysisActionKind::enter_loop:
+            ++this->loop_depth_;
+            break;
+        case StatementAnalysisActionKind::exit_loop:
+            --this->loop_depth_;
+            break;
+        case StatementAnalysisActionKind::for_condition:
+            this->analyze_for_condition(action.stmt);
+            break;
     }
 }
 
 void SemanticAnalyzer::analyze_statement_block(
-    const syntax::StmtId block,
-    std::vector<StatementAnalysisAction>& stack
-) const
+    const syntax::StmtId block, std::vector<StatementAnalysisAction>& stack) const
 {
     if (!syntax::is_valid(block) || block.value >= this->module_.stmts.size()) {
         return;
@@ -600,28 +542,26 @@ void SemanticAnalyzer::analyze_statement_block(
         return;
     }
     for (base::usize i = statements->size(); i > 0; --i) {
-        stack.push_back(StatementAnalysisAction {
+        stack.push_back(StatementAnalysisAction{
             StatementAnalysisActionKind::statement,
             (*statements)[i - 1],
         });
     }
 }
 
-void SemanticAnalyzer::analyze_pattern_scoped_block(
-    const syntax::PatternId pattern,
-    const TypeHandle pattern_type,
-    const syntax::StmtId block,
-    std::vector<StatementAnalysisAction>& stack
-) {
+void SemanticAnalyzer::analyze_pattern_scoped_block(const syntax::PatternId pattern, const TypeHandle pattern_type,
+    const syntax::StmtId block, std::vector<StatementAnalysisAction>& stack)
+{
     std::vector<PatternBinding> bindings;
     static_cast<void>(this->analyze_pattern(pattern, pattern_type, bindings));
     this->symbols_.push_scope(bindings.size());
     this->define_pattern_bindings(bindings, false);
-    stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::pop_scope});
-    stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::block_statements, block});
+    stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::pop_scope});
+    stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::block_statements, block});
 }
 
-void SemanticAnalyzer::analyze_for_condition(const syntax::StmtId stmt_id) {
+void SemanticAnalyzer::analyze_for_condition(const syntax::StmtId stmt_id)
+{
     const std::optional<syntax::StmtNode> stmt = statement_node(this->module_, stmt_id);
     if (!stmt.has_value() || stmt->kind != syntax::StmtKind::for_ || !syntax::is_valid(stmt->condition)) {
         return;
@@ -629,16 +569,12 @@ void SemanticAnalyzer::analyze_for_condition(const syntax::StmtId stmt_id) {
     const TypeHandle condition = this->analyze_expr(stmt->condition);
     if (!this->checked_.types.is_bool(condition)) {
         this->report_general(
-            expr_range_or(this->module_, stmt->condition, stmt->range),
-            std::string(SEMA_FOR_CONDITION_BOOL)
-        );
+            expr_range_or(this->module_, stmt->condition, stmt->range), std::string(SEMA_FOR_CONDITION_BOOL));
     }
 }
 
-TypeHandle SemanticAnalyzer::analyze_for_range_bounds(
-    const syntax::StmtId stmt_id,
-    const syntax::StmtNode& stmt
-) {
+TypeHandle SemanticAnalyzer::analyze_for_range_bounds(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
+{
     if (!syntax::is_valid(stmt.range_end)) {
         this->record_stmt_local_type(stmt_id, INVALID_TYPE_HANDLE);
         this->report_general(stmt.range, std::string(SEMA_FOR_RANGE_ARITY));
@@ -690,322 +626,302 @@ TypeHandle SemanticAnalyzer::analyze_for_range_bounds(
 
     if (syntax::is_valid(stmt.range_start) && !this->checked_.types.is_integer(start)) {
         this->report_general(
-            expr_range_or(this->module_, stmt.range_start, stmt.range),
-            std::string(SEMA_RANGE_BOUNDS_INTEGER)
-        );
+            expr_range_or(this->module_, stmt.range_start, stmt.range), std::string(SEMA_RANGE_BOUNDS_INTEGER));
     }
     if (!this->checked_.types.is_integer(end)) {
         this->report_general(
-            expr_range_or(this->module_, stmt.range_end, stmt.range),
-            std::string(SEMA_RANGE_BOUNDS_INTEGER)
-        );
+            expr_range_or(this->module_, stmt.range_end, stmt.range), std::string(SEMA_RANGE_BOUNDS_INTEGER));
     }
     if (has_step && !this->checked_.types.is_integer(step)) {
         this->report_general(
-            expr_range_or(this->module_, stmt.range_step, stmt.range),
-            std::string(SEMA_RANGE_STEP_INTEGER)
-        );
+            expr_range_or(this->module_, stmt.range_step, stmt.range), std::string(SEMA_RANGE_STEP_INTEGER));
     }
-    const bool bounds_have_same_type =
-        is_valid(start) &&
-        is_valid(end) &&
-        this->checked_.types.same(start, end);
+    const bool bounds_have_same_type = is_valid(start) && is_valid(end) && this->checked_.types.same(start, end);
     if (is_valid(start) && is_valid(end) && !bounds_have_same_type) {
         this->report_general(stmt.range, std::string(SEMA_RANGE_BOUNDS_SAME_TYPE));
     }
-    if (has_step &&
-        bounds_have_same_type &&
-        this->checked_.types.is_integer(start) &&
-        this->checked_.types.is_integer(step) &&
-        !this->checked_.types.same(start, step)) {
+    if (has_step && bounds_have_same_type && this->checked_.types.is_integer(start)
+        && this->checked_.types.is_integer(step) && !this->checked_.types.same(start, step)) {
         this->report_general(
-            expr_range_or(this->module_, stmt.range_step, stmt.range),
-            std::string(SEMA_RANGE_STEP_SAME_TYPE)
-        );
+            expr_range_or(this->module_, stmt.range_step, stmt.range), std::string(SEMA_RANGE_STEP_SAME_TYPE));
     }
 
-    const TypeHandle local_type = this->checked_.types.is_integer(start)
-        ? start
-        : (this->checked_.types.is_integer(end) ? end : step);
+    const TypeHandle local_type =
+        this->checked_.types.is_integer(start) ? start : (this->checked_.types.is_integer(end) ? end : step);
     this->record_stmt_local_type(stmt_id, local_type);
     return local_type;
 }
 
-void SemanticAnalyzer::define_for_range_local(const syntax::StmtNode& stmt, const TypeHandle type) {
+void SemanticAnalyzer::define_for_range_local(const syntax::StmtNode& stmt, const TypeHandle type)
+{
     static_cast<void>(this->can_define_local_name(stmt.name_id, stmt.name, stmt.range));
-    const auto inserted = this->symbols_.insert(Symbol {
-        SymbolKind::local,
-        this->source_name_text(stmt.name_id, stmt.name),
-        stmt.name_id,
-        {},
-        syntax::INVALID_MODULE_ID,
-        type,
-        stmt.range,
-        false,
-        syntax::Visibility::private_,
-        {},
-    }, this->diagnostics_);
+    const auto inserted = this->symbols_.insert(
+        Symbol{
+            SymbolKind::local,
+            this->source_name_text(stmt.name_id, stmt.name),
+            stmt.name_id,
+            {},
+            syntax::INVALID_MODULE_ID,
+            type,
+            stmt.range,
+            false,
+            syntax::Visibility::private_,
+            {},
+        },
+        this->diagnostics_);
     static_cast<void>(inserted);
 }
 
 void SemanticAnalyzer::define_local_pattern(
-    const syntax::PatternId pattern_id,
-    const TypeHandle type,
-    const bool is_mutable,
-    const bool allow_refutable
-) {
+    const syntax::PatternId pattern_id, const TypeHandle type, const bool is_mutable, const bool allow_refutable)
+{
     std::vector<PatternBinding> bindings;
     if (!this->analyze_pattern(pattern_id, type, bindings) && !allow_refutable) {
         const syntax::PatternNode* pattern = this->module_.patterns.ptr(pattern_id.value);
         this->report_pattern(
-            pattern == nullptr ? base::SourceRange {} : pattern->range,
-            std::string(SEMA_LOCAL_PATTERN_REFUTABLE)
-        );
+            pattern == nullptr ? base::SourceRange{} : pattern->range, std::string(SEMA_LOCAL_PATTERN_REFUTABLE));
     }
     this->define_pattern_bindings(bindings, is_mutable);
 }
 
-void SemanticAnalyzer::analyze_statement_node(
-    const syntax::StmtId stmt_id,
-    std::vector<StatementAnalysisAction>& stack,
-    const TypeHandle expected_return,
-    ReturnTypeInference* const return_inference
-) {
+void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std::vector<StatementAnalysisAction>& stack,
+    const TypeHandle expected_return, ReturnTypeInference* const return_inference)
+{
     const std::optional<syntax::StmtNode> stmt_ptr = statement_node(this->module_, stmt_id);
     if (!stmt_ptr.has_value()) {
         return;
     }
     const syntax::StmtNode& stmt = stmt_ptr.value();
     switch (stmt.kind) {
-    case syntax::StmtKind::let:
-    case syntax::StmtKind::var: {
-        const bool has_declared_type = syntax::is_valid(stmt.declared_type);
-        const TypeHandle declared_type = has_declared_type ? this->resolve_type(stmt.declared_type) : INVALID_TYPE_HANDLE;
-        const TypeHandle init = this->analyze_expr(stmt.init, declared_type);
-        const TypeHandle local_type = has_declared_type ? declared_type : init;
-        this->record_stmt_local_type(stmt_id, local_type);
-        if (!has_declared_type && !is_valid(local_type)) {
-            this->report_general(stmt.range, std::string(SEMA_LOCAL_TYPE_INFER));
-        }
-        if (is_valid(local_type) && !this->is_valid_storage_type(local_type)) {
-            this->report_general(stmt.range, std::string(SEMA_LOCAL_STORAGE));
-        }
-        if (has_declared_type && !this->can_assign(local_type, init, stmt.init)) {
-            this->report_type_mismatch(stmt.range, std::string(SEMA_INITIALIZER_TYPE_MISMATCH), local_type, init);
-        }
-        if (syntax::is_valid(stmt.pattern)) {
+        case syntax::StmtKind::let:
+        case syntax::StmtKind::var: {
+            const bool has_declared_type = syntax::is_valid(stmt.declared_type);
+            const TypeHandle declared_type =
+                has_declared_type ? this->resolve_type(stmt.declared_type) : INVALID_TYPE_HANDLE;
+            const TypeHandle init = this->analyze_expr(stmt.init, declared_type);
+            const TypeHandle local_type = has_declared_type ? declared_type : init;
+            this->record_stmt_local_type(stmt_id, local_type);
+            if (!has_declared_type && !is_valid(local_type)) {
+                this->report_general(stmt.range, std::string(SEMA_LOCAL_TYPE_INFER));
+            }
+            if (is_valid(local_type) && !this->is_valid_storage_type(local_type)) {
+                this->report_general(stmt.range, std::string(SEMA_LOCAL_STORAGE));
+            }
+            if (has_declared_type && !this->can_assign(local_type, init, stmt.init)) {
+                this->report_type_mismatch(stmt.range, std::string(SEMA_INITIALIZER_TYPE_MISMATCH), local_type, init);
+            }
+            if (syntax::is_valid(stmt.pattern)) {
+                if (syntax::is_valid(stmt.else_block)) {
+                    if (this->block_may_fallthrough(stmt.else_block)) {
+                        this->report_pattern(stmt.range, std::string(SEMA_LET_ELSE_FALLTHROUGH));
+                    }
+                    stack.push_back(StatementAnalysisAction{
+                        StatementAnalysisActionKind::local_pattern,
+                        syntax::INVALID_STMT_ID,
+                        syntax::INVALID_STMT_ID,
+                        stmt.pattern,
+                        local_type,
+                        stmt.kind == syntax::StmtKind::var,
+                        true,
+                    });
+                    stack.push_back(
+                        StatementAnalysisAction{StatementAnalysisActionKind::scoped_block, stmt.else_block});
+                    break;
+                }
+                this->define_local_pattern(stmt.pattern, local_type, stmt.kind == syntax::StmtKind::var);
+                break;
+            }
             if (syntax::is_valid(stmt.else_block)) {
+                this->report_pattern(stmt.range, std::string(SEMA_LET_ELSE_PATTERN));
                 if (this->block_may_fallthrough(stmt.else_block)) {
                     this->report_pattern(stmt.range, std::string(SEMA_LET_ELSE_FALLTHROUGH));
                 }
-                stack.push_back(StatementAnalysisAction {
-                    StatementAnalysisActionKind::local_pattern,
-                    syntax::INVALID_STMT_ID,
-                    syntax::INVALID_STMT_ID,
-                    stmt.pattern,
+                stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::scoped_block, stmt.else_block});
+            }
+            static_cast<void>(this->can_define_local_name(stmt.name_id, stmt.name, stmt.range));
+            const auto inserted = this->symbols_.insert(
+                Symbol{
+                    SymbolKind::local,
+                    this->source_name_text(stmt.name_id, stmt.name),
+                    stmt.name_id,
+                    {},
+                    syntax::INVALID_MODULE_ID,
                     local_type,
+                    stmt.range,
                     stmt.kind == syntax::StmtKind::var,
-                    true,
+                    syntax::Visibility::private_,
+                    {},
+                },
+                this->diagnostics_);
+            static_cast<void>(inserted);
+            break;
+        }
+        case syntax::StmtKind::assign: {
+            const TypeHandle lhs = this->analyze_assignment_target(stmt.lhs);
+            if (!this->is_writable_place(stmt.lhs)) {
+                this->report_general(
+                    expr_range_or(this->module_, stmt.lhs, stmt.range), std::string(SEMA_ASSIGNMENT_LHS_WRITABLE));
+            }
+            syntax::BinaryOp binary_op = syntax::BinaryOp::add;
+            if (compound_assignment_binary_op(stmt.assign_op, binary_op)) {
+                ExprView binary;
+                binary.kind = syntax::ExprKind::binary;
+                binary.range = stmt.range;
+                binary.binary_op = binary_op;
+                binary.binary_lhs = stmt.lhs;
+                binary.binary_rhs = stmt.rhs;
+                const TypeHandle result = this->analyze_expr(syntax::INVALID_EXPR_ID, binary, lhs);
+                if (!this->can_assign(lhs, result, stmt.rhs)) {
+                    this->report_type_mismatch(
+                        stmt.range, std::string(SEMA_COMPOUND_ASSIGNMENT_TYPE_MISMATCH), lhs, result);
+                }
+            } else {
+                const TypeHandle rhs = this->analyze_expr(stmt.rhs, lhs);
+                if (!this->can_assign(lhs, rhs, stmt.rhs)) {
+                    this->report_type_mismatch(stmt.range, std::string(SEMA_ASSIGNMENT_TYPE_MISMATCH), lhs, rhs);
+                }
+            }
+            static_cast<void>(this->check_m2_value_abi(lhs, ValueAbiContext::assignment, stmt.range));
+            break;
+        }
+        case syntax::StmtKind::if_: {
+            const TypeHandle condition = this->analyze_expr(stmt.condition);
+            if (!syntax::is_valid(stmt.pattern) && !this->checked_.types.is_bool(condition)) {
+                this->report_general(
+                    expr_range_or(this->module_, stmt.condition, stmt.range), std::string(SEMA_IF_CONDITION_BOOL));
+            }
+            if (syntax::is_valid(stmt.else_if)) {
+                stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::statement, stmt.else_if});
+            }
+            if (syntax::is_valid(stmt.else_block)) {
+                stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::scoped_block, stmt.else_block});
+            }
+            if (syntax::is_valid(stmt.pattern)) {
+                stack.push_back(StatementAnalysisAction{
+                    StatementAnalysisActionKind::pattern_scoped_block,
+                    syntax::INVALID_STMT_ID,
+                    stmt.then_block,
+                    stmt.pattern,
+                    condition,
                 });
-                stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.else_block});
+            } else {
+                stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::scoped_block, stmt.then_block});
+            }
+            break;
+        }
+        case syntax::StmtKind::while_: {
+            const TypeHandle condition = this->analyze_expr(stmt.condition);
+            if (!syntax::is_valid(stmt.pattern) && !this->checked_.types.is_bool(condition)) {
+                this->report_general(
+                    expr_range_or(this->module_, stmt.condition, stmt.range), std::string(SEMA_WHILE_CONDITION_BOOL));
+            }
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::exit_loop});
+            if (syntax::is_valid(stmt.pattern)) {
+                stack.push_back(StatementAnalysisAction{
+                    StatementAnalysisActionKind::pattern_scoped_block,
+                    syntax::INVALID_STMT_ID,
+                    stmt.body,
+                    stmt.pattern,
+                    condition,
+                });
+            } else {
+                stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::scoped_block, stmt.body});
+            }
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::enter_loop});
+            break;
+        }
+        case syntax::StmtKind::for_: {
+            this->symbols_.push_scope(1);
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::pop_scope});
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::exit_loop});
+            if (syntax::is_valid(stmt.for_update)) {
+                stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::statement, stmt.for_update});
+            }
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::scoped_block, stmt.body});
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::enter_loop});
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::for_condition, stmt_id});
+            if (syntax::is_valid(stmt.for_init)) {
+                stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::statement, stmt.for_init});
+            }
+            break;
+        }
+        case syntax::StmtKind::for_range: {
+            const TypeHandle range_type = this->analyze_for_range_bounds(stmt_id, stmt);
+            this->symbols_.push_scope(1);
+            this->define_for_range_local(stmt, range_type);
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::pop_scope});
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::exit_loop});
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::scoped_block, stmt.body});
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::enter_loop});
+            break;
+        }
+        case syntax::StmtKind::return_: {
+            const TypeHandle actual = syntax::is_valid(stmt.return_value)
+                ? this->analyze_expr(stmt.return_value, expected_return)
+                : this->checked_.types.builtin(BuiltinType::void_);
+            if (return_inference != nullptr) {
+                this->record_inferred_return(stmt_id, actual, *return_inference);
+            } else if (is_valid(actual) && is_valid(expected_return)
+                && !this->can_assign(expected_return, actual, stmt.return_value)) {
+                this->report_type_mismatch(stmt.range, std::string(SEMA_RETURN_TYPE_MISMATCH), expected_return, actual);
+            }
+            break;
+        }
+        case syntax::StmtKind::expr:
+            static_cast<void>(this->analyze_expr(stmt.init));
+            if (syntax::is_valid(stmt.init) && stmt.init.value < this->module_.exprs.size()
+                && !is_allowed_expression_statement(this->module_, stmt.init)) {
+                this->report_general(
+                    this->module_.exprs.range(stmt.init.value), std::string(SEMA_EXPR_STMT_CALL_OR_TRY));
+            }
+            break;
+        case syntax::StmtKind::block:
+            stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::scoped_block, stmt_id});
+            break;
+        case syntax::StmtKind::break_:
+        case syntax::StmtKind::continue_:
+            if (this->loop_depth_ == SEMA_NO_LOOP_DEPTH) {
+                this->report_general(stmt.range, std::string(SEMA_BREAK_CONTINUE_IN_LOOP));
+            }
+            break;
+        case syntax::StmtKind::defer:
+            static_cast<void>(this->analyze_expr(stmt.init));
+            if (!syntax::is_valid(stmt.init) || stmt.init.value >= this->module_.exprs.size()
+                || this->module_.exprs.kind(stmt.init.value) != syntax::ExprKind::call) {
+                this->report_general(stmt.range, std::string(SEMA_DEFER_CALL));
                 break;
             }
-            this->define_local_pattern(stmt.pattern, local_type, stmt.kind == syntax::StmtKind::var);
             break;
-        }
-        if (syntax::is_valid(stmt.else_block)) {
-            this->report_pattern(stmt.range, std::string(SEMA_LET_ELSE_PATTERN));
-            if (this->block_may_fallthrough(stmt.else_block)) {
-                this->report_pattern(stmt.range, std::string(SEMA_LET_ELSE_FALLTHROUGH));
-            }
-            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.else_block});
-        }
-        static_cast<void>(this->can_define_local_name(stmt.name_id, stmt.name, stmt.range));
-        const auto inserted = this->symbols_.insert(Symbol {
-            SymbolKind::local,
-            this->source_name_text(stmt.name_id, stmt.name),
-            stmt.name_id,
-            {},
-            syntax::INVALID_MODULE_ID,
-            local_type,
-            stmt.range,
-            stmt.kind == syntax::StmtKind::var,
-            syntax::Visibility::private_,
-            {},
-        }, this->diagnostics_);
-        static_cast<void>(inserted);
-        break;
-    }
-    case syntax::StmtKind::assign: {
-        const TypeHandle lhs = this->analyze_assignment_target(stmt.lhs);
-        if (!this->is_writable_place(stmt.lhs)) {
-            this->report_general(
-                expr_range_or(this->module_, stmt.lhs, stmt.range),
-                std::string(SEMA_ASSIGNMENT_LHS_WRITABLE)
-            );
-        }
-        syntax::BinaryOp binary_op = syntax::BinaryOp::add;
-        if (compound_assignment_binary_op(stmt.assign_op, binary_op)) {
-            ExprView binary;
-            binary.kind = syntax::ExprKind::binary;
-            binary.range = stmt.range;
-            binary.binary_op = binary_op;
-            binary.binary_lhs = stmt.lhs;
-            binary.binary_rhs = stmt.rhs;
-            const TypeHandle result = this->analyze_expr(syntax::INVALID_EXPR_ID, binary, lhs);
-            if (!this->can_assign(lhs, result, stmt.rhs)) {
-                this->report_type_mismatch(stmt.range, std::string(SEMA_COMPOUND_ASSIGNMENT_TYPE_MISMATCH), lhs, result);
-            }
-        } else {
-            const TypeHandle rhs = this->analyze_expr(stmt.rhs, lhs);
-            if (!this->can_assign(lhs, rhs, stmt.rhs)) {
-                this->report_type_mismatch(stmt.range, std::string(SEMA_ASSIGNMENT_TYPE_MISMATCH), lhs, rhs);
-            }
-        }
-        static_cast<void>(this->check_m2_value_abi(lhs, ValueAbiContext::assignment, stmt.range));
-        break;
-    }
-    case syntax::StmtKind::if_: {
-        const TypeHandle condition = this->analyze_expr(stmt.condition);
-        if (!syntax::is_valid(stmt.pattern) && !this->checked_.types.is_bool(condition)) {
-            this->report_general(
-                expr_range_or(this->module_, stmt.condition, stmt.range),
-                std::string(SEMA_IF_CONDITION_BOOL)
-            );
-        }
-        if (syntax::is_valid(stmt.else_if)) {
-            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::statement, stmt.else_if});
-        }
-        if (syntax::is_valid(stmt.else_block)) {
-            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.else_block});
-        }
-        if (syntax::is_valid(stmt.pattern)) {
-            stack.push_back(StatementAnalysisAction {
-                StatementAnalysisActionKind::pattern_scoped_block,
-                syntax::INVALID_STMT_ID,
-                stmt.then_block,
-                stmt.pattern,
-                condition,
-            });
-        } else {
-            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.then_block});
-        }
-        break;
-    }
-    case syntax::StmtKind::while_: {
-        const TypeHandle condition = this->analyze_expr(stmt.condition);
-        if (!syntax::is_valid(stmt.pattern) && !this->checked_.types.is_bool(condition)) {
-            this->report_general(
-                expr_range_or(this->module_, stmt.condition, stmt.range),
-                std::string(SEMA_WHILE_CONDITION_BOOL)
-            );
-        }
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::exit_loop});
-        if (syntax::is_valid(stmt.pattern)) {
-            stack.push_back(StatementAnalysisAction {
-                StatementAnalysisActionKind::pattern_scoped_block,
-                syntax::INVALID_STMT_ID,
-                stmt.body,
-                stmt.pattern,
-                condition,
-            });
-        } else {
-            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.body});
-        }
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::enter_loop});
-        break;
-    }
-    case syntax::StmtKind::for_: {
-        this->symbols_.push_scope(1);
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::pop_scope});
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::exit_loop});
-        if (syntax::is_valid(stmt.for_update)) {
-            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::statement, stmt.for_update});
-        }
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.body});
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::enter_loop});
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::for_condition, stmt_id});
-        if (syntax::is_valid(stmt.for_init)) {
-            stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::statement, stmt.for_init});
-        }
-        break;
-    }
-    case syntax::StmtKind::for_range: {
-        const TypeHandle range_type = this->analyze_for_range_bounds(stmt_id, stmt);
-        this->symbols_.push_scope(1);
-        this->define_for_range_local(stmt, range_type);
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::pop_scope});
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::exit_loop});
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt.body});
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::enter_loop});
-        break;
-    }
-    case syntax::StmtKind::return_: {
-        const TypeHandle actual = syntax::is_valid(stmt.return_value)
-            ? this->analyze_expr(stmt.return_value, expected_return)
-            : this->checked_.types.builtin(BuiltinType::void_);
-        if (return_inference != nullptr) {
-            this->record_inferred_return(stmt_id, actual, *return_inference);
-        } else if (is_valid(actual) &&
-            is_valid(expected_return) &&
-            !this->can_assign(expected_return, actual, stmt.return_value)) {
-            this->report_type_mismatch(stmt.range, std::string(SEMA_RETURN_TYPE_MISMATCH), expected_return, actual);
-        }
-        break;
-    }
-    case syntax::StmtKind::expr:
-        static_cast<void>(this->analyze_expr(stmt.init));
-        if (syntax::is_valid(stmt.init) &&
-            stmt.init.value < this->module_.exprs.size() &&
-            !is_allowed_expression_statement(this->module_, stmt.init)) {
-            this->report_general(
-                this->module_.exprs.range(stmt.init.value),
-                std::string(SEMA_EXPR_STMT_CALL_OR_TRY)
-            );
-        }
-        break;
-    case syntax::StmtKind::block:
-        stack.push_back(StatementAnalysisAction {StatementAnalysisActionKind::scoped_block, stmt_id});
-        break;
-    case syntax::StmtKind::break_:
-    case syntax::StmtKind::continue_:
-        if (this->loop_depth_ == SEMA_NO_LOOP_DEPTH) {
-            this->report_general(stmt.range, std::string(SEMA_BREAK_CONTINUE_IN_LOOP));
-        }
-        break;
-    case syntax::StmtKind::defer:
-        static_cast<void>(this->analyze_expr(stmt.init));
-        if (!syntax::is_valid(stmt.init) ||
-            stmt.init.value >= this->module_.exprs.size() ||
-            this->module_.exprs.kind(stmt.init.value) != syntax::ExprKind::call) {
-            this->report_general(stmt.range, std::string(SEMA_DEFER_CALL));
-            break;
-        }
-        break;
     }
 }
 
-bool SemanticAnalyzer::block_guarantees_return(const syntax::StmtId block_id) const {
-    return evaluate_control_flow(this->module_, block_id, ControlFlowFrameKind::block, ControlFlowQuery::guarantees_return);
+bool SemanticAnalyzer::block_guarantees_return(const syntax::StmtId block_id) const
+{
+    return evaluate_control_flow(
+        this->module_, block_id, ControlFlowFrameKind::block, ControlFlowQuery::guarantees_return);
 }
 
-bool SemanticAnalyzer::stmt_guarantees_return(const syntax::StmtId stmt_id) const {
-    return evaluate_control_flow(this->module_, stmt_id, ControlFlowFrameKind::statement, ControlFlowQuery::guarantees_return);
+bool SemanticAnalyzer::stmt_guarantees_return(const syntax::StmtId stmt_id) const
+{
+    return evaluate_control_flow(
+        this->module_, stmt_id, ControlFlowFrameKind::statement, ControlFlowQuery::guarantees_return);
 }
 
-bool SemanticAnalyzer::block_may_fallthrough(const syntax::StmtId block_id) const {
-    return evaluate_control_flow(this->module_, block_id, ControlFlowFrameKind::block, ControlFlowQuery::may_fallthrough);
+bool SemanticAnalyzer::block_may_fallthrough(const syntax::StmtId block_id) const
+{
+    return evaluate_control_flow(
+        this->module_, block_id, ControlFlowFrameKind::block, ControlFlowQuery::may_fallthrough);
 }
 
-bool SemanticAnalyzer::stmt_may_fallthrough(const syntax::StmtId stmt_id) const {
-    return evaluate_control_flow(this->module_, stmt_id, ControlFlowFrameKind::statement, ControlFlowQuery::may_fallthrough);
+bool SemanticAnalyzer::stmt_may_fallthrough(const syntax::StmtId stmt_id) const
+{
+    return evaluate_control_flow(
+        this->module_, stmt_id, ControlFlowFrameKind::statement, ControlFlowQuery::may_fallthrough);
 }
 
 void SemanticAnalyzer::record_inferred_return(
-    const syntax::StmtId stmt_id,
-    const TypeHandle actual,
-    ReturnTypeInference& inference
-) {
+    const syntax::StmtId stmt_id, const TypeHandle actual, ReturnTypeInference& inference)
+{
     inference.returns.push_back(stmt_id);
     if (!is_valid(actual)) {
         const std::optional<syntax::StmtNode> stmt = statement_node(this->module_, stmt_id);
@@ -1026,10 +942,8 @@ void SemanticAnalyzer::record_inferred_return(
 }
 
 void SemanticAnalyzer::finalize_inferred_return(
-    const syntax::ItemNode& function,
-    const FunctionLookupKey& key,
-    ReturnTypeInference& inference
-) {
+    const syntax::ItemNode& function, const FunctionLookupKey& key, ReturnTypeInference& inference)
+{
     this->resolve_pending_null_returns(inference);
     TypeHandle return_type = inference.inferred_type;
     if (inference.returns.empty()) {
@@ -1047,7 +961,8 @@ void SemanticAnalyzer::finalize_inferred_return(
     }
 }
 
-void SemanticAnalyzer::resolve_pending_null_returns(ReturnTypeInference& inference) {
+void SemanticAnalyzer::resolve_pending_null_returns(ReturnTypeInference& inference)
+{
     if (inference.pending_null_returns.empty()) {
         return;
     }
@@ -1074,9 +989,7 @@ void SemanticAnalyzer::resolve_pending_null_returns(ReturnTypeInference& inferen
 }
 
 void SemanticAnalyzer::report_return_inference_diagnostic(
-    const syntax::StmtId stmt_id,
-    const std::string_view message
-) const
+    const syntax::StmtId stmt_id, const std::string_view message) const
 {
     const std::optional<syntax::StmtNode> stmt = statement_node(this->module_, stmt_id);
     if (!stmt.has_value()) {
@@ -1085,15 +998,15 @@ void SemanticAnalyzer::report_return_inference_diagnostic(
     this->report_general(stmt->range, std::string(message));
 }
 
-void SemanticAnalyzer::validate_function_return_type(const syntax::ItemNode& function, const TypeHandle return_type) const
+void SemanticAnalyzer::validate_function_return_type(
+    const syntax::ItemNode& function, const TypeHandle return_type) const
 {
     static_cast<void>(this->check_m2_value_abi(return_type, ValueAbiContext::return_value, function.range));
 }
 
 void SemanticAnalyzer::ensure_function_return_known(
-    const FunctionSignature& signature,
-    const base::SourceRange& use_range
-) {
+    const FunctionSignature& signature, const base::SourceRange& use_range)
+{
     if (is_valid(signature.return_type) || signature.is_extern_c) {
         return;
     }
@@ -1103,17 +1016,15 @@ void SemanticAnalyzer::ensure_function_return_known(
             ? this->method_function_lookup_key(signature.module, signature.method_owner_type, signature.name_id)
             : this->function_lookup_key(signature.module, signature.name_id);
     }
-    const FunctionBodyState state = this->function_body_states_.contains(key)
-        ? this->function_body_states_.at(key)
-        : FunctionBodyState::not_started;
+    const FunctionBodyState state = this->function_body_states_.contains(key) ? this->function_body_states_.at(key)
+                                                                              : FunctionBodyState::not_started;
     if (state == FunctionBodyState::analyzing) {
         this->report_general(use_range, std::string(SEMA_RECURSIVE_RETURN_INFER));
         return;
     }
     const auto item_found = this->function_definition_items_.find(key);
-    if (item_found == this->function_definition_items_.end() ||
-        !syntax::is_valid(item_found->second) ||
-        item_found->second.value >= this->module_.items.size()) {
+    if (item_found == this->function_definition_items_.end() || !syntax::is_valid(item_found->second)
+        || item_found->second.value >= this->module_.items.size()) {
         this->report_general(use_range, std::string(SEMA_RETURN_TYPE_INFER));
         return;
     }

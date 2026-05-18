@@ -1,5 +1,4 @@
 #include <aurex/parse/parser_item_part.hpp>
-
 #include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/recovery.hpp>
 
@@ -13,7 +12,8 @@ using syntax::TokenKind;
 
 } // namespace
 
-syntax::ModulePath ItemParser::parse_path() {
+syntax::ModulePath ItemParser::parse_path()
+{
     syntax::ModulePath path;
     const std::optional<syntax::Token> first = this->parse_path_segment(std::string(PARSER_EXPECT_PATH_IDENTIFIER));
     base::SourceRange range = first.has_value() ? first->range : this->peek().range;
@@ -21,9 +21,8 @@ syntax::ModulePath ItemParser::parse_path() {
         path.parts.push_back(first->text());
     }
     while (this->match(TokenKind::dot)) {
-        std::optional<syntax::Token> part = this->parse_path_segment(
-            std::string(PARSER_EXPECT_PATH_IDENTIFIER_AFTER_DOT)
-        );
+        std::optional<syntax::Token> part =
+            this->parse_path_segment(std::string(PARSER_EXPECT_PATH_IDENTIFIER_AFTER_DOT));
         if (part.has_value()) {
             path.parts.push_back(part->text());
             range = this->merge(range, part->range);
@@ -34,7 +33,8 @@ syntax::ModulePath ItemParser::parse_path() {
     return path;
 }
 
-syntax::ImportDecl ItemParser::parse_import_decl() {
+syntax::ImportDecl ItemParser::parse_import_decl()
+{
     syntax::ImportDecl import;
     if (this->match(TokenKind::kw_pub)) {
         import.visibility = syntax::Visibility::public_;
@@ -59,29 +59,17 @@ syntax::ImportDecl ItemParser::parse_import_decl() {
 
 const syntax::Token& ItemParser::expect_item_terminator(std::string message) const
 {
-    return this->expect_recovered(
-        TokenKind::semicolon,
-        std::move(message),
-        RecoveryContext::item_terminator
-    );
+    return this->expect_recovered(TokenKind::semicolon, std::move(message), RecoveryContext::item_terminator);
 }
 
 void ItemParser::expect_item_container_start(std::string message) const
 {
-    this->expect_recovered(
-        TokenKind::l_brace,
-        std::move(message),
-        RecoveryContext::block_start
-    );
+    this->expect_recovered(TokenKind::l_brace, std::move(message), RecoveryContext::block_start);
 }
 
 const syntax::Token& ItemParser::expect_item_container_end(std::string message) const
 {
-    return this->expect_recovered(
-        TokenKind::r_brace,
-        std::move(message),
-        RecoveryContext::block_end
-    );
+    return this->expect_recovered(TokenKind::r_brace, std::move(message), RecoveryContext::block_end);
 }
 
 std::optional<syntax::Token> ItemParser::parse_path_segment(std::string message) const
@@ -90,11 +78,8 @@ std::optional<syntax::Token> ItemParser::parse_path_segment(std::string message)
         return this->advance();
     }
 
-    const syntax::Token& segment = this->expect_recovered(
-        syntax::TokenKind::identifier,
-        std::move(message),
-        RecoveryContext::path_segment
-    );
+    const syntax::Token& segment =
+        this->expect_recovered(syntax::TokenKind::identifier, std::move(message), RecoveryContext::path_segment);
     if (segment.kind == TokenKind::identifier) {
         return segment;
     }
@@ -104,9 +89,9 @@ std::optional<syntax::Token> ItemParser::parse_path_segment(std::string message)
     return std::nullopt;
 }
 
-void ItemParser::parse_import_alias(syntax::ImportDecl& import) {
-    const syntax::Token& alias =
-        this->expect_identifier_recovered(std::string(PARSER_EXPECT_IMPORT_ALIAS));
+void ItemParser::parse_import_alias(syntax::ImportDecl& import)
+{
+    const syntax::Token& alias = this->expect_identifier_recovered(std::string(PARSER_EXPECT_IMPORT_ALIAS));
     if (alias.kind == TokenKind::identifier) {
         import.alias = alias.text();
         import.alias_range = alias.range;
@@ -125,10 +110,10 @@ void ItemParser::recover_import_alias() const
 ParsedVisibility ItemParser::parse_visibility() const
 {
     if (this->match(syntax::TokenKind::kw_pub)) {
-        return ParsedVisibility {syntax::Visibility::public_, true};
+        return ParsedVisibility{syntax::Visibility::public_, true};
     }
     if (this->match(syntax::TokenKind::kw_priv)) {
-        return ParsedVisibility {syntax::Visibility::private_, true};
+        return ParsedVisibility{syntax::Visibility::private_, true};
     }
     return {};
 }

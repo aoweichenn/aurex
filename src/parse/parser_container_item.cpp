@@ -1,6 +1,6 @@
 #include <aurex/parse/parser_item_part.hpp>
-
 #include <aurex/parse/parser_messages.hpp>
+
 #include <utility>
 
 namespace aurex::parse {
@@ -11,7 +11,8 @@ using syntax::TokenKind;
 
 } // namespace
 
-syntax::ItemId ItemParser::parse_impl_block() {
+syntax::ItemId ItemParser::parse_impl_block()
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_impl, std::string(PARSER_EXPECT_IMPL_KEYWORD));
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
     const syntax::TypeId impl_type = this->parse_type();
@@ -40,17 +41,11 @@ syntax::ItemId ItemParser::parse_impl_block() {
             method_item.impl_type = impl_type;
             if (!generic_params.empty()) {
                 method_item.generic_params.insert(
-                    method_item.generic_params.begin(),
-                    generic_params.begin(),
-                    generic_params.end()
-                );
+                    method_item.generic_params.begin(), generic_params.begin(), generic_params.end());
             }
             if (!where_constraints.empty()) {
                 method_item.where_constraints.insert(
-                    method_item.where_constraints.begin(),
-                    where_constraints.begin(),
-                    where_constraints.end()
-                );
+                    method_item.where_constraints.begin(), where_constraints.begin(), where_constraints.end());
             }
             this->session_.module.set_item(method.value, std::move(method_item));
             block.impl_items.push_back(method);
@@ -64,7 +59,8 @@ syntax::ItemId ItemParser::parse_impl_block() {
     return this->session_.module.push_item(std::move(block));
 }
 
-syntax::ItemId ItemParser::parse_extern_block() {
+syntax::ItemId ItemParser::parse_extern_block()
+{
     const syntax::Token& begin = this->expect(TokenKind::kw_extern, std::string(PARSER_EXPECT_EXTERN_KEYWORD));
     this->expect_contextual_c_keyword(std::string(PARSER_EXPECT_C_AFTER_EXTERN));
     this->expect_item_container_start(std::string(PARSER_EXPECT_EXTERN_BODY));

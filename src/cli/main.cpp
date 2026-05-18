@@ -4,7 +4,8 @@
 #include <string_view>
 #include <vector>
 
-int main(const int argc, char** argv) {
+int main(const int argc, char** argv)
+{
     std::vector<std::string_view> arguments;
     arguments.reserve(static_cast<std::size_t>(argc));
     for (int i = 0; i < argc; ++i) {

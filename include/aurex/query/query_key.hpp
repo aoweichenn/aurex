@@ -106,9 +106,7 @@ struct PackageKey {
     StableFingerprint128 identity;
     base::u64 global_id = 0;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        PackageKey lhs,
-        PackageKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(PackageKey lhs, PackageKey rhs) noexcept = default;
 };
 
 struct FileKey {
@@ -118,9 +116,7 @@ struct FileKey {
     SourceRole role = SourceRole::source;
     base::u64 global_id = 0;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        FileKey lhs,
-        FileKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(FileKey lhs, FileKey rhs) noexcept = default;
 };
 
 struct ModuleKey {
@@ -130,9 +126,7 @@ struct ModuleKey {
     ModuleKind kind = ModuleKind::source;
     base::u64 global_id = 0;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        ModuleKey lhs,
-        ModuleKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(ModuleKey lhs, ModuleKey rhs) noexcept = default;
 };
 
 struct ModulePartKey {
@@ -143,9 +137,7 @@ struct ModulePartKey {
     ModulePartKind kind = ModulePartKind::primary;
     base::u64 global_id = 0;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        ModulePartKey lhs,
-        ModulePartKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(ModulePartKey lhs, ModulePartKey rhs) noexcept = default;
 };
 
 struct DefKey {
@@ -157,9 +149,7 @@ struct DefKey {
     base::u32 disambiguator = 0;
     base::u64 global_id = 0;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        DefKey lhs,
-        DefKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(DefKey lhs, DefKey rhs) noexcept = default;
 };
 
 struct MemberKey {
@@ -169,9 +159,7 @@ struct MemberKey {
     base::u32 ordinal = 0;
     base::u64 global_id = 0;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        MemberKey lhs,
-        MemberKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(MemberKey lhs, MemberKey rhs) noexcept = default;
 };
 
 struct BodyKey {
@@ -180,9 +168,7 @@ struct BodyKey {
     base::u32 ordinal = 0;
     base::u64 global_id = 0;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        BodyKey lhs,
-        BodyKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(BodyKey lhs, BodyKey rhs) noexcept = default;
 };
 
 struct GenericParamKey {
@@ -191,9 +177,7 @@ struct GenericParamKey {
     GenericParamKind kind = GenericParamKind::type;
     base::u64 global_id = 0;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        GenericParamKey lhs,
-        GenericParamKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(GenericParamKey lhs, GenericParamKey rhs) noexcept = default;
 };
 
 struct QueryKey {
@@ -202,9 +186,7 @@ struct QueryKey {
     StableFingerprint128 payload;
     base::u64 global_id = 0;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        QueryKey lhs,
-        QueryKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(QueryKey lhs, QueryKey rhs) noexcept = default;
 };
 
 [[nodiscard]] bool is_valid(PackageKey key) noexcept;
@@ -217,44 +199,21 @@ struct QueryKey {
 [[nodiscard]] bool is_valid(QueryKey key) noexcept;
 
 [[nodiscard]] PackageKey package_key(std::span<const std::string_view> identity_parts) noexcept;
-[[nodiscard]] FileKey file_key(
-    PackageKey package,
-    std::string_view canonical_path,
-    SourceRole role = SourceRole::source,
-    std::string_view virtual_buffer = {}) noexcept;
+[[nodiscard]] FileKey file_key(PackageKey package, std::string_view canonical_path,
+    SourceRole role = SourceRole::source, std::string_view virtual_buffer = {}) noexcept;
 [[nodiscard]] ModuleKey module_key(
-    PackageKey package,
-    std::span<const std::string_view> module_path,
-    ModuleKind kind = ModuleKind::source) noexcept;
+    PackageKey package, std::span<const std::string_view> module_path, ModuleKind kind = ModuleKind::source) noexcept;
 [[nodiscard]] ModulePartKey module_part_key(
-    ModuleKey module,
-    FileKey file,
-    ModulePartKind kind,
-    std::string_view name,
-    base::u32 stable_index = 0) noexcept;
-[[nodiscard]] DefKey def_key(
-    ModuleKey module,
-    DefNamespace name_space,
-    DefKind kind,
-    std::span<const std::string_view> path,
-    base::u32 disambiguator = 0) noexcept;
+    ModuleKey module, FileKey file, ModulePartKind kind, std::string_view name, base::u32 stable_index = 0) noexcept;
+[[nodiscard]] DefKey def_key(ModuleKey module, DefNamespace name_space, DefKind kind,
+    std::span<const std::string_view> path, base::u32 disambiguator = 0) noexcept;
 [[nodiscard]] MemberKey member_key(
-    DefKey owner,
-    MemberKind kind,
-    std::string_view name,
-    base::u32 ordinal = 0) noexcept;
-[[nodiscard]] BodyKey body_key(
-    DefKey owner,
-    BodySlotKind slot,
-    base::u32 ordinal = 0) noexcept;
+    DefKey owner, MemberKind kind, std::string_view name, base::u32 ordinal = 0) noexcept;
+[[nodiscard]] BodyKey body_key(DefKey owner, BodySlotKind slot, base::u32 ordinal = 0) noexcept;
 [[nodiscard]] GenericParamKey generic_param_key(
-    DefKey owner,
-    base::u32 index,
-    GenericParamKind kind = GenericParamKind::type) noexcept;
+    DefKey owner, base::u32 index, GenericParamKind kind = GenericParamKind::type) noexcept;
 [[nodiscard]] QueryKey query_key(
-    QueryKind kind,
-    StableFingerprint128 payload,
-    base::u16 schema = QUERY_KEY_SCHEMA_VERSION) noexcept;
+    QueryKind kind, StableFingerprint128 payload, base::u16 schema = QUERY_KEY_SCHEMA_VERSION) noexcept;
 
 void append_stable_key(StableKeyWriter& writer, PackageKey key);
 void append_stable_key(StableKeyWriter& writer, FileKey key);

@@ -13,9 +13,8 @@
 namespace aurex::ir::detail {
 
 [[nodiscard]] inline sema::TypeHandle checked_expr_type(
-    const sema::CheckedModule& checked,
-    const syntax::ExprId expr
-) noexcept {
+    const sema::CheckedModule& checked, const syntax::ExprId expr) noexcept
+{
     if (!syntax::is_valid(expr) || expr.value >= checked.expr_types.size()) {
         return sema::INVALID_TYPE_HANDLE;
     }
@@ -87,15 +86,17 @@ struct EnumCaseTypeKey {
     base::u32 type = sema::TypeHandle::INVALID_VALUE;
     sema::IdentId case_name = sema::INVALID_IDENT_ID;
 
-    [[nodiscard]] bool operator==(const EnumCaseTypeKey& other) const noexcept {
+    [[nodiscard]] bool operator==(const EnumCaseTypeKey& other) const noexcept
+    {
         return type == other.type && case_name == other.case_name;
     }
 };
 
 struct EnumCaseTypeKeyHash {
-    [[nodiscard]] std::size_t operator()(const EnumCaseTypeKey& key) const noexcept {
-        const std::size_t type_hash = std::hash<base::u32> {}(key.type);
-        const std::size_t name_hash = sema::IdentIdHash {}(key.case_name);
+    [[nodiscard]] std::size_t operator()(const EnumCaseTypeKey& key) const noexcept
+    {
+        const std::size_t type_hash = std::hash<base::u32>{}(key.type);
+        const std::size_t name_hash = sema::IdentIdHash{}(key.case_name);
         return type_hash ^ (name_hash + 0x9e3779b9U + (type_hash << 6U) + (type_hash >> 2U));
     }
 };
@@ -109,9 +110,9 @@ public:
 private:
     struct ExprView {
         syntax::ExprKind kind = syntax::ExprKind::invalid;
-        base::SourceRange range {};
+        base::SourceRange range{};
         std::string_view scope_name;
-        base::SourceRange scope_range {};
+        base::SourceRange scope_range{};
         std::string_view text;
         sema::IdentId scope_name_id = sema::INVALID_IDENT_ID;
         sema::IdentId text_id = sema::INVALID_IDENT_ID;
@@ -122,7 +123,7 @@ private:
         syntax::ExprId binary_lhs = syntax::INVALID_EXPR_ID;
         syntax::ExprId binary_rhs = syntax::INVALID_EXPR_ID;
         syntax::ExprId callee = syntax::INVALID_EXPR_ID;
-        std::span<const syntax::ExprId> args {};
+        std::span<const syntax::ExprId> args{};
         syntax::ExprId condition = syntax::INVALID_EXPR_ID;
         syntax::PatternId condition_pattern = syntax::INVALID_PATTERN_ID;
         syntax::ExprId then_expr = syntax::INVALID_EXPR_ID;
@@ -130,9 +131,9 @@ private:
         syntax::StmtId block = syntax::INVALID_STMT_ID;
         syntax::ExprId block_result = syntax::INVALID_EXPR_ID;
         syntax::ExprId match_value = syntax::INVALID_EXPR_ID;
-        std::span<const syntax::MatchArm> match_arms {};
-        std::span<const syntax::ExprId> array_elements {};
-        std::span<const syntax::ExprId> tuple_elements {};
+        std::span<const syntax::MatchArm> match_arms{};
+        std::span<const syntax::ExprId> array_elements{};
+        std::span<const syntax::ExprId> tuple_elements{};
         syntax::ExprId array_repeat_value = syntax::INVALID_EXPR_ID;
         syntax::ExprId array_repeat_count = syntax::INVALID_EXPR_ID;
         syntax::ExprId object = syntax::INVALID_EXPR_ID;
@@ -141,7 +142,7 @@ private:
         syntax::ExprId index = syntax::INVALID_EXPR_ID;
         syntax::ExprId slice_start = syntax::INVALID_EXPR_ID;
         syntax::ExprId slice_end = syntax::INVALID_EXPR_ID;
-        std::span<const syntax::FieldInit> field_inits {};
+        std::span<const syntax::FieldInit> field_inits{};
         syntax::TypeId cast_type = syntax::INVALID_TYPE_ID;
         syntax::ExprId cast_expr = syntax::INVALID_EXPR_ID;
     };
@@ -157,10 +158,7 @@ private:
     [[nodiscard]] std::string_view item_symbol_text(base::u32 index, const syntax::ItemNode& item) const;
     [[nodiscard]] IrTextId item_symbol(base::u32 index, const syntax::ItemNode& item);
     [[nodiscard]] IrTextId enum_case_symbol(
-        base::u32 index,
-        const syntax::ItemNode& item,
-        const syntax::EnumCaseDecl& enum_case
-    );
+        base::u32 index, const syntax::ItemNode& item, const syntax::EnumCaseDecl& enum_case);
     [[nodiscard]] sema::TypeHandle enum_case_type(IrTextId symbol) const noexcept;
     [[nodiscard]] GlobalConstantId enum_case_constant(std::string_view name) noexcept;
     [[nodiscard]] IrTextId enum_case_symbol(std::string_view name) noexcept;
@@ -170,13 +168,10 @@ private:
     [[nodiscard]] IrTextId pattern_case_symbol(syntax::PatternId id);
     [[nodiscard]] bool is_irrefutable_pattern(syntax::PatternId id, sema::TypeHandle matched_type) const;
     [[nodiscard]] ValueId append_true_value();
-    [[nodiscard]] ValueId append_pattern_condition(syntax::PatternId id, ValueId source_address, sema::TypeHandle source_type);
+    [[nodiscard]] ValueId append_pattern_condition(
+        syntax::PatternId id, ValueId source_address, sema::TypeHandle source_type);
     [[nodiscard]] ValueId append_pattern_element_address(
-        ValueId source_address,
-        sema::TypeHandle source_type,
-        ValueId index,
-        sema::TypeHandle element_type
-    );
+        ValueId source_address, sema::TypeHandle source_type, ValueId index, sema::TypeHandle element_type);
     [[nodiscard]] ValueId append_pattern_source_length(ValueId source_address, sema::TypeHandle source_type);
 
     void lower_function_body(FunctionId function_id, const syntax::ItemNode& item);
@@ -185,11 +180,7 @@ private:
     void lower_block_contents(syntax::StmtId block_id);
     void lower_stmt(syntax::StmtId stmt_id);
     void lower_local_pattern(
-        syntax::PatternId pattern,
-        ValueId source_address,
-        sema::TypeHandle source_type,
-        bool is_mutable
-    );
+        syntax::PatternId pattern, ValueId source_address, sema::TypeHandle source_type, bool is_mutable);
     void lower_if(const syntax::StmtNode& stmt);
     void lower_for(const syntax::StmtNode& stmt);
     void lower_for_range(syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
@@ -204,62 +195,39 @@ private:
     [[nodiscard]] ValueId append_enum_case_ref(std::string_view case_name, sema::TypeHandle enum_type);
     [[nodiscard]] ValueId append_enum_tag_literal(std::string_view case_name, sema::TypeHandle tag_type);
     [[nodiscard]] ValueId lower_enum_constructor(const sema::EnumCaseInfo& enum_case, syntax::ExprId payload_expr);
-    [[nodiscard]] ValueId lower_enum_constructor_call(
-        const sema::EnumCaseInfo& enum_case,
-        const ExprView& expr
-    );
+    [[nodiscard]] ValueId lower_enum_constructor_call(const sema::EnumCaseInfo& enum_case, const ExprView& expr);
     [[nodiscard]] ValueId append_enum_constructor(const sema::EnumCaseInfo& enum_case, ValueId payload_value);
     [[nodiscard]] ValueId append_enum_payload_load(ValueId enum_slot, sema::TypeHandle payload_type, IrTextId name);
     [[nodiscard]] const sema::EnumCaseInfo* enum_case_by_type_and_case(
-        sema::TypeHandle enum_type,
-        std::string_view case_name
-    ) const noexcept;
+        sema::TypeHandle enum_type, std::string_view case_name) const noexcept;
     [[nodiscard]] TryShape classify_try_shape(sema::TypeHandle enum_type) const noexcept;
 
     [[nodiscard]] ValueId append_temp_alloca(std::string_view name, sema::TypeHandle value_type);
     [[nodiscard]] ValueId append_integer_literal(std::string_view text, sema::TypeHandle value_type);
     [[nodiscard]] ValueId append_binary_value(BinaryOp op, sema::TypeHandle type, ValueId lhs, ValueId rhs);
     [[nodiscard]] ValueId append_for_range_condition(
-        ValueId cursor_slot,
-        ValueId end_slot,
-        ValueId step_slot,
-        sema::TypeHandle range_type
-    );
-    [[nodiscard]] ValueId append_load(
-        ValueId address,
-        sema::TypeHandle value_type,
-        IrTextId name = INVALID_IR_TEXT_ID
-    );
+        ValueId cursor_slot, ValueId end_slot, ValueId step_slot, sema::TypeHandle range_type);
+    [[nodiscard]] ValueId append_load(ValueId address, sema::TypeHandle value_type, IrTextId name = INVALID_IR_TEXT_ID);
     [[nodiscard]] ValueId enum_field_addr(ValueId object, IrTextId field_name);
     void bind_pattern_locals(syntax::PatternId pattern, ValueId source_address, sema::TypeHandle source_type);
     void bind_pattern_locals_with_mutability(
-        syntax::PatternId pattern,
-        ValueId source_address,
-        sema::TypeHandle source_type,
-        bool is_mutable
-    );
-    void collect_pattern_binding_slots(
-        syntax::PatternId pattern,
-        sema::TypeHandle source_type,
-        bool is_mutable,
-        std::unordered_map<sema::IdentId, PatternBindingSlot, sema::IdentIdHash>& slots
-    );
-    void store_pattern_bindings(
-        syntax::PatternId pattern,
-        ValueId source_address,
-        sema::TypeHandle source_type,
-        const std::unordered_map<sema::IdentId, PatternBindingSlot, sema::IdentIdHash>& slots
-    );
+        syntax::PatternId pattern, ValueId source_address, sema::TypeHandle source_type, bool is_mutable);
+    void collect_pattern_binding_slots(syntax::PatternId pattern, sema::TypeHandle source_type, bool is_mutable,
+        std::unordered_map<sema::IdentId, PatternBindingSlot, sema::IdentIdHash>& slots);
+    void store_pattern_bindings(syntax::PatternId pattern, ValueId source_address, sema::TypeHandle source_type,
+        const std::unordered_map<sema::IdentId, PatternBindingSlot, sema::IdentIdHash>& slots);
 
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id);
     [[nodiscard]] ValueId lower_expr(syntax::ExprId expr_id, sema::TypeHandle expected_type);
-    [[nodiscard]] ValueId lower_literal_expr(syntax::ExprId expr_id, const ExprView& expr, sema::TypeHandle expected_type);
+    [[nodiscard]] ValueId lower_literal_expr(
+        syntax::ExprId expr_id, const ExprView& expr, sema::TypeHandle expected_type);
     [[nodiscard]] ValueId lower_name(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_bound_value_ref(syntax::ExprId expr_id, IrTextId symbol);
     [[nodiscard]] ValueId lower_unary_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_binary_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_call_expr(syntax::ExprId expr_id, const ExprView& expr);
-    [[nodiscard]] ValueId lower_indirect_call_expr(syntax::ExprId expr_id, const ExprView& expr, sema::TypeHandle callee_type);
+    [[nodiscard]] ValueId lower_indirect_call_expr(
+        syntax::ExprId expr_id, const ExprView& expr, sema::TypeHandle callee_type);
     [[nodiscard]] ValueId lower_array_literal_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_tuple_literal_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_slice_expr(syntax::ExprId expr_id, const ExprView& expr);
@@ -283,7 +251,8 @@ private:
 
     [[nodiscard]] bool is_local_slot_type(sema::TypeHandle type) const noexcept;
     [[nodiscard]] bool pointee_is_mutable(syntax::ExprId expr_id) const noexcept;
-    [[nodiscard]] ValueId append_slice_data(ValueId slice_value, sema::PointerMutability mutability, sema::TypeHandle element_type);
+    [[nodiscard]] ValueId append_slice_data(
+        ValueId slice_value, sema::PointerMutability mutability, sema::TypeHandle element_type);
     [[nodiscard]] ValueId append_slice_len(ValueId slice_value);
 
     [[nodiscard]] CallTarget call_target(syntax::ExprId callee);
@@ -296,9 +265,7 @@ private:
     [[nodiscard]] sema::TypeHandle function_return_type(base::u32 index, const syntax::ItemNode& item) noexcept;
     [[nodiscard]] sema::TypeHandle stmt_local_type(syntax::StmtId stmt) const noexcept;
     [[nodiscard]] sema::TypeHandle aggregate_field_type(
-        sema::TypeHandle aggregate_type,
-        std::string_view name
-    ) const noexcept;
+        sema::TypeHandle aggregate_type, std::string_view name) const noexcept;
     [[nodiscard]] sema::TypeHandle local_load_type(ValueId slot) const noexcept;
 
     [[nodiscard]] ValueId coerce_value(ValueId value_id, sema::TypeHandle target_type);

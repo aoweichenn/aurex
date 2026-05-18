@@ -6,8 +6,9 @@ namespace aurex::parse {
 
 class ParserPartBase : protected ParserPartRangeReader {
 protected:
-    explicit ParserPartBase(Parser& parser) noexcept
-        : ParserPartRangeReader(parser) {}
+    explicit ParserPartBase(Parser& parser) noexcept : ParserPartRangeReader(parser)
+    {
+    }
 };
 
 } // namespace aurex::parse

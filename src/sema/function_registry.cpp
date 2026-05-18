@@ -1,7 +1,6 @@
 #include <aurex/sema/function_registry.hpp>
-
-#include <aurex/sema/sema_messages.hpp>
 #include <aurex/sema/sema.hpp>
+#include <aurex/sema/sema_messages.hpp>
 #include <aurex/sema/symbol.hpp>
 
 #include <utility>
@@ -10,52 +9,39 @@ namespace aurex::sema {
 
 namespace {
 
-[[nodiscard]] std::string abi_or_c_name(const syntax::ItemNode& item, const std::string& c_name) {
+[[nodiscard]] std::string abi_or_c_name(const syntax::ItemNode& item, const std::string& c_name)
+{
     if (!item.abi_name.empty()) {
         return std::string(item.abi_name);
     }
     return c_name;
 }
 
-[[nodiscard]] FunctionCallConv signature_call_conv(const FunctionSignature& signature) noexcept {
+[[nodiscard]] FunctionCallConv signature_call_conv(const FunctionSignature& signature) noexcept
+{
     return signature.is_extern_c || signature.is_export_c ? FunctionCallConv::c : FunctionCallConv::aurex;
 }
 
-[[nodiscard]] TypeHandle signature_function_type(TypeTable& types, const FunctionSignature& signature) {
-    return types.function(
-        signature_call_conv(signature),
-        signature.is_unsafe,
-        signature.is_variadic,
-        signature.param_types,
-        signature.return_type
-    );
+[[nodiscard]] TypeHandle signature_function_type(TypeTable& types, const FunctionSignature& signature)
+{
+    return types.function(signature_call_conv(signature), signature.is_unsafe, signature.is_variadic,
+        signature.param_types, signature.return_type);
 }
 
 } // namespace
 
-FunctionRegistry::FunctionRegistry(
-    CheckedModule& checked,
-    SemaMap<FunctionLookupKey, Symbol, FunctionLookupKeyHash>& global_values,
-    base::DiagnosticSink& diagnostics,
-    const IdentifierInterner* const source_names
-) noexcept
-    : checked_(checked),
-      global_values_(global_values),
-      diagnostics_(diagnostics),
-      source_names_(source_names) {}
+FunctionRegistry::FunctionRegistry(CheckedModule& checked,
+    SemaMap<FunctionLookupKey, Symbol, FunctionLookupKeyHash>& global_values, base::DiagnosticSink& diagnostics,
+    const IdentifierInterner* const source_names) noexcept
+    : checked_(checked), global_values_(global_values), diagnostics_(diagnostics), source_names_(source_names)
+{
+}
 
-void FunctionRegistry::register_function(
-    const syntax::ItemNode& item,
-    const syntax::ModuleId owner,
-    const FunctionLookupKey key,
-    const std::string& c_name,
-    const TypeHandle method_owner_type,
-    const TypeHandle return_type,
-    const std::span<const TypeHandle> param_types,
-    const syntax::ItemId item_id,
-    const StableDefId& stable_id,
-    const IncrementalKey& incremental_key
-) {
+void FunctionRegistry::register_function(const syntax::ItemNode& item, const syntax::ModuleId owner,
+    const FunctionLookupKey key, const std::string& c_name, const TypeHandle method_owner_type,
+    const TypeHandle return_type, const std::span<const TypeHandle> param_types, const syntax::ItemId item_id,
+    const StableDefId& stable_id, const IncrementalKey& incremental_key)
+{
     const bool is_prototype = item.is_prototype;
 
     FunctionSignature signature = this->checked_.make_function_signature();
@@ -89,11 +75,8 @@ void FunctionRegistry::register_function(
     this->merge_function(key, std::move(signature), is_prototype);
 }
 
-void FunctionRegistry::merge_function(
-    const FunctionLookupKey key,
-    FunctionSignature signature,
-    const bool is_prototype
-) {
+void FunctionRegistry::merge_function(const FunctionLookupKey key, FunctionSignature signature, const bool is_prototype)
+{
     const auto existing = this->checked_.functions.find(key);
     if (existing == this->checked_.functions.end()) {
         const auto inserted = this->checked_.functions.emplace(key, std::move(signature));
@@ -104,46 +87,31 @@ void FunctionRegistry::merge_function(
     FunctionSignature& prior = existing->second;
     if (!this->same_signature(prior, signature.return_type, signature.param_types, signature.is_variadic)) {
         prior.has_conflict = true;
-        this->report(
-            signature.range,
-            SemanticDiagnosticKind::type_mismatch,
-            sema_function_signature_mismatch_message(signature.name)
-        );
+        this->report(signature.range, SemanticDiagnosticKind::type_mismatch,
+            sema_function_signature_mismatch_message(signature.name));
         this->report_previous_declaration(prior);
         return;
     }
-    if (prior.is_extern_c ||
-        signature.is_extern_c ||
-        prior.is_export_c != signature.is_export_c ||
-        prior.is_unsafe != signature.is_unsafe ||
-        prior.c_name != signature.c_name) {
+    if (prior.is_extern_c || signature.is_extern_c || prior.is_export_c != signature.is_export_c
+        || prior.is_unsafe != signature.is_unsafe || prior.c_name != signature.c_name) {
         prior.has_conflict = true;
-        this->report(
-            signature.range,
-            SemanticDiagnosticKind::duplicate,
-            sema_function_declaration_conflict_message(signature.name)
-        );
+        this->report(signature.range, SemanticDiagnosticKind::duplicate,
+            sema_function_declaration_conflict_message(signature.name));
         this->report_previous_declaration(prior);
         return;
     }
     if (is_prototype) {
         if (prior.has_prototype) {
             prior.has_conflict = true;
-            this->report(
-                signature.range,
-                SemanticDiagnosticKind::duplicate,
-                sema_duplicate_function_prototype_message(signature.name)
-            );
+            this->report(signature.range, SemanticDiagnosticKind::duplicate,
+                sema_duplicate_function_prototype_message(signature.name));
             this->report_previous_declaration(prior);
             return;
         }
         if (prior.has_definition) {
             prior.has_conflict = true;
-            this->report(
-                signature.range,
-                SemanticDiagnosticKind::duplicate,
-                sema_function_prototype_order_message(signature.name)
-            );
+            this->report(signature.range, SemanticDiagnosticKind::duplicate,
+                sema_function_prototype_order_message(signature.name));
             this->report_previous_declaration(prior);
             return;
         }
@@ -156,11 +124,8 @@ void FunctionRegistry::merge_function(
     }
     if (prior.has_definition) {
         prior.has_conflict = true;
-        this->report(
-            signature.range,
-            SemanticDiagnosticKind::duplicate,
-            sema_duplicate_function_definition_simple_message(signature.name)
-        );
+        this->report(signature.range, SemanticDiagnosticKind::duplicate,
+            sema_duplicate_function_definition_simple_message(signature.name));
         this->report_previous_declaration(prior);
         return;
     }
@@ -171,13 +136,9 @@ void FunctionRegistry::merge_function(
     this->refresh_function_value(key, prior);
 }
 
-
-bool FunctionRegistry::same_signature(
-    const FunctionSignature& existing,
-    const TypeHandle return_type,
-    const std::span<const TypeHandle> param_types,
-    const bool is_variadic
-) const noexcept {
+bool FunctionRegistry::same_signature(const FunctionSignature& existing, const TypeHandle return_type,
+    const std::span<const TypeHandle> param_types, const bool is_variadic) const noexcept
+{
     if (!this->checked_.types.same(existing.return_type, return_type)) {
         return false;
     }
@@ -195,36 +156,33 @@ bool FunctionRegistry::same_signature(
     return true;
 }
 
-InternedText FunctionRegistry::source_name_text(
-    const IdentId name_id,
-    const std::string_view fallback_name
-) {
+InternedText FunctionRegistry::source_name_text(const IdentId name_id, const std::string_view fallback_name)
+{
     if (this->source_names_ != nullptr && is_valid(name_id) && !this->source_names_->text(name_id).empty()) {
-        return InternedText {name_id, this->source_names_};
+        return InternedText{name_id, this->source_names_};
     }
     return this->checked_.intern_text(fallback_name);
 }
 
-void FunctionRegistry::insert_function_value(const FunctionLookupKey& key, const FunctionSignature& signature) {
-    const auto value_inserted = this->global_values_.emplace(key, Symbol {
-        SymbolKind::function,
-        signature.name,
-        signature.name_id,
-        signature.c_name,
-        signature.module,
-        signature_function_type(this->checked_.types, signature),
-        signature.range,
-        false,
-        signature.visibility,
-        signature.stable_id,
-    });
-    if (!value_inserted.second) {
-        this->report(
+void FunctionRegistry::insert_function_value(const FunctionLookupKey& key, const FunctionSignature& signature)
+{
+    const auto value_inserted = this->global_values_.emplace(key,
+        Symbol{
+            SymbolKind::function,
+            signature.name,
+            signature.name_id,
+            signature.c_name,
+            signature.module,
+            signature_function_type(this->checked_.types, signature),
             signature.range,
-            SemanticDiagnosticKind::duplicate,
-            sema_duplicate_value_definition_in_module_message(signature.name)
-        );
-        this->diagnostics_.push(base::Diagnostic {
+            false,
+            signature.visibility,
+            signature.stable_id,
+        });
+    if (!value_inserted.second) {
+        this->report(signature.range, SemanticDiagnosticKind::duplicate,
+            sema_duplicate_value_definition_in_module_message(signature.name));
+        this->diagnostics_.push(base::Diagnostic{
             base::Severity::note,
             value_inserted.first->second.range,
             sema_previous_declaration_note_message(signature.name),
@@ -234,7 +192,8 @@ void FunctionRegistry::insert_function_value(const FunctionLookupKey& key, const
     }
 }
 
-void FunctionRegistry::refresh_function_value(const FunctionLookupKey& key, const FunctionSignature& signature) {
+void FunctionRegistry::refresh_function_value(const FunctionLookupKey& key, const FunctionSignature& signature)
+{
     const auto found = this->global_values_.find(key);
     if (found == this->global_values_.end()) {
         this->insert_function_value(key, signature);
@@ -247,13 +206,10 @@ void FunctionRegistry::refresh_function_value(const FunctionLookupKey& key, cons
 }
 
 void FunctionRegistry::report(
-    const base::SourceRange& range,
-    const SemanticDiagnosticKind kind,
-    std::string message
-) const
+    const base::SourceRange& range, const SemanticDiagnosticKind kind, std::string message) const
 {
     const SemanticDiagnosticMetadata metadata = semantic_diagnostic_metadata(kind);
-    this->diagnostics_.push(base::Diagnostic {
+    this->diagnostics_.push(base::Diagnostic{
         base::Severity::error,
         range,
         std::move(message),
@@ -264,7 +220,7 @@ void FunctionRegistry::report(
 
 void FunctionRegistry::report_previous_declaration(const FunctionSignature& signature) const
 {
-    this->diagnostics_.push(base::Diagnostic {
+    this->diagnostics_.push(base::Diagnostic{
         base::Severity::note,
         signature.range,
         sema_previous_declaration_note_message(signature.name),

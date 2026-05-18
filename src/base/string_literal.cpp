@@ -1,5 +1,4 @@
 #include <aurex/base/string_literal.hpp>
-
 #include <aurex/base/string_literal_messages.hpp>
 
 #include <algorithm>
@@ -71,13 +70,15 @@ constexpr u32 STRING_LITERAL_UNICODE_SURROGATE_BEGIN = 0xD800U;
 constexpr u32 STRING_LITERAL_UNICODE_SURROGATE_END = 0xDFFFU;
 constexpr u32 STRING_LITERAL_UNICODE_NULL_VALUE = 0U;
 
-[[nodiscard]] bool is_hex_digit(const char c) noexcept {
-    return (c >= STRING_LITERAL_ASCII_ZERO && c <= STRING_LITERAL_ASCII_NINE) ||
-           (c >= STRING_LITERAL_ASCII_LOWER_A && c <= STRING_LITERAL_ASCII_LOWER_F) ||
-           (c >= STRING_LITERAL_ASCII_UPPER_A && c <= STRING_LITERAL_ASCII_UPPER_F);
+[[nodiscard]] bool is_hex_digit(const char c) noexcept
+{
+    return (c >= STRING_LITERAL_ASCII_ZERO && c <= STRING_LITERAL_ASCII_NINE)
+        || (c >= STRING_LITERAL_ASCII_LOWER_A && c <= STRING_LITERAL_ASCII_LOWER_F)
+        || (c >= STRING_LITERAL_ASCII_UPPER_A && c <= STRING_LITERAL_ASCII_UPPER_F);
 }
 
-[[nodiscard]] u32 hex_value(const char c) noexcept {
+[[nodiscard]] u32 hex_value(const char c) noexcept
+{
     if (c >= STRING_LITERAL_ASCII_ZERO && c <= STRING_LITERAL_ASCII_NINE) {
         return static_cast<u32>(c - STRING_LITERAL_ASCII_ZERO);
     }
@@ -88,37 +89,52 @@ constexpr u32 STRING_LITERAL_UNICODE_NULL_VALUE = 0U;
 }
 
 template <typename DecodeResult>
-void add_error(DecodeResult& result, const usize begin, const usize end, std::string message) {
-    result.errors.push_back(StringLiteralError {begin, std::max(begin + 1, end), std::move(message)});
+void add_error(DecodeResult& result, const usize begin, const usize end, std::string message)
+{
+    result.errors.push_back(StringLiteralError{begin, std::max(begin + 1, end), std::move(message)});
 }
 
-void append_utf8(std::string& out, const u32 value) {
+void append_utf8(std::string& out, const u32 value)
+{
     if (value <= STRING_LITERAL_UTF8_SINGLE_BYTE_MAX) {
         out.push_back(static_cast<char>(value));
         return;
     }
     if (value <= STRING_LITERAL_UTF8_TWO_BYTE_MAX) {
-        out.push_back(static_cast<char>(STRING_LITERAL_UTF8_TWO_BYTE_PREFIX_VALUE | (value >> STRING_LITERAL_UTF8_TWO_BYTE_SHIFT)));
-        out.push_back(static_cast<char>(STRING_LITERAL_UTF8_CONTINUATION_VALUE | (value & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK)));
+        out.push_back(static_cast<char>(
+            STRING_LITERAL_UTF8_TWO_BYTE_PREFIX_VALUE | (value >> STRING_LITERAL_UTF8_TWO_BYTE_SHIFT)));
+        out.push_back(static_cast<char>(
+            STRING_LITERAL_UTF8_CONTINUATION_VALUE | (value & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK)));
         return;
     }
     if (value <= STRING_LITERAL_UTF8_THREE_BYTE_MAX) {
-        out.push_back(static_cast<char>(STRING_LITERAL_UTF8_THREE_BYTE_PREFIX_VALUE | ((value >> STRING_LITERAL_UTF8_THREE_BYTE_FIRST_SHIFT) & STRING_LITERAL_UTF8_THREE_BYTE_PREFIX_PAYLOAD_MASK)));
-        out.push_back(static_cast<char>(STRING_LITERAL_UTF8_CONTINUATION_VALUE | ((value >> STRING_LITERAL_UTF8_THREE_BYTE_SECOND_SHIFT) & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK)));
-        out.push_back(static_cast<char>(STRING_LITERAL_UTF8_CONTINUATION_VALUE | (value & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK)));
+        out.push_back(static_cast<char>(STRING_LITERAL_UTF8_THREE_BYTE_PREFIX_VALUE
+            | ((value >> STRING_LITERAL_UTF8_THREE_BYTE_FIRST_SHIFT)
+                & STRING_LITERAL_UTF8_THREE_BYTE_PREFIX_PAYLOAD_MASK)));
+        out.push_back(static_cast<char>(STRING_LITERAL_UTF8_CONTINUATION_VALUE
+            | ((value >> STRING_LITERAL_UTF8_THREE_BYTE_SECOND_SHIFT)
+                & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK)));
+        out.push_back(static_cast<char>(
+            STRING_LITERAL_UTF8_CONTINUATION_VALUE | (value & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK)));
         return;
     }
-    out.push_back(static_cast<char>(STRING_LITERAL_UTF8_FOUR_BYTE_PREFIX_VALUE | ((value >> STRING_LITERAL_UTF8_FOUR_BYTE_FIRST_SHIFT) & STRING_LITERAL_UTF8_FOUR_BYTE_PREFIX_PAYLOAD_MASK)));
-    out.push_back(static_cast<char>(STRING_LITERAL_UTF8_CONTINUATION_VALUE | ((value >> STRING_LITERAL_UTF8_FOUR_BYTE_SECOND_SHIFT) & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK)));
-    out.push_back(static_cast<char>(STRING_LITERAL_UTF8_CONTINUATION_VALUE | ((value >> STRING_LITERAL_UTF8_FOUR_BYTE_THIRD_SHIFT) & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK)));
-    out.push_back(static_cast<char>(STRING_LITERAL_UTF8_CONTINUATION_VALUE | (value & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK)));
+    out.push_back(static_cast<char>(STRING_LITERAL_UTF8_FOUR_BYTE_PREFIX_VALUE
+        | ((value >> STRING_LITERAL_UTF8_FOUR_BYTE_FIRST_SHIFT) & STRING_LITERAL_UTF8_FOUR_BYTE_PREFIX_PAYLOAD_MASK)));
+    out.push_back(static_cast<char>(STRING_LITERAL_UTF8_CONTINUATION_VALUE
+        | ((value >> STRING_LITERAL_UTF8_FOUR_BYTE_SECOND_SHIFT) & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK)));
+    out.push_back(static_cast<char>(STRING_LITERAL_UTF8_CONTINUATION_VALUE
+        | ((value >> STRING_LITERAL_UTF8_FOUR_BYTE_THIRD_SHIFT) & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK)));
+    out.push_back(static_cast<char>(
+        STRING_LITERAL_UTF8_CONTINUATION_VALUE | (value & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK)));
 }
 
-[[nodiscard]] bool is_continuation(const unsigned char byte) noexcept {
+[[nodiscard]] bool is_continuation(const unsigned char byte) noexcept
+{
     return (byte & STRING_LITERAL_UTF8_CONTINUATION_MASK) == STRING_LITERAL_UTF8_CONTINUATION_VALUE;
 }
 
-[[nodiscard]] bool decode_utf8_scalar_at(const std::string_view text, usize& index, u32& value) noexcept {
+[[nodiscard]] bool decode_utf8_scalar_at(const std::string_view text, usize& index, u32& value) noexcept
+{
     if (index >= text.size()) {
         return false;
     }
@@ -156,8 +172,8 @@ void append_utf8(std::string& out, const u32 value) {
         if (!is_continuation(next)) {
             return false;
         }
-        value = (value << STRING_LITERAL_UTF8_CONTINUATION_SHIFT) |
-            static_cast<u32>(next & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK);
+        value = (value << STRING_LITERAL_UTF8_CONTINUATION_SHIFT)
+            | static_cast<u32>(next & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK);
     }
     if (value < min_value || !is_unicode_scalar(value)) {
         return false;
@@ -166,27 +182,23 @@ void append_utf8(std::string& out, const u32 value) {
     return true;
 }
 
-[[nodiscard]] bool is_non_ascii_byte(const char c) noexcept {
+[[nodiscard]] bool is_non_ascii_byte(const char c) noexcept
+{
     return static_cast<unsigned char>(c) > STRING_LITERAL_ASCII_SINGLE_BYTE_MAX;
 }
 
-[[nodiscard]] usize quoted_content_begin(const std::string_view literal, const StringLiteralKind kind) noexcept {
-    if (kind == StringLiteralKind::c_string &&
-        literal.size() >= STRING_LITERAL_C_STRING_PREFIX_LENGTH &&
-        literal[0] == STRING_LITERAL_C_PREFIX &&
-        literal[1] == STRING_LITERAL_ESCAPE_DOUBLE_QUOTE) {
+[[nodiscard]] usize quoted_content_begin(const std::string_view literal, const StringLiteralKind kind) noexcept
+{
+    if (kind == StringLiteralKind::c_string && literal.size() >= STRING_LITERAL_C_STRING_PREFIX_LENGTH
+        && literal[0] == STRING_LITERAL_C_PREFIX && literal[1] == STRING_LITERAL_ESCAPE_DOUBLE_QUOTE) {
         return STRING_LITERAL_C_STRING_PREFIX_LENGTH;
     }
-    if (kind == StringLiteralKind::raw_string &&
-        literal.size() >= STRING_LITERAL_RAW_STRING_PREFIX_LENGTH &&
-        literal[0] == STRING_LITERAL_RAW_PREFIX &&
-        literal[1] == STRING_LITERAL_ESCAPE_DOUBLE_QUOTE) {
+    if (kind == StringLiteralKind::raw_string && literal.size() >= STRING_LITERAL_RAW_STRING_PREFIX_LENGTH
+        && literal[0] == STRING_LITERAL_RAW_PREFIX && literal[1] == STRING_LITERAL_ESCAPE_DOUBLE_QUOTE) {
         return STRING_LITERAL_RAW_STRING_PREFIX_LENGTH;
     }
-    if (kind == StringLiteralKind::byte_string &&
-        literal.size() >= STRING_LITERAL_BYTE_STRING_PREFIX_LENGTH &&
-        literal[0] == STRING_LITERAL_BYTE_PREFIX &&
-        literal[1] == STRING_LITERAL_ESCAPE_DOUBLE_QUOTE) {
+    if (kind == StringLiteralKind::byte_string && literal.size() >= STRING_LITERAL_BYTE_STRING_PREFIX_LENGTH
+        && literal[0] == STRING_LITERAL_BYTE_PREFIX && literal[1] == STRING_LITERAL_ESCAPE_DOUBLE_QUOTE) {
         return STRING_LITERAL_BYTE_STRING_PREFIX_LENGTH;
     }
     if (!literal.empty() && literal.front() == STRING_LITERAL_ESCAPE_DOUBLE_QUOTE) {
@@ -195,7 +207,8 @@ void append_utf8(std::string& out, const u32 value) {
     return 0;
 }
 
-[[nodiscard]] usize quoted_content_end(const std::string_view literal, const usize content_begin) noexcept {
+[[nodiscard]] usize quoted_content_end(const std::string_view literal, const usize content_begin) noexcept
+{
     usize content_end = literal.size();
     if (content_end > content_begin && literal[content_end - 1] == STRING_LITERAL_ESCAPE_DOUBLE_QUOTE) {
         --content_end;
@@ -203,32 +216,34 @@ void append_utf8(std::string& out, const u32 value) {
     return content_end;
 }
 
-[[nodiscard]] bool decode_simple_escaped_byte(const char escaped, u8& value) noexcept {
+[[nodiscard]] bool decode_simple_escaped_byte(const char escaped, u8& value) noexcept
+{
     switch (escaped) {
-    case STRING_LITERAL_ESCAPE_NULL:
-        value = 0;
-        return true;
-    case STRING_LITERAL_ESCAPE_NEWLINE:
-        value = static_cast<u8>(STRING_LITERAL_NEWLINE_CHAR);
-        return true;
-    case STRING_LITERAL_ESCAPE_CARRIAGE_RETURN:
-        value = static_cast<u8>(STRING_LITERAL_CARRIAGE_RETURN_CHAR);
-        return true;
-    case STRING_LITERAL_ESCAPE_TAB:
-        value = static_cast<u8>(STRING_LITERAL_TAB_CHAR);
-        return true;
-    case STRING_LITERAL_ESCAPE_BACKSLASH:
-        value = static_cast<u8>(STRING_LITERAL_ESCAPE_BACKSLASH);
-        return true;
-    case STRING_LITERAL_ESCAPE_SINGLE_QUOTE:
-        value = static_cast<u8>(STRING_LITERAL_ESCAPE_SINGLE_QUOTE);
-        return true;
-    default:
-        return false;
+        case STRING_LITERAL_ESCAPE_NULL:
+            value = 0;
+            return true;
+        case STRING_LITERAL_ESCAPE_NEWLINE:
+            value = static_cast<u8>(STRING_LITERAL_NEWLINE_CHAR);
+            return true;
+        case STRING_LITERAL_ESCAPE_CARRIAGE_RETURN:
+            value = static_cast<u8>(STRING_LITERAL_CARRIAGE_RETURN_CHAR);
+            return true;
+        case STRING_LITERAL_ESCAPE_TAB:
+            value = static_cast<u8>(STRING_LITERAL_TAB_CHAR);
+            return true;
+        case STRING_LITERAL_ESCAPE_BACKSLASH:
+            value = static_cast<u8>(STRING_LITERAL_ESCAPE_BACKSLASH);
+            return true;
+        case STRING_LITERAL_ESCAPE_SINGLE_QUOTE:
+            value = static_cast<u8>(STRING_LITERAL_ESCAPE_SINGLE_QUOTE);
+            return true;
+        default:
+            return false;
     }
 }
 
-[[nodiscard]] bool decode_simple_escaped_scalar(const char escaped, u32& value) noexcept {
+[[nodiscard]] bool decode_simple_escaped_scalar(const char escaped, u32& value) noexcept
+{
     u8 byte = 0;
     if (decode_simple_escaped_byte(escaped, byte)) {
         value = byte;
@@ -243,12 +258,14 @@ void append_utf8(std::string& out, const u32 value) {
 
 } // namespace
 
-bool is_unicode_scalar(const u32 value) noexcept {
-    return value <= STRING_LITERAL_UNICODE_MAX &&
-           !(value >= STRING_LITERAL_UNICODE_SURROGATE_BEGIN && value <= STRING_LITERAL_UNICODE_SURROGATE_END);
+bool is_unicode_scalar(const u32 value) noexcept
+{
+    return value <= STRING_LITERAL_UNICODE_MAX
+        && !(value >= STRING_LITERAL_UNICODE_SURROGATE_BEGIN && value <= STRING_LITERAL_UNICODE_SURROGATE_END);
 }
 
-bool is_valid_utf8(const std::string_view text) noexcept {
+bool is_valid_utf8(const std::string_view text) noexcept
+{
     usize i = 0;
     while (i < text.size()) {
         const auto first = static_cast<unsigned char>(text[i]);
@@ -264,7 +281,8 @@ bool is_valid_utf8(const std::string_view text) noexcept {
             value = first & STRING_LITERAL_UTF8_TWO_BYTE_PREFIX_PAYLOAD_MASK;
             width = 2;
             min_value = STRING_LITERAL_UTF8_TWO_BYTE_MIN;
-        } else if ((first & STRING_LITERAL_UTF8_THREE_BYTE_PREFIX_MASK) == STRING_LITERAL_UTF8_THREE_BYTE_PREFIX_VALUE) {
+        } else if ((first & STRING_LITERAL_UTF8_THREE_BYTE_PREFIX_MASK)
+            == STRING_LITERAL_UTF8_THREE_BYTE_PREFIX_VALUE) {
             value = first & STRING_LITERAL_UTF8_THREE_BYTE_PREFIX_PAYLOAD_MASK;
             width = 3;
             min_value = STRING_LITERAL_UTF8_THREE_BYTE_MIN;
@@ -284,7 +302,8 @@ bool is_valid_utf8(const std::string_view text) noexcept {
             if (!is_continuation(next)) {
                 return false;
             }
-            value = (value << STRING_LITERAL_UTF8_CONTINUATION_SHIFT) | static_cast<u32>(next & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK);
+            value = (value << STRING_LITERAL_UTF8_CONTINUATION_SHIFT)
+                | static_cast<u32>(next & STRING_LITERAL_UTF8_CONTINUATION_PAYLOAD_MASK);
         }
         if (value < min_value || !is_unicode_scalar(value)) {
             return false;
@@ -294,7 +313,8 @@ bool is_valid_utf8(const std::string_view text) noexcept {
     return true;
 }
 
-StringLiteralDecode decode_string_literal(const std::string_view literal, const StringLiteralKind kind) {
+StringLiteralDecode decode_string_literal(const std::string_view literal, const StringLiteralKind kind)
+{
     StringLiteralDecode result;
     const bool is_c_string = kind == StringLiteralKind::c_string;
     const bool is_raw_string = kind == StringLiteralKind::raw_string;
@@ -337,84 +357,85 @@ StringLiteralDecode decode_string_literal(const std::string_view literal, const 
         const char escaped = literal[i];
         ++i;
         switch (escaped) {
-        case STRING_LITERAL_ESCAPE_NULL:
-            if (is_c_string) {
-                add_error(result, escape_begin, i, std::string(STRING_LITERAL_C_STRING_INTERIOR_NUL));
-            }
-            result.decoded.push_back(STRING_LITERAL_NULL_CHAR);
-            break;
-        case STRING_LITERAL_ESCAPE_NEWLINE:
-            result.decoded.push_back(STRING_LITERAL_NEWLINE_CHAR);
-            break;
-        case STRING_LITERAL_ESCAPE_CARRIAGE_RETURN:
-            result.decoded.push_back(STRING_LITERAL_CARRIAGE_RETURN_CHAR);
-            break;
-        case STRING_LITERAL_ESCAPE_TAB:
-            result.decoded.push_back(STRING_LITERAL_TAB_CHAR);
-            break;
-        case STRING_LITERAL_ESCAPE_BACKSLASH:
-            result.decoded.push_back(STRING_LITERAL_ESCAPE_BACKSLASH);
-            break;
-        case STRING_LITERAL_ESCAPE_DOUBLE_QUOTE:
-            result.decoded.push_back(STRING_LITERAL_ESCAPE_DOUBLE_QUOTE);
-            break;
-        case STRING_LITERAL_ESCAPE_UNICODE: {
-            if (is_byte_string) {
-                add_error(result, escape_begin, i, std::string(STRING_LITERAL_INVALID_ESCAPE));
-                result.decoded.push_back(STRING_LITERAL_ESCAPE_UNICODE);
-                break;
-            }
-            if (i >= content_end || literal[i] != STRING_LITERAL_ESCAPE_LEFT_BRACE) {
-                add_error(result, escape_begin, i, std::string(STRING_LITERAL_UNICODE_BRACES));
-                result.decoded.push_back(STRING_LITERAL_ESCAPE_UNICODE);
-                break;
-            }
-            ++i;
-            const usize digit_begin = i;
-            u32 value = 0;
-            bool overflow = false;
-            bool invalid_digit = false;
-            while (i < content_end && literal[i] != '}') {
-                if (!is_hex_digit(literal[i])) {
-                    invalid_digit = true;
-                    ++i;
-                    continue;
+            case STRING_LITERAL_ESCAPE_NULL:
+                if (is_c_string) {
+                    add_error(result, escape_begin, i, std::string(STRING_LITERAL_C_STRING_INTERIOR_NUL));
                 }
-                const u32 digit = hex_value(literal[i]);
-                if (value > ((STRING_LITERAL_UNICODE_MAX - digit) / STRING_LITERAL_HEX_DIGIT_BASE)) {
-                    overflow = true;
-                } else {
-                    value = (value * STRING_LITERAL_HEX_DIGIT_BASE) + digit;
+                result.decoded.push_back(STRING_LITERAL_NULL_CHAR);
+                break;
+            case STRING_LITERAL_ESCAPE_NEWLINE:
+                result.decoded.push_back(STRING_LITERAL_NEWLINE_CHAR);
+                break;
+            case STRING_LITERAL_ESCAPE_CARRIAGE_RETURN:
+                result.decoded.push_back(STRING_LITERAL_CARRIAGE_RETURN_CHAR);
+                break;
+            case STRING_LITERAL_ESCAPE_TAB:
+                result.decoded.push_back(STRING_LITERAL_TAB_CHAR);
+                break;
+            case STRING_LITERAL_ESCAPE_BACKSLASH:
+                result.decoded.push_back(STRING_LITERAL_ESCAPE_BACKSLASH);
+                break;
+            case STRING_LITERAL_ESCAPE_DOUBLE_QUOTE:
+                result.decoded.push_back(STRING_LITERAL_ESCAPE_DOUBLE_QUOTE);
+                break;
+            case STRING_LITERAL_ESCAPE_UNICODE: {
+                if (is_byte_string) {
+                    add_error(result, escape_begin, i, std::string(STRING_LITERAL_INVALID_ESCAPE));
+                    result.decoded.push_back(STRING_LITERAL_ESCAPE_UNICODE);
+                    break;
+                }
+                if (i >= content_end || literal[i] != STRING_LITERAL_ESCAPE_LEFT_BRACE) {
+                    add_error(result, escape_begin, i, std::string(STRING_LITERAL_UNICODE_BRACES));
+                    result.decoded.push_back(STRING_LITERAL_ESCAPE_UNICODE);
+                    break;
                 }
                 ++i;
-            }
-            if (i >= content_end || literal[i] != STRING_LITERAL_ESCAPE_RIGHT_BRACE) {
-                add_error(result, escape_begin, content_end, std::string(STRING_LITERAL_UNTERMINATED_UNICODE_ESCAPE));
+                const usize digit_begin = i;
+                u32 value = 0;
+                bool overflow = false;
+                bool invalid_digit = false;
+                while (i < content_end && literal[i] != '}') {
+                    if (!is_hex_digit(literal[i])) {
+                        invalid_digit = true;
+                        ++i;
+                        continue;
+                    }
+                    const u32 digit = hex_value(literal[i]);
+                    if (value > ((STRING_LITERAL_UNICODE_MAX - digit) / STRING_LITERAL_HEX_DIGIT_BASE)) {
+                        overflow = true;
+                    } else {
+                        value = (value * STRING_LITERAL_HEX_DIGIT_BASE) + digit;
+                    }
+                    ++i;
+                }
+                if (i >= content_end || literal[i] != STRING_LITERAL_ESCAPE_RIGHT_BRACE) {
+                    add_error(
+                        result, escape_begin, content_end, std::string(STRING_LITERAL_UNTERMINATED_UNICODE_ESCAPE));
+                    break;
+                }
+                ++i;
+                if (digit_begin == i - 1) {
+                    add_error(result, escape_begin, i, std::string(STRING_LITERAL_UNICODE_ESCAPE_NO_DIGITS));
+                    break;
+                }
+                if (invalid_digit) {
+                    add_error(result, escape_begin, i, std::string(STRING_LITERAL_UNICODE_ESCAPE_NON_HEX));
+                    break;
+                }
+                if (overflow || !is_unicode_scalar(value)) {
+                    add_error(result, escape_begin, i, std::string(STRING_LITERAL_UNICODE_ESCAPE_INVALID_SCALAR));
+                    break;
+                }
+                if (is_c_string && value == STRING_LITERAL_UNICODE_NULL_VALUE) {
+                    add_error(result, escape_begin, i, std::string(STRING_LITERAL_C_STRING_INTERIOR_NUL));
+                }
+                append_utf8(result.decoded, value);
                 break;
             }
-            ++i;
-            if (digit_begin == i - 1) {
-                add_error(result, escape_begin, i, std::string(STRING_LITERAL_UNICODE_ESCAPE_NO_DIGITS));
+            default:
+                add_error(result, escape_begin, i, std::string(STRING_LITERAL_INVALID_ESCAPE));
+                result.decoded.push_back(escaped);
                 break;
-            }
-            if (invalid_digit) {
-                add_error(result, escape_begin, i, std::string(STRING_LITERAL_UNICODE_ESCAPE_NON_HEX));
-                break;
-            }
-            if (overflow || !is_unicode_scalar(value)) {
-                add_error(result, escape_begin, i, std::string(STRING_LITERAL_UNICODE_ESCAPE_INVALID_SCALAR));
-                break;
-            }
-            if (is_c_string && value == STRING_LITERAL_UNICODE_NULL_VALUE) {
-                add_error(result, escape_begin, i, std::string(STRING_LITERAL_C_STRING_INTERIOR_NUL));
-            }
-            append_utf8(result.decoded, value);
-            break;
-        }
-        default:
-            add_error(result, escape_begin, i, std::string(STRING_LITERAL_INVALID_ESCAPE));
-            result.decoded.push_back(escaped);
-            break;
         }
     }
 
@@ -425,12 +446,12 @@ StringLiteralDecode decode_string_literal(const std::string_view literal, const 
     return result;
 }
 
-ByteLiteralDecode decode_byte_literal(const std::string_view literal) {
+ByteLiteralDecode decode_byte_literal(const std::string_view literal)
+{
     ByteLiteralDecode result;
     usize content_begin = 0;
-    if (literal.size() >= STRING_LITERAL_BYTE_LITERAL_PREFIX_LENGTH &&
-        literal[0] == STRING_LITERAL_BYTE_PREFIX &&
-        literal[1] == STRING_LITERAL_ESCAPE_SINGLE_QUOTE) {
+    if (literal.size() >= STRING_LITERAL_BYTE_LITERAL_PREFIX_LENGTH && literal[0] == STRING_LITERAL_BYTE_PREFIX
+        && literal[1] == STRING_LITERAL_ESCAPE_SINGLE_QUOTE) {
         content_begin = STRING_LITERAL_BYTE_LITERAL_PREFIX_LENGTH;
     } else if (!literal.empty() && literal.front() == STRING_LITERAL_ESCAPE_SINGLE_QUOTE) {
         content_begin = 1;
@@ -454,12 +475,8 @@ ByteLiteralDecode decode_byte_literal(const std::string_view literal) {
         }
         u8 value = 0;
         if (!decode_simple_escaped_byte(content[1], value)) {
-            add_error(
-                result,
-                content_begin,
-                content_begin + std::min<usize>(content.size(), 2U),
-                std::string(STRING_LITERAL_INVALID_ESCAPE)
-            );
+            add_error(result, content_begin, content_begin + std::min<usize>(content.size(), 2U),
+                std::string(STRING_LITERAL_INVALID_ESCAPE));
             return result;
         }
         if (content.size() != 2) {
@@ -478,7 +495,8 @@ ByteLiteralDecode decode_byte_literal(const std::string_view literal) {
     return result;
 }
 
-CharLiteralDecode decode_char_literal(const std::string_view literal) {
+CharLiteralDecode decode_char_literal(const std::string_view literal)
+{
     CharLiteralDecode result;
     usize content_begin = 0;
     if (!literal.empty() && literal.front() == STRING_LITERAL_ESCAPE_SINGLE_QUOTE) {

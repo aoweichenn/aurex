@@ -1,5 +1,6 @@
 #include <aurex/syntax/ast_dump.hpp>
 #include <aurex/syntax/token.hpp>
+
 #include <support/frontend_test_support.hpp>
 
 #include <cstddef>
@@ -17,39 +18,37 @@ using syntax::TokenKind;
 constexpr std::size_t AST_COMPACT_HEADER_MAX_BYTES = 32;
 constexpr std::size_t AST_FAT_NODE_HEADER_RATIO = 4;
 
-[[nodiscard]] syntax::TypeId push_primitive_type(
-    syntax::AstModule& module,
-    const syntax::PrimitiveTypeKind kind
-) {
+[[nodiscard]] syntax::TypeId push_primitive_type(syntax::AstModule& module, const syntax::PrimitiveTypeKind kind)
+{
     syntax::TypeNode type;
     type.kind = syntax::TypeKind::primitive;
     type.primitive = kind;
     return module.push_type(type);
 }
 
-[[nodiscard]] syntax::StmtId push_expr_stmt(syntax::AstModule& module, const syntax::ExprId expr) {
+[[nodiscard]] syntax::StmtId push_expr_stmt(syntax::AstModule& module, const syntax::ExprId expr)
+{
     syntax::StmtNode stmt;
     stmt.kind = syntax::StmtKind::expr;
     stmt.init = expr;
     return module.push_stmt(stmt);
 }
 
-[[nodiscard]] syntax::ExprId push_name_expr(
-    syntax::AstModule& module,
-    const std::string_view text,
-    const std::string_view scope_name = {},
-    std::vector<syntax::TypeId> type_args = {}
-) {
+[[nodiscard]] syntax::ExprId push_name_expr(syntax::AstModule& module, const std::string_view text,
+    const std::string_view scope_name = {}, std::vector<syntax::TypeId> type_args = {})
+{
     return module.push_name_expr({}, scope_name, {}, text, std::move(type_args));
 }
 
-[[nodiscard]] syntax::ExprId push_float_literal(syntax::AstModule& module, const std::string_view text) {
+[[nodiscard]] syntax::ExprId push_float_literal(syntax::AstModule& module, const std::string_view text)
+{
     return module.push_literal_expr(syntax::ExprKind::float_literal, {}, text);
 }
 
 } // namespace
 
-TEST(CoreUnit, AstStorageUsesCompactHeaders) {
+TEST(CoreUnit, AstStorageUsesCompactHeaders)
+{
     EXPECT_LE(sizeof(syntax::TypeNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
     EXPECT_LE(sizeof(syntax::ExprNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
     EXPECT_LE(sizeof(syntax::PatternNodeHeader), AST_COMPACT_HEADER_MAX_BYTES);
@@ -61,7 +60,8 @@ TEST(CoreUnit, AstStorageUsesCompactHeaders) {
     EXPECT_LT(sizeof(syntax::ItemNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::ItemNode));
 }
 
-TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata) {
+TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata)
+{
     syntax::AstModule module;
     module.module_path.parts = {"app", "main"};
     syntax::ImportDecl import;
@@ -71,7 +71,7 @@ TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata) {
     syntax::ModuleInfo module_info;
     module_info.path.parts = {"lib", "math"};
     syntax::ResolvedImport resolved_import;
-    resolved_import.module = syntax::ModuleId {0};
+    resolved_import.module = syntax::ModuleId{0};
     resolved_import.alias = "math";
     resolved_import.visibility = syntax::Visibility::public_;
     module_info.imports.push_back(resolved_import);
@@ -139,12 +139,12 @@ TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata) {
     syntax::ItemNode function;
     function.kind = syntax::ItemKind::fn_decl;
     function.name = "value";
-    function.generic_params = {syntax::GenericParamDecl {"T", {}}};
+    function.generic_params = {syntax::GenericParamDecl{"T", {}}};
     syntax::GenericConstraintDecl copy_constraint;
     copy_constraint.param_name = "T";
     copy_constraint.capability_names = {"Copy"};
     function.where_constraints = {copy_constraint};
-    function.params = {syntax::ParamDecl {"value", type_id, {}}};
+    function.params = {syntax::ParamDecl{"value", type_id, {}}};
     function.body = stmt_id;
     const syntax::ItemId item_id = module.push_item(function);
 
@@ -254,7 +254,8 @@ TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata) {
     EXPECT_EQ(copied.identifier_text(copied_name->text_id), "value");
 }
 
-TEST(CoreUnit, AstModuleIdentifierInterningIsIdempotentAndRehomesCopies) {
+TEST(CoreUnit, AstModuleIdentifierInterningIsIdempotentAndRehomesCopies)
+{
     syntax::AstModule module;
     module.module_path.parts = {"app"};
 
@@ -282,8 +283,8 @@ TEST(CoreUnit, AstModuleIdentifierInterningIsIdempotentAndRehomesCopies) {
     syntax::ItemNode function;
     function.kind = syntax::ItemKind::fn_decl;
     function.name = "value";
-    function.generic_params = {syntax::GenericParamDecl {"T", {}}};
-    function.params = {syntax::ParamDecl {"value", type_id, {}}};
+    function.generic_params = {syntax::GenericParamDecl{"T", {}}};
+    function.params = {syntax::ParamDecl{"value", type_id, {}}};
     function.body = stmt_id;
     static_cast<void>(module.push_item(function));
 
@@ -317,12 +318,13 @@ TEST(CoreUnit, AstModuleIdentifierInterningIsIdempotentAndRehomesCopies) {
     EXPECT_EQ(copied_type.name.data(), copied_buffer_text.data());
 }
 
-TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
+TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads)
+{
     syntax::TypeNode function_type;
     function_type.kind = syntax::TypeKind::function;
     function_type.function_is_unsafe = true;
-    function_type.function_params = {syntax::TypeId {1}, syntax::TypeId {2}};
-    function_type.function_return = syntax::TypeId {3};
+    function_type.function_params = {syntax::TypeId{1}, syntax::TypeId{2}};
+    function_type.function_return = syntax::TypeId{3};
 
     syntax::TypeNodeList types;
     types.push_back(function_type);
@@ -335,8 +337,8 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     EXPECT_EQ(moved_type.function_params.back().value, 2U);
 
     syntax::CallExprPayload call_expr;
-    call_expr.callee = syntax::ExprId {4};
-    call_expr.args = {syntax::ExprId {5}, syntax::ExprId {6}};
+    call_expr.callee = syntax::ExprId{4};
+    call_expr.args = {syntax::ExprId{5}, syntax::ExprId{6}};
 
     syntax::ExprNodeList exprs;
     const syntax::ExprId call_id = exprs.append_call(syntax::ExprKind::call, {}, call_expr);
@@ -350,7 +352,7 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
 
     syntax::NameExprPayload typed_name;
     typed_name.text = "make";
-    typed_name.type_args = {syntax::TypeId {8}, syntax::TypeId {9}};
+    typed_name.type_args = {syntax::TypeId{8}, syntax::TypeId{9}};
     syntax::ExprNodeList names;
     const syntax::ExprId typed_name_id = names.append_name({}, typed_name);
     const syntax::NameExprPayload* const moved_name = names.name_payload(typed_name_id.value);
@@ -370,7 +372,7 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     enum_pattern.kind = syntax::PatternKind::enum_case;
     enum_pattern.scoped = true;
     enum_pattern.case_name = "some";
-    enum_pattern.payload_patterns = {syntax::PatternId {7}};
+    enum_pattern.payload_patterns = {syntax::PatternId{7}};
     enum_pattern.binding_names = {"value"};
 
     syntax::PatternNodeList patterns;
@@ -385,7 +387,7 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
 
     syntax::StmtNode block_stmt;
     block_stmt.kind = syntax::StmtKind::block;
-    block_stmt.statements = {syntax::StmtId {10}, syntax::StmtId {11}, syntax::StmtId {12}};
+    block_stmt.statements = {syntax::StmtId{10}, syntax::StmtId{11}, syntax::StmtId{12}};
     syntax::StmtNodeList stmts;
     stmts.push_back(block_stmt);
     EXPECT_GT(stmts.arena_blocks(), 0U);
@@ -397,15 +399,15 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     syntax::ItemNode function_item;
     function_item.kind = syntax::ItemKind::fn_decl;
     function_item.name = "map";
-    function_item.generic_params = {syntax::GenericParamDecl {"T", {}}};
+    function_item.generic_params = {syntax::GenericParamDecl{"T", {}}};
     syntax::GenericConstraintDecl copy_constraint;
     copy_constraint.param_name = "T";
     copy_constraint.capability_names = {"Copy"};
     function_item.where_constraints = {copy_constraint};
-    function_item.params = {syntax::ParamDecl {"value", syntax::TypeId {13}, {}}};
-    function_item.return_type = syntax::TypeId {14};
-    function_item.body = syntax::StmtId {15};
-    function_item.impl_type = syntax::TypeId {16};
+    function_item.params = {syntax::ParamDecl{"value", syntax::TypeId{13}, {}}};
+    function_item.return_type = syntax::TypeId{14};
+    function_item.body = syntax::StmtId{15};
+    function_item.impl_type = syntax::TypeId{16};
     function_item.is_unsafe = true;
     function_item.abi_name = "aurex_map";
 
@@ -425,10 +427,10 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     syntax::ItemNode enum_item;
     enum_item.kind = syntax::ItemKind::enum_decl;
     enum_item.name = "Option";
-    enum_item.enum_base_type = syntax::TypeId {17};
+    enum_item.enum_base_type = syntax::TypeId{17};
     enum_item.enum_cases = {
-        syntax::EnumCaseDecl {"some", syntax::TypeId {18}, {syntax::TypeId {18}}, {}, {}},
-        syntax::EnumCaseDecl {"none", syntax::INVALID_TYPE_ID, {}, "0", {}},
+        syntax::EnumCaseDecl{"some", syntax::TypeId{18}, {syntax::TypeId{18}}, {}, {}},
+        syntax::EnumCaseDecl{"none", syntax::INVALID_TYPE_ID, {}, "0", {}},
     };
 
     syntax::ItemNodeList enum_items;
@@ -439,22 +441,23 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     EXPECT_EQ(moved_enum.enum_cases.back().value_text, "0");
 }
 
-TEST(CoreUnit, CompactAstStorageMoveAssignmentTransfersArenaBackedPayloads) {
+TEST(CoreUnit, CompactAstStorageMoveAssignmentTransfersArenaBackedPayloads)
+{
     syntax::TypeNode function_type;
     function_type.kind = syntax::TypeKind::function;
-    function_type.function_params = {syntax::TypeId {1}, syntax::TypeId {2}};
-    function_type.function_return = syntax::TypeId {3};
+    function_type.function_params = {syntax::TypeId{1}, syntax::TypeId{2}};
+    function_type.function_return = syntax::TypeId{3};
     syntax::TypeNodeList source_types;
     source_types.push_back(function_type);
     syntax::TypeNodeList target_types;
-    target_types.push_back(syntax::TypeNode {});
+    target_types.push_back(syntax::TypeNode{});
     target_types = std::move(source_types);
     EXPECT_GT(target_types.arena_blocks(), 0U);
     EXPECT_EQ(target_types[0].function_params.back().value, 2U);
 
     syntax::CallExprPayload call;
-    call.callee = syntax::ExprId {4};
-    call.args = {syntax::ExprId {5}, syntax::ExprId {6}};
+    call.callee = syntax::ExprId{4};
+    call.args = {syntax::ExprId{5}, syntax::ExprId{6}};
     syntax::ExprNodeList source_exprs;
     const syntax::ExprId source_call = source_exprs.append_call(syntax::ExprKind::call, {}, call);
     syntax::ExprNodeList target_exprs;
@@ -467,42 +470,43 @@ TEST(CoreUnit, CompactAstStorageMoveAssignmentTransfersArenaBackedPayloads) {
     syntax::PatternNode enum_pattern;
     enum_pattern.kind = syntax::PatternKind::enum_case;
     enum_pattern.case_name = "some";
-    enum_pattern.payload_patterns = {syntax::PatternId {7}};
+    enum_pattern.payload_patterns = {syntax::PatternId{7}};
     enum_pattern.binding_names = {"value"};
     syntax::PatternNodeList source_patterns;
     source_patterns.push_back(enum_pattern);
     syntax::PatternNodeList target_patterns;
-    target_patterns.push_back(syntax::PatternNode {});
+    target_patterns.push_back(syntax::PatternNode{});
     target_patterns = std::move(source_patterns);
     EXPECT_EQ(target_patterns[0].payload_patterns.front().value, 7U);
     EXPECT_EQ(target_patterns[0].binding_names.front(), "value");
 
     syntax::StmtNode block_stmt;
     block_stmt.kind = syntax::StmtKind::block;
-    block_stmt.statements = {syntax::StmtId {8}, syntax::StmtId {9}};
+    block_stmt.statements = {syntax::StmtId{8}, syntax::StmtId{9}};
     syntax::StmtNodeList source_stmts;
     source_stmts.push_back(block_stmt);
     syntax::StmtNodeList target_stmts;
-    target_stmts.push_back(syntax::StmtNode {});
+    target_stmts.push_back(syntax::StmtNode{});
     target_stmts = std::move(source_stmts);
     EXPECT_EQ(target_stmts[0].statements.back().value, 9U);
 
     syntax::ItemNode function_item;
     function_item.kind = syntax::ItemKind::fn_decl;
     function_item.name = "map";
-    function_item.generic_params = {syntax::GenericParamDecl {"T", {}}};
-    function_item.params = {syntax::ParamDecl {"value", syntax::TypeId {10}, {}}};
-    function_item.return_type = syntax::TypeId {11};
+    function_item.generic_params = {syntax::GenericParamDecl{"T", {}}};
+    function_item.params = {syntax::ParamDecl{"value", syntax::TypeId{10}, {}}};
+    function_item.return_type = syntax::TypeId{11};
     syntax::ItemNodeList source_items;
     source_items.push_back(function_item);
     syntax::ItemNodeList target_items;
-    target_items.push_back(syntax::ItemNode {});
+    target_items.push_back(syntax::ItemNode{});
     target_items = std::move(source_items);
     EXPECT_EQ(target_items[0].generic_params.front().name, "T");
     EXPECT_EQ(target_items[0].params.front().type.value, 10U);
 }
 
-TEST(CoreUnit, AstModuleReserveEstimatePreTouchesExpressionArena) {
+TEST(CoreUnit, AstModuleReserveEstimatePreTouchesExpressionArena)
+{
     constexpr base::usize ESTIMATED_EXPR_COUNT = 128;
 
     syntax::AstModule module;
@@ -515,18 +519,14 @@ TEST(CoreUnit, AstModuleReserveEstimatePreTouchesExpressionArena) {
     EXPECT_GT(module.exprs.arena_bytes(), 0U);
 
     for (base::usize index = 0; index < ESTIMATED_EXPR_COUNT; ++index) {
-        static_cast<void>(module.push_binary_expr(
-            {},
-            syntax::BinaryOp::add,
-            syntax::ExprId {0},
-            syntax::ExprId {0}
-        ));
+        static_cast<void>(module.push_binary_expr({}, syntax::BinaryOp::add, syntax::ExprId{0}, syntax::ExprId{0}));
     }
 
     EXPECT_EQ(module.exprs.arena_blocks(), blocks_after_reserve);
 }
 
-TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
+TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads)
+{
     constexpr base::usize MISSING_EXPR_INDEX = 999;
 
     syntax::ExprNodeList exprs;
@@ -536,32 +536,27 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
     syntax::NameExprPayload name;
     name.scope_name = "math";
     name.text = "add";
-    name.type_args = {syntax::TypeId {1}, syntax::TypeId {2}};
+    name.type_args = {syntax::TypeId{1}, syntax::TypeId{2}};
     const syntax::ExprId name_id = exprs.append_name({}, name);
 
     syntax::GenericApplyExprPayload generic;
     generic.callee = name_id;
-    generic.type_args = {syntax::TypeId {3}};
+    generic.type_args = {syntax::TypeId{3}};
     const syntax::ExprId generic_id = exprs.append_generic_apply({}, generic);
 
-    const syntax::ExprId unary_id = exprs.append_unary(
-        syntax::ExprKind::unary,
-        {},
-        syntax::UnaryExprPayload {
+    const syntax::ExprId unary_id = exprs.append_unary(syntax::ExprKind::unary, {},
+        syntax::UnaryExprPayload{
             syntax::UnaryOp::numeric_negate,
             literal_id,
-        }
-    );
+        });
     const syntax::ExprId try_id = exprs.append_try({}, unary_id);
 
-    const syntax::ExprId binary_id = exprs.append_binary(
-        {},
-        syntax::BinaryExprPayload {
+    const syntax::ExprId binary_id = exprs.append_binary({},
+        syntax::BinaryExprPayload{
             syntax::BinaryOp::add,
             literal_id,
             unary_id,
-        }
-    );
+        });
 
     syntax::CallExprPayload call;
     call.callee = generic_id;
@@ -570,20 +565,20 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
 
     syntax::IfExprPayload if_expr;
     if_expr.condition = literal_id;
-    if_expr.condition_pattern = syntax::PatternId {4};
+    if_expr.condition_pattern = syntax::PatternId{4};
     if_expr.then_expr = name_id;
     if_expr.else_expr = call_id;
     const syntax::ExprId if_id = exprs.append_if({}, if_expr);
 
     syntax::BlockExprPayload block;
-    block.block = syntax::StmtId {5};
+    block.block = syntax::StmtId{5};
     block.result = if_id;
     const syntax::ExprId block_id = exprs.append_block(syntax::ExprKind::unsafe_block, {}, block);
 
     syntax::MatchExprPayload match;
     match.value = literal_id;
     match.arms = {
-        syntax::MatchArm {syntax::PatternId {6}, syntax::ExprId {7}, name_id, {}},
+        syntax::MatchArm{syntax::PatternId{6}, syntax::ExprId{7}, name_id, {}},
     };
     const syntax::ExprId match_id = exprs.append_match({}, match);
 
@@ -593,7 +588,7 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
     array.repeat_count = binary_id;
     const syntax::ExprId array_id = exprs.append_array({}, array);
 
-    const syntax::ExprId tuple_id = exprs.append_tuple({}, std::vector<syntax::ExprId> {literal_id, call_id});
+    const syntax::ExprId tuple_id = exprs.append_tuple({}, std::vector<syntax::ExprId>{literal_id, call_id});
 
     syntax::FieldExprPayload field;
     field.object = name_id;
@@ -615,18 +610,15 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
     struct_literal.object = name_id;
     struct_literal.scope_name = "pkg";
     struct_literal.name = "Pair";
-    struct_literal.type_args = {syntax::TypeId {8}};
-    struct_literal.field_inits = {syntax::FieldInit {"left", literal_id, {}}};
+    struct_literal.type_args = {syntax::TypeId{8}};
+    struct_literal.field_inits = {syntax::FieldInit{"left", literal_id, {}}};
     const syntax::ExprId struct_id = exprs.append_struct_literal({}, struct_literal);
 
-    const syntax::ExprId cast_id = exprs.append_cast_like(
-        syntax::ExprKind::pcast,
-        {},
-        syntax::CastExprPayload {
-            syntax::TypeId {9},
+    const syntax::ExprId cast_id = exprs.append_cast_like(syntax::ExprKind::pcast, {},
+        syntax::CastExprPayload{
+            syntax::TypeId{9},
             field_id,
-        }
-    );
+        });
 
     const syntax::LiteralExprPayload* const literal_payload = exprs.literal_payload(literal_id.value);
     ASSERT_NE(literal_payload, nullptr);
@@ -678,7 +670,7 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
     ASSERT_NE(block_payload, nullptr);
     EXPECT_EQ(block_payload->block.value, 5U);
     EXPECT_EQ(block_payload->result.value, if_id.value);
-    const base::SourceRange retagged_range {{99}, 3, 9};
+    const base::SourceRange retagged_range{{99}, 3, 9};
     EXPECT_TRUE(exprs.retag_block_expr(block_id.value, syntax::ExprKind::block_expr, retagged_range));
     EXPECT_EQ(exprs.kind(block_id.value), syntax::ExprKind::block_expr);
     EXPECT_EQ(exprs.range(block_id.value).begin, 3U);
@@ -966,16 +958,18 @@ TEST(CoreUnit, ExprNodeListCopyPreservesEveryCompactExpressionPayload)
     EXPECT_EQ(assigned.size(), exprs.size());
 }
 
-TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
+TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels)
+{
     std::vector<Token> tokens = {
-        Token {TokenKind::invalid, {{6}, 0, 1}, "?"},
-        Token {static_cast<TokenKind>(255), {{6}, 1, 2}, ""},
+        Token{TokenKind::invalid, {{6}, 0, 1}, "?"},
+        Token{static_cast<TokenKind>(255), {{6}, 1, 2}, ""},
     };
     const std::string token_dump = syntax::dump_tokens(tokens);
-    expect_contains_all(token_dump, {
-        "invalid",
-        "unknown",
-    });
+    expect_contains_all(token_dump,
+        {
+            "invalid",
+            "unknown",
+        });
 
     syntax::AstModule module;
     syntax::TypeNode i32_type;
@@ -996,70 +990,64 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
 
     static_cast<void>(module.push_invalid_expr({}));
 
-    static_cast<void>(module.exprs.append_cast_like(
-        static_cast<syntax::ExprKind>(255),
-        {},
-        syntax::CastExprPayload {}
-    ));
+    static_cast<void>(module.exprs.append_cast_like(static_cast<syntax::ExprKind>(255), {}, syntax::CastExprPayload{}));
 
     syntax::StructLiteralExprPayload struct_literal;
     struct_literal.name = "Pair";
     static_cast<void>(module.push_struct_literal_expr({}, struct_literal));
 
-    static_cast<void>(module.push_match_expr(
-        {},
-        syntax::MatchExprPayload {
-            syntax::ExprId {2},
+    static_cast<void>(module.push_match_expr({},
+        syntax::MatchExprPayload{
+            syntax::ExprId{2},
             {
-                syntax::MatchArm {syntax::PatternId {0}, syntax::INVALID_EXPR_ID, syntax::ExprId {1}, {}},
-                syntax::MatchArm {syntax::INVALID_PATTERN_ID, syntax::INVALID_EXPR_ID, syntax::ExprId {99}, {}},
+                syntax::MatchArm{syntax::PatternId{0}, syntax::INVALID_EXPR_ID, syntax::ExprId{1}, {}},
+                syntax::MatchArm{syntax::INVALID_PATTERN_ID, syntax::INVALID_EXPR_ID, syntax::ExprId{99}, {}},
             },
-        }
-    ));
+        }));
 
     syntax::StmtNode unknown_stmt;
     unknown_stmt.kind = static_cast<syntax::StmtKind>(255);
-    unknown_stmt.init = syntax::ExprId {2};
+    unknown_stmt.init = syntax::ExprId{2};
     module.stmts.push_back(unknown_stmt);
 
     syntax::StmtNode expr_stmt;
     expr_stmt.kind = syntax::StmtKind::expr;
-    expr_stmt.init = syntax::ExprId {3};
+    expr_stmt.init = syntax::ExprId{3};
     module.stmts.push_back(expr_stmt);
 
     syntax::StmtNode if_stmt;
     if_stmt.kind = syntax::StmtKind::if_;
-    if_stmt.condition = syntax::ExprId {0};
-    if_stmt.else_if = syntax::StmtId {0};
+    if_stmt.condition = syntax::ExprId{0};
+    if_stmt.else_if = syntax::StmtId{0};
     module.stmts.push_back(if_stmt);
 
     syntax::StmtNode for_stmt;
     for_stmt.kind = syntax::StmtKind::for_;
-    for_stmt.condition = syntax::ExprId {0};
-    for_stmt.for_init = syntax::StmtId {1};
-    for_stmt.for_update = syntax::StmtId {0};
+    for_stmt.condition = syntax::ExprId{0};
+    for_stmt.for_init = syntax::StmtId{1};
+    for_stmt.for_update = syntax::StmtId{0};
     module.stmts.push_back(for_stmt);
 
     syntax::StmtNode block;
     block.kind = syntax::StmtKind::block;
-    block.statements = {syntax::StmtId {99}, syntax::StmtId {1}, syntax::StmtId {2}, syntax::StmtId {3}};
+    block.statements = {syntax::StmtId{99}, syntax::StmtId{1}, syntax::StmtId{2}, syntax::StmtId{3}};
     module.stmts.push_back(block);
 
     syntax::ItemNode broken_struct;
     broken_struct.kind = syntax::ItemKind::struct_decl;
     broken_struct.name = "Broken";
-    broken_struct.fields.push_back(syntax::FieldDecl {"bad", syntax::INVALID_TYPE_ID, {}, syntax::Visibility::public_});
+    broken_struct.fields.push_back(syntax::FieldDecl{"bad", syntax::INVALID_TYPE_ID, {}, syntax::Visibility::public_});
     module.items.push_back(broken_struct);
 
     syntax::ItemNode function;
     function.kind = syntax::ItemKind::fn_decl;
     function.name = "body";
-    function.body = syntax::StmtId {4};
+    function.body = syntax::StmtId{4};
     module.items.push_back(function);
 
     syntax::ItemNode extern_block;
     extern_block.kind = syntax::ItemKind::extern_block;
-    extern_block.extern_items = {syntax::INVALID_ITEM_ID, syntax::ItemId {99}};
+    extern_block.extern_items = {syntax::INVALID_ITEM_ID, syntax::ItemId{99}};
     module.items.push_back(extern_block);
 
     syntax::ItemNode unknown_item;
@@ -1068,66 +1056,69 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {
     module.items.push_back(unknown_item);
 
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "field pub bad : <invalid-type>",
-        "stmt <invalid>",
-        "stmt #0 unknown",
-        "expr #0 invalid",
-        "expr #1 unknown",
-        "struct_literal Pair",
-        "match_arm Color.red(value, shade)",
-        "match_arm <invalid-pattern>",
-        "expr <invalid>",
-        "item <invalid>",
-        "item #3 priv unknown mystery",
-        "for",
-    });
+    expect_contains_all(ast,
+        {
+            "field pub bad : <invalid-type>",
+            "stmt <invalid>",
+            "stmt #0 unknown",
+            "expr #0 invalid",
+            "expr #1 unknown",
+            "struct_literal Pair",
+            "match_arm Color.red(value, shade)",
+            "match_arm <invalid-pattern>",
+            "expr <invalid>",
+            "item <invalid>",
+            "item #3 priv unknown mystery",
+            "for",
+        });
 }
 
-TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels) {
+TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels)
+{
     std::vector<Token> tokens = {
-        Token {TokenKind::kw_where, {{1}, 0, 5}, "where"},
-        Token {TokenKind::kw_in, {{1}, 6, 8}, "in"},
-        Token {TokenKind::kw_is, {{1}, 9, 11}, "is"},
-        Token {TokenKind::kw_strvalid, {{1}, 12, 20}, "strvalid"},
-        Token {TokenKind::kw_strfromutf8, {{1}, 21, 33}, "strfromutf8"},
-        Token {TokenKind::colon_colon, {{1}, 34, 36}, "::"},
-        Token {TokenKind::plus_plus, {{1}, 37, 39}, "++"},
-        Token {TokenKind::minus_minus, {{1}, 40, 42}, "--"},
-        Token {TokenKind::star_equal, {{1}, 43, 45}, "*="},
-        Token {TokenKind::slash_equal, {{1}, 46, 48}, "/="},
-        Token {TokenKind::percent_equal, {{1}, 49, 51}, "%="},
-        Token {TokenKind::amp_equal, {{1}, 52, 54}, "&="},
-        Token {TokenKind::pipe_equal, {{1}, 55, 57}, "|="},
-        Token {TokenKind::caret_equal, {{1}, 58, 60}, "^="},
-        Token {TokenKind::less_less_equal, {{1}, 61, 64}, "<<="},
-        Token {TokenKind::greater_greater_equal, {{1}, 65, 68}, ">>="},
+        Token{TokenKind::kw_where, {{1}, 0, 5}, "where"},
+        Token{TokenKind::kw_in, {{1}, 6, 8}, "in"},
+        Token{TokenKind::kw_is, {{1}, 9, 11}, "is"},
+        Token{TokenKind::kw_strvalid, {{1}, 12, 20}, "strvalid"},
+        Token{TokenKind::kw_strfromutf8, {{1}, 21, 33}, "strfromutf8"},
+        Token{TokenKind::colon_colon, {{1}, 34, 36}, "::"},
+        Token{TokenKind::plus_plus, {{1}, 37, 39}, "++"},
+        Token{TokenKind::minus_minus, {{1}, 40, 42}, "--"},
+        Token{TokenKind::star_equal, {{1}, 43, 45}, "*="},
+        Token{TokenKind::slash_equal, {{1}, 46, 48}, "/="},
+        Token{TokenKind::percent_equal, {{1}, 49, 51}, "%="},
+        Token{TokenKind::amp_equal, {{1}, 52, 54}, "&="},
+        Token{TokenKind::pipe_equal, {{1}, 55, 57}, "|="},
+        Token{TokenKind::caret_equal, {{1}, 58, 60}, "^="},
+        Token{TokenKind::less_less_equal, {{1}, 61, 64}, "<<="},
+        Token{TokenKind::greater_greater_equal, {{1}, 65, 68}, ">>="},
     };
     const std::string token_dump = syntax::dump_tokens(tokens);
-    expect_contains_all(token_dump, {
-        "kw_where",
-        "kw_in",
-        "kw_is",
-        "kw_strvalid",
-        "kw_strfromutf8",
-        "colon_colon",
-        "plus_plus",
-        "minus_minus",
-        "star_equal",
-        "slash_equal",
-        "percent_equal",
-        "amp_equal",
-        "pipe_equal",
-        "caret_equal",
-        "less_less_equal",
-        "greater_greater_equal",
-    });
+    expect_contains_all(token_dump,
+        {
+            "kw_where",
+            "kw_in",
+            "kw_is",
+            "kw_strvalid",
+            "kw_strfromutf8",
+            "colon_colon",
+            "plus_plus",
+            "minus_minus",
+            "star_equal",
+            "slash_equal",
+            "percent_equal",
+            "amp_equal",
+            "pipe_equal",
+            "caret_equal",
+            "less_less_equal",
+            "greater_greater_equal",
+        });
 
     syntax::AstModule module;
     module.module_path.parts = {"app", "main"};
     syntax::ModulePath core_mem_path;
     core_mem_path.parts = {"core", "mem"};
-    module.imports.push_back(syntax::ImportDecl {
+    module.imports.push_back(syntax::ImportDecl{
         core_mem_path,
         {},
         {},
@@ -1185,47 +1176,35 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels) {
 
     const syntax::ExprId scoped_name_id = push_name_expr(module, "make", "pkg", {i32_type, bool_type});
     const syntax::ExprId float_literal_id = push_float_literal(module, "1.0");
-    const syntax::ExprId call_id = module.push_call_expr(
-        syntax::ExprKind::call,
-        {},
-        syntax::CallExprPayload {
+    const syntax::ExprId call_id = module.push_call_expr(syntax::ExprKind::call, {},
+        syntax::CallExprPayload{
             scoped_name_id,
             {float_literal_id},
-        }
-    );
-    const syntax::ExprId generic_apply_id = module.push_generic_apply_expr(
-        {},
-        syntax::GenericApplyExprPayload {
+        });
+    const syntax::ExprId generic_apply_id = module.push_generic_apply_expr({},
+        syntax::GenericApplyExprPayload{
             scoped_name_id,
             {reference_type_id, fn_type_id},
-        }
-    );
-    const syntax::ExprId field_id = module.push_field_expr(
-        {},
-        syntax::FieldExprPayload {
+        });
+    const syntax::ExprId field_id = module.push_field_expr({},
+        syntax::FieldExprPayload{
             scoped_name_id,
             "fd",
             syntax::INVALID_IDENT_ID,
-        }
-    );
-    const syntax::ExprId index_id = module.push_index_expr(
-        {},
-        syntax::IndexExprPayload {
+        });
+    const syntax::ExprId index_id = module.push_index_expr({},
+        syntax::IndexExprPayload{
             scoped_name_id,
             float_literal_id,
-        }
-    );
-    const syntax::ExprId slice_id = module.push_slice_expr(
-        {},
-        syntax::SliceExprPayload {
+        });
+    const syntax::ExprId slice_id = module.push_slice_expr({},
+        syntax::SliceExprPayload{
             scoped_name_id,
             float_literal_id,
             call_id,
-        }
-    );
-    const syntax::ExprId typed_struct_literal_id = module.push_struct_literal_expr(
-        {},
-        syntax::StructLiteralExprPayload {
+        });
+    const syntax::ExprId typed_struct_literal_id = module.push_struct_literal_expr({},
+        syntax::StructLiteralExprPayload{
             syntax::INVALID_EXPR_ID,
             "pkg",
             {},
@@ -1233,12 +1212,10 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels) {
             syntax::INVALID_IDENT_ID,
             syntax::INVALID_IDENT_ID,
             {i32_type, bool_type},
-            {syntax::FieldInit {"value", call_id, {}}},
-        }
-    );
-    const syntax::ExprId selector_struct_literal_id = module.push_struct_literal_expr(
-        {},
-        syntax::StructLiteralExprPayload {
+            {syntax::FieldInit{"value", call_id, {}}},
+        });
+    const syntax::ExprId selector_struct_literal_id = module.push_struct_literal_expr({},
+        syntax::StructLiteralExprPayload{
             field_id,
             {},
             {},
@@ -1246,34 +1223,25 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels) {
             syntax::INVALID_IDENT_ID,
             syntax::INVALID_IDENT_ID,
             {},
-            {syntax::FieldInit {"fd", index_id, {}}},
-        }
-    );
-    const syntax::ExprId if_expr_id = module.push_if_expr(
-        {},
-        syntax::IfExprPayload {
+            {syntax::FieldInit{"fd", index_id, {}}},
+        });
+    const syntax::ExprId if_expr_id = module.push_if_expr({},
+        syntax::IfExprPayload{
             scoped_name_id,
             tuple_pattern_id,
             call_id,
             selector_struct_literal_id,
-        }
-    );
-    const syntax::ExprId strvalid_expr_id = module.push_cast_like_expr(
-        syntax::ExprKind::str_is_valid_utf8,
-        {},
-        syntax::CastExprPayload {
+        });
+    const syntax::ExprId strvalid_expr_id = module.push_cast_like_expr(syntax::ExprKind::str_is_valid_utf8, {},
+        syntax::CastExprPayload{
             syntax::INVALID_TYPE_ID,
             scoped_name_id,
-        }
-    );
-    const syntax::ExprId strfromutf8_expr_id = module.push_cast_like_expr(
-        syntax::ExprKind::str_from_utf8_checked,
-        {},
-        syntax::CastExprPayload {
+        });
+    const syntax::ExprId strfromutf8_expr_id = module.push_cast_like_expr(syntax::ExprKind::str_from_utf8_checked, {},
+        syntax::CastExprPayload{
             syntax::INVALID_TYPE_ID,
             scoped_name_id,
-        }
-    );
+        });
     const syntax::ExprId try_expr_id = module.push_try_expr({}, call_id);
 
     syntax::StmtNode for_range;
@@ -1304,7 +1272,7 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels) {
     syntax::ItemNode function;
     function.kind = syntax::ItemKind::fn_decl;
     function.name = "dumped";
-    function.generic_params = {syntax::GenericParamDecl {"T", {}}, syntax::GenericParamDecl {"U", {}}};
+    function.generic_params = {syntax::GenericParamDecl{"T", {}}, syntax::GenericParamDecl{"U", {}}};
     syntax::GenericConstraintDecl t_constraint;
     t_constraint.param_name = "T";
     t_constraint.capability_names = {"copy", "drop"};
@@ -1320,7 +1288,7 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels) {
     enum_item.kind = syntax::ItemKind::enum_decl;
     enum_item.name = "LegacyPayload";
     enum_item.enum_cases = {
-        syntax::EnumCaseDecl {"wrapped", reference_type_id, {}, {}, {}},
+        syntax::EnumCaseDecl{"wrapped", reference_type_id, {}, {}, {}},
     };
     static_cast<void>(module.push_item(enum_item));
 
@@ -1335,26 +1303,27 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels) {
     static_cast<void>(module.push_item(pattern_user));
 
     const std::string ast = syntax::dump_ast(module);
-    expect_contains_all(ast, {
-        "priv import core.mem",
-        "expr #1 float_literal `1.0`",
-        "expr #2 call",
-        "expr #3 generic_apply[&mut pkg.Scoped, unsafe extern c fn(&mut pkg.Scoped, i32, ...) -> bool]",
-        "expr #4 field .fd",
-        "expr #5 index",
-        "expr #6 slice",
-        "expr #7 struct_literal pkg.Box[i32, bool]",
-        "expr #8 struct_literal <selector>",
-        "condition_pattern (x, y)",
-        "expr #10 strvalid",
-        "expr #11 strfromutf8",
-        "expr #12 try_expr",
-        "stmt #0 for_range item",
-        "item #0 priv fn dumped[T, U] where T: copy + drop, U: fmt",
-        "return unsafe extern c fn(&mut pkg.Scoped, i32, ...) -> bool",
-        "case wrapped(&mut pkg.Scoped)",
-        "const LIMIT | Option.some(x, y)",
-    });
+    expect_contains_all(ast,
+        {
+            "priv import core.mem",
+            "expr #1 float_literal `1.0`",
+            "expr #2 call",
+            "expr #3 generic_apply[&mut pkg.Scoped, unsafe extern c fn(&mut pkg.Scoped, i32, ...) -> bool]",
+            "expr #4 field .fd",
+            "expr #5 index",
+            "expr #6 slice",
+            "expr #7 struct_literal pkg.Box[i32, bool]",
+            "expr #8 struct_literal <selector>",
+            "condition_pattern (x, y)",
+            "expr #10 strvalid",
+            "expr #11 strfromutf8",
+            "expr #12 try_expr",
+            "stmt #0 for_range item",
+            "item #0 priv fn dumped[T, U] where T: copy + drop, U: fmt",
+            "return unsafe extern c fn(&mut pkg.Scoped, i32, ...) -> bool",
+            "case wrapped(&mut pkg.Scoped)",
+            "const LIMIT | Option.some(x, y)",
+        });
 }
 
 } // namespace aurex::test

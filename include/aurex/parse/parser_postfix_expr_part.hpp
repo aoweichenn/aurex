@@ -11,8 +11,9 @@ namespace aurex::parse {
 
 class PostfixExprParser final : private ParserPartBase {
 public:
-    explicit PostfixExprParser(Parser& parser) noexcept
-        : ParserPartBase(parser) {}
+    explicit PostfixExprParser(Parser& parser) noexcept : ParserPartBase(parser)
+    {
+    }
 
     [[nodiscard]] syntax::ExprId parse_postfix(ExprContext context);
 
@@ -20,7 +21,7 @@ private:
     struct BracketArg {
         syntax::ExprId expr = syntax::INVALID_EXPR_ID;
         syntax::TypeId type = syntax::INVALID_TYPE_ID;
-        base::SourceRange range {};
+        base::SourceRange range{};
     };
 
     [[nodiscard]] std::optional<syntax::ExprId> parse_next_suffix(syntax::ExprId base, ExprContext context);
@@ -33,36 +34,22 @@ private:
     [[nodiscard]] bool bracket_args_are_type_like(std::span<const BracketArg> args) const;
     [[nodiscard]] bool bracket_arg_expr_is_type_like(syntax::ExprId expr) const;
     [[nodiscard]] bool bracket_suffix_is_type_argument_context(
-        syntax::ExprId base,
-        std::span<const BracketArg> args,
-        bool has_type_only_arg,
-        ExprContext context
-    ) const;
+        syntax::ExprId base, std::span<const BracketArg> args, bool has_type_only_arg, ExprContext context) const;
     [[nodiscard]] std::optional<syntax::AstArenaVector<syntax::TypeId>> bracket_args_to_type_args(
-        std::span<const BracketArg> args,
-        bool report_errors
-    );
+        std::span<const BracketArg> args, bool report_errors);
     [[nodiscard]] syntax::TypeId bracket_arg_expr_to_type(syntax::ExprId expr, bool report_errors);
     [[nodiscard]] syntax::TypeId append_type_selector(
-        syntax::TypeId base,
-        std::string_view name,
-        const base::SourceRange& range,
-        bool report_errors
-    );
+        syntax::TypeId base, std::string_view name, const base::SourceRange& range, bool report_errors);
     [[nodiscard]] bool recover_bracket_arg_separator();
     [[nodiscard]] syntax::ExprId parse_field_suffix(syntax::ExprId base);
     [[nodiscard]] syntax::ExprId parse_rejected_legacy_scope_suffix(
-        syntax::ExprId base,
-        const base::SourceRange& fallback_range
-    );
+        syntax::ExprId base, const base::SourceRange& fallback_range);
     [[nodiscard]] syntax::ExprId parse_struct_literal_suffix(syntax::ExprId base, ExprContext context);
     void parse_struct_fields(syntax::AstArenaVector<syntax::FieldInit>& fields, ExprContext context);
     [[nodiscard]] syntax::FieldInit parse_struct_field(ExprContext context);
     [[nodiscard]] bool recover_struct_field_separator();
     [[nodiscard]] syntax::ExprId parse_rejected_numeric_tuple_field_suffix(
-        syntax::ExprId base,
-        const base::SourceRange& fallback_range
-    );
+        syntax::ExprId base, const base::SourceRange& fallback_range);
     [[nodiscard]] const syntax::Token& expect_index_suffix_end(const syntax::Token& opening);
     [[nodiscard]] const syntax::Token& expect_slice_suffix_end(const syntax::Token& opening);
     [[nodiscard]] syntax::ExprId parse_call_suffix(syntax::ExprId base, ExprContext context);
@@ -70,11 +57,7 @@ private:
     [[nodiscard]] bool recover_call_arg_separator();
     [[nodiscard]] syntax::ExprId parse_try_suffix(syntax::ExprId base);
     [[nodiscard]] syntax::ExprId parse_rejected_update_suffix(
-        syntax::ExprId base,
-        const base::SourceRange& fallback_range,
-        syntax::TokenKind kind,
-        std::string message
-    );
+        syntax::ExprId base, const base::SourceRange& fallback_range, syntax::TokenKind kind, std::string message);
 };
 
 } // namespace aurex::parse

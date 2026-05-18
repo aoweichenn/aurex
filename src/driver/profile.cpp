@@ -1,6 +1,5 @@
-#include <aurex/driver/profile.hpp>
-
 #include <aurex/base/integer.hpp>
+#include <aurex/driver/profile.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -9,9 +8,8 @@
 #include <iomanip>
 #include <ostream>
 #include <string_view>
-#include <system_error>
-
 #include <sys/resource.h>
+#include <system_error>
 
 namespace aurex::driver {
 
@@ -39,8 +37,9 @@ constexpr std::string_view PROFILE_OUTPUT_OPEN_FAILED = "failed to open profile 
 constexpr std::string_view PROFILE_OUTPUT_WRITE_FAILED = "failed to write profile output file";
 constexpr std::string_view PROFILE_FORMAT = "aurex-profile-v1";
 
-[[nodiscard]] double current_rss_mib() noexcept {
-    rusage usage {};
+[[nodiscard]] double current_rss_mib() noexcept
+{
+    rusage usage{};
     if (::getrusage(RUSAGE_SELF, &usage) != 0) {
         return 0.0;
     }
@@ -51,44 +50,47 @@ constexpr std::string_view PROFILE_FORMAT = "aurex-profile-v1";
 #endif
 }
 
-[[nodiscard]] double elapsed_ms(const std::chrono::steady_clock::duration elapsed) noexcept {
+[[nodiscard]] double elapsed_ms(const std::chrono::steady_clock::duration elapsed) noexcept
+{
     return std::chrono::duration<double>(elapsed).count() * PROFILE_MILLISECONDS_PER_SECOND;
 }
 
-void write_json_escaped(std::ostream& out, const std::string_view text) {
+void write_json_escaped(std::ostream& out, const std::string_view text)
+{
     out << PROFILE_JSON_QUOTE;
     for (const unsigned char byte : text) {
         switch (byte) {
-        case PROFILE_JSON_QUOTE:
-            out << "\\\"";
-            break;
-        case PROFILE_JSON_BACKSLASH:
-            out << "\\\\";
-            break;
-        case PROFILE_JSON_NEWLINE:
-            out << "\\n";
-            break;
-        case PROFILE_JSON_CARRIAGE_RETURN:
-            out << "\\r";
-            break;
-        case PROFILE_JSON_TAB:
-            out << "\\t";
-            break;
-        default:
-            if (byte < PROFILE_JSON_CONTROL_CHAR_LIMIT) {
-                out << "\\u00"
-                    << PROFILE_JSON_HEX_DIGITS[(byte >> PROFILE_JSON_NIBBLE_BITS) & PROFILE_JSON_LOW_NIBBLE_MASK]
-                    << PROFILE_JSON_HEX_DIGITS[byte & PROFILE_JSON_LOW_NIBBLE_MASK];
-            } else {
-                out << static_cast<char>(byte);
-            }
-            break;
+            case PROFILE_JSON_QUOTE:
+                out << "\\\"";
+                break;
+            case PROFILE_JSON_BACKSLASH:
+                out << "\\\\";
+                break;
+            case PROFILE_JSON_NEWLINE:
+                out << "\\n";
+                break;
+            case PROFILE_JSON_CARRIAGE_RETURN:
+                out << "\\r";
+                break;
+            case PROFILE_JSON_TAB:
+                out << "\\t";
+                break;
+            default:
+                if (byte < PROFILE_JSON_CONTROL_CHAR_LIMIT) {
+                    out << "\\u00"
+                        << PROFILE_JSON_HEX_DIGITS[(byte >> PROFILE_JSON_NIBBLE_BITS) & PROFILE_JSON_LOW_NIBBLE_MASK]
+                        << PROFILE_JSON_HEX_DIGITS[byte & PROFILE_JSON_LOW_NIBBLE_MASK];
+                } else {
+                    out << static_cast<char>(byte);
+                }
+                break;
         }
     }
     out << PROFILE_JSON_QUOTE;
 }
 
-[[nodiscard]] double total_elapsed_ms(const std::span<const CompilationPhaseProfile> phases) noexcept {
+[[nodiscard]] double total_elapsed_ms(const std::span<const CompilationPhaseProfile> phases) noexcept
+{
     double total = 0.0;
     for (const CompilationPhaseProfile& phase : phases) {
         total += phase.elapsed_ms;
@@ -96,7 +98,8 @@ void write_json_escaped(std::ostream& out, const std::string_view text) {
     return total;
 }
 
-[[nodiscard]] double max_rss_mib_after(const std::span<const CompilationPhaseProfile> phases) noexcept {
+[[nodiscard]] double max_rss_mib_after(const std::span<const CompilationPhaseProfile> phases) noexcept
+{
     double max_rss = 0.0;
     for (const CompilationPhaseProfile& phase : phases) {
         max_rss = std::max(max_rss, phase.rss_mib_after);
@@ -107,27 +110,26 @@ void write_json_escaped(std::ostream& out, const std::string_view text) {
 } // namespace
 
 CompilationProfiler::CompilationProfiler(const bool enabled)
-    : enabled_(enabled),
-      last_rss_mib_(enabled ? current_rss_mib() : 0.0) {
+    : enabled_(enabled), last_rss_mib_(enabled ? current_rss_mib() : 0.0)
+{
     if (this->enabled_) {
         this->phases_.reserve(PROFILE_INITIAL_PHASE_CAPACITY);
     }
 }
 
-bool CompilationProfiler::enabled() const noexcept {
+bool CompilationProfiler::enabled() const noexcept
+{
     return this->enabled_;
 }
 
 void CompilationProfiler::record(
-    const std::string_view name,
-    const std::string_view detail,
-    const std::chrono::steady_clock::duration elapsed
-) {
+    const std::string_view name, const std::string_view detail, const std::chrono::steady_clock::duration elapsed)
+{
     if (!this->enabled_) {
         return;
     }
     const double rss_mib = current_rss_mib();
-    this->phases_.push_back(CompilationPhaseProfile {
+    this->phases_.push_back(CompilationPhaseProfile{
         std::string(name),
         std::string(detail),
         elapsed_ms(elapsed),
@@ -137,18 +139,18 @@ void CompilationProfiler::record(
     this->last_rss_mib_ = rss_mib;
 }
 
-void CompilationProfiler::record(
-    const std::string_view name,
-    const std::chrono::steady_clock::duration elapsed
-) {
+void CompilationProfiler::record(const std::string_view name, const std::chrono::steady_clock::duration elapsed)
+{
     this->record(name, {}, elapsed);
 }
 
-std::span<const CompilationPhaseProfile> CompilationProfiler::phases() const noexcept {
+std::span<const CompilationPhaseProfile> CompilationProfiler::phases() const noexcept
+{
     return this->phases_;
 }
 
-base::Result<void> CompilationProfiler::write_json(const std::filesystem::path& path) const {
+base::Result<void> CompilationProfiler::write_json(const std::filesystem::path& path) const
+{
     if (!this->enabled_) {
         return base::Result<void>::ok();
     }
@@ -204,16 +206,13 @@ base::Result<void> CompilationProfiler::write_json(const std::filesystem::path& 
 }
 
 ScopedCompilationPhase::ScopedCompilationPhase(
-    CompilationProfiler* const profiler,
-    const std::string_view name,
-    const std::string_view detail
-) noexcept
-    : profiler_(profiler),
-      name_(name),
-      detail_(detail),
-      started_(std::chrono::steady_clock::now()) {}
+    CompilationProfiler* const profiler, const std::string_view name, const std::string_view detail) noexcept
+    : profiler_(profiler), name_(name), detail_(detail), started_(std::chrono::steady_clock::now())
+{
+}
 
-ScopedCompilationPhase::~ScopedCompilationPhase() {
+ScopedCompilationPhase::~ScopedCompilationPhase()
+{
     if (this->profiler_ == nullptr || !this->profiler_->enabled()) {
         return;
     }

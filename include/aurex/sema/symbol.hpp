@@ -31,9 +31,10 @@ struct SymbolId {
     static constexpr base::u32 INVALID_VALUE = std::numeric_limits<base::u32>::max();
 };
 
-inline constexpr SymbolId INVALID_SYMBOL_ID {SymbolId::INVALID_VALUE};
+inline constexpr SymbolId INVALID_SYMBOL_ID{SymbolId::INVALID_VALUE};
 
-[[nodiscard]] inline constexpr bool is_valid(const SymbolId id) noexcept {
+[[nodiscard]] inline constexpr bool is_valid(const SymbolId id) noexcept
+{
     return id.value != SymbolId::INVALID_VALUE;
 }
 
@@ -44,7 +45,7 @@ struct Symbol {
     InternedText c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle type = INVALID_TYPE_HANDLE;
-    base::SourceRange range {};
+    base::SourceRange range{};
     bool is_mutable = false;
     syntax::Visibility visibility = syntax::Visibility::public_;
     StableDefId stable_id;

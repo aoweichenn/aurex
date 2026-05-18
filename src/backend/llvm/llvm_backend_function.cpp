@@ -6,7 +6,8 @@
 
 namespace aurex::backend {
 
-void LlvmEmitter::emit_function(const FunctionId function_id, const Function& function) {
+void LlvmEmitter::emit_function(const FunctionId function_id, const Function& function)
+{
     llvm::Function* llvm_function = functions_.at(function_id.value);
     current_function_ = &function;
     values_.clear();
@@ -45,7 +46,8 @@ void LlvmEmitter::emit_function(const FunctionId function_id, const Function& fu
     current_function_ = nullptr;
 }
 
-void LlvmEmitter::emit_block_phi_nodes(const Function& function, const base::u32 block_index) {
+void LlvmEmitter::emit_block_phi_nodes(const Function& function, const base::u32 block_index)
+{
     builder_.SetInsertPoint(blocks_.at(block_index));
     for (const ValueId value_id : function.blocks[block_index].values) {
         const Value& value = source_.values[value_id.value];
@@ -68,31 +70,34 @@ void LlvmEmitter::populate_phi_edges() const
     }
 }
 
-void LlvmEmitter::emit_terminator(const Terminator& terminator) {
+void LlvmEmitter::emit_terminator(const Terminator& terminator)
+{
     if (builder_.GetInsertBlock()->getTerminator() != nullptr) {
         return;
     }
     switch (terminator.kind) {
-    case TerminatorKind::none:
-        builder_.CreateUnreachable();
-        break;
-    case TerminatorKind::branch:
-        builder_.CreateBr(blocks_.at(terminator.target.value));
-        break;
-    case TerminatorKind::cond_branch:
-        builder_.CreateCondBr(get(terminator.condition), blocks_.at(terminator.then_target.value), blocks_.at(terminator.else_target.value));
-        break;
-    case TerminatorKind::return_:
-        if (is_valid(terminator.value)) {
-            builder_.CreateRet(get(terminator.value));
-        } else {
-            builder_.CreateRetVoid();
-        }
-        break;
+        case TerminatorKind::none:
+            builder_.CreateUnreachable();
+            break;
+        case TerminatorKind::branch:
+            builder_.CreateBr(blocks_.at(terminator.target.value));
+            break;
+        case TerminatorKind::cond_branch:
+            builder_.CreateCondBr(get(terminator.condition), blocks_.at(terminator.then_target.value),
+                blocks_.at(terminator.else_target.value));
+            break;
+        case TerminatorKind::return_:
+            if (is_valid(terminator.value)) {
+                builder_.CreateRet(get(terminator.value));
+            } else {
+                builder_.CreateRetVoid();
+            }
+            break;
     }
 }
 
-llvm::Value* LlvmEmitter::get(const ValueId id) const {
+llvm::Value* LlvmEmitter::get(const ValueId id) const
+{
     return values_.at(id.value);
 }
 

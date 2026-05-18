@@ -1,10 +1,11 @@
 #include <aurex/backend/llvm_backend.hpp>
-#include <gtest/support/ir_test_helpers.hpp>
 
 #include <cstdint>
 #include <string>
 #include <tuple>
 #include <vector>
+
+#include <gtest/support/ir_test_helpers.hpp>
 
 namespace aurex::backend {
 [[nodiscard]] bool parse_u64(std::string_view text, std::uint64_t& out) noexcept;
@@ -20,7 +21,8 @@ using namespace irtest;
 
 } // namespace
 
-TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializers) {
+TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializers)
+{
     Module module;
     const TypeHandle void_type = builtin(module, BuiltinType::void_);
     const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
@@ -44,24 +46,24 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     undef.kind = ValueKind::undef;
     undef.type = i32;
     [[maybe_unused]] const GlobalConstantId undef_constant =
-        add_global_constant(module, GlobalConstant {"undef", "unit_undef", i32, add_value(module, undef)});
+        add_global_constant(module, GlobalConstant{"undef", "unit_undef", i32, add_value(module, undef)});
 
     Value string_constant = module.make_value();
     string_constant.kind = ValueKind::string_literal;
     string_constant.type = str_type;
     set_text(module, string_constant, "\"constant\"");
     [[maybe_unused]] const GlobalConstantId text_constant =
-        add_global_constant(module, GlobalConstant {"text", "unit_text", str_type, add_value(module, string_constant)});
+        add_global_constant(module, GlobalConstant{"text", "unit_text", str_type, add_value(module, string_constant)});
 
     const ValueId base_value = add_value(module, integer_value(module, i32, "7"));
     const GlobalConstantId base_constant =
-        add_global_constant(module, GlobalConstant {"base", "unit_base", i32, base_value});
+        add_global_constant(module, GlobalConstant{"base", "unit_base", i32, base_value});
     Value ref_value = module.make_value();
     ref_value.kind = ValueKind::constant_ref;
     ref_value.type = i32;
     ref_value.constant = base_constant;
     [[maybe_unused]] const GlobalConstantId ref_constant =
-        add_global_constant(module, GlobalConstant {"ref", "unit_ref", i32, add_value(module, ref_value)});
+        add_global_constant(module, GlobalConstant{"ref", "unit_ref", i32, add_value(module, ref_value)});
 
     Value null_pointer = module.make_value();
     null_pointer.kind = ValueKind::null_literal;
@@ -73,8 +75,8 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     null_address.target_type = usize;
     null_address.cast_kind = CastKind::ptr_addr;
     null_address.lhs = null_pointer_id;
-    [[maybe_unused]] const GlobalConstantId null_address_constant =
-        add_global_constant(module, GlobalConstant {"null_address", "unit_null_address", usize, add_value(module, null_address)});
+    [[maybe_unused]] const GlobalConstantId null_address_constant = add_global_constant(
+        module, GlobalConstant{"null_address", "unit_null_address", usize, add_value(module, null_address)});
 
     const ValueId literal_for_float = add_value(module, integer_value(module, i32, "9"));
     Value int_to_float_constant = module.make_value();
@@ -85,24 +87,24 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     int_to_float_constant.lhs = literal_for_float;
     const ValueId float_constant_value = add_value(module, int_to_float_constant);
     [[maybe_unused]] const GlobalConstantId float_constant =
-        add_global_constant(module, GlobalConstant {"float_value", "unit_float_value", f64, float_constant_value});
+        add_global_constant(module, GlobalConstant{"float_value", "unit_float_value", f64, float_constant_value});
     Value float_to_int_constant = module.make_value();
     float_to_int_constant.kind = ValueKind::cast;
     float_to_int_constant.type = i32;
     float_to_int_constant.target_type = i32;
     float_to_int_constant.cast_kind = CastKind::numeric;
     float_to_int_constant.lhs = float_constant_value;
-    [[maybe_unused]] const GlobalConstantId int_constant =
-        add_global_constant(module, GlobalConstant {"int_value", "unit_int_value", i32, add_value(module, float_to_int_constant)});
+    [[maybe_unused]] const GlobalConstantId int_constant = add_global_constant(
+        module, GlobalConstant{"int_value", "unit_int_value", i32, add_value(module, float_to_int_constant)});
 
     Function sink = make_function(module, "sink", void_type, Linkage::extern_c, AbiCallConv::c);
     set_symbol(module, sink, "unit_sink");
     sink.signature_params.push_back(function_param(module, "value", i32));
     append_function(module, sink);
-    const FunctionId sink_id {0};
+    const FunctionId sink_id{0};
 
     Function choose = make_function(module, "choose_phi", i32);
-    FunctionBuilder choose_builder {module, choose};
+    FunctionBuilder choose_builder{module, choose};
     Value flag_param = module.make_value();
     flag_param.kind = ValueKind::param;
     flag_param.type = bool_type;
@@ -137,7 +139,7 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     Value phi = module.make_value();
     phi.kind = ValueKind::phi;
     phi.type = i32;
-    phi.incoming = {PhiInput {choose_then, lhs}, PhiInput {choose_else, rhs}};
+    phi.incoming = {PhiInput{choose_then, lhs}, PhiInput{choose_else, rhs}};
     const ValueId phi_id = choose_builder.add(phi);
     choose.blocks[choose_join.value].values = {phi_id};
     choose.blocks[choose_join.value].terminator.kind = TerminatorKind::return_;
@@ -145,7 +147,7 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     append_function(module, choose);
 
     Function ops = make_function(module, "runtime_ops", i32);
-    FunctionBuilder builder {module, ops};
+    FunctionBuilder builder{module, ops};
     Value op_flag_param = flag_param;
     set_name(module, op_flag_param, "flag");
     const ValueId op_flag = builder.add(op_flag_param);
@@ -204,7 +206,8 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     load.object = op_pointer;
     const ValueId loaded = add_and_keep(load);
 
-    for (const UnaryOp op : {UnaryOp::logical_not, UnaryOp::numeric_negate, UnaryOp::bitwise_not, UnaryOp::address_of, UnaryOp::dereference}) {
+    for (const UnaryOp op : {UnaryOp::logical_not, UnaryOp::numeric_negate, UnaryOp::bitwise_not, UnaryOp::address_of,
+             UnaryOp::dereference}) {
         Value unary = module.make_value();
         unary.kind = ValueKind::unary;
         unary.unary_op = op;
@@ -296,14 +299,14 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     }
 
     for (const auto [kind, result_type, operand] : {
-            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, i64, op_lhs},
-            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, f64, op_lhs},
-            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, f64, op_unsigned},
-            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, i32, op_float},
-            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, u32, op_float},
-            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::numeric, f32, op_float},
-            std::tuple<CastKind, TypeHandle, ValueId> {CastKind::ptr_addr, usize, op_pointer},
-        }) {
+             std::tuple<CastKind, TypeHandle, ValueId>{CastKind::numeric, i64, op_lhs},
+             std::tuple<CastKind, TypeHandle, ValueId>{CastKind::numeric, f64, op_lhs},
+             std::tuple<CastKind, TypeHandle, ValueId>{CastKind::numeric, f64, op_unsigned},
+             std::tuple<CastKind, TypeHandle, ValueId>{CastKind::numeric, i32, op_float},
+             std::tuple<CastKind, TypeHandle, ValueId>{CastKind::numeric, u32, op_float},
+             std::tuple<CastKind, TypeHandle, ValueId>{CastKind::numeric, f32, op_float},
+             std::tuple<CastKind, TypeHandle, ValueId>{CastKind::ptr_addr, usize, op_pointer},
+         }) {
         Value cast = module.make_value();
         cast.kind = ValueKind::cast;
         cast.type = result_type;
@@ -360,7 +363,7 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
     Value unnamed_call = module.make_value();
     unnamed_call.kind = ValueKind::call;
     unnamed_call.type = i32;
-    unnamed_call.call_target = FunctionId {1};
+    unnamed_call.call_target = FunctionId{1};
     unnamed_call.args = {op_flag, op_lhs, op_rhs};
     add_and_keep(unnamed_call);
 
@@ -386,25 +389,27 @@ TEST(CoreUnit, LlvmBackendCoversPhiRuntimeCastsUnaryBinaryAndConstantInitializer
 
     auto llvm_ir = backend::emit_llvm_ir({&module, "unit_backend_runtime"});
     ASSERT_TRUE(llvm_ir) << llvm_ir.error().message;
-    expect_contains_all(llvm_ir.value().text, {
-        "@unit_text",
-        "@unit_ref",
-        "phi i32",
-        "sitofp",
-        "uitofp",
-        "fptoui",
-        "fptosi",
-        "fptrunc",
-        "ptrtoint",
-        "inttoptr",
-        "call void @unit_sink",
-        "icmp ule",
-        "icmp ugt",
-        "icmp uge",
-    });
+    expect_contains_all(llvm_ir.value().text,
+        {
+            "@unit_text",
+            "@unit_ref",
+            "phi i32",
+            "sitofp",
+            "uitofp",
+            "fptoui",
+            "fptosi",
+            "fptrunc",
+            "ptrtoint",
+            "inttoptr",
+            "call void @unit_sink",
+            "icmp ule",
+            "icmp ugt",
+            "icmp uge",
+        });
 }
 
-TEST(CoreUnit, LlvmBackendCoversRuntimeStringProjectionAndBinaryEdges) {
+TEST(CoreUnit, LlvmBackendCoversRuntimeStringProjectionAndBinaryEdges)
+{
     Module module;
     const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
@@ -415,7 +420,7 @@ TEST(CoreUnit, LlvmBackendCoversRuntimeStringProjectionAndBinaryEdges) {
     const TypeHandle const_u8_ptr = ptr(module, PointerMutability::const_, u8);
 
     Function function = make_function(module, "runtime_edges", i32);
-    FunctionBuilder builder {module, function};
+    FunctionBuilder builder{module, function};
     Value int_lhs_param = module.make_value();
     int_lhs_param.kind = ValueKind::param;
     int_lhs_param.type = i32;
@@ -506,16 +511,17 @@ TEST(CoreUnit, LlvmBackendCoversRuntimeStringProjectionAndBinaryEdges) {
 
     auto llvm_ir = backend::emit_llvm_ir({&module, "unit_backend_runtime_edges"});
     ASSERT_TRUE(llvm_ir) << llvm_ir.error().message;
-    expect_contains_all(llvm_ir.value().text, {
-        "extractvalue",
-        "insertvalue",
-        "str.data",
-        "str.len",
-        "str.slice.ok",
-        "__aurex_utf8_boundary",
-        "fcmp olt",
-        "xor",
-    });
+    expect_contains_all(llvm_ir.value().text,
+        {
+            "extractvalue",
+            "insertvalue",
+            "str.data",
+            "str.len",
+            "str.slice.ok",
+            "__aurex_utf8_boundary",
+            "fcmp olt",
+            "xor",
+        });
 }
 
 } // namespace aurex::test

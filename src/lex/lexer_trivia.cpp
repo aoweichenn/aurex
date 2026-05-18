@@ -7,7 +7,8 @@
 
 namespace aurex::lex {
 
-void Lexer::skip_trivia() {
+void Lexer::skip_trivia()
+{
     while (!this->is_at_end()) {
         const std::string_view remaining = this->cursor_.remaining_text();
         base::usize trivia_width = 0;
@@ -30,7 +31,8 @@ void Lexer::skip_trivia() {
     }
 }
 
-void Lexer::scan_line_comment() {
+void Lexer::scan_line_comment()
+{
     const std::string_view remaining = this->cursor_.remaining_text();
     const base::usize line_end = remaining.find(LEXEME_LINE_FEED);
     if (line_end == std::string_view::npos) {
@@ -40,7 +42,8 @@ void Lexer::scan_line_comment() {
     this->advance_bytes(line_end + LEXEME_SINGLE_BYTE_WIDTH);
 }
 
-void Lexer::scan_block_comment() {
+void Lexer::scan_block_comment()
+{
     const base::usize begin = this->cursor_.offset();
     base::usize depth = 0;
     while (!this->is_at_end()) {

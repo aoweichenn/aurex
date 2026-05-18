@@ -14,9 +14,7 @@ struct ParamEnvKey {
     base::u32 predicate_count = 0;
     base::u64 global_id = 0;
 
-    [[nodiscard]] friend constexpr bool operator==(
-        ParamEnvKey lhs,
-        ParamEnvKey rhs) noexcept = default;
+    [[nodiscard]] friend constexpr bool operator==(ParamEnvKey lhs, ParamEnvKey rhs) noexcept = default;
 };
 
 struct GenericInstanceKey {
@@ -33,11 +31,8 @@ struct GenericInstanceKey {
 [[nodiscard]] bool operator!=(const GenericInstanceKey& lhs, const GenericInstanceKey& rhs) noexcept;
 
 [[nodiscard]] ParamEnvKey param_env_key(std::span<const std::string_view> predicates) noexcept;
-[[nodiscard]] GenericInstanceKey generic_instance_key(
-    DefKey template_def,
-    std::span<const CanonicalTypeKey> type_args,
-    std::span<const StableFingerprint128> const_args,
-    ParamEnvKey param_env);
+[[nodiscard]] GenericInstanceKey generic_instance_key(DefKey template_def, std::span<const CanonicalTypeKey> type_args,
+    std::span<const StableFingerprint128> const_args, ParamEnvKey param_env);
 
 void append_stable_key(StableKeyWriter& writer, ParamEnvKey key);
 void append_stable_key(StableKeyWriter& writer, const GenericInstanceKey& key);

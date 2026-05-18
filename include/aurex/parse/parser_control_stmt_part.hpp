@@ -8,8 +8,9 @@ namespace aurex::parse {
 
 class ControlStmtParser final : private ParserPartBase {
 public:
-    explicit ControlStmtParser(Parser& parser) noexcept
-        : ParserPartBase(parser) {}
+    explicit ControlStmtParser(Parser& parser) noexcept : ParserPartBase(parser)
+    {
+    }
 
     [[nodiscard]] syntax::StmtId parse_if_stmt();
     [[nodiscard]] syntax::StmtId parse_for_stmt();

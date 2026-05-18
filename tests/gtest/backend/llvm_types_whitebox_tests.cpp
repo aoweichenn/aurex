@@ -2,16 +2,16 @@
 #include <aurex/ir/ir.hpp>
 #include <aurex/sema/type.hpp>
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Target/TargetMachine.h>
-
-#include <memory>
-#include <string>
-#include <unordered_map>
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -34,7 +34,8 @@ using namespace irtest;
 
 } // namespace
 
-TEST(CoreUnit, LlvmBackendWhiteBoxCoversFunctionTypeHelperEdges) {
+TEST(CoreUnit, LlvmBackendWhiteBoxCoversFunctionTypeHelperEdges)
+{
     Module module;
     const TypeHandle void_type = builtin(module, BuiltinType::void_);
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
@@ -44,18 +45,10 @@ TEST(CoreUnit, LlvmBackendWhiteBoxCoversFunctionTypeHelperEdges) {
     const TypeHandle ref_i32 = module.types.reference(PointerMutability::const_, i32);
     const TypeHandle generic_param = module.types.generic_param("T");
     const TypeHandle enum_without_underlying = module.types.named_enum("unit.MissingTag", "unit_MissingTag");
-    const TypeHandle function_type = module.types.function(
-        sema::FunctionCallConv::aurex,
-        false,
-        std::vector<TypeHandle> {i32, u32},
-        i32
-    );
-    const TypeHandle extern_variadic_type = module.types.function(
-        sema::FunctionCallConv::c,
-        true,
-        std::vector<TypeHandle> {},
-        void_type
-    );
+    const TypeHandle function_type =
+        module.types.function(sema::FunctionCallConv::aurex, false, std::vector<TypeHandle>{i32, u32}, i32);
+    const TypeHandle extern_variadic_type =
+        module.types.function(sema::FunctionCallConv::c, true, std::vector<TypeHandle>{}, void_type);
     const TypeHandle opaque_record = module.types.opaque_struct("unit.Opaque", "unit_Opaque");
     append_record(module, record_layout(module, sema::INVALID_TYPE_HANDLE, "unit.Invalid", "unit_Invalid", false));
     append_record(module, record_layout(module, opaque_record, "unit.Opaque", "", true));

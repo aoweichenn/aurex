@@ -1,8 +1,10 @@
 #include <aurex/query/generic_instance_key.hpp>
 #include <aurex/query/item_signature_query.hpp>
+#include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/query/stable_identity.hpp>
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <span>
@@ -56,6 +58,29 @@ constexpr std::string_view QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE = "signature
 {
     const std::array<std::string_view, 1> path{"compute"};
     return query::def_key(module, query::DefNamespace::value, query::DefKind::function, path);
+}
+
+struct QueryContextItemSignatureSubject {
+    query::DefKey def;
+    query::ItemSignatureProviderInput input;
+};
+
+[[nodiscard]] QueryContextItemSignatureSubject test_item_signature_subject(
+    const std::string_view def_name, const std::string_view signature)
+{
+    const std::array<std::string_view, 2> stable_module_path{"regex", "vm"};
+    const query::StableModuleId stable_module = query::stable_module_id(stable_module_path);
+    const query::StableDefId stable_def =
+        query::stable_definition_id(stable_module, query::StableSymbolKind::function, def_name);
+    const query::DefKey def =
+        query::def_key_from_stable_id(stable_def, query::DefNamespace::value, query::DefKind::function);
+    return QueryContextItemSignatureSubject{
+        def,
+        query::ItemSignatureProviderInput{
+            def,
+            query::stable_incremental_key(stable_def, signature),
+        },
+    };
 }
 
 } // namespace
@@ -451,6 +476,161 @@ TEST(QueryUnit, ItemSignatureProviderBuildsRecordFromStableDefinition)
     mismatched_result_output.result = query::query_result_fingerprint(
         query::stable_incremental_key(stable_function, QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
     EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
+TEST(QueryUnit, QueryContextCachesItemSignatureAndEmitsCompletedRecords)
+{
+    const QueryContextItemSignatureSubject subject =
+        test_item_signature_subject("compute", QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryKey> expected_key = query::item_signature_query_key(subject.def);
+    ASSERT_TRUE(expected_key.has_value());
+
+    base::usize provider_calls = 0;
+    query::QueryContext context([&provider_calls](const query::ItemSignatureProviderInput& provider_input) {
+        ++provider_calls;
+        return query::provide_item_signature_query(provider_input);
+    });
+
+    const query::QueryEvaluationResult first = context.evaluate_item_signature(subject.input);
+    ASSERT_EQ(first.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(first.node, nullptr);
+    EXPECT_EQ(first.node->status, query::QueryNodeStatus::done);
+    EXPECT_EQ(first.node->key, *expected_key);
+    EXPECT_EQ(first.node->record.key, *expected_key);
+    EXPECT_EQ(provider_calls, 1U);
+    EXPECT_EQ(context.find(*expected_key), first.node);
+    EXPECT_EQ(context.find(query::QueryKey{}), nullptr);
+
+    const std::vector<query::QueryRecord> records = context.completed_records();
+    ASSERT_EQ(records.size(), 1U);
+    EXPECT_EQ(records.front().key, first.node->record.key);
+    EXPECT_EQ(records.front().result, first.node->record.result);
+    EXPECT_EQ(records.front().stable_key_bytes, first.node->record.stable_key_bytes);
+
+    const query::QueryEvaluationResult second = context.evaluate_item_signature(subject.input);
+    EXPECT_EQ(second.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(second.node, first.node);
+    EXPECT_EQ(provider_calls, 1U);
+
+    context.set_item_signature_provider({});
+    const query::QueryEvaluationResult cached_after_reset = context.evaluate_item_signature(subject.input);
+    EXPECT_EQ(cached_after_reset.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(provider_calls, 1U);
+}
+
+TEST(QueryUnit, QueryContextOrdersCompletedItemSignatureRecordsByQueryKey)
+{
+    const QueryContextItemSignatureSubject first_subject =
+        test_item_signature_subject("compute", QUERY_TEST_PROVIDER_SIGNATURE);
+    const QueryContextItemSignatureSubject second_subject =
+        test_item_signature_subject("other", QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryKey> first_key = query::item_signature_query_key(first_subject.def);
+    const std::optional<query::QueryKey> second_key = query::item_signature_query_key(second_subject.def);
+    ASSERT_TRUE(first_key.has_value());
+    ASSERT_TRUE(second_key.has_value());
+    ASSERT_NE(*first_key, *second_key);
+
+    query::QueryContext context;
+    EXPECT_TRUE(context.completed_records().empty());
+
+    const query::QueryEvaluationResult second_result = context.evaluate_item_signature(second_subject.input);
+    ASSERT_EQ(second_result.status, query::QueryEvaluationStatus::computed);
+    const query::QueryEvaluationResult first_result = context.evaluate_item_signature(first_subject.input);
+    ASSERT_EQ(first_result.status, query::QueryEvaluationStatus::computed);
+
+    const std::vector<query::QueryRecord> records = context.completed_records();
+    ASSERT_EQ(records.size(), 2U);
+    EXPECT_TRUE(std::is_sorted(
+        records.begin(), records.end(), [](const query::QueryRecord& lhs, const query::QueryRecord& rhs) {
+            return lhs.key.global_id < rhs.key.global_id;
+        }));
+    const query::QueryKey expected_front = first_key->global_id < second_key->global_id ? *first_key : *second_key;
+    const query::QueryKey expected_back = first_key->global_id < second_key->global_id ? *second_key : *first_key;
+    EXPECT_EQ(records.front().key, expected_front);
+    EXPECT_EQ(records.back().key, expected_back);
+}
+
+TEST(QueryUnit, QueryContextTracksDependenciesFailuresAndCycles)
+{
+    const QueryContextItemSignatureSubject subject =
+        test_item_signature_subject("compute", QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryKey> expected_key = query::item_signature_query_key(subject.def);
+    ASSERT_TRUE(expected_key.has_value());
+    const query::QueryKey dependency =
+        query::query_key(query::QueryKind::module_exports, query::stable_key_fingerprint(subject.def.module));
+
+    query::QueryContext dependency_context([dependency](const query::ItemSignatureProviderInput& provider_input) {
+        std::optional<query::ItemSignatureProviderOutput> output = query::provide_item_signature_query(provider_input);
+        if (output) {
+            output->dependencies.push_back(dependency);
+        }
+        return output;
+    });
+    const query::QueryEvaluationResult dependency_result = dependency_context.evaluate_item_signature(subject.input);
+    ASSERT_EQ(dependency_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(dependency_result.node, nullptr);
+    ASSERT_EQ(dependency_result.node->dependencies.size(), 1U);
+    EXPECT_EQ(dependency_result.node->dependencies.front(), dependency);
+
+    const query::QueryEvaluationResult invalid_key_result = dependency_context.evaluate_item_signature(
+        query::ItemSignatureProviderInput{query::DefKey{}, subject.input.signature});
+    EXPECT_EQ(invalid_key_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(invalid_key_result.node, nullptr);
+
+    query::QueryContext failing_context(
+        [](const query::ItemSignatureProviderInput&) -> std::optional<query::ItemSignatureProviderOutput> {
+            return std::nullopt;
+        });
+    const query::QueryEvaluationResult failed_result = failing_context.evaluate_item_signature(subject.input);
+    ASSERT_EQ(failed_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(failed_result.node, nullptr);
+    EXPECT_EQ(failed_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(failing_context.completed_records().empty());
+
+    failing_context.set_item_signature_provider({});
+    const query::QueryEvaluationResult retry_result = failing_context.evaluate_item_signature(subject.input);
+    ASSERT_EQ(retry_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(retry_result.node, nullptr);
+    EXPECT_EQ(retry_result.node->status, query::QueryNodeStatus::done);
+
+    const QueryContextItemSignatureSubject other_subject =
+        test_item_signature_subject("other", QUERY_TEST_PROVIDER_SIGNATURE);
+    query::QueryContext wrong_key_context([&other_subject](const query::ItemSignatureProviderInput&) {
+        return query::provide_item_signature_query(other_subject.input);
+    });
+    const query::QueryEvaluationResult wrong_key_result = wrong_key_context.evaluate_item_signature(subject.input);
+    ASSERT_EQ(wrong_key_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(wrong_key_result.node, nullptr);
+    EXPECT_EQ(wrong_key_result.node->key, *expected_key);
+    EXPECT_EQ(wrong_key_result.node->status, query::QueryNodeStatus::failed);
+
+    query::QueryContext invalid_output_context([](const query::ItemSignatureProviderInput& provider_input) {
+        std::optional<query::ItemSignatureProviderOutput> output = query::provide_item_signature_query(provider_input);
+        if (output) {
+            output->dependencies.push_back(query::QueryKey{});
+        }
+        return output;
+    });
+    const query::QueryEvaluationResult invalid_output_result =
+        invalid_output_context.evaluate_item_signature(subject.input);
+    ASSERT_EQ(invalid_output_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(invalid_output_result.node, nullptr);
+    EXPECT_EQ(invalid_output_result.node->key, *expected_key);
+    EXPECT_EQ(invalid_output_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(invalid_output_context.completed_records().empty());
+
+    query::QueryContext cyclic_context;
+    query::QueryEvaluationResult nested_result;
+    cyclic_context.set_item_signature_provider(
+        [&cyclic_context, &nested_result](const query::ItemSignatureProviderInput& provider_input) {
+            nested_result = cyclic_context.evaluate_item_signature(provider_input);
+            return query::provide_item_signature_query(provider_input);
+        });
+    const query::QueryEvaluationResult cyclic_result = cyclic_context.evaluate_item_signature(subject.input);
+    EXPECT_EQ(nested_result.status, query::QueryEvaluationStatus::cycle);
+    ASSERT_EQ(cyclic_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(cyclic_result.node, nullptr);
+    EXPECT_EQ(cyclic_result.node->status, query::QueryNodeStatus::done);
 }
 
 TEST(QueryUnit, CanonicalTypeKeyIsStructuralAndHandleFree)

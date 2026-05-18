@@ -18,6 +18,7 @@ struct ItemSignatureProviderOutput {
     std::vector<QueryKey> dependencies;
 };
 
+[[nodiscard]] std::optional<QueryKey> item_signature_query_key(DefKey key) noexcept;
 [[nodiscard]] bool is_valid(const ItemSignatureProviderInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ItemSignatureProviderOutput& output) noexcept;
 [[nodiscard]] std::optional<ItemSignatureProviderOutput> provide_item_signature_query(

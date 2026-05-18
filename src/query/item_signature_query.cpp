@@ -4,6 +4,14 @@
 
 namespace aurex::query {
 
+std::optional<QueryKey> item_signature_query_key(const DefKey key) noexcept
+{
+    if (!is_valid(key)) {
+        return std::nullopt;
+    }
+    return query_key(QueryKind::item_signature, stable_key_fingerprint(key));
+}
+
 bool is_valid(const ItemSignatureProviderInput& input) noexcept
 {
     return is_valid(input.key) && is_valid(input.signature);

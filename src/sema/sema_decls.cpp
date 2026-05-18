@@ -523,9 +523,8 @@ void SemanticAnalyzer::register_enum_cases_for_item(
                 if (!this->is_valid_storage_type(payload_field_type)) {
                     this->report_general(enum_case.range, std::string(SEMA_ENUM_PAYLOAD_STORAGE));
                 }
-                if (this->checked_.types.contains_array(payload_field_type)) {
+                if (!this->check_m2_value_abi(payload_field_type, ValueAbiContext::enum_payload, enum_case.range)) {
                     contains_array_payload = true;
-                    this->report_unsupported(enum_case.range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_UNSUPPORTED));
                 }
             }
             const base::u64 case_size = this->abi_size(payload_type);
@@ -655,12 +654,7 @@ void SemanticAnalyzer::register_value_names() {
                 if (!this->is_valid_storage_type(param_type)) {
                     this->report_general(param.range, std::string(SEMA_FUNCTION_PARAMETER_STORAGE));
                 }
-                if (this->checked_.types.is_array(param_type)) {
-                    this->report_unsupported(param.range, std::string(SEMA_ARRAY_PARAMETER_UNSUPPORTED));
-                }
-                if (this->checked_.types.contains_array(param_type)) {
-                    this->report_unsupported(param.range, std::string(SEMA_ARRAY_STRUCT_PARAMETER_UNSUPPORTED));
-                }
+                static_cast<void>(this->check_m2_value_abi(param_type, ValueAbiContext::parameter, param.range));
                 param_types.push_back(param_type);
             }
             if (is_method) {

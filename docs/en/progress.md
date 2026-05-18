@@ -53,8 +53,12 @@ notes are design input only, not current progress.
 - ADT-first enum basics, including automatic tags, explicit C-like repr enums,
   generic enums, and multi-field payload destructuring in patterns.
 - Minimal non-resource generic constraints through `where`, with built-in
-  `Sized`, `Eq`, `Ord`, and `Hash` capabilities. Resource capabilities such as
-  `Copy` / `Drop` remain deferred.
+  `Sized`, `Eq`, `Ord`, and `Hash` capabilities. `Eq` / `Ord` are not the same
+  as direct comparison operator availability, so `f32` / `f64` support direct
+  comparison operators but do not satisfy generic `Eq` / `Ord`. `Hash` is
+  marker-only for `bool`, `char`, integer, and pointer types and has no runtime
+  hash operator or stable hash ABI yet. Resource capabilities such as `Copy` /
+  `Drop` remain deferred.
 - Generic type aliases and owner-generic impl blocks such as
   `impl[T] Box[T] { ... }`. Method-local generic parameters remain outside M2.
 - Minimal M2 `unsafe` boundaries: `unsafe { ... }`, `unsafe fn`, unsafe
@@ -146,15 +150,11 @@ expressions; diagnostic stress cycles multiple semantic error families instead
 of only missing names. `tools/generic_stress.py --shape=templates` covers many
 distinct generic templates at 2000/5000+ scale, while `--shape=instances`
 keeps the old many-instantiations comparison shape. IR/native output mode keeps
-the lowering tables so codegen behavior stays unchanged. The release AST RSS
-threshold is 8192 MiB so the gate can keep the deliberately over-complex mixed
-source instead of falling back to a throttled toy input. Current local
-Release+LTO measurements are about 450.5 MiB / 13073.0 ms for 5000 generic,
-4325.9 MiB / 2841.3 ms for the 2M AST source of about 106820 KiB, and
-32.9 MiB / 66.7 ms for 5000 diagnostics. The 2M AST phase profile records
-about 27.2 ms / 227.1 MiB after module.read, 247.7 ms / 1291.3 MiB after
-module.lex, 1130.0 ms / 3468.1 MiB after module.parse, and 1141.8 ms /
-4325.9 MiB after sema.analyze.
+the lowering tables so codegen behavior stays unchanged. The release AST gate
+keeps the deliberately over-complex mixed source instead of falling back to a
+throttled toy input, while machine-specific elapsed/RSS data lives in generated
+stress JSON and `aurex-profile-v1` phase profiles rather than portable document
+baseline numbers.
 The expression P0 semantics line now separates intrinsic and final expression
 types. Checked and generic side tables contain `expr_intrinsic_types` for
 context-free expression types, `expr_types` for contextual final types,
@@ -249,14 +249,8 @@ destination. ABI symbol validation also uses `std::string_view` keys instead of
 building a second temporary `IdentifierInterner` for every C symbol.
 IR lowering source-local lookup and verifier symbol de-duplication now also use
 interned typed identifiers instead of persistent string-key maps.
-On the local
-`tools/ast_stress.py --skip-build --counts 10000,50000,100000` baseline, the
-100000 AST bulk statement case moved from roughly 575 MiB RSS / 135 ms to
-roughly 140.8 MiB RSS / 72.4 ms. Google Benchmark `sema_ast_bulk/1024` is now
-roughly 128 ns/expr, and the local `tools/frontend_compare.py` baseline has
-Aurex `--check` at roughly 10.1 ms for lookup/96 and 9.6 ms for generics/96,
-versus Clang++ at roughly 21.2 ms / 24.3 ms and G++ at roughly 25.1 ms /
-24.3 ms. Generic side-table lifetime is now closed on the main path: sema-only
+Benchmark and stress profiles remain the source of truth for machine-specific
+RSS and timing deltas. Generic side-table lifetime is now closed on the main path: sema-only
 expected-type and pattern-case caches live in releasable arenas and are dropped
 after analysis, retained instances keep only lowering-relevant tables,
 non-contiguous NodeSpan sparse ID mappings are shared per template, and tiny

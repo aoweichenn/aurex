@@ -1,7 +1,6 @@
 #include <aurex/base/bump_allocator.hpp>
 
 #include <algorithm>
-#include <cstring>
 #include <new>
 #include <utility>
 
@@ -25,14 +24,10 @@ BumpAllocator::Block::Block(
     : data(data), capacity(capacity), alignment(alignment) {}
 
 BumpAllocator::Block::Block(Block&& other) noexcept
-    : data(other.data),
-      capacity(other.capacity),
-      used(other.used),
-      alignment(other.alignment) {
-    other.data = nullptr;
-    other.capacity = 0;
-    other.used = 0;
-    other.alignment = BASE_BUMP_ALIGNMENT_FLOOR;
+    : data(std::exchange(other.data, nullptr)),
+      capacity(std::exchange(other.capacity, 0)),
+      used(std::exchange(other.used, 0)),
+      alignment(std::exchange(other.alignment, BASE_BUMP_ALIGNMENT_FLOOR)) {
 }
 
 BumpAllocator::Block::~Block() {
@@ -54,10 +49,9 @@ BumpAllocator::BumpAllocator(const usize block_size) noexcept
     : block_size_(std::max(block_size, BASE_BUMP_MIN_BLOCK_BYTES)) {}
 
 BumpAllocator::BumpAllocator(BumpAllocator&& other) noexcept
-    : block_size_(other.block_size_),
+    : block_size_(std::exchange(other.block_size_, BASE_BUMP_MIN_BLOCK_BYTES)),
       blocks_(std::move(other.blocks_)),
-      allocated_bytes_(other.allocated_bytes_) {
-    other.allocated_bytes_ = 0;
+      allocated_bytes_(std::exchange(other.allocated_bytes_, 0)) {
 }
 
 BumpAllocator& BumpAllocator::operator=(BumpAllocator&& other) noexcept {
@@ -65,10 +59,9 @@ BumpAllocator& BumpAllocator::operator=(BumpAllocator&& other) noexcept {
         return *this;
     }
     this->blocks_.clear();
-    this->block_size_ = other.block_size_;
+    this->block_size_ = std::exchange(other.block_size_, BASE_BUMP_MIN_BLOCK_BYTES);
     this->blocks_.swap(other.blocks_);
-    this->allocated_bytes_ = other.allocated_bytes_;
-    other.allocated_bytes_ = 0;
+    this->allocated_bytes_ = std::exchange(other.allocated_bytes_, 0);
     return *this;
 }
 
@@ -103,7 +96,7 @@ std::string_view BumpAllocator::copy_string(const std::string_view text) {
     char* const storage = static_cast<char*>(
         this->allocate(text.size() + BASE_BUMP_STRING_NUL_BYTES, alignof(char))
     );
-    std::memcpy(storage, text.data(), text.size());
+    std::copy_n(text.data(), text.size(), storage);
     storage[text.size()] = '\0';
     return {storage, text.size()};
 }

@@ -85,11 +85,15 @@ Lowerer::ExprView Lowerer::expr_view(const syntax::ExprId expr_id) const noexcep
         view.text_id = payload.text_id;
         break;
     }
-    case syntax::ExprKind::unary:
-    case syntax::ExprKind::try_expr: {
+    case syntax::ExprKind::unary: {
         const syntax::UnaryExprPayload& payload = *this->ast_.exprs.unary_payload(expr_id.value);
         view.unary_op = payload.op;
         view.unary_operand = payload.operand;
+        break;
+    }
+    case syntax::ExprKind::try_expr: {
+        const syntax::TryExprPayload& payload = *this->ast_.exprs.try_payload(expr_id.value);
+        view.try_operand = payload.operand;
         break;
     }
     case syntax::ExprKind::binary: {

@@ -88,9 +88,14 @@ See [M2.5 Roadmap](m2.5-roadmap.md) for the dedicated plan.
 
    The minimal M2 mechanism is now in place: `where T: Eq + Hash` supports
    built-in non-resource capabilities `Sized`, `Eq`, `Ord`, and `Hash`, with
-   diagnostics during instantiation and generic body checking. Resource
-   capabilities, user-defined traits, associated types, const generics, trait
-   objects, and protocol-style abstraction remain deferred.
+   diagnostics during instantiation and generic body checking. Capability
+   satisfaction is distinct from direct operator availability: `f32` / `f64`
+   support direct comparison operators but do not satisfy generic `Eq` / `Ord`.
+   `Hash` is currently a marker-only admission predicate for `bool`, `char`,
+   integer, and pointer types; it does not provide a hash operator, stable hash
+   ABI, or user-defined implementations. Resource capabilities, user-defined
+   traits, associated types, const generics, trait objects, and protocol-style
+   abstraction remain deferred.
 
 8. String primitive
 

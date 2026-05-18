@@ -1,0 +1,57 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "frontend-minimal",
+      "displayName": "Frontend minimal",
+      "description": "Configure parser/sema frontend libraries without LLVM or tests.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-frontend-minimal",
+      "cacheVariables": {
+        "AUREX_FRONTEND_ONLY": "ON",
+        "BUILD_TESTING": "OFF"
+      }
+    },
+    {
+      "name": "frontend-tests",
+      "displayName": "Frontend tests",
+      "description": "Configure frontend-only libraries and frontend test targets without LLVM.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-frontend-tests",
+      "cacheVariables": {
+        "AUREX_FRONTEND_ONLY": "ON",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "full-llvm",
+      "displayName": "Full LLVM",
+      "description": "Configure the full compiler, LLVM backend, driver, CLI, and tests.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "AUREX_FRONTEND_ONLY": "OFF",
+        "BUILD_TESTING": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "frontend-minimal",
+      "configurePreset": "frontend-minimal"
+    },
+    {
+      "name": "frontend-tests",
+      "configurePreset": "frontend-tests"
+    },
+    {
+      "name": "full-llvm",
+      "configurePreset": "full-llvm"
+    }
+  ]
+}

@@ -260,8 +260,7 @@ template <typename T, typename Allocator>
         remap_type_ids(type_args, map);
         return destination.push_generic_apply_expr(range, callee, std::move(type_args));
     }
-    case syntax::ExprKind::unary:
-    case syntax::ExprKind::try_expr: {
+    case syntax::ExprKind::unary: {
         syntax::UnaryOp op = syntax::UnaryOp::logical_not;
         syntax::ExprId operand = syntax::INVALID_EXPR_ID;
         if (syntax::UnaryExprPayload* const source_payload = source.exprs.unary_payload(index);
@@ -270,7 +269,16 @@ template <typename T, typename Allocator>
             operand = source_payload->operand;
         }
         operand = remap_expr(operand, map);
-        return destination.push_unary_expr(kind, range, op, operand);
+        return destination.push_unary_expr(syntax::ExprKind::unary, range, op, operand);
+    }
+    case syntax::ExprKind::try_expr: {
+        syntax::ExprId operand = syntax::INVALID_EXPR_ID;
+        if (syntax::TryExprPayload* const source_payload = source.exprs.try_payload(index);
+            source_payload != nullptr) {
+            operand = source_payload->operand;
+        }
+        operand = remap_expr(operand, map);
+        return destination.push_try_expr(range, operand);
     }
     case syntax::ExprKind::binary: {
         syntax::BinaryOp op = syntax::BinaryOp::add;

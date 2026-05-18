@@ -117,6 +117,7 @@ private:
         sema::IdentId text_id = sema::INVALID_IDENT_ID;
         syntax::UnaryOp unary_op = syntax::UnaryOp::logical_not;
         syntax::ExprId unary_operand = syntax::INVALID_EXPR_ID;
+        syntax::ExprId try_operand = syntax::INVALID_EXPR_ID;
         syntax::BinaryOp binary_op = syntax::BinaryOp::add;
         syntax::ExprId binary_lhs = syntax::INVALID_EXPR_ID;
         syntax::ExprId binary_rhs = syntax::INVALID_EXPR_ID;

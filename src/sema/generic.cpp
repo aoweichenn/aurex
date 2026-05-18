@@ -315,8 +315,13 @@ private:
             }
             break;
         case syntax::ExprKind::unary:
-        case syntax::ExprKind::try_expr:
             if (const syntax::UnaryExprPayload* const payload = this->module.exprs.unary_payload(expr_id.value);
+                payload != nullptr) {
+                this->add_expr(payload->operand);
+            }
+            break;
+        case syntax::ExprKind::try_expr:
+            if (const syntax::TryExprPayload* const payload = this->module.exprs.try_payload(expr_id.value);
                 payload != nullptr) {
                 this->add_expr(payload->operand);
             }

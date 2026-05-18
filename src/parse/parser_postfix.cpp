@@ -219,8 +219,7 @@ syntax::ExprId PostfixExprParser::parse_bracket_suffix(
     if (args.size() > 1) {
         this->session_.diagnostics.report_at(
             syntax::Token {TokenKind::invalid, bracket_range, {}},
-            "index expression expects one argument"
-        );
+            std::string(PARSER_INDEX_EXPECTS_ONE_ARGUMENT));
     }
     return this->session_.module.push_index_expr(range, base, index);
 }
@@ -837,12 +836,9 @@ bool PostfixExprParser::recover_call_arg_separator() {
 syntax::ExprId PostfixExprParser::parse_try_suffix(const syntax::ExprId base)
 {
     const syntax::Token& question = this->previous();
-    return this->session_.module.push_unary_expr(
-        syntax::ExprKind::try_expr,
+    return this->session_.module.push_try_expr(
         this->merge(this->expr_range_or(base, question.range), question.range),
-        syntax::UnaryOp::logical_not,
-        base
-    );
+        base);
 }
 
 syntax::ExprId PostfixExprParser::parse_rejected_update_suffix(

@@ -152,7 +152,7 @@ constexpr string_view SEMA_CAPABILITY_EQ = "Eq";  // ❌ 硬编码字符串
 2. **Eq 允许 reference 但 concrete `==` 不允许** — 约束与操作符不一致
 3. **Hash 无实际操作锚点** — 名义存在不可验证
 
-**当前修复状态：** ✅ 已关闭 — capability 已改为结构化 `CapabilityKind`，where clause、generic instantiation 和 operator predicate 共享规则；Eq/Ord 排除 float，Eq 不再接受 reference，Hash 无操作锚点时拒绝。
+**当前修复状态：** ✅ 已关闭 — capability 已改为结构化 `CapabilityKind`，where clause 和 generic instantiation 使用统一能力规则；direct operator availability 与 capability satisfaction 明确分层。`Eq` / `Ord` 排除 float 和 reference，float 仍支持直接比较 operator；`Hash` 当前是 marker-only admission predicate，支持 `bool` / `char` / integer / pointer，但不提供 hash operator、稳定 hash ABI 或用户自定义实现。
 
 ---
 
@@ -258,7 +258,7 @@ find_symbol(name_id, name, range);
 
 **当前修复状态：** 当前主线已按该建议落地：Sema 读取 parser/module AST 引用，`CheckedModule::normalized_ast` 是轻量 overlay 且不拥有 AST；节点级 C symbol side table 已改为 `IdentId` + checked C-name interner；AST 主存储已改为 compact header + per-kind payload arena；parser 表达式创建直接写 compact payload 并按 token 形态预留/预触页；lexer token 输出已改为 bump-backed `TokenBuffer`；`syntax::Token` 已压缩为 source pointer + range 计算 text；`ModuleLoader` lex+parse 完成后立即释放 token arena；sema 的 checked side tables、generic side tables、pattern case table、type/symbol table、lookup/cache 主表、函数签名参数/泛型实参、struct 字段、enum payload、`TypeInfo` tuple/function/generic args、generic constraint bucket 和持久 name/c_name/generic key 文本字段均接入 bump-backed storage / interner，generic function instance 存储用 bump-backed deque 保持 side table 地址稳定。
 
-**当前 baseline：** 默认发布 gate 已切到 `build-perf-lto` Release+LTO，并记录进程级 wall/user/sys/RSS/page fault 与 `aurex-profile-v1` 阶段 profile。本机 5000 mixed generic 约 450.5 MiB / 13073.0 ms，2M 高复杂 mixed AST 源码约 106820 KiB、4325.9 MiB / 2841.3 ms，5000 mixed errors 约 32.9 MiB / 66.7 ms；AST 发布 RSS 阈值为 8192 MiB。2M AST 阶段 profile 中 module.read 约 27.2 ms / 阶段后 227.1 MiB，module.lex 约 247.7 ms / 1291.3 MiB，module.parse 约 1130.0 ms / 3468.1 MiB，sema.analyze 约 1141.8 ms / 4325.9 MiB。后续只保留跨机器 RSS/耗时阈值校准，不再是整树复制、per-node string side table、token arena 同峰持有或 sema value-payload heap vector。
+**当前 baseline：** 默认发布 gate 已切到 `build-perf-lto` Release+LTO，并记录进程级 wall/user/sys/RSS/page fault 与 `aurex-profile-v1` 阶段 profile。机器相关 RSS/耗时样例不再写进主叙述，具体数据以生成的 stress JSON、profile/scale 校准和 benchmark 输出为准。后续只保留跨机器 RSS/耗时阈值校准，不再是整树复制、per-node string side table、token arena 同峰持有或 sema value-payload heap vector。
 
 ---
 

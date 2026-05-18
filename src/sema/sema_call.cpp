@@ -588,12 +588,10 @@ TypeHandle SemanticAnalyzer::analyze_enum_constructor_call(
                 actual
             );
         }
-        if (this->checked_.types.contains_array(expected)) {
-            this->report_unsupported(
-                call_expr_range_or(this->module_, expr.args[i], expr.range),
-                std::string(SEMA_ENUM_PAYLOAD_ARRAY_ARGUMENT_UNSUPPORTED)
-            );
-        }
+        static_cast<void>(this->check_m2_value_abi(
+            expected,
+            ValueAbiContext::enum_payload_argument,
+            call_expr_range_or(this->module_, expr.args[i], expr.range)));
     }
     this->record_expr_c_name(expr.callee, enum_case.c_name);
     return this->record_expr_type(expr_id, enum_case.type);
@@ -614,34 +612,31 @@ TypeHandle SemanticAnalyzer::analyze_field_call_expr(
     if (syntax::is_valid(callee.object) && callee.object.value < this->module_.exprs.size()) {
         const TypeHandle associated_owner = this->resolve_type_selector(callee.object, false);
         if (is_valid(associated_owner)) {
-        signature = this->find_method_in_visible_modules(
-            associated_owner,
-            callee.field_name_id,
-            callee.field_name,
-            callee.range,
-            false,
-            false
-        );
-        if (signature == nullptr) {
-            signature = this->find_generic_method_in_visible_modules(
+            signature = this->find_method_in_visible_modules(
                 associated_owner,
                 callee.field_name_id,
                 callee.field_name,
                 callee.range,
                 false,
-                    false
-                );
-        }
-        if (signature == nullptr) {
-            static_cast<void>(this->find_method_in_visible_modules(
-                associated_owner,
-                callee.field_name_id,
-                callee.field_name,
-                callee.range,
-                false
-            ));
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-        }
+                false);
+            if (signature == nullptr) {
+                signature = this->find_generic_method_in_visible_modules(
+                    associated_owner,
+                    callee.field_name_id,
+                    callee.field_name,
+                    callee.range,
+                    false,
+                    false);
+            }
+            if (signature == nullptr) {
+                static_cast<void>(this->find_method_in_visible_modules(
+                    associated_owner,
+                    callee.field_name_id,
+                    callee.field_name,
+                    callee.range,
+                    false));
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+            }
             if (signature->has_self_param) {
                 this->report_general(
                     callee.range,
@@ -796,12 +791,10 @@ void SemanticAnalyzer::validate_call_arguments(
                 actual
             );
         }
-        if (this->checked_.types.contains_array(expected)) {
-            this->report_unsupported(
-                call_expr_range_or(this->module_, expr.args[i], expr.range),
-                std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED)
-            );
-        }
+        static_cast<void>(this->check_m2_value_abi(
+            expected,
+            ValueAbiContext::argument,
+            call_expr_range_or(this->module_, expr.args[i], expr.range)));
     }
     if (is_variadic) {
         for (base::usize i = count; i < expr.args.size(); ++i) {
@@ -811,11 +804,11 @@ void SemanticAnalyzer::validate_call_arguments(
                     call_expr_range_or(this->module_, expr.args[i], expr.range),
                     sema_variadic_argument_type_infer_message(name)
                 );
-            } else if (this->is_array_containing_value_type(actual)) {
-                this->report_unsupported(
-                    call_expr_range_or(this->module_, expr.args[i], expr.range),
-                    std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED)
-                );
+            } else if (!this->check_m2_value_abi(
+                           actual,
+                           ValueAbiContext::argument,
+                           call_expr_range_or(this->module_, expr.args[i], expr.range))) {
+                continue;
             }
         }
     }

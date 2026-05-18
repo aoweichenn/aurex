@@ -8,6 +8,18 @@ on:
     - cron: "0 18 * * 0"
 
 jobs:
+  format:
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: dnf install -y clang-tools-extra git make
+      - name: Fetch format base
+        run: git fetch --no-tags --depth=1 origin main
+      - name: Check changed C++ formatting
+        run: tools/format_check.py --base origin/main
   coverage:
     runs-on: ubuntu-24.04
     container:

@@ -862,9 +862,7 @@ void SemanticAnalyzer::analyze_statement_node(
                 this->report_type_mismatch(stmt.range, std::string(SEMA_ASSIGNMENT_TYPE_MISMATCH), lhs, rhs);
             }
         }
-        if (this->checked_.types.contains_array(lhs)) {
-            this->report_unsupported(stmt.range, std::string(SEMA_ARRAY_ASSIGNMENT_UNSUPPORTED));
-        }
+        static_cast<void>(this->check_m2_value_abi(lhs, ValueAbiContext::assignment, stmt.range));
         break;
     }
     case syntax::StmtKind::if_: {
@@ -1089,12 +1087,7 @@ void SemanticAnalyzer::report_return_inference_diagnostic(
 
 void SemanticAnalyzer::validate_function_return_type(const syntax::ItemNode& function, const TypeHandle return_type) const
 {
-    if (this->checked_.types.is_array(return_type)) {
-        this->report_unsupported(function.range, std::string(SEMA_ARRAY_RETURN_UNSUPPORTED));
-    }
-    if (this->checked_.types.contains_array(return_type)) {
-        this->report_unsupported(function.range, std::string(SEMA_ARRAY_STRUCT_RETURN_UNSUPPORTED));
-    }
+    static_cast<void>(this->check_m2_value_abi(return_type, ValueAbiContext::return_value, function.range));
 }
 
 void SemanticAnalyzer::ensure_function_return_known(

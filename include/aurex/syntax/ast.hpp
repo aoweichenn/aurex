@@ -6,6 +6,7 @@
 #include <aurex/syntax/ast_ids.hpp>
 #include <aurex/syntax/identifier.hpp>
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -115,6 +116,7 @@ struct AstReserveEstimate {
         base::usize names = 0;
         base::usize generic_applies = 0;
         base::usize unaries = 0;
+        base::usize tries = 0;
         base::usize binaries = 0;
         base::usize calls = 0;
         base::usize ifs = 0;
@@ -147,6 +149,7 @@ struct AstReserveEstimate {
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_EXPR_NAME_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
+        ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_PRIMARY_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_SECONDARY_PAYLOAD_DIVISOR),
         ast_reserve_fraction(size, SYNTAX_AST_RESERVE_RARE_PAYLOAD_DIVISOR),
@@ -521,6 +524,10 @@ public:
         return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
     }
 
+    [[nodiscard]] base::usize arena_used_bytes() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->used_bytes();
+    }
+
     [[nodiscard]] base::usize arena_blocks() const noexcept {
         return this->arena_ == nullptr ? 0 : this->arena_->block_count();
     }
@@ -803,6 +810,10 @@ struct UnaryExprPayload {
     ExprId operand = INVALID_EXPR_ID;
 };
 
+struct TryExprPayload {
+    ExprId operand = INVALID_EXPR_ID;
+};
+
 struct BinaryExprPayload {
     BinaryOp op = BinaryOp::add;
     ExprId lhs = INVALID_EXPR_ID;
@@ -884,6 +895,7 @@ struct ExprNodePayloadArena {
           names(base::BumpAllocatorAdapter<NameExprPayload> {arena}),
           generic_applies(base::BumpAllocatorAdapter<GenericApplyExprPayload> {arena}),
           unaries(base::BumpAllocatorAdapter<UnaryExprPayload> {arena}),
+          tries(base::BumpAllocatorAdapter<TryExprPayload> {arena}),
           binaries(base::BumpAllocatorAdapter<BinaryExprPayload> {arena}),
           calls(base::BumpAllocatorAdapter<CallExprPayload> {arena}),
           ifs(base::BumpAllocatorAdapter<IfExprPayload> {arena}),
@@ -902,6 +914,7 @@ struct ExprNodePayloadArena {
         this->names.swap(other.names);
         this->generic_applies.swap(other.generic_applies);
         this->unaries.swap(other.unaries);
+        this->tries.swap(other.tries);
         this->binaries.swap(other.binaries);
         this->calls.swap(other.calls);
         this->ifs.swap(other.ifs);
@@ -920,6 +933,7 @@ struct ExprNodePayloadArena {
     AstArenaVector<NameExprPayload> names;
     AstArenaVector<GenericApplyExprPayload> generic_applies;
     AstArenaVector<UnaryExprPayload> unaries;
+    AstArenaVector<TryExprPayload> tries;
     AstArenaVector<BinaryExprPayload> binaries;
     AstArenaVector<CallExprPayload> calls;
     AstArenaVector<IfExprPayload> ifs;
@@ -1041,19 +1055,31 @@ public:
     }
 
     [[nodiscard]] const UnaryExprPayload* unary_payload(const base::usize index) const noexcept {
-        if (!this->payload_available(index) ||
-            (this->headers_[index].kind != ExprKind::unary && this->headers_[index].kind != ExprKind::try_expr)) {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::unary) {
             return nullptr;
         }
         return &this->payloads_.unaries[this->headers_[index].payload];
     }
 
     [[nodiscard]] UnaryExprPayload* unary_payload(const base::usize index) noexcept {
-        if (!this->payload_available(index) ||
-            (this->headers_[index].kind != ExprKind::unary && this->headers_[index].kind != ExprKind::try_expr)) {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::unary) {
             return nullptr;
         }
         return &this->payloads_.unaries[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] const TryExprPayload* try_payload(const base::usize index) const noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::try_expr) {
+            return nullptr;
+        }
+        return &this->payloads_.tries[this->headers_[index].payload];
+    }
+
+    [[nodiscard]] TryExprPayload* try_payload(const base::usize index) noexcept {
+        if (!this->payload_available(index) || this->headers_[index].kind != ExprKind::try_expr) {
+            return nullptr;
+        }
+        return &this->payloads_.tries[this->headers_[index].payload];
     }
 
     [[nodiscard]] const BinaryExprPayload* binary_payload(const base::usize index) const noexcept {
@@ -1334,7 +1360,16 @@ public:
         const UnaryOp op,
         const ExprId operand
     ) {
+        assert(kind == ExprKind::unary);
         return this->append_header(kind, range, this->emplace_payload(this->payloads_.unaries, op, operand));
+    }
+
+    [[nodiscard]] ExprId append_try(const base::SourceRange& range, const TryExprPayload payload) {
+        return this->append_try(range, payload.operand);
+    }
+
+    [[nodiscard]] ExprId append_try(const base::SourceRange& range, const ExprId operand) {
+        return this->append_header(ExprKind::try_expr, range, this->emplace_payload(this->payloads_.tries, operand));
     }
 
     [[nodiscard]] ExprId append_binary(const base::SourceRange& range, const BinaryExprPayload payload) {
@@ -1583,7 +1618,16 @@ public:
         const UnaryOp op,
         const ExprId operand
     ) {
+        assert(kind == ExprKind::unary);
         this->set_header(index, kind, range, this->emplace_payload(this->payloads_.unaries, op, operand));
+    }
+
+    void set_try(const base::usize index, const base::SourceRange& range, const TryExprPayload payload) {
+        this->set_try(index, range, payload.operand);
+    }
+
+    void set_try(const base::usize index, const base::SourceRange& range, const ExprId operand) {
+        this->set_header(index, ExprKind::try_expr, range, this->emplace_payload(this->payloads_.tries, operand));
     }
 
     void set_call(const base::usize index, const ExprKind kind, const base::SourceRange& range, CallExprPayload payload) {
@@ -1794,23 +1838,25 @@ private:
     [[nodiscard]] static base::usize estimated_arena_bytes(
         const AstReserveEstimate::Exprs& plan
     ) noexcept {
-        return allocation_bytes(plan.headers, sizeof(ExprNodeHeader)) +
-               allocation_bytes(plan.literals, sizeof(LiteralExprPayload)) +
-               allocation_bytes(plan.names, sizeof(NameExprPayload)) +
-               allocation_bytes(plan.generic_applies, sizeof(GenericApplyExprPayload)) +
-               allocation_bytes(plan.unaries, sizeof(UnaryExprPayload)) +
-               allocation_bytes(plan.binaries, sizeof(BinaryExprPayload)) +
-               allocation_bytes(plan.calls, sizeof(CallExprPayload)) +
-               allocation_bytes(plan.ifs, sizeof(IfExprPayload)) +
-               allocation_bytes(plan.blocks, sizeof(BlockExprPayload)) +
-               allocation_bytes(plan.matches, sizeof(MatchExprPayload)) +
-               allocation_bytes(plan.arrays, sizeof(ArrayExprPayload)) +
-               allocation_bytes(plan.tuples, sizeof(AstArenaVector<ExprId>)) +
-               allocation_bytes(plan.fields, sizeof(FieldExprPayload)) +
-               allocation_bytes(plan.indexes, sizeof(IndexExprPayload)) +
-               allocation_bytes(plan.slices, sizeof(SliceExprPayload)) +
-               allocation_bytes(plan.struct_literals, sizeof(StructLiteralExprPayload)) +
-               allocation_bytes(plan.casts, sizeof(CastExprPayload));
+        base::usize bytes = allocation_bytes(plan.headers, sizeof(ExprNodeHeader));
+        bytes += allocation_bytes(plan.literals, sizeof(LiteralExprPayload));
+        bytes += allocation_bytes(plan.names, sizeof(NameExprPayload));
+        bytes += allocation_bytes(plan.generic_applies, sizeof(GenericApplyExprPayload));
+        bytes += allocation_bytes(plan.unaries, sizeof(UnaryExprPayload));
+        bytes += allocation_bytes(plan.tries, sizeof(TryExprPayload));
+        bytes += allocation_bytes(plan.binaries, sizeof(BinaryExprPayload));
+        bytes += allocation_bytes(plan.calls, sizeof(CallExprPayload));
+        bytes += allocation_bytes(plan.ifs, sizeof(IfExprPayload));
+        bytes += allocation_bytes(plan.blocks, sizeof(BlockExprPayload));
+        bytes += allocation_bytes(plan.matches, sizeof(MatchExprPayload));
+        bytes += allocation_bytes(plan.arrays, sizeof(ArrayExprPayload));
+        bytes += allocation_bytes(plan.tuples, sizeof(AstArenaVector<ExprId>));
+        bytes += allocation_bytes(plan.fields, sizeof(FieldExprPayload));
+        bytes += allocation_bytes(plan.indexes, sizeof(IndexExprPayload));
+        bytes += allocation_bytes(plan.slices, sizeof(SliceExprPayload));
+        bytes += allocation_bytes(plan.struct_literals, sizeof(StructLiteralExprPayload));
+        bytes += allocation_bytes(plan.casts, sizeof(CastExprPayload));
+        return bytes;
     }
 
     void reserve_payloads(const AstReserveEstimate::Exprs& plan) {
@@ -1818,6 +1864,7 @@ private:
         this->payloads_.names.reserve(plan.names);
         this->payloads_.generic_applies.reserve(plan.generic_applies);
         this->payloads_.unaries.reserve(plan.unaries);
+        this->payloads_.tries.reserve(plan.tries);
         this->payloads_.binaries.reserve(plan.binaries);
         this->payloads_.calls.reserve(plan.calls);
         this->payloads_.ifs.reserve(plan.ifs);
@@ -1902,12 +1949,22 @@ private:
                 : this->append_generic_apply(range, payload->callee, copy_std_vector(payload->type_args)));
             break;
         }
-        case ExprKind::unary:
-        case ExprKind::try_expr: {
+        case ExprKind::unary: {
             const UnaryExprPayload* const payload = other.unary_payload(index);
-            static_cast<void>(payload == nullptr
-                ? this->append_unary(kind, range, UnaryOp::logical_not, INVALID_EXPR_ID)
-                : this->append_unary(kind, range, payload->op, payload->operand));
+            if (payload == nullptr) {
+                static_cast<void>(this->append_unary(ExprKind::unary, range, UnaryOp::logical_not, INVALID_EXPR_ID));
+            } else {
+                static_cast<void>(this->append_unary(ExprKind::unary, range, payload->op, payload->operand));
+            }
+            break;
+        }
+        case ExprKind::try_expr: {
+            const TryExprPayload* const payload = other.try_payload(index);
+            if (payload == nullptr) {
+                static_cast<void>(this->append_try(range, INVALID_EXPR_ID));
+            } else {
+                static_cast<void>(this->append_try(range, payload->operand));
+            }
             break;
         }
         case ExprKind::binary: {
@@ -2183,6 +2240,10 @@ public:
 
     [[nodiscard]] base::usize arena_bytes() const noexcept {
         return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
+    }
+
+    [[nodiscard]] base::usize arena_used_bytes() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->used_bytes();
     }
 
     [[nodiscard]] base::usize arena_blocks() const noexcept {
@@ -2667,6 +2728,10 @@ public:
 
     [[nodiscard]] base::usize arena_bytes() const noexcept {
         return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
+    }
+
+    [[nodiscard]] base::usize arena_used_bytes() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->used_bytes();
     }
 
     [[nodiscard]] base::usize arena_blocks() const noexcept {
@@ -3226,6 +3291,10 @@ public:
 
     [[nodiscard]] base::usize arena_bytes() const noexcept {
         return this->arena_ == nullptr ? 0 : this->arena_->allocated_bytes();
+    }
+
+    [[nodiscard]] base::usize arena_used_bytes() const noexcept {
+        return this->arena_ == nullptr ? 0 : this->arena_->used_bytes();
     }
 
     [[nodiscard]] base::usize arena_blocks() const noexcept {
@@ -3924,7 +3993,7 @@ struct AstModule {
           items(other.items),
           item_modules(other.item_modules),
           identifiers(other.identifiers),
-          identifiers_ready_(other.identifiers_ready_) {
+          identifiers_ready_(false) {
         this->intern_identifiers();
     }
 
@@ -3942,7 +4011,7 @@ struct AstModule {
         this->items = other.items;
         this->item_modules = other.item_modules;
         this->identifiers = other.identifiers;
-        this->identifiers_ready_ = other.identifiers_ready_;
+        this->identifiers_ready_ = false;
         this->intern_identifiers();
         return *this;
     }
@@ -4039,6 +4108,14 @@ struct AstModule {
         const ExprId operand
     ) {
         return this->exprs.append_unary(kind, range, op, operand);
+    }
+
+    [[nodiscard]] ExprId push_try_expr(const base::SourceRange& range, const TryExprPayload payload) {
+        return this->push_try_expr(range, payload.operand);
+    }
+
+    [[nodiscard]] ExprId push_try_expr(const base::SourceRange& range, const ExprId operand) {
+        return this->exprs.append_try(range, operand);
     }
 
     [[nodiscard]] ExprId push_binary_expr(const base::SourceRange& range, const BinaryExprPayload payload) {
@@ -4302,6 +4379,14 @@ struct AstModule {
         this->exprs.set_unary(index, kind, range, op, operand);
     }
 
+    void set_try_expr(const base::usize index, const base::SourceRange& range, const TryExprPayload payload) {
+        this->exprs.set_try(index, range, payload);
+    }
+
+    void set_try_expr(const base::usize index, const base::SourceRange& range, const ExprId operand) {
+        this->exprs.set_try(index, range, operand);
+    }
+
     void set_call_expr(const base::usize index, const ExprKind kind, const base::SourceRange& range, CallExprPayload payload) {
         this->exprs.set_call(index, kind, range, std::move(payload));
     }
@@ -4427,11 +4512,17 @@ struct AstModule {
     }
 
     void finalize_identifiers() {
+        if (this->identifiers_ready_) {
+            return;
+        }
         this->intern_module_metadata();
         this->identifiers_ready_ = true;
     }
 
     void intern_identifiers() {
+        if (this->identifiers_ready_) {
+            return;
+        }
         this->intern_module_metadata();
         for (base::usize i = 0; i < this->types.size(); ++i) {
             TypeNode node = this->types.take(i);

@@ -254,6 +254,69 @@ TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata) {
     EXPECT_EQ(copied.identifier_text(copied_name->text_id), "value");
 }
 
+TEST(CoreUnit, AstModuleIdentifierInterningIsIdempotentAndRehomesCopies) {
+    syntax::AstModule module;
+    module.module_path.parts = {"app"};
+
+    syntax::TypeNode named_type;
+    named_type.kind = syntax::TypeKind::named;
+    named_type.scope_name = "core";
+    named_type.scope_parts = {"core", "mem"};
+    named_type.name = "Buffer";
+    const syntax::TypeId type_id = module.push_type(named_type);
+
+    const syntax::ExprId name_expr = push_name_expr(module, "value", "mem");
+    static_cast<void>(module.push_field_expr({}, name_expr, "len"));
+
+    syntax::PatternNode pattern;
+    pattern.kind = syntax::PatternKind::binding;
+    pattern.binding_name = "value";
+    static_cast<void>(module.push_pattern(pattern));
+
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::let;
+    stmt.name = "value";
+    stmt.init = name_expr;
+    const syntax::StmtId stmt_id = module.push_stmt(stmt);
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "value";
+    function.generic_params = {syntax::GenericParamDecl {"T", {}}};
+    function.params = {syntax::ParamDecl {"value", type_id, {}}};
+    function.body = stmt_id;
+    static_cast<void>(module.push_item(function));
+
+    module.intern_identifiers();
+    ASSERT_TRUE(module.identifiers_ready());
+    const base::usize identifier_count = module.identifiers.size();
+    const base::usize identifier_arena_bytes = module.identifiers.arena_bytes();
+    const base::usize type_used_bytes = module.types.arena_used_bytes();
+    const base::usize expr_used_bytes = module.exprs.arena_used_bytes();
+    const base::usize pattern_used_bytes = module.patterns.arena_used_bytes();
+    const base::usize stmt_used_bytes = module.stmts.arena_used_bytes();
+    const base::usize item_used_bytes = module.items.arena_used_bytes();
+
+    module.intern_identifiers();
+    EXPECT_EQ(module.identifiers.size(), identifier_count);
+    EXPECT_EQ(module.identifiers.arena_bytes(), identifier_arena_bytes);
+    EXPECT_EQ(module.types.arena_used_bytes(), type_used_bytes);
+    EXPECT_EQ(module.exprs.arena_used_bytes(), expr_used_bytes);
+    EXPECT_EQ(module.patterns.arena_used_bytes(), pattern_used_bytes);
+    EXPECT_EQ(module.stmts.arena_used_bytes(), stmt_used_bytes);
+    EXPECT_EQ(module.items.arena_used_bytes(), item_used_bytes);
+
+    const syntax::AstModule copied = module;
+    ASSERT_TRUE(copied.identifiers_ready());
+    const syntax::IdentId copied_buffer_id = copied.find_identifier("Buffer");
+    ASSERT_TRUE(syntax::is_valid(copied_buffer_id));
+    const std::string_view copied_buffer_text = copied.identifier_text(copied_buffer_id);
+    const syntax::TypeNode copied_type = copied.types[type_id.value];
+    EXPECT_EQ(copied_type.name, copied_buffer_text);
+    EXPECT_EQ(copied_type.name_id, copied_buffer_id);
+    EXPECT_EQ(copied_type.name.data(), copied_buffer_text.data());
+}
+
 TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads) {
     syntax::TypeNode function_type;
     function_type.kind = syntax::TypeKind::function;
@@ -487,6 +550,7 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
             literal_id,
         }
     );
+    const syntax::ExprId try_id = exprs.append_try({}, unary_id);
 
     const syntax::ExprId binary_id = exprs.append_binary(
         {},
@@ -583,6 +647,11 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
     ASSERT_NE(unary_payload, nullptr);
     EXPECT_EQ(unary_payload->op, syntax::UnaryOp::numeric_negate);
     EXPECT_EQ(unary_payload->operand.value, literal_id.value);
+
+    EXPECT_EQ(exprs.unary_payload(try_id.value), nullptr);
+    const syntax::TryExprPayload* const try_payload = exprs.try_payload(try_id.value);
+    ASSERT_NE(try_payload, nullptr);
+    EXPECT_EQ(try_payload->operand.value, unary_id.value);
 
     const syntax::BinaryExprPayload* const binary_payload = exprs.binary_payload(binary_id.value);
     ASSERT_NE(binary_payload, nullptr);
@@ -977,14 +1046,7 @@ TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels) {
             scoped_name_id,
         }
     );
-    const syntax::ExprId try_expr_id = module.push_unary_expr(
-        syntax::ExprKind::try_expr,
-        {},
-        syntax::UnaryExprPayload {
-            syntax::UnaryOp::logical_not,
-            call_id,
-        }
-    );
+    const syntax::ExprId try_expr_id = module.push_try_expr({}, call_id);
 
     syntax::StmtNode for_range;
     for_range.kind = syntax::StmtKind::for_range;

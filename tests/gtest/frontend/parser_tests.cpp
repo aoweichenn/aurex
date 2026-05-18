@@ -1975,9 +1975,8 @@ TEST(CoreUnit, ParserCoversShiftAndScopedEnumRegressions) {
     const syntax::StmtNode& call_stmt = module.stmts[body.statements[0].value];
     ASSERT_TRUE(syntax::is_valid(call_stmt.init));
     ASSERT_EQ(module.exprs.kind(call_stmt.init.value), syntax::ExprKind::try_expr);
-    const syntax::UnaryExprPayload* const try_expr = module.exprs.unary_payload(call_stmt.init.value);
+    const syntax::TryExprPayload* const try_expr = module.exprs.try_payload(call_stmt.init.value);
     ASSERT_NE(try_expr, nullptr);
-    ASSERT_EQ(try_expr->op, syntax::UnaryOp::logical_not);
     ASSERT_TRUE(syntax::is_valid(try_expr->operand));
     ASSERT_EQ(module.exprs.kind(try_expr->operand.value), syntax::ExprKind::call);
     const syntax::CallExprPayload* const call = module.exprs.call_payload(try_expr->operand.value);

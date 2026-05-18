@@ -14,8 +14,17 @@ output.
 
 ## Quick Start
 
+Minimal frontend configure/build, which does not require LLVM or GoogleTest:
+
 ```sh
-cmake -S . -B build
+cmake --preset frontend-minimal
+cmake --build --preset frontend-minimal -j
+```
+
+To build and run the full native compiler path, use the LLVM preset:
+
+```sh
+cmake --preset full-llvm
 cmake --build build -j
 build/bin/aurexc examples/hello.ax -o build/tests/hello
 build/tests/hello
@@ -154,20 +163,11 @@ interner vectors/hash nodes are now bump-backed; parser construction, module
 loading, and postfix materialization write compact expression headers plus
 per-kind payloads directly. Parser startup estimates AST storage from token
 shape and reserves hot payload arenas up front so bump-backed vectors do not
-retain repeated growth buffers on large modules. The release AST threshold is
-8192 MiB RSS so the gate can use the deliberately over-complex mixed source
-rather than a throttled toy program. On the local Release+LTO release gate,
-5000 mixed generic instances are roughly 450.5 MiB RSS / 13073.0 ms, the
-2M-statement mixed AST source is about 106820 KiB and runs at roughly
-4325.9 MiB RSS / 2841.3 ms, and 5000 mixed diagnostic errors are roughly
-32.9 MiB RSS / 66.7 ms. The AST phase profile for that 2M case records about
-27.2 ms / 227.1 MiB after module.read, 247.7 ms / 1291.3 MiB after module.lex,
-1130.0 ms / 3468.1 MiB after module.parse, and 1141.8 ms / 4325.9 MiB after
-sema.analyze. Google Benchmark `sema_ast_bulk/1024` is roughly 128 ns/expr,
-and the local
-`tools/frontend_compare.py` baseline has Aurex `--check` at about 10.1 ms for
-lookup/96 and 9.6 ms for generics/96 versus Clang++ at about 21.2 ms / 24.3 ms
-and G++ at about 25.1 ms / 24.3 ms. Generic side-table lifetime is now closed
+retain repeated growth buffers on large modules. Benchmark and stress tooling
+records machine-specific Release/LTO profiles, phase timings, peak RSS, and
+threshold metadata in generated benchmark outputs; README intentionally keeps
+only the commands and gate shape instead of treating local timing/RSS samples as
+portable performance promises. Generic side-table lifetime is now closed
 on the main path: retained instances use function-local NodeSpan side tables,
 share module-level sparse NodeSpan layouts only when a template needs
 non-contiguous node-id mappings, release sema-only expected-type and

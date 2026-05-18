@@ -769,12 +769,10 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                         std::string(SEMA_FUNCTION_TYPE_PARAMETER_STORAGE)
                     );
                 }
-                if (this->checked_.types.is_array(param) || this->checked_.types.contains_array(param)) {
-                    this->report_unsupported(
-                        this->module_.types[action.type.value].range,
-                        std::string(SEMA_ARRAY_FUNCTION_TYPE_PARAMETER_UNSUPPORTED)
-                    );
-                }
+                static_cast<void>(this->check_m2_value_abi(
+                    param,
+                    ValueAbiContext::function_type_parameter,
+                    this->module_.types[action.type.value].range));
             }
             if (is_valid(return_type) &&
                 !this->checked_.types.is_void(return_type) &&
@@ -784,12 +782,10 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                     std::string(SEMA_FUNCTION_TYPE_RETURN_STORAGE)
                 );
             }
-            if (this->checked_.types.is_array(return_type) || this->checked_.types.contains_array(return_type)) {
-                this->report_unsupported(
-                    this->module_.types[action.type.value].range,
-                    std::string(SEMA_ARRAY_FUNCTION_TYPE_RETURN_UNSUPPORTED)
-                );
-            }
+            static_cast<void>(this->check_m2_value_abi(
+                return_type,
+                ValueAbiContext::function_type_return,
+                this->module_.types[action.type.value].range));
             const TypeHandle resolved = this->checked_.types.function(
                 map_function_call_conv(action.function_call_conv),
                 action.function_is_unsafe,
@@ -953,6 +949,75 @@ bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const {
             return false;
         }
         pending.push_back(info.array_element);
+    }
+    return true;
+}
+
+bool SemanticAnalyzer::check_m2_value_abi(
+    const TypeHandle type,
+    const ValueAbiContext context,
+    const base::SourceRange& range) const {
+    if (!is_valid(type)) {
+        return true;
+    }
+
+    switch (context) {
+    case ValueAbiContext::parameter:
+        if (this->checked_.types.is_array(type)) {
+            this->report_unsupported(range, std::string(SEMA_ARRAY_PARAMETER_UNSUPPORTED));
+            return false;
+        }
+        if (this->checked_.types.contains_array(type)) {
+            this->report_unsupported(range, std::string(SEMA_ARRAY_STRUCT_PARAMETER_UNSUPPORTED));
+            return false;
+        }
+        return true;
+    case ValueAbiContext::function_type_parameter:
+        if (this->checked_.types.is_array(type) || this->checked_.types.contains_array(type)) {
+            this->report_unsupported(range, std::string(SEMA_ARRAY_FUNCTION_TYPE_PARAMETER_UNSUPPORTED));
+            return false;
+        }
+        return true;
+    case ValueAbiContext::function_type_return:
+        if (this->checked_.types.is_array(type) || this->checked_.types.contains_array(type)) {
+            this->report_unsupported(range, std::string(SEMA_ARRAY_FUNCTION_TYPE_RETURN_UNSUPPORTED));
+            return false;
+        }
+        return true;
+    case ValueAbiContext::return_value:
+        if (this->checked_.types.is_array(type)) {
+            this->report_unsupported(range, std::string(SEMA_ARRAY_RETURN_UNSUPPORTED));
+            return false;
+        }
+        if (this->checked_.types.contains_array(type)) {
+            this->report_unsupported(range, std::string(SEMA_ARRAY_STRUCT_RETURN_UNSUPPORTED));
+            return false;
+        }
+        return true;
+    case ValueAbiContext::assignment:
+        if (this->checked_.types.contains_array(type)) {
+            this->report_unsupported(range, std::string(SEMA_ARRAY_ASSIGNMENT_UNSUPPORTED));
+            return false;
+        }
+        return true;
+    case ValueAbiContext::enum_payload:
+        if (this->checked_.types.contains_array(type)) {
+            this->report_unsupported(range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_UNSUPPORTED));
+            return false;
+        }
+        return true;
+    case ValueAbiContext::enum_payload_argument:
+        if (this->checked_.types.contains_array(type)) {
+            this->report_unsupported(range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_ARGUMENT_UNSUPPORTED));
+            return false;
+        }
+        return true;
+    case ValueAbiContext::argument:
+        if (this->checked_.types.contains_array(type)) {
+            this->report_unsupported(range, std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
+            return false;
+        }
+        return true;
     }
     return true;
 }

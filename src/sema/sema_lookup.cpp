@@ -1151,11 +1151,10 @@ bool SemanticAnalyzer::method_receiver_matches(
     }
     const TypeHandle self_type = signature.param_types.front();
     if (this->checked_.types.same(self_type, receiver_type)) {
-        if (this->checked_.types.contains_array(self_type)) {
-            this->report_unsupported(
-                this->module_.exprs.range(receiver.value),
-                std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED)
-            );
+        if (!this->check_m2_value_abi(
+                self_type,
+                ValueAbiContext::argument,
+                this->module_.exprs.range(receiver.value))) {
             return false;
         }
         return true;

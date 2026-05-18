@@ -1864,7 +1864,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly) {
     const ExprId unused_expr = push_integer_text(module, "99");
     const ExprId callee = module.push_name_expr({}, "callee", std::vector<TypeId> {function_handle_type});
     const ExprId generic_apply = push_generic_apply(module, callee, {i32_type});
-    const ExprId try_expr = module.push_unary_expr(syntax::ExprKind::try_expr, {}, syntax::UnaryOp::logical_not, generic_apply);
+    const ExprId try_expr = module.push_try_expr({}, generic_apply);
     const ExprId bool_expr = push_bool(module, "true");
     const ExprId binary_expr = push_binary(module, syntax::BinaryOp::add, name_with_type_arg, generic_apply);
     const ExprId call_expr = push_call(module, callee, {binary_expr, try_expr});
@@ -3831,6 +3831,16 @@ TEST(CoreUnit, SemanticWhiteBoxTypeResolverAndAbiFocusedEdges) {
     analyzer.checked_.structs.emplace(semantic_module_key(analyzer, module_id(0), "BuiltinStruct"), builtin_struct);
     static_cast<void>(analyzer.abi_size(builtin_tuple));
     static_cast<void>(analyzer.abi_size(builtin_struct_type));
+
+    const TypeHandle array_i32 = types.array(SEMA_TEST_ARRAY_SLICE_LENGTH, i32);
+    EXPECT_FALSE(analyzer.check_m2_value_abi(array_i32, sema::ValueAbiContext::parameter, {}));
+    EXPECT_FALSE(analyzer.check_m2_value_abi(array_i32, sema::ValueAbiContext::function_type_parameter, {}));
+    EXPECT_FALSE(analyzer.check_m2_value_abi(array_i32, sema::ValueAbiContext::function_type_return, {}));
+    EXPECT_FALSE(analyzer.check_m2_value_abi(array_i32, sema::ValueAbiContext::return_value, {}));
+    EXPECT_FALSE(analyzer.check_m2_value_abi(array_i32, sema::ValueAbiContext::assignment, {}));
+    EXPECT_FALSE(analyzer.check_m2_value_abi(array_i32, sema::ValueAbiContext::enum_payload, {}));
+    EXPECT_FALSE(analyzer.check_m2_value_abi(array_i32, sema::ValueAbiContext::enum_payload_argument, {}));
+    EXPECT_FALSE(analyzer.check_m2_value_abi(array_i32, sema::ValueAbiContext::argument, {}));
 
     const std::string messages = diagnostic_messages(diagnostics);
     EXPECT_NE(messages.find("generic type parameter cannot take type arguments"), std::string::npos);

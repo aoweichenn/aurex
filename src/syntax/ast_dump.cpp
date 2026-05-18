@@ -155,6 +155,7 @@ struct ExprDumpView {
     std::span<const TypeId> type_args {};
     UnaryOp unary_op = UnaryOp::logical_not;
     ExprId unary_operand = INVALID_EXPR_ID;
+    ExprId try_operand = INVALID_EXPR_ID;
     ExprId binary_lhs = INVALID_EXPR_ID;
     ExprId binary_rhs = INVALID_EXPR_ID;
     ExprId callee = INVALID_EXPR_ID;
@@ -215,11 +216,15 @@ struct ExprDumpView {
         view.type_args = readonly_span(payload.type_args);
         break;
     }
-    case ExprKind::unary:
-    case ExprKind::try_expr: {
+    case ExprKind::unary: {
         const UnaryExprPayload& payload = *module.exprs.unary_payload(id.value);
         view.unary_op = payload.op;
         view.unary_operand = payload.operand;
+        break;
+    }
+    case ExprKind::try_expr: {
+        const TryExprPayload& payload = *module.exprs.try_payload(id.value);
+        view.try_operand = payload.operand;
         break;
     }
     case ExprKind::binary: {
@@ -768,6 +773,9 @@ void dump_expr(std::ostringstream& out, const AstModule& module, const ExprId id
     out << "\n";
     if (is_valid(expr.unary_operand)) {
         dump_expr(out, module, expr.unary_operand, depth + 1);
+    }
+    if (is_valid(expr.try_operand)) {
+        dump_expr(out, module, expr.try_operand, depth + 1);
     }
     if (is_valid(expr.binary_lhs)) {
         dump_expr(out, module, expr.binary_lhs, depth + 1);

@@ -432,11 +432,15 @@ SemanticAnalyzer::ExprView SemanticAnalyzer::expr_view(const syntax::ExprId expr
         view.type_args = readonly_span(payload.type_args);
         break;
     }
-    case syntax::ExprKind::unary:
-    case syntax::ExprKind::try_expr: {
+    case syntax::ExprKind::unary: {
         const syntax::UnaryExprPayload& payload = *this->module_.exprs.unary_payload(expr_id.value);
         view.unary_op = payload.op;
         view.unary_operand = payload.operand;
+        break;
+    }
+    case syntax::ExprKind::try_expr: {
+        const syntax::TryExprPayload& payload = *this->module_.exprs.try_payload(expr_id.value);
+        view.try_operand = payload.operand;
         break;
     }
     case syntax::ExprKind::binary: {
@@ -1813,7 +1817,7 @@ TypeHandle SemanticAnalyzer::analyze_try_expr(const syntax::ExprId expr_id, cons
         this->report_general(expr.range, std::string(SEMA_TRY_CONST_INITIALIZER));
     }
 
-    const TypeHandle source_type = this->analyze_expr(expr.unary_operand);
+    const TypeHandle source_type = this->analyze_expr(expr.try_operand);
     const TryShape source_shape = this->classify_try_shape(source_type);
     if (source_shape.kind == TryShape::Kind::malformed_result) {
         this->report_general(expr.range, std::string(SEMA_TRY_RESULT_SHAPE));

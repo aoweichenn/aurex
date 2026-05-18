@@ -642,7 +642,7 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const ExprView& ex
         return INVALID_VALUE_ID;
     }
 
-    const sema::TypeHandle source_type = expr_type(expr.unary_operand);
+    const sema::TypeHandle source_type = expr_type(expr.try_operand);
     const sema::TypeHandle result_type = expr_type(expr_id);
     const sema::TypeHandle return_type = current_function_->return_type;
 
@@ -659,7 +659,7 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const ExprView& ex
     const sema::EnumCaseInfo* const failure_case = source_shape.failure_case;
     const sema::EnumCaseInfo* const return_failure_case = return_shape.failure_case;
 
-    const ValueId source_value = lower_expr(expr.unary_operand);
+    const ValueId source_value = lower_expr(expr.try_operand);
     const ValueId source_slot = append_temp_alloca("try.value", source_type);
     append_store(source_slot, source_value);
 

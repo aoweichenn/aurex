@@ -421,6 +421,9 @@ inline constexpr std::string_view PARSER_TUPLE_FIELD_ACCESS_UNSUPPORTED =
 inline constexpr std::string_view PARSER_EXPECT_INDEX_END =
     "expected ']' after index";
 
+inline constexpr std::string_view PARSER_INDEX_EXPECTS_ONE_ARGUMENT =
+    "index expression expects one argument";
+
 inline constexpr std::string_view PARSER_EXPECT_SLICE_END =
     "expected ']' after slice expression";
 

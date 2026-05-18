@@ -136,14 +136,8 @@ per-kind payload vector 接到 `BumpAllocatorAdapter`，`IdentifierInterner` 的
 局部名再复制进 checked C-name interner；`CheckedModule` move 只重绑原本属于自身 `c_names` 的
 `InternedText`，不会把 borrowed AST name 错绑到 checked interner，显式 copy 才重新 intern 到目标模块。
 ABI 校验也从临时 `IdentifierInterner` 改为 `std::string_view` key，避免校验阶段把所有 C symbol 再复制一遍。
-`tools/ast_stress.py --skip-build --counts 100000 --shape mixed` 本机 baseline 中，100000 mixed AST
-bulk statements 约 96.3 MiB RSS / 77.9 ms；当前默认 Release+LTO 发布阈值门中，5000 generic 约
-450.5 MiB / 13073.0 ms，2M 高复杂 mixed AST 源码约 106820 KiB、4325.9 MiB / 2841.3 ms，
-5000 diagnostic errors 约 32.9 MiB / 66.7 ms。2M AST 阶段 profile 显示 module.read 约
-27.2 ms / 阶段后 227.1 MiB，module.lex 约 247.7 ms / 1291.3 MiB，module.parse 约
-1130.0 ms / 3468.1 MiB，sema.analyze 约 1141.8 ms / 4325.9 MiB。Google Benchmark
-`sema_ast_bulk/1024` 约 128 ns/expr；`tools/frontend_compare.py` 本机 baseline 中 Aurex `--check` lookup/96 约 10.1 ms、
-generics/96 约 9.6 ms，Clang++ 分别约 21.2 ms / 24.3 ms，G++ 分别约 25.1 ms / 24.3 ms。
+benchmark 和 stress profile 是机器相关 RSS/耗时数据的唯一来源；主文档只保留 gate 形态和 profile/scale 校准机制，
+不再把本机样例数字写成可移植 baseline。
 generic side table 生命周期已在主路径收口：sema-only expected-type 和 pattern-case cache 进入可释放 arena 并在分析后丢弃；retained instance 只保留 lowering 需要的表；非连续 NodeSpan sparse ID mapping 按模板共享；小型 per-instance side table arena 从默认 64 KiB floor 降到 1 KiB block，覆盖 2000/5000+ 不同泛型模板的固定开销。跨模块 stable hash、parallel global ID、轻量 generic/AST/diagnostic 阈值门、默认 Release+LTO 的 5000 generic / 2M 高复杂 AST / 5000 errors 发布阈值门、8 GiB AST RSS 阈值、阶段级 profile，以及 profile/scale 形式的跨机器阈值校准机制已接入；后续只保留新增机器 profile 数据和 query 级增量复用，不再缺身份或 release gate 主路径。
 2026-05-17 M2.5 起步后，诊断协议先做了结构化收口：语义诊断现在由显式 semantic kind 映射到稳定 category/code，message 只保留展示职责；CLI 文本、JSON 输出和后续 diagnostics query / LSP 适配将共享同一事件语义。下一批 M2.5 任务转向 query key、依赖跟踪、lossless syntax 和 IDE-native 入口，而不是继续扩张语言面。
 2026-05-17 正则性能/测试线继续把 `RegexSet` exact-literal prefix trie 推进为持久标量 Aho-Corasick fast path：纯字面量 set 构建共享 trie 后补 failure/output link，`matches_set`、`find_set`、first-match scan、all-span/overlap scan 和 vectored flatten 后入口都用同一份自动机线性扫描；database 升级为 v3，序列化 node/terminal/max-literal 元数据，roundtrip 后不退回 VM active-list。测试侧补上 Unicode byte span、suffix failure output、重复 literal、database fast path workspace 和 deterministic RegexSet property corpus；`tools/regex_differential.py` 现在同时生成固定 + property Python `re` 差分、RegexSet exact-literal property cases、Unicode 17.0 full case-fold 与 UAX #29 `\X` conformance 程序，作为 CTest slow conformance 入口。

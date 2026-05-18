@@ -83,6 +83,9 @@ public:
         : arena_(other.arena_) {}
 
     [[nodiscard]] T* allocate(const std::size_t count) {
+        if (count == 0) {
+            return nullptr;
+        }
         if (count > std::numeric_limits<std::size_t>::max() / sizeof(T)) {
             throw std::bad_array_new_length();
         }

@@ -29,6 +29,17 @@ enum class CapabilityKind {
     hash,
 };
 
+enum class ValueAbiContext {
+    parameter,
+    function_type_parameter,
+    function_type_return,
+    return_value,
+    assignment,
+    enum_payload,
+    enum_payload_argument,
+    argument,
+};
+
 struct CapabilityKindHash {
     [[nodiscard]] std::size_t operator()(const CapabilityKind kind) const noexcept {
         return static_cast<std::size_t>(kind);
@@ -177,6 +188,7 @@ private:
         IdentId text_id = INVALID_IDENT_ID;
         syntax::UnaryOp unary_op = syntax::UnaryOp::logical_not;
         syntax::ExprId unary_operand = syntax::INVALID_EXPR_ID;
+        syntax::ExprId try_operand = syntax::INVALID_EXPR_ID;
         syntax::BinaryOp binary_op = syntax::BinaryOp::add;
         syntax::ExprId binary_lhs = syntax::INVALID_EXPR_ID;
         syntax::ExprId binary_rhs = syntax::INVALID_EXPR_ID;
@@ -653,6 +665,10 @@ private:
     [[nodiscard]] std::string generic_function_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const;
+    [[nodiscard]] bool check_m2_value_abi(
+        TypeHandle type,
+        ValueAbiContext context,
+        const base::SourceRange& range) const;
     [[nodiscard]] bool is_valid_cast(syntax::ExprKind kind, TypeHandle dst, TypeHandle src) const;
     [[nodiscard]] bool parse_integer_literal_text(std::string_view text, base::u64& value) const noexcept;
     [[nodiscard]] bool integer_literal_fits_type(TypeHandle destination, std::string_view text) const noexcept;

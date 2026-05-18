@@ -41,6 +41,9 @@ build: configure
 test:
 	tools/run_tests.sh
 
+format-check:
+	tools/format_check.py --base HEAD
+
 bench:
 	tools/bench.py
 
@@ -76,4 +79,4 @@ perf-compare:
 clean:
 	$(CMAKE) --build $(BUILD_DIR) --target clean || true
 
-.PHONY: all configure build test bench perf perf-stress perf-stress-threshold perf-release-threshold perf-release-lto-threshold perf-release-all-threshold perf-ast-stress perf-compare clean
+.PHONY: all configure build test format-check bench perf perf-stress perf-stress-threshold perf-release-threshold perf-release-lto-threshold perf-release-all-threshold perf-ast-stress perf-compare clean

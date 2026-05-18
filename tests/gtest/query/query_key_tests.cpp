@@ -1,6 +1,8 @@
 #include <aurex/query/generic_instance_key.hpp>
+#include <aurex/query/stable_identity.hpp>
 
 #include <array>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -14,6 +16,18 @@ constexpr base::u32 QUERY_TEST_GENERIC_PARAM_INDEX = 0;
 constexpr base::u32 QUERY_TEST_STABLE_ORDINAL = 0;
 constexpr base::u64 QUERY_TEST_ARRAY_COUNT = 4;
 constexpr base::u32 QUERY_TEST_WRITER_VALUE = 7;
+constexpr base::u64 QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_PRIMARY = 0x6ebe4a07bced0d95ULL;
+constexpr base::u64 QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_SECONDARY = 0xbdb2a36668c900d3ULL;
+constexpr base::u64 QUERY_TEST_LEGACY_EMPTY_MODULE_GLOBAL_ID = 0x5ca885dc64cb6403ULL;
+constexpr base::u64 QUERY_TEST_LEGACY_DOTTED_MODULE_PATH_PRIMARY = 0x6bfecbda1ca3380fULL;
+constexpr base::u64 QUERY_TEST_LEGACY_DOTTED_MODULE_PATH_SECONDARY = 0x10201c99140e1aadULL;
+constexpr base::u64 QUERY_TEST_LEGACY_DOTTED_MODULE_GLOBAL_ID = 0x26c54d5e4db5e233ULL;
+constexpr base::u64 QUERY_TEST_LEGACY_FUNCTION_GLOBAL_ID = 0x0fac6bd8b25eb8adULL;
+constexpr base::u64 QUERY_TEST_LEGACY_VALUE_GLOBAL_ID = 0x0fac6bd8b256d8f7ULL;
+constexpr base::u64 QUERY_TEST_LEGACY_FIELD_GLOBAL_ID = 0x1f522697ad2bd81cULL;
+constexpr base::u64 QUERY_TEST_LEGACY_INCREMENTAL_GLOBAL_ID = 0x55dd4e219a7521c0ULL;
+constexpr base::u32 QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_BYTES = 8;
+constexpr base::u32 QUERY_TEST_LEGACY_DOTTED_MODULE_PATH_BYTES = 28;
 
 [[nodiscard]] query::PackageKey test_package() {
     const std::array<std::string_view, 2> parts {"workspace", "root"};
@@ -118,6 +132,54 @@ TEST(QueryUnit, StableSemanticKeysSeparateFilesModulesDefinitionsAndBodies) {
         query::stable_key_fingerprint(function_def));
     EXPECT_TRUE(query::is_valid(signature_query));
     EXPECT_NE(query::debug_string(signature_query).find("QueryKey"), std::string::npos);
+}
+
+TEST(QueryUnit, LegacyStableIdentityLivesInQueryLayer) {
+    const query::StableModuleId empty_module = query::stable_module_id(std::span<const std::string_view> {});
+    const std::array<std::string_view, 2> dotted_path {"a", "b_c"};
+    const std::array<std::string_view, 2> underscore_path {"a_b", "c"};
+    const query::StableModuleId dotted_module = query::stable_module_id(dotted_path);
+    const query::StableModuleId repeated_dotted_module = query::stable_module_id(dotted_path);
+    const query::StableModuleId underscore_module = query::stable_module_id(underscore_path);
+
+    EXPECT_EQ(empty_module.path.primary, QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_PRIMARY);
+    EXPECT_EQ(empty_module.path.secondary, QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_SECONDARY);
+    EXPECT_EQ(empty_module.path.byte_count, QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_BYTES);
+    EXPECT_EQ(empty_module.global_id, QUERY_TEST_LEGACY_EMPTY_MODULE_GLOBAL_ID);
+    EXPECT_TRUE(query::is_valid(dotted_module));
+    EXPECT_EQ(query::stable_identity_fingerprint(dotted_path), dotted_module.path);
+    EXPECT_EQ(dotted_module.path.primary, QUERY_TEST_LEGACY_DOTTED_MODULE_PATH_PRIMARY);
+    EXPECT_EQ(dotted_module.path.secondary, QUERY_TEST_LEGACY_DOTTED_MODULE_PATH_SECONDARY);
+    EXPECT_EQ(dotted_module.path.byte_count, QUERY_TEST_LEGACY_DOTTED_MODULE_PATH_BYTES);
+    EXPECT_EQ(dotted_module.global_id, QUERY_TEST_LEGACY_DOTTED_MODULE_GLOBAL_ID);
+    EXPECT_EQ(dotted_module, repeated_dotted_module);
+    EXPECT_NE(dotted_module, underscore_module);
+
+    const query::StableDefId function_id = query::stable_definition_id(
+        dotted_module,
+        query::StableSymbolKind::function,
+        "compute");
+    const query::StableDefId value_id = query::stable_definition_id(
+        dotted_module,
+        query::StableSymbolKind::value,
+        "compute");
+    EXPECT_TRUE(query::is_valid(function_id));
+    EXPECT_NE(function_id, value_id);
+    EXPECT_EQ(function_id.global_id, QUERY_TEST_LEGACY_FUNCTION_GLOBAL_ID);
+    EXPECT_EQ(value_id.global_id, QUERY_TEST_LEGACY_VALUE_GLOBAL_ID);
+
+    const query::StableMemberKey field_key = query::stable_member_key(
+        function_id,
+        query::StableSymbolKind::struct_field,
+        "x");
+    EXPECT_TRUE(query::is_valid(field_key));
+    EXPECT_EQ(field_key.global_id, QUERY_TEST_LEGACY_FIELD_GLOBAL_ID);
+
+    const query::IncrementalKey incremental_key = query::stable_incremental_key(function_id, "signature:i32");
+    EXPECT_TRUE(query::is_valid(incremental_key));
+    EXPECT_EQ(incremental_key.global_id, QUERY_TEST_LEGACY_INCREMENTAL_GLOBAL_ID);
+    EXPECT_FALSE(query::stable_serialize(incremental_key).empty());
+    EXPECT_NE(query::debug_string(incremental_key).find("IncrementalKey"), std::string::npos);
 }
 
 TEST(QueryUnit, CanonicalTypeKeyIsStructuralAndHandleFree) {

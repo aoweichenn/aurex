@@ -16,5 +16,5 @@ add_library(aurex_sema
     src/sema/sema_types.cpp
     src/sema/sema.cpp
 )
-target_link_libraries(aurex_sema PUBLIC aurex_base aurex_syntax)
+target_link_libraries(aurex_sema PUBLIC aurex_base aurex_syntax aurex_query)
 target_include_directories(aurex_sema PUBLIC include)

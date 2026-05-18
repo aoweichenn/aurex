@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/integer.hpp>
+#include <aurex/query/stable_identity.hpp>
 #include <aurex/syntax/identifier.hpp>
 
 #include <cstddef>
@@ -13,19 +14,37 @@ namespace aurex::sema {
 
 inline constexpr base::u32 SEMA_LOOKUP_INVALID_KEY_PART = std::numeric_limits<base::u32>::max();
 
+using query::IncrementalKey;
+using query::stable_definition_id;
+using query::stable_incremental_key;
+using query::stable_member_key;
+using query::stable_module_id;
+using query::StableDefId;
+using query::StableFingerprint128;
+using query::StableMemberKey;
+using query::StableModuleId;
+using query::StableSymbolKind;
 using syntax::IdentId;
 using syntax::IdentifierInterner;
 using syntax::INVALID_IDENT_ID;
-using syntax::StableHash64;
 using syntax::is_valid;
+using syntax::StableHash64;
+
+[[nodiscard]] inline StableFingerprint128 stable_fingerprint(const std::string_view text) noexcept {
+    return query::stable_fingerprint(text);
+}
+
+[[nodiscard]] inline StableFingerprint128 stable_fingerprint(
+    const std::span<const std::string_view> parts) noexcept {
+    return query::stable_identity_fingerprint(parts);
+}
 
 struct GenericParamIdentity {
     base::u64 value = 0;
 
     [[nodiscard]] friend constexpr bool operator==(
         GenericParamIdentity lhs,
-        GenericParamIdentity rhs
-    ) noexcept = default;
+        GenericParamIdentity rhs) noexcept = default;
 };
 
 inline constexpr GenericParamIdentity INVALID_GENERIC_PARAM_IDENTITY {};
@@ -35,8 +54,7 @@ inline constexpr GenericParamIdentity INVALID_GENERIC_PARAM_IDENTITY {};
 }
 
 [[nodiscard]] inline GenericParamIdentity generic_param_identity_from_text(
-    const std::string_view text
-) noexcept {
+    const std::string_view text) noexcept {
     const StableHash64 hash = syntax::stable_hash_text(text);
     return GenericParamIdentity {hash.value == 0 ? 1 : hash.value};
 }
@@ -137,8 +155,7 @@ inline void rebind_interned_text(InternedText& text, const IdentifierInterner& i
 inline void rebind_interned_text(
     InternedText& text,
     const IdentifierInterner* const from,
-    const IdentifierInterner& to
-) noexcept {
+    const IdentifierInterner& to) noexcept {
     if (is_valid(text.id) && text.interner == from) {
         text.interner = &to;
     }
@@ -150,8 +167,7 @@ struct ModuleLookupKey {
 
     [[nodiscard]] friend constexpr bool operator==(
         ModuleLookupKey lhs,
-        ModuleLookupKey rhs
-    ) noexcept = default;
+        ModuleLookupKey rhs) noexcept = default;
 };
 
 [[nodiscard]] inline constexpr bool is_valid(const ModuleLookupKey key) noexcept {
@@ -170,97 +186,6 @@ struct GenericParamIdentityHash {
     [[nodiscard]] std::size_t operator()(GenericParamIdentity identity) const noexcept;
 };
 
-struct StableFingerprint128 {
-    base::u64 primary = 0;
-    base::u64 secondary = 0;
-    base::u32 byte_count = 0;
-
-    [[nodiscard]] friend constexpr bool operator==(
-        StableFingerprint128 lhs,
-        StableFingerprint128 rhs
-    ) noexcept = default;
-};
-
-struct StableModuleId {
-    StableFingerprint128 path;
-    base::u32 part_count = 0;
-    base::u64 global_id = 0;
-
-    [[nodiscard]] friend constexpr bool operator==(
-        StableModuleId lhs,
-        StableModuleId rhs
-    ) noexcept = default;
-};
-
-enum class StableSymbolKind : base::u8 {
-    invalid = 0,
-    type,
-    function,
-    method,
-    value,
-    enum_case,
-    struct_field,
-    generic_template,
-    synthetic,
-};
-
-struct StableDefId {
-    StableModuleId module;
-    StableFingerprint128 name;
-    base::u64 global_id = 0;
-    base::u32 disambiguator = 0;
-    StableSymbolKind kind = StableSymbolKind::invalid;
-
-    [[nodiscard]] friend constexpr bool operator==(
-        StableDefId lhs,
-        StableDefId rhs
-    ) noexcept = default;
-};
-
-struct StableMemberKey {
-    StableDefId owner;
-    StableFingerprint128 member_name;
-    base::u64 global_id = 0;
-    base::u32 disambiguator = 0;
-    StableSymbolKind kind = StableSymbolKind::invalid;
-
-    [[nodiscard]] friend constexpr bool operator==(
-        StableMemberKey lhs,
-        StableMemberKey rhs
-    ) noexcept = default;
-};
-
-struct IncrementalKey {
-    StableDefId definition;
-    StableFingerprint128 fingerprint;
-    base::u64 global_id = 0;
-
-    [[nodiscard]] friend constexpr bool operator==(
-        IncrementalKey lhs,
-        IncrementalKey rhs
-    ) noexcept = default;
-};
-
-[[nodiscard]] StableFingerprint128 stable_fingerprint(std::string_view text) noexcept;
-[[nodiscard]] StableFingerprint128 stable_fingerprint(std::span<const std::string_view> parts) noexcept;
-[[nodiscard]] StableModuleId stable_module_id(std::span<const std::string_view> module_path) noexcept;
-[[nodiscard]] StableDefId stable_definition_id(
-    const StableModuleId& module,
-    StableSymbolKind kind,
-    std::string_view name,
-    base::u32 disambiguator = 0
-) noexcept;
-[[nodiscard]] StableMemberKey stable_member_key(
-    const StableDefId& owner,
-    StableSymbolKind kind,
-    std::string_view member_name,
-    base::u32 disambiguator = 0
-) noexcept;
-[[nodiscard]] IncrementalKey stable_incremental_key(
-    const StableDefId& definition,
-    std::string_view semantic_fingerprint
-) noexcept;
-
 struct MethodLookupKey {
     base::u32 module = SEMA_LOOKUP_INVALID_KEY_PART;
     base::u32 owner_type = SEMA_LOOKUP_INVALID_KEY_PART;
@@ -268,14 +193,11 @@ struct MethodLookupKey {
 
     [[nodiscard]] friend constexpr bool operator==(
         MethodLookupKey lhs,
-        MethodLookupKey rhs
-    ) noexcept = default;
+        MethodLookupKey rhs) noexcept = default;
 };
 
 [[nodiscard]] inline constexpr bool is_valid(const MethodLookupKey key) noexcept {
-    return key.module != SEMA_LOOKUP_INVALID_KEY_PART &&
-           key.owner_type != SEMA_LOOKUP_INVALID_KEY_PART &&
-           is_valid(key.name);
+    return key.module != SEMA_LOOKUP_INVALID_KEY_PART && key.owner_type != SEMA_LOOKUP_INVALID_KEY_PART && is_valid(key.name);
 }
 
 struct MethodLookupKeyHash {
@@ -289,8 +211,7 @@ struct FunctionLookupKey {
 
     [[nodiscard]] friend constexpr bool operator==(
         FunctionLookupKey lhs,
-        FunctionLookupKey rhs
-    ) noexcept = default;
+        FunctionLookupKey rhs) noexcept = default;
 };
 
 [[nodiscard]] inline constexpr bool is_valid(const FunctionLookupKey key) noexcept {
@@ -307,8 +228,7 @@ struct EnumCaseLookupKey {
 
     [[nodiscard]] friend constexpr bool operator==(
         EnumCaseLookupKey lhs,
-        EnumCaseLookupKey rhs
-    ) noexcept = default;
+        EnumCaseLookupKey rhs) noexcept = default;
 };
 
 struct EnumCaseLookupKeyHash {

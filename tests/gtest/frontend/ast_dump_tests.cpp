@@ -527,6 +527,8 @@ TEST(CoreUnit, AstModuleReserveEstimatePreTouchesExpressionArena) {
 }
 
 TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
+    constexpr base::usize MISSING_EXPR_INDEX = 999;
+
     syntax::ExprNodeList exprs;
 
     const syntax::ExprId literal_id = exprs.append_literal(syntax::ExprKind::integer_literal, {}, "42");
@@ -681,6 +683,7 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
     EXPECT_EQ(exprs.kind(block_id.value), syntax::ExprKind::block_expr);
     EXPECT_EQ(exprs.range(block_id.value).begin, 3U);
     EXPECT_NE(exprs.block_payload(block_id.value), nullptr);
+    EXPECT_FALSE(exprs.retag_block_expr(MISSING_EXPR_INDEX, syntax::ExprKind::unsafe_block, retagged_range));
     EXPECT_FALSE(exprs.retag_block_expr(literal_id.value, syntax::ExprKind::unsafe_block, retagged_range));
     EXPECT_FALSE(exprs.retag_block_expr(block_id.value, syntax::ExprKind::call, retagged_range));
 
@@ -735,7 +738,232 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads) {
 
     EXPECT_EQ(exprs.kind(binary_id.value), syntax::ExprKind::binary);
     EXPECT_EQ(exprs.name_payload(literal_id.value), nullptr);
-    EXPECT_EQ(exprs.literal_payload(999), nullptr);
+    const syntax::ExprNodeList& const_exprs = exprs;
+    EXPECT_EQ(const_exprs.literal_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.name_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.name_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.generic_apply_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.generic_apply_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.unary_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.unary_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.try_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.try_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.binary_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.binary_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.call_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.call_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.if_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.if_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.block_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.block_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.match_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.match_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.array_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.array_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.tuple_elements(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.tuple_elements(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.field_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.field_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.index_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.index_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.slice_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.slice_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.struct_literal_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.struct_literal_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(const_exprs.cast_payload(MISSING_EXPR_INDEX), nullptr);
+    EXPECT_EQ(exprs.cast_payload(MISSING_EXPR_INDEX), nullptr);
+}
+
+TEST(CoreUnit, ExprNodeListSettersUpdateCompactPayloads)
+{
+    constexpr base::SourceRange SET_RANGE{{88}, 2, 6};
+    constexpr base::u32 SET_TYPE_ID = 12;
+
+    syntax::ExprNodeList exprs;
+    exprs.reserve_touched(1);
+    const auto append_slot = [&exprs]() {
+        return exprs.append_invalid({});
+    };
+
+    const syntax::ExprId invalid_slot = append_slot();
+    exprs.set_invalid(invalid_slot.value, SET_RANGE);
+    EXPECT_EQ(exprs.kind(invalid_slot.value), syntax::ExprKind::invalid);
+    EXPECT_EQ(exprs.range(invalid_slot.value).begin, SET_RANGE.begin);
+
+    syntax::GenericApplyExprPayload generic;
+    generic.callee = syntax::ExprId{1};
+    generic.type_args = {syntax::TypeId{SET_TYPE_ID}};
+    const syntax::ExprId generic_slot = append_slot();
+    exprs.set_generic_apply(generic_slot.value, SET_RANGE, generic);
+    ASSERT_NE(exprs.generic_apply_payload(generic_slot.value), nullptr);
+    EXPECT_EQ(exprs.generic_apply_payload(generic_slot.value)->callee.value, 1U);
+
+    syntax::UnaryExprPayload unary;
+    unary.op = syntax::UnaryOp::address_of;
+    unary.operand = syntax::ExprId{2};
+    const syntax::ExprId unary_slot = append_slot();
+    exprs.set_unary(unary_slot.value, syntax::ExprKind::unary, SET_RANGE, unary);
+    ASSERT_NE(exprs.unary_payload(unary_slot.value), nullptr);
+    EXPECT_EQ(exprs.unary_payload(unary_slot.value)->op, syntax::UnaryOp::address_of);
+
+    syntax::TryExprPayload try_expr;
+    try_expr.operand = syntax::ExprId{3};
+    const syntax::ExprId try_slot = append_slot();
+    exprs.set_try(try_slot.value, SET_RANGE, try_expr);
+    ASSERT_NE(exprs.try_payload(try_slot.value), nullptr);
+    EXPECT_EQ(exprs.try_payload(try_slot.value)->operand.value, 3U);
+
+    syntax::CallExprPayload call;
+    call.callee = syntax::ExprId{4};
+    call.args = {syntax::ExprId{5}};
+    const syntax::ExprId call_slot = append_slot();
+    exprs.set_call(call_slot.value, syntax::ExprKind::call, SET_RANGE, call);
+    ASSERT_NE(exprs.call_payload(call_slot.value), nullptr);
+    EXPECT_EQ(exprs.call_payload(call_slot.value)->args.front().value, 5U);
+
+    syntax::FieldExprPayload field;
+    field.object = syntax::ExprId{6};
+    field.field_name = "field";
+    const syntax::ExprId field_slot = append_slot();
+    exprs.set_field(field_slot.value, SET_RANGE, field);
+    ASSERT_NE(exprs.field_payload(field_slot.value), nullptr);
+    EXPECT_EQ(exprs.field_payload(field_slot.value)->field_name, "field");
+
+    syntax::IndexExprPayload index;
+    index.object = syntax::ExprId{7};
+    index.index = syntax::ExprId{8};
+    const syntax::ExprId index_slot = append_slot();
+    exprs.set_index(index_slot.value, SET_RANGE, index);
+    ASSERT_NE(exprs.index_payload(index_slot.value), nullptr);
+    EXPECT_EQ(exprs.index_payload(index_slot.value)->index.value, 8U);
+
+    syntax::SliceExprPayload slice;
+    slice.object = syntax::ExprId{9};
+    slice.start = syntax::ExprId{10};
+    slice.end = syntax::ExprId{11};
+    const syntax::ExprId slice_slot = append_slot();
+    exprs.set_slice(slice_slot.value, SET_RANGE, slice);
+    ASSERT_NE(exprs.slice_payload(slice_slot.value), nullptr);
+    EXPECT_EQ(exprs.slice_payload(slice_slot.value)->end.value, 11U);
+
+    syntax::StructLiteralExprPayload struct_literal;
+    struct_literal.object = syntax::ExprId{12};
+    struct_literal.name = "Record";
+    struct_literal.type_args = {syntax::TypeId{SET_TYPE_ID}};
+    const syntax::ExprId struct_slot = append_slot();
+    exprs.set_struct_literal(struct_slot.value, SET_RANGE, struct_literal);
+    ASSERT_NE(exprs.struct_literal_payload(struct_slot.value), nullptr);
+    EXPECT_EQ(exprs.struct_literal_payload(struct_slot.value)->name, "Record");
+}
+
+TEST(CoreUnit, ExprNodeListCopyPreservesEveryCompactExpressionPayload)
+{
+    constexpr base::SourceRange COPY_RANGE{{77}, 1, 5};
+    constexpr base::u32 COPY_TYPE_ID = 9;
+
+    syntax::ExprNodeList exprs;
+    const syntax::ExprId invalid_id = exprs.append_invalid(COPY_RANGE);
+    const syntax::ExprId literal_id = exprs.append_literal(syntax::ExprKind::integer_literal, COPY_RANGE, "7");
+    const syntax::ExprId name_id = exprs.append_name(COPY_RANGE, "math", COPY_RANGE, "value", syntax::IdentId{10},
+        syntax::IdentId{11}, std::vector<syntax::TypeId>{syntax::TypeId{COPY_TYPE_ID}});
+    const syntax::ExprId generic_id =
+        exprs.append_generic_apply(COPY_RANGE, name_id, std::vector<syntax::TypeId>{syntax::TypeId{COPY_TYPE_ID}});
+    const syntax::ExprId unary_id =
+        exprs.append_unary(syntax::ExprKind::unary, COPY_RANGE, syntax::UnaryOp::bitwise_not, literal_id);
+    const syntax::ExprId try_id = exprs.append_try(COPY_RANGE, unary_id);
+    const syntax::ExprId binary_id = exprs.append_binary(COPY_RANGE, syntax::BinaryOp::mul, literal_id, unary_id);
+    const syntax::ExprId call_id = exprs.append_call(
+        syntax::ExprKind::call, COPY_RANGE, generic_id, std::vector<syntax::ExprId>{literal_id, binary_id});
+    const syntax::ExprId raw_string_id = exprs.append_call(
+        syntax::ExprKind::str_from_bytes_unchecked, COPY_RANGE, call_id, std::vector<syntax::ExprId>{literal_id});
+    const syntax::ExprId if_id = exprs.append_if(COPY_RANGE, literal_id, syntax::PatternId{1}, call_id, raw_string_id);
+    const syntax::ExprId block_id =
+        exprs.append_block(syntax::ExprKind::block_expr, COPY_RANGE, syntax::StmtId{2}, if_id);
+    const syntax::ExprId unsafe_block_id =
+        exprs.append_block(syntax::ExprKind::unsafe_block, COPY_RANGE, syntax::StmtId{3}, block_id);
+    const syntax::ExprId match_id = exprs.append_match(COPY_RANGE, literal_id,
+        std::vector<syntax::MatchArm>{
+            syntax::MatchArm{syntax::PatternId{4}, syntax::ExprId{5}, call_id, COPY_RANGE},
+        });
+    const syntax::ExprId array_id =
+        exprs.append_array(COPY_RANGE, std::vector<syntax::ExprId>{literal_id, name_id}, unary_id, binary_id);
+    const syntax::ExprId tuple_id = exprs.append_tuple(COPY_RANGE, std::vector<syntax::ExprId>{literal_id, call_id});
+    const syntax::ExprId field_id = exprs.append_field(COPY_RANGE, name_id, "field", syntax::IdentId{6});
+    const syntax::ExprId index_id = exprs.append_index(COPY_RANGE, field_id, literal_id);
+    const syntax::ExprId slice_id = exprs.append_slice(COPY_RANGE, field_id, literal_id, binary_id);
+    const syntax::ExprId struct_id = exprs.append_struct_literal(COPY_RANGE, name_id, "pkg", COPY_RANGE, "Pair",
+        syntax::IdentId{7}, syntax::IdentId{8}, std::vector<syntax::TypeId>{syntax::TypeId{COPY_TYPE_ID}},
+        std::vector<syntax::FieldInit>{
+            syntax::FieldInit{"left", literal_id, COPY_RANGE, syntax::IdentId{9}},
+        });
+
+    std::vector<syntax::ExprId> cast_ids;
+    for (const syntax::ExprKind kind : {
+             syntax::ExprKind::cast,
+             syntax::ExprKind::pcast,
+             syntax::ExprKind::bcast,
+             syntax::ExprKind::size_of,
+             syntax::ExprKind::align_of,
+             syntax::ExprKind::ptr_addr,
+             syntax::ExprKind::paddr,
+             syntax::ExprKind::slice_data,
+             syntax::ExprKind::slice_len,
+             syntax::ExprKind::str_data,
+             syntax::ExprKind::str_byte_len,
+             syntax::ExprKind::str_is_valid_utf8,
+             syntax::ExprKind::str_from_utf8_checked,
+         }) {
+        cast_ids.push_back(exprs.append_cast_like(kind, COPY_RANGE, syntax::TypeId{COPY_TYPE_ID}, literal_id));
+    }
+
+    syntax::ExprNodeList copied = exprs;
+    syntax::ExprNodeList assigned;
+    assigned = exprs;
+    const syntax::ExprNodeList& copied_view = copied;
+
+    ASSERT_EQ(copied_view.size(), exprs.size());
+    EXPECT_EQ(copied_view.kind(invalid_id.value), syntax::ExprKind::invalid);
+    ASSERT_NE(copied_view.literal_payload(literal_id.value), nullptr);
+    EXPECT_EQ(copied_view.literal_payload(literal_id.value)->text, "7");
+    ASSERT_NE(copied_view.name_payload(name_id.value), nullptr);
+    EXPECT_EQ(copied_view.name_payload(name_id.value)->text, "value");
+    ASSERT_NE(copied_view.generic_apply_payload(generic_id.value), nullptr);
+    EXPECT_EQ(copied_view.generic_apply_payload(generic_id.value)->callee.value, name_id.value);
+    ASSERT_NE(copied_view.unary_payload(unary_id.value), nullptr);
+    EXPECT_EQ(copied_view.unary_payload(unary_id.value)->op, syntax::UnaryOp::bitwise_not);
+    ASSERT_NE(copied_view.try_payload(try_id.value), nullptr);
+    EXPECT_EQ(copied_view.try_payload(try_id.value)->operand.value, unary_id.value);
+    ASSERT_NE(copied_view.binary_payload(binary_id.value), nullptr);
+    EXPECT_EQ(copied_view.binary_payload(binary_id.value)->op, syntax::BinaryOp::mul);
+    ASSERT_NE(copied_view.call_payload(call_id.value), nullptr);
+    EXPECT_EQ(copied_view.call_payload(call_id.value)->args.back().value, binary_id.value);
+    ASSERT_NE(copied_view.call_payload(raw_string_id.value), nullptr);
+    EXPECT_EQ(copied_view.call_payload(raw_string_id.value)->callee.value, call_id.value);
+    ASSERT_NE(copied_view.if_payload(if_id.value), nullptr);
+    EXPECT_EQ(copied_view.if_payload(if_id.value)->else_expr.value, raw_string_id.value);
+    ASSERT_NE(copied_view.block_payload(block_id.value), nullptr);
+    EXPECT_EQ(copied_view.block_payload(block_id.value)->result.value, if_id.value);
+    ASSERT_NE(copied_view.block_payload(unsafe_block_id.value), nullptr);
+    EXPECT_EQ(copied_view.block_payload(unsafe_block_id.value)->block.value, 3U);
+    ASSERT_NE(copied_view.match_payload(match_id.value), nullptr);
+    EXPECT_EQ(copied_view.match_payload(match_id.value)->arms.front().value.value, call_id.value);
+    ASSERT_NE(copied_view.array_payload(array_id.value), nullptr);
+    EXPECT_EQ(copied_view.array_payload(array_id.value)->repeat_count.value, binary_id.value);
+    ASSERT_NE(copied_view.tuple_elements(tuple_id.value), nullptr);
+    EXPECT_EQ(copied_view.tuple_elements(tuple_id.value)->back().value, call_id.value);
+    ASSERT_NE(copied_view.field_payload(field_id.value), nullptr);
+    EXPECT_EQ(copied_view.field_payload(field_id.value)->field_name, "field");
+    ASSERT_NE(copied_view.index_payload(index_id.value), nullptr);
+    EXPECT_EQ(copied_view.index_payload(index_id.value)->index.value, literal_id.value);
+    ASSERT_NE(copied_view.slice_payload(slice_id.value), nullptr);
+    EXPECT_EQ(copied_view.slice_payload(slice_id.value)->end.value, binary_id.value);
+    ASSERT_NE(copied_view.struct_literal_payload(struct_id.value), nullptr);
+    EXPECT_EQ(copied_view.struct_literal_payload(struct_id.value)->field_inits.front().name, "left");
+    for (const syntax::ExprId cast_id : cast_ids) {
+        ASSERT_NE(copied_view.cast_payload(cast_id.value), nullptr);
+        EXPECT_EQ(copied_view.cast_payload(cast_id.value)->type.value, COPY_TYPE_ID);
+    }
+    EXPECT_EQ(assigned.size(), exprs.size());
 }
 
 TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels) {

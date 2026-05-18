@@ -1,6 +1,7 @@
 #include <array>
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -20,6 +21,7 @@
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
+#include <aurex/sema/canonical_type_builder.hpp>
 #include <aurex/sema/sema_messages.hpp>
 
 #include <gtest/gtest.h>
@@ -108,6 +110,8 @@ constexpr std::string_view SEMA_TEST_GENERIC_PARAM_NAME = "T";
 constexpr syntax::BinaryOp SEMA_TEST_INVALID_BINARY_OP = static_cast<syntax::BinaryOp>(99);
 constexpr sema::BuiltinType SEMA_TEST_INVALID_BUILTIN_TYPE = static_cast<sema::BuiltinType>(99);
 constexpr sema::TypeKind SEMA_TEST_INVALID_TYPE_KIND = static_cast<sema::TypeKind>(99);
+constexpr sema::PointerMutability SEMA_TEST_INVALID_POINTER_MUTABILITY = static_cast<sema::PointerMutability>(99);
+constexpr sema::FunctionCallConv SEMA_TEST_INVALID_FUNCTION_CALL_CONV = static_cast<sema::FunctionCallConv>(99);
 constexpr std::string_view SEMA_TEST_INVALID_TYPE_DISPLAY = "<invalid>";
 constexpr std::string_view SEMA_TEST_UNKNOWN_TYPE_DISPLAY = "<unknown>";
 constexpr std::string_view SEMA_TEST_SYMBOL_OUTER_NAME = "outer_value";
@@ -132,6 +136,59 @@ constexpr std::string_view SEMA_TEST_LEAF_MODULE_NAME = "io";
     info.path = module_path(parts);
     return info;
 }
+
+[[nodiscard]] query::ModuleKey query_test_module_key()
+{
+    const std::array<std::string_view, 2> package_parts{"test", "workspace"};
+    const std::array<std::string_view, 1> module_parts{"types"};
+    return query::module_key(query::package_key(package_parts), module_parts);
+}
+
+[[nodiscard]] query::DefKey query_test_def_key(
+    const query::ModuleKey module, const query::DefKind kind, const std::string_view name)
+{
+    const std::array<std::string_view, 1> path{name};
+    return query::def_key(module, query::DefNamespace::type, kind, path);
+}
+
+class CanonicalTypeBuilderTestResolver final : public sema::CanonicalTypeKeyResolver {
+public:
+    void bind_nominal(const TypeHandle handle, const query::DefKey key)
+    {
+        this->nominal_keys_.emplace(handle.value, key);
+    }
+
+    void bind_generic(const sema::GenericParamIdentity identity, const query::GenericParamKey key)
+    {
+        this->generic_param_keys_.emplace(identity.value, key);
+    }
+
+    [[nodiscard]] std::optional<query::DefKey> nominal_type_key(
+        const TypeHandle handle, const sema::TypeInfo& info) const override
+    {
+        static_cast<void>(info);
+        const auto found = this->nominal_keys_.find(handle.value);
+        if (found == this->nominal_keys_.end()) {
+            return std::nullopt;
+        }
+        return found->second;
+    }
+
+    [[nodiscard]] std::optional<query::GenericParamKey> generic_param_key(
+        const TypeHandle handle, const sema::TypeInfo& info) const override
+    {
+        static_cast<void>(handle);
+        const auto found = this->generic_param_keys_.find(info.generic_identity.value);
+        if (found == this->generic_param_keys_.end()) {
+            return std::nullopt;
+        }
+        return found->second;
+    }
+
+private:
+    std::unordered_map<base::u32, query::DefKey> nominal_keys_;
+    std::unordered_map<base::u64, query::GenericParamKey> generic_param_keys_;
+};
 
 [[nodiscard]] syntax::ResolvedImport resolved_import(
     const ModuleId module,
@@ -564,6 +621,196 @@ TEST(CoreUnit, SemanticWhiteBoxDiagnosticMetadataUsesExplicitKinds) {
     EXPECT_EQ(diagnostics.diagnostics()[9].category, DiagnosticCategory::name_resolution);
     EXPECT_EQ(diagnostics.diagnostics()[9].code, DiagnosticCode::semantic_lookup);
     EXPECT_EQ(diagnostics.diagnostics()[0].message, diagnostics.diagnostics()[1].message);
+}
+
+TEST(CoreUnit, CanonicalTypeBuilderMapsBuiltinTypesWithoutSessionHandles)
+{
+    sema::TypeTable types;
+    CanonicalTypeBuilderTestResolver resolver;
+
+    const std::array<std::pair<BuiltinType, query::BuiltinTypeKey>, 16> builtins{{
+        {BuiltinType::void_, query::BuiltinTypeKey::void_},
+        {BuiltinType::bool_, query::BuiltinTypeKey::bool_},
+        {BuiltinType::i8, query::BuiltinTypeKey::i8},
+        {BuiltinType::u8, query::BuiltinTypeKey::u8},
+        {BuiltinType::i16, query::BuiltinTypeKey::i16},
+        {BuiltinType::u16, query::BuiltinTypeKey::u16},
+        {BuiltinType::i32, query::BuiltinTypeKey::i32},
+        {BuiltinType::u32, query::BuiltinTypeKey::u32},
+        {BuiltinType::i64, query::BuiltinTypeKey::i64},
+        {BuiltinType::u64, query::BuiltinTypeKey::u64},
+        {BuiltinType::isize, query::BuiltinTypeKey::isize},
+        {BuiltinType::usize, query::BuiltinTypeKey::usize},
+        {BuiltinType::f32, query::BuiltinTypeKey::f32},
+        {BuiltinType::f64, query::BuiltinTypeKey::f64},
+        {BuiltinType::str, query::BuiltinTypeKey::str},
+        {BuiltinType::char_, query::BuiltinTypeKey::char_},
+    }};
+
+    for (const auto& [source, expected] : builtins) {
+        base::Result<query::CanonicalTypeKey> key =
+            sema::build_canonical_type_key(types, types.builtin(source), resolver);
+        ASSERT_TRUE(key.has_value());
+        EXPECT_EQ(key.value(), query::canonical_builtin(expected));
+    }
+}
+
+TEST(CoreUnit, CanonicalTypeBuilderMapsCompoundNominalAndGenericTypes)
+{
+    sema::TypeTable types;
+    CanonicalTypeBuilderTestResolver resolver;
+    const query::ModuleKey module = query_test_module_key();
+    const query::DefKey vector_def = query_test_def_key(module, query::DefKind::struct_, "Vec");
+    const query::DefKey enum_def = query_test_def_key(module, query::DefKind::enum_, "Choice");
+    const query::DefKey opaque_def = query_test_def_key(module, query::DefKind::struct_, "Opaque");
+    const query::GenericParamKey type_param_key = query::generic_param_key(vector_def, 0);
+    const sema::GenericParamIdentity type_param_identity = sema::generic_param_identity_from_text("types.Vec.T");
+
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle bool_type = types.builtin(BuiltinType::bool_);
+    const TypeHandle type_param = types.generic_param(type_param_identity, "T");
+    const TypeHandle vector_type = types.named_struct("Vec", "Vec", false);
+    const TypeHandle enum_type = types.named_enum("Choice", "Choice");
+    const TypeHandle opaque_type = types.opaque_struct("Opaque", "Opaque");
+    const std::array<TypeHandle, 1> vector_args{type_param};
+    types.set_generic_instance(vector_type, "Vec", vector_args);
+    resolver.bind_nominal(vector_type, vector_def);
+    resolver.bind_nominal(enum_type, enum_def);
+    resolver.bind_nominal(opaque_type, opaque_def);
+    resolver.bind_generic(type_param_identity, type_param_key);
+
+    const TypeHandle array_bool = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, bool_type);
+    const TypeHandle pointer_vector = types.pointer(PointerMutability::mut, vector_type);
+    const TypeHandle slice_i32 = types.slice(PointerMutability::mut, i32);
+    const TypeHandle reference_slice = types.reference(PointerMutability::const_, slice_i32);
+    const std::array<TypeHandle, 3> tuple_elements{array_bool, pointer_vector, reference_slice};
+    const TypeHandle tuple_type = types.tuple(tuple_elements);
+    const std::array<TypeHandle, 2> function_params{tuple_type, enum_type};
+    const TypeHandle function_type =
+        types.function(sema::FunctionCallConv::c, true, true, function_params, opaque_type);
+    const TypeHandle empty_function_type =
+        types.function(sema::FunctionCallConv::aurex, false, false, std::span<const TypeHandle>{}, i32);
+
+    base::Result<query::CanonicalTypeKey> key = sema::build_canonical_type_key(types, function_type, resolver);
+    ASSERT_TRUE(key.has_value());
+    base::Result<query::CanonicalTypeKey> empty_function_key =
+        sema::build_canonical_type_key(types, empty_function_type, resolver);
+    ASSERT_TRUE(empty_function_key.has_value());
+
+    const query::CanonicalTypeKey expected_type_param = query::canonical_generic_param(type_param_key);
+    const std::array<query::CanonicalTypeKey, 1> expected_vector_args{expected_type_param};
+    const query::CanonicalTypeKey expected_vector = query::canonical_nominal(vector_def, expected_vector_args);
+    const query::CanonicalTypeKey expected_array_bool =
+        query::canonical_array(SEMA_TEST_SMALL_ARRAY_COUNT, query::canonical_builtin(query::BuiltinTypeKey::bool_));
+    const query::CanonicalTypeKey expected_pointer_vector =
+        query::canonical_pointer(query::PointerMutabilityKey::mut, expected_vector);
+    const query::CanonicalTypeKey expected_slice_i32 =
+        query::canonical_slice(query::PointerMutabilityKey::mut, query::canonical_builtin(query::BuiltinTypeKey::i32));
+    const query::CanonicalTypeKey expected_reference_slice =
+        query::canonical_reference(query::PointerMutabilityKey::const_, expected_slice_i32);
+    const std::array<query::CanonicalTypeKey, 3> expected_tuple_elements{
+        expected_array_bool,
+        expected_pointer_vector,
+        expected_reference_slice,
+    };
+    const query::CanonicalTypeKey expected_tuple = query::canonical_tuple(expected_tuple_elements);
+    const query::CanonicalTypeKey expected_enum =
+        query::canonical_nominal(enum_def, std::span<const query::CanonicalTypeKey>{});
+    const query::CanonicalTypeKey expected_opaque =
+        query::canonical_nominal(opaque_def, std::span<const query::CanonicalTypeKey>{});
+    const std::array<query::CanonicalTypeKey, 2> expected_params{expected_tuple, expected_enum};
+    const query::CanonicalTypeKey expected_function =
+        query::canonical_function(query::FunctionCallConvKey::c, true, true, expected_params, expected_opaque);
+    const query::CanonicalTypeKey expected_empty_function = query::canonical_function(query::FunctionCallConvKey::aurex,
+        false, false, std::span<const query::CanonicalTypeKey>{}, query::canonical_builtin(query::BuiltinTypeKey::i32));
+
+    EXPECT_EQ(key.value(), expected_function);
+    EXPECT_EQ(empty_function_key.value(), expected_empty_function);
+    EXPECT_EQ(query::stable_key_fingerprint(key.value()), query::stable_key_fingerprint(expected_function));
+}
+
+TEST(CoreUnit, CanonicalTypeBuilderRejectsUnresolvedOrInvalidTypes)
+{
+    sema::TypeTable types;
+    CanonicalTypeBuilderTestResolver resolver;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle unresolved_struct = types.named_struct("Missing", "Missing", false);
+    const sema::GenericParamIdentity type_param_identity = sema::generic_param_identity_from_text("types.Missing.T");
+    const TypeHandle unresolved_generic = types.generic_param(type_param_identity, "T");
+    const TypeHandle array_invalid = types.array(SEMA_TEST_INVALID_ARRAY_COUNT, INVALID_TYPE_HANDLE);
+    const TypeHandle array_unknown = types.array(SEMA_TEST_INVALID_ARRAY_COUNT,
+        TypeHandle{static_cast<base::u32>(types.size() + SEMA_TEST_MISSING_MODULE_INDEX)});
+    const TypeHandle pointer_i32 = types.pointer(PointerMutability::mut, i32);
+    const TypeHandle reference_i32 = types.reference(PointerMutability::const_, i32);
+    const TypeHandle slice_i32 = types.slice(PointerMutability::mut, i32);
+    const TypeHandle function_i32 =
+        types.function(sema::FunctionCallConv::aurex, false, false, std::span<const TypeHandle>{}, i32);
+
+    base::Result<query::CanonicalTypeKey> invalid =
+        sema::build_canonical_type_key(types, INVALID_TYPE_HANDLE, resolver);
+    EXPECT_FALSE(invalid.has_value());
+    EXPECT_NE(invalid.error().message.find("invalid type handle"), std::string::npos);
+
+    base::Result<query::CanonicalTypeKey> unknown = sema::build_canonical_type_key(
+        types, TypeHandle{static_cast<base::u32>(types.size() + SEMA_TEST_MISSING_MODULE_INDEX)}, resolver);
+    EXPECT_FALSE(unknown.has_value());
+    EXPECT_NE(unknown.error().message.find("unknown type handle"), std::string::npos);
+
+    base::Result<query::CanonicalTypeKey> missing_nominal =
+        sema::build_canonical_type_key(types, unresolved_struct, resolver);
+    EXPECT_FALSE(missing_nominal.has_value());
+    EXPECT_NE(missing_nominal.error().message.find("unresolved nominal type key"), std::string::npos);
+
+    base::Result<query::CanonicalTypeKey> missing_generic =
+        sema::build_canonical_type_key(types, unresolved_generic, resolver);
+    EXPECT_FALSE(missing_generic.has_value());
+    EXPECT_NE(missing_generic.error().message.find("unresolved generic parameter key"), std::string::npos);
+
+    base::Result<query::CanonicalTypeKey> invalid_child =
+        sema::build_canonical_type_key(types, array_invalid, resolver);
+    EXPECT_FALSE(invalid_child.has_value());
+    EXPECT_NE(invalid_child.error().message.find("invalid type handle"), std::string::npos);
+
+    base::Result<query::CanonicalTypeKey> unknown_child =
+        sema::build_canonical_type_key(types, array_unknown, resolver);
+    EXPECT_FALSE(unknown_child.has_value());
+    EXPECT_NE(unknown_child.error().message.find("unknown type handle"), std::string::npos);
+
+    types.types_[i32.value].builtin = SEMA_TEST_INVALID_BUILTIN_TYPE;
+    base::Result<query::CanonicalTypeKey> unsupported_builtin = sema::build_canonical_type_key(types, i32, resolver);
+    EXPECT_FALSE(unsupported_builtin.has_value());
+    EXPECT_NE(unsupported_builtin.error().message.find("unsupported builtin type"), std::string::npos);
+    types.types_[i32.value].builtin = BuiltinType::i32;
+
+    types.types_[pointer_i32.value].pointer_mutability = SEMA_TEST_INVALID_POINTER_MUTABILITY;
+    base::Result<query::CanonicalTypeKey> unsupported_pointer_mutability =
+        sema::build_canonical_type_key(types, pointer_i32, resolver);
+    EXPECT_FALSE(unsupported_pointer_mutability.has_value());
+    EXPECT_NE(unsupported_pointer_mutability.error().message.find("unsupported pointer mutability"), std::string::npos);
+
+    types.types_[reference_i32.value].pointer_mutability = SEMA_TEST_INVALID_POINTER_MUTABILITY;
+    base::Result<query::CanonicalTypeKey> unsupported_reference_mutability =
+        sema::build_canonical_type_key(types, reference_i32, resolver);
+    EXPECT_FALSE(unsupported_reference_mutability.has_value());
+    EXPECT_NE(
+        unsupported_reference_mutability.error().message.find("unsupported pointer mutability"), std::string::npos);
+
+    types.types_[slice_i32.value].slice_mutability = SEMA_TEST_INVALID_POINTER_MUTABILITY;
+    base::Result<query::CanonicalTypeKey> unsupported_slice_mutability =
+        sema::build_canonical_type_key(types, slice_i32, resolver);
+    EXPECT_FALSE(unsupported_slice_mutability.has_value());
+    EXPECT_NE(unsupported_slice_mutability.error().message.find("unsupported pointer mutability"), std::string::npos);
+
+    types.types_[function_i32.value].function_call_conv = SEMA_TEST_INVALID_FUNCTION_CALL_CONV;
+    base::Result<query::CanonicalTypeKey> unsupported_call_conv =
+        sema::build_canonical_type_key(types, function_i32, resolver);
+    EXPECT_FALSE(unsupported_call_conv.has_value());
+    EXPECT_NE(unsupported_call_conv.error().message.find("unsupported function call convention"), std::string::npos);
+
+    types.types_[i32.value].kind = SEMA_TEST_INVALID_TYPE_KIND;
+    base::Result<query::CanonicalTypeKey> unsupported = sema::build_canonical_type_key(types, i32, resolver);
+    EXPECT_FALSE(unsupported.has_value());
+    EXPECT_NE(unsupported.error().message.find("unsupported type kind"), std::string::npos);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules) {

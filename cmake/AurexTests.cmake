@@ -107,6 +107,7 @@ if(BUILD_TESTING)
             tests/gtest/ir/lower_ast_whitebox_tests.cpp
             tests/gtest/ir/pass_pipeline_tests.cpp
             tests/gtest/ir/type_table_tests.cpp
+            tests/gtest/query/query_key_tests.cpp
             tests/gtest/sema/block_expression_tests.cpp
             tests/gtest/sema/error_handling_tests.cpp
             tests/gtest/sema/functions_tests.cpp
@@ -149,6 +150,9 @@ if(BUILD_TESTING)
         aurex_add_gtest(aurex_tests_core_unit
             "CoreUnit.*"
         )
+        aurex_add_gtest(aurex_tests_query_unit_full
+            "QueryUnit.*"
+        )
         aurex_add_gtest(aurex_tests_driver_and_regressions
             "AurexIntegrationTest.Cli*:AurexIntegrationTest.Compiler*:AurexIntegrationTest.IncrementalCache*:AurexIntegrationTest.InstallAndImportPaths:AurexIntegrationTest.ModuleLoaderRemapsExpressionPayloadsWithoutFatNodes:AurexIntegrationTest.DocumentationLayoutIsStable:AurexIntegrationTest.Examples*:AurexIntegrationTest.NativeHello*:AurexIntegrationTest.StructAndEnumValidationRegressions:AurexIntegrationTest.Diagnostic*:AurexIntegrationTest.IntegerLiteralRegressions:AurexIntegrationTest.M2UnsafeBoundaries:AurexIntegrationTest.M2SafeReferences:AurexIntegrationTest.StringCheckedBoundary:AurexIntegrationTest.ArrayLiteralRegressions:AurexIntegrationTest.SliceRegressions:AurexIntegrationTest.TupleRegressions:AurexIntegrationTest.EnumConstructorMatchArmRegressions:AurexIntegrationTest.EnumAdtRegressions:AurexIntegrationTest.QualifiedStaticMethodRegressions:AurexIntegrationTest.MainAndCliRegressions:AurexIntegrationTest.SymlinkedImportStillValidatesExpectedModuleName:AurexIntegrationTest.M2Generic*:AurexIntegrationTest.Randomized*"
         )
@@ -171,6 +175,7 @@ if(BUILD_TESTING)
         )
         set_tests_properties(
             aurex_tests_core_unit
+            aurex_tests_query_unit_full
             aurex_tests_driver_and_regressions
             aurex_tests_functions
             aurex_tests_control_and_modules

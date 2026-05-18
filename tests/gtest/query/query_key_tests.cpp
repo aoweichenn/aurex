@@ -84,6 +84,35 @@ TEST(QueryUnit, StableHashAndWriterSerializationAreDeterministic) {
     EXPECT_FALSE(writer.storage().empty());
 }
 
+TEST(QueryUnit, StableHashWriterCoversPrimitiveAndFingerprintFields)
+{
+    const query::StableFingerprint128 alpha = query::stable_fingerprint("alpha");
+    query::StableHashBuilder builder;
+    builder.mix_u8(1);
+    builder.mix_u16(2);
+    builder.mix_u32(3);
+    builder.mix_u64(4);
+    builder.mix_bool(true);
+    builder.mix_bool(false);
+    builder.mix_string("payload");
+    builder.mix_fingerprint(alpha);
+    const query::StableFingerprint128 fingerprint = builder.finish();
+
+    query::StableKeyWriter writer;
+    writer.write_u8(1);
+    writer.write_u16(2);
+    writer.write_u32(3);
+    writer.write_u64(4);
+    writer.write_bool(true);
+    writer.write_string("payload");
+    writer.write_fingerprint(alpha);
+
+    EXPECT_FALSE(writer.bytes().empty());
+    EXPECT_FALSE(query::debug_string(fingerprint).empty());
+    EXPECT_NE(query::stable_hash_value(fingerprint), 0U);
+    EXPECT_EQ(query::StableFingerprintHash{}(fingerprint), query::stable_hash_value(fingerprint));
+}
+
 TEST(QueryUnit, StableSemanticKeysSeparateFilesModulesDefinitionsAndBodies) {
     const query::PackageKey package = test_package();
     ASSERT_TRUE(query::is_valid(package));
@@ -134,6 +163,104 @@ TEST(QueryUnit, StableSemanticKeysSeparateFilesModulesDefinitionsAndBodies) {
     EXPECT_NE(query::debug_string(signature_query).find("QueryKey"), std::string::npos);
 }
 
+TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
+{
+    const query::PackageKey package = test_package();
+    const query::FileKey source_file = query::file_key(package, "/workspace/root/regex/vm.ax");
+    const query::ModuleKey module = test_module(package);
+    const query::ModulePartKey module_part =
+        query::module_part_key(module, source_file, query::ModulePartKind::fragment, "part", QUERY_TEST_STABLE_ORDINAL);
+    const query::DefKey function_def = test_function_def(module);
+    const query::MemberKey member =
+        query::member_key(function_def, query::MemberKind::struct_field, "field", QUERY_TEST_STABLE_ORDINAL);
+    const query::BodyKey body =
+        query::body_key(function_def, query::BodySlotKind::const_initializer, QUERY_TEST_STABLE_ORDINAL);
+    const query::GenericParamKey generic_param =
+        query::generic_param_key(function_def, QUERY_TEST_GENERIC_PARAM_INDEX, query::GenericParamKind::resource);
+    const query::QueryKey diagnostics_query =
+        query::query_key(query::QueryKind::diagnostics, query::stable_key_fingerprint(member));
+
+    EXPECT_TRUE(query::is_valid(package));
+    EXPECT_TRUE(query::is_valid(source_file));
+    EXPECT_TRUE(query::is_valid(module));
+    EXPECT_TRUE(query::is_valid(function_def));
+    EXPECT_TRUE(query::is_valid(member));
+    EXPECT_TRUE(query::is_valid(body));
+    EXPECT_TRUE(query::is_valid(generic_param));
+    EXPECT_TRUE(query::is_valid(diagnostics_query));
+    EXPECT_FALSE(query::is_valid(query::PackageKey{}));
+    EXPECT_FALSE(query::is_valid(query::FileKey{}));
+    EXPECT_FALSE(query::is_valid(query::ModuleKey{}));
+    EXPECT_FALSE(query::is_valid(query::DefKey{}));
+    EXPECT_FALSE(query::is_valid(query::MemberKey{}));
+    EXPECT_FALSE(query::is_valid(query::BodyKey{}));
+    EXPECT_FALSE(query::is_valid(query::GenericParamKey{}));
+    EXPECT_FALSE(query::is_valid(query::QueryKey{}));
+    query::FileKey zero_global_file = source_file;
+    zero_global_file.global_id = 0;
+    query::ModuleKey zero_global_module = module;
+    zero_global_module.global_id = 0;
+    query::DefKey invalid_kind_def = function_def;
+    invalid_kind_def.kind = query::DefKind::invalid;
+    query::DefKey zero_global_def = function_def;
+    zero_global_def.global_id = 0;
+    query::MemberKey invalid_kind_member = member;
+    invalid_kind_member.kind = query::MemberKind::invalid;
+    query::MemberKey zero_global_member = member;
+    zero_global_member.global_id = 0;
+    query::BodyKey zero_global_body = body;
+    zero_global_body.global_id = 0;
+    query::GenericParamKey zero_global_generic_param = generic_param;
+    zero_global_generic_param.global_id = 0;
+    query::QueryKey zero_global_query = diagnostics_query;
+    zero_global_query.global_id = 0;
+    EXPECT_FALSE(query::is_valid(zero_global_file));
+    EXPECT_FALSE(query::is_valid(zero_global_module));
+    EXPECT_FALSE(query::is_valid(invalid_kind_def));
+    EXPECT_FALSE(query::is_valid(zero_global_def));
+    EXPECT_FALSE(query::is_valid(invalid_kind_member));
+    EXPECT_FALSE(query::is_valid(zero_global_member));
+    EXPECT_FALSE(query::is_valid(zero_global_body));
+    EXPECT_FALSE(query::is_valid(zero_global_generic_param));
+    EXPECT_FALSE(query::is_valid(zero_global_query));
+
+    EXPECT_FALSE(query::stable_serialize(package).empty());
+    EXPECT_FALSE(query::stable_serialize(source_file).empty());
+    EXPECT_FALSE(query::stable_serialize(module).empty());
+    EXPECT_FALSE(query::stable_serialize(module_part).empty());
+    EXPECT_FALSE(query::stable_serialize(function_def).empty());
+    EXPECT_FALSE(query::stable_serialize(member).empty());
+    EXPECT_FALSE(query::stable_serialize(body).empty());
+    EXPECT_FALSE(query::stable_serialize(generic_param).empty());
+    EXPECT_FALSE(query::stable_serialize(diagnostics_query).empty());
+
+    EXPECT_GT(query::stable_key_fingerprint(package).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(source_file).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(module).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(module_part).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(function_def).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(member).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(body).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(generic_param).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(diagnostics_query).byte_count, 0U);
+
+    EXPECT_NE(query::debug_string(package).find("PackageKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(source_file).find("FileKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(module).find("ModuleKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(module_part).find("ModulePartKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(function_def).find("DefKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(member).find("MemberKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(body).find("BodyKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(generic_param).find("GenericParamKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(diagnostics_query).find("QueryKey"), std::string::npos);
+
+    EXPECT_NE(query::PackageKeyHash{}(package), 0U);
+    EXPECT_NE(query::FileKeyHash{}(source_file), 0U);
+    EXPECT_NE(query::ModuleKeyHash{}(module), 0U);
+    EXPECT_NE(query::DefKeyHash{}(function_def), 0U);
+    EXPECT_NE(query::QueryKeyHash{}(diagnostics_query), 0U);
+}
+
 TEST(QueryUnit, LegacyStableIdentityLivesInQueryLayer) {
     const query::StableModuleId empty_module = query::stable_module_id(std::span<const std::string_view> {});
     const std::array<std::string_view, 2> dotted_path {"a", "b_c"};
@@ -178,8 +305,22 @@ TEST(QueryUnit, LegacyStableIdentityLivesInQueryLayer) {
     const query::IncrementalKey incremental_key = query::stable_incremental_key(function_id, "signature:i32");
     EXPECT_TRUE(query::is_valid(incremental_key));
     EXPECT_EQ(incremental_key.global_id, QUERY_TEST_LEGACY_INCREMENTAL_GLOBAL_ID);
+    EXPECT_FALSE(query::stable_serialize(dotted_module).empty());
+    EXPECT_FALSE(query::stable_serialize(function_id).empty());
+    EXPECT_FALSE(query::stable_serialize(field_key).empty());
     EXPECT_FALSE(query::stable_serialize(incremental_key).empty());
+    EXPECT_GT(query::stable_key_fingerprint(dotted_module).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(function_id).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(field_key).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(incremental_key).byte_count, 0U);
+    EXPECT_NE(query::debug_string(dotted_module).find("StableModuleId"), std::string::npos);
+    EXPECT_NE(query::debug_string(function_id).find("StableDefId"), std::string::npos);
+    EXPECT_NE(query::debug_string(field_key).find("StableMemberKey"), std::string::npos);
     EXPECT_NE(query::debug_string(incremental_key).find("IncrementalKey"), std::string::npos);
+    EXPECT_FALSE(query::is_valid(query::StableModuleId{}));
+    EXPECT_FALSE(query::is_valid(query::StableDefId{}));
+    EXPECT_FALSE(query::is_valid(query::StableMemberKey{}));
+    EXPECT_FALSE(query::is_valid(query::IncrementalKey{}));
 }
 
 TEST(QueryUnit, CanonicalTypeKeyIsStructuralAndHandleFree) {
@@ -219,6 +360,109 @@ TEST(QueryUnit, CanonicalTypeKeyIsStructuralAndHandleFree) {
     EXPECT_NE(query::debug_string(function_type).find("function"), std::string::npos);
 }
 
+TEST(QueryUnit, CanonicalTypeKeyCoversConstProjectionTraitAndUtilityPaths)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey function_def = test_function_def(module);
+    const query::DefKey vector_template = test_template_def(module);
+    const query::MemberKey associated_type =
+        query::member_key(function_def, query::MemberKind::associated_type, "Item", QUERY_TEST_STABLE_ORDINAL);
+    const query::GenericParamKey type_param =
+        query::generic_param_key(function_def, QUERY_TEST_GENERIC_PARAM_INDEX, query::GenericParamKind::type);
+    const query::CanonicalTypeKey u8 = query::canonical_builtin(query::BuiltinTypeKey::u8);
+    const query::CanonicalTypeKey i32 = query::canonical_builtin(query::BuiltinTypeKey::i32);
+    const query::CanonicalTypeKey pointer = query::canonical_pointer(query::PointerMutabilityKey::const_, i32);
+    const query::CanonicalTypeKey reference = query::canonical_reference(query::PointerMutabilityKey::mut, i32);
+    const query::CanonicalTypeKey array = query::canonical_array(QUERY_TEST_ARRAY_COUNT, i32);
+    const query::CanonicalTypeKey slice = query::canonical_slice(query::PointerMutabilityKey::const_, i32);
+    const std::array<query::CanonicalTypeKey, 2> tuple_elements{u8, i32};
+    const query::CanonicalTypeKey tuple = query::canonical_tuple(tuple_elements);
+    const query::CanonicalTypeKey generic_param = query::canonical_generic_param(type_param);
+    const std::array<query::CanonicalTypeKey, 1> nominal_args{generic_param};
+    const query::CanonicalTypeKey nominal = query::canonical_nominal(vector_template, nominal_args);
+    const query::CanonicalTypeKey const_arg = query::canonical_const_arg(query::stable_fingerprint("4"));
+    const query::CanonicalTypeKey projection = query::canonical_associated_type_projection(i32, associated_type);
+    query::CanonicalTypeKey trait_object;
+    trait_object.kind = query::CanonicalTypeKind::trait_object;
+    query::CanonicalTypeKey invalid_type;
+    query::CanonicalTypeKey unknown_kind_type;
+    unknown_kind_type.kind = static_cast<query::CanonicalTypeKind>(255);
+
+    EXPECT_TRUE(query::is_valid(const_arg));
+    EXPECT_TRUE(query::is_valid(projection));
+    EXPECT_TRUE(query::is_valid(trait_object));
+    EXPECT_FALSE(query::is_valid(invalid_type));
+    EXPECT_FALSE(query::stable_serialize(const_arg).empty());
+    EXPECT_FALSE(query::stable_serialize(projection).empty());
+    EXPECT_FALSE(query::stable_serialize(trait_object).empty());
+    EXPECT_FALSE(query::stable_serialize(invalid_type).empty());
+    EXPECT_NE(query::debug_string(i32).find("builtin"), std::string::npos);
+    EXPECT_NE(query::debug_string(pointer).find("pointer"), std::string::npos);
+    EXPECT_NE(query::debug_string(reference).find("reference"), std::string::npos);
+    EXPECT_NE(query::debug_string(array).find("array"), std::string::npos);
+    EXPECT_NE(query::debug_string(slice).find("slice"), std::string::npos);
+    EXPECT_NE(query::debug_string(tuple).find("tuple"), std::string::npos);
+    EXPECT_NE(query::debug_string(nominal).find("nominal"), std::string::npos);
+    EXPECT_NE(query::debug_string(generic_param).find("generic_param"), std::string::npos);
+    EXPECT_NE(query::debug_string(const_arg).find("const_arg"), std::string::npos);
+    EXPECT_NE(query::debug_string(projection).find("associated_type_projection"), std::string::npos);
+    EXPECT_NE(query::debug_string(trait_object).find("trait_object"), std::string::npos);
+    EXPECT_NE(query::debug_string(invalid_type).find("invalid"), std::string::npos);
+    EXPECT_NE(query::debug_string(unknown_kind_type).find("invalid"), std::string::npos);
+    EXPECT_NE(query::CanonicalTypeKeyHash{}(projection), 0U);
+}
+
+TEST(QueryUnit, CanonicalTypeKeyEqualityRejectsEveryShallowFieldAndNestedChild)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey vector_template = test_template_def(module);
+    const query::DefKey function_def = test_function_def(module);
+    const query::DefKey other_template = test_function_def(module);
+    const query::MemberKey associated_type =
+        query::member_key(function_def, query::MemberKind::associated_type, "Item", QUERY_TEST_STABLE_ORDINAL);
+    const query::MemberKey other_associated_type =
+        query::member_key(function_def, query::MemberKind::associated_type, "Other", QUERY_TEST_STABLE_ORDINAL + 1);
+    const query::GenericParamKey type_param =
+        query::generic_param_key(function_def, QUERY_TEST_GENERIC_PARAM_INDEX, query::GenericParamKind::type);
+    const query::GenericParamKey const_param =
+        query::generic_param_key(function_def, QUERY_TEST_GENERIC_PARAM_INDEX + 1, query::GenericParamKind::const_);
+
+    const query::CanonicalTypeKey i32 = query::canonical_builtin(query::BuiltinTypeKey::i32);
+    const query::CanonicalTypeKey i64 = query::canonical_builtin(query::BuiltinTypeKey::i64);
+    EXPECT_NE(i32, i64);
+    EXPECT_NE(query::canonical_pointer(query::PointerMutabilityKey::const_, i32),
+        query::canonical_pointer(query::PointerMutabilityKey::mut, i32));
+    EXPECT_NE(
+        query::canonical_array(QUERY_TEST_ARRAY_COUNT, i32), query::canonical_array(QUERY_TEST_ARRAY_COUNT + 1, i32));
+    EXPECT_NE(query::canonical_function(
+                  query::FunctionCallConvKey::aurex, false, false, std::span<const query::CanonicalTypeKey>{}, i32),
+        query::canonical_function(
+            query::FunctionCallConvKey::c, false, false, std::span<const query::CanonicalTypeKey>{}, i32));
+    EXPECT_NE(query::canonical_function(
+                  query::FunctionCallConvKey::aurex, false, false, std::span<const query::CanonicalTypeKey>{}, i32),
+        query::canonical_function(
+            query::FunctionCallConvKey::aurex, true, false, std::span<const query::CanonicalTypeKey>{}, i32));
+    EXPECT_NE(query::canonical_function(
+                  query::FunctionCallConvKey::aurex, false, false, std::span<const query::CanonicalTypeKey>{}, i32),
+        query::canonical_function(
+            query::FunctionCallConvKey::aurex, false, true, std::span<const query::CanonicalTypeKey>{}, i32));
+    const std::array<query::CanonicalTypeKey, 1> params{i32};
+    EXPECT_NE(query::canonical_function(
+                  query::FunctionCallConvKey::aurex, false, false, std::span<const query::CanonicalTypeKey>{}, i32),
+        query::canonical_function(query::FunctionCallConvKey::aurex, false, false, params, i32));
+    EXPECT_NE(query::canonical_nominal(vector_template, std::span<const query::CanonicalTypeKey>{}),
+        query::canonical_nominal(other_template, std::span<const query::CanonicalTypeKey>{}));
+    EXPECT_NE(query::canonical_generic_param(type_param), query::canonical_generic_param(const_param));
+    EXPECT_NE(query::canonical_const_arg(query::stable_fingerprint("N=4")),
+        query::canonical_const_arg(query::stable_fingerprint("N=5")));
+    EXPECT_NE(query::canonical_associated_type_projection(i32, associated_type),
+        query::canonical_associated_type_projection(i32, other_associated_type));
+    EXPECT_NE(query::canonical_pointer(query::PointerMutabilityKey::const_, i32),
+        query::canonical_pointer(query::PointerMutabilityKey::const_, i64));
+}
+
 TEST(QueryUnit, GenericInstanceKeyUsesCanonicalArgumentsAndParamEnvironment) {
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
@@ -232,6 +476,7 @@ TEST(QueryUnit, GenericInstanceKeyUsesCanonicalArgumentsAndParamEnvironment) {
     const std::array<std::string_view, 1> weaker_predicates {"T: Eq"};
     const query::ParamEnvKey param_env = query::param_env_key(predicates);
     const query::ParamEnvKey weaker_param_env = query::param_env_key(weaker_predicates);
+    const std::array<query::StableFingerprint128, 1> const_args{query::stable_fingerprint("N=4")};
 
     const query::GenericInstanceKey vec_i32 = query::generic_instance_key(
         vector_template,
@@ -253,13 +498,30 @@ TEST(QueryUnit, GenericInstanceKeyUsesCanonicalArgumentsAndParamEnvironment) {
         i32_args,
         std::span<const query::StableFingerprint128> {},
         weaker_param_env);
+    const query::GenericInstanceKey vec_i32_const =
+        query::generic_instance_key(vector_template, i32_args, const_args, param_env);
+    query::GenericInstanceKey changed_type_arg = repeated_vec_i32;
+    changed_type_arg.type_args.front() = str;
+    query::GenericInstanceKey missing_type_arg = repeated_vec_i32;
+    missing_type_arg.type_args.clear();
 
     EXPECT_TRUE(query::is_valid(vec_i32));
+    EXPECT_TRUE(query::is_valid(param_env));
     EXPECT_EQ(vec_i32, repeated_vec_i32);
     EXPECT_EQ(query::stable_serialize(vec_i32), query::stable_serialize(repeated_vec_i32));
     EXPECT_NE(vec_i32, vec_str);
     EXPECT_NE(vec_i32, vec_i32_weaker_env);
+    EXPECT_NE(vec_i32, vec_i32_const);
+    EXPECT_NE(vec_i32, changed_type_arg);
+    EXPECT_NE(vec_i32, missing_type_arg);
+    EXPECT_FALSE(query::is_valid(query::ParamEnvKey{}));
+    EXPECT_FALSE(query::is_valid(query::GenericInstanceKey{}));
+    EXPECT_FALSE(query::stable_serialize(param_env).empty());
+    EXPECT_GT(query::stable_key_fingerprint(param_env).byte_count, 0U);
     EXPECT_NE(query::debug_string(vec_i32).find("GenericInstanceKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(param_env).find("ParamEnvKey"), std::string::npos);
+    EXPECT_NE(query::ParamEnvKeyHash{}(param_env), 0U);
+    EXPECT_NE(query::GenericInstanceKeyHash{}(vec_i32_const), 0U);
 }
 
 } // namespace aurex::test

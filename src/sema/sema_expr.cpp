@@ -1598,6 +1598,7 @@ TypeHandle SemanticAnalyzer::analyze_struct_literal_expr(
         NamedTypeSelector selector;
         selector.module = syntax::INVALID_MODULE_ID;
         selector.name = expr.struct_name;
+        selector.name_id = expr.struct_name_id;
         selector.range = expr.range;
         selector.type_args.assign(expr.type_args.begin(), expr.type_args.end());
         selector.qualified = false;

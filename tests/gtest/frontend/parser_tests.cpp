@@ -8,10 +8,23 @@
 
 #include <array>
 #include <initializer_list>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#endif
+#define private public
+#include <aurex/parse/parser_postfix_expr_part.hpp>
+#undef private
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #include <parse/parser_recovery_sets.hpp>
 
@@ -23,10 +36,12 @@ using base::DiagnosticCategory;
 using base::DiagnosticCode;
 
 constexpr base::usize PARSER_TEST_DEEP_PREFIX_CHAIN_DEPTH = 8;
+constexpr base::usize PARSER_TEST_DEEP_TYPE_SELECTOR_OVERFLOW_DEPTH = 10;
 constexpr base::usize PARSER_TEST_LONG_BINARY_TERM_COUNT = 3'000;
 constexpr base::usize PARSER_TEST_EXPRESSION_NESTING_LIMIT_DEPTH = 600;
 constexpr base::usize PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH = 600;
 constexpr base::usize PARSER_TEST_PATTERN_NESTING_LIMIT_DEPTH = 600;
+constexpr base::SourceId PARSER_TEST_PROBE_SOURCE_ID {99};
 
 void expect_parse_error(const std::string_view source, const std::string_view message) {
     DiagnosticSink diagnostics;
@@ -119,6 +134,46 @@ public:
     using parse::ParserPartRangeReader::stmt_range_or;
     using parse::ParserPartRangeReader::type_range_or;
 };
+
+class ParserPostfixProbe final {
+public:
+    explicit ParserPostfixProbe(parse::Parser& parser) noexcept
+        : reader_(parser),
+          postfix_(parser) {}
+
+    [[nodiscard]] syntax::AstModule& module() const noexcept {
+        return this->reader_.module();
+    }
+
+    [[nodiscard]] bool type_like(const syntax::ExprId expr) {
+        return this->postfix_.bracket_arg_expr_is_type_like(expr);
+    }
+
+    [[nodiscard]] syntax::TypeId convert_type_arg(
+        const syntax::ExprId expr,
+        const bool report_errors
+    ) {
+        return this->postfix_.bracket_arg_expr_to_type(expr, report_errors);
+    }
+
+    [[nodiscard]] syntax::TypeId append_selector(
+        const syntax::TypeId base,
+        const std::string_view name,
+        const bool report_errors
+    ) {
+        return this->postfix_.append_type_selector(base, name, base::SourceRange {}, report_errors);
+    }
+
+private:
+    ParserPartRangeReaderProbe reader_;
+    parse::PostfixExprParser postfix_;
+};
+
+[[nodiscard]] std::vector<syntax::Token> probe_tokens(std::string_view text = "module probe;") {
+    std::vector<syntax::Token> tokens;
+    tokens.emplace_back(syntax::TokenKind::eof, base::SourceRange {PARSER_TEST_PROBE_SOURCE_ID, 0, 0}, text);
+    return tokens;
+}
 
 } // namespace
 
@@ -3042,6 +3097,157 @@ TEST(CoreUnit, ParserClassifiesBracketSuffixesByExplicitM2Contract) {
     ASSERT_EQ(module.exprs.kind(field->object.value), syntax::ExprKind::generic_apply);
 }
 
+TEST(CoreUnit, ParserClassifiesNestedGenericSelectorsAndVoidTypeArgs) {
+    constexpr std::string_view source =
+        "module parser.bracket_postfix_edges;\n"
+        "struct Inner[T] { value: T; }\n"
+        "struct Outer[T] { value: T; }\n"
+        "fn wrap[T](value: i32) -> i32 { return value; }\n"
+        "fn main() -> i32 {\n"
+        "  let selected = Outer[Inner[i32]].make;\n"
+        "  let ignored = wrap[void](0);\n"
+        "  return ignored;\n"
+        "}\n";
+
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast, {
+        "generic_apply[Inner[i32]]",
+        "generic_apply[void]",
+        " .make",
+    });
+
+    const syntax::ItemNode* const main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_TRUE(syntax::is_valid(main->body));
+    const syntax::StmtNode& body = module.stmts[main->body.value];
+    ASSERT_GE(body.statements.size(), 2U);
+
+    const syntax::StmtNode& selected_stmt = module.stmts[body.statements[0].value];
+    ASSERT_TRUE(syntax::is_valid(selected_stmt.init));
+    ASSERT_EQ(module.exprs.kind(selected_stmt.init.value), syntax::ExprKind::field);
+    const syntax::FieldExprPayload* const selected_field =
+        module.exprs.field_payload(selected_stmt.init.value);
+    ASSERT_NE(selected_field, nullptr);
+    ASSERT_TRUE(syntax::is_valid(selected_field->object));
+    ASSERT_EQ(module.exprs.kind(selected_field->object.value), syntax::ExprKind::generic_apply);
+
+    const syntax::StmtNode& ignored_stmt = module.stmts[body.statements[1].value];
+    ASSERT_TRUE(syntax::is_valid(ignored_stmt.init));
+    ASSERT_EQ(module.exprs.kind(ignored_stmt.init.value), syntax::ExprKind::call);
+    const syntax::CallExprPayload* const call = module.exprs.call_payload(ignored_stmt.init.value);
+    ASSERT_NE(call, nullptr);
+    ASSERT_TRUE(syntax::is_valid(call->callee));
+    ASSERT_EQ(module.exprs.kind(call->callee.value), syntax::ExprKind::generic_apply);
+    const syntax::GenericApplyExprPayload* const apply =
+        module.exprs.generic_apply_payload(call->callee.value);
+    ASSERT_NE(apply, nullptr);
+    ASSERT_EQ(apply->type_args.size(), 1U);
+    ASSERT_EQ(module.types[apply->type_args.front().value].kind, syntax::TypeKind::primitive);
+    EXPECT_EQ(module.types[apply->type_args.front().value].primitive, syntax::PrimitiveTypeKind::void_);
+}
+
+TEST(CoreUnit, ParserConvertsDeepSelectorGenericArgWithOverflowStorage) {
+    std::string source =
+        "module parser.deep_selector_generic_arg;\n"
+        "fn id[T](value: i32) -> i32 { return value; }\n"
+        "fn main() -> i32 { return id[A";
+    for (base::usize depth = 0; depth < PARSER_TEST_DEEP_TYPE_SELECTOR_OVERFLOW_DEPTH; ++depth) {
+        source += ".B";
+    }
+    source += "](0); }\n";
+
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains(ast, "generic_apply[A.B.B.B.B.B.B.B.B.B.B]");
+
+    const syntax::ItemNode* const main = find_item(module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_TRUE(syntax::is_valid(main->body));
+    const syntax::StmtNode& body = module.stmts[main->body.value];
+    ASSERT_EQ(body.statements.size(), 1U);
+    const syntax::StmtNode& return_stmt = module.stmts[body.statements.front().value];
+    ASSERT_TRUE(syntax::is_valid(return_stmt.return_value));
+    ASSERT_EQ(module.exprs.kind(return_stmt.return_value.value), syntax::ExprKind::call);
+    const syntax::CallExprPayload* const call = module.exprs.call_payload(return_stmt.return_value.value);
+    ASSERT_NE(call, nullptr);
+    ASSERT_TRUE(syntax::is_valid(call->callee));
+    ASSERT_EQ(module.exprs.kind(call->callee.value), syntax::ExprKind::generic_apply);
+    const syntax::GenericApplyExprPayload* const apply =
+        module.exprs.generic_apply_payload(call->callee.value);
+    ASSERT_NE(apply, nullptr);
+    ASSERT_EQ(apply->type_args.size(), 1U);
+    const syntax::TypeNode& type = module.types[apply->type_args.front().value];
+    ASSERT_EQ(type.kind, syntax::TypeKind::named);
+    ASSERT_EQ(type.scope_parts.size(), PARSER_TEST_DEEP_TYPE_SELECTOR_OVERFLOW_DEPTH);
+    EXPECT_EQ(type.name, "B");
+}
+
+TEST(CoreUnit, ParserPostfixWhiteBoxRejectsInvalidTypeLikeExpressions) {
+    std::vector<syntax::Token> tokens = probe_tokens();
+    DiagnosticSink diagnostics;
+    parse::Parser parser(tokens, diagnostics);
+    ParserPostfixProbe probe(parser);
+    syntax::AstModule& module = probe.module();
+
+    const syntax::ExprId empty_name = module.push_name_expr({}, "");
+    const syntax::ExprId invalid_generic =
+        module.push_generic_apply_expr({}, syntax::INVALID_EXPR_ID, std::vector<syntax::TypeId> {});
+    const syntax::ExprId number = module.push_literal_expr(syntax::ExprKind::integer_literal, {}, "1");
+    const syntax::ExprId invalid_unary = module.push_unary_expr(
+        syntax::ExprKind::unary,
+        {},
+        syntax::UnaryOp::numeric_negate,
+        number
+    );
+
+    EXPECT_FALSE(probe.type_like(syntax::INVALID_EXPR_ID));
+    EXPECT_FALSE(probe.type_like(empty_name));
+    EXPECT_FALSE(probe.type_like(invalid_generic));
+    EXPECT_FALSE(probe.type_like(invalid_unary));
+    EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(syntax::INVALID_EXPR_ID, false)));
+    EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(number, false)));
+}
+
+TEST(CoreUnit, ParserPostfixWhiteBoxConvertsScopedNamesAndRejectsBadSelectors) {
+    std::vector<syntax::Token> tokens = probe_tokens();
+    DiagnosticSink diagnostics;
+    parse::Parser parser(tokens, diagnostics);
+    ParserPostfixProbe probe(parser);
+    syntax::AstModule& module = probe.module();
+
+    const syntax::ExprId scoped_name = module.push_name_expr({}, "pkg", {}, "Thing");
+    const syntax::TypeId scoped_type = probe.convert_type_arg(scoped_name, true);
+    ASSERT_TRUE(syntax::is_valid(scoped_type));
+    const syntax::TypeNode& scoped = module.types[scoped_type.value];
+    ASSERT_EQ(scoped.scope_parts.size(), 1U);
+    EXPECT_EQ(scoped.scope_parts.front(), "pkg");
+    EXPECT_EQ(scoped.name, "Thing");
+
+    syntax::TypeNode applied_base;
+    applied_base.kind = syntax::TypeKind::named;
+    applied_base.name = "Box";
+    applied_base.type_args = {scoped_type};
+    const syntax::TypeId applied_base_id = module.push_type(applied_base);
+    EXPECT_FALSE(syntax::is_valid(probe.append_selector(applied_base_id, "Inner", true)));
+    EXPECT_TRUE(diagnostics.has_error());
+
+    syntax::TypeNode scoped_base;
+    scoped_base.kind = syntax::TypeKind::named;
+    scoped_base.scope_name = "pkg";
+    scoped_base.name = "Outer";
+    const syntax::TypeId scoped_base_id = module.push_type(scoped_base);
+    const syntax::TypeId selector_id = probe.append_selector(scoped_base_id, "Inner", true);
+    ASSERT_TRUE(syntax::is_valid(selector_id));
+    const syntax::TypeNode& selector = module.types[selector_id.value];
+    const std::vector<std::string_view> expected_scope_parts {"pkg", "Outer"};
+    EXPECT_EQ(selector.scope_parts, expected_scope_parts);
+    EXPECT_EQ(selector.scope_name, "pkg");
+    EXPECT_EQ(selector.name, "Inner");
+
+    EXPECT_FALSE(syntax::is_valid(probe.append_selector(syntax::INVALID_TYPE_ID, "Inner", false)));
+}
+
 TEST(CoreUnit, ParserRejectsEmptyGenericLists) {
     expect_parse_error(
         "module parser.empty_generic_fn;\n"
@@ -3110,6 +3316,29 @@ TEST(CoreUnit, ParserRejectsEmptyGenericLists) {
         "fn id[T](value: i32) -> i32 { return value; }\n"
         "fn main() -> i32 { return id[Box[i32].Inner](1); }\n",
         "expected generic type argument"
+    );
+    expect_parse_diagnostic(
+        "module parser.parenthesized_generic_arg_eof;\n"
+        "fn id[T](value: T) -> T { return value; }\n"
+        "fn main() -> i32 { return id[(i32,\n",
+        "expected expression"
+    );
+    expect_parse_diagnostic(
+        "module parser.generic_arg_separator_reaches_bracket;\n"
+        "fn id[T](value: i32) -> i32 { return value; }\n"
+        "fn main() -> i32 { return id[A B](1); }\n",
+        "expected ',' or ']' after generic type argument"
+    );
+    expect_parse_diagnostic(
+        "module parser.struct_field_separator_reaches_comma;\n"
+        "struct Box { a: i32; b: i32; }\n"
+        "fn main() -> i32 { let box = Box { a: 1 @, b: 2 }; return box.a; }\n",
+        "expected ',' or '}' after struct literal field"
+    );
+    expect_parse_diagnostic(
+        "module parser.match_arm_separator_reaches_comma;\n"
+        "fn main() -> i32 { return match true { true => 1 @, false => 0 }; }\n",
+        "expected ',' or '}' after match arm"
     );
 }
 

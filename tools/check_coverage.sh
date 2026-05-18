@@ -6,11 +6,23 @@ BUILD_DIR="${AUREX_COVERAGE_BUILD_DIR:-${ROOT}/build-coverage}"
 COVERAGE_DIR="${BUILD_DIR}/coverage"
 PROFILE_DIR="${COVERAGE_DIR}/profiles"
 PROFDATA="${COVERAGE_DIR}/aurex.profdata"
+ENTRYPOINT_PROFILE_DIR="${COVERAGE_DIR}/entrypoint-profiles"
+ENTRYPOINT_PROFDATA="${COVERAGE_DIR}/aurexc-entrypoint.profdata"
+ENTRYPOINT_SUMMARY="${COVERAGE_DIR}/entrypoint-summary.json"
+ENTRYPOINT_SOURCE="${ROOT}/src/cli/main.cpp"
 
 DEFAULT_COVERAGE_THRESHOLD=95
 LINE_THRESHOLD="${AUREX_COVERAGE_LINE_THRESHOLD:-${DEFAULT_COVERAGE_THRESHOLD}}"
 FUNCTION_THRESHOLD="${AUREX_COVERAGE_FUNCTION_THRESHOLD:-${DEFAULT_COVERAGE_THRESHOLD}}"
 REGION_THRESHOLD="${AUREX_COVERAGE_REGION_THRESHOLD:-${DEFAULT_COVERAGE_THRESHOLD}}"
+ENTRYPOINT_LINE_THRESHOLD="${AUREX_COVERAGE_ENTRYPOINT_LINE_THRESHOLD:-${LINE_THRESHOLD}}"
+ENTRYPOINT_FUNCTION_THRESHOLD="${AUREX_COVERAGE_ENTRYPOINT_FUNCTION_THRESHOLD:-${FUNCTION_THRESHOLD}}"
+ENTRYPOINT_REGION_THRESHOLD="${AUREX_COVERAGE_ENTRYPOINT_REGION_THRESHOLD:-${REGION_THRESHOLD}}"
+DEFAULT_FOCUSED_SOURCES="src/parse/parser_postfix.cpp:src/sema/match.cpp:src/sema/sema_expr.cpp:src/sema/sema_types.cpp"
+FOCUSED_SOURCES="${AUREX_COVERAGE_FOCUSED_SOURCES:-${DEFAULT_FOCUSED_SOURCES}}"
+FOCUSED_LINE_THRESHOLD="${AUREX_COVERAGE_FOCUSED_LINE_THRESHOLD:-${LINE_THRESHOLD}}"
+FOCUSED_FUNCTION_THRESHOLD="${AUREX_COVERAGE_FOCUSED_FUNCTION_THRESHOLD:-${FUNCTION_THRESHOLD}}"
+FOCUSED_REGION_THRESHOLD="${AUREX_COVERAGE_FOCUSED_REGION_THRESHOLD:-${REGION_THRESHOLD}}"
 
 find_llvm_tool() {
     local name="$1"
@@ -41,6 +53,19 @@ if [[ ! -x "${CC}" || ! -x "${CXX}" ]]; then
     exit 1
 fi
 
+collect_profraw_files() {
+    local directory="$1"
+    local label="$2"
+    PROFRAW_FILES=()
+    while IFS= read -r profraw; do
+        PROFRAW_FILES+=("${profraw}")
+    done < <(find "${directory}" -name '*.profraw' -type f | sort)
+    if [[ "${#PROFRAW_FILES[@]}" -eq 0 ]]; then
+        printf 'coverage failed: no .profraw files were produced for %s\n' "${label}" >&2
+        exit 1
+    fi
+}
+
 cmake -S "${ROOT}" -B "${BUILD_DIR}" \
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_C_COMPILER="${CC}" \
@@ -48,21 +73,13 @@ cmake -S "${ROOT}" -B "${BUILD_DIR}" \
     -DAUREX_ENABLE_COVERAGE=ON
 cmake --build "${BUILD_DIR}" -j
 
-rm -rf "${PROFILE_DIR}"
-mkdir -p "${PROFILE_DIR}"
+rm -rf "${PROFILE_DIR}" "${ENTRYPOINT_PROFILE_DIR}" "${COVERAGE_DIR}/html" "${COVERAGE_DIR}/entrypoint-html"
+mkdir -p "${PROFILE_DIR}" "${ENTRYPOINT_PROFILE_DIR}"
 
 LLVM_PROFILE_FILE="${PROFILE_DIR}/aurex-%m-%p.profraw" \
     ctest --test-dir "${BUILD_DIR}" --output-on-failure "$@"
 
-PROFRAW_FILES=()
-while IFS= read -r profraw; do
-    PROFRAW_FILES+=("${profraw}")
-done < <(find "${PROFILE_DIR}" -name '*.profraw' -type f | sort)
-if [[ "${#PROFRAW_FILES[@]}" -eq 0 ]]; then
-    printf 'coverage failed: no .profraw files were produced\n' >&2
-    exit 1
-fi
-
+collect_profraw_files "${PROFILE_DIR}" "test suite"
 "${LLVM_PROFDATA}" merge -sparse "${PROFRAW_FILES[@]}" -o "${PROFDATA}"
 
 COVERAGE_OBJECT="${BUILD_DIR}/bin/aurex_tests"
@@ -83,6 +100,9 @@ if [[ "${#SOURCE_FILES[@]}" -eq 0 ]]; then
 fi
 SOURCE_ARGS=()
 for source_file in "${SOURCE_FILES[@]}"; do
+    if [[ "${source_file}" == "${ENTRYPOINT_SOURCE}" ]]; then
+        continue
+    fi
     SOURCE_ARGS+=(--sources "${source_file}")
 done
 
@@ -108,11 +128,45 @@ done
     "${SOURCE_ARGS[@]}" \
     >/dev/null
 
-python3 - "$COVERAGE_DIR/summary.json" "$LINE_THRESHOLD" "$FUNCTION_THRESHOLD" "$REGION_THRESHOLD" <<'PY'
+ENTRYPOINT_OBJECT="${BUILD_DIR}/bin/aurexc"
+if [[ ! -x "${ENTRYPOINT_OBJECT}" ]]; then
+    printf 'coverage failed: missing entrypoint coverage object: %s\n' "${ENTRYPOINT_OBJECT}" >&2
+    exit 1
+fi
+LLVM_PROFILE_FILE="${ENTRYPOINT_PROFILE_DIR}/aurexc-%m-%p.profraw" \
+    "${ENTRYPOINT_OBJECT}" --help >/dev/null
+collect_profraw_files "${ENTRYPOINT_PROFILE_DIR}" "aurexc entrypoint"
+"${LLVM_PROFDATA}" merge -sparse "${PROFRAW_FILES[@]}" -o "${ENTRYPOINT_PROFDATA}"
+
+ENTRYPOINT_OBJECT_ARGS=(--object "${ENTRYPOINT_OBJECT}")
+ENTRYPOINT_SOURCE_ARGS=(--sources "${ENTRYPOINT_SOURCE}")
+"${LLVM_COV}" report "${ENTRYPOINT_OBJECT_ARGS[@]}" \
+    --instr-profile="${ENTRYPOINT_PROFDATA}" \
+    --ignore-filename-regex="${IGNORE_REGEX}" \
+    "${ENTRYPOINT_SOURCE_ARGS[@]}" \
+    | tee "${COVERAGE_DIR}/entrypoint-report.txt"
+
+"${LLVM_COV}" export "${ENTRYPOINT_OBJECT_ARGS[@]}" \
+    --instr-profile="${ENTRYPOINT_PROFDATA}" \
+    --ignore-filename-regex="${IGNORE_REGEX}" \
+    --summary-only \
+    --format=text \
+    "${ENTRYPOINT_SOURCE_ARGS[@]}" \
+    >"${ENTRYPOINT_SUMMARY}"
+
+"${LLVM_COV}" show "${ENTRYPOINT_OBJECT_ARGS[@]}" \
+    --instr-profile="${ENTRYPOINT_PROFDATA}" \
+    --ignore-filename-regex="${IGNORE_REGEX}" \
+    --format=html \
+    --output-dir="${COVERAGE_DIR}/entrypoint-html" \
+    "${ENTRYPOINT_SOURCE_ARGS[@]}" \
+    >/dev/null
+
+python3 - "$COVERAGE_DIR/summary.json" "$LINE_THRESHOLD" "$FUNCTION_THRESHOLD" "$REGION_THRESHOLD" "source totals" <<'PY'
 import json
 import sys
 
-summary_path, line_threshold, function_threshold, region_threshold = sys.argv[1:5]
+summary_path, line_threshold, function_threshold, region_threshold, label = sys.argv[1:6]
 thresholds = {
     "lines": float(line_threshold),
     "functions": float(function_threshold),
@@ -126,14 +180,84 @@ totals = data["data"][0]["totals"]
 failed = []
 for key, threshold in thresholds.items():
     percent = float(totals[key]["percent"])
-    print(f"{key} coverage: {percent:.2f}% (threshold {threshold:.2f}%)")
+    print(f"{label} {key} coverage: {percent:.2f}% (threshold {threshold:.2f}%)")
     if percent + 1e-9 < threshold:
         failed.append(f"{key} {percent:.2f}% < {threshold:.2f}%")
 
 if failed:
-    print("coverage threshold failed: " + ", ".join(failed), file=sys.stderr)
+    print(f"{label} coverage threshold failed: " + ", ".join(failed), file=sys.stderr)
     sys.exit(1)
 PY
 
+python3 - "$ENTRYPOINT_SUMMARY" "$ENTRYPOINT_LINE_THRESHOLD" "$ENTRYPOINT_FUNCTION_THRESHOLD" "$ENTRYPOINT_REGION_THRESHOLD" "aurexc entrypoint" <<'PY'
+import json
+import sys
+
+summary_path, line_threshold, function_threshold, region_threshold, label = sys.argv[1:6]
+thresholds = {
+    "lines": float(line_threshold),
+    "functions": float(function_threshold),
+    "regions": float(region_threshold),
+}
+
+with open(summary_path, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+totals = data["data"][0]["totals"]
+failed = []
+for key, threshold in thresholds.items():
+    percent = float(totals[key]["percent"])
+    print(f"{label} {key} coverage: {percent:.2f}% (threshold {threshold:.2f}%)")
+    if percent + 1e-9 < threshold:
+        failed.append(f"{key} {percent:.2f}% < {threshold:.2f}%")
+
+if failed:
+    print(f"{label} coverage threshold failed: " + ", ".join(failed), file=sys.stderr)
+    sys.exit(1)
+PY
+
+if [[ -n "${FOCUSED_SOURCES}" ]]; then
+    python3 - "$COVERAGE_DIR/summary.json" "$FOCUSED_LINE_THRESHOLD" "$FOCUSED_FUNCTION_THRESHOLD" "$FOCUSED_REGION_THRESHOLD" "$FOCUSED_SOURCES" "$ROOT" <<'PY'
+import json
+import os
+import sys
+
+summary_path, line_threshold, function_threshold, region_threshold, source_list, root = sys.argv[1:7]
+thresholds = {
+    "lines": float(line_threshold),
+    "functions": float(function_threshold),
+    "regions": float(region_threshold),
+}
+root = os.path.realpath(root)
+focused_sources = [source for source in source_list.split(":") if source]
+
+with open(summary_path, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+files = {
+    os.path.relpath(os.path.realpath(entry["filename"]), root): entry
+    for entry in data["data"][0].get("files", [])
+}
+failed = []
+for source in focused_sources:
+    entry = files.get(source)
+    if entry is None:
+        failed.append(f"{source} missing from coverage summary")
+        continue
+    summary = entry["summary"]
+    for key, threshold in thresholds.items():
+        percent = float(summary[key]["percent"])
+        print(f"focused {source} {key} coverage: {percent:.2f}% (threshold {threshold:.2f}%)")
+        if percent + 1e-9 < threshold:
+            failed.append(f"{source} {key} {percent:.2f}% < {threshold:.2f}%")
+
+if failed:
+    print("focused source coverage threshold failed: " + ", ".join(failed), file=sys.stderr)
+    sys.exit(1)
+PY
+fi
+
 printf 'coverage report: %s\n' "${COVERAGE_DIR}/report.txt"
 printf 'coverage html: %s\n' "${COVERAGE_DIR}/html/index.html"
+printf 'entrypoint coverage report: %s\n' "${COVERAGE_DIR}/entrypoint-report.txt"
+printf 'entrypoint coverage html: %s\n' "${COVERAGE_DIR}/entrypoint-html/index.html"

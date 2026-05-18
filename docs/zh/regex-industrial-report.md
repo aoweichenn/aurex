@@ -1,6 +1,6 @@
 # Aurex 正则库工业化现状报告
 
-日期：2026-05-17
+日期：2026-05-18
 分支：`m2`
 基线提交：`6a6f8e1 Complete regex industrial API surface`
 范围：`examples/libs/regex`、`examples/libs/unicode` 中被正则库依赖的 Unicode 支撑、正则样例和测试脚本。
@@ -419,19 +419,21 @@ Aurex 不建议以“完全兼容 C++ `std::regex`”作为短期目标。更合
 
 | 命令 | 结果 | 备注 |
 | --- | --- | --- |
-| `tools/run_tests.sh` | 11/11 passed | regex conformance 慢测耗时 227.35s |
-| `tools/check_coverage.sh` | 11/11 passed | regex conformance 慢测耗时 229.11s |
+| `tools/run_tests.sh` | 11/11 passed | regex conformance 慢测耗时 223.78s |
+| `tools/check_coverage.sh` | 11/11 passed | regex conformance 慢测耗时 222.34s；source totals、`aurexc` 入口和 parser/sema focused gate 均通过 |
 | `python3 tools/regex_differential.py --fold-end 32 --grapheme-end 32` | passed | 生成并运行 `build/regex_differential_generated.ax` |
 | `build/bin/aurexc -I examples/libs examples/regex_advanced.ax -o build/tests/regex_advanced && build/tests/regex_advanced` | passed | 高级 API/Unicode/RegexSet/database/stream 回归样例 |
 | `git diff --check` | passed | 代码提交前空白检查 |
 
-覆盖率数据来自 `tools/check_coverage.sh`：
+覆盖率数据来自 `tools/check_coverage.sh`。主 source totals 排除 CLI 入口后统计 `src/**/*.cpp`，CLI 入口由独立 `aurexc --help` 覆盖 lane 统计；M2.1 还对 `parser_postfix.cpp`、`match.cpp`、`sema_expr.cpp`、`sema_types.cpp` 保留 focused 95% 门禁。
 
 | 指标 | 当前值 |
 | --- | ---: |
-| Line coverage | 95.33% |
-| Function coverage | 98.50% |
-| Region coverage | 95.01% |
+| Source line coverage | 95.75% |
+| Source function coverage | 98.56% |
+| Source region coverage | 95.38% |
+| `aurexc` entrypoint line/function/region coverage | 100.00% / 100.00% / 100.00% |
+| Focused parser/sema gate | 全部 >= 95.00% |
 
 测试覆盖内容：
 

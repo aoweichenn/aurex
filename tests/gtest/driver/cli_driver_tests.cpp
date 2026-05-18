@@ -55,6 +55,7 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_FIRST_SOURCE =
 constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE =
     "module shared.util;\n"
     "pub fn twice(value: i32) -> i32 { return value + 21; }\n";
+constexpr base::u32 CACHE_TEST_DEF_KEY_PATH_COMPONENT_COUNT = 1;
 
 [[nodiscard]] driver::CliParseResult require_parse_cli(const std::vector<std::string_view>& args)
 {
@@ -213,6 +214,33 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE =
     row += encoded_stable_key;
     row += "\n";
     return row;
+}
+
+[[nodiscard]] query::ModuleKey cache_test_query_module_key_from_stable_id(
+    const sema::StableModuleId stable_module) noexcept
+{
+    const query::PackageKey package = query::package_key(std::span<const std::string_view>{});
+    return query::ModuleKey{
+        package,
+        stable_module.path,
+        stable_module.part_count,
+        query::ModuleKind::source,
+        stable_module.global_id,
+    };
+}
+
+[[nodiscard]] query::DefKey cache_test_query_def_key_from_stable_id(
+    const sema::StableDefId& stable_id, const query::DefNamespace name_space, const query::DefKind kind) noexcept
+{
+    return query::DefKey{
+        cache_test_query_module_key_from_stable_id(stable_id.module),
+        stable_id.name,
+        CACHE_TEST_DEF_KEY_PATH_COMPONENT_COUNT,
+        name_space,
+        kind,
+        stable_id.disambiguator,
+        stable_id.global_id,
+    };
 }
 
 } // namespace
@@ -1009,6 +1037,11 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     expect_contains(cache_text, "queries\t4");
     expect_contains(cache_text, "query\titem_signature");
     expect_contains(cache_text, "query\tgeneric_instance_signature");
+    const query::DefKey expected_item_signature_key = cache_test_query_def_key_from_stable_id(
+        duplicate_stable_id, query::DefNamespace::value, query::DefKind::function);
+    expect_contains(cache_text, hex_encode_cache_test_field(query::stable_serialize(expected_item_signature_key)));
+    EXPECT_EQ(
+        cache_text.find(hex_encode_cache_test_field(query::stable_serialize(duplicate_stable_id))), std::string::npos);
 
     auto reuse = driver::try_reuse_incremental_check_cache(invocation);
     ASSERT_TRUE(reuse) << reuse.error().message;

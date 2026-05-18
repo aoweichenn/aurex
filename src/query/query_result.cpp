@@ -35,6 +35,21 @@ QueryResultFingerprint query_result_fingerprint(const IncrementalKey incremental
     };
 }
 
+QueryRecordChangeStatus query_record_change_status(const QueryRecord* const cached, const QueryRecord& current) noexcept
+{
+    if (!is_valid(current)) {
+        return QueryRecordChangeStatus::malformed;
+    }
+    if (cached == nullptr) {
+        return QueryRecordChangeStatus::missing;
+    }
+    if (!is_valid(*cached) || cached->key.kind != current.key.kind
+        || cached->stable_key_bytes != current.stable_key_bytes || cached->key != current.key) {
+        return QueryRecordChangeStatus::malformed;
+    }
+    return cached->result == current.result ? QueryRecordChangeStatus::unchanged : QueryRecordChangeStatus::changed;
+}
+
 std::optional<QueryRecord> query_record(const QueryKind kind, const StableFingerprint128 key_payload,
     std::string stable_key_bytes, const QueryResultFingerprint result)
 {

@@ -32,12 +32,21 @@ struct GenericInstanceSignatureQueryInput {
     QueryResultFingerprint result;
 };
 
+enum class QueryRecordChangeStatus : base::u8 {
+    missing,
+    unchanged,
+    changed,
+    malformed,
+};
+
 [[nodiscard]] bool is_valid(QueryResultFingerprint result) noexcept;
 [[nodiscard]] bool is_valid(const QueryRecord& record) noexcept;
 [[nodiscard]] bool is_valid(const ItemSignatureQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const GenericInstanceSignatureQueryInput& input) noexcept;
 
 [[nodiscard]] QueryResultFingerprint query_result_fingerprint(IncrementalKey incremental_key) noexcept;
+[[nodiscard]] QueryRecordChangeStatus query_record_change_status(
+    const QueryRecord* cached, const QueryRecord& current) noexcept;
 
 [[nodiscard]] std::optional<QueryRecord> query_record(QueryKind kind, StableFingerprint128 key_payload,
     std::string stable_key_bytes, QueryResultFingerprint result);

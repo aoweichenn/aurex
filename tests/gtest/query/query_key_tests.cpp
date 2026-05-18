@@ -334,6 +334,9 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_EQ(item_record->key.payload, query::stable_key_fingerprint(function_def));
     EXPECT_EQ(item_record->stable_key_bytes, query::stable_serialize(function_def));
     EXPECT_EQ(item_record->result, result);
+    EXPECT_EQ(query::query_record_change_status(nullptr, *item_record), query::QueryRecordChangeStatus::missing);
+    EXPECT_EQ(
+        query::query_record_change_status(&*item_record, *item_record), query::QueryRecordChangeStatus::unchanged);
 
     const query::DefKey vector_template = test_template_def(module);
     const query::CanonicalTypeKey i32 = query::canonical_builtin(query::BuiltinTypeKey::i32);
@@ -352,6 +355,17 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_EQ(instance_record->key.kind, query::QueryKind::generic_instance_signature);
     EXPECT_EQ(instance_record->key.payload, query::stable_key_fingerprint(instance));
     EXPECT_EQ(instance_record->stable_key_bytes, query::stable_serialize(instance));
+
+    query::QueryRecord changed_item_record = *item_record;
+    changed_item_record.result =
+        query::query_result_fingerprint(query::stable_incremental_key(legacy_function_id, "signature:i64"));
+    EXPECT_EQ(
+        query::query_record_change_status(&*item_record, changed_item_record), query::QueryRecordChangeStatus::changed);
+
+    query::QueryRecord mismatched_identity_record = *instance_record;
+    mismatched_identity_record.result = item_record->result;
+    EXPECT_EQ(query::query_record_change_status(&*item_record, mismatched_identity_record),
+        query::QueryRecordChangeStatus::malformed);
 
     EXPECT_FALSE(query::is_valid(query::QueryResultFingerprint{}));
     EXPECT_FALSE(query::is_valid(query::QueryRecord{}));
@@ -378,6 +392,11 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_FALSE(query::item_signature_query_record(query::DefKey{}, result).has_value());
     EXPECT_FALSE(query::item_signature_query_record(function_def, query::QueryResultFingerprint{}).has_value());
     EXPECT_FALSE(query::generic_instance_signature_query_record(query::GenericInstanceKey{}, result).has_value());
+    EXPECT_EQ(query::query_record_change_status(&*item_record, query::QueryRecord{}),
+        query::QueryRecordChangeStatus::malformed);
+    const query::QueryRecord invalid_cached_record;
+    EXPECT_EQ(query::query_record_change_status(&invalid_cached_record, *item_record),
+        query::QueryRecordChangeStatus::malformed);
 }
 
 TEST(QueryUnit, CanonicalTypeKeyIsStructuralAndHandleFree)

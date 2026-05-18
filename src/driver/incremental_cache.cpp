@@ -110,9 +110,13 @@ struct DefinitionRecord {
 };
 
 struct ParsedQueryRecord {
-    query::QueryKey key;
-    query::QueryResultFingerprint result;
+    query::QueryRecord record;
+};
+
+struct QueryRecordDiff {
+    query::QueryKind kind = query::QueryKind::invalid;
     std::string stable_key_bytes;
+    query::QueryRecordChangeStatus status = query::QueryRecordChangeStatus::malformed;
 };
 
 struct ItemSignatureQuerySubject {
@@ -475,7 +479,7 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 {
     for (base::usize index = 0; index < cache.queries.size(); ++index) {
         const ParsedQueryRecord& record = cache.queries[index];
-        if (record.key.kind == kind && record.stable_key_bytes == stable_key_bytes) {
+        if (record.record.key.kind == kind && record.record.stable_key_bytes == stable_key_bytes) {
             return index;
         }
     }
@@ -484,7 +488,7 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 
 [[nodiscard]] bool push_parsed_query_record(ParsedCache& cache, ParsedQueryRecord record)
 {
-    if (parsed_query_record_index(cache, record.key.kind, record.stable_key_bytes)) {
+    if (parsed_query_record_index(cache, record.record.key.kind, record.record.stable_key_bytes)) {
         return false;
     }
     cache.queries.push_back(std::move(record));
@@ -551,14 +555,16 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     }
 
     ParsedQueryRecord record{
-        key,
-        query::QueryResultFingerprint{
-            result_fingerprint,
-            result_global,
+        query::QueryRecord{
+            key,
+            query::QueryResultFingerprint{
+                result_fingerprint,
+                result_global,
+            },
+            std::move(*stable_key_bytes),
         },
-        std::move(*stable_key_bytes),
     };
-    if (!query::is_valid(record.key) || !query::is_valid(record.result)) {
+    if (!query::is_valid(record.record)) {
         return false;
     }
     return push_parsed_query_record(cache, std::move(record));
@@ -646,6 +652,49 @@ void append_hex_string(std::ostream& out, const std::string_view value)
         return std::nullopt;
     }
     return cache;
+}
+
+[[nodiscard]] const query::QueryRecord* find_parsed_query_record(
+    const ParsedCache& cache, const query::QueryRecord& current)
+{
+    const std::optional<base::usize> index =
+        parsed_query_record_index(cache, current.key.kind, current.stable_key_bytes);
+    return index ? &cache.queries[*index].record : nullptr;
+}
+
+[[nodiscard]] std::vector<QueryRecordDiff> compare_query_records_against_cache(
+    const ParsedCache& cache, const std::span<const query::QueryRecord> current_records)
+{
+    std::vector<QueryRecordDiff> diffs;
+    diffs.reserve(current_records.size());
+    for (const query::QueryRecord& current : current_records) {
+        const query::QueryRecord* const cached = find_parsed_query_record(cache, current);
+        diffs.push_back(QueryRecordDiff{
+            current.key.kind,
+            current.stable_key_bytes,
+            query::query_record_change_status(cached, current),
+        });
+    }
+    return diffs;
+}
+
+[[nodiscard]] std::vector<QueryRecordDiff> compare_existing_query_records(
+    const std::filesystem::path& cache_path, const std::span<const query::QueryRecord> current_records)
+{
+    const std::optional<ParsedCache> cache = read_incremental_cache(cache_path);
+    if (!cache) {
+        std::vector<QueryRecordDiff> diffs;
+        diffs.reserve(current_records.size());
+        for (const query::QueryRecord& current : current_records) {
+            diffs.push_back(QueryRecordDiff{
+                current.key.kind,
+                current.stable_key_bytes,
+                query::QueryRecordChangeStatus::missing,
+            });
+        }
+        return diffs;
+    }
+    return compare_query_records_against_cache(*cache, current_records);
 }
 
 [[nodiscard]] bool cache_sources_match(const ParsedCache& cache)
@@ -1120,6 +1169,8 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     const std::vector<ModuleRecord> module_records = sorted_modules(modules);
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
     const std::vector<query::QueryRecord> query_records = collect_query_records(checked);
+    const std::vector<QueryRecordDiff> query_diffs = compare_existing_query_records(cache_path, query_records);
+    static_cast<void>(query_diffs);
 
     const std::filesystem::path temporary_path = temporary_cache_path(cache_path);
     {

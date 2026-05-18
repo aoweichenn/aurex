@@ -456,7 +456,8 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
 
     auto incremental_cache_result = [&] {
         ScopedCompilationPhase phase(run_profile.profiler(), "incremental_cache.write");
-        return write_incremental_cache(invocation, sources, loader.modules(), checked_result.value());
+        return write_incremental_cache(
+            invocation, sources, loader.modules(), checked_result.value(), run_profile.profiler());
     }();
     if (!incremental_cache_result) {
         return run_profile.finish(base::Result<void>::fail(incremental_cache_result.error()));

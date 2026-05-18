@@ -10,9 +10,12 @@
 
 namespace aurex::driver {
 
+class CompilationProfiler;
+
 [[nodiscard]] base::Result<bool> try_reuse_incremental_check_cache(const CompilerInvocation& invocation);
 
 [[nodiscard]] base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
-    const base::SourceManager& sources, std::span<const ModuleRecord> modules, const sema::CheckedModule& checked);
+    const base::SourceManager& sources, std::span<const ModuleRecord> modules, const sema::CheckedModule& checked,
+    CompilationProfiler* profiler = nullptr);
 
 } // namespace aurex::driver

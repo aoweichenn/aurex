@@ -85,6 +85,11 @@ constexpr base::usize CACHE_TEST_QUERY_FIELD_COUNT = 12;
 constexpr std::string_view CACHE_TEST_QUERY_ROW_KIND = "query";
 constexpr std::string_view CACHE_TEST_QUERY_ITEM_SIGNATURE = "item_signature";
 constexpr std::string_view CACHE_TEST_QUERY_GENERIC_INSTANCE_SIGNATURE = "generic_instance_signature";
+constexpr std::string_view CACHE_TEST_QUERY_DIFF_PROFILE_PHASE = "incremental_cache.query_diff";
+constexpr std::string_view CACHE_TEST_QUERY_DIFF_MISSING_DETAIL = "total=3,missing=3,unchanged=0,changed=0,malformed=0";
+constexpr std::string_view CACHE_TEST_QUERY_DIFF_UNCHANGED_DETAIL =
+    "total=3,missing=0,unchanged=3,changed=0,malformed=0";
+constexpr std::string_view CACHE_TEST_QUERY_DIFF_CHANGED_DETAIL = "total=3,missing=0,unchanged=2,changed=1,malformed=0";
 
 struct CacheTestQueryResultFingerprint {
     std::string global_id;
@@ -466,6 +471,7 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
         driver::CompilerInvocation invocation;
         invocation.input_path = source_root() / "examples" / "hello.ax";
         invocation.emit_kind = driver::EmitKind::check;
+        invocation.incremental_cache_path = tmp_root() / "hello.profile.axic";
         invocation.profile_output_path = profile;
 
         driver::Compiler compiler;
@@ -481,6 +487,12 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
                 "\"name\": \"module.lex\"",
                 "\"name\": \"module.parse\"",
                 "\"name\": \"sema.analyze\"",
+                "\"name\": \"incremental_cache.query_diff\"",
+                "total=",
+                "missing=",
+                "unchanged=",
+                "changed=",
+                "malformed=",
                 "\"rss_mib_after\"",
                 "\"rss_delta_mib\"",
             });
@@ -1071,6 +1083,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SYNTHETIC_FUNCTION = "id";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SYNTHETIC_STABLE_ID = "generic-instance:manual";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SIGNATURE = "generic-signature:manual";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SYNTHETIC_CHANGED_SIGNATURE =
+        "generic-signature:manual:changed";
 
     driver::clear_file_cache();
 
@@ -1143,8 +1157,13 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
         sema::stable_incremental_key(instance.signature.stable_id, DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SIGNATURE);
     checked.generic_function_instances.push_back(std::move(instance));
 
-    auto write_result = driver::write_incremental_cache(invocation, sources, modules, checked);
+    driver::CompilationProfiler first_write_profiler(true);
+    auto write_result = driver::write_incremental_cache(invocation, sources, modules, checked, &first_write_profiler);
     ASSERT_TRUE(write_result) << write_result.error().message;
+    ASSERT_EQ(first_write_profiler.phases().size(), 1U);
+    EXPECT_EQ(first_write_profiler.phases().front().name, CACHE_TEST_QUERY_DIFF_PROFILE_PHASE);
+    EXPECT_EQ(first_write_profiler.phases().front().detail, CACHE_TEST_QUERY_DIFF_MISSING_DETAIL);
+
     const std::string cache_text = read_text(cache);
     expect_contains(cache_text, "queries\t3");
     expect_contains(cache_text, "query\titem_signature");
@@ -1160,6 +1179,25 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
             .has_value());
     EXPECT_EQ(
         cache_text.find(hex_encode_cache_test_field(query::stable_serialize(duplicate_stable_id))), std::string::npos);
+
+    driver::CompilationProfiler second_write_profiler(true);
+    auto rewrite_result =
+        driver::write_incremental_cache(invocation, sources, modules, checked, &second_write_profiler);
+    ASSERT_TRUE(rewrite_result) << rewrite_result.error().message;
+    ASSERT_EQ(second_write_profiler.phases().size(), 1U);
+    EXPECT_EQ(second_write_profiler.phases().front().name, CACHE_TEST_QUERY_DIFF_PROFILE_PHASE);
+    EXPECT_EQ(second_write_profiler.phases().front().detail, CACHE_TEST_QUERY_DIFF_UNCHANGED_DETAIL);
+
+    checked.generic_function_instances.front().signature.incremental_key =
+        sema::stable_incremental_key(checked.generic_function_instances.front().signature.stable_id,
+            DRIVER_INCREMENTAL_CACHE_SYNTHETIC_CHANGED_SIGNATURE);
+    driver::CompilationProfiler changed_write_profiler(true);
+    auto changed_write_result =
+        driver::write_incremental_cache(invocation, sources, modules, checked, &changed_write_profiler);
+    ASSERT_TRUE(changed_write_result) << changed_write_result.error().message;
+    ASSERT_EQ(changed_write_profiler.phases().size(), 1U);
+    EXPECT_EQ(changed_write_profiler.phases().front().name, CACHE_TEST_QUERY_DIFF_PROFILE_PHASE);
+    EXPECT_EQ(changed_write_profiler.phases().front().detail, CACHE_TEST_QUERY_DIFF_CHANGED_DETAIL);
 
     auto reuse = driver::try_reuse_incremental_check_cache(invocation);
     ASSERT_TRUE(reuse) << reuse.error().message;

@@ -1,5 +1,6 @@
 #include <aurex/base/config.hpp>
 #include <aurex/driver/incremental_cache.hpp>
+#include <aurex/driver/profile.hpp>
 #include <aurex/query/query_result.hpp>
 
 #include <algorithm>
@@ -95,6 +96,12 @@ constexpr std::string_view INCREMENTAL_CACHE_WRITE_OPEN_FAILED = "failed to open
 constexpr std::string_view INCREMENTAL_CACHE_WRITE_FAILED = "failed to write incremental cache file";
 constexpr std::string_view INCREMENTAL_CACHE_RENAME_FAILED = "failed to publish incremental cache file";
 constexpr std::string_view INCREMENTAL_CACHE_DIRECTORY_FAILED = "failed to create incremental cache directory";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_DIFF = "incremental_cache.query_diff";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_TOTAL = "total=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_MISSING = ",missing=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_UNCHANGED = ",unchanged=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_CHANGED = ",changed=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_MALFORMED = ",malformed=";
 
 struct SourceFingerprintRecord {
     std::filesystem::path path;
@@ -117,6 +124,14 @@ struct QueryRecordDiff {
     query::QueryKind kind = query::QueryKind::invalid;
     std::string stable_key_bytes;
     query::QueryRecordChangeStatus status = query::QueryRecordChangeStatus::malformed;
+};
+
+struct QueryRecordDiffSummary {
+    base::usize total = 0;
+    base::usize missing = 0;
+    base::usize unchanged = 0;
+    base::usize changed = 0;
+    base::usize malformed = 0;
 };
 
 struct ItemSignatureQuerySubject {
@@ -697,6 +712,48 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return compare_query_records_against_cache(*cache, current_records);
 }
 
+[[nodiscard]] QueryRecordDiffSummary summarize_query_record_diffs(
+    const std::span<const QueryRecordDiff> query_diffs) noexcept
+{
+    QueryRecordDiffSummary summary;
+    summary.total = query_diffs.size();
+    for (const QueryRecordDiff& diff : query_diffs) {
+        switch (diff.status) {
+            case query::QueryRecordChangeStatus::missing:
+                summary.missing += 1;
+                break;
+            case query::QueryRecordChangeStatus::unchanged:
+                summary.unchanged += 1;
+                break;
+            case query::QueryRecordChangeStatus::changed:
+                summary.changed += 1;
+                break;
+            case query::QueryRecordChangeStatus::malformed:
+                summary.malformed += 1;
+                break;
+        }
+    }
+    return summary;
+}
+
+[[nodiscard]] std::string query_record_diff_summary_detail(const QueryRecordDiffSummary& summary)
+{
+    std::ostringstream detail;
+    detail << INCREMENTAL_CACHE_PROFILE_TOTAL << summary.total << INCREMENTAL_CACHE_PROFILE_MISSING << summary.missing
+           << INCREMENTAL_CACHE_PROFILE_UNCHANGED << summary.unchanged << INCREMENTAL_CACHE_PROFILE_CHANGED
+           << summary.changed << INCREMENTAL_CACHE_PROFILE_MALFORMED << summary.malformed;
+    return detail.str();
+}
+
+void record_query_record_diff_summary(CompilationProfiler* const profiler, const QueryRecordDiffSummary& summary,
+    const std::chrono::steady_clock::duration elapsed)
+{
+    if (profiler == nullptr || !profiler->enabled()) {
+        return;
+    }
+    profiler->record(INCREMENTAL_CACHE_PROFILE_QUERY_DIFF, query_record_diff_summary_detail(summary), elapsed);
+}
+
 [[nodiscard]] bool cache_sources_match(const ParsedCache& cache)
 {
     bool has_root_source = false;
@@ -1147,7 +1204,8 @@ base::Result<bool> try_reuse_incremental_check_cache(const CompilerInvocation& i
 }
 
 base::Result<void> write_incremental_cache(const CompilerInvocation& invocation, const base::SourceManager& sources,
-    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked)
+    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked,
+    CompilationProfiler* const profiler)
 {
     if (invocation.incremental_cache_path.empty()) {
         return base::Result<void>::ok();
@@ -1169,8 +1227,11 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     const std::vector<ModuleRecord> module_records = sorted_modules(modules);
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
     const std::vector<query::QueryRecord> query_records = collect_query_records(checked);
+    const auto query_diff_started = std::chrono::steady_clock::now();
     const std::vector<QueryRecordDiff> query_diffs = compare_existing_query_records(cache_path, query_records);
-    static_cast<void>(query_diffs);
+    const QueryRecordDiffSummary query_diff_summary = summarize_query_record_diffs(query_diffs);
+    record_query_record_diff_summary(
+        profiler, query_diff_summary, std::chrono::steady_clock::now() - query_diff_started);
 
     const std::filesystem::path temporary_path = temporary_cache_path(cache_path);
     {

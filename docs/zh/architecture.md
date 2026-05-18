@@ -37,6 +37,9 @@ M2 `language-core-no-std` 移除了标准库层：
 
 M2.5 的架构主线是 stable-ID-driven query，而不是先堆一层 LSP 适配器：
 
+- 当前第一优先级是冻结 [M2.5 Query Key 设计](m2.5-query-key-design.md)，先把
+  Stable Semantic Query Key、Session Fast Handle、CanonicalTypeKey、
+  GenericInstanceKey 和 diagnostics query 边界定牢。
 - 现有 sema 结果先固定为显式 typed identity、显式诊断 kind 和稳定 fingerprint。
 - file parse、module graph、item signature、function body、generic instance、
   diagnostics 逐步改为 query。

@@ -12,16 +12,20 @@ query-safe、lossless-syntax-ready、IDE-native-ready 的结构化系统：
 
 1. 显式语义诊断元数据：已完成。sema 在创建诊断时写入稳定 kind/category/code，
    不再按 message 文本反推分类。
-2. Query key / dependency graph：下一步。统一 file、module、def、body、generic、
-   diagnostics 的稳定键和失效边界。
-3. Lossless syntax / IDE-native route：随后推进。保留 trivia 的 CST、局部增量 parse、
+2. Query key：当前第一优先级。先按 [M2.5 Query Key 设计](m2.5-query-key-design.md)
+   冻结 Stable Semantic Query Key、Session Fast Handle、CanonicalTypeKey、
+   GenericInstanceKey 和 diagnostics query 边界。
+3. QueryContext / dependency graph：query key 落地后推进。统一 file、module、def、
+   body、generic、diagnostics 的依赖追踪、result fingerprint 和 red-green 失效边界。
+4. Lossless syntax / IDE-native route：随后推进。保留 trivia 的 CST、局部增量 parse、
    diagnostics query 和 LSP 消费路径都建立在前两项之上。
-4. 语言/库表达力补强：新增到 M2.5 路线图中，作为 regex 级系统库暴露出的
+5. 语言/库表达力补强：新增到 M2.5 路线图中，作为 regex 级系统库暴露出的
    P0/P1 设计冻结轨道。它不替代 query/lossless/IDE 主线，也不重启旧 std；
    只允许进入能支撑 stable key、module boundary、generic lowering、trait/static
    dispatch 或 resource invariants 的能力。
 
-独立设计见 [M2.5 路线图](m2.5-roadmap.md)。下面的 M2.1 章节保留为已经完成的
+独立设计见 [M2.5 路线图](m2.5-roadmap.md) 和
+[M2.5 Query Key 设计](m2.5-query-key-design.md)。下面的 M2.1 章节保留为已经完成的
 收口基线和后续回归约束。
 
 ## M2 优化目标（已完成基线）

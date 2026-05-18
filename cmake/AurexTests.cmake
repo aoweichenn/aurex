@@ -18,6 +18,21 @@ if(BUILD_TESTING)
         COMMAND aurex_base_tests --gtest_color=auto
     )
 
+    add_executable(aurex_query_tests
+        tests/gtest/query/query_key_tests.cpp
+    )
+    target_link_libraries(aurex_query_tests PRIVATE
+        GTest::gtest_main
+        aurex_query
+    )
+    set_target_properties(aurex_query_tests PROPERTIES
+        BUILD_RPATH "$<TARGET_FILE_DIR:GTest::gtest_main>"
+    )
+    add_test(
+        NAME aurex_tests_query_unit
+        COMMAND aurex_query_tests --gtest_color=auto
+    )
+
     add_executable(aurex_lexer_tests
         tests/gtest/frontend/lexer_tests.cpp
     )

@@ -25,10 +25,14 @@ M1 的 `noncopy` / `move` / use-after-move 语义已从 M2 当前实现删除。
 
 ## M2.5 前端方向
 
-M2.5 先把当前 typed identity 和 diagnostics 元数据固定为 query-safe 数据，再按
-file parse、module graph、item signature、function body、generic instance、diagnostics
-顺序拆出 query。lossless CST、局部增量解析和 IDE-native 入口建立在这条主线上，
-不保留第二套并行前端。
+M2.5 当前第一优先级是冻结并实现 [M2.5 Query Key 设计](m2.5-query-key-design.md)：
+先把当前 typed identity 和 diagnostics 元数据固定为 query-safe 数据，并明确
+Stable Semantic Query Key、Session Fast Handle、CanonicalTypeKey、
+GenericInstanceKey、diagnostics query 和 red-green fingerprint 的边界。
+
+随后再按 file parse、module graph、item signature、function body、generic instance、
+diagnostics 顺序拆出 query。lossless CST、局部增量解析和 IDE-native 入口建立在这条
+主线上，不保留第二套并行前端。
 
 ## 后端
 

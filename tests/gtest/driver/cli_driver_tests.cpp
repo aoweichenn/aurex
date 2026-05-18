@@ -5,9 +5,11 @@
 #include <aurex/driver/file_cache.hpp>
 #include <aurex/driver/incremental_cache.hpp>
 #include <aurex/driver/profile.hpp>
+#include <aurex/query/generic_instance_key.hpp>
 
 #include <support/test_support.hpp>
 
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -175,6 +177,40 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE =
     row += incremental_bytes;
     row += "\t";
     row += encoded_name;
+    row += "\n";
+    return row;
+}
+
+[[nodiscard]] std::string cache_test_query_row(const std::string_view kind, const std::string_view schema,
+    const std::string_view query_global, const std::string_view payload_primary,
+    const std::string_view payload_secondary, const std::string_view payload_bytes,
+    const std::string_view result_global, const std::string_view result_primary,
+    const std::string_view result_secondary, const std::string_view result_bytes,
+    const std::string_view encoded_stable_key)
+{
+    std::string row;
+    row += "query\t";
+    row += kind;
+    row += "\t";
+    row += schema;
+    row += "\t";
+    row += query_global;
+    row += "\t";
+    row += payload_primary;
+    row += "\t";
+    row += payload_secondary;
+    row += "\t";
+    row += payload_bytes;
+    row += "\t";
+    row += result_global;
+    row += "\t";
+    row += result_primary;
+    row += "\t";
+    row += result_secondary;
+    row += "\t";
+    row += result_bytes;
+    row += "\t";
+    row += encoded_stable_key;
     row += "\n";
     return row;
 }
@@ -858,6 +894,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesValidatesInvalidatesAndReuses
     expect_contains(first_cache, "def\tstruct");
     expect_contains(first_cache, "def\tenum_case");
     expect_contains(first_cache, "def\ttype_alias");
+    expect_contains(first_cache, "queries\t");
+    expect_contains(first_cache, "query\titem_signature");
 
     auto first_reuse = driver::try_reuse_incremental_check_cache(invocation);
     ASSERT_TRUE(first_reuse) << first_reuse.error().message;
@@ -882,6 +920,99 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesValidatesInvalidatesAndReuses
     ASSERT_TRUE(second_reuse) << second_reuse.error().message;
     EXPECT_TRUE(second_reuse.value());
     EXPECT_NE(first_cache, read_text(cache));
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenAvailable)
+{
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SOURCE = "module cache_query_rows;\n";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SYNTHETIC_MODULE = "cache_query_rows";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SYNTHETIC_FUNCTION = "id";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SYNTHETIC_STABLE_ID = "generic-instance:manual";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SIGNATURE = "generic-signature:manual";
+
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-query-rows";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SOURCE;
+    }
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+
+    base::SourceManager sources;
+    static_cast<void>(sources.add_source(source.string(), std::string(DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SOURCE)));
+    const std::array<driver::ModuleRecord, 1> modules{{
+        driver::ModuleRecord{std::string(DRIVER_INCREMENTAL_CACHE_SYNTHETIC_MODULE), source},
+    }};
+
+    sema::CheckedModule checked;
+    const std::array<std::string_view, 1> module_parts{DRIVER_INCREMENTAL_CACHE_SYNTHETIC_MODULE};
+    const query::ModuleKey module_key =
+        query::module_key(query::package_key(std::span<const std::string_view>{}), module_parts);
+    const std::array<std::string_view, 1> template_path{DRIVER_INCREMENTAL_CACHE_SYNTHETIC_FUNCTION};
+    const query::DefKey template_def =
+        query::def_key(module_key, query::DefNamespace::value, query::DefKind::generic_template, template_path);
+    const query::CanonicalTypeKey i32_arg = query::canonical_builtin(query::BuiltinTypeKey::i32);
+    const std::array<query::CanonicalTypeKey, 1> type_args{i32_arg};
+    const query::GenericInstanceKey generic_instance_key = query::generic_instance_key(
+        template_def, type_args, std::span<const query::StableFingerprint128>{}, query::param_env_key({}));
+    const sema::StableModuleId stable_module = sema::stable_module_id(module_parts);
+
+    const sema::InternedText duplicate_name = checked.intern_text(DRIVER_INCREMENTAL_CACHE_SYNTHETIC_FUNCTION);
+    const sema::StableDefId duplicate_stable_id = sema::stable_definition_id(
+        stable_module, sema::StableSymbolKind::function, DRIVER_INCREMENTAL_CACHE_SYNTHETIC_STABLE_ID);
+    for (base::u32 owner_type = 0; owner_type < 2; ++owner_type) {
+        sema::FunctionSignature signature = checked.make_function_signature();
+        signature.name = duplicate_name;
+        signature.name_id = duplicate_name.id;
+        signature.stable_id = duplicate_stable_id;
+        signature.incremental_key =
+            sema::stable_incremental_key(duplicate_stable_id, "duplicate-signature-" + std::to_string(owner_type));
+        checked.functions.emplace(sema::FunctionLookupKey{0, owner_type, duplicate_name.id}, std::move(signature));
+    }
+    sema::FunctionSignature second_stable_signature = checked.make_function_signature();
+    second_stable_signature.name = duplicate_name;
+    second_stable_signature.name_id = duplicate_name.id;
+    second_stable_signature.stable_id =
+        sema::stable_definition_id(stable_module, sema::StableSymbolKind::function, "generic-instance:manual:second");
+    second_stable_signature.incremental_key =
+        sema::stable_incremental_key(second_stable_signature.stable_id, "duplicate-signature-second-stable");
+    checked.functions.emplace(sema::FunctionLookupKey{0, 2, duplicate_name.id}, std::move(second_stable_signature));
+    sema::FunctionSignature invalid_signature = checked.make_function_signature();
+    invalid_signature.name = checked.intern_text("skip_invalid_query_key");
+    invalid_signature.name_id = invalid_signature.name.id;
+    checked.functions.emplace(sema::FunctionLookupKey{0, 3, invalid_signature.name_id}, std::move(invalid_signature));
+
+    sema::GenericFunctionInstanceInfo instance;
+    instance.generic_instance_key = generic_instance_key;
+    instance.signature = checked.make_function_signature();
+    instance.signature.name = checked.intern_text(DRIVER_INCREMENTAL_CACHE_SYNTHETIC_FUNCTION);
+    instance.signature.stable_id = sema::stable_definition_id(
+        stable_module, sema::StableSymbolKind::function, DRIVER_INCREMENTAL_CACHE_SYNTHETIC_STABLE_ID);
+    instance.signature.incremental_key =
+        sema::stable_incremental_key(instance.signature.stable_id, DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SIGNATURE);
+    checked.generic_function_instances.push_back(std::move(instance));
+
+    auto write_result = driver::write_incremental_cache(invocation, sources, modules, checked);
+    ASSERT_TRUE(write_result) << write_result.error().message;
+    const std::string cache_text = read_text(cache);
+    expect_contains(cache_text, "queries\t4");
+    expect_contains(cache_text, "query\titem_signature");
+    expect_contains(cache_text, "query\tgeneric_instance_signature");
+
+    auto reuse = driver::try_reuse_incremental_check_cache(invocation);
+    ASSERT_TRUE(reuse) << reuse.error().message;
+    EXPECT_TRUE(reuse.value());
 
     driver::clear_file_cache();
 }
@@ -1076,6 +1207,81 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
 
     write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t1\n"
         + cache_test_def_row("function", "function", "0", "0", "0", "0", "0", "0", "0", "0", "0"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\tbad\n");
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\n"
+        + cache_test_query_row("item_signature", "1", "1", "0", "0", "0", "1", "0", "0", "0", "00"));
+    expect_not_reused();
+
+    write_cache(
+        cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\nquery\ttoo-few\n");
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("unknown_query", "1", "1", "0", "0", "0", "1", "0", "0", "0", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "2", "1", "0", "0", "0", "1", "0", "0", "0", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "bad", "1", "0", "0", "0", "1", "0", "0", "0", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "1", "bad", "0", "0", "0", "1", "0", "0", "0", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "1", "0", "0", "0", "0", "1", "0", "0", "0", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "1", "1", "bad", "0", "0", "1", "0", "0", "0", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "1", "1", "0", "bad", "0", "1", "0", "0", "0", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "1", "1", "0", "0", "4294967296", "1", "0", "0", "0", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "1", "1", "0", "0", "0", "bad", "0", "0", "0", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "1", "1", "0", "0", "0", "0", "0", "0", "0", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "1", "1", "0", "0", "0", "1", "bad", "0", "0", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "1", "1", "0", "0", "0", "1", "0", "bad", "0", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "1", "1", "0", "0", "0", "1", "0", "0", "4294967296", "00"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "1", "1", "0", "0", "0", "1", "0", "0", "0", "zz"));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t1\n"
+        + cache_test_query_row("item_signature", "1", "1", "0", "0", "0", "1", "0", "0", "0", ""));
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t2\n"
+        + cache_test_query_row("item_signature", "1", "1", "0", "0", "0", "1", "0", "0", "0", "00"));
     expect_not_reused();
 
     const fs::path null_device("/dev/null");

@@ -89,6 +89,7 @@ constexpr std::string_view CACHE_TEST_QUERY_ITEM_SIGNATURE = "item_signature";
 constexpr std::string_view CACHE_TEST_QUERY_GENERIC_INSTANCE_SIGNATURE = "generic_instance_signature";
 constexpr std::string_view CACHE_TEST_QUERY_DIFF_PROFILE_PHASE = "incremental_cache.query_diff";
 constexpr std::string_view CACHE_TEST_QUERY_PLAN_PROFILE_PHASE = "incremental_cache.query_plan";
+constexpr std::string_view CACHE_TEST_QUERY_PRUNING_PROFILE_PHASE = "incremental_cache.query_pruning";
 constexpr std::string_view CACHE_TEST_QUERY_DIFF_MISSING_DETAIL = "total=4,missing=4,unchanged=0,changed=0,malformed=0";
 constexpr std::string_view CACHE_TEST_QUERY_DIFF_UNCHANGED_DETAIL =
     "total=4,missing=0,unchanged=4,changed=0,malformed=0";
@@ -99,6 +100,12 @@ constexpr std::string_view CACHE_TEST_QUERY_PLAN_UNCHANGED_DETAIL =
     "reusable=4,recompute_roots=0,propagated_recompute=0,recompute=0";
 constexpr std::string_view CACHE_TEST_QUERY_PLAN_CHANGED_DETAIL =
     "reusable=3,recompute_roots=1,propagated_recompute=0,recompute=1";
+constexpr std::string_view CACHE_TEST_QUERY_PRUNING_NO_CACHE_DETAIL =
+    "enabled=1,applied=0,reused=0,recomputed=4,fallback=no_cache";
+constexpr std::string_view CACHE_TEST_QUERY_PRUNING_REUSE_ALL_DETAIL =
+    "enabled=1,applied=1,reused=4,recomputed=0,fallback=none";
+constexpr std::string_view CACHE_TEST_QUERY_PRUNING_CHANGED_DETAIL =
+    "enabled=1,applied=1,reused=3,recomputed=1,fallback=none";
 
 struct CacheTestQueryResultFingerprint {
     std::string global_id;
@@ -391,6 +398,18 @@ void expect_query_profile_phases(
     EXPECT_EQ(profiler.phases()[1].detail, plan_detail);
 }
 
+void expect_query_profile_phases_with_pruning(const driver::CompilationProfiler& profiler,
+    const std::string_view diff_detail, const std::string_view plan_detail, const std::string_view pruning_detail)
+{
+    ASSERT_EQ(profiler.phases().size(), 3U);
+    EXPECT_EQ(profiler.phases()[0].name, CACHE_TEST_QUERY_DIFF_PROFILE_PHASE);
+    EXPECT_EQ(profiler.phases()[0].detail, diff_detail);
+    EXPECT_EQ(profiler.phases()[1].name, CACHE_TEST_QUERY_PLAN_PROFILE_PHASE);
+    EXPECT_EQ(profiler.phases()[1].detail, plan_detail);
+    EXPECT_EQ(profiler.phases()[2].name, CACHE_TEST_QUERY_PRUNING_PROFILE_PHASE);
+    EXPECT_EQ(profiler.phases()[2].detail, pruning_detail);
+}
+
 } // namespace
 
 TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms)
@@ -404,6 +423,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms)
         "--opt-level=O2",
         "--incremental-cache",
         "build/hello.axic",
+        "--experimental-query-pruning",
         "--profile-output",
         "build/hello.profile.json",
         "examples/hello.ax",
@@ -419,6 +439,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms)
     EXPECT_EQ(object_parse.invocation.clang_args.front(), "-fno-color-diagnostics");
     EXPECT_EQ(object_parse.invocation.optimization_level, ir::OptimizationLevel::standard);
     EXPECT_EQ(object_parse.invocation.incremental_cache_path, fs::path("build/hello.axic"));
+    EXPECT_TRUE(object_parse.invocation.experimental_query_pruning);
     EXPECT_EQ(object_parse.invocation.profile_output_path, fs::path("build/hello.profile.json"));
 
     const std::vector<std::string_view> assembly_args{
@@ -429,6 +450,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms)
     const driver::CliParseResult assembly_parse = require_parse_cli(assembly_args);
     EXPECT_EQ(assembly_parse.invocation.emit_kind, driver::EmitKind::assembly);
     EXPECT_EQ(assembly_parse.invocation.output_path, fs::path("hello.s"));
+    EXPECT_FALSE(assembly_parse.invocation.experimental_query_pruning);
 
     const std::vector<std::string_view> separate_emit_args{
         "aurexc",
@@ -1195,6 +1217,16 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
         sema::stable_incremental_key(instance.signature.stable_id, DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SIGNATURE);
     checked.generic_function_instances.push_back(std::move(instance));
 
+    driver::CompilerInvocation no_cache_pruning_invocation = invocation;
+    no_cache_pruning_invocation.incremental_cache_path = cache_dir / "first-pruning.axic";
+    no_cache_pruning_invocation.experimental_query_pruning = true;
+    driver::CompilationProfiler no_cache_pruning_profiler(true);
+    auto no_cache_pruning_result = driver::write_incremental_cache(
+        no_cache_pruning_invocation, sources, modules, checked, &no_cache_pruning_profiler);
+    ASSERT_TRUE(no_cache_pruning_result) << no_cache_pruning_result.error().message;
+    expect_query_profile_phases_with_pruning(no_cache_pruning_profiler, CACHE_TEST_QUERY_DIFF_MISSING_DETAIL,
+        CACHE_TEST_QUERY_PLAN_MISSING_DETAIL, CACHE_TEST_QUERY_PRUNING_NO_CACHE_DETAIL);
+
     driver::CompilationProfiler first_write_profiler(true);
     auto write_result = driver::write_incremental_cache(invocation, sources, modules, checked, &first_write_profiler);
     ASSERT_TRUE(write_result) << write_result.error().message;
@@ -1226,15 +1258,24 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     expect_query_profile_phases(
         second_write_profiler, CACHE_TEST_QUERY_DIFF_UNCHANGED_DETAIL, CACHE_TEST_QUERY_PLAN_UNCHANGED_DETAIL);
 
+    driver::CompilerInvocation pruning_invocation = invocation;
+    pruning_invocation.experimental_query_pruning = true;
+    driver::CompilationProfiler pruning_write_profiler(true);
+    auto pruning_write_result =
+        driver::write_incremental_cache(pruning_invocation, sources, modules, checked, &pruning_write_profiler);
+    ASSERT_TRUE(pruning_write_result) << pruning_write_result.error().message;
+    expect_query_profile_phases_with_pruning(pruning_write_profiler, CACHE_TEST_QUERY_DIFF_UNCHANGED_DETAIL,
+        CACHE_TEST_QUERY_PLAN_UNCHANGED_DETAIL, CACHE_TEST_QUERY_PRUNING_REUSE_ALL_DETAIL);
+
     checked.generic_function_instances.front().signature.incremental_key =
         sema::stable_incremental_key(checked.generic_function_instances.front().signature.stable_id,
             DRIVER_INCREMENTAL_CACHE_SYNTHETIC_CHANGED_SIGNATURE);
     driver::CompilationProfiler changed_write_profiler(true);
     auto changed_write_result =
-        driver::write_incremental_cache(invocation, sources, modules, checked, &changed_write_profiler);
+        driver::write_incremental_cache(pruning_invocation, sources, modules, checked, &changed_write_profiler);
     ASSERT_TRUE(changed_write_result) << changed_write_result.error().message;
-    expect_query_profile_phases(
-        changed_write_profiler, CACHE_TEST_QUERY_DIFF_CHANGED_DETAIL, CACHE_TEST_QUERY_PLAN_CHANGED_DETAIL);
+    expect_query_profile_phases_with_pruning(changed_write_profiler, CACHE_TEST_QUERY_DIFF_CHANGED_DETAIL,
+        CACHE_TEST_QUERY_PLAN_CHANGED_DETAIL, CACHE_TEST_QUERY_PRUNING_CHANGED_DETAIL);
 
     auto reuse = driver::try_reuse_incremental_check_cache(invocation);
     ASSERT_TRUE(reuse) << reuse.error().message;
@@ -1255,6 +1296,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
         "total=2,missing=0,unchanged=1,changed=1,malformed=0";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_PLAN_DETAIL =
         "reusable=0,recompute_roots=1,propagated_recompute=1,recompute=2";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_PRUNING_DETAIL =
+        "enabled=1,applied=1,reused=0,recomputed=2,fallback=none";
 
     driver::clear_file_cache();
 
@@ -1272,6 +1315,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
     invocation.input_path = source;
     invocation.emit_kind = driver::EmitKind::check;
     invocation.incremental_cache_path = cache;
+    invocation.experimental_query_pruning = true;
     const fs::path canonical_source = fs::weakly_canonical(source);
 
     const auto write_cache = [&](const std::string_view text) {
@@ -1351,8 +1395,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
     driver::CompilationProfiler profiler(true);
     auto write_result = driver::write_incremental_cache(invocation, sources, modules, checked, &profiler);
     ASSERT_TRUE(write_result) << write_result.error().message;
-    expect_query_profile_phases(
-        profiler, DRIVER_INCREMENTAL_CACHE_EDGE_CHANGED_DETAIL, DRIVER_INCREMENTAL_CACHE_EDGE_PLAN_DETAIL);
+    expect_query_profile_phases_with_pruning(profiler, DRIVER_INCREMENTAL_CACHE_EDGE_CHANGED_DETAIL,
+        DRIVER_INCREMENTAL_CACHE_EDGE_PLAN_DETAIL, DRIVER_INCREMENTAL_CACHE_EDGE_PRUNING_DETAIL);
 
     std::string missing_edge_count_cache = edge_cache;
     const std::string edge_count_header = "query_edges\t1\n";

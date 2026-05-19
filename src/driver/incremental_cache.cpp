@@ -115,6 +115,7 @@ constexpr std::string_view INCREMENTAL_CACHE_RENAME_FAILED = "failed to publish 
 constexpr std::string_view INCREMENTAL_CACHE_DIRECTORY_FAILED = "failed to create incremental cache directory";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_DIFF = "incremental_cache.query_diff";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_PLAN = "incremental_cache.query_plan";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_PRUNING = "incremental_cache.query_pruning";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_TOTAL = "total=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_MISSING = ",missing=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_UNCHANGED = ",unchanged=";
@@ -124,6 +125,16 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_REUSABLE = "reusable=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_RECOMPUTE_ROOTS = ",recompute_roots=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROPAGATED_RECOMPUTE = ",propagated_recompute=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_RECOMPUTE = ",recompute=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_ENABLED = "enabled=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_APPLIED = ",applied=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED = ",reused=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED = ",recomputed=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_FALLBACK = ",fallback=";
+constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED = "disabled";
+constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NONE = "none";
+constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NO_CACHE = "no_cache";
+constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_INCOMPLETE_PLAN = "incomplete_plan";
+constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_MISSING_REUSABLE_RECORD = "missing_reusable_record";
 constexpr std::string_view INCREMENTAL_CACHE_MODULE_EXPORTS_RESULT_MARKER = "module-exports:v1";
 constexpr char INCREMENTAL_CACHE_MODULE_NAME_SEPARATOR = '.';
 
@@ -147,6 +158,21 @@ struct ParsedQueryRecord {
 struct QueryCollection {
     std::vector<query::QueryRecord> records;
     std::vector<query::QueryDependencyEdge> dependency_edges;
+};
+
+struct QueryReuseEvaluation {
+    query::QueryReusePlan plan;
+    query::QueryContext cached_context;
+    bool cache_loaded = false;
+};
+
+struct QueryPruningGateResult {
+    bool enabled = false;
+    bool applied = false;
+    base::usize reused = 0;
+    base::usize recomputed = 0;
+    std::string_view fallback = INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED;
+    std::vector<query::QueryRecord> records;
 };
 
 struct QueryKindCacheName {
@@ -753,6 +779,19 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return dependencies;
 }
 
+[[nodiscard]] bool query_key_less(const query::QueryKey lhs, const query::QueryKey rhs) noexcept
+{
+    return std::tie(
+               lhs.kind, lhs.schema, lhs.global_id, lhs.payload.primary, lhs.payload.secondary, lhs.payload.byte_count)
+        < std::tie(
+            rhs.kind, rhs.schema, rhs.global_id, rhs.payload.primary, rhs.payload.secondary, rhs.payload.byte_count);
+}
+
+[[nodiscard]] bool contains_query_key(const std::vector<query::QueryKey>& keys, const query::QueryKey key) noexcept
+{
+    return std::binary_search(keys.begin(), keys.end(), key, query_key_less);
+}
+
 [[nodiscard]] bool parse_cache_line(ParsedCache& cache, const std::string_view line)
 {
     if (line.empty()) {
@@ -858,21 +897,30 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return context;
 }
 
-[[nodiscard]] query::QueryReusePlan build_query_reuse_plan_against_cache(
+[[nodiscard]] QueryReuseEvaluation build_query_reuse_evaluation_against_cache(
     const ParsedCache& cache, const std::span<const query::QueryRecord> current_records)
 {
-    const query::QueryContext cached_context = seed_query_context_from_cache(cache);
-    return query::build_query_reuse_plan(cached_context, current_records);
+    query::QueryContext cached_context = seed_query_context_from_cache(cache);
+    query::QueryReusePlan plan = query::build_query_reuse_plan(cached_context, current_records);
+    return QueryReuseEvaluation{
+        std::move(plan),
+        std::move(cached_context),
+        true,
+    };
 }
 
-[[nodiscard]] query::QueryReusePlan build_existing_query_reuse_plan(
+[[nodiscard]] QueryReuseEvaluation build_existing_query_reuse_evaluation(
     const std::filesystem::path& cache_path, const std::span<const query::QueryRecord> current_records)
 {
     const std::optional<ParsedCache> cache = read_incremental_cache(cache_path);
     if (!cache) {
-        return query::mark_all_queries_recompute(current_records);
+        return QueryReuseEvaluation{
+            query::mark_all_queries_recompute(current_records),
+            query::QueryContext{},
+            false,
+        };
     }
-    return build_query_reuse_plan_against_cache(*cache, current_records);
+    return build_query_reuse_evaluation_against_cache(*cache, current_records);
 }
 
 [[nodiscard]] std::string query_record_diff_summary_detail(const query::QueryReuseSummary& summary)
@@ -893,6 +941,16 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return detail.str();
 }
 
+[[nodiscard]] std::string query_pruning_summary_detail(const QueryPruningGateResult& result)
+{
+    std::ostringstream detail;
+    detail << INCREMENTAL_CACHE_PROFILE_PRUNING_ENABLED << (result.enabled ? 1 : 0)
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_APPLIED << (result.applied ? 1 : 0)
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED << result.reused << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED
+           << result.recomputed << INCREMENTAL_CACHE_PROFILE_PRUNING_FALLBACK << result.fallback;
+    return detail.str();
+}
+
 void record_query_record_diff_summary(CompilationProfiler* const profiler, const query::QueryReuseSummary& summary,
     const std::chrono::steady_clock::duration elapsed)
 {
@@ -909,6 +967,90 @@ void record_query_reuse_plan_summary(CompilationProfiler* const profiler, const 
         return;
     }
     profiler->record(INCREMENTAL_CACHE_PROFILE_QUERY_PLAN, query_reuse_plan_summary_detail(plan), elapsed);
+}
+
+void record_query_pruning_summary(CompilationProfiler* const profiler, const QueryPruningGateResult& result,
+    const std::chrono::steady_clock::duration elapsed)
+{
+    if (!result.enabled || profiler == nullptr || !profiler->enabled()) {
+        return;
+    }
+    profiler->record(INCREMENTAL_CACHE_PROFILE_QUERY_PRUNING, query_pruning_summary_detail(result), elapsed);
+}
+
+[[nodiscard]] bool query_reuse_plan_matches_records(
+    const query::QueryReusePlan& plan, const std::span<const query::QueryRecord> current_records)
+{
+    if (plan.decisions.size() != current_records.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < current_records.size(); ++index) {
+        const query::QueryReuseDecision& decision = plan.decisions[index];
+        const query::QueryRecord& current = current_records[index];
+        if (decision.key != current.key || decision.stable_key_bytes != current.stable_key_bytes) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] const query::QueryRecord* reusable_cached_record(
+    const query::QueryContext& cached_context, const query::QueryRecord& current)
+{
+    const query::QueryNode* const node = cached_context.find(current.key);
+    if (node == nullptr || node->status != query::QueryNodeStatus::done || node->record.key != current.key
+        || node->record.stable_key_bytes != current.stable_key_bytes || node->record.result != current.result) {
+        return nullptr;
+    }
+    return &node->record;
+}
+
+[[nodiscard]] QueryPruningGateResult query_pruning_fallback(
+    const bool enabled, const base::usize recomputed, const std::string_view fallback)
+{
+    return QueryPruningGateResult{
+        enabled,
+        false,
+        0,
+        recomputed,
+        fallback,
+        {},
+    };
+}
+
+[[nodiscard]] QueryPruningGateResult apply_query_pruning_gate(const CompilerInvocation& invocation,
+    const QueryReuseEvaluation& evaluation, const std::span<const query::QueryRecord> current_records)
+{
+    if (!invocation.experimental_query_pruning) {
+        return query_pruning_fallback(false, current_records.size(), INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED);
+    }
+    if (!evaluation.cache_loaded) {
+        return query_pruning_fallback(true, current_records.size(), INCREMENTAL_CACHE_PRUNING_FALLBACK_NO_CACHE);
+    }
+    if (!query_reuse_plan_matches_records(evaluation.plan, current_records)) {
+        return query_pruning_fallback(true, current_records.size(), INCREMENTAL_CACHE_PRUNING_FALLBACK_INCOMPLETE_PLAN);
+    }
+
+    QueryPruningGateResult result;
+    result.enabled = true;
+    result.applied = true;
+    result.fallback = INCREMENTAL_CACHE_PRUNING_FALLBACK_NONE;
+    result.records.reserve(current_records.size());
+    for (const query::QueryRecord& current : current_records) {
+        if (contains_query_key(evaluation.plan.reusable, current.key)) {
+            const query::QueryRecord* const cached = reusable_cached_record(evaluation.cached_context, current);
+            if (cached == nullptr) {
+                return query_pruning_fallback(
+                    true, current_records.size(), INCREMENTAL_CACHE_PRUNING_FALLBACK_MISSING_REUSABLE_RECORD);
+            }
+            result.records.push_back(*cached);
+            result.reused += 1;
+            continue;
+        }
+        result.records.push_back(current);
+        result.recomputed += 1;
+    }
+    return result;
 }
 
 [[nodiscard]] bool cache_sources_match(const ParsedCache& cache)
@@ -1471,12 +1613,22 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
     const QueryCollection query_collection = collect_queries(module_records, checked);
     const auto query_diff_started = std::chrono::steady_clock::now();
-    const query::QueryReusePlan query_reuse_plan =
-        build_existing_query_reuse_plan(cache_path, query_collection.records);
+    const QueryReuseEvaluation query_reuse_evaluation =
+        build_existing_query_reuse_evaluation(cache_path, query_collection.records);
     const std::chrono::steady_clock::duration query_diff_elapsed =
         std::chrono::steady_clock::now() - query_diff_started;
-    record_query_record_diff_summary(profiler, query_reuse_plan.summary, query_diff_elapsed);
-    record_query_reuse_plan_summary(profiler, query_reuse_plan, query_diff_elapsed);
+    record_query_record_diff_summary(profiler, query_reuse_evaluation.plan.summary, query_diff_elapsed);
+    record_query_reuse_plan_summary(profiler, query_reuse_evaluation.plan, query_diff_elapsed);
+
+    const auto query_pruning_started = std::chrono::steady_clock::now();
+    const QueryPruningGateResult query_pruning =
+        apply_query_pruning_gate(invocation, query_reuse_evaluation, query_collection.records);
+    const std::chrono::steady_clock::duration query_pruning_elapsed =
+        std::chrono::steady_clock::now() - query_pruning_started;
+    record_query_pruning_summary(profiler, query_pruning, query_pruning_elapsed);
+    const std::span<const query::QueryRecord> query_records_to_write = query_pruning.applied
+        ? std::span<const query::QueryRecord>{query_pruning.records.data(), query_pruning.records.size()}
+        : std::span<const query::QueryRecord>{query_collection.records.data(), query_collection.records.size()};
 
     const std::filesystem::path temporary_path = temporary_cache_path(cache_path);
     {
@@ -1510,8 +1662,8 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
         for (const DefinitionRecord& record : definition_records) {
             write_definition_record(out, record);
         }
-        write_header_field(out, INCREMENTAL_CACHE_FIELD_QUERIES, std::to_string(query_collection.records.size()));
-        for (const query::QueryRecord& record : query_collection.records) {
+        write_header_field(out, INCREMENTAL_CACHE_FIELD_QUERIES, std::to_string(query_records_to_write.size()));
+        for (const query::QueryRecord& record : query_records_to_write) {
             write_query_record(out, record);
         }
         write_header_field(

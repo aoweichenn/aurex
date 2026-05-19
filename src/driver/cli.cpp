@@ -77,6 +77,7 @@ enum class OptionEffectKind {
     set_output_path,
     append_import_path,
     set_incremental_cache_path,
+    enable_experimental_query_pruning,
     set_profile_output_path,
     set_clang_path,
     append_clang_arg,
@@ -191,6 +192,8 @@ inline constexpr OptionEffect CLI_EFFECT_PARSE_EMIT_KIND{
 inline constexpr OptionEffect CLI_EFFECT_SET_OUTPUT_PATH{OptionEffectKind::set_output_path};
 inline constexpr OptionEffect CLI_EFFECT_APPEND_IMPORT_PATH{OptionEffectKind::append_import_path};
 inline constexpr OptionEffect CLI_EFFECT_SET_INCREMENTAL_CACHE_PATH{OptionEffectKind::set_incremental_cache_path};
+inline constexpr OptionEffect CLI_EFFECT_ENABLE_EXPERIMENTAL_QUERY_PRUNING{
+    OptionEffectKind::enable_experimental_query_pruning};
 inline constexpr OptionEffect CLI_EFFECT_SET_PROFILE_OUTPUT_PATH{OptionEffectKind::set_profile_output_path};
 inline constexpr OptionEffect CLI_EFFECT_SET_CLANG_PATH{OptionEffectKind::set_clang_path};
 inline constexpr OptionEffect CLI_EFFECT_APPEND_CLANG_ARG{OptionEffectKind::append_clang_arg};
@@ -409,6 +412,16 @@ inline constexpr auto OPTION_SPECS = std::to_array<OptionSpec>({
         CLI_EFFECT_SET_INCREMENTAL_CACHE_PATH,
         "path",
         "read and write a source-fingerprint checked incremental cache",
+    },
+    {
+        OptionLevel::secondary,
+        OptionGroup::incremental,
+        OptionApplicability::any,
+        "--experimental-query-pruning",
+        OptionValueStyle::flag,
+        CLI_EFFECT_ENABLE_EXPERIMENTAL_QUERY_PRUNING,
+        {},
+        "enable coarse-safe query pruning planning",
     },
     {
         OptionLevel::secondary,
@@ -871,6 +884,9 @@ private:
                 return base::Result<void>::ok();
             case OptionEffectKind::set_incremental_cache_path:
                 result.invocation.incremental_cache_path = std::filesystem::path(option.value);
+                return base::Result<void>::ok();
+            case OptionEffectKind::enable_experimental_query_pruning:
+                result.invocation.experimental_query_pruning = true;
                 return base::Result<void>::ok();
             case OptionEffectKind::set_profile_output_path:
                 result.invocation.profile_output_path = std::filesystem::path(option.value);

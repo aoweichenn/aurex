@@ -39,6 +39,7 @@ struct CompilerInvocation {
     std::vector<std::string> clang_args;
     ir::OptimizationLevel optimization_level = ir::OptimizationLevel::none;
     DiagnosticOutputFormat diagnostic_format = DiagnosticOutputFormat::text;
+    bool experimental_query_pruning = false;
 };
 
 } // namespace aurex::driver

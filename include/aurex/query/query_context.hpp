@@ -36,6 +36,13 @@ struct QueryEvaluationResult {
     const QueryNode* node = nullptr;
 };
 
+struct QueryDependencyEdge {
+    QueryKey dependent;
+    QueryKey dependency;
+
+    [[nodiscard]] friend constexpr bool operator==(QueryDependencyEdge lhs, QueryDependencyEdge rhs) noexcept = default;
+};
+
 using ItemSignatureProvider =
     std::function<std::optional<ItemSignatureProviderOutput>(const ItemSignatureProviderInput&)>;
 using GenericInstanceSignatureProvider =
@@ -53,7 +60,14 @@ public:
     [[nodiscard]] QueryEvaluationResult evaluate_item_signature(const ItemSignatureProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_generic_instance_signature(
         const GenericInstanceSignatureProviderInput& input);
+    [[nodiscard]] bool seed_completed_record(QueryRecord record, std::vector<QueryKey> dependencies = {});
+    [[nodiscard]] bool invalidate(QueryKey key);
     [[nodiscard]] const QueryNode* find(QueryKey key) const;
+    [[nodiscard]] std::vector<QueryKey> dependencies_for(QueryKey key) const;
+    [[nodiscard]] std::vector<QueryKey> dependents_of(QueryKey key) const;
+    [[nodiscard]] std::vector<QueryDependencyEdge> dependency_edges() const;
+    [[nodiscard]] bool has_dependency(QueryKey dependent, QueryKey dependency) const;
+    [[nodiscard]] base::usize dependency_edge_count() const noexcept;
     [[nodiscard]] std::vector<QueryRecord> completed_records() const;
 
 private:
@@ -65,10 +79,14 @@ private:
     [[nodiscard]] QueryEvaluationStart start_query(QueryKey key);
     void complete_query(
         QueryNode& node, QueryRecord record, QueryResultFingerprint result, std::vector<QueryKey> dependencies);
+    void remove_dependency_edges(QueryNode& node);
+    void add_dependency_edges(const QueryNode& node);
     [[nodiscard]] QueryNode& node_for(QueryKey key);
     [[nodiscard]] QueryEvaluationResult fail_query(QueryNode& node);
 
     std::unordered_map<QueryKey, QueryNode, QueryKeyHash> nodes_;
+    std::unordered_map<QueryKey, std::vector<QueryKey>, QueryKeyHash> dependents_by_dependency_;
+    base::usize dependency_edge_count_ = 0;
     ItemSignatureProvider item_signature_provider_;
     GenericInstanceSignatureProvider generic_instance_signature_provider_;
 };

@@ -670,21 +670,33 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return cache;
 }
 
-[[nodiscard]] const query::QueryRecord* find_parsed_query_record(
-    const ParsedCache& cache, const query::QueryRecord& current)
+[[nodiscard]] query::QueryContext seed_query_context_from_cache(const ParsedCache& cache)
 {
-    const std::optional<base::usize> index =
-        parsed_query_record_index(cache, current.key.kind, current.stable_key_bytes);
-    return index ? &cache.queries[*index].record : nullptr;
+    query::QueryContext context;
+    for (const ParsedQueryRecord& record : cache.queries) {
+        static_cast<void>(context.seed_completed_record(record.record));
+    }
+    return context;
+}
+
+[[nodiscard]] const query::QueryRecord* find_seeded_query_record(
+    const query::QueryContext& context, const query::QueryRecord& current)
+{
+    const query::QueryNode* const node = context.find(current.key);
+    if (node == nullptr || node->record.stable_key_bytes != current.stable_key_bytes) {
+        return nullptr;
+    }
+    return &node->record;
 }
 
 [[nodiscard]] std::vector<QueryRecordDiff> compare_query_records_against_cache(
     const ParsedCache& cache, const std::span<const query::QueryRecord> current_records)
 {
+    const query::QueryContext cached_context = seed_query_context_from_cache(cache);
     std::vector<QueryRecordDiff> diffs;
     diffs.reserve(current_records.size());
     for (const query::QueryRecord& current : current_records) {
-        const query::QueryRecord* const cached = find_parsed_query_record(cache, current);
+        const query::QueryRecord* const cached = find_seeded_query_record(cached_context, current);
         diffs.push_back(QueryRecordDiff{
             current.key.kind,
             current.stable_key_bytes,

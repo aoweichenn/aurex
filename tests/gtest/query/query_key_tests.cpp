@@ -11,6 +11,8 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -118,6 +120,25 @@ struct QueryContextGenericInstanceSignatureSubject {
         &subject.key,
         subject.signature,
     };
+}
+
+[[nodiscard]] bool query_test_key_less(const query::QueryKey lhs, const query::QueryKey rhs) noexcept
+{
+    return std::tie(
+               lhs.kind, lhs.schema, lhs.global_id, lhs.payload.primary, lhs.payload.secondary, lhs.payload.byte_count)
+        < std::tie(
+            rhs.kind, rhs.schema, rhs.global_id, rhs.payload.primary, rhs.payload.secondary, rhs.payload.byte_count);
+}
+
+void sort_query_test_keys(std::vector<query::QueryKey>& keys)
+{
+    std::sort(keys.begin(), keys.end(), query_test_key_less);
+}
+
+[[nodiscard]] bool contains_query_dependency_edge(
+    const std::vector<query::QueryDependencyEdge>& edges, const query::QueryDependencyEdge& edge)
+{
+    return std::find(edges.begin(), edges.end(), edge) != edges.end();
 }
 
 } // namespace
@@ -653,6 +674,144 @@ TEST(QueryUnit, QueryContextCachesGenericInstanceSignatureAndEmitsMixedRecords)
         context.evaluate_generic_instance_signature(generic_instance_provider_input(generic_subject));
     EXPECT_EQ(cached_after_reset.status, query::QueryEvaluationStatus::cached);
     EXPECT_EQ(generic_provider_calls, 1U);
+}
+
+TEST(QueryUnit, QueryContextBuildsDeterministicDependencyEdgeTable)
+{
+    const QueryContextItemSignatureSubject item_subject =
+        test_item_signature_subject("compute", QUERY_TEST_PROVIDER_SIGNATURE);
+    const QueryContextGenericInstanceSignatureSubject generic_subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryKey> item_key = query::item_signature_query_key(item_subject.def);
+    const std::optional<query::QueryKey> generic_key = query::generic_instance_signature_query_key(generic_subject.key);
+    ASSERT_TRUE(item_key.has_value());
+    ASSERT_TRUE(generic_key.has_value());
+
+    const query::QueryKey shared_dependency =
+        query::query_key(query::QueryKind::module_exports, query::stable_key_fingerprint(item_subject.def.module));
+    const query::QueryKey item_only_dependency =
+        query::query_key(query::QueryKind::diagnostics, query::stable_key_fingerprint(item_subject.def));
+
+    query::QueryContext context(
+        [shared_dependency, item_only_dependency](const query::ItemSignatureProviderInput& provider_input) {
+            std::optional<query::ItemSignatureProviderOutput> output =
+                query::provide_item_signature_query(provider_input);
+            if (output) {
+                output->dependencies = {
+                    item_only_dependency,
+                    shared_dependency,
+                    shared_dependency,
+                };
+            }
+            return output;
+        },
+        [shared_dependency](const query::GenericInstanceSignatureProviderInput& provider_input) {
+            std::optional<query::GenericInstanceSignatureProviderOutput> output =
+                query::provide_generic_instance_signature_query(provider_input);
+            if (output) {
+                output->dependencies.push_back(shared_dependency);
+            }
+            return output;
+        });
+
+    const query::QueryEvaluationResult item_result = context.evaluate_item_signature(item_subject.input);
+    ASSERT_EQ(item_result.status, query::QueryEvaluationStatus::computed);
+    const query::QueryEvaluationResult generic_result =
+        context.evaluate_generic_instance_signature(generic_instance_provider_input(generic_subject));
+    ASSERT_EQ(generic_result.status, query::QueryEvaluationStatus::computed);
+
+    std::vector<query::QueryKey> expected_item_dependencies{
+        shared_dependency,
+        item_only_dependency,
+    };
+    sort_query_test_keys(expected_item_dependencies);
+    EXPECT_EQ(context.dependencies_for(*item_key), expected_item_dependencies);
+    ASSERT_NE(item_result.node, nullptr);
+    EXPECT_EQ(item_result.node->dependencies, expected_item_dependencies);
+
+    const std::vector<query::QueryKey> expected_generic_dependencies{
+        shared_dependency,
+    };
+    EXPECT_EQ(context.dependencies_for(*generic_key), expected_generic_dependencies);
+    ASSERT_NE(generic_result.node, nullptr);
+    EXPECT_EQ(generic_result.node->dependencies, expected_generic_dependencies);
+
+    std::vector<query::QueryKey> expected_shared_dependents{
+        *item_key,
+        *generic_key,
+    };
+    sort_query_test_keys(expected_shared_dependents);
+    EXPECT_EQ(context.dependents_of(shared_dependency), expected_shared_dependents);
+    EXPECT_EQ(context.dependents_of(item_only_dependency), std::vector<query::QueryKey>{*item_key});
+    EXPECT_TRUE(context.dependents_of(query::QueryKey{}).empty());
+
+    EXPECT_TRUE(context.has_dependency(*item_key, shared_dependency));
+    EXPECT_TRUE(context.has_dependency(*item_key, item_only_dependency));
+    EXPECT_TRUE(context.has_dependency(*generic_key, shared_dependency));
+    EXPECT_FALSE(context.has_dependency(*generic_key, item_only_dependency));
+    EXPECT_FALSE(context.has_dependency(query::QueryKey{}, shared_dependency));
+    EXPECT_EQ(context.dependency_edge_count(), 3U);
+
+    const std::vector<query::QueryDependencyEdge> edges = context.dependency_edges();
+    ASSERT_EQ(edges.size(), 3U);
+    EXPECT_TRUE(std::is_sorted(
+        edges.begin(), edges.end(), [](const query::QueryDependencyEdge& lhs, const query::QueryDependencyEdge& rhs) {
+            if (lhs.dependent != rhs.dependent) {
+                return query_test_key_less(lhs.dependent, rhs.dependent);
+            }
+            return query_test_key_less(lhs.dependency, rhs.dependency);
+        }));
+    EXPECT_TRUE(contains_query_dependency_edge(edges, query::QueryDependencyEdge{*item_key, shared_dependency}));
+    EXPECT_TRUE(contains_query_dependency_edge(edges, query::QueryDependencyEdge{*item_key, item_only_dependency}));
+    EXPECT_TRUE(contains_query_dependency_edge(edges, query::QueryDependencyEdge{*generic_key, shared_dependency}));
+    EXPECT_TRUE(context.dependencies_for(query::QueryKey{}).empty());
+}
+
+TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
+{
+    const QueryContextItemSignatureSubject subject =
+        test_item_signature_subject("compute", QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryKey> expected_key = query::item_signature_query_key(subject.def);
+    ASSERT_TRUE(expected_key.has_value());
+
+    const std::optional<query::ItemSignatureProviderOutput> output = query::provide_item_signature_query(subject.input);
+    ASSERT_TRUE(output.has_value());
+    const query::QueryKey dependency =
+        query::query_key(query::QueryKind::module_exports, query::stable_key_fingerprint(subject.def.module));
+
+    base::usize provider_calls = 0;
+    query::QueryContext context([&provider_calls](const query::ItemSignatureProviderInput& provider_input) {
+        ++provider_calls;
+        return query::provide_item_signature_query(provider_input);
+    });
+
+    EXPECT_FALSE(context.seed_completed_record(query::QueryRecord{}));
+    EXPECT_FALSE(context.seed_completed_record(output->record, {query::QueryKey{}}));
+    EXPECT_TRUE(context.seed_completed_record(output->record, {dependency, dependency}));
+    EXPECT_FALSE(context.seed_completed_record(output->record));
+    EXPECT_EQ(context.dependency_edge_count(), 1U);
+    EXPECT_EQ(context.dependencies_for(*expected_key), std::vector<query::QueryKey>{dependency});
+    EXPECT_TRUE(context.has_dependency(*expected_key, dependency));
+
+    const query::QueryEvaluationResult cached_result = context.evaluate_item_signature(subject.input);
+    EXPECT_EQ(cached_result.status, query::QueryEvaluationStatus::cached);
+    ASSERT_NE(cached_result.node, nullptr);
+    EXPECT_EQ(cached_result.node->record.key, output->record.key);
+    EXPECT_EQ(cached_result.node->record.result, output->record.result);
+    EXPECT_EQ(cached_result.node->record.stable_key_bytes, output->record.stable_key_bytes);
+    EXPECT_EQ(provider_calls, 0U);
+
+    EXPECT_TRUE(context.invalidate(*expected_key));
+    EXPECT_FALSE(context.invalidate(*expected_key));
+    EXPECT_FALSE(context.invalidate(query::QueryKey{}));
+    EXPECT_EQ(context.dependency_edge_count(), 0U);
+    EXPECT_TRUE(context.dependencies_for(*expected_key).empty());
+    EXPECT_TRUE(context.dependents_of(dependency).empty());
+    EXPECT_FALSE(context.has_dependency(*expected_key, dependency));
+
+    const query::QueryEvaluationResult recomputed_result = context.evaluate_item_signature(subject.input);
+    EXPECT_EQ(recomputed_result.status, query::QueryEvaluationStatus::computed);
+    EXPECT_EQ(provider_calls, 1U);
 }
 
 TEST(QueryUnit, QueryContextOrdersCompletedItemSignatureRecordsByQueryKey)

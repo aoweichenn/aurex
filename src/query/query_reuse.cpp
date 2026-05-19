@@ -67,7 +67,9 @@ void propagate_recompute_dependents(const QueryContext& cached_context, QueryReu
             if (contains_query_key(plan.recompute, dependent)) {
                 continue;
             }
-            remove_query_key(plan.reusable, dependent);
+            if (contains_query_key(plan.reusable, dependent)) {
+                continue;
+            }
             push_unique_query_key(plan.propagated_recompute, dependent);
             push_unique_query_key(plan.recompute, dependent);
             worklist.push_back(dependent);

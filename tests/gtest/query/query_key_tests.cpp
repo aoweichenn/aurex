@@ -2524,7 +2524,7 @@ TEST(QueryUnit, QueryReuseDecisionClassifiesCachedCurrentAndMalformedRecords)
     EXPECT_EQ(missing_decisions[1].disposition, query::QueryReuseDisposition::recompute);
 }
 
-TEST(QueryUnit, QueryReusePlanPropagatesRecomputeAcrossDependents)
+TEST(QueryUnit, QueryReusePlanCutsPropagationAtUnchangedDependents)
 {
     const QueryContextItemSignatureSubject subject =
         test_item_signature_subject("compute", QUERY_TEST_PROVIDER_SIGNATURE);
@@ -2568,13 +2568,12 @@ TEST(QueryUnit, QueryReusePlanPropagatesRecomputeAcrossDependents)
     EXPECT_EQ(plan.summary.reusable, 1U);
     EXPECT_EQ(plan.summary.recompute, 2U);
 
-    EXPECT_TRUE(plan.reusable.empty());
+    EXPECT_EQ(plan.reusable, std::vector<query::QueryKey>{item_output->record.key});
     EXPECT_EQ(plan.recompute_roots, std::vector<query::QueryKey>{changed_exports_record->key});
-    EXPECT_EQ(plan.propagated_recompute, std::vector<query::QueryKey>{item_output->record.key});
+    EXPECT_TRUE(plan.propagated_recompute.empty());
 
     std::vector<query::QueryKey> expected_recompute{
         changed_exports_record->key,
-        item_output->record.key,
     };
     sort_query_test_keys(expected_recompute);
     EXPECT_EQ(plan.recompute, expected_recompute);

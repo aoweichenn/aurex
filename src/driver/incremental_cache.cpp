@@ -1,6 +1,7 @@
 #include <aurex/base/config.hpp>
 #include <aurex/driver/incremental_cache.hpp>
 #include <aurex/driver/profile.hpp>
+#include <aurex/lex/lexer.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/query/query_reuse.hpp>
@@ -131,6 +132,9 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_ENABLED = "enabled=
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_APPLIED = ",applied=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED = ",reused=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED = ",recomputed=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_FILE_CONTENTS = ",reused_file_contents=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LEX_FILES = ",reused_lex_files=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_PARSE_FILES = ",reused_parse_files=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_MODULE_EXPORTS = ",reused_module_exports=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_ITEM_SIGNATURES = ",reused_item_signatures=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_FUNCTION_BODY_SYNTAXES =
@@ -142,6 +146,9 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INST
     ",reused_generic_instance_bodies=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LOWER_FUNCTION_IRS = ",reused_lower_function_irs=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_DIAGNOSTICS = ",reused_diagnostics=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_FILE_CONTENTS = ",recomputed_file_contents=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_LEX_FILES = ",recomputed_lex_files=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_PARSE_FILES = ",recomputed_parse_files=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_EXPORTS = ",recomputed_module_exports=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_ITEM_SIGNATURES =
     ",recomputed_item_signatures=";
@@ -162,6 +169,9 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE_FULL = "
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE_PRUNED = "pruned";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED = ",seeded=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED = ",evaluated=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_FILE_CONTENTS = ",seeded_file_contents=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LEX_FILES = ",seeded_lex_files=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_PARSE_FILES = ",seeded_parse_files=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_MODULE_EXPORTS = ",seeded_module_exports=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_ITEM_SIGNATURES = ",seeded_item_signatures=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_FUNCTION_BODY_SYNTAXES =
@@ -175,6 +185,10 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERI
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LOWER_FUNCTION_IRS =
     ",seeded_lower_function_irs=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_DIAGNOSTICS = ",seeded_diagnostics=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_FILE_CONTENTS =
+    ",evaluated_file_contents=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_LEX_FILES = ",evaluated_lex_files=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_PARSE_FILES = ",evaluated_parse_files=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_EXPORTS =
     ",evaluated_module_exports=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_ITEM_SIGNATURES =
@@ -195,6 +209,10 @@ constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NONE = "none";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NO_CACHE = "no_cache";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_INCOMPLETE_PLAN = "incomplete_plan";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_MISSING_REUSABLE_RECORD = "missing_reusable_record";
+constexpr std::string_view INCREMENTAL_CACHE_FILE_CONTENT_RESULT_MARKER = "file-content:v1";
+constexpr std::string_view INCREMENTAL_CACHE_LEX_FILE_RESULT_MARKER = "lex-file:v1";
+constexpr std::string_view INCREMENTAL_CACHE_LEX_FILE_ERROR_MARKER = "lex-error";
+constexpr std::string_view INCREMENTAL_CACHE_PARSE_FILE_RESULT_MARKER = "parse-file:v1";
 constexpr std::string_view INCREMENTAL_CACHE_MODULE_EXPORTS_RESULT_MARKER = "module-exports:v1";
 constexpr std::string_view INCREMENTAL_CACHE_FUNCTION_BODY_SYNTAX_RESULT_MARKER = "function-body-syntax:v1";
 constexpr std::string_view INCREMENTAL_CACHE_TYPE_CHECK_BODY_RESULT_MARKER = "type-check-body:v1";
@@ -227,6 +245,9 @@ struct QueryCollection {
 
 struct QueryKindExecutionCounts {
     base::usize total = 0;
+    base::usize file_contents = 0;
+    base::usize lex_files = 0;
+    base::usize parse_files = 0;
     base::usize module_exports = 0;
     base::usize item_signatures = 0;
     base::usize function_body_syntaxes = 0;
@@ -269,6 +290,21 @@ struct QueryKindCacheName {
 
 using QueryDependenciesByDependent =
     std::unordered_map<query::QueryKey, std::vector<query::QueryKey>, query::QueryKeyHash>;
+
+struct FileContentQuerySubject {
+    query::FileKey key;
+    query::QueryResultFingerprint result;
+};
+
+struct LexFileQuerySubject {
+    query::LexFileKey key;
+    query::QueryResultFingerprint result;
+};
+
+struct ParseFileQuerySubject {
+    query::ParseFileKey key;
+    query::QueryResultFingerprint result;
+};
 
 struct ModuleExportsQuerySubject {
     query::ModuleKey key;
@@ -327,6 +363,9 @@ struct DiagnosticsQuerySubject {
 };
 
 enum class QuerySubjectKind : base::u8 {
+    file_content,
+    lex_file,
+    parse_file,
     module_exports,
     item_signature,
     function_body_syntax,
@@ -344,6 +383,9 @@ struct QuerySubject {
 };
 
 struct QuerySubjectCollection {
+    std::vector<FileContentQuerySubject> file_contents;
+    std::vector<LexFileQuerySubject> lex_files;
+    std::vector<ParseFileQuerySubject> parse_files;
     std::vector<ModuleExportsQuerySubject> module_exports;
     std::vector<ItemSignatureQuerySubject> item_signatures;
     std::vector<FunctionBodySyntaxQuerySubject> function_body_syntaxes;
@@ -1105,6 +1147,15 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
 {
     counts.total += 1;
     switch (kind) {
+        case query::QueryKind::file_content:
+            counts.file_contents += 1;
+            return;
+        case query::QueryKind::lex_file:
+            counts.lex_files += 1;
+            return;
+        case query::QueryKind::parse_file:
+            counts.parse_files += 1;
+            return;
         case query::QueryKind::module_exports:
             counts.module_exports += 1;
             return;
@@ -1130,9 +1181,6 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
             counts.diagnostics += 1;
             return;
         case query::QueryKind::invalid:
-        case query::QueryKind::file_content:
-        case query::QueryKind::lex_file:
-        case query::QueryKind::parse_file:
         case query::QueryKind::module_graph:
         case query::QueryKind::item_list:
         case query::QueryKind::generic_template_signature:
@@ -1157,6 +1205,9 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
            << INCREMENTAL_CACHE_PROFILE_PRUNING_APPLIED << (result.applied ? 1 : 0)
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED << total_query_execution_count(result.reused)
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED << total_query_execution_count(result.recomputed)
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_FILE_CONTENTS << result.reused.file_contents
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LEX_FILES << result.reused.lex_files
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_PARSE_FILES << result.reused.parse_files
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_MODULE_EXPORTS << result.reused.module_exports
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_ITEM_SIGNATURES << result.reused.item_signatures
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_FUNCTION_BODY_SYNTAXES << result.reused.function_body_syntaxes
@@ -1166,6 +1217,9 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INSTANCE_BODIES << result.reused.generic_instance_bodies
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LOWER_FUNCTION_IRS << result.reused.lower_function_irs
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_DIAGNOSTICS << result.reused.diagnostics
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_FILE_CONTENTS << result.recomputed.file_contents
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_LEX_FILES << result.recomputed.lex_files
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_PARSE_FILES << result.recomputed.parse_files
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_EXPORTS << result.recomputed.module_exports
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_ITEM_SIGNATURES << result.recomputed.item_signatures
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_FUNCTION_BODY_SYNTAXES
@@ -1189,6 +1243,9 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
                             : INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE_FULL)
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED << total_query_execution_count(stats.seeded)
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED << total_query_execution_count(stats.evaluated)
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_FILE_CONTENTS << stats.seeded.file_contents
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LEX_FILES << stats.seeded.lex_files
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_PARSE_FILES << stats.seeded.parse_files
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_MODULE_EXPORTS << stats.seeded.module_exports
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_ITEM_SIGNATURES << stats.seeded.item_signatures
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_FUNCTION_BODY_SYNTAXES
@@ -1199,7 +1256,10 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERIC_INSTANCE_BODIES
            << stats.seeded.generic_instance_bodies << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LOWER_FUNCTION_IRS
            << stats.seeded.lower_function_irs << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_DIAGNOSTICS
-           << stats.seeded.diagnostics << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_EXPORTS
+           << stats.seeded.diagnostics << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_FILE_CONTENTS
+           << stats.evaluated.file_contents << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_LEX_FILES
+           << stats.evaluated.lex_files << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_PARSE_FILES
+           << stats.evaluated.parse_files << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_EXPORTS
            << stats.evaluated.module_exports << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_ITEM_SIGNATURES
            << stats.evaluated.item_signatures
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_FUNCTION_BODY_SYNTAXES
@@ -1443,6 +1503,70 @@ void record_query_provider_evaluation_summary(CompilationProfiler* const profile
             rhs.incremental_key.fingerprint.secondary, rhs.incremental_key.fingerprint.byte_count);
 }
 
+[[nodiscard]] query::PackageKey cache_package_key() noexcept
+{
+    return query::package_key(std::span<const std::string_view>{});
+}
+
+[[nodiscard]] query::FileKey source_file_key(const base::SourceFile& file)
+{
+    const std::filesystem::path canonical_path = canonical_or_absolute(std::filesystem::path(file.path()));
+    return query::file_key(cache_package_key(), canonical_path.string());
+}
+
+[[nodiscard]] query::QueryResultFingerprint file_content_result_fingerprint(
+    const query::FileKey key, const std::string_view text)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(INCREMENTAL_CACHE_FILE_CONTENT_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(key));
+    builder.mix_string(text);
+    return query::query_result_fingerprint(builder.finish());
+}
+
+void mix_token_stream_result(query::StableHashBuilder& builder, const std::span<const syntax::Token> tokens)
+{
+    builder.mix_u64(static_cast<base::u64>(tokens.size()));
+    for (base::usize index = 0; index < tokens.size(); ++index) {
+        const syntax::Token& token = tokens[index];
+        builder.mix_u64(static_cast<base::u64>(index));
+        builder.mix_u64(static_cast<base::u64>(token.kind));
+        builder.mix_string(token.text());
+    }
+}
+
+[[nodiscard]] query::QueryResultFingerprint lex_file_result_fingerprint(
+    const query::LexFileKey key, const base::SourceFile& file)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(INCREMENTAL_CACHE_LEX_FILE_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(key));
+    builder.mix_bool(key.config.retain_trivia);
+
+    base::DiagnosticSink diagnostics;
+    lex::Lexer lexer(file.id(), file.text(), diagnostics);
+    base::Result<lex::TokenBuffer> tokenize_result = lexer.tokenize();
+    if (!tokenize_result) {
+        builder.mix_string(INCREMENTAL_CACHE_LEX_FILE_ERROR_MARKER);
+        builder.mix_string(file.text());
+        return query::query_result_fingerprint(builder.finish());
+    }
+
+    mix_token_stream_result(builder, tokenize_result.value().span());
+    return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] query::QueryResultFingerprint parse_file_result_fingerprint(
+    const query::ParseFileKey key, const query::QueryResultFingerprint lex_result)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(INCREMENTAL_CACHE_PARSE_FILE_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(key));
+    builder.mix_u64(lex_result.global_id);
+    builder.mix_fingerprint(lex_result.fingerprint);
+    return query::query_result_fingerprint(builder.finish());
+}
+
 void push_module_exports_signature_entry(std::vector<ModuleExportsSignatureEntry>& entries,
     const std::string_view category, const std::string_view name, const sema::StableDefId& stable_id,
     const sema::IncrementalKey& incremental_key, const syntax::Visibility visibility,
@@ -1627,6 +1751,38 @@ void push_item_signature_query_subject(std::vector<ItemSignatureQuerySubject>& s
     });
 }
 
+void push_source_file_query_subjects(QuerySubjectCollection& collection, const base::SourceFile& file)
+{
+    const query::FileKey file_key = source_file_key(file);
+    const query::LexConfigKey lex_config = query::lex_config_key();
+    const query::ParserConfigKey parser_config = query::parser_config_key(lex_config);
+    const query::LexFileKey lex_key = query::lex_file_key(file_key, lex_config);
+    const query::ParseFileKey parse_key = query::parse_file_key(file_key, parser_config);
+    if (!query::is_valid(file_key) || !query::is_valid(lex_key) || !query::is_valid(parse_key)) {
+        return;
+    }
+
+    const query::QueryResultFingerprint content_result = file_content_result_fingerprint(file_key, file.text());
+    const query::QueryResultFingerprint lex_result = lex_file_result_fingerprint(lex_key, file);
+    const query::QueryResultFingerprint parse_result = parse_file_result_fingerprint(parse_key, lex_result);
+    if (!query::is_valid(content_result) || !query::is_valid(lex_result) || !query::is_valid(parse_result)) {
+        return;
+    }
+
+    collection.file_contents.push_back(FileContentQuerySubject{
+        file_key,
+        content_result,
+    });
+    collection.lex_files.push_back(LexFileQuerySubject{
+        lex_key,
+        lex_result,
+    });
+    collection.parse_files.push_back(ParseFileQuerySubject{
+        parse_key,
+        parse_result,
+    });
+}
+
 void push_generic_instance_signature_query_subject(std::vector<GenericInstanceSignatureQuerySubject>& subjects,
     const query::GenericInstanceKey& key, const sema::IncrementalKey& incremental_key)
 {
@@ -1734,6 +1890,33 @@ void push_module_exports_query_subject(
     });
 }
 
+void evaluate_file_content_query_subject(query::QueryContext& context, const FileContentQuerySubject& subject)
+{
+    const query::FileContentProviderInput input{
+        subject.key,
+        subject.result,
+    };
+    static_cast<void>(context.evaluate_file_content(input));
+}
+
+void evaluate_lex_file_query_subject(query::QueryContext& context, const LexFileQuerySubject& subject)
+{
+    const query::LexFileProviderInput input{
+        subject.key,
+        subject.result,
+    };
+    static_cast<void>(context.evaluate_lex_file(input));
+}
+
+void evaluate_parse_file_query_subject(query::QueryContext& context, const ParseFileQuerySubject& subject)
+{
+    const query::ParseFileProviderInput input{
+        subject.key,
+        subject.result,
+    };
+    static_cast<void>(context.evaluate_parse_file(input));
+}
+
 void evaluate_module_exports_query_subject(query::QueryContext& context, const ModuleExportsQuerySubject& subject)
 {
     const query::ModuleExportsProviderInput input{
@@ -1820,6 +2003,21 @@ void evaluate_diagnostics_query_subject(query::QueryContext& context, const Diag
         subject.result,
     };
     static_cast<void>(context.evaluate_diagnostics(input));
+}
+
+[[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const FileContentQuerySubject& subject)
+{
+    return query::file_content_query_record(subject.key, subject.result);
+}
+
+[[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const LexFileQuerySubject& subject)
+{
+    return query::lex_file_query_record(subject.key, subject.result);
+}
+
+[[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const ParseFileQuerySubject& subject)
+{
+    return query::parse_file_query_record(subject.key, subject.result);
 }
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const ModuleExportsQuerySubject& subject)
@@ -1915,16 +2113,30 @@ void collect_diagnostics_query_subjects(QuerySubjectCollection& collection)
 
 void build_ordered_query_subjects(QuerySubjectCollection& collection)
 {
-    collection.subjects.reserve(collection.module_exports.size() + collection.item_signatures.size()
+    collection.subjects.reserve(collection.file_contents.size() + collection.lex_files.size()
+        + collection.parse_files.size() + collection.module_exports.size() + collection.item_signatures.size()
         + collection.function_body_syntaxes.size() + collection.type_check_bodies.size()
         + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size()
         + collection.lower_function_irs.size());
     std::unordered_set<query::QueryKey, query::QueryKeyHash> keys;
-    keys.reserve(collection.module_exports.size() + collection.item_signatures.size()
+    keys.reserve(collection.file_contents.size() + collection.lex_files.size() + collection.parse_files.size()
+        + collection.module_exports.size() + collection.item_signatures.size()
         + collection.function_body_syntaxes.size() + collection.type_check_bodies.size()
         + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size()
         + collection.lower_function_irs.size());
 
+    for (base::usize index = 0; index < collection.file_contents.size(); ++index) {
+        push_query_subject(collection.subjects, keys, QuerySubjectKind::file_content, index,
+            query_record_for_subject(collection.file_contents[index]));
+    }
+    for (base::usize index = 0; index < collection.lex_files.size(); ++index) {
+        push_query_subject(collection.subjects, keys, QuerySubjectKind::lex_file, index,
+            query_record_for_subject(collection.lex_files[index]));
+    }
+    for (base::usize index = 0; index < collection.parse_files.size(); ++index) {
+        push_query_subject(collection.subjects, keys, QuerySubjectKind::parse_file, index,
+            query_record_for_subject(collection.parse_files[index]));
+    }
     for (base::usize index = 0; index < collection.module_exports.size(); ++index) {
         push_query_subject(collection.subjects, keys, QuerySubjectKind::module_exports, index,
             query_record_for_subject(collection.module_exports[index]));
@@ -1982,6 +2194,17 @@ void build_ordered_query_subjects(QuerySubjectCollection& collection)
         push_module_exports_query_subject(subjects, module, checked);
     }
     return subjects;
+}
+
+void collect_source_file_query_subjects(QuerySubjectCollection& collection, const base::SourceManager& sources)
+{
+    const std::span<const base::SourceFile> files = sources.files();
+    collection.file_contents.reserve(files.size());
+    collection.lex_files.reserve(files.size());
+    collection.parse_files.reserve(files.size());
+    for (const base::SourceFile& file : files) {
+        push_source_file_query_subjects(collection, file);
+    }
 }
 
 [[nodiscard]] std::vector<ItemSignatureQuerySubject> collect_item_signature_query_subjects(
@@ -2072,6 +2295,7 @@ void collect_function_body_query_subjects(const sema::CheckedModule& checked, co
     const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const base::SourceManager& sources)
 {
     QuerySubjectCollection collection;
+    collect_source_file_query_subjects(collection, sources);
     collection.module_exports = collect_module_exports_query_subjects(modules, checked);
     collection.item_signatures = collect_item_signature_query_subjects(checked);
     collect_function_body_query_subjects(
@@ -2088,6 +2312,15 @@ void evaluate_query_subject(
     query::QueryContext& context, const QuerySubjectCollection& collection, const QuerySubject& subject)
 {
     switch (subject.kind) {
+        case QuerySubjectKind::file_content:
+            evaluate_file_content_query_subject(context, collection.file_contents[subject.index]);
+            return;
+        case QuerySubjectKind::lex_file:
+            evaluate_lex_file_query_subject(context, collection.lex_files[subject.index]);
+            return;
+        case QuerySubjectKind::parse_file:
+            evaluate_parse_file_query_subject(context, collection.parse_files[subject.index]);
+            return;
         case QuerySubjectKind::module_exports:
             evaluate_module_exports_query_subject(context, collection.module_exports[subject.index]);
             return;
@@ -2120,6 +2353,15 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const QuerySub
 {
     counts.total += 1;
     switch (kind) {
+        case QuerySubjectKind::file_content:
+            counts.file_contents += 1;
+            return;
+        case QuerySubjectKind::lex_file:
+            counts.lex_files += 1;
+            return;
+        case QuerySubjectKind::parse_file:
+            counts.parse_files += 1;
+            return;
         case QuerySubjectKind::module_exports:
             counts.module_exports += 1;
             return;

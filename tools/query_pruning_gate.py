@@ -72,6 +72,9 @@ class ScenarioExpectation:
     expected_plan_recompute: int
     expected_pruning_reused: int
     expected_pruning_recomputed: int
+    expected_pruning_reused_file_contents: int
+    expected_pruning_reused_lex_files: int
+    expected_pruning_reused_parse_files: int
     expected_pruning_reused_module_exports: int
     expected_pruning_reused_item_signatures: int
     expected_pruning_reused_function_body_syntaxes: int
@@ -80,6 +83,9 @@ class ScenarioExpectation:
     expected_pruning_reused_generic_instance_bodies: int
     expected_pruning_reused_lower_function_irs: int
     expected_pruning_reused_diagnostics: int
+    expected_pruning_recomputed_file_contents: int
+    expected_pruning_recomputed_lex_files: int
+    expected_pruning_recomputed_parse_files: int
     expected_pruning_recomputed_module_exports: int
     expected_pruning_recomputed_item_signatures: int
     expected_pruning_recomputed_function_body_syntaxes: int
@@ -88,6 +94,9 @@ class ScenarioExpectation:
     expected_pruning_recomputed_generic_instance_bodies: int
     expected_pruning_recomputed_lower_function_irs: int
     expected_pruning_recomputed_diagnostics: int
+    expected_provider_seeded_file_contents: int
+    expected_provider_seeded_lex_files: int
+    expected_provider_seeded_parse_files: int
     expected_provider_seeded_module_exports: int
     expected_provider_seeded_item_signatures: int
     expected_provider_seeded_function_body_syntaxes: int
@@ -96,6 +105,9 @@ class ScenarioExpectation:
     expected_provider_seeded_generic_instance_bodies: int
     expected_provider_seeded_lower_function_irs: int
     expected_provider_seeded_diagnostics: int
+    expected_provider_evaluated_file_contents: int
+    expected_provider_evaluated_lex_files: int
+    expected_provider_evaluated_parse_files: int
     expected_provider_evaluated_module_exports: int
     expected_provider_evaluated_item_signatures: int
     expected_provider_evaluated_function_body_syntaxes: int
@@ -256,7 +268,10 @@ def require_exact_field(fields: dict[str, str], name: str, expected: str) -> Non
         raise RuntimeError(f"expected {name}={expected}, got {value!r}")
 
 
-def query_subject_counts(function_count: int) -> tuple[int, int, int, int, int, int, int, int, int]:
+def query_subject_counts(function_count: int) -> tuple[int, int, int, int, int, int, int, int, int, int, int, int]:
+    file_contents = 1
+    lex_files = 1
+    parse_files = 1
     module_exports = 1
     item_signatures = function_count + 2
     function_body_syntaxes = function_count + 1
@@ -265,7 +280,10 @@ def query_subject_counts(function_count: int) -> tuple[int, int, int, int, int, 
     generic_instance_bodies = 0
     lower_function_irs = type_check_bodies + generic_instance_bodies
     diagnostics = (
-        module_exports
+        file_contents
+        + lex_files
+        + parse_files
+        + module_exports
         + item_signatures
         + function_body_syntaxes
         + type_check_bodies
@@ -274,7 +292,10 @@ def query_subject_counts(function_count: int) -> tuple[int, int, int, int, int, 
         + lower_function_irs
     )
     total = (
-        module_exports
+        file_contents
+        + lex_files
+        + parse_files
+        + module_exports
         + item_signatures
         + function_body_syntaxes
         + type_check_bodies
@@ -284,6 +305,9 @@ def query_subject_counts(function_count: int) -> tuple[int, int, int, int, int, 
         + diagnostics
     )
     return (
+        file_contents,
+        lex_files,
+        parse_files,
         module_exports,
         item_signatures,
         function_body_syntaxes,
@@ -298,6 +322,9 @@ def query_subject_counts(function_count: int) -> tuple[int, int, int, int, int, 
 
 def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpectation:
     (
+        file_contents,
+        lex_files,
+        parse_files,
         module_exports,
         item_signatures,
         function_body_syntaxes,
@@ -308,19 +335,27 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
         diagnostics,
         total,
     ) = query_subject_counts(function_count)
+    source_stage_queries = file_contents + lex_files + parse_files
     if scenario_name == ALL_REUSE_SCENARIO:
+        changed_roots = file_contents
+        changed_diagnostics = source_stage_queries
+        propagated_recompute = lex_files + parse_files + changed_diagnostics
+        recomputed = changed_roots + propagated_recompute
         return ScenarioExpectation(
             name=scenario_name,
             expected_diff_total=total,
             expected_diff_missing=0,
-            expected_diff_unchanged=total,
-            expected_diff_changed=0,
-            expected_plan_reusable=total,
-            expected_plan_recompute_roots=0,
-            expected_plan_propagated_recompute=0,
-            expected_plan_recompute=0,
-            expected_pruning_reused=total,
-            expected_pruning_recomputed=0,
+            expected_diff_unchanged=total - changed_roots,
+            expected_diff_changed=changed_roots,
+            expected_plan_reusable=total - recomputed,
+            expected_plan_recompute_roots=changed_roots,
+            expected_plan_propagated_recompute=propagated_recompute,
+            expected_plan_recompute=recomputed,
+            expected_pruning_reused=total - recomputed,
+            expected_pruning_recomputed=recomputed,
+            expected_pruning_reused_file_contents=0,
+            expected_pruning_reused_lex_files=0,
+            expected_pruning_reused_parse_files=0,
             expected_pruning_reused_module_exports=module_exports,
             expected_pruning_reused_item_signatures=item_signatures,
             expected_pruning_reused_function_body_syntaxes=function_body_syntaxes,
@@ -328,7 +363,10 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_pruning_reused_generic_instance_signatures=generic_instance_signatures,
             expected_pruning_reused_generic_instance_bodies=generic_instance_bodies,
             expected_pruning_reused_lower_function_irs=lower_function_irs,
-            expected_pruning_reused_diagnostics=diagnostics,
+            expected_pruning_reused_diagnostics=diagnostics - changed_diagnostics,
+            expected_pruning_recomputed_file_contents=file_contents,
+            expected_pruning_recomputed_lex_files=lex_files,
+            expected_pruning_recomputed_parse_files=parse_files,
             expected_pruning_recomputed_module_exports=0,
             expected_pruning_recomputed_item_signatures=0,
             expected_pruning_recomputed_function_body_syntaxes=0,
@@ -336,7 +374,10 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_pruning_recomputed_generic_instance_signatures=0,
             expected_pruning_recomputed_generic_instance_bodies=0,
             expected_pruning_recomputed_lower_function_irs=0,
-            expected_pruning_recomputed_diagnostics=0,
+            expected_pruning_recomputed_diagnostics=changed_diagnostics,
+            expected_provider_seeded_file_contents=0,
+            expected_provider_seeded_lex_files=0,
+            expected_provider_seeded_parse_files=0,
             expected_provider_seeded_module_exports=module_exports,
             expected_provider_seeded_item_signatures=item_signatures,
             expected_provider_seeded_function_body_syntaxes=function_body_syntaxes,
@@ -344,7 +385,10 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_provider_seeded_generic_instance_signatures=generic_instance_signatures,
             expected_provider_seeded_generic_instance_bodies=generic_instance_bodies,
             expected_provider_seeded_lower_function_irs=lower_function_irs,
-            expected_provider_seeded_diagnostics=diagnostics,
+            expected_provider_seeded_diagnostics=diagnostics - changed_diagnostics,
+            expected_provider_evaluated_file_contents=file_contents,
+            expected_provider_evaluated_lex_files=lex_files,
+            expected_provider_evaluated_parse_files=parse_files,
             expected_provider_evaluated_module_exports=0,
             expected_provider_evaluated_item_signatures=0,
             expected_provider_evaluated_function_body_syntaxes=0,
@@ -352,12 +396,13 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_provider_evaluated_generic_instance_signatures=0,
             expected_provider_evaluated_generic_instance_bodies=0,
             expected_provider_evaluated_lower_function_irs=0,
-            expected_provider_evaluated_diagnostics=0,
+            expected_provider_evaluated_diagnostics=changed_diagnostics,
         )
     if scenario_name == BODY_RECOMPUTE_SCENARIO:
         changed_lower_function_irs = 1
-        changed_diagnostics = 3
-        changed_roots = 2 + changed_lower_function_irs
+        changed_body_queries = 2 + changed_lower_function_irs
+        changed_roots = source_stage_queries + changed_body_queries
+        changed_diagnostics = changed_roots
         return ScenarioExpectation(
             name=scenario_name,
             expected_diff_total=total,
@@ -370,6 +415,9 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_plan_recompute=changed_roots + changed_diagnostics,
             expected_pruning_reused=total - changed_roots - changed_diagnostics,
             expected_pruning_recomputed=changed_roots + changed_diagnostics,
+            expected_pruning_reused_file_contents=0,
+            expected_pruning_reused_lex_files=0,
+            expected_pruning_reused_parse_files=0,
             expected_pruning_reused_module_exports=module_exports,
             expected_pruning_reused_item_signatures=item_signatures,
             expected_pruning_reused_function_body_syntaxes=function_body_syntaxes - 1,
@@ -378,6 +426,9 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_pruning_reused_generic_instance_bodies=generic_instance_bodies,
             expected_pruning_reused_lower_function_irs=lower_function_irs - changed_lower_function_irs,
             expected_pruning_reused_diagnostics=diagnostics - changed_diagnostics,
+            expected_pruning_recomputed_file_contents=file_contents,
+            expected_pruning_recomputed_lex_files=lex_files,
+            expected_pruning_recomputed_parse_files=parse_files,
             expected_pruning_recomputed_module_exports=0,
             expected_pruning_recomputed_item_signatures=0,
             expected_pruning_recomputed_function_body_syntaxes=1,
@@ -386,6 +437,9 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_pruning_recomputed_generic_instance_bodies=0,
             expected_pruning_recomputed_lower_function_irs=changed_lower_function_irs,
             expected_pruning_recomputed_diagnostics=changed_diagnostics,
+            expected_provider_seeded_file_contents=0,
+            expected_provider_seeded_lex_files=0,
+            expected_provider_seeded_parse_files=0,
             expected_provider_seeded_module_exports=module_exports,
             expected_provider_seeded_item_signatures=item_signatures,
             expected_provider_seeded_function_body_syntaxes=function_body_syntaxes - 1,
@@ -394,6 +448,9 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_provider_seeded_generic_instance_bodies=generic_instance_bodies,
             expected_provider_seeded_lower_function_irs=lower_function_irs - changed_lower_function_irs,
             expected_provider_seeded_diagnostics=diagnostics - changed_diagnostics,
+            expected_provider_evaluated_file_contents=file_contents,
+            expected_provider_evaluated_lex_files=lex_files,
+            expected_provider_evaluated_parse_files=parse_files,
             expected_provider_evaluated_module_exports=0,
             expected_provider_evaluated_item_signatures=0,
             expected_provider_evaluated_function_body_syntaxes=1,
@@ -404,19 +461,25 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_provider_evaluated_diagnostics=changed_diagnostics,
         )
     if scenario_name == GENERIC_RECOMPUTE_SCENARIO:
-        changed_diagnostics = 1
+        changed_roots = file_contents + generic_instance_signatures
+        changed_diagnostics = source_stage_queries + generic_instance_signatures
+        propagated_recompute = lex_files + parse_files + changed_diagnostics
+        recomputed = changed_roots + propagated_recompute
         return ScenarioExpectation(
             name=scenario_name,
             expected_diff_total=total,
             expected_diff_missing=0,
-            expected_diff_unchanged=total - 1,
-            expected_diff_changed=1,
-            expected_plan_reusable=total - 1 - changed_diagnostics,
-            expected_plan_recompute_roots=1,
-            expected_plan_propagated_recompute=changed_diagnostics,
-            expected_plan_recompute=1 + changed_diagnostics,
-            expected_pruning_reused=total - 1 - changed_diagnostics,
-            expected_pruning_recomputed=1 + changed_diagnostics,
+            expected_diff_unchanged=total - changed_roots,
+            expected_diff_changed=changed_roots,
+            expected_plan_reusable=total - recomputed,
+            expected_plan_recompute_roots=changed_roots,
+            expected_plan_propagated_recompute=propagated_recompute,
+            expected_plan_recompute=recomputed,
+            expected_pruning_reused=total - recomputed,
+            expected_pruning_recomputed=recomputed,
+            expected_pruning_reused_file_contents=0,
+            expected_pruning_reused_lex_files=0,
+            expected_pruning_reused_parse_files=0,
             expected_pruning_reused_module_exports=module_exports,
             expected_pruning_reused_item_signatures=item_signatures,
             expected_pruning_reused_function_body_syntaxes=function_body_syntaxes,
@@ -425,6 +488,9 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_pruning_reused_generic_instance_bodies=generic_instance_bodies,
             expected_pruning_reused_lower_function_irs=lower_function_irs,
             expected_pruning_reused_diagnostics=diagnostics - changed_diagnostics,
+            expected_pruning_recomputed_file_contents=file_contents,
+            expected_pruning_recomputed_lex_files=lex_files,
+            expected_pruning_recomputed_parse_files=parse_files,
             expected_pruning_recomputed_module_exports=0,
             expected_pruning_recomputed_item_signatures=0,
             expected_pruning_recomputed_function_body_syntaxes=0,
@@ -433,6 +499,9 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_pruning_recomputed_generic_instance_bodies=0,
             expected_pruning_recomputed_lower_function_irs=0,
             expected_pruning_recomputed_diagnostics=changed_diagnostics,
+            expected_provider_seeded_file_contents=0,
+            expected_provider_seeded_lex_files=0,
+            expected_provider_seeded_parse_files=0,
             expected_provider_seeded_module_exports=module_exports,
             expected_provider_seeded_item_signatures=item_signatures,
             expected_provider_seeded_function_body_syntaxes=function_body_syntaxes,
@@ -441,6 +510,9 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_provider_seeded_generic_instance_bodies=generic_instance_bodies,
             expected_provider_seeded_lower_function_irs=lower_function_irs,
             expected_provider_seeded_diagnostics=diagnostics - changed_diagnostics,
+            expected_provider_evaluated_file_contents=file_contents,
+            expected_provider_evaluated_lex_files=lex_files,
+            expected_provider_evaluated_parse_files=parse_files,
             expected_provider_evaluated_module_exports=0,
             expected_provider_evaluated_item_signatures=0,
             expected_provider_evaluated_function_body_syntaxes=0,
@@ -481,6 +553,9 @@ def verify_pruning_profile(fields: dict[str, str], expectation: ScenarioExpectat
     require_exact_field(fields, "applied", "1")
     require_exact_field(fields, "reused", str(expectation.expected_pruning_reused))
     require_exact_field(fields, "recomputed", str(expectation.expected_pruning_recomputed))
+    require_exact_field(fields, "reused_file_contents", str(expectation.expected_pruning_reused_file_contents))
+    require_exact_field(fields, "reused_lex_files", str(expectation.expected_pruning_reused_lex_files))
+    require_exact_field(fields, "reused_parse_files", str(expectation.expected_pruning_reused_parse_files))
     require_exact_field(fields, "reused_module_exports", str(expectation.expected_pruning_reused_module_exports))
     require_exact_field(fields, "reused_item_signatures", str(expectation.expected_pruning_reused_item_signatures))
     require_exact_field(
@@ -505,6 +580,9 @@ def verify_pruning_profile(fields: dict[str, str], expectation: ScenarioExpectat
     )
     require_exact_field(fields, "reused_lower_function_irs", str(expectation.expected_pruning_reused_lower_function_irs))
     require_exact_field(fields, "reused_diagnostics", str(expectation.expected_pruning_reused_diagnostics))
+    require_exact_field(fields, "recomputed_file_contents", str(expectation.expected_pruning_recomputed_file_contents))
+    require_exact_field(fields, "recomputed_lex_files", str(expectation.expected_pruning_recomputed_lex_files))
+    require_exact_field(fields, "recomputed_parse_files", str(expectation.expected_pruning_recomputed_parse_files))
     require_exact_field(fields, "recomputed_module_exports", str(expectation.expected_pruning_recomputed_module_exports))
     require_exact_field(fields, "recomputed_item_signatures", str(expectation.expected_pruning_recomputed_item_signatures))
     require_exact_field(
@@ -537,6 +615,9 @@ def verify_pruning_profile(fields: dict[str, str], expectation: ScenarioExpectat
     return (
         f"enabled=1,applied=1,reused={expectation.expected_pruning_reused},"
         f"recomputed={expectation.expected_pruning_recomputed},"
+        f"reused_file_contents={expectation.expected_pruning_reused_file_contents},"
+        f"reused_lex_files={expectation.expected_pruning_reused_lex_files},"
+        f"reused_parse_files={expectation.expected_pruning_reused_parse_files},"
         f"reused_module_exports={expectation.expected_pruning_reused_module_exports},"
         f"reused_item_signatures={expectation.expected_pruning_reused_item_signatures},"
         f"reused_function_body_syntaxes={expectation.expected_pruning_reused_function_body_syntaxes},"
@@ -545,6 +626,9 @@ def verify_pruning_profile(fields: dict[str, str], expectation: ScenarioExpectat
         f"reused_generic_instance_bodies={expectation.expected_pruning_reused_generic_instance_bodies},"
         f"reused_lower_function_irs={expectation.expected_pruning_reused_lower_function_irs},"
         f"reused_diagnostics={expectation.expected_pruning_reused_diagnostics},"
+        f"recomputed_file_contents={expectation.expected_pruning_recomputed_file_contents},"
+        f"recomputed_lex_files={expectation.expected_pruning_recomputed_lex_files},"
+        f"recomputed_parse_files={expectation.expected_pruning_recomputed_parse_files},"
         f"recomputed_module_exports={expectation.expected_pruning_recomputed_module_exports},"
         f"recomputed_item_signatures={expectation.expected_pruning_recomputed_item_signatures},"
         f"recomputed_function_body_syntaxes={expectation.expected_pruning_recomputed_function_body_syntaxes},"
@@ -561,6 +645,9 @@ def verify_provider_eval_profile(fields: dict[str, str], expectation: ScenarioEx
     require_exact_field(fields, "mode", "pruned")
     require_exact_field(fields, "seeded", str(expectation.expected_pruning_reused))
     require_exact_field(fields, "evaluated", str(expectation.expected_pruning_recomputed))
+    require_exact_field(fields, "seeded_file_contents", str(expectation.expected_provider_seeded_file_contents))
+    require_exact_field(fields, "seeded_lex_files", str(expectation.expected_provider_seeded_lex_files))
+    require_exact_field(fields, "seeded_parse_files", str(expectation.expected_provider_seeded_parse_files))
     require_exact_field(fields, "seeded_module_exports", str(expectation.expected_provider_seeded_module_exports))
     require_exact_field(fields, "seeded_item_signatures", str(expectation.expected_provider_seeded_item_signatures))
     require_exact_field(
@@ -585,6 +672,9 @@ def verify_provider_eval_profile(fields: dict[str, str], expectation: ScenarioEx
     )
     require_exact_field(fields, "seeded_lower_function_irs", str(expectation.expected_provider_seeded_lower_function_irs))
     require_exact_field(fields, "seeded_diagnostics", str(expectation.expected_provider_seeded_diagnostics))
+    require_exact_field(fields, "evaluated_file_contents", str(expectation.expected_provider_evaluated_file_contents))
+    require_exact_field(fields, "evaluated_lex_files", str(expectation.expected_provider_evaluated_lex_files))
+    require_exact_field(fields, "evaluated_parse_files", str(expectation.expected_provider_evaluated_parse_files))
     require_exact_field(fields, "evaluated_module_exports", str(expectation.expected_provider_evaluated_module_exports))
     require_exact_field(fields, "evaluated_item_signatures", str(expectation.expected_provider_evaluated_item_signatures))
     require_exact_field(
@@ -616,6 +706,9 @@ def verify_provider_eval_profile(fields: dict[str, str], expectation: ScenarioEx
     return (
         "mode=pruned,seeded="
         f"{expectation.expected_pruning_reused},evaluated={expectation.expected_pruning_recomputed},"
+        f"seeded_file_contents={expectation.expected_provider_seeded_file_contents},"
+        f"seeded_lex_files={expectation.expected_provider_seeded_lex_files},"
+        f"seeded_parse_files={expectation.expected_provider_seeded_parse_files},"
         f"seeded_module_exports={expectation.expected_provider_seeded_module_exports},"
         f"seeded_item_signatures={expectation.expected_provider_seeded_item_signatures},"
         f"seeded_function_body_syntaxes={expectation.expected_provider_seeded_function_body_syntaxes},"
@@ -624,6 +717,9 @@ def verify_provider_eval_profile(fields: dict[str, str], expectation: ScenarioEx
         f"seeded_generic_instance_bodies={expectation.expected_provider_seeded_generic_instance_bodies},"
         f"seeded_lower_function_irs={expectation.expected_provider_seeded_lower_function_irs},"
         f"seeded_diagnostics={expectation.expected_provider_seeded_diagnostics},"
+        f"evaluated_file_contents={expectation.expected_provider_evaluated_file_contents},"
+        f"evaluated_lex_files={expectation.expected_provider_evaluated_lex_files},"
+        f"evaluated_parse_files={expectation.expected_provider_evaluated_parse_files},"
         f"evaluated_module_exports={expectation.expected_provider_evaluated_module_exports},"
         f"evaluated_item_signatures={expectation.expected_provider_evaluated_item_signatures},"
         f"evaluated_function_body_syntaxes={expectation.expected_provider_evaluated_function_body_syntaxes},"

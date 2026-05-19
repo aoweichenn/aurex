@@ -1,4 +1,5 @@
 #include <aurex/query/generic_instance_key.hpp>
+#include <aurex/query/generic_instance_signature_query.hpp>
 #include <aurex/query/item_signature_query.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
@@ -65,6 +66,11 @@ struct QueryContextItemSignatureSubject {
     query::ItemSignatureProviderInput input;
 };
 
+struct QueryContextGenericInstanceSignatureSubject {
+    query::GenericInstanceKey key;
+    query::IncrementalKey signature;
+};
+
 [[nodiscard]] QueryContextItemSignatureSubject test_item_signature_subject(
     const std::string_view def_name, const std::string_view signature)
 {
@@ -80,6 +86,37 @@ struct QueryContextItemSignatureSubject {
             def,
             query::stable_incremental_key(stable_def, signature),
         },
+    };
+}
+
+[[nodiscard]] QueryContextGenericInstanceSignatureSubject test_generic_instance_signature_subject(
+    const std::string_view template_name, const query::BuiltinTypeKey type_arg, const std::string_view signature)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const std::array<std::string_view, 1> template_path{template_name};
+    const query::DefKey template_def =
+        query::def_key(module, query::DefNamespace::value, query::DefKind::generic_template, template_path);
+    const std::array<query::CanonicalTypeKey, 1> type_args{query::canonical_builtin(type_arg)};
+    const query::GenericInstanceKey key = query::generic_instance_key(template_def, type_args,
+        std::span<const query::StableFingerprint128>{}, query::param_env_key(std::span<const std::string_view>{}));
+
+    const std::array<std::string_view, 2> stable_module_path{"regex", "vm"};
+    const query::StableModuleId stable_module = query::stable_module_id(stable_module_path);
+    const query::StableDefId stable_def =
+        query::stable_definition_id(stable_module, query::StableSymbolKind::function, template_name);
+    return QueryContextGenericInstanceSignatureSubject{
+        key,
+        query::stable_incremental_key(stable_def, signature),
+    };
+}
+
+[[nodiscard]] query::GenericInstanceSignatureProviderInput generic_instance_provider_input(
+    const QueryContextGenericInstanceSignatureSubject& subject) noexcept
+{
+    return query::GenericInstanceSignatureProviderInput{
+        &subject.key,
+        subject.signature,
     };
 }
 
@@ -478,6 +515,47 @@ TEST(QueryUnit, ItemSignatureProviderBuildsRecordFromStableDefinition)
     EXPECT_FALSE(query::is_valid(mismatched_result_output));
 }
 
+TEST(QueryUnit, GenericInstanceSignatureProviderBuildsRecordFromStableInstance)
+{
+    const QueryContextGenericInstanceSignatureSubject subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryKey> expected_key = query::generic_instance_signature_query_key(subject.key);
+    ASSERT_TRUE(expected_key.has_value());
+
+    const query::GenericInstanceSignatureProviderInput input = generic_instance_provider_input(subject);
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::GenericInstanceSignatureProviderOutput> output =
+        query::provide_generic_instance_signature_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    EXPECT_TRUE(output->dependencies.empty());
+    EXPECT_EQ(output->record.key, *expected_key);
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::generic_instance_signature);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.key));
+    EXPECT_EQ(output->result, query::query_result_fingerprint(subject.signature));
+    EXPECT_EQ(output->record.result, output->result);
+
+    const query::GenericInstanceKey invalid_key;
+    EXPECT_FALSE(query::generic_instance_signature_query_key(query::GenericInstanceKey{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::GenericInstanceSignatureProviderInput{}));
+    EXPECT_FALSE(query::provide_generic_instance_signature_query(
+        query::GenericInstanceSignatureProviderInput{&invalid_key, subject.signature})
+            .has_value());
+    EXPECT_FALSE(query::provide_generic_instance_signature_query(
+        query::GenericInstanceSignatureProviderInput{&subject.key, query::IncrementalKey{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::GenericInstanceSignatureProviderOutput{}));
+
+    query::GenericInstanceSignatureProviderOutput invalid_dependency_output = *output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::GenericInstanceSignatureProviderOutput mismatched_result_output = *output;
+    mismatched_result_output.result = query::query_result_fingerprint(
+        query::stable_incremental_key(subject.signature.definition, QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
+    EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
 TEST(QueryUnit, QueryContextCachesItemSignatureAndEmitsCompletedRecords)
 {
     const QueryContextItemSignatureSubject subject =
@@ -518,6 +596,65 @@ TEST(QueryUnit, QueryContextCachesItemSignatureAndEmitsCompletedRecords)
     EXPECT_EQ(provider_calls, 1U);
 }
 
+TEST(QueryUnit, QueryContextCachesGenericInstanceSignatureAndEmitsMixedRecords)
+{
+    const QueryContextItemSignatureSubject item_subject =
+        test_item_signature_subject("compute", QUERY_TEST_PROVIDER_SIGNATURE);
+    const QueryContextGenericInstanceSignatureSubject generic_subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryKey> generic_key = query::generic_instance_signature_query_key(generic_subject.key);
+    ASSERT_TRUE(generic_key.has_value());
+
+    base::usize generic_provider_calls = 0;
+    query::QueryContext context(query::ItemSignatureProvider{query::provide_item_signature_query},
+        [&generic_provider_calls](const query::GenericInstanceSignatureProviderInput& provider_input) {
+            ++generic_provider_calls;
+            return query::provide_generic_instance_signature_query(provider_input);
+        });
+
+    const query::QueryEvaluationResult generic_first =
+        context.evaluate_generic_instance_signature(generic_instance_provider_input(generic_subject));
+    ASSERT_EQ(generic_first.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(generic_first.node, nullptr);
+    EXPECT_EQ(generic_first.node->status, query::QueryNodeStatus::done);
+    EXPECT_EQ(generic_first.node->key, *generic_key);
+    EXPECT_EQ(generic_provider_calls, 1U);
+    EXPECT_EQ(context.find(*generic_key), generic_first.node);
+
+    const query::QueryEvaluationResult generic_second =
+        context.evaluate_generic_instance_signature(generic_instance_provider_input(generic_subject));
+    EXPECT_EQ(generic_second.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(generic_second.node, generic_first.node);
+    EXPECT_EQ(generic_provider_calls, 1U);
+
+    const query::QueryEvaluationResult item_result = context.evaluate_item_signature(item_subject.input);
+    ASSERT_EQ(item_result.status, query::QueryEvaluationStatus::computed);
+
+    const std::vector<query::QueryRecord> records = context.completed_records();
+    ASSERT_EQ(records.size(), 2U);
+    EXPECT_TRUE(std::is_sorted(
+        records.begin(), records.end(), [](const query::QueryRecord& lhs, const query::QueryRecord& rhs) {
+            if (lhs.key.kind != rhs.key.kind) {
+                return static_cast<base::u8>(lhs.key.kind) < static_cast<base::u8>(rhs.key.kind);
+            }
+            if (lhs.key.global_id != rhs.key.global_id) {
+                return lhs.key.global_id < rhs.key.global_id;
+            }
+            if (lhs.result.global_id != rhs.result.global_id) {
+                return lhs.result.global_id < rhs.result.global_id;
+            }
+            return lhs.stable_key_bytes < rhs.stable_key_bytes;
+        }));
+    EXPECT_EQ(records.front().key.kind, query::QueryKind::item_signature);
+    EXPECT_EQ(records.back().key.kind, query::QueryKind::generic_instance_signature);
+
+    context.set_generic_instance_signature_provider({});
+    const query::QueryEvaluationResult cached_after_reset =
+        context.evaluate_generic_instance_signature(generic_instance_provider_input(generic_subject));
+    EXPECT_EQ(cached_after_reset.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(generic_provider_calls, 1U);
+}
+
 TEST(QueryUnit, QueryContextOrdersCompletedItemSignatureRecordsByQueryKey)
 {
     const QueryContextItemSignatureSubject first_subject =
@@ -548,6 +685,110 @@ TEST(QueryUnit, QueryContextOrdersCompletedItemSignatureRecordsByQueryKey)
     const query::QueryKey expected_back = first_key->global_id < second_key->global_id ? *second_key : *first_key;
     EXPECT_EQ(records.front().key, expected_front);
     EXPECT_EQ(records.back().key, expected_back);
+}
+
+TEST(QueryUnit, QueryContextTracksGenericInstanceDependenciesFailuresAndCycles)
+{
+    const QueryContextGenericInstanceSignatureSubject subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryKey> expected_key = query::generic_instance_signature_query_key(subject.key);
+    ASSERT_TRUE(expected_key.has_value());
+    const query::QueryKey dependency =
+        query::query_key(query::QueryKind::generic_template_signature, query::stable_key_fingerprint(subject.key));
+
+    query::QueryContext dependency_context;
+    dependency_context.set_generic_instance_signature_provider(
+        [dependency](const query::GenericInstanceSignatureProviderInput& provider_input) {
+            std::optional<query::GenericInstanceSignatureProviderOutput> output =
+                query::provide_generic_instance_signature_query(provider_input);
+            if (output) {
+                output->dependencies.push_back(dependency);
+            }
+            return output;
+        });
+    const query::QueryEvaluationResult dependency_result =
+        dependency_context.evaluate_generic_instance_signature(generic_instance_provider_input(subject));
+    ASSERT_EQ(dependency_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(dependency_result.node, nullptr);
+    ASSERT_EQ(dependency_result.node->dependencies.size(), 1U);
+    EXPECT_EQ(dependency_result.node->dependencies.front(), dependency);
+
+    const query::QueryEvaluationResult null_key_result = dependency_context.evaluate_generic_instance_signature(
+        query::GenericInstanceSignatureProviderInput{nullptr, subject.signature});
+    EXPECT_EQ(null_key_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(null_key_result.node, nullptr);
+
+    const query::GenericInstanceKey invalid_key;
+    const query::QueryEvaluationResult invalid_key_result = dependency_context.evaluate_generic_instance_signature(
+        query::GenericInstanceSignatureProviderInput{&invalid_key, subject.signature});
+    EXPECT_EQ(invalid_key_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(invalid_key_result.node, nullptr);
+
+    query::QueryContext failing_context;
+    failing_context.set_generic_instance_signature_provider(
+        [](const query::GenericInstanceSignatureProviderInput&)
+            -> std::optional<query::GenericInstanceSignatureProviderOutput> {
+            return std::nullopt;
+        });
+    const query::QueryEvaluationResult failed_result =
+        failing_context.evaluate_generic_instance_signature(generic_instance_provider_input(subject));
+    ASSERT_EQ(failed_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(failed_result.node, nullptr);
+    EXPECT_EQ(failed_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(failing_context.completed_records().empty());
+
+    failing_context.set_generic_instance_signature_provider({});
+    const query::QueryEvaluationResult retry_result =
+        failing_context.evaluate_generic_instance_signature(generic_instance_provider_input(subject));
+    ASSERT_EQ(retry_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(retry_result.node, nullptr);
+    EXPECT_EQ(retry_result.node->status, query::QueryNodeStatus::done);
+
+    const QueryContextGenericInstanceSignatureSubject other_subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i64, QUERY_TEST_PROVIDER_SIGNATURE);
+    query::QueryContext wrong_key_context;
+    wrong_key_context.set_generic_instance_signature_provider(
+        [&other_subject](const query::GenericInstanceSignatureProviderInput&) {
+            return query::provide_generic_instance_signature_query(generic_instance_provider_input(other_subject));
+        });
+    const query::QueryEvaluationResult wrong_key_result =
+        wrong_key_context.evaluate_generic_instance_signature(generic_instance_provider_input(subject));
+    ASSERT_EQ(wrong_key_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(wrong_key_result.node, nullptr);
+    EXPECT_EQ(wrong_key_result.node->key, *expected_key);
+    EXPECT_EQ(wrong_key_result.node->status, query::QueryNodeStatus::failed);
+
+    query::QueryContext invalid_output_context;
+    invalid_output_context.set_generic_instance_signature_provider(
+        [](const query::GenericInstanceSignatureProviderInput& provider_input) {
+            std::optional<query::GenericInstanceSignatureProviderOutput> output =
+                query::provide_generic_instance_signature_query(provider_input);
+            if (output) {
+                output->dependencies.push_back(query::QueryKey{});
+            }
+            return output;
+        });
+    const query::QueryEvaluationResult invalid_output_result =
+        invalid_output_context.evaluate_generic_instance_signature(generic_instance_provider_input(subject));
+    ASSERT_EQ(invalid_output_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(invalid_output_result.node, nullptr);
+    EXPECT_EQ(invalid_output_result.node->key, *expected_key);
+    EXPECT_EQ(invalid_output_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(invalid_output_context.completed_records().empty());
+
+    query::QueryContext cyclic_context;
+    query::QueryEvaluationResult nested_result;
+    cyclic_context.set_generic_instance_signature_provider(
+        [&cyclic_context, &nested_result](const query::GenericInstanceSignatureProviderInput& provider_input) {
+            nested_result = cyclic_context.evaluate_generic_instance_signature(provider_input);
+            return query::provide_generic_instance_signature_query(provider_input);
+        });
+    const query::QueryEvaluationResult cyclic_result =
+        cyclic_context.evaluate_generic_instance_signature(generic_instance_provider_input(subject));
+    EXPECT_EQ(nested_result.status, query::QueryEvaluationStatus::cycle);
+    ASSERT_EQ(cyclic_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(cyclic_result.node, nullptr);
+    EXPECT_EQ(cyclic_result.node->status, query::QueryNodeStatus::done);
 }
 
 TEST(QueryUnit, QueryContextTracksDependenciesFailuresAndCycles)

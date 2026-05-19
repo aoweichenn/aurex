@@ -93,10 +93,11 @@ std::optional<QueryRecord> generic_instance_signature_query_record(const Generic
 std::optional<QueryRecord> generic_instance_signature_query_record(
     const GenericInstanceKey& key, const QueryResultFingerprint result)
 {
-    return generic_instance_signature_query_record(GenericInstanceSignatureQueryInput{
-        key,
-        result,
-    });
+    if (!is_valid(key) || !is_valid(result)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::generic_instance_signature, stable_key_fingerprint(key), stable_serialize(key), result);
 }
 
 } // namespace aurex::query

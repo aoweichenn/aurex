@@ -22,6 +22,11 @@ struct QueryRecord {
     std::string stable_key_bytes;
 };
 
+struct ModuleExportsQueryInput {
+    ModuleKey key;
+    QueryResultFingerprint result;
+};
+
 struct ItemSignatureQueryInput {
     DefKey key;
     QueryResultFingerprint result;
@@ -41,15 +46,20 @@ enum class QueryRecordChangeStatus : base::u8 {
 
 [[nodiscard]] bool is_valid(QueryResultFingerprint result) noexcept;
 [[nodiscard]] bool is_valid(const QueryRecord& record) noexcept;
+[[nodiscard]] bool is_valid(const ModuleExportsQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ItemSignatureQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const GenericInstanceSignatureQueryInput& input) noexcept;
 
+[[nodiscard]] QueryResultFingerprint query_result_fingerprint(StableFingerprint128 fingerprint) noexcept;
 [[nodiscard]] QueryResultFingerprint query_result_fingerprint(IncrementalKey incremental_key) noexcept;
 [[nodiscard]] QueryRecordChangeStatus query_record_change_status(
     const QueryRecord* cached, const QueryRecord& current) noexcept;
 
 [[nodiscard]] std::optional<QueryRecord> query_record(QueryKind kind, StableFingerprint128 key_payload,
     std::string stable_key_bytes, QueryResultFingerprint result);
+
+[[nodiscard]] std::optional<QueryRecord> module_exports_query_record(const ModuleExportsQueryInput& input);
+[[nodiscard]] std::optional<QueryRecord> module_exports_query_record(ModuleKey key, QueryResultFingerprint result);
 
 [[nodiscard]] std::optional<QueryRecord> item_signature_query_record(const ItemSignatureQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> item_signature_query_record(DefKey key, QueryResultFingerprint result);

@@ -1,4 +1,5 @@
 #include <aurex/query/item_signature_query.hpp>
+#include <aurex/query/module_exports_query.hpp>
 
 #include <utility>
 
@@ -39,11 +40,15 @@ std::optional<ItemSignatureProviderOutput> provide_item_signature_query(const It
 
     const QueryResultFingerprint result = query_result_fingerprint(input.signature);
     std::optional<QueryRecord> record = item_signature_query_record(input.key, result);
+    std::vector<QueryKey> dependencies;
+    if (const std::optional<QueryKey> module_exports_key = module_exports_query_key(input.key.module)) {
+        dependencies.push_back(*module_exports_key);
+    }
     // Valid provider input satisfies the typed record builder preconditions.
     return ItemSignatureProviderOutput{
         std::move(*record),
         result,
-        {},
+        std::move(dependencies),
     };
 }
 

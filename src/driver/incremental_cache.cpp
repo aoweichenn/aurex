@@ -16,6 +16,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -113,11 +114,18 @@ constexpr std::string_view INCREMENTAL_CACHE_WRITE_FAILED = "failed to write inc
 constexpr std::string_view INCREMENTAL_CACHE_RENAME_FAILED = "failed to publish incremental cache file";
 constexpr std::string_view INCREMENTAL_CACHE_DIRECTORY_FAILED = "failed to create incremental cache directory";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_DIFF = "incremental_cache.query_diff";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_PLAN = "incremental_cache.query_plan";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_TOTAL = "total=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_MISSING = ",missing=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_UNCHANGED = ",unchanged=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_CHANGED = ",changed=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_MALFORMED = ",malformed=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_REUSABLE = "reusable=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_RECOMPUTE_ROOTS = ",recompute_roots=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROPAGATED_RECOMPUTE = ",propagated_recompute=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_RECOMPUTE = ",recompute=";
+constexpr std::string_view INCREMENTAL_CACHE_MODULE_EXPORTS_RESULT_MARKER = "module-exports:v1";
+constexpr char INCREMENTAL_CACHE_MODULE_NAME_SEPARATOR = '.';
 
 struct SourceFingerprintRecord {
     std::filesystem::path path;
@@ -148,6 +156,18 @@ struct QueryKindCacheName {
 
 using QueryDependenciesByDependent =
     std::unordered_map<query::QueryKey, std::vector<query::QueryKey>, query::QueryKeyHash>;
+
+struct ModuleExportsQuerySubject {
+    query::ModuleKey key;
+    query::QueryResultFingerprint result;
+};
+
+struct ModuleExportsSignatureEntry {
+    std::string category;
+    std::string name;
+    sema::StableDefId stable_id;
+    sema::IncrementalKey incremental_key;
+};
 
 struct ItemSignatureQuerySubject {
     sema::StableDefId stable_id;
@@ -864,6 +884,15 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return detail.str();
 }
 
+[[nodiscard]] std::string query_reuse_plan_summary_detail(const query::QueryReusePlan& plan)
+{
+    std::ostringstream detail;
+    detail << INCREMENTAL_CACHE_PROFILE_REUSABLE << plan.reusable.size() << INCREMENTAL_CACHE_PROFILE_RECOMPUTE_ROOTS
+           << plan.recompute_roots.size() << INCREMENTAL_CACHE_PROFILE_PROPAGATED_RECOMPUTE
+           << plan.propagated_recompute.size() << INCREMENTAL_CACHE_PROFILE_RECOMPUTE << plan.recompute.size();
+    return detail.str();
+}
+
 void record_query_record_diff_summary(CompilationProfiler* const profiler, const query::QueryReuseSummary& summary,
     const std::chrono::steady_clock::duration elapsed)
 {
@@ -871,6 +900,15 @@ void record_query_record_diff_summary(CompilationProfiler* const profiler, const
         return;
     }
     profiler->record(INCREMENTAL_CACHE_PROFILE_QUERY_DIFF, query_record_diff_summary_detail(summary), elapsed);
+}
+
+void record_query_reuse_plan_summary(CompilationProfiler* const profiler, const query::QueryReusePlan& plan,
+    const std::chrono::steady_clock::duration elapsed)
+{
+    if (profiler == nullptr || !profiler->enabled()) {
+        return;
+    }
+    profiler->record(INCREMENTAL_CACHE_PROFILE_QUERY_PLAN, query_reuse_plan_summary_detail(plan), elapsed);
 }
 
 [[nodiscard]] bool cache_sources_match(const ParsedCache& cache)
@@ -959,6 +997,109 @@ void record_query_record_diff_summary(CompilationProfiler* const profiler, const
     return {};
 }
 
+[[nodiscard]] std::vector<std::string_view> module_name_parts(const std::string_view module_name)
+{
+    std::vector<std::string_view> parts;
+    base::usize begin = 0;
+    while (begin < module_name.size()) {
+        const base::usize end = module_name.find(INCREMENTAL_CACHE_MODULE_NAME_SEPARATOR, begin);
+        if (end == std::string_view::npos) {
+            parts.push_back(module_name.substr(begin));
+            break;
+        }
+        parts.push_back(module_name.substr(begin, end - begin));
+        begin = end + 1;
+    }
+    return parts;
+}
+
+[[nodiscard]] sema::StableModuleId stable_module_id_from_record(const ModuleRecord& module)
+{
+    const std::vector<std::string_view> parts = module_name_parts(module.name);
+    return sema::stable_module_id(std::span<const std::string_view>{parts.data(), parts.size()});
+}
+
+[[nodiscard]] bool module_exports_signature_entry_less(
+    const ModuleExportsSignatureEntry& lhs, const ModuleExportsSignatureEntry& rhs)
+{
+    return std::tie(lhs.category, lhs.name, lhs.stable_id.global_id, lhs.stable_id.name.primary,
+               lhs.stable_id.name.secondary, lhs.stable_id.name.byte_count, lhs.stable_id.disambiguator,
+               lhs.stable_id.kind, lhs.incremental_key.global_id, lhs.incremental_key.fingerprint.primary,
+               lhs.incremental_key.fingerprint.secondary, lhs.incremental_key.fingerprint.byte_count)
+        < std::tie(rhs.category, rhs.name, rhs.stable_id.global_id, rhs.stable_id.name.primary,
+            rhs.stable_id.name.secondary, rhs.stable_id.name.byte_count, rhs.stable_id.disambiguator,
+            rhs.stable_id.kind, rhs.incremental_key.global_id, rhs.incremental_key.fingerprint.primary,
+            rhs.incremental_key.fingerprint.secondary, rhs.incremental_key.fingerprint.byte_count);
+}
+
+void push_module_exports_signature_entry(std::vector<ModuleExportsSignatureEntry>& entries,
+    const std::string_view category, const std::string_view name, const sema::StableDefId& stable_id,
+    const sema::IncrementalKey& incremental_key, const syntax::Visibility visibility,
+    const sema::StableModuleId& module)
+{
+    if (visibility != syntax::Visibility::public_ || stable_id.module != module || !query::is_valid(stable_id)
+        || !query::is_valid(incremental_key)) {
+        return;
+    }
+    entries.push_back(ModuleExportsSignatureEntry{
+        std::string(category),
+        std::string(name),
+        stable_id,
+        incremental_key,
+    });
+}
+
+[[nodiscard]] std::vector<ModuleExportsSignatureEntry> collect_module_exports_signature_entries(
+    const sema::CheckedModule& checked, const sema::StableModuleId& module)
+{
+    std::vector<ModuleExportsSignatureEntry> entries;
+    entries.reserve(
+        checked.functions.size() + checked.structs.size() + checked.enum_cases.size() + checked.type_aliases.size());
+
+    for (const auto& entry : checked.functions) {
+        const sema::FunctionSignature& signature = entry.second;
+        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_FUNCTION, signature.name.view(),
+            signature.stable_id, signature.incremental_key, signature.visibility, module);
+    }
+    for (const auto& entry : checked.structs) {
+        const sema::StructInfo& info = entry.second;
+        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_STRUCT, info.name.view(),
+            info.stable_id, info.incremental_key, info.visibility, module);
+    }
+    for (const auto& entry : checked.enum_cases) {
+        const sema::EnumCaseInfo& info = entry.second;
+        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_ENUM_CASE, info.name.view(),
+            info.stable_id, info.incremental_key, info.visibility, module);
+    }
+    for (const auto& entry : checked.type_aliases) {
+        const sema::TypeAliasInfo& info = entry.second;
+        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_TYPE_ALIAS, info.name.view(),
+            info.stable_id, info.incremental_key, info.visibility, module);
+    }
+
+    std::sort(entries.begin(), entries.end(), module_exports_signature_entry_less);
+    return entries;
+}
+
+[[nodiscard]] query::QueryResultFingerprint module_exports_result_fingerprint(
+    const query::ModuleKey key, const std::vector<ModuleExportsSignatureEntry>& entries)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(INCREMENTAL_CACHE_MODULE_EXPORTS_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(key));
+    builder.mix_u64(static_cast<base::u64>(entries.size()));
+    for (base::usize index = 0; index < entries.size(); ++index) {
+        const ModuleExportsSignatureEntry& entry = entries[index];
+        builder.mix_u64(static_cast<base::u64>(index));
+        builder.mix_string(entry.category);
+        builder.mix_string(entry.name);
+        builder.mix_fingerprint(query::stable_key_fingerprint(entry.stable_id));
+        builder.mix_u64(entry.incremental_key.global_id);
+        builder.mix_fingerprint(entry.incremental_key.fingerprint);
+    }
+    return query::query_result_fingerprint(builder.finish());
+}
+
 [[nodiscard]] query::DefKind function_signature_def_kind(const sema::FunctionSignature& signature) noexcept
 {
     return signature.is_method ? query::DefKind::method : query::DefKind::function;
@@ -996,6 +1137,32 @@ void push_generic_instance_signature_query_subject(std::vector<GenericInstanceSi
     });
 }
 
+void push_module_exports_query_subject(
+    std::vector<ModuleExportsQuerySubject>& subjects, const ModuleRecord& module, const sema::CheckedModule& checked)
+{
+    const sema::StableModuleId stable_module = stable_module_id_from_record(module);
+    const query::ModuleKey key = query::module_key_from_stable_id(stable_module);
+    if (!query::is_valid(stable_module) || !query::is_valid(key)) {
+        return;
+    }
+
+    const std::vector<ModuleExportsSignatureEntry> entries =
+        collect_module_exports_signature_entries(checked, stable_module);
+    subjects.push_back(ModuleExportsQuerySubject{
+        key,
+        module_exports_result_fingerprint(key, entries),
+    });
+}
+
+void evaluate_module_exports_query_subject(query::QueryContext& context, const ModuleExportsQuerySubject& subject)
+{
+    const query::ModuleExportsProviderInput input{
+        subject.key,
+        subject.result,
+    };
+    static_cast<void>(context.evaluate_module_exports(input));
+}
+
 void evaluate_item_signature_query_subject(query::QueryContext& context, const ItemSignatureQuerySubject& subject)
 {
     const query::ItemSignatureProviderInput input{
@@ -1013,6 +1180,17 @@ void evaluate_generic_instance_signature_query_subject(
         subject.incremental_key,
     };
     static_cast<void>(context.evaluate_generic_instance_signature(input));
+}
+
+[[nodiscard]] std::vector<ModuleExportsQuerySubject> collect_module_exports_query_subjects(
+    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked)
+{
+    std::vector<ModuleExportsQuerySubject> subjects;
+    subjects.reserve(modules.size());
+    for (const ModuleRecord& module : modules) {
+        push_module_exports_query_subject(subjects, module, checked);
+    }
+    return subjects;
 }
 
 [[nodiscard]] std::vector<ItemSignatureQuerySubject> collect_item_signature_query_subjects(
@@ -1078,6 +1256,14 @@ void evaluate_generic_instance_signature_query_subjects(
     }
 }
 
+void evaluate_module_exports_query_subjects(
+    query::QueryContext& context, const std::vector<ModuleExportsQuerySubject>& subjects)
+{
+    for (const ModuleExportsQuerySubject& subject : subjects) {
+        evaluate_module_exports_query_subject(context, subject);
+    }
+}
+
 [[nodiscard]] std::vector<DefinitionRecord> collect_definitions(const sema::CheckedModule& checked)
 {
     std::vector<DefinitionRecord> records;
@@ -1124,13 +1310,17 @@ void evaluate_generic_instance_signature_query_subjects(
     return records;
 }
 
-[[nodiscard]] QueryCollection collect_queries(const sema::CheckedModule& checked)
+[[nodiscard]] QueryCollection collect_queries(
+    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked)
 {
+    const std::vector<ModuleExportsQuerySubject> module_subjects =
+        collect_module_exports_query_subjects(modules, checked);
     const std::vector<ItemSignatureQuerySubject> item_subjects = collect_item_signature_query_subjects(checked);
     const std::vector<GenericInstanceSignatureQuerySubject> generic_subjects =
         collect_generic_instance_signature_query_subjects(checked);
 
     query::QueryContext context;
+    evaluate_module_exports_query_subjects(context, module_subjects);
     evaluate_item_signature_query_subjects(context, item_subjects);
     evaluate_generic_instance_signature_query_subjects(context, generic_subjects);
     return QueryCollection{
@@ -1279,12 +1469,14 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     const std::vector<SourceFingerprintRecord> source_records = collect_source_fingerprints(sources);
     const std::vector<ModuleRecord> module_records = sorted_modules(modules);
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
-    const QueryCollection query_collection = collect_queries(checked);
+    const QueryCollection query_collection = collect_queries(module_records, checked);
     const auto query_diff_started = std::chrono::steady_clock::now();
     const query::QueryReusePlan query_reuse_plan =
         build_existing_query_reuse_plan(cache_path, query_collection.records);
-    record_query_record_diff_summary(
-        profiler, query_reuse_plan.summary, std::chrono::steady_clock::now() - query_diff_started);
+    const std::chrono::steady_clock::duration query_diff_elapsed =
+        std::chrono::steady_clock::now() - query_diff_started;
+    record_query_record_diff_summary(profiler, query_reuse_plan.summary, query_diff_elapsed);
+    record_query_reuse_plan_summary(profiler, query_reuse_plan, query_diff_elapsed);
 
     const std::filesystem::path temporary_path = temporary_cache_path(cache_path);
     {

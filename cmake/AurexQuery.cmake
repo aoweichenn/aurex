@@ -4,6 +4,7 @@ add_library(aurex_query
     src/query/query_key.cpp
     src/query/query_result.cpp
     src/query/query_reuse.cpp
+    src/query/module_exports_query.cpp
     src/query/item_signature_query.cpp
     src/query/generic_instance_signature_query.cpp
     src/query/query_context.cpp

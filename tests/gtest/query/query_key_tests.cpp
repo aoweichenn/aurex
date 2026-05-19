@@ -1,6 +1,7 @@
 #include <aurex/query/generic_instance_key.hpp>
 #include <aurex/query/generic_instance_signature_query.hpp>
 #include <aurex/query/item_signature_query.hpp>
+#include <aurex/query/module_exports_query.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/query/query_reuse.hpp>
@@ -411,6 +412,25 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_EQ(result.fingerprint, incremental_key.fingerprint);
     EXPECT_EQ(result.global_id, incremental_key.global_id);
 
+    const query::StableFingerprint128 exports_fingerprint =
+        query::stable_fingerprint(QUERY_TEST_MODULE_EXPORTS_SIGNATURE);
+    const query::QueryResultFingerprint exports_result = query::query_result_fingerprint(exports_fingerprint);
+    ASSERT_TRUE(query::is_valid(exports_result));
+    EXPECT_EQ(exports_result.fingerprint, exports_fingerprint);
+    EXPECT_NE(exports_result.global_id, 0U);
+    const query::ModuleExportsQueryInput exports_input{
+        module,
+        exports_result,
+    };
+    EXPECT_TRUE(query::is_valid(exports_input));
+    const std::optional<query::QueryRecord> exports_record = query::module_exports_query_record(exports_input);
+    ASSERT_TRUE(exports_record.has_value());
+    EXPECT_TRUE(query::is_valid(*exports_record));
+    EXPECT_EQ(exports_record->key.kind, query::QueryKind::module_exports);
+    EXPECT_EQ(exports_record->key.payload, query::stable_key_fingerprint(module));
+    EXPECT_EQ(exports_record->stable_key_bytes, query::stable_serialize(module));
+    EXPECT_EQ(exports_record->result, exports_result);
+
     const query::ItemSignatureQueryInput item_input{
         function_def,
         result,
@@ -458,6 +478,7 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
 
     EXPECT_FALSE(query::is_valid(query::QueryResultFingerprint{}));
     EXPECT_FALSE(query::is_valid(query::QueryRecord{}));
+    EXPECT_FALSE(query::is_valid(query::query_result_fingerprint(query::StableFingerprint128{})));
     EXPECT_FALSE(query::is_valid(query::query_result_fingerprint(query::IncrementalKey{})));
     EXPECT_FALSE(query::query_record(query::QueryKind::invalid, query::stable_key_fingerprint(function_def),
         query::stable_serialize(function_def), result)
@@ -465,6 +486,14 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_FALSE(
         query::query_record(query::QueryKind::item_signature, query::stable_key_fingerprint(function_def), "", result)
             .has_value());
+    EXPECT_FALSE(query::is_valid(query::ModuleExportsQueryInput{}));
+    EXPECT_FALSE(
+        query::module_exports_query_record(query::ModuleExportsQueryInput{query::ModuleKey{}, result}).has_value());
+    EXPECT_FALSE(
+        query::module_exports_query_record(query::ModuleExportsQueryInput{module, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::module_exports_query_record(query::ModuleKey{}, result).has_value());
+    EXPECT_FALSE(query::module_exports_query_record(module, query::QueryResultFingerprint{}).has_value());
     EXPECT_FALSE(query::is_valid(query::ItemSignatureQueryInput{}));
     EXPECT_FALSE(
         query::item_signature_query_record(query::ItemSignatureQueryInput{query::DefKey{}, result}).has_value());
@@ -486,6 +515,49 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     const query::QueryRecord invalid_cached_record;
     EXPECT_EQ(query::query_record_change_status(&invalid_cached_record, *item_record),
         query::QueryRecordChangeStatus::malformed);
+}
+
+TEST(QueryUnit, ModuleExportsProviderBuildsRecordFromStableModule)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::QueryResultFingerprint exports =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_MODULE_EXPORTS_SIGNATURE));
+    const std::optional<query::QueryKey> expected_key = query::module_exports_query_key(module);
+    ASSERT_TRUE(expected_key.has_value());
+
+    const query::ModuleExportsProviderInput input{
+        module,
+        exports,
+    };
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::ModuleExportsProviderOutput> output = query::provide_module_exports_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    EXPECT_TRUE(output->dependencies.empty());
+    EXPECT_EQ(output->record.key, *expected_key);
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::module_exports);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(module));
+    EXPECT_EQ(output->result, exports);
+    EXPECT_EQ(output->record.result, output->result);
+
+    EXPECT_FALSE(query::module_exports_query_key(query::ModuleKey{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::ModuleExportsProviderInput{}));
+    EXPECT_FALSE(query::provide_module_exports_query(query::ModuleExportsProviderInput{query::ModuleKey{}, exports})
+            .has_value());
+    EXPECT_FALSE(
+        query::provide_module_exports_query(query::ModuleExportsProviderInput{module, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::ModuleExportsProviderOutput{}));
+
+    query::ModuleExportsProviderOutput invalid_dependency_output = *output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::ModuleExportsProviderOutput mismatched_result_output = *output;
+    mismatched_result_output.result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_CHANGED_MODULE_EXPORTS_SIGNATURE));
+    EXPECT_FALSE(query::is_valid(mismatched_result_output));
 }
 
 TEST(QueryUnit, ItemSignatureProviderBuildsRecordFromStableDefinition)
@@ -515,7 +587,9 @@ TEST(QueryUnit, ItemSignatureProviderBuildsRecordFromStableDefinition)
     const std::optional<query::ItemSignatureProviderOutput> output = query::provide_item_signature_query(input);
     ASSERT_TRUE(output.has_value());
     EXPECT_TRUE(query::is_valid(*output));
-    EXPECT_TRUE(output->dependencies.empty());
+    const std::optional<query::QueryKey> module_exports_key = query::module_exports_query_key(function_def.module);
+    ASSERT_TRUE(module_exports_key.has_value());
+    EXPECT_EQ(output->dependencies, std::vector<query::QueryKey>{*module_exports_key});
     EXPECT_EQ(output->record.key.kind, query::QueryKind::item_signature);
     EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(function_def));
     EXPECT_EQ(output->result, query::query_result_fingerprint(signature));
@@ -552,7 +626,10 @@ TEST(QueryUnit, GenericInstanceSignatureProviderBuildsRecordFromStableInstance)
         query::provide_generic_instance_signature_query(input);
     ASSERT_TRUE(output.has_value());
     EXPECT_TRUE(query::is_valid(*output));
-    EXPECT_TRUE(output->dependencies.empty());
+    const std::optional<query::QueryKey> module_exports_key =
+        query::module_exports_query_key(subject.key.template_def.module);
+    ASSERT_TRUE(module_exports_key.has_value());
+    EXPECT_EQ(output->dependencies, std::vector<query::QueryKey>{*module_exports_key});
     EXPECT_EQ(output->record.key, *expected_key);
     EXPECT_EQ(output->record.key.kind, query::QueryKind::generic_instance_signature);
     EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.key));
@@ -616,6 +693,54 @@ TEST(QueryUnit, QueryContextCachesItemSignatureAndEmitsCompletedRecords)
 
     context.set_item_signature_provider({});
     const query::QueryEvaluationResult cached_after_reset = context.evaluate_item_signature(subject.input);
+    EXPECT_EQ(cached_after_reset.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(provider_calls, 1U);
+}
+
+TEST(QueryUnit, QueryContextCachesModuleExportsAndEmitsCompletedRecords)
+{
+    const query::ModuleKey module = test_module(test_package());
+    const query::QueryResultFingerprint exports =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_MODULE_EXPORTS_SIGNATURE));
+    const query::ModuleExportsProviderInput input{
+        module,
+        exports,
+    };
+    const std::optional<query::QueryKey> expected_key = query::module_exports_query_key(module);
+    ASSERT_TRUE(expected_key.has_value());
+
+    base::usize provider_calls = 0;
+    query::QueryContext context(
+        query::ModuleExportsProvider{[&provider_calls](const query::ModuleExportsProviderInput& provider_input) {
+            ++provider_calls;
+            return query::provide_module_exports_query(provider_input);
+        }},
+        query::ItemSignatureProvider{query::provide_item_signature_query},
+        query::GenericInstanceSignatureProvider{query::provide_generic_instance_signature_query});
+
+    const query::QueryEvaluationResult first = context.evaluate_module_exports(input);
+    ASSERT_EQ(first.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(first.node, nullptr);
+    EXPECT_EQ(first.node->status, query::QueryNodeStatus::done);
+    EXPECT_EQ(first.node->key, *expected_key);
+    EXPECT_EQ(first.node->record.key, *expected_key);
+    EXPECT_EQ(first.node->record.result, exports);
+    EXPECT_EQ(provider_calls, 1U);
+    EXPECT_EQ(context.find(*expected_key), first.node);
+
+    const std::vector<query::QueryRecord> records = context.completed_records();
+    ASSERT_EQ(records.size(), 1U);
+    EXPECT_EQ(records.front().key, first.node->record.key);
+    EXPECT_EQ(records.front().result, first.node->record.result);
+    EXPECT_EQ(records.front().stable_key_bytes, first.node->record.stable_key_bytes);
+
+    const query::QueryEvaluationResult second = context.evaluate_module_exports(input);
+    EXPECT_EQ(second.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(second.node, first.node);
+    EXPECT_EQ(provider_calls, 1U);
+
+    context.set_module_exports_provider({});
+    const query::QueryEvaluationResult cached_after_reset = context.evaluate_module_exports(input);
     EXPECT_EQ(cached_after_reset.status, query::QueryEvaluationStatus::cached);
     EXPECT_EQ(provider_calls, 1U);
 }
@@ -712,7 +837,9 @@ TEST(QueryUnit, QueryContextBuildsDeterministicDependencyEdgeTable)
             std::optional<query::GenericInstanceSignatureProviderOutput> output =
                 query::provide_generic_instance_signature_query(provider_input);
             if (output) {
-                output->dependencies.push_back(shared_dependency);
+                output->dependencies = {
+                    shared_dependency,
+                };
             }
             return output;
         });
@@ -768,6 +895,101 @@ TEST(QueryUnit, QueryContextBuildsDeterministicDependencyEdgeTable)
     EXPECT_TRUE(contains_query_dependency_edge(edges, query::QueryDependencyEdge{*item_key, item_only_dependency}));
     EXPECT_TRUE(contains_query_dependency_edge(edges, query::QueryDependencyEdge{*generic_key, shared_dependency}));
     EXPECT_TRUE(context.dependencies_for(query::QueryKey{}).empty());
+}
+
+TEST(QueryUnit, QueryContextTracksModuleExportsFailuresAndCycles)
+{
+    const query::ModuleKey module = test_module(test_package());
+    const query::QueryResultFingerprint exports =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_MODULE_EXPORTS_SIGNATURE));
+    const query::ModuleExportsProviderInput input{
+        module,
+        exports,
+    };
+    const std::optional<query::QueryKey> expected_key = query::module_exports_query_key(module);
+    ASSERT_TRUE(expected_key.has_value());
+    const query::QueryKey dependency =
+        query::query_key(query::QueryKind::diagnostics, query::stable_key_fingerprint(module));
+
+    query::QueryContext dependency_context;
+    dependency_context.set_module_exports_provider([dependency](
+                                                       const query::ModuleExportsProviderInput& provider_input) {
+        std::optional<query::ModuleExportsProviderOutput> output = query::provide_module_exports_query(provider_input);
+        if (output) {
+            output->dependencies.push_back(dependency);
+        }
+        return output;
+    });
+    const query::QueryEvaluationResult dependency_result = dependency_context.evaluate_module_exports(input);
+    ASSERT_EQ(dependency_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(dependency_result.node, nullptr);
+    ASSERT_EQ(dependency_result.node->dependencies.size(), 1U);
+    EXPECT_EQ(dependency_result.node->dependencies.front(), dependency);
+
+    const query::QueryEvaluationResult invalid_key_result =
+        dependency_context.evaluate_module_exports(query::ModuleExportsProviderInput{query::ModuleKey{}, exports});
+    EXPECT_EQ(invalid_key_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(invalid_key_result.node, nullptr);
+
+    query::QueryContext failing_context;
+    failing_context.set_module_exports_provider(
+        [](const query::ModuleExportsProviderInput&) -> std::optional<query::ModuleExportsProviderOutput> {
+            return std::nullopt;
+        });
+    const query::QueryEvaluationResult failed_result = failing_context.evaluate_module_exports(input);
+    ASSERT_EQ(failed_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(failed_result.node, nullptr);
+    EXPECT_EQ(failed_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(failing_context.completed_records().empty());
+
+    failing_context.set_module_exports_provider({});
+    const query::QueryEvaluationResult retry_result = failing_context.evaluate_module_exports(input);
+    ASSERT_EQ(retry_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(retry_result.node, nullptr);
+    EXPECT_EQ(retry_result.node->status, query::QueryNodeStatus::done);
+
+    const std::array<std::string_view, 1> other_module_path{"other"};
+    const query::ModuleKey other_module = query::module_key(test_package(), other_module_path);
+    query::QueryContext wrong_key_context;
+    wrong_key_context.set_module_exports_provider([other_module, exports](const query::ModuleExportsProviderInput&) {
+        return query::provide_module_exports_query(query::ModuleExportsProviderInput{
+            other_module,
+            exports,
+        });
+    });
+    const query::QueryEvaluationResult wrong_key_result = wrong_key_context.evaluate_module_exports(input);
+    ASSERT_EQ(wrong_key_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(wrong_key_result.node, nullptr);
+    EXPECT_EQ(wrong_key_result.node->key, *expected_key);
+    EXPECT_EQ(wrong_key_result.node->status, query::QueryNodeStatus::failed);
+
+    query::QueryContext invalid_output_context;
+    invalid_output_context.set_module_exports_provider([](const query::ModuleExportsProviderInput& provider_input) {
+        std::optional<query::ModuleExportsProviderOutput> output = query::provide_module_exports_query(provider_input);
+        if (output) {
+            output->dependencies.push_back(query::QueryKey{});
+        }
+        return output;
+    });
+    const query::QueryEvaluationResult invalid_output_result = invalid_output_context.evaluate_module_exports(input);
+    ASSERT_EQ(invalid_output_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(invalid_output_result.node, nullptr);
+    EXPECT_EQ(invalid_output_result.node->key, *expected_key);
+    EXPECT_EQ(invalid_output_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(invalid_output_context.completed_records().empty());
+
+    query::QueryContext cyclic_context;
+    query::QueryEvaluationResult nested_result;
+    cyclic_context.set_module_exports_provider(
+        [&cyclic_context, &nested_result](const query::ModuleExportsProviderInput& provider_input) {
+            nested_result = cyclic_context.evaluate_module_exports(provider_input);
+            return query::provide_module_exports_query(provider_input);
+        });
+    const query::QueryEvaluationResult cyclic_result = cyclic_context.evaluate_module_exports(input);
+    EXPECT_EQ(nested_result.status, query::QueryEvaluationStatus::cycle);
+    ASSERT_EQ(cyclic_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(cyclic_result.node, nullptr);
+    EXPECT_EQ(cyclic_result.node->status, query::QueryNodeStatus::done);
 }
 
 TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
@@ -998,7 +1220,9 @@ TEST(QueryUnit, QueryContextTracksGenericInstanceDependenciesFailuresAndCycles)
             std::optional<query::GenericInstanceSignatureProviderOutput> output =
                 query::provide_generic_instance_signature_query(provider_input);
             if (output) {
-                output->dependencies.push_back(dependency);
+                output->dependencies = {
+                    dependency,
+                };
             }
             return output;
         });

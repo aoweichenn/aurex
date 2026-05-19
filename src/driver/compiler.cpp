@@ -373,7 +373,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
     if (invocation.emit_kind == EmitKind::check) {
         auto cache_result = [&] {
             ScopedCompilationPhase phase(run_profile.profiler(), "incremental_cache.lookup");
-            return try_reuse_incremental_check_cache(invocation);
+            return try_reuse_incremental_check_cache(invocation, run_profile.profiler());
         }();
         if (!cache_result) {
             return run_profile.finish(base::Result<void>::fail(cache_result.error()));

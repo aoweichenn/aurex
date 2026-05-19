@@ -120,11 +120,25 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_DIFF = "incremental_c
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_PLAN = "incremental_cache.query_plan";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_PRUNING = "incremental_cache.query_pruning";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_PROVIDER_EVAL = "incremental_cache.query_provider_eval";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_SOURCE_STAGE_REUSE = "incremental_cache.source_stage_reuse";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_TOTAL = "total=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_MISSING = ",missing=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_UNCHANGED = ",unchanged=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_CHANGED = ",changed=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_MALFORMED = ",malformed=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_RESULT = "result=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_REUSE = "reuse";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_REJECT = "reject";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_REASON = ",reason=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_REASON_NONE = "none";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_REASON_MISSING_ROOT_SOURCE = "missing_root_source";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_REASON_SOURCE_FAILURE = "source_failure";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_REASON_MISSING_QUERY = "missing_query";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_REASON_CHANGED_QUERY = "changed_query";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_REASON_MALFORMED_QUERY = "malformed_query";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_SOURCES = ",sources=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERIES = ",queries=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_SOURCE_FAILURES = ",source_failures=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_REUSABLE = "reusable=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_RECOMPUTE_ROOTS = ",recompute_roots=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROPAGATED_RECOMPUTE = ",propagated_recompute=";
@@ -332,6 +346,18 @@ struct ParseFileQuerySubject {
 struct SourceStageQueryRecords {
     query::QueryRecord lex_file;
     query::QueryRecord parse_file;
+};
+
+struct SourceStageReuseSummary {
+    bool reusable = true;
+    std::string_view reason = INCREMENTAL_CACHE_PROFILE_REASON_NONE;
+    base::usize sources = 0;
+    base::usize queries = 0;
+    base::usize unchanged = 0;
+    base::usize missing = 0;
+    base::usize changed = 0;
+    base::usize malformed = 0;
+    base::usize source_failures = 0;
 };
 
 struct ModuleExportsQuerySubject {
@@ -1353,6 +1379,19 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
     return detail.str();
 }
 
+[[nodiscard]] std::string source_stage_reuse_summary_detail(const SourceStageReuseSummary& summary)
+{
+    std::ostringstream detail;
+    detail << INCREMENTAL_CACHE_PROFILE_RESULT
+           << (summary.reusable ? INCREMENTAL_CACHE_PROFILE_REUSE : INCREMENTAL_CACHE_PROFILE_REJECT)
+           << INCREMENTAL_CACHE_PROFILE_REASON << summary.reason << INCREMENTAL_CACHE_PROFILE_SOURCES << summary.sources
+           << INCREMENTAL_CACHE_PROFILE_QUERIES << summary.queries << INCREMENTAL_CACHE_PROFILE_UNCHANGED
+           << summary.unchanged << INCREMENTAL_CACHE_PROFILE_MISSING << summary.missing
+           << INCREMENTAL_CACHE_PROFILE_CHANGED << summary.changed << INCREMENTAL_CACHE_PROFILE_MALFORMED
+           << summary.malformed << INCREMENTAL_CACHE_PROFILE_SOURCE_FAILURES << summary.source_failures;
+    return detail.str();
+}
+
 void record_query_record_diff_summary(CompilationProfiler* const profiler, const query::QueryReuseSummary& summary,
     const std::chrono::steady_clock::duration elapsed)
 {
@@ -1388,6 +1427,15 @@ void record_query_provider_evaluation_summary(CompilationProfiler* const profile
     }
     profiler->record(
         INCREMENTAL_CACHE_PROFILE_QUERY_PROVIDER_EVAL, query_provider_evaluation_summary_detail(stats), elapsed);
+}
+
+void record_source_stage_reuse_summary(CompilationProfiler* const profiler, const SourceStageReuseSummary& summary,
+    const std::chrono::steady_clock::duration elapsed)
+{
+    if (profiler == nullptr || !profiler->enabled()) {
+        return;
+    }
+    profiler->record(INCREMENTAL_CACHE_PROFILE_SOURCE_STAGE_REUSE, source_stage_reuse_summary_detail(summary), elapsed);
 }
 
 [[nodiscard]] bool query_reuse_plan_matches_records(
@@ -1706,38 +1754,73 @@ void mix_token_stream_result(query::StableHashBuilder& builder, const std::span<
     return source_stage_query_records_for_text(path, std::move(*text));
 }
 
-[[nodiscard]] bool cached_query_record_unchanged(
+[[nodiscard]] query::QueryRecordChangeStatus cached_query_record_status(
     const query::QueryContext& cached_context, const query::QueryRecord& current)
 {
     const query::QueryNode* const cached_node = cached_context.find(current.key);
-    return cached_node != nullptr
-        && query::query_record_change_status(&cached_node->record, current)
-        == query::QueryRecordChangeStatus::unchanged;
+    return query::query_record_change_status(cached_node == nullptr ? nullptr : &cached_node->record, current);
 }
 
-[[nodiscard]] bool source_stage_queries_green_for_source(
+void reject_source_stage_reuse(SourceStageReuseSummary& summary, const std::string_view reason) noexcept
+{
+    if (summary.reusable) {
+        summary.reusable = false;
+        summary.reason = reason;
+    }
+}
+
+void add_source_stage_query_status(SourceStageReuseSummary& summary, const query::QueryRecordChangeStatus status)
+{
+    ++summary.queries;
+    switch (status) {
+        case query::QueryRecordChangeStatus::missing:
+            ++summary.missing;
+            reject_source_stage_reuse(summary, INCREMENTAL_CACHE_PROFILE_REASON_MISSING_QUERY);
+            break;
+        case query::QueryRecordChangeStatus::unchanged:
+            ++summary.unchanged;
+            break;
+        case query::QueryRecordChangeStatus::changed:
+            ++summary.changed;
+            reject_source_stage_reuse(summary, INCREMENTAL_CACHE_PROFILE_REASON_CHANGED_QUERY);
+            break;
+        case query::QueryRecordChangeStatus::malformed:
+            ++summary.malformed;
+            reject_source_stage_reuse(summary, INCREMENTAL_CACHE_PROFILE_REASON_MALFORMED_QUERY);
+            break;
+    }
+}
+
+void update_source_stage_reuse_summary_for_source(SourceStageReuseSummary& summary,
     const query::QueryContext& cached_context, const SourceFingerprintRecord& cached_source)
 {
+    ++summary.sources;
     const std::optional<SourceStageQueryRecords> current = source_stage_query_records_for_file(cached_source.path);
     if (!current) {
-        return false;
+        ++summary.source_failures;
+        reject_source_stage_reuse(summary, INCREMENTAL_CACHE_PROFILE_REASON_SOURCE_FAILURE);
+        return;
     }
-    return cached_query_record_unchanged(cached_context, current->lex_file)
-        && cached_query_record_unchanged(cached_context, current->parse_file);
+    add_source_stage_query_status(summary, cached_query_record_status(cached_context, current->lex_file));
+    add_source_stage_query_status(summary, cached_query_record_status(cached_context, current->parse_file));
 }
 
-[[nodiscard]] bool source_stage_queries_green_for_cache(const ParsedCache& cache)
+[[nodiscard]] SourceStageReuseSummary source_stage_reuse_summary_for_cache(
+    const ParsedCache& cache, const bool collect_all_statuses)
 {
+    SourceStageReuseSummary summary;
     if (!cache_has_root_source(cache)) {
-        return false;
+        reject_source_stage_reuse(summary, INCREMENTAL_CACHE_PROFILE_REASON_MISSING_ROOT_SOURCE);
+        return summary;
     }
     const query::QueryContext cached_context = seed_query_context_from_cache(cache);
     for (const SourceFingerprintRecord& cached_source : cache.sources) {
-        if (!source_stage_queries_green_for_source(cached_context, cached_source)) {
-            return false;
+        update_source_stage_reuse_summary_for_source(summary, cached_context, cached_source);
+        if (!summary.reusable && !collect_all_statuses) {
+            break;
         }
     }
-    return true;
+    return summary;
 }
 
 [[nodiscard]] query::QueryResultFingerprint module_graph_result_fingerprint(
@@ -3028,7 +3111,8 @@ void write_query_dependency_edge_record(std::ostream& out, const query::QueryDep
 
 } // namespace
 
-base::Result<bool> try_reuse_incremental_check_cache(const CompilerInvocation& invocation)
+base::Result<bool> try_reuse_incremental_check_cache(
+    const CompilerInvocation& invocation, CompilationProfiler* const profiler)
 {
     if (invocation.incremental_cache_path.empty() || invocation.emit_kind != EmitKind::check) {
         return base::Result<bool>::ok(false);
@@ -3044,10 +3128,17 @@ base::Result<bool> try_reuse_incremental_check_cache(const CompilerInvocation& i
     if (cache_sources_match(*cache)) {
         return base::Result<bool>::ok(true);
     }
-    if (!invocation.experimental_query_pruning || !source_stage_queries_green_for_cache(*cache)) {
+    if (!invocation.experimental_query_pruning) {
         return base::Result<bool>::ok(false);
     }
-    return base::Result<bool>::ok(true);
+
+    const bool collect_all_statuses = profiler != nullptr && profiler->enabled();
+    const auto source_stage_reuse_started = std::chrono::steady_clock::now();
+    const SourceStageReuseSummary source_stage_reuse =
+        source_stage_reuse_summary_for_cache(*cache, collect_all_statuses);
+    record_source_stage_reuse_summary(
+        profiler, source_stage_reuse, std::chrono::steady_clock::now() - source_stage_reuse_started);
+    return base::Result<bool>::ok(source_stage_reuse.reusable);
 }
 
 base::Result<void> write_incremental_cache(const CompilerInvocation& invocation, const base::SourceManager& sources,

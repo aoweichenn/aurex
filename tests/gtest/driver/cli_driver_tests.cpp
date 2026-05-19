@@ -64,6 +64,10 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_ROOT_SOURCE =
 constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_FIRST_SOURCE =
     "module shared.util;\n"
     "pub fn twice(value: i32) -> i32 { return value + value; }\n";
+constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_COMMENT_ONLY_SOURCE =
+    "module shared.util;\n"
+    "// dependency comment-only edit should preserve token and parse query results\n"
+    "pub fn twice(value: i32) -> i32 { return value + value; }\n";
 constexpr std::string_view DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE =
     "module shared.util;\n"
     "pub fn twice(value: i32) -> i32 { return value + 21; }\n";
@@ -111,6 +115,26 @@ constexpr std::string_view CACHE_TEST_QUERY_DIFF_PROFILE_PHASE = "incremental_ca
 constexpr std::string_view CACHE_TEST_QUERY_PLAN_PROFILE_PHASE = "incremental_cache.query_plan";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_PROFILE_PHASE = "incremental_cache.query_pruning";
 constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_PROFILE_PHASE = "incremental_cache.query_provider_eval";
+constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE = "incremental_cache.source_stage_reuse";
+constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_GREEN_DETAIL =
+    "result=reuse,reason=none,sources=1,queries=2,unchanged=2,missing=0,changed=0,malformed=0,source_failures=0";
+constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_CHANGED_DETAIL =
+    "result=reject,reason=changed_query,sources=1,queries=2,unchanged=0,missing=0,changed=2,malformed=0,"
+    "source_failures=0";
+constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_IMPORT_GREEN_DETAIL =
+    "result=reuse,reason=none,sources=2,queries=4,unchanged=4,missing=0,changed=0,malformed=0,source_failures=0";
+constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_IMPORT_CHANGED_DETAIL =
+    "result=reject,reason=changed_query,sources=2,queries=4,unchanged=2,missing=0,changed=2,malformed=0,"
+    "source_failures=0";
+constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_MISSING_ROOT_DETAIL =
+    "result=reject,reason=missing_root_source,sources=0,queries=0,unchanged=0,missing=0,changed=0,malformed=0,"
+    "source_failures=0";
+constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_MISSING_QUERY_DETAIL =
+    "result=reject,reason=missing_query,sources=1,queries=2,unchanged=0,missing=2,changed=0,malformed=0,"
+    "source_failures=0";
+constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_SOURCE_FAILURE_DETAIL =
+    "result=reject,reason=source_failure,sources=1,queries=0,unchanged=0,missing=0,changed=0,malformed=0,"
+    "source_failures=1";
 constexpr std::string_view CACHE_TEST_QUERY_DIFF_MISSING_DETAIL =
     "total=18,missing=18,unchanged=0,changed=0,malformed=0";
 constexpr std::string_view CACHE_TEST_QUERY_DIFF_UNCHANGED_DETAIL =
@@ -515,6 +539,14 @@ void expect_query_profile_phases(
     EXPECT_EQ(profiler.phases()[0].detail, diff_detail);
     EXPECT_EQ(profiler.phases()[1].name, CACHE_TEST_QUERY_PLAN_PROFILE_PHASE);
     EXPECT_EQ(profiler.phases()[1].detail, plan_detail);
+}
+
+void expect_single_profile_phase(
+    const driver::CompilationProfiler& profiler, const std::string_view name, const std::string_view detail)
+{
+    ASSERT_EQ(profiler.phases().size(), 1U);
+    EXPECT_EQ(profiler.phases()[0].name, name);
+    EXPECT_EQ(profiler.phases()[0].detail, detail);
 }
 
 void expect_query_profile_phases_with_pruning(const driver::CompilationProfiler& profiler,
@@ -1311,15 +1343,102 @@ TEST_F(AurexIntegrationTest, IncrementalCacheExperimentalPruningReusesCommentOnl
 
     driver::CompilerInvocation pruning_invocation = invocation;
     pruning_invocation.experimental_query_pruning = true;
-    auto source_stage_green_reuse = driver::try_reuse_incremental_check_cache(pruning_invocation);
+    driver::CompilationProfiler source_stage_green_profiler(true);
+    auto source_stage_green_reuse =
+        driver::try_reuse_incremental_check_cache(pruning_invocation, &source_stage_green_profiler);
     ASSERT_TRUE(source_stage_green_reuse) << source_stage_green_reuse.error().message;
     EXPECT_TRUE(source_stage_green_reuse.value());
+    expect_single_profile_phase(source_stage_green_profiler, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE,
+        CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_GREEN_DETAIL);
+
+    driver::CompilerInvocation profiled_pruning_invocation = pruning_invocation;
+    profiled_pruning_invocation.profile_output_path = cache_dir / "source-stage-green.profile.json";
+    auto profiled_green = compiler.run(profiled_pruning_invocation);
+    ASSERT_TRUE(profiled_green) << profiled_green.error().message;
+    const std::string profile_text = read_text(profiled_pruning_invocation.profile_output_path);
+    expect_contains(profile_text, "\"name\": \"incremental_cache.lookup\"");
+    expect_contains(profile_text, "\"name\": \"incremental_cache.source_stage_reuse\"");
+    expect_contains(profile_text, CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_GREEN_DETAIL);
 
     write_source(DRIVER_INCREMENTAL_CACHE_SECOND_SOURCE);
     driver::clear_file_cache();
-    auto token_changed_reuse = driver::try_reuse_incremental_check_cache(pruning_invocation);
+    driver::CompilationProfiler token_changed_profiler(true);
+    auto token_changed_reuse = driver::try_reuse_incremental_check_cache(pruning_invocation, &token_changed_profiler);
     ASSERT_TRUE(token_changed_reuse) << token_changed_reuse.error().message;
     EXPECT_FALSE(token_changed_reuse.value());
+    expect_single_profile_phase(token_changed_profiler, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE,
+        CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_CHANGED_DETAIL);
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheExperimentalPruningProfilesSourceStageRejectReasons)
+{
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-source-stage-reject-profile";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    const fs::path canonical_source = fs::weakly_canonical(source);
+
+    const auto write_source = [&](const std::string_view text) {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
+    const auto write_cache = [&](const std::string_view text) {
+        std::ofstream out(cache, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
+    const auto expect_source_stage_reject = [&](const std::string_view expected_detail) {
+        driver::CompilerInvocation pruning_invocation;
+        pruning_invocation.input_path = source;
+        pruning_invocation.emit_kind = driver::EmitKind::check;
+        pruning_invocation.incremental_cache_path = cache;
+        pruning_invocation.experimental_query_pruning = true;
+        driver::CompilationProfiler profiler(true);
+        auto reuse = driver::try_reuse_incremental_check_cache(pruning_invocation, &profiler);
+        ASSERT_TRUE(reuse) << reuse.error().message;
+        EXPECT_FALSE(reuse.value());
+        expect_single_profile_phase(profiler, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE, expected_detail);
+    };
+
+    write_source(DRIVER_INCREMENTAL_CACHE_FIRST_SOURCE);
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+
+    driver::Compiler compiler;
+    auto first = compiler.run(invocation);
+    ASSERT_TRUE(first) << first.error().message;
+    const std::string valid_cache = read_text(cache);
+
+    write_source(DRIVER_INCREMENTAL_CACHE_COMMENT_ONLY_SOURCE);
+    driver::clear_file_cache();
+    write_cache(minimal_cache_without_sources(canonical_source));
+    expect_source_stage_reject(CACHE_TEST_SOURCE_STAGE_REUSE_MISSING_ROOT_DETAIL);
+
+    write_cache(cache_test_header(canonical_source) + "sources\t1\n"
+        + cache_test_source_row(canonical_source, DRIVER_INCREMENTAL_CACHE_FIRST_SOURCE)
+        + "modules\t0\ndefinitions\t0\nqueries\t0\n");
+    expect_source_stage_reject(CACHE_TEST_SOURCE_STAGE_REUSE_MISSING_QUERY_DETAIL);
+
+    write_cache(valid_cache);
+    fs::remove(source);
+    driver::clear_file_cache();
+    expect_source_stage_reject(CACHE_TEST_SOURCE_STAGE_REUSE_SOURCE_FAILURE_DETAIL);
+
+    write_source(DRIVER_INCREMENTAL_CACHE_SECOND_SOURCE);
+    write_cache(valid_cache);
+    driver::clear_file_cache();
+    driver::CompilerInvocation no_profile_invocation = invocation;
+    no_profile_invocation.experimental_query_pruning = true;
+    auto no_profile_reuse = driver::try_reuse_incremental_check_cache(no_profile_invocation);
+    ASSERT_TRUE(no_profile_reuse) << no_profile_reuse.error().message;
+    EXPECT_FALSE(no_profile_reuse.value());
 
     driver::clear_file_cache();
 }
@@ -2237,6 +2356,11 @@ TEST_F(AurexIntegrationTest, IncrementalCacheTracksImportPathAndDependencyFinger
         ASSERT_TRUE(out.is_open());
         out << DRIVER_INCREMENTAL_CACHE_IMPORT_FIRST_SOURCE;
     }
+    const auto write_import_source = [&](const std::string_view text) {
+        std::ofstream out(import_file, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
 
     driver::CompilerInvocation invocation;
     invocation.input_path = root;
@@ -2256,16 +2380,34 @@ TEST_F(AurexIntegrationTest, IncrementalCacheTracksImportPathAndDependencyFinger
     ASSERT_TRUE(first_reuse) << first_reuse.error().message;
     EXPECT_TRUE(first_reuse.value());
 
-    {
-        std::ofstream out(import_file, std::ios::binary | std::ios::trunc);
-        ASSERT_TRUE(out.is_open());
-        out << DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE;
-    }
+    write_import_source(DRIVER_INCREMENTAL_CACHE_IMPORT_COMMENT_ONLY_SOURCE);
     driver::clear_file_cache();
 
+    auto comment_only_stale = driver::try_reuse_incremental_check_cache(invocation);
+    ASSERT_TRUE(comment_only_stale) << comment_only_stale.error().message;
+    EXPECT_FALSE(comment_only_stale.value());
+
+    driver::CompilerInvocation pruning_invocation = invocation;
+    pruning_invocation.experimental_query_pruning = true;
+    driver::CompilationProfiler import_green_profiler(true);
+    auto import_green_reuse = driver::try_reuse_incremental_check_cache(pruning_invocation, &import_green_profiler);
+    ASSERT_TRUE(import_green_reuse) << import_green_reuse.error().message;
+    EXPECT_TRUE(import_green_reuse.value());
+    expect_single_profile_phase(import_green_profiler, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE,
+        CACHE_TEST_SOURCE_STAGE_REUSE_IMPORT_GREEN_DETAIL);
+
+    write_import_source(DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE);
+    driver::clear_file_cache();
     auto stale = driver::try_reuse_incremental_check_cache(invocation);
     ASSERT_TRUE(stale) << stale.error().message;
     EXPECT_FALSE(stale.value());
+
+    driver::CompilationProfiler import_changed_profiler(true);
+    auto import_changed_reuse = driver::try_reuse_incremental_check_cache(pruning_invocation, &import_changed_profiler);
+    ASSERT_TRUE(import_changed_reuse) << import_changed_reuse.error().message;
+    EXPECT_FALSE(import_changed_reuse.value());
+    expect_single_profile_phase(import_changed_profiler, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE,
+        CACHE_TEST_SOURCE_STAGE_REUSE_IMPORT_CHANGED_DETAIL);
 
     auto second = compiler.run(invocation);
     ASSERT_TRUE(second) << second.error().message;

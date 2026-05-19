@@ -6,6 +6,7 @@
 #include <aurex/driver/incremental_cache.hpp>
 #include <aurex/driver/profile.hpp>
 #include <aurex/query/generic_instance_key.hpp>
+#include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
 
 #include <support/test_support.hpp>
@@ -82,6 +83,8 @@ constexpr base::usize CACHE_TEST_QUERY_RESULT_BYTES_FIELD = 10;
 constexpr base::usize CACHE_TEST_QUERY_STABLE_KEY_FIELD = 11;
 constexpr base::usize CACHE_TEST_QUERY_FIELD_COUNT = 12;
 constexpr std::string_view CACHE_TEST_QUERY_ROW_KIND = "query";
+constexpr std::string_view CACHE_TEST_QUERY_EDGE_ROW_KIND = "query_edge";
+constexpr std::string_view CACHE_TEST_QUERY_MODULE_EXPORTS = "module_exports";
 constexpr std::string_view CACHE_TEST_QUERY_ITEM_SIGNATURE = "item_signature";
 constexpr std::string_view CACHE_TEST_QUERY_GENERIC_INSTANCE_SIGNATURE = "generic_instance_signature";
 constexpr std::string_view CACHE_TEST_QUERY_DIFF_PROFILE_PHASE = "incremental_cache.query_diff";
@@ -191,6 +194,13 @@ struct CacheTestQueryResultFingerprint {
     return row;
 }
 
+[[nodiscard]] std::string cache_test_source_row(const fs::path& path, const std::string_view text)
+{
+    const query::StableFingerprint128 fingerprint = query::stable_fingerprint(text);
+    return cache_test_source_row(path, std::to_string(text.size()), std::to_string(fingerprint.primary),
+        std::to_string(fingerprint.secondary), std::to_string(fingerprint.byte_count));
+}
+
 [[nodiscard]] std::string cache_test_def_row(const std::string_view category, const std::string_view stable_kind,
     const std::string_view stable_global, const std::string_view stable_primary,
     const std::string_view stable_secondary, const std::string_view stable_bytes,
@@ -261,6 +271,9 @@ struct CacheTestQueryResultFingerprint {
 
 [[nodiscard]] std::string_view cache_test_query_kind_name(const query::QueryKind kind) noexcept
 {
+    if (kind == query::QueryKind::module_exports) {
+        return CACHE_TEST_QUERY_MODULE_EXPORTS;
+    }
     if (kind == query::QueryKind::item_signature) {
         return CACHE_TEST_QUERY_ITEM_SIGNATURE;
     }
@@ -278,6 +291,35 @@ struct CacheTestQueryResultFingerprint {
         std::to_string(record.result.global_id), std::to_string(record.result.fingerprint.primary),
         std::to_string(record.result.fingerprint.secondary), std::to_string(record.result.fingerprint.byte_count),
         hex_encode_cache_test_field(record.stable_key_bytes));
+}
+
+[[nodiscard]] std::string cache_test_query_key_fields(const query::QueryKey key)
+{
+    std::string fields;
+    fields += cache_test_query_kind_name(key.kind);
+    fields += "\t";
+    fields += std::to_string(key.schema);
+    fields += "\t";
+    fields += std::to_string(key.global_id);
+    fields += "\t";
+    fields += std::to_string(key.payload.primary);
+    fields += "\t";
+    fields += std::to_string(key.payload.secondary);
+    fields += "\t";
+    fields += std::to_string(key.payload.byte_count);
+    return fields;
+}
+
+[[nodiscard]] std::string cache_test_query_edge_row(const query::QueryDependencyEdge& edge)
+{
+    std::string row;
+    row += CACHE_TEST_QUERY_EDGE_ROW_KIND;
+    row += "\t";
+    row += cache_test_query_key_fields(edge.dependent);
+    row += "\t";
+    row += cache_test_query_key_fields(edge.dependency);
+    row += "\n";
+    return row;
 }
 
 [[nodiscard]] std::vector<std::string_view> split_cache_test_fields(const std::string_view line)
@@ -1020,6 +1062,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesValidatesInvalidatesAndReuses
     expect_contains(first_cache, "def\ttype_alias");
     expect_contains(first_cache, "queries\t");
     expect_contains(first_cache, "query\titem_signature");
+    expect_contains(first_cache, "query_edges\t0");
 
     auto first_reuse = driver::try_reuse_incremental_check_cache(invocation);
     ASSERT_TRUE(first_reuse) << first_reuse.error().message;
@@ -1138,6 +1181,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
 
     const std::string cache_text = read_text(cache);
     expect_contains(cache_text, "queries\t3");
+    expect_contains(cache_text, "query_edges\t0");
     expect_contains(cache_text, "query\titem_signature");
     expect_contains(cache_text, "query\tgeneric_instance_signature");
     const query::DefKey expected_item_signature_key =
@@ -1174,6 +1218,145 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     auto reuse = driver::try_reuse_incremental_check_cache(invocation);
     ASSERT_TRUE(reuse) << reuse.error().message;
     EXPECT_TRUE(reuse.value());
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
+{
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE = "module incremental_cache_query_edges;\n";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_MODULE = "incremental_cache_query_edges";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_FUNCTION = "helper";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_EXPORTS_SIGNATURE = "edge-exports:v1";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_ITEM_SIGNATURE = "edge-item-signature:v1";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_UNKNOWN_KIND = "unknown_query";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_UNCHANGED_DETAIL =
+        "total=1,missing=0,unchanged=1,changed=0,malformed=0";
+
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-query-edges";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE;
+    }
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+    const fs::path canonical_source = fs::weakly_canonical(source);
+
+    const auto write_cache = [&](const std::string_view text) {
+        std::ofstream out(cache, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
+    const auto expect_reused = [&] {
+        auto reuse = driver::try_reuse_incremental_check_cache(invocation);
+        ASSERT_TRUE(reuse) << reuse.error().message;
+        EXPECT_TRUE(reuse.value());
+    };
+    const auto expect_not_reused = [&] {
+        auto reuse = driver::try_reuse_incremental_check_cache(invocation);
+        ASSERT_TRUE(reuse) << reuse.error().message;
+        EXPECT_FALSE(reuse.value());
+    };
+
+    const std::array<std::string_view, 1> module_parts{DRIVER_INCREMENTAL_CACHE_EDGE_MODULE};
+    const sema::StableModuleId stable_module = sema::stable_module_id(module_parts);
+    const query::ModuleKey module_key = query::module_key_from_stable_id(stable_module);
+    const sema::StableDefId stable_id = sema::stable_definition_id(
+        stable_module, sema::StableSymbolKind::function, DRIVER_INCREMENTAL_CACHE_EDGE_FUNCTION);
+    const query::DefKey def_key =
+        query::def_key_from_stable_id(stable_id, query::DefNamespace::value, query::DefKind::function);
+    const query::QueryResultFingerprint exports_result = query::query_result_fingerprint(
+        sema::stable_incremental_key(stable_id, DRIVER_INCREMENTAL_CACHE_EDGE_EXPORTS_SIGNATURE));
+    const query::QueryResultFingerprint item_result = query::query_result_fingerprint(
+        sema::stable_incremental_key(stable_id, DRIVER_INCREMENTAL_CACHE_EDGE_ITEM_SIGNATURE));
+    const std::optional<query::QueryRecord> exports_record = query::query_record(query::QueryKind::module_exports,
+        query::stable_key_fingerprint(module_key), query::stable_serialize(module_key), exports_result);
+    const std::optional<query::QueryRecord> item_record = query::item_signature_query_record(def_key, item_result);
+    ASSERT_TRUE(exports_record.has_value());
+    ASSERT_TRUE(item_record.has_value());
+
+    const query::QueryDependencyEdge edge{
+        item_record->key,
+        exports_record->key,
+    };
+
+    std::string old_cache = cache_test_header(canonical_source);
+    old_cache += "sources\t1\n";
+    old_cache += cache_test_source_row(canonical_source, DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE);
+    old_cache += "modules\t0\n";
+    old_cache += "definitions\t0\n";
+    old_cache += "queries\t0\n";
+    write_cache(old_cache);
+    expect_reused();
+
+    std::string edge_cache = cache_test_header(canonical_source);
+    edge_cache += "sources\t1\n";
+    edge_cache += cache_test_source_row(canonical_source, DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE);
+    edge_cache += "modules\t0\n";
+    edge_cache += "definitions\t0\n";
+    edge_cache += "queries\t2\n";
+    edge_cache += cache_test_query_row(*exports_record);
+    edge_cache += cache_test_query_row(*item_record);
+    edge_cache += "query_edges\t1\n";
+    edge_cache += cache_test_query_edge_row(edge);
+    write_cache(edge_cache);
+    expect_reused();
+
+    base::SourceManager sources;
+    static_cast<void>(sources.add_source(source.string(), std::string(DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE)));
+    const std::array<driver::ModuleRecord, 1> modules{{
+        driver::ModuleRecord{std::string(DRIVER_INCREMENTAL_CACHE_EDGE_MODULE), source},
+    }};
+    sema::CheckedModule checked;
+    const sema::InternedText function_name = checked.intern_text(DRIVER_INCREMENTAL_CACHE_EDGE_FUNCTION);
+    sema::FunctionSignature signature = checked.make_function_signature();
+    signature.name = function_name;
+    signature.name_id = function_name.id;
+    signature.stable_id = stable_id;
+    signature.incremental_key = sema::stable_incremental_key(stable_id, DRIVER_INCREMENTAL_CACHE_EDGE_ITEM_SIGNATURE);
+    checked.functions.emplace(sema::FunctionLookupKey{0, 0, function_name.id}, std::move(signature));
+
+    driver::CompilationProfiler profiler(true);
+    auto write_result = driver::write_incremental_cache(invocation, sources, modules, checked, &profiler);
+    ASSERT_TRUE(write_result) << write_result.error().message;
+    ASSERT_EQ(profiler.phases().size(), 1U);
+    EXPECT_EQ(profiler.phases().front().name, CACHE_TEST_QUERY_DIFF_PROFILE_PHASE);
+    EXPECT_EQ(profiler.phases().front().detail, DRIVER_INCREMENTAL_CACHE_EDGE_UNCHANGED_DETAIL);
+
+    std::string missing_edge_count_cache = edge_cache;
+    const std::string edge_count_header = "query_edges\t1\n";
+    const std::size_t edge_count_pos = missing_edge_count_cache.find(edge_count_header);
+    ASSERT_NE(edge_count_pos, std::string::npos);
+    missing_edge_count_cache.erase(edge_count_pos, edge_count_header.size());
+    write_cache(missing_edge_count_cache);
+    expect_not_reused();
+
+    std::string duplicate_edge_cache = edge_cache;
+    const std::string duplicate_edge_count_header = "query_edges\t1\n";
+    const std::size_t duplicate_edge_count_pos = duplicate_edge_cache.find(duplicate_edge_count_header);
+    ASSERT_NE(duplicate_edge_count_pos, std::string::npos);
+    duplicate_edge_cache.replace(duplicate_edge_count_pos, duplicate_edge_count_header.size(), "query_edges\t2\n");
+    duplicate_edge_cache += cache_test_query_edge_row(edge);
+    write_cache(duplicate_edge_cache);
+    expect_not_reused();
+
+    std::string invalid_edge_kind_cache = edge_cache;
+    const std::string valid_edge_kind_prefix = "query_edge\titem_signature";
+    const std::size_t edge_kind_pos = invalid_edge_kind_cache.find(valid_edge_kind_prefix);
+    ASSERT_NE(edge_kind_pos, std::string::npos);
+    invalid_edge_kind_cache.replace(edge_kind_pos, valid_edge_kind_prefix.size(),
+        "query_edge\t" + std::string(DRIVER_INCREMENTAL_CACHE_EDGE_UNKNOWN_KIND));
+    write_cache(invalid_edge_kind_cache);
+    expect_not_reused();
 
     driver::clear_file_cache();
 }
@@ -1480,6 +1663,14 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
     expect_not_reused();
 
     write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\tbad\n");
+    expect_not_reused();
+
+    write_cache(
+        cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t0\nquery_edges\tbad\n");
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source)
+        + "sources\t0\nmodules\t0\ndefinitions\t0\nqueries\t0\nquery_edges\t1\nquery_edge\ttoo-few\n");
     expect_not_reused();
 
     write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t0\n"

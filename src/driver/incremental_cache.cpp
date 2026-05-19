@@ -16,6 +16,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -41,6 +42,7 @@ constexpr base::usize INCREMENTAL_CACHE_SOURCE_FIELD_COUNT = 6;
 constexpr base::usize INCREMENTAL_CACHE_MODULE_FIELD_COUNT = 3;
 constexpr base::usize INCREMENTAL_CACHE_DEF_FIELD_COUNT = 12;
 constexpr base::usize INCREMENTAL_CACHE_QUERY_FIELD_COUNT = 12;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_FIELD_COUNT = 13;
 constexpr base::usize INCREMENTAL_CACHE_SOURCE_SIZE_FIELD = 1;
 constexpr base::usize INCREMENTAL_CACHE_SOURCE_PRIMARY_FIELD = 2;
 constexpr base::usize INCREMENTAL_CACHE_SOURCE_SECONDARY_FIELD = 3;
@@ -70,6 +72,18 @@ constexpr base::usize INCREMENTAL_CACHE_QUERY_RESULT_PRIMARY_FIELD = 8;
 constexpr base::usize INCREMENTAL_CACHE_QUERY_RESULT_SECONDARY_FIELD = 9;
 constexpr base::usize INCREMENTAL_CACHE_QUERY_RESULT_BYTES_FIELD = 10;
 constexpr base::usize INCREMENTAL_CACHE_QUERY_STABLE_KEY_FIELD = 11;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_KIND_FIELD = 1;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_SCHEMA_FIELD = 2;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_GLOBAL_FIELD = 3;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_PAYLOAD_PRIMARY_FIELD = 4;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_PAYLOAD_SECONDARY_FIELD = 5;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_PAYLOAD_BYTES_FIELD = 6;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_KIND_FIELD = 7;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_SCHEMA_FIELD = 8;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_GLOBAL_FIELD = 9;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_PAYLOAD_PRIMARY_FIELD = 10;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_PAYLOAD_SECONDARY_FIELD = 11;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_PAYLOAD_BYTES_FIELD = 12;
 
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_SCHEMA = "schema";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_COMPILER = "compiler";
@@ -85,14 +99,14 @@ constexpr std::string_view INCREMENTAL_CACHE_FIELD_DEFINITIONS = "definitions";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_DEF = "def";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_QUERIES = "queries";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_QUERY = "query";
+constexpr std::string_view INCREMENTAL_CACHE_FIELD_QUERY_EDGES = "query_edges";
+constexpr std::string_view INCREMENTAL_CACHE_FIELD_QUERY_EDGE = "query_edge";
 
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_FUNCTION = "function";
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_GENERIC_FUNCTION_INSTANCE = "generic_function_instance";
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_STRUCT = "struct";
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_ENUM_CASE = "enum_case";
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_TYPE_ALIAS = "type_alias";
-constexpr std::string_view INCREMENTAL_CACHE_QUERY_ITEM_SIGNATURE = "item_signature";
-constexpr std::string_view INCREMENTAL_CACHE_QUERY_GENERIC_INSTANCE_SIGNATURE = "generic_instance_signature";
 
 constexpr std::string_view INCREMENTAL_CACHE_WRITE_OPEN_FAILED = "failed to open incremental cache file for writing";
 constexpr std::string_view INCREMENTAL_CACHE_WRITE_FAILED = "failed to write incremental cache file";
@@ -122,6 +136,19 @@ struct ParsedQueryRecord {
     query::QueryRecord record;
 };
 
+struct QueryCollection {
+    std::vector<query::QueryRecord> records;
+    std::vector<query::QueryDependencyEdge> dependency_edges;
+};
+
+struct QueryKindCacheName {
+    query::QueryKind kind = query::QueryKind::invalid;
+    std::string_view name;
+};
+
+using QueryDependenciesByDependent =
+    std::unordered_map<query::QueryKey, std::vector<query::QueryKey>, query::QueryKeyHash>;
+
 struct ItemSignatureQuerySubject {
     sema::StableDefId stable_id;
     sema::IncrementalKey incremental_key;
@@ -142,6 +169,7 @@ struct ParsedCache {
     std::vector<std::filesystem::path> import_paths;
     std::vector<SourceFingerprintRecord> sources;
     std::vector<ParsedQueryRecord> queries;
+    std::vector<query::QueryDependencyEdge> query_edges;
     base::usize module_count = 0;
     base::usize definition_count = 0;
     std::optional<base::usize> expected_import_paths;
@@ -149,7 +177,25 @@ struct ParsedCache {
     std::optional<base::usize> expected_modules;
     std::optional<base::usize> expected_definitions;
     std::optional<base::usize> expected_queries;
+    std::optional<base::usize> expected_query_edges;
 };
+
+constexpr auto INCREMENTAL_CACHE_QUERY_KIND_NAMES = std::to_array<QueryKindCacheName>({
+    {query::QueryKind::file_content, "file_content"},
+    {query::QueryKind::lex_file, "lex_file"},
+    {query::QueryKind::parse_file, "parse_file"},
+    {query::QueryKind::module_graph, "module_graph"},
+    {query::QueryKind::module_exports, "module_exports"},
+    {query::QueryKind::item_list, "item_list"},
+    {query::QueryKind::item_signature, "item_signature"},
+    {query::QueryKind::function_body_syntax, "function_body_syntax"},
+    {query::QueryKind::type_check_body, "type_check_body"},
+    {query::QueryKind::generic_template_signature, "generic_template_signature"},
+    {query::QueryKind::generic_instance_signature, "generic_instance_signature"},
+    {query::QueryKind::generic_instance_body, "generic_instance_body"},
+    {query::QueryKind::diagnostics, "diagnostics"},
+    {query::QueryKind::lower_function_ir, "lower_function_ir"},
+});
 
 [[nodiscard]] std::filesystem::path canonical_or_absolute(const std::filesystem::path& path)
 {
@@ -379,6 +425,9 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     if (kind == INCREMENTAL_CACHE_FIELD_QUERIES) {
         return assign_count(cache.expected_queries, value);
     }
+    if (kind == INCREMENTAL_CACHE_FIELD_QUERY_EDGES) {
+        return assign_count(cache.expected_query_edges, value);
+    }
     return false;
 }
 
@@ -468,13 +517,48 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 
 [[nodiscard]] std::optional<query::QueryKind> parse_query_kind_name(const std::string_view name) noexcept
 {
-    if (name == INCREMENTAL_CACHE_QUERY_ITEM_SIGNATURE) {
-        return query::QueryKind::item_signature;
-    }
-    if (name == INCREMENTAL_CACHE_QUERY_GENERIC_INSTANCE_SIGNATURE) {
-        return query::QueryKind::generic_instance_signature;
+    for (const QueryKindCacheName& entry : INCREMENTAL_CACHE_QUERY_KIND_NAMES) {
+        if (entry.name == name) {
+            return entry.kind;
+        }
     }
     return std::nullopt;
+}
+
+[[nodiscard]] std::optional<query::QueryKey> parse_query_key_fields(const std::vector<std::string_view>& fields,
+    const base::usize kind_field, const base::usize schema_field, const base::usize global_field,
+    const base::usize payload_primary_field, const base::usize payload_secondary_field,
+    const base::usize payload_bytes_field)
+{
+    const std::optional<query::QueryKind> query_kind = parse_query_kind_name(fields[kind_field]);
+    if (!query_kind.has_value()) {
+        return std::nullopt;
+    }
+
+    base::u32 schema = 0;
+    base::u64 query_global = 0;
+    base::u64 payload_primary = 0;
+    base::u64 payload_secondary = 0;
+    base::u32 payload_bytes = 0;
+    if (!parse_u32(fields[schema_field], schema) || schema != query::QUERY_KEY_SCHEMA_VERSION
+        || !parse_u64(fields[global_field], query_global) || query_global == 0
+        || !parse_u64(fields[payload_primary_field], payload_primary)
+        || !parse_u64(fields[payload_secondary_field], payload_secondary)
+        || !parse_u32(fields[payload_bytes_field], payload_bytes)) {
+        return std::nullopt;
+    }
+
+    const query::StableFingerprint128 payload{
+        payload_primary,
+        payload_secondary,
+        payload_bytes,
+    };
+    const query::QueryKey key =
+        query::query_key(*query_kind, payload, static_cast<base::u16>(query::QUERY_KEY_SCHEMA_VERSION));
+    if (!query::is_valid(key) || key.global_id != query_global) {
+        return std::nullopt;
+    }
+    return key;
 }
 
 [[nodiscard]] std::optional<base::usize> parsed_query_record_index(
@@ -495,6 +579,32 @@ void append_hex_string(std::ostream& out, const std::string_view value)
         return false;
     }
     cache.queries.push_back(std::move(record));
+    return true;
+}
+
+[[nodiscard]] bool parsed_query_record_exists(const ParsedCache& cache, const query::QueryKey key) noexcept
+{
+    for (const ParsedQueryRecord& record : cache.queries) {
+        if (record.record.key == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] bool has_parsed_query_dependency_edge(
+    const ParsedCache& cache, const query::QueryDependencyEdge edge) noexcept
+{
+    return std::find(cache.query_edges.begin(), cache.query_edges.end(), edge) != cache.query_edges.end();
+}
+
+[[nodiscard]] bool push_parsed_query_dependency_edge(ParsedCache& cache, const query::QueryDependencyEdge edge)
+{
+    if (!query::is_valid(edge.dependent) || !query::is_valid(edge.dependency)
+        || has_parsed_query_dependency_edge(cache, edge)) {
+        return false;
+    }
+    cache.query_edges.push_back(edge);
     return true;
 }
 
@@ -573,6 +683,56 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return push_parsed_query_record(cache, std::move(record));
 }
 
+[[nodiscard]] bool parse_query_edge_line(ParsedCache& cache, const std::vector<std::string_view>& fields)
+{
+    if (fields.size() != INCREMENTAL_CACHE_QUERY_EDGE_FIELD_COUNT
+        || fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_QUERY_EDGE) {
+        return false;
+    }
+
+    const std::optional<query::QueryKey> dependent =
+        parse_query_key_fields(fields, INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_KIND_FIELD,
+            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_SCHEMA_FIELD, INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_GLOBAL_FIELD,
+            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_PAYLOAD_PRIMARY_FIELD,
+            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_PAYLOAD_SECONDARY_FIELD,
+            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_PAYLOAD_BYTES_FIELD);
+    const std::optional<query::QueryKey> dependency =
+        parse_query_key_fields(fields, INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_KIND_FIELD,
+            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_SCHEMA_FIELD, INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_GLOBAL_FIELD,
+            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_PAYLOAD_PRIMARY_FIELD,
+            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_PAYLOAD_SECONDARY_FIELD,
+            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_PAYLOAD_BYTES_FIELD);
+    if (!dependent || !dependency) {
+        return false;
+    }
+
+    return push_parsed_query_dependency_edge(cache,
+        query::QueryDependencyEdge{
+            *dependent,
+            *dependency,
+        });
+}
+
+[[nodiscard]] bool parsed_cache_query_edges_resolve(const ParsedCache& cache) noexcept
+{
+    for (const query::QueryDependencyEdge& edge : cache.query_edges) {
+        if (!parsed_query_record_exists(cache, edge.dependent)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] QueryDependenciesByDependent query_dependencies_by_dependent(const ParsedCache& cache)
+{
+    QueryDependenciesByDependent dependencies;
+    dependencies.reserve(cache.query_edges.size());
+    for (const query::QueryDependencyEdge& edge : cache.query_edges) {
+        dependencies[edge.dependent].push_back(edge.dependency);
+    }
+    return dependencies;
+}
+
 [[nodiscard]] bool parse_cache_line(ParsedCache& cache, const std::string_view line)
 {
     if (line.empty()) {
@@ -596,6 +756,9 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     if (kind == INCREMENTAL_CACHE_FIELD_QUERY) {
         return parse_query_line(cache, fields);
     }
+    if (kind == INCREMENTAL_CACHE_FIELD_QUERY_EDGE) {
+        return parse_query_edge_line(cache, fields);
+    }
     return parse_header_line(cache, fields);
 }
 
@@ -603,10 +766,13 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 {
     const bool queries_match =
         cache.expected_queries.has_value() ? cache.queries.size() == *cache.expected_queries : cache.queries.empty();
+    const bool query_edges_match = cache.expected_query_edges.has_value()
+        ? cache.query_edges.size() == *cache.expected_query_edges
+        : cache.query_edges.empty();
     return cache.expected_import_paths && cache.expected_sources && cache.expected_modules && cache.expected_definitions
         && cache.import_paths.size() == *cache.expected_import_paths && cache.sources.size() == *cache.expected_sources
         && cache.module_count == *cache.expected_modules && cache.definition_count == *cache.expected_definitions
-        && queries_match;
+        && queries_match && query_edges_match && parsed_cache_query_edges_resolve(cache);
 }
 
 [[nodiscard]] bool parsed_cache_header_matches(const ParsedCache& cache, const CompilerInvocation& invocation)
@@ -660,27 +826,33 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 [[nodiscard]] query::QueryContext seed_query_context_from_cache(const ParsedCache& cache)
 {
     query::QueryContext context;
+    QueryDependenciesByDependent dependencies_by_dependent = query_dependencies_by_dependent(cache);
     for (const ParsedQueryRecord& record : cache.queries) {
-        static_cast<void>(context.seed_completed_record(record.record));
+        std::vector<query::QueryKey> dependencies;
+        const auto found = dependencies_by_dependent.find(record.record.key);
+        if (found != dependencies_by_dependent.end()) {
+            dependencies = std::move(found->second);
+        }
+        static_cast<void>(context.seed_completed_record(record.record, std::move(dependencies)));
     }
     return context;
 }
 
-[[nodiscard]] std::vector<query::QueryReuseDecision> decide_query_reuse_against_cache(
+[[nodiscard]] query::QueryReusePlan build_query_reuse_plan_against_cache(
     const ParsedCache& cache, const std::span<const query::QueryRecord> current_records)
 {
     const query::QueryContext cached_context = seed_query_context_from_cache(cache);
-    return query::decide_query_reuse(cached_context, current_records);
+    return query::build_query_reuse_plan(cached_context, current_records);
 }
 
-[[nodiscard]] std::vector<query::QueryReuseDecision> decide_existing_query_reuse(
+[[nodiscard]] query::QueryReusePlan build_existing_query_reuse_plan(
     const std::filesystem::path& cache_path, const std::span<const query::QueryRecord> current_records)
 {
     const std::optional<ParsedCache> cache = read_incremental_cache(cache_path);
     if (!cache) {
-        return query::mark_all_queries_missing(current_records);
+        return query::mark_all_queries_recompute(current_records);
     }
-    return decide_query_reuse_against_cache(*cache, current_records);
+    return build_query_reuse_plan_against_cache(*cache, current_records);
 }
 
 [[nodiscard]] std::string query_record_diff_summary_detail(const query::QueryReuseSummary& summary)
@@ -779,11 +951,10 @@ void record_query_record_diff_summary(CompilationProfiler* const profiler, const
 
 [[nodiscard]] std::string_view query_kind_name(const query::QueryKind kind) noexcept
 {
-    if (kind == query::QueryKind::item_signature) {
-        return INCREMENTAL_CACHE_QUERY_ITEM_SIGNATURE;
-    }
-    if (kind == query::QueryKind::generic_instance_signature) {
-        return INCREMENTAL_CACHE_QUERY_GENERIC_INSTANCE_SIGNATURE;
+    for (const QueryKindCacheName& entry : INCREMENTAL_CACHE_QUERY_KIND_NAMES) {
+        if (entry.kind == kind) {
+            return entry.name;
+        }
     }
     return {};
 }
@@ -953,7 +1124,7 @@ void evaluate_generic_instance_signature_query_subjects(
     return records;
 }
 
-[[nodiscard]] std::vector<query::QueryRecord> collect_query_records(const sema::CheckedModule& checked)
+[[nodiscard]] QueryCollection collect_queries(const sema::CheckedModule& checked)
 {
     const std::vector<ItemSignatureQuerySubject> item_subjects = collect_item_signature_query_subjects(checked);
     const std::vector<GenericInstanceSignatureQuerySubject> generic_subjects =
@@ -962,7 +1133,10 @@ void evaluate_generic_instance_signature_query_subjects(
     query::QueryContext context;
     evaluate_item_signature_query_subjects(context, item_subjects);
     evaluate_generic_instance_signature_query_subjects(context, generic_subjects);
-    return context.completed_records();
+    return QueryCollection{
+        context.completed_records(),
+        context.dependency_edges(),
+    };
 }
 
 void write_hex_field(std::ostream& out, const std::string_view value)
@@ -1024,6 +1198,22 @@ void write_query_record(std::ostream& out, const query::QueryRecord& record)
         << record.result.fingerprint.primary << INCREMENTAL_CACHE_SEPARATOR << record.result.fingerprint.secondary
         << INCREMENTAL_CACHE_SEPARATOR << record.result.fingerprint.byte_count << INCREMENTAL_CACHE_SEPARATOR;
     write_hex_field(out, record.stable_key_bytes);
+    out << '\n';
+}
+
+void write_query_key_fields(std::ostream& out, const query::QueryKey key)
+{
+    out << query_kind_name(key.kind) << INCREMENTAL_CACHE_SEPARATOR << key.schema << INCREMENTAL_CACHE_SEPARATOR
+        << key.global_id << INCREMENTAL_CACHE_SEPARATOR << key.payload.primary << INCREMENTAL_CACHE_SEPARATOR
+        << key.payload.secondary << INCREMENTAL_CACHE_SEPARATOR << key.payload.byte_count;
+}
+
+void write_query_dependency_edge_record(std::ostream& out, const query::QueryDependencyEdge& edge)
+{
+    out << INCREMENTAL_CACHE_FIELD_QUERY_EDGE << INCREMENTAL_CACHE_SEPARATOR;
+    write_query_key_fields(out, edge.dependent);
+    out << INCREMENTAL_CACHE_SEPARATOR;
+    write_query_key_fields(out, edge.dependency);
     out << '\n';
 }
 
@@ -1089,13 +1279,12 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     const std::vector<SourceFingerprintRecord> source_records = collect_source_fingerprints(sources);
     const std::vector<ModuleRecord> module_records = sorted_modules(modules);
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
-    const std::vector<query::QueryRecord> query_records = collect_query_records(checked);
+    const QueryCollection query_collection = collect_queries(checked);
     const auto query_diff_started = std::chrono::steady_clock::now();
-    const std::vector<query::QueryReuseDecision> query_decisions =
-        decide_existing_query_reuse(cache_path, query_records);
-    const query::QueryReuseSummary query_diff_summary = query::summarize_query_reuse(query_decisions);
+    const query::QueryReusePlan query_reuse_plan =
+        build_existing_query_reuse_plan(cache_path, query_collection.records);
     record_query_record_diff_summary(
-        profiler, query_diff_summary, std::chrono::steady_clock::now() - query_diff_started);
+        profiler, query_reuse_plan.summary, std::chrono::steady_clock::now() - query_diff_started);
 
     const std::filesystem::path temporary_path = temporary_cache_path(cache_path);
     {
@@ -1129,9 +1318,14 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
         for (const DefinitionRecord& record : definition_records) {
             write_definition_record(out, record);
         }
-        write_header_field(out, INCREMENTAL_CACHE_FIELD_QUERIES, std::to_string(query_records.size()));
-        for (const query::QueryRecord& record : query_records) {
+        write_header_field(out, INCREMENTAL_CACHE_FIELD_QUERIES, std::to_string(query_collection.records.size()));
+        for (const query::QueryRecord& record : query_collection.records) {
             write_query_record(out, record);
+        }
+        write_header_field(
+            out, INCREMENTAL_CACHE_FIELD_QUERY_EDGES, std::to_string(query_collection.dependency_edges.size()));
+        for (const query::QueryDependencyEdge& edge : query_collection.dependency_edges) {
+            write_query_dependency_edge_record(out, edge);
         }
 
         if (!out) {

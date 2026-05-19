@@ -39,6 +39,8 @@ constexpr base::u32 QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_BYTES = 8;
 constexpr base::u32 QUERY_TEST_LEGACY_DOTTED_MODULE_PATH_BYTES = 28;
 constexpr std::string_view QUERY_TEST_PROVIDER_SIGNATURE = "signature:i32";
 constexpr std::string_view QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE = "signature:mismatched-provider-output";
+constexpr std::string_view QUERY_TEST_MODULE_EXPORTS_SIGNATURE = "exports:v1";
+constexpr std::string_view QUERY_TEST_CHANGED_MODULE_EXPORTS_SIGNATURE = "exports:v2";
 
 [[nodiscard]] query::PackageKey test_package()
 {
@@ -882,6 +884,71 @@ TEST(QueryUnit, QueryReuseDecisionClassifiesCachedCurrentAndMalformedRecords)
     EXPECT_EQ(missing_decisions[0].disposition, query::QueryReuseDisposition::recompute);
     EXPECT_EQ(missing_decisions[1].change_status, query::QueryRecordChangeStatus::missing);
     EXPECT_EQ(missing_decisions[1].disposition, query::QueryReuseDisposition::recompute);
+}
+
+TEST(QueryUnit, QueryReusePlanPropagatesRecomputeAcrossDependents)
+{
+    const QueryContextItemSignatureSubject subject =
+        test_item_signature_subject("compute", QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::ItemSignatureProviderOutput> item_output =
+        query::provide_item_signature_query(subject.input);
+    ASSERT_TRUE(item_output.has_value());
+
+    const query::QueryResultFingerprint cached_exports_result = query::query_result_fingerprint(
+        query::stable_incremental_key(subject.input.signature.definition, QUERY_TEST_MODULE_EXPORTS_SIGNATURE));
+    const query::QueryResultFingerprint changed_exports_result = query::query_result_fingerprint(
+        query::stable_incremental_key(subject.input.signature.definition, QUERY_TEST_CHANGED_MODULE_EXPORTS_SIGNATURE));
+    const std::optional<query::QueryRecord> cached_exports_record =
+        query::query_record(query::QueryKind::module_exports, query::stable_key_fingerprint(subject.def.module),
+            query::stable_serialize(subject.def.module), cached_exports_result);
+    const std::optional<query::QueryRecord> changed_exports_record =
+        query::query_record(query::QueryKind::module_exports, query::stable_key_fingerprint(subject.def.module),
+            query::stable_serialize(subject.def.module), changed_exports_result);
+    ASSERT_TRUE(cached_exports_record.has_value());
+    ASSERT_TRUE(changed_exports_record.has_value());
+    ASSERT_NE(cached_exports_record->result, changed_exports_record->result);
+
+    query::QueryContext cached_context;
+    ASSERT_TRUE(cached_context.seed_completed_record(*cached_exports_record));
+    ASSERT_TRUE(cached_context.seed_completed_record(item_output->record, {cached_exports_record->key}));
+
+    const std::vector<query::QueryRecord> current_records{
+        *changed_exports_record,
+        item_output->record,
+        query::QueryRecord{},
+    };
+    const query::QueryReusePlan plan = query::build_query_reuse_plan(cached_context, current_records);
+    ASSERT_EQ(plan.decisions.size(), current_records.size());
+    EXPECT_EQ(plan.decisions[0].change_status, query::QueryRecordChangeStatus::changed);
+    EXPECT_EQ(plan.decisions[1].change_status, query::QueryRecordChangeStatus::unchanged);
+    EXPECT_EQ(plan.decisions[2].change_status, query::QueryRecordChangeStatus::malformed);
+
+    EXPECT_EQ(plan.summary.total, 3U);
+    EXPECT_EQ(plan.summary.changed, 1U);
+    EXPECT_EQ(plan.summary.unchanged, 1U);
+    EXPECT_EQ(plan.summary.malformed, 1U);
+    EXPECT_EQ(plan.summary.reusable, 1U);
+    EXPECT_EQ(plan.summary.recompute, 2U);
+
+    EXPECT_TRUE(plan.reusable.empty());
+    EXPECT_EQ(plan.recompute_roots, std::vector<query::QueryKey>{changed_exports_record->key});
+    EXPECT_EQ(plan.propagated_recompute, std::vector<query::QueryKey>{item_output->record.key});
+
+    std::vector<query::QueryKey> expected_recompute{
+        changed_exports_record->key,
+        item_output->record.key,
+    };
+    sort_query_test_keys(expected_recompute);
+    EXPECT_EQ(plan.recompute, expected_recompute);
+
+    const query::QueryReusePlan missing_plan =
+        query::mark_all_queries_recompute(std::span<const query::QueryRecord>{current_records.data(), 2U});
+    ASSERT_EQ(missing_plan.decisions.size(), 2U);
+    EXPECT_EQ(missing_plan.summary.missing, 2U);
+    EXPECT_EQ(missing_plan.summary.recompute, 2U);
+    EXPECT_EQ(missing_plan.recompute_roots.size(), 2U);
+    EXPECT_TRUE(missing_plan.reusable.empty());
+    EXPECT_TRUE(missing_plan.propagated_recompute.empty());
 }
 
 TEST(QueryUnit, QueryContextOrdersCompletedItemSignatureRecordsByQueryKey)

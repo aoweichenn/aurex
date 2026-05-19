@@ -1,7 +1,42 @@
 #include <aurex/query/query_reuse.hpp>
 
+#include <algorithm>
+#include <tuple>
+#include <utility>
+
 namespace aurex::query {
 namespace {
+
+[[nodiscard]] bool query_key_less(const QueryKey lhs, const QueryKey rhs) noexcept
+{
+    return std::tie(
+               lhs.kind, lhs.schema, lhs.global_id, lhs.payload.primary, lhs.payload.secondary, lhs.payload.byte_count)
+        < std::tie(
+            rhs.kind, rhs.schema, rhs.global_id, rhs.payload.primary, rhs.payload.secondary, rhs.payload.byte_count);
+}
+
+[[nodiscard]] bool contains_query_key(const std::vector<QueryKey>& keys, const QueryKey key)
+{
+    return std::find(keys.begin(), keys.end(), key) != keys.end();
+}
+
+void push_unique_query_key(std::vector<QueryKey>& keys, const QueryKey key)
+{
+    if (!is_valid(key) || contains_query_key(keys, key)) {
+        return;
+    }
+    keys.push_back(key);
+}
+
+void remove_query_key(std::vector<QueryKey>& keys, const QueryKey key)
+{
+    std::erase(keys, key);
+}
+
+void sort_query_keys(std::vector<QueryKey>& keys)
+{
+    std::sort(keys.begin(), keys.end(), query_key_less);
+}
 
 [[nodiscard]] const QueryRecord* cached_record_for(const QueryContext& cached_context, const QueryRecord& current)
 {
@@ -21,6 +56,31 @@ namespace {
         change_status,
         query_reuse_disposition(change_status),
     };
+}
+
+void propagate_recompute_dependents(const QueryContext& cached_context, QueryReusePlan& plan)
+{
+    std::vector<QueryKey> worklist = plan.recompute_roots;
+    for (base::usize index = 0; index < worklist.size(); ++index) {
+        const std::vector<QueryKey> dependents = cached_context.dependents_of(worklist[index]);
+        for (const QueryKey dependent : dependents) {
+            if (contains_query_key(plan.recompute, dependent)) {
+                continue;
+            }
+            remove_query_key(plan.reusable, dependent);
+            push_unique_query_key(plan.propagated_recompute, dependent);
+            push_unique_query_key(plan.recompute, dependent);
+            worklist.push_back(dependent);
+        }
+    }
+}
+
+void finalize_query_reuse_plan(QueryReusePlan& plan)
+{
+    sort_query_keys(plan.reusable);
+    sort_query_keys(plan.recompute_roots);
+    sort_query_keys(plan.propagated_recompute);
+    sort_query_keys(plan.recompute);
 }
 
 } // namespace
@@ -87,6 +147,44 @@ QueryReuseSummary summarize_query_reuse(const std::span<const QueryReuseDecision
         }
     }
     return summary;
+}
+
+QueryReusePlan build_query_reuse_plan(const QueryContext& cached_context, std::vector<QueryReuseDecision> decisions)
+{
+    QueryReusePlan plan;
+    plan.decisions = std::move(decisions);
+    plan.summary = summarize_query_reuse(plan.decisions);
+
+    for (const QueryReuseDecision& decision : plan.decisions) {
+        switch (decision.disposition) {
+            case QueryReuseDisposition::reuse:
+                if (!contains_query_key(plan.recompute, decision.key)) {
+                    push_unique_query_key(plan.reusable, decision.key);
+                }
+                break;
+            case QueryReuseDisposition::recompute:
+                remove_query_key(plan.reusable, decision.key);
+                push_unique_query_key(plan.recompute_roots, decision.key);
+                push_unique_query_key(plan.recompute, decision.key);
+                break;
+        }
+    }
+
+    propagate_recompute_dependents(cached_context, plan);
+    finalize_query_reuse_plan(plan);
+    return plan;
+}
+
+QueryReusePlan build_query_reuse_plan(
+    const QueryContext& cached_context, const std::span<const QueryRecord> current_records)
+{
+    return build_query_reuse_plan(cached_context, decide_query_reuse(cached_context, current_records));
+}
+
+QueryReusePlan mark_all_queries_recompute(const std::span<const QueryRecord> current_records)
+{
+    QueryContext empty_cache;
+    return build_query_reuse_plan(empty_cache, mark_all_queries_missing(current_records));
 }
 
 } // namespace aurex::query

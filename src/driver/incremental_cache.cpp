@@ -1,7 +1,7 @@
 #include <aurex/base/config.hpp>
 #include <aurex/driver/incremental_cache.hpp>
 #include <aurex/driver/profile.hpp>
-#include <aurex/query/item_signature_query.hpp>
+#include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
 
 #include <algorithm>
@@ -910,18 +910,13 @@ void push_generic_instance_signature_query_subject(std::vector<GenericInstanceSi
     return input;
 }
 
-void push_item_signature_query_record(
-    std::vector<query::QueryRecord>& records, const ItemSignatureQuerySubject& subject)
+void evaluate_item_signature_query_subject(query::QueryContext& context, const ItemSignatureQuerySubject& subject)
 {
     const query::ItemSignatureProviderInput input{
         query::def_key_from_stable_id(subject.stable_id, subject.name_space, subject.kind),
         subject.incremental_key,
     };
-    std::optional<query::ItemSignatureProviderOutput> output = query::provide_item_signature_query(input);
-    if (!output) {
-        return;
-    }
-    push_query_record(records, std::move(output->record));
+    static_cast<void>(context.evaluate_item_signature(input));
 }
 
 void push_generic_instance_signature_query_record(
@@ -985,8 +980,13 @@ void push_generic_instance_signature_query_record(
 void push_item_signature_query_records(
     std::vector<query::QueryRecord>& records, const std::vector<ItemSignatureQuerySubject>& subjects)
 {
+    query::QueryContext context;
     for (const ItemSignatureQuerySubject& subject : subjects) {
-        push_item_signature_query_record(records, subject);
+        evaluate_item_signature_query_subject(context, subject);
+    }
+    std::vector<query::QueryRecord> completed_records = context.completed_records();
+    for (query::QueryRecord& record : completed_records) {
+        push_query_record(records, std::move(record));
     }
 }
 

@@ -37,6 +37,16 @@ struct GenericInstanceSignatureQueryInput {
     QueryResultFingerprint result;
 };
 
+struct FunctionBodySyntaxQueryInput {
+    BodyKey key;
+    QueryResultFingerprint result;
+};
+
+struct TypeCheckBodyQueryInput {
+    BodyKey key;
+    QueryResultFingerprint result;
+};
+
 enum class QueryRecordChangeStatus : base::u8 {
     missing,
     unchanged,
@@ -49,6 +59,8 @@ enum class QueryRecordChangeStatus : base::u8 {
 [[nodiscard]] bool is_valid(const ModuleExportsQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ItemSignatureQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const GenericInstanceSignatureQueryInput& input) noexcept;
+[[nodiscard]] bool is_valid(const FunctionBodySyntaxQueryInput& input) noexcept;
+[[nodiscard]] bool is_valid(const TypeCheckBodyQueryInput& input) noexcept;
 
 [[nodiscard]] QueryResultFingerprint query_result_fingerprint(StableFingerprint128 fingerprint) noexcept;
 [[nodiscard]] QueryResultFingerprint query_result_fingerprint(IncrementalKey incremental_key) noexcept;
@@ -68,5 +80,11 @@ enum class QueryRecordChangeStatus : base::u8 {
     const GenericInstanceSignatureQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> generic_instance_signature_query_record(
     const GenericInstanceKey& key, QueryResultFingerprint result);
+
+[[nodiscard]] std::optional<QueryRecord> function_body_syntax_query_record(const FunctionBodySyntaxQueryInput& input);
+[[nodiscard]] std::optional<QueryRecord> function_body_syntax_query_record(BodyKey key, QueryResultFingerprint result);
+
+[[nodiscard]] std::optional<QueryRecord> type_check_body_query_record(const TypeCheckBodyQueryInput& input);
+[[nodiscard]] std::optional<QueryRecord> type_check_body_query_record(BodyKey key, QueryResultFingerprint result);
 
 } // namespace aurex::query

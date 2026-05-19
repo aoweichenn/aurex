@@ -1,3 +1,4 @@
+#include <aurex/query/function_body_syntax_query.hpp>
 #include <aurex/query/generic_instance_key.hpp>
 #include <aurex/query/generic_instance_signature_query.hpp>
 #include <aurex/query/item_signature_query.hpp>
@@ -6,6 +7,7 @@
 #include <aurex/query/query_result.hpp>
 #include <aurex/query/query_reuse.hpp>
 #include <aurex/query/stable_identity.hpp>
+#include <aurex/query/type_check_body_query.hpp>
 
 #include <algorithm>
 #include <array>
@@ -42,6 +44,8 @@ constexpr std::string_view QUERY_TEST_PROVIDER_SIGNATURE = "signature:i32";
 constexpr std::string_view QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE = "signature:mismatched-provider-output";
 constexpr std::string_view QUERY_TEST_MODULE_EXPORTS_SIGNATURE = "exports:v1";
 constexpr std::string_view QUERY_TEST_CHANGED_MODULE_EXPORTS_SIGNATURE = "exports:v2";
+constexpr std::string_view QUERY_TEST_BODY_SYNTAX = "body-syntax:return value";
+constexpr std::string_view QUERY_TEST_TYPE_CHECK_BODY = "type-check-body:return i32";
 
 [[nodiscard]] query::PackageKey test_package()
 {
@@ -75,6 +79,12 @@ struct QueryContextItemSignatureSubject {
 struct QueryContextGenericInstanceSignatureSubject {
     query::GenericInstanceKey key;
     query::IncrementalKey signature;
+};
+
+struct QueryContextBodySubject {
+    query::BodyKey body;
+    query::QueryResultFingerprint syntax;
+    query::QueryResultFingerprint checked_body;
 };
 
 [[nodiscard]] QueryContextItemSignatureSubject test_item_signature_subject(
@@ -123,6 +133,18 @@ struct QueryContextGenericInstanceSignatureSubject {
     return query::GenericInstanceSignatureProviderInput{
         &subject.key,
         subject.signature,
+    };
+}
+
+[[nodiscard]] QueryContextBodySubject test_body_subject()
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::BodyKey body = query::body_key(test_function_def(module), query::BodySlotKind::function_body);
+    return QueryContextBodySubject{
+        body,
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_BODY_SYNTAX)),
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_TYPE_CHECK_BODY)),
     };
 }
 
@@ -657,6 +679,93 @@ TEST(QueryUnit, GenericInstanceSignatureProviderBuildsRecordFromStableInstance)
     EXPECT_FALSE(query::is_valid(mismatched_result_output));
 }
 
+TEST(QueryUnit, FunctionBodySyntaxProviderBuildsRecordFromStableBody)
+{
+    const QueryContextBodySubject subject = test_body_subject();
+    const std::optional<query::QueryKey> expected_key = query::function_body_syntax_query_key(subject.body);
+    ASSERT_TRUE(expected_key.has_value());
+
+    const query::FunctionBodySyntaxProviderInput input{
+        subject.body,
+        subject.syntax,
+    };
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::FunctionBodySyntaxProviderOutput> output =
+        query::provide_function_body_syntax_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    EXPECT_TRUE(output->dependencies.empty());
+    EXPECT_EQ(output->record.key, *expected_key);
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::function_body_syntax);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.body));
+    EXPECT_EQ(output->result, subject.syntax);
+    EXPECT_EQ(output->record.result, output->result);
+
+    EXPECT_FALSE(query::function_body_syntax_query_key(query::BodyKey{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::FunctionBodySyntaxProviderInput{}));
+    EXPECT_FALSE(query::provide_function_body_syntax_query(
+        query::FunctionBodySyntaxProviderInput{query::BodyKey{}, subject.syntax})
+            .has_value());
+    EXPECT_FALSE(query::provide_function_body_syntax_query(
+        query::FunctionBodySyntaxProviderInput{subject.body, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::FunctionBodySyntaxProviderOutput{}));
+
+    query::FunctionBodySyntaxProviderOutput invalid_dependency_output = *output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::FunctionBodySyntaxProviderOutput mismatched_result_output = *output;
+    mismatched_result_output.result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
+    EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
+TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
+{
+    const QueryContextBodySubject subject = test_body_subject();
+    const std::optional<query::QueryKey> expected_key = query::type_check_body_query_key(subject.body);
+    ASSERT_TRUE(expected_key.has_value());
+
+    const query::TypeCheckBodyProviderInput input{
+        subject.body,
+        subject.checked_body,
+    };
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::TypeCheckBodyProviderOutput> output = query::provide_type_check_body_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    const std::optional<query::QueryKey> body_syntax_key = query::function_body_syntax_query_key(subject.body);
+    const std::optional<query::QueryKey> item_signature_key = query::item_signature_query_key(subject.body.owner);
+    ASSERT_TRUE(body_syntax_key.has_value());
+    ASSERT_TRUE(item_signature_key.has_value());
+    EXPECT_EQ(output->dependencies, (std::vector<query::QueryKey>{*body_syntax_key, *item_signature_key}));
+    EXPECT_EQ(output->record.key, *expected_key);
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::type_check_body);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.body));
+    EXPECT_EQ(output->result, subject.checked_body);
+    EXPECT_EQ(output->record.result, output->result);
+
+    EXPECT_FALSE(query::type_check_body_query_key(query::BodyKey{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::TypeCheckBodyProviderInput{}));
+    EXPECT_FALSE(
+        query::provide_type_check_body_query(query::TypeCheckBodyProviderInput{query::BodyKey{}, subject.checked_body})
+            .has_value());
+    EXPECT_FALSE(query::provide_type_check_body_query(
+        query::TypeCheckBodyProviderInput{subject.body, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::TypeCheckBodyProviderOutput{}));
+
+    query::TypeCheckBodyProviderOutput invalid_dependency_output = *output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::TypeCheckBodyProviderOutput mismatched_result_output = *output;
+    mismatched_result_output.result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
+    EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
 TEST(QueryUnit, QueryContextCachesItemSignatureAndEmitsCompletedRecords)
 {
     const QueryContextItemSignatureSubject subject =
@@ -802,6 +911,65 @@ TEST(QueryUnit, QueryContextCachesGenericInstanceSignatureAndEmitsMixedRecords)
         context.evaluate_generic_instance_signature(generic_instance_provider_input(generic_subject));
     EXPECT_EQ(cached_after_reset.status, query::QueryEvaluationStatus::cached);
     EXPECT_EQ(generic_provider_calls, 1U);
+}
+
+TEST(QueryUnit, QueryContextCachesBodyQueriesAndRecordsTypeCheckDependencies)
+{
+    const QueryContextBodySubject subject = test_body_subject();
+    const std::optional<query::QueryKey> body_syntax_key = query::function_body_syntax_query_key(subject.body);
+    const std::optional<query::QueryKey> type_check_key = query::type_check_body_query_key(subject.body);
+    const std::optional<query::QueryKey> item_signature_key = query::item_signature_query_key(subject.body.owner);
+    ASSERT_TRUE(body_syntax_key.has_value());
+    ASSERT_TRUE(type_check_key.has_value());
+    ASSERT_TRUE(item_signature_key.has_value());
+
+    base::usize body_provider_calls = 0;
+    base::usize type_provider_calls = 0;
+    query::QueryContext context;
+    context.set_function_body_syntax_provider(
+        [&body_provider_calls](const query::FunctionBodySyntaxProviderInput& provider_input) {
+            ++body_provider_calls;
+            return query::provide_function_body_syntax_query(provider_input);
+        });
+    context.set_type_check_body_provider(
+        [&type_provider_calls](const query::TypeCheckBodyProviderInput& provider_input) {
+            ++type_provider_calls;
+            return query::provide_type_check_body_query(provider_input);
+        });
+
+    const query::QueryEvaluationResult body_result =
+        context.evaluate_function_body_syntax(query::FunctionBodySyntaxProviderInput{subject.body, subject.syntax});
+    ASSERT_EQ(body_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(body_result.node, nullptr);
+    EXPECT_EQ(body_result.node->key, *body_syntax_key);
+    EXPECT_EQ(body_provider_calls, 1U);
+
+    const query::QueryEvaluationResult type_result =
+        context.evaluate_type_check_body(query::TypeCheckBodyProviderInput{subject.body, subject.checked_body});
+    ASSERT_EQ(type_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(type_result.node, nullptr);
+    EXPECT_EQ(type_result.node->key, *type_check_key);
+    EXPECT_EQ(type_provider_calls, 1U);
+
+    std::vector<query::QueryKey> expected_type_dependencies{
+        *body_syntax_key,
+        *item_signature_key,
+    };
+    sort_query_test_keys(expected_type_dependencies);
+    EXPECT_EQ(context.dependencies_for(*type_check_key), expected_type_dependencies);
+    EXPECT_TRUE(context.has_dependency(*type_check_key, *body_syntax_key));
+    EXPECT_TRUE(context.has_dependency(*type_check_key, *item_signature_key));
+    EXPECT_EQ(context.dependency_edge_count(), 2U);
+
+    const query::QueryEvaluationResult cached_body =
+        context.evaluate_function_body_syntax(query::FunctionBodySyntaxProviderInput{subject.body, subject.syntax});
+    EXPECT_EQ(cached_body.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(body_provider_calls, 1U);
+
+    const query::QueryEvaluationResult cached_type =
+        context.evaluate_type_check_body(query::TypeCheckBodyProviderInput{subject.body, subject.checked_body});
+    EXPECT_EQ(cached_type.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(type_provider_calls, 1U);
 }
 
 TEST(QueryUnit, QueryContextBuildsDeterministicDependencyEdgeTable)

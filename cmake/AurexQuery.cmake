@@ -7,6 +7,8 @@ add_library(aurex_query
     src/query/module_exports_query.cpp
     src/query/item_signature_query.cpp
     src/query/generic_instance_signature_query.cpp
+    src/query/function_body_syntax_query.cpp
+    src/query/type_check_body_query.cpp
     src/query/query_context.cpp
     src/query/canonical_type_key.cpp
     src/query/generic_instance_key.cpp

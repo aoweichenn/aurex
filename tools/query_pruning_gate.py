@@ -2,12 +2,16 @@
 """Query pruning provider-skip gate for Aurex incremental cache.
 
 This gate builds a compact module, writes an incremental cache, then rewrites
-the cache under `--experimental-query-pruning` in two scenarios:
+the cache under `--experimental-query-pruning` in three scenarios:
 
-1. all-reuse: only a function body changes, so reusable query providers should
-   be seeded from cache and zero providers should run.
-2. partial-recompute: the generic instance type arguments change, so exactly
-   one provider should run while the remaining queries are still seeded.
+1. all-reuse: the source is unchanged, so every query provider should be seeded
+   from cache and zero providers should run.
+2. body-recompute: only the main function body changes, so the body syntax and
+   type-check body providers should run while signature/module queries are
+   seeded.
+3. generic-recompute: the cached generic instance signature result changes, so
+   exactly one generic provider should run while the remaining queries are
+   seeded.
 
 The gate checks the query diff, plan, pruning, and provider-eval profile
 phases so it validates both sides of the pruning boundary instead of relying on
@@ -51,7 +55,8 @@ QUERY_CACHE_RESULT_GLOBAL_FIELD = 7
 QUERY_CACHE_GENERIC_INSTANCE_KIND = "generic_instance_signature"
 
 ALL_REUSE_SCENARIO = "all_reuse"
-PARTIAL_RECOMPUTE_SCENARIO = "partial_recompute"
+BODY_RECOMPUTE_SCENARIO = "body_recompute"
+GENERIC_RECOMPUTE_SCENARIO = "generic_recompute"
 
 
 @dataclass(frozen=True)
@@ -69,15 +74,23 @@ class ScenarioExpectation:
     expected_pruning_recomputed: int
     expected_pruning_reused_module_exports: int
     expected_pruning_reused_item_signatures: int
+    expected_pruning_reused_function_body_syntaxes: int
+    expected_pruning_reused_type_check_bodies: int
     expected_pruning_reused_generic_instance_signatures: int
     expected_pruning_recomputed_module_exports: int
     expected_pruning_recomputed_item_signatures: int
+    expected_pruning_recomputed_function_body_syntaxes: int
+    expected_pruning_recomputed_type_check_bodies: int
     expected_pruning_recomputed_generic_instance_signatures: int
     expected_provider_seeded_module_exports: int
     expected_provider_seeded_item_signatures: int
+    expected_provider_seeded_function_body_syntaxes: int
+    expected_provider_seeded_type_check_bodies: int
     expected_provider_seeded_generic_instance_signatures: int
     expected_provider_evaluated_module_exports: int
     expected_provider_evaluated_item_signatures: int
+    expected_provider_evaluated_function_body_syntaxes: int
+    expected_provider_evaluated_type_check_bodies: int
     expected_provider_evaluated_generic_instance_signatures: int
 
 
@@ -142,8 +155,11 @@ def build_compiler() -> None:
 
 def make_source(function_count: int, body_variant: int) -> str:
     source: list[str] = [
-        "module perf.query_pruning_gate;\n\n",
+        "module perf.query_pruning_gate;\n",
     ]
+    if body_variant == 2:
+        source.append("// cache-bypass change outside query subjects\n")
+    source.append("\n")
     source.append(
         "struct Box[T] {\n"
         "    value: T;\n"
@@ -157,7 +173,7 @@ def make_source(function_count: int, body_variant: int) -> str:
     else:
         seed_value = "0"
     source.append(f"    let box: Box[i32] = Box[i32] {{ value: {seed_value} }};\n")
-    if body_variant == 0:
+    if body_variant == 0 or body_variant == 2:
         source.append("    return box.value;\n")
     elif body_variant == 1:
         source.append("    let baseline: i32 = box.value;\n")
@@ -228,16 +244,31 @@ def require_exact_field(fields: dict[str, str], name: str, expected: str) -> Non
         raise RuntimeError(f"expected {name}={expected}, got {value!r}")
 
 
-def query_subject_counts(function_count: int) -> tuple[int, int, int, int]:
+def query_subject_counts(function_count: int) -> tuple[int, int, int, int, int, int]:
     module_exports = 1
     item_signatures = function_count + 2
+    function_body_syntaxes = function_count + 1
+    type_check_bodies = function_count + 1
     generic_instance_signatures = 1
-    total = module_exports + item_signatures + generic_instance_signatures
-    return module_exports, item_signatures, generic_instance_signatures, total
+    total = (
+        module_exports
+        + item_signatures
+        + function_body_syntaxes
+        + type_check_bodies
+        + generic_instance_signatures
+    )
+    return module_exports, item_signatures, function_body_syntaxes, type_check_bodies, generic_instance_signatures, total
 
 
 def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpectation:
-    module_exports, item_signatures, generic_instance_signatures, total = query_subject_counts(function_count)
+    (
+        module_exports,
+        item_signatures,
+        function_body_syntaxes,
+        type_check_bodies,
+        generic_instance_signatures,
+        total,
+    ) = query_subject_counts(function_count)
     if scenario_name == ALL_REUSE_SCENARIO:
         return ScenarioExpectation(
             name=scenario_name,
@@ -253,18 +284,60 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_pruning_recomputed=0,
             expected_pruning_reused_module_exports=module_exports,
             expected_pruning_reused_item_signatures=item_signatures,
+            expected_pruning_reused_function_body_syntaxes=function_body_syntaxes,
+            expected_pruning_reused_type_check_bodies=type_check_bodies,
             expected_pruning_reused_generic_instance_signatures=generic_instance_signatures,
             expected_pruning_recomputed_module_exports=0,
             expected_pruning_recomputed_item_signatures=0,
+            expected_pruning_recomputed_function_body_syntaxes=0,
+            expected_pruning_recomputed_type_check_bodies=0,
             expected_pruning_recomputed_generic_instance_signatures=0,
             expected_provider_seeded_module_exports=module_exports,
             expected_provider_seeded_item_signatures=item_signatures,
+            expected_provider_seeded_function_body_syntaxes=function_body_syntaxes,
+            expected_provider_seeded_type_check_bodies=type_check_bodies,
             expected_provider_seeded_generic_instance_signatures=generic_instance_signatures,
             expected_provider_evaluated_module_exports=0,
             expected_provider_evaluated_item_signatures=0,
+            expected_provider_evaluated_function_body_syntaxes=0,
+            expected_provider_evaluated_type_check_bodies=0,
             expected_provider_evaluated_generic_instance_signatures=0,
         )
-    if scenario_name == PARTIAL_RECOMPUTE_SCENARIO:
+    if scenario_name == BODY_RECOMPUTE_SCENARIO:
+        return ScenarioExpectation(
+            name=scenario_name,
+            expected_diff_total=total,
+            expected_diff_missing=0,
+            expected_diff_unchanged=total - 2,
+            expected_diff_changed=2,
+            expected_plan_reusable=total - 2,
+            expected_plan_recompute_roots=2,
+            expected_plan_propagated_recompute=0,
+            expected_plan_recompute=2,
+            expected_pruning_reused=total - 2,
+            expected_pruning_recomputed=2,
+            expected_pruning_reused_module_exports=module_exports,
+            expected_pruning_reused_item_signatures=item_signatures,
+            expected_pruning_reused_function_body_syntaxes=function_body_syntaxes - 1,
+            expected_pruning_reused_type_check_bodies=type_check_bodies - 1,
+            expected_pruning_reused_generic_instance_signatures=generic_instance_signatures,
+            expected_pruning_recomputed_module_exports=0,
+            expected_pruning_recomputed_item_signatures=0,
+            expected_pruning_recomputed_function_body_syntaxes=1,
+            expected_pruning_recomputed_type_check_bodies=1,
+            expected_pruning_recomputed_generic_instance_signatures=0,
+            expected_provider_seeded_module_exports=module_exports,
+            expected_provider_seeded_item_signatures=item_signatures,
+            expected_provider_seeded_function_body_syntaxes=function_body_syntaxes - 1,
+            expected_provider_seeded_type_check_bodies=type_check_bodies - 1,
+            expected_provider_seeded_generic_instance_signatures=generic_instance_signatures,
+            expected_provider_evaluated_module_exports=0,
+            expected_provider_evaluated_item_signatures=0,
+            expected_provider_evaluated_function_body_syntaxes=1,
+            expected_provider_evaluated_type_check_bodies=1,
+            expected_provider_evaluated_generic_instance_signatures=0,
+        )
+    if scenario_name == GENERIC_RECOMPUTE_SCENARIO:
         return ScenarioExpectation(
             name=scenario_name,
             expected_diff_total=total,
@@ -279,15 +352,23 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_pruning_recomputed=1,
             expected_pruning_reused_module_exports=module_exports,
             expected_pruning_reused_item_signatures=item_signatures,
+            expected_pruning_reused_function_body_syntaxes=function_body_syntaxes,
+            expected_pruning_reused_type_check_bodies=type_check_bodies,
             expected_pruning_reused_generic_instance_signatures=0,
             expected_pruning_recomputed_module_exports=0,
             expected_pruning_recomputed_item_signatures=0,
+            expected_pruning_recomputed_function_body_syntaxes=0,
+            expected_pruning_recomputed_type_check_bodies=0,
             expected_pruning_recomputed_generic_instance_signatures=generic_instance_signatures,
             expected_provider_seeded_module_exports=module_exports,
             expected_provider_seeded_item_signatures=item_signatures,
+            expected_provider_seeded_function_body_syntaxes=function_body_syntaxes,
+            expected_provider_seeded_type_check_bodies=type_check_bodies,
             expected_provider_seeded_generic_instance_signatures=0,
             expected_provider_evaluated_module_exports=0,
             expected_provider_evaluated_item_signatures=0,
+            expected_provider_evaluated_function_body_syntaxes=0,
+            expected_provider_evaluated_type_check_bodies=0,
             expected_provider_evaluated_generic_instance_signatures=1,
         )
     raise ValueError(f"unsupported scenario: {scenario_name}")
@@ -325,11 +406,31 @@ def verify_pruning_profile(fields: dict[str, str], expectation: ScenarioExpectat
     require_exact_field(fields, "reused_item_signatures", str(expectation.expected_pruning_reused_item_signatures))
     require_exact_field(
         fields,
+        "reused_function_body_syntaxes",
+        str(expectation.expected_pruning_reused_function_body_syntaxes),
+    )
+    require_exact_field(
+        fields,
+        "reused_type_check_bodies",
+        str(expectation.expected_pruning_reused_type_check_bodies),
+    )
+    require_exact_field(
+        fields,
         "reused_generic_instance_signatures",
         str(expectation.expected_pruning_reused_generic_instance_signatures),
     )
     require_exact_field(fields, "recomputed_module_exports", str(expectation.expected_pruning_recomputed_module_exports))
     require_exact_field(fields, "recomputed_item_signatures", str(expectation.expected_pruning_recomputed_item_signatures))
+    require_exact_field(
+        fields,
+        "recomputed_function_body_syntaxes",
+        str(expectation.expected_pruning_recomputed_function_body_syntaxes),
+    )
+    require_exact_field(
+        fields,
+        "recomputed_type_check_bodies",
+        str(expectation.expected_pruning_recomputed_type_check_bodies),
+    )
     require_exact_field(
         fields,
         "recomputed_generic_instance_signatures",
@@ -341,9 +442,13 @@ def verify_pruning_profile(fields: dict[str, str], expectation: ScenarioExpectat
         f"recomputed={expectation.expected_pruning_recomputed},"
         f"reused_module_exports={expectation.expected_pruning_reused_module_exports},"
         f"reused_item_signatures={expectation.expected_pruning_reused_item_signatures},"
+        f"reused_function_body_syntaxes={expectation.expected_pruning_reused_function_body_syntaxes},"
+        f"reused_type_check_bodies={expectation.expected_pruning_reused_type_check_bodies},"
         f"reused_generic_instance_signatures={expectation.expected_pruning_reused_generic_instance_signatures},"
         f"recomputed_module_exports={expectation.expected_pruning_recomputed_module_exports},"
         f"recomputed_item_signatures={expectation.expected_pruning_recomputed_item_signatures},"
+        f"recomputed_function_body_syntaxes={expectation.expected_pruning_recomputed_function_body_syntaxes},"
+        f"recomputed_type_check_bodies={expectation.expected_pruning_recomputed_type_check_bodies},"
         f"recomputed_generic_instance_signatures={expectation.expected_pruning_recomputed_generic_instance_signatures},"
         "fallback=none"
     )
@@ -357,11 +462,31 @@ def verify_provider_eval_profile(fields: dict[str, str], expectation: ScenarioEx
     require_exact_field(fields, "seeded_item_signatures", str(expectation.expected_provider_seeded_item_signatures))
     require_exact_field(
         fields,
+        "seeded_function_body_syntaxes",
+        str(expectation.expected_provider_seeded_function_body_syntaxes),
+    )
+    require_exact_field(
+        fields,
+        "seeded_type_check_bodies",
+        str(expectation.expected_provider_seeded_type_check_bodies),
+    )
+    require_exact_field(
+        fields,
         "seeded_generic_instance_signatures",
         str(expectation.expected_provider_seeded_generic_instance_signatures),
     )
     require_exact_field(fields, "evaluated_module_exports", str(expectation.expected_provider_evaluated_module_exports))
     require_exact_field(fields, "evaluated_item_signatures", str(expectation.expected_provider_evaluated_item_signatures))
+    require_exact_field(
+        fields,
+        "evaluated_function_body_syntaxes",
+        str(expectation.expected_provider_evaluated_function_body_syntaxes),
+    )
+    require_exact_field(
+        fields,
+        "evaluated_type_check_bodies",
+        str(expectation.expected_provider_evaluated_type_check_bodies),
+    )
     require_exact_field(
         fields,
         "evaluated_generic_instance_signatures",
@@ -372,9 +497,13 @@ def verify_provider_eval_profile(fields: dict[str, str], expectation: ScenarioEx
         f"{expectation.expected_pruning_reused},evaluated={expectation.expected_pruning_recomputed},"
         f"seeded_module_exports={expectation.expected_provider_seeded_module_exports},"
         f"seeded_item_signatures={expectation.expected_provider_seeded_item_signatures},"
+        f"seeded_function_body_syntaxes={expectation.expected_provider_seeded_function_body_syntaxes},"
+        f"seeded_type_check_bodies={expectation.expected_provider_seeded_type_check_bodies},"
         f"seeded_generic_instance_signatures={expectation.expected_provider_seeded_generic_instance_signatures},"
         f"evaluated_module_exports={expectation.expected_provider_evaluated_module_exports},"
         f"evaluated_item_signatures={expectation.expected_provider_evaluated_item_signatures},"
+        f"evaluated_function_body_syntaxes={expectation.expected_provider_evaluated_function_body_syntaxes},"
+        f"evaluated_type_check_bodies={expectation.expected_provider_evaluated_type_check_bodies},"
         f"evaluated_generic_instance_signatures={expectation.expected_provider_evaluated_generic_instance_signatures}"
     )
 
@@ -398,7 +527,7 @@ def run_scenario(function_count: int, scenario_name: str, source_variant: int) -
             str(source_path),
         ]
     )
-    if scenario_name == PARTIAL_RECOMPUTE_SCENARIO:
+    if scenario_name == GENERIC_RECOMPUTE_SCENARIO:
         mutate_cached_query_result(cache_path)
     source_path = write_source(function_count, source_variant, scenario_name)
     run_compiler(
@@ -500,8 +629,9 @@ def main() -> int:
     if not args.skip_build:
         build_compiler()
     scenarios = [
-        run_scenario(args.functions, ALL_REUSE_SCENARIO, 1),
-        run_scenario(args.functions, PARTIAL_RECOMPUTE_SCENARIO, 1),
+        run_scenario(args.functions, ALL_REUSE_SCENARIO, 2),
+        run_scenario(args.functions, BODY_RECOMPUTE_SCENARIO, 1),
+        run_scenario(args.functions, GENERIC_RECOMPUTE_SCENARIO, 2),
     ]
     result = QueryPruningGateResult(function_count=args.functions, scenarios=scenarios)
     write_json(result)

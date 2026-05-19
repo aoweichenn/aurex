@@ -42,6 +42,16 @@ bool is_valid(const GenericInstanceSignatureQueryInput& input) noexcept
     return is_valid(input.key) && is_valid(input.result);
 }
 
+bool is_valid(const FunctionBodySyntaxQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
+bool is_valid(const TypeCheckBodyQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
 QueryResultFingerprint query_result_fingerprint(const StableFingerprint128 fingerprint) noexcept
 {
     if (fingerprint.byte_count == 0) {
@@ -144,6 +154,40 @@ std::optional<QueryRecord> generic_instance_signature_query_record(
     }
     return query_record(
         QueryKind::generic_instance_signature, stable_key_fingerprint(key), stable_serialize(key), result);
+}
+
+std::optional<QueryRecord> function_body_syntax_query_record(const FunctionBodySyntaxQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::function_body_syntax, stable_key_fingerprint(input.key), stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> function_body_syntax_query_record(const BodyKey key, const QueryResultFingerprint result)
+{
+    return function_body_syntax_query_record(FunctionBodySyntaxQueryInput{
+        key,
+        result,
+    });
+}
+
+std::optional<QueryRecord> type_check_body_query_record(const TypeCheckBodyQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::type_check_body, stable_key_fingerprint(input.key), stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> type_check_body_query_record(const BodyKey key, const QueryResultFingerprint result)
+{
+    return type_check_body_query_record(TypeCheckBodyQueryInput{
+        key,
+        result,
+    });
 }
 
 } // namespace aurex::query

@@ -86,6 +86,8 @@ constexpr std::string_view CACHE_TEST_QUERY_ROW_KIND = "query";
 constexpr std::string_view CACHE_TEST_QUERY_EDGE_ROW_KIND = "query_edge";
 constexpr std::string_view CACHE_TEST_QUERY_MODULE_EXPORTS = "module_exports";
 constexpr std::string_view CACHE_TEST_QUERY_ITEM_SIGNATURE = "item_signature";
+constexpr std::string_view CACHE_TEST_QUERY_FUNCTION_BODY_SYNTAX = "function_body_syntax";
+constexpr std::string_view CACHE_TEST_QUERY_TYPE_CHECK_BODY = "type_check_body";
 constexpr std::string_view CACHE_TEST_QUERY_GENERIC_INSTANCE_SIGNATURE = "generic_instance_signature";
 constexpr std::string_view CACHE_TEST_QUERY_DIFF_PROFILE_PHASE = "incremental_cache.query_diff";
 constexpr std::string_view CACHE_TEST_QUERY_PLAN_PROFILE_PHASE = "incremental_cache.query_plan";
@@ -103,23 +105,33 @@ constexpr std::string_view CACHE_TEST_QUERY_PLAN_CHANGED_DETAIL =
     "reusable=3,recompute_roots=1,propagated_recompute=0,recompute=1";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_NO_CACHE_DETAIL =
     "enabled=1,applied=0,reused=0,recomputed=4,reused_module_exports=0,reused_item_signatures=0,"
-    "reused_generic_instance_signatures=0,recomputed_module_exports=1,recomputed_item_signatures=2,"
+    "reused_function_body_syntaxes=0,reused_type_check_bodies=0,reused_generic_instance_signatures=0,"
+    "recomputed_module_exports=1,recomputed_item_signatures=2,recomputed_function_body_syntaxes=0,"
+    "recomputed_type_check_bodies=0,"
     "recomputed_generic_instance_signatures=1,fallback=no_cache";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_REUSE_ALL_DETAIL =
     "enabled=1,applied=1,reused=4,recomputed=0,reused_module_exports=1,reused_item_signatures=2,"
-    "reused_generic_instance_signatures=1,recomputed_module_exports=0,recomputed_item_signatures=0,"
+    "reused_function_body_syntaxes=0,reused_type_check_bodies=0,reused_generic_instance_signatures=1,"
+    "recomputed_module_exports=0,recomputed_item_signatures=0,recomputed_function_body_syntaxes=0,"
+    "recomputed_type_check_bodies=0,"
     "recomputed_generic_instance_signatures=0,fallback=none";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_CHANGED_DETAIL =
     "enabled=1,applied=1,reused=3,recomputed=1,reused_module_exports=1,reused_item_signatures=2,"
-    "reused_generic_instance_signatures=0,recomputed_module_exports=0,recomputed_item_signatures=0,"
+    "reused_function_body_syntaxes=0,reused_type_check_bodies=0,reused_generic_instance_signatures=0,"
+    "recomputed_module_exports=0,recomputed_item_signatures=0,recomputed_function_body_syntaxes=0,"
+    "recomputed_type_check_bodies=0,"
     "recomputed_generic_instance_signatures=1,fallback=none";
 constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_REUSE_ALL_DETAIL =
     "mode=pruned,seeded=4,evaluated=0,seeded_module_exports=1,seeded_item_signatures=2,"
-    "seeded_generic_instance_signatures=1,evaluated_module_exports=0,evaluated_item_signatures=0,"
+    "seeded_function_body_syntaxes=0,seeded_type_check_bodies=0,seeded_generic_instance_signatures=1,"
+    "evaluated_module_exports=0,evaluated_item_signatures=0,evaluated_function_body_syntaxes=0,"
+    "evaluated_type_check_bodies=0,"
     "evaluated_generic_instance_signatures=0";
 constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_CHANGED_DETAIL =
     "mode=pruned,seeded=3,evaluated=1,seeded_module_exports=1,seeded_item_signatures=2,"
-    "seeded_generic_instance_signatures=0,evaluated_module_exports=0,evaluated_item_signatures=0,"
+    "seeded_function_body_syntaxes=0,seeded_type_check_bodies=0,seeded_generic_instance_signatures=0,"
+    "evaluated_module_exports=0,evaluated_item_signatures=0,evaluated_function_body_syntaxes=0,"
+    "evaluated_type_check_bodies=0,"
     "evaluated_generic_instance_signatures=1";
 
 struct CacheTestQueryResultFingerprint {
@@ -401,6 +413,18 @@ struct CacheTestQueryResultFingerprint {
     const std::string_view cache_text, const std::string_view encoded_stable_key)
 {
     return cache_test_query_result(cache_text, CACHE_TEST_QUERY_ITEM_SIGNATURE, encoded_stable_key);
+}
+
+[[nodiscard]] std::optional<CacheTestQueryResultFingerprint> cache_test_function_body_syntax_result(
+    const std::string_view cache_text, const std::string_view encoded_stable_key)
+{
+    return cache_test_query_result(cache_text, CACHE_TEST_QUERY_FUNCTION_BODY_SYNTAX, encoded_stable_key);
+}
+
+[[nodiscard]] std::optional<CacheTestQueryResultFingerprint> cache_test_type_check_body_result(
+    const std::string_view cache_text, const std::string_view encoded_stable_key)
+{
+    return cache_test_query_result(cache_text, CACHE_TEST_QUERY_TYPE_CHECK_BODY, encoded_stable_key);
 }
 
 void expect_query_profile_phases(
@@ -1373,11 +1397,15 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
         "reusable=0,recompute_roots=1,propagated_recompute=1,recompute=2";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_PRUNING_DETAIL =
         "enabled=1,applied=1,reused=0,recomputed=2,reused_module_exports=0,reused_item_signatures=0,"
-        "reused_generic_instance_signatures=0,recomputed_module_exports=1,recomputed_item_signatures=1,"
+        "reused_function_body_syntaxes=0,reused_type_check_bodies=0,reused_generic_instance_signatures=0,"
+        "recomputed_module_exports=1,recomputed_item_signatures=1,recomputed_function_body_syntaxes=0,"
+        "recomputed_type_check_bodies=0,"
         "recomputed_generic_instance_signatures=0,fallback=none";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_PROVIDER_EVAL_DETAIL =
         "mode=pruned,seeded=0,evaluated=2,seeded_module_exports=0,seeded_item_signatures=0,"
-        "seeded_generic_instance_signatures=0,evaluated_module_exports=1,evaluated_item_signatures=1,"
+        "seeded_function_body_syntaxes=0,seeded_type_check_bodies=0,seeded_generic_instance_signatures=0,"
+        "evaluated_module_exports=1,evaluated_item_signatures=1,evaluated_function_body_syntaxes=0,"
+        "evaluated_type_check_bodies=0,"
         "evaluated_generic_instance_signatures=0";
 
     driver::clear_file_cache();
@@ -1529,7 +1557,9 @@ TEST_F(AurexIntegrationTest, IncrementalCacheItemSignatureIgnoresBodyOnlyChanges
         sema::stable_definition_id(stable_module, sema::StableSymbolKind::function, "helper");
     const query::DefKey helper_def_key =
         query::def_key_from_stable_id(helper_stable_id, query::DefNamespace::value, query::DefKind::function);
+    const query::BodyKey helper_body_key = query::body_key(helper_def_key, query::BodySlotKind::function_body);
     const std::string encoded_helper_key = hex_encode_cache_test_field(query::stable_serialize(helper_def_key));
+    const std::string encoded_helper_body_key = hex_encode_cache_test_field(query::stable_serialize(helper_body_key));
 
     driver::CompilerInvocation invocation;
     invocation.input_path = source;
@@ -1540,19 +1570,35 @@ TEST_F(AurexIntegrationTest, IncrementalCacheItemSignatureIgnoresBodyOnlyChanges
     driver::Compiler compiler;
     auto first = compiler.run(invocation);
     ASSERT_TRUE(first) << first.error().message;
+    const std::string first_cache = read_text(cache);
     const std::optional<CacheTestQueryResultFingerprint> first_result =
-        cache_test_item_signature_result(read_text(cache), encoded_helper_key);
+        cache_test_item_signature_result(first_cache, encoded_helper_key);
     ASSERT_TRUE(first_result.has_value());
+    const std::optional<CacheTestQueryResultFingerprint> first_body_result =
+        cache_test_function_body_syntax_result(first_cache, encoded_helper_body_key);
+    ASSERT_TRUE(first_body_result.has_value());
+    const std::optional<CacheTestQueryResultFingerprint> first_type_check_result =
+        cache_test_type_check_body_result(first_cache, encoded_helper_body_key);
+    ASSERT_TRUE(first_type_check_result.has_value());
 
     write_source(DRIVER_INCREMENTAL_CACHE_SIGNATURE_SECOND_SOURCE);
     driver::clear_file_cache();
     auto second = compiler.run(invocation);
     ASSERT_TRUE(second) << second.error().message;
+    const std::string second_cache = read_text(cache);
     const std::optional<CacheTestQueryResultFingerprint> second_result =
-        cache_test_item_signature_result(read_text(cache), encoded_helper_key);
+        cache_test_item_signature_result(second_cache, encoded_helper_key);
     ASSERT_TRUE(second_result.has_value());
+    const std::optional<CacheTestQueryResultFingerprint> second_body_result =
+        cache_test_function_body_syntax_result(second_cache, encoded_helper_body_key);
+    ASSERT_TRUE(second_body_result.has_value());
+    const std::optional<CacheTestQueryResultFingerprint> second_type_check_result =
+        cache_test_type_check_body_result(second_cache, encoded_helper_body_key);
+    ASSERT_TRUE(second_type_check_result.has_value());
 
     EXPECT_EQ(*first_result, *second_result);
+    EXPECT_FALSE(*first_body_result == *second_body_result);
+    EXPECT_FALSE(*first_type_check_result == *second_type_check_result);
 
     driver::clear_file_cache();
 }

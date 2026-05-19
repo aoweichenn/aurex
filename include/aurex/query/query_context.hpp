@@ -1,8 +1,10 @@
 #pragma once
 
+#include <aurex/query/function_body_syntax_query.hpp>
 #include <aurex/query/generic_instance_signature_query.hpp>
 #include <aurex/query/item_signature_query.hpp>
 #include <aurex/query/module_exports_query.hpp>
+#include <aurex/query/type_check_body_query.hpp>
 
 #include <functional>
 #include <optional>
@@ -50,6 +52,10 @@ using GenericInstanceSignatureProvider =
     std::function<std::optional<GenericInstanceSignatureProviderOutput>(const GenericInstanceSignatureProviderInput&)>;
 using ModuleExportsProvider =
     std::function<std::optional<ModuleExportsProviderOutput>(const ModuleExportsProviderInput&)>;
+using FunctionBodySyntaxProvider =
+    std::function<std::optional<FunctionBodySyntaxProviderOutput>(const FunctionBodySyntaxProviderInput&)>;
+using TypeCheckBodyProvider =
+    std::function<std::optional<TypeCheckBodyProviderOutput>(const TypeCheckBodyProviderInput&)>;
 
 class QueryContext final {
 public:
@@ -59,14 +65,21 @@ public:
         GenericInstanceSignatureProvider generic_instance_signature_provider);
     QueryContext(ModuleExportsProvider module_exports_provider, ItemSignatureProvider item_signature_provider,
         GenericInstanceSignatureProvider generic_instance_signature_provider);
+    QueryContext(ModuleExportsProvider module_exports_provider, ItemSignatureProvider item_signature_provider,
+        GenericInstanceSignatureProvider generic_instance_signature_provider,
+        FunctionBodySyntaxProvider function_body_syntax_provider, TypeCheckBodyProvider type_check_body_provider);
 
     void set_module_exports_provider(ModuleExportsProvider provider);
     void set_item_signature_provider(ItemSignatureProvider provider);
     void set_generic_instance_signature_provider(GenericInstanceSignatureProvider provider);
+    void set_function_body_syntax_provider(FunctionBodySyntaxProvider provider);
+    void set_type_check_body_provider(TypeCheckBodyProvider provider);
     [[nodiscard]] QueryEvaluationResult evaluate_module_exports(const ModuleExportsProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_item_signature(const ItemSignatureProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_generic_instance_signature(
         const GenericInstanceSignatureProviderInput& input);
+    [[nodiscard]] QueryEvaluationResult evaluate_function_body_syntax(const FunctionBodySyntaxProviderInput& input);
+    [[nodiscard]] QueryEvaluationResult evaluate_type_check_body(const TypeCheckBodyProviderInput& input);
     [[nodiscard]] bool seed_completed_record(QueryRecord record, std::vector<QueryKey> dependencies = {});
     [[nodiscard]] bool invalidate(QueryKey key);
     [[nodiscard]] const QueryNode* find(QueryKey key) const;
@@ -97,6 +110,8 @@ private:
     ModuleExportsProvider module_exports_provider_;
     ItemSignatureProvider item_signature_provider_;
     GenericInstanceSignatureProvider generic_instance_signature_provider_;
+    FunctionBodySyntaxProvider function_body_syntax_provider_;
+    TypeCheckBodyProvider type_check_body_provider_;
 };
 
 } // namespace aurex::query

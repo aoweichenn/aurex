@@ -27,6 +27,21 @@ bool is_valid(const QueryRecord& record) noexcept
     return is_valid(record.key) && is_valid(record.result) && !record.stable_key_bytes.empty();
 }
 
+bool is_valid(const FileContentQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
+bool is_valid(const LexFileQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
+bool is_valid(const ParseFileQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
 bool is_valid(const ModuleExportsQueryInput& input) noexcept
 {
     return is_valid(input.key) && is_valid(input.result);
@@ -43,6 +58,16 @@ bool is_valid(const GenericInstanceSignatureQueryInput& input) noexcept
 }
 
 bool is_valid(const GenericInstanceBodyQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
+bool is_valid(const LowerFunctionIRQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
+bool is_valid(const LowerGenericInstanceIRQueryInput& input) noexcept
 {
     return is_valid(input.key) && is_valid(input.result);
 }
@@ -111,6 +136,57 @@ std::optional<QueryRecord> query_record(const QueryKind kind, const StableFinger
         return std::nullopt;
     }
     return record;
+}
+
+std::optional<QueryRecord> file_content_query_record(const FileContentQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::file_content, stable_key_fingerprint(input.key), stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> file_content_query_record(const FileKey key, const QueryResultFingerprint result)
+{
+    return file_content_query_record(FileContentQueryInput{
+        key,
+        result,
+    });
+}
+
+std::optional<QueryRecord> lex_file_query_record(const LexFileQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::lex_file, stable_key_fingerprint(input.key), stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> lex_file_query_record(const LexFileKey key, const QueryResultFingerprint result)
+{
+    return lex_file_query_record(LexFileQueryInput{
+        key,
+        result,
+    });
+}
+
+std::optional<QueryRecord> parse_file_query_record(const ParseFileQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::parse_file, stable_key_fingerprint(input.key), stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> parse_file_query_record(const ParseFileKey key, const QueryResultFingerprint result)
+{
+    return parse_file_query_record(ParseFileQueryInput{
+        key,
+        result,
+    });
 }
 
 std::optional<QueryRecord> module_exports_query_record(const ModuleExportsQueryInput& input)
@@ -182,6 +258,41 @@ std::optional<QueryRecord> generic_instance_body_query_record(
         return std::nullopt;
     }
     return query_record(QueryKind::generic_instance_body, stable_key_fingerprint(key), stable_serialize(key), result);
+}
+
+std::optional<QueryRecord> lower_function_ir_query_record(const LowerFunctionIRQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::lower_function_ir, stable_key_fingerprint(input.key), stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> lower_function_ir_query_record(const BodyKey key, const QueryResultFingerprint result)
+{
+    return lower_function_ir_query_record(LowerFunctionIRQueryInput{
+        key,
+        result,
+    });
+}
+
+std::optional<QueryRecord> lower_generic_instance_ir_query_record(const LowerGenericInstanceIRQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::lower_function_ir, stable_key_fingerprint(input.key), stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> lower_generic_instance_ir_query_record(
+    const GenericInstanceKey& key, const QueryResultFingerprint result)
+{
+    if (!is_valid(key) || !is_valid(result)) {
+        return std::nullopt;
+    }
+    return query_record(QueryKind::lower_function_ir, stable_key_fingerprint(key), stable_serialize(key), result);
 }
 
 std::optional<QueryRecord> function_body_syntax_query_record(const FunctionBodySyntaxQueryInput& input)

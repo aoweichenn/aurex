@@ -22,6 +22,21 @@ struct QueryRecord {
     std::string stable_key_bytes;
 };
 
+struct FileContentQueryInput {
+    FileKey key;
+    QueryResultFingerprint result;
+};
+
+struct LexFileQueryInput {
+    LexFileKey key;
+    QueryResultFingerprint result;
+};
+
+struct ParseFileQueryInput {
+    ParseFileKey key;
+    QueryResultFingerprint result;
+};
+
 struct ModuleExportsQueryInput {
     ModuleKey key;
     QueryResultFingerprint result;
@@ -38,6 +53,16 @@ struct GenericInstanceSignatureQueryInput {
 };
 
 struct GenericInstanceBodyQueryInput {
+    GenericInstanceKey key;
+    QueryResultFingerprint result;
+};
+
+struct LowerFunctionIRQueryInput {
+    BodyKey key;
+    QueryResultFingerprint result;
+};
+
+struct LowerGenericInstanceIRQueryInput {
     GenericInstanceKey key;
     QueryResultFingerprint result;
 };
@@ -66,10 +91,15 @@ enum class QueryRecordChangeStatus : base::u8 {
 
 [[nodiscard]] bool is_valid(QueryResultFingerprint result) noexcept;
 [[nodiscard]] bool is_valid(const QueryRecord& record) noexcept;
+[[nodiscard]] bool is_valid(const FileContentQueryInput& input) noexcept;
+[[nodiscard]] bool is_valid(const LexFileQueryInput& input) noexcept;
+[[nodiscard]] bool is_valid(const ParseFileQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ModuleExportsQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ItemSignatureQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const GenericInstanceSignatureQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const GenericInstanceBodyQueryInput& input) noexcept;
+[[nodiscard]] bool is_valid(const LowerFunctionIRQueryInput& input) noexcept;
+[[nodiscard]] bool is_valid(const LowerGenericInstanceIRQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const FunctionBodySyntaxQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const TypeCheckBodyQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const DiagnosticsQueryInput& input) noexcept;
@@ -81,6 +111,15 @@ enum class QueryRecordChangeStatus : base::u8 {
 
 [[nodiscard]] std::optional<QueryRecord> query_record(QueryKind kind, StableFingerprint128 key_payload,
     std::string stable_key_bytes, QueryResultFingerprint result);
+
+[[nodiscard]] std::optional<QueryRecord> file_content_query_record(const FileContentQueryInput& input);
+[[nodiscard]] std::optional<QueryRecord> file_content_query_record(FileKey key, QueryResultFingerprint result);
+
+[[nodiscard]] std::optional<QueryRecord> lex_file_query_record(const LexFileQueryInput& input);
+[[nodiscard]] std::optional<QueryRecord> lex_file_query_record(LexFileKey key, QueryResultFingerprint result);
+
+[[nodiscard]] std::optional<QueryRecord> parse_file_query_record(const ParseFileQueryInput& input);
+[[nodiscard]] std::optional<QueryRecord> parse_file_query_record(ParseFileKey key, QueryResultFingerprint result);
 
 [[nodiscard]] std::optional<QueryRecord> module_exports_query_record(const ModuleExportsQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> module_exports_query_record(ModuleKey key, QueryResultFingerprint result);
@@ -95,6 +134,13 @@ enum class QueryRecordChangeStatus : base::u8 {
 
 [[nodiscard]] std::optional<QueryRecord> generic_instance_body_query_record(const GenericInstanceBodyQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> generic_instance_body_query_record(
+    const GenericInstanceKey& key, QueryResultFingerprint result);
+
+[[nodiscard]] std::optional<QueryRecord> lower_function_ir_query_record(const LowerFunctionIRQueryInput& input);
+[[nodiscard]] std::optional<QueryRecord> lower_function_ir_query_record(BodyKey key, QueryResultFingerprint result);
+[[nodiscard]] std::optional<QueryRecord> lower_generic_instance_ir_query_record(
+    const LowerGenericInstanceIRQueryInput& input);
+[[nodiscard]] std::optional<QueryRecord> lower_generic_instance_ir_query_record(
     const GenericInstanceKey& key, QueryResultFingerprint result);
 
 [[nodiscard]] std::optional<QueryRecord> function_body_syntax_query_record(const FunctionBodySyntaxQueryInput& input);

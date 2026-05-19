@@ -90,6 +90,7 @@ constexpr std::string_view CACHE_TEST_QUERY_FUNCTION_BODY_SYNTAX = "function_bod
 constexpr std::string_view CACHE_TEST_QUERY_TYPE_CHECK_BODY = "type_check_body";
 constexpr std::string_view CACHE_TEST_QUERY_GENERIC_INSTANCE_SIGNATURE = "generic_instance_signature";
 constexpr std::string_view CACHE_TEST_QUERY_GENERIC_INSTANCE_BODY = "generic_instance_body";
+constexpr std::string_view CACHE_TEST_QUERY_LOWER_FUNCTION_IR = "lower_function_ir";
 constexpr std::string_view CACHE_TEST_QUERY_DIAGNOSTICS = "diagnostics";
 constexpr std::string_view CACHE_TEST_QUERY_DIFF_PROFILE_PHASE = "incremental_cache.query_diff";
 constexpr std::string_view CACHE_TEST_QUERY_PLAN_PROFILE_PHASE = "incremental_cache.query_plan";
@@ -108,41 +109,43 @@ constexpr std::string_view CACHE_TEST_QUERY_PLAN_CHANGED_DETAIL =
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_NO_CACHE_DETAIL =
     "enabled=1,applied=0,reused=0,recomputed=8,reused_module_exports=0,reused_item_signatures=0,"
     "reused_function_body_syntaxes=0,reused_type_check_bodies=0,reused_generic_instance_signatures=0,"
-    "reused_generic_instance_bodies=0,reused_diagnostics=0,"
+    "reused_generic_instance_bodies=0,reused_lower_function_irs=0,reused_diagnostics=0,"
     "recomputed_module_exports=1,recomputed_item_signatures=2,recomputed_function_body_syntaxes=0,"
     "recomputed_type_check_bodies=0,"
-    "recomputed_generic_instance_signatures=1,recomputed_generic_instance_bodies=0,recomputed_diagnostics=4,"
-    "fallback=no_cache";
+    "recomputed_generic_instance_signatures=1,recomputed_generic_instance_bodies=0,"
+    "recomputed_lower_function_irs=0,recomputed_diagnostics=4,fallback=no_cache";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_REUSE_ALL_DETAIL =
     "enabled=1,applied=1,reused=8,recomputed=0,reused_module_exports=1,reused_item_signatures=2,"
     "reused_function_body_syntaxes=0,reused_type_check_bodies=0,reused_generic_instance_signatures=1,"
-    "reused_generic_instance_bodies=0,reused_diagnostics=4,"
+    "reused_generic_instance_bodies=0,reused_lower_function_irs=0,reused_diagnostics=4,"
     "recomputed_module_exports=0,recomputed_item_signatures=0,recomputed_function_body_syntaxes=0,"
     "recomputed_type_check_bodies=0,"
-    "recomputed_generic_instance_signatures=0,recomputed_generic_instance_bodies=0,recomputed_diagnostics=0,"
-    "fallback=none";
+    "recomputed_generic_instance_signatures=0,recomputed_generic_instance_bodies=0,"
+    "recomputed_lower_function_irs=0,recomputed_diagnostics=0,fallback=none";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_CHANGED_DETAIL =
     "enabled=1,applied=1,reused=6,recomputed=2,reused_module_exports=1,reused_item_signatures=2,"
     "reused_function_body_syntaxes=0,reused_type_check_bodies=0,reused_generic_instance_signatures=0,"
-    "reused_generic_instance_bodies=0,reused_diagnostics=3,"
+    "reused_generic_instance_bodies=0,reused_lower_function_irs=0,reused_diagnostics=3,"
     "recomputed_module_exports=0,recomputed_item_signatures=0,recomputed_function_body_syntaxes=0,"
     "recomputed_type_check_bodies=0,"
-    "recomputed_generic_instance_signatures=1,recomputed_generic_instance_bodies=0,recomputed_diagnostics=1,"
-    "fallback=none";
+    "recomputed_generic_instance_signatures=1,recomputed_generic_instance_bodies=0,"
+    "recomputed_lower_function_irs=0,recomputed_diagnostics=1,fallback=none";
 constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_REUSE_ALL_DETAIL =
     "mode=pruned,seeded=8,evaluated=0,seeded_module_exports=1,seeded_item_signatures=2,"
     "seeded_function_body_syntaxes=0,seeded_type_check_bodies=0,seeded_generic_instance_signatures=1,"
-    "seeded_generic_instance_bodies=0,seeded_diagnostics=4,"
+    "seeded_generic_instance_bodies=0,seeded_lower_function_irs=0,seeded_diagnostics=4,"
     "evaluated_module_exports=0,evaluated_item_signatures=0,evaluated_function_body_syntaxes=0,"
     "evaluated_type_check_bodies=0,"
-    "evaluated_generic_instance_signatures=0,evaluated_generic_instance_bodies=0,evaluated_diagnostics=0";
+    "evaluated_generic_instance_signatures=0,evaluated_generic_instance_bodies=0,"
+    "evaluated_lower_function_irs=0,evaluated_diagnostics=0";
 constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_CHANGED_DETAIL =
     "mode=pruned,seeded=6,evaluated=2,seeded_module_exports=1,seeded_item_signatures=2,"
     "seeded_function_body_syntaxes=0,seeded_type_check_bodies=0,seeded_generic_instance_signatures=0,"
-    "seeded_generic_instance_bodies=0,seeded_diagnostics=3,"
+    "seeded_generic_instance_bodies=0,seeded_lower_function_irs=0,seeded_diagnostics=3,"
     "evaluated_module_exports=0,evaluated_item_signatures=0,evaluated_function_body_syntaxes=0,"
     "evaluated_type_check_bodies=0,"
-    "evaluated_generic_instance_signatures=1,evaluated_generic_instance_bodies=0,evaluated_diagnostics=1";
+    "evaluated_generic_instance_signatures=1,evaluated_generic_instance_bodies=0,"
+    "evaluated_lower_function_irs=0,evaluated_diagnostics=1";
 
 struct CacheTestQueryResultFingerprint {
     std::string global_id;
@@ -333,6 +336,9 @@ struct CacheTestQueryResultFingerprint {
     }
     if (kind == query::QueryKind::generic_instance_body) {
         return CACHE_TEST_QUERY_GENERIC_INSTANCE_BODY;
+    }
+    if (kind == query::QueryKind::lower_function_ir) {
+        return CACHE_TEST_QUERY_LOWER_FUNCTION_IR;
     }
     if (kind == query::QueryKind::diagnostics) {
         return CACHE_TEST_QUERY_DIAGNOSTICS;
@@ -1432,8 +1438,10 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceBodyRowsForTyp
     const std::string cache_text = read_text(cache);
     expect_contains(cache_text, "query\tgeneric_instance_signature");
     expect_contains(cache_text, "query\tgeneric_instance_body");
+    expect_contains(cache_text, "query\tlower_function_ir");
     expect_contains(cache_text, "query\tdiagnostics");
     expect_contains(cache_text, "query_edge\tgeneric_instance_body");
+    expect_contains(cache_text, "query_edge\tlower_function_ir");
 
     driver::clear_file_cache();
 }
@@ -1453,18 +1461,19 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_PRUNING_DETAIL =
         "enabled=1,applied=1,reused=0,recomputed=4,reused_module_exports=0,reused_item_signatures=0,"
         "reused_function_body_syntaxes=0,reused_type_check_bodies=0,reused_generic_instance_signatures=0,"
-        "reused_generic_instance_bodies=0,reused_diagnostics=0,"
+        "reused_generic_instance_bodies=0,reused_lower_function_irs=0,reused_diagnostics=0,"
         "recomputed_module_exports=1,recomputed_item_signatures=1,recomputed_function_body_syntaxes=0,"
         "recomputed_type_check_bodies=0,"
-        "recomputed_generic_instance_signatures=0,recomputed_generic_instance_bodies=0,recomputed_diagnostics=2,"
-        "fallback=none";
+        "recomputed_generic_instance_signatures=0,recomputed_generic_instance_bodies=0,"
+        "recomputed_lower_function_irs=0,recomputed_diagnostics=2,fallback=none";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_PROVIDER_EVAL_DETAIL =
         "mode=pruned,seeded=0,evaluated=4,seeded_module_exports=0,seeded_item_signatures=0,"
         "seeded_function_body_syntaxes=0,seeded_type_check_bodies=0,seeded_generic_instance_signatures=0,"
-        "seeded_generic_instance_bodies=0,seeded_diagnostics=0,"
+        "seeded_generic_instance_bodies=0,seeded_lower_function_irs=0,seeded_diagnostics=0,"
         "evaluated_module_exports=1,evaluated_item_signatures=1,evaluated_function_body_syntaxes=0,"
         "evaluated_type_check_bodies=0,"
-        "evaluated_generic_instance_signatures=0,evaluated_generic_instance_bodies=0,evaluated_diagnostics=2";
+        "evaluated_generic_instance_signatures=0,evaluated_generic_instance_bodies=0,"
+        "evaluated_lower_function_irs=0,evaluated_diagnostics=2";
 
     driver::clear_file_cache();
 

@@ -7,6 +7,10 @@ namespace {
 
 constexpr base::u64 QUERY_PACKAGE_KEY_MARKER = 0x51504b4759313031ULL;
 constexpr base::u64 QUERY_FILE_KEY_MARKER = 0x5146494c45593031ULL;
+constexpr base::u64 QUERY_LEX_CONFIG_KEY_MARKER = 0x514c584346473031ULL;
+constexpr base::u64 QUERY_PARSER_CONFIG_KEY_MARKER = 0x5150434647303031ULL;
+constexpr base::u64 QUERY_LEX_FILE_KEY_MARKER = 0x514c5846494c4531ULL;
+constexpr base::u64 QUERY_PARSE_FILE_KEY_MARKER = 0x5150525346494c45ULL;
 constexpr base::u64 QUERY_MODULE_KEY_MARKER = 0x514d4f4459303031ULL;
 constexpr base::u64 QUERY_MODULE_PART_KEY_MARKER = 0x514d504152543031ULL;
 constexpr base::u64 QUERY_DEF_KEY_MARKER = 0x514445464b455931ULL;
@@ -74,6 +78,26 @@ bool is_valid(const FileKey key) noexcept
     return is_valid(key.package) && key.global_id != 0;
 }
 
+bool is_valid(const LexConfigKey key) noexcept
+{
+    return key.schema == QUERY_LEX_CONFIG_SCHEMA_VERSION && key.global_id != 0;
+}
+
+bool is_valid(const ParserConfigKey key) noexcept
+{
+    return is_valid(key.lex_config) && key.schema == QUERY_PARSER_CONFIG_SCHEMA_VERSION && key.global_id != 0;
+}
+
+bool is_valid(const LexFileKey key) noexcept
+{
+    return is_valid(key.file) && is_valid(key.config) && key.global_id != 0;
+}
+
+bool is_valid(const ParseFileKey key) noexcept
+{
+    return is_valid(key.file) && is_valid(key.config) && key.global_id != 0;
+}
+
 bool is_valid(const ModuleKey key) noexcept
 {
     return is_valid(key.package) && key.global_id != 0;
@@ -127,6 +151,60 @@ FileKey file_key(const PackageKey package, const std::string_view canonical_path
         path,
         virtual_id,
         role,
+        global_id,
+    };
+}
+
+LexConfigKey lex_config_key(const bool retain_trivia) noexcept
+{
+    base::u64 global_id = mix_key_field(QUERY_LEX_CONFIG_KEY_MARKER, QUERY_LEX_CONFIG_SCHEMA_VERSION);
+    global_id = mix_key_field(global_id, retain_trivia ? 1U : 0U);
+    return LexConfigKey{
+        QUERY_LEX_CONFIG_SCHEMA_VERSION,
+        retain_trivia,
+        global_id,
+    };
+}
+
+ParserConfigKey parser_config_key(const bool enable_recovery, const bool build_lossless_tree) noexcept
+{
+    return parser_config_key(lex_config_key(), enable_recovery, build_lossless_tree);
+}
+
+ParserConfigKey parser_config_key(
+    const LexConfigKey lex_config, const bool enable_recovery, const bool build_lossless_tree) noexcept
+{
+    base::u64 global_id = mix_key_field(QUERY_PARSER_CONFIG_KEY_MARKER, lex_config.global_id);
+    global_id = mix_key_field(global_id, QUERY_PARSER_CONFIG_SCHEMA_VERSION);
+    global_id = mix_key_field(global_id, enable_recovery ? 1U : 0U);
+    global_id = mix_key_field(global_id, build_lossless_tree ? 1U : 0U);
+    return ParserConfigKey{
+        lex_config,
+        QUERY_PARSER_CONFIG_SCHEMA_VERSION,
+        enable_recovery,
+        build_lossless_tree,
+        global_id,
+    };
+}
+
+LexFileKey lex_file_key(const FileKey file, const LexConfigKey config) noexcept
+{
+    base::u64 global_id = mix_key_field(QUERY_LEX_FILE_KEY_MARKER, file.global_id);
+    global_id = mix_key_field(global_id, config.global_id);
+    return LexFileKey{
+        file,
+        config,
+        global_id,
+    };
+}
+
+ParseFileKey parse_file_key(const FileKey file, const ParserConfigKey config) noexcept
+{
+    base::u64 global_id = mix_key_field(QUERY_PARSE_FILE_KEY_MARKER, file.global_id);
+    global_id = mix_key_field(global_id, config.global_id);
+    return ParseFileKey{
+        file,
+        config,
         global_id,
     };
 }
@@ -286,6 +364,40 @@ void append_stable_key(StableKeyWriter& writer, const FileKey key)
     writer.write_u64(key.global_id);
 }
 
+void append_stable_key(StableKeyWriter& writer, const LexConfigKey key)
+{
+    writer.write_u64(QUERY_LEX_CONFIG_KEY_MARKER);
+    writer.write_u32(key.schema);
+    writer.write_bool(key.retain_trivia);
+    writer.write_u64(key.global_id);
+}
+
+void append_stable_key(StableKeyWriter& writer, const ParserConfigKey key)
+{
+    writer.write_u64(QUERY_PARSER_CONFIG_KEY_MARKER);
+    append_stable_key(writer, key.lex_config);
+    writer.write_u32(key.schema);
+    writer.write_bool(key.enable_recovery);
+    writer.write_bool(key.build_lossless_tree);
+    writer.write_u64(key.global_id);
+}
+
+void append_stable_key(StableKeyWriter& writer, const LexFileKey key)
+{
+    writer.write_u64(QUERY_LEX_FILE_KEY_MARKER);
+    append_stable_key(writer, key.file);
+    append_stable_key(writer, key.config);
+    writer.write_u64(key.global_id);
+}
+
+void append_stable_key(StableKeyWriter& writer, const ParseFileKey key)
+{
+    writer.write_u64(QUERY_PARSE_FILE_KEY_MARKER);
+    append_stable_key(writer, key.file);
+    append_stable_key(writer, key.config);
+    writer.write_u64(key.global_id);
+}
+
 void append_stable_key(StableKeyWriter& writer, const ModuleKey key)
 {
     writer.write_u64(QUERY_MODULE_KEY_MARKER);
@@ -366,6 +478,26 @@ std::string stable_serialize(const FileKey key)
     return serialize_with<FileKey>(append_stable_key, key);
 }
 
+std::string stable_serialize(const LexConfigKey key)
+{
+    return serialize_with<LexConfigKey>(append_stable_key, key);
+}
+
+std::string stable_serialize(const ParserConfigKey key)
+{
+    return serialize_with<ParserConfigKey>(append_stable_key, key);
+}
+
+std::string stable_serialize(const LexFileKey key)
+{
+    return serialize_with<LexFileKey>(append_stable_key, key);
+}
+
+std::string stable_serialize(const ParseFileKey key)
+{
+    return serialize_with<ParseFileKey>(append_stable_key, key);
+}
+
 std::string stable_serialize(const ModuleKey key)
 {
     return serialize_with<ModuleKey>(append_stable_key, key);
@@ -409,6 +541,26 @@ StableFingerprint128 stable_key_fingerprint(const PackageKey key)
 StableFingerprint128 stable_key_fingerprint(const FileKey key)
 {
     return fingerprint_with<FileKey>(append_stable_key, key);
+}
+
+StableFingerprint128 stable_key_fingerprint(const LexConfigKey key)
+{
+    return fingerprint_with<LexConfigKey>(append_stable_key, key);
+}
+
+StableFingerprint128 stable_key_fingerprint(const ParserConfigKey key)
+{
+    return fingerprint_with<ParserConfigKey>(append_stable_key, key);
+}
+
+StableFingerprint128 stable_key_fingerprint(const LexFileKey key)
+{
+    return fingerprint_with<LexFileKey>(append_stable_key, key);
+}
+
+StableFingerprint128 stable_key_fingerprint(const ParseFileKey key)
+{
+    return fingerprint_with<ParseFileKey>(append_stable_key, key);
 }
 
 StableFingerprint128 stable_key_fingerprint(const ModuleKey key)
@@ -456,6 +608,26 @@ std::string debug_string(const FileKey key)
     return finish_debug_string("FileKey", key.global_id, key.path);
 }
 
+std::string debug_string(const LexConfigKey key)
+{
+    return finish_debug_string("LexConfigKey", key.global_id, stable_key_fingerprint(key));
+}
+
+std::string debug_string(const ParserConfigKey key)
+{
+    return finish_debug_string("ParserConfigKey", key.global_id, stable_key_fingerprint(key));
+}
+
+std::string debug_string(const LexFileKey key)
+{
+    return finish_debug_string("LexFileKey", key.global_id, stable_key_fingerprint(key));
+}
+
+std::string debug_string(const ParseFileKey key)
+{
+    return finish_debug_string("ParseFileKey", key.global_id, stable_key_fingerprint(key));
+}
+
 std::string debug_string(const ModuleKey key)
 {
     return finish_debug_string("ModuleKey", key.global_id, key.path);
@@ -497,6 +669,16 @@ std::size_t PackageKeyHash::operator()(const PackageKey key) const
 }
 
 std::size_t FileKeyHash::operator()(const FileKey key) const
+{
+    return stable_hash_value(stable_key_fingerprint(key));
+}
+
+std::size_t LexFileKeyHash::operator()(const LexFileKey key) const
+{
+    return stable_hash_value(stable_key_fingerprint(key));
+}
+
+std::size_t ParseFileKeyHash::operator()(const ParseFileKey key) const
 {
     return stable_hash_value(stable_key_fingerprint(key));
 }

@@ -140,6 +140,7 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INST
     ",reused_generic_instance_signatures=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INSTANCE_BODIES =
     ",reused_generic_instance_bodies=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LOWER_FUNCTION_IRS = ",reused_lower_function_irs=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_DIAGNOSTICS = ",reused_diagnostics=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_EXPORTS = ",recomputed_module_exports=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_ITEM_SIGNATURES =
@@ -152,6 +153,8 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_GENERIC_
     ",recomputed_generic_instance_signatures=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_GENERIC_INSTANCE_BODIES =
     ",recomputed_generic_instance_bodies=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_LOWER_FUNCTION_IRS =
+    ",recomputed_lower_function_irs=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_DIAGNOSTICS = ",recomputed_diagnostics=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_FALLBACK = ",fallback=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE = "mode=";
@@ -169,6 +172,8 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERI
     ",seeded_generic_instance_signatures=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERIC_INSTANCE_BODIES =
     ",seeded_generic_instance_bodies=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LOWER_FUNCTION_IRS =
+    ",seeded_lower_function_irs=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_DIAGNOSTICS = ",seeded_diagnostics=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_EXPORTS =
     ",evaluated_module_exports=";
@@ -182,6 +187,8 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_GEN
     ",evaluated_generic_instance_signatures=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_GENERIC_INSTANCE_BODIES =
     ",evaluated_generic_instance_bodies=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_LOWER_FUNCTION_IRS =
+    ",evaluated_lower_function_irs=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_DIAGNOSTICS = ",evaluated_diagnostics=";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED = "disabled";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NONE = "none";
@@ -192,6 +199,7 @@ constexpr std::string_view INCREMENTAL_CACHE_MODULE_EXPORTS_RESULT_MARKER = "mod
 constexpr std::string_view INCREMENTAL_CACHE_FUNCTION_BODY_SYNTAX_RESULT_MARKER = "function-body-syntax:v1";
 constexpr std::string_view INCREMENTAL_CACHE_TYPE_CHECK_BODY_RESULT_MARKER = "type-check-body:v1";
 constexpr std::string_view INCREMENTAL_CACHE_GENERIC_INSTANCE_BODY_RESULT_MARKER = "generic-instance-body:v1";
+constexpr std::string_view INCREMENTAL_CACHE_LOWER_FUNCTION_IR_RESULT_MARKER = "lower-function-ir:v1";
 constexpr std::string_view INCREMENTAL_CACHE_DIAGNOSTICS_RESULT_MARKER = "diagnostics:v1";
 constexpr char INCREMENTAL_CACHE_MODULE_NAME_SEPARATOR = '.';
 
@@ -225,6 +233,7 @@ struct QueryKindExecutionCounts {
     base::usize type_check_bodies = 0;
     base::usize generic_instance_signatures = 0;
     base::usize generic_instance_bodies = 0;
+    base::usize lower_function_irs = 0;
     base::usize diagnostics = 0;
 };
 
@@ -300,6 +309,18 @@ struct TypeCheckBodyQuerySubject {
     query::QueryResultFingerprint result;
 };
 
+enum class LowerFunctionIRSubjectKind : base::u8 {
+    body,
+    generic_instance,
+};
+
+struct LowerFunctionIRQuerySubject {
+    LowerFunctionIRSubjectKind kind = LowerFunctionIRSubjectKind::body;
+    query::BodyKey body;
+    const query::GenericInstanceKey* generic_instance = nullptr;
+    query::QueryResultFingerprint result;
+};
+
 struct DiagnosticsQuerySubject {
     query::QueryKey producer;
     query::QueryResultFingerprint result;
@@ -312,6 +333,7 @@ enum class QuerySubjectKind : base::u8 {
     type_check_body,
     generic_instance_signature,
     generic_instance_body,
+    lower_function_ir,
     diagnostics,
 };
 
@@ -328,6 +350,7 @@ struct QuerySubjectCollection {
     std::vector<TypeCheckBodyQuerySubject> type_check_bodies;
     std::vector<GenericInstanceSignatureQuerySubject> generic_instance_signatures;
     std::vector<GenericInstanceBodyQuerySubject> generic_instance_bodies;
+    std::vector<LowerFunctionIRQuerySubject> lower_function_irs;
     std::vector<DiagnosticsQuerySubject> diagnostics;
     std::vector<QuerySubject> subjects;
     std::vector<query::QueryRecord> records;
@@ -1100,6 +1123,9 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
         case query::QueryKind::generic_instance_body:
             counts.generic_instance_bodies += 1;
             return;
+        case query::QueryKind::lower_function_ir:
+            counts.lower_function_irs += 1;
+            return;
         case query::QueryKind::diagnostics:
             counts.diagnostics += 1;
             return;
@@ -1110,7 +1136,6 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
         case query::QueryKind::module_graph:
         case query::QueryKind::item_list:
         case query::QueryKind::generic_template_signature:
-        case query::QueryKind::lower_function_ir:
             return;
     }
 }
@@ -1139,6 +1164,7 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INSTANCE_SIGNATURES
            << result.reused.generic_instance_signatures
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INSTANCE_BODIES << result.reused.generic_instance_bodies
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LOWER_FUNCTION_IRS << result.reused.lower_function_irs
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_DIAGNOSTICS << result.reused.diagnostics
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_EXPORTS << result.recomputed.module_exports
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_ITEM_SIGNATURES << result.recomputed.item_signatures
@@ -1148,8 +1174,10 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_GENERIC_INSTANCE_SIGNATURES
            << result.recomputed.generic_instance_signatures
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_GENERIC_INSTANCE_BODIES
-           << result.recomputed.generic_instance_bodies << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_DIAGNOSTICS
-           << result.recomputed.diagnostics << INCREMENTAL_CACHE_PROFILE_PRUNING_FALLBACK << result.fallback;
+           << result.recomputed.generic_instance_bodies
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_LOWER_FUNCTION_IRS << result.recomputed.lower_function_irs
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_DIAGNOSTICS << result.recomputed.diagnostics
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_FALLBACK << result.fallback;
     return detail.str();
 }
 
@@ -1169,7 +1197,8 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERIC_INSTANCE_SIGNATURES
            << stats.seeded.generic_instance_signatures
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERIC_INSTANCE_BODIES
-           << stats.seeded.generic_instance_bodies << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_DIAGNOSTICS
+           << stats.seeded.generic_instance_bodies << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LOWER_FUNCTION_IRS
+           << stats.seeded.lower_function_irs << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_DIAGNOSTICS
            << stats.seeded.diagnostics << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_EXPORTS
            << stats.evaluated.module_exports << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_ITEM_SIGNATURES
            << stats.evaluated.item_signatures
@@ -1179,8 +1208,9 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_GENERIC_INSTANCE_SIGNATURES
            << stats.evaluated.generic_instance_signatures
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_GENERIC_INSTANCE_BODIES
-           << stats.evaluated.generic_instance_bodies << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_DIAGNOSTICS
-           << stats.evaluated.diagnostics;
+           << stats.evaluated.generic_instance_bodies
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_LOWER_FUNCTION_IRS << stats.evaluated.lower_function_irs
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_DIAGNOSTICS << stats.evaluated.diagnostics;
     return detail.str();
 }
 
@@ -1542,6 +1572,30 @@ void push_module_exports_signature_entry(std::vector<ModuleExportsSignatureEntry
     return query::query_result_fingerprint(builder.finish());
 }
 
+[[nodiscard]] query::QueryResultFingerprint lower_function_ir_result_fingerprint(
+    const query::BodyKey key, const query::QueryResultFingerprint type_check_result)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(INCREMENTAL_CACHE_LOWER_FUNCTION_IR_RESULT_MARKER);
+    builder.mix_string("body");
+    builder.mix_fingerprint(query::stable_key_fingerprint(key));
+    builder.mix_u64(type_check_result.global_id);
+    builder.mix_fingerprint(type_check_result.fingerprint);
+    return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] query::QueryResultFingerprint lower_generic_instance_ir_result_fingerprint(
+    const query::GenericInstanceKey& key, const query::QueryResultFingerprint generic_body_result)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(INCREMENTAL_CACHE_LOWER_FUNCTION_IR_RESULT_MARKER);
+    builder.mix_string("generic-instance");
+    builder.mix_fingerprint(query::stable_key_fingerprint(key));
+    builder.mix_u64(generic_body_result.global_id);
+    builder.mix_fingerprint(generic_body_result.fingerprint);
+    return query::query_result_fingerprint(builder.finish());
+}
+
 [[nodiscard]] query::QueryResultFingerprint diagnostics_result_fingerprint(const query::QueryKey producer)
 {
     query::StableHashBuilder builder;
@@ -1600,6 +1654,35 @@ void push_generic_instance_body_query_subject(std::vector<GenericInstanceBodyQue
     }
     subjects.push_back(GenericInstanceBodyQuerySubject{
         &instance.generic_instance_key,
+        result,
+    });
+}
+
+void push_lower_function_ir_query_subject(
+    std::vector<LowerFunctionIRQuerySubject>& subjects, const TypeCheckBodyQuerySubject& type_check_subject)
+{
+    const query::QueryResultFingerprint result =
+        lower_function_ir_result_fingerprint(type_check_subject.key, type_check_subject.result);
+    subjects.push_back(LowerFunctionIRQuerySubject{
+        LowerFunctionIRSubjectKind::body,
+        type_check_subject.key,
+        nullptr,
+        result,
+    });
+}
+
+void push_lower_generic_instance_ir_query_subject(
+    std::vector<LowerFunctionIRQuerySubject>& subjects, const GenericInstanceBodyQuerySubject& generic_body_subject)
+{
+    if (generic_body_subject.key == nullptr) {
+        return;
+    }
+    const query::QueryResultFingerprint result =
+        lower_generic_instance_ir_result_fingerprint(*generic_body_subject.key, generic_body_subject.result);
+    subjects.push_back(LowerFunctionIRQuerySubject{
+        LowerFunctionIRSubjectKind::generic_instance,
+        {},
+        generic_body_subject.key,
         result,
     });
 }
@@ -1689,6 +1772,28 @@ void evaluate_generic_instance_body_query_subject(
     static_cast<void>(context.evaluate_generic_instance_body(input));
 }
 
+void evaluate_lower_function_ir_query_subject(query::QueryContext& context, const LowerFunctionIRQuerySubject& subject)
+{
+    switch (subject.kind) {
+        case LowerFunctionIRSubjectKind::body: {
+            const query::LowerFunctionIRProviderInput input{
+                subject.body,
+                subject.result,
+            };
+            static_cast<void>(context.evaluate_lower_function_ir(input));
+            return;
+        }
+        case LowerFunctionIRSubjectKind::generic_instance: {
+            const query::LowerGenericInstanceIRProviderInput input{
+                subject.generic_instance,
+                subject.result,
+            };
+            static_cast<void>(context.evaluate_lower_generic_instance_ir(input));
+            return;
+        }
+    }
+}
+
 void evaluate_function_body_syntax_query_subject(
     query::QueryContext& context, const FunctionBodySyntaxQuerySubject& subject)
 {
@@ -1746,6 +1851,20 @@ void evaluate_diagnostics_query_subject(query::QueryContext& context, const Diag
     return query::generic_instance_body_query_record(*subject.key, subject.result);
 }
 
+[[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const LowerFunctionIRQuerySubject& subject)
+{
+    switch (subject.kind) {
+        case LowerFunctionIRSubjectKind::body:
+            return query::lower_function_ir_query_record(subject.body, subject.result);
+        case LowerFunctionIRSubjectKind::generic_instance:
+            if (subject.generic_instance == nullptr) {
+                return std::nullopt;
+            }
+            return query::lower_generic_instance_ir_query_record(*subject.generic_instance, subject.result);
+    }
+    return std::nullopt;
+}
+
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const FunctionBodySyntaxQuerySubject& subject)
 {
     return query::function_body_syntax_query_record(subject.key, subject.result);
@@ -1798,11 +1917,13 @@ void build_ordered_query_subjects(QuerySubjectCollection& collection)
 {
     collection.subjects.reserve(collection.module_exports.size() + collection.item_signatures.size()
         + collection.function_body_syntaxes.size() + collection.type_check_bodies.size()
-        + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size());
+        + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size()
+        + collection.lower_function_irs.size());
     std::unordered_set<query::QueryKey, query::QueryKeyHash> keys;
     keys.reserve(collection.module_exports.size() + collection.item_signatures.size()
         + collection.function_body_syntaxes.size() + collection.type_check_bodies.size()
-        + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size());
+        + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size()
+        + collection.lower_function_irs.size());
 
     for (base::usize index = 0; index < collection.module_exports.size(); ++index) {
         push_query_subject(collection.subjects, keys, QuerySubjectKind::module_exports, index,
@@ -1827,6 +1948,10 @@ void build_ordered_query_subjects(QuerySubjectCollection& collection)
     for (base::usize index = 0; index < collection.generic_instance_bodies.size(); ++index) {
         push_query_subject(collection.subjects, keys, QuerySubjectKind::generic_instance_body, index,
             query_record_for_subject(collection.generic_instance_bodies[index]));
+    }
+    for (base::usize index = 0; index < collection.lower_function_irs.size(); ++index) {
+        push_query_subject(collection.subjects, keys, QuerySubjectKind::lower_function_ir, index,
+            query_record_for_subject(collection.lower_function_irs[index]));
     }
 
     collect_diagnostics_query_subjects(collection);
@@ -1928,6 +2053,21 @@ void collect_function_body_query_subjects(const sema::CheckedModule& checked, co
     }
 }
 
+[[nodiscard]] std::vector<LowerFunctionIRQuerySubject> collect_lower_function_ir_query_subjects(
+    const std::vector<TypeCheckBodyQuerySubject>& type_check_subjects,
+    const std::vector<GenericInstanceBodyQuerySubject>& generic_body_subjects)
+{
+    std::vector<LowerFunctionIRQuerySubject> subjects;
+    subjects.reserve(type_check_subjects.size() + generic_body_subjects.size());
+    for (const TypeCheckBodyQuerySubject& type_check_subject : type_check_subjects) {
+        push_lower_function_ir_query_subject(subjects, type_check_subject);
+    }
+    for (const GenericInstanceBodyQuerySubject& generic_body_subject : generic_body_subjects) {
+        push_lower_generic_instance_ir_query_subject(subjects, generic_body_subject);
+    }
+    return subjects;
+}
+
 [[nodiscard]] QuerySubjectCollection collect_query_subjects(
     const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const base::SourceManager& sources)
 {
@@ -1938,6 +2078,8 @@ void collect_function_body_query_subjects(const sema::CheckedModule& checked, co
         checked, sources, collection.function_body_syntaxes, collection.type_check_bodies);
     collection.generic_instance_signatures = collect_generic_instance_signature_query_subjects(checked);
     collection.generic_instance_bodies = collect_generic_instance_body_query_subjects(checked, sources);
+    collection.lower_function_irs =
+        collect_lower_function_ir_query_subjects(collection.type_check_bodies, collection.generic_instance_bodies);
     build_ordered_query_subjects(collection);
     return collection;
 }
@@ -1964,6 +2106,9 @@ void evaluate_query_subject(
             return;
         case QuerySubjectKind::generic_instance_body:
             evaluate_generic_instance_body_query_subject(context, collection.generic_instance_bodies[subject.index]);
+            return;
+        case QuerySubjectKind::lower_function_ir:
+            evaluate_lower_function_ir_query_subject(context, collection.lower_function_irs[subject.index]);
             return;
         case QuerySubjectKind::diagnostics:
             evaluate_diagnostics_query_subject(context, collection.diagnostics[subject.index]);
@@ -1992,6 +2137,9 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const QuerySub
             return;
         case QuerySubjectKind::generic_instance_body:
             counts.generic_instance_bodies += 1;
+            return;
+        case QuerySubjectKind::lower_function_ir:
+            counts.lower_function_irs += 1;
             return;
         case QuerySubjectKind::diagnostics:
             counts.diagnostics += 1;

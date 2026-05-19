@@ -4,10 +4,12 @@
 #include <aurex/query/generic_instance_key.hpp>
 #include <aurex/query/generic_instance_signature_query.hpp>
 #include <aurex/query/item_signature_query.hpp>
+#include <aurex/query/lower_function_ir_query.hpp>
 #include <aurex/query/module_exports_query.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/query/query_reuse.hpp>
+#include <aurex/query/source_file_query.hpp>
 #include <aurex/query/stable_identity.hpp>
 #include <aurex/query/type_check_body_query.hpp>
 
@@ -46,9 +48,13 @@ constexpr std::string_view QUERY_TEST_PROVIDER_SIGNATURE = "signature:i32";
 constexpr std::string_view QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE = "signature:mismatched-provider-output";
 constexpr std::string_view QUERY_TEST_MODULE_EXPORTS_SIGNATURE = "exports:v1";
 constexpr std::string_view QUERY_TEST_CHANGED_MODULE_EXPORTS_SIGNATURE = "exports:v2";
+constexpr std::string_view QUERY_TEST_FILE_CONTENT = "file-content:module regex.vm";
+constexpr std::string_view QUERY_TEST_LEX_FILE = "lex-file:tokens";
+constexpr std::string_view QUERY_TEST_PARSE_FILE = "parse-file:ast";
 constexpr std::string_view QUERY_TEST_BODY_SYNTAX = "body-syntax:return value";
 constexpr std::string_view QUERY_TEST_TYPE_CHECK_BODY = "type-check-body:return i32";
 constexpr std::string_view QUERY_TEST_GENERIC_INSTANCE_BODY = "generic-instance-body:return T";
+constexpr std::string_view QUERY_TEST_LOWER_FUNCTION_IR = "lower-function-ir:return i32";
 constexpr std::string_view QUERY_TEST_DIAGNOSTICS = "diagnostics:empty";
 
 [[nodiscard]] query::PackageKey test_package()
@@ -85,10 +91,20 @@ struct QueryContextGenericInstanceSignatureSubject {
     query::IncrementalKey signature;
 };
 
+struct QueryContextSourceSubject {
+    query::FileKey file;
+    query::LexFileKey lex_file;
+    query::ParseFileKey parse_file;
+    query::QueryResultFingerprint content;
+    query::QueryResultFingerprint tokens;
+    query::QueryResultFingerprint syntax;
+};
+
 struct QueryContextBodySubject {
     query::BodyKey body;
     query::QueryResultFingerprint syntax;
     query::QueryResultFingerprint checked_body;
+    query::QueryResultFingerprint lowered_ir;
 };
 
 [[nodiscard]] QueryContextItemSignatureSubject test_item_signature_subject(
@@ -161,6 +177,23 @@ struct QueryContextBodySubject {
         body,
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_BODY_SYNTAX)),
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_TYPE_CHECK_BODY)),
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_LOWER_FUNCTION_IR)),
+    };
+}
+
+[[nodiscard]] QueryContextSourceSubject test_source_subject()
+{
+    const query::PackageKey package = test_package();
+    const query::FileKey file = query::file_key(package, "/workspace/root/regex/vm.ax");
+    const query::LexConfigKey lex_config = query::lex_config_key();
+    const query::ParserConfigKey parser_config = query::parser_config_key(lex_config);
+    return QueryContextSourceSubject{
+        file,
+        query::lex_file_key(file, lex_config),
+        query::parse_file_key(file, parser_config),
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_FILE_CONTENT)),
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_LEX_FILE)),
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_PARSE_FILE)),
     };
 }
 
@@ -257,6 +290,23 @@ TEST(QueryUnit, StableSemanticKeysSeparateFilesModulesDefinitionsAndBodies)
     EXPECT_NE(source_file, virtual_file);
     EXPECT_NE(query::stable_key_fingerprint(source_file), query::stable_key_fingerprint(virtual_file));
 
+    const query::LexConfigKey lex_config = query::lex_config_key();
+    const query::LexConfigKey lossless_lex_config = query::lex_config_key(true);
+    const query::ParserConfigKey parser_config = query::parser_config_key(lex_config);
+    const query::ParserConfigKey lossless_parser_config = query::parser_config_key(lossless_lex_config, true, true);
+    const query::LexFileKey lex_file = query::lex_file_key(source_file, lex_config);
+    const query::LexFileKey lossless_lex_file = query::lex_file_key(source_file, lossless_lex_config);
+    const query::ParseFileKey parse_file = query::parse_file_key(source_file, parser_config);
+    const query::ParseFileKey lossless_parse_file = query::parse_file_key(source_file, lossless_parser_config);
+    EXPECT_TRUE(query::is_valid(lex_config));
+    EXPECT_TRUE(query::is_valid(parser_config));
+    EXPECT_TRUE(query::is_valid(lex_file));
+    EXPECT_TRUE(query::is_valid(parse_file));
+    EXPECT_NE(lex_config, lossless_lex_config);
+    EXPECT_NE(parser_config, lossless_parser_config);
+    EXPECT_NE(lex_file, lossless_lex_file);
+    EXPECT_NE(parse_file, lossless_parse_file);
+
     const query::ModuleKey module = test_module(package);
     const std::array<std::string_view, 2> other_path{"regex_vm", "root"};
     const query::ModuleKey other_module = query::module_key(package, other_path);
@@ -288,6 +338,10 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
 {
     const query::PackageKey package = test_package();
     const query::FileKey source_file = query::file_key(package, "/workspace/root/regex/vm.ax");
+    const query::LexConfigKey lex_config = query::lex_config_key();
+    const query::ParserConfigKey parser_config = query::parser_config_key(lex_config);
+    const query::LexFileKey lex_file = query::lex_file_key(source_file, lex_config);
+    const query::ParseFileKey parse_file = query::parse_file_key(source_file, parser_config);
     const query::ModuleKey module = test_module(package);
     const query::ModulePartKey module_part =
         query::module_part_key(module, source_file, query::ModulePartKind::fragment, "part", QUERY_TEST_STABLE_ORDINAL);
@@ -303,6 +357,10 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
 
     EXPECT_TRUE(query::is_valid(package));
     EXPECT_TRUE(query::is_valid(source_file));
+    EXPECT_TRUE(query::is_valid(lex_config));
+    EXPECT_TRUE(query::is_valid(parser_config));
+    EXPECT_TRUE(query::is_valid(lex_file));
+    EXPECT_TRUE(query::is_valid(parse_file));
     EXPECT_TRUE(query::is_valid(module));
     EXPECT_TRUE(query::is_valid(function_def));
     EXPECT_TRUE(query::is_valid(member));
@@ -311,6 +369,10 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_TRUE(query::is_valid(diagnostics_query));
     EXPECT_FALSE(query::is_valid(query::PackageKey{}));
     EXPECT_FALSE(query::is_valid(query::FileKey{}));
+    EXPECT_FALSE(query::is_valid(query::LexConfigKey{}));
+    EXPECT_FALSE(query::is_valid(query::ParserConfigKey{}));
+    EXPECT_FALSE(query::is_valid(query::LexFileKey{}));
+    EXPECT_FALSE(query::is_valid(query::ParseFileKey{}));
     EXPECT_FALSE(query::is_valid(query::ModuleKey{}));
     EXPECT_FALSE(query::is_valid(query::DefKey{}));
     EXPECT_FALSE(query::is_valid(query::MemberKey{}));
@@ -319,6 +381,20 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_FALSE(query::is_valid(query::QueryKey{}));
     query::FileKey zero_global_file = source_file;
     zero_global_file.global_id = 0;
+    query::LexConfigKey zero_global_lex_config = lex_config;
+    zero_global_lex_config.global_id = 0;
+    query::LexConfigKey wrong_schema_lex_config = lex_config;
+    wrong_schema_lex_config.schema += 1;
+    query::ParserConfigKey zero_global_parser_config = parser_config;
+    zero_global_parser_config.global_id = 0;
+    query::ParserConfigKey wrong_schema_parser_config = parser_config;
+    wrong_schema_parser_config.schema += 1;
+    query::ParserConfigKey invalid_lex_parser_config = parser_config;
+    invalid_lex_parser_config.lex_config = {};
+    query::LexFileKey zero_global_lex_file = lex_file;
+    zero_global_lex_file.global_id = 0;
+    query::ParseFileKey zero_global_parse_file = parse_file;
+    zero_global_parse_file.global_id = 0;
     query::ModuleKey zero_global_module = module;
     zero_global_module.global_id = 0;
     query::DefKey invalid_kind_def = function_def;
@@ -336,6 +412,13 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     query::QueryKey zero_global_query = diagnostics_query;
     zero_global_query.global_id = 0;
     EXPECT_FALSE(query::is_valid(zero_global_file));
+    EXPECT_FALSE(query::is_valid(zero_global_lex_config));
+    EXPECT_FALSE(query::is_valid(wrong_schema_lex_config));
+    EXPECT_FALSE(query::is_valid(zero_global_parser_config));
+    EXPECT_FALSE(query::is_valid(wrong_schema_parser_config));
+    EXPECT_FALSE(query::is_valid(invalid_lex_parser_config));
+    EXPECT_FALSE(query::is_valid(zero_global_lex_file));
+    EXPECT_FALSE(query::is_valid(zero_global_parse_file));
     EXPECT_FALSE(query::is_valid(zero_global_module));
     EXPECT_FALSE(query::is_valid(invalid_kind_def));
     EXPECT_FALSE(query::is_valid(zero_global_def));
@@ -347,6 +430,10 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
 
     EXPECT_FALSE(query::stable_serialize(package).empty());
     EXPECT_FALSE(query::stable_serialize(source_file).empty());
+    EXPECT_FALSE(query::stable_serialize(lex_config).empty());
+    EXPECT_FALSE(query::stable_serialize(parser_config).empty());
+    EXPECT_FALSE(query::stable_serialize(lex_file).empty());
+    EXPECT_FALSE(query::stable_serialize(parse_file).empty());
     EXPECT_FALSE(query::stable_serialize(module).empty());
     EXPECT_FALSE(query::stable_serialize(module_part).empty());
     EXPECT_FALSE(query::stable_serialize(function_def).empty());
@@ -357,6 +444,10 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
 
     EXPECT_GT(query::stable_key_fingerprint(package).byte_count, 0U);
     EXPECT_GT(query::stable_key_fingerprint(source_file).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(lex_config).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(parser_config).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(lex_file).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(parse_file).byte_count, 0U);
     EXPECT_GT(query::stable_key_fingerprint(module).byte_count, 0U);
     EXPECT_GT(query::stable_key_fingerprint(module_part).byte_count, 0U);
     EXPECT_GT(query::stable_key_fingerprint(function_def).byte_count, 0U);
@@ -367,6 +458,10 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
 
     EXPECT_NE(query::debug_string(package).find("PackageKey"), std::string::npos);
     EXPECT_NE(query::debug_string(source_file).find("FileKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(lex_config).find("LexConfigKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(parser_config).find("ParserConfigKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(lex_file).find("LexFileKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(parse_file).find("ParseFileKey"), std::string::npos);
     EXPECT_NE(query::debug_string(module).find("ModuleKey"), std::string::npos);
     EXPECT_NE(query::debug_string(module_part).find("ModulePartKey"), std::string::npos);
     EXPECT_NE(query::debug_string(function_def).find("DefKey"), std::string::npos);
@@ -377,6 +472,8 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
 
     EXPECT_NE(query::PackageKeyHash{}(package), 0U);
     EXPECT_NE(query::FileKeyHash{}(source_file), 0U);
+    EXPECT_NE(query::LexFileKeyHash{}(lex_file), 0U);
+    EXPECT_NE(query::ParseFileKeyHash{}(parse_file), 0U);
     EXPECT_NE(query::ModuleKeyHash{}(module), 0U);
     EXPECT_NE(query::DefKeyHash{}(function_def), 0U);
     EXPECT_NE(query::QueryKeyHash{}(diagnostics_query), 0U);
@@ -461,6 +558,43 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     ASSERT_TRUE(query::is_valid(exports_result));
     EXPECT_EQ(exports_result.fingerprint, exports_fingerprint);
     EXPECT_NE(exports_result.global_id, 0U);
+
+    const QueryContextSourceSubject source_subject = test_source_subject();
+    const std::optional<query::QueryRecord> file_content_record =
+        query::file_content_query_record(source_subject.file, source_subject.content);
+    ASSERT_TRUE(file_content_record.has_value());
+    EXPECT_TRUE(query::is_valid(*file_content_record));
+    EXPECT_EQ(file_content_record->key.kind, query::QueryKind::file_content);
+    EXPECT_EQ(file_content_record->key.payload, query::stable_key_fingerprint(source_subject.file));
+    EXPECT_EQ(file_content_record->stable_key_bytes, query::stable_serialize(source_subject.file));
+    EXPECT_EQ(file_content_record->result, source_subject.content);
+
+    const query::LexFileQueryInput lex_file_input{
+        source_subject.lex_file,
+        source_subject.tokens,
+    };
+    EXPECT_TRUE(query::is_valid(lex_file_input));
+    const std::optional<query::QueryRecord> lex_file_record = query::lex_file_query_record(lex_file_input);
+    ASSERT_TRUE(lex_file_record.has_value());
+    EXPECT_TRUE(query::is_valid(*lex_file_record));
+    EXPECT_EQ(lex_file_record->key.kind, query::QueryKind::lex_file);
+    EXPECT_EQ(lex_file_record->key.payload, query::stable_key_fingerprint(source_subject.lex_file));
+    EXPECT_EQ(lex_file_record->stable_key_bytes, query::stable_serialize(source_subject.lex_file));
+    EXPECT_EQ(lex_file_record->result, source_subject.tokens);
+
+    const query::ParseFileQueryInput parse_file_input{
+        source_subject.parse_file,
+        source_subject.syntax,
+    };
+    EXPECT_TRUE(query::is_valid(parse_file_input));
+    const std::optional<query::QueryRecord> parse_file_record = query::parse_file_query_record(parse_file_input);
+    ASSERT_TRUE(parse_file_record.has_value());
+    EXPECT_TRUE(query::is_valid(*parse_file_record));
+    EXPECT_EQ(parse_file_record->key.kind, query::QueryKind::parse_file);
+    EXPECT_EQ(parse_file_record->key.payload, query::stable_key_fingerprint(source_subject.parse_file));
+    EXPECT_EQ(parse_file_record->stable_key_bytes, query::stable_serialize(source_subject.parse_file));
+    EXPECT_EQ(parse_file_record->result, source_subject.syntax);
+
     const query::ModuleExportsQueryInput exports_input{
         module,
         exports_result,
@@ -523,6 +657,35 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_EQ(generic_body_record->key.payload, query::stable_key_fingerprint(instance));
     EXPECT_EQ(generic_body_record->stable_key_bytes, query::stable_serialize(instance));
 
+    const query::BodyKey function_body =
+        query::body_key(function_def, query::BodySlotKind::function_body, QUERY_TEST_STABLE_ORDINAL);
+    const query::QueryResultFingerprint lower_ir_result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_LOWER_FUNCTION_IR));
+    const query::LowerFunctionIRQueryInput lower_body_input{
+        function_body,
+        lower_ir_result,
+    };
+    EXPECT_TRUE(query::is_valid(lower_body_input));
+    const std::optional<query::QueryRecord> lower_body_record = query::lower_function_ir_query_record(lower_body_input);
+    ASSERT_TRUE(lower_body_record.has_value());
+    EXPECT_TRUE(query::is_valid(*lower_body_record));
+    EXPECT_EQ(lower_body_record->key.kind, query::QueryKind::lower_function_ir);
+    EXPECT_EQ(lower_body_record->key.payload, query::stable_key_fingerprint(function_body));
+    EXPECT_EQ(lower_body_record->stable_key_bytes, query::stable_serialize(function_body));
+
+    const query::LowerGenericInstanceIRQueryInput lower_generic_input{
+        instance,
+        lower_ir_result,
+    };
+    EXPECT_TRUE(query::is_valid(lower_generic_input));
+    const std::optional<query::QueryRecord> lower_generic_record =
+        query::lower_generic_instance_ir_query_record(lower_generic_input);
+    ASSERT_TRUE(lower_generic_record.has_value());
+    EXPECT_TRUE(query::is_valid(*lower_generic_record));
+    EXPECT_EQ(lower_generic_record->key.kind, query::QueryKind::lower_function_ir);
+    EXPECT_EQ(lower_generic_record->key.payload, query::stable_key_fingerprint(instance));
+    EXPECT_EQ(lower_generic_record->stable_key_bytes, query::stable_serialize(instance));
+
     const query::QueryResultFingerprint diagnostics_result =
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_DIAGNOSTICS));
     const query::DiagnosticsQueryInput diagnostics_input{
@@ -558,6 +721,26 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_FALSE(
         query::query_record(query::QueryKind::item_signature, query::stable_key_fingerprint(function_def), "", result)
             .has_value());
+    EXPECT_FALSE(query::is_valid(query::FileContentQueryInput{}));
+    EXPECT_FALSE(
+        query::file_content_query_record(query::FileContentQueryInput{query::FileKey{}, source_subject.content})
+            .has_value());
+    EXPECT_FALSE(query::file_content_query_record(
+        query::FileContentQueryInput{source_subject.file, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::LexFileQueryInput{}));
+    EXPECT_FALSE(
+        query::lex_file_query_record(query::LexFileQueryInput{query::LexFileKey{}, source_subject.tokens}).has_value());
+    EXPECT_FALSE(
+        query::lex_file_query_record(query::LexFileQueryInput{source_subject.lex_file, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::ParseFileQueryInput{}));
+    EXPECT_FALSE(
+        query::parse_file_query_record(query::ParseFileQueryInput{query::ParseFileKey{}, source_subject.syntax})
+            .has_value());
+    EXPECT_FALSE(query::parse_file_query_record(
+        query::ParseFileQueryInput{source_subject.parse_file, query::QueryResultFingerprint{}})
+            .has_value());
     EXPECT_FALSE(query::is_valid(query::ModuleExportsQueryInput{}));
     EXPECT_FALSE(
         query::module_exports_query_record(query::ModuleExportsQueryInput{query::ModuleKey{}, result}).has_value());
@@ -586,6 +769,20 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_FALSE(query::generic_instance_body_query_record(
         query::GenericInstanceBodyQueryInput{instance, query::QueryResultFingerprint{}})
             .has_value());
+    EXPECT_FALSE(query::is_valid(query::LowerFunctionIRQueryInput{}));
+    EXPECT_FALSE(
+        query::lower_function_ir_query_record(query::LowerFunctionIRQueryInput{query::BodyKey{}, lower_ir_result})
+            .has_value());
+    EXPECT_FALSE(query::lower_function_ir_query_record(
+        query::LowerFunctionIRQueryInput{function_body, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::LowerGenericInstanceIRQueryInput{}));
+    EXPECT_FALSE(query::lower_generic_instance_ir_query_record(
+        query::LowerGenericInstanceIRQueryInput{query::GenericInstanceKey{}, lower_ir_result})
+            .has_value());
+    EXPECT_FALSE(query::lower_generic_instance_ir_query_record(
+        query::LowerGenericInstanceIRQueryInput{instance, query::QueryResultFingerprint{}})
+            .has_value());
     EXPECT_FALSE(query::is_valid(query::DiagnosticsQueryInput{}));
     EXPECT_FALSE(query::diagnostics_query_record(query::DiagnosticsQueryInput{query::QueryKey{}, diagnostics_result})
             .has_value());
@@ -601,6 +798,18 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_FALSE(
         query::generic_instance_body_query_record(query::GenericInstanceKey{}, generic_body_result).has_value());
     EXPECT_FALSE(query::generic_instance_body_query_record(instance, query::QueryResultFingerprint{}).has_value());
+    EXPECT_FALSE(query::lower_function_ir_query_record(query::BodyKey{}, lower_ir_result).has_value());
+    EXPECT_FALSE(query::lower_function_ir_query_record(function_body, query::QueryResultFingerprint{}).has_value());
+    EXPECT_FALSE(
+        query::lower_generic_instance_ir_query_record(query::GenericInstanceKey{}, lower_ir_result).has_value());
+    EXPECT_FALSE(query::lower_generic_instance_ir_query_record(instance, query::QueryResultFingerprint{}).has_value());
+    EXPECT_FALSE(query::file_content_query_record(query::FileKey{}, source_subject.content).has_value());
+    EXPECT_FALSE(query::file_content_query_record(source_subject.file, query::QueryResultFingerprint{}).has_value());
+    EXPECT_FALSE(query::lex_file_query_record(query::LexFileKey{}, source_subject.tokens).has_value());
+    EXPECT_FALSE(query::lex_file_query_record(source_subject.lex_file, query::QueryResultFingerprint{}).has_value());
+    EXPECT_FALSE(query::parse_file_query_record(query::ParseFileKey{}, source_subject.syntax).has_value());
+    EXPECT_FALSE(
+        query::parse_file_query_record(source_subject.parse_file, query::QueryResultFingerprint{}).has_value());
     EXPECT_FALSE(query::diagnostics_query_record(query::QueryKey{}, diagnostics_result).has_value());
     EXPECT_FALSE(query::diagnostics_query_record(item_record->key, query::QueryResultFingerprint{}).has_value());
     EXPECT_EQ(query::query_record_change_status(&*item_record, query::QueryRecord{}),
@@ -650,6 +859,94 @@ TEST(QueryUnit, ModuleExportsProviderBuildsRecordFromStableModule)
     query::ModuleExportsProviderOutput mismatched_result_output = *output;
     mismatched_result_output.result =
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_CHANGED_MODULE_EXPORTS_SIGNATURE));
+    EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
+TEST(QueryUnit, SourceFileProvidersBuildRecordsAndPipelineDependencies)
+{
+    const QueryContextSourceSubject subject = test_source_subject();
+    const std::optional<query::QueryKey> expected_content_key = query::file_content_query_key(subject.file);
+    const std::optional<query::QueryKey> expected_lex_key = query::lex_file_query_key(subject.lex_file);
+    const std::optional<query::QueryKey> expected_parse_key = query::parse_file_query_key(subject.parse_file);
+    ASSERT_TRUE(expected_content_key.has_value());
+    ASSERT_TRUE(expected_lex_key.has_value());
+    ASSERT_TRUE(expected_parse_key.has_value());
+
+    const query::FileContentProviderInput content_input{
+        subject.file,
+        subject.content,
+    };
+    ASSERT_TRUE(query::is_valid(content_input));
+    const std::optional<query::FileContentProviderOutput> content_output =
+        query::provide_file_content_query(content_input);
+    ASSERT_TRUE(content_output.has_value());
+    EXPECT_TRUE(query::is_valid(*content_output));
+    EXPECT_TRUE(content_output->dependencies.empty());
+    EXPECT_EQ(content_output->record.key, *expected_content_key);
+    EXPECT_EQ(content_output->record.stable_key_bytes, query::stable_serialize(subject.file));
+    EXPECT_EQ(content_output->result, subject.content);
+    EXPECT_EQ(content_output->record.result, content_output->result);
+
+    const query::LexFileProviderInput lex_input{
+        subject.lex_file,
+        subject.tokens,
+    };
+    ASSERT_TRUE(query::is_valid(lex_input));
+    const std::optional<query::LexFileProviderOutput> lex_output = query::provide_lex_file_query(lex_input);
+    ASSERT_TRUE(lex_output.has_value());
+    EXPECT_TRUE(query::is_valid(*lex_output));
+    EXPECT_EQ(lex_output->dependencies, std::vector<query::QueryKey>{*expected_content_key});
+    EXPECT_EQ(lex_output->record.key, *expected_lex_key);
+    EXPECT_EQ(lex_output->record.stable_key_bytes, query::stable_serialize(subject.lex_file));
+    EXPECT_EQ(lex_output->result, subject.tokens);
+    EXPECT_EQ(lex_output->record.result, lex_output->result);
+
+    const query::ParseFileProviderInput parse_input{
+        subject.parse_file,
+        subject.syntax,
+    };
+    ASSERT_TRUE(query::is_valid(parse_input));
+    const std::optional<query::ParseFileProviderOutput> parse_output = query::provide_parse_file_query(parse_input);
+    ASSERT_TRUE(parse_output.has_value());
+    EXPECT_TRUE(query::is_valid(*parse_output));
+    EXPECT_EQ(parse_output->dependencies, std::vector<query::QueryKey>{*expected_lex_key});
+    EXPECT_EQ(parse_output->record.key, *expected_parse_key);
+    EXPECT_EQ(parse_output->record.stable_key_bytes, query::stable_serialize(subject.parse_file));
+    EXPECT_EQ(parse_output->result, subject.syntax);
+    EXPECT_EQ(parse_output->record.result, parse_output->result);
+
+    EXPECT_FALSE(query::file_content_query_key(query::FileKey{}).has_value());
+    EXPECT_FALSE(query::lex_file_query_key(query::LexFileKey{}).has_value());
+    EXPECT_FALSE(query::parse_file_query_key(query::ParseFileKey{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::FileContentProviderInput{}));
+    EXPECT_FALSE(query::provide_file_content_query(query::FileContentProviderInput{query::FileKey{}, subject.content})
+            .has_value());
+    EXPECT_FALSE(query::provide_file_content_query(
+        query::FileContentProviderInput{subject.file, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::LexFileProviderInput{}));
+    EXPECT_FALSE(
+        query::provide_lex_file_query(query::LexFileProviderInput{query::LexFileKey{}, subject.tokens}).has_value());
+    EXPECT_FALSE(
+        query::provide_lex_file_query(query::LexFileProviderInput{subject.lex_file, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::ParseFileProviderInput{}));
+    EXPECT_FALSE(query::provide_parse_file_query(query::ParseFileProviderInput{query::ParseFileKey{}, subject.syntax})
+            .has_value());
+    EXPECT_FALSE(query::provide_parse_file_query(
+        query::ParseFileProviderInput{subject.parse_file, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::FileContentProviderOutput{}));
+    EXPECT_FALSE(query::is_valid(query::LexFileProviderOutput{}));
+    EXPECT_FALSE(query::is_valid(query::ParseFileProviderOutput{}));
+
+    query::LexFileProviderOutput invalid_dependency_output = *lex_output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::ParseFileProviderOutput mismatched_result_output = *parse_output;
+    mismatched_result_output.result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
     EXPECT_FALSE(query::is_valid(mismatched_result_output));
 }
 
@@ -881,6 +1178,97 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
     EXPECT_FALSE(query::is_valid(mismatched_result_output));
 }
 
+TEST(QueryUnit, LowerFunctionIRProviderBuildsRecordAndTypeCheckDependency)
+{
+    const QueryContextBodySubject subject = test_body_subject();
+    const std::optional<query::QueryKey> expected_key = query::lower_function_ir_query_key(subject.body);
+    ASSERT_TRUE(expected_key.has_value());
+
+    const query::LowerFunctionIRProviderInput input{
+        subject.body,
+        subject.lowered_ir,
+    };
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::LowerFunctionIRProviderOutput> output = query::provide_lower_function_ir_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    const std::optional<query::QueryKey> type_check_key = query::type_check_body_query_key(subject.body);
+    ASSERT_TRUE(type_check_key.has_value());
+    EXPECT_EQ(output->dependencies, std::vector<query::QueryKey>{*type_check_key});
+    EXPECT_EQ(output->record.key, *expected_key);
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::lower_function_ir);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.body));
+    EXPECT_EQ(output->result, subject.lowered_ir);
+    EXPECT_EQ(output->record.result, output->result);
+
+    EXPECT_FALSE(query::lower_function_ir_query_key(query::BodyKey{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::LowerFunctionIRProviderInput{}));
+    EXPECT_FALSE(query::provide_lower_function_ir_query(
+        query::LowerFunctionIRProviderInput{query::BodyKey{}, subject.lowered_ir})
+            .has_value());
+    EXPECT_FALSE(query::provide_lower_function_ir_query(
+        query::LowerFunctionIRProviderInput{subject.body, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::LowerFunctionIRProviderOutput{}));
+
+    query::LowerFunctionIRProviderOutput invalid_dependency_output = *output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::LowerFunctionIRProviderOutput mismatched_result_output = *output;
+    mismatched_result_output.result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
+    EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
+TEST(QueryUnit, LowerGenericInstanceIRProviderBuildsRecordAndGenericBodyDependency)
+{
+    const QueryContextGenericInstanceSignatureSubject subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const query::QueryResultFingerprint lowered_ir =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_LOWER_FUNCTION_IR));
+    const std::optional<query::QueryKey> expected_key = query::lower_generic_instance_ir_query_key(subject.key);
+    ASSERT_TRUE(expected_key.has_value());
+
+    const query::LowerGenericInstanceIRProviderInput input{
+        &subject.key,
+        lowered_ir,
+    };
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::LowerGenericInstanceIRProviderOutput> output =
+        query::provide_lower_generic_instance_ir_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    const std::optional<query::QueryKey> generic_body_key = query::generic_instance_body_query_key(subject.key);
+    ASSERT_TRUE(generic_body_key.has_value());
+    EXPECT_EQ(output->dependencies, std::vector<query::QueryKey>{*generic_body_key});
+    EXPECT_EQ(output->record.key, *expected_key);
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::lower_function_ir);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.key));
+    EXPECT_EQ(output->result, lowered_ir);
+    EXPECT_EQ(output->record.result, output->result);
+
+    const query::GenericInstanceKey invalid_key;
+    EXPECT_FALSE(query::lower_generic_instance_ir_query_key(query::GenericInstanceKey{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::LowerGenericInstanceIRProviderInput{}));
+    EXPECT_FALSE(query::provide_lower_generic_instance_ir_query(
+        query::LowerGenericInstanceIRProviderInput{&invalid_key, lowered_ir})
+            .has_value());
+    EXPECT_FALSE(query::provide_lower_generic_instance_ir_query(
+        query::LowerGenericInstanceIRProviderInput{&subject.key, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::LowerGenericInstanceIRProviderOutput{}));
+
+    query::LowerGenericInstanceIRProviderOutput invalid_dependency_output = *output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::LowerGenericInstanceIRProviderOutput mismatched_result_output = *output;
+    mismatched_result_output.result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
+    EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
 TEST(QueryUnit, DiagnosticsProviderBuildsRecordAndProducerDependency)
 {
     const QueryContextBodySubject subject = test_body_subject();
@@ -1014,6 +1402,128 @@ TEST(QueryUnit, QueryContextCachesModuleExportsAndEmitsCompletedRecords)
     const query::QueryEvaluationResult cached_after_reset = context.evaluate_module_exports(input);
     EXPECT_EQ(cached_after_reset.status, query::QueryEvaluationStatus::cached);
     EXPECT_EQ(provider_calls, 1U);
+}
+
+TEST(QueryUnit, QueryContextCachesSourcePipelineQueriesAndRecordsDependencies)
+{
+    const QueryContextSourceSubject subject = test_source_subject();
+    const std::optional<query::QueryKey> content_key = query::file_content_query_key(subject.file);
+    const std::optional<query::QueryKey> lex_key = query::lex_file_query_key(subject.lex_file);
+    const std::optional<query::QueryKey> parse_key = query::parse_file_query_key(subject.parse_file);
+    ASSERT_TRUE(content_key.has_value());
+    ASSERT_TRUE(lex_key.has_value());
+    ASSERT_TRUE(parse_key.has_value());
+
+    base::usize content_provider_calls = 0;
+    base::usize lex_provider_calls = 0;
+    base::usize parse_provider_calls = 0;
+    query::QueryContext context;
+    context.set_file_content_provider([&content_provider_calls](const query::FileContentProviderInput& provider_input) {
+        ++content_provider_calls;
+        return query::provide_file_content_query(provider_input);
+    });
+    context.set_lex_file_provider([&lex_provider_calls](const query::LexFileProviderInput& provider_input) {
+        ++lex_provider_calls;
+        return query::provide_lex_file_query(provider_input);
+    });
+    context.set_parse_file_provider([&parse_provider_calls](const query::ParseFileProviderInput& provider_input) {
+        ++parse_provider_calls;
+        return query::provide_parse_file_query(provider_input);
+    });
+
+    const query::QueryEvaluationResult content_result =
+        context.evaluate_file_content(query::FileContentProviderInput{subject.file, subject.content});
+    ASSERT_EQ(content_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(content_result.node, nullptr);
+    EXPECT_EQ(content_result.node->key, *content_key);
+    EXPECT_EQ(content_provider_calls, 1U);
+
+    const query::QueryEvaluationResult lex_result =
+        context.evaluate_lex_file(query::LexFileProviderInput{subject.lex_file, subject.tokens});
+    ASSERT_EQ(lex_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(lex_result.node, nullptr);
+    EXPECT_EQ(lex_result.node->key, *lex_key);
+    EXPECT_EQ(lex_provider_calls, 1U);
+    EXPECT_TRUE(context.has_dependency(*lex_key, *content_key));
+
+    const query::QueryEvaluationResult parse_result =
+        context.evaluate_parse_file(query::ParseFileProviderInput{subject.parse_file, subject.syntax});
+    ASSERT_EQ(parse_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(parse_result.node, nullptr);
+    EXPECT_EQ(parse_result.node->key, *parse_key);
+    EXPECT_EQ(parse_provider_calls, 1U);
+    EXPECT_TRUE(context.has_dependency(*parse_key, *lex_key));
+    EXPECT_EQ(context.dependency_edge_count(), 2U);
+
+    const std::vector<query::QueryRecord> records = context.completed_records();
+    ASSERT_EQ(records.size(), 3U);
+    EXPECT_EQ(records[0].key.kind, query::QueryKind::file_content);
+    EXPECT_EQ(records[1].key.kind, query::QueryKind::lex_file);
+    EXPECT_EQ(records[2].key.kind, query::QueryKind::parse_file);
+
+    const query::QueryEvaluationResult cached_parse =
+        context.evaluate_parse_file(query::ParseFileProviderInput{subject.parse_file, subject.syntax});
+    EXPECT_EQ(cached_parse.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(cached_parse.node, parse_result.node);
+    EXPECT_EQ(parse_provider_calls, 1U);
+
+    context.set_parse_file_provider({});
+    const query::QueryEvaluationResult cached_after_reset =
+        context.evaluate_parse_file(query::ParseFileProviderInput{subject.parse_file, subject.syntax});
+    EXPECT_EQ(cached_after_reset.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(parse_provider_calls, 1U);
+}
+
+TEST(QueryUnit, QueryContextTracksSourcePipelineFailuresAndProviderFallbacks)
+{
+    const QueryContextSourceSubject subject = test_source_subject();
+    const QueryContextSourceSubject other_subject = [] {
+        QueryContextSourceSubject other = test_source_subject();
+        other.file = query::file_key(test_package(), "/workspace/root/regex/other.ax");
+        other.lex_file = query::lex_file_key(other.file, other.lex_file.config);
+        other.parse_file = query::parse_file_key(other.file, other.parse_file.config);
+        return other;
+    }();
+
+    query::QueryContext invalid_context;
+    EXPECT_EQ(invalid_context.evaluate_file_content(query::FileContentProviderInput{}).status,
+        query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(
+        invalid_context.evaluate_lex_file(query::LexFileProviderInput{}).status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(invalid_context.evaluate_parse_file(query::ParseFileProviderInput{}).status,
+        query::QueryEvaluationStatus::failed);
+
+    query::QueryContext failing_context;
+    failing_context.set_file_content_provider([](const query::FileContentProviderInput&) {
+        return std::optional<query::FileContentProviderOutput>{};
+    });
+    const query::QueryEvaluationResult failed_content =
+        failing_context.evaluate_file_content(query::FileContentProviderInput{subject.file, subject.content});
+    EXPECT_EQ(failed_content.status, query::QueryEvaluationStatus::failed);
+    failing_context.set_file_content_provider({});
+    const query::QueryEvaluationResult retried_content =
+        failing_context.evaluate_file_content(query::FileContentProviderInput{subject.file, subject.content});
+    EXPECT_EQ(retried_content.status, query::QueryEvaluationStatus::computed);
+
+    query::QueryContext wrong_key_context;
+    wrong_key_context.set_lex_file_provider([&other_subject, &subject](const query::LexFileProviderInput&) {
+        return query::provide_lex_file_query(query::LexFileProviderInput{other_subject.lex_file, subject.tokens});
+    });
+    const query::QueryEvaluationResult wrong_key_result =
+        wrong_key_context.evaluate_lex_file(query::LexFileProviderInput{subject.lex_file, subject.tokens});
+    EXPECT_EQ(wrong_key_result.status, query::QueryEvaluationStatus::failed);
+
+    query::QueryContext invalid_output_context;
+    invalid_output_context.set_parse_file_provider([](const query::ParseFileProviderInput& provider_input) {
+        std::optional<query::ParseFileProviderOutput> output = query::provide_parse_file_query(provider_input);
+        if (output) {
+            output->dependencies.push_back(query::QueryKey{});
+        }
+        return output;
+    });
+    const query::QueryEvaluationResult invalid_output_result =
+        invalid_output_context.evaluate_parse_file(query::ParseFileProviderInput{subject.parse_file, subject.syntax});
+    EXPECT_EQ(invalid_output_result.status, query::QueryEvaluationStatus::failed);
 }
 
 TEST(QueryUnit, QueryContextCachesGenericInstanceSignatureAndEmitsMixedRecords)
@@ -1259,6 +1769,109 @@ TEST(QueryUnit, QueryContextTracksBodyFailuresAndProviderFallbacks)
     EXPECT_TRUE(invalid_output_context.completed_records().empty());
 }
 
+TEST(QueryUnit, QueryContextCachesLowerFunctionIRAndRecordsTypeCheckDependency)
+{
+    const QueryContextBodySubject subject = test_body_subject();
+    const std::optional<query::QueryKey> lower_key = query::lower_function_ir_query_key(subject.body);
+    const std::optional<query::QueryKey> type_check_key = query::type_check_body_query_key(subject.body);
+    ASSERT_TRUE(lower_key.has_value());
+    ASSERT_TRUE(type_check_key.has_value());
+
+    base::usize lower_provider_calls = 0;
+    query::QueryContext context;
+    context.set_lower_function_ir_provider(
+        [&lower_provider_calls](const query::LowerFunctionIRProviderInput& provider_input) {
+            ++lower_provider_calls;
+            return query::provide_lower_function_ir_query(provider_input);
+        });
+
+    const query::LowerFunctionIRProviderInput input{
+        subject.body,
+        subject.lowered_ir,
+    };
+    const query::QueryEvaluationResult first = context.evaluate_lower_function_ir(input);
+    ASSERT_EQ(first.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(first.node, nullptr);
+    EXPECT_EQ(first.node->key, *lower_key);
+    EXPECT_EQ(lower_provider_calls, 1U);
+    EXPECT_EQ(context.dependencies_for(*lower_key), std::vector<query::QueryKey>{*type_check_key});
+
+    const query::QueryEvaluationResult cached = context.evaluate_lower_function_ir(input);
+    EXPECT_EQ(cached.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(lower_provider_calls, 1U);
+
+    context.set_lower_function_ir_provider({});
+    ASSERT_TRUE(context.invalidate(*lower_key));
+    const query::QueryEvaluationResult default_lower = context.evaluate_lower_function_ir(input);
+    ASSERT_EQ(default_lower.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(default_lower.node, nullptr);
+    EXPECT_EQ(default_lower.node->key, *lower_key);
+    EXPECT_EQ(lower_provider_calls, 1U);
+}
+
+TEST(QueryUnit, QueryContextTracksLowerFunctionIRFailuresAndProviderFallbacks)
+{
+    const QueryContextBodySubject subject = test_body_subject();
+    const QueryContextBodySubject other_subject = test_body_subject("other");
+    const std::optional<query::QueryKey> lower_key = query::lower_function_ir_query_key(subject.body);
+    ASSERT_TRUE(lower_key.has_value());
+
+    query::QueryContext invalid_input_context;
+    const query::QueryEvaluationResult invalid_key_result = invalid_input_context.evaluate_lower_function_ir(
+        query::LowerFunctionIRProviderInput{query::BodyKey{}, subject.lowered_ir});
+    EXPECT_EQ(invalid_key_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(invalid_key_result.node, nullptr);
+
+    query::QueryContext failing_context;
+    failing_context.set_lower_function_ir_provider(
+        [](const query::LowerFunctionIRProviderInput&) -> std::optional<query::LowerFunctionIRProviderOutput> {
+            return std::nullopt;
+        });
+    const query::LowerFunctionIRProviderInput input{
+        subject.body,
+        subject.lowered_ir,
+    };
+    const query::QueryEvaluationResult failed_result = failing_context.evaluate_lower_function_ir(input);
+    ASSERT_EQ(failed_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(failed_result.node, nullptr);
+    EXPECT_EQ(failed_result.node->key, *lower_key);
+    EXPECT_EQ(failed_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(failing_context.completed_records().empty());
+
+    failing_context.set_lower_function_ir_provider({});
+    const query::QueryEvaluationResult retry_result = failing_context.evaluate_lower_function_ir(input);
+    ASSERT_EQ(retry_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(retry_result.node, nullptr);
+    EXPECT_EQ(retry_result.node->status, query::QueryNodeStatus::done);
+
+    query::QueryContext wrong_key_context;
+    wrong_key_context.set_lower_function_ir_provider([&other_subject](const query::LowerFunctionIRProviderInput&) {
+        return query::provide_lower_function_ir_query(
+            query::LowerFunctionIRProviderInput{other_subject.body, other_subject.lowered_ir});
+    });
+    const query::QueryEvaluationResult wrong_key_result = wrong_key_context.evaluate_lower_function_ir(input);
+    ASSERT_EQ(wrong_key_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(wrong_key_result.node, nullptr);
+    EXPECT_EQ(wrong_key_result.node->key, *lower_key);
+
+    query::QueryContext invalid_output_context;
+    invalid_output_context.set_lower_function_ir_provider(
+        [](const query::LowerFunctionIRProviderInput& provider_input) {
+            std::optional<query::LowerFunctionIRProviderOutput> output =
+                query::provide_lower_function_ir_query(provider_input);
+            if (output) {
+                output->dependencies.push_back(query::QueryKey{});
+            }
+            return output;
+        });
+    const query::QueryEvaluationResult invalid_output_result = invalid_output_context.evaluate_lower_function_ir(input);
+    ASSERT_EQ(invalid_output_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(invalid_output_result.node, nullptr);
+    EXPECT_EQ(invalid_output_result.node->key, *lower_key);
+    EXPECT_EQ(invalid_output_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(invalid_output_context.completed_records().empty());
+}
+
 TEST(QueryUnit, QueryContextCachesGenericBodyAndDiagnosticsDependencies)
 {
     const QueryContextGenericInstanceSignatureSubject generic_subject =
@@ -1405,6 +2018,126 @@ TEST(QueryUnit, QueryContextTracksGenericBodyFailuresAndProviderFallbacks)
     ASSERT_EQ(invalid_output_result.status, query::QueryEvaluationStatus::failed);
     ASSERT_NE(invalid_output_result.node, nullptr);
     EXPECT_EQ(invalid_output_result.node->key, *expected_key);
+    EXPECT_EQ(invalid_output_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(invalid_output_context.completed_records().empty());
+}
+
+TEST(QueryUnit, QueryContextCachesLowerGenericInstanceIRAndRecordsGenericBodyDependency)
+{
+    const QueryContextGenericInstanceSignatureSubject subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const query::QueryResultFingerprint lowered_ir =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_LOWER_FUNCTION_IR));
+    const std::optional<query::QueryKey> lower_key = query::lower_generic_instance_ir_query_key(subject.key);
+    const std::optional<query::QueryKey> generic_body_key = query::generic_instance_body_query_key(subject.key);
+    ASSERT_TRUE(lower_key.has_value());
+    ASSERT_TRUE(generic_body_key.has_value());
+
+    base::usize lower_provider_calls = 0;
+    query::QueryContext context;
+    context.set_lower_generic_instance_ir_provider(
+        [&lower_provider_calls](const query::LowerGenericInstanceIRProviderInput& provider_input) {
+            ++lower_provider_calls;
+            return query::provide_lower_generic_instance_ir_query(provider_input);
+        });
+
+    const query::LowerGenericInstanceIRProviderInput input{
+        &subject.key,
+        lowered_ir,
+    };
+    const query::QueryEvaluationResult first = context.evaluate_lower_generic_instance_ir(input);
+    ASSERT_EQ(first.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(first.node, nullptr);
+    EXPECT_EQ(first.node->key, *lower_key);
+    EXPECT_EQ(lower_provider_calls, 1U);
+    EXPECT_EQ(context.dependencies_for(*lower_key), std::vector<query::QueryKey>{*generic_body_key});
+
+    const query::QueryEvaluationResult cached = context.evaluate_lower_generic_instance_ir(input);
+    EXPECT_EQ(cached.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(lower_provider_calls, 1U);
+
+    context.set_lower_generic_instance_ir_provider({});
+    ASSERT_TRUE(context.invalidate(*lower_key));
+    const query::QueryEvaluationResult default_lower = context.evaluate_lower_generic_instance_ir(input);
+    ASSERT_EQ(default_lower.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(default_lower.node, nullptr);
+    EXPECT_EQ(default_lower.node->key, *lower_key);
+    EXPECT_EQ(lower_provider_calls, 1U);
+}
+
+TEST(QueryUnit, QueryContextTracksLowerGenericInstanceIRFailuresAndProviderFallbacks)
+{
+    const QueryContextGenericInstanceSignatureSubject subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const QueryContextGenericInstanceSignatureSubject other_subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i64, QUERY_TEST_PROVIDER_SIGNATURE);
+    const query::QueryResultFingerprint lowered_ir =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_LOWER_FUNCTION_IR));
+    const std::optional<query::QueryKey> lower_key = query::lower_generic_instance_ir_query_key(subject.key);
+    ASSERT_TRUE(lower_key.has_value());
+
+    query::QueryContext invalid_input_context;
+    const query::QueryEvaluationResult null_key_result = invalid_input_context.evaluate_lower_generic_instance_ir(
+        query::LowerGenericInstanceIRProviderInput{nullptr, lowered_ir});
+    EXPECT_EQ(null_key_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(null_key_result.node, nullptr);
+    const query::GenericInstanceKey invalid_key;
+    const query::QueryEvaluationResult invalid_key_result = invalid_input_context.evaluate_lower_generic_instance_ir(
+        query::LowerGenericInstanceIRProviderInput{&invalid_key, lowered_ir});
+    EXPECT_EQ(invalid_key_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(invalid_key_result.node, nullptr);
+
+    query::QueryContext failing_context;
+    failing_context.set_lower_generic_instance_ir_provider(
+        [](const query::LowerGenericInstanceIRProviderInput&)
+            -> std::optional<query::LowerGenericInstanceIRProviderOutput> {
+            return std::nullopt;
+        });
+    const query::LowerGenericInstanceIRProviderInput input{
+        &subject.key,
+        lowered_ir,
+    };
+    const query::QueryEvaluationResult failed_result = failing_context.evaluate_lower_generic_instance_ir(input);
+    ASSERT_EQ(failed_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(failed_result.node, nullptr);
+    EXPECT_EQ(failed_result.node->key, *lower_key);
+    EXPECT_EQ(failed_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(failing_context.completed_records().empty());
+
+    failing_context.set_lower_generic_instance_ir_provider({});
+    const query::QueryEvaluationResult retry_result = failing_context.evaluate_lower_generic_instance_ir(input);
+    ASSERT_EQ(retry_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(retry_result.node, nullptr);
+    EXPECT_EQ(retry_result.node->status, query::QueryNodeStatus::done);
+
+    query::QueryContext wrong_key_context;
+    wrong_key_context.set_lower_generic_instance_ir_provider(
+        [&other_subject, lowered_ir](const query::LowerGenericInstanceIRProviderInput&) {
+            return query::provide_lower_generic_instance_ir_query(query::LowerGenericInstanceIRProviderInput{
+                &other_subject.key,
+                lowered_ir,
+            });
+        });
+    const query::QueryEvaluationResult wrong_key_result = wrong_key_context.evaluate_lower_generic_instance_ir(input);
+    ASSERT_EQ(wrong_key_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(wrong_key_result.node, nullptr);
+    EXPECT_EQ(wrong_key_result.node->key, *lower_key);
+
+    query::QueryContext invalid_output_context;
+    invalid_output_context.set_lower_generic_instance_ir_provider(
+        [](const query::LowerGenericInstanceIRProviderInput& provider_input) {
+            std::optional<query::LowerGenericInstanceIRProviderOutput> output =
+                query::provide_lower_generic_instance_ir_query(provider_input);
+            if (output) {
+                output->dependencies.push_back(query::QueryKey{});
+            }
+            return output;
+        });
+    const query::QueryEvaluationResult invalid_output_result =
+        invalid_output_context.evaluate_lower_generic_instance_ir(input);
+    ASSERT_EQ(invalid_output_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(invalid_output_result.node, nullptr);
+    EXPECT_EQ(invalid_output_result.node->key, *lower_key);
     EXPECT_EQ(invalid_output_result.node->status, query::QueryNodeStatus::failed);
     EXPECT_TRUE(invalid_output_context.completed_records().empty());
 }

@@ -5,7 +5,9 @@
 #include <aurex/query/generic_instance_body_query.hpp>
 #include <aurex/query/generic_instance_signature_query.hpp>
 #include <aurex/query/item_signature_query.hpp>
+#include <aurex/query/lower_function_ir_query.hpp>
 #include <aurex/query/module_exports_query.hpp>
+#include <aurex/query/source_file_query.hpp>
 #include <aurex/query/type_check_body_query.hpp>
 
 #include <functional>
@@ -54,6 +56,10 @@ using GenericInstanceSignatureProvider =
     std::function<std::optional<GenericInstanceSignatureProviderOutput>(const GenericInstanceSignatureProviderInput&)>;
 using GenericInstanceBodyProvider =
     std::function<std::optional<GenericInstanceBodyProviderOutput>(const GenericInstanceBodyProviderInput&)>;
+using LowerFunctionIRProvider =
+    std::function<std::optional<LowerFunctionIRProviderOutput>(const LowerFunctionIRProviderInput&)>;
+using LowerGenericInstanceIRProvider =
+    std::function<std::optional<LowerGenericInstanceIRProviderOutput>(const LowerGenericInstanceIRProviderInput&)>;
 using ModuleExportsProvider =
     std::function<std::optional<ModuleExportsProviderOutput>(const ModuleExportsProviderInput&)>;
 using FunctionBodySyntaxProvider =
@@ -61,6 +67,9 @@ using FunctionBodySyntaxProvider =
 using TypeCheckBodyProvider =
     std::function<std::optional<TypeCheckBodyProviderOutput>(const TypeCheckBodyProviderInput&)>;
 using DiagnosticsProvider = std::function<std::optional<DiagnosticsProviderOutput>(const DiagnosticsProviderInput&)>;
+using FileContentProvider = std::function<std::optional<FileContentProviderOutput>(const FileContentProviderInput&)>;
+using LexFileProvider = std::function<std::optional<LexFileProviderOutput>(const LexFileProviderInput&)>;
+using ParseFileProvider = std::function<std::optional<ParseFileProviderOutput>(const ParseFileProviderInput&)>;
 
 class QueryContext final {
 public:
@@ -71,17 +80,27 @@ public:
     QueryContext(ModuleExportsProvider module_exports_provider, ItemSignatureProvider item_signature_provider,
         GenericInstanceSignatureProvider generic_instance_signature_provider);
     QueryContext(ModuleExportsProvider module_exports_provider, ItemSignatureProvider item_signature_provider,
-        GenericInstanceSignatureProvider generic_instance_signature_provider,
+        GenericInstanceSignatureProvider generic_instance_signature_provider, FileContentProvider file_content_provider,
+        LexFileProvider lex_file_provider, ParseFileProvider parse_file_provider,
         FunctionBodySyntaxProvider function_body_syntax_provider, TypeCheckBodyProvider type_check_body_provider,
-        GenericInstanceBodyProvider generic_instance_body_provider, DiagnosticsProvider diagnostics_provider);
+        GenericInstanceBodyProvider generic_instance_body_provider, LowerFunctionIRProvider lower_function_ir_provider,
+        LowerGenericInstanceIRProvider lower_generic_instance_ir_provider, DiagnosticsProvider diagnostics_provider);
 
+    void set_file_content_provider(FileContentProvider provider);
+    void set_lex_file_provider(LexFileProvider provider);
+    void set_parse_file_provider(ParseFileProvider provider);
     void set_module_exports_provider(ModuleExportsProvider provider);
     void set_item_signature_provider(ItemSignatureProvider provider);
     void set_generic_instance_signature_provider(GenericInstanceSignatureProvider provider);
     void set_function_body_syntax_provider(FunctionBodySyntaxProvider provider);
     void set_type_check_body_provider(TypeCheckBodyProvider provider);
     void set_generic_instance_body_provider(GenericInstanceBodyProvider provider);
+    void set_lower_function_ir_provider(LowerFunctionIRProvider provider);
+    void set_lower_generic_instance_ir_provider(LowerGenericInstanceIRProvider provider);
     void set_diagnostics_provider(DiagnosticsProvider provider);
+    [[nodiscard]] QueryEvaluationResult evaluate_file_content(const FileContentProviderInput& input);
+    [[nodiscard]] QueryEvaluationResult evaluate_lex_file(const LexFileProviderInput& input);
+    [[nodiscard]] QueryEvaluationResult evaluate_parse_file(const ParseFileProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_module_exports(const ModuleExportsProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_item_signature(const ItemSignatureProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_generic_instance_signature(
@@ -89,6 +108,9 @@ public:
     [[nodiscard]] QueryEvaluationResult evaluate_function_body_syntax(const FunctionBodySyntaxProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_type_check_body(const TypeCheckBodyProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_generic_instance_body(const GenericInstanceBodyProviderInput& input);
+    [[nodiscard]] QueryEvaluationResult evaluate_lower_function_ir(const LowerFunctionIRProviderInput& input);
+    [[nodiscard]] QueryEvaluationResult evaluate_lower_generic_instance_ir(
+        const LowerGenericInstanceIRProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_diagnostics(const DiagnosticsProviderInput& input);
     [[nodiscard]] bool seed_completed_record(QueryRecord record, std::vector<QueryKey> dependencies = {});
     [[nodiscard]] bool invalidate(QueryKey key);
@@ -117,12 +139,17 @@ private:
     std::unordered_map<QueryKey, QueryNode, QueryKeyHash> nodes_;
     std::unordered_map<QueryKey, std::vector<QueryKey>, QueryKeyHash> dependents_by_dependency_;
     base::usize dependency_edge_count_ = 0;
+    FileContentProvider file_content_provider_;
+    LexFileProvider lex_file_provider_;
+    ParseFileProvider parse_file_provider_;
     ModuleExportsProvider module_exports_provider_;
     ItemSignatureProvider item_signature_provider_;
     GenericInstanceSignatureProvider generic_instance_signature_provider_;
     FunctionBodySyntaxProvider function_body_syntax_provider_;
     TypeCheckBodyProvider type_check_body_provider_;
     GenericInstanceBodyProvider generic_instance_body_provider_;
+    LowerFunctionIRProvider lower_function_ir_provider_;
+    LowerGenericInstanceIRProvider lower_generic_instance_ir_provider_;
     DiagnosticsProvider diagnostics_provider_;
 };
 

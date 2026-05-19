@@ -3,6 +3,7 @@
 #include <aurex/query/item_signature_query.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
+#include <aurex/query/query_reuse.hpp>
 #include <aurex/query/stable_identity.hpp>
 
 #include <algorithm>
@@ -812,6 +813,75 @@ TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
     const query::QueryEvaluationResult recomputed_result = context.evaluate_item_signature(subject.input);
     EXPECT_EQ(recomputed_result.status, query::QueryEvaluationStatus::computed);
     EXPECT_EQ(provider_calls, 1U);
+}
+
+TEST(QueryUnit, QueryReuseDecisionClassifiesCachedCurrentAndMalformedRecords)
+{
+    const QueryContextItemSignatureSubject subject =
+        test_item_signature_subject("compute", QUERY_TEST_PROVIDER_SIGNATURE);
+    const QueryContextItemSignatureSubject missing_subject =
+        test_item_signature_subject("missing", QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::ItemSignatureProviderOutput> cached_output =
+        query::provide_item_signature_query(subject.input);
+    const std::optional<query::ItemSignatureProviderOutput> missing_output =
+        query::provide_item_signature_query(missing_subject.input);
+    ASSERT_TRUE(cached_output.has_value());
+    ASSERT_TRUE(missing_output.has_value());
+
+    query::QueryContext cached_context;
+    ASSERT_TRUE(cached_context.seed_completed_record(cached_output->record));
+
+    query::QueryRecord changed_record = cached_output->record;
+    changed_record.result = query::query_result_fingerprint(
+        query::stable_incremental_key(subject.input.signature.definition, QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
+    ASSERT_TRUE(query::is_valid(changed_record));
+    ASSERT_NE(changed_record.result, cached_output->record.result);
+
+    const std::vector<query::QueryRecord> current_records{
+        cached_output->record,
+        changed_record,
+        missing_output->record,
+        query::QueryRecord{},
+    };
+    const std::vector<query::QueryReuseDecision> decisions = query::decide_query_reuse(cached_context, current_records);
+    ASSERT_EQ(decisions.size(), current_records.size());
+
+    EXPECT_EQ(decisions[0].key, cached_output->record.key);
+    EXPECT_EQ(decisions[0].stable_key_bytes, cached_output->record.stable_key_bytes);
+    EXPECT_EQ(decisions[0].change_status, query::QueryRecordChangeStatus::unchanged);
+    EXPECT_EQ(decisions[0].disposition, query::QueryReuseDisposition::reuse);
+    EXPECT_TRUE(query::can_reuse(decisions[0].change_status));
+
+    EXPECT_EQ(decisions[1].key, changed_record.key);
+    EXPECT_EQ(decisions[1].stable_key_bytes, changed_record.stable_key_bytes);
+    EXPECT_EQ(decisions[1].change_status, query::QueryRecordChangeStatus::changed);
+    EXPECT_EQ(decisions[1].disposition, query::QueryReuseDisposition::recompute);
+    EXPECT_FALSE(query::can_reuse(decisions[1].change_status));
+
+    EXPECT_EQ(decisions[2].key, missing_output->record.key);
+    EXPECT_EQ(decisions[2].stable_key_bytes, missing_output->record.stable_key_bytes);
+    EXPECT_EQ(decisions[2].change_status, query::QueryRecordChangeStatus::missing);
+    EXPECT_EQ(decisions[2].disposition, query::QueryReuseDisposition::recompute);
+
+    EXPECT_EQ(decisions[3].change_status, query::QueryRecordChangeStatus::malformed);
+    EXPECT_EQ(decisions[3].disposition, query::QueryReuseDisposition::recompute);
+
+    const query::QueryReuseSummary summary = query::summarize_query_reuse(decisions);
+    EXPECT_EQ(summary.total, 4U);
+    EXPECT_EQ(summary.unchanged, 1U);
+    EXPECT_EQ(summary.changed, 1U);
+    EXPECT_EQ(summary.missing, 1U);
+    EXPECT_EQ(summary.malformed, 1U);
+    EXPECT_EQ(summary.reusable, 1U);
+    EXPECT_EQ(summary.recompute, 3U);
+
+    const std::vector<query::QueryReuseDecision> missing_decisions =
+        query::mark_all_queries_missing(std::span<const query::QueryRecord>{current_records.data(), 2U});
+    ASSERT_EQ(missing_decisions.size(), 2U);
+    EXPECT_EQ(missing_decisions[0].change_status, query::QueryRecordChangeStatus::missing);
+    EXPECT_EQ(missing_decisions[0].disposition, query::QueryReuseDisposition::recompute);
+    EXPECT_EQ(missing_decisions[1].change_status, query::QueryRecordChangeStatus::missing);
+    EXPECT_EQ(missing_decisions[1].disposition, query::QueryReuseDisposition::recompute);
 }
 
 TEST(QueryUnit, QueryContextOrdersCompletedItemSignatureRecordsByQueryKey)

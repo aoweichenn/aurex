@@ -3,6 +3,7 @@
 #include <aurex/driver/profile.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
+#include <aurex/query/query_reuse.hpp>
 
 #include <algorithm>
 #include <array>
@@ -119,20 +120,6 @@ struct DefinitionRecord {
 
 struct ParsedQueryRecord {
     query::QueryRecord record;
-};
-
-struct QueryRecordDiff {
-    query::QueryKind kind = query::QueryKind::invalid;
-    std::string stable_key_bytes;
-    query::QueryRecordChangeStatus status = query::QueryRecordChangeStatus::malformed;
-};
-
-struct QueryRecordDiffSummary {
-    base::usize total = 0;
-    base::usize missing = 0;
-    base::usize unchanged = 0;
-    base::usize changed = 0;
-    base::usize malformed = 0;
 };
 
 struct ItemSignatureQuerySubject {
@@ -679,77 +666,24 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return context;
 }
 
-[[nodiscard]] const query::QueryRecord* find_seeded_query_record(
-    const query::QueryContext& context, const query::QueryRecord& current)
-{
-    const query::QueryNode* const node = context.find(current.key);
-    if (node == nullptr || node->record.stable_key_bytes != current.stable_key_bytes) {
-        return nullptr;
-    }
-    return &node->record;
-}
-
-[[nodiscard]] std::vector<QueryRecordDiff> compare_query_records_against_cache(
+[[nodiscard]] std::vector<query::QueryReuseDecision> decide_query_reuse_against_cache(
     const ParsedCache& cache, const std::span<const query::QueryRecord> current_records)
 {
     const query::QueryContext cached_context = seed_query_context_from_cache(cache);
-    std::vector<QueryRecordDiff> diffs;
-    diffs.reserve(current_records.size());
-    for (const query::QueryRecord& current : current_records) {
-        const query::QueryRecord* const cached = find_seeded_query_record(cached_context, current);
-        diffs.push_back(QueryRecordDiff{
-            current.key.kind,
-            current.stable_key_bytes,
-            query::query_record_change_status(cached, current),
-        });
-    }
-    return diffs;
+    return query::decide_query_reuse(cached_context, current_records);
 }
 
-[[nodiscard]] std::vector<QueryRecordDiff> compare_existing_query_records(
+[[nodiscard]] std::vector<query::QueryReuseDecision> decide_existing_query_reuse(
     const std::filesystem::path& cache_path, const std::span<const query::QueryRecord> current_records)
 {
     const std::optional<ParsedCache> cache = read_incremental_cache(cache_path);
     if (!cache) {
-        std::vector<QueryRecordDiff> diffs;
-        diffs.reserve(current_records.size());
-        for (const query::QueryRecord& current : current_records) {
-            diffs.push_back(QueryRecordDiff{
-                current.key.kind,
-                current.stable_key_bytes,
-                query::QueryRecordChangeStatus::missing,
-            });
-        }
-        return diffs;
+        return query::mark_all_queries_missing(current_records);
     }
-    return compare_query_records_against_cache(*cache, current_records);
+    return decide_query_reuse_against_cache(*cache, current_records);
 }
 
-[[nodiscard]] QueryRecordDiffSummary summarize_query_record_diffs(
-    const std::span<const QueryRecordDiff> query_diffs) noexcept
-{
-    QueryRecordDiffSummary summary;
-    summary.total = query_diffs.size();
-    for (const QueryRecordDiff& diff : query_diffs) {
-        switch (diff.status) {
-            case query::QueryRecordChangeStatus::missing:
-                summary.missing += 1;
-                break;
-            case query::QueryRecordChangeStatus::unchanged:
-                summary.unchanged += 1;
-                break;
-            case query::QueryRecordChangeStatus::changed:
-                summary.changed += 1;
-                break;
-            case query::QueryRecordChangeStatus::malformed:
-                summary.malformed += 1;
-                break;
-        }
-    }
-    return summary;
-}
-
-[[nodiscard]] std::string query_record_diff_summary_detail(const QueryRecordDiffSummary& summary)
+[[nodiscard]] std::string query_record_diff_summary_detail(const query::QueryReuseSummary& summary)
 {
     std::ostringstream detail;
     detail << INCREMENTAL_CACHE_PROFILE_TOTAL << summary.total << INCREMENTAL_CACHE_PROFILE_MISSING << summary.missing
@@ -758,7 +692,7 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return detail.str();
 }
 
-void record_query_record_diff_summary(CompilationProfiler* const profiler, const QueryRecordDiffSummary& summary,
+void record_query_record_diff_summary(CompilationProfiler* const profiler, const query::QueryReuseSummary& summary,
     const std::chrono::steady_clock::duration elapsed)
 {
     if (profiler == nullptr || !profiler->enabled()) {
@@ -1157,8 +1091,9 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
     const std::vector<query::QueryRecord> query_records = collect_query_records(checked);
     const auto query_diff_started = std::chrono::steady_clock::now();
-    const std::vector<QueryRecordDiff> query_diffs = compare_existing_query_records(cache_path, query_records);
-    const QueryRecordDiffSummary query_diff_summary = summarize_query_record_diffs(query_diffs);
+    const std::vector<query::QueryReuseDecision> query_decisions =
+        decide_existing_query_reuse(cache_path, query_records);
+    const query::QueryReuseSummary query_diff_summary = query::summarize_query_reuse(query_decisions);
     record_query_record_diff_summary(
         profiler, query_diff_summary, std::chrono::steady_clock::now() - query_diff_started);
 

@@ -52,7 +52,9 @@ QueryContext::QueryContext()
           ItemSignatureProvider{provide_item_signature_query},
           GenericInstanceSignatureProvider{provide_generic_instance_signature_query},
           FunctionBodySyntaxProvider{provide_function_body_syntax_query},
-          TypeCheckBodyProvider{provide_type_check_body_query})
+          TypeCheckBodyProvider{provide_type_check_body_query},
+          GenericInstanceBodyProvider{provide_generic_instance_body_query},
+          DiagnosticsProvider{provide_diagnostics_query})
 {
 }
 
@@ -60,7 +62,9 @@ QueryContext::QueryContext(ItemSignatureProvider item_signature_provider)
     : QueryContext(ModuleExportsProvider{provide_module_exports_query}, std::move(item_signature_provider),
           GenericInstanceSignatureProvider{provide_generic_instance_signature_query},
           FunctionBodySyntaxProvider{provide_function_body_syntax_query},
-          TypeCheckBodyProvider{provide_type_check_body_query})
+          TypeCheckBodyProvider{provide_type_check_body_query},
+          GenericInstanceBodyProvider{provide_generic_instance_body_query},
+          DiagnosticsProvider{provide_diagnostics_query})
 {
 }
 
@@ -69,7 +73,9 @@ QueryContext::QueryContext(
     : QueryContext(ModuleExportsProvider{provide_module_exports_query}, std::move(item_signature_provider),
           std::move(generic_instance_signature_provider),
           FunctionBodySyntaxProvider{provide_function_body_syntax_query},
-          TypeCheckBodyProvider{provide_type_check_body_query})
+          TypeCheckBodyProvider{provide_type_check_body_query},
+          GenericInstanceBodyProvider{provide_generic_instance_body_query},
+          DiagnosticsProvider{provide_diagnostics_query})
 {
 }
 
@@ -78,19 +84,24 @@ QueryContext::QueryContext(ModuleExportsProvider module_exports_provider, ItemSi
     : QueryContext(std::move(module_exports_provider), std::move(item_signature_provider),
           std::move(generic_instance_signature_provider),
           FunctionBodySyntaxProvider{provide_function_body_syntax_query},
-          TypeCheckBodyProvider{provide_type_check_body_query})
+          TypeCheckBodyProvider{provide_type_check_body_query},
+          GenericInstanceBodyProvider{provide_generic_instance_body_query},
+          DiagnosticsProvider{provide_diagnostics_query})
 {
 }
 
 QueryContext::QueryContext(ModuleExportsProvider module_exports_provider, ItemSignatureProvider item_signature_provider,
     GenericInstanceSignatureProvider generic_instance_signature_provider,
-    FunctionBodySyntaxProvider function_body_syntax_provider, TypeCheckBodyProvider type_check_body_provider)
+    FunctionBodySyntaxProvider function_body_syntax_provider, TypeCheckBodyProvider type_check_body_provider,
+    GenericInstanceBodyProvider generic_instance_body_provider, DiagnosticsProvider diagnostics_provider)
 {
     this->set_module_exports_provider(std::move(module_exports_provider));
     this->set_item_signature_provider(std::move(item_signature_provider));
     this->set_generic_instance_signature_provider(std::move(generic_instance_signature_provider));
     this->set_function_body_syntax_provider(std::move(function_body_syntax_provider));
     this->set_type_check_body_provider(std::move(type_check_body_provider));
+    this->set_generic_instance_body_provider(std::move(generic_instance_body_provider));
+    this->set_diagnostics_provider(std::move(diagnostics_provider));
 }
 
 void QueryContext::set_module_exports_provider(ModuleExportsProvider provider)
@@ -121,6 +132,17 @@ void QueryContext::set_type_check_body_provider(TypeCheckBodyProvider provider)
 {
     this->type_check_body_provider_ =
         provider ? std::move(provider) : TypeCheckBodyProvider{provide_type_check_body_query};
+}
+
+void QueryContext::set_generic_instance_body_provider(GenericInstanceBodyProvider provider)
+{
+    this->generic_instance_body_provider_ =
+        provider ? std::move(provider) : GenericInstanceBodyProvider{provide_generic_instance_body_query};
+}
+
+void QueryContext::set_diagnostics_provider(DiagnosticsProvider provider)
+{
+    this->diagnostics_provider_ = provider ? std::move(provider) : DiagnosticsProvider{provide_diagnostics_query};
 }
 
 QueryEvaluationResult QueryContext::evaluate_module_exports(const ModuleExportsProviderInput& input)
@@ -239,6 +261,57 @@ QueryEvaluationResult QueryContext::evaluate_type_check_body(const TypeCheckBody
     QueryNode& node = *start.node;
 
     std::optional<TypeCheckBodyProviderOutput> output = this->type_check_body_provider_(input);
+    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
+        return this->fail_query(node);
+    }
+
+    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return QueryEvaluationResult{
+        QueryEvaluationStatus::computed,
+        &node,
+    };
+}
+
+QueryEvaluationResult QueryContext::evaluate_generic_instance_body(const GenericInstanceBodyProviderInput& input)
+{
+    const std::optional<QueryKey> expected_key =
+        input.key == nullptr ? std::nullopt : generic_instance_body_query_key(*input.key);
+    if (!expected_key) {
+        return {};
+    }
+
+    QueryEvaluationStart start = this->start_query(*expected_key);
+    if (start.result) {
+        return *start.result;
+    }
+    QueryNode& node = *start.node;
+
+    std::optional<GenericInstanceBodyProviderOutput> output = this->generic_instance_body_provider_(input);
+    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
+        return this->fail_query(node);
+    }
+
+    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return QueryEvaluationResult{
+        QueryEvaluationStatus::computed,
+        &node,
+    };
+}
+
+QueryEvaluationResult QueryContext::evaluate_diagnostics(const DiagnosticsProviderInput& input)
+{
+    const std::optional<QueryKey> expected_key = diagnostics_query_key(input.producer);
+    if (!expected_key) {
+        return {};
+    }
+
+    QueryEvaluationStart start = this->start_query(*expected_key);
+    if (start.result) {
+        return *start.result;
+    }
+    QueryNode& node = *start.node;
+
+    std::optional<DiagnosticsProviderOutput> output = this->diagnostics_provider_(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }

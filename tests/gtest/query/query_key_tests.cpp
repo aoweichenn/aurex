@@ -1,4 +1,6 @@
+#include <aurex/query/diagnostics_query.hpp>
 #include <aurex/query/function_body_syntax_query.hpp>
+#include <aurex/query/generic_instance_body_query.hpp>
 #include <aurex/query/generic_instance_key.hpp>
 #include <aurex/query/generic_instance_signature_query.hpp>
 #include <aurex/query/item_signature_query.hpp>
@@ -46,6 +48,8 @@ constexpr std::string_view QUERY_TEST_MODULE_EXPORTS_SIGNATURE = "exports:v1";
 constexpr std::string_view QUERY_TEST_CHANGED_MODULE_EXPORTS_SIGNATURE = "exports:v2";
 constexpr std::string_view QUERY_TEST_BODY_SYNTAX = "body-syntax:return value";
 constexpr std::string_view QUERY_TEST_TYPE_CHECK_BODY = "type-check-body:return i32";
+constexpr std::string_view QUERY_TEST_GENERIC_INSTANCE_BODY = "generic-instance-body:return T";
+constexpr std::string_view QUERY_TEST_DIAGNOSTICS = "diagnostics:empty";
 
 [[nodiscard]] query::PackageKey test_package()
 {
@@ -136,16 +140,33 @@ struct QueryContextBodySubject {
     };
 }
 
-[[nodiscard]] QueryContextBodySubject test_body_subject()
+[[nodiscard]] query::GenericInstanceBodyProviderInput generic_instance_body_provider_input(
+    const QueryContextGenericInstanceSignatureSubject& subject, const query::QueryResultFingerprint result) noexcept
+{
+    return query::GenericInstanceBodyProviderInput{
+        &subject.key,
+        result,
+    };
+}
+
+[[nodiscard]] QueryContextBodySubject test_body_subject(const std::string_view function_name)
 {
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
-    const query::BodyKey body = query::body_key(test_function_def(module), query::BodySlotKind::function_body);
+    const std::array<std::string_view, 1> path{function_name};
+    const query::DefKey function_def =
+        query::def_key(module, query::DefNamespace::value, query::DefKind::function, path);
+    const query::BodyKey body = query::body_key(function_def, query::BodySlotKind::function_body);
     return QueryContextBodySubject{
         body,
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_BODY_SYNTAX)),
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_TYPE_CHECK_BODY)),
     };
+}
+
+[[nodiscard]] QueryContextBodySubject test_body_subject()
+{
+    return test_body_subject("compute");
 }
 
 [[nodiscard]] bool query_test_key_less(const query::QueryKey lhs, const query::QueryKey rhs) noexcept
@@ -487,6 +508,35 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_EQ(instance_record->key.payload, query::stable_key_fingerprint(instance));
     EXPECT_EQ(instance_record->stable_key_bytes, query::stable_serialize(instance));
 
+    const query::QueryResultFingerprint generic_body_result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_GENERIC_INSTANCE_BODY));
+    const query::GenericInstanceBodyQueryInput generic_body_input{
+        instance,
+        generic_body_result,
+    };
+    EXPECT_TRUE(query::is_valid(generic_body_input));
+    const std::optional<query::QueryRecord> generic_body_record =
+        query::generic_instance_body_query_record(generic_body_input);
+    ASSERT_TRUE(generic_body_record.has_value());
+    EXPECT_TRUE(query::is_valid(*generic_body_record));
+    EXPECT_EQ(generic_body_record->key.kind, query::QueryKind::generic_instance_body);
+    EXPECT_EQ(generic_body_record->key.payload, query::stable_key_fingerprint(instance));
+    EXPECT_EQ(generic_body_record->stable_key_bytes, query::stable_serialize(instance));
+
+    const query::QueryResultFingerprint diagnostics_result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_DIAGNOSTICS));
+    const query::DiagnosticsQueryInput diagnostics_input{
+        item_record->key,
+        diagnostics_result,
+    };
+    EXPECT_TRUE(query::is_valid(diagnostics_input));
+    const std::optional<query::QueryRecord> diagnostics_record = query::diagnostics_query_record(diagnostics_input);
+    ASSERT_TRUE(diagnostics_record.has_value());
+    EXPECT_TRUE(query::is_valid(*diagnostics_record));
+    EXPECT_EQ(diagnostics_record->key.kind, query::QueryKind::diagnostics);
+    EXPECT_EQ(diagnostics_record->key.payload, query::stable_key_fingerprint(item_record->key));
+    EXPECT_EQ(diagnostics_record->stable_key_bytes, query::stable_serialize(item_record->key));
+
     query::QueryRecord changed_item_record = *item_record;
     changed_item_record.result =
         query::query_result_fingerprint(query::stable_incremental_key(legacy_function_id, "signature:i64"));
@@ -529,9 +579,30 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_FALSE(query::generic_instance_signature_query_record(
         query::GenericInstanceSignatureQueryInput{instance, query::QueryResultFingerprint{}})
             .has_value());
+    EXPECT_FALSE(query::is_valid(query::GenericInstanceBodyQueryInput{}));
+    EXPECT_FALSE(query::generic_instance_body_query_record(
+        query::GenericInstanceBodyQueryInput{query::GenericInstanceKey{}, generic_body_result})
+            .has_value());
+    EXPECT_FALSE(query::generic_instance_body_query_record(
+        query::GenericInstanceBodyQueryInput{instance, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::DiagnosticsQueryInput{}));
+    EXPECT_FALSE(query::diagnostics_query_record(query::DiagnosticsQueryInput{query::QueryKey{}, diagnostics_result})
+            .has_value());
+    EXPECT_FALSE(
+        query::diagnostics_query_record(query::DiagnosticsQueryInput{item_record->key, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(
+        query::diagnostics_query_record(query::DiagnosticsQueryInput{diagnostics_record->key, diagnostics_result})
+            .has_value());
     EXPECT_FALSE(query::item_signature_query_record(query::DefKey{}, result).has_value());
     EXPECT_FALSE(query::item_signature_query_record(function_def, query::QueryResultFingerprint{}).has_value());
     EXPECT_FALSE(query::generic_instance_signature_query_record(query::GenericInstanceKey{}, result).has_value());
+    EXPECT_FALSE(
+        query::generic_instance_body_query_record(query::GenericInstanceKey{}, generic_body_result).has_value());
+    EXPECT_FALSE(query::generic_instance_body_query_record(instance, query::QueryResultFingerprint{}).has_value());
+    EXPECT_FALSE(query::diagnostics_query_record(query::QueryKey{}, diagnostics_result).has_value());
+    EXPECT_FALSE(query::diagnostics_query_record(item_record->key, query::QueryResultFingerprint{}).has_value());
     EXPECT_EQ(query::query_record_change_status(&*item_record, query::QueryRecord{}),
         query::QueryRecordChangeStatus::malformed);
     const query::QueryRecord invalid_cached_record;
@@ -679,6 +750,50 @@ TEST(QueryUnit, GenericInstanceSignatureProviderBuildsRecordFromStableInstance)
     EXPECT_FALSE(query::is_valid(mismatched_result_output));
 }
 
+TEST(QueryUnit, GenericInstanceBodyProviderBuildsRecordAndSignatureDependency)
+{
+    const QueryContextGenericInstanceSignatureSubject subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const query::QueryResultFingerprint body =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_GENERIC_INSTANCE_BODY));
+    const std::optional<query::QueryKey> expected_key = query::generic_instance_body_query_key(subject.key);
+    ASSERT_TRUE(expected_key.has_value());
+
+    const query::GenericInstanceBodyProviderInput input = generic_instance_body_provider_input(subject, body);
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::GenericInstanceBodyProviderOutput> output =
+        query::provide_generic_instance_body_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    const std::optional<query::QueryKey> signature_key = query::generic_instance_signature_query_key(subject.key);
+    ASSERT_TRUE(signature_key.has_value());
+    EXPECT_EQ(output->dependencies, std::vector<query::QueryKey>{*signature_key});
+    EXPECT_EQ(output->record.key, *expected_key);
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::generic_instance_body);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.key));
+    EXPECT_EQ(output->result, body);
+    EXPECT_EQ(output->record.result, output->result);
+
+    const query::GenericInstanceKey invalid_key;
+    EXPECT_FALSE(query::generic_instance_body_query_key(query::GenericInstanceKey{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::GenericInstanceBodyProviderInput{}));
+    EXPECT_FALSE(query::provide_generic_instance_body_query(query::GenericInstanceBodyProviderInput{&invalid_key, body})
+            .has_value());
+    EXPECT_FALSE(query::provide_generic_instance_body_query(
+        query::GenericInstanceBodyProviderInput{&subject.key, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::GenericInstanceBodyProviderOutput{}));
+
+    query::GenericInstanceBodyProviderOutput invalid_dependency_output = *output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::GenericInstanceBodyProviderOutput mismatched_result_output = *output;
+    mismatched_result_output.result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
+    EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
 TEST(QueryUnit, FunctionBodySyntaxProviderBuildsRecordFromStableBody)
 {
     const QueryContextBodySubject subject = test_body_subject();
@@ -761,6 +876,53 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
     EXPECT_FALSE(query::is_valid(invalid_dependency_output));
 
     query::TypeCheckBodyProviderOutput mismatched_result_output = *output;
+    mismatched_result_output.result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
+    EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
+TEST(QueryUnit, DiagnosticsProviderBuildsRecordAndProducerDependency)
+{
+    const QueryContextBodySubject subject = test_body_subject();
+    const std::optional<query::QueryKey> producer = query::type_check_body_query_key(subject.body);
+    ASSERT_TRUE(producer.has_value());
+    const query::QueryResultFingerprint diagnostics =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_DIAGNOSTICS));
+    const std::optional<query::QueryKey> expected_key = query::diagnostics_query_key(*producer);
+    ASSERT_TRUE(expected_key.has_value());
+
+    const query::DiagnosticsProviderInput input{
+        *producer,
+        diagnostics,
+    };
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::DiagnosticsProviderOutput> output = query::provide_diagnostics_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    EXPECT_EQ(output->dependencies, std::vector<query::QueryKey>{*producer});
+    EXPECT_EQ(output->record.key, *expected_key);
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::diagnostics);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(*producer));
+    EXPECT_EQ(output->result, diagnostics);
+    EXPECT_EQ(output->record.result, output->result);
+
+    EXPECT_FALSE(query::diagnostics_query_key(query::QueryKey{}).has_value());
+    EXPECT_FALSE(query::diagnostics_query_key(*expected_key).has_value());
+    EXPECT_FALSE(query::is_valid(query::DiagnosticsProviderInput{}));
+    EXPECT_FALSE(
+        query::provide_diagnostics_query(query::DiagnosticsProviderInput{query::QueryKey{}, diagnostics}).has_value());
+    EXPECT_FALSE(
+        query::provide_diagnostics_query(query::DiagnosticsProviderInput{*producer, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(
+        query::provide_diagnostics_query(query::DiagnosticsProviderInput{*expected_key, diagnostics}).has_value());
+    EXPECT_FALSE(query::is_valid(query::DiagnosticsProviderOutput{}));
+
+    query::DiagnosticsProviderOutput invalid_dependency_output = *output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::DiagnosticsProviderOutput mismatched_result_output = *output;
     mismatched_result_output.result =
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
     EXPECT_FALSE(query::is_valid(mismatched_result_output));
@@ -970,6 +1132,359 @@ TEST(QueryUnit, QueryContextCachesBodyQueriesAndRecordsTypeCheckDependencies)
         context.evaluate_type_check_body(query::TypeCheckBodyProviderInput{subject.body, subject.checked_body});
     EXPECT_EQ(cached_type.status, query::QueryEvaluationStatus::cached);
     EXPECT_EQ(type_provider_calls, 1U);
+
+    context.set_function_body_syntax_provider({});
+    ASSERT_TRUE(context.invalidate(*body_syntax_key));
+    const query::QueryEvaluationResult default_body =
+        context.evaluate_function_body_syntax(query::FunctionBodySyntaxProviderInput{subject.body, subject.syntax});
+    ASSERT_EQ(default_body.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(default_body.node, nullptr);
+    EXPECT_EQ(default_body.node->key, *body_syntax_key);
+    EXPECT_EQ(body_provider_calls, 1U);
+
+    context.set_type_check_body_provider({});
+    ASSERT_TRUE(context.invalidate(*type_check_key));
+    const query::QueryEvaluationResult default_type =
+        context.evaluate_type_check_body(query::TypeCheckBodyProviderInput{subject.body, subject.checked_body});
+    ASSERT_EQ(default_type.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(default_type.node, nullptr);
+    EXPECT_EQ(default_type.node->key, *type_check_key);
+    EXPECT_EQ(type_provider_calls, 1U);
+}
+
+TEST(QueryUnit, QueryContextTracksBodyFailuresAndProviderFallbacks)
+{
+    const QueryContextBodySubject subject = test_body_subject();
+    const QueryContextBodySubject other_subject = test_body_subject("other");
+    const std::optional<query::QueryKey> body_syntax_key = query::function_body_syntax_query_key(subject.body);
+    const std::optional<query::QueryKey> type_check_key = query::type_check_body_query_key(subject.body);
+    ASSERT_TRUE(body_syntax_key.has_value());
+    ASSERT_TRUE(type_check_key.has_value());
+
+    query::QueryContext invalid_input_context;
+    const query::QueryEvaluationResult invalid_body_key_result = invalid_input_context.evaluate_function_body_syntax(
+        query::FunctionBodySyntaxProviderInput{query::BodyKey{}, subject.syntax});
+    EXPECT_EQ(invalid_body_key_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(invalid_body_key_result.node, nullptr);
+    const query::QueryEvaluationResult invalid_type_key_result = invalid_input_context.evaluate_type_check_body(
+        query::TypeCheckBodyProviderInput{query::BodyKey{}, subject.checked_body});
+    EXPECT_EQ(invalid_type_key_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(invalid_type_key_result.node, nullptr);
+
+    query::QueryContext failing_context;
+    failing_context.set_function_body_syntax_provider(
+        [](const query::FunctionBodySyntaxProviderInput&) -> std::optional<query::FunctionBodySyntaxProviderOutput> {
+            return std::nullopt;
+        });
+    failing_context.set_type_check_body_provider(
+        [](const query::TypeCheckBodyProviderInput&) -> std::optional<query::TypeCheckBodyProviderOutput> {
+            return std::nullopt;
+        });
+    const query::QueryEvaluationResult failed_body_result = failing_context.evaluate_function_body_syntax(
+        query::FunctionBodySyntaxProviderInput{subject.body, subject.syntax});
+    ASSERT_EQ(failed_body_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(failed_body_result.node, nullptr);
+    EXPECT_EQ(failed_body_result.node->key, *body_syntax_key);
+    EXPECT_EQ(failed_body_result.node->status, query::QueryNodeStatus::failed);
+    const query::QueryEvaluationResult failed_type_result =
+        failing_context.evaluate_type_check_body(query::TypeCheckBodyProviderInput{subject.body, subject.checked_body});
+    ASSERT_EQ(failed_type_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(failed_type_result.node, nullptr);
+    EXPECT_EQ(failed_type_result.node->key, *type_check_key);
+    EXPECT_EQ(failed_type_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(failing_context.completed_records().empty());
+
+    failing_context.set_function_body_syntax_provider({});
+    const query::QueryEvaluationResult retry_body_result = failing_context.evaluate_function_body_syntax(
+        query::FunctionBodySyntaxProviderInput{subject.body, subject.syntax});
+    ASSERT_EQ(retry_body_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(retry_body_result.node, nullptr);
+    EXPECT_EQ(retry_body_result.node->status, query::QueryNodeStatus::done);
+    failing_context.set_type_check_body_provider({});
+    const query::QueryEvaluationResult retry_type_result =
+        failing_context.evaluate_type_check_body(query::TypeCheckBodyProviderInput{subject.body, subject.checked_body});
+    ASSERT_EQ(retry_type_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(retry_type_result.node, nullptr);
+    EXPECT_EQ(retry_type_result.node->status, query::QueryNodeStatus::done);
+
+    query::QueryContext wrong_key_context;
+    wrong_key_context.set_function_body_syntax_provider(
+        [&other_subject](const query::FunctionBodySyntaxProviderInput&) {
+            return query::provide_function_body_syntax_query(
+                query::FunctionBodySyntaxProviderInput{other_subject.body, other_subject.syntax});
+        });
+    wrong_key_context.set_type_check_body_provider([&other_subject](const query::TypeCheckBodyProviderInput&) {
+        return query::provide_type_check_body_query(
+            query::TypeCheckBodyProviderInput{other_subject.body, other_subject.checked_body});
+    });
+    const query::QueryEvaluationResult wrong_body_key_result = wrong_key_context.evaluate_function_body_syntax(
+        query::FunctionBodySyntaxProviderInput{subject.body, subject.syntax});
+    ASSERT_EQ(wrong_body_key_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(wrong_body_key_result.node, nullptr);
+    EXPECT_EQ(wrong_body_key_result.node->key, *body_syntax_key);
+    const query::QueryEvaluationResult wrong_type_key_result = wrong_key_context.evaluate_type_check_body(
+        query::TypeCheckBodyProviderInput{subject.body, subject.checked_body});
+    ASSERT_EQ(wrong_type_key_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(wrong_type_key_result.node, nullptr);
+    EXPECT_EQ(wrong_type_key_result.node->key, *type_check_key);
+
+    query::QueryContext invalid_output_context;
+    invalid_output_context.set_function_body_syntax_provider(
+        [](const query::FunctionBodySyntaxProviderInput& provider_input) {
+            std::optional<query::FunctionBodySyntaxProviderOutput> output =
+                query::provide_function_body_syntax_query(provider_input);
+            if (output) {
+                output->dependencies.push_back(query::QueryKey{});
+            }
+            return output;
+        });
+    invalid_output_context.set_type_check_body_provider([](const query::TypeCheckBodyProviderInput& provider_input) {
+        std::optional<query::TypeCheckBodyProviderOutput> output = query::provide_type_check_body_query(provider_input);
+        if (output) {
+            output->dependencies.push_back(query::QueryKey{});
+        }
+        return output;
+    });
+    const query::QueryEvaluationResult invalid_body_output_result =
+        invalid_output_context.evaluate_function_body_syntax(
+            query::FunctionBodySyntaxProviderInput{subject.body, subject.syntax});
+    ASSERT_EQ(invalid_body_output_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(invalid_body_output_result.node, nullptr);
+    EXPECT_EQ(invalid_body_output_result.node->status, query::QueryNodeStatus::failed);
+    const query::QueryEvaluationResult invalid_type_output_result = invalid_output_context.evaluate_type_check_body(
+        query::TypeCheckBodyProviderInput{subject.body, subject.checked_body});
+    ASSERT_EQ(invalid_type_output_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(invalid_type_output_result.node, nullptr);
+    EXPECT_EQ(invalid_type_output_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(invalid_output_context.completed_records().empty());
+}
+
+TEST(QueryUnit, QueryContextCachesGenericBodyAndDiagnosticsDependencies)
+{
+    const QueryContextGenericInstanceSignatureSubject generic_subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const query::QueryResultFingerprint generic_body =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_GENERIC_INSTANCE_BODY));
+    const std::optional<query::QueryKey> signature_key =
+        query::generic_instance_signature_query_key(generic_subject.key);
+    const std::optional<query::QueryKey> body_key = query::generic_instance_body_query_key(generic_subject.key);
+    ASSERT_TRUE(signature_key.has_value());
+    ASSERT_TRUE(body_key.has_value());
+
+    base::usize generic_body_provider_calls = 0;
+    base::usize diagnostics_provider_calls = 0;
+    query::QueryContext context;
+    context.set_generic_instance_body_provider(
+        [&generic_body_provider_calls](const query::GenericInstanceBodyProviderInput& provider_input) {
+            ++generic_body_provider_calls;
+            return query::provide_generic_instance_body_query(provider_input);
+        });
+    context.set_diagnostics_provider(
+        [&diagnostics_provider_calls](const query::DiagnosticsProviderInput& provider_input) {
+            ++diagnostics_provider_calls;
+            return query::provide_diagnostics_query(provider_input);
+        });
+
+    const query::QueryEvaluationResult body_result =
+        context.evaluate_generic_instance_body(generic_instance_body_provider_input(generic_subject, generic_body));
+    ASSERT_EQ(body_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(body_result.node, nullptr);
+    EXPECT_EQ(body_result.node->key, *body_key);
+    EXPECT_EQ(generic_body_provider_calls, 1U);
+    EXPECT_EQ(context.dependencies_for(*body_key), std::vector<query::QueryKey>{*signature_key});
+
+    const query::QueryResultFingerprint diagnostics =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_DIAGNOSTICS));
+    const std::optional<query::QueryKey> diagnostics_key = query::diagnostics_query_key(*body_key);
+    ASSERT_TRUE(diagnostics_key.has_value());
+    const query::DiagnosticsProviderInput diagnostics_input{
+        *body_key,
+        diagnostics,
+    };
+    const query::QueryEvaluationResult diagnostics_result = context.evaluate_diagnostics(diagnostics_input);
+    ASSERT_EQ(diagnostics_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(diagnostics_result.node, nullptr);
+    EXPECT_EQ(diagnostics_result.node->key, *diagnostics_key);
+    EXPECT_EQ(diagnostics_provider_calls, 1U);
+    EXPECT_EQ(context.dependencies_for(*diagnostics_key), std::vector<query::QueryKey>{*body_key});
+    EXPECT_TRUE(context.has_dependency(*diagnostics_key, *body_key));
+
+    const query::QueryEvaluationResult cached_body =
+        context.evaluate_generic_instance_body(generic_instance_body_provider_input(generic_subject, generic_body));
+    EXPECT_EQ(cached_body.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(generic_body_provider_calls, 1U);
+
+    const query::QueryEvaluationResult cached_diagnostics = context.evaluate_diagnostics(diagnostics_input);
+    EXPECT_EQ(cached_diagnostics.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(diagnostics_provider_calls, 1U);
+
+    context.set_generic_instance_body_provider({});
+    ASSERT_TRUE(context.invalidate(*body_key));
+    const query::QueryEvaluationResult default_body =
+        context.evaluate_generic_instance_body(generic_instance_body_provider_input(generic_subject, generic_body));
+    ASSERT_EQ(default_body.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(default_body.node, nullptr);
+    EXPECT_EQ(default_body.node->key, *body_key);
+    EXPECT_EQ(generic_body_provider_calls, 1U);
+
+    context.set_diagnostics_provider({});
+    ASSERT_TRUE(context.invalidate(*diagnostics_key));
+    const query::QueryEvaluationResult default_diagnostics = context.evaluate_diagnostics(diagnostics_input);
+    ASSERT_EQ(default_diagnostics.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(default_diagnostics.node, nullptr);
+    EXPECT_EQ(default_diagnostics.node->key, *diagnostics_key);
+    EXPECT_EQ(diagnostics_provider_calls, 1U);
+}
+
+TEST(QueryUnit, QueryContextTracksGenericBodyFailuresAndProviderFallbacks)
+{
+    const QueryContextGenericInstanceSignatureSubject subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const QueryContextGenericInstanceSignatureSubject other_subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i64, QUERY_TEST_PROVIDER_SIGNATURE);
+    const query::QueryResultFingerprint generic_body =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_GENERIC_INSTANCE_BODY));
+    const std::optional<query::QueryKey> expected_key = query::generic_instance_body_query_key(subject.key);
+    ASSERT_TRUE(expected_key.has_value());
+
+    query::QueryContext invalid_input_context;
+    const query::QueryEvaluationResult null_key_result = invalid_input_context.evaluate_generic_instance_body(
+        query::GenericInstanceBodyProviderInput{nullptr, generic_body});
+    EXPECT_EQ(null_key_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(null_key_result.node, nullptr);
+    const query::GenericInstanceKey invalid_key;
+    const query::QueryEvaluationResult invalid_key_result = invalid_input_context.evaluate_generic_instance_body(
+        query::GenericInstanceBodyProviderInput{&invalid_key, generic_body});
+    EXPECT_EQ(invalid_key_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(invalid_key_result.node, nullptr);
+
+    query::QueryContext failing_context;
+    failing_context.set_generic_instance_body_provider(
+        [](const query::GenericInstanceBodyProviderInput&) -> std::optional<query::GenericInstanceBodyProviderOutput> {
+            return std::nullopt;
+        });
+    const query::QueryEvaluationResult failed_result =
+        failing_context.evaluate_generic_instance_body(generic_instance_body_provider_input(subject, generic_body));
+    ASSERT_EQ(failed_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(failed_result.node, nullptr);
+    EXPECT_EQ(failed_result.node->key, *expected_key);
+    EXPECT_EQ(failed_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(failing_context.completed_records().empty());
+
+    failing_context.set_generic_instance_body_provider({});
+    const query::QueryEvaluationResult retry_result =
+        failing_context.evaluate_generic_instance_body(generic_instance_body_provider_input(subject, generic_body));
+    ASSERT_EQ(retry_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(retry_result.node, nullptr);
+    EXPECT_EQ(retry_result.node->status, query::QueryNodeStatus::done);
+
+    query::QueryContext wrong_key_context;
+    wrong_key_context.set_generic_instance_body_provider(
+        [&other_subject, generic_body](const query::GenericInstanceBodyProviderInput&) {
+            return query::provide_generic_instance_body_query(
+                generic_instance_body_provider_input(other_subject, generic_body));
+        });
+    const query::QueryEvaluationResult wrong_key_result =
+        wrong_key_context.evaluate_generic_instance_body(generic_instance_body_provider_input(subject, generic_body));
+    ASSERT_EQ(wrong_key_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(wrong_key_result.node, nullptr);
+    EXPECT_EQ(wrong_key_result.node->key, *expected_key);
+
+    query::QueryContext invalid_output_context;
+    invalid_output_context.set_generic_instance_body_provider(
+        [](const query::GenericInstanceBodyProviderInput& provider_input) {
+            std::optional<query::GenericInstanceBodyProviderOutput> output =
+                query::provide_generic_instance_body_query(provider_input);
+            if (output) {
+                output->dependencies.push_back(query::QueryKey{});
+            }
+            return output;
+        });
+    const query::QueryEvaluationResult invalid_output_result = invalid_output_context.evaluate_generic_instance_body(
+        generic_instance_body_provider_input(subject, generic_body));
+    ASSERT_EQ(invalid_output_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(invalid_output_result.node, nullptr);
+    EXPECT_EQ(invalid_output_result.node->key, *expected_key);
+    EXPECT_EQ(invalid_output_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(invalid_output_context.completed_records().empty());
+}
+
+TEST(QueryUnit, QueryContextTracksDiagnosticsFailuresAndProviderFallbacks)
+{
+    const QueryContextGenericInstanceSignatureSubject subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const QueryContextGenericInstanceSignatureSubject other_subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i64, QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryKey> producer = query::generic_instance_body_query_key(subject.key);
+    const std::optional<query::QueryKey> other_producer = query::generic_instance_body_query_key(other_subject.key);
+    ASSERT_TRUE(producer.has_value());
+    ASSERT_TRUE(other_producer.has_value());
+    const query::QueryKey other_producer_key = *other_producer;
+    const query::QueryResultFingerprint diagnostics =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_DIAGNOSTICS));
+    const std::optional<query::QueryKey> expected_key = query::diagnostics_query_key(*producer);
+    ASSERT_TRUE(expected_key.has_value());
+
+    query::QueryContext invalid_input_context;
+    const query::QueryEvaluationResult invalid_producer_result =
+        invalid_input_context.evaluate_diagnostics(query::DiagnosticsProviderInput{query::QueryKey{}, diagnostics});
+    EXPECT_EQ(invalid_producer_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(invalid_producer_result.node, nullptr);
+    const query::QueryEvaluationResult diagnostics_producer_result =
+        invalid_input_context.evaluate_diagnostics(query::DiagnosticsProviderInput{*expected_key, diagnostics});
+    EXPECT_EQ(diagnostics_producer_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(diagnostics_producer_result.node, nullptr);
+
+    query::QueryContext failing_context;
+    failing_context.set_diagnostics_provider(
+        [](const query::DiagnosticsProviderInput&) -> std::optional<query::DiagnosticsProviderOutput> {
+            return std::nullopt;
+        });
+    const query::DiagnosticsProviderInput diagnostics_input{
+        *producer,
+        diagnostics,
+    };
+    const query::QueryEvaluationResult failed_result = failing_context.evaluate_diagnostics(diagnostics_input);
+    ASSERT_EQ(failed_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(failed_result.node, nullptr);
+    EXPECT_EQ(failed_result.node->key, *expected_key);
+    EXPECT_EQ(failed_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(failing_context.completed_records().empty());
+
+    failing_context.set_diagnostics_provider({});
+    const query::QueryEvaluationResult retry_result = failing_context.evaluate_diagnostics(diagnostics_input);
+    ASSERT_EQ(retry_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(retry_result.node, nullptr);
+    EXPECT_EQ(retry_result.node->status, query::QueryNodeStatus::done);
+
+    query::QueryContext wrong_key_context;
+    wrong_key_context.set_diagnostics_provider(
+        [other_producer_key, diagnostics](const query::DiagnosticsProviderInput&) {
+            return query::provide_diagnostics_query(query::DiagnosticsProviderInput{
+                other_producer_key,
+                diagnostics,
+            });
+        });
+    const query::QueryEvaluationResult wrong_key_result = wrong_key_context.evaluate_diagnostics(diagnostics_input);
+    ASSERT_EQ(wrong_key_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(wrong_key_result.node, nullptr);
+    EXPECT_EQ(wrong_key_result.node->key, *expected_key);
+
+    query::QueryContext invalid_output_context;
+    invalid_output_context.set_diagnostics_provider([](const query::DiagnosticsProviderInput& provider_input) {
+        std::optional<query::DiagnosticsProviderOutput> output = query::provide_diagnostics_query(provider_input);
+        if (output) {
+            output->dependencies.push_back(query::QueryKey{});
+        }
+        return output;
+    });
+    const query::QueryEvaluationResult invalid_output_result =
+        invalid_output_context.evaluate_diagnostics(diagnostics_input);
+    ASSERT_EQ(invalid_output_result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(invalid_output_result.node, nullptr);
+    EXPECT_EQ(invalid_output_result.node->key, *expected_key);
+    EXPECT_EQ(invalid_output_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(invalid_output_context.completed_records().empty());
 }
 
 TEST(QueryUnit, QueryContextBuildsDeterministicDependencyEdgeTable)

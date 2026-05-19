@@ -138,6 +138,9 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_FUNCTION_BOD
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_TYPE_CHECK_BODIES = ",reused_type_check_bodies=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INSTANCE_SIGNATURES =
     ",reused_generic_instance_signatures=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INSTANCE_BODIES =
+    ",reused_generic_instance_bodies=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_DIAGNOSTICS = ",reused_diagnostics=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_EXPORTS = ",recomputed_module_exports=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_ITEM_SIGNATURES =
     ",recomputed_item_signatures=";
@@ -147,6 +150,9 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_TYPE_CHE
     ",recomputed_type_check_bodies=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_GENERIC_INSTANCE_SIGNATURES =
     ",recomputed_generic_instance_signatures=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_GENERIC_INSTANCE_BODIES =
+    ",recomputed_generic_instance_bodies=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_DIAGNOSTICS = ",recomputed_diagnostics=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_FALLBACK = ",fallback=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE = "mode=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE_FULL = "full";
@@ -161,6 +167,9 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_TYPE_C
     ",seeded_type_check_bodies=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERIC_INSTANCE_SIGNATURES =
     ",seeded_generic_instance_signatures=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERIC_INSTANCE_BODIES =
+    ",seeded_generic_instance_bodies=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_DIAGNOSTICS = ",seeded_diagnostics=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_EXPORTS =
     ",evaluated_module_exports=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_ITEM_SIGNATURES =
@@ -171,6 +180,9 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_TYP
     ",evaluated_type_check_bodies=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_GENERIC_INSTANCE_SIGNATURES =
     ",evaluated_generic_instance_signatures=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_GENERIC_INSTANCE_BODIES =
+    ",evaluated_generic_instance_bodies=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_DIAGNOSTICS = ",evaluated_diagnostics=";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED = "disabled";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NONE = "none";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NO_CACHE = "no_cache";
@@ -179,6 +191,8 @@ constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_MISSING_REUSABLE_R
 constexpr std::string_view INCREMENTAL_CACHE_MODULE_EXPORTS_RESULT_MARKER = "module-exports:v1";
 constexpr std::string_view INCREMENTAL_CACHE_FUNCTION_BODY_SYNTAX_RESULT_MARKER = "function-body-syntax:v1";
 constexpr std::string_view INCREMENTAL_CACHE_TYPE_CHECK_BODY_RESULT_MARKER = "type-check-body:v1";
+constexpr std::string_view INCREMENTAL_CACHE_GENERIC_INSTANCE_BODY_RESULT_MARKER = "generic-instance-body:v1";
+constexpr std::string_view INCREMENTAL_CACHE_DIAGNOSTICS_RESULT_MARKER = "diagnostics:v1";
 constexpr char INCREMENTAL_CACHE_MODULE_NAME_SEPARATOR = '.';
 
 struct SourceFingerprintRecord {
@@ -210,6 +224,8 @@ struct QueryKindExecutionCounts {
     base::usize function_body_syntaxes = 0;
     base::usize type_check_bodies = 0;
     base::usize generic_instance_signatures = 0;
+    base::usize generic_instance_bodies = 0;
+    base::usize diagnostics = 0;
 };
 
 struct QueryProviderEvaluationStats {
@@ -269,6 +285,11 @@ struct GenericInstanceSignatureQuerySubject {
     sema::IncrementalKey incremental_key;
 };
 
+struct GenericInstanceBodyQuerySubject {
+    const query::GenericInstanceKey* key = nullptr;
+    query::QueryResultFingerprint result;
+};
+
 struct FunctionBodySyntaxQuerySubject {
     query::BodyKey key;
     query::QueryResultFingerprint result;
@@ -279,12 +300,19 @@ struct TypeCheckBodyQuerySubject {
     query::QueryResultFingerprint result;
 };
 
+struct DiagnosticsQuerySubject {
+    query::QueryKey producer;
+    query::QueryResultFingerprint result;
+};
+
 enum class QuerySubjectKind : base::u8 {
     module_exports,
     item_signature,
     function_body_syntax,
     type_check_body,
     generic_instance_signature,
+    generic_instance_body,
+    diagnostics,
 };
 
 struct QuerySubject {
@@ -299,6 +327,8 @@ struct QuerySubjectCollection {
     std::vector<FunctionBodySyntaxQuerySubject> function_body_syntaxes;
     std::vector<TypeCheckBodyQuerySubject> type_check_bodies;
     std::vector<GenericInstanceSignatureQuerySubject> generic_instance_signatures;
+    std::vector<GenericInstanceBodyQuerySubject> generic_instance_bodies;
+    std::vector<DiagnosticsQuerySubject> diagnostics;
     std::vector<QuerySubject> subjects;
     std::vector<query::QueryRecord> records;
 };
@@ -1067,6 +1097,12 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
         case query::QueryKind::generic_instance_signature:
             counts.generic_instance_signatures += 1;
             return;
+        case query::QueryKind::generic_instance_body:
+            counts.generic_instance_bodies += 1;
+            return;
+        case query::QueryKind::diagnostics:
+            counts.diagnostics += 1;
+            return;
         case query::QueryKind::invalid:
         case query::QueryKind::file_content:
         case query::QueryKind::lex_file:
@@ -1074,8 +1110,6 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
         case query::QueryKind::module_graph:
         case query::QueryKind::item_list:
         case query::QueryKind::generic_template_signature:
-        case query::QueryKind::generic_instance_body:
-        case query::QueryKind::diagnostics:
         case query::QueryKind::lower_function_ir:
             return;
     }
@@ -1103,14 +1137,19 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_FUNCTION_BODY_SYNTAXES << result.reused.function_body_syntaxes
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_TYPE_CHECK_BODIES << result.reused.type_check_bodies
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INSTANCE_SIGNATURES
-           << result.reused.generic_instance_signatures << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_EXPORTS
-           << result.recomputed.module_exports << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_ITEM_SIGNATURES
-           << result.recomputed.item_signatures << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_FUNCTION_BODY_SYNTAXES
+           << result.reused.generic_instance_signatures
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INSTANCE_BODIES << result.reused.generic_instance_bodies
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_DIAGNOSTICS << result.reused.diagnostics
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_EXPORTS << result.recomputed.module_exports
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_ITEM_SIGNATURES << result.recomputed.item_signatures
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_FUNCTION_BODY_SYNTAXES
            << result.recomputed.function_body_syntaxes << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_TYPE_CHECK_BODIES
            << result.recomputed.type_check_bodies
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_GENERIC_INSTANCE_SIGNATURES
-           << result.recomputed.generic_instance_signatures << INCREMENTAL_CACHE_PROFILE_PRUNING_FALLBACK
-           << result.fallback;
+           << result.recomputed.generic_instance_signatures
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_GENERIC_INSTANCE_BODIES
+           << result.recomputed.generic_instance_bodies << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_DIAGNOSTICS
+           << result.recomputed.diagnostics << INCREMENTAL_CACHE_PROFILE_PRUNING_FALLBACK << result.fallback;
     return detail.str();
 }
 
@@ -1129,13 +1168,19 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
            << stats.seeded.type_check_bodies
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERIC_INSTANCE_SIGNATURES
            << stats.seeded.generic_instance_signatures
-           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_EXPORTS << stats.evaluated.module_exports
-           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_ITEM_SIGNATURES << stats.evaluated.item_signatures
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERIC_INSTANCE_BODIES
+           << stats.seeded.generic_instance_bodies << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_DIAGNOSTICS
+           << stats.seeded.diagnostics << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_EXPORTS
+           << stats.evaluated.module_exports << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_ITEM_SIGNATURES
+           << stats.evaluated.item_signatures
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_FUNCTION_BODY_SYNTAXES
            << stats.evaluated.function_body_syntaxes
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_TYPE_CHECK_BODIES << stats.evaluated.type_check_bodies
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_GENERIC_INSTANCE_SIGNATURES
-           << stats.evaluated.generic_instance_signatures;
+           << stats.evaluated.generic_instance_signatures
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_GENERIC_INSTANCE_BODIES
+           << stats.evaluated.generic_instance_bodies << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_DIAGNOSTICS
+           << stats.evaluated.diagnostics;
     return detail.str();
 }
 
@@ -1485,6 +1530,26 @@ void push_module_exports_signature_entry(std::vector<ModuleExportsSignatureEntry
     return query::query_result_fingerprint(builder.finish());
 }
 
+[[nodiscard]] query::QueryResultFingerprint generic_instance_body_result_fingerprint(
+    const query::GenericInstanceKey& key, const sema::IncrementalKey& signature_key, const std::string_view body_text)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(INCREMENTAL_CACHE_GENERIC_INSTANCE_BODY_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(key));
+    builder.mix_u64(signature_key.global_id);
+    builder.mix_fingerprint(signature_key.fingerprint);
+    builder.mix_string(body_text);
+    return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] query::QueryResultFingerprint diagnostics_result_fingerprint(const query::QueryKey producer)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(INCREMENTAL_CACHE_DIAGNOSTICS_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(producer));
+    return query::query_result_fingerprint(builder.finish());
+}
+
 void push_definition(std::vector<DefinitionRecord>& records, const std::string_view category,
     const std::string_view name, const sema::StableDefId& stable_id, const sema::IncrementalKey& incremental_key)
 {
@@ -1514,6 +1579,28 @@ void push_generic_instance_signature_query_subject(std::vector<GenericInstanceSi
     subjects.push_back(GenericInstanceSignatureQuerySubject{
         &key,
         incremental_key,
+    });
+}
+
+void push_generic_instance_body_query_subject(std::vector<GenericInstanceBodyQuerySubject>& subjects,
+    const sema::GenericFunctionInstanceInfo& instance, const base::SourceManager& sources)
+{
+    if (!query::is_valid(instance.generic_instance_key) || !query::is_valid(instance.signature.incremental_key)
+        || !instance.signature.has_definition || instance.signature.has_conflict) {
+        return;
+    }
+    const std::optional<std::string_view> body_text = source_range_text(sources, instance.signature.range);
+    if (!body_text) {
+        return;
+    }
+    const query::QueryResultFingerprint result = generic_instance_body_result_fingerprint(
+        instance.generic_instance_key, instance.signature.incremental_key, *body_text);
+    if (!query::is_valid(result)) {
+        return;
+    }
+    subjects.push_back(GenericInstanceBodyQuerySubject{
+        &instance.generic_instance_key,
+        result,
     });
 }
 
@@ -1592,6 +1679,16 @@ void evaluate_generic_instance_signature_query_subject(
     static_cast<void>(context.evaluate_generic_instance_signature(input));
 }
 
+void evaluate_generic_instance_body_query_subject(
+    query::QueryContext& context, const GenericInstanceBodyQuerySubject& subject)
+{
+    const query::GenericInstanceBodyProviderInput input{
+        subject.key,
+        subject.result,
+    };
+    static_cast<void>(context.evaluate_generic_instance_body(input));
+}
+
 void evaluate_function_body_syntax_query_subject(
     query::QueryContext& context, const FunctionBodySyntaxQuerySubject& subject)
 {
@@ -1609,6 +1706,15 @@ void evaluate_type_check_body_query_subject(query::QueryContext& context, const 
         subject.result,
     };
     static_cast<void>(context.evaluate_type_check_body(input));
+}
+
+void evaluate_diagnostics_query_subject(query::QueryContext& context, const DiagnosticsQuerySubject& subject)
+{
+    const query::DiagnosticsProviderInput input{
+        subject.producer,
+        subject.result,
+    };
+    static_cast<void>(context.evaluate_diagnostics(input));
 }
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const ModuleExportsQuerySubject& subject)
@@ -1632,6 +1738,14 @@ void evaluate_type_check_body_query_subject(query::QueryContext& context, const 
         *subject.key, query::query_result_fingerprint(subject.incremental_key));
 }
 
+[[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const GenericInstanceBodyQuerySubject& subject)
+{
+    if (subject.key == nullptr) {
+        return std::nullopt;
+    }
+    return query::generic_instance_body_query_record(*subject.key, subject.result);
+}
+
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const FunctionBodySyntaxQuerySubject& subject)
 {
     return query::function_body_syntax_query_record(subject.key, subject.result);
@@ -1640,6 +1754,11 @@ void evaluate_type_check_body_query_subject(query::QueryContext& context, const 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const TypeCheckBodyQuerySubject& subject)
 {
     return query::type_check_body_query_record(subject.key, subject.result);
+}
+
+[[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const DiagnosticsQuerySubject& subject)
+{
+    return query::diagnostics_query_record(subject.producer, subject.result);
 }
 
 void push_query_subject(std::vector<QuerySubject>& subjects,
@@ -1660,15 +1779,30 @@ void push_query_subject(std::vector<QuerySubject>& subjects,
     });
 }
 
+void collect_diagnostics_query_subjects(QuerySubjectCollection& collection)
+{
+    collection.diagnostics.reserve(collection.subjects.size());
+    for (const QuerySubject& subject : collection.subjects) {
+        const query::QueryResultFingerprint result = diagnostics_result_fingerprint(subject.record.key);
+        if (!query::is_valid(result)) {
+            continue;
+        }
+        collection.diagnostics.push_back(DiagnosticsQuerySubject{
+            subject.record.key,
+            result,
+        });
+    }
+}
+
 void build_ordered_query_subjects(QuerySubjectCollection& collection)
 {
     collection.subjects.reserve(collection.module_exports.size() + collection.item_signatures.size()
         + collection.function_body_syntaxes.size() + collection.type_check_bodies.size()
-        + collection.generic_instance_signatures.size());
+        + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size());
     std::unordered_set<query::QueryKey, query::QueryKeyHash> keys;
     keys.reserve(collection.module_exports.size() + collection.item_signatures.size()
         + collection.function_body_syntaxes.size() + collection.type_check_bodies.size()
-        + collection.generic_instance_signatures.size());
+        + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size());
 
     for (base::usize index = 0; index < collection.module_exports.size(); ++index) {
         push_query_subject(collection.subjects, keys, QuerySubjectKind::module_exports, index,
@@ -1689,6 +1823,18 @@ void build_ordered_query_subjects(QuerySubjectCollection& collection)
     for (base::usize index = 0; index < collection.generic_instance_signatures.size(); ++index) {
         push_query_subject(collection.subjects, keys, QuerySubjectKind::generic_instance_signature, index,
             query_record_for_subject(collection.generic_instance_signatures[index]));
+    }
+    for (base::usize index = 0; index < collection.generic_instance_bodies.size(); ++index) {
+        push_query_subject(collection.subjects, keys, QuerySubjectKind::generic_instance_body, index,
+            query_record_for_subject(collection.generic_instance_bodies[index]));
+    }
+
+    collect_diagnostics_query_subjects(collection);
+    collection.subjects.reserve(collection.subjects.size() + collection.diagnostics.size());
+    keys.reserve(keys.size() + collection.diagnostics.size());
+    for (base::usize index = 0; index < collection.diagnostics.size(); ++index) {
+        push_query_subject(collection.subjects, keys, QuerySubjectKind::diagnostics, index,
+            query_record_for_subject(collection.diagnostics[index]));
     }
 
     std::sort(
@@ -1760,6 +1906,17 @@ void build_ordered_query_subjects(QuerySubjectCollection& collection)
     return subjects;
 }
 
+[[nodiscard]] std::vector<GenericInstanceBodyQuerySubject> collect_generic_instance_body_query_subjects(
+    const sema::CheckedModule& checked, const base::SourceManager& sources)
+{
+    std::vector<GenericInstanceBodyQuerySubject> subjects;
+    subjects.reserve(checked.generic_function_instances.size());
+    for (const sema::GenericFunctionInstanceInfo& instance : checked.generic_function_instances) {
+        push_generic_instance_body_query_subject(subjects, instance, sources);
+    }
+    return subjects;
+}
+
 void collect_function_body_query_subjects(const sema::CheckedModule& checked, const base::SourceManager& sources,
     std::vector<FunctionBodySyntaxQuerySubject>& syntax_subjects,
     std::vector<TypeCheckBodyQuerySubject>& type_check_subjects)
@@ -1780,6 +1937,7 @@ void collect_function_body_query_subjects(const sema::CheckedModule& checked, co
     collect_function_body_query_subjects(
         checked, sources, collection.function_body_syntaxes, collection.type_check_bodies);
     collection.generic_instance_signatures = collect_generic_instance_signature_query_subjects(checked);
+    collection.generic_instance_bodies = collect_generic_instance_body_query_subjects(checked, sources);
     build_ordered_query_subjects(collection);
     return collection;
 }
@@ -1804,6 +1962,12 @@ void evaluate_query_subject(
             evaluate_generic_instance_signature_query_subject(
                 context, collection.generic_instance_signatures[subject.index]);
             return;
+        case QuerySubjectKind::generic_instance_body:
+            evaluate_generic_instance_body_query_subject(context, collection.generic_instance_bodies[subject.index]);
+            return;
+        case QuerySubjectKind::diagnostics:
+            evaluate_diagnostics_query_subject(context, collection.diagnostics[subject.index]);
+            return;
     }
 }
 
@@ -1825,6 +1989,12 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const QuerySub
             return;
         case QuerySubjectKind::generic_instance_signature:
             counts.generic_instance_signatures += 1;
+            return;
+        case QuerySubjectKind::generic_instance_body:
+            counts.generic_instance_bodies += 1;
+            return;
+        case QuerySubjectKind::diagnostics:
+            counts.diagnostics += 1;
             return;
     }
 }

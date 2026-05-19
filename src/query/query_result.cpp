@@ -42,6 +42,11 @@ bool is_valid(const GenericInstanceSignatureQueryInput& input) noexcept
     return is_valid(input.key) && is_valid(input.result);
 }
 
+bool is_valid(const GenericInstanceBodyQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
 bool is_valid(const FunctionBodySyntaxQueryInput& input) noexcept
 {
     return is_valid(input.key) && is_valid(input.result);
@@ -50,6 +55,11 @@ bool is_valid(const FunctionBodySyntaxQueryInput& input) noexcept
 bool is_valid(const TypeCheckBodyQueryInput& input) noexcept
 {
     return is_valid(input.key) && is_valid(input.result);
+}
+
+bool is_valid(const DiagnosticsQueryInput& input) noexcept
+{
+    return is_valid(input.producer) && input.producer.kind != QueryKind::diagnostics && is_valid(input.result);
 }
 
 QueryResultFingerprint query_result_fingerprint(const StableFingerprint128 fingerprint) noexcept
@@ -156,6 +166,24 @@ std::optional<QueryRecord> generic_instance_signature_query_record(
         QueryKind::generic_instance_signature, stable_key_fingerprint(key), stable_serialize(key), result);
 }
 
+std::optional<QueryRecord> generic_instance_body_query_record(const GenericInstanceBodyQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::generic_instance_body, stable_key_fingerprint(input.key), stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> generic_instance_body_query_record(
+    const GenericInstanceKey& key, const QueryResultFingerprint result)
+{
+    if (!is_valid(key) || !is_valid(result)) {
+        return std::nullopt;
+    }
+    return query_record(QueryKind::generic_instance_body, stable_key_fingerprint(key), stable_serialize(key), result);
+}
+
 std::optional<QueryRecord> function_body_syntax_query_record(const FunctionBodySyntaxQueryInput& input)
 {
     if (!is_valid(input)) {
@@ -186,6 +214,23 @@ std::optional<QueryRecord> type_check_body_query_record(const BodyKey key, const
 {
     return type_check_body_query_record(TypeCheckBodyQueryInput{
         key,
+        result,
+    });
+}
+
+std::optional<QueryRecord> diagnostics_query_record(const DiagnosticsQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::diagnostics, stable_key_fingerprint(input.producer), stable_serialize(input.producer), input.result);
+}
+
+std::optional<QueryRecord> diagnostics_query_record(const QueryKey producer, const QueryResultFingerprint result)
+{
+    return diagnostics_query_record(DiagnosticsQueryInput{
+        producer,
         result,
     });
 }

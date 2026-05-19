@@ -18,6 +18,7 @@
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -172,7 +173,6 @@ struct QueryPruningGateResult {
     base::usize reused = 0;
     base::usize recomputed = 0;
     std::string_view fallback = INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED;
-    std::vector<query::QueryRecord> records;
 };
 
 struct QueryKindCacheName {
@@ -205,6 +205,26 @@ struct ItemSignatureQuerySubject {
 struct GenericInstanceSignatureQuerySubject {
     const query::GenericInstanceKey* key = nullptr;
     sema::IncrementalKey incremental_key;
+};
+
+enum class QuerySubjectKind : base::u8 {
+    module_exports,
+    item_signature,
+    generic_instance_signature,
+};
+
+struct QuerySubject {
+    QuerySubjectKind kind = QuerySubjectKind::module_exports;
+    base::usize index = 0;
+    query::QueryRecord record;
+};
+
+struct QuerySubjectCollection {
+    std::vector<ModuleExportsQuerySubject> module_exports;
+    std::vector<ItemSignatureQuerySubject> item_signatures;
+    std::vector<GenericInstanceSignatureQuerySubject> generic_instance_signatures;
+    std::vector<QuerySubject> subjects;
+    std::vector<query::QueryRecord> records;
 };
 
 struct ParsedCache {
@@ -787,6 +807,12 @@ void append_hex_string(std::ostream& out, const std::string_view value)
             rhs.kind, rhs.schema, rhs.global_id, rhs.payload.primary, rhs.payload.secondary, rhs.payload.byte_count);
 }
 
+[[nodiscard]] bool query_record_key_less(const query::QueryRecord& lhs, const query::QueryRecord& rhs) noexcept
+{
+    return std::tie(lhs.key.kind, lhs.key.global_id, lhs.result.global_id, lhs.stable_key_bytes)
+        < std::tie(rhs.key.kind, rhs.key.global_id, rhs.result.global_id, rhs.stable_key_bytes);
+}
+
 [[nodiscard]] bool contains_query_key(const std::vector<query::QueryKey>& keys, const query::QueryKey key) noexcept
 {
     return std::binary_search(keys.begin(), keys.end(), key, query_key_less);
@@ -1014,7 +1040,6 @@ void record_query_pruning_summary(CompilationProfiler* const profiler, const Que
         0,
         recomputed,
         fallback,
-        {},
     };
 }
 
@@ -1035,7 +1060,6 @@ void record_query_pruning_summary(CompilationProfiler* const profiler, const Que
     result.enabled = true;
     result.applied = true;
     result.fallback = INCREMENTAL_CACHE_PRUNING_FALLBACK_NONE;
-    result.records.reserve(current_records.size());
     for (const query::QueryRecord& current : current_records) {
         if (contains_query_key(evaluation.plan.reusable, current.key)) {
             const query::QueryRecord* const cached = reusable_cached_record(evaluation.cached_context, current);
@@ -1043,11 +1067,9 @@ void record_query_pruning_summary(CompilationProfiler* const profiler, const Que
                 return query_pruning_fallback(
                     true, current_records.size(), INCREMENTAL_CACHE_PRUNING_FALLBACK_MISSING_REUSABLE_RECORD);
             }
-            result.records.push_back(*cached);
             result.reused += 1;
             continue;
         }
-        result.records.push_back(current);
         result.recomputed += 1;
     }
     return result;
@@ -1324,6 +1346,77 @@ void evaluate_generic_instance_signature_query_subject(
     static_cast<void>(context.evaluate_generic_instance_signature(input));
 }
 
+[[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const ModuleExportsQuerySubject& subject)
+{
+    return query::module_exports_query_record(subject.key, subject.result);
+}
+
+[[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const ItemSignatureQuerySubject& subject)
+{
+    const query::DefKey key = query::def_key_from_stable_id(subject.stable_id, subject.name_space, subject.kind);
+    return query::item_signature_query_record(key, query::query_result_fingerprint(subject.incremental_key));
+}
+
+[[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(
+    const GenericInstanceSignatureQuerySubject& subject)
+{
+    if (subject.key == nullptr) {
+        return std::nullopt;
+    }
+    return query::generic_instance_signature_query_record(
+        *subject.key, query::query_result_fingerprint(subject.incremental_key));
+}
+
+void push_query_subject(std::vector<QuerySubject>& subjects,
+    std::unordered_set<query::QueryKey, query::QueryKeyHash>& keys, const QuerySubjectKind kind,
+    const base::usize index, std::optional<query::QueryRecord> record)
+{
+    if (!record) {
+        return;
+    }
+    const auto inserted = keys.insert(record->key);
+    if (!inserted.second) {
+        return;
+    }
+    subjects.push_back(QuerySubject{
+        kind,
+        index,
+        std::move(*record),
+    });
+}
+
+void build_ordered_query_subjects(QuerySubjectCollection& collection)
+{
+    collection.subjects.reserve(collection.module_exports.size() + collection.item_signatures.size()
+        + collection.generic_instance_signatures.size());
+    std::unordered_set<query::QueryKey, query::QueryKeyHash> keys;
+    keys.reserve(collection.module_exports.size() + collection.item_signatures.size()
+        + collection.generic_instance_signatures.size());
+
+    for (base::usize index = 0; index < collection.module_exports.size(); ++index) {
+        push_query_subject(collection.subjects, keys, QuerySubjectKind::module_exports, index,
+            query_record_for_subject(collection.module_exports[index]));
+    }
+    for (base::usize index = 0; index < collection.item_signatures.size(); ++index) {
+        push_query_subject(collection.subjects, keys, QuerySubjectKind::item_signature, index,
+            query_record_for_subject(collection.item_signatures[index]));
+    }
+    for (base::usize index = 0; index < collection.generic_instance_signatures.size(); ++index) {
+        push_query_subject(collection.subjects, keys, QuerySubjectKind::generic_instance_signature, index,
+            query_record_for_subject(collection.generic_instance_signatures[index]));
+    }
+
+    std::sort(
+        collection.subjects.begin(), collection.subjects.end(), [](const QuerySubject& lhs, const QuerySubject& rhs) {
+            return query_record_key_less(lhs.record, rhs.record);
+        });
+
+    collection.records.reserve(collection.subjects.size());
+    for (const QuerySubject& subject : collection.subjects) {
+        collection.records.push_back(subject.record);
+    }
+}
+
 [[nodiscard]] std::vector<ModuleExportsQuerySubject> collect_module_exports_query_subjects(
     const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked)
 {
@@ -1382,28 +1475,91 @@ void evaluate_generic_instance_signature_query_subject(
     return subjects;
 }
 
-void evaluate_item_signature_query_subjects(
-    query::QueryContext& context, const std::vector<ItemSignatureQuerySubject>& subjects)
+[[nodiscard]] QuerySubjectCollection collect_query_subjects(
+    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked)
 {
-    for (const ItemSignatureQuerySubject& subject : subjects) {
-        evaluate_item_signature_query_subject(context, subject);
+    QuerySubjectCollection collection;
+    collection.module_exports = collect_module_exports_query_subjects(modules, checked);
+    collection.item_signatures = collect_item_signature_query_subjects(checked);
+    collection.generic_instance_signatures = collect_generic_instance_signature_query_subjects(checked);
+    build_ordered_query_subjects(collection);
+    return collection;
+}
+
+void evaluate_query_subject(
+    query::QueryContext& context, const QuerySubjectCollection& collection, const QuerySubject& subject)
+{
+    switch (subject.kind) {
+        case QuerySubjectKind::module_exports:
+            evaluate_module_exports_query_subject(context, collection.module_exports[subject.index]);
+            return;
+        case QuerySubjectKind::item_signature:
+            evaluate_item_signature_query_subject(context, collection.item_signatures[subject.index]);
+            return;
+        case QuerySubjectKind::generic_instance_signature:
+            evaluate_generic_instance_signature_query_subject(
+                context, collection.generic_instance_signatures[subject.index]);
+            return;
     }
 }
 
-void evaluate_generic_instance_signature_query_subjects(
-    query::QueryContext& context, const std::vector<GenericInstanceSignatureQuerySubject>& subjects)
+void evaluate_query_subjects(query::QueryContext& context, const QuerySubjectCollection& collection)
 {
-    for (const GenericInstanceSignatureQuerySubject& subject : subjects) {
-        evaluate_generic_instance_signature_query_subject(context, subject);
+    for (const QuerySubject& subject : collection.subjects) {
+        evaluate_query_subject(context, collection, subject);
     }
 }
 
-void evaluate_module_exports_query_subjects(
-    query::QueryContext& context, const std::vector<ModuleExportsQuerySubject>& subjects)
+void evaluate_recomputed_query_subjects(
+    query::QueryContext& context, const QuerySubjectCollection& collection, const query::QueryReusePlan& plan)
 {
-    for (const ModuleExportsQuerySubject& subject : subjects) {
-        evaluate_module_exports_query_subject(context, subject);
+    for (const QuerySubject& subject : collection.subjects) {
+        if (contains_query_key(plan.recompute, subject.record.key)) {
+            evaluate_query_subject(context, collection, subject);
+        }
     }
+}
+
+[[nodiscard]] bool seed_reusable_query_subjects(
+    query::QueryContext& context, const QuerySubjectCollection& collection, const QueryReuseEvaluation& evaluation)
+{
+    for (const QuerySubject& subject : collection.subjects) {
+        if (!contains_query_key(evaluation.plan.reusable, subject.record.key)) {
+            continue;
+        }
+        const query::QueryRecord* const cached = reusable_cached_record(evaluation.cached_context, subject.record);
+        if (cached == nullptr) {
+            return false;
+        }
+        if (!context.seed_completed_record(*cached, evaluation.cached_context.dependencies_for(cached->key))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] QueryCollection collect_queries_from_subjects(const QuerySubjectCollection& collection)
+{
+    query::QueryContext context;
+    evaluate_query_subjects(context, collection);
+    return QueryCollection{
+        context.completed_records(),
+        context.dependency_edges(),
+    };
+}
+
+[[nodiscard]] QueryCollection collect_queries_from_pruned_subjects(
+    const QuerySubjectCollection& collection, const QueryReuseEvaluation& evaluation)
+{
+    query::QueryContext context;
+    if (!seed_reusable_query_subjects(context, collection, evaluation)) {
+        return collect_queries_from_subjects(collection);
+    }
+    evaluate_recomputed_query_subjects(context, collection, evaluation.plan);
+    return QueryCollection{
+        context.completed_records(),
+        context.dependency_edges(),
+    };
 }
 
 [[nodiscard]] std::vector<DefinitionRecord> collect_definitions(const sema::CheckedModule& checked)
@@ -1450,25 +1606,6 @@ void evaluate_module_exports_query_subjects(
         return lhs.incremental_key.global_id < rhs.incremental_key.global_id;
     });
     return records;
-}
-
-[[nodiscard]] QueryCollection collect_queries(
-    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked)
-{
-    const std::vector<ModuleExportsQuerySubject> module_subjects =
-        collect_module_exports_query_subjects(modules, checked);
-    const std::vector<ItemSignatureQuerySubject> item_subjects = collect_item_signature_query_subjects(checked);
-    const std::vector<GenericInstanceSignatureQuerySubject> generic_subjects =
-        collect_generic_instance_signature_query_subjects(checked);
-
-    query::QueryContext context;
-    evaluate_module_exports_query_subjects(context, module_subjects);
-    evaluate_item_signature_query_subjects(context, item_subjects);
-    evaluate_generic_instance_signature_query_subjects(context, generic_subjects);
-    return QueryCollection{
-        context.completed_records(),
-        context.dependency_edges(),
-    };
 }
 
 void write_hex_field(std::ostream& out, const std::string_view value)
@@ -1611,10 +1748,10 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     const std::vector<SourceFingerprintRecord> source_records = collect_source_fingerprints(sources);
     const std::vector<ModuleRecord> module_records = sorted_modules(modules);
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
-    const QueryCollection query_collection = collect_queries(module_records, checked);
+    const QuerySubjectCollection query_subjects = collect_query_subjects(module_records, checked);
     const auto query_diff_started = std::chrono::steady_clock::now();
     const QueryReuseEvaluation query_reuse_evaluation =
-        build_existing_query_reuse_evaluation(cache_path, query_collection.records);
+        build_existing_query_reuse_evaluation(cache_path, query_subjects.records);
     const std::chrono::steady_clock::duration query_diff_elapsed =
         std::chrono::steady_clock::now() - query_diff_started;
     record_query_record_diff_summary(profiler, query_reuse_evaluation.plan.summary, query_diff_elapsed);
@@ -1622,13 +1759,13 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
 
     const auto query_pruning_started = std::chrono::steady_clock::now();
     const QueryPruningGateResult query_pruning =
-        apply_query_pruning_gate(invocation, query_reuse_evaluation, query_collection.records);
+        apply_query_pruning_gate(invocation, query_reuse_evaluation, query_subjects.records);
     const std::chrono::steady_clock::duration query_pruning_elapsed =
         std::chrono::steady_clock::now() - query_pruning_started;
     record_query_pruning_summary(profiler, query_pruning, query_pruning_elapsed);
-    const std::span<const query::QueryRecord> query_records_to_write = query_pruning.applied
-        ? std::span<const query::QueryRecord>{query_pruning.records.data(), query_pruning.records.size()}
-        : std::span<const query::QueryRecord>{query_collection.records.data(), query_collection.records.size()};
+    const QueryCollection query_collection = query_pruning.applied
+        ? collect_queries_from_pruned_subjects(query_subjects, query_reuse_evaluation)
+        : collect_queries_from_subjects(query_subjects);
 
     const std::filesystem::path temporary_path = temporary_cache_path(cache_path);
     {
@@ -1662,8 +1799,8 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
         for (const DefinitionRecord& record : definition_records) {
             write_definition_record(out, record);
         }
-        write_header_field(out, INCREMENTAL_CACHE_FIELD_QUERIES, std::to_string(query_records_to_write.size()));
-        for (const query::QueryRecord& record : query_records_to_write) {
+        write_header_field(out, INCREMENTAL_CACHE_FIELD_QUERIES, std::to_string(query_collection.records.size()));
+        for (const query::QueryRecord& record : query_collection.records) {
             write_query_record(out, record);
         }
         write_header_field(

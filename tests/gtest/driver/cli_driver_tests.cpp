@@ -1157,6 +1157,11 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
         ASSERT_TRUE(out.is_open());
         out << DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SOURCE;
     }
+    const auto write_cache_text = [&](const std::string_view text) {
+        std::ofstream out(cache, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
 
     driver::CompilerInvocation invocation;
     invocation.input_path = source;
@@ -1258,6 +1263,41 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     expect_query_profile_phases(
         second_write_profiler, CACHE_TEST_QUERY_DIFF_UNCHANGED_DETAIL, CACHE_TEST_QUERY_PLAN_UNCHANGED_DETAIL);
 
+    const sema::IncrementalKey expected_generic_incremental_key =
+        sema::stable_incremental_key(duplicate_stable_id, DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SIGNATURE);
+    const std::optional<query::QueryRecord> expected_generic_record = query::generic_instance_signature_query_record(
+        generic_instance_key, query::query_result_fingerprint(expected_generic_incremental_key));
+    ASSERT_TRUE(expected_generic_record.has_value());
+    const std::string cached_query_text = read_text(cache);
+    const std::optional<CacheTestQueryResultFingerprint> expected_item_result =
+        cache_test_query_result(cached_query_text, CACHE_TEST_QUERY_ITEM_SIGNATURE,
+            hex_encode_cache_test_field(query::stable_serialize(expected_item_signature_key)));
+    ASSERT_TRUE(expected_item_result.has_value());
+    const query::StableFingerprint128 expected_item_result_fingerprint{
+        std::stoull(expected_item_result->primary),
+        std::stoull(expected_item_result->secondary),
+        static_cast<base::u32>(std::stoul(expected_item_result->byte_count)),
+    };
+    const std::optional<query::QueryRecord> expected_item_record =
+        query::item_signature_query_record(expected_item_signature_key,
+            query::QueryResultFingerprint{
+                expected_item_result_fingerprint,
+                std::stoull(expected_item_result->global_id),
+            });
+    ASSERT_TRUE(expected_item_record.has_value());
+    const query::QueryDependencyEdge cached_only_edge{
+        expected_generic_record->key,
+        expected_item_record->key,
+    };
+    const std::string cached_only_edge_row = cache_test_query_edge_row(cached_only_edge);
+    std::string cache_with_cached_only_edge = cached_query_text;
+    const std::string original_query_edge_count = "query_edges\t3\n";
+    const std::size_t query_edge_count_pos = cache_with_cached_only_edge.find(original_query_edge_count);
+    ASSERT_NE(query_edge_count_pos, std::string::npos);
+    cache_with_cached_only_edge.replace(query_edge_count_pos, original_query_edge_count.size(), "query_edges\t4\n");
+    cache_with_cached_only_edge += cached_only_edge_row;
+    write_cache_text(cache_with_cached_only_edge);
+
     driver::CompilerInvocation pruning_invocation = invocation;
     pruning_invocation.experimental_query_pruning = true;
     driver::CompilationProfiler pruning_write_profiler(true);
@@ -1266,6 +1306,9 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     ASSERT_TRUE(pruning_write_result) << pruning_write_result.error().message;
     expect_query_profile_phases_with_pruning(pruning_write_profiler, CACHE_TEST_QUERY_DIFF_UNCHANGED_DETAIL,
         CACHE_TEST_QUERY_PLAN_UNCHANGED_DETAIL, CACHE_TEST_QUERY_PRUNING_REUSE_ALL_DETAIL);
+    const std::string pruned_cache_text = read_text(cache);
+    expect_contains(pruned_cache_text, "query_edges\t4");
+    expect_contains(pruned_cache_text, cached_only_edge_row);
 
     checked.generic_function_instances.front().signature.incremental_key =
         sema::stable_incremental_key(checked.generic_function_instances.front().signature.stable_id,

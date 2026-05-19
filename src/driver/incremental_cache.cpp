@@ -117,6 +117,7 @@ constexpr std::string_view INCREMENTAL_CACHE_DIRECTORY_FAILED = "failed to creat
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_DIFF = "incremental_cache.query_diff";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_PLAN = "incremental_cache.query_plan";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_PRUNING = "incremental_cache.query_pruning";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_PROVIDER_EVAL = "incremental_cache.query_provider_eval";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_TOTAL = "total=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_MISSING = ",missing=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_UNCHANGED = ",unchanged=";
@@ -131,6 +132,21 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_APPLIED = ",applied
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED = ",reused=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED = ",recomputed=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_FALLBACK = ",fallback=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE = "mode=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE_FULL = "full";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE_PRUNED = "pruned";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED = ",seeded=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED = ",evaluated=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_MODULE_EXPORTS = ",seeded_module_exports=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_ITEM_SIGNATURES = ",seeded_item_signatures=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERIC_INSTANCE_SIGNATURES =
+    ",seeded_generic_instance_signatures=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_EXPORTS =
+    ",evaluated_module_exports=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_ITEM_SIGNATURES =
+    ",evaluated_item_signatures=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_GENERIC_INSTANCE_SIGNATURES =
+    ",evaluated_generic_instance_signatures=";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED = "disabled";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NONE = "none";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NO_CACHE = "no_cache";
@@ -159,6 +175,23 @@ struct ParsedQueryRecord {
 struct QueryCollection {
     std::vector<query::QueryRecord> records;
     std::vector<query::QueryDependencyEdge> dependency_edges;
+};
+
+struct QueryKindExecutionCounts {
+    base::usize module_exports = 0;
+    base::usize item_signatures = 0;
+    base::usize generic_instance_signatures = 0;
+};
+
+struct QueryProviderEvaluationStats {
+    bool pruned = false;
+    QueryKindExecutionCounts seeded;
+    QueryKindExecutionCounts evaluated;
+};
+
+struct QueryCollectionResult {
+    QueryCollection collection;
+    QueryProviderEvaluationStats stats;
 };
 
 struct QueryReuseEvaluation {
@@ -977,6 +1010,30 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return detail.str();
 }
 
+[[nodiscard]] base::usize total_query_execution_count(const QueryKindExecutionCounts& counts) noexcept
+{
+    return counts.module_exports + counts.item_signatures + counts.generic_instance_signatures;
+}
+
+[[nodiscard]] std::string query_provider_evaluation_summary_detail(const QueryProviderEvaluationStats& stats)
+{
+    std::ostringstream detail;
+    detail << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE
+           << (stats.pruned ? INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE_PRUNED
+                            : INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE_FULL)
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED << total_query_execution_count(stats.seeded)
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED << total_query_execution_count(stats.evaluated)
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_MODULE_EXPORTS << stats.seeded.module_exports
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_ITEM_SIGNATURES << stats.seeded.item_signatures
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERIC_INSTANCE_SIGNATURES
+           << stats.seeded.generic_instance_signatures
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_EXPORTS << stats.evaluated.module_exports
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_ITEM_SIGNATURES << stats.evaluated.item_signatures
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_GENERIC_INSTANCE_SIGNATURES
+           << stats.evaluated.generic_instance_signatures;
+    return detail.str();
+}
+
 void record_query_record_diff_summary(CompilationProfiler* const profiler, const query::QueryReuseSummary& summary,
     const std::chrono::steady_clock::duration elapsed)
 {
@@ -1002,6 +1059,16 @@ void record_query_pruning_summary(CompilationProfiler* const profiler, const Que
         return;
     }
     profiler->record(INCREMENTAL_CACHE_PROFILE_QUERY_PRUNING, query_pruning_summary_detail(result), elapsed);
+}
+
+void record_query_provider_evaluation_summary(CompilationProfiler* const profiler,
+    const QueryProviderEvaluationStats& stats, const std::chrono::steady_clock::duration elapsed)
+{
+    if (!stats.pruned || profiler == nullptr || !profiler->enabled()) {
+        return;
+    }
+    profiler->record(
+        INCREMENTAL_CACHE_PROFILE_QUERY_PROVIDER_EVAL, query_provider_evaluation_summary_detail(stats), elapsed);
 }
 
 [[nodiscard]] bool query_reuse_plan_matches_records(
@@ -1503,25 +1570,43 @@ void evaluate_query_subject(
     }
 }
 
-void evaluate_query_subjects(query::QueryContext& context, const QuerySubjectCollection& collection)
+void increment_query_kind_count(QueryKindExecutionCounts& counts, const QuerySubjectKind kind) noexcept
 {
-    for (const QuerySubject& subject : collection.subjects) {
-        evaluate_query_subject(context, collection, subject);
+    switch (kind) {
+        case QuerySubjectKind::module_exports:
+            counts.module_exports += 1;
+            return;
+        case QuerySubjectKind::item_signature:
+            counts.item_signatures += 1;
+            return;
+        case QuerySubjectKind::generic_instance_signature:
+            counts.generic_instance_signatures += 1;
+            return;
     }
 }
 
-void evaluate_recomputed_query_subjects(
-    query::QueryContext& context, const QuerySubjectCollection& collection, const query::QueryReusePlan& plan)
+void evaluate_query_subjects(
+    query::QueryContext& context, const QuerySubjectCollection& collection, QueryProviderEvaluationStats& stats)
+{
+    for (const QuerySubject& subject : collection.subjects) {
+        evaluate_query_subject(context, collection, subject);
+        increment_query_kind_count(stats.evaluated, subject.kind);
+    }
+}
+
+void evaluate_recomputed_query_subjects(query::QueryContext& context, const QuerySubjectCollection& collection,
+    const query::QueryReusePlan& plan, QueryProviderEvaluationStats& stats)
 {
     for (const QuerySubject& subject : collection.subjects) {
         if (contains_query_key(plan.recompute, subject.record.key)) {
             evaluate_query_subject(context, collection, subject);
+            increment_query_kind_count(stats.evaluated, subject.kind);
         }
     }
 }
 
-[[nodiscard]] bool seed_reusable_query_subjects(
-    query::QueryContext& context, const QuerySubjectCollection& collection, const QueryReuseEvaluation& evaluation)
+[[nodiscard]] bool seed_reusable_query_subjects(query::QueryContext& context, const QuerySubjectCollection& collection,
+    const QueryReuseEvaluation& evaluation, QueryProviderEvaluationStats& stats)
 {
     for (const QuerySubject& subject : collection.subjects) {
         if (!contains_query_key(evaluation.plan.reusable, subject.record.key)) {
@@ -1534,31 +1619,41 @@ void evaluate_recomputed_query_subjects(
         if (!context.seed_completed_record(*cached, evaluation.cached_context.dependencies_for(cached->key))) {
             return false;
         }
+        increment_query_kind_count(stats.seeded, subject.kind);
     }
     return true;
 }
 
-[[nodiscard]] QueryCollection collect_queries_from_subjects(const QuerySubjectCollection& collection)
+[[nodiscard]] QueryCollectionResult collect_queries_from_subjects(const QuerySubjectCollection& collection)
 {
     query::QueryContext context;
-    evaluate_query_subjects(context, collection);
-    return QueryCollection{
-        context.completed_records(),
-        context.dependency_edges(),
+    QueryProviderEvaluationStats stats;
+    evaluate_query_subjects(context, collection, stats);
+    return QueryCollectionResult{
+        QueryCollection{
+            context.completed_records(),
+            context.dependency_edges(),
+        },
+        stats,
     };
 }
 
-[[nodiscard]] QueryCollection collect_queries_from_pruned_subjects(
+[[nodiscard]] QueryCollectionResult collect_queries_from_pruned_subjects(
     const QuerySubjectCollection& collection, const QueryReuseEvaluation& evaluation)
 {
     query::QueryContext context;
-    if (!seed_reusable_query_subjects(context, collection, evaluation)) {
+    QueryProviderEvaluationStats stats;
+    stats.pruned = true;
+    if (!seed_reusable_query_subjects(context, collection, evaluation, stats)) {
         return collect_queries_from_subjects(collection);
     }
-    evaluate_recomputed_query_subjects(context, collection, evaluation.plan);
-    return QueryCollection{
-        context.completed_records(),
-        context.dependency_edges(),
+    evaluate_recomputed_query_subjects(context, collection, evaluation.plan, stats);
+    return QueryCollectionResult{
+        QueryCollection{
+            context.completed_records(),
+            context.dependency_edges(),
+        },
+        stats,
     };
 }
 
@@ -1763,9 +1858,14 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     const std::chrono::steady_clock::duration query_pruning_elapsed =
         std::chrono::steady_clock::now() - query_pruning_started;
     record_query_pruning_summary(profiler, query_pruning, query_pruning_elapsed);
-    const QueryCollection query_collection = query_pruning.applied
+    const auto query_provider_eval_started = std::chrono::steady_clock::now();
+    const QueryCollectionResult query_collection_result = query_pruning.applied
         ? collect_queries_from_pruned_subjects(query_subjects, query_reuse_evaluation)
         : collect_queries_from_subjects(query_subjects);
+    const std::chrono::steady_clock::duration query_provider_eval_elapsed =
+        std::chrono::steady_clock::now() - query_provider_eval_started;
+    record_query_provider_evaluation_summary(profiler, query_collection_result.stats, query_provider_eval_elapsed);
+    const QueryCollection& query_collection = query_collection_result.collection;
 
     const std::filesystem::path temporary_path = temporary_cache_path(cache_path);
     {

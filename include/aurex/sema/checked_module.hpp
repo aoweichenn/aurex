@@ -122,6 +122,17 @@ struct TypeAliasInfo {
     IncrementalKey incremental_key;
 };
 
+struct GenericTemplateSignatureInfo {
+    InternedText name;
+    IdentId name_id = INVALID_IDENT_ID;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::Visibility visibility = syntax::Visibility::public_;
+    StableDefId stable_id;
+    IncrementalKey incremental_key;
+    query::DefNamespace name_space = query::DefNamespace::value;
+    base::u32 param_count = 0;
+};
+
 using CheckedFunctionMap = SemaMap<FunctionLookupKey, FunctionSignature, FunctionLookupKeyHash>;
 using CheckedModuleInfoMap = SemaMap<ModuleLookupKey, StructInfo, ModuleLookupKeyHash>;
 using CheckedEnumCaseMap = SemaMap<ModuleLookupKey, EnumCaseInfo, ModuleLookupKeyHash>;
@@ -400,6 +411,7 @@ public:
     CheckedModuleInfoMap structs;
     CheckedEnumCaseMap enum_cases;
     CheckedTypeAliasMap type_aliases;
+    SemaVector<GenericTemplateSignatureInfo> generic_template_signatures;
     SemaDeque<GenericSideTableLayout> generic_side_table_layouts;
     SemaDeque<GenericFunctionInstanceInfo> generic_function_instances;
     NormalizedAstOverlay normalized_ast;
@@ -428,6 +440,8 @@ public:
     [[nodiscard]] FunctionSignature make_function_signature() const;
     [[nodiscard]] StructInfo make_struct_info() const;
     [[nodiscard]] EnumCaseInfo make_enum_case_info() const;
+    [[nodiscard]] GenericTemplateSignatureInfo clone_generic_template_signature_info(
+        const GenericTemplateSignatureInfo& other);
     [[nodiscard]] GenericSideTableLayout make_generic_side_table_layout(GenericNodeSpan expr, GenericNodeSpan pattern,
         GenericNodeSpan type, GenericNodeSpan stmt, std::span<const base::u32> expr_ids,
         std::span<const base::u32> pattern_ids, std::span<const base::u32> type_ids,

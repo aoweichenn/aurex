@@ -48,8 +48,9 @@ void normalize_dependencies(std::vector<QueryKey>& dependencies)
 } // namespace
 
 QueryContext::QueryContext()
-    : QueryContext(ModuleExportsProvider{provide_module_exports_query},
-          ItemSignatureProvider{provide_item_signature_query},
+    : QueryContext(ModuleGraphProvider{provide_module_graph_query}, ModuleExportsProvider{provide_module_exports_query},
+          ItemListProvider{provide_item_list_query}, ItemSignatureProvider{provide_item_signature_query},
+          GenericTemplateSignatureProvider{provide_generic_template_signature_query},
           GenericInstanceSignatureProvider{provide_generic_instance_signature_query},
           FileContentProvider{provide_file_content_query}, LexFileProvider{provide_lex_file_query},
           ParseFileProvider{provide_parse_file_query}, FunctionBodySyntaxProvider{provide_function_body_syntax_query},
@@ -62,7 +63,9 @@ QueryContext::QueryContext()
 }
 
 QueryContext::QueryContext(ItemSignatureProvider item_signature_provider)
-    : QueryContext(ModuleExportsProvider{provide_module_exports_query}, std::move(item_signature_provider),
+    : QueryContext(ModuleGraphProvider{provide_module_graph_query}, ModuleExportsProvider{provide_module_exports_query},
+          ItemListProvider{provide_item_list_query}, std::move(item_signature_provider),
+          GenericTemplateSignatureProvider{provide_generic_template_signature_query},
           GenericInstanceSignatureProvider{provide_generic_instance_signature_query},
           FileContentProvider{provide_file_content_query}, LexFileProvider{provide_lex_file_query},
           ParseFileProvider{provide_parse_file_query}, FunctionBodySyntaxProvider{provide_function_body_syntax_query},
@@ -76,7 +79,9 @@ QueryContext::QueryContext(ItemSignatureProvider item_signature_provider)
 
 QueryContext::QueryContext(
     ItemSignatureProvider item_signature_provider, GenericInstanceSignatureProvider generic_instance_signature_provider)
-    : QueryContext(ModuleExportsProvider{provide_module_exports_query}, std::move(item_signature_provider),
+    : QueryContext(ModuleGraphProvider{provide_module_graph_query}, ModuleExportsProvider{provide_module_exports_query},
+          ItemListProvider{provide_item_list_query}, std::move(item_signature_provider),
+          GenericTemplateSignatureProvider{provide_generic_template_signature_query},
           std::move(generic_instance_signature_provider), FileContentProvider{provide_file_content_query},
           LexFileProvider{provide_lex_file_query}, ParseFileProvider{provide_parse_file_query},
           FunctionBodySyntaxProvider{provide_function_body_syntax_query},
@@ -90,7 +95,9 @@ QueryContext::QueryContext(
 
 QueryContext::QueryContext(ModuleExportsProvider module_exports_provider, ItemSignatureProvider item_signature_provider,
     GenericInstanceSignatureProvider generic_instance_signature_provider)
-    : QueryContext(std::move(module_exports_provider), std::move(item_signature_provider),
+    : QueryContext(ModuleGraphProvider{provide_module_graph_query}, std::move(module_exports_provider),
+          ItemListProvider{provide_item_list_query}, std::move(item_signature_provider),
+          GenericTemplateSignatureProvider{provide_generic_template_signature_query},
           std::move(generic_instance_signature_provider), FileContentProvider{provide_file_content_query},
           LexFileProvider{provide_lex_file_query}, ParseFileProvider{provide_parse_file_query},
           FunctionBodySyntaxProvider{provide_function_body_syntax_query},
@@ -102,7 +109,9 @@ QueryContext::QueryContext(ModuleExportsProvider module_exports_provider, ItemSi
 {
 }
 
-QueryContext::QueryContext(ModuleExportsProvider module_exports_provider, ItemSignatureProvider item_signature_provider,
+QueryContext::QueryContext(ModuleGraphProvider module_graph_provider, ModuleExportsProvider module_exports_provider,
+    ItemListProvider item_list_provider, ItemSignatureProvider item_signature_provider,
+    GenericTemplateSignatureProvider generic_template_signature_provider,
     GenericInstanceSignatureProvider generic_instance_signature_provider, FileContentProvider file_content_provider,
     LexFileProvider lex_file_provider, ParseFileProvider parse_file_provider,
     FunctionBodySyntaxProvider function_body_syntax_provider, TypeCheckBodyProvider type_check_body_provider,
@@ -112,8 +121,11 @@ QueryContext::QueryContext(ModuleExportsProvider module_exports_provider, ItemSi
     this->set_file_content_provider(std::move(file_content_provider));
     this->set_lex_file_provider(std::move(lex_file_provider));
     this->set_parse_file_provider(std::move(parse_file_provider));
+    this->set_module_graph_provider(std::move(module_graph_provider));
     this->set_module_exports_provider(std::move(module_exports_provider));
+    this->set_item_list_provider(std::move(item_list_provider));
     this->set_item_signature_provider(std::move(item_signature_provider));
+    this->set_generic_template_signature_provider(std::move(generic_template_signature_provider));
     this->set_generic_instance_signature_provider(std::move(generic_instance_signature_provider));
     this->set_function_body_syntax_provider(std::move(function_body_syntax_provider));
     this->set_type_check_body_provider(std::move(type_check_body_provider));
@@ -138,16 +150,34 @@ void QueryContext::set_parse_file_provider(ParseFileProvider provider)
     this->parse_file_provider_ = provider ? std::move(provider) : ParseFileProvider{provide_parse_file_query};
 }
 
+void QueryContext::set_module_graph_provider(ModuleGraphProvider provider)
+{
+    this->module_graph_provider_ = provider ? std::move(provider) : ModuleGraphProvider{provide_module_graph_query};
+}
+
 void QueryContext::set_module_exports_provider(ModuleExportsProvider provider)
 {
     this->module_exports_provider_ =
         provider ? std::move(provider) : ModuleExportsProvider{provide_module_exports_query};
 }
 
+void QueryContext::set_item_list_provider(ItemListProvider provider)
+{
+    this->item_list_provider_ = provider ? std::move(provider) : ItemListProvider{provide_item_list_query};
+}
+
 void QueryContext::set_item_signature_provider(ItemSignatureProvider provider)
 {
     this->item_signature_provider_ =
         provider ? std::move(provider) : ItemSignatureProvider{provide_item_signature_query};
+}
+
+void QueryContext::set_generic_template_signature_provider(GenericTemplateSignatureProvider provider)
+{
+    this->generic_template_signature_provider_ = provider ? std::move(provider)
+                                                          : GenericTemplateSignatureProvider{
+                                                                provide_generic_template_signature_query,
+                                                            };
 }
 
 void QueryContext::set_generic_instance_signature_provider(GenericInstanceSignatureProvider provider)
@@ -268,6 +298,31 @@ QueryEvaluationResult QueryContext::evaluate_parse_file(const ParseFileProviderI
     };
 }
 
+QueryEvaluationResult QueryContext::evaluate_module_graph(const ModuleGraphProviderInput& input)
+{
+    const std::optional<QueryKey> expected_key = module_graph_query_key(input.key);
+    if (!expected_key) {
+        return {};
+    }
+
+    QueryEvaluationStart start = this->start_query(*expected_key);
+    if (start.result) {
+        return *start.result;
+    }
+    QueryNode& node = *start.node;
+
+    std::optional<ModuleGraphProviderOutput> output = this->module_graph_provider_(input);
+    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
+        return this->fail_query(node);
+    }
+
+    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return QueryEvaluationResult{
+        QueryEvaluationStatus::computed,
+        &node,
+    };
+}
+
 QueryEvaluationResult QueryContext::evaluate_module_exports(const ModuleExportsProviderInput& input)
 {
     const std::optional<QueryKey> expected_key = module_exports_query_key(input.key);
@@ -293,6 +348,31 @@ QueryEvaluationResult QueryContext::evaluate_module_exports(const ModuleExportsP
     };
 }
 
+QueryEvaluationResult QueryContext::evaluate_item_list(const ItemListProviderInput& input)
+{
+    const std::optional<QueryKey> expected_key = item_list_query_key(input.key);
+    if (!expected_key) {
+        return {};
+    }
+
+    QueryEvaluationStart start = this->start_query(*expected_key);
+    if (start.result) {
+        return *start.result;
+    }
+    QueryNode& node = *start.node;
+
+    std::optional<ItemListProviderOutput> output = this->item_list_provider_(input);
+    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
+        return this->fail_query(node);
+    }
+
+    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return QueryEvaluationResult{
+        QueryEvaluationStatus::computed,
+        &node,
+    };
+}
+
 QueryEvaluationResult QueryContext::evaluate_item_signature(const ItemSignatureProviderInput& input)
 {
     const std::optional<QueryKey> expected_key = item_signature_query_key(input.key);
@@ -307,6 +387,32 @@ QueryEvaluationResult QueryContext::evaluate_item_signature(const ItemSignatureP
     QueryNode& node = *start.node;
 
     std::optional<ItemSignatureProviderOutput> output = this->item_signature_provider_(input);
+    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
+        return this->fail_query(node);
+    }
+
+    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return QueryEvaluationResult{
+        QueryEvaluationStatus::computed,
+        &node,
+    };
+}
+
+QueryEvaluationResult QueryContext::evaluate_generic_template_signature(
+    const GenericTemplateSignatureProviderInput& input)
+{
+    const std::optional<QueryKey> expected_key = generic_template_signature_query_key(input.key);
+    if (!expected_key) {
+        return {};
+    }
+
+    QueryEvaluationStart start = this->start_query(*expected_key);
+    if (start.result) {
+        return *start.result;
+    }
+    QueryNode& node = *start.node;
+
+    std::optional<GenericTemplateSignatureProviderOutput> output = this->generic_template_signature_provider_(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }

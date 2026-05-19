@@ -37,12 +37,27 @@ struct ParseFileQueryInput {
     QueryResultFingerprint result;
 };
 
+struct ModuleGraphQueryInput {
+    ModuleKey key;
+    QueryResultFingerprint result;
+};
+
 struct ModuleExportsQueryInput {
     ModuleKey key;
     QueryResultFingerprint result;
 };
 
+struct ItemListQueryInput {
+    ModuleKey key;
+    QueryResultFingerprint result;
+};
+
 struct ItemSignatureQueryInput {
+    DefKey key;
+    QueryResultFingerprint result;
+};
+
+struct GenericTemplateSignatureQueryInput {
     DefKey key;
     QueryResultFingerprint result;
 };
@@ -94,8 +109,11 @@ enum class QueryRecordChangeStatus : base::u8 {
 [[nodiscard]] bool is_valid(const FileContentQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const LexFileQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ParseFileQueryInput& input) noexcept;
+[[nodiscard]] bool is_valid(const ModuleGraphQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ModuleExportsQueryInput& input) noexcept;
+[[nodiscard]] bool is_valid(const ItemListQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ItemSignatureQueryInput& input) noexcept;
+[[nodiscard]] bool is_valid(const GenericTemplateSignatureQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const GenericInstanceSignatureQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const GenericInstanceBodyQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const LowerFunctionIRQueryInput& input) noexcept;
@@ -121,11 +139,22 @@ enum class QueryRecordChangeStatus : base::u8 {
 [[nodiscard]] std::optional<QueryRecord> parse_file_query_record(const ParseFileQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> parse_file_query_record(ParseFileKey key, QueryResultFingerprint result);
 
+[[nodiscard]] std::optional<QueryRecord> module_graph_query_record(const ModuleGraphQueryInput& input);
+[[nodiscard]] std::optional<QueryRecord> module_graph_query_record(ModuleKey key, QueryResultFingerprint result);
+
 [[nodiscard]] std::optional<QueryRecord> module_exports_query_record(const ModuleExportsQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> module_exports_query_record(ModuleKey key, QueryResultFingerprint result);
 
+[[nodiscard]] std::optional<QueryRecord> item_list_query_record(const ItemListQueryInput& input);
+[[nodiscard]] std::optional<QueryRecord> item_list_query_record(ModuleKey key, QueryResultFingerprint result);
+
 [[nodiscard]] std::optional<QueryRecord> item_signature_query_record(const ItemSignatureQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> item_signature_query_record(DefKey key, QueryResultFingerprint result);
+
+[[nodiscard]] std::optional<QueryRecord> generic_template_signature_query_record(
+    const GenericTemplateSignatureQueryInput& input);
+[[nodiscard]] std::optional<QueryRecord> generic_template_signature_query_record(
+    DefKey key, QueryResultFingerprint result);
 
 [[nodiscard]] std::optional<QueryRecord> generic_instance_signature_query_record(
     const GenericInstanceSignatureQueryInput& input);

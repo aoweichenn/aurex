@@ -4,9 +4,12 @@
 #include <aurex/query/function_body_syntax_query.hpp>
 #include <aurex/query/generic_instance_body_query.hpp>
 #include <aurex/query/generic_instance_signature_query.hpp>
+#include <aurex/query/generic_template_signature_query.hpp>
+#include <aurex/query/item_list_query.hpp>
 #include <aurex/query/item_signature_query.hpp>
 #include <aurex/query/lower_function_ir_query.hpp>
 #include <aurex/query/module_exports_query.hpp>
+#include <aurex/query/module_graph_query.hpp>
 #include <aurex/query/source_file_query.hpp>
 #include <aurex/query/type_check_body_query.hpp>
 
@@ -60,8 +63,12 @@ using LowerFunctionIRProvider =
     std::function<std::optional<LowerFunctionIRProviderOutput>(const LowerFunctionIRProviderInput&)>;
 using LowerGenericInstanceIRProvider =
     std::function<std::optional<LowerGenericInstanceIRProviderOutput>(const LowerGenericInstanceIRProviderInput&)>;
+using ModuleGraphProvider = std::function<std::optional<ModuleGraphProviderOutput>(const ModuleGraphProviderInput&)>;
 using ModuleExportsProvider =
     std::function<std::optional<ModuleExportsProviderOutput>(const ModuleExportsProviderInput&)>;
+using ItemListProvider = std::function<std::optional<ItemListProviderOutput>(const ItemListProviderInput&)>;
+using GenericTemplateSignatureProvider =
+    std::function<std::optional<GenericTemplateSignatureProviderOutput>(const GenericTemplateSignatureProviderInput&)>;
 using FunctionBodySyntaxProvider =
     std::function<std::optional<FunctionBodySyntaxProviderOutput>(const FunctionBodySyntaxProviderInput&)>;
 using TypeCheckBodyProvider =
@@ -79,7 +86,9 @@ public:
         GenericInstanceSignatureProvider generic_instance_signature_provider);
     QueryContext(ModuleExportsProvider module_exports_provider, ItemSignatureProvider item_signature_provider,
         GenericInstanceSignatureProvider generic_instance_signature_provider);
-    QueryContext(ModuleExportsProvider module_exports_provider, ItemSignatureProvider item_signature_provider,
+    QueryContext(ModuleGraphProvider module_graph_provider, ModuleExportsProvider module_exports_provider,
+        ItemListProvider item_list_provider, ItemSignatureProvider item_signature_provider,
+        GenericTemplateSignatureProvider generic_template_signature_provider,
         GenericInstanceSignatureProvider generic_instance_signature_provider, FileContentProvider file_content_provider,
         LexFileProvider lex_file_provider, ParseFileProvider parse_file_provider,
         FunctionBodySyntaxProvider function_body_syntax_provider, TypeCheckBodyProvider type_check_body_provider,
@@ -89,8 +98,11 @@ public:
     void set_file_content_provider(FileContentProvider provider);
     void set_lex_file_provider(LexFileProvider provider);
     void set_parse_file_provider(ParseFileProvider provider);
+    void set_module_graph_provider(ModuleGraphProvider provider);
     void set_module_exports_provider(ModuleExportsProvider provider);
+    void set_item_list_provider(ItemListProvider provider);
     void set_item_signature_provider(ItemSignatureProvider provider);
+    void set_generic_template_signature_provider(GenericTemplateSignatureProvider provider);
     void set_generic_instance_signature_provider(GenericInstanceSignatureProvider provider);
     void set_function_body_syntax_provider(FunctionBodySyntaxProvider provider);
     void set_type_check_body_provider(TypeCheckBodyProvider provider);
@@ -101,8 +113,12 @@ public:
     [[nodiscard]] QueryEvaluationResult evaluate_file_content(const FileContentProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_lex_file(const LexFileProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_parse_file(const ParseFileProviderInput& input);
+    [[nodiscard]] QueryEvaluationResult evaluate_module_graph(const ModuleGraphProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_module_exports(const ModuleExportsProviderInput& input);
+    [[nodiscard]] QueryEvaluationResult evaluate_item_list(const ItemListProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_item_signature(const ItemSignatureProviderInput& input);
+    [[nodiscard]] QueryEvaluationResult evaluate_generic_template_signature(
+        const GenericTemplateSignatureProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_generic_instance_signature(
         const GenericInstanceSignatureProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_function_body_syntax(const FunctionBodySyntaxProviderInput& input);
@@ -142,8 +158,11 @@ private:
     FileContentProvider file_content_provider_;
     LexFileProvider lex_file_provider_;
     ParseFileProvider parse_file_provider_;
+    ModuleGraphProvider module_graph_provider_;
     ModuleExportsProvider module_exports_provider_;
+    ItemListProvider item_list_provider_;
     ItemSignatureProvider item_signature_provider_;
+    GenericTemplateSignatureProvider generic_template_signature_provider_;
     GenericInstanceSignatureProvider generic_instance_signature_provider_;
     FunctionBodySyntaxProvider function_body_syntax_provider_;
     TypeCheckBodyProvider type_check_body_provider_;

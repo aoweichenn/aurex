@@ -6,8 +6,11 @@ add_library(aurex_query
     src/query/query_reuse.cpp
     src/query/source_file_query.cpp
     src/query/diagnostics_query.cpp
+    src/query/module_graph_query.cpp
     src/query/module_exports_query.cpp
+    src/query/item_list_query.cpp
     src/query/item_signature_query.cpp
+    src/query/generic_template_signature_query.cpp
     src/query/generic_instance_signature_query.cpp
     src/query/generic_instance_body_query.cpp
     src/query/lower_function_ir_query.cpp

@@ -22,6 +22,9 @@ constexpr std::string_view SEMA_CAPABILITY_COPY = "Copy";
 constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
 constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_MARKER = "generic-param";
 constexpr std::string_view SEMA_GENERIC_TEMPLATE_INCREMENTAL_TAG = "|generic_template";
+constexpr std::string_view SEMA_GENERIC_TEMPLATE_PARAM_TAG = "|param:";
+constexpr std::string_view SEMA_GENERIC_TEMPLATE_CONSTRAINT_TAG = "|constraint:";
+constexpr std::string_view SEMA_GENERIC_TEMPLATE_FIELD_SEPARATOR = ":";
 constexpr base::u64 SEMA_GENERIC_PARAM_IDENTITY_OFFSET = 14695981039346656037ULL;
 constexpr base::u64 SEMA_GENERIC_PARAM_IDENTITY_PRIME = 1099511628211ULL;
 constexpr base::u32 SEMA_GENERIC_PARAM_IDENTITY_U64_BITS = 64;
@@ -806,6 +809,48 @@ bool SemanticAnalyzer::GenericTemplateInfo::has_sparse_node_ids() const noexcept
         || !this->stmt_node_ids.empty();
 }
 
+std::string SemanticAnalyzer::generic_template_incremental_fingerprint(
+    const syntax::ItemNode& item, const GenericTemplateInfo& info) const
+{
+    std::string fingerprint;
+    fingerprint += item.name;
+    fingerprint += SEMA_GENERIC_TEMPLATE_INCREMENTAL_TAG;
+    fingerprint += SEMA_GENERIC_TEMPLATE_FIELD_SEPARATOR;
+    fingerprint += std::to_string(static_cast<base::u32>(item.kind));
+    for (base::usize param_index = 0; param_index < info.params.size(); ++param_index) {
+        fingerprint += SEMA_GENERIC_TEMPLATE_PARAM_TAG;
+        fingerprint += this->generic_param_name(info, param_index);
+        const auto constraints = info.constraints.find(info.params[param_index]);
+        if (constraints == info.constraints.end()) {
+            continue;
+        }
+        std::vector<CapabilityKind> capabilities(constraints->second.begin(), constraints->second.end());
+        std::ranges::sort(capabilities, [](const CapabilityKind lhs, const CapabilityKind rhs) {
+            return static_cast<base::u8>(lhs) < static_cast<base::u8>(rhs);
+        });
+        for (const CapabilityKind capability : capabilities) {
+            fingerprint += SEMA_GENERIC_TEMPLATE_CONSTRAINT_TAG;
+            fingerprint += capability_name(capability);
+        }
+    }
+    return fingerprint;
+}
+
+void SemanticAnalyzer::record_generic_template_signature(
+    const GenericTemplateInfo& info, const query::DefNamespace name_space)
+{
+    this->checked_.generic_template_signatures.push_back(GenericTemplateSignatureInfo{
+        this->checked_.intern_text(info.name.view()),
+        info.name_id,
+        info.module,
+        info.visibility,
+        info.stable_id,
+        info.incremental_key,
+        name_space,
+        static_cast<base::u32>(info.params.size()),
+    });
+}
+
 GenericSideTables SemanticAnalyzer::make_generic_instance_side_tables(const GenericTemplateInfo& info)
 {
     if (!info.has_sparse_node_ids()) {
@@ -844,8 +889,6 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
     info.function_key = this->function_lookup_key(owner, item.name_id);
     info.visibility = item.visibility;
     info.stable_id = this->stable_definition_id(owner, StableSymbolKind::generic_template, item.name_id, item.name);
-    info.incremental_key = this->stable_incremental_key(
-        info.stable_id, std::string(item.name) + std::string(SEMA_GENERIC_TEMPLATE_INCREMENTAL_TAG));
     info.params.reserve(item.generic_params.size());
     for (const syntax::GenericParamDecl& param : item.generic_params) {
         info.params.push_back(param.name_id);
@@ -853,6 +896,8 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
     this->populate_generic_template_node_spans(info, item);
     this->populate_generic_param_identities(info);
     this->validate_generic_constraints(item, info);
+    info.incremental_key =
+        this->stable_incremental_key(info.stable_id, this->generic_template_incremental_fingerprint(item, info));
     query::DefNamespace generic_param_owner_namespace = query::DefNamespace::type;
     if (item.kind == syntax::ItemKind::fn_decl) {
         generic_param_owner_namespace =
@@ -870,6 +915,7 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
         }
         const auto inserted = this->generic_struct_templates_.emplace(info.key, std::move(info));
         if (inserted.second) {
+            this->record_generic_template_signature(inserted.first->second, query::DefNamespace::type);
             this->index_generic_struct_template(inserted.first->second);
         }
         return;
@@ -885,6 +931,7 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
         }
         const auto inserted = this->generic_enum_templates_.emplace(info.key, std::move(info));
         if (inserted.second) {
+            this->record_generic_template_signature(inserted.first->second, query::DefNamespace::type);
             this->index_generic_enum_template(inserted.first->second);
         }
         return;
@@ -900,6 +947,7 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
         }
         const auto inserted = this->generic_type_alias_templates_.emplace(info.key, std::move(info));
         if (inserted.second) {
+            this->record_generic_template_signature(inserted.first->second, query::DefNamespace::type);
             this->index_generic_type_alias_template(inserted.first->second);
         }
         return;
@@ -990,6 +1038,7 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
         }
         const auto inserted = this->generic_method_templates_.emplace(info.function_key, std::move(info));
         if (inserted.second) {
+            this->record_generic_template_signature(inserted.first->second, query::DefNamespace::member);
             this->index_generic_method_template(inserted.first->second);
         }
         return;
@@ -1001,6 +1050,7 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
     }
     const auto inserted = this->generic_function_templates_.emplace(info.key, std::move(info));
     if (inserted.second) {
+        this->record_generic_template_signature(inserted.first->second, query::DefNamespace::value);
         this->index_generic_function_template(inserted.first->second);
     }
 }

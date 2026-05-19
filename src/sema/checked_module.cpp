@@ -474,6 +474,7 @@ CheckedModule::CheckedModule()
           make_sema_map<ModuleLookupKey, EnumCaseInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{})),
       type_aliases(
           make_sema_map<ModuleLookupKey, TypeAliasInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{})),
+      generic_template_signatures(make_sema_vector<GenericTemplateSignatureInfo>(*this->arena_)),
       generic_side_table_layouts(make_sema_deque<GenericSideTableLayout>(*this->arena_)),
       generic_function_instances(make_sema_deque<GenericFunctionInstanceInfo>(*this->arena_))
 {
@@ -505,6 +506,7 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       item_c_name_ids(std::move(other.item_c_name_ids)), coercions(std::move(other.coercions)),
       functions(std::move(other.functions)), structs(std::move(other.structs)), enum_cases(std::move(other.enum_cases)),
       type_aliases(std::move(other.type_aliases)),
+      generic_template_signatures(std::move(other.generic_template_signatures)),
       generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
       generic_function_instances(std::move(other.generic_function_instances)), normalized_ast(other.normalized_ast)
 {
@@ -556,6 +558,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->structs.swap(other.structs);
     this->enum_cases.swap(other.enum_cases);
     this->type_aliases.swap(other.type_aliases);
+    this->generic_template_signatures.swap(other.generic_template_signatures);
     this->generic_side_table_layouts.swap(other.generic_side_table_layouts);
     this->generic_function_instances.swap(other.generic_function_instances);
     swap(this->normalized_ast, other.normalized_ast);
@@ -613,6 +616,11 @@ void CheckedModule::copy_from(const CheckedModule& other)
         alias.stable_id = entry.second.stable_id;
         alias.incremental_key = entry.second.incremental_key;
         this->type_aliases.emplace(entry.first, alias);
+    }
+    this->generic_template_signatures.clear();
+    this->generic_template_signatures.reserve(other.generic_template_signatures.size());
+    for (const GenericTemplateSignatureInfo& signature : other.generic_template_signatures) {
+        this->generic_template_signatures.push_back(this->clone_generic_template_signature_info(signature));
     }
     this->generic_side_table_layouts.clear();
     for (const GenericSideTableLayout& layout : other.generic_side_table_layouts) {
@@ -801,6 +809,21 @@ EnumCaseInfo CheckedModule::clone_enum_case_info(const EnumCaseInfo& other)
     return copy;
 }
 
+GenericTemplateSignatureInfo CheckedModule::clone_generic_template_signature_info(
+    const GenericTemplateSignatureInfo& other)
+{
+    return GenericTemplateSignatureInfo{
+        this->intern_text(other.name),
+        other.name_id,
+        other.module,
+        other.visibility,
+        other.stable_id,
+        other.incremental_key,
+        other.name_space,
+        other.param_count,
+    };
+}
+
 GenericSideTableLayout CheckedModule::clone_generic_side_table_layout(const GenericSideTableLayout& other) const
 {
     return this->make_generic_side_table_layout(other.expr_span, other.pattern_span, other.type_span, other.stmt_span,
@@ -882,6 +905,9 @@ void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, 
     }
     for (auto& entry : this->type_aliases) {
         rebind_interned_text(entry.second.name, from, to);
+    }
+    for (GenericTemplateSignatureInfo& signature : this->generic_template_signatures) {
+        rebind_interned_text(signature.name, from, to);
     }
     for (GenericFunctionInstanceInfo& instance : this->generic_function_instances) {
         rebind_function_signature_texts(instance.signature, from, to);

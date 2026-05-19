@@ -42,12 +42,27 @@ bool is_valid(const ParseFileQueryInput& input) noexcept
     return is_valid(input.key) && is_valid(input.result);
 }
 
+bool is_valid(const ModuleGraphQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
 bool is_valid(const ModuleExportsQueryInput& input) noexcept
 {
     return is_valid(input.key) && is_valid(input.result);
 }
 
+bool is_valid(const ItemListQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
 bool is_valid(const ItemSignatureQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
+bool is_valid(const GenericTemplateSignatureQueryInput& input) noexcept
 {
     return is_valid(input.key) && is_valid(input.result);
 }
@@ -189,6 +204,23 @@ std::optional<QueryRecord> parse_file_query_record(const ParseFileKey key, const
     });
 }
 
+std::optional<QueryRecord> module_graph_query_record(const ModuleGraphQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::module_graph, stable_key_fingerprint(input.key), stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> module_graph_query_record(const ModuleKey key, const QueryResultFingerprint result)
+{
+    return module_graph_query_record(ModuleGraphQueryInput{
+        key,
+        result,
+    });
+}
+
 std::optional<QueryRecord> module_exports_query_record(const ModuleExportsQueryInput& input)
 {
     if (!is_valid(input)) {
@@ -206,6 +238,23 @@ std::optional<QueryRecord> module_exports_query_record(const ModuleKey key, cons
     });
 }
 
+std::optional<QueryRecord> item_list_query_record(const ItemListQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::item_list, stable_key_fingerprint(input.key), stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> item_list_query_record(const ModuleKey key, const QueryResultFingerprint result)
+{
+    return item_list_query_record(ItemListQueryInput{
+        key,
+        result,
+    });
+}
+
 std::optional<QueryRecord> item_signature_query_record(const ItemSignatureQueryInput& input)
 {
     if (!is_valid(input)) {
@@ -218,6 +267,24 @@ std::optional<QueryRecord> item_signature_query_record(const ItemSignatureQueryI
 std::optional<QueryRecord> item_signature_query_record(const DefKey key, const QueryResultFingerprint result)
 {
     return item_signature_query_record(ItemSignatureQueryInput{
+        key,
+        result,
+    });
+}
+
+std::optional<QueryRecord> generic_template_signature_query_record(const GenericTemplateSignatureQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(QueryKind::generic_template_signature, stable_key_fingerprint(input.key),
+        stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> generic_template_signature_query_record(
+    const DefKey key, const QueryResultFingerprint result)
+{
+    return generic_template_signature_query_record(GenericTemplateSignatureQueryInput{
         key,
         result,
     });

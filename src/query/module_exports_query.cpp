@@ -1,3 +1,4 @@
+#include <aurex/query/item_list_query.hpp>
 #include <aurex/query/module_exports_query.hpp>
 
 #include <utility>
@@ -38,10 +39,14 @@ std::optional<ModuleExportsProviderOutput> provide_module_exports_query(const Mo
     }
 
     std::optional<QueryRecord> record = module_exports_query_record(input.key, input.exports);
+    std::vector<QueryKey> dependencies;
+    if (const std::optional<QueryKey> item_list_key = item_list_query_key(input.key)) {
+        dependencies.push_back(*item_list_key);
+    }
     return ModuleExportsProviderOutput{
         std::move(*record),
         input.exports,
-        {},
+        std::move(dependencies),
     };
 }
 

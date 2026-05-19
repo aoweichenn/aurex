@@ -1,5 +1,5 @@
 #include <aurex/query/generic_instance_signature_query.hpp>
-#include <aurex/query/module_exports_query.hpp>
+#include <aurex/query/generic_template_signature_query.hpp>
 
 #include <utility>
 
@@ -42,8 +42,9 @@ std::optional<GenericInstanceSignatureProviderOutput> provide_generic_instance_s
     const QueryResultFingerprint result = query_result_fingerprint(input.signature);
     std::optional<QueryRecord> record = generic_instance_signature_query_record(*input.key, result);
     std::vector<QueryKey> dependencies;
-    if (const std::optional<QueryKey> module_exports_key = module_exports_query_key(input.key->template_def.module)) {
-        dependencies.push_back(*module_exports_key);
+    if (const std::optional<QueryKey> template_signature_key =
+            generic_template_signature_query_key(input.key->template_def)) {
+        dependencies.push_back(*template_signature_key);
     }
     // Valid provider input satisfies the typed record builder preconditions.
     return GenericInstanceSignatureProviderOutput{

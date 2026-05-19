@@ -281,7 +281,10 @@ private:
     void register_generic_template(const syntax::ItemNode& item, syntax::ItemId item_id);
     void validate_generic_parameter_list(const syntax::ItemNode& item);
     void validate_generic_constraints(const syntax::ItemNode& item, GenericTemplateInfo& info);
+    void record_generic_template_signature(const GenericTemplateInfo& info, query::DefNamespace name_space);
     [[nodiscard]] GenericTemplateInfo make_generic_template_info() const;
+    [[nodiscard]] std::string generic_template_incremental_fingerprint(
+        const syntax::ItemNode& item, const GenericTemplateInfo& info) const;
     void populate_generic_template_node_spans(GenericTemplateInfo& info, const syntax::ItemNode& item) const;
     [[nodiscard]] GenericSideTables make_generic_instance_side_tables(const GenericTemplateInfo& info);
     [[nodiscard]] base::usize generic_side_table_layout_index(const GenericTemplateInfo& info);

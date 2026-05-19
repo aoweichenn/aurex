@@ -67,6 +67,12 @@ class ScenarioExpectation:
     expected_plan_recompute: int
     expected_pruning_reused: int
     expected_pruning_recomputed: int
+    expected_pruning_reused_module_exports: int
+    expected_pruning_reused_item_signatures: int
+    expected_pruning_reused_generic_instance_signatures: int
+    expected_pruning_recomputed_module_exports: int
+    expected_pruning_recomputed_item_signatures: int
+    expected_pruning_recomputed_generic_instance_signatures: int
     expected_provider_seeded_module_exports: int
     expected_provider_seeded_item_signatures: int
     expected_provider_seeded_generic_instance_signatures: int
@@ -245,6 +251,12 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_plan_recompute=0,
             expected_pruning_reused=total,
             expected_pruning_recomputed=0,
+            expected_pruning_reused_module_exports=module_exports,
+            expected_pruning_reused_item_signatures=item_signatures,
+            expected_pruning_reused_generic_instance_signatures=generic_instance_signatures,
+            expected_pruning_recomputed_module_exports=0,
+            expected_pruning_recomputed_item_signatures=0,
+            expected_pruning_recomputed_generic_instance_signatures=0,
             expected_provider_seeded_module_exports=module_exports,
             expected_provider_seeded_item_signatures=item_signatures,
             expected_provider_seeded_generic_instance_signatures=generic_instance_signatures,
@@ -265,6 +277,12 @@ def make_expectation(function_count: int, scenario_name: str) -> ScenarioExpecta
             expected_plan_recompute=1,
             expected_pruning_reused=total - 1,
             expected_pruning_recomputed=1,
+            expected_pruning_reused_module_exports=module_exports,
+            expected_pruning_reused_item_signatures=item_signatures,
+            expected_pruning_reused_generic_instance_signatures=0,
+            expected_pruning_recomputed_module_exports=0,
+            expected_pruning_recomputed_item_signatures=0,
+            expected_pruning_recomputed_generic_instance_signatures=generic_instance_signatures,
             expected_provider_seeded_module_exports=module_exports,
             expected_provider_seeded_item_signatures=item_signatures,
             expected_provider_seeded_generic_instance_signatures=0,
@@ -303,10 +321,31 @@ def verify_pruning_profile(fields: dict[str, str], expectation: ScenarioExpectat
     require_exact_field(fields, "applied", "1")
     require_exact_field(fields, "reused", str(expectation.expected_pruning_reused))
     require_exact_field(fields, "recomputed", str(expectation.expected_pruning_recomputed))
+    require_exact_field(fields, "reused_module_exports", str(expectation.expected_pruning_reused_module_exports))
+    require_exact_field(fields, "reused_item_signatures", str(expectation.expected_pruning_reused_item_signatures))
+    require_exact_field(
+        fields,
+        "reused_generic_instance_signatures",
+        str(expectation.expected_pruning_reused_generic_instance_signatures),
+    )
+    require_exact_field(fields, "recomputed_module_exports", str(expectation.expected_pruning_recomputed_module_exports))
+    require_exact_field(fields, "recomputed_item_signatures", str(expectation.expected_pruning_recomputed_item_signatures))
+    require_exact_field(
+        fields,
+        "recomputed_generic_instance_signatures",
+        str(expectation.expected_pruning_recomputed_generic_instance_signatures),
+    )
     require_exact_field(fields, "fallback", "none")
     return (
         f"enabled=1,applied=1,reused={expectation.expected_pruning_reused},"
-        f"recomputed={expectation.expected_pruning_recomputed},fallback=none"
+        f"recomputed={expectation.expected_pruning_recomputed},"
+        f"reused_module_exports={expectation.expected_pruning_reused_module_exports},"
+        f"reused_item_signatures={expectation.expected_pruning_reused_item_signatures},"
+        f"reused_generic_instance_signatures={expectation.expected_pruning_reused_generic_instance_signatures},"
+        f"recomputed_module_exports={expectation.expected_pruning_recomputed_module_exports},"
+        f"recomputed_item_signatures={expectation.expected_pruning_recomputed_item_signatures},"
+        f"recomputed_generic_instance_signatures={expectation.expected_pruning_recomputed_generic_instance_signatures},"
+        "fallback=none"
     )
 
 

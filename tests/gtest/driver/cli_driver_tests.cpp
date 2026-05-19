@@ -102,11 +102,17 @@ constexpr std::string_view CACHE_TEST_QUERY_PLAN_UNCHANGED_DETAIL =
 constexpr std::string_view CACHE_TEST_QUERY_PLAN_CHANGED_DETAIL =
     "reusable=3,recompute_roots=1,propagated_recompute=0,recompute=1";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_NO_CACHE_DETAIL =
-    "enabled=1,applied=0,reused=0,recomputed=4,fallback=no_cache";
+    "enabled=1,applied=0,reused=0,recomputed=4,reused_module_exports=0,reused_item_signatures=0,"
+    "reused_generic_instance_signatures=0,recomputed_module_exports=1,recomputed_item_signatures=2,"
+    "recomputed_generic_instance_signatures=1,fallback=no_cache";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_REUSE_ALL_DETAIL =
-    "enabled=1,applied=1,reused=4,recomputed=0,fallback=none";
+    "enabled=1,applied=1,reused=4,recomputed=0,reused_module_exports=1,reused_item_signatures=2,"
+    "reused_generic_instance_signatures=1,recomputed_module_exports=0,recomputed_item_signatures=0,"
+    "recomputed_generic_instance_signatures=0,fallback=none";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_CHANGED_DETAIL =
-    "enabled=1,applied=1,reused=3,recomputed=1,fallback=none";
+    "enabled=1,applied=1,reused=3,recomputed=1,reused_module_exports=1,reused_item_signatures=2,"
+    "reused_generic_instance_signatures=0,recomputed_module_exports=0,recomputed_item_signatures=0,"
+    "recomputed_generic_instance_signatures=1,fallback=none";
 constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_REUSE_ALL_DETAIL =
     "mode=pruned,seeded=4,evaluated=0,seeded_module_exports=1,seeded_item_signatures=2,"
     "seeded_generic_instance_signatures=1,evaluated_module_exports=0,evaluated_item_signatures=0,"
@@ -1366,7 +1372,9 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_PLAN_DETAIL =
         "reusable=0,recompute_roots=1,propagated_recompute=1,recompute=2";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_PRUNING_DETAIL =
-        "enabled=1,applied=1,reused=0,recomputed=2,fallback=none";
+        "enabled=1,applied=1,reused=0,recomputed=2,reused_module_exports=0,reused_item_signatures=0,"
+        "reused_generic_instance_signatures=0,recomputed_module_exports=1,recomputed_item_signatures=1,"
+        "recomputed_generic_instance_signatures=0,fallback=none";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_PROVIDER_EVAL_DETAIL =
         "mode=pruned,seeded=0,evaluated=2,seeded_module_exports=0,seeded_item_signatures=0,"
         "seeded_generic_instance_signatures=0,evaluated_module_exports=1,evaluated_item_signatures=1,"

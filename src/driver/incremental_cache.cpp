@@ -131,6 +131,15 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_ENABLED = "enabled=
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_APPLIED = ",applied=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED = ",reused=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED = ",recomputed=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_MODULE_EXPORTS = ",reused_module_exports=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_ITEM_SIGNATURES = ",reused_item_signatures=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INSTANCE_SIGNATURES =
+    ",reused_generic_instance_signatures=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_EXPORTS = ",recomputed_module_exports=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_ITEM_SIGNATURES =
+    ",recomputed_item_signatures=";
+constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_GENERIC_INSTANCE_SIGNATURES =
+    ",recomputed_generic_instance_signatures=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_FALLBACK = ",fallback=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE = "mode=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE_FULL = "full";
@@ -178,6 +187,7 @@ struct QueryCollection {
 };
 
 struct QueryKindExecutionCounts {
+    base::usize total = 0;
     base::usize module_exports = 0;
     base::usize item_signatures = 0;
     base::usize generic_instance_signatures = 0;
@@ -203,8 +213,8 @@ struct QueryReuseEvaluation {
 struct QueryPruningGateResult {
     bool enabled = false;
     bool applied = false;
-    base::usize reused = 0;
-    base::usize recomputed = 0;
+    QueryKindExecutionCounts reused;
+    QueryKindExecutionCounts recomputed;
     std::string_view fallback = INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED;
 };
 
@@ -1000,19 +1010,67 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return detail.str();
 }
 
+[[nodiscard]] base::usize total_query_execution_count(const QueryKindExecutionCounts& counts) noexcept
+{
+    return counts.total;
+}
+
+void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::QueryKind kind) noexcept
+{
+    counts.total += 1;
+    switch (kind) {
+        case query::QueryKind::module_exports:
+            counts.module_exports += 1;
+            return;
+        case query::QueryKind::item_signature:
+            counts.item_signatures += 1;
+            return;
+        case query::QueryKind::generic_instance_signature:
+            counts.generic_instance_signatures += 1;
+            return;
+        case query::QueryKind::invalid:
+        case query::QueryKind::file_content:
+        case query::QueryKind::lex_file:
+        case query::QueryKind::parse_file:
+        case query::QueryKind::module_graph:
+        case query::QueryKind::item_list:
+        case query::QueryKind::function_body_syntax:
+        case query::QueryKind::type_check_body:
+        case query::QueryKind::generic_template_signature:
+        case query::QueryKind::generic_instance_body:
+        case query::QueryKind::diagnostics:
+        case query::QueryKind::lower_function_ir:
+            return;
+    }
+}
+
+[[nodiscard]] QueryKindExecutionCounts query_record_counts_by_kind(
+    const std::span<const query::QueryRecord> records) noexcept
+{
+    QueryKindExecutionCounts counts;
+    for (const query::QueryRecord& record : records) {
+        increment_query_kind_count(counts, record.key.kind);
+    }
+    return counts;
+}
+
 [[nodiscard]] std::string query_pruning_summary_detail(const QueryPruningGateResult& result)
 {
     std::ostringstream detail;
     detail << INCREMENTAL_CACHE_PROFILE_PRUNING_ENABLED << (result.enabled ? 1 : 0)
            << INCREMENTAL_CACHE_PROFILE_PRUNING_APPLIED << (result.applied ? 1 : 0)
-           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED << result.reused << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED
-           << result.recomputed << INCREMENTAL_CACHE_PROFILE_PRUNING_FALLBACK << result.fallback;
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED << total_query_execution_count(result.reused)
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED << total_query_execution_count(result.recomputed)
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_MODULE_EXPORTS << result.reused.module_exports
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_ITEM_SIGNATURES << result.reused.item_signatures
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INSTANCE_SIGNATURES
+           << result.reused.generic_instance_signatures << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_EXPORTS
+           << result.recomputed.module_exports << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_ITEM_SIGNATURES
+           << result.recomputed.item_signatures
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_GENERIC_INSTANCE_SIGNATURES
+           << result.recomputed.generic_instance_signatures << INCREMENTAL_CACHE_PROFILE_PRUNING_FALLBACK
+           << result.fallback;
     return detail.str();
-}
-
-[[nodiscard]] base::usize total_query_execution_count(const QueryKindExecutionCounts& counts) noexcept
-{
-    return counts.module_exports + counts.item_signatures + counts.generic_instance_signatures;
 }
 
 [[nodiscard]] std::string query_provider_evaluation_summary_detail(const QueryProviderEvaluationStats& stats)
@@ -1099,13 +1157,13 @@ void record_query_provider_evaluation_summary(CompilationProfiler* const profile
 }
 
 [[nodiscard]] QueryPruningGateResult query_pruning_fallback(
-    const bool enabled, const base::usize recomputed, const std::string_view fallback)
+    const bool enabled, const std::span<const query::QueryRecord> current_records, const std::string_view fallback)
 {
     return QueryPruningGateResult{
         enabled,
         false,
-        0,
-        recomputed,
+        QueryKindExecutionCounts{},
+        query_record_counts_by_kind(current_records),
         fallback,
     };
 }
@@ -1114,13 +1172,13 @@ void record_query_provider_evaluation_summary(CompilationProfiler* const profile
     const QueryReuseEvaluation& evaluation, const std::span<const query::QueryRecord> current_records)
 {
     if (!invocation.experimental_query_pruning) {
-        return query_pruning_fallback(false, current_records.size(), INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED);
+        return query_pruning_fallback(false, current_records, INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED);
     }
     if (!evaluation.cache_loaded) {
-        return query_pruning_fallback(true, current_records.size(), INCREMENTAL_CACHE_PRUNING_FALLBACK_NO_CACHE);
+        return query_pruning_fallback(true, current_records, INCREMENTAL_CACHE_PRUNING_FALLBACK_NO_CACHE);
     }
     if (!query_reuse_plan_matches_records(evaluation.plan, current_records)) {
-        return query_pruning_fallback(true, current_records.size(), INCREMENTAL_CACHE_PRUNING_FALLBACK_INCOMPLETE_PLAN);
+        return query_pruning_fallback(true, current_records, INCREMENTAL_CACHE_PRUNING_FALLBACK_INCOMPLETE_PLAN);
     }
 
     QueryPruningGateResult result;
@@ -1132,12 +1190,12 @@ void record_query_provider_evaluation_summary(CompilationProfiler* const profile
             const query::QueryRecord* const cached = reusable_cached_record(evaluation.cached_context, current);
             if (cached == nullptr) {
                 return query_pruning_fallback(
-                    true, current_records.size(), INCREMENTAL_CACHE_PRUNING_FALLBACK_MISSING_REUSABLE_RECORD);
+                    true, current_records, INCREMENTAL_CACHE_PRUNING_FALLBACK_MISSING_REUSABLE_RECORD);
             }
-            result.reused += 1;
+            increment_query_kind_count(result.reused, current.key.kind);
             continue;
         }
-        result.recomputed += 1;
+        increment_query_kind_count(result.recomputed, current.key.kind);
     }
     return result;
 }
@@ -1572,6 +1630,7 @@ void evaluate_query_subject(
 
 void increment_query_kind_count(QueryKindExecutionCounts& counts, const QuerySubjectKind kind) noexcept
 {
+    counts.total += 1;
     switch (kind) {
         case QuerySubjectKind::module_exports:
             counts.module_exports += 1;

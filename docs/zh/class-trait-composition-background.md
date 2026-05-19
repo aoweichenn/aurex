@@ -285,3 +285,119 @@ impl Drop for File {
 
 这样既能保留 `class.method` 的顺手感，又不会过早引入继承和虚派发的长期复杂度。
 
+## 9. Rust 是怎么拆这些矛盾的
+
+Rust 的经验很适合拿来做 Aurex 的设计参照，因为它不是用一个“大而全的类模型”去同时解决封装、复用、借用、动态分派和资源语义，而是把这些张力拆成多个显式层：
+
+- 语法便利和语义模型分离。
+- 编译期约束和运行时检查分离。
+- 静态分派和动态分派分离。
+- 形式化语义和工程实现分离，但保持可对齐。
+
+### 9.1 总图
+
+```text
+source
+  |
+  +--> class-like syntax
+  |       |
+  |       v
+  |   struct + impl + trait + Drop
+  |       |
+  |       +--> static trait / monomorphization / inlining
+  |       |
+  |       +--> RAII / deterministic cleanup
+  |       |
+  |       +--> explicit escape hatches: UnsafeCell / RefCell / Mutex / Arc
+  |
+  +--> dyn Trait boundary
+          |
+          v
+   data ptr + vtable ptr
+          |
+          v
+   late binding / runtime dispatch
+```
+
+这张图里，真正“动态”的地方只有 `dyn Trait` 之后的对象化边界：具体类型被隐藏掉，调用目标通过 vtable 在运行时解析，trait object 还要携带生命周期边界和 dyn-compatible 约束。[Rust Reference: trait objects](https://doc.rust-lang.org/reference/types/trait-object.html)、[Rust Reference: traits / dyn compatibility](https://doc.rust-lang.org/stable/reference/items/traits.html)。
+
+### 9.2 借用系统的矛盾：既要安全，又要好写
+
+Rust 早期最大的张力是：借用规则如果只按词法作用域算，会把很多本来正确的局部代码误判掉。Rust 的解法不是放松整个安全模型，而是把 lifetimes 提升到控制流图上，用 NLL 缩短借用范围；再用 two-phase borrows 处理 `vec.push(vec.len())` 这类方法调用的先取后用场景。[RFC 2094 NLL](https://rust-lang.github.io/rfcs/2094-nll.html)、[RFC 2025 / two-phase borrows](https://rust-lang.github.io/rfcs/2025-nested-method-calls.html)、[rustc-dev-guide: two-phase borrows](https://rustc-dev-guide.rust-lang.org/borrow-check/two-phase-borrows.html)。
+
+Polonius 进一步尝试把借用检查拆成更明确的数据流/关系分析。Rust 官方当前的状态是：它已经预览性并入 rustc，但仍未达到广泛生产默认的成熟度，后续还要继续做完整分析和优化。[Polonius current status](https://rust-lang.github.io/polonius/current_status.html)。
+
+对 Aurex 的启发是：借用/资源分析不应该被做成“只认词法块”的简单规则，但也不该一开始就把最复杂的 Polonius 全量方案锁进语言主路径。更稳的路线是先让语义模型是控制流敏感的，再决定实现是传统 borrow checker 还是更精细的关系分析。
+
+### 9.3 共享可变的矛盾：既要能改，又要能推理
+
+Rust 的原则是 `&T` 默认不可变，`&mut T` 默认独占。问题是，真实系统里很多数据结构都需要内部共享和局部可变。Rust 的解法不是把“共享可变”变成默认语义，而是把它收进显式逃生口：`UnsafeCell` 是唯一能解除 `&T` 不可变保证的底层原语，`RefCell` 用运行时借用检查提供安全 API，`Mutex` / 原子类型处理并发共享，GhostCell 则尝试用权限和数据分离来降低传统 interior mutability 的额外开销。[UnsafeCell docs](https://doc.rust-lang.org/nightly/core/cell/struct.UnsafeCell.html)、[Rust Reference: interior mutability](https://doc.rust-lang.org/stable/reference/interior-mutability.html)、[GhostCell paper](https://plv.mpi-sws.org/rustbelt/ghostcell/paper.pdf)。
+
+GhostCell 的核心思路是把“谁有权修改”从“数据本体在哪里”里拆出来，用单独的权限对象管理一整组数据。这对图、双向链表、arena 这类结构尤其有价值，因为它比把每个节点都塞进细粒度运行时借用计数更轻。[GhostCell citation](https://pure.mpg.de/pubman/item/item_3331795_7)、[ICFP 2021 page](https://icfp21.sigplan.org/details/icfp-2021-papers/31/GhostCell-Separating-Permissions-from-Data-in-Rust)。
+
+对 Aurex 的启发是：不要把“允许共享可变”做成核心语义；把它做成少量、显式、可审计的库级或受限语言级机制，优先保住普通值语义、RAII 和静态推理的稳定边界。
+
+### 9.4 语义正确性和优化：别让编译器猜
+
+Rust 不是只追求“能编译”，还必须让 unsafe 代码和优化器之间有一个可解释的契约。RustBelt 从语义层面证明了 Rust 语言和库中相当一部分安全性质；Stacked Borrows 则给出了一个可执行的别名模型，帮助解释哪些指针/引用操作在优化之后仍然合法。[RustBelt paper](https://people.mpi-sws.org/~dreyer/papers/rustbelt/paper.pdf)、[Stacked Borrows paper](https://plv.mpi-sws.org/rustbelt/stacked-borrows/).
+
+这类工作的重要意义在于：它们不是在教编译器“更聪明”，而是在教编译器“知道自己什么时候可以相信别名信息，什么时候不能”。这对 Aurex 很关键，因为如果后端想做更激进的内联、去虚调用、重排内存访问或 drop glue 优化，就必须先定义清楚 alias / provenance / reference validity 的边界。
+
+对 Aurex 的启发是：如果我们未来要引入更复杂的资源语义、引用模型或 unsafe 优化，最好从一开始就保留一个可以被验证、可以被解释的 IR / 语义层，不要只靠“实现里现在刚好这样”。
+
+### 9.5 静态抽象和动态分派：Rust 把选择权显式交给用户
+
+Rust 用 `impl Trait` 和 `dyn Trait` 把抽象的两条路明确分开：`impl Trait` 表示“返回一个具体但隐藏的类型”，适合迭代器、闭包、组合式 API；`dyn Trait` 则表示“我就是要运行时多态”，这会变成动态大小类型，通常放在指针后面，靠 vtable 做 late binding。[Rust Reference: impl Trait](https://doc.rust-lang.org/stable/reference/types/impl-trait.html)、[Rust Reference: trait objects](https://doc.rust-lang.org/reference/types/trait-object.html)、[Rust Book: trait objects](https://doc.rust-lang.org/stable/book/ch18-02-trait-objects.html)。
+
+同时，trait object 还有 dyn compatibility 约束：并不是任意 trait 都能直接对象化，`Self: Sized`、关联项等条件都会影响可用性。[Rust Reference: traits / dyn compatibility](https://doc.rust-lang.org/stable/reference/items/traits.html)。
+
+这套设计的好处是，静态路径保持可内联、可单态化、可优化；动态路径则明确付出间接调用和布局约束的代价。Rust 没有把这两种模式混成一个隐式对象系统。
+
+对 Aurex 的启发是：`class.method` 的手感可以做，但底层仍然应该分成静态分派和动态分派两套语义。默认路径走 `struct + impl + trait + Drop`，需要异构集合、插件边界或晚绑定时，再显式进入 `dyn Trait`。
+
+### 9.6 泛型、编译时间和代码体积：工业界不会假装这不存在
+
+Rust 选择了 monomorphization，也就是把每组具体泛型实参都展开成一份具体代码。这样性能通常更好，但代价是编译时间和二进制体积可能上升。[rustc-dev-guide: monomorphization](https://rustc-dev-guide.rust-lang.org/backend/monomorph.html)。
+
+工业上对这个问题的常见缓解方式不是回退到动态分派，而是继续把问题拆层：
+
+- `impl Trait` 把“复杂 concrete type”隐藏掉，减少 API 暴露面和类型爆炸。[Rust Reference: impl Trait](https://doc.rust-lang.org/stable/reference/types/impl-trait.html)
+- incremental compilation 用 query DAG 和 red-green 机制只重算受影响部分。[rustc-dev-guide: incremental compilation](https://rustc-dev-guide.rust-lang.org/queries/incremental-compilation.html)、[in detail](https://rustc-dev-guide.rust-lang.org/queries/incremental-compilation-in-detail.html)
+- codegen units 让后端能并行、让增量失效范围更可控。[rustc-dev-guide: monomorphization](https://rustc-dev-guide.rust-lang.org/backend/monomorph.html)、[parallel compilation](https://rustc-dev-guide.rust-lang.org/parallel-rustc.html)
+- ThinLTO 在链接阶段再把一部分跨模块优化拿回来。[rustc-dev-guide: optimized build / ThinLTO](https://rustc-dev-guide.rust-lang.org/building/optimized-build.html)
+
+对 Aurex 的启发是：如果我们要做泛型、约束、static trait、class-like sugar，就应该从一开始把 query key、实例化缓存、单态化和后端分区设计成一条线，而不是等代码已经长大之后再补性能补丁。
+
+### 9.7 形式化研究给我们的直接结论
+
+Oxide 说明，borrow checking 可以被提炼成更接近源语言的形式化体系，而且 NLL 这样的现代特性也能被纳入一个相对简洁的理论框架里。[Oxide: The Essence of Rust](https://arxiv.org/abs/1903.00982)。
+
+RustBelt、Stacked Borrows、GhostCell 这三条线则合在一起说明了一件事：Rust 不是靠“某一个万能规则”赢的，而是靠一组彼此配合的显式机制：
+
+- 静态借用规则负责默认安全；
+- interior mutability 负责局部例外；
+- aliasing model 负责 unsafe 和优化边界；
+- trait object / dyn compatibility 负责动态边界；
+- monomorphization / incremental compilation / ThinLTO 负责工程可用性。
+
+这正好对应 Aurex 现在的方向。我们的语言不应该先做一个“通吃一切”的 class 系统，而应该先把默认路径做成清晰、可验证、可优化的组合式模型，再把例外机制一层一层往外加。
+
+## 10. 参考资料
+
+下面这些是这份背景文档真正依赖的核心出处，优先级按“对 Aurex 设计最直接”排序：
+
+1. [Rust Reference: trait objects](https://doc.rust-lang.org/reference/types/trait-object.html)
+2. [Rust Reference: traits / dyn compatibility](https://doc.rust-lang.org/stable/reference/items/traits.html)
+3. [Rust Reference: impl Trait](https://doc.rust-lang.org/stable/reference/types/impl-trait.html)
+4. [Rust Reference: interior mutability](https://doc.rust-lang.org/stable/reference/interior-mutability.html)
+5. [UnsafeCell docs](https://doc.rust-lang.org/nightly/core/cell/struct.UnsafeCell.html)
+6. [RFC 2094: NLL](https://rust-lang.github.io/rfcs/2094-nll.html)
+7. [RFC 2025: two-phase borrows](https://rust-lang.github.io/rfcs/2025-nested-method-calls.html)
+8. [Polonius current status](https://rust-lang.github.io/polonius/current_status.html)
+9. [RustBelt: Securing the Foundations of the Rust Programming Language](https://people.mpi-sws.org/~dreyer/papers/rustbelt/paper.pdf) - PACMPL / POPL 2018
+10. [Stacked Borrows: An Aliasing Model for Rust](https://plv.mpi-sws.org/rustbelt/stacked-borrows/) - PACMPL / POPL 2020
+11. [GhostCell: Separating Permissions from Data in Rust](https://icfp21.sigplan.org/details/icfp-2021-papers/31/GhostCell-Separating-Permissions-from-Data-in-Rust) - PACMPL / ICFP 2021
+12. [Oxide: The Essence of Rust](https://arxiv.org/abs/1903.00982) - arXiv 2019
+13. [rustc-dev-guide: incremental compilation](https://rustc-dev-guide.rust-lang.org/queries/incremental-compilation.html)
+14. [rustc-dev-guide: monomorphization](https://rustc-dev-guide.rust-lang.org/backend/monomorph.html)
+15. [rustc-dev-guide: optimized build / ThinLTO](https://rustc-dev-guide.rust-lang.org/building/optimized-build.html)

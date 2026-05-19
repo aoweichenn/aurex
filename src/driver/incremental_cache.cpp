@@ -329,6 +329,11 @@ struct ParseFileQuerySubject {
     query::QueryResultFingerprint result;
 };
 
+struct SourceStageQueryRecords {
+    query::QueryRecord lex_file;
+    query::QueryRecord parse_file;
+};
+
 struct ModuleExportsQuerySubject {
     query::ModuleKey key;
     query::QueryResultFingerprint result;
@@ -1456,19 +1461,28 @@ void record_query_provider_evaluation_summary(CompilationProfiler* const profile
     return result;
 }
 
-[[nodiscard]] bool cache_sources_match(const ParsedCache& cache)
+[[nodiscard]] bool cache_has_root_source(const ParsedCache& cache)
 {
-    bool has_root_source = false;
     for (const SourceFingerprintRecord& cached_source : cache.sources) {
         if (cached_source.path == cache.root_path) {
-            has_root_source = true;
+            return true;
         }
+    }
+    return false;
+}
+
+[[nodiscard]] bool cache_sources_match(const ParsedCache& cache)
+{
+    if (!cache_has_root_source(cache)) {
+        return false;
+    }
+    for (const SourceFingerprintRecord& cached_source : cache.sources) {
         std::optional<SourceFingerprintRecord> current = fingerprint_file(cached_source.path);
         if (!current || !same_fingerprint(cached_source, *current)) {
             return false;
         }
     }
-    return has_root_source;
+    return true;
 }
 
 [[nodiscard]] std::vector<std::filesystem::path> normalized_import_paths(const CompilerInvocation& invocation)
@@ -1651,6 +1665,79 @@ void mix_token_stream_result(query::StableHashBuilder& builder, const std::span<
     builder.mix_u64(lex_result.global_id);
     builder.mix_fingerprint(lex_result.fingerprint);
     return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] std::optional<SourceStageQueryRecords> source_stage_query_records_for_text(
+    const std::filesystem::path& path, std::string text)
+{
+    base::SourceManager sources;
+    const base::SourceId source_id = sources.add_source(path.string(), std::move(text));
+    const base::SourceFile& file = sources.get(source_id);
+    const query::FileKey file_key = source_file_key(file);
+    const query::LexConfigKey lex_config = query::lex_config_key();
+    const query::ParserConfigKey parser_config = query::parser_config_key(lex_config);
+    const query::LexFileKey lex_key = query::lex_file_key(file_key, lex_config);
+    const query::ParseFileKey parse_key = query::parse_file_key(file_key, parser_config);
+    if (!query::is_valid(file_key) || !query::is_valid(lex_key) || !query::is_valid(parse_key)) {
+        return std::nullopt;
+    }
+
+    const query::QueryResultFingerprint lex_result = lex_file_result_fingerprint(lex_key, file);
+    const query::QueryResultFingerprint parse_result = parse_file_result_fingerprint(parse_key, lex_result);
+    std::optional<query::QueryRecord> lex_record = query::lex_file_query_record(lex_key, lex_result);
+    std::optional<query::QueryRecord> parse_record = query::parse_file_query_record(parse_key, parse_result);
+    if (!lex_record || !parse_record) {
+        return std::nullopt;
+    }
+
+    return SourceStageQueryRecords{
+        std::move(*lex_record),
+        std::move(*parse_record),
+    };
+}
+
+[[nodiscard]] std::optional<SourceStageQueryRecords> source_stage_query_records_for_file(
+    const std::filesystem::path& path)
+{
+    std::optional<std::string> text = read_file_for_fingerprint(path);
+    if (!text) {
+        return std::nullopt;
+    }
+    return source_stage_query_records_for_text(path, std::move(*text));
+}
+
+[[nodiscard]] bool cached_query_record_unchanged(
+    const query::QueryContext& cached_context, const query::QueryRecord& current)
+{
+    const query::QueryNode* const cached_node = cached_context.find(current.key);
+    return cached_node != nullptr
+        && query::query_record_change_status(&cached_node->record, current)
+        == query::QueryRecordChangeStatus::unchanged;
+}
+
+[[nodiscard]] bool source_stage_queries_green_for_source(
+    const query::QueryContext& cached_context, const SourceFingerprintRecord& cached_source)
+{
+    const std::optional<SourceStageQueryRecords> current = source_stage_query_records_for_file(cached_source.path);
+    if (!current) {
+        return false;
+    }
+    return cached_query_record_unchanged(cached_context, current->lex_file)
+        && cached_query_record_unchanged(cached_context, current->parse_file);
+}
+
+[[nodiscard]] bool source_stage_queries_green_for_cache(const ParsedCache& cache)
+{
+    if (!cache_has_root_source(cache)) {
+        return false;
+    }
+    const query::QueryContext cached_context = seed_query_context_from_cache(cache);
+    for (const SourceFingerprintRecord& cached_source : cache.sources) {
+        if (!source_stage_queries_green_for_source(cached_context, cached_source)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 [[nodiscard]] query::QueryResultFingerprint module_graph_result_fingerprint(
@@ -2951,7 +3038,13 @@ base::Result<bool> try_reuse_incremental_check_cache(const CompilerInvocation& i
     if (!cache) {
         return base::Result<bool>::ok(false);
     }
-    if (!parsed_cache_header_matches(*cache, invocation) || !cache_sources_match(*cache)) {
+    if (!parsed_cache_header_matches(*cache, invocation)) {
+        return base::Result<bool>::ok(false);
+    }
+    if (cache_sources_match(*cache)) {
+        return base::Result<bool>::ok(true);
+    }
+    if (!invocation.experimental_query_pruning || !source_stage_queries_green_for_cache(*cache)) {
         return base::Result<bool>::ok(false);
     }
     return base::Result<bool>::ok(true);

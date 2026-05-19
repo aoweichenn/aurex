@@ -859,7 +859,7 @@ def run_scenario(function_count: int, scenario_name: str, source_variant: int) -
     run_compiler(
         [
             str(AUREXC),
-            "--check",
+            "--emit=checked",
             "--incremental-cache",
             str(cache_path),
             "--experimental-query-pruning",

@@ -38,6 +38,15 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_FIRST_SOURCE =
     "impl Box { pub fn read(self: &Box) -> Count { return self.value; } }\n"
     "fn id[T](value: T) -> T { return value; }\n"
     "fn main() -> i32 { let box: Box = Box { value: id[Count](0) }; return box.read(); }\n";
+constexpr std::string_view DRIVER_INCREMENTAL_CACHE_COMMENT_ONLY_SOURCE =
+    "module incremental_cache_driver;\n"
+    "// comment-only edit should preserve lossy token and parse query results\n"
+    "pub type Count = i32;\n"
+    "pub struct Box { pub value: Count; }\n"
+    "pub enum Mode: u8 { fast = 1, slow = 2, }\n"
+    "impl Box { pub fn read(self: &Box) -> Count { return self.value; } }\n"
+    "fn id[T](value: T) -> T { return value; }\n"
+    "fn main() -> i32 { let box: Box = Box { value: id[Count](0) }; return box.read(); }\n";
 constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SECOND_SOURCE =
     "module incremental_cache_driver;\n"
     "pub type Count = i32;\n"
@@ -1263,6 +1272,54 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesValidatesInvalidatesAndReuses
     ASSERT_TRUE(second_reuse) << second_reuse.error().message;
     EXPECT_TRUE(second_reuse.value());
     EXPECT_NE(first_cache, read_text(cache));
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheExperimentalPruningReusesCommentOnlySourceChanges)
+{
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-source-stage-green";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+
+    const auto write_source = [&](const std::string_view text) {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
+
+    write_source(DRIVER_INCREMENTAL_CACHE_FIRST_SOURCE);
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+
+    driver::Compiler compiler;
+    auto first = compiler.run(invocation);
+    ASSERT_TRUE(first) << first.error().message;
+    ASSERT_TRUE(fs::exists(cache));
+
+    write_source(DRIVER_INCREMENTAL_CACHE_COMMENT_ONLY_SOURCE);
+    driver::clear_file_cache();
+    auto coarse_reuse = driver::try_reuse_incremental_check_cache(invocation);
+    ASSERT_TRUE(coarse_reuse) << coarse_reuse.error().message;
+    EXPECT_FALSE(coarse_reuse.value());
+
+    driver::CompilerInvocation pruning_invocation = invocation;
+    pruning_invocation.experimental_query_pruning = true;
+    auto source_stage_green_reuse = driver::try_reuse_incremental_check_cache(pruning_invocation);
+    ASSERT_TRUE(source_stage_green_reuse) << source_stage_green_reuse.error().message;
+    EXPECT_TRUE(source_stage_green_reuse.value());
+
+    write_source(DRIVER_INCREMENTAL_CACHE_SECOND_SOURCE);
+    driver::clear_file_cache();
+    auto token_changed_reuse = driver::try_reuse_incremental_check_cache(pruning_invocation);
+    ASSERT_TRUE(token_changed_reuse) << token_changed_reuse.error().message;
+    EXPECT_FALSE(token_changed_reuse.value());
 
     driver::clear_file_cache();
 }

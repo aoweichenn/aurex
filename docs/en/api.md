@@ -37,6 +37,9 @@ Common options:
 - `--emit=exe`: emit executable, the default mode.
 - `--emit kind`: same as `--emit=kind`.
 - `--opt-level O0|O1|O2|O3` / `--opt-level=O0` / `-O O0|O1|O2|O3` / `-O0`: control the IR pass pipeline.
+- `--incremental-cache path`: read and write the query-key incremental cache.
+- `--query-pruning`: explicitly select the default query-key pruning path.
+- `--no-query-pruning`: explicitly use the coarse source-fingerprint compatibility path.
 - `--clang path` / `--clang=path`: select clang executable.
 - `--clang-arg arg` / `--clang-arg=arg`: pass an argument to clang.
 - `-I path` / `-Ipath` / `--import-path path`: add import search path.

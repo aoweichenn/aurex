@@ -436,17 +436,6 @@ inline constexpr auto OPTION_SPECS = std::to_array<OptionSpec>({
     },
     {
         OptionLevel::secondary,
-        OptionGroup::incremental,
-        OptionApplicability::any,
-        "--experimental-query-pruning",
-        OptionValueStyle::flag,
-        CLI_EFFECT_ENABLE_QUERY_PRUNING,
-        {},
-        "deprecated alias for --query-pruning",
-        false,
-    },
-    {
-        OptionLevel::secondary,
         OptionGroup::diagnostics,
         OptionApplicability::any,
         "--diagnostics",

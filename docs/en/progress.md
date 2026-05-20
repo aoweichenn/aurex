@@ -268,8 +268,17 @@ On 2026-05-17, M2.5 started by closing the diagnostic protocol boundary:
 semantic diagnostics now map from explicit semantic kinds to stable
 category/code values, while message text is presentation only. CLI text, JSON
 output, and later diagnostics-query / LSP adapters will consume the same event
-semantics. The next M2.5 work moves to query keys, dependency tracking, lossless
-syntax, and IDE-native entry points instead of expanding the language surface.
+semantics. M2.5 then closed the first query-key and dependency-tracking batch;
+the next frontend-foundation work moves to lossless syntax and IDE-native entry
+points instead of expanding the language surface.
+The first M2.5 query-key main-path batch is now closed: `--incremental-cache`
+uses query-key pruning by default, and only explicit `--no-query-pruning`
+selects the coarse source-fingerprint compatibility path. The current query
+foundation covers stable keys, canonical type / generic-instance identity,
+`QueryContext` row/edge persistence and replay, source-stage green reuse,
+red-green provider skip, profile events, query-graph fuzzing, sanitizer gates,
+and release/coverage gates. Future lossless syntax, IDE-native entry points,
+and advanced language features must reuse this main path.
 The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator with a pattern matrix / usefulness witness search.
 Bool, enum payloads, tuples, structs, fixed arrays up to the explicit 4096-column

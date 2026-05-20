@@ -45,10 +45,12 @@ Before designing any future library layer, the language needs the current core a
 The M2.5 architecture line is stable-ID-driven query work, not an LSP adapter
 layer added first:
 
-- Existing sema results become explicit typed identities, explicit diagnostic
+- The first query-key batch is now on the default incremental-cache path.
+- Existing sema results are explicit typed identities, explicit diagnostic
   kinds, and stable fingerprints.
 - File parse, module graph, item signature, function body, generic instance,
-  and diagnostics move into queries incrementally.
+  and diagnostics have first-batch query row/edge, replay, and provider-skip
+  profile coverage.
 - Lossless CST / GreenTree storage preserves trivia while AST remains the
   lowered semantic structure consumed by later stages.
 - CLI, JSON, and future IDE consumers share structured diagnostics instead of

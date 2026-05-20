@@ -39,11 +39,12 @@ resource-semantics track.
 
 ## M2.5 Frontend Direction
 
-M2.5 first freezes the current typed identities and diagnostic metadata into
-query-safe data, then splits file parse, module graph, item signature, function
-body, generic instance, and diagnostics into queries. Lossless CSTs, local
-incremental parsing, and IDE-native entry points build on that path instead of
-creating a second parallel frontend.
+The first M2.5 query-key batch is now on the default incremental-cache path.
+Current typed identities and diagnostic metadata are query-safe data, and file
+parse, module graph, item signature, function body, generic instance, and
+diagnostics have first-batch query row/edge, replay, and provider-skip profile
+coverage. Lossless CSTs, local incremental parsing, and IDE-native entry points
+must build on that path instead of creating a second parallel frontend.
 
 ## Backend
 

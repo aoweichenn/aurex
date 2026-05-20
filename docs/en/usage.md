@@ -48,6 +48,18 @@ primary actions and secondary modifiers. Native backend modifiers such as
 `--clang` and `--clang-arg` apply only to native output modes and are rejected
 for frontend-only modes such as `--emit=ir` or `--check`.
 
+## Incremental Cache
+
+```sh
+build/bin/aurexc --check --incremental-cache build/main.axic examples/hello.ax
+```
+
+`--incremental-cache` uses query-key pruning by default: when source
+fingerprints do not all match, the driver first tries query-key source-stage
+green reuse and then records red/green provider-skip profile data during cache
+writes. `--query-pruning` only confirms the default behavior; `--no-query-pruning`
+explicitly selects the coarse source-fingerprint compatibility path.
+
 ## Imports
 
 Module lookup order:

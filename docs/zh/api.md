@@ -31,6 +31,9 @@ aurexc [primary-option] [secondary-options] input.ax [-o output]
 - `--emit=obj` / `--emit=object`：输出 object。
 - `--emit=exe`：输出可执行文件，默认模式。
 - `--opt-level O0|O1|O2|O3` / `-O O0|O1|O2|O3` / `-O0`：控制 IR pass pipeline。
+- `--incremental-cache path`：读写 query-key 增量缓存。
+- `--query-pruning`：显式确认 query-key pruning 默认路径。
+- `--no-query-pruning`：显式退回 coarse source-fingerprint 兼容路径。
 - `--clang path`：指定 clang。
 - `--clang-arg arg`：透传 clang 参数。
 - `-I path`：增加 import 搜索路径。

@@ -808,15 +808,6 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms)
     const driver::CliParseResult query_pruning_parse = require_parse_cli(query_pruning_args);
     EXPECT_TRUE(query_pruning_parse.invocation.query_pruning_enabled);
 
-    const std::vector<std::string_view> legacy_pruning_args{
-        "aurexc",
-        "--no-query-pruning",
-        "--experimental-query-pruning",
-        "examples/hello.ax",
-    };
-    const driver::CliParseResult legacy_pruning_parse = require_parse_cli(legacy_pruning_args);
-    EXPECT_TRUE(legacy_pruning_parse.invocation.query_pruning_enabled);
-
     const std::vector<std::string_view> separate_emit_args{
         "aurexc",
         "--emit",
@@ -1283,6 +1274,7 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps)
             "--emit=exe",
             "--dump-modules",
             "--incremental-cache",
+            "--query-pruning",
             "--no-query-pruning",
             "--diagnostics",
             "--opt-level",

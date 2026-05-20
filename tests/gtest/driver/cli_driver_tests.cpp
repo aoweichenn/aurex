@@ -410,6 +410,12 @@ struct CacheTestQueryResultFingerprint {
     if (kind == query::QueryKind::item_signature) {
         return CACHE_TEST_QUERY_ITEM_SIGNATURE;
     }
+    if (kind == query::QueryKind::function_body_syntax) {
+        return CACHE_TEST_QUERY_FUNCTION_BODY_SYNTAX;
+    }
+    if (kind == query::QueryKind::type_check_body) {
+        return CACHE_TEST_QUERY_TYPE_CHECK_BODY;
+    }
     if (kind == query::QueryKind::generic_template_signature) {
         return CACHE_TEST_QUERY_GENERIC_TEMPLATE_SIGNATURE;
     }
@@ -482,6 +488,62 @@ struct CacheTestQueryResultFingerprint {
         start = end + 1;
     }
     return fields;
+}
+
+[[nodiscard]] std::vector<std::string_view> cache_test_query_kinds(const std::string_view cache_text)
+{
+    std::vector<std::string_view> kinds;
+    base::usize line_start = 0;
+    while (line_start < cache_text.size()) {
+        const base::usize line_end = cache_text.find('\n', line_start);
+        const std::string_view line = line_end == std::string_view::npos
+            ? cache_text.substr(line_start)
+            : cache_text.substr(line_start, line_end - line_start);
+        const std::vector<std::string_view> fields = split_cache_test_fields(line);
+        if (fields.size() == CACHE_TEST_QUERY_FIELD_COUNT
+            && fields[CACHE_TEST_QUERY_ROW_KIND_FIELD] == CACHE_TEST_QUERY_ROW_KIND) {
+            kinds.push_back(fields[CACHE_TEST_QUERY_KIND_FIELD]);
+        }
+        if (line_end == std::string_view::npos) {
+            break;
+        }
+        line_start = line_end + 1;
+    }
+    return kinds;
+}
+
+[[nodiscard]] std::optional<base::usize> first_cache_test_query_kind_index(
+    const std::vector<std::string_view>& kinds, const std::string_view kind)
+{
+    for (base::usize index = 0; index < kinds.size(); ++index) {
+        if (kinds[index] == kind) {
+            return index;
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<base::usize> last_cache_test_query_kind_index(
+    const std::vector<std::string_view>& kinds, const std::string_view kind)
+{
+    for (base::usize reverse_index = kinds.size(); reverse_index > 0; --reverse_index) {
+        const base::usize index = reverse_index - 1;
+        if (kinds[index] == kind) {
+            return index;
+        }
+    }
+    return std::nullopt;
+}
+
+void expect_cache_query_kind_before(
+    const std::string_view cache_text, const std::string_view before, const std::string_view after)
+{
+    const std::vector<std::string_view> kinds = cache_test_query_kinds(cache_text);
+    const std::optional<base::usize> before_index = last_cache_test_query_kind_index(kinds, before);
+    const std::optional<base::usize> after_index = first_cache_test_query_kind_index(kinds, after);
+    ASSERT_TRUE(before_index.has_value()) << before;
+    ASSERT_TRUE(after_index.has_value()) << after;
+    EXPECT_LT(*before_index, *after_index) << before << " should be scheduled before " << after;
 }
 
 [[nodiscard]] std::optional<CacheTestQueryResultFingerprint> cache_test_query_result(
@@ -1304,6 +1366,60 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesValidatesInvalidatesAndReuses
     ASSERT_TRUE(second_reuse) << second_reuse.error().message;
     EXPECT_TRUE(second_reuse.value());
     EXPECT_NE(first_cache, read_text(cache));
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheWritesQueryRowsInDependencyScheduleOrder)
+{
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_QUERY_SCHEDULE_SOURCE =
+        "module incremental_cache_query_schedule;\n"
+        "fn id[T](value: T) -> T { return value; }\n"
+        "fn main() -> i32 { return id[i32](7); }\n";
+
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-query-schedule";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << DRIVER_INCREMENTAL_CACHE_QUERY_SCHEDULE_SOURCE;
+    }
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::typed;
+    invocation.incremental_cache_path = cache;
+
+    driver::Compiler compiler;
+    auto first = compiler.run(invocation);
+    ASSERT_TRUE(first) << first.error().message;
+
+    const std::string cache_text = read_text(cache);
+    expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_FILE_CONTENT, CACHE_TEST_QUERY_LEX_FILE);
+    expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_LEX_FILE, CACHE_TEST_QUERY_PARSE_FILE);
+    expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_PARSE_FILE, CACHE_TEST_QUERY_MODULE_GRAPH);
+    expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_MODULE_GRAPH, CACHE_TEST_QUERY_ITEM_LIST);
+    expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_ITEM_LIST, CACHE_TEST_QUERY_MODULE_EXPORTS);
+    expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_MODULE_EXPORTS, CACHE_TEST_QUERY_ITEM_SIGNATURE);
+    expect_cache_query_kind_before(
+        cache_text, CACHE_TEST_QUERY_ITEM_SIGNATURE, CACHE_TEST_QUERY_GENERIC_TEMPLATE_SIGNATURE);
+    expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_ITEM_LIST, CACHE_TEST_QUERY_GENERIC_TEMPLATE_SIGNATURE);
+    expect_cache_query_kind_before(
+        cache_text, CACHE_TEST_QUERY_GENERIC_TEMPLATE_SIGNATURE, CACHE_TEST_QUERY_GENERIC_INSTANCE_SIGNATURE);
+    expect_cache_query_kind_before(
+        cache_text, CACHE_TEST_QUERY_GENERIC_INSTANCE_SIGNATURE, CACHE_TEST_QUERY_FUNCTION_BODY_SYNTAX);
+    expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_FUNCTION_BODY_SYNTAX, CACHE_TEST_QUERY_TYPE_CHECK_BODY);
+    expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_ITEM_SIGNATURE, CACHE_TEST_QUERY_TYPE_CHECK_BODY);
+    expect_cache_query_kind_before(
+        cache_text, CACHE_TEST_QUERY_TYPE_CHECK_BODY, CACHE_TEST_QUERY_GENERIC_INSTANCE_BODY);
+    expect_cache_query_kind_before(
+        cache_text, CACHE_TEST_QUERY_GENERIC_INSTANCE_BODY, CACHE_TEST_QUERY_LOWER_FUNCTION_IR);
+    expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_TYPE_CHECK_BODY, CACHE_TEST_QUERY_LOWER_FUNCTION_IR);
+    expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_LOWER_FUNCTION_IR, CACHE_TEST_QUERY_DIAGNOSTICS);
 
     driver::clear_file_cache();
 }

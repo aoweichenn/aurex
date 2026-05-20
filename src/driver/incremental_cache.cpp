@@ -236,6 +236,20 @@ constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_GEN
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_LOWER_FUNCTION_IRS =
     ",evaluated_lower_function_irs=";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_DIAGNOSTICS = ",evaluated_diagnostics=";
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_FILE_CONTENT_RANK = 0;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_LEX_FILE_RANK = 1;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_PARSE_FILE_RANK = 2;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_GRAPH_RANK = 3;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_LIST_RANK = 4;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_EXPORTS_RANK = 5;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_SIGNATURE_RANK = 6;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_TEMPLATE_SIGNATURE_RANK = 7;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_SIGNATURE_RANK = 8;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_FUNCTION_BODY_SYNTAX_RANK = 9;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_TYPE_CHECK_BODY_RANK = 10;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_BODY_RANK = 11;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_LOWER_FUNCTION_IR_RANK = 12;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_DIAGNOSTICS_RANK = 13;
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED = "disabled";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NONE = "none";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NO_CACHE = "no_cache";
@@ -1065,6 +1079,50 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 {
     return std::tie(lhs.key.kind, lhs.key.global_id, lhs.result.global_id, lhs.stable_key_bytes)
         < std::tie(rhs.key.kind, rhs.key.global_id, rhs.result.global_id, rhs.stable_key_bytes);
+}
+
+[[nodiscard]] base::usize query_subject_schedule_rank(const QuerySubjectKind kind) noexcept
+{
+    switch (kind) {
+        case QuerySubjectKind::file_content:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_FILE_CONTENT_RANK;
+        case QuerySubjectKind::lex_file:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_LEX_FILE_RANK;
+        case QuerySubjectKind::parse_file:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_PARSE_FILE_RANK;
+        case QuerySubjectKind::module_graph:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_GRAPH_RANK;
+        case QuerySubjectKind::item_list:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_LIST_RANK;
+        case QuerySubjectKind::module_exports:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_EXPORTS_RANK;
+        case QuerySubjectKind::item_signature:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_SIGNATURE_RANK;
+        case QuerySubjectKind::generic_template_signature:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_TEMPLATE_SIGNATURE_RANK;
+        case QuerySubjectKind::generic_instance_signature:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_SIGNATURE_RANK;
+        case QuerySubjectKind::function_body_syntax:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_FUNCTION_BODY_SYNTAX_RANK;
+        case QuerySubjectKind::type_check_body:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_TYPE_CHECK_BODY_RANK;
+        case QuerySubjectKind::generic_instance_body:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_BODY_RANK;
+        case QuerySubjectKind::lower_function_ir:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_LOWER_FUNCTION_IR_RANK;
+        case QuerySubjectKind::diagnostics:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_DIAGNOSTICS_RANK;
+    }
+}
+
+[[nodiscard]] bool query_subject_schedule_less(const QuerySubject& lhs, const QuerySubject& rhs) noexcept
+{
+    const base::usize lhs_rank = query_subject_schedule_rank(lhs.kind);
+    const base::usize rhs_rank = query_subject_schedule_rank(rhs.kind);
+    if (lhs_rank != rhs_rank) {
+        return lhs_rank < rhs_rank;
+    }
+    return query_record_key_less(lhs.record, rhs.record);
 }
 
 [[nodiscard]] bool contains_query_key(const std::vector<query::QueryKey>& keys, const query::QueryKey key) noexcept
@@ -2617,10 +2675,7 @@ void build_ordered_query_subjects(QuerySubjectCollection& collection)
             query_record_for_subject(collection.diagnostics[index]));
     }
 
-    std::sort(
-        collection.subjects.begin(), collection.subjects.end(), [](const QuerySubject& lhs, const QuerySubject& rhs) {
-            return query_record_key_less(lhs.record, rhs.record);
-        });
+    std::sort(collection.subjects.begin(), collection.subjects.end(), query_subject_schedule_less);
 
     collection.records.reserve(collection.subjects.size());
     for (const QuerySubject& subject : collection.subjects) {
@@ -2926,6 +2981,20 @@ void evaluate_recomputed_query_subjects(query::QueryContext& context, const Quer
     return true;
 }
 
+[[nodiscard]] std::vector<query::QueryRecord> completed_records_in_subject_order(
+    const query::QueryContext& context, const QuerySubjectCollection& collection)
+{
+    std::vector<query::QueryRecord> records;
+    records.reserve(collection.subjects.size());
+    for (const QuerySubject& subject : collection.subjects) {
+        const query::QueryNode* const node = context.find(subject.record.key);
+        if (node != nullptr && node->status == query::QueryNodeStatus::done) {
+            records.push_back(node->record);
+        }
+    }
+    return records;
+}
+
 [[nodiscard]] QueryCollectionResult collect_queries_from_subjects(const QuerySubjectCollection& collection)
 {
     query::QueryContext context;
@@ -2933,7 +3002,7 @@ void evaluate_recomputed_query_subjects(query::QueryContext& context, const Quer
     evaluate_query_subjects(context, collection, stats);
     return QueryCollectionResult{
         QueryCollection{
-            context.completed_records(),
+            completed_records_in_subject_order(context, collection),
             context.dependency_edges(),
         },
         stats,
@@ -2952,7 +3021,7 @@ void evaluate_recomputed_query_subjects(query::QueryContext& context, const Quer
     evaluate_recomputed_query_subjects(context, collection, evaluation.plan, stats);
     return QueryCollectionResult{
         QueryCollection{
-            context.completed_records(),
+            completed_records_in_subject_order(context, collection),
             context.dependency_edges(),
         },
         stats,

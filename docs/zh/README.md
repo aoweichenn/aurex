@@ -18,6 +18,7 @@
 - [Aurex 基础语法地基评估](basic-syntax-foundation-review.md)
 - [Aurex 语法现状与设计评估](language-syntax-and-design-review.md)
 - [类、trait 与组合背景说明](class-trait-composition-background.md)
+- [Aurex 模块系统 V2 设计草案](module-system-v2-design.md)
 - [设计实现文档](implementation.md)
 - [当前进度文档](progress.md)
 - [M2.5 路线图](m2.5-roadmap.md)

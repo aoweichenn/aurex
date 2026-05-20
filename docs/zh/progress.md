@@ -156,7 +156,13 @@ token leaves，以及 `block` / `paren_group` / `bracket_group` / `brace_group` 
 lowering façade，过滤 trivia 后走现有 parser，并用 AST dump parity 覆盖正常 semantic token 路径。
 query-key 侧已经确保 retain-trivia 的 `LexFileKey` fingerprint 使用 trivia lexer，build-lossless
 parse result fingerprint 混入 CST 结构，`lossless_tooling` 的 parse provider 依赖对应 retain-trivia
-lex query。局部增量 parse 和 IDE-native 消费现在是下一条工作流，不再是 lossless syntax 基线缺口。
+lex query。完整局部重解析仍属于后续更深优化，不再是 lossless syntax 基线缺口。
+IDE-native 工程入口已经完成当前验收：新增 `aurex_tooling` 目标和
+`include/aurex/tooling/ide.hpp`。`IdeSnapshot` 面向内存 buffer，一次构建统一产出
+source manager、lossless tree、AST、checked module、结构化 diagnostics，以及
+file/lex/parse/diagnostics query records 和 dependency edges；offset token、hover、顶层
+definition、同名 identifier references 和编辑影响 node 选择都通过这层 API 暴露。该入口不绑定
+LSP protocol，后续 LSP adapter 只消费 snapshot 数据，不再旁路 parser/sema/query 主路径。
 2026-05-17 正则性能/测试线继续把 `RegexSet` exact-literal prefix trie 推进为持久标量 Aho-Corasick fast path：纯字面量 set 构建共享 trie 后补 failure/output link，`matches_set`、`find_set`、first-match scan、all-span/overlap scan 和 vectored flatten 后入口都用同一份自动机线性扫描；database 升级为 v3，序列化 node/terminal/max-literal 元数据，roundtrip 后不退回 VM active-list。测试侧补上 Unicode byte span、suffix failure output、重复 literal、database fast path workspace 和 deterministic RegexSet property corpus；`tools/regex_differential.py` 现在同时生成固定 + property Python `re` 差分、RegexSet exact-literal property cases、Unicode 17.0 full case-fold 与 UAX #29 `\X` conformance 程序，并作为 opt-in CTest slow conformance 入口，需通过 `-DAUREX_ENABLE_REGEX_CONFORMANCE=ON` 显式注册。
 2026-05-16 后续表达式 P0 语义线把 expression type cache 从 final-only 记录拆为三层：
 `expr_intrinsic_types` 保存表达式自身类型，`expr_types` 继续保存当前语义使用的 contextual final type，

@@ -1,0 +1,527 @@
+#include <aurex/lex/lexer.hpp>
+#include <aurex/parse/lossless_parse.hpp>
+#include <aurex/query/stable_hash.hpp>
+#include <aurex/sema/sema.hpp>
+#include <aurex/tooling/ide.hpp>
+
+#include <algorithm>
+#include <array>
+#include <optional>
+#include <span>
+#include <sstream>
+#include <utility>
+
+namespace aurex::tooling {
+namespace {
+
+constexpr std::string_view IDE_QUERY_PACKAGE_DEFAULT = "ide";
+constexpr std::string_view IDE_CONTENT_RESULT_MARKER = "ide-content:v1";
+constexpr std::string_view IDE_LEX_RESULT_MARKER = "ide-lex:v1";
+constexpr std::string_view IDE_PARSE_RESULT_MARKER = "ide-parse:v1";
+constexpr std::string_view IDE_DIAGNOSTICS_RESULT_MARKER = "ide-diagnostics:v1";
+constexpr std::string_view IDE_PARSE_SKIPPED_MARKER = "parse-skipped";
+constexpr std::string_view IDE_HOVER_IDENTIFIER_PREFIX = "identifier ";
+constexpr std::string_view IDE_HOVER_TOKEN_PREFIX = "token ";
+
+struct ItemDefinitionMetadata {
+    query::DefNamespace namespace_ = query::DefNamespace::value;
+    query::DefKind kind = query::DefKind::invalid;
+    std::string_view label;
+};
+
+[[nodiscard]] std::string_view package_identity_or_default(const IdeSnapshotRequest& request) noexcept
+{
+    return request.package_identity.empty() ? IDE_QUERY_PACKAGE_DEFAULT : std::string_view{request.package_identity};
+}
+
+[[nodiscard]] query::PackageKey ide_package_key(const IdeSnapshotRequest& request) noexcept
+{
+    const std::array<std::string_view, 1> parts{package_identity_or_default(request)};
+    return query::package_key(parts);
+}
+
+[[nodiscard]] query::FileKey ide_file_key(const IdeSnapshotRequest& request) noexcept
+{
+    return query::file_key(
+        ide_package_key(request), request.path, request.source_role, request.virtual_buffer_identity);
+}
+
+void mix_source_range(query::StableHashBuilder& builder, const base::SourceRange& range) noexcept
+{
+    builder.mix_u64(range.source.value);
+    builder.mix_u64(range.begin);
+    builder.mix_u64(range.end);
+}
+
+void mix_token(query::StableHashBuilder& builder, const syntax::Token& token) noexcept
+{
+    builder.mix_u64(static_cast<base::u64>(token.kind));
+    mix_source_range(builder, token.range);
+    builder.mix_string(token.text());
+}
+
+[[nodiscard]] query::QueryResultFingerprint content_result_fingerprint(const std::string_view text) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(IDE_CONTENT_RESULT_MARKER);
+    builder.mix_string(text);
+    return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] query::QueryResultFingerprint lex_result_fingerprint(
+    const std::span<const syntax::Token> tokens, const std::span<const base::Diagnostic> diagnostics) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(IDE_LEX_RESULT_MARKER);
+    builder.mix_u64(tokens.size());
+    for (const syntax::Token& token : tokens) {
+        mix_token(builder, token);
+    }
+    builder.mix_u64(diagnostics.size());
+    for (const base::Diagnostic& diagnostic : diagnostics) {
+        builder.mix_u64(static_cast<base::u64>(diagnostic.severity));
+        builder.mix_u64(static_cast<base::u64>(diagnostic.category));
+        builder.mix_u64(static_cast<base::u64>(diagnostic.code));
+        mix_source_range(builder, diagnostic.range);
+        builder.mix_string(diagnostic.message);
+    }
+    return query::query_result_fingerprint(builder.finish());
+}
+
+void mix_lossless_tree(query::StableHashBuilder& builder, const syntax::LosslessSyntaxTree& tree) noexcept
+{
+    builder.mix_bool(tree.is_structurally_valid());
+    builder.mix_u64(tree.node_count());
+    builder.mix_u64(tree.element_count());
+    builder.mix_u64(tree.token_count());
+    for (base::usize index = 0; index < tree.nodes().size(); ++index) {
+        const syntax::LosslessNode& node = tree.nodes()[index];
+        builder.mix_u64(index);
+        builder.mix_u64(static_cast<base::u64>(node.kind));
+        mix_source_range(builder, node.range);
+        builder.mix_u64(node.parent.value);
+        builder.mix_u64(node.first_child);
+        builder.mix_u64(node.child_count);
+        builder.mix_u64(node.first_token);
+        builder.mix_u64(node.token_count);
+    }
+    for (base::usize index = 0; index < tree.elements().size(); ++index) {
+        const syntax::LosslessElement& element = tree.elements()[index];
+        builder.mix_u64(index);
+        builder.mix_u64(static_cast<base::u64>(element.kind));
+        builder.mix_u64(element.index);
+    }
+}
+
+[[nodiscard]] query::QueryResultFingerprint parse_result_fingerprint(
+    const syntax::LosslessSyntaxTree& tree, const bool parsed, const std::span<const base::Diagnostic> diagnostics)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(IDE_PARSE_RESULT_MARKER);
+    mix_lossless_tree(builder, tree);
+    builder.mix_bool(parsed);
+    builder.mix_u64(diagnostics.size());
+    for (const base::Diagnostic& diagnostic : diagnostics) {
+        builder.mix_u64(static_cast<base::u64>(diagnostic.severity));
+        builder.mix_u64(static_cast<base::u64>(diagnostic.category));
+        builder.mix_u64(static_cast<base::u64>(diagnostic.code));
+        mix_source_range(builder, diagnostic.range);
+        builder.mix_string(diagnostic.message);
+    }
+    return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] query::QueryResultFingerprint diagnostics_result_fingerprint(
+    const std::span<const base::Diagnostic> diagnostics, const bool parsed, const bool checked)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(IDE_DIAGNOSTICS_RESULT_MARKER);
+    builder.mix_bool(parsed);
+    builder.mix_bool(checked);
+    builder.mix_u64(diagnostics.size());
+    for (const base::Diagnostic& diagnostic : diagnostics) {
+        builder.mix_u64(static_cast<base::u64>(diagnostic.severity));
+        builder.mix_u64(static_cast<base::u64>(diagnostic.category));
+        builder.mix_u64(static_cast<base::u64>(diagnostic.code));
+        mix_source_range(builder, diagnostic.range);
+        builder.mix_string(diagnostic.message);
+    }
+    return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] std::vector<IdeDiagnostic> collect_ide_diagnostics(
+    const base::SourceManager& sources, const std::span<const base::Diagnostic> diagnostics)
+{
+    std::vector<IdeDiagnostic> result;
+    result.reserve(diagnostics.size());
+    for (const base::Diagnostic& diagnostic : diagnostics) {
+        const base::SourceFile& file = sources.get(diagnostic.range.source);
+        result.push_back(IdeDiagnostic{
+            diagnostic.severity,
+            diagnostic.category,
+            diagnostic.code,
+            diagnostic.range,
+            file.line_column(diagnostic.range.begin),
+            file.line_column(diagnostic.range.end),
+            std::string(file.path()),
+            diagnostic.message,
+        });
+    }
+    return result;
+}
+
+void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view source_text,
+    const query::QueryResultFingerprint lex_result, const query::QueryResultFingerprint parse_result,
+    const query::QueryResultFingerprint diagnostics_result)
+{
+    query::QueryContext context;
+    const query::QueryResultFingerprint content_result = content_result_fingerprint(source_text);
+    static_cast<void>(context.evaluate_file_content(query::FileContentProviderInput{
+        snapshot.query.source_stage.file,
+        content_result,
+    }));
+    static_cast<void>(context.evaluate_lex_file(query::LexFileProviderInput{
+        snapshot.query.source_stage.lex_file,
+        lex_result,
+    }));
+    static_cast<void>(context.evaluate_parse_file(query::ParseFileProviderInput{
+        snapshot.query.source_stage.parse_file,
+        parse_result,
+    }));
+    if (const std::optional<query::QueryKey> parse_query =
+            query::parse_file_query_key(snapshot.query.source_stage.parse_file)) {
+        static_cast<void>(context.evaluate_diagnostics(query::DiagnosticsProviderInput{
+            *parse_query,
+            diagnostics_result,
+        }));
+    }
+    snapshot.query.records = context.completed_records();
+    snapshot.query.dependencies = context.dependency_edges();
+}
+
+[[nodiscard]] bool token_contains_offset(const syntax::Token& token, const base::usize offset) noexcept
+{
+    if (token.range.empty()) {
+        return offset == token.range.begin;
+    }
+    return token.range.begin <= offset && offset < token.range.end;
+}
+
+[[nodiscard]] const syntax::Token* token_at_offset(const IdeSnapshot& snapshot, const base::usize offset) noexcept
+{
+    const syntax::LosslessTokenId token_id = snapshot.lossless.token_at_offset(offset);
+    return snapshot.lossless.token(token_id);
+}
+
+[[nodiscard]] std::optional<IdeTokenInfo> make_token_info(
+    const IdeSnapshot& snapshot, const syntax::Token& token) noexcept
+{
+    syntax::LosslessNodeId node_id = snapshot.lossless.node_at_offset(token.range.begin);
+    const syntax::LosslessNode* node = snapshot.lossless.node(node_id);
+    if (node == nullptr) {
+        node_id = snapshot.lossless.root_id();
+        node = snapshot.lossless.root_node();
+    }
+    return IdeTokenInfo{
+        token.kind,
+        token.range,
+        std::string(token.text()),
+        node_id,
+        node->kind,
+        snapshot.lossless.node_key(node_id),
+        true,
+        syntax::is_trivia_token(token.kind),
+    };
+}
+
+[[nodiscard]] std::optional<ItemDefinitionMetadata> item_definition_metadata(const syntax::ItemKind kind) noexcept
+{
+    switch (kind) {
+        case syntax::ItemKind::const_decl:
+            return ItemDefinitionMetadata{query::DefNamespace::value, query::DefKind::const_, "const"};
+        case syntax::ItemKind::type_alias:
+            return ItemDefinitionMetadata{query::DefNamespace::type, query::DefKind::type_alias, "type_alias"};
+        case syntax::ItemKind::struct_decl:
+            return ItemDefinitionMetadata{query::DefNamespace::type, query::DefKind::struct_, "struct"};
+        case syntax::ItemKind::enum_decl:
+            return ItemDefinitionMetadata{query::DefNamespace::type, query::DefKind::enum_, "enum"};
+        case syntax::ItemKind::opaque_struct_decl:
+            return ItemDefinitionMetadata{query::DefNamespace::type, query::DefKind::struct_, "opaque_struct"};
+        case syntax::ItemKind::fn_decl:
+            return ItemDefinitionMetadata{query::DefNamespace::value, query::DefKind::function, "function"};
+        case syntax::ItemKind::extern_block:
+        case syntax::ItemKind::impl_block:
+            return std::nullopt;
+    }
+}
+
+[[nodiscard]] base::SourceRange definition_name_range(
+    const syntax::LosslessSyntaxTree& tree, const syntax::ItemNode& item) noexcept
+{
+    for (const syntax::Token& token : tree.tokens()) {
+        if (token.kind == syntax::TokenKind::identifier && token.text() == item.name
+            && item.range.begin <= token.range.begin && token.range.end <= item.range.end) {
+            return token.range;
+        }
+    }
+    return item.range;
+}
+
+[[nodiscard]] query::ModuleKey module_key_for_snapshot(const IdeSnapshot& snapshot)
+{
+    std::vector<std::string_view> parts = snapshot.ast.module_path.parts;
+    if (parts.empty()) {
+        parts.push_back("ide");
+    }
+    return query::module_key(snapshot.query.source_stage.file.package, parts);
+}
+
+[[nodiscard]] IdeDefinition make_definition(const IdeSnapshot& snapshot, const syntax::ItemNode& item,
+    const query::ModuleKey module, const ItemDefinitionMetadata metadata)
+{
+    const std::array<std::string_view, 1> path{item.name};
+    return IdeDefinition{
+        query::def_key(module, metadata.namespace_, metadata.kind, path),
+        definition_name_range(snapshot.lossless, item),
+        std::string(item.name),
+        std::string(metadata.label),
+        true,
+    };
+}
+
+[[nodiscard]] std::optional<IdeDefinition> find_definition_for_identifier(
+    const IdeSnapshot& snapshot, const std::string_view name)
+{
+    if (!snapshot.parsed) {
+        return std::nullopt;
+    }
+
+    const query::ModuleKey module = module_key_for_snapshot(snapshot);
+    for (base::usize index = 0; index < snapshot.ast.items.size(); ++index) {
+        const syntax::ItemNode* const item = snapshot.ast.items.ptr(index);
+        if (item == nullptr) {
+            continue;
+        }
+        const std::optional<ItemDefinitionMetadata> metadata = item_definition_metadata(item->kind);
+        if (!metadata.has_value() || item->name != name) {
+            continue;
+        }
+        return make_definition(snapshot, *item, module, *metadata);
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<IdeTokenInfo> identifier_info_at_offset(
+    const IdeSnapshot& snapshot, const base::usize offset)
+{
+    std::optional<IdeTokenInfo> info = token_info_at_offset(snapshot, offset);
+    if (!info.has_value() || info->kind != syntax::TokenKind::identifier) {
+        return std::nullopt;
+    }
+    return info;
+}
+
+[[nodiscard]] bool same_range(const base::SourceRange lhs, const base::SourceRange rhs) noexcept
+{
+    return lhs.source.value == rhs.source.value && lhs.begin == rhs.begin && lhs.end == rhs.end;
+}
+
+[[nodiscard]] base::usize clamped_edit_probe_offset(
+    const std::string_view text, const base::usize begin, const base::usize removed_length) noexcept
+{
+    if (text.empty()) {
+        return 0U;
+    }
+    if (removed_length == 0U) {
+        return begin >= text.size() ? text.size() - 1U : begin;
+    }
+    return std::min(text.size(), begin + removed_length) - 1U;
+}
+
+[[nodiscard]] base::usize node_depth(const syntax::LosslessSyntaxTree& tree, syntax::LosslessNodeId node) noexcept
+{
+    base::usize depth = 0;
+    while (node != syntax::INVALID_LOSSLESS_NODE_ID) {
+        const syntax::LosslessNodeId parent = tree.parent(node);
+        if (parent == syntax::INVALID_LOSSLESS_NODE_ID) {
+            return depth;
+        }
+        node = parent;
+        ++depth;
+    }
+    return depth;
+}
+
+[[nodiscard]] syntax::LosslessNodeId parent_or_invalid(
+    const syntax::LosslessSyntaxTree& tree, const syntax::LosslessNodeId node) noexcept
+{
+    return tree.parent(node);
+}
+
+[[nodiscard]] syntax::LosslessNodeId common_ancestor(
+    const syntax::LosslessSyntaxTree& tree, syntax::LosslessNodeId lhs, syntax::LosslessNodeId rhs) noexcept
+{
+    base::usize lhs_depth = node_depth(tree, lhs);
+    base::usize rhs_depth = node_depth(tree, rhs);
+    while (lhs_depth > rhs_depth) {
+        lhs = parent_or_invalid(tree, lhs);
+        --lhs_depth;
+    }
+    while (rhs_depth > lhs_depth) {
+        rhs = parent_or_invalid(tree, rhs);
+        --rhs_depth;
+    }
+    while (lhs != rhs) {
+        lhs = parent_or_invalid(tree, lhs);
+        rhs = parent_or_invalid(tree, rhs);
+        if (lhs == syntax::INVALID_LOSSLESS_NODE_ID || rhs == syntax::INVALID_LOSSLESS_NODE_ID) {
+            return tree.root_id();
+        }
+    }
+    return lhs;
+}
+
+} // namespace
+
+IdeSnapshot build_ide_snapshot(const IdeSnapshotRequest& request)
+{
+    IdeSnapshot snapshot;
+    snapshot.source_id = snapshot.sources.add_source(request.path, request.text);
+    const query::FileKey file = ide_file_key(request);
+    if (const std::optional<query::QuerySourceStageKeys> keys =
+            query::query_source_stage_keys(file, query::QuerySourceStageMode::lossless_tooling)) {
+        snapshot.query.source_stage = *keys;
+    }
+
+    base::DiagnosticSink diagnostics;
+    lex::LexerOptions lexer_options;
+    lexer_options.emit_trivia_tokens = true;
+    lex::Lexer lexer(snapshot.source_id, snapshot.sources.text(snapshot.source_id), diagnostics, lexer_options);
+    auto token_result = lexer.tokenize();
+    std::vector<syntax::Token> tokens;
+    query::QueryResultFingerprint lex_result = {};
+    query::QueryResultFingerprint parse_result = {};
+    if (token_result) {
+        snapshot.lexed = true;
+        tokens.assign(token_result.value().begin(), token_result.value().end());
+        lex_result = lex_result_fingerprint(tokens, diagnostics.diagnostics());
+        snapshot.lossless = syntax::build_lossless_syntax_tree(tokens);
+        auto parsed = parse::lower_lossless_syntax_to_ast(snapshot.lossless, diagnostics);
+        if (parsed) {
+            snapshot.parsed = true;
+            snapshot.ast = parsed.take_value();
+            parse_result = parse_result_fingerprint(snapshot.lossless, snapshot.parsed, diagnostics.diagnostics());
+            sema::SemanticAnalyzer analyzer(snapshot.ast, diagnostics);
+            auto checked = analyzer.analyze();
+            if (checked) {
+                snapshot.checked_semantics = true;
+                snapshot.checked = checked.take_value();
+            }
+        } else {
+            parse_result = parse_result_fingerprint(snapshot.lossless, snapshot.parsed, diagnostics.diagnostics());
+        }
+    } else {
+        lex_result = lex_result_fingerprint(tokens, diagnostics.diagnostics());
+        snapshot.lossless = syntax::build_lossless_syntax_tree(std::span<const syntax::Token>{});
+        query::StableHashBuilder builder;
+        builder.mix_string(IDE_PARSE_RESULT_MARKER);
+        builder.mix_string(IDE_PARSE_SKIPPED_MARKER);
+        parse_result = query::query_result_fingerprint(builder.finish());
+    }
+    const query::QueryResultFingerprint diagnostic_result =
+        diagnostics_result_fingerprint(diagnostics.diagnostics(), snapshot.parsed, snapshot.checked_semantics);
+    evaluate_source_queries(snapshot, request.text, lex_result, parse_result, diagnostic_result);
+    snapshot.has_errors = diagnostics.has_error();
+    snapshot.diagnostics = collect_ide_diagnostics(snapshot.sources, diagnostics.diagnostics());
+    return snapshot;
+}
+
+std::optional<IdeTokenInfo> token_info_at_offset(const IdeSnapshot& snapshot, const base::usize offset)
+{
+    const syntax::Token* token = token_at_offset(snapshot, offset);
+    if (token == nullptr || !token_contains_offset(*token, offset)) {
+        return std::nullopt;
+    }
+    return make_token_info(snapshot, *token);
+}
+
+std::optional<IdeDefinition> definition_at_offset(const IdeSnapshot& snapshot, const base::usize offset)
+{
+    const std::optional<IdeTokenInfo> info = identifier_info_at_offset(snapshot, offset);
+    if (!info.has_value()) {
+        return std::nullopt;
+    }
+    return find_definition_for_identifier(snapshot, info->text);
+}
+
+std::vector<IdeReference> references_at_offset(const IdeSnapshot& snapshot, const base::usize offset)
+{
+    const std::optional<IdeTokenInfo> info = identifier_info_at_offset(snapshot, offset);
+    if (!info.has_value()) {
+        return {};
+    }
+
+    const std::optional<IdeDefinition> definition = find_definition_for_identifier(snapshot, info->text);
+    std::vector<IdeReference> references;
+    for (const syntax::Token& token : snapshot.lossless.tokens()) {
+        if (token.kind == syntax::TokenKind::identifier && token.text() == info->text) {
+            references.push_back(IdeReference{
+                token.range,
+                info->text,
+                definition.has_value() && same_range(token.range, definition->range),
+            });
+        }
+    }
+    return references;
+}
+
+std::optional<IdeHoverInfo> hover_at_offset(const IdeSnapshot& snapshot, const base::usize offset)
+{
+    std::optional<IdeTokenInfo> info = token_info_at_offset(snapshot, offset);
+    if (!info.has_value()) {
+        return std::nullopt;
+    }
+
+    IdeHoverInfo hover;
+    hover.range = info->range;
+    hover.valid = true;
+    if (info->kind == syntax::TokenKind::identifier) {
+        std::optional<IdeDefinition> definition = find_definition_for_identifier(snapshot, info->text);
+        std::ostringstream label;
+        label << IDE_HOVER_IDENTIFIER_PREFIX << '`' << info->text << '`';
+        if (definition.has_value()) {
+            label << " -> " << definition->kind;
+            hover.definition = definition;
+        }
+        hover.label = label.str();
+        return hover;
+    }
+
+    std::ostringstream label;
+    label << IDE_HOVER_TOKEN_PREFIX << syntax::token_kind_name(info->kind);
+    hover.label = label.str();
+    return hover;
+}
+
+IdeEditImpact edit_impact_for_range(
+    const IdeSnapshot& snapshot, const base::usize begin, const base::usize removed_length)
+{
+    const base::SourceFile& file = snapshot.sources.get(snapshot.source_id);
+    const std::string_view text = file.text();
+    syntax::LosslessNodeId begin_node = snapshot.lossless.node_at_offset(clamped_edit_probe_offset(text, begin, 0U));
+    syntax::LosslessNodeId end_node =
+        snapshot.lossless.node_at_offset(clamped_edit_probe_offset(text, begin, removed_length));
+
+    const syntax::LosslessNodeId node = common_ancestor(snapshot.lossless, begin_node, end_node);
+    const syntax::LosslessNode& current = *snapshot.lossless.node(node);
+    return IdeEditImpact{
+        node,
+        current.range,
+        snapshot.lossless.node_key(node),
+        current.first_token,
+        current.token_count,
+        true,
+    };
+}
+
+} // namespace aurex::tooling

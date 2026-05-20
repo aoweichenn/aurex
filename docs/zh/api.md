@@ -98,6 +98,37 @@ auto ast = parse::lower_lossless_syntax_to_ast(tree, diagnostics);
 区间、连续 token span 和 source range；`LosslessNodeKey` 提供以 kind/range/token
 span/depth 组成的稳定节点身份，用于 query、局部重解析和 IDE tooling 的上层索引。
 
+## C++ IDE Tooling 接口
+
+头文件：
+
+```cpp
+#include <aurex/tooling/ide.hpp>
+```
+
+核心 API：
+
+```cpp
+tooling::IdeSnapshotRequest request;
+request.path = "/workspace/main.ax";
+request.text = source_text;
+tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request);
+
+auto token = tooling::token_info_at_offset(snapshot, offset);
+auto hover = tooling::hover_at_offset(snapshot, offset);
+auto definition = tooling::definition_at_offset(snapshot, offset);
+std::vector<tooling::IdeReference> refs =
+    tooling::references_at_offset(snapshot, offset);
+tooling::IdeEditImpact impact =
+    tooling::edit_impact_for_range(snapshot, edit_begin, removed_length);
+```
+
+`IdeSnapshot` 面向内存 buffer：一次构建会保留 source manager、lossless syntax tree、
+AST、checked module、结构化 diagnostics，以及 file/lex/parse/diagnostics 的 query
+records 和 dependency edges。当前入口已覆盖 diagnostics、token/hover、顶层定义跳转、
+同名 identifier references 和编辑影响 node 选择；它是 LSP adapter 的数据源，不直接绑定
+LSP protocol。
+
 ## IR Pass 接口
 
 头文件：`include/aurex/ir/pass_pipeline.hpp`

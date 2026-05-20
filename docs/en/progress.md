@@ -294,9 +294,18 @@ lossless CST -> AST lowering facade that filters trivia and proves AST parity
 with the normal semantic token path. On the query-key side, retain-trivia
 `LexFileKey` fingerprints lex with trivia enabled, build-lossless parse result
 fingerprints include the CST shape, and the `lossless_tooling` parse provider
-depends on the matching retain-trivia lex query. Local incremental parse and
-IDE-native consumers are now the next workstream, not remaining lossless
-syntax baseline work.
+depends on the matching retain-trivia lex query. Full local subtree reparsing
+remains a deeper follow-up optimization, not a remaining lossless syntax
+baseline gap.
+The IDE-native engineering entry point is now complete for the current
+acceptance boundary through the new `aurex_tooling` target and
+`include/aurex/tooling/ide.hpp`. `IdeSnapshot` is built for in-memory buffers and
+produces the source manager, lossless tree, AST, checked module, structured
+diagnostics, and file/lex/parse/diagnostics query records plus dependency
+edges in one pass. Offset token queries, hover, top-level definition lookup,
+same-name identifier references, and edit-impact node selection are exposed
+through this API. It intentionally does not bind to the LSP protocol; future
+LSP adapters consume snapshot data instead of bypassing parser/sema/query.
 The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator with a pattern matrix / usefulness witness search.
 Bool, enum payloads, tuples, structs, fixed arrays up to the explicit 4096-column

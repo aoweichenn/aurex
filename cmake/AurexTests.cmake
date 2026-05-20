@@ -59,6 +59,7 @@ if(BUILD_TESTING)
         tests/gtest/frontend/lossless_syntax_tests.cpp
         tests/gtest/frontend/parser_tests.cpp
         tests/gtest/sema/sema_whitebox_tests.cpp
+        tests/gtest/tooling/ide_tooling_tests.cpp
     )
     target_link_libraries(aurex_frontend_tests PRIVATE
         GTest::gtest_main
@@ -66,6 +67,7 @@ if(BUILD_TESTING)
         aurex_lex
         aurex_parse
         aurex_sema
+        aurex_tooling
     )
     target_include_directories(aurex_frontend_tests PRIVATE
         tests
@@ -121,6 +123,7 @@ if(BUILD_TESTING)
             tests/gtest/sema/pattern_matching_tests.cpp
             tests/gtest/sema/sema_whitebox_tests.cpp
             tests/gtest/sema/type_alias_tests.cpp
+            tests/gtest/tooling/ide_tooling_tests.cpp
         )
         target_link_libraries(aurex_tests PRIVATE
             GTest::gtest_main
@@ -130,6 +133,7 @@ if(BUILD_TESTING)
             aurex_backend_llvm
             aurex_driver
             aurex_driver_llvm
+            aurex_tooling
         )
         target_include_directories(aurex_tests PRIVATE
             tests

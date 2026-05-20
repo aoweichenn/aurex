@@ -28,9 +28,15 @@ IDE-native-ready:
    parent/children/token-span traversal, stable node keys, structural
    validation, offset lookup, subtree source reconstruction, and lossless CST ->
    AST parser lowering. Retain-trivia lex fingerprints and build-lossless parse
-   fingerprints are wired. Local incremental parsing, diagnostics queries, and
-   LSP consumers must build on the existing query-key main path.
-4. Language / library expressiveness: newly added to the M2.5 roadmap as a
+   fingerprints are wired.
+4. IDE-native engineering entry points: complete for the current acceptance
+   boundary. `aurex_tooling` exposes an in-memory-buffer `IdeSnapshot` that
+   produces the lossless tree, AST, checked module, structured diagnostics,
+   file/lex/parse/diagnostics query records, and dependency edges. Offset token,
+   hover, top-level definition lookup, same-name identifier references, and
+   edit-impact node selection all go through this API. Future LSP adapters
+   should consume this layer instead of bypassing parser/sema/query.
+5. Language / library expressiveness: newly added to the M2.5 roadmap as a
    P0/P1 design-freeze track from the regex-class systems-library audit. It does
    not replace the query/lossless/IDE line or restart old std; only features
    that support stable keys, module boundaries, generic lowering, trait/static

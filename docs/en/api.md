@@ -107,6 +107,38 @@ records its parent, child range, contiguous token span, and source range.
 `LosslessNodeKey` provides a stable identity from kind/range/token span/depth
 for query, local reparse, and IDE tooling indexes.
 
+## C++ IDE Tooling API
+
+Header:
+
+```cpp
+#include <aurex/tooling/ide.hpp>
+```
+
+Core API:
+
+```cpp
+tooling::IdeSnapshotRequest request;
+request.path = "/workspace/main.ax";
+request.text = source_text;
+tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request);
+
+auto token = tooling::token_info_at_offset(snapshot, offset);
+auto hover = tooling::hover_at_offset(snapshot, offset);
+auto definition = tooling::definition_at_offset(snapshot, offset);
+std::vector<tooling::IdeReference> refs =
+    tooling::references_at_offset(snapshot, offset);
+tooling::IdeEditImpact impact =
+    tooling::edit_impact_for_range(snapshot, edit_begin, removed_length);
+```
+
+`IdeSnapshot` is built for in-memory buffers. A snapshot owns the source manager,
+lossless syntax tree, AST, checked module, structured diagnostics, and the
+file/lex/parse/diagnostics query records plus dependency edges. The current
+entry point covers diagnostics, token/hover queries, top-level definition
+lookup, same-name identifier references, and edit-impact node selection. It is
+the data source for an LSP adapter, not a direct dependency on the LSP protocol.
+
 ## IR Pass API
 
 Header: `include/aurex/ir/pass_pipeline.hpp`

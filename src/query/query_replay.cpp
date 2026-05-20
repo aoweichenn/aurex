@@ -143,6 +143,10 @@ QueryReplayIndex::QueryReplayIndex(QueryReplaySnapshot snapshot) : snapshot_(std
 
 bool QueryReplayIndex::rebuild_index()
 {
+    if (this->snapshot_.safety_mode != QueryReplaySafetyMode::immutable_snapshot) {
+        return false;
+    }
+
     this->index_by_key_.clear();
     this->index_by_node_id_.clear();
     this->dependents_by_dependency_.clear();
@@ -195,6 +199,12 @@ bool QueryReplayIndex::validate_edges() const
 
 bool QueryReplayIndex::validate_node_dependencies(const QueryReplayNode& node) const
 {
+    std::vector<QueryKey> sorted_dependencies = node.dependencies;
+    std::sort(sorted_dependencies.begin(), sorted_dependencies.end(), query_key_less);
+    if (std::adjacent_find(sorted_dependencies.begin(), sorted_dependencies.end()) != sorted_dependencies.end()) {
+        return false;
+    }
+
     for (const QueryKey dependency : node.dependencies) {
         const QueryDependencyEdge edge{
             node.key,

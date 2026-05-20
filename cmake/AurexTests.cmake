@@ -20,6 +20,7 @@ if(BUILD_TESTING)
 
     add_executable(aurex_query_tests
         tests/gtest/query/query_key_tests.cpp
+        tests/gtest/query/query_robustness_tests.cpp
     )
     target_link_libraries(aurex_query_tests PRIVATE
         GTest::gtest_main
@@ -108,6 +109,7 @@ if(BUILD_TESTING)
             tests/gtest/ir/pass_pipeline_tests.cpp
             tests/gtest/ir/type_table_tests.cpp
             tests/gtest/query/query_key_tests.cpp
+            tests/gtest/query/query_robustness_tests.cpp
             tests/gtest/sema/block_expression_tests.cpp
             tests/gtest/sema/error_handling_tests.cpp
             tests/gtest/sema/functions_tests.cpp

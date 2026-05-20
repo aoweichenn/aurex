@@ -80,8 +80,7 @@ query::ModuleKey SemanticAnalyzer::query_module_key(const syntax::ModuleId modul
 query::DefKey SemanticAnalyzer::generic_template_query_key(
     const GenericTemplateInfo& info, const query::DefNamespace name_space) const noexcept
 {
-    const std::array<std::string_view, 1> path{info.name.view()};
-    return query::def_key(this->query_module_key(info.module), name_space, query::DefKind::generic_template, path);
+    return query::def_key_from_stable_id(info.stable_id, name_space, query::DefKind::generic_template);
 }
 
 void SemanticAnalyzer::index_generic_param_query_keys(

@@ -116,6 +116,7 @@ constexpr std::string_view INCREMENTAL_CACHE_WRITE_OPEN_FAILED = "failed to open
 constexpr std::string_view INCREMENTAL_CACHE_WRITE_FAILED = "failed to write incremental cache file";
 constexpr std::string_view INCREMENTAL_CACHE_RENAME_FAILED = "failed to publish incremental cache file";
 constexpr std::string_view INCREMENTAL_CACHE_DIRECTORY_FAILED = "failed to create incremental cache directory";
+constexpr std::string_view INCREMENTAL_CACHE_QUERY_GRAPH_INVALID = "invalid incremental cache query dependency graph";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_DIFF = "incremental_cache.query_diff";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_PLAN = "incremental_cache.query_plan";
 constexpr std::string_view INCREMENTAL_CACHE_PROFILE_QUERY_PRUNING = "incremental_cache.query_pruning";
@@ -250,6 +251,7 @@ constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_TYPE_CHECK_BODY_RANK = 10
 constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_BODY_RANK = 11;
 constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_LOWER_FUNCTION_IR_RANK = 12;
 constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_DIAGNOSTICS_RANK = 13;
+constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_INVALID_RANK = std::numeric_limits<base::usize>::max();
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED = "disabled";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NONE = "none";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NO_CACHE = "no_cache";
@@ -932,10 +934,61 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return std::find(cache.query_edges.begin(), cache.query_edges.end(), edge) != cache.query_edges.end();
 }
 
+[[nodiscard]] base::usize query_kind_schedule_rank(const query::QueryKind kind) noexcept
+{
+    switch (kind) {
+        case query::QueryKind::file_content:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_FILE_CONTENT_RANK;
+        case query::QueryKind::lex_file:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_LEX_FILE_RANK;
+        case query::QueryKind::parse_file:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_PARSE_FILE_RANK;
+        case query::QueryKind::module_graph:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_GRAPH_RANK;
+        case query::QueryKind::item_list:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_LIST_RANK;
+        case query::QueryKind::module_exports:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_EXPORTS_RANK;
+        case query::QueryKind::item_signature:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_SIGNATURE_RANK;
+        case query::QueryKind::generic_template_signature:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_TEMPLATE_SIGNATURE_RANK;
+        case query::QueryKind::generic_instance_signature:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_SIGNATURE_RANK;
+        case query::QueryKind::function_body_syntax:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_FUNCTION_BODY_SYNTAX_RANK;
+        case query::QueryKind::type_check_body:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_TYPE_CHECK_BODY_RANK;
+        case query::QueryKind::generic_instance_body:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_BODY_RANK;
+        case query::QueryKind::lower_function_ir:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_LOWER_FUNCTION_IR_RANK;
+        case query::QueryKind::diagnostics:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_DIAGNOSTICS_RANK;
+        case query::QueryKind::invalid:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_INVALID_RANK;
+    }
+}
+
+[[nodiscard]] bool query_dependency_edge_schedule_is_valid(const query::QueryDependencyEdge edge) noexcept
+{
+    if (edge.dependent == edge.dependency) {
+        return false;
+    }
+
+    const base::usize dependent_rank = query_kind_schedule_rank(edge.dependent.kind);
+    const base::usize dependency_rank = query_kind_schedule_rank(edge.dependency.kind);
+    if (dependent_rank == INCREMENTAL_CACHE_QUERY_SCHEDULE_INVALID_RANK
+        || dependency_rank == INCREMENTAL_CACHE_QUERY_SCHEDULE_INVALID_RANK) {
+        return false;
+    }
+    return dependency_rank <= dependent_rank;
+}
+
 [[nodiscard]] bool push_parsed_query_dependency_edge(ParsedCache& cache, const query::QueryDependencyEdge edge)
 {
     if (!query::is_valid(edge.dependent) || !query::is_valid(edge.dependency)
-        || has_parsed_query_dependency_edge(cache, edge)) {
+        || !query_dependency_edge_schedule_is_valid(edge) || has_parsed_query_dependency_edge(cache, edge)) {
         return false;
     }
     cache.query_edges.push_back(edge);
@@ -1050,7 +1103,8 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 [[nodiscard]] bool parsed_cache_query_edges_resolve(const ParsedCache& cache) noexcept
 {
     for (const query::QueryDependencyEdge& edge : cache.query_edges) {
-        if (!parsed_query_record_exists(cache, edge.dependent)) {
+        if (!parsed_query_record_exists(cache, edge.dependent) || !parsed_query_record_exists(cache, edge.dependency)
+            || !query_dependency_edge_schedule_is_valid(edge)) {
             return false;
         }
     }
@@ -1081,44 +1135,10 @@ void append_hex_string(std::ostream& out, const std::string_view value)
         < std::tie(rhs.key.kind, rhs.key.global_id, rhs.result.global_id, rhs.stable_key_bytes);
 }
 
-[[nodiscard]] base::usize query_subject_schedule_rank(const QuerySubjectKind kind) noexcept
-{
-    switch (kind) {
-        case QuerySubjectKind::file_content:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_FILE_CONTENT_RANK;
-        case QuerySubjectKind::lex_file:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_LEX_FILE_RANK;
-        case QuerySubjectKind::parse_file:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_PARSE_FILE_RANK;
-        case QuerySubjectKind::module_graph:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_GRAPH_RANK;
-        case QuerySubjectKind::item_list:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_LIST_RANK;
-        case QuerySubjectKind::module_exports:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_EXPORTS_RANK;
-        case QuerySubjectKind::item_signature:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_SIGNATURE_RANK;
-        case QuerySubjectKind::generic_template_signature:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_TEMPLATE_SIGNATURE_RANK;
-        case QuerySubjectKind::generic_instance_signature:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_SIGNATURE_RANK;
-        case QuerySubjectKind::function_body_syntax:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_FUNCTION_BODY_SYNTAX_RANK;
-        case QuerySubjectKind::type_check_body:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_TYPE_CHECK_BODY_RANK;
-        case QuerySubjectKind::generic_instance_body:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_BODY_RANK;
-        case QuerySubjectKind::lower_function_ir:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_LOWER_FUNCTION_IR_RANK;
-        case QuerySubjectKind::diagnostics:
-            return INCREMENTAL_CACHE_QUERY_SCHEDULE_DIAGNOSTICS_RANK;
-    }
-}
-
 [[nodiscard]] bool query_subject_schedule_less(const QuerySubject& lhs, const QuerySubject& rhs) noexcept
 {
-    const base::usize lhs_rank = query_subject_schedule_rank(lhs.kind);
-    const base::usize rhs_rank = query_subject_schedule_rank(rhs.kind);
+    const base::usize lhs_rank = query_kind_schedule_rank(lhs.record.key.kind);
+    const base::usize rhs_rank = query_kind_schedule_rank(rhs.record.key.kind);
     if (lhs_rank != rhs_rank) {
         return lhs_rank < rhs_rank;
     }
@@ -2962,6 +2982,28 @@ void evaluate_recomputed_query_subjects(query::QueryContext& context, const Quer
     }
 }
 
+[[nodiscard]] bool query_record_key_exists(
+    const std::vector<query::QueryRecord>& records, const query::QueryKey key) noexcept
+{
+    for (const query::QueryRecord& record : records) {
+        if (record.key == key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] bool query_dependencies_exist_in_records(
+    const std::vector<query::QueryRecord>& records, const std::vector<query::QueryKey>& dependencies) noexcept
+{
+    for (const query::QueryKey dependency : dependencies) {
+        if (!query_record_key_exists(records, dependency)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] bool seed_reusable_query_subjects(query::QueryContext& context, const QuerySubjectCollection& collection,
     const QueryReuseEvaluation& evaluation, QueryProviderEvaluationStats& stats)
 {
@@ -2973,7 +3015,11 @@ void evaluate_recomputed_query_subjects(query::QueryContext& context, const Quer
         if (cached == nullptr) {
             return false;
         }
-        if (!context.seed_completed_record(*cached, evaluation.cached_context.dependencies_for(cached->key))) {
+        std::vector<query::QueryKey> dependencies = evaluation.cached_context.dependencies_for(cached->key);
+        if (!query_dependencies_exist_in_records(collection.records, dependencies)) {
+            return false;
+        }
+        if (!context.seed_completed_record(*cached, std::move(dependencies))) {
             return false;
         }
         increment_query_kind_count(stats.seeded, subject.kind);
@@ -2993,6 +3039,19 @@ void evaluate_recomputed_query_subjects(query::QueryContext& context, const Quer
         }
     }
     return records;
+}
+
+[[nodiscard]] bool query_collection_dependency_edges_are_closed_and_scheduled(
+    const QueryCollection& collection) noexcept
+{
+    for (const query::QueryDependencyEdge& edge : collection.dependency_edges) {
+        if (!query_dependency_edge_schedule_is_valid(edge)
+            || !query_record_key_exists(collection.records, edge.dependent)
+            || !query_record_key_exists(collection.records, edge.dependency)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 [[nodiscard]] QueryCollectionResult collect_queries_from_subjects(const QuerySubjectCollection& collection)
@@ -3256,6 +3315,10 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
         std::chrono::steady_clock::now() - query_provider_eval_started;
     record_query_provider_evaluation_summary(profiler, query_collection_result.stats, query_provider_eval_elapsed);
     const QueryCollection& query_collection = query_collection_result.collection;
+    if (!query_collection_dependency_edges_are_closed_and_scheduled(query_collection)) {
+        return base::Result<void>::fail(
+            {base::ErrorCode::internal_error, std::string(INCREMENTAL_CACHE_QUERY_GRAPH_INVALID)});
+    }
 
     const std::filesystem::path temporary_path = temporary_cache_path(cache_path);
     {

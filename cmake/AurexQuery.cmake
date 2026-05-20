@@ -3,6 +3,8 @@ add_library(aurex_query
     src/query/stable_identity.cpp
     src/query/query_key.cpp
     src/query/query_interner.cpp
+    src/query/query_executor.cpp
+    src/query/query_replay.cpp
     src/query/stable_key_decoder.cpp
     src/query/query_edge_verifier.cpp
     src/query/query_result.cpp

@@ -47,6 +47,27 @@ std::optional<QueryKey> parse_file_query_key(const ParseFileKey key) noexcept
     return query_key(QueryKind::parse_file, stable_key_fingerprint(key));
 }
 
+std::optional<QuerySourceStageKeys> query_source_stage_keys(
+    const FileKey file, const QuerySourceStageMode mode) noexcept
+{
+    if (!is_valid(file)) {
+        return std::nullopt;
+    }
+
+    const bool retain_trivia = mode == QuerySourceStageMode::lossless_tooling;
+    const bool build_lossless_tree = mode == QuerySourceStageMode::lossless_tooling;
+    const LexConfigKey lex_config = lex_config_key(retain_trivia);
+    const ParserConfigKey parser_config =
+        parser_config_key(lex_config, QUERY_PARSER_CONFIG_DEFAULT_ENABLE_RECOVERY, build_lossless_tree);
+    return QuerySourceStageKeys{
+        file,
+        lex_config,
+        parser_config,
+        lex_file_key(file, lex_config),
+        parse_file_key(file, parser_config),
+    };
+}
+
 bool is_valid(const FileContentProviderInput& input) noexcept
 {
     return is_valid(input.key) && is_valid(input.content);

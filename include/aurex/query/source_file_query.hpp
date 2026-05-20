@@ -7,6 +7,19 @@
 
 namespace aurex::query {
 
+enum class QuerySourceStageMode : base::u8 {
+    semantic,
+    lossless_tooling,
+};
+
+struct QuerySourceStageKeys {
+    FileKey file;
+    LexConfigKey lex_config;
+    ParserConfigKey parser_config;
+    LexFileKey lex_file;
+    ParseFileKey parse_file;
+};
+
 struct FileContentProviderInput {
     FileKey key;
     QueryResultFingerprint content;
@@ -43,6 +56,8 @@ struct ParseFileProviderOutput {
 [[nodiscard]] std::optional<QueryKey> file_content_query_key(FileKey key) noexcept;
 [[nodiscard]] std::optional<QueryKey> lex_file_query_key(LexFileKey key) noexcept;
 [[nodiscard]] std::optional<QueryKey> parse_file_query_key(ParseFileKey key) noexcept;
+[[nodiscard]] std::optional<QuerySourceStageKeys> query_source_stage_keys(
+    FileKey file, QuerySourceStageMode mode = QuerySourceStageMode::semantic) noexcept;
 [[nodiscard]] bool is_valid(const FileContentProviderInput& input) noexcept;
 [[nodiscard]] bool is_valid(const FileContentProviderOutput& output) noexcept;
 [[nodiscard]] bool is_valid(const LexFileProviderInput& input) noexcept;

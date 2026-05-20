@@ -11,7 +11,9 @@
 #include <aurex/query/module_graph_query.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_edge_verifier.hpp>
+#include <aurex/query/query_executor.hpp>
 #include <aurex/query/query_interner.hpp>
+#include <aurex/query/query_replay.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/query/query_reuse.hpp>
 #include <aurex/query/source_file_query.hpp>
@@ -398,6 +400,40 @@ TEST(QueryUnit, StableSemanticKeysSeparateFilesModulesDefinitionsAndBodies)
         query::query_key(query::QueryKind::item_signature, query::stable_key_fingerprint(function_def));
     EXPECT_TRUE(query::is_valid(signature_query));
     EXPECT_NE(query::debug_string(signature_query).find("QueryKey"), std::string::npos);
+}
+
+TEST(QueryUnit, QuerySourceStageKeysSeparateSemanticAndLosslessToolingModes)
+{
+    const QueryContextSourceSubject subject = test_source_subject();
+    const std::optional<query::QuerySourceStageKeys> semantic_keys = query::query_source_stage_keys(subject.file);
+    const std::optional<query::QuerySourceStageKeys> lossless_keys =
+        query::query_source_stage_keys(subject.file, query::QuerySourceStageMode::lossless_tooling);
+    ASSERT_TRUE(semantic_keys.has_value());
+    ASSERT_TRUE(lossless_keys.has_value());
+
+    EXPECT_FALSE(semantic_keys->lex_config.retain_trivia);
+    EXPECT_FALSE(semantic_keys->parser_config.build_lossless_tree);
+    EXPECT_TRUE(lossless_keys->lex_config.retain_trivia);
+    EXPECT_TRUE(lossless_keys->parser_config.build_lossless_tree);
+    EXPECT_EQ(semantic_keys->parser_config.lex_config, semantic_keys->lex_config);
+    EXPECT_EQ(lossless_keys->parser_config.lex_config, lossless_keys->lex_config);
+    EXPECT_EQ(semantic_keys->file, subject.file);
+    EXPECT_EQ(lossless_keys->file, subject.file);
+    EXPECT_NE(semantic_keys->lex_file, lossless_keys->lex_file);
+    EXPECT_NE(semantic_keys->parse_file, lossless_keys->parse_file);
+    EXPECT_EQ(semantic_keys->lex_file.file, subject.file);
+    EXPECT_EQ(lossless_keys->parse_file.file, subject.file);
+    EXPECT_FALSE(query::query_source_stage_keys(query::FileKey{}).has_value());
+
+    const query::FileKey local_buffer = query::file_key(
+        test_package(), "/workspace/root/regex/vm.ax", query::SourceRole::virtual_buffer, "ide-buffer:1");
+    const std::optional<query::QuerySourceStageKeys> local_lossless_keys =
+        query::query_source_stage_keys(local_buffer, query::QuerySourceStageMode::lossless_tooling);
+    ASSERT_TRUE(local_lossless_keys.has_value());
+    EXPECT_NE(local_lossless_keys->file, subject.file);
+    EXPECT_EQ(local_lossless_keys->lex_file.file, local_buffer);
+    EXPECT_EQ(local_lossless_keys->parse_file.file, local_buffer);
+    EXPECT_TRUE(local_lossless_keys->lex_config.retain_trivia);
 }
 
 TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
@@ -1389,6 +1425,201 @@ TEST(QueryUnit, QueryInternerAssignsNodeIdsAndBindsStableIdentities)
     EXPECT_FALSE(limited_interner.intern_record(*module_graph_record).has_value());
     EXPECT_EQ(limited_interner.size(), QUERY_TEST_LIMITED_INTERNER_CAPACITY);
     EXPECT_EQ(limited_interner.stable_identity_count(), QUERY_TEST_LIMITED_INTERNER_CAPACITY);
+}
+
+TEST(QueryUnit, QueryExecutorEvaluatesOwnedRequestsOnDemand)
+{
+    const QueryContextSourceSubject source_subject = test_source_subject();
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey template_def = test_template_def(module);
+    const std::array<std::string_view, 2> template_module_path{"regex", "vm"};
+    const query::IncrementalKey template_signature =
+        query::stable_incremental_key(query::stable_definition_id(query::stable_module_id(template_module_path),
+                                          query::StableSymbolKind::function, "ExecutorTemplate"),
+            QUERY_TEST_GENERIC_TEMPLATE_SIGNATURE);
+    const QueryContextItemSignatureSubject item_subject =
+        test_item_signature_subject("executor_compute", QUERY_TEST_PROVIDER_SIGNATURE);
+    const QueryContextGenericInstanceSignatureSubject generic_subject = test_generic_instance_signature_subject(
+        "ExecutorVec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const QueryContextBodySubject body_subject = test_body_subject("executor_body");
+    const std::optional<query::QueryKey> item_query = query::item_signature_query_key(item_subject.def);
+    ASSERT_TRUE(item_query.has_value());
+
+    query::QueryContext context;
+    query::QueryExecutor executor{context};
+    std::vector<query::QueryRequest> requests{
+        query::QueryRequest{query::FileContentProviderInput{source_subject.file, source_subject.content}},
+        query::QueryRequest{query::LexFileProviderInput{source_subject.lex_file, source_subject.tokens}},
+        query::QueryRequest{query::ParseFileProviderInput{source_subject.parse_file, source_subject.syntax}},
+        query::QueryRequest{query::ModuleGraphProviderInput{module, test_query_result(QUERY_TEST_MODULE_GRAPH)}},
+        query::QueryRequest{query::ItemListProviderInput{module, test_query_result(QUERY_TEST_ITEM_LIST)}},
+        query::QueryRequest{
+            query::ModuleExportsProviderInput{module, test_query_result(QUERY_TEST_MODULE_EXPORTS_SIGNATURE)}},
+        query::QueryRequest{item_subject.input},
+        query::QueryRequest{query::GenericTemplateSignatureProviderInput{template_def, template_signature}},
+        query::QueryRequest{
+            query::GenericInstanceSignatureQueryRequest{generic_subject.key, generic_subject.signature}},
+        query::QueryRequest{query::FunctionBodySyntaxProviderInput{body_subject.body, body_subject.syntax}},
+        query::QueryRequest{query::TypeCheckBodyProviderInput{body_subject.body, body_subject.checked_body}},
+        query::QueryRequest{query::GenericInstanceBodyQueryRequest{
+            generic_subject.key, test_query_result(QUERY_TEST_GENERIC_INSTANCE_BODY)}},
+        query::QueryRequest{query::LowerFunctionIRProviderInput{body_subject.body, body_subject.lowered_ir}},
+        query::QueryRequest{query::LowerGenericInstanceIRQueryRequest{generic_subject.key, body_subject.lowered_ir}},
+        query::QueryRequest{query::DiagnosticsProviderInput{*item_query, test_query_result(QUERY_TEST_DIAGNOSTICS)}},
+    };
+
+    for (const query::QueryRequest& request : requests) {
+        EXPECT_TRUE(query::query_request_key(request).has_value());
+    }
+    const query::QueryBatchExecutionResult computed = executor.evaluate_all(requests);
+    EXPECT_EQ(computed.results.size(), requests.size());
+    EXPECT_EQ(computed.summary.total, requests.size());
+    EXPECT_EQ(computed.summary.computed, requests.size());
+    EXPECT_EQ(computed.summary.cached, 0U);
+    EXPECT_EQ(computed.summary.failed, 0U);
+    EXPECT_EQ(computed.summary.cycles, 0U);
+    EXPECT_EQ(context.completed_records().size(), requests.size());
+
+    const query::QueryBatchExecutionResult cached = executor.evaluate_all(requests);
+    EXPECT_EQ(cached.summary.total, requests.size());
+    EXPECT_EQ(cached.summary.computed, 0U);
+    EXPECT_EQ(cached.summary.cached, requests.size());
+    EXPECT_EQ(cached.summary.failed, 0U);
+    EXPECT_EQ(cached.summary.cycles, 0U);
+
+    const query::QueryRequest invalid_request;
+    EXPECT_FALSE(query::query_request_key(invalid_request).has_value());
+    const query::QueryEvaluationResult invalid_result = executor.evaluate(invalid_request);
+    EXPECT_EQ(invalid_result.status, query::QueryEvaluationStatus::failed);
+    EXPECT_EQ(invalid_result.node, nullptr);
+    const std::array<query::QueryRequest, 1> invalid_requests{invalid_request};
+    const query::QueryBatchExecutionResult invalid_batch = executor.evaluate_all(invalid_requests);
+    EXPECT_EQ(invalid_batch.summary.total, 1U);
+    EXPECT_EQ(invalid_batch.summary.failed, 1U);
+}
+
+TEST(QueryUnit, QueryExecutorDoesNotEvaluateUnrequestedDependencies)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    base::usize module_graph_calls = 0;
+    base::usize item_list_calls = 0;
+    query::QueryContext context;
+    context.set_module_graph_provider([&module_graph_calls](const query::ModuleGraphProviderInput& input) {
+        ++module_graph_calls;
+        return query::provide_module_graph_query(input);
+    });
+    context.set_item_list_provider([&item_list_calls](const query::ItemListProviderInput& input) {
+        ++item_list_calls;
+        return query::provide_item_list_query(input);
+    });
+
+    query::QueryExecutor executor{context};
+    const query::QueryRequest item_list_request{
+        query::ItemListProviderInput{module, test_query_result(QUERY_TEST_ITEM_LIST)}};
+    const query::QueryEvaluationResult result = executor.evaluate(item_list_request);
+    EXPECT_EQ(result.status, query::QueryEvaluationStatus::computed);
+    EXPECT_EQ(item_list_calls, 1U);
+    EXPECT_EQ(module_graph_calls, 0U);
+
+    const std::optional<query::QueryKey> graph_key = query::module_graph_query_key(module);
+    ASSERT_TRUE(graph_key.has_value());
+    EXPECT_EQ(context.find(*graph_key), nullptr);
+    EXPECT_TRUE(context.node_id_for(*graph_key).has_value());
+}
+
+TEST(QueryUnit, QueryReplayIndexCapturesClosedImmutableGraph)
+{
+    const QueryContextSourceSubject subject = test_source_subject();
+    query::QueryContext context;
+    query::QueryExecutor executor{context};
+    const std::array<query::QueryRequest, 3> requests{
+        query::QueryRequest{query::FileContentProviderInput{subject.file, subject.content}},
+        query::QueryRequest{query::LexFileProviderInput{subject.lex_file, subject.tokens}},
+        query::QueryRequest{query::ParseFileProviderInput{subject.parse_file, subject.syntax}},
+    };
+    const query::QueryBatchExecutionResult result = executor.evaluate_all(requests);
+    EXPECT_EQ(result.summary.computed, requests.size());
+
+    const std::optional<query::QueryKey> content_key = query::file_content_query_key(subject.file);
+    const std::optional<query::QueryKey> lex_key = query::lex_file_query_key(subject.lex_file);
+    const std::optional<query::QueryKey> parse_key = query::parse_file_query_key(subject.parse_file);
+    ASSERT_TRUE(content_key.has_value());
+    ASSERT_TRUE(lex_key.has_value());
+    ASSERT_TRUE(parse_key.has_value());
+
+    const std::optional<query::QueryReplaySnapshot> snapshot = query::make_query_replay_snapshot(context);
+    ASSERT_TRUE(snapshot.has_value());
+    EXPECT_EQ(snapshot->safety_mode, query::QueryReplaySafetyMode::immutable_snapshot);
+    EXPECT_EQ(snapshot->nodes.size(), requests.size());
+    EXPECT_EQ(snapshot->edges.size(), 2U);
+
+    const std::optional<query::QueryReplayIndex> index = query::QueryReplayIndex::build(context);
+    ASSERT_TRUE(index.has_value());
+    EXPECT_FALSE(index->empty());
+    EXPECT_EQ(index->size(), requests.size());
+    EXPECT_EQ(index->snapshot().safety_mode, query::QueryReplaySafetyMode::immutable_snapshot);
+    EXPECT_EQ(index->snapshot().nodes.size(), requests.size());
+    EXPECT_NE(index->find(*content_key), nullptr);
+    EXPECT_NE(index->find(*lex_key), nullptr);
+    const query::QueryReplayNode* const parse_node = index->find(*parse_key);
+    ASSERT_NE(parse_node, nullptr);
+    ASSERT_TRUE(query::is_valid(parse_node->id));
+    EXPECT_EQ(index->find(parse_node->id), parse_node);
+    ASSERT_NE(index->record_for(*parse_key), nullptr);
+    EXPECT_EQ(index->record_for(*parse_key)->key, *parse_key);
+    EXPECT_EQ(index->dependencies_for(*parse_key), std::vector<query::QueryKey>{*lex_key});
+    EXPECT_EQ(index->dependents_of(*content_key), std::vector<query::QueryKey>{*lex_key});
+    EXPECT_TRUE(index->has_dependency(*parse_key, *lex_key));
+    EXPECT_TRUE(index->has_dependency(*lex_key, *content_key));
+    EXPECT_FALSE(index->has_dependency(*content_key, *lex_key));
+    EXPECT_FALSE(index->has_dependency(*parse_key, query::QueryKey{}));
+    EXPECT_EQ(index->find(query::QueryKey{}), nullptr);
+    EXPECT_EQ(index->find(query::QueryNodeId{}), nullptr);
+    EXPECT_EQ(index->record_for(query::QueryKey{}), nullptr);
+    EXPECT_TRUE(index->dependencies_for(query::QueryKey{}).empty());
+    EXPECT_TRUE(index->dependents_of(query::QueryKey{}).empty());
+
+    const std::optional<query::QueryReplayIndex> empty_index =
+        query::QueryReplayIndex::build(query::QueryReplaySnapshot{});
+    ASSERT_TRUE(empty_index.has_value());
+    EXPECT_TRUE(empty_index->empty());
+}
+
+TEST(QueryUnit, QueryReplayIndexRejectsMalformedSnapshots)
+{
+    const QueryContextSourceSubject subject = test_source_subject();
+    query::QueryContext context;
+    query::QueryExecutor executor{context};
+    const std::array<query::QueryRequest, 3> requests{
+        query::QueryRequest{query::FileContentProviderInput{subject.file, subject.content}},
+        query::QueryRequest{query::LexFileProviderInput{subject.lex_file, subject.tokens}},
+        query::QueryRequest{query::ParseFileProviderInput{subject.parse_file, subject.syntax}},
+    };
+    ASSERT_EQ(executor.evaluate_all(requests).summary.computed, requests.size());
+    const std::optional<query::QueryReplaySnapshot> snapshot = query::make_query_replay_snapshot(context);
+    ASSERT_TRUE(snapshot.has_value());
+
+    query::QueryReplaySnapshot duplicate_node = *snapshot;
+    duplicate_node.nodes.push_back(duplicate_node.nodes.front());
+    EXPECT_FALSE(query::QueryReplayIndex::build(std::move(duplicate_node)).has_value());
+
+    query::QueryReplaySnapshot malformed_record = *snapshot;
+    malformed_record.nodes.front().record = query::QueryRecord{};
+    EXPECT_FALSE(query::QueryReplayIndex::build(std::move(malformed_record)).has_value());
+
+    query::QueryReplaySnapshot duplicate_edge = *snapshot;
+    duplicate_edge.edges.push_back(duplicate_edge.edges.front());
+    EXPECT_FALSE(query::QueryReplayIndex::build(std::move(duplicate_edge)).has_value());
+
+    query::QueryReplaySnapshot missing_edge = *snapshot;
+    missing_edge.edges.clear();
+    EXPECT_FALSE(query::QueryReplayIndex::build(std::move(missing_edge)).has_value());
+
+    query::QueryReplaySnapshot missing_dependency_row = *snapshot;
+    missing_dependency_row.nodes.erase(missing_dependency_row.nodes.begin());
+    EXPECT_FALSE(query::QueryReplayIndex::build(std::move(missing_dependency_row)).has_value());
 }
 
 TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)

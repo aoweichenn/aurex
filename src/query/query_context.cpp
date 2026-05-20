@@ -39,6 +39,20 @@ namespace {
     return false;
 }
 
+[[nodiscard]] bool has_unexpected_dependency_kind(
+    const QueryKey dependent, const std::vector<QueryKey>& dependencies) noexcept
+{
+    for (const QueryKey dependency : dependencies) {
+        if (!query_dependency_edge_kind_is_expected(QueryDependencyEdge{
+                dependent,
+                dependency,
+            })) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void normalize_dependencies(std::vector<QueryKey>& dependencies)
 {
     std::sort(dependencies.begin(), dependencies.end(), query_key_less);
@@ -46,6 +60,46 @@ void normalize_dependencies(std::vector<QueryKey>& dependencies)
 }
 
 } // namespace
+
+bool query_dependency_edge_kind_is_expected(const QueryDependencyEdge edge) noexcept
+{
+    if (!is_valid(edge.dependent) || !is_valid(edge.dependency) || edge.dependent == edge.dependency) {
+        return false;
+    }
+
+    switch (edge.dependent.kind) {
+        case QueryKind::file_content:
+        case QueryKind::module_graph:
+        case QueryKind::function_body_syntax:
+            return false;
+        case QueryKind::lex_file:
+            return edge.dependency.kind == QueryKind::file_content;
+        case QueryKind::parse_file:
+            return edge.dependency.kind == QueryKind::lex_file;
+        case QueryKind::item_list:
+            return edge.dependency.kind == QueryKind::module_graph;
+        case QueryKind::module_exports:
+            return edge.dependency.kind == QueryKind::item_list;
+        case QueryKind::item_signature:
+            return edge.dependency.kind == QueryKind::module_exports;
+        case QueryKind::generic_template_signature:
+            return edge.dependency.kind == QueryKind::item_list;
+        case QueryKind::generic_instance_signature:
+            return edge.dependency.kind == QueryKind::generic_template_signature;
+        case QueryKind::type_check_body:
+            return edge.dependency.kind == QueryKind::function_body_syntax
+                || edge.dependency.kind == QueryKind::item_signature;
+        case QueryKind::generic_instance_body:
+            return edge.dependency.kind == QueryKind::generic_instance_signature;
+        case QueryKind::lower_function_ir:
+            return edge.dependency.kind == QueryKind::type_check_body
+                || edge.dependency.kind == QueryKind::generic_instance_body;
+        case QueryKind::diagnostics:
+            return edge.dependency.kind != QueryKind::diagnostics && edge.dependency.kind != QueryKind::invalid;
+        case QueryKind::invalid:
+            return false;
+    }
+}
 
 QueryContext::QueryContext()
     : QueryContext(ModuleGraphProvider{provide_module_graph_query}, ModuleExportsProvider{provide_module_exports_query},
@@ -241,11 +295,7 @@ QueryEvaluationResult QueryContext::evaluate_file_content(const FileContentProvi
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_lex_file(const LexFileProviderInput& input)
@@ -266,11 +316,7 @@ QueryEvaluationResult QueryContext::evaluate_lex_file(const LexFileProviderInput
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_parse_file(const ParseFileProviderInput& input)
@@ -291,11 +337,7 @@ QueryEvaluationResult QueryContext::evaluate_parse_file(const ParseFileProviderI
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_module_graph(const ModuleGraphProviderInput& input)
@@ -316,11 +358,7 @@ QueryEvaluationResult QueryContext::evaluate_module_graph(const ModuleGraphProvi
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_module_exports(const ModuleExportsProviderInput& input)
@@ -341,11 +379,7 @@ QueryEvaluationResult QueryContext::evaluate_module_exports(const ModuleExportsP
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_item_list(const ItemListProviderInput& input)
@@ -366,11 +400,7 @@ QueryEvaluationResult QueryContext::evaluate_item_list(const ItemListProviderInp
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_item_signature(const ItemSignatureProviderInput& input)
@@ -391,11 +421,7 @@ QueryEvaluationResult QueryContext::evaluate_item_signature(const ItemSignatureP
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_generic_template_signature(
@@ -417,11 +443,7 @@ QueryEvaluationResult QueryContext::evaluate_generic_template_signature(
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_generic_instance_signature(
@@ -444,11 +466,7 @@ QueryEvaluationResult QueryContext::evaluate_generic_instance_signature(
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_function_body_syntax(const FunctionBodySyntaxProviderInput& input)
@@ -469,11 +487,7 @@ QueryEvaluationResult QueryContext::evaluate_function_body_syntax(const Function
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_type_check_body(const TypeCheckBodyProviderInput& input)
@@ -494,11 +508,7 @@ QueryEvaluationResult QueryContext::evaluate_type_check_body(const TypeCheckBody
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_generic_instance_body(const GenericInstanceBodyProviderInput& input)
@@ -520,11 +530,7 @@ QueryEvaluationResult QueryContext::evaluate_generic_instance_body(const Generic
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_lower_function_ir(const LowerFunctionIRProviderInput& input)
@@ -545,11 +551,7 @@ QueryEvaluationResult QueryContext::evaluate_lower_function_ir(const LowerFuncti
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_lower_generic_instance_ir(const LowerGenericInstanceIRProviderInput& input)
@@ -571,11 +573,7 @@ QueryEvaluationResult QueryContext::evaluate_lower_generic_instance_ir(const Low
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 QueryEvaluationResult QueryContext::evaluate_diagnostics(const DiagnosticsProviderInput& input)
@@ -596,16 +594,13 @@ QueryEvaluationResult QueryContext::evaluate_diagnostics(const DiagnosticsProvid
         return this->fail_query(node);
     }
 
-    this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
-    return QueryEvaluationResult{
-        QueryEvaluationStatus::computed,
-        &node,
-    };
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
 }
 
 bool QueryContext::seed_completed_record(QueryRecord record, std::vector<QueryKey> dependencies)
 {
-    if (!is_valid(record) || has_invalid_dependency(dependencies)) {
+    if (!is_valid(record) || has_invalid_dependency(dependencies)
+        || has_unexpected_dependency_kind(record.key, dependencies)) {
         return false;
     }
 
@@ -615,8 +610,8 @@ bool QueryContext::seed_completed_record(QueryRecord record, std::vector<QueryKe
     }
 
     const QueryResultFingerprint result = record.result;
-    this->complete_query(node, std::move(record), result, std::move(dependencies));
-    return true;
+    return this->complete_query(node, std::move(record), result, std::move(dependencies)).status
+        == QueryEvaluationStatus::computed;
 }
 
 bool QueryContext::invalidate(const QueryKey key)
@@ -741,9 +736,13 @@ QueryContext::QueryEvaluationStart QueryContext::start_query(const QueryKey key)
     };
 }
 
-void QueryContext::complete_query(
+QueryEvaluationResult QueryContext::complete_query(
     QueryNode& node, QueryRecord record, const QueryResultFingerprint result, std::vector<QueryKey> dependencies)
 {
+    if (has_invalid_dependency(dependencies) || has_unexpected_dependency_kind(record.key, dependencies)) {
+        return this->fail_query(node);
+    }
+
     this->remove_dependency_edges(node);
     normalize_dependencies(dependencies);
     node.record = std::move(record);
@@ -751,6 +750,10 @@ void QueryContext::complete_query(
     node.dependencies = std::move(dependencies);
     node.status = QueryNodeStatus::done;
     this->add_dependency_edges(node);
+    return QueryEvaluationResult{
+        QueryEvaluationStatus::computed,
+        &node,
+    };
 }
 
 void QueryContext::remove_dependency_edges(QueryNode& node)

@@ -575,6 +575,45 @@ void expect_cache_query_kind_before(
     return std::nullopt;
 }
 
+[[nodiscard]] bool cache_test_query_edge_dependency_kind_is_expected(
+    const std::string_view dependent, const std::string_view dependency) noexcept
+{
+    if (dependent == CACHE_TEST_QUERY_LEX_FILE) {
+        return dependency == CACHE_TEST_QUERY_FILE_CONTENT;
+    }
+    if (dependent == CACHE_TEST_QUERY_PARSE_FILE) {
+        return dependency == CACHE_TEST_QUERY_LEX_FILE;
+    }
+    if (dependent == CACHE_TEST_QUERY_ITEM_LIST) {
+        return dependency == CACHE_TEST_QUERY_MODULE_GRAPH;
+    }
+    if (dependent == CACHE_TEST_QUERY_MODULE_EXPORTS) {
+        return dependency == CACHE_TEST_QUERY_ITEM_LIST;
+    }
+    if (dependent == CACHE_TEST_QUERY_ITEM_SIGNATURE) {
+        return dependency == CACHE_TEST_QUERY_MODULE_EXPORTS;
+    }
+    if (dependent == CACHE_TEST_QUERY_GENERIC_TEMPLATE_SIGNATURE) {
+        return dependency == CACHE_TEST_QUERY_ITEM_LIST;
+    }
+    if (dependent == CACHE_TEST_QUERY_GENERIC_INSTANCE_SIGNATURE) {
+        return dependency == CACHE_TEST_QUERY_GENERIC_TEMPLATE_SIGNATURE;
+    }
+    if (dependent == CACHE_TEST_QUERY_TYPE_CHECK_BODY) {
+        return dependency == CACHE_TEST_QUERY_FUNCTION_BODY_SYNTAX || dependency == CACHE_TEST_QUERY_ITEM_SIGNATURE;
+    }
+    if (dependent == CACHE_TEST_QUERY_GENERIC_INSTANCE_BODY) {
+        return dependency == CACHE_TEST_QUERY_GENERIC_INSTANCE_SIGNATURE;
+    }
+    if (dependent == CACHE_TEST_QUERY_LOWER_FUNCTION_IR) {
+        return dependency == CACHE_TEST_QUERY_TYPE_CHECK_BODY || dependency == CACHE_TEST_QUERY_GENERIC_INSTANCE_BODY;
+    }
+    if (dependent == CACHE_TEST_QUERY_DIAGNOSTICS) {
+        return !dependency.empty() && dependency != CACHE_TEST_QUERY_DIAGNOSTICS;
+    }
+    return false;
+}
+
 void expect_cache_query_edges_follow_dependency_schedule(const std::string_view cache_text)
 {
     base::usize edge_count = 0;
@@ -597,6 +636,11 @@ void expect_cache_query_edges_follow_dependency_schedule(const std::string_view 
             EXPECT_LE(*dependency_rank, *dependent_rank)
                 << fields[CACHE_TEST_QUERY_EDGE_DEPENDENCY_KIND_FIELD] << " should not be scheduled after "
                 << fields[CACHE_TEST_QUERY_EDGE_DEPENDENT_KIND_FIELD];
+            EXPECT_TRUE(
+                cache_test_query_edge_dependency_kind_is_expected(fields[CACHE_TEST_QUERY_EDGE_DEPENDENT_KIND_FIELD],
+                    fields[CACHE_TEST_QUERY_EDGE_DEPENDENCY_KIND_FIELD]))
+                << fields[CACHE_TEST_QUERY_EDGE_DEPENDENT_KIND_FIELD] << " should not depend on "
+                << fields[CACHE_TEST_QUERY_EDGE_DEPENDENCY_KIND_FIELD];
         }
         if (line_end == std::string_view::npos) {
             break;
@@ -1771,10 +1815,19 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
         generic_instance_key, query::query_result_fingerprint(expected_generic_incremental_key));
     ASSERT_TRUE(expected_generic_record.has_value());
     const std::string cached_query_text = read_text(cache);
+    const std::optional<CacheTestQueryResultFingerprint> expected_generic_diagnostics_result =
+        cache_test_query_result(cached_query_text, CACHE_TEST_QUERY_DIAGNOSTICS,
+            hex_encode_cache_test_field(query::stable_serialize(expected_generic_record->key)));
+    ASSERT_TRUE(expected_generic_diagnostics_result.has_value());
     const std::optional<CacheTestQueryResultFingerprint> expected_item_result =
         cache_test_query_result(cached_query_text, CACHE_TEST_QUERY_ITEM_SIGNATURE,
             hex_encode_cache_test_field(query::stable_serialize(expected_item_signature_key)));
     ASSERT_TRUE(expected_item_result.has_value());
+    const query::StableFingerprint128 expected_generic_diagnostics_result_fingerprint{
+        std::stoull(expected_generic_diagnostics_result->primary),
+        std::stoull(expected_generic_diagnostics_result->secondary),
+        static_cast<base::u32>(std::stoul(expected_generic_diagnostics_result->byte_count)),
+    };
     const query::StableFingerprint128 expected_item_result_fingerprint{
         std::stoull(expected_item_result->primary),
         std::stoull(expected_item_result->secondary),
@@ -1787,8 +1840,15 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
                 std::stoull(expected_item_result->global_id),
             });
     ASSERT_TRUE(expected_item_record.has_value());
+    const std::optional<query::QueryRecord> expected_generic_diagnostics_record =
+        query::diagnostics_query_record(expected_generic_record->key,
+            query::QueryResultFingerprint{
+                expected_generic_diagnostics_result_fingerprint,
+                std::stoull(expected_generic_diagnostics_result->global_id),
+            });
+    ASSERT_TRUE(expected_generic_diagnostics_record.has_value());
     const query::QueryDependencyEdge cached_only_edge{
-        expected_generic_record->key,
+        expected_generic_diagnostics_record->key,
         expected_item_record->key,
     };
     const std::string cached_only_edge_row = cache_test_query_edge_row(cached_only_edge);
@@ -1876,6 +1936,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_MODULE = "incremental_cache_query_edges";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_FUNCTION = "helper";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_EXPORTS_SIGNATURE = "edge-exports:v1";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_ITEM_LIST = "edge-item-list:v1";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_ITEM_SIGNATURE = "edge-item-signature:v1";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_UNKNOWN_KIND = "unknown_query";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_CHANGED_DETAIL =
@@ -1949,11 +2010,16 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
         query::def_key_from_stable_id(stable_id, query::DefNamespace::value, query::DefKind::function);
     const query::QueryResultFingerprint exports_result = query::query_result_fingerprint(
         sema::stable_incremental_key(stable_id, DRIVER_INCREMENTAL_CACHE_EDGE_EXPORTS_SIGNATURE));
+    const query::QueryResultFingerprint item_list_result =
+        query::query_result_fingerprint(query::stable_fingerprint(DRIVER_INCREMENTAL_CACHE_EDGE_ITEM_LIST));
     const query::QueryResultFingerprint item_result = query::query_result_fingerprint(
         sema::stable_incremental_key(stable_id, DRIVER_INCREMENTAL_CACHE_EDGE_ITEM_SIGNATURE));
+    const std::optional<query::QueryRecord> item_list_record =
+        query::item_list_query_record(module_key, item_list_result);
     const std::optional<query::QueryRecord> exports_record = query::query_record(query::QueryKind::module_exports,
         query::stable_key_fingerprint(module_key), query::stable_serialize(module_key), exports_result);
     const std::optional<query::QueryRecord> item_record = query::item_signature_query_record(def_key, item_result);
+    ASSERT_TRUE(item_list_record.has_value());
     ASSERT_TRUE(exports_record.has_value());
     ASSERT_TRUE(item_record.has_value());
 
@@ -2011,6 +2077,24 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
     backward_edge_cache += "query_edges\t1\n";
     backward_edge_cache += cache_test_query_edge_row(backward_edge);
     write_cache(backward_edge_cache);
+    expect_not_reused();
+
+    const query::QueryDependencyEdge unexpected_kind_edge{
+        item_record->key,
+        item_list_record->key,
+    };
+    std::string unexpected_kind_edge_cache = cache_test_header(canonical_source);
+    unexpected_kind_edge_cache += "sources\t1\n";
+    unexpected_kind_edge_cache += cache_test_source_row(canonical_source, DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE);
+    unexpected_kind_edge_cache += "modules\t0\n";
+    unexpected_kind_edge_cache += "definitions\t0\n";
+    unexpected_kind_edge_cache += "queries\t3\n";
+    unexpected_kind_edge_cache += cache_test_query_row(*item_list_record);
+    unexpected_kind_edge_cache += cache_test_query_row(*exports_record);
+    unexpected_kind_edge_cache += cache_test_query_row(*item_record);
+    unexpected_kind_edge_cache += "query_edges\t1\n";
+    unexpected_kind_edge_cache += cache_test_query_edge_row(unexpected_kind_edge);
+    write_cache(unexpected_kind_edge_cache);
     expect_not_reused();
 
     write_cache(edge_cache);

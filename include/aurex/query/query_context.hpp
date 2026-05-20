@@ -53,6 +53,8 @@ struct QueryDependencyEdge {
     [[nodiscard]] friend constexpr bool operator==(QueryDependencyEdge lhs, QueryDependencyEdge rhs) noexcept = default;
 };
 
+[[nodiscard]] bool query_dependency_edge_kind_is_expected(QueryDependencyEdge edge) noexcept;
+
 using ItemSignatureProvider =
     std::function<std::optional<ItemSignatureProviderOutput>(const ItemSignatureProviderInput&)>;
 using GenericInstanceSignatureProvider =
@@ -145,7 +147,7 @@ private:
     };
 
     [[nodiscard]] QueryEvaluationStart start_query(QueryKey key);
-    void complete_query(
+    [[nodiscard]] QueryEvaluationResult complete_query(
         QueryNode& node, QueryRecord record, QueryResultFingerprint result, std::vector<QueryKey> dependencies);
     void remove_dependency_edges(QueryNode& node);
     void add_dependency_edges(const QueryNode& node);

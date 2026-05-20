@@ -53,6 +53,39 @@ QUERY_CACHE_KIND_FIELD = 0
 QUERY_CACHE_QUERY_KIND_FIELD = 1
 QUERY_CACHE_RESULT_GLOBAL_FIELD = 7
 QUERY_CACHE_GENERIC_INSTANCE_KIND = "generic_instance_signature"
+QUERY_EDGE_CACHE_FIELD_COUNT = 13
+QUERY_EDGE_CACHE_HEADER = "query_edges"
+QUERY_EDGE_CACHE_KIND = "query_edge"
+QUERY_EDGE_DEPENDENT_KIND_FIELD = 1
+QUERY_EDGE_DEPENDENCY_KIND_FIELD = 7
+QUERY_DEPENDENCY_SCHEDULE = {
+    "file_content": 0,
+    "lex_file": 1,
+    "parse_file": 2,
+    "module_graph": 3,
+    "item_list": 4,
+    "module_exports": 5,
+    "item_signature": 6,
+    "generic_template_signature": 7,
+    "generic_instance_signature": 8,
+    "function_body_syntax": 9,
+    "type_check_body": 10,
+    "generic_instance_body": 11,
+    "lower_function_ir": 12,
+    "diagnostics": 13,
+}
+EXPECTED_QUERY_DEPENDENCY_KINDS = {
+    "lex_file": {"file_content"},
+    "parse_file": {"lex_file"},
+    "item_list": {"module_graph"},
+    "module_exports": {"item_list"},
+    "item_signature": {"module_exports"},
+    "generic_template_signature": {"item_list"},
+    "generic_instance_signature": {"generic_template_signature"},
+    "type_check_body": {"function_body_syntax", "item_signature"},
+    "generic_instance_body": {"generic_instance_signature"},
+    "lower_function_ir": {"type_check_body", "generic_instance_body"},
+}
 
 ALL_REUSE_SCENARIO = "all_reuse"
 BODY_RECOMPUTE_SCENARIO = "body_recompute"
@@ -146,6 +179,7 @@ class ScenarioResult:
     query_pruning_fields: dict[str, str]
     provider_eval_detail: str
     provider_eval_fields: dict[str, str]
+    query_edge_count: int
     source: str
 
 
@@ -251,6 +285,48 @@ def mutate_cached_query_result(cache_path: pathlib.Path) -> None:
         cache_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return
     raise RuntimeError(f"missing generic instance query record in cache: {cache_path}")
+
+
+def query_edge_kind_is_expected(dependent: str, dependency: str) -> bool:
+    if dependent == "diagnostics":
+        return bool(dependency) and dependency != "diagnostics"
+    return dependency in EXPECTED_QUERY_DEPENDENCY_KINDS.get(dependent, set())
+
+
+def validate_cache_query_edges(cache_path: pathlib.Path) -> int:
+    expected_count: int | None = None
+    edge_count = 0
+    for line_number, line in enumerate(cache_path.read_text(encoding="utf-8").splitlines(), start=1):
+        fields = line.split("\t")
+        if not fields:
+            continue
+        if fields[0] == QUERY_EDGE_CACHE_HEADER:
+            if len(fields) != 2:
+                raise RuntimeError(f"malformed query_edges header at {cache_path}:{line_number}: {line!r}")
+            expected_count = int(fields[1])
+            continue
+        if fields[0] != QUERY_EDGE_CACHE_KIND:
+            continue
+        if len(fields) != QUERY_EDGE_CACHE_FIELD_COUNT:
+            raise RuntimeError(f"malformed query_edge row at {cache_path}:{line_number}: {line!r}")
+        dependent = fields[QUERY_EDGE_DEPENDENT_KIND_FIELD]
+        dependency = fields[QUERY_EDGE_DEPENDENCY_KIND_FIELD]
+        dependent_rank = QUERY_DEPENDENCY_SCHEDULE.get(dependent)
+        dependency_rank = QUERY_DEPENDENCY_SCHEDULE.get(dependency)
+        if dependent_rank is None or dependency_rank is None:
+            raise RuntimeError(f"unknown query_edge kind at {cache_path}:{line_number}: {line!r}")
+        if dependency_rank > dependent_rank:
+            raise RuntimeError(f"backward query_edge schedule at {cache_path}:{line_number}: {line!r}")
+        if not query_edge_kind_is_expected(dependent, dependency):
+            raise RuntimeError(f"unexpected query_edge dependency kind at {cache_path}:{line_number}: {line!r}")
+        edge_count += 1
+    if expected_count is None:
+        raise RuntimeError(f"missing query_edges header in cache: {cache_path}")
+    if expected_count != edge_count:
+        raise RuntimeError(f"query_edges header mismatch in {cache_path}: expected {expected_count}, got {edge_count}")
+    if edge_count == 0:
+        raise RuntimeError(f"cache has no query dependency edges: {cache_path}")
+    return edge_count
 
 
 def parse_detail_fields(detail: str) -> dict[str, str]:
@@ -898,6 +974,7 @@ def run_scenario(function_count: int, scenario_name: str, source_variant: int) -
             f"{scenario_name}: {provider_eval_detail!r} != {verified_provider_eval_detail!r}"
         )
 
+    query_edge_count = validate_cache_query_edges(cache_path)
     source = source_path.read_text(encoding="utf-8")
     return ScenarioResult(
         name=scenario_name,
@@ -914,6 +991,7 @@ def run_scenario(function_count: int, scenario_name: str, source_variant: int) -
         query_pruning_fields=query_pruning_fields,
         provider_eval_detail=provider_eval_detail,
         provider_eval_fields=provider_eval_fields,
+        query_edge_count=query_edge_count,
         source=str(source_path),
     )
 
@@ -931,7 +1009,8 @@ def print_report(result: QueryPruningGateResult) -> None:
     for scenario in result.scenarios:
         print(
             f"{scenario.name}: diff={scenario.query_diff_detail}; plan={scenario.query_plan_detail}; "
-            f"pruning={scenario.query_pruning_detail}; provider_eval={scenario.provider_eval_detail}"
+            f"pruning={scenario.query_pruning_detail}; provider_eval={scenario.provider_eval_detail}; "
+            f"query_edges={scenario.query_edge_count}"
         )
     print(f"json: {OUTPUT_JSON}")
 

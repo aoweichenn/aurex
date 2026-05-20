@@ -985,10 +985,15 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return dependency_rank <= dependent_rank;
 }
 
+[[nodiscard]] bool query_dependency_edge_graph_is_valid(const query::QueryDependencyEdge edge) noexcept
+{
+    return query_dependency_edge_schedule_is_valid(edge) && query::query_dependency_edge_kind_is_expected(edge);
+}
+
 [[nodiscard]] bool push_parsed_query_dependency_edge(ParsedCache& cache, const query::QueryDependencyEdge edge)
 {
     if (!query::is_valid(edge.dependent) || !query::is_valid(edge.dependency)
-        || !query_dependency_edge_schedule_is_valid(edge) || has_parsed_query_dependency_edge(cache, edge)) {
+        || !query_dependency_edge_graph_is_valid(edge) || has_parsed_query_dependency_edge(cache, edge)) {
         return false;
     }
     cache.query_edges.push_back(edge);
@@ -1104,7 +1109,7 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 {
     for (const query::QueryDependencyEdge& edge : cache.query_edges) {
         if (!parsed_query_record_exists(cache, edge.dependent) || !parsed_query_record_exists(cache, edge.dependency)
-            || !query_dependency_edge_schedule_is_valid(edge)) {
+            || !query_dependency_edge_graph_is_valid(edge)) {
             return false;
         }
     }
@@ -3041,12 +3046,10 @@ void evaluate_recomputed_query_subjects(query::QueryContext& context, const Quer
     return records;
 }
 
-[[nodiscard]] bool query_collection_dependency_edges_are_closed_and_scheduled(
-    const QueryCollection& collection) noexcept
+[[nodiscard]] bool query_collection_dependency_edges_are_closed_and_valid(const QueryCollection& collection) noexcept
 {
     for (const query::QueryDependencyEdge& edge : collection.dependency_edges) {
-        if (!query_dependency_edge_schedule_is_valid(edge)
-            || !query_record_key_exists(collection.records, edge.dependent)
+        if (!query_dependency_edge_graph_is_valid(edge) || !query_record_key_exists(collection.records, edge.dependent)
             || !query_record_key_exists(collection.records, edge.dependency)) {
             return false;
         }
@@ -3315,7 +3318,7 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
         std::chrono::steady_clock::now() - query_provider_eval_started;
     record_query_provider_evaluation_summary(profiler, query_collection_result.stats, query_provider_eval_elapsed);
     const QueryCollection& query_collection = query_collection_result.collection;
-    if (!query_collection_dependency_edges_are_closed_and_scheduled(query_collection)) {
+    if (!query_collection_dependency_edges_are_closed_and_valid(query_collection)) {
         return base::Result<void>::fail(
             {base::ErrorCode::internal_error, std::string(INCREMENTAL_CACHE_QUERY_GRAPH_INVALID)});
     }

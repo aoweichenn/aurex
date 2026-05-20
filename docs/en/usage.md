@@ -43,9 +43,15 @@ build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 `--emit=exe` is the default mode. Native output from `--emit=asm`,
 `--emit=obj`, and `--emit=exe` requires `-o`. The driver-style `-S` and `-c`
 forms infer `input.s` and `input.o` when `-o` is omitted.
-`--emit=lossless` / `--dump-lossless` prints a lossless syntax token tree that
-preserves whitespace, line comments, and block comments for the future CST /
-GreenTree, local incremental parse, and IDE tooling path.
+`--emit=lossless` / `--dump-lossless` prints a structured lossless syntax tree
+that preserves whitespace, line comments, and block comments. The current dump
+has a `source_file` root with top-level declaration nodes such as
+`module_decl`, `import_decl`, and `function_decl`, direct trivia/eof token
+leaves, and delimiter groups such as `block`, `paren_group`, `bracket_group`,
+and `brace_group`. It can reconstruct the original source text; `token_stream`
+is now only the conservative fallback for non-monotonic hand-built token spans.
+Future parser lowering will deepen these CST / GreenTree grammar nodes for
+local incremental parse and IDE tooling.
 
 The command syntax stays clang-style and flat, but `--help` groups options into
 primary actions and secondary modifiers. Native backend modifiers such as

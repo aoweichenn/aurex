@@ -434,6 +434,29 @@ TEST(QueryUnit, QuerySourceStageKeysSeparateSemanticAndLosslessToolingModes)
     EXPECT_EQ(local_lossless_keys->lex_file.file, local_buffer);
     EXPECT_EQ(local_lossless_keys->parse_file.file, local_buffer);
     EXPECT_TRUE(local_lossless_keys->lex_config.retain_trivia);
+
+    const query::QueryResultFingerprint lossless_tokens = test_query_result("lex-file:tokens-with-trivia");
+    const query::QueryResultFingerprint lossless_syntax = test_query_result("parse-file:lossless-cst");
+    const std::optional<query::LexFileProviderOutput> lex_output =
+        query::provide_lex_file_query(query::LexFileProviderInput{lossless_keys->lex_file, lossless_tokens});
+    ASSERT_TRUE(lex_output.has_value());
+    EXPECT_EQ(lex_output->record.result, lossless_tokens);
+    ASSERT_EQ(lex_output->dependencies.size(), 1U);
+    const std::optional<query::QueryKey> content_query = query::file_content_query_key(subject.file);
+    ASSERT_TRUE(content_query.has_value());
+    EXPECT_EQ(lex_output->dependencies.front(), *content_query);
+
+    const std::optional<query::ParseFileProviderOutput> parse_output =
+        query::provide_parse_file_query(query::ParseFileProviderInput{lossless_keys->parse_file, lossless_syntax});
+    ASSERT_TRUE(parse_output.has_value());
+    EXPECT_EQ(parse_output->record.result, lossless_syntax);
+    ASSERT_EQ(parse_output->dependencies.size(), 1U);
+    const std::optional<query::QueryKey> lossless_lex_query = query::lex_file_query_key(lossless_keys->lex_file);
+    const std::optional<query::QueryKey> semantic_lex_query = query::lex_file_query_key(semantic_keys->lex_file);
+    ASSERT_TRUE(lossless_lex_query.has_value());
+    ASSERT_TRUE(semantic_lex_query.has_value());
+    EXPECT_EQ(parse_output->dependencies.front(), *lossless_lex_query);
+    EXPECT_NE(parse_output->dependencies.front(), *semantic_lex_query);
 }
 
 TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)

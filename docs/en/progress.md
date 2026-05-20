@@ -279,12 +279,20 @@ foundation covers stable keys, canonical type / generic-instance identity,
 red-green provider skip, profile events, query-graph fuzzing, sanitizer gates,
 and release/coverage gates. Future lossless syntax, IDE-native entry points,
 and advanced language features must reuse this main path.
-The first lossless-syntax slice has started: the lexer has opt-in trivia token
-emission while the default compile path still skips trivia; `LosslessSyntaxTree`
-stores the complete token sequence and can reconstruct the original source text;
-the CLI now exposes `--dump-lossless` / `--emit=lossless` to print a lossless
-syntax token tree that preserves whitespace, line comments, and block comments.
-Parser lowering from CST / GreenTree is the next step.
+The lossless-syntax baseline has moved forward: the lexer has opt-in trivia
+token emission while the default compile path still skips trivia;
+`LosslessSyntaxTree` now exposes structured node/element/token-leaf APIs, stores
+the complete token sequence, and can reconstruct the original source text. The
+dump shape has advanced beyond the raw token stream: `source_file` now contains
+top-level declaration nodes such as `module_decl`, `import_decl`, and
+`function_decl`, direct trivia/eof token leaves, and `block` /
+`paren_group` / `bracket_group` / `brace_group` delimiter nodes; `token_stream`
+remains only the conservative fallback for non-monotonic hand-built token spans.
+The CLI exposes `--dump-lossless` / `--emit=lossless` to print this tree while
+preserving whitespace, line comments, and block comments. On the query-key side,
+retain-trivia `LexFileKey` fingerprints now lex with trivia enabled, and the
+`lossless_tooling` parse provider depends on the matching retain-trivia lex
+query. Parser lowering into full CST / GreenTree grammar nodes is the next step.
 The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator with a pattern matrix / usefulness witness search.
 Bool, enum payloads, tuples, structs, fixed arrays up to the explicit 4096-column

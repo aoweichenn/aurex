@@ -42,7 +42,11 @@ build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 native 输出需要 `-o`。driver 风格的 `-S` 和 `-c` 在省略 `-o` 时会推导
 `input.s` 和 `input.o`。
 `--emit=lossless` / `--dump-lossless` 会输出保留空白、行注释和块注释的
-lossless syntax token tree，用于后续 CST / GreenTree、局部增量 parse 和 IDE tooling。
+结构化 lossless syntax tree。当前 dump 已有 `source_file` root、`module_decl` /
+`import_decl` / `function_decl` 等顶层声明节点、直接 trivia/eof token leaves，以及
+`block`、`paren_group`、`bracket_group`、`brace_group` 这类分隔符组节点，可重建原始源码文本；
+`token_stream` 现在只作为非单调手造 token span 的保守兜底。后续 parser lowering 会继续加深
+CST / GreenTree grammar 节点，用于局部增量 parse 和 IDE tooling。
 
 命令语法仍保持 clang 风格的扁平 flags，但 `--help` 会按一级动作选项和二级
 修饰选项分组。`--clang`、`--clang-arg` 这类 native backend 修饰选项只适用

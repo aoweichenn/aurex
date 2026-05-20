@@ -1314,6 +1314,10 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps)
     expect_contains_all(lossless,
         {
             "source_file",
+            "module_decl",
+            "function_decl",
+            "paren_group",
+            "block",
             "whitespace",
             "line_comment `// keep me`",
             "block_comment `/* block */`",

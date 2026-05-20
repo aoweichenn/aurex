@@ -23,7 +23,9 @@ Common options:
 - `--help`: print help.
 - `--version`: print compiler version.
 - `--dump-tokens` / `--emit=tokens`: print tokens.
-- `--dump-lossless` / `--emit=lossless`: print a lossless syntax token tree that preserves whitespace and comments.
+- `--dump-lossless` / `--emit=lossless`: print a structured lossless syntax tree that preserves whitespace and
+  comments; the current shape is a `source_file` root with declaration nodes, direct trivia/eof token leaves,
+  and `block` / delimiter-group nodes for future CST / GreenTree lowering.
 - `--dump-ast` / `--emit=ast`: print AST.
 - `--dump-modules` / `--emit=modules`: print resolved modules.
 - `--dump-checked` / `--emit=checked`: print checked module summary.

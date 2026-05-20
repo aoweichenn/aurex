@@ -1881,7 +1881,9 @@ void mix_token_stream_result(query::StableHashBuilder& builder, const std::span<
     builder.mix_bool(key.config.retain_trivia);
 
     base::DiagnosticSink diagnostics;
-    lex::Lexer lexer(file.id(), file.text(), diagnostics);
+    lex::LexerOptions lexer_options;
+    lexer_options.emit_trivia_tokens = key.config.retain_trivia;
+    lex::Lexer lexer(file.id(), file.text(), diagnostics, lexer_options);
     base::Result<lex::TokenBuffer> tokenize_result = lexer.tokenize();
     if (!tokenize_result) {
         builder.mix_string(INCREMENTAL_CACHE_LEX_FILE_ERROR_MARKER);

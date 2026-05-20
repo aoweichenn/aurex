@@ -303,9 +303,12 @@ acceptance boundary through the new `aurex_tooling` target and
 produces the source manager, lossless tree, AST, checked module, structured
 diagnostics, and file/lex/parse/diagnostics query records plus dependency
 edges in one pass. Offset token queries, hover, top-level definition lookup,
-same-name identifier references, and edit-impact node selection are exposed
-through this API. It intentionally does not bind to the LSP protocol; future
-LSP adapters consume snapshot data instead of bypassing parser/sema/query.
+same-name identifier references, checked-backed global lookup with AST fallback
+for local parameters and `let` bindings, and edit-impact node selection are
+exposed through this API. Diagnostics are converted to a structured event
+stream before CLI rendering or query fingerprinting. It intentionally does not
+bind to the LSP protocol; future LSP adapters consume snapshot data instead of
+bypassing parser/sema/query.
 The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator with a pattern matrix / usefulness witness search.
 Bool, enum payloads, tuples, structs, fixed arrays up to the explicit 4096-column

@@ -2382,14 +2382,35 @@ TEST(QueryUnit, DiagnosticsProviderBuildsRecordAndProducerDependency)
     const QueryContextBodySubject subject = test_body_subject();
     const std::optional<query::QueryKey> producer = query::type_check_body_query_key(subject.body);
     ASSERT_TRUE(producer.has_value());
-    const query::QueryResultFingerprint diagnostics =
-        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_DIAGNOSTICS));
+    base::DiagnosticSink sink;
+    sink.push(base::Diagnostic{
+        base::Severity::warning,
+        base::SourceRange{base::SourceId{1}, 4U, 9U},
+        "first wording",
+        base::DiagnosticCategory::type,
+        base::DiagnosticCode::semantic_type_mismatch,
+    });
+    sink.push(base::Diagnostic{
+        base::Severity::help,
+        base::SourceRange{base::SourceId{1}, 10U, 10U},
+        "second wording",
+        base::DiagnosticCategory::semantic,
+        base::DiagnosticCode::semantic_error,
+    });
+    const query::DiagnosticsEventStream events = query::diagnostic_events_from_sink(sink.diagnostics());
+    ASSERT_EQ(events.events.size(), 2U);
+    EXPECT_EQ(events.events[0].ordinal, 0U);
+    EXPECT_EQ(events.events[1].ordinal, 1U);
+    EXPECT_EQ(events.events[0].message, "first wording");
+    EXPECT_EQ(events.events[1].category, base::DiagnosticCategory::semantic);
+    const query::QueryResultFingerprint diagnostics = query::diagnostics_result_fingerprint(events.events);
     const std::optional<query::QueryKey> expected_key = query::diagnostics_query_key(*producer);
     ASSERT_TRUE(expected_key.has_value());
 
     const query::DiagnosticsProviderInput input{
         *producer,
         diagnostics,
+        events.events,
     };
     ASSERT_TRUE(query::is_valid(input));
     const std::optional<query::DiagnosticsProviderOutput> output = query::provide_diagnostics_query(input);
@@ -2401,6 +2422,15 @@ TEST(QueryUnit, DiagnosticsProviderBuildsRecordAndProducerDependency)
     EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(*producer));
     EXPECT_EQ(output->result, diagnostics);
     EXPECT_EQ(output->record.result, output->result);
+    ASSERT_EQ(output->stream.events.size(), events.events.size());
+    EXPECT_EQ(output->stream.events[0].message, events.events[0].message);
+    EXPECT_EQ(output->stream.events[1].range.begin, events.events[1].range.begin);
+
+    query::DiagnosticsEventStream reworded = events;
+    reworded.events[0].message = "changed wording";
+    EXPECT_EQ(query::diagnostics_result_fingerprint(reworded.events), diagnostics);
+    reworded.events[0].range.begin += 1U;
+    EXPECT_NE(query::diagnostics_result_fingerprint(reworded.events), diagnostics);
 
     EXPECT_FALSE(query::diagnostics_query_key(query::QueryKey{}).has_value());
     EXPECT_FALSE(query::diagnostics_query_key(*expected_key).has_value());
@@ -2417,6 +2447,10 @@ TEST(QueryUnit, DiagnosticsProviderBuildsRecordAndProducerDependency)
     query::DiagnosticsProviderOutput invalid_dependency_output = *output;
     invalid_dependency_output.dependencies.push_back(query::QueryKey{});
     EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::DiagnosticsProviderOutput invalid_event_order_output = *output;
+    invalid_event_order_output.stream.events[1].ordinal = 0U;
+    EXPECT_FALSE(query::is_valid(invalid_event_order_output));
 
     query::DiagnosticsProviderOutput mismatched_result_output = *output;
     mismatched_result_output.result =

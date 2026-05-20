@@ -6,6 +6,7 @@
 #include <aurex/query/query_edge_verifier.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/query/query_reuse.hpp>
+#include <aurex/syntax/ast.hpp>
 #include <aurex/syntax/lossless.hpp>
 
 #include <algorithm>
@@ -2267,6 +2268,31 @@ void push_item_list_signature_entry(std::vector<ItemListSignatureEntry>& entries
     return query::query_result_fingerprint(builder.finish());
 }
 
+[[nodiscard]] std::optional<base::SourceRange> function_signature_body_range(
+    const sema::FunctionSignature& signature, const syntax::AstModule& ast) noexcept
+{
+    const syntax::ItemId item = syntax::is_valid(signature.definition_item) ? signature.definition_item
+                                                                            : signature.prototype_item;
+    if (!syntax::is_valid(item) || item.value >= ast.items.size()) {
+        return std::nullopt;
+    }
+    const syntax::ItemNode* const node = ast.items.ptr(item.value);
+    if (node == nullptr || node->kind != syntax::ItemKind::fn_decl || !syntax::is_valid(node->body)
+        || node->body.value >= ast.stmts.size()) {
+        return std::nullopt;
+    }
+    return ast.stmts.range(node->body.value);
+}
+
+[[nodiscard]] std::optional<std::string_view> function_body_text(
+    const base::SourceManager& sources, const sema::FunctionSignature& signature, const syntax::AstModule& ast) noexcept
+{
+    if (const std::optional<base::SourceRange> body_range = function_signature_body_range(signature, ast)) {
+        return source_range_text(sources, *body_range);
+    }
+    return source_range_text(sources, signature.range);
+}
+
 [[nodiscard]] query::QueryResultFingerprint generic_instance_body_result_fingerprint(
     const query::GenericInstanceKey& key, const sema::IncrementalKey& signature_key, const std::string_view body_text)
 {
@@ -2452,7 +2478,7 @@ void push_lower_generic_instance_ir_query_subject(
 
 void push_function_body_query_subjects(std::vector<FunctionBodySyntaxQuerySubject>& syntax_subjects,
     std::vector<TypeCheckBodyQuerySubject>& type_check_subjects, const sema::FunctionSignature& signature,
-    const base::SourceManager& sources)
+    const base::SourceManager& sources, const syntax::AstModule* const ast)
 {
     if (!signature.has_definition || signature.has_conflict || !query::is_valid(signature.stable_id)
         || !query::is_valid(signature.incremental_key)) {
@@ -2462,7 +2488,8 @@ void push_function_body_query_subjects(std::vector<FunctionBodySyntaxQuerySubjec
     if (!query::is_valid(key)) {
         return;
     }
-    const std::optional<std::string_view> body_text = source_range_text(sources, signature.range);
+    const std::optional<std::string_view> body_text =
+        ast == nullptr ? source_range_text(sources, signature.range) : function_body_text(sources, signature, *ast);
     if (!body_text) {
         return;
     }
@@ -2980,13 +3007,13 @@ void collect_source_file_query_subjects(QuerySubjectCollection& collection, cons
 }
 
 void collect_function_body_query_subjects(const sema::CheckedModule& checked, const base::SourceManager& sources,
-    std::vector<FunctionBodySyntaxQuerySubject>& syntax_subjects,
+    const syntax::AstModule* const ast, std::vector<FunctionBodySyntaxQuerySubject>& syntax_subjects,
     std::vector<TypeCheckBodyQuerySubject>& type_check_subjects)
 {
     syntax_subjects.reserve(checked.functions.size());
     type_check_subjects.reserve(checked.functions.size());
     for (const auto& entry : checked.functions) {
-        push_function_body_query_subjects(syntax_subjects, type_check_subjects, entry.second, sources);
+        push_function_body_query_subjects(syntax_subjects, type_check_subjects, entry.second, sources, ast);
     }
 }
 
@@ -3006,7 +3033,8 @@ void collect_function_body_query_subjects(const sema::CheckedModule& checked, co
 }
 
 [[nodiscard]] QuerySubjectCollection collect_query_subjects(
-    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const base::SourceManager& sources)
+    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const base::SourceManager& sources,
+    const syntax::AstModule* const ast)
 {
     QuerySubjectCollection collection;
     collect_source_file_query_subjects(collection, sources);
@@ -3015,7 +3043,7 @@ void collect_function_body_query_subjects(const sema::CheckedModule& checked, co
     collection.module_exports = collect_module_exports_query_subjects(modules, checked);
     collection.item_signatures = collect_item_signature_query_subjects(checked);
     collect_function_body_query_subjects(
-        checked, sources, collection.function_body_syntaxes, collection.type_check_bodies);
+        checked, sources, ast, collection.function_body_syntaxes, collection.type_check_bodies);
     collection.generic_template_signatures = collect_generic_template_signature_query_subjects(checked);
     collection.generic_instance_signatures = collect_generic_instance_signature_query_subjects(checked);
     collection.generic_instance_bodies = collect_generic_instance_body_query_subjects(checked, sources);
@@ -3449,7 +3477,7 @@ base::Result<bool> try_reuse_incremental_check_cache(
 }
 
 base::Result<void> write_incremental_cache(const CompilerInvocation& invocation, const base::SourceManager& sources,
-    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked,
+    const std::span<const ModuleRecord> modules, const syntax::AstModule& ast, const sema::CheckedModule& checked,
     CompilationProfiler* const profiler)
 {
     if (invocation.incremental_cache_path.empty()) {
@@ -3471,7 +3499,7 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     const std::vector<SourceFingerprintRecord> source_records = collect_source_fingerprints(sources);
     const std::vector<ModuleRecord> module_records = sorted_modules(modules);
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
-    const QuerySubjectCollection query_subjects = collect_query_subjects(module_records, checked, sources);
+    const QuerySubjectCollection query_subjects = collect_query_subjects(module_records, checked, sources, &ast);
     const auto query_diff_started = std::chrono::steady_clock::now();
     const QueryReuseEvaluation query_reuse_evaluation =
         build_existing_query_reuse_evaluation(cache_path, query_subjects.records);
@@ -3547,6 +3575,14 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     }
 
     return publish_cache_file(temporary_path, cache_path);
+}
+
+base::Result<void> write_incremental_cache(const CompilerInvocation& invocation, const base::SourceManager& sources,
+    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked,
+    CompilationProfiler* const profiler)
+{
+    const syntax::AstModule empty_ast;
+    return write_incremental_cache(invocation, sources, modules, empty_ast, checked, profiler);
 }
 
 } // namespace aurex::driver

@@ -1,8 +1,23 @@
 #include <aurex/query/diagnostics_query.hpp>
 
+#include <aurex/query/stable_hash.hpp>
+
+#include <string_view>
 #include <utility>
 
 namespace aurex::query {
+namespace {
+
+constexpr std::string_view QUERY_DIAGNOSTICS_RESULT_MARKER = "query-diagnostics:v1";
+
+void mix_source_range(StableHashBuilder& builder, const base::SourceRange& range) noexcept
+{
+    builder.mix_u64(range.source.value);
+    builder.mix_u64(range.begin);
+    builder.mix_u64(range.end);
+}
+
+} // namespace
 
 std::optional<QueryKey> diagnostics_query_key(const QueryKey producer) noexcept
 {
@@ -10,6 +25,45 @@ std::optional<QueryKey> diagnostics_query_key(const QueryKey producer) noexcept
         return std::nullopt;
     }
     return query_key(QueryKind::diagnostics, stable_key_fingerprint(producer));
+}
+
+DiagnosticsEventStream diagnostic_events_from_sink(const std::span<const base::Diagnostic> diagnostics)
+{
+    DiagnosticsEventStream stream;
+    stream.events.reserve(diagnostics.size());
+    for (base::usize index = 0; index < diagnostics.size(); ++index) {
+        const base::Diagnostic& diagnostic = diagnostics[index];
+        stream.events.push_back(QueryDiagnosticEvent{
+            diagnostic.severity,
+            diagnostic.category,
+            diagnostic.code,
+            diagnostic.range,
+            diagnostic.message,
+            static_cast<base::u32>(index),
+        });
+    }
+    return stream;
+}
+
+QueryResultFingerprint diagnostics_result_fingerprint(
+    const std::span<const QueryDiagnosticEvent> events, const std::span<const std::string_view> context)
+{
+    StableHashBuilder builder;
+    builder.mix_string(QUERY_DIAGNOSTICS_RESULT_MARKER);
+    builder.mix_u64(context.size());
+    for (base::usize index = 0; index < context.size(); ++index) {
+        builder.mix_u64(index);
+        builder.mix_string(context[index]);
+    }
+    builder.mix_u64(events.size());
+    for (const QueryDiagnosticEvent& event : events) {
+        builder.mix_u64(event.ordinal);
+        builder.mix_u64(static_cast<base::u64>(event.severity));
+        builder.mix_u64(static_cast<base::u64>(event.category));
+        builder.mix_u64(static_cast<base::u64>(event.code));
+        mix_source_range(builder, event.range);
+    }
+    return query_result_fingerprint(builder.finish());
 }
 
 bool is_valid(const DiagnosticsProviderInput& input) noexcept
@@ -22,6 +76,12 @@ bool is_valid(const DiagnosticsProviderOutput& output) noexcept
     if (!is_valid(output.record) || !is_valid(output.result) || output.record.key.kind != QueryKind::diagnostics
         || output.record.result != output.result) {
         return false;
+    }
+    for (base::usize index = 0; index < output.stream.events.size(); ++index) {
+        const QueryDiagnosticEvent& event = output.stream.events[index];
+        if (event.ordinal != index || event.range.begin > event.range.end) {
+            return false;
+        }
     }
     for (const QueryKey dependency : output.dependencies) {
         if (!is_valid(dependency)) {
@@ -38,9 +98,12 @@ std::optional<DiagnosticsProviderOutput> provide_diagnostics_query(const Diagnos
     }
 
     std::optional<QueryRecord> record = diagnostics_query_record(input.producer, input.diagnostics);
+    DiagnosticsEventStream stream;
+    stream.events.assign(input.events.begin(), input.events.end());
     return DiagnosticsProviderOutput{
         std::move(*record),
         input.diagnostics,
+        std::move(stream),
         {input.producer},
     };
 }

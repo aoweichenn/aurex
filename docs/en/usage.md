@@ -55,7 +55,11 @@ node keys, supports deepest-node lookup by offset and subtree source
 reconstruction, and can enter the existing AST parser through
 `parse::lower_lossless_syntax_to_ast`. In-memory IDE consumers use
 `aurex/tooling/ide.hpp`, which reuses this lossless/query path for diagnostics,
-hover, definition lookup, references, and edit-impact node selection.
+hover, definition lookup, references, and edit-impact node selection. The
+snapshot now resolves checked-backed globals first and falls back to AST-local
+parameters and `let` bindings when checked data does not retain a symbol. The
+diagnostic path is also normalized through a structured event stream before CLI
+rendering or query fingerprinting.
 
 The command syntax stays clang-style and flat, but `--help` groups options into
 primary actions and secondary modifiers. Native backend modifiers such as

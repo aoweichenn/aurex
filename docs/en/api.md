@@ -136,8 +136,11 @@ tooling::IdeEditImpact impact =
 lossless syntax tree, AST, checked module, structured diagnostics, and the
 file/lex/parse/diagnostics query records plus dependency edges. The current
 entry point covers diagnostics, token/hover queries, top-level definition
-lookup, same-name identifier references, and edit-impact node selection. It is
-the data source for an LSP adapter, not a direct dependency on the LSP protocol.
+lookup, same-name identifier references, checked-backed globals with AST-local
+fallbacks for parameters and `let` bindings, and edit-impact node selection.
+Diagnostics are normalized into a structured event stream before query
+fingerprinting or CLI rendering. It is the data source for an LSP adapter, not
+a direct dependency on the LSP protocol.
 
 ## IR Pass API
 

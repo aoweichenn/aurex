@@ -11,6 +11,7 @@
 #include <aurex/ir/lower_ast.hpp>
 #include <aurex/ir/pass_pipeline.hpp>
 #include <aurex/lex/lexer.hpp>
+#include <aurex/query/diagnostics_query.hpp>
 #include <aurex/sema/sema.hpp>
 #include <aurex/syntax/ast_dump.hpp>
 #include <aurex/syntax/lossless.hpp>
@@ -173,19 +174,19 @@ void print_diagnostic_source_line(const base::SourceFile& file, const base::Sour
     std::cerr << "\n";
 }
 
-void print_diagnostic_source(const base::SourceFile& file, const base::Diagnostic& diagnostic, const bool color)
+void print_diagnostic_source(const base::SourceFile& file, const query::QueryDiagnosticEvent& event, const bool color)
 {
     const std::string_view text = file.text();
     if (text.empty()) {
         return;
     }
-    const base::usize span_begin = std::min(diagnostic.range.begin, text.size());
-    const base::usize span_end = diagnostic_span_end(diagnostic.range, text);
+    const base::usize span_begin = std::min(event.range.begin, text.size());
+    const base::usize span_end = diagnostic_span_end(event.range, text);
     base::usize line_offset = span_begin;
     base::usize printed_lines = 0;
     while (line_offset <= span_end && printed_lines < DRIVER_MAX_DIAGNOSTIC_SPAN_LINES) {
         const base::SourceLineExtent line = file.line_extent(line_offset);
-        print_diagnostic_source_line(file, diagnostic.range, line_offset, span_end, color);
+        print_diagnostic_source_line(file, event.range, line_offset, span_end, color);
         printed_lines += 1;
         if (span_end <= line.end || line.end >= text.size()) {
             return;
@@ -258,15 +259,15 @@ void print_json_range(const base::SourceFile& file, const base::SourceRange& ran
     std::cerr << "      }\n";
 }
 
-void print_json_diagnostics(const base::SourceManager& sources, const base::DiagnosticSink& diagnostics)
+void print_json_diagnostics(const base::SourceManager& sources, const query::DiagnosticsEventStream& diagnostics)
 {
-    const std::span<const base::Diagnostic> all = diagnostics.diagnostics();
+    const std::span<const query::QueryDiagnosticEvent> all = diagnostics.events;
     const base::usize count = std::min<base::usize>(all.size(), DRIVER_MAX_PRINTED_DIAGNOSTICS);
     std::cerr << "{\n";
     std::cerr << "  \"format\": \"aurex-diagnostics-v1\",\n";
     std::cerr << "  \"diagnostics\": [\n";
     for (base::usize index = 0; index < count; ++index) {
-        const base::Diagnostic& diagnostic = all[index];
+        const query::QueryDiagnosticEvent& diagnostic = all[index];
         const base::SourceFile& file = sources.get(diagnostic.range.source);
         std::cerr << "    {\n";
         std::cerr << "      ";
@@ -291,13 +292,13 @@ void print_json_diagnostics(const base::SourceManager& sources, const base::Diag
     std::cerr << "}\n";
 }
 
-void print_text_diagnostics(const base::SourceManager& sources, const base::DiagnosticSink& diagnostics)
+void print_text_diagnostics(const base::SourceManager& sources, const query::DiagnosticsEventStream& diagnostics)
 {
-    const std::span<const base::Diagnostic> all = diagnostics.diagnostics();
+    const std::span<const query::QueryDiagnosticEvent> all = diagnostics.events;
     const base::usize count = std::min<base::usize>(all.size(), DRIVER_MAX_PRINTED_DIAGNOSTICS);
     const bool color = diagnostic_color_enabled();
     for (base::usize index = 0; index < count; ++index) {
-        const base::Diagnostic& diagnostic = all[index];
+        const query::QueryDiagnosticEvent& diagnostic = all[index];
         const base::SourceFile& file = sources.get(diagnostic.range.source);
         const base::LineColumn location = file.line_column(diagnostic.range.begin);
         std::cerr << file.path() << ":" << location.line << ":" << location.column << ": ";
@@ -317,11 +318,12 @@ void print_diagnostics(
     if (diagnostics.diagnostics().empty()) {
         return;
     }
+    const query::DiagnosticsEventStream stream = query::diagnostic_events_from_sink(diagnostics.diagnostics());
     if (format == DiagnosticOutputFormat::json) {
-        print_json_diagnostics(sources, diagnostics);
+        print_json_diagnostics(sources, stream);
         return;
     }
-    print_text_diagnostics(sources, diagnostics);
+    print_text_diagnostics(sources, stream);
 }
 
 [[nodiscard]] base::Error remap_diagnostic_loader_error(const base::Error& error)
@@ -466,7 +468,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
     auto incremental_cache_result = [&] {
         ScopedCompilationPhase phase(run_profile.profiler(), "incremental_cache.write");
         return write_incremental_cache(
-            invocation, sources, loader.modules(), checked_result.value(), run_profile.profiler());
+            invocation, sources, loader.modules(), ast, checked_result.value(), run_profile.profiler());
     }();
     if (!incremental_cache_result) {
         return run_profile.finish(base::Result<void>::fail(incremental_cache_result.error()));

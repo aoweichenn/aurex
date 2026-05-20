@@ -1,6 +1,8 @@
 #include <aurex/lex/lexer.hpp>
 #include <aurex/parse/lossless_parse.hpp>
+#include <aurex/query/diagnostics_query.hpp>
 #include <aurex/query/stable_hash.hpp>
+#include <aurex/sema/function.hpp>
 #include <aurex/sema/sema.hpp>
 #include <aurex/tooling/ide.hpp>
 
@@ -9,7 +11,9 @@
 #include <optional>
 #include <span>
 #include <sstream>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace aurex::tooling {
 namespace {
@@ -22,11 +26,38 @@ constexpr std::string_view IDE_DIAGNOSTICS_RESULT_MARKER = "ide-diagnostics:v1";
 constexpr std::string_view IDE_PARSE_SKIPPED_MARKER = "parse-skipped";
 constexpr std::string_view IDE_HOVER_IDENTIFIER_PREFIX = "identifier ";
 constexpr std::string_view IDE_HOVER_TOKEN_PREFIX = "token ";
+constexpr std::string_view IDE_SYMBOL_KIND_ENUM_CASE = "enum_case";
+constexpr std::string_view IDE_SYMBOL_KIND_FUNCTION = "function";
+constexpr std::string_view IDE_SYMBOL_KIND_GENERIC_TEMPLATE = "generic_template";
+constexpr std::string_view IDE_SYMBOL_KIND_LOCAL = "local";
+constexpr std::string_view IDE_SYMBOL_KIND_METHOD = "method";
+constexpr std::string_view IDE_SYMBOL_KIND_OPAQUE_STRUCT = "opaque_struct";
+constexpr std::string_view IDE_SYMBOL_KIND_PARAMETER = "parameter";
+constexpr std::string_view IDE_SYMBOL_KIND_STRUCT = "struct";
+constexpr std::string_view IDE_SYMBOL_KIND_STRUCT_FIELD = "struct_field";
+constexpr std::string_view IDE_SYMBOL_KIND_TYPE_ALIAS = "type_alias";
 
 struct ItemDefinitionMetadata {
     query::DefNamespace namespace_ = query::DefNamespace::value;
     query::DefKind kind = query::DefKind::invalid;
     std::string_view label;
+};
+
+struct IdeSymbol {
+    query::DefKey key;
+    base::SourceRange range{};
+    base::SourceRange scope_range{};
+    std::string name;
+    std::string kind;
+    std::string detail;
+    bool local = false;
+    bool checked = false;
+};
+
+struct SymbolIndex {
+    std::vector<IdeSymbol> symbols;
+    std::unordered_map<std::string, std::vector<base::usize>> globals;
+    std::unordered_map<std::string, std::vector<base::usize>> locals;
 };
 
 [[nodiscard]] std::string_view package_identity_or_default(const IdeSnapshotRequest& request) noexcept
@@ -132,29 +163,22 @@ void mix_lossless_tree(query::StableHashBuilder& builder, const syntax::Lossless
 }
 
 [[nodiscard]] query::QueryResultFingerprint diagnostics_result_fingerprint(
-    const std::span<const base::Diagnostic> diagnostics, const bool parsed, const bool checked)
+    const std::span<const query::QueryDiagnosticEvent> events, const bool parsed, const bool checked)
 {
-    query::StableHashBuilder builder;
-    builder.mix_string(IDE_DIAGNOSTICS_RESULT_MARKER);
-    builder.mix_bool(parsed);
-    builder.mix_bool(checked);
-    builder.mix_u64(diagnostics.size());
-    for (const base::Diagnostic& diagnostic : diagnostics) {
-        builder.mix_u64(static_cast<base::u64>(diagnostic.severity));
-        builder.mix_u64(static_cast<base::u64>(diagnostic.category));
-        builder.mix_u64(static_cast<base::u64>(diagnostic.code));
-        mix_source_range(builder, diagnostic.range);
-        builder.mix_string(diagnostic.message);
-    }
-    return query::query_result_fingerprint(builder.finish());
+    const std::array<std::string_view, 3> context{
+        IDE_DIAGNOSTICS_RESULT_MARKER,
+        parsed ? "parsed" : "parse-failed",
+        checked ? "checked" : "check-failed",
+    };
+    return query::diagnostics_result_fingerprint(events, context);
 }
 
 [[nodiscard]] std::vector<IdeDiagnostic> collect_ide_diagnostics(
-    const base::SourceManager& sources, const std::span<const base::Diagnostic> diagnostics)
+    const base::SourceManager& sources, const query::DiagnosticsEventStream& diagnostics)
 {
     std::vector<IdeDiagnostic> result;
-    result.reserve(diagnostics.size());
-    for (const base::Diagnostic& diagnostic : diagnostics) {
+    result.reserve(diagnostics.events.size());
+    for (const query::QueryDiagnosticEvent& diagnostic : diagnostics.events) {
         const base::SourceFile& file = sources.get(diagnostic.range.source);
         result.push_back(IdeDiagnostic{
             diagnostic.severity,
@@ -172,7 +196,7 @@ void mix_lossless_tree(query::StableHashBuilder& builder, const syntax::Lossless
 
 void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view source_text,
     const query::QueryResultFingerprint lex_result, const query::QueryResultFingerprint parse_result,
-    const query::QueryResultFingerprint diagnostics_result)
+    const query::QueryResultFingerprint diagnostics_result, const query::DiagnosticsEventStream& diagnostics)
 {
     query::QueryContext context;
     const query::QueryResultFingerprint content_result = content_result_fingerprint(source_text);
@@ -193,6 +217,7 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
         static_cast<void>(context.evaluate_diagnostics(query::DiagnosticsProviderInput{
             *parse_query,
             diagnostics_result,
+            diagnostics.events,
         }));
     }
     snapshot.query.records = context.completed_records();
@@ -267,6 +292,42 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
     return item.range;
 }
 
+[[nodiscard]] base::SourceRange name_range_in_range(const syntax::LosslessSyntaxTree& tree,
+    const std::string_view name, const base::SourceRange fallback) noexcept
+{
+    for (const syntax::Token& token : tree.tokens()) {
+        if (token.kind == syntax::TokenKind::identifier && token.text() == name && fallback.begin <= token.range.begin
+            && token.range.end <= fallback.end) {
+            return token.range;
+        }
+    }
+    return fallback;
+}
+
+[[nodiscard]] base::SourceRange item_name_range(
+    const IdeSnapshot& snapshot, const syntax::ItemId item_id, const std::string_view name,
+    const base::SourceRange fallback) noexcept
+{
+    if (syntax::is_valid(item_id)) {
+        if (const syntax::ItemNode* const item = snapshot.ast.items.ptr(item_id.value); item != nullptr) {
+            return definition_name_range(snapshot.lossless, *item);
+        }
+    }
+    return name_range_in_range(snapshot.lossless, name, fallback);
+}
+
+[[nodiscard]] base::SourceRange first_item_name_range(
+    const IdeSnapshot& snapshot, const std::string_view name, const base::SourceRange fallback) noexcept
+{
+    for (base::usize index = 0; index < snapshot.ast.items.size(); ++index) {
+        const syntax::ItemNode* const item = snapshot.ast.items.ptr(index);
+        if (item != nullptr && item->name == name) {
+            return definition_name_range(snapshot.lossless, *item);
+        }
+    }
+    return name_range_in_range(snapshot.lossless, name, fallback);
+}
+
 [[nodiscard]] query::ModuleKey module_key_for_snapshot(const IdeSnapshot& snapshot)
 {
     std::vector<std::string_view> parts = snapshot.ast.module_path.parts;
@@ -276,39 +337,411 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
     return query::module_key(snapshot.query.source_stage.file.package, parts);
 }
 
-[[nodiscard]] IdeDefinition make_definition(const IdeSnapshot& snapshot, const syntax::ItemNode& item,
-    const query::ModuleKey module, const ItemDefinitionMetadata metadata)
+[[nodiscard]] bool range_contains_offset(const base::SourceRange range, const base::usize offset) noexcept
 {
-    const std::array<std::string_view, 1> path{item.name};
-    return IdeDefinition{
-        query::def_key(module, metadata.namespace_, metadata.kind, path),
-        definition_name_range(snapshot.lossless, item),
-        std::string(item.name),
-        std::string(metadata.label),
-        true,
-    };
+    if (range.empty()) {
+        return offset == range.begin;
+    }
+    return range.begin <= offset && offset < range.end;
 }
 
-[[nodiscard]] std::optional<IdeDefinition> find_definition_for_identifier(
-    const IdeSnapshot& snapshot, const std::string_view name)
+[[nodiscard]] bool range_contains_range(const base::SourceRange outer, const base::SourceRange inner) noexcept
 {
-    if (!snapshot.parsed) {
+    return outer.source.value == inner.source.value && outer.begin <= inner.begin && inner.end <= outer.end;
+}
+
+[[nodiscard]] query::DefKind symbol_kind_to_def_kind(const query::StableSymbolKind kind) noexcept
+{
+    switch (kind) {
+        case query::StableSymbolKind::function:
+            return query::DefKind::function;
+        case query::StableSymbolKind::method:
+            return query::DefKind::method;
+        case query::StableSymbolKind::value:
+            return query::DefKind::value;
+        case query::StableSymbolKind::type:
+            return query::DefKind::struct_;
+        case query::StableSymbolKind::enum_case:
+            return query::DefKind::enum_case;
+        case query::StableSymbolKind::struct_field:
+            return query::DefKind::struct_field;
+        case query::StableSymbolKind::generic_template:
+            return query::DefKind::generic_template;
+        case query::StableSymbolKind::synthetic:
+            return query::DefKind::synthetic;
+        case query::StableSymbolKind::invalid:
+            return query::DefKind::invalid;
+    }
+    return query::DefKind::invalid;
+}
+
+[[nodiscard]] query::DefKey symbol_def_key(const IdeSnapshot& snapshot, const query::StableDefId stable_id,
+    const query::DefNamespace name_space, const query::DefKind kind, const std::string_view fallback_name,
+    const base::SourceRange fallback_range) noexcept
+{
+    if (query::is_valid(stable_id)) {
+        return query::def_key_from_stable_id(stable_id, name_space, kind);
+    }
+    const std::array<std::string_view, 1> path{fallback_name};
+    return query::def_key(module_key_for_snapshot(snapshot), name_space, kind, path,
+        static_cast<base::u32>(fallback_range.begin));
+}
+
+[[nodiscard]] std::string function_detail(
+    const sema::CheckedModule& checked, const sema::FunctionSignature& signature)
+{
+    std::ostringstream label;
+    label << (signature.is_method ? IDE_SYMBOL_KIND_METHOD : IDE_SYMBOL_KIND_FUNCTION) << ' '
+          << sema::function_display_name(checked.types, signature) << '(';
+    for (base::usize index = 0; index < signature.param_types.size(); ++index) {
+        if (index != 0U) {
+            label << ", ";
+        }
+        label << checked.types.display_name(signature.param_types[index]);
+    }
+    label << ") -> " << checked.types.display_name(signature.return_type);
+    return label.str();
+}
+
+[[nodiscard]] std::string typed_detail(
+    const sema::CheckedModule& checked, const std::string_view kind, const std::string_view name,
+    const sema::TypeHandle type)
+{
+    std::ostringstream label;
+    label << kind << ' ' << name;
+    if (sema::is_valid(type)) {
+        label << ": " << checked.types.display_name(type);
+    }
+    return label.str();
+}
+
+void push_global_symbol(SymbolIndex& index, IdeSymbol symbol)
+{
+    const base::usize symbol_index = index.symbols.size();
+    const std::string name = symbol.name;
+    index.symbols.push_back(std::move(symbol));
+    index.globals[name].push_back(symbol_index);
+}
+
+void push_local_symbol(SymbolIndex& index, IdeSymbol symbol)
+{
+    const base::usize symbol_index = index.symbols.size();
+    const std::string name = symbol.name;
+    index.symbols.push_back(std::move(symbol));
+    index.locals[name].push_back(symbol_index);
+}
+
+void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index)
+{
+    for (const sema::GenericTemplateSignatureInfo& info : snapshot.checked.generic_template_signatures) {
+        const base::SourceRange range = first_item_name_range(
+            snapshot, info.name.view(), base::SourceRange{snapshot.source_id, 0U, 0U});
+        push_global_symbol(index,
+            IdeSymbol{
+                symbol_def_key(snapshot, info.stable_id, info.name_space, query::DefKind::generic_template,
+                    info.name.view(), range),
+                range,
+                range,
+                std::string(info.name.view()),
+                std::string(IDE_SYMBOL_KIND_GENERIC_TEMPLATE),
+                std::string(IDE_SYMBOL_KIND_GENERIC_TEMPLATE) + " " + std::string(info.name.view()),
+                false,
+                true,
+            });
+    }
+    for (const auto& entry : snapshot.checked.functions) {
+        const sema::FunctionSignature& signature = entry.second;
+        const query::DefKind kind = signature.is_method ? query::DefKind::method : query::DefKind::function;
+        const base::SourceRange range =
+            item_name_range(snapshot, signature.definition_item, signature.name.view(), signature.range);
+        push_global_symbol(index,
+            IdeSymbol{
+                symbol_def_key(snapshot, signature.stable_id, query::DefNamespace::value, kind,
+                    signature.name.view(), range),
+                range,
+                signature.range,
+                std::string(signature.name.view()),
+                std::string(signature.is_method ? IDE_SYMBOL_KIND_METHOD : IDE_SYMBOL_KIND_FUNCTION),
+                function_detail(snapshot.checked, signature),
+                false,
+                true,
+            });
+    }
+    for (const auto& entry : snapshot.checked.structs) {
+        const sema::StructInfo& info = entry.second;
+        const base::SourceRange range =
+            first_item_name_range(snapshot, info.name.view(), base::SourceRange{snapshot.source_id, 0U, 0U});
+        push_global_symbol(index,
+            IdeSymbol{
+                symbol_def_key(snapshot, info.stable_id, query::DefNamespace::type, query::DefKind::struct_,
+                    info.name.view(), range),
+                range,
+                range,
+                std::string(info.name.view()),
+                std::string(info.is_opaque ? IDE_SYMBOL_KIND_OPAQUE_STRUCT : IDE_SYMBOL_KIND_STRUCT),
+                typed_detail(snapshot.checked, info.is_opaque ? IDE_SYMBOL_KIND_OPAQUE_STRUCT : IDE_SYMBOL_KIND_STRUCT,
+                    info.name.view(), info.type),
+                false,
+                true,
+            });
+        for (const sema::StructFieldInfo& field : info.fields) {
+            const query::DefKind field_kind = symbol_kind_to_def_kind(field.stable_key.kind);
+            push_global_symbol(index,
+                IdeSymbol{
+                    symbol_def_key(snapshot, field.stable_key.owner, query::DefNamespace::member, field_kind,
+                        field.name.view(), field.range),
+                    name_range_in_range(snapshot.lossless, field.name.view(), field.range),
+                    range,
+                    std::string(field.name.view()),
+                    std::string(IDE_SYMBOL_KIND_STRUCT_FIELD),
+                    typed_detail(snapshot.checked, IDE_SYMBOL_KIND_STRUCT_FIELD, field.name.view(), field.type),
+                    false,
+                    true,
+                });
+        }
+    }
+    for (const auto& entry : snapshot.checked.enum_cases) {
+        const sema::EnumCaseInfo& info = entry.second;
+        const base::SourceRange range = name_range_in_range(snapshot.lossless, info.case_name.view(), info.range);
+        push_global_symbol(index,
+            IdeSymbol{
+                symbol_def_key(snapshot, info.stable_id, query::DefNamespace::value, query::DefKind::enum_case,
+                    info.case_name.view(), range),
+                range,
+                range,
+                std::string(info.case_name.view()),
+                std::string(IDE_SYMBOL_KIND_ENUM_CASE),
+                sema::enum_case_display_name(snapshot.checked.types, info),
+                false,
+                true,
+            });
+    }
+    for (const auto& entry : snapshot.checked.type_aliases) {
+        const sema::TypeAliasInfo& info = entry.second;
+        const base::SourceRange range = first_item_name_range(snapshot, info.name.view(), info.range);
+        push_global_symbol(index,
+            IdeSymbol{
+                symbol_def_key(snapshot, info.stable_id, query::DefNamespace::type, query::DefKind::type_alias,
+                    info.name.view(), range),
+                range,
+                range,
+                std::string(info.name.view()),
+                std::string(IDE_SYMBOL_KIND_TYPE_ALIAS),
+                std::string(IDE_SYMBOL_KIND_TYPE_ALIAS) + " " + std::string(info.name.view()),
+                false,
+                true,
+            });
+    }
+}
+
+void push_ast_global_symbol(const IdeSnapshot& snapshot, SymbolIndex& index, const syntax::ItemNode& item)
+{
+    const std::optional<ItemDefinitionMetadata> metadata = item_definition_metadata(item.kind);
+    if (!metadata.has_value() || item.name.empty()) {
+        return;
+    }
+    const std::array<std::string_view, 1> path{item.name};
+    push_global_symbol(index,
+        IdeSymbol{
+            query::def_key(module_key_for_snapshot(snapshot), metadata->namespace_, metadata->kind, path),
+            definition_name_range(snapshot.lossless, item),
+            item.range,
+            std::string(item.name),
+            std::string(metadata->label),
+            std::string(metadata->label) + " " + std::string(item.name),
+            false,
+            false,
+        });
+}
+
+[[nodiscard]] std::optional<sema::TypeHandle> checked_stmt_local_type(
+    const IdeSnapshot& snapshot, const syntax::StmtId stmt) noexcept
+{
+    if (!syntax::is_valid(stmt) || stmt.value >= snapshot.checked.stmt_local_types.size()) {
         return std::nullopt;
     }
+    const sema::TypeHandle type = snapshot.checked.stmt_local_types[stmt.value];
+    return sema::is_valid(type) ? std::optional<sema::TypeHandle>{type} : std::nullopt;
+}
 
-    const query::ModuleKey module = module_key_for_snapshot(snapshot);
-    for (base::usize index = 0; index < snapshot.ast.items.size(); ++index) {
-        const syntax::ItemNode* const item = snapshot.ast.items.ptr(index);
-        if (item == nullptr) {
-            continue;
-        }
-        const std::optional<ItemDefinitionMetadata> metadata = item_definition_metadata(item->kind);
-        if (!metadata.has_value() || item->name != name) {
-            continue;
-        }
-        return make_definition(snapshot, *item, module, *metadata);
+[[nodiscard]] std::optional<sema::TypeHandle> checked_syntax_type(
+    const IdeSnapshot& snapshot, const syntax::TypeId type) noexcept
+{
+    if (!syntax::is_valid(type) || type.value >= snapshot.checked.syntax_type_handles.size()) {
+        return std::nullopt;
     }
-    return std::nullopt;
+    const sema::TypeHandle handle = snapshot.checked.syntax_type_handles[type.value];
+    return sema::is_valid(handle) ? std::optional<sema::TypeHandle>{handle} : std::nullopt;
+}
+
+void push_parameter_symbols(const IdeSnapshot& snapshot, SymbolIndex& index, const syntax::ItemNode& function)
+{
+    for (const syntax::ParamDecl& param : function.params) {
+        const base::SourceRange range = name_range_in_range(snapshot.lossless, param.name, param.range);
+        std::string detail = std::string(IDE_SYMBOL_KIND_PARAMETER) + " " + std::string(param.name);
+        if (const std::optional<sema::TypeHandle> type = checked_syntax_type(snapshot, param.type)) {
+            detail += ": " + snapshot.checked.types.display_name(*type);
+        }
+        push_local_symbol(index,
+            IdeSymbol{
+                symbol_def_key(snapshot, {}, query::DefNamespace::value, query::DefKind::value, param.name, range),
+                range,
+                function.range,
+                std::string(param.name),
+                std::string(IDE_SYMBOL_KIND_PARAMETER),
+                std::move(detail),
+                true,
+                snapshot.checked_semantics,
+            });
+    }
+}
+
+void push_local_stmt_symbol(const IdeSnapshot& snapshot, SymbolIndex& index, const syntax::StmtNode& stmt,
+    const syntax::StmtId stmt_id, const base::SourceRange scope_range)
+{
+    if (stmt.name.empty()) {
+        return;
+    }
+    const base::SourceRange range = name_range_in_range(snapshot.lossless, stmt.name, stmt.range);
+    std::string detail = std::string(IDE_SYMBOL_KIND_LOCAL) + " " + std::string(stmt.name);
+    if (const std::optional<sema::TypeHandle> type = checked_stmt_local_type(snapshot, stmt_id)) {
+        detail += ": " + snapshot.checked.types.display_name(*type);
+    }
+    push_local_symbol(index,
+        IdeSymbol{
+            symbol_def_key(snapshot, {}, query::DefNamespace::value, query::DefKind::value, stmt.name, range),
+            range,
+            scope_range,
+            std::string(stmt.name),
+            std::string(IDE_SYMBOL_KIND_LOCAL),
+            std::move(detail),
+            true,
+            snapshot.checked_semantics,
+        });
+}
+
+void collect_local_symbols_from_function(
+    const IdeSnapshot& snapshot, SymbolIndex& index, const syntax::ItemNode& function)
+{
+    if (!syntax::is_valid(function.body)) {
+        return;
+    }
+    push_parameter_symbols(snapshot, index, function);
+
+    std::vector<syntax::StmtId> stack;
+    stack.push_back(function.body);
+    while (!stack.empty()) {
+        const syntax::StmtId stmt_id = stack.back();
+        stack.pop_back();
+        if (!syntax::is_valid(stmt_id) || stmt_id.value >= snapshot.ast.stmts.size()) {
+            continue;
+        }
+        const syntax::StmtNode stmt = snapshot.ast.stmts[stmt_id.value];
+        if (stmt.kind == syntax::StmtKind::let || stmt.kind == syntax::StmtKind::var
+            || stmt.kind == syntax::StmtKind::for_range) {
+            push_local_stmt_symbol(snapshot, index, stmt, stmt_id, function.range);
+        }
+        if (const syntax::AstArenaVector<syntax::StmtId>* statements =
+                snapshot.ast.stmts.block_statements(stmt_id.value)) {
+            for (base::usize statement_index = statements->size(); statement_index > 0U; --statement_index) {
+                stack.push_back((*statements)[statement_index - 1U]);
+            }
+        }
+        const std::array<syntax::StmtId, 6> children{
+            stmt.then_block,
+            stmt.else_block,
+            stmt.else_if,
+            stmt.body,
+            stmt.for_init,
+            stmt.for_update,
+        };
+        for (const syntax::StmtId child : children) {
+            if (syntax::is_valid(child)) {
+                stack.push_back(child);
+            }
+        }
+    }
+}
+
+[[nodiscard]] SymbolIndex build_symbol_index(const IdeSnapshot& snapshot)
+{
+    SymbolIndex index;
+    if (!snapshot.parsed) {
+        return index;
+    }
+    if (snapshot.checked_semantics) {
+        push_checked_global_symbols(snapshot, index);
+    }
+    for (base::usize item_index = 0; item_index < snapshot.ast.items.size(); ++item_index) {
+        const syntax::ItemNode* const item = snapshot.ast.items.ptr(item_index);
+        if (item != nullptr) {
+            push_ast_global_symbol(snapshot, index, *item);
+        }
+    }
+    for (base::usize item_index = 0; item_index < snapshot.ast.items.size(); ++item_index) {
+        const syntax::ItemNode* const item = snapshot.ast.items.ptr(item_index);
+        if (item != nullptr && item->kind == syntax::ItemKind::fn_decl) {
+            collect_local_symbols_from_function(snapshot, index, *item);
+        }
+    }
+    return index;
+}
+
+[[nodiscard]] const IdeSymbol* best_global_symbol(const SymbolIndex& index, const std::string_view name)
+{
+    const auto found = index.globals.find(std::string(name));
+    if (found == index.globals.end()) {
+        return nullptr;
+    }
+    for (const base::usize symbol_index : found->second) {
+        if (symbol_index < index.symbols.size()) {
+            return &index.symbols[symbol_index];
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] const IdeSymbol* best_local_symbol(
+    const SymbolIndex& index, const std::string_view name, const base::usize offset)
+{
+    const auto found = index.locals.find(std::string(name));
+    if (found == index.locals.end()) {
+        return nullptr;
+    }
+    const IdeSymbol* best = nullptr;
+    for (const base::usize symbol_index : found->second) {
+        if (symbol_index >= index.symbols.size()) {
+            continue;
+        }
+        const IdeSymbol& symbol = index.symbols[symbol_index];
+        if (!range_contains_offset(symbol.scope_range, offset) || symbol.range.begin > offset) {
+            continue;
+        }
+        if (best == nullptr || symbol.range.begin >= best->range.begin) {
+            best = &symbol;
+        }
+    }
+    return best;
+}
+
+[[nodiscard]] const IdeSymbol* best_symbol_for_identifier(
+    const SymbolIndex& index, const std::string_view name, const base::usize offset)
+{
+    if (const IdeSymbol* local = best_local_symbol(index, name, offset); local != nullptr) {
+        return local;
+    }
+    return best_global_symbol(index, name);
+}
+
+[[nodiscard]] IdeDefinition make_definition_from_symbol(const IdeSymbol& symbol)
+{
+    return IdeDefinition{
+        symbol.key,
+        symbol.range,
+        symbol.name,
+        symbol.kind,
+        true,
+    };
 }
 
 [[nodiscard]] std::optional<IdeTokenInfo> identifier_info_at_offset(
@@ -428,11 +861,13 @@ IdeSnapshot build_ide_snapshot(const IdeSnapshotRequest& request)
         builder.mix_string(IDE_PARSE_SKIPPED_MARKER);
         parse_result = query::query_result_fingerprint(builder.finish());
     }
+    const query::DiagnosticsEventStream diagnostic_stream =
+        query::diagnostic_events_from_sink(diagnostics.diagnostics());
     const query::QueryResultFingerprint diagnostic_result =
-        diagnostics_result_fingerprint(diagnostics.diagnostics(), snapshot.parsed, snapshot.checked_semantics);
-    evaluate_source_queries(snapshot, request.text, lex_result, parse_result, diagnostic_result);
+        diagnostics_result_fingerprint(diagnostic_stream.events, snapshot.parsed, snapshot.checked_semantics);
+    evaluate_source_queries(snapshot, request.text, lex_result, parse_result, diagnostic_result, diagnostic_stream);
     snapshot.has_errors = diagnostics.has_error();
-    snapshot.diagnostics = collect_ide_diagnostics(snapshot.sources, diagnostics.diagnostics());
+    snapshot.diagnostics = collect_ide_diagnostics(snapshot.sources, diagnostic_stream);
     return snapshot;
 }
 
@@ -451,7 +886,9 @@ std::optional<IdeDefinition> definition_at_offset(const IdeSnapshot& snapshot, c
     if (!info.has_value()) {
         return std::nullopt;
     }
-    return find_definition_for_identifier(snapshot, info->text);
+    const SymbolIndex index = build_symbol_index(snapshot);
+    const IdeSymbol* const symbol = best_symbol_for_identifier(index, info->text, offset);
+    return symbol == nullptr ? std::nullopt : std::optional<IdeDefinition>{make_definition_from_symbol(*symbol)};
 }
 
 std::vector<IdeReference> references_at_offset(const IdeSnapshot& snapshot, const base::usize offset)
@@ -461,14 +898,21 @@ std::vector<IdeReference> references_at_offset(const IdeSnapshot& snapshot, cons
         return {};
     }
 
-    const std::optional<IdeDefinition> definition = find_definition_for_identifier(snapshot, info->text);
+    const SymbolIndex index = build_symbol_index(snapshot);
+    const IdeSymbol* const symbol = best_symbol_for_identifier(index, info->text, offset);
     std::vector<IdeReference> references;
     for (const syntax::Token& token : snapshot.lossless.tokens()) {
-        if (token.kind == syntax::TokenKind::identifier && token.text() == info->text) {
+        if (token.kind != syntax::TokenKind::identifier || token.text() != info->text) {
+            continue;
+        }
+        if (symbol != nullptr && symbol->local && !range_contains_range(symbol->scope_range, token.range)) {
+            continue;
+        }
+        if (symbol == nullptr || best_symbol_for_identifier(index, token.text(), token.range.begin) == symbol) {
             references.push_back(IdeReference{
                 token.range,
                 info->text,
-                definition.has_value() && same_range(token.range, definition->range),
+                symbol != nullptr && same_range(token.range, symbol->range),
             });
         }
     }
@@ -486,12 +930,16 @@ std::optional<IdeHoverInfo> hover_at_offset(const IdeSnapshot& snapshot, const b
     hover.range = info->range;
     hover.valid = true;
     if (info->kind == syntax::TokenKind::identifier) {
-        std::optional<IdeDefinition> definition = find_definition_for_identifier(snapshot, info->text);
+        const SymbolIndex index = build_symbol_index(snapshot);
+        const IdeSymbol* const symbol = best_symbol_for_identifier(index, info->text, offset);
         std::ostringstream label;
         label << IDE_HOVER_IDENTIFIER_PREFIX << '`' << info->text << '`';
-        if (definition.has_value()) {
-            label << " -> " << definition->kind;
-            hover.definition = definition;
+        if (symbol != nullptr) {
+            label << " -> " << symbol->kind;
+            if (!symbol->detail.empty()) {
+                label << " (" << symbol->detail << ")";
+            }
+            hover.definition = make_definition_from_symbol(*symbol);
         }
         hover.label = label.str();
         return hover;

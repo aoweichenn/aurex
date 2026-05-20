@@ -198,6 +198,29 @@ TEST(CoreUnit, IdeToolingServesTokenHoverDefinitionReferencesAndEditImpact)
     ASSERT_TRUE(hover->definition.has_value());
     EXPECT_EQ(hover->definition->name, "add");
 
+    const base::usize parameter_offset = IDE_TOOLING_SOURCE.find("a: i32");
+    ASSERT_NE(parameter_offset, std::string_view::npos);
+    const std::optional<tooling::IdeDefinition> parameter_definition =
+        tooling::definition_at_offset(snapshot, parameter_offset);
+    ASSERT_TRUE(parameter_definition.has_value());
+    EXPECT_TRUE(parameter_definition->valid);
+    EXPECT_EQ(parameter_definition->name, "a");
+    EXPECT_EQ(parameter_definition->kind, "parameter");
+    EXPECT_EQ(IDE_TOOLING_SOURCE.substr(parameter_definition->range.begin, parameter_definition->range.length()), "a");
+    EXPECT_EQ(parameter_definition->key.kind, query::DefKind::value);
+
+    const std::vector<tooling::IdeReference> parameter_references = tooling::references_at_offset(snapshot, parameter_offset);
+    ASSERT_GE(parameter_references.size(), 2U);
+    EXPECT_TRUE(std::ranges::any_of(parameter_references, [](const tooling::IdeReference& reference) {
+        return reference.is_definition;
+    }));
+    const std::optional<tooling::IdeHoverInfo> parameter_hover = tooling::hover_at_offset(snapshot, parameter_offset);
+    ASSERT_TRUE(parameter_hover.has_value());
+    EXPECT_TRUE(parameter_hover->valid);
+    EXPECT_NE(parameter_hover->label.find("identifier `a` -> parameter"), std::string::npos);
+    ASSERT_TRUE(parameter_hover->definition.has_value());
+    EXPECT_EQ(parameter_hover->definition->name, "a");
+
     const base::usize edit_offset = IDE_TOOLING_SOURCE.find("return value");
     ASSERT_NE(edit_offset, std::string_view::npos);
     const tooling::IdeEditImpact impact =
@@ -205,6 +228,8 @@ TEST(CoreUnit, IdeToolingServesTokenHoverDefinitionReferencesAndEditImpact)
     EXPECT_TRUE(impact.valid);
     EXPECT_TRUE(impact.node_key.has_value());
     EXPECT_GT(impact.token_count, 0U);
+    EXPECT_EQ(impact.node, snapshot.lossless.node_at_offset(edit_offset));
+    EXPECT_NE(impact.node, snapshot.lossless.root_id());
     EXPECT_LE(impact.range.begin, edit_offset);
     EXPECT_GT(impact.range.end, edit_offset);
 }
@@ -232,15 +257,27 @@ TEST(CoreUnit, IdeToolingReportsKeywordTriviaUndefinedReferenceAndCrossNodeEdit)
 
     const base::usize local_value_offset = IDE_TOOLING_SOURCE.find("value =");
     ASSERT_NE(local_value_offset, std::string_view::npos);
-    EXPECT_FALSE(tooling::definition_at_offset(snapshot, local_value_offset).has_value());
+    const std::optional<tooling::IdeDefinition> local_definition =
+        tooling::definition_at_offset(snapshot, local_value_offset);
+    ASSERT_TRUE(local_definition.has_value());
+    EXPECT_TRUE(local_definition->valid);
+    EXPECT_EQ(local_definition->name, "value");
+    EXPECT_EQ(local_definition->kind, "local");
+    EXPECT_EQ(IDE_TOOLING_SOURCE.substr(local_definition->range.begin, local_definition->range.length()), "value");
     const std::optional<tooling::IdeHoverInfo> local_hover = tooling::hover_at_offset(snapshot, local_value_offset);
     ASSERT_TRUE(local_hover.has_value());
-    EXPECT_EQ(local_hover->label.find("->"), std::string::npos);
+    EXPECT_TRUE(local_hover->valid);
+    EXPECT_NE(local_hover->label.find("identifier `value` -> local"), std::string::npos);
+    ASSERT_TRUE(local_hover->definition.has_value());
+    EXPECT_EQ(local_hover->definition->name, "value");
     const std::vector<tooling::IdeReference> local_references =
         tooling::references_at_offset(snapshot, local_value_offset);
     ASSERT_GE(local_references.size(), 2U);
-    EXPECT_TRUE(std::ranges::none_of(local_references, [](const tooling::IdeReference& reference) {
+    EXPECT_TRUE(std::ranges::any_of(local_references, [](const tooling::IdeReference& reference) {
         return reference.is_definition;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(local_references, [](const tooling::IdeReference& reference) {
+        return !reference.is_definition;
     }));
 
     const base::usize first_function_offset = IDE_TOOLING_SOURCE.find("fn add");

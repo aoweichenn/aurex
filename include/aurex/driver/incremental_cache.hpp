@@ -5,6 +5,7 @@
 #include <aurex/driver/invocation.hpp>
 #include <aurex/driver/module_loader.hpp>
 #include <aurex/sema/checked_module.hpp>
+#include <aurex/syntax/ast.hpp>
 
 #include <span>
 
@@ -18,5 +19,9 @@ class CompilationProfiler;
 [[nodiscard]] base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     const base::SourceManager& sources, std::span<const ModuleRecord> modules, const sema::CheckedModule& checked,
     CompilationProfiler* profiler = nullptr);
+
+[[nodiscard]] base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
+    const base::SourceManager& sources, std::span<const ModuleRecord> modules, const syntax::AstModule& ast,
+    const sema::CheckedModule& checked, CompilationProfiler* profiler = nullptr);
 
 } // namespace aurex::driver

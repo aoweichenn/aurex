@@ -2,7 +2,7 @@
 """Query pruning provider-skip gate for Aurex incremental cache.
 
 This gate builds a compact module, writes an incremental cache, then rewrites
-the cache under `--experimental-query-pruning` in three scenarios:
+the cache through the default query-key pruning path in three scenarios:
 
 1. all-reuse: the source is unchanged, so every query provider should be seeded
    from cache and zero providers should run.
@@ -1547,7 +1547,6 @@ def run_scenario(function_count: int, scenario_name: str, source_variant: int) -
             "--emit=checked",
             "--incremental-cache",
             str(cache_path),
-            "--experimental-query-pruning",
             "--profile-output",
             str(profile_path),
             str(source_path),

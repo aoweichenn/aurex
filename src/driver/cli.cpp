@@ -77,7 +77,8 @@ enum class OptionEffectKind {
     set_output_path,
     append_import_path,
     set_incremental_cache_path,
-    enable_experimental_query_pruning,
+    enable_query_pruning,
+    disable_query_pruning,
     set_profile_output_path,
     set_clang_path,
     append_clang_arg,
@@ -192,8 +193,8 @@ inline constexpr OptionEffect CLI_EFFECT_PARSE_EMIT_KIND{
 inline constexpr OptionEffect CLI_EFFECT_SET_OUTPUT_PATH{OptionEffectKind::set_output_path};
 inline constexpr OptionEffect CLI_EFFECT_APPEND_IMPORT_PATH{OptionEffectKind::append_import_path};
 inline constexpr OptionEffect CLI_EFFECT_SET_INCREMENTAL_CACHE_PATH{OptionEffectKind::set_incremental_cache_path};
-inline constexpr OptionEffect CLI_EFFECT_ENABLE_EXPERIMENTAL_QUERY_PRUNING{
-    OptionEffectKind::enable_experimental_query_pruning};
+inline constexpr OptionEffect CLI_EFFECT_ENABLE_QUERY_PRUNING{OptionEffectKind::enable_query_pruning};
+inline constexpr OptionEffect CLI_EFFECT_DISABLE_QUERY_PRUNING{OptionEffectKind::disable_query_pruning};
 inline constexpr OptionEffect CLI_EFFECT_SET_PROFILE_OUTPUT_PATH{OptionEffectKind::set_profile_output_path};
 inline constexpr OptionEffect CLI_EFFECT_SET_CLANG_PATH{OptionEffectKind::set_clang_path};
 inline constexpr OptionEffect CLI_EFFECT_APPEND_CLANG_ARG{OptionEffectKind::append_clang_arg};
@@ -411,7 +412,27 @@ inline constexpr auto OPTION_SPECS = std::to_array<OptionSpec>({
         OptionValueStyle::separate,
         CLI_EFFECT_SET_INCREMENTAL_CACHE_PATH,
         "path",
-        "read and write a source-fingerprint checked incremental cache",
+        "read and write a query-key incremental cache",
+    },
+    {
+        OptionLevel::secondary,
+        OptionGroup::incremental,
+        OptionApplicability::any,
+        "--query-pruning",
+        OptionValueStyle::flag,
+        CLI_EFFECT_ENABLE_QUERY_PRUNING,
+        {},
+        "enable query-key pruning for incremental cache (default)",
+    },
+    {
+        OptionLevel::secondary,
+        OptionGroup::incremental,
+        OptionApplicability::any,
+        "--no-query-pruning",
+        OptionValueStyle::flag,
+        CLI_EFFECT_DISABLE_QUERY_PRUNING,
+        {},
+        "disable query-key pruning and use coarse source-fingerprint cache reuse",
     },
     {
         OptionLevel::secondary,
@@ -419,9 +440,10 @@ inline constexpr auto OPTION_SPECS = std::to_array<OptionSpec>({
         OptionApplicability::any,
         "--experimental-query-pruning",
         OptionValueStyle::flag,
-        CLI_EFFECT_ENABLE_EXPERIMENTAL_QUERY_PRUNING,
+        CLI_EFFECT_ENABLE_QUERY_PRUNING,
         {},
-        "enable coarse-safe query pruning planning",
+        "deprecated alias for --query-pruning",
+        false,
     },
     {
         OptionLevel::secondary,
@@ -885,8 +907,11 @@ private:
             case OptionEffectKind::set_incremental_cache_path:
                 result.invocation.incremental_cache_path = std::filesystem::path(option.value);
                 return base::Result<void>::ok();
-            case OptionEffectKind::enable_experimental_query_pruning:
-                result.invocation.experimental_query_pruning = true;
+            case OptionEffectKind::enable_query_pruning:
+                result.invocation.query_pruning_enabled = true;
+                return base::Result<void>::ok();
+            case OptionEffectKind::disable_query_pruning:
+                result.invocation.query_pruning_enabled = false;
                 return base::Result<void>::ok();
             case OptionEffectKind::set_profile_output_path:
                 result.invocation.profile_output_path = std::filesystem::path(option.value);

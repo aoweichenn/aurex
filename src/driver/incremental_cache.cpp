@@ -1669,7 +1669,7 @@ void record_source_stage_reuse_summary(CompilationProfiler* const profiler, cons
 [[nodiscard]] QueryPruningGateResult apply_query_pruning_gate(const CompilerInvocation& invocation,
     const QueryReuseEvaluation& evaluation, const std::span<const query::QueryRecord> current_records)
 {
-    if (!invocation.experimental_query_pruning) {
+    if (!invocation.query_pruning_enabled) {
         return query_pruning_fallback(false, current_records, INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED);
     }
     if (!evaluation.cache_loaded) {
@@ -3383,7 +3383,7 @@ base::Result<bool> try_reuse_incremental_check_cache(
     if (cache_sources_match(*cache)) {
         return base::Result<bool>::ok(true);
     }
-    if (!invocation.experimental_query_pruning) {
+    if (!invocation.query_pruning_enabled) {
         return base::Result<bool>::ok(false);
     }
 

@@ -176,7 +176,6 @@ def compile_with_pruning(source_path: pathlib.Path, cache_path: pathlib.Path, pr
             "--emit=checked",
             "--incremental-cache",
             str(cache_path),
-            "--experimental-query-pruning",
             "--profile-output",
             str(profile_path),
             str(source_path),

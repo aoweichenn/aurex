@@ -15,6 +15,7 @@
 #include <aurex/query/query_reuse.hpp>
 #include <aurex/query/source_file_query.hpp>
 #include <aurex/query/stable_identity.hpp>
+#include <aurex/query/stable_key_decoder.hpp>
 #include <aurex/query/type_check_body_query.hpp>
 
 #include <algorithm>
@@ -36,6 +37,10 @@ constexpr base::u32 QUERY_TEST_GENERIC_PARAM_INDEX = 0;
 constexpr base::u32 QUERY_TEST_STABLE_ORDINAL = 0;
 constexpr base::u64 QUERY_TEST_ARRAY_COUNT = 4;
 constexpr base::u32 QUERY_TEST_WRITER_VALUE = 7;
+constexpr base::usize QUERY_TEST_STABLE_U8_WIDTH = 1;
+constexpr base::usize QUERY_TEST_STABLE_U64_WIDTH = 8;
+constexpr base::u8 QUERY_TEST_TRAILING_STABLE_BYTE = 0x7f;
+constexpr base::u8 QUERY_TEST_STABLE_BYTE_FLIP_MASK = 0xff;
 constexpr base::u64 QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_PRIMARY = 0x6ebe4a07bced0d95ULL;
 constexpr base::u64 QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_SECONDARY = 0xbdb2a36668c900d3ULL;
 constexpr base::u64 QUERY_TEST_LEGACY_EMPTY_MODULE_GLOBAL_ID = 0x5ca885dc64cb6403ULL;
@@ -225,6 +230,52 @@ struct QueryContextBodySubject {
 void sort_query_test_keys(std::vector<query::QueryKey>& keys)
 {
     std::sort(keys.begin(), keys.end(), query_test_key_less);
+}
+
+[[nodiscard]] std::string query_test_with_trailing_stable_byte(std::string bytes)
+{
+    bytes.push_back(static_cast<char>(QUERY_TEST_TRAILING_STABLE_BYTE));
+    return bytes;
+}
+
+[[nodiscard]] std::string query_test_without_last_stable_byte(std::string bytes)
+{
+    if (!bytes.empty()) {
+        bytes.pop_back();
+    }
+    return bytes;
+}
+
+[[nodiscard]] std::string query_test_with_flipped_first_stable_byte(std::string bytes)
+{
+    if (!bytes.empty()) {
+        const auto first_byte = static_cast<base::u8>(static_cast<unsigned char>(bytes.front()));
+        bytes.front() = static_cast<char>(first_byte ^ QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    }
+    return bytes;
+}
+
+void query_test_flip_stable_byte_at(std::string& bytes, const base::usize offset)
+{
+    if (offset < bytes.size()) {
+        const auto byte = static_cast<base::u8>(static_cast<unsigned char>(bytes[offset]));
+        bytes[offset] = static_cast<char>(byte ^ QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    }
+}
+
+[[nodiscard]] std::string query_test_stable_fingerprint_bytes(const query::StableFingerprint128 fingerprint)
+{
+    query::StableKeyWriter writer;
+    writer.write_fingerprint(fingerprint);
+    return writer.storage();
+}
+
+[[nodiscard]] query::GenericInstanceKey query_test_generic_instance_with_type_arg(
+    const query::DefKey template_def, const query::CanonicalTypeKey& type_arg)
+{
+    const std::array<query::CanonicalTypeKey, 1> type_args{type_arg};
+    return query::generic_instance_key(template_def, type_args, std::span<const query::StableFingerprint128>{},
+        query::param_env_key(std::span<const std::string_view>{}));
 }
 
 [[nodiscard]] bool contains_query_dependency_edge(
@@ -489,6 +540,284 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_NE(query::ModuleKeyHash{}(module), 0U);
     EXPECT_NE(query::DefKeyHash{}(function_def), 0U);
     EXPECT_NE(query::QueryKeyHash{}(diagnostics_query), 0U);
+}
+
+TEST(QueryUnit, StableKeyDecoderProjectsSourceIdentitySlices)
+{
+    const QueryContextSourceSubject source_subject = test_source_subject();
+    const std::string file_bytes = query::stable_serialize(source_subject.file);
+    const std::string lex_config_bytes = query::stable_serialize(source_subject.lex_file.config);
+    const std::string lex_file_bytes = query::stable_serialize(source_subject.lex_file);
+    const std::string parse_file_bytes = query::stable_serialize(source_subject.parse_file);
+
+    EXPECT_TRUE(query::stable_key_has_file_key_layout(file_bytes));
+    EXPECT_FALSE(query::stable_key_has_file_key_layout(lex_file_bytes));
+
+    const std::optional<query::DecodedLexFileKeyIdentity> lex_identity =
+        query::decode_lex_file_key_identity(lex_file_bytes);
+    ASSERT_TRUE(lex_identity.has_value());
+    EXPECT_EQ(lex_identity->file, file_bytes);
+    EXPECT_EQ(lex_identity->lex_config, lex_config_bytes);
+
+    const std::optional<query::DecodedParseFileKeyIdentity> parse_identity =
+        query::decode_parse_file_key_identity(parse_file_bytes);
+    ASSERT_TRUE(parse_identity.has_value());
+    EXPECT_EQ(parse_identity->file, file_bytes);
+    EXPECT_EQ(parse_identity->lex_config, lex_config_bytes);
+}
+
+TEST(QueryUnit, StableKeyDecoderProjectsDefinitionBodyGenericAndQueryIdentitySlices)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey function_def = test_function_def(module);
+    const query::DefKey template_def = test_template_def(module);
+    const query::MemberKey associated_member =
+        query::member_key(function_def, query::MemberKind::associated_type, "Item", QUERY_TEST_STABLE_ORDINAL);
+    const query::GenericParamKey generic_param =
+        query::generic_param_key(template_def, QUERY_TEST_GENERIC_PARAM_INDEX, query::GenericParamKind::type);
+    const query::BodyKey body = query::body_key(function_def, query::BodySlotKind::function_body);
+    const query::CanonicalTypeKey i32 = query::canonical_builtin(query::BuiltinTypeKey::i32);
+    const query::CanonicalTypeKey pointer = query::canonical_pointer(query::PointerMutabilityKey::const_, i32);
+    const query::CanonicalTypeKey reference = query::canonical_reference(query::PointerMutabilityKey::mut, i32);
+    const query::CanonicalTypeKey array = query::canonical_array(QUERY_TEST_ARRAY_COUNT, i32);
+    const query::CanonicalTypeKey slice = query::canonical_slice(query::PointerMutabilityKey::const_, i32);
+    const std::array<query::CanonicalTypeKey, 2> tuple_elements{pointer, reference};
+    const query::CanonicalTypeKey tuple = query::canonical_tuple(tuple_elements);
+    const std::array<query::CanonicalTypeKey, 2> function_params{pointer, reference};
+    const query::CanonicalTypeKey function_type =
+        query::canonical_function(query::FunctionCallConvKey::c, true, true, function_params, i32);
+    const std::array<query::CanonicalTypeKey, 1> nominal_args{query::canonical_generic_param(generic_param)};
+    const query::CanonicalTypeKey nominal = query::canonical_nominal(template_def, nominal_args);
+    const query::CanonicalTypeKey const_arg = query::canonical_const_arg(query::stable_fingerprint("N=4"));
+    const query::CanonicalTypeKey projection = query::canonical_associated_type_projection(i32, associated_member);
+    query::CanonicalTypeKey trait_object;
+    trait_object.kind = query::CanonicalTypeKind::trait_object;
+    const std::vector<query::CanonicalTypeKey> type_args{
+        i32,
+        pointer,
+        reference,
+        array,
+        slice,
+        tuple,
+        function_type,
+        nominal,
+        query::canonical_generic_param(generic_param),
+        const_arg,
+        projection,
+        trait_object,
+    };
+    const std::array<query::StableFingerprint128, 1> const_args{query::stable_fingerprint("const:N=4")};
+    const std::array<std::string_view, 1> predicates{"T: Copy"};
+    const query::GenericInstanceKey instance = query::generic_instance_key(template_def,
+        std::span<const query::CanonicalTypeKey>{type_args.data(), type_args.size()}, const_args,
+        query::param_env_key(predicates));
+    const query::QueryKey diagnostics_key =
+        query::query_key(query::QueryKind::diagnostics, query::stable_key_fingerprint(function_def));
+    const std::string module_bytes = query::stable_serialize(module);
+    const std::string function_def_bytes = query::stable_serialize(function_def);
+    const std::string template_def_bytes = query::stable_serialize(template_def);
+    const std::string body_bytes = query::stable_serialize(body);
+    const std::string instance_bytes = query::stable_serialize(instance);
+    const std::string diagnostics_key_bytes = query::stable_serialize(diagnostics_key);
+
+    EXPECT_TRUE(query::stable_key_has_module_key_layout(module_bytes));
+    EXPECT_TRUE(query::stable_key_has_body_key_layout(body_bytes));
+    EXPECT_TRUE(query::stable_key_has_generic_instance_key_layout(instance_bytes));
+    EXPECT_TRUE(query::stable_key_has_query_key_layout(diagnostics_key_bytes));
+
+    const std::optional<query::DecodedDefKeyIdentity> def_identity = query::decode_def_key_identity(function_def_bytes);
+    ASSERT_TRUE(def_identity.has_value());
+    EXPECT_EQ(def_identity->module, module_bytes);
+
+    const std::optional<query::DecodedBodyKeyIdentity> body_identity = query::decode_body_key_identity(body_bytes);
+    ASSERT_TRUE(body_identity.has_value());
+    EXPECT_EQ(body_identity->owner, function_def_bytes);
+
+    const std::optional<query::DecodedGenericInstanceKeyIdentity> instance_identity =
+        query::decode_generic_instance_key_identity(instance_bytes);
+    ASSERT_TRUE(instance_identity.has_value());
+    EXPECT_EQ(instance_identity->template_def, template_def_bytes);
+}
+
+TEST(QueryUnit, StableKeyDecoderRejectsMalformedStableKeys)
+{
+    const QueryContextSourceSubject source_subject = test_source_subject();
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey function_def = test_function_def(module);
+    const query::DefKey template_def = test_template_def(module);
+    const query::BodyKey body = query::body_key(function_def, query::BodySlotKind::function_body);
+    const std::array<query::CanonicalTypeKey, 1> type_args{query::canonical_builtin(query::BuiltinTypeKey::i32)};
+    const query::GenericInstanceKey instance = query::generic_instance_key(template_def, type_args,
+        std::span<const query::StableFingerprint128>{}, query::param_env_key(std::span<const std::string_view>{}));
+    const std::string lex_file_bytes = query::stable_serialize(source_subject.lex_file);
+    const std::string parse_file_bytes = query::stable_serialize(source_subject.parse_file);
+    const std::string function_def_bytes = query::stable_serialize(function_def);
+    const std::string body_bytes = query::stable_serialize(body);
+    const std::string instance_bytes = query::stable_serialize(instance);
+
+    EXPECT_FALSE(
+        query::decode_lex_file_key_identity(query_test_with_flipped_first_stable_byte(lex_file_bytes)).has_value());
+    std::string lex_file_with_bad_file = lex_file_bytes;
+    query_test_flip_stable_byte_at(lex_file_with_bad_file, QUERY_TEST_STABLE_U64_WIDTH);
+    EXPECT_FALSE(query::decode_lex_file_key_identity(lex_file_with_bad_file).has_value());
+
+    std::string lex_file_with_bad_config = lex_file_bytes;
+    const std::string lex_config_bytes = query::stable_serialize(source_subject.lex_file.config);
+    const base::usize lex_config_offset = lex_file_with_bad_config.find(lex_config_bytes);
+    ASSERT_NE(lex_config_offset, std::string::npos);
+    query_test_flip_stable_byte_at(lex_file_with_bad_config, lex_config_offset);
+    EXPECT_FALSE(query::decode_lex_file_key_identity(lex_file_with_bad_config).has_value());
+
+    EXPECT_FALSE(
+        query::decode_parse_file_key_identity(query_test_without_last_stable_byte(parse_file_bytes)).has_value());
+    std::string parse_file_with_bad_parser_config = parse_file_bytes;
+    const std::string parser_config_bytes = query::stable_serialize(source_subject.parse_file.config);
+    const base::usize parser_config_offset = parse_file_with_bad_parser_config.find(parser_config_bytes);
+    ASSERT_NE(parser_config_offset, std::string::npos);
+    query_test_flip_stable_byte_at(parse_file_with_bad_parser_config, parser_config_offset);
+    EXPECT_FALSE(query::decode_parse_file_key_identity(parse_file_with_bad_parser_config).has_value());
+
+    std::string parse_file_with_truncated_parser_schema = parse_file_bytes;
+    const base::usize parser_schema_offset =
+        parser_config_offset + QUERY_TEST_STABLE_U64_WIDTH + lex_config_bytes.size();
+    parse_file_with_truncated_parser_schema.resize(parser_schema_offset + QUERY_TEST_STABLE_U8_WIDTH);
+    EXPECT_FALSE(query::decode_parse_file_key_identity(parse_file_with_truncated_parser_schema).has_value());
+
+    EXPECT_FALSE(query::decode_def_key_identity(query_test_with_trailing_stable_byte(function_def_bytes)).has_value());
+    std::string def_with_bad_module = function_def_bytes;
+    const std::string module_bytes = query::stable_serialize(function_def.module);
+    const base::usize module_offset = def_with_bad_module.find(module_bytes);
+    ASSERT_NE(module_offset, std::string::npos);
+    query_test_flip_stable_byte_at(def_with_bad_module, module_offset);
+    EXPECT_FALSE(query::decode_def_key_identity(def_with_bad_module).has_value());
+
+    query::BodyKey zero_global_body = body;
+    zero_global_body.global_id = 0;
+    EXPECT_FALSE(query::decode_body_key_identity(query::stable_serialize(zero_global_body)).has_value());
+    EXPECT_FALSE(query::stable_key_has_body_key_layout(query::stable_serialize(zero_global_body)));
+    std::string body_with_bad_owner = body_bytes;
+    const base::usize body_owner_offset = body_with_bad_owner.find(function_def_bytes);
+    ASSERT_NE(body_owner_offset, std::string::npos);
+    query_test_flip_stable_byte_at(body_with_bad_owner, body_owner_offset);
+    EXPECT_FALSE(query::decode_body_key_identity(body_with_bad_owner).has_value());
+
+    query::GenericInstanceKey invalid_canonical_instance = instance;
+    invalid_canonical_instance.type_args.front().kind = query::CanonicalTypeKind::invalid;
+    EXPECT_FALSE(
+        query::decode_generic_instance_key_identity(query::stable_serialize(invalid_canonical_instance)).has_value());
+    EXPECT_FALSE(
+        query::decode_generic_instance_key_identity(query_test_with_trailing_stable_byte(instance_bytes)).has_value());
+
+    query::QueryKey invalid_query =
+        query::query_key(query::QueryKind::diagnostics, query::stable_key_fingerprint(function_def));
+    invalid_query.kind = query::QueryKind::invalid;
+    EXPECT_FALSE(query::stable_key_has_query_key_layout(query::stable_serialize(invalid_query)));
+}
+
+TEST(QueryUnit, StableKeyDecoderRejectsMalformedCanonicalTypeShapes)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey template_def = test_template_def(module);
+    const query::CanonicalTypeKey i32 = query::canonical_builtin(query::BuiltinTypeKey::i32);
+    const auto expect_rejected_type_arg = [&template_def](const query::CanonicalTypeKey& type_arg) {
+        const query::GenericInstanceKey instance = query_test_generic_instance_with_type_arg(template_def, type_arg);
+        const std::string bytes = query::stable_serialize(instance);
+        EXPECT_FALSE(query::decode_generic_instance_key_identity(bytes).has_value());
+        EXPECT_FALSE(query::stable_key_has_generic_instance_key_layout(bytes));
+    };
+
+    query::CanonicalTypeKey invalid_builtin;
+    invalid_builtin.kind = query::CanonicalTypeKind::builtin;
+    invalid_builtin.builtin = static_cast<query::BuiltinTypeKey>(QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    expect_rejected_type_arg(invalid_builtin);
+
+    query::CanonicalTypeKey invalid_pointer_mutability;
+    invalid_pointer_mutability.kind = query::CanonicalTypeKind::pointer;
+    invalid_pointer_mutability.mutability = static_cast<query::PointerMutabilityKey>(QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    invalid_pointer_mutability.children.push_back(i32);
+    expect_rejected_type_arg(invalid_pointer_mutability);
+
+    query::CanonicalTypeKey invalid_pointer_child_count;
+    invalid_pointer_child_count.kind = query::CanonicalTypeKind::pointer;
+    invalid_pointer_child_count.mutability = query::PointerMutabilityKey::const_;
+    expect_rejected_type_arg(invalid_pointer_child_count);
+
+    query::CanonicalTypeKey invalid_function_call_conv;
+    invalid_function_call_conv.kind = query::CanonicalTypeKind::function;
+    invalid_function_call_conv.function_call_conv =
+        static_cast<query::FunctionCallConvKey>(QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    invalid_function_call_conv.children.push_back(i32);
+    expect_rejected_type_arg(invalid_function_call_conv);
+
+    query::CanonicalTypeKey invalid_nominal_def;
+    invalid_nominal_def.kind = query::CanonicalTypeKind::nominal;
+    expect_rejected_type_arg(invalid_nominal_def);
+
+    query::CanonicalTypeKey invalid_generic_param;
+    invalid_generic_param.kind = query::CanonicalTypeKind::generic_param;
+    expect_rejected_type_arg(invalid_generic_param);
+
+    query::CanonicalTypeKey invalid_associated_member;
+    invalid_associated_member.kind = query::CanonicalTypeKind::associated_type_projection;
+    invalid_associated_member.children.push_back(i32);
+    expect_rejected_type_arg(invalid_associated_member);
+
+    const query::CanonicalTypeKey valid_array = query::canonical_array(QUERY_TEST_ARRAY_COUNT, i32);
+    const query::GenericInstanceKey array_instance =
+        query_test_generic_instance_with_type_arg(template_def, valid_array);
+    std::string truncated_array_instance = query::stable_serialize(array_instance);
+    const std::string array_type_bytes = query::stable_serialize(valid_array);
+    const base::usize array_type_offset = truncated_array_instance.find(array_type_bytes);
+    ASSERT_NE(array_type_offset, std::string::npos);
+    truncated_array_instance.resize(
+        array_type_offset + QUERY_TEST_STABLE_U64_WIDTH + QUERY_TEST_STABLE_U8_WIDTH + QUERY_TEST_STABLE_U8_WIDTH);
+    EXPECT_FALSE(query::decode_generic_instance_key_identity(truncated_array_instance).has_value());
+
+    const query::CanonicalTypeKey valid_const_arg = query::canonical_const_arg(query::stable_fingerprint("N=8"));
+    const query::GenericInstanceKey const_type_instance =
+        query_test_generic_instance_with_type_arg(template_def, valid_const_arg);
+    std::string truncated_const_type_instance = query::stable_serialize(const_type_instance);
+    const std::string const_type_bytes = query::stable_serialize(valid_const_arg);
+    const base::usize const_type_offset = truncated_const_type_instance.find(const_type_bytes);
+    ASSERT_NE(const_type_offset, std::string::npos);
+    truncated_const_type_instance.resize(
+        const_type_offset + QUERY_TEST_STABLE_U64_WIDTH + QUERY_TEST_STABLE_U8_WIDTH + QUERY_TEST_STABLE_U8_WIDTH);
+    EXPECT_FALSE(query::decode_generic_instance_key_identity(truncated_const_type_instance).has_value());
+
+    const query::GenericInstanceKey builtin_instance = query_test_generic_instance_with_type_arg(template_def, i32);
+    std::string truncated_builtin_kind_instance = query::stable_serialize(builtin_instance);
+    const std::string builtin_type_bytes = query::stable_serialize(i32);
+    const base::usize builtin_type_offset = truncated_builtin_kind_instance.find(builtin_type_bytes);
+    ASSERT_NE(builtin_type_offset, std::string::npos);
+    truncated_builtin_kind_instance.resize(builtin_type_offset + QUERY_TEST_STABLE_U64_WIDTH);
+    EXPECT_FALSE(query::decode_generic_instance_key_identity(truncated_builtin_kind_instance).has_value());
+
+    const query::StableFingerprint128 const_arg_fingerprint = query::stable_fingerprint("const-count-overflow");
+    const std::array<query::StableFingerprint128, 1> const_args{const_arg_fingerprint};
+    const query::GenericInstanceKey const_instance =
+        query::generic_instance_key(template_def, std::span<const query::CanonicalTypeKey>{}, const_args,
+            query::param_env_key(std::span<const std::string_view>{}));
+    std::string truncated_const_instance = query::stable_serialize(const_instance);
+    const std::string const_arg_bytes = query_test_stable_fingerprint_bytes(const_arg_fingerprint);
+    const base::usize const_arg_offset = truncated_const_instance.find(const_arg_bytes);
+    ASSERT_NE(const_arg_offset, std::string::npos);
+    truncated_const_instance.resize(const_arg_offset + QUERY_TEST_STABLE_U8_WIDTH);
+    EXPECT_FALSE(query::decode_generic_instance_key_identity(truncated_const_instance).has_value());
+
+    const query::GenericInstanceKey no_arg_instance =
+        query::generic_instance_key(template_def, std::span<const query::CanonicalTypeKey>{},
+            std::span<const query::StableFingerprint128>{}, query::param_env_key(std::span<const std::string_view>{}));
+    std::string oversized_type_count_instance = query::stable_serialize(no_arg_instance);
+    const std::string template_def_bytes = query::stable_serialize(template_def);
+    const base::usize type_count_offset = QUERY_TEST_STABLE_U64_WIDTH + template_def_bytes.size();
+    ASSERT_LE(type_count_offset + QUERY_TEST_STABLE_U64_WIDTH, oversized_type_count_instance.size());
+    for (base::usize index = 0; index < QUERY_TEST_STABLE_U64_WIDTH; ++index) {
+        oversized_type_count_instance[type_count_offset + index] = static_cast<char>(QUERY_TEST_STABLE_BYTE_FLIP_MASK);
+    }
+    EXPECT_FALSE(query::decode_generic_instance_key_identity(oversized_type_count_instance).has_value());
 }
 
 TEST(QueryUnit, LegacyStableIdentityLivesInQueryLayer)
@@ -1009,6 +1338,16 @@ TEST(QueryUnit, QueryEdgeVerifierRejectsMalformedKindsAndStableIdentities)
     ASSERT_TRUE(short_file_record.has_value());
     ASSERT_TRUE(short_lex_record.has_value());
     EXPECT_EQ(query::validate_query_dependency_edge_records(*short_lex_record, *short_file_record),
+        query::QueryDependencyEdgeValidationStatus::invalid_identity);
+
+    const std::optional<query::QueryRecord> malformed_module_graph_record = query::query_record(
+        query::QueryKind::module_graph, query::stable_fingerprint("malformed-module"), "malformed-module", result);
+    const std::optional<query::QueryRecord> malformed_item_list_record = query::query_record(
+        query::QueryKind::item_list, query::stable_fingerprint("malformed-module"), "malformed-module", result);
+    ASSERT_TRUE(malformed_module_graph_record.has_value());
+    ASSERT_TRUE(malformed_item_list_record.has_value());
+    EXPECT_EQ(
+        query::validate_query_dependency_edge_records(*malformed_item_list_record, *malformed_module_graph_record),
         query::QueryDependencyEdgeValidationStatus::invalid_identity);
 
     const query::LexFileKey wrong_lex_file = query::lex_file_key(source_subject.file, query::lex_config_key(true));

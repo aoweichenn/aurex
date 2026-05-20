@@ -108,34 +108,59 @@ STABLE_U8_WIDTH = 1
 STABLE_U16_WIDTH = 2
 STABLE_U32_WIDTH = 4
 STABLE_U64_WIDTH = 8
-STABLE_BOOL_WIDTH = 1
 STABLE_FINGERPRINT_WIDTH = 20
-STABLE_PACKAGE_KEY_WIDTH = STABLE_U64_WIDTH + STABLE_FINGERPRINT_WIDTH + STABLE_U64_WIDTH
-STABLE_FILE_KEY_WIDTH = (
-    STABLE_U64_WIDTH
-    + STABLE_PACKAGE_KEY_WIDTH
-    + STABLE_FINGERPRINT_WIDTH
-    + STABLE_FINGERPRINT_WIDTH
-    + STABLE_U8_WIDTH
-    + STABLE_U64_WIDTH
-)
-STABLE_LEX_CONFIG_KEY_WIDTH = STABLE_U64_WIDTH + STABLE_U32_WIDTH + STABLE_BOOL_WIDTH + STABLE_U64_WIDTH
-STABLE_MODULE_KEY_WIDTH = (
-    STABLE_U64_WIDTH
-    + STABLE_PACKAGE_KEY_WIDTH
-    + STABLE_FINGERPRINT_WIDTH
-    + STABLE_U32_WIDTH
-    + STABLE_U8_WIDTH
-    + STABLE_U64_WIDTH
-)
-STABLE_LEX_FILE_KEY_FILE_OFFSET = STABLE_U64_WIDTH
-STABLE_LEX_FILE_KEY_CONFIG_OFFSET = STABLE_LEX_FILE_KEY_FILE_OFFSET + STABLE_FILE_KEY_WIDTH
-STABLE_PARSE_FILE_KEY_FILE_OFFSET = STABLE_U64_WIDTH
-STABLE_PARSE_FILE_KEY_PARSER_CONFIG_OFFSET = STABLE_PARSE_FILE_KEY_FILE_OFFSET + STABLE_FILE_KEY_WIDTH
-STABLE_PARSE_FILE_KEY_LEX_CONFIG_OFFSET = STABLE_PARSE_FILE_KEY_PARSER_CONFIG_OFFSET + STABLE_U64_WIDTH
-STABLE_DEF_KEY_MODULE_OFFSET = STABLE_U64_WIDTH
-STABLE_BODY_KEY_OWNER_OFFSET = STABLE_U64_WIDTH
-STABLE_GENERIC_INSTANCE_KEY_TEMPLATE_OFFSET = STABLE_U64_WIDTH
+STABLE_MIN_CANONICAL_TYPE_KEY_WIDTH = STABLE_U64_WIDTH + STABLE_U8_WIDTH + STABLE_U64_WIDTH
+STABLE_FALSE_BYTE = 0
+STABLE_TRUE_BYTE = 1
+QUERY_PACKAGE_KEY_MARKER = 0x51504B4759313031
+QUERY_FILE_KEY_MARKER = 0x5146494C45593031
+QUERY_LEX_CONFIG_KEY_MARKER = 0x514C584346473031
+QUERY_PARSER_CONFIG_KEY_MARKER = 0x5150434647303031
+QUERY_LEX_FILE_KEY_MARKER = 0x514C5846494C4531
+QUERY_PARSE_FILE_KEY_MARKER = 0x5150525346494C45
+QUERY_MODULE_KEY_MARKER = 0x514D4F4459303031
+QUERY_DEF_KEY_MARKER = 0x514445464B455931
+QUERY_MEMBER_KEY_MARKER = 0x514D454D4B455931
+QUERY_BODY_KEY_MARKER = 0x51424F4459303031
+QUERY_GENERIC_PARAM_KEY_MARKER = 0x51475041524D3031
+QUERY_CANONICAL_TYPE_KEY_MARKER = 0x5143545950453031
+QUERY_PARAM_ENV_KEY_MARKER = 0x5150454E56303131
+QUERY_GENERIC_INSTANCE_KEY_MARKER = 0x5147494E53543031
+QUERY_LEX_CONFIG_SCHEMA_VERSION = 1
+QUERY_PARSER_CONFIG_SCHEMA_VERSION = 1
+QUERY_SOURCE_ROLE_SOURCE = 0
+QUERY_SOURCE_ROLE_GENERATED = 2
+QUERY_MODULE_KIND_SOURCE = 0
+QUERY_MODULE_KIND_SYNTHETIC = 2
+QUERY_DEF_NAMESPACE_VALUE = 0
+QUERY_DEF_NAMESPACE_SYNTHETIC = 5
+QUERY_DEF_KIND_FUNCTION = 1
+QUERY_DEF_KIND_SYNTHETIC = 16
+QUERY_MEMBER_KIND_STRUCT_FIELD = 1
+QUERY_MEMBER_KIND_SYNTHETIC = 6
+QUERY_BODY_SLOT_FUNCTION_BODY = 0
+QUERY_BODY_SLOT_CLOSURE_BODY = 6
+QUERY_GENERIC_PARAM_KIND_TYPE = 0
+QUERY_GENERIC_PARAM_KIND_LIFETIME = 3
+QUERY_CANONICAL_TYPE_KIND_INVALID = 0
+QUERY_CANONICAL_TYPE_KIND_BUILTIN = 1
+QUERY_CANONICAL_TYPE_KIND_POINTER = 2
+QUERY_CANONICAL_TYPE_KIND_REFERENCE = 3
+QUERY_CANONICAL_TYPE_KIND_ARRAY = 4
+QUERY_CANONICAL_TYPE_KIND_SLICE = 5
+QUERY_CANONICAL_TYPE_KIND_TUPLE = 6
+QUERY_CANONICAL_TYPE_KIND_FUNCTION = 7
+QUERY_CANONICAL_TYPE_KIND_NOMINAL = 8
+QUERY_CANONICAL_TYPE_KIND_GENERIC_PARAM = 9
+QUERY_CANONICAL_TYPE_KIND_CONST_ARG = 10
+QUERY_CANONICAL_TYPE_KIND_ASSOCIATED_TYPE_PROJECTION = 11
+QUERY_CANONICAL_TYPE_KIND_TRAIT_OBJECT = 12
+QUERY_BUILTIN_TYPE_VOID = 0
+QUERY_BUILTIN_TYPE_CHAR = 15
+QUERY_POINTER_MUTABILITY_MUT = 0
+QUERY_POINTER_MUTABILITY_CONST = 1
+QUERY_FUNCTION_CALL_CONV_AUREX = 0
+QUERY_FUNCTION_CALL_CONV_C = 1
 
 ALL_REUSE_SCENARIO = "all_reuse"
 BODY_RECOMPUTE_SCENARIO = "body_recompute"
@@ -343,22 +368,425 @@ def query_edge_kind_is_expected(dependent: str, dependency: str) -> bool:
     return dependency in EXPECTED_QUERY_DEPENDENCY_KINDS.get(dependent, set())
 
 
-def stable_slice_matches(source: bytes, offset: int, expected: bytes) -> bool:
+class StableKeyReader:
+    def __init__(self, data: bytes) -> None:
+        self.data = data
+        self.offset = 0
+
+    def eof(self) -> bool:
+        return self.offset == len(self.data)
+
+    def remaining(self) -> int:
+        return len(self.data) - self.offset
+
+    def slice_from(self, start: int) -> bytes:
+        return self.data[start : self.offset]
+
+    def skip(self, width: int) -> bool:
+        if width > self.remaining():
+            return False
+        self.offset += width
+        return True
+
+    def read_unsigned(self, width: int) -> int | None:
+        if width > self.remaining():
+            return None
+        value = int.from_bytes(self.data[self.offset : self.offset + width], "little")
+        self.offset += width
+        return value
+
+    def read_u8(self) -> int | None:
+        return self.read_unsigned(STABLE_U8_WIDTH)
+
+    def read_u16(self) -> int | None:
+        return self.read_unsigned(STABLE_U16_WIDTH)
+
+    def read_u32(self) -> int | None:
+        return self.read_unsigned(STABLE_U32_WIDTH)
+
+    def read_u64(self) -> int | None:
+        return self.read_unsigned(STABLE_U64_WIDTH)
+
+
+def expect_marker(reader: StableKeyReader, marker: int) -> bool:
+    return reader.read_u64() == marker
+
+
+def skip_fingerprint(reader: StableKeyReader) -> bool:
+    return reader.skip(STABLE_FINGERPRINT_WIDTH)
+
+
+def skip_fingerprints(reader: StableKeyReader, count: int) -> bool:
+    available_count = reader.remaining() // STABLE_FINGERPRINT_WIDTH
+    if count > available_count:
+        return False
+    return reader.skip(count * STABLE_FINGERPRINT_WIDTH)
+
+
+def read_nonzero_u64(reader: StableKeyReader) -> bool:
+    value = reader.read_u64()
+    return value is not None and value != 0
+
+
+def read_bool_value(reader: StableKeyReader) -> bool:
+    value = reader.read_u8()
+    return value == STABLE_FALSE_BYTE or value == STABLE_TRUE_BYTE
+
+
+def read_enum_value(reader: StableKeyReader, minimum: int, maximum: int) -> bool:
+    value = reader.read_u8()
+    return value is not None and minimum <= value <= maximum
+
+
+def read_query_kind(reader: StableKeyReader) -> bool:
+    return read_enum_value(reader, min(QUERY_KIND_VALUES.values()), max(QUERY_KIND_VALUES.values()))
+
+
+def skip_package_key(reader: StableKeyReader) -> bool:
+    return expect_marker(reader, QUERY_PACKAGE_KEY_MARKER) and skip_fingerprint(reader) and read_nonzero_u64(reader)
+
+
+def skip_file_key(reader: StableKeyReader) -> bool:
     return (
-        offset <= len(source)
-        and len(expected) <= len(source) - offset
-        and source[offset : offset + len(expected)] == expected
+        expect_marker(reader, QUERY_FILE_KEY_MARKER)
+        and skip_package_key(reader)
+        and skip_fingerprint(reader)
+        and skip_fingerprint(reader)
+        and read_enum_value(reader, QUERY_SOURCE_ROLE_SOURCE, QUERY_SOURCE_ROLE_GENERATED)
+        and read_nonzero_u64(reader)
     )
 
 
-def stable_slices_match(lhs: bytes, lhs_offset: int, rhs: bytes, rhs_offset: int, width: int) -> bool:
+def skip_lex_config_key(reader: StableKeyReader) -> bool:
+    if not expect_marker(reader, QUERY_LEX_CONFIG_KEY_MARKER):
+        return False
+    schema = reader.read_u32()
+    return schema == QUERY_LEX_CONFIG_SCHEMA_VERSION and read_bool_value(reader) and read_nonzero_u64(reader)
+
+
+def skip_module_key(reader: StableKeyReader) -> bool:
     return (
-        lhs_offset <= len(lhs)
-        and width <= len(lhs) - lhs_offset
-        and rhs_offset <= len(rhs)
-        and width <= len(rhs) - rhs_offset
-        and lhs[lhs_offset : lhs_offset + width] == rhs[rhs_offset : rhs_offset + width]
+        expect_marker(reader, QUERY_MODULE_KEY_MARKER)
+        and skip_package_key(reader)
+        and skip_fingerprint(reader)
+        and reader.read_u32() is not None
+        and read_enum_value(reader, QUERY_MODULE_KIND_SOURCE, QUERY_MODULE_KIND_SYNTHETIC)
+        and read_nonzero_u64(reader)
     )
+
+
+def skip_def_key(reader: StableKeyReader) -> bool:
+    return (
+        expect_marker(reader, QUERY_DEF_KEY_MARKER)
+        and skip_module_key(reader)
+        and skip_fingerprint(reader)
+        and reader.read_u32() is not None
+        and read_enum_value(reader, QUERY_DEF_NAMESPACE_VALUE, QUERY_DEF_NAMESPACE_SYNTHETIC)
+        and read_enum_value(reader, QUERY_DEF_KIND_FUNCTION, QUERY_DEF_KIND_SYNTHETIC)
+        and reader.read_u32() is not None
+        and read_nonzero_u64(reader)
+    )
+
+
+def skip_member_key(reader: StableKeyReader) -> bool:
+    return (
+        expect_marker(reader, QUERY_MEMBER_KEY_MARKER)
+        and skip_def_key(reader)
+        and skip_fingerprint(reader)
+        and read_enum_value(reader, QUERY_MEMBER_KIND_STRUCT_FIELD, QUERY_MEMBER_KIND_SYNTHETIC)
+        and reader.read_u32() is not None
+        and read_nonzero_u64(reader)
+    )
+
+
+def skip_body_key(reader: StableKeyReader) -> bool:
+    return (
+        expect_marker(reader, QUERY_BODY_KEY_MARKER)
+        and skip_def_key(reader)
+        and read_enum_value(reader, QUERY_BODY_SLOT_FUNCTION_BODY, QUERY_BODY_SLOT_CLOSURE_BODY)
+        and reader.read_u32() is not None
+        and read_nonzero_u64(reader)
+    )
+
+
+def skip_generic_param_key(reader: StableKeyReader) -> bool:
+    return (
+        expect_marker(reader, QUERY_GENERIC_PARAM_KEY_MARKER)
+        and skip_def_key(reader)
+        and reader.read_u32() is not None
+        and read_enum_value(reader, QUERY_GENERIC_PARAM_KIND_TYPE, QUERY_GENERIC_PARAM_KIND_LIFETIME)
+        and read_nonzero_u64(reader)
+    )
+
+
+def canonical_type_child_count_is_expected(kind: int, function_param_count: int, child_count: int) -> bool:
+    if kind in {
+        QUERY_CANONICAL_TYPE_KIND_BUILTIN,
+        QUERY_CANONICAL_TYPE_KIND_GENERIC_PARAM,
+        QUERY_CANONICAL_TYPE_KIND_CONST_ARG,
+        QUERY_CANONICAL_TYPE_KIND_TRAIT_OBJECT,
+    }:
+        return child_count == 0
+    if kind in {
+        QUERY_CANONICAL_TYPE_KIND_POINTER,
+        QUERY_CANONICAL_TYPE_KIND_REFERENCE,
+        QUERY_CANONICAL_TYPE_KIND_ARRAY,
+        QUERY_CANONICAL_TYPE_KIND_SLICE,
+        QUERY_CANONICAL_TYPE_KIND_ASSOCIATED_TYPE_PROJECTION,
+    }:
+        return child_count == 1
+    if kind == QUERY_CANONICAL_TYPE_KIND_FUNCTION:
+        return child_count == function_param_count + 1
+    return kind in {QUERY_CANONICAL_TYPE_KIND_TUPLE, QUERY_CANONICAL_TYPE_KIND_NOMINAL}
+
+
+def skip_canonical_type_header(reader: StableKeyReader) -> int | None:
+    if not expect_marker(reader, QUERY_CANONICAL_TYPE_KEY_MARKER):
+        return None
+    kind = reader.read_u8()
+    if (
+        kind is None
+        or kind <= QUERY_CANONICAL_TYPE_KIND_INVALID
+        or kind > QUERY_CANONICAL_TYPE_KIND_TRAIT_OBJECT
+    ):
+        return None
+    function_param_count = 0
+    if kind == QUERY_CANONICAL_TYPE_KIND_BUILTIN:
+        if not read_enum_value(reader, QUERY_BUILTIN_TYPE_VOID, QUERY_BUILTIN_TYPE_CHAR):
+            return None
+    elif kind in {
+        QUERY_CANONICAL_TYPE_KIND_POINTER,
+        QUERY_CANONICAL_TYPE_KIND_REFERENCE,
+        QUERY_CANONICAL_TYPE_KIND_SLICE,
+    }:
+        if not read_enum_value(reader, QUERY_POINTER_MUTABILITY_MUT, QUERY_POINTER_MUTABILITY_CONST):
+            return None
+    elif kind == QUERY_CANONICAL_TYPE_KIND_ARRAY:
+        if reader.read_u64() is None:
+            return None
+    elif kind == QUERY_CANONICAL_TYPE_KIND_FUNCTION:
+        if not read_enum_value(reader, QUERY_FUNCTION_CALL_CONV_AUREX, QUERY_FUNCTION_CALL_CONV_C):
+            return None
+        if not read_bool_value(reader) or not read_bool_value(reader):
+            return None
+        maybe_param_count = reader.read_u32()
+        if maybe_param_count is None:
+            return None
+        function_param_count = maybe_param_count
+    elif kind == QUERY_CANONICAL_TYPE_KIND_NOMINAL:
+        if not skip_def_key(reader):
+            return None
+    elif kind == QUERY_CANONICAL_TYPE_KIND_GENERIC_PARAM:
+        if not skip_generic_param_key(reader):
+            return None
+    elif kind == QUERY_CANONICAL_TYPE_KIND_CONST_ARG:
+        if not skip_fingerprint(reader):
+            return None
+    elif kind == QUERY_CANONICAL_TYPE_KIND_ASSOCIATED_TYPE_PROJECTION:
+        if not skip_member_key(reader):
+            return None
+    child_count = reader.read_u64()
+    if child_count is None or not canonical_type_child_count_is_expected(kind, function_param_count, child_count):
+        return None
+    return child_count
+
+
+def skip_canonical_type_key(reader: StableKeyReader) -> bool:
+    pending_nodes = 1
+    while pending_nodes != 0:
+        child_count = skip_canonical_type_header(reader)
+        if child_count is None:
+            return False
+        pending_nodes = pending_nodes - 1 + child_count
+    return True
+
+
+def skip_canonical_type_keys(reader: StableKeyReader, count: int) -> bool:
+    maximum_root_count = reader.remaining() // STABLE_MIN_CANONICAL_TYPE_KEY_WIDTH
+    if count > maximum_root_count:
+        return False
+    for _ in range(count):
+        if not skip_canonical_type_key(reader):
+            return False
+    return True
+
+
+def skip_param_env_key(reader: StableKeyReader) -> bool:
+    return (
+        expect_marker(reader, QUERY_PARAM_ENV_KEY_MARKER)
+        and skip_fingerprint(reader)
+        and reader.read_u32() is not None
+        and read_nonzero_u64(reader)
+    )
+
+
+def skip_generic_instance_key(reader: StableKeyReader) -> bool:
+    type_arg_count: int | None
+    const_arg_count: int | None
+    if not expect_marker(reader, QUERY_GENERIC_INSTANCE_KEY_MARKER) or not skip_def_key(reader):
+        return False
+    type_arg_count = reader.read_u64()
+    if type_arg_count is None or not skip_canonical_type_keys(reader, type_arg_count):
+        return False
+    const_arg_count = reader.read_u64()
+    return (
+        const_arg_count is not None
+        and skip_fingerprints(reader, const_arg_count)
+        and skip_param_env_key(reader)
+        and read_nonzero_u64(reader)
+    )
+
+
+def skip_query_key(reader: StableKeyReader) -> bool:
+    return (
+        expect_marker(reader, QUERY_KEY_MARKER)
+        and read_query_kind(reader)
+        and reader.read_u16() is not None
+        and skip_fingerprint(reader)
+        and read_nonzero_u64(reader)
+    )
+
+
+def stable_key_has_layout(data: bytes, skip_key) -> bool:
+    reader = StableKeyReader(data)
+    return skip_key(reader) and reader.eof()
+
+
+def stable_key_has_module_key_layout(data: bytes) -> bool:
+    return stable_key_has_layout(data, skip_module_key)
+
+
+def stable_key_has_body_key_layout(data: bytes) -> bool:
+    return stable_key_has_layout(data, skip_body_key)
+
+
+def stable_key_has_generic_instance_key_layout(data: bytes) -> bool:
+    return stable_key_has_layout(data, skip_generic_instance_key)
+
+
+def stable_key_has_query_key_layout(data: bytes) -> bool:
+    return stable_key_has_layout(data, skip_query_key)
+
+
+def read_file_key_slice(reader: StableKeyReader) -> bytes | None:
+    start = reader.offset
+    if not skip_file_key(reader):
+        return None
+    return reader.slice_from(start)
+
+
+def read_lex_config_key_slice(reader: StableKeyReader) -> bytes | None:
+    start = reader.offset
+    if not skip_lex_config_key(reader):
+        return None
+    return reader.slice_from(start)
+
+
+def read_module_key_slice(reader: StableKeyReader) -> bytes | None:
+    start = reader.offset
+    if not skip_module_key(reader):
+        return None
+    return reader.slice_from(start)
+
+
+def read_def_key_slice(reader: StableKeyReader) -> bytes | None:
+    start = reader.offset
+    if not skip_def_key(reader):
+        return None
+    return reader.slice_from(start)
+
+
+def read_parser_config_key_lex_config_slice(reader: StableKeyReader) -> bytes | None:
+    if not expect_marker(reader, QUERY_PARSER_CONFIG_KEY_MARKER):
+        return None
+    lex_config = read_lex_config_key_slice(reader)
+    schema = reader.read_u32()
+    if (
+        lex_config is None
+        or schema != QUERY_PARSER_CONFIG_SCHEMA_VERSION
+        or not read_bool_value(reader)
+        or not read_bool_value(reader)
+        or not read_nonzero_u64(reader)
+    ):
+        return None
+    return lex_config
+
+
+def decode_lex_file_key_identity(data: bytes) -> tuple[bytes, bytes] | None:
+    reader = StableKeyReader(data)
+    if not expect_marker(reader, QUERY_LEX_FILE_KEY_MARKER):
+        return None
+    file_key = read_file_key_slice(reader)
+    lex_config = read_lex_config_key_slice(reader)
+    if file_key is None or lex_config is None or not read_nonzero_u64(reader) or not reader.eof():
+        return None
+    return file_key, lex_config
+
+
+def decode_parse_file_key_identity(data: bytes) -> tuple[bytes, bytes] | None:
+    reader = StableKeyReader(data)
+    if not expect_marker(reader, QUERY_PARSE_FILE_KEY_MARKER):
+        return None
+    file_key = read_file_key_slice(reader)
+    lex_config = read_parser_config_key_lex_config_slice(reader)
+    if file_key is None or lex_config is None or not read_nonzero_u64(reader) or not reader.eof():
+        return None
+    return file_key, lex_config
+
+
+def decode_def_key_identity(data: bytes) -> bytes | None:
+    reader = StableKeyReader(data)
+    if not expect_marker(reader, QUERY_DEF_KEY_MARKER):
+        return None
+    module_key = read_module_key_slice(reader)
+    if (
+        module_key is None
+        or not skip_fingerprint(reader)
+        or reader.read_u32() is None
+        or not read_enum_value(reader, QUERY_DEF_NAMESPACE_VALUE, QUERY_DEF_NAMESPACE_SYNTHETIC)
+        or not read_enum_value(reader, QUERY_DEF_KIND_FUNCTION, QUERY_DEF_KIND_SYNTHETIC)
+        or reader.read_u32() is None
+        or not read_nonzero_u64(reader)
+        or not reader.eof()
+    ):
+        return None
+    return module_key
+
+
+def decode_body_key_identity(data: bytes) -> bytes | None:
+    reader = StableKeyReader(data)
+    if not expect_marker(reader, QUERY_BODY_KEY_MARKER):
+        return None
+    owner = read_def_key_slice(reader)
+    if (
+        owner is None
+        or not read_enum_value(reader, QUERY_BODY_SLOT_FUNCTION_BODY, QUERY_BODY_SLOT_CLOSURE_BODY)
+        or reader.read_u32() is None
+        or not read_nonzero_u64(reader)
+        or not reader.eof()
+    ):
+        return None
+    return owner
+
+
+def decode_generic_instance_key_identity(data: bytes) -> bytes | None:
+    reader = StableKeyReader(data)
+    if not expect_marker(reader, QUERY_GENERIC_INSTANCE_KEY_MARKER):
+        return None
+    template_def = read_def_key_slice(reader)
+    type_arg_count = reader.read_u64()
+    if template_def is None or type_arg_count is None or not skip_canonical_type_keys(reader, type_arg_count):
+        return None
+    const_arg_count = reader.read_u64()
+    if (
+        const_arg_count is None
+        or not skip_fingerprints(reader, const_arg_count)
+        or not skip_param_env_key(reader)
+        or not read_nonzero_u64(reader)
+        or not reader.eof()
+    ):
+        return None
+    return template_def
 
 
 def stable_query_key_bytes(key_fields: tuple[str, ...]) -> bytes:
@@ -385,33 +813,42 @@ def query_edge_identity_is_expected(
     dependent = dependent_fields[0]
     dependency = dependency_fields[0]
     if dependent == "lex_file":
-        return stable_slice_matches(dependent_key, STABLE_LEX_FILE_KEY_FILE_OFFSET, dependency_key)
+        identity = decode_lex_file_key_identity(dependent_key)
+        return identity is not None and identity[0] == dependency_key
     if dependent == "parse_file":
-        return stable_slices_match(
-            dependent_key,
-            STABLE_PARSE_FILE_KEY_FILE_OFFSET,
-            dependency_key,
-            STABLE_LEX_FILE_KEY_FILE_OFFSET,
-            STABLE_FILE_KEY_WIDTH,
-        ) and stable_slices_match(
-            dependent_key,
-            STABLE_PARSE_FILE_KEY_LEX_CONFIG_OFFSET,
-            dependency_key,
-            STABLE_LEX_FILE_KEY_CONFIG_OFFSET,
-            STABLE_LEX_CONFIG_KEY_WIDTH,
+        dependent_identity = decode_parse_file_key_identity(dependent_key)
+        dependency_identity = decode_lex_file_key_identity(dependency_key)
+        return (
+            dependent_identity is not None
+            and dependency_identity is not None
+            and dependent_identity[0] == dependency_identity[0]
+            and dependent_identity[1] == dependency_identity[1]
         )
-    if dependent in {"item_list", "module_exports", "generic_instance_body", "lower_function_ir"}:
-        return dependent_key == dependency_key
+    if dependent in {"item_list", "module_exports"}:
+        return dependent_key == dependency_key and stable_key_has_module_key_layout(dependent_key)
+    if dependent == "generic_instance_body":
+        return dependent_key == dependency_key and stable_key_has_generic_instance_key_layout(dependent_key)
     if dependent in {"item_signature", "generic_template_signature"}:
-        return stable_slice_matches(dependent_key, STABLE_DEF_KEY_MODULE_OFFSET, dependency_key)
+        module_key = decode_def_key_identity(dependent_key)
+        return module_key is not None and module_key == dependency_key
     if dependent == "generic_instance_signature":
-        return stable_slice_matches(dependent_key, STABLE_GENERIC_INSTANCE_KEY_TEMPLATE_OFFSET, dependency_key)
+        template_def = decode_generic_instance_key_identity(dependent_key)
+        return template_def is not None and template_def == dependency_key
     if dependent == "type_check_body":
         if dependency == "function_body_syntax":
-            return dependent_key == dependency_key
-        return stable_slice_matches(dependent_key, STABLE_BODY_KEY_OWNER_OFFSET, dependency_key)
+            return dependent_key == dependency_key and stable_key_has_body_key_layout(dependent_key)
+        owner = decode_body_key_identity(dependent_key)
+        return owner is not None and owner == dependency_key
+    if dependent == "lower_function_ir":
+        if dependency == "type_check_body":
+            return dependent_key == dependency_key and stable_key_has_body_key_layout(dependent_key)
+        if dependency == "generic_instance_body":
+            return dependent_key == dependency_key and stable_key_has_generic_instance_key_layout(dependent_key)
+        return False
     if dependent == "diagnostics":
-        return dependent_key == stable_query_key_bytes(dependency_fields)
+        return dependent_key == stable_query_key_bytes(dependency_fields) and stable_key_has_query_key_layout(
+            dependent_key
+        )
     return False
 
 

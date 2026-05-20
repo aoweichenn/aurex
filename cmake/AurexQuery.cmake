@@ -2,6 +2,7 @@ add_library(aurex_query
     src/query/stable_hash.cpp
     src/query/stable_identity.cpp
     src/query/query_key.cpp
+    src/query/stable_key_decoder.cpp
     src/query/query_edge_verifier.cpp
     src/query/query_result.cpp
     src/query/query_reuse.cpp

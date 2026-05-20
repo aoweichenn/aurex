@@ -10,6 +10,7 @@
 #include <aurex/query/lower_function_ir_query.hpp>
 #include <aurex/query/module_exports_query.hpp>
 #include <aurex/query/module_graph_query.hpp>
+#include <aurex/query/query_interner.hpp>
 #include <aurex/query/source_file_query.hpp>
 #include <aurex/query/type_check_body_query.hpp>
 
@@ -34,6 +35,7 @@ enum class QueryEvaluationStatus : base::u8 {
 };
 
 struct QueryNode {
+    QueryNodeId id;
     QueryKey key;
     QueryNodeStatus status = QueryNodeStatus::failed;
     QueryRecord record;
@@ -133,11 +135,15 @@ public:
     [[nodiscard]] bool seed_completed_record(QueryRecord record, std::vector<QueryKey> dependencies = {});
     [[nodiscard]] bool invalidate(QueryKey key);
     [[nodiscard]] const QueryNode* find(QueryKey key) const;
+    [[nodiscard]] const QueryNode* find(QueryNodeId id) const;
+    [[nodiscard]] std::optional<QueryNodeId> node_id_for(QueryKey key) const;
     [[nodiscard]] std::vector<QueryKey> dependencies_for(QueryKey key) const;
     [[nodiscard]] std::vector<QueryKey> dependents_of(QueryKey key) const;
     [[nodiscard]] std::vector<QueryDependencyEdge> dependency_edges() const;
     [[nodiscard]] bool has_dependency(QueryKey dependent, QueryKey dependency) const;
     [[nodiscard]] base::usize dependency_edge_count() const noexcept;
+    [[nodiscard]] base::usize interned_query_count() const noexcept;
+    [[nodiscard]] base::usize bound_stable_identity_count() const noexcept;
     [[nodiscard]] std::vector<QueryRecord> completed_records() const;
 
 private:
@@ -152,8 +158,10 @@ private:
     void remove_dependency_edges(QueryNode& node);
     void add_dependency_edges(const QueryNode& node);
     [[nodiscard]] QueryNode& node_for(QueryKey key);
+    [[nodiscard]] bool intern_dependency_keys(const std::vector<QueryKey>& dependencies);
     [[nodiscard]] QueryEvaluationResult fail_query(QueryNode& node);
 
+    QueryInterner interner_;
     std::unordered_map<QueryKey, QueryNode, QueryKeyHash> nodes_;
     std::unordered_map<QueryKey, std::vector<QueryKey>, QueryKeyHash> dependents_by_dependency_;
     base::usize dependency_edge_count_ = 0;

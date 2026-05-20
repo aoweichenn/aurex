@@ -636,6 +636,17 @@ const QueryNode* QueryContext::find(const QueryKey key) const
     return found == this->nodes_.end() ? nullptr : &found->second;
 }
 
+const QueryNode* QueryContext::find(const QueryNodeId id) const
+{
+    const QueryInternedIdentity* const identity = this->interner_.find(id);
+    return identity == nullptr ? nullptr : this->find(identity->key);
+}
+
+std::optional<QueryNodeId> QueryContext::node_id_for(const QueryKey key) const
+{
+    return this->interner_.find(key);
+}
+
 std::vector<QueryKey> QueryContext::dependencies_for(const QueryKey key) const
 {
     const QueryNode* const node = this->find(key);
@@ -687,6 +698,16 @@ bool QueryContext::has_dependency(const QueryKey dependent, const QueryKey depen
 base::usize QueryContext::dependency_edge_count() const noexcept
 {
     return this->dependency_edge_count_;
+}
+
+base::usize QueryContext::interned_query_count() const noexcept
+{
+    return this->interner_.size();
+}
+
+base::usize QueryContext::bound_stable_identity_count() const noexcept
+{
+    return this->interner_.stable_identity_count();
 }
 
 std::vector<QueryRecord> QueryContext::completed_records() const
@@ -743,6 +764,9 @@ QueryEvaluationResult QueryContext::complete_query(
         || has_invalid_dependency(dependencies) || has_unexpected_dependency_kind(record.key, dependencies)) {
         return this->fail_query(node);
     }
+    if (!this->interner_.bind_record(node.id, record) || !this->intern_dependency_keys(dependencies)) {
+        return this->fail_query(node);
+    }
 
     this->remove_dependency_edges(node);
     normalize_dependencies(dependencies);
@@ -788,8 +812,10 @@ void QueryContext::add_dependency_edges(const QueryNode& node)
 
 QueryNode& QueryContext::node_for(const QueryKey key)
 {
+    const std::optional<QueryNodeId> id = this->interner_.intern_key(key);
     const auto inserted = this->nodes_.try_emplace(key,
         QueryNode{
+            id.value_or(QueryNodeId{}),
             key,
             QueryNodeStatus::failed,
             {},
@@ -797,6 +823,16 @@ QueryNode& QueryContext::node_for(const QueryKey key)
             {},
         });
     return inserted.first->second;
+}
+
+bool QueryContext::intern_dependency_keys(const std::vector<QueryKey>& dependencies)
+{
+    for (const QueryKey dependency : dependencies) {
+        if (!this->interner_.intern_key(dependency).has_value()) {
+            return false;
+        }
+    }
+    return true;
 }
 
 QueryEvaluationResult QueryContext::fail_query(QueryNode& node)

@@ -11,6 +11,7 @@
 #include <aurex/query/module_graph_query.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_edge_verifier.hpp>
+#include <aurex/query/query_interner.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/query/query_reuse.hpp>
 #include <aurex/query/source_file_query.hpp>
@@ -53,6 +54,8 @@ constexpr base::u64 QUERY_TEST_LEGACY_FIELD_GLOBAL_ID = 0x1f522697ad2bd81cULL;
 constexpr base::u64 QUERY_TEST_LEGACY_INCREMENTAL_GLOBAL_ID = 0x55dd4e219a7521c0ULL;
 constexpr base::u32 QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_BYTES = 8;
 constexpr base::u32 QUERY_TEST_LEGACY_DOTTED_MODULE_PATH_BYTES = 28;
+constexpr base::u32 QUERY_TEST_UNKNOWN_NODE_ID = 999;
+constexpr base::usize QUERY_TEST_LIMITED_INTERNER_CAPACITY = 1;
 constexpr std::string_view QUERY_TEST_PROVIDER_SIGNATURE = "signature:i32";
 constexpr std::string_view QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE = "signature:mismatched-provider-output";
 constexpr std::string_view QUERY_TEST_MODULE_EXPORTS_SIGNATURE = "exports:v1";
@@ -1311,6 +1314,81 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     const query::QueryRecord invalid_cached_record;
     EXPECT_EQ(query::query_record_change_status(&invalid_cached_record, *item_record),
         query::QueryRecordChangeStatus::malformed);
+}
+
+TEST(QueryUnit, QueryInternerAssignsNodeIdsAndBindsStableIdentities)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey function_def = test_function_def(module);
+    const query::QueryResultFingerprint result = test_query_result(QUERY_TEST_PROVIDER_SIGNATURE);
+    const query::QueryResultFingerprint module_graph_result = test_query_result(QUERY_TEST_MODULE_GRAPH);
+    const std::optional<query::QueryRecord> item_record = query::item_signature_query_record(function_def, result);
+    const std::optional<query::QueryRecord> module_graph_record =
+        query::module_graph_query_record(module, module_graph_result);
+    ASSERT_TRUE(item_record.has_value());
+    ASSERT_TRUE(module_graph_record.has_value());
+
+    query::QueryInterner interner;
+    EXPECT_EQ(interner.size(), 0U);
+    EXPECT_EQ(interner.stable_identity_count(), 0U);
+    EXPECT_FALSE(query::is_valid(query::QueryNodeId{}));
+    EXPECT_FALSE(interner.intern_key(query::QueryKey{}).has_value());
+    EXPECT_FALSE(interner.find(query::QueryKey{}).has_value());
+    EXPECT_EQ(interner.find(query::QueryNodeId{}), nullptr);
+    EXPECT_FALSE(interner.stable_key_bytes(query::QueryNodeId{}).has_value());
+
+    const std::optional<query::QueryNodeId> item_id = interner.intern_key(item_record->key);
+    ASSERT_TRUE(item_id.has_value());
+    EXPECT_TRUE(query::is_valid(*item_id));
+    EXPECT_EQ(item_id->value, query::QUERY_NODE_ID_FIRST_VALUE);
+    EXPECT_NE(query::QueryNodeIdHash{}(*item_id), 0U);
+    EXPECT_EQ(interner.size(), 1U);
+    EXPECT_EQ(interner.stable_identity_count(), 0U);
+    EXPECT_EQ(interner.intern_key(item_record->key), item_id);
+    EXPECT_EQ(interner.find(item_record->key), item_id);
+
+    const query::QueryInternedIdentity* const unbound_identity = interner.find(*item_id);
+    ASSERT_NE(unbound_identity, nullptr);
+    EXPECT_EQ(unbound_identity->id, *item_id);
+    EXPECT_EQ(unbound_identity->key, item_record->key);
+    EXPECT_FALSE(unbound_identity->stable_identity_bound);
+    EXPECT_FALSE(interner.stable_key_bytes(*item_id).has_value());
+
+    const std::optional<query::QueryNodeId> bound_item_id = interner.intern_record(*item_record);
+    ASSERT_TRUE(bound_item_id.has_value());
+    EXPECT_EQ(bound_item_id, item_id);
+    EXPECT_EQ(interner.size(), 1U);
+    EXPECT_EQ(interner.stable_identity_count(), 1U);
+    const std::optional<std::string_view> item_stable_key = interner.stable_key_bytes(*item_id);
+    ASSERT_TRUE(item_stable_key.has_value());
+    EXPECT_EQ(*item_stable_key, item_record->stable_key_bytes);
+    EXPECT_TRUE(interner.bind_record(*item_id, *item_record));
+    EXPECT_EQ(interner.stable_identity_count(), 1U);
+
+    const std::optional<query::QueryNodeId> module_id = interner.intern_record(*module_graph_record);
+    ASSERT_TRUE(module_id.has_value());
+    EXPECT_NE(*module_id, *item_id);
+    EXPECT_EQ(interner.size(), 2U);
+    EXPECT_EQ(interner.stable_identity_count(), 2U);
+    EXPECT_FALSE(interner.bind_record(query::QueryNodeId{}, *item_record));
+    EXPECT_FALSE(interner.bind_record(query::QueryNodeId{QUERY_TEST_UNKNOWN_NODE_ID}, *item_record));
+    EXPECT_FALSE(interner.bind_record(*item_id, *module_graph_record));
+
+    query::QueryRecord wrong_payload_record = *item_record;
+    wrong_payload_record.key =
+        query::query_key(query::QueryKind::item_signature, query::stable_key_fingerprint(module));
+    EXPECT_FALSE(interner.bind_record(*item_id, wrong_payload_record));
+    EXPECT_FALSE(interner.intern_record(wrong_payload_record).has_value());
+    EXPECT_EQ(interner.find(query::QueryNodeId{QUERY_TEST_UNKNOWN_NODE_ID}), nullptr);
+    EXPECT_FALSE(interner.stable_key_bytes(query::QueryNodeId{QUERY_TEST_UNKNOWN_NODE_ID}).has_value());
+
+    query::QueryInterner limited_interner{QUERY_TEST_LIMITED_INTERNER_CAPACITY};
+    EXPECT_TRUE(limited_interner.intern_record(*item_record).has_value());
+    EXPECT_FALSE(limited_interner.intern_key(module_graph_record->key).has_value());
+    EXPECT_FALSE(limited_interner.intern_record(*module_graph_record).has_value());
+    EXPECT_EQ(limited_interner.size(), QUERY_TEST_LIMITED_INTERNER_CAPACITY);
+    EXPECT_EQ(limited_interner.stable_identity_count(), QUERY_TEST_LIMITED_INTERNER_CAPACITY);
 }
 
 TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
@@ -3298,6 +3376,8 @@ TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
         ++provider_calls;
         return query::provide_item_signature_query(provider_input);
     });
+    EXPECT_EQ(context.interned_query_count(), 0U);
+    EXPECT_EQ(context.bound_stable_identity_count(), 0U);
 
     EXPECT_FALSE(context.seed_completed_record(query::QueryRecord{}));
     EXPECT_FALSE(context.seed_completed_record(output->record, {query::QueryKey{}}));
@@ -3310,8 +3390,17 @@ TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
     wrong_shape_record.stable_key_bytes = query::stable_serialize(subject.def.module);
     EXPECT_FALSE(context.seed_completed_record(wrong_shape_record, {dependency}));
     EXPECT_EQ(context.find(wrong_shape_record.key), nullptr);
+    EXPECT_EQ(context.interned_query_count(), 0U);
+    EXPECT_EQ(context.bound_stable_identity_count(), 0U);
     EXPECT_TRUE(context.seed_completed_record(output->record, {dependency, dependency}));
     EXPECT_FALSE(context.seed_completed_record(output->record));
+    EXPECT_EQ(context.interned_query_count(), 2U);
+    EXPECT_EQ(context.bound_stable_identity_count(), 1U);
+    const std::optional<query::QueryNodeId> seeded_node_id = context.node_id_for(*expected_key);
+    ASSERT_TRUE(seeded_node_id.has_value());
+    EXPECT_TRUE(query::is_valid(*seeded_node_id));
+    EXPECT_EQ(context.find(*seeded_node_id), context.find(*expected_key));
+    EXPECT_TRUE(context.node_id_for(dependency).has_value());
     EXPECT_EQ(context.dependency_edge_count(), 1U);
     EXPECT_EQ(context.dependencies_for(*expected_key), std::vector<query::QueryKey>{dependency});
     EXPECT_TRUE(context.has_dependency(*expected_key, dependency));
@@ -3319,6 +3408,7 @@ TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
     const query::QueryEvaluationResult cached_result = context.evaluate_item_signature(subject.input);
     EXPECT_EQ(cached_result.status, query::QueryEvaluationStatus::cached);
     ASSERT_NE(cached_result.node, nullptr);
+    EXPECT_EQ(cached_result.node->id, *seeded_node_id);
     EXPECT_EQ(cached_result.node->record.key, output->record.key);
     EXPECT_EQ(cached_result.node->record.result, output->record.result);
     EXPECT_EQ(cached_result.node->record.stable_key_bytes, output->record.stable_key_bytes);
@@ -3331,10 +3421,15 @@ TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
     EXPECT_TRUE(context.dependencies_for(*expected_key).empty());
     EXPECT_TRUE(context.dependents_of(dependency).empty());
     EXPECT_FALSE(context.has_dependency(*expected_key, dependency));
+    EXPECT_EQ(context.interned_query_count(), 2U);
+    EXPECT_EQ(context.bound_stable_identity_count(), 1U);
 
     const query::QueryEvaluationResult recomputed_result = context.evaluate_item_signature(subject.input);
     EXPECT_EQ(recomputed_result.status, query::QueryEvaluationStatus::computed);
     EXPECT_EQ(provider_calls, 1U);
+    EXPECT_EQ(context.node_id_for(*expected_key), seeded_node_id);
+    EXPECT_EQ(context.interned_query_count(), 2U);
+    EXPECT_EQ(context.bound_stable_identity_count(), 1U);
 }
 
 TEST(QueryUnit, QueryContextRejectsProviderRecordsWithMalformedStableIdentity)
@@ -3359,6 +3454,9 @@ TEST(QueryUnit, QueryContextRejectsProviderRecordsWithMalformedStableIdentity)
     EXPECT_EQ(result.node->status, query::QueryNodeStatus::failed);
     EXPECT_TRUE(context.completed_records().empty());
     EXPECT_EQ(context.dependency_edge_count(), 0U);
+    EXPECT_EQ(context.interned_query_count(), 1U);
+    EXPECT_EQ(context.bound_stable_identity_count(), 0U);
+    EXPECT_TRUE(context.node_id_for(*expected_key).has_value());
 }
 
 TEST(QueryUnit, QueryReuseDecisionClassifiesCachedCurrentAndMalformedRecords)

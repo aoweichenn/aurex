@@ -254,6 +254,7 @@ class ScenarioResult:
     query_pruning_fields: dict[str, str]
     provider_eval_detail: str
     provider_eval_fields: dict[str, str]
+    query_record_count: int
     query_edge_count: int
     source: str
 
@@ -878,8 +879,9 @@ def query_edge_identity_is_expected(
     return False
 
 
-def validate_cache_query_edges(cache_path: pathlib.Path) -> int:
+def validate_cache_query_graph(cache_path: pathlib.Path) -> tuple[int, int]:
     expected_count: int | None = None
+    query_count = 0
     edge_count = 0
     query_stable_keys: dict[tuple[str, ...], bytes] = {}
     query_edges: list[tuple[int, str, tuple[str, ...], tuple[str, ...]]] = []
@@ -895,6 +897,7 @@ def validate_cache_query_edges(cache_path: pathlib.Path) -> int:
                     f"query row stable key shape does not match kind at {cache_path}:{line_number}: {line!r}"
                 )
             query_stable_keys[tuple(fields[1:7])] = stable_key
+            query_count += 1
             continue
         if fields[0] == QUERY_EDGE_CACHE_HEADER:
             if len(fields) != 2:
@@ -923,6 +926,8 @@ def validate_cache_query_edges(cache_path: pathlib.Path) -> int:
         raise RuntimeError(f"query_edges header mismatch in {cache_path}: expected {expected_count}, got {edge_count}")
     if edge_count == 0:
         raise RuntimeError(f"cache has no query dependency edges: {cache_path}")
+    if query_count == 0:
+        raise RuntimeError(f"cache has no query records: {cache_path}")
     for line_number, line, dependent_fields, dependency_fields in query_edges:
         dependent_key = query_stable_keys.get(dependent_fields)
         dependency_key = query_stable_keys.get(dependency_fields)
@@ -930,7 +935,7 @@ def validate_cache_query_edges(cache_path: pathlib.Path) -> int:
             raise RuntimeError(f"query_edge references missing query row at {cache_path}:{line_number}: {line!r}")
         if not query_edge_identity_is_expected(dependent_fields, dependency_fields, dependent_key, dependency_key):
             raise RuntimeError(f"unexpected query_edge stable identity at {cache_path}:{line_number}: {line!r}")
-    return edge_count
+    return query_count, edge_count
 
 
 def parse_detail_fields(detail: str) -> dict[str, str]:
@@ -1578,7 +1583,7 @@ def run_scenario(function_count: int, scenario_name: str, source_variant: int) -
             f"{scenario_name}: {provider_eval_detail!r} != {verified_provider_eval_detail!r}"
         )
 
-    query_edge_count = validate_cache_query_edges(cache_path)
+    query_record_count, query_edge_count = validate_cache_query_graph(cache_path)
     source = source_path.read_text(encoding="utf-8")
     return ScenarioResult(
         name=scenario_name,
@@ -1595,6 +1600,7 @@ def run_scenario(function_count: int, scenario_name: str, source_variant: int) -
         query_pruning_fields=query_pruning_fields,
         provider_eval_detail=provider_eval_detail,
         provider_eval_fields=provider_eval_fields,
+        query_record_count=query_record_count,
         query_edge_count=query_edge_count,
         source=str(source_path),
     )
@@ -1614,7 +1620,7 @@ def print_report(result: QueryPruningGateResult) -> None:
         print(
             f"{scenario.name}: diff={scenario.query_diff_detail}; plan={scenario.query_plan_detail}; "
             f"pruning={scenario.query_pruning_detail}; provider_eval={scenario.provider_eval_detail}; "
-            f"query_edges={scenario.query_edge_count}"
+            f"query_records={scenario.query_record_count}; query_edges={scenario.query_edge_count}"
         )
     print(f"json: {OUTPUT_JSON}")
 

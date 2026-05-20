@@ -52,12 +52,30 @@ QUERY_CACHE_FIELD_COUNT = 12
 QUERY_CACHE_KIND_FIELD = 0
 QUERY_CACHE_QUERY_KIND_FIELD = 1
 QUERY_CACHE_RESULT_GLOBAL_FIELD = 7
+QUERY_CACHE_STABLE_KEY_FIELD = 11
 QUERY_CACHE_GENERIC_INSTANCE_KIND = "generic_instance_signature"
 QUERY_EDGE_CACHE_FIELD_COUNT = 13
 QUERY_EDGE_CACHE_HEADER = "query_edges"
 QUERY_EDGE_CACHE_KIND = "query_edge"
 QUERY_EDGE_DEPENDENT_KIND_FIELD = 1
 QUERY_EDGE_DEPENDENCY_KIND_FIELD = 7
+QUERY_KEY_MARKER = 0x51554552594B3031
+QUERY_KIND_VALUES = {
+    "file_content": 1,
+    "lex_file": 2,
+    "parse_file": 3,
+    "module_graph": 4,
+    "module_exports": 5,
+    "item_list": 6,
+    "item_signature": 7,
+    "function_body_syntax": 8,
+    "type_check_body": 9,
+    "generic_template_signature": 10,
+    "generic_instance_signature": 11,
+    "generic_instance_body": 12,
+    "diagnostics": 13,
+    "lower_function_ir": 14,
+}
 QUERY_DEPENDENCY_SCHEDULE = {
     "file_content": 0,
     "lex_file": 1,
@@ -86,6 +104,38 @@ EXPECTED_QUERY_DEPENDENCY_KINDS = {
     "generic_instance_body": {"generic_instance_signature"},
     "lower_function_ir": {"type_check_body", "generic_instance_body"},
 }
+STABLE_U8_WIDTH = 1
+STABLE_U16_WIDTH = 2
+STABLE_U32_WIDTH = 4
+STABLE_U64_WIDTH = 8
+STABLE_BOOL_WIDTH = 1
+STABLE_FINGERPRINT_WIDTH = 20
+STABLE_PACKAGE_KEY_WIDTH = STABLE_U64_WIDTH + STABLE_FINGERPRINT_WIDTH + STABLE_U64_WIDTH
+STABLE_FILE_KEY_WIDTH = (
+    STABLE_U64_WIDTH
+    + STABLE_PACKAGE_KEY_WIDTH
+    + STABLE_FINGERPRINT_WIDTH
+    + STABLE_FINGERPRINT_WIDTH
+    + STABLE_U8_WIDTH
+    + STABLE_U64_WIDTH
+)
+STABLE_LEX_CONFIG_KEY_WIDTH = STABLE_U64_WIDTH + STABLE_U32_WIDTH + STABLE_BOOL_WIDTH + STABLE_U64_WIDTH
+STABLE_MODULE_KEY_WIDTH = (
+    STABLE_U64_WIDTH
+    + STABLE_PACKAGE_KEY_WIDTH
+    + STABLE_FINGERPRINT_WIDTH
+    + STABLE_U32_WIDTH
+    + STABLE_U8_WIDTH
+    + STABLE_U64_WIDTH
+)
+STABLE_LEX_FILE_KEY_FILE_OFFSET = STABLE_U64_WIDTH
+STABLE_LEX_FILE_KEY_CONFIG_OFFSET = STABLE_LEX_FILE_KEY_FILE_OFFSET + STABLE_FILE_KEY_WIDTH
+STABLE_PARSE_FILE_KEY_FILE_OFFSET = STABLE_U64_WIDTH
+STABLE_PARSE_FILE_KEY_PARSER_CONFIG_OFFSET = STABLE_PARSE_FILE_KEY_FILE_OFFSET + STABLE_FILE_KEY_WIDTH
+STABLE_PARSE_FILE_KEY_LEX_CONFIG_OFFSET = STABLE_PARSE_FILE_KEY_PARSER_CONFIG_OFFSET + STABLE_U64_WIDTH
+STABLE_DEF_KEY_MODULE_OFFSET = STABLE_U64_WIDTH
+STABLE_BODY_KEY_OWNER_OFFSET = STABLE_U64_WIDTH
+STABLE_GENERIC_INSTANCE_KEY_TEMPLATE_OFFSET = STABLE_U64_WIDTH
 
 ALL_REUSE_SCENARIO = "all_reuse"
 BODY_RECOMPUTE_SCENARIO = "body_recompute"
@@ -293,12 +343,89 @@ def query_edge_kind_is_expected(dependent: str, dependency: str) -> bool:
     return dependency in EXPECTED_QUERY_DEPENDENCY_KINDS.get(dependent, set())
 
 
+def stable_slice_matches(source: bytes, offset: int, expected: bytes) -> bool:
+    return (
+        offset <= len(source)
+        and len(expected) <= len(source) - offset
+        and source[offset : offset + len(expected)] == expected
+    )
+
+
+def stable_slices_match(lhs: bytes, lhs_offset: int, rhs: bytes, rhs_offset: int, width: int) -> bool:
+    return (
+        lhs_offset <= len(lhs)
+        and width <= len(lhs) - lhs_offset
+        and rhs_offset <= len(rhs)
+        and width <= len(rhs) - rhs_offset
+        and lhs[lhs_offset : lhs_offset + width] == rhs[rhs_offset : rhs_offset + width]
+    )
+
+
+def stable_query_key_bytes(key_fields: tuple[str, ...]) -> bytes:
+    kind, schema, global_id, payload_primary, payload_secondary, payload_bytes = key_fields
+    kind_value = QUERY_KIND_VALUES.get(kind)
+    if kind_value is None:
+        raise RuntimeError(f"unknown query kind in query key: {kind!r}")
+    return b"".join(
+        [
+            QUERY_KEY_MARKER.to_bytes(STABLE_U64_WIDTH, "little"),
+            kind_value.to_bytes(STABLE_U8_WIDTH, "little"),
+            int(schema).to_bytes(STABLE_U16_WIDTH, "little"),
+            int(payload_primary).to_bytes(STABLE_U64_WIDTH, "little"),
+            int(payload_secondary).to_bytes(STABLE_U64_WIDTH, "little"),
+            int(payload_bytes).to_bytes(STABLE_U32_WIDTH, "little"),
+            int(global_id).to_bytes(STABLE_U64_WIDTH, "little"),
+        ]
+    )
+
+
+def query_edge_identity_is_expected(
+    dependent_fields: tuple[str, ...], dependency_fields: tuple[str, ...], dependent_key: bytes, dependency_key: bytes
+) -> bool:
+    dependent = dependent_fields[0]
+    dependency = dependency_fields[0]
+    if dependent == "lex_file":
+        return stable_slice_matches(dependent_key, STABLE_LEX_FILE_KEY_FILE_OFFSET, dependency_key)
+    if dependent == "parse_file":
+        return stable_slices_match(
+            dependent_key,
+            STABLE_PARSE_FILE_KEY_FILE_OFFSET,
+            dependency_key,
+            STABLE_LEX_FILE_KEY_FILE_OFFSET,
+            STABLE_FILE_KEY_WIDTH,
+        ) and stable_slices_match(
+            dependent_key,
+            STABLE_PARSE_FILE_KEY_LEX_CONFIG_OFFSET,
+            dependency_key,
+            STABLE_LEX_FILE_KEY_CONFIG_OFFSET,
+            STABLE_LEX_CONFIG_KEY_WIDTH,
+        )
+    if dependent in {"item_list", "module_exports", "generic_instance_body", "lower_function_ir"}:
+        return dependent_key == dependency_key
+    if dependent in {"item_signature", "generic_template_signature"}:
+        return stable_slice_matches(dependent_key, STABLE_DEF_KEY_MODULE_OFFSET, dependency_key)
+    if dependent == "generic_instance_signature":
+        return stable_slice_matches(dependent_key, STABLE_GENERIC_INSTANCE_KEY_TEMPLATE_OFFSET, dependency_key)
+    if dependent == "type_check_body":
+        if dependency == "function_body_syntax":
+            return dependent_key == dependency_key
+        return stable_slice_matches(dependent_key, STABLE_BODY_KEY_OWNER_OFFSET, dependency_key)
+    if dependent == "diagnostics":
+        return dependent_key == stable_query_key_bytes(dependency_fields)
+    return False
+
+
 def validate_cache_query_edges(cache_path: pathlib.Path) -> int:
     expected_count: int | None = None
     edge_count = 0
+    query_stable_keys: dict[tuple[str, ...], bytes] = {}
+    query_edges: list[tuple[int, str, tuple[str, ...], tuple[str, ...]]] = []
     for line_number, line in enumerate(cache_path.read_text(encoding="utf-8").splitlines(), start=1):
         fields = line.split("\t")
         if not fields:
+            continue
+        if len(fields) == QUERY_CACHE_FIELD_COUNT and fields[0] == "query":
+            query_stable_keys[tuple(fields[1:7])] = bytes.fromhex(fields[QUERY_CACHE_STABLE_KEY_FIELD])
             continue
         if fields[0] == QUERY_EDGE_CACHE_HEADER:
             if len(fields) != 2:
@@ -319,6 +446,7 @@ def validate_cache_query_edges(cache_path: pathlib.Path) -> int:
             raise RuntimeError(f"backward query_edge schedule at {cache_path}:{line_number}: {line!r}")
         if not query_edge_kind_is_expected(dependent, dependency):
             raise RuntimeError(f"unexpected query_edge dependency kind at {cache_path}:{line_number}: {line!r}")
+        query_edges.append((line_number, line, tuple(fields[1:7]), tuple(fields[7:13])))
         edge_count += 1
     if expected_count is None:
         raise RuntimeError(f"missing query_edges header in cache: {cache_path}")
@@ -326,6 +454,13 @@ def validate_cache_query_edges(cache_path: pathlib.Path) -> int:
         raise RuntimeError(f"query_edges header mismatch in {cache_path}: expected {expected_count}, got {edge_count}")
     if edge_count == 0:
         raise RuntimeError(f"cache has no query dependency edges: {cache_path}")
+    for line_number, line, dependent_fields, dependency_fields in query_edges:
+        dependent_key = query_stable_keys.get(dependent_fields)
+        dependency_key = query_stable_keys.get(dependency_fields)
+        if dependent_key is None or dependency_key is None:
+            raise RuntimeError(f"query_edge references missing query row at {cache_path}:{line_number}: {line!r}")
+        if not query_edge_identity_is_expected(dependent_fields, dependency_fields, dependent_key, dependency_key):
+            raise RuntimeError(f"unexpected query_edge stable identity at {cache_path}:{line_number}: {line!r}")
     return edge_count
 
 

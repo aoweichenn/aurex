@@ -1474,6 +1474,29 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesValidatesInvalidatesAndReuses
     driver::clear_file_cache();
 }
 
+TEST_F(AurexIntegrationTest, IncrementalCacheReportsWriteOpenFailure)
+{
+    constexpr std::size_t DRIVER_INCREMENTAL_CACHE_TOO_LONG_FILE_NAME_LENGTH = 300;
+    constexpr char DRIVER_INCREMENTAL_CACHE_TOO_LONG_FILE_NAME_CHAR = 'x';
+
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-write-open";
+    fs::create_directories(cache_dir);
+
+    driver::CompilerInvocation invocation;
+    invocation.incremental_cache_path = cache_dir
+        / std::string(
+            DRIVER_INCREMENTAL_CACHE_TOO_LONG_FILE_NAME_LENGTH, DRIVER_INCREMENTAL_CACHE_TOO_LONG_FILE_NAME_CHAR);
+
+    base::SourceManager sources;
+    const std::array<driver::ModuleRecord, 0> modules{};
+    const sema::CheckedModule checked;
+    const auto result = driver::write_incremental_cache(invocation, sources, modules, checked);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, base::ErrorCode::io_error);
+}
+
 TEST_F(AurexIntegrationTest, IncrementalCacheWritesQueryRowsInDependencyScheduleOrder)
 {
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_QUERY_SCHEDULE_SOURCE =
@@ -1847,21 +1870,31 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
                 std::stoull(expected_generic_diagnostics_result->global_id),
             });
     ASSERT_TRUE(expected_generic_diagnostics_record.has_value());
-    const query::QueryDependencyEdge cached_only_edge{
+    const query::QueryDependencyEdge wrong_identity_cached_edge{
         expected_generic_diagnostics_record->key,
         expected_item_record->key,
     };
-    const std::string cached_only_edge_row = cache_test_query_edge_row(cached_only_edge);
-    std::string cache_with_cached_only_edge = cached_query_text;
+    const std::string wrong_identity_cached_edge_row = cache_test_query_edge_row(wrong_identity_cached_edge);
+    std::string cache_with_wrong_identity_edge = cached_query_text;
     const std::string original_query_edge_count = "query_edges\t18\n";
-    const std::size_t query_edge_count_pos = cache_with_cached_only_edge.find(original_query_edge_count);
+    const std::size_t query_edge_count_pos = cache_with_wrong_identity_edge.find(original_query_edge_count);
     ASSERT_NE(query_edge_count_pos, std::string::npos);
-    cache_with_cached_only_edge.replace(query_edge_count_pos, original_query_edge_count.size(), "query_edges\t19\n");
-    cache_with_cached_only_edge += cached_only_edge_row;
-    write_cache_text(cache_with_cached_only_edge);
+    cache_with_wrong_identity_edge.replace(query_edge_count_pos, original_query_edge_count.size(), "query_edges\t19\n");
+    cache_with_wrong_identity_edge += wrong_identity_cached_edge_row;
+    write_cache_text(cache_with_wrong_identity_edge);
 
     driver::CompilerInvocation pruning_invocation = invocation;
     pruning_invocation.experimental_query_pruning = true;
+    driver::CompilationProfiler malformed_edge_write_profiler(true);
+    auto malformed_edge_write_result =
+        driver::write_incremental_cache(pruning_invocation, sources, modules, checked, &malformed_edge_write_profiler);
+    ASSERT_TRUE(malformed_edge_write_result) << malformed_edge_write_result.error().message;
+    expect_query_profile_phases_with_pruning(malformed_edge_write_profiler, CACHE_TEST_QUERY_DIFF_MISSING_DETAIL,
+        CACHE_TEST_QUERY_PLAN_MISSING_DETAIL, CACHE_TEST_QUERY_PRUNING_NO_CACHE_DETAIL);
+    const std::string repaired_cache_text = read_text(cache);
+    expect_contains(repaired_cache_text, "query_edges\t18");
+    EXPECT_EQ(repaired_cache_text.find(wrong_identity_cached_edge_row), std::string::npos);
+
     driver::CompilationProfiler pruning_write_profiler(true);
     auto pruning_write_result =
         driver::write_incremental_cache(pruning_invocation, sources, modules, checked, &pruning_write_profiler);
@@ -1870,8 +1903,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
         CACHE_TEST_QUERY_DIFF_UNCHANGED_DETAIL, CACHE_TEST_QUERY_PLAN_UNCHANGED_DETAIL,
         CACHE_TEST_QUERY_PRUNING_REUSE_ALL_DETAIL, CACHE_TEST_QUERY_PROVIDER_EVAL_REUSE_ALL_DETAIL);
     const std::string pruned_cache_text = read_text(cache);
-    expect_contains(pruned_cache_text, "query_edges\t19");
-    expect_contains(pruned_cache_text, cached_only_edge_row);
+    expect_contains(pruned_cache_text, "query_edges\t18");
+    EXPECT_EQ(pruned_cache_text.find(wrong_identity_cached_edge_row), std::string::npos);
 
     checked.generic_function_instances.front().signature.incremental_key =
         sema::stable_incremental_key(checked.generic_function_instances.front().signature.stable_id,
@@ -2050,6 +2083,22 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
     write_cache(edge_cache);
     expect_reused();
 
+    const query::QueryDependencyEdge self_edge{
+        item_record->key,
+        item_record->key,
+    };
+    std::string self_edge_cache = cache_test_header(canonical_source);
+    self_edge_cache += "sources\t1\n";
+    self_edge_cache += cache_test_source_row(canonical_source, DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE);
+    self_edge_cache += "modules\t0\n";
+    self_edge_cache += "definitions\t0\n";
+    self_edge_cache += "queries\t1\n";
+    self_edge_cache += cache_test_query_row(*item_record);
+    self_edge_cache += "query_edges\t1\n";
+    self_edge_cache += cache_test_query_edge_row(self_edge);
+    write_cache(self_edge_cache);
+    expect_not_reused();
+
     std::string missing_dependency_query_cache = cache_test_header(canonical_source);
     missing_dependency_query_cache += "sources\t1\n";
     missing_dependency_query_cache += cache_test_source_row(canonical_source, DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE);
@@ -2097,6 +2146,78 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
     write_cache(unexpected_kind_edge_cache);
     expect_not_reused();
 
+    const std::array<std::string_view, 1> wrong_module_parts{"incremental_cache_query_edges_wrong"};
+    const sema::StableModuleId wrong_stable_module = sema::stable_module_id(wrong_module_parts);
+    const query::ModuleKey wrong_module_key = query::module_key_from_stable_id(wrong_stable_module);
+    const std::optional<query::QueryRecord> wrong_exports_record = query::query_record(query::QueryKind::module_exports,
+        query::stable_key_fingerprint(wrong_module_key), query::stable_serialize(wrong_module_key), exports_result);
+    ASSERT_TRUE(wrong_exports_record.has_value());
+    const query::QueryDependencyEdge wrong_identity_edge{
+        item_record->key,
+        wrong_exports_record->key,
+    };
+    std::string wrong_identity_edge_cache = cache_test_header(canonical_source);
+    wrong_identity_edge_cache += "sources\t1\n";
+    wrong_identity_edge_cache += cache_test_source_row(canonical_source, DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE);
+    wrong_identity_edge_cache += "modules\t0\n";
+    wrong_identity_edge_cache += "definitions\t0\n";
+    wrong_identity_edge_cache += "queries\t2\n";
+    wrong_identity_edge_cache += cache_test_query_row(*wrong_exports_record);
+    wrong_identity_edge_cache += cache_test_query_row(*item_record);
+    wrong_identity_edge_cache += "query_edges\t1\n";
+    wrong_identity_edge_cache += cache_test_query_edge_row(wrong_identity_edge);
+    write_cache(wrong_identity_edge_cache);
+    expect_not_reused();
+
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_SHORT_PARSE_KEY = "short-parse";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_SHORT_LEX_KEY = "short-lex";
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_SHORT_FILE_KEY = "short-file";
+    const std::optional<query::QueryRecord> short_parse_record = query::query_record(query::QueryKind::parse_file,
+        query::stable_fingerprint(DRIVER_INCREMENTAL_CACHE_EDGE_SHORT_PARSE_KEY),
+        std::string(DRIVER_INCREMENTAL_CACHE_EDGE_SHORT_PARSE_KEY), item_result);
+    const std::optional<query::QueryRecord> short_lex_record = query::query_record(query::QueryKind::lex_file,
+        query::stable_fingerprint(DRIVER_INCREMENTAL_CACHE_EDGE_SHORT_LEX_KEY),
+        std::string(DRIVER_INCREMENTAL_CACHE_EDGE_SHORT_LEX_KEY), item_result);
+    const std::optional<query::QueryRecord> short_file_record = query::query_record(query::QueryKind::file_content,
+        query::stable_fingerprint(DRIVER_INCREMENTAL_CACHE_EDGE_SHORT_FILE_KEY),
+        std::string(DRIVER_INCREMENTAL_CACHE_EDGE_SHORT_FILE_KEY), item_result);
+    ASSERT_TRUE(short_parse_record.has_value());
+    ASSERT_TRUE(short_lex_record.has_value());
+    ASSERT_TRUE(short_file_record.has_value());
+    const query::QueryDependencyEdge short_parse_edge{
+        short_parse_record->key,
+        short_lex_record->key,
+    };
+    std::string short_parse_edge_cache = cache_test_header(canonical_source);
+    short_parse_edge_cache += "sources\t1\n";
+    short_parse_edge_cache += cache_test_source_row(canonical_source, DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE);
+    short_parse_edge_cache += "modules\t0\n";
+    short_parse_edge_cache += "definitions\t0\n";
+    short_parse_edge_cache += "queries\t2\n";
+    short_parse_edge_cache += cache_test_query_row(*short_lex_record);
+    short_parse_edge_cache += cache_test_query_row(*short_parse_record);
+    short_parse_edge_cache += "query_edges\t1\n";
+    short_parse_edge_cache += cache_test_query_edge_row(short_parse_edge);
+    write_cache(short_parse_edge_cache);
+    expect_not_reused();
+
+    const query::QueryDependencyEdge short_lex_edge{
+        short_lex_record->key,
+        short_file_record->key,
+    };
+    std::string short_lex_edge_cache = cache_test_header(canonical_source);
+    short_lex_edge_cache += "sources\t1\n";
+    short_lex_edge_cache += cache_test_source_row(canonical_source, DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE);
+    short_lex_edge_cache += "modules\t0\n";
+    short_lex_edge_cache += "definitions\t0\n";
+    short_lex_edge_cache += "queries\t2\n";
+    short_lex_edge_cache += cache_test_query_row(*short_file_record);
+    short_lex_edge_cache += cache_test_query_row(*short_lex_record);
+    short_lex_edge_cache += "query_edges\t1\n";
+    short_lex_edge_cache += cache_test_query_edge_row(short_lex_edge);
+    write_cache(short_lex_edge_cache);
+    expect_not_reused();
+
     write_cache(edge_cache);
 
     base::SourceManager sources;
@@ -2135,6 +2256,14 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
     duplicate_edge_cache.replace(duplicate_edge_count_pos, duplicate_edge_count_header.size(), "query_edges\t2\n");
     duplicate_edge_cache += cache_test_query_edge_row(edge);
     write_cache(duplicate_edge_cache);
+    expect_not_reused();
+
+    std::string zero_dependent_global_edge_cache = edge_cache;
+    const std::string valid_dependent_global_field = "\t" + std::to_string(item_record->key.global_id) + "\t";
+    const std::size_t dependent_global_pos = zero_dependent_global_edge_cache.find(valid_dependent_global_field);
+    ASSERT_NE(dependent_global_pos, std::string::npos);
+    zero_dependent_global_edge_cache.replace(dependent_global_pos, valid_dependent_global_field.size(), "\t0\t");
+    write_cache(zero_dependent_global_edge_cache);
     expect_not_reused();
 
     std::string invalid_edge_kind_cache = edge_cache;

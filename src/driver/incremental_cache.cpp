@@ -252,6 +252,31 @@ constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_BODY_RAN
 constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_LOWER_FUNCTION_IR_RANK = 12;
 constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_DIAGNOSTICS_RANK = 13;
 constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_INVALID_RANK = std::numeric_limits<base::usize>::max();
+constexpr base::usize INCREMENTAL_CACHE_STABLE_U8_WIDTH = 1;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_U32_WIDTH = 4;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_U64_WIDTH = 8;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_BOOL_WIDTH = 1;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_FINGERPRINT_WIDTH = 20;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_PACKAGE_KEY_WIDTH = INCREMENTAL_CACHE_STABLE_U64_WIDTH
+    + INCREMENTAL_CACHE_STABLE_FINGERPRINT_WIDTH + INCREMENTAL_CACHE_STABLE_U64_WIDTH;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_FILE_KEY_WIDTH = INCREMENTAL_CACHE_STABLE_U64_WIDTH
+    + INCREMENTAL_CACHE_STABLE_PACKAGE_KEY_WIDTH + INCREMENTAL_CACHE_STABLE_FINGERPRINT_WIDTH
+    + INCREMENTAL_CACHE_STABLE_FINGERPRINT_WIDTH + INCREMENTAL_CACHE_STABLE_U8_WIDTH
+    + INCREMENTAL_CACHE_STABLE_U64_WIDTH;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_LEX_CONFIG_KEY_WIDTH = INCREMENTAL_CACHE_STABLE_U64_WIDTH
+    + INCREMENTAL_CACHE_STABLE_U32_WIDTH + INCREMENTAL_CACHE_STABLE_BOOL_WIDTH + INCREMENTAL_CACHE_STABLE_U64_WIDTH;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_LEX_FILE_KEY_FILE_OFFSET = INCREMENTAL_CACHE_STABLE_U64_WIDTH;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_LEX_FILE_KEY_CONFIG_OFFSET =
+    INCREMENTAL_CACHE_STABLE_LEX_FILE_KEY_FILE_OFFSET + INCREMENTAL_CACHE_STABLE_FILE_KEY_WIDTH;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_PARSE_FILE_KEY_FILE_OFFSET = INCREMENTAL_CACHE_STABLE_U64_WIDTH;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_PARSE_FILE_KEY_PARSER_CONFIG_OFFSET =
+    INCREMENTAL_CACHE_STABLE_PARSE_FILE_KEY_FILE_OFFSET + INCREMENTAL_CACHE_STABLE_FILE_KEY_WIDTH;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_PARSE_FILE_KEY_LEX_CONFIG_OFFSET =
+    INCREMENTAL_CACHE_STABLE_PARSE_FILE_KEY_PARSER_CONFIG_OFFSET + INCREMENTAL_CACHE_STABLE_U64_WIDTH;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_DEF_KEY_MODULE_OFFSET = INCREMENTAL_CACHE_STABLE_U64_WIDTH;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_BODY_KEY_OWNER_OFFSET = INCREMENTAL_CACHE_STABLE_U64_WIDTH;
+constexpr base::usize INCREMENTAL_CACHE_STABLE_GENERIC_INSTANCE_KEY_TEMPLATE_OFFSET =
+    INCREMENTAL_CACHE_STABLE_U64_WIDTH;
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_DISABLED = "disabled";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NONE = "none";
 constexpr std::string_view INCREMENTAL_CACHE_PRUNING_FALLBACK_NO_CACHE = "no_cache";
@@ -918,14 +943,15 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return true;
 }
 
-[[nodiscard]] bool parsed_query_record_exists(const ParsedCache& cache, const query::QueryKey key) noexcept
+[[nodiscard]] const query::QueryRecord* parsed_query_record_for_key(
+    const ParsedCache& cache, const query::QueryKey key) noexcept
 {
     for (const ParsedQueryRecord& record : cache.queries) {
         if (record.record.key == key) {
-            return true;
+            return &record.record;
         }
     }
-    return false;
+    return nullptr;
 }
 
 [[nodiscard]] bool has_parsed_query_dependency_edge(
@@ -988,6 +1014,74 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 [[nodiscard]] bool query_dependency_edge_graph_is_valid(const query::QueryDependencyEdge edge) noexcept
 {
     return query_dependency_edge_schedule_is_valid(edge) && query::query_dependency_edge_kind_is_expected(edge);
+}
+
+[[nodiscard]] bool stable_key_slice_matches(
+    const std::string_view bytes, const base::usize offset, const std::string_view expected) noexcept
+{
+    return offset <= bytes.size() && expected.size() <= bytes.size() - offset
+        && bytes.substr(offset, expected.size()) == expected;
+}
+
+[[nodiscard]] bool stable_key_slices_match(const std::string_view lhs, const base::usize lhs_offset,
+    const std::string_view rhs, const base::usize rhs_offset, const base::usize width) noexcept
+{
+    return lhs_offset <= lhs.size() && width <= lhs.size() - lhs_offset && rhs_offset <= rhs.size()
+        && width <= rhs.size() - rhs_offset && lhs.substr(lhs_offset, width) == rhs.substr(rhs_offset, width);
+}
+
+[[nodiscard]] bool query_dependency_edge_stable_identity_is_valid(
+    const query::QueryRecord& dependent, const query::QueryRecord& dependency)
+{
+    const query::QueryDependencyEdge edge{
+        dependent.key,
+        dependency.key,
+    };
+    if (!query_dependency_edge_graph_is_valid(edge)) {
+        return false;
+    }
+
+    const std::string_view dependent_key = dependent.stable_key_bytes;
+    const std::string_view dependency_key = dependency.stable_key_bytes;
+    switch (dependent.key.kind) {
+        case query::QueryKind::file_content:
+        case query::QueryKind::module_graph:
+        case query::QueryKind::function_body_syntax:
+            return false;
+        case query::QueryKind::lex_file:
+            return stable_key_slice_matches(
+                dependent_key, INCREMENTAL_CACHE_STABLE_LEX_FILE_KEY_FILE_OFFSET, dependency_key);
+        case query::QueryKind::parse_file:
+            return stable_key_slices_match(dependent_key, INCREMENTAL_CACHE_STABLE_PARSE_FILE_KEY_FILE_OFFSET,
+                       dependency_key, INCREMENTAL_CACHE_STABLE_LEX_FILE_KEY_FILE_OFFSET,
+                       INCREMENTAL_CACHE_STABLE_FILE_KEY_WIDTH)
+                && stable_key_slices_match(dependent_key, INCREMENTAL_CACHE_STABLE_PARSE_FILE_KEY_LEX_CONFIG_OFFSET,
+                    dependency_key, INCREMENTAL_CACHE_STABLE_LEX_FILE_KEY_CONFIG_OFFSET,
+                    INCREMENTAL_CACHE_STABLE_LEX_CONFIG_KEY_WIDTH);
+        case query::QueryKind::item_list:
+        case query::QueryKind::module_exports:
+        case query::QueryKind::generic_instance_body:
+            return dependent_key == dependency_key;
+        case query::QueryKind::item_signature:
+        case query::QueryKind::generic_template_signature:
+            return stable_key_slice_matches(
+                dependent_key, INCREMENTAL_CACHE_STABLE_DEF_KEY_MODULE_OFFSET, dependency_key);
+        case query::QueryKind::generic_instance_signature:
+            return stable_key_slice_matches(
+                dependent_key, INCREMENTAL_CACHE_STABLE_GENERIC_INSTANCE_KEY_TEMPLATE_OFFSET, dependency_key);
+        case query::QueryKind::type_check_body:
+            if (dependency.key.kind == query::QueryKind::function_body_syntax) {
+                return dependent_key == dependency_key;
+            }
+            return stable_key_slice_matches(
+                dependent_key, INCREMENTAL_CACHE_STABLE_BODY_KEY_OWNER_OFFSET, dependency_key);
+        case query::QueryKind::lower_function_ir:
+            return dependent_key == dependency_key;
+        case query::QueryKind::diagnostics:
+            return dependent_key == query::stable_serialize(dependency.key);
+        case query::QueryKind::invalid:
+            return false;
+    }
 }
 
 [[nodiscard]] bool push_parsed_query_dependency_edge(ParsedCache& cache, const query::QueryDependencyEdge edge)
@@ -1105,11 +1199,13 @@ void append_hex_string(std::ostream& out, const std::string_view value)
         });
 }
 
-[[nodiscard]] bool parsed_cache_query_edges_resolve(const ParsedCache& cache) noexcept
+[[nodiscard]] bool parsed_cache_query_edges_resolve(const ParsedCache& cache)
 {
     for (const query::QueryDependencyEdge& edge : cache.query_edges) {
-        if (!parsed_query_record_exists(cache, edge.dependent) || !parsed_query_record_exists(cache, edge.dependency)
-            || !query_dependency_edge_graph_is_valid(edge)) {
+        const query::QueryRecord* const dependent = parsed_query_record_for_key(cache, edge.dependent);
+        const query::QueryRecord* const dependency = parsed_query_record_for_key(cache, edge.dependency);
+        if (dependent == nullptr || dependency == nullptr
+            || !query_dependency_edge_stable_identity_is_valid(*dependent, *dependency)) {
             return false;
         }
     }
@@ -1184,7 +1280,7 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return parse_header_line(cache, fields);
 }
 
-[[nodiscard]] bool parsed_cache_counts_match(const ParsedCache& cache) noexcept
+[[nodiscard]] bool parsed_cache_counts_match(const ParsedCache& cache)
 {
     const bool queries_match =
         cache.expected_queries.has_value() ? cache.queries.size() == *cache.expected_queries : cache.queries.empty();
@@ -1276,7 +1372,7 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     const std::filesystem::path& cache_path, const std::span<const query::QueryRecord> current_records)
 {
     const std::optional<ParsedCache> cache = read_incremental_cache(cache_path);
-    if (!cache) {
+    if (!cache || !parsed_cache_counts_match(*cache)) {
         return QueryReuseEvaluation{
             query::mark_all_queries_recompute(current_records),
             query::QueryContext{},
@@ -2998,6 +3094,17 @@ void evaluate_recomputed_query_subjects(query::QueryContext& context, const Quer
     return false;
 }
 
+[[nodiscard]] const query::QueryRecord* query_record_for_key(
+    const std::vector<query::QueryRecord>& records, const query::QueryKey key) noexcept
+{
+    for (const query::QueryRecord& record : records) {
+        if (record.key == key) {
+            return &record;
+        }
+    }
+    return nullptr;
+}
+
 [[nodiscard]] bool query_dependencies_exist_in_records(
     const std::vector<query::QueryRecord>& records, const std::vector<query::QueryKey>& dependencies) noexcept
 {
@@ -3046,11 +3153,13 @@ void evaluate_recomputed_query_subjects(query::QueryContext& context, const Quer
     return records;
 }
 
-[[nodiscard]] bool query_collection_dependency_edges_are_closed_and_valid(const QueryCollection& collection) noexcept
+[[nodiscard]] bool query_collection_dependency_edges_are_closed_and_valid(const QueryCollection& collection)
 {
     for (const query::QueryDependencyEdge& edge : collection.dependency_edges) {
-        if (!query_dependency_edge_graph_is_valid(edge) || !query_record_key_exists(collection.records, edge.dependent)
-            || !query_record_key_exists(collection.records, edge.dependency)) {
+        const query::QueryRecord* const dependent = query_record_for_key(collection.records, edge.dependent);
+        const query::QueryRecord* const dependency = query_record_for_key(collection.records, edge.dependency);
+        if (dependent == nullptr || dependency == nullptr
+            || !query_dependency_edge_stable_identity_is_valid(*dependent, *dependency)) {
             return false;
         }
     }

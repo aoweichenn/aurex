@@ -50,8 +50,11 @@ has a `source_file` root with top-level declaration nodes such as
 leaves, and delimiter groups such as `block`, `paren_group`, `bracket_group`,
 and `brace_group`. It can reconstruct the original source text; `token_stream`
 is now only the conservative fallback for non-monotonic hand-built token spans.
-Future parser lowering will deepen these CST / GreenTree grammar nodes for
-local incremental parse and IDE tooling.
+The lossless tree also records parent links, contiguous token spans, and stable
+node keys, supports deepest-node lookup by offset and subtree source
+reconstruction, and can enter the existing AST parser through
+`parse::lower_lossless_syntax_to_ast`. Local incremental parse and LSP consumers
+will continue on this lossless/query path.
 
 The command syntax stays clang-style and flat, but `--help` groups options into
 primary actions and secondary modifiers. Native backend modifiers such as

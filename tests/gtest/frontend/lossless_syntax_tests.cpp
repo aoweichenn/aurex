@@ -1,7 +1,11 @@
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/lex/lexer.hpp>
+#include <aurex/parse/lossless_parse.hpp>
+#include <aurex/parse/parser.hpp>
+#include <aurex/syntax/ast_dump.hpp>
 #include <aurex/syntax/lossless.hpp>
 
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -96,6 +100,19 @@ void expect_same_token_sequence(
     }
 }
 
+[[nodiscard]] syntax::AstModule parse_semantic_tokens(const std::span<const syntax::Token> tokens)
+{
+    base::DiagnosticSink diagnostics;
+    parse::Parser parser(tokens, diagnostics);
+    auto parsed = parser.parse_module();
+    EXPECT_TRUE(parsed) << (parsed ? "" : parsed.error().message);
+    EXPECT_FALSE(diagnostics.has_error());
+    if (!parsed) {
+        return {};
+    }
+    return parsed.take_value();
+}
+
 void expect_contains(const std::string_view text, const std::string_view needle)
 {
     EXPECT_NE(text.find(needle), std::string_view::npos) << "expected text to contain: " << needle << "\nactual text:\n"
@@ -140,7 +157,11 @@ TEST(CoreUnit, LosslessSyntaxPreservesTriviaAndReconstructsSource)
     EXPECT_EQ(tree.range().source.value, LOSSLESS_TEST_SOURCE_ID.value);
     EXPECT_EQ(tree.range().begin, 0U);
     EXPECT_EQ(tree.range().end, LOSSLESS_TEST_SOURCE.size());
+    EXPECT_TRUE(tree.is_structurally_valid());
     EXPECT_EQ(tree.reconstruct_text(), LOSSLESS_TEST_SOURCE);
+    EXPECT_EQ(tree.reconstruct_text(tree.root_id()), LOSSLESS_TEST_SOURCE);
+    EXPECT_EQ(tree.parent(tree.root_id()), syntax::INVALID_LOSSLESS_NODE_ID);
+    EXPECT_EQ(tree.token_span(tree.root_id()).size(), tree.token_count());
     EXPECT_GT(tree.trivia_token_count(), 0U);
     EXPECT_GT(tree.semantic_token_count(), 0U);
     EXPECT_EQ(syntax::lossless_node_kind_name(tree.root_kind()), "source_file");
@@ -174,17 +195,35 @@ TEST(CoreUnit, LosslessSyntaxPreservesTriviaAndReconstructsSource)
     EXPECT_GT(root->child_count, 1U);
     const syntax::LosslessNodeId module_id = first_node_with_kind(tree, syntax::LosslessNodeKind::module_decl);
     ASSERT_NE(module_id, syntax::INVALID_LOSSLESS_NODE_ID);
+    EXPECT_EQ(tree.parent(module_id), tree.root_id());
+    EXPECT_EQ(tree.reconstruct_text(module_id), "module lossless.sample;");
+    const std::optional<syntax::LosslessNodeKey> module_key = tree.node_key(module_id);
+    ASSERT_TRUE(module_key.has_value());
+    EXPECT_EQ(module_key->kind, syntax::LosslessNodeKind::module_decl);
+    EXPECT_EQ(module_key->range.begin, 0U);
+    EXPECT_EQ(module_key->range.end, 23U);
+    EXPECT_EQ(module_key->depth, 1U);
     const syntax::LosslessNodeId function_id = first_node_with_kind(tree, syntax::LosslessNodeKind::function_decl);
     ASSERT_NE(function_id, syntax::INVALID_LOSSLESS_NODE_ID);
+    EXPECT_EQ(tree.node_at_offset(0U), module_id);
+    EXPECT_EQ(tree.node_at_offset(LOSSLESS_TEST_SOURCE.find("main")), function_id);
     EXPECT_TRUE(lossless_tree_has_node_kind(tree, syntax::LosslessNodeKind::paren_group));
     EXPECT_TRUE(lossless_tree_has_node_kind(tree, syntax::LosslessNodeKind::block));
+    const syntax::LosslessNodeId block_id = tree.node_at_offset(LOSSLESS_TEST_SOURCE.find("block comment"));
+    ASSERT_NE(block_id, syntax::INVALID_LOSSLESS_NODE_ID);
+    const syntax::LosslessNode* block = tree.node(block_id);
+    ASSERT_NE(block, nullptr);
+    EXPECT_EQ(block->kind, syntax::LosslessNodeKind::block);
     const syntax::Token* first_token = first_token_child(tree, module_id);
     ASSERT_NE(first_token, nullptr);
     EXPECT_EQ(first_token->kind, syntax::TokenKind::kw_module);
     EXPECT_EQ(first_token->text(), "module");
     EXPECT_EQ(tree.node(syntax::INVALID_LOSSLESS_NODE_ID), nullptr);
+    EXPECT_EQ(tree.parent(syntax::INVALID_LOSSLESS_NODE_ID), syntax::INVALID_LOSSLESS_NODE_ID);
     EXPECT_EQ(tree.token(syntax::INVALID_LOSSLESS_TOKEN_ID), nullptr);
     EXPECT_TRUE(tree.children(syntax::INVALID_LOSSLESS_NODE_ID).empty());
+    EXPECT_TRUE(tree.token_span(syntax::INVALID_LOSSLESS_NODE_ID).empty());
+    EXPECT_FALSE(tree.node_key(syntax::INVALID_LOSSLESS_NODE_ID).has_value());
 
     const std::string dump = syntax::dump_lossless_syntax_tree(tree);
     expect_contains(dump, "source_file 0.." + std::to_string(LOSSLESS_TEST_SOURCE.size()) + " tokens=");
@@ -221,11 +260,36 @@ TEST(CoreUnit, LosslessSyntaxSemanticTokensMatchNormalLexer)
     expect_same_token_sequence(semantic_tokens, normal_tokens.span());
 }
 
+TEST(CoreUnit, LosslessSyntaxLowersToSameAstAsSemanticParser)
+{
+    constexpr std::string_view source = "module lossless.lower;\n"
+                                        "// parser bridge keeps trivia out of the semantic token stream\n"
+                                        "fn add(a: i32, b: i32) -> i32 {\n"
+                                        "  let value = a + b;\n"
+                                        "  return value;\n"
+                                        "}\n";
+    lex::TokenBuffer normal_tokens = tokenize_semantic(source);
+    lex::TokenBuffer lossless_tokens = tokenize_lossless(source);
+    const syntax::LosslessSyntaxTree tree = syntax::build_lossless_syntax_tree(lossless_tokens.span());
+    ASSERT_TRUE(tree.is_structurally_valid());
+
+    const std::vector<syntax::Token> semantic_tokens = parse::semantic_tokens_from_lossless_tree(tree);
+    expect_same_token_sequence(semantic_tokens, normal_tokens.span());
+
+    const syntax::AstModule semantic_ast = parse_semantic_tokens(normal_tokens.span());
+    base::DiagnosticSink diagnostics;
+    auto lossless_ast = parse::lower_lossless_syntax_to_ast(tree, diagnostics);
+    ASSERT_TRUE(lossless_ast) << (lossless_ast ? "" : lossless_ast.error().message);
+    EXPECT_FALSE(diagnostics.has_error());
+    EXPECT_EQ(syntax::dump_ast(lossless_ast.value()), syntax::dump_ast(semantic_ast));
+}
+
 TEST(CoreUnit, LosslessSyntaxHandlesEmptySource)
 {
     lex::TokenBuffer tokens = tokenize_lossless("");
     const syntax::LosslessSyntaxTree tree = syntax::build_lossless_syntax_tree(tokens.span());
 
+    EXPECT_TRUE(tree.is_structurally_valid());
     EXPECT_EQ(tree.range().source.value, LOSSLESS_TEST_SOURCE_ID.value);
     EXPECT_EQ(tree.range().begin, 0U);
     EXPECT_EQ(tree.range().end, 0U);
@@ -252,6 +316,7 @@ TEST(CoreUnit, LosslessSyntaxHandlesDefaultTree)
 {
     const syntax::LosslessSyntaxTree tree;
 
+    EXPECT_TRUE(tree.is_structurally_valid());
     EXPECT_EQ(tree.root_kind(), syntax::LosslessNodeKind::source_file);
     EXPECT_EQ(tree.range().source.value, 0U);
     EXPECT_EQ(tree.range().begin, 0U);
@@ -276,6 +341,7 @@ TEST(CoreUnit, LosslessSyntaxHandlesEmptyTokenSpan)
 {
     const syntax::LosslessSyntaxTree tree = syntax::build_lossless_syntax_tree(std::span<const syntax::Token>{});
 
+    EXPECT_TRUE(tree.is_structurally_valid());
     EXPECT_EQ(tree.range().source.value, 0U);
     EXPECT_EQ(tree.range().begin, 0U);
     EXPECT_EQ(tree.range().end, 0U);
@@ -287,6 +353,14 @@ TEST(CoreUnit, LosslessSyntaxHandlesEmptyTokenSpan)
     EXPECT_EQ(tree.trivia_token_count(), 0U);
     EXPECT_EQ(tree.semantic_token_count(), 0U);
     EXPECT_TRUE(tree.reconstruct_text().empty());
+
+    const std::vector<syntax::Token> semantic_tokens = parse::semantic_tokens_from_lossless_tree(tree);
+    ASSERT_EQ(semantic_tokens.size(), 1U);
+    EXPECT_EQ(semantic_tokens.front().kind, syntax::TokenKind::eof);
+    base::DiagnosticSink diagnostics;
+    auto parsed = parse::lower_lossless_syntax_to_ast(tree, diagnostics);
+    EXPECT_TRUE(parsed) << (parsed ? "" : parsed.error().message);
+    EXPECT_FALSE(diagnostics.has_error());
 }
 
 TEST(CoreUnit, LosslessSyntaxComputesRangeAcrossAllNonEofTokens)
@@ -306,12 +380,16 @@ TEST(CoreUnit, LosslessSyntaxComputesRangeAcrossAllNonEofTokens)
     EXPECT_EQ(tree.range().end, 9U);
     EXPECT_EQ(tree.node_count(), 2U);
     EXPECT_EQ(tree.element_count(), tokens.size() + 1U);
+    EXPECT_TRUE(tree.is_structurally_valid());
+    EXPECT_EQ(tree.parent(tree.root_id()), syntax::INVALID_LOSSLESS_NODE_ID);
     EXPECT_EQ(tree.token_count(), tokens.size());
     EXPECT_EQ(tree.trivia_token_count(), 1U);
     EXPECT_EQ(tree.semantic_token_count(), 2U);
     EXPECT_EQ(tree.reconstruct_text(), "45128");
 
     const syntax::LosslessNodeId stream_id = require_token_stream_node(tree);
+    EXPECT_EQ(tree.parent(stream_id), tree.root_id());
+    EXPECT_EQ(tree.token_span(stream_id).size(), tokens.size());
     const std::span<const syntax::LosslessElement> leaves = tree.children(stream_id);
     ASSERT_EQ(leaves.size(), tokens.size());
     EXPECT_TRUE(leaves[0].is_token());

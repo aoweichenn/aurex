@@ -6,6 +6,7 @@
 #include <aurex/query/query_edge_verifier.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/query/query_reuse.hpp>
+#include <aurex/syntax/lossless.hpp>
 
 #include <algorithm>
 #include <array>
@@ -265,6 +266,7 @@ constexpr std::string_view INCREMENTAL_CACHE_FILE_CONTENT_RESULT_MARKER = "file-
 constexpr std::string_view INCREMENTAL_CACHE_LEX_FILE_RESULT_MARKER = "lex-file:v1";
 constexpr std::string_view INCREMENTAL_CACHE_LEX_FILE_ERROR_MARKER = "lex-error";
 constexpr std::string_view INCREMENTAL_CACHE_PARSE_FILE_RESULT_MARKER = "parse-file:v1";
+constexpr std::string_view INCREMENTAL_CACHE_PARSE_FILE_ERROR_MARKER = "parse-error";
 constexpr std::string_view INCREMENTAL_CACHE_MODULE_GRAPH_RESULT_MARKER = "module-graph:v1";
 constexpr std::string_view INCREMENTAL_CACHE_MODULE_EXPORTS_RESULT_MARKER = "module-exports:v1";
 constexpr std::string_view INCREMENTAL_CACHE_ITEM_LIST_RESULT_MARKER = "item-list:v1";
@@ -1895,14 +1897,62 @@ void mix_token_stream_result(query::StableHashBuilder& builder, const std::span<
     return query::query_result_fingerprint(builder.finish());
 }
 
+void mix_lossless_syntax_tree_result(query::StableHashBuilder& builder, const syntax::LosslessSyntaxTree& tree)
+{
+    builder.mix_u64(static_cast<base::u64>(tree.node_count()));
+    builder.mix_u64(static_cast<base::u64>(tree.element_count()));
+    builder.mix_u64(static_cast<base::u64>(tree.token_count()));
+    for (base::usize index = 0; index < tree.nodes().size(); ++index) {
+        const syntax::LosslessNode& node = tree.nodes()[index];
+        builder.mix_u64(static_cast<base::u64>(index));
+        builder.mix_u64(static_cast<base::u64>(node.kind));
+        builder.mix_u64(static_cast<base::u64>(node.range.begin));
+        builder.mix_u64(static_cast<base::u64>(node.range.end));
+        builder.mix_u64(static_cast<base::u64>(node.parent.value));
+        builder.mix_u64(static_cast<base::u64>(node.first_child));
+        builder.mix_u64(static_cast<base::u64>(node.child_count));
+        builder.mix_u64(static_cast<base::u64>(node.first_token));
+        builder.mix_u64(static_cast<base::u64>(node.token_count));
+    }
+    for (base::usize index = 0; index < tree.elements().size(); ++index) {
+        const syntax::LosslessElement& element = tree.elements()[index];
+        builder.mix_u64(static_cast<base::u64>(index));
+        builder.mix_u64(static_cast<base::u64>(element.kind));
+        builder.mix_u64(static_cast<base::u64>(element.index));
+    }
+}
+
+void mix_lossless_parse_result(
+    query::StableHashBuilder& builder, const query::ParseFileKey key, const base::SourceFile& file)
+{
+    base::DiagnosticSink diagnostics;
+    lex::LexerOptions lexer_options;
+    lexer_options.emit_trivia_tokens = key.config.lex_config.retain_trivia;
+    lex::Lexer lexer(file.id(), file.text(), diagnostics, lexer_options);
+    base::Result<lex::TokenBuffer> tokenize_result = lexer.tokenize();
+    if (!tokenize_result) {
+        builder.mix_string(INCREMENTAL_CACHE_PARSE_FILE_ERROR_MARKER);
+        builder.mix_string(file.text());
+        return;
+    }
+
+    const syntax::LosslessSyntaxTree tree = syntax::build_lossless_syntax_tree(tokenize_result.value().span());
+    builder.mix_bool(tree.is_structurally_valid());
+    mix_lossless_syntax_tree_result(builder, tree);
+}
+
 [[nodiscard]] query::QueryResultFingerprint parse_file_result_fingerprint(
-    const query::ParseFileKey key, const query::QueryResultFingerprint lex_result)
+    const query::ParseFileKey key, const query::QueryResultFingerprint lex_result, const base::SourceFile& file)
 {
     query::StableHashBuilder builder;
     builder.mix_string(INCREMENTAL_CACHE_PARSE_FILE_RESULT_MARKER);
     builder.mix_fingerprint(query::stable_key_fingerprint(key));
     builder.mix_u64(lex_result.global_id);
     builder.mix_fingerprint(lex_result.fingerprint);
+    builder.mix_bool(key.config.build_lossless_tree);
+    if (key.config.build_lossless_tree) {
+        mix_lossless_parse_result(builder, key, file);
+    }
     return query::query_result_fingerprint(builder.finish());
 }
 
@@ -1922,7 +1972,7 @@ void mix_token_stream_result(query::StableHashBuilder& builder, const std::span<
     }
 
     const query::QueryResultFingerprint lex_result = lex_file_result_fingerprint(lex_key, file);
-    const query::QueryResultFingerprint parse_result = parse_file_result_fingerprint(parse_key, lex_result);
+    const query::QueryResultFingerprint parse_result = parse_file_result_fingerprint(parse_key, lex_result, file);
     std::optional<query::QueryRecord> lex_record = query::lex_file_query_record(lex_key, lex_result);
     std::optional<query::QueryRecord> parse_record = query::parse_file_query_record(parse_key, parse_result);
     if (!lex_record || !parse_record) {
@@ -2307,7 +2357,7 @@ void push_source_file_query_subjects(QuerySubjectCollection& collection, const b
 
     const query::QueryResultFingerprint content_result = file_content_result_fingerprint(file_key, file.text());
     const query::QueryResultFingerprint lex_result = lex_file_result_fingerprint(lex_key, file);
-    const query::QueryResultFingerprint parse_result = parse_file_result_fingerprint(parse_key, lex_result);
+    const query::QueryResultFingerprint parse_result = parse_file_result_fingerprint(parse_key, lex_result, file);
     if (!query::is_valid(content_result) || !query::is_valid(lex_result) || !query::is_valid(parse_result)) {
         return;
     }

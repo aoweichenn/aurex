@@ -146,15 +146,17 @@ M2.5 第一批 query-key 主路径已经闭环：`--incremental-cache` 默认使
 row/edge 落盘与 replay、source-stage green reuse、red-green provider-skip、profile
 事件、query graph fuzz、sanitizer 和 release/coverage 门禁；后续 lossless syntax、
 IDE-native 入口和高级语言特性都必须复用这条主路径。
-lossless syntax 基线继续前推：lexer 增加 opt-in trivia token emission，默认编译路径仍跳过
-trivia；`LosslessSyntaxTree` 现在有结构化 node/element/token-leaf API，能保存完整 token 序列并
-重建原源码文本。dump 形态已经从原始 token stream 前进为：`source_file` 下挂 `module_decl`、
-`import_decl`、`function_decl` 等顶层声明节点、直接 trivia/eof token leaves，以及 `block` /
-`paren_group` / `bracket_group` / `brace_group` 分隔符组节点；`token_stream` 只保留为非单调手造
-token span 的保守兜底。CLI 新增 `--dump-lossless` / `--emit=lossless`，用于输出保留 whitespace、
-line comment 和 block comment 的 lossless syntax tree。query-key 侧已经确保 retain-trivia 的
-`LexFileKey` fingerprint 使用 trivia lexer，`lossless_tooling` 的 parse provider 依赖对应
-retain-trivia lex query。下一步是把 parser lowering 接到完整 CST / GreenTree grammar nodes。
+lossless syntax 专项已经完成当前 M2.5 验收边界：lexer 增加 opt-in trivia token emission，默认
+编译路径仍跳过 trivia；`LosslessSyntaxTree` 保存完整 token 序列，提供结构化
+node/element/token-leaf API，记录 parent 和连续 token span，能校验 tree invariant，支持按 offset
+查最深节点，并能重建整文件或任意 node 子树源码。dump 形态已经从原始 token stream 前进为：
+`source_file` 下挂 `module_decl`、`import_decl`、`function_decl` 等顶层声明节点、直接 trivia/eof
+token leaves，以及 `block` / `paren_group` / `bracket_group` / `brace_group` 分隔符组节点；
+`token_stream` 只保留为非单调手造 token span 的保守兜底。parser 层新增 lossless CST -> AST
+lowering façade，过滤 trivia 后走现有 parser，并用 AST dump parity 覆盖正常 semantic token 路径。
+query-key 侧已经确保 retain-trivia 的 `LexFileKey` fingerprint 使用 trivia lexer，build-lossless
+parse result fingerprint 混入 CST 结构，`lossless_tooling` 的 parse provider 依赖对应 retain-trivia
+lex query。局部增量 parse 和 IDE-native 消费现在是下一条工作流，不再是 lossless syntax 基线缺口。
 2026-05-17 正则性能/测试线继续把 `RegexSet` exact-literal prefix trie 推进为持久标量 Aho-Corasick fast path：纯字面量 set 构建共享 trie 后补 failure/output link，`matches_set`、`find_set`、first-match scan、all-span/overlap scan 和 vectored flatten 后入口都用同一份自动机线性扫描；database 升级为 v3，序列化 node/terminal/max-literal 元数据，roundtrip 后不退回 VM active-list。测试侧补上 Unicode byte span、suffix failure output、重复 literal、database fast path workspace 和 deterministic RegexSet property corpus；`tools/regex_differential.py` 现在同时生成固定 + property Python `re` 差分、RegexSet exact-literal property cases、Unicode 17.0 full case-fold 与 UAX #29 `\X` conformance 程序，并作为 opt-in CTest slow conformance 入口，需通过 `-DAUREX_ENABLE_REGEX_CONFORMANCE=ON` 显式注册。
 2026-05-16 后续表达式 P0 语义线把 expression type cache 从 final-only 记录拆为三层：
 `expr_intrinsic_types` 保存表达式自身类型，`expr_types` 继续保存当前语义使用的 contextual final type，

@@ -25,7 +25,8 @@ Common options:
 - `--dump-tokens` / `--emit=tokens`: print tokens.
 - `--dump-lossless` / `--emit=lossless`: print a structured lossless syntax tree that preserves whitespace and
   comments; the current shape is a `source_file` root with declaration nodes, direct trivia/eof token leaves,
-  and `block` / delimiter-group nodes for future CST / GreenTree lowering.
+  and `block` / delimiter-group nodes. The C++ API exposes parent links, children, token spans, offset lookup,
+  structural validation, subtree source reconstruction, and a lossless CST to existing AST parser lowering facade.
 - `--dump-ast` / `--emit=ast`: print AST.
 - `--dump-modules` / `--emit=modules`: print resolved modules.
 - `--dump-checked` / `--emit=checked`: print checked module summary.
@@ -79,6 +80,32 @@ auto result = compiler.run(invocation);
 `Compiler::run` returns `base::Result<void>`. On failure,
 `result.error().message` contains a user-facing error message. Lex/parse/sema
 diagnostics are printed by the driver to stderr.
+
+## C++ Lossless Syntax API
+
+Headers:
+
+```cpp
+#include <aurex/syntax/lossless.hpp>
+#include <aurex/parse/lossless_parse.hpp>
+```
+
+Core API:
+
+```cpp
+syntax::LosslessSyntaxTree tree = syntax::build_lossless_syntax_tree(tokens);
+bool valid = tree.is_structurally_valid();
+syntax::LosslessNodeId node = tree.node_at_offset(offset);
+std::span<const syntax::Token> node_tokens = tree.token_span(node);
+std::string text = tree.reconstruct_text(node);
+auto ast = parse::lower_lossless_syntax_to_ast(tree, diagnostics);
+```
+
+`LosslessSyntaxTree` retains the full token/trivia sequence and stores an
+immutable-style tree through `LosslessNode` / `LosslessElement`. Each node
+records its parent, child range, contiguous token span, and source range.
+`LosslessNodeKey` provides a stable identity from kind/range/token span/depth
+for query, local reparse, and IDE tooling indexes.
 
 ## IR Pass API
 

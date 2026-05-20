@@ -3,6 +3,7 @@
 #include <aurex/base/source.hpp>
 #include <aurex/syntax/token.hpp>
 
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -69,8 +70,26 @@ struct LosslessElement {
 struct LosslessNode {
     LosslessNodeKind kind = LosslessNodeKind::source_file;
     base::SourceRange range{};
+    LosslessNodeId parent = INVALID_LOSSLESS_NODE_ID;
     base::usize first_child = 0;
     base::usize child_count = 0;
+    base::usize first_token = 0;
+    base::usize token_count = 0;
+};
+
+struct LosslessNodeKey {
+    LosslessNodeKind kind = LosslessNodeKind::source_file;
+    base::SourceRange range{};
+    base::usize first_token = 0;
+    base::usize token_count = 0;
+    base::usize depth = 0;
+
+    [[nodiscard]] friend constexpr bool operator==(LosslessNodeKey lhs, LosslessNodeKey rhs) noexcept
+    {
+        return lhs.kind == rhs.kind && lhs.range.source.value == rhs.range.source.value
+            && lhs.range.begin == rhs.range.begin && lhs.range.end == rhs.range.end
+            && lhs.first_token == rhs.first_token && lhs.token_count == rhs.token_count && lhs.depth == rhs.depth;
+    }
 };
 
 class LosslessSyntaxTree final {
@@ -81,6 +100,7 @@ public:
     [[nodiscard]] LosslessNodeId root_id() const noexcept;
     [[nodiscard]] const LosslessNode* root_node() const noexcept;
     [[nodiscard]] const LosslessNode* node(LosslessNodeId id) const noexcept;
+    [[nodiscard]] LosslessNodeId parent(LosslessNodeId id) const noexcept;
     [[nodiscard]] const Token* token(LosslessTokenId id) const noexcept;
     [[nodiscard]] LosslessNodeKind root_kind() const noexcept;
     [[nodiscard]] base::SourceRange range() const noexcept;
@@ -88,13 +108,18 @@ public:
     [[nodiscard]] std::span<const LosslessElement> elements() const noexcept;
     [[nodiscard]] std::span<const LosslessElement> children(LosslessNodeId id) const noexcept;
     [[nodiscard]] std::span<const Token> tokens() const noexcept;
+    [[nodiscard]] std::span<const Token> token_span(LosslessNodeId id) const noexcept;
+    [[nodiscard]] std::optional<LosslessNodeKey> node_key(LosslessNodeId id) const noexcept;
+    [[nodiscard]] LosslessNodeId node_at_offset(base::usize offset) const noexcept;
     [[nodiscard]] LosslessTokenId token_at_offset(base::usize offset) const noexcept;
+    [[nodiscard]] bool is_structurally_valid() const noexcept;
     [[nodiscard]] base::usize node_count() const noexcept;
     [[nodiscard]] base::usize element_count() const noexcept;
     [[nodiscard]] base::usize token_count() const noexcept;
     [[nodiscard]] base::usize trivia_token_count() const noexcept;
     [[nodiscard]] base::usize semantic_token_count() const noexcept;
     [[nodiscard]] std::string reconstruct_text() const;
+    [[nodiscard]] std::string reconstruct_text(LosslessNodeId id) const;
 
 private:
     void rebuild_structured_tree(LosslessNodeKind root_kind, base::SourceRange root_range);

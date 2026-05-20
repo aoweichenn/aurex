@@ -22,8 +22,9 @@ aurexc [primary-option] [secondary-options] input.ax [-o output]
 - `--version`：输出编译器版本。
 - `--dump-tokens` / `--emit=tokens`：输出 token。
 - `--dump-lossless` / `--emit=lossless`：输出保留空白和注释的结构化 lossless syntax tree；当前
-  形态是 `source_file` root 下挂声明节点、直接 trivia/eof token leaves，以及 `block` / 分隔符组节点，
-  用于后续 CST / GreenTree lowering。
+  形态是 `source_file` root 下挂声明节点、直接 trivia/eof token leaves，以及 `block` / 分隔符组节点。
+  C++ API 已提供 parent、children、token span、offset lookup、结构校验、子树源码重建和
+  lossless CST 到现有 AST parser 的 lowering façade。
 - `--dump-ast` / `--emit=ast`：输出 AST。
 - `--dump-modules` / `--emit=modules`：输出模块加载结果。
 - `--dump-checked` / `--emit=checked`：输出 checked module 摘要。
@@ -71,6 +72,31 @@ auto result = compiler.run(invocation);
 ```
 
 `Compiler::run` 返回 `base::Result<void>`。失败时 `result.error().message` 保存面向用户的错误消息。lex/parse/sema 诊断由 driver 打印到 stderr。
+
+## C++ Lossless Syntax 接口
+
+头文件：
+
+```cpp
+#include <aurex/syntax/lossless.hpp>
+#include <aurex/parse/lossless_parse.hpp>
+```
+
+核心 API：
+
+```cpp
+syntax::LosslessSyntaxTree tree = syntax::build_lossless_syntax_tree(tokens);
+bool valid = tree.is_structurally_valid();
+syntax::LosslessNodeId node = tree.node_at_offset(offset);
+std::span<const syntax::Token> node_tokens = tree.token_span(node);
+std::string text = tree.reconstruct_text(node);
+auto ast = parse::lower_lossless_syntax_to_ast(tree, diagnostics);
+```
+
+`LosslessSyntaxTree` 保留完整 token/trivia 序列，并用 `LosslessNode` /
+`LosslessElement` 表示 immutable-style tree。每个 node 记录 parent、children
+区间、连续 token span 和 source range；`LosslessNodeKey` 提供以 kind/range/token
+span/depth 组成的稳定节点身份，用于 query、局部重解析和 IDE tooling 的上层索引。
 
 ## IR Pass 接口
 

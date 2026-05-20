@@ -279,20 +279,24 @@ foundation covers stable keys, canonical type / generic-instance identity,
 red-green provider skip, profile events, query-graph fuzzing, sanitizer gates,
 and release/coverage gates. Future lossless syntax, IDE-native entry points,
 and advanced language features must reuse this main path.
-The lossless-syntax baseline has moved forward: the lexer has opt-in trivia
-token emission while the default compile path still skips trivia;
-`LosslessSyntaxTree` now exposes structured node/element/token-leaf APIs, stores
-the complete token sequence, and can reconstruct the original source text. The
-dump shape has advanced beyond the raw token stream: `source_file` now contains
-top-level declaration nodes such as `module_decl`, `import_decl`, and
-`function_decl`, direct trivia/eof token leaves, and `block` /
-`paren_group` / `bracket_group` / `brace_group` delimiter nodes; `token_stream`
-remains only the conservative fallback for non-monotonic hand-built token spans.
-The CLI exposes `--dump-lossless` / `--emit=lossless` to print this tree while
-preserving whitespace, line comments, and block comments. On the query-key side,
-retain-trivia `LexFileKey` fingerprints now lex with trivia enabled, and the
-`lossless_tooling` parse provider depends on the matching retain-trivia lex
-query. Parser lowering into full CST / GreenTree grammar nodes is the next step.
+The lossless-syntax track is complete for the current M2.5 acceptance boundary:
+the lexer has opt-in trivia token emission while the default compile path still
+skips trivia; `LosslessSyntaxTree` stores the complete token sequence, exposes
+structured node/element/token-leaf APIs, records parent links and contiguous
+token spans, validates tree invariants, supports deepest-node lookup by offset,
+and can reconstruct either the whole file or any node subtree. The dump shape
+has advanced beyond the raw token stream: `source_file` now contains top-level
+declaration nodes such as `module_decl`, `import_decl`, and `function_decl`,
+direct trivia/eof token leaves, and `block` / `paren_group` / `bracket_group` /
+`brace_group` delimiter nodes; `token_stream` remains only the conservative
+fallback for non-monotonic hand-built token spans. The parser layer now has a
+lossless CST -> AST lowering facade that filters trivia and proves AST parity
+with the normal semantic token path. On the query-key side, retain-trivia
+`LexFileKey` fingerprints lex with trivia enabled, build-lossless parse result
+fingerprints include the CST shape, and the `lossless_tooling` parse provider
+depends on the matching retain-trivia lex query. Local incremental parse and
+IDE-native consumers are now the next workstream, not remaining lossless
+syntax baseline work.
 The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator with a pattern matrix / usefulness witness search.
 Bool, enum payloads, tuples, structs, fixed arrays up to the explicit 4096-column

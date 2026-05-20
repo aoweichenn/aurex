@@ -13,6 +13,7 @@ target_include_directories(aurex_lex
 )
 
 add_library(aurex_parse
+    src/parse/lossless_parse.cpp
     src/parse/parser_aggregate.cpp
     src/parse/parser_block.cpp
     src/parse/parser_builtin_expr.cpp

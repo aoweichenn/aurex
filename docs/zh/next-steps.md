@@ -18,12 +18,13 @@ query-safe、lossless-syntax-ready、IDE-native-ready 的结构化系统：
 3. QueryContext / dependency graph：第一批已完成。file、module、def、body、
    generic、diagnostics 的 query row/edge、result fingerprint、red-green 失效边界、
    provider-skip replay 和门禁覆盖已经闭环。
-4. Lossless syntax / IDE-native route：已经推进到结构化基线。`--dump-lossless` 现在能输出
-   `source_file` root、顶层声明节点、直接 trivia/eof token leaves、`block` / 分隔符组节点组成的
-   lossless syntax tree，保留 whitespace、line comment 和 block comment，并可重建源码；
-   query retain-trivia lex fingerprint 已接入。
-   后续 CST / GreenTree lowering、局部增量 parse、diagnostics query 和 LSP 消费路径都必须
-   建立在现有 query-key 主路径之上。
+4. Lossless syntax：当前专项已完成。`--dump-lossless` 现在能输出 `source_file`
+   root、顶层声明节点、直接 trivia/eof token leaves、`block` / 分隔符组节点组成的
+   lossless syntax tree，保留 whitespace、line comment 和 block comment；tree 支持
+   parent/children/token-span 遍历、稳定 node key、结构校验、offset lookup、子树源码重建和
+   lossless CST -> AST parser lowering；query retain-trivia lex fingerprint 与 build-lossless
+   parse fingerprint 已接入。
+   后续局部增量 parse、diagnostics query 和 LSP 消费路径都必须建立在现有 query-key 主路径之上。
 5. 语言/库表达力补强：新增到 M2.5 路线图中，作为 regex 级系统库暴露出的
    P0/P1 设计冻结轨道。它不替代 query/lossless/IDE 主线，也不重启旧 std；
    只允许进入能支撑 stable key、module boundary、generic lowering、trait/static

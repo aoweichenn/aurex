@@ -24,8 +24,12 @@ constexpr base::usize LOSSLESS_TOKEN_STREAM_NODE_INDEX = 1;
 struct LosslessBuildNode {
     LosslessNodeKind kind = LosslessNodeKind::source_file;
     base::SourceRange range{};
+    LosslessNodeId parent = INVALID_LOSSLESS_NODE_ID;
+    base::usize first_token = 0;
+    base::usize token_count = 0;
     std::vector<LosslessElement> children;
     bool has_range = false;
+    bool has_tokens = false;
 };
 
 struct LosslessBuildResult {
@@ -45,6 +49,13 @@ struct LosslessTopLevelMatch {
     LosslessNodeKind kind = LosslessNodeKind::token_stream;
     base::usize end = 0;
 };
+
+[[nodiscard]] LosslessBuildNode make_lossless_build_node(const LosslessNodeKind kind)
+{
+    LosslessBuildNode node;
+    node.kind = kind;
+    return node;
+}
 
 [[nodiscard]] bool lossless_tokens_are_monotonic(const std::span<const Token> tokens) noexcept
 {
@@ -258,11 +269,29 @@ void include_lossless_range(LosslessBuildNode& node, const base::SourceRange ran
     node.range.end = std::max(node.range.end, range.end);
 }
 
+void include_lossless_token_span(
+    LosslessBuildNode& node, const base::usize first_token, const base::usize token_count) noexcept
+{
+    if (token_count == 0U) {
+        return;
+    }
+    if (!node.has_tokens) {
+        node.first_token = first_token;
+        node.token_count = token_count;
+        node.has_tokens = true;
+        return;
+    }
+    const base::usize current_end = node.first_token + node.token_count;
+    const base::usize incoming_end = first_token + token_count;
+    node.first_token = std::min(node.first_token, first_token);
+    node.token_count = std::max(current_end, incoming_end) - node.first_token;
+}
+
 class LosslessTreeBuilder final {
 public:
     LosslessTreeBuilder(const std::span<const Token> tokens, const LosslessNodeKind root_kind) : tokens_(tokens)
     {
-        this->nodes_.push_back(LosslessBuildNode{root_kind, {}, {}, false});
+        this->nodes_.push_back(make_lossless_build_node(root_kind));
     }
 
     [[nodiscard]] LosslessNodeId root_id() const noexcept
@@ -277,6 +306,7 @@ public:
 
     void add_node_child(const LosslessNodeId parent, const LosslessNodeId child)
     {
+        this->nodes_[child.value].parent = parent;
         this->nodes_[parent.value].children.push_back(LosslessElement::node(child));
     }
 
@@ -329,8 +359,11 @@ public:
             result.nodes.push_back(LosslessNode{
                 node.kind,
                 node.range,
+                node.parent,
                 result.elements.size(),
                 node.children.size(),
+                node.first_token,
+                node.token_count,
             });
             result.elements.insert(result.elements.end(), node.children.begin(), node.children.end());
         }
@@ -341,7 +374,7 @@ private:
     [[nodiscard]] LosslessNodeId append_node(const LosslessNodeKind kind)
     {
         const LosslessNodeId id{this->nodes_.size()};
-        this->nodes_.push_back(LosslessBuildNode{kind, {}, {}, false});
+        this->nodes_.push_back(make_lossless_build_node(kind));
         return id;
     }
 
@@ -364,12 +397,14 @@ private:
             for (const LosslessElement child : node.children) {
                 if (child.is_token()) {
                     const Token& token = this->tokens_[child.token_id().value];
+                    include_lossless_token_span(node, child.token_id().value, 1U);
                     if (token.kind != TokenKind::eof) {
                         include_lossless_range(node, token.range);
                     }
                     continue;
                 }
                 const LosslessBuildNode& child_node = this->nodes_[child.node_id().value];
+                include_lossless_token_span(node, child_node.first_token, child_node.token_count);
                 if (child_node.has_range) {
                     include_lossless_range(node, child_node.range);
                 }
@@ -378,6 +413,9 @@ private:
         LosslessBuildNode& root = this->nodes_[this->root_id().value];
         root.range = root_range;
         root.has_range = true;
+        root.first_token = 0U;
+        root.token_count = this->tokens_.size();
+        root.has_tokens = !this->tokens_.empty();
     }
 
     std::span<const Token> tokens_;
@@ -487,7 +525,34 @@ void append_token(std::ostringstream& out, const Token& token)
 void append_node_summary(std::ostringstream& out, const LosslessNode& node)
 {
     out << lossless_node_kind_name(node.kind) << " " << node.range.begin << ".." << node.range.end
-        << " children=" << node.child_count;
+        << " children=" << node.child_count << " tokens=" << node.token_count;
+}
+
+[[nodiscard]] bool lossless_node_contains_offset(const LosslessNode& node, const base::usize offset) noexcept
+{
+    if (node.range.empty()) {
+        return offset == node.range.begin;
+    }
+    return node.range.begin <= offset && offset < node.range.end;
+}
+
+[[nodiscard]] std::string reconstruct_lossless_token_text(const std::span<const Token> tokens)
+{
+    base::usize size = 0;
+    for (const Token& token : tokens) {
+        if (token.kind != TokenKind::eof) {
+            size += token.text().size();
+        }
+    }
+
+    std::string text;
+    text.reserve(size);
+    for (const Token& token : tokens) {
+        if (token.kind != TokenKind::eof) {
+            text += token.text();
+        }
+    }
+    return text;
 }
 
 } // namespace
@@ -528,15 +593,21 @@ void LosslessSyntaxTree::rebuild_token_stream(const LosslessNodeKind root_kind, 
     this->nodes_.push_back(LosslessNode{
         root_kind,
         root_range,
+        INVALID_LOSSLESS_NODE_ID,
         0U,
         1U,
+        0U,
+        this->tokens_.size(),
     });
 
     this->elements_.push_back(LosslessElement::node(LosslessNodeId{LOSSLESS_TOKEN_STREAM_NODE_INDEX}));
     this->nodes_.push_back(LosslessNode{
         LosslessNodeKind::token_stream,
         root_range,
+        this->root_id_,
         this->elements_.size(),
+        this->tokens_.size(),
+        0U,
         this->tokens_.size(),
     });
     for (base::usize index = 0; index < this->tokens_.size(); ++index) {
@@ -560,6 +631,15 @@ const LosslessNode* LosslessSyntaxTree::node(const LosslessNodeId id) const noex
         return nullptr;
     }
     return &this->nodes_[id.value];
+}
+
+LosslessNodeId LosslessSyntaxTree::parent(const LosslessNodeId id) const noexcept
+{
+    const LosslessNode* current = this->node(id);
+    if (current == nullptr) {
+        return INVALID_LOSSLESS_NODE_ID;
+    }
+    return current->parent;
 }
 
 const Token* LosslessSyntaxTree::token(const LosslessTokenId id) const noexcept
@@ -606,6 +686,73 @@ std::span<const Token> LosslessSyntaxTree::tokens() const noexcept
     return this->tokens_;
 }
 
+std::span<const Token> LosslessSyntaxTree::token_span(const LosslessNodeId id) const noexcept
+{
+    const LosslessNode* current = this->node(id);
+    if (current == nullptr || current->first_token > this->tokens_.size() || current->token_count == 0U) {
+        return {};
+    }
+    const base::usize available = this->tokens_.size() - current->first_token;
+    const base::usize count = std::min(current->token_count, available);
+    return std::span<const Token>{this->tokens_.data() + current->first_token, count};
+}
+
+std::optional<LosslessNodeKey> LosslessSyntaxTree::node_key(const LosslessNodeId id) const noexcept
+{
+    const LosslessNode* current = this->node(id);
+    if (current == nullptr) {
+        return std::nullopt;
+    }
+
+    base::usize depth = 0;
+    LosslessNodeId parent_id = current->parent;
+    while (parent_id != INVALID_LOSSLESS_NODE_ID) {
+        if (depth >= this->nodes_.size()) {
+            return std::nullopt;
+        }
+        const LosslessNode* parent_node = this->node(parent_id);
+        if (parent_node == nullptr) {
+            return std::nullopt;
+        }
+        ++depth;
+        parent_id = parent_node->parent;
+    }
+
+    return LosslessNodeKey{
+        current->kind,
+        current->range,
+        current->first_token,
+        current->token_count,
+        depth,
+    };
+}
+
+LosslessNodeId LosslessSyntaxTree::node_at_offset(const base::usize offset) const noexcept
+{
+    const LosslessNode* root = this->root_node();
+    if (root == nullptr || !lossless_node_contains_offset(*root, offset)) {
+        return INVALID_LOSSLESS_NODE_ID;
+    }
+
+    LosslessNodeId best = this->root_id_;
+    bool advanced = true;
+    while (advanced) {
+        advanced = false;
+        for (const LosslessElement child : this->children(best)) {
+            if (!child.is_node()) {
+                continue;
+            }
+            const LosslessNode* child_node = this->node(child.node_id());
+            if (child_node != nullptr && lossless_node_contains_offset(*child_node, offset)) {
+                best = child.node_id();
+                advanced = true;
+                break;
+            }
+        }
+    }
+    return best;
+}
+
 LosslessTokenId LosslessSyntaxTree::token_at_offset(const base::usize offset) const noexcept
 {
     for (base::usize index = 0; index < this->tokens_.size(); ++index) {
@@ -621,6 +768,46 @@ LosslessTokenId LosslessSyntaxTree::token_at_offset(const base::usize offset) co
         }
     }
     return INVALID_LOSSLESS_TOKEN_ID;
+}
+
+bool LosslessSyntaxTree::is_structurally_valid() const noexcept
+{
+    if (this->root_id_.value >= this->nodes_.size()) {
+        return false;
+    }
+    if (this->nodes_[this->root_id_.value].parent != INVALID_LOSSLESS_NODE_ID) {
+        return false;
+    }
+    for (base::usize node_index = 0; node_index < this->nodes_.size(); ++node_index) {
+        const LosslessNode& current = this->nodes_[node_index];
+        if (current.first_child > this->elements_.size()) {
+            return false;
+        }
+        if (current.child_count > this->elements_.size() - current.first_child) {
+            return false;
+        }
+        if (current.first_token > this->tokens_.size()) {
+            return false;
+        }
+        if (current.token_count > this->tokens_.size() - current.first_token) {
+            return false;
+        }
+        for (const LosslessElement child : this->children(LosslessNodeId{node_index})) {
+            if (child.is_token()) {
+                if (child.token_id().value >= this->tokens_.size()) {
+                    return false;
+                }
+                continue;
+            }
+            if (child.node_id().value >= this->nodes_.size()) {
+                return false;
+            }
+            if (this->nodes_[child.node_id().value].parent != LosslessNodeId{node_index}) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 base::usize LosslessSyntaxTree::node_count() const noexcept
@@ -662,21 +849,12 @@ base::usize LosslessSyntaxTree::semantic_token_count() const noexcept
 
 std::string LosslessSyntaxTree::reconstruct_text() const
 {
-    base::usize size = 0;
-    for (const Token& token : this->tokens_) {
-        if (token.kind != TokenKind::eof) {
-            size += token.text().size();
-        }
-    }
+    return reconstruct_lossless_token_text(this->tokens_);
+}
 
-    std::string text;
-    text.reserve(size);
-    for (const Token& token : this->tokens_) {
-        if (token.kind != TokenKind::eof) {
-            text += token.text();
-        }
-    }
-    return text;
+std::string LosslessSyntaxTree::reconstruct_text(const LosslessNodeId id) const
+{
+    return reconstruct_lossless_token_text(this->token_span(id));
 }
 
 std::string_view lossless_node_kind_name(const LosslessNodeKind kind) noexcept

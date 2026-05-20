@@ -96,6 +96,24 @@ jobs:
           AUREX_DIAGNOSTIC_STRESS_MAX_RSS_MIB: "512"
           AUREX_DIAGNOSTIC_STRESS_MAX_ELAPSED_MS: "30000"
         run: make perf-stress-threshold
+  query-sanitizer-nightly:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          dnf install -y clang cmake gcc-c++ git gtest-devel llvm llvm-devel make
+      - name: Configure tool paths
+        run: |
+          {
+            echo "CC=$(command -v clang)"
+            echo "CXX=$(command -v clang++)"
+          } >> "${GITHUB_ENV}"
+      - name: Check query sanitizer profile
+        run: make query-sanitizer
   release-stress-thresholds:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-24.04

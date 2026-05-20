@@ -14,6 +14,7 @@
 #include <aurex/query/query_interner.hpp>
 #include <aurex/query/query_replay.hpp>
 #include <aurex/query/query_result.hpp>
+#include <aurex/query/query_reuse.hpp>
 #include <aurex/query/source_file_query.hpp>
 #include <aurex/query/stable_identity.hpp>
 #include <aurex/query/type_check_body_query.hpp>
@@ -40,6 +41,8 @@ constexpr base::usize QUERY_ROBUSTNESS_LIMITED_CAPACITY = 4;
 constexpr base::usize QUERY_ROBUSTNESS_BULK_INTERNER_RECORD_COUNT = 4096;
 constexpr base::usize QUERY_ROBUSTNESS_LARGE_MODULE_COUNT = 256;
 constexpr base::usize QUERY_ROBUSTNESS_CHAOS_MODULE_COUNT = 2;
+constexpr base::usize QUERY_ROBUSTNESS_MODULE_A_INDEX = 0;
+constexpr base::usize QUERY_ROBUSTNESS_MODULE_B_INDEX = 1;
 constexpr base::usize QUERY_ROBUSTNESS_REQUESTS_PER_MODULE = 8;
 constexpr base::usize QUERY_ROBUSTNESS_EDGES_PER_MODULE = 7;
 constexpr base::u32 QUERY_ROBUSTNESS_SHUFFLE_SEED = 0xA17E2026U;
@@ -57,6 +60,7 @@ constexpr std::string_view QUERY_ROBUSTNESS_PAYLOAD_SEPARATOR = ":";
 constexpr std::string_view QUERY_ROBUSTNESS_GRAPH_PAYLOAD = "graph";
 constexpr std::string_view QUERY_ROBUSTNESS_ITEMS_PAYLOAD = "items";
 constexpr std::string_view QUERY_ROBUSTNESS_EXPORTS_PAYLOAD = "exports";
+constexpr std::string_view QUERY_ROBUSTNESS_CHANGED_EXPORTS_PAYLOAD = "exports-changed";
 constexpr std::string_view QUERY_ROBUSTNESS_SIGNATURE_PAYLOAD = "signature";
 constexpr std::string_view QUERY_ROBUSTNESS_SYNTAX_PAYLOAD = "syntax";
 constexpr std::string_view QUERY_ROBUSTNESS_CHECKED_BODY_PAYLOAD = "checked-body";
@@ -277,6 +281,27 @@ void replace_node_dependencies(
     const QueryRobustnessSubject subject = robustness_subject(index);
     const std::optional<query::QueryRecord> record =
         query::item_signature_query_record(subject.function_def, query::query_result_fingerprint(subject.signature));
+    return record.value_or(query::QueryRecord{});
+}
+
+[[nodiscard]] query::QueryRecord robustness_module_exports_record(
+    const QueryRobustnessSubject& subject, const query::QueryResultFingerprint result)
+{
+    const std::optional<query::QueryRecord> record = query::module_exports_query_record(subject.module, result);
+    return record.value_or(query::QueryRecord{});
+}
+
+[[nodiscard]] query::QueryRecord robustness_item_signature_record(const QueryRobustnessSubject& subject)
+{
+    const std::optional<query::QueryRecord> record =
+        query::item_signature_query_record(subject.function_def, query::query_result_fingerprint(subject.signature));
+    return record.value_or(query::QueryRecord{});
+}
+
+[[nodiscard]] query::QueryRecord robustness_diagnostics_record(
+    const query::QueryKey producer, const query::QueryResultFingerprint result)
+{
+    const std::optional<query::QueryRecord> record = query::diagnostics_query_record(producer, result);
     return record.value_or(query::QueryRecord{});
 }
 
@@ -508,6 +533,107 @@ TEST(QueryUnit, QueryReplayIndexRejectsDeterministicChaosMutations)
     ASSERT_LT(item_signature_node_index, duplicated_node_dependency.nodes.size());
     duplicated_node_dependency.nodes[item_signature_node_index].dependencies.push_back(first_exports_key);
     EXPECT_FALSE(query::QueryReplayIndex::build(std::move(duplicated_node_dependency)).has_value());
+}
+
+TEST(QueryUnit, QueryReusePlanCutsCrossModulePropagationAtGreenRecords)
+{
+    const QueryRobustnessSubject first_subject = robustness_subject(QUERY_ROBUSTNESS_MODULE_A_INDEX);
+    const QueryRobustnessSubject second_subject = robustness_subject(QUERY_ROBUSTNESS_MODULE_B_INDEX);
+    const query::QueryRecord first_exports = robustness_module_exports_record(first_subject, first_subject.exports);
+    const query::QueryRecord changed_first_exports = robustness_module_exports_record(
+        first_subject, robustness_result(QUERY_ROBUSTNESS_CHANGED_EXPORTS_PAYLOAD, QUERY_ROBUSTNESS_MODULE_A_INDEX));
+    const query::QueryRecord first_item = robustness_item_signature_record(first_subject);
+    const query::QueryRecord second_exports = robustness_module_exports_record(second_subject, second_subject.exports);
+    const query::QueryRecord second_item = robustness_item_signature_record(second_subject);
+    const std::optional<query::QueryKey> first_item_key = query::item_signature_query_key(first_subject.function_def);
+    const std::optional<query::QueryKey> second_item_key = query::item_signature_query_key(second_subject.function_def);
+    ASSERT_TRUE(first_item_key.has_value());
+    ASSERT_TRUE(second_item_key.has_value());
+    const query::QueryRecord first_diagnostics =
+        robustness_diagnostics_record(*first_item_key, first_subject.diagnostics);
+    const query::QueryRecord second_diagnostics =
+        robustness_diagnostics_record(*second_item_key, second_subject.diagnostics);
+
+    query::QueryContext cached_context;
+    ASSERT_TRUE(cached_context.seed_completed_record(first_exports));
+    ASSERT_TRUE(cached_context.seed_completed_record(first_item, {first_exports.key}));
+    ASSERT_TRUE(cached_context.seed_completed_record(first_diagnostics, {first_item.key}));
+    ASSERT_TRUE(cached_context.seed_completed_record(second_exports));
+    ASSERT_TRUE(cached_context.seed_completed_record(second_item, {second_exports.key}));
+    ASSERT_TRUE(cached_context.seed_completed_record(second_diagnostics, {second_item.key}));
+
+    const std::vector<query::QueryRecord> current_records{
+        changed_first_exports,
+        first_item,
+        first_diagnostics,
+        second_exports,
+        second_item,
+        second_diagnostics,
+    };
+    const query::QueryReusePlan plan = query::build_query_reuse_plan(cached_context, current_records);
+    EXPECT_EQ(plan.summary.changed, 1U);
+    EXPECT_EQ(plan.summary.unchanged, current_records.size() - 1U);
+    EXPECT_EQ(plan.summary.malformed, 0U);
+    EXPECT_EQ(plan.recompute_roots, std::vector<query::QueryKey>{changed_first_exports.key});
+    EXPECT_EQ(plan.recompute, std::vector<query::QueryKey>{changed_first_exports.key});
+    EXPECT_TRUE(plan.propagated_recompute.empty());
+
+    std::vector<query::QueryKey> expected_reusable{
+        first_item.key,
+        first_diagnostics.key,
+        second_exports.key,
+        second_item.key,
+        second_diagnostics.key,
+    };
+    std::sort(expected_reusable.begin(), expected_reusable.end(), query_key_less);
+    EXPECT_EQ(plan.reusable, expected_reusable);
+}
+
+TEST(QueryUnit, QueryReusePlanPropagatesMalformedRootsWithinOnlyTheAffectedModule)
+{
+    const QueryRobustnessSubject first_subject = robustness_subject(QUERY_ROBUSTNESS_MODULE_A_INDEX);
+    const QueryRobustnessSubject second_subject = robustness_subject(QUERY_ROBUSTNESS_MODULE_B_INDEX);
+    const query::QueryRecord first_exports = robustness_module_exports_record(first_subject, first_subject.exports);
+    query::QueryRecord malformed_first_exports = robustness_module_exports_record(
+        first_subject, robustness_result(QUERY_ROBUSTNESS_CHANGED_EXPORTS_PAYLOAD, QUERY_ROBUSTNESS_MODULE_A_INDEX));
+    malformed_first_exports.stable_key_bytes.push_back(QUERY_ROBUSTNESS_CORRUPT_STABLE_BYTE);
+    const query::QueryRecord first_item = robustness_item_signature_record(first_subject);
+    const query::QueryRecord second_exports = robustness_module_exports_record(second_subject, second_subject.exports);
+    const query::QueryRecord second_item = robustness_item_signature_record(second_subject);
+    const std::optional<query::QueryKey> first_item_key = query::item_signature_query_key(first_subject.function_def);
+    ASSERT_TRUE(first_item_key.has_value());
+    const query::QueryRecord first_diagnostics =
+        robustness_diagnostics_record(*first_item_key, first_subject.diagnostics);
+
+    query::QueryContext cached_context;
+    ASSERT_TRUE(cached_context.seed_completed_record(first_exports));
+    ASSERT_TRUE(cached_context.seed_completed_record(first_item, {first_exports.key}));
+    ASSERT_TRUE(cached_context.seed_completed_record(first_diagnostics, {first_item.key}));
+    ASSERT_TRUE(cached_context.seed_completed_record(second_exports));
+    ASSERT_TRUE(cached_context.seed_completed_record(second_item, {second_exports.key}));
+
+    const std::vector<query::QueryRecord> current_records{
+        malformed_first_exports,
+        second_item,
+    };
+    const query::QueryReusePlan plan = query::build_query_reuse_plan(cached_context, current_records);
+    EXPECT_EQ(plan.summary.malformed, 1U);
+    EXPECT_EQ(plan.summary.unchanged, 1U);
+    EXPECT_EQ(plan.summary.changed, 0U);
+    EXPECT_EQ(plan.recompute_roots, std::vector<query::QueryKey>{malformed_first_exports.key});
+    EXPECT_EQ(plan.reusable, std::vector<query::QueryKey>{second_item.key});
+
+    std::vector<query::QueryKey> expected_propagated{
+        first_item.key,
+        first_diagnostics.key,
+    };
+    std::sort(expected_propagated.begin(), expected_propagated.end(), query_key_less);
+    EXPECT_EQ(plan.propagated_recompute, expected_propagated);
+
+    std::vector<query::QueryKey> expected_recompute = expected_propagated;
+    expected_recompute.push_back(malformed_first_exports.key);
+    std::sort(expected_recompute.begin(), expected_recompute.end(), query_key_less);
+    EXPECT_EQ(plan.recompute, expected_recompute);
 }
 
 } // namespace

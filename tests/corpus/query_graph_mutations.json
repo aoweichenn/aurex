@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "mutations": [
+    {
+      "name": "drop-query-row-count-mismatch",
+      "kind": "drop_query_row_keep_count",
+      "expected_fallback": "malformed_cache"
+    },
+    {
+      "name": "drop-query-row-with-edge",
+      "kind": "drop_query_row_fix_count",
+      "expected_fallback": "malformed_query_graph"
+    },
+    {
+      "name": "duplicate-query-row",
+      "kind": "duplicate_query_row_fix_count",
+      "expected_fallback": "malformed_cache"
+    },
+    {
+      "name": "duplicate-edge-row",
+      "kind": "duplicate_edge_row_fix_count",
+      "expected_fallback": "malformed_cache"
+    },
+    {
+      "name": "drop-edge-row-count-mismatch",
+      "kind": "drop_edge_row_keep_count",
+      "expected_fallback": "malformed_cache"
+    },
+    {
+      "name": "unexpected-edge-kind",
+      "kind": "replace_edge_dependency_wrong_kind",
+      "expected_fallback": "malformed_query_graph"
+    },
+    {
+      "name": "unexpected-edge-identity",
+      "kind": "replace_edge_dependency_wrong_identity",
+      "expected_fallback": "malformed_query_identity"
+    },
+    {
+      "name": "corrupt-query-stable-key",
+      "kind": "corrupt_query_stable_key",
+      "expected_fallback": "malformed_cache"
+    }
+  ]
+}

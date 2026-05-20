@@ -148,6 +148,13 @@ inline constexpr OptionEffect CLI_EFFECT_EMIT_TOKENS{
     false,
     OptionConflictGroup::primary_action,
 };
+inline constexpr OptionEffect CLI_EFFECT_EMIT_LOSSLESS{
+    OptionEffectKind::set_emit_kind,
+    CliAction::compile,
+    EmitKind::lossless,
+    false,
+    OptionConflictGroup::primary_action,
+};
 inline constexpr OptionEffect CLI_EFFECT_EMIT_AST{
     OptionEffectKind::set_emit_kind,
     CliAction::compile,
@@ -327,6 +334,16 @@ inline constexpr auto OPTION_SPECS = std::to_array<OptionSpec>({
         OptionLevel::primary,
         OptionGroup::frontend_debug_output,
         OptionApplicability::any,
+        "--dump-lossless",
+        OptionValueStyle::flag,
+        CLI_EFFECT_EMIT_LOSSLESS,
+        {},
+        "lex and print lossless syntax tokens with trivia",
+    },
+    {
+        OptionLevel::primary,
+        OptionGroup::frontend_debug_output,
+        OptionApplicability::any,
         "--dump-modules",
         OptionValueStyle::flag,
         CLI_EFFECT_EMIT_MODULES,
@@ -371,8 +388,8 @@ inline constexpr auto OPTION_SPECS = std::to_array<OptionSpec>({
         OptionValueStyle::separate,
         CLI_EFFECT_PARSE_EMIT_KIND,
         "kind",
-        "emit kind; examples: --emit=ast, --emit=checked, --emit=typed, --emit=ir, --emit=llvm-ir, --emit=asm, "
-        "--emit=obj, --emit=exe",
+        "emit kind; examples: --emit=lossless, --emit=ast, --emit=checked, --emit=typed, --emit=ir, "
+        "--emit=llvm-ir, --emit=asm, --emit=obj, --emit=exe",
     },
     {
         OptionLevel::secondary,
@@ -596,6 +613,7 @@ struct ParsedOption {
 
     constexpr auto EMIT_KIND_SPECS = std::to_array<EmitKindSpec>({
         {"tokens", EmitKind::tokens},
+        {"lossless", EmitKind::lossless},
         {"ast", EmitKind::ast},
         {"modules", EmitKind::modules},
         {"checked", EmitKind::checked},

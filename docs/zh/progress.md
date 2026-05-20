@@ -146,6 +146,10 @@ M2.5 第一批 query-key 主路径已经闭环：`--incremental-cache` 默认使
 row/edge 落盘与 replay、source-stage green reuse、red-green provider-skip、profile
 事件、query graph fuzz、sanitizer 和 release/coverage 门禁；后续 lossless syntax、
 IDE-native 入口和高级语言特性都必须复用这条主路径。
+lossless syntax 第一切片已经启动：lexer 增加 opt-in trivia token emission，默认编译路径仍跳过
+trivia；`LosslessSyntaxTree` 能保存完整 token 序列并重建原源码文本；CLI 新增
+`--dump-lossless` / `--emit=lossless`，用于输出保留 whitespace、line comment 和 block
+comment 的 lossless syntax token tree。下一步才是把 parser lowering 接到 CST / GreenTree。
 2026-05-17 正则性能/测试线继续把 `RegexSet` exact-literal prefix trie 推进为持久标量 Aho-Corasick fast path：纯字面量 set 构建共享 trie 后补 failure/output link，`matches_set`、`find_set`、first-match scan、all-span/overlap scan 和 vectored flatten 后入口都用同一份自动机线性扫描；database 升级为 v3，序列化 node/terminal/max-literal 元数据，roundtrip 后不退回 VM active-list。测试侧补上 Unicode byte span、suffix failure output、重复 literal、database fast path workspace 和 deterministic RegexSet property corpus；`tools/regex_differential.py` 现在同时生成固定 + property Python `re` 差分、RegexSet exact-literal property cases、Unicode 17.0 full case-fold 与 UAX #29 `\X` conformance 程序，并作为 opt-in CTest slow conformance 入口，需通过 `-DAUREX_ENABLE_REGEX_CONFORMANCE=ON` 显式注册。
 2026-05-16 后续表达式 P0 语义线把 expression type cache 从 final-only 记录拆为三层：
 `expr_intrinsic_types` 保存表达式自身类型，`expr_types` 继续保存当前语义使用的 contextual final type，

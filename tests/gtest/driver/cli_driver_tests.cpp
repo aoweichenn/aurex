@@ -818,6 +818,22 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms)
     const driver::CliParseResult separate_emit_parse = require_parse_cli(separate_emit_args);
     EXPECT_EQ(separate_emit_parse.invocation.emit_kind, driver::EmitKind::check);
 
+    const std::vector<std::string_view> lossless_emit_args{
+        "aurexc",
+        "--emit=lossless",
+        "examples/hello.ax",
+    };
+    const driver::CliParseResult lossless_emit_parse = require_parse_cli(lossless_emit_args);
+    EXPECT_EQ(lossless_emit_parse.invocation.emit_kind, driver::EmitKind::lossless);
+
+    const std::vector<std::string_view> dump_lossless_args{
+        "aurexc",
+        "--dump-lossless",
+        "examples/hello.ax",
+    };
+    const driver::CliParseResult dump_lossless_parse = require_parse_cli(dump_lossless_args);
+    EXPECT_EQ(dump_lossless_parse.invocation.emit_kind, driver::EmitKind::lossless);
+
     const std::vector<std::string_view> typed_emit_args{
         "aurexc",
         "--emit=typed",
@@ -1272,7 +1288,9 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps)
             "--emit=asm",
             "--emit=obj",
             "--emit=exe",
+            "--emit=lossless",
             "--dump-modules",
+            "--dump-lossless",
             "--incremental-cache",
             "--query-pruning",
             "--no-query-pruning",
@@ -1284,6 +1302,23 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps)
     require_success(aurexc() + " --check " + q(hello));
     require_success(aurexc() + " --emit=check " + q(hello));
     require_success(aurexc() + " --emit=typed " + q(hello));
+
+    const fs::path lossless_probe = tmp_root() / "lossless_cli.ax";
+    {
+        std::ofstream out(lossless_probe);
+        out << "module lossless_cli;\n"
+               "// keep me\n"
+               "fn main() -> i32 { /* block */ return 0; }\n";
+    }
+    const std::string lossless = require_success(aurexc() + " --dump-lossless " + q(lossless_probe)).output;
+    expect_contains_all(lossless,
+        {
+            "source_file",
+            "whitespace",
+            "line_comment `// keep me`",
+            "block_comment `/* block */`",
+            "kw_module `module`",
+        });
 
     const std::string tokens = require_success(aurexc() + " --dump-tokens " + q(hello)).output;
     const std::string ast = require_success(aurexc() + " --emit=ast " + q(hello)).output;

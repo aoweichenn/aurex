@@ -23,6 +23,7 @@ Common options:
 - `--help`: print help.
 - `--version`: print compiler version.
 - `--dump-tokens` / `--emit=tokens`: print tokens.
+- `--dump-lossless` / `--emit=lossless`: print a lossless syntax token tree that preserves whitespace and comments.
 - `--dump-ast` / `--emit=ast`: print AST.
 - `--dump-modules` / `--emit=modules`: print resolved modules.
 - `--dump-checked` / `--emit=checked`: print checked module summary.

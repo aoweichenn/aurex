@@ -10,6 +10,7 @@ namespace aurex::driver {
 
 enum class EmitKind {
     tokens,
+    lossless,
     ast,
     modules,
     checked,

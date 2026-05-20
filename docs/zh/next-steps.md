@@ -18,8 +18,10 @@ query-safe、lossless-syntax-ready、IDE-native-ready 的结构化系统：
 3. QueryContext / dependency graph：第一批已完成。file、module、def、body、
    generic、diagnostics 的 query row/edge、result fingerprint、red-green 失效边界、
    provider-skip replay 和门禁覆盖已经闭环。
-4. Lossless syntax / IDE-native route：下一阶段推进。保留 trivia 的 CST、局部增量
-   parse、diagnostics query 和 LSP 消费路径都必须建立在现有 query-key 主路径之上。
+4. Lossless syntax / IDE-native route：已经启动第一切片。`--dump-lossless` 现在能输出
+   保留 whitespace、line comment 和 block comment 的 lossless syntax token tree；
+   后续 CST / GreenTree lowering、局部增量 parse、diagnostics query 和 LSP 消费路径都必须
+   建立在现有 query-key 主路径之上。
 5. 语言/库表达力补强：新增到 M2.5 路线图中，作为 regex 级系统库暴露出的
    P0/P1 设计冻结轨道。它不替代 query/lossless/IDE 主线，也不重启旧 std；
    只允许进入能支撑 stable key、module boundary、generic lowering、trait/static

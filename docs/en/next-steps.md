@@ -21,9 +21,11 @@ IDE-native-ready:
    invalidation boundaries, query row/edge persistence, replay, red-green
    pruning, and provider-skip profile gates are on the default incremental-cache
    path for files, modules, definitions, bodies, generics, and diagnostics.
-3. Lossless syntax and IDE-native route: next. Trivia-preserving CST, local
-   incremental parsing, diagnostics queries, and LSP consumers must build on the
-   existing query-key main path.
+3. Lossless syntax and IDE-native route: first slice started. `--dump-lossless`
+   now prints a lossless syntax token tree that preserves whitespace, line
+   comments, and block comments; CST / GreenTree lowering, local incremental
+   parsing, diagnostics queries, and LSP consumers must build on the existing
+   query-key main path.
 4. Language / library expressiveness: newly added to the M2.5 roadmap as a
    P0/P1 design-freeze track from the regex-class systems-library audit. It does
    not replace the query/lossless/IDE line or restart old std; only features

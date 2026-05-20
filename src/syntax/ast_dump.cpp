@@ -13,6 +13,12 @@ std::string_view token_kind_name(const TokenKind kind) noexcept
             return "eof";
         case TokenKind::invalid:
             return "invalid";
+        case TokenKind::whitespace:
+            return "whitespace";
+        case TokenKind::line_comment:
+            return "line_comment";
+        case TokenKind::block_comment:
+            return "block_comment";
         case TokenKind::identifier:
             return "identifier";
         case TokenKind::integer_literal:
@@ -257,6 +263,18 @@ std::string_view token_kind_name(const TokenKind kind) noexcept
             return "at";
     }
     return "unknown";
+}
+
+bool is_trivia_token(const TokenKind kind) noexcept
+{
+    switch (kind) {
+        case TokenKind::whitespace:
+        case TokenKind::line_comment:
+        case TokenKind::block_comment:
+            return true;
+        default:
+            return false;
+    }
 }
 
 namespace {

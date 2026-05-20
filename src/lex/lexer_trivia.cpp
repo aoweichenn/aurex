@@ -15,15 +15,28 @@ void Lexer::skip_trivia()
         while (trivia_width < remaining.size() && is_trivia_space(remaining[trivia_width])) {
             ++trivia_width;
         }
+        const base::usize trivia_begin = this->cursor_.offset();
         this->advance_bytes(trivia_width);
+        if (this->options_.emit_trivia_tokens && trivia_width > 0) {
+            this->add_nonempty_token(syntax::TokenKind::whitespace, trivia_begin, this->cursor_.offset());
+            continue;
+        }
         if (this->peek() == LEXEME_SLASH) {
             const char next = this->peek_next();
             if (next == LEXEME_SLASH) {
+                const base::usize comment_begin = this->cursor_.offset();
                 this->scan_line_comment();
+                if (this->options_.emit_trivia_tokens) {
+                    this->add_nonempty_token(syntax::TokenKind::line_comment, comment_begin, this->cursor_.offset());
+                }
                 continue;
             }
             if (next == LEXEME_STAR) {
+                const base::usize comment_begin = this->cursor_.offset();
                 this->scan_block_comment();
+                if (this->options_.emit_trivia_tokens && comment_begin < this->cursor_.offset()) {
+                    this->add_nonempty_token(syntax::TokenKind::block_comment, comment_begin, this->cursor_.offset());
+                }
                 continue;
             }
         }
@@ -39,7 +52,7 @@ void Lexer::scan_line_comment()
         this->advance_bytes(remaining.size());
         return;
     }
-    this->advance_bytes(line_end + LEXEME_SINGLE_BYTE_WIDTH);
+    this->advance_bytes(line_end);
 }
 
 void Lexer::scan_block_comment()

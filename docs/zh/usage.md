@@ -26,6 +26,7 @@ hello from Aurex M2
 
 ```sh
 build/bin/aurexc --emit=tokens examples/hello.ax
+build/bin/aurexc --emit=lossless examples/hello.ax
 build/bin/aurexc --emit=ast examples/hello.ax
 build/bin/aurexc --emit=checked examples/hello.ax
 build/bin/aurexc --emit=ir examples/hello.ax
@@ -40,6 +41,8 @@ build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 `--emit=exe` 是默认模式。`--emit=asm`、`--emit=obj` 和 `--emit=exe` 形式的
 native 输出需要 `-o`。driver 风格的 `-S` 和 `-c` 在省略 `-o` 时会推导
 `input.s` 和 `input.o`。
+`--emit=lossless` / `--dump-lossless` 会输出保留空白、行注释和块注释的
+lossless syntax token tree，用于后续 CST / GreenTree、局部增量 parse 和 IDE tooling。
 
 命令语法仍保持 clang 风格的扁平 flags，但 `--help` 会按一级动作选项和二级
 修饰选项分组。`--clang`、`--clang-arg` 这类 native backend 修饰选项只适用

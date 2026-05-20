@@ -17,6 +17,7 @@ namespace aurex::lex {
 
 struct LexerOptions {
     bool emit_invalid_tokens = true;
+    bool emit_trivia_tokens = false;
 };
 
 class Lexer final {

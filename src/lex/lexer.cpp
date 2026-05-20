@@ -161,7 +161,8 @@ inline constexpr std::array TOKEN_START_ACTIONS = build_token_start_actions();
         && source[index + LEXER_TOKEN_PREFIX_TAIL_OFFSET] == prefix.back();
 }
 
-[[nodiscard]] base::usize estimate_token_capacity(const std::string_view source) noexcept
+[[nodiscard]] base::usize estimate_token_capacity(
+    const std::string_view source, const bool include_trivia_tokens) noexcept
 {
     constexpr base::usize configured_minimum = base::config::AUREX_INITIAL_TOKEN_CAPACITY;
     base::usize tokens = LEXER_TOKEN_ESTIMATE_EOF_TOKEN;
@@ -169,14 +170,25 @@ inline constexpr std::array TOKEN_START_ACTIONS = build_token_start_actions();
     while (index < source.size()) {
         const char current = source[index];
         if (is_trivia_space(current)) {
-            ++index;
+            if (include_trivia_tokens) {
+                ++tokens;
+            }
+            do {
+                ++index;
+            } while (index < source.size() && is_trivia_space(source[index]));
             continue;
         }
         if (estimate_two_byte_prefix(source, index, LEXEME_LINE_COMMENT_PREFIX)) {
+            if (include_trivia_tokens) {
+                ++tokens;
+            }
             index = estimate_line_comment_end(source, index + LEXEME_LINE_COMMENT_PREFIX.size());
             continue;
         }
         if (estimate_two_byte_prefix(source, index, LEXEME_BLOCK_COMMENT_PREFIX)) {
+            if (include_trivia_tokens) {
+                ++tokens;
+            }
             index = estimate_block_comment_end(source, index + LEXEME_BLOCK_COMMENT_PREFIX.size());
             continue;
         }
@@ -216,7 +228,7 @@ Lexer::Lexer(const base::SourceId source_id, const std::string_view source_text,
     const LexerOptions options) noexcept
     : source_id_(source_id), cursor_(source_text), diagnostics_(diagnostics), options_(options)
 {
-    this->tokens_.reserve(estimate_token_capacity(source_text));
+    this->tokens_.reserve(estimate_token_capacity(source_text, options.emit_trivia_tokens));
 }
 
 base::Result<TokenBuffer> Lexer::tokenize()

@@ -28,6 +28,7 @@ hello from Aurex M2
 
 ```sh
 build/bin/aurexc --emit=tokens examples/hello.ax
+build/bin/aurexc --emit=lossless examples/hello.ax
 build/bin/aurexc --emit=ast examples/hello.ax
 build/bin/aurexc --emit=checked examples/hello.ax
 build/bin/aurexc --emit=ir examples/hello.ax
@@ -42,6 +43,9 @@ build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 `--emit=exe` is the default mode. Native output from `--emit=asm`,
 `--emit=obj`, and `--emit=exe` requires `-o`. The driver-style `-S` and `-c`
 forms infer `input.s` and `input.o` when `-o` is omitted.
+`--emit=lossless` / `--dump-lossless` prints a lossless syntax token tree that
+preserves whitespace, line comments, and block comments for the future CST /
+GreenTree, local incremental parse, and IDE tooling path.
 
 The command syntax stays clang-style and flat, but `--help` groups options into
 primary actions and secondary modifiers. Native backend modifiers such as

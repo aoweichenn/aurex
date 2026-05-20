@@ -13,6 +13,7 @@
 #include <aurex/lex/lexer.hpp>
 #include <aurex/sema/sema.hpp>
 #include <aurex/syntax/ast_dump.hpp>
+#include <aurex/syntax/lossless.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -386,7 +387,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
     base::SourceManager sources;
     base::DiagnosticSink diagnostics;
 
-    if (invocation.emit_kind == EmitKind::tokens) {
+    if (invocation.emit_kind == EmitKind::tokens || invocation.emit_kind == EmitKind::lossless) {
         auto source_result = [&] {
             ScopedCompilationPhase phase(run_profile.profiler(), "source.read");
             return read_text_file(invocation.input_path);
@@ -395,7 +396,9 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
             return run_profile.finish(base::Result<void>::fail(source_result.error()));
         }
         const base::SourceId source_id = sources.add_source(invocation.input_path.string(), source_result.take_value());
-        lex::Lexer lexer(source_id, sources.text(source_id), diagnostics);
+        lex::LexerOptions lexer_options;
+        lexer_options.emit_trivia_tokens = invocation.emit_kind == EmitKind::lossless;
+        lex::Lexer lexer(source_id, sources.text(source_id), diagnostics, lexer_options);
         auto token_result = [&] {
             ScopedCompilationPhase phase(run_profile.profiler(), "tokens.lex");
             return lexer.tokenize();
@@ -405,8 +408,14 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
             return run_profile.finish(base::Result<void>::fail(token_result.error()));
         }
         {
-            ScopedCompilationPhase phase(run_profile.profiler(), "tokens.dump");
-            std::cout << syntax::dump_tokens(token_result.value());
+            ScopedCompilationPhase phase(
+                run_profile.profiler(), invocation.emit_kind == EmitKind::lossless ? "lossless.dump" : "tokens.dump");
+            if (invocation.emit_kind == EmitKind::lossless) {
+                const syntax::LosslessSyntaxTree tree = syntax::build_lossless_syntax_tree(token_result.value().span());
+                std::cout << syntax::dump_lossless_syntax_tree(tree);
+            } else {
+                std::cout << syntax::dump_tokens(token_result.value());
+            }
         }
         return run_profile.finish(base::Result<void>::ok());
     }

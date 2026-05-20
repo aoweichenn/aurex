@@ -21,6 +21,7 @@ aurexc [primary-option] [secondary-options] input.ax [-o output]
 - `--help`：输出帮助。
 - `--version`：输出编译器版本。
 - `--dump-tokens` / `--emit=tokens`：输出 token。
+- `--dump-lossless` / `--emit=lossless`：输出保留空白和注释的 lossless syntax token tree。
 - `--dump-ast` / `--emit=ast`：输出 AST。
 - `--dump-modules` / `--emit=modules`：输出模块加载结果。
 - `--dump-checked` / `--emit=checked`：输出 checked module 摘要。

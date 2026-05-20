@@ -279,6 +279,12 @@ foundation covers stable keys, canonical type / generic-instance identity,
 red-green provider skip, profile events, query-graph fuzzing, sanitizer gates,
 and release/coverage gates. Future lossless syntax, IDE-native entry points,
 and advanced language features must reuse this main path.
+The first lossless-syntax slice has started: the lexer has opt-in trivia token
+emission while the default compile path still skips trivia; `LosslessSyntaxTree`
+stores the complete token sequence and can reconstruct the original source text;
+the CLI now exposes `--dump-lossless` / `--emit=lossless` to print a lossless
+syntax token tree that preserves whitespace, line comments, and block comments.
+Parser lowering from CST / GreenTree is the next step.
 The follow-up match-exhaustiveness pass replaced the former structural
 cartesian-product enumerator with a pattern matrix / usefulness witness search.
 Bool, enum payloads, tuples, structs, fixed arrays up to the explicit 4096-column

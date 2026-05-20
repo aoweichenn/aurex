@@ -56,6 +56,7 @@ if(BUILD_TESTING)
         tests/gtest/base/base_tests.cpp
         tests/gtest/frontend/ast_dump_tests.cpp
         tests/gtest/frontend/lexer_tests.cpp
+        tests/gtest/frontend/lossless_syntax_tests.cpp
         tests/gtest/frontend/parser_tests.cpp
         tests/gtest/sema/sema_whitebox_tests.cpp
     )
@@ -95,6 +96,7 @@ if(BUILD_TESTING)
             tests/gtest/frontend/ast_dump_tests.cpp
             tests/gtest/frontend/randomized_frontend_tests.cpp
             tests/gtest/frontend/lexer_tests.cpp
+            tests/gtest/frontend/lossless_syntax_tests.cpp
             tests/gtest/frontend/parser_tests.cpp
             tests/gtest/integration/documentation_tests.cpp
             tests/gtest/integration/examples_tests.cpp

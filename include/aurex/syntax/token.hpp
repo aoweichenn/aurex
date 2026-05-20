@@ -9,6 +9,9 @@ namespace aurex::syntax {
 enum class TokenKind {
     eof,
     invalid,
+    whitespace,
+    line_comment,
+    block_comment,
     identifier,
     integer_literal,
     float_literal,
@@ -156,5 +159,6 @@ private:
 };
 
 [[nodiscard]] std::string_view token_kind_name(TokenKind kind) noexcept;
+[[nodiscard]] bool is_trivia_token(TokenKind kind) noexcept;
 
 } // namespace aurex::syntax

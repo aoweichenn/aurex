@@ -652,6 +652,10 @@ def stable_key_has_layout(data: bytes, skip_key) -> bool:
     return skip_key(reader) and reader.eof()
 
 
+def stable_key_has_file_key_layout(data: bytes) -> bool:
+    return stable_key_has_layout(data, skip_file_key)
+
+
 def stable_key_has_module_key_layout(data: bytes) -> bool:
     return stable_key_has_layout(data, skip_module_key)
 
@@ -666,6 +670,28 @@ def stable_key_has_generic_instance_key_layout(data: bytes) -> bool:
 
 def stable_key_has_query_key_layout(data: bytes) -> bool:
     return stable_key_has_layout(data, skip_query_key)
+
+
+def stable_key_layout_matches_query_kind(kind: str, data: bytes) -> bool:
+    if kind == "file_content":
+        return stable_key_has_file_key_layout(data)
+    if kind == "lex_file":
+        return decode_lex_file_key_identity(data) is not None
+    if kind == "parse_file":
+        return decode_parse_file_key_identity(data) is not None
+    if kind in {"module_graph", "module_exports", "item_list"}:
+        return stable_key_has_module_key_layout(data)
+    if kind in {"item_signature", "generic_template_signature"}:
+        return decode_def_key_identity(data) is not None
+    if kind in {"function_body_syntax", "type_check_body"}:
+        return stable_key_has_body_key_layout(data)
+    if kind in {"generic_instance_signature", "generic_instance_body"}:
+        return stable_key_has_generic_instance_key_layout(data)
+    if kind == "lower_function_ir":
+        return stable_key_has_body_key_layout(data) or stable_key_has_generic_instance_key_layout(data)
+    if kind == "diagnostics":
+        return stable_key_has_query_key_layout(data)
+    return False
 
 
 def read_file_key_slice(reader: StableKeyReader) -> bytes | None:
@@ -862,7 +888,13 @@ def validate_cache_query_edges(cache_path: pathlib.Path) -> int:
         if not fields:
             continue
         if len(fields) == QUERY_CACHE_FIELD_COUNT and fields[0] == "query":
-            query_stable_keys[tuple(fields[1:7])] = bytes.fromhex(fields[QUERY_CACHE_STABLE_KEY_FIELD])
+            stable_key = bytes.fromhex(fields[QUERY_CACHE_STABLE_KEY_FIELD])
+            query_kind = fields[QUERY_CACHE_QUERY_KIND_FIELD]
+            if not stable_key_layout_matches_query_kind(query_kind, stable_key):
+                raise RuntimeError(
+                    f"query row stable key shape does not match kind at {cache_path}:{line_number}: {line!r}"
+                )
+            query_stable_keys[tuple(fields[1:7])] = stable_key
             continue
         if fields[0] == QUERY_EDGE_CACHE_HEADER:
             if len(fields) != 2:

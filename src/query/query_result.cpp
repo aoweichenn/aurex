@@ -1,4 +1,5 @@
 #include <aurex/query/query_result.hpp>
+#include <aurex/query/stable_key_decoder.hpp>
 
 #include <utility>
 
@@ -25,6 +26,12 @@ bool is_valid(const QueryResultFingerprint result) noexcept
 bool is_valid(const QueryRecord& record) noexcept
 {
     return is_valid(record.key) && is_valid(record.result) && !record.stable_key_bytes.empty();
+}
+
+bool query_record_stable_identity_is_valid(const QueryRecord& record) noexcept
+{
+    return is_valid(record) && record.key.payload == stable_fingerprint(record.stable_key_bytes)
+        && stable_key_layout_matches_query_kind(record.key.kind, record.stable_key_bytes);
 }
 
 bool is_valid(const FileContentQueryInput& input) noexcept
@@ -126,13 +133,13 @@ QueryResultFingerprint query_result_fingerprint(const IncrementalKey incremental
 
 QueryRecordChangeStatus query_record_change_status(const QueryRecord* const cached, const QueryRecord& current) noexcept
 {
-    if (!is_valid(current)) {
+    if (!query_record_stable_identity_is_valid(current)) {
         return QueryRecordChangeStatus::malformed;
     }
     if (cached == nullptr) {
         return QueryRecordChangeStatus::missing;
     }
-    if (!is_valid(*cached) || cached->key.kind != current.key.kind
+    if (!query_record_stable_identity_is_valid(*cached) || cached->key.kind != current.key.kind
         || cached->stable_key_bytes != current.stable_key_bytes || cached->key != current.key) {
         return QueryRecordChangeStatus::malformed;
     }

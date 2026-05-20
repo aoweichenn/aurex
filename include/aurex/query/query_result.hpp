@@ -106,6 +106,7 @@ enum class QueryRecordChangeStatus : base::u8 {
 
 [[nodiscard]] bool is_valid(QueryResultFingerprint result) noexcept;
 [[nodiscard]] bool is_valid(const QueryRecord& record) noexcept;
+[[nodiscard]] bool query_record_stable_identity_is_valid(const QueryRecord& record) noexcept;
 [[nodiscard]] bool is_valid(const FileContentQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const LexFileQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ParseFileQueryInput& input) noexcept;
@@ -127,8 +128,8 @@ enum class QueryRecordChangeStatus : base::u8 {
 [[nodiscard]] QueryRecordChangeStatus query_record_change_status(
     const QueryRecord* cached, const QueryRecord& current) noexcept;
 
-[[nodiscard]] std::optional<QueryRecord> query_record(QueryKind kind, StableFingerprint128 key_payload,
-    std::string stable_key_bytes, QueryResultFingerprint result);
+[[nodiscard]] std::optional<QueryRecord> query_record(
+    QueryKind kind, StableFingerprint128 key_payload, std::string stable_key_bytes, QueryResultFingerprint result);
 
 [[nodiscard]] std::optional<QueryRecord> file_content_query_record(const FileContentQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> file_content_query_record(FileKey key, QueryResultFingerprint result);

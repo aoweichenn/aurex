@@ -1950,6 +1950,28 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     expect_contains(repaired_cache_text, "query_edges\t18");
     EXPECT_EQ(repaired_cache_text.find(wrong_identity_cached_edge_row), std::string::npos);
 
+    const std::optional<query::QueryRecord> malformed_item_shape_record = query::query_record(
+        query::QueryKind::item_signature, query::stable_key_fingerprint(expected_item_signature_key.module),
+        query::stable_serialize(expected_item_signature_key.module), expected_item_record->result);
+    ASSERT_TRUE(malformed_item_shape_record.has_value());
+    ASSERT_FALSE(query::query_record_stable_identity_is_valid(*malformed_item_shape_record));
+    const std::string expected_item_row = cache_test_query_row(*expected_item_record);
+    const std::string malformed_item_shape_row = cache_test_query_row(*malformed_item_shape_record);
+    std::string cache_with_malformed_item_shape = cached_query_text;
+    const std::size_t expected_item_row_pos = cache_with_malformed_item_shape.find(expected_item_row);
+    ASSERT_NE(expected_item_row_pos, std::string::npos);
+    cache_with_malformed_item_shape.replace(expected_item_row_pos, expected_item_row.size(), malformed_item_shape_row);
+    write_cache_text(cache_with_malformed_item_shape);
+
+    driver::CompilationProfiler malformed_row_write_profiler(true);
+    auto malformed_row_write_result =
+        driver::write_incremental_cache(pruning_invocation, sources, modules, checked, &malformed_row_write_profiler);
+    ASSERT_TRUE(malformed_row_write_result) << malformed_row_write_result.error().message;
+    expect_query_profile_phases_with_pruning(malformed_row_write_profiler, CACHE_TEST_QUERY_DIFF_MISSING_DETAIL,
+        CACHE_TEST_QUERY_PLAN_MISSING_DETAIL, malformed_identity_pruning_detail);
+    const std::string row_shape_repaired_cache_text = read_text(cache);
+    EXPECT_EQ(row_shape_repaired_cache_text.find(malformed_item_shape_row), std::string::npos);
+
     driver::CompilationProfiler pruning_write_profiler(true);
     auto pruning_write_result =
         driver::write_incremental_cache(pruning_invocation, sources, modules, checked, &pruning_write_profiler);

@@ -522,6 +522,38 @@ bool stable_key_has_query_key_layout(const std::string_view bytes) noexcept
     return stable_key_has_layout(bytes, skip_query_key);
 }
 
+bool stable_key_layout_matches_query_kind(const QueryKind kind, const std::string_view bytes) noexcept
+{
+    switch (kind) {
+        case QueryKind::file_content:
+            return stable_key_has_file_key_layout(bytes);
+        case QueryKind::lex_file:
+            return decode_lex_file_key_identity(bytes).has_value();
+        case QueryKind::parse_file:
+            return decode_parse_file_key_identity(bytes).has_value();
+        case QueryKind::module_graph:
+        case QueryKind::module_exports:
+        case QueryKind::item_list:
+            return stable_key_has_module_key_layout(bytes);
+        case QueryKind::item_signature:
+        case QueryKind::generic_template_signature:
+            return decode_def_key_identity(bytes).has_value();
+        case QueryKind::function_body_syntax:
+        case QueryKind::type_check_body:
+            return stable_key_has_body_key_layout(bytes);
+        case QueryKind::generic_instance_signature:
+        case QueryKind::generic_instance_body:
+            return stable_key_has_generic_instance_key_layout(bytes);
+        case QueryKind::lower_function_ir:
+            return stable_key_has_body_key_layout(bytes) || stable_key_has_generic_instance_key_layout(bytes);
+        case QueryKind::diagnostics:
+            return stable_key_has_query_key_layout(bytes);
+        case QueryKind::invalid:
+            return false;
+    }
+    return false;
+}
+
 std::optional<DecodedLexFileKeyIdentity> decode_lex_file_key_identity(const std::string_view bytes) noexcept
 {
     StableKeyReader reader(bytes);

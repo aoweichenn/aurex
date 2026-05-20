@@ -1145,6 +1145,16 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     return ParsedCacheValidationStatus::valid;
 }
 
+[[nodiscard]] ParsedCacheValidationStatus parsed_cache_query_records_validation_status(const ParsedCache& cache)
+{
+    for (const ParsedQueryRecord& record : cache.queries) {
+        if (!query::query_record_stable_identity_is_valid(record.record)) {
+            return ParsedCacheValidationStatus::malformed_query_identity;
+        }
+    }
+    return ParsedCacheValidationStatus::valid;
+}
+
 [[nodiscard]] QueryDependenciesByDependent query_dependencies_by_dependent(const ParsedCache& cache)
 {
     QueryDependenciesByDependent dependencies;
@@ -1225,6 +1235,11 @@ void append_hex_string(std::ostream& out, const std::string_view value)
         || cache.sources.size() != *cache.expected_sources || cache.module_count != *cache.expected_modules
         || cache.definition_count != *cache.expected_definitions || !queries_match || !query_edges_match) {
         return ParsedCacheValidationStatus::malformed_cache;
+    }
+
+    const ParsedCacheValidationStatus query_records_validation = parsed_cache_query_records_validation_status(cache);
+    if (query_records_validation != ParsedCacheValidationStatus::valid) {
+        return query_records_validation;
     }
     return parsed_cache_query_edges_validation_status(cache);
 }
@@ -3148,8 +3163,13 @@ void evaluate_recomputed_query_subjects(query::QueryContext& context, const Quer
     return records;
 }
 
-[[nodiscard]] bool query_collection_dependency_edges_are_closed_and_valid(const QueryCollection& collection)
+[[nodiscard]] bool query_collection_records_and_dependency_edges_are_valid(const QueryCollection& collection)
 {
+    for (const query::QueryRecord& record : collection.records) {
+        if (!query::query_record_stable_identity_is_valid(record)) {
+            return false;
+        }
+    }
     for (const query::QueryDependencyEdge& edge : collection.dependency_edges) {
         const query::QueryRecord* const dependent = query_record_for_key(collection.records, edge.dependent);
         const query::QueryRecord* const dependency = query_record_for_key(collection.records, edge.dependency);
@@ -3422,7 +3442,7 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
         std::chrono::steady_clock::now() - query_provider_eval_started;
     record_query_provider_evaluation_summary(profiler, query_collection_result.stats, query_provider_eval_elapsed);
     const QueryCollection& query_collection = query_collection_result.collection;
-    if (!query_collection_dependency_edges_are_closed_and_valid(query_collection)) {
+    if (!query_collection_records_and_dependency_edges_are_valid(query_collection)) {
         return base::Result<void>::fail(
             {base::ErrorCode::internal_error, std::string(INCREMENTAL_CACHE_QUERY_GRAPH_INVALID)});
     }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <aurex/query/query_key.hpp>
+
 #include <optional>
 #include <string_view>
 
@@ -32,6 +34,7 @@ struct DecodedGenericInstanceKeyIdentity {
 [[nodiscard]] bool stable_key_has_body_key_layout(std::string_view bytes) noexcept;
 [[nodiscard]] bool stable_key_has_generic_instance_key_layout(std::string_view bytes) noexcept;
 [[nodiscard]] bool stable_key_has_query_key_layout(std::string_view bytes) noexcept;
+[[nodiscard]] bool stable_key_layout_matches_query_kind(QueryKind kind, std::string_view bytes) noexcept;
 [[nodiscard]] std::optional<DecodedLexFileKeyIdentity> decode_lex_file_key_identity(std::string_view bytes) noexcept;
 [[nodiscard]] std::optional<DecodedParseFileKeyIdentity> decode_parse_file_key_identity(
     std::string_view bytes) noexcept;

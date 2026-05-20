@@ -640,6 +640,53 @@ TEST(QueryUnit, StableKeyDecoderProjectsDefinitionBodyGenericAndQueryIdentitySli
     EXPECT_EQ(instance_identity->template_def, template_def_bytes);
 }
 
+TEST(QueryUnit, StableKeyDecoderMatchesStableKeyLayoutToQueryKind)
+{
+    const QueryContextSourceSubject source_subject = test_source_subject();
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey function_def = test_function_def(module);
+    const query::DefKey template_def = test_template_def(module);
+    const query::BodyKey body = query::body_key(function_def, query::BodySlotKind::function_body);
+    const std::array<query::CanonicalTypeKey, 1> type_args{query::canonical_builtin(query::BuiltinTypeKey::i32)};
+    const query::GenericInstanceKey instance = query::generic_instance_key(template_def, type_args,
+        std::span<const query::StableFingerprint128>{}, query::param_env_key(std::span<const std::string_view>{}));
+    const query::QueryKey producer =
+        query::query_key(query::QueryKind::item_signature, query::stable_key_fingerprint(function_def));
+
+    const std::string file_bytes = query::stable_serialize(source_subject.file);
+    const std::string lex_file_bytes = query::stable_serialize(source_subject.lex_file);
+    const std::string parse_file_bytes = query::stable_serialize(source_subject.parse_file);
+    const std::string module_bytes = query::stable_serialize(module);
+    const std::string def_bytes = query::stable_serialize(function_def);
+    const std::string body_bytes = query::stable_serialize(body);
+    const std::string instance_bytes = query::stable_serialize(instance);
+    const std::string producer_bytes = query::stable_serialize(producer);
+
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::file_content, file_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::lex_file, lex_file_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::parse_file, parse_file_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::module_graph, module_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::module_exports, module_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::item_list, module_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::item_signature, def_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::generic_template_signature, def_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::function_body_syntax, body_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::type_check_body, body_bytes));
+    EXPECT_TRUE(
+        query::stable_key_layout_matches_query_kind(query::QueryKind::generic_instance_signature, instance_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::generic_instance_body, instance_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::lower_function_ir, body_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::lower_function_ir, instance_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::diagnostics, producer_bytes));
+
+    EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::file_content, lex_file_bytes));
+    EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::item_signature, module_bytes));
+    EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::lower_function_ir, module_bytes));
+    EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::diagnostics, def_bytes));
+    EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::invalid, file_bytes));
+}
+
 TEST(QueryUnit, StableKeyDecoderRejectsMalformedStableKeys)
 {
     const QueryContextSourceSubject source_subject = test_source_subject();
@@ -1087,6 +1134,25 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_EQ(diagnostics_record->key.payload, query::stable_key_fingerprint(item_record->key));
     EXPECT_EQ(diagnostics_record->stable_key_bytes, query::stable_serialize(item_record->key));
 
+    const std::array<const query::QueryRecord*, 13> records_with_stable_identity{
+        &*file_content_record,
+        &*lex_file_record,
+        &*parse_file_record,
+        &*module_graph_record,
+        &*exports_record,
+        &*item_list_record,
+        &*item_record,
+        &*template_record,
+        &*instance_record,
+        &*generic_body_record,
+        &*lower_body_record,
+        &*lower_generic_record,
+        &*diagnostics_record,
+    };
+    for (const query::QueryRecord* const record : records_with_stable_identity) {
+        EXPECT_TRUE(query::query_record_stable_identity_is_valid(*record));
+    }
+
     query::QueryRecord changed_item_record = *item_record;
     changed_item_record.result =
         query::query_result_fingerprint(query::stable_incremental_key(legacy_function_id, "signature:i64"));
@@ -1108,6 +1174,19 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_FALSE(
         query::query_record(query::QueryKind::item_signature, query::stable_key_fingerprint(function_def), "", result)
             .has_value());
+    query::QueryRecord wrong_shape_record = *item_record;
+    wrong_shape_record.key = query::query_key(query::QueryKind::item_signature, query::stable_key_fingerprint(module));
+    wrong_shape_record.stable_key_bytes = query::stable_serialize(module);
+    EXPECT_TRUE(query::is_valid(wrong_shape_record));
+    EXPECT_FALSE(query::query_record_stable_identity_is_valid(wrong_shape_record));
+    EXPECT_EQ(
+        query::query_record_change_status(nullptr, wrong_shape_record), query::QueryRecordChangeStatus::malformed);
+
+    query::QueryRecord wrong_payload_record = *item_record;
+    wrong_payload_record.key =
+        query::query_key(query::QueryKind::item_signature, query::stable_key_fingerprint(module));
+    EXPECT_TRUE(query::is_valid(wrong_payload_record));
+    EXPECT_FALSE(query::query_record_stable_identity_is_valid(wrong_payload_record));
     EXPECT_FALSE(query::is_valid(query::FileContentQueryInput{}));
     EXPECT_FALSE(
         query::file_content_query_record(query::FileContentQueryInput{query::FileKey{}, source_subject.content})
@@ -3225,6 +3304,12 @@ TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
     const query::QueryKey wrong_kind_dependency =
         query::query_key(query::QueryKind::item_list, query::stable_key_fingerprint(subject.def.module));
     EXPECT_FALSE(context.seed_completed_record(output->record, {wrong_kind_dependency}));
+    query::QueryRecord wrong_shape_record = output->record;
+    wrong_shape_record.key =
+        query::query_key(query::QueryKind::item_signature, query::stable_key_fingerprint(subject.def.module));
+    wrong_shape_record.stable_key_bytes = query::stable_serialize(subject.def.module);
+    EXPECT_FALSE(context.seed_completed_record(wrong_shape_record, {dependency}));
+    EXPECT_EQ(context.find(wrong_shape_record.key), nullptr);
     EXPECT_TRUE(context.seed_completed_record(output->record, {dependency, dependency}));
     EXPECT_FALSE(context.seed_completed_record(output->record));
     EXPECT_EQ(context.dependency_edge_count(), 1U);
@@ -3250,6 +3335,30 @@ TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
     const query::QueryEvaluationResult recomputed_result = context.evaluate_item_signature(subject.input);
     EXPECT_EQ(recomputed_result.status, query::QueryEvaluationStatus::computed);
     EXPECT_EQ(provider_calls, 1U);
+}
+
+TEST(QueryUnit, QueryContextRejectsProviderRecordsWithMalformedStableIdentity)
+{
+    const QueryContextItemSignatureSubject subject =
+        test_item_signature_subject("compute", QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryKey> expected_key = query::item_signature_query_key(subject.def);
+    ASSERT_TRUE(expected_key.has_value());
+
+    query::QueryContext context([](const query::ItemSignatureProviderInput& provider_input) {
+        std::optional<query::ItemSignatureProviderOutput> output = query::provide_item_signature_query(provider_input);
+        if (output) {
+            output->record.stable_key_bytes = query::stable_serialize(provider_input.key.module);
+        }
+        return output;
+    });
+
+    const query::QueryEvaluationResult result = context.evaluate_item_signature(subject.input);
+    ASSERT_EQ(result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(result.node, nullptr);
+    EXPECT_EQ(result.node->key, *expected_key);
+    EXPECT_EQ(result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(context.completed_records().empty());
+    EXPECT_EQ(context.dependency_edge_count(), 0U);
 }
 
 TEST(QueryUnit, QueryReuseDecisionClassifiesCachedCurrentAndMalformedRecords)

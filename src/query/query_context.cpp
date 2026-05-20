@@ -599,7 +599,7 @@ QueryEvaluationResult QueryContext::evaluate_diagnostics(const DiagnosticsProvid
 
 bool QueryContext::seed_completed_record(QueryRecord record, std::vector<QueryKey> dependencies)
 {
-    if (!is_valid(record) || has_invalid_dependency(dependencies)
+    if (!query_record_stable_identity_is_valid(record) || has_invalid_dependency(dependencies)
         || has_unexpected_dependency_kind(record.key, dependencies)) {
         return false;
     }
@@ -739,7 +739,8 @@ QueryContext::QueryEvaluationStart QueryContext::start_query(const QueryKey key)
 QueryEvaluationResult QueryContext::complete_query(
     QueryNode& node, QueryRecord record, const QueryResultFingerprint result, std::vector<QueryKey> dependencies)
 {
-    if (has_invalid_dependency(dependencies) || has_unexpected_dependency_kind(record.key, dependencies)) {
+    if (!query_record_stable_identity_is_valid(record) || record.key != node.key || record.result != result
+        || has_invalid_dependency(dependencies) || has_unexpected_dependency_kind(record.key, dependencies)) {
         return this->fail_query(node);
     }
 

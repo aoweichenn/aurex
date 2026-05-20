@@ -179,6 +179,10 @@ constexpr std::string_view CACHE_TEST_QUERY_PRUNING_NO_CACHE_DETAIL =
     "recomputed_generic_template_signatures=1,recomputed_generic_instance_signatures=1,"
     "recomputed_generic_instance_bodies=0,"
     "recomputed_lower_function_irs=0,recomputed_diagnostics=10,fallback=no_cache";
+constexpr std::string_view CACHE_TEST_QUERY_PRUNING_NO_CACHE_FALLBACK_FIELD = "fallback=no_cache";
+constexpr std::string_view CACHE_TEST_QUERY_PRUNING_FALLBACK_MALFORMED_CACHE = "malformed_cache";
+constexpr std::string_view CACHE_TEST_QUERY_PRUNING_FALLBACK_MALFORMED_QUERY_GRAPH = "malformed_query_graph";
+constexpr std::string_view CACHE_TEST_QUERY_PRUNING_FALLBACK_MALFORMED_QUERY_IDENTITY = "malformed_query_identity";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_REUSE_ALL_DETAIL =
     "enabled=1,applied=1,reused=20,recomputed=0,reused_file_contents=1,reused_lex_files=1,"
     "reused_parse_files=1,reused_module_graphs=1,reused_module_exports=1,reused_item_lists=1,"
@@ -490,6 +494,18 @@ struct CacheTestQueryResultFingerprint {
     row += cache_test_query_key_fields(edge.dependency);
     row += "\n";
     return row;
+}
+
+[[nodiscard]] std::string cache_test_query_pruning_detail_with_fallback(const std::string_view fallback)
+{
+    std::string detail(CACHE_TEST_QUERY_PRUNING_NO_CACHE_DETAIL);
+    const std::size_t fallback_pos = detail.rfind(CACHE_TEST_QUERY_PRUNING_NO_CACHE_FALLBACK_FIELD);
+    if (fallback_pos == std::string::npos) {
+        return detail;
+    }
+    detail.replace(
+        fallback_pos, CACHE_TEST_QUERY_PRUNING_NO_CACHE_FALLBACK_FIELD.size(), "fallback=" + std::string(fallback));
+    return detail;
 }
 
 [[nodiscard]] std::vector<std::string_view> split_cache_test_fields(const std::string_view line)
@@ -1870,27 +1886,66 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
                 std::stoull(expected_generic_diagnostics_result->global_id),
             });
     ASSERT_TRUE(expected_generic_diagnostics_record.has_value());
+
+    driver::CompilerInvocation pruning_invocation = invocation;
+    pruning_invocation.experimental_query_pruning = true;
+    const std::string malformed_cache_pruning_detail =
+        cache_test_query_pruning_detail_with_fallback(CACHE_TEST_QUERY_PRUNING_FALLBACK_MALFORMED_CACHE);
+    const std::string malformed_graph_pruning_detail =
+        cache_test_query_pruning_detail_with_fallback(CACHE_TEST_QUERY_PRUNING_FALLBACK_MALFORMED_QUERY_GRAPH);
+    const std::string malformed_identity_pruning_detail =
+        cache_test_query_pruning_detail_with_fallback(CACHE_TEST_QUERY_PRUNING_FALLBACK_MALFORMED_QUERY_IDENTITY);
+
+    write_cache_text("not-a-cache\n");
+    driver::CompilationProfiler malformed_cache_write_profiler(true);
+    auto malformed_cache_write_result =
+        driver::write_incremental_cache(pruning_invocation, sources, modules, checked, &malformed_cache_write_profiler);
+    ASSERT_TRUE(malformed_cache_write_result) << malformed_cache_write_result.error().message;
+    expect_query_profile_phases_with_pruning(malformed_cache_write_profiler, CACHE_TEST_QUERY_DIFF_MISSING_DETAIL,
+        CACHE_TEST_QUERY_PLAN_MISSING_DETAIL, malformed_cache_pruning_detail);
+
+    const query::QueryDependencyEdge wrong_graph_cached_edge{
+        expected_item_record->key,
+        expected_generic_diagnostics_record->key,
+    };
+    const std::string wrong_graph_cached_edge_row = cache_test_query_edge_row(wrong_graph_cached_edge);
+    std::string cache_with_wrong_graph_edge = cached_query_text;
+    const std::string original_query_edge_count = "query_edges\t18\n";
+    const std::size_t graph_query_edge_count_pos = cache_with_wrong_graph_edge.find(original_query_edge_count);
+    ASSERT_NE(graph_query_edge_count_pos, std::string::npos);
+    cache_with_wrong_graph_edge.replace(
+        graph_query_edge_count_pos, original_query_edge_count.size(), "query_edges\t19\n");
+    cache_with_wrong_graph_edge += wrong_graph_cached_edge_row;
+    write_cache_text(cache_with_wrong_graph_edge);
+
+    driver::CompilationProfiler malformed_graph_write_profiler(true);
+    auto malformed_graph_write_result =
+        driver::write_incremental_cache(pruning_invocation, sources, modules, checked, &malformed_graph_write_profiler);
+    ASSERT_TRUE(malformed_graph_write_result) << malformed_graph_write_result.error().message;
+    expect_query_profile_phases_with_pruning(malformed_graph_write_profiler, CACHE_TEST_QUERY_DIFF_MISSING_DETAIL,
+        CACHE_TEST_QUERY_PLAN_MISSING_DETAIL, malformed_graph_pruning_detail);
+    const std::string graph_repaired_cache_text = read_text(cache);
+    expect_contains(graph_repaired_cache_text, "query_edges\t18");
+    EXPECT_EQ(graph_repaired_cache_text.find(wrong_graph_cached_edge_row), std::string::npos);
+
     const query::QueryDependencyEdge wrong_identity_cached_edge{
         expected_generic_diagnostics_record->key,
         expected_item_record->key,
     };
     const std::string wrong_identity_cached_edge_row = cache_test_query_edge_row(wrong_identity_cached_edge);
     std::string cache_with_wrong_identity_edge = cached_query_text;
-    const std::string original_query_edge_count = "query_edges\t18\n";
     const std::size_t query_edge_count_pos = cache_with_wrong_identity_edge.find(original_query_edge_count);
     ASSERT_NE(query_edge_count_pos, std::string::npos);
     cache_with_wrong_identity_edge.replace(query_edge_count_pos, original_query_edge_count.size(), "query_edges\t19\n");
     cache_with_wrong_identity_edge += wrong_identity_cached_edge_row;
     write_cache_text(cache_with_wrong_identity_edge);
 
-    driver::CompilerInvocation pruning_invocation = invocation;
-    pruning_invocation.experimental_query_pruning = true;
     driver::CompilationProfiler malformed_edge_write_profiler(true);
     auto malformed_edge_write_result =
         driver::write_incremental_cache(pruning_invocation, sources, modules, checked, &malformed_edge_write_profiler);
     ASSERT_TRUE(malformed_edge_write_result) << malformed_edge_write_result.error().message;
     expect_query_profile_phases_with_pruning(malformed_edge_write_profiler, CACHE_TEST_QUERY_DIFF_MISSING_DETAIL,
-        CACHE_TEST_QUERY_PLAN_MISSING_DETAIL, CACHE_TEST_QUERY_PRUNING_NO_CACHE_DETAIL);
+        CACHE_TEST_QUERY_PLAN_MISSING_DETAIL, malformed_identity_pruning_detail);
     const std::string repaired_cache_text = read_text(cache);
     expect_contains(repaired_cache_text, "query_edges\t18");
     EXPECT_EQ(repaired_cache_text.find(wrong_identity_cached_edge_row), std::string::npos);

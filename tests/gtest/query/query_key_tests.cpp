@@ -10,6 +10,7 @@
 #include <aurex/query/module_exports_query.hpp>
 #include <aurex/query/module_graph_query.hpp>
 #include <aurex/query/query_context.hpp>
+#include <aurex/query/query_edge_verifier.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/query/query_reuse.hpp>
 #include <aurex/query/source_file_query.hpp>
@@ -206,6 +207,11 @@ struct QueryContextBodySubject {
 [[nodiscard]] QueryContextBodySubject test_body_subject()
 {
     return test_body_subject("compute");
+}
+
+[[nodiscard]] query::QueryResultFingerprint test_query_result(const std::string_view payload)
+{
+    return query::query_result_fingerprint(query::stable_fingerprint(payload));
 }
 
 [[nodiscard]] bool query_test_key_less(const query::QueryKey lhs, const query::QueryKey rhs) noexcept
@@ -897,6 +903,149 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     const query::QueryRecord invalid_cached_record;
     EXPECT_EQ(query::query_record_change_status(&invalid_cached_record, *item_record),
         query::QueryRecordChangeStatus::malformed);
+}
+
+TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
+{
+    const QueryContextSourceSubject source_subject = test_source_subject();
+    const std::optional<query::QueryRecord> file_content_record =
+        query::file_content_query_record(source_subject.file, source_subject.content);
+    const std::optional<query::QueryRecord> lex_file_record =
+        query::lex_file_query_record(source_subject.lex_file, source_subject.tokens);
+    const std::optional<query::QueryRecord> parse_file_record =
+        query::parse_file_query_record(source_subject.parse_file, source_subject.syntax);
+    ASSERT_TRUE(file_content_record.has_value());
+    ASSERT_TRUE(lex_file_record.has_value());
+    ASSERT_TRUE(parse_file_record.has_value());
+    EXPECT_EQ(query::validate_query_dependency_edge_records(*lex_file_record, *file_content_record),
+        query::QueryDependencyEdgeValidationStatus::valid);
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*parse_file_record, *lex_file_record));
+
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey function_def = test_function_def(module);
+    const query::DefKey template_def = test_template_def(module);
+    const query::BodyKey function_body = query::body_key(function_def, query::BodySlotKind::function_body);
+    const std::optional<query::QueryRecord> module_graph_record =
+        query::module_graph_query_record(module, test_query_result(QUERY_TEST_MODULE_GRAPH));
+    const std::optional<query::QueryRecord> item_list_record =
+        query::item_list_query_record(module, test_query_result(QUERY_TEST_ITEM_LIST));
+    const std::optional<query::QueryRecord> exports_record =
+        query::module_exports_query_record(module, test_query_result(QUERY_TEST_MODULE_EXPORTS_SIGNATURE));
+    const std::optional<query::QueryRecord> item_record =
+        query::item_signature_query_record(function_def, test_query_result(QUERY_TEST_PROVIDER_SIGNATURE));
+    const std::optional<query::QueryRecord> template_record = query::generic_template_signature_query_record(
+        template_def, test_query_result(QUERY_TEST_GENERIC_TEMPLATE_SIGNATURE));
+    const std::optional<query::QueryRecord> body_syntax_record =
+        query::function_body_syntax_query_record(function_body, test_query_result(QUERY_TEST_BODY_SYNTAX));
+    const std::optional<query::QueryRecord> type_check_record =
+        query::type_check_body_query_record(function_body, test_query_result(QUERY_TEST_TYPE_CHECK_BODY));
+    const std::optional<query::QueryRecord> lower_body_record =
+        query::lower_function_ir_query_record(function_body, test_query_result(QUERY_TEST_LOWER_FUNCTION_IR));
+    ASSERT_TRUE(module_graph_record.has_value());
+    ASSERT_TRUE(item_list_record.has_value());
+    ASSERT_TRUE(exports_record.has_value());
+    ASSERT_TRUE(item_record.has_value());
+    ASSERT_TRUE(template_record.has_value());
+    ASSERT_TRUE(body_syntax_record.has_value());
+    ASSERT_TRUE(type_check_record.has_value());
+    ASSERT_TRUE(lower_body_record.has_value());
+
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*item_list_record, *module_graph_record));
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*exports_record, *item_list_record));
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*item_record, *exports_record));
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*template_record, *item_list_record));
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*type_check_record, *body_syntax_record));
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*type_check_record, *item_record));
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*lower_body_record, *type_check_record));
+
+    const QueryContextGenericInstanceSignatureSubject generic_subject =
+        test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryRecord> generic_template_record = query::generic_template_signature_query_record(
+        generic_subject.key.template_def, test_query_result(QUERY_TEST_GENERIC_TEMPLATE_SIGNATURE));
+    const std::optional<query::QueryRecord> generic_signature_record = query::generic_instance_signature_query_record(
+        generic_subject.key, test_query_result(QUERY_TEST_PROVIDER_SIGNATURE));
+    const std::optional<query::QueryRecord> generic_body_record = query::generic_instance_body_query_record(
+        generic_subject.key, test_query_result(QUERY_TEST_GENERIC_INSTANCE_BODY));
+    const std::optional<query::QueryRecord> lower_generic_record = query::lower_generic_instance_ir_query_record(
+        generic_subject.key, test_query_result(QUERY_TEST_LOWER_FUNCTION_IR));
+    ASSERT_TRUE(generic_template_record.has_value());
+    ASSERT_TRUE(generic_signature_record.has_value());
+    ASSERT_TRUE(generic_body_record.has_value());
+    ASSERT_TRUE(lower_generic_record.has_value());
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*generic_signature_record, *generic_template_record));
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*generic_body_record, *generic_signature_record));
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*lower_generic_record, *generic_body_record));
+
+    const std::optional<query::QueryRecord> diagnostics_record =
+        query::diagnostics_query_record(item_record->key, test_query_result(QUERY_TEST_DIAGNOSTICS));
+    ASSERT_TRUE(diagnostics_record.has_value());
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*diagnostics_record, *item_record));
+}
+
+TEST(QueryUnit, QueryEdgeVerifierRejectsMalformedKindsAndStableIdentities)
+{
+    const QueryContextSourceSubject source_subject = test_source_subject();
+    const std::optional<query::QueryRecord> file_content_record =
+        query::file_content_query_record(source_subject.file, source_subject.content);
+    const std::optional<query::QueryRecord> lex_file_record =
+        query::lex_file_query_record(source_subject.lex_file, source_subject.tokens);
+    const std::optional<query::QueryRecord> parse_file_record =
+        query::parse_file_query_record(source_subject.parse_file, source_subject.syntax);
+    ASSERT_TRUE(file_content_record.has_value());
+    ASSERT_TRUE(lex_file_record.has_value());
+    ASSERT_TRUE(parse_file_record.has_value());
+
+    query::QueryRecord invalid_record = *file_content_record;
+    invalid_record.stable_key_bytes.clear();
+    EXPECT_EQ(query::validate_query_dependency_edge_records(*lex_file_record, invalid_record),
+        query::QueryDependencyEdgeValidationStatus::invalid_record);
+
+    const query::QueryResultFingerprint result = test_query_result("edge-verifier-short-record");
+    const std::optional<query::QueryRecord> short_file_record = query::query_record(
+        query::QueryKind::file_content, query::stable_fingerprint("short-file"), "short-file", result);
+    const std::optional<query::QueryRecord> short_lex_record =
+        query::query_record(query::QueryKind::lex_file, query::stable_fingerprint("short-lex"), "short-lex", result);
+    ASSERT_TRUE(short_file_record.has_value());
+    ASSERT_TRUE(short_lex_record.has_value());
+    EXPECT_EQ(query::validate_query_dependency_edge_records(*short_lex_record, *short_file_record),
+        query::QueryDependencyEdgeValidationStatus::invalid_identity);
+
+    const query::LexFileKey wrong_lex_file = query::lex_file_key(source_subject.file, query::lex_config_key(true));
+    const std::optional<query::QueryRecord> wrong_lex_record =
+        query::lex_file_query_record(wrong_lex_file, source_subject.tokens);
+    ASSERT_TRUE(wrong_lex_record.has_value());
+    EXPECT_EQ(query::validate_query_dependency_edge_records(*parse_file_record, *wrong_lex_record),
+        query::QueryDependencyEdgeValidationStatus::invalid_identity);
+
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey function_def = test_function_def(module);
+    const std::optional<query::QueryRecord> item_list_record =
+        query::item_list_query_record(module, test_query_result(QUERY_TEST_ITEM_LIST));
+    const std::optional<query::QueryRecord> exports_record =
+        query::module_exports_query_record(module, test_query_result(QUERY_TEST_MODULE_EXPORTS_SIGNATURE));
+    const std::optional<query::QueryRecord> item_record =
+        query::item_signature_query_record(function_def, test_query_result(QUERY_TEST_PROVIDER_SIGNATURE));
+    ASSERT_TRUE(item_list_record.has_value());
+    ASSERT_TRUE(exports_record.has_value());
+    ASSERT_TRUE(item_record.has_value());
+    EXPECT_EQ(query::validate_query_dependency_edge_records(*item_record, *item_list_record),
+        query::QueryDependencyEdgeValidationStatus::invalid_kind);
+
+    const std::array<std::string_view, 1> wrong_module_path{"wrong_module"};
+    const query::ModuleKey wrong_module = query::module_key(package, wrong_module_path);
+    const std::optional<query::QueryRecord> wrong_exports_record =
+        query::module_exports_query_record(wrong_module, test_query_result(QUERY_TEST_MODULE_EXPORTS_SIGNATURE));
+    ASSERT_TRUE(wrong_exports_record.has_value());
+    EXPECT_EQ(query::validate_query_dependency_edge_records(*item_record, *wrong_exports_record),
+        query::QueryDependencyEdgeValidationStatus::invalid_identity);
+
+    const std::optional<query::QueryRecord> diagnostics_record =
+        query::diagnostics_query_record(item_record->key, test_query_result(QUERY_TEST_DIAGNOSTICS));
+    ASSERT_TRUE(diagnostics_record.has_value());
+    EXPECT_EQ(query::validate_query_dependency_edge_records(*diagnostics_record, *exports_record),
+        query::QueryDependencyEdgeValidationStatus::invalid_identity);
 }
 
 TEST(QueryUnit, ModuleExportsProviderBuildsRecordFromStableModule)

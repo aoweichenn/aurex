@@ -907,6 +907,7 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
                 "\"name\": \"sema.analyze\"",
                 "\"name\": \"incremental_cache.query_diff\"",
                 "\"name\": \"incremental_cache.query_plan\"",
+                "\"name\": \"incremental_cache.query_pruning\"",
                 "total=",
                 "missing=",
                 "unchanged=",
@@ -916,6 +917,7 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
                 "recompute_roots=",
                 "propagated_recompute=",
                 "recompute=",
+                "fallback=no_cache",
                 "\"rss_mib_after\"",
                 "\"rss_delta_mib\"",
             });
@@ -947,6 +949,96 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
                 "\"name\": \"sema.analyze\"",
             });
     }
+}
+
+TEST_F(AurexIntegrationTest, CliIncrementalCacheUsesQueryKeyPruningByDefault)
+{
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "cli-query-key-default-cache";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    const fs::path initial_profile = cache_dir / "initial.profile.json";
+    const fs::path pruned_profile = cache_dir / "pruned.profile.json";
+
+    const auto write_source = [&](const std::string_view text) {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
+
+    write_source(DRIVER_INCREMENTAL_CACHE_FIRST_SOURCE);
+    require_success(aurexc() + " --check --incremental-cache " + q(cache) + " --profile-output " + q(initial_profile)
+        + " " + q(source));
+    const std::string initial_profile_text = read_text(initial_profile);
+    expect_contains_all(initial_profile_text,
+        {
+            "\"name\": \"incremental_cache.query_diff\"",
+            "\"name\": \"incremental_cache.query_plan\"",
+            "\"name\": \"incremental_cache.query_pruning\"",
+            "enabled=1",
+            "fallback=no_cache",
+        });
+    expect_not_contains(initial_profile_text, "\"name\": \"incremental_cache.query_provider_eval\"");
+
+    write_source(DRIVER_INCREMENTAL_CACHE_SECOND_SOURCE);
+    require_success(aurexc() + " --check --incremental-cache " + q(cache) + " --profile-output " + q(pruned_profile)
+        + " " + q(source));
+    const std::string pruned_profile_text = read_text(pruned_profile);
+    expect_contains_all(pruned_profile_text,
+        {
+            "\"name\": \"incremental_cache.lookup\"",
+            "\"name\": \"incremental_cache.source_stage_reuse\"",
+            "\"name\": \"incremental_cache.query_diff\"",
+            "\"name\": \"incremental_cache.query_plan\"",
+            "\"name\": \"incremental_cache.query_pruning\"",
+            "\"name\": \"incremental_cache.query_provider_eval\"",
+            "reason=changed_query",
+            "enabled=1",
+            "applied=1",
+            "fallback=none",
+            "mode=pruned",
+        });
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, CliNoQueryPruningUsesSourceFingerprintOnlyCompatibilityPath)
+{
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "cli-no-query-pruning-cache";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    const fs::path profile = cache_dir / "source-fingerprint-only.profile.json";
+
+    const auto write_source = [&](const std::string_view text) {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
+
+    write_source(DRIVER_INCREMENTAL_CACHE_FIRST_SOURCE);
+    require_success(aurexc() + " --check --incremental-cache " + q(cache) + " " + q(source));
+
+    write_source(DRIVER_INCREMENTAL_CACHE_SECOND_SOURCE);
+    require_success(aurexc() + " --check --incremental-cache " + q(cache) + " --no-query-pruning --profile-output "
+        + q(profile) + " " + q(source));
+    const std::string profile_text = read_text(profile);
+    expect_contains_all(profile_text,
+        {
+            "\"name\": \"incremental_cache.lookup\"",
+            "\"name\": \"incremental_cache.query_diff\"",
+            "\"name\": \"incremental_cache.query_plan\"",
+        });
+    expect_not_contains(profile_text, "\"name\": \"incremental_cache.source_stage_reuse\"");
+    expect_not_contains(profile_text, "\"name\": \"incremental_cache.query_pruning\"");
+    expect_not_contains(profile_text, "\"name\": \"incremental_cache.query_provider_eval\"");
+    expect_not_contains(profile_text, "mode=pruned");
+
+    driver::clear_file_cache();
 }
 
 TEST_F(AurexIntegrationTest, CompilerProfileCoversJsonAndErrorPaths)

@@ -52,7 +52,8 @@ The shared parser-part bridge is layered deliberately:
 - `parser_cursor.cpp` owns cursor forwarding used by grammar parser parts.
 - `parser_diagnostics.cpp` owns `expect`, recovered `expect`, synchronization,
   and diagnostic forwarding.
-- `parser_source_ranges.cpp` owns source-range composition.
+- `parser_part_ranges.cpp` owns source-range composition and AST range lookup
+  helpers used by parser parts.
 - Postfix suffixes are emitted directly as compact AST nodes. `parser_postfix.cpp`
   keeps `[]` disambiguation local: colon syntax always emits `slice`, clear
   type-argument continuations emit `generic_apply`, and value-shaped bracket

@@ -1,24 +1,38 @@
-#include "../io.hpp"
-
-#include "../schedule.hpp"
+#include "io.hpp"
 
 #include <aurex/base/config.hpp>
 #include <aurex/query/query_edge_verifier.hpp>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
+#include <chrono>
+#include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <limits>
+#include <ostream>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#include "schedule.hpp"
 
 namespace aurex::driver::incremental_cache_detail {
 namespace cache_format = incremental_cache_format;
 using namespace cache_format;
 
 namespace {
+
+void append_hex_string(std::ostream& out, const std::string_view value)
+{
+    static constexpr char DIGITS[] = "0123456789abcdef";
+    for (const unsigned char byte : value) {
+        out << DIGITS[byte >> INCREMENTAL_CACHE_HEX_BYTE_SHIFT] << DIGITS[byte & INCREMENTAL_CACHE_HEX_LOW_MASK];
+    }
+}
 
 [[nodiscard]] bool parse_u64(const std::string_view text, base::u64& value) noexcept
 {
@@ -282,12 +296,19 @@ namespace {
     return true;
 }
 
-[[nodiscard]] std::optional<query::QueryKey> parse_query_key_fields(const std::vector<std::string_view>& fields,
-    const base::usize kind_field, const base::usize schema_field, const base::usize global_field,
-    const base::usize payload_primary_field, const base::usize payload_secondary_field,
-    const base::usize payload_bytes_field)
+struct QueryKeyFieldLayout {
+    base::usize kind = 0;
+    base::usize schema = 0;
+    base::usize global = 0;
+    base::usize payload_primary = 0;
+    base::usize payload_secondary = 0;
+    base::usize payload_bytes = 0;
+};
+
+[[nodiscard]] std::optional<query::QueryKey> parse_query_key_fields(
+    const std::vector<std::string_view>& fields, const QueryKeyFieldLayout& layout)
 {
-    const std::optional<query::QueryKind> query_kind = parse_query_kind_name(fields[kind_field]);
+    const std::optional<query::QueryKind> query_kind = parse_query_kind_name(fields[layout.kind]);
     if (!query_kind.has_value()) {
         return std::nullopt;
     }
@@ -297,11 +318,11 @@ namespace {
     base::u64 payload_primary = 0;
     base::u64 payload_secondary = 0;
     base::u32 payload_bytes = 0;
-    if (!parse_u32(fields[schema_field], schema) || schema != query::QUERY_KEY_SCHEMA_VERSION
-        || !parse_u64(fields[global_field], query_global) || query_global == 0
-        || !parse_u64(fields[payload_primary_field], payload_primary)
-        || !parse_u64(fields[payload_secondary_field], payload_secondary)
-        || !parse_u32(fields[payload_bytes_field], payload_bytes)) {
+    if (!parse_u32(fields[layout.schema], schema) || schema != query::QUERY_KEY_SCHEMA_VERSION
+        || !parse_u64(fields[layout.global], query_global) || query_global == 0
+        || !parse_u64(fields[layout.payload_primary], payload_primary)
+        || !parse_u64(fields[layout.payload_secondary], payload_secondary)
+        || !parse_u32(fields[layout.payload_bytes], payload_bytes)) {
         return std::nullopt;
     }
 
@@ -432,18 +453,24 @@ namespace {
         return false;
     }
 
-    const std::optional<query::QueryKey> dependent =
-        parse_query_key_fields(fields, INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_KIND_FIELD,
-            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_SCHEMA_FIELD, INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_GLOBAL_FIELD,
-            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_PAYLOAD_PRIMARY_FIELD,
-            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_PAYLOAD_SECONDARY_FIELD,
-            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_PAYLOAD_BYTES_FIELD);
-    const std::optional<query::QueryKey> dependency =
-        parse_query_key_fields(fields, INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_KIND_FIELD,
-            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_SCHEMA_FIELD, INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_GLOBAL_FIELD,
-            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_PAYLOAD_PRIMARY_FIELD,
-            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_PAYLOAD_SECONDARY_FIELD,
-            INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_PAYLOAD_BYTES_FIELD);
+    static constexpr QueryKeyFieldLayout DEPENDENT_LAYOUT{
+        INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_KIND_FIELD,
+        INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_SCHEMA_FIELD,
+        INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_GLOBAL_FIELD,
+        INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_PAYLOAD_PRIMARY_FIELD,
+        INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_PAYLOAD_SECONDARY_FIELD,
+        INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENT_PAYLOAD_BYTES_FIELD,
+    };
+    static constexpr QueryKeyFieldLayout DEPENDENCY_LAYOUT{
+        INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_KIND_FIELD,
+        INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_SCHEMA_FIELD,
+        INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_GLOBAL_FIELD,
+        INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_PAYLOAD_PRIMARY_FIELD,
+        INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_PAYLOAD_SECONDARY_FIELD,
+        INCREMENTAL_CACHE_QUERY_EDGE_DEPENDENCY_PAYLOAD_BYTES_FIELD,
+    };
+    const std::optional<query::QueryKey> dependent = parse_query_key_fields(fields, DEPENDENT_LAYOUT);
+    const std::optional<query::QueryKey> dependency = parse_query_key_fields(fields, DEPENDENCY_LAYOUT);
     if (!dependent || !dependency) {
         return false;
     }
@@ -525,6 +552,243 @@ namespace {
         }
     }
     return std::nullopt;
+}
+
+[[nodiscard]] std::filesystem::path canonical_or_absolute(const std::filesystem::path& path)
+{
+    std::error_code canonical_error;
+    std::filesystem::path canonical = std::filesystem::weakly_canonical(path, canonical_error);
+    if (!canonical_error) {
+        return canonical;
+    }
+
+    std::error_code absolute_error;
+    std::filesystem::path absolute = std::filesystem::absolute(path, absolute_error);
+    return absolute_error ? path : absolute;
+}
+
+[[nodiscard]] sema::StableFingerprint128 fingerprint_text(const std::string_view text) noexcept
+{
+    return sema::stable_fingerprint(text);
+}
+
+[[nodiscard]] std::optional<std::string> read_file_for_fingerprint(const std::filesystem::path& path)
+{
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        return std::nullopt;
+    }
+
+    std::string text;
+    std::error_code size_error;
+    const std::uintmax_t size = std::filesystem::file_size(path, size_error);
+    if (!size_error) {
+        text.resize(static_cast<std::size_t>(size));
+        if (!text.empty()) {
+            input.read(text.data(), static_cast<std::streamsize>(text.size()));
+            if (!input) {
+                return std::nullopt;
+            }
+        }
+        return text;
+    }
+
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    if (input.bad()) {
+        return std::nullopt;
+    }
+    return buffer.str();
+}
+
+[[nodiscard]] bool same_fingerprint(const SourceFingerprintRecord& lhs, const SourceFingerprintRecord& rhs) noexcept
+{
+    return lhs.size == rhs.size && lhs.fingerprint.primary == rhs.fingerprint.primary
+        && lhs.fingerprint.secondary == rhs.fingerprint.secondary
+        && lhs.fingerprint.byte_count == rhs.fingerprint.byte_count;
+}
+
+[[nodiscard]] std::optional<SourceFingerprintRecord> fingerprint_file(const std::filesystem::path& path)
+{
+    const std::optional<std::string> text = read_file_for_fingerprint(path);
+    if (!text) {
+        return std::nullopt;
+    }
+    return SourceFingerprintRecord{
+        canonical_or_absolute(path),
+        text->size(),
+        fingerprint_text(*text),
+    };
+}
+
+[[nodiscard]] std::vector<std::filesystem::path> normalized_import_paths(const CompilerInvocation& invocation)
+{
+    std::vector<std::filesystem::path> paths;
+    paths.reserve(invocation.import_paths.size());
+    for (const std::filesystem::path& path : invocation.import_paths) {
+        paths.push_back(canonical_or_absolute(path));
+    }
+    return paths;
+}
+
+[[nodiscard]] std::vector<SourceFingerprintRecord> collect_source_fingerprints(const base::SourceManager& sources)
+{
+    std::vector<SourceFingerprintRecord> records;
+    records.reserve(sources.files().size());
+    for (const base::SourceFile& file : sources.files()) {
+        records.push_back(SourceFingerprintRecord{
+            canonical_or_absolute(std::filesystem::path(file.path())),
+            file.text().size(),
+            fingerprint_text(file.text()),
+        });
+    }
+    std::sort(
+        records.begin(), records.end(), [](const SourceFingerprintRecord& lhs, const SourceFingerprintRecord& rhs) {
+            return lhs.path.string() < rhs.path.string();
+        });
+    return records;
+}
+
+[[nodiscard]] std::vector<ModuleRecord> sorted_modules(const std::span<const ModuleRecord> modules)
+{
+    std::vector<ModuleRecord> sorted;
+    sorted.reserve(modules.size());
+    for (const ModuleRecord& module : modules) {
+        sorted.push_back(ModuleRecord{module.name, canonical_or_absolute(module.path)});
+    }
+    std::sort(sorted.begin(), sorted.end(), [](const ModuleRecord& lhs, const ModuleRecord& rhs) {
+        if (lhs.name != rhs.name) {
+            return lhs.name < rhs.name;
+        }
+        return lhs.path.string() < rhs.path.string();
+    });
+    return sorted;
+}
+
+[[nodiscard]] std::string_view stable_symbol_kind_name(const sema::StableSymbolKind kind) noexcept
+{
+    static constexpr auto NAMES = std::to_array<std::string_view>({
+        "invalid",
+        "type",
+        "function",
+        "method",
+        "value",
+        "enum_case",
+        "struct_field",
+        "generic_template",
+        "synthetic",
+    });
+    const base::usize index = static_cast<base::usize>(kind);
+    return index < NAMES.size() ? NAMES[index] : NAMES.front();
+}
+
+[[nodiscard]] std::string_view query_kind_name(const query::QueryKind kind) noexcept
+{
+    for (const QueryKindCacheName& entry : INCREMENTAL_CACHE_QUERY_KIND_NAMES) {
+        if (entry.kind == kind) {
+            return entry.name;
+        }
+    }
+    return {};
+}
+
+void write_hex_field(std::ostream& out, const std::string_view value)
+{
+    append_hex_string(out, value);
+}
+
+void write_header_field(std::ostream& out, const std::string_view name, const std::string_view encoded_value)
+{
+    out << name << INCREMENTAL_CACHE_SEPARATOR << encoded_value << '\n';
+}
+
+void write_encoded_header_field(std::ostream& out, const EncodedHeaderField field)
+{
+    out << field.name << INCREMENTAL_CACHE_SEPARATOR;
+    write_hex_field(out, field.value);
+    out << '\n';
+}
+
+void write_source_record(std::ostream& out, const SourceFingerprintRecord& record)
+{
+    out << INCREMENTAL_CACHE_FIELD_SOURCE << INCREMENTAL_CACHE_SEPARATOR << record.size << INCREMENTAL_CACHE_SEPARATOR
+        << record.fingerprint.primary << INCREMENTAL_CACHE_SEPARATOR << record.fingerprint.secondary
+        << INCREMENTAL_CACHE_SEPARATOR << record.fingerprint.byte_count << INCREMENTAL_CACHE_SEPARATOR;
+    write_hex_field(out, record.path.string());
+    out << '\n';
+}
+
+void write_module_record(std::ostream& out, const ModuleRecord& record)
+{
+    out << INCREMENTAL_CACHE_FIELD_MODULE << INCREMENTAL_CACHE_SEPARATOR;
+    write_hex_field(out, record.name);
+    out << INCREMENTAL_CACHE_SEPARATOR;
+    write_hex_field(out, record.path.string());
+    out << '\n';
+}
+
+void write_definition_record(std::ostream& out, const DefinitionRecord& record)
+{
+    out << INCREMENTAL_CACHE_FIELD_DEF << INCREMENTAL_CACHE_SEPARATOR << record.category << INCREMENTAL_CACHE_SEPARATOR
+        << stable_symbol_kind_name(record.stable_id.kind) << INCREMENTAL_CACHE_SEPARATOR << record.stable_id.global_id
+        << INCREMENTAL_CACHE_SEPARATOR << record.stable_id.name.primary << INCREMENTAL_CACHE_SEPARATOR
+        << record.stable_id.name.secondary << INCREMENTAL_CACHE_SEPARATOR << record.stable_id.name.byte_count
+        << INCREMENTAL_CACHE_SEPARATOR << record.incremental_key.global_id << INCREMENTAL_CACHE_SEPARATOR
+        << record.incremental_key.fingerprint.primary << INCREMENTAL_CACHE_SEPARATOR
+        << record.incremental_key.fingerprint.secondary << INCREMENTAL_CACHE_SEPARATOR
+        << record.incremental_key.fingerprint.byte_count << INCREMENTAL_CACHE_SEPARATOR;
+    write_hex_field(out, record.name);
+    out << '\n';
+}
+
+void write_query_record(std::ostream& out, const query::QueryRecord& record)
+{
+    out << INCREMENTAL_CACHE_FIELD_QUERY << INCREMENTAL_CACHE_SEPARATOR << query_kind_name(record.key.kind)
+        << INCREMENTAL_CACHE_SEPARATOR << record.key.schema << INCREMENTAL_CACHE_SEPARATOR << record.key.global_id
+        << INCREMENTAL_CACHE_SEPARATOR << record.key.payload.primary << INCREMENTAL_CACHE_SEPARATOR
+        << record.key.payload.secondary << INCREMENTAL_CACHE_SEPARATOR << record.key.payload.byte_count
+        << INCREMENTAL_CACHE_SEPARATOR << record.result.global_id << INCREMENTAL_CACHE_SEPARATOR
+        << record.result.fingerprint.primary << INCREMENTAL_CACHE_SEPARATOR << record.result.fingerprint.secondary
+        << INCREMENTAL_CACHE_SEPARATOR << record.result.fingerprint.byte_count << INCREMENTAL_CACHE_SEPARATOR;
+    write_hex_field(out, record.stable_key_bytes);
+    out << '\n';
+}
+
+void write_query_key_fields(std::ostream& out, const query::QueryKey key)
+{
+    out << query_kind_name(key.kind) << INCREMENTAL_CACHE_SEPARATOR << key.schema << INCREMENTAL_CACHE_SEPARATOR
+        << key.global_id << INCREMENTAL_CACHE_SEPARATOR << key.payload.primary << INCREMENTAL_CACHE_SEPARATOR
+        << key.payload.secondary << INCREMENTAL_CACHE_SEPARATOR << key.payload.byte_count;
+}
+
+void write_query_dependency_edge_record(std::ostream& out, const query::QueryDependencyEdge& edge)
+{
+    out << INCREMENTAL_CACHE_FIELD_QUERY_EDGE << INCREMENTAL_CACHE_SEPARATOR;
+    write_query_key_fields(out, edge.dependent);
+    out << INCREMENTAL_CACHE_SEPARATOR;
+    write_query_key_fields(out, edge.dependency);
+    out << '\n';
+}
+
+[[nodiscard]] std::filesystem::path temporary_cache_path(const std::filesystem::path& cache_path)
+{
+    std::filesystem::path temporary = cache_path;
+    temporary += ".tmp.";
+    temporary += std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    return temporary;
+}
+
+[[nodiscard]] base::Result<void> publish_cache_file(
+    const std::filesystem::path& temporary_path, const std::filesystem::path& cache_path)
+{
+    std::error_code rename_error;
+    std::filesystem::rename(temporary_path, cache_path, rename_error);
+    if (rename_error) {
+        std::error_code remove_error;
+        std::filesystem::remove(temporary_path, remove_error);
+        return base::Result<void>::fail({base::ErrorCode::io_error, std::string(INCREMENTAL_CACHE_RENAME_FAILED)});
+    }
+    return base::Result<void>::ok();
 }
 
 [[nodiscard]] ParsedCacheValidationStatus parsed_cache_validation_status(const ParsedCache& cache)

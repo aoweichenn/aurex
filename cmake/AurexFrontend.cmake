@@ -37,7 +37,6 @@ add_library(aurex_parse
     src/parse/parser_recovery_boundary_sets.cpp
     src/parse/parser_recovery_delimiter_sets.cpp
     src/parse/parser_recovery_start_sets.cpp
-    src/parse/parser_source_ranges.cpp
     src/parse/parser_stmt.cpp
     src/parse/parser_type.cpp
 )

@@ -1,23 +1,11 @@
 #pragma once
 
 #include <aurex/base/result.hpp>
-#include <aurex/driver/invocation.hpp>
-#include <aurex/ir/ir.hpp>
-
-#include <string>
+#include <aurex/driver/llvm_ir_emitter.hpp>
 
 namespace aurex::driver {
 
-struct LlvmIrOutput {
-    std::string text;
-};
-
-struct LlvmIrEmitRequest {
-    const ir::Module* module = nullptr;
-    std::string module_name;
-};
-
-using LlvmIrEmitter = base::Result<LlvmIrOutput> (*)(const LlvmIrEmitRequest&);
+struct CompilerInvocation;
 
 class Compiler final {
 public:

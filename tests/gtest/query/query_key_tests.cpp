@@ -1645,6 +1645,114 @@ TEST(QueryUnit, QueryReplayIndexRejectsMalformedSnapshots)
     EXPECT_FALSE(query::QueryReplayIndex::build(std::move(missing_dependency_row)).has_value());
 }
 
+TEST(QueryUnit, QueryGraphDependencyKindRulesCoverEveryQueryKind)
+{
+    constexpr query::StableFingerprint128 QUERY_TEST_GRAPH_PAYLOAD{1, 2, 3};
+    const auto make_key = [QUERY_TEST_GRAPH_PAYLOAD](const query::QueryKind kind) {
+        return query::query_key(kind, QUERY_TEST_GRAPH_PAYLOAD);
+    };
+    const auto edge_is_expected = [&](const query::QueryKind dependent, const query::QueryKind dependency) {
+        return query::query_dependency_edge_kind_is_expected(query::QueryDependencyEdge{
+            make_key(dependent),
+            make_key(dependency),
+        });
+    };
+
+    const std::array invalid_dependents{
+        query::QueryKind::file_content,
+        query::QueryKind::module_graph,
+        query::QueryKind::function_body_syntax,
+    };
+    for (const query::QueryKind dependent : invalid_dependents) {
+        EXPECT_FALSE(edge_is_expected(dependent, query::QueryKind::lex_file));
+    }
+    EXPECT_FALSE(edge_is_expected(query::QueryKind::invalid, query::QueryKind::file_content));
+
+    const std::array accepted_edges{
+        query::QueryDependencyEdge{make_key(query::QueryKind::lex_file), make_key(query::QueryKind::file_content)},
+        query::QueryDependencyEdge{make_key(query::QueryKind::parse_file), make_key(query::QueryKind::lex_file)},
+        query::QueryDependencyEdge{make_key(query::QueryKind::item_list), make_key(query::QueryKind::module_graph)},
+        query::QueryDependencyEdge{make_key(query::QueryKind::module_exports), make_key(query::QueryKind::item_list)},
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::item_signature),
+            make_key(query::QueryKind::module_exports),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::generic_template_signature),
+            make_key(query::QueryKind::item_list),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::generic_instance_signature),
+            make_key(query::QueryKind::generic_template_signature),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::type_check_body),
+            make_key(query::QueryKind::function_body_syntax),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::type_check_body),
+            make_key(query::QueryKind::item_signature),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::generic_instance_body),
+            make_key(query::QueryKind::generic_instance_signature),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::lower_function_ir),
+            make_key(query::QueryKind::type_check_body),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::lower_function_ir),
+            make_key(query::QueryKind::generic_instance_body),
+        },
+        query::QueryDependencyEdge{make_key(query::QueryKind::diagnostics), make_key(query::QueryKind::parse_file)},
+    };
+    for (const query::QueryDependencyEdge& edge : accepted_edges) {
+        EXPECT_TRUE(query::query_dependency_edge_kind_is_expected(edge));
+        EXPECT_FALSE(query::query_dependency_edge_kind_is_expected(query::QueryDependencyEdge{
+            edge.dependent,
+            edge.dependent,
+        }));
+    }
+
+    const std::array rejected_edges{
+        query::QueryDependencyEdge{make_key(query::QueryKind::lex_file), make_key(query::QueryKind::parse_file)},
+        query::QueryDependencyEdge{make_key(query::QueryKind::parse_file), make_key(query::QueryKind::file_content)},
+        query::QueryDependencyEdge{make_key(query::QueryKind::item_list), make_key(query::QueryKind::module_exports)},
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::module_exports),
+            make_key(query::QueryKind::module_graph),
+        },
+        query::QueryDependencyEdge{make_key(query::QueryKind::item_signature), make_key(query::QueryKind::item_list)},
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::generic_template_signature),
+            make_key(query::QueryKind::module_exports),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::generic_instance_signature),
+            make_key(query::QueryKind::item_signature),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::type_check_body),
+            make_key(query::QueryKind::generic_instance_body),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::generic_instance_body),
+            make_key(query::QueryKind::generic_template_signature),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::lower_function_ir),
+            make_key(query::QueryKind::function_body_syntax),
+        },
+        query::QueryDependencyEdge{make_key(query::QueryKind::diagnostics), make_key(query::QueryKind::diagnostics)},
+        query::QueryDependencyEdge{make_key(query::QueryKind::diagnostics), query::QueryKey{}},
+        query::QueryDependencyEdge{query::QueryKey{}, make_key(query::QueryKind::file_content)},
+    };
+    for (const query::QueryDependencyEdge& edge : rejected_edges) {
+        EXPECT_FALSE(query::query_dependency_edge_kind_is_expected(edge));
+    }
+}
+
 TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
 {
     const QueryContextSourceSubject source_subject = test_source_subject();

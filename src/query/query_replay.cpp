@@ -1,3 +1,4 @@
+#include <aurex/query/query_context.hpp>
 #include <aurex/query/query_edge_verifier.hpp>
 #include <aurex/query/query_replay.hpp>
 

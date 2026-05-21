@@ -1,8 +1,8 @@
 #pragma once
 
 #include <aurex/base/result.hpp>
-#include <aurex/driver/compiler.hpp>
 #include <aurex/driver/invocation.hpp>
+#include <aurex/driver/llvm_ir_emitter.hpp>
 
 #include <iosfwd>
 #include <span>

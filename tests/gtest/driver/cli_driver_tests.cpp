@@ -8,6 +8,7 @@
 #include <aurex/query/generic_instance_key.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
+#include <aurex/sema/checked_module.hpp>
 
 #include <support/test_support.hpp>
 

@@ -10,6 +10,7 @@
 #include <aurex/query/lower_function_ir_query.hpp>
 #include <aurex/query/module_exports_query.hpp>
 #include <aurex/query/module_graph_query.hpp>
+#include <aurex/query/query_graph.hpp>
 #include <aurex/query/query_interner.hpp>
 #include <aurex/query/source_file_query.hpp>
 #include <aurex/query/type_check_body_query.hpp>
@@ -20,42 +21,6 @@
 #include <vector>
 
 namespace aurex::query {
-
-enum class QueryNodeStatus : base::u8 {
-    in_progress,
-    done,
-    failed,
-};
-
-enum class QueryEvaluationStatus : base::u8 {
-    computed,
-    cached,
-    failed,
-    cycle,
-};
-
-struct QueryNode {
-    QueryNodeId id;
-    QueryKey key;
-    QueryNodeStatus status = QueryNodeStatus::failed;
-    QueryRecord record;
-    QueryResultFingerprint result;
-    std::vector<QueryKey> dependencies;
-};
-
-struct QueryEvaluationResult {
-    QueryEvaluationStatus status = QueryEvaluationStatus::failed;
-    const QueryNode* node = nullptr;
-};
-
-struct QueryDependencyEdge {
-    QueryKey dependent;
-    QueryKey dependency;
-
-    [[nodiscard]] friend constexpr bool operator==(QueryDependencyEdge lhs, QueryDependencyEdge rhs) noexcept = default;
-};
-
-[[nodiscard]] bool query_dependency_edge_kind_is_expected(QueryDependencyEdge edge) noexcept;
 
 using ItemSignatureProvider =
     std::function<std::optional<ItemSignatureProviderOutput>(const ItemSignatureProviderInput&)>;

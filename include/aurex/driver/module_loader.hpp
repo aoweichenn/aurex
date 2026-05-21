@@ -4,6 +4,7 @@
 #include <aurex/base/result.hpp>
 #include <aurex/base/source.hpp>
 #include <aurex/driver/invocation.hpp>
+#include <aurex/driver/module_record.hpp>
 #include <aurex/syntax/ast.hpp>
 
 #include <filesystem>
@@ -16,11 +17,6 @@
 namespace aurex::driver {
 
 class CompilationProfiler;
-
-struct ModuleRecord {
-    std::string name;
-    std::filesystem::path path;
-};
 
 class ModuleLoader final {
 public:

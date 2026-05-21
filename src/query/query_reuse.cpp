@@ -1,3 +1,4 @@
+#include <aurex/query/query_context.hpp>
 #include <aurex/query/query_reuse.hpp>
 
 #include <algorithm>

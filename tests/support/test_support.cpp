@@ -1,3 +1,4 @@
+#include <aurex/base/integer.hpp>
 #include <aurex/driver/cli.hpp>
 #include <aurex/driver/cli_llvm.hpp>
 #include <aurex/driver/compiler.hpp>

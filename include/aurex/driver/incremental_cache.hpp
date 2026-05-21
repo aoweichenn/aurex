@@ -1,17 +1,26 @@
 #pragma once
 
 #include <aurex/base/result.hpp>
-#include <aurex/base/source.hpp>
-#include <aurex/driver/invocation.hpp>
-#include <aurex/driver/module_loader.hpp>
-#include <aurex/sema/checked_module.hpp>
-#include <aurex/syntax/ast.hpp>
+#include <aurex/driver/module_record.hpp>
 
 #include <span>
+
+namespace aurex::base {
+class SourceManager;
+} // namespace aurex::base
+
+namespace aurex::sema {
+struct CheckedModule;
+} // namespace aurex::sema
+
+namespace aurex::syntax {
+struct AstModule;
+} // namespace aurex::syntax
 
 namespace aurex::driver {
 
 class CompilationProfiler;
+struct CompilerInvocation;
 
 [[nodiscard]] base::Result<bool> try_reuse_incremental_check_cache(
     const CompilerInvocation& invocation, CompilationProfiler* profiler = nullptr);

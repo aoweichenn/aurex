@@ -1,10 +1,12 @@
 #pragma once
 
 #include <aurex/base/result.hpp>
-#include <aurex/ir/ir.hpp>
 
 #include <string>
-#include <vector>
+
+namespace aurex::ir {
+struct Module;
+} // namespace aurex::ir
 
 namespace aurex::backend {
 

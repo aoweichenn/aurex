@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/backend/llvm_backend.hpp>
+#include <aurex/ir/ir.hpp>
 
 #include <memory>
 #include <string>

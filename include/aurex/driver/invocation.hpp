@@ -1,32 +1,14 @@
 #pragma once
 
-#include <aurex/ir/pass_pipeline.hpp>
+#include <aurex/driver/diagnostic_format.hpp>
+#include <aurex/driver/emit_kind.hpp>
+#include <aurex/ir/optimization.hpp>
 
 #include <filesystem>
 #include <string>
 #include <vector>
 
 namespace aurex::driver {
-
-enum class EmitKind {
-    tokens,
-    lossless,
-    ast,
-    modules,
-    checked,
-    typed,
-    ir,
-    llvm_ir,
-    check,
-    assembly,
-    object,
-    executable,
-};
-
-enum class DiagnosticOutputFormat {
-    text,
-    json,
-};
 
 struct CompilerInvocation {
     std::filesystem::path input_path;

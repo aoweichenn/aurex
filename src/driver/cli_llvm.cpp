@@ -1,4 +1,5 @@
 #include <aurex/backend/llvm_backend.hpp>
+#include <aurex/driver/cli.hpp>
 #include <aurex/driver/cli_llvm.hpp>
 
 #include <ostream>

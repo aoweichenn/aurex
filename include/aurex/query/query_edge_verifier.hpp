@@ -1,6 +1,6 @@
 #pragma once
 
-#include <aurex/query/query_context.hpp>
+#include <aurex/query/query_graph.hpp>
 #include <aurex/query/query_result.hpp>
 
 namespace aurex::query {

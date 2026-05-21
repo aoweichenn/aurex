@@ -2,7 +2,7 @@
 
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/base/source.hpp>
-#include <aurex/driver/invocation.hpp>
+#include <aurex/driver/diagnostic_format.hpp>
 
 #include <iosfwd>
 #include <string_view>

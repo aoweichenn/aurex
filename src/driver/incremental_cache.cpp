@@ -1,4 +1,5 @@
 #include <aurex/driver/incremental_cache.hpp>
+#include <aurex/syntax/ast.hpp>
 
 #include "incremental_cache/query.hpp"
 

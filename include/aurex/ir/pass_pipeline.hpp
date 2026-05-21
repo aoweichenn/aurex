@@ -2,17 +2,11 @@
 
 #include <aurex/base/result.hpp>
 #include <aurex/ir/ir.hpp>
+#include <aurex/ir/optimization.hpp>
 
 #include <string_view>
 
 namespace aurex::ir {
-
-enum class OptimizationLevel {
-    none = 0,
-    basic = 1,
-    standard = 2,
-    aggressive = 3,
-};
 
 struct PassPipelineOptions {
     OptimizationLevel optimization_level = OptimizationLevel::none;

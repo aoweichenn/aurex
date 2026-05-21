@@ -61,46 +61,6 @@ void normalize_dependencies(std::vector<QueryKey>& dependencies)
 
 } // namespace
 
-bool query_dependency_edge_kind_is_expected(const QueryDependencyEdge edge) noexcept
-{
-    if (!is_valid(edge.dependent) || !is_valid(edge.dependency) || edge.dependent == edge.dependency) {
-        return false;
-    }
-
-    switch (edge.dependent.kind) {
-        case QueryKind::file_content:
-        case QueryKind::module_graph:
-        case QueryKind::function_body_syntax:
-            return false;
-        case QueryKind::lex_file:
-            return edge.dependency.kind == QueryKind::file_content;
-        case QueryKind::parse_file:
-            return edge.dependency.kind == QueryKind::lex_file;
-        case QueryKind::item_list:
-            return edge.dependency.kind == QueryKind::module_graph;
-        case QueryKind::module_exports:
-            return edge.dependency.kind == QueryKind::item_list;
-        case QueryKind::item_signature:
-            return edge.dependency.kind == QueryKind::module_exports;
-        case QueryKind::generic_template_signature:
-            return edge.dependency.kind == QueryKind::item_list;
-        case QueryKind::generic_instance_signature:
-            return edge.dependency.kind == QueryKind::generic_template_signature;
-        case QueryKind::type_check_body:
-            return edge.dependency.kind == QueryKind::function_body_syntax
-                || edge.dependency.kind == QueryKind::item_signature;
-        case QueryKind::generic_instance_body:
-            return edge.dependency.kind == QueryKind::generic_instance_signature;
-        case QueryKind::lower_function_ir:
-            return edge.dependency.kind == QueryKind::type_check_body
-                || edge.dependency.kind == QueryKind::generic_instance_body;
-        case QueryKind::diagnostics:
-            return edge.dependency.kind != QueryKind::diagnostics && edge.dependency.kind != QueryKind::invalid;
-        case QueryKind::invalid:
-            return false;
-    }
-}
-
 QueryContext::QueryContext()
     : QueryContext(ModuleGraphProvider{provide_module_graph_query}, ModuleExportsProvider{provide_module_exports_query},
           ItemListProvider{provide_item_list_query}, ItemSignatureProvider{provide_item_signature_query},

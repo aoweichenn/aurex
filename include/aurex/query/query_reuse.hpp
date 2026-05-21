@@ -1,12 +1,14 @@
 #pragma once
 
-#include <aurex/query/query_context.hpp>
+#include <aurex/query/query_graph.hpp>
 
 #include <span>
 #include <string>
 #include <vector>
 
 namespace aurex::query {
+
+class QueryContext;
 
 enum class QueryReuseDisposition : base::u8 {
     reuse,

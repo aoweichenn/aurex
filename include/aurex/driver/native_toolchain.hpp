@@ -1,7 +1,7 @@
 #pragma once
 
 #include <aurex/base/result.hpp>
-#include <aurex/driver/invocation.hpp>
+#include <aurex/driver/emit_kind.hpp>
 
 #include <filesystem>
 #include <string>

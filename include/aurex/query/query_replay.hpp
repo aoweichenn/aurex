@@ -1,12 +1,14 @@
 #pragma once
 
-#include <aurex/query/query_context.hpp>
+#include <aurex/query/query_graph.hpp>
 
 #include <optional>
 #include <unordered_map>
 #include <vector>
 
 namespace aurex::query {
+
+class QueryContext;
 
 enum class QueryReplaySafetyMode : base::u8 {
     immutable_snapshot,

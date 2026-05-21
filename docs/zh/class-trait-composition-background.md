@@ -9,8 +9,8 @@
 
 现代语言通常保留第 1 点，但明显削弱第 2 点。换句话说，很多语言并不是“不做 class”，而是**不再把继承树作为默认复用方式**。
 
-对 Aurex 来说，这个区别尤其重要。当前路线已经把 `trait object`、动态分派、完整 closure capture ABI、generator、macro 等都放在后置区；M2.5 也明确不把 trait object 和动态分派纳入主线。[M2.5 路线图](m2.5-roadmap.md) 里的 P0/P1 只把 static trait、resource 语义、module/package 边界和最小容器形状作为表达力边界。  
-因此，如果要讨论“类”，更合理的方式是先把它拆成**语法糖层**和**对象模型层**，而不是直接把继承式 class 整套搬进来。
+对 Aurex 来说，这个区别尤其重要。当前 [M2.5 路线图](m2.5-roadmap.md) 已经收束为 frontend-foundation；[M3 路线图](m3-roadmap.md) 也只先处理模块系统和泛型闭环。`trait object`、动态分派、static trait、resource / RAII、完整 closure capture ABI、generator、macro、iterator protocol 和 class-like sugar 都不属于当前 M3 交付。
+因此，这篇文档只作为 M3 之后继续讨论 class-like 能力、trait 和组合模型的背景笔记；如果要讨论“类”，更合理的方式仍然是先把它拆成**语法糖层**和**对象模型层**，而不是直接把继承式 class 整套搬进来。
 
 ## 2. 先定义几个词
 
@@ -24,7 +24,7 @@
 - 有析构或资源清理。
 - `obj.method(...)` 的调用方式自然。
 
-这部分本质上可以由 `struct + impl + trait + Drop` 提供，未必需要独立的 class 对象模型。
+这部分本质上可以分阶段由 `struct + impl`、未来的 trait 能力和未来的资源清理能力提供，未必需要独立的 class 对象模型。
 
 ### 2.2 Trait
 
@@ -195,12 +195,14 @@ impl Drop for File {
 
 这套方案能保住 `class.method` 的便利感，但不会提前引入继承和虚派发。
 
-### 5.2 static trait 放在 M3，dynamic trait 放在更后面
+### 5.2 static trait 应早于 dynamic trait，但不进入当前 M3
 
 基于当前路线，更稳妥的阶段划分是：
 
-- **M3**：泛型闭环、static trait、资源语义 / RAII、最小 owned containers、class-like sugar、API ergonomics
-- **更后面**：dynamic trait / trait object / vtable ABI
+- **M3**：模块系统完善、泛型闭环完善。
+- **M3 之后的表达力专题**：static trait、associated type / associated const、class-like sugar、API ergonomics。
+- **资源专题**：resource 语义、RAII、`Drop` / `Copy`、move-only struct、最小 owned containers，需要独立设计所有权、drop timing、IR cleanup 和 ABI，不和 M3 模块/泛型混在一起。
+- **更后面**：dynamic trait / trait object / vtable ABI。
 
 原因很直接：动态 trait 会锁死对象布局、vtable 形状、drop glue、object safety 和部分 ABI 规则，太早做会把后续设计空间压缩掉。
 
@@ -210,11 +212,11 @@ impl Drop for File {
 
 - `struct` 负责数据
 - `impl` 负责方法
-- `trait` 负责能力抽象
+- 未来的 `trait` 负责能力抽象
 - `composition` 负责复用
-- `Drop` 负责资源清理
+- 未来的 `Drop` / resource 语义负责资源清理
 
-这比“把一切放进继承树”更符合当前语言核心、query 架构和后续扩展路线。
+这比“把一切放进继承树”更符合当前语言核心、query 架构和后续扩展路线；但这些能力要在 M3 模块和泛型身份稳定后分专题进入。
 
 ## 6. 三种常见形态的对照
 
@@ -231,7 +233,7 @@ impl Drop for File {
    struct File
    trait Reader / Closable
    impl Reader for File
-   重点：静态抽象、组合复用、易优化
+   重点：静态抽象、组合复用、易优化，属于 M3 之后的表达力专题
 
 4) dyn Trait
    data_ptr + vtable_ptr
@@ -248,7 +250,8 @@ impl Drop for File {
 - 构造器语法糖
 - 方法调用糖
 - 默认 private
-- `Drop` / RAII
+
+资源清理不放在 class-like sugar 的第一步里；`Drop` / RAII 要等所有权、drop timing、IR cleanup 和泛型 capability 单独设计完成后再进入。
 
 这能拿到大部分 class 的便利性，但语义仍然清楚。
 
@@ -262,6 +265,7 @@ impl Drop for File {
 - 组合式 API
 
 这比继承更适合系统语言和现代语言的编译期优化模型。
+这些能力不属于当前 M3；它们应在 M3 泛型闭环稳定之后作为独立表达力专题设计。
 
 ### 7.3 如果目标是“运行时多态”
 
@@ -279,8 +283,8 @@ impl Drop for File {
 对 Aurex 来说，最合理的路线不是“要不要 class”，而是：
 
 1. **先把 class 的便利性拆成语法糖和对象模型两层。**
-2. **把语法糖层做出来，用 `struct + impl + trait + Drop` 承载语义。**
-3. **默认以组合和 static trait 作为语言的组织方式。**
+2. **先用当前已有的 `struct + impl` 保住方法组织和封装手感。**
+3. **等 M3 模块和泛型边界稳定后，再分别设计 static trait、class-like sugar 和 resource / RAII。**
 4. **把 dynamic trait / trait object 留到更后面的阶段。**
 
 这样既能保留 `class.method` 的顺手感，又不会过早引入继承和虚派发的长期复杂度。
@@ -302,13 +306,13 @@ source
   +--> class-like syntax
   |       |
   |       v
-  |   struct + impl + trait + Drop
+  |   struct + impl
   |       |
-  |       +--> static trait / monomorphization / inlining
+  |       +--> future static trait / monomorphization / inlining
   |       |
-  |       +--> RAII / deterministic cleanup
+  |       +--> future RAII / deterministic cleanup
   |       |
-  |       +--> explicit escape hatches: UnsafeCell / RefCell / Mutex / Arc
+  |       +--> future explicit escape hatches: UnsafeCell / RefCell / Mutex / Arc
   |
   +--> dyn Trait boundary
           |
@@ -353,7 +357,7 @@ Rust 用 `impl Trait` 和 `dyn Trait` 把抽象的两条路明确分开：`impl 
 
 这套设计的好处是，静态路径保持可内联、可单态化、可优化；动态路径则明确付出间接调用和布局约束的代价。Rust 没有把这两种模式混成一个隐式对象系统。
 
-对 Aurex 的启发是：`class.method` 的手感可以做，但底层仍然应该分成静态分派和动态分派两套语义。默认路径走 `struct + impl + trait + Drop`，需要异构集合、插件边界或晚绑定时，再显式进入 `dyn Trait`。
+对 Aurex 的启发是：`class.method` 的手感可以做，但底层仍然应该分成静态分派和动态分派两套语义。默认路径先走 `struct + impl`；等 M3 之后补齐 trait 和资源专题后，再把静态抽象和清理语义接上。需要异构集合、插件边界或晚绑定时，再显式进入 `dyn Trait`。
 
 ### 9.6 泛型、编译时间和代码体积：工业界不会假装这不存在
 

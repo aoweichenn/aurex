@@ -36,13 +36,15 @@ IDE-native-ready:
    hover, top-level definition lookup, same-name identifier references, and
    edit-impact node selection all go through this API. Future LSP adapters
    should consume this layer instead of bypassing parser/sema/query.
-5. Language / library expressiveness: newly added to the M2.5 roadmap as a
-   P0/P1 design-freeze track from the regex-class systems-library audit. It does
-   not replace the query/lossless/IDE line or restart old std; only features
-   that support stable keys, module boundaries, generic lowering, trait/static
-   dispatch, or resource invariants are admitted.
+5. M3 preparation boundary: M2.5 no longer owns the trait, resource, closure,
+   iterator, and related expressiveness topics exposed by the regex audit. It
+   keeps `CanonicalTypeKey`, `GenericInstanceKey`, `ModuleKey`, `ModulePartKey`,
+   diagnostics, and query boundaries ready for the next stage. Module fragments,
+   package visibility, generic backend completion, and method-local generics move
+   to M3.
 
-See [M2.5 Roadmap](m2.5-roadmap.md) for the dedicated plan.
+See [M2.5 Roadmap](m2.5-roadmap.md) for the current frontend-foundation plan and
+[M3 Roadmap](m3-roadmap.md) for the next module/generic stage.
 
 ## Priority Route
 

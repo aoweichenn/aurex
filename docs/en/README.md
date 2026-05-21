@@ -15,6 +15,7 @@ notes.
 - [Design And Implementation](implementation.md)
 - [Current Progress](progress.md)
 - [M2.5 Roadmap](m2.5-roadmap.md)
+- [M3 Roadmap](m3-roadmap.md)
 - [Usage Guide](usage.md)
 - [Version Document](version.md)
 - [Next Steps](next-steps.md)

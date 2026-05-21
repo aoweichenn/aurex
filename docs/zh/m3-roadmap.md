@@ -1,0 +1,109 @@
+# M3 路线图
+
+## 阶段定位
+
+M3 建立在 M2.5 frontend-foundation 之上。M2.5 已经把 query key、结构化诊断、lossless syntax 和 IDE-native snapshot 收到可继续演进的地基；M3 不再继续扩大这条基础设施主线，而是开始设计和实现语言层下一段最关键的两个系统：
+
+1. 模块系统完善。
+2. 泛型闭环完善。
+
+M3 明确不先实现 RAII，也不把 trait、closure、iterator、derive、package manager 或标准库重建拉进当前阶段。资源语义会影响所有权、drop timing、IR cleanup、泛型 capability 和 ABI，不应该在模块和泛型身份还没稳定前进入实现。
+
+## 阶段目标
+
+### M3.0：模块系统
+
+M3.0 的目标是把当前“一个文件一个模块，loader 递归 import 后拼成 combined AST”的模型，升级为逻辑模块和源文件片段分离的模型：
+
+```text
+PackageKey
+  |
+  +-- ModuleKey        逻辑模块身份
+        |
+        +-- ModulePartKey    模块的一个源文件片段
+        |
+        +-- ModuleGraph      import / part / dependency edges
+        |
+        +-- ModuleExports    public API 和 re-export 表
+```
+
+第一阶段只解决同一 package 内的模块拆分，不做 package manager、版本求解或外部依赖系统。
+
+核心交付：
+
+- 设计并实现 module part 语义，让一个逻辑模块可以由多个文件组成。
+- 同一逻辑模块的所有 parts 共享 `priv` 可见性边界。
+- 保留当前 `import path as alias;` 和 `pub import` 行为，先不引入 glob import。
+- 把 module graph、module exports、item list 和 item signature 的 query 边界和 `ModuleKey` / `ModulePartKey` 对齐。
+- 让 diagnostics 能指出 module part、import path、重复 part、缺失 part、循环 part/import 等错误的精确 source range。
+
+### M3.1：泛型闭环
+
+M3.1 的目标是把当前已经可用的泛型模板/实例化能力推进为稳定的 query-backed 泛型系统：
+
+- `GenericTemplateSignature`、`GenericInstanceSignature` 和 `GenericInstanceBody` 成为泛型检查和复用的权威边界。
+- 泛型 ABI suffix 不再依赖 session-only `TypeHandle` 数字或 display string，而由 `GenericInstanceKey` / canonical type identity 派生。
+- `sizeof[T]` / `alignof[T]` 在 generic 函数体内完整通过 sema、IR 和 LLVM lowering。
+- method-local generics 从 M2 unsupported 进入 M3 设计和实现。
+- generic struct / enum / type alias / function / method 的 visibility、module identity 和 query invalidation 行为保持一致。
+
+M3.1 仍只使用当前内建非资源 capability：`Sized`、`Eq`、`Ord`、`Hash`。用户 trait、associated type、const generic 和资源 capability 不进入 M3.1。
+
+## 非目标
+
+- 不实现 RAII、`Drop`、`Copy`、move-only struct、borrow checker、lifetime 或 automatic resource cleanup。
+- 不实现用户 trait / protocol、trait object、associated type、associated const 或 dynamic dispatch。
+- 不实现 closure capture、`Fn` / `FnMut` / `FnOnce`、generator、async 或通用 iterator protocol。
+- 不重建标准库，不引入 package manager，不做版本求解。
+- 不用隐式目录扫描定义模块语义；文件系统布局可以辅助查找，但不能替代语言级 module/part 声明。
+
+## 模块系统候选设计
+
+M3 模块部分会在单独设计文档里展开。当前路线先固定几个方向：
+
+- `module path;` 继续表示 primary module 文件。
+- `module path part name;` 是推荐的 part 文件声明形式。
+- 是否需要 primary 文件里的 `part name;` 列表，在 M3 模块详细设计时决定；如果采用显式 part list，它用于避免目录扫描和隐式文件发现。
+- `priv` 表示同一逻辑模块内可见，包括 primary 和所有 parts。
+- `pub` 继续表示跨模块 public API。
+- `pub(package)` / `pub(crate)` 可以作为 M3.0 后半段或 M3.2 设计，不阻塞 module part 的第一阶段。
+- `pub use` / selective re-export 是 M3 模块系统的候选能力，但优先级低于 module part 和 exports query。
+
+## 泛型系统候选设计
+
+M3 泛型部分同样会在独立设计里展开。当前路线先固定几个方向：
+
+- 方括号泛型语法继续使用 `Name[T]` 和 `fn id[T](value: T)`，不恢复旧 `<T>` 语法。
+- `where T: Sized + Eq` 继续只表示内建非资源 capability，不代表用户 trait。
+- 泛型模板检查和具体实例检查都必须输出结构化 diagnostics，不能只在 lowering 或 backend 暴露错误。
+- 泛型实例 identity 必须来自 stable key，不来自 display string、C ABI 名称或本次编译的 `TypeHandle` 数字。
+- method-local generics 需要先设计 lookup、inference、ABI、query key 和 diagnostics，再进入实现。
+
+## 推荐落地顺序
+
+1. 文档收束：M2.5 只保留 frontend-foundation，M3 新建模块/泛型路线。
+2. 模块 AST 和 parser 设计：给 module declaration 增加 part 信息，并确定 primary/part 文件语法。
+3. ModuleLoader 设计：允许同一 `ModuleKey` 下多个 `ModulePartKey`，但拒绝重复 part、路径不匹配和循环。
+4. Sema 可见性设计：`priv` 跨同一逻辑模块所有 parts 可见；跨模块仍按 import/re-export 和 public API 检查。
+5. Module graph/export query：把当前 combined AST 兼容路径保留为实现细节，query record 以 `ModuleKey` / `ModulePartKey` 为准。
+6. 泛型 ABI 稳定化：把泛型实例符号名和 incremental key 从 session handle 切到 `GenericInstanceKey` 派生。
+7. 泛型 query 权威化：把 instance signature/body 的计算从 eager sema 路径逐步移到 query provider 边界。
+8. method-local generics：在稳定模块和泛型 query 边界后实现。
+
+## 验收
+
+M3.0 模块验收：
+
+- 同一逻辑模块可由多个 part 文件组成。
+- part 内 private item、field 和 method 可被同一模块其他 part 访问，但不会暴露给外部模块。
+- import、pub import、module path lookup、qualified type/value lookup 和 re-export 行为保持确定。
+- 重复 module、重复 part、缺失 part、part/module 名不匹配和循环依赖都有稳定诊断。
+- module graph/export query 的 key、dependency 和 invalidation 边界可检查。
+
+M3.1 泛型验收：
+
+- generic template signature、generic instance signature 和 generic instance body 具有明确 query 边界。
+- generic ABI suffix 稳定，不依赖本次 session 的 `TypeHandle` 数值。
+- `sizeof[T]` / `alignof[T]` 在 generic function 中可完整通过 IR/LLVM。
+- method-local generics 有正负样例、diagnostics 和 lowering 覆盖。
+- 现有泛型 stress、query pruning、sample suite 和 native execution tests 不回退。

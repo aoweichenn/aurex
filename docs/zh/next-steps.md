@@ -29,14 +29,14 @@ query-safe、lossless-syntax-ready、IDE-native-ready 的结构化系统：
    file/lex/parse/diagnostics query records 和 dependency edges；offset token、hover、
    顶层 definition、同名 identifier references 和编辑影响 node 选择都通过这层 API 暴露。
    后续 LSP adapter 只应消费该层数据，不再旁路 parser/sema/query。
-6. 语言/库表达力补强：新增到 M2.5 路线图中，作为 regex 级系统库暴露出的
-   P0/P1 设计冻结轨道。它不替代 query/lossless/IDE 主线，也不重启旧 std；
-   只允许进入能支撑 stable key、module boundary、generic lowering、trait/static
-   dispatch 或 resource invariants 的能力。
+6. M3 准备边界：M2.5 不再承载 regex 审计暴露出的 trait、resource、closure、
+   iterator 等表达力专题；它只保留 `CanonicalTypeKey`、`GenericInstanceKey`、
+   `ModuleKey`、`ModulePartKey` 和 diagnostics/query 边界。模块 fragments、
+   package visibility、泛型后端闭环和 method-local generics 进入 M3。
 
 独立设计见 [M2.5 路线图](m2.5-roadmap.md) 和
-[M2.5 Query Key 设计](m2.5-query-key-design.md)。下面的 M2.1 章节保留为已经完成的
-收口基线和后续回归约束。
+[M2.5 Query Key 设计](m2.5-query-key-design.md)。下一阶段入口见
+[M3 路线图](m3-roadmap.md)。下面的 M2.1 章节保留为已经完成的收口基线和后续回归约束。
 
 ## M2 优化目标（已完成基线）
 

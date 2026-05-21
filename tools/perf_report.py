@@ -17,7 +17,7 @@ from typing import Any
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-BUILD = pathlib.Path(os.environ.get("AUREX_BENCH_BUILD_DIR", str(ROOT / "build-perf"))).resolve()
+BUILD = pathlib.Path(os.environ.get("AUREX_BENCH_BUILD_DIR", str(ROOT / "build" / "perf"))).resolve()
 FRONTEND_BENCH = BUILD / "bin" / "aurex_frontend_bench"
 
 BENCHMARK_MIN_TIME_SECONDS = "0.01s"

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="${AUREX_COVERAGE_BUILD_DIR:-${ROOT}/build-coverage}"
+BUILD_DIR="${AUREX_COVERAGE_BUILD_DIR:-${ROOT}/build/coverage}"
 COVERAGE_DIR="${BUILD_DIR}/coverage"
 PROFILE_DIR="${COVERAGE_DIR}/profiles"
 PROFDATA="${COVERAGE_DIR}/aurex.profdata"

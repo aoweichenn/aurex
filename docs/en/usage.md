@@ -7,14 +7,14 @@ semantics, IR, and backend behavior directly.
 ## Build
 
 ```sh
-cmake -S . -B build
-cmake --build build -j
+cmake -S . -B build/full-llvm
+cmake --build build/full-llvm -j
 ```
 
 ## Run Hello
 
 ```sh
-build/bin/aurexc examples/hello.ax -o build/tests/hello
+build/full-llvm/bin/aurexc examples/hello.ax -o build/tests/hello
 build/tests/hello
 ```
 
@@ -27,17 +27,17 @@ hello from Aurex M2
 ## Emission Modes
 
 ```sh
-build/bin/aurexc --emit=tokens examples/hello.ax
-build/bin/aurexc --emit=lossless examples/hello.ax
-build/bin/aurexc --emit=ast examples/hello.ax
-build/bin/aurexc --emit=checked examples/hello.ax
-build/bin/aurexc --emit=ir examples/hello.ax
-build/bin/aurexc --emit=llvm-ir examples/hello.ax
-build/bin/aurexc -S examples/hello.ax -o build/tests/hello.s
-build/bin/aurexc -c examples/hello.ax -o build/tests/hello.o
-build/bin/aurexc --emit=asm examples/hello.ax -o build/tests/hello.s
-build/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
-build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
+build/full-llvm/bin/aurexc --emit=tokens examples/hello.ax
+build/full-llvm/bin/aurexc --emit=lossless examples/hello.ax
+build/full-llvm/bin/aurexc --emit=ast examples/hello.ax
+build/full-llvm/bin/aurexc --emit=checked examples/hello.ax
+build/full-llvm/bin/aurexc --emit=ir examples/hello.ax
+build/full-llvm/bin/aurexc --emit=llvm-ir examples/hello.ax
+build/full-llvm/bin/aurexc -S examples/hello.ax -o build/tests/hello.s
+build/full-llvm/bin/aurexc -c examples/hello.ax -o build/tests/hello.o
+build/full-llvm/bin/aurexc --emit=asm examples/hello.ax -o build/tests/hello.s
+build/full-llvm/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
+build/full-llvm/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 ```
 
 `--emit=exe` is the default mode. Native output from `--emit=asm`,
@@ -69,7 +69,7 @@ for frontend-only modes such as `--emit=ir` or `--check`.
 ## Incremental Cache
 
 ```sh
-build/bin/aurexc --check --incremental-cache build/main.axic examples/hello.ax
+build/full-llvm/bin/aurexc --check --incremental-cache build/main.axic examples/hello.ax
 ```
 
 `--incremental-cache` uses query-key pruning by default: when source
@@ -88,8 +88,8 @@ Module lookup order:
 There is no implicit standard-library path on this branch:
 
 ```sh
-build/bin/aurexc -I tests/samples/imports --emit=checked tests/samples/positive/modules/import_path.ax
-build/bin/aurexc --import-path tests/samples/imports --emit checked tests/samples/positive/modules/import_path.ax
+build/full-llvm/bin/aurexc -I tests/samples/imports --emit=checked tests/samples/positive/modules/import_path.ax
+build/full-llvm/bin/aurexc --import-path tests/samples/imports --emit checked tests/samples/positive/modules/import_path.ax
 ```
 
 ## C FFI

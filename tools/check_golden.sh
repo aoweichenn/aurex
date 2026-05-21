@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="${ROOT}/build"
+BUILD_DIR="${AUREX_BUILD_DIR:-${ROOT}/build/full-llvm}"
 AUREXC="${BUILD_DIR}/bin/aurexc"
 GOLDEN_DIR="${BUILD_DIR}/golden"
 

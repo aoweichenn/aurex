@@ -8,15 +8,15 @@ parser, driver, backend, shell script, or test-process startup costs.
 Build only the lexer benchmark when measuring tokenization:
 
 ```sh
-cmake --build build --target aurex_lex_bench -j
+cmake --build build/full-llvm --target aurex_lex_bench -j
 ```
 
 Build and run the isolated lexer unit tests when checking behavior:
 
 ```sh
-cmake --build build --target aurex_lexer_tests -j
-build/bin/aurex_lexer_tests --gtest_color=auto
-ctest --test-dir build -R aurex_tests_lexer_unit --output-on-failure
+cmake --build build/full-llvm --target aurex_lexer_tests -j
+build/full-llvm/bin/aurex_lexer_tests --gtest_color=auto
+ctest --test-dir build/full-llvm -R aurex_tests_lexer_unit --output-on-failure
 ```
 
 Do not run multiple CMake builds or benchmark processes against the same build
@@ -28,7 +28,7 @@ while relinking `aurex_lex`.
 The benchmark keeps the original positional form:
 
 ```sh
-build/bin/aurex_lex_bench <iterations> <repetitions> <scenario>
+build/full-llvm/bin/aurex_lex_bench <iterations> <repetitions> <scenario>
 ```
 
 Supported synthetic scenarios:
@@ -45,7 +45,7 @@ Use `--file` for real source files. The file contents are repeated by the
 `repetitions` argument, so the benchmark still runs on a large enough buffer:
 
 ```sh
-build/bin/aurex_lex_bench 300 128 --file examples/libs/common/result.ax --warmup 50 --runs 5
+build/full-llvm/bin/aurex_lex_bench 300 128 --file examples/libs/common/result.ax --warmup 50 --runs 5
 ```
 
 Use `--warmup` to run unmeasured iterations before collecting timing. Use
@@ -57,15 +57,15 @@ and average for elapsed time, nanoseconds per byte, and nanoseconds per token.
 Representative local results after the lexer hot-path work:
 
 ```text
-build/bin/aurex_lex_bench 500 64 mixed --warmup 100 --runs 5
+build/full-llvm/bin/aurex_lex_bench 500 64 mixed --warmup 100 --runs 5
 ns_per_byte_median: 42.2582
 ns_per_token_median: 119.534
 
-build/bin/aurex_lex_bench 500 256 punctuation --warmup 100 --runs 5
+build/full-llvm/bin/aurex_lex_bench 500 256 punctuation --warmup 100 --runs 5
 ns_per_byte_median: 38.6846
 ns_per_token_median: 90.9515
 
-build/bin/aurex_lex_bench 300 128 --file examples/libs/common/result.ax --warmup 50 --runs 5
+build/full-llvm/bin/aurex_lex_bench 300 128 --file examples/libs/common/result.ax --warmup 50 --runs 5
 ns_per_byte_median: 37.4493
 ns_per_token_median: 132.355
 ```

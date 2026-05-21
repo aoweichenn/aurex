@@ -26,7 +26,7 @@ from typing import Any
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-BUILD = pathlib.Path(os.environ.get("AUREX_BENCH_BUILD_DIR", str(ROOT / "build-perf"))).resolve()
+BUILD = pathlib.Path(os.environ.get("AUREX_BENCH_BUILD_DIR", str(ROOT / "build" / "perf"))).resolve()
 AUREXC = BUILD / "bin" / "aurexc"
 COMPARE_BENCH = BUILD / "bin" / "aurex_frontend_compare_bench"
 OUTPUT_JSON = BUILD / "frontend-compare.json"

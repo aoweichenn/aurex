@@ -42,15 +42,15 @@ import regex.bytes as bytes;
 编译示例：
 
 ```sh
-build/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
 build/tests/regex_demo
-build/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_phase1
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_phase1
 build/tests/regex_phase1
-build/bin/aurexc -I examples/libs examples/regex_industrial.ax -o build/tests/regex_industrial
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_industrial.ax -o build/tests/regex_industrial
 build/tests/regex_industrial
-build/bin/aurexc -I examples/libs examples/regex_advanced.ax -o build/tests/regex_advanced
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_advanced.ax -o build/tests/regex_advanced
 build/tests/regex_advanced
-build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
 build/tests/regex_stress
 ```
 
@@ -1160,20 +1160,20 @@ tests/gtest/integration/examples_tests.cpp
 手动验证命令：
 
 ```sh
-build/bin/aurexc -I examples/libs examples/regex_demo.ax --emit=checked
-build/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_demo.ax --emit=checked
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
 build/tests/regex_demo
-build/bin/aurexc -I examples/libs examples/regex_phase1.ax --emit=checked
-build/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_phase1
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_phase1.ax --emit=checked
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_phase1
 build/tests/regex_phase1
-build/bin/aurexc -I examples/libs examples/regex_industrial.ax --emit=checked
-build/bin/aurexc -I examples/libs examples/regex_industrial.ax -o build/tests/regex_industrial
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_industrial.ax --emit=checked
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_industrial.ax -o build/tests/regex_industrial
 build/tests/regex_industrial
-build/bin/aurexc -I examples/libs examples/regex_advanced.ax --emit=checked
-build/bin/aurexc -I examples/libs examples/regex_advanced.ax -o build/tests/regex_advanced
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_advanced.ax --emit=checked
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_advanced.ax -o build/tests/regex_advanced
 build/tests/regex_advanced
-build/bin/aurexc -I examples/libs examples/regex_stress.ax --emit=checked
-build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_stress.ax --emit=checked
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
 build/tests/regex_stress
 python3 tools/regex_differential.py
 ```

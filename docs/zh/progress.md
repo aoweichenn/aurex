@@ -70,7 +70,7 @@ make perf-ast-stress
 - Aurex IR lowering、IR verifier、pass pipeline、LLVM backend。
 - native execution 和安装后 compiler 执行。
 
-`tools/bench.py` 使用 Release `build-perf` 构建目录，并用 Google Benchmark
+`tools/bench.py` 使用 Release `build/perf` 构建目录，并用 Google Benchmark
 测量 frontend 热路径。`make perf` 输出基于 JSON 的 Aurex frontend baseline，
 覆盖 lexer、lookup-heavy sema、generic-instantiation-heavy sema 和 AST bulk sema 路径，并运行
 Google Benchmark 的进程级现代前端对比通道，对可用的 `clang++`、`g++`、`rustc`
@@ -92,7 +92,7 @@ struct literal、enum payload、builtin、generic apply、array/void、operator 
 `aurex-profile-v1` 阶段 profile 写入 JSON。`make perf-stress-threshold` 默认跑 100/200 generic +
 1000/5000 AST bulk + 100/500 errors 的轻量阈值门，GitHub Actions `stress-thresholds` job 固定
 `AUREX_PERF_THRESHOLD_PROFILE=github-ubuntu-24.04-fedora`；`make perf-release-threshold` 现在默认用
-独立 `build-perf-lto` + `AUREX_STRESS_ENABLE_LTO=ON` 跑 5000 generic、2M AST 和 5000 errors 的
+独立 `build/perf-lto` + `AUREX_STRESS_ENABLE_LTO=ON` 跑 5000 generic、2M AST 和 5000 errors 的
 Release+LTO 发布阈值门。`make perf-release-lto-threshold` 和 `make perf-release-all-threshold`
 保留为同一发布阈值门的兼容别名，不再重复跑普通 Release 与 Release+LTO 两套逻辑；发布 AST RSS 阈值为
 8192 MiB，用来保留高复杂 mixed 源码而不是降级成过渡态 toy case。

@@ -12,6 +12,7 @@ The generated Aurex program covers:
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import random
 import re
@@ -24,6 +25,7 @@ CASE_FOLDING = ROOT / "tests/data/unicode/17.0.0/CaseFolding.txt"
 GRAPHEME_BREAK_TEST = ROOT / "tests/data/unicode/17.0.0/GraphemeBreakTest.txt"
 GENERATED = ROOT / "build/regex_differential_generated.ax"
 OUTPUT = ROOT / "build/tests/regex_differential"
+AUREXC = pathlib.Path(os.environ.get("AUREX_BUILD_DIR", str(ROOT / "build" / "full-llvm"))).resolve() / "bin" / "aurexc"
 GRAPHEME_CHUNK_SIZE = 80
 CASE_FOLD_CHUNK_SIZE = 48
 
@@ -456,8 +458,8 @@ def main() -> int:
     print(f"generated {GENERATED}")
     if args.generate_only:
         return 0
-    run_command(["build/bin/aurexc", "-I", "examples/libs", "--check", str(GENERATED)])
-    run_command(["build/bin/aurexc", "-I", "examples/libs", str(GENERATED), "-o", str(OUTPUT)])
+    run_command([str(AUREXC), "-I", "examples/libs", "--check", str(GENERATED)])
+    run_command([str(AUREXC), "-I", "examples/libs", str(GENERATED), "-o", str(OUTPUT)])
     run_command([str(OUTPUT)])
     return 0
 

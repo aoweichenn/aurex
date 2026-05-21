@@ -35,7 +35,7 @@ BUILD = pathlib.Path(
         "AUREX_QUERY_PRUNING_BUILD_DIR",
         os.environ.get(
             "AUREX_STRESS_BUILD_DIR",
-            os.environ.get("AUREX_BENCH_BUILD_DIR", str(ROOT / "build-perf")),
+            os.environ.get("AUREX_BENCH_BUILD_DIR", str(ROOT / "build" / "perf")),
         ),
     )
 ).resolve()

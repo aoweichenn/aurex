@@ -11,7 +11,7 @@
       "displayName": "Frontend minimal",
       "description": "Configure parser/sema frontend libraries without LLVM or tests.",
       "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/build-frontend-minimal",
+      "binaryDir": "${sourceDir}/build/frontend-minimal",
       "cacheVariables": {
         "AUREX_FRONTEND_ONLY": "ON",
         "BUILD_TESTING": "OFF"
@@ -22,7 +22,7 @@
       "displayName": "Frontend tests",
       "description": "Configure frontend-only libraries and frontend test targets without LLVM.",
       "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/build-frontend-tests",
+      "binaryDir": "${sourceDir}/build/frontend-tests",
       "cacheVariables": {
         "AUREX_FRONTEND_ONLY": "ON",
         "BUILD_TESTING": "ON"
@@ -33,7 +33,7 @@
       "displayName": "Full LLVM",
       "description": "Configure the full compiler, LLVM backend, driver, CLI, and tests.",
       "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/build",
+      "binaryDir": "${sourceDir}/build/full-llvm",
       "cacheVariables": {
         "AUREX_FRONTEND_ONLY": "OFF",
         "BUILD_TESTING": "ON"

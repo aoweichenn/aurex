@@ -25,8 +25,8 @@ To build and run the full native compiler path, use the LLVM preset:
 
 ```sh
 cmake --preset full-llvm
-cmake --build build -j
-build/bin/aurexc examples/hello.ax -o build/tests/hello
+cmake --build build/full-llvm -j
+build/full-llvm/bin/aurexc examples/hello.ax -o build/tests/hello
 build/tests/hello
 ```
 
@@ -39,23 +39,23 @@ hello from Aurex M2
 Stage0 now resolves imports:
 
 ```sh
-build/bin/aurexc -I tests/samples/imports tests/samples/positive/modules/import_path.ax -o build/tests/import_path
+build/full-llvm/bin/aurexc -I tests/samples/imports tests/samples/positive/modules/import_path.ax -o build/tests/import_path
 ```
 
 Reusable import examples live under `examples/libs`:
 
 ```sh
-build/bin/aurexc -I examples/libs --emit=checked tests/samples/positive/modules/import_path.ax
+build/full-llvm/bin/aurexc -I examples/libs --emit=checked tests/samples/positive/modules/import_path.ax
 ```
 
 Stage0 can also produce assembly and object files through clang:
 
 ```sh
-build/bin/aurexc -S examples/hello.ax -o build/tests/hello.s
-build/bin/aurexc -c examples/hello.ax -o build/tests/hello.o
-build/bin/aurexc --emit=asm examples/hello.ax -o build/tests/hello.s
-build/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
-build/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
+build/full-llvm/bin/aurexc -S examples/hello.ax -o build/tests/hello.s
+build/full-llvm/bin/aurexc -c examples/hello.ax -o build/tests/hello.o
+build/full-llvm/bin/aurexc --emit=asm examples/hello.ax -o build/tests/hello.s
+build/full-llvm/bin/aurexc --emit=obj examples/hello.ax -o build/tests/hello.o
+build/full-llvm/bin/aurexc --emit=exe examples/hello.ax -o build/tests/hello
 ```
 
 `--emit=exe` is the default. `-fsyntax-only` is accepted as an alias for
@@ -77,8 +77,8 @@ recorded dependency fingerprint still match.
 The IR path is visible with:
 
 ```sh
-build/bin/aurexc --emit=ir examples/hello.ax
-build/bin/aurexc --emit=llvm-ir examples/hello.ax
+build/full-llvm/bin/aurexc --emit=ir examples/hello.ax
+build/full-llvm/bin/aurexc --emit=llvm-ir examples/hello.ax
 ```
 
 `--emit=ir` prints Aurex's typed CFG/SSA IR. `--emit=llvm-ir` lowers that IR to
@@ -109,13 +109,13 @@ make perf-ast-stress
 The test script covers lexer/AST dumps, hello end-to-end codegen, positive
 language samples, negative semantic samples, current language features, LLVM
 lowering, native execution, import paths, and install-tree compiler execution.
-`tools/bench.py` uses a Release `build-perf` tree and Google Benchmark for
+`tools/bench.py` uses a Release `build/perf` tree and Google Benchmark for
 frontend hot-path measurements. `make perf` prints the lightweight JSON-derived
 Aurex frontend baseline and the Google Benchmark process-level comparison
 against available modern frontend drivers (`clang++`, `g++`, and `rustc`);
 `make perf-stress-threshold` enforces the local CI stress gate, while
 `make perf-release-threshold` now builds and runs the release gate as
-Release+LTO from `build-perf-lto` by default. `make perf-release-lto-threshold`
+Release+LTO from `build/perf-lto` by default. `make perf-release-lto-threshold`
 and `make perf-release-all-threshold` are compatibility aliases for that same
 release gate, not a second non-LTO lane. These threshold gates share
 `AUREX_PERF_THRESHOLD_PROFILE` and `AUREX_PERF_THRESHOLD_SCALE`; the profile is

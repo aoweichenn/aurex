@@ -166,7 +166,7 @@ See [M2.5 Roadmap](m2.5-roadmap.md) for the current frontend-foundation plan and
    available through `make perf-stress-threshold` and CI; the heavier 2M
    high-complexity AST / 5000 generic / 5000 diagnostic release gate is
    available through `make perf-release-threshold`, which now runs Release+LTO
-   from `build-perf-lto` by default and records process metrics plus compiler
+   from `build/perf-lto` by default and records process metrics plus compiler
    phase profile JSON. `make perf-release-lto-threshold` remains a compatibility
    alias for the same gate.
 

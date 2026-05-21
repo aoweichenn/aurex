@@ -109,7 +109,7 @@ The test suite covers lexer/parser behavior, CLI/driver behavior, positive and
 negative samples, modules, visibility, generics, functions, methods, pattern
 matching, error handling, type-system diagnostics, IR lowering, IR verification,
 LLVM lowering, native execution, and installed compiler execution.
-`tools/bench.py` builds a Release `build-perf` tree and uses Google Benchmark
+`tools/bench.py` builds a Release `build/perf` tree and uses Google Benchmark
 for frontend hot-path measurements. `make perf` prints the lightweight
 JSON-derived Aurex frontend baseline for lexer, lookup-heavy sema, and
 generic-instantiation-heavy sema paths plus the AST bulk sema path, then runs a Google Benchmark
@@ -126,7 +126,7 @@ runs the default mixed-feature light gate (100/200 generic plus 1000/5000 AST
 bulk plus 100/500 diagnostic errors), and CI runs the same gate in the
 `stress-thresholds` job. `make perf-release-threshold` now runs the 5000
 generic, 2M high-complexity AST, and 5000 diagnostic mixed-feature release gate
-as Release+LTO from `build-perf-lto` by default. `make
+as Release+LTO from `build/perf-lto` by default. `make
 perf-release-lto-threshold` and `make perf-release-all-threshold` are
 compatibility aliases for that same release gate. The stress JSON records
 raw/effective thresholds, machine info, profile/scale calibration,

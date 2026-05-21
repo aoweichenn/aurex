@@ -183,7 +183,7 @@ import regex.bytes as bytes;
 编译样例：
 
 ```sh
-build/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
 build/tests/regex_demo
 ```
 
@@ -422,7 +422,7 @@ Aurex 不建议以“完全兼容 C++ `std::regex`”作为短期目标。更合
 | `tools/run_tests.sh` | 11/11 passed | regex conformance 慢测耗时 223.78s |
 | `tools/check_coverage.sh` | 11/11 passed | regex conformance 慢测耗时 222.34s；source totals、`aurexc` 入口和 parser/sema focused gate 均通过 |
 | `python3 tools/regex_differential.py --fold-end 32 --grapheme-end 32` | passed | 生成并运行 `build/regex_differential_generated.ax` |
-| `build/bin/aurexc -I examples/libs examples/regex_advanced.ax -o build/tests/regex_advanced && build/tests/regex_advanced` | passed | 高级 API/Unicode/RegexSet/database/stream 回归样例 |
+| `build/full-llvm/bin/aurexc -I examples/libs examples/regex_advanced.ax -o build/tests/regex_advanced && build/tests/regex_advanced` | passed | 高级 API/Unicode/RegexSet/database/stream 回归样例 |
 | `git diff --check` | passed | 代码提交前空白检查 |
 
 覆盖率数据来自 `tools/check_coverage.sh`。主 source totals 排除 CLI 入口后统计 `src/**/*.cpp`，CLI 入口由独立 `aurexc --help` 覆盖 lane 统计；M2.1 还对 `parser_postfix.cpp`、`match.cpp`、`sema_expr.cpp`、`sema_types.cpp` 保留 focused 95% 门禁。

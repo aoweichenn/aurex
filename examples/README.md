@@ -34,32 +34,32 @@ the language-core layer.
 Build the native hello example:
 
 ```sh
-build/bin/aurexc examples/hello.ax -o build/tests/hello
+build/full-llvm/bin/aurexc examples/hello.ax -o build/tests/hello
 build/tests/hello
 ```
 
 Print a representative batch of diagnostics:
 
 ```sh
-build/bin/aurexc --check examples/diagnostic_showcase.ax
-build/bin/aurexc --check --diagnostics=json examples/diagnostic_showcase.ax
+build/full-llvm/bin/aurexc --check examples/diagnostic_showcase.ax
+build/full-llvm/bin/aurexc --check --diagnostics=json examples/diagnostic_showcase.ax
 ```
 
 Compile a file that imports the shared example modules with:
 
 ```sh
-build/bin/aurexc -I examples/libs path/to/file.ax --emit=checked
+build/full-llvm/bin/aurexc -I examples/libs path/to/file.ax --emit=checked
 ```
 
 Build and run the regex example with:
 
 ```sh
-build/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_demo.ax -o build/tests/regex_demo
 build/tests/regex_demo
-build/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_phase1
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_phase1.ax -o build/tests/regex_phase1
 build/tests/regex_phase1
-build/bin/aurexc -I examples/libs examples/regex_industrial.ax -o build/tests/regex_industrial
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_industrial.ax -o build/tests/regex_industrial
 build/tests/regex_industrial
-build/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
+build/full-llvm/bin/aurexc -I examples/libs examples/regex_stress.ax -o build/tests/regex_stress
 build/tests/regex_stress
 ```

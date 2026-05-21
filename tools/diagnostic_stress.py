@@ -37,7 +37,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 BUILD = pathlib.Path(
     os.environ.get(
         "AUREX_STRESS_BUILD_DIR",
-        os.environ.get("AUREX_BENCH_BUILD_DIR", str(ROOT / "build-perf")),
+        os.environ.get("AUREX_BENCH_BUILD_DIR", str(ROOT / "build" / "perf")),
     )
 ).resolve()
 AUREXC = BUILD / "bin" / "aurexc"
@@ -424,7 +424,7 @@ def main() -> int:
         default=os.environ.get("AUREX_DIAGNOSTIC_STRESS_SHAPE", DEFAULT_SHAPE),
         help="stress source shape: mixed cycles semantic diagnostic families; missing keeps the old missing-name lane; default: mixed",
     )
-    parser.add_argument("--skip-build", action="store_true", help="reuse the existing build-perf aurexc binary")
+    parser.add_argument("--skip-build", action="store_true", help="reuse the existing build/perf aurexc binary")
     parser.add_argument(
         "--max-elapsed-ms",
         default=os.environ.get("AUREX_DIAGNOSTIC_STRESS_MAX_ELAPSED_MS"),

@@ -59,11 +59,11 @@ jobs:
             echo "CXX=$(command -v clang++)"
           } >> "${GITHUB_ENV}"
       - name: Configure frontend-only build
-        run: cmake -S . -B build-frontend-only -DAUREX_FRONTEND_ONLY=ON
+        run: cmake -S . -B build/frontend-only -DAUREX_FRONTEND_ONLY=ON
       - name: Build frontend-only targets
-        run: cmake --build build-frontend-only -j
+        run: cmake --build build/frontend-only -j
       - name: Run frontend-only tests
-        run: ctest --test-dir build-frontend-only --output-on-failure
+        run: ctest --test-dir build/frontend-only --output-on-failure
   stress-thresholds:
     runs-on: ubuntu-24.04
     container:

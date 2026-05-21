@@ -1,115 +1,46 @@
 #include <aurex/base/config.hpp>
-#include <aurex/driver/driver_messages.hpp>
-#include <aurex/driver/file_cache.hpp>
 #include <aurex/driver/module_loader.hpp>
 #include <aurex/driver/profile.hpp>
-#include <aurex/lex/lexer.hpp>
-#include <aurex/parse/parser.hpp>
 #include <aurex/syntax/module.hpp>
 
 #include <filesystem>
-#include <optional>
-#include <sstream>
+#include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "module_loader_remap.hpp"
+#include "module_loader_support.hpp"
 
 namespace aurex::driver {
 
 namespace {
 
-[[nodiscard]] std::filesystem::path canonical_or_absolute(const std::filesystem::path& path)
-{
-    std::error_code error;
-    std::filesystem::path canonical = std::filesystem::weakly_canonical(path, error);
-    if (!error) {
-        return canonical;
-    }
-    return std::filesystem::absolute(path);
-}
-
-void push_error(base::DiagnosticSink& diagnostics, const base::SourceRange& range, std::string message)
-{
-    diagnostics.push(base::Diagnostic{
-        base::Severity::error,
-        range,
-        std::move(message),
-        base::DiagnosticCategory::module,
-        base::DiagnosticCode::module_error,
-    });
-}
-
-[[nodiscard]] base::Result<syntax::AstModule> lex_and_parse_module(const base::SourceId source_id,
-    const std::string_view source_text, base::DiagnosticSink& diagnostics, CompilationProfiler* const profiler,
-    const std::string_view detail)
-{
-    lex::Lexer lexer(source_id, source_text, diagnostics);
-    auto token_result = [&] {
-        ScopedCompilationPhase phase(profiler, "module.lex", detail);
-        return lexer.tokenize();
-    }();
-    if (!token_result) {
-        return base::Result<syntax::AstModule>::fail(token_result.error());
+class LoadingFileScope final {
+public:
+    LoadingFileScope(std::unordered_set<std::string>& loading_files, std::string key)
+        : loading_files_(&loading_files), key_(std::move(key))
+    {
+        this->loading_files_->insert(this->key_);
     }
 
-    parse::Parser parser(token_result.value(), diagnostics);
-    auto ast_result = [&] {
-        ScopedCompilationPhase phase(profiler, "module.parse", detail);
-        return parser.parse_module();
-    }();
-    if (!ast_result) {
-        return base::Result<syntax::AstModule>::fail(ast_result.error());
-    }
-    return base::Result<syntax::AstModule>::ok(ast_result.take_value());
-}
+    LoadingFileScope(const LoadingFileScope&) = delete;
+    LoadingFileScope& operator=(const LoadingFileScope&) = delete;
+    LoadingFileScope(LoadingFileScope&&) = delete;
+    LoadingFileScope& operator=(LoadingFileScope&&) = delete;
 
-[[nodiscard]] std::optional<std::filesystem::path> find_import_file(const syntax::ModulePath& path,
-    const std::filesystem::path& importer_dir, const std::vector<std::filesystem::path>& import_paths)
-{
-    const std::filesystem::path relative = syntax::module_path_to_relative_file(path);
-    const auto exists = [](const std::filesystem::path& candidate) {
-        std::error_code error;
-        return std::filesystem::exists(candidate, error) && !error;
-    };
-
-    std::filesystem::path importer_candidate = importer_dir / relative;
-    if (exists(importer_candidate)) {
-        return importer_candidate;
-    }
-    for (const std::filesystem::path& import_path : import_paths) {
-        std::filesystem::path candidate = import_path / relative;
-        if (exists(candidate)) {
-            return candidate;
+    ~LoadingFileScope()
+    {
+        if (this->loading_files_ != nullptr) {
+            this->loading_files_->erase(this->key_);
         }
     }
-    return std::nullopt;
-}
 
-[[nodiscard]] std::vector<std::filesystem::path> import_candidates(const syntax::ModulePath& path,
-    const std::filesystem::path& importer_dir, const std::vector<std::filesystem::path>& import_paths)
-{
-    const std::filesystem::path relative = syntax::module_path_to_relative_file(path);
-    std::vector<std::filesystem::path> candidates;
-    candidates.reserve(import_paths.size() + 1);
-    candidates.push_back(importer_dir / relative);
-    for (const std::filesystem::path& import_path : import_paths) {
-        candidates.push_back(import_path / relative);
-    }
-    return candidates;
-}
-
-[[nodiscard]] std::string format_import_candidates(const std::span<const std::filesystem::path> candidates)
-{
-    std::ostringstream out;
-    for (base::usize i = 0; i < candidates.size(); ++i) {
-        if (i != 0) {
-            out << ", ";
-        }
-        out << candidates[i].string();
-    }
-    return out.str();
-}
+private:
+    std::unordered_set<std::string>* loading_files_ = nullptr;
+    std::string key_;
+};
 
 } // namespace
 
@@ -124,7 +55,7 @@ base::Result<syntax::AstModule> ModuleLoader::load_root()
 {
     syntax::AstModule combined;
     const auto result =
-        this->load_file(canonical_or_absolute(this->invocation_.input_path), combined, 0, true, nullptr);
+        this->load_file(module_loader_canonical_or_absolute(this->invocation_.input_path), combined, 0, true, nullptr);
     if (!result) {
         return base::Result<syntax::AstModule>::fail(result.error());
     }
@@ -141,75 +72,52 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
     const base::usize depth, const bool is_root, const syntax::ModulePath* expected_module)
 {
     if (depth > base::config::AUREX_MAX_INCLUDE_DEPTH) {
-        return base::Result<syntax::ModuleId>::fail(
-            {base::ErrorCode::invalid_source, std::string(DRIVER_IMPORT_DEPTH_EXCEEDED)});
+        return base::Result<syntax::ModuleId>::fail(module_loader_depth_exceeded_error());
     }
 
-    const std::filesystem::path canonical = canonical_or_absolute(path);
+    const std::filesystem::path canonical = module_loader_canonical_or_absolute(path);
     const std::string key = canonical.string();
     if (this->loading_files_.contains(key)) {
-        push_error(this->diagnostics_, expected_module != nullptr ? expected_module->range : base::SourceRange{},
-            driver_cyclic_import_message(key));
         return base::Result<syntax::ModuleId>::fail(
-            {base::ErrorCode::parse_error, std::string(DRIVER_MODULE_LOADING_FAILED)});
+            report_cyclic_import(this->diagnostics_, expected_module, key).error());
     }
     if (const auto loaded = this->loaded_file_modules_.find(key); loaded != this->loaded_file_modules_.end()) {
         const syntax::ModuleId module_id = loaded->second;
-        if (expected_module != nullptr && syntax::is_valid(module_id) && module_id.value < combined.modules.size()
-            && !syntax::module_paths_equal(combined.modules[module_id.value].path, *expected_module)) {
-            push_error(this->diagnostics_, expected_module->range,
-                driver_module_import_mismatch_message(
-                    syntax::module_path_to_string(combined.modules[module_id.value].path),
-                    syntax::module_path_to_string(*expected_module)));
-            return base::Result<syntax::ModuleId>::fail(
-                {base::ErrorCode::parse_error, std::string(DRIVER_MODULE_LOADING_FAILED)});
+        const auto validation =
+            validate_cached_file_module_path(combined, module_id, expected_module, this->diagnostics_);
+        if (!validation) {
+            return base::Result<syntax::ModuleId>::fail(validation.error());
         }
         return base::Result<syntax::ModuleId>::ok(loaded->second);
     }
-    this->loading_files_.insert(key);
+    LoadingFileScope loading_file_scope{this->loading_files_, key};
 
-    auto source_result = [&] {
-        ScopedCompilationPhase phase(this->profiler_, "module.read", key);
-        return read_text_file(canonical);
-    }();
-    if (!source_result) {
-        this->loading_files_.erase(key);
-        return base::Result<syntax::ModuleId>::fail(source_result.error());
+    auto loaded_source = load_module_source(canonical, this->sources_, this->diagnostics_, this->profiler_, key);
+    if (!loaded_source) {
+        return base::Result<syntax::ModuleId>::fail(loaded_source.error());
     }
 
-    const base::SourceId source_id = this->sources_.add_source(canonical.string(), source_result.take_value());
-    auto ast_result =
-        lex_and_parse_module(source_id, this->sources_.text(source_id), this->diagnostics_, this->profiler_, key);
-    if (!ast_result) {
-        this->loading_files_.erase(key);
-        return base::Result<syntax::ModuleId>::fail(ast_result.error());
+    LoadedModuleSource loaded = loaded_source.take_value();
+    syntax::AstModule module = std::move(loaded.module);
+    const auto declaration_validation =
+        validate_importable_module_declaration(module, loaded.source_id, this->diagnostics_);
+    if (!declaration_validation) {
+        return base::Result<syntax::ModuleId>::fail(declaration_validation.error());
     }
-
-    syntax::AstModule module = ast_result.take_value();
-    if (module.module_path.parts.empty()) {
-        push_error(this->diagnostics_, base::SourceRange{source_id, 0, 0},
-            std::string(DRIVER_IMPORTABLE_MODULE_DECL_REQUIRED));
-        this->loading_files_.erase(key);
-        return base::Result<syntax::ModuleId>::fail(
-            {base::ErrorCode::parse_error, std::string(DRIVER_MODULE_LOADING_FAILED)});
-    }
-    if (expected_module != nullptr && !syntax::module_paths_equal(module.module_path, *expected_module)) {
-        push_error(this->diagnostics_, module.module_path.range,
-            driver_module_import_mismatch_message(
-                syntax::module_path_to_string(module.module_path), syntax::module_path_to_string(*expected_module)));
-        this->loading_files_.erase(key);
-        return base::Result<syntax::ModuleId>::fail(
-            {base::ErrorCode::parse_error, std::string(DRIVER_MODULE_LOADING_FAILED)});
+    const auto import_path_validation =
+        validate_module_import_path(module.module_path, expected_module, this->diagnostics_);
+    if (!import_path_validation) {
+        return base::Result<syntax::ModuleId>::fail(import_path_validation.error());
     }
     const std::string module_name = syntax::module_path_to_string(module.module_path);
-    const auto module_inserted = this->loaded_modules_.emplace(
-        module_name, LoadedModule{canonical, syntax::INVALID_MODULE_ID, module.module_path.range});
-    if (!module_inserted.second && module_inserted.first->second.path != canonical) {
-        push_error(this->diagnostics_, module.module_path.range,
-            driver_duplicate_module_name_message(module_name, module_inserted.first->second.path.string()));
-        this->loading_files_.erase(key);
-        return base::Result<syntax::ModuleId>::fail(
-            {base::ErrorCode::parse_error, std::string(DRIVER_MODULE_LOADING_FAILED)});
+    const auto module_inserted =
+        this->loaded_modules_.emplace(module_name, LoadedModule{canonical, syntax::INVALID_MODULE_ID});
+    if (!module_inserted.second) {
+        const auto identity_validation = validate_unique_module_identity(
+            module_name, canonical, module_inserted.first->second.path, module.module_path.range, this->diagnostics_);
+        if (!identity_validation) {
+            return base::Result<syntax::ModuleId>::fail(identity_validation.error());
+        }
     }
 
     syntax::ModuleId module_id = module_inserted.first->second.id;
@@ -235,17 +143,13 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
         if (!import_file) {
             const std::vector<std::filesystem::path> candidates =
                 import_candidates(import.path, canonical.parent_path(), this->import_paths_);
-            push_error(this->diagnostics_, import.path.range,
-                driver_import_resolve_failed_message(
-                    syntax::module_path_to_string(import.path), format_import_candidates(candidates)));
-            this->loading_files_.erase(key);
             return base::Result<syntax::ModuleId>::fail(
-                {base::ErrorCode::io_error, std::string(DRIVER_MODULE_LOADING_FAILED)});
+                report_import_resolution_failure(this->diagnostics_, import.path, format_import_candidates(candidates))
+                    .error());
         }
-        auto import_result =
-            this->load_file(canonical_or_absolute(*import_file), combined, depth + 1, false, &import.path);
+        auto import_result = this->load_file(
+            module_loader_canonical_or_absolute(*import_file), combined, depth + 1, false, &import.path);
         if (!import_result) {
-            this->loading_files_.erase(key);
             return import_result;
         }
         syntax::ResolvedImport resolved{
@@ -270,7 +174,6 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
             append_module_into(combined, std::move(module), is_root, module_id);
         }
     }
-    this->loading_files_.erase(key);
     this->loaded_file_modules_.emplace(key, module_id);
     return base::Result<syntax::ModuleId>::ok(module_id);
 }

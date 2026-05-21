@@ -1,6 +1,7 @@
 #pragma once
 
-#include <aurex/query/query_context.hpp>
+#include <aurex/query/query_graph.hpp>
+#include <aurex/query/query_provider_set.hpp>
 
 #include <optional>
 #include <span>
@@ -8,6 +9,8 @@
 #include <vector>
 
 namespace aurex::query {
+
+class QueryContext;
 
 struct GenericInstanceSignatureQueryRequest {
     GenericInstanceKey key;

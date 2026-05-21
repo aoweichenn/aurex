@@ -20,6 +20,7 @@ add_library(aurex_driver
     src/driver/incremental_cache/subjects/source.cpp
     src/driver/module_loader.cpp
     src/driver/module_loader_remap.cpp
+    src/driver/module_loader_support.cpp
     src/driver/native_toolchain.cpp
     src/driver/profile.cpp
 )

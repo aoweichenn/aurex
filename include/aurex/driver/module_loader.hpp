@@ -30,7 +30,6 @@ private:
     struct LoadedModule {
         std::filesystem::path path;
         syntax::ModuleId id = syntax::INVALID_MODULE_ID;
-        base::SourceRange range{};
     };
 
     [[nodiscard]] base::Result<syntax::ModuleId> load_file(const std::filesystem::path& path,

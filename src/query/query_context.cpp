@@ -61,65 +61,32 @@ void normalize_dependencies(std::vector<QueryKey>& dependencies)
 
 } // namespace
 
-QueryContext::QueryContext()
-    : QueryContext(ModuleGraphProvider{provide_module_graph_query}, ModuleExportsProvider{provide_module_exports_query},
-          ItemListProvider{provide_item_list_query}, ItemSignatureProvider{provide_item_signature_query},
-          GenericTemplateSignatureProvider{provide_generic_template_signature_query},
-          GenericInstanceSignatureProvider{provide_generic_instance_signature_query},
-          FileContentProvider{provide_file_content_query}, LexFileProvider{provide_lex_file_query},
-          ParseFileProvider{provide_parse_file_query}, FunctionBodySyntaxProvider{provide_function_body_syntax_query},
-          TypeCheckBodyProvider{provide_type_check_body_query},
-          GenericInstanceBodyProvider{provide_generic_instance_body_query},
-          LowerFunctionIRProvider{provide_lower_function_ir_query},
-          LowerGenericInstanceIRProvider{provide_lower_generic_instance_ir_query},
-          DiagnosticsProvider{provide_diagnostics_query})
+QueryContext::QueryContext() : QueryContext(QueryProviderSet{})
+{
+}
+
+QueryContext::QueryContext(QueryProviderSet providers) : providers_(std::move(providers))
 {
 }
 
 QueryContext::QueryContext(ItemSignatureProvider item_signature_provider)
-    : QueryContext(ModuleGraphProvider{provide_module_graph_query}, ModuleExportsProvider{provide_module_exports_query},
-          ItemListProvider{provide_item_list_query}, std::move(item_signature_provider),
-          GenericTemplateSignatureProvider{provide_generic_template_signature_query},
-          GenericInstanceSignatureProvider{provide_generic_instance_signature_query},
-          FileContentProvider{provide_file_content_query}, LexFileProvider{provide_lex_file_query},
-          ParseFileProvider{provide_parse_file_query}, FunctionBodySyntaxProvider{provide_function_body_syntax_query},
-          TypeCheckBodyProvider{provide_type_check_body_query},
-          GenericInstanceBodyProvider{provide_generic_instance_body_query},
-          LowerFunctionIRProvider{provide_lower_function_ir_query},
-          LowerGenericInstanceIRProvider{provide_lower_generic_instance_ir_query},
-          DiagnosticsProvider{provide_diagnostics_query})
+    : QueryContext(QueryProviderSet{std::move(item_signature_provider)})
 {
 }
 
 QueryContext::QueryContext(
     ItemSignatureProvider item_signature_provider, GenericInstanceSignatureProvider generic_instance_signature_provider)
-    : QueryContext(ModuleGraphProvider{provide_module_graph_query}, ModuleExportsProvider{provide_module_exports_query},
-          ItemListProvider{provide_item_list_query}, std::move(item_signature_provider),
-          GenericTemplateSignatureProvider{provide_generic_template_signature_query},
-          std::move(generic_instance_signature_provider), FileContentProvider{provide_file_content_query},
-          LexFileProvider{provide_lex_file_query}, ParseFileProvider{provide_parse_file_query},
-          FunctionBodySyntaxProvider{provide_function_body_syntax_query},
-          TypeCheckBodyProvider{provide_type_check_body_query},
-          GenericInstanceBodyProvider{provide_generic_instance_body_query},
-          LowerFunctionIRProvider{provide_lower_function_ir_query},
-          LowerGenericInstanceIRProvider{provide_lower_generic_instance_ir_query},
-          DiagnosticsProvider{provide_diagnostics_query})
+    : QueryContext(QueryProviderSet{std::move(item_signature_provider), std::move(generic_instance_signature_provider)})
 {
 }
 
 QueryContext::QueryContext(ModuleExportsProvider module_exports_provider, ItemSignatureProvider item_signature_provider,
     GenericInstanceSignatureProvider generic_instance_signature_provider)
-    : QueryContext(ModuleGraphProvider{provide_module_graph_query}, std::move(module_exports_provider),
-          ItemListProvider{provide_item_list_query}, std::move(item_signature_provider),
-          GenericTemplateSignatureProvider{provide_generic_template_signature_query},
-          std::move(generic_instance_signature_provider), FileContentProvider{provide_file_content_query},
-          LexFileProvider{provide_lex_file_query}, ParseFileProvider{provide_parse_file_query},
-          FunctionBodySyntaxProvider{provide_function_body_syntax_query},
-          TypeCheckBodyProvider{provide_type_check_body_query},
-          GenericInstanceBodyProvider{provide_generic_instance_body_query},
-          LowerFunctionIRProvider{provide_lower_function_ir_query},
-          LowerGenericInstanceIRProvider{provide_lower_generic_instance_ir_query},
-          DiagnosticsProvider{provide_diagnostics_query})
+    : QueryContext(QueryProviderSet{
+          std::move(module_exports_provider),
+          std::move(item_signature_provider),
+          std::move(generic_instance_signature_provider),
+      })
 {
 }
 
@@ -131,110 +98,99 @@ QueryContext::QueryContext(ModuleGraphProvider module_graph_provider, ModuleExpo
     FunctionBodySyntaxProvider function_body_syntax_provider, TypeCheckBodyProvider type_check_body_provider,
     GenericInstanceBodyProvider generic_instance_body_provider, LowerFunctionIRProvider lower_function_ir_provider,
     LowerGenericInstanceIRProvider lower_generic_instance_ir_provider, DiagnosticsProvider diagnostics_provider)
+    : QueryContext(QueryProviderSet{
+          std::move(module_graph_provider),
+          std::move(module_exports_provider),
+          std::move(item_list_provider),
+          std::move(item_signature_provider),
+          std::move(generic_template_signature_provider),
+          std::move(generic_instance_signature_provider),
+          std::move(file_content_provider),
+          std::move(lex_file_provider),
+          std::move(parse_file_provider),
+          std::move(function_body_syntax_provider),
+          std::move(type_check_body_provider),
+          std::move(generic_instance_body_provider),
+          std::move(lower_function_ir_provider),
+          std::move(lower_generic_instance_ir_provider),
+          std::move(diagnostics_provider),
+      })
 {
-    this->set_file_content_provider(std::move(file_content_provider));
-    this->set_lex_file_provider(std::move(lex_file_provider));
-    this->set_parse_file_provider(std::move(parse_file_provider));
-    this->set_module_graph_provider(std::move(module_graph_provider));
-    this->set_module_exports_provider(std::move(module_exports_provider));
-    this->set_item_list_provider(std::move(item_list_provider));
-    this->set_item_signature_provider(std::move(item_signature_provider));
-    this->set_generic_template_signature_provider(std::move(generic_template_signature_provider));
-    this->set_generic_instance_signature_provider(std::move(generic_instance_signature_provider));
-    this->set_function_body_syntax_provider(std::move(function_body_syntax_provider));
-    this->set_type_check_body_provider(std::move(type_check_body_provider));
-    this->set_generic_instance_body_provider(std::move(generic_instance_body_provider));
-    this->set_lower_function_ir_provider(std::move(lower_function_ir_provider));
-    this->set_lower_generic_instance_ir_provider(std::move(lower_generic_instance_ir_provider));
-    this->set_diagnostics_provider(std::move(diagnostics_provider));
 }
 
 void QueryContext::set_file_content_provider(FileContentProvider provider)
 {
-    this->file_content_provider_ = provider ? std::move(provider) : FileContentProvider{provide_file_content_query};
+    this->providers_.set_file_content_provider(std::move(provider));
 }
 
 void QueryContext::set_lex_file_provider(LexFileProvider provider)
 {
-    this->lex_file_provider_ = provider ? std::move(provider) : LexFileProvider{provide_lex_file_query};
+    this->providers_.set_lex_file_provider(std::move(provider));
 }
 
 void QueryContext::set_parse_file_provider(ParseFileProvider provider)
 {
-    this->parse_file_provider_ = provider ? std::move(provider) : ParseFileProvider{provide_parse_file_query};
+    this->providers_.set_parse_file_provider(std::move(provider));
 }
 
 void QueryContext::set_module_graph_provider(ModuleGraphProvider provider)
 {
-    this->module_graph_provider_ = provider ? std::move(provider) : ModuleGraphProvider{provide_module_graph_query};
+    this->providers_.set_module_graph_provider(std::move(provider));
 }
 
 void QueryContext::set_module_exports_provider(ModuleExportsProvider provider)
 {
-    this->module_exports_provider_ =
-        provider ? std::move(provider) : ModuleExportsProvider{provide_module_exports_query};
+    this->providers_.set_module_exports_provider(std::move(provider));
 }
 
 void QueryContext::set_item_list_provider(ItemListProvider provider)
 {
-    this->item_list_provider_ = provider ? std::move(provider) : ItemListProvider{provide_item_list_query};
+    this->providers_.set_item_list_provider(std::move(provider));
 }
 
 void QueryContext::set_item_signature_provider(ItemSignatureProvider provider)
 {
-    this->item_signature_provider_ =
-        provider ? std::move(provider) : ItemSignatureProvider{provide_item_signature_query};
+    this->providers_.set_item_signature_provider(std::move(provider));
 }
 
 void QueryContext::set_generic_template_signature_provider(GenericTemplateSignatureProvider provider)
 {
-    this->generic_template_signature_provider_ = provider ? std::move(provider)
-                                                          : GenericTemplateSignatureProvider{
-                                                                provide_generic_template_signature_query,
-                                                            };
+    this->providers_.set_generic_template_signature_provider(std::move(provider));
 }
 
 void QueryContext::set_generic_instance_signature_provider(GenericInstanceSignatureProvider provider)
 {
-    this->generic_instance_signature_provider_ =
-        provider ? std::move(provider) : GenericInstanceSignatureProvider{provide_generic_instance_signature_query};
+    this->providers_.set_generic_instance_signature_provider(std::move(provider));
 }
 
 void QueryContext::set_function_body_syntax_provider(FunctionBodySyntaxProvider provider)
 {
-    this->function_body_syntax_provider_ =
-        provider ? std::move(provider) : FunctionBodySyntaxProvider{provide_function_body_syntax_query};
+    this->providers_.set_function_body_syntax_provider(std::move(provider));
 }
 
 void QueryContext::set_type_check_body_provider(TypeCheckBodyProvider provider)
 {
-    this->type_check_body_provider_ =
-        provider ? std::move(provider) : TypeCheckBodyProvider{provide_type_check_body_query};
+    this->providers_.set_type_check_body_provider(std::move(provider));
 }
 
 void QueryContext::set_generic_instance_body_provider(GenericInstanceBodyProvider provider)
 {
-    this->generic_instance_body_provider_ =
-        provider ? std::move(provider) : GenericInstanceBodyProvider{provide_generic_instance_body_query};
+    this->providers_.set_generic_instance_body_provider(std::move(provider));
 }
 
 void QueryContext::set_lower_function_ir_provider(LowerFunctionIRProvider provider)
 {
-    this->lower_function_ir_provider_ =
-        provider ? std::move(provider) : LowerFunctionIRProvider{provide_lower_function_ir_query};
+    this->providers_.set_lower_function_ir_provider(std::move(provider));
 }
 
 void QueryContext::set_lower_generic_instance_ir_provider(LowerGenericInstanceIRProvider provider)
 {
-    this->lower_generic_instance_ir_provider_ = provider ? std::move(provider)
-                                                         : LowerGenericInstanceIRProvider{
-                                                               provide_lower_generic_instance_ir_query,
-                                                           };
+    this->providers_.set_lower_generic_instance_ir_provider(std::move(provider));
 }
 
 void QueryContext::set_diagnostics_provider(DiagnosticsProvider provider)
 {
-    this->diagnostics_provider_ = provider ? std::move(provider) : DiagnosticsProvider{provide_diagnostics_query};
+    this->providers_.set_diagnostics_provider(std::move(provider));
 }
 
 QueryEvaluationResult QueryContext::evaluate_file_content(const FileContentProviderInput& input)
@@ -250,7 +206,7 @@ QueryEvaluationResult QueryContext::evaluate_file_content(const FileContentProvi
     }
     QueryNode& node = *start.node;
 
-    std::optional<FileContentProviderOutput> output = this->file_content_provider_(input);
+    std::optional<FileContentProviderOutput> output = this->providers_.provide_file_content(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -271,7 +227,7 @@ QueryEvaluationResult QueryContext::evaluate_lex_file(const LexFileProviderInput
     }
     QueryNode& node = *start.node;
 
-    std::optional<LexFileProviderOutput> output = this->lex_file_provider_(input);
+    std::optional<LexFileProviderOutput> output = this->providers_.provide_lex_file(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -292,7 +248,7 @@ QueryEvaluationResult QueryContext::evaluate_parse_file(const ParseFileProviderI
     }
     QueryNode& node = *start.node;
 
-    std::optional<ParseFileProviderOutput> output = this->parse_file_provider_(input);
+    std::optional<ParseFileProviderOutput> output = this->providers_.provide_parse_file(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -313,7 +269,7 @@ QueryEvaluationResult QueryContext::evaluate_module_graph(const ModuleGraphProvi
     }
     QueryNode& node = *start.node;
 
-    std::optional<ModuleGraphProviderOutput> output = this->module_graph_provider_(input);
+    std::optional<ModuleGraphProviderOutput> output = this->providers_.provide_module_graph(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -334,7 +290,7 @@ QueryEvaluationResult QueryContext::evaluate_module_exports(const ModuleExportsP
     }
     QueryNode& node = *start.node;
 
-    std::optional<ModuleExportsProviderOutput> output = this->module_exports_provider_(input);
+    std::optional<ModuleExportsProviderOutput> output = this->providers_.provide_module_exports(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -355,7 +311,7 @@ QueryEvaluationResult QueryContext::evaluate_item_list(const ItemListProviderInp
     }
     QueryNode& node = *start.node;
 
-    std::optional<ItemListProviderOutput> output = this->item_list_provider_(input);
+    std::optional<ItemListProviderOutput> output = this->providers_.provide_item_list(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -376,7 +332,7 @@ QueryEvaluationResult QueryContext::evaluate_item_signature(const ItemSignatureP
     }
     QueryNode& node = *start.node;
 
-    std::optional<ItemSignatureProviderOutput> output = this->item_signature_provider_(input);
+    std::optional<ItemSignatureProviderOutput> output = this->providers_.provide_item_signature(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -398,7 +354,8 @@ QueryEvaluationResult QueryContext::evaluate_generic_template_signature(
     }
     QueryNode& node = *start.node;
 
-    std::optional<GenericTemplateSignatureProviderOutput> output = this->generic_template_signature_provider_(input);
+    std::optional<GenericTemplateSignatureProviderOutput> output =
+        this->providers_.provide_generic_template_signature(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -421,7 +378,8 @@ QueryEvaluationResult QueryContext::evaluate_generic_instance_signature(
     }
     QueryNode& node = *start.node;
 
-    std::optional<GenericInstanceSignatureProviderOutput> output = this->generic_instance_signature_provider_(input);
+    std::optional<GenericInstanceSignatureProviderOutput> output =
+        this->providers_.provide_generic_instance_signature(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -442,7 +400,7 @@ QueryEvaluationResult QueryContext::evaluate_function_body_syntax(const Function
     }
     QueryNode& node = *start.node;
 
-    std::optional<FunctionBodySyntaxProviderOutput> output = this->function_body_syntax_provider_(input);
+    std::optional<FunctionBodySyntaxProviderOutput> output = this->providers_.provide_function_body_syntax(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -463,7 +421,7 @@ QueryEvaluationResult QueryContext::evaluate_type_check_body(const TypeCheckBody
     }
     QueryNode& node = *start.node;
 
-    std::optional<TypeCheckBodyProviderOutput> output = this->type_check_body_provider_(input);
+    std::optional<TypeCheckBodyProviderOutput> output = this->providers_.provide_type_check_body(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -485,7 +443,7 @@ QueryEvaluationResult QueryContext::evaluate_generic_instance_body(const Generic
     }
     QueryNode& node = *start.node;
 
-    std::optional<GenericInstanceBodyProviderOutput> output = this->generic_instance_body_provider_(input);
+    std::optional<GenericInstanceBodyProviderOutput> output = this->providers_.provide_generic_instance_body(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -506,7 +464,7 @@ QueryEvaluationResult QueryContext::evaluate_lower_function_ir(const LowerFuncti
     }
     QueryNode& node = *start.node;
 
-    std::optional<LowerFunctionIRProviderOutput> output = this->lower_function_ir_provider_(input);
+    std::optional<LowerFunctionIRProviderOutput> output = this->providers_.provide_lower_function_ir(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -528,7 +486,8 @@ QueryEvaluationResult QueryContext::evaluate_lower_generic_instance_ir(const Low
     }
     QueryNode& node = *start.node;
 
-    std::optional<LowerGenericInstanceIRProviderOutput> output = this->lower_generic_instance_ir_provider_(input);
+    std::optional<LowerGenericInstanceIRProviderOutput> output =
+        this->providers_.provide_lower_generic_instance_ir(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }
@@ -549,7 +508,7 @@ QueryEvaluationResult QueryContext::evaluate_diagnostics(const DiagnosticsProvid
     }
     QueryNode& node = *start.node;
 
-    std::optional<DiagnosticsProviderOutput> output = this->diagnostics_provider_(input);
+    std::optional<DiagnosticsProviderOutput> output = this->providers_.provide_diagnostics(input);
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }

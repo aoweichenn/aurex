@@ -1,3 +1,4 @@
+#include <aurex/query/query_context.hpp>
 #include <aurex/query/query_executor.hpp>
 
 #include <optional>

@@ -1,9 +1,14 @@
+#include <aurex/base/config.hpp>
+#include <aurex/base/integer.hpp>
+
 #include <support/test_support.hpp>
 
 #include <fstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+
+#include <driver/module_loader_support.hpp>
 
 namespace aurex::test {
 
@@ -110,6 +115,89 @@ TEST_F(AurexIntegrationTest, ModuleLoaderRemapsExpressionPayloadsWithoutFatNodes
             "@m0_stress_exprs_compute",
             "@m0_stress_exprs_choose",
         });
+}
+
+TEST_F(AurexIntegrationTest, ModuleLoaderDiagnosticsCoverSupportBranches)
+{
+    const fs::path missing_module_decl = write_import_test_source(tmp_root() / "missing_module_decl.ax",
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(missing_module_decl)).output,
+        "module declaration is required for importable files");
+
+    const fs::path missing_import_dir = tmp_root() / "missing-import-dir";
+    const fs::path alternate_import_dir = tmp_root() / "missing-import-alternate";
+    fs::create_directories(missing_import_dir);
+    fs::create_directories(alternate_import_dir);
+    const fs::path missing_import = write_import_test_source(tmp_root() / "missing_import_with_candidates.ax",
+        "module missing_import_with_candidates;\n"
+        "import absent.target;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    const std::string missing_output = require_failure(
+        aurexc() + " -I " + q(missing_import_dir) + " -I " + q(alternate_import_dir) + " --check " + q(missing_import))
+                                           .output;
+    expect_contains(missing_output, "failed to resolve import: absent.target");
+    expect_contains(missing_output,
+        (missing_import.parent_path() / "absent" / "target.ax").string() + ", "
+            + (missing_import_dir / "absent" / "target.ax").string() + ", "
+            + (alternate_import_dir / "absent" / "target.ax").string());
+
+    const fs::path duplicate_root = write_import_test_source(tmp_root() / "duplicate_root.ax",
+        "module duplicate_identity;\n"
+        "import duplicate_identity as dup;\n"
+        "fn main() -> i32 {\n"
+        "  return dup.value();\n"
+        "}\n");
+    static_cast<void>(write_import_test_source(tmp_root() / "duplicate_identity.ax",
+        "module duplicate_identity;\n"
+        "pub fn value() -> i32 {\n"
+        "  return 1;\n"
+        "}\n"));
+    expect_contains(require_failure(aurexc() + " --check " + q(duplicate_root)).output,
+        "duplicate module name 'duplicate_identity'");
+
+    const fs::path depth_dir = tmp_root() / "depth-imports";
+    fs::create_directories(depth_dir);
+    const fs::path depth_root = write_import_test_source(depth_dir / "depth_root.ax",
+        "module depth_root;\n"
+        "import depth_0;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    for (base::usize i = 0; i <= base::config::AUREX_MAX_INCLUDE_DEPTH; ++i) {
+        const std::string current = "depth_" + std::to_string(i);
+        const std::string next = "depth_" + std::to_string(i + 1);
+        std::ostringstream source;
+        source << "module " << current << ";\n"
+               << "import " << next << ";\n"
+               << "pub fn value() -> i32 {\n"
+               << "  return 0;\n"
+               << "}\n";
+        static_cast<void>(write_import_test_source(depth_dir / (current + ".ax"), source.str()));
+    }
+    expect_contains(require_failure(aurexc() + " --check " + q(depth_root)).output, "maximum import depth exceeded");
+}
+
+TEST(CoreUnit, ModuleLoaderSupportValidationDefensiveBranches)
+{
+    base::DiagnosticSink diagnostics;
+    syntax::AstModule combined;
+    const auto cached_validation =
+        driver::validate_cached_file_module_path(combined, syntax::INVALID_MODULE_ID, nullptr, diagnostics);
+    EXPECT_TRUE(cached_validation);
+
+    const fs::path canonical = tmp_root() / "same_module.ax";
+    const auto identity_validation =
+        driver::validate_unique_module_identity("same.module", canonical, canonical, base::SourceRange{}, diagnostics);
+    EXPECT_TRUE(identity_validation);
+
+    const auto cyclic_result = driver::report_cyclic_import(diagnostics, nullptr, canonical.string());
+    EXPECT_FALSE(cyclic_result);
+    ASSERT_FALSE(diagnostics.diagnostics().empty());
+    EXPECT_TRUE(diagnostics.diagnostics().back().range.empty());
 }
 
 } // namespace aurex::test

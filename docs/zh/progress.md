@@ -155,9 +155,22 @@ cache parser / writer 和 source fingerprint 继续集中在大文件里。`modu
 `diagnostic_renderer.hpp` / `native_toolchain.hpp` 也只依赖各自需要的 enum。query 层新增
 `query_graph.hpp` / `query_graph.cpp`，让 graph node / edge / dependency-kind 规则从
 provider-heavy 的 `query_context.hpp` 中分离出来，`query_edge_verifier.hpp`、`query_replay.hpp`
-和 `query_reuse.hpp` 只在实现文件里回到 context。相关 cache/query/incremental gtest、完整 ctest、改动 C++ 文件格式检查和
+和 `query_reuse.hpp` 只在实现文件里回到 context。随后 query 层继续新增
+`query_provider_set.hpp` / `query_provider_set.cpp`，把 provider 类型别名、默认 provider wiring
+和自定义 provider 回退策略收口为独立 Strategy 集合，`QueryContext` 不再直接持有十五个
+provider 成员，而是专注 query 生命周期、依赖图维护、缓存/失效协调和 provider set 转发；
+`query_executor.hpp` 也改为前置声明 `QueryContext`，避免 batch request API 被动包含完整
+context 实现。
+module loader 继续收口但保持聚合度：`module_loader_support.cpp` 作为私有 support 聚合点，
+承接路径/canonicalization、import 候选、文件读取、lex/parse、模块诊断和身份校验；
+`module_loader_remap.cpp` 继续只负责 AST remap / append 独立算法域；`module_loader.cpp`
+保留加载状态机、模块登记、import 递归和 append 编排。加载中集合清理改为局部 RAII scope，
+错误分支不再手动重复 erase。后续新增或重构函数参数数以 6 个为上限，超过时必须用具名
+context/value object 或重新切分职责，避免低聚合度 helper 继续扩散。
+相关 cache/query/incremental gtest、完整 ctest、改动 C++ 文件格式检查和
 `tools/check_coverage.sh` 已经重新跑过，source totals lines/functions/regions 覆盖率分别为
-95.23% / 97.84% / 95.19%，`aurexc` entrypoint 三项为 100.00%。
+95.26% / 97.84% / 95.23%，`module_loader_support.cpp` 三项为 99.38% / 100.00% / 98.65%，
+`aurexc` entrypoint 三项为 100.00%。
 M2.5 第一批 query-key 主路径已经闭环：`--incremental-cache` 默认使用 query-key pruning，
 只有显式 `--no-query-pruning` 才退回 coarse source-fingerprint 兼容路径。当前 query
 基础设施覆盖 stable key、canonical type / generic instance identity、`QueryContext`

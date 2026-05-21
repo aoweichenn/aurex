@@ -4,6 +4,7 @@ add_library(aurex_query
     src/query/query_key.cpp
     src/query/query_graph.cpp
     src/query/query_interner.cpp
+    src/query/query_provider_set.cpp
     src/query/query_executor.cpp
     src/query/query_replay.cpp
     src/query/stable_key_decoder.cpp

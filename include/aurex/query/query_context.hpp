@@ -1,55 +1,19 @@
 #pragma once
 
-#include <aurex/query/diagnostics_query.hpp>
-#include <aurex/query/function_body_syntax_query.hpp>
-#include <aurex/query/generic_instance_body_query.hpp>
-#include <aurex/query/generic_instance_signature_query.hpp>
-#include <aurex/query/generic_template_signature_query.hpp>
-#include <aurex/query/item_list_query.hpp>
-#include <aurex/query/item_signature_query.hpp>
-#include <aurex/query/lower_function_ir_query.hpp>
-#include <aurex/query/module_exports_query.hpp>
-#include <aurex/query/module_graph_query.hpp>
 #include <aurex/query/query_graph.hpp>
 #include <aurex/query/query_interner.hpp>
-#include <aurex/query/source_file_query.hpp>
-#include <aurex/query/type_check_body_query.hpp>
+#include <aurex/query/query_provider_set.hpp>
 
-#include <functional>
 #include <optional>
 #include <unordered_map>
 #include <vector>
 
 namespace aurex::query {
 
-using ItemSignatureProvider =
-    std::function<std::optional<ItemSignatureProviderOutput>(const ItemSignatureProviderInput&)>;
-using GenericInstanceSignatureProvider =
-    std::function<std::optional<GenericInstanceSignatureProviderOutput>(const GenericInstanceSignatureProviderInput&)>;
-using GenericInstanceBodyProvider =
-    std::function<std::optional<GenericInstanceBodyProviderOutput>(const GenericInstanceBodyProviderInput&)>;
-using LowerFunctionIRProvider =
-    std::function<std::optional<LowerFunctionIRProviderOutput>(const LowerFunctionIRProviderInput&)>;
-using LowerGenericInstanceIRProvider =
-    std::function<std::optional<LowerGenericInstanceIRProviderOutput>(const LowerGenericInstanceIRProviderInput&)>;
-using ModuleGraphProvider = std::function<std::optional<ModuleGraphProviderOutput>(const ModuleGraphProviderInput&)>;
-using ModuleExportsProvider =
-    std::function<std::optional<ModuleExportsProviderOutput>(const ModuleExportsProviderInput&)>;
-using ItemListProvider = std::function<std::optional<ItemListProviderOutput>(const ItemListProviderInput&)>;
-using GenericTemplateSignatureProvider =
-    std::function<std::optional<GenericTemplateSignatureProviderOutput>(const GenericTemplateSignatureProviderInput&)>;
-using FunctionBodySyntaxProvider =
-    std::function<std::optional<FunctionBodySyntaxProviderOutput>(const FunctionBodySyntaxProviderInput&)>;
-using TypeCheckBodyProvider =
-    std::function<std::optional<TypeCheckBodyProviderOutput>(const TypeCheckBodyProviderInput&)>;
-using DiagnosticsProvider = std::function<std::optional<DiagnosticsProviderOutput>(const DiagnosticsProviderInput&)>;
-using FileContentProvider = std::function<std::optional<FileContentProviderOutput>(const FileContentProviderInput&)>;
-using LexFileProvider = std::function<std::optional<LexFileProviderOutput>(const LexFileProviderInput&)>;
-using ParseFileProvider = std::function<std::optional<ParseFileProviderOutput>(const ParseFileProviderInput&)>;
-
 class QueryContext final {
 public:
     QueryContext();
+    explicit QueryContext(QueryProviderSet providers);
     explicit QueryContext(ItemSignatureProvider item_signature_provider);
     QueryContext(ItemSignatureProvider item_signature_provider,
         GenericInstanceSignatureProvider generic_instance_signature_provider);
@@ -130,21 +94,7 @@ private:
     std::unordered_map<QueryKey, QueryNode, QueryKeyHash> nodes_;
     std::unordered_map<QueryKey, std::vector<QueryKey>, QueryKeyHash> dependents_by_dependency_;
     base::usize dependency_edge_count_ = 0;
-    FileContentProvider file_content_provider_;
-    LexFileProvider lex_file_provider_;
-    ParseFileProvider parse_file_provider_;
-    ModuleGraphProvider module_graph_provider_;
-    ModuleExportsProvider module_exports_provider_;
-    ItemListProvider item_list_provider_;
-    ItemSignatureProvider item_signature_provider_;
-    GenericTemplateSignatureProvider generic_template_signature_provider_;
-    GenericInstanceSignatureProvider generic_instance_signature_provider_;
-    FunctionBodySyntaxProvider function_body_syntax_provider_;
-    TypeCheckBodyProvider type_check_body_provider_;
-    GenericInstanceBodyProvider generic_instance_body_provider_;
-    LowerFunctionIRProvider lower_function_ir_provider_;
-    LowerGenericInstanceIRProvider lower_generic_instance_ir_provider_;
-    DiagnosticsProvider diagnostics_provider_;
+    QueryProviderSet providers_;
 };
 
 } // namespace aurex::query

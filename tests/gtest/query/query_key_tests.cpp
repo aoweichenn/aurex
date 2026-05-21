@@ -13,6 +13,7 @@
 #include <aurex/query/query_edge_verifier.hpp>
 #include <aurex/query/query_executor.hpp>
 #include <aurex/query/query_interner.hpp>
+#include <aurex/query/query_provider_set.hpp>
 #include <aurex/query/query_replay.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/query/query_reuse.hpp>
@@ -2108,6 +2109,50 @@ TEST(QueryUnit, SourceFileProvidersBuildRecordsAndPipelineDependencies)
     mismatched_result_output.result =
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
     EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
+TEST(QueryUnit, QueryProviderSetOwnsProviderStrategiesAndDefaultFallbacks)
+{
+    const QueryContextSourceSubject subject = test_source_subject();
+    base::usize content_provider_calls = 0;
+    query::QueryProviderSet providers;
+    providers.set_file_content_provider(
+        [&content_provider_calls](const query::FileContentProviderInput& provider_input) {
+            ++content_provider_calls;
+            return query::provide_file_content_query(provider_input);
+        });
+
+    const query::FileContentProviderInput content_input{
+        subject.file,
+        subject.content,
+    };
+    const std::optional<query::FileContentProviderOutput> custom_content =
+        providers.provide_file_content(content_input);
+    ASSERT_TRUE(custom_content.has_value());
+    EXPECT_EQ(custom_content->result, subject.content);
+    EXPECT_EQ(content_provider_calls, 1U);
+
+    providers.set_file_content_provider({});
+    const std::optional<query::FileContentProviderOutput> fallback_content =
+        providers.provide_file_content(content_input);
+    ASSERT_TRUE(fallback_content.has_value());
+    EXPECT_EQ(fallback_content->record.key, custom_content->record.key);
+    EXPECT_EQ(fallback_content->result, custom_content->result);
+    EXPECT_EQ(content_provider_calls, 1U);
+
+    query::QueryProviderSet item_providers{
+        [](const query::ItemSignatureProviderInput&) -> std::optional<query::ItemSignatureProviderOutput> {
+            return std::nullopt;
+        },
+    };
+    const QueryContextItemSignatureSubject item_subject =
+        test_item_signature_subject("provider_set_item", QUERY_TEST_PROVIDER_SIGNATURE);
+    EXPECT_FALSE(item_providers.provide_item_signature(item_subject.input).has_value());
+    item_providers.set_item_signature_provider({});
+    const std::optional<query::ItemSignatureProviderOutput> fallback_item =
+        item_providers.provide_item_signature(item_subject.input);
+    ASSERT_TRUE(fallback_item.has_value());
+    EXPECT_TRUE(query::is_valid(*fallback_item));
 }
 
 TEST(QueryUnit, ItemSignatureProviderBuildsRecordFromStableDefinition)

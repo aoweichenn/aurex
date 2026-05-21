@@ -5,6 +5,7 @@ add_library(aurex_driver
     src/driver/file_cache.cpp
     src/driver/incremental_cache.cpp
     src/driver/module_loader.cpp
+    src/driver/module_loader_remap.cpp
     src/driver/native_toolchain.cpp
     src/driver/profile.cpp
 )

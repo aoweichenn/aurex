@@ -2,8 +2,8 @@
 #include <aurex/driver/cli.hpp>
 #include <aurex/driver/compiler.hpp>
 #include <aurex/driver/driver_messages.hpp>
+#include <aurex/driver/diagnostic_renderer.hpp>
 
-#include <array>
 #include <filesystem>
 #include <ostream>
 #include <string>
@@ -25,16 +25,6 @@ inline constexpr std::string_view CLI_HELP_OPTION_INDENT = "    ";
 inline constexpr std::string_view CLI_OUTPUT_OBJECT_EXTENSION = ".o";
 inline constexpr std::string_view CLI_OUTPUT_ASSEMBLY_EXTENSION = ".s";
 inline constexpr std::string_view CLI_LONG_OPTION_PREFIX = "--";
-inline constexpr char CLI_JSON_QUOTE = '"';
-inline constexpr char CLI_JSON_BACKSLASH = '\\';
-inline constexpr char CLI_JSON_NEWLINE = '\n';
-inline constexpr char CLI_JSON_CARRIAGE_RETURN = '\r';
-inline constexpr char CLI_JSON_TAB = '\t';
-inline constexpr unsigned int CLI_JSON_CONTROL_CHAR_LIMIT = 0x20U;
-inline constexpr unsigned int CLI_JSON_NIBBLE_BITS = 4U;
-inline constexpr unsigned int CLI_JSON_LOW_NIBBLE_MASK = 0x0fU;
-inline constexpr char CLI_JSON_HEX_DIGITS[] = "0123456789abcdef";
-
 enum class OptionLevel {
     primary,
     secondary,
@@ -689,58 +679,6 @@ struct ParsedOption {
         || code == base::ErrorCode::sema_error;
 }
 
-void print_cli_json_escaped(std::ostream& out, const std::string_view text)
-{
-    out << CLI_JSON_QUOTE;
-    for (const unsigned char byte : text) {
-        switch (byte) {
-            case CLI_JSON_QUOTE:
-                out << "\\\"";
-                break;
-            case CLI_JSON_BACKSLASH:
-                out << "\\\\";
-                break;
-            case CLI_JSON_NEWLINE:
-                out << "\\n";
-                break;
-            case CLI_JSON_CARRIAGE_RETURN:
-                out << "\\r";
-                break;
-            case CLI_JSON_TAB:
-                out << "\\t";
-                break;
-            default:
-                if (byte < CLI_JSON_CONTROL_CHAR_LIMIT) {
-                    out << "\\u00" << CLI_JSON_HEX_DIGITS[(byte >> CLI_JSON_NIBBLE_BITS) & CLI_JSON_LOW_NIBBLE_MASK]
-                        << CLI_JSON_HEX_DIGITS[byte & CLI_JSON_LOW_NIBBLE_MASK];
-                } else {
-                    out << static_cast<char>(byte);
-                }
-                break;
-        }
-    }
-    out << CLI_JSON_QUOTE;
-}
-
-void print_cli_driver_error_json(std::ostream& err, const std::string_view message)
-{
-    err << "{\n";
-    err << "  \"format\": \"aurex-diagnostics-v1\",\n";
-    err << "  \"diagnostics\": [\n";
-    err << "    {\n";
-    err << "      \"severity\": \"fatal\",\n";
-    err << "      \"category\": \"general\",\n";
-    err << "      \"code\": \"none\",\n";
-    err << "      \"message\": ";
-    print_cli_json_escaped(err, message);
-    err << ",\n";
-    err << "      \"range\": null\n";
-    err << "    }\n";
-    err << "  ],\n";
-    err << "  \"suppressed\": 0\n";
-    err << "}\n";
-}
-
 [[nodiscard]] std::filesystem::path inferred_native_output_path(
     const std::filesystem::path& input_path, const EmitKind emit_kind)
 {
@@ -1040,10 +978,10 @@ int run_cli(const std::span<const std::string_view> arguments, std::ostream& out
     if (!compile_result) {
         if (parsed.invocation.diagnostic_format == DiagnosticOutputFormat::json) {
             if (!compiler_error_already_printed_diagnostics(compile_result.error().code)) {
-                print_cli_driver_error_json(err, compile_result.error().message);
+                render_driver_error(err, compile_result.error().message, parsed.invocation.diagnostic_format);
             }
         } else {
-            err << DRIVER_ERROR_PREFIX << compile_result.error().message << "\n";
+            render_driver_error(err, compile_result.error().message, parsed.invocation.diagnostic_format);
         }
         return CLI_COMPILATION_FAILURE_EXIT_CODE;
     }

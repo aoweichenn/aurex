@@ -20,6 +20,7 @@
 - [类、trait 与组合背景说明](class-trait-composition-background.md)
 - [Aurex 模块系统 V2 设计草案](module-system-v2-design.md)
 - [设计实现文档](implementation.md)
+- [M2.5 收尾重构详细设计](m2.5-refactor-cleanup-design.md)
 - [当前进度文档](progress.md)
 - [M2.5 路线图](m2.5-roadmap.md)
 - [M2.5 Query Key 设计](m2.5-query-key-design.md)

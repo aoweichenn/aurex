@@ -1,5 +1,6 @@
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/base/source.hpp>
+#include <aurex/driver/diagnostic_renderer.hpp>
 #include <aurex/driver/compiler.hpp>
 #include <aurex/driver/driver_messages.hpp>
 #include <aurex/driver/file_cache.hpp>
@@ -16,43 +17,16 @@
 #include <aurex/syntax/ast_dump.hpp>
 #include <aurex/syntax/lossless.hpp>
 
-#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <span>
 #include <string>
-#include <unistd.h>
 #include <utility>
 
 namespace aurex::driver {
 
 namespace {
-
-constexpr base::usize DRIVER_MAX_PRINTED_DIAGNOSTICS = 128;
-constexpr base::usize DRIVER_MAX_DIAGNOSTIC_SPAN_LINES = 8;
-constexpr std::string_view DRIVER_COLOR_ENV = "AUREX_COLOR_DIAGNOSTICS";
-constexpr std::string_view DRIVER_COLOR_ALWAYS = "always";
-constexpr std::string_view DRIVER_COLOR_NEVER = "never";
-constexpr std::string_view DRIVER_COLOR_AUTO = "auto";
-constexpr std::string_view DRIVER_NO_COLOR_ENV = "NO_COLOR";
-constexpr std::string_view DRIVER_COLOR_RESET = "\033[0m";
-constexpr std::string_view DRIVER_COLOR_ERROR = "\033[1;31m";
-constexpr std::string_view DRIVER_COLOR_WARNING = "\033[1;33m";
-constexpr std::string_view DRIVER_COLOR_NOTE = "\033[1;36m";
-constexpr std::string_view DRIVER_COLOR_HELP = "\033[1;32m";
-constexpr std::string_view DRIVER_COLOR_CARET = "\033[1;32m";
-constexpr char DRIVER_JSON_QUOTE = '"';
-constexpr char DRIVER_JSON_BACKSLASH = '\\';
-constexpr char DRIVER_JSON_NEWLINE = '\n';
-constexpr char DRIVER_JSON_CARRIAGE_RETURN = '\r';
-constexpr char DRIVER_JSON_TAB = '\t';
-constexpr unsigned int DRIVER_JSON_CONTROL_CHAR_LIMIT = 0x20U;
-constexpr unsigned int DRIVER_JSON_BYTE_MASK = 0xffU;
-constexpr unsigned int DRIVER_JSON_NIBBLE_BITS = 4U;
-constexpr unsigned int DRIVER_JSON_LOW_NIBBLE_MASK = 0x0fU;
-constexpr char DRIVER_JSON_HEX_DIGITS[] = "0123456789abcdef";
 
 [[nodiscard]] bool emit_kind_requires_ir_lowering(const EmitKind emit_kind) noexcept
 {
@@ -94,236 +68,6 @@ constexpr char DRIVER_JSON_HEX_DIGITS[] = "0123456789abcdef";
         });
     }
     return emitter(LlvmIrEmitRequest{&module, std::move(module_name)});
-}
-
-[[nodiscard]] bool env_equals(const char* const value, const std::string_view expected) noexcept
-{
-    return value != nullptr && std::string_view{value} == expected;
-}
-
-[[nodiscard]] bool diagnostic_color_enabled() noexcept
-{
-    const char* const color_env = std::getenv(DRIVER_COLOR_ENV.data());
-    if (env_equals(color_env, DRIVER_COLOR_ALWAYS)) {
-        return true;
-    }
-    if (env_equals(color_env, DRIVER_COLOR_NEVER)) {
-        return false;
-    }
-    if (color_env != nullptr && std::string_view{color_env} != DRIVER_COLOR_AUTO) {
-        return false;
-    }
-    if (std::getenv(DRIVER_NO_COLOR_ENV.data()) != nullptr) {
-        return false;
-    }
-    return ::isatty(STDERR_FILENO) != 0;
-}
-
-[[nodiscard]] std::string_view severity_color(const base::Severity severity) noexcept
-{
-    switch (severity) {
-        case base::Severity::error:
-        case base::Severity::fatal:
-            return DRIVER_COLOR_ERROR;
-        case base::Severity::warning:
-            return DRIVER_COLOR_WARNING;
-        case base::Severity::note:
-            return DRIVER_COLOR_NOTE;
-        case base::Severity::help:
-            return DRIVER_COLOR_HELP;
-    }
-    return {};
-}
-
-void print_colored(const bool color, const std::string_view color_code, const std::string_view text)
-{
-    if (color && !color_code.empty()) {
-        std::cerr << color_code << text << DRIVER_COLOR_RESET;
-        return;
-    }
-    std::cerr << text;
-}
-
-[[nodiscard]] base::usize diagnostic_span_end(const base::SourceRange& range, const std::string_view text) noexcept
-{
-    if (range.end > range.begin) {
-        return std::min(range.end, text.size());
-    }
-    return std::min(range.begin + 1, text.size());
-}
-
-void print_diagnostic_source_line(const base::SourceFile& file, const base::SourceRange& range,
-    const base::usize line_offset, const base::usize span_end, const bool color)
-{
-    const std::string_view text = file.text();
-    const base::SourceLineExtent line = file.line_extent(line_offset);
-    const std::string_view source_line = text.substr(line.begin, line.end - line.begin);
-    std::cerr << "  " << source_line << "\n";
-    std::cerr << "  ";
-
-    const base::usize highlight_begin = std::max(range.begin, line.begin);
-    const base::usize highlight_end = std::max(highlight_begin + 1, std::min(span_end, line.end));
-    const base::usize caret_column = std::min(highlight_begin, line.end) - line.begin;
-    for (base::usize i = 0; i < caret_column && i < source_line.size(); ++i) {
-        std::cerr << (source_line[i] == '\t' ? '\t' : ' ');
-    }
-    print_colored(color, DRIVER_COLOR_CARET, "^");
-    for (base::usize i = highlight_begin + 1; i < highlight_end && i < line.end; ++i) {
-        print_colored(color, DRIVER_COLOR_CARET, "~");
-    }
-    std::cerr << "\n";
-}
-
-void print_diagnostic_source(const base::SourceFile& file, const query::QueryDiagnosticEvent& event, const bool color)
-{
-    const std::string_view text = file.text();
-    if (text.empty()) {
-        return;
-    }
-    const base::usize span_begin = std::min(event.range.begin, text.size());
-    const base::usize span_end = diagnostic_span_end(event.range, text);
-    base::usize line_offset = span_begin;
-    base::usize printed_lines = 0;
-    while (line_offset <= span_end && printed_lines < DRIVER_MAX_DIAGNOSTIC_SPAN_LINES) {
-        const base::SourceLineExtent line = file.line_extent(line_offset);
-        print_diagnostic_source_line(file, event.range, line_offset, span_end, color);
-        printed_lines += 1;
-        if (span_end <= line.end || line.end >= text.size()) {
-            return;
-        }
-        line_offset = line.end + 1;
-    }
-    if (line_offset <= span_end) {
-        std::cerr << "  ...\n";
-    }
-}
-
-void print_json_escaped(const std::string_view text)
-{
-    std::cerr << DRIVER_JSON_QUOTE;
-    for (const unsigned char byte : text) {
-        switch (byte) {
-            case DRIVER_JSON_QUOTE:
-                std::cerr << "\\\"";
-                break;
-            case DRIVER_JSON_BACKSLASH:
-                std::cerr << "\\\\";
-                break;
-            case DRIVER_JSON_NEWLINE:
-                std::cerr << "\\n";
-                break;
-            case DRIVER_JSON_CARRIAGE_RETURN:
-                std::cerr << "\\r";
-                break;
-            case DRIVER_JSON_TAB:
-                std::cerr << "\\t";
-                break;
-            default:
-                if (byte < DRIVER_JSON_CONTROL_CHAR_LIMIT) {
-                    std::cerr << "\\u00"
-                              << DRIVER_JSON_HEX_DIGITS[(byte >> DRIVER_JSON_NIBBLE_BITS) & DRIVER_JSON_LOW_NIBBLE_MASK]
-                              << DRIVER_JSON_HEX_DIGITS[byte & DRIVER_JSON_LOW_NIBBLE_MASK];
-                } else {
-                    std::cerr << static_cast<char>(byte & DRIVER_JSON_BYTE_MASK);
-                }
-                break;
-        }
-    }
-    std::cerr << DRIVER_JSON_QUOTE;
-}
-
-void print_json_string_field(const std::string_view key, const std::string_view value, const bool trailing_comma)
-{
-    print_json_escaped(key);
-    std::cerr << ": ";
-    print_json_escaped(value);
-    if (trailing_comma) {
-        std::cerr << ",";
-    }
-    std::cerr << "\n";
-}
-
-void print_json_range(const base::SourceFile& file, const base::SourceRange& range)
-{
-    const base::LineColumn start = file.line_column(range.begin);
-    const base::LineColumn end = file.line_column(range.end);
-    std::cerr << "      \"range\": {\n";
-    std::cerr << "        \"source_id\": " << range.source.value << ",\n";
-    std::cerr << "        \"path\": ";
-    print_json_escaped(file.path());
-    std::cerr << ",\n";
-    std::cerr << "        \"start\": {\"byte\": " << range.begin << ", \"line\": " << start.line
-              << ", \"column\": " << start.column << "},\n";
-    std::cerr << "        \"end\": {\"byte\": " << range.end << ", \"line\": " << end.line
-              << ", \"column\": " << end.column << "}\n";
-    std::cerr << "      }\n";
-}
-
-void print_json_diagnostics(const base::SourceManager& sources, const query::DiagnosticsEventStream& diagnostics)
-{
-    const std::span<const query::QueryDiagnosticEvent> all = diagnostics.events;
-    const base::usize count = std::min<base::usize>(all.size(), DRIVER_MAX_PRINTED_DIAGNOSTICS);
-    std::cerr << "{\n";
-    std::cerr << "  \"format\": \"aurex-diagnostics-v1\",\n";
-    std::cerr << "  \"diagnostics\": [\n";
-    for (base::usize index = 0; index < count; ++index) {
-        const query::QueryDiagnosticEvent& diagnostic = all[index];
-        const base::SourceFile& file = sources.get(diagnostic.range.source);
-        std::cerr << "    {\n";
-        std::cerr << "      ";
-        print_json_string_field("severity", base::severity_name(diagnostic.severity), true);
-        std::cerr << "      ";
-        print_json_string_field("category", base::diagnostic_category_name(diagnostic.category), true);
-        std::cerr << "      ";
-        print_json_string_field("code", base::diagnostic_code_name(diagnostic.code), true);
-        std::cerr << "      ";
-        print_json_string_field("message", diagnostic.message, true);
-        print_json_range(file, diagnostic.range);
-        std::cerr << "    }";
-        if (index + 1 < count) {
-            std::cerr << ",";
-        }
-        std::cerr << "\n";
-    }
-    std::cerr << "  ],\n";
-    std::cerr << "  \"suppressed\": "
-              << (all.size() > DRIVER_MAX_PRINTED_DIAGNOSTICS ? all.size() - DRIVER_MAX_PRINTED_DIAGNOSTICS : 0)
-              << "\n";
-    std::cerr << "}\n";
-}
-
-void print_text_diagnostics(const base::SourceManager& sources, const query::DiagnosticsEventStream& diagnostics)
-{
-    const std::span<const query::QueryDiagnosticEvent> all = diagnostics.events;
-    const base::usize count = std::min<base::usize>(all.size(), DRIVER_MAX_PRINTED_DIAGNOSTICS);
-    const bool color = diagnostic_color_enabled();
-    for (base::usize index = 0; index < count; ++index) {
-        const query::QueryDiagnosticEvent& diagnostic = all[index];
-        const base::SourceFile& file = sources.get(diagnostic.range.source);
-        const base::LineColumn location = file.line_column(diagnostic.range.begin);
-        std::cerr << file.path() << ":" << location.line << ":" << location.column << ": ";
-        print_colored(color, severity_color(diagnostic.severity), base::severity_name(diagnostic.severity));
-        std::cerr << ": " << diagnostic.message << "\n";
-        print_diagnostic_source(file, diagnostic, color);
-    }
-    if (all.size() > DRIVER_MAX_PRINTED_DIAGNOSTICS) {
-        std::cerr << "error: too many diagnostics; suppressing " << (all.size() - DRIVER_MAX_PRINTED_DIAGNOSTICS)
-                  << " additional diagnostics\n";
-    }
-}
-
-void print_diagnostics(
-    const base::SourceManager& sources, const base::DiagnosticSink& diagnostics, const DiagnosticOutputFormat format)
-{
-    if (diagnostics.diagnostics().empty()) {
-        return;
-    }
-    const query::DiagnosticsEventStream stream = query::diagnostic_events_from_sink(diagnostics.diagnostics());
-    if (format == DiagnosticOutputFormat::json) {
-        print_json_diagnostics(sources, stream);
-        return;
-    }
-    print_text_diagnostics(sources, stream);
 }
 
 [[nodiscard]] base::Error remap_diagnostic_loader_error(const base::Error& error)
@@ -406,7 +150,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
             return lexer.tokenize();
         }();
         if (!token_result) {
-            print_diagnostics(sources, diagnostics, invocation.diagnostic_format);
+            render_diagnostics(std::cerr, sources, diagnostics, invocation.diagnostic_format);
             return run_profile.finish(base::Result<void>::fail(token_result.error()));
         }
         {
@@ -426,7 +170,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
     auto ast_result = loader.load_root();
 
     if (!ast_result) {
-        print_diagnostics(sources, diagnostics, invocation.diagnostic_format);
+        render_diagnostics(std::cerr, sources, diagnostics, invocation.diagnostic_format);
         return run_profile.finish(base::Result<void>::fail(diagnostics.diagnostics().empty()
                 ? ast_result.error()
                 : remap_diagnostic_loader_error(ast_result.error())));
@@ -461,7 +205,7 @@ base::Result<void> Compiler::run(const CompilerInvocation& invocation) const
         return analyzer.analyze();
     }();
     if (!checked_result) {
-        print_diagnostics(sources, diagnostics, invocation.diagnostic_format);
+        render_diagnostics(std::cerr, sources, diagnostics, invocation.diagnostic_format);
         return run_profile.finish(base::Result<void>::fail(checked_result.error()));
     }
 

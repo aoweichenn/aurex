@@ -1,6 +1,7 @@
 add_library(aurex_driver
     src/driver/cli.cpp
     src/driver/compiler.cpp
+    src/driver/diagnostic_renderer.cpp
     src/driver/file_cache.cpp
     src/driver/incremental_cache.cpp
     src/driver/module_loader.cpp

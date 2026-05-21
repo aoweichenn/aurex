@@ -4,7 +4,9 @@ add_library(aurex_driver
     src/driver/diagnostic_renderer.cpp
     src/driver/file_cache.cpp
     src/driver/incremental_cache.cpp
-    src/driver/incremental_cache/io.cpp
+    src/driver/incremental_cache/io/fingerprint.cpp
+    src/driver/incremental_cache/io/reader.cpp
+    src/driver/incremental_cache/io/writer.cpp
     src/driver/incremental_cache/profile.cpp
     src/driver/incremental_cache/query.cpp
     src/driver/incremental_cache/query_stats.cpp
@@ -12,6 +14,10 @@ add_library(aurex_driver
     src/driver/incremental_cache/schedule.cpp
     src/driver/incremental_cache/source_stage.cpp
     src/driver/incremental_cache/subjects.cpp
+    src/driver/incremental_cache/subjects/module.cpp
+    src/driver/incremental_cache/subjects/ordering.cpp
+    src/driver/incremental_cache/subjects/semantic.cpp
+    src/driver/incremental_cache/subjects/source.cpp
     src/driver/module_loader.cpp
     src/driver/module_loader_remap.cpp
     src/driver/native_toolchain.cpp

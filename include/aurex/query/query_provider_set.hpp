@@ -43,22 +43,33 @@ using FileContentProvider = std::function<std::optional<FileContentProviderOutpu
 using LexFileProvider = std::function<std::optional<LexFileProviderOutput>(const LexFileProviderInput&)>;
 using ParseFileProvider = std::function<std::optional<ParseFileProviderOutput>(const ParseFileProviderInput&)>;
 
+struct QueryProviderOverrides final {
+    FileContentProvider file_content;
+    LexFileProvider lex_file;
+    ParseFileProvider parse_file;
+    ModuleGraphProvider module_graph;
+    ModuleExportsProvider module_exports;
+    ItemListProvider item_list;
+    ItemSignatureProvider item_signature;
+    GenericTemplateSignatureProvider generic_template_signature;
+    GenericInstanceSignatureProvider generic_instance_signature;
+    FunctionBodySyntaxProvider function_body_syntax;
+    TypeCheckBodyProvider type_check_body;
+    GenericInstanceBodyProvider generic_instance_body;
+    LowerFunctionIRProvider lower_function_ir;
+    LowerGenericInstanceIRProvider lower_generic_instance_ir;
+    DiagnosticsProvider diagnostics;
+};
+
 class QueryProviderSet final {
 public:
     QueryProviderSet();
+    explicit QueryProviderSet(QueryProviderOverrides overrides);
     explicit QueryProviderSet(ItemSignatureProvider item_signature_provider);
     QueryProviderSet(ItemSignatureProvider item_signature_provider,
         GenericInstanceSignatureProvider generic_instance_signature_provider);
     QueryProviderSet(ModuleExportsProvider module_exports_provider, ItemSignatureProvider item_signature_provider,
         GenericInstanceSignatureProvider generic_instance_signature_provider);
-    QueryProviderSet(ModuleGraphProvider module_graph_provider, ModuleExportsProvider module_exports_provider,
-        ItemListProvider item_list_provider, ItemSignatureProvider item_signature_provider,
-        GenericTemplateSignatureProvider generic_template_signature_provider,
-        GenericInstanceSignatureProvider generic_instance_signature_provider, FileContentProvider file_content_provider,
-        LexFileProvider lex_file_provider, ParseFileProvider parse_file_provider,
-        FunctionBodySyntaxProvider function_body_syntax_provider, TypeCheckBodyProvider type_check_body_provider,
-        GenericInstanceBodyProvider generic_instance_body_provider, LowerFunctionIRProvider lower_function_ir_provider,
-        LowerGenericInstanceIRProvider lower_generic_instance_ir_provider, DiagnosticsProvider diagnostics_provider);
 
     void set_file_content_provider(FileContentProvider provider);
     void set_lex_file_provider(LexFileProvider provider);

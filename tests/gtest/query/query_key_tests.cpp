@@ -2155,6 +2155,71 @@ TEST(QueryUnit, QueryProviderSetOwnsProviderStrategiesAndDefaultFallbacks)
     EXPECT_TRUE(query::is_valid(*fallback_item));
 }
 
+TEST(QueryUnit, QueryProviderOverridesAggregateProviderWiring)
+{
+    const QueryContextSourceSubject subject = test_source_subject();
+    base::usize content_provider_calls = 0;
+    base::usize lex_provider_calls = 0;
+    query::QueryProviderOverrides overrides;
+    overrides.file_content = [&content_provider_calls](const query::FileContentProviderInput& provider_input) {
+        ++content_provider_calls;
+        return query::provide_file_content_query(provider_input);
+    };
+    overrides.lex_file = [&lex_provider_calls](
+                             const query::LexFileProviderInput&) -> std::optional<query::LexFileProviderOutput> {
+        ++lex_provider_calls;
+        return std::nullopt;
+    };
+    query::QueryProviderSet providers{std::move(overrides)};
+
+    const std::optional<query::FileContentProviderOutput> content_output =
+        providers.provide_file_content(query::FileContentProviderInput{
+            subject.file,
+            subject.content,
+        });
+    ASSERT_TRUE(content_output.has_value());
+    EXPECT_EQ(content_output->result, subject.content);
+    EXPECT_EQ(content_provider_calls, 1U);
+
+    EXPECT_FALSE(providers.provide_lex_file(query::LexFileProviderInput{subject.lex_file, subject.tokens}).has_value());
+    EXPECT_EQ(lex_provider_calls, 1U);
+
+    const std::optional<query::ParseFileProviderOutput> fallback_parse =
+        providers.provide_parse_file(query::ParseFileProviderInput{
+            subject.parse_file,
+            subject.syntax,
+        });
+    ASSERT_TRUE(fallback_parse.has_value());
+    EXPECT_TRUE(query::is_valid(*fallback_parse));
+}
+
+TEST(QueryUnit, QueryContextAcceptsProviderOverridesAggregate)
+{
+    const QueryContextSourceSubject subject = test_source_subject();
+    base::usize content_provider_calls = 0;
+    query::QueryProviderOverrides overrides;
+    overrides.file_content = [&content_provider_calls](const query::FileContentProviderInput& provider_input) {
+        ++content_provider_calls;
+        return query::provide_file_content_query(provider_input);
+    };
+    query::QueryContext context{std::move(overrides)};
+
+    const query::QueryEvaluationResult content_result =
+        context.evaluate_file_content(query::FileContentProviderInput{subject.file, subject.content});
+    ASSERT_EQ(content_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(content_result.node, nullptr);
+    EXPECT_EQ(content_provider_calls, 1U);
+
+    const query::QueryEvaluationResult cached_content =
+        context.evaluate_file_content(query::FileContentProviderInput{subject.file, subject.content});
+    EXPECT_EQ(cached_content.status, query::QueryEvaluationStatus::cached);
+    EXPECT_EQ(content_provider_calls, 1U);
+
+    const query::QueryEvaluationResult default_parse =
+        context.evaluate_parse_file(query::ParseFileProviderInput{subject.parse_file, subject.syntax});
+    EXPECT_EQ(default_parse.status, query::QueryEvaluationStatus::computed);
+}
+
 TEST(QueryUnit, ItemSignatureProviderBuildsRecordFromStableDefinition)
 {
     const std::array<std::string_view, 2> stable_module_path{"regex", "vm"};

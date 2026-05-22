@@ -5,9 +5,10 @@
 #include <optional>
 #include <span>
 #include <string_view>
-#include <vector>
 
 namespace aurex::parse {
+
+struct BracketSuffixDecision;
 
 class PostfixExprParser final : private ParserPartBase {
 public:
@@ -28,12 +29,10 @@ private:
     [[nodiscard]] syntax::ExprId parse_bracket_suffix(syntax::ExprId base, ExprContext context);
     [[nodiscard]] BracketArg parse_bracket_arg(ExprContext context);
     [[nodiscard]] bool bracket_arg_starts_type_only() const noexcept;
-    [[nodiscard]] bool bracket_parenthesized_arg_is_type() const noexcept;
-    [[nodiscard]] bool bracket_suffix_is_inside_generic_continuation() const noexcept;
     [[nodiscard]] bool bracket_args_contain_type_only(std::span<const BracketArg> args) const noexcept;
     [[nodiscard]] bool bracket_args_are_type_like(std::span<const BracketArg> args) const;
     [[nodiscard]] bool bracket_arg_expr_is_type_like(syntax::ExprId expr) const;
-    [[nodiscard]] bool bracket_suffix_is_type_argument_context(
+    [[nodiscard]] BracketSuffixDecision classify_bracket_suffix(
         syntax::ExprId base, std::span<const BracketArg> args, bool has_type_only_arg, ExprContext context) const;
     [[nodiscard]] std::optional<syntax::AstArenaVector<syntax::TypeId>> bracket_args_to_type_args(
         std::span<const BracketArg> args, bool report_errors);

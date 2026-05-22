@@ -69,6 +69,11 @@ QueryContext::QueryContext(QueryProviderSet providers) : providers_(std::move(pr
 {
 }
 
+QueryContext::QueryContext(QueryProviderOverrides provider_overrides)
+    : QueryContext(QueryProviderSet{std::move(provider_overrides)})
+{
+}
+
 QueryContext::QueryContext(ItemSignatureProvider item_signature_provider)
     : QueryContext(QueryProviderSet{std::move(item_signature_provider)})
 {
@@ -86,34 +91,6 @@ QueryContext::QueryContext(ModuleExportsProvider module_exports_provider, ItemSi
           std::move(module_exports_provider),
           std::move(item_signature_provider),
           std::move(generic_instance_signature_provider),
-      })
-{
-}
-
-QueryContext::QueryContext(ModuleGraphProvider module_graph_provider, ModuleExportsProvider module_exports_provider,
-    ItemListProvider item_list_provider, ItemSignatureProvider item_signature_provider,
-    GenericTemplateSignatureProvider generic_template_signature_provider,
-    GenericInstanceSignatureProvider generic_instance_signature_provider, FileContentProvider file_content_provider,
-    LexFileProvider lex_file_provider, ParseFileProvider parse_file_provider,
-    FunctionBodySyntaxProvider function_body_syntax_provider, TypeCheckBodyProvider type_check_body_provider,
-    GenericInstanceBodyProvider generic_instance_body_provider, LowerFunctionIRProvider lower_function_ir_provider,
-    LowerGenericInstanceIRProvider lower_generic_instance_ir_provider, DiagnosticsProvider diagnostics_provider)
-    : QueryContext(QueryProviderSet{
-          std::move(module_graph_provider),
-          std::move(module_exports_provider),
-          std::move(item_list_provider),
-          std::move(item_signature_provider),
-          std::move(generic_template_signature_provider),
-          std::move(generic_instance_signature_provider),
-          std::move(file_content_provider),
-          std::move(lex_file_provider),
-          std::move(parse_file_provider),
-          std::move(function_body_syntax_provider),
-          std::move(type_check_body_provider),
-          std::move(generic_instance_body_provider),
-          std::move(lower_function_ir_provider),
-          std::move(lower_generic_instance_ir_provider),
-          std::move(diagnostics_provider),
       })
 {
 }

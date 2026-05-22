@@ -14,19 +14,12 @@ class QueryContext final {
 public:
     QueryContext();
     explicit QueryContext(QueryProviderSet providers);
+    explicit QueryContext(QueryProviderOverrides provider_overrides);
     explicit QueryContext(ItemSignatureProvider item_signature_provider);
     QueryContext(ItemSignatureProvider item_signature_provider,
         GenericInstanceSignatureProvider generic_instance_signature_provider);
     QueryContext(ModuleExportsProvider module_exports_provider, ItemSignatureProvider item_signature_provider,
         GenericInstanceSignatureProvider generic_instance_signature_provider);
-    QueryContext(ModuleGraphProvider module_graph_provider, ModuleExportsProvider module_exports_provider,
-        ItemListProvider item_list_provider, ItemSignatureProvider item_signature_provider,
-        GenericTemplateSignatureProvider generic_template_signature_provider,
-        GenericInstanceSignatureProvider generic_instance_signature_provider, FileContentProvider file_content_provider,
-        LexFileProvider lex_file_provider, ParseFileProvider parse_file_provider,
-        FunctionBodySyntaxProvider function_body_syntax_provider, TypeCheckBodyProvider type_check_body_provider,
-        GenericInstanceBodyProvider generic_instance_body_provider, LowerFunctionIRProvider lower_function_ir_provider,
-        LowerGenericInstanceIRProvider lower_generic_instance_ir_provider, DiagnosticsProvider diagnostics_provider);
 
     void set_file_content_provider(FileContentProvider provider);
     void set_lex_file_provider(LexFileProvider provider);

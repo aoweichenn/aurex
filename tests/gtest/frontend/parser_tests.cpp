@@ -5,6 +5,7 @@
 #include <aurex/parse/recovery.hpp>
 #include <aurex/syntax/ast_dump.hpp>
 
+#include <parse/bracket_suffix_classifier.hpp>
 #include <support/frontend_test_support.hpp>
 
 #include <array>
@@ -132,6 +133,11 @@ public:
         return this->session_.module;
     }
 
+    const syntax::Token& advance_token()
+    {
+        return this->advance();
+    }
+
     using parse::ParserPartRangeReader::expr_range_or;
     using parse::ParserPartRangeReader::merge;
     using parse::ParserPartRangeReader::pattern_range_or;
@@ -160,6 +166,13 @@ public:
         return this->postfix_.bracket_arg_expr_to_type(expr, report_errors);
     }
 
+    [[nodiscard]] parse::BracketSuffixDecision classify_bracket_suffix(const syntax::ExprId base,
+        const std::span<const parse::PostfixExprParser::BracketArg> args, const bool has_type_only_arg,
+        const parse::ExprContext context)
+    {
+        return this->postfix_.classify_bracket_suffix(base, args, has_type_only_arg, context);
+    }
+
     [[nodiscard]] syntax::TypeId append_selector(
         const syntax::TypeId base, const std::string_view name, const bool report_errors)
     {
@@ -171,10 +184,72 @@ private:
     parse::PostfixExprParser postfix_;
 };
 
+class BracketSuffixClassifierProbe final {
+public:
+    explicit BracketSuffixClassifierProbe(parse::Parser& parser) noexcept : reader_(parser), classifier_(parser)
+    {
+    }
+
+    [[nodiscard]] syntax::AstModule& module() const noexcept
+    {
+        return this->reader_.module();
+    }
+
+    [[nodiscard]] bool arg_starts_type_only() const noexcept
+    {
+        return this->classifier_.arg_starts_type_only();
+    }
+
+    [[nodiscard]] bool arg_expr_is_type_like(const syntax::ExprId expr) const
+    {
+        return this->classifier_.arg_expr_is_type_like(expr);
+    }
+
+    [[nodiscard]] parse::BracketSuffixDecision classify_after_expr(parse::BracketSuffixClassificationInput input) const
+    {
+        return this->classifier_.classify_after_expr(input);
+    }
+
+    [[nodiscard]] parse::BracketSuffixDecision classify_empty_suffix() const noexcept
+    {
+        return this->classifier_.classify_empty_suffix();
+    }
+
+    void advance_token()
+    {
+        static_cast<void>(this->reader_.advance_token());
+    }
+
+    void advance_tokens(const base::usize count)
+    {
+        for (base::usize index = 0; index < count; ++index) {
+            this->advance_token();
+        }
+    }
+
+private:
+    ParserPartRangeReaderProbe reader_;
+    parse::BracketSuffixClassifier classifier_;
+};
+
 [[nodiscard]] std::vector<syntax::Token> probe_tokens(std::string_view text = "module probe;")
 {
     std::vector<syntax::Token> tokens;
     tokens.emplace_back(syntax::TokenKind::eof, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 0, 0}, text);
+    return tokens;
+}
+
+[[nodiscard]] std::vector<syntax::Token> classifier_probe_tokens(
+    std::initializer_list<syntax::TokenKind> leading_tokens)
+{
+    std::vector<syntax::Token> tokens;
+    tokens.reserve(leading_tokens.size() + 1U);
+    base::u32 offset = 0;
+    for (const syntax::TokenKind kind : leading_tokens) {
+        tokens.emplace_back(kind, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, offset, 1}, "x");
+        ++offset;
+    }
+    tokens.emplace_back(syntax::TokenKind::eof, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, offset, 0}, "");
     return tokens;
 }
 
@@ -3102,8 +3177,13 @@ TEST(CoreUnit, ParserPostfixWhiteBoxRejectsInvalidTypeLikeExpressions)
     const syntax::ExprId invalid_generic =
         module.push_generic_apply_expr({}, syntax::INVALID_EXPR_ID, std::vector<syntax::TypeId>{});
     const syntax::ExprId number = module.push_literal_expr(syntax::ExprKind::integer_literal, {}, "1");
+    const syntax::ExprId invalid_field = module.push_field_expr({}, syntax::INVALID_EXPR_ID, "Thing");
+    const syntax::ExprId invalid_apply_callee =
+        module.push_generic_apply_expr({}, syntax::INVALID_EXPR_ID, std::vector<syntax::TypeId>{});
     const syntax::ExprId invalid_unary =
         module.push_unary_expr(syntax::ExprKind::unary, {}, syntax::UnaryOp::numeric_negate, number);
+    const syntax::ExprId invalid_type_unary =
+        module.push_unary_expr(syntax::ExprKind::unary, {}, syntax::UnaryOp::address_of, syntax::INVALID_EXPR_ID);
 
     EXPECT_FALSE(probe.type_like(syntax::INVALID_EXPR_ID));
     EXPECT_FALSE(probe.type_like(empty_name));
@@ -3111,6 +3191,101 @@ TEST(CoreUnit, ParserPostfixWhiteBoxRejectsInvalidTypeLikeExpressions)
     EXPECT_FALSE(probe.type_like(invalid_unary));
     EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(syntax::INVALID_EXPR_ID, false)));
     EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(number, false)));
+    EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(invalid_field, false)));
+    EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(invalid_apply_callee, false)));
+    EXPECT_FALSE(syntax::is_valid(probe.convert_type_arg(invalid_type_unary, false)));
+}
+
+TEST(CoreUnit, BracketSuffixClassifierOwnsTypeArgumentContextDecisions)
+{
+    std::vector<syntax::Token> tokens = classifier_probe_tokens({syntax::TokenKind::l_paren});
+    DiagnosticSink diagnostics;
+    parse::Parser parser(tokens, diagnostics);
+    BracketSuffixClassifierProbe probe(parser);
+    syntax::AstModule& module = probe.module();
+
+    const syntax::ExprId value = module.push_name_expr({}, "Value");
+    const syntax::ExprId lower_value = module.push_name_expr({}, "value");
+    const std::array<parse::PostfixExprParser::BracketArg, 1> type_like_args{parse::PostfixExprParser::BracketArg{
+        value,
+        syntax::INVALID_TYPE_ID,
+        {},
+    }};
+    const std::array<parse::PostfixExprParser::BracketArg, 1> expr_like_args{parse::PostfixExprParser::BracketArg{
+        lower_value,
+        syntax::INVALID_TYPE_ID,
+        {},
+    }};
+
+    const parse::BracketSuffixDecision generic_call = probe.classify_after_expr(parse::BracketSuffixClassificationInput{
+        .base = value,
+        .has_type_only_arg = false,
+        .args_are_type_like = true,
+        .context = parse::ExprContext::normal,
+    });
+    EXPECT_EQ(generic_call.kind, parse::BracketSuffixKind::generic_apply);
+    EXPECT_FALSE(generic_call.report_type_arg_errors);
+    EXPECT_TRUE(generic_call.base_is_type_like);
+    EXPECT_TRUE(generic_call.args_are_type_like);
+
+    const parse::BracketSuffixDecision rejected_call =
+        probe.classify_after_expr(parse::BracketSuffixClassificationInput{
+            .base = lower_value,
+            .has_type_only_arg = false,
+            .args_are_type_like = false,
+            .context = parse::ExprContext::normal,
+        });
+    EXPECT_EQ(rejected_call.kind, parse::BracketSuffixKind::generic_apply);
+    EXPECT_TRUE(rejected_call.report_type_arg_errors);
+    EXPECT_FALSE(rejected_call.base_is_type_like);
+    EXPECT_FALSE(rejected_call.args_are_type_like);
+
+    EXPECT_TRUE(probe.arg_expr_is_type_like(type_like_args.front().expr));
+    EXPECT_FALSE(probe.arg_expr_is_type_like(expr_like_args.front().expr));
+}
+
+TEST(CoreUnit, BracketSuffixClassifierKeepsIndexWhenSelectorIsValueLike)
+{
+    std::vector<syntax::Token> tokens = classifier_probe_tokens({syntax::TokenKind::dot});
+    DiagnosticSink diagnostics;
+    parse::Parser parser(tokens, diagnostics);
+    BracketSuffixClassifierProbe probe(parser);
+    syntax::AstModule& module = probe.module();
+
+    const syntax::ExprId value = module.push_name_expr({}, "value");
+    const parse::BracketSuffixDecision decision = probe.classify_after_expr(parse::BracketSuffixClassificationInput{
+        .base = value,
+        .has_type_only_arg = false,
+        .args_are_type_like = false,
+        .context = parse::ExprContext::normal,
+    });
+    EXPECT_EQ(decision.kind, parse::BracketSuffixKind::index);
+    EXPECT_FALSE(decision.report_type_arg_errors);
+    EXPECT_FALSE(decision.base_is_type_like);
+}
+
+TEST(CoreUnit, BracketSuffixClassifierRecognizesTypeOnlyStartsAndEmptyGenericContinuations)
+{
+    std::vector<syntax::Token> tokens = classifier_probe_tokens({});
+    DiagnosticSink diagnostics;
+    parse::Parser parser(tokens, diagnostics);
+    BracketSuffixClassifierProbe probe(parser);
+
+    const parse::BracketSuffixDecision empty_index = probe.classify_empty_suffix();
+    EXPECT_EQ(empty_index.kind, parse::BracketSuffixKind::index);
+
+    std::vector<syntax::Token> generic_tokens = classifier_probe_tokens({syntax::TokenKind::l_paren});
+    DiagnosticSink generic_diagnostics;
+    parse::Parser generic_parser(generic_tokens, generic_diagnostics);
+    BracketSuffixClassifierProbe generic_probe(generic_parser);
+    const parse::BracketSuffixDecision empty_generic = generic_probe.classify_empty_suffix();
+    EXPECT_EQ(empty_generic.kind, parse::BracketSuffixKind::generic_apply);
+
+    std::vector<syntax::Token> type_tokens = classifier_probe_tokens({syntax::TokenKind::kw_i32});
+    DiagnosticSink type_diagnostics;
+    parse::Parser type_parser(type_tokens, type_diagnostics);
+    BracketSuffixClassifierProbe type_probe(type_parser);
+    EXPECT_TRUE(type_probe.arg_starts_type_only());
 }
 
 TEST(CoreUnit, ParserPostfixWhiteBoxConvertsScopedNamesAndRejectsBadSelectors)

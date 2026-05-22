@@ -3,96 +3,76 @@
 #include <utility>
 
 namespace aurex::query {
+namespace {
 
-QueryProviderSet::QueryProviderSet()
-    : QueryProviderSet(ModuleGraphProvider{provide_module_graph_query},
-          ModuleExportsProvider{provide_module_exports_query}, ItemListProvider{provide_item_list_query},
-          ItemSignatureProvider{provide_item_signature_query},
-          GenericTemplateSignatureProvider{provide_generic_template_signature_query},
-          GenericInstanceSignatureProvider{provide_generic_instance_signature_query},
-          FileContentProvider{provide_file_content_query}, LexFileProvider{provide_lex_file_query},
-          ParseFileProvider{provide_parse_file_query}, FunctionBodySyntaxProvider{provide_function_body_syntax_query},
-          TypeCheckBodyProvider{provide_type_check_body_query},
-          GenericInstanceBodyProvider{provide_generic_instance_body_query},
-          LowerFunctionIRProvider{provide_lower_function_ir_query},
-          LowerGenericInstanceIRProvider{provide_lower_generic_instance_ir_query},
-          DiagnosticsProvider{provide_diagnostics_query})
+[[nodiscard]] QueryProviderOverrides item_signature_override(ItemSignatureProvider provider)
+{
+    QueryProviderOverrides overrides;
+    overrides.item_signature = std::move(provider);
+    return overrides;
+}
+
+[[nodiscard]] QueryProviderOverrides item_and_instance_signature_override(
+    ItemSignatureProvider item_signature_provider, GenericInstanceSignatureProvider generic_instance_signature_provider)
+{
+    QueryProviderOverrides overrides;
+    overrides.item_signature = std::move(item_signature_provider);
+    overrides.generic_instance_signature = std::move(generic_instance_signature_provider);
+    return overrides;
+}
+
+[[nodiscard]] QueryProviderOverrides module_and_signature_override(ModuleExportsProvider module_exports_provider,
+    ItemSignatureProvider item_signature_provider, GenericInstanceSignatureProvider generic_instance_signature_provider)
+{
+    QueryProviderOverrides overrides;
+    overrides.module_exports = std::move(module_exports_provider);
+    overrides.item_signature = std::move(item_signature_provider);
+    overrides.generic_instance_signature = std::move(generic_instance_signature_provider);
+    return overrides;
+}
+
+} // namespace
+
+QueryProviderSet::QueryProviderSet() : QueryProviderSet(QueryProviderOverrides{})
 {
 }
 
+QueryProviderSet::QueryProviderSet(QueryProviderOverrides overrides)
+{
+    this->set_file_content_provider(std::move(overrides.file_content));
+    this->set_lex_file_provider(std::move(overrides.lex_file));
+    this->set_parse_file_provider(std::move(overrides.parse_file));
+    this->set_module_graph_provider(std::move(overrides.module_graph));
+    this->set_module_exports_provider(std::move(overrides.module_exports));
+    this->set_item_list_provider(std::move(overrides.item_list));
+    this->set_item_signature_provider(std::move(overrides.item_signature));
+    this->set_generic_template_signature_provider(std::move(overrides.generic_template_signature));
+    this->set_generic_instance_signature_provider(std::move(overrides.generic_instance_signature));
+    this->set_function_body_syntax_provider(std::move(overrides.function_body_syntax));
+    this->set_type_check_body_provider(std::move(overrides.type_check_body));
+    this->set_generic_instance_body_provider(std::move(overrides.generic_instance_body));
+    this->set_lower_function_ir_provider(std::move(overrides.lower_function_ir));
+    this->set_lower_generic_instance_ir_provider(std::move(overrides.lower_generic_instance_ir));
+    this->set_diagnostics_provider(std::move(overrides.diagnostics));
+}
+
 QueryProviderSet::QueryProviderSet(ItemSignatureProvider item_signature_provider)
-    : QueryProviderSet(ModuleGraphProvider{provide_module_graph_query},
-          ModuleExportsProvider{provide_module_exports_query}, ItemListProvider{provide_item_list_query},
-          std::move(item_signature_provider),
-          GenericTemplateSignatureProvider{provide_generic_template_signature_query},
-          GenericInstanceSignatureProvider{provide_generic_instance_signature_query},
-          FileContentProvider{provide_file_content_query}, LexFileProvider{provide_lex_file_query},
-          ParseFileProvider{provide_parse_file_query}, FunctionBodySyntaxProvider{provide_function_body_syntax_query},
-          TypeCheckBodyProvider{provide_type_check_body_query},
-          GenericInstanceBodyProvider{provide_generic_instance_body_query},
-          LowerFunctionIRProvider{provide_lower_function_ir_query},
-          LowerGenericInstanceIRProvider{provide_lower_generic_instance_ir_query},
-          DiagnosticsProvider{provide_diagnostics_query})
+    : QueryProviderSet(item_signature_override(std::move(item_signature_provider)))
 {
 }
 
 QueryProviderSet::QueryProviderSet(
     ItemSignatureProvider item_signature_provider, GenericInstanceSignatureProvider generic_instance_signature_provider)
-    : QueryProviderSet(ModuleGraphProvider{provide_module_graph_query},
-          ModuleExportsProvider{provide_module_exports_query}, ItemListProvider{provide_item_list_query},
-          std::move(item_signature_provider),
-          GenericTemplateSignatureProvider{provide_generic_template_signature_query},
-          std::move(generic_instance_signature_provider), FileContentProvider{provide_file_content_query},
-          LexFileProvider{provide_lex_file_query}, ParseFileProvider{provide_parse_file_query},
-          FunctionBodySyntaxProvider{provide_function_body_syntax_query},
-          TypeCheckBodyProvider{provide_type_check_body_query},
-          GenericInstanceBodyProvider{provide_generic_instance_body_query},
-          LowerFunctionIRProvider{provide_lower_function_ir_query},
-          LowerGenericInstanceIRProvider{provide_lower_generic_instance_ir_query},
-          DiagnosticsProvider{provide_diagnostics_query})
+    : QueryProviderSet(item_and_instance_signature_override(
+          std::move(item_signature_provider), std::move(generic_instance_signature_provider)))
 {
 }
 
 QueryProviderSet::QueryProviderSet(ModuleExportsProvider module_exports_provider,
     ItemSignatureProvider item_signature_provider, GenericInstanceSignatureProvider generic_instance_signature_provider)
-    : QueryProviderSet(ModuleGraphProvider{provide_module_graph_query}, std::move(module_exports_provider),
-          ItemListProvider{provide_item_list_query}, std::move(item_signature_provider),
-          GenericTemplateSignatureProvider{provide_generic_template_signature_query},
-          std::move(generic_instance_signature_provider), FileContentProvider{provide_file_content_query},
-          LexFileProvider{provide_lex_file_query}, ParseFileProvider{provide_parse_file_query},
-          FunctionBodySyntaxProvider{provide_function_body_syntax_query},
-          TypeCheckBodyProvider{provide_type_check_body_query},
-          GenericInstanceBodyProvider{provide_generic_instance_body_query},
-          LowerFunctionIRProvider{provide_lower_function_ir_query},
-          LowerGenericInstanceIRProvider{provide_lower_generic_instance_ir_query},
-          DiagnosticsProvider{provide_diagnostics_query})
+    : QueryProviderSet(module_and_signature_override(std::move(module_exports_provider),
+          std::move(item_signature_provider), std::move(generic_instance_signature_provider)))
 {
-}
-
-QueryProviderSet::QueryProviderSet(ModuleGraphProvider module_graph_provider,
-    ModuleExportsProvider module_exports_provider, ItemListProvider item_list_provider,
-    ItemSignatureProvider item_signature_provider, GenericTemplateSignatureProvider generic_template_signature_provider,
-    GenericInstanceSignatureProvider generic_instance_signature_provider, FileContentProvider file_content_provider,
-    LexFileProvider lex_file_provider, ParseFileProvider parse_file_provider,
-    FunctionBodySyntaxProvider function_body_syntax_provider, TypeCheckBodyProvider type_check_body_provider,
-    GenericInstanceBodyProvider generic_instance_body_provider, LowerFunctionIRProvider lower_function_ir_provider,
-    LowerGenericInstanceIRProvider lower_generic_instance_ir_provider, DiagnosticsProvider diagnostics_provider)
-{
-    this->set_file_content_provider(std::move(file_content_provider));
-    this->set_lex_file_provider(std::move(lex_file_provider));
-    this->set_parse_file_provider(std::move(parse_file_provider));
-    this->set_module_graph_provider(std::move(module_graph_provider));
-    this->set_module_exports_provider(std::move(module_exports_provider));
-    this->set_item_list_provider(std::move(item_list_provider));
-    this->set_item_signature_provider(std::move(item_signature_provider));
-    this->set_generic_template_signature_provider(std::move(generic_template_signature_provider));
-    this->set_generic_instance_signature_provider(std::move(generic_instance_signature_provider));
-    this->set_function_body_syntax_provider(std::move(function_body_syntax_provider));
-    this->set_type_check_body_provider(std::move(type_check_body_provider));
-    this->set_generic_instance_body_provider(std::move(generic_instance_body_provider));
-    this->set_lower_function_ir_provider(std::move(lower_function_ir_provider));
-    this->set_lower_generic_instance_ir_provider(std::move(lower_generic_instance_ir_provider));
-    this->set_diagnostics_provider(std::move(diagnostics_provider));
 }
 
 void QueryProviderSet::set_file_content_provider(FileContentProvider provider)

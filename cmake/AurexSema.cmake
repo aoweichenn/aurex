@@ -8,6 +8,7 @@ add_library(aurex_sema
     src/sema/generic.cpp
     src/sema/generic_instance_identity.cpp
     src/sema/checked_module.cpp
+    src/sema/internal/name_resolution.cpp
     src/sema/match.cpp
     src/sema/sema_call.cpp
     src/sema/sema_decls.cpp

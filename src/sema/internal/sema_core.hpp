@@ -56,6 +56,8 @@ struct SemaContext final {
     SemanticOptions options;
 };
 
+class ModuleVisibilityResolver;
+
 class SemanticAnalyzerCore final {
 public:
     SemanticAnalyzerCore(
@@ -928,6 +930,8 @@ private:
     std::optional<syntax::AstModule> owned_module_;
     SemaContext ctx_;
     SemaState state_;
+
+    friend class ModuleVisibilityResolver;
 };
 
 } // namespace aurex::sema

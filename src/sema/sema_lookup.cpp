@@ -6,13 +6,13 @@
 #include <limits>
 #include <vector>
 
+#include <sema/internal/name_resolution.hpp>
 #include <sema/internal/sema_core.hpp>
 
 namespace aurex::sema {
 
 namespace {
 
-constexpr std::string_view SEMA_LOOKUP_UNKNOWN_MODULE_NAME = "<unknown>";
 constexpr base::usize SEMA_LOOKUP_SHORT_SUGGESTION_NAME_LENGTH = 4;
 constexpr base::usize SEMA_LOOKUP_MEDIUM_SUGGESTION_NAME_LENGTH = 8;
 constexpr base::usize SEMA_LOOKUP_SHORT_SUGGESTION_MAX_DISTANCE = 1;
@@ -94,34 +94,6 @@ void consider_suggestion(NameSuggestion& best, const std::string_view requested,
     }
 }
 
-[[nodiscard]] bool module_path_matches_parts(
-    const syntax::ModulePath& path, const std::vector<std::string_view>& parts) noexcept
-{
-    if (path.parts.size() != parts.size()) {
-        return false;
-    }
-    for (base::usize i = 0; i < parts.size(); ++i) {
-        if (path.parts[i] != parts[i]) {
-            return false;
-        }
-    }
-    return true;
-}
-
-[[nodiscard]] bool module_path_matches_prefix(
-    const syntax::ModulePath& path, const std::vector<std::string_view>& parts, const base::usize prefix_size) noexcept
-{
-    if (path.parts.size() != prefix_size || parts.size() < prefix_size) {
-        return false;
-    }
-    for (base::usize i = 0; i < prefix_size; ++i) {
-        if (path.parts[i] != parts[i]) {
-            return false;
-        }
-    }
-    return true;
-}
-
 [[nodiscard]] std::string module_path_parts_name(const std::vector<std::string_view>& parts)
 {
     std::string name;
@@ -147,101 +119,22 @@ syntax::ModuleId SemanticAnalyzerCore::item_module(const syntax::ItemId item) co
 syntax::ModuleId SemanticAnalyzerCore::resolve_import_alias(
     const std::string_view alias, const base::SourceRange& range, const bool report_unknown) const
 {
-    if (!syntax::is_valid(this->state_.flow.current_module)
-        || this->state_.flow.current_module.value >= this->ctx_.module.modules.size()) {
-        if (report_unknown) {
-            this->report_lookup(range, sema_unknown_import_alias_message(alias));
-        }
-        return syntax::INVALID_MODULE_ID;
-    }
-    syntax::ModuleId resolved = syntax::INVALID_MODULE_ID;
-    for (const syntax::ResolvedImport& import :
-        this->ctx_.module.modules[this->state_.flow.current_module.value].imports) {
-        if (import.alias != alias) {
-            continue;
-        }
-        if (syntax::is_valid(resolved)) {
-            if (report_unknown) {
-                this->report_lookup(range, sema_ambiguous_import_alias_message(alias));
-            }
-            return syntax::INVALID_MODULE_ID;
-        }
-        resolved = import.module;
-    }
-    if (!syntax::is_valid(resolved) && report_unknown) {
-        this->report_lookup(range, sema_unknown_import_alias_message(alias));
-        this->report_lookup_suggestion(range, this->nearest_import_alias_name(alias));
-    }
-    return resolved;
+    return ModuleVisibilityResolver(*this).resolve_import_alias(alias, range, report_unknown);
 }
 
 const SemanticAnalyzerCore::ModuleIdList& SemanticAnalyzerCore::visible_modules(const syntax::ModuleId module) const
 {
-    static const ModuleIdList empty;
-    if (!syntax::is_valid(module)) {
-        return empty;
-    }
-    if (const auto found = this->state_.modules.visible_modules_cache.find(module.value);
-        found != this->state_.modules.visible_modules_cache.end()) {
-        return found->second;
-    }
-    if (module.value >= this->ctx_.module.modules.size()) {
-        ModuleIdList result = this->make_module_id_list();
-        result.reserve(1);
-        result.push_back(module);
-        const auto inserted = this->state_.modules.visible_modules_cache.emplace(module.value, std::move(result));
-        return inserted.first->second;
-    }
-    const base::usize import_count = this->ctx_.module.modules[module.value].imports.size();
-    ModuleIdList result = this->make_module_id_list();
-    result.reserve(import_count + 1);
-    result.push_back(module);
-    std::unordered_set<base::u32> seen;
-    seen.reserve(import_count + 1);
-    seen.insert(module.value);
-    for (const syntax::ResolvedImport& import : this->ctx_.module.modules[module.value].imports) {
-        if (!syntax::is_valid(import.module)) {
-            continue;
-        }
-        if (seen.insert(import.module.value).second) {
-            result.push_back(import.module);
-        }
-        append_public_reexports(import.module, result, seen);
-    }
-    const auto inserted = this->state_.modules.visible_modules_cache.emplace(module.value, std::move(result));
-    return inserted.first->second;
+    return ModuleVisibilityResolver(*this).visible_modules(module);
 }
 
 bool SemanticAnalyzerCore::module_alias_visible(const std::string_view name) const
 {
-    if (!syntax::is_valid(this->state_.flow.current_module)
-        || this->state_.flow.current_module.value >= this->ctx_.module.modules.size()) {
-        return false;
-    }
-    for (const syntax::ResolvedImport& import :
-        this->ctx_.module.modules[this->state_.flow.current_module.value].imports) {
-        if (import.alias == name) {
-            return true;
-        }
-    }
-    return false;
+    return ModuleVisibilityResolver(*this).module_alias_visible(name);
 }
 
 bool SemanticAnalyzerCore::visible_root_module_name_exists(const std::string_view name) const
 {
-    if (name.empty()) {
-        return false;
-    }
-    for (const syntax::ModuleId module : this->visible_modules(this->state_.flow.current_module)) {
-        if (!syntax::is_valid(module) || module.value >= this->ctx_.module.modules.size()) {
-            continue;
-        }
-        const syntax::ModulePath& path = this->ctx_.module.modules[module.value].path;
-        if (!path.parts.empty() && path.parts.front() == name) {
-            return true;
-        }
-    }
-    return false;
+    return ModuleVisibilityResolver(*this).visible_root_module_name_exists(name);
 }
 
 std::vector<std::string_view> SemanticAnalyzerCore::type_scope_parts(const syntax::TypeNode& type) const
@@ -257,36 +150,12 @@ std::vector<std::string_view> SemanticAnalyzerCore::type_scope_parts(const synta
 
 syntax::ModuleId SemanticAnalyzerCore::find_visible_module_path(const std::vector<std::string_view>& parts) const
 {
-    if (parts.empty()) {
-        return syntax::INVALID_MODULE_ID;
-    }
-    for (const syntax::ModuleId module : this->visible_modules(this->state_.flow.current_module)) {
-        if (!syntax::is_valid(module) || module.value >= this->ctx_.module.modules.size()) {
-            continue;
-        }
-        if (module_path_matches_parts(this->ctx_.module.modules[module.value].path, parts)) {
-            return module;
-        }
-    }
-    return syntax::INVALID_MODULE_ID;
+    return ModuleVisibilityResolver(*this).find_visible_module_path(parts);
 }
 
 bool SemanticAnalyzerCore::visible_module_path_prefix_exists(const std::vector<std::string_view>& parts) const
 {
-    if (parts.size() < 2) {
-        return false;
-    }
-    for (base::usize prefix_size = 1; prefix_size < parts.size(); ++prefix_size) {
-        for (const syntax::ModuleId module : this->visible_modules(this->state_.flow.current_module)) {
-            if (!syntax::is_valid(module) || module.value >= this->ctx_.module.modules.size()) {
-                continue;
-            }
-            if (module_path_matches_prefix(this->ctx_.module.modules[module.value].path, parts, prefix_size)) {
-                return true;
-            }
-        }
-    }
-    return false;
+    return ModuleVisibilityResolver(*this).visible_module_path_prefix_exists(parts);
 }
 
 syntax::ModuleId SemanticAnalyzerCore::resolve_type_scope(const syntax::TypeNode& type, const bool report_unknown)
@@ -309,69 +178,27 @@ syntax::ModuleId SemanticAnalyzerCore::resolve_type_scope(const syntax::TypeNode
 const SemanticAnalyzerCore::ModuleIdList& SemanticAnalyzerCore::module_export_modules(
     const syntax::ModuleId module) const
 {
-    static const ModuleIdList empty;
-    if (!syntax::is_valid(module)) {
-        return empty;
-    }
-    if (const auto found = this->state_.modules.export_modules_cache.find(module.value);
-        found != this->state_.modules.export_modules_cache.end()) {
-        return found->second;
-    }
-    if (module.value >= this->ctx_.module.modules.size()) {
-        ModuleIdList result = this->make_module_id_list();
-        result.reserve(1);
-        result.push_back(module);
-        const auto inserted = this->state_.modules.export_modules_cache.emplace(module.value, std::move(result));
-        return inserted.first->second;
-    }
-    const base::usize import_count = this->ctx_.module.modules[module.value].imports.size();
-    ModuleIdList result = this->make_module_id_list();
-    result.reserve(import_count + 1);
-    result.push_back(module);
-    std::unordered_set<base::u32> seen;
-    seen.reserve(import_count + 1);
-    seen.insert(module.value);
-    this->append_public_reexports(module, result, seen);
-    const auto inserted = this->state_.modules.export_modules_cache.emplace(module.value, std::move(result));
-    return inserted.first->second;
+    return ModuleVisibilityResolver(*this).module_export_modules(module);
 }
 
 void SemanticAnalyzerCore::append_public_reexports(
     const syntax::ModuleId module, ModuleIdList& result, std::unordered_set<base::u32>& seen) const
 {
-    ModuleIdList pending = this->make_module_id_list();
-    pending.reserve(result.size());
-    pending.push_back(module);
-    while (!pending.empty()) {
-        const syntax::ModuleId current = pending.back();
-        pending.pop_back();
-        if (!syntax::is_valid(current) || current.value >= this->ctx_.module.modules.size()) {
-            continue;
-        }
-        for (const syntax::ResolvedImport& import : this->ctx_.module.modules[current.value].imports) {
-            if (import.visibility != syntax::Visibility::public_ || !syntax::is_valid(import.module)) {
-                continue;
-            }
-            if (seen.insert(import.module.value).second) {
-                result.push_back(import.module);
-                pending.push_back(import.module);
-            }
-        }
-    }
+    ModuleVisibilityResolver(*this).append_public_reexports(module, result, seen);
 }
 
 std::string SemanticAnalyzerCore::module_name(const syntax::ModuleId module) const
 {
-    if (!syntax::is_valid(module) || module.value >= this->ctx_.module.modules.size()) {
-        return std::string(SEMA_LOOKUP_UNKNOWN_MODULE_NAME);
-    }
-    return syntax::module_path_to_string(this->ctx_.module.modules[module.value].path);
+    return ModuleVisibilityResolver(*this).module_name(module);
 }
 
 std::string SemanticAnalyzerCore::qualified_name(const syntax::ModuleId module, const std::string_view name) const
 {
+    if (!syntax::is_valid(module) || module.value >= this->ctx_.module.modules.size()) {
+        return std::string(name);
+    }
     const std::string module_text = module_name(module);
-    if (module_text.empty() || module_text == SEMA_LOOKUP_UNKNOWN_MODULE_NAME) {
+    if (module_text.empty()) {
         return std::string(name);
     }
     return module_text + "." + std::string(name);

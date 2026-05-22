@@ -1144,6 +1144,50 @@ TEST(CoreUnit, SemanticWhiteBoxLookupsAndMethodReceivers)
     EXPECT_EQ(analyzer.find_method_in_visible_modules(record_type, missing_id, "missing", {}, true), nullptr);
 }
 
+TEST(CoreUnit, SemanticWhiteBoxModuleVisibilityResolverEdges)
+{
+    syntax::AstModule module;
+    module.modules = {
+        module_info({"root"}),
+        module_info({"lib", "one"}),
+        module_info({"lib", "two"}),
+        module_info({"core"}),
+    };
+    module.modules[SEMA_TEST_ROOT_MODULE_INDEX].imports = {
+        resolved_import(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "lib"),
+        resolved_import(module_id(2), ""),
+        resolved_import(module_id(SEMA_TEST_MISSING_MODULE_INDEX), "ghost", syntax::Visibility::public_),
+    };
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    EXPECT_EQ(analyzer.resolve_import_alias("lib", {}).value, SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    EXPECT_EQ(analyzer.resolve_import_alias("ghost", {}).value, SEMA_TEST_MISSING_MODULE_INDEX);
+    EXPECT_FALSE(syntax::is_valid(analyzer.resolve_import_alias("libs", {})));
+    EXPECT_FALSE(analyzer.module_alias_visible("missing"));
+    EXPECT_FALSE(syntax::is_valid(analyzer.find_visible_module_path({})));
+
+    analyzer.state_.modules.visible_modules_cache.clear();
+    const auto& visible = analyzer.visible_modules(module_id(SEMA_TEST_ROOT_MODULE_INDEX));
+    EXPECT_NE(std::find_if(visible.begin(), visible.end(),
+                  [](const syntax::ModuleId module) {
+                      return module.value == SEMA_TEST_MISSING_MODULE_INDEX;
+                  }),
+        visible.end());
+    EXPECT_FALSE(analyzer.visible_root_module_name_exists("ghost"));
+    EXPECT_FALSE(syntax::is_valid(analyzer.find_visible_module_path({"ghost", "child"})));
+    EXPECT_FALSE(analyzer.visible_module_path_prefix_exists({"ghost", "child", "leaf"}));
+
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_MISSING_MODULE_INDEX);
+    EXPECT_FALSE(analyzer.module_alias_visible("ghost"));
+    EXPECT_FALSE(analyzer.visible_root_module_name_exists("root"));
+    EXPECT_FALSE(syntax::is_valid(analyzer.find_visible_module_path({"root"})));
+    EXPECT_FALSE(analyzer.visible_module_path_prefix_exists({"root", "child"}));
+    EXPECT_FALSE(syntax::is_valid(analyzer.resolve_import_alias("ghost", {}, false)));
+}
+
 TEST(CoreUnit, SemanticWhiteBoxDotOnlyModuleSelectorAndShadowingEdges)
 {
     syntax::AstModule module;

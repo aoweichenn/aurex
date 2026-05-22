@@ -1,5 +1,4 @@
 #include <aurex/sema/canonical_type_builder.hpp>
-#include <aurex/sema/sema.hpp>
 
 #include <algorithm>
 #include <array>
@@ -9,6 +8,8 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+
+#include <sema/internal/sema_core.hpp>
 
 namespace aurex::sema {
 namespace {
@@ -42,10 +43,10 @@ constexpr char SEMA_GENERIC_TEMPLATE_KEY_SEPARATOR = ':';
 
 } // namespace
 
-class SemanticAnalyzer::GenericInstanceCanonicalResolver final : public CanonicalTypeKeyResolver {
+class SemanticAnalyzerCore::GenericInstanceCanonicalResolver final : public CanonicalTypeKeyResolver {
 public:
     GenericInstanceCanonicalResolver(
-        const SemanticAnalyzer& analyzer, const GenericTemplateInfo& owner, const query::DefKey owner_key)
+        const SemanticAnalyzerCore& analyzer, const GenericTemplateInfo& owner, const query::DefKey owner_key)
         : analyzer_(analyzer), owner_(owner), owner_key_(owner_key)
     {
     }
@@ -63,27 +64,27 @@ public:
     }
 
 private:
-    const SemanticAnalyzer& analyzer_;
+    const SemanticAnalyzerCore& analyzer_;
     const GenericTemplateInfo& owner_;
     query::DefKey owner_key_;
 };
 
-query::ModuleKey SemanticAnalyzer::query_module_key(const syntax::ModuleId module) const noexcept
+query::ModuleKey SemanticAnalyzerCore::query_module_key(const syntax::ModuleId module) const noexcept
 {
     const query::PackageKey package = query::package_key(std::span<const std::string_view>{});
-    if (!syntax::is_valid(module) || module.value >= this->module_.modules.size()) {
+    if (!syntax::is_valid(module) || module.value >= this->ctx_.module.modules.size()) {
         return query::module_key(package, std::span<const std::string_view>{});
     }
-    return query::module_key(package, this->module_.modules[module.value].path.parts);
+    return query::module_key(package, this->ctx_.module.modules[module.value].path.parts);
 }
 
-query::DefKey SemanticAnalyzer::generic_template_query_key(
+query::DefKey SemanticAnalyzerCore::generic_template_query_key(
     const GenericTemplateInfo& info, const query::DefNamespace name_space) const noexcept
 {
     return query::def_key_from_stable_id(info.stable_id, name_space, query::DefKind::generic_template);
 }
 
-void SemanticAnalyzer::index_generic_param_query_keys(
+void SemanticAnalyzerCore::index_generic_param_query_keys(
     const GenericTemplateInfo& info, const query::DefNamespace name_space)
 {
     const query::DefKey owner_key = this->generic_template_query_key(info, name_space);
@@ -92,16 +93,17 @@ void SemanticAnalyzer::index_generic_param_query_keys(
         if (!is_valid(identity)) {
             continue;
         }
-        this->generic_param_query_keys_[identity] = query::generic_param_key(owner_key, static_cast<base::u32>(index));
+        this->state_.generics.param_query_keys[identity] =
+            query::generic_param_key(owner_key, static_cast<base::u32>(index));
     }
 }
 
-std::optional<query::DefKey> SemanticAnalyzer::canonical_nominal_type_query_key(
+std::optional<query::DefKey> SemanticAnalyzerCore::canonical_nominal_type_query_key(
     const TypeHandle handle, const TypeInfo& info) const
 {
     const auto make_type_key = [&](const syntax::ModuleId module, const std::string_view name,
                                    const query::DefKind kind) -> std::optional<query::DefKey> {
-        if (!syntax::is_valid(module) || module.value >= this->module_.modules.size() || name.empty()) {
+        if (!syntax::is_valid(module) || module.value >= this->ctx_.module.modules.size() || name.empty()) {
             return std::nullopt;
         }
         const std::array<std::string_view, 1> path{name};
@@ -116,7 +118,8 @@ std::optional<query::DefKey> SemanticAnalyzer::canonical_nominal_type_query_key(
         }
     }
 
-    if (const auto found = this->struct_infos_by_type_.find(handle.value); found != this->struct_infos_by_type_.end()) {
+    if (const auto found = this->state_.types.struct_infos_by_type.find(handle.value);
+        found != this->state_.types.struct_infos_by_type.end()) {
         const StructInfo* const struct_info = found->second;
         if (struct_info != nullptr) {
             return make_type_key(struct_info->module, struct_info->name.view(), query::DefKind::struct_);
@@ -124,13 +127,13 @@ std::optional<query::DefKey> SemanticAnalyzer::canonical_nominal_type_query_key(
     }
 
     if (info.kind == TypeKind::enum_) {
-        for (const auto& entry : this->named_types_) {
+        for (const auto& entry : this->state_.types.named_types) {
             if (entry.second.value == handle.value) {
-                const std::string_view enum_name = this->module_.identifier_text(entry.first.name);
+                const std::string_view enum_name = this->ctx_.module.identifier_text(entry.first.name);
                 return make_type_key(syntax::ModuleId{entry.first.module}, enum_name, query::DefKind::enum_);
             }
         }
-        for (const auto& entry : this->checked_.enum_cases) {
+        for (const auto& entry : this->state_.checked.enum_cases) {
             if (entry.second.type.value == handle.value) {
                 return make_type_key(entry.second.module, entry.second.enum_name.view(), query::DefKind::enum_);
             }
@@ -140,7 +143,7 @@ std::optional<query::DefKey> SemanticAnalyzer::canonical_nominal_type_query_key(
     return std::nullopt;
 }
 
-std::optional<query::GenericParamKey> SemanticAnalyzer::canonical_generic_param_query_key(
+std::optional<query::GenericParamKey> SemanticAnalyzerCore::canonical_generic_param_query_key(
     const GenericTemplateInfo& owner, const query::DefKey owner_key, const TypeInfo& info) const
 {
     if (!is_valid(info.generic_identity)) {
@@ -151,14 +154,14 @@ std::optional<query::GenericParamKey> SemanticAnalyzer::canonical_generic_param_
             return query::generic_param_key(owner_key, static_cast<base::u32>(index));
         }
     }
-    if (const auto found = this->generic_param_query_keys_.find(info.generic_identity);
-        found != this->generic_param_query_keys_.end()) {
+    if (const auto found = this->state_.generics.param_query_keys.find(info.generic_identity);
+        found != this->state_.generics.param_query_keys.end()) {
         return found->second;
     }
     return std::nullopt;
 }
 
-query::ParamEnvKey SemanticAnalyzer::generic_param_env_key(const GenericTemplateInfo& info) const
+query::ParamEnvKey SemanticAnalyzerCore::generic_param_env_key(const GenericTemplateInfo& info) const
 {
     std::vector<std::string> predicates;
     predicates.reserve(info.constraints.size());
@@ -189,7 +192,7 @@ query::ParamEnvKey SemanticAnalyzer::generic_param_env_key(const GenericTemplate
     return query::param_env_key(predicate_views);
 }
 
-base::Result<SemanticAnalyzer::GenericInstanceIdentity> SemanticAnalyzer::generic_instance_identity(
+base::Result<SemanticAnalyzerCore::GenericInstanceIdentity> SemanticAnalyzerCore::generic_instance_identity(
     const GenericTemplateInfo& info, const std::span<const TypeHandle> args, const query::DefNamespace name_space) const
 {
     const query::DefKey template_key = this->generic_template_query_key(info, name_space);
@@ -198,7 +201,7 @@ base::Result<SemanticAnalyzer::GenericInstanceIdentity> SemanticAnalyzer::generi
     canonical_args.reserve(args.size());
     for (const TypeHandle arg : args) {
         base::Result<query::CanonicalTypeKey> canonical_arg =
-            build_canonical_type_key(this->checked_.types, arg, resolver);
+            build_canonical_type_key(this->state_.checked.types, arg, resolver);
         if (!canonical_arg) {
             return base::Result<GenericInstanceIdentity>::fail({
                 base::ErrorCode::internal_error,
@@ -218,7 +221,7 @@ base::Result<SemanticAnalyzer::GenericInstanceIdentity> SemanticAnalyzer::generi
     });
 }
 
-base::Result<std::string> SemanticAnalyzer::generic_instance_signature_fingerprint(const GenericTemplateInfo& info,
+base::Result<std::string> SemanticAnalyzerCore::generic_instance_signature_fingerprint(const GenericTemplateInfo& info,
     const GenericInstanceIdentity& identity, const TypeHandle return_type,
     const std::span<const TypeHandle> param_types, const bool is_method, const bool is_variadic) const
 {
@@ -235,7 +238,7 @@ base::Result<std::string> SemanticAnalyzer::generic_instance_signature_fingerpri
             return base::Result<void>::ok();
         }
         base::Result<query::CanonicalTypeKey> canonical_type =
-            build_canonical_type_key(this->checked_.types, type, resolver);
+            build_canonical_type_key(this->state_.checked.types, type, resolver);
         if (!canonical_type) {
             return base::Result<void>::fail(canonical_type.error());
         }

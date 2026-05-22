@@ -280,29 +280,32 @@ void GenericSideTables::record_sparse_fallback(const GenericSparseFallbackKind k
 void GenericSideTables::configure_local_dense(
     const GenericNodeSpan expr, const GenericNodeSpan pattern, const GenericNodeSpan type, const GenericNodeSpan stmt)
 {
-    this->configure_local_dense(expr, pattern, type, stmt, {}, {}, {}, {});
+    this->configure_local_dense(GenericSideTableLocalLayoutView{
+        expr,
+        pattern,
+        type,
+        stmt,
+    });
 }
 
-void GenericSideTables::configure_local_dense(const GenericNodeSpan expr, const GenericNodeSpan pattern,
-    const GenericNodeSpan type, const GenericNodeSpan stmt, const std::span<const base::u32> expr_ids,
-    const std::span<const base::u32> pattern_ids, const std::span<const base::u32> type_ids,
-    const std::span<const base::u32> stmt_ids)
+void GenericSideTables::configure_local_dense(const GenericSideTableLocalLayoutView& layout)
 {
     this->sparse = true;
     this->local_dense = true;
-    this->expr_span = expr;
-    this->pattern_span = pattern;
-    this->type_span = type;
-    this->stmt_span = stmt;
+    this->expr_span = layout.expr_span;
+    this->pattern_span = layout.pattern_span;
+    this->type_span = layout.type_span;
+    this->stmt_span = layout.stmt_span;
     this->layout = nullptr;
-    this->expr_node_ids.assign(expr_ids.begin(), expr_ids.end());
-    this->pattern_node_ids.assign(pattern_ids.begin(), pattern_ids.end());
-    this->type_node_ids.assign(type_ids.begin(), type_ids.end());
-    this->stmt_node_ids.assign(stmt_ids.begin(), stmt_ids.end());
-    const base::usize expr_count = this->expr_node_ids.empty() ? expr.count : this->expr_node_ids.size();
-    const base::usize pattern_count = this->pattern_node_ids.empty() ? pattern.count : this->pattern_node_ids.size();
-    const base::usize type_count = this->type_node_ids.empty() ? type.count : this->type_node_ids.size();
-    const base::usize stmt_count = this->stmt_node_ids.empty() ? stmt.count : this->stmt_node_ids.size();
+    this->expr_node_ids.assign(layout.expr_node_ids.begin(), layout.expr_node_ids.end());
+    this->pattern_node_ids.assign(layout.pattern_node_ids.begin(), layout.pattern_node_ids.end());
+    this->type_node_ids.assign(layout.type_node_ids.begin(), layout.type_node_ids.end());
+    this->stmt_node_ids.assign(layout.stmt_node_ids.begin(), layout.stmt_node_ids.end());
+    const base::usize expr_count = this->expr_node_ids.empty() ? layout.expr_span.count : this->expr_node_ids.size();
+    const base::usize pattern_count =
+        this->pattern_node_ids.empty() ? layout.pattern_span.count : this->pattern_node_ids.size();
+    const base::usize type_count = this->type_node_ids.empty() ? layout.type_span.count : this->type_node_ids.size();
+    const base::usize stmt_count = this->stmt_node_ids.empty() ? layout.stmt_span.count : this->stmt_node_ids.size();
     this->expr_intrinsic_types.assign(expr_count, INVALID_TYPE_HANDLE);
     this->expr_types.assign(expr_count, INVALID_TYPE_HANDLE);
     this->prepare_analysis_only_storage(expr_count);
@@ -706,31 +709,25 @@ EnumCaseInfo CheckedModule::make_enum_case_info() const
     return info;
 }
 
-GenericSideTableLayout CheckedModule::make_generic_side_table_layout(const GenericNodeSpan expr,
-    const GenericNodeSpan pattern, const GenericNodeSpan type, const GenericNodeSpan stmt,
-    const std::span<const base::u32> expr_ids, const std::span<const base::u32> pattern_ids,
-    const std::span<const base::u32> type_ids, const std::span<const base::u32> stmt_ids) const
+GenericSideTableLayout CheckedModule::make_generic_side_table_layout(
+    const GenericSideTableLocalLayoutView& source) const
 {
     GenericSideTableLayout layout;
-    layout.expr_span = expr;
-    layout.pattern_span = pattern;
-    layout.type_span = type;
-    layout.stmt_span = stmt;
-    layout.expr_node_ids = this->copy_index_table(expr_ids);
-    layout.pattern_node_ids = this->copy_index_table(pattern_ids);
-    layout.type_node_ids = this->copy_index_table(type_ids);
-    layout.stmt_node_ids = this->copy_index_table(stmt_ids);
+    layout.expr_span = source.expr_span;
+    layout.pattern_span = source.pattern_span;
+    layout.type_span = source.type_span;
+    layout.stmt_span = source.stmt_span;
+    layout.expr_node_ids = this->copy_index_table(source.expr_node_ids);
+    layout.pattern_node_ids = this->copy_index_table(source.pattern_node_ids);
+    layout.type_node_ids = this->copy_index_table(source.type_node_ids);
+    layout.stmt_node_ids = this->copy_index_table(source.stmt_node_ids);
     return layout;
 }
 
-base::usize CheckedModule::append_generic_side_table_layout(const GenericNodeSpan expr, const GenericNodeSpan pattern,
-    const GenericNodeSpan type, const GenericNodeSpan stmt, const std::span<const base::u32> expr_ids,
-    const std::span<const base::u32> pattern_ids, const std::span<const base::u32> type_ids,
-    const std::span<const base::u32> stmt_ids)
+base::usize CheckedModule::append_generic_side_table_layout(const GenericSideTableLocalLayoutView& layout)
 {
     const base::usize index = this->generic_side_table_layouts.size();
-    this->generic_side_table_layouts.push_back(
-        this->make_generic_side_table_layout(expr, pattern, type, stmt, expr_ids, pattern_ids, type_ids, stmt_ids));
+    this->generic_side_table_layouts.push_back(this->make_generic_side_table_layout(layout));
     return index;
 }
 
@@ -826,8 +823,16 @@ GenericTemplateSignatureInfo CheckedModule::clone_generic_template_signature_inf
 
 GenericSideTableLayout CheckedModule::clone_generic_side_table_layout(const GenericSideTableLayout& other) const
 {
-    return this->make_generic_side_table_layout(other.expr_span, other.pattern_span, other.type_span, other.stmt_span,
-        other.expr_node_ids, other.pattern_node_ids, other.type_node_ids, other.stmt_node_ids);
+    return this->make_generic_side_table_layout(GenericSideTableLocalLayoutView{
+        other.expr_span,
+        other.pattern_span,
+        other.type_span,
+        other.stmt_span,
+        other.expr_node_ids,
+        other.pattern_node_ids,
+        other.type_node_ids,
+        other.stmt_node_ids,
+    });
 }
 
 GenericFunctionInstanceInfo CheckedModule::clone_generic_function_instance(const GenericFunctionInstanceInfo& other)

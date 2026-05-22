@@ -1,4 +1,3 @@
-#include <aurex/sema/sema.hpp>
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
@@ -13,6 +12,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#include <sema/internal/sema_core.hpp>
 
 namespace aurex::sema {
 
@@ -558,12 +559,12 @@ template <typename Float>
 
 } // namespace
 
-TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id)
+TypeHandle SemanticAnalyzerCore::resolve_type(const syntax::TypeId type_id)
 {
     return this->resolve_type(type_id, false);
 }
 
-TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bool opaque_allowed_as_pointee)
+TypeHandle SemanticAnalyzerCore::resolve_type(const syntax::TypeId type_id, const bool opaque_allowed_as_pointee)
 {
     std::vector<TypeResolveAction> actions;
     std::vector<TypeHandle> values;
@@ -580,26 +581,26 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
         actions.pop_back();
         switch (action.kind) {
             case TypeResolveActionKind::resolve: {
-                if (!syntax::is_valid(action.type) || action.type.value >= this->module_.types.size()) {
+                if (!syntax::is_valid(action.type) || action.type.value >= this->ctx_.module.types.size()) {
                     values.push_back(INVALID_TYPE_HANDLE);
                     break;
                 }
 
                 const TypeHandle cached = this->cached_syntax_type(action.type);
                 if (is_valid(cached)) {
-                    if (this->checked_.types.get(cached).kind == TypeKind::opaque_struct
+                    if (this->state_.checked.types.get(cached).kind == TypeKind::opaque_struct
                         && !action.opaque_allowed_as_pointee) {
-                        this->report_general(this->module_.types[action.type.value].range,
+                        this->report_general(this->ctx_.module.types[action.type.value].range,
                             "opaque struct can only be used as a pointer target");
                     }
                     values.push_back(cached);
                     break;
                 }
 
-                const syntax::TypeNode& type = this->module_.types[action.type.value];
+                const syntax::TypeNode& type = this->ctx_.module.types[action.type.value];
                 switch (type.kind) {
                     case syntax::TypeKind::primitive: {
-                        const TypeHandle resolved = this->checked_.types.builtin(map_builtin(type.primitive));
+                        const TypeHandle resolved = this->state_.checked.types.builtin(map_builtin(type.primitive));
                         this->record_syntax_type_handle(action.type, resolved);
                         values.push_back(resolved);
                         break;
@@ -709,7 +710,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                 const TypeHandle pointee = values.back();
                 values.pop_back();
                 const TypeHandle resolved =
-                    this->checked_.types.pointer(map_mutability(action.pointer_mutability), pointee);
+                    this->state_.checked.types.pointer(map_mutability(action.pointer_mutability), pointee);
                 this->record_syntax_type_handle(action.type, resolved);
                 values.push_back(resolved);
                 break;
@@ -719,10 +720,10 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                 values.pop_back();
                 if (!this->is_valid_storage_type(pointee)) {
                     this->report_general(
-                        this->module_.types[action.type.value].range, std::string(SEMA_REFERENCE_STORAGE));
+                        this->ctx_.module.types[action.type.value].range, std::string(SEMA_REFERENCE_STORAGE));
                 }
                 const TypeHandle resolved =
-                    this->checked_.types.reference(map_mutability(action.pointer_mutability), pointee);
+                    this->state_.checked.types.reference(map_mutability(action.pointer_mutability), pointee);
                 this->record_syntax_type_handle(action.type, resolved);
                 values.push_back(resolved);
                 break;
@@ -730,7 +731,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
             case TypeResolveActionKind::build_array: {
                 const TypeHandle element = values.back();
                 values.pop_back();
-                const TypeHandle resolved = this->checked_.types.array(*action.array_count, element);
+                const TypeHandle resolved = this->state_.checked.types.array(*action.array_count, element);
                 this->record_syntax_type_handle(action.type, resolved);
                 values.push_back(resolved);
                 break;
@@ -739,7 +740,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                 const TypeHandle element = values.back();
                 values.pop_back();
                 const TypeHandle resolved =
-                    this->checked_.types.slice(map_mutability(action.pointer_mutability), element);
+                    this->state_.checked.types.slice(map_mutability(action.pointer_mutability), element);
                 this->record_syntax_type_handle(action.type, resolved);
                 values.push_back(resolved);
                 break;
@@ -756,10 +757,10 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                 for (const TypeHandle element : elements) {
                     if (!this->is_valid_storage_type(element)) {
                         this->report_general(
-                            this->module_.types[action.type.value].range, std::string(SEMA_FIELD_STORAGE));
+                            this->ctx_.module.types[action.type.value].range, std::string(SEMA_FIELD_STORAGE));
                     }
                 }
-                const TypeHandle resolved = this->checked_.types.tuple(elements);
+                const TypeHandle resolved = this->state_.checked.types.tuple(elements);
                 this->record_syntax_type_handle(action.type, resolved);
                 values.push_back(resolved);
                 break;
@@ -779,26 +780,26 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
                     values.pop_back();
                 }
                 if (action.function_is_variadic && action.function_call_conv != syntax::FunctionCallConv::c) {
-                    this->report_general(this->module_.types[action.type.value].range,
+                    this->report_general(this->ctx_.module.types[action.type.value].range,
                         std::string(SEMA_VARIADIC_FUNCTION_TYPE_EXTERN_C_ONLY));
                 }
                 for (const TypeHandle param : params) {
                     if (!this->is_valid_storage_type(param)) {
-                        this->report_general(this->module_.types[action.type.value].range,
+                        this->report_general(this->ctx_.module.types[action.type.value].range,
                             std::string(SEMA_FUNCTION_TYPE_PARAMETER_STORAGE));
                     }
-                    static_cast<void>(this->check_m2_value_abi(
-                        param, ValueAbiContext::function_type_parameter, this->module_.types[action.type.value].range));
+                    static_cast<void>(this->check_m2_value_abi(param, ValueAbiContext::function_type_parameter,
+                        this->ctx_.module.types[action.type.value].range));
                 }
-                if (is_valid(return_type) && !this->checked_.types.is_void(return_type)
+                if (is_valid(return_type) && !this->state_.checked.types.is_void(return_type)
                     && !this->is_valid_storage_type(return_type)) {
-                    this->report_general(
-                        this->module_.types[action.type.value].range, std::string(SEMA_FUNCTION_TYPE_RETURN_STORAGE));
+                    this->report_general(this->ctx_.module.types[action.type.value].range,
+                        std::string(SEMA_FUNCTION_TYPE_RETURN_STORAGE));
                 }
-                static_cast<void>(this->check_m2_value_abi(
-                    return_type, ValueAbiContext::function_type_return, this->module_.types[action.type.value].range));
+                static_cast<void>(this->check_m2_value_abi(return_type, ValueAbiContext::function_type_return,
+                    this->ctx_.module.types[action.type.value].range));
                 const TypeHandle resolved =
-                    this->checked_.types.function(map_function_call_conv(action.function_call_conv),
+                    this->state_.checked.types.function(map_function_call_conv(action.function_call_conv),
                         action.function_is_unsafe, action.function_is_variadic, params, return_type);
                 this->record_syntax_type_handle(action.type, resolved);
                 values.push_back(resolved);
@@ -812,7 +813,7 @@ TypeHandle SemanticAnalyzer::resolve_type(const syntax::TypeId type_id, const bo
     return resolved;
 }
 
-TypeHandle SemanticAnalyzer::resolve_named_type(
+TypeHandle SemanticAnalyzerCore::resolve_named_type(
     const syntax::TypeId type_id, const syntax::TypeNode& type, const bool opaque_allowed_as_pointee)
 {
     const std::vector<std::string_view> scope_parts = this->type_scope_parts(type);
@@ -824,9 +825,9 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
             return INVALID_TYPE_HANDLE;
         }
     }
-    if (!qualified && this->current_generic_context_ != nullptr) {
-        if (const auto found = this->current_generic_context_->params.find(type.name_id);
-            found != this->current_generic_context_->params.end()) {
+    if (!qualified && this->state_.flow.current_generic_context != nullptr) {
+        if (const auto found = this->state_.flow.current_generic_context->params.find(type.name_id);
+            found != this->state_.flow.current_generic_context->params.end()) {
             if (!type.type_args.empty()) {
                 this->report_type(type.range, sema_generic_param_type_args_message(type.name));
                 return INVALID_TYPE_HANDLE;
@@ -852,75 +853,78 @@ TypeHandle SemanticAnalyzer::resolve_named_type(
     return this->resolve_named_type_selector_type(selector, opaque_allowed_as_pointee, true);
 }
 
-TypeHandle SemanticAnalyzer::resolve_type_alias(const TypeAliasInfo& alias, const bool opaque_allowed_as_pointee)
+TypeHandle SemanticAnalyzerCore::resolve_type_alias(const TypeAliasInfo& alias, const bool opaque_allowed_as_pointee)
 {
     const ModuleLookupKey key = this->module_lookup_key(alias.module, alias.name_id);
-    if (const auto found = resolved_type_aliases_.find(key); found != resolved_type_aliases_.end()) {
+    if (const auto found = this->state_.types.resolved_type_aliases.find(key);
+        found != this->state_.types.resolved_type_aliases.end()) {
         return found->second;
     }
-    if (std::find(resolving_type_aliases_.begin(), resolving_type_aliases_.end(), key)
-        != resolving_type_aliases_.end()) {
+    if (std::find(
+            this->state_.types.resolving_type_aliases.begin(), this->state_.types.resolving_type_aliases.end(), key)
+        != this->state_.types.resolving_type_aliases.end()) {
         this->report_general(alias.range, sema_cyclic_type_alias_message(alias.name));
-        resolved_type_aliases_[key] = INVALID_TYPE_HANDLE;
+        this->state_.types.resolved_type_aliases[key] = INVALID_TYPE_HANDLE;
         return INVALID_TYPE_HANDLE;
     }
-    resolving_type_aliases_.push_back(key);
-    const syntax::ModuleId previous_module = current_module_;
-    current_module_ = alias.module;
-    const TypeHandle resolved = resolve_type(alias.target, opaque_allowed_as_pointee);
-    current_module_ = previous_module;
-    resolving_type_aliases_.pop_back();
-    resolved_type_aliases_[key] = resolved;
+    this->state_.types.resolving_type_aliases.push_back(key);
+    const syntax::ModuleId previous_module = this->state_.flow.current_module;
+    this->state_.flow.current_module = alias.module;
+    const TypeHandle resolved = this->resolve_type(alias.target, opaque_allowed_as_pointee);
+    this->state_.flow.current_module = previous_module;
+    this->state_.types.resolving_type_aliases.pop_back();
+    this->state_.types.resolved_type_aliases[key] = resolved;
     return resolved;
 }
 
-bool SemanticAnalyzer::can_assign(const TypeHandle dst, const TypeHandle src, const syntax::ExprId value) const noexcept
+bool SemanticAnalyzerCore::can_assign(
+    const TypeHandle dst, const TypeHandle src, const syntax::ExprId value) const noexcept
 {
     if (!is_valid(dst) || !is_valid(src)) {
-        return is_valid(dst) && this->is_null_literal(value) && this->checked_.types.is_pointer(dst);
+        return is_valid(dst) && this->is_null_literal(value) && this->state_.checked.types.is_pointer(dst);
     }
-    if (this->checked_.types.get(dst).kind == TypeKind::generic_param
-        || this->checked_.types.get(src).kind == TypeKind::generic_param) {
-        return this->checked_.types.same(dst, src);
+    if (this->state_.checked.types.get(dst).kind == TypeKind::generic_param
+        || this->state_.checked.types.get(src).kind == TypeKind::generic_param) {
+        return this->state_.checked.types.same(dst, src);
     }
-    if (this->checked_.types.is_integer(dst) && this->checked_.types.is_integer(src)
+    if (this->state_.checked.types.is_integer(dst) && this->state_.checked.types.is_integer(src)
         && this->is_integer_literal(value)) {
         const syntax::LiteralExprPayload* const literal =
-            syntax::is_valid(value) && value.value < this->module_.exprs.size()
-            ? this->module_.exprs.literal_payload(value.value)
+            syntax::is_valid(value) && value.value < this->ctx_.module.exprs.size()
+            ? this->ctx_.module.exprs.literal_payload(value.value)
             : nullptr;
         return literal != nullptr && this->integer_literal_fits_type(dst, literal->text);
     }
-    if (this->checked_.types.is_pointer(dst) && this->checked_.types.is_pointer(src)) {
-        const TypeInfo& dst_info = this->checked_.types.get(dst);
-        const TypeInfo& src_info = this->checked_.types.get(src);
+    if (this->state_.checked.types.is_pointer(dst) && this->state_.checked.types.is_pointer(src)) {
+        const TypeInfo& dst_info = this->state_.checked.types.get(dst);
+        const TypeInfo& src_info = this->state_.checked.types.get(src);
         if (dst_info.pointer_mutability == PointerMutability::const_
-            && this->checked_.types.same(dst_info.pointee, src_info.pointee)) {
+            && this->state_.checked.types.same(dst_info.pointee, src_info.pointee)) {
             return true;
         }
     }
-    if (this->checked_.types.is_reference(dst) && this->checked_.types.is_reference(src)) {
-        const TypeInfo& dst_info = this->checked_.types.get(dst);
-        const TypeInfo& src_info = this->checked_.types.get(src);
-        if (!this->checked_.types.same(dst_info.pointee, src_info.pointee)) {
+    if (this->state_.checked.types.is_reference(dst) && this->state_.checked.types.is_reference(src)) {
+        const TypeInfo& dst_info = this->state_.checked.types.get(dst);
+        const TypeInfo& src_info = this->state_.checked.types.get(src);
+        if (!this->state_.checked.types.same(dst_info.pointee, src_info.pointee)) {
             return false;
         }
         return dst_info.pointer_mutability == PointerMutability::const_
             || src_info.pointer_mutability == PointerMutability::mut;
     }
-    if (this->checked_.types.is_slice(dst) && this->checked_.types.is_slice(src)) {
-        const TypeInfo& dst_info = this->checked_.types.get(dst);
-        const TypeInfo& src_info = this->checked_.types.get(src);
-        if (!this->checked_.types.same(dst_info.slice_element, src_info.slice_element)) {
+    if (this->state_.checked.types.is_slice(dst) && this->state_.checked.types.is_slice(src)) {
+        const TypeInfo& dst_info = this->state_.checked.types.get(dst);
+        const TypeInfo& src_info = this->state_.checked.types.get(src);
+        if (!this->state_.checked.types.same(dst_info.slice_element, src_info.slice_element)) {
             return false;
         }
         return dst_info.slice_mutability == PointerMutability::const_
             || src_info.slice_mutability == PointerMutability::mut;
     }
-    return this->checked_.types.same(dst, src);
+    return this->state_.checked.types.same(dst, src);
 }
 
-bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const
+bool SemanticAnalyzerCore::is_valid_storage_type(const TypeHandle type) const
 {
     std::vector<TypeHandle> pending;
     pending.push_back(type);
@@ -930,11 +934,11 @@ bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const
         if (!is_valid(current)) {
             return false;
         }
-        const TypeInfo& info = this->checked_.types.get(current);
+        const TypeInfo& info = this->state_.checked.types.get(current);
         if (info.kind == TypeKind::generic_param) {
             return true;
         }
-        if (this->checked_.types.is_void(current) || info.kind == TypeKind::opaque_struct) {
+        if (this->state_.checked.types.is_void(current) || info.kind == TypeKind::opaque_struct) {
             return false;
         }
         if (info.kind == TypeKind::slice) {
@@ -963,7 +967,7 @@ bool SemanticAnalyzer::is_valid_storage_type(const TypeHandle type) const
     return true;
 }
 
-bool SemanticAnalyzer::check_m2_value_abi(
+bool SemanticAnalyzerCore::check_m2_value_abi(
     const TypeHandle type, const ValueAbiContext context, const base::SourceRange& range) const
 {
     if (!is_valid(type)) {
@@ -972,57 +976,57 @@ bool SemanticAnalyzer::check_m2_value_abi(
 
     switch (context) {
         case ValueAbiContext::parameter:
-            if (this->checked_.types.is_array(type)) {
+            if (this->state_.checked.types.is_array(type)) {
                 this->report_unsupported(range, std::string(SEMA_ARRAY_PARAMETER_UNSUPPORTED));
                 return false;
             }
-            if (this->checked_.types.contains_array(type)) {
+            if (this->state_.checked.types.contains_array(type)) {
                 this->report_unsupported(range, std::string(SEMA_ARRAY_STRUCT_PARAMETER_UNSUPPORTED));
                 return false;
             }
             return true;
         case ValueAbiContext::function_type_parameter:
-            if (this->checked_.types.is_array(type) || this->checked_.types.contains_array(type)) {
+            if (this->state_.checked.types.is_array(type) || this->state_.checked.types.contains_array(type)) {
                 this->report_unsupported(range, std::string(SEMA_ARRAY_FUNCTION_TYPE_PARAMETER_UNSUPPORTED));
                 return false;
             }
             return true;
         case ValueAbiContext::function_type_return:
-            if (this->checked_.types.is_array(type) || this->checked_.types.contains_array(type)) {
+            if (this->state_.checked.types.is_array(type) || this->state_.checked.types.contains_array(type)) {
                 this->report_unsupported(range, std::string(SEMA_ARRAY_FUNCTION_TYPE_RETURN_UNSUPPORTED));
                 return false;
             }
             return true;
         case ValueAbiContext::return_value:
-            if (this->checked_.types.is_array(type)) {
+            if (this->state_.checked.types.is_array(type)) {
                 this->report_unsupported(range, std::string(SEMA_ARRAY_RETURN_UNSUPPORTED));
                 return false;
             }
-            if (this->checked_.types.contains_array(type)) {
+            if (this->state_.checked.types.contains_array(type)) {
                 this->report_unsupported(range, std::string(SEMA_ARRAY_STRUCT_RETURN_UNSUPPORTED));
                 return false;
             }
             return true;
         case ValueAbiContext::assignment:
-            if (this->checked_.types.contains_array(type)) {
+            if (this->state_.checked.types.contains_array(type)) {
                 this->report_unsupported(range, std::string(SEMA_ARRAY_ASSIGNMENT_UNSUPPORTED));
                 return false;
             }
             return true;
         case ValueAbiContext::enum_payload:
-            if (this->checked_.types.contains_array(type)) {
+            if (this->state_.checked.types.contains_array(type)) {
                 this->report_unsupported(range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_UNSUPPORTED));
                 return false;
             }
             return true;
         case ValueAbiContext::enum_payload_argument:
-            if (this->checked_.types.contains_array(type)) {
+            if (this->state_.checked.types.contains_array(type)) {
                 this->report_unsupported(range, std::string(SEMA_ENUM_PAYLOAD_ARRAY_ARGUMENT_UNSUPPORTED));
                 return false;
             }
             return true;
         case ValueAbiContext::argument:
-            if (this->checked_.types.contains_array(type)) {
+            if (this->state_.checked.types.contains_array(type)) {
                 this->report_unsupported(range, std::string(SEMA_ARGUMENT_ARRAY_UNSUPPORTED));
                 return false;
             }
@@ -1031,7 +1035,7 @@ bool SemanticAnalyzer::check_m2_value_abi(
     return true;
 }
 
-void SemanticAnalyzer::validate_type_layouts()
+void SemanticAnalyzerCore::validate_type_layouts()
 {
     struct LayoutResult {
         base::u64 size = SEMA_ABI_INVALID_SIZE;
@@ -1043,7 +1047,7 @@ void SemanticAnalyzer::validate_type_layouts()
     std::unordered_map<base::u32, LayoutResult> results;
 
     const auto primitive_layout = [&](const TypeHandle type) -> LayoutResult {
-        const TypeInfo& info = this->checked_.types.get(type);
+        const TypeInfo& info = this->state_.checked.types.get(type);
         if (info.kind == TypeKind::builtin && info.builtin == BuiltinType::void_) {
             return {};
         }
@@ -1055,7 +1059,7 @@ void SemanticAnalyzer::validate_type_layouts()
         if (!is_valid(type)) {
             return {};
         }
-        const TypeInfo& info = this->checked_.types.get(type);
+        const TypeInfo& info = this->state_.checked.types.get(type);
         if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::reference
             || info.kind == TypeKind::slice || info.kind == TypeKind::function
             || info.kind == TypeKind::generic_param) {
@@ -1071,7 +1075,7 @@ void SemanticAnalyzer::validate_type_layouts()
     const auto finish_type = [&](const TypeHandle type, const base::SourceRange& range) -> LayoutResult {
         LayoutResult result;
         result.ok = true;
-        const TypeInfo& info = this->checked_.types.get(type);
+        const TypeInfo& info = this->state_.checked.types.get(type);
         if (info.kind == TypeKind::array) {
             const LayoutResult element = cached_result(info.array_element);
             if (!element.ok) {
@@ -1166,9 +1170,9 @@ void SemanticAnalyzer::validate_type_layouts()
             base::u64 payload_size = SEMA_ABI_INVALID_SIZE;
             base::u64 payload_align = SEMA_ABI_MIN_ALIGNMENT;
             bool has_payload = false;
-            for (const auto& entry : this->checked_.enum_cases) {
+            for (const auto& entry : this->state_.checked.enum_cases) {
                 const EnumCaseInfo& enum_case = entry.second;
-                if (!this->checked_.types.same(enum_case.type, type) || !is_valid(enum_case.payload_type)) {
+                if (!this->state_.checked.types.same(enum_case.type, type) || !is_valid(enum_case.payload_type)) {
                     continue;
                 }
                 has_payload = true;
@@ -1212,7 +1216,7 @@ void SemanticAnalyzer::validate_type_layouts()
         if (!is_valid(dependency)) {
             return;
         }
-        const TypeInfo& dependency_info = this->checked_.types.get(dependency);
+        const TypeInfo& dependency_info = this->state_.checked.types.get(dependency);
         if (dependency_info.kind == TypeKind::builtin || dependency_info.kind == TypeKind::pointer
             || dependency_info.kind == TypeKind::reference || dependency_info.kind == TypeKind::slice
             || dependency_info.kind == TypeKind::function || dependency_info.kind == TypeKind::generic_param
@@ -1222,7 +1226,7 @@ void SemanticAnalyzer::validate_type_layouts()
         const auto state = states.find(dependency.value);
         if (state != states.end() && state->second == TypeLayoutVisitState::visiting) {
             this->report_general(dependency_range,
-                "recursive value type is not valid storage: " + this->checked_.types.display_name(dependency));
+                "recursive value type is not valid storage: " + this->state_.checked.types.display_name(dependency));
             results[dependency.value] = {};
             states[dependency.value] = TypeLayoutVisitState::done;
             return;
@@ -1232,7 +1236,7 @@ void SemanticAnalyzer::validate_type_layouts()
 
     const auto push_children = [&](std::vector<TypeLayoutFrame>& stack, const TypeHandle type,
                                    const base::SourceRange& range) {
-        const TypeInfo& info = this->checked_.types.get(type);
+        const TypeInfo& info = this->state_.checked.types.get(type);
         if (info.kind == TypeKind::array) {
             push_dependency(stack, info.array_element, range);
             return;
@@ -1254,9 +1258,9 @@ void SemanticAnalyzer::validate_type_layouts()
         }
         if (info.kind == TypeKind::enum_) {
             push_dependency(stack, info.enum_underlying, range);
-            for (const auto& entry : this->checked_.enum_cases) {
+            for (const auto& entry : this->state_.checked.enum_cases) {
                 const EnumCaseInfo& enum_case = entry.second;
-                if (this->checked_.types.same(enum_case.type, type) && is_valid(enum_case.payload_type)) {
+                if (this->state_.checked.types.same(enum_case.type, type) && is_valid(enum_case.payload_type)) {
                     push_dependency(stack, enum_case.payload_type, enum_case.range);
                 }
             }
@@ -1268,7 +1272,7 @@ void SemanticAnalyzer::validate_type_layouts()
         if (!is_valid(type)) {
             return {};
         }
-        const TypeInfo& info = this->checked_.types.get(type);
+        const TypeInfo& info = this->state_.checked.types.get(type);
         if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::reference
             || info.kind == TypeKind::slice || info.kind == TypeKind::function
             || info.kind == TypeKind::generic_param) {
@@ -1305,7 +1309,7 @@ void SemanticAnalyzer::validate_type_layouts()
         return results.at(type.value);
     };
 
-    for (const auto& entry : this->checked_.structs) {
+    for (const auto& entry : this->state_.checked.structs) {
         const StructInfo& info = entry.second;
         if (!info.is_opaque) {
             const base::SourceRange range = info.fields.empty() ? base::SourceRange{} : info.fields.front().range;
@@ -1314,14 +1318,14 @@ void SemanticAnalyzer::validate_type_layouts()
     }
 
     std::unordered_set<base::u32> seen_enums;
-    for (const auto& entry : this->named_types_) {
+    for (const auto& entry : this->state_.types.named_types) {
         const TypeHandle type = entry.second;
-        if (is_valid(type) && this->checked_.types.get(type).kind == TypeKind::enum_
+        if (is_valid(type) && this->state_.checked.types.get(type).kind == TypeKind::enum_
             && seen_enums.insert(type.value).second) {
             static_cast<void>(compute(type, {}));
         }
     }
-    for (const auto& entry : this->checked_.enum_cases) {
+    for (const auto& entry : this->state_.checked.enum_cases) {
         const TypeHandle type = entry.second.type;
         if (is_valid(type) && seen_enums.insert(type.value).second) {
             static_cast<void>(compute(type, entry.second.range));
@@ -1329,7 +1333,7 @@ void SemanticAnalyzer::validate_type_layouts()
     }
 }
 
-bool SemanticAnalyzer::parse_integer_literal_text(const std::string_view text, base::u64& value) const noexcept
+bool SemanticAnalyzerCore::parse_integer_literal_text(const std::string_view text, base::u64& value) const noexcept
 {
     const IntegerLiteralParts parts = split_integer_literal_text(text);
     if (!parts.suffix.empty() && !integer_suffix_type(parts.suffix).has_value()) {
@@ -1338,24 +1342,24 @@ bool SemanticAnalyzer::parse_integer_literal_text(const std::string_view text, b
     return parse_u64_literal_checked(parts.digits, value);
 }
 
-bool SemanticAnalyzer::integer_literal_fits_type(
+bool SemanticAnalyzerCore::integer_literal_fits_type(
     const TypeHandle destination, const std::string_view text) const noexcept
 {
-    return literal_fits_integer_type(checked_.types, destination, text);
+    return literal_fits_integer_type(this->state_.checked.types, destination, text);
 }
 
-bool SemanticAnalyzer::negative_integer_literal_fits_type(
+bool SemanticAnalyzerCore::negative_integer_literal_fits_type(
     const TypeHandle destination, const std::string_view text) const noexcept
 {
-    return negative_literal_fits_integer_type(checked_.types, destination, text);
+    return negative_literal_fits_integer_type(this->state_.checked.types, destination, text);
 }
 
-TypeHandle SemanticAnalyzer::analyze_integer_literal(const syntax::ExprId expr_id, const std::string_view text,
+TypeHandle SemanticAnalyzerCore::analyze_integer_literal(const syntax::ExprId expr_id, const std::string_view text,
     const base::SourceRange& range, const TypeHandle expected_type)
 {
-    const TypeHandle default_type = checked_.types.builtin(BuiltinType::i32);
+    const TypeHandle default_type = this->state_.checked.types.builtin(BuiltinType::i32);
     TypeHandle natural_type = default_type;
-    TypeHandle literal_type = checked_.types.is_integer(expected_type) ? expected_type : natural_type;
+    TypeHandle literal_type = this->state_.checked.types.is_integer(expected_type) ? expected_type : natural_type;
     bool suffix_valid = true;
     bool has_suffix = false;
     const IntegerLiteralParts parts = split_integer_literal_text(text);
@@ -1366,32 +1370,35 @@ TypeHandle SemanticAnalyzer::analyze_integer_literal(const syntax::ExprId expr_i
             suffix_valid = false;
             this->report_general(range, sema_invalid_integer_literal_suffix_message(parts.suffix));
         } else {
-            natural_type = checked_.types.builtin(*suffix);
+            natural_type = this->state_.checked.types.builtin(*suffix);
             literal_type = natural_type;
-            if (checked_.types.is_integer(expected_type) && !checked_.types.same(literal_type, expected_type)) {
+            if (this->state_.checked.types.is_integer(expected_type)
+                && !this->state_.checked.types.same(literal_type, expected_type)) {
                 this->report_type(range,
                     sema_integer_literal_suffix_type_mismatch_message(
-                        checked_.types.display_name(literal_type), checked_.types.display_name(expected_type)));
+                        this->state_.checked.types.display_name(literal_type),
+                        this->state_.checked.types.display_name(expected_type)));
             }
         }
     }
     if (suffix_valid && !integer_literal_fits_type(literal_type, text)) {
         this->report_general(
-            range, sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type)));
+            range, sema_integer_literal_out_of_range_message(this->state_.checked.types.display_name(literal_type)));
     }
-    if (suffix_valid && !has_suffix && checked_.types.is_integer(expected_type)
-        && !checked_.types.same(default_type, expected_type) && integer_literal_fits_type(default_type, text)) {
+    if (suffix_valid && !has_suffix && this->state_.checked.types.is_integer(expected_type)
+        && !this->state_.checked.types.same(default_type, expected_type)
+        && integer_literal_fits_type(default_type, text)) {
         this->record_coercion(expr_id, default_type, expected_type, CoercionKind::contextual_integer_literal);
     }
     return this->record_expr_types(expr_id, natural_type, literal_type);
 }
 
-TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(const syntax::ExprId expr_id, const std::string_view text,
-    const base::SourceRange& range, const TypeHandle expected_type)
+TypeHandle SemanticAnalyzerCore::analyze_negative_integer_literal(const syntax::ExprId expr_id,
+    const std::string_view text, const base::SourceRange& range, const TypeHandle expected_type)
 {
-    const TypeHandle default_type = checked_.types.builtin(BuiltinType::i32);
+    const TypeHandle default_type = this->state_.checked.types.builtin(BuiltinType::i32);
     TypeHandle natural_type = default_type;
-    TypeHandle literal_type = checked_.types.is_integer(expected_type) ? expected_type : natural_type;
+    TypeHandle literal_type = this->state_.checked.types.is_integer(expected_type) ? expected_type : natural_type;
     bool suffix_valid = true;
     bool has_suffix = false;
     const IntegerLiteralParts parts = split_integer_literal_text(text);
@@ -1402,33 +1409,35 @@ TypeHandle SemanticAnalyzer::analyze_negative_integer_literal(const syntax::Expr
             suffix_valid = false;
             this->report_general(range, sema_invalid_integer_literal_suffix_message(parts.suffix));
         } else {
-            natural_type = checked_.types.builtin(*suffix);
+            natural_type = this->state_.checked.types.builtin(*suffix);
             literal_type = natural_type;
-            if (checked_.types.is_integer(expected_type) && !checked_.types.same(literal_type, expected_type)) {
+            if (this->state_.checked.types.is_integer(expected_type)
+                && !this->state_.checked.types.same(literal_type, expected_type)) {
                 this->report_type(range,
                     sema_integer_literal_suffix_type_mismatch_message(
-                        checked_.types.display_name(literal_type), checked_.types.display_name(expected_type)));
+                        this->state_.checked.types.display_name(literal_type),
+                        this->state_.checked.types.display_name(expected_type)));
             }
         }
     }
     if (suffix_valid && !negative_integer_literal_fits_type(literal_type, text)) {
         this->report_general(
-            range, sema_integer_literal_out_of_range_message(checked_.types.display_name(literal_type)));
+            range, sema_integer_literal_out_of_range_message(this->state_.checked.types.display_name(literal_type)));
     }
-    if (suffix_valid && !has_suffix && checked_.types.is_integer(expected_type)
-        && !checked_.types.same(default_type, expected_type)
+    if (suffix_valid && !has_suffix && this->state_.checked.types.is_integer(expected_type)
+        && !this->state_.checked.types.same(default_type, expected_type)
         && negative_integer_literal_fits_type(default_type, text)) {
         this->record_coercion(expr_id, default_type, expected_type, CoercionKind::contextual_integer_literal);
     }
     return this->record_expr_types(expr_id, natural_type, literal_type);
 }
 
-TypeHandle SemanticAnalyzer::analyze_float_literal(const syntax::ExprId expr_id, const std::string_view text,
+TypeHandle SemanticAnalyzerCore::analyze_float_literal(const syntax::ExprId expr_id, const std::string_view text,
     const base::SourceRange& range, const TypeHandle expected_type)
 {
-    const TypeHandle default_type = checked_.types.builtin(BuiltinType::f64);
+    const TypeHandle default_type = this->state_.checked.types.builtin(BuiltinType::f64);
     TypeHandle natural_type = default_type;
-    TypeHandle literal_type = checked_.types.is_float(expected_type) ? expected_type : natural_type;
+    TypeHandle literal_type = this->state_.checked.types.is_float(expected_type) ? expected_type : natural_type;
     bool suffix_valid = true;
     bool has_suffix = false;
     const FloatLiteralParts parts = split_float_literal_text(text);
@@ -1439,67 +1448,70 @@ TypeHandle SemanticAnalyzer::analyze_float_literal(const syntax::ExprId expr_id,
             suffix_valid = false;
             this->report_general(range, sema_invalid_float_literal_suffix_message(parts.suffix));
         } else {
-            natural_type = checked_.types.builtin(*suffix);
+            natural_type = this->state_.checked.types.builtin(*suffix);
             literal_type = natural_type;
-            if (checked_.types.is_float(expected_type) && !checked_.types.same(literal_type, expected_type)) {
+            if (this->state_.checked.types.is_float(expected_type)
+                && !this->state_.checked.types.same(literal_type, expected_type)) {
                 this->report_type(range,
                     sema_float_literal_suffix_type_mismatch_message(
-                        checked_.types.display_name(literal_type), checked_.types.display_name(expected_type)));
+                        this->state_.checked.types.display_name(literal_type),
+                        this->state_.checked.types.display_name(expected_type)));
             }
         }
     }
     const bool fits = !suffix_valid
-        || (checked_.types.same(literal_type, checked_.types.builtin(BuiltinType::f32))
+        || (this->state_.checked.types.same(literal_type, this->state_.checked.types.builtin(BuiltinType::f32))
                 ? parse_float_literal_checked<float>(text)
                 : parse_float_literal_checked<double>(text));
     if (suffix_valid && !fits) {
-        this->report_general(range, sema_float_literal_out_of_range_message(checked_.types.display_name(literal_type)));
+        this->report_general(
+            range, sema_float_literal_out_of_range_message(this->state_.checked.types.display_name(literal_type)));
     }
-    if (suffix_valid && !has_suffix && checked_.types.is_float(expected_type)
-        && !checked_.types.same(default_type, expected_type) && parse_float_literal_checked<double>(text)) {
+    if (suffix_valid && !has_suffix && this->state_.checked.types.is_float(expected_type)
+        && !this->state_.checked.types.same(default_type, expected_type) && parse_float_literal_checked<double>(text)) {
         this->record_coercion(expr_id, default_type, expected_type, CoercionKind::contextual_float_literal);
     }
     return this->record_expr_types(expr_id, natural_type, literal_type);
 }
 
-bool SemanticAnalyzer::is_valid_cast(const syntax::ExprKind kind, const TypeHandle dst, const TypeHandle src) const
+bool SemanticAnalyzerCore::is_valid_cast(const syntax::ExprKind kind, const TypeHandle dst, const TypeHandle src) const
 {
     if (!is_valid(dst) || !is_valid(src)) {
         return false;
     }
-    if (this->checked_.types.get(dst).kind == TypeKind::generic_param
-        || this->checked_.types.get(src).kind == TypeKind::generic_param) {
+    if (this->state_.checked.types.get(dst).kind == TypeKind::generic_param
+        || this->state_.checked.types.get(src).kind == TypeKind::generic_param) {
         return false;
     }
 
     if (kind == syntax::ExprKind::cast) {
-        return (this->checked_.types.is_integer(dst) || this->checked_.types.is_float(dst)
-                   || this->checked_.types.is_bool(dst))
-            && (this->checked_.types.is_integer(src) || this->checked_.types.is_float(src)
-                || this->checked_.types.is_bool(src));
+        return (this->state_.checked.types.is_integer(dst) || this->state_.checked.types.is_float(dst)
+                   || this->state_.checked.types.is_bool(dst))
+            && (this->state_.checked.types.is_integer(src) || this->state_.checked.types.is_float(src)
+                || this->state_.checked.types.is_bool(src));
     }
     if (kind == syntax::ExprKind::pcast) {
-        return this->checked_.types.is_pointer(dst)
-            && (this->checked_.types.is_pointer(src) || this->checked_.types.is_reference(src));
+        return this->state_.checked.types.is_pointer(dst)
+            && (this->state_.checked.types.is_pointer(src) || this->state_.checked.types.is_reference(src));
     }
     if (kind == syntax::ExprKind::bcast) {
-        if (this->checked_.types.same(dst, src)) {
-            return is_bitcast_type(this->checked_.types, dst);
+        if (this->state_.checked.types.same(dst, src)) {
+            return is_bitcast_type(this->state_.checked.types, dst);
         }
-        if (!is_bitcast_type(this->checked_.types, dst) || !is_bitcast_type(this->checked_.types, src)
+        if (!is_bitcast_type(this->state_.checked.types, dst) || !is_bitcast_type(this->state_.checked.types, src)
             || this->abi_size(dst) != this->abi_size(src)) {
             return false;
         }
-        if (is_builtin_scalar_bcast_type(this->checked_.types, dst)
-            && is_builtin_scalar_bcast_type(this->checked_.types, src)) {
+        if (is_builtin_scalar_bcast_type(this->state_.checked.types, dst)
+            && is_builtin_scalar_bcast_type(this->state_.checked.types, src)) {
             return true;
         }
-        return this->checked_.types.is_pointer(dst) && this->checked_.types.is_pointer(src);
+        return this->state_.checked.types.is_pointer(dst) && this->state_.checked.types.is_pointer(src);
     }
     return false;
 }
 
-SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle type) const
+SemanticAnalyzerCore::TypeAbiLayout SemanticAnalyzerCore::abi_layout(const TypeHandle type) const
 {
     const auto builtin_layout = [](const BuiltinType builtin) noexcept -> TypeAbiLayout {
         switch (builtin) {
@@ -1543,7 +1555,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
 
     const auto finish_type = [&](const TypeHandle current,
                                  const std::unordered_map<base::u32, TypeAbiLayout>& layouts) {
-        const TypeInfo& info = this->checked_.types.get(current);
+        const TypeInfo& info = this->state_.checked.types.get(current);
         switch (info.kind) {
             case TypeKind::builtin:
                 return builtin_layout(info.builtin);
@@ -1613,7 +1625,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         if (!is_valid(dependency) || layouts.contains(dependency.value)) {
             return;
         }
-        const TypeInfo& info = this->checked_.types.get(dependency);
+        const TypeInfo& info = this->state_.checked.types.get(dependency);
         if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::reference
             || info.kind == TypeKind::slice || info.kind == TypeKind::function || info.kind == TypeKind::generic_param
             || info.kind == TypeKind::opaque_struct) {
@@ -1630,7 +1642,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
     const auto push_children = [&](std::vector<TypeLayoutFrame>& stack, const TypeHandle current,
                                    std::unordered_map<base::u32, TypeLayoutVisitState>& states,
                                    const std::unordered_map<base::u32, TypeAbiLayout>& layouts) {
-        const TypeInfo& info = this->checked_.types.get(current);
+        const TypeInfo& info = this->state_.checked.types.get(current);
         switch (info.kind) {
             case TypeKind::array:
                 push_dependency(stack, info.array_element, states, layouts);
@@ -1679,7 +1691,7 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
         if (!is_valid(frame.type) || layouts.contains(frame.type.value)) {
             continue;
         }
-        const TypeInfo& info = this->checked_.types.get(frame.type);
+        const TypeInfo& info = this->state_.checked.types.get(frame.type);
         if (frame.stage == TypeLayoutFrameStage::finish) {
             layouts[frame.type.value] = finish_type(frame.type, layouts);
             states[frame.type.value] = TypeLayoutVisitState::done;
@@ -1705,39 +1717,39 @@ SemanticAnalyzer::TypeAbiLayout SemanticAnalyzer::abi_layout(const TypeHandle ty
     return cached(layouts, type);
 }
 
-base::u64 SemanticAnalyzer::abi_size(const TypeHandle type) const
+base::u64 SemanticAnalyzerCore::abi_size(const TypeHandle type) const
 {
     return this->abi_layout(type).size;
 }
 
-base::u64 SemanticAnalyzer::abi_align(const TypeHandle type) const
+base::u64 SemanticAnalyzerCore::abi_align(const TypeHandle type) const
 {
     return this->abi_layout(type).align;
 }
 
-bool SemanticAnalyzer::is_integer_literal(const syntax::ExprId expr_id) const noexcept
+bool SemanticAnalyzerCore::is_integer_literal(const syntax::ExprId expr_id) const noexcept
 {
-    return syntax::is_valid(expr_id) && expr_id.value < this->module_.exprs.size()
-        && this->module_.exprs.kind(expr_id.value) == syntax::ExprKind::integer_literal;
+    return syntax::is_valid(expr_id) && expr_id.value < this->ctx_.module.exprs.size()
+        && this->ctx_.module.exprs.kind(expr_id.value) == syntax::ExprKind::integer_literal;
 }
 
-bool SemanticAnalyzer::is_null_literal(const syntax::ExprId expr_id) const noexcept
+bool SemanticAnalyzerCore::is_null_literal(const syntax::ExprId expr_id) const noexcept
 {
-    return syntax::is_valid(expr_id) && expr_id.value < this->module_.exprs.size()
-        && this->module_.exprs.kind(expr_id.value) == syntax::ExprKind::null_literal;
+    return syntax::is_valid(expr_id) && expr_id.value < this->ctx_.module.exprs.size()
+        && this->ctx_.module.exprs.kind(expr_id.value) == syntax::ExprKind::null_literal;
 }
 
-bool SemanticAnalyzer::is_null_result_expr(const syntax::ExprId expr_id) const noexcept
+bool SemanticAnalyzerCore::is_null_result_expr(const syntax::ExprId expr_id) const noexcept
 {
-    if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->ctx_.module.exprs.size()) {
         return false;
     }
-    const syntax::ExprKind kind = this->module_.exprs.kind(expr_id.value);
-    const syntax::BlockExprPayload* const block = this->module_.exprs.block_payload(expr_id.value);
+    const syntax::ExprKind kind = this->ctx_.module.exprs.kind(expr_id.value);
+    const syntax::BlockExprPayload* const block = this->ctx_.module.exprs.block_payload(expr_id.value);
     return kind == syntax::ExprKind::null_literal || (block != nullptr && this->is_null_literal(block->result));
 }
 
-SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
+SemanticAnalyzerCore::PlaceInfo SemanticAnalyzerCore::analyze_place_info(
     const syntax::ExprId expr_id, const bool emit_diagnostics)
 {
     enum class PendingProjectionKind {
@@ -1753,21 +1765,21 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
 
     std::vector<PendingProjection> pending;
     syntax::ExprId current = expr_id;
-    while (syntax::is_valid(current) && current.value < this->module_.exprs.size()) {
-        const syntax::ExprKind kind = this->module_.exprs.kind(current.value);
-        if (const syntax::FieldExprPayload* const field = this->module_.exprs.field_payload(current.value);
+    while (syntax::is_valid(current) && current.value < this->ctx_.module.exprs.size()) {
+        const syntax::ExprKind kind = this->ctx_.module.exprs.kind(current.value);
+        if (const syntax::FieldExprPayload* const field = this->ctx_.module.exprs.field_payload(current.value);
             kind == syntax::ExprKind::field && field != nullptr) {
             pending.push_back(PendingProjection{PendingProjectionKind::field, current});
             current = field->object;
             continue;
         }
-        if (const syntax::IndexExprPayload* const index = this->module_.exprs.index_payload(current.value);
+        if (const syntax::IndexExprPayload* const index = this->ctx_.module.exprs.index_payload(current.value);
             kind == syntax::ExprKind::index && index != nullptr) {
             pending.push_back(PendingProjection{PendingProjectionKind::index, current});
             current = index->object;
             continue;
         }
-        if (const syntax::UnaryExprPayload* const unary = this->module_.exprs.unary_payload(current.value);
+        if (const syntax::UnaryExprPayload* const unary = this->ctx_.module.exprs.unary_payload(current.value);
             kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::dereference) {
             pending.push_back(PendingProjection{PendingProjectionKind::deref, current});
             current = unary->operand;
@@ -1777,18 +1789,19 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
     }
 
     PlaceInfo place;
-    if (!syntax::is_valid(current) || current.value >= this->module_.exprs.size()) {
+    if (!syntax::is_valid(current) || current.value >= this->ctx_.module.exprs.size()) {
         return place;
     }
 
-    const syntax::NameExprPayload* const base_expr = this->module_.exprs.name_payload(current.value);
+    const syntax::NameExprPayload* const base_expr = this->ctx_.module.exprs.name_payload(current.value);
     if (base_expr != nullptr && base_expr->scope_name.empty()) {
-        const Symbol* symbol = this->symbols_.find(base_expr->text_id);
+        const Symbol* symbol = this->state_.names.symbols.find(base_expr->text_id);
         if (symbol == nullptr) {
-            const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, base_expr->text_id);
+            const ModuleLookupKey lookup_key =
+                this->find_module_lookup_key(this->state_.flow.current_module, base_expr->text_id);
             if (is_valid(lookup_key)) {
-                if (const auto global = this->global_values_by_name_.find(lookup_key);
-                    global != this->global_values_by_name_.end()) {
+                if (const auto global = this->state_.names.global_values_by_name.find(lookup_key);
+                    global != this->state_.names.global_values_by_name.end()) {
                     symbol = global->second;
                 }
             }
@@ -1808,28 +1821,28 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
     }
 
     for (auto projection = pending.rbegin(); projection != pending.rend(); ++projection) {
-        if (!syntax::is_valid(projection->expr) || projection->expr.value >= this->module_.exprs.size()) {
+        if (!syntax::is_valid(projection->expr) || projection->expr.value >= this->ctx_.module.exprs.size()) {
             place.type = INVALID_TYPE_HANDLE;
             place.is_place = false;
             place.is_writable = false;
             continue;
         }
 
-        const base::SourceRange projection_range = this->module_.exprs.range(projection->expr.value);
+        const base::SourceRange projection_range = this->ctx_.module.exprs.range(projection->expr.value);
         const TypeHandle input_type = place.type;
         TypeHandle output_type = INVALID_TYPE_HANDLE;
         bool output_is_place = false;
         bool output_is_writable = false;
 
         if (projection->kind == PendingProjectionKind::deref) {
-            if (this->checked_.types.is_pointer(input_type)) {
-                const TypeInfo& pointer = this->checked_.types.get(input_type);
+            if (this->state_.checked.types.is_pointer(input_type)) {
+                const TypeInfo& pointer = this->state_.checked.types.get(input_type);
                 output_type = pointer.pointee;
                 output_is_place = true;
                 output_is_writable = pointer.pointer_mutability == PointerMutability::mut;
                 place.crosses_raw_pointer = true;
-            } else if (this->checked_.types.is_reference(input_type)) {
-                const TypeInfo& reference = this->checked_.types.get(input_type);
+            } else if (this->state_.checked.types.is_reference(input_type)) {
+                const TypeInfo& reference = this->state_.checked.types.get(input_type);
                 output_type = reference.pointee;
                 output_is_place = true;
                 output_is_writable = reference.pointer_mutability == PointerMutability::mut;
@@ -1838,7 +1851,7 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
             }
         } else if (projection->kind == PendingProjectionKind::field) {
             const syntax::FieldExprPayload* const projection_expr =
-                this->module_.exprs.field_payload(projection->expr.value);
+                this->ctx_.module.exprs.field_payload(projection->expr.value);
             const std::string_view field_name =
                 projection_expr == nullptr ? std::string_view{} : projection_expr->field_name;
             const IdentId field_name_id =
@@ -1846,19 +1859,19 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
             TypeHandle object_type = input_type;
             bool projection_is_indirect = false;
             output_is_writable = place.is_writable;
-            if (this->checked_.types.is_pointer(object_type)) {
-                const TypeInfo& pointer = this->checked_.types.get(object_type);
+            if (this->state_.checked.types.is_pointer(object_type)) {
+                const TypeInfo& pointer = this->state_.checked.types.get(object_type);
                 projection_is_indirect = true;
                 output_is_writable = pointer.pointer_mutability == PointerMutability::mut;
                 object_type = pointer.pointee;
                 place.crosses_raw_pointer = true;
-            } else if (this->checked_.types.is_reference(object_type)) {
-                const TypeInfo& reference = this->checked_.types.get(object_type);
+            } else if (this->state_.checked.types.is_reference(object_type)) {
+                const TypeInfo& reference = this->state_.checked.types.get(object_type);
                 projection_is_indirect = true;
                 output_is_writable = reference.pointer_mutability == PointerMutability::mut;
                 object_type = reference.pointee;
             }
-            if (this->checked_.types.is_tuple(object_type)) {
+            if (this->state_.checked.types.is_tuple(object_type)) {
                 if (emit_diagnostics) {
                     this->report_unsupported(projection_range, std::string(SEMA_TUPLE_FIELD_ACCESS_UNSUPPORTED));
                 }
@@ -1888,42 +1901,42 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
             }
         } else {
             const syntax::IndexExprPayload* const projection_expr =
-                this->module_.exprs.index_payload(projection->expr.value);
+                this->ctx_.module.exprs.index_payload(projection->expr.value);
             const syntax::ExprId index_expr =
                 projection_expr == nullptr ? syntax::INVALID_EXPR_ID : projection_expr->index;
             const TypeHandle index_type = this->analyze_expr(index_expr);
-            if (emit_diagnostics && !this->checked_.types.is_integer(index_type)) {
-                this->report_general(place_expr_range_or(this->module_, index_expr, projection_range),
+            if (emit_diagnostics && !this->state_.checked.types.is_integer(index_type)) {
+                this->report_general(place_expr_range_or(this->ctx_.module, index_expr, projection_range),
                     std::string(SEMA_ARRAY_INDEX_INTEGER));
             }
-            if (this->checked_.types.is_array(input_type)) {
-                const PlaceIntegerLiteralExpr literal_index = place_integer_literal_expr(this->module_, index_expr);
+            if (this->state_.checked.types.is_array(input_type)) {
+                const PlaceIntegerLiteralExpr literal_index = place_integer_literal_expr(this->ctx_.module, index_expr);
                 if (emit_diagnostics && syntax::is_valid(literal_index.literal)) {
                     base::u64 index_value = 0;
                     const syntax::LiteralExprPayload* const literal_expr =
-                        this->module_.exprs.literal_payload(literal_index.literal.value);
+                        this->ctx_.module.exprs.literal_payload(literal_index.literal.value);
                     if (literal_expr != nullptr && this->parse_integer_literal_text(literal_expr->text, index_value)) {
                         const bool out_of_bounds = (literal_index.negated && index_value != 0)
                             || (!literal_index.negated
-                                && index_value >= this->checked_.types.get(input_type).array_count);
+                                && index_value >= this->state_.checked.types.get(input_type).array_count);
                         if (out_of_bounds) {
-                            this->report_general(place_expr_range_or(this->module_, index_expr, projection_range),
+                            this->report_general(place_expr_range_or(this->ctx_.module, index_expr, projection_range),
                                 std::string(SEMA_ARRAY_INDEX_OUT_OF_BOUNDS));
                         }
                     }
                 }
-                output_type = this->checked_.types.get(input_type).array_element;
+                output_type = this->state_.checked.types.get(input_type).array_element;
                 output_is_place = place.is_place;
                 output_is_writable = place.is_writable;
-            } else if (this->checked_.types.is_slice(input_type)) {
-                const TypeInfo& slice = this->checked_.types.get(input_type);
+            } else if (this->state_.checked.types.is_slice(input_type)) {
+                const TypeInfo& slice = this->state_.checked.types.get(input_type);
                 output_type = slice.slice_element;
                 output_is_place = place.is_place;
                 output_is_writable = slice.slice_mutability == PointerMutability::mut;
-            } else if (this->checked_.types.is_pointer(input_type)) {
-                const TypeInfo& pointer = this->checked_.types.get(input_type);
+            } else if (this->state_.checked.types.is_pointer(input_type)) {
+                const TypeInfo& pointer = this->state_.checked.types.get(input_type);
                 place.crosses_raw_pointer = true;
-                if (this->checked_.types.is_array(pointer.pointee)) {
+                if (this->state_.checked.types.is_array(pointer.pointee)) {
                     if (emit_diagnostics) {
                         this->report_general(projection_range, std::string(SEMA_INDEX_POINTER_ARRAY_DEREF));
                     }
@@ -1936,14 +1949,14 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
                     output_is_place = true;
                     output_is_writable = pointer.pointer_mutability == PointerMutability::mut;
                 }
-            } else if (this->checked_.types.is_reference(input_type)) {
-                const TypeInfo& reference = this->checked_.types.get(input_type);
-                if (this->checked_.types.is_array(reference.pointee)) {
-                    output_type = this->checked_.types.get(reference.pointee).array_element;
+            } else if (this->state_.checked.types.is_reference(input_type)) {
+                const TypeInfo& reference = this->state_.checked.types.get(input_type);
+                if (this->state_.checked.types.is_array(reference.pointee)) {
+                    output_type = this->state_.checked.types.get(reference.pointee).array_element;
                     output_is_place = true;
                     output_is_writable = reference.pointer_mutability == PointerMutability::mut;
-                } else if (this->checked_.types.is_slice(reference.pointee)) {
-                    const TypeInfo& slice = this->checked_.types.get(reference.pointee);
+                } else if (this->state_.checked.types.is_slice(reference.pointee)) {
+                    const TypeInfo& slice = this->state_.checked.types.get(reference.pointee);
                     output_type = slice.slice_element;
                     output_is_place = true;
                     output_is_writable = slice.slice_mutability == PointerMutability::mut;
@@ -1966,41 +1979,42 @@ SemanticAnalyzer::PlaceInfo SemanticAnalyzer::analyze_place_info(
     return place;
 }
 
-void SemanticAnalyzer::require_place_projection_safety(const PlaceInfo& place, const base::SourceRange& range)
+void SemanticAnalyzerCore::require_place_projection_safety(const PlaceInfo& place, const base::SourceRange& range)
 {
     if (place.crosses_raw_pointer) {
         this->require_unsafe_context(range, SEMA_UNSAFE_RAW_POINTER_PROJECTION);
     }
 }
 
-bool SemanticAnalyzer::is_place_expr(const syntax::ExprId expr_id)
+bool SemanticAnalyzerCore::is_place_expr(const syntax::ExprId expr_id)
 {
     return this->analyze_place_info(expr_id, false).is_place;
 }
 
-bool SemanticAnalyzer::is_writable_place(const syntax::ExprId expr_id)
+bool SemanticAnalyzerCore::is_writable_place(const syntax::ExprId expr_id)
 {
     return this->analyze_place_info(expr_id, false).is_writable;
 }
 
-bool SemanticAnalyzer::is_array_containing_value_type(const TypeHandle type) const noexcept
+bool SemanticAnalyzerCore::is_array_containing_value_type(const TypeHandle type) const noexcept
 {
-    return is_valid(type) && this->checked_.types.contains_array(type);
+    return is_valid(type) && this->state_.checked.types.contains_array(type);
 }
 
-const StructInfo* SemanticAnalyzer::find_struct(const TypeHandle type) const noexcept
+const StructInfo* SemanticAnalyzerCore::find_struct(const TypeHandle type) const noexcept
 {
     if (!is_valid(type)) {
         return nullptr;
     }
-    if (const auto found = struct_infos_by_type_.find(type.value); found != struct_infos_by_type_.end()) {
-        if (found->second != nullptr && this->checked_.types.same(found->second->type, type)) {
+    if (const auto found = this->state_.types.struct_infos_by_type.find(type.value);
+        found != this->state_.types.struct_infos_by_type.end()) {
+        if (found->second != nullptr && this->state_.checked.types.same(found->second->type, type)) {
             return found->second;
         }
         return nullptr;
     }
-    for (const auto& entry : this->checked_.structs) {
-        if (this->checked_.types.same(entry.second.type, type)) {
+    for (const auto& entry : this->state_.checked.structs) {
+        if (this->state_.checked.types.same(entry.second.type, type)) {
             return &entry.second;
         }
     }

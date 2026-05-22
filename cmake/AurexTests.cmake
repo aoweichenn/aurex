@@ -73,6 +73,9 @@ if(BUILD_TESTING)
         tests
         src
     )
+    target_compile_definitions(aurex_frontend_tests PRIVATE
+        AUREX_SEMA_WHITEBOX_TESTS=1
+    )
     set_target_properties(aurex_frontend_tests PROPERTIES
         BUILD_RPATH "$<TARGET_FILE_DIR:GTest::gtest_main>"
     )
@@ -140,6 +143,7 @@ if(BUILD_TESTING)
             src
         )
         target_compile_definitions(aurex_tests PRIVATE
+            AUREX_SEMA_WHITEBOX_TESTS=1
             AUREX_TEST_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"
             AUREX_TEST_BINARY_DIR=\"${CMAKE_BINARY_DIR}\"
             AUREX_TEST_CMAKE_COMMAND=\"${CMAKE_COMMAND}\"

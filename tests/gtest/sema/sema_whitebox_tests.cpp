@@ -1,3 +1,7 @@
+#include <aurex/sema/canonical_type_builder.hpp>
+#include <aurex/sema/sema.hpp>
+#include <aurex/sema/sema_messages.hpp>
+
 #include <array>
 #include <cstddef>
 #include <limits>
@@ -11,20 +15,9 @@
 #include <utility>
 #include <vector>
 
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wkeyword-macro"
-#endif
-#define private public
-#include <aurex/sema/sema.hpp>
-#undef private
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
-#include <aurex/sema/canonical_type_builder.hpp>
-#include <aurex/sema/sema_messages.hpp>
-
 #include <gtest/gtest.h>
+
+#include <sema/internal/sema_core.hpp>
 
 namespace aurex::test {
 namespace {
@@ -251,9 +244,9 @@ private:
     };
 }
 
-[[nodiscard]] IdentId intern_identifier(sema::SemanticAnalyzer& analyzer, const std::string_view name)
+[[nodiscard]] IdentId intern_identifier(sema::SemanticAnalyzerCore& analyzer, const std::string_view name)
 {
-    return analyzer.module_.intern_identifier(name);
+    return analyzer.ctx_.module.intern_identifier(name);
 }
 
 [[nodiscard]] sema::InternedText checked_text(sema::CheckedModule& checked, const std::string_view text)
@@ -261,13 +254,13 @@ private:
     return checked.intern_text(text);
 }
 
-[[nodiscard]] StructFieldInfo struct_field_info(sema::SemanticAnalyzer& analyzer, const std::string_view name,
+[[nodiscard]] StructFieldInfo struct_field_info(sema::SemanticAnalyzerCore& analyzer, const std::string_view name,
     const ModuleId module, const TypeHandle type, const syntax::Visibility visibility = syntax::Visibility::public_)
 {
     return StructFieldInfo{
-        checked_text(analyzer.checked_, name),
+        checked_text(analyzer.state_.checked, name),
         intern_identifier(analyzer, name),
-        checked_text(analyzer.checked_, name),
+        checked_text(analyzer.state_.checked, name),
         module,
         type,
         {},
@@ -277,83 +270,83 @@ private:
 }
 
 [[nodiscard]] sema::ModuleLookupKey semantic_module_key(
-    sema::SemanticAnalyzer& analyzer, const ModuleId module, const std::string_view name)
+    sema::SemanticAnalyzerCore& analyzer, const ModuleId module, const std::string_view name)
 {
     return analyzer.module_lookup_key(module, intern_identifier(analyzer, name));
 }
 
 [[nodiscard]] sema::FunctionLookupKey semantic_function_key(
-    sema::SemanticAnalyzer& analyzer, const ModuleId module, const std::string_view name)
+    sema::SemanticAnalyzerCore& analyzer, const ModuleId module, const std::string_view name)
 {
     return analyzer.function_lookup_key(module, intern_identifier(analyzer, name));
 }
 
-[[nodiscard]] sema::FunctionLookupKey semantic_method_key(
-    sema::SemanticAnalyzer& analyzer, const ModuleId module, const TypeHandle owner_type, const std::string_view name)
+[[nodiscard]] sema::FunctionLookupKey semantic_method_key(sema::SemanticAnalyzerCore& analyzer, const ModuleId module,
+    const TypeHandle owner_type, const std::string_view name)
 {
     return analyzer.method_function_lookup_key(module, owner_type, intern_identifier(analyzer, name));
 }
 
-[[nodiscard]] FunctionSignature indexed_function_signature(
-    sema::SemanticAnalyzer& analyzer, const std::string_view name, const ModuleId module, const TypeHandle return_type)
+[[nodiscard]] FunctionSignature indexed_function_signature(sema::SemanticAnalyzerCore& analyzer,
+    const std::string_view name, const ModuleId module, const TypeHandle return_type)
 {
-    return function_signature(name, module, return_type, intern_identifier(analyzer, name), analyzer.checked_);
+    return function_signature(name, module, return_type, intern_identifier(analyzer, name), analyzer.state_.checked);
 }
 
-[[nodiscard]] Symbol indexed_symbol(sema::SemanticAnalyzer& analyzer, const SymbolKind kind,
+[[nodiscard]] Symbol indexed_symbol(sema::SemanticAnalyzerCore& analyzer, const SymbolKind kind,
     const std::string_view name, const ModuleId module, const TypeHandle type, const bool is_mutable = false,
     const syntax::Visibility visibility = syntax::Visibility::public_)
 {
     return symbol(
-        kind, name, module, type, is_mutable, visibility, intern_identifier(analyzer, name), &analyzer.checked_);
+        kind, name, module, type, is_mutable, visibility, intern_identifier(analyzer, name), &analyzer.state_.checked);
 }
 
-[[nodiscard]] sema::ModuleLookupKey add_named_type(sema::SemanticAnalyzer& analyzer, const ModuleId module,
+[[nodiscard]] sema::ModuleLookupKey add_named_type(sema::SemanticAnalyzerCore& analyzer, const ModuleId module,
     const std::string_view name, const TypeHandle type,
     const syntax::Visibility visibility = syntax::Visibility::public_)
 {
     const IdentId name_id = intern_identifier(analyzer, name);
     const sema::ModuleLookupKey key = analyzer.module_lookup_key(module, name_id);
-    analyzer.named_types_.emplace(key, type);
+    analyzer.state_.types.named_types.emplace(key, type);
     analyzer.index_named_type(module, name_id, type, visibility);
     return key;
 }
 
-[[nodiscard]] const StructInfo& add_struct_info(sema::SemanticAnalyzer& analyzer, const ModuleId module,
+[[nodiscard]] const StructInfo& add_struct_info(sema::SemanticAnalyzerCore& analyzer, const ModuleId module,
     const std::string_view name, const TypeHandle type,
     const syntax::Visibility visibility = syntax::Visibility::public_)
 {
     const IdentId name_id = intern_identifier(analyzer, name);
     const sema::ModuleLookupKey key = analyzer.module_lookup_key(module, name_id);
-    StructInfo info = analyzer.checked_.make_struct_info();
-    info.name = analyzer.checked_.intern_text(name);
+    StructInfo info = analyzer.state_.checked.make_struct_info();
+    info.name = analyzer.state_.checked.intern_text(name);
     info.name_id = name_id;
-    info.c_name = analyzer.checked_.intern_text(name);
+    info.c_name = analyzer.state_.checked.intern_text(name);
     info.module = module;
     info.type = type;
     info.visibility = visibility;
     info.stable_id = analyzer.stable_definition_id(module, sema::StableSymbolKind::type, name_id, name);
     info.incremental_key = analyzer.stable_incremental_key(info.stable_id, name);
-    const auto inserted = analyzer.checked_.structs.emplace(key, std::move(info));
-    analyzer.struct_infos_by_type_[type.value] = &inserted.first->second;
+    const auto inserted = analyzer.state_.checked.structs.emplace(key, std::move(info));
+    analyzer.state_.types.struct_infos_by_type[type.value] = &inserted.first->second;
     static_cast<void>(add_named_type(analyzer, module, name, type, visibility));
     return inserted.first->second;
 }
 
-[[nodiscard]] sema::FunctionLookupKey add_function(sema::SemanticAnalyzer& analyzer, FunctionSignature signature)
+[[nodiscard]] sema::FunctionLookupKey add_function(sema::SemanticAnalyzerCore& analyzer, FunctionSignature signature)
 {
     if (!is_valid(signature.name_id)) {
         signature.name_id = intern_identifier(analyzer, signature.name);
     }
     const sema::FunctionLookupKey key = analyzer.function_lookup_key(signature.module, signature.name_id);
     signature.semantic_key = key;
-    const auto inserted = analyzer.checked_.functions.emplace(key, std::move(signature));
+    const auto inserted = analyzer.state_.checked.functions.emplace(key, std::move(signature));
     analyzer.index_function_lookup(inserted.first->second);
     return inserted.first->first;
 }
 
 [[nodiscard]] sema::FunctionLookupKey add_method(
-    sema::SemanticAnalyzer& analyzer, FunctionSignature signature, const TypeHandle owner_type)
+    sema::SemanticAnalyzerCore& analyzer, FunctionSignature signature, const TypeHandle owner_type)
 {
     if (!is_valid(signature.name_id)) {
         signature.name_id = intern_identifier(analyzer, signature.name);
@@ -363,31 +356,31 @@ private:
     const sema::FunctionLookupKey key =
         analyzer.method_function_lookup_key(signature.module, owner_type, signature.name_id);
     signature.semantic_key = key;
-    const auto inserted = analyzer.checked_.functions.emplace(key, std::move(signature));
+    const auto inserted = analyzer.state_.checked.functions.emplace(key, std::move(signature));
     analyzer.index_function_lookup(inserted.first->second);
     return inserted.first->first;
 }
 
-[[nodiscard]] std::pair<sema::FunctionLookupKey, const Symbol*> add_global_value(sema::SemanticAnalyzer& analyzer,
+[[nodiscard]] std::pair<sema::FunctionLookupKey, const Symbol*> add_global_value(sema::SemanticAnalyzerCore& analyzer,
     const ModuleId module, const std::string_view name, const TypeHandle type,
     const SymbolKind kind = SymbolKind::const_, const bool is_mutable = false,
     const syntax::Visibility visibility = syntax::Visibility::public_)
 {
     const IdentId name_id = intern_identifier(analyzer, name);
     const sema::FunctionLookupKey key = analyzer.function_lookup_key(module, name_id);
-    auto inserted = analyzer.global_values_.emplace(
-        key, symbol(kind, name, module, type, is_mutable, visibility, name_id, &analyzer.checked_));
+    auto inserted = analyzer.state_.functions.global_values.emplace(
+        key, symbol(kind, name, module, type, is_mutable, visibility, name_id, &analyzer.state_.checked));
     analyzer.index_global_value(inserted.first->second);
     return {inserted.first->first, &inserted.first->second};
 }
 
-[[nodiscard]] sema::SemanticAnalyzer::GenericTemplateInfo generic_template_info(sema::SemanticAnalyzer& analyzer,
-    const ModuleId module, const std::string_view name,
+[[nodiscard]] sema::SemanticAnalyzerCore::GenericTemplateInfo generic_template_info(
+    sema::SemanticAnalyzerCore& analyzer, const ModuleId module, const std::string_view name,
     const syntax::Visibility visibility = syntax::Visibility::public_)
 {
-    sema::SemanticAnalyzer::GenericTemplateInfo info = analyzer.make_generic_template_info();
+    sema::SemanticAnalyzerCore::GenericTemplateInfo info = analyzer.make_generic_template_info();
     info.module = module;
-    info.name = analyzer.checked_.intern_text(name);
+    info.name = analyzer.state_.checked.intern_text(name);
     info.name_id = intern_identifier(analyzer, name);
     info.key = analyzer.module_lookup_key(module, info.name_id);
     info.function_key = analyzer.function_lookup_key(module, info.name_id);
@@ -396,23 +389,23 @@ private:
     return info;
 }
 
-[[nodiscard]] std::pair<sema::ModuleLookupKey, const EnumCaseInfo*> add_enum_case(sema::SemanticAnalyzer& analyzer,
+[[nodiscard]] std::pair<sema::ModuleLookupKey, const EnumCaseInfo*> add_enum_case(sema::SemanticAnalyzerCore& analyzer,
     const ModuleId module, const std::string_view name, const std::string_view case_name, const TypeHandle enum_type,
     const TypeHandle payload_type = INVALID_TYPE_HANDLE, std::vector<TypeHandle> payload_types = {})
 {
-    EnumCaseInfo info = analyzer.checked_.make_enum_case_info();
-    info.name = analyzer.checked_.intern_text(name);
+    EnumCaseInfo info = analyzer.state_.checked.make_enum_case_info();
+    info.name = analyzer.state_.checked.intern_text(name);
     info.name_id = intern_identifier(analyzer, name);
-    info.c_name = analyzer.checked_.intern_text(name);
+    info.c_name = analyzer.state_.checked.intern_text(name);
     info.module = module;
     info.type = enum_type;
     info.payload_type = payload_type;
-    info.payload_types = analyzer.checked_.copy_type_handle_list(payload_types);
-    info.case_name = analyzer.checked_.intern_text(case_name);
+    info.payload_types = analyzer.state_.checked.copy_type_handle_list(payload_types);
+    info.case_name = analyzer.state_.checked.intern_text(case_name);
     info.case_name_id = intern_identifier(analyzer, case_name);
 
     const sema::ModuleLookupKey key = analyzer.module_lookup_key(module, info.name_id);
-    auto inserted = analyzer.checked_.enum_cases.emplace(key, std::move(info));
+    auto inserted = analyzer.state_.checked.enum_cases.emplace(key, std::move(info));
     analyzer.index_enum_case(inserted.first->second);
     return {inserted.first->first, &inserted.first->second};
 }
@@ -487,13 +480,13 @@ private:
     return module.push_literal_expr(syntax::ExprKind::bool_literal, {}, text);
 }
 
-void prepare_expr_storage(sema::SemanticAnalyzer& analyzer, const syntax::AstModule& module)
+void prepare_expr_storage(sema::SemanticAnalyzerCore& analyzer, const syntax::AstModule& module)
 {
-    analyzer.checked_.expr_intrinsic_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.prepare_analysis_only_storage(module.exprs.size());
-    analyzer.checked_.expr_expected_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.checked.expr_intrinsic_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.prepare_analysis_only_storage(module.exprs.size());
+    analyzer.state_.checked.expr_expected_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
 }
 
 [[nodiscard]] std::string diagnostic_messages(const base::DiagnosticSink& diagnostics)
@@ -524,12 +517,42 @@ void prepare_expr_storage(sema::SemanticAnalyzer& analyzer, const syntax::AstMod
 
 } // namespace
 
+TEST(CoreUnit, SemanticWhiteBoxFacadeDelegatesBorrowedAndOwnedModules)
+{
+    {
+        syntax::AstModule borrowed_module;
+        borrowed_module.module_path = module_path({"facade", "borrowed"});
+        base::DiagnosticSink diagnostics;
+
+        sema::SemanticAnalyzer analyzer(borrowed_module, diagnostics);
+        auto checked_result = analyzer.analyze();
+
+        ASSERT_TRUE(checked_result) << checked_result.error().message;
+        EXPECT_TRUE(diagnostics.diagnostics().empty());
+        EXPECT_EQ(borrowed_module.modules.size(), 1U);
+        EXPECT_TRUE(checked_result.value().normalized_ast.parser_only_module_contract_added);
+    }
+
+    {
+        syntax::AstModule owned_module;
+        owned_module.module_path = module_path({"facade", "owned"});
+        base::DiagnosticSink diagnostics;
+
+        sema::SemanticAnalyzer analyzer(std::move(owned_module), diagnostics);
+        auto checked_result = analyzer.analyze();
+
+        ASSERT_TRUE(checked_result) << checked_result.error().message;
+        EXPECT_TRUE(diagnostics.diagnostics().empty());
+        EXPECT_TRUE(checked_result.value().normalized_ast.parser_only_module_contract_added);
+    }
+}
+
 TEST(CoreUnit, SemanticWhiteBoxDiagnosticMetadataUsesExplicitKinds)
 {
     syntax::AstModule module;
     module.modules = {module_info({"root"})};
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
     const base::SourceRange range{{1}, 0, 1};
 
     analyzer.report_pattern_exhaustiveness(range, "same diagnostic text");
@@ -538,7 +561,8 @@ TEST(CoreUnit, SemanticWhiteBoxDiagnosticMetadataUsesExplicitKinds)
     analyzer.report_unsupported(range, "same diagnostic text");
     analyzer.report_internal_contract(range, "same diagnostic text");
     analyzer.report_type_mismatch(range, std::string(sema::SEMA_INITIALIZER_TYPE_MISMATCH),
-        analyzer.checked_.types.builtin(BuiltinType::bool_), analyzer.checked_.types.builtin(BuiltinType::i32));
+        analyzer.state_.checked.types.builtin(BuiltinType::bool_),
+        analyzer.state_.checked.types.builtin(BuiltinType::i32));
     analyzer.report_note(
         range, sema::SemanticDiagnosticKind::duplicate, sema::sema_previous_declaration_note_message("value"));
     analyzer.report_lookup_suggestion(range, "value");
@@ -796,11 +820,11 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     const ExprId array_ref_index_id = module.push_index_expr({}, syntax::IndexExprPayload{array_ref_expr, index_arg});
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.current_module_ = module_id(0);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.flow.current_module = module_id(0);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle void_type = types.builtin(BuiltinType::void_);
     const TypeHandle bool_type = types.builtin(BuiltinType::bool_);
     const TypeHandle i8 = types.builtin(BuiltinType::i8);
@@ -837,7 +861,7 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     types.set_enum_payload_layout(payload_enum_type, u64, sizeof(std::uint64_t), alignof(std::uint64_t));
 
     StructInfo record;
-    record.name = checked_text(analyzer.checked_, "Record");
+    record.name = checked_text(analyzer.state_.checked, "Record");
     record.name_id = intern_identifier(analyzer, "Record");
     record.module = module_id(1);
     record.type = record_type;
@@ -845,17 +869,17 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
         struct_field_info(analyzer, "tag", module_id(1), u8),
         struct_field_info(analyzer, "value", module_id(1), u64),
     };
-    analyzer.checked_.structs.emplace(semantic_module_key(analyzer, module_id(1), "Record"), record);
+    analyzer.state_.checked.structs.emplace(semantic_module_key(analyzer, module_id(1), "Record"), record);
 
     StructInfo place_record;
-    place_record.name = checked_text(analyzer.checked_, "PlaceRecord");
+    place_record.name = checked_text(analyzer.state_.checked, "PlaceRecord");
     place_record.name_id = intern_identifier(analyzer, "PlaceRecord");
     place_record.module = module_id(0);
     place_record.type = place_record_type;
     place_record.fields = {
         struct_field_info(analyzer, "field", module_id(0), place_record_type),
     };
-    analyzer.checked_.structs.emplace(semantic_module_key(analyzer, module_id(0), "PlaceRecord"), place_record);
+    analyzer.state_.checked.structs.emplace(semantic_module_key(analyzer, module_id(0), "PlaceRecord"), place_record);
 
     EXPECT_EQ(analyzer.abi_size(INVALID_TYPE_HANDLE), SEMA_TEST_ABI_INVALID_SIZE);
     EXPECT_EQ(analyzer.abi_align(INVALID_TYPE_HANDLE), SEMA_TEST_ABI_MIN_ALIGNMENT);
@@ -919,15 +943,15 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     EXPECT_FALSE(analyzer.is_valid_storage_type(array_opaque));
     EXPECT_FALSE(analyzer.is_valid_storage_type(overflowing_array));
 
-    EXPECT_TRUE(analyzer.symbols_.insert(
+    EXPECT_TRUE(analyzer.state_.names.symbols.insert(
         indexed_symbol(analyzer, SymbolKind::local, "value", module_id(0), i32, true), diagnostics));
-    EXPECT_TRUE(analyzer.symbols_.insert(
+    EXPECT_TRUE(analyzer.state_.names.symbols.insert(
         indexed_symbol(analyzer, SymbolKind::local, "ptr", module_id(0), ptr_place_record, true), diagnostics));
-    EXPECT_TRUE(analyzer.symbols_.insert(
+    EXPECT_TRUE(analyzer.state_.names.symbols.insert(
         indexed_symbol(analyzer, SymbolKind::local, "record", module_id(0), place_record_type, true), diagnostics));
-    EXPECT_TRUE(analyzer.symbols_.insert(
+    EXPECT_TRUE(analyzer.state_.names.symbols.insert(
         indexed_symbol(analyzer, SymbolKind::local, "array", module_id(0), nested_array_i16, true), diagnostics));
-    EXPECT_TRUE(analyzer.symbols_.insert(
+    EXPECT_TRUE(analyzer.state_.names.symbols.insert(
         indexed_symbol(analyzer, SymbolKind::local, "array_ref", module_id(0), ref_nested_array_i16, true),
         diagnostics));
     static_cast<void>(add_global_value(analyzer, module_id(1), "shared", i32, SymbolKind::local, true));
@@ -955,16 +979,17 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     EXPECT_TRUE(analyzer.is_writable_place(deref_id));
     EXPECT_FALSE(analyzer.is_writable_place(not_id));
     EXPECT_FALSE(analyzer.is_writable_place(syntax::INVALID_EXPR_ID));
-    const sema::SemanticAnalyzer::PlaceInfo invalid_deref_place = analyzer.analyze_place_info(invalid_deref_id, true);
+    const sema::SemanticAnalyzerCore::PlaceInfo invalid_deref_place =
+        analyzer.analyze_place_info(invalid_deref_id, true);
     EXPECT_FALSE(invalid_deref_place.is_place);
     EXPECT_FALSE(diagnostics.diagnostics().empty());
 
-    analyzer.current_module_ = syntax::INVALID_MODULE_ID;
+    analyzer.state_.flow.current_module = syntax::INVALID_MODULE_ID;
     EXPECT_FALSE(syntax::is_valid(analyzer.resolve_import_alias("missing", {})));
-    analyzer.current_module_ = module_id(0);
-    analyzer.module_.modules[0].imports.push_back(resolved_import(module_id(2), "one"));
+    analyzer.state_.flow.current_module = module_id(0);
+    analyzer.ctx_.module.modules[0].imports.push_back(resolved_import(module_id(2), "one"));
     EXPECT_FALSE(syntax::is_valid(analyzer.resolve_import_alias("one", {})));
-    analyzer.module_.modules[0].imports.pop_back();
+    analyzer.ctx_.module.modules[0].imports.pop_back();
     EXPECT_FALSE(syntax::is_valid(analyzer.resolve_import_alias("missing", {})));
 
     EXPECT_TRUE(analyzer.visible_modules(syntax::INVALID_MODULE_ID).empty());
@@ -994,10 +1019,10 @@ TEST(CoreUnit, SemanticWhiteBoxLookupsAndMethodReceivers)
     const ExprId literal_expr = push_integer(module);
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.current_module_ = module_id(0);
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.flow.current_module = module_id(0);
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle bool_type = types.builtin(BuiltinType::bool_);
     const TypeHandle record_type = types.named_struct("Record", "Record", false);
@@ -1042,18 +1067,18 @@ TEST(CoreUnit, SemanticWhiteBoxLookupsAndMethodReceivers)
     EXPECT_EQ(analyzer.find_function_in_module(syntax::INVALID_MODULE_ID, missing_id, "missing", {}), nullptr);
 
     EnumCaseInfo one_case;
-    one_case.name = checked_text(analyzer.checked_, "same");
+    one_case.name = checked_text(analyzer.state_.checked, "same");
     one_case.name_id = same_id;
-    one_case.case_name = checked_text(analyzer.checked_, "same");
+    one_case.case_name = checked_text(analyzer.state_.checked, "same");
     one_case.case_name_id = same_id;
     one_case.module = module_id(1);
     one_case.type = enum_type;
     EnumCaseInfo two_case = one_case;
     two_case.module = module_id(2);
     auto one_case_inserted =
-        analyzer.checked_.enum_cases.emplace(semantic_module_key(analyzer, module_id(1), "same"), one_case);
+        analyzer.state_.checked.enum_cases.emplace(semantic_module_key(analyzer, module_id(1), "same"), one_case);
     auto two_case_inserted =
-        analyzer.checked_.enum_cases.emplace(semantic_module_key(analyzer, module_id(2), "same"), two_case);
+        analyzer.state_.checked.enum_cases.emplace(semantic_module_key(analyzer, module_id(2), "same"), two_case);
     analyzer.index_enum_case(one_case_inserted.first->second);
     analyzer.index_enum_case(two_case_inserted.first->second);
     EXPECT_EQ(analyzer.find_enum_case_in_visible_modules(same_id, "same", {}), nullptr);
@@ -1111,7 +1136,8 @@ TEST(CoreUnit, SemanticWhiteBoxLookupsAndMethodReceivers)
     static_cast<void>(add_method(analyzer, static_method, record_type));
     FunctionSignature not_method = indexed_function_signature(analyzer, "free", module_id(1), i32);
     not_method.method_owner_type = record_type;
-    analyzer.checked_.functions.emplace(semantic_method_key(analyzer, module_id(1), record_type, "free"), not_method);
+    analyzer.state_.checked.functions.emplace(
+        semantic_method_key(analyzer, module_id(1), record_type, "free"), not_method);
     EXPECT_EQ(analyzer.find_method_in_visible_modules(record_type, run_id, "run", {}, true), nullptr);
     EXPECT_EQ(analyzer.find_method_in_visible_modules(record_type, static_only_id, "static_only", {}, true), nullptr);
     EXPECT_EQ(analyzer.find_method_in_visible_modules(record_type, free_id, "free", {}, false), nullptr);
@@ -1140,10 +1166,10 @@ TEST(CoreUnit, SemanticWhiteBoxDotOnlyModuleSelectorAndShadowingEdges)
     module.item_modules[item_id.value] = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle bool_type = types.builtin(BuiltinType::bool_);
     const TypeHandle local_type = types.named_struct("LocalType", "LocalType", false);
@@ -1155,71 +1181,74 @@ TEST(CoreUnit, SemanticWhiteBoxDotOnlyModuleSelectorAndShadowingEdges)
     const IdentId t_id = intern_identifier(analyzer, "T");
     static_cast<void>(add_named_type(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "LocalType", local_type));
     static_cast<void>(add_global_value(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "global", i32));
-    EXPECT_TRUE(analyzer.symbols_.insert(
+    EXPECT_TRUE(analyzer.state_.names.symbols.insert(
         indexed_symbol(analyzer, SymbolKind::local, "local", module_id(SEMA_TEST_ROOT_MODULE_INDEX), i32),
         diagnostics));
 
-    const ExprId alias_expr = push_name(analyzer.module_, "lib");
-    const ExprId root_expr = push_name(analyzer.module_, SEMA_TEST_ROOT_MODULE_NAME);
-    const ExprId core_mem = push_field(analyzer.module_, root_expr, SEMA_TEST_CHILD_MODULE_NAME);
-    const ExprId core_mem_io = push_field(analyzer.module_, core_mem, SEMA_TEST_LEAF_MODULE_NAME);
-    const ExprId invalid_expr = push_name(analyzer.module_, "missing");
+    const ExprId alias_expr = push_name(analyzer.ctx_.module, "lib");
+    const ExprId root_expr = push_name(analyzer.ctx_.module, SEMA_TEST_ROOT_MODULE_NAME);
+    const ExprId core_mem = push_field(analyzer.ctx_.module, root_expr, SEMA_TEST_CHILD_MODULE_NAME);
+    const ExprId core_mem_io = push_field(analyzer.ctx_.module, core_mem, SEMA_TEST_LEAF_MODULE_NAME);
+    const ExprId invalid_expr = push_name(analyzer.ctx_.module, "missing");
     const ExprId missing_root_child =
-        push_field(analyzer.module_, push_name(analyzer.module_, SEMA_TEST_ROOT_MODULE_NAME), "missing");
-    const ExprId core_mem_file = push_field(analyzer.module_, core_mem, "File");
-    const ExprId local_member = push_field(analyzer.module_, push_name(analyzer.module_, "local"), "member");
-    const ExprId alias_member = push_field(analyzer.module_, push_name(analyzer.module_, "mem"), "File");
-    const ExprId empty_field = push_field(analyzer.module_, push_name(analyzer.module_, "lib"), {});
-    const ExprId scoped_name = push_name(analyzer.module_, "Name", "scope");
-    const ExprId not_selector = push_integer(analyzer.module_);
-    analyzer.checked_.expr_types.assign(analyzer.module_.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_c_name_ids.assign(analyzer.module_.exprs.size(), sema::INVALID_IDENT_ID);
+        push_field(analyzer.ctx_.module, push_name(analyzer.ctx_.module, SEMA_TEST_ROOT_MODULE_NAME), "missing");
+    const ExprId core_mem_file = push_field(analyzer.ctx_.module, core_mem, "File");
+    const ExprId local_member = push_field(analyzer.ctx_.module, push_name(analyzer.ctx_.module, "local"), "member");
+    const ExprId alias_member = push_field(analyzer.ctx_.module, push_name(analyzer.ctx_.module, "mem"), "File");
+    const ExprId empty_field = push_field(analyzer.ctx_.module, push_name(analyzer.ctx_.module, "lib"), {});
+    const ExprId scoped_name = push_name(analyzer.ctx_.module, "Name", "scope");
+    const ExprId not_selector = push_integer(analyzer.ctx_.module);
+    analyzer.state_.checked.expr_types.assign(analyzer.ctx_.module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.assign(analyzer.ctx_.module.exprs.size(), sema::INVALID_IDENT_ID);
 
-    const sema::SemanticAnalyzer::ModuleSelectorPath invalid_path =
+    const sema::SemanticAnalyzerCore::ModuleSelectorPath invalid_path =
         analyzer.expr_selector_path(syntax::INVALID_EXPR_ID);
     EXPECT_TRUE(invalid_path.parts.empty());
     EXPECT_TRUE(analyzer.expr_selector_path(empty_field).parts.empty());
     EXPECT_TRUE(analyzer.expr_selector_path(scoped_name).parts.empty());
     EXPECT_TRUE(analyzer.expr_selector_path(not_selector).parts.empty());
 
-    const sema::SemanticAnalyzer::ModuleSelectorPath core_mem_io_path = analyzer.expr_selector_path(core_mem_io);
+    const sema::SemanticAnalyzerCore::ModuleSelectorPath core_mem_io_path = analyzer.expr_selector_path(core_mem_io);
     ASSERT_EQ(core_mem_io_path.parts.size(), 3U);
     EXPECT_EQ(core_mem_io_path.parts[0], SEMA_TEST_ROOT_MODULE_NAME);
     EXPECT_EQ(core_mem_io_path.parts[1], SEMA_TEST_CHILD_MODULE_NAME);
     EXPECT_EQ(core_mem_io_path.parts[2], SEMA_TEST_LEAF_MODULE_NAME);
 
-    const sema::SemanticAnalyzer::ModuleSelector alias_selector = analyzer.resolve_module_selector(alias_expr, true);
+    const sema::SemanticAnalyzerCore::ModuleSelector alias_selector =
+        analyzer.resolve_module_selector(alias_expr, true);
     EXPECT_EQ(alias_selector.module.value, SEMA_TEST_LIB_ONE_MODULE_INDEX);
     EXPECT_FALSE(alias_selector.failed_as_module_selector);
 
-    const sema::SemanticAnalyzer::ModuleSelector root_selector = analyzer.resolve_module_selector(core_mem, true);
+    const sema::SemanticAnalyzerCore::ModuleSelector root_selector = analyzer.resolve_module_selector(core_mem, true);
     EXPECT_EQ(root_selector.module.value, 2U);
     EXPECT_FALSE(root_selector.failed_as_module_selector);
 
-    const sema::SemanticAnalyzer::ModuleSelector leaf_selector = analyzer.resolve_module_selector(core_mem_io, true);
+    const sema::SemanticAnalyzerCore::ModuleSelector leaf_selector =
+        analyzer.resolve_module_selector(core_mem_io, true);
     EXPECT_EQ(leaf_selector.module.value, 3U);
     EXPECT_FALSE(leaf_selector.failed_as_module_selector);
 
-    const sema::SemanticAnalyzer::ModuleSelector unknown_alias_selector =
+    const sema::SemanticAnalyzerCore::ModuleSelector unknown_alias_selector =
         analyzer.resolve_module_selector(invalid_expr, true);
     EXPECT_FALSE(syntax::is_valid(unknown_alias_selector.module));
     EXPECT_TRUE(unknown_alias_selector.failed_as_module_selector);
 
-    const sema::SemanticAnalyzer::ModuleSelector missing_child_selector =
+    const sema::SemanticAnalyzerCore::ModuleSelector missing_child_selector =
         analyzer.resolve_module_selector(missing_root_child, true);
     EXPECT_FALSE(syntax::is_valid(missing_child_selector.module));
     EXPECT_TRUE(missing_child_selector.failed_as_module_selector);
 
-    const sema::SemanticAnalyzer::ModuleSelector prefix_member_selector =
+    const sema::SemanticAnalyzerCore::ModuleSelector prefix_member_selector =
         analyzer.resolve_module_selector(core_mem_file, true);
     EXPECT_FALSE(syntax::is_valid(prefix_member_selector.module));
     EXPECT_FALSE(prefix_member_selector.failed_as_module_selector);
 
-    const sema::SemanticAnalyzer::ModuleSelector local_selector = analyzer.resolve_module_selector(local_member, true);
+    const sema::SemanticAnalyzerCore::ModuleSelector local_selector =
+        analyzer.resolve_module_selector(local_member, true);
     EXPECT_FALSE(syntax::is_valid(local_selector.module));
     EXPECT_FALSE(local_selector.failed_as_module_selector);
 
-    const sema::SemanticAnalyzer::ModuleSelector alias_member_selector =
+    const sema::SemanticAnalyzerCore::ModuleSelector alias_member_selector =
         analyzer.resolve_module_selector(alias_member, true);
     EXPECT_FALSE(syntax::is_valid(alias_member_selector.module));
     EXPECT_FALSE(alias_member_selector.failed_as_module_selector);
@@ -1236,13 +1265,13 @@ TEST(CoreUnit, SemanticWhiteBoxDotOnlyModuleSelectorAndShadowingEdges)
     EXPECT_FALSE(analyzer.can_define_local_name(local_type_id, "LocalType", {}));
     EXPECT_TRUE(analyzer.can_define_local_name(fresh_id, "fresh", {}));
 
-    sema::SemanticAnalyzer::GenericContext generic_context;
+    sema::SemanticAnalyzerCore::GenericContext generic_context;
     generic_context.params.emplace(t_id, bool_type);
-    analyzer.current_generic_context_ = &generic_context;
+    analyzer.state_.flow.current_generic_context = &generic_context;
     EXPECT_TRUE(analyzer.current_generic_param_exists(t_id, "T"));
     EXPECT_TRUE(analyzer.visible_type_name_exists(t_id, "T"));
     EXPECT_FALSE(analyzer.can_define_local_name(t_id, "T", {}));
-    analyzer.current_generic_context_ = nullptr;
+    analyzer.state_.flow.current_generic_context = nullptr;
 
     const IdentId missing_id = intern_identifier(analyzer, "missing");
     EXPECT_TRUE(analyzer.top_level_value_name_exists(module_id(SEMA_TEST_ROOT_MODULE_INDEX), global_id, "global"));
@@ -1255,7 +1284,7 @@ TEST(CoreUnit, SemanticWhiteBoxDotOnlyModuleSelectorAndShadowingEdges)
 
     EXPECT_EQ(analyzer.item_module(item_id).value, SEMA_TEST_ROOT_MODULE_INDEX);
     EXPECT_FALSE(syntax::is_valid(analyzer.item_module(syntax::ItemId{99})));
-    analyzer.module_.item_modules.clear();
+    analyzer.ctx_.module.item_modules.clear();
     EXPECT_FALSE(syntax::is_valid(analyzer.item_module(item_id)));
 }
 
@@ -1273,10 +1302,10 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsAmbiguousPublicReexports)
     };
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle one_type = types.named_struct("lib.one.Shared", "lib_one_Shared", false);
     const TypeHandle two_type = types.named_struct("lib.two.Shared", "lib_two_Shared", false);
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
@@ -1310,10 +1339,10 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges)
     };
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle bool_type = types.builtin(BuiltinType::bool_);
     const TypeHandle array_i32 = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, i32);
@@ -1335,17 +1364,17 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges)
     analyzer.validate_unsafe_function_value_call(i32, {});
     analyzer.validate_unsafe_function_value_call(unsafe_fn_type, {});
     EXPECT_TRUE(diagnostics.has_error());
-    analyzer.unsafe_context_depth_ += 1;
+    analyzer.state_.flow.unsafe_context_depth += 1;
     analyzer.validate_unsafe_function_value_call(unsafe_fn_type, {});
-    analyzer.unsafe_context_depth_ -= 1;
+    analyzer.state_.flow.unsafe_context_depth -= 1;
 
     EXPECT_FALSE(analyzer.find_enum_cases_by_type(INVALID_TYPE_HANDLE));
     EnumCaseInfo invalid_case;
-    invalid_case.name = checked_text(analyzer.checked_, "invalid");
-    invalid_case.case_name = checked_text(analyzer.checked_, "invalid");
+    invalid_case.name = checked_text(analyzer.state_.checked, "invalid");
+    invalid_case.case_name = checked_text(analyzer.state_.checked, "invalid");
     invalid_case.type = INVALID_TYPE_HANDLE;
     analyzer.index_enum_case(invalid_case);
-    EXPECT_TRUE(analyzer.enum_cases_by_type_.empty());
+    EXPECT_TRUE(analyzer.state_.names.enum_cases_by_type.empty());
 
     const TypeHandle record_type = types.named_struct("Record", "Record", false);
     const TypeHandle enum_type = types.named_enum("Choice", "Choice");
@@ -1362,15 +1391,15 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges)
     const IdentId record_id = intern_identifier(analyzer, "Record");
     const IdentId missing_id = intern_identifier(analyzer, "missing");
     const IdentId missing_enum_id = intern_identifier(analyzer, "Missing");
-    const base::usize interned_cases = analyzer.module_.identifiers.size();
+    const base::usize interned_cases = analyzer.ctx_.module.identifiers.size();
     const EnumCaseInfo* indexed_yes = analyzer.find_enum_case_by_type_and_case(enum_type, yes_id, "yes");
     ASSERT_NE(indexed_yes, nullptr);
     EXPECT_EQ(indexed_yes->case_name, "yes");
     EXPECT_EQ(analyzer.find_enum_case_by_type_and_case(record_type, yes_id, "yes"), nullptr);
     EXPECT_EQ(analyzer.find_enum_case_by_type_and_case(enum_type, missing_id, "missing"), nullptr);
-    EXPECT_EQ(analyzer.module_.identifiers.size(), interned_cases);
-    EXPECT_EQ(analyzer.enum_cases_by_type_and_case_.size(), 1U);
-    EXPECT_TRUE(sema::is_valid(analyzer.module_.find_identifier("yes")));
+    EXPECT_EQ(analyzer.ctx_.module.identifiers.size(), interned_cases);
+    EXPECT_EQ(analyzer.state_.names.enum_cases_by_type_and_case.size(), 1U);
+    EXPECT_TRUE(sema::is_valid(analyzer.ctx_.module.find_identifier("yes")));
 
     EXPECT_EQ(analyzer.find_enum_case_by_scoped_name(missing_enum_id, "Missing", case_id, "case", {}, false), nullptr);
     EXPECT_EQ(analyzer.find_enum_case_by_scoped_name(record_id, "Record", case_id, "case", {}, true), nullptr);
@@ -1378,16 +1407,16 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges)
                   intern_identifier(analyzer, "Choice"), "Choice", yes_id, "yes", {}, true),
         yes_case);
 
-    const ExprId record_name = push_name(analyzer.module_, "Record");
-    const ExprId record_case = push_field(analyzer.module_, record_name, "case");
-    const ExprId choice_name = push_name(analyzer.module_, "Choice");
-    const ExprId choice_missing = push_field(analyzer.module_, choice_name, "missing");
-    const ExprId choice_yes = push_field(analyzer.module_, choice_name, "yes");
-    const ExprId payload_value = push_name(analyzer.module_, "payload");
-    const ExprId enum_call_id = push_call(analyzer.module_, choice_yes, {payload_value});
+    const ExprId record_name = push_name(analyzer.ctx_.module, "Record");
+    const ExprId record_case = push_field(analyzer.ctx_.module, record_name, "case");
+    const ExprId choice_name = push_name(analyzer.ctx_.module, "Choice");
+    const ExprId choice_missing = push_field(analyzer.ctx_.module, choice_name, "missing");
+    const ExprId choice_yes = push_field(analyzer.ctx_.module, choice_name, "yes");
+    const ExprId payload_value = push_name(analyzer.ctx_.module, "payload");
+    const ExprId enum_call_id = push_call(analyzer.ctx_.module, choice_yes, {payload_value});
 
-    analyzer.checked_.expr_types.assign(analyzer.module_.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_c_name_ids.assign(analyzer.module_.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.checked.expr_types.assign(analyzer.ctx_.module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.assign(analyzer.ctx_.module.exprs.size(), sema::INVALID_IDENT_ID);
     static_cast<void>(
         add_global_value(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "payload", array_i32, SymbolKind::local));
 
@@ -1397,11 +1426,11 @@ TEST(CoreUnit, SemanticWhiteBoxFunctionAndEnumLookupFallbackEdges)
     EXPECT_TRUE(types.same(
         analyzer.analyze_enum_constructor_call(enum_call_id, analyzer.expr_view(enum_call_id), *yes_case), enum_type));
 
-    const ExprId argument_call_id = push_call(analyzer.module_, syntax::INVALID_EXPR_ID, {payload_value});
+    const ExprId argument_call_id = push_call(analyzer.ctx_.module, syntax::INVALID_EXPR_ID, {payload_value});
     const std::vector<TypeHandle> array_param_types{array_i32};
     analyzer.validate_call_arguments(analyzer.expr_view(argument_call_id), "array_arg", array_param_types, 0, false);
     const ExprId variadic_argument_call_id =
-        push_call(analyzer.module_, syntax::INVALID_EXPR_ID, {payload_value, payload_value});
+        push_call(analyzer.ctx_.module, syntax::INVALID_EXPR_ID, {payload_value, payload_value});
     const std::vector<TypeHandle> no_param_types;
     analyzer.validate_call_arguments(
         analyzer.expr_view(variadic_argument_call_id), "array_vararg", no_param_types, 0, true);
@@ -1419,9 +1448,9 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths)
     };
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle record_type = types.named_struct("lib.Record", "lib_Record", false);
     const TypeHandle enum_type = types.named_enum("lib.Choice", "lib_Choice");
@@ -1442,50 +1471,51 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths)
     const sema::ModuleLookupKey record_key =
         add_named_type(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Record", record_type);
     StructInfo record_info;
-    record_info.name = checked_text(analyzer.checked_, "Record");
+    record_info.name = checked_text(analyzer.state_.checked, "Record");
     record_info.name_id = record_id;
     record_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     record_info.type = record_type;
-    const auto record_inserted = analyzer.checked_.structs.emplace(record_key, record_info);
+    const auto record_inserted = analyzer.state_.checked.structs.emplace(record_key, record_info);
     ASSERT_TRUE(record_inserted.second);
-    analyzer.struct_infos_by_type_[record_type.value] = &record_inserted.first->second;
+    analyzer.state_.types.struct_infos_by_type[record_type.value] = &record_inserted.first->second;
 
-    const TypeId i32_type_id = analyzer.module_.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId i32_type_id = analyzer.ctx_.module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
     sema::TypeAliasInfo alias;
-    alias.name = checked_text(analyzer.checked_, "Alias");
+    alias.name = checked_text(analyzer.state_.checked, "Alias");
     alias.name_id = alias_id;
     alias.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     alias.target = i32_type_id;
     alias.visibility = syntax::Visibility::public_;
-    const auto alias_inserted = analyzer.checked_.type_aliases.emplace(
+    const auto alias_inserted = analyzer.state_.checked.type_aliases.emplace(
         semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Alias"), alias);
     ASSERT_TRUE(alias_inserted.second);
     analyzer.index_type_alias(alias_inserted.first->second);
 
-    sema::SemanticAnalyzer::GenericTemplateInfo generic_type;
+    sema::SemanticAnalyzerCore::GenericTemplateInfo generic_type;
     generic_type.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
-    generic_type.name = checked_text(analyzer.checked_, "Box");
+    generic_type.name = checked_text(analyzer.state_.checked, "Box");
     generic_type.name_id = box_id;
     generic_type.key = semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Box");
     generic_type.visibility = syntax::Visibility::public_;
-    const auto generic_type_inserted = analyzer.generic_struct_templates_.emplace(generic_type.key, generic_type);
+    const auto generic_type_inserted =
+        analyzer.state_.generics.struct_templates.emplace(generic_type.key, generic_type);
     ASSERT_TRUE(generic_type_inserted.second);
     analyzer.index_generic_struct_template(generic_type_inserted.first->second);
 
-    sema::SemanticAnalyzer::GenericTemplateInfo generic_function;
+    sema::SemanticAnalyzerCore::GenericTemplateInfo generic_function;
     generic_function.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
-    generic_function.name = checked_text(analyzer.checked_, "make");
+    generic_function.name = checked_text(analyzer.state_.checked, "make");
     generic_function.name_id = make_id;
     generic_function.key = semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "make");
     generic_function.visibility = syntax::Visibility::public_;
     const auto generic_function_inserted =
-        analyzer.generic_function_templates_.emplace(generic_function.key, generic_function);
+        analyzer.state_.generics.function_templates.emplace(generic_function.key, generic_function);
     ASSERT_TRUE(generic_function_inserted.second);
     analyzer.index_generic_function_template(generic_function_inserted.first->second);
 
-    sema::SemanticAnalyzer::GenericTemplateInfo generic_method;
+    sema::SemanticAnalyzerCore::GenericTemplateInfo generic_method;
     generic_method.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
-    generic_method.name = checked_text(analyzer.checked_, "generic_method");
+    generic_method.name = checked_text(analyzer.state_.checked, "generic_method");
     generic_method.name_id = generic_method_id;
     generic_method.key = semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "generic_method");
     generic_method.function_key =
@@ -1493,14 +1523,14 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths)
     generic_method.impl_type_pattern = record_type;
     generic_method.visibility = syntax::Visibility::public_;
     const auto generic_method_inserted =
-        analyzer.generic_method_templates_.emplace(generic_method.function_key, generic_method);
+        analyzer.state_.generics.method_templates.emplace(generic_method.function_key, generic_method);
     ASSERT_TRUE(generic_method_inserted.second);
     analyzer.index_generic_method_template(generic_method_inserted.first->second);
 
     FunctionSignature run = indexed_function_signature(analyzer, "run", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32);
     run.visibility = syntax::Visibility::public_;
     run.semantic_key = semantic_function_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "run");
-    const auto run_inserted = analyzer.checked_.functions.emplace(run.semantic_key, run);
+    const auto run_inserted = analyzer.state_.checked.functions.emplace(run.semantic_key, run);
     ASSERT_TRUE(run_inserted.second);
     analyzer.index_function_lookup(run_inserted.first->second);
 
@@ -1512,25 +1542,25 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths)
     method.visibility = syntax::Visibility::public_;
     method.semantic_key =
         semantic_method_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), record_type, "method");
-    const auto method_inserted = analyzer.checked_.functions.emplace(method.semantic_key, method);
+    const auto method_inserted = analyzer.state_.checked.functions.emplace(method.semantic_key, method);
     ASSERT_TRUE(method_inserted.second);
     analyzer.index_method_lookup(
         module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), record_type, method_id, method_inserted.first->second);
 
-    const auto value_inserted = analyzer.global_values_.emplace(
+    const auto value_inserted = analyzer.state_.functions.global_values.emplace(
         semantic_function_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "VALUE"),
         indexed_symbol(analyzer, SymbolKind::const_, "VALUE", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32));
     ASSERT_TRUE(value_inserted.second);
     analyzer.index_global_value(value_inserted.first->second);
 
     EnumCaseInfo case_info;
-    case_info.name = checked_text(analyzer.checked_, "Choice_yes");
+    case_info.name = checked_text(analyzer.state_.checked, "Choice_yes");
     case_info.name_id = choice_yes_id;
-    case_info.case_name = checked_text(analyzer.checked_, "yes");
+    case_info.case_name = checked_text(analyzer.state_.checked, "yes");
     case_info.case_name_id = yes_id;
     case_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     case_info.type = enum_type;
-    const auto case_inserted = analyzer.checked_.enum_cases.emplace(
+    const auto case_inserted = analyzer.state_.checked.enum_cases.emplace(
         semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Choice_yes"), case_info);
     ASSERT_TRUE(case_inserted.second);
     analyzer.index_enum_case(case_inserted.first->second);
@@ -1567,17 +1597,17 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths)
     EXPECT_EQ(analyzer.find_symbol_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), value_id, "VALUE", {}),
         &value_inserted.first->second);
 
-    analyzer.current_module_ = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     EXPECT_EQ(
         analyzer.find_enum_case_in_visible_modules(choice_yes_id, "Choice_yes", {}), &case_inserted.first->second);
-    const base::usize interned_before_miss = analyzer.module_.identifiers.size();
+    const base::usize interned_before_miss = analyzer.ctx_.module.identifiers.size();
     EXPECT_EQ(
         analyzer.find_symbol_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), missing_id, "missing", {}, false),
         nullptr);
     EXPECT_EQ(
         analyzer.find_function_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), missing_id, "missing", {}, false),
         nullptr);
-    EXPECT_EQ(analyzer.module_.identifiers.size(), interned_before_miss);
+    EXPECT_EQ(analyzer.ctx_.module.identifiers.size(), interned_before_miss);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps)
@@ -1592,10 +1622,10 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps)
     };
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle record_type = types.named_struct("lib.LegacyRecord", "lib_LegacyRecord", false);
     const TypeHandle enum_type = types.named_enum("lib.LegacyChoice", "lib_LegacyChoice");
@@ -1617,41 +1647,41 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps)
 
     const sema::ModuleLookupKey record_key =
         semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyRecord");
-    analyzer.named_types_.emplace(record_key, record_type);
+    analyzer.state_.types.named_types.emplace(record_key, record_type);
 
     StructInfo record_info;
-    record_info.name = checked_text(analyzer.checked_, "LegacyRecord");
+    record_info.name = checked_text(analyzer.state_.checked, "LegacyRecord");
     record_info.name_id = legacy_record_id;
     record_info.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     record_info.type = record_type;
-    const auto record_inserted = analyzer.checked_.structs.emplace(record_key, record_info);
+    const auto record_inserted = analyzer.state_.checked.structs.emplace(record_key, record_info);
     ASSERT_TRUE(record_inserted.second);
-    analyzer.struct_infos_by_type_[record_type.value] = &record_inserted.first->second;
+    analyzer.state_.types.struct_infos_by_type[record_type.value] = &record_inserted.first->second;
 
-    const TypeId i32_type_id = analyzer.module_.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId i32_type_id = analyzer.ctx_.module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
     sema::TypeAliasInfo alias;
-    alias.name = checked_text(analyzer.checked_, "LegacyAlias");
+    alias.name = checked_text(analyzer.state_.checked, "LegacyAlias");
     alias.name_id = legacy_alias_id;
     alias.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     alias.target = i32_type_id;
     alias.visibility = syntax::Visibility::public_;
-    analyzer.checked_.type_aliases.emplace(
+    analyzer.state_.checked.type_aliases.emplace(
         semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyAlias"), alias);
 
-    analyzer.generic_struct_templates_.emplace(
+    analyzer.state_.generics.struct_templates.emplace(
         semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyBox"),
         generic_template_info(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyBox"));
-    analyzer.generic_struct_templates_.emplace(
+    analyzer.state_.generics.struct_templates.emplace(
         semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "PrivateBox"),
         generic_template_info(
             analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "PrivateBox", syntax::Visibility::private_));
-    analyzer.generic_enum_templates_.emplace(
+    analyzer.state_.generics.enum_templates.emplace(
         semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyEnum"),
         generic_template_info(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyEnum"));
-    analyzer.generic_type_alias_templates_.emplace(
+    analyzer.state_.generics.type_alias_templates.emplace(
         semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyAliasBox"),
         generic_template_info(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyAliasBox"));
-    analyzer.generic_function_templates_.emplace(
+    analyzer.state_.generics.function_templates.emplace(
         semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyMake"),
         generic_template_info(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyMake"));
 
@@ -1660,7 +1690,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps)
     fallback_function.visibility = syntax::Visibility::public_;
     fallback_function.semantic_key =
         semantic_function_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn");
-    analyzer.checked_.functions.emplace(fallback_function.semantic_key, fallback_function);
+    analyzer.state_.checked.functions.emplace(fallback_function.semantic_key, fallback_function);
 
     FunctionSignature owner_method =
         indexed_function_signature(analyzer, "owner_method", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32);
@@ -1671,22 +1701,23 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps)
     owner_method.param_types = {record_type};
     owner_method.semantic_key =
         semantic_method_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), record_type, "owner_method");
-    const auto owner_method_inserted = analyzer.checked_.functions.emplace(owner_method.semantic_key, owner_method);
+    const auto owner_method_inserted =
+        analyzer.state_.checked.functions.emplace(owner_method.semantic_key, owner_method);
     ASSERT_TRUE(owner_method_inserted.second);
 
-    const auto value_inserted = analyzer.global_values_.emplace(
+    const auto value_inserted = analyzer.state_.functions.global_values.emplace(
         semantic_function_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LEGACY_VALUE"),
         indexed_symbol(analyzer, SymbolKind::const_, "LEGACY_VALUE", module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), i32));
     ASSERT_TRUE(value_inserted.second);
 
     EnumCaseInfo enum_case;
-    enum_case.name = checked_text(analyzer.checked_, "LegacyChoice_yes");
+    enum_case.name = checked_text(analyzer.state_.checked, "LegacyChoice_yes");
     enum_case.name_id = legacy_choice_yes_id;
-    enum_case.case_name = checked_text(analyzer.checked_, "yes");
+    enum_case.case_name = checked_text(analyzer.state_.checked, "yes");
     enum_case.case_name_id = yes_id;
     enum_case.module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     enum_case.type = enum_type;
-    const auto enum_case_inserted = analyzer.checked_.enum_cases.emplace(
+    const auto enum_case_inserted = analyzer.state_.checked.enum_cases.emplace(
         semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyChoice_yes"), enum_case);
     ASSERT_TRUE(enum_case_inserted.second);
 
@@ -1710,7 +1741,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps)
     EXPECT_FALSE(is_valid(analyzer.find_type_in_module(
         module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), legacy_record_id, "LegacyRecord", {}, false)));
 
-    analyzer.current_module_ = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
     EXPECT_EQ(analyzer.find_generic_struct_in_visible_modules(legacy_box_id, "LegacyBox", {}, false), nullptr);
     EXPECT_EQ(analyzer.find_generic_enum_in_visible_modules(legacy_enum_id, "LegacyEnum", {}, false), nullptr);
     EXPECT_EQ(
@@ -1725,22 +1756,22 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps)
 
     analyzer.index_named_type(
         module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), legacy_record_id, record_type, syntax::Visibility::public_);
-    analyzer.index_type_alias(analyzer.checked_.type_aliases
+    analyzer.index_type_alias(analyzer.state_.checked.type_aliases
             .find(semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyAlias"))
             ->second);
-    analyzer.index_generic_struct_template(analyzer.generic_struct_templates_
+    analyzer.index_generic_struct_template(analyzer.state_.generics.struct_templates
             .find(semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyBox"))
             ->second);
-    analyzer.index_generic_enum_template(analyzer.generic_enum_templates_
+    analyzer.index_generic_enum_template(analyzer.state_.generics.enum_templates
             .find(semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyEnum"))
             ->second);
-    analyzer.index_generic_type_alias_template(analyzer.generic_type_alias_templates_
+    analyzer.index_generic_type_alias_template(analyzer.state_.generics.type_alias_templates
             .find(semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyAliasBox"))
             ->second);
-    analyzer.index_generic_function_template(analyzer.generic_function_templates_
+    analyzer.index_generic_function_template(analyzer.state_.generics.function_templates
             .find(semantic_module_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "LegacyMake"))
             ->second);
-    analyzer.index_function_lookup(analyzer.checked_.functions
+    analyzer.index_function_lookup(analyzer.state_.checked.functions
             .find(semantic_function_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn"))
             ->second);
     analyzer.index_method_lookup(
@@ -1774,7 +1805,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps)
                   module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), missing_id, "missing", {}, false),
         nullptr);
     EXPECT_EQ(analyzer.find_function_in_visible_modules(legacy_fn_id, "legacy_fn", {}, false),
-        &analyzer.checked_.functions
+        &analyzer.state_.checked.functions
             .find(semantic_function_key(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "legacy_fn"))
             ->second);
     EXPECT_EQ(analyzer.find_method_in_owner_module(record_type, owner_method_id, "owner_method", true),
@@ -1818,44 +1849,44 @@ TEST(CoreUnit, SemanticWhiteBoxBodyInferenceEdges)
     const syntax::StmtId invalid_expr_return_stmt_id = module.push_stmt(invalid_expr_return_stmt);
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.stmt_local_types.assign(module.stmts.size(), INVALID_TYPE_HANDLE);
-    analyzer.current_module_ = module_id(0);
-    const TypeHandle i32 = analyzer.checked_.types.builtin(BuiltinType::i32);
-    const TypeHandle ptr_i32 = analyzer.checked_.types.pointer(PointerMutability::const_, i32);
-    const TypeHandle plain_type = analyzer.checked_.types.named_struct("Plain", "Plain", false);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.stmt_local_types.assign(module.stmts.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.flow.current_module = module_id(0);
+    const TypeHandle i32 = analyzer.state_.checked.types.builtin(BuiltinType::i32);
+    const TypeHandle ptr_i32 = analyzer.state_.checked.types.pointer(PointerMutability::const_, i32);
+    const TypeHandle plain_type = analyzer.state_.checked.types.named_struct("Plain", "Plain", false);
     static_cast<void>(add_named_type(analyzer, module_id(0), "Plain", plain_type));
 
     const sema::FunctionLookupKey infer_key = semantic_function_key(analyzer, module_id(0), "infer");
     FunctionSignature conflict_signature =
         indexed_function_signature(analyzer, "infer", module_id(0), INVALID_TYPE_HANDLE);
     conflict_signature.semantic_key = infer_key;
-    sema::SemanticAnalyzer::FunctionBodyState state = sema::SemanticAnalyzer::FunctionBodyState::analyzing;
+    sema::SemanticAnalyzerCore::FunctionBodyState state = sema::SemanticAnalyzerCore::FunctionBodyState::analyzing;
     analyzer.analyze_function_body_with_signature(function, infer_key, conflict_signature, state);
-    state = sema::SemanticAnalyzer::FunctionBodyState::analyzed;
+    state = sema::SemanticAnalyzerCore::FunctionBodyState::analyzed;
     analyzer.analyze_function_body_with_signature(function, infer_key, conflict_signature, state);
-    state = sema::SemanticAnalyzer::FunctionBodyState::not_started;
+    state = sema::SemanticAnalyzerCore::FunctionBodyState::not_started;
     conflict_signature.has_conflict = true;
     analyzer.analyze_function_body_with_signature(function, infer_key, conflict_signature, state);
 
     analyzer.analyze_block(syntax::INVALID_STMT_ID, i32, nullptr);
     analyzer.analyze_stmt(syntax::INVALID_STMT_ID, i32, nullptr);
-    sema::SemanticAnalyzer::ReturnTypeInference inference;
+    sema::SemanticAnalyzerCore::ReturnTypeInference inference;
     analyzer.finalize_inferred_return(function, infer_key, inference);
 
-    sema::SemanticAnalyzer::ReturnTypeInference invalid_pending_null_return;
+    sema::SemanticAnalyzerCore::ReturnTypeInference invalid_pending_null_return;
     invalid_pending_null_return.inferred_type = ptr_i32;
     invalid_pending_null_return.pending_null_returns.push_back(syntax::INVALID_STMT_ID);
     analyzer.resolve_pending_null_returns(invalid_pending_null_return);
 
-    sema::SemanticAnalyzer::ReturnTypeInference empty_pending_null_return;
+    sema::SemanticAnalyzerCore::ReturnTypeInference empty_pending_null_return;
     empty_pending_null_return.inferred_type = ptr_i32;
     empty_pending_null_return.pending_null_returns.push_back(empty_return_stmt_id);
     analyzer.resolve_pending_null_returns(empty_pending_null_return);
 
-    sema::SemanticAnalyzer::ReturnTypeInference invalid_expr_pending_null_return;
+    sema::SemanticAnalyzerCore::ReturnTypeInference invalid_expr_pending_null_return;
     invalid_expr_pending_null_return.inferred_type = ptr_i32;
     invalid_expr_pending_null_return.pending_null_returns.push_back(invalid_expr_return_stmt_id);
     analyzer.resolve_pending_null_returns(invalid_expr_pending_null_return);
@@ -1867,12 +1898,12 @@ TEST(CoreUnit, SemanticWhiteBoxBodyInferenceEdges)
     EXPECT_FALSE(is_valid(analyzer.analyze_expr(INVALID_EXPR_ID)));
     EXPECT_FALSE(is_valid(analyzer.resolve_type(syntax::INVALID_TYPE_ID)));
 
-    analyzer.checked_.syntax_type_handles[plain_type_id.value] = plain_type;
-    EXPECT_TRUE(analyzer.checked_.types.same(analyzer.resolve_type(plain_type_id), plain_type));
-    const TypeHandle opaque = analyzer.checked_.types.opaque_struct("Opaque", "Opaque");
-    analyzer.checked_.syntax_type_handles[plain_type_id.value] = opaque;
-    EXPECT_TRUE(analyzer.checked_.types.same(analyzer.resolve_type(plain_type_id), opaque));
-    analyzer.checked_.syntax_type_handles[plain_type_id.value] = INVALID_TYPE_HANDLE;
+    analyzer.state_.checked.syntax_type_handles[plain_type_id.value] = plain_type;
+    EXPECT_TRUE(analyzer.state_.checked.types.same(analyzer.resolve_type(plain_type_id), plain_type));
+    const TypeHandle opaque = analyzer.state_.checked.types.opaque_struct("Opaque", "Opaque");
+    analyzer.state_.checked.syntax_type_handles[plain_type_id.value] = opaque;
+    EXPECT_TRUE(analyzer.state_.checked.types.same(analyzer.resolve_type(plain_type_id), opaque));
+    analyzer.state_.checked.syntax_type_handles[plain_type_id.value] = INVALID_TYPE_HANDLE;
 }
 
 TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly)
@@ -2115,8 +2146,8 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly)
     generic_function.body = body_id;
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    sema::SemanticAnalyzer::GenericTemplateInfo info = analyzer.make_generic_template_info();
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    sema::SemanticAnalyzerCore::GenericTemplateInfo info = analyzer.make_generic_template_info();
     analyzer.populate_generic_template_node_spans(info, generic_function);
 
     const auto contains_id = [](const sema::SemaIndexTable& ids, const base::u32 value) {
@@ -2136,8 +2167,16 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansTrackReachableAstOnly)
     EXPECT_FALSE(contains_id(info.stmt_node_ids, unused_stmt_id.value));
 
     sema::GenericSideTables side_tables;
-    side_tables.configure_local_dense(info.expr_span, info.pattern_span, info.type_span, info.stmt_span,
-        info.expr_node_ids, info.pattern_node_ids, info.type_node_ids, info.stmt_node_ids);
+    side_tables.configure_local_dense(sema::GenericSideTableLocalLayoutView{
+        info.expr_span,
+        info.pattern_span,
+        info.type_span,
+        info.stmt_span,
+        info.expr_node_ids,
+        info.pattern_node_ids,
+        info.type_node_ids,
+        info.stmt_node_ids,
+    });
     EXPECT_EQ(side_tables.local_expr_index(unused_expr), sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
     EXPECT_EQ(side_tables.local_pattern_index(unused_pattern_id), sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
     EXPECT_EQ(side_tables.local_type_index(unused_type), sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
@@ -2176,8 +2215,8 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTemplateNodeSpansSwitchToHashDedupForLarge
     generic_function.body = body_id;
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    sema::SemanticAnalyzer::GenericTemplateInfo info = analyzer.make_generic_template_info();
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    sema::SemanticAnalyzerCore::GenericTemplateInfo info = analyzer.make_generic_template_info();
     analyzer.populate_generic_template_node_spans(info, generic_function);
 
     EXPECT_TRUE(info.expr_span.contains(tuple_expr.value));
@@ -2232,7 +2271,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables)
 
     syntax::AstModule discard_side_tables_module = module;
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(std::move(module), diagnostics);
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
     auto checked_result = analyzer.analyze();
     ASSERT_TRUE(checked_result) << checked_result.error().message;
     const sema::CheckedModule& checked = checked_result.value();
@@ -2284,7 +2323,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables)
     sema::SemanticOptions discard_options;
     discard_options.retain_generic_side_tables = false;
     base::DiagnosticSink discard_diagnostics;
-    sema::SemanticAnalyzer discard_analyzer(
+    sema::SemanticAnalyzerCore discard_analyzer(
         std::move(discard_side_tables_module), discard_diagnostics, discard_options);
     auto discard_result = discard_analyzer.analyze();
     ASSERT_TRUE(discard_result) << discard_result.error().message;
@@ -2297,13 +2336,13 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstanceQueryKeysIgnoreSessionTypeHandles)
     syntax::AstModule first_module;
     first_module.modules = {module_info({"stable_generic"})};
     base::DiagnosticSink first_diagnostics;
-    sema::SemanticAnalyzer first_analyzer(first_module, first_diagnostics);
+    sema::SemanticAnalyzerCore first_analyzer(first_module, first_diagnostics);
     const TypeHandle first_payload =
-        first_analyzer.checked_.types.named_struct("stable_generic.Payload", "Payload", false);
+        first_analyzer.state_.checked.types.named_struct("stable_generic.Payload", "Payload", false);
     static_cast<void>(add_struct_info(first_analyzer, module_id(0), "Payload", first_payload));
-    sema::SemanticAnalyzer::GenericTemplateInfo first_template =
+    sema::SemanticAnalyzerCore::GenericTemplateInfo first_template =
         generic_template_info(first_analyzer, module_id(0), "Wrap");
-    sema::SemanticAnalyzer::CapabilitySet first_constraints = first_analyzer.make_capability_set();
+    sema::SemanticAnalyzerCore::CapabilitySet first_constraints = first_analyzer.make_capability_set();
     first_constraints.insert(sema::CapabilityKind::eq);
     first_template.constraints.emplace(first_template.params.front(), std::move(first_constraints));
     const std::array<TypeHandle, 1> first_args{first_payload};
@@ -2311,16 +2350,16 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstanceQueryKeysIgnoreSessionTypeHandles)
     syntax::AstModule second_module;
     second_module.modules = {module_info({"stable_generic"})};
     base::DiagnosticSink second_diagnostics;
-    sema::SemanticAnalyzer second_analyzer(second_module, second_diagnostics);
+    sema::SemanticAnalyzerCore second_analyzer(second_module, second_diagnostics);
     const TypeHandle extra_payload =
-        second_analyzer.checked_.types.named_struct("stable_generic.Extra", "Extra", false);
+        second_analyzer.state_.checked.types.named_struct("stable_generic.Extra", "Extra", false);
     static_cast<void>(add_struct_info(second_analyzer, module_id(0), "Extra", extra_payload));
     const TypeHandle second_payload =
-        second_analyzer.checked_.types.named_struct("stable_generic.Payload", "Payload", false);
+        second_analyzer.state_.checked.types.named_struct("stable_generic.Payload", "Payload", false);
     static_cast<void>(add_struct_info(second_analyzer, module_id(0), "Payload", second_payload));
-    sema::SemanticAnalyzer::GenericTemplateInfo second_template =
+    sema::SemanticAnalyzerCore::GenericTemplateInfo second_template =
         generic_template_info(second_analyzer, module_id(0), "Wrap");
-    sema::SemanticAnalyzer::CapabilitySet second_constraints = second_analyzer.make_capability_set();
+    sema::SemanticAnalyzerCore::CapabilitySet second_constraints = second_analyzer.make_capability_set();
     second_constraints.insert(sema::CapabilityKind::eq);
     second_template.constraints.emplace(second_template.params.front(), std::move(second_constraints));
     const std::array<TypeHandle, 1> second_args{second_payload};
@@ -2329,9 +2368,9 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstanceQueryKeysIgnoreSessionTypeHandles)
     EXPECT_NE(first_analyzer.generic_instance_key_suffix({first_payload}),
         second_analyzer.generic_instance_key_suffix({second_payload}));
 
-    base::Result<sema::SemanticAnalyzer::GenericInstanceIdentity> first_identity =
+    base::Result<sema::SemanticAnalyzerCore::GenericInstanceIdentity> first_identity =
         first_analyzer.generic_instance_identity(first_template, first_args, query::DefNamespace::type);
-    base::Result<sema::SemanticAnalyzer::GenericInstanceIdentity> second_identity =
+    base::Result<sema::SemanticAnalyzerCore::GenericInstanceIdentity> second_identity =
         second_analyzer.generic_instance_identity(second_template, second_args, query::DefNamespace::type);
     ASSERT_TRUE(first_identity) << first_identity.error().message;
     ASSERT_TRUE(second_identity) << second_identity.error().message;
@@ -2368,19 +2407,19 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstanceResolverCoversIdentityEdges)
     syntax::AstModule module;
     module.modules = {module_info({SEMA_TEST_QUERY_EDGE_MODULE})};
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
 
     const query::ModuleKey empty_module =
         query::module_key(query::package_key(std::span<const std::string_view>{}), std::span<const std::string_view>{});
     EXPECT_EQ(analyzer.query_module_key(syntax::INVALID_MODULE_ID), empty_module);
     EXPECT_EQ(analyzer.query_module_key(module_id(SEMA_TEST_MISSING_MODULE_INDEX)), empty_module);
 
-    sema::SemanticAnalyzer::GenericTemplateInfo owner =
+    sema::SemanticAnalyzerCore::GenericTemplateInfo owner =
         generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_OWNER);
     analyzer.populate_generic_param_identities(owner);
     const query::DefKey owner_key = analyzer.generic_template_query_key(owner, query::DefNamespace::type);
 
-    sema::SemanticAnalyzer::GenericTemplateInfo invalid_index_owner =
+    sema::SemanticAnalyzerCore::GenericTemplateInfo invalid_index_owner =
         generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_INVALID_INDEX);
     invalid_index_owner.param_identities.push_back(sema::INVALID_GENERIC_PARAM_IDENTITY);
     analyzer.index_generic_param_query_keys(invalid_index_owner, query::DefNamespace::type);
@@ -2389,24 +2428,24 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstanceResolverCoversIdentityEdges)
     EXPECT_FALSE(analyzer.canonical_generic_param_query_key(owner, owner_key, invalid_generic_info).has_value());
 
     const TypeHandle owner_param =
-        analyzer.checked_.types.generic_param(owner.param_identities.front(), SEMA_TEST_GENERIC_PARAM_NAME);
+        analyzer.state_.checked.types.generic_param(owner.param_identities.front(), SEMA_TEST_GENERIC_PARAM_NAME);
     const std::optional<query::GenericParamKey> owner_param_key =
-        analyzer.canonical_generic_param_query_key(owner, owner_key, analyzer.checked_.types.get(owner_param));
+        analyzer.canonical_generic_param_query_key(owner, owner_key, analyzer.state_.checked.types.get(owner_param));
     ASSERT_TRUE(owner_param_key.has_value());
     EXPECT_EQ(owner_param_key.value(), query::generic_param_key(owner_key, 0));
 
-    sema::SemanticAnalyzer::GenericTemplateInfo outer =
+    sema::SemanticAnalyzerCore::GenericTemplateInfo outer =
         generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_OUTER);
     analyzer.populate_generic_param_identities(outer);
     analyzer.index_generic_param_query_keys(outer, query::DefNamespace::value);
-    sema::SemanticAnalyzer::GenericTemplateInfo inner =
+    sema::SemanticAnalyzerCore::GenericTemplateInfo inner =
         generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_INNER);
     analyzer.populate_generic_param_identities(inner);
     const query::DefKey inner_key = analyzer.generic_template_query_key(inner, query::DefNamespace::value);
     const TypeHandle outer_param =
-        analyzer.checked_.types.generic_param(outer.param_identities.front(), SEMA_TEST_GENERIC_PARAM_NAME);
+        analyzer.state_.checked.types.generic_param(outer.param_identities.front(), SEMA_TEST_GENERIC_PARAM_NAME);
     const std::optional<query::GenericParamKey> fallback_param_key =
-        analyzer.canonical_generic_param_query_key(inner, inner_key, analyzer.checked_.types.get(outer_param));
+        analyzer.canonical_generic_param_query_key(inner, inner_key, analyzer.state_.checked.types.get(outer_param));
     ASSERT_TRUE(fallback_param_key.has_value());
     EXPECT_EQ(fallback_param_key.value(),
         query::generic_param_key(analyzer.generic_template_query_key(outer, query::DefNamespace::value), 0));
@@ -2417,62 +2456,68 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstanceResolverCoversIdentityEdges)
     EXPECT_FALSE(analyzer.canonical_generic_param_query_key(owner, owner_key, missing_generic_info).has_value());
 
     const TypeHandle payload =
-        analyzer.checked_.types.named_struct("identity_edges.Payload", SEMA_TEST_QUERY_EDGE_PAYLOAD, false);
+        analyzer.state_.checked.types.named_struct("identity_edges.Payload", SEMA_TEST_QUERY_EDGE_PAYLOAD, false);
     static_cast<void>(add_struct_info(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_PAYLOAD, payload));
-    EXPECT_TRUE(analyzer.canonical_nominal_type_query_key(payload, analyzer.checked_.types.get(payload)).has_value());
+    EXPECT_TRUE(
+        analyzer.canonical_nominal_type_query_key(payload, analyzer.state_.checked.types.get(payload)).has_value());
 
-    const TypeHandle generic_payload = analyzer.checked_.types.named_struct(
+    const TypeHandle generic_payload = analyzer.state_.checked.types.named_struct(
         "identity_edges.GenericPayload", SEMA_TEST_QUERY_EDGE_GENERIC_PAYLOAD, false);
-    analyzer.checked_.types.set_generic_instance(generic_payload, SEMA_TEST_QUERY_EDGE_GENERIC_PAYLOAD_ORIGIN, {});
+    analyzer.state_.checked.types.set_generic_instance(
+        generic_payload, SEMA_TEST_QUERY_EDGE_GENERIC_PAYLOAD_ORIGIN, {});
     const std::optional<query::DefKey> generic_payload_key =
-        analyzer.canonical_nominal_type_query_key(generic_payload, analyzer.checked_.types.get(generic_payload));
+        analyzer.canonical_nominal_type_query_key(generic_payload, analyzer.state_.checked.types.get(generic_payload));
     ASSERT_TRUE(generic_payload_key.has_value());
     EXPECT_EQ(generic_payload_key->kind, query::DefKind::generic_template);
 
-    analyzer.struct_infos_by_type_[payload.value] = nullptr;
-    EXPECT_FALSE(analyzer.canonical_nominal_type_query_key(payload, analyzer.checked_.types.get(payload)).has_value());
+    analyzer.state_.types.struct_infos_by_type[payload.value] = nullptr;
+    EXPECT_FALSE(
+        analyzer.canonical_nominal_type_query_key(payload, analyzer.state_.checked.types.get(payload)).has_value());
 
     const TypeHandle malformed_origin =
-        analyzer.checked_.types.named_struct("identity_edges.Malformed", "Malformed", false);
-    analyzer.checked_.types.set_generic_instance(malformed_origin, SEMA_TEST_QUERY_EDGE_MALFORMED_ORIGIN, {});
+        analyzer.state_.checked.types.named_struct("identity_edges.Malformed", "Malformed", false);
+    analyzer.state_.checked.types.set_generic_instance(malformed_origin, SEMA_TEST_QUERY_EDGE_MALFORMED_ORIGIN, {});
     EXPECT_FALSE(
-        analyzer.canonical_nominal_type_query_key(malformed_origin, analyzer.checked_.types.get(malformed_origin))
+        analyzer.canonical_nominal_type_query_key(malformed_origin, analyzer.state_.checked.types.get(malformed_origin))
             .has_value());
 
     const TypeHandle non_numeric_origin =
-        analyzer.checked_.types.named_struct("identity_edges.NonNumeric", "NonNumeric", false);
-    analyzer.checked_.types.set_generic_instance(non_numeric_origin, SEMA_TEST_QUERY_EDGE_NON_NUMERIC_ORIGIN, {});
-    EXPECT_FALSE(
-        analyzer.canonical_nominal_type_query_key(non_numeric_origin, analyzer.checked_.types.get(non_numeric_origin))
+        analyzer.state_.checked.types.named_struct("identity_edges.NonNumeric", "NonNumeric", false);
+    analyzer.state_.checked.types.set_generic_instance(non_numeric_origin, SEMA_TEST_QUERY_EDGE_NON_NUMERIC_ORIGIN, {});
+    EXPECT_FALSE(analyzer
+            .canonical_nominal_type_query_key(non_numeric_origin, analyzer.state_.checked.types.get(non_numeric_origin))
             .has_value());
 
     const TypeHandle out_of_range_origin =
-        analyzer.checked_.types.named_struct("identity_edges.OutOfRange", "OutOfRange", false);
-    analyzer.checked_.types.set_generic_instance(out_of_range_origin, SEMA_TEST_QUERY_EDGE_OUT_OF_RANGE_ORIGIN, {});
-    EXPECT_FALSE(
-        analyzer.canonical_nominal_type_query_key(out_of_range_origin, analyzer.checked_.types.get(out_of_range_origin))
+        analyzer.state_.checked.types.named_struct("identity_edges.OutOfRange", "OutOfRange", false);
+    analyzer.state_.checked.types.set_generic_instance(
+        out_of_range_origin, SEMA_TEST_QUERY_EDGE_OUT_OF_RANGE_ORIGIN, {});
+    EXPECT_FALSE(analyzer
+            .canonical_nominal_type_query_key(
+                out_of_range_origin, analyzer.state_.checked.types.get(out_of_range_origin))
             .has_value());
 
-    const TypeHandle named_enum = analyzer.checked_.types.named_enum("identity_edges.Mode", SEMA_TEST_QUERY_EDGE_MODE);
+    const TypeHandle named_enum =
+        analyzer.state_.checked.types.named_enum("identity_edges.Mode", SEMA_TEST_QUERY_EDGE_MODE);
     static_cast<void>(add_named_type(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_MODE, named_enum));
     const std::optional<query::DefKey> named_enum_key =
-        analyzer.canonical_nominal_type_query_key(named_enum, analyzer.checked_.types.get(named_enum));
+        analyzer.canonical_nominal_type_query_key(named_enum, analyzer.state_.checked.types.get(named_enum));
     ASSERT_TRUE(named_enum_key.has_value());
     EXPECT_EQ(named_enum_key->kind, query::DefKind::enum_);
 
     const TypeHandle case_only_enum =
-        analyzer.checked_.types.named_enum("identity_edges.Choice", SEMA_TEST_QUERY_EDGE_CHOICE);
-    EnumCaseInfo case_info = analyzer.checked_.make_enum_case_info();
-    case_info.name = checked_text(analyzer.checked_, SEMA_TEST_QUERY_EDGE_CHOICE_CASE);
+        analyzer.state_.checked.types.named_enum("identity_edges.Choice", SEMA_TEST_QUERY_EDGE_CHOICE);
+    EnumCaseInfo case_info = analyzer.state_.checked.make_enum_case_info();
+    case_info.name = checked_text(analyzer.state_.checked, SEMA_TEST_QUERY_EDGE_CHOICE_CASE);
     case_info.name_id = intern_identifier(analyzer, SEMA_TEST_QUERY_EDGE_CHOICE_CASE);
     case_info.module = module_id(0);
     case_info.type = case_only_enum;
-    case_info.enum_name = checked_text(analyzer.checked_, SEMA_TEST_QUERY_EDGE_CHOICE);
-    case_info.case_name = checked_text(analyzer.checked_, SEMA_TEST_QUERY_EDGE_CHOICE_CASE_NAME);
-    analyzer.checked_.enum_cases.emplace(
+    case_info.enum_name = checked_text(analyzer.state_.checked, SEMA_TEST_QUERY_EDGE_CHOICE);
+    case_info.case_name = checked_text(analyzer.state_.checked, SEMA_TEST_QUERY_EDGE_CHOICE_CASE_NAME);
+    analyzer.state_.checked.enum_cases.emplace(
         semantic_module_key(analyzer, module_id(0), SEMA_TEST_QUERY_EDGE_CHOICE_CASE), std::move(case_info));
     const std::optional<query::DefKey> case_only_enum_key =
-        analyzer.canonical_nominal_type_query_key(case_only_enum, analyzer.checked_.types.get(case_only_enum));
+        analyzer.canonical_nominal_type_query_key(case_only_enum, analyzer.state_.checked.types.get(case_only_enum));
     ASSERT_TRUE(case_only_enum_key.has_value());
     EXPECT_EQ(case_only_enum_key->kind, query::DefKind::enum_);
 }
@@ -2486,21 +2531,21 @@ TEST(CoreUnit, SemanticWhiteBoxGenericParamEnvKeySortsPredicates)
     syntax::AstModule module;
     module.modules = {module_info({SEMA_TEST_QUERY_ENV_MODULE})};
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
 
-    sema::SemanticAnalyzer::GenericTemplateInfo first =
+    sema::SemanticAnalyzerCore::GenericTemplateInfo first =
         generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_ENV_TEMPLATE);
     first.params.push_back(intern_identifier(analyzer, SEMA_TEST_QUERY_ENV_SECOND_PARAM));
-    sema::SemanticAnalyzer::CapabilitySet first_constraints = analyzer.make_capability_set();
+    sema::SemanticAnalyzerCore::CapabilitySet first_constraints = analyzer.make_capability_set();
     first_constraints.insert(sema::CapabilityKind::hash);
     first_constraints.insert(sema::CapabilityKind::sized);
     first_constraints.insert(sema::CapabilityKind::eq);
     first.constraints.emplace(first.params.front(), std::move(first_constraints));
 
-    sema::SemanticAnalyzer::GenericTemplateInfo second =
+    sema::SemanticAnalyzerCore::GenericTemplateInfo second =
         generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_ENV_TEMPLATE);
     second.params.push_back(intern_identifier(analyzer, SEMA_TEST_QUERY_ENV_SECOND_PARAM));
-    sema::SemanticAnalyzer::CapabilitySet second_constraints = analyzer.make_capability_set();
+    sema::SemanticAnalyzerCore::CapabilitySet second_constraints = analyzer.make_capability_set();
     second_constraints.insert(sema::CapabilityKind::eq);
     second_constraints.insert(sema::CapabilityKind::hash);
     second_constraints.insert(sema::CapabilityKind::sized);
@@ -2512,7 +2557,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericParamEnvKeySortsPredicates)
     EXPECT_EQ(first_key.predicate_count, 3U);
     EXPECT_TRUE(query::is_valid(first_key));
 
-    sema::SemanticAnalyzer::GenericTemplateInfo unconstrained =
+    sema::SemanticAnalyzerCore::GenericTemplateInfo unconstrained =
         generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_ENV_TEMPLATE);
     const query::ParamEnvKey unconstrained_key = analyzer.generic_param_env_key(unconstrained);
     EXPECT_EQ(unconstrained_key.predicate_count, 0U);
@@ -2527,16 +2572,16 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstanceIdentityReportsCanonicalizationErr
     syntax::AstModule module;
     module.modules = {module_info({SEMA_TEST_QUERY_ERROR_MODULE})};
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    sema::SemanticAnalyzer::GenericTemplateInfo info =
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    sema::SemanticAnalyzerCore::GenericTemplateInfo info =
         generic_template_info(analyzer, module_id(0), SEMA_TEST_QUERY_ERROR_TEMPLATE);
     analyzer.populate_generic_param_identities(info);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle unresolved_nominal = types.named_struct("identity_errors.Missing", "Missing", false);
     const std::array<TypeHandle, 1> unresolved_nominal_args{unresolved_nominal};
-    base::Result<sema::SemanticAnalyzer::GenericInstanceIdentity> unresolved_nominal_identity =
+    base::Result<sema::SemanticAnalyzerCore::GenericInstanceIdentity> unresolved_nominal_identity =
         analyzer.generic_instance_identity(info, unresolved_nominal_args, query::DefNamespace::type);
     ASSERT_FALSE(unresolved_nominal_identity.has_value());
     EXPECT_NE(unresolved_nominal_identity.error().message.find("unresolved nominal type key"), std::string::npos);
@@ -2545,12 +2590,12 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstanceIdentityReportsCanonicalizationErr
         sema::generic_param_identity_from_text("identity_errors.Unregistered.T");
     const TypeHandle unresolved_generic = types.generic_param(unregistered_identity, SEMA_TEST_GENERIC_PARAM_NAME);
     const std::array<TypeHandle, 1> unresolved_generic_args{unresolved_generic};
-    base::Result<sema::SemanticAnalyzer::GenericInstanceIdentity> unresolved_generic_identity =
+    base::Result<sema::SemanticAnalyzerCore::GenericInstanceIdentity> unresolved_generic_identity =
         analyzer.generic_instance_identity(info, unresolved_generic_args, query::DefNamespace::type);
     ASSERT_FALSE(unresolved_generic_identity.has_value());
     EXPECT_NE(unresolved_generic_identity.error().message.find("unresolved generic parameter key"), std::string::npos);
 
-    base::Result<sema::SemanticAnalyzer::GenericInstanceIdentity> identity =
+    base::Result<sema::SemanticAnalyzerCore::GenericInstanceIdentity> identity =
         analyzer.generic_instance_identity(info, std::span<const TypeHandle>{}, query::DefNamespace::value);
     ASSERT_TRUE(identity.has_value()) << identity.error().message;
 
@@ -2628,7 +2673,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     module.item_modules[use_item_id.value] = module_id(0);
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(std::move(module), diagnostics);
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
     auto checked_result = analyzer.analyze();
     ASSERT_TRUE(checked_result) << checked_result.error().message;
     const sema::CheckedModule& checked = checked_result.value();
@@ -2691,13 +2736,13 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     const syntax::StmtId stmt_id = module.push_stmt(stmt);
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle i64 = types.builtin(BuiltinType::i64);
 
     sema::GenericSideTables dense_side_tables;
-    analyzer.current_side_tables_.side_tables = &dense_side_tables;
+    analyzer.state_.flow.current_side_tables.side_tables = &dense_side_tables;
     static_cast<void>(analyzer.record_expr_intrinsic_type(expr_id, i32));
     static_cast<void>(analyzer.record_expr_type(expr_id, i32));
     analyzer.record_expr_expected_type(expr_id, i64);
@@ -2717,7 +2762,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_EQ(analyzer.cached_pattern_c_name(pattern_id), "dense_pattern");
     ASSERT_TRUE(dense_side_tables.pattern_case_name_ids.contains(pattern_id.value));
     EXPECT_TRUE(dense_side_tables.pattern_case_name_ids[pattern_id.value].contains(
-        analyzer.checked_.intern_c_name("DenseAlternative")));
+        analyzer.state_.checked.intern_c_name("DenseAlternative")));
     EXPECT_TRUE(types.same(dense_side_tables.stmt_local_types[stmt_id.value], i64));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_intrinsic_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_type(missing_expr_id)));
@@ -2739,8 +2784,8 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
 
     sema::GenericSideTables sparse_side_tables;
     sparse_side_tables.sparse = true;
-    analyzer.current_side_tables_.side_tables = &sparse_side_tables;
-    analyzer.current_side_tables_.cache_syntax_types = true;
+    analyzer.state_.flow.current_side_tables.side_tables = &sparse_side_tables;
+    analyzer.state_.flow.current_side_tables.cache_syntax_types = true;
     static_cast<void>(analyzer.record_expr_intrinsic_type(expr_id, i64));
     static_cast<void>(analyzer.record_expr_type(expr_id, i64));
     static_cast<void>(analyzer.record_expr_type(syntax::INVALID_EXPR_ID, i64));
@@ -2762,7 +2807,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_EQ(analyzer.cached_pattern_c_name(pattern_id), "sparse_pattern");
     ASSERT_TRUE(sparse_side_tables.pattern_case_name_ids.contains(pattern_id.value));
     EXPECT_TRUE(sparse_side_tables.pattern_case_name_ids[pattern_id.value].contains(
-        analyzer.checked_.intern_c_name("SparseAlternative")));
+        analyzer.state_.checked.intern_c_name("SparseAlternative")));
     EXPECT_TRUE(types.same(sparse_side_tables.sparse_stmt_local_types[stmt_id.value], i32));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_intrinsic_type(syntax::INVALID_EXPR_ID)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_type(syntax::INVALID_EXPR_ID)));
@@ -2784,8 +2829,8 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     local_side_tables.configure_local_dense(sema::GenericNodeSpan{expr_id.value, 1U},
         sema::GenericNodeSpan{pattern_id.value, 1U}, sema::GenericNodeSpan{type_id.value, 1U},
         sema::GenericNodeSpan{stmt_id.value, 1U});
-    analyzer.current_side_tables_.side_tables = &local_side_tables;
-    analyzer.current_side_tables_.cache_syntax_types = true;
+    analyzer.state_.flow.current_side_tables.side_tables = &local_side_tables;
+    analyzer.state_.flow.current_side_tables.cache_syntax_types = true;
     static_cast<void>(analyzer.record_expr_intrinsic_type(expr_id, i32));
     static_cast<void>(analyzer.record_expr_type(expr_id, i32));
     analyzer.record_expr_expected_type(expr_id, i64);
@@ -2805,8 +2850,9 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_TRUE(types.same(local_side_tables.expr_intrinsic_types[local_expr], i32));
     EXPECT_TRUE(types.same(local_side_tables.expr_types[local_expr], i32));
     EXPECT_TRUE(types.same(local_side_tables.expr_expected_types[local_expr], i64));
-    EXPECT_EQ(analyzer.checked_.c_name_text(local_side_tables.expr_c_name_ids[local_expr]), "local_expr");
-    EXPECT_EQ(analyzer.checked_.c_name_text(local_side_tables.pattern_c_name_ids[local_pattern]), "local_pattern");
+    EXPECT_EQ(analyzer.state_.checked.c_name_text(local_side_tables.expr_c_name_ids[local_expr]), "local_expr");
+    EXPECT_EQ(
+        analyzer.state_.checked.c_name_text(local_side_tables.pattern_c_name_ids[local_pattern]), "local_pattern");
     EXPECT_TRUE(types.same(local_side_tables.syntax_type_handles[local_type], i32));
     EXPECT_TRUE(types.same(local_side_tables.stmt_local_types[local_stmt], i64));
     EXPECT_TRUE(local_side_tables.sparse_expr_intrinsic_types.empty());
@@ -2828,12 +2874,16 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     const std::array<base::u32, 2> sparse_pattern_ids = sparse_expr_ids;
     const std::array<base::u32, 2> sparse_type_ids = sparse_expr_ids;
     const std::array<base::u32, 2> sparse_stmt_ids = sparse_expr_ids;
-    sparse_local_side_tables.configure_local_dense(
+    sparse_local_side_tables.configure_local_dense(sema::GenericSideTableLocalLayoutView{
         sema::GenericNodeSpan{SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN, SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT},
         sema::GenericNodeSpan{SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN, SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT},
         sema::GenericNodeSpan{SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN, SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT},
-        sema::GenericNodeSpan{SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN, SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT}, sparse_expr_ids,
-        sparse_pattern_ids, sparse_type_ids, sparse_stmt_ids);
+        sema::GenericNodeSpan{SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN, SEMA_TEST_SPARSE_LOCAL_SPAN_COUNT},
+        sparse_expr_ids,
+        sparse_pattern_ids,
+        sparse_type_ids,
+        sparse_stmt_ids,
+    });
     EXPECT_EQ(sparse_local_side_tables.expr_intrinsic_types.size(), sparse_expr_ids.size());
     EXPECT_EQ(sparse_local_side_tables.expr_types.size(), sparse_expr_ids.size());
     EXPECT_EQ(sparse_local_side_tables.pattern_c_name_ids.size(), sparse_pattern_ids.size());
@@ -2843,8 +2893,8 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_EQ(sparse_local_side_tables.local_expr_index(ExprId{sparse_expr_ids.back()}), 1U);
     EXPECT_EQ(sparse_local_side_tables.local_expr_index(ExprId{sparse_expr_ids.front() + 1U}),
         sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX);
-    analyzer.current_side_tables_.side_tables = &sparse_local_side_tables;
-    analyzer.current_side_tables_.cache_syntax_types = true;
+    analyzer.state_.flow.current_side_tables.side_tables = &sparse_local_side_tables;
+    analyzer.state_.flow.current_side_tables.cache_syntax_types = true;
     static_cast<void>(analyzer.record_expr_intrinsic_type(ExprId{sparse_expr_ids.front() + 1U}, i32));
     static_cast<void>(analyzer.record_expr_type(ExprId{sparse_expr_ids.front() + 1U}, i32));
     analyzer.record_expr_expected_type(ExprId{sparse_expr_ids.front() + 1U}, i64);
@@ -3026,8 +3076,12 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     };
     instance.item = syntax::ItemId{0};
     instance.signature = checked.clone_function_signature(signature);
-    instance.side_table_layout_index =
-        checked.append_generic_side_table_layout(sema::GenericNodeSpan{4U, 3U}, {}, {}, {}, {}, {}, {}, {});
+    instance.side_table_layout_index = checked.append_generic_side_table_layout(sema::GenericSideTableLocalLayoutView{
+        sema::GenericNodeSpan{4U, 3U},
+        {},
+        {},
+        {},
+    });
     ASSERT_EQ(instance.side_table_layout_index, 0U);
     const sema::GenericSideTableLayout* const instance_layout =
         checked.generic_side_table_layout(instance.side_table_layout_index);
@@ -3077,7 +3131,7 @@ TEST(CoreUnit, SemanticWhiteBoxSourceNamesBorrowAstInternerAcrossCheckedModuleMo
     module.finalize_identifiers();
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
     const sema::InternedText source_name = analyzer.source_name_text(name_id, "borrowed");
     ASSERT_EQ(source_name.interner, &module.identifiers);
     EXPECT_EQ(source_name, "borrowed");
@@ -3119,12 +3173,14 @@ TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized)
     using CheckedGenericLayoutTable = decltype(sema::CheckedModule{}.generic_side_table_layouts);
     using CheckedGenericInstanceTable = decltype(sema::CheckedModule{}.generic_function_instances);
     using AnalyzerGenericMethodIndex =
-        decltype(std::declval<sema::SemanticAnalyzer&>().generic_method_templates_by_name_);
-    using AnalyzerEnumCaseTypeIndex = decltype(std::declval<sema::SemanticAnalyzer&>().enum_cases_by_type_);
-    using AnalyzerVisibleModuleCache = decltype(std::declval<sema::SemanticAnalyzer&>().visible_modules_cache_);
-    using GenericTemplateParams = decltype(std::declval<sema::SemanticAnalyzer::GenericTemplateInfo&>().params);
+        decltype(std::declval<sema::SemanticAnalyzerCore&>().state_.names.generic_method_templates_by_name);
+    using AnalyzerEnumCaseTypeIndex =
+        decltype(std::declval<sema::SemanticAnalyzerCore&>().state_.names.enum_cases_by_type);
+    using AnalyzerVisibleModuleCache =
+        decltype(std::declval<sema::SemanticAnalyzerCore&>().state_.modules.visible_modules_cache);
+    using GenericTemplateParams = decltype(std::declval<sema::SemanticAnalyzerCore::GenericTemplateInfo&>().params);
     using GenericTemplateConstraints =
-        decltype(std::declval<sema::SemanticAnalyzer::GenericTemplateInfo&>().constraints);
+        decltype(std::declval<sema::SemanticAnalyzerCore::GenericTemplateInfo&>().constraints);
     using FunctionParamTypes = decltype(std::declval<sema::FunctionSignature&>().param_types);
     using FunctionGenericArgs = decltype(std::declval<sema::FunctionSignature&>().generic_args);
     using StructFields = decltype(std::declval<sema::StructInfo&>().fields);
@@ -3138,11 +3194,12 @@ TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized)
     static_assert(std::is_same_v<CheckedItemCNameTable::value_type, sema::IdentId>);
     static_assert(std::is_same_v<CheckedGenericLayoutTable, sema::SemaDeque<sema::GenericSideTableLayout>>);
     static_assert(std::is_same_v<CheckedGenericInstanceTable, sema::SemaDeque<sema::GenericFunctionInstanceInfo>>);
-    static_assert(std::is_same_v<AnalyzerGenericMethodIndex::mapped_type, sema::SemanticAnalyzer::GenericTemplateList>);
-    static_assert(std::is_same_v<AnalyzerEnumCaseTypeIndex::mapped_type, sema::SemanticAnalyzer::EnumCaseList>);
-    static_assert(std::is_same_v<AnalyzerVisibleModuleCache::mapped_type, sema::SemanticAnalyzer::ModuleIdList>);
+    static_assert(
+        std::is_same_v<AnalyzerGenericMethodIndex::mapped_type, sema::SemanticAnalyzerCore::GenericTemplateList>);
+    static_assert(std::is_same_v<AnalyzerEnumCaseTypeIndex::mapped_type, sema::SemanticAnalyzerCore::EnumCaseList>);
+    static_assert(std::is_same_v<AnalyzerVisibleModuleCache::mapped_type, sema::SemanticAnalyzerCore::ModuleIdList>);
     static_assert(std::is_same_v<GenericTemplateParams, sema::SemaVector<sema::IdentId>>);
-    static_assert(std::is_same_v<GenericTemplateConstraints, sema::SemanticAnalyzer::CapabilityMap>);
+    static_assert(std::is_same_v<GenericTemplateConstraints, sema::SemanticAnalyzerCore::CapabilityMap>);
     static_assert(std::is_same_v<FunctionParamTypes, sema::TypeHandleList>);
     static_assert(std::is_same_v<FunctionGenericArgs, sema::TypeHandleList>);
     static_assert(std::is_same_v<StructFields, sema::SemaVector<sema::StructFieldInfo>>);
@@ -3175,7 +3232,7 @@ TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized)
     static_cast<void>(module.push_item(main_function));
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
     auto checked_result = analyzer.analyze();
     ASSERT_TRUE(checked_result) << checked_result.error().message;
     EXPECT_GT(checked_result.value().arena_bytes(), 0U);
@@ -3208,7 +3265,7 @@ TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized)
     discard_module.item_modules[discard_main_item.value] = module_id(0);
 
     base::DiagnosticSink snapshot_diagnostics;
-    sema::SemanticAnalyzer snapshot_analyzer(std::move(discard_module), snapshot_diagnostics);
+    sema::SemanticAnalyzerCore snapshot_analyzer(std::move(discard_module), snapshot_diagnostics);
     auto snapshot_result = snapshot_analyzer.analyze();
     ASSERT_TRUE(snapshot_result) << snapshot_result.error().message;
     EXPECT_FALSE(snapshot_result.value().normalized_ast.parser_only_module_contract_added);
@@ -3234,7 +3291,7 @@ TEST(CoreUnit, SemanticWhiteBoxParserAstRequiresItemModulesWhenModulesExist)
     module.item_modules.clear();
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(std::move(module), diagnostics);
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
     auto checked_result = analyzer.analyze();
     EXPECT_FALSE(checked_result);
     ASSERT_TRUE(diagnostics.has_error());
@@ -3253,13 +3310,13 @@ TEST(CoreUnit, SemanticWhiteBoxSyntaxTypeCacheDisabledDoesNotRead)
     const TypeId bool_type_id = module.push_type(primitive_node(syntax::PrimitiveTypeKind::bool_));
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
-    const TypeHandle bool_type = analyzer.checked_.types.builtin(BuiltinType::bool_);
-    analyzer.checked_.syntax_type_handles[bool_type_id.value] = bool_type;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
+    const TypeHandle bool_type = analyzer.state_.checked.types.builtin(BuiltinType::bool_);
+    analyzer.state_.checked.syntax_type_handles[bool_type_id.value] = bool_type;
 
     EXPECT_EQ(analyzer.cached_syntax_type(bool_type_id).value, bool_type.value);
-    analyzer.current_side_tables_.cache_syntax_types = false;
+    analyzer.state_.flow.current_side_tables.cache_syntax_types = false;
     EXPECT_FALSE(is_valid(analyzer.cached_syntax_type(bool_type_id)));
 }
 
@@ -3297,19 +3354,19 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions)
     const ExprId char_literal_id = module.push_literal_expr(syntax::ExprKind::char_literal, {}, "'\\u{03BB}'");
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
-    analyzer.checked_.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
-    analyzer.current_module_ = module_id(0);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.checked.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.flow.current_module = module_id(0);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle str = types.builtin(BuiltinType::str);
     const TypeHandle u8 = types.builtin(BuiltinType::u8);
     const TypeHandle usize = types.builtin(BuiltinType::usize);
     const TypeHandle const_u8_ptr = types.pointer(PointerMutability::const_, u8);
-    analyzer.checked_.syntax_type_handles[u8_type_id.value] = u8;
-    analyzer.checked_.syntax_type_handles[const_u8_ptr_type_id.value] = const_u8_ptr;
+    analyzer.state_.checked.syntax_type_handles[u8_type_id.value] = u8;
+    analyzer.state_.checked.syntax_type_handles[const_u8_ptr_type_id.value] = const_u8_ptr;
     const sema::FunctionLookupKey text_key =
         add_global_value(analyzer, module_id(0), "text", str, SymbolKind::local).first;
     const sema::FunctionLookupKey data_key =
@@ -3337,9 +3394,9 @@ TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions)
     EXPECT_GT(diagnostics.diagnostics().size(), diagnostics_before_invalid_byte_string);
     EXPECT_TRUE(types.is_char(analyzer.analyze_expr(char_literal_id)));
 
-    analyzer.global_values_[text_key].type = usize;
-    analyzer.global_values_[data_key].type = usize;
-    analyzer.global_values_[len_key].type = str;
+    analyzer.state_.functions.global_values[text_key].type = usize;
+    analyzer.state_.functions.global_values[data_key].type = usize;
+    analyzer.state_.functions.global_values[len_key].type = str;
     static_cast<void>(analyzer.analyze_str_projection_expr(str_data_id, analyzer.expr_view(str_data_id)));
     static_cast<void>(analyzer.analyze_str_projection_expr(str_byte_len_id, analyzer.expr_view(str_byte_len_id)));
     static_cast<void>(
@@ -3360,12 +3417,12 @@ TEST(CoreUnit, SemanticWhiteBoxSliceBuiltinExpressions)
         syntax::ExprKind::slice_len, {}, syntax::CastExprPayload{syntax::INVALID_TYPE_ID, slice_value});
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
-    analyzer.current_module_ = module_id(0);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.flow.current_module = module_id(0);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle u8 = types.builtin(BuiltinType::u8);
     const TypeHandle usize = types.builtin(BuiltinType::usize);
     const TypeHandle slice = types.slice(PointerMutability::const_, u8);
@@ -3376,11 +3433,11 @@ TEST(CoreUnit, SemanticWhiteBoxSliceBuiltinExpressions)
     EXPECT_TRUE(types.same(analyzer.analyze_slice_projection_expr(data_id, analyzer.expr_view(data_id)), const_u8_ptr));
     EXPECT_TRUE(types.same(analyzer.analyze_slice_projection_expr(len_id, analyzer.expr_view(len_id)), usize));
 
-    analyzer.global_values_[value_key].type = usize;
+    analyzer.state_.functions.global_values[value_key].type = usize;
     const base::usize diagnostics_before_invalid_slice = diagnostics.diagnostics().size();
-    analyzer.checked_.expr_types[slice_value.value] = INVALID_TYPE_HANDLE;
-    analyzer.checked_.expr_types[data_id.value] = INVALID_TYPE_HANDLE;
-    analyzer.checked_.expr_types[len_id.value] = INVALID_TYPE_HANDLE;
+    analyzer.state_.checked.expr_types[slice_value.value] = INVALID_TYPE_HANDLE;
+    analyzer.state_.checked.expr_types[data_id.value] = INVALID_TYPE_HANDLE;
+    analyzer.state_.checked.expr_types[len_id.value] = INVALID_TYPE_HANDLE;
     static_cast<void>(analyzer.analyze_slice_projection_expr(data_id, analyzer.expr_view(data_id)));
     static_cast<void>(analyzer.analyze_slice_projection_expr(len_id, analyzer.expr_view(len_id)));
     EXPECT_GT(diagnostics.diagnostics().size(), diagnostics_before_invalid_slice);
@@ -3400,11 +3457,11 @@ TEST(CoreUnit, SemanticWhiteBoxArrayLiteralEdges)
         });
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.current_module_ = module_id(0);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.flow.current_module = module_id(0);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle expected_array = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, i32);
     EXPECT_TRUE(types.same(
@@ -3423,43 +3480,43 @@ TEST(CoreUnit, SemanticWhiteBoxExpectedTypeSensitiveExprCache)
     const ExprId null_literal_id = module.push_literal_expr(syntax::ExprKind::null_literal, {}, "null");
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.expr_intrinsic_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.prepare_analysis_only_storage(module.exprs.size());
-    analyzer.checked_.expr_expected_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.current_module_ = module_id(0);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_intrinsic_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.prepare_analysis_only_storage(module.exprs.size());
+    analyzer.state_.checked.expr_expected_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.flow.current_module = module_id(0);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle i64 = types.builtin(BuiltinType::i64);
     const TypeHandle ptr_i32 = types.pointer(PointerMutability::const_, i32);
 
     EXPECT_TRUE(types.same(analyzer.analyze_expr(integer_literal), i32));
     EXPECT_TRUE(types.same(analyzer.analyze_expr(integer_literal, i64), i64));
-    EXPECT_TRUE(types.same(analyzer.checked_.expr_intrinsic_types[integer_literal.value], i32));
-    EXPECT_TRUE(types.same(analyzer.checked_.expr_types[integer_literal.value], i64));
-    EXPECT_TRUE(types.same(analyzer.checked_.expr_expected_types[integer_literal.value], i64));
+    EXPECT_TRUE(types.same(analyzer.state_.checked.expr_intrinsic_types[integer_literal.value], i32));
+    EXPECT_TRUE(types.same(analyzer.state_.checked.expr_types[integer_literal.value], i64));
+    EXPECT_TRUE(types.same(analyzer.state_.checked.expr_expected_types[integer_literal.value], i64));
     EXPECT_TRUE(types.same(analyzer.analyze_expr(integer_literal), i32));
-    EXPECT_TRUE(types.same(analyzer.checked_.expr_intrinsic_types[integer_literal.value], i32));
-    EXPECT_TRUE(types.same(analyzer.checked_.expr_types[integer_literal.value], i32));
-    EXPECT_FALSE(is_valid(analyzer.checked_.expr_expected_types[integer_literal.value]));
+    EXPECT_TRUE(types.same(analyzer.state_.checked.expr_intrinsic_types[integer_literal.value], i32));
+    EXPECT_TRUE(types.same(analyzer.state_.checked.expr_types[integer_literal.value], i32));
+    EXPECT_FALSE(is_valid(analyzer.state_.checked.expr_expected_types[integer_literal.value]));
 
     EXPECT_TRUE(types.same(analyzer.analyze_expr(small_integer_literal, i64), i64));
-    ASSERT_FALSE(analyzer.checked_.coercions.empty());
-    const sema::CoercionRecord& coercion = analyzer.checked_.coercions.back();
+    ASSERT_FALSE(analyzer.state_.checked.coercions.empty());
+    const sema::CoercionRecord& coercion = analyzer.state_.checked.coercions.back();
     EXPECT_EQ(coercion.expr.value, small_integer_literal.value);
     EXPECT_TRUE(types.same(coercion.from_type, i32));
     EXPECT_TRUE(types.same(coercion.to_type, i64));
     EXPECT_EQ(coercion.kind, sema::CoercionKind::contextual_integer_literal);
 
     EXPECT_FALSE(is_valid(analyzer.analyze_expr(null_literal_id)));
-    const std::size_t null_coercion_index = analyzer.checked_.coercions.size();
+    const std::size_t null_coercion_index = analyzer.state_.checked.coercions.size();
     EXPECT_TRUE(types.same(analyzer.analyze_expr(null_literal_id, ptr_i32), ptr_i32));
-    EXPECT_TRUE(types.same(analyzer.checked_.expr_types[null_literal_id.value], ptr_i32));
-    EXPECT_TRUE(types.same(analyzer.checked_.expr_expected_types[null_literal_id.value], ptr_i32));
-    ASSERT_GT(analyzer.checked_.coercions.size(), null_coercion_index);
-    const sema::CoercionRecord& null_coercion = analyzer.checked_.coercions.back();
+    EXPECT_TRUE(types.same(analyzer.state_.checked.expr_types[null_literal_id.value], ptr_i32));
+    EXPECT_TRUE(types.same(analyzer.state_.checked.expr_expected_types[null_literal_id.value], ptr_i32));
+    ASSERT_GT(analyzer.state_.checked.coercions.size(), null_coercion_index);
+    const sema::CoercionRecord& null_coercion = analyzer.state_.checked.coercions.back();
     EXPECT_EQ(null_coercion.expr.value, null_literal_id.value);
     EXPECT_FALSE(is_valid(null_coercion.from_type));
     EXPECT_TRUE(types.same(null_coercion.to_type, ptr_i32));
@@ -3494,12 +3551,12 @@ TEST(CoreUnit, SemanticWhiteBoxLiteralSuffixCapabilityAndStorageEdges)
     const ExprId lib_template_member = push_field(module, lib_alias, "Box");
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
     prepare_expr_storage(analyzer, module);
-    analyzer.checked_.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
-    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    analyzer.state_.checked.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle void_type = types.builtin(BuiltinType::void_);
     const TypeHandle i8 = types.builtin(BuiltinType::i8);
     const TypeHandle i16 = types.builtin(BuiltinType::i16);
@@ -3527,22 +3584,22 @@ TEST(CoreUnit, SemanticWhiteBoxLiteralSuffixCapabilityAndStorageEdges)
 
     const TypeHandle generic =
         types.generic_param(sema::generic_param_identity_from_text("test.T"), SEMA_TEST_GENERIC_PARAM_NAME);
-    sema::SemanticAnalyzer::GenericContext generic_context = analyzer.make_generic_context();
+    sema::SemanticAnalyzerCore::GenericContext generic_context = analyzer.make_generic_context();
     const IdentId generic_id = intern_identifier(analyzer, SEMA_TEST_GENERIC_PARAM_NAME);
     generic_context.params.emplace(generic_id, generic);
     generic_context.param_identities.emplace(generic_id, sema::generic_param_identity_from_text("test.T"));
-    analyzer.current_generic_context_ = &generic_context;
+    analyzer.state_.flow.current_generic_context = &generic_context;
     EXPECT_FALSE(analyzer.generic_param_has_capability(generic, sema::CapabilityKind::ord));
-    sema::SemanticAnalyzer::ExprView ordering_expr;
+    sema::SemanticAnalyzerCore::ExprView ordering_expr;
     ordering_expr.kind = syntax::ExprKind::binary;
     ordering_expr.binary_op = syntax::BinaryOp::less;
     EXPECT_TRUE(types.is_bool(analyzer.record_ordering_binary_expr(syntax::INVALID_EXPR_ID, ordering_expr, generic)));
     EXPECT_TRUE(
         types.same(analyzer.analyze_size_or_align_expr(size_of_generic, analyzer.expr_view(size_of_generic)), usize));
-    analyzer.current_generic_context_ = nullptr;
+    analyzer.state_.flow.current_generic_context = nullptr;
 
-    EXPECT_TRUE(analyzer.symbols_.insert(indexed_symbol(analyzer, SymbolKind::local, "void_value",
-                                             module_id(SEMA_TEST_ROOT_MODULE_INDEX), void_type, true),
+    EXPECT_TRUE(analyzer.state_.names.symbols.insert(indexed_symbol(analyzer, SymbolKind::local, "void_value",
+                                                         module_id(SEMA_TEST_ROOT_MODULE_INDEX), void_type, true),
         diagnostics));
     EXPECT_TRUE(types.is_reference(
         analyzer.analyze_unary_expr(shared_void_ref, analyzer.expr_view(shared_void_ref), INVALID_TYPE_HANDLE)));
@@ -3551,9 +3608,10 @@ TEST(CoreUnit, SemanticWhiteBoxLiteralSuffixCapabilityAndStorageEdges)
 
     const TypeHandle lib_thing = types.named_struct("lib.Thing", "lib_Thing", false);
     static_cast<void>(add_named_type(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Thing", lib_thing));
-    sema::SemanticAnalyzer::GenericTemplateInfo generic_template =
+    sema::SemanticAnalyzerCore::GenericTemplateInfo generic_template =
         generic_template_info(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Box");
-    const auto inserted_template = analyzer.generic_struct_templates_.emplace(generic_template.key, generic_template);
+    const auto inserted_template =
+        analyzer.state_.generics.struct_templates.emplace(generic_template.key, generic_template);
     ASSERT_TRUE(inserted_template.second);
     analyzer.index_generic_struct_template(inserted_template.first->second);
     EXPECT_FALSE(is_valid(analyzer.analyze_module_member_expr(
@@ -3630,22 +3688,22 @@ TEST(CoreUnit, SemanticWhiteBoxSliceStructAndMatchFocusedEdges)
         });
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
     prepare_expr_storage(analyzer, module);
-    analyzer.checked_.pattern_c_name_ids.assign(module.patterns.size(), sema::INVALID_IDENT_ID);
-    analyzer.current_module_ = module_id(0);
+    analyzer.state_.checked.pattern_c_name_ids.assign(module.patterns.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.flow.current_module = module_id(0);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle bool_type = types.builtin(BuiltinType::bool_);
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle array_i32 = types.array(SEMA_TEST_ARRAY_SLICE_LENGTH, i32);
     const TypeHandle bool_slice = types.slice(PointerMutability::const_, bool_type);
     const TypeHandle large_bool_array = types.array(SEMA_TEST_LARGE_ARRAY_MATCH_COUNT, bool_type);
-    EXPECT_TRUE(analyzer.symbols_.insert(
+    EXPECT_TRUE(analyzer.state_.names.symbols.insert(
         indexed_symbol(analyzer, SymbolKind::local, "values", module_id(0), array_i32, true), diagnostics));
-    EXPECT_TRUE(analyzer.symbols_.insert(
+    EXPECT_TRUE(analyzer.state_.names.symbols.insert(
         indexed_symbol(analyzer, SymbolKind::local, "items", module_id(0), bool_slice), diagnostics));
-    EXPECT_TRUE(analyzer.symbols_.insert(
+    EXPECT_TRUE(analyzer.state_.names.symbols.insert(
         indexed_symbol(analyzer, SymbolKind::local, "wide", module_id(0), large_bool_array), diagnostics));
 
     const TypeHandle ghost_type = types.named_struct("Ghost", "Ghost", false);
@@ -3699,14 +3757,14 @@ TEST(CoreUnit, SemanticWhiteBoxContextualExprKeepsIntrinsicAndFinalTypesSeparate
         module.push_if_expr({}, syntax::IfExprPayload{condition, syntax::INVALID_PATTERN_ID, then_value, else_value});
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.expr_intrinsic_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.prepare_analysis_only_storage(module.exprs.size());
-    analyzer.checked_.expr_expected_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.current_module_ = module_id(0);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_intrinsic_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.prepare_analysis_only_storage(module.exprs.size());
+    analyzer.state_.checked.expr_expected_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.flow.current_module = module_id(0);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle i64 = types.builtin(BuiltinType::i64);
     const TypeHandle array_i64 = types.array(2, i64);
@@ -3737,14 +3795,14 @@ TEST(CoreUnit, SemanticWhiteBoxExpressionCategoryHelpersRejectMismatchedViews)
     module.modules = {module_info({"root"})};
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.current_module_ = module_id(0);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.flow.current_module = module_id(0);
 
-    sema::SemanticAnalyzer::ExprView name_view;
+    sema::SemanticAnalyzerCore::ExprView name_view;
     name_view.kind = syntax::ExprKind::name;
     EXPECT_FALSE(is_valid(analyzer.analyze_literal_expr(syntax::INVALID_EXPR_ID, name_view, INVALID_TYPE_HANDLE)));
 
-    sema::SemanticAnalyzer::ExprView integer_view;
+    sema::SemanticAnalyzerCore::ExprView integer_view;
     integer_view.kind = syntax::ExprKind::integer_literal;
     EXPECT_FALSE(is_valid(analyzer.analyze_value_expr(syntax::INVALID_EXPR_ID, integer_view, INVALID_TYPE_HANDLE)));
     EXPECT_FALSE(is_valid(analyzer.analyze_control_expr(syntax::INVALID_EXPR_ID, integer_view, INVALID_TYPE_HANDLE)));
@@ -3754,7 +3812,7 @@ TEST(CoreUnit, SemanticWhiteBoxExpressionCategoryHelpersRejectMismatchedViews)
     EXPECT_FALSE(is_valid(analyzer.analyze_operator_expr(syntax::INVALID_EXPR_ID, integer_view, INVALID_TYPE_HANDLE)));
     EXPECT_FALSE(is_valid(analyzer.analyze_builtin_expr(syntax::INVALID_EXPR_ID, integer_view)));
 
-    sema::SemanticAnalyzer::ExprView unknown_view;
+    sema::SemanticAnalyzerCore::ExprView unknown_view;
     unknown_view.kind = static_cast<syntax::ExprKind>(SEMA_TEST_UNKNOWN_EXPR_KIND_VALUE);
     EXPECT_FALSE(is_valid(analyzer.analyze_expr(syntax::INVALID_EXPR_ID, unknown_view, INVALID_TYPE_HANDLE)));
 }
@@ -3765,16 +3823,16 @@ TEST(CoreUnit, SemanticWhiteBoxBinaryOperatorSplitCoversGenericIntegerPath)
     module.modules = {module_info({"root"})};
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.current_module_ = module_id(0);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.flow.current_module = module_id(0);
 
-    sema::SemanticAnalyzer::ExprView expr;
+    sema::SemanticAnalyzerCore::ExprView expr;
     expr.kind = syntax::ExprKind::binary;
     expr.binary_op = syntax::BinaryOp::bit_and;
     const TypeHandle generic =
-        analyzer.checked_.types.generic_param(sema::generic_param_identity_from_text("test.T"), "T");
+        analyzer.state_.checked.types.generic_param(sema::generic_param_identity_from_text("test.T"), "T");
 
-    EXPECT_TRUE(analyzer.checked_.types.same(
+    EXPECT_TRUE(analyzer.state_.checked.types.same(
         analyzer.record_integer_binary_expr(syntax::INVALID_EXPR_ID, expr, generic, generic), generic));
     EXPECT_TRUE(diagnostics.has_error());
 }
@@ -3824,7 +3882,7 @@ TEST(CoreUnit, SemanticWhiteBoxStatementControlFlowQueries)
     const syntax::StmtId abrupt_block = push_block(module, {continue_stmt, expr_stmt});
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
 
     EXPECT_FALSE(analyzer.block_guarantees_return(syntax::INVALID_STMT_ID));
     EXPECT_FALSE(analyzer.stmt_guarantees_return(syntax::INVALID_STMT_ID));
@@ -3857,10 +3915,10 @@ TEST(CoreUnit, SemanticWhiteBoxIterativeTypeLayoutEdges)
     module.modules = {module_info({"root"})};
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.current_module_ = module_id(0);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.flow.current_module = module_id(0);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle u8 = types.builtin(BuiltinType::u8);
     const TypeHandle u64 = types.builtin(BuiltinType::u64);
 
@@ -3874,7 +3932,7 @@ TEST(CoreUnit, SemanticWhiteBoxIterativeTypeLayoutEdges)
 
     const TypeHandle overflow_struct_type = types.named_struct("OverflowStruct", "OverflowStruct", true);
     StructInfo overflow_struct;
-    overflow_struct.name = analyzer.checked_.intern_text("OverflowStruct");
+    overflow_struct.name = analyzer.state_.checked.intern_text("OverflowStruct");
     overflow_struct.name_id = intern_identifier(analyzer, "OverflowStruct");
     overflow_struct.module = module_id(0);
     overflow_struct.type = overflow_struct_type;
@@ -3882,19 +3940,20 @@ TEST(CoreUnit, SemanticWhiteBoxIterativeTypeLayoutEdges)
         struct_field_info(analyzer, "huge", module_id(0), max_array_u8),
         struct_field_info(analyzer, "tail", module_id(0), u64),
     };
-    analyzer.checked_.structs.emplace(semantic_module_key(analyzer, module_id(0), "OverflowStruct"), overflow_struct);
+    analyzer.state_.checked.structs.emplace(
+        semantic_module_key(analyzer, module_id(0), "OverflowStruct"), overflow_struct);
 
     const TypeHandle overflow_enum_type = types.named_enum("OverflowEnum", "OverflowEnum");
     types.set_enum_underlying(overflow_enum_type, max_array_u8);
     EnumCaseInfo overflow_case;
-    overflow_case.name = analyzer.checked_.intern_text("payload");
+    overflow_case.name = analyzer.state_.checked.intern_text("payload");
     overflow_case.name_id = intern_identifier(analyzer, "payload");
-    overflow_case.case_name = analyzer.checked_.intern_text("payload");
+    overflow_case.case_name = analyzer.state_.checked.intern_text("payload");
     overflow_case.case_name_id = intern_identifier(analyzer, "payload");
     overflow_case.module = module_id(0);
     overflow_case.type = overflow_enum_type;
     overflow_case.payload_type = u64;
-    analyzer.checked_.enum_cases.emplace(semantic_module_key(analyzer, module_id(0), "payload"), overflow_case);
+    analyzer.state_.checked.enum_cases.emplace(semantic_module_key(analyzer, module_id(0), "payload"), overflow_case);
     static_cast<void>(add_named_type(analyzer, module_id(0), "OverflowEnum", overflow_enum_type));
 
     analyzer.validate_type_layouts();
@@ -3932,25 +3991,25 @@ TEST(CoreUnit, SemanticWhiteBoxTypeResolverAndAbiFocusedEdges)
     const TypeId scoped_template_type_id = module.push_type(scoped_template_type);
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
-    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
     const TypeHandle u64 = types.builtin(BuiltinType::u64);
 
-    sema::SemanticAnalyzer::GenericContext generic_context = analyzer.make_generic_context();
+    sema::SemanticAnalyzerCore::GenericContext generic_context = analyzer.make_generic_context();
     const IdentId generic_id = intern_identifier(analyzer, SEMA_TEST_GENERIC_PARAM_NAME);
     generic_context.params.emplace(generic_id,
         types.generic_param(sema::generic_param_identity_from_text("test.T"), SEMA_TEST_GENERIC_PARAM_NAME));
-    analyzer.current_generic_context_ = &generic_context;
+    analyzer.state_.flow.current_generic_context = &generic_context;
     EXPECT_FALSE(is_valid(analyzer.resolve_type(generic_arg_type_id)));
-    analyzer.current_generic_context_ = nullptr;
+    analyzer.state_.flow.current_generic_context = nullptr;
 
-    sema::SemanticAnalyzer::GenericTemplateInfo box_template =
+    sema::SemanticAnalyzerCore::GenericTemplateInfo box_template =
         generic_template_info(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Box");
-    const auto inserted_box = analyzer.generic_struct_templates_.emplace(box_template.key, box_template);
+    const auto inserted_box = analyzer.state_.generics.struct_templates.emplace(box_template.key, box_template);
     analyzer.index_generic_struct_template(inserted_box.first->second);
 
     EXPECT_TRUE(types.is_function(analyzer.resolve_type(invalid_function_type_id)));
@@ -3969,23 +4028,24 @@ TEST(CoreUnit, SemanticWhiteBoxTypeResolverAndAbiFocusedEdges)
 
     const TypeHandle stale_struct_type = types.named_struct("StaleStruct", "StaleStruct", false);
     StructInfo stale_struct;
-    stale_struct.name = checked_text(analyzer.checked_, "StaleStruct");
+    stale_struct.name = checked_text(analyzer.state_.checked, "StaleStruct");
     stale_struct.name_id = intern_identifier(analyzer, "StaleStruct");
     stale_struct.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
     stale_struct.type = TypeHandle{stale_struct_type.value + SEMA_TEST_STALE_STRUCT_CACHE_OFFSET};
-    analyzer.struct_infos_by_type_[stale_struct_type.value] = &stale_struct;
+    analyzer.state_.types.struct_infos_by_type[stale_struct_type.value] = &stale_struct;
     EXPECT_EQ(analyzer.find_struct(stale_struct_type), nullptr);
     EXPECT_EQ(analyzer.abi_size(stale_struct_type), SEMA_TEST_ABI_INVALID_SIZE);
 
     const TypeHandle builtin_tuple = types.tuple({i32, u64});
     const TypeHandle builtin_struct_type = types.named_struct("BuiltinStruct", "BuiltinStruct", false);
     StructInfo builtin_struct;
-    builtin_struct.name = checked_text(analyzer.checked_, "BuiltinStruct");
+    builtin_struct.name = checked_text(analyzer.state_.checked, "BuiltinStruct");
     builtin_struct.name_id = intern_identifier(analyzer, "BuiltinStruct");
     builtin_struct.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
     builtin_struct.type = builtin_struct_type;
     builtin_struct.fields = {struct_field_info(analyzer, "value", module_id(0), i32)};
-    analyzer.checked_.structs.emplace(semantic_module_key(analyzer, module_id(0), "BuiltinStruct"), builtin_struct);
+    analyzer.state_.checked.structs.emplace(
+        semantic_module_key(analyzer, module_id(0), "BuiltinStruct"), builtin_struct);
     static_cast<void>(analyzer.abi_size(builtin_tuple));
     static_cast<void>(analyzer.abi_size(builtin_struct_type));
 
@@ -4067,14 +4127,14 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges)
     module.item_modules[enum_item_id.value] = module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX);
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
-    analyzer.checked_.pattern_c_name_ids.assign(SEMA_TEST_PATTERN_TRACKED_COUNT, sema::INVALID_IDENT_ID);
-    analyzer.checked_.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
-    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.checked.pattern_c_name_ids.assign(SEMA_TEST_PATTERN_TRACKED_COUNT, sema::INVALID_IDENT_ID);
+    analyzer.state_.checked.syntax_type_handles.assign(module.types.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle u8 = types.builtin(BuiltinType::u8);
     const TypeHandle u16 = types.builtin(BuiltinType::u16);
     const TypeHandle u32 = types.builtin(BuiltinType::u32);
@@ -4103,11 +4163,11 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges)
     EXPECT_FALSE(analyzer.can_assign(u16, u16, suffixed_u8_expr));
     EXPECT_FALSE(analyzer.can_assign(bool_type, u8, hex_expr));
     const auto analyze_integer_literal_id = [&](const ExprId expr, const TypeHandle expected) {
-        const sema::SemanticAnalyzer::ExprView view = analyzer.expr_view(expr);
+        const sema::SemanticAnalyzerCore::ExprView view = analyzer.expr_view(expr);
         return analyzer.analyze_integer_literal(expr, view.text, view.range, expected);
     };
     const auto analyze_float_literal_id = [&](const ExprId expr, const TypeHandle expected) {
-        const sema::SemanticAnalyzer::ExprView view = analyzer.expr_view(expr);
+        const sema::SemanticAnalyzerCore::ExprView view = analyzer.expr_view(expr);
         return analyzer.analyze_float_literal(expr, view.text, view.range, expected);
     };
     EXPECT_TRUE(types.same(analyze_integer_literal_id(suffixed_i8_expr, INVALID_TYPE_HANDLE), i8));
@@ -4136,12 +4196,12 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges)
     analyzer.record_pattern_case_name(syntax::INVALID_PATTERN_ID, "ignored");
     analyzer.record_pattern_case_name(syntax::PatternId{SEMA_TEST_PATTERN_FIRST_INDEX}, {});
     analyzer.merge_pattern_case_names(syntax::INVALID_PATTERN_ID, syntax::PatternId{SEMA_TEST_PATTERN_FIRST_INDEX});
-    analyzer.checked_.pattern_case_name_ids[SEMA_TEST_PATTERN_SECOND_INDEX].insert(
-        analyzer.checked_.intern_c_name("from_checked"));
+    analyzer.state_.checked.pattern_case_name_ids[SEMA_TEST_PATTERN_SECOND_INDEX].insert(
+        analyzer.state_.checked.intern_c_name("from_checked"));
     analyzer.merge_pattern_case_names(
         syntax::PatternId{SEMA_TEST_PATTERN_FIRST_INDEX}, syntax::PatternId{SEMA_TEST_PATTERN_SECOND_INDEX});
-    EXPECT_TRUE(analyzer.checked_.pattern_case_name_ids[SEMA_TEST_PATTERN_FIRST_INDEX].contains(
-        analyzer.checked_.intern_c_name("from_checked")));
+    EXPECT_TRUE(analyzer.state_.checked.pattern_case_name_ids[SEMA_TEST_PATTERN_FIRST_INDEX].contains(
+        analyzer.state_.checked.intern_c_name("from_checked")));
 
     EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(syntax::INVALID_EXPR_ID, false)));
 
@@ -4153,22 +4213,22 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges)
     static_cast<void>(
         add_enum_case(analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "Choice_none", "none", choice_type));
 
-    const ExprId import_alias_expr = push_name(analyzer.module_, "one");
-    const ExprId scoped_enum_id = push_field(analyzer.module_, import_alias_expr, "Choice");
-    analyzer.checked_.expr_types.resize(analyzer.module_.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_c_name_ids.resize(analyzer.module_.exprs.size(), sema::INVALID_IDENT_ID);
+    const ExprId import_alias_expr = push_name(analyzer.ctx_.module, "one");
+    const ExprId scoped_enum_id = push_field(analyzer.ctx_.module, import_alias_expr, "Choice");
+    analyzer.state_.checked.expr_types.resize(analyzer.ctx_.module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.resize(analyzer.ctx_.module.exprs.size(), sema::INVALID_IDENT_ID);
     const TypeHandle choice_i32 = analyzer.resolve_associated_type_owner(scoped_enum_id, false);
     EXPECT_TRUE(is_valid(choice_i32));
 
-    const ExprId scoped_missing_type_id = push_field(analyzer.module_, import_alias_expr, "MissingScoped");
-    analyzer.checked_.expr_types.resize(analyzer.module_.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_c_name_ids.resize(analyzer.module_.exprs.size(), sema::INVALID_IDENT_ID);
+    const ExprId scoped_missing_type_id = push_field(analyzer.ctx_.module, import_alias_expr, "MissingScoped");
+    analyzer.state_.checked.expr_types.resize(analyzer.ctx_.module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.resize(analyzer.ctx_.module.exprs.size(), sema::INVALID_IDENT_ID);
     EXPECT_FALSE(is_valid(analyzer.resolve_associated_type_owner(scoped_missing_type_id, false)));
 
     const TypeHandle opaque = types.opaque_struct("Opaque", "Opaque");
-    analyzer.checked_.syntax_type_handles[i32_type_id.value] = opaque;
-    EXPECT_TRUE(analyzer.checked_.types.same(analyzer.resolve_type(i32_type_id), opaque));
-    analyzer.checked_.syntax_type_handles[i32_type_id.value] = INVALID_TYPE_HANDLE;
+    analyzer.state_.checked.syntax_type_handles[i32_type_id.value] = opaque;
+    EXPECT_TRUE(analyzer.state_.checked.types.same(analyzer.resolve_type(i32_type_id), opaque));
+    analyzer.state_.checked.syntax_type_handles[i32_type_id.value] = INVALID_TYPE_HANDLE;
     EXPECT_TRUE(types.is_void(analyzer.resolve_type(invalid_primitive_type_id)));
     EXPECT_TRUE(types.same(analyzer.resolve_type(scoped_opaque_type_id), scoped_opaque));
     EXPECT_FALSE(is_valid(analyzer.resolve_type(scoped_missing_alias_type_id)));
@@ -4210,8 +4270,8 @@ TEST(CoreUnit, SemanticWhiteBoxRecordTypeAndAssociatedOwnerEdges)
     const ExprId none_field_id = push_field(module, choice_name, "none");
     const ExprId none_call_id = push_call(module, none_field_id);
 
-    analyzer.checked_.expr_types.resize(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_c_name_ids.resize(module.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.checked.expr_types.resize(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.resize(module.exprs.size(), sema::INVALID_IDENT_ID);
     static_cast<void>(analyzer.analyze_call_expr(
         static_method_call_id, analyzer.expr_view(static_method_call_id), INVALID_TYPE_HANDLE));
     static_cast<void>(
@@ -4282,13 +4342,13 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges)
         });
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-    analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
-    analyzer.checked_.pattern_c_name_ids.assign(module.patterns.size(), sema::INVALID_IDENT_ID);
-    analyzer.current_module_ = module_id(0);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.checked.pattern_c_name_ids.assign(module.patterns.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.flow.current_module = module_id(0);
 
-    sema::TypeTable& types = analyzer.checked_.types;
+    sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle void_type = types.builtin(BuiltinType::void_);
     const TypeHandle u8 = types.builtin(BuiltinType::u8);
     const TypeHandle i32 = types.builtin(BuiltinType::i32);
@@ -4303,10 +4363,10 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges)
     static_cast<void>(add_global_value(analyzer, module_id(0), "choice", choice_type, SymbolKind::local));
     static_cast<void>(add_global_value(analyzer, module_id(0), "void_value", void_type, SymbolKind::local));
 
-    std::vector<sema::SemanticAnalyzer::PatternBinding> invalid_bindings;
+    std::vector<sema::SemanticAnalyzerCore::PatternBinding> invalid_bindings;
     EXPECT_FALSE(analyzer.analyze_pattern(syntax::INVALID_PATTERN_ID, choice_type, invalid_bindings));
     EXPECT_FALSE(analyzer.pattern_is_irrefutable(syntax::INVALID_PATTERN_ID, choice_type));
-    std::vector<sema::SemanticAnalyzer::PatternBinding> missing_const_bindings;
+    std::vector<sema::SemanticAnalyzerCore::PatternBinding> missing_const_bindings;
     EXPECT_FALSE(analyzer.analyze_pattern(missing_const_pattern_id, i32, missing_const_bindings));
 
     syntax::PatternNode scoped_name_pattern;
@@ -4321,10 +4381,10 @@ TEST(CoreUnit, SemanticWhiteBoxMatchEdges)
     missing_payload_pattern.payload_patterns = {wildcard_pattern_id};
     const syntax::PatternId missing_payload_pattern_id = module.push_pattern(missing_payload_pattern);
 
-    analyzer.checked_.pattern_c_name_ids.resize(module.patterns.size(), sema::INVALID_IDENT_ID);
-    std::vector<sema::SemanticAnalyzer::PatternBinding> scoped_name_bindings;
+    analyzer.state_.checked.pattern_c_name_ids.resize(module.patterns.size(), sema::INVALID_IDENT_ID);
+    std::vector<sema::SemanticAnalyzerCore::PatternBinding> scoped_name_bindings;
     EXPECT_FALSE(analyzer.analyze_pattern(scoped_name_pattern_id, choice_type, scoped_name_bindings));
-    std::vector<sema::SemanticAnalyzer::PatternBinding> missing_payload_bindings;
+    std::vector<sema::SemanticAnalyzerCore::PatternBinding> missing_payload_bindings;
     EXPECT_FALSE(analyzer.analyze_pattern(missing_payload_pattern_id, choice_type, missing_payload_bindings));
 
     EXPECT_TRUE(types.is_bool(
@@ -4382,12 +4442,12 @@ TEST(CoreUnit, SemanticWhiteBoxMatchGuardTruthAndU8FiniteDomain)
             });
 
         base::DiagnosticSink diagnostics;
-        sema::SemanticAnalyzer analyzer(module, diagnostics);
-        analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-        analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
-        analyzer.current_module_ = module_id(0);
-        const TypeHandle bool_type = analyzer.checked_.types.builtin(BuiltinType::bool_);
-        EXPECT_TRUE(analyzer.symbols_.insert(
+        sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+        analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+        analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+        analyzer.state_.flow.current_module = module_id(0);
+        const TypeHandle bool_type = analyzer.state_.checked.types.builtin(BuiltinType::bool_);
+        EXPECT_TRUE(analyzer.state_.names.symbols.insert(
             indexed_symbol(analyzer, SymbolKind::local, "flag", module_id(0), bool_type), diagnostics));
 
         EXPECT_TRUE(is_valid(analyzer.analyze_match_expr(match_id, analyzer.expr_view(match_id), INVALID_TYPE_HANDLE)));
@@ -4422,12 +4482,12 @@ TEST(CoreUnit, SemanticWhiteBoxMatchGuardTruthAndU8FiniteDomain)
             });
 
         base::DiagnosticSink diagnostics;
-        sema::SemanticAnalyzer analyzer(module, diagnostics);
-        analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-        analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
-        analyzer.current_module_ = module_id(0);
-        const TypeHandle bool_type = analyzer.checked_.types.builtin(BuiltinType::bool_);
-        EXPECT_TRUE(analyzer.symbols_.insert(
+        sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+        analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+        analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+        analyzer.state_.flow.current_module = module_id(0);
+        const TypeHandle bool_type = analyzer.state_.checked.types.builtin(BuiltinType::bool_);
+        EXPECT_TRUE(analyzer.state_.names.symbols.insert(
             indexed_symbol(analyzer, SymbolKind::local, "flag", module_id(0), bool_type), diagnostics));
 
         static_cast<void>(analyzer.analyze_match_expr(match_id, analyzer.expr_view(match_id), INVALID_TYPE_HANDLE));
@@ -4461,12 +4521,12 @@ TEST(CoreUnit, SemanticWhiteBoxMatchGuardTruthAndU8FiniteDomain)
         const ExprId match_id = module.push_match_expr({}, subject, std::move(arms));
 
         base::DiagnosticSink diagnostics;
-        sema::SemanticAnalyzer analyzer(module, diagnostics);
-        analyzer.checked_.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
-        analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
-        analyzer.current_module_ = module_id(0);
-        const TypeHandle u8 = analyzer.checked_.types.builtin(BuiltinType::u8);
-        EXPECT_TRUE(analyzer.symbols_.insert(
+        sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+        analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+        analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+        analyzer.state_.flow.current_module = module_id(0);
+        const TypeHandle u8 = analyzer.state_.checked.types.builtin(BuiltinType::u8);
+        EXPECT_TRUE(analyzer.state_.names.symbols.insert(
             indexed_symbol(analyzer, SymbolKind::local, "byte", module_id(0), u8), diagnostics));
 
         EXPECT_TRUE(is_valid(analyzer.analyze_match_expr(match_id, analyzer.expr_view(match_id), INVALID_TYPE_HANDLE)));
@@ -4499,12 +4559,12 @@ TEST(CoreUnit, SemanticWhiteBoxMatchUsefulnessFocusedEdges)
             });
 
         base::DiagnosticSink diagnostics;
-        sema::SemanticAnalyzer analyzer(module, diagnostics);
+        sema::SemanticAnalyzerCore analyzer(module, diagnostics);
         prepare_expr_storage(analyzer, module);
-        analyzer.current_module_ = module_id(0);
-        const TypeHandle bool_type = analyzer.checked_.types.builtin(BuiltinType::bool_);
-        const TypeHandle slice_type = analyzer.checked_.types.slice(PointerMutability::const_, bool_type);
-        EXPECT_TRUE(analyzer.symbols_.insert(
+        analyzer.state_.flow.current_module = module_id(0);
+        const TypeHandle bool_type = analyzer.state_.checked.types.builtin(BuiltinType::bool_);
+        const TypeHandle slice_type = analyzer.state_.checked.types.slice(PointerMutability::const_, bool_type);
+        EXPECT_TRUE(analyzer.state_.names.symbols.insert(
             indexed_symbol(analyzer, SymbolKind::local, "items", module_id(0), slice_type), diagnostics));
 
         EXPECT_TRUE(is_valid(analyzer.analyze_match_expr(match_id, analyzer.expr_view(match_id), INVALID_TYPE_HANDLE)));
@@ -4539,12 +4599,12 @@ TEST(CoreUnit, SemanticWhiteBoxMatchUsefulnessFocusedEdges)
             });
 
         base::DiagnosticSink diagnostics;
-        sema::SemanticAnalyzer analyzer(module, diagnostics);
+        sema::SemanticAnalyzerCore analyzer(module, diagnostics);
         prepare_expr_storage(analyzer, module);
-        analyzer.checked_.pattern_c_name_ids.assign(module.patterns.size(), sema::INVALID_IDENT_ID);
-        analyzer.current_module_ = module_id(0);
-        const TypeHandle bool_type = analyzer.checked_.types.builtin(BuiltinType::bool_);
-        EXPECT_TRUE(analyzer.symbols_.insert(
+        analyzer.state_.checked.pattern_c_name_ids.assign(module.patterns.size(), sema::INVALID_IDENT_ID);
+        analyzer.state_.flow.current_module = module_id(0);
+        const TypeHandle bool_type = analyzer.state_.checked.types.builtin(BuiltinType::bool_);
+        EXPECT_TRUE(analyzer.state_.names.symbols.insert(
             indexed_symbol(analyzer, SymbolKind::local, "flag", module_id(0), bool_type), diagnostics));
 
         EXPECT_TRUE(is_valid(analyzer.analyze_match_expr(match_id, analyzer.expr_view(match_id), INVALID_TYPE_HANDLE)));
@@ -4569,20 +4629,20 @@ TEST(CoreUnit, SemanticWhiteBoxMatchUsefulnessFocusedEdges)
             });
 
         base::DiagnosticSink diagnostics;
-        sema::SemanticAnalyzer analyzer(module, diagnostics);
+        sema::SemanticAnalyzerCore analyzer(module, diagnostics);
         prepare_expr_storage(analyzer, module);
-        analyzer.checked_.pattern_c_name_ids.assign(module.patterns.size(), sema::INVALID_IDENT_ID);
-        analyzer.current_module_ = module_id(0);
-        const TypeHandle u8 = analyzer.checked_.types.builtin(BuiltinType::u8);
-        const TypeHandle choice_type = analyzer.checked_.types.named_enum("Choice", "Choice");
-        analyzer.checked_.types.set_enum_underlying(choice_type, u8);
+        analyzer.state_.checked.pattern_c_name_ids.assign(module.patterns.size(), sema::INVALID_IDENT_ID);
+        analyzer.state_.flow.current_module = module_id(0);
+        const TypeHandle u8 = analyzer.state_.checked.types.builtin(BuiltinType::u8);
+        const TypeHandle choice_type = analyzer.state_.checked.types.named_enum("Choice", "Choice");
+        analyzer.state_.checked.types.set_enum_underlying(choice_type, u8);
         const EnumCaseInfo* const left_case =
             add_enum_case(analyzer, module_id(0), "Choice_left", "left", choice_type).second;
         const EnumCaseInfo* const right_case =
             add_enum_case(analyzer, module_id(0), "Choice_right", "right", choice_type).second;
         ASSERT_NE(left_case, nullptr);
         ASSERT_NE(right_case, nullptr);
-        analyzer.enum_cases_by_type_.clear();
+        analyzer.state_.names.enum_cases_by_type.clear();
         static_cast<void>(add_global_value(analyzer, module_id(0), "choice", choice_type, SymbolKind::local));
 
         EXPECT_TRUE(is_valid(analyzer.analyze_match_expr(match_id, analyzer.expr_view(match_id), INVALID_TYPE_HANDLE)));
@@ -4607,12 +4667,12 @@ TEST(CoreUnit, SemanticWhiteBoxConstEvaluationTraversal)
     const ExprId field_expr_id = module.push_field_expr({}, syntax::FieldExprPayload{});
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
-    analyzer.checked_.enum_cases.clear();
-    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.checked.enum_cases.clear();
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
 
-    const TypeHandle i32 = analyzer.checked_.types.builtin(BuiltinType::i32);
+    const TypeHandle i32 = analyzer.state_.checked.types.builtin(BuiltinType::i32);
     const Symbol* const_value_symbol = add_global_value(
         analyzer, module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), SEMA_TEST_CONST_VALUE_NAME, i32, SymbolKind::const_)
                                            .second;
@@ -4624,18 +4684,19 @@ TEST(CoreUnit, SemanticWhiteBoxConstEvaluationTraversal)
 
     sema::SemaSet<sema::ModuleLookupKey, sema::ModuleLookupKeyHash> dependencies =
         sema::make_sema_set<sema::ModuleLookupKey, sema::ModuleLookupKeyHash>(
-            *analyzer.arena_, sema::ModuleLookupKeyHash{});
+            *analyzer.state_.arena, sema::ModuleLookupKeyHash{});
     EXPECT_TRUE(analyzer.is_const_evaluable_expr(scoped_value_expr, dependencies));
     EXPECT_EQ(dependencies.count(const_value_key), 1u);
 
     sema::EnumCaseInfo case_info;
-    case_info.c_name = analyzer.checked_.intern_text(SEMA_TEST_ENUM_CASE_C_NAME);
-    case_info.name = analyzer.checked_.intern_text(SEMA_TEST_ENUM_CASE_C_NAME);
+    case_info.c_name = analyzer.state_.checked.intern_text(SEMA_TEST_ENUM_CASE_C_NAME);
+    case_info.name = analyzer.state_.checked.intern_text(SEMA_TEST_ENUM_CASE_C_NAME);
     case_info.name_id = intern_identifier(analyzer, SEMA_TEST_ENUM_CASE_C_NAME);
     case_info.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
-    analyzer.checked_.enum_cases.emplace(sema::ModuleLookupKey{case_info.module.value, case_info.name_id}, case_info);
-    analyzer.checked_.expr_c_name_ids[field_expr_id.value] =
-        analyzer.checked_.intern_c_name(SEMA_TEST_ENUM_CASE_C_NAME);
+    analyzer.state_.checked.enum_cases.emplace(
+        sema::ModuleLookupKey{case_info.module.value, case_info.name_id}, case_info);
+    analyzer.state_.checked.expr_c_name_ids[field_expr_id.value] =
+        analyzer.state_.checked.intern_c_name(SEMA_TEST_ENUM_CASE_C_NAME);
 
     dependencies.clear();
     EXPECT_TRUE(analyzer.is_const_evaluable_expr(field_expr_id, dependencies));
@@ -4662,11 +4723,11 @@ TEST(CoreUnit, SemanticWhiteBoxConstEvaluationRejectsUnsupportedShapes)
     const ExprId plain_field_id = module.push_field_expr({}, syntax::FieldExprPayload{});
 
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(module, diagnostics);
-    analyzer.checked_.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
-    analyzer.current_module_ = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
 
-    const TypeHandle i32 = analyzer.checked_.types.builtin(BuiltinType::i32);
+    const TypeHandle i32 = analyzer.state_.checked.types.builtin(BuiltinType::i32);
     static_cast<void>(add_global_value(
         analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), SEMA_TEST_LOCAL_VALUE_NAME, i32, SymbolKind::local));
     static_cast<void>(add_global_value(
@@ -4674,7 +4735,7 @@ TEST(CoreUnit, SemanticWhiteBoxConstEvaluationRejectsUnsupportedShapes)
 
     sema::SemaSet<sema::ModuleLookupKey, sema::ModuleLookupKeyHash> dependencies =
         sema::make_sema_set<sema::ModuleLookupKey, sema::ModuleLookupKeyHash>(
-            *analyzer.arena_, sema::ModuleLookupKeyHash{});
+            *analyzer.state_.arena, sema::ModuleLookupKeyHash{});
     EXPECT_FALSE(analyzer.is_const_evaluable_expr(syntax::INVALID_EXPR_ID, dependencies));
     EXPECT_FALSE(analyzer.is_const_evaluable_expr(missing_name, dependencies));
     EXPECT_FALSE(analyzer.is_const_evaluable_expr(local_name, dependencies));

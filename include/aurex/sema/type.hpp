@@ -161,7 +161,11 @@ public:
     [[nodiscard]] const TypeInfo& get(TypeHandle handle) const noexcept;
     [[nodiscard]] base::usize size() const noexcept;
 
+#if defined(AUREX_SEMA_WHITEBOX_TESTS)
+public:
+#else
 private:
+#endif
     struct PointerKey {
         base::u32 pointee = TypeHandle::INVALID_VALUE;
         PointerMutability mutability = PointerMutability::const_;

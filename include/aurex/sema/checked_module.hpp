@@ -56,7 +56,11 @@ public:
     [[nodiscard]] base::usize arena_bytes() const noexcept;
     [[nodiscard]] base::usize arena_blocks() const noexcept;
 
+#if defined(AUREX_SEMA_WHITEBOX_TESTS)
+public:
+#else
 private:
+#endif
     [[nodiscard]] CNameIdSet make_bucket();
     void ensure_storage();
     void swap(PatternCaseNameTable& other) noexcept;
@@ -218,8 +222,23 @@ struct GenericSideTableLayout {
     SemaIndexTable stmt_node_ids;
 };
 
+struct GenericSideTableLocalLayoutView {
+    GenericNodeSpan expr_span;
+    GenericNodeSpan pattern_span;
+    GenericNodeSpan type_span;
+    GenericNodeSpan stmt_span;
+    std::span<const base::u32> expr_node_ids{};
+    std::span<const base::u32> pattern_node_ids{};
+    std::span<const base::u32> type_node_ids{};
+    std::span<const base::u32> stmt_node_ids{};
+};
+
 struct GenericSideTables {
+#if defined(AUREX_SEMA_WHITEBOX_TESTS)
+public:
+#else
 private:
+#endif
     std::unique_ptr<base::BumpAllocator> arena_;
     std::unique_ptr<base::BumpAllocator> analysis_arena_;
 
@@ -264,9 +283,7 @@ public:
     void record_sparse_fallback(GenericSparseFallbackKind kind) noexcept;
     void configure_local_dense(
         GenericNodeSpan expr, GenericNodeSpan pattern, GenericNodeSpan type, GenericNodeSpan stmt);
-    void configure_local_dense(GenericNodeSpan expr, GenericNodeSpan pattern, GenericNodeSpan type,
-        GenericNodeSpan stmt, std::span<const base::u32> expr_ids, std::span<const base::u32> pattern_ids,
-        std::span<const base::u32> type_ids, std::span<const base::u32> stmt_ids);
+    void configure_local_dense(const GenericSideTableLocalLayoutView& layout);
     void configure_local_dense(const GenericSideTableLayout& shared_layout);
     void bind_local_dense_layout(const GenericSideTableLayout& shared_layout) noexcept;
     void prepare_analysis_only_storage(base::usize expr_count);
@@ -300,7 +317,11 @@ public:
             : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
     }
 
+#if defined(AUREX_SEMA_WHITEBOX_TESTS)
+public:
+#else
 private:
+#endif
     [[nodiscard]] GenericNodeSpan active_expr_span() const noexcept
     {
         return this->layout == nullptr ? this->expr_span : this->layout->expr_span;
@@ -381,7 +402,11 @@ struct NormalizedAstOverlay {
 };
 
 struct CheckedModule {
+#if defined(AUREX_SEMA_WHITEBOX_TESTS)
+public:
+#else
 private:
+#endif
     std::unique_ptr<base::BumpAllocator> arena_;
     std::unique_ptr<base::BumpAllocator> analysis_arena_;
 
@@ -442,14 +467,9 @@ public:
     [[nodiscard]] EnumCaseInfo make_enum_case_info() const;
     [[nodiscard]] GenericTemplateSignatureInfo clone_generic_template_signature_info(
         const GenericTemplateSignatureInfo& other);
-    [[nodiscard]] GenericSideTableLayout make_generic_side_table_layout(GenericNodeSpan expr, GenericNodeSpan pattern,
-        GenericNodeSpan type, GenericNodeSpan stmt, std::span<const base::u32> expr_ids,
-        std::span<const base::u32> pattern_ids, std::span<const base::u32> type_ids,
-        std::span<const base::u32> stmt_ids) const;
-    [[nodiscard]] base::usize append_generic_side_table_layout(GenericNodeSpan expr, GenericNodeSpan pattern,
-        GenericNodeSpan type, GenericNodeSpan stmt, std::span<const base::u32> expr_ids,
-        std::span<const base::u32> pattern_ids, std::span<const base::u32> type_ids,
-        std::span<const base::u32> stmt_ids);
+    [[nodiscard]] GenericSideTableLayout make_generic_side_table_layout(
+        const GenericSideTableLocalLayoutView& layout) const;
+    [[nodiscard]] base::usize append_generic_side_table_layout(const GenericSideTableLocalLayoutView& layout);
     [[nodiscard]] const GenericSideTableLayout* generic_side_table_layout(base::usize index) const noexcept;
     [[nodiscard]] FunctionSignature clone_function_signature(const FunctionSignature& other);
     [[nodiscard]] StructInfo clone_struct_info(const StructInfo& other);
@@ -464,7 +484,11 @@ public:
     [[nodiscard]] base::usize arena_bytes() const noexcept;
     [[nodiscard]] base::usize arena_blocks() const noexcept;
 
+#if defined(AUREX_SEMA_WHITEBOX_TESTS)
+public:
+#else
 private:
+#endif
     void swap(CheckedModule& other) noexcept;
     void copy_from(const CheckedModule& other);
     void rebind_interned_texts(const IdentifierInterner* from, const IdentifierInterner& to) noexcept;

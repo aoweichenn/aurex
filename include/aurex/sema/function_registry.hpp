@@ -8,21 +8,32 @@
 
 #include <span>
 #include <string>
+#include <string_view>
 
 namespace aurex::sema {
 
 struct CheckedModule;
 struct Symbol;
 
+struct FunctionRegistrationRequest {
+    const syntax::ItemNode& item;
+    syntax::ModuleId owner = syntax::INVALID_MODULE_ID;
+    FunctionLookupKey key;
+    std::string_view c_name;
+    TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
+    std::span<const TypeHandle> param_types;
+    syntax::ItemId item_id = syntax::INVALID_ITEM_ID;
+    StableDefId stable_id;
+    IncrementalKey incremental_key;
+};
+
 class FunctionRegistry final {
 public:
     FunctionRegistry(CheckedModule& checked, SemaMap<FunctionLookupKey, Symbol, FunctionLookupKeyHash>& global_values,
         base::DiagnosticSink& diagnostics, const IdentifierInterner* source_names = nullptr) noexcept;
 
-    void register_function(const syntax::ItemNode& item, syntax::ModuleId owner, FunctionLookupKey key,
-        const std::string& c_name, TypeHandle method_owner_type, TypeHandle return_type,
-        std::span<const TypeHandle> param_types, syntax::ItemId item_id, const StableDefId& stable_id,
-        const IncrementalKey& incremental_key);
+    void register_function(const FunctionRegistrationRequest& request);
 
 private:
     [[nodiscard]] bool same_signature(const FunctionSignature& existing, TypeHandle return_type,

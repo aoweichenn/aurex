@@ -1,4 +1,3 @@
-#include <aurex/sema/sema.hpp>
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
@@ -8,6 +7,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+
+#include <sema/internal/sema_core.hpp>
 
 namespace aurex::sema {
 
@@ -35,21 +36,26 @@ constexpr base::usize SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE = 12;
 constexpr base::usize SEMA_GENERIC_ABI_ARG_SIZE_ESTIMATE = 14;
 constexpr base::usize SEMA_GENERIC_SPAN_LINEAR_DEDUP_LIMIT = 64;
 
-[[nodiscard]] GenericSideTables make_generic_side_tables(const GenericNodeSpan expr, const GenericNodeSpan pattern,
-    const GenericNodeSpan type, const GenericNodeSpan stmt, const std::span<const base::u32> expr_ids,
-    const std::span<const base::u32> pattern_ids, const std::span<const base::u32> type_ids,
-    const std::span<const base::u32> stmt_ids)
+[[nodiscard]] GenericSideTables make_generic_side_tables(const GenericSideTableLocalLayoutView& layout)
 {
     GenericSideTables side_tables;
-    side_tables.configure_local_dense(expr, pattern, type, stmt, expr_ids, pattern_ids, type_ids, stmt_ids);
+    side_tables.configure_local_dense(layout);
     return side_tables;
 }
 
 template <typename Info>
 [[nodiscard]] GenericSideTables make_generic_side_tables(const Info& info)
 {
-    return make_generic_side_tables(info.expr_span, info.pattern_span, info.type_span, info.stmt_span,
-        info.expr_node_ids, info.pattern_node_ids, info.type_node_ids, info.stmt_node_ids);
+    return make_generic_side_tables(GenericSideTableLocalLayoutView{
+        info.expr_span,
+        info.pattern_span,
+        info.type_span,
+        info.stmt_span,
+        info.expr_node_ids,
+        info.pattern_node_ids,
+        info.type_node_ids,
+        info.stmt_node_ids,
+    });
 }
 
 [[nodiscard]] base::u64 mix_generic_identity_byte(base::u64 hash, const unsigned char byte) noexcept
@@ -556,20 +562,20 @@ void assign_node_ids(SemaIndexTable& target, const std::vector<base::u32>& sourc
 
 } // namespace
 
-struct SemanticAnalyzer::GenericAnalysisScope {
-    GenericAnalysisScope(SemanticAnalyzer& analyzer, const syntax::ModuleId module,
+struct SemanticAnalyzerCore::GenericAnalysisScope {
+    GenericAnalysisScope(SemanticAnalyzerCore& analyzer, const syntax::ModuleId module,
         GenericContext* const generic_context, GenericSideTables* const side_tables = nullptr,
         const bool cache_syntax_types = false)
-        : analyzer(analyzer), previous_module(analyzer.current_module_),
-          previous_generic_context(analyzer.current_generic_context_),
-          previous_side_tables(analyzer.current_side_tables_)
+        : analyzer(analyzer), previous_module(analyzer.state_.flow.current_module),
+          previous_generic_context(analyzer.state_.flow.current_generic_context),
+          previous_side_tables(analyzer.state_.flow.current_side_tables)
     {
-        this->analyzer.current_module_ = module;
-        this->analyzer.current_generic_context_ = generic_context;
+        this->analyzer.state_.flow.current_module = module;
+        this->analyzer.state_.flow.current_generic_context = generic_context;
         if (side_tables != nullptr) {
-            this->analyzer.current_side_tables_.side_tables = side_tables;
+            this->analyzer.state_.flow.current_side_tables.side_tables = side_tables;
         }
-        this->analyzer.current_side_tables_.cache_syntax_types = cache_syntax_types;
+        this->analyzer.state_.flow.current_side_tables.cache_syntax_types = cache_syntax_types;
     }
 
     GenericAnalysisScope(const GenericAnalysisScope&) = delete;
@@ -577,12 +583,12 @@ struct SemanticAnalyzer::GenericAnalysisScope {
 
     ~GenericAnalysisScope()
     {
-        this->analyzer.current_module_ = this->previous_module;
-        this->analyzer.current_generic_context_ = this->previous_generic_context;
-        this->analyzer.current_side_tables_ = this->previous_side_tables;
+        this->analyzer.state_.flow.current_module = this->previous_module;
+        this->analyzer.state_.flow.current_generic_context = this->previous_generic_context;
+        this->analyzer.state_.flow.current_side_tables = this->previous_side_tables;
     }
 
-    SemanticAnalyzer& analyzer;
+    SemanticAnalyzerCore& analyzer;
     syntax::ModuleId previous_module;
     GenericContext* previous_generic_context = nullptr;
     GenericSideTableScope previous_side_tables{};
@@ -603,17 +609,17 @@ std::string_view capability_name(const CapabilityKind capability) noexcept
     return "<invalid>";
 }
 
-bool SemanticAnalyzer::has_generic_params(const syntax::ItemNode& item) const noexcept
+bool SemanticAnalyzerCore::has_generic_params(const syntax::ItemNode& item) const noexcept
 {
     return !item.generic_params.empty();
 }
 
-bool SemanticAnalyzer::has_generic_constraints(const syntax::ItemNode& item) const noexcept
+bool SemanticAnalyzerCore::has_generic_constraints(const syntax::ItemNode& item) const noexcept
 {
     return !item.where_constraints.empty();
 }
 
-void SemanticAnalyzer::validate_generic_parameter_list(const syntax::ItemNode& item)
+void SemanticAnalyzerCore::validate_generic_parameter_list(const syntax::ItemNode& item)
 {
     std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen;
     seen.reserve(item.generic_params.size());
@@ -627,7 +633,7 @@ void SemanticAnalyzer::validate_generic_parameter_list(const syntax::ItemNode& i
     }
 }
 
-void SemanticAnalyzer::validate_generic_constraints(const syntax::ItemNode& item, GenericTemplateInfo& info)
+void SemanticAnalyzerCore::validate_generic_constraints(const syntax::ItemNode& item, GenericTemplateInfo& info)
 {
     info.constraints.reserve(item.generic_params.size());
     std::unordered_set<IdentId, IdentIdHash> params;
@@ -664,48 +670,50 @@ void SemanticAnalyzer::validate_generic_constraints(const syntax::ItemNode& item
     }
 }
 
-bool SemanticAnalyzer::generic_param_has_capability(const std::string_view param, const CapabilityKind capability) const
+bool SemanticAnalyzerCore::generic_param_has_capability(
+    const std::string_view param, const CapabilityKind capability) const
 {
-    if (this->current_generic_context_ == nullptr) {
+    if (this->state_.flow.current_generic_context == nullptr) {
         return false;
     }
-    const IdentId param_id = this->module_.find_identifier(param);
-    const auto identity = this->current_generic_context_->param_identities.find(param_id);
-    if (identity != this->current_generic_context_->param_identities.end()) {
-        const auto by_identity = this->current_generic_context_->constraints_by_identity.find(identity->second);
-        if (by_identity != this->current_generic_context_->constraints_by_identity.end()) {
+    const IdentId param_id = this->ctx_.module.find_identifier(param);
+    const auto identity = this->state_.flow.current_generic_context->param_identities.find(param_id);
+    if (identity != this->state_.flow.current_generic_context->param_identities.end()) {
+        const auto by_identity =
+            this->state_.flow.current_generic_context->constraints_by_identity.find(identity->second);
+        if (by_identity != this->state_.flow.current_generic_context->constraints_by_identity.end()) {
             return by_identity->second.contains(capability);
         }
     }
-    const auto found = this->current_generic_context_->constraints.find(param_id);
-    return found != this->current_generic_context_->constraints.end() && found->second.contains(capability);
+    const auto found = this->state_.flow.current_generic_context->constraints.find(param_id);
+    return found != this->state_.flow.current_generic_context->constraints.end() && found->second.contains(capability);
 }
 
-bool SemanticAnalyzer::generic_param_has_capability(const TypeHandle param, const CapabilityKind capability) const
+bool SemanticAnalyzerCore::generic_param_has_capability(const TypeHandle param, const CapabilityKind capability) const
 {
-    if (this->current_generic_context_ == nullptr || !is_valid(param)) {
+    if (this->state_.flow.current_generic_context == nullptr || !is_valid(param)) {
         return false;
     }
-    const TypeInfo& info = this->checked_.types.get(param);
+    const TypeInfo& info = this->state_.checked.types.get(param);
     if (info.kind != TypeKind::generic_param) {
         return false;
     }
     const GenericParamIdentity identity = this->generic_param_identity(info);
     if (is_valid(identity)) {
-        const auto found = this->current_generic_context_->constraints_by_identity.find(identity);
-        if (found != this->current_generic_context_->constraints_by_identity.end()) {
+        const auto found = this->state_.flow.current_generic_context->constraints_by_identity.find(identity);
+        if (found != this->state_.flow.current_generic_context->constraints_by_identity.end()) {
             return found->second.contains(capability);
         }
     }
     return this->generic_param_has_capability(info.name, capability);
 }
 
-bool SemanticAnalyzer::type_satisfies_capability(const TypeHandle type, const CapabilityKind capability) const
+bool SemanticAnalyzerCore::type_satisfies_capability(const TypeHandle type, const CapabilityKind capability) const
 {
     if (!is_valid(type)) {
         return false;
     }
-    const TypeInfo& info = this->checked_.types.get(type);
+    const TypeInfo& info = this->state_.checked.types.get(type);
     if (info.kind == TypeKind::generic_param) {
         return this->generic_param_has_capability(type, capability);
     }
@@ -724,49 +732,49 @@ bool SemanticAnalyzer::type_satisfies_capability(const TypeHandle type, const Ca
     return false;
 }
 
-bool SemanticAnalyzer::type_satisfies_equality_capability(const TypeHandle type) const
+bool SemanticAnalyzerCore::type_satisfies_equality_capability(const TypeHandle type) const
 {
     if (!is_valid(type)) {
         return false;
     }
-    const TypeInfo& info = this->checked_.types.get(type);
-    return this->checked_.types.is_bool(type) || this->checked_.types.is_char(type)
-        || this->checked_.types.is_integer(type) || this->checked_.types.is_pointer(type)
+    const TypeInfo& info = this->state_.checked.types.get(type);
+    return this->state_.checked.types.is_bool(type) || this->state_.checked.types.is_char(type)
+        || this->state_.checked.types.is_integer(type) || this->state_.checked.types.is_pointer(type)
         || (info.kind == TypeKind::enum_ && !is_valid(info.enum_payload_storage));
 }
 
-bool SemanticAnalyzer::type_satisfies_ordering_capability(const TypeHandle type) const
+bool SemanticAnalyzerCore::type_satisfies_ordering_capability(const TypeHandle type) const
 {
-    return this->checked_.types.is_integer(type);
+    return this->state_.checked.types.is_integer(type);
 }
 
-bool SemanticAnalyzer::type_supports_equality_operator(const TypeHandle type) const
+bool SemanticAnalyzerCore::type_supports_equality_operator(const TypeHandle type) const
 {
     if (!is_valid(type)) {
         return false;
     }
-    const TypeInfo& info = this->checked_.types.get(type);
-    return this->checked_.types.is_bool(type) || this->checked_.types.is_char(type)
-        || this->checked_.types.is_integer(type) || this->checked_.types.is_float(type)
-        || this->checked_.types.is_pointer(type)
+    const TypeInfo& info = this->state_.checked.types.get(type);
+    return this->state_.checked.types.is_bool(type) || this->state_.checked.types.is_char(type)
+        || this->state_.checked.types.is_integer(type) || this->state_.checked.types.is_float(type)
+        || this->state_.checked.types.is_pointer(type)
         || (info.kind == TypeKind::enum_ && !is_valid(info.enum_payload_storage));
 }
 
-bool SemanticAnalyzer::type_supports_ordering_operator(const TypeHandle type) const
+bool SemanticAnalyzerCore::type_supports_ordering_operator(const TypeHandle type) const
 {
-    return this->checked_.types.is_integer(type) || this->checked_.types.is_float(type);
+    return this->state_.checked.types.is_integer(type) || this->state_.checked.types.is_float(type);
 }
 
-bool SemanticAnalyzer::type_supports_hash_capability(const TypeHandle type) const
+bool SemanticAnalyzerCore::type_supports_hash_capability(const TypeHandle type) const
 {
     if (!is_valid(type)) {
         return false;
     }
-    return this->checked_.types.is_bool(type) || this->checked_.types.is_char(type)
-        || this->checked_.types.is_integer(type) || this->checked_.types.is_pointer(type);
+    return this->state_.checked.types.is_bool(type) || this->state_.checked.types.is_char(type)
+        || this->state_.checked.types.is_integer(type) || this->state_.checked.types.is_pointer(type);
 }
 
-bool SemanticAnalyzer::validate_generic_arguments(
+bool SemanticAnalyzerCore::validate_generic_arguments(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range)
 {
     bool ok = true;
@@ -780,7 +788,7 @@ bool SemanticAnalyzer::validate_generic_arguments(
             if (!this->type_satisfies_capability(args[i], capability)) {
                 this->report_capability(use_range,
                     sema_generic_capability_not_satisfied_message(
-                        this->checked_.types.display_name(args[i]), capability_name(capability)));
+                        this->state_.checked.types.display_name(args[i]), capability_name(capability)));
                 ok = false;
             }
         }
@@ -788,10 +796,10 @@ bool SemanticAnalyzer::validate_generic_arguments(
     return ok;
 }
 
-void SemanticAnalyzer::populate_generic_template_node_spans(
+void SemanticAnalyzerCore::populate_generic_template_node_spans(
     GenericTemplateInfo& info, const syntax::ItemNode& item) const
 {
-    GenericNodeSpanBuilder builder(this->module_);
+    GenericNodeSpanBuilder builder(this->ctx_.module);
     builder.collect(item);
     info.expr_span = builder.expr_span();
     info.pattern_span = builder.pattern_span();
@@ -803,13 +811,13 @@ void SemanticAnalyzer::populate_generic_template_node_spans(
     assign_node_ids(info.stmt_node_ids, builder.stmt_ids());
 }
 
-bool SemanticAnalyzer::GenericTemplateInfo::has_sparse_node_ids() const noexcept
+bool SemanticAnalyzerCore::GenericTemplateInfo::has_sparse_node_ids() const noexcept
 {
     return !this->expr_node_ids.empty() || !this->pattern_node_ids.empty() || !this->type_node_ids.empty()
         || !this->stmt_node_ids.empty();
 }
 
-std::string SemanticAnalyzer::generic_template_incremental_fingerprint(
+std::string SemanticAnalyzerCore::generic_template_incremental_fingerprint(
     const syntax::ItemNode& item, const GenericTemplateInfo& info) const
 {
     std::string fingerprint;
@@ -836,11 +844,11 @@ std::string SemanticAnalyzer::generic_template_incremental_fingerprint(
     return fingerprint;
 }
 
-void SemanticAnalyzer::record_generic_template_signature(
+void SemanticAnalyzerCore::record_generic_template_signature(
     const GenericTemplateInfo& info, const query::DefNamespace name_space)
 {
-    this->checked_.generic_template_signatures.push_back(GenericTemplateSignatureInfo{
-        this->checked_.intern_text(info.name.view()),
+    this->state_.checked.generic_template_signatures.push_back(GenericTemplateSignatureInfo{
+        this->state_.checked.intern_text(info.name.view()),
         info.name_id,
         info.module,
         info.visibility,
@@ -851,13 +859,13 @@ void SemanticAnalyzer::record_generic_template_signature(
     });
 }
 
-GenericSideTables SemanticAnalyzer::make_generic_instance_side_tables(const GenericTemplateInfo& info)
+GenericSideTables SemanticAnalyzerCore::make_generic_instance_side_tables(const GenericTemplateInfo& info)
 {
     if (!info.has_sparse_node_ids()) {
         return make_generic_side_tables(info);
     }
     const base::usize layout_index = this->generic_side_table_layout_index(info);
-    const GenericSideTableLayout* const layout = this->checked_.generic_side_table_layout(layout_index);
+    const GenericSideTableLayout* const layout = this->state_.checked.generic_side_table_layout(layout_index);
     GenericSideTables side_tables;
     if (layout != nullptr) {
         side_tables.configure_local_dense(*layout);
@@ -865,18 +873,26 @@ GenericSideTables SemanticAnalyzer::make_generic_instance_side_tables(const Gene
     return side_tables;
 }
 
-base::usize SemanticAnalyzer::generic_side_table_layout_index(const GenericTemplateInfo& info)
+base::usize SemanticAnalyzerCore::generic_side_table_layout_index(const GenericTemplateInfo& info)
 {
     if (info.checked_side_table_layout_index != SEMA_GENERIC_SIDE_TABLE_INVALID_LAYOUT_INDEX) {
         return info.checked_side_table_layout_index;
     }
     info.checked_side_table_layout_index =
-        this->checked_.append_generic_side_table_layout(info.expr_span, info.pattern_span, info.type_span,
-            info.stmt_span, info.expr_node_ids, info.pattern_node_ids, info.type_node_ids, info.stmt_node_ids);
+        this->state_.checked.append_generic_side_table_layout(GenericSideTableLocalLayoutView{
+            info.expr_span,
+            info.pattern_span,
+            info.type_span,
+            info.stmt_span,
+            info.expr_node_ids,
+            info.pattern_node_ids,
+            info.type_node_ids,
+            info.stmt_node_ids,
+        });
     return info.checked_side_table_layout_index;
 }
 
-void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, const syntax::ItemId item_id)
+void SemanticAnalyzerCore::register_generic_template(const syntax::ItemNode& item, const syntax::ItemId item_id)
 {
     this->validate_generic_parameter_list(item);
     const syntax::ModuleId owner = this->item_module(item_id);
@@ -906,14 +922,15 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
     this->index_generic_param_query_keys(info, generic_param_owner_namespace);
 
     if (item.kind == syntax::ItemKind::struct_decl) {
-        if (this->named_types_.contains(info.key) || this->checked_.type_aliases.contains(info.key)
-            || this->generic_struct_templates_.contains(info.key) || this->generic_enum_templates_.contains(info.key)
-            || this->generic_type_alias_templates_.contains(info.key)) {
+        if (this->state_.types.named_types.contains(info.key) || this->state_.checked.type_aliases.contains(info.key)
+            || this->state_.generics.struct_templates.contains(info.key)
+            || this->state_.generics.enum_templates.contains(info.key)
+            || this->state_.generics.type_alias_templates.contains(info.key)) {
             this->report_duplicate(
                 item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             return;
         }
-        const auto inserted = this->generic_struct_templates_.emplace(info.key, std::move(info));
+        const auto inserted = this->state_.generics.struct_templates.emplace(info.key, std::move(info));
         if (inserted.second) {
             this->record_generic_template_signature(inserted.first->second, query::DefNamespace::type);
             this->index_generic_struct_template(inserted.first->second);
@@ -922,14 +939,15 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
     }
 
     if (item.kind == syntax::ItemKind::enum_decl) {
-        if (this->named_types_.contains(info.key) || this->checked_.type_aliases.contains(info.key)
-            || this->generic_struct_templates_.contains(info.key) || this->generic_enum_templates_.contains(info.key)
-            || this->generic_type_alias_templates_.contains(info.key)) {
+        if (this->state_.types.named_types.contains(info.key) || this->state_.checked.type_aliases.contains(info.key)
+            || this->state_.generics.struct_templates.contains(info.key)
+            || this->state_.generics.enum_templates.contains(info.key)
+            || this->state_.generics.type_alias_templates.contains(info.key)) {
             this->report_duplicate(
                 item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             return;
         }
-        const auto inserted = this->generic_enum_templates_.emplace(info.key, std::move(info));
+        const auto inserted = this->state_.generics.enum_templates.emplace(info.key, std::move(info));
         if (inserted.second) {
             this->record_generic_template_signature(inserted.first->second, query::DefNamespace::type);
             this->index_generic_enum_template(inserted.first->second);
@@ -938,14 +956,15 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
     }
 
     if (item.kind == syntax::ItemKind::type_alias) {
-        if (this->named_types_.contains(info.key) || this->checked_.type_aliases.contains(info.key)
-            || this->generic_struct_templates_.contains(info.key) || this->generic_enum_templates_.contains(info.key)
-            || this->generic_type_alias_templates_.contains(info.key)) {
+        if (this->state_.types.named_types.contains(info.key) || this->state_.checked.type_aliases.contains(info.key)
+            || this->state_.generics.struct_templates.contains(info.key)
+            || this->state_.generics.enum_templates.contains(info.key)
+            || this->state_.generics.type_alias_templates.contains(info.key)) {
             this->report_duplicate(
                 item.range, sema_duplicate_type_definition_message(this->module_name(owner), item.name));
             return;
         }
-        const auto inserted = this->generic_type_alias_templates_.emplace(info.key, std::move(info));
+        const auto inserted = this->state_.generics.type_alias_templates.emplace(info.key, std::move(info));
         if (inserted.second) {
             this->record_generic_template_signature(inserted.first->second, query::DefNamespace::type);
             this->index_generic_type_alias_template(inserted.first->second);
@@ -978,7 +997,7 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
         }
         info.function_key = this->method_function_lookup_key(owner, info.impl_type_pattern, item.name_id);
         this->populate_generic_param_identities(info);
-        const TypeKind impl_type_kind = this->checked_.types.get(info.impl_type_pattern).kind;
+        const TypeKind impl_type_kind = this->state_.checked.types.get(info.impl_type_pattern).kind;
         if (impl_type_kind != TypeKind::struct_ && impl_type_kind != TypeKind::enum_
             && impl_type_kind != TypeKind::opaque_struct) {
             this->report_general(item.range, std::string(SEMA_IMPL_TARGET_NAMED_TYPE));
@@ -994,7 +1013,7 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
             if (!is_valid(current)) {
                 continue;
             }
-            const TypeInfo& type_info = this->checked_.types.get(current);
+            const TypeInfo& type_info = this->state_.checked.types.get(current);
             if (type_info.kind == TypeKind::generic_param) {
                 owner_params.insert(this->generic_param_identity(type_info));
                 continue;
@@ -1033,29 +1052,30 @@ void SemanticAnalyzer::register_generic_template(const syntax::ItemNode& item, c
         if (this->type_member_name_exists(info.impl_type_pattern, item.name_id, item.name)) {
             this->report_duplicate(item.range,
                 sema_duplicate_type_member_message(
-                    this->checked_.types.display_name(info.impl_type_pattern), item.name));
+                    this->state_.checked.types.display_name(info.impl_type_pattern), item.name));
             return;
         }
-        const auto inserted = this->generic_method_templates_.emplace(info.function_key, std::move(info));
+        const auto inserted = this->state_.generics.method_templates.emplace(info.function_key, std::move(info));
         if (inserted.second) {
             this->record_generic_template_signature(inserted.first->second, query::DefNamespace::member);
             this->index_generic_method_template(inserted.first->second);
         }
         return;
     }
-    if (this->checked_.functions.contains(info.function_key) || this->generic_function_templates_.contains(info.key)) {
+    if (this->state_.checked.functions.contains(info.function_key)
+        || this->state_.generics.function_templates.contains(info.key)) {
         this->report_duplicate(
             item.range, sema_duplicate_function_definition_message(this->module_name(owner), item.name));
         return;
     }
-    const auto inserted = this->generic_function_templates_.emplace(info.key, std::move(info));
+    const auto inserted = this->state_.generics.function_templates.emplace(info.key, std::move(info));
     if (inserted.second) {
         this->record_generic_template_signature(inserted.first->second, query::DefNamespace::value);
         this->index_generic_function_template(inserted.first->second);
     }
 }
 
-void SemanticAnalyzer::populate_generic_param_identities(GenericTemplateInfo& info)
+void SemanticAnalyzerCore::populate_generic_param_identities(GenericTemplateInfo& info)
 {
     info.param_identities.clear();
     info.param_identities.reserve(info.params.size());
@@ -1064,22 +1084,22 @@ void SemanticAnalyzer::populate_generic_param_identities(GenericTemplateInfo& in
     }
 }
 
-GenericParamIdentity SemanticAnalyzer::make_generic_param_identity(
+GenericParamIdentity SemanticAnalyzerCore::make_generic_param_identity(
     const GenericTemplateInfo& info, const base::usize index) const
 {
     base::u64 hash = SEMA_GENERIC_PARAM_IDENTITY_OFFSET;
     hash = mix_generic_identity_text(hash, SEMA_GENERIC_PARAM_IDENTITY_MARKER);
     hash = mix_generic_identity_u64(hash, info.key.module);
-    const std::string_view template_name = this->module_.identifier_text(info.name_id).empty()
+    const std::string_view template_name = this->ctx_.module.identifier_text(info.name_id).empty()
         ? info.name.view()
-        : this->module_.identifier_text(info.name_id);
+        : this->ctx_.module.identifier_text(info.name_id);
     hash = mix_generic_identity_text(hash, template_name);
     hash = mix_generic_identity_u64(hash, index);
     if (index < info.params.size()) {
         hash = mix_generic_identity_text(hash, this->generic_param_name(info, index));
     }
-    if (syntax::is_valid(info.item) && info.item.value < this->module_.items.size()) {
-        const syntax::ItemNode item = this->module_.items[info.item.value];
+    if (syntax::is_valid(info.item) && info.item.value < this->ctx_.module.items.size()) {
+        const syntax::ItemNode item = this->ctx_.module.items[info.item.value];
         if (index < item.generic_params.size()) {
             const base::SourceRange range = item.generic_params[index].range;
             hash = mix_generic_identity_u64(hash, range.source.value);
@@ -1090,17 +1110,18 @@ GenericParamIdentity SemanticAnalyzer::make_generic_param_identity(
     return finish_generic_param_identity(hash);
 }
 
-std::string_view SemanticAnalyzer::generic_param_name(const GenericTemplateInfo& info, const base::usize index) const
+std::string_view SemanticAnalyzerCore::generic_param_name(
+    const GenericTemplateInfo& info, const base::usize index) const
 {
     if (index >= info.params.size()) {
         return {};
     }
-    const std::string_view interned_name = this->module_.identifier_text(info.params[index]);
+    const std::string_view interned_name = this->ctx_.module.identifier_text(info.params[index]);
     if (!interned_name.empty()) {
         return interned_name;
     }
-    if (syntax::is_valid(info.item) && info.item.value < this->module_.items.size()) {
-        const syntax::ItemNode item = this->module_.items[info.item.value];
+    if (syntax::is_valid(info.item) && info.item.value < this->ctx_.module.items.size()) {
+        const syntax::ItemNode item = this->ctx_.module.items[info.item.value];
         if (index < item.generic_params.size()) {
             return item.generic_params[index].name;
         }
@@ -1108,7 +1129,7 @@ std::string_view SemanticAnalyzer::generic_param_name(const GenericTemplateInfo&
     return {};
 }
 
-GenericParamIdentity SemanticAnalyzer::generic_param_identity(
+GenericParamIdentity SemanticAnalyzerCore::generic_param_identity(
     const GenericTemplateInfo& info, const base::usize index) const
 {
     if (index < info.param_identities.size()) {
@@ -1117,7 +1138,7 @@ GenericParamIdentity SemanticAnalyzer::generic_param_identity(
     return this->make_generic_param_identity(info, index);
 }
 
-GenericParamIdentity SemanticAnalyzer::generic_param_identity(const TypeInfo& info) const
+GenericParamIdentity SemanticAnalyzerCore::generic_param_identity(const TypeInfo& info) const
 {
     if (is_valid(info.generic_identity)) {
         return info.generic_identity;
@@ -1125,16 +1146,17 @@ GenericParamIdentity SemanticAnalyzer::generic_param_identity(const TypeInfo& in
     return generic_param_identity_from_text(info.name);
 }
 
-TypeHandle SemanticAnalyzer::generic_param_placeholder(const GenericTemplateInfo& info, const base::usize index)
+TypeHandle SemanticAnalyzerCore::generic_param_placeholder(const GenericTemplateInfo& info, const base::usize index)
 {
     if (index >= info.params.size()) {
         return INVALID_TYPE_HANDLE;
     }
-    return this->checked_.types.generic_param(
+    return this->state_.checked.types.generic_param(
         this->generic_param_identity(info, index), this->generic_param_name(info, index));
 }
 
-void SemanticAnalyzer::populate_generic_placeholder_context(const GenericTemplateInfo& info, GenericContext& context)
+void SemanticAnalyzerCore::populate_generic_placeholder_context(
+    const GenericTemplateInfo& info, GenericContext& context)
 {
     context.params.clear();
     context.param_identities.clear();
@@ -1154,7 +1176,7 @@ void SemanticAnalyzer::populate_generic_placeholder_context(const GenericTemplat
     }
 }
 
-void SemanticAnalyzer::populate_generic_concrete_context(
+void SemanticAnalyzerCore::populate_generic_concrete_context(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, GenericContext& context) const
 {
     context.params.clear();
@@ -1175,7 +1197,7 @@ void SemanticAnalyzer::populate_generic_concrete_context(
         }
         context.constraints_by_identity.emplace(identity, this->copy_capability_set(constraints->second));
         if (is_valid(args[i])) {
-            const TypeInfo& arg_info = this->checked_.types.get(args[i]);
+            const TypeInfo& arg_info = this->state_.checked.types.get(args[i]);
             if (arg_info.kind == TypeKind::generic_param) {
                 CapabilitySet& inherited =
                     this->capability_bucket(context.constraints_by_identity, this->generic_param_identity(arg_info));
@@ -1185,7 +1207,7 @@ void SemanticAnalyzer::populate_generic_concrete_context(
     }
 }
 
-std::string SemanticAnalyzer::generic_instance_key_suffix(const std::vector<TypeHandle>& args) const
+std::string SemanticAnalyzerCore::generic_instance_key_suffix(const std::vector<TypeHandle>& args) const
 {
     std::string suffix;
     suffix.reserve(SEMA_GENERIC_KEY_ARG_PREFIX.size() + args.size() * SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE);
@@ -1193,7 +1215,7 @@ std::string SemanticAnalyzer::generic_instance_key_suffix(const std::vector<Type
     return suffix;
 }
 
-std::string SemanticAnalyzer::generic_instance_abi_suffix(const std::vector<TypeHandle>& args) const
+std::string SemanticAnalyzerCore::generic_instance_abi_suffix(const std::vector<TypeHandle>& args) const
 {
     std::string suffix(SEMA_GENERIC_ABI_SUFFIX_PREFIX);
     suffix.reserve(SEMA_GENERIC_ABI_SUFFIX_PREFIX.size() + args.size() * SEMA_GENERIC_ABI_ARG_SIZE_ESTIMATE);
@@ -1204,7 +1226,7 @@ std::string SemanticAnalyzer::generic_instance_abi_suffix(const std::vector<Type
     return suffix;
 }
 
-std::string SemanticAnalyzer::generic_instance_key(
+std::string SemanticAnalyzerCore::generic_instance_key(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const
 {
     const std::string template_key = this->generic_template_key_prefix(info.module, info.name_id, info.name);
@@ -1217,37 +1239,37 @@ std::string SemanticAnalyzer::generic_instance_key(
     return key;
 }
 
-std::string SemanticAnalyzer::generic_struct_instance_key(
+std::string SemanticAnalyzerCore::generic_struct_instance_key(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const
 {
     return this->generic_instance_key(info, args);
 }
 
-std::string SemanticAnalyzer::generic_enum_instance_key(
+std::string SemanticAnalyzerCore::generic_enum_instance_key(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const
 {
     return this->generic_instance_key(info, args);
 }
 
-std::string SemanticAnalyzer::generic_type_alias_instance_key(
+std::string SemanticAnalyzerCore::generic_type_alias_instance_key(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const
 {
     return this->generic_instance_key(info, args);
 }
 
-std::string SemanticAnalyzer::generic_function_instance_key(
+std::string SemanticAnalyzerCore::generic_function_instance_key(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const
 {
     return this->generic_instance_key(info, args);
 }
 
-const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_struct_in_visible_modules(
+const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::find_generic_struct_in_visible_modules(
     const IdentId name_id, const std::string_view name, const base::SourceRange& range, const bool report_unknown)
 {
-    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
+    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->state_.flow.current_module, name_id);
     if (is_valid(lookup_key)) {
-        if (const auto found = this->generic_struct_templates_by_name_.find(lookup_key);
-            found != this->generic_struct_templates_by_name_.end()) {
+        if (const auto found = this->state_.names.generic_struct_templates_by_name.find(lookup_key);
+            found != this->state_.names.generic_struct_templates_by_name.end()) {
             return found->second;
         }
     }
@@ -1258,7 +1280,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
     return nullptr;
 }
 
-const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_struct_in_module(
+const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::find_generic_struct_in_module(
     const syntax::ModuleId module, const IdentId name_id, const std::string_view name, const base::SourceRange& range,
     const bool report_unknown)
 {
@@ -1274,8 +1296,8 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
         const GenericTemplateInfo* candidate = nullptr;
         const ModuleLookupKey lookup_key = this->find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {
-            if (const auto found = this->generic_struct_templates_by_name_.find(lookup_key);
-                found != this->generic_struct_templates_by_name_.end()) {
+            if (const auto found = this->state_.names.generic_struct_templates_by_name.find(lookup_key);
+                found != this->state_.names.generic_struct_templates_by_name.end()) {
                 candidate = found->second;
             }
         }
@@ -1305,13 +1327,13 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_stru
     return result;
 }
 
-const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum_in_visible_modules(
+const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::find_generic_enum_in_visible_modules(
     const IdentId name_id, const std::string_view name, const base::SourceRange& range, const bool report_unknown)
 {
-    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
+    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->state_.flow.current_module, name_id);
     if (is_valid(lookup_key)) {
-        if (const auto found = this->generic_enum_templates_by_name_.find(lookup_key);
-            found != this->generic_enum_templates_by_name_.end()) {
+        if (const auto found = this->state_.names.generic_enum_templates_by_name.find(lookup_key);
+            found != this->state_.names.generic_enum_templates_by_name.end()) {
             return found->second;
         }
     }
@@ -1322,7 +1344,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum
     return nullptr;
 }
 
-const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum_in_module(
+const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::find_generic_enum_in_module(
     const syntax::ModuleId module, const IdentId name_id, const std::string_view name, const base::SourceRange& range,
     const bool report_unknown)
 {
@@ -1338,8 +1360,8 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum
         const GenericTemplateInfo* candidate = nullptr;
         const ModuleLookupKey lookup_key = this->find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {
-            if (const auto found = this->generic_enum_templates_by_name_.find(lookup_key);
-                found != this->generic_enum_templates_by_name_.end()) {
+            if (const auto found = this->state_.names.generic_enum_templates_by_name.find(lookup_key);
+                found != this->state_.names.generic_enum_templates_by_name.end()) {
                 candidate = found->second;
             }
         }
@@ -1369,13 +1391,13 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_enum
     return result;
 }
 
-const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type_alias_in_visible_modules(
+const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::find_generic_type_alias_in_visible_modules(
     const IdentId name_id, const std::string_view name, const base::SourceRange& range, const bool report_unknown)
 {
-    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
+    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->state_.flow.current_module, name_id);
     if (is_valid(lookup_key)) {
-        if (const auto found = this->generic_type_alias_templates_by_name_.find(lookup_key);
-            found != this->generic_type_alias_templates_by_name_.end()) {
+        if (const auto found = this->state_.names.generic_type_alias_templates_by_name.find(lookup_key);
+            found != this->state_.names.generic_type_alias_templates_by_name.end()) {
             return found->second;
         }
     }
@@ -1386,7 +1408,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type
     return nullptr;
 }
 
-const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type_alias_in_module(
+const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::find_generic_type_alias_in_module(
     const syntax::ModuleId module, const IdentId name_id, const std::string_view name, const base::SourceRange& range,
     const bool report_unknown)
 {
@@ -1402,8 +1424,8 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type
         const GenericTemplateInfo* candidate = nullptr;
         const ModuleLookupKey lookup_key = this->find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {
-            if (const auto found = this->generic_type_alias_templates_by_name_.find(lookup_key);
-                found != this->generic_type_alias_templates_by_name_.end()) {
+            if (const auto found = this->state_.names.generic_type_alias_templates_by_name.find(lookup_key);
+                found != this->state_.names.generic_type_alias_templates_by_name.end()) {
                 candidate = found->second;
             }
         }
@@ -1433,7 +1455,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_type
     return result;
 }
 
-bool SemanticAnalyzer::generic_type_template_exists_in_module(
+bool SemanticAnalyzerCore::generic_type_template_exists_in_module(
     const syntax::ModuleId module, const IdentId name_id, const std::string_view name) const
 {
     for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
@@ -1446,7 +1468,7 @@ bool SemanticAnalyzer::generic_type_template_exists_in_module(
     return false;
 }
 
-const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_any_generic_type_template_in_module(
+const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::find_any_generic_type_template_in_module(
     const syntax::ModuleId module, const IdentId name_id, const std::string_view name) const
 {
     if (!syntax::is_valid(module)) {
@@ -1454,16 +1476,16 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_any_generic_
     }
     const ModuleLookupKey lookup_key = this->find_module_lookup_key(module, name_id);
     if (is_valid(lookup_key)) {
-        if (const auto found = this->generic_struct_templates_by_name_.find(lookup_key);
-            found != this->generic_struct_templates_by_name_.end()) {
+        if (const auto found = this->state_.names.generic_struct_templates_by_name.find(lookup_key);
+            found != this->state_.names.generic_struct_templates_by_name.end()) {
             return found->second;
         }
-        if (const auto found = this->generic_enum_templates_by_name_.find(lookup_key);
-            found != this->generic_enum_templates_by_name_.end()) {
+        if (const auto found = this->state_.names.generic_enum_templates_by_name.find(lookup_key);
+            found != this->state_.names.generic_enum_templates_by_name.end()) {
             return found->second;
         }
-        if (const auto found = this->generic_type_alias_templates_by_name_.find(lookup_key);
-            found != this->generic_type_alias_templates_by_name_.end()) {
+        if (const auto found = this->state_.names.generic_type_alias_templates_by_name.find(lookup_key);
+            found != this->state_.names.generic_type_alias_templates_by_name.end()) {
             return found->second;
         }
     }
@@ -1471,19 +1493,19 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_any_generic_
     return nullptr;
 }
 
-bool SemanticAnalyzer::report_generic_type_requires_args_if_visible(
+bool SemanticAnalyzerCore::report_generic_type_requires_args_if_visible(
     const IdentId name_id, const std::string_view name, const base::SourceRange& range)
 {
     if (const GenericTemplateInfo* const found =
-            this->find_any_generic_type_template_in_module(this->current_module_, name_id, name);
-        found != nullptr && this->can_access(this->current_module_, found->visibility)) {
+            this->find_any_generic_type_template_in_module(this->state_.flow.current_module, name_id, name);
+        found != nullptr && this->can_access(this->state_.flow.current_module, found->visibility)) {
         this->report_type(range, sema_generic_type_requires_args_message(name));
         return true;
     }
     return false;
 }
 
-void SemanticAnalyzer::report_generic_type_template_in_module(
+void SemanticAnalyzerCore::report_generic_type_template_in_module(
     const syntax::ModuleId module, const IdentId name_id, const std::string_view name, const base::SourceRange& range)
 {
     if (!syntax::is_valid(module)) {
@@ -1494,11 +1516,11 @@ void SemanticAnalyzer::report_generic_type_template_in_module(
     for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
         const ModuleLookupKey lookup_key = this->find_module_lookup_key(candidate_module, name_id);
         const bool has_struct_template =
-            is_valid(lookup_key) && this->generic_struct_templates_by_name_.contains(lookup_key);
+            is_valid(lookup_key) && this->state_.names.generic_struct_templates_by_name.contains(lookup_key);
         const bool has_enum_template =
-            is_valid(lookup_key) && this->generic_enum_templates_by_name_.contains(lookup_key);
+            is_valid(lookup_key) && this->state_.names.generic_enum_templates_by_name.contains(lookup_key);
         const bool has_alias_template =
-            is_valid(lookup_key) && this->generic_type_alias_templates_by_name_.contains(lookup_key);
+            is_valid(lookup_key) && this->state_.names.generic_type_alias_templates_by_name.contains(lookup_key);
         if (has_struct_template) {
             if (const GenericTemplateInfo* info =
                     this->find_any_generic_type_template_in_module(candidate_module, name_id, name);
@@ -1533,13 +1555,13 @@ void SemanticAnalyzer::report_generic_type_template_in_module(
     this->report_lookup(range, sema_unknown_generic_type_in_module_message(this->module_name(module), name));
 }
 
-const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_function_in_visible_modules(
+const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::find_generic_function_in_visible_modules(
     const IdentId name_id, const std::string_view name, const base::SourceRange& range, const bool report_unknown)
 {
-    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->current_module_, name_id);
+    const ModuleLookupKey lookup_key = this->find_module_lookup_key(this->state_.flow.current_module, name_id);
     if (is_valid(lookup_key)) {
-        if (const auto found = this->generic_function_templates_by_name_.find(lookup_key);
-            found != this->generic_function_templates_by_name_.end()) {
+        if (const auto found = this->state_.names.generic_function_templates_by_name.find(lookup_key);
+            found != this->state_.names.generic_function_templates_by_name.end()) {
             return found->second;
         }
     }
@@ -1550,7 +1572,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
     return nullptr;
 }
 
-const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_function_in_module(
+const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::find_generic_function_in_module(
     const syntax::ModuleId module, const IdentId name_id, const std::string_view name, const base::SourceRange& range,
     const bool report_unknown)
 {
@@ -1566,8 +1588,8 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
         const GenericTemplateInfo* candidate = nullptr;
         const ModuleLookupKey lookup_key = this->find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {
-            if (const auto found = this->generic_function_templates_by_name_.find(lookup_key);
-                found != this->generic_function_templates_by_name_.end()) {
+            if (const auto found = this->state_.names.generic_function_templates_by_name.find(lookup_key);
+                found != this->state_.names.generic_function_templates_by_name.end()) {
                 candidate = found->second;
             }
         }
@@ -1597,7 +1619,7 @@ const SemanticAnalyzer::GenericTemplateInfo* SemanticAnalyzer::find_generic_func
     return result;
 }
 
-TypeHandle SemanticAnalyzer::instantiate_generic_struct(const GenericTemplateInfo& info,
+TypeHandle SemanticAnalyzerCore::instantiate_generic_struct(const GenericTemplateInfo& info,
     const syntax::TypeNode& use_type, const syntax::TypeId, const std::vector<TypeHandle>& args)
 {
     if (args.size() != info.params.size()) {
@@ -1615,8 +1637,8 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(const GenericTemplateInf
     }
     const std::string instance_key = this->generic_struct_instance_key(info, args);
     const IdentId instance_key_id = this->intern_generated_key(instance_key);
-    if (const auto found = this->generic_struct_instances_.find(instance_key_id);
-        found != this->generic_struct_instances_.end()) {
+    if (const auto found = this->state_.generics.struct_instances.find(instance_key_id);
+        found != this->state_.generics.struct_instances.end()) {
         return found->second;
     }
 
@@ -1627,20 +1649,20 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(const GenericTemplateInf
         return INVALID_TYPE_HANDLE;
     }
 
-    const syntax::ItemNode item = this->module_.items[info.item.value];
+    const syntax::ItemNode item = this->ctx_.module.items[info.item.value];
     const std::string abi_suffix = this->generic_instance_abi_suffix(args);
     const std::string qualified = this->qualified_name(info.module, item.name);
     const std::string c_name = this->c_symbol_name(info.module, std::string(item.name) + abi_suffix);
 
-    const TypeHandle handle = this->checked_.types.named_struct(qualified, c_name, false);
-    this->checked_.types.set_generic_instance(
+    const TypeHandle handle = this->state_.checked.types.named_struct(qualified, c_name, false);
+    this->state_.checked.types.set_generic_instance(
         handle, this->generic_template_key_prefix(info.module, info.name_id, info.name), args);
-    this->generic_struct_instances_[instance_key_id] = handle;
+    this->state_.generics.struct_instances[instance_key_id] = handle;
 
-    StructInfo struct_info = this->checked_.make_struct_info();
+    StructInfo struct_info = this->state_.checked.make_struct_info();
     struct_info.name = this->source_name_text(item.name_id, item.name);
     struct_info.name_id = item.name_id;
-    struct_info.c_name = this->checked_.intern_text(c_name);
+    struct_info.c_name = this->state_.checked.intern_text(c_name);
     struct_info.module = info.module;
     struct_info.type = handle;
     struct_info.visibility = info.visibility;
@@ -1650,7 +1672,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(const GenericTemplateInf
         this->stable_incremental_key(struct_info.stable_id, instance_identity.value().fingerprint_text);
     struct_info.generic_instance_key = std::move(instance_identity.value().key);
     struct_info.is_generic_placeholder = std::ranges::any_of(args, [&](const TypeHandle arg) {
-        return is_valid(arg) && this->checked_.types.get(arg).kind == TypeKind::generic_param;
+        return is_valid(arg) && this->state_.checked.types.get(arg).kind == TypeKind::generic_param;
     });
 
     GenericContext generic_context = this->make_generic_context();
@@ -1669,7 +1691,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(const GenericTemplateInf
             if (!this->is_valid_storage_type(field_type)) {
                 this->report_general(field.range, std::string(SEMA_FIELD_STORAGE));
             }
-            if (this->checked_.types.contains_array(field_type)) {
+            if (this->state_.checked.types.contains_array(field_type)) {
                 contains_array = true;
             }
             struct_info.fields.push_back(StructFieldInfo{
@@ -1686,17 +1708,17 @@ TypeHandle SemanticAnalyzer::instantiate_generic_struct(const GenericTemplateInf
         }
     }
 
-    this->checked_.types.set_record_contains_array(handle, contains_array);
-    auto inserted =
-        this->checked_.structs.emplace(ModuleLookupKey{info.module.value, instance_key_id}, std::move(struct_info));
+    this->state_.checked.types.set_record_contains_array(handle, contains_array);
+    auto inserted = this->state_.checked.structs.emplace(
+        ModuleLookupKey{info.module.value, instance_key_id}, std::move(struct_info));
     if (inserted.second) {
-        this->struct_infos_by_type_[handle.value] = &inserted.first->second;
+        this->state_.types.struct_infos_by_type[handle.value] = &inserted.first->second;
     }
     return handle;
 }
 
-TypeHandle SemanticAnalyzer::instantiate_generic_enum(const GenericTemplateInfo& info, const syntax::TypeNode& use_type,
-    const syntax::TypeId, const std::vector<TypeHandle>& args)
+TypeHandle SemanticAnalyzerCore::instantiate_generic_enum(const GenericTemplateInfo& info,
+    const syntax::TypeNode& use_type, const syntax::TypeId, const std::vector<TypeHandle>& args)
 {
     if (args.size() != info.params.size()) {
         this->report_type(use_type.range,
@@ -1714,20 +1736,20 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(const GenericTemplateInfo&
 
     const std::string instance_key = this->generic_enum_instance_key(info, args);
     const IdentId instance_key_id = this->intern_generated_key(instance_key);
-    if (const auto found = this->generic_enum_instances_.find(instance_key_id);
-        found != this->generic_enum_instances_.end()) {
+    if (const auto found = this->state_.generics.enum_instances.find(instance_key_id);
+        found != this->state_.generics.enum_instances.end()) {
         return found->second;
     }
 
-    const syntax::ItemNode item = this->module_.items[info.item.value];
+    const syntax::ItemNode item = this->ctx_.module.items[info.item.value];
     const std::string abi_suffix = this->generic_instance_abi_suffix(args);
     const std::string qualified = this->qualified_name(info.module, item.name);
     const std::string c_name = this->c_symbol_name(info.module, std::string(item.name) + abi_suffix);
 
-    const TypeHandle handle = this->checked_.types.named_enum(qualified, c_name);
-    this->checked_.types.set_generic_instance(
+    const TypeHandle handle = this->state_.checked.types.named_enum(qualified, c_name);
+    this->state_.checked.types.set_generic_instance(
         handle, this->generic_template_key_prefix(info.module, info.name_id, info.name), args);
-    this->generic_enum_instances_[instance_key_id] = handle;
+    this->state_.generics.enum_instances[instance_key_id] = handle;
 
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
@@ -1740,7 +1762,7 @@ TypeHandle SemanticAnalyzer::instantiate_generic_enum(const GenericTemplateInfo&
     return handle;
 }
 
-TypeHandle SemanticAnalyzer::instantiate_generic_type_alias(const GenericTemplateInfo& info,
+TypeHandle SemanticAnalyzerCore::instantiate_generic_type_alias(const GenericTemplateInfo& info,
     const syntax::TypeNode& use_type, const syntax::TypeId, const std::vector<TypeHandle>& args,
     const bool opaque_allowed_as_pointee)
 {
@@ -1760,19 +1782,20 @@ TypeHandle SemanticAnalyzer::instantiate_generic_type_alias(const GenericTemplat
 
     const std::string instance_key = this->generic_type_alias_instance_key(info, args);
     const IdentId instance_key_id = this->intern_generated_key(instance_key);
-    if (const auto found = this->resolved_generic_type_aliases_.find(instance_key_id);
-        found != this->resolved_generic_type_aliases_.end()) {
+    if (const auto found = this->state_.generics.resolved_type_aliases.find(instance_key_id);
+        found != this->state_.generics.resolved_type_aliases.end()) {
         return found->second;
     }
-    if (std::ranges::find(this->resolving_type_aliases_, ModuleLookupKey{info.module.value, instance_key_id})
-        != this->resolving_type_aliases_.end()) {
+    if (std::ranges::find(
+            this->state_.types.resolving_type_aliases, ModuleLookupKey{info.module.value, instance_key_id})
+        != this->state_.types.resolving_type_aliases.end()) {
         this->report_general(use_type.range, sema_cyclic_type_alias_message(info.name));
-        this->resolved_generic_type_aliases_[instance_key_id] = INVALID_TYPE_HANDLE;
+        this->state_.generics.resolved_type_aliases[instance_key_id] = INVALID_TYPE_HANDLE;
         return INVALID_TYPE_HANDLE;
     }
 
-    const syntax::ItemNode item = this->module_.items[info.item.value];
-    this->resolving_type_aliases_.push_back(ModuleLookupKey{info.module.value, instance_key_id});
+    const syntax::ItemNode item = this->ctx_.module.items[info.item.value];
+    this->state_.types.resolving_type_aliases.push_back(ModuleLookupKey{info.module.value, instance_key_id});
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
 
@@ -1780,12 +1803,12 @@ TypeHandle SemanticAnalyzer::instantiate_generic_type_alias(const GenericTemplat
         GenericAnalysisScope scope(*this, info.module, &generic_context);
         return this->resolve_type(item.alias_type, opaque_allowed_as_pointee);
     }();
-    this->resolving_type_aliases_.pop_back();
-    this->resolved_generic_type_aliases_[instance_key_id] = resolved;
+    this->state_.types.resolving_type_aliases.pop_back();
+    this->state_.generics.resolved_type_aliases[instance_key_id] = resolved;
     return resolved;
 }
 
-bool SemanticAnalyzer::unify_generic_type(const TypeHandle pattern, const TypeHandle actual,
+bool SemanticAnalyzerCore::unify_generic_type(const TypeHandle pattern, const TypeHandle actual,
     std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>& inferred) const
 {
     if (!is_valid(pattern) || !is_valid(actual)) {
@@ -1800,7 +1823,7 @@ bool SemanticAnalyzer::unify_generic_type(const TypeHandle pattern, const TypeHa
         if (!is_valid(current_pattern) || !is_valid(current_actual)) {
             return false;
         }
-        const TypeInfo& pattern_info = this->checked_.types.get(current_pattern);
+        const TypeInfo& pattern_info = this->state_.checked.types.get(current_pattern);
         if (pattern_info.kind == TypeKind::generic_param) {
             const GenericParamIdentity identity = this->generic_param_identity(pattern_info);
             const auto found = inferred.find(identity);
@@ -1808,19 +1831,19 @@ bool SemanticAnalyzer::unify_generic_type(const TypeHandle pattern, const TypeHa
                 inferred.emplace(identity, current_actual);
                 continue;
             }
-            if (!this->checked_.types.same(found->second, current_actual)) {
+            if (!this->state_.checked.types.same(found->second, current_actual)) {
                 return false;
             }
             continue;
         }
-        const TypeInfo& actual_info = this->checked_.types.get(current_actual);
+        const TypeInfo& actual_info = this->state_.checked.types.get(current_actual);
         if (pattern_info.kind != actual_info.kind) {
             return false;
         }
         switch (pattern_info.kind) {
             case TypeKind::builtin:
             case TypeKind::opaque_struct:
-                if (!this->checked_.types.same(current_pattern, current_actual)) {
+                if (!this->state_.checked.types.same(current_pattern, current_actual)) {
                     return false;
                 }
                 break;
@@ -1870,7 +1893,7 @@ bool SemanticAnalyzer::unify_generic_type(const TypeHandle pattern, const TypeHa
                 if (pattern_info.generic_origin_key.empty()
                     || pattern_info.generic_origin_key != actual_info.generic_origin_key
                     || pattern_info.generic_args.size() != actual_info.generic_args.size()) {
-                    if (!this->checked_.types.same(current_pattern, current_actual)) {
+                    if (!this->state_.checked.types.same(current_pattern, current_actual)) {
                         return false;
                     }
                     break;
@@ -1886,10 +1909,10 @@ bool SemanticAnalyzer::unify_generic_type(const TypeHandle pattern, const TypeHa
     return true;
 }
 
-bool SemanticAnalyzer::infer_generic_arguments(
-    const GenericTemplateInfo& info, const SemanticAnalyzer::ExprView& call, std::vector<TypeHandle>& args)
+bool SemanticAnalyzerCore::infer_generic_arguments(
+    const GenericTemplateInfo& info, const SemanticAnalyzerCore::ExprView& call, std::vector<TypeHandle>& args)
 {
-    const syntax::ItemNode function = this->module_.items[info.item.value];
+    const syntax::ItemNode function = this->ctx_.module.items[info.item.value];
     if (call.args.size() != function.params.size()) {
         this->report_type(call.range, sema_argument_count_message(info.name));
         return false;
@@ -1912,7 +1935,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
         const TypeHandle actual = this->analyze_expr(call.args[i], pattern_param_types[i]);
         if (!this->unify_generic_type(pattern_param_types[i], actual, inferred)) {
             this->report_type(
-                this->module_.exprs.range(call.args[i].value), sema_generic_call_argument_unify_message(info.name));
+                this->ctx_.module.exprs.range(call.args[i].value), sema_generic_call_argument_unify_message(info.name));
             return false;
         }
     }
@@ -1934,7 +1957,7 @@ bool SemanticAnalyzer::infer_generic_arguments(
     return true;
 }
 
-FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
+FunctionSignature* SemanticAnalyzerCore::instantiate_generic_placeholder_function(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range)
 {
     if (args.size() != info.params.size()) {
@@ -1943,7 +1966,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
                 "generic function type arguments", info.name, args.size(), info.params.size()));
         return nullptr;
     }
-    const syntax::ItemNode function = this->module_.items[info.item.value];
+    const syntax::ItemNode function = this->ctx_.module.items[info.item.value];
 
     for (base::usize i = 0; i < info.params.size(); ++i) {
         if (!is_valid(args[i])) {
@@ -1954,14 +1977,14 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
 
-    FunctionSignature signature = this->checked_.make_function_signature();
+    FunctionSignature signature = this->state_.checked.make_function_signature();
     {
         GenericAnalysisScope scope(*this, info.module, &generic_context);
         signature.name = this->source_name_text(info.name_id, info.name);
         signature.name_id = info.name_id;
         signature.c_name = signature.name;
         signature.stable_id = info.stable_id;
-        signature.generic_args = this->checked_.copy_type_handle_list(args);
+        signature.generic_args = this->state_.checked.copy_type_handle_list(args);
         signature.module = info.module;
         signature.return_type =
             syntax::is_valid(function.return_type) ? this->resolve_type(function.return_type) : INVALID_TYPE_HANDLE;
@@ -1981,11 +2004,11 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_placeholder_function(
     const IdentId key_id = this->intern_generated_key(this->generic_function_instance_key(info, args));
     const FunctionLookupKey key = this->function_lookup_key(info.module, key_id);
     signature.semantic_key = key;
-    const auto inserted = this->generic_placeholder_functions_.emplace(key, std::move(signature));
+    const auto inserted = this->state_.generics.placeholder_functions.emplace(key, std::move(signature));
     return &inserted.first->second;
 }
 
-bool SemanticAnalyzer::type_contains_generic_param(const TypeHandle type) const
+bool SemanticAnalyzerCore::type_contains_generic_param(const TypeHandle type) const
 {
     if (!is_valid(type)) {
         return false;
@@ -1998,7 +2021,7 @@ bool SemanticAnalyzer::type_contains_generic_param(const TypeHandle type) const
         if (!is_valid(current)) {
             continue;
         }
-        const TypeInfo& info = this->checked_.types.get(current);
+        const TypeInfo& info = this->state_.checked.types.get(current);
         switch (info.kind) {
             case TypeKind::generic_param:
                 return true;
@@ -2037,7 +2060,7 @@ bool SemanticAnalyzer::type_contains_generic_param(const TypeHandle type) const
     return false;
 }
 
-FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
+FunctionSignature* SemanticAnalyzerCore::instantiate_generic_function(
     const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range)
 {
     if (args.size() != info.params.size()) {
@@ -2061,12 +2084,13 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
     }
     const IdentId key_id = this->intern_generated_key(this->generic_function_instance_key(info, args));
     const FunctionLookupKey key = this->function_lookup_key(info.module, key_id);
-    if (const auto found = this->generic_function_instances_.find(key);
-        found != this->generic_function_instances_.end()) {
-        return &this->checked_.generic_function_instances[found->second].signature;
+    if (const auto found = this->state_.generics.function_instances.find(key);
+        found != this->state_.generics.function_instances.end()) {
+        return &this->state_.checked.generic_function_instances[found->second].signature;
     }
-    if (!this->options_.retain_generic_side_tables) {
-        if (const auto found = this->checked_.functions.find(key); found != this->checked_.functions.end()) {
+    if (!this->ctx_.options.retain_generic_side_tables) {
+        if (const auto found = this->state_.checked.functions.find(key);
+            found != this->state_.checked.functions.end()) {
             return &found->second;
         }
     }
@@ -2077,12 +2101,12 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
         return nullptr;
     }
 
-    const syntax::ItemNode function = this->module_.items[info.item.value];
+    const syntax::ItemNode function = this->ctx_.module.items[info.item.value];
 
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
 
-    FunctionSignature signature = this->checked_.make_function_signature();
+    FunctionSignature signature = this->state_.checked.make_function_signature();
     {
         GenericAnalysisScope scope(*this, info.module, &generic_context);
         signature.name = this->source_name_text(info.name_id, info.name);
@@ -2090,9 +2114,9 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
         signature.semantic_key = key;
         signature.stable_id = sema::stable_definition_id(this->stable_module_id(info.module),
             StableSymbolKind::function, instance_identity.value().fingerprint_text);
-        signature.c_name = this->checked_.intern_text(
+        signature.c_name = this->state_.checked.intern_text(
             this->c_symbol_name(info.module, std::string(info.name.view()) + this->generic_instance_abi_suffix(args)));
-        signature.generic_args = this->checked_.copy_type_handle_list(args);
+        signature.generic_args = this->state_.checked.copy_type_handle_list(args);
         signature.module = info.module;
         signature.return_type =
             syntax::is_valid(function.return_type) ? this->resolve_type(function.return_type) : INVALID_TYPE_HANDLE;
@@ -2118,23 +2142,23 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
         this->validate_function_return_type(function, signature.return_type);
     }
 
-    if (!this->options_.retain_generic_side_tables) {
-        const auto function_inserted = this->checked_.functions.emplace(key, signature);
+    if (!this->ctx_.options.retain_generic_side_tables) {
+        const auto function_inserted = this->state_.checked.functions.emplace(key, signature);
         if (!function_inserted.second) {
             function_inserted.first->second = signature;
         } else {
-            this->internal_function_lookup_exclusions_ += 1;
+            this->state_.names.internal_function_lookup_exclusions += 1;
         }
-        this->function_body_states_[key] = FunctionBodyState::not_started;
+        this->state_.functions.body_states[key] = FunctionBodyState::not_started;
         GenericSideTables transient_side_tables = make_generic_side_tables(info);
         GenericContext body_context = this->make_generic_context();
         this->populate_generic_concrete_context(info, args, body_context);
         {
             GenericAnalysisScope scope(*this, info.module, &body_context, &transient_side_tables);
             this->analyze_function_body_with_signature(
-                function, key, function_inserted.first->second, this->function_body_states_[key]);
+                function, key, function_inserted.first->second, this->state_.functions.body_states[key]);
         }
-        return &this->checked_.functions.at(key);
+        return &this->state_.checked.functions.at(key);
     }
 
     GenericFunctionInstanceInfo instance;
@@ -2146,37 +2170,38 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_function(
         instance.side_table_layout_index = this->generic_side_table_layout_index(info);
     }
     instance.side_tables = this->make_generic_instance_side_tables(info);
-    const base::usize instance_index = this->checked_.generic_function_instances.size();
-    this->checked_.generic_function_instances.push_back(std::move(instance));
-    if (const GenericSideTableLayout* const layout = this->checked_.generic_side_table_layout(
-            this->checked_.generic_function_instances[instance_index].side_table_layout_index);
+    const base::usize instance_index = this->state_.checked.generic_function_instances.size();
+    this->state_.checked.generic_function_instances.push_back(std::move(instance));
+    if (const GenericSideTableLayout* const layout = this->state_.checked.generic_side_table_layout(
+            this->state_.checked.generic_function_instances[instance_index].side_table_layout_index);
         layout != nullptr) {
-        this->checked_.generic_function_instances[instance_index].side_tables.bind_local_dense_layout(*layout);
+        this->state_.checked.generic_function_instances[instance_index].side_tables.bind_local_dense_layout(*layout);
     }
-    this->generic_function_instances_[key] = instance_index;
+    this->state_.generics.function_instances[key] = instance_index;
 
-    FunctionSignature checked_signature = this->checked_.generic_function_instances[instance_index].signature;
-    const auto function_inserted = this->checked_.functions.emplace(key, checked_signature);
+    FunctionSignature checked_signature = this->state_.checked.generic_function_instances[instance_index].signature;
+    const auto function_inserted = this->state_.checked.functions.emplace(key, checked_signature);
     if (!function_inserted.second) {
         function_inserted.first->second = checked_signature;
     } else {
-        this->internal_function_lookup_exclusions_ += 1;
+        this->state_.names.internal_function_lookup_exclusions += 1;
     }
-    this->function_body_states_[key] = FunctionBodyState::not_started;
+    this->state_.functions.body_states[key] = FunctionBodyState::not_started;
     GenericContext body_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, body_context);
     {
-        GenericAnalysisScope scope(
-            *this, info.module, &body_context, &this->checked_.generic_function_instances[instance_index].side_tables);
+        GenericAnalysisScope scope(*this, info.module, &body_context,
+            &this->state_.checked.generic_function_instances[instance_index].side_tables);
         this->analyze_function_body_with_signature(function, key,
-            this->checked_.generic_function_instances[instance_index].signature, this->function_body_states_[key]);
+            this->state_.checked.generic_function_instances[instance_index].signature,
+            this->state_.functions.body_states[key]);
     }
-    this->checked_.generic_function_instances[instance_index].signature = this->checked_.functions.at(key);
-    this->checked_.generic_function_instances[instance_index].side_tables.release_analysis_only_storage();
-    return &this->checked_.generic_function_instances[instance_index].signature;
+    this->state_.checked.generic_function_instances[instance_index].signature = this->state_.checked.functions.at(key);
+    this->state_.checked.generic_function_instances[instance_index].side_tables.release_analysis_only_storage();
+    return &this->state_.checked.generic_function_instances[instance_index].signature;
 }
 
-FunctionSignature* SemanticAnalyzer::instantiate_generic_method(const GenericTemplateInfo& info,
+FunctionSignature* SemanticAnalyzerCore::instantiate_generic_method(const GenericTemplateInfo& info,
     const TypeHandle owner_type, const std::vector<TypeHandle>& args, const base::SourceRange& use_range)
 {
     if (args.size() != info.params.size()) {
@@ -2195,7 +2220,7 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(const GenericTem
     }
 
     const FunctionLookupKey key = this->method_function_lookup_key(info.module, owner_type, info.name_id);
-    if (const auto found = this->checked_.functions.find(key); found != this->checked_.functions.end()) {
+    if (const auto found = this->state_.checked.functions.find(key); found != this->state_.checked.functions.end()) {
         return &found->second;
     }
 
@@ -2210,11 +2235,11 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(const GenericTem
         return nullptr;
     }
 
-    const syntax::ItemNode function = this->module_.items[info.item.value];
+    const syntax::ItemNode function = this->ctx_.module.items[info.item.value];
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, generic_context);
 
-    FunctionSignature signature = this->checked_.make_function_signature();
+    FunctionSignature signature = this->state_.checked.make_function_signature();
     {
         GenericAnalysisScope scope(*this, info.module, &generic_context);
         signature.name = this->source_name_text(info.name_id, info.name);
@@ -2222,8 +2247,8 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(const GenericTem
         signature.semantic_key = key;
         signature.stable_id = sema::stable_definition_id(
             this->stable_module_id(info.module), StableSymbolKind::method, instance_identity.value().fingerprint_text);
-        signature.c_name = this->checked_.intern_text(this->method_c_symbol_name(owner_type, info.name));
-        signature.generic_args = this->checked_.copy_type_handle_list(args);
+        signature.c_name = this->state_.checked.intern_text(this->method_c_symbol_name(owner_type, info.name));
+        signature.generic_args = this->state_.checked.copy_type_handle_list(args);
         signature.module = info.module;
         signature.method_owner_type = owner_type;
         signature.return_type =
@@ -2252,14 +2277,14 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(const GenericTem
         this->validate_function_return_type(function, signature.return_type);
     }
 
-    if (!this->options_.retain_generic_side_tables) {
-        const auto function_inserted = this->checked_.functions.emplace(key, signature);
+    if (!this->ctx_.options.retain_generic_side_tables) {
+        const auto function_inserted = this->state_.checked.functions.emplace(key, signature);
         if (!function_inserted.second) {
             function_inserted.first->second = signature;
         }
         this->index_method_lookup(info.module, owner_type, info.name_id, function_inserted.first->second);
         this->index_function_value(function_inserted.first->second);
-        this->function_body_states_[key] = FunctionBodyState::not_started;
+        this->state_.functions.body_states[key] = FunctionBodyState::not_started;
 
         GenericSideTables transient_side_tables = make_generic_side_tables(info);
         GenericContext body_context = this->make_generic_context();
@@ -2267,9 +2292,9 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(const GenericTem
         {
             GenericAnalysisScope scope(*this, info.module, &body_context, &transient_side_tables);
             this->analyze_function_body_with_signature(
-                function, key, function_inserted.first->second, this->function_body_states_[key]);
+                function, key, function_inserted.first->second, this->state_.functions.body_states[key]);
         }
-        return &this->checked_.functions.at(key);
+        return &this->state_.checked.functions.at(key);
     }
 
     GenericFunctionInstanceInfo instance;
@@ -2281,44 +2306,45 @@ FunctionSignature* SemanticAnalyzer::instantiate_generic_method(const GenericTem
         instance.side_table_layout_index = this->generic_side_table_layout_index(info);
     }
     instance.side_tables = this->make_generic_instance_side_tables(info);
-    const base::usize instance_index = this->checked_.generic_function_instances.size();
-    this->checked_.generic_function_instances.push_back(std::move(instance));
-    if (const GenericSideTableLayout* const layout = this->checked_.generic_side_table_layout(
-            this->checked_.generic_function_instances[instance_index].side_table_layout_index);
+    const base::usize instance_index = this->state_.checked.generic_function_instances.size();
+    this->state_.checked.generic_function_instances.push_back(std::move(instance));
+    if (const GenericSideTableLayout* const layout = this->state_.checked.generic_side_table_layout(
+            this->state_.checked.generic_function_instances[instance_index].side_table_layout_index);
         layout != nullptr) {
-        this->checked_.generic_function_instances[instance_index].side_tables.bind_local_dense_layout(*layout);
+        this->state_.checked.generic_function_instances[instance_index].side_tables.bind_local_dense_layout(*layout);
     }
-    this->generic_function_instances_[key] = instance_index;
+    this->state_.generics.function_instances[key] = instance_index;
 
-    FunctionSignature checked_signature = this->checked_.generic_function_instances[instance_index].signature;
-    const auto function_inserted = this->checked_.functions.emplace(key, checked_signature);
+    FunctionSignature checked_signature = this->state_.checked.generic_function_instances[instance_index].signature;
+    const auto function_inserted = this->state_.checked.functions.emplace(key, checked_signature);
     if (!function_inserted.second) {
         function_inserted.first->second = checked_signature;
     }
     this->index_method_lookup(info.module, owner_type, info.name_id, function_inserted.first->second);
     this->index_function_value(function_inserted.first->second);
-    this->function_body_states_[key] = FunctionBodyState::not_started;
+    this->state_.functions.body_states[key] = FunctionBodyState::not_started;
 
     GenericContext body_context = this->make_generic_context();
     this->populate_generic_concrete_context(info, args, body_context);
     {
-        GenericAnalysisScope scope(
-            *this, info.module, &body_context, &this->checked_.generic_function_instances[instance_index].side_tables);
+        GenericAnalysisScope scope(*this, info.module, &body_context,
+            &this->state_.checked.generic_function_instances[instance_index].side_tables);
         this->analyze_function_body_with_signature(function, key,
-            this->checked_.generic_function_instances[instance_index].signature, this->function_body_states_[key]);
+            this->state_.checked.generic_function_instances[instance_index].signature,
+            this->state_.functions.body_states[key]);
     }
-    this->checked_.generic_function_instances[instance_index].signature = this->checked_.functions.at(key);
-    this->checked_.generic_function_instances[instance_index].side_tables.release_analysis_only_storage();
-    return &this->checked_.functions.at(key);
+    this->state_.checked.generic_function_instances[instance_index].signature = this->state_.checked.functions.at(key);
+    this->state_.checked.generic_function_instances[instance_index].side_tables.release_analysis_only_storage();
+    return &this->state_.checked.functions.at(key);
 }
 
-FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(const TypeHandle owner_type,
+FunctionSignature* SemanticAnalyzerCore::find_generic_method_in_visible_modules(const TypeHandle owner_type,
     const IdentId name_id, const std::string_view name, const base::SourceRange& range, const bool require_self,
     const bool report_unknown)
 {
     FunctionSignature* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    const std::array<syntax::ModuleId, 2> modules{this->current_module_, this->owner_module(owner_type)};
+    const std::array<syntax::ModuleId, 2> modules{this->state_.flow.current_module, this->owner_module(owner_type)};
     std::unordered_set<base::u32> seen_modules;
     for (const syntax::ModuleId module : modules) {
         if (!syntax::is_valid(module)) {
@@ -2335,8 +2361,8 @@ FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(cons
         };
         const ModuleLookupKey lookup_key = this->find_module_lookup_key(module, name_id);
         if (is_valid(lookup_key)) {
-            if (const auto found = this->generic_method_templates_by_name_.find(lookup_key);
-                found != this->generic_method_templates_by_name_.end()) {
+            if (const auto found = this->state_.names.generic_method_templates_by_name.find(lookup_key);
+                found != this->state_.names.generic_method_templates_by_name.end()) {
                 candidates.reserve(found->second.size());
                 for (const GenericTemplateInfo* const info : found->second) {
                     append_candidate(info);
@@ -2375,7 +2401,7 @@ FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(cons
             }
             if (result != nullptr) {
                 this->report_lookup(range,
-                    sema_ambiguous_method_message(this->checked_.types.display_name(owner_type), name,
+                    sema_ambiguous_method_message(this->state_.checked.types.display_name(owner_type), name,
                         this->module_name(result_module), this->module_name(module)));
                 return nullptr;
             }
@@ -2384,18 +2410,19 @@ FunctionSignature* SemanticAnalyzer::find_generic_method_in_visible_modules(cons
         }
     }
     if (result == nullptr && report_unknown) {
-        this->report_lookup(range, sema_unknown_method_message(this->checked_.types.display_name(owner_type), name));
+        this->report_lookup(
+            range, sema_unknown_method_message(this->state_.checked.types.display_name(owner_type), name));
     }
     return result;
 }
 
-void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplateInfo& info)
+void SemanticAnalyzerCore::analyze_generic_function_definition(const GenericTemplateInfo& info)
 {
-    const syntax::ItemNode function = this->module_.items[info.item.value];
+    const syntax::ItemNode function = this->ctx_.module.items[info.item.value];
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_placeholder_context(info, generic_context);
 
-    FunctionSignature signature = this->checked_.make_function_signature();
+    FunctionSignature signature = this->state_.checked.make_function_signature();
     {
         GenericAnalysisScope scope(*this, info.module, &generic_context);
         signature.name = this->source_name_text(info.name_id, info.name);
@@ -2416,7 +2443,8 @@ void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplate
         signature.incremental_key = this->stable_incremental_key(signature.stable_id,
             this->function_incremental_fingerprint(
                 info.name, signature.return_type, signature.param_types, false, signature.is_variadic));
-        const auto placeholder_inserted = this->generic_placeholder_functions_.emplace(info.function_key, signature);
+        const auto placeholder_inserted =
+            this->state_.generics.placeholder_functions.emplace(info.function_key, signature);
         if (!placeholder_inserted.second) {
             placeholder_inserted.first->second = signature;
         }
@@ -2426,8 +2454,8 @@ void SemanticAnalyzer::analyze_generic_function_definition(const GenericTemplate
     this->analyze_generic_function_body(function, info, signature, state);
 }
 
-void SemanticAnalyzer::analyze_generic_function_body(const syntax::ItemNode& function, const GenericTemplateInfo& info,
-    const FunctionSignature& signature, FunctionBodyState& state)
+void SemanticAnalyzerCore::analyze_generic_function_body(const syntax::ItemNode& function,
+    const GenericTemplateInfo& info, const FunctionSignature& signature, FunctionBodyState& state)
 {
     GenericContext generic_context = this->make_generic_context();
     this->populate_generic_placeholder_context(info, generic_context);

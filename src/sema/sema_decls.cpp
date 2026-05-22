@@ -1,5 +1,4 @@
 #include <aurex/sema/function_registry.hpp>
-#include <aurex/sema/sema.hpp>
 #include <aurex/sema/sema_messages.hpp>
 
 #include <cstddef>
@@ -9,6 +8,8 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include <sema/internal/sema_core.hpp>
 
 namespace aurex::sema {
 
@@ -151,14 +152,14 @@ struct AbiSymbolInfo {
 
 } // namespace
 
-void SemanticAnalyzer::validate_module_namespace_conflicts() const
+void SemanticAnalyzerCore::validate_module_namespace_conflicts() const
 {
     std::unordered_map<ModuleLookupKey, base::SourceRange, ModuleLookupKeyHash> type_names;
     std::unordered_map<ModuleLookupKey, base::SourceRange, ModuleLookupKeyHash> value_names;
-    type_names.reserve(this->module_.items.size());
-    value_names.reserve(this->module_.items.size());
-    for (base::u32 index = 0; index < this->module_.items.size(); ++index) {
-        const syntax::ItemNode item = this->module_.items[index];
+    type_names.reserve(this->ctx_.module.items.size());
+    value_names.reserve(this->ctx_.module.items.size());
+    for (base::u32 index = 0; index < this->ctx_.module.items.size(); ++index) {
+        const syntax::ItemNode item = this->ctx_.module.items[index];
         const syntax::ModuleId owner = this->item_module(syntax::ItemId{index});
         if (is_top_level_type_item(item.kind)) {
             type_names.emplace(this->module_lookup_key(owner, item.name_id), item.range);
@@ -167,8 +168,8 @@ void SemanticAnalyzer::validate_module_namespace_conflicts() const
         }
     }
 
-    for (base::u32 index = 0; index < this->module_.items.size(); ++index) {
-        const syntax::ItemNode item = this->module_.items[index];
+    for (base::u32 index = 0; index < this->ctx_.module.items.size(); ++index) {
+        const syntax::ItemNode item = this->ctx_.module.items[index];
         if (!is_top_level_value_item(item)) {
             continue;
         }
@@ -180,8 +181,8 @@ void SemanticAnalyzer::validate_module_namespace_conflicts() const
         }
     }
 
-    for (const syntax::ModuleInfo& module_info : this->module_.modules) {
-        const auto* const begin = this->module_.modules.data();
+    for (const syntax::ModuleInfo& module_info : this->ctx_.module.modules) {
+        const auto* const begin = this->ctx_.module.modules.data();
         const syntax::ModuleId owner{static_cast<base::u32>(&module_info - begin)};
         std::unordered_set<IdentId, IdentIdHash> module_aliases;
         module_aliases.reserve(module_info.imports.size());
@@ -198,13 +199,13 @@ void SemanticAnalyzer::validate_module_namespace_conflicts() const
     }
 }
 
-void SemanticAnalyzer::register_type_names()
+void SemanticAnalyzerCore::register_type_names()
 {
     const auto report_duplicate_type = [&](const ModuleLookupKey key, const syntax::ModuleId owner,
                                            const base::SourceRange& range, const std::string_view name) {
         this->report_duplicate(range, sema_duplicate_type_definition_message(this->module_name(owner), name));
-        for (base::u32 index = 0; index < this->module_.items.size(); ++index) {
-            const syntax::ItemNode candidate = this->module_.items[index];
+        for (base::u32 index = 0; index < this->ctx_.module.items.size(); ++index) {
+            const syntax::ItemNode candidate = this->ctx_.module.items[index];
             if (candidate.name_id != key.name || this->item_module(syntax::ItemId{index}).value != key.module
                 || candidate.range.begin >= range.begin) {
                 continue;
@@ -215,8 +216,8 @@ void SemanticAnalyzer::register_type_names()
         }
     };
 
-    for (base::u32 item_index = 0; item_index < this->module_.items.size(); ++item_index) {
-        const syntax::ItemNode item = this->module_.items[item_index];
+    for (base::u32 item_index = 0; item_index < this->ctx_.module.items.size(); ++item_index) {
+        const syntax::ItemNode item = this->ctx_.module.items[item_index];
         if (this->has_generic_params(item)) {
             this->register_generic_template(item, syntax::ItemId{item_index});
             continue;
@@ -243,63 +244,66 @@ void SemanticAnalyzer::register_type_names()
             alias.stable_id = this->stable_definition_id(owner, StableSymbolKind::type, item.name_id, item.name);
             alias.incremental_key = this->stable_incremental_key(
                 alias.stable_id, std::string(item.name) + std::string(SEMA_STABLE_TYPE_ALIAS_INCREMENTAL_TAG));
-            auto alias_inserted = this->checked_.type_aliases.emplace(key, alias);
+            auto alias_inserted = this->state_.checked.type_aliases.emplace(key, alias);
             if (!alias_inserted.second) {
                 report_duplicate_type(key, owner, item.range, item.name);
             } else {
                 this->index_type_alias(alias_inserted.first->second);
             }
-            if (this->named_types_.contains(key)) {
+            if (this->state_.types.named_types.contains(key)) {
                 report_duplicate_type(key, owner, item.range, item.name);
             }
-            if (this->generic_struct_templates_.contains(key)) {
+            if (this->state_.generics.struct_templates.contains(key)) {
                 report_duplicate_type(key, owner, item.range, item.name);
             }
-            if (this->generic_enum_templates_.contains(key) || this->generic_type_alias_templates_.contains(key)) {
+            if (this->state_.generics.enum_templates.contains(key)
+                || this->state_.generics.type_alias_templates.contains(key)) {
                 report_duplicate_type(key, owner, item.range, item.name);
             }
             continue;
         }
         if (item.kind == syntax::ItemKind::struct_decl) {
-            if (this->generic_struct_templates_.contains(key) || this->generic_enum_templates_.contains(key)
-                || this->generic_type_alias_templates_.contains(key)) {
+            if (this->state_.generics.struct_templates.contains(key)
+                || this->state_.generics.enum_templates.contains(key)
+                || this->state_.generics.type_alias_templates.contains(key)) {
                 report_duplicate_type(key, owner, item.range, item.name);
                 continue;
             }
-            handle = this->checked_.types.named_struct(qualified, c_name, false);
+            handle = this->state_.checked.types.named_struct(qualified, c_name, false);
         } else if (item.kind == syntax::ItemKind::enum_decl) {
-            if (this->generic_struct_templates_.contains(key) || this->generic_enum_templates_.contains(key)
-                || this->generic_type_alias_templates_.contains(key)) {
+            if (this->state_.generics.struct_templates.contains(key)
+                || this->state_.generics.enum_templates.contains(key)
+                || this->state_.generics.type_alias_templates.contains(key)) {
                 report_duplicate_type(key, owner, item.range, item.name);
                 continue;
             }
-            handle = this->checked_.types.named_enum(qualified, c_name);
+            handle = this->state_.checked.types.named_enum(qualified, c_name);
         } else if (item.kind == syntax::ItemKind::opaque_struct_decl) {
-            handle = this->checked_.types.opaque_struct(qualified, c_name);
+            handle = this->state_.checked.types.opaque_struct(qualified, c_name);
         }
 
         if (!is_valid(handle)) {
             continue;
         }
-        if (item_index < this->checked_.item_c_name_ids.size()) {
-            this->checked_.item_c_name_ids[item_index] = this->checked_.intern_c_name(c_name);
+        if (item_index < this->state_.checked.item_c_name_ids.size()) {
+            this->state_.checked.item_c_name_ids[item_index] = this->state_.checked.intern_c_name(c_name);
         }
-        auto inserted = this->named_types_.emplace(key, handle);
+        auto inserted = this->state_.types.named_types.emplace(key, handle);
         if (!inserted.second) {
             report_duplicate_type(key, owner, item.range, item.name);
             continue;
         }
         this->index_named_type(owner, item.name_id, handle, item.visibility);
-        if (this->checked_.type_aliases.contains(key)) {
+        if (this->state_.checked.type_aliases.contains(key)) {
             report_duplicate_type(key, owner, item.range, item.name);
             continue;
         }
 
         if (item.kind == syntax::ItemKind::struct_decl || item.kind == syntax::ItemKind::opaque_struct_decl) {
-            StructInfo info = this->checked_.make_struct_info();
+            StructInfo info = this->state_.checked.make_struct_info();
             info.name = this->source_name_text(item.name_id, item.name);
             info.name_id = item.name_id;
-            info.c_name = this->checked_.intern_text(c_name);
+            info.c_name = this->state_.checked.intern_text(c_name);
             info.module = owner;
             info.type = handle;
             info.is_opaque = item.kind == syntax::ItemKind::opaque_struct_decl;
@@ -307,25 +311,25 @@ void SemanticAnalyzer::register_type_names()
             info.stable_id = this->stable_definition_id(owner, StableSymbolKind::type, item.name_id, item.name);
             info.incremental_key = this->stable_incremental_key(
                 info.stable_id, std::string(item.name) + std::string(SEMA_STABLE_STRUCT_INCREMENTAL_TAG));
-            auto struct_inserted = this->checked_.structs.emplace(key, std::move(info));
+            auto struct_inserted = this->state_.checked.structs.emplace(key, std::move(info));
             if (!struct_inserted.second) {
                 this->report_duplicate(
                     item.range, sema_duplicate_struct_definition_message(this->module_name(owner), item.name));
             } else {
-                this->struct_infos_by_type_[handle.value] = &struct_inserted.first->second;
+                this->state_.types.struct_infos_by_type[handle.value] = &struct_inserted.first->second;
             }
         }
     }
 }
 
-void SemanticAnalyzer::resolve_type_alias_decls()
+void SemanticAnalyzerCore::resolve_type_alias_decls()
 {
-    for (const auto& entry : this->checked_.type_aliases) {
+    for (const auto& entry : this->state_.checked.type_aliases) {
         static_cast<void>(this->resolve_type_alias(entry.second, false));
     }
 }
 
-void SemanticAnalyzer::register_enum_cases_for_item(const syntax::ItemNode& item, const syntax::ModuleId owner,
+void SemanticAnalyzerCore::register_enum_cases_for_item(const syntax::ItemNode& item, const syntax::ModuleId owner,
     const TypeHandle named_enum_type, std::string enum_display_name, const std::string& case_prefix,
     const std::string& c_prefix, const syntax::Visibility visibility)
 {
@@ -333,8 +337,8 @@ void SemanticAnalyzer::register_enum_cases_for_item(const syntax::ItemNode& item
         if (!is_valid(named_enum_type)) {
             return enum_display_name;
         }
-        const TypeInfo& enum_info = this->checked_.types.get(named_enum_type);
-        return this->checked_.types.display_name(enum_display_name, enum_info.generic_args);
+        const TypeInfo& enum_info = this->state_.checked.types.get(named_enum_type);
+        return this->state_.checked.types.display_name(enum_display_name, enum_info.generic_args);
     };
     std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen_cases;
     seen_cases.reserve(item.enum_cases.size());
@@ -348,13 +352,14 @@ void SemanticAnalyzer::register_enum_cases_for_item(const syntax::ItemNode& item
         }
     }
 
-    const TypeHandle enum_type = syntax::is_valid(item.enum_base_type) ? this->resolve_type(item.enum_base_type)
-                                                                       : this->checked_.types.builtin(BuiltinType::u32);
-    if (syntax::is_valid(item.enum_base_type) && !this->checked_.types.is_integer(enum_type)) {
+    const TypeHandle enum_type = syntax::is_valid(item.enum_base_type)
+        ? this->resolve_type(item.enum_base_type)
+        : this->state_.checked.types.builtin(BuiltinType::u32);
+    if (syntax::is_valid(item.enum_base_type) && !this->state_.checked.types.is_integer(enum_type)) {
         this->report_general(item.range, std::string(SEMA_ENUM_BASE_INTEGER));
     }
     if (is_valid(named_enum_type)) {
-        this->checked_.types.set_enum_underlying(named_enum_type, enum_type);
+        this->state_.checked.types.set_enum_underlying(named_enum_type, enum_type);
     }
 
     std::unordered_set<base::u64> seen_values;
@@ -374,7 +379,7 @@ void SemanticAnalyzer::register_enum_cases_for_item(const syntax::ItemNode& item
                 enum_case.range, sema_duplicate_type_member_message(make_enum_display_name(), enum_case.name));
         }
         const std::string full_name = case_prefix + std::string(enum_case.name);
-        const IdentId full_name_id = this->module_.intern_identifier(full_name);
+        const IdentId full_name_id = this->ctx_.module.intern_identifier(full_name);
         const ModuleLookupKey enum_case_key = this->module_lookup_key(owner, full_name_id);
         const bool has_payload = !enum_case.payload_types.empty() || syntax::is_valid(enum_case.payload_type);
         std::vector<TypeHandle> payload_types;
@@ -399,13 +404,14 @@ void SemanticAnalyzer::register_enum_cases_for_item(const syntax::ItemNode& item
                 owner, c_prefix + std::string(enum_case.name) + SEMA_ENUM_SYNTHETIC_PAYLOAD_C_SUFFIX);
             bool payload_contains_array = false;
             for (const TypeHandle field_type : payload_types) {
-                payload_contains_array = payload_contains_array || this->checked_.types.contains_array(field_type);
+                payload_contains_array =
+                    payload_contains_array || this->state_.checked.types.contains_array(field_type);
             }
             payload_type =
-                this->checked_.types.named_struct(payload_type_name, payload_type_c_name, payload_contains_array);
-            StructInfo payload_info = this->checked_.make_struct_info();
-            payload_info.name = this->checked_.intern_text(payload_type_name);
-            payload_info.c_name = this->checked_.intern_text(payload_type_c_name);
+                this->state_.checked.types.named_struct(payload_type_name, payload_type_c_name, payload_contains_array);
+            StructInfo payload_info = this->state_.checked.make_struct_info();
+            payload_info.name = this->state_.checked.intern_text(payload_type_name);
+            payload_info.c_name = this->state_.checked.intern_text(payload_type_c_name);
             payload_info.module = owner;
             payload_info.type = payload_type;
             payload_info.visibility = syntax::Visibility::private_;
@@ -417,9 +423,9 @@ void SemanticAnalyzer::register_enum_cases_for_item(const syntax::ItemNode& item
                 const std::string field_name =
                     std::string(SEMA_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i);
                 payload_info.fields.push_back(StructFieldInfo{
-                    this->checked_.intern_text(field_name),
-                    this->module_.intern_identifier(field_name),
-                    this->checked_.intern_text(field_name),
+                    this->state_.checked.intern_text(field_name),
+                    this->ctx_.module.intern_identifier(field_name),
+                    this->state_.checked.intern_text(field_name),
                     owner,
                     payload_types[i],
                     enum_case.range,
@@ -428,12 +434,12 @@ void SemanticAnalyzer::register_enum_cases_for_item(const syntax::ItemNode& item
                         payload_info.stable_id, StableSymbolKind::struct_field, field_name, static_cast<base::u32>(i)),
                 });
             }
-            const auto payload_inserted = this->checked_.structs.emplace(
+            const auto payload_inserted = this->state_.checked.structs.emplace(
                 this->module_lookup_key(
-                    owner, this->module_.intern_identifier(full_name + SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX)),
+                    owner, this->ctx_.module.intern_identifier(full_name + SEMA_ENUM_SYNTHETIC_PAYLOAD_SUFFIX)),
                 std::move(payload_info));
             if (payload_inserted.second) {
-                this->struct_infos_by_type_[payload_type.value] = &payload_inserted.first->second;
+                this->state_.types.struct_infos_by_type[payload_type.value] = &payload_inserted.first->second;
             }
         }
 
@@ -468,16 +474,16 @@ void SemanticAnalyzer::register_enum_cases_for_item(const syntax::ItemNode& item
             payload_align = std::max(payload_align, case_align);
         }
 
-        EnumCaseInfo case_info = this->checked_.make_enum_case_info();
+        EnumCaseInfo case_info = this->state_.checked.make_enum_case_info();
         case_info.name = this->source_name_text(full_name_id, full_name);
         case_info.name_id = full_name_id;
         case_info.c_name =
-            this->checked_.intern_text(this->c_symbol_name(owner, c_prefix + std::string(enum_case.name)));
+            this->state_.checked.intern_text(this->c_symbol_name(owner, c_prefix + std::string(enum_case.name)));
         case_info.module = owner;
         case_info.type = named_enum_type;
         case_info.payload_type = payload_type;
-        case_info.payload_types = this->checked_.copy_type_handle_list(payload_types);
-        case_info.value_text = this->checked_.intern_text(value_text);
+        case_info.payload_types = this->state_.checked.copy_type_handle_list(payload_types);
+        case_info.value_text = this->state_.checked.intern_text(value_text);
         case_info.range = enum_case.range;
         case_info.enum_name = this->source_name_text(item.name_id, enum_display_name);
         case_info.case_name = this->source_name_text(enum_case.name_id, enum_case.name);
@@ -489,7 +495,7 @@ void SemanticAnalyzer::register_enum_cases_for_item(const syntax::ItemNode& item
             this->stable_member_key(this->stable_definition_id(owner, StableSymbolKind::type, item.name_id, item.name),
                 StableSymbolKind::enum_case, enum_case.name_id, enum_case.name);
         case_info.incremental_key = this->stable_incremental_key(case_info.stable_id, value_text);
-        const auto case_inserted = this->checked_.enum_cases.emplace(enum_case_key, std::move(case_info));
+        const auto case_inserted = this->state_.checked.enum_cases.emplace(enum_case_key, std::move(case_info));
         if (!case_inserted.second) {
             this->report_duplicate(
                 enum_case.range, sema_duplicate_enum_case_message(make_enum_display_name(), enum_case.name));
@@ -500,33 +506,34 @@ void SemanticAnalyzer::register_enum_cases_for_item(const syntax::ItemNode& item
         this->index_enum_case(case_inserted.first->second);
     }
     if (is_valid(named_enum_type) && is_valid(payload_storage)) {
-        this->checked_.types.set_enum_payload_layout(named_enum_type,
-            payload_storage_type(this->checked_.types, payload_size, payload_align), payload_size, payload_align);
+        this->state_.checked.types.set_enum_payload_layout(named_enum_type,
+            payload_storage_type(this->state_.checked.types, payload_size, payload_align), payload_size, payload_align);
     }
     if (is_valid(named_enum_type)) {
-        this->checked_.types.set_record_contains_array(named_enum_type, contains_array_payload);
+        this->state_.checked.types.set_record_contains_array(named_enum_type, contains_array_payload);
     }
 }
 
-void SemanticAnalyzer::register_value_names()
+void SemanticAnalyzerCore::register_value_names()
 {
-    FunctionRegistry functions(this->checked_, this->global_values_, this->diagnostics_,
-        this->owned_module_.has_value() ? nullptr : &this->module_.identifiers);
-    for (base::u32 item_index = 0; item_index < this->module_.items.size(); ++item_index) {
-        const syntax::ItemNode item = this->module_.items[item_index];
+    FunctionRegistry functions(this->state_.checked, this->state_.functions.global_values, this->ctx_.diagnostics,
+        this->owned_module_.has_value() ? nullptr : &this->ctx_.module.identifiers);
+    for (base::u32 item_index = 0; item_index < this->ctx_.module.items.size(); ++item_index) {
+        const syntax::ItemNode item = this->ctx_.module.items[item_index];
         if (this->has_generic_params(item)) {
             continue;
         }
-        this->current_module_ = this->item_module(syntax::ItemId{item_index});
-        const ModuleLookupKey item_type_key = this->module_lookup_key(this->current_module_, item.name_id);
-        FunctionLookupKey key = this->function_lookup_key(this->current_module_, item.name_id);
-        std::string c_name = this->c_symbol_name(this->current_module_, item.name);
+        this->state_.flow.current_module = this->item_module(syntax::ItemId{item_index});
+        const ModuleLookupKey item_type_key = this->module_lookup_key(this->state_.flow.current_module, item.name_id);
+        FunctionLookupKey key = this->function_lookup_key(this->state_.flow.current_module, item.name_id);
+        std::string c_name = this->c_symbol_name(this->state_.flow.current_module, item.name);
         if (item.kind == syntax::ItemKind::fn_decl) {
             const bool is_method = syntax::is_valid(item.impl_type);
             TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
-            if (!is_method && this->generic_function_templates_.contains(item_type_key)) {
+            if (!is_method && this->state_.generics.function_templates.contains(item_type_key)) {
                 this->report_duplicate(item.range,
-                    sema_duplicate_function_definition_message(this->module_name(this->current_module_), item.name));
+                    sema_duplicate_function_definition_message(
+                        this->module_name(this->state_.flow.current_module), item.name));
                 continue;
             }
             if (item.is_variadic && !item.is_extern_c) {
@@ -535,13 +542,14 @@ void SemanticAnalyzer::register_value_names()
             if (is_method) {
                 method_owner_type = this->resolve_type(item.impl_type);
                 if (is_valid(method_owner_type)) {
-                    const TypeKind owner_kind = this->checked_.types.get(method_owner_type).kind;
+                    const TypeKind owner_kind = this->state_.checked.types.get(method_owner_type).kind;
                     if (owner_kind != TypeKind::struct_ && owner_kind != TypeKind::enum_
                         && owner_kind != TypeKind::opaque_struct) {
                         this->report_general(item.range, std::string(SEMA_IMPL_TARGET_NAMED_TYPE));
                     }
                 }
-                key = this->method_function_lookup_key(this->current_module_, method_owner_type, item.name_id);
+                key =
+                    this->method_function_lookup_key(this->state_.flow.current_module, method_owner_type, item.name_id);
                 c_name = this->method_c_symbol_name(method_owner_type, item.name);
             }
             const bool has_explicit_return = syntax::is_valid(item.return_type);
@@ -550,10 +558,10 @@ void SemanticAnalyzer::register_value_names()
                 return_type = this->resolve_type(item.return_type);
             } else if (item.is_extern_c || item.is_export_c) {
                 this->report_general(item.range, std::string(SEMA_C_ABI_RETURN_TYPE_EXPLICIT));
-                return_type = this->checked_.types.builtin(BuiltinType::void_);
+                return_type = this->state_.checked.types.builtin(BuiltinType::void_);
             } else if (item.is_prototype) {
                 this->report_general(item.range, std::string(SEMA_PROTOTYPE_RETURN_TYPE_EXPLICIT));
-                return_type = this->checked_.types.builtin(BuiltinType::void_);
+                return_type = this->state_.checked.types.builtin(BuiltinType::void_);
             } else if (item.visibility == syntax::Visibility::public_) {
                 this->report_general(item.range, std::string(SEMA_PUBLIC_FUNCTION_RETURN_TYPE_EXPLICIT));
             }
@@ -580,17 +588,18 @@ void SemanticAnalyzer::register_value_names()
                 }
                 if (saw_self && !param_types.empty() && is_valid(method_owner_type)) {
                     TypeHandle self_type = param_types.front();
-                    if (this->checked_.types.is_pointer(self_type) || this->checked_.types.is_reference(self_type)) {
-                        self_type = this->checked_.types.get(self_type).pointee;
+                    if (this->state_.checked.types.is_pointer(self_type)
+                        || this->state_.checked.types.is_reference(self_type)) {
+                        self_type = this->state_.checked.types.get(self_type).pointee;
                     }
-                    if (!this->checked_.types.same(self_type, method_owner_type)) {
+                    if (!this->state_.checked.types.same(self_type, method_owner_type)) {
                         this->report_general(item.params.front().range, std::string(SEMA_METHOD_SELF_TYPE));
                     }
                 }
                 if (this->type_member_name_exists(method_owner_type, item.name_id, item.name)) {
                     this->report_duplicate(item.range,
                         sema_duplicate_type_member_message(
-                            this->checked_.types.display_name(method_owner_type), item.name));
+                            this->state_.checked.types.display_name(method_owner_type), item.name));
                 }
             }
             if (has_explicit_return && is_valid(return_type)) {
@@ -600,63 +609,76 @@ void SemanticAnalyzer::register_value_names()
             StableSymbolKind stable_function_kind = StableSymbolKind::function;
             if (is_method && is_valid(method_owner_type)) {
                 stable_function_name =
-                    this->checked_.types.display_name(method_owner_type) + "." + std::string(item.name);
+                    this->state_.checked.types.display_name(method_owner_type) + "." + std::string(item.name);
                 stable_function_kind = StableSymbolKind::method;
             }
             const StableDefId stable_id = sema::stable_definition_id(
-                this->stable_module_id(this->current_module_), stable_function_kind, stable_function_name);
+                this->stable_module_id(this->state_.flow.current_module), stable_function_kind, stable_function_name);
             const IncrementalKey incremental_key = this->stable_incremental_key(stable_id,
                 this->function_incremental_fingerprint(
                     stable_function_name, return_type, param_types, is_method, item.is_variadic));
-            functions.register_function(item, this->current_module_, key, c_name, method_owner_type, return_type,
-                param_types, syntax::ItemId{item_index}, stable_id, incremental_key);
-            if (const auto found = this->checked_.functions.find(key); found != this->checked_.functions.end()) {
+            functions.register_function(FunctionRegistrationRequest{
+                item,
+                this->state_.flow.current_module,
+                key,
+                c_name,
+                method_owner_type,
+                return_type,
+                param_types,
+                syntax::ItemId{item_index},
+                stable_id,
+                incremental_key,
+            });
+            if (const auto found = this->state_.checked.functions.find(key);
+                found != this->state_.checked.functions.end()) {
                 this->index_function_lookup(found->second);
                 this->index_function_value(found->second);
             }
             if (!item.is_prototype && !item.is_extern_c) {
-                this->function_definition_items_[key] = syntax::ItemId{item_index};
+                this->state_.functions.definition_items[key] = syntax::ItemId{item_index};
             }
-            this->function_body_states_[key] = FunctionBodyState::not_started;
+            this->state_.functions.body_states[key] = FunctionBodyState::not_started;
         } else if (item.kind == syntax::ItemKind::const_decl) {
             TypeHandle type = this->resolve_type(item.const_type);
-            if (item_index < this->checked_.item_c_name_ids.size()) {
-                this->checked_.item_c_name_ids[item_index] = this->checked_.intern_c_name(c_name);
+            if (item_index < this->state_.checked.item_c_name_ids.size()) {
+                this->state_.checked.item_c_name_ids[item_index] = this->state_.checked.intern_c_name(c_name);
             }
-            const auto inserted = this->global_values_.emplace(key,
+            const auto inserted = this->state_.functions.global_values.emplace(key,
                 Symbol{
                     SymbolKind::const_,
                     this->source_name_text(item.name_id, item.name),
                     item.name_id,
-                    this->checked_.intern_text(c_name),
-                    this->current_module_,
+                    this->state_.checked.intern_text(c_name),
+                    this->state_.flow.current_module,
                     type,
                     item.range,
                     false,
                     item.visibility,
-                    this->stable_definition_id(this->current_module_, StableSymbolKind::value, item.name_id, item.name),
+                    this->stable_definition_id(
+                        this->state_.flow.current_module, StableSymbolKind::value, item.name_id, item.name),
                 });
             if (!inserted.second) {
                 this->report_duplicate(item.range,
-                    sema_duplicate_value_definition_message(this->module_name(this->current_module_), item.name));
+                    sema_duplicate_value_definition_message(
+                        this->module_name(this->state_.flow.current_module), item.name));
                 this->report_note(inserted.first->second.range, SemanticDiagnosticKind::duplicate,
                     sema_previous_declaration_note_message(item.name));
             } else {
                 this->index_global_value(inserted.first->second);
             }
         } else if (item.kind == syntax::ItemKind::enum_decl) {
-            const auto type_found = this->named_types_.find(item_type_key);
-            this->register_enum_cases_for_item(item, this->current_module_,
-                type_found == this->named_types_.end() ? INVALID_TYPE_HANDLE : type_found->second,
+            const auto type_found = this->state_.types.named_types.find(item_type_key);
+            this->register_enum_cases_for_item(item, this->state_.flow.current_module,
+                type_found == this->state_.types.named_types.end() ? INVALID_TYPE_HANDLE : type_found->second,
                 std::string(item.name), std::string(item.name) + "_", std::string(item.name) + "_", item.visibility);
         }
     }
-    this->current_module_ = syntax::INVALID_MODULE_ID;
+    this->state_.flow.current_module = syntax::INVALID_MODULE_ID;
 }
 
-void SemanticAnalyzer::validate_function_prototypes() const
+void SemanticAnalyzerCore::validate_function_prototypes() const
 {
-    for (const auto& entry : checked_.functions) {
+    for (const auto& entry : this->state_.checked.functions) {
         const FunctionSignature& signature = entry.second;
         if (signature.is_extern_c) {
             continue;
@@ -670,18 +692,18 @@ void SemanticAnalyzer::validate_function_prototypes() const
     }
 }
 
-void SemanticAnalyzer::validate_abi_symbols() const
+void SemanticAnalyzerCore::validate_abi_symbols() const
 {
     std::unordered_map<std::string_view, AbiSymbolInfo> symbols;
-    symbols.reserve(this->checked_.functions.size() + this->global_values_.size());
+    symbols.reserve(this->state_.checked.functions.size() + this->state_.functions.global_values.size());
 
     const auto same_function_type = [&](const AbiFunctionInfo& lhs, const AbiFunctionInfo& rhs) {
-        if (!checked_.types.same(lhs.return_type, rhs.return_type) || lhs.is_variadic != rhs.is_variadic
+        if (!this->state_.checked.types.same(lhs.return_type, rhs.return_type) || lhs.is_variadic != rhs.is_variadic
             || lhs.param_types.size() != rhs.param_types.size()) {
             return false;
         }
         for (base::usize i = 0; i < lhs.param_types.size(); ++i) {
-            if (!checked_.types.same(lhs.param_types[i], rhs.param_types[i])) {
+            if (!this->state_.checked.types.same(lhs.param_types[i], rhs.param_types[i])) {
                 return false;
             }
         }
@@ -720,7 +742,7 @@ void SemanticAnalyzer::validate_abi_symbols() const
         report_previous_abi_declaration(symbol, prior);
     };
 
-    for (const auto& entry : checked_.functions) {
+    for (const auto& entry : this->state_.checked.functions) {
         const FunctionSignature& signature = entry.second;
         if (signature.has_conflict) {
             continue;
@@ -736,7 +758,7 @@ void SemanticAnalyzer::validate_abi_symbols() const
             });
     }
 
-    for (const auto& entry : global_values_) {
+    for (const auto& entry : this->state_.functions.global_values) {
         const Symbol& symbol = entry.second;
         if (symbol.kind == SymbolKind::function || symbol.c_name.empty()) {
             continue;
@@ -756,13 +778,13 @@ void SemanticAnalyzer::validate_abi_symbols() const
     }
 }
 
-void SemanticAnalyzer::analyze_entry_points() const
+void SemanticAnalyzerCore::analyze_entry_points() const
 {
     constexpr syntax::ModuleId root_module{0};
     const FunctionSignature* aurex_entry = nullptr;
     const FunctionSignature* c_entry = nullptr;
 
-    for (const auto& entry : checked_.functions) {
+    for (const auto& entry : this->state_.checked.functions) {
         const FunctionSignature& function = entry.second;
         if (function.module.value != root_module.value) {
             continue;
@@ -791,41 +813,42 @@ void SemanticAnalyzer::analyze_entry_points() const
     if (aurex_entry->c_name == "main") {
         this->report_general(aurex_entry->range, std::string(SEMA_ORDINARY_MAIN_ABI_NAME));
     }
-    const TypeHandle i32_type = checked_.types.builtin(BuiltinType::i32);
-    const TypeHandle void_type = checked_.types.builtin(BuiltinType::void_);
+    const TypeHandle i32_type = this->state_.checked.types.builtin(BuiltinType::i32);
+    const TypeHandle void_type = this->state_.checked.types.builtin(BuiltinType::void_);
     if (aurex_entry->param_types.empty()) {
         // fn main() -> i32
     } else if (aurex_entry->param_types.size() == 2) {
-        if (!checked_.types.same(aurex_entry->param_types[0], i32_type)
-            || !is_main_argv_type(checked_.types, aurex_entry->param_types[1])) {
+        if (!this->state_.checked.types.same(aurex_entry->param_types[0], i32_type)
+            || !is_main_argv_type(this->state_.checked.types, aurex_entry->param_types[1])) {
             this->report_general(aurex_entry->range, std::string(SEMA_MAIN_PARAMETERS_EXACT));
         }
     } else {
         this->report_general(aurex_entry->range, std::string(SEMA_MAIN_PARAMETERS));
     }
-    if (!checked_.types.same(aurex_entry->return_type, i32_type)
-        && !checked_.types.same(aurex_entry->return_type, void_type)) {
+    if (!this->state_.checked.types.same(aurex_entry->return_type, i32_type)
+        && !this->state_.checked.types.same(aurex_entry->return_type, void_type)) {
         this->report_general(aurex_entry->range, std::string(SEMA_MAIN_RETURN));
     }
 }
 
-void SemanticAnalyzer::analyze_struct_properties()
+void SemanticAnalyzerCore::analyze_struct_properties()
 {
-    for (base::u32 index = 0; index < this->module_.items.size(); ++index) {
-        if (this->module_.items.kind(index) != syntax::ItemKind::struct_decl) {
+    for (base::u32 index = 0; index < this->ctx_.module.items.size(); ++index) {
+        if (this->ctx_.module.items.kind(index) != syntax::ItemKind::struct_decl) {
             continue;
         }
-        const syntax::ItemNode item = this->module_.items[index];
+        const syntax::ItemNode item = this->ctx_.module.items[index];
         if (this->has_generic_params(item)) {
             continue;
         }
-        this->current_module_ = this->item_module(syntax::ItemId{index});
-        const ModuleLookupKey key = this->module_lookup_key(this->current_module_, item.name_id);
+        this->state_.flow.current_module = this->item_module(syntax::ItemId{index});
+        const ModuleLookupKey key = this->module_lookup_key(this->state_.flow.current_module, item.name_id);
         bool contains_array = false;
         std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen_fields;
         seen_fields.reserve(item.fields.size());
         StructInfo* struct_info = nullptr;
-        if (const auto struct_found = this->checked_.structs.find(key); struct_found != this->checked_.structs.end()) {
+        if (const auto struct_found = this->state_.checked.structs.find(key);
+            struct_found != this->state_.checked.structs.end()) {
             struct_info = &struct_found->second;
             struct_info->fields.reserve(item.fields.size());
         }
@@ -846,7 +869,7 @@ void SemanticAnalyzer::analyze_struct_properties()
                     this->source_name_text(field.name_id, field.name),
                     field.name_id,
                     {},
-                    this->current_module_,
+                    this->state_.flow.current_module,
                     field_type,
                     field.range,
                     field.visibility,
@@ -854,58 +877,62 @@ void SemanticAnalyzer::analyze_struct_properties()
                         struct_info->stable_id, StableSymbolKind::struct_field, field.name_id, field.name),
                 });
             }
-            if (this->checked_.types.contains_array(field_type)) {
+            if (this->state_.checked.types.contains_array(field_type)) {
                 contains_array = true;
             }
         }
-        const auto found = this->named_types_.find(key);
-        if (found != this->named_types_.end()) {
-            this->checked_.types.set_record_contains_array(found->second, contains_array);
+        const auto found = this->state_.types.named_types.find(key);
+        if (found != this->state_.types.named_types.end()) {
+            this->state_.checked.types.set_record_contains_array(found->second, contains_array);
         }
     }
-    this->current_module_ = syntax::INVALID_MODULE_ID;
+    this->state_.flow.current_module = syntax::INVALID_MODULE_ID;
 }
 
-void SemanticAnalyzer::analyze_const_decls()
+void SemanticAnalyzerCore::analyze_const_decls()
 {
     SemaMap<ModuleLookupKey, ModuleLookupList, ModuleLookupKeyHash> dependencies_by_const =
-        make_sema_map<ModuleLookupKey, ModuleLookupList, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{});
+        make_sema_map<ModuleLookupKey, ModuleLookupList, ModuleLookupKeyHash>(
+            *this->state_.arena, ModuleLookupKeyHash{});
     SemaMap<ModuleLookupKey, base::SourceRange, ModuleLookupKeyHash> const_ranges =
-        make_sema_map<ModuleLookupKey, base::SourceRange, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{});
+        make_sema_map<ModuleLookupKey, base::SourceRange, ModuleLookupKeyHash>(
+            *this->state_.arena, ModuleLookupKeyHash{});
     SemaMap<ModuleLookupKey, InternedText, ModuleLookupKeyHash> const_names =
-        make_sema_map<ModuleLookupKey, InternedText, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{});
-    dependencies_by_const.reserve(this->module_.items.size());
-    const_ranges.reserve(this->module_.items.size());
-    const_names.reserve(this->module_.items.size());
+        make_sema_map<ModuleLookupKey, InternedText, ModuleLookupKeyHash>(*this->state_.arena, ModuleLookupKeyHash{});
+    dependencies_by_const.reserve(this->ctx_.module.items.size());
+    const_ranges.reserve(this->ctx_.module.items.size());
+    const_names.reserve(this->ctx_.module.items.size());
 
-    for (base::u32 index = 0; index < this->module_.items.size(); ++index) {
-        if (this->module_.items.kind(index) != syntax::ItemKind::const_decl) {
+    for (base::u32 index = 0; index < this->ctx_.module.items.size(); ++index) {
+        if (this->ctx_.module.items.kind(index) != syntax::ItemKind::const_decl) {
             continue;
         }
-        const syntax::ItemNode item = this->module_.items[index];
-        this->current_module_ = this->item_module(syntax::ItemId{index});
-        const IdentId const_name_id = is_valid(item.name_id) ? item.name_id : this->module_.identifiers.find(item.name);
-        const ModuleLookupKey const_key = const_dependency_key(this->current_module_, const_name_id);
+        const syntax::ItemNode item = this->ctx_.module.items[index];
+        this->state_.flow.current_module = this->item_module(syntax::ItemId{index});
+        const IdentId const_name_id =
+            is_valid(item.name_id) ? item.name_id : this->ctx_.module.identifiers.find(item.name);
+        const ModuleLookupKey const_key = const_dependency_key(this->state_.flow.current_module, const_name_id);
         if (!is_valid(const_key)) {
             continue;
         }
         const_ranges[const_key] = item.range;
-        const_names[const_key] = this->checked_.intern_text(this->qualified_name(this->current_module_, item.name));
+        const_names[const_key] =
+            this->state_.checked.intern_text(this->qualified_name(this->state_.flow.current_module, item.name));
         const TypeHandle declared = this->resolve_type(item.const_type);
-        const bool previous_const_initializer = this->in_const_initializer_;
-        this->in_const_initializer_ = true;
+        const bool previous_const_initializer = this->state_.flow.in_const_initializer;
+        this->state_.flow.in_const_initializer = true;
         const TypeHandle actual = this->analyze_expr(item.const_value, declared);
-        this->in_const_initializer_ = previous_const_initializer;
+        this->state_.flow.in_const_initializer = previous_const_initializer;
         ModuleLookupSet dependencies =
-            make_sema_set<ModuleLookupKey, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{});
+            make_sema_set<ModuleLookupKey, ModuleLookupKeyHash>(*this->state_.arena, ModuleLookupKeyHash{});
         if (!this->is_const_evaluable_expr(item.const_value, dependencies)) {
             const base::SourceRange range =
-                syntax::is_valid(item.const_value) && item.const_value.value < this->module_.exprs.size()
-                ? this->module_.exprs.range(item.const_value.value)
+                syntax::is_valid(item.const_value) && item.const_value.value < this->ctx_.module.exprs.size()
+                ? this->ctx_.module.exprs.range(item.const_value.value)
                 : item.range;
             this->report_general(range, std::string(SEMA_CONST_NOT_COMPILE_TIME));
         }
-        ModuleLookupList dependency_list = make_sema_vector<ModuleLookupKey>(*this->arena_);
+        ModuleLookupList dependency_list = make_sema_vector<ModuleLookupKey>(*this->state_.arena);
         dependency_list.reserve(dependencies.size());
         dependency_list.insert(dependency_list.end(), dependencies.begin(), dependencies.end());
         if (const auto found = dependencies_by_const.find(const_key); found != dependencies_by_const.end()) {
@@ -925,7 +952,7 @@ void SemanticAnalyzer::analyze_const_decls()
     constexpr base::u8 SEMA_CONST_DEP_STATE_VISITED = static_cast<base::u8>(ConstDependencyState::VISITED);
 
     SemaMap<ModuleLookupKey, base::u8, ModuleLookupKeyHash> states =
-        make_sema_map<ModuleLookupKey, base::u8, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{});
+        make_sema_map<ModuleLookupKey, base::u8, ModuleLookupKeyHash>(*this->state_.arena, ModuleLookupKeyHash{});
     std::vector<ConstDependencyFrame> stack;
     states.reserve(dependencies_by_const.size());
     stack.reserve(dependencies_by_const.size());
@@ -949,8 +976,9 @@ void SemanticAnalyzer::analyze_const_decls()
             if (state == SEMA_CONST_DEP_STATE_VISITING) {
                 const auto range = const_ranges.find(frame.key);
                 const auto name = const_names.find(frame.key);
-                const std::string_view display_name =
-                    name == const_names.end() ? this->module_.identifiers.text(frame.key.name) : name->second.view();
+                const std::string_view display_name = name == const_names.end()
+                    ? this->ctx_.module.identifiers.text(frame.key.name)
+                    : name->second.view();
                 this->report_general(range == const_ranges.end() ? base::SourceRange{} : range->second,
                     sema_cyclic_const_initializer_message(display_name));
                 state = SEMA_CONST_DEP_STATE_VISITED;
@@ -967,12 +995,12 @@ void SemanticAnalyzer::analyze_const_decls()
             }
         }
     }
-    this->current_module_ = syntax::INVALID_MODULE_ID;
+    this->state_.flow.current_module = syntax::INVALID_MODULE_ID;
 }
 
-bool SemanticAnalyzer::is_const_evaluable_expr(const syntax::ExprId expr_id, ModuleLookupSet& dependencies)
+bool SemanticAnalyzerCore::is_const_evaluable_expr(const syntax::ExprId expr_id, ModuleLookupSet& dependencies)
 {
-    if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->ctx_.module.exprs.size()) {
         return false;
     }
     std::vector<ConstEvalFrame> stack;
@@ -982,7 +1010,7 @@ bool SemanticAnalyzer::is_const_evaluable_expr(const syntax::ExprId expr_id, Mod
         const ConstEvalFrame frame = stack.back();
         stack.pop_back();
 
-        if (!syntax::is_valid(frame.expr_id) || frame.expr_id.value >= this->module_.exprs.size()) {
+        if (!syntax::is_valid(frame.expr_id) || frame.expr_id.value >= this->ctx_.module.exprs.size()) {
             values.push_back(false);
             continue;
         }
@@ -1013,14 +1041,14 @@ bool SemanticAnalyzer::is_const_evaluable_expr(const syntax::ExprId expr_id, Mod
                                 ? this->find_symbol_in_module(module, expr.text_id, expr.text, expr.range, false)
                                 : nullptr;
                         } else {
-                            if (const Symbol* local = this->symbols_.find(expr.text_id); local != nullptr) {
+                            if (const Symbol* local = this->state_.names.symbols.find(expr.text_id); local != nullptr) {
                                 symbol = local;
                             } else {
                                 const ModuleLookupKey lookup_key =
-                                    this->find_module_lookup_key(this->current_module_, expr.text_id);
+                                    this->find_module_lookup_key(this->state_.flow.current_module, expr.text_id);
                                 if (is_valid(lookup_key)) {
-                                    if (const auto found = this->global_values_by_name_.find(lookup_key);
-                                        found != this->global_values_by_name_.end()) {
+                                    if (const auto found = this->state_.names.global_values_by_name.find(lookup_key);
+                                        found != this->state_.names.global_values_by_name.end()) {
                                         symbol = found->second;
                                     }
                                 }
@@ -1034,8 +1062,9 @@ bool SemanticAnalyzer::is_const_evaluable_expr(const syntax::ExprId expr_id, Mod
                             values.push_back(false);
                             break;
                         }
-                        const IdentId dependency_name_id =
-                            is_valid(symbol->name_id) ? symbol->name_id : this->module_.identifiers.find(symbol->name);
+                        const IdentId dependency_name_id = is_valid(symbol->name_id)
+                            ? symbol->name_id
+                            : this->ctx_.module.identifiers.find(symbol->name);
                         const ModuleLookupKey dependency_key = const_dependency_key(symbol->module, dependency_name_id);
                         if (is_valid(dependency_key)) {
                             dependencies.insert(dependency_key);
@@ -1047,7 +1076,7 @@ bool SemanticAnalyzer::is_const_evaluable_expr(const syntax::ExprId expr_id, Mod
                         bool const_evaluable = false;
                         const std::string_view expr_c_name = this->cached_expr_c_name(frame.expr_id);
                         if (!expr_c_name.empty()) {
-                            for (const auto& entry : this->checked_.enum_cases) {
+                            for (const auto& entry : this->state_.checked.enum_cases) {
                                 if (entry.second.c_name == expr_c_name) {
                                     const_evaluable = true;
                                     break;

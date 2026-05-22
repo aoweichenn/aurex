@@ -1,10 +1,11 @@
-#include <aurex/sema/sema.hpp>
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
 #include <optional>
 #include <utility>
 #include <vector>
+
+#include <sema/internal/sema_core.hpp>
 
 namespace aurex::sema {
 
@@ -319,21 +320,30 @@ void evaluate_control_flow_if_statement(const syntax::AstModule& module, std::ve
 
 } // namespace
 
-struct SemanticAnalyzer::FunctionBodyContextScope {
-    FunctionBodyContextScope(SemanticAnalyzer& analyzer, const syntax::ModuleId module, const TypeHandle return_type,
-        ReturnTypeInference* const return_inference, const int loop_depth, const int unsafe_context_depth,
-        SymbolTable symbols)
-        : analyzer(analyzer), previous_module(analyzer.current_module_),
-          previous_function_return_type(analyzer.current_function_return_type_),
-          previous_return_inference(analyzer.current_return_inference_), previous_loop_depth(analyzer.loop_depth_),
-          previous_unsafe_context_depth(analyzer.unsafe_context_depth_), previous_symbols(std::move(analyzer.symbols_))
+struct SemanticAnalyzerCore::FunctionBodyContextScope {
+    struct Config {
+        syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+        TypeHandle return_type = INVALID_TYPE_HANDLE;
+        ReturnTypeInference* return_inference = nullptr;
+        int loop_depth = SEMA_NO_LOOP_DEPTH;
+        int unsafe_context_depth = 0;
+        SymbolTable symbols;
+    };
+
+    FunctionBodyContextScope(SemanticAnalyzerCore& analyzer, Config config)
+        : analyzer(analyzer), previous_module(analyzer.state_.flow.current_module),
+          previous_function_return_type(analyzer.state_.flow.current_function_return_type),
+          previous_return_inference(analyzer.state_.flow.current_return_inference),
+          previous_loop_depth(analyzer.state_.flow.loop_depth),
+          previous_unsafe_context_depth(analyzer.state_.flow.unsafe_context_depth),
+          previous_symbols(std::move(analyzer.state_.names.symbols))
     {
-        this->analyzer.current_module_ = module;
-        this->analyzer.current_function_return_type_ = return_type;
-        this->analyzer.current_return_inference_ = return_inference;
-        this->analyzer.loop_depth_ = loop_depth;
-        this->analyzer.unsafe_context_depth_ = unsafe_context_depth;
-        this->analyzer.symbols_ = std::move(symbols);
+        this->analyzer.state_.flow.current_module = config.module;
+        this->analyzer.state_.flow.current_function_return_type = config.return_type;
+        this->analyzer.state_.flow.current_return_inference = config.return_inference;
+        this->analyzer.state_.flow.loop_depth = config.loop_depth;
+        this->analyzer.state_.flow.unsafe_context_depth = config.unsafe_context_depth;
+        this->analyzer.state_.names.symbols = std::move(config.symbols);
     }
 
     FunctionBodyContextScope(const FunctionBodyContextScope&) = delete;
@@ -341,15 +351,15 @@ struct SemanticAnalyzer::FunctionBodyContextScope {
 
     ~FunctionBodyContextScope()
     {
-        this->analyzer.current_module_ = this->previous_module;
-        this->analyzer.current_function_return_type_ = this->previous_function_return_type;
-        this->analyzer.current_return_inference_ = this->previous_return_inference;
-        this->analyzer.loop_depth_ = this->previous_loop_depth;
-        this->analyzer.unsafe_context_depth_ = this->previous_unsafe_context_depth;
-        this->analyzer.symbols_ = std::move(this->previous_symbols);
+        this->analyzer.state_.flow.current_module = this->previous_module;
+        this->analyzer.state_.flow.current_function_return_type = this->previous_function_return_type;
+        this->analyzer.state_.flow.current_return_inference = this->previous_return_inference;
+        this->analyzer.state_.flow.loop_depth = this->previous_loop_depth;
+        this->analyzer.state_.flow.unsafe_context_depth = this->previous_unsafe_context_depth;
+        this->analyzer.state_.names.symbols = std::move(this->previous_symbols);
     }
 
-    SemanticAnalyzer& analyzer;
+    SemanticAnalyzerCore& analyzer;
     syntax::ModuleId previous_module;
     TypeHandle previous_function_return_type = INVALID_TYPE_HANDLE;
     ReturnTypeInference* previous_return_inference = nullptr;
@@ -358,17 +368,17 @@ struct SemanticAnalyzer::FunctionBodyContextScope {
     SymbolTable previous_symbols;
 };
 
-void SemanticAnalyzer::analyze_function_body(const syntax::ItemNode& function, const syntax::ItemId function_id)
+void SemanticAnalyzerCore::analyze_function_body(const syntax::ItemNode& function, const syntax::ItemId function_id)
 {
     const FunctionLookupKey key = this->function_key(function, function_id);
-    const auto found = this->checked_.functions.find(key);
-    if (found == this->checked_.functions.end()) {
+    const auto found = this->state_.checked.functions.find(key);
+    if (found == this->state_.checked.functions.end()) {
         return;
     }
-    this->analyze_function_body_with_signature(function, key, found->second, this->function_body_states_[key]);
+    this->analyze_function_body_with_signature(function, key, found->second, this->state_.functions.body_states[key]);
 }
 
-void SemanticAnalyzer::analyze_function_body_with_signature(const syntax::ItemNode& function,
+void SemanticAnalyzerCore::analyze_function_body_with_signature(const syntax::ItemNode& function,
     const FunctionLookupKey& key, const FunctionSignature& signature, FunctionBodyState& state)
 {
     if (signature.has_conflict) {
@@ -390,17 +400,24 @@ void SemanticAnalyzer::analyze_function_body_with_signature(const syntax::ItemNo
     if (infer_return_type) {
         expected_return = INVALID_TYPE_HANDLE;
     }
-    FunctionBodyContextScope context(*this, signature.module, expected_return,
-        infer_return_type ? &return_inference : nullptr, SEMA_NO_LOOP_DEPTH,
-        signature.is_unsafe ? this->unsafe_context_depth_ + 1 : this->unsafe_context_depth_, SymbolTable{});
+    FunctionBodyContextScope context(*this,
+        FunctionBodyContextScope::Config{
+            .module = signature.module,
+            .return_type = expected_return,
+            .return_inference = infer_return_type ? &return_inference : nullptr,
+            .loop_depth = SEMA_NO_LOOP_DEPTH,
+            .unsafe_context_depth = signature.is_unsafe ? this->state_.flow.unsafe_context_depth + 1
+                                                        : this->state_.flow.unsafe_context_depth,
+            .symbols = SymbolTable{},
+        });
 
-    this->symbols_.push_scope(function.params.size());
+    this->state_.names.symbols.push_scope(function.params.size());
     for (base::usize i = 0; i < function.params.size(); ++i) {
         const syntax::ParamDecl& param = function.params[i];
         const TypeHandle param_type =
             i < signature.param_types.size() ? signature.param_types[i] : this->resolve_type(param.type);
         static_cast<void>(this->can_define_local_name(param.name_id, param.name, param.range));
-        const auto inserted = this->symbols_.insert(
+        const auto inserted = this->state_.names.symbols.insert(
             Symbol{
                 SymbolKind::parameter,
                 this->source_name_text(param.name_id, param.name),
@@ -413,46 +430,47 @@ void SemanticAnalyzer::analyze_function_body_with_signature(const syntax::ItemNo
                 syntax::Visibility::private_,
                 {},
             },
-            this->diagnostics_);
+            this->ctx_.diagnostics);
         static_cast<void>(inserted);
     }
     this->analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
-    this->symbols_.pop_scope();
+    this->state_.names.symbols.pop_scope();
     if (infer_return_type) {
         this->finalize_inferred_return(function, key, return_inference);
-        if (is_valid(return_inference.inferred_type) && !this->checked_.types.is_void(return_inference.inferred_type)
+        if (is_valid(return_inference.inferred_type)
+            && !this->state_.checked.types.is_void(return_inference.inferred_type)
             && !this->block_guarantees_return(function.body)) {
             this->report_general(function.range, std::string(SEMA_NOT_ALL_PATHS_RETURN));
         }
-    } else if (is_valid(expected_return) && !this->checked_.types.is_void(expected_return)
+    } else if (is_valid(expected_return) && !this->state_.checked.types.is_void(expected_return)
         && !this->block_guarantees_return(function.body)) {
         this->report_general(function.range, std::string(SEMA_NOT_ALL_PATHS_RETURN));
     }
     state = FunctionBodyState::analyzed;
 }
 
-void SemanticAnalyzer::analyze_block(
+void SemanticAnalyzerCore::analyze_block(
     const syntax::StmtId block, const TypeHandle expected_return, ReturnTypeInference* const return_inference)
 {
     this->analyze_statement_tree(block, expected_return, return_inference, StatementAnalysisRootKind::scoped_block);
 }
 
-void SemanticAnalyzer::analyze_block_statements(
+void SemanticAnalyzerCore::analyze_block_statements(
     const syntax::StmtId block, const TypeHandle expected_return, ReturnTypeInference* const return_inference)
 {
     this->analyze_statement_tree(block, expected_return, return_inference, StatementAnalysisRootKind::block_statements);
 }
 
-TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr_id)
+TypeHandle SemanticAnalyzerCore::analyze_assignment_target(const syntax::ExprId expr_id)
 {
-    if (!syntax::is_valid(expr_id) || expr_id.value >= this->module_.exprs.size()) {
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->ctx_.module.exprs.size()) {
         return INVALID_TYPE_HANDLE;
     }
-    const syntax::NameExprPayload* const expr = this->module_.exprs.name_payload(expr_id.value);
+    const syntax::NameExprPayload* const expr = this->ctx_.module.exprs.name_payload(expr_id.value);
     if (expr == nullptr || !expr->scope_name.empty()) {
         return this->analyze_expr(expr_id);
     }
-    const base::SourceRange expr_range = this->module_.exprs.range(expr_id.value);
+    const base::SourceRange expr_range = this->ctx_.module.exprs.range(expr_id.value);
     const Symbol* symbol = this->find_symbol(expr->text_id, expr->text, expr_range);
     if (symbol == nullptr) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
@@ -465,13 +483,13 @@ TypeHandle SemanticAnalyzer::analyze_assignment_target(const syntax::ExprId expr
     return this->record_expr_type(expr_id, symbol->type);
 }
 
-void SemanticAnalyzer::analyze_stmt(
+void SemanticAnalyzerCore::analyze_stmt(
     const syntax::StmtId stmt_id, const TypeHandle expected_return, ReturnTypeInference* const return_inference)
 {
     this->analyze_statement_tree(stmt_id, expected_return, return_inference, StatementAnalysisRootKind::statement);
 }
 
-void SemanticAnalyzer::analyze_statement_tree(const syntax::StmtId root, const TypeHandle expected_return,
+void SemanticAnalyzerCore::analyze_statement_tree(const syntax::StmtId root, const TypeHandle expected_return,
     ReturnTypeInference* const return_inference, const StatementAnalysisRootKind root_kind)
 {
     std::vector<StatementAnalysisAction> stack;
@@ -494,7 +512,7 @@ void SemanticAnalyzer::analyze_statement_tree(const syntax::StmtId root, const T
     }
 }
 
-void SemanticAnalyzer::analyze_statement_action(const StatementAnalysisAction& action,
+void SemanticAnalyzerCore::analyze_statement_action(const StatementAnalysisAction& action,
     std::vector<StatementAnalysisAction>& stack, const TypeHandle expected_return,
     ReturnTypeInference* const return_inference)
 {
@@ -503,7 +521,7 @@ void SemanticAnalyzer::analyze_statement_action(const StatementAnalysisAction& a
             this->analyze_statement_node(action.stmt, stack, expected_return, return_inference);
             break;
         case StatementAnalysisActionKind::scoped_block:
-            this->symbols_.push_scope();
+            this->state_.names.symbols.push_scope();
             stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::pop_scope});
             stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::block_statements, action.stmt});
             break;
@@ -517,13 +535,13 @@ void SemanticAnalyzer::analyze_statement_action(const StatementAnalysisAction& a
             this->analyze_statement_block(action.stmt, stack);
             break;
         case StatementAnalysisActionKind::pop_scope:
-            this->symbols_.pop_scope();
+            this->state_.names.symbols.pop_scope();
             break;
         case StatementAnalysisActionKind::enter_loop:
-            ++this->loop_depth_;
+            ++this->state_.flow.loop_depth;
             break;
         case StatementAnalysisActionKind::exit_loop:
-            --this->loop_depth_;
+            --this->state_.flow.loop_depth;
             break;
         case StatementAnalysisActionKind::for_condition:
             this->analyze_for_condition(action.stmt);
@@ -531,13 +549,14 @@ void SemanticAnalyzer::analyze_statement_action(const StatementAnalysisAction& a
     }
 }
 
-void SemanticAnalyzer::analyze_statement_block(
+void SemanticAnalyzerCore::analyze_statement_block(
     const syntax::StmtId block, std::vector<StatementAnalysisAction>& stack) const
 {
-    if (!syntax::is_valid(block) || block.value >= this->module_.stmts.size()) {
+    if (!syntax::is_valid(block) || block.value >= this->ctx_.module.stmts.size()) {
         return;
     }
-    const syntax::AstArenaVector<syntax::StmtId>* const statements = this->module_.stmts.block_statements(block.value);
+    const syntax::AstArenaVector<syntax::StmtId>* const statements =
+        this->ctx_.module.stmts.block_statements(block.value);
     if (statements == nullptr) {
         return;
     }
@@ -549,31 +568,31 @@ void SemanticAnalyzer::analyze_statement_block(
     }
 }
 
-void SemanticAnalyzer::analyze_pattern_scoped_block(const syntax::PatternId pattern, const TypeHandle pattern_type,
+void SemanticAnalyzerCore::analyze_pattern_scoped_block(const syntax::PatternId pattern, const TypeHandle pattern_type,
     const syntax::StmtId block, std::vector<StatementAnalysisAction>& stack)
 {
     std::vector<PatternBinding> bindings;
     static_cast<void>(this->analyze_pattern(pattern, pattern_type, bindings));
-    this->symbols_.push_scope(bindings.size());
+    this->state_.names.symbols.push_scope(bindings.size());
     this->define_pattern_bindings(bindings, false);
     stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::pop_scope});
     stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::block_statements, block});
 }
 
-void SemanticAnalyzer::analyze_for_condition(const syntax::StmtId stmt_id)
+void SemanticAnalyzerCore::analyze_for_condition(const syntax::StmtId stmt_id)
 {
-    const std::optional<syntax::StmtNode> stmt = statement_node(this->module_, stmt_id);
+    const std::optional<syntax::StmtNode> stmt = statement_node(this->ctx_.module, stmt_id);
     if (!stmt.has_value() || stmt->kind != syntax::StmtKind::for_ || !syntax::is_valid(stmt->condition)) {
         return;
     }
     const TypeHandle condition = this->analyze_expr(stmt->condition);
-    if (!this->checked_.types.is_bool(condition)) {
+    if (!this->state_.checked.types.is_bool(condition)) {
         this->report_general(
-            expr_range_or(this->module_, stmt->condition, stmt->range), std::string(SEMA_FOR_CONDITION_BOOL));
+            expr_range_or(this->ctx_.module, stmt->condition, stmt->range), std::string(SEMA_FOR_CONDITION_BOOL));
     }
 }
 
-TypeHandle SemanticAnalyzer::analyze_for_range_bounds(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
+TypeHandle SemanticAnalyzerCore::analyze_for_range_bounds(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
 {
     if (!syntax::is_valid(stmt.range_end)) {
         this->record_stmt_local_type(stmt_id, INVALID_TYPE_HANDLE);
@@ -604,7 +623,7 @@ TypeHandle SemanticAnalyzer::analyze_for_range_bounds(const syntax::StmtId stmt_
     std::vector<TypeHandle> operand_types(operands.size(), INVALID_TYPE_HANDLE);
     TypeHandle range_type = INVALID_TYPE_HANDLE;
     for (base::usize i = 0; i < operands.size(); ++i) {
-        if (!statement_contextual_integer_expr(this->module_, operands[i])) {
+        if (!statement_contextual_integer_expr(this->ctx_.module, operands[i])) {
             operand_types[i] = this->analyze_expr(operands[i]);
             range_type = operand_types[i];
             break;
@@ -624,38 +643,39 @@ TypeHandle SemanticAnalyzer::analyze_for_range_bounds(const syntax::StmtId stmt_
     const TypeHandle start = has_start ? operand_types[start_index] : end;
     const TypeHandle step = has_step ? operand_types[step_index] : range_type;
 
-    if (syntax::is_valid(stmt.range_start) && !this->checked_.types.is_integer(start)) {
+    if (syntax::is_valid(stmt.range_start) && !this->state_.checked.types.is_integer(start)) {
         this->report_general(
-            expr_range_or(this->module_, stmt.range_start, stmt.range), std::string(SEMA_RANGE_BOUNDS_INTEGER));
+            expr_range_or(this->ctx_.module, stmt.range_start, stmt.range), std::string(SEMA_RANGE_BOUNDS_INTEGER));
     }
-    if (!this->checked_.types.is_integer(end)) {
+    if (!this->state_.checked.types.is_integer(end)) {
         this->report_general(
-            expr_range_or(this->module_, stmt.range_end, stmt.range), std::string(SEMA_RANGE_BOUNDS_INTEGER));
+            expr_range_or(this->ctx_.module, stmt.range_end, stmt.range), std::string(SEMA_RANGE_BOUNDS_INTEGER));
     }
-    if (has_step && !this->checked_.types.is_integer(step)) {
+    if (has_step && !this->state_.checked.types.is_integer(step)) {
         this->report_general(
-            expr_range_or(this->module_, stmt.range_step, stmt.range), std::string(SEMA_RANGE_STEP_INTEGER));
+            expr_range_or(this->ctx_.module, stmt.range_step, stmt.range), std::string(SEMA_RANGE_STEP_INTEGER));
     }
-    const bool bounds_have_same_type = is_valid(start) && is_valid(end) && this->checked_.types.same(start, end);
+    const bool bounds_have_same_type = is_valid(start) && is_valid(end) && this->state_.checked.types.same(start, end);
     if (is_valid(start) && is_valid(end) && !bounds_have_same_type) {
         this->report_general(stmt.range, std::string(SEMA_RANGE_BOUNDS_SAME_TYPE));
     }
-    if (has_step && bounds_have_same_type && this->checked_.types.is_integer(start)
-        && this->checked_.types.is_integer(step) && !this->checked_.types.same(start, step)) {
+    if (has_step && bounds_have_same_type && this->state_.checked.types.is_integer(start)
+        && this->state_.checked.types.is_integer(step) && !this->state_.checked.types.same(start, step)) {
         this->report_general(
-            expr_range_or(this->module_, stmt.range_step, stmt.range), std::string(SEMA_RANGE_STEP_SAME_TYPE));
+            expr_range_or(this->ctx_.module, stmt.range_step, stmt.range), std::string(SEMA_RANGE_STEP_SAME_TYPE));
     }
 
-    const TypeHandle local_type =
-        this->checked_.types.is_integer(start) ? start : (this->checked_.types.is_integer(end) ? end : step);
+    const TypeHandle local_type = this->state_.checked.types.is_integer(start)
+        ? start
+        : (this->state_.checked.types.is_integer(end) ? end : step);
     this->record_stmt_local_type(stmt_id, local_type);
     return local_type;
 }
 
-void SemanticAnalyzer::define_for_range_local(const syntax::StmtNode& stmt, const TypeHandle type)
+void SemanticAnalyzerCore::define_for_range_local(const syntax::StmtNode& stmt, const TypeHandle type)
 {
     static_cast<void>(this->can_define_local_name(stmt.name_id, stmt.name, stmt.range));
-    const auto inserted = this->symbols_.insert(
+    const auto inserted = this->state_.names.symbols.insert(
         Symbol{
             SymbolKind::local,
             this->source_name_text(stmt.name_id, stmt.name),
@@ -668,26 +688,27 @@ void SemanticAnalyzer::define_for_range_local(const syntax::StmtNode& stmt, cons
             syntax::Visibility::private_,
             {},
         },
-        this->diagnostics_);
+        this->ctx_.diagnostics);
     static_cast<void>(inserted);
 }
 
-void SemanticAnalyzer::define_local_pattern(
+void SemanticAnalyzerCore::define_local_pattern(
     const syntax::PatternId pattern_id, const TypeHandle type, const bool is_mutable, const bool allow_refutable)
 {
     std::vector<PatternBinding> bindings;
     if (!this->analyze_pattern(pattern_id, type, bindings) && !allow_refutable) {
-        const syntax::PatternNode* pattern = this->module_.patterns.ptr(pattern_id.value);
+        const syntax::PatternNode* pattern = this->ctx_.module.patterns.ptr(pattern_id.value);
         this->report_pattern(
             pattern == nullptr ? base::SourceRange{} : pattern->range, std::string(SEMA_LOCAL_PATTERN_REFUTABLE));
     }
     this->define_pattern_bindings(bindings, is_mutable);
 }
 
-void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std::vector<StatementAnalysisAction>& stack,
-    const TypeHandle expected_return, ReturnTypeInference* const return_inference)
+void SemanticAnalyzerCore::analyze_statement_node(const syntax::StmtId stmt_id,
+    std::vector<StatementAnalysisAction>& stack, const TypeHandle expected_return,
+    ReturnTypeInference* const return_inference)
 {
-    const std::optional<syntax::StmtNode> stmt_ptr = statement_node(this->module_, stmt_id);
+    const std::optional<syntax::StmtNode> stmt_ptr = statement_node(this->ctx_.module, stmt_id);
     if (!stmt_ptr.has_value()) {
         return;
     }
@@ -739,7 +760,7 @@ void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std:
                 stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::scoped_block, stmt.else_block});
             }
             static_cast<void>(this->can_define_local_name(stmt.name_id, stmt.name, stmt.range));
-            const auto inserted = this->symbols_.insert(
+            const auto inserted = this->state_.names.symbols.insert(
                 Symbol{
                     SymbolKind::local,
                     this->source_name_text(stmt.name_id, stmt.name),
@@ -752,7 +773,7 @@ void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std:
                     syntax::Visibility::private_,
                     {},
                 },
-                this->diagnostics_);
+                this->ctx_.diagnostics);
             static_cast<void>(inserted);
             break;
         }
@@ -760,7 +781,7 @@ void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std:
             const TypeHandle lhs = this->analyze_assignment_target(stmt.lhs);
             if (!this->is_writable_place(stmt.lhs)) {
                 this->report_general(
-                    expr_range_or(this->module_, stmt.lhs, stmt.range), std::string(SEMA_ASSIGNMENT_LHS_WRITABLE));
+                    expr_range_or(this->ctx_.module, stmt.lhs, stmt.range), std::string(SEMA_ASSIGNMENT_LHS_WRITABLE));
             }
             syntax::BinaryOp binary_op = syntax::BinaryOp::add;
             if (compound_assignment_binary_op(stmt.assign_op, binary_op)) {
@@ -786,9 +807,9 @@ void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std:
         }
         case syntax::StmtKind::if_: {
             const TypeHandle condition = this->analyze_expr(stmt.condition);
-            if (!syntax::is_valid(stmt.pattern) && !this->checked_.types.is_bool(condition)) {
+            if (!syntax::is_valid(stmt.pattern) && !this->state_.checked.types.is_bool(condition)) {
                 this->report_general(
-                    expr_range_or(this->module_, stmt.condition, stmt.range), std::string(SEMA_IF_CONDITION_BOOL));
+                    expr_range_or(this->ctx_.module, stmt.condition, stmt.range), std::string(SEMA_IF_CONDITION_BOOL));
             }
             if (syntax::is_valid(stmt.else_if)) {
                 stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::statement, stmt.else_if});
@@ -811,9 +832,9 @@ void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std:
         }
         case syntax::StmtKind::while_: {
             const TypeHandle condition = this->analyze_expr(stmt.condition);
-            if (!syntax::is_valid(stmt.pattern) && !this->checked_.types.is_bool(condition)) {
-                this->report_general(
-                    expr_range_or(this->module_, stmt.condition, stmt.range), std::string(SEMA_WHILE_CONDITION_BOOL));
+            if (!syntax::is_valid(stmt.pattern) && !this->state_.checked.types.is_bool(condition)) {
+                this->report_general(expr_range_or(this->ctx_.module, stmt.condition, stmt.range),
+                    std::string(SEMA_WHILE_CONDITION_BOOL));
             }
             stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::exit_loop});
             if (syntax::is_valid(stmt.pattern)) {
@@ -831,7 +852,7 @@ void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std:
             break;
         }
         case syntax::StmtKind::for_: {
-            this->symbols_.push_scope(1);
+            this->state_.names.symbols.push_scope(1);
             stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::pop_scope});
             stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::exit_loop});
             if (syntax::is_valid(stmt.for_update)) {
@@ -847,7 +868,7 @@ void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std:
         }
         case syntax::StmtKind::for_range: {
             const TypeHandle range_type = this->analyze_for_range_bounds(stmt_id, stmt);
-            this->symbols_.push_scope(1);
+            this->state_.names.symbols.push_scope(1);
             this->define_for_range_local(stmt, range_type);
             stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::pop_scope});
             stack.push_back(StatementAnalysisAction{StatementAnalysisActionKind::exit_loop});
@@ -858,7 +879,7 @@ void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std:
         case syntax::StmtKind::return_: {
             const TypeHandle actual = syntax::is_valid(stmt.return_value)
                 ? this->analyze_expr(stmt.return_value, expected_return)
-                : this->checked_.types.builtin(BuiltinType::void_);
+                : this->state_.checked.types.builtin(BuiltinType::void_);
             if (return_inference != nullptr) {
                 this->record_inferred_return(stmt_id, actual, *return_inference);
             } else if (is_valid(actual) && is_valid(expected_return)
@@ -869,10 +890,10 @@ void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std:
         }
         case syntax::StmtKind::expr:
             static_cast<void>(this->analyze_expr(stmt.init));
-            if (syntax::is_valid(stmt.init) && stmt.init.value < this->module_.exprs.size()
-                && !is_allowed_expression_statement(this->module_, stmt.init)) {
+            if (syntax::is_valid(stmt.init) && stmt.init.value < this->ctx_.module.exprs.size()
+                && !is_allowed_expression_statement(this->ctx_.module, stmt.init)) {
                 this->report_general(
-                    this->module_.exprs.range(stmt.init.value), std::string(SEMA_EXPR_STMT_CALL_OR_TRY));
+                    this->ctx_.module.exprs.range(stmt.init.value), std::string(SEMA_EXPR_STMT_CALL_OR_TRY));
             }
             break;
         case syntax::StmtKind::block:
@@ -880,14 +901,14 @@ void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std:
             break;
         case syntax::StmtKind::break_:
         case syntax::StmtKind::continue_:
-            if (this->loop_depth_ == SEMA_NO_LOOP_DEPTH) {
+            if (this->state_.flow.loop_depth == SEMA_NO_LOOP_DEPTH) {
                 this->report_general(stmt.range, std::string(SEMA_BREAK_CONTINUE_IN_LOOP));
             }
             break;
         case syntax::StmtKind::defer:
             static_cast<void>(this->analyze_expr(stmt.init));
-            if (!syntax::is_valid(stmt.init) || stmt.init.value >= this->module_.exprs.size()
-                || this->module_.exprs.kind(stmt.init.value) != syntax::ExprKind::call) {
+            if (!syntax::is_valid(stmt.init) || stmt.init.value >= this->ctx_.module.exprs.size()
+                || this->ctx_.module.exprs.kind(stmt.init.value) != syntax::ExprKind::call) {
                 this->report_general(stmt.range, std::string(SEMA_DEFER_CALL));
                 break;
             }
@@ -895,36 +916,36 @@ void SemanticAnalyzer::analyze_statement_node(const syntax::StmtId stmt_id, std:
     }
 }
 
-bool SemanticAnalyzer::block_guarantees_return(const syntax::StmtId block_id) const
+bool SemanticAnalyzerCore::block_guarantees_return(const syntax::StmtId block_id) const
 {
     return evaluate_control_flow(
-        this->module_, block_id, ControlFlowFrameKind::block, ControlFlowQuery::guarantees_return);
+        this->ctx_.module, block_id, ControlFlowFrameKind::block, ControlFlowQuery::guarantees_return);
 }
 
-bool SemanticAnalyzer::stmt_guarantees_return(const syntax::StmtId stmt_id) const
+bool SemanticAnalyzerCore::stmt_guarantees_return(const syntax::StmtId stmt_id) const
 {
     return evaluate_control_flow(
-        this->module_, stmt_id, ControlFlowFrameKind::statement, ControlFlowQuery::guarantees_return);
+        this->ctx_.module, stmt_id, ControlFlowFrameKind::statement, ControlFlowQuery::guarantees_return);
 }
 
-bool SemanticAnalyzer::block_may_fallthrough(const syntax::StmtId block_id) const
+bool SemanticAnalyzerCore::block_may_fallthrough(const syntax::StmtId block_id) const
 {
     return evaluate_control_flow(
-        this->module_, block_id, ControlFlowFrameKind::block, ControlFlowQuery::may_fallthrough);
+        this->ctx_.module, block_id, ControlFlowFrameKind::block, ControlFlowQuery::may_fallthrough);
 }
 
-bool SemanticAnalyzer::stmt_may_fallthrough(const syntax::StmtId stmt_id) const
+bool SemanticAnalyzerCore::stmt_may_fallthrough(const syntax::StmtId stmt_id) const
 {
     return evaluate_control_flow(
-        this->module_, stmt_id, ControlFlowFrameKind::statement, ControlFlowQuery::may_fallthrough);
+        this->ctx_.module, stmt_id, ControlFlowFrameKind::statement, ControlFlowQuery::may_fallthrough);
 }
 
-void SemanticAnalyzer::record_inferred_return(
+void SemanticAnalyzerCore::record_inferred_return(
     const syntax::StmtId stmt_id, const TypeHandle actual, ReturnTypeInference& inference)
 {
     inference.returns.push_back(stmt_id);
     if (!is_valid(actual)) {
-        const std::optional<syntax::StmtNode> stmt = statement_node(this->module_, stmt_id);
+        const std::optional<syntax::StmtNode> stmt = statement_node(this->ctx_.module, stmt_id);
         if (stmt.has_value() && this->is_null_result_expr(stmt->return_value)) {
             inference.pending_null_returns.push_back(stmt_id);
             return;
@@ -936,32 +957,33 @@ void SemanticAnalyzer::record_inferred_return(
         inference.inferred_type = actual;
         return;
     }
-    if (!this->checked_.types.same(inference.inferred_type, actual)) {
+    if (!this->state_.checked.types.same(inference.inferred_type, actual)) {
         this->report_return_inference_diagnostic(stmt_id, SEMA_INFERRED_RETURN_TYPE_MISMATCH);
     }
 }
 
-void SemanticAnalyzer::finalize_inferred_return(
+void SemanticAnalyzerCore::finalize_inferred_return(
     const syntax::ItemNode& function, const FunctionLookupKey& key, ReturnTypeInference& inference)
 {
     this->resolve_pending_null_returns(inference);
     TypeHandle return_type = inference.inferred_type;
     if (inference.returns.empty()) {
-        return_type = this->checked_.types.builtin(BuiltinType::void_);
+        return_type = this->state_.checked.types.builtin(BuiltinType::void_);
     }
     if (!is_valid(return_type)) {
-        return_type = this->checked_.types.builtin(BuiltinType::void_);
+        return_type = this->state_.checked.types.builtin(BuiltinType::void_);
     }
     this->validate_function_return_type(function, return_type);
-    if (const auto found = this->checked_.functions.find(key); found != this->checked_.functions.end()) {
+    if (const auto found = this->state_.checked.functions.find(key); found != this->state_.checked.functions.end()) {
         found->second.return_type = return_type;
-        if (const auto global = this->global_values_.find(key); global != this->global_values_.end()) {
+        if (const auto global = this->state_.functions.global_values.find(key);
+            global != this->state_.functions.global_values.end()) {
             global->second.type = this->function_type_from_signature(found->second);
         }
     }
 }
 
-void SemanticAnalyzer::resolve_pending_null_returns(ReturnTypeInference& inference)
+void SemanticAnalyzerCore::resolve_pending_null_returns(ReturnTypeInference& inference)
 {
     if (inference.pending_null_returns.empty()) {
         return;
@@ -970,14 +992,14 @@ void SemanticAnalyzer::resolve_pending_null_returns(ReturnTypeInference& inferen
         this->report_return_inference_diagnostic(inference.pending_null_returns.front(), SEMA_RETURN_TYPE_INFER);
         return;
     }
-    if (!this->checked_.types.is_pointer(inference.inferred_type)) {
+    if (!this->state_.checked.types.is_pointer(inference.inferred_type)) {
         for (const syntax::StmtId stmt_id : inference.pending_null_returns) {
             this->report_return_inference_diagnostic(stmt_id, SEMA_INFERRED_RETURN_TYPE_MISMATCH);
         }
         return;
     }
     for (const syntax::StmtId stmt_id : inference.pending_null_returns) {
-        const std::optional<syntax::StmtNode> stmt = statement_node(this->module_, stmt_id);
+        const std::optional<syntax::StmtNode> stmt = statement_node(this->ctx_.module, stmt_id);
         if (!stmt.has_value() || !syntax::is_valid(stmt->return_value)) {
             continue;
         }
@@ -988,23 +1010,23 @@ void SemanticAnalyzer::resolve_pending_null_returns(ReturnTypeInference& inferen
     }
 }
 
-void SemanticAnalyzer::report_return_inference_diagnostic(
+void SemanticAnalyzerCore::report_return_inference_diagnostic(
     const syntax::StmtId stmt_id, const std::string_view message) const
 {
-    const std::optional<syntax::StmtNode> stmt = statement_node(this->module_, stmt_id);
+    const std::optional<syntax::StmtNode> stmt = statement_node(this->ctx_.module, stmt_id);
     if (!stmt.has_value()) {
         return;
     }
     this->report_general(stmt->range, std::string(message));
 }
 
-void SemanticAnalyzer::validate_function_return_type(
+void SemanticAnalyzerCore::validate_function_return_type(
     const syntax::ItemNode& function, const TypeHandle return_type) const
 {
     static_cast<void>(this->check_m2_value_abi(return_type, ValueAbiContext::return_value, function.range));
 }
 
-void SemanticAnalyzer::ensure_function_return_known(
+void SemanticAnalyzerCore::ensure_function_return_known(
     const FunctionSignature& signature, const base::SourceRange& use_range)
 {
     if (is_valid(signature.return_type) || signature.is_extern_c) {
@@ -1016,19 +1038,20 @@ void SemanticAnalyzer::ensure_function_return_known(
             ? this->method_function_lookup_key(signature.module, signature.method_owner_type, signature.name_id)
             : this->function_lookup_key(signature.module, signature.name_id);
     }
-    const FunctionBodyState state = this->function_body_states_.contains(key) ? this->function_body_states_.at(key)
-                                                                              : FunctionBodyState::not_started;
+    const FunctionBodyState state = this->state_.functions.body_states.contains(key)
+        ? this->state_.functions.body_states.at(key)
+        : FunctionBodyState::not_started;
     if (state == FunctionBodyState::analyzing) {
         this->report_general(use_range, std::string(SEMA_RECURSIVE_RETURN_INFER));
         return;
     }
-    const auto item_found = this->function_definition_items_.find(key);
-    if (item_found == this->function_definition_items_.end() || !syntax::is_valid(item_found->second)
-        || item_found->second.value >= this->module_.items.size()) {
+    const auto item_found = this->state_.functions.definition_items.find(key);
+    if (item_found == this->state_.functions.definition_items.end() || !syntax::is_valid(item_found->second)
+        || item_found->second.value >= this->ctx_.module.items.size()) {
         this->report_general(use_range, std::string(SEMA_RETURN_TYPE_INFER));
         return;
     }
-    this->analyze_function_body(this->module_.items[item_found->second.value], item_found->second);
+    this->analyze_function_body(this->ctx_.module.items[item_found->second.value], item_found->second);
 }
 
 } // namespace aurex::sema

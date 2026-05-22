@@ -1,5 +1,5 @@
+#include <aurex/sema/checked_module.hpp>
 #include <aurex/sema/function_registry.hpp>
-#include <aurex/sema/sema.hpp>
 #include <aurex/sema/sema_messages.hpp>
 #include <aurex/sema/symbol.hpp>
 
@@ -9,12 +9,12 @@ namespace aurex::sema {
 
 namespace {
 
-[[nodiscard]] std::string abi_or_c_name(const syntax::ItemNode& item, const std::string& c_name)
+[[nodiscard]] std::string abi_or_c_name(const syntax::ItemNode& item, const std::string_view c_name)
 {
     if (!item.abi_name.empty()) {
         return std::string(item.abi_name);
     }
-    return c_name;
+    return std::string(c_name);
 }
 
 [[nodiscard]] FunctionCallConv signature_call_conv(const FunctionSignature& signature) noexcept
@@ -37,24 +37,22 @@ FunctionRegistry::FunctionRegistry(CheckedModule& checked,
 {
 }
 
-void FunctionRegistry::register_function(const syntax::ItemNode& item, const syntax::ModuleId owner,
-    const FunctionLookupKey key, const std::string& c_name, const TypeHandle method_owner_type,
-    const TypeHandle return_type, const std::span<const TypeHandle> param_types, const syntax::ItemId item_id,
-    const StableDefId& stable_id, const IncrementalKey& incremental_key)
+void FunctionRegistry::register_function(const FunctionRegistrationRequest& request)
 {
+    const syntax::ItemNode& item = request.item;
     const bool is_prototype = item.is_prototype;
 
     FunctionSignature signature = this->checked_.make_function_signature();
     signature.name = this->source_name_text(item.name_id, item.name);
     signature.name_id = item.name_id;
-    signature.semantic_key = key;
-    signature.stable_id = stable_id;
-    signature.incremental_key = incremental_key;
-    signature.c_name = this->checked_.intern_text(abi_or_c_name(item, c_name));
-    signature.module = owner;
-    signature.method_owner_type = method_owner_type;
-    signature.return_type = return_type;
-    signature.param_types = this->checked_.copy_type_handle_list(param_types);
+    signature.semantic_key = request.key;
+    signature.stable_id = request.stable_id;
+    signature.incremental_key = request.incremental_key;
+    signature.c_name = this->checked_.intern_text(abi_or_c_name(item, request.c_name));
+    signature.module = request.owner;
+    signature.method_owner_type = request.method_owner_type;
+    signature.return_type = request.return_type;
+    signature.param_types = this->checked_.copy_type_handle_list(request.param_types);
     signature.range = item.range;
     signature.is_extern_c = item.is_extern_c;
     signature.is_export_c = item.is_export_c;
@@ -65,14 +63,14 @@ void FunctionRegistry::register_function(const syntax::ItemNode& item, const syn
     signature.is_method = syntax::is_valid(item.impl_type);
     signature.has_self_param = signature.is_method && !item.params.empty() && item.params.front().name == "self";
     signature.visibility = item.visibility;
-    signature.prototype_item = is_prototype ? item_id : syntax::INVALID_ITEM_ID;
-    signature.definition_item = signature.has_definition ? item_id : syntax::INVALID_ITEM_ID;
+    signature.prototype_item = is_prototype ? request.item_id : syntax::INVALID_ITEM_ID;
+    signature.definition_item = signature.has_definition ? request.item_id : syntax::INVALID_ITEM_ID;
 
-    if (syntax::is_valid(item_id) && item_id.value < this->checked_.item_c_name_ids.size()) {
-        this->checked_.item_c_name_ids[item_id.value] = signature.c_name.id;
+    if (syntax::is_valid(request.item_id) && request.item_id.value < this->checked_.item_c_name_ids.size()) {
+        this->checked_.item_c_name_ids[request.item_id.value] = signature.c_name.id;
     }
 
-    this->merge_function(key, std::move(signature), is_prototype);
+    this->merge_function(request.key, std::move(signature), is_prototype);
 }
 
 void FunctionRegistry::merge_function(const FunctionLookupKey key, FunctionSignature signature, const bool is_prototype)

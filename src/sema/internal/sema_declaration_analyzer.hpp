@@ -1,0 +1,29 @@
+#pragma once
+
+#include <sema/internal/sema_core.hpp>
+
+namespace aurex::sema {
+
+class SemanticAnalyzerCore::DeclarationAnalyzer final {
+public:
+    explicit DeclarationAnalyzer(SemanticAnalyzerCore& core) noexcept;
+
+    void validate_module_namespace_conflicts() const;
+    void register_type_names();
+    void resolve_type_alias_decls();
+    void register_enum_cases_for_item(const syntax::ItemNode& item, const syntax::ModuleId owner,
+        const TypeHandle named_enum_type, std::string enum_display_name, const std::string& case_prefix,
+        const std::string& c_prefix, const syntax::Visibility visibility);
+    void register_value_names();
+    void validate_function_prototypes() const;
+    void validate_abi_symbols() const;
+    void analyze_entry_points() const;
+    void analyze_struct_properties();
+    void analyze_const_decls();
+    bool is_const_evaluable_expr(const syntax::ExprId expr_id, ModuleLookupSet& dependencies);
+
+private:
+    SemanticAnalyzerCore& core_;
+};
+
+} // namespace aurex::sema

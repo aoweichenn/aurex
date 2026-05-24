@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <sema/internal/sema_core.hpp>
+#include <sema/internal/sema_lookup_indexer.hpp>
 
 namespace aurex::sema {
 
@@ -511,278 +512,6 @@ MethodLookupKey SemanticAnalyzerCore::find_method_lookup_key(
     return this->method_lookup_key(module, owner_type, name);
 }
 
-void SemanticAnalyzerCore::index_named_type(
-    const syntax::ModuleId module, const IdentId name_id, const TypeHandle type, const syntax::Visibility visibility)
-{
-    const ModuleLookupKey key = this->intern_module_lookup_key(module, name_id);
-    this->state_.names.named_types_by_name[key] = IndexedTypeInfo{type, visibility};
-}
-
-void SemanticAnalyzerCore::index_type_alias(const TypeAliasInfo& info)
-{
-    const ModuleLookupKey key = this->intern_module_lookup_key(info.module, info.name_id);
-    this->state_.names.type_aliases_by_name[key] = &info;
-}
-
-void SemanticAnalyzerCore::index_generic_struct_template(const GenericTemplateInfo& info)
-{
-    const ModuleLookupKey key = this->intern_module_lookup_key(info.module, info.name_id);
-    this->state_.names.generic_struct_templates_by_name[key] = &info;
-}
-
-void SemanticAnalyzerCore::index_generic_enum_template(const GenericTemplateInfo& info)
-{
-    const ModuleLookupKey key = this->intern_module_lookup_key(info.module, info.name_id);
-    this->state_.names.generic_enum_templates_by_name[key] = &info;
-}
-
-void SemanticAnalyzerCore::index_generic_type_alias_template(const GenericTemplateInfo& info)
-{
-    const ModuleLookupKey key = this->intern_module_lookup_key(info.module, info.name_id);
-    this->state_.names.generic_type_alias_templates_by_name[key] = &info;
-}
-
-void SemanticAnalyzerCore::index_generic_function_template(const GenericTemplateInfo& info)
-{
-    const ModuleLookupKey key = this->intern_module_lookup_key(info.module, info.name_id);
-    this->state_.names.generic_function_templates_by_name[key] = &info;
-}
-
-void SemanticAnalyzerCore::index_generic_method_template(const GenericTemplateInfo& info)
-{
-    const ModuleLookupKey key = this->intern_module_lookup_key(info.module, info.name_id);
-    this->generic_method_template_bucket(key).push_back(&info);
-    this->state_.names.generic_method_lookup_indexed_count += 1;
-}
-
-void SemanticAnalyzerCore::index_function_lookup(const FunctionSignature& signature)
-{
-    if (signature.is_method) {
-        this->index_method_lookup(signature.module, signature.method_owner_type, signature.name_id, signature);
-        return;
-    }
-    const ModuleLookupKey key = this->intern_module_lookup_key(signature.module, signature.name_id);
-    this->state_.names.functions_by_name[key] = &signature;
-}
-
-void SemanticAnalyzerCore::index_method_lookup(const syntax::ModuleId module, const TypeHandle owner_type,
-    const IdentId name_id, const FunctionSignature& signature)
-{
-    const MethodLookupKey key = this->intern_method_lookup_key(module, owner_type, name_id);
-    this->state_.names.methods_by_name[key] = &signature;
-}
-
-void SemanticAnalyzerCore::index_function_value(const FunctionSignature& signature)
-{
-    if (signature.is_method) {
-        const auto found = this->state_.functions.global_values.find(signature.semantic_key);
-        if (found != this->state_.functions.global_values.end()) {
-            const MethodLookupKey key =
-                this->intern_method_lookup_key(signature.module, signature.method_owner_type, signature.name_id);
-            this->state_.names.method_global_values_by_name[key] = &found->second;
-        }
-        return;
-    }
-    const auto found = this->state_.functions.global_values.find(signature.semantic_key);
-    if (found != this->state_.functions.global_values.end()) {
-        this->index_global_value(found->second);
-    }
-}
-
-void SemanticAnalyzerCore::index_global_value(const Symbol& symbol)
-{
-    const ModuleLookupKey key = this->intern_module_lookup_key(symbol.module, symbol.name_id);
-    this->state_.names.global_values_by_name[key] = &symbol;
-}
-
-bool SemanticAnalyzerCore::named_type_lookup_complete() const noexcept
-{
-    return this->state_.names.named_types_by_name.size() == this->state_.types.named_types.size();
-}
-
-bool SemanticAnalyzerCore::type_alias_lookup_complete() const noexcept
-{
-    return this->state_.names.type_aliases_by_name.size() == this->state_.checked.type_aliases.size();
-}
-
-bool SemanticAnalyzerCore::generic_struct_lookup_complete() const noexcept
-{
-    return this->state_.names.generic_struct_templates_by_name.size() == this->state_.generics.struct_templates.size();
-}
-
-bool SemanticAnalyzerCore::generic_enum_lookup_complete() const noexcept
-{
-    return this->state_.names.generic_enum_templates_by_name.size() == this->state_.generics.enum_templates.size();
-}
-
-bool SemanticAnalyzerCore::generic_type_alias_lookup_complete() const noexcept
-{
-    return this->state_.names.generic_type_alias_templates_by_name.size()
-        == this->state_.generics.type_alias_templates.size();
-}
-
-bool SemanticAnalyzerCore::generic_function_lookup_complete() const noexcept
-{
-    return this->state_.names.generic_function_templates_by_name.size()
-        == this->state_.generics.function_templates.size();
-}
-
-bool SemanticAnalyzerCore::generic_method_lookup_complete() const noexcept
-{
-    return this->state_.names.generic_method_lookup_indexed_count == this->state_.generics.method_templates.size();
-}
-
-bool SemanticAnalyzerCore::function_lookup_complete() const noexcept
-{
-    return this->state_.names.functions_by_name.size() + this->state_.names.methods_by_name.size()
-        + this->state_.names.internal_function_lookup_exclusions
-        == this->state_.checked.functions.size();
-}
-
-bool SemanticAnalyzerCore::global_value_lookup_complete() const noexcept
-{
-    return this->state_.names.global_values_by_name.size() + this->state_.names.method_global_values_by_name.size()
-        == this->state_.functions.global_values.size();
-}
-
-bool SemanticAnalyzerCore::enum_case_module_lookup_complete() const noexcept
-{
-    return this->state_.names.enum_cases_by_module_name.size() == this->state_.checked.enum_cases.size();
-}
-
-bool SemanticAnalyzerCore::top_level_value_name_exists(
-    const syntax::ModuleId module, const IdentId name_id, const std::string_view name) const
-{
-    static_cast<void>(name);
-    const ModuleLookupKey lookup_key = this->find_module_lookup_key(module, name_id);
-    if (is_valid(lookup_key)) {
-        if (const auto found = this->state_.names.global_values_by_name.find(lookup_key);
-            found != this->state_.names.global_values_by_name.end() && found->second != nullptr) {
-            return found->second->kind == SymbolKind::function || found->second->kind == SymbolKind::const_;
-        }
-    }
-    return false;
-}
-
-bool SemanticAnalyzerCore::module_type_or_value_name_exists(
-    const syntax::ModuleId module, const IdentId name_id, const std::string_view name) const
-{
-    const ModuleLookupKey lookup_key = this->find_module_lookup_key(module, name_id);
-    const bool typed_type_found = is_valid(lookup_key)
-        && (this->state_.names.named_types_by_name.contains(lookup_key)
-            || this->state_.names.type_aliases_by_name.contains(lookup_key));
-    if (typed_type_found || this->find_any_generic_type_template_in_module(module, name_id, name) != nullptr
-        || this->top_level_value_name_exists(module, name_id, name)
-        || (is_valid(lookup_key) && this->state_.names.generic_function_templates_by_name.contains(lookup_key))) {
-        return true;
-    }
-    return false;
-}
-
-bool SemanticAnalyzerCore::current_generic_param_exists(const IdentId name_id, const std::string_view) const
-{
-    return this->state_.flow.current_generic_context != nullptr
-        && this->state_.flow.current_generic_context->params.contains(name_id);
-}
-
-bool SemanticAnalyzerCore::visible_type_name_exists(const IdentId name_id, const std::string_view name) const
-{
-    if (this->current_generic_param_exists(name_id, name)) {
-        return true;
-    }
-    const auto type_visible_in_module = [&](const syntax::ModuleId module) {
-        if (!syntax::is_valid(module)) {
-            return false;
-        }
-        const ModuleLookupKey lookup_key = this->find_module_lookup_key(module, name_id);
-        if (is_valid(lookup_key)) {
-            if (const auto found = this->state_.names.named_types_by_name.find(lookup_key);
-                found != this->state_.names.named_types_by_name.end()) {
-                return module.value == this->state_.flow.current_module.value
-                    || this->can_access(module, found->second.visibility);
-            }
-            if (const auto alias = this->state_.names.type_aliases_by_name.find(lookup_key);
-                alias != this->state_.names.type_aliases_by_name.end() && alias->second != nullptr) {
-                return this->can_access(module, alias->second->visibility);
-            }
-        }
-        const GenericTemplateInfo* const generic =
-            this->find_any_generic_type_template_in_module(module, name_id, name);
-        return generic != nullptr && this->can_access(module, generic->visibility);
-    };
-    if (type_visible_in_module(this->state_.flow.current_module)) {
-        return true;
-    }
-    if (!syntax::is_valid(this->state_.flow.current_module)
-        || this->state_.flow.current_module.value >= this->ctx_.module.modules.size()) {
-        return false;
-    }
-    for (const syntax::ResolvedImport& import :
-        this->ctx_.module.modules[this->state_.flow.current_module.value].imports) {
-        if (type_visible_in_module(import.module)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool SemanticAnalyzerCore::can_define_local_name(
-    const IdentId name_id, const std::string_view name, const base::SourceRange& range) const
-{
-    if (name.empty()) {
-        return true;
-    }
-    if (this->module_alias_visible(name)) {
-        this->report_duplicate(range, sema_local_shadows_import_alias_message(name));
-        return false;
-    }
-    if (this->visible_root_module_name_exists(name)) {
-        this->report_duplicate(range, sema_local_shadows_root_module_message(name));
-        return false;
-    }
-    if (this->current_generic_param_exists(name_id, name)) {
-        this->report_duplicate(range, sema_local_shadows_generic_type_parameter_message(name));
-        return false;
-    }
-    if (this->visible_type_name_exists(name_id, name)) {
-        this->report_duplicate(range, sema_local_shadows_type_name_message(name));
-        return false;
-    }
-    return true;
-}
-
-bool SemanticAnalyzerCore::type_member_name_exists(
-    const TypeHandle owner_type, const IdentId name_id, const std::string_view name) const
-{
-    if (!is_valid(owner_type)) {
-        return false;
-    }
-    if (const auto found = this->state_.names.enum_cases_by_type.find(owner_type.value);
-        found != this->state_.names.enum_cases_by_type.end()) {
-        for (const EnumCaseInfo* enum_case : found->second) {
-            if (enum_case != nullptr && enum_case->case_name_id == name_id) {
-                return true;
-            }
-        }
-    }
-    for (const auto& entry : this->state_.checked.functions) {
-        const FunctionSignature& signature = entry.second;
-        if (signature.is_method && this->state_.checked.types.same(signature.method_owner_type, owner_type)
-            && signature.name_id == name_id) {
-            return true;
-        }
-    }
-    for (const auto& entry : this->state_.generics.method_templates) {
-        const GenericTemplateInfo& info = entry.second;
-        if (info.name_id == name_id && is_valid(info.impl_type_pattern)
-            && this->state_.checked.types.same(info.impl_type_pattern, owner_type)) {
-            return true;
-        }
-    }
-    static_cast<void>(name);
-    return false;
-}
-
 std::string SemanticAnalyzerCore::method_c_symbol_name(const TypeHandle owner_type, const std::string_view name) const
 {
     return this->state_.checked.types.c_name(owner_type) + "_" + std::string(name);
@@ -926,24 +655,6 @@ const SemanticAnalyzerCore::EnumCaseList* SemanticAnalyzerCore::find_enum_cases_
     return found == this->state_.names.enum_cases_by_type.end() ? nullptr : &found->second;
 }
 
-void SemanticAnalyzerCore::index_enum_case(const EnumCaseInfo& info)
-{
-    if (!is_valid(info.type)) {
-        return;
-    }
-    this->state_.names.enum_cases_by_type_and_case.emplace(
-        EnumCaseLookupKey{
-            info.type.value,
-            info.case_name_id,
-        },
-        &info);
-    const ModuleLookupKey module_key = this->intern_module_lookup_key(info.module, info.name_id);
-    if (is_valid(module_key)) {
-        this->state_.names.enum_cases_by_module_name[module_key] = &info;
-    }
-    this->enum_case_type_bucket(info.type).push_back(&info);
-}
-
 const EnumCaseInfo* SemanticAnalyzerCore::find_enum_case_by_pattern_type(const syntax::TypeId enum_type_id,
     const IdentId case_name_id, const std::string_view case_name, const base::SourceRange& range)
 {
@@ -963,6 +674,154 @@ const EnumCaseInfo* SemanticAnalyzerCore::find_enum_case_by_pattern_type(const s
         range, sema_unknown_scoped_enum_case_message(this->state_.checked.types.display_name(enum_type), case_name));
     this->report_lookup_suggestion(range, this->nearest_enum_case_name(enum_type, case_name));
     return nullptr;
+}
+
+void SemanticAnalyzerCore::index_named_type(
+    const syntax::ModuleId module, const IdentId name_id, const TypeHandle type, const syntax::Visibility visibility)
+{
+    LookupIndexer(*this).index_named_type(module, name_id, type, visibility);
+}
+
+void SemanticAnalyzerCore::index_type_alias(const TypeAliasInfo& info)
+{
+    LookupIndexer(*this).index_type_alias(info);
+}
+
+void SemanticAnalyzerCore::index_generic_struct_template(const GenericTemplateInfo& info)
+{
+    LookupIndexer(*this).index_generic_struct_template(info);
+}
+
+void SemanticAnalyzerCore::index_generic_enum_template(const GenericTemplateInfo& info)
+{
+    LookupIndexer(*this).index_generic_enum_template(info);
+}
+
+void SemanticAnalyzerCore::index_generic_type_alias_template(const GenericTemplateInfo& info)
+{
+    LookupIndexer(*this).index_generic_type_alias_template(info);
+}
+
+void SemanticAnalyzerCore::index_generic_function_template(const GenericTemplateInfo& info)
+{
+    LookupIndexer(*this).index_generic_function_template(info);
+}
+
+void SemanticAnalyzerCore::index_generic_method_template(const GenericTemplateInfo& info)
+{
+    LookupIndexer(*this).index_generic_method_template(info);
+}
+
+void SemanticAnalyzerCore::index_function_lookup(const FunctionSignature& signature)
+{
+    LookupIndexer(*this).index_function_lookup(signature);
+}
+
+void SemanticAnalyzerCore::index_method_lookup(const syntax::ModuleId module, const TypeHandle owner_type,
+    const IdentId name_id, const FunctionSignature& signature)
+{
+    LookupIndexer(*this).index_method_lookup(module, owner_type, name_id, signature);
+}
+
+void SemanticAnalyzerCore::index_function_value(const FunctionSignature& signature)
+{
+    LookupIndexer(*this).index_function_value(signature);
+}
+
+void SemanticAnalyzerCore::index_global_value(const Symbol& symbol)
+{
+    LookupIndexer(*this).index_global_value(symbol);
+}
+
+bool SemanticAnalyzerCore::named_type_lookup_complete() const noexcept
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).named_type_lookup_complete();
+}
+
+bool SemanticAnalyzerCore::type_alias_lookup_complete() const noexcept
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).type_alias_lookup_complete();
+}
+
+bool SemanticAnalyzerCore::generic_struct_lookup_complete() const noexcept
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).generic_struct_lookup_complete();
+}
+
+bool SemanticAnalyzerCore::generic_enum_lookup_complete() const noexcept
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).generic_enum_lookup_complete();
+}
+
+bool SemanticAnalyzerCore::generic_type_alias_lookup_complete() const noexcept
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).generic_type_alias_lookup_complete();
+}
+
+bool SemanticAnalyzerCore::generic_function_lookup_complete() const noexcept
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).generic_function_lookup_complete();
+}
+
+bool SemanticAnalyzerCore::generic_method_lookup_complete() const noexcept
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).generic_method_lookup_complete();
+}
+
+bool SemanticAnalyzerCore::function_lookup_complete() const noexcept
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).function_lookup_complete();
+}
+
+bool SemanticAnalyzerCore::global_value_lookup_complete() const noexcept
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).global_value_lookup_complete();
+}
+
+bool SemanticAnalyzerCore::enum_case_module_lookup_complete() const noexcept
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).enum_case_module_lookup_complete();
+}
+
+bool SemanticAnalyzerCore::top_level_value_name_exists(
+    const syntax::ModuleId module, const IdentId name_id, const std::string_view name) const
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).top_level_value_name_exists(module, name_id, name);
+}
+
+bool SemanticAnalyzerCore::module_type_or_value_name_exists(
+    const syntax::ModuleId module, const IdentId name_id, const std::string_view name) const
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this))
+        .module_type_or_value_name_exists(module, name_id, name);
+}
+
+bool SemanticAnalyzerCore::current_generic_param_exists(
+    const IdentId name_id, const std::string_view fallback_name) const
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).current_generic_param_exists(name_id, fallback_name);
+}
+
+bool SemanticAnalyzerCore::visible_type_name_exists(const IdentId name_id, const std::string_view name) const
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).visible_type_name_exists(name_id, name);
+}
+
+bool SemanticAnalyzerCore::can_define_local_name(
+    const IdentId name_id, const std::string_view name, const base::SourceRange& range) const
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).can_define_local_name(name_id, name, range);
+}
+
+bool SemanticAnalyzerCore::type_member_name_exists(
+    const TypeHandle owner_type, const IdentId name_id, const std::string_view name) const
+{
+    return LookupIndexer(const_cast<SemanticAnalyzerCore&>(*this)).type_member_name_exists(owner_type, name_id, name);
+}
+
+void SemanticAnalyzerCore::index_enum_case(const EnumCaseInfo& info)
+{
+    LookupIndexer(*this).index_enum_case(info);
 }
 
 } // namespace aurex::sema

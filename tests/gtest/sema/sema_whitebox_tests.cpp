@@ -18,12 +18,20 @@
 #include <gtest/gtest.h>
 
 #include <sema/internal/sema_builtin_expression_analyzer.hpp>
+#include <sema/internal/sema_control_expression_analyzer.hpp>
 #include <sema/internal/sema_core.hpp>
+#include <sema/internal/sema_declaration_analyzer.hpp>
 #include <sema/internal/sema_diagnostics.hpp>
 #include <sema/internal/sema_expression_analyzer.hpp>
+#include <sema/internal/sema_generic_analyzer.hpp>
+#include <sema/internal/sema_lookup_indexer.hpp>
 #include <sema/internal/sema_lookup_resolver.hpp>
+#include <sema/internal/sema_operator_expression_analyzer.hpp>
+#include <sema/internal/sema_pattern_match_analyzer.hpp>
 #include <sema/internal/sema_pipeline.hpp>
+#include <sema/internal/sema_projection_aggregate_expression_analyzer.hpp>
 #include <sema/internal/sema_side_tables.hpp>
+#include <sema/internal/sema_statement_analyzer.hpp>
 #include <sema/internal/sema_type_services.hpp>
 
 namespace aurex::test {
@@ -73,6 +81,7 @@ constexpr base::usize SEMA_TEST_LARGE_GENERIC_SPAN_EXPR_COUNT = 70;
 constexpr base::u32 SEMA_TEST_STALE_STRUCT_CACHE_OFFSET = 1;
 constexpr base::u32 SEMA_TEST_INVALID_SEMA_TYPE_KIND_VALUE = 99;
 constexpr base::u32 SEMA_TEST_INVALID_BUILTIN_TYPE_VALUE = 99;
+constexpr base::u32 SEMA_TEST_INVALID_CAPABILITY_KIND_VALUE = 99;
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_ONE = "1";
 constexpr std::string_view SEMA_TEST_IMPORT_ALIAS_ONE = "one";
 constexpr std::string_view SEMA_TEST_CONST_VALUE_NAME = "VALUE";
@@ -94,6 +103,7 @@ constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_I8_SUFFIX = "127i8";
 constexpr std::string_view SEMA_TEST_NEGATIVE_I8_MIN_MAGNITUDE_SUFFIX = "128i8";
 constexpr std::string_view SEMA_TEST_NEGATIVE_I8_OVERFLOW_SUFFIX = "129i8";
 constexpr std::string_view SEMA_TEST_NEGATIVE_I8_MISMATCH_SUFFIX = "1i8";
+constexpr std::string_view SEMA_TEST_NEGATIVE_I64_MIN_MAGNITUDE = "9223372036854775808";
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_INVALID_SUFFIX = "1f32";
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_BAD_SUFFIX = "1bad";
 constexpr syntax::PrimitiveTypeKind SEMA_TEST_INVALID_PRIMITIVE_KIND = static_cast<syntax::PrimitiveTypeKind>(99);
@@ -543,14 +553,43 @@ TEST(CoreUnit, SemanticWhiteBoxFacadeDelegatesBorrowedAndOwnedModules)
     static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::BuiltinExpressionAnalyzer>);
     static_assert(
         std::is_constructible_v<sema::SemanticAnalyzerCore::BuiltinExpressionAnalyzer, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAnalyzerCore::ControlExpressionAnalyzer>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::ControlExpressionAnalyzer>);
+    static_assert(
+        std::is_constructible_v<sema::SemanticAnalyzerCore::ControlExpressionAnalyzer, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAnalyzerCore::DeclarationAnalyzer>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::DeclarationAnalyzer>);
+    static_assert(
+        std::is_constructible_v<sema::SemanticAnalyzerCore::DeclarationAnalyzer, sema::SemanticAnalyzerCore&>);
     static_assert(std::is_final_v<sema::SemanticAnalyzerCore::ExpressionAnalyzer>);
     static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::ExpressionAnalyzer>);
     static_assert(std::is_constructible_v<sema::SemanticAnalyzerCore::ExpressionAnalyzer, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAnalyzerCore::GenericAnalyzer>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::GenericAnalyzer>);
+    static_assert(std::is_constructible_v<sema::SemanticAnalyzerCore::GenericAnalyzer, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAnalyzerCore::OperatorExpressionAnalyzer>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::OperatorExpressionAnalyzer>);
+    static_assert(
+        std::is_constructible_v<sema::SemanticAnalyzerCore::OperatorExpressionAnalyzer, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAnalyzerCore::PatternMatchAnalyzer>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::PatternMatchAnalyzer>);
+    static_assert(
+        std::is_constructible_v<sema::SemanticAnalyzerCore::PatternMatchAnalyzer, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAnalyzerCore::ProjectionAggregateExpressionAnalyzer>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::ProjectionAggregateExpressionAnalyzer>);
+    static_assert(std::is_constructible_v<sema::SemanticAnalyzerCore::ProjectionAggregateExpressionAnalyzer,
+        sema::SemanticAnalyzerCore&>);
     static_assert(std::is_final_v<sema::SemanticAnalyzerCore::LookupResolver>);
     static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::LookupResolver>);
     static_assert(std::is_constructible_v<sema::SemanticAnalyzerCore::LookupResolver, sema::SemanticAnalyzerCore&>);
     static_assert(
         std::is_constructible_v<sema::SemanticAnalyzerCore::LookupResolver, const sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAnalyzerCore::LookupIndexer>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::LookupIndexer>);
+    static_assert(std::is_constructible_v<sema::SemanticAnalyzerCore::LookupIndexer, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAnalyzerCore::StatementAnalyzer>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::StatementAnalyzer>);
+    static_assert(std::is_constructible_v<sema::SemanticAnalyzerCore::StatementAnalyzer, sema::SemanticAnalyzerCore&>);
     static_assert(std::is_final_v<sema::SemanticTypeResolver>);
     static_assert(!std::is_default_constructible_v<sema::SemanticTypeResolver>);
     static_assert(std::is_constructible_v<sema::SemanticTypeResolver, sema::SemanticAnalyzerCore&>);
@@ -1910,8 +1949,30 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps)
     analyzer.report_generic_type_template_in_module(
         module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), legacy_box_id, "LegacyBox", {});
     analyzer.report_generic_type_template_in_module(syntax::INVALID_MODULE_ID, missing_id, "MissingGeneric", {});
+    EXPECT_EQ(analyzer.find_generic_struct_in_module(syntax::INVALID_MODULE_ID, missing_id, "MissingStruct", {}, true),
+        nullptr);
+    EXPECT_EQ(analyzer.find_generic_struct_in_module(
+                  module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), missing_id, "MissingStruct", {}, true),
+        nullptr);
     EXPECT_EQ(analyzer.find_generic_struct_in_module(
                   module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), private_box_id, "PrivateBox", {}, false),
+        nullptr);
+    EXPECT_EQ(analyzer.find_generic_enum_in_visible_modules(missing_id, "MissingEnum", {}, true), nullptr);
+    EXPECT_EQ(
+        analyzer.find_generic_enum_in_module(syntax::INVALID_MODULE_ID, missing_id, "MissingEnum", {}, true), nullptr);
+    EXPECT_EQ(analyzer.find_generic_enum_in_module(
+                  module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), missing_id, "MissingEnum", {}, true),
+        nullptr);
+    EXPECT_EQ(analyzer.find_generic_type_alias_in_visible_modules(missing_id, "MissingAlias", {}, true), nullptr);
+    EXPECT_EQ(
+        analyzer.find_generic_type_alias_in_module(syntax::INVALID_MODULE_ID, missing_id, "MissingAlias", {}, true),
+        nullptr);
+    EXPECT_EQ(analyzer.find_generic_type_alias_in_module(
+                  module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), missing_id, "MissingAlias", {}, true),
+        nullptr);
+    EXPECT_EQ(analyzer.find_generic_function_in_visible_modules(missing_id, "missing_function", {}, true), nullptr);
+    EXPECT_EQ(
+        analyzer.find_generic_function_in_module(syntax::INVALID_MODULE_ID, missing_id, "missing_function", {}, true),
         nullptr);
     EXPECT_EQ(analyzer.find_generic_function_in_module(
                   module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), missing_id, "missing", {}, false),
@@ -2674,6 +2735,64 @@ TEST(CoreUnit, SemanticWhiteBoxGenericParamEnvKeySortsPredicates)
     const query::ParamEnvKey unconstrained_key = analyzer.generic_param_env_key(unconstrained);
     EXPECT_EQ(unconstrained_key.predicate_count, 0U);
     EXPECT_TRUE(query::is_valid(unconstrained_key));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxGenericCapabilityAndParameterFallbackEdges)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"generic_fallback"})};
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle enum_type = types.named_enum("generic_fallback.Flag", "Flag");
+    const IdentId param_id = intern_identifier(analyzer, SEMA_TEST_GENERIC_PARAM_NAME);
+    const sema::GenericParamIdentity param_identity = sema::generic_param_identity_from_text("generic_fallback.T");
+    const TypeHandle param_type = types.generic_param(param_identity, SEMA_TEST_GENERIC_PARAM_NAME);
+
+    EXPECT_EQ(
+        sema::capability_name(static_cast<sema::CapabilityKind>(SEMA_TEST_INVALID_CAPABILITY_KIND_VALUE)), "<invalid>");
+    EXPECT_FALSE(analyzer.generic_param_has_capability(SEMA_TEST_GENERIC_PARAM_NAME, sema::CapabilityKind::eq));
+    EXPECT_FALSE(analyzer.generic_param_has_capability(INVALID_TYPE_HANDLE, sema::CapabilityKind::eq));
+    EXPECT_FALSE(analyzer.type_satisfies_capability(INVALID_TYPE_HANDLE, sema::CapabilityKind::sized));
+    EXPECT_FALSE(analyzer.type_satisfies_equality_capability(INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(analyzer.type_supports_equality_operator(INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(analyzer.type_supports_hash_capability(INVALID_TYPE_HANDLE));
+
+    sema::SemanticAnalyzerCore::GenericContext context = analyzer.make_generic_context();
+    context.param_identities.emplace(param_id, param_identity);
+    sema::SemanticAnalyzerCore::CapabilitySet identity_capabilities = analyzer.make_capability_set();
+    identity_capabilities.insert(sema::CapabilityKind::eq);
+    context.constraints_by_identity.emplace(param_identity, std::move(identity_capabilities));
+    analyzer.state_.flow.current_generic_context = &context;
+    EXPECT_TRUE(analyzer.generic_param_has_capability(SEMA_TEST_GENERIC_PARAM_NAME, sema::CapabilityKind::eq));
+    EXPECT_TRUE(analyzer.generic_param_has_capability(param_type, sema::CapabilityKind::eq));
+    EXPECT_FALSE(analyzer.generic_param_has_capability(i32, sema::CapabilityKind::eq));
+    EXPECT_TRUE(analyzer.type_satisfies_capability(param_type, sema::CapabilityKind::eq));
+
+    context.constraints_by_identity.clear();
+    sema::SemanticAnalyzerCore::CapabilitySet named_capabilities = analyzer.make_capability_set();
+    named_capabilities.insert(sema::CapabilityKind::hash);
+    context.constraints.emplace(param_id, std::move(named_capabilities));
+    EXPECT_TRUE(analyzer.generic_param_has_capability(SEMA_TEST_GENERIC_PARAM_NAME, sema::CapabilityKind::hash));
+    EXPECT_TRUE(analyzer.type_satisfies_capability(i32, sema::CapabilityKind::sized));
+    EXPECT_TRUE(analyzer.type_satisfies_capability(i32, sema::CapabilityKind::eq));
+    EXPECT_TRUE(analyzer.type_satisfies_capability(i32, sema::CapabilityKind::ord));
+    EXPECT_TRUE(analyzer.type_satisfies_capability(i32, sema::CapabilityKind::hash));
+    EXPECT_FALSE(analyzer.type_satisfies_capability(
+        i32, static_cast<sema::CapabilityKind>(SEMA_TEST_INVALID_CAPABILITY_KIND_VALUE)));
+    EXPECT_TRUE(analyzer.type_satisfies_equality_capability(enum_type));
+    EXPECT_TRUE(analyzer.type_supports_equality_operator(enum_type));
+    analyzer.state_.flow.current_generic_context = nullptr;
+
+    sema::SemanticAnalyzerCore::GenericTemplateInfo info = generic_template_info(analyzer, module_id(0), "Fallback");
+    EXPECT_TRUE(analyzer.generic_param_name(info, info.params.size()).empty());
+    EXPECT_FALSE(is_valid(analyzer.generic_param_placeholder(info, info.params.size())));
+    EXPECT_TRUE(is_valid(analyzer.generic_param_identity(info, info.param_identities.size())));
+    sema::TypeInfo fallback_info;
+    fallback_info.name = checked_text(analyzer.state_.checked, "FallbackParam");
+    EXPECT_TRUE(is_valid(analyzer.generic_param_identity(fallback_info)));
 }
 
 TEST(CoreUnit, SemanticWhiteBoxGenericInstanceIdentityReportsCanonicalizationErrors)
@@ -3965,6 +4084,36 @@ TEST(CoreUnit, SemanticWhiteBoxControlExprDiagnosticsCoverVoidAndInvalidResults)
     EXPECT_NE(messages.find("unknown name: missing_value"), std::string::npos);
 }
 
+TEST(CoreUnit, SemanticWhiteBoxTryExprReportsConstInitializerAndOptionReturnMismatch)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId option_value = push_name(module, "option_value");
+    const ExprId try_option = module.push_try_expr({}, option_value);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    prepare_expr_storage(analyzer, module);
+    analyzer.state_.flow.current_module = module_id(0);
+
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle option_type = types.named_enum("OptionI32", "OptionI32");
+    types.set_enum_underlying(option_type, types.builtin(BuiltinType::u8));
+    static_cast<void>(add_enum_case(analyzer, module_id(0), "OptionI32_some", "some", option_type, i32, {i32}));
+    static_cast<void>(add_enum_case(analyzer, module_id(0), "OptionI32_none", "none", option_type));
+    static_cast<void>(add_global_value(analyzer, module_id(0), "option_value", option_type, SymbolKind::local));
+
+    analyzer.state_.flow.current_function_return_type = i32;
+    analyzer.state_.flow.in_const_initializer = true;
+    EXPECT_TRUE(types.same(analyzer.analyze_try_expr(try_option, analyzer.expr_view(try_option)), i32));
+
+    const std::string messages = diagnostic_messages(diagnostics);
+    EXPECT_NE(messages.find(sema::SEMA_TRY_CONST_INITIALIZER), std::string::npos);
+    EXPECT_NE(messages.find(sema::SEMA_TRY_OPTION_RETURN), std::string::npos);
+}
+
 TEST(CoreUnit, SemanticWhiteBoxExpressionCategoryHelpersRejectMismatchedViews)
 {
     syntax::AstModule module;
@@ -4011,6 +4160,40 @@ TEST(CoreUnit, SemanticWhiteBoxBinaryOperatorSplitCoversGenericIntegerPath)
     EXPECT_TRUE(analyzer.state_.checked.types.same(
         analyzer.record_integer_binary_expr(syntax::INVALID_EXPR_ID, expr, generic, generic), generic));
     EXPECT_TRUE(diagnostics.has_error());
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBinaryOperatorReportsI64OverflowAndRecoversReversedNullComparison)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId min_magnitude = push_integer_text(module, SEMA_TEST_NEGATIVE_I64_MIN_MAGNITUDE);
+    const ExprId negative_min = push_unary(module, syntax::UnaryOp::numeric_negate, min_magnitude);
+    const ExprId one = push_integer(module);
+    const ExprId negative_one = push_unary(module, syntax::UnaryOp::numeric_negate, one);
+    const ExprId overflowing_division = push_binary(module, syntax::BinaryOp::div, negative_min, negative_one);
+    const ExprId null_literal = module.push_literal_expr(syntax::ExprKind::null_literal, {}, "null");
+    const ExprId pointer_value = push_name(module, "pointer_value");
+    const ExprId reversed_null_comparison = push_binary(module, syntax::BinaryOp::equal, null_literal, pointer_value);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    prepare_expr_storage(analyzer, module);
+    analyzer.state_.flow.current_module = module_id(0);
+
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle i64 = types.builtin(BuiltinType::i64);
+    const TypeHandle pointer_i32 = types.pointer(PointerMutability::const_, i32);
+    static_cast<void>(add_global_value(analyzer, module_id(0), "pointer_value", pointer_i32, SymbolKind::local));
+
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_binary_expr(overflowing_division, analyzer.expr_view(overflowing_division), i64), i64));
+    EXPECT_TRUE(types.is_bool(analyzer.analyze_binary_expr(
+        reversed_null_comparison, analyzer.expr_view(reversed_null_comparison), INVALID_TYPE_HANDLE)));
+
+    const std::string messages = diagnostic_messages(diagnostics);
+    EXPECT_NE(messages.find(sema::SEMA_SIGNED_DIVISION_OVERFLOW), std::string::npos);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxStatementControlFlowQueries)

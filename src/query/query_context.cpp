@@ -172,325 +172,114 @@ void QueryContext::set_diagnostics_provider(DiagnosticsProvider provider)
 
 QueryEvaluationResult QueryContext::evaluate_file_content(const FileContentProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key = file_content_query_key(input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<FileContentProviderOutput> output = this->providers_.provide_file_content(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<FileContentProviderOutput>(file_content_query_key(input.key), [this, &input] {
+        return this->providers_.provide_file_content(input);
+    });
 }
 
 QueryEvaluationResult QueryContext::evaluate_lex_file(const LexFileProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key = lex_file_query_key(input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<LexFileProviderOutput> output = this->providers_.provide_lex_file(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<LexFileProviderOutput>(lex_file_query_key(input.key), [this, &input] {
+        return this->providers_.provide_lex_file(input);
+    });
 }
 
 QueryEvaluationResult QueryContext::evaluate_parse_file(const ParseFileProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key = parse_file_query_key(input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<ParseFileProviderOutput> output = this->providers_.provide_parse_file(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<ParseFileProviderOutput>(parse_file_query_key(input.key), [this, &input] {
+        return this->providers_.provide_parse_file(input);
+    });
 }
 
 QueryEvaluationResult QueryContext::evaluate_module_graph(const ModuleGraphProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key = module_graph_query_key(input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<ModuleGraphProviderOutput> output = this->providers_.provide_module_graph(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<ModuleGraphProviderOutput>(module_graph_query_key(input.key), [this, &input] {
+        return this->providers_.provide_module_graph(input);
+    });
 }
 
 QueryEvaluationResult QueryContext::evaluate_module_exports(const ModuleExportsProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key = module_exports_query_key(input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<ModuleExportsProviderOutput> output = this->providers_.provide_module_exports(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<ModuleExportsProviderOutput>(module_exports_query_key(input.key), [this, &input] {
+        return this->providers_.provide_module_exports(input);
+    });
 }
 
 QueryEvaluationResult QueryContext::evaluate_item_list(const ItemListProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key = item_list_query_key(input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<ItemListProviderOutput> output = this->providers_.provide_item_list(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<ItemListProviderOutput>(item_list_query_key(input.key), [this, &input] {
+        return this->providers_.provide_item_list(input);
+    });
 }
 
 QueryEvaluationResult QueryContext::evaluate_item_signature(const ItemSignatureProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key = item_signature_query_key(input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<ItemSignatureProviderOutput> output = this->providers_.provide_item_signature(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<ItemSignatureProviderOutput>(item_signature_query_key(input.key), [this, &input] {
+        return this->providers_.provide_item_signature(input);
+    });
 }
 
 QueryEvaluationResult QueryContext::evaluate_generic_template_signature(
     const GenericTemplateSignatureProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key = generic_template_signature_query_key(input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<GenericTemplateSignatureProviderOutput> output =
-        this->providers_.provide_generic_template_signature(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<GenericTemplateSignatureProviderOutput>(
+        generic_template_signature_query_key(input.key), [this, &input] {
+            return this->providers_.provide_generic_template_signature(input);
+        });
 }
 
 QueryEvaluationResult QueryContext::evaluate_generic_instance_signature(
     const GenericInstanceSignatureProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key =
-        input.key == nullptr ? std::nullopt : generic_instance_signature_query_key(*input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<GenericInstanceSignatureProviderOutput> output =
-        this->providers_.provide_generic_instance_signature(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<GenericInstanceSignatureProviderOutput>(
+        input.key == nullptr ? std::nullopt : generic_instance_signature_query_key(*input.key), [this, &input] {
+            return this->providers_.provide_generic_instance_signature(input);
+        });
 }
 
 QueryEvaluationResult QueryContext::evaluate_function_body_syntax(const FunctionBodySyntaxProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key = function_body_syntax_query_key(input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<FunctionBodySyntaxProviderOutput> output = this->providers_.provide_function_body_syntax(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<FunctionBodySyntaxProviderOutput>(
+        function_body_syntax_query_key(input.key), [this, &input] {
+            return this->providers_.provide_function_body_syntax(input);
+        });
 }
 
 QueryEvaluationResult QueryContext::evaluate_type_check_body(const TypeCheckBodyProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key = type_check_body_query_key(input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<TypeCheckBodyProviderOutput> output = this->providers_.provide_type_check_body(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<TypeCheckBodyProviderOutput>(type_check_body_query_key(input.key), [this, &input] {
+        return this->providers_.provide_type_check_body(input);
+    });
 }
 
 QueryEvaluationResult QueryContext::evaluate_generic_instance_body(const GenericInstanceBodyProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key =
-        input.key == nullptr ? std::nullopt : generic_instance_body_query_key(*input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<GenericInstanceBodyProviderOutput> output = this->providers_.provide_generic_instance_body(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<GenericInstanceBodyProviderOutput>(
+        input.key == nullptr ? std::nullopt : generic_instance_body_query_key(*input.key), [this, &input] {
+            return this->providers_.provide_generic_instance_body(input);
+        });
 }
 
 QueryEvaluationResult QueryContext::evaluate_lower_function_ir(const LowerFunctionIRProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key = lower_function_ir_query_key(input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<LowerFunctionIRProviderOutput> output = this->providers_.provide_lower_function_ir(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<LowerFunctionIRProviderOutput>(lower_function_ir_query_key(input.key), [this, &input] {
+        return this->providers_.provide_lower_function_ir(input);
+    });
 }
 
 QueryEvaluationResult QueryContext::evaluate_lower_generic_instance_ir(const LowerGenericInstanceIRProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key =
-        input.key == nullptr ? std::nullopt : lower_generic_instance_ir_query_key(*input.key);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<LowerGenericInstanceIRProviderOutput> output =
-        this->providers_.provide_lower_generic_instance_ir(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<LowerGenericInstanceIRProviderOutput>(
+        input.key == nullptr ? std::nullopt : lower_generic_instance_ir_query_key(*input.key), [this, &input] {
+            return this->providers_.provide_lower_generic_instance_ir(input);
+        });
 }
 
 QueryEvaluationResult QueryContext::evaluate_diagnostics(const DiagnosticsProviderInput& input)
 {
-    const std::optional<QueryKey> expected_key = diagnostics_query_key(input.producer);
-    if (!expected_key) {
-        return {};
-    }
-
-    QueryEvaluationStart start = this->start_query(*expected_key);
-    if (start.result) {
-        return *start.result;
-    }
-    QueryNode& node = *start.node;
-
-    std::optional<DiagnosticsProviderOutput> output = this->providers_.provide_diagnostics(input);
-    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
-        return this->fail_query(node);
-    }
-
-    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+    return this->evaluate_query<DiagnosticsProviderOutput>(diagnostics_query_key(input.producer), [this, &input] {
+        return this->providers_.provide_diagnostics(input);
+    });
 }
 
 bool QueryContext::seed_completed_record(QueryRecord record, std::vector<QueryKey> dependencies)
@@ -506,8 +295,15 @@ bool QueryContext::seed_completed_record(QueryRecord record, std::vector<QueryKe
     }
 
     const QueryResultFingerprint result = record.result;
-    return this->complete_query(node, std::move(record), result, std::move(dependencies)).status
-        == QueryEvaluationStatus::computed;
+    const QueryEvaluationResult completed =
+        this->complete_query(node, std::move(record), result, std::move(dependencies));
+    if (completed.status != QueryEvaluationStatus::computed) {
+        return false;
+    }
+    node.verified_revision = this->current_revision_;
+    node.changed_revision = QUERY_REVISION_INVALID;
+    node.reuse_state = QueryReuseState::green;
+    return true;
 }
 
 bool QueryContext::invalidate(const QueryKey key)
@@ -523,6 +319,9 @@ bool QueryContext::invalidate(const QueryKey key)
     node.record = {};
     node.result = {};
     node.dependencies.clear();
+    node.verified_revision = this->current_revision_;
+    node.changed_revision = this->current_revision_;
+    node.reuse_state = QueryReuseState::red;
     return true;
 }
 
@@ -606,6 +405,17 @@ base::usize QueryContext::bound_stable_identity_count() const noexcept
     return this->interner_.stable_identity_count();
 }
 
+QueryRevision QueryContext::current_revision() const noexcept
+{
+    return this->current_revision_;
+}
+
+QueryRevision QueryContext::advance_revision() noexcept
+{
+    ++this->current_revision_;
+    return this->current_revision_;
+}
+
 std::vector<QueryRecord> QueryContext::completed_records() const
 {
     std::vector<QueryRecord> records;
@@ -624,6 +434,8 @@ QueryContext::QueryEvaluationStart QueryContext::start_query(const QueryKey key)
 {
     QueryNode& node = this->node_for(key);
     if (node.status == QueryNodeStatus::done) {
+        node.verified_revision = this->current_revision_;
+        node.reuse_state = QueryReuseState::green;
         return QueryEvaluationStart{
             &node,
             QueryEvaluationResult{
@@ -647,6 +459,8 @@ QueryContext::QueryEvaluationStart QueryContext::start_query(const QueryKey key)
     node.record = {};
     node.result = {};
     node.dependencies.clear();
+    node.verified_revision = this->current_revision_;
+    node.reuse_state = QueryReuseState::unknown;
     return QueryEvaluationStart{
         &node,
         std::nullopt,
@@ -670,6 +484,9 @@ QueryEvaluationResult QueryContext::complete_query(
     node.result = result;
     node.dependencies = std::move(dependencies);
     node.status = QueryNodeStatus::done;
+    node.verified_revision = this->current_revision_;
+    node.changed_revision = this->current_revision_;
+    node.reuse_state = QueryReuseState::red;
     this->add_dependency_edges(node);
     return QueryEvaluationResult{
         QueryEvaluationStatus::computed,
@@ -717,6 +534,9 @@ QueryNode& QueryContext::node_for(const QueryKey key)
             {},
             {},
             {},
+            QUERY_REVISION_INVALID,
+            QUERY_REVISION_INVALID,
+            QueryReuseState::unknown,
         });
     return inserted.first->second;
 }
@@ -738,6 +558,9 @@ QueryEvaluationResult QueryContext::fail_query(QueryNode& node)
     node.record = {};
     node.result = {};
     node.dependencies.clear();
+    node.verified_revision = this->current_revision_;
+    node.changed_revision = this->current_revision_;
+    node.reuse_state = QueryReuseState::red;
     return QueryEvaluationResult{
         QueryEvaluationStatus::failed,
         &node,

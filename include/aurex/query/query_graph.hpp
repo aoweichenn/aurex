@@ -6,6 +6,11 @@
 
 namespace aurex::query {
 
+using QueryRevision = base::u64;
+
+inline constexpr QueryRevision QUERY_REVISION_INVALID = 0;
+inline constexpr QueryRevision QUERY_REVISION_INITIAL = 1;
+
 enum class QueryNodeStatus : base::u8 {
     in_progress,
     done,
@@ -19,6 +24,12 @@ enum class QueryEvaluationStatus : base::u8 {
     cycle,
 };
 
+enum class QueryReuseState : base::u8 {
+    unknown,
+    green,
+    red,
+};
+
 struct QueryNode {
     QueryNodeId id;
     QueryKey key;
@@ -26,6 +37,9 @@ struct QueryNode {
     QueryRecord record;
     QueryResultFingerprint result;
     std::vector<QueryKey> dependencies;
+    QueryRevision verified_revision = QUERY_REVISION_INVALID;
+    QueryRevision changed_revision = QUERY_REVISION_INVALID;
+    QueryReuseState reuse_state = QueryReuseState::unknown;
 };
 
 struct QueryEvaluationResult {

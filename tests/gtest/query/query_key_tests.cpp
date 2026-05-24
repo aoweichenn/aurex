@@ -2739,6 +2739,61 @@ TEST(QueryUnit, QueryContextCachesItemSignatureAndEmitsCompletedRecords)
     EXPECT_EQ(provider_calls, 1U);
 }
 
+TEST(QueryUnit, QueryContextTracksRevisionAndReuseStateForComputedCachedAndInvalidatedNodes)
+{
+    const QueryContextItemSignatureSubject subject =
+        test_item_signature_subject("compute", QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryKey> expected_key = query::item_signature_query_key(subject.def);
+    ASSERT_TRUE(expected_key.has_value());
+
+    base::usize provider_calls = 0;
+    query::QueryContext context([&provider_calls](const query::ItemSignatureProviderInput& provider_input) {
+        ++provider_calls;
+        return query::provide_item_signature_query(provider_input);
+    });
+
+    EXPECT_EQ(context.current_revision(), query::QUERY_REVISION_INITIAL);
+    EXPECT_EQ(context.advance_revision(), query::QUERY_REVISION_INITIAL + 1U);
+
+    const query::QueryRevision first_revision = context.current_revision();
+    const query::QueryEvaluationResult first = context.evaluate_item_signature(subject.input);
+    ASSERT_EQ(first.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(first.node, nullptr);
+    EXPECT_EQ(first.node->verified_revision, first_revision);
+    EXPECT_EQ(first.node->changed_revision, first_revision);
+    EXPECT_EQ(first.node->reuse_state, query::QueryReuseState::red);
+    EXPECT_EQ(provider_calls, 1U);
+
+    const query::QueryRevision computed_changed_revision = first.node->changed_revision;
+    EXPECT_EQ(context.advance_revision(), first_revision + 1U);
+
+    const query::QueryEvaluationResult cached = context.evaluate_item_signature(subject.input);
+    ASSERT_EQ(cached.status, query::QueryEvaluationStatus::cached);
+    ASSERT_NE(cached.node, nullptr);
+    EXPECT_EQ(cached.node, first.node);
+    EXPECT_EQ(cached.node->verified_revision, context.current_revision());
+    EXPECT_EQ(cached.node->changed_revision, computed_changed_revision);
+    EXPECT_EQ(cached.node->reuse_state, query::QueryReuseState::green);
+    EXPECT_EQ(provider_calls, 1U);
+
+    ASSERT_TRUE(context.invalidate(*expected_key));
+    const query::QueryNode* const invalidated = context.find(*expected_key);
+    ASSERT_NE(invalidated, nullptr);
+    EXPECT_EQ(invalidated->status, query::QueryNodeStatus::failed);
+    EXPECT_EQ(invalidated->verified_revision, context.current_revision());
+    EXPECT_EQ(invalidated->changed_revision, context.current_revision());
+    EXPECT_EQ(invalidated->reuse_state, query::QueryReuseState::red);
+
+    const query::QueryEvaluationResult recomputed = context.evaluate_item_signature(subject.input);
+    ASSERT_EQ(recomputed.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(recomputed.node, nullptr);
+    EXPECT_EQ(recomputed.node, first.node);
+    EXPECT_EQ(recomputed.node->verified_revision, context.current_revision());
+    EXPECT_EQ(recomputed.node->changed_revision, context.current_revision());
+    EXPECT_EQ(recomputed.node->reuse_state, query::QueryReuseState::red);
+    EXPECT_EQ(provider_calls, 2U);
+}
+
 TEST(QueryUnit, QueryContextCachesModuleExportsAndEmitsCompletedRecords)
 {
     const query::ModuleKey module = test_module(test_package());
@@ -3933,7 +3988,13 @@ TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
     EXPECT_EQ(context.dependency_edge_count(), 1U);
     EXPECT_EQ(context.dependencies_for(*expected_key), std::vector<query::QueryKey>{dependency});
     EXPECT_TRUE(context.has_dependency(*expected_key, dependency));
+    const query::QueryNode* const seeded_node = context.find(*expected_key);
+    ASSERT_NE(seeded_node, nullptr);
+    EXPECT_EQ(seeded_node->verified_revision, context.current_revision());
+    EXPECT_EQ(seeded_node->changed_revision, query::QUERY_REVISION_INVALID);
+    EXPECT_EQ(seeded_node->reuse_state, query::QueryReuseState::green);
 
+    EXPECT_EQ(context.advance_revision(), query::QUERY_REVISION_INITIAL + 1U);
     const query::QueryEvaluationResult cached_result = context.evaluate_item_signature(subject.input);
     EXPECT_EQ(cached_result.status, query::QueryEvaluationStatus::cached);
     ASSERT_NE(cached_result.node, nullptr);
@@ -3941,6 +4002,9 @@ TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
     EXPECT_EQ(cached_result.node->record.key, output->record.key);
     EXPECT_EQ(cached_result.node->record.result, output->record.result);
     EXPECT_EQ(cached_result.node->record.stable_key_bytes, output->record.stable_key_bytes);
+    EXPECT_EQ(cached_result.node->verified_revision, context.current_revision());
+    EXPECT_EQ(cached_result.node->changed_revision, query::QUERY_REVISION_INVALID);
+    EXPECT_EQ(cached_result.node->reuse_state, query::QueryReuseState::green);
     EXPECT_EQ(provider_calls, 0U);
 
     EXPECT_TRUE(context.invalidate(*expected_key));
@@ -3952,9 +4016,18 @@ TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
     EXPECT_FALSE(context.has_dependency(*expected_key, dependency));
     EXPECT_EQ(context.interned_query_count(), 2U);
     EXPECT_EQ(context.bound_stable_identity_count(), 1U);
+    const query::QueryNode* const invalidated_node = context.find(*expected_key);
+    ASSERT_NE(invalidated_node, nullptr);
+    EXPECT_EQ(invalidated_node->verified_revision, context.current_revision());
+    EXPECT_EQ(invalidated_node->changed_revision, context.current_revision());
+    EXPECT_EQ(invalidated_node->reuse_state, query::QueryReuseState::red);
 
     const query::QueryEvaluationResult recomputed_result = context.evaluate_item_signature(subject.input);
     EXPECT_EQ(recomputed_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(recomputed_result.node, nullptr);
+    EXPECT_EQ(recomputed_result.node->verified_revision, context.current_revision());
+    EXPECT_EQ(recomputed_result.node->changed_revision, context.current_revision());
+    EXPECT_EQ(recomputed_result.node->reuse_state, query::QueryReuseState::red);
     EXPECT_EQ(provider_calls, 1U);
     EXPECT_EQ(context.node_id_for(*expected_key), seeded_node_id);
     EXPECT_EQ(context.interned_query_count(), 2U);

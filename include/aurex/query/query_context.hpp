@@ -6,6 +6,7 @@
 
 #include <optional>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace aurex::query {
@@ -66,6 +67,8 @@ public:
     [[nodiscard]] base::usize dependency_edge_count() const noexcept;
     [[nodiscard]] base::usize interned_query_count() const noexcept;
     [[nodiscard]] base::usize bound_stable_identity_count() const noexcept;
+    [[nodiscard]] QueryRevision current_revision() const noexcept;
+    [[nodiscard]] QueryRevision advance_revision() noexcept;
     [[nodiscard]] std::vector<QueryRecord> completed_records() const;
 
 private:
@@ -73,6 +76,10 @@ private:
         QueryNode* node = nullptr;
         std::optional<QueryEvaluationResult> result;
     };
+
+    template <typename ProviderOutput, typename ProviderCall>
+    [[nodiscard]] QueryEvaluationResult evaluate_query(
+        std::optional<QueryKey> expected_key, ProviderCall&& provider_call);
 
     [[nodiscard]] QueryEvaluationStart start_query(QueryKey key);
     [[nodiscard]] QueryEvaluationResult complete_query(
@@ -87,7 +94,30 @@ private:
     std::unordered_map<QueryKey, QueryNode, QueryKeyHash> nodes_;
     std::unordered_map<QueryKey, std::vector<QueryKey>, QueryKeyHash> dependents_by_dependency_;
     base::usize dependency_edge_count_ = 0;
+    QueryRevision current_revision_ = QUERY_REVISION_INITIAL;
     QueryProviderSet providers_;
 };
+
+template <typename ProviderOutput, typename ProviderCall>
+QueryEvaluationResult QueryContext::evaluate_query(
+    const std::optional<QueryKey> expected_key, ProviderCall&& provider_call)
+{
+    if (!expected_key) {
+        return {};
+    }
+
+    QueryEvaluationStart start = this->start_query(*expected_key);
+    if (start.result) {
+        return *start.result;
+    }
+    QueryNode& node = *start.node;
+
+    std::optional<ProviderOutput> output = std::forward<ProviderCall>(provider_call)();
+    if (!output || !is_valid(*output) || output->record.key != *expected_key) {
+        return this->fail_query(node);
+    }
+
+    return this->complete_query(node, std::move(output->record), output->result, std::move(output->dependencies));
+}
 
 } // namespace aurex::query

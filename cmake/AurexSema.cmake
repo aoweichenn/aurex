@@ -10,6 +10,8 @@ add_library(aurex_sema
     src/sema/checked_module.cpp
     src/sema/internal/name_resolution.cpp
     src/sema/internal/sema_diagnostics.cpp
+    src/sema/internal/sema_expression_analyzer.cpp
+    src/sema/internal/sema_lookup_resolver.cpp
     src/sema/internal/sema_pipeline.cpp
     src/sema/internal/sema_side_tables.cpp
     src/sema/internal/sema_type_services.cpp

@@ -19,6 +19,8 @@
 
 #include <sema/internal/sema_core.hpp>
 #include <sema/internal/sema_diagnostics.hpp>
+#include <sema/internal/sema_expression_analyzer.hpp>
+#include <sema/internal/sema_lookup_resolver.hpp>
 #include <sema/internal/sema_pipeline.hpp>
 #include <sema/internal/sema_side_tables.hpp>
 #include <sema/internal/sema_type_services.hpp>
@@ -536,6 +538,14 @@ TEST(CoreUnit, SemanticWhiteBoxFacadeDelegatesBorrowedAndOwnedModules)
     static_assert(std::is_final_v<sema::SemanticSideTableStore>);
     static_assert(!std::is_default_constructible_v<sema::SemanticSideTableStore>);
     static_assert(std::is_constructible_v<sema::SemanticSideTableStore, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAnalyzerCore::ExpressionAnalyzer>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::ExpressionAnalyzer>);
+    static_assert(std::is_constructible_v<sema::SemanticAnalyzerCore::ExpressionAnalyzer, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAnalyzerCore::LookupResolver>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::LookupResolver>);
+    static_assert(std::is_constructible_v<sema::SemanticAnalyzerCore::LookupResolver, sema::SemanticAnalyzerCore&>);
+    static_assert(
+        std::is_constructible_v<sema::SemanticAnalyzerCore::LookupResolver, const sema::SemanticAnalyzerCore&>);
     static_assert(std::is_final_v<sema::SemanticTypeResolver>);
     static_assert(!std::is_default_constructible_v<sema::SemanticTypeResolver>);
     static_assert(std::is_constructible_v<sema::SemanticTypeResolver, sema::SemanticAnalyzerCore&>);

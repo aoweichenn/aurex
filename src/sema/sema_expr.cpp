@@ -1,4 +1,3 @@
-#include <aurex/base/string_literal.hpp>
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
@@ -7,6 +6,7 @@
 #include <vector>
 
 #include <sema/internal/sema_core.hpp>
+#include <sema/internal/sema_expression_analyzer.hpp>
 
 namespace aurex::sema {
 
@@ -24,17 +24,6 @@ constexpr std::string_view SEMA_RESULT_OK_CASE_NAME = "ok";
 constexpr std::string_view SEMA_RESULT_ERR_CASE_NAME = "err";
 constexpr std::string_view SEMA_OPTION_SOME_CASE_NAME = "some";
 constexpr std::string_view SEMA_OPTION_NONE_CASE_NAME = "none";
-
-enum class ExprAnalysisCategory {
-    invalid,
-    literal,
-    value,
-    control,
-    aggregate,
-    projection,
-    operator_,
-    builtin,
-};
 
 struct IntegerLiteralExpr {
     syntax::ExprId literal = syntax::INVALID_EXPR_ID;
@@ -123,83 +112,6 @@ template <typename T, typename Allocator>
     }
     const syntax::NameExprPayload* const name = module.exprs.name_payload(expr.value);
     return name != nullptr && name->scope_name.empty();
-}
-
-[[nodiscard]] bool expr_kind_has_contextual_final_type(const syntax::ExprKind kind) noexcept
-{
-    switch (kind) {
-        case syntax::ExprKind::integer_literal:
-        case syntax::ExprKind::float_literal:
-        case syntax::ExprKind::null_literal:
-        case syntax::ExprKind::unary:
-        case syntax::ExprKind::binary:
-        case syntax::ExprKind::if_expr:
-        case syntax::ExprKind::block_expr:
-        case syntax::ExprKind::unsafe_block:
-        case syntax::ExprKind::match_expr:
-        case syntax::ExprKind::array_literal:
-        case syntax::ExprKind::tuple_literal:
-        case syntax::ExprKind::slice:
-            return true;
-        default:
-            return false;
-    }
-}
-
-[[nodiscard]] ExprAnalysisCategory expr_analysis_category(const syntax::ExprKind kind) noexcept
-{
-    switch (kind) {
-        case syntax::ExprKind::integer_literal:
-        case syntax::ExprKind::float_literal:
-        case syntax::ExprKind::bool_literal:
-        case syntax::ExprKind::null_literal:
-        case syntax::ExprKind::string_literal:
-        case syntax::ExprKind::c_string_literal:
-        case syntax::ExprKind::raw_string_literal:
-        case syntax::ExprKind::byte_string_literal:
-        case syntax::ExprKind::byte_literal:
-        case syntax::ExprKind::char_literal:
-            return ExprAnalysisCategory::literal;
-        case syntax::ExprKind::name:
-        case syntax::ExprKind::generic_apply:
-        case syntax::ExprKind::call:
-            return ExprAnalysisCategory::value;
-        case syntax::ExprKind::try_expr:
-        case syntax::ExprKind::if_expr:
-        case syntax::ExprKind::block_expr:
-        case syntax::ExprKind::unsafe_block:
-        case syntax::ExprKind::match_expr:
-            return ExprAnalysisCategory::control;
-        case syntax::ExprKind::array_literal:
-        case syntax::ExprKind::tuple_literal:
-        case syntax::ExprKind::struct_literal:
-            return ExprAnalysisCategory::aggregate;
-        case syntax::ExprKind::field:
-        case syntax::ExprKind::index:
-        case syntax::ExprKind::slice:
-            return ExprAnalysisCategory::projection;
-        case syntax::ExprKind::unary:
-        case syntax::ExprKind::binary:
-            return ExprAnalysisCategory::operator_;
-        case syntax::ExprKind::cast:
-        case syntax::ExprKind::pcast:
-        case syntax::ExprKind::bcast:
-        case syntax::ExprKind::size_of:
-        case syntax::ExprKind::align_of:
-        case syntax::ExprKind::ptr_addr:
-        case syntax::ExprKind::paddr:
-        case syntax::ExprKind::slice_data:
-        case syntax::ExprKind::slice_len:
-        case syntax::ExprKind::str_data:
-        case syntax::ExprKind::str_byte_len:
-        case syntax::ExprKind::str_is_valid_utf8:
-        case syntax::ExprKind::str_from_utf8_checked:
-        case syntax::ExprKind::str_from_bytes_unchecked:
-            return ExprAnalysisCategory::builtin;
-        case syntax::ExprKind::invalid:
-            return ExprAnalysisCategory::invalid;
-    }
-    return ExprAnalysisCategory::invalid;
 }
 
 [[nodiscard]] syntax::ExprId unary_operand_or_invalid(
@@ -536,213 +448,6 @@ SemanticAnalyzerCore::ExprView SemanticAnalyzerCore::expr_view(const syntax::Exp
             break;
     }
     return view;
-}
-
-TypeHandle SemanticAnalyzerCore::analyze_expr(const syntax::ExprId expr_id)
-{
-    return this->analyze_expr(expr_id, INVALID_TYPE_HANDLE);
-}
-
-TypeHandle SemanticAnalyzerCore::analyze_expr(const syntax::ExprId expr_id, const TypeHandle expected_type)
-{
-    if (!syntax::is_valid(expr_id) || expr_id.value >= this->ctx_.module.exprs.size()) {
-        return INVALID_TYPE_HANDLE;
-    }
-
-    const TypeHandle cached_type = this->cached_expr_type_for_expected(expr_id, expected_type);
-    if (is_valid(cached_type)) {
-        return cached_type;
-    }
-    const TypeHandle analyzed = this->analyze_expr(expr_id, this->expr_view(expr_id), expected_type);
-    if (!is_valid(this->cached_expr_intrinsic_type(expr_id))) {
-        const syntax::ExprKind kind = this->ctx_.module.exprs.kind(expr_id.value);
-        if (!is_valid(expected_type) || !expr_kind_has_contextual_final_type(kind)) {
-            static_cast<void>(this->record_expr_intrinsic_type(expr_id, analyzed));
-        }
-    }
-    this->record_expr_expected_type(expr_id, expected_type);
-    return analyzed;
-}
-
-TypeHandle SemanticAnalyzerCore::analyze_expr(
-    const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr, const TypeHandle expected_type)
-{
-    switch (expr_analysis_category(expr.kind)) {
-        case ExprAnalysisCategory::literal:
-            return this->analyze_literal_expr(expr_id, expr, expected_type);
-        case ExprAnalysisCategory::value:
-            return this->analyze_value_expr(expr_id, expr, expected_type);
-        case ExprAnalysisCategory::control:
-            return this->analyze_control_expr(expr_id, expr, expected_type);
-        case ExprAnalysisCategory::aggregate:
-            return this->analyze_aggregate_expr(expr_id, expr, expected_type);
-        case ExprAnalysisCategory::projection:
-            return this->analyze_projection_expr(expr_id, expr, expected_type);
-        case ExprAnalysisCategory::operator_:
-            return this->analyze_operator_expr(expr_id, expr, expected_type);
-        case ExprAnalysisCategory::builtin:
-            return this->analyze_builtin_expr(expr_id, expr);
-        case ExprAnalysisCategory::invalid:
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-    }
-    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-}
-
-TypeHandle SemanticAnalyzerCore::analyze_literal_expr(
-    const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr, const TypeHandle expected_type)
-{
-    switch (expr.kind) {
-        case syntax::ExprKind::integer_literal:
-            return this->analyze_integer_literal(expr_id, expr.text, expr.range, expected_type);
-        case syntax::ExprKind::float_literal:
-            return this->analyze_float_literal(expr_id, expr.text, expr.range, expected_type);
-        case syntax::ExprKind::bool_literal:
-            return this->record_expr_type(expr_id, this->state_.checked.types.builtin(BuiltinType::bool_));
-        case syntax::ExprKind::null_literal:
-            if (this->state_.checked.types.is_pointer(expected_type)) {
-                this->record_coercion(expr_id, INVALID_TYPE_HANDLE, expected_type, CoercionKind::null_to_pointer);
-                return this->record_expr_types(expr_id, INVALID_TYPE_HANDLE, expected_type);
-            }
-            return this->record_expr_types(expr_id, INVALID_TYPE_HANDLE, INVALID_TYPE_HANDLE);
-        case syntax::ExprKind::string_literal:
-            return this->record_expr_type(expr_id, this->state_.checked.types.builtin(BuiltinType::str));
-        case syntax::ExprKind::raw_string_literal:
-            return this->record_expr_type(expr_id, this->state_.checked.types.builtin(BuiltinType::str));
-        case syntax::ExprKind::c_string_literal:
-            return this->record_expr_type(expr_id,
-                this->state_.checked.types.pointer(
-                    PointerMutability::const_, this->state_.checked.types.builtin(BuiltinType::u8)));
-        case syntax::ExprKind::byte_string_literal: {
-            const base::StringLiteralDecode decoded =
-                base::decode_string_literal(expr.text, base::StringLiteralKind::byte_string);
-            for (const base::StringLiteralError& error : decoded.errors) {
-                this->report_type(
-                    base::SourceRange{
-                        expr.range.source,
-                        expr.range.begin + error.begin,
-                        expr.range.begin + error.end,
-                    },
-                    error.message);
-            }
-            return this->record_expr_type(expr_id,
-                this->state_.checked.types.array(static_cast<base::u64>(decoded.decoded.size()),
-                    this->state_.checked.types.builtin(BuiltinType::u8)));
-        }
-        case syntax::ExprKind::byte_literal:
-            return this->record_expr_type(expr_id, this->state_.checked.types.builtin(BuiltinType::u8));
-        case syntax::ExprKind::char_literal:
-            return this->record_expr_type(expr_id, this->state_.checked.types.builtin(BuiltinType::char_));
-        default:
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-    }
-}
-
-TypeHandle SemanticAnalyzerCore::analyze_value_expr(
-    const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr, const TypeHandle expected_type)
-{
-    switch (expr.kind) {
-        case syntax::ExprKind::name:
-            return this->analyze_name_expr(expr_id, expr);
-        case syntax::ExprKind::generic_apply:
-            return this->analyze_generic_apply_expr(expr_id, expr);
-        case syntax::ExprKind::call:
-            return this->analyze_call_expr(expr_id, expr, expected_type);
-        default:
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-    }
-}
-
-TypeHandle SemanticAnalyzerCore::analyze_control_expr(
-    const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr, const TypeHandle expected_type)
-{
-    switch (expr.kind) {
-        case syntax::ExprKind::try_expr:
-            return this->analyze_try_expr(expr_id, expr);
-        case syntax::ExprKind::if_expr:
-            return this->analyze_if_expr(expr_id, expr, expected_type);
-        case syntax::ExprKind::block_expr:
-            return this->analyze_block_expr(expr_id, expr, expected_type);
-        case syntax::ExprKind::unsafe_block:
-            return this->analyze_unsafe_block_expr(expr_id, expr, expected_type);
-        case syntax::ExprKind::match_expr:
-            return this->analyze_match_expr(expr_id, expr, expected_type);
-        default:
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-    }
-}
-
-TypeHandle SemanticAnalyzerCore::analyze_aggregate_expr(
-    const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr, const TypeHandle expected_type)
-{
-    switch (expr.kind) {
-        case syntax::ExprKind::array_literal:
-            return this->analyze_array_literal_expr(expr_id, expr, expected_type);
-        case syntax::ExprKind::tuple_literal:
-            return this->analyze_tuple_literal_expr(expr_id, expr, expected_type);
-        case syntax::ExprKind::struct_literal:
-            return this->analyze_struct_literal_expr(expr_id, expr, expected_type);
-        default:
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-    }
-}
-
-TypeHandle SemanticAnalyzerCore::analyze_projection_expr(
-    const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr, const TypeHandle expected_type)
-{
-    switch (expr.kind) {
-        case syntax::ExprKind::field:
-            return this->analyze_field_expr(expr_id, expr, expected_type);
-        case syntax::ExprKind::index:
-            return this->analyze_index_expr(expr_id, expr);
-        case syntax::ExprKind::slice:
-            return this->analyze_slice_expr(expr_id, expr, expected_type);
-        default:
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-    }
-}
-
-TypeHandle SemanticAnalyzerCore::analyze_operator_expr(
-    const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr, const TypeHandle expected_type)
-{
-    switch (expr.kind) {
-        case syntax::ExprKind::unary:
-            return this->analyze_unary_expr(expr_id, expr, expected_type);
-        case syntax::ExprKind::binary:
-            return this->analyze_binary_expr(expr_id, expr, expected_type);
-        default:
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-    }
-}
-
-TypeHandle SemanticAnalyzerCore::analyze_builtin_expr(
-    const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr)
-{
-    switch (expr.kind) {
-        case syntax::ExprKind::cast:
-        case syntax::ExprKind::pcast:
-        case syntax::ExprKind::bcast:
-            return this->analyze_cast_expr(expr_id, expr);
-        case syntax::ExprKind::size_of:
-        case syntax::ExprKind::align_of:
-            return this->analyze_size_or_align_expr(expr_id, expr);
-        case syntax::ExprKind::ptr_addr:
-            return this->analyze_ptr_addr_expr(expr_id, expr);
-        case syntax::ExprKind::paddr:
-            return this->analyze_paddr_expr(expr_id, expr);
-        case syntax::ExprKind::slice_data:
-        case syntax::ExprKind::slice_len:
-            return this->analyze_slice_projection_expr(expr_id, expr);
-        case syntax::ExprKind::str_data:
-        case syntax::ExprKind::str_byte_len:
-            return this->analyze_str_projection_expr(expr_id, expr);
-        case syntax::ExprKind::str_is_valid_utf8:
-        case syntax::ExprKind::str_from_utf8_checked:
-            return this->analyze_str_utf8_slice_expr(expr_id, expr);
-        case syntax::ExprKind::str_from_bytes_unchecked:
-            return this->analyze_str_from_bytes_unchecked_expr(expr_id, expr);
-        default:
-            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
-    }
 }
 
 TypeHandle SemanticAnalyzerCore::analyze_name_expr(

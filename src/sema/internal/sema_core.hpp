@@ -101,6 +101,9 @@ private:
     using CapabilityMap = SemaMap<IdentId, CapabilitySet, IdentIdHash>;
     using CapabilityIdentityMap = SemaMap<GenericParamIdentity, CapabilitySet, GenericParamIdentityHash>;
 
+    class ExpressionAnalyzer;
+    class LookupResolver;
+
     struct GenericTemplateInfo {
         syntax::ItemId item = syntax::INVALID_ITEM_ID;
         syntax::ModuleId module = syntax::INVALID_MODULE_ID;
@@ -905,6 +908,9 @@ private:
     [[nodiscard]] GenericTemplateList& generic_method_template_bucket(const ModuleLookupKey& key);
     [[nodiscard]] EnumCaseList& enum_case_type_bucket(TypeHandle enum_type);
     [[nodiscard]] ModuleIdList make_module_id_list() const;
+    [[nodiscard]] ExpressionAnalyzer expression_analyzer() noexcept;
+    [[nodiscard]] LookupResolver lookup_resolver() noexcept;
+    [[nodiscard]] LookupResolver lookup_resolver() const noexcept;
     [[nodiscard]] SemanticTypeResolver type_resolver() noexcept;
     [[nodiscard]] SemanticTypeValidator type_validator() const noexcept;
     [[nodiscard]] SemanticAbiChecker abi_checker() const noexcept;

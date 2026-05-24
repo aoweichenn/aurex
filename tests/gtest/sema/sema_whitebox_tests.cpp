@@ -21,6 +21,7 @@
 #include <sema/internal/sema_diagnostics.hpp>
 #include <sema/internal/sema_pipeline.hpp>
 #include <sema/internal/sema_side_tables.hpp>
+#include <sema/internal/sema_type_services.hpp>
 
 namespace aurex::test {
 namespace {
@@ -535,6 +536,15 @@ TEST(CoreUnit, SemanticWhiteBoxFacadeDelegatesBorrowedAndOwnedModules)
     static_assert(std::is_final_v<sema::SemanticSideTableStore>);
     static_assert(!std::is_default_constructible_v<sema::SemanticSideTableStore>);
     static_assert(std::is_constructible_v<sema::SemanticSideTableStore, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticTypeResolver>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticTypeResolver>);
+    static_assert(std::is_constructible_v<sema::SemanticTypeResolver, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticTypeValidator>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticTypeValidator>);
+    static_assert(std::is_constructible_v<sema::SemanticTypeValidator, const sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAbiChecker>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAbiChecker>);
+    static_assert(std::is_constructible_v<sema::SemanticAbiChecker, const sema::SemanticAnalyzerCore&>);
 
     {
         syntax::AstModule borrowed_module;
@@ -870,6 +880,10 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     const TypeHandle char_type = types.builtin(BuiltinType::char_);
     const TypeHandle ptr_i32 = types.pointer(PointerMutability::mut, i32);
     const TypeHandle const_ptr_i32 = types.pointer(PointerMutability::const_, i32);
+    const TypeHandle ref_i32 = types.reference(PointerMutability::mut, i32);
+    const TypeHandle ref_u32 = types.reference(PointerMutability::mut, u32);
+    const TypeHandle slice_i32 = types.slice(PointerMutability::mut, i32);
+    const TypeHandle slice_u32 = types.slice(PointerMutability::mut, u32);
     const TypeHandle array_i16 = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, i16);
     const TypeHandle missing_struct = types.named_struct("missing.Struct", "missing_Struct", false);
     const TypeHandle record_type = types.named_struct("lib.one.Record", "lib_one_Record", false);
@@ -883,6 +897,7 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     const TypeHandle place_record_type = types.named_struct("root.PlaceRecord", "root_PlaceRecord", false);
     const TypeHandle ptr_place_record = types.pointer(PointerMutability::mut, place_record_type);
     const TypeHandle ref_nested_array_i16 = types.reference(PointerMutability::mut, nested_array_i16);
+    const TypeHandle generic_param = types.generic_param(sema::generic_param_identity_from_text("layout.T"), "T");
     types.set_enum_underlying(enum_type, u16);
     types.set_enum_underlying(payload_enum_type, u8);
     types.set_enum_payload_layout(payload_enum_type, u64, sizeof(std::uint64_t), alignof(std::uint64_t));
@@ -928,6 +943,9 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     EXPECT_EQ(analyzer.abi_size(f64), sizeof(double));
     EXPECT_EQ(analyzer.abi_size(str), sizeof(void*) + sizeof(std::size_t));
     EXPECT_EQ(analyzer.abi_size(char_type), sizeof(std::uint32_t));
+    const sema::SemanticAnalyzerCore::TypeAbiLayout i32_layout = analyzer.abi_layout(i32);
+    EXPECT_EQ(i32_layout.size, sizeof(std::uint32_t));
+    EXPECT_EQ(i32_layout.align, alignof(std::uint32_t));
     EXPECT_EQ(analyzer.abi_align(i8), alignof(std::uint8_t));
     EXPECT_EQ(analyzer.abi_align(i64), alignof(std::uint64_t));
     EXPECT_EQ(analyzer.abi_align(isize), alignof(std::ptrdiff_t));
@@ -950,8 +968,10 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     EXPECT_EQ(analyzer.abi_align(payload_enum_type), alignof(std::uint64_t));
     EXPECT_EQ(analyzer.abi_size(opaque_type), SEMA_TEST_ABI_INVALID_SIZE);
     EXPECT_EQ(analyzer.abi_align(opaque_type), SEMA_TEST_ABI_MIN_ALIGNMENT);
+    static_cast<void>(analyzer.abi_layout(place_record_type));
 
     EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::cast, INVALID_TYPE_HANDLE, i32));
+    EXPECT_FALSE(analyzer.is_valid_cast(syntax::ExprKind::cast, generic_param, i32));
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::cast, f64, i32));
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::pcast, const_ptr_i32, ptr_i32));
     EXPECT_TRUE(analyzer.is_valid_cast(syntax::ExprKind::bcast, i32, i32));
@@ -969,6 +989,12 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     EXPECT_FALSE(analyzer.is_valid_storage_type(array_void));
     EXPECT_FALSE(analyzer.is_valid_storage_type(array_opaque));
     EXPECT_FALSE(analyzer.is_valid_storage_type(overflowing_array));
+    EXPECT_FALSE(analyzer.is_array_containing_value_type(INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(analyzer.is_array_containing_value_type(i32));
+    EXPECT_TRUE(analyzer.is_array_containing_value_type(nested_array_i16));
+    EXPECT_FALSE(analyzer.can_assign(ref_i32, ref_u32, syntax::INVALID_EXPR_ID));
+    EXPECT_FALSE(analyzer.can_assign(slice_i32, slice_u32, syntax::INVALID_EXPR_ID));
+    EXPECT_TRUE(analyzer.check_m2_value_abi(INVALID_TYPE_HANDLE, sema::ValueAbiContext::parameter, {}));
 
     EXPECT_TRUE(analyzer.state_.names.symbols.insert(
         indexed_symbol(analyzer, SymbolKind::local, "value", module_id(0), i32, true), diagnostics));
@@ -4002,6 +4028,14 @@ TEST(CoreUnit, SemanticWhiteBoxIterativeTypeLayoutEdges)
     EXPECT_EQ(analyzer.abi_align(overflow_array_u64), alignof(std::uint64_t));
 
     const TypeHandle overflow_struct_type = types.named_struct("OverflowStruct", "OverflowStruct", true);
+    const TypeHandle empty_struct_type = types.named_struct("EmptyStruct", "EmptyStruct", false);
+    StructInfo empty_struct;
+    empty_struct.name = analyzer.state_.checked.intern_text("EmptyStruct");
+    empty_struct.name_id = intern_identifier(analyzer, "EmptyStruct");
+    empty_struct.module = module_id(0);
+    empty_struct.type = empty_struct_type;
+    analyzer.state_.checked.structs.emplace(semantic_module_key(analyzer, module_id(0), "EmptyStruct"), empty_struct);
+
     StructInfo overflow_struct;
     overflow_struct.name = analyzer.state_.checked.intern_text("OverflowStruct");
     overflow_struct.name_id = intern_identifier(analyzer, "OverflowStruct");
@@ -4060,6 +4094,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypeResolverAndAbiFocusedEdges)
     scoped_template_type.scope_name_id = module.intern_identifier("lib");
     scoped_template_type.name_id = module.intern_identifier("Box");
     const TypeId scoped_template_type_id = module.push_type(scoped_template_type);
+    const TypeId plain_type_id = module.push_type(named_node("Plain"));
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzerCore analyzer(module, diagnostics);
@@ -4085,12 +4120,18 @@ TEST(CoreUnit, SemanticWhiteBoxTypeResolverAndAbiFocusedEdges)
 
     EXPECT_TRUE(types.is_function(analyzer.resolve_type(invalid_function_type_id)));
     EXPECT_FALSE(is_valid(analyzer.resolve_type(scoped_template_type_id)));
+    static_cast<void>(add_named_type(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "Plain", i32));
+    EXPECT_TRUE(types.same(
+        analyzer.resolve_named_type(syntax::INVALID_TYPE_ID, module.types[plain_type_id.value], false), i32));
 
     sema::TypeInfo invalid_builtin_info;
     invalid_builtin_info.kind = TypeKind::builtin;
     invalid_builtin_info.builtin = static_cast<BuiltinType>(SEMA_TEST_INVALID_BUILTIN_TYPE_VALUE);
     const TypeHandle invalid_builtin = types.push(invalid_builtin_info);
     EXPECT_FALSE(analyzer.integer_literal_fits_type(invalid_builtin, SEMA_TEST_INTEGER_LITERAL_ONE));
+    const sema::SemanticAnalyzerCore::TypeAbiLayout invalid_builtin_layout = analyzer.abi_layout(invalid_builtin);
+    EXPECT_EQ(invalid_builtin_layout.size, SEMA_TEST_ABI_INVALID_SIZE);
+    EXPECT_EQ(invalid_builtin_layout.align, SEMA_TEST_ABI_MIN_ALIGNMENT);
 
     sema::TypeInfo invalid_kind_info;
     invalid_kind_info.kind = static_cast<TypeKind>(SEMA_TEST_INVALID_SEMA_TYPE_KIND_VALUE);

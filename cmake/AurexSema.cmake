@@ -12,6 +12,7 @@ add_library(aurex_sema
     src/sema/internal/sema_diagnostics.cpp
     src/sema/internal/sema_pipeline.cpp
     src/sema/internal/sema_side_tables.cpp
+    src/sema/internal/sema_type_services.cpp
     src/sema/match.cpp
     src/sema/sema_call.cpp
     src/sema/sema_decls.cpp

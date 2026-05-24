@@ -58,9 +58,12 @@ struct SemaContext final {
 
 class ModuleVisibilityResolver;
 class SemanticAnalysisPipeline;
+class SemanticAbiChecker;
 class SemanticDiagnosticReporter;
 class SemanticSideTableReader;
 class SemanticSideTableStore;
+class SemanticTypeResolver;
+class SemanticTypeValidator;
 
 class SemanticAnalyzerCore final {
 public:
@@ -902,6 +905,9 @@ private:
     [[nodiscard]] GenericTemplateList& generic_method_template_bucket(const ModuleLookupKey& key);
     [[nodiscard]] EnumCaseList& enum_case_type_bucket(TypeHandle enum_type);
     [[nodiscard]] ModuleIdList make_module_id_list() const;
+    [[nodiscard]] SemanticTypeResolver type_resolver() noexcept;
+    [[nodiscard]] SemanticTypeValidator type_validator() const noexcept;
+    [[nodiscard]] SemanticAbiChecker abi_checker() const noexcept;
     [[nodiscard]] SemanticSideTableStore side_table_store() noexcept;
     [[nodiscard]] SemanticSideTableReader side_table_reader() const noexcept;
     [[nodiscard]] SemanticDiagnosticReporter diagnostic_reporter() const noexcept;
@@ -932,8 +938,11 @@ private:
 
     friend class ModuleVisibilityResolver;
     friend class SemanticAnalysisPipeline;
+    friend class SemanticAbiChecker;
     friend class SemanticSideTableReader;
     friend class SemanticSideTableStore;
+    friend class SemanticTypeResolver;
+    friend class SemanticTypeValidator;
 };
 
 } // namespace aurex::sema

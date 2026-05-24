@@ -7,6 +7,8 @@
 
 当前仓库已经从 M2 language-core-no-std 基线进入 M2.5 frontend-foundation 阶段。M2 的目标不是继续修补 M1，而是重新收口语言核心：冻结并删除标准库和 M1 系统样例，把注意力放回基础语法、类型系统、模式匹配、`unsafe` 边界、IR 和 LLVM 后端。M2.5 建立在这条已收口主线之上，开始处理 query 化、lossless syntax 和 IDE-native 前端所需的结构化地基。
 
+2026-05-24 当前最高优先级已经明确为 [R5 Compilation Pipeline / Driver Action 重构](r5-compilation-pipeline-refactor.md)。M2.5 前端地基和收尾拆分完成后，重构主线转向现代编译器 driver/session/pipeline 边界：`CompilerInvocation` 保持纯配置，`Compiler` 退回 public facade，一次编译的 source、diagnostics、profile、cache policy 和 backend emitter 由内部 `CompilationSession` 持有，source/frontend/sema/cache/lowering/backend 阶段由 `CompilationPipeline` 显式编排。这一步优先于 M3 模块系统、M3 泛型闭环、LSP adapter 和完整 subtree reparse。
+
 M1 阶段已经舍弃。主要原因不是单个功能失败，而是整体设计方向不稳：
 
 - 标准库、host support、构建工具样例和语言核心同时扩张，导致测试结果很难判断是语言问题、库问题还是工具链问题。

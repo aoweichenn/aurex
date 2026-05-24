@@ -1,5 +1,23 @@
 # 下一步计划
 
+## 当前最高优先级：R5 Compilation Pipeline / Driver Action 重构
+
+当前重构主线已经从 M2.5 frontend-foundation 的前端地基，切到现代编译器工程化的
+driver / compilation pipeline 边界。最高优先级是
+[R5 Compilation Pipeline / Driver Action 重构](r5-compilation-pipeline-refactor.md)：
+
+- `CompilerInvocation` 保持纯配置对象。
+- `Compiler` 退回 public facade。
+- 一次编译的 source、diagnostics、profile、cache policy 和 backend emitter 进入内部
+  `CompilationSession`。
+- driver 编排进入 `CompilationPipeline`，阶段边界显式化。
+- profile phase 名称、diagnostics text/JSON 协议、incremental cache reuse/write 行为和所有
+  emit mode 行为必须保持不变。
+
+R5 优先于 M3 模块系统、M3 泛型闭环、LSP adapter、完整 subtree reparse、RAII、trait、
+closure、iterator、async、macro、package manager 和标准库重建。M3 后续功能必须复用
+R5 后稳定下来的 driver/session/query/diagnostics 主路径，不能另开旁路。
+
 ## 当前分支原则
 
 旧标准库已冻结并从 M2 当前树删除。下一阶段不要继续扩张 std，也不要用 std 样例证明语言能力。所有新能力先用自包含 `.ax` 样例验证；库层必须等基础语法、类型系统和模块边界稳定后重新设计，不复用旧 std 路线。

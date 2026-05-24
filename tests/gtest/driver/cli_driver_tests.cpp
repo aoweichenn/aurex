@@ -16,6 +16,7 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <optional>
@@ -24,6 +25,7 @@
 #include <string_view>
 #include <sys/stat.h>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace aurex::test {
@@ -235,6 +237,36 @@ constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_CHANGED_DETAIL =
     "evaluated_generic_template_signatures=0,evaluated_generic_instance_signatures=1,"
     "evaluated_generic_instance_bodies=0,"
     "evaluated_lower_function_irs=0,evaluated_diagnostics=0";
+
+class ScopedEnvironmentVariable final {
+public:
+    ScopedEnvironmentVariable(std::string name, const std::string& value) : name_(std::move(name))
+    {
+        const char* existing = std::getenv(this->name_.c_str());
+        if (existing != nullptr) {
+            this->old_value_ = existing;
+            this->had_old_value_ = true;
+        }
+        ::setenv(this->name_.c_str(), value.c_str(), 1);
+    }
+
+    ScopedEnvironmentVariable(const ScopedEnvironmentVariable&) = delete;
+    ScopedEnvironmentVariable& operator=(const ScopedEnvironmentVariable&) = delete;
+
+    ~ScopedEnvironmentVariable()
+    {
+        if (this->had_old_value_) {
+            ::setenv(this->name_.c_str(), this->old_value_.c_str(), 1);
+        } else {
+            ::unsetenv(this->name_.c_str());
+        }
+    }
+
+private:
+    std::string name_;
+    std::string old_value_;
+    bool had_old_value_ = false;
+};
 
 struct CacheTestQueryResultFingerprint {
     std::string global_id;
@@ -1529,6 +1561,41 @@ TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches)
         ASSERT_FALSE(result);
         EXPECT_EQ(result.error().code, base::ErrorCode::codegen_error);
         expect_contains(result.error().message, "unsupported emission mode");
+    }
+
+    {
+        driver::CompilerInvocation invocation;
+        invocation.input_path = source_root() / "examples" / "hello.ax";
+        invocation.emit_kind = driver::EmitKind::object;
+        invocation.output_path = tmp_root() / "missing_backend.o";
+        driver::Compiler compiler;
+        const auto result = compiler.run(invocation);
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, base::ErrorCode::codegen_error);
+        expect_contains(result.error().message, "LLVM backend is unavailable");
+    }
+
+    {
+        const fs::path blocked_tmp = tmp_root() / "native-temp-not-writable";
+        fs::create_directories(blocked_tmp);
+        std::error_code permission_error;
+        fs::permissions(
+            blocked_tmp, fs::perms::owner_read | fs::perms::owner_exec, fs::perm_options::replace, permission_error);
+        ASSERT_FALSE(permission_error) << permission_error.message();
+
+        const ScopedEnvironmentVariable tmpdir_guard("TMPDIR", blocked_tmp.string());
+        driver::CompilerInvocation invocation;
+        invocation.input_path = source_root() / "examples" / "hello.ax";
+        invocation.emit_kind = driver::EmitKind::object;
+        invocation.output_path = tmp_root() / "unwritable_temp.o";
+        driver::Compiler compiler(driver::llvm_backend_ir_emitter());
+        const auto result = compiler.run(invocation);
+
+        fs::permissions(blocked_tmp, fs::perms::owner_all, fs::perm_options::replace, permission_error);
+        ASSERT_FALSE(permission_error) << permission_error.message();
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, base::ErrorCode::io_error);
+        expect_contains(result.error().message, "failed to open output file");
     }
 
     {

@@ -144,12 +144,17 @@ a direct dependency on the LSP protocol.
 
 ## IR Pass API
 
-Header: `include/aurex/ir/pass_pipeline.hpp`
+Headers:
+
+- `include/aurex/ir/pass_pipeline.hpp`
+- `include/aurex/ir/pass_manager.hpp`
 
 Core API:
 
 ```cpp
 base::Result<void> run_pass_pipeline(Module& module, const PassPipelineOptions& options);
+base::Result<PassPipelineRunSummary> run_pass_pipeline_with_summary(
+    Module& module, const PassPipelineOptions& options);
 ```
 
 `PassPipelineOptions` controls:
@@ -159,6 +164,25 @@ base::Result<void> run_pass_pipeline(Module& module, const PassPipelineOptions& 
 - `verify_output`
 - `enable_mem2reg`
 - `enable_cfg_cleanup`
+- `verify_after_each_pass`
+
+`run_pass_pipeline` remains compatible with existing callers and only reports
+success or failure. `run_pass_pipeline_with_summary` additionally reports the
+scheduled/executed pass counts, whether the pipeline changed IR, and the final
+preserved analysis set.
+
+Lightweight pass manager API:
+
+- `ModulePassManager`: schedules `ModulePass` records in order without virtual
+  dispatch or heavy templates.
+- `ModulePass`: records `PassId`, stable pass name, and a `ModulePassRun`
+  function entry.
+- `PassResult`: declares whether a pass changed IR and which
+  `PreservedAnalyses` it preserved.
+- `PreservedAnalyses`: describes analyses that remain valid after a pass, such
+  as CFG, type table, symbol table, and record layout.
+- `VerifierGate`: centralizes input verifier, output verifier, and opt-in
+  after-each-pass verifier control.
 
 Optimization levels:
 

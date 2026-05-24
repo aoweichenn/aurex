@@ -9,7 +9,167 @@ namespace {
 
 using namespace irtest;
 
+constexpr int PASS_MANAGER_UNKNOWN_PASS_ID = 99;
+
+[[nodiscard]] base::Result<ir::PassResult> preserve_type_table_test_pass(Module& module)
+{
+    static_cast<void>(module);
+    ir::PreservedAnalyses preserved = ir::PreservedAnalyses::none();
+    preserved.preserve(ir::AnalysisId::type_table);
+    return base::Result<ir::PassResult>::ok(ir::PassResult::changed_result(preserved));
+}
+
+[[nodiscard]] base::Result<ir::PassResult> unchanged_test_pass(Module& module)
+{
+    static_cast<void>(module);
+    return base::Result<ir::PassResult>::ok(ir::PassResult::unchanged());
+}
+
+[[nodiscard]] base::Result<ir::PassResult> invalidate_return_value_test_pass(Module& module)
+{
+    module.functions[0].blocks[0].terminator.value = INVALID_VALUE_ID;
+    return base::Result<ir::PassResult>::ok(ir::PassResult::changed_result(ir::PreservedAnalyses::none()));
+}
+
 } // namespace
+
+TEST(CoreUnit, PassManagerTracksAnalysesAndVerifierGate)
+{
+    {
+        ir::PreservedAnalyses all = ir::PreservedAnalyses::all();
+        EXPECT_TRUE(all.preserves_all());
+        EXPECT_FALSE(all.preserves_none());
+        EXPECT_TRUE(all.preserves(ir::AnalysisId::control_flow_graph));
+
+        ir::PreservedAnalyses type_only = ir::PreservedAnalyses::none();
+        EXPECT_TRUE(type_only.preserves_none());
+        type_only.preserve(ir::AnalysisId::type_table);
+        EXPECT_TRUE(type_only.preserves(ir::AnalysisId::type_table));
+        EXPECT_FALSE(type_only.preserves(ir::AnalysisId::control_flow_graph));
+
+        all.intersect(type_only);
+        EXPECT_FALSE(all.preserves_all());
+        EXPECT_TRUE(all.preserves(ir::AnalysisId::type_table));
+        EXPECT_FALSE(all.preserves(ir::AnalysisId::control_flow_graph));
+        all.intersect(ir::PreservedAnalyses::none());
+        EXPECT_TRUE(all.preserves_none());
+
+        EXPECT_EQ(ir::pass_id_name(ir::PassId::local_mem2reg), "local_mem2reg");
+        EXPECT_EQ(ir::pass_id_name(ir::PassId::cfg_cleanup), "cfg_cleanup");
+        EXPECT_EQ(ir::pass_id_name(ir::PassId::custom), "custom");
+        EXPECT_EQ(ir::pass_id_name(static_cast<ir::PassId>(PASS_MANAGER_UNKNOWN_PASS_ID)), "unknown");
+    }
+    {
+        Module module = make_simple_module();
+        ir::ModulePassManager manager;
+        manager.add(ir::ModulePass{ir::PassId::custom, "test.preserve_type_table", preserve_type_table_test_pass});
+        manager.add(ir::ModulePass{ir::PassId::custom, "test.unchanged", unchanged_test_pass});
+        ASSERT_EQ(manager.passes().size(), 2U);
+
+        ir::VerifierGate verifier(ir::VerifierGateOptions{
+            true,
+            true,
+            true,
+        });
+        auto result = manager.run(module, verifier);
+        ASSERT_TRUE(result) << result.error().message;
+        EXPECT_EQ(result.value().scheduled_pass_count, 2U);
+        EXPECT_EQ(result.value().executed_pass_count, 2U);
+        EXPECT_TRUE(result.value().changed);
+        EXPECT_TRUE(result.value().preserved_analyses.preserves(ir::AnalysisId::type_table));
+        EXPECT_FALSE(result.value().preserved_analyses.preserves(ir::AnalysisId::control_flow_graph));
+    }
+    {
+        Module module = make_simple_module();
+        ir::ModulePassManager manager;
+        manager.add(ir::ModulePass{ir::PassId::custom, "test.invalidate_return", invalidate_return_value_test_pass});
+        ir::VerifierGate verifier(ir::VerifierGateOptions{
+            true,
+            true,
+            true,
+        });
+        const auto result = manager.run(module, verifier);
+        ASSERT_FALSE(result);
+        expect_contains_all(result.error().message,
+            {
+                "test.invalidate_return",
+                "return value value id is invalid",
+            });
+    }
+    {
+        Module module = make_simple_module();
+        ir::ModulePassManager manager;
+        manager.add(ir::ModulePass{ir::PassId::custom, "test.invalid", nullptr});
+        const auto result = manager.run(module, ir::VerifierGate(ir::VerifierGateOptions{}));
+        ASSERT_FALSE(result);
+        expect_contains(result.error().message, "invalid pass");
+    }
+}
+
+TEST(CoreUnit, PassPipelineSummaryExposesScheduledPassesAndPreservedAnalyses)
+{
+    {
+        Module module = make_simple_module();
+        PassPipelineOptions options;
+        options.optimization_level = ir::OptimizationLevel::none;
+        auto result = ir::run_pass_pipeline_with_summary(module, options);
+        ASSERT_TRUE(result) << result.error().message;
+        EXPECT_EQ(result.value().scheduled_pass_count, 0U);
+        EXPECT_EQ(result.value().executed_pass_count, 0U);
+        EXPECT_FALSE(result.value().changed);
+        EXPECT_TRUE(result.value().preserved_analyses.preserves_all());
+    }
+    {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
+        Function function = make_function(module, "summary_slot", i32);
+        FunctionBuilder builder{module, function};
+        Value slot = module.make_value();
+        slot.kind = ValueKind::alloca;
+        slot.type = ptr_i32;
+        const ValueId slot_id = builder.add(slot);
+        const ValueId one = builder.add(integer_value(module, i32, "1"));
+        Value store = module.make_value();
+        store.kind = ValueKind::store;
+        store.type = builtin(module, BuiltinType::void_);
+        store.object = slot_id;
+        store.lhs = one;
+        const ValueId store_id = builder.add(store);
+        Value load = module.make_value();
+        load.kind = ValueKind::load;
+        load.type = i32;
+        load.object = slot_id;
+        const ValueId load_id = builder.add(load);
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {slot_id, one, store_id, load_id};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        function.blocks[entry.value].terminator.value = load_id;
+        append_function(module, function);
+
+        PassPipelineOptions options;
+        options.optimization_level = ir::OptimizationLevel::basic;
+        auto result = ir::run_pass_pipeline_with_summary(module, options);
+        ASSERT_TRUE(result) << result.error().message;
+        EXPECT_EQ(result.value().scheduled_pass_count, 2U);
+        EXPECT_EQ(result.value().executed_pass_count, 2U);
+        EXPECT_TRUE(result.value().changed);
+        EXPECT_TRUE(result.value().preserved_analyses.preserves(ir::AnalysisId::control_flow_graph));
+        EXPECT_TRUE(result.value().preserved_analyses.preserves(ir::AnalysisId::type_table));
+        EXPECT_FALSE(result.value().preserved_analyses.preserves_all());
+    }
+    {
+        Module module = make_simple_module();
+        PassPipelineOptions options;
+        options.optimization_level = ir::OptimizationLevel::basic;
+        options.enable_mem2reg = false;
+        options.enable_cfg_cleanup = true;
+        auto result = ir::run_pass_pipeline_with_summary(module, options);
+        ASSERT_TRUE(result) << result.error().message;
+        EXPECT_EQ(result.value().scheduled_pass_count, 1U);
+        EXPECT_EQ(result.value().executed_pass_count, 1U);
+    }
+}
 
 TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures)
 {

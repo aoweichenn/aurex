@@ -40,7 +40,7 @@ CLI
        -> LoweringPipeline
             - checked dump stage
             - AST + checked module -> Aurex IR lowering stage
-            - IR verifier / optimization pass pipeline stage
+            - IR verifier / optimization pass manager stage
             - IR dump stage
        -> BackendPipeline
             - LLVM IR emission stage
@@ -63,6 +63,8 @@ CLI
 - `LoweringPipeline` 持有 checked dump、IR lowering、IR pass pipeline 和 IR dump 的阶段入口。
 - `BackendPipeline` 持有 LLVM IR emission、LLVM IR dump、temporary LLVM file 和 clang native invocation。
 - `PipelineStage` 固定 driver 主阶段的 profile name、输入/输出、diagnostic owner 和 cache/query 影响面。
+- `ModulePassManager` 固定 IR pass 顺序、`PassResult`、`PreservedAnalyses` 和 verifier gate，不让具体 pass
+  在一个总控函数中隐式修改 analysis 契约。
 - `CompilationPipeline` 只负责编排阶段和 emit mode 分发，不实现 parser、sema、module loader、lowering 或 backend 细节。
 - diagnostics 文本 / JSON 渲染继续只走 `diagnostic_renderer`，不允许在 pipeline 内复制协议拼接逻辑。
 - incremental cache、query、module loader、sema、IR lowering 和 native backend 继续保留各自 owner，不把实现细节反向塞回 driver。
@@ -108,14 +110,28 @@ R5.3 已完成 lowering/backend/阶段契约拆分：
 - 原 profile phase 名称保持不变：`checked.dump`、`ir.lower`、`ir.pass_pipeline`、`ir.dump`、
   `llvm.emit_ir`、`llvm_ir.dump`、`llvm.write_temp` 和 `native.clang` 等仍是兼容契约。
 
+R5.4 已完成 IR verifier / pass manager 第一层：
+
+- 新增 `include/aurex/ir/pass_manager.hpp` 和 `src/ir/pass_manager.cpp`，提供轻量
+  `ModulePassManager`、`ModulePass`、`PassResult`、`PreservedAnalyses`、`VerifierGate` 和
+  `PassPipelineRunSummary`。
+- `run_pass_pipeline` 保持兼容旧调用方；新增 `run_pass_pipeline_with_summary` 返回 scheduled/executed pass
+  数量、是否改变 IR、以及最终保留的 analysis 集合。
+- `PassPipelineOptions` 增加 opt-in 的 `verify_after_each_pass`，默认关闭以保持现有性能和行为；input/output
+  verifier gate 保持旧行为。
+- 现有 local mem2reg 和 CFG cleanup 继续保持原优化语义，但现在通过 pass manager 声明 analysis
+  preservation：mem2reg 保留 CFG/type/symbol/record layout，CFG cleanup 保留 type/symbol/record layout。
+- 这一步不引入 LLVM 式虚接口层或模板化 analysis manager，也不改变 IR、diagnostics 或 backend 输出协议。
+
 ## 后续拆分顺序
 
-R5.3 完成后，后续按下面顺序继续：
+R5.4 完成后，后续按下面顺序继续：
 
-1. IR verifier / pass manager 主线：建立轻量 `Pass`、`Analysis`、`PreservedAnalyses` 和 verifier gate，
-   不照搬 LLVM 全套模板复杂度。
-2. 把 `PipelineStage` 记录作为 profile、cache/query 和后续 IDE/LSP 阶段可视化的唯一阶段目录继续维护。
-3. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
+1. IR analysis cache 主线：基于 `AnalysisId` 和 `PreservedAnalyses` 建立轻量 analysis storage / invalidation，
+   先服务 CFG、dominance、value-use 这类后续优化会共享的 analysis。
+2. IR verifier diagnostics 主线：把 verifier gate 的 stage/pass 名称接到更稳定的错误上下文，不改变现有错误文本主体。
+3. 把 `PipelineStage` 记录作为 profile、cache/query 和后续 IDE/LSP 阶段可视化的唯一阶段目录继续维护。
+4. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
    + `FrontendPipeline` + `LoweringPipeline` + `BackendPipeline` 的主路径。
 
 ## 验收标准

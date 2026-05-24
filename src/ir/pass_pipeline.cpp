@@ -1,5 +1,4 @@
 #include <aurex/ir/pass_pipeline.hpp>
-#include <aurex/ir/verify.hpp>
 
 #include <algorithm>
 #include <optional>
@@ -14,6 +13,22 @@ namespace {
 
 using ValueReplacementMap = std::unordered_map<base::u32, ValueId>;
 using BlockMap = std::vector<BlockId>;
+
+[[nodiscard]] PreservedAnalyses preserve_module_metadata_analyses() noexcept
+{
+    PreservedAnalyses preserved = PreservedAnalyses::none();
+    preserved.preserve(AnalysisId::type_table);
+    preserved.preserve(AnalysisId::symbol_table);
+    preserved.preserve(AnalysisId::record_layouts);
+    return preserved;
+}
+
+[[nodiscard]] PreservedAnalyses preserve_cfg_and_module_metadata_analyses() noexcept
+{
+    PreservedAnalyses preserved = preserve_module_metadata_analyses();
+    preserved.preserve(AnalysisId::control_flow_graph);
+    return preserved;
+}
 
 [[nodiscard]] ValueId resolve_replacement(ValueId id, const ValueReplacementMap& replacements)
 {
@@ -237,9 +252,10 @@ struct FunctionUseInfo {
     return info;
 }
 
-void run_local_mem2reg(Module& module)
+[[nodiscard]] bool run_local_mem2reg(Module& module)
 {
     ValueReplacementMap replacements;
+    bool changed = false;
     for (Function& function : module.functions) {
         if (function.linkage == Linkage::extern_c || function.blocks.empty()) {
             continue;
@@ -266,6 +282,7 @@ void run_local_mem2reg(Module& module)
                 rewrite_value(value, replacements);
                 const auto slot = info.promotable_slots.find(value_id.value);
                 if (slot != info.promotable_slots.end() && slot->second == block_index) {
+                    changed = true;
                     continue;
                 }
 
@@ -273,6 +290,7 @@ void run_local_mem2reg(Module& module)
                     const auto promoted = info.promotable_slots.find(value.object.value);
                     if (promoted != info.promotable_slots.end() && promoted->second == block_index) {
                         current_slot_value[value.object.value] = resolve_replacement(value.lhs, replacements);
+                        changed = true;
                         continue;
                     }
                 }
@@ -283,6 +301,7 @@ void run_local_mem2reg(Module& module)
                         const auto current = current_slot_value.find(value.object.value);
                         if (current != current_slot_value.end()) {
                             replacements[value_id.value] = resolve_replacement(current->second, replacements);
+                            changed = true;
                             continue;
                         }
                     }
@@ -297,7 +316,7 @@ void run_local_mem2reg(Module& module)
     }
 
     if (replacements.empty()) {
-        return;
+        return changed;
     }
     for (Value& value : module.values) {
         rewrite_value(value, replacements);
@@ -310,6 +329,7 @@ void run_local_mem2reg(Module& module)
             rewrite_terminator(block.terminator, replacements);
         }
     }
+    return true;
 }
 
 void mark_reachable(const Function& function, const BlockId block, std::vector<bool>& reachable)
@@ -488,8 +508,9 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
     return remove_unreachable_blocks(module, function) || changed;
 }
 
-void run_cfg_cleanup(Module& module)
+[[nodiscard]] bool run_cfg_cleanup(Module& module)
 {
+    bool any_changed = false;
     bool changed = true;
     while (changed) {
         changed = false;
@@ -506,12 +527,59 @@ void run_cfg_cleanup(Module& module)
                     block.terminator.then_target = INVALID_BLOCK_ID;
                     block.terminator.else_target = INVALID_BLOCK_ID;
                     changed = true;
+                    any_changed = true;
                 }
             }
-            changed = remove_unreachable_blocks(module, function) || changed;
-            changed = merge_empty_branch_blocks(module, function) || changed;
+            const bool removed_unreachable = remove_unreachable_blocks(module, function);
+            changed = removed_unreachable || changed;
+            any_changed = removed_unreachable || any_changed;
+            const bool merged_empty_blocks = merge_empty_branch_blocks(module, function);
+            changed = merged_empty_blocks || changed;
+            any_changed = merged_empty_blocks || any_changed;
         }
     }
+    return any_changed;
+}
+
+[[nodiscard]] base::Result<PassResult> run_local_mem2reg_pass(Module& module)
+{
+    const bool changed = run_local_mem2reg(module);
+    if (!changed) {
+        return base::Result<PassResult>::ok(PassResult::unchanged());
+    }
+    return base::Result<PassResult>::ok(PassResult::changed_result(preserve_cfg_and_module_metadata_analyses()));
+}
+
+[[nodiscard]] base::Result<PassResult> run_cfg_cleanup_pass(Module& module)
+{
+    const bool changed = run_cfg_cleanup(module);
+    if (!changed) {
+        return base::Result<PassResult>::ok(PassResult::unchanged());
+    }
+    return base::Result<PassResult>::ok(PassResult::changed_result(preserve_module_metadata_analyses()));
+}
+
+[[nodiscard]] std::vector<ModulePass> make_optimization_passes(const PassPipelineOptions& options)
+{
+    std::vector<ModulePass> passes;
+    if (options.optimization_level == OptimizationLevel::none) {
+        return passes;
+    }
+    if (options.enable_mem2reg) {
+        passes.push_back(ModulePass{
+            PassId::local_mem2reg,
+            pass_id_name(PassId::local_mem2reg),
+            run_local_mem2reg_pass,
+        });
+    }
+    if (options.enable_cfg_cleanup) {
+        passes.push_back(ModulePass{
+            PassId::cfg_cleanup,
+            pass_id_name(PassId::cfg_cleanup),
+            run_cfg_cleanup_pass,
+        });
+    }
+    return passes;
 }
 
 } // namespace
@@ -531,27 +599,26 @@ std::string_view optimization_level_name(const OptimizationLevel level) noexcept
     return "O0";
 }
 
+base::Result<PassPipelineRunSummary> run_pass_pipeline_with_summary(Module& module, const PassPipelineOptions& options)
+{
+    ModulePassManager manager;
+    for (const ModulePass& pass : make_optimization_passes(options)) {
+        manager.add(pass);
+    }
+
+    const VerifierGate verifier(VerifierGateOptions{
+        options.verify_input,
+        options.verify_output,
+        options.verify_after_each_pass,
+    });
+    return manager.run(module, verifier);
+}
+
 base::Result<void> run_pass_pipeline(Module& module, const PassPipelineOptions& options)
 {
-    if (options.verify_input) {
-        if (auto verified = verify_module(module); !verified) {
-            return verified;
-        }
-    }
-
-    if (options.optimization_level != OptimizationLevel::none) {
-        if (options.enable_mem2reg) {
-            run_local_mem2reg(module);
-        }
-        if (options.enable_cfg_cleanup) {
-            run_cfg_cleanup(module);
-        }
-    }
-
-    if (options.verify_output) {
-        if (auto verified = verify_module(module); !verified) {
-            return verified;
-        }
+    auto result = run_pass_pipeline_with_summary(module, options);
+    if (!result) {
+        return base::Result<void>::fail(result.error());
     }
     return base::Result<void>::ok();
 }

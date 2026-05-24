@@ -39,12 +39,18 @@ R5.10 wired IDE tooling diagnostics to that stage directory: `pipeline_stage.cpp
 is now a lightweight `aurex_pipeline_stage` target shared by driver and
 `aurex_tooling`, and `IdeDiagnostic.owner_stages` carries stage
 id/profile/input/output/diagnostic/cache-query metadata for later LSP/IDE views.
+R5.11 made the stage directory a public read-only API:
+`pipeline_stage.hpp` now lives at `include/aurex/driver/pipeline_stage.hpp`,
+`PipelineStageMetadata` is the shared metadata projection consumed by the
+profile writer and tooling diagnostics, and `aurex_tooling` no longer depends on
+the private `src` include root. The profile JSON and diagnostics JSON protocols
+remain unchanged.
 
 Next, keep `PipelineStage` as the single profile/cache/query/diagnostics/IDE
 stage directory. M3 modules, generic backend completion, LSP adapter work, and
 subtree reparse must consume the R5 driver/session/query/diagnostics path,
-including `stage` / `parent_stage` profile metadata and `IdeDiagnostic`
-owner-stage metadata, instead of bypassing it.
+including public `PipelineStageMetadata`, `stage` / `parent_stage` profile
+metadata, and `IdeDiagnostic` owner-stage metadata, instead of bypassing it.
 
 ## Branch Principle
 

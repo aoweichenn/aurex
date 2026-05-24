@@ -1,6 +1,5 @@
-#include "pipeline_stage.hpp"
-
 #include <aurex/base/diagnostic.hpp>
+#include <aurex/driver/pipeline_stage.hpp>
 
 #include "incremental_cache/common.hpp"
 
@@ -269,6 +268,23 @@ const PipelineStageRecord& pipeline_stage_record(const PipelineStageId id) noexc
         return PIPELINE_STAGE_RECORDS[index];
     }
     return PIPELINE_STAGE_RECORDS.front();
+}
+
+PipelineStageMetadata pipeline_stage_metadata(const PipelineStageRecord& record) noexcept
+{
+    return PipelineStageMetadata{
+        record.name,
+        record.profile_name,
+        record.input,
+        record.output,
+        record.diagnostic_ownership,
+        record.cache_query_impact,
+    };
+}
+
+PipelineStageMetadata pipeline_stage_metadata(const PipelineStageId id) noexcept
+{
+    return pipeline_stage_metadata(pipeline_stage_record(id));
 }
 
 const PipelineStageRecord* pipeline_stage_record_for_profile_name(const std::string_view profile_name) noexcept

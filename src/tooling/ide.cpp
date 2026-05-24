@@ -1,3 +1,4 @@
+#include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/lex/lexer.hpp>
 #include <aurex/parse/lossless_parse.hpp>
 #include <aurex/query/diagnostics_query.hpp>
@@ -14,8 +15,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#include <driver/pipeline_stage.hpp>
 
 namespace aurex::tooling {
 namespace {
@@ -175,18 +174,6 @@ void mix_lossless_tree(query::StableHashBuilder& builder, const syntax::Lossless
     return query::diagnostics_result_fingerprint(events, context);
 }
 
-[[nodiscard]] IdePipelineStageOwner ide_stage_owner_from_record(const driver::PipelineStageRecord& record)
-{
-    return IdePipelineStageOwner{
-        std::string(record.name),
-        std::string(record.profile_name),
-        std::string(record.input),
-        std::string(record.output),
-        std::string(record.diagnostic_ownership),
-        std::string(record.cache_query_impact),
-    };
-}
-
 [[nodiscard]] std::vector<IdePipelineStageOwner> ide_diagnostic_owner_stages(const base::DiagnosticCategory category)
 {
     const std::span<const driver::PipelineStageId> owner_stage_ids =
@@ -194,7 +181,7 @@ void mix_lossless_tree(query::StableHashBuilder& builder, const syntax::Lossless
     std::vector<IdePipelineStageOwner> owners;
     owners.reserve(owner_stage_ids.size());
     for (const driver::PipelineStageId stage_id : owner_stage_ids) {
-        owners.push_back(ide_stage_owner_from_record(driver::pipeline_stage_record(stage_id)));
+        owners.push_back(driver::pipeline_stage_metadata(stage_id));
     }
     return owners;
 }

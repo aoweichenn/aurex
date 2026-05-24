@@ -1,4 +1,5 @@
 #include <aurex/base/integer.hpp>
+#include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/driver/profile.hpp>
 
 #include <algorithm>
@@ -10,8 +11,6 @@
 #include <string_view>
 #include <sys/resource.h>
 #include <system_error>
-
-#include "pipeline_stage.hpp"
 
 namespace aurex::driver {
 
@@ -38,6 +37,11 @@ constexpr std::string_view PROFILE_OUTPUT_CREATE_DIR_FAILED = "failed to create 
 constexpr std::string_view PROFILE_OUTPUT_OPEN_FAILED = "failed to open profile output file";
 constexpr std::string_view PROFILE_OUTPUT_WRITE_FAILED = "failed to write profile output file";
 constexpr std::string_view PROFILE_FORMAT = "aurex-profile-v1";
+
+enum class ProfileStageMetadataProfileField {
+    omit,
+    include,
+};
 
 [[nodiscard]] double current_rss_mib() noexcept
 {
@@ -91,47 +95,31 @@ void write_json_escaped(std::ostream& out, const std::string_view text)
     out << PROFILE_JSON_QUOTE;
 }
 
-void write_stage_metadata(std::ostream& output, const PipelineStageRecord& stage)
+void write_stage_metadata(std::ostream& output, const std::string_view field_name, const PipelineStageMetadata metadata,
+    const ProfileStageMetadataProfileField profile_field)
 {
-    output << "      \"stage\": {\n";
+    output << "      \"";
+    output << field_name;
+    output << "\": {\n";
     output << "        \"id\": ";
-    write_json_escaped(output, stage.name);
+    write_json_escaped(output, metadata.id);
     output << ",\n";
+    if (profile_field == ProfileStageMetadataProfileField::include) {
+        output << "        \"profile\": ";
+        write_json_escaped(output, metadata.profile_name);
+        output << ",\n";
+    }
     output << "        \"input\": ";
-    write_json_escaped(output, stage.input);
+    write_json_escaped(output, metadata.input);
     output << ",\n";
     output << "        \"output\": ";
-    write_json_escaped(output, stage.output);
+    write_json_escaped(output, metadata.output);
     output << ",\n";
     output << "        \"diagnostic_ownership\": ";
-    write_json_escaped(output, stage.diagnostic_ownership);
+    write_json_escaped(output, metadata.diagnostic_ownership);
     output << ",\n";
     output << "        \"cache_query_impact\": ";
-    write_json_escaped(output, stage.cache_query_impact);
-    output << "\n";
-    output << "      },\n";
-}
-
-void write_parent_stage_metadata(std::ostream& output, const PipelineStageRecord& stage)
-{
-    output << "      \"parent_stage\": {\n";
-    output << "        \"id\": ";
-    write_json_escaped(output, stage.name);
-    output << ",\n";
-    output << "        \"profile\": ";
-    write_json_escaped(output, stage.profile_name);
-    output << ",\n";
-    output << "        \"input\": ";
-    write_json_escaped(output, stage.input);
-    output << ",\n";
-    output << "        \"output\": ";
-    write_json_escaped(output, stage.output);
-    output << ",\n";
-    output << "        \"diagnostic_ownership\": ";
-    write_json_escaped(output, stage.diagnostic_ownership);
-    output << ",\n";
-    output << "        \"cache_query_impact\": ";
-    write_json_escaped(output, stage.cache_query_impact);
+    write_json_escaped(output, metadata.cache_query_impact);
     output << "\n";
     output << "      },\n";
 }
@@ -232,10 +220,12 @@ base::Result<void> CompilationProfiler::write_json(const std::filesystem::path& 
         write_json_escaped(output, phase.name);
         output << ",\n";
         if (const PipelineStageRecord* stage = pipeline_stage_record_for_profile_name(phase.name)) {
-            write_stage_metadata(output, *stage);
+            write_stage_metadata(
+                output, "stage", pipeline_stage_metadata(*stage), ProfileStageMetadataProfileField::omit);
         } else if (const PipelineProfileSubeventRecord* subevent =
                        pipeline_profile_subevent_record_for_profile_name(phase.name)) {
-            write_parent_stage_metadata(output, pipeline_stage_record(subevent->parent_stage));
+            write_stage_metadata(output, "parent_stage", pipeline_stage_metadata(subevent->parent_stage),
+                ProfileStageMetadataProfileField::include);
         }
         output << "      \"detail\": ";
         write_json_escaped(output, phase.detail);

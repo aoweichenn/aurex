@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstddef>
 #include <span>
 #include <string_view>
@@ -61,6 +60,15 @@ struct PipelineStageRecord {
     std::string_view cache_query_impact;
 };
 
+struct PipelineStageMetadata {
+    std::string_view id;
+    std::string_view profile_name;
+    std::string_view input;
+    std::string_view output;
+    std::string_view diagnostic_ownership;
+    std::string_view cache_query_impact;
+};
+
 struct PipelineProfileSubeventRecord {
     PipelineProfileSubeventId id;
     std::string_view profile_name;
@@ -70,6 +78,8 @@ struct PipelineProfileSubeventRecord {
 [[nodiscard]] std::span<const PipelineStageRecord> pipeline_stage_records() noexcept;
 [[nodiscard]] std::span<const PipelineProfileSubeventRecord> pipeline_profile_subevent_records() noexcept;
 [[nodiscard]] const PipelineStageRecord& pipeline_stage_record(PipelineStageId id) noexcept;
+[[nodiscard]] PipelineStageMetadata pipeline_stage_metadata(const PipelineStageRecord& record) noexcept;
+[[nodiscard]] PipelineStageMetadata pipeline_stage_metadata(PipelineStageId id) noexcept;
 [[nodiscard]] const PipelineStageRecord* pipeline_stage_record_for_profile_name(std::string_view profile_name) noexcept;
 [[nodiscard]] std::span<const PipelineStageId> pipeline_stage_ids_for_diagnostic_category(
     base::DiagnosticCategory category) noexcept;

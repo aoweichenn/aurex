@@ -4,6 +4,7 @@
 #include <aurex/driver/incremental_cache.hpp>
 #include <aurex/driver/invocation.hpp>
 #include <aurex/driver/module_loader.hpp>
+#include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/driver/profile.hpp>
 #include <aurex/lex/lexer.hpp>
 #include <aurex/sema/sema.hpp>
@@ -14,8 +15,6 @@
 #include <span>
 #include <string>
 #include <utility>
-
-#include "pipeline_stage.hpp"
 
 namespace aurex::driver {
 

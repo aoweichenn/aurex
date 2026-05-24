@@ -2,6 +2,7 @@
 
 #include <aurex/driver/driver_messages.hpp>
 #include <aurex/driver/file_cache.hpp>
+#include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/driver/profile.hpp>
 #include <aurex/lex/lexer.hpp>
 #include <aurex/parse/parser.hpp>
@@ -10,8 +11,6 @@
 #include <sstream>
 #include <string>
 #include <utility>
-
-#include "pipeline_stage.hpp"
 
 namespace aurex::driver {
 namespace {

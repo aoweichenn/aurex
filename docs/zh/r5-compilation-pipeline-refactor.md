@@ -192,18 +192,29 @@ R5.10 已完成 IDE tooling diagnostics 消费阶段目录第一层：
 - IDE snapshot 的 lexer/parser/sema 诊断现在能直接给后续 LSP 或编辑器视图提供阶段归属；CLI 文本输出、
   `aurex-diagnostics-v1` JSON、profile phase name 和 query fingerprint 保持不变。
 
+R5.11 已完成阶段目录公开 API 和 metadata 投影收口：
+
+- `pipeline_stage.hpp` 从 `src/driver` 提升到 `include/aurex/driver/pipeline_stage.hpp`，后续 tooling、
+  profile viewer 或 LSP adapter 不需要再通过 private `src` include 读取阶段目录。
+- `PipelineStageMetadata` 成为 `PipelineStageRecord` 的轻量只读投影，统一暴露 `id`、`profile_name`、
+  input/output、diagnostic ownership 和 cache/query impact。
+- profile JSON writer 和 `IdeDiagnostic.owner_stages` 都改为消费 `PipelineStageMetadata`；profile JSON
+  字段和 `aurex-diagnostics-v1` 诊断协议保持不变。
+- `aurex_tooling` 对 `aurex_pipeline_stage` 的依赖改为 public CMake 边界，公共 tooling header 不再依赖
+  `src` include root。
+
 ## 后续拆分顺序
 
-R5.10 完成后，后续按下面顺序继续：
+R5.11 完成后，后续按下面顺序继续：
 
-1. 后续 profile viewer / LSP adapter 继续消费 profile JSON 的 `stage`/`parent_stage` 对象、
-   `IdeDiagnostic.owner_stages` 和 query records，而不是重新维护阶段表。
+1. 后续 profile viewer / LSP adapter 继续消费公开 `PipelineStageMetadata`、profile JSON 的
+   `stage`/`parent_stage` 对象、`IdeDiagnostic.owner_stages` 和 query records，而不是重新维护阶段表。
 2. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
    + `FrontendPipeline` + `LoweringPipeline` + `BackendPipeline` 的主路径。
 
 ## 验收标准
 
-- public API 不扩大；`include/aurex/driver/compiler.hpp` 继续保持窄 facade。
+- public API 只扩大到阶段目录只读 metadata；`include/aurex/driver/compiler.hpp` 继续保持窄 facade。
 - `Compiler::run` 不再直接持有完整编译流水线细节。
 - 原有 driver、CLI、integration、IR、sema、query 测试全部通过。
 - coverage gate 不降低；新文件应由现有 driver/integration 测试自然覆盖。

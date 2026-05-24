@@ -1,5 +1,6 @@
 #include <aurex/base/config.hpp>
 #include <aurex/driver/module_loader.hpp>
+#include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/driver/profile.hpp>
 #include <aurex/syntax/module.hpp>
 
@@ -12,7 +13,6 @@
 
 #include "module_loader_remap.hpp"
 #include "module_loader_support.hpp"
-#include "pipeline_stage.hpp"
 
 namespace aurex::driver {
 

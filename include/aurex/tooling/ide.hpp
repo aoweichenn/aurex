@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/diagnostic.hpp>
+#include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/sema/checked_module.hpp>
 #include <aurex/syntax/ast.hpp>
@@ -22,14 +23,7 @@ struct IdeSnapshotRequest {
     query::SourceRole source_role = query::SourceRole::virtual_buffer;
 };
 
-struct IdePipelineStageOwner {
-    std::string id;
-    std::string profile_name;
-    std::string input;
-    std::string output;
-    std::string diagnostic_ownership;
-    std::string cache_query_impact;
-};
+using IdePipelineStageOwner = driver::PipelineStageMetadata;
 
 struct IdeDiagnostic {
     base::Severity severity = base::Severity::error;

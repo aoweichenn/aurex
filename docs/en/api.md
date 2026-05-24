@@ -128,8 +128,26 @@ in `PipelineStage`. Lexer diagnostics may belong to `tokens.lex` or
 `module.lex`; parser diagnostics belong to `module.parse`; module-loader
 diagnostics belong to `module.append`; sema/type/name-resolution/visibility/
 pattern/safety/unsupported/capability/internal diagnostics belong to
-`sema.analyze`. This is an internal stage-directory contract, and the
+`sema.analyze`. This is a shared driver/tooling stage-directory contract, and the
 `aurex-diagnostics-v1` text/JSON output fields remain unchanged.
+
+The C++ stage directory API is intentionally read-only:
+
+```cpp
+#include <aurex/driver/pipeline_stage.hpp>
+```
+
+`PipelineStageRecord` remains the canonical directory row. `PipelineStageMetadata`
+is the lightweight projection used by profile JSON emission, tooling diagnostics,
+and later profile-viewer/LSP adapters:
+
+```cpp
+const driver::PipelineStageRecord& record =
+    driver::pipeline_stage_record(driver::PipelineStageId::sema_analyze);
+driver::PipelineStageMetadata metadata = driver::pipeline_stage_metadata(record);
+std::span<const driver::PipelineStageId> owners =
+    driver::pipeline_stage_ids_for_diagnostic_category(base::DiagnosticCategory::type);
+```
 
 ## C++ Lossless Syntax API
 
@@ -189,7 +207,7 @@ entry point covers diagnostics, token/hover queries, top-level definition
 lookup, same-name identifier references, checked-backed globals with AST-local
 fallbacks for parameters and `let` bindings, and edit-impact node selection.
 Each `IdeDiagnostic` also carries `owner_stages` metadata sourced from
-`PipelineStageRecord` for later LSP/IDE stage visualization; the
+`PipelineStageMetadata` for later LSP/IDE stage visualization; the
 `aurex-diagnostics-v1` output protocol is unchanged.
 Diagnostics are normalized into a structured event stream before query
 fingerprinting or CLI rendering. It is the data source for an LSP adapter, not

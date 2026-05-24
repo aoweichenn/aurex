@@ -5,14 +5,9 @@ target_link_libraries(aurex_tooling PUBLIC
     aurex_base
     aurex_lex
     aurex_parse
+    aurex_pipeline_stage
     aurex_query
     aurex_sema
     aurex_syntax
 )
-target_link_libraries(aurex_tooling PRIVATE
-    aurex_pipeline_stage
-)
-target_include_directories(aurex_tooling
-    PUBLIC include
-    PRIVATE src
-)
+target_include_directories(aurex_tooling PUBLIC include)

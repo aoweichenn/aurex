@@ -1,14 +1,13 @@
 #include "lowering_pipeline.hpp"
 
 #include <aurex/driver/invocation.hpp>
+#include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/driver/profile.hpp>
 #include <aurex/ir/ir_dump.hpp>
 #include <aurex/ir/lower_ast.hpp>
 #include <aurex/ir/pass_pipeline.hpp>
 
 #include <iostream>
-
-#include "pipeline_stage.hpp"
 
 namespace aurex::driver {
 namespace {

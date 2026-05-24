@@ -3,6 +3,7 @@
 #include <aurex/driver/driver_messages.hpp>
 #include <aurex/driver/invocation.hpp>
 #include <aurex/driver/native_toolchain.hpp>
+#include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/driver/profile.hpp>
 
 #include <chrono>
@@ -13,8 +14,6 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
-
-#include "pipeline_stage.hpp"
 
 namespace aurex::driver {
 namespace {

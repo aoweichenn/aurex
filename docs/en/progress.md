@@ -33,7 +33,10 @@ keeping lexer diagnostics attached to both `tokens.lex` and `module.lex` while
 mapping sema-like diagnostics to `sema.analyze`; the diagnostics text/JSON
 protocol remains unchanged. R5.10 wired `aurex_tooling` diagnostics to the same
 stage directory through `IdeDiagnostic.owner_stages`, so later LSP/IDE stage
-views can consume `PipelineStageRecord` metadata directly.
+views can consume `PipelineStageRecord` metadata directly. R5.11 promoted the
+stage directory header to a public read-only driver API and added
+`PipelineStageMetadata` as the shared projection used by the profile writer and
+tooling diagnostics.
 
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,
@@ -111,8 +114,9 @@ notes are design input only, not current progress.
   metadata so profile viewers can attach query sub-events to their owning
   driver stage without treating them as main stages. `PipelineStage` also
   provides diagnostic category to candidate owner-stage lookup, and
-  `IdeDiagnostic.owner_stages` consumes those records so later IDE/LSP stage
-  views do not maintain a separate diagnostic-stage table.
+  `IdeDiagnostic.owner_stages` consumes those records through public
+  `PipelineStageMetadata` so later IDE/LSP stage views do not maintain a
+  separate diagnostic-stage table.
 
 ## Removed From The Active Track
 

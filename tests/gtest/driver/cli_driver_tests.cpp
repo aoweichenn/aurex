@@ -5,6 +5,7 @@
 #include <aurex/driver/diagnostic_renderer.hpp>
 #include <aurex/driver/file_cache.hpp>
 #include <aurex/driver/incremental_cache.hpp>
+#include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/driver/profile.hpp>
 #include <aurex/query/generic_instance_key.hpp>
 #include <aurex/query/query_context.hpp>
@@ -29,8 +30,6 @@
 #include <thread>
 #include <utility>
 #include <vector>
-
-#include <driver/pipeline_stage.hpp>
 
 namespace aurex::test {
 namespace {
@@ -1180,6 +1179,15 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
         EXPECT_EQ(&driver::pipeline_stage_record(record.id), &record);
         EXPECT_EQ(driver::pipeline_stage_profile_name(record.id), record.profile_name);
         EXPECT_EQ(driver::pipeline_stage_record_for_profile_name(record.profile_name), &record);
+        const driver::PipelineStageMetadata metadata = driver::pipeline_stage_metadata(record);
+        EXPECT_EQ(metadata.id, record.name);
+        EXPECT_EQ(metadata.profile_name, record.profile_name);
+        EXPECT_EQ(metadata.input, record.input);
+        EXPECT_EQ(metadata.output, record.output);
+        EXPECT_EQ(metadata.diagnostic_ownership, record.diagnostic_ownership);
+        EXPECT_EQ(metadata.cache_query_impact, record.cache_query_impact);
+        EXPECT_EQ(driver::pipeline_stage_metadata(record.id).id, record.name);
+        EXPECT_EQ(driver::pipeline_stage_metadata(record.id).profile_name, record.profile_name);
         for (std::size_t other_index = index + 1; other_index < records.size(); ++other_index) {
             EXPECT_NE(record.profile_name, records[other_index].profile_name);
         }
@@ -1212,6 +1220,9 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
     const driver::PipelineStageRecord& fallback =
         driver::pipeline_stage_record(static_cast<driver::PipelineStageId>(driver::PIPELINE_STAGE_RECORD_COUNT));
     EXPECT_EQ(&fallback, &records.front());
+    EXPECT_EQ(
+        driver::pipeline_stage_metadata(static_cast<driver::PipelineStageId>(driver::PIPELINE_STAGE_RECORD_COUNT)).id,
+        records.front().name);
     EXPECT_EQ(driver::pipeline_stage_record_for_profile_name("unknown.phase"), nullptr);
 
     const auto expect_diagnostic_owner_stages =

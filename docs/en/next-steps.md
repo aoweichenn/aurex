@@ -50,11 +50,19 @@ and `ScopedCompilationPhase` can now take `PipelineStageId`, while
 incremental-cache sub-events enter the profiler through
 `PipelineProfileSubeventId`. Call sites no longer scatter stage profile-name
 strings, and the `aurex-profile-v1` fields remain unchanged.
+R5.13 added the profile/tooling consumer classification contract:
+`pipeline_profile_phase_classification(...)` classifies a profile phase name as
+a driver main stage, a profile sub-event, or unknown. The profile JSON writer now
+uses that API to emit the existing `stage` / `parent_stage` metadata without
+changing the protocol fields. Future profile viewers and LSP/IDE stage views
+should consume this classification API instead of carrying their own phase-name
+maps.
 
 Next, keep `PipelineStage` as the single profile/cache/query/diagnostics/IDE
 stage directory. M3 modules, generic backend completion, LSP adapter work, and
 subtree reparse must consume the R5 driver/session/query/diagnostics path,
-including public `PipelineStageMetadata`, `stage` / `parent_stage` profile
+including public `PipelineStageMetadata`,
+`pipeline_profile_phase_classification(...)`, `stage` / `parent_stage` profile
 metadata, and `IdeDiagnostic` owner-stage metadata, instead of bypassing it.
 
 ## Branch Principle

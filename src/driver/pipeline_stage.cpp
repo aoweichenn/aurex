@@ -1,6 +1,8 @@
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/driver/pipeline_stage.hpp>
 
+#include <array>
+
 #include "incremental_cache/common.hpp"
 
 namespace aurex::driver {
@@ -304,6 +306,38 @@ const PipelineStageRecord* pipeline_stage_record_for_profile_name(const std::str
         }
     }
     return nullptr;
+}
+
+PipelineProfilePhaseClassification pipeline_profile_phase_classification(const std::string_view profile_name) noexcept
+{
+    if (const PipelineStageRecord* const stage = pipeline_stage_record_for_profile_name(profile_name)) {
+        return PipelineProfilePhaseClassification{
+            PipelineProfilePhaseKind::driver_stage,
+            profile_name,
+            stage,
+            nullptr,
+            nullptr,
+        };
+    }
+
+    if (const PipelineProfileSubeventRecord* const subevent =
+            pipeline_profile_subevent_record_for_profile_name(profile_name)) {
+        return PipelineProfilePhaseClassification{
+            PipelineProfilePhaseKind::profile_subevent,
+            profile_name,
+            nullptr,
+            subevent,
+            &pipeline_stage_record(subevent->parent_stage),
+        };
+    }
+
+    return PipelineProfilePhaseClassification{
+        PipelineProfilePhaseKind::unknown,
+        profile_name,
+        nullptr,
+        nullptr,
+        nullptr,
+    };
 }
 
 std::span<const PipelineStageId> pipeline_stage_ids_for_diagnostic_category(

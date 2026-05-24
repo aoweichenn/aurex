@@ -214,18 +214,31 @@ R5.12 已完成 profile 记录入口枚举化：
 - `aurex-profile-v1` 的 `name`、`stage`、`parent_stage`、detail、elapsed/RSS 字段保持不变；这一步只把
   profile event 产生端也收口到阶段目录。
 
+R5.13 已完成 profile/tooling 消费者分类契约：
+
+- `PipelineStage` 增加 `pipeline_profile_phase_classification(...)` 只读 API，把 profile phase name
+  统一分类为 driver 主阶段、profile 子事件或 unknown。
+- driver 主阶段分类返回对应 `PipelineStageRecord`；incremental-cache profile 子事件分类返回
+  `PipelineProfileSubeventRecord` 和父 `PipelineStageRecord`，但不会伪装成主阶段。
+- profile JSON writer 已改为消费该分类 API，再输出原有 `stage` 或 `parent_stage` metadata；
+  `aurex-profile-v1` 字段、phase name、detail schema 和 CLI 行为保持不变。
+- 后续 profile viewer、LSP adapter 或 IDE 阶段视图应复用这个分类入口，不再维护独立 phase-name
+  映射表。
+
 ## 后续拆分顺序
 
-R5.12 完成后，后续按下面顺序继续：
+R5.13 完成后，后续按下面顺序继续：
 
-1. 后续 profile viewer / LSP adapter 继续消费公开 `PipelineStageMetadata`、profile JSON 的
-   `stage`/`parent_stage` 对象、`IdeDiagnostic.owner_stages` 和 query records，而不是重新维护阶段表。
+1. 后续 profile viewer / LSP adapter 继续消费公开 `PipelineStageMetadata`、
+   `pipeline_profile_phase_classification(...)`、profile JSON 的 `stage`/`parent_stage` 对象、
+   `IdeDiagnostic.owner_stages` 和 query records，而不是重新维护阶段表。
 2. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
    + `FrontendPipeline` + `LoweringPipeline` + `BackendPipeline` 的主路径。
 
 ## 验收标准
 
-- public API 只扩大到阶段目录只读 metadata；`include/aurex/driver/compiler.hpp` 继续保持窄 facade。
+- public API 只扩大到阶段目录只读 metadata 和 profile phase 分类契约；`include/aurex/driver/compiler.hpp`
+  继续保持窄 facade。
 - `Compiler::run` 不再直接持有完整编译流水线细节。
 - 原有 driver、CLI、integration、IR、sema、query 测试全部通过。
 - coverage gate 不降低；新文件应由现有 driver/integration 测试自然覆盖。

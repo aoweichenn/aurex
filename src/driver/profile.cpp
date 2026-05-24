@@ -124,6 +124,26 @@ void write_stage_metadata(std::ostream& output, const std::string_view field_nam
     output << "      },\n";
 }
 
+void write_profile_phase_stage_metadata(std::ostream& output, const PipelineProfilePhaseClassification classification)
+{
+    switch (classification.kind) {
+        case PipelineProfilePhaseKind::driver_stage:
+            if (classification.stage != nullptr) {
+                write_stage_metadata(output, "stage", pipeline_stage_metadata(*classification.stage),
+                    ProfileStageMetadataProfileField::omit);
+            }
+            break;
+        case PipelineProfilePhaseKind::profile_subevent:
+            if (classification.parent_stage != nullptr) {
+                write_stage_metadata(output, "parent_stage", pipeline_stage_metadata(*classification.parent_stage),
+                    ProfileStageMetadataProfileField::include);
+            }
+            break;
+        case PipelineProfilePhaseKind::unknown:
+            break;
+    }
+}
+
 [[nodiscard]] double total_elapsed_ms(const std::span<const CompilationPhaseProfile> phases) noexcept
 {
     double total = 0.0;
@@ -242,14 +262,7 @@ base::Result<void> CompilationProfiler::write_json(const std::filesystem::path& 
         output << "      \"name\": ";
         write_json_escaped(output, phase.name);
         output << ",\n";
-        if (const PipelineStageRecord* stage = pipeline_stage_record_for_profile_name(phase.name)) {
-            write_stage_metadata(
-                output, "stage", pipeline_stage_metadata(*stage), ProfileStageMetadataProfileField::omit);
-        } else if (const PipelineProfileSubeventRecord* subevent =
-                       pipeline_profile_subevent_record_for_profile_name(phase.name)) {
-            write_stage_metadata(output, "parent_stage", pipeline_stage_metadata(subevent->parent_stage),
-                ProfileStageMetadataProfileField::include);
-        }
+        write_profile_phase_stage_metadata(output, pipeline_profile_phase_classification(phase.name));
         output << "      \"detail\": ";
         write_json_escaped(output, phase.detail);
         output << ",\n";

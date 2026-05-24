@@ -55,6 +55,10 @@ diagnostics 和后续 profile viewer/LSP adapter 可复用的只读阶段 metada
 R5.12 已完成 profile 记录入口枚举化：`CompilationProfiler::record` 和 `ScopedCompilationPhase`
 现在能直接接收 `PipelineStageId`，incremental-cache 子事件通过 `PipelineProfileSubeventId` 进入
 profiler；调用点不再散落 stage profile name 字符串，`aurex-profile-v1` 字段保持不变。
+R5.13 已完成 profile/tooling 消费者分类契约：`pipeline_profile_phase_classification(...)`
+把 profile phase name 统一分类为 driver 主阶段、profile 子事件或 unknown；profile JSON writer
+已通过这个入口输出原有 `stage` / `parent_stage` metadata，协议字段保持不变。后续 profile viewer
+和 LSP/IDE 阶段视图必须复用这个分类 API，不再维护独立 phase-name 映射表。
 
 ## 当前分支原则
 

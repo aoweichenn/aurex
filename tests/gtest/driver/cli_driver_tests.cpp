@@ -1179,6 +1179,13 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
         EXPECT_EQ(&driver::pipeline_stage_record(record.id), &record);
         EXPECT_EQ(driver::pipeline_stage_profile_name(record.id), record.profile_name);
         EXPECT_EQ(driver::pipeline_stage_record_for_profile_name(record.profile_name), &record);
+        const driver::PipelineProfilePhaseClassification classification =
+            driver::pipeline_profile_phase_classification(record.profile_name);
+        EXPECT_EQ(classification.kind, driver::PipelineProfilePhaseKind::driver_stage);
+        EXPECT_EQ(classification.profile_name, record.profile_name);
+        EXPECT_EQ(classification.stage, &record);
+        EXPECT_EQ(classification.subevent, nullptr);
+        EXPECT_EQ(classification.parent_stage, nullptr);
         const driver::PipelineStageMetadata metadata = driver::pipeline_stage_metadata(record);
         EXPECT_EQ(metadata.id, record.name);
         EXPECT_EQ(metadata.profile_name, record.profile_name);
@@ -1224,6 +1231,13 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
         driver::pipeline_stage_metadata(static_cast<driver::PipelineStageId>(driver::PIPELINE_STAGE_RECORD_COUNT)).id,
         records.front().name);
     EXPECT_EQ(driver::pipeline_stage_record_for_profile_name("unknown.phase"), nullptr);
+    const driver::PipelineProfilePhaseClassification unknown_classification =
+        driver::pipeline_profile_phase_classification("unknown.phase");
+    EXPECT_EQ(unknown_classification.kind, driver::PipelineProfilePhaseKind::unknown);
+    EXPECT_EQ(unknown_classification.profile_name, "unknown.phase");
+    EXPECT_EQ(unknown_classification.stage, nullptr);
+    EXPECT_EQ(unknown_classification.subevent, nullptr);
+    EXPECT_EQ(unknown_classification.parent_stage, nullptr);
 
     const auto expect_diagnostic_owner_stages =
         [](const base::DiagnosticCategory category,
@@ -1272,6 +1286,13 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
         EXPECT_LT(static_cast<std::size_t>(record.parent_stage), records.size());
         const driver::PipelineStageRecord& parent = driver::pipeline_stage_record(record.parent_stage);
         EXPECT_EQ(parent.id, record.parent_stage);
+        const driver::PipelineProfilePhaseClassification classification =
+            driver::pipeline_profile_phase_classification(record.profile_name);
+        EXPECT_EQ(classification.kind, driver::PipelineProfilePhaseKind::profile_subevent);
+        EXPECT_EQ(classification.profile_name, record.profile_name);
+        EXPECT_EQ(classification.stage, nullptr);
+        EXPECT_EQ(classification.subevent, &record);
+        EXPECT_EQ(classification.parent_stage, &parent);
         for (std::size_t other_index = index + 1; other_index < subevents.size(); ++other_index) {
             EXPECT_NE(record.profile_name, subevents[other_index].profile_name);
         }
@@ -1307,6 +1328,8 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
                   static_cast<driver::PipelineProfileSubeventId>(driver::PIPELINE_PROFILE_SUBEVENT_RECORD_COUNT)),
         subevents.front().profile_name);
     EXPECT_EQ(driver::pipeline_profile_subevent_record_for_profile_name("unknown.phase"), nullptr);
+    EXPECT_EQ(driver::pipeline_profile_phase_classification(CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE).kind,
+        driver::PipelineProfilePhaseKind::profile_subevent);
 }
 
 TEST_F(AurexIntegrationTest, CliIncrementalCacheUsesQueryKeyPruningByDefault)

@@ -75,6 +75,20 @@ struct PipelineProfileSubeventRecord {
     PipelineStageId parent_stage;
 };
 
+enum class PipelineProfilePhaseKind {
+    unknown,
+    driver_stage,
+    profile_subevent,
+};
+
+struct PipelineProfilePhaseClassification {
+    PipelineProfilePhaseKind kind = PipelineProfilePhaseKind::unknown;
+    std::string_view profile_name;
+    const PipelineStageRecord* stage = nullptr;
+    const PipelineProfileSubeventRecord* subevent = nullptr;
+    const PipelineStageRecord* parent_stage = nullptr;
+};
+
 [[nodiscard]] std::span<const PipelineStageRecord> pipeline_stage_records() noexcept;
 [[nodiscard]] std::span<const PipelineProfileSubeventRecord> pipeline_profile_subevent_records() noexcept;
 [[nodiscard]] const PipelineStageRecord& pipeline_stage_record(PipelineStageId id) noexcept;
@@ -83,6 +97,8 @@ struct PipelineProfileSubeventRecord {
 [[nodiscard]] PipelineStageMetadata pipeline_stage_metadata(const PipelineStageRecord& record) noexcept;
 [[nodiscard]] PipelineStageMetadata pipeline_stage_metadata(PipelineStageId id) noexcept;
 [[nodiscard]] const PipelineStageRecord* pipeline_stage_record_for_profile_name(std::string_view profile_name) noexcept;
+[[nodiscard]] PipelineProfilePhaseClassification pipeline_profile_phase_classification(
+    std::string_view profile_name) noexcept;
 [[nodiscard]] std::span<const PipelineStageId> pipeline_stage_ids_for_diagnostic_category(
     base::DiagnosticCategory category) noexcept;
 [[nodiscard]] const PipelineProfileSubeventRecord* pipeline_profile_subevent_record_for_profile_name(

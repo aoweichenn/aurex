@@ -150,7 +150,16 @@ std::span<const driver::PipelineStageId> owners =
 std::string_view subevent_profile =
     driver::pipeline_profile_subevent_profile_name(
         driver::PipelineProfileSubeventId::incremental_cache_query_plan);
+driver::PipelineProfilePhaseClassification classification =
+    driver::pipeline_profile_phase_classification("incremental_cache.query_plan");
 ```
+
+Profile viewers, LSP adapters, and IDE stage views should classify phase names
+through `pipeline_profile_phase_classification(...)`. Driver main stages return
+`PipelineProfilePhaseKind::driver_stage` and a `stage` pointer; profile
+sub-events return `PipelineProfilePhaseKind::profile_subevent`, a `subevent`
+pointer, and a `parent_stage` pointer; unknown phases carry no stage pointers.
+Consumers should not maintain a second phase-name map.
 
 The profiler has typed entry points for the same directory, so new driver stages
 should record through ids instead of spelling profile-name strings at call sites:

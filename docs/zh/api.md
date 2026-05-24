@@ -135,7 +135,15 @@ std::span<const driver::PipelineStageId> owners =
 std::string_view subevent_profile =
     driver::pipeline_profile_subevent_profile_name(
         driver::PipelineProfileSubeventId::incremental_cache_query_plan);
+driver::PipelineProfilePhaseClassification classification =
+    driver::pipeline_profile_phase_classification("incremental_cache.query_plan");
 ```
+
+profile viewer、LSP adapter 或 IDE 阶段视图应通过
+`pipeline_profile_phase_classification(...)` 分类 phase name。driver 主阶段会返回
+`PipelineProfilePhaseKind::driver_stage` 和 `stage` 指针；profile 子事件会返回
+`PipelineProfilePhaseKind::profile_subevent`、`subevent` 指针和 `parent_stage` 指针；unknown
+phase 不携带 stage 指针。不要在消费者里维护第二份 phase-name 映射表。
 
 profiler 也提供同一目录的 typed entry point；新增 driver 阶段应通过 id 记录，不在调用点手写
 profile-name 字符串：

@@ -1,5 +1,6 @@
 #include <aurex/base/string_literal.hpp>
 
+#include <sema/internal/sema_builtin_expression_analyzer.hpp>
 #include <sema/internal/sema_expression_analyzer.hpp>
 
 namespace aurex::sema {

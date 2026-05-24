@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 
+#include <sema/internal/sema_builtin_expression_analyzer.hpp>
 #include <sema/internal/sema_core.hpp>
 #include <sema/internal/sema_diagnostics.hpp>
 #include <sema/internal/sema_expression_analyzer.hpp>
@@ -538,6 +539,10 @@ TEST(CoreUnit, SemanticWhiteBoxFacadeDelegatesBorrowedAndOwnedModules)
     static_assert(std::is_final_v<sema::SemanticSideTableStore>);
     static_assert(!std::is_default_constructible_v<sema::SemanticSideTableStore>);
     static_assert(std::is_constructible_v<sema::SemanticSideTableStore, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAnalyzerCore::BuiltinExpressionAnalyzer>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::BuiltinExpressionAnalyzer>);
+    static_assert(
+        std::is_constructible_v<sema::SemanticAnalyzerCore::BuiltinExpressionAnalyzer, sema::SemanticAnalyzerCore&>);
     static_assert(std::is_final_v<sema::SemanticAnalyzerCore::ExpressionAnalyzer>);
     static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::ExpressionAnalyzer>);
     static_assert(std::is_constructible_v<sema::SemanticAnalyzerCore::ExpressionAnalyzer, sema::SemanticAnalyzerCore&>);
@@ -3894,6 +3899,70 @@ TEST(CoreUnit, SemanticWhiteBoxContextualExprKeepsIntrinsicAndFinalTypesSeparate
     EXPECT_TRUE(types.same(analyzer.analyze_expr(if_expr, i64), i64));
     EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(if_expr), i32));
     EXPECT_TRUE(types.same(analyzer.cached_expr_type(if_expr), i64));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxControlExprDiagnosticsCoverVoidAndInvalidResults)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId condition = push_bool(module, "true");
+    const ExprId void_then = push_name(module, "void_value");
+    const ExprId void_else = push_name(module, "void_value");
+    const ExprId void_if =
+        module.push_if_expr({}, syntax::IfExprPayload{condition, syntax::INVALID_PATTERN_ID, void_then, void_else});
+
+    const ExprId missing_block_result = push_name(module, "missing_value");
+    const syntax::StmtId empty_block = push_block(module, {});
+    const ExprId invalid_block =
+        module.push_block_expr(syntax::ExprKind::block_expr, {}, empty_block, missing_block_result);
+
+    const ExprId void_block_result = push_name(module, "void_value");
+    const ExprId void_block = module.push_block_expr(syntax::ExprKind::block_expr, {}, empty_block, void_block_result);
+
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+    const syntax::StmtId returning_block = push_block(module, {return_stmt_id});
+    const ExprId unsafe_unreachable_result = push_integer(module);
+    const ExprId unsafe_unreachable_block =
+        module.push_block_expr(syntax::ExprKind::unsafe_block, {}, returning_block, unsafe_unreachable_result);
+
+    const ExprId unsafe_invalid_result = push_name(module, "missing_value");
+    const ExprId unsafe_invalid_block =
+        module.push_block_expr(syntax::ExprKind::unsafe_block, {}, empty_block, unsafe_invalid_result);
+
+    const ExprId unsafe_void_result = push_name(module, "void_value");
+    const ExprId unsafe_void_block =
+        module.push_block_expr(syntax::ExprKind::unsafe_block, {}, empty_block, unsafe_void_result);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    prepare_expr_storage(analyzer, module);
+    analyzer.state_.checked.stmt_local_types.assign(module.stmts.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.flow.current_module = module_id(0);
+
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle void_type = types.builtin(BuiltinType::void_);
+    static_cast<void>(add_global_value(analyzer, module_id(0), "void_value", void_type, SymbolKind::local));
+
+    EXPECT_FALSE(is_valid(analyzer.analyze_if_expr(void_if, analyzer.expr_view(void_if), INVALID_TYPE_HANDLE)));
+    EXPECT_FALSE(
+        is_valid(analyzer.analyze_block_expr(invalid_block, analyzer.expr_view(invalid_block), INVALID_TYPE_HANDLE)));
+    EXPECT_FALSE(
+        is_valid(analyzer.analyze_block_expr(void_block, analyzer.expr_view(void_block), INVALID_TYPE_HANDLE)));
+    EXPECT_TRUE(types.is_integer(analyzer.analyze_unsafe_block_expr(
+        unsafe_unreachable_block, analyzer.expr_view(unsafe_unreachable_block), INVALID_TYPE_HANDLE)));
+    EXPECT_FALSE(is_valid(analyzer.analyze_unsafe_block_expr(
+        unsafe_invalid_block, analyzer.expr_view(unsafe_invalid_block), INVALID_TYPE_HANDLE)));
+    EXPECT_FALSE(is_valid(analyzer.analyze_unsafe_block_expr(
+        unsafe_void_block, analyzer.expr_view(unsafe_void_block), INVALID_TYPE_HANDLE)));
+
+    const std::string messages = diagnostic_messages(diagnostics);
+    EXPECT_NE(messages.find(sema::SEMA_IF_EXPR_VOID), std::string::npos);
+    EXPECT_NE(messages.find(sema::SEMA_BLOCK_EXPR_UNREACHABLE), std::string::npos);
+    EXPECT_NE(messages.find(sema::SEMA_BLOCK_EXPR_VOID), std::string::npos);
+    EXPECT_NE(messages.find("unknown name: missing_value"), std::string::npos);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxExpressionCategoryHelpersRejectMismatchedViews)

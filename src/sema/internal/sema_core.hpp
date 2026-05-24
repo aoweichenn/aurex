@@ -101,6 +101,7 @@ private:
     using CapabilityMap = SemaMap<IdentId, CapabilitySet, IdentIdHash>;
     using CapabilityIdentityMap = SemaMap<GenericParamIdentity, CapabilitySet, GenericParamIdentityHash>;
 
+    class BuiltinExpressionAnalyzer;
     class ExpressionAnalyzer;
     class LookupResolver;
 
@@ -908,6 +909,7 @@ private:
     [[nodiscard]] GenericTemplateList& generic_method_template_bucket(const ModuleLookupKey& key);
     [[nodiscard]] EnumCaseList& enum_case_type_bucket(TypeHandle enum_type);
     [[nodiscard]] ModuleIdList make_module_id_list() const;
+    [[nodiscard]] BuiltinExpressionAnalyzer builtin_expression_analyzer() noexcept;
     [[nodiscard]] ExpressionAnalyzer expression_analyzer() noexcept;
     [[nodiscard]] LookupResolver lookup_resolver() noexcept;
     [[nodiscard]] LookupResolver lookup_resolver() const noexcept;

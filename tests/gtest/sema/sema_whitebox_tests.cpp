@@ -18,6 +18,8 @@
 #include <gtest/gtest.h>
 
 #include <sema/internal/sema_core.hpp>
+#include <sema/internal/sema_diagnostics.hpp>
+#include <sema/internal/sema_pipeline.hpp>
 
 namespace aurex::test {
 namespace {
@@ -519,6 +521,14 @@ void prepare_expr_storage(sema::SemanticAnalyzerCore& analyzer, const syntax::As
 
 TEST(CoreUnit, SemanticWhiteBoxFacadeDelegatesBorrowedAndOwnedModules)
 {
+    static_assert(std::is_final_v<sema::SemanticAnalysisPipeline>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalysisPipeline>);
+    static_assert(std::is_constructible_v<sema::SemanticAnalysisPipeline, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticDiagnosticReporter>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticDiagnosticReporter>);
+    static_assert(
+        std::is_constructible_v<sema::SemanticDiagnosticReporter, base::DiagnosticSink&, const sema::TypeTable&>);
+
     {
         syntax::AstModule borrowed_module;
         borrowed_module.module_path = module_path({"facade", "borrowed"});

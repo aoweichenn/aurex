@@ -57,6 +57,8 @@ struct SemaContext final {
 };
 
 class ModuleVisibilityResolver;
+class SemanticAnalysisPipeline;
+class SemanticDiagnosticReporter;
 
 class SemanticAnalyzerCore final {
 public:
@@ -451,12 +453,6 @@ private:
     };
 
     void register_type_names();
-    [[nodiscard]] bool prepare_analysis_session();
-    void reserve_analysis_storage();
-    void run_declaration_phases();
-    void run_function_body_phases();
-    void run_validation_phases();
-    [[nodiscard]] base::Result<CheckedModule> finish_analysis();
     void register_generic_template(const syntax::ItemNode& item, syntax::ItemId item_id);
     void validate_generic_parameter_list(const syntax::ItemNode& item);
     void validate_generic_constraints(const syntax::ItemNode& item, GenericTemplateInfo& info);
@@ -766,8 +762,6 @@ private:
     void validate_unsafe_call(const FunctionSignature& signature, const base::SourceRange& range) const;
     void validate_unsafe_function_value_call(TypeHandle callee_type, const base::SourceRange& range) const;
     [[nodiscard]] syntax::ModuleId item_module(syntax::ItemId item) const noexcept;
-    void normalize_parser_only_module_contract();
-    [[nodiscard]] bool validate_ast_contract() const;
     [[nodiscard]] syntax::ModuleId resolve_import_alias(
         std::string_view alias, const base::SourceRange& range, bool report_unknown = true) const;
     [[nodiscard]] std::vector<std::string_view> type_scope_parts(const syntax::TypeNode& type) const;
@@ -906,6 +900,7 @@ private:
     [[nodiscard]] GenericTemplateList& generic_method_template_bucket(const ModuleLookupKey& key);
     [[nodiscard]] EnumCaseList& enum_case_type_bucket(TypeHandle enum_type);
     [[nodiscard]] ModuleIdList make_module_id_list() const;
+    [[nodiscard]] SemanticDiagnosticReporter diagnostic_reporter() const noexcept;
     void report(const base::SourceRange& range, SemanticDiagnosticKind kind, std::string message) const;
     void report_general(const base::SourceRange& range, std::string message) const;
     void report_type(const base::SourceRange& range, std::string message) const;
@@ -932,6 +927,7 @@ private:
     SemaState state_;
 
     friend class ModuleVisibilityResolver;
+    friend class SemanticAnalysisPipeline;
 };
 
 } // namespace aurex::sema

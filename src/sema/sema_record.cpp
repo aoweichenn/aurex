@@ -1,8 +1,7 @@
-#include <aurex/sema/sema_messages.hpp>
-
 #include <utility>
 
 #include <sema/internal/sema_core.hpp>
+#include <sema/internal/sema_diagnostics.hpp>
 
 namespace aurex::sema {
 
@@ -507,131 +506,105 @@ SemaTypeTable& SemanticAnalyzerCore::active_stmt_local_types() noexcept
         : this->state_.flow.current_side_tables.side_tables->stmt_local_types;
 }
 
+SemanticDiagnosticReporter SemanticAnalyzerCore::diagnostic_reporter() const noexcept
+{
+    return SemanticDiagnosticReporter(this->ctx_.diagnostics, this->state_.checked.types);
+}
+
 void SemanticAnalyzerCore::report(
     const base::SourceRange& range, const SemanticDiagnosticKind kind, std::string message) const
 {
-    const SemanticDiagnosticMetadata metadata = semantic_diagnostic_metadata(kind);
-    this->report(range, std::move(message), metadata.category, metadata.code);
+    this->diagnostic_reporter().report(range, kind, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_general(const base::SourceRange& range, std::string message) const
 {
-    this->report(range, SemanticDiagnosticKind::general, std::move(message));
+    this->diagnostic_reporter().report_general(range, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_type(const base::SourceRange& range, std::string message) const
 {
-    this->report(range, SemanticDiagnosticKind::type_mismatch, std::move(message));
+    this->diagnostic_reporter().report_type(range, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_lookup(const base::SourceRange& range, std::string message) const
 {
-    this->report(range, SemanticDiagnosticKind::lookup, std::move(message));
+    this->diagnostic_reporter().report_lookup(range, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_duplicate(const base::SourceRange& range, std::string message) const
 {
-    this->report(range, SemanticDiagnosticKind::duplicate, std::move(message));
+    this->diagnostic_reporter().report_duplicate(range, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_visibility(const base::SourceRange& range, std::string message) const
 {
-    this->report(range, SemanticDiagnosticKind::visibility, std::move(message));
+    this->diagnostic_reporter().report_visibility(range, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_unsupported(const base::SourceRange& range, std::string message) const
 {
-    this->report(range, SemanticDiagnosticKind::unsupported, std::move(message));
+    this->diagnostic_reporter().report_unsupported(range, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_unsafe_required(const base::SourceRange& range, std::string message) const
 {
-    this->report(range, SemanticDiagnosticKind::unsafe_required, std::move(message));
+    this->diagnostic_reporter().report_unsafe_required(range, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_capability(const base::SourceRange& range, std::string message) const
 {
-    this->report(range, SemanticDiagnosticKind::capability, std::move(message));
+    this->diagnostic_reporter().report_capability(range, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_pattern(const base::SourceRange& range, std::string message) const
 {
-    this->report(range, SemanticDiagnosticKind::pattern, std::move(message));
+    this->diagnostic_reporter().report_pattern(range, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_pattern_exhaustiveness(const base::SourceRange& range, std::string message) const
 {
-    this->report(range, SemanticDiagnosticKind::pattern_exhaustiveness, std::move(message));
+    this->diagnostic_reporter().report_pattern_exhaustiveness(range, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_pattern_unreachable(const base::SourceRange& range, std::string message) const
 {
-    this->report(range, SemanticDiagnosticKind::pattern_unreachable, std::move(message));
+    this->diagnostic_reporter().report_pattern_unreachable(range, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_internal_contract(const base::SourceRange& range, std::string message) const
 {
-    this->report(range, SemanticDiagnosticKind::internal_contract, std::move(message));
+    this->diagnostic_reporter().report_internal_contract(range, std::move(message));
 }
 
 void SemanticAnalyzerCore::report(const base::SourceRange& range, std::string message,
     const base::DiagnosticCategory category, const base::DiagnosticCode code) const
 {
-    this->ctx_.diagnostics.push(base::Diagnostic{
-        base::Severity::error,
-        range,
-        std::move(message),
-        category,
-        code,
-    });
+    this->diagnostic_reporter().report(range, std::move(message), category, code);
 }
 
 void SemanticAnalyzerCore::report_note(
     const base::SourceRange& range, const SemanticDiagnosticKind kind, std::string message) const
 {
-    const SemanticDiagnosticMetadata metadata = semantic_secondary_diagnostic_metadata(kind);
-    this->ctx_.diagnostics.push(base::Diagnostic{
-        base::Severity::note,
-        range,
-        std::move(message),
-        metadata.category,
-        metadata.code,
-    });
+    this->diagnostic_reporter().report_note(range, kind, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_help(
     const base::SourceRange& range, const SemanticDiagnosticKind kind, std::string message) const
 {
-    const SemanticDiagnosticMetadata metadata = semantic_secondary_diagnostic_metadata(kind);
-    this->ctx_.diagnostics.push(base::Diagnostic{
-        base::Severity::help,
-        range,
-        std::move(message),
-        metadata.category,
-        metadata.code,
-    });
+    this->diagnostic_reporter().report_help(range, kind, std::move(message));
 }
 
 void SemanticAnalyzerCore::report_type_mismatch(
     const base::SourceRange& range, std::string message, const TypeHandle expected, const TypeHandle actual) const
 {
-    this->report(range, SemanticDiagnosticKind::type_mismatch, std::move(message));
-    if (is_valid(expected)) {
-        this->report_note(range, SemanticDiagnosticKind::type_mismatch,
-            sema_expected_type_note_message(this->state_.checked.types.display_name(expected)));
-    }
-    if (is_valid(actual)) {
-        this->report_note(range, SemanticDiagnosticKind::type_mismatch,
-            sema_actual_type_note_message(this->state_.checked.types.display_name(actual)));
-    }
+    this->diagnostic_reporter().report_type_mismatch(range, std::move(message), expected, actual);
 }
 
 void SemanticAnalyzerCore::report_lookup_suggestion(
     const base::SourceRange& range, const std::string_view suggestion) const
 {
-    if (!suggestion.empty()) {
-        this->report_help(range, SemanticDiagnosticKind::lookup, sema_did_you_mean_message(suggestion));
-    }
+    this->diagnostic_reporter().report_lookup_suggestion(range, suggestion);
 }
 
 } // namespace aurex::sema

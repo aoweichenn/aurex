@@ -20,6 +20,7 @@
 #include <sema/internal/sema_core.hpp>
 #include <sema/internal/sema_diagnostics.hpp>
 #include <sema/internal/sema_pipeline.hpp>
+#include <sema/internal/sema_side_tables.hpp>
 
 namespace aurex::test {
 namespace {
@@ -528,6 +529,12 @@ TEST(CoreUnit, SemanticWhiteBoxFacadeDelegatesBorrowedAndOwnedModules)
     static_assert(!std::is_default_constructible_v<sema::SemanticDiagnosticReporter>);
     static_assert(
         std::is_constructible_v<sema::SemanticDiagnosticReporter, base::DiagnosticSink&, const sema::TypeTable&>);
+    static_assert(std::is_final_v<sema::SemanticSideTableReader>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticSideTableReader>);
+    static_assert(std::is_constructible_v<sema::SemanticSideTableReader, const sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticSideTableStore>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticSideTableStore>);
+    static_assert(std::is_constructible_v<sema::SemanticSideTableStore, sema::SemanticAnalyzerCore&>);
 
     {
         syntax::AstModule borrowed_module;
@@ -576,8 +583,11 @@ TEST(CoreUnit, SemanticWhiteBoxDiagnosticMetadataUsesExplicitKinds)
     analyzer.report_note(
         range, sema::SemanticDiagnosticKind::duplicate, sema::sema_previous_declaration_note_message("value"));
     analyzer.report_lookup_suggestion(range, "value");
+    analyzer.report(range, sema::SemanticDiagnosticKind::general, "direct semantic kind");
+    analyzer.report(range, "direct module diagnostic", DiagnosticCategory::module, DiagnosticCode::module_error);
+    analyzer.report_help(range, sema::SemanticDiagnosticKind::lookup, "direct lookup help");
 
-    ASSERT_EQ(diagnostics.diagnostics().size(), 10U);
+    ASSERT_EQ(diagnostics.diagnostics().size(), 13U);
     EXPECT_EQ(diagnostics.diagnostics()[0].category, DiagnosticCategory::pattern);
     EXPECT_EQ(diagnostics.diagnostics()[0].code, DiagnosticCode::semantic_pattern_exhaustiveness);
     EXPECT_EQ(diagnostics.diagnostics()[1].category, DiagnosticCategory::safety);
@@ -598,6 +608,13 @@ TEST(CoreUnit, SemanticWhiteBoxDiagnosticMetadataUsesExplicitKinds)
     EXPECT_EQ(diagnostics.diagnostics()[8].code, DiagnosticCode::semantic_duplicate);
     EXPECT_EQ(diagnostics.diagnostics()[9].category, DiagnosticCategory::name_resolution);
     EXPECT_EQ(diagnostics.diagnostics()[9].code, DiagnosticCode::semantic_lookup);
+    EXPECT_EQ(diagnostics.diagnostics()[10].category, DiagnosticCategory::semantic);
+    EXPECT_EQ(diagnostics.diagnostics()[10].code, DiagnosticCode::semantic_error);
+    EXPECT_EQ(diagnostics.diagnostics()[11].category, DiagnosticCategory::module);
+    EXPECT_EQ(diagnostics.diagnostics()[11].code, DiagnosticCode::module_error);
+    EXPECT_EQ(diagnostics.diagnostics()[12].category, DiagnosticCategory::name_resolution);
+    EXPECT_EQ(diagnostics.diagnostics()[12].code, DiagnosticCode::semantic_lookup);
+    EXPECT_EQ(diagnostics.diagnostics()[12].severity, base::Severity::help);
     EXPECT_EQ(diagnostics.diagnostics()[0].message, diagnostics.diagnostics()[1].message);
 }
 

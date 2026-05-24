@@ -40,6 +40,10 @@ R5.8 已完成 cache/query profile 子事件父阶段映射第一层：`Pipeline
 `PipelineProfileSubeventRecord`，`incremental_cache.source_stage_reuse` 会通过 `parent_stage`
 挂回 `incremental_cache.lookup`，query diff / plan / pruning / provider-eval 会挂回
 `incremental_cache.write`；子事件继续不携带 `stage`，不会被误认为 driver 主阶段。
+R5.9 已完成 diagnostics owner 阶段目录第一层：`PipelineStage` 现在能从 `DiagnosticCategory`
+反查候选 owner stage，lexer 诊断保留 `tokens.lex` / `module.lex` 双归属，parser/module/sema
+类诊断分别归入 `module.parse`、`module.append` 和 `sema.analyze`；diagnostics text/JSON
+协议保持不变。
 
 ## 当前分支原则
 

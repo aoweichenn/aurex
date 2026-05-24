@@ -30,11 +30,17 @@ R5.8 added parent-stage metadata for cache/query profile sub-events:
 `incremental_cache.lookup`, while query diff / plan / pruning / provider-eval
 point back to `incremental_cache.write`. These sub-events still do not carry a
 `stage` object and are not treated as driver main stages.
+R5.9 added the first diagnostics-owner directory: `PipelineStage` can now map a
+`DiagnosticCategory` back to candidate owner stages. Lexer diagnostics keep both
+`tokens.lex` and `module.lex` owners, while parser, module-loader, and sema-like
+diagnostics map to `module.parse`, `module.append`, and `sema.analyze`
+respectively. The diagnostics text/JSON protocol is unchanged.
 
 Next, keep `PipelineStage` as the single profile/cache/query/diagnostics/IDE
 stage directory. M3 modules, generic backend completion, LSP adapter work, and
 subtree reparse must consume the R5 driver/session/query/diagnostics path,
-including `stage` / `parent_stage` profile metadata, instead of bypassing it.
+including `stage` / `parent_stage` profile metadata and diagnostic owner-stage
+metadata, instead of bypassing it.
 
 ## Branch Principle
 

@@ -1,5 +1,7 @@
 #include "pipeline_stage.hpp"
 
+#include <aurex/base/diagnostic.hpp>
+
 #include "incremental_cache/common.hpp"
 
 namespace aurex::driver {
@@ -226,6 +228,27 @@ constexpr std::array<PipelineProfileSubeventRecord, PIPELINE_PROFILE_SUBEVENT_RE
         },
     }};
 
+constexpr std::array<PipelineStageId, 2> PIPELINE_LEXER_DIAGNOSTIC_OWNER_STAGES{
+    PipelineStageId::tokens_lex,
+    PipelineStageId::module_lex,
+};
+constexpr std::array<PipelineStageId, 1> PIPELINE_PARSER_DIAGNOSTIC_OWNER_STAGES{
+    PipelineStageId::module_parse,
+};
+constexpr std::array<PipelineStageId, 1> PIPELINE_MODULE_DIAGNOSTIC_OWNER_STAGES{
+    PipelineStageId::module_append,
+};
+constexpr std::array<PipelineStageId, 1> PIPELINE_SEMA_DIAGNOSTIC_OWNER_STAGES{
+    PipelineStageId::sema_analyze,
+};
+
+template <std::size_t Count>
+[[nodiscard]] std::span<const PipelineStageId> pipeline_stage_id_span(
+    const std::array<PipelineStageId, Count>& stages) noexcept
+{
+    return std::span<const PipelineStageId>(stages.data(), stages.size());
+}
+
 } // namespace
 
 std::span<const PipelineStageRecord> pipeline_stage_records() noexcept
@@ -256,6 +279,32 @@ const PipelineStageRecord* pipeline_stage_record_for_profile_name(const std::str
         }
     }
     return nullptr;
+}
+
+std::span<const PipelineStageId> pipeline_stage_ids_for_diagnostic_category(
+    const base::DiagnosticCategory category) noexcept
+{
+    switch (category) {
+        case base::DiagnosticCategory::general:
+            return {};
+        case base::DiagnosticCategory::lexer:
+            return pipeline_stage_id_span(PIPELINE_LEXER_DIAGNOSTIC_OWNER_STAGES);
+        case base::DiagnosticCategory::parser:
+            return pipeline_stage_id_span(PIPELINE_PARSER_DIAGNOSTIC_OWNER_STAGES);
+        case base::DiagnosticCategory::semantic:
+        case base::DiagnosticCategory::type:
+        case base::DiagnosticCategory::name_resolution:
+        case base::DiagnosticCategory::visibility:
+        case base::DiagnosticCategory::pattern:
+        case base::DiagnosticCategory::safety:
+        case base::DiagnosticCategory::unsupported:
+        case base::DiagnosticCategory::capability:
+        case base::DiagnosticCategory::internal:
+            return pipeline_stage_id_span(PIPELINE_SEMA_DIAGNOSTIC_OWNER_STAGES);
+        case base::DiagnosticCategory::module:
+            return pipeline_stage_id_span(PIPELINE_MODULE_DIAGNOSTIC_OWNER_STAGES);
+    }
+    return {};
 }
 
 const PipelineProfileSubeventRecord* pipeline_profile_subevent_record_for_profile_name(

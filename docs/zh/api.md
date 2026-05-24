@@ -111,6 +111,11 @@ cache/query 内部子事件仍不伪装成 driver 主阶段，因此不会携带
 `incremental_cache.lookup`。profile viewer 可以用 `stage` 识别 driver 主阶段，用 `parent_stage`
 把 cache/query 子事件挂回对应主阶段。
 
+driver 内部还通过 `PipelineStage` 维护 `DiagnosticCategory` 到候选 owner stage 的反查关系。
+lexer 诊断可能来自 `tokens.lex` 或 `module.lex`，parser 诊断归属 `module.parse`，module-loader
+诊断归属 `module.append`，sema/type/name-resolution/visibility/pattern/safety/unsupported/capability/internal
+归属 `sema.analyze`。这只是内部阶段目录契约，`aurex-diagnostics-v1` 的 text/JSON 输出字段保持不变。
+
 ## C++ Lossless Syntax 接口
 
 头文件：

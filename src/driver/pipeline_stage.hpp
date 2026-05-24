@@ -5,6 +5,12 @@
 #include <span>
 #include <string_view>
 
+namespace aurex::base {
+
+enum class DiagnosticCategory;
+
+} // namespace aurex::base
+
 namespace aurex::driver {
 
 enum class PipelineStageId {
@@ -65,6 +71,8 @@ struct PipelineProfileSubeventRecord {
 [[nodiscard]] std::span<const PipelineProfileSubeventRecord> pipeline_profile_subevent_records() noexcept;
 [[nodiscard]] const PipelineStageRecord& pipeline_stage_record(PipelineStageId id) noexcept;
 [[nodiscard]] const PipelineStageRecord* pipeline_stage_record_for_profile_name(std::string_view profile_name) noexcept;
+[[nodiscard]] std::span<const PipelineStageId> pipeline_stage_ids_for_diagnostic_category(
+    base::DiagnosticCategory category) noexcept;
 [[nodiscard]] const PipelineProfileSubeventRecord* pipeline_profile_subevent_record_for_profile_name(
     std::string_view profile_name) noexcept;
 [[nodiscard]] std::string_view pipeline_stage_profile_name(PipelineStageId id) noexcept;

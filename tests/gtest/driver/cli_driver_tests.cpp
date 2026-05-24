@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <initializer_list>
 #include <optional>
 #include <span>
 #include <sstream>
@@ -37,6 +38,8 @@ namespace {
 constexpr std::string_view DRIVER_FILE_CACHE_FIRST_TEXT = "cached-one";
 constexpr std::string_view DRIVER_FILE_CACHE_SECOND_TEXT = "cached-two";
 constexpr std::string_view DRIVER_FILE_CACHE_FIFO_TEXT = "fifo-stream";
+constexpr int DRIVER_TEST_UNKNOWN_DIAGNOSTIC_CATEGORY_VALUE = 99;
+constexpr std::string_view DRIVER_TEST_NO_DIAGNOSTIC_OWNER = "none";
 constexpr std::string_view DRIVER_INCREMENTAL_CACHE_FIRST_SOURCE =
     "module incremental_cache_driver;\n"
     "pub type Count = i32;\n"
@@ -1210,6 +1213,39 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
         driver::pipeline_stage_record(static_cast<driver::PipelineStageId>(driver::PIPELINE_STAGE_RECORD_COUNT));
     EXPECT_EQ(&fallback, &records.front());
     EXPECT_EQ(driver::pipeline_stage_record_for_profile_name("unknown.phase"), nullptr);
+
+    const auto expect_diagnostic_owner_stages =
+        [](const base::DiagnosticCategory category,
+            const std::initializer_list<driver::PipelineStageId> expected_stages) {
+            const std::span<const driver::PipelineStageId> actual_stages =
+                driver::pipeline_stage_ids_for_diagnostic_category(category);
+            ASSERT_EQ(actual_stages.size(), expected_stages.size());
+
+            std::size_t index = 0;
+            for (const driver::PipelineStageId expected_stage : expected_stages) {
+                ASSERT_LT(index, actual_stages.size());
+                EXPECT_EQ(actual_stages[index], expected_stage);
+                const driver::PipelineStageRecord& owner = driver::pipeline_stage_record(actual_stages[index]);
+                EXPECT_NE(owner.diagnostic_ownership, DRIVER_TEST_NO_DIAGNOSTIC_OWNER);
+                index += 1;
+            }
+        };
+    expect_diagnostic_owner_stages(base::DiagnosticCategory::general, {});
+    expect_diagnostic_owner_stages(
+        base::DiagnosticCategory::lexer, {driver::PipelineStageId::tokens_lex, driver::PipelineStageId::module_lex});
+    expect_diagnostic_owner_stages(base::DiagnosticCategory::parser, {driver::PipelineStageId::module_parse});
+    expect_diagnostic_owner_stages(base::DiagnosticCategory::semantic, {driver::PipelineStageId::sema_analyze});
+    expect_diagnostic_owner_stages(base::DiagnosticCategory::type, {driver::PipelineStageId::sema_analyze});
+    expect_diagnostic_owner_stages(base::DiagnosticCategory::name_resolution, {driver::PipelineStageId::sema_analyze});
+    expect_diagnostic_owner_stages(base::DiagnosticCategory::visibility, {driver::PipelineStageId::sema_analyze});
+    expect_diagnostic_owner_stages(base::DiagnosticCategory::pattern, {driver::PipelineStageId::sema_analyze});
+    expect_diagnostic_owner_stages(base::DiagnosticCategory::safety, {driver::PipelineStageId::sema_analyze});
+    expect_diagnostic_owner_stages(base::DiagnosticCategory::unsupported, {driver::PipelineStageId::sema_analyze});
+    expect_diagnostic_owner_stages(base::DiagnosticCategory::capability, {driver::PipelineStageId::sema_analyze});
+    expect_diagnostic_owner_stages(base::DiagnosticCategory::module, {driver::PipelineStageId::module_append});
+    expect_diagnostic_owner_stages(base::DiagnosticCategory::internal, {driver::PipelineStageId::sema_analyze});
+    expect_diagnostic_owner_stages(
+        static_cast<base::DiagnosticCategory>(DRIVER_TEST_UNKNOWN_DIAGNOSTIC_CATEGORY_VALUE), {});
 
     const std::span<const driver::PipelineProfileSubeventRecord> subevents =
         driver::pipeline_profile_subevent_records();

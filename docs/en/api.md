@@ -123,6 +123,14 @@ belong to `incremental_cache.write`, while
 Profile viewers can use `stage` for driver main stages and `parent_stage` to
 thread cache/query sub-events back to the owning main stage.
 
+The driver also keeps the `DiagnosticCategory` to candidate owner-stage mapping
+in `PipelineStage`. Lexer diagnostics may belong to `tokens.lex` or
+`module.lex`; parser diagnostics belong to `module.parse`; module-loader
+diagnostics belong to `module.append`; sema/type/name-resolution/visibility/
+pattern/safety/unsupported/capability/internal diagnostics belong to
+`sema.analyze`. This is an internal stage-directory contract, and the
+`aurex-diagnostics-v1` text/JSON output fields remain unchanged.
+
 ## C++ Lossless Syntax API
 
 Headers:

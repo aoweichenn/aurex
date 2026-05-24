@@ -27,7 +27,11 @@ added optional `stage` metadata to driver main-stage phases in
 `aurex-profile-v1`, sourced directly from `PipelineStageRecord`. R5.8 added
 optional `parent_stage` metadata for incremental-cache profile sub-events,
 threading source-stage reuse back to `incremental_cache.lookup` and query
-diff / plan / pruning / provider-eval back to `incremental_cache.write`.
+diff / plan / pruning / provider-eval back to `incremental_cache.write`. R5.9
+added a `DiagnosticCategory` to candidate owner-stage lookup in `PipelineStage`,
+keeping lexer diagnostics attached to both `tokens.lex` and `module.lex` while
+mapping sema-like diagnostics to `sema.analyze`; the diagnostics text/JSON
+protocol remains unchanged.
 
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,
@@ -103,7 +107,9 @@ notes are design input only, not current progress.
   while existing phase names and internal incremental-cache query sub-events are
   preserved. Incremental-cache sub-events now carry optional `parent_stage`
   metadata so profile viewers can attach query sub-events to their owning
-  driver stage without treating them as main stages.
+  driver stage without treating them as main stages. `PipelineStage` also
+  provides diagnostic category to candidate owner-stage lookup so later IDE/LSP
+  stage views do not maintain a separate diagnostic-stage table.
 
 ## Removed From The Active Track
 

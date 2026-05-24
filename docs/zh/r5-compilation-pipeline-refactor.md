@@ -172,14 +172,25 @@ R5.8 已完成 cache/query profile 子事件父阶段映射第一层：
 - 原 phase `name`、`detail` 字段和 query pruning/provider-eval detail schema 保持不变，现有 stress/perf
   parser 只会看到新增 JSON metadata，不需要重新解析 phase 名称。
 
+R5.9 已完成 diagnostics owner 阶段目录第一层：
+
+- `PipelineStage` 增加按 `DiagnosticCategory` 反查 owner stage id 的接口，诊断分类到 driver 阶段的关系不再由
+  profile viewer、IDE/LSP 或后续 query 工具各自硬编码。
+- lexer 诊断显式保留 `tokens.lex` 和 `module.lex` 两个 owner stage，因为 token dump 和 module compile 都会消费
+  lexer；parser 归属 `module.parse`，module-loader 归属 `module.append`，sema/type/name-resolution/visibility/
+  pattern/safety/unsupported/capability/internal 归属 `sema.analyze`。
+- `general` 和未知诊断分类不伪造 owner stage，避免把 CLI driver error 或未来未分类诊断误挂到具体 pipeline
+  阶段。
+- diagnostics text / JSON 协议保持不变；这一步只把内部阶段归属契约收口到 `PipelineStage`。
+
 ## 后续拆分顺序
 
-R5.8 完成后，后续按下面顺序继续：
+R5.9 完成后，后续按下面顺序继续：
 
-1. 继续在 diagnostics 边界消费 `PipelineStageRecord`，而不是在各子 pipeline 中新增散落字符串。
-2. 后续 IDE/LSP 可视化层消费 profile JSON 的 `stage`/`parent_stage` 对象和 query records，
+1. 后续 IDE/LSP 可视化层消费 profile JSON 的 `stage`/`parent_stage` 对象、diagnostic owner stage
+   列表和 query records，
    而不是重新维护阶段表。
-3. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
+2. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
    + `FrontendPipeline` + `LoweringPipeline` + `BackendPipeline` 的主路径。
 
 ## 验收标准

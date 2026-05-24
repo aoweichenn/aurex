@@ -25,6 +25,7 @@ using base::Severity;
 constexpr int BASE_TEST_UNKNOWN_SEVERITY_VALUE = 99;
 constexpr int BASE_TEST_UNKNOWN_DIAGNOSTIC_CATEGORY_VALUE = 99;
 constexpr int BASE_TEST_UNKNOWN_DIAGNOSTIC_CODE_VALUE = 99;
+constexpr int BASE_TEST_UNKNOWN_DIAGNOSTIC_LABEL_STYLE_VALUE = 99;
 constexpr base::usize BASE_TEST_BUMP_SMALL_BLOCK_BYTES = 32;
 constexpr base::usize BASE_TEST_BUMP_ALIGNMENT = 16;
 constexpr base::usize BASE_TEST_BUMP_NON_POWER_ALIGNMENT = 24;
@@ -78,6 +79,29 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult)
     ASSERT_EQ(diagnostics.diagnostics().size(), 5U);
     EXPECT_EQ(diagnostics.diagnostics()[3].category, DiagnosticCategory::semantic);
     EXPECT_EQ(diagnostics.diagnostics()[3].code, DiagnosticCode::semantic_error);
+    EXPECT_TRUE(diagnostics.diagnostics()[3].labels.empty());
+    EXPECT_TRUE(diagnostics.diagnostics()[3].children.empty());
+
+    const base::DiagnosticLabel primary = base::primary_diagnostic_label(forward, "primary span");
+    const base::DiagnosticLabel secondary = base::secondary_diagnostic_label(empty, "secondary span");
+    const base::DiagnosticChild note =
+        base::diagnostic_note(forward, "note child", DiagnosticCategory::semantic, DiagnosticCode::semantic_error);
+    const base::DiagnosticChild help = base::diagnostic_help(empty, "help child");
+    const Diagnostic structured{
+        Severity::error,
+        forward,
+        "structured",
+        DiagnosticCategory::type,
+        DiagnosticCode::semantic_type_mismatch,
+        {primary, secondary},
+        {note, help},
+    };
+    EXPECT_EQ(structured.labels.size(), 2U);
+    EXPECT_EQ(structured.labels[0].style, base::DiagnosticLabelStyle::primary);
+    EXPECT_EQ(structured.labels[1].style, base::DiagnosticLabelStyle::secondary);
+    EXPECT_EQ(structured.children.size(), 2U);
+    EXPECT_EQ(structured.children[0].severity, Severity::note);
+    EXPECT_EQ(structured.children[1].severity, Severity::help);
 
     EXPECT_EQ(base::severity_name(Severity::note), "note");
     EXPECT_EQ(base::severity_name(Severity::help), "help");
@@ -118,6 +142,12 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult)
     EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_pattern_exhaustiveness), "SEM0501");
     EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::semantic_pattern_unreachable), "SEM0502");
     EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::module_error), "MOD0001");
+    EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::internal_contract), "INT0001");
+    EXPECT_EQ(base::diagnostic_label_style_name(base::DiagnosticLabelStyle::primary), "primary");
+    EXPECT_EQ(base::diagnostic_label_style_name(base::DiagnosticLabelStyle::secondary), "secondary");
+    EXPECT_EQ(base::diagnostic_label_style_name(
+                  static_cast<base::DiagnosticLabelStyle>(BASE_TEST_UNKNOWN_DIAGNOSTIC_LABEL_STYLE_VALUE)),
+        "unknown");
     EXPECT_EQ(base::diagnostic_code_name(DiagnosticCode::internal_contract), "INT0001");
     EXPECT_EQ(
         base::diagnostic_code_name(static_cast<DiagnosticCode>(BASE_TEST_UNKNOWN_DIAGNOSTIC_CODE_VALUE)), "unknown");

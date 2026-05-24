@@ -16,6 +16,8 @@ struct QueryDiagnosticEvent {
     base::DiagnosticCode code = base::DiagnosticCode::none;
     base::SourceRange range{};
     std::string message;
+    std::vector<base::DiagnosticLabel> labels;
+    std::vector<base::DiagnosticChild> children;
     base::u32 ordinal = 0;
 };
 
@@ -42,7 +44,6 @@ struct DiagnosticsProviderOutput {
     std::span<const QueryDiagnosticEvent> events, std::span<const std::string_view> context = {});
 [[nodiscard]] bool is_valid(const DiagnosticsProviderInput& input) noexcept;
 [[nodiscard]] bool is_valid(const DiagnosticsProviderOutput& output) noexcept;
-[[nodiscard]] std::optional<DiagnosticsProviderOutput> provide_diagnostics_query(
-    const DiagnosticsProviderInput& input);
+[[nodiscard]] std::optional<DiagnosticsProviderOutput> provide_diagnostics_query(const DiagnosticsProviderInput& input);
 
 } // namespace aurex::query

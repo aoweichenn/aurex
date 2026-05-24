@@ -1,6 +1,5 @@
 #include <aurex/driver/diagnostic_renderer.hpp>
 #include <aurex/driver/driver_messages.hpp>
-
 #include <aurex/query/diagnostics_query.hpp>
 
 #include <algorithm>
@@ -167,7 +166,7 @@ void print_json_escaped(std::ostream& out, const std::string_view text)
                 if (byte < DRIVER_JSON_CONTROL_CHAR_LIMIT) {
                     out << "\\u00"
                         << DRIVER_JSON_HEX_DIGITS[(byte >> DRIVER_JSON_NIBBLE_BITS) & DRIVER_JSON_LOW_NIBBLE_MASK]
-                              << DRIVER_JSON_HEX_DIGITS[byte & DRIVER_JSON_LOW_NIBBLE_MASK];
+                        << DRIVER_JSON_HEX_DIGITS[byte & DRIVER_JSON_LOW_NIBBLE_MASK];
                 } else {
                     out << static_cast<char>(byte & DRIVER_JSON_BYTE_MASK);
                 }
@@ -200,8 +199,8 @@ void print_json_range(std::ostream& out, const base::SourceFile& file, const bas
     out << ",\n";
     out << "        \"start\": {\"byte\": " << range.begin << ", \"line\": " << start.line
         << ", \"column\": " << start.column << "},\n";
-    out << "        \"end\": {\"byte\": " << range.end << ", \"line\": " << end.line
-        << ", \"column\": " << end.column << "}\n";
+    out << "        \"end\": {\"byte\": " << range.end << ", \"line\": " << end.line << ", \"column\": " << end.column
+        << "}\n";
     out << "      }\n";
 }
 
@@ -210,9 +209,87 @@ void print_json_null_range(std::ostream& out)
     out << "      \"range\": null\n";
 }
 
+void print_json_range_value(
+    std::ostream& out, const base::SourceFile& file, const base::SourceRange& range, const std::string_view indent)
+{
+    const base::LineColumn start = file.line_column(range.begin);
+    const base::LineColumn end = file.line_column(range.end);
+    out << indent << "{\n";
+    out << indent << "  \"source_id\": " << range.source.value << ",\n";
+    out << indent << "  \"path\": ";
+    print_json_escaped(out, file.path());
+    out << ",\n";
+    out << indent << "  \"start\": {\"byte\": " << range.begin << ", \"line\": " << start.line
+        << ", \"column\": " << start.column << "},\n";
+    out << indent << "  \"end\": {\"byte\": " << range.end << ", \"line\": " << end.line
+        << ", \"column\": " << end.column << "}\n";
+    out << indent << "}";
+}
+
+void print_json_labels(std::ostream& out, const base::SourceManager& sources,
+    const std::span<const base::DiagnosticLabel> labels, const bool trailing_comma)
+{
+    out << "      \"labels\": [\n";
+    for (base::usize index = 0; index < labels.size(); ++index) {
+        const base::DiagnosticLabel& label = labels[index];
+        const base::SourceFile& file = sources.get(label.range.source);
+        out << "        {\n";
+        out << "          ";
+        print_json_string_field(out, "style", base::diagnostic_label_style_name(label.style), true);
+        out << "          ";
+        print_json_string_field(out, "message", label.message, true);
+        out << "          \"range\": ";
+        print_json_range_value(out, file, label.range, "          ");
+        out << "\n";
+        out << "        }";
+        if (index + 1 < labels.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "      ]";
+    if (trailing_comma) {
+        out << ",";
+    }
+    out << "\n";
+}
+
+void print_json_children(std::ostream& out, const base::SourceManager& sources,
+    const std::span<const base::DiagnosticChild> children, const bool trailing_comma)
+{
+    out << "      \"children\": [\n";
+    for (base::usize index = 0; index < children.size(); ++index) {
+        const base::DiagnosticChild& child = children[index];
+        const base::SourceFile& file = sources.get(child.range.source);
+        out << "        {\n";
+        out << "          ";
+        print_json_string_field(out, "severity", base::severity_name(child.severity), true);
+        out << "          ";
+        print_json_string_field(out, "category", base::diagnostic_category_name(child.category), true);
+        out << "          ";
+        print_json_string_field(out, "code", base::diagnostic_code_name(child.code), true);
+        out << "          ";
+        print_json_string_field(out, "message", child.message, true);
+        out << "          \"range\": ";
+        print_json_range_value(out, file, child.range, "          ");
+        out << "\n";
+        out << "        }";
+        if (index + 1 < children.size()) {
+            out << ",";
+        }
+        out << "\n";
+    }
+    out << "      ]";
+    if (trailing_comma) {
+        out << ",";
+    }
+    out << "\n";
+}
+
 void print_json_diagnostic_entry(std::ostream& out, const base::Severity severity,
     const base::DiagnosticCategory category, const base::DiagnosticCode code, const std::string_view message,
-    const base::SourceFile* file, const base::SourceRange* range)
+    const base::SourceFile* file, const base::SourceRange* range, const base::SourceManager* sources = nullptr,
+    std::span<const base::DiagnosticLabel> labels = {}, std::span<const base::DiagnosticChild> children = {})
 {
     out << "    {\n";
     out << "      ";
@@ -227,6 +304,11 @@ void print_json_diagnostic_entry(std::ostream& out, const base::Severity severit
         print_json_range(out, *file, *range);
     } else {
         print_json_null_range(out);
+    }
+    if (sources != nullptr) {
+        out << ",\n";
+        print_json_labels(out, *sources, labels, true);
+        print_json_children(out, *sources, children, false);
     }
     out << "    }";
 }
@@ -245,7 +327,7 @@ void print_json_diagnostics(
         const query::QueryDiagnosticEvent& diagnostic = all[index];
         const base::SourceFile& file = sources.get(diagnostic.range.source);
         print_json_diagnostic_entry(out, diagnostic.severity, diagnostic.category, diagnostic.code, diagnostic.message,
-            &file, &diagnostic.range);
+            &file, &diagnostic.range, &sources, diagnostic.labels, diagnostic.children);
         if (index + 1 < count) {
             out << ",";
         }
@@ -253,8 +335,7 @@ void print_json_diagnostics(
     }
     out << "  ],\n";
     out << "  \"suppressed\": "
-        << (all.size() > DRIVER_MAX_PRINTED_DIAGNOSTICS ? all.size() - DRIVER_MAX_PRINTED_DIAGNOSTICS : 0)
-        << "\n";
+        << (all.size() > DRIVER_MAX_PRINTED_DIAGNOSTICS ? all.size() - DRIVER_MAX_PRINTED_DIAGNOSTICS : 0) << "\n";
     out << "}\n";
 }
 
@@ -272,6 +353,13 @@ void print_text_diagnostics(
         print_colored(out, color, severity_color(diagnostic.severity), base::severity_name(diagnostic.severity));
         out << ": " << diagnostic.message << "\n";
         print_diagnostic_source(out, file, diagnostic, color);
+        for (const base::DiagnosticChild& child : diagnostic.children) {
+            const base::SourceFile& child_file = sources.get(child.range.source);
+            const base::LineColumn child_location = child_file.line_column(child.range.begin);
+            out << child_file.path() << ":" << child_location.line << ":" << child_location.column << ": ";
+            print_colored(out, color, severity_color(child.severity), base::severity_name(child.severity));
+            out << ": " << child.message << "\n";
+        }
     }
     if (all.size() > DRIVER_MAX_PRINTED_DIAGNOSTICS) {
         out << "error: too many diagnostics; suppressing " << (all.size() - DRIVER_MAX_PRINTED_DIAGNOSTICS)
@@ -301,8 +389,8 @@ void print_text_driver_error(std::ostream& out, const std::string_view message)
 
 } // namespace
 
-void render_diagnostics(std::ostream& out, const base::SourceManager& sources,
-    const base::DiagnosticSink& diagnostics, const DiagnosticOutputFormat format)
+void render_diagnostics(std::ostream& out, const base::SourceManager& sources, const base::DiagnosticSink& diagnostics,
+    const DiagnosticOutputFormat format)
 {
     if (diagnostics.diagnostics().empty()) {
         return;

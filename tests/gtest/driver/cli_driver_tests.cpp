@@ -2,6 +2,7 @@
 #include <aurex/driver/cli.hpp>
 #include <aurex/driver/cli_llvm.hpp>
 #include <aurex/driver/compiler.hpp>
+#include <aurex/driver/diagnostic_renderer.hpp>
 #include <aurex/driver/file_cache.hpp>
 #include <aurex/driver/incremental_cache.hpp>
 #include <aurex/driver/profile.hpp>
@@ -1268,6 +1269,59 @@ TEST(CoreUnit, CliParserReportsTableDrivenArgumentErrors)
     const std::vector<std::string_view> empty_args;
     EXPECT_EQ(driver::run_cli(empty_args, empty_out, empty_err), 2);
     expect_contains(empty_err.str(), "usage: aurexc");
+}
+
+TEST(CoreUnit, DiagnosticRendererEmitsStructuredJsonAndTextChildren)
+{
+    base::SourceManager sources;
+    const base::SourceId source_id = sources.add_source("structured.ax", "fn main() {\n  let value = true;\n}\n");
+    const base::SourceRange primary_range{source_id, 14U, 19U};
+    const base::SourceRange secondary_range{source_id, 22U, 26U};
+
+    base::DiagnosticSink diagnostics;
+    diagnostics.push(base::Diagnostic{
+        base::Severity::error,
+        primary_range,
+        "structured diagnostic",
+        base::DiagnosticCategory::type,
+        base::DiagnosticCode::semantic_type_mismatch,
+        {
+            base::primary_diagnostic_label(primary_range, "declared here"),
+            base::secondary_diagnostic_label(secondary_range, "related value"),
+        },
+        {
+            base::diagnostic_note(secondary_range, "note child", base::DiagnosticCategory::semantic,
+                base::DiagnosticCode::semantic_error),
+            base::diagnostic_help(primary_range, "help child"),
+        },
+    });
+
+    std::ostringstream json;
+    driver::render_diagnostics(json, sources, diagnostics, driver::DiagnosticOutputFormat::json);
+    expect_contains_all(json.str(),
+        {
+            "\"format\": \"aurex-diagnostics-v1\"",
+            "\"message\": \"structured diagnostic\"",
+            "\"labels\": [",
+            "\"style\": \"primary\"",
+            "\"style\": \"secondary\"",
+            "\"message\": \"declared here\"",
+            "\"message\": \"related value\"",
+            "\"children\": [",
+            "\"severity\": \"note\"",
+            "\"severity\": \"help\"",
+            "\"message\": \"note child\"",
+            "\"message\": \"help child\"",
+        });
+
+    std::ostringstream text;
+    driver::render_diagnostics(text, sources, diagnostics, driver::DiagnosticOutputFormat::text);
+    expect_contains_all(text.str(),
+        {
+            "structured.ax:2:3: error: structured diagnostic",
+            "structured.ax:2:11: note: note child",
+            "structured.ax:2:3: help: help child",
+        });
 }
 
 TEST_F(AurexIntegrationTest, CliAndFrontendDumps)

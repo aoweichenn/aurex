@@ -53,12 +53,46 @@ enum class DiagnosticCode {
     internal_contract,
 };
 
+enum class DiagnosticLabelStyle {
+    primary,
+    secondary,
+};
+
+struct DiagnosticLabel {
+    DiagnosticLabel() = default;
+    DiagnosticLabel(SourceRange range, std::string message, DiagnosticLabelStyle style = DiagnosticLabelStyle::primary);
+
+    SourceRange range{};
+    std::string message;
+    DiagnosticLabelStyle style = DiagnosticLabelStyle::primary;
+};
+
+struct DiagnosticChild {
+    DiagnosticChild() = default;
+    DiagnosticChild(Severity severity, SourceRange range, std::string message,
+        DiagnosticCategory category = DiagnosticCategory::general, DiagnosticCode code = DiagnosticCode::none);
+
+    Severity severity = Severity::note;
+    SourceRange range{};
+    std::string message;
+    DiagnosticCategory category = DiagnosticCategory::general;
+    DiagnosticCode code = DiagnosticCode::none;
+};
+
 struct Diagnostic {
+    Diagnostic() = default;
+    Diagnostic(Severity severity, SourceRange range, std::string message,
+        DiagnosticCategory category = DiagnosticCategory::general, DiagnosticCode code = DiagnosticCode::none);
+    Diagnostic(Severity severity, SourceRange range, std::string message, DiagnosticCategory category,
+        DiagnosticCode code, std::vector<DiagnosticLabel> labels, std::vector<DiagnosticChild> children = {});
+
     Severity severity = Severity::error;
     SourceRange range{};
     std::string message;
     DiagnosticCategory category = DiagnosticCategory::general;
     DiagnosticCode code = DiagnosticCode::none;
+    std::vector<DiagnosticLabel> labels;
+    std::vector<DiagnosticChild> children;
 };
 
 class DiagnosticSink {
@@ -76,5 +110,12 @@ private:
 [[nodiscard]] std::string_view severity_name(Severity severity) noexcept;
 [[nodiscard]] std::string_view diagnostic_category_name(DiagnosticCategory category) noexcept;
 [[nodiscard]] std::string_view diagnostic_code_name(DiagnosticCode code) noexcept;
+[[nodiscard]] std::string_view diagnostic_label_style_name(DiagnosticLabelStyle style) noexcept;
+[[nodiscard]] DiagnosticLabel primary_diagnostic_label(const SourceRange& range, std::string message);
+[[nodiscard]] DiagnosticLabel secondary_diagnostic_label(const SourceRange& range, std::string message);
+[[nodiscard]] DiagnosticChild diagnostic_note(const SourceRange& range, std::string message,
+    DiagnosticCategory category = DiagnosticCategory::general, DiagnosticCode code = DiagnosticCode::none);
+[[nodiscard]] DiagnosticChild diagnostic_help(const SourceRange& range, std::string message,
+    DiagnosticCategory category = DiagnosticCategory::general, DiagnosticCode code = DiagnosticCode::none);
 
 } // namespace aurex::base

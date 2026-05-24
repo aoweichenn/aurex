@@ -13,6 +13,30 @@ namespace {
 
 } // namespace
 
+DiagnosticLabel::DiagnosticLabel(SourceRange range, std::string message, const DiagnosticLabelStyle style)
+    : range(range), message(std::move(message)), style(style)
+{
+}
+
+DiagnosticChild::DiagnosticChild(const Severity severity, SourceRange range, std::string message,
+    const DiagnosticCategory category, const DiagnosticCode code)
+    : severity(severity), range(range), message(std::move(message)), category(category), code(code)
+{
+}
+
+Diagnostic::Diagnostic(const Severity severity, SourceRange range, std::string message,
+    const DiagnosticCategory category, const DiagnosticCode code)
+    : severity(severity), range(range), message(std::move(message)), category(category), code(code)
+{
+}
+
+Diagnostic::Diagnostic(Severity severity, SourceRange range, std::string message, DiagnosticCategory category,
+    DiagnosticCode code, std::vector<DiagnosticLabel> labels, std::vector<DiagnosticChild> children)
+    : severity(severity), range(range), message(std::move(message)), category(category), code(code),
+      labels(std::move(labels)), children(std::move(children))
+{
+}
+
 void DiagnosticSink::push(Diagnostic diagnostic)
 {
     this->has_error_ = this->has_error_ || is_error_severity(diagnostic.severity);
@@ -120,6 +144,59 @@ std::string_view diagnostic_code_name(const DiagnosticCode code) noexcept
             return "INT0001";
     }
     return "unknown";
+}
+
+std::string_view diagnostic_label_style_name(const DiagnosticLabelStyle style) noexcept
+{
+    switch (style) {
+        case DiagnosticLabelStyle::primary:
+            return "primary";
+        case DiagnosticLabelStyle::secondary:
+            return "secondary";
+    }
+    return "unknown";
+}
+
+DiagnosticLabel primary_diagnostic_label(const SourceRange& range, std::string message)
+{
+    return DiagnosticLabel{
+        range,
+        std::move(message),
+        DiagnosticLabelStyle::primary,
+    };
+}
+
+DiagnosticLabel secondary_diagnostic_label(const SourceRange& range, std::string message)
+{
+    return DiagnosticLabel{
+        range,
+        std::move(message),
+        DiagnosticLabelStyle::secondary,
+    };
+}
+
+DiagnosticChild diagnostic_note(
+    const SourceRange& range, std::string message, const DiagnosticCategory category, const DiagnosticCode code)
+{
+    return DiagnosticChild{
+        Severity::note,
+        range,
+        std::move(message),
+        category,
+        code,
+    };
+}
+
+DiagnosticChild diagnostic_help(
+    const SourceRange& range, std::string message, const DiagnosticCategory category, const DiagnosticCode code)
+{
+    return DiagnosticChild{
+        Severity::help,
+        range,
+        std::move(message),
+        category,
+        code,
+    };
 }
 
 } // namespace aurex::base

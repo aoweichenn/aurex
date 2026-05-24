@@ -2621,6 +2621,9 @@ TEST(QueryUnit, DiagnosticsProviderBuildsRecordAndProducerDependency)
     EXPECT_EQ(events.events[1].ordinal, 1U);
     EXPECT_EQ(events.events[0].message, "first wording");
     EXPECT_EQ(events.events[1].category, base::DiagnosticCategory::semantic);
+    ASSERT_EQ(events.events[0].labels.size(), 1U);
+    EXPECT_EQ(events.events[0].labels[0].style, base::DiagnosticLabelStyle::primary);
+    EXPECT_EQ(events.events[0].labels[0].range.begin, 4U);
     const query::QueryResultFingerprint diagnostics = query::diagnostics_result_fingerprint(events.events);
     const std::optional<query::QueryKey> expected_key = query::diagnostics_query_key(*producer);
     ASSERT_TRUE(expected_key.has_value());
@@ -2650,6 +2653,16 @@ TEST(QueryUnit, DiagnosticsProviderBuildsRecordAndProducerDependency)
     reworded.events[0].range.begin += 1U;
     EXPECT_NE(query::diagnostics_result_fingerprint(reworded.events), diagnostics);
 
+    query::DiagnosticsEventStream relabeled = events;
+    relabeled.events[0].labels.push_back(
+        base::secondary_diagnostic_label(base::SourceRange{base::SourceId{1}, 20U, 25U}, "related span"));
+    EXPECT_NE(query::diagnostics_result_fingerprint(relabeled.events), diagnostics);
+
+    query::DiagnosticsEventStream with_child = events;
+    with_child.events[0].children.push_back(
+        base::diagnostic_help(base::SourceRange{base::SourceId{1}, 26U, 31U}, "try this"));
+    EXPECT_NE(query::diagnostics_result_fingerprint(with_child.events), diagnostics);
+
     EXPECT_FALSE(query::diagnostics_query_key(query::QueryKey{}).has_value());
     EXPECT_FALSE(query::diagnostics_query_key(*expected_key).has_value());
     EXPECT_FALSE(query::is_valid(query::DiagnosticsProviderInput{}));
@@ -2669,6 +2682,16 @@ TEST(QueryUnit, DiagnosticsProviderBuildsRecordAndProducerDependency)
     query::DiagnosticsProviderOutput invalid_event_order_output = *output;
     invalid_event_order_output.stream.events[1].ordinal = 0U;
     EXPECT_FALSE(query::is_valid(invalid_event_order_output));
+
+    query::DiagnosticsProviderOutput invalid_label_range_output = *output;
+    invalid_label_range_output.stream.events[0].labels[0].range.begin = 99U;
+    invalid_label_range_output.stream.events[0].labels[0].range.end = 1U;
+    EXPECT_FALSE(query::is_valid(invalid_label_range_output));
+
+    query::DiagnosticsProviderOutput invalid_child_range_output = *output;
+    invalid_child_range_output.stream.events[0].children.push_back(
+        base::diagnostic_note(base::SourceRange{base::SourceId{1}, 40U, 20U}, "bad child"));
+    EXPECT_FALSE(query::is_valid(invalid_child_range_output));
 
     query::DiagnosticsProviderOutput mismatched_result_output = *output;
     mismatched_result_output.result =

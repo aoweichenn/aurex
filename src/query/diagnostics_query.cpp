@@ -1,5 +1,4 @@
 #include <aurex/query/diagnostics_query.hpp>
-
 #include <aurex/query/stable_hash.hpp>
 
 #include <string_view>
@@ -15,6 +14,28 @@ void mix_source_range(StableHashBuilder& builder, const base::SourceRange& range
     builder.mix_u64(range.source.value);
     builder.mix_u64(range.begin);
     builder.mix_u64(range.end);
+}
+
+[[nodiscard]] std::vector<base::DiagnosticLabel> diagnostic_labels_for_event(const base::Diagnostic& diagnostic)
+{
+    if (!diagnostic.labels.empty()) {
+        return diagnostic.labels;
+    }
+    return {base::primary_diagnostic_label(diagnostic.range, {})};
+}
+
+void mix_diagnostic_child(StableHashBuilder& builder, const base::DiagnosticChild& child) noexcept
+{
+    builder.mix_u64(static_cast<base::u64>(child.severity));
+    builder.mix_u64(static_cast<base::u64>(child.category));
+    builder.mix_u64(static_cast<base::u64>(child.code));
+    mix_source_range(builder, child.range);
+}
+
+void mix_diagnostic_label(StableHashBuilder& builder, const base::DiagnosticLabel& label) noexcept
+{
+    builder.mix_u64(static_cast<base::u64>(label.style));
+    mix_source_range(builder, label.range);
 }
 
 } // namespace
@@ -39,6 +60,8 @@ DiagnosticsEventStream diagnostic_events_from_sink(const std::span<const base::D
             diagnostic.code,
             diagnostic.range,
             diagnostic.message,
+            diagnostic_labels_for_event(diagnostic),
+            diagnostic.children,
             static_cast<base::u32>(index),
         });
     }
@@ -62,6 +85,14 @@ QueryResultFingerprint diagnostics_result_fingerprint(
         builder.mix_u64(static_cast<base::u64>(event.category));
         builder.mix_u64(static_cast<base::u64>(event.code));
         mix_source_range(builder, event.range);
+        builder.mix_u64(event.labels.size());
+        for (const base::DiagnosticLabel& label : event.labels) {
+            mix_diagnostic_label(builder, label);
+        }
+        builder.mix_u64(event.children.size());
+        for (const base::DiagnosticChild& child : event.children) {
+            mix_diagnostic_child(builder, child);
+        }
     }
     return query_result_fingerprint(builder.finish());
 }
@@ -81,6 +112,16 @@ bool is_valid(const DiagnosticsProviderOutput& output) noexcept
         const QueryDiagnosticEvent& event = output.stream.events[index];
         if (event.ordinal != index || event.range.begin > event.range.end) {
             return false;
+        }
+        for (const base::DiagnosticLabel& label : event.labels) {
+            if (label.range.begin > label.range.end) {
+                return false;
+            }
+        }
+        for (const base::DiagnosticChild& child : event.children) {
+            if (child.range.begin > child.range.end) {
+                return false;
+            }
         }
     }
     for (const QueryKey dependency : output.dependencies) {

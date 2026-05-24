@@ -148,6 +148,7 @@ Headers:
 
 - `include/aurex/ir/pass_pipeline.hpp`
 - `include/aurex/ir/pass_manager.hpp`
+- `include/aurex/ir/analysis_manager.hpp`
 
 Core API:
 
@@ -176,11 +177,14 @@ Lightweight pass manager API:
 - `ModulePassManager`: schedules `ModulePass` records in order without virtual
   dispatch or heavy templates.
 - `ModulePass`: records `PassId`, stable pass name, and a `ModulePassRun`
-  function entry.
+  function entry; pass callbacks can access `ModuleAnalysisManager`.
 - `PassResult`: declares whether a pass changed IR and which
   `PreservedAnalyses` it preserved.
 - `PreservedAnalyses`: describes analyses that remain valid after a pass, such
   as CFG, type table, symbol table, and record layout.
+- `ModuleAnalysisManager`: lazily builds and caches CFG, dominance, and
+  value-use analyses; when a pass changes IR, unpreserved cached analyses are
+  invalidated according to `PreservedAnalyses`.
 - `VerifierGate`: centralizes input verifier, output verifier, and opt-in
   after-each-pass verifier control.
 

@@ -123,15 +123,26 @@ R5.4 已完成 IR verifier / pass manager 第一层：
   preservation：mem2reg 保留 CFG/type/symbol/record layout，CFG cleanup 保留 type/symbol/record layout。
 - 这一步不引入 LLVM 式虚接口层或模板化 analysis manager，也不改变 IR、diagnostics 或 backend 输出协议。
 
+R5.5 已完成 IR analysis cache / invalidation 第一层：
+
+- 新增 `include/aurex/ir/analysis_manager.hpp` 和 `src/ir/analysis_manager.cpp`，提供轻量
+  `ModuleAnalysisManager`。
+- `ModuleAnalysisManager` 惰性构建并缓存 CFG、dominance 和 value-use analysis；缓存绑定当前 `Module`
+  地址，切换 module 时自动清空。
+- `ModulePassRun` 现在接收 `ModuleAnalysisManager&`，pass 可以直接查询 analysis；`ModulePassManager`
+  仍保留旧式 `run(module, verifier)` 入口，会为普通调用方创建内部 analysis manager。
+- pass 报告 `changed = true` 后，`ModulePassManager` 会按 `PreservedAnalyses` 自动失效未保留 analysis；
+  `changed = false` 的 pass 不触发缓存失效。
+- dominance 依赖 CFG：如果 CFG 未被保留，dominance 会一起失效；如果只保留 CFG，不保留 dominance，
+  dominance 单独失效。
+
 ## 后续拆分顺序
 
-R5.4 完成后，后续按下面顺序继续：
+R5.5 完成后，后续按下面顺序继续：
 
-1. IR analysis cache 主线：基于 `AnalysisId` 和 `PreservedAnalyses` 建立轻量 analysis storage / invalidation，
-   先服务 CFG、dominance、value-use 这类后续优化会共享的 analysis。
-2. IR verifier diagnostics 主线：把 verifier gate 的 stage/pass 名称接到更稳定的错误上下文，不改变现有错误文本主体。
-3. 把 `PipelineStage` 记录作为 profile、cache/query 和后续 IDE/LSP 阶段可视化的唯一阶段目录继续维护。
-4. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
+1. IR verifier diagnostics 主线：把 verifier gate 的 stage/pass 名称接到更稳定的错误上下文，不改变现有错误文本主体。
+2. 把 `PipelineStage` 记录作为 profile、cache/query 和后续 IDE/LSP 阶段可视化的唯一阶段目录继续维护。
+3. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
    + `FrontendPipeline` + `LoweringPipeline` + `BackendPipeline` 的主路径。
 
 ## 验收标准

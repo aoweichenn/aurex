@@ -136,6 +136,7 @@ fingerprint 或 CLI 渲染。它是 LSP adapter 的数据源，不直接绑定 L
 
 - `include/aurex/ir/pass_pipeline.hpp`
 - `include/aurex/ir/pass_manager.hpp`
+- `include/aurex/ir/analysis_manager.hpp`
 
 核心 API：
 
@@ -160,9 +161,12 @@ base::Result<PassPipelineRunSummary> run_pass_pipeline_with_summary(
 轻量 pass manager API：
 
 - `ModulePassManager`：顺序调度 `ModulePass`，不引入虚接口或复杂模板。
-- `ModulePass`：记录 `PassId`、稳定 pass name 和 `ModulePassRun` 函数入口。
+- `ModulePass`：记录 `PassId`、稳定 pass name 和 `ModulePassRun` 函数入口；pass 回调可访问
+  `ModuleAnalysisManager`。
 - `PassResult`：声明 pass 是否改变 IR，以及它保留的 `PreservedAnalyses`。
 - `PreservedAnalyses`：表达 pass 后仍然有效的 analysis，例如 CFG、type table、symbol table 和 record layout。
+- `ModuleAnalysisManager`：惰性构建并缓存 CFG、dominance 和 value-use analysis；pass 改变 IR 后按
+  `PreservedAnalyses` 自动失效未保留的缓存。
 - `VerifierGate`：统一控制 input verifier、output verifier，以及 opt-in 的 after-each-pass verifier。
 
 优化级别：

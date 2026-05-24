@@ -11,6 +11,8 @@
 
 namespace aurex::ir {
 
+class ModuleAnalysisManager;
+
 enum class AnalysisId {
     control_flow_graph,
     dominance,
@@ -55,7 +57,7 @@ struct PassResult {
     [[nodiscard]] static PassResult changed_result(PreservedAnalyses preserved_analyses) noexcept;
 };
 
-using ModulePassRun = base::Result<PassResult> (*)(Module& module);
+using ModulePassRun = base::Result<PassResult> (*)(Module& module, ModuleAnalysisManager& analyses);
 
 struct ModulePass {
     PassId id = PassId::custom;
@@ -94,6 +96,8 @@ public:
 
     [[nodiscard]] std::span<const ModulePass> passes() const noexcept;
     [[nodiscard]] base::Result<PassPipelineRunSummary> run(Module& module, const VerifierGate& verifier) const;
+    [[nodiscard]] base::Result<PassPipelineRunSummary> run(
+        Module& module, const VerifierGate& verifier, ModuleAnalysisManager& analyses) const;
 
 private:
     std::vector<ModulePass> passes_;

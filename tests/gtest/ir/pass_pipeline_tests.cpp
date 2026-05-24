@@ -1,3 +1,4 @@
+#include <aurex/ir/analysis_manager.hpp>
 #include <aurex/ir/pass_pipeline.hpp>
 
 #include <utility>
@@ -11,22 +12,27 @@ using namespace irtest;
 
 constexpr int PASS_MANAGER_UNKNOWN_PASS_ID = 99;
 
-[[nodiscard]] base::Result<ir::PassResult> preserve_type_table_test_pass(Module& module)
+[[nodiscard]] base::Result<ir::PassResult> preserve_type_table_test_pass(
+    Module& module, ir::ModuleAnalysisManager& analyses)
 {
     static_cast<void>(module);
+    static_cast<void>(analyses);
     ir::PreservedAnalyses preserved = ir::PreservedAnalyses::none();
     preserved.preserve(ir::AnalysisId::type_table);
     return base::Result<ir::PassResult>::ok(ir::PassResult::changed_result(preserved));
 }
 
-[[nodiscard]] base::Result<ir::PassResult> unchanged_test_pass(Module& module)
+[[nodiscard]] base::Result<ir::PassResult> unchanged_test_pass(Module& module, ir::ModuleAnalysisManager& analyses)
 {
     static_cast<void>(module);
+    static_cast<void>(analyses);
     return base::Result<ir::PassResult>::ok(ir::PassResult::unchanged());
 }
 
-[[nodiscard]] base::Result<ir::PassResult> invalidate_return_value_test_pass(Module& module)
+[[nodiscard]] base::Result<ir::PassResult> invalidate_return_value_test_pass(
+    Module& module, ir::ModuleAnalysisManager& analyses)
 {
+    static_cast<void>(analyses);
     module.functions[0].blocks[0].terminator.value = INVALID_VALUE_ID;
     return base::Result<ir::PassResult>::ok(ir::PassResult::changed_result(ir::PreservedAnalyses::none()));
 }

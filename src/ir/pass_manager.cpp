@@ -1,3 +1,4 @@
+#include <aurex/ir/analysis_manager.hpp>
 #include <aurex/ir/pass_manager.hpp>
 #include <aurex/ir/verify.hpp>
 
@@ -149,6 +150,13 @@ std::span<const ModulePass> ModulePassManager::passes() const noexcept
 
 base::Result<PassPipelineRunSummary> ModulePassManager::run(Module& module, const VerifierGate& verifier) const
 {
+    ModuleAnalysisManager analyses;
+    return this->run(module, verifier, analyses);
+}
+
+base::Result<PassPipelineRunSummary> ModulePassManager::run(
+    Module& module, const VerifierGate& verifier, ModuleAnalysisManager& analyses) const
+{
     const auto input_verification = verifier.verify_input(module);
     if (!input_verification) {
         return base::Result<PassPipelineRunSummary>::fail(input_verification.error());
@@ -161,13 +169,16 @@ base::Result<PassPipelineRunSummary> ModulePassManager::run(Module& module, cons
             return base::Result<PassPipelineRunSummary>::fail(
                 {base::ErrorCode::internal_error, std::string(PASS_MANAGER_INVALID_PASS)});
         }
-        auto pass_result = pass.run(module);
+        auto pass_result = pass.run(module, analyses);
         if (!pass_result) {
             return base::Result<PassPipelineRunSummary>::fail(pass_result.error());
         }
         ++summary.executed_pass_count;
         summary.changed = summary.changed || pass_result.value().changed;
         summary.preserved_analyses.intersect(pass_result.value().preserved_analyses);
+        if (pass_result.value().changed) {
+            analyses.invalidate(pass_result.value().preserved_analyses);
+        }
 
         const auto pass_verification = verifier.verify_after_pass(module, pass.name);
         if (!pass_verification) {

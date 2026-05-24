@@ -541,8 +541,9 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
     return any_changed;
 }
 
-[[nodiscard]] base::Result<PassResult> run_local_mem2reg_pass(Module& module)
+[[nodiscard]] base::Result<PassResult> run_local_mem2reg_pass(Module& module, ModuleAnalysisManager& analyses)
 {
+    static_cast<void>(analyses);
     const bool changed = run_local_mem2reg(module);
     if (!changed) {
         return base::Result<PassResult>::ok(PassResult::unchanged());
@@ -550,8 +551,9 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
     return base::Result<PassResult>::ok(PassResult::changed_result(preserve_cfg_and_module_metadata_analyses()));
 }
 
-[[nodiscard]] base::Result<PassResult> run_cfg_cleanup_pass(Module& module)
+[[nodiscard]] base::Result<PassResult> run_cfg_cleanup_pass(Module& module, ModuleAnalysisManager& analyses)
 {
+    static_cast<void>(analyses);
     const bool changed = run_cfg_cleanup(module);
     if (!changed) {
         return base::Result<PassResult>::ok(PassResult::unchanged());

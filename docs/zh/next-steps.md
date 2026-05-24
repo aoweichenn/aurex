@@ -26,9 +26,10 @@ R5.3 已完成 `LoweringPipeline`、`BackendPipeline` 和 `PipelineStage` 记录
 LLVM IR emission、LLVM IR dump、temporary LLVM file 和 clang native invocation 都已经由对应子 pipeline
 持有。R5.4 已完成 IR verifier / pass manager 第一层：`ModulePassManager`、`ModulePass`、
 `PassResult`、`PreservedAnalyses`、`VerifierGate` 和 `run_pass_pipeline_with_summary` 已进入主路径，
-旧 `run_pass_pipeline` API 保持兼容。下一步优先进入 IR analysis cache 主线：基于 `AnalysisId` /
-`PreservedAnalyses` 建立轻量 analysis storage / invalidation，先服务 CFG、dominance 和 value-use 这类
-后续优化会共享的 analysis。
+旧 `run_pass_pipeline` API 保持兼容。R5.5 已完成 IR analysis cache / invalidation 第一层：
+`ModuleAnalysisManager` 已能惰性构建并缓存 CFG、dominance 和 value-use analysis，pass 回调可以访问
+analysis manager，changed pass 会按 `PreservedAnalyses` 自动失效缓存。下一步优先进入 IR verifier
+diagnostics 主线：把 verifier gate 的 stage/pass 名称接到稳定错误上下文，同时保持现有错误文本主体不变。
 
 ## 当前分支原则
 

@@ -109,6 +109,7 @@ if(BUILD_TESTING)
             tests/gtest/integration/randomized_integration_tests.cpp
             tests/gtest/integration/regression_tests.cpp
             tests/gtest/integration/sample_suite_tests.cpp
+            tests/gtest/ir/analysis_manager_tests.cpp
             tests/gtest/ir/ir_dump_tests.cpp
             tests/gtest/ir/ir_verifier_edge_tests.cpp
             tests/gtest/ir/ir_verifier_structural_tests.cpp

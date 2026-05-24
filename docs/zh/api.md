@@ -154,6 +154,8 @@ base::Result<PassPipelineRunSummary> run_pass_pipeline_with_summary(
 - `enable_mem2reg`
 - `enable_cfg_cleanup`
 - `verify_after_each_pass`
+- `stage_name`
+- `stage_profile_name`
 
 `run_pass_pipeline` 保持兼容旧调用方，只返回成功或错误；`run_pass_pipeline_with_summary`
 额外返回 scheduled/executed pass 数量、pipeline 是否改变 IR、以及最终保留的 analysis 集合。
@@ -167,7 +169,13 @@ base::Result<PassPipelineRunSummary> run_pass_pipeline_with_summary(
 - `PreservedAnalyses`：表达 pass 后仍然有效的 analysis，例如 CFG、type table、symbol table 和 record layout。
 - `ModuleAnalysisManager`：惰性构建并缓存 CFG、dominance 和 value-use analysis；pass 改变 IR 后按
   `PreservedAnalyses` 自动失效未保留的缓存。
-- `VerifierGate`：统一控制 input verifier、output verifier，以及 opt-in 的 after-each-pass verifier。
+- `VerifierGate`：统一控制 input verifier、output verifier，以及 opt-in 的 after-each-pass verifier；
+  failure message 会携带稳定上下文 `stage=... profile=... verifier=...`，after-pass 还会携带
+  `pass=...`。原始 verifier body 和 `ErrorCode` 不改变，body 保留在 `: ` 之后。
+
+driver 主路径通过 `PipelineStageId::ir_pass_pipeline` 的 `PipelineStageRecord` 填充
+`stage_name` / `stage_profile_name`。直接调用 IR API 时默认值为 `ir_pass_pipeline` /
+`ir.pass_pipeline`，和 driver 阶段目录保持一致。
 
 优化级别：
 

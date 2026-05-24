@@ -166,6 +166,8 @@ base::Result<PassPipelineRunSummary> run_pass_pipeline_with_summary(
 - `enable_mem2reg`
 - `enable_cfg_cleanup`
 - `verify_after_each_pass`
+- `stage_name`
+- `stage_profile_name`
 
 `run_pass_pipeline` remains compatible with existing callers and only reports
 success or failure. `run_pass_pipeline_with_summary` additionally reports the
@@ -186,7 +188,15 @@ Lightweight pass manager API:
   value-use analyses; when a pass changes IR, unpreserved cached analyses are
   invalidated according to `PreservedAnalyses`.
 - `VerifierGate`: centralizes input verifier, output verifier, and opt-in
-  after-each-pass verifier control.
+  after-each-pass verifier control. Failure messages carry stable
+  `stage=... profile=... verifier=...` context; after-pass failures also carry
+  `pass=...`. The original verifier body and `ErrorCode` are preserved, with
+  the body kept after `: `.
+
+The driver path fills `stage_name` / `stage_profile_name` from the
+`PipelineStageRecord` for `PipelineStageId::ir_pass_pipeline`. Direct IR API
+calls default to `ir_pass_pipeline` / `ir.pass_pipeline`, matching the driver
+stage directory.
 
 Optimization levels:
 

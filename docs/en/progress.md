@@ -12,6 +12,18 @@ and M1 system examples from the active tree. M2.5 builds on that closed line and
 starts the structured frontend work needed for queries, lossless syntax, and
 IDE-native consumption.
 
+As of 2026-05-24, the highest-priority refactor is the R5 Compilation Pipeline /
+Driver Action line. The driver has moved toward a modern compiler layout:
+`CompilerInvocation` is pure configuration, `Compiler` is a facade,
+`CompilationSession` owns per-compilation services, `CompilationPipeline`
+orchestrates frontend/lowering/backend stages, and `PipelineStage` records the
+single stage directory for profile names, inputs, outputs, diagnostic ownership,
+and cache/query impact. R5.4 introduced the lightweight IR pass manager and
+verifier gate; R5.5 introduced `ModuleAnalysisManager`; R5.6 added stable
+`stage/profile/verifier/pass` context to IR verifier gate failures while
+preserving the original verifier body and `ErrorCode`, and `LoweringPipeline`
+now passes the IR pass pipeline stage names from `PipelineStageRecord`.
+
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,
 and language syntax. The result made it hard to tell whether a failure came from
@@ -27,7 +39,9 @@ notes are design input only, not current progress.
 - CLI support for `--check`, `--dump-*`, `--emit=*`, `--opt-level`, `-I`, `-o`,
   `--clang`, and `--clang-arg`.
 - Driver support for file IO, module loading, pipeline orchestration, temporary
-  LLVM IR generation, and clang invocation.
+  LLVM IR generation, and clang invocation. The main path is split into
+  `CompilationSession`, `CompilationPipeline`, `FrontendPipeline`,
+  `LoweringPipeline`, `BackendPipeline`, and `PipelineStage` records.
 - Import resolution through the importer directory and explicit `-I` paths.
 - Handwritten lexer/parser with ID-backed AST and dump paths for tokens, AST,
   modules, checked summaries, Aurex IR, and LLVM IR.
@@ -74,7 +88,11 @@ notes are design input only, not current progress.
   range-only `for i in range(...)`.
 - Ordinary root-module `fn main` entry points.
 - Typed Aurex IR, IR verifier, conservative pass pipeline, LLVM lowering, and
-  native asm/object/executable output through clang.
+  native asm/object/executable output through clang. The IR pass path now uses
+  `ModulePassManager`, `PassResult`, `PreservedAnalyses`, `VerifierGate`,
+  `PassPipelineRunSummary`, and `ModuleAnalysisManager`; verifier gate failures
+  carry stable stage/profile/verifier/pass context without changing the original
+  verifier body.
 
 ## Removed From The Active Track
 

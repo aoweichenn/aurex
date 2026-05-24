@@ -65,10 +65,15 @@ struct ModulePass {
     ModulePassRun run = nullptr;
 };
 
+inline constexpr std::string_view IR_PASS_PIPELINE_DEFAULT_STAGE_NAME = "ir_pass_pipeline";
+inline constexpr std::string_view IR_PASS_PIPELINE_DEFAULT_STAGE_PROFILE_NAME = "ir.pass_pipeline";
+
 struct VerifierGateOptions {
     bool verify_input = true;
     bool verify_output = true;
     bool verify_after_each_pass = false;
+    std::string_view stage_name = IR_PASS_PIPELINE_DEFAULT_STAGE_NAME;
+    std::string_view stage_profile_name = IR_PASS_PIPELINE_DEFAULT_STAGE_PROFILE_NAME;
 };
 
 class VerifierGate final {

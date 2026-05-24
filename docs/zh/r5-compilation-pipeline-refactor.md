@@ -136,12 +136,26 @@ R5.5 已完成 IR analysis cache / invalidation 第一层：
 - dominance 依赖 CFG：如果 CFG 未被保留，dominance 会一起失效；如果只保留 CFG，不保留 dominance，
   dominance 单独失效。
 
+R5.6 已完成 IR verifier diagnostics 上下文第一层：
+
+- `VerifierGate` 现在为 input、after-pass 和 output verifier failure 统一加上稳定上下文：
+  `stage=...`、`profile=...`、`verifier=input|after_pass|output`，after-pass 额外包含 `pass=...`。
+- 现有 verifier 原始错误 body 和 `ErrorCode` 不改变；上下文只作为前缀包装，原始 body 保留在 `: ` 之后，
+  例如 `return value value id is invalid` 仍保持原文本。
+- after-pass failure 继续保留 `IR verifier failed after pass <pass>` 前缀，降低已有日志和测试的迁移成本。
+- `PassPipelineOptions` 和 `VerifierGateOptions` 追加 `stage_name` / `stage_profile_name`，旧 aggregate
+  初始化仍兼容；direct IR API 默认使用 `ir_pass_pipeline` / `ir.pass_pipeline`。
+- `LoweringPipeline` 不再手写 IR pass pipeline stage 名称，而是从 `PipelineStageRecord` 读取
+  `PipelineStageId::ir_pass_pipeline` 的 `name` 和 `profile_name` 并传入 IR verifier gate。`PipelineStage`
+  因此继续作为 driver profile、cache/query 和后续 IDE/LSP 可视化的唯一阶段目录。
+
 ## 后续拆分顺序
 
-R5.5 完成后，后续按下面顺序继续：
+R5.6 完成后，后续按下面顺序继续：
 
-1. IR verifier diagnostics 主线：把 verifier gate 的 stage/pass 名称接到更稳定的错误上下文，不改变现有错误文本主体。
-2. 把 `PipelineStage` 记录作为 profile、cache/query 和后续 IDE/LSP 阶段可视化的唯一阶段目录继续维护。
+1. 继续把 `PipelineStage` 记录作为 profile、cache/query、diagnostics owner 和后续 IDE/LSP
+   阶段可视化的唯一阶段目录维护，新增 driver 阶段必须先登记 record，再进入 pipeline。
+2. 在 cache/query 和 diagnostics 边界继续消费 stage record，而不是在各子 pipeline 中新增散落字符串。
 3. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
    + `FrontendPipeline` + `LoweringPipeline` + `BackendPipeline` 的主路径。
 

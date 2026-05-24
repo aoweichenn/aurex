@@ -1,5 +1,30 @@
 # Next Steps
 
+## Current Highest Priority: R5 Compilation Pipeline / Driver Action Refactor
+
+The active compiler-engineering refactor is now the R5 driver/session/pipeline
+line. `CompilerInvocation` remains a pure configuration object, `Compiler`
+stays a narrow public facade, and one compilation's source, diagnostics,
+profile, cache policy, and backend emitter live in `CompilationSession`.
+`CompilationPipeline` orchestrates frontend, lowering, and backend sub-pipelines,
+while `PipelineStage` is the single directory for stage profile names, inputs,
+outputs, diagnostic ownership, and cache/query impact.
+
+R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
+stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
+`PreservedAnalyses`, verifier gate, and pass-pipeline summary. R5.5 added
+`ModuleAnalysisManager` with lazy CFG, dominance, and value-use analysis caching
+plus invalidation from `PreservedAnalyses`. R5.6 added stable IR verifier
+failure context: input, after-pass, and output verifier failures carry
+`stage/profile/verifier/pass` context while preserving the original verifier
+body and `ErrorCode`; `LoweringPipeline` fills the IR pass pipeline stage names
+from `PipelineStageId::ir_pass_pipeline`.
+
+Next, keep `PipelineStage` as the single profile/cache/query/diagnostics/IDE
+stage directory. M3 modules, generic backend completion, LSP adapter work, and
+subtree reparse must reuse the R5 driver/session/query/diagnostics path instead
+of bypassing it.
+
 ## Branch Principle
 
 The standard library is frozen and removed from the current M2 tree. Do not expand std

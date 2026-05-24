@@ -1,6 +1,8 @@
 #include <aurex/ir/analysis_manager.hpp>
 #include <aurex/ir/pass_pipeline.hpp>
 
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include <gtest/support/ir_test_helpers.hpp>
@@ -11,6 +13,9 @@ namespace {
 using namespace irtest;
 
 constexpr int PASS_MANAGER_UNKNOWN_PASS_ID = 99;
+constexpr std::string_view PASS_PIPELINE_TEST_STAGE_NAME = "driver.ir_pass_pipeline";
+constexpr std::string_view PASS_PIPELINE_TEST_STAGE_PROFILE_NAME = "driver.ir.pass_pipeline";
+constexpr std::string_view PASS_PIPELINE_TEST_FAILURE_MESSAGE = "test pass failed";
 
 [[nodiscard]] base::Result<ir::PassResult> preserve_type_table_test_pass(
     Module& module, ir::ModuleAnalysisManager& analyses)
@@ -35,6 +40,14 @@ constexpr int PASS_MANAGER_UNKNOWN_PASS_ID = 99;
     static_cast<void>(analyses);
     module.functions[0].blocks[0].terminator.value = INVALID_VALUE_ID;
     return base::Result<ir::PassResult>::ok(ir::PassResult::changed_result(ir::PreservedAnalyses::none()));
+}
+
+[[nodiscard]] base::Result<ir::PassResult> failing_test_pass(Module& module, ir::ModuleAnalysisManager& analyses)
+{
+    static_cast<void>(module);
+    static_cast<void>(analyses);
+    return base::Result<ir::PassResult>::fail(
+        {base::ErrorCode::internal_error, std::string(PASS_PIPELINE_TEST_FAILURE_MESSAGE)});
 }
 
 } // namespace
@@ -98,9 +111,64 @@ TEST(CoreUnit, PassManagerTracksAnalysesAndVerifierGate)
         ASSERT_FALSE(result);
         expect_contains_all(result.error().message,
             {
+                "IR verifier failed after pass test.invalidate_return",
+                "stage=ir_pass_pipeline",
+                "profile=ir.pass_pipeline",
+                "verifier=after_pass",
+                "pass=test.invalidate_return",
                 "test.invalidate_return",
                 "return value value id is invalid",
             });
+    }
+    {
+        Module module = make_simple_module();
+        ir::ModulePassManager manager;
+        manager.add(ir::ModulePass{ir::PassId::custom, "test.invalidate_return", invalidate_return_value_test_pass});
+        ir::VerifierGate verifier(ir::VerifierGateOptions{
+            true,
+            true,
+            false,
+            PASS_PIPELINE_TEST_STAGE_NAME,
+            PASS_PIPELINE_TEST_STAGE_PROFILE_NAME,
+        });
+        const auto result = manager.run(module, verifier);
+        ASSERT_FALSE(result);
+        expect_contains_all(result.error().message,
+            {
+                "stage=driver.ir_pass_pipeline",
+                "profile=driver.ir.pass_pipeline",
+                "verifier=output",
+                "return value value id is invalid",
+            });
+    }
+    {
+        Module module = make_simple_module();
+        ir::ModulePassManager manager;
+        manager.add(ir::ModulePass{ir::PassId::custom, "test.invalidate_return", invalidate_return_value_test_pass});
+        ir::VerifierGate verifier(ir::VerifierGateOptions{
+            true,
+            true,
+            false,
+            "",
+            "",
+        });
+        const auto result = manager.run(module, verifier);
+        ASSERT_FALSE(result);
+        expect_contains_all(result.error().message,
+            {
+                "stage=ir_pass_pipeline",
+                "profile=ir.pass_pipeline",
+                "verifier=output",
+                "return value value id is invalid",
+            });
+    }
+    {
+        Module module = make_simple_module();
+        ir::ModulePassManager manager;
+        manager.add(ir::ModulePass{ir::PassId::custom, "test.fail", failing_test_pass});
+        const auto result = manager.run(module, ir::VerifierGate(ir::VerifierGateOptions{}));
+        ASSERT_FALSE(result);
+        expect_contains(result.error().message, PASS_PIPELINE_TEST_FAILURE_MESSAGE);
     }
     {
         Module module = make_simple_module();
@@ -248,7 +316,17 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures)
         Module module = make_simple_module();
         module.functions[0].blocks[0].terminator.value = INVALID_VALUE_ID;
         PassPipelineOptions options;
-        expect_error_contains(ir::run_pass_pipeline(module, options), "return value value id is invalid");
+        options.stage_name = PASS_PIPELINE_TEST_STAGE_NAME;
+        options.stage_profile_name = PASS_PIPELINE_TEST_STAGE_PROFILE_NAME;
+        const auto result = ir::run_pass_pipeline(module, options);
+        ASSERT_FALSE(result);
+        expect_contains_all(result.error().message,
+            {
+                "stage=driver.ir_pass_pipeline",
+                "profile=driver.ir.pass_pipeline",
+                "verifier=input",
+                "return value value id is invalid",
+            });
     }
     {
         Module module;

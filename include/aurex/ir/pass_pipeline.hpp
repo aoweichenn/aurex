@@ -16,6 +16,8 @@ struct PassPipelineOptions {
     bool enable_mem2reg = true;
     bool enable_cfg_cleanup = true;
     bool verify_after_each_pass = false;
+    std::string_view stage_name = IR_PASS_PIPELINE_DEFAULT_STAGE_NAME;
+    std::string_view stage_profile_name = IR_PASS_PIPELINE_DEFAULT_STAGE_PROFILE_NAME;
 };
 
 [[nodiscard]] std::string_view optimization_level_name(OptimizationLevel level) noexcept;

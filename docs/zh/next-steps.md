@@ -28,8 +28,11 @@ LLVM IR emission、LLVM IR dump、temporary LLVM file 和 clang native invocatio
 `PassResult`、`PreservedAnalyses`、`VerifierGate` 和 `run_pass_pipeline_with_summary` 已进入主路径，
 旧 `run_pass_pipeline` API 保持兼容。R5.5 已完成 IR analysis cache / invalidation 第一层：
 `ModuleAnalysisManager` 已能惰性构建并缓存 CFG、dominance 和 value-use analysis，pass 回调可以访问
-analysis manager，changed pass 会按 `PreservedAnalyses` 自动失效缓存。下一步优先进入 IR verifier
-diagnostics 主线：把 verifier gate 的 stage/pass 名称接到稳定错误上下文，同时保持现有错误文本主体不变。
+analysis manager，changed pass 会按 `PreservedAnalyses` 自动失效缓存。R5.6 已完成 IR verifier
+diagnostics 上下文第一层：input、after-pass 和 output verifier failure 现在携带稳定
+`stage/profile/verifier/pass` 上下文，原始 verifier body 和 `ErrorCode` 保持不变；`LoweringPipeline`
+从 `PipelineStageId::ir_pass_pipeline` record 读取 stage/profile 并传给 IR pass pipeline。下一步继续把
+`PipelineStage` 作为 profile、cache/query、diagnostics owner 和 IDE/LSP 阶段可视化的唯一阶段目录维护。
 
 ## 当前分支原则
 

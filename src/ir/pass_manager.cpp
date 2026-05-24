@@ -9,22 +9,85 @@ namespace aurex::ir {
 namespace {
 
 constexpr std::string_view PASS_MANAGER_INVALID_PASS = "IR pass manager received an invalid pass";
-constexpr std::string_view PASS_MANAGER_VERIFY_AFTER_PASS_FAILED = "IR verifier failed after pass ";
+constexpr std::string_view PASS_MANAGER_VERIFY_FAILED = "IR verifier failed";
+constexpr std::string_view PASS_MANAGER_VERIFY_AFTER_PASS_LABEL = " after pass ";
 constexpr std::string_view PASS_MANAGER_VERIFY_DETAIL_SEPARATOR = ": ";
+constexpr std::string_view PASS_MANAGER_VERIFY_CONTEXT_BEGIN = " [stage=";
+constexpr std::string_view PASS_MANAGER_VERIFY_CONTEXT_PROFILE = " profile=";
+constexpr std::string_view PASS_MANAGER_VERIFY_CONTEXT_VERIFIER = " verifier=";
+constexpr std::string_view PASS_MANAGER_VERIFY_CONTEXT_PASS = " pass=";
+constexpr std::string_view PASS_MANAGER_VERIFY_CONTEXT_END = "]";
+constexpr std::string_view PASS_MANAGER_VERIFY_INPUT_NAME = "input";
+constexpr std::string_view PASS_MANAGER_VERIFY_AFTER_PASS_NAME = "after_pass";
+constexpr std::string_view PASS_MANAGER_VERIFY_OUTPUT_NAME = "output";
+
+enum class VerifierInvocationKind {
+    input,
+    after_pass,
+    output,
+};
 
 [[nodiscard]] std::size_t analysis_index(const AnalysisId analysis) noexcept
 {
     return static_cast<std::size_t>(analysis);
 }
 
-[[nodiscard]] base::Result<void> prefix_after_pass_verifier_error(
-    const std::string_view pass_name, const base::Error& error)
+[[nodiscard]] std::string_view verifier_invocation_name(const VerifierInvocationKind kind) noexcept
+{
+    switch (kind) {
+        case VerifierInvocationKind::input:
+            return PASS_MANAGER_VERIFY_INPUT_NAME;
+        case VerifierInvocationKind::after_pass:
+            return PASS_MANAGER_VERIFY_AFTER_PASS_NAME;
+        case VerifierInvocationKind::output:
+            return PASS_MANAGER_VERIFY_OUTPUT_NAME;
+    }
+    return PASS_MANAGER_VERIFY_OUTPUT_NAME;
+}
+
+[[nodiscard]] std::string_view verifier_stage_name(const VerifierGateOptions& options) noexcept
+{
+    return options.stage_name.empty() ? IR_PASS_PIPELINE_DEFAULT_STAGE_NAME : options.stage_name;
+}
+
+[[nodiscard]] std::string_view verifier_stage_profile_name(const VerifierGateOptions& options) noexcept
+{
+    return options.stage_profile_name.empty() ? IR_PASS_PIPELINE_DEFAULT_STAGE_PROFILE_NAME
+                                              : options.stage_profile_name;
+}
+
+void append_verifier_context(std::string& message, const VerifierGateOptions& options,
+    const VerifierInvocationKind kind, const std::string_view pass_name)
+{
+    message += PASS_MANAGER_VERIFY_CONTEXT_BEGIN;
+    message += verifier_stage_name(options);
+    message += PASS_MANAGER_VERIFY_CONTEXT_PROFILE;
+    message += verifier_stage_profile_name(options);
+    message += PASS_MANAGER_VERIFY_CONTEXT_VERIFIER;
+    message += verifier_invocation_name(kind);
+    if (kind == VerifierInvocationKind::after_pass) {
+        message += PASS_MANAGER_VERIFY_CONTEXT_PASS;
+        message += pass_name;
+    }
+    message += PASS_MANAGER_VERIFY_CONTEXT_END;
+}
+
+[[nodiscard]] base::Result<void> prefix_verifier_error(const VerifierGateOptions& options,
+    const VerifierInvocationKind kind, const std::string_view pass_name, const base::Error& error)
 {
     std::string message;
-    message.reserve(PASS_MANAGER_VERIFY_AFTER_PASS_FAILED.size() + pass_name.size()
+    message.reserve(PASS_MANAGER_VERIFY_FAILED.size() + PASS_MANAGER_VERIFY_AFTER_PASS_LABEL.size() + pass_name.size()
+        + PASS_MANAGER_VERIFY_CONTEXT_BEGIN.size() + verifier_stage_name(options).size()
+        + PASS_MANAGER_VERIFY_CONTEXT_PROFILE.size() + verifier_stage_profile_name(options).size()
+        + PASS_MANAGER_VERIFY_CONTEXT_VERIFIER.size() + verifier_invocation_name(kind).size()
+        + PASS_MANAGER_VERIFY_CONTEXT_PASS.size() + pass_name.size() + PASS_MANAGER_VERIFY_CONTEXT_END.size()
         + PASS_MANAGER_VERIFY_DETAIL_SEPARATOR.size() + error.message.size());
-    message += PASS_MANAGER_VERIFY_AFTER_PASS_FAILED;
-    message += pass_name;
+    message += PASS_MANAGER_VERIFY_FAILED;
+    if (kind == VerifierInvocationKind::after_pass) {
+        message += PASS_MANAGER_VERIFY_AFTER_PASS_LABEL;
+        message += pass_name;
+    }
+    append_verifier_context(message, options, kind, pass_name);
     message += PASS_MANAGER_VERIFY_DETAIL_SEPARATOR;
     message += error.message;
     return base::Result<void>::fail({error.code, std::move(message)});
@@ -115,7 +178,11 @@ base::Result<void> VerifierGate::verify_input(const Module& module) const
     if (!this->options_.verify_input) {
         return base::Result<void>::ok();
     }
-    return verify_module(module);
+    const auto result = verify_module(module);
+    if (result) {
+        return base::Result<void>::ok();
+    }
+    return prefix_verifier_error(this->options_, VerifierInvocationKind::input, {}, result.error());
 }
 
 base::Result<void> VerifierGate::verify_after_pass(const Module& module, const std::string_view pass_name) const
@@ -127,7 +194,7 @@ base::Result<void> VerifierGate::verify_after_pass(const Module& module, const s
     if (result) {
         return base::Result<void>::ok();
     }
-    return prefix_after_pass_verifier_error(pass_name, result.error());
+    return prefix_verifier_error(this->options_, VerifierInvocationKind::after_pass, pass_name, result.error());
 }
 
 base::Result<void> VerifierGate::verify_output(const Module& module) const
@@ -135,7 +202,11 @@ base::Result<void> VerifierGate::verify_output(const Module& module) const
     if (!this->options_.verify_output) {
         return base::Result<void>::ok();
     }
-    return verify_module(module);
+    const auto result = verify_module(module);
+    if (result) {
+        return base::Result<void>::ok();
+    }
+    return prefix_verifier_error(this->options_, VerifierInvocationKind::output, {}, result.error());
 }
 
 void ModulePassManager::add(ModulePass pass)

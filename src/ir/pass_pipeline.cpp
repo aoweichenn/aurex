@@ -612,6 +612,8 @@ base::Result<PassPipelineRunSummary> run_pass_pipeline_with_summary(Module& modu
         options.verify_input,
         options.verify_output,
         options.verify_after_each_pass,
+        options.stage_name,
+        options.stage_profile_name,
     });
     return manager.run(module, verifier);
 }

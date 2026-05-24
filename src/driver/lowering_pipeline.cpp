@@ -14,7 +14,7 @@ namespace aurex::driver {
 namespace {
 
 [[nodiscard]] ir::PassPipelineOptions make_pass_pipeline_options(
-    const ir::OptimizationLevel optimization_level) noexcept
+    const ir::OptimizationLevel optimization_level, const PipelineStageRecord& stage) noexcept
 {
     return ir::PassPipelineOptions{
         optimization_level,
@@ -22,6 +22,9 @@ namespace {
         true,
         true,
         true,
+        false,
+        stage.name,
+        stage.profile_name,
     };
 }
 
@@ -50,10 +53,10 @@ base::Result<ir::Module> LoweringPipeline::lower_and_optimize(
     }
 
     auto pipeline_result = [&] {
-        ScopedCompilationPhase phase(
-            this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::ir_pass_pipeline));
+        const PipelineStageRecord& stage = pipeline_stage_record(PipelineStageId::ir_pass_pipeline);
+        ScopedCompilationPhase phase(this->session_.profiler(), stage.profile_name);
         return ir::run_pass_pipeline(
-            ir_result.value(), make_pass_pipeline_options(this->session_.invocation().optimization_level));
+            ir_result.value(), make_pass_pipeline_options(this->session_.invocation().optimization_level, stage));
     }();
     if (!pipeline_result) {
         return base::Result<ir::Module>::fail(pipeline_result.error());

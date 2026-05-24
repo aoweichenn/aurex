@@ -81,6 +81,32 @@ auto result = compiler.run(invocation);
 `result.error().message` contains a user-facing error message. Lex/parse/sema
 diagnostics are printed by the driver to stderr.
 
+## Profile JSON API
+
+`--profile-output path` writes `aurex-profile-v1` JSON. Each phase keeps the
+existing fields:
+
+- `name`
+- `detail`
+- `elapsed_ms`
+- `rss_mib_after`
+- `rss_delta_mib`
+
+If `name` matches a driver main stage through `PipelineStageRecord.profile_name`,
+the phase also carries an optional `stage` object:
+
+- `id`
+- `input`
+- `output`
+- `diagnostic_ownership`
+- `cache_query_impact`
+
+These fields come from the `PipelineStage` directory and are intended for
+profile viewers, cache/query debugging, and later IDE/LSP stage visualization.
+Internal cache sub-events such as `incremental_cache.query_diff`,
+`incremental_cache.query_plan`, and `incremental_cache.query_pruning` continue
+to use only `name/detail`; they are not treated as driver main stages.
+
 ## C++ Lossless Syntax API
 
 Headers:

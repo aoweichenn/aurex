@@ -22,7 +22,9 @@ and cache/query impact. R5.4 introduced the lightweight IR pass manager and
 verifier gate; R5.5 introduced `ModuleAnalysisManager`; R5.6 added stable
 `stage/profile/verifier/pass` context to IR verifier gate failures while
 preserving the original verifier body and `ErrorCode`, and `LoweringPipeline`
-now passes the IR pass pipeline stage names from `PipelineStageRecord`.
+now passes the IR pass pipeline stage names from `PipelineStageRecord`. R5.7
+added optional `stage` metadata to driver main-stage phases in
+`aurex-profile-v1`, sourced directly from `PipelineStageRecord`.
 
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,
@@ -93,6 +95,10 @@ notes are design input only, not current progress.
   `PassPipelineRunSummary`, and `ModuleAnalysisManager`; verifier gate failures
   carry stable stage/profile/verifier/pass context without changing the original
   verifier body.
+- `aurex-profile-v1` driver main-stage phases carry optional `stage` metadata
+  with stage id, input, output, diagnostic ownership, and cache/query impact,
+  while existing phase names and internal incremental-cache query sub-events are
+  preserved.
 
 ## Removed From The Active Track
 

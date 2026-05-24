@@ -211,6 +211,16 @@ const PipelineStageRecord& pipeline_stage_record(const PipelineStageId id) noexc
     return PIPELINE_STAGE_RECORDS.front();
 }
 
+const PipelineStageRecord* pipeline_stage_record_for_profile_name(const std::string_view profile_name) noexcept
+{
+    for (const PipelineStageRecord& record : PIPELINE_STAGE_RECORDS) {
+        if (record.profile_name == profile_name) {
+            return &record;
+        }
+    }
+    return nullptr;
+}
+
 std::string_view pipeline_stage_profile_name(const PipelineStageId id) noexcept
 {
     return pipeline_stage_record(id).profile_name;

@@ -149,13 +149,23 @@ R5.6 已完成 IR verifier diagnostics 上下文第一层：
   `PipelineStageId::ir_pass_pipeline` 的 `name` 和 `profile_name` 并传入 IR verifier gate。`PipelineStage`
   因此继续作为 driver profile、cache/query 和后续 IDE/LSP 可视化的唯一阶段目录。
 
+R5.7 已完成 profile JSON 阶段元数据第一层：
+
+- `PipelineStage` 增加按 `profile_name` 反查 `PipelineStageRecord` 的接口，profile writer 不再只能输出
+  裸 phase name。
+- `aurex-profile-v1` 的每个 driver 主阶段 phase 现在附带可选 `stage` 对象，包含 stage id、input、output、
+  diagnostic ownership 和 cache/query impact；原有 `name`、`detail`、elapsed/RSS 字段和 phase name
+  全部保持不变。
+- incremental cache 的内部 query diff / plan / pruning / provider-eval 仍作为 profile 子事件保留，不伪装成
+  driver 主阶段；IDE/LSP 或 profile viewer 可以用 `stage` 对象识别主阶段，用 `name/detail` 继续识别子事件。
+- `PIPELINE_STAGE_RECORD_COUNT` 改为由 `PipelineStageId::count` 推导，新增阶段时不会再手动同步 magic number。
+
 ## 后续拆分顺序
 
-R5.6 完成后，后续按下面顺序继续：
+R5.7 完成后，后续按下面顺序继续：
 
-1. 继续把 `PipelineStage` 记录作为 profile、cache/query、diagnostics owner 和后续 IDE/LSP
-   阶段可视化的唯一阶段目录维护，新增 driver 阶段必须先登记 record，再进入 pipeline。
-2. 在 cache/query 和 diagnostics 边界继续消费 stage record，而不是在各子 pipeline 中新增散落字符串。
+1. 继续在 cache/query 和 diagnostics 边界消费 `PipelineStageRecord`，而不是在各子 pipeline 中新增散落字符串。
+2. 后续 IDE/LSP 可视化层消费 profile JSON 的 `stage` 对象和 query records，而不是重新维护阶段表。
 3. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
    + `FrontendPipeline` + `LoweringPipeline` + `BackendPipeline` 的主路径。
 

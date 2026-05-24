@@ -11,6 +11,8 @@
 #include <sys/resource.h>
 #include <system_error>
 
+#include "pipeline_stage.hpp"
+
 namespace aurex::driver {
 
 namespace {
@@ -87,6 +89,27 @@ void write_json_escaped(std::ostream& out, const std::string_view text)
         }
     }
     out << PROFILE_JSON_QUOTE;
+}
+
+void write_stage_metadata(std::ostream& output, const PipelineStageRecord& stage)
+{
+    output << "      \"stage\": {\n";
+    output << "        \"id\": ";
+    write_json_escaped(output, stage.name);
+    output << ",\n";
+    output << "        \"input\": ";
+    write_json_escaped(output, stage.input);
+    output << ",\n";
+    output << "        \"output\": ";
+    write_json_escaped(output, stage.output);
+    output << ",\n";
+    output << "        \"diagnostic_ownership\": ";
+    write_json_escaped(output, stage.diagnostic_ownership);
+    output << ",\n";
+    output << "        \"cache_query_impact\": ";
+    write_json_escaped(output, stage.cache_query_impact);
+    output << "\n";
+    output << "      },\n";
 }
 
 [[nodiscard]] double total_elapsed_ms(const std::span<const CompilationPhaseProfile> phases) noexcept
@@ -184,6 +207,9 @@ base::Result<void> CompilationProfiler::write_json(const std::filesystem::path& 
         output << "      \"name\": ";
         write_json_escaped(output, phase.name);
         output << ",\n";
+        if (const PipelineStageRecord* stage = pipeline_stage_record_for_profile_name(phase.name)) {
+            write_stage_metadata(output, *stage);
+        }
         output << "      \"detail\": ";
         write_json_escaped(output, phase.detail);
         output << ",\n";

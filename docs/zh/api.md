@@ -73,6 +73,29 @@ auto result = compiler.run(invocation);
 
 `Compiler::run` 返回 `base::Result<void>`。失败时 `result.error().message` 保存面向用户的错误消息。lex/parse/sema 诊断由 driver 打印到 stderr。
 
+## Profile JSON 接口
+
+`--profile-output path` 写出 `aurex-profile-v1` JSON。每个 phase 保留原有字段：
+
+- `name`
+- `detail`
+- `elapsed_ms`
+- `rss_mib_after`
+- `rss_delta_mib`
+
+如果 `name` 能匹配到 driver 主阶段的 `PipelineStageRecord.profile_name`，phase 会额外携带可选
+`stage` 对象：
+
+- `id`
+- `input`
+- `output`
+- `diagnostic_ownership`
+- `cache_query_impact`
+
+这些字段来自 `PipelineStage` 阶段目录，用于 profile viewer、cache/query 调试和后续 IDE/LSP
+阶段可视化。`incremental_cache.query_diff`、`incremental_cache.query_plan`、
+`incremental_cache.query_pruning` 等 cache 内部子事件继续只用 `name/detail` 表达，不伪装成 driver 主阶段。
+
 ## C++ Lossless Syntax 接口
 
 头文件：

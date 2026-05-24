@@ -19,6 +19,11 @@ failure context: input, after-pass, and output verifier failures carry
 `stage/profile/verifier/pass` context while preserving the original verifier
 body and `ErrorCode`; `LoweringPipeline` fills the IR pass pipeline stage names
 from `PipelineStageId::ir_pass_pipeline`.
+R5.7 added profile JSON stage metadata: driver main-stage phases in
+`aurex-profile-v1` now carry an optional `stage` object sourced from
+`PipelineStageRecord`, with stage id, input, output, diagnostic ownership, and
+cache/query impact. Existing phase `name` values and internal incremental-cache
+query sub-events remain unchanged.
 
 Next, keep `PipelineStage` as the single profile/cache/query/diagnostics/IDE
 stage directory. M3 modules, generic backend completion, LSP adapter work, and

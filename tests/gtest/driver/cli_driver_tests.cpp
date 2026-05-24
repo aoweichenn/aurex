@@ -142,6 +142,7 @@ constexpr std::string_view CACHE_TEST_QUERY_PLAN_PROFILE_PHASE = "incremental_ca
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_PROFILE_PHASE = "incremental_cache.query_pruning";
 constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_PROFILE_PHASE = "incremental_cache.query_provider_eval";
 constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE = "incremental_cache.source_stage_reuse";
+constexpr std::string_view PROFILE_TEST_STAGE_FIELD = "\"stage\": {";
 constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_GREEN_DETAIL =
     "result=reuse,reason=none,sources=1,queries=2,unchanged=2,missing=0,changed=0,malformed=0,source_failures=0";
 constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_CHANGED_DETAIL =
@@ -785,6 +786,42 @@ void expect_query_profile_phases_with_pruned_provider_eval(const driver::Compila
     EXPECT_EQ(profiler.phases()[3].detail, provider_eval_detail);
 }
 
+[[nodiscard]] std::optional<std::string_view> profile_phase_object(
+    const std::string_view profile_text, const std::string_view phase_name)
+{
+    std::string marker{"\"name\": \""};
+    marker.append(phase_name.data(), phase_name.size());
+    marker.push_back('"');
+
+    const std::size_t phase_name_position = profile_text.find(marker);
+    if (phase_name_position == std::string_view::npos) {
+        return std::nullopt;
+    }
+
+    std::size_t object_begin = profile_text.rfind("    {", phase_name_position);
+    if (object_begin == std::string_view::npos) {
+        object_begin = phase_name_position;
+    }
+
+    const std::size_t object_end = profile_text.find("\n    }", phase_name_position);
+    if (object_end == std::string_view::npos) {
+        return profile_text.substr(object_begin);
+    }
+    return profile_text.substr(object_begin, object_end - object_begin);
+}
+
+void expect_profile_phase_stage_presence(
+    const std::string_view profile_text, const std::string_view phase_name, const bool expected_stage)
+{
+    const std::optional<std::string_view> phase_object = profile_phase_object(profile_text, phase_name);
+    ASSERT_TRUE(phase_object.has_value()) << std::string(phase_name);
+    if (expected_stage) {
+        EXPECT_NE(phase_object->find(PROFILE_TEST_STAGE_FIELD), std::string_view::npos) << std::string(phase_name);
+        return;
+    }
+    EXPECT_EQ(phase_object->find(PROFILE_TEST_STAGE_FIELD), std::string_view::npos) << std::string(phase_name);
+}
+
 } // namespace
 
 TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms)
@@ -949,6 +986,12 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
                 "\"name\": \"module.read\"",
                 "\"name\": \"module.lex\"",
                 "\"name\": \"module.parse\"",
+                "\"stage\": {",
+                "\"id\": \"module_parse\"",
+                "\"input\": \"module token buffer\"",
+                "\"output\": \"module AST\"",
+                "\"diagnostic_ownership\": \"parser diagnostic sink\"",
+                "\"cache_query_impact\": \"feeds module graph and query records\"",
                 "\"name\": \"sema.analyze\"",
                 "\"name\": \"incremental_cache.query_diff\"",
                 "\"name\": \"incremental_cache.query_plan\"",
@@ -966,6 +1009,10 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
                 "\"rss_mib_after\"",
                 "\"rss_delta_mib\"",
             });
+        expect_profile_phase_stage_presence(profile_text, "module.parse", true);
+        expect_profile_phase_stage_presence(profile_text, CACHE_TEST_QUERY_DIFF_PROFILE_PHASE, false);
+        expect_profile_phase_stage_presence(profile_text, CACHE_TEST_QUERY_PLAN_PROFILE_PHASE, false);
+        expect_profile_phase_stage_presence(profile_text, CACHE_TEST_QUERY_PRUNING_PROFILE_PHASE, false);
 
         const auto run_profiled_emit_with = [&](driver::Compiler& selected_compiler, const driver::EmitKind emit_kind,
                                                 const fs::path& profile_path) {
@@ -1111,6 +1158,7 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
         EXPECT_FALSE(record.cache_query_impact.empty());
         EXPECT_EQ(&driver::pipeline_stage_record(record.id), &record);
         EXPECT_EQ(driver::pipeline_stage_profile_name(record.id), record.profile_name);
+        EXPECT_EQ(driver::pipeline_stage_record_for_profile_name(record.profile_name), &record);
         for (std::size_t other_index = index + 1; other_index < records.size(); ++other_index) {
             EXPECT_NE(record.profile_name, records[other_index].profile_name);
         }
@@ -1143,6 +1191,7 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
     const driver::PipelineStageRecord& fallback =
         driver::pipeline_stage_record(static_cast<driver::PipelineStageId>(driver::PIPELINE_STAGE_RECORD_COUNT));
     EXPECT_EQ(&fallback, &records.front());
+    EXPECT_EQ(driver::pipeline_stage_record_for_profile_name("unknown.phase"), nullptr);
 }
 
 TEST_F(AurexIntegrationTest, CliIncrementalCacheUsesQueryKeyPruningByDefault)

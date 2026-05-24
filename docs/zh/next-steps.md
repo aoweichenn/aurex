@@ -33,6 +33,9 @@ diagnostics 上下文第一层：input、after-pass 和 output verifier failure 
 `stage/profile/verifier/pass` 上下文，原始 verifier body 和 `ErrorCode` 保持不变；`LoweringPipeline`
 从 `PipelineStageId::ir_pass_pipeline` record 读取 stage/profile 并传给 IR pass pipeline。下一步继续把
 `PipelineStage` 作为 profile、cache/query、diagnostics owner 和 IDE/LSP 阶段可视化的唯一阶段目录维护。
+R5.7 已完成 profile JSON 阶段元数据第一层：`aurex-profile-v1` 的 driver 主阶段 phase 现在附带可选
+`stage` 对象，直接来自 `PipelineStageRecord`，包含 stage id、input、output、diagnostic ownership
+和 cache/query impact；原 phase `name` 和内部 incremental-cache query 子事件保持不变。
 
 ## 当前分支原则
 

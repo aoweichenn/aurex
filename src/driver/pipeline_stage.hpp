@@ -29,9 +29,10 @@ enum class PipelineStageId {
     llvm_ir_dump,
     llvm_write_temp,
     native_clang,
+    count,
 };
 
-inline constexpr std::size_t PIPELINE_STAGE_RECORD_COUNT = 21U;
+inline constexpr std::size_t PIPELINE_STAGE_RECORD_COUNT = static_cast<std::size_t>(PipelineStageId::count);
 
 struct PipelineStageRecord {
     PipelineStageId id;
@@ -45,6 +46,7 @@ struct PipelineStageRecord {
 
 [[nodiscard]] std::span<const PipelineStageRecord> pipeline_stage_records() noexcept;
 [[nodiscard]] const PipelineStageRecord& pipeline_stage_record(PipelineStageId id) noexcept;
+[[nodiscard]] const PipelineStageRecord* pipeline_stage_record_for_profile_name(std::string_view profile_name) noexcept;
 [[nodiscard]] std::string_view pipeline_stage_profile_name(PipelineStageId id) noexcept;
 
 } // namespace aurex::driver

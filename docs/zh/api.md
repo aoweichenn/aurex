@@ -93,8 +93,23 @@ auto result = compiler.run(invocation);
 - `cache_query_impact`
 
 这些字段来自 `PipelineStage` 阶段目录，用于 profile viewer、cache/query 调试和后续 IDE/LSP
-阶段可视化。`incremental_cache.query_diff`、`incremental_cache.query_plan`、
-`incremental_cache.query_pruning` 等 cache 内部子事件继续只用 `name/detail` 表达，不伪装成 driver 主阶段。
+阶段可视化。
+
+cache/query 内部子事件仍不伪装成 driver 主阶段，因此不会携带 `stage` 对象；如果子事件能匹配到
+`PipelineProfileSubeventRecord.profile_name`，phase 会额外携带可选 `parent_stage` 对象：
+
+- `id`
+- `profile`
+- `input`
+- `output`
+- `diagnostic_ownership`
+- `cache_query_impact`
+
+例如 `incremental_cache.query_diff`、`incremental_cache.query_plan`、
+`incremental_cache.query_pruning` 和 `incremental_cache.query_provider_eval` 的父阶段是
+`incremental_cache.write`，`incremental_cache.source_stage_reuse` 的父阶段是
+`incremental_cache.lookup`。profile viewer 可以用 `stage` 识别 driver 主阶段，用 `parent_stage`
+把 cache/query 子事件挂回对应主阶段。
 
 ## C++ Lossless Syntax 接口
 

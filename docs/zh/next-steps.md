@@ -36,6 +36,10 @@ diagnostics 上下文第一层：input、after-pass 和 output verifier failure 
 R5.7 已完成 profile JSON 阶段元数据第一层：`aurex-profile-v1` 的 driver 主阶段 phase 现在附带可选
 `stage` 对象，直接来自 `PipelineStageRecord`，包含 stage id、input、output、diagnostic ownership
 和 cache/query impact；原 phase `name` 和内部 incremental-cache query 子事件保持不变。
+R5.8 已完成 cache/query profile 子事件父阶段映射第一层：`PipelineStage` 现在记录
+`PipelineProfileSubeventRecord`，`incremental_cache.source_stage_reuse` 会通过 `parent_stage`
+挂回 `incremental_cache.lookup`，query diff / plan / pruning / provider-eval 会挂回
+`incremental_cache.write`；子事件继续不携带 `stage`，不会被误认为 driver 主阶段。
 
 ## 当前分支原则
 

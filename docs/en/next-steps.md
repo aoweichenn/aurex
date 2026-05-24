@@ -24,11 +24,17 @@ R5.7 added profile JSON stage metadata: driver main-stage phases in
 `PipelineStageRecord`, with stage id, input, output, diagnostic ownership, and
 cache/query impact. Existing phase `name` values and internal incremental-cache
 query sub-events remain unchanged.
+R5.8 added parent-stage metadata for cache/query profile sub-events:
+`PipelineStage` now records `PipelineProfileSubeventRecord`, so
+`incremental_cache.source_stage_reuse` points back to
+`incremental_cache.lookup`, while query diff / plan / pruning / provider-eval
+point back to `incremental_cache.write`. These sub-events still do not carry a
+`stage` object and are not treated as driver main stages.
 
 Next, keep `PipelineStage` as the single profile/cache/query/diagnostics/IDE
 stage directory. M3 modules, generic backend completion, LSP adapter work, and
-subtree reparse must reuse the R5 driver/session/query/diagnostics path instead
-of bypassing it.
+subtree reparse must consume the R5 driver/session/query/diagnostics path,
+including `stage` / `parent_stage` profile metadata, instead of bypassing it.
 
 ## Branch Principle
 

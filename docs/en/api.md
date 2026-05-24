@@ -103,9 +103,25 @@ the phase also carries an optional `stage` object:
 
 These fields come from the `PipelineStage` directory and are intended for
 profile viewers, cache/query debugging, and later IDE/LSP stage visualization.
-Internal cache sub-events such as `incremental_cache.query_diff`,
-`incremental_cache.query_plan`, and `incremental_cache.query_pruning` continue
-to use only `name/detail`; they are not treated as driver main stages.
+
+Internal cache/query sub-events are still not treated as driver main stages, so
+they do not carry a `stage` object. If a sub-event matches
+`PipelineProfileSubeventRecord.profile_name`, the phase also carries an optional
+`parent_stage` object:
+
+- `id`
+- `profile`
+- `input`
+- `output`
+- `diagnostic_ownership`
+- `cache_query_impact`
+
+For example, `incremental_cache.query_diff`, `incremental_cache.query_plan`,
+`incremental_cache.query_pruning`, and `incremental_cache.query_provider_eval`
+belong to `incremental_cache.write`, while
+`incremental_cache.source_stage_reuse` belongs to `incremental_cache.lookup`.
+Profile viewers can use `stage` for driver main stages and `parent_stage` to
+thread cache/query sub-events back to the owning main stage.
 
 ## C++ Lossless Syntax API
 

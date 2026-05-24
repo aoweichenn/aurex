@@ -143,6 +143,7 @@ constexpr std::string_view CACHE_TEST_QUERY_PRUNING_PROFILE_PHASE = "incremental
 constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_PROFILE_PHASE = "incremental_cache.query_provider_eval";
 constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE = "incremental_cache.source_stage_reuse";
 constexpr std::string_view PROFILE_TEST_STAGE_FIELD = "\"stage\": {";
+constexpr std::string_view PROFILE_TEST_PARENT_STAGE_FIELD = "\"parent_stage\": {";
 constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_GREEN_DETAIL =
     "result=reuse,reason=none,sources=1,queries=2,unchanged=2,missing=0,changed=0,malformed=0,source_failures=0";
 constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_CHANGED_DETAIL =
@@ -822,6 +823,19 @@ void expect_profile_phase_stage_presence(
     EXPECT_EQ(phase_object->find(PROFILE_TEST_STAGE_FIELD), std::string_view::npos) << std::string(phase_name);
 }
 
+void expect_profile_phase_parent_stage(
+    const std::string_view profile_text, const std::string_view phase_name, const std::string_view parent_profile)
+{
+    const std::optional<std::string_view> phase_object = profile_phase_object(profile_text, phase_name);
+    ASSERT_TRUE(phase_object.has_value()) << std::string(phase_name);
+    EXPECT_NE(phase_object->find(PROFILE_TEST_PARENT_STAGE_FIELD), std::string_view::npos) << std::string(phase_name);
+
+    std::string parent_profile_field{"\"profile\": \""};
+    parent_profile_field.append(parent_profile.data(), parent_profile.size());
+    parent_profile_field.push_back('"');
+    EXPECT_NE(phase_object->find(parent_profile_field), std::string_view::npos) << std::string(phase_name);
+}
+
 } // namespace
 
 TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms)
@@ -1013,6 +1027,10 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
         expect_profile_phase_stage_presence(profile_text, CACHE_TEST_QUERY_DIFF_PROFILE_PHASE, false);
         expect_profile_phase_stage_presence(profile_text, CACHE_TEST_QUERY_PLAN_PROFILE_PHASE, false);
         expect_profile_phase_stage_presence(profile_text, CACHE_TEST_QUERY_PRUNING_PROFILE_PHASE, false);
+        expect_profile_phase_parent_stage(profile_text, CACHE_TEST_QUERY_DIFF_PROFILE_PHASE, "incremental_cache.write");
+        expect_profile_phase_parent_stage(profile_text, CACHE_TEST_QUERY_PLAN_PROFILE_PHASE, "incremental_cache.write");
+        expect_profile_phase_parent_stage(
+            profile_text, CACHE_TEST_QUERY_PRUNING_PROFILE_PHASE, "incremental_cache.write");
 
         const auto run_profiled_emit_with = [&](driver::Compiler& selected_compiler, const driver::EmitKind emit_kind,
                                                 const fs::path& profile_path) {
@@ -1192,6 +1210,48 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
         driver::pipeline_stage_record(static_cast<driver::PipelineStageId>(driver::PIPELINE_STAGE_RECORD_COUNT));
     EXPECT_EQ(&fallback, &records.front());
     EXPECT_EQ(driver::pipeline_stage_record_for_profile_name("unknown.phase"), nullptr);
+
+    const std::span<const driver::PipelineProfileSubeventRecord> subevents =
+        driver::pipeline_profile_subevent_records();
+    ASSERT_EQ(subevents.size(), driver::PIPELINE_PROFILE_SUBEVENT_RECORD_COUNT);
+    for (std::size_t index = 0; index < subevents.size(); ++index) {
+        const driver::PipelineProfileSubeventRecord& record = subevents[index];
+        EXPECT_EQ(static_cast<std::size_t>(record.id), index);
+        EXPECT_FALSE(record.profile_name.empty());
+        EXPECT_EQ(driver::pipeline_stage_record_for_profile_name(record.profile_name), nullptr);
+        EXPECT_EQ(driver::pipeline_profile_subevent_record_for_profile_name(record.profile_name), &record);
+        EXPECT_LT(static_cast<std::size_t>(record.parent_stage), records.size());
+        const driver::PipelineStageRecord& parent = driver::pipeline_stage_record(record.parent_stage);
+        EXPECT_EQ(parent.id, record.parent_stage);
+        for (std::size_t other_index = index + 1; other_index < subevents.size(); ++other_index) {
+            EXPECT_NE(record.profile_name, subevents[other_index].profile_name);
+        }
+    }
+    const driver::PipelineProfileSubeventRecord* const source_stage_reuse_subevent =
+        driver::pipeline_profile_subevent_record_for_profile_name(CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE);
+    ASSERT_NE(source_stage_reuse_subevent, nullptr);
+    EXPECT_EQ(source_stage_reuse_subevent->parent_stage, driver::PipelineStageId::incremental_cache_lookup);
+
+    const driver::PipelineProfileSubeventRecord* const query_diff_subevent =
+        driver::pipeline_profile_subevent_record_for_profile_name(CACHE_TEST_QUERY_DIFF_PROFILE_PHASE);
+    ASSERT_NE(query_diff_subevent, nullptr);
+    EXPECT_EQ(query_diff_subevent->parent_stage, driver::PipelineStageId::incremental_cache_write);
+
+    const driver::PipelineProfileSubeventRecord* const query_plan_subevent =
+        driver::pipeline_profile_subevent_record_for_profile_name(CACHE_TEST_QUERY_PLAN_PROFILE_PHASE);
+    ASSERT_NE(query_plan_subevent, nullptr);
+    EXPECT_EQ(query_plan_subevent->parent_stage, driver::PipelineStageId::incremental_cache_write);
+
+    const driver::PipelineProfileSubeventRecord* const query_pruning_subevent =
+        driver::pipeline_profile_subevent_record_for_profile_name(CACHE_TEST_QUERY_PRUNING_PROFILE_PHASE);
+    ASSERT_NE(query_pruning_subevent, nullptr);
+    EXPECT_EQ(query_pruning_subevent->parent_stage, driver::PipelineStageId::incremental_cache_write);
+
+    const driver::PipelineProfileSubeventRecord* const query_provider_eval_subevent =
+        driver::pipeline_profile_subevent_record_for_profile_name(CACHE_TEST_QUERY_PROVIDER_EVAL_PROFILE_PHASE);
+    ASSERT_NE(query_provider_eval_subevent, nullptr);
+    EXPECT_EQ(query_provider_eval_subevent->parent_stage, driver::PipelineStageId::incremental_cache_write);
+    EXPECT_EQ(driver::pipeline_profile_subevent_record_for_profile_name("unknown.phase"), nullptr);
 }
 
 TEST_F(AurexIntegrationTest, CliIncrementalCacheUsesQueryKeyPruningByDefault)
@@ -2083,6 +2143,9 @@ TEST_F(AurexIntegrationTest, IncrementalCacheQueryPruningReusesCommentOnlySource
     expect_contains(profile_text, "\"name\": \"incremental_cache.lookup\"");
     expect_contains(profile_text, "\"name\": \"incremental_cache.source_stage_reuse\"");
     expect_contains(profile_text, CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_GREEN_DETAIL);
+    expect_profile_phase_stage_presence(profile_text, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE, false);
+    expect_profile_phase_parent_stage(
+        profile_text, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE, "incremental_cache.lookup");
 
     write_source(DRIVER_INCREMENTAL_CACHE_SECOND_SOURCE);
     driver::clear_file_cache();

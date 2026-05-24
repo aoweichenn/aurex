@@ -1,5 +1,7 @@
 #include "pipeline_stage.hpp"
 
+#include "incremental_cache/common.hpp"
+
 namespace aurex::driver {
 namespace {
 
@@ -195,11 +197,46 @@ constexpr std::array<PipelineStageRecord, PIPELINE_STAGE_RECORD_COUNT> PIPELINE_
     },
 }};
 
+constexpr std::array<PipelineProfileSubeventRecord, PIPELINE_PROFILE_SUBEVENT_RECORD_COUNT>
+    PIPELINE_PROFILE_SUBEVENT_RECORDS{{
+        {
+            PipelineProfileSubeventId::incremental_cache_source_stage_reuse,
+            incremental_cache_detail::INCREMENTAL_CACHE_PROFILE_SOURCE_STAGE_REUSE,
+            PipelineStageId::incremental_cache_lookup,
+        },
+        {
+            PipelineProfileSubeventId::incremental_cache_query_diff,
+            incremental_cache_detail::INCREMENTAL_CACHE_PROFILE_QUERY_DIFF,
+            PipelineStageId::incremental_cache_write,
+        },
+        {
+            PipelineProfileSubeventId::incremental_cache_query_plan,
+            incremental_cache_detail::INCREMENTAL_CACHE_PROFILE_QUERY_PLAN,
+            PipelineStageId::incremental_cache_write,
+        },
+        {
+            PipelineProfileSubeventId::incremental_cache_query_pruning,
+            incremental_cache_detail::INCREMENTAL_CACHE_PROFILE_QUERY_PRUNING,
+            PipelineStageId::incremental_cache_write,
+        },
+        {
+            PipelineProfileSubeventId::incremental_cache_query_provider_eval,
+            incremental_cache_detail::INCREMENTAL_CACHE_PROFILE_QUERY_PROVIDER_EVAL,
+            PipelineStageId::incremental_cache_write,
+        },
+    }};
+
 } // namespace
 
 std::span<const PipelineStageRecord> pipeline_stage_records() noexcept
 {
     return std::span<const PipelineStageRecord>(PIPELINE_STAGE_RECORDS.data(), PIPELINE_STAGE_RECORDS.size());
+}
+
+std::span<const PipelineProfileSubeventRecord> pipeline_profile_subevent_records() noexcept
+{
+    return std::span<const PipelineProfileSubeventRecord>(
+        PIPELINE_PROFILE_SUBEVENT_RECORDS.data(), PIPELINE_PROFILE_SUBEVENT_RECORDS.size());
 }
 
 const PipelineStageRecord& pipeline_stage_record(const PipelineStageId id) noexcept
@@ -214,6 +251,17 @@ const PipelineStageRecord& pipeline_stage_record(const PipelineStageId id) noexc
 const PipelineStageRecord* pipeline_stage_record_for_profile_name(const std::string_view profile_name) noexcept
 {
     for (const PipelineStageRecord& record : PIPELINE_STAGE_RECORDS) {
+        if (record.profile_name == profile_name) {
+            return &record;
+        }
+    }
+    return nullptr;
+}
+
+const PipelineProfileSubeventRecord* pipeline_profile_subevent_record_for_profile_name(
+    const std::string_view profile_name) noexcept
+{
+    for (const PipelineProfileSubeventRecord& record : PIPELINE_PROFILE_SUBEVENT_RECORDS) {
         if (record.profile_name == profile_name) {
             return &record;
         }

@@ -160,12 +160,25 @@ R5.7 已完成 profile JSON 阶段元数据第一层：
   driver 主阶段；IDE/LSP 或 profile viewer 可以用 `stage` 对象识别主阶段，用 `name/detail` 继续识别子事件。
 - `PIPELINE_STAGE_RECORD_COUNT` 改为由 `PipelineStageId::count` 推导，新增阶段时不会再手动同步 magic number。
 
+R5.8 已完成 cache/query profile 子事件父阶段映射第一层：
+
+- `PipelineStage` 增加 `PipelineProfileSubeventRecord` 目录，记录 internal profile subevent name 和
+  parent driver stage，而不是让 profile viewer 或 cache/query 工具各自维护映射表。
+- `incremental_cache.source_stage_reuse` 映射到 `incremental_cache.lookup`；
+  `incremental_cache.query_diff`、`incremental_cache.query_plan`、`incremental_cache.query_pruning` 和
+  `incremental_cache.query_provider_eval` 映射到 `incremental_cache.write`。
+- profile JSON 对这些子事件输出可选 `parent_stage` 对象，字段仍来自父阶段的 `PipelineStageRecord`；
+  子事件继续不携带 `stage` 对象，因此不会被误认为 driver 主阶段。
+- 原 phase `name`、`detail` 字段和 query pruning/provider-eval detail schema 保持不变，现有 stress/perf
+  parser 只会看到新增 JSON metadata，不需要重新解析 phase 名称。
+
 ## 后续拆分顺序
 
-R5.7 完成后，后续按下面顺序继续：
+R5.8 完成后，后续按下面顺序继续：
 
-1. 继续在 cache/query 和 diagnostics 边界消费 `PipelineStageRecord`，而不是在各子 pipeline 中新增散落字符串。
-2. 后续 IDE/LSP 可视化层消费 profile JSON 的 `stage` 对象和 query records，而不是重新维护阶段表。
+1. 继续在 diagnostics 边界消费 `PipelineStageRecord`，而不是在各子 pipeline 中新增散落字符串。
+2. 后续 IDE/LSP 可视化层消费 profile JSON 的 `stage`/`parent_stage` 对象和 query records，
+   而不是重新维护阶段表。
 3. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
    + `FrontendPipeline` + `LoweringPipeline` + `BackendPipeline` 的主路径。
 

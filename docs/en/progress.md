@@ -24,7 +24,10 @@ verifier gate; R5.5 introduced `ModuleAnalysisManager`; R5.6 added stable
 preserving the original verifier body and `ErrorCode`, and `LoweringPipeline`
 now passes the IR pass pipeline stage names from `PipelineStageRecord`. R5.7
 added optional `stage` metadata to driver main-stage phases in
-`aurex-profile-v1`, sourced directly from `PipelineStageRecord`.
+`aurex-profile-v1`, sourced directly from `PipelineStageRecord`. R5.8 added
+optional `parent_stage` metadata for incremental-cache profile sub-events,
+threading source-stage reuse back to `incremental_cache.lookup` and query
+diff / plan / pruning / provider-eval back to `incremental_cache.write`.
 
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,
@@ -98,7 +101,9 @@ notes are design input only, not current progress.
 - `aurex-profile-v1` driver main-stage phases carry optional `stage` metadata
   with stage id, input, output, diagnostic ownership, and cache/query impact,
   while existing phase names and internal incremental-cache query sub-events are
-  preserved.
+  preserved. Incremental-cache sub-events now carry optional `parent_stage`
+  metadata so profile viewers can attach query sub-events to their owning
+  driver stage without treating them as main stages.
 
 ## Removed From The Active Track
 

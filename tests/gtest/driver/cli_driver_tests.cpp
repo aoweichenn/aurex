@@ -927,8 +927,9 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
 {
     {
         const fs::path profile = tmp_root() / "hello.profile.json";
+        const fs::path hello = source_root() / "examples" / "hello.ax";
         driver::CompilerInvocation invocation;
-        invocation.input_path = source_root() / "examples" / "hello.ax";
+        invocation.input_path = hello;
         invocation.emit_kind = driver::EmitKind::check;
         invocation.incremental_cache_path = tmp_root() / "hello.profile.axic";
         invocation.profile_output_path = profile;
@@ -962,6 +963,52 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
                 "\"rss_mib_after\"",
                 "\"rss_delta_mib\"",
             });
+
+        const auto run_profiled_emit = [&](const driver::EmitKind emit_kind, const fs::path& profile_path) {
+            driver::CompilerInvocation profiled_invocation;
+            profiled_invocation.input_path = hello;
+            profiled_invocation.emit_kind = emit_kind;
+            profiled_invocation.profile_output_path = profile_path;
+            testing::internal::CaptureStdout();
+            const auto profiled_result = compiler.run(profiled_invocation);
+            static_cast<void>(testing::internal::GetCapturedStdout());
+            if (!profiled_result) {
+                ADD_FAILURE() << profiled_result.error().message;
+                return std::string{};
+            }
+            return read_text(profile_path);
+        };
+
+        const std::string token_profile_text =
+            run_profiled_emit(driver::EmitKind::tokens, tmp_root() / "hello.tokens.profile.json");
+        expect_contains_all(token_profile_text,
+            {
+                "\"name\": \"source.read\"",
+                "\"name\": \"tokens.lex\"",
+                "\"name\": \"tokens.dump\"",
+            });
+        expect_not_contains(token_profile_text, "\"name\": \"module.read\"");
+
+        const std::string lossless_profile_text =
+            run_profiled_emit(driver::EmitKind::lossless, tmp_root() / "hello.lossless.profile.json");
+        expect_contains_all(lossless_profile_text,
+            {
+                "\"name\": \"source.read\"",
+                "\"name\": \"tokens.lex\"",
+                "\"name\": \"lossless.dump\"",
+            });
+        expect_not_contains(lossless_profile_text, "\"name\": \"module.read\"");
+
+        const std::string ast_profile_text =
+            run_profiled_emit(driver::EmitKind::ast, tmp_root() / "hello.ast.profile.json");
+        expect_contains_all(ast_profile_text,
+            {
+                "\"name\": \"module.read\"",
+                "\"name\": \"module.lex\"",
+                "\"name\": \"module.parse\"",
+                "\"name\": \"ast.dump\"",
+            });
+        expect_not_contains(ast_profile_text, "\"name\": \"sema.analyze\"");
     }
 
     {

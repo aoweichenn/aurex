@@ -1,42 +1,29 @@
 #include "compilation_pipeline.hpp"
 
-#include <aurex/base/diagnostic.hpp>
-#include <aurex/base/source.hpp>
-#include <aurex/driver/diagnostic_renderer.hpp>
 #include <aurex/driver/driver_messages.hpp>
-#include <aurex/driver/file_cache.hpp>
-#include <aurex/driver/incremental_cache.hpp>
 #include <aurex/driver/invocation.hpp>
-#include <aurex/driver/module_loader.hpp>
 #include <aurex/driver/native_toolchain.hpp>
 #include <aurex/driver/profile.hpp>
 #include <aurex/ir/ir_dump.hpp>
 #include <aurex/ir/lower_ast.hpp>
 #include <aurex/ir/pass_pipeline.hpp>
-#include <aurex/lex/lexer.hpp>
-#include <aurex/sema/sema.hpp>
-#include <aurex/syntax/ast_dump.hpp>
-#include <aurex/syntax/lossless.hpp>
+#include <aurex/sema/checked_module.hpp>
 
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <span>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
-#include <vector>
+
+#include "compilation_session.hpp"
+#include "frontend_pipeline.hpp"
 
 namespace aurex::driver {
 
 namespace {
-
-[[nodiscard]] bool emit_kind_requires_ir_lowering(const EmitKind emit_kind) noexcept
-{
-    return emit_kind == EmitKind::ir || emit_kind == EmitKind::llvm_ir || emit_kind == EmitKind::assembly
-        || emit_kind == EmitKind::object || emit_kind == EmitKind::executable;
-}
 
 [[nodiscard]] bool emit_kind_is_native_artifact(const EmitKind emit_kind) noexcept
 {
@@ -53,13 +40,6 @@ namespace {
         true,
         true,
     };
-}
-
-[[nodiscard]] sema::SemanticOptions make_semantic_options(const EmitKind emit_kind) noexcept
-{
-    sema::SemanticOptions sema_options;
-    sema_options.retain_generic_side_tables = emit_kind_requires_ir_lowering(emit_kind) || emit_kind == EmitKind::typed;
-    return sema_options;
 }
 
 [[nodiscard]] base::Result<void> write_file(const std::filesystem::path& path, const std::string_view text)
@@ -131,173 +111,6 @@ private:
         });
     }
     return emitter(LlvmIrEmitRequest{&module, std::move(module_name)});
-}
-
-[[nodiscard]] base::Error remap_diagnostic_loader_error(const base::Error& error)
-{
-    return {
-        error.code == base::ErrorCode::io_error ? base::ErrorCode::parse_error : error.code,
-        error.message,
-    };
-}
-
-struct LoadedFrontend {
-    syntax::AstModule ast;
-    std::vector<ModuleRecord> modules;
-};
-
-class CompilationSession final {
-public:
-    CompilationSession(const CompilerInvocation& invocation, const LlvmIrEmitter llvm_ir_emitter) noexcept
-        : invocation_(invocation), llvm_ir_emitter_(llvm_ir_emitter), profiler_(!invocation.profile_output_path.empty())
-    {
-    }
-
-    [[nodiscard]] const CompilerInvocation& invocation() const noexcept
-    {
-        return this->invocation_;
-    }
-
-    [[nodiscard]] LlvmIrEmitter llvm_ir_emitter() const noexcept
-    {
-        return this->llvm_ir_emitter_;
-    }
-
-    [[nodiscard]] base::SourceManager& sources() noexcept
-    {
-        return this->sources_;
-    }
-
-    [[nodiscard]] base::DiagnosticSink& diagnostics() noexcept
-    {
-        return this->diagnostics_;
-    }
-
-    [[nodiscard]] CompilationProfiler* profiler() noexcept
-    {
-        return &this->profiler_;
-    }
-
-    void render_diagnostics_to_stderr() const
-    {
-        render_diagnostics(std::cerr, this->sources_, this->diagnostics_, this->invocation_.diagnostic_format);
-    }
-
-    [[nodiscard]] base::Result<void> finish(base::Result<void> result) const
-    {
-        if (this->invocation_.profile_output_path.empty()) {
-            return result;
-        }
-        const auto profile_result = this->profiler_.write_json(this->invocation_.profile_output_path);
-        if (!profile_result && result) {
-            return base::Result<void>::fail(profile_result.error());
-        }
-        return result;
-    }
-
-private:
-    const CompilerInvocation& invocation_;
-    LlvmIrEmitter llvm_ir_emitter_ = nullptr;
-    base::SourceManager sources_;
-    base::DiagnosticSink diagnostics_;
-    CompilationProfiler profiler_;
-};
-
-[[nodiscard]] base::Result<bool> try_reuse_check_cache(CompilationSession& session)
-{
-    if (session.invocation().emit_kind != EmitKind::check) {
-        return base::Result<bool>::ok(false);
-    }
-    ScopedCompilationPhase phase(session.profiler(), "incremental_cache.lookup");
-    return try_reuse_incremental_check_cache(session.invocation(), session.profiler());
-}
-
-[[nodiscard]] base::Result<void> emit_token_or_lossless_output(CompilationSession& session)
-{
-    auto source_result = [&] {
-        ScopedCompilationPhase phase(session.profiler(), "source.read");
-        return read_text_file(session.invocation().input_path);
-    }();
-    if (!source_result) {
-        return base::Result<void>::fail(source_result.error());
-    }
-
-    const base::SourceId source_id =
-        session.sources().add_source(session.invocation().input_path.string(), source_result.take_value());
-    lex::LexerOptions lexer_options;
-    lexer_options.emit_trivia_tokens = session.invocation().emit_kind == EmitKind::lossless;
-    lex::Lexer lexer(source_id, session.sources().text(source_id), session.diagnostics(), lexer_options);
-    auto token_result = [&] {
-        ScopedCompilationPhase phase(session.profiler(), "tokens.lex");
-        return lexer.tokenize();
-    }();
-    if (!token_result) {
-        session.render_diagnostics_to_stderr();
-        return base::Result<void>::fail(token_result.error());
-    }
-
-    ScopedCompilationPhase phase(
-        session.profiler(), session.invocation().emit_kind == EmitKind::lossless ? "lossless.dump" : "tokens.dump");
-    if (session.invocation().emit_kind == EmitKind::lossless) {
-        const syntax::LosslessSyntaxTree tree = syntax::build_lossless_syntax_tree(token_result.value().span());
-        std::cout << syntax::dump_lossless_syntax_tree(tree);
-        return base::Result<void>::ok();
-    }
-
-    std::cout << syntax::dump_tokens(token_result.value());
-    return base::Result<void>::ok();
-}
-
-[[nodiscard]] base::Result<LoadedFrontend> load_frontend_modules(CompilationSession& session)
-{
-    ModuleLoader loader(session.invocation(), session.sources(), session.diagnostics(), session.profiler());
-    auto ast_result = loader.load_root();
-    if (!ast_result) {
-        return base::Result<LoadedFrontend>::fail(session.diagnostics().diagnostics().empty()
-                ? ast_result.error()
-                : remap_diagnostic_loader_error(ast_result.error()));
-    }
-
-    auto module_records = loader.modules();
-    LoadedFrontend frontend{
-        ast_result.take_value(),
-        std::vector<ModuleRecord>(module_records.begin(), module_records.end()),
-    };
-    return base::Result<LoadedFrontend>::ok(std::move(frontend));
-}
-
-[[nodiscard]] base::Result<void> dump_ast_output(const syntax::AstModule& ast, CompilationProfiler* const profiler)
-{
-    ScopedCompilationPhase phase(profiler, "ast.dump");
-    std::cout << syntax::dump_ast(ast);
-    return base::Result<void>::ok();
-}
-
-[[nodiscard]] base::Result<void> dump_module_graph_output(
-    const std::vector<ModuleRecord>& modules, CompilationProfiler* const profiler)
-{
-    ScopedCompilationPhase phase(profiler, "modules.dump");
-    std::cout << "modules\n";
-    for (const ModuleRecord& record : modules) {
-        std::cout << "  " << record.name << " " << record.path.string() << "\n";
-    }
-    return base::Result<void>::ok();
-}
-
-[[nodiscard]] base::Result<sema::CheckedModule> run_semantic_analysis(
-    syntax::AstModule& ast, CompilationSession& session)
-{
-    ScopedCompilationPhase phase(session.profiler(), "sema.analyze");
-    sema::SemanticAnalyzer analyzer(ast, session.diagnostics(), make_semantic_options(session.invocation().emit_kind));
-    return analyzer.analyze();
-}
-
-[[nodiscard]] base::Result<void> write_checked_incremental_cache(CompilationSession& session,
-    const std::vector<ModuleRecord>& modules, const syntax::AstModule& ast, const sema::CheckedModule& checked)
-{
-    ScopedCompilationPhase phase(session.profiler(), "incremental_cache.write");
-    return write_incremental_cache(session.invocation(), session.sources(),
-        std::span<const ModuleRecord>(modules.data(), modules.size()), ast, checked, session.profiler());
 }
 
 [[nodiscard]] base::Result<void> dump_checked_output(
@@ -434,8 +247,9 @@ CompilationPipeline::CompilationPipeline(
 base::Result<void> CompilationPipeline::run()
 {
     CompilationSession session(this->invocation_, this->llvm_ir_emitter_);
+    FrontendPipeline frontend_pipeline(session);
 
-    auto cache_result = try_reuse_check_cache(session);
+    auto cache_result = frontend_pipeline.try_reuse_check_cache();
     if (!cache_result) {
         return session.finish(base::Result<void>::fail(cache_result.error()));
     }
@@ -444,32 +258,33 @@ base::Result<void> CompilationPipeline::run()
     }
 
     if (this->invocation_.emit_kind == EmitKind::tokens || this->invocation_.emit_kind == EmitKind::lossless) {
-        return session.finish(emit_token_or_lossless_output(session));
+        return session.finish(frontend_pipeline.emit_token_or_lossless_output());
     }
 
-    auto frontend_result = load_frontend_modules(session);
+    auto frontend_result = frontend_pipeline.load_modules();
     if (!frontend_result) {
         session.render_diagnostics_to_stderr();
         return session.finish(base::Result<void>::fail(frontend_result.error()));
     }
-    LoadedFrontend frontend = frontend_result.take_value();
+    FrontendModuleOutput frontend = frontend_result.take_value();
 
     if (this->invocation_.emit_kind == EmitKind::ast) {
-        return session.finish(dump_ast_output(frontend.ast, session.profiler()));
+        return session.finish(frontend_pipeline.dump_ast_output(frontend.ast));
     }
 
     if (this->invocation_.emit_kind == EmitKind::modules) {
-        return session.finish(dump_module_graph_output(frontend.modules, session.profiler()));
+        return session.finish(frontend_pipeline.dump_module_graph_output(frontend.modules));
     }
 
-    auto checked_result = run_semantic_analysis(frontend.ast, session);
+    auto checked_result = frontend_pipeline.run_semantic_analysis(frontend.ast);
     if (!checked_result) {
         session.render_diagnostics_to_stderr();
         return session.finish(base::Result<void>::fail(checked_result.error()));
     }
     sema::CheckedModule checked = checked_result.take_value();
 
-    auto incremental_cache_result = write_checked_incremental_cache(session, frontend.modules, frontend.ast, checked);
+    auto incremental_cache_result =
+        frontend_pipeline.write_checked_incremental_cache(frontend.modules, frontend.ast, checked);
     if (!incremental_cache_result) {
         return session.finish(base::Result<void>::fail(incremental_cache_result.error()));
     }

@@ -10,13 +10,19 @@ driver / compilation pipeline 边界。最高优先级是
 - `Compiler` 退回 public facade。
 - 一次编译的 source、diagnostics、profile、cache policy 和 backend emitter 进入内部
   `CompilationSession`。
-- driver 编排进入 `CompilationPipeline`，阶段边界显式化。
+- driver 编排进入 `CompilationPipeline`，前端 source/token/module/sema/cache write 入口进入
+  `FrontendPipeline`，阶段边界显式化。
 - profile phase 名称、diagnostics text/JSON 协议、incremental cache reuse/write 行为和所有
   emit mode 行为必须保持不变。
 
 R5 优先于 M3 模块系统、M3 泛型闭环、LSP adapter、完整 subtree reparse、RAII、trait、
 closure、iterator、async、macro、package manager 和标准库重建。M3 后续功能必须复用
 R5 后稳定下来的 driver/session/query/diagnostics 主路径，不能另开旁路。
+
+R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分：
+`FrontendPipeline` 接管 source/token/lossless/module graph/AST dump/sema/cache write 入口。下一步优先进入
+`LoweringPipeline`，把 checked module 到 Aurex IR 的 lowering、IR dump 和 IR pass pipeline 入口从总控
+pipeline 中继续收口。
 
 ## 当前分支原则
 

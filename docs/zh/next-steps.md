@@ -11,7 +11,8 @@ driver / compilation pipeline 边界。最高优先级是
 - 一次编译的 source、diagnostics、profile、cache policy 和 backend emitter 进入内部
   `CompilationSession`。
 - driver 编排进入 `CompilationPipeline`，前端 source/token/module/sema/cache write 入口进入
-  `FrontendPipeline`，阶段边界显式化。
+  `FrontendPipeline`，lowering 入口进入 `LoweringPipeline`，LLVM/native 输出入口进入
+  `BackendPipeline`，阶段元数据进入 `PipelineStage`。
 - profile phase 名称、diagnostics text/JSON 协议、incremental cache reuse/write 行为和所有
   emit mode 行为必须保持不变。
 
@@ -19,10 +20,12 @@ R5 优先于 M3 模块系统、M3 泛型闭环、LSP adapter、完整 subtree re
 closure、iterator、async、macro、package manager 和标准库重建。M3 后续功能必须复用
 R5 后稳定下来的 driver/session/query/diagnostics 主路径，不能另开旁路。
 
-R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分：
-`FrontendPipeline` 接管 source/token/lossless/module graph/AST dump/sema/cache write 入口。下一步优先进入
-`LoweringPipeline`，把 checked module 到 Aurex IR 的 lowering、IR dump 和 IR pass pipeline 入口从总控
-pipeline 中继续收口。
+R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分；
+R5.3 已完成 `LoweringPipeline`、`BackendPipeline` 和 `PipelineStage` 记录。当前 driver 总控已经只保留
+阶段顺序、emit mode 停止点和 error/profile finish，checked dump、IR lowering、IR pass pipeline、IR dump、
+LLVM IR emission、LLVM IR dump、temporary LLVM file 和 clang native invocation 都已经由对应子 pipeline
+持有。下一步优先进入 IR verifier / pass manager 主线：建立轻量 `Pass`、`Analysis`、
+`PreservedAnalyses` 和 verifier gate，为后续 M3 和 LSP 工程化入口提供稳定 IR 阶段契约。
 
 ## 当前分支原则
 

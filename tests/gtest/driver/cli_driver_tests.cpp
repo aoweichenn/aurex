@@ -20,6 +20,7 @@
 #include <cstring>
 #include <fstream>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -27,6 +28,8 @@
 #include <thread>
 #include <utility>
 #include <vector>
+
+#include <driver/pipeline_stage.hpp>
 
 namespace aurex::test {
 namespace {
@@ -964,19 +967,23 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
                 "\"rss_delta_mib\"",
             });
 
-        const auto run_profiled_emit = [&](const driver::EmitKind emit_kind, const fs::path& profile_path) {
+        const auto run_profiled_emit_with = [&](driver::Compiler& selected_compiler, const driver::EmitKind emit_kind,
+                                                const fs::path& profile_path) {
             driver::CompilerInvocation profiled_invocation;
             profiled_invocation.input_path = hello;
             profiled_invocation.emit_kind = emit_kind;
             profiled_invocation.profile_output_path = profile_path;
             testing::internal::CaptureStdout();
-            const auto profiled_result = compiler.run(profiled_invocation);
+            const auto profiled_result = selected_compiler.run(profiled_invocation);
             static_cast<void>(testing::internal::GetCapturedStdout());
             if (!profiled_result) {
                 ADD_FAILURE() << profiled_result.error().message;
                 return std::string{};
             }
             return read_text(profile_path);
+        };
+        const auto run_profiled_emit = [&](const driver::EmitKind emit_kind, const fs::path& profile_path) {
+            return run_profiled_emit_with(compiler, emit_kind, profile_path);
         };
 
         const std::string token_profile_text =
@@ -1009,6 +1016,55 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
                 "\"name\": \"ast.dump\"",
             });
         expect_not_contains(ast_profile_text, "\"name\": \"sema.analyze\"");
+
+        const std::string checked_profile_text =
+            run_profiled_emit(driver::EmitKind::checked, tmp_root() / "hello.checked.profile.json");
+        expect_contains_all(checked_profile_text,
+            {
+                "\"name\": \"sema.analyze\"",
+                "\"name\": \"checked.dump\"",
+            });
+        expect_not_contains(checked_profile_text, "\"name\": \"ir.lower\"");
+
+        const std::string ir_profile_text =
+            run_profiled_emit(driver::EmitKind::ir, tmp_root() / "hello.ir.profile.json");
+        expect_contains_all(ir_profile_text,
+            {
+                "\"name\": \"ir.lower\"",
+                "\"name\": \"ir.pass_pipeline\"",
+                "\"name\": \"ir.dump\"",
+            });
+        expect_not_contains(ir_profile_text, "\"name\": \"llvm.emit_ir\"");
+
+        driver::Compiler llvm_compiler(driver::llvm_backend_ir_emitter());
+        const std::string llvm_profile_text =
+            run_profiled_emit_with(llvm_compiler, driver::EmitKind::llvm_ir, tmp_root() / "hello.llvm.profile.json");
+        expect_contains_all(llvm_profile_text,
+            {
+                "\"name\": \"ir.lower\"",
+                "\"name\": \"ir.pass_pipeline\"",
+                "\"name\": \"llvm.emit_ir\"",
+                "\"name\": \"llvm_ir.dump\"",
+            });
+
+        const fs::path native_profile = tmp_root() / "hello.native.profile.json";
+        driver::CompilerInvocation native_invocation;
+        native_invocation.input_path = hello;
+        native_invocation.emit_kind = driver::EmitKind::object;
+        native_invocation.output_path = tmp_root() / "hello.o";
+        native_invocation.profile_output_path = native_profile;
+        const auto native_result = llvm_compiler.run(native_invocation);
+        ASSERT_TRUE(native_result) << native_result.error().message;
+        const std::string native_profile_text = read_text(native_profile);
+        expect_contains_all(native_profile_text,
+            {
+                "\"name\": \"ir.lower\"",
+                "\"name\": \"ir.pass_pipeline\"",
+                "\"name\": \"llvm.emit_ir\"",
+                "\"name\": \"llvm.write_temp\"",
+                "\"name\": \"native.clang\"",
+            });
+        expect_not_contains(native_profile_text, "\"name\": \"llvm_ir.dump\"");
     }
 
     {
@@ -1037,6 +1093,56 @@ TEST_F(AurexIntegrationTest, CompilerWritesPhaseProfileOutput)
                 "\"name\": \"sema.analyze\"",
             });
     }
+}
+
+TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContract)
+{
+    const std::span<const driver::PipelineStageRecord> records = driver::pipeline_stage_records();
+    ASSERT_EQ(records.size(), driver::PIPELINE_STAGE_RECORD_COUNT);
+
+    for (std::size_t index = 0; index < records.size(); ++index) {
+        const driver::PipelineStageRecord& record = records[index];
+        EXPECT_EQ(static_cast<std::size_t>(record.id), index);
+        EXPECT_FALSE(record.name.empty());
+        EXPECT_FALSE(record.input.empty());
+        EXPECT_FALSE(record.output.empty());
+        EXPECT_FALSE(record.profile_name.empty());
+        EXPECT_FALSE(record.diagnostic_ownership.empty());
+        EXPECT_FALSE(record.cache_query_impact.empty());
+        EXPECT_EQ(&driver::pipeline_stage_record(record.id), &record);
+        EXPECT_EQ(driver::pipeline_stage_profile_name(record.id), record.profile_name);
+        for (std::size_t other_index = index + 1; other_index < records.size(); ++other_index) {
+            EXPECT_NE(record.profile_name, records[other_index].profile_name);
+        }
+    }
+
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::incremental_cache_lookup),
+        "incremental_cache.lookup");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::source_read), "source.read");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::tokens_lex), "tokens.lex");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::tokens_dump), "tokens.dump");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::lossless_dump), "lossless.dump");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::module_read), "module.read");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::module_lex), "module.lex");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::module_parse), "module.parse");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::module_append), "module.append");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::ast_dump), "ast.dump");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::modules_dump), "modules.dump");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::sema_analyze), "sema.analyze");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::incremental_cache_write),
+        "incremental_cache.write");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::checked_dump), "checked.dump");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::ir_lower), "ir.lower");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::ir_pass_pipeline), "ir.pass_pipeline");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::ir_dump), "ir.dump");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::llvm_emit_ir), "llvm.emit_ir");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::llvm_ir_dump), "llvm_ir.dump");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::llvm_write_temp), "llvm.write_temp");
+    EXPECT_EQ(driver::pipeline_stage_profile_name(driver::PipelineStageId::native_clang), "native.clang");
+
+    const driver::PipelineStageRecord& fallback =
+        driver::pipeline_stage_record(static_cast<driver::PipelineStageId>(driver::PIPELINE_STAGE_RECORD_COUNT));
+    EXPECT_EQ(&fallback, &records.front());
 }
 
 TEST_F(AurexIntegrationTest, CliIncrementalCacheUsesQueryKeyPruningByDefault)

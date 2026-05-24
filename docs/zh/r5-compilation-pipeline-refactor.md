@@ -37,8 +37,20 @@ CLI
             - module/frontend stage
             - semantic stage
             - incremental cache write stage
-       - IR lowering stage
-       - LLVM/native backend stage
+       -> LoweringPipeline
+            - checked dump stage
+            - AST + checked module -> Aurex IR lowering stage
+            - IR verifier / optimization pass pipeline stage
+            - IR dump stage
+       -> BackendPipeline
+            - LLVM IR emission stage
+            - LLVM IR dump stage
+            - temporary LLVM IR file stage
+            - clang native artifact stage
+       -> PipelineStage records
+            - stage id / input / output / profile name
+            - diagnostic ownership
+            - cache/query impact notes
 ```
 
 ### 边界要求
@@ -48,7 +60,10 @@ CLI
 - `Compiler` 退回 public facade，只负责注入 backend emitter 并启动 pipeline。
 - `CompilationSession` 持有一次编译的运行时服务和 finish/profile 逻辑。
 - `FrontendPipeline` 持有 source/token/lossless/module graph/AST dump/sema/cache write 等前端阶段入口。
-- `CompilationPipeline` 只负责编排阶段和 IR/backend 分发，不实现 parser、sema 或 module loader 细节。
+- `LoweringPipeline` 持有 checked dump、IR lowering、IR pass pipeline 和 IR dump 的阶段入口。
+- `BackendPipeline` 持有 LLVM IR emission、LLVM IR dump、temporary LLVM file 和 clang native invocation。
+- `PipelineStage` 固定 driver 主阶段的 profile name、输入/输出、diagnostic owner 和 cache/query 影响面。
+- `CompilationPipeline` 只负责编排阶段和 emit mode 分发，不实现 parser、sema、module loader、lowering 或 backend 细节。
 - diagnostics 文本 / JSON 渲染继续只走 `diagnostic_renderer`，不允许在 pipeline 内复制协议拼接逻辑。
 - incremental cache、query、module loader、sema、IR lowering 和 native backend 继续保留各自 owner，不把实现细节反向塞回 driver。
 
@@ -80,14 +95,28 @@ R5.2 已完成第一轮前端拆分：
 - `CompilationPipeline` 继续保留全局阶段顺序、checked dump、IR lowering、LLVM IR dump 和 native artifact 分发。
 - profile phase 名称、emit mode 停止点、diagnostics 渲染路径和 incremental cache 行为保持不变。
 
+R5.3 已完成 lowering/backend/阶段契约拆分：
+
+- `LoweringPipeline` 接管 checked dump、AST + checked module 到 Aurex IR 的 lowering、IR pass pipeline
+  入口和 IR dump。
+- `BackendPipeline` 接管 LLVM IR emission、LLVM IR dump、临时 LLVM IR 文件写入、clang native invocation
+  和 native 输出路径校验。
+- `PipelineStage` 记录集中维护 driver 主阶段的 profile name、输入/输出、diagnostic ownership 和
+  cache/query 影响面，避免 phase 名称继续散落在 pipeline、frontend 和 module loader 中。
+- `CompilationPipeline` 现在只负责 cache/frontend/sema/lowering/backend 的顺序编排、emit mode 停止点和
+  error/profile finish，不再直接实现 lowering 或 backend 操作。
+- 原 profile phase 名称保持不变：`checked.dump`、`ir.lower`、`ir.pass_pipeline`、`ir.dump`、
+  `llvm.emit_ir`、`llvm_ir.dump`、`llvm.write_temp` 和 `native.clang` 等仍是兼容契约。
+
 ## 后续拆分顺序
 
-R5.2 完成后，后续按下面顺序继续：
+R5.3 完成后，后续按下面顺序继续：
 
-1. `LoweringPipeline`：把 checked module 到 Aurex IR 的 lowering、IR dump 和优化 pipeline 入口收口。
-2. `BackendPipeline`：把 LLVM IR emission、temporary LLVM file、clang native invocation 和输出路径策略收口。
-3. `PipelineStage` 记录：为每个阶段固定输入、输出、profile name、diagnostic ownership 和 cache/query 影响面。
-4. IR verifier / pass manager 主线：建立轻量 `Pass`、`Analysis`、`PreservedAnalyses` 和 verifier gate，不照搬 LLVM 全套模板复杂度。
+1. IR verifier / pass manager 主线：建立轻量 `Pass`、`Analysis`、`PreservedAnalyses` 和 verifier gate，
+   不照搬 LLVM 全套模板复杂度。
+2. 把 `PipelineStage` 记录作为 profile、cache/query 和后续 IDE/LSP 阶段可视化的唯一阶段目录继续维护。
+3. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
+   + `FrontendPipeline` + `LoweringPipeline` + `BackendPipeline` 的主路径。
 
 ## 验收标准
 

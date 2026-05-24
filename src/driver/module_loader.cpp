@@ -12,6 +12,7 @@
 
 #include "module_loader_remap.hpp"
 #include "module_loader_support.hpp"
+#include "pipeline_stage.hpp"
 
 namespace aurex::driver {
 
@@ -163,7 +164,8 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
         direct_imports.push_back(resolved);
     }
     {
-        ScopedCompilationPhase phase(this->profiler_, "module.append", module_name);
+        ScopedCompilationPhase phase(
+            this->profiler_, pipeline_stage_profile_name(PipelineStageId::module_append), module_name);
         if (is_root && imports.empty() && module_id.value == 0 && combined.modules.size() == 1
             && ast_payloads_empty(combined)) {
             move_root_module_into_empty_combined(combined, std::move(module), module_id);

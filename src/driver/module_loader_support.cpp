@@ -11,6 +11,8 @@
 #include <string>
 #include <utility>
 
+#include "pipeline_stage.hpp"
+
 namespace aurex::driver {
 namespace {
 
@@ -47,7 +49,7 @@ void push_module_loader_error(base::DiagnosticSink& diagnostics, const base::Sou
 {
     lex::Lexer lexer(source_id, source_text, diagnostics);
     auto token_result = [&] {
-        ScopedCompilationPhase phase(profiler, "module.lex", detail);
+        ScopedCompilationPhase phase(profiler, pipeline_stage_profile_name(PipelineStageId::module_lex), detail);
         return lexer.tokenize();
     }();
     if (!token_result) {
@@ -56,7 +58,7 @@ void push_module_loader_error(base::DiagnosticSink& diagnostics, const base::Sou
 
     parse::Parser parser(token_result.value(), diagnostics);
     auto ast_result = [&] {
-        ScopedCompilationPhase phase(profiler, "module.parse", detail);
+        ScopedCompilationPhase phase(profiler, pipeline_stage_profile_name(PipelineStageId::module_parse), detail);
         return parser.parse_module();
     }();
     if (!ast_result) {
@@ -125,7 +127,8 @@ base::Result<LoadedModuleSource> load_module_source(const std::filesystem::path&
     const std::string_view profile_detail)
 {
     auto source_result = [&] {
-        ScopedCompilationPhase phase(profiler, "module.read", profile_detail);
+        ScopedCompilationPhase phase(
+            profiler, pipeline_stage_profile_name(PipelineStageId::module_read), profile_detail);
         return read_text_file(canonical);
     }();
     if (!source_result) {
@@ -164,9 +167,8 @@ base::Result<void> report_import_resolution_failure(base::DiagnosticSink& diagno
     return fail_module_loading(base::ErrorCode::io_error);
 }
 
-base::Result<void> validate_cached_file_module_path(const syntax::AstModule& combined,
-    const syntax::ModuleId module_id, const syntax::ModulePath* const expected_module,
-    base::DiagnosticSink& diagnostics)
+base::Result<void> validate_cached_file_module_path(const syntax::AstModule& combined, const syntax::ModuleId module_id,
+    const syntax::ModulePath* const expected_module, base::DiagnosticSink& diagnostics)
 {
     if (expected_module == nullptr || !syntax::is_valid(module_id) || module_id.value >= combined.modules.size()) {
         return base::Result<void>::ok();
@@ -190,8 +192,8 @@ base::Result<void> validate_importable_module_declaration(
         return base::Result<void>::ok();
     }
 
-    push_module_loader_error(diagnostics, base::SourceRange{source_id, 0, 0},
-        std::string(DRIVER_IMPORTABLE_MODULE_DECL_REQUIRED));
+    push_module_loader_error(
+        diagnostics, base::SourceRange{source_id, 0, 0}, std::string(DRIVER_IMPORTABLE_MODULE_DECL_REQUIRED));
     return fail_module_loading(base::ErrorCode::parse_error);
 }
 
@@ -216,8 +218,8 @@ base::Result<void> validate_unique_module_identity(const std::string_view module
         return base::Result<void>::ok();
     }
 
-    push_module_loader_error(diagnostics, declaration_range,
-        driver_duplicate_module_name_message(module_name, existing_path.string()));
+    push_module_loader_error(
+        diagnostics, declaration_range, driver_duplicate_module_name_message(module_name, existing_path.string()));
     return fail_module_loading(base::ErrorCode::parse_error);
 }
 

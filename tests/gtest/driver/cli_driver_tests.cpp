@@ -1266,6 +1266,8 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
         EXPECT_EQ(static_cast<std::size_t>(record.id), index);
         EXPECT_FALSE(record.profile_name.empty());
         EXPECT_EQ(driver::pipeline_stage_record_for_profile_name(record.profile_name), nullptr);
+        EXPECT_EQ(&driver::pipeline_profile_subevent_record(record.id), &record);
+        EXPECT_EQ(driver::pipeline_profile_subevent_profile_name(record.id), record.profile_name);
         EXPECT_EQ(driver::pipeline_profile_subevent_record_for_profile_name(record.profile_name), &record);
         EXPECT_LT(static_cast<std::size_t>(record.parent_stage), records.size());
         const driver::PipelineStageRecord& parent = driver::pipeline_stage_record(record.parent_stage);
@@ -1298,6 +1300,12 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
         driver::pipeline_profile_subevent_record_for_profile_name(CACHE_TEST_QUERY_PROVIDER_EVAL_PROFILE_PHASE);
     ASSERT_NE(query_provider_eval_subevent, nullptr);
     EXPECT_EQ(query_provider_eval_subevent->parent_stage, driver::PipelineStageId::incremental_cache_write);
+    const driver::PipelineProfileSubeventRecord& fallback_subevent = driver::pipeline_profile_subevent_record(
+        static_cast<driver::PipelineProfileSubeventId>(driver::PIPELINE_PROFILE_SUBEVENT_RECORD_COUNT));
+    EXPECT_EQ(&fallback_subevent, &subevents.front());
+    EXPECT_EQ(driver::pipeline_profile_subevent_profile_name(
+                  static_cast<driver::PipelineProfileSubeventId>(driver::PIPELINE_PROFILE_SUBEVENT_RECORD_COUNT)),
+        subevents.front().profile_name);
     EXPECT_EQ(driver::pipeline_profile_subevent_record_for_profile_name("unknown.phase"), nullptr);
 }
 
@@ -1397,6 +1405,8 @@ TEST_F(AurexIntegrationTest, CompilerProfileCoversJsonAndErrorPaths)
         driver::CompilationProfiler disabled;
         EXPECT_FALSE(disabled.enabled());
         disabled.record("ignored", std::chrono::milliseconds(1));
+        disabled.record(driver::PipelineStageId::source_read, std::chrono::milliseconds(1));
+        disabled.record(driver::PipelineProfileSubeventId::incremental_cache_query_plan, std::chrono::milliseconds(1));
         EXPECT_TRUE(disabled.phases().empty());
         const fs::path disabled_path = tmp_root() / "disabled.profile.json";
         const auto result = disabled.write_json(disabled_path);
@@ -1436,6 +1446,32 @@ TEST_F(AurexIntegrationTest, CompilerProfileCoversJsonAndErrorPaths)
         ASSERT_TRUE(relative_result) << relative_result.error().message;
         EXPECT_TRUE(fs::exists(relative_profile));
         fs::remove(relative_profile, remove_error);
+    }
+
+    {
+        driver::CompilationProfiler profiler(true);
+        profiler.record(driver::PipelineStageId::module_parse, "root", std::chrono::milliseconds(1));
+        profiler.record(driver::PipelineStageId::sema_analyze, std::chrono::milliseconds(1));
+        profiler.record(
+            driver::PipelineProfileSubeventId::incremental_cache_query_plan, "plan", std::chrono::milliseconds(1));
+        ASSERT_EQ(profiler.phases().size(), 3U);
+        EXPECT_EQ(
+            profiler.phases()[0].name, driver::pipeline_stage_profile_name(driver::PipelineStageId::module_parse));
+        EXPECT_EQ(profiler.phases()[0].detail, "root");
+        EXPECT_EQ(
+            profiler.phases()[1].name, driver::pipeline_stage_profile_name(driver::PipelineStageId::sema_analyze));
+        EXPECT_TRUE(profiler.phases()[1].detail.empty());
+        EXPECT_EQ(profiler.phases()[2].name,
+            driver::pipeline_profile_subevent_profile_name(
+                driver::PipelineProfileSubeventId::incremental_cache_query_plan));
+        EXPECT_EQ(profiler.phases()[2].detail, "plan");
+
+        const fs::path profile = tmp_root() / "typed-stage.profile.json";
+        const auto result = profiler.write_json(profile);
+        ASSERT_TRUE(result) << result.error().message;
+        const std::string profile_text = read_text(profile);
+        expect_profile_phase_stage_presence(profile_text, "module.parse", true);
+        expect_profile_phase_parent_stage(profile_text, CACHE_TEST_QUERY_PLAN_PROFILE_PHASE, "incremental_cache.write");
     }
 
     {

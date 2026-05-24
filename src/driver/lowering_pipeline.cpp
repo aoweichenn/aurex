@@ -35,7 +35,7 @@ LoweringPipeline::LoweringPipeline(CompilationSession& session) noexcept : sessi
 
 base::Result<void> LoweringPipeline::dump_checked_output(const sema::CheckedModule& checked)
 {
-    ScopedCompilationPhase phase(this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::checked_dump));
+    ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::checked_dump);
     std::cout << sema::dump_checked_module(checked);
     return base::Result<void>::ok();
 }
@@ -44,7 +44,7 @@ base::Result<ir::Module> LoweringPipeline::lower_and_optimize(
     const syntax::AstModule& ast, const sema::CheckedModule& checked)
 {
     auto ir_result = [&] {
-        ScopedCompilationPhase phase(this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::ir_lower));
+        ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::ir_lower);
         return ir::lower_ast(ast, checked);
     }();
     if (!ir_result) {
@@ -53,7 +53,7 @@ base::Result<ir::Module> LoweringPipeline::lower_and_optimize(
 
     auto pipeline_result = [&] {
         const PipelineStageRecord& stage = pipeline_stage_record(PipelineStageId::ir_pass_pipeline);
-        ScopedCompilationPhase phase(this->session_.profiler(), stage.profile_name);
+        ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::ir_pass_pipeline);
         return ir::run_pass_pipeline(
             ir_result.value(), make_pass_pipeline_options(this->session_.invocation().optimization_level, stage));
     }();
@@ -66,7 +66,7 @@ base::Result<ir::Module> LoweringPipeline::lower_and_optimize(
 
 base::Result<void> LoweringPipeline::dump_ir_output(const ir::Module& module)
 {
-    ScopedCompilationPhase phase(this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::ir_dump));
+    ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::ir_dump);
     std::cout << ir::dump_module(module);
     return base::Result<void>::ok();
 }

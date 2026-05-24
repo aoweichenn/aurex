@@ -45,6 +45,11 @@ R5.11 made the stage directory a public read-only API:
 profile writer and tooling diagnostics, and `aurex_tooling` no longer depends on
 the private `src` include root. The profile JSON and diagnostics JSON protocols
 remain unchanged.
+R5.12 typed the profile recording entry points: `CompilationProfiler::record`
+and `ScopedCompilationPhase` can now take `PipelineStageId`, while
+incremental-cache sub-events enter the profiler through
+`PipelineProfileSubeventId`. Call sites no longer scatter stage profile-name
+strings, and the `aurex-profile-v1` fields remain unchanged.
 
 Next, keep `PipelineStage` as the single profile/cache/query/diagnostics/IDE
 stage directory. M3 modules, generic backend completion, LSP adapter work, and

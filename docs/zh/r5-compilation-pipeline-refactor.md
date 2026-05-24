@@ -203,9 +203,20 @@ R5.11 已完成阶段目录公开 API 和 metadata 投影收口：
 - `aurex_tooling` 对 `aurex_pipeline_stage` 的依赖改为 public CMake 边界，公共 tooling header 不再依赖
   `src` include root。
 
+R5.12 已完成 profile 记录入口枚举化：
+
+- `CompilationProfiler::record` 增加 `PipelineStageId` 和 `PipelineProfileSubeventId` overload；
+  `ScopedCompilationPhase` 增加 `PipelineStageId` 构造入口。
+- frontend/lowering/backend/module loader 主阶段不再在调用点手写 `pipeline_stage_profile_name(...)`；
+  调用点直接传 `PipelineStageId`，phase name 仍由 `PipelineStage` 目录统一生成。
+- incremental-cache query diff / plan / pruning / provider-eval / source-stage reuse profile 子事件不再直接传
+  `INCREMENTAL_CACHE_PROFILE_*` 字符串，而是通过 `PipelineProfileSubeventId` 进入 profiler。
+- `aurex-profile-v1` 的 `name`、`stage`、`parent_stage`、detail、elapsed/RSS 字段保持不变；这一步只把
+  profile event 产生端也收口到阶段目录。
+
 ## 后续拆分顺序
 
-R5.11 完成后，后续按下面顺序继续：
+R5.12 完成后，后续按下面顺序继续：
 
 1. 后续 profile viewer / LSP adapter 继续消费公开 `PipelineStageMetadata`、profile JSON 的
    `stage`/`parent_stage` 对象、`IdeDiagnostic.owner_stages` 和 query records，而不是重新维护阶段表。

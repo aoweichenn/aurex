@@ -52,16 +52,14 @@ base::Result<bool> FrontendPipeline::try_reuse_check_cache()
     if (this->session_.invocation().emit_kind != EmitKind::check) {
         return base::Result<bool>::ok(false);
     }
-    ScopedCompilationPhase phase(
-        this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::incremental_cache_lookup));
+    ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::incremental_cache_lookup);
     return try_reuse_incremental_check_cache(this->session_.invocation(), this->session_.profiler());
 }
 
 base::Result<void> FrontendPipeline::emit_token_or_lossless_output()
 {
     auto source_result = [&] {
-        ScopedCompilationPhase phase(
-            this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::source_read));
+        ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::source_read);
         return read_text_file(this->session_.invocation().input_path);
     }();
     if (!source_result) {
@@ -74,8 +72,7 @@ base::Result<void> FrontendPipeline::emit_token_or_lossless_output()
     lexer_options.emit_trivia_tokens = this->session_.invocation().emit_kind == EmitKind::lossless;
     lex::Lexer lexer(source_id, this->session_.sources().text(source_id), this->session_.diagnostics(), lexer_options);
     auto token_result = [&] {
-        ScopedCompilationPhase phase(
-            this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::tokens_lex));
+        ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::tokens_lex);
         return lexer.tokenize();
     }();
     if (!token_result) {
@@ -86,7 +83,7 @@ base::Result<void> FrontendPipeline::emit_token_or_lossless_output()
     const PipelineStageId dump_stage = this->session_.invocation().emit_kind == EmitKind::lossless
         ? PipelineStageId::lossless_dump
         : PipelineStageId::tokens_dump;
-    ScopedCompilationPhase phase(this->session_.profiler(), pipeline_stage_profile_name(dump_stage));
+    ScopedCompilationPhase phase(this->session_.profiler(), dump_stage);
     if (this->session_.invocation().emit_kind == EmitKind::lossless) {
         const syntax::LosslessSyntaxTree tree = syntax::build_lossless_syntax_tree(token_result.value().span());
         std::cout << syntax::dump_lossless_syntax_tree(tree);
@@ -118,14 +115,14 @@ base::Result<FrontendModuleOutput> FrontendPipeline::load_modules()
 
 base::Result<void> FrontendPipeline::dump_ast_output(const syntax::AstModule& ast)
 {
-    ScopedCompilationPhase phase(this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::ast_dump));
+    ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::ast_dump);
     std::cout << syntax::dump_ast(ast);
     return base::Result<void>::ok();
 }
 
 base::Result<void> FrontendPipeline::dump_module_graph_output(const std::vector<ModuleRecord>& modules)
 {
-    ScopedCompilationPhase phase(this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::modules_dump));
+    ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::modules_dump);
     std::cout << "modules\n";
     for (const ModuleRecord& record : modules) {
         std::cout << "  " << record.name << " " << record.path.string() << "\n";
@@ -135,7 +132,7 @@ base::Result<void> FrontendPipeline::dump_module_graph_output(const std::vector<
 
 base::Result<sema::CheckedModule> FrontendPipeline::run_semantic_analysis(syntax::AstModule& ast)
 {
-    ScopedCompilationPhase phase(this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::sema_analyze));
+    ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::sema_analyze);
     sema::SemanticAnalyzer analyzer(
         ast, this->session_.diagnostics(), make_semantic_options(this->session_.invocation().emit_kind));
     return analyzer.analyze();
@@ -144,8 +141,7 @@ base::Result<sema::CheckedModule> FrontendPipeline::run_semantic_analysis(syntax
 base::Result<void> FrontendPipeline::write_checked_incremental_cache(
     const std::vector<ModuleRecord>& modules, const syntax::AstModule& ast, const sema::CheckedModule& checked)
 {
-    ScopedCompilationPhase phase(
-        this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::incremental_cache_write));
+    ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::incremental_cache_write);
     return write_incremental_cache(this->session_.invocation(), this->session_.sources(),
         std::span<const ModuleRecord>(modules.data(), modules.size()), ast, checked, this->session_.profiler());
 }

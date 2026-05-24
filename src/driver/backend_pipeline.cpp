@@ -130,8 +130,7 @@ base::Result<void> BackendPipeline::validate_native_output_request() const
 base::Result<std::string> BackendPipeline::emit_llvm_ir_text(const ir::Module& module)
 {
     auto llvm_result = [&] {
-        ScopedCompilationPhase phase(
-            this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::llvm_emit_ir));
+        ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::llvm_emit_ir);
         return emit_llvm_ir(
             this->session_.llvm_ir_emitter(), module, this->session_.invocation().input_path.stem().string());
     }();
@@ -150,7 +149,7 @@ base::Result<void> BackendPipeline::emit_llvm_ir_output(const ir::Module& module
         return base::Result<void>::fail(llvm_result.error());
     }
 
-    ScopedCompilationPhase phase(this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::llvm_ir_dump));
+    ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::llvm_ir_dump);
     std::cout << llvm_result.value();
     return base::Result<void>::ok();
 }
@@ -163,8 +162,7 @@ base::Result<void> BackendPipeline::emit_native_output(const ir::Module& module)
     }
 
     auto temp_ir_result = [&] {
-        ScopedCompilationPhase phase(
-            this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::llvm_write_temp));
+        ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::llvm_write_temp);
         return write_temporary_llvm_file(llvm_result.value());
     }();
     if (!temp_ir_result) {
@@ -174,8 +172,7 @@ base::Result<void> BackendPipeline::emit_native_output(const ir::Module& module)
     TemporaryFile temp_ir(temp_ir_result.take_value());
     const NativeCompileRequest request = make_native_compile_request(this->session_.invocation(), temp_ir.path());
     auto native_result = [&] {
-        ScopedCompilationPhase phase(
-            this->session_.profiler(), pipeline_stage_profile_name(PipelineStageId::native_clang));
+        ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::native_clang);
         return invoke_clang(request);
     }();
     if (!native_result) {

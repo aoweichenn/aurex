@@ -48,7 +48,7 @@ void push_module_loader_error(base::DiagnosticSink& diagnostics, const base::Sou
 {
     lex::Lexer lexer(source_id, source_text, diagnostics);
     auto token_result = [&] {
-        ScopedCompilationPhase phase(profiler, pipeline_stage_profile_name(PipelineStageId::module_lex), detail);
+        ScopedCompilationPhase phase(profiler, PipelineStageId::module_lex, detail);
         return lexer.tokenize();
     }();
     if (!token_result) {
@@ -57,7 +57,7 @@ void push_module_loader_error(base::DiagnosticSink& diagnostics, const base::Sou
 
     parse::Parser parser(token_result.value(), diagnostics);
     auto ast_result = [&] {
-        ScopedCompilationPhase phase(profiler, pipeline_stage_profile_name(PipelineStageId::module_parse), detail);
+        ScopedCompilationPhase phase(profiler, PipelineStageId::module_parse, detail);
         return parser.parse_module();
     }();
     if (!ast_result) {
@@ -126,8 +126,7 @@ base::Result<LoadedModuleSource> load_module_source(const std::filesystem::path&
     const std::string_view profile_detail)
 {
     auto source_result = [&] {
-        ScopedCompilationPhase phase(
-            profiler, pipeline_stage_profile_name(PipelineStageId::module_read), profile_detail);
+        ScopedCompilationPhase phase(profiler, PipelineStageId::module_read, profile_detail);
         return read_text_file(canonical);
     }();
     if (!source_result) {

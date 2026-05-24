@@ -132,6 +132,19 @@ const driver::PipelineStageRecord& record =
 driver::PipelineStageMetadata metadata = driver::pipeline_stage_metadata(record);
 std::span<const driver::PipelineStageId> owners =
     driver::pipeline_stage_ids_for_diagnostic_category(base::DiagnosticCategory::type);
+std::string_view subevent_profile =
+    driver::pipeline_profile_subevent_profile_name(
+        driver::PipelineProfileSubeventId::incremental_cache_query_plan);
+```
+
+profiler 也提供同一目录的 typed entry point；新增 driver 阶段应通过 id 记录，不在调用点手写
+profile-name 字符串：
+
+```cpp
+driver::ScopedCompilationPhase phase(
+    session.profiler(), driver::PipelineStageId::module_parse, module_name);
+profiler->record(driver::PipelineProfileSubeventId::incremental_cache_query_plan,
+    "reusable=10,recompute=1", elapsed);
 ```
 
 ## C++ Lossless Syntax 接口

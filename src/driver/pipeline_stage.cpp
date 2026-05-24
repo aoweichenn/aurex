@@ -270,6 +270,15 @@ const PipelineStageRecord& pipeline_stage_record(const PipelineStageId id) noexc
     return PIPELINE_STAGE_RECORDS.front();
 }
 
+const PipelineProfileSubeventRecord& pipeline_profile_subevent_record(const PipelineProfileSubeventId id) noexcept
+{
+    const auto index = static_cast<std::size_t>(id);
+    if (index < PIPELINE_PROFILE_SUBEVENT_RECORDS.size()) {
+        return PIPELINE_PROFILE_SUBEVENT_RECORDS[index];
+    }
+    return PIPELINE_PROFILE_SUBEVENT_RECORDS.front();
+}
+
 PipelineStageMetadata pipeline_stage_metadata(const PipelineStageRecord& record) noexcept
 {
     return PipelineStageMetadata{
@@ -337,6 +346,11 @@ const PipelineProfileSubeventRecord* pipeline_profile_subevent_record_for_profil
 std::string_view pipeline_stage_profile_name(const PipelineStageId id) noexcept
 {
     return pipeline_stage_record(id).profile_name;
+}
+
+std::string_view pipeline_profile_subevent_profile_name(const PipelineProfileSubeventId id) noexcept
+{
+    return pipeline_profile_subevent_record(id).profile_name;
 }
 
 } // namespace aurex::driver

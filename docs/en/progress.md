@@ -36,7 +36,10 @@ stage directory through `IdeDiagnostic.owner_stages`, so later LSP/IDE stage
 views can consume `PipelineStageRecord` metadata directly. R5.11 promoted the
 stage directory header to a public read-only driver API and added
 `PipelineStageMetadata` as the shared projection used by the profile writer and
-tooling diagnostics.
+tooling diagnostics. R5.12 typed the profile recording entry points so driver
+main stages and incremental-cache sub-events enter the profiler through
+`PipelineStageId` / `PipelineProfileSubeventId` instead of scattered profile
+name strings.
 
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,
@@ -115,8 +118,9 @@ notes are design input only, not current progress.
   driver stage without treating them as main stages. `PipelineStage` also
   provides diagnostic category to candidate owner-stage lookup, and
   `IdeDiagnostic.owner_stages` consumes those records through public
-  `PipelineStageMetadata` so later IDE/LSP stage views do not maintain a
-  separate diagnostic-stage table.
+  `PipelineStageMetadata`. Profile main stages and incremental-cache sub-events
+  now enter the profiler through `PipelineStageId` / `PipelineProfileSubeventId`,
+  so later IDE/LSP stage views do not maintain a separate diagnostic-stage table.
 
 ## Removed From The Active Track
 

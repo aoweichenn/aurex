@@ -52,6 +52,9 @@ R5.11 已完成阶段目录公开 API 和 metadata 投影收口：`pipeline_stag
 `include/aurex/driver/pipeline_stage.hpp`，`PipelineStageMetadata` 成为 profile writer、tooling
 diagnostics 和后续 profile viewer/LSP adapter 可复用的只读阶段 metadata 形状；`aurex_tooling`
 不再依赖 private `src` include root，profile JSON 和 diagnostics JSON 协议保持不变。
+R5.12 已完成 profile 记录入口枚举化：`CompilationProfiler::record` 和 `ScopedCompilationPhase`
+现在能直接接收 `PipelineStageId`，incremental-cache 子事件通过 `PipelineProfileSubeventId` 进入
+profiler；调用点不再散落 stage profile name 字符串，`aurex-profile-v1` 字段保持不变。
 
 ## 当前分支原则
 

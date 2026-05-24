@@ -179,6 +179,29 @@ void CompilationProfiler::record(const std::string_view name, const std::chrono:
     this->record(name, {}, elapsed);
 }
 
+void CompilationProfiler::record(
+    const PipelineStageId stage, const std::string_view detail, const std::chrono::steady_clock::duration elapsed)
+{
+    this->record(pipeline_stage_profile_name(stage), detail, elapsed);
+}
+
+void CompilationProfiler::record(const PipelineStageId stage, const std::chrono::steady_clock::duration elapsed)
+{
+    this->record(stage, {}, elapsed);
+}
+
+void CompilationProfiler::record(const PipelineProfileSubeventId subevent, const std::string_view detail,
+    const std::chrono::steady_clock::duration elapsed)
+{
+    this->record(pipeline_profile_subevent_profile_name(subevent), detail, elapsed);
+}
+
+void CompilationProfiler::record(
+    const PipelineProfileSubeventId subevent, const std::chrono::steady_clock::duration elapsed)
+{
+    this->record(subevent, {}, elapsed);
+}
+
 std::span<const CompilationPhaseProfile> CompilationProfiler::phases() const noexcept
 {
     return this->phases_;
@@ -251,6 +274,12 @@ base::Result<void> CompilationProfiler::write_json(const std::filesystem::path& 
 ScopedCompilationPhase::ScopedCompilationPhase(
     CompilationProfiler* const profiler, const std::string_view name, const std::string_view detail) noexcept
     : profiler_(profiler), name_(name), detail_(detail), started_(std::chrono::steady_clock::now())
+{
+}
+
+ScopedCompilationPhase::ScopedCompilationPhase(
+    CompilationProfiler* const profiler, const PipelineStageId stage, const std::string_view detail) noexcept
+    : ScopedCompilationPhase(profiler, pipeline_stage_profile_name(stage), detail)
 {
 }
 

@@ -135,7 +135,8 @@ void record_query_record_diff_summary(CompilationProfiler* const profiler, const
     if (profiler == nullptr || !profiler->enabled()) {
         return;
     }
-    profiler->record(INCREMENTAL_CACHE_PROFILE_QUERY_DIFF, query_record_diff_summary_detail(summary), elapsed);
+    profiler->record(
+        PipelineProfileSubeventId::incremental_cache_query_diff, query_record_diff_summary_detail(summary), elapsed);
 }
 
 void record_query_reuse_plan_summary(CompilationProfiler* const profiler, const query::QueryReusePlan& plan,
@@ -144,7 +145,8 @@ void record_query_reuse_plan_summary(CompilationProfiler* const profiler, const 
     if (profiler == nullptr || !profiler->enabled()) {
         return;
     }
-    profiler->record(INCREMENTAL_CACHE_PROFILE_QUERY_PLAN, query_reuse_plan_summary_detail(plan), elapsed);
+    profiler->record(
+        PipelineProfileSubeventId::incremental_cache_query_plan, query_reuse_plan_summary_detail(plan), elapsed);
 }
 
 void record_query_pruning_summary(CompilationProfiler* const profiler, const QueryPruningGateResult& result,
@@ -153,7 +155,8 @@ void record_query_pruning_summary(CompilationProfiler* const profiler, const Que
     if (!result.enabled || profiler == nullptr || !profiler->enabled()) {
         return;
     }
-    profiler->record(INCREMENTAL_CACHE_PROFILE_QUERY_PRUNING, query_pruning_summary_detail(result), elapsed);
+    profiler->record(
+        PipelineProfileSubeventId::incremental_cache_query_pruning, query_pruning_summary_detail(result), elapsed);
 }
 
 void record_query_provider_evaluation_summary(CompilationProfiler* const profiler,
@@ -162,8 +165,8 @@ void record_query_provider_evaluation_summary(CompilationProfiler* const profile
     if (!stats.pruned || profiler == nullptr || !profiler->enabled()) {
         return;
     }
-    profiler->record(
-        INCREMENTAL_CACHE_PROFILE_QUERY_PROVIDER_EVAL, query_provider_evaluation_summary_detail(stats), elapsed);
+    profiler->record(PipelineProfileSubeventId::incremental_cache_query_provider_eval,
+        query_provider_evaluation_summary_detail(stats), elapsed);
 }
 
 void record_source_stage_reuse_summary(CompilationProfiler* const profiler, const SourceStageReuseSummary& summary,
@@ -172,7 +175,8 @@ void record_source_stage_reuse_summary(CompilationProfiler* const profiler, cons
     if (profiler == nullptr || !profiler->enabled()) {
         return;
     }
-    profiler->record(INCREMENTAL_CACHE_PROFILE_SOURCE_STAGE_REUSE, source_stage_reuse_summary_detail(summary), elapsed);
+    profiler->record(PipelineProfileSubeventId::incremental_cache_source_stage_reuse,
+        source_stage_reuse_summary_detail(summary), elapsed);
 }
 
 } // namespace aurex::driver::incremental_cache_detail

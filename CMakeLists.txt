@@ -58,6 +58,7 @@ include(cmake/AurexQuery.cmake)
 include(cmake/AurexSyntax.cmake)
 include(cmake/AurexFrontend.cmake)
 include(cmake/AurexSema.cmake)
+include(cmake/AurexPipelineStage.cmake)
 include(cmake/AurexTooling.cmake)
 if(NOT AUREX_FRONTEND_ONLY)
     include(cmake/AurexLLVM.cmake)
@@ -78,6 +79,7 @@ else()
         aurex_lex
         aurex_parse
         aurex_sema
+        aurex_pipeline_stage
         aurex_tooling
     )
     if(TARGET aurex_ir)

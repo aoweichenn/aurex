@@ -188,6 +188,9 @@ file/lex/parse/diagnostics query records plus dependency edges. The current
 entry point covers diagnostics, token/hover queries, top-level definition
 lookup, same-name identifier references, checked-backed globals with AST-local
 fallbacks for parameters and `let` bindings, and edit-impact node selection.
+Each `IdeDiagnostic` also carries `owner_stages` metadata sourced from
+`PipelineStageRecord` for later LSP/IDE stage visualization; the
+`aurex-diagnostics-v1` output protocol is unchanged.
 Diagnostics are normalized into a structured event stream before query
 fingerprinting or CLI rendering. It is the data source for an LSP adapter, not
 a direct dependency on the LSP protocol.

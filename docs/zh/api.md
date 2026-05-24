@@ -171,7 +171,9 @@ AST、checked module、结构化 diagnostics，以及 file/lex/parse/diagnostics
 records 和 dependency edges。当前入口已覆盖 diagnostics、token/hover、顶层定义跳转、
 同名 identifier references、checked-backed 全局符号与 AST 局部参数 / `let` 绑定 fallback，
 以及编辑影响 node 选择；diagnostics 会先归一为结构化 event stream，再进入 query
-fingerprint 或 CLI 渲染。它是 LSP adapter 的数据源，不直接绑定 LSP protocol。
+fingerprint 或 CLI 渲染。每个 `IdeDiagnostic` 还携带 `owner_stages`，这些 stage metadata
+来自 `PipelineStageRecord`，用于后续 LSP/IDE 阶段可视化；`aurex-diagnostics-v1` 输出协议不因此改变。
+它是 LSP adapter 的数据源，不直接绑定 LSP protocol。
 
 ## IR Pass 接口
 

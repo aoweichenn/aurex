@@ -9,4 +9,10 @@ target_link_libraries(aurex_tooling PUBLIC
     aurex_sema
     aurex_syntax
 )
-target_include_directories(aurex_tooling PUBLIC include)
+target_link_libraries(aurex_tooling PRIVATE
+    aurex_pipeline_stage
+)
+target_include_directories(aurex_tooling
+    PUBLIC include
+    PRIVATE src
+)

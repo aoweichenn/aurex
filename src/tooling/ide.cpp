@@ -15,6 +15,8 @@
 #include <utility>
 #include <vector>
 
+#include <driver/pipeline_stage.hpp>
+
 namespace aurex::tooling {
 namespace {
 
@@ -173,6 +175,30 @@ void mix_lossless_tree(query::StableHashBuilder& builder, const syntax::Lossless
     return query::diagnostics_result_fingerprint(events, context);
 }
 
+[[nodiscard]] IdePipelineStageOwner ide_stage_owner_from_record(const driver::PipelineStageRecord& record)
+{
+    return IdePipelineStageOwner{
+        std::string(record.name),
+        std::string(record.profile_name),
+        std::string(record.input),
+        std::string(record.output),
+        std::string(record.diagnostic_ownership),
+        std::string(record.cache_query_impact),
+    };
+}
+
+[[nodiscard]] std::vector<IdePipelineStageOwner> ide_diagnostic_owner_stages(const base::DiagnosticCategory category)
+{
+    const std::span<const driver::PipelineStageId> owner_stage_ids =
+        driver::pipeline_stage_ids_for_diagnostic_category(category);
+    std::vector<IdePipelineStageOwner> owners;
+    owners.reserve(owner_stage_ids.size());
+    for (const driver::PipelineStageId stage_id : owner_stage_ids) {
+        owners.push_back(ide_stage_owner_from_record(driver::pipeline_stage_record(stage_id)));
+    }
+    return owners;
+}
+
 [[nodiscard]] std::vector<IdeDiagnostic> collect_ide_diagnostics(
     const base::SourceManager& sources, const query::DiagnosticsEventStream& diagnostics)
 {
@@ -189,6 +215,7 @@ void mix_lossless_tree(query::StableHashBuilder& builder, const syntax::Lossless
             file.line_column(diagnostic.range.end),
             std::string(file.path()),
             diagnostic.message,
+            ide_diagnostic_owner_stages(diagnostic.category),
         });
     }
     return result;
@@ -292,8 +319,8 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
     return item.range;
 }
 
-[[nodiscard]] base::SourceRange name_range_in_range(const syntax::LosslessSyntaxTree& tree,
-    const std::string_view name, const base::SourceRange fallback) noexcept
+[[nodiscard]] base::SourceRange name_range_in_range(
+    const syntax::LosslessSyntaxTree& tree, const std::string_view name, const base::SourceRange fallback) noexcept
 {
     for (const syntax::Token& token : tree.tokens()) {
         if (token.kind == syntax::TokenKind::identifier && token.text() == name && fallback.begin <= token.range.begin
@@ -304,9 +331,8 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
     return fallback;
 }
 
-[[nodiscard]] base::SourceRange item_name_range(
-    const IdeSnapshot& snapshot, const syntax::ItemId item_id, const std::string_view name,
-    const base::SourceRange fallback) noexcept
+[[nodiscard]] base::SourceRange item_name_range(const IdeSnapshot& snapshot, const syntax::ItemId item_id,
+    const std::string_view name, const base::SourceRange fallback) noexcept
 {
     if (syntax::is_valid(item_id)) {
         if (const syntax::ItemNode* const item = snapshot.ast.items.ptr(item_id.value); item != nullptr) {
@@ -383,12 +409,11 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
         return query::def_key_from_stable_id(stable_id, name_space, kind);
     }
     const std::array<std::string_view, 1> path{fallback_name};
-    return query::def_key(module_key_for_snapshot(snapshot), name_space, kind, path,
-        static_cast<base::u32>(fallback_range.begin));
+    return query::def_key(
+        module_key_for_snapshot(snapshot), name_space, kind, path, static_cast<base::u32>(fallback_range.begin));
 }
 
-[[nodiscard]] std::string function_detail(
-    const sema::CheckedModule& checked, const sema::FunctionSignature& signature)
+[[nodiscard]] std::string function_detail(const sema::CheckedModule& checked, const sema::FunctionSignature& signature)
 {
     std::ostringstream label;
     label << (signature.is_method ? IDE_SYMBOL_KIND_METHOD : IDE_SYMBOL_KIND_FUNCTION) << ' '
@@ -403,9 +428,8 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
     return label.str();
 }
 
-[[nodiscard]] std::string typed_detail(
-    const sema::CheckedModule& checked, const std::string_view kind, const std::string_view name,
-    const sema::TypeHandle type)
+[[nodiscard]] std::string typed_detail(const sema::CheckedModule& checked, const std::string_view kind,
+    const std::string_view name, const sema::TypeHandle type)
 {
     std::ostringstream label;
     label << kind << ' ' << name;
@@ -434,8 +458,8 @@ void push_local_symbol(SymbolIndex& index, IdeSymbol symbol)
 void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index)
 {
     for (const sema::GenericTemplateSignatureInfo& info : snapshot.checked.generic_template_signatures) {
-        const base::SourceRange range = first_item_name_range(
-            snapshot, info.name.view(), base::SourceRange{snapshot.source_id, 0U, 0U});
+        const base::SourceRange range =
+            first_item_name_range(snapshot, info.name.view(), base::SourceRange{snapshot.source_id, 0U, 0U});
         push_global_symbol(index,
             IdeSymbol{
                 symbol_def_key(snapshot, info.stable_id, info.name_space, query::DefKind::generic_template,
@@ -456,8 +480,8 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
             item_name_range(snapshot, signature.definition_item, signature.name.view(), signature.range);
         push_global_symbol(index,
             IdeSymbol{
-                symbol_def_key(snapshot, signature.stable_id, query::DefNamespace::value, kind,
-                    signature.name.view(), range),
+                symbol_def_key(
+                    snapshot, signature.stable_id, query::DefNamespace::value, kind, signature.name.view(), range),
                 range,
                 signature.range,
                 std::string(signature.name.view()),

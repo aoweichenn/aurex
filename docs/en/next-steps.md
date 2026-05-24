@@ -35,12 +35,16 @@ R5.9 added the first diagnostics-owner directory: `PipelineStage` can now map a
 `tokens.lex` and `module.lex` owners, while parser, module-loader, and sema-like
 diagnostics map to `module.parse`, `module.append`, and `sema.analyze`
 respectively. The diagnostics text/JSON protocol is unchanged.
+R5.10 wired IDE tooling diagnostics to that stage directory: `pipeline_stage.cpp`
+is now a lightweight `aurex_pipeline_stage` target shared by driver and
+`aurex_tooling`, and `IdeDiagnostic.owner_stages` carries stage
+id/profile/input/output/diagnostic/cache-query metadata for later LSP/IDE views.
 
 Next, keep `PipelineStage` as the single profile/cache/query/diagnostics/IDE
 stage directory. M3 modules, generic backend completion, LSP adapter work, and
 subtree reparse must consume the R5 driver/session/query/diagnostics path,
-including `stage` / `parent_stage` profile metadata and diagnostic owner-stage
-metadata, instead of bypassing it.
+including `stage` / `parent_stage` profile metadata and `IdeDiagnostic`
+owner-stage metadata, instead of bypassing it.
 
 ## Branch Principle
 

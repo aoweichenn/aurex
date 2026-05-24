@@ -183,13 +183,21 @@ R5.9 已完成 diagnostics owner 阶段目录第一层：
   阶段。
 - diagnostics text / JSON 协议保持不变；这一步只把内部阶段归属契约收口到 `PipelineStage`。
 
+R5.10 已完成 IDE tooling diagnostics 消费阶段目录第一层：
+
+- `pipeline_stage.cpp` 从 `aurex_driver` 内联编译单元拆成轻量 `aurex_pipeline_stage` 目标，让 driver 和
+  `aurex_tooling` 共同消费同一份阶段目录。
+- `IdeDiagnostic` 增加 `owner_stages`，每个 owner stage 携带 `id`、`profile_name`、input/output、
+  diagnostic ownership 和 cache/query impact，来源全部是 `PipelineStageRecord`。
+- IDE snapshot 的 lexer/parser/sema 诊断现在能直接给后续 LSP 或编辑器视图提供阶段归属；CLI 文本输出、
+  `aurex-diagnostics-v1` JSON、profile phase name 和 query fingerprint 保持不变。
+
 ## 后续拆分顺序
 
-R5.9 完成后，后续按下面顺序继续：
+R5.10 完成后，后续按下面顺序继续：
 
-1. 后续 IDE/LSP 可视化层消费 profile JSON 的 `stage`/`parent_stage` 对象、diagnostic owner stage
-   列表和 query records，
-   而不是重新维护阶段表。
+1. 后续 profile viewer / LSP adapter 继续消费 profile JSON 的 `stage`/`parent_stage` 对象、
+   `IdeDiagnostic.owner_stages` 和 query records，而不是重新维护阶段表。
 2. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
    + `FrontendPipeline` + `LoweringPipeline` + `BackendPipeline` 的主路径。
 

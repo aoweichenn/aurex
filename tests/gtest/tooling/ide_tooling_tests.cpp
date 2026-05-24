@@ -23,6 +23,10 @@ constexpr std::string_view IDE_TOOLING_SOURCE = "module ide.snapshot;\n"
                                                 "}\n";
 
 constexpr base::usize IDE_TOOLING_LARGE_FUNCTION_COUNT = 128;
+constexpr std::string_view IDE_TOOLING_STAGE_TOKENS_LEX = "tokens.lex";
+constexpr std::string_view IDE_TOOLING_STAGE_MODULE_LEX = "module.lex";
+constexpr std::string_view IDE_TOOLING_STAGE_MODULE_PARSE = "module.parse";
+constexpr std::string_view IDE_TOOLING_STAGE_SEMA_ANALYZE = "sema.analyze";
 
 [[nodiscard]] tooling::IdeSnapshotRequest request_for(const std::string_view source)
 {
@@ -56,6 +60,23 @@ constexpr base::usize IDE_TOOLING_LARGE_FUNCTION_COUNT = 128;
     return std::ranges::any_of(snapshot.diagnostics, [category](const tooling::IdeDiagnostic& diagnostic) {
         return diagnostic.category == category;
     });
+}
+
+[[nodiscard]] bool diagnostic_has_owner_stage_profile(
+    const tooling::IdeDiagnostic& diagnostic, const std::string_view profile_name)
+{
+    return std::ranges::any_of(diagnostic.owner_stages, [profile_name](const tooling::IdePipelineStageOwner& owner) {
+        return owner.profile_name == profile_name && !owner.id.empty() && !owner.diagnostic_ownership.empty();
+    });
+}
+
+[[nodiscard]] bool has_diagnostic_owner_stage_profile(
+    const tooling::IdeSnapshot& snapshot, const base::DiagnosticCategory category, const std::string_view profile_name)
+{
+    return std::ranges::any_of(
+        snapshot.diagnostics, [category, profile_name](const tooling::IdeDiagnostic& diagnostic) {
+            return diagnostic.category == category && diagnostic_has_owner_stage_profile(diagnostic, profile_name);
+        });
 }
 
 void expect_definition_kind(const tooling::IdeSnapshot& snapshot, const std::string_view source,
@@ -209,7 +230,8 @@ TEST(CoreUnit, IdeToolingServesTokenHoverDefinitionReferencesAndEditImpact)
     EXPECT_EQ(IDE_TOOLING_SOURCE.substr(parameter_definition->range.begin, parameter_definition->range.length()), "a");
     EXPECT_EQ(parameter_definition->key.kind, query::DefKind::value);
 
-    const std::vector<tooling::IdeReference> parameter_references = tooling::references_at_offset(snapshot, parameter_offset);
+    const std::vector<tooling::IdeReference> parameter_references =
+        tooling::references_at_offset(snapshot, parameter_offset);
     ASSERT_GE(parameter_references.size(), 2U);
     EXPECT_TRUE(std::ranges::any_of(parameter_references, [](const tooling::IdeReference& reference) {
         return reference.is_definition;
@@ -376,6 +398,8 @@ TEST(CoreUnit, IdeToolingReturnsStructuredDiagnosticsForInvalidSource)
             && diagnostic.code == base::DiagnosticCode::semantic_type_mismatch && diagnostic.start.line == 3U
             && diagnostic.path == "/workspace/ide_snapshot.ax";
     }));
+    EXPECT_TRUE(
+        has_diagnostic_owner_stage_profile(snapshot, base::DiagnosticCategory::type, IDE_TOOLING_STAGE_SEMA_ANALYZE));
 }
 
 TEST(CoreUnit, IdeToolingSeparatesLexAndParseFailuresIntoQuerySnapshots)
@@ -391,6 +415,10 @@ TEST(CoreUnit, IdeToolingSeparatesLexAndParseFailuresIntoQuerySnapshots)
     EXPECT_TRUE(lex_snapshot.lossless.is_structurally_valid());
     EXPECT_TRUE(lex_snapshot.lossless.tokens().empty());
     EXPECT_TRUE(has_diagnostic_category(lex_snapshot, base::DiagnosticCategory::lexer));
+    EXPECT_TRUE(has_diagnostic_owner_stage_profile(
+        lex_snapshot, base::DiagnosticCategory::lexer, IDE_TOOLING_STAGE_TOKENS_LEX));
+    EXPECT_TRUE(has_diagnostic_owner_stage_profile(
+        lex_snapshot, base::DiagnosticCategory::lexer, IDE_TOOLING_STAGE_MODULE_LEX));
     EXPECT_TRUE(has_record_kind(lex_snapshot, query::QueryKind::lex_file));
     EXPECT_TRUE(has_record_kind(lex_snapshot, query::QueryKind::parse_file));
     EXPECT_TRUE(has_record_kind(lex_snapshot, query::QueryKind::diagnostics));
@@ -405,6 +433,8 @@ TEST(CoreUnit, IdeToolingSeparatesLexAndParseFailuresIntoQuerySnapshots)
     EXPECT_TRUE(parse_snapshot.has_errors);
     EXPECT_TRUE(parse_snapshot.lossless.is_structurally_valid());
     EXPECT_TRUE(has_diagnostic_category(parse_snapshot, base::DiagnosticCategory::parser));
+    EXPECT_TRUE(has_diagnostic_owner_stage_profile(
+        parse_snapshot, base::DiagnosticCategory::parser, IDE_TOOLING_STAGE_MODULE_PARSE));
     EXPECT_FALSE(tooling::definition_at_offset(parse_snapshot, parse_error_source.find("top_level")).has_value());
     EXPECT_TRUE(has_record_kind(parse_snapshot, query::QueryKind::parse_file));
     EXPECT_TRUE(has_dependency_kind(parse_snapshot, query::QueryKind::parse_file, query::QueryKind::lex_file));

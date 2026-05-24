@@ -22,6 +22,15 @@ struct IdeSnapshotRequest {
     query::SourceRole source_role = query::SourceRole::virtual_buffer;
 };
 
+struct IdePipelineStageOwner {
+    std::string id;
+    std::string profile_name;
+    std::string input;
+    std::string output;
+    std::string diagnostic_ownership;
+    std::string cache_query_impact;
+};
+
 struct IdeDiagnostic {
     base::Severity severity = base::Severity::error;
     base::DiagnosticCategory category = base::DiagnosticCategory::general;
@@ -31,6 +40,7 @@ struct IdeDiagnostic {
     base::LineColumn end{};
     std::string path;
     std::string message;
+    std::vector<IdePipelineStageOwner> owner_stages;
 };
 
 struct IdeQuerySnapshot {

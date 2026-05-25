@@ -220,8 +220,7 @@ bool SemanticAnalyzerCore::LookupIndexer::visible_type_name_exists(
         || this->core_.state_.flow.current_module.value >= this->core_.ctx_.module.modules.size()) {
         return false;
     }
-    for (const syntax::ResolvedImport& import :
-        this->core_.ctx_.module.modules[this->core_.state_.flow.current_module.value].imports) {
+    for (const syntax::ResolvedImport& import : this->core_.imports_for_scope(this->core_.state_.flow.current_module)) {
         if (type_visible_in_module(import.module)) {
             return true;
         }

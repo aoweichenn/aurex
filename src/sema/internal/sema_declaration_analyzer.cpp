@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -24,6 +25,39 @@ constexpr char SEMA_ENUM_SYNTHETIC_PAYLOAD_C_SUFFIX[] = "_payload";
 constexpr char SEMA_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX[] = "_";
 constexpr std::string_view SEMA_STABLE_TYPE_ALIAS_INCREMENTAL_TAG = "|type_alias";
 constexpr std::string_view SEMA_STABLE_STRUCT_INCREMENTAL_TAG = "|struct";
+constexpr std::size_t SEMA_IMPORT_SCOPE_HASH_MIX = 0x9e3779b97f4a7c15ULL;
+constexpr base::usize SEMA_IMPORT_SCOPE_HASH_LEFT_SHIFT = 6;
+constexpr base::usize SEMA_IMPORT_SCOPE_HASH_RIGHT_SHIFT = 2;
+
+struct ImportScopeKey {
+    base::u32 source = 0;
+    base::usize begin = 0;
+    base::usize end = 0;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const ImportScopeKey& lhs, const ImportScopeKey& rhs) noexcept = default;
+};
+
+struct ImportScopeKeyHash {
+    [[nodiscard]] std::size_t operator()(const ImportScopeKey& key) const noexcept
+    {
+        std::size_t hash = static_cast<std::size_t>(key.source);
+        hash ^= key.begin + SEMA_IMPORT_SCOPE_HASH_MIX + (hash << SEMA_IMPORT_SCOPE_HASH_LEFT_SHIFT)
+            + (hash >> SEMA_IMPORT_SCOPE_HASH_RIGHT_SHIFT);
+        hash ^= key.end + SEMA_IMPORT_SCOPE_HASH_MIX + (hash << SEMA_IMPORT_SCOPE_HASH_LEFT_SHIFT)
+            + (hash >> SEMA_IMPORT_SCOPE_HASH_RIGHT_SHIFT);
+        return hash;
+    }
+};
+
+[[nodiscard]] ImportScopeKey import_scope_key(const std::span<const syntax::ResolvedImport> imports) noexcept
+{
+    if (imports.empty()) {
+        return {};
+    }
+    const base::SourceRange& range = imports.front().alias_range;
+    return ImportScopeKey{range.source.value, range.begin, range.end};
+}
 
 [[nodiscard]] bool is_main_argv_type(const TypeTable& types, const TypeHandle type) noexcept
 {
@@ -185,12 +219,18 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_module_namespace_confli
         }
     }
 
-    for (const syntax::ModuleInfo& module_info : this->core_.ctx_.module.modules) {
-        const auto* const begin = this->core_.ctx_.module.modules.data();
-        const syntax::ModuleId owner{static_cast<base::u32>(&module_info - begin)};
+    std::unordered_set<ImportScopeKey, ImportScopeKeyHash> validated_import_scopes;
+    const auto validate_import_scope = [&](const syntax::ModuleId owner,
+                                           const std::span<const syntax::ResolvedImport> imports) {
+        if (imports.empty()) {
+            return;
+        }
+        if (!validated_import_scopes.insert(import_scope_key(imports)).second) {
+            return;
+        }
         std::unordered_set<IdentId, IdentIdHash> module_aliases;
-        module_aliases.reserve(module_info.imports.size());
-        for (const syntax::ResolvedImport& import : module_info.imports) {
+        module_aliases.reserve(imports.size());
+        for (const syntax::ResolvedImport& import : imports) {
             if (!module_aliases.insert(import.alias_id).second) {
                 this->core_.report_lookup(import.alias_range, sema_ambiguous_import_alias_message(import.alias));
             }
@@ -200,6 +240,18 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_module_namespace_confli
                     sema_duplicate_namespace_member_message(this->core_.module_name(owner), import.alias));
             }
         }
+    };
+
+    for (const syntax::ModuleInfo& module_info : this->core_.ctx_.module.modules) {
+        const auto* const begin = this->core_.ctx_.module.modules.data();
+        const syntax::ModuleId owner{static_cast<base::u32>(&module_info - begin)};
+        validate_import_scope(owner, module_info.imports);
+    }
+    for (const syntax::ItemImportScope& scope : this->core_.ctx_.module.item_import_scopes) {
+        if (scope.item_count == 0) {
+            continue;
+        }
+        validate_import_scope(this->core_.item_module(syntax::ItemId{scope.item_begin}), scope.imports);
     }
 }
 
@@ -243,6 +295,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_type_names()
             alias.name = this->core_.source_name_text(item.name_id, item.name);
             alias.name_id = item.name_id;
             alias.module = owner;
+            alias.item = syntax::ItemId{item_index};
             alias.target = item.alias_type;
             alias.range = item.range;
             alias.visibility = item.visibility;
@@ -535,6 +588,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
             continue;
         }
         this->core_.state_.flow.current_module = this->core_.item_module(syntax::ItemId{item_index});
+        this->core_.state_.flow.current_item = syntax::ItemId{item_index};
         const ModuleLookupKey item_type_key =
             this->core_.module_lookup_key(this->core_.state_.flow.current_module, item.name_id);
         FunctionLookupKey key = this->core_.function_lookup_key(this->core_.state_.flow.current_module, item.name_id);
@@ -688,6 +742,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
         }
     }
     this->core_.state_.flow.current_module = syntax::INVALID_MODULE_ID;
+    this->core_.state_.flow.current_item = syntax::INVALID_ITEM_ID;
 }
 
 void SemanticAnalyzerCore::DeclarationAnalyzer::validate_function_prototypes() const
@@ -857,6 +912,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::analyze_struct_properties()
             continue;
         }
         this->core_.state_.flow.current_module = this->core_.item_module(syntax::ItemId{index});
+        this->core_.state_.flow.current_item = syntax::ItemId{index};
         const ModuleLookupKey key = this->core_.module_lookup_key(this->core_.state_.flow.current_module, item.name_id);
         bool contains_array = false;
         std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen_fields;
@@ -902,6 +958,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::analyze_struct_properties()
         }
     }
     this->core_.state_.flow.current_module = syntax::INVALID_MODULE_ID;
+    this->core_.state_.flow.current_item = syntax::INVALID_ITEM_ID;
 }
 
 void SemanticAnalyzerCore::DeclarationAnalyzer::analyze_const_decls()
@@ -925,6 +982,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::analyze_const_decls()
         }
         const syntax::ItemNode item = this->core_.ctx_.module.items[index];
         this->core_.state_.flow.current_module = this->core_.item_module(syntax::ItemId{index});
+        this->core_.state_.flow.current_item = syntax::ItemId{index};
         const IdentId const_name_id =
             is_valid(item.name_id) ? item.name_id : this->core_.ctx_.module.identifiers.find(item.name);
         const ModuleLookupKey const_key = const_dependency_key(this->core_.state_.flow.current_module, const_name_id);
@@ -1012,6 +1070,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::analyze_const_decls()
         }
     }
     this->core_.state_.flow.current_module = syntax::INVALID_MODULE_ID;
+    this->core_.state_.flow.current_item = syntax::INVALID_ITEM_ID;
 }
 
 bool SemanticAnalyzerCore::DeclarationAnalyzer::is_const_evaluable_expr(

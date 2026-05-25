@@ -613,6 +613,7 @@ void CheckedModule::copy_from(const CheckedModule& other)
         alias.name = this->intern_text(entry.second.name);
         alias.name_id = entry.second.name_id;
         alias.module = entry.second.module;
+        alias.item = entry.second.item;
         alias.target = entry.second.target;
         alias.range = entry.second.range;
         alias.visibility = entry.second.visibility;

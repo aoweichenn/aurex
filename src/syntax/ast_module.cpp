@@ -17,7 +17,8 @@ AstModule::AstModule(const AstModule& other)
     : module_path(other.module_path), file_kind(other.file_kind), part_header(other.part_header),
       part_declarations(other.part_declarations), imports(other.imports), modules(other.modules), types(other.types),
       exprs(other.exprs), patterns(other.patterns), stmts(other.stmts), items(other.items),
-      item_modules(other.item_modules), identifiers(other.identifiers), identifiers_ready_(false)
+      item_modules(other.item_modules), item_import_scopes(other.item_import_scopes), identifiers(other.identifiers),
+      identifiers_ready_(false)
 {
     this->intern_identifiers();
 }
@@ -39,6 +40,7 @@ AstModule& AstModule::operator=(const AstModule& other)
     this->stmts = other.stmts;
     this->items = other.items;
     this->item_modules = other.item_modules;
+    this->item_import_scopes = other.item_import_scopes;
     this->identifiers = other.identifiers;
     this->identifiers_ready_ = false;
     this->intern_identifiers();
@@ -361,6 +363,7 @@ void AstModule::reserve_for_estimate(const AstReserveEstimate& estimate)
             estimate.items, ast_reserve_fraction(estimate.tokens, SYNTAX_AST_RESERVE_ITEM_TOKEN_DIVISOR)));
     this->items.reserve(item_capacity);
     this->item_modules.reserve(item_capacity);
+    this->item_import_scopes.reserve(item_capacity);
     this->identifiers.reserve(ast_reserve_at_least(INITIAL_CAPACITY,
         ast_reserve_fraction(estimate.identifier_tokens, SYNTAX_AST_RESERVE_IDENTIFIER_TOKEN_DIVISOR)));
 }
@@ -522,6 +525,11 @@ void AstModule::intern_module_metadata()
     for (ModuleInfo& module : this->modules) {
         this->intern_module_path(module.path);
         for (ResolvedImport& import : module.imports) {
+            this->intern_resolved_import(import);
+        }
+    }
+    for (ItemImportScope& scope : this->item_import_scopes) {
+        for (ResolvedImport& import : scope.imports) {
             this->intern_resolved_import(import);
         }
     }

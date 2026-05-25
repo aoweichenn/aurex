@@ -510,9 +510,12 @@ TypeHandle SemanticTypeResolver::resolve_type_alias(const TypeAliasInfo& alias, 
     }
     this->core_.state_.types.resolving_type_aliases.push_back(key);
     const syntax::ModuleId previous_module = this->core_.state_.flow.current_module;
+    const syntax::ItemId previous_item = this->core_.state_.flow.current_item;
     this->core_.state_.flow.current_module = alias.module;
+    this->core_.state_.flow.current_item = alias.item;
     const TypeHandle resolved = this->resolve_type(alias.target, opaque_allowed_as_pointee);
     this->core_.state_.flow.current_module = previous_module;
+    this->core_.state_.flow.current_item = previous_item;
     this->core_.state_.types.resolving_type_aliases.pop_back();
     this->core_.state_.types.resolved_type_aliases[key] = resolved;
     return resolved;

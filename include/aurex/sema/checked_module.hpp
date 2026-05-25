@@ -119,6 +119,7 @@ struct TypeAliasInfo {
     InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
     syntax::TypeId target = syntax::INVALID_TYPE_ID;
     base::SourceRange range{};
     syntax::Visibility visibility = syntax::Visibility::public_;

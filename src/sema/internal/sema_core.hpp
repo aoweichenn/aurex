@@ -154,6 +154,7 @@ private:
 
     struct FlowState {
         syntax::ModuleId current_module = syntax::INVALID_MODULE_ID;
+        syntax::ItemId current_item = syntax::INVALID_ITEM_ID;
         TypeHandle current_function_return_type = INVALID_TYPE_HANDLE;
         ReturnTypeInference* current_return_inference = nullptr;
         GenericContext* current_generic_context = nullptr;
@@ -439,11 +440,13 @@ private:
     struct ModuleState {
         explicit ModuleState(base::BumpAllocator& arena)
             : visible_modules_cache(make_sema_map<base::u32, ModuleIdList>(arena)),
+              item_visible_modules_cache(make_sema_map<base::u32, ModuleIdList>(arena)),
               export_modules_cache(make_sema_map<base::u32, ModuleIdList>(arena))
         {
         }
 
         SemaMap<base::u32, ModuleIdList> visible_modules_cache;
+        SemaMap<base::u32, ModuleIdList> item_visible_modules_cache;
         SemaMap<base::u32, ModuleIdList> export_modules_cache;
     };
 
@@ -779,6 +782,10 @@ private:
     void validate_unsafe_call(const FunctionSignature& signature, const base::SourceRange& range) const;
     void validate_unsafe_function_value_call(TypeHandle callee_type, const base::SourceRange& range) const;
     [[nodiscard]] syntax::ModuleId item_module(syntax::ItemId item) const noexcept;
+    [[nodiscard]] const syntax::ItemImportScope* item_import_scope(syntax::ItemId item) const noexcept;
+    [[nodiscard]] std::span<const syntax::ResolvedImport> imports_for_scope(syntax::ModuleId module) const noexcept;
+    [[nodiscard]] bool uses_item_import_scope(syntax::ModuleId module) const noexcept;
+    [[nodiscard]] bool import_alias_exists_outside_current_scope(std::string_view alias) const noexcept;
     [[nodiscard]] syntax::ModuleId resolve_import_alias(
         std::string_view alias, const base::SourceRange& range, bool report_unknown = true) const;
     [[nodiscard]] std::vector<std::string_view> type_scope_parts(const syntax::TypeNode& type) const;

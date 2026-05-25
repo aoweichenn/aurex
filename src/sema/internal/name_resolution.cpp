@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <span>
 #include <vector>
 
 #include <sema/internal/name_resolution.hpp>
@@ -130,8 +131,7 @@ syntax::ModuleId ModuleVisibilityResolver::resolve_import_alias(
         return syntax::INVALID_MODULE_ID;
     }
     syntax::ModuleId resolved = syntax::INVALID_MODULE_ID;
-    for (const syntax::ResolvedImport& import :
-        this->core_.ctx_.module.modules[this->core_.state_.flow.current_module.value].imports) {
+    for (const syntax::ResolvedImport& import : this->core_.imports_for_scope(this->core_.state_.flow.current_module)) {
         if (import.alias != alias) {
             continue;
         }
@@ -146,6 +146,10 @@ syntax::ModuleId ModuleVisibilityResolver::resolve_import_alias(
     if (!syntax::is_valid(resolved) && report_unknown) {
         this->report_lookup(range, sema_unknown_import_alias_message(alias));
         this->report_lookup_suggestion(range, this->nearest_import_alias_name(alias));
+        if (this->core_.import_alias_exists_outside_current_scope(alias)) {
+            this->core_.report_help(
+                range, SemanticDiagnosticKind::lookup, std::string(SEMA_IMPORTS_ARE_PART_LOCAL_HELP));
+        }
     }
     return resolved;
 }
@@ -156,7 +160,14 @@ const SemanticAnalyzerCore::ModuleIdList& ModuleVisibilityResolver::visible_modu
     if (!syntax::is_valid(module)) {
         return empty;
     }
-    if (const auto found = this->core_.state_.modules.visible_modules_cache.find(module.value);
+    const bool item_scoped = this->core_.uses_item_import_scope(module);
+    if (item_scoped) {
+        if (const auto found =
+                this->core_.state_.modules.item_visible_modules_cache.find(this->core_.state_.flow.current_item.value);
+            found != this->core_.state_.modules.item_visible_modules_cache.end()) {
+            return found->second;
+        }
+    } else if (const auto found = this->core_.state_.modules.visible_modules_cache.find(module.value);
         found != this->core_.state_.modules.visible_modules_cache.end()) {
         return found->second;
     }
@@ -167,14 +178,15 @@ const SemanticAnalyzerCore::ModuleIdList& ModuleVisibilityResolver::visible_modu
         const auto inserted = this->core_.state_.modules.visible_modules_cache.emplace(module.value, std::move(result));
         return inserted.first->second;
     }
-    const base::usize import_count = this->core_.ctx_.module.modules[module.value].imports.size();
+    const std::span<const syntax::ResolvedImport> imports = this->core_.imports_for_scope(module);
+    const base::usize import_count = imports.size();
     SemanticAnalyzerCore::ModuleIdList result = this->make_module_id_list();
     result.reserve(import_count + 1);
     result.push_back(module);
     std::unordered_set<base::u32> seen;
     seen.reserve(import_count + 1);
     seen.insert(module.value);
-    for (const syntax::ResolvedImport& import : this->core_.ctx_.module.modules[module.value].imports) {
+    for (const syntax::ResolvedImport& import : imports) {
         if (!syntax::is_valid(import.module)) {
             continue;
         }
@@ -183,7 +195,10 @@ const SemanticAnalyzerCore::ModuleIdList& ModuleVisibilityResolver::visible_modu
         }
         this->append_public_reexports(import.module, result, seen);
     }
-    const auto inserted = this->core_.state_.modules.visible_modules_cache.emplace(module.value, std::move(result));
+    const auto inserted = item_scoped
+        ? this->core_.state_.modules.item_visible_modules_cache.emplace(
+              this->core_.state_.flow.current_item.value, std::move(result))
+        : this->core_.state_.modules.visible_modules_cache.emplace(module.value, std::move(result));
     return inserted.first->second;
 }
 
@@ -193,8 +208,7 @@ bool ModuleVisibilityResolver::module_alias_visible(const std::string_view name)
         || this->core_.state_.flow.current_module.value >= this->core_.ctx_.module.modules.size()) {
         return false;
     }
-    for (const syntax::ResolvedImport& import :
-        this->core_.ctx_.module.modules[this->core_.state_.flow.current_module.value].imports) {
+    for (const syntax::ResolvedImport& import : this->core_.imports_for_scope(this->core_.state_.flow.current_module)) {
         if (import.alias == name) {
             return true;
         }
@@ -334,8 +348,7 @@ void ModuleVisibilityResolver::report_lookup_suggestion(
 std::string_view ModuleVisibilityResolver::nearest_import_alias_name(const std::string_view name) const
 {
     NameSuggestion best;
-    for (const syntax::ResolvedImport& import :
-        this->core_.ctx_.module.modules[this->core_.state_.flow.current_module.value].imports) {
+    for (const syntax::ResolvedImport& import : this->core_.imports_for_scope(this->core_.state_.flow.current_module)) {
         consider_suggestion(best, name, import.alias);
     }
     return best.name;

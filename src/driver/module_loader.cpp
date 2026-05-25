@@ -170,12 +170,12 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
         return base::Result<syntax::ModuleId>::fail(import_result.error());
     }
 
-    auto parts_result = this->load_declared_parts(canonical, module_name, module.module_path, module.part_declarations,
-        combined, depth, module_id, direct_imports);
+    auto parts_result = this->load_declared_parts(
+        canonical, module_name, module.module_path, module.part_declarations, combined, depth, module_id);
     if (!parts_result) {
         return base::Result<syntax::ModuleId>::fail(parts_result.error());
     }
-    std::vector<syntax::AstModule> part_modules = parts_result.take_value();
+    std::vector<LoadedModulePartAst> part_modules = parts_result.take_value();
 
     {
         ScopedCompilationPhase phase(this->profiler_, PipelineStageId::module_append, module_name);
@@ -183,12 +183,12 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
             && combined.modules.size() == 1 && ast_payloads_empty(combined)) {
             move_root_module_into_empty_combined(combined, std::move(module), module_id);
         } else {
+            append_module_into(combined, std::move(module), is_root, module_id, direct_imports);
             if (syntax::is_valid(module_id) && module_id.value < combined.modules.size()) {
                 combined.modules[module_id.value].imports = std::move(direct_imports);
             }
-            append_module_into(combined, std::move(module), is_root, module_id);
-            for (syntax::AstModule& part_module : part_modules) {
-                append_module_into(combined, std::move(part_module), false, module_id);
+            for (LoadedModulePartAst& part_module : part_modules) {
+                append_module_into(combined, std::move(part_module.module), false, module_id, part_module.imports);
             }
         }
     }
@@ -230,12 +230,12 @@ base::Result<void> ModuleLoader::resolve_imports_for_file(const syntax::AstModul
     return base::Result<void>::ok();
 }
 
-base::Result<std::vector<syntax::AstModule>> ModuleLoader::load_declared_parts(
+base::Result<std::vector<ModuleLoader::LoadedModulePartAst>> ModuleLoader::load_declared_parts(
     const std::filesystem::path& primary_path, const std::string& module_name, const syntax::ModulePath& module_path,
     const std::span<const syntax::ModulePartDecl> part_declarations, syntax::AstModule& combined,
-    const base::usize depth, const syntax::ModuleId module_id, std::vector<syntax::ResolvedImport>& direct_imports)
+    const base::usize depth, const syntax::ModuleId module_id)
 {
-    std::vector<syntax::AstModule> part_modules;
+    std::vector<LoadedModulePartAst> part_modules;
     part_modules.reserve(part_declarations.size());
     std::unordered_map<std::string, const syntax::ModulePartDecl*> parts_by_name;
     std::unordered_map<std::string, const syntax::ModulePartDecl*> parts_by_folded_name;
@@ -246,14 +246,14 @@ base::Result<std::vector<syntax::AstModule>> ModuleLoader::load_declared_parts(
         const std::string part_name{part_decl.name};
         const auto name_inserted = parts_by_name.emplace(part_name, &part_decl);
         if (!name_inserted.second) {
-            return base::Result<std::vector<syntax::AstModule>>::fail(
+            return base::Result<std::vector<LoadedModulePartAst>>::fail(
                 report_duplicate_module_part(this->diagnostics_, module_path, part_decl).error());
         }
 
         const std::string folded_name = module_loader_case_fold(part_decl.name);
         const auto folded_inserted = parts_by_folded_name.emplace(folded_name, &part_decl);
         if (!folded_inserted.second && folded_inserted.first->second->name != part_decl.name) {
-            return base::Result<std::vector<syntax::AstModule>>::fail(report_module_part_case_collision(
+            return base::Result<std::vector<LoadedModulePartAst>>::fail(report_module_part_case_collision(
                 this->diagnostics_, module_path, *folded_inserted.first->second, part_decl)
                     .error());
         }
@@ -263,16 +263,15 @@ base::Result<std::vector<syntax::AstModule>> ModuleLoader::load_declared_parts(
         const std::string part_name{part_decl.name};
         const std::filesystem::path part_path = module_part_file_path(primary_path, part_decl.name);
         if (!module_loader_path_exists(part_path)) {
-            return base::Result<std::vector<syntax::AstModule>>::fail(
+            return base::Result<std::vector<LoadedModulePartAst>>::fail(
                 report_missing_module_part(this->diagnostics_, module_path, part_decl, part_path).error());
         }
 
-        auto part_result =
-            this->load_module_part(part_path, part_decl, module_path, combined, depth, module_id, direct_imports);
+        auto part_result = this->load_module_part(part_path, part_decl, module_path, combined, depth, module_id);
         if (!part_result) {
-            return base::Result<std::vector<syntax::AstModule>>::fail(part_result.error());
+            return base::Result<std::vector<LoadedModulePartAst>>::fail(part_result.error());
         }
-        syntax::AstModule part_module = part_result.take_value();
+        LoadedModulePartAst part_module = part_result.take_value();
         const std::filesystem::path canonical_part_path = module_loader_canonical_or_absolute(part_path);
         if (auto logical = this->loaded_modules_.find(module_name); logical != this->loaded_modules_.end()) {
             logical->second.parts.push_back(LoadedModulePart{part_name, canonical_part_path});
@@ -280,28 +279,28 @@ base::Result<std::vector<syntax::AstModule>> ModuleLoader::load_declared_parts(
         part_modules.push_back(std::move(part_module));
     }
 
-    return base::Result<std::vector<syntax::AstModule>>::ok(std::move(part_modules));
+    return base::Result<std::vector<LoadedModulePartAst>>::ok(std::move(part_modules));
 }
 
-base::Result<syntax::AstModule> ModuleLoader::load_module_part(const std::filesystem::path& part_path,
+base::Result<ModuleLoader::LoadedModulePartAst> ModuleLoader::load_module_part(const std::filesystem::path& part_path,
     const syntax::ModulePartDecl& part_decl, const syntax::ModulePath& expected_module, syntax::AstModule& combined,
-    const base::usize depth, const syntax::ModuleId module_id, std::vector<syntax::ResolvedImport>& direct_imports)
+    const base::usize depth, const syntax::ModuleId module_id)
 {
     if (depth > base::config::AUREX_MAX_INCLUDE_DEPTH) {
-        return base::Result<syntax::AstModule>::fail(module_loader_depth_exceeded_error());
+        return base::Result<LoadedModulePartAst>::fail(module_loader_depth_exceeded_error());
     }
 
     const std::filesystem::path canonical = module_loader_canonical_or_absolute(part_path);
     const std::string key = canonical.string();
     if (this->loading_files_.contains(key)) {
-        return base::Result<syntax::AstModule>::fail(
+        return base::Result<LoadedModulePartAst>::fail(
             report_cyclic_import(this->diagnostics_, &expected_module, key).error());
     }
     LoadingFileScope loading_file_scope{this->loading_files_, key};
 
     auto loaded_source = load_module_source(canonical, this->sources_, this->diagnostics_, this->profiler_, key);
     if (!loaded_source) {
-        return base::Result<syntax::AstModule>::fail(loaded_source.error());
+        return base::Result<LoadedModulePartAst>::fail(loaded_source.error());
     }
 
     LoadedModuleSource loaded = loaded_source.take_value();
@@ -309,14 +308,16 @@ base::Result<syntax::AstModule> ModuleLoader::load_module_part(const std::filesy
     if (part_module.file_kind != syntax::ModuleFileKind::part
         || !syntax::module_paths_equal(part_module.module_path, expected_module)
         || !module_part_name_matches(part_module.part_header, part_decl)) {
-        return base::Result<syntax::AstModule>::fail(
+        return base::Result<LoadedModulePartAst>::fail(
             report_module_part_header_mismatch(this->diagnostics_, expected_module, part_decl.name, part_module)
                 .error());
     }
 
-    const auto import_result = this->resolve_imports_for_file(part_module, canonical, combined, depth, direct_imports);
+    std::vector<syntax::ResolvedImport> part_imports;
+    part_imports.reserve(part_module.imports.size());
+    const auto import_result = this->resolve_imports_for_file(part_module, canonical, combined, depth, part_imports);
     if (!import_result) {
-        return base::Result<syntax::AstModule>::fail(import_result.error());
+        return base::Result<LoadedModulePartAst>::fail(import_result.error());
     }
 
     this->loaded_part_files_.emplace(key,
@@ -325,7 +326,7 @@ base::Result<syntax::AstModule> ModuleLoader::load_module_part(const std::filesy
             std::string(part_module.part_header.name),
         });
     this->loaded_file_modules_.emplace(key, module_id);
-    return base::Result<syntax::AstModule>::ok(std::move(part_module));
+    return base::Result<LoadedModulePartAst>::ok(LoadedModulePartAst{std::move(part_module), std::move(part_imports)});
 }
 
 base::Result<syntax::ModuleId> ModuleLoader::redirect_root_part(const std::filesystem::path& canonical,

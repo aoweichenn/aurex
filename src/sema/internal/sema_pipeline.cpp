@@ -223,6 +223,7 @@ void SemanticAnalysisPipeline::reserve_analysis_storage()
     this->core_.state_.names.enum_cases_by_type.reserve(item_counts.enum_items);
     this->core_.state_.names.enum_cases_by_type_and_case.reserve(item_counts.enum_cases);
     this->core_.state_.modules.visible_modules_cache.reserve(item_counts.modules);
+    this->core_.state_.modules.item_visible_modules_cache.reserve(item_counts.items);
     this->core_.state_.modules.export_modules_cache.reserve(item_counts.modules);
 }
 
@@ -295,6 +296,17 @@ bool SemanticAnalysisPipeline::validate_ast_contract() const
     if (this->core_.ctx_.module.item_modules.size() != this->core_.ctx_.module.items.size()) {
         this->core_.report_internal_contract({}, std::string(SEMA_AST_ITEM_MODULE_CONTRACT));
         valid = false;
+    }
+    for (const syntax::ItemImportScope& scope : this->core_.ctx_.module.item_import_scopes) {
+        if (scope.item_count == 0) {
+            continue;
+        }
+        const base::usize last_item = static_cast<base::usize>(scope.item_begin) + scope.item_count - 1;
+        if (scope.item_begin >= this->core_.ctx_.module.items.size()
+            || last_item >= this->core_.ctx_.module.items.size()) {
+            this->core_.report_internal_contract({}, std::string(SEMA_AST_ITEM_MODULE_CONTRACT));
+            valid = false;
+        }
     }
     const base::usize count =
         std::min(this->core_.ctx_.module.item_modules.size(), this->core_.ctx_.module.items.size());

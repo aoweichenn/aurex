@@ -866,6 +866,9 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
     return "unknown import alias: " + std::string(alias);
 }
 
+inline constexpr std::string_view SEMA_IMPORTS_ARE_PART_LOCAL_HELP =
+    "imports are part-local; add this import to the current module part";
+
 [[nodiscard]] inline std::string sema_ambiguous_import_alias_message(const std::string_view alias)
 {
     return "ambiguous import alias: " + std::string(alias);

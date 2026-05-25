@@ -344,6 +344,139 @@ TEST_F(AurexIntegrationTest, ModuleLoaderRejectsAmbiguousImportCandidates)
     expect_contains(output, (second_import_dir / "lib" / "amb.ax").string());
 }
 
+TEST_F(AurexIntegrationTest, ModulePartsUsePartLocalImportsAndSharedItems)
+{
+    const fs::path work = tmp_root() / "m3-module-part-local-imports";
+    const fs::path import_dir = work / "imports";
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "tools.ax",
+        "module lib.tools;\n"
+        "pub type Num = i32;\n"
+        "pub fn value() -> i32 {\n"
+        "  return 3;\n"
+        "}\n"));
+    const fs::path primary = write_import_test_source(work / "phase3.ax",
+        "module m3.phase3;\n"
+        "part parser;\n"
+        "part emitter;\n"
+        "fn main() -> i32 {\n"
+        "  return cross_part_value() - 4;\n"
+        "}\n");
+    static_cast<void>(write_import_test_source(work / "phase3.parts" / "parser.ax",
+        "module m3.phase3 part parser;\n"
+        "import lib.tools;\n"
+        "fn imported_value(input: tools.Num) -> i32 {\n"
+        "  return input + tools.value();\n"
+        "}\n"));
+    static_cast<void>(write_import_test_source(work / "phase3.parts" / "emitter.ax",
+        "module m3.phase3 part emitter;\n"
+        "fn cross_part_value() -> i32 {\n"
+        "  return imported_value(1);\n"
+        "}\n"));
+
+    const std::string llvm_ir =
+        require_success(aurexc() + " -I " + q(import_dir) + " --emit=llvm-ir " + q(primary)).output;
+    expect_contains_all(llvm_ir,
+        {
+            "@m0_m3_phase3_main",
+            "@m0_m3_phase3_imported_value",
+            "@m0_m3_phase3_cross_part_value",
+            "@m0_lib_tools_value",
+        });
+}
+
+TEST_F(AurexIntegrationTest, ModulePartImportsDoNotLeakAcrossPrimaryOrParts)
+{
+    const fs::path work = tmp_root() / "m3-module-part-import-leakage";
+    const fs::path import_dir = work / "imports";
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "tools.ax",
+        "module lib.tools;\n"
+        "pub fn value() -> i32 {\n"
+        "  return 3;\n"
+        "}\n"));
+
+    const fs::path part_to_primary = write_import_test_source(work / "part_to_primary.ax",
+        "module m3.part_to_primary;\n"
+        "part parser;\n"
+        "fn main() -> i32 {\n"
+        "  return tools.value();\n"
+        "}\n");
+    static_cast<void>(write_import_test_source(work / "part_to_primary.parts" / "parser.ax",
+        "module m3.part_to_primary part parser;\n"
+        "import lib.tools;\n"
+        "fn parser_value() -> i32 {\n"
+        "  return tools.value();\n"
+        "}\n"));
+    const std::string part_to_primary_output =
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(part_to_primary)).output;
+    expect_contains(part_to_primary_output, "unknown import alias: tools");
+    expect_contains(part_to_primary_output, "imports are part-local");
+
+    const fs::path primary_to_part = write_import_test_source(work / "primary_to_part.ax",
+        "module m3.primary_to_part;\n"
+        "import lib.tools;\n"
+        "part parser;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    static_cast<void>(write_import_test_source(work / "primary_to_part.parts" / "parser.ax",
+        "module m3.primary_to_part part parser;\n"
+        "fn parser_value() -> i32 {\n"
+        "  return tools.value();\n"
+        "}\n"));
+    const std::string primary_to_part_output =
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(primary_to_part)).output;
+    expect_contains(primary_to_part_output, "unknown import alias: tools");
+    expect_contains(primary_to_part_output, "imports are part-local");
+
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "holder.ax",
+        "module lib.holder;\n"
+        "part worker;\n"
+        "pub fn holder_value() -> i32 {\n"
+        "  return worker_value();\n"
+        "}\n"));
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "holder.parts" / "worker.ax",
+        "module lib.holder part worker;\n"
+        "import lib.tools;\n"
+        "fn worker_value() -> i32 {\n"
+        "  return tools.value();\n"
+        "}\n"));
+    const fs::path unrelated_loaded_module = write_import_test_source(work / "unrelated_loaded_module.ax",
+        "module m3.unrelated_loaded_module;\n"
+        "import lib.holder;\n"
+        "fn main() -> i32 {\n"
+        "  return tools.value();\n"
+        "}\n");
+    const std::string unrelated_loaded_module_output =
+        require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(unrelated_loaded_module)).output;
+    expect_contains(unrelated_loaded_module_output, "unknown import alias: tools");
+    expect_not_contains(unrelated_loaded_module_output, "imports are part-local");
+}
+
+TEST_F(AurexIntegrationTest, ModuleLoaderRejectsDuplicateItemsAcrossParts)
+{
+    const fs::path work = tmp_root() / "m3-module-part-duplicate-items";
+    const fs::path primary = write_import_test_source(work / "duplicate.ax",
+        "module m3.duplicate_items;\n"
+        "part parser;\n"
+        "part emitter;\n"
+        "fn main() -> i32 {\n"
+        "  return duplicate_value();\n"
+        "}\n");
+    static_cast<void>(write_import_test_source(work / "duplicate.parts" / "parser.ax",
+        "module m3.duplicate_items part parser;\n"
+        "fn duplicate_value() -> i32 {\n"
+        "  return 1;\n"
+        "}\n"));
+    static_cast<void>(write_import_test_source(work / "duplicate.parts" / "emitter.ax",
+        "module m3.duplicate_items part emitter;\n"
+        "fn duplicate_value() -> i32 {\n"
+        "  return 2;\n"
+        "}\n"));
+
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(primary)).output, "duplicate function definition: duplicate_value");
+}
+
 TEST_F(AurexIntegrationTest, ModuleLoaderDiagnosticsCoverSupportBranches)
 {
     const fs::path missing_module_decl = write_import_test_source(tmp_root() / "missing_module_decl.ax",

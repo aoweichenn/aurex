@@ -434,7 +434,7 @@ void remap_item_node(syntax::ItemNode& node, const IdMap& map)
 [[nodiscard]] bool ast_payloads_empty(const syntax::AstModule& module) noexcept
 {
     return module.types.empty() && module.exprs.empty() && module.patterns.empty() && module.stmts.empty()
-        && module.items.empty() && module.item_modules.empty();
+        && module.items.empty() && module.item_modules.empty() && module.item_import_scopes.empty();
 }
 
 void move_root_module_into_empty_combined(
@@ -451,7 +451,7 @@ void move_root_module_into_empty_combined(
 }
 
 void append_module_into(syntax::AstModule& destination, syntax::AstModule&& source, const bool keep_imports,
-    const syntax::ModuleId owner_module)
+    const syntax::ModuleId owner_module, const std::span<const syntax::ResolvedImport> visible_imports)
 {
     IdMap map;
     const base::usize source_type_count = source.types.size();
@@ -515,6 +515,16 @@ void append_module_into(syntax::AstModule& destination, syntax::AstModule&& sour
         syntax::ItemNode node = source.items.take(i);
         remap_item_node(node, map);
         static_cast<void>(destination.push_item_for_module(std::move(node), owner_module));
+    }
+    if (source_item_count != 0) {
+        syntax::ItemImportScope scope;
+        scope.item_begin = static_cast<base::u32>(item_begin);
+        scope.item_count = static_cast<base::u32>(source_item_count);
+        scope.imports.assign(visible_imports.begin(), visible_imports.end());
+        for (syntax::ResolvedImport& import : scope.imports) {
+            destination.intern_resolved_import(import);
+        }
+        destination.item_import_scopes.push_back(std::move(scope));
     }
 
     if (keep_imports) {

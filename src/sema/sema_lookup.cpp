@@ -103,6 +103,81 @@ syntax::ModuleId SemanticAnalyzerCore::item_module(const syntax::ItemId item) co
     return this->ctx_.module.item_modules[item.value];
 }
 
+const syntax::ItemImportScope* SemanticAnalyzerCore::item_import_scope(const syntax::ItemId item) const noexcept
+{
+    if (!syntax::is_valid(item)) {
+        return nullptr;
+    }
+    for (const syntax::ItemImportScope& scope : this->ctx_.module.item_import_scopes) {
+        if (scope.contains(item)) {
+            return &scope;
+        }
+    }
+    return nullptr;
+}
+
+bool SemanticAnalyzerCore::uses_item_import_scope(const syntax::ModuleId module) const noexcept
+{
+    if (!syntax::is_valid(module) || !syntax::is_valid(this->state_.flow.current_item)) {
+        return false;
+    }
+    const syntax::ModuleId item_owner = this->item_module(this->state_.flow.current_item);
+    return syntax::is_valid(item_owner) && item_owner.value == module.value
+        && this->item_import_scope(this->state_.flow.current_item) != nullptr;
+}
+
+std::span<const syntax::ResolvedImport> SemanticAnalyzerCore::imports_for_scope(
+    const syntax::ModuleId module) const noexcept
+{
+    if (!syntax::is_valid(module)) {
+        return {};
+    }
+    if (syntax::is_valid(this->state_.flow.current_item)) {
+        const syntax::ModuleId item_owner = this->item_module(this->state_.flow.current_item);
+        if (syntax::is_valid(item_owner) && item_owner.value == module.value) {
+            if (const syntax::ItemImportScope* const scope = this->item_import_scope(this->state_.flow.current_item);
+                scope != nullptr) {
+                return scope->imports;
+            }
+        }
+    }
+    if (module.value >= this->ctx_.module.modules.size()) {
+        return {};
+    }
+    return this->ctx_.module.modules[module.value].imports;
+}
+
+bool SemanticAnalyzerCore::import_alias_exists_outside_current_scope(const std::string_view alias) const noexcept
+{
+    if (!syntax::is_valid(this->state_.flow.current_module)) {
+        return false;
+    }
+    const syntax::ItemImportScope* const current_scope = this->item_import_scope(this->state_.flow.current_item);
+    for (const syntax::ItemImportScope& scope : this->ctx_.module.item_import_scopes) {
+        if (&scope == current_scope) {
+            continue;
+        }
+        const syntax::ModuleId scope_owner = this->item_module(syntax::ItemId{scope.item_begin});
+        if (!syntax::is_valid(scope_owner) || scope_owner.value != this->state_.flow.current_module.value) {
+            continue;
+        }
+        for (const syntax::ResolvedImport& import : scope.imports) {
+            if (import.alias == alias) {
+                return true;
+            }
+        }
+    }
+    if (this->state_.flow.current_module.value < this->ctx_.module.modules.size()) {
+        for (const syntax::ResolvedImport& import :
+            this->ctx_.module.modules[this->state_.flow.current_module.value].imports) {
+            if (import.alias == alias) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 std::string SemanticAnalyzerCore::qualified_name(const syntax::ModuleId module, const std::string_view name) const
 {
     if (!syntax::is_valid(module) || module.value >= this->ctx_.module.modules.size()) {
@@ -286,8 +361,7 @@ std::string_view SemanticAnalyzerCore::nearest_import_alias_name(const std::stri
         || this->state_.flow.current_module.value >= this->ctx_.module.modules.size()) {
         return best.name;
     }
-    for (const syntax::ResolvedImport& import :
-        this->ctx_.module.modules[this->state_.flow.current_module.value].imports) {
+    for (const syntax::ResolvedImport& import : this->imports_for_scope(this->state_.flow.current_module)) {
         consider_suggestion(best, name, import.alias);
     }
     return best.name;

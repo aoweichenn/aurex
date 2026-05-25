@@ -327,6 +327,7 @@ void evaluate_control_flow_if_statement(const syntax::AstModule& module, std::ve
 struct SemanticAnalyzerCore::FunctionBodyContextScope {
     struct Config {
         syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+        syntax::ItemId item = syntax::INVALID_ITEM_ID;
         TypeHandle return_type = INVALID_TYPE_HANDLE;
         ReturnTypeInference* return_inference = nullptr;
         int loop_depth = SEMA_NO_LOOP_DEPTH;
@@ -336,6 +337,7 @@ struct SemanticAnalyzerCore::FunctionBodyContextScope {
 
     FunctionBodyContextScope(SemanticAnalyzerCore& analyzer, Config config)
         : analyzer(analyzer), previous_module(analyzer.state_.flow.current_module),
+          previous_item(analyzer.state_.flow.current_item),
           previous_function_return_type(analyzer.state_.flow.current_function_return_type),
           previous_return_inference(analyzer.state_.flow.current_return_inference),
           previous_loop_depth(analyzer.state_.flow.loop_depth),
@@ -343,6 +345,8 @@ struct SemanticAnalyzerCore::FunctionBodyContextScope {
           previous_symbols(std::move(analyzer.state_.names.symbols))
     {
         this->analyzer.state_.flow.current_module = config.module;
+        this->analyzer.state_.flow.current_item =
+            syntax::is_valid(config.item) ? config.item : this->analyzer.state_.flow.current_item;
         this->analyzer.state_.flow.current_function_return_type = config.return_type;
         this->analyzer.state_.flow.current_return_inference = config.return_inference;
         this->analyzer.state_.flow.loop_depth = config.loop_depth;
@@ -356,6 +360,7 @@ struct SemanticAnalyzerCore::FunctionBodyContextScope {
     ~FunctionBodyContextScope()
     {
         this->analyzer.state_.flow.current_module = this->previous_module;
+        this->analyzer.state_.flow.current_item = this->previous_item;
         this->analyzer.state_.flow.current_function_return_type = this->previous_function_return_type;
         this->analyzer.state_.flow.current_return_inference = this->previous_return_inference;
         this->analyzer.state_.flow.loop_depth = this->previous_loop_depth;
@@ -365,6 +370,7 @@ struct SemanticAnalyzerCore::FunctionBodyContextScope {
 
     SemanticAnalyzerCore& analyzer;
     syntax::ModuleId previous_module;
+    syntax::ItemId previous_item;
     TypeHandle previous_function_return_type = INVALID_TYPE_HANDLE;
     ReturnTypeInference* previous_return_inference = nullptr;
     int previous_loop_depth = SEMA_NO_LOOP_DEPTH;
@@ -409,6 +415,7 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
     FunctionBodyContextScope context(this->core_,
         FunctionBodyContextScope::Config{
             .module = signature.module,
+            .item = syntax::is_valid(signature.definition_item) ? signature.definition_item : signature.prototype_item,
             .return_type = expected_return,
             .return_inference = infer_return_type ? &return_inference : nullptr,
             .loop_depth = SEMA_NO_LOOP_DEPTH,

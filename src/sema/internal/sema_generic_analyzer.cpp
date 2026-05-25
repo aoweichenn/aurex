@@ -569,12 +569,16 @@ void assign_node_ids(SemaIndexTable& target, const std::vector<base::u32>& sourc
 struct SemanticAnalyzerCore::GenericAnalysisScope {
     GenericAnalysisScope(SemanticAnalyzerCore& analyzer, const syntax::ModuleId module,
         GenericContext* const generic_context, GenericSideTables* const side_tables = nullptr,
-        const bool cache_syntax_types = false)
+        const bool cache_syntax_types = false, const syntax::ItemId item = syntax::INVALID_ITEM_ID)
         : analyzer(analyzer), previous_module(analyzer.state_.flow.current_module),
+          previous_item(analyzer.state_.flow.current_item),
           previous_generic_context(analyzer.state_.flow.current_generic_context),
           previous_side_tables(analyzer.state_.flow.current_side_tables)
     {
         this->analyzer.state_.flow.current_module = module;
+        if (syntax::is_valid(item)) {
+            this->analyzer.state_.flow.current_item = item;
+        }
         this->analyzer.state_.flow.current_generic_context = generic_context;
         if (side_tables != nullptr) {
             this->analyzer.state_.flow.current_side_tables.side_tables = side_tables;
@@ -588,12 +592,14 @@ struct SemanticAnalyzerCore::GenericAnalysisScope {
     ~GenericAnalysisScope()
     {
         this->analyzer.state_.flow.current_module = this->previous_module;
+        this->analyzer.state_.flow.current_item = this->previous_item;
         this->analyzer.state_.flow.current_generic_context = this->previous_generic_context;
         this->analyzer.state_.flow.current_side_tables = this->previous_side_tables;
     }
 
     SemanticAnalyzerCore& analyzer;
     syntax::ModuleId previous_module;
+    syntax::ItemId previous_item;
     GenericContext* previous_generic_context = nullptr;
     GenericSideTableScope previous_side_tables{};
 };
@@ -1004,7 +1010,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::register_generic_template(
         GenericContext generic_context = this->core_.make_generic_context();
         this->core_.populate_generic_placeholder_context(info, generic_context);
         {
-            GenericAnalysisScope scope(this->core_, owner, &generic_context);
+            GenericAnalysisScope scope(this->core_, owner, &generic_context, nullptr, false, info.item);
             info.impl_type_pattern = this->core_.resolve_type(item.impl_type);
         }
         if (!is_valid(info.impl_type_pattern)) {
@@ -1712,7 +1718,7 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(con
 
     bool contains_array = false;
     {
-        GenericAnalysisScope scope(this->core_, info.module, &generic_context);
+        GenericAnalysisScope scope(this->core_, info.module, &generic_context, nullptr, false, info.item);
         std::unordered_set<IdentId, IdentIdHash> seen_fields;
         for (const syntax::FieldDecl& field : item.fields) {
             if (!seen_fields.insert(field.name_id).second) {
@@ -1787,7 +1793,7 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_enum(const
     this->core_.populate_generic_concrete_context(info, args, generic_context);
 
     {
-        GenericAnalysisScope scope(this->core_, info.module, &generic_context);
+        GenericAnalysisScope scope(this->core_, info.module, &generic_context, nullptr, false, info.item);
         this->core_.register_enum_cases_for_item(item, info.module, handle, std::string(item.name),
             std::string(item.name) + abi_suffix + "_", std::string(item.name) + abi_suffix + "_", info.visibility);
     }
@@ -1832,7 +1838,7 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_type_alias
     this->core_.populate_generic_concrete_context(info, args, generic_context);
 
     const TypeHandle resolved = [&] {
-        GenericAnalysisScope scope(this->core_, info.module, &generic_context);
+        GenericAnalysisScope scope(this->core_, info.module, &generic_context, nullptr, false, info.item);
         return this->core_.resolve_type(item.alias_type, opaque_allowed_as_pointee);
     }();
     this->core_.state_.types.resolving_type_aliases.pop_back();
@@ -1956,7 +1962,7 @@ bool SemanticAnalyzerCore::GenericAnalyzer::infer_generic_arguments(
     std::vector<TypeHandle> pattern_param_types;
     pattern_param_types.reserve(function.params.size());
     {
-        GenericAnalysisScope scope(this->core_, info.module, &generic_context);
+        GenericAnalysisScope scope(this->core_, info.module, &generic_context, nullptr, false, info.item);
         for (const syntax::ParamDecl& param : function.params) {
             pattern_param_types.push_back(this->core_.resolve_type(param.type));
         }
@@ -2011,7 +2017,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_pl
 
     FunctionSignature signature = this->core_.state_.checked.make_function_signature();
     {
-        GenericAnalysisScope scope(this->core_, info.module, &generic_context);
+        GenericAnalysisScope scope(this->core_, info.module, &generic_context, nullptr, false, info.item);
         signature.name = this->core_.source_name_text(info.name_id, info.name);
         signature.name_id = info.name_id;
         signature.c_name = signature.name;
@@ -2140,7 +2146,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
 
     FunctionSignature signature = this->core_.state_.checked.make_function_signature();
     {
-        GenericAnalysisScope scope(this->core_, info.module, &generic_context);
+        GenericAnalysisScope scope(this->core_, info.module, &generic_context, nullptr, false, info.item);
         signature.name = this->core_.source_name_text(info.name_id, info.name);
         signature.name_id = info.name_id;
         signature.semantic_key = key;
@@ -2186,7 +2192,8 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
         GenericContext body_context = this->core_.make_generic_context();
         this->core_.populate_generic_concrete_context(info, args, body_context);
         {
-            GenericAnalysisScope scope(this->core_, info.module, &body_context, &transient_side_tables);
+            GenericAnalysisScope scope(
+                this->core_, info.module, &body_context, &transient_side_tables, false, info.item);
             this->core_.analyze_function_body_with_signature(
                 function, key, function_inserted.first->second, this->core_.state_.functions.body_states[key]);
         }
@@ -2225,7 +2232,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
     this->core_.populate_generic_concrete_context(info, args, body_context);
     {
         GenericAnalysisScope scope(this->core_, info.module, &body_context,
-            &this->core_.state_.checked.generic_function_instances[instance_index].side_tables);
+            &this->core_.state_.checked.generic_function_instances[instance_index].side_tables, false, info.item);
         this->core_.analyze_function_body_with_signature(function, key,
             this->core_.state_.checked.generic_function_instances[instance_index].signature,
             this->core_.state_.functions.body_states[key]);
@@ -2277,7 +2284,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_me
 
     FunctionSignature signature = this->core_.state_.checked.make_function_signature();
     {
-        GenericAnalysisScope scope(this->core_, info.module, &generic_context);
+        GenericAnalysisScope scope(this->core_, info.module, &generic_context, nullptr, false, info.item);
         signature.name = this->core_.source_name_text(info.name_id, info.name);
         signature.name_id = info.name_id;
         signature.semantic_key = key;
@@ -2327,7 +2334,8 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_me
         GenericContext body_context = this->core_.make_generic_context();
         this->core_.populate_generic_concrete_context(info, args, body_context);
         {
-            GenericAnalysisScope scope(this->core_, info.module, &body_context, &transient_side_tables);
+            GenericAnalysisScope scope(
+                this->core_, info.module, &body_context, &transient_side_tables, false, info.item);
             this->core_.analyze_function_body_with_signature(
                 function, key, function_inserted.first->second, this->core_.state_.functions.body_states[key]);
         }
@@ -2367,7 +2375,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_me
     this->core_.populate_generic_concrete_context(info, args, body_context);
     {
         GenericAnalysisScope scope(this->core_, info.module, &body_context,
-            &this->core_.state_.checked.generic_function_instances[instance_index].side_tables);
+            &this->core_.state_.checked.generic_function_instances[instance_index].side_tables, false, info.item);
         this->core_.analyze_function_body_with_signature(function, key,
             this->core_.state_.checked.generic_function_instances[instance_index].signature,
             this->core_.state_.functions.body_states[key]);
@@ -2465,7 +2473,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::analyze_generic_function_definition(
 
     FunctionSignature signature = this->core_.state_.checked.make_function_signature();
     {
-        GenericAnalysisScope scope(this->core_, info.module, &generic_context);
+        GenericAnalysisScope scope(this->core_, info.module, &generic_context, nullptr, false, info.item);
         signature.name = this->core_.source_name_text(info.name_id, info.name);
         signature.name_id = info.name_id;
         signature.semantic_key = info.function_key;
@@ -2501,7 +2509,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::analyze_generic_function_body(const 
     GenericContext generic_context = this->core_.make_generic_context();
     this->core_.populate_generic_placeholder_context(info, generic_context);
     GenericSideTables side_tables = make_generic_side_tables(info);
-    GenericAnalysisScope scope(this->core_, info.module, &generic_context, &side_tables);
+    GenericAnalysisScope scope(this->core_, info.module, &generic_context, &side_tables, false, info.item);
     this->core_.analyze_function_body_with_signature(function, info.function_key, signature, state);
 }
 

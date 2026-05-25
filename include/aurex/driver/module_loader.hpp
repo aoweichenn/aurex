@@ -43,19 +43,23 @@ private:
         std::string part_name;
     };
 
+    struct LoadedModulePartAst {
+        syntax::AstModule module;
+        std::vector<syntax::ResolvedImport> imports;
+    };
+
     [[nodiscard]] base::Result<syntax::ModuleId> load_file(const std::filesystem::path& path,
         syntax::AstModule& combined, base::usize depth, bool is_root, const syntax::ModulePath* expected_module);
     [[nodiscard]] base::Result<void> resolve_imports_for_file(const syntax::AstModule& module,
         const std::filesystem::path& canonical, syntax::AstModule& combined, base::usize depth,
         std::vector<syntax::ResolvedImport>& direct_imports);
-    [[nodiscard]] base::Result<std::vector<syntax::AstModule>> load_declared_parts(
+    [[nodiscard]] base::Result<std::vector<LoadedModulePartAst>> load_declared_parts(
         const std::filesystem::path& primary_path, const std::string& module_name,
         const syntax::ModulePath& module_path, std::span<const syntax::ModulePartDecl> part_declarations,
-        syntax::AstModule& combined, base::usize depth, syntax::ModuleId module_id,
-        std::vector<syntax::ResolvedImport>& direct_imports);
-    [[nodiscard]] base::Result<syntax::AstModule> load_module_part(const std::filesystem::path& part_path,
+        syntax::AstModule& combined, base::usize depth, syntax::ModuleId module_id);
+    [[nodiscard]] base::Result<LoadedModulePartAst> load_module_part(const std::filesystem::path& part_path,
         const syntax::ModulePartDecl& part_decl, const syntax::ModulePath& expected_module, syntax::AstModule& combined,
-        base::usize depth, syntax::ModuleId module_id, std::vector<syntax::ResolvedImport>& direct_imports);
+        base::usize depth, syntax::ModuleId module_id);
     [[nodiscard]] base::Result<syntax::ModuleId> redirect_root_part(const std::filesystem::path& canonical,
         const std::string& key, const syntax::AstModule& module, syntax::AstModule& combined, base::usize depth);
 

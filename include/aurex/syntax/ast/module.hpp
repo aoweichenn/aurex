@@ -59,6 +59,17 @@ struct ModuleInfo {
     std::vector<ResolvedImport> imports;
 };
 
+struct ItemImportScope {
+    base::u32 item_begin = 0;
+    base::u32 item_count = 0;
+    std::vector<ResolvedImport> imports;
+
+    [[nodiscard]] bool contains(const ItemId item) const noexcept
+    {
+        return is_valid(item) && item.value >= this->item_begin && item.value - this->item_begin < this->item_count;
+    }
+};
+
 struct AstModule {
     // The AST is intentionally stored as parallel vectors addressed by small
     // IDs. This keeps nodes compact, avoids virtual dispatch, and lets later
@@ -75,6 +86,7 @@ struct AstModule {
     StmtNodeList stmts;
     ItemNodeList items;
     std::vector<ModuleId> item_modules;
+    std::vector<ItemImportScope> item_import_scopes;
     IdentifierInterner identifiers;
 
     AstModule();

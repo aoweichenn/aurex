@@ -533,6 +533,88 @@ M3.0 的 `priv` 是 module-private，不是 file-private。也就是说，同一
 parts 都能看到 `priv` top-level items。只希望当前文件内部可见的 helper 暂时没有语言级修饰符。
 `file priv` 或类似能力是已知后续设计点，不混入 M3.0 第一阶段。
 
+### 7.0 Phase 6A：独立可见性层级
+
+Phase 6A 的优先级从 `ModulePartKey` 之外单独切出：先把 visibility 从二值
+`priv` / `pub` 提升为可扩展层级，但不引入 Rust 式 nested module tree。
+
+目标层级：
+
+```text
+module-private   <   package-visible   <   public
+priv                 pub(package)          pub
+```
+
+语义边界：
+
+- `priv`：同一 `ModuleKey` 内可见，包括 primary 和所有 parts。
+- `pub(package)`：同一 `PackageKey` 内可见，跨 module 可见，但不进入 public API。
+- `pub`：跨 package 可见，是真正 public API surface。
+- 默认可见性保持现状：顶层 item、field、method、import 默认 `priv`。
+
+`pub(crate)` 不作为 Aurex 的首选语法。Aurex 没有 Rust crate/module tree 语义，长期命名应以
+`PackageKey` 为权威。如果要兼容用户习惯，只能把 `pub(crate)` 作为 `pub(package)` 的语法别名，
+并在文档中标记为非首选；不能让 `crate` 获得独立语义。
+
+访问上下文由三元组决定：
+
+```text
+AccessContext {
+  current_package: PackageKey
+  current_module: ModuleKey
+  current_part: ModulePartKey
+}
+```
+
+访问判断：
+
+```text
+can_access(decl_owner, visibility, access_context):
+  visibility == pub          -> true
+  visibility == pub(package) -> decl_owner.package == access_context.current_package
+  visibility == priv         -> decl_owner.module == access_context.current_module
+```
+
+member 的有效可见性必须取 owner 和 member 的 meet：
+
+```text
+effective_visibility(owner, member) = min(owner.visibility, member.visibility)
+```
+
+因此：
+
+- `pub fn` 放在 `priv struct` 的 `impl` 里，不是 public method surface。
+- `pub fn` 放在 `pub(package) struct` 的 `impl` 里，最多是 package-visible method surface。
+- `pub field` 所在 struct 如果是 `pub(package)`，该 field 也最多是 package-visible。
+- `pub(package)` item 可以引用 `pub(package)` type，但不能把 `priv` type 泄漏给 package 其他 module。
+- `pub` item 不能引用 `pub(package)` 或 `priv` type。
+
+导出面需要从单一 public surface 拆成分层 surface：
+
+```text
+ModulePublicExports(ModuleKey)     // pub surface，跨 package 稳定
+ModulePackageExports(ModuleKey)    // pub + pub(package) surface，同 package 内使用
+ItemList(ModuleKey)                // 仍只记录 def identity
+ItemSignature(DefKey)              // 记录 item 自身 signature
+```
+
+如果短期不新增 query kind，也必须在 `ModuleExports(ModuleKey)` 的结构化结果里记录 visibility
+level，让后续拆分 query 时不会改变 stable semantics。长期更理想的 query 边界是 public exports
+和 package exports 分开，避免 package-private signature 改动误打红外部 package。
+
+import visibility 也使用同一层级，但语义分开看：
+
+- `priv import`：只给当前 part 的 name resolution 使用。
+- `pub(package) import`：同 package 内 re-export，可供 package 内 facade 使用。
+- `pub import`：public re-export，进入 public `ModuleExports`。
+
+Phase 6A 暂不做：
+
+- `pub(super)` / `pub(in path)`：没有 nested module tree，不能绑定到不存在的 topology。
+- file-private：`priv` 已经是 module-private；文件私有以后用独立语法设计。
+- protected/friend：与 Aurex 当前模块和类型系统不匹配。
+- package manager / external dependency resolver：`PackageKey` 先作为编译会话内稳定身份。
+
 ### 7.1 `priv` 跨 part
 
 ```aurex

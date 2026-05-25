@@ -1,6 +1,7 @@
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/lex/lexer.hpp>
 #include <aurex/parse/parser.hpp>
+#include <aurex/parse/parser_item_part.hpp>
 #include <aurex/parse/parser_part_ranges.hpp>
 #include <aurex/parse/recovery.hpp>
 #include <aurex/syntax/ast_dump.hpp>
@@ -45,6 +46,16 @@ constexpr base::usize PARSER_TEST_TYPE_NESTING_LIMIT_DEPTH = 600;
 constexpr base::usize PARSER_TEST_PATTERN_NESTING_LIMIT_DEPTH = 600;
 constexpr base::SourceId PARSER_TEST_PROBE_SOURCE_ID{99};
 
+[[nodiscard]] bool diagnostics_contain(const DiagnosticSink& diagnostics, const std::string_view message)
+{
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        if (diagnostic.message.find(message) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void expect_parse_error(const std::string_view source, const std::string_view message)
 {
     DiagnosticSink diagnostics;
@@ -56,14 +67,7 @@ void expect_parse_error(const std::string_view source, const std::string_view me
     auto parsed = parser.parse_module();
     ASSERT_FALSE(parsed);
     ASSERT_TRUE(diagnostics.has_error());
-    bool found = false;
-    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
-        if (diagnostic.message.find(message) != std::string::npos) {
-            found = true;
-            break;
-        }
-    }
-    EXPECT_TRUE(found) << "missing diagnostic: " << message;
+    EXPECT_TRUE(diagnostics_contain(diagnostics, message)) << "missing diagnostic: " << message;
 }
 
 void expect_parse_diagnostic(const std::string_view source, const std::string_view message)
@@ -76,14 +80,7 @@ void expect_parse_diagnostic(const std::string_view source, const std::string_vi
     parse::Parser parser(tokens.value(), diagnostics);
     static_cast<void>(parser.parse_module());
     ASSERT_TRUE(diagnostics.has_error());
-    bool found = false;
-    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
-        if (diagnostic.message.find(message) != std::string::npos) {
-            found = true;
-            break;
-        }
-    }
-    EXPECT_TRUE(found) << "missing diagnostic: " << message;
+    EXPECT_TRUE(diagnostics_contain(diagnostics, message)) << "missing diagnostic: " << message;
 }
 
 [[nodiscard]] syntax::AstModule parse_success(const std::string_view source)
@@ -588,6 +585,58 @@ TEST(CoreUnit, ParserAcceptsModulePartFileHeader)
         });
 }
 
+TEST(CoreUnit, ParserModulePartHelpersDiagnoseUnexpectedContextualKeyword)
+{
+    DiagnosticSink decl_diagnostics;
+    lex::Lexer decl_lexer({6}, "wrong parser;", decl_diagnostics);
+    auto decl_tokens = decl_lexer.tokenize();
+    ASSERT_TRUE(decl_tokens) << decl_tokens.error().message;
+
+    parse::Parser decl_parser(decl_tokens.value(), decl_diagnostics);
+    parse::ItemParser decl_items(decl_parser);
+    const syntax::ModulePartDecl decl = decl_items.parse_module_part_decl();
+    EXPECT_EQ(decl.name, "parser");
+    ASSERT_TRUE(decl_diagnostics.has_error());
+    EXPECT_TRUE(diagnostics_contain(decl_diagnostics, "expected part name after 'part'"));
+
+    DiagnosticSink header_diagnostics;
+    lex::Lexer header_lexer({6}, "wrong parser;", header_diagnostics);
+    auto header_tokens = header_lexer.tokenize();
+    ASSERT_TRUE(header_tokens) << header_tokens.error().message;
+
+    parse::Parser header_parser(header_tokens.value(), header_diagnostics);
+    parse::ItemParser header_items(header_parser);
+    const syntax::ModulePartHeader header = header_items.parse_module_part_header();
+    EXPECT_EQ(header.name, "parser");
+    ASSERT_TRUE(header_diagnostics.has_error());
+    EXPECT_TRUE(diagnostics_contain(header_diagnostics, "expected part name after 'part'"));
+}
+
+TEST(CoreUnit, ParserModulePartHelpersRecoverMissingContextualKeyword)
+{
+    DiagnosticSink decl_diagnostics;
+    lex::Lexer decl_lexer({6}, "+ parser;", decl_diagnostics);
+    auto decl_tokens = decl_lexer.tokenize();
+    ASSERT_TRUE(decl_tokens) << decl_tokens.error().message;
+
+    parse::Parser decl_parser(decl_tokens.value(), decl_diagnostics);
+    parse::ItemParser decl_items(decl_parser);
+    const syntax::ModulePartDecl decl = decl_items.parse_module_part_decl();
+    EXPECT_EQ(decl.name, "parser");
+    EXPECT_TRUE(decl_diagnostics.has_error());
+
+    DiagnosticSink header_diagnostics;
+    lex::Lexer header_lexer({6}, "+ parser;", header_diagnostics);
+    auto header_tokens = header_lexer.tokenize();
+    ASSERT_TRUE(header_tokens) << header_tokens.error().message;
+
+    parse::Parser header_parser(header_tokens.value(), header_diagnostics);
+    parse::ItemParser header_items(header_parser);
+    const syntax::ModulePartHeader header = header_items.parse_module_part_header();
+    EXPECT_EQ(header.name, "parser");
+    EXPECT_TRUE(header_diagnostics.has_error());
+}
+
 TEST(CoreUnit, ParserKeepsPartAsOrdinaryIdentifierOutsideModuleDeclarationArea)
 {
     constexpr std::string_view source = "module parser.part_identifier;\n"
@@ -631,6 +680,11 @@ TEST(CoreUnit, ParserRejectsMalformedModulePartDeclarations)
                        "fn ok() -> i32 { return 0; }\n",
         "part declarations must appear after module declaration");
     expect_parse_error("module parser.part_file part parser;\n"
+                       "part nested;\n"
+                       "fn ok() -> i32 { return 0; }\n",
+        "module part files cannot declare nested part lists");
+    expect_parse_error("module parser.part_file part parser;\n"
+                       "import regex.ast as ast;\n"
                        "part nested;\n"
                        "fn ok() -> i32 { return 0; }\n",
         "module part files cannot declare nested part lists");

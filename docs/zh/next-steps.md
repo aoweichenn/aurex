@@ -12,6 +12,12 @@ profile JSON、incremental cache 和 emit mode 行为。
 
 - 把当前“一个文件一个模块，loader 递归 import 后拼成 combined AST”的模型，升级为逻辑模块和
   source-file part 分离的模型。
+- 当前模块设计基线已经收束到 [Aurex M3 模块系统设计稿](aurex-module-system-m3-design.md)：
+  M3.0 采用显式 primary module 文件、显式 `part name;` 列表和 `module path part name;`
+  part 文件自声明，不用隐式目录扫描定义语言语义。
+- 第四轮使用者视角审视已经纳入设计基线：`--check` / frontend inspection 可以从 part 文件反查
+  owning primary，IR / LLVM IR / native artifact 输出不能从 part root 隐式生成；`.parts` 可发现性、
+  part-local import 误用、module-private `priv` 误解和大小写冲突必须有可操作 diagnostics。
 - 第一阶段只解决同一 package 内的 module part，不做 package manager、版本求解或外部依赖系统。
 - M3 后续功能必须复用 R5 后稳定下来的 driver/session/query/diagnostics/pipeline 主路径，不能另开旁路。
 - R5 的 profile/tooling contract 继续作为后续 profile viewer、LSP adapter 和 IDE stage view 的消费边界。
@@ -58,11 +64,12 @@ R5.13 已完成 profile/tooling 消费者分类契约：`pipeline_profile_phase_
 
 M3.0 的第一批实现顺序：
 
-1. 收束 module part 语义和 parser/AST 形状，固定 `module path part name;` 的声明规则。
-2. 让 `ModuleLoader` 支持同一 `ModuleKey` 下多个 `ModulePartKey`，并拒绝重复 part、路径不匹配和循环。
-3. 设计 sema 可见性：`priv` 跨同一逻辑模块所有 parts 可见，跨模块仍按 import/re-export 和 public API 检查。
-4. 对齐 module graph / exports / item list / item signature 的 query key、dependency 和 invalidation 边界。
-5. 在 M3.0 稳定后，再进入 M3.1 泛型 ABI 稳定化和 query-backed generic signature/body。
+1. Parser / AST 支持 `module path part name;` 和 primary `part name;`，并补 parser dumps / negative tests。
+2. 让 `ModuleLoader` 由 primary part list 加载同一 `ModuleKey` 下多个 `ModulePartKey`，并拒绝重复 part、路径不匹配、
+   artifact root、case-fold path collision 和循环；检查型 part root 需要反查 owning primary。
+3. Sema 按 `ModuleKey` 合并 item list，检测跨 part duplicate item，并让 `priv` 跨同一 logical module 所有 parts 可见。
+4. 对齐 module graph / exports / item list / item signature 的 query key、dependency、fingerprint 和 invalidation 边界。
+5. 在 M3.0 稳定后，再进入 `pub(package)` / `pub use` 候选能力和 M3.1 泛型 ABI 稳定化。
 
 ## 当前分支原则
 

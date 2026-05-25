@@ -320,14 +320,23 @@ priv fn parse(pattern: str) -> Ast {
 - `part name` 必须出现在 primary 文件的 part list 中。
 - part 文件结构固定为 `module part declaration -> import declarations -> items`。
 - part 文件不能再声明 `part name;` 列表。
-- part 文件不能作为 root input 独立编译。
+- part 文件不能作为 codegen / native artifact 的 root input 独立编译。
 - part 文件不能被 `import` 当成独立 module。
 
 CLI 和 tooling 需要区分：
 
-- `aurexc path/to/vm/parser.ax` 这类 CLI root compile 应诊断失败，并提示用户编译 owning primary module。
+- `aurexc --check path/to/vm.parts/parser.ax` 这类检查型命令可以从 part header 反查 owning primary，
+  然后检查完整 owning module；诊断必须说明实际检查的是 `regex.vm`，而不是把 part 当成独立 module。
+- `--emit=tokens` / `--emit=lossless` 这类 source-local inspection 可以直接作用于任意 source file，
+  因为它们不建立 module identity。
+- `--emit=ast` / `--emit=modules` / `--dump-checked` 这类 frontend / sema inspection 如果以 part
+  文件作为输入，也应通过 owning primary 构建完整 module graph，再输出带 part source ranges 的结果。
+- codegen / native artifact 输出，例如 `--emit=ir`、`--emit=llvm-ir`、`--emit=asm`、`--emit=obj`
+  和默认 executable，不能以 part 文件作为 root input。诊断应提示用户改为编译 owning primary module，
+  避免“从 implementation fragment 生成哪个 module artifact”的身份歧义。
 - IDE / tooling 可以临时解析 part buffer，但必须通过 `module path part name;` 反查 owning primary，
-  再构建完整 module graph 后进行语义诊断。
+  再构建完整 module graph 后进行语义诊断；找不到 primary 时只能进入 degraded parsing，不能给出
+  “该 part 独立可编译”的假象。
 
 ### 5.3 Import
 
@@ -444,6 +453,19 @@ module path:  regex.vm
 part parser:  src/runtime/vm.parts/parser.ax
 ```
 
+用户可见的查找规则必须足够可解释：
+
+- primary 声明 `part parser;` 后，缺失文件时诊断必须直接给出期望路径：
+  `src/runtime/vm.parts/parser.ax`。
+- 发现 `src/runtime/vm.parts/parser.ax` 但 primary 没有声明 `part parser;` 时，不能静默纳入；
+  诊断或 IDE quick fix 应提示在 `src/runtime/vm.ax` 的 module declaration 区域添加
+  `part parser;`。
+- part 文件里的 `module regex.vm part parser;` 和 primary 的 module path / part list 不一致时，
+  诊断必须同时指出 part 文件 header 和 owning primary declaration。
+- `.parts` 目录是 implementation sidecar，不是 import search root。用户如果写
+  `import regex.vm.parser;`，编译器只应查找 importable module `regex/vm/parser.ax`，
+  不应把 `regex/vm.parts/parser.ax` 当作 fallback。
+
 采用 `.parts` sidecar 目录是第三轮缺陷审查后的修正。Aurex 当前 import path 规则会把
 `import regex.vm.parser` 映射到 `regex/vm/parser.ax`。如果 module parts 也使用 `regex/vm/parser.ax`，
 那么 logical part `parser` 会和合法 dotted module `regex.vm.parser` 发生物理路径冲突，重演
@@ -458,6 +480,18 @@ regex/vm.parts/parser.ax    -> part parser of module regex.vm
 
 这条规则也降低了 Java split-package 类问题：同一个 importable module path 不应由多个物理文件或
 part 文件共同定义。
+
+跨平台文件系统还需要额外约束。Aurex 语言层面的 module path 和 part name 是大小写敏感的，
+但 macOS 默认文件系统和 Windows 常见配置可能大小写不敏感。loader 必须在 canonical path
+比较之外增加 case-fold collision diagnostics：
+
+```text
+regex/vm.parts/parser.ax
+regex/vm.parts/Parser.ax
+```
+
+如果这两个文件在某个平台上可能指向同一物理路径，或同一 primary 同时声明了只靠大小写区分的
+part name，M3.0 应给出 portability diagnostic。否则团队成员在不同 OS 上会看到不同 module graph。
 
 如果后续需要非约定布局，可以扩展：
 
@@ -796,11 +830,13 @@ M3.0 必须覆盖：
 - part declaration appears after import or item。
 - part file declares a nested part list。
 - part name is not a valid simple identifier。
-- part file compiled as root。
+- part file used as artifact-producing root input。
+- check / frontend inspection starts from part file and resolves owning primary。
 - part file imported as module。
 - import path resolved to part file。
 - import path resolves to multiple candidate module files。
 - importable module path collides with module part sidecar path。
+- module / part path differs only by filesystem case。
 - import cycle。
 - duplicate item across parts。
 - private item accessed from another module。
@@ -822,8 +858,27 @@ Parser / module declaration recovery 也属于 M3.0 用户体验边界：
 
 Loader diagnostics 需要区分 CLI root 和 tooling buffer：
 
-- CLI root 是 part file 时，报错并指出 owning module。
+- CLI root 是 part file 且 emit kind 只做检查 / frontend inspection 时，反查 owning primary，
+  检查完整 module，并添加 note 说明 part 属于哪个 module。
+- CLI root 是 part file 且 emit kind 会生成 IR / LLVM IR / native artifact 时，报错并指出
+  owning primary module；不能把 part 当作独立 artifact identity。
 - tooling buffer 是 part file 时，可以进入 degraded graph recovery，但不能把 part 当独立 module。
+
+用户最常见的误用需要有面向行动的诊断文案：
+
+```text
+part `parser` is declared by module `regex.vm`, but `regex/vm.parts/parser.ax` was not found
+note: create `regex/vm.parts/parser.ax` or remove `part parser;` from `regex/vm.ax`
+
+module part file `regex/vm.parts/parser.ax` is not listed by primary module `regex.vm`
+note: add `part parser;` before imports in `regex/vm.ax`
+
+unknown import alias `ast`
+note: imports are part-local; add `import regex.ast as ast;` to this part
+
+cannot emit LLVM IR from module part `parser`
+note: compile owning primary module `regex.vm` instead
+```
 
 ## 13. Lowering / Backend / ABI
 
@@ -920,8 +975,10 @@ semantics。Aurex 需要 explicit `part` 作为 language-level membership。
 - primary-sidecar part lookup。
 - import resolution ambiguous candidate diagnostics。
 - duplicate primary / duplicate part / mismatch diagnostics。
-- part root compile 和 import-to-part diagnostics。
+- part root check / inspection owning-primary discovery。
+- part artifact root rejection 和 import-to-part diagnostics。
 - canonical import candidate de-duplication。
+- case-fold path collision diagnostics。
 - 保留 combined AST 兼容输出。
 
 ### Phase 3：Sema item merge
@@ -995,7 +1052,9 @@ Loader:
 - import points to part file 拒绝。
 - import path resolves to multiple candidates 拒绝。
 - same canonical import file through multiple search roots is not ambiguous。
-- part root compile 拒绝。
+- `--check` / frontend inspection 从 part file 启动时检查 owning module。
+- codegen / native artifact 从 part file 启动时拒绝，并提示 owning primary。
+- module / part path case-fold collision 给出 portability diagnostic。
 - tooling buffer part recovery 不把 part 当独立 module。
 
 Sema:
@@ -1058,12 +1117,13 @@ ModuleGraph / ModuleExports query 化
 - current sema lookup cache 如果仍按 `syntax::ModuleId` 工作，需要确保一个 logical module 的多个 parts
   不被误认为多个可见 module。
 - `ModuleExports` fingerprint 必须基于 stable keys 和 exported signature surface，而不是 source text。
-- IDE degraded graph recovery 不能悄悄放宽 CLI 编译语义。
+- IDE degraded graph recovery 不能悄悄把 part 当作独立 module，也不能放宽 artifact-producing emit 的
+  root identity 规则。
 - `pub(package)`、`pub use` 和 custom `part from` 必须后置，不能混入 M3.0 第一阶段。
 
 进入实现前的结论：可以开始 Phase 1 Parser / AST，但每个阶段都必须带对应 negative tests；
-尤其是 part lookup、root part compile、import-to-part、part-local alias、duplicate item、exported
-surface leakage 和 traversal-order stability 不能后补。
+尤其是 part lookup、part root check discovery、part artifact root rejection、import-to-part、
+part-local alias、duplicate item、exported surface leakage 和 traversal-order stability 不能后补。
 
 ## 18. 第三轮缺陷驱动审视
 
@@ -1096,7 +1156,122 @@ surface leakage 和 traversal-order stability 不能后补。
 否则会复制 Python shadowing / Java split-package / Rust path migration 的问题。
 ```
 
-## 19. 参考资料
+## 19. 第四轮使用者视角审视
+
+第四轮审视从 Aurex 使用者的日常动作出发：新建模块、拆文件、在编辑器里保存当前文件、运行
+`aurexc --check`、读错误信息、迁移目录、在不同操作系统协作。结论是：M3.0 的核心语义仍应保持
+显式和静态，但 CLI / diagnostics / tooling 必须让这些规则可发现、可恢复、可迁移。
+
+### 19.1 当前设计对使用者友好的部分
+
+- `module regex.vm;` 和 dotted path 容易阅读，也和现有 import 习惯一致。
+- `part parser;` 明确告诉读者一个大 module 被拆成哪些实现文件，不需要猜目录里哪些文件属于模块。
+- `priv` 是 module-private，移动 helper 到另一个 part 后不需要扩大 visibility。
+- imports 是 part-local，读单个文件时能看见该文件依赖了哪些外部 module。
+- `.parts` sidecar 把 implementation part 和 importable module 分开，避免 `regex.vm.parser`
+  到底是 nested module 还是 implementation fragment 的歧义。
+- `DefKey` 不依赖文件路径，使“整理代码、移动函数到另一个 part”不会无意义地制造 ABI / cache churn。
+
+### 19.2 使用者最可能踩的坑
+
+1. 用户会在编辑器或终端里对当前 part 文件运行 `aurexc --check path/to/vm.parts/parser.ax`。
+   如果一律报错，体验会比现有单文件编译差；如果把 part 当独立 module 编译，则破坏语义。
+   因此 M3.0 采用中间策略：检查类和 frontend inspection 可以从 part 反查 owning primary，
+   但 artifact-producing emit 必须要求 primary。
+2. `.parts` 目录不是大多数语言的常见写法。它解决了路径冲突，但会降低初学者可发现性。
+   所以 missing / unlisted part diagnostics 必须直接说出要创建哪个文件、要在 primary 哪个位置添加
+   `part name;`。
+3. imports 是 part-local 会让从 Kotlin / Python 迁移来的用户困惑：他们可能以为 primary 的 import
+   对所有 parts 生效。诊断需要在 unknown alias 时主动提示“imports are part-local”。
+4. `priv` 不是 file-private。拆文件后 helper 对同 module 所有 parts 可见，这是有意设计。
+   未来如果用户需要文件私有 helper，应作为 `file priv` 或类似能力单独设计，不能让 M3.0 的 `priv`
+   在不同上下文里变成双重含义。
+5. part list 显式带来 boilerplate。M3.0 接受这个成本，因为它换来 deterministic module graph；
+   但 tooling 必须提供 quick fix / scaffold，否则大模块拆分会显得笨重。
+6. 大小写敏感语义和大小写不敏感文件系统会让协作变脆。M3.0 必须诊断只靠大小写区分的 module / part
+   路径冲突，避免 macOS / Windows / Linux 上结果不同。
+
+### 19.3 CLI 行为收口
+
+M3.0 把 CLI root input 分成三类：
+
+```text
+source-local inspection:
+  --emit=tokens
+  --emit=lossless
+
+module check / frontend inspection:
+  --check
+  --emit=ast
+  --emit=modules
+  --dump-checked / --emit=checked
+  --emit=typed
+
+artifact-producing emit:
+  --emit=ir
+  --emit=llvm-ir
+  --emit=asm
+  --emit=obj
+  --emit=exe / default executable
+```
+
+规则：
+
+- source-local inspection 可以直接读取 part 文件，不建立 module identity。
+- module check / frontend inspection 如果输入是 part 文件，必须反查 owning primary，并对完整 module graph
+  运行；输出里仍保留 part source ranges。
+- artifact-producing emit 如果输入是 part 文件，必须拒绝，并提示 owning primary。这样避免用户误以为
+  `parser.ax` 会生成一个独立 module artifact。
+
+这个规则参考了现代 IDE / compiler 的实际分层：编辑器需要当前文件检查能力，build 系统需要稳定的
+module artifact identity，两者不能混成一条隐式语义。
+
+### 19.4 Tooling 和 IDE 必须承担的体验责任
+
+M3.0 的语言核心不做隐式目录扫描，但 IDE 可以在不改变语义的前提下提供辅助：
+
+- 新建 part scaffold：在 primary 中插入 `part name;`，并创建 `.parts/name.ax`。
+- 对未列出的 `.parts/name.ax` 提供 quick fix：添加 `part name;`。
+- 对 missing part 提供 quick fix：创建期望路径，或删除 primary 中的 part declaration。
+- 对 unknown alias 提供 quick fix：在当前 part 顶部添加 import，而不是加到 primary 后假装全局生效。
+- 对 `priv` 被其他 module 访问的错误，提示“same package is not enough in M3.0”，避免用户误解
+  package-private 已存在。
+- 对大小写冲突给出跨平台说明，避免把它当成普通 duplicate file error。
+
+这些属于 tooling contract，不是语义放宽。实现时可以先做高质量 diagnostics，再逐步加 IDE quick fix。
+
+### 19.5 仍然拒绝的“更省事”方案
+
+从使用者角度看，以下方案短期更省事，但长期会伤害编译器和大型项目：
+
+- 隐式扫描 `.parts` 目录：新文件一保存就改变 module graph，临时文件和生成文件会污染语义。
+- primary import 自动传播到所有 parts：读单个 part 时依赖不完整，name lookup cache 和 diagnostics 也更脆。
+- part 文件既能作为 module part 又能作为 importable module：会制造 `regex.vm.parser` 的双重身份。
+- artifact emit 从 part root 自动推断输出 module：build artifact identity 不清晰，也会让增量缓存和链接行为不稳定。
+- 默认 prelude / glob import：更省输入，但会增加 unknown name 和 ambiguous name 的解释成本。
+
+### 19.6 第四轮后的设计结论
+
+本轮不改变 M3.0 的主线：
+
+```text
+显式 primary
+显式 part list
+part 自声明
+ModuleKey / ModulePartKey 分离
+ModuleGraph / ModuleExports query 化
+```
+
+但新增三条使用者视角的硬约束：
+
+- `--check` 和 frontend inspection 必须能从 part 文件反查 owning primary，不能只给生硬拒绝。
+- `.parts` / part-local imports / `priv` module-private / case-fold collision 都必须有行动导向的 diagnostics。
+- tooling 可以提升体验，但不能通过隐式扫描、隐式 import 传播或 part-as-module 放宽语言语义。
+
+进入实现时，Phase 1 / Phase 2 不能只做 AST 和 loader happy path；必须把这些用户路径作为第一批
+negative / integration tests。否则 M3.0 会在内部结构上现代化，但在使用体验上显得割裂。
+
+## 20. 参考资料
 
 - Python import system: <https://docs.python.org/3/reference/import.html>
 - Python modules tutorial: <https://docs.python.org/3/tutorial/modules.html>

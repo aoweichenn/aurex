@@ -1,5 +1,9 @@
 # Aurex 模块系统 V2 设计草案
 
+> 2026-05-25 状态：本文档保留为 M2.5 到 M3 模块系统的背景草案和取舍记录。M3.0 当前设计基线已经收束到
+> [Aurex M3 模块系统设计稿](aurex-module-system-m3-design.md)：采用显式 primary module 文件、
+> 显式 `part name;` 列表和 `module path part name;` part 文件自声明，不使用隐式目录扫描定义模块语义。
+
 ## 1. 背景
 
 当前 Aurex 已经有最小模块系统：

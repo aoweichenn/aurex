@@ -19,6 +19,7 @@
 - [Aurex 语法现状与设计评估](language-syntax-and-design-review.md)
 - [类、trait 与组合背景说明](class-trait-composition-background.md)
 - [Aurex M3 模块系统设计稿](aurex-module-system-m3-design.md)
+- [Aurex M3 模块系统使用案例](aurex-module-system-m3-example.md)
 - [Aurex 模块系统 V2 设计草案](module-system-v2-design.md)
 - [设计实现文档](implementation.md)
 - [M2.5 收尾重构详细设计](m2.5-refactor-cleanup-design.md)

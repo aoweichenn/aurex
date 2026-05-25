@@ -67,7 +67,8 @@ M3.1 仍只使用当前内建非资源 capability：`Sized`、`Eq`、`Ord`、`Ha
 
 ## 模块系统设计基线
 
-M3 模块部分的当前设计基线见 [Aurex M3 模块系统设计稿](aurex-module-system-m3-design.md)。
+M3 模块部分的当前设计基线见 [Aurex M3 模块系统设计稿](aurex-module-system-m3-design.md)，
+使用体验评估样例见 [Aurex M3 模块系统使用案例](aurex-module-system-m3-example.md)。
 路线不再把 primary part list 作为待决策项；M3.0 采用：
 
 ```text

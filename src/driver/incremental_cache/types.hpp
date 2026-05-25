@@ -1,8 +1,5 @@
 #pragma once
 
-#include "common.hpp"
-#include "format.hpp"
-
 #include <aurex/driver/module_loader.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
@@ -14,6 +11,9 @@
 #include <string_view>
 #include <unordered_map>
 #include <vector>
+
+#include "common.hpp"
+#include "format.hpp"
 
 namespace aurex::driver::incremental_cache_detail {
 
@@ -110,6 +110,7 @@ struct ParseFileQuerySubject {
 struct ModuleExportsQuerySubject {
     query::ModuleKey key;
     query::QueryResultFingerprint result;
+    std::vector<query::ModuleKey> reexport_dependencies;
 };
 
 struct ModuleGraphQuerySubject {
@@ -120,15 +121,14 @@ struct ModuleGraphQuerySubject {
 struct ModuleExportsSignatureEntry {
     std::string category;
     std::string name;
-    sema::StableDefId stable_id;
-    sema::IncrementalKey incremental_key;
+    std::string identity;
+    std::string signature;
 };
 
 struct ItemListSignatureEntry {
     std::string category;
     std::string name;
-    sema::StableDefId stable_id;
-    sema::IncrementalKey incremental_key;
+    std::string identity;
 };
 
 struct ItemListQuerySubject {

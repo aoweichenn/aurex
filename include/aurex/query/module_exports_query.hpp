@@ -10,6 +10,7 @@ namespace aurex::query {
 struct ModuleExportsProviderInput {
     ModuleKey key;
     QueryResultFingerprint exports;
+    std::vector<ModuleKey> reexport_dependencies{};
 };
 
 struct ModuleExportsProviderOutput {

@@ -1,5 +1,3 @@
-#include "detail.hpp"
-
 #include <algorithm>
 #include <span>
 #include <string>
@@ -7,35 +5,37 @@
 #include <tuple>
 #include <vector>
 
+#include "detail.hpp"
+
 namespace aurex::driver::incremental_cache_detail {
 namespace cache_format = incremental_cache_format;
 using namespace cache_format;
 
 namespace {
 
+constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_CONST = "const";
+constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_REEXPORT = "reexport";
+constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_STRUCT_FIELD = "struct_field";
+constexpr std::string_view INCREMENTAL_CACHE_EXPORT_EXTERN_C_TAG = "extern_c";
+constexpr std::string_view INCREMENTAL_CACHE_EXPORT_AUREX_TAG = "aurex";
+constexpr std::string_view INCREMENTAL_CACHE_EXPORT_VARIADIC_TAG = "variadic";
+constexpr std::string_view INCREMENTAL_CACHE_EXPORT_FIXED_TAG = "fixed";
+constexpr std::string_view INCREMENTAL_CACHE_GRAPH_PRIMARY_PART_TAG = "primary";
+constexpr std::string_view INCREMENTAL_CACHE_GRAPH_NAMED_PART_TAG = "named";
+constexpr std::string_view INCREMENTAL_CACHE_INVALID_TYPE_TAG = "<invalid>";
+constexpr base::usize INCREMENTAL_CACHE_EXPORT_PARAM_TEXT_BUDGET = 16;
+constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
+
 [[nodiscard]] bool module_exports_signature_entry_less(
     const ModuleExportsSignatureEntry& lhs, const ModuleExportsSignatureEntry& rhs)
 {
-    return std::tie(lhs.category, lhs.name, lhs.stable_id.global_id, lhs.stable_id.name.primary,
-               lhs.stable_id.name.secondary, lhs.stable_id.name.byte_count, lhs.stable_id.disambiguator,
-               lhs.stable_id.kind, lhs.incremental_key.global_id, lhs.incremental_key.fingerprint.primary,
-               lhs.incremental_key.fingerprint.secondary, lhs.incremental_key.fingerprint.byte_count)
-        < std::tie(rhs.category, rhs.name, rhs.stable_id.global_id, rhs.stable_id.name.primary,
-            rhs.stable_id.name.secondary, rhs.stable_id.name.byte_count, rhs.stable_id.disambiguator,
-            rhs.stable_id.kind, rhs.incremental_key.global_id, rhs.incremental_key.fingerprint.primary,
-            rhs.incremental_key.fingerprint.secondary, rhs.incremental_key.fingerprint.byte_count);
+    return std::tie(lhs.category, lhs.name, lhs.identity, lhs.signature)
+        < std::tie(rhs.category, rhs.name, rhs.identity, rhs.signature);
 }
 
 [[nodiscard]] bool item_list_signature_entry_less(const ItemListSignatureEntry& lhs, const ItemListSignatureEntry& rhs)
 {
-    return std::tie(lhs.category, lhs.name, lhs.stable_id.global_id, lhs.stable_id.name.primary,
-               lhs.stable_id.name.secondary, lhs.stable_id.name.byte_count, lhs.stable_id.disambiguator,
-               lhs.stable_id.kind, lhs.incremental_key.global_id, lhs.incremental_key.fingerprint.primary,
-               lhs.incremental_key.fingerprint.secondary, lhs.incremental_key.fingerprint.byte_count)
-        < std::tie(rhs.category, rhs.name, rhs.stable_id.global_id, rhs.stable_id.name.primary,
-            rhs.stable_id.name.secondary, rhs.stable_id.name.byte_count, rhs.stable_id.disambiguator,
-            rhs.stable_id.kind, rhs.incremental_key.global_id, rhs.incremental_key.fingerprint.primary,
-            rhs.incremental_key.fingerprint.secondary, rhs.incremental_key.fingerprint.byte_count);
+    return std::tie(lhs.category, lhs.name, lhs.identity) < std::tie(rhs.category, rhs.name, rhs.identity);
 }
 
 [[nodiscard]] std::vector<std::string_view> module_name_parts(const std::string_view module_name)
@@ -60,117 +60,400 @@ namespace {
     return sema::stable_module_id(std::span<const std::string_view>{parts.data(), parts.size()});
 }
 
+[[nodiscard]] sema::StableModuleId stable_module_id_from_name(const std::string_view module_name)
+{
+    const std::vector<std::string_view> parts = module_name_parts(module_name);
+    return sema::stable_module_id(std::span<const std::string_view>{parts.data(), parts.size()});
+}
+
+[[nodiscard]] query::ModuleKey module_key_from_name(const std::string_view module_name)
+{
+    return query::module_key_from_stable_id(stable_module_id_from_name(module_name));
+}
+
+[[nodiscard]] std::string stable_identity_string(const sema::StableDefId& stable_id)
+{
+    return query::is_valid(stable_id) ? query::stable_serialize(stable_id) : std::string{};
+}
+
+[[nodiscard]] std::string stable_identity_string(const sema::StableMemberKey& stable_key)
+{
+    return query::is_valid(stable_key) ? query::stable_serialize(stable_key) : std::string{};
+}
+
+[[nodiscard]] std::string type_display_name(const sema::CheckedModule& checked, const sema::TypeHandle type)
+{
+    return sema::is_valid(type) ? checked.types.display_name(type) : std::string(INCREMENTAL_CACHE_INVALID_TYPE_TAG);
+}
+
+[[nodiscard]] std::string checked_syntax_type_display_name(
+    const sema::CheckedModule& checked, const syntax::TypeId type)
+{
+    if (!syntax::is_valid(type) || type.value >= checked.syntax_type_handles.size()) {
+        return std::string(INCREMENTAL_CACHE_INVALID_TYPE_TAG);
+    }
+    return type_display_name(checked, checked.syntax_type_handles[type.value]);
+}
+
+[[nodiscard]] std::string module_part_kind_name(const ModulePartRecordKind kind)
+{
+    switch (kind) {
+        case ModulePartRecordKind::primary:
+            return std::string(INCREMENTAL_CACHE_GRAPH_PRIMARY_PART_TAG);
+        case ModulePartRecordKind::named:
+            return std::string(INCREMENTAL_CACHE_GRAPH_NAMED_PART_TAG);
+    }
+    return {};
+}
+
+[[nodiscard]] bool module_key_less(const query::ModuleKey lhs, const query::ModuleKey rhs)
+{
+    return query::stable_serialize(lhs) < query::stable_serialize(rhs);
+}
+
+[[nodiscard]] std::vector<query::ModuleKey> primary_public_reexport_dependencies(const ModuleRecord& module)
+{
+    std::vector<query::ModuleKey> dependencies;
+    dependencies.reserve(module.imports.size());
+    for (const ModuleImportRecord& import : module.imports) {
+        if (!import.owner_is_primary || !import.is_public) {
+            continue;
+        }
+        const query::ModuleKey key = module_key_from_name(import.module_name);
+        if (query::is_valid(key)) {
+            dependencies.push_back(key);
+        }
+    }
+    std::sort(dependencies.begin(), dependencies.end(), module_key_less);
+    dependencies.erase(std::unique(dependencies.begin(), dependencies.end()), dependencies.end());
+    return dependencies;
+}
+
 [[nodiscard]] query::QueryResultFingerprint module_graph_result_fingerprint(
-    const query::ModuleKey key, const std::span<const ModuleRecord> modules)
+    const query::ModuleKey key, const ModuleRecord& module)
 {
     query::StableHashBuilder builder;
     builder.mix_string(INCREMENTAL_CACHE_MODULE_GRAPH_RESULT_MARKER);
     builder.mix_fingerprint(query::stable_key_fingerprint(key));
-    builder.mix_u64(static_cast<base::u64>(modules.size()));
-    for (base::usize index = 0; index < modules.size(); ++index) {
-        const ModuleRecord& module = modules[index];
+    builder.mix_string(module.name);
+    builder.mix_string(module.path.string());
+
+    std::vector<const ModulePartRecord*> parts;
+    parts.reserve(module.parts.size());
+    for (const ModulePartRecord& part : module.parts) {
+        parts.push_back(&part);
+    }
+    std::sort(parts.begin(), parts.end(), [](const ModulePartRecord* lhs, const ModulePartRecord* rhs) {
+        return std::tie(lhs->kind, lhs->name, lhs->path) < std::tie(rhs->kind, rhs->name, rhs->path);
+    });
+    builder.mix_u64(static_cast<base::u64>(parts.size()));
+    for (base::usize index = 0; index < parts.size(); ++index) {
+        const ModulePartRecord& part = *parts[index];
         builder.mix_u64(static_cast<base::u64>(index));
-        builder.mix_string(module.name);
-        builder.mix_string(module.path.string());
+        builder.mix_string(module_part_kind_name(part.kind));
+        builder.mix_string(part.name);
+        builder.mix_string(part.path.string());
+    }
+
+    std::vector<const ModuleImportRecord*> imports;
+    imports.reserve(module.imports.size());
+    for (const ModuleImportRecord& import : module.imports) {
+        imports.push_back(&import);
+    }
+    std::sort(imports.begin(), imports.end(), [](const ModuleImportRecord* lhs, const ModuleImportRecord* rhs) {
+        return std::tie(lhs->owner_is_primary, lhs->owner_part, lhs->module_name, lhs->alias, lhs->is_public)
+            < std::tie(rhs->owner_is_primary, rhs->owner_part, rhs->module_name, rhs->alias, rhs->is_public);
+    });
+    builder.mix_u64(static_cast<base::u64>(imports.size()));
+    for (base::usize index = 0; index < imports.size(); ++index) {
+        const ModuleImportRecord& import = *imports[index];
+        builder.mix_u64(static_cast<base::u64>(index));
+        builder.mix_bool(import.owner_is_primary);
+        builder.mix_string(import.owner_part);
+        builder.mix_string(import.module_name);
+        builder.mix_string(import.alias);
+        builder.mix_bool(import.is_public);
     }
     return query::query_result_fingerprint(builder.finish());
 }
 
 void push_module_exports_signature_entry(std::vector<ModuleExportsSignatureEntry>& entries,
-    const std::string_view category, const std::string_view name, const sema::StableDefId& stable_id,
-    const sema::IncrementalKey& incremental_key, const syntax::Visibility visibility,
-    const sema::StableModuleId& module)
+    const std::string_view category, const std::string_view name, std::string identity, std::string signature)
 {
-    if (visibility != syntax::Visibility::public_ || stable_id.module != module || !query::is_valid(stable_id)
-        || !query::is_valid(incremental_key)) {
+    if (identity.empty()) {
         return;
     }
     entries.push_back(ModuleExportsSignatureEntry{
         std::string(category),
         std::string(name),
-        stable_id,
-        incremental_key,
+        std::move(identity),
+        std::move(signature),
     });
 }
 
 void push_item_list_signature_entry(std::vector<ItemListSignatureEntry>& entries, const std::string_view category,
-    const std::string_view name, const sema::StableDefId& stable_id, const sema::IncrementalKey& incremental_key,
-    const sema::StableModuleId& module)
+    const std::string_view name, std::string identity)
 {
-    if (stable_id.module != module || !query::is_valid(stable_id) || !query::is_valid(incremental_key)) {
+    if (identity.empty()) {
         return;
     }
     entries.push_back(ItemListSignatureEntry{
         std::string(category),
         std::string(name),
-        stable_id,
-        incremental_key,
+        std::move(identity),
     });
 }
 
-[[nodiscard]] std::vector<ModuleExportsSignatureEntry> collect_module_exports_signature_entries(
-    const sema::CheckedModule& checked, const sema::StableModuleId& module)
+[[nodiscard]] bool stable_id_belongs_to_module(
+    const sema::StableDefId& stable_id, const sema::StableModuleId& module) noexcept
 {
-    std::vector<ModuleExportsSignatureEntry> entries;
-    entries.reserve(
-        checked.functions.size() + checked.structs.size() + checked.enum_cases.size() + checked.type_aliases.size());
+    return query::is_valid(stable_id) && stable_id.module == module;
+}
 
-    for (const auto& entry : checked.functions) {
-        const sema::FunctionSignature& signature = entry.second;
-        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_FUNCTION, signature.name.view(),
-            signature.stable_id, signature.incremental_key, signature.visibility, module);
+[[nodiscard]] bool function_signature_is_exported_surface(
+    const sema::CheckedModule& checked, const sema::FunctionSignature& signature)
+{
+    if (!signature.is_method) {
+        return true;
     }
     for (const auto& entry : checked.structs) {
         const sema::StructInfo& info = entry.second;
-        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_STRUCT, info.name.view(),
-            info.stable_id, info.incremental_key, info.visibility, module);
+        if (info.type.value == signature.method_owner_type.value) {
+            return info.visibility == syntax::Visibility::public_;
+        }
     }
     for (const auto& entry : checked.enum_cases) {
         const sema::EnumCaseInfo& info = entry.second;
-        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_ENUM_CASE, info.name.view(),
-            info.stable_id, info.incremental_key, info.visibility, module);
+        if (info.type.value == signature.method_owner_type.value) {
+            return info.visibility == syntax::Visibility::public_;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] std::string function_export_name(
+    const sema::CheckedModule& checked, const sema::FunctionSignature& signature)
+{
+    if (signature.is_method) {
+        return checked.types.display_name(signature.method_owner_type) + "."
+            + sema::function_display_name(checked.types, signature);
+    }
+    return std::string(signature.name.view());
+}
+
+[[nodiscard]] std::string function_export_signature(
+    const sema::CheckedModule& checked, const sema::FunctionSignature& signature)
+{
+    std::string value;
+    value.reserve(signature.param_types.size() * INCREMENTAL_CACHE_EXPORT_PARAM_TEXT_BUDGET
+        + INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET);
+    value += signature.is_extern_c ? INCREMENTAL_CACHE_EXPORT_EXTERN_C_TAG : INCREMENTAL_CACHE_EXPORT_AUREX_TAG;
+    value.push_back('|');
+    value += signature.is_variadic ? INCREMENTAL_CACHE_EXPORT_VARIADIC_TAG : INCREMENTAL_CACHE_EXPORT_FIXED_TAG;
+    value.push_back('|');
+    value += type_display_name(checked, signature.return_type);
+    for (const sema::TypeHandle param : signature.param_types) {
+        value.push_back('|');
+        value += type_display_name(checked, param);
+    }
+    return value;
+}
+
+[[nodiscard]] std::string enum_case_export_signature(const sema::CheckedModule& checked, const sema::EnumCaseInfo& info)
+{
+    std::string value;
+    value += type_display_name(checked, info.type);
+    for (const sema::TypeHandle payload : info.payload_types) {
+        value.push_back('|');
+        value += type_display_name(checked, payload);
+    }
+    if (info.payload_types.empty()) {
+        value.push_back('|');
+        value += type_display_name(checked, info.payload_type);
+    }
+    return value;
+}
+
+[[nodiscard]] sema::StableDefId stable_const_id(
+    const syntax::AstModule& ast, const syntax::ItemNode& item, const syntax::ModuleId module)
+{
+    if (!syntax::is_valid(module) || module.value >= ast.modules.size()) {
+        return {};
+    }
+    return sema::stable_definition_id(
+        sema::stable_module_id(ast.modules[module.value].path.parts), sema::StableSymbolKind::value, item.name);
+}
+
+void collect_const_item_list_entries(std::vector<ItemListSignatureEntry>& entries, const syntax::AstModule* const ast,
+    const sema::StableModuleId& module)
+{
+    if (ast == nullptr) {
+        return;
+    }
+    for (base::u32 index = 0; index < ast->items.size(); ++index) {
+        if (ast->items.kind(index) != syntax::ItemKind::const_decl || index >= ast->item_modules.size()) {
+            continue;
+        }
+        const syntax::ItemNode item = ast->items[index];
+        const sema::StableDefId stable_id = stable_const_id(*ast, item, ast->item_modules[index]);
+        if (!stable_id_belongs_to_module(stable_id, module)) {
+            continue;
+        }
+        push_item_list_signature_entry(
+            entries, INCREMENTAL_CACHE_CATEGORY_CONST, item.name, stable_identity_string(stable_id));
+    }
+}
+
+void collect_const_module_export_entries(std::vector<ModuleExportsSignatureEntry>& entries,
+    const sema::CheckedModule& checked, const syntax::AstModule* const ast, const sema::StableModuleId& module)
+{
+    if (ast == nullptr) {
+        return;
+    }
+    for (base::u32 index = 0; index < ast->items.size(); ++index) {
+        if (ast->items.kind(index) != syntax::ItemKind::const_decl || index >= ast->item_modules.size()) {
+            continue;
+        }
+        const syntax::ItemNode item = ast->items[index];
+        const sema::StableDefId stable_id = stable_const_id(*ast, item, ast->item_modules[index]);
+        if (item.visibility != syntax::Visibility::public_ || !stable_id_belongs_to_module(stable_id, module)) {
+            continue;
+        }
+        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_CONST, item.name,
+            stable_identity_string(stable_id), checked_syntax_type_display_name(checked, item.const_type));
+    }
+}
+
+void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& entries, const ModuleRecord& module)
+{
+    for (const ModuleImportRecord& import : module.imports) {
+        if (!import.owner_is_primary || !import.is_public) {
+            continue;
+        }
+        const query::ModuleKey reexported = module_key_from_name(import.module_name);
+        if (!query::is_valid(reexported)) {
+            continue;
+        }
+        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_REEXPORT, import.alias,
+            query::stable_serialize(reexported), import.module_name);
+    }
+}
+
+[[nodiscard]] std::vector<ModuleExportsSignatureEntry> collect_module_exports_signature_entries(
+    const ModuleRecord& module_record, const sema::CheckedModule& checked, const syntax::AstModule* const ast,
+    const sema::StableModuleId& module)
+{
+    std::vector<ModuleExportsSignatureEntry> entries;
+    entries.reserve(checked.functions.size() + checked.structs.size() + checked.enum_cases.size()
+        + checked.type_aliases.size() + checked.generic_template_signatures.size() + module_record.imports.size());
+
+    for (const auto& entry : checked.functions) {
+        const sema::FunctionSignature& signature = entry.second;
+        if (signature.visibility != syntax::Visibility::public_ || signature.has_conflict
+            || !stable_id_belongs_to_module(signature.stable_id, module)
+            || !function_signature_is_exported_surface(checked, signature)) {
+            continue;
+        }
+        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_FUNCTION,
+            function_export_name(checked, signature), stable_identity_string(signature.stable_id),
+            function_export_signature(checked, signature));
+    }
+    for (const auto& entry : checked.structs) {
+        const sema::StructInfo& info = entry.second;
+        if (info.visibility != syntax::Visibility::public_ || !stable_id_belongs_to_module(info.stable_id, module)) {
+            continue;
+        }
+        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_STRUCT, info.name.view(),
+            stable_identity_string(info.stable_id), info.is_opaque ? "opaque" : "struct");
+        const std::string struct_name = sema::struct_display_name(checked.types, info);
+        for (const sema::StructFieldInfo& field : info.fields) {
+            if (field.visibility != syntax::Visibility::public_) {
+                continue;
+            }
+            push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_STRUCT_FIELD,
+                struct_name + "." + std::string(field.name.view()), stable_identity_string(field.stable_key),
+                type_display_name(checked, field.type));
+        }
+    }
+    for (const auto& entry : checked.enum_cases) {
+        const sema::EnumCaseInfo& info = entry.second;
+        if (info.visibility != syntax::Visibility::public_ || !stable_id_belongs_to_module(info.stable_id, module)) {
+            continue;
+        }
+        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_ENUM_CASE,
+            sema::enum_case_display_name(checked.types, info), stable_identity_string(info.stable_id),
+            enum_case_export_signature(checked, info));
     }
     for (const auto& entry : checked.type_aliases) {
         const sema::TypeAliasInfo& info = entry.second;
+        if (info.visibility != syntax::Visibility::public_ || !stable_id_belongs_to_module(info.stable_id, module)) {
+            continue;
+        }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_TYPE_ALIAS, info.name.view(),
-            info.stable_id, info.incremental_key, info.visibility, module);
+            stable_identity_string(info.stable_id), checked_syntax_type_display_name(checked, info.target));
     }
+    for (const sema::GenericTemplateSignatureInfo& info : checked.generic_template_signatures) {
+        if (info.visibility != syntax::Visibility::public_ || !stable_id_belongs_to_module(info.stable_id, module)
+            || !query::is_valid(info.incremental_key)) {
+            continue;
+        }
+        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_GENERIC_TEMPLATE, info.name.view(),
+            stable_identity_string(info.stable_id), query::stable_serialize(info.incremental_key));
+    }
+    collect_const_module_export_entries(entries, checked, ast, module);
+    collect_primary_reexport_entries(entries, module_record);
 
     std::sort(entries.begin(), entries.end(), module_exports_signature_entry_less);
     return entries;
 }
 
 [[nodiscard]] std::vector<ItemListSignatureEntry> collect_item_list_signature_entries(
-    const sema::CheckedModule& checked, const sema::StableModuleId& module)
+    const sema::CheckedModule& checked, const syntax::AstModule* const ast, const sema::StableModuleId& module)
 {
     std::vector<ItemListSignatureEntry> entries;
     entries.reserve(checked.functions.size() + checked.generic_template_signatures.size() + checked.structs.size()
         + checked.enum_cases.size() + checked.type_aliases.size());
 
     for (const sema::GenericTemplateSignatureInfo& info : checked.generic_template_signatures) {
+        if (!stable_id_belongs_to_module(info.stable_id, module)) {
+            continue;
+        }
         push_item_list_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_GENERIC_TEMPLATE, info.name.view(),
-            info.stable_id, info.incremental_key, module);
+            stable_identity_string(info.stable_id));
     }
     for (const auto& entry : checked.functions) {
         const sema::FunctionSignature& signature = entry.second;
-        push_item_list_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_FUNCTION, signature.name.view(),
-            signature.stable_id, signature.incremental_key, module);
+        if (!stable_id_belongs_to_module(signature.stable_id, module)) {
+            continue;
+        }
+        push_item_list_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_FUNCTION,
+            function_export_name(checked, signature), stable_identity_string(signature.stable_id));
     }
     for (const auto& entry : checked.structs) {
         const sema::StructInfo& info = entry.second;
+        if (!stable_id_belongs_to_module(info.stable_id, module)) {
+            continue;
+        }
         push_item_list_signature_entry(
-            entries, INCREMENTAL_CACHE_CATEGORY_STRUCT, info.name.view(), info.stable_id, info.incremental_key, module);
+            entries, INCREMENTAL_CACHE_CATEGORY_STRUCT, info.name.view(), stable_identity_string(info.stable_id));
     }
     for (const auto& entry : checked.enum_cases) {
         const sema::EnumCaseInfo& info = entry.second;
-        push_item_list_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_ENUM_CASE, info.name.view(), info.stable_id,
-            info.incremental_key, module);
+        if (!stable_id_belongs_to_module(info.stable_id, module)) {
+            continue;
+        }
+        push_item_list_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_ENUM_CASE,
+            sema::enum_case_display_name(checked.types, info), stable_identity_string(info.stable_id));
     }
     for (const auto& entry : checked.type_aliases) {
         const sema::TypeAliasInfo& info = entry.second;
-        push_item_list_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_TYPE_ALIAS, info.name.view(), info.stable_id,
-            info.incremental_key, module);
+        if (!stable_id_belongs_to_module(info.stable_id, module)) {
+            continue;
+        }
+        push_item_list_signature_entry(
+            entries, INCREMENTAL_CACHE_CATEGORY_TYPE_ALIAS, info.name.view(), stable_identity_string(info.stable_id));
     }
+    collect_const_item_list_entries(entries, ast, module);
 
     std::sort(entries.begin(), entries.end(), item_list_signature_entry_less);
     return entries;
@@ -188,9 +471,8 @@ void push_item_list_signature_entry(std::vector<ItemListSignatureEntry>& entries
         builder.mix_u64(static_cast<base::u64>(index));
         builder.mix_string(entry.category);
         builder.mix_string(entry.name);
-        builder.mix_fingerprint(query::stable_key_fingerprint(entry.stable_id));
-        builder.mix_u64(entry.incremental_key.global_id);
-        builder.mix_fingerprint(entry.incremental_key.fingerprint);
+        builder.mix_string(entry.identity);
+        builder.mix_string(entry.signature);
     }
     return query::query_result_fingerprint(builder.finish());
 }
@@ -207,15 +489,12 @@ void push_item_list_signature_entry(std::vector<ItemListSignatureEntry>& entries
         builder.mix_u64(static_cast<base::u64>(index));
         builder.mix_string(entry.category);
         builder.mix_string(entry.name);
-        builder.mix_fingerprint(query::stable_key_fingerprint(entry.stable_id));
-        builder.mix_u64(entry.incremental_key.global_id);
-        builder.mix_fingerprint(entry.incremental_key.fingerprint);
+        builder.mix_string(entry.identity);
     }
     return query::query_result_fingerprint(builder.finish());
 }
 
-void push_module_graph_query_subject(std::vector<ModuleGraphQuerySubject>& subjects, const ModuleRecord& module,
-    const std::span<const ModuleRecord> modules)
+void push_module_graph_query_subject(std::vector<ModuleGraphQuerySubject>& subjects, const ModuleRecord& module)
 {
     const sema::StableModuleId stable_module = stable_module_id_from_record(module);
     const query::ModuleKey key = query::module_key_from_stable_id(stable_module);
@@ -224,12 +503,12 @@ void push_module_graph_query_subject(std::vector<ModuleGraphQuerySubject>& subje
     }
     subjects.push_back(ModuleGraphQuerySubject{
         key,
-        module_graph_result_fingerprint(key, modules),
+        module_graph_result_fingerprint(key, module),
     });
 }
 
-void push_module_exports_query_subject(
-    std::vector<ModuleExportsQuerySubject>& subjects, const ModuleRecord& module, const sema::CheckedModule& checked)
+void push_module_exports_query_subject(std::vector<ModuleExportsQuerySubject>& subjects, const ModuleRecord& module,
+    const sema::CheckedModule& checked, const syntax::AstModule* const ast)
 {
     const sema::StableModuleId stable_module = stable_module_id_from_record(module);
     const query::ModuleKey key = query::module_key_from_stable_id(stable_module);
@@ -238,15 +517,16 @@ void push_module_exports_query_subject(
     }
 
     const std::vector<ModuleExportsSignatureEntry> entries =
-        collect_module_exports_signature_entries(checked, stable_module);
+        collect_module_exports_signature_entries(module, checked, ast, stable_module);
     subjects.push_back(ModuleExportsQuerySubject{
         key,
         module_exports_result_fingerprint(key, entries),
+        primary_public_reexport_dependencies(module),
     });
 }
 
-void push_item_list_query_subject(
-    std::vector<ItemListQuerySubject>& subjects, const ModuleRecord& module, const sema::CheckedModule& checked)
+void push_item_list_query_subject(std::vector<ItemListQuerySubject>& subjects, const ModuleRecord& module,
+    const sema::CheckedModule& checked, const syntax::AstModule* const ast)
 {
     const sema::StableModuleId stable_module = stable_module_id_from_record(module);
     const query::ModuleKey key = query::module_key_from_stable_id(stable_module);
@@ -254,7 +534,8 @@ void push_item_list_query_subject(
         return;
     }
 
-    const std::vector<ItemListSignatureEntry> entries = collect_item_list_signature_entries(checked, stable_module);
+    const std::vector<ItemListSignatureEntry> entries =
+        collect_item_list_signature_entries(checked, ast, stable_module);
     subjects.push_back(ItemListQuerySubject{
         key,
         item_list_result_fingerprint(key, entries),
@@ -269,29 +550,29 @@ void push_item_list_query_subject(
     std::vector<ModuleGraphQuerySubject> subjects;
     subjects.reserve(modules.size());
     for (const ModuleRecord& module : modules) {
-        push_module_graph_query_subject(subjects, module, modules);
+        push_module_graph_query_subject(subjects, module);
     }
     return subjects;
 }
 
 [[nodiscard]] std::vector<ModuleExportsQuerySubject> collect_module_exports_query_subjects(
-    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked)
+    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const syntax::AstModule* const ast)
 {
     std::vector<ModuleExportsQuerySubject> subjects;
     subjects.reserve(modules.size());
     for (const ModuleRecord& module : modules) {
-        push_module_exports_query_subject(subjects, module, checked);
+        push_module_exports_query_subject(subjects, module, checked, ast);
     }
     return subjects;
 }
 
 [[nodiscard]] std::vector<ItemListQuerySubject> collect_item_list_query_subjects(
-    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked)
+    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const syntax::AstModule* const ast)
 {
     std::vector<ItemListQuerySubject> subjects;
     subjects.reserve(modules.size());
     for (const ModuleRecord& module : modules) {
-        push_item_list_query_subject(subjects, module, checked);
+        push_item_list_query_subject(subjects, module, checked, ast);
     }
     return subjects;
 }

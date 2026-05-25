@@ -96,6 +96,74 @@ constexpr std::string_view DRIVER_INCREMENTAL_CACHE_SIGNATURE_CHANGE_SECOND_SOUR
     "module incremental_cache_signature_change;\n"
     "fn helper(value: i32, extra: i32) -> i32 { return value + extra; }\n"
     "fn main() -> i32 { return helper(40, 1); }\n";
+constexpr std::string_view DRIVER_INCREMENTAL_CACHE_PUBLIC_SIGNATURE_FIRST_SOURCE =
+    "module incremental_cache_public_signature;\n"
+    "pub const LIMIT: i32 = 7;\n"
+    "pub opaque struct Handle;\n"
+    "priv struct Secret {\n"
+    "  pub value: i32;\n"
+    "}\n"
+    "pub struct Surface {\n"
+    "  pub value: i32;\n"
+    "  priv hidden: i32;\n"
+    "}\n"
+    "pub enum Pair: u8 {\n"
+    "  both(i32, bool) = 1,\n"
+    "  none = 2,\n"
+    "}\n"
+    "impl Pair {\n"
+    "  pub fn is_none(self: Pair) -> bool {\n"
+    "    return match self {\n"
+    "      .none => true,\n"
+    "      _ => false,\n"
+    "    };\n"
+    "  }\n"
+    "}\n"
+    "impl Secret {\n"
+    "  pub fn reveal(self: &Secret) -> i32 {\n"
+    "    return self.value;\n"
+    "  }\n"
+    "}\n"
+    "extern c {\n"
+    "  fn native_log(format: *const u8, ...) -> i32 @name(\"native_log\");\n"
+    "}\n"
+    "pub fn exported(value: i32) -> i32 {\n"
+    "  return value;\n"
+    "}\n";
+constexpr std::string_view DRIVER_INCREMENTAL_CACHE_PUBLIC_SIGNATURE_SECOND_SOURCE =
+    "module incremental_cache_public_signature;\n"
+    "pub const LIMIT: i32 = 7;\n"
+    "pub opaque struct Handle;\n"
+    "priv struct Secret {\n"
+    "  pub value: i32;\n"
+    "}\n"
+    "pub struct Surface {\n"
+    "  pub value: i32;\n"
+    "  priv hidden: i32;\n"
+    "}\n"
+    "pub enum Pair: u8 {\n"
+    "  both(i32, bool) = 1,\n"
+    "  none = 2,\n"
+    "}\n"
+    "impl Pair {\n"
+    "  pub fn is_none(self: Pair) -> bool {\n"
+    "    return match self {\n"
+    "      .none => true,\n"
+    "      _ => false,\n"
+    "    };\n"
+    "  }\n"
+    "}\n"
+    "impl Secret {\n"
+    "  pub fn reveal(self: &Secret) -> i32 {\n"
+    "    return self.value;\n"
+    "  }\n"
+    "}\n"
+    "extern c {\n"
+    "  fn native_log(format: *const u8, ...) -> i32 @name(\"native_log\");\n"
+    "}\n"
+    "pub fn exported(value: i32, extra: i32) -> i32 {\n"
+    "  return value + extra;\n"
+    "}\n";
 constexpr base::usize CACHE_TEST_QUERY_ROW_KIND_FIELD = 0;
 constexpr base::usize CACHE_TEST_QUERY_KIND_FIELD = 1;
 constexpr base::usize CACHE_TEST_QUERY_RESULT_GLOBAL_FIELD = 7;
@@ -645,7 +713,7 @@ void expect_cache_query_kind_before(
         return dependency == CACHE_TEST_QUERY_MODULE_GRAPH;
     }
     if (dependent == CACHE_TEST_QUERY_MODULE_EXPORTS) {
-        return dependency == CACHE_TEST_QUERY_ITEM_LIST;
+        return dependency == CACHE_TEST_QUERY_ITEM_LIST || dependency == CACHE_TEST_QUERY_MODULE_EXPORTS;
     }
     if (dependent == CACHE_TEST_QUERY_ITEM_SIGNATURE) {
         return dependency == CACHE_TEST_QUERY_MODULE_EXPORTS;
@@ -734,6 +802,48 @@ void expect_cache_query_edges_follow_dependency_schedule(const std::string_view 
         line_start = line_end + 1;
     }
     return std::nullopt;
+}
+
+template <base::usize PART_COUNT>
+[[nodiscard]] std::string cache_test_encoded_module_key(const std::array<std::string_view, PART_COUNT>& module_parts)
+{
+    const sema::StableModuleId stable_module =
+        sema::stable_module_id(std::span<const std::string_view>{module_parts.data(), module_parts.size()});
+    const query::ModuleKey module_key = query::module_key_from_stable_id(stable_module);
+    return hex_encode_cache_test_field(query::stable_serialize(module_key));
+}
+
+template <base::usize PART_COUNT>
+[[nodiscard]] std::optional<CacheTestQueryResultFingerprint> cache_test_module_query_result(
+    const std::string_view cache_text, const std::string_view query_kind,
+    const std::array<std::string_view, PART_COUNT>& module_parts)
+{
+    return cache_test_query_result(cache_text, query_kind, cache_test_encoded_module_key(module_parts));
+}
+
+[[nodiscard]] base::usize cache_test_query_edge_count(
+    const std::string_view cache_text, const std::string_view dependent_kind, const std::string_view dependency_kind)
+{
+    base::usize count = 0;
+    base::usize line_start = 0;
+    while (line_start < cache_text.size()) {
+        const base::usize line_end = cache_text.find('\n', line_start);
+        const std::string_view line = line_end == std::string_view::npos
+            ? cache_text.substr(line_start)
+            : cache_text.substr(line_start, line_end - line_start);
+        const std::vector<std::string_view> fields = split_cache_test_fields(line);
+        if (fields.size() == CACHE_TEST_QUERY_EDGE_FIELD_COUNT
+            && fields[CACHE_TEST_QUERY_ROW_KIND_FIELD] == CACHE_TEST_QUERY_EDGE_ROW_KIND
+            && fields[CACHE_TEST_QUERY_EDGE_DEPENDENT_KIND_FIELD] == dependent_kind
+            && fields[CACHE_TEST_QUERY_EDGE_DEPENDENCY_KIND_FIELD] == dependency_kind) {
+            ++count;
+        }
+        if (line_end == std::string_view::npos) {
+            break;
+        }
+        line_start = line_end + 1;
+    }
+    return count;
 }
 
 [[nodiscard]] std::optional<CacheTestQueryResultFingerprint> cache_test_item_signature_result(
@@ -2999,6 +3109,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheItemSignatureIgnoresBodyOnlyChanges
 
     const std::array<std::string_view, 1> module_parts{"incremental_cache_signature"};
     const sema::StableModuleId stable_module = sema::stable_module_id(module_parts);
+    const query::ModuleKey module_key = query::module_key_from_stable_id(stable_module);
     const sema::StableDefId helper_stable_id =
         sema::stable_definition_id(stable_module, sema::StableSymbolKind::function, "helper");
     const query::DefKey helper_def_key =
@@ -3006,6 +3117,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheItemSignatureIgnoresBodyOnlyChanges
     const query::BodyKey helper_body_key = query::body_key(helper_def_key, query::BodySlotKind::function_body);
     const std::string encoded_helper_key = hex_encode_cache_test_field(query::stable_serialize(helper_def_key));
     const std::string encoded_helper_body_key = hex_encode_cache_test_field(query::stable_serialize(helper_body_key));
+    const std::string encoded_module_key = hex_encode_cache_test_field(query::stable_serialize(module_key));
 
     driver::CompilerInvocation invocation;
     invocation.input_path = source;
@@ -3026,6 +3138,12 @@ TEST_F(AurexIntegrationTest, IncrementalCacheItemSignatureIgnoresBodyOnlyChanges
     const std::optional<CacheTestQueryResultFingerprint> first_type_check_result =
         cache_test_type_check_body_result(first_cache, encoded_helper_body_key);
     ASSERT_TRUE(first_type_check_result.has_value());
+    const std::optional<CacheTestQueryResultFingerprint> first_exports_result =
+        cache_test_query_result(first_cache, CACHE_TEST_QUERY_MODULE_EXPORTS, encoded_module_key);
+    ASSERT_TRUE(first_exports_result.has_value());
+    const std::optional<CacheTestQueryResultFingerprint> first_item_list_result =
+        cache_test_query_result(first_cache, CACHE_TEST_QUERY_ITEM_LIST, encoded_module_key);
+    ASSERT_TRUE(first_item_list_result.has_value());
 
     write_source(DRIVER_INCREMENTAL_CACHE_SIGNATURE_SECOND_SOURCE);
     driver::clear_file_cache();
@@ -3041,8 +3159,16 @@ TEST_F(AurexIntegrationTest, IncrementalCacheItemSignatureIgnoresBodyOnlyChanges
     const std::optional<CacheTestQueryResultFingerprint> second_type_check_result =
         cache_test_type_check_body_result(second_cache, encoded_helper_body_key);
     ASSERT_TRUE(second_type_check_result.has_value());
+    const std::optional<CacheTestQueryResultFingerprint> second_exports_result =
+        cache_test_query_result(second_cache, CACHE_TEST_QUERY_MODULE_EXPORTS, encoded_module_key);
+    ASSERT_TRUE(second_exports_result.has_value());
+    const std::optional<CacheTestQueryResultFingerprint> second_item_list_result =
+        cache_test_query_result(second_cache, CACHE_TEST_QUERY_ITEM_LIST, encoded_module_key);
+    ASSERT_TRUE(second_item_list_result.has_value());
 
     EXPECT_EQ(*first_result, *second_result);
+    EXPECT_EQ(*first_exports_result, *second_exports_result);
+    EXPECT_EQ(*first_item_list_result, *second_item_list_result);
     EXPECT_FALSE(*first_body_result == *second_body_result);
     EXPECT_FALSE(*first_type_check_result == *second_type_check_result);
 
@@ -3088,6 +3214,9 @@ TEST_F(AurexIntegrationTest, IncrementalCacheItemSignatureChangesWhenSignatureCh
     const std::optional<CacheTestQueryResultFingerprint> first_exports_result =
         cache_test_query_result(read_text(cache), CACHE_TEST_QUERY_MODULE_EXPORTS, encoded_module_key);
     ASSERT_TRUE(first_exports_result.has_value());
+    const std::optional<CacheTestQueryResultFingerprint> first_item_list_result =
+        cache_test_query_result(read_text(cache), CACHE_TEST_QUERY_ITEM_LIST, encoded_module_key);
+    ASSERT_TRUE(first_item_list_result.has_value());
 
     write_source(DRIVER_INCREMENTAL_CACHE_SIGNATURE_CHANGE_SECOND_SOURCE);
     driver::clear_file_cache();
@@ -3099,9 +3228,231 @@ TEST_F(AurexIntegrationTest, IncrementalCacheItemSignatureChangesWhenSignatureCh
     const std::optional<CacheTestQueryResultFingerprint> second_exports_result =
         cache_test_query_result(read_text(cache), CACHE_TEST_QUERY_MODULE_EXPORTS, encoded_module_key);
     ASSERT_TRUE(second_exports_result.has_value());
+    const std::optional<CacheTestQueryResultFingerprint> second_item_list_result =
+        cache_test_query_result(read_text(cache), CACHE_TEST_QUERY_ITEM_LIST, encoded_module_key);
+    ASSERT_TRUE(second_item_list_result.has_value());
 
     EXPECT_FALSE(*first_result == *second_result);
     EXPECT_EQ(*first_exports_result, *second_exports_result);
+    EXPECT_EQ(*first_item_list_result, *second_item_list_result);
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheModuleExportsTracksPublicSignatureWhileItemListStaysGreen)
+{
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-public-signature";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    const auto write_source = [&](const std::string_view text) {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
+    const std::array<std::string_view, 1> module_parts{"incremental_cache_public_signature"};
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+
+    write_source(DRIVER_INCREMENTAL_CACHE_PUBLIC_SIGNATURE_FIRST_SOURCE);
+    driver::Compiler compiler;
+    auto first = compiler.run(invocation);
+    ASSERT_TRUE(first) << first.error().message;
+    const std::string first_cache = read_text(cache);
+    const std::optional<CacheTestQueryResultFingerprint> first_exports_result =
+        cache_test_module_query_result(first_cache, CACHE_TEST_QUERY_MODULE_EXPORTS, module_parts);
+    const std::optional<CacheTestQueryResultFingerprint> first_item_list_result =
+        cache_test_module_query_result(first_cache, CACHE_TEST_QUERY_ITEM_LIST, module_parts);
+    ASSERT_TRUE(first_exports_result.has_value());
+    ASSERT_TRUE(first_item_list_result.has_value());
+
+    write_source(DRIVER_INCREMENTAL_CACHE_PUBLIC_SIGNATURE_SECOND_SOURCE);
+    driver::clear_file_cache();
+    auto second = compiler.run(invocation);
+    ASSERT_TRUE(second) << second.error().message;
+    const std::string second_cache = read_text(cache);
+    const std::optional<CacheTestQueryResultFingerprint> second_exports_result =
+        cache_test_module_query_result(second_cache, CACHE_TEST_QUERY_MODULE_EXPORTS, module_parts);
+    const std::optional<CacheTestQueryResultFingerprint> second_item_list_result =
+        cache_test_module_query_result(second_cache, CACHE_TEST_QUERY_ITEM_LIST, module_parts);
+    ASSERT_TRUE(second_exports_result.has_value());
+    ASSERT_TRUE(second_item_list_result.has_value());
+
+    EXPECT_FALSE(*first_exports_result == *second_exports_result);
+    EXPECT_EQ(*first_item_list_result, *second_item_list_result);
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheModuleGraphUsesStableLogicalModuleShape)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view GRAPH_PRIMARY_FIRST = "module incremental_cache_graph_parts;\n"
+                                                     "part alpha;\n"
+                                                     "part beta;\n"
+                                                     "pub fn exported() -> i32 {\n"
+                                                     "  return alpha_value() + beta_value();\n"
+                                                     "}\n";
+    constexpr std::string_view GRAPH_PRIMARY_REORDERED = "module incremental_cache_graph_parts;\n"
+                                                         "part beta;\n"
+                                                         "part alpha;\n"
+                                                         "pub fn exported() -> i32 {\n"
+                                                         "  return alpha_value() + beta_value();\n"
+                                                         "}\n";
+    constexpr std::string_view GRAPH_PRIMARY_ADDED_PART = "module incremental_cache_graph_parts;\n"
+                                                          "part beta;\n"
+                                                          "part alpha;\n"
+                                                          "part gamma;\n"
+                                                          "pub fn exported() -> i32 {\n"
+                                                          "  return alpha_value() + beta_value() + gamma_value();\n"
+                                                          "}\n";
+    constexpr std::string_view GRAPH_ALPHA_PART = "module incremental_cache_graph_parts part alpha;\n"
+                                                  "fn alpha_value() -> i32 {\n"
+                                                  "  return 1;\n"
+                                                  "}\n";
+    constexpr std::string_view GRAPH_BETA_PART = "module incremental_cache_graph_parts part beta;\n"
+                                                 "fn beta_value() -> i32 {\n"
+                                                 "  return 2;\n"
+                                                 "}\n";
+    constexpr std::string_view GRAPH_GAMMA_PART = "module incremental_cache_graph_parts part gamma;\n"
+                                                  "fn gamma_value() -> i32 {\n"
+                                                  "  return 3;\n"
+                                                  "}\n";
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-module-graph-parts";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    const fs::path parts_dir = cache_dir / "main.parts";
+    const auto write_source_file = [](const fs::path& path, const std::string_view text) {
+        fs::create_directories(path.parent_path());
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
+    const std::array<std::string_view, 1> module_parts{"incremental_cache_graph_parts"};
+
+    write_source_file(parts_dir / "alpha.ax", GRAPH_ALPHA_PART);
+    write_source_file(parts_dir / "beta.ax", GRAPH_BETA_PART);
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+
+    write_source_file(source, GRAPH_PRIMARY_FIRST);
+    driver::Compiler compiler;
+    auto first = compiler.run(invocation);
+    ASSERT_TRUE(first) << first.error().message;
+    const std::optional<CacheTestQueryResultFingerprint> first_graph_result =
+        cache_test_module_query_result(read_text(cache), CACHE_TEST_QUERY_MODULE_GRAPH, module_parts);
+    ASSERT_TRUE(first_graph_result.has_value());
+
+    write_source_file(source, GRAPH_PRIMARY_REORDERED);
+    driver::clear_file_cache();
+    auto reordered = compiler.run(invocation);
+    ASSERT_TRUE(reordered) << reordered.error().message;
+    const std::optional<CacheTestQueryResultFingerprint> reordered_graph_result =
+        cache_test_module_query_result(read_text(cache), CACHE_TEST_QUERY_MODULE_GRAPH, module_parts);
+    ASSERT_TRUE(reordered_graph_result.has_value());
+    EXPECT_EQ(*first_graph_result, *reordered_graph_result);
+
+    write_source_file(parts_dir / "gamma.ax", GRAPH_GAMMA_PART);
+    write_source_file(source, GRAPH_PRIMARY_ADDED_PART);
+    driver::clear_file_cache();
+    auto added = compiler.run(invocation);
+    ASSERT_TRUE(added) << added.error().message;
+    const std::optional<CacheTestQueryResultFingerprint> added_graph_result =
+        cache_test_module_query_result(read_text(cache), CACHE_TEST_QUERY_MODULE_GRAPH, module_parts);
+    ASSERT_TRUE(added_graph_result.has_value());
+    EXPECT_FALSE(*first_graph_result == *added_graph_result);
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheModuleExportsRecordsOnlyPrimaryReexportEdges)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view REEXPORT_INNER_SOURCE = "module lib.inner;\n"
+                                                       "pub type Count = i32;\n"
+                                                       "pub fn value() -> Count {\n"
+                                                       "  return 3;\n"
+                                                       "}\n";
+    constexpr std::string_view REEXPORT_EXTRA_SOURCE = "module lib.extra;\n"
+                                                       "pub fn extra() -> i32 {\n"
+                                                       "  return 4;\n"
+                                                       "}\n";
+    constexpr std::string_view PRIMARY_REEXPORT_SOURCE = "module incremental_cache_primary_reexport;\n"
+                                                         "pub import lib.inner as inner;\n"
+                                                         "pub import lib.extra as extra;\n"
+                                                         "pub fn value() -> inner.Count {\n"
+                                                         "  return inner.value() + extra.extra();\n"
+                                                         "}\n";
+    constexpr std::string_view PART_REEXPORT_PRIMARY_SOURCE = "module incremental_cache_part_reexport;\n"
+                                                              "part exports;\n"
+                                                              "pub fn value() -> i32 {\n"
+                                                              "  return part_value();\n"
+                                                              "}\n";
+    constexpr std::string_view PART_REEXPORT_PART_SOURCE = "module incremental_cache_part_reexport part exports;\n"
+                                                           "pub import lib.inner as inner;\n"
+                                                           "fn part_value() -> inner.Count {\n"
+                                                           "  return inner.value();\n"
+                                                           "}\n";
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-module-reexports";
+    const fs::path import_dir = cache_dir / "imports";
+    const fs::path primary_source = cache_dir / "primary.ax";
+    const fs::path primary_cache = cache_dir / "primary.axic";
+    const fs::path part_source = cache_dir / "part.ax";
+    const fs::path part_cache = cache_dir / "part.axic";
+    const auto write_source_file = [](const fs::path& path, const std::string_view text) {
+        fs::create_directories(path.parent_path());
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
+
+    write_source_file(import_dir / "lib" / "inner.ax", REEXPORT_INNER_SOURCE);
+    write_source_file(import_dir / "lib" / "extra.ax", REEXPORT_EXTRA_SOURCE);
+    write_source_file(primary_source, PRIMARY_REEXPORT_SOURCE);
+
+    driver::CompilerInvocation primary_invocation;
+    primary_invocation.input_path = primary_source;
+    primary_invocation.emit_kind = driver::EmitKind::check;
+    primary_invocation.incremental_cache_path = primary_cache;
+    primary_invocation.import_paths.push_back(import_dir);
+
+    driver::Compiler compiler;
+    auto primary = compiler.run(primary_invocation);
+    ASSERT_TRUE(primary) << primary.error().message;
+    const std::string primary_cache_text = read_text(primary_cache);
+    EXPECT_EQ(cache_test_query_edge_count(
+                  primary_cache_text, CACHE_TEST_QUERY_MODULE_EXPORTS, CACHE_TEST_QUERY_MODULE_EXPORTS),
+        static_cast<base::usize>(2));
+
+    write_source_file(part_source, PART_REEXPORT_PRIMARY_SOURCE);
+    write_source_file(cache_dir / "part.parts" / "exports.ax", PART_REEXPORT_PART_SOURCE);
+    driver::clear_file_cache();
+
+    driver::CompilerInvocation part_invocation;
+    part_invocation.input_path = part_source;
+    part_invocation.emit_kind = driver::EmitKind::check;
+    part_invocation.incremental_cache_path = part_cache;
+    part_invocation.import_paths.push_back(import_dir);
+
+    auto part = compiler.run(part_invocation);
+    ASSERT_TRUE(part) << part.error().message;
+    const std::string part_cache_text = read_text(part_cache);
+    EXPECT_EQ(
+        cache_test_query_edge_count(part_cache_text, CACHE_TEST_QUERY_MODULE_EXPORTS, CACHE_TEST_QUERY_MODULE_EXPORTS),
+        static_cast<base::usize>(0));
 
     driver::clear_file_cache();
 }

@@ -654,7 +654,12 @@ struct QueryKeyFieldLayout {
     std::vector<ModuleRecord> sorted;
     sorted.reserve(modules.size());
     for (const ModuleRecord& module : modules) {
-        sorted.push_back(ModuleRecord{module.name, canonical_or_absolute(module.path)});
+        ModuleRecord normalized = module;
+        normalized.path = canonical_or_absolute(module.path);
+        for (ModulePartRecord& part : normalized.parts) {
+            part.path = canonical_or_absolute(part.path);
+        }
+        sorted.push_back(std::move(normalized));
     }
     std::sort(sorted.begin(), sorted.end(), [](const ModuleRecord& lhs, const ModuleRecord& rhs) {
         if (lhs.name != rhs.name) {

@@ -63,6 +63,7 @@ constexpr std::string_view QUERY_TEST_PROVIDER_SIGNATURE = "signature:i32";
 constexpr std::string_view QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE = "signature:mismatched-provider-output";
 constexpr std::string_view QUERY_TEST_MODULE_EXPORTS_SIGNATURE = "exports:v1";
 constexpr std::string_view QUERY_TEST_CHANGED_MODULE_EXPORTS_SIGNATURE = "exports:v2";
+constexpr std::string_view QUERY_TEST_REEXPORTED_MODULE_NAME = "reexported";
 constexpr std::string_view QUERY_TEST_FILE_CONTENT = "file-content:module regex.vm";
 constexpr std::string_view QUERY_TEST_LEX_FILE = "lex-file:tokens";
 constexpr std::string_view QUERY_TEST_PARSE_FILE = "parse-file:ast";
@@ -84,6 +85,12 @@ constexpr std::string_view QUERY_TEST_DIAGNOSTICS = "diagnostics:empty";
 [[nodiscard]] query::ModuleKey test_module(const query::PackageKey package)
 {
     const std::array<std::string_view, 2> path{"regex", "vm"};
+    return query::module_key(package, path);
+}
+
+[[nodiscard]] query::ModuleKey test_reexported_module(const query::PackageKey package)
+{
+    const std::array<std::string_view, 1> path{QUERY_TEST_REEXPORTED_MODULE_NAME};
     return query::module_key(package, path);
 }
 
@@ -1649,8 +1656,12 @@ TEST(QueryUnit, QueryReplayIndexRejectsMalformedSnapshots)
 TEST(QueryUnit, QueryGraphDependencyKindRulesCoverEveryQueryKind)
 {
     constexpr query::StableFingerprint128 QUERY_TEST_GRAPH_PAYLOAD{1, 2, 3};
+    constexpr query::StableFingerprint128 QUERY_TEST_GRAPH_OTHER_PAYLOAD{4, 5, 6};
     const auto make_key = [QUERY_TEST_GRAPH_PAYLOAD](const query::QueryKind kind) {
         return query::query_key(kind, QUERY_TEST_GRAPH_PAYLOAD);
+    };
+    const auto make_other_key = [QUERY_TEST_GRAPH_OTHER_PAYLOAD](const query::QueryKind kind) {
+        return query::query_key(kind, QUERY_TEST_GRAPH_OTHER_PAYLOAD);
     };
     const auto edge_is_expected = [&](const query::QueryKind dependent, const query::QueryKind dependency) {
         return query::query_dependency_edge_kind_is_expected(query::QueryDependencyEdge{
@@ -1674,6 +1685,10 @@ TEST(QueryUnit, QueryGraphDependencyKindRulesCoverEveryQueryKind)
         query::QueryDependencyEdge{make_key(query::QueryKind::parse_file), make_key(query::QueryKind::lex_file)},
         query::QueryDependencyEdge{make_key(query::QueryKind::item_list), make_key(query::QueryKind::module_graph)},
         query::QueryDependencyEdge{make_key(query::QueryKind::module_exports), make_key(query::QueryKind::item_list)},
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::module_exports),
+            make_other_key(query::QueryKind::module_exports),
+        },
         query::QueryDependencyEdge{
             make_key(query::QueryKind::item_signature),
             make_key(query::QueryKind::module_exports),
@@ -1772,6 +1787,7 @@ TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
 
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
+    const query::ModuleKey reexported_module = test_reexported_module(package);
     const query::DefKey function_def = test_function_def(module);
     const query::DefKey template_def = test_template_def(module);
     const query::BodyKey function_body = query::body_key(function_def, query::BodySlotKind::function_body);
@@ -1781,6 +1797,8 @@ TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
         query::item_list_query_record(module, test_query_result(QUERY_TEST_ITEM_LIST));
     const std::optional<query::QueryRecord> exports_record =
         query::module_exports_query_record(module, test_query_result(QUERY_TEST_MODULE_EXPORTS_SIGNATURE));
+    const std::optional<query::QueryRecord> reexported_exports_record =
+        query::module_exports_query_record(reexported_module, test_query_result(QUERY_TEST_MODULE_EXPORTS_SIGNATURE));
     const std::optional<query::QueryRecord> item_record =
         query::item_signature_query_record(function_def, test_query_result(QUERY_TEST_PROVIDER_SIGNATURE));
     const std::optional<query::QueryRecord> template_record = query::generic_template_signature_query_record(
@@ -1794,6 +1812,7 @@ TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
     ASSERT_TRUE(module_graph_record.has_value());
     ASSERT_TRUE(item_list_record.has_value());
     ASSERT_TRUE(exports_record.has_value());
+    ASSERT_TRUE(reexported_exports_record.has_value());
     ASSERT_TRUE(item_record.has_value());
     ASSERT_TRUE(template_record.has_value());
     ASSERT_TRUE(body_syntax_record.has_value());
@@ -1802,6 +1821,7 @@ TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
 
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*item_list_record, *module_graph_record));
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*exports_record, *item_list_record));
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*exports_record, *reexported_exports_record));
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*item_record, *exports_record));
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*template_record, *item_list_record));
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*type_check_record, *body_syntax_record));
@@ -1864,10 +1884,21 @@ TEST(QueryUnit, QueryEdgeVerifierRejectsMalformedKindsAndStableIdentities)
         query::QueryKind::module_graph, query::stable_fingerprint("malformed-module"), "malformed-module", result);
     const std::optional<query::QueryRecord> malformed_item_list_record = query::query_record(
         query::QueryKind::item_list, query::stable_fingerprint("malformed-module"), "malformed-module", result);
+    const std::optional<query::QueryRecord> malformed_exports_record = query::query_record(
+        query::QueryKind::module_exports, query::stable_fingerprint("malformed-module"), "malformed-module", result);
+    const std::optional<query::QueryRecord> malformed_other_exports_record =
+        query::query_record(query::QueryKind::module_exports, query::stable_fingerprint("malformed-other-module"),
+            "malformed-other-module", result);
     ASSERT_TRUE(malformed_module_graph_record.has_value());
     ASSERT_TRUE(malformed_item_list_record.has_value());
+    ASSERT_TRUE(malformed_exports_record.has_value());
+    ASSERT_TRUE(malformed_other_exports_record.has_value());
     EXPECT_EQ(
         query::validate_query_dependency_edge_records(*malformed_item_list_record, *malformed_module_graph_record),
+        query::QueryDependencyEdgeValidationStatus::invalid_identity);
+    EXPECT_EQ(query::validate_query_dependency_edge_records(*malformed_exports_record, *malformed_exports_record),
+        query::QueryDependencyEdgeValidationStatus::invalid_kind);
+    EXPECT_EQ(query::validate_query_dependency_edge_records(*malformed_exports_record, *malformed_other_exports_record),
         query::QueryDependencyEdgeValidationStatus::invalid_identity);
 
     const query::LexFileKey wrong_lex_file = query::lex_file_key(source_subject.file, query::lex_config_key(true));
@@ -1950,6 +1981,43 @@ TEST(QueryUnit, ModuleExportsProviderBuildsRecordFromStableModule)
     mismatched_result_output.result =
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_CHANGED_MODULE_EXPORTS_SIGNATURE));
     EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
+TEST(QueryUnit, ModuleExportsProviderAddsReexportModuleDependencies)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::ModuleKey reexported_module = test_reexported_module(package);
+    const query::QueryResultFingerprint exports =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_MODULE_EXPORTS_SIGNATURE));
+    const query::ModuleExportsProviderInput input{
+        module,
+        exports,
+        {
+            reexported_module,
+            reexported_module,
+            module,
+        },
+    };
+
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::ModuleExportsProviderOutput> output = query::provide_module_exports_query(input);
+    ASSERT_TRUE(output.has_value());
+    const std::optional<query::QueryKey> item_list_key = query::item_list_query_key(module);
+    const std::optional<query::QueryKey> reexported_exports_key = query::module_exports_query_key(reexported_module);
+    ASSERT_TRUE(item_list_key.has_value());
+    ASSERT_TRUE(reexported_exports_key.has_value());
+    std::vector<query::QueryKey> expected_dependencies{
+        *item_list_key,
+        *reexported_exports_key,
+    };
+    sort_query_test_keys(expected_dependencies);
+    EXPECT_EQ(output->dependencies, expected_dependencies);
+
+    query::ModuleExportsProviderInput invalid_dependency_input = input;
+    invalid_dependency_input.reexport_dependencies.push_back(query::ModuleKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_input));
+    EXPECT_FALSE(query::provide_module_exports_query(invalid_dependency_input).has_value());
 }
 
 TEST(QueryUnit, ModuleGraphAndItemListProvidersBuildRecordsAndDependencies)

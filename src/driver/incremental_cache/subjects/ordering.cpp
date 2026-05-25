@@ -1,11 +1,10 @@
-#include "detail.hpp"
-
-#include "../schedule.hpp"
-
 #include <algorithm>
 #include <optional>
 #include <unordered_set>
 #include <utility>
+
+#include "../schedule.hpp"
+#include "detail.hpp"
 
 namespace aurex::driver::incremental_cache_detail {
 namespace cache_format = incremental_cache_format;
@@ -62,6 +61,7 @@ void evaluate_module_exports_query_subject(query::QueryContext& context, const M
     const query::ModuleExportsProviderInput input{
         subject.key,
         subject.result,
+        subject.reexport_dependencies,
     };
     static_cast<void>(context.evaluate_module_exports(input));
 }

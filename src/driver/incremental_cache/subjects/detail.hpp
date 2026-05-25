@@ -1,13 +1,13 @@
 #pragma once
 
-#include "../subjects.hpp"
-
 #include <aurex/base/source.hpp>
 #include <aurex/sema/checked_module.hpp>
 #include <aurex/syntax/ast.hpp>
 
 #include <span>
 #include <vector>
+
+#include "../subjects.hpp"
 
 namespace aurex::driver::incremental_cache_detail {
 
@@ -16,9 +16,9 @@ void collect_source_file_query_subjects(QuerySubjectCollection& collection, cons
 [[nodiscard]] std::vector<ModuleGraphQuerySubject> collect_module_graph_query_subjects(
     std::span<const ModuleRecord> modules);
 [[nodiscard]] std::vector<ModuleExportsQuerySubject> collect_module_exports_query_subjects(
-    std::span<const ModuleRecord> modules, const sema::CheckedModule& checked);
+    std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const syntax::AstModule* ast);
 [[nodiscard]] std::vector<ItemListQuerySubject> collect_item_list_query_subjects(
-    std::span<const ModuleRecord> modules, const sema::CheckedModule& checked);
+    std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const syntax::AstModule* ast);
 
 [[nodiscard]] std::vector<ItemSignatureQuerySubject> collect_item_signature_query_subjects(
     const sema::CheckedModule& checked);

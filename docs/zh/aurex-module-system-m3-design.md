@@ -1,7 +1,7 @@
 # Aurex M3 模块系统设计稿
 
-状态：M3.0 当前设计基线  
-日期：2026-05-25  
+状态：M3.0 当前设计基线，Phase 1-5 已进入实现闭环
+日期：2026-05-26
 适用范围：同一 package 内的 logical module / source-file part 分离、module graph、exports query、跨 part `priv` 可见性
 
 ## 1. 设计结论
@@ -736,6 +736,12 @@ module loading 不执行 top-level code。part 顺序不影响语义的前提是
 - const/global cycle diagnostics 不依赖 part load order。
 - 任何 future top-level side effect 都必须作为独立语言专题设计，不能借 module loading 顺手引入。
 
+Phase 5 当前实现把 `ModuleGraph(ModuleKey)` 固定为逻辑模块级 query record。fingerprint
+只混入当前 module 的结构化身份：primary path、显式 named parts、part-local import edges、import alias
+和 `pub` / `priv` import visibility。它不混入 source text，也不把其他 module 的 graph 塞进当前
+module 的结果；part list 重排在 part 集合不变时保持 green，新增 / 删除 part 才让对应
+`ModuleGraph` red。
+
 ## 10. ModuleExports
 
 `ModuleExports(ModuleKey)` 是 module public surface 的权威结果。
@@ -773,6 +779,18 @@ exported_name -> original DefKey
 
 不能只 hash declaration 文本或 source file path；否则移动 item、重排 parts 或格式化代码会造成错误失效。
 
+Phase 5 当前实现的 `ModuleExports(ModuleKey)` 以 public API surface 为结果边界：
+
+- public functions / methods，且 method owner 必须是 public surface。
+- public structs、public struct fields、public enum cases 和 payload type surface。
+- public type aliases、generic templates 和 top-level public const。
+- primary 文件中的 `pub import` 作为 module re-export entry。
+- part-local `pub import` 只影响当前 part name resolution，不进入 module-level re-export。
+
+`ModuleExports(A)` 对 primary-level re-export 的目标 module 记录 `ModuleExports(B)` dependency edge；
+provider 会排序、去重并过滤 self dependency。这样 re-exported module 的 public API 改变可以通过
+query graph 传播，而普通 import 或 part-local public import 不会错误扩大失效面。
+
 ## 11. Query 边界和失效
 
 M3.0 模块相关 query 目标：
@@ -781,8 +799,8 @@ M3.0 模块相关 query 目标：
 FileContent(FileKey)
 LexFile(FileKey)
 ParseFile(FileKey)
-ModuleGraph(PackageKey 或 root ModuleKey)
-ModulePart(ModulePartKey)
+ModuleGraph(ModuleKey)
+ModulePart(ModulePartKey)  // 后续独立 part-level query 入口
 ItemList(ModuleKey)
 ItemSignature(DefKey)
 ModuleExports(ModuleKey)
@@ -801,10 +819,12 @@ LowerFunctionIR(BodyKey)
 改 private function signature
   -> ItemSignature red
   -> 同 ModuleKey 内依赖 body red
+  -> ItemList green
   -> ModuleExports 通常 green
 
 改 public function signature
   -> ItemSignature red
+  -> ItemList green
   -> ModuleExports red
   -> dependent modules red
 
@@ -1003,11 +1023,20 @@ semantics。Aurex 需要 explicit `part` 作为 language-level membership。
 
 交付：
 
-- `ModuleGraph` query 结果结构化。
-- `ModuleExports` query 结果结构化。
-- `ItemList(ModuleKey)`。
+- `ModuleGraph(ModuleKey)` query 结果结构化，基于当前 logical module 的 primary / parts / imports。
+- `ModuleExports(ModuleKey)` query 结果结构化，基于 public API surface 和 primary re-export edges。
+- `ItemList(ModuleKey)` 只记录稳定 def identity，不混入签名 fingerprint。
+- `ModuleExports -> ModuleExports` query edge 用于 primary-level `pub import` re-export dependency。
 - `DefKey` 不依赖 traversal order。
 - query fingerprint 和 red/green tests。
+
+当前实现状态：
+
+- private body edit 保持 `ItemList` 和 `ModuleExports` green，只打红 body/type-check 相关 query。
+- private signature edit 保持 `ItemList` 和 `ModuleExports` green，但对应 `ItemSignature` red。
+- public signature edit 让 `ModuleExports` red，`ItemList` green。
+- part list 重排保持 `ModuleGraph` green；新增 part 让 `ModuleGraph` red。
+- primary `pub import` 生成 `ModuleExports -> ModuleExports` edge；part-local `pub import` 不生成该 edge。
 
 ### Phase 6：M3.0-late / M3.2 候选
 

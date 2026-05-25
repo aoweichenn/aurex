@@ -31,6 +31,20 @@ namespace {
     return header.name == declaration.name;
 }
 
+[[nodiscard]] ModuleRecord make_module_record(const std::string& module_name, const std::filesystem::path& primary_path)
+{
+    ModuleRecord record;
+    record.name = module_name;
+    record.path = primary_path;
+    record.parts.push_back(ModulePartRecord{
+        {},
+        primary_path,
+        0,
+        ModulePartRecordKind::primary,
+    });
+    return record;
+}
+
 class LoadingFileScope final {
 public:
     LoadingFileScope(std::unordered_set<std::string>& loading_files, std::string key)
@@ -80,6 +94,43 @@ base::Result<syntax::AstModule> ModuleLoader::load_root()
 std::span<const ModuleRecord> ModuleLoader::modules() const noexcept
 {
     return this->modules_;
+}
+
+void ModuleLoader::record_module_imports(const syntax::ModuleId module_id, const std::string_view owner_part,
+    const bool owner_is_primary, const std::span<const syntax::ResolvedImport> imports,
+    const syntax::AstModule& combined)
+{
+    if (!syntax::is_valid(module_id) || module_id.value >= this->modules_.size()) {
+        return;
+    }
+    ModuleRecord& record = this->modules_[module_id.value];
+    record.imports.reserve(record.imports.size() + imports.size());
+    for (const syntax::ResolvedImport& import : imports) {
+        if (!syntax::is_valid(import.module) || import.module.value >= combined.modules.size()) {
+            continue;
+        }
+        record.imports.push_back(ModuleImportRecord{
+            std::string(owner_part),
+            syntax::module_path_to_string(combined.modules[import.module.value].path),
+            std::string(import.alias),
+            owner_is_primary,
+            import.visibility == syntax::Visibility::public_,
+        });
+    }
+}
+
+void ModuleLoader::record_module_part(
+    const syntax::ModuleId module_id, std::string name, std::filesystem::path path, const base::u32 stable_index)
+{
+    if (!syntax::is_valid(module_id) || module_id.value >= this->modules_.size()) {
+        return;
+    }
+    this->modules_[module_id.value].parts.push_back(ModulePartRecord{
+        std::move(name),
+        std::move(path),
+        stable_index,
+        ModulePartRecordKind::named,
+    });
 }
 
 base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::path& path, syntax::AstModule& combined,
@@ -156,7 +207,7 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
         info.path = module.module_path;
         combined.intern_module_path(info.path);
         combined.modules.push_back(std::move(info));
-        this->modules_.push_back(ModuleRecord{module_name, canonical});
+        this->modules_.push_back(make_module_record(module_name, canonical));
     }
     if (is_root) {
         combined.module_path = module.module_path;
@@ -169,6 +220,7 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
     if (!import_result) {
         return base::Result<syntax::ModuleId>::fail(import_result.error());
     }
+    this->record_module_imports(module_id, {}, true, direct_imports, combined);
 
     auto parts_result = this->load_declared_parts(
         canonical, module_name, module.module_path, module.part_declarations, combined, depth, module_id);
@@ -259,6 +311,7 @@ base::Result<std::vector<ModuleLoader::LoadedModulePartAst>> ModuleLoader::load_
         }
     }
 
+    base::u32 stable_part_index = 1;
     for (const syntax::ModulePartDecl& part_decl : part_declarations) {
         const std::string part_name{part_decl.name};
         const std::filesystem::path part_path = module_part_file_path(primary_path, part_decl.name);
@@ -276,6 +329,9 @@ base::Result<std::vector<ModuleLoader::LoadedModulePartAst>> ModuleLoader::load_
         if (auto logical = this->loaded_modules_.find(module_name); logical != this->loaded_modules_.end()) {
             logical->second.parts.push_back(LoadedModulePart{part_name, canonical_part_path});
         }
+        this->record_module_part(module_id, part_name, canonical_part_path, stable_part_index);
+        this->record_module_imports(module_id, part_name, false, part_module.imports, combined);
+        ++stable_part_index;
         part_modules.push_back(std::move(part_module));
     }
 
@@ -326,7 +382,12 @@ base::Result<ModuleLoader::LoadedModulePartAst> ModuleLoader::load_module_part(c
             std::string(part_module.part_header.name),
         });
     this->loaded_file_modules_.emplace(key, module_id);
-    return base::Result<LoadedModulePartAst>::ok(LoadedModulePartAst{std::move(part_module), std::move(part_imports)});
+    return base::Result<LoadedModulePartAst>::ok(LoadedModulePartAst{
+        std::string(part_decl.name),
+        canonical,
+        std::move(part_module),
+        std::move(part_imports),
+    });
 }
 
 base::Result<syntax::ModuleId> ModuleLoader::redirect_root_part(const std::filesystem::path& canonical,

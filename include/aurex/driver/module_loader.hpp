@@ -44,6 +44,8 @@ private:
     };
 
     struct LoadedModulePartAst {
+        std::string name;
+        std::filesystem::path path;
         syntax::AstModule module;
         std::vector<syntax::ResolvedImport> imports;
     };
@@ -62,6 +64,10 @@ private:
         base::usize depth, syntax::ModuleId module_id);
     [[nodiscard]] base::Result<syntax::ModuleId> redirect_root_part(const std::filesystem::path& canonical,
         const std::string& key, const syntax::AstModule& module, syntax::AstModule& combined, base::usize depth);
+    void record_module_imports(syntax::ModuleId module_id, std::string_view owner_part, bool owner_is_primary,
+        std::span<const syntax::ResolvedImport> imports, const syntax::AstModule& combined);
+    void record_module_part(
+        syntax::ModuleId module_id, std::string name, std::filesystem::path path, base::u32 stable_index);
 
     const CompilerInvocation& invocation_;
     base::SourceManager& sources_;

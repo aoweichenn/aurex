@@ -1,20 +1,37 @@
 #include <aurex/base/config.hpp>
 #include <aurex/base/integer.hpp>
+#include <aurex/driver/compiler.hpp>
+#include <aurex/driver/file_cache.hpp>
+#include <aurex/driver/invocation.hpp>
+#include <aurex/query/query_key.hpp>
+#include <aurex/query/stable_identity.hpp>
+#include <aurex/sema/identifier.hpp>
 
 #include <support/test_support.hpp>
 
+#include <array>
 #include <fstream>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <driver/module_loader_support.hpp>
 
 namespace aurex::test {
 
 namespace {
+
+struct CacheFingerprint {
+    std::string global;
+    std::string primary;
+    std::string secondary;
+    std::string bytes;
+
+    [[nodiscard]] friend bool operator==(const CacheFingerprint& lhs, const CacheFingerprint& rhs) = default;
+};
 
 fs::path write_import_test_source(const fs::path& path, const std::string_view text)
 {
@@ -25,6 +42,79 @@ fs::path write_import_test_source(const fs::path& path, const std::string_view t
     }
     out << text;
     return path;
+}
+
+[[nodiscard]] std::string read_import_test_text(const fs::path& path)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        throw std::runtime_error("failed to read " + path.string());
+    }
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
+}
+
+[[nodiscard]] std::string import_test_hex_encode(const std::string_view bytes)
+{
+    constexpr char HEX_DIGITS[] = "0123456789abcdef";
+    constexpr unsigned int HIGH_NIBBLE_SHIFT = 4;
+    constexpr unsigned int LOW_NIBBLE_MASK = 0x0FU;
+    constexpr base::usize HEX_CHARS_PER_BYTE = 2U;
+
+    std::string encoded;
+    encoded.reserve(bytes.size() * HEX_CHARS_PER_BYTE);
+    for (const unsigned char byte : bytes) {
+        encoded.push_back(HEX_DIGITS[byte >> HIGH_NIBBLE_SHIFT]);
+        encoded.push_back(HEX_DIGITS[byte & LOW_NIBBLE_MASK]);
+    }
+    return encoded;
+}
+
+[[nodiscard]] std::vector<std::string_view> split_import_test_fields(const std::string_view line)
+{
+    std::vector<std::string_view> fields;
+    base::usize begin = 0;
+    while (begin <= line.size()) {
+        const base::usize end = line.find('\t', begin);
+        if (end == std::string_view::npos) {
+            fields.push_back(line.substr(begin));
+            break;
+        }
+        fields.push_back(line.substr(begin, end - begin));
+        begin = end + 1;
+    }
+    return fields;
+}
+
+[[nodiscard]] std::optional<CacheFingerprint> module_query_fingerprint(
+    const std::string& cache_text, const std::string_view query_kind, const std::string_view module_name)
+{
+    const std::array<std::string_view, 1> module_parts{module_name};
+    const query::ModuleKey module_key = query::module_key_from_stable_id(sema::stable_module_id(module_parts));
+    const std::string stable_key = import_test_hex_encode(query::stable_serialize(module_key));
+
+    base::usize begin = 0;
+    while (begin < cache_text.size()) {
+        const base::usize end = cache_text.find('\n', begin);
+        const std::string_view line = end == std::string::npos
+            ? std::string_view(cache_text).substr(begin)
+            : std::string_view(cache_text).substr(begin, end - begin);
+        const std::vector<std::string_view> fields = split_import_test_fields(line);
+        if (fields.size() == 12U && fields[0] == "query" && fields[1] == query_kind && fields[11] == stable_key) {
+            return CacheFingerprint{
+                std::string(fields[7]),
+                std::string(fields[8]),
+                std::string(fields[9]),
+                std::string(fields[10]),
+            };
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        begin = end + 1;
+    }
+    return std::nullopt;
 }
 
 } // namespace
@@ -688,6 +778,75 @@ TEST(CoreUnit, ModuleLoaderSupportValidationDefensiveBranches)
     EXPECT_EQ(*deduplicated.selected, deduplicated.matching_candidates.front());
 
     EXPECT_EQ(driver::owning_primary_for_part_file(support_dir / "plain.ax"), std::nullopt);
+}
+
+TEST_F(AurexIntegrationTest, ModuleLoaderImportVisibilityChangesGraphAndExportsOnly)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view MODULE_NAME = "incremental_cache_visibility_rank";
+    constexpr std::string_view PUBLIC_REEXPORT_SOURCE = "module incremental_cache_visibility_rank;\n"
+                                                        "pub import lib.visible as visible;\n"
+                                                        "pub fn exported(value: i32) -> i32 {\n"
+                                                        "  return visible.value() + value;\n"
+                                                        "}\n";
+    constexpr std::string_view PRIVATE_IMPORT_SOURCE = "module incremental_cache_visibility_rank;\n"
+                                                       "import lib.visible as visible;\n"
+                                                       "pub fn exported(value: i32) -> i32 {\n"
+                                                       "  return visible.value() + value;\n"
+                                                       "}\n";
+    constexpr std::string_view IMPORT_SOURCE = "module lib.visible;\n"
+                                               "pub fn value() -> i32 {\n"
+                                               "  return 1;\n"
+                                               "}\n";
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-visibility-rank";
+    const fs::path import_dir = cache_dir / "imports";
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    const fs::path import_source = import_dir / "lib" / "visible.ax";
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+    invocation.import_paths.push_back(import_dir);
+
+    static_cast<void>(write_import_test_source(import_source, IMPORT_SOURCE));
+    static_cast<void>(write_import_test_source(source, PUBLIC_REEXPORT_SOURCE));
+    driver::Compiler compiler;
+    auto first = compiler.run(invocation);
+    ASSERT_TRUE(first) << first.error().message;
+    const std::string first_cache = read_import_test_text(cache);
+    const std::optional<CacheFingerprint> first_graph =
+        module_query_fingerprint(first_cache, "module_graph", MODULE_NAME);
+    const std::optional<CacheFingerprint> first_exports =
+        module_query_fingerprint(first_cache, "module_exports", MODULE_NAME);
+    const std::optional<CacheFingerprint> first_items = module_query_fingerprint(first_cache, "item_list", MODULE_NAME);
+    ASSERT_TRUE(first_graph.has_value());
+    ASSERT_TRUE(first_exports.has_value());
+    ASSERT_TRUE(first_items.has_value());
+
+    static_cast<void>(write_import_test_source(source, PRIVATE_IMPORT_SOURCE));
+    driver::clear_file_cache();
+    auto second = compiler.run(invocation);
+    ASSERT_TRUE(second) << second.error().message;
+    const std::string second_cache = read_import_test_text(cache);
+    const std::optional<CacheFingerprint> second_graph =
+        module_query_fingerprint(second_cache, "module_graph", MODULE_NAME);
+    const std::optional<CacheFingerprint> second_exports =
+        module_query_fingerprint(second_cache, "module_exports", MODULE_NAME);
+    const std::optional<CacheFingerprint> second_items =
+        module_query_fingerprint(second_cache, "item_list", MODULE_NAME);
+    ASSERT_TRUE(second_graph.has_value());
+    ASSERT_TRUE(second_exports.has_value());
+    ASSERT_TRUE(second_items.has_value());
+
+    EXPECT_FALSE(*first_graph == *second_graph);
+    EXPECT_FALSE(*first_exports == *second_exports);
+    EXPECT_EQ(*first_items, *second_items);
+
+    driver::clear_file_cache();
 }
 
 } // namespace aurex::test

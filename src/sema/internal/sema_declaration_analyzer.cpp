@@ -648,7 +648,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
             } else if (item.is_prototype) {
                 this->core_.report_general(item.range, std::string(SEMA_PROTOTYPE_RETURN_TYPE_EXPLICIT));
                 return_type = this->core_.state_.checked.types.builtin(BuiltinType::void_);
-            } else if (item.visibility == syntax::Visibility::public_) {
+            } else if (syntax::visibility_is_public(item.visibility)) {
                 this->core_.report_general(item.range, std::string(SEMA_PUBLIC_FUNCTION_RETURN_TYPE_EXPLICIT));
             }
             std::vector<TypeHandle> param_types;
@@ -784,7 +784,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_function_prototypes() c
 
 std::optional<SemanticAnalyzerCore::DeclarationAnalyzer::ExportSurfacePrivateType>
 SemanticAnalyzerCore::DeclarationAnalyzer::private_type_exposed_by_surface_type(
-    const TypeHandle root, const syntax::ModuleId exported_module) const
+    const TypeHandle root, const syntax::Visibility surface_visibility) const
 {
     if (!is_valid(root)) {
         return std::nullopt;
@@ -832,8 +832,7 @@ SemanticAnalyzerCore::DeclarationAnalyzer::private_type_exposed_by_surface_type(
             case TypeKind::struct_:
             case TypeKind::opaque_struct:
                 if (const StructInfo* const struct_info = this->core_.find_struct(current); struct_info != nullptr
-                    && struct_info->module.value == exported_module.value
-                    && struct_info->visibility == syntax::Visibility::private_) {
+                    && !syntax::visibility_at_least(struct_info->visibility, surface_visibility)) {
                     return ExportSurfacePrivateType{
                         struct_display_name(this->core_.state_.checked.types, *struct_info),
                         {},
@@ -848,8 +847,7 @@ SemanticAnalyzerCore::DeclarationAnalyzer::private_type_exposed_by_surface_type(
                     found != this->core_.state_.names.enum_cases_by_type.end() && !found->second.empty()
                     && found->second.front() != nullptr) {
                     const EnumCaseInfo& enum_case = *found->second.front();
-                    if (enum_case.module.value == exported_module.value
-                        && enum_case.visibility == syntax::Visibility::private_) {
+                    if (!syntax::visibility_at_least(enum_case.visibility, surface_visibility)) {
                         return ExportSurfacePrivateType{
                             enum_display_name(this->core_.state_.checked.types, enum_case),
                             enum_case.range,
@@ -874,7 +872,7 @@ bool SemanticAnalyzerCore::DeclarationAnalyzer::method_signature_is_exported_sur
         return true;
     }
     const std::optional<ExportSurfacePrivateType> private_receiver =
-        this->private_type_exposed_by_surface_type(signature.method_owner_type, signature.module);
+        this->private_type_exposed_by_surface_type(signature.method_owner_type, signature.visibility);
     return !private_receiver.has_value();
 }
 
@@ -883,8 +881,9 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_exported_signature_surf
     const auto report_if_private = [&](const std::string_view surface, const std::string_view name,
                                        const syntax::ModuleId exported_module, const TypeHandle type,
                                        const base::SourceRange& range) {
+        static_cast<void>(exported_module);
         const std::optional<ExportSurfacePrivateType> private_type =
-            this->private_type_exposed_by_surface_type(type, exported_module);
+            this->private_type_exposed_by_surface_type(type, syntax::Visibility::public_);
         if (!private_type.has_value()) {
             return;
         }
@@ -898,7 +897,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_exported_signature_surf
 
     for (const auto& entry : this->core_.state_.checked.functions) {
         const FunctionSignature& signature = entry.second;
-        if (signature.visibility != syntax::Visibility::public_ || signature.has_conflict
+        if (!syntax::visibility_is_public(signature.visibility) || signature.has_conflict
             || !this->method_signature_is_exported_surface(signature)) {
             continue;
         }
@@ -913,7 +912,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_exported_signature_surf
 
     for (const auto& entry : this->core_.state_.generics.placeholder_functions) {
         const FunctionSignature& signature = entry.second;
-        if (signature.visibility != syntax::Visibility::public_ || signature.has_conflict
+        if (!syntax::visibility_is_public(signature.visibility) || signature.has_conflict
             || !this->method_signature_is_exported_surface(signature)) {
             continue;
         }
@@ -928,12 +927,12 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_exported_signature_surf
 
     for (const auto& entry : this->core_.state_.checked.structs) {
         const StructInfo& info = entry.second;
-        if (info.visibility != syntax::Visibility::public_) {
+        if (!syntax::visibility_is_public(info.visibility)) {
             continue;
         }
         const std::string struct_name = struct_display_name(this->core_.state_.checked.types, info);
         for (const StructFieldInfo& field : info.fields) {
-            if (field.visibility != syntax::Visibility::public_) {
+            if (!syntax::visibility_is_public(field.visibility)) {
                 continue;
             }
             const std::string field_name = struct_name + "." + std::string(field.name);
@@ -943,7 +942,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_exported_signature_surf
 
     for (const auto& entry : this->core_.state_.checked.enum_cases) {
         const EnumCaseInfo& info = entry.second;
-        if (info.visibility != syntax::Visibility::public_) {
+        if (!syntax::visibility_is_public(info.visibility)) {
             continue;
         }
         const std::string case_name = enum_case_display_name(this->core_.state_.checked.types, info);
@@ -957,7 +956,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_exported_signature_surf
 
     for (const auto& entry : this->core_.state_.checked.type_aliases) {
         const TypeAliasInfo& info = entry.second;
-        if (info.visibility != syntax::Visibility::public_) {
+        if (!syntax::visibility_is_public(info.visibility)) {
             continue;
         }
         const std::optional<TypeHandle> target = cached_checked_syntax_type(this->core_.state_.checked, info.target);
@@ -967,7 +966,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_exported_signature_surf
 
     for (const auto& entry : this->core_.state_.functions.global_values) {
         const Symbol& symbol = entry.second;
-        if (symbol.kind != SymbolKind::const_ || symbol.visibility != syntax::Visibility::public_) {
+        if (symbol.kind != SymbolKind::const_ || !syntax::visibility_is_public(symbol.visibility)) {
             continue;
         }
         report_if_private("const", symbol.name, symbol.module, symbol.type, symbol.range);

@@ -593,7 +593,13 @@ std::string SemanticAnalyzerCore::method_c_symbol_name(const TypeHandle owner_ty
 
 bool SemanticAnalyzerCore::can_access(const syntax::ModuleId owner, const syntax::Visibility visibility) const noexcept
 {
-    return owner.value == this->state_.flow.current_module.value || visibility == syntax::Visibility::public_;
+    if (syntax::visibility_is_public(visibility)) {
+        return true;
+    }
+    if (syntax::visibility_at_least(visibility, syntax::Visibility::package_)) {
+        return syntax::is_valid(owner) && syntax::is_valid(this->state_.flow.current_module);
+    }
+    return owner.value == this->state_.flow.current_module.value;
 }
 
 syntax::ModuleId SemanticAnalyzerCore::owner_module(const TypeHandle owner_type) const noexcept

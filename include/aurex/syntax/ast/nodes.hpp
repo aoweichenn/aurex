@@ -39,10 +39,61 @@ enum class FunctionCallConv {
     c,
 };
 
+inline constexpr base::u8 VISIBILITY_RANK_PRIVATE = 0;
+inline constexpr base::u8 VISIBILITY_RANK_PACKAGE = 1;
+inline constexpr base::u8 VISIBILITY_RANK_PUBLIC = 2;
+
 enum class Visibility {
-    public_,
     private_,
+    package_,
+    public_,
 };
+
+[[nodiscard]] inline constexpr base::u8 visibility_rank(const Visibility visibility) noexcept
+{
+    switch (visibility) {
+        case Visibility::private_:
+            return VISIBILITY_RANK_PRIVATE;
+        case Visibility::package_:
+            return VISIBILITY_RANK_PACKAGE;
+        case Visibility::public_:
+            return VISIBILITY_RANK_PUBLIC;
+    }
+    return VISIBILITY_RANK_PRIVATE;
+}
+
+[[nodiscard]] inline constexpr bool visibility_at_least(const Visibility actual, const Visibility required) noexcept
+{
+    return visibility_rank(actual) >= visibility_rank(required);
+}
+
+[[nodiscard]] inline constexpr Visibility effective_visibility(const Visibility owner, const Visibility member) noexcept
+{
+    return visibility_rank(owner) < visibility_rank(member) ? owner : member;
+}
+
+[[nodiscard]] inline constexpr bool visibility_is_public(const Visibility visibility) noexcept
+{
+    return visibility == Visibility::public_;
+}
+
+[[nodiscard]] inline constexpr bool visibility_is_module_private(const Visibility visibility) noexcept
+{
+    return visibility == Visibility::private_;
+}
+
+[[nodiscard]] inline constexpr std::string_view visibility_name(const Visibility visibility) noexcept
+{
+    switch (visibility) {
+        case Visibility::private_:
+            return "priv";
+        case Visibility::package_:
+            return "pub(package)";
+        case Visibility::public_:
+            return "pub";
+    }
+    return "priv";
+}
 
 enum class TypeKind {
     primitive,

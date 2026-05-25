@@ -26,14 +26,15 @@ public:
     void analyze_const_decls();
     bool is_const_evaluable_expr(const syntax::ExprId expr_id, ModuleLookupSet& dependencies);
 
-private:
     struct ExportSurfacePrivateType {
         std::string name;
         base::SourceRange range{};
     };
 
     [[nodiscard]] std::optional<ExportSurfacePrivateType> private_type_exposed_by_surface_type(
-        TypeHandle root, syntax::ModuleId exported_module) const;
+        TypeHandle root, syntax::Visibility surface_visibility) const;
+
+private:
     [[nodiscard]] bool method_signature_is_exported_surface(const FunctionSignature& signature) const;
 
     SemanticAnalyzerCore& core_;

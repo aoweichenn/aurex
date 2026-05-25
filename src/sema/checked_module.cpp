@@ -989,8 +989,8 @@ std::string dump_checked_module(const CheckedModule& checked)
         const FunctionSignature& fn = *fn_ptr;
         const std::string display_name = function_display_name(checked.types, fn);
         out << "    fn ";
-        if (fn.visibility == syntax::Visibility::private_) {
-            out << "priv ";
+        if (!syntax::visibility_is_public(fn.visibility)) {
+            out << syntax::visibility_name(fn.visibility) << " ";
         }
         if (fn.is_method) {
             out << "method " << checked.types.display_name(fn.method_owner_type) << ".";
@@ -1026,8 +1026,8 @@ std::string dump_checked_module(const CheckedModule& checked)
     for (const StructInfo* const info_ptr : struct_names) {
         const StructInfo& info = *info_ptr;
         out << "    struct ";
-        if (info.visibility == syntax::Visibility::private_) {
-            out << "priv ";
+        if (!syntax::visibility_is_public(info.visibility)) {
+            out << syntax::visibility_name(info.visibility) << " ";
         }
         out << struct_display_name(checked.types, info);
         if (info.is_opaque) {
@@ -1055,8 +1055,8 @@ std::string dump_checked_module(const CheckedModule& checked)
             resolved = checked.syntax_type_handles[alias.target.value];
         }
         out << "    type ";
-        if (alias.visibility == syntax::Visibility::private_) {
-            out << "priv ";
+        if (!syntax::visibility_is_public(alias.visibility)) {
+            out << syntax::visibility_name(alias.visibility) << " ";
         }
         out << alias.name << " = " << checked.types.display_name(resolved) << "\n";
     }

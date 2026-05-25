@@ -615,6 +615,32 @@ Phase 6A 暂不做：
 - protected/friend：与 Aurex 当前模块和类型系统不匹配。
 - package manager / external dependency resolver：`PackageKey` 先作为编译会话内稳定身份。
 
+Phase 6A-1 实现收口状态（2026-05-26）：
+
+- 已落地内部 `Visibility` 三层级：`private_`、`package_`、`public_`。
+- 已提供统一 helper：`visibility_rank`、`visibility_at_least`、`effective_visibility`、
+  `visibility_is_public`、`visibility_is_module_private`、`visibility_name`。
+- Parser 仍只接受现有 `priv` / `pub`，不会从源码产生 `pub(package)`；现有测试和用户行为保持不变。
+- AST / checked dump 已改为通过 `visibility_name` 输出，内部 package visibility 的 dump 稳定为
+  `pub(package)`。
+- Sema lookup 的 access 判断已经按层级入口收束；`pub(package)` 目前只作为内部占位，
+  真正同 package 判定仍等待 `AccessContext{PackageKey, ModuleKey, ModulePartKey}` 落地。
+- Public API surface 检查会把低于 `pub` 的类型视为不可泄漏到 public API；这为后续
+  `pub(package)` 不进入跨 package API 提前建立了防线。
+- Module loader 记录 import 的原始 visibility；ModuleGraph fingerprint 写入 import visibility rank；
+  ModuleExports signature entry 写入 export entry visibility rank。这样后续拆出
+  `ModulePackageExports` 时，不需要改变当前 stable semantics。
+- 正常测试已覆盖 visibility lattice、package visibility dump、sema access/internal surface helper、
+  import visibility 对 ModuleGraph / ModuleExports / ItemList 的增量影响。
+
+Phase 6A-1 之后仍未完成的部分：
+
+- `pub(package)` parser 语法和诊断。
+- 真实 `PackageKey` 参与的 `AccessContext`。
+- `ModulePackageExports(ModuleKey)` 独立 query kind。
+- `pub(package) import` 的 package-level re-export 语义。
+- package-private surface 泄漏诊断文案从“private type”升级为分层 visibility 文案。
+
 ### 7.1 `priv` 跨 part
 
 ```aurex

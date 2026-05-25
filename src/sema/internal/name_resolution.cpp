@@ -310,7 +310,7 @@ void ModuleVisibilityResolver::append_public_reexports(const syntax::ModuleId mo
             continue;
         }
         for (const syntax::ResolvedImport& import : this->core_.ctx_.module.modules[current.value].imports) {
-            if (import.visibility != syntax::Visibility::public_ || !syntax::is_valid(import.module)) {
+            if (!syntax::visibility_is_public(import.visibility) || !syntax::is_valid(import.module)) {
                 continue;
             }
             if (seen.insert(import.module.value).second) {

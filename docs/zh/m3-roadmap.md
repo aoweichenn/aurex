@@ -140,6 +140,14 @@ exports query 边界、import re-export 层级和 private/package type 泄漏检
 6A 不引入 `pub(super)` / `pub(in path)`，也不把 file-private、protected/friend 或 package
 manager 混入当前模块系统主线。
 
+2026-05-26：Phase 6A-1 Visibility Core 已完成第一步内部重构。当前代码层已经具备
+`priv < pub(package) < pub` 的内部层级、`visibility_rank`、`visibility_at_least`、
+`effective_visibility` 和稳定 dump 名称；parser 仍只开放既有 `priv` / `pub` 语法，用户可见行为
+不改变。Sema 的 access 判断、public surface 泄漏检查、checked dump、AST dump、module loader
+记录和 ModuleGraph / ModuleExports query fingerprint 已改为消费层级化 visibility，而不是散落的
+二值 public/private 判断。Phase 6A-1 的边界是“内部模型和增量边界先稳定”，不开放
+`pub(package)` 源码语法，也不新增 `ModulePackageExports` query kind。
+
 ## 验收
 
 M3.0 模块验收：

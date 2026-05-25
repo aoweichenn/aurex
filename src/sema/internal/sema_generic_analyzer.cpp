@@ -1000,7 +1000,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::register_generic_template(
         return;
     }
 
-    if (item.visibility == syntax::Visibility::public_ && !syntax::is_valid(item.return_type)) {
+    if (syntax::visibility_is_public(item.visibility) && !syntax::is_valid(item.return_type)) {
         this->core_.report_general(item.range, std::string(SEMA_PUBLIC_FUNCTION_RETURN_TYPE_EXPLICIT));
     }
     if (item.is_extern_c || item.is_export_c || item.is_prototype) {

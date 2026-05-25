@@ -460,6 +460,45 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads)
     EXPECT_EQ(moved_enum.enum_cases.back().value_text, "0");
 }
 
+TEST(CoreUnit, VisibilityLatticeOrdersNamesAndRoundTripsPackageLevel)
+{
+    EXPECT_EQ(syntax::visibility_rank(syntax::Visibility::private_), syntax::VISIBILITY_RANK_PRIVATE);
+    EXPECT_EQ(syntax::visibility_rank(syntax::Visibility::package_), syntax::VISIBILITY_RANK_PACKAGE);
+    EXPECT_EQ(syntax::visibility_rank(syntax::Visibility::public_), syntax::VISIBILITY_RANK_PUBLIC);
+    EXPECT_LT(
+        syntax::visibility_rank(syntax::Visibility::private_), syntax::visibility_rank(syntax::Visibility::package_));
+    EXPECT_LT(
+        syntax::visibility_rank(syntax::Visibility::package_), syntax::visibility_rank(syntax::Visibility::public_));
+
+    EXPECT_TRUE(syntax::visibility_at_least(syntax::Visibility::public_, syntax::Visibility::private_));
+    EXPECT_TRUE(syntax::visibility_at_least(syntax::Visibility::package_, syntax::Visibility::private_));
+    EXPECT_TRUE(syntax::visibility_at_least(syntax::Visibility::public_, syntax::Visibility::package_));
+    EXPECT_FALSE(syntax::visibility_at_least(syntax::Visibility::package_, syntax::Visibility::public_));
+    EXPECT_FALSE(syntax::visibility_at_least(syntax::Visibility::private_, syntax::Visibility::package_));
+
+    EXPECT_EQ(syntax::effective_visibility(syntax::Visibility::public_, syntax::Visibility::package_),
+        syntax::Visibility::package_);
+    EXPECT_EQ(syntax::effective_visibility(syntax::Visibility::package_, syntax::Visibility::public_),
+        syntax::Visibility::package_);
+    EXPECT_EQ(syntax::effective_visibility(syntax::Visibility::private_, syntax::Visibility::public_),
+        syntax::Visibility::private_);
+
+    EXPECT_EQ(syntax::visibility_name(syntax::Visibility::private_), "priv");
+    EXPECT_EQ(syntax::visibility_name(syntax::Visibility::package_), "pub(package)");
+    EXPECT_EQ(syntax::visibility_name(syntax::Visibility::public_), "pub");
+    EXPECT_TRUE(syntax::visibility_is_public(syntax::Visibility::public_));
+    EXPECT_FALSE(syntax::visibility_is_public(syntax::Visibility::package_));
+    EXPECT_TRUE(syntax::visibility_is_module_private(syntax::Visibility::private_));
+
+    syntax::ItemNode item;
+    item.name = "internal_api";
+    item.visibility = syntax::Visibility::package_;
+    syntax::ItemNodeList items;
+    items.push_back(item);
+    EXPECT_EQ(items.visibility(0), syntax::Visibility::package_);
+    EXPECT_EQ(items[0].visibility, syntax::Visibility::package_);
+}
+
 TEST(CoreUnit, CompactAstStorageMoveAssignmentTransfersArenaBackedPayloads)
 {
     syntax::TypeNode function_type;
@@ -975,6 +1014,47 @@ TEST(CoreUnit, ExprNodeListCopyPreservesEveryCompactExpressionPayload)
         EXPECT_EQ(copied_view.cast_payload(cast_id.value)->type.value, COPY_TYPE_ID);
     }
     EXPECT_EQ(assigned.size(), exprs.size());
+}
+
+TEST(CoreUnit, AstDumpPrintsPackageVisibilityForInternalLattice)
+{
+    syntax::AstModule module;
+    module.module_path.parts = {"pkg_visibility_dump"};
+
+    syntax::ModulePath import_path;
+    import_path.parts = {"pkg", "internal"};
+    module.imports.push_back(syntax::ImportDecl{
+        import_path,
+        "internal",
+        {},
+        syntax::Visibility::package_,
+        true,
+    });
+
+    const syntax::TypeId i32_type = push_primitive_type(module, syntax::PrimitiveTypeKind::i32);
+
+    syntax::ItemNode package_struct;
+    package_struct.kind = syntax::ItemKind::struct_decl;
+    package_struct.name = "PackageBox";
+    package_struct.visibility = syntax::Visibility::package_;
+    package_struct.fields.push_back(syntax::FieldDecl{"value", i32_type, {}, syntax::Visibility::package_});
+    module.items.push_back(package_struct);
+
+    syntax::ItemNode package_function;
+    package_function.kind = syntax::ItemKind::fn_decl;
+    package_function.name = "make";
+    package_function.visibility = syntax::Visibility::package_;
+    package_function.return_type = i32_type;
+    module.items.push_back(package_function);
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "pub(package) import pkg.internal as internal",
+            "item #0 pub(package) struct PackageBox",
+            "field pub(package) value : i32",
+            "item #1 pub(package) fn make",
+        });
 }
 
 TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels)

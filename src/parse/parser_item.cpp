@@ -45,7 +45,7 @@ syntax::ItemId ItemParser::parse_item()
         return id;
     }
     if (this->check(TokenKind::kw_impl)) {
-        if (visibility.explicit_visibility && visibility.visibility == syntax::Visibility::private_) {
+        if (visibility.explicit_visibility && syntax::visibility_is_module_private(visibility.visibility)) {
             this->report_here(std::string(PARSER_IMPL_PRIVATE_UNSUPPORTED));
         }
         return this->parse_impl_block();
@@ -58,13 +58,13 @@ syntax::ItemId ItemParser::parse_item()
         return id;
     }
     if (this->check(TokenKind::kw_extern)) {
-        if (visibility.explicit_visibility && visibility.visibility == syntax::Visibility::private_) {
+        if (visibility.explicit_visibility && syntax::visibility_is_module_private(visibility.visibility)) {
             this->report_here(std::string(PARSER_EXTERN_PRIVATE_UNSUPPORTED));
         }
         return this->parse_extern_block();
     }
     if (this->check(TokenKind::kw_export)) {
-        if (visibility.explicit_visibility && visibility.visibility == syntax::Visibility::private_) {
+        if (visibility.explicit_visibility && syntax::visibility_is_module_private(visibility.visibility)) {
             this->report_here(std::string(PARSER_EXPORT_C_PRIVATE_UNSUPPORTED));
         }
         const syntax::Token& begin = this->advance();

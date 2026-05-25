@@ -749,11 +749,7 @@ std::string_view item_kind_name(const ItemKind kind)
 
 void dump_visibility(std::ostringstream& out, const Visibility visibility)
 {
-    if (visibility == Visibility::public_) {
-        out << "pub ";
-        return;
-    }
-    out << "priv ";
+    out << visibility_name(visibility) << " ";
 }
 
 std::string_view stmt_kind_name(const StmtKind kind)

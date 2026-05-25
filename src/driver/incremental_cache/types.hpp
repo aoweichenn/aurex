@@ -121,6 +121,7 @@ struct ModuleGraphQuerySubject {
 struct ModuleExportsSignatureEntry {
     std::string category;
     std::string name;
+    base::u8 visibility_rank = 0;
     std::string identity;
     std::string signature;
 };

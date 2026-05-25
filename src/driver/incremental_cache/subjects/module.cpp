@@ -29,8 +29,8 @@ constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
 [[nodiscard]] bool module_exports_signature_entry_less(
     const ModuleExportsSignatureEntry& lhs, const ModuleExportsSignatureEntry& rhs)
 {
-    return std::tie(lhs.category, lhs.name, lhs.identity, lhs.signature)
-        < std::tie(rhs.category, rhs.name, rhs.identity, rhs.signature);
+    return std::tie(lhs.category, lhs.name, lhs.visibility_rank, lhs.identity, lhs.signature)
+        < std::tie(rhs.category, rhs.name, rhs.visibility_rank, rhs.identity, rhs.signature);
 }
 
 [[nodiscard]] bool item_list_signature_entry_less(const ItemListSignatureEntry& lhs, const ItemListSignatureEntry& rhs)
@@ -116,7 +116,7 @@ constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
     std::vector<query::ModuleKey> dependencies;
     dependencies.reserve(module.imports.size());
     for (const ModuleImportRecord& import : module.imports) {
-        if (!import.owner_is_primary || !import.is_public) {
+        if (!import.owner_is_primary || !syntax::visibility_is_public(import.visibility)) {
             continue;
         }
         const query::ModuleKey key = module_key_from_name(import.module_name);
@@ -161,8 +161,12 @@ constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
         imports.push_back(&import);
     }
     std::sort(imports.begin(), imports.end(), [](const ModuleImportRecord* lhs, const ModuleImportRecord* rhs) {
-        return std::tie(lhs->owner_is_primary, lhs->owner_part, lhs->module_name, lhs->alias, lhs->is_public)
-            < std::tie(rhs->owner_is_primary, rhs->owner_part, rhs->module_name, rhs->alias, rhs->is_public);
+        const auto lhs_key = std::tie(lhs->owner_is_primary, lhs->owner_part, lhs->module_name, lhs->alias);
+        const auto rhs_key = std::tie(rhs->owner_is_primary, rhs->owner_part, rhs->module_name, rhs->alias);
+        if (lhs_key != rhs_key) {
+            return lhs_key < rhs_key;
+        }
+        return syntax::visibility_rank(lhs->visibility) < syntax::visibility_rank(rhs->visibility);
     });
     builder.mix_u64(static_cast<base::u64>(imports.size()));
     for (base::usize index = 0; index < imports.size(); ++index) {
@@ -172,13 +176,14 @@ constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
         builder.mix_string(import.owner_part);
         builder.mix_string(import.module_name);
         builder.mix_string(import.alias);
-        builder.mix_bool(import.is_public);
+        builder.mix_u64(syntax::visibility_rank(import.visibility));
     }
     return query::query_result_fingerprint(builder.finish());
 }
 
 void push_module_exports_signature_entry(std::vector<ModuleExportsSignatureEntry>& entries,
-    const std::string_view category, const std::string_view name, std::string identity, std::string signature)
+    const std::string_view category, const std::string_view name, const syntax::Visibility visibility,
+    std::string identity, std::string signature)
 {
     if (identity.empty()) {
         return;
@@ -186,6 +191,7 @@ void push_module_exports_signature_entry(std::vector<ModuleExportsSignatureEntry
     entries.push_back(ModuleExportsSignatureEntry{
         std::string(category),
         std::string(name),
+        syntax::visibility_rank(visibility),
         std::move(identity),
         std::move(signature),
     });
@@ -219,13 +225,13 @@ void push_item_list_signature_entry(std::vector<ItemListSignatureEntry>& entries
     for (const auto& entry : checked.structs) {
         const sema::StructInfo& info = entry.second;
         if (info.type.value == signature.method_owner_type.value) {
-            return info.visibility == syntax::Visibility::public_;
+            return syntax::visibility_is_public(info.visibility);
         }
     }
     for (const auto& entry : checked.enum_cases) {
         const sema::EnumCaseInfo& info = entry.second;
         if (info.type.value == signature.method_owner_type.value) {
-            return info.visibility == syntax::Visibility::public_;
+            return syntax::visibility_is_public(info.visibility);
         }
     }
     return true;
@@ -316,10 +322,10 @@ void collect_const_module_export_entries(std::vector<ModuleExportsSignatureEntry
         }
         const syntax::ItemNode item = ast->items[index];
         const sema::StableDefId stable_id = stable_const_id(*ast, item, ast->item_modules[index]);
-        if (item.visibility != syntax::Visibility::public_ || !stable_id_belongs_to_module(stable_id, module)) {
+        if (!syntax::visibility_is_public(item.visibility) || !stable_id_belongs_to_module(stable_id, module)) {
             continue;
         }
-        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_CONST, item.name,
+        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_CONST, item.name, item.visibility,
             stable_identity_string(stable_id), checked_syntax_type_display_name(checked, item.const_type));
     }
 }
@@ -327,7 +333,7 @@ void collect_const_module_export_entries(std::vector<ModuleExportsSignatureEntry
 void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& entries, const ModuleRecord& module)
 {
     for (const ModuleImportRecord& import : module.imports) {
-        if (!import.owner_is_primary || !import.is_public) {
+        if (!import.owner_is_primary || !syntax::visibility_is_public(import.visibility)) {
             continue;
         }
         const query::ModuleKey reexported = module_key_from_name(import.module_name);
@@ -335,7 +341,7 @@ void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& 
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_REEXPORT, import.alias,
-            query::stable_serialize(reexported), import.module_name);
+            syntax::Visibility::public_, query::stable_serialize(reexported), import.module_name);
     }
 }
 
@@ -349,56 +355,58 @@ void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& 
 
     for (const auto& entry : checked.functions) {
         const sema::FunctionSignature& signature = entry.second;
-        if (signature.visibility != syntax::Visibility::public_ || signature.has_conflict
+        if (!syntax::visibility_is_public(signature.visibility) || signature.has_conflict
             || !stable_id_belongs_to_module(signature.stable_id, module)
             || !function_signature_is_exported_surface(checked, signature)) {
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_FUNCTION,
-            function_export_name(checked, signature), stable_identity_string(signature.stable_id),
+            function_export_name(checked, signature), signature.visibility, stable_identity_string(signature.stable_id),
             function_export_signature(checked, signature));
     }
     for (const auto& entry : checked.structs) {
         const sema::StructInfo& info = entry.second;
-        if (info.visibility != syntax::Visibility::public_ || !stable_id_belongs_to_module(info.stable_id, module)) {
+        if (!syntax::visibility_is_public(info.visibility) || !stable_id_belongs_to_module(info.stable_id, module)) {
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_STRUCT, info.name.view(),
-            stable_identity_string(info.stable_id), info.is_opaque ? "opaque" : "struct");
+            info.visibility, stable_identity_string(info.stable_id), info.is_opaque ? "opaque" : "struct");
         const std::string struct_name = sema::struct_display_name(checked.types, info);
         for (const sema::StructFieldInfo& field : info.fields) {
-            if (field.visibility != syntax::Visibility::public_) {
+            if (!syntax::visibility_is_public(field.visibility)) {
                 continue;
             }
             push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_STRUCT_FIELD,
-                struct_name + "." + std::string(field.name.view()), stable_identity_string(field.stable_key),
-                type_display_name(checked, field.type));
+                struct_name + "." + std::string(field.name.view()),
+                syntax::effective_visibility(info.visibility, field.visibility),
+                stable_identity_string(field.stable_key), type_display_name(checked, field.type));
         }
     }
     for (const auto& entry : checked.enum_cases) {
         const sema::EnumCaseInfo& info = entry.second;
-        if (info.visibility != syntax::Visibility::public_ || !stable_id_belongs_to_module(info.stable_id, module)) {
+        if (!syntax::visibility_is_public(info.visibility) || !stable_id_belongs_to_module(info.stable_id, module)) {
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_ENUM_CASE,
-            sema::enum_case_display_name(checked.types, info), stable_identity_string(info.stable_id),
+            sema::enum_case_display_name(checked.types, info), info.visibility, stable_identity_string(info.stable_id),
             enum_case_export_signature(checked, info));
     }
     for (const auto& entry : checked.type_aliases) {
         const sema::TypeAliasInfo& info = entry.second;
-        if (info.visibility != syntax::Visibility::public_ || !stable_id_belongs_to_module(info.stable_id, module)) {
+        if (!syntax::visibility_is_public(info.visibility) || !stable_id_belongs_to_module(info.stable_id, module)) {
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_TYPE_ALIAS, info.name.view(),
-            stable_identity_string(info.stable_id), checked_syntax_type_display_name(checked, info.target));
+            info.visibility, stable_identity_string(info.stable_id),
+            checked_syntax_type_display_name(checked, info.target));
     }
     for (const sema::GenericTemplateSignatureInfo& info : checked.generic_template_signatures) {
-        if (info.visibility != syntax::Visibility::public_ || !stable_id_belongs_to_module(info.stable_id, module)
+        if (!syntax::visibility_is_public(info.visibility) || !stable_id_belongs_to_module(info.stable_id, module)
             || !query::is_valid(info.incremental_key)) {
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_GENERIC_TEMPLATE, info.name.view(),
-            stable_identity_string(info.stable_id), query::stable_serialize(info.incremental_key));
+            info.visibility, stable_identity_string(info.stable_id), query::stable_serialize(info.incremental_key));
     }
     collect_const_module_export_entries(entries, checked, ast, module);
     collect_primary_reexport_entries(entries, module_record);
@@ -471,6 +479,7 @@ void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& 
         builder.mix_u64(static_cast<base::u64>(index));
         builder.mix_string(entry.category);
         builder.mix_string(entry.name);
+        builder.mix_u64(entry.visibility_rank);
         builder.mix_string(entry.identity);
         builder.mix_string(entry.signature);
     }

@@ -114,7 +114,8 @@ void ModuleLoader::record_module_imports(const syntax::ModuleId module_id, const
             syntax::module_path_to_string(combined.modules[import.module.value].path),
             std::string(import.alias),
             owner_is_primary,
-            import.visibility == syntax::Visibility::public_,
+            import.visibility,
+            syntax::visibility_is_public(import.visibility),
         });
     }
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/integer.hpp>
+#include <aurex/syntax/ast/nodes.hpp>
 
 #include <filesystem>
 #include <string>
@@ -25,6 +26,7 @@ struct ModuleImportRecord {
     std::string module_name;
     std::string alias;
     bool owner_is_primary = false;
+    syntax::Visibility visibility = syntax::Visibility::private_;
     bool is_public = false;
 };
 

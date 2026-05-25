@@ -1110,6 +1110,68 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     EXPECT_EQ(analyzer.c_symbol_name(syntax::INVALID_MODULE_ID, "Name"), "Name");
 }
 
+TEST(CoreUnit, SemanticWhiteBoxVisibilityLatticeAccessAndSurfaceLeaks)
+{
+    syntax::AstModule module;
+    module.modules = {
+        module_info({"root"}),
+        module_info({"lib", "one"}),
+        module_info({"lib", "two"}),
+    };
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    EXPECT_TRUE(analyzer.can_access(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::public_));
+    EXPECT_TRUE(analyzer.can_access(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::package_));
+    EXPECT_FALSE(analyzer.can_access(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::private_));
+    EXPECT_TRUE(analyzer.can_access(module_id(SEMA_TEST_ROOT_MODULE_INDEX), syntax::Visibility::private_));
+
+    analyzer.state_.flow.current_module = syntax::INVALID_MODULE_ID;
+    EXPECT_TRUE(analyzer.can_access(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::public_));
+    EXPECT_FALSE(analyzer.can_access(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::package_));
+
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    EXPECT_FALSE(analyzer.can_access(syntax::INVALID_MODULE_ID, syntax::Visibility::package_));
+
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle package_type = types.named_struct("root.PackageOnly", "root_PackageOnly", false);
+    static_cast<void>(add_struct_info(
+        analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "PackageOnly", package_type, syntax::Visibility::package_));
+
+    FunctionSignature public_function =
+        indexed_function_signature(analyzer, "leaks_package", module_id(SEMA_TEST_ROOT_MODULE_INDEX), package_type);
+    public_function.visibility = syntax::Visibility::public_;
+    static_cast<void>(add_function(analyzer, public_function));
+
+    analyzer.validate_exported_signature_surfaces();
+    const std::string messages = diagnostic_messages(diagnostics);
+    EXPECT_NE(messages.find("public function `leaks_package` exposes private type `PackageOnly`"), std::string::npos);
+
+    base::DiagnosticSink package_diagnostics;
+    sema::SemanticAnalyzerCore package_analyzer(module, package_diagnostics);
+    package_analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    sema::TypeTable& package_types = package_analyzer.state_.checked.types;
+    const TypeHandle private_type = package_types.named_struct("root.PrivateOnly", "root_PrivateOnly", false);
+    static_cast<void>(add_struct_info(package_analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "PrivateOnly",
+        private_type, syntax::Visibility::private_));
+
+    FunctionSignature package_function = indexed_function_signature(
+        package_analyzer, "leaks_private", module_id(SEMA_TEST_ROOT_MODULE_INDEX), private_type);
+    package_function.visibility = syntax::Visibility::package_;
+    static_cast<void>(add_function(package_analyzer, package_function));
+
+    package_analyzer.validate_exported_signature_surfaces();
+    EXPECT_TRUE(package_diagnostics.diagnostics().empty());
+
+    const std::optional<sema::SemanticAnalyzerCore::DeclarationAnalyzer::ExportSurfacePrivateType> package_leak =
+        sema::SemanticAnalyzerCore::DeclarationAnalyzer(package_analyzer)
+            .private_type_exposed_by_surface_type(private_type, syntax::Visibility::package_);
+    ASSERT_TRUE(package_leak.has_value());
+    EXPECT_EQ(package_leak->name, "PrivateOnly");
+}
+
 TEST(CoreUnit, SemanticWhiteBoxLookupsAndMethodReceivers)
 {
     syntax::AstModule module;

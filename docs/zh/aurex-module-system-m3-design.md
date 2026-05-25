@@ -1,0 +1,1113 @@
+# Aurex M3 模块系统设计稿
+
+状态：M3.0 当前设计基线  
+日期：2026-05-25  
+适用范围：同一 package 内的 logical module / source-file part 分离、module graph、exports query、跨 part `priv` 可见性
+
+## 1. 设计结论
+
+Aurex M3.0 的模块系统采用：
+
+```text
+显式 primary module 文件
+显式 part list
+part 文件自声明所属 logical module 和 part name
+```
+
+推荐语法固定为：
+
+```aurex
+module regex.vm;
+
+part parser;
+part emitter;
+part optimizer;
+```
+
+```aurex
+module regex.vm part parser;
+```
+
+这意味着 Aurex 的模块不是 Python 式运行时 import，也不是 Rust 式嵌套 `mod` 文件树，
+也不是 C++ 式 translation-unit / BMI 体系。Aurex 的模块是：
+
+```text
+静态、显式、query-friendly、IDE-friendly 的 logical namespace。
+```
+
+文件只是 logical module 的一个 source-file part。模块身份来自 `PackageKey + ModuleKey`，
+不是来自物理路径。源文件身份来自 `ModulePartKey`，用于 diagnostics、debug info 和
+incremental invalidation，不直接决定 public API identity。
+
+## 2. 当前项目约束
+
+M3.0 建立在 R5 Compilation Pipeline / Driver Action core 之后。所有模块实现必须复用：
+
+- `CompilationSession`
+- `CompilationPipeline`
+- `FrontendPipeline`
+- `LoweringPipeline`
+- `BackendPipeline`
+- `PipelineStage`
+- query key / diagnostics / profile / tooling contract
+
+M3.0 不允许在 driver、session、query、diagnostics 之外另开一套 module compilation path。
+
+当前实现仍然是：
+
+```text
+source file
+  -> lexer
+  -> parser
+  -> AstModule
+  -> ModuleLoader recursive import
+  -> combined AstModule
+  -> sema / lowering / backend
+```
+
+M3.0 的落地策略不是推倒重写，而是在保持 combined AST 兼容路径可用的同时，把权威语义边界
+逐步迁移到：
+
+```text
+PackageKey
+  -> ModuleKey
+      -> ModulePartKey
+      -> ModuleGraph
+      -> ModuleExports
+      -> ItemList
+      -> ItemSignature
+```
+
+## 3. 外部语言调研取舍
+
+### 3.1 C++ / Clang
+
+C++20 modules 的价值在于明确区分 module interface、module implementation、module partition
+和 import。Clang / MSVC 的实践说明：一个 logical module 可以拆成多个 module units，partition
+可以成为编译期边界，public API 和 implementation 可以分层。
+
+Aurex 采纳：
+
+- 一个 logical module 可以由多个 part 组成。
+- part name 在同一 module 内唯一。
+- module 对外只暴露显式 public exports。
+- 后端 symbol identity 不应由文件路径决定。
+
+Aurex 不采纳：
+
+- header unit。
+- macro / textual inclusion 兼容包袱。
+- global module fragment / private module fragment 的复杂翻译单元语义。
+- 把 BMI 当作语言级信息隐藏机制。
+- interface / implementation 强制分文件作为 M3.0 第一阶段要求。
+
+原因：Aurex 当前没有 C/C++ 头文件历史包袱，也没有宏展开兼容需求。M3.0 的关键不是预编译
+module artifact，而是先把 logical module、part、exports 和 query identity 做稳。
+
+### 3.2 Python
+
+Python 的优点是 dotted path、package 层级和 `import x as y` 的 ergonomics。它适合人写，
+也适合工具展示。
+
+Aurex 采纳：
+
+- dotted module path，例如 `regex.vm`。
+- alias import，例如 `import regex.vm as vm;`。
+- 文件系统可以作为查找策略的一部分。
+
+Aurex 不采纳：
+
+- runtime import side effect。
+- 动态 `sys.path` 语义。
+- import 时执行模块顶层代码。
+- `__all__` / underscore convention 作为可见性语义。
+- namespace package 的动态合并。
+
+原因：Aurex 是静态编译器。module graph 必须在 frontend 阶段确定，不能由运行时路径、运行时副作用
+或 convention 决定。
+
+### 3.3 Rust
+
+Rust 的优点是强 visibility、`pub use` re-export、module tree 的明确 ownership，以及
+`pub(crate)` / `pub(super)` / `pub(in path)` 这类 scoped visibility。
+
+Aurex 采纳：
+
+- public API 必须显式。
+- re-export 必须进入 module exports。
+- duplicate item 应在同一 namespace 内稳定报错。
+- `pub(package)` 可以作为后续 package-private visibility。
+
+Aurex 不采纳为 M3.0 第一阶段能力：
+
+- nested `mod` tree。
+- `mod.rs` / inline module / path attribute 历史规则。
+- `pub(super)` / `pub(in path)`。
+- glob import。
+
+原因：Aurex 当前没有 Rust 式嵌套 module tree 语义。过早引入 `super` / `in path` 会让
+visibility 绑定到 tree topology，而 M3.0 的目标是先稳定 `PackageKey`、`ModuleKey` 和
+`ModulePartKey`。
+
+### 3.4 Kotlin
+
+Kotlin 的 package header 不要求匹配目录，imports 是 file-local，`internal` 以同一 compilation
+module 为边界。这给 Aurex 很有价值的启发：logical identity 和 physical layout 可以分离。
+
+Aurex 采纳：
+
+- logical module path 不强制等于目录结构。
+- imports 是 part-local declaration。
+- package-private / internal visibility 以后以 `PackageKey` 为边界。
+
+Aurex 不采纳：
+
+- 默认 public。
+- star import 作为默认常用路径。
+- 把 JVM / build artifact 语义混进语言核心。
+
+原因：Aurex 需要对 public API、query invalidation 和 diagnostics source range 有更强的静态控制。
+
+## 4. 核心语义模型
+
+### 4.1 PackageKey
+
+`PackageKey` 是 compilation package 的稳定身份，也是未来 `pub(package)` 的边界。
+
+M3.0 第一阶段不做 package manager、版本求解或外部 dependency resolver。短期可以由：
+
+```text
+root file
+import paths
+compiler config subset
+source root
+```
+
+派生 package identity。长期再切换到 manifest name、version、source root 和 dependency identity。
+
+M3.0 对 `PackageKey` 的承诺必须保守：
+
+- 它用于同一次 compilation session 内的 query grouping、module identity 和 future-proof visibility 边界。
+- 它不承诺 manifest 级 package identity。
+- 同一份源码如果用不同 root file、import path 或 compiler config 编译，短期内可以得到不同 `PackageKey`。
+- `pub(package)` 在 manifest / package model 稳定前不进入第一阶段语义，避免把临时 `PackageKey` 当成最终包身份。
+
+### 4.2 ModuleKey
+
+`ModuleKey` 是 logical module identity。
+
+```aurex
+module regex.vm;
+```
+
+产生：
+
+```text
+ModuleKey {
+  package: PackageKey,
+  path: "regex.vm",
+  kind: source
+}
+```
+
+`ModuleKey` 不包含文件路径。移动一个 item 到同一 module 的另一个 part，不应改变它的 public
+definition identity。
+
+### 4.3 ModulePartKey
+
+`ModulePartKey` 是 source-file part identity。
+
+```aurex
+module regex.vm part parser;
+```
+
+产生：
+
+```text
+ModulePartKey {
+  module: ModuleKey("regex.vm"),
+  file: FileKey("regex/vm.parts/parser.ax"),
+  name: "parser",
+  stable_index: 1,
+  kind: fragment
+}
+```
+
+primary 文件产生：
+
+```text
+ModulePartKey {
+  module: ModuleKey("regex.vm"),
+  file: FileKey("regex/vm.ax"),
+  name: "<primary>",
+  stable_index: 0,
+  kind: primary
+}
+```
+
+`stable_index` 来自 primary part list 的声明顺序，仅用于 deterministic dumps、diagnostics 和
+incremental bookkeeping，不影响 language semantics。
+
+### 4.4 DefKey
+
+`DefKey` 来自：
+
+```text
+ModuleKey + namespace + logical item path + kind + disambiguator
+```
+
+不来自 file path。这样可以保证：
+
+- 同一 module 内移动定义不制造新 public symbol。
+- debug info 仍然能指向原始 source range。
+- query invalidation 可以区分 body edit、signature edit 和 module graph edit。
+
+`DefKey` 的 `disambiguator` 不能来自 AST 遍历顺序、part list 顺序或文件加载顺序。M3.0 第一阶段
+不设计 overload set 的稳定 disambiguation；同一 `ModuleKey + namespace + name` 的重复定义直接报错，
+普通 top-level def 使用 `disambiguator = 0`。泛型实例 identity 继续由 `GenericInstanceKey`
+一类 stable key 派生，不借用 source traversal index。
+
+## 5. 语法设计
+
+### 5.1 Primary module file
+
+```aurex
+module regex.vm;
+
+part parser;
+part emitter;
+part optimizer;
+
+priv struct Program {
+    code: []u8;
+}
+
+pub fn compile(pattern: str) -> Program {
+    let ast = parse(pattern);
+    let program = emit(ast);
+    return optimize(program);
+}
+```
+
+规则：
+
+- primary 文件必须使用 `module path;`。
+- primary 文件可以声明零个或多个 `part name;`。
+- 如果没有 `part` 声明，则这个 module 只有 primary part。
+- primary 文件结构固定为 `module declaration -> part declarations -> import declarations -> items`。
+- `part` 声明只允许出现在 primary module 的顶层 module declaration 之后、import declaration 之前。
+- 同一 primary 文件中 part name 不可重复。
+- `part` 声明不是 import，也不创建 nested module path；它只声明同一 logical module 的 source-file part membership。
+- `part` 在 M3.0 中是 module declaration 区域的上下文关键字，不作为全局保留字。普通代码中的
+  `part` identifier 不应因为模块系统落地而被破坏。
+- part name 必须是 simple identifier，不能是 reserved keyword、不能包含 `.` 或 path separator，
+  也不能使用保留的 primary sentinel 名称。
+
+### 5.2 Module part file
+
+```aurex
+module regex.vm part parser;
+
+priv fn parse(pattern: str) -> Ast {
+    ...
+}
+```
+
+规则：
+
+- part 文件必须使用 `module path part name;`。
+- `module path` 必须等于 primary 文件的 module path。
+- `part name` 必须出现在 primary 文件的 part list 中。
+- part 文件结构固定为 `module part declaration -> import declarations -> items`。
+- part 文件不能再声明 `part name;` 列表。
+- part 文件不能作为 root input 独立编译。
+- part 文件不能被 `import` 当成独立 module。
+
+CLI 和 tooling 需要区分：
+
+- `aurexc path/to/vm/parser.ax` 这类 CLI root compile 应诊断失败，并提示用户编译 owning primary module。
+- IDE / tooling 可以临时解析 part buffer，但必须通过 `module path part name;` 反查 owning primary，
+  再构建完整 module graph 后进行语义诊断。
+
+### 5.3 Import
+
+M3.0 保留现有 import：
+
+```aurex
+import regex.vm as vm;
+```
+
+语义：
+
+- import 绑定 module alias。
+- import 不把目标 module 的 item glob 注入当前 scope。
+- imports 是 part-local declaration。
+- 当前 part 要使用 alias，就必须在当前 part 里 import。
+- 同一 logical module 的顶层 item 跨 parts 可直接可见，不需要 import。
+- part-local import 只影响当前 part 源码里的 name resolution；它不会把 alias 传播给同一 module 的其他 parts。
+- resolved item signatures 在同一 `ModuleKey` 内共享，但 signature 中引用的 external `DefKey` 不会让对应 import alias 在其他 parts 可见。
+- import path resolution 必须产生唯一 module candidate；同一 import path 如果能从 importer-relative
+  路径和多个 `-I` import paths 解析到不同文件，必须诊断 ambiguous import，而不是按搜索顺序静默选择。
+- import candidate 比较使用 canonical path 去重；同一 canonical file 通过多个 search roots 命中时只算一个候选。
+- import resolution 不搜索 module part sidecar 目录，除非目标 path 本身通过正常 module path
+  规则解析到 primary module 文件。
+
+如果现有语法支持省略 alias：
+
+```aurex
+import regex.vm;
+```
+
+则 alias 默认为最后一个 path segment，即 `vm`。如果发生 alias 冲突，按当前 part 的 import
+diagnostics 报错。
+
+module part 不创建可导入的 module path。例如 `regex.vm` 的 `parser` part 不是
+`regex.vm.parser` module：
+
+```aurex
+import regex.vm.parser as parser; // error if this resolves to a part file
+```
+
+诊断应提示：
+
+```text
+module part `parser` is not an importable module
+note: import the owning module `regex.vm` instead
+```
+
+### 5.4 Re-export
+
+M3.0 兼容当前：
+
+```aurex
+pub import regex.api as api;
+```
+
+后续扩展：
+
+```aurex
+pub use regex.api.Regex;
+pub use regex.api.compile as compile_regex;
+```
+
+M3.0 第一阶段不实现 glob import / glob re-export：
+
+```aurex
+use regex.api.*;
+pub use regex.api.*;
+```
+
+原因：glob 会显著增加 ambiguity、incremental invalidation 和 diagnostics 难度，不应阻塞
+module part 主线。
+
+`pub import` 和未来 `pub use` 的边界必须固定：
+
+```text
+pub import module as alias  -> module re-export
+pub use module.Item as Name -> item re-export
+```
+
+`pub import` 不等价于 glob export，不把目标 module 的所有 public items 注入当前 module exports。
+
+## 6. 文件发现策略
+
+M3.0 固定原则：
+
+```text
+不使用隐式目录扫描定义语言语义。
+```
+
+primary 文件的 `part name;` 是唯一的 module membership 来源。loader 只能按下面固定的
+primary-sidecar 规则查找 part 文件，不能把目录下所有 `.ax` 自动纳入 module。
+
+第一阶段固定查找策略：
+
+```text
+primary file: path/to/vm.ax
+part base dir: path/to/vm.parts/
+part parser -> path/to/vm.parts/parser.ax
+part emitter -> path/to/vm.parts/emitter.ax
+```
+
+也就是：
+
+```text
+part base dir = primary file path without extension + ".parts" directory
+part file     = part base dir / part_name.ax
+```
+
+part lookup 只相对 primary 文件，不相对 `module path`。因此 logical module path 不需要匹配目录：
+
+```text
+primary file: src/runtime/vm.ax
+module path:  regex.vm
+part parser:  src/runtime/vm.parts/parser.ax
+```
+
+采用 `.parts` sidecar 目录是第三轮缺陷审查后的修正。Aurex 当前 import path 规则会把
+`import regex.vm.parser` 映射到 `regex/vm/parser.ax`。如果 module parts 也使用 `regex/vm/parser.ax`，
+那么 logical part `parser` 会和合法 dotted module `regex.vm.parser` 发生物理路径冲突，重演
+Python/Rust/Java 中“路径查找和逻辑身份混杂”的历史问题。`.parts` 目录把 implementation parts
+和 importable dotted modules 分开：
+
+```text
+regex/vm.ax                 -> importable module regex.vm
+regex/vm/parser.ax          -> importable module regex.vm.parser
+regex/vm.parts/parser.ax    -> part parser of module regex.vm
+```
+
+这条规则也降低了 Java split-package 类问题：同一个 importable module path 不应由多个物理文件或
+part 文件共同定义。
+
+如果后续需要非约定布局，可以扩展：
+
+```aurex
+part parser from "parts/parser.ax";
+```
+
+但 M3.0 第一阶段不引入 `from`。这样可以把语言语义、driver lookup policy 和未来 package manifest
+分开，避免过早把任意路径选择写进语言核心。
+
+## 7. 可见性
+
+M3.0 第一阶段：
+
+```text
+priv    同一 ModuleKey 内可见，包括 primary 和所有 parts
+pub     跨 module public API
+默认值  沿用当前 Aurex 默认可见性，不在 M3.0 顺手改语义
+```
+
+后续扩展：
+
+```text
+pub(package)    同一 PackageKey 内可见
+pub(crate)      可以作为 pub(package) 别名或后续废弃
+```
+
+暂不支持：
+
+```text
+pub(super)
+pub(in path)
+protected
+friend
+file-private default
+```
+
+M3.0 的 `priv` 是 module-private，不是 file-private。也就是说，同一 `ModuleKey` 的所有
+parts 都能看到 `priv` top-level items。只希望当前文件内部可见的 helper 暂时没有语言级修饰符。
+`file priv` 或类似能力是已知后续设计点，不混入 M3.0 第一阶段。
+
+### 7.1 `priv` 跨 part
+
+```aurex
+// regex/vm.ax
+module regex.vm;
+
+part parser;
+
+priv struct Ast {
+    kind: i32;
+}
+```
+
+```aurex
+// regex/vm.parts/parser.ax
+module regex.vm part parser;
+
+priv fn parse(pattern: str) -> Ast {
+    ...
+}
+```
+
+`Ast` 和 `parse` 都属于 `ModuleKey(regex.vm)`，所以可以互相访问。
+
+### 7.2 跨 module 访问
+
+```aurex
+module regex.api;
+
+import regex.vm as vm;
+
+pub fn compile(pattern: str) -> Regex {
+    return vm.parse(pattern); // error: parse is private to module regex.vm
+}
+```
+
+即使 `regex.api` 和 `regex.vm` 在同一个 package 内，M3.0 第一阶段也不能访问 `priv`。
+这个中间层由后续 `pub(package)` 解决。
+
+### 7.3 Public API 泄漏 private type
+
+```aurex
+module regex.vm;
+
+priv struct Program {
+    code: []u8;
+}
+
+pub fn compile(pattern: str) -> Program {
+    ...
+}
+```
+
+应该诊断：
+
+```text
+public function `compile` exposes private type `Program`
+```
+
+这是 `ModuleExports` 和 item signature 检查必须覆盖的语义，不应该等到 backend 才失败。
+
+泄漏检查不能只看函数返回类型。M3.0 需要定义统一的 `ExportedSignatureSurface`：
+
+```text
+pub function parameter / return type
+pub method receiver / parameter / return type
+pub struct field type
+pub enum case payload type
+pub type alias target
+pub const/global type
+pub generic signature and bounds
+pub re-export target
+```
+
+出现在 exported signature surface 中的每个 referenced type / def，都必须至少达到对应 export
+visibility。否则 diagnostics 应该落在 public declaration 和被泄漏的 private declaration 上。
+
+## 8. 名字解析
+
+### 8.1 Namespace
+
+M3.0 至少区分：
+
+```text
+module namespace
+type namespace
+value namespace
+member namespace
+```
+
+trait / impl / associated type 相关 namespace 只作为 query key 预留，不进入 M3.0 语义。
+
+### 8.2 Unqualified lookup
+
+未限定名字 lookup 顺序：
+
+```text
+1. local scope
+2. generic/type parameter scope
+3. current ModuleKey 的 item namespace，跨所有 parts
+4. builtin/prelude，如果后续启用
+```
+
+imported module 的 item 不进入 unqualified lookup，除非未来显式设计 `use`。
+
+M3.0 不新增 implicit imports / prelude。Python 的 shadowing、Kotlin 的 implicit import 和 star import
+经验都说明：默认可见集合越大，unknown name、ambiguous name 和 IDE completion 的解释成本越高。
+如果未来引入 prelude，必须作为独立 query-visible import set，而不是硬编码到 name lookup。
+
+### 8.3 Qualified lookup
+
+```aurex
+vm.Program
+regex.vm.Program
+```
+
+规则：
+
+- `vm` 必须是当前 part 的 import alias。
+- `regex.vm` 必须通过当前 part 的 import 或可见 re-export 进入 visible module set。
+- qualified lookup 先解析 module path / alias，再进入 type/value/member namespace。
+
+### 8.4 Duplicate item
+
+同一 `ModuleKey` 下：
+
+```text
+same namespace + same name => duplicate item error
+```
+
+跨 part 也一样。
+
+```aurex
+// regex/vm.parts/parser.ax
+module regex.vm part parser;
+
+priv fn lower() -> i32 { 1 }
+```
+
+```aurex
+// regex/vm/emitter.ax
+module regex.vm part emitter;
+
+priv fn lower() -> i32 { 2 }
+```
+
+必须报错，并给两个 source ranges。
+
+## 9. ModuleGraph
+
+M3.0 的 module graph 应该能表达：
+
+```text
+ModuleNode {
+  key: ModuleKey
+  primary_part: ModulePartKey
+  parts: [ModulePartKey]
+  imports: [ImportEdge]
+  reexports: [ReExportEdge]
+}
+
+PartEdge {
+  owner: ModuleKey
+  part: ModulePartKey
+  declared_at: SourceRange
+}
+
+ImportEdge {
+  from_part: ModulePartKey
+  to_module: ModuleKey
+  alias: Ident
+  visibility: priv | pub
+  declared_at: SourceRange
+}
+
+ReExportEdge {
+  from_module: ModuleKey
+  to_module_or_def: ModuleKey | DefKey
+  alias: optional Ident
+  declared_at: SourceRange
+}
+```
+
+Graph invariants：
+
+- 一个 `ModuleKey` 只能有一个 primary part。
+- 同一 `ModuleKey` 下 part name 唯一。
+- named part 必须被 primary part list 声明。
+- primary part list 中每个 part 必须解析到一个文件。
+- part file 的 `module path part name;` 必须和 primary declaration 匹配。
+- part file 不能被 import 成 module。
+- import graph cycle 在 M3.0 直接拒绝。这是保守策略；后续版本可以再区分 signature
+  dependency cycle 和 body dependency cycle。
+- part membership 没有搜索 cycle，因为 membership 来自 explicit part list。
+- part order 不影响语义。
+
+module loading 不执行 top-level code。part 顺序不影响语义的前提是：
+
+- top-level item collection 使用 deterministic ordering。
+- const/global initializer dependency graph 独立分析。
+- const/global cycle diagnostics 不依赖 part load order。
+- 任何 future top-level side effect 都必须作为独立语言专题设计，不能借 module loading 顺手引入。
+
+## 10. ModuleExports
+
+`ModuleExports(ModuleKey)` 是 module public surface 的权威结果。
+
+至少包含：
+
+```text
+public item defs
+public type defs
+public value defs
+public methods / fields
+pub import reexports
+future pub use reexports
+visibility leakage diagnostics
+export fingerprint
+```
+
+M3.0 第一阶段继续支持 `pub import`，把它转成 module-level re-export edge。
+
+后续 `pub use` 进入时，`ModuleExports` 必须能表示 selective re-export：
+
+```text
+exported_name -> original DefKey
+```
+
+删除 re-export 是 breaking API change；修改 re-export 必须让 exports fingerprint 变化。
+
+`ModuleExports` 的 fingerprint 必须包含：
+
+- exported def stable keys。
+- module re-export edges。
+- exported aliases。
+- exported signature surface 中引用的 stable keys。
+- visibility leakage diagnostics 的结构化结果。
+
+不能只 hash declaration 文本或 source file path；否则移动 item、重排 parts 或格式化代码会造成错误失效。
+
+## 11. Query 边界和失效
+
+M3.0 模块相关 query 目标：
+
+```text
+FileContent(FileKey)
+LexFile(FileKey)
+ParseFile(FileKey)
+ModuleGraph(PackageKey 或 root ModuleKey)
+ModulePart(ModulePartKey)
+ItemList(ModuleKey)
+ItemSignature(DefKey)
+ModuleExports(ModuleKey)
+TypeCheckBody(BodyKey)
+Diagnostics(QueryKey)
+LowerFunctionIR(BodyKey)
+```
+
+推荐失效规则：
+
+```text
+只改 private function body
+  -> TypeCheckBody / LowerFunctionIR red
+  -> ModuleExports green
+
+改 private function signature
+  -> ItemSignature red
+  -> 同 ModuleKey 内依赖 body red
+  -> ModuleExports 通常 green
+
+改 public function signature
+  -> ItemSignature red
+  -> ModuleExports red
+  -> dependent modules red
+
+新增 / 删除 part
+  -> ModuleGraph red
+  -> ItemList red
+  -> affected ModuleExports red
+
+移动 item 到同 ModuleKey 的另一个 part
+  -> source location / debug info red
+  -> DefKey 和 public ABI green，除非 signature 变化
+```
+
+## 12. Diagnostics 清单
+
+M3.0 必须覆盖：
+
+- duplicate primary module file。
+- duplicate module part name。
+- part declared with wrong module path。
+- part declared with wrong part name。
+- primary lists missing / unresolved part。
+- part declaration appears after import or item。
+- part file declares a nested part list。
+- part name is not a valid simple identifier。
+- part file compiled as root。
+- part file imported as module。
+- import path resolved to part file。
+- import path resolves to multiple candidate module files。
+- importable module path collides with module part sidecar path。
+- import cycle。
+- duplicate item across parts。
+- private item accessed from another module。
+- exported signature surface leaks private type。
+- public re-export points to invisible item。
+- ambiguous re-export。
+- import alias collision。
+- unknown import alias with suggestion。
+
+诊断必须尽量落到 declaration source range，而不是只报文件路径字符串。
+
+Parser / module declaration recovery 也属于 M3.0 用户体验边界：
+
+- `module path part ;` 缺少 part name 时，同步到 semicolon 后继续解析。
+- `part ;` 缺少 part name 时，同步到 semicolon 后继续解析。
+- `part name;` 出现在非法位置时，报错但继续解析后续 item。
+- module declaration 错误不应拖垮整文件 AST；AST 可以保留 invalid module / part declaration
+  marker，供 IDE 和 diagnostics 使用。
+
+Loader diagnostics 需要区分 CLI root 和 tooling buffer：
+
+- CLI root 是 part file 时，报错并指出 owning module。
+- tooling buffer 是 part file 时，可以进入 degraded graph recovery，但不能把 part 当独立 module。
+
+## 13. Lowering / Backend / ABI
+
+M3.0 不改变 IR 和 LLVM backend 的核心语义，但要固定 identity 规则：
+
+```text
+backend symbol identity = ModuleKey + DefKey + generic instance identity
+debug/source identity   = ModulePartKey + SourceRange
+```
+
+因此：
+
+- 同 module 内移动 function 不应改变 public ABI symbol。
+- 改 module path 会改变 `ModuleKey`，因此是 API identity change。
+- 改 part 文件路径只影响 source/debug/incremental metadata，不应改变 public API。
+- lowering 必须消费 checked module / checked body 的 logical owner，不直接从 file path 推导 owner。
+
+## 14. 被拒绝的方案
+
+### 14.1 隐式目录扫描
+
+拒绝：
+
+```text
+扫描 module 目录下所有 .ax，自动加入 module。
+```
+
+原因：
+
+- 语义随文件系统偶然内容变化。
+- IDE / build cache / query invalidation 难以稳定。
+- 临时文件、生成文件、未提交文件容易污染 module graph。
+
+M3.0 用 primary-sidecar part lookup 代替目录扫描：
+
+```text
+primary path/to/vm.ax + part parser -> path/to/vm.parts/parser.ax
+```
+
+这条 sidecar layout 也拒绝把 part 文件和 importable dotted module 文件混在同一目录层级。
+
+### 14.2 Python 式 runtime import
+
+拒绝运行时加载、副作用执行和动态 path 规则。Aurex module graph 必须在 frontend 阶段确定。
+
+module loading 永远不执行顶层代码。任何顶层 initializer 都是 sema / lowering 的依赖分析对象，
+不是 import side effect。
+
+### 14.3 Rust 式 nested module tree
+
+暂缓 `mod` tree、`pub(super)`、`pub(in path)`。等 Aurex 确认是否需要 nested namespace 后再作为独立专题设计。
+
+### 14.4 C++ interface / implementation 强制分离
+
+暂缓强制 interface file / implementation file。M3.0 的 public API 由 `pub`、`pub import` 和
+`ModuleExports` 决定，不要求用户先维护一套 header-like interface 文件。
+
+### 14.5 Kotlin package-only
+
+只靠 package declaration 不足以表达 Aurex 的 query identity、part membership 和 cross-part private
+semantics。Aurex 需要 explicit `part` 作为 language-level membership。
+
+## 15. 实现阶段
+
+### Phase 0：文档定稿
+
+交付：
+
+- 本文档。
+- 更新 M3 路线图。
+- 更新旧 V2 草案，使其成为背景材料而不是待决策入口。
+
+### Phase 1：Parser / AST
+
+交付：
+
+- `module path part name;` 解析。
+- primary 文件 `part name;` 解析。
+- primary 文件强制 `module -> parts -> imports -> items` 顺序。
+- part 文件强制 `module part -> imports -> items` 顺序。
+- `part` 作为上下文关键字，不破坏普通 identifier。
+- AST 增加 module part declaration shape。
+- AST dump 覆盖 primary / part。
+- module / part declaration recovery。
+- parser negative tests。
+
+### Phase 2：ModuleLoader graph
+
+交付：
+
+- `LoadedLogicalModule` / `LoadedModulePart` 内部结构。
+- 同一 `ModuleKey` 下多个 `ModulePartKey`。
+- primary part list 驱动 part loading。
+- primary-sidecar part lookup。
+- import resolution ambiguous candidate diagnostics。
+- duplicate primary / duplicate part / mismatch diagnostics。
+- part root compile 和 import-to-part diagnostics。
+- canonical import candidate de-duplication。
+- 保留 combined AST 兼容输出。
+
+### Phase 3：Sema item merge
+
+交付：
+
+- 按 `ModuleKey` 汇总 item list。
+- 跨 part duplicate item diagnostics。
+- current module item lookup 跨 parts。
+- part-local imports 不污染其他 parts。
+- resolved signatures 跨 parts 共享，但 import aliases 不跨 parts 传播。
+
+### Phase 4：Visibility
+
+交付：
+
+- `priv` 以 `ModuleKey` 为边界。
+- exported signature surface 泄漏 private type diagnostics。
+- `pub import` 继续作为 re-export。
+
+### Phase 5：Query records
+
+交付：
+
+- `ModuleGraph` query 结果结构化。
+- `ModuleExports` query 结果结构化。
+- `ItemList(ModuleKey)`。
+- `DefKey` 不依赖 traversal order。
+- query fingerprint 和 red/green tests。
+
+### Phase 6：M3.0-late / M3.2 候选
+
+候选：
+
+- `pub(package)` / `pub(crate)`。
+- `pub use` / selective re-export。
+- non-conventional part path，例如 `part parser from "parts/parser.ax";`。
+
+不进入第一阶段：
+
+- glob import。
+- package manager。
+- external dependency resolver。
+- trait / protocol / dynamic dispatch。
+- RAII / Drop / borrow checker。
+
+## 16. 测试计划
+
+Parser:
+
+- `module a.b;`
+- `module a.b part c;`
+- primary `part c;`
+- missing part name。
+- non-identifier part name。
+- `part` 出现在非法位置。
+- `part` 出现在 import 之后或 item 之后。
+- part 文件里再次声明 `part name;`。
+- module / part declaration recovery 后仍解析后续 item。
+
+Loader:
+
+- primary + one part 成功。
+- primary + multiple parts 成功。
+- part lookup 使用 primary `.parts` sidecar directory。
+- `regex/vm/parser.ax` 仍可作为 importable module `regex.vm.parser`，不被 `regex.vm` 的 part 抢占。
+- duplicate part name 拒绝。
+- missing part file 拒绝。
+- part declares wrong module path 拒绝。
+- part declares wrong part name 拒绝。
+- import points to part file 拒绝。
+- import path resolves to multiple candidates 拒绝。
+- same canonical import file through multiple search roots is not ambiguous。
+- part root compile 拒绝。
+- tooling buffer part recovery 不把 part 当独立 module。
+
+Sema:
+
+- same module part 可访问 `priv` type / fn / method / field。
+- sibling module 不可访问 `priv`。
+- duplicate item across parts。
+- part-local import alias 只在当前 part 可见。
+- exported signature surface leaks private type。
+- public field / enum case / type alias / generic signature 泄漏 private type。
+- resolved signature 跨 parts 可用但 alias 不跨 parts 传播。
+- const/global dependency cycle diagnostics 不依赖 part order。
+
+Query:
+
+- private body edit 不改变 `ModuleExports` fingerprint。
+- public signature edit 改变 `ModuleExports` fingerprint。
+- part list edit 改变 `ModuleGraph` fingerprint。
+- item moved between parts keeps stable `DefKey` when logical identity unchanged。
+- reordering part list 不改变不依赖 order 的 semantic results；只允许 deterministic dump / source metadata 变化。
+- duplicate top-level def 不使用 traversal-order disambiguator 静默改名。
+- adding an unrelated file under an importable module directory does not change module graph unless explicitly imported or listed as part。
+
+Integration:
+
+- compile primary-only module 不回退。
+- compile primary + parts 输出行为一致。
+- existing import / `pub import` tests 全部通过。
+
+## 17. 第二轮审视结论
+
+当前设计主干保持不变：
+
+```text
+显式 primary module 文件
+显式 part list
+part 文件自声明
+ModuleKey / ModulePartKey 分离
+ModuleGraph / ModuleExports query 化
+```
+
+第二轮审视后，已经收敛的关键风险：
+
+- part lookup 已从“约定查找”收紧为 primary-sidecar 固定规则。
+- CLI root compile 和 IDE/tooling buffer recovery 已分开。
+- part-local import 和跨 part resolved signature sharing 已分开。
+- `pub import` 和未来 `pub use` 的 re-export 语义已分开。
+- `priv` 已明确为 module-private，不是 file-private。
+- public leakage 已扩展成 exported signature surface 检查。
+- `DefKey` 已明确不能依赖 traversal order。
+- module import cycle 在 M3.0 明确采用保守拒绝策略。
+- top-level code 已明确不会因 module loading 执行。
+- `PackageKey` 已明确是 M3.0 临时 package grouping，不承诺 manifest 级身份。
+- parser / module declaration recovery 已纳入第一阶段交付。
+
+仍需在实现阶段重点盯住的风险：
+
+- combined AST 兼容路径不能重新把 file path 当作 module identity。
+- `stable_index` 只能影响 deterministic metadata，不能进入 semantic lookup。
+- current sema lookup cache 如果仍按 `syntax::ModuleId` 工作，需要确保一个 logical module 的多个 parts
+  不被误认为多个可见 module。
+- `ModuleExports` fingerprint 必须基于 stable keys 和 exported signature surface，而不是 source text。
+- IDE degraded graph recovery 不能悄悄放宽 CLI 编译语义。
+- `pub(package)`、`pub use` 和 custom `part from` 必须后置，不能混入 M3.0 第一阶段。
+
+进入实现前的结论：可以开始 Phase 1 Parser / AST，但每个阶段都必须带对应 negative tests；
+尤其是 part lookup、root part compile、import-to-part、part-local alias、duplicate item、exported
+surface leakage 和 traversal-order stability 不能后补。
+
+## 18. 第三轮缺陷驱动审视
+
+第三轮审视专门参考各语言模块系统的历史缺陷，而不是只参考它们的能力：
+
+- Python 的绝对/相对 import 迁移说明了 local module shadowing 会让 `import foo` 变得不可预测。
+- Rust 2018 的 path / module 调整说明了文件布局规则和 logical path 混在一起后，迁移成本会很高。
+- Kotlin 的 file-local imports 和 star imports 说明了 alias / implicit visibility 如果跨文件传播，会放大歧义。
+- Java JPMS 的 reliable configuration 说明了同一 logical package/module 由多个来源共同定义会破坏可预测性。
+- C++ modules 的 partition / BMI / ODR 经验说明了 module part、importable unit、build artifact 和 ABI identity
+  如果没有明确边界，会在构建系统和诊断上变得很脆。
+- Go 的 package initialization 经验说明了顶层初始化顺序必须由 dependency graph 决定，不能借文件顺序或
+  loader 顺序偷懒。
+
+第三轮后新增或修正的约束：
+
+- 默认 part 物理布局从 `path/to/vm/parser.ax` 改为 `path/to/vm.parts/parser.ax`，避免和
+  importable module `regex.vm.parser` 的 `regex/vm/parser.ax` 冲突。
+- `part` 是上下文关键字，不是全局保留字，避免因为模块系统落地破坏既有普通 identifier。
+- import resolution 必须产生唯一 module file candidate；多个 `-I` 或 importer-relative 路径命中不同文件时
+  直接报 ambiguous import。
+- module part sidecar 目录不参与普通 import search。
+- M3.0 不新增 implicit imports / prelude；未来如果引入，必须作为 query-visible import set。
+
+第三轮后的实现结论：
+
+```text
+可以进入 Phase 1 Parser / AST；
+但 Loader 阶段必须优先实现 sidecar layout 和 ambiguous import diagnostics，
+否则会复制 Python shadowing / Java split-package / Rust path migration 的问题。
+```
+
+## 19. 参考资料
+
+- Python import system: <https://docs.python.org/3/reference/import.html>
+- Python modules tutorial: <https://docs.python.org/3/tutorial/modules.html>
+- Python PEP 328 absolute / relative imports: <https://peps.python.org/pep-0328/>
+- Rust Reference modules: <https://doc.rust-lang.org/reference/items/modules.html>
+- Rust Reference visibility: <https://doc.rust-lang.org/reference/visibility-and-privacy.html>
+- Rust 2018 path changes: <https://doc.rust-lang.org/edition-guide/rust-2018/path-changes.html>
+- Kotlin packages and imports: <https://kotlinlang.org/spec/packages-and-imports.html>
+- Kotlin visibility modifiers: <https://kotlinlang.org/docs/visibility-modifiers.html>
+- Clang Standard C++ Modules: <https://clang.llvm.org/docs/StandardCPlusPlusModules.html>
+- Clang Modules: <https://clang.llvm.org/docs/Modules.html>
+- MSVC module partitions: <https://learn.microsoft.com/en-us/cpp/cpp/module-partitions>
+- OpenJDK Project Jigsaw state of the module system: <https://openjdk.org/projects/jigsaw/spec/sotms/>
+- Go specification package initialization: <https://go.dev/ref/spec#Package_initialization>

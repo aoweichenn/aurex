@@ -1,7 +1,7 @@
 # Current Progress
 
 Version: 0.1.2
-Stage: M2.5 frontend-foundation
+Stage: M3.0 modules
 
 ## Overall Status
 
@@ -12,14 +12,14 @@ and M1 system examples from the active tree. M2.5 builds on that closed line and
 starts the structured frontend work needed for queries, lossless syntax, and
 IDE-native consumption.
 
-As of 2026-05-24, the highest-priority refactor is the R5 Compilation Pipeline /
-Driver Action line. The driver has moved toward a modern compiler layout:
-`CompilerInvocation` is pure configuration, `Compiler` is a facade,
-`CompilationSession` owns per-compilation services, `CompilationPipeline`
-orchestrates frontend/lowering/backend stages, and `PipelineStage` records the
-single stage directory for profile names, inputs, outputs, diagnostic ownership,
-and cache/query impact. R5.4 introduced the lightweight IR pass manager and
-verifier gate; R5.5 introduced `ModuleAnalysisManager`; R5.6 added stable
+As of 2026-05-25, the R5 Compilation Pipeline / Driver Action core is complete.
+The driver has moved to a modern compiler layout: `CompilerInvocation` is pure
+configuration, `Compiler` is a facade, `CompilationSession` owns
+per-compilation services, `CompilationPipeline` orchestrates frontend/lowering/
+backend stages, and `PipelineStage` records the single stage directory for
+profile names, inputs, outputs, diagnostic ownership, and cache/query impact.
+R5.4 introduced the lightweight IR pass manager and verifier gate; R5.5
+introduced `ModuleAnalysisManager`; R5.6 added stable
 `stage/profile/verifier/pass` context to IR verifier gate failures while
 preserving the original verifier body and `ErrorCode`, and `LoweringPipeline`
 now passes the IR pass pipeline stage names from `PipelineStageRecord`. R5.7
@@ -42,7 +42,9 @@ main stages and incremental-cache sub-events enter the profiler through
 name strings. R5.13 added `pipeline_profile_phase_classification(...)`, so the
 profile JSON writer and future viewer/LSP adapter consumers can classify a phase
 name as a driver main stage, profile sub-event, or unknown through the same
-stage directory.
+stage directory. The current highest priority is now [M3 modules](m3-roadmap.md):
+separate logical modules from source-file parts inside one package while reusing
+the R5 driver/session/query/diagnostics/pipeline path.
 
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,

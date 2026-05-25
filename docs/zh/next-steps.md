@@ -1,24 +1,20 @@
 # 下一步计划
 
-## 当前最高优先级：R5 Compilation Pipeline / Driver Action 重构
+## 当前最高优先级：M3.0 模块系统
 
-当前重构主线已经从 M2.5 frontend-foundation 的前端地基，切到现代编译器工程化的
-driver / compilation pipeline 边界。最高优先级是
-[R5 Compilation Pipeline / Driver Action 重构](r5-compilation-pipeline-refactor.md)：
+R5 Compilation Pipeline / Driver Action 重构 core 已收口：`CompilerInvocation`、`Compiler`
+facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`LoweringPipeline`、
+`BackendPipeline`、`PipelineStage`、IR pass manager、analysis manager、profile metadata、diagnostic
+stage owner 和 tooling/profile consumer contract 都已经进入主路径，并保持原有 CLI、diagnostics JSON、
+profile JSON、incremental cache 和 emit mode 行为。
 
-- `CompilerInvocation` 保持纯配置对象。
-- `Compiler` 退回 public facade。
-- 一次编译的 source、diagnostics、profile、cache policy 和 backend emitter 进入内部
-  `CompilationSession`。
-- driver 编排进入 `CompilationPipeline`，前端 source/token/module/sema/cache write 入口进入
-  `FrontendPipeline`，lowering 入口进入 `LoweringPipeline`，LLVM/native 输出入口进入
-  `BackendPipeline`，阶段元数据进入 `PipelineStage`。
-- profile phase 名称、diagnostics text/JSON 协议、incremental cache reuse/write 行为和所有
-  emit mode 行为必须保持不变。
+当前最高优先级切到 [M3 路线图](m3-roadmap.md) 的 M3.0 模块系统：
 
-R5 优先于 M3 模块系统、M3 泛型闭环、LSP adapter、完整 subtree reparse、RAII、trait、
-closure、iterator、async、macro、package manager 和标准库重建。M3 后续功能必须复用
-R5 后稳定下来的 driver/session/query/diagnostics 主路径，不能另开旁路。
+- 把当前“一个文件一个模块，loader 递归 import 后拼成 combined AST”的模型，升级为逻辑模块和
+  source-file part 分离的模型。
+- 第一阶段只解决同一 package 内的 module part，不做 package manager、版本求解或外部依赖系统。
+- M3 后续功能必须复用 R5 后稳定下来的 driver/session/query/diagnostics/pipeline 主路径，不能另开旁路。
+- R5 的 profile/tooling contract 继续作为后续 profile viewer、LSP adapter 和 IDE stage view 的消费边界。
 
 R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分；
 R5.3 已完成 `LoweringPipeline`、`BackendPipeline` 和 `PipelineStage` 记录。当前 driver 总控已经只保留
@@ -59,6 +55,14 @@ R5.13 已完成 profile/tooling 消费者分类契约：`pipeline_profile_phase_
 把 profile phase name 统一分类为 driver 主阶段、profile 子事件或 unknown；profile JSON writer
 已通过这个入口输出原有 `stage` / `parent_stage` metadata，协议字段保持不变。后续 profile viewer
 和 LSP/IDE 阶段视图必须复用这个分类 API，不再维护独立 phase-name 映射表。
+
+M3.0 的第一批实现顺序：
+
+1. 收束 module part 语义和 parser/AST 形状，固定 `module path part name;` 的声明规则。
+2. 让 `ModuleLoader` 支持同一 `ModuleKey` 下多个 `ModulePartKey`，并拒绝重复 part、路径不匹配和循环。
+3. 设计 sema 可见性：`priv` 跨同一逻辑模块所有 parts 可见，跨模块仍按 import/re-export 和 public API 检查。
+4. 对齐 module graph / exports / item list / item signature 的 query key、dependency 和 invalidation 边界。
+5. 在 M3.0 稳定后，再进入 M3.1 泛型 ABI 稳定化和 query-backed generic signature/body。
 
 ## 当前分支原则
 

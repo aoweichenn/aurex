@@ -2,9 +2,14 @@
 
 ## 当前优先级
 
-R5 是当前编译器工程化重构主线的最高优先级。它优先于 M3 模块系统、M3 泛型闭环、LSP protocol adapter、完整 subtree reparse、RAII、trait、closure、iterator、async、macro、package manager 和标准库重建。
+R5 core 已完成。它把编译器工程化重构主线从 M2.5 frontend-foundation 推进到稳定的
+driver / session / pipeline 边界，并已经通过 full-LLVM、frontend-only、coverage、format 和 perf
+门禁。
 
-这不是新的语言功能阶段，而是把 Aurex driver 从“顺序编译函数”推进到现代编译器的 session + pipeline 架构。M3 后续能力必须消费这条主路径，不能绕过 driver、query、diagnostics 或 cache 边界另开旁路。
+R5 不是新的语言功能阶段，而是把 Aurex driver 从“顺序编译函数”推进到现代编译器的
+session + pipeline 架构。当前最高优先级已经切到
+[M3 模块系统](m3-roadmap.md)，但 M3 后续能力必须消费 R5 稳定下来的主路径，不能绕过
+driver、query、diagnostics 或 cache 边界另开旁路。
 
 ## 参考模型
 
@@ -227,13 +232,15 @@ R5.13 已完成 profile/tooling 消费者分类契约：
 
 ## 后续拆分顺序
 
-R5.13 完成后，后续按下面顺序继续：
+R5.13 完成后，R5 core 收口。后续按下面顺序继续：
 
-1. 后续 profile viewer / LSP adapter 继续消费公开 `PipelineStageMetadata`、
+1. M3.0 module part / module graph / exports query 复用 `CompilationSession` + `CompilationPipeline`
+   + `FrontendPipeline` + `LoweringPipeline` + `BackendPipeline` 的主路径，不在 module loader、
+   parser/sema 或 query 之外另开编译旁路。
+2. 后续 profile viewer / LSP adapter 继续消费公开 `PipelineStageMetadata`、
    `pipeline_profile_phase_classification(...)`、profile JSON 的 `stage`/`parent_stage` 对象、
    `IdeDiagnostic.owner_stages` 和 query records，而不是重新维护阶段表。
-2. 后续 M3 模块、泛型闭环和 LSP adapter 必须复用 `CompilationSession` + `CompilationPipeline`
-   + `FrontendPipeline` + `LoweringPipeline` + `BackendPipeline` 的主路径。
+3. M3.1 泛型闭环在模块身份稳定后接入 query-backed generic signature/body 和稳定 ABI key。
 
 ## 验收标准
 

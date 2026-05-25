@@ -1,14 +1,25 @@
 # Next Steps
 
-## Current Highest Priority: R5 Compilation Pipeline / Driver Action Refactor
+## Current Highest Priority: M3.0 Modules
 
-The active compiler-engineering refactor is now the R5 driver/session/pipeline
-line. `CompilerInvocation` remains a pure configuration object, `Compiler`
-stays a narrow public facade, and one compilation's source, diagnostics,
-profile, cache policy, and backend emitter live in `CompilationSession`.
-`CompilationPipeline` orchestrates frontend, lowering, and backend sub-pipelines,
-while `PipelineStage` is the single directory for stage profile names, inputs,
-outputs, diagnostic ownership, and cache/query impact.
+The R5 Compilation Pipeline / Driver Action core is now closed:
+`CompilerInvocation`, the `Compiler` facade, `CompilationSession`,
+`CompilationPipeline`, `FrontendPipeline`, `LoweringPipeline`,
+`BackendPipeline`, `PipelineStage`, the IR pass manager, analysis manager,
+profile metadata, diagnostic stage owners, and tooling/profile consumer
+contracts are all on the main path while preserving the existing CLI,
+diagnostics JSON, profile JSON, incremental-cache, and emit-mode behavior.
+
+The current highest priority moves to M3.0 in the [M3 Roadmap](m3-roadmap.md):
+
+- Upgrade the current "one file, one module, recursively import and append into
+  a combined AST" model into separate logical modules and source-file parts.
+- In the first slice, solve only same-package module parts. Do not add package
+  management, version solving, or external dependency systems.
+- M3 work must consume the R5 driver/session/query/diagnostics/pipeline path
+  instead of opening bypasses.
+- R5 profile/tooling contracts remain the consumer boundary for future profile
+  viewers, LSP adapters, and IDE stage views.
 
 R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
 stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
@@ -64,6 +75,20 @@ subtree reparse must consume the R5 driver/session/query/diagnostics path,
 including public `PipelineStageMetadata`,
 `pipeline_profile_phase_classification(...)`, `stage` / `parent_stage` profile
 metadata, and `IdeDiagnostic` owner-stage metadata, instead of bypassing it.
+
+M3.0 first implementation order:
+
+1. Close the module-part semantics and parser/AST shape, including the
+   `module path part name;` declaration rule.
+2. Teach `ModuleLoader` to support multiple `ModulePartKey`s under one
+   `ModuleKey`, while rejecting duplicate parts, path mismatches, and cycles.
+3. Design sema visibility: `priv` is visible across all parts of the same
+   logical module; cross-module access still follows imports/re-exports and
+   public API.
+4. Align module graph / exports / item list / item signature query keys,
+   dependencies, and invalidation boundaries.
+5. After M3.0 stabilizes, move to M3.1 generic ABI stabilization and
+   query-backed generic signature/body work.
 
 ## Branch Principle
 

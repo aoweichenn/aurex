@@ -10,6 +10,13 @@ stage around two systems:
 1. Modules.
 2. Generics.
 
+As of 2026-05-25, the R5 Compilation Pipeline / Driver Action core is complete.
+M3.0 is now the highest priority, but every M3 implementation must reuse the R5
+`CompilationSession`, `CompilationPipeline`, `FrontendPipeline`,
+`LoweringPipeline`, `BackendPipeline`, `PipelineStage`, query, diagnostics, and
+profile/tooling contracts. Do not open a parallel compilation path in the module
+loader, parser/sema, or query layers.
+
 M3 explicitly does not implement RAII first, and it does not pull traits,
 closures, iterators, derive, package management, or standard-library rebuilds
 into this stage. Resource semantics affect ownership, drop timing, IR cleanup,

@@ -7,6 +7,11 @@ M3 建立在 M2.5 frontend-foundation 之上。M2.5 已经把 query key、结构
 1. 模块系统完善。
 2. 泛型闭环完善。
 
+2026-05-25：R5 Compilation Pipeline / Driver Action core 已完成。M3.0 现在是当前最高优先级，
+但所有 M3 实现必须复用 R5 稳定下来的 `CompilationSession`、`CompilationPipeline`、
+`FrontendPipeline`、`LoweringPipeline`、`BackendPipeline`、`PipelineStage`、query、diagnostics
+和 profile/tooling contract，不允许在 module loader、parser/sema 或 query 之外另开编译旁路。
+
 M3 明确不先实现 RAII，也不把 trait、closure、iterator、derive、package manager 或标准库重建拉进当前阶段。资源语义会影响所有权、drop timing、IR cleanup、泛型 capability 和 ABI，不应该在模块和泛型身份还没稳定前进入实现。
 
 ## 阶段目标

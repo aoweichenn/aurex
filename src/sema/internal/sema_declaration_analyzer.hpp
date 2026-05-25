@@ -1,5 +1,8 @@
 #pragma once
 
+#include <optional>
+#include <string>
+
 #include <sema/internal/sema_core.hpp>
 
 namespace aurex::sema {
@@ -16,6 +19,7 @@ public:
         const std::string& c_prefix, const syntax::Visibility visibility);
     void register_value_names();
     void validate_function_prototypes() const;
+    void validate_exported_signature_surfaces() const;
     void validate_abi_symbols() const;
     void analyze_entry_points() const;
     void analyze_struct_properties();
@@ -23,6 +27,15 @@ public:
     bool is_const_evaluable_expr(const syntax::ExprId expr_id, ModuleLookupSet& dependencies);
 
 private:
+    struct ExportSurfacePrivateType {
+        std::string name;
+        base::SourceRange range{};
+    };
+
+    [[nodiscard]] std::optional<ExportSurfacePrivateType> private_type_exposed_by_surface_type(
+        TypeHandle root, syntax::ModuleId exported_module) const;
+    [[nodiscard]] bool method_signature_is_exported_surface(const FunctionSignature& signature) const;
+
     SemanticAnalyzerCore& core_;
 };
 

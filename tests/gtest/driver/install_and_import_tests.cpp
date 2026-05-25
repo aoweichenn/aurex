@@ -384,6 +384,118 @@ TEST_F(AurexIntegrationTest, ModulePartsUsePartLocalImportsAndSharedItems)
         });
 }
 
+TEST_F(AurexIntegrationTest, ModulePartsSharePrivateModuleSurface)
+{
+    const fs::path work = tmp_root() / "m3-module-part-private-surface";
+    const fs::path primary = write_import_test_source(work / "phase4_private.ax",
+        "module m3.phase4_private;\n"
+        "part model;\n"
+        "part use;\n"
+        "fn main() -> i32 {\n"
+        "  return use_private() - 44;\n"
+        "}\n");
+    static_cast<void>(write_import_test_source(work / "phase4_private.parts" / "model.ax",
+        "module m3.phase4_private part model;\n"
+        "priv struct Box {\n"
+        "  pub value: i32;\n"
+        "  priv secret: i32;\n"
+        "}\n"
+        "impl Box {\n"
+        "  priv fn secret_value(self: &Box) -> i32 {\n"
+        "    return self.secret;\n"
+        "  }\n"
+        "}\n"
+        "priv fn make_box(value: i32) -> Box {\n"
+        "  return Box { value: value, secret: 2 };\n"
+        "}\n"));
+    static_cast<void>(write_import_test_source(work / "phase4_private.parts" / "use.ax",
+        "module m3.phase4_private part use;\n"
+        "fn use_private() -> i32 {\n"
+        "  let box: Box = make_box(40);\n"
+        "  return box.value + box.secret + box.secret_value();\n"
+        "}\n"));
+
+    const std::string llvm_ir = require_success(aurexc() + " --emit=llvm-ir " + q(primary)).output;
+    expect_contains_all(llvm_ir,
+        {
+            "@m0_m3_phase4_private_main",
+            "@m0_m3_phase4_private_make_box",
+            "@m0_m3_phase4_private_Box_secret_value",
+        });
+}
+
+TEST_F(AurexIntegrationTest, ModulePartPrivateItemsStayHiddenFromExternalModules)
+{
+    const fs::path work = tmp_root() / "m3-module-part-private-external";
+    const fs::path import_dir = work / "imports";
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "owner.ax",
+        "module lib.owner;\n"
+        "part model;\n"
+        "pub fn value() -> i32 {\n"
+        "  return 1;\n"
+        "}\n"));
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "owner.parts" / "model.ax",
+        "module lib.owner part model;\n"
+        "priv struct Secret {\n"
+        "  pub value: i32;\n"
+        "}\n"
+        "priv fn hidden() -> i32 {\n"
+        "  return 7;\n"
+        "}\n"));
+    const fs::path type_use = write_import_test_source(work / "private_type_user.ax",
+        "module m3.private_type_user;\n"
+        "import lib.owner;\n"
+        "fn main() -> i32 {\n"
+        "  let value: owner.Secret = owner.Secret { value: 1 };\n"
+        "  return value.value;\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(type_use)).output,
+        "type is private: lib.owner.Secret");
+
+    const fs::path function_use = write_import_test_source(work / "private_function_user.ax",
+        "module m3.private_function_user;\n"
+        "import lib.owner;\n"
+        "fn main() -> i32 {\n"
+        "  return owner.hidden();\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(function_use)).output,
+        "function is private: lib.owner.hidden");
+}
+
+TEST_F(AurexIntegrationTest, ModulePartPublicImportsDoNotBecomeModuleReexports)
+{
+    const fs::path work = tmp_root() / "m3-module-part-pub-import-local";
+    const fs::path import_dir = work / "imports";
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "inner.ax",
+        "module lib.inner;\n"
+        "pub type Count = i32;\n"
+        "pub fn value() -> Count {\n"
+        "  return 3;\n"
+        "}\n"));
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "facade.ax",
+        "module lib.facade;\n"
+        "part exports;\n"
+        "pub fn local_value() -> i32 {\n"
+        "  return part_value();\n"
+        "}\n"));
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "facade.parts" / "exports.ax",
+        "module lib.facade part exports;\n"
+        "pub import lib.inner as inner;\n"
+        "fn part_value() -> inner.Count {\n"
+        "  return inner.value();\n"
+        "}\n"));
+
+    const fs::path importer = write_import_test_source(work / "facade_user.ax",
+        "module m3.facade_user;\n"
+        "import lib.facade;\n"
+        "fn main() -> i32 {\n"
+        "  let value: facade.Count = 1;\n"
+        "  return value;\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(importer)).output,
+        "unknown type in module lib.facade: Count");
+}
+
 TEST_F(AurexIntegrationTest, ModulePartImportsDoNotLeakAcrossPrimaryOrParts)
 {
     const fs::path work = tmp_root() / "m3-module-part-import-leakage";

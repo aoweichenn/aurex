@@ -4,6 +4,18 @@
 
 namespace aurex::test {
 
+namespace {
+
+fs::path write_visibility_test_source(const fs::path& path, const std::string_view text)
+{
+    fs::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::binary);
+    out << text;
+    return path;
+}
+
+} // namespace
+
 TEST_F(AurexIntegrationTest, ModuleVisibility)
 {
     const fs::path source = positive_sample("visibility", "visibility_import.ax");
@@ -311,6 +323,100 @@ TEST_F(AurexIntegrationTest, DefaultPrivateVisibility)
     }
     expect_contains(require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(private_method)).output,
         "method is private: default_private_lib.Box.hidden_method");
+}
+
+TEST_F(AurexIntegrationTest, ExportedSignatureSurfacesRejectPrivateTypes)
+{
+    const fs::path work = tmp_root() / "public_api_private_type_leaks";
+
+    const fs::path function_return = write_visibility_test_source(work / "function_return.ax",
+        "module public_leak_function_return;\n"
+        "priv struct Secret {\n"
+        "  pub value: i32;\n"
+        "}\n"
+        "pub fn expose() -> Secret {\n"
+        "  return Secret { value: 1 };\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(function_return)).output,
+        "public function `expose` exposes private type `public_leak_function_return.Secret`");
+
+    const fs::path struct_field = write_visibility_test_source(work / "struct_field.ax",
+        "module public_leak_struct_field;\n"
+        "priv struct Secret {\n"
+        "  pub value: i32;\n"
+        "}\n"
+        "pub struct Wrapper {\n"
+        "  pub secret: Secret;\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(struct_field)).output,
+        "public struct field `public_leak_struct_field.Wrapper.secret` exposes private type "
+        "`public_leak_struct_field.Secret`");
+
+    const fs::path enum_case = write_visibility_test_source(work / "enum_case.ax",
+        "module public_leak_enum_case;\n"
+        "priv struct Secret {\n"
+        "  pub value: i32;\n"
+        "}\n"
+        "pub enum Choice: u8 {\n"
+        "  ready(Secret) = 1,\n"
+        "  none = 2,\n"
+        "}\n");
+    const std::string enum_output = require_failure(aurexc() + " --check " + q(enum_case)).output;
+    expect_contains(enum_output, "public enum case `public_leak_enum_case.Choice_ready` exposes private type");
+    expect_contains(enum_output, "`public_leak_enum_case.Secret`");
+
+    const fs::path type_alias = write_visibility_test_source(work / "type_alias.ax",
+        "module public_leak_type_alias;\n"
+        "priv struct Secret {\n"
+        "  pub value: i32;\n"
+        "}\n"
+        "pub type PublicSecret = Secret;\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(type_alias)).output,
+        "public type alias `PublicSecret` exposes private type `public_leak_type_alias.Secret`");
+
+    const fs::path public_const = write_visibility_test_source(work / "const.ax",
+        "module public_leak_const;\n"
+        "priv struct Secret {\n"
+        "  pub value: i32;\n"
+        "}\n"
+        "pub const SECRET: Secret = Secret { value: 1 };\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(public_const)).output,
+        "public const `SECRET` exposes private type `public_leak_const.Secret`");
+
+    const fs::path public_method = write_visibility_test_source(work / "method.ax",
+        "module public_leak_method;\n"
+        "priv struct Secret {\n"
+        "  pub value: i32;\n"
+        "}\n"
+        "pub struct Box {\n"
+        "  pub value: i32;\n"
+        "}\n"
+        "impl Box {\n"
+        "  pub fn take(self: &Box, secret: Secret) -> i32 {\n"
+        "    return self.value + secret.value;\n"
+        "  }\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(public_method)).output,
+        "public method `public_leak_method.Box.take` exposes private type `public_leak_method.Secret`");
+}
+
+TEST_F(AurexIntegrationTest, PublicMethodsOnPrivateTypesAreNotExportedSurfaces)
+{
+    const fs::path source = write_visibility_test_source(tmp_root() / "private_method_owner_surface.ax",
+        "module private_method_owner_surface;\n"
+        "priv struct Secret {\n"
+        "  pub value: i32;\n"
+        "}\n"
+        "impl Secret {\n"
+        "  pub fn read(self: &Secret) -> i32 {\n"
+        "    return self.value;\n"
+        "  }\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let secret: Secret = Secret { value: 7 };\n"
+        "  return secret.read() - 7;\n"
+        "}\n");
+    require_success(aurexc() + " --check " + q(source));
 }
 
 } // namespace aurex::test

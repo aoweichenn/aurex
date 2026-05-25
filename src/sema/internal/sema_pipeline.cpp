@@ -262,6 +262,7 @@ void SemanticAnalysisPipeline::run_validation_phases()
 {
     this->core_.analyze_entry_points();
     this->core_.analyze_const_decls();
+    this->core_.validate_exported_signature_surfaces();
     this->core_.validate_type_layouts();
     this->core_.validate_abi_symbols();
 }

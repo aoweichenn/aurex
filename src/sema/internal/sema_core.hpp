@@ -507,6 +507,7 @@ private:
         std::string enum_display_name, const std::string& case_prefix, const std::string& c_prefix,
         syntax::Visibility visibility);
     void validate_function_prototypes() const;
+    void validate_exported_signature_surfaces() const;
     void validate_abi_symbols() const;
     void validate_type_layouts();
     void validate_module_namespace_conflicts() const;

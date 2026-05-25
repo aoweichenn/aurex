@@ -4,7 +4,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -28,6 +30,7 @@ constexpr std::string_view SEMA_STABLE_STRUCT_INCREMENTAL_TAG = "|struct";
 constexpr std::size_t SEMA_IMPORT_SCOPE_HASH_MIX = 0x9e3779b97f4a7c15ULL;
 constexpr base::usize SEMA_IMPORT_SCOPE_HASH_LEFT_SHIFT = 6;
 constexpr base::usize SEMA_IMPORT_SCOPE_HASH_RIGHT_SHIFT = 2;
+constexpr base::usize SEMA_EXPORT_SURFACE_INITIAL_STACK_CAPACITY = 8;
 
 struct ImportScopeKey {
     base::u32 source = 0;
@@ -173,6 +176,23 @@ struct AbiSymbolInfo {
     bool is_function = false;
     AbiFunctionInfo function;
 };
+
+[[nodiscard]] std::string function_surface_name(const TypeTable& types, const FunctionSignature& signature)
+{
+    if (signature.is_method) {
+        return types.display_name(signature.method_owner_type) + "." + function_display_name(types, signature);
+    }
+    return std::string(signature.name);
+}
+
+[[nodiscard]] std::optional<TypeHandle> cached_checked_syntax_type(
+    const CheckedModule& checked, const syntax::TypeId type) noexcept
+{
+    if (!syntax::is_valid(type) || type.value >= checked.syntax_type_handles.size()) {
+        return std::nullopt;
+    }
+    return checked.syntax_type_handles[type.value];
+}
 
 [[nodiscard]] bool is_top_level_type_item(const syntax::ItemKind kind) noexcept
 {
@@ -762,6 +782,198 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_function_prototypes() c
     }
 }
 
+std::optional<SemanticAnalyzerCore::DeclarationAnalyzer::ExportSurfacePrivateType>
+SemanticAnalyzerCore::DeclarationAnalyzer::private_type_exposed_by_surface_type(
+    const TypeHandle root, const syntax::ModuleId exported_module) const
+{
+    if (!is_valid(root)) {
+        return std::nullopt;
+    }
+
+    std::vector<TypeHandle> pending;
+    std::unordered_set<base::u32> visited;
+    pending.reserve(SEMA_EXPORT_SURFACE_INITIAL_STACK_CAPACITY);
+    visited.reserve(SEMA_EXPORT_SURFACE_INITIAL_STACK_CAPACITY);
+    pending.push_back(root);
+
+    while (!pending.empty()) {
+        const TypeHandle current = pending.back();
+        pending.pop_back();
+        if (!is_valid(current) || !visited.insert(current.value).second) {
+            continue;
+        }
+
+        const TypeInfo& info = this->core_.state_.checked.types.get(current);
+        switch (info.kind) {
+            case TypeKind::builtin:
+            case TypeKind::generic_param:
+                break;
+            case TypeKind::pointer:
+            case TypeKind::reference:
+                pending.push_back(info.pointee);
+                break;
+            case TypeKind::array:
+                pending.push_back(info.array_element);
+                break;
+            case TypeKind::slice:
+                pending.push_back(info.slice_element);
+                break;
+            case TypeKind::tuple:
+                for (const TypeHandle element : info.tuple_elements) {
+                    pending.push_back(element);
+                }
+                break;
+            case TypeKind::function:
+                pending.push_back(info.function_return);
+                for (const TypeHandle param : info.function_params) {
+                    pending.push_back(param);
+                }
+                break;
+            case TypeKind::struct_:
+            case TypeKind::opaque_struct:
+                if (const StructInfo* const struct_info = this->core_.find_struct(current); struct_info != nullptr
+                    && struct_info->module.value == exported_module.value
+                    && struct_info->visibility == syntax::Visibility::private_) {
+                    return ExportSurfacePrivateType{
+                        struct_display_name(this->core_.state_.checked.types, *struct_info),
+                        {},
+                    };
+                }
+                for (const TypeHandle arg : info.generic_args) {
+                    pending.push_back(arg);
+                }
+                break;
+            case TypeKind::enum_: {
+                if (const auto found = this->core_.state_.names.enum_cases_by_type.find(current.value);
+                    found != this->core_.state_.names.enum_cases_by_type.end() && !found->second.empty()
+                    && found->second.front() != nullptr) {
+                    const EnumCaseInfo& enum_case = *found->second.front();
+                    if (enum_case.module.value == exported_module.value
+                        && enum_case.visibility == syntax::Visibility::private_) {
+                        return ExportSurfacePrivateType{
+                            enum_display_name(this->core_.state_.checked.types, enum_case),
+                            enum_case.range,
+                        };
+                    }
+                }
+                for (const TypeHandle arg : info.generic_args) {
+                    pending.push_back(arg);
+                }
+                break;
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
+bool SemanticAnalyzerCore::DeclarationAnalyzer::method_signature_is_exported_surface(
+    const FunctionSignature& signature) const
+{
+    if (!signature.is_method) {
+        return true;
+    }
+    const std::optional<ExportSurfacePrivateType> private_receiver =
+        this->private_type_exposed_by_surface_type(signature.method_owner_type, signature.module);
+    return !private_receiver.has_value();
+}
+
+void SemanticAnalyzerCore::DeclarationAnalyzer::validate_exported_signature_surfaces() const
+{
+    const auto report_if_private = [&](const std::string_view surface, const std::string_view name,
+                                       const syntax::ModuleId exported_module, const TypeHandle type,
+                                       const base::SourceRange& range) {
+        const std::optional<ExportSurfacePrivateType> private_type =
+            this->private_type_exposed_by_surface_type(type, exported_module);
+        if (!private_type.has_value()) {
+            return;
+        }
+        this->core_.report_visibility(
+            range, sema_public_api_exposes_private_type_message(surface, name, private_type->name));
+        if (!private_type->range.empty()) {
+            this->core_.report_note(private_type->range, SemanticDiagnosticKind::visibility,
+                sema_previous_declaration_note_message(private_type->name));
+        }
+    };
+
+    for (const auto& entry : this->core_.state_.checked.functions) {
+        const FunctionSignature& signature = entry.second;
+        if (signature.visibility != syntax::Visibility::public_ || signature.has_conflict
+            || !this->method_signature_is_exported_surface(signature)) {
+            continue;
+        }
+        const std::string display_name = function_surface_name(this->core_.state_.checked.types, signature);
+        const std::string_view surface =
+            signature.is_method ? std::string_view{"method"} : std::string_view{"function"};
+        report_if_private(surface, display_name, signature.module, signature.return_type, signature.range);
+        for (const TypeHandle param_type : signature.param_types) {
+            report_if_private(surface, display_name, signature.module, param_type, signature.range);
+        }
+    }
+
+    for (const auto& entry : this->core_.state_.generics.placeholder_functions) {
+        const FunctionSignature& signature = entry.second;
+        if (signature.visibility != syntax::Visibility::public_ || signature.has_conflict
+            || !this->method_signature_is_exported_surface(signature)) {
+            continue;
+        }
+        const std::string display_name = function_surface_name(this->core_.state_.checked.types, signature);
+        const std::string_view surface =
+            signature.is_method ? std::string_view{"method"} : std::string_view{"function"};
+        report_if_private(surface, display_name, signature.module, signature.return_type, signature.range);
+        for (const TypeHandle param_type : signature.param_types) {
+            report_if_private(surface, display_name, signature.module, param_type, signature.range);
+        }
+    }
+
+    for (const auto& entry : this->core_.state_.checked.structs) {
+        const StructInfo& info = entry.second;
+        if (info.visibility != syntax::Visibility::public_) {
+            continue;
+        }
+        const std::string struct_name = struct_display_name(this->core_.state_.checked.types, info);
+        for (const StructFieldInfo& field : info.fields) {
+            if (field.visibility != syntax::Visibility::public_) {
+                continue;
+            }
+            const std::string field_name = struct_name + "." + std::string(field.name);
+            report_if_private("struct field", field_name, info.module, field.type, field.range);
+        }
+    }
+
+    for (const auto& entry : this->core_.state_.checked.enum_cases) {
+        const EnumCaseInfo& info = entry.second;
+        if (info.visibility != syntax::Visibility::public_) {
+            continue;
+        }
+        const std::string case_name = enum_case_display_name(this->core_.state_.checked.types, info);
+        for (const TypeHandle payload_type : info.payload_types) {
+            report_if_private("enum case", case_name, info.module, payload_type, info.range);
+        }
+        if (info.payload_types.empty()) {
+            report_if_private("enum case", case_name, info.module, info.payload_type, info.range);
+        }
+    }
+
+    for (const auto& entry : this->core_.state_.checked.type_aliases) {
+        const TypeAliasInfo& info = entry.second;
+        if (info.visibility != syntax::Visibility::public_) {
+            continue;
+        }
+        const std::optional<TypeHandle> target = cached_checked_syntax_type(this->core_.state_.checked, info.target);
+        report_if_private("type alias", info.name, info.module,
+            target.has_value() ? *target : this->core_.resolve_type_alias(info, false), info.range);
+    }
+
+    for (const auto& entry : this->core_.state_.functions.global_values) {
+        const Symbol& symbol = entry.second;
+        if (symbol.kind != SymbolKind::const_ || symbol.visibility != syntax::Visibility::public_) {
+            continue;
+        }
+        report_if_private("const", symbol.name, symbol.module, symbol.type, symbol.range);
+    }
+}
+
 void SemanticAnalyzerCore::DeclarationAnalyzer::validate_abi_symbols() const
 {
     std::unordered_map<std::string_view, AbiSymbolInfo> symbols;
@@ -1331,6 +1543,11 @@ void SemanticAnalyzerCore::register_value_names()
 void SemanticAnalyzerCore::validate_function_prototypes() const
 {
     DeclarationAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).validate_function_prototypes();
+}
+
+void SemanticAnalyzerCore::validate_exported_signature_surfaces() const
+{
+    DeclarationAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).validate_exported_signature_surfaces();
 }
 
 void SemanticAnalyzerCore::validate_abi_symbols() const

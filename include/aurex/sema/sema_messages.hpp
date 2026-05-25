@@ -973,6 +973,13 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
     return "function is private: " + std::string(module) + "." + std::string(name);
 }
 
+[[nodiscard]] inline std::string sema_public_api_exposes_private_type_message(
+    const std::string_view surface, const std::string_view name, const std::string_view type)
+{
+    return "public " + std::string(surface) + " `" + std::string(name) + "` exposes private type `" + std::string(type)
+        + "`";
+}
+
 [[nodiscard]] inline std::string sema_ambiguous_enum_case_message(
     const std::string_view name, const std::string_view first_module, const std::string_view second_module)
 {

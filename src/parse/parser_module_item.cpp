@@ -3,6 +3,7 @@
 #include <aurex/parse/recovery.hpp>
 
 #include <optional>
+#include <string_view>
 #include <utility>
 
 namespace aurex::parse {
@@ -10,9 +11,11 @@ namespace {
 
 using syntax::TokenKind;
 
+inline constexpr std::string_view PARSER_CONTEXTUAL_PART_KEYWORD_TEXT = "part";
+
 } // namespace
 
-syntax::ModulePath ItemParser::parse_path()
+syntax::ModulePath ItemParser::parse_path() const
 {
     syntax::ModulePath path;
     const std::optional<syntax::Token> first = this->parse_path_segment(std::string(PARSER_EXPECT_PATH_IDENTIFIER));
@@ -55,6 +58,42 @@ syntax::ImportDecl ItemParser::parse_import_decl()
         this->expect_item_terminator(std::string(PARSER_EXPECT_IMPORT_TERMINATOR));
     this->reset_panic();
     return import;
+}
+
+syntax::ModulePartDecl ItemParser::parse_module_part_decl()
+{
+    syntax::ModulePartDecl part;
+    const syntax::Token& keyword = this->expect(TokenKind::identifier, std::string(PARSER_EXPECT_PRIMARY_PART_NAME));
+    if (keyword.kind == TokenKind::identifier && keyword.text() != PARSER_CONTEXTUAL_PART_KEYWORD_TEXT) {
+        this->report_at(keyword, std::string(PARSER_EXPECT_PRIMARY_PART_NAME));
+    }
+    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_PRIMARY_PART_NAME));
+    if (name.kind == TokenKind::identifier) {
+        part.name = name.text();
+        part.range = keyword.kind == TokenKind::identifier ? this->merge(keyword.range, name.range) : name.range;
+    }
+    [[maybe_unused]] const syntax::Token& terminator =
+        this->expect_item_terminator(std::string(PARSER_EXPECT_PRIMARY_PART_TERMINATOR));
+    this->reset_panic();
+    return part;
+}
+
+syntax::ModulePartHeader ItemParser::parse_module_part_header()
+{
+    syntax::ModulePartHeader part;
+    const syntax::Token& keyword = this->expect(TokenKind::identifier, std::string(PARSER_EXPECT_MODULE_PART_NAME));
+    if (keyword.kind == TokenKind::identifier && keyword.text() != PARSER_CONTEXTUAL_PART_KEYWORD_TEXT) {
+        this->report_at(keyword, std::string(PARSER_EXPECT_MODULE_PART_NAME));
+    }
+    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_MODULE_PART_NAME));
+    if (name.kind == TokenKind::identifier) {
+        part.name = name.text();
+        part.range = keyword.kind == TokenKind::identifier ? this->merge(keyword.range, name.range) : name.range;
+    }
+    [[maybe_unused]] const syntax::Token& terminator =
+        this->expect_item_terminator(std::string(PARSER_EXPECT_MODULE_PART_TERMINATOR));
+    this->reset_panic();
+    return part;
 }
 
 const syntax::Token& ItemParser::expect_item_terminator(std::string message) const

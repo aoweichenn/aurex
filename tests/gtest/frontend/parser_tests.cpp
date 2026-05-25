@@ -538,6 +538,104 @@ TEST(CoreUnit, ParserAcceptsCAsOrdinaryIdentifier)
         });
 }
 
+TEST(CoreUnit, ParserAcceptsPrimaryModulePartDeclarations)
+{
+    constexpr std::string_view source = "module parser.module_parts;\n"
+                                        "part parser;\n"
+                                        "part emitter;\n"
+                                        "import regex.ast as ast;\n"
+                                        "fn compile(value: i32) -> i32 { return value; }\n";
+    const syntax::AstModule module = parse_success(source);
+
+    EXPECT_EQ(module.file_kind, syntax::ModuleFileKind::primary);
+    ASSERT_EQ(module.part_declarations.size(), 2U);
+    EXPECT_EQ(module.part_declarations[0].name, "parser");
+    EXPECT_EQ(module.part_declarations[0].name_id, module.find_identifier("parser"));
+    EXPECT_EQ(module.part_declarations[1].name, "emitter");
+    EXPECT_EQ(module.part_declarations[1].name_id, module.find_identifier("emitter"));
+    ASSERT_EQ(module.imports.size(), 1U);
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "module parser.module_parts",
+            "part parser",
+            "part emitter",
+            "priv import regex.ast as ast",
+            "priv fn compile",
+        });
+}
+
+TEST(CoreUnit, ParserAcceptsModulePartFileHeader)
+{
+    constexpr std::string_view source = "module parser.module_parts part parser;\n"
+                                        "import regex.ast as ast;\n"
+                                        "fn parse(value: i32) -> i32 { return value; }\n";
+    const syntax::AstModule module = parse_success(source);
+
+    EXPECT_EQ(module.file_kind, syntax::ModuleFileKind::part);
+    EXPECT_EQ(module.part_header.name, "parser");
+    EXPECT_EQ(module.part_header.name_id, module.find_identifier("parser"));
+    EXPECT_TRUE(module.part_declarations.empty());
+    ASSERT_EQ(module.imports.size(), 1U);
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "module parser.module_parts part parser",
+            "priv import regex.ast as ast",
+            "priv fn parse",
+        });
+}
+
+TEST(CoreUnit, ParserKeepsPartAsOrdinaryIdentifierOutsideModuleDeclarationArea)
+{
+    constexpr std::string_view source = "module parser.part_identifier;\n"
+                                        "fn part(part: i32) -> i32 {\n"
+                                        "  let part: i32 = part;\n"
+                                        "  return part;\n"
+                                        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    EXPECT_TRUE(module.part_declarations.empty());
+    const syntax::ItemNode* const function = find_item(module, "part");
+    ASSERT_NE(function, nullptr);
+    ASSERT_EQ(function->params.size(), 1U);
+    EXPECT_EQ(function->params.front().name, "part");
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "priv fn part",
+            "param part : i32",
+            "let part : i32",
+            "name `part`",
+        });
+}
+
+TEST(CoreUnit, ParserRejectsMalformedModulePartDeclarations)
+{
+    expect_parse_error("module parser.missing_part_name;\n"
+                       "part ;\n"
+                       "fn ok() -> i32 { return 0; }\n",
+        "expected part name after 'part'");
+    expect_parse_error("module parser.bad_part_header part ;\n"
+                       "fn ok() -> i32 { return 0; }\n",
+        "expected part name after 'part'");
+    expect_parse_error("module parser.late_part;\n"
+                       "import regex.ast as ast;\n"
+                       "part parser;\n"
+                       "fn ok() -> i32 { return 0; }\n",
+        "part declarations must appear before imports and items");
+    expect_parse_error("part parser;\n"
+                       "fn ok() -> i32 { return 0; }\n",
+        "part declarations must appear after module declaration");
+    expect_parse_error("module parser.part_file part parser;\n"
+                       "part nested;\n"
+                       "fn ok() -> i32 { return 0; }\n",
+        "module part files cannot declare nested part lists");
+}
+
 TEST(CoreUnit, ParserRejectsBareSliceType)
 {
     expect_parse_error("module parser.bad_slice_type;\n"

@@ -20,6 +20,23 @@ struct ModulePath {
     std::vector<IdentId> part_ids;
 };
 
+enum class ModuleFileKind {
+    primary,
+    part,
+};
+
+struct ModulePartDecl {
+    std::string_view name;
+    base::SourceRange range{};
+    IdentId name_id = INVALID_IDENT_ID;
+};
+
+struct ModulePartHeader {
+    std::string_view name;
+    base::SourceRange range{};
+    IdentId name_id = INVALID_IDENT_ID;
+};
+
 struct ImportDecl {
     ModulePath path;
     std::string_view alias;
@@ -47,6 +64,9 @@ struct AstModule {
     // IDs. This keeps nodes compact, avoids virtual dispatch, and lets later
     // compiler stages attach side tables without changing syntax nodes.
     ModulePath module_path;
+    ModuleFileKind file_kind = ModuleFileKind::primary;
+    ModulePartHeader part_header;
+    std::vector<ModulePartDecl> part_declarations;
     std::vector<ImportDecl> imports;
     std::vector<ModuleInfo> modules;
     TypeNodeList types;
@@ -260,6 +280,8 @@ struct AstModule {
     void finalize_identifiers();
     void intern_identifiers();
     void intern_module_path(ModulePath& path);
+    void intern_module_part_decl(ModulePartDecl& part);
+    void intern_module_part_header(ModulePartHeader& part);
     void intern_import_decl(ImportDecl& import);
     void intern_resolved_import(ResolvedImport& import);
 

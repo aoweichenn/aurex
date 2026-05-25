@@ -64,6 +64,8 @@ TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata)
 {
     syntax::AstModule module;
     module.module_path.parts = {"app", "main"};
+    module.part_declarations.push_back(syntax::ModulePartDecl{"parser", {}});
+    module.part_declarations.push_back(syntax::ModulePartDecl{"emitter", {}});
     syntax::ImportDecl import;
     import.path.parts = {"core", "mem"};
     import.alias = "mem";
@@ -237,6 +239,9 @@ TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata)
 
     ASSERT_EQ(module.module_path.part_ids.size(), 2U);
     EXPECT_EQ(module.module_path.part_ids.front(), module.find_identifier("app"));
+    ASSERT_EQ(module.part_declarations.size(), 2U);
+    EXPECT_EQ(module.part_declarations.front().name_id, module.find_identifier("parser"));
+    EXPECT_EQ(module.part_declarations.back().name_id, module.find_identifier("emitter"));
     ASSERT_EQ(module.imports.size(), 1U);
     EXPECT_EQ(module.imports.front().alias_id, module.find_identifier("mem"));
     ASSERT_EQ(module.imports.front().path.part_ids.size(), 2U);
@@ -252,6 +257,8 @@ TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata)
     ASSERT_NE(copied_name, nullptr);
     EXPECT_EQ(copied_name->text_id, copied.find_identifier("value"));
     EXPECT_EQ(copied.identifier_text(copied_name->text_id), "value");
+    ASSERT_EQ(copied.part_declarations.size(), 2U);
+    EXPECT_EQ(copied.part_declarations.front().name_id, copied.find_identifier("parser"));
 }
 
 TEST(CoreUnit, AstModuleIdentifierInterningIsIdempotentAndRehomesCopies)

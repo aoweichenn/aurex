@@ -18,7 +18,9 @@ public:
     {
     }
 
-    [[nodiscard]] syntax::ModulePath parse_path();
+    [[nodiscard]] syntax::ModulePath parse_path() const;
+    [[nodiscard]] syntax::ModulePartDecl parse_module_part_decl();
+    [[nodiscard]] syntax::ModulePartHeader parse_module_part_header();
     [[nodiscard]] syntax::ImportDecl parse_import_decl();
     [[nodiscard]] syntax::ItemId parse_item();
 

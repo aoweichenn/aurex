@@ -14,7 +14,8 @@ AstModule::AstModule()
 }
 
 AstModule::AstModule(const AstModule& other)
-    : module_path(other.module_path), imports(other.imports), modules(other.modules), types(other.types),
+    : module_path(other.module_path), file_kind(other.file_kind), part_header(other.part_header),
+      part_declarations(other.part_declarations), imports(other.imports), modules(other.modules), types(other.types),
       exprs(other.exprs), patterns(other.patterns), stmts(other.stmts), items(other.items),
       item_modules(other.item_modules), identifiers(other.identifiers), identifiers_ready_(false)
 {
@@ -27,6 +28,9 @@ AstModule& AstModule::operator=(const AstModule& other)
         return *this;
     }
     this->module_path = other.module_path;
+    this->file_kind = other.file_kind;
+    this->part_header = other.part_header;
+    this->part_declarations = other.part_declarations;
     this->imports = other.imports;
     this->modules = other.modules;
     this->types = other.types;
@@ -407,6 +411,16 @@ void AstModule::intern_module_path(ModulePath& path)
     this->intern_identifier_list(path.parts, path.part_ids);
 }
 
+void AstModule::intern_module_part_decl(ModulePartDecl& part)
+{
+    this->intern_identifier_text(part.name, part.name_id);
+}
+
+void AstModule::intern_module_part_header(ModulePartHeader& part)
+{
+    this->intern_identifier_text(part.name, part.name_id);
+}
+
 void AstModule::intern_import_decl(ImportDecl& import)
 {
     this->intern_module_path(import.path);
@@ -498,6 +512,10 @@ void AstModule::intern_item_node(ItemNode& node)
 void AstModule::intern_module_metadata()
 {
     this->intern_module_path(this->module_path);
+    this->intern_module_part_header(this->part_header);
+    for (ModulePartDecl& part : this->part_declarations) {
+        this->intern_module_part_decl(part);
+    }
     for (ImportDecl& import : this->imports) {
         this->intern_import_decl(import);
     }

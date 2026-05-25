@@ -6,6 +6,17 @@
 
 namespace aurex::syntax {
 
+namespace {
+
+void dump_module_path(std::ostringstream& out, const ModulePath& path)
+{
+    for (base::usize i = 0; i < path.parts.size(); ++i) {
+        out << (i == 0 ? " " : ".") << path.parts[i];
+    }
+}
+
+} // namespace
+
 std::string_view token_kind_name(const TokenKind kind) noexcept
 {
     switch (kind) {
@@ -1252,16 +1263,18 @@ std::string dump_ast(const AstModule& module)
 {
     std::ostringstream out;
     out << "module";
-    for (base::usize i = 0; i < module.module_path.parts.size(); ++i) {
-        out << (i == 0 ? " " : ".") << module.module_path.parts[i];
+    dump_module_path(out, module.module_path);
+    if (module.file_kind == ModuleFileKind::part) {
+        out << " part " << module.part_header.name;
     }
     out << "\n";
+    for (const ModulePartDecl& part : module.part_declarations) {
+        out << "part " << part.name << "\n";
+    }
     for (const ImportDecl& import : module.imports) {
         dump_visibility(out, import.visibility);
         out << "import";
-        for (base::usize i = 0; i < import.path.parts.size(); ++i) {
-            out << (i == 0 ? " " : ".") << import.path.parts[i];
-        }
+        dump_module_path(out, import.path);
         if (!import.alias.empty()) {
             out << " as " << import.alias;
         }

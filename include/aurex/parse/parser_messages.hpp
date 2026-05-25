@@ -8,6 +8,23 @@ inline constexpr std::string_view PARSER_PARSE_FAILED = "parsing failed";
 
 inline constexpr std::string_view PARSER_EXPECT_MODULE_TERMINATOR = "expected ';' after module declaration";
 
+inline constexpr std::string_view PARSER_EXPECT_MODULE_PART_NAME = "expected part name after 'part'";
+
+inline constexpr std::string_view PARSER_EXPECT_MODULE_PART_TERMINATOR = "expected ';' after module part declaration";
+
+inline constexpr std::string_view PARSER_EXPECT_PRIMARY_PART_NAME = "expected part name after 'part'";
+
+inline constexpr std::string_view PARSER_EXPECT_PRIMARY_PART_TERMINATOR = "expected ';' after part declaration";
+
+inline constexpr std::string_view PARSER_MODULE_PART_LIST_UNSUPPORTED =
+    "module part files cannot declare nested part lists";
+
+inline constexpr std::string_view PARSER_PART_DECL_REQUIRES_MODULE =
+    "part declarations must appear after module declaration";
+
+inline constexpr std::string_view PARSER_PART_DECL_AFTER_IMPORT_OR_ITEM =
+    "part declarations must appear before imports and items";
+
 inline constexpr std::string_view PARSER_EXPECT_IMPORT_KEYWORD = "expected 'import'";
 
 inline constexpr std::string_view PARSER_EXPECT_IMPORT_TERMINATOR = "expected ';' after import declaration";

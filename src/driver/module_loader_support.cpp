@@ -8,8 +8,10 @@
 #include <aurex/parse/parser.hpp>
 #include <aurex/syntax/module.hpp>
 
+#include <cctype>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 namespace aurex::driver {
@@ -78,22 +80,74 @@ std::filesystem::path module_loader_canonical_or_absolute(const std::filesystem:
     return std::filesystem::absolute(path);
 }
 
+std::filesystem::path module_part_base_dir(const std::filesystem::path& primary_file)
+{
+    std::filesystem::path base = primary_file;
+    base.replace_extension();
+    base += ".parts";
+    return base;
+}
+
+std::filesystem::path module_part_file_path(const std::filesystem::path& primary_file, const std::string_view part_name)
+{
+    return module_part_base_dir(primary_file) / (std::string(part_name) + ".ax");
+}
+
+std::optional<std::filesystem::path> owning_primary_for_part_file(const std::filesystem::path& part_file)
+{
+    const std::filesystem::path part_dir = part_file.parent_path();
+    if (part_dir.extension() != ".parts") {
+        return std::nullopt;
+    }
+
+    std::filesystem::path primary = part_dir.parent_path() / part_dir.stem();
+    primary += ".ax";
+    return primary;
+}
+
+std::string module_loader_case_fold(const std::string_view text)
+{
+    std::string folded;
+    folded.reserve(text.size());
+    for (const char ch : text) {
+        folded.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    }
+    return folded;
+}
+
+bool module_loader_path_exists(const std::filesystem::path& path)
+{
+    return import_candidate_exists(path);
+}
+
 std::optional<std::filesystem::path> find_import_file(const syntax::ModulePath& path,
     const std::filesystem::path& importer_dir, const std::vector<std::filesystem::path>& import_paths)
 {
-    const std::filesystem::path relative = syntax::module_path_to_relative_file(path);
+    return resolve_import_file(path, importer_dir, import_paths).selected;
+}
 
-    const std::filesystem::path importer_candidate = importer_dir / relative;
-    if (import_candidate_exists(importer_candidate)) {
-        return importer_candidate;
-    }
-    for (const std::filesystem::path& import_path : import_paths) {
-        const std::filesystem::path candidate = import_path / relative;
-        if (import_candidate_exists(candidate)) {
-            return candidate;
+ImportFileResolution resolve_import_file(const syntax::ModulePath& path, const std::filesystem::path& importer_dir,
+    const std::vector<std::filesystem::path>& import_paths)
+{
+    ImportFileResolution resolution;
+    resolution.searched_candidates = import_candidates(path, importer_dir, import_paths);
+
+    std::unordered_set<std::string> seen_canonical_paths;
+    for (const std::filesystem::path& candidate : resolution.searched_candidates) {
+        if (!import_candidate_exists(candidate)) {
+            continue;
+        }
+
+        const std::filesystem::path canonical = module_loader_canonical_or_absolute(candidate);
+        if (seen_canonical_paths.insert(canonical.string()).second) {
+            resolution.matching_candidates.push_back(canonical);
         }
     }
-    return std::nullopt;
+
+    if (resolution.matching_candidates.size() == 1) {
+        resolution.selected = resolution.matching_candidates.front();
+    }
+    return resolution;
 }
 
 std::vector<std::filesystem::path> import_candidates(const syntax::ModulePath& path,
@@ -163,6 +217,90 @@ base::Result<void> report_import_resolution_failure(base::DiagnosticSink& diagno
     push_module_loader_error(diagnostics, import_path.range,
         driver_import_resolve_failed_message(syntax::module_path_to_string(import_path), formatted_candidates));
     return fail_module_loading(base::ErrorCode::io_error);
+}
+
+base::Result<void> report_import_ambiguity(base::DiagnosticSink& diagnostics, const syntax::ModulePath& import_path,
+    const std::string_view formatted_candidates)
+{
+    push_module_loader_error(diagnostics, import_path.range,
+        driver_import_ambiguous_message(syntax::module_path_to_string(import_path), formatted_candidates));
+    return fail_module_loading(base::ErrorCode::parse_error);
+}
+
+base::Result<void> report_missing_module_part(base::DiagnosticSink& diagnostics, const syntax::ModulePath& module_path,
+    const syntax::ModulePartDecl& part_decl, const std::filesystem::path& expected_path)
+{
+    push_module_loader_error(diagnostics, part_decl.range,
+        driver_missing_module_part_message(
+            syntax::module_path_to_string(module_path), part_decl.name, expected_path.string()));
+    return fail_module_loading(base::ErrorCode::io_error);
+}
+
+base::Result<void> report_duplicate_module_part(
+    base::DiagnosticSink& diagnostics, const syntax::ModulePath& module_path, const syntax::ModulePartDecl& part_decl)
+{
+    push_module_loader_error(diagnostics, part_decl.range,
+        driver_duplicate_module_part_message(syntax::module_path_to_string(module_path), part_decl.name));
+    return fail_module_loading(base::ErrorCode::parse_error);
+}
+
+base::Result<void> report_module_part_case_collision(base::DiagnosticSink& diagnostics,
+    const syntax::ModulePath& module_path, const syntax::ModulePartDecl& first_part,
+    const syntax::ModulePartDecl& second_part)
+{
+    push_module_loader_error(diagnostics, second_part.range,
+        driver_module_part_case_collision_message(
+            syntax::module_path_to_string(module_path), first_part.name, second_part.name));
+    return fail_module_loading(base::ErrorCode::parse_error);
+}
+
+base::Result<void> report_module_part_imported(
+    base::DiagnosticSink& diagnostics, const syntax::AstModule& module, const syntax::ModulePath* const expected_module)
+{
+    const base::SourceRange range = expected_module != nullptr ? expected_module->range : module.part_header.range;
+    return report_module_part_imported(
+        diagnostics, syntax::module_path_to_string(module.module_path), module.part_header.name, range);
+}
+
+base::Result<void> report_module_part_imported(base::DiagnosticSink& diagnostics, const std::string_view module_name,
+    const std::string_view part_name, const base::SourceRange& range)
+{
+    push_module_loader_error(diagnostics, range, driver_module_part_imported_message(module_name, part_name));
+    return fail_module_loading(base::ErrorCode::parse_error);
+}
+
+base::Result<void> report_module_part_header_mismatch(base::DiagnosticSink& diagnostics,
+    const syntax::ModulePath& expected_module, const std::string_view expected_part,
+    const syntax::AstModule& part_module)
+{
+    push_module_loader_error(diagnostics, part_module.part_header.range,
+        driver_module_part_header_mismatch_message(syntax::module_path_to_string(expected_module), expected_part,
+            syntax::module_path_to_string(part_module.module_path), part_module.part_header.name));
+    return fail_module_loading(base::ErrorCode::parse_error);
+}
+
+base::Result<void> report_module_part_root_owner_missing(base::DiagnosticSink& diagnostics,
+    const syntax::AstModule& part_module, const std::filesystem::path& expected_primary)
+{
+    push_module_loader_error(diagnostics, part_module.part_header.range,
+        driver_module_part_root_owner_missing_message(part_module.part_header.name, expected_primary.string()));
+    return fail_module_loading(base::ErrorCode::io_error);
+}
+
+base::Result<void> report_module_part_unlisted_root(
+    base::DiagnosticSink& diagnostics, const syntax::AstModule& part_module, const std::filesystem::path& primary)
+{
+    push_module_loader_error(diagnostics, part_module.part_header.range,
+        driver_module_part_unlisted_root_message(part_module.part_header.name, primary.string()));
+    return fail_module_loading(base::ErrorCode::parse_error);
+}
+
+base::Result<void> report_module_part_artifact_root(
+    base::DiagnosticSink& diagnostics, const syntax::AstModule& part_module, const std::filesystem::path& primary)
+{
+    push_module_loader_error(diagnostics, part_module.part_header.range,
+        driver_module_part_artifact_root_message(part_module.part_header.name, primary.string()));
+    return fail_module_loading(base::ErrorCode::parse_error);
 }
 
 base::Result<void> validate_cached_file_module_path(const syntax::AstModule& combined, const syntax::ModuleId module_id,

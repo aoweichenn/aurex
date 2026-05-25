@@ -4,6 +4,8 @@
 #include <support/test_support.hpp>
 
 #include <fstream>
+#include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -117,6 +119,231 @@ TEST_F(AurexIntegrationTest, ModuleLoaderRemapsExpressionPayloadsWithoutFatNodes
         });
 }
 
+TEST_F(AurexIntegrationTest, ModuleLoaderLoadsPrimarySidecarParts)
+{
+    const fs::path work = tmp_root() / "m3-module-parts";
+    const fs::path import_dir = work / "imports";
+    static_cast<void>(write_import_test_source(import_dir / "lib" / "util.ax",
+        "module lib.util;\n"
+        "pub fn value() -> i32 {\n"
+        "  return 5;\n"
+        "}\n"));
+    const fs::path primary = write_import_test_source(work / "vm.ax",
+        "module m3.vm;\n"
+        "part parser;\n"
+        "part emitter;\n"
+        "fn main() -> i32 {\n"
+        "  return parser_value() + emitter_value() - 47;\n"
+        "}\n");
+    static_cast<void>(write_import_test_source(work / "vm.parts" / "parser.ax",
+        "module m3.vm part parser;\n"
+        "import lib.util;\n"
+        "fn parser_value() -> i32 {\n"
+        "  return util.value() + 40;\n"
+        "}\n"));
+    static_cast<void>(write_import_test_source(work / "vm.parts" / "emitter.ax",
+        "module m3.vm part emitter;\n"
+        "fn emitter_value() -> i32 {\n"
+        "  return 2;\n"
+        "}\n"));
+
+    const std::string llvm_ir =
+        require_success(aurexc() + " -I " + q(import_dir) + " --emit=llvm-ir " + q(primary)).output;
+    expect_contains_all(llvm_ir,
+        {
+            "@m0_m3_vm_main",
+            "@m0_m3_vm_parser_value",
+            "@m0_m3_vm_emitter_value",
+            "@m0_lib_util_value",
+        });
+
+    const std::string modules =
+        require_success(aurexc() + " -I " + q(import_dir) + " --dump-modules " + q(primary)).output;
+    expect_contains_all(modules,
+        {
+            "m3.vm",
+            "lib.util",
+        });
+}
+
+TEST_F(AurexIntegrationTest, ModuleLoaderDiscoversOwningPrimaryForPartCheck)
+{
+    const fs::path work = tmp_root() / "m3-root-part-check";
+    static_cast<void>(write_import_test_source(work / "owner.ax",
+        "module m3.owner;\n"
+        "part parser;\n"
+        "fn main() -> i32 {\n"
+        "  return parser_value() - 7;\n"
+        "}\n"));
+    const fs::path part = write_import_test_source(work / "owner.parts" / "parser.ax",
+        "module m3.owner part parser;\n"
+        "fn parser_value() -> i32 {\n"
+        "  return 7;\n"
+        "}\n");
+
+    static_cast<void>(require_success(aurexc() + " --check " + q(part)));
+    expect_contains(require_failure(aurexc() + " --emit=llvm-ir " + q(part)).output,
+        "cannot emit artifact from module part 'parser'");
+}
+
+TEST_F(AurexIntegrationTest, ModuleLoaderDiagnosticsCoverModulePartGraph)
+{
+    const fs::path work = tmp_root() / "m3-module-part-diagnostics";
+
+    const fs::path missing = write_import_test_source(work / "missing.ax",
+        "module m3.missing;\n"
+        "part parser;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    const std::string missing_output = require_failure(aurexc() + " --check " + q(missing)).output;
+    expect_contains(missing_output, "module 'm3.missing' declares missing part 'parser'");
+    expect_contains(missing_output, (work / "missing.parts" / "parser.ax").string());
+
+    const fs::path duplicate = write_import_test_source(work / "duplicate.ax",
+        "module m3.duplicate;\n"
+        "part parser;\n"
+        "part parser;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(duplicate)).output,
+        "duplicate module part 'parser' in module 'm3.duplicate'");
+
+    const fs::path case_collision = write_import_test_source(work / "case_collision.ax",
+        "module m3.case_collision;\n"
+        "part parser;\n"
+        "part Parser;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(case_collision)).output, "differ only by case");
+
+    const fs::path mismatch = write_import_test_source(work / "mismatch.ax",
+        "module m3.mismatch;\n"
+        "part parser;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    static_cast<void>(write_import_test_source(work / "mismatch.parts" / "parser.ax",
+        "module m3.mismatch part other;\n"
+        "fn parser_value() -> i32 {\n"
+        "  return 0;\n"
+        "}\n"));
+    expect_contains(require_failure(aurexc() + " --check " + q(mismatch)).output,
+        "does not match expected 'm3.mismatch part parser'");
+
+    const fs::path import_dir = work / "imports";
+    static_cast<void>(write_import_test_source(import_dir / "m3" / "partlike.ax",
+        "module m3.partlike part parser;\n"
+        "fn hidden() -> i32 {\n"
+        "  return 0;\n"
+        "}\n"));
+    const fs::path importer = write_import_test_source(work / "import_part.ax",
+        "module m3.import_part;\n"
+        "import m3.partlike;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(importer)).output,
+        "is not an importable module");
+}
+
+TEST_F(AurexIntegrationTest, ModuleLoaderDiagnosticsCoverModulePartRootEdges)
+{
+    const fs::path work = tmp_root() / "m3-module-part-root-edges";
+    const fs::path orphan = write_import_test_source(work / "orphan.ax",
+        "module m3.orphan part parser;\n"
+        "fn parser_value() -> i32 {\n"
+        "  return 1;\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(orphan)).output,
+        "module part root 'parser' has no owning primary module");
+
+    static_cast<void>(write_import_test_source(work / "owner.ax",
+        "module m3.owner;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n"));
+    const fs::path unlisted = write_import_test_source(work / "owner.parts" / "ghost.ax",
+        "module m3.owner part ghost;\n"
+        "fn ghost_value() -> i32 {\n"
+        "  return 1;\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(unlisted)).output,
+        "module part file 'ghost' is not listed by primary module");
+}
+
+TEST_F(AurexIntegrationTest, ModuleLoaderDiagnosticsCoverPartImportFailures)
+{
+    const fs::path work = tmp_root() / "m3-module-part-import-failures";
+    const fs::path missing_import = write_import_test_source(work / "missing_import.ax",
+        "module m3.missing_import;\n"
+        "part parser;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    static_cast<void>(write_import_test_source(work / "missing_import.parts" / "parser.ax",
+        "module m3.missing_import part parser;\n"
+        "import absent.target;\n"
+        "fn parser_value() -> i32 {\n"
+        "  return 0;\n"
+        "}\n"));
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(missing_import)).output, "failed to resolve import: absent.target");
+
+    const fs::path reimport = write_import_test_source(work / "reimport.ax",
+        "module m3.reimport;\n"
+        "part first;\n"
+        "part second;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    static_cast<void>(write_import_test_source(work / "reimport.parts" / "first.ax",
+        "module m3.reimport part first;\n"
+        "fn first_value() -> i32 {\n"
+        "  return 1;\n"
+        "}\n"));
+    static_cast<void>(write_import_test_source(work / "reimport.parts" / "second.ax",
+        "module m3.reimport part second;\n"
+        "import first;\n"
+        "fn second_value() -> i32 {\n"
+        "  return 2;\n"
+        "}\n"));
+    expect_contains(require_failure(aurexc() + " --check " + q(reimport)).output,
+        "module part 'first' of module 'm3.reimport' is not an importable module");
+}
+
+TEST_F(AurexIntegrationTest, ModuleLoaderRejectsAmbiguousImportCandidates)
+{
+    const fs::path work = tmp_root() / "m3-ambiguous-import";
+    const fs::path first_import_dir = work / "first";
+    const fs::path second_import_dir = work / "second";
+    static_cast<void>(write_import_test_source(first_import_dir / "lib" / "amb.ax",
+        "module lib.amb;\n"
+        "pub fn value() -> i32 {\n"
+        "  return 1;\n"
+        "}\n"));
+    static_cast<void>(write_import_test_source(second_import_dir / "lib" / "amb.ax",
+        "module lib.amb;\n"
+        "pub fn value() -> i32 {\n"
+        "  return 2;\n"
+        "}\n"));
+    const fs::path importer = write_import_test_source(work / "importer.ax",
+        "module m3.importer;\n"
+        "import lib.amb;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+
+    const std::string output = require_failure(
+        aurexc() + " -I " + q(first_import_dir) + " -I " + q(second_import_dir) + " --check " + q(importer))
+                                   .output;
+    expect_contains(output, "ambiguous import: lib.amb");
+    expect_contains(output, (first_import_dir / "lib" / "amb.ax").string());
+    expect_contains(output, (second_import_dir / "lib" / "amb.ax").string());
+}
+
 TEST_F(AurexIntegrationTest, ModuleLoaderDiagnosticsCoverSupportBranches)
 {
     const fs::path missing_module_decl = write_import_test_source(tmp_root() / "missing_module_decl.ax",
@@ -198,6 +425,24 @@ TEST(CoreUnit, ModuleLoaderSupportValidationDefensiveBranches)
     EXPECT_FALSE(cyclic_result);
     ASSERT_FALSE(diagnostics.diagnostics().empty());
     EXPECT_TRUE(diagnostics.diagnostics().back().range.empty());
+
+    const fs::path support_dir = tmp_root() / "module-loader-support";
+    const fs::path support_module = write_import_test_source(support_dir / "lib" / "one.ax", "");
+    syntax::ModulePath import_path;
+    import_path.parts = {"lib", "one"};
+
+    const auto found = driver::find_import_file(import_path, support_dir, {});
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(driver::module_loader_canonical_or_absolute(*found),
+        driver::module_loader_canonical_or_absolute(support_module));
+
+    const driver::ImportFileResolution deduplicated =
+        driver::resolve_import_file(import_path, support_dir, {support_dir});
+    ASSERT_EQ(deduplicated.matching_candidates.size(), 1U);
+    ASSERT_TRUE(deduplicated.selected.has_value());
+    EXPECT_EQ(*deduplicated.selected, deduplicated.matching_candidates.front());
+
+    EXPECT_EQ(driver::owning_primary_for_part_file(support_dir / "plain.ax"), std::nullopt);
 }
 
 } // namespace aurex::test

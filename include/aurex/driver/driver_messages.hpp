@@ -64,6 +64,66 @@ inline constexpr std::string_view DRIVER_IMPORTABLE_MODULE_DECL_REQUIRED =
     return "failed to resolve import: " + std::string(module_name) + " (searched: " + std::string(candidates) + ")";
 }
 
+[[nodiscard]] inline std::string driver_import_ambiguous_message(
+    const std::string_view module_name, const std::string_view candidates)
+{
+    return "ambiguous import: " + std::string(module_name) + " (candidates: " + std::string(candidates) + ")";
+}
+
+[[nodiscard]] inline std::string driver_missing_module_part_message(
+    const std::string_view module_name, const std::string_view part_name, const std::string_view expected_path)
+{
+    return "module '" + std::string(module_name) + "' declares missing part '" + std::string(part_name)
+        + "' (expected: " + std::string(expected_path) + ")";
+}
+
+[[nodiscard]] inline std::string driver_duplicate_module_part_message(
+    const std::string_view module_name, const std::string_view part_name)
+{
+    return "duplicate module part '" + std::string(part_name) + "' in module '" + std::string(module_name) + "'";
+}
+
+[[nodiscard]] inline std::string driver_module_part_case_collision_message(
+    const std::string_view module_name, const std::string_view first_part, const std::string_view second_part)
+{
+    return "module parts '" + std::string(first_part) + "' and '" + std::string(second_part) + "' in module '"
+        + std::string(module_name) + "' differ only by case";
+}
+
+[[nodiscard]] inline std::string driver_module_part_imported_message(
+    const std::string_view module_name, const std::string_view part_name)
+{
+    return "module part '" + std::string(part_name) + "' of module '" + std::string(module_name)
+        + "' is not an importable module";
+}
+
+[[nodiscard]] inline std::string driver_module_part_header_mismatch_message(const std::string_view expected_module,
+    const std::string_view expected_part, const std::string_view declared_module, const std::string_view declared_part)
+{
+    return "module part declaration '" + std::string(declared_module) + " part " + std::string(declared_part)
+        + "' does not match expected '" + std::string(expected_module) + " part " + std::string(expected_part) + "'";
+}
+
+[[nodiscard]] inline std::string driver_module_part_root_owner_missing_message(
+    const std::string_view part_name, const std::string_view expected_primary)
+{
+    return "module part root '" + std::string(part_name) + "' has no owning primary module at "
+        + std::string(expected_primary);
+}
+
+[[nodiscard]] inline std::string driver_module_part_unlisted_root_message(
+    const std::string_view part_name, const std::string_view primary)
+{
+    return "module part file '" + std::string(part_name) + "' is not listed by primary module " + std::string(primary);
+}
+
+[[nodiscard]] inline std::string driver_module_part_artifact_root_message(
+    const std::string_view part_name, const std::string_view primary)
+{
+    return "cannot emit artifact from module part '" + std::string(part_name) + "'; compile owning primary module "
+        + std::string(primary);
+}
+
 [[nodiscard]] inline std::string driver_invalid_optimization_level_message(const std::string_view level)
 {
     return "invalid optimization level: " + std::string(level);

@@ -1,6 +1,6 @@
 # Aurex M3 模块系统设计稿
 
-状态：M3.0 当前设计基线，Phase 1-5、Phase 6A、Phase 6B 与 Phase 6C 已进入实现闭环
+状态：M3.0 当前设计基线，Phase 1-5、Phase 6A、Phase 6B、Phase 6C 与 Phase 7A-D 已进入实现闭环
 日期：2026-05-27
 适用范围：同一 package 内的 logical module / source-file part 分离、module graph、exports query、
 package identity、manifest source-root、跨 part `priv` 可见性
@@ -821,6 +821,22 @@ Phase 6C 实现收口状态（2026-05-27）：
   源文件内容不变时错误复用。
 - Phase 6C 是 query/cache 边界 hardening，不新增 workspace resolver、dependency graph、lockfile、
   nested module tree、selective re-export 或 `pub(in path)`。
+
+Phase 7A-D 实现收口状态（2026-05-27）：
+
+- Phase 7A 把 `ModulePartKey` 从预留 key shape 收束为可验证、可 hash、可由 `ModuleLoader`
+  产出的真实 part identity。`ModuleRecord.parts` 现在对 primary part 和 named part 都保存
+  `ModulePartKey`，供 diagnostics、module dump、query/cache hardening 和后续 tooling 使用。
+- Phase 7B 收口 part root 用户行为：`--check` 和 `--dump-modules` 从 part 文件启动时会反查 owning
+  primary，并按完整 owning module graph 运行；`--emit=ir`、`--emit=llvm-ir`、默认 native artifact 等
+  artifact-producing root 继续拒绝 part 文件，并提示编译 owning primary。
+- Phase 7C 让 `ModuleGraph(ModuleKey)` 的 part fact 消费 part identity。graph fingerprint 混入
+  module/file/name/kind 组成的 part identity，但不把 declaration-order `stable_index` 当成 semantic
+  identity，因此 part list 仅重排仍保持 graph green，新增、删除、改名或换文件会进入 red/green 边界。
+- Phase 7D 把验收覆盖落到普通 gtest：`ModulePartKey` public API、loader 产出的 part key、
+  `--dump-modules` part identity 展示、part root artifact 拒绝、既有 duplicate/missing/mismatch/case
+  collision/import-to-part/private-surface/part-local import 行为继续通过。该阶段仍不引入 workspace
+  resolver、dependency graph、lockfile、nested module tree、selective `pub use` 或 `pub(in path)`。
 
 ### 7.1 `priv` 跨 part
 

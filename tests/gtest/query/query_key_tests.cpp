@@ -495,6 +495,7 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_TRUE(query::is_valid(lex_file));
     EXPECT_TRUE(query::is_valid(parse_file));
     EXPECT_TRUE(query::is_valid(module));
+    EXPECT_TRUE(query::is_valid(module_part));
     EXPECT_TRUE(query::is_valid(function_def));
     EXPECT_TRUE(query::is_valid(member));
     EXPECT_TRUE(query::is_valid(body));
@@ -507,6 +508,7 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_FALSE(query::is_valid(query::LexFileKey{}));
     EXPECT_FALSE(query::is_valid(query::ParseFileKey{}));
     EXPECT_FALSE(query::is_valid(query::ModuleKey{}));
+    EXPECT_FALSE(query::is_valid(query::ModulePartKey{}));
     EXPECT_FALSE(query::is_valid(query::DefKey{}));
     EXPECT_FALSE(query::is_valid(query::MemberKey{}));
     EXPECT_FALSE(query::is_valid(query::BodyKey{}));
@@ -530,6 +532,16 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     zero_global_parse_file.global_id = 0;
     query::ModuleKey zero_global_module = module;
     zero_global_module.global_id = 0;
+    query::ModulePartKey zero_global_module_part = module_part;
+    zero_global_module_part.global_id = 0;
+    query::ModulePartKey invalid_module_part_module = module_part;
+    invalid_module_part_module.module = {};
+    query::ModulePartKey invalid_module_part_file = module_part;
+    invalid_module_part_file.file = {};
+    const std::array<std::string_view, 1> other_package_parts{"other-package"};
+    query::ModulePartKey cross_package_module_part = module_part;
+    cross_package_module_part.file =
+        query::file_key(query::package_key(other_package_parts), "/workspace/root/regex/vm.ax");
     query::DefKey invalid_kind_def = function_def;
     invalid_kind_def.kind = query::DefKind::invalid;
     query::DefKey zero_global_def = function_def;
@@ -553,6 +565,10 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_FALSE(query::is_valid(zero_global_lex_file));
     EXPECT_FALSE(query::is_valid(zero_global_parse_file));
     EXPECT_FALSE(query::is_valid(zero_global_module));
+    EXPECT_FALSE(query::is_valid(zero_global_module_part));
+    EXPECT_FALSE(query::is_valid(invalid_module_part_module));
+    EXPECT_FALSE(query::is_valid(invalid_module_part_file));
+    EXPECT_FALSE(query::is_valid(cross_package_module_part));
     EXPECT_FALSE(query::is_valid(invalid_kind_def));
     EXPECT_FALSE(query::is_valid(zero_global_def));
     EXPECT_FALSE(query::is_valid(invalid_kind_member));
@@ -608,6 +624,7 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_NE(query::LexFileKeyHash{}(lex_file), 0U);
     EXPECT_NE(query::ParseFileKeyHash{}(parse_file), 0U);
     EXPECT_NE(query::ModuleKeyHash{}(module), 0U);
+    EXPECT_NE(query::ModulePartKeyHash{}(module_part), 0U);
     EXPECT_NE(query::DefKeyHash{}(function_def), 0U);
     EXPECT_NE(query::QueryKeyHash{}(diagnostics_query), 0U);
 }

@@ -25,6 +25,8 @@ constexpr std::string_view INCREMENTAL_CACHE_EXPORT_VARIADIC_TAG = "variadic";
 constexpr std::string_view INCREMENTAL_CACHE_EXPORT_FIXED_TAG = "fixed";
 constexpr std::string_view INCREMENTAL_CACHE_GRAPH_PRIMARY_PART_TAG = "primary";
 constexpr std::string_view INCREMENTAL_CACHE_GRAPH_NAMED_PART_TAG = "named";
+constexpr std::string_view INCREMENTAL_CACHE_GRAPH_PART_IDENTITY_TAG = "module-part:v1";
+constexpr std::string_view INCREMENTAL_CACHE_GRAPH_PRIMARY_PART_KEY_NAME = "<primary>";
 constexpr std::string_view INCREMENTAL_CACHE_GRAPH_SOURCE_ROOT_TOPOLOGY_TAG = "source-root";
 constexpr std::string_view INCREMENTAL_CACHE_INVALID_TYPE_TAG = "<invalid>";
 constexpr base::usize INCREMENTAL_CACHE_EXPORT_PARAM_TEXT_BUDGET = 16;
@@ -76,6 +78,45 @@ constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
 {
     return query::module_key_from_stable_id(
         module_package_or_default(module.package), stable_module_id_from_record(module));
+}
+
+[[nodiscard]] query::ModulePartKind module_part_key_kind(const ModulePartRecordKind kind) noexcept
+{
+    switch (kind) {
+        case ModulePartRecordKind::primary:
+            return query::ModulePartKind::primary;
+        case ModulePartRecordKind::named:
+            return query::ModulePartKind::fragment;
+    }
+    return query::ModulePartKind::fragment;
+}
+
+[[nodiscard]] std::string_view module_part_key_name(const ModulePartRecord& part) noexcept
+{
+    return part.kind == ModulePartRecordKind::primary ? INCREMENTAL_CACHE_GRAPH_PRIMARY_PART_KEY_NAME : part.name;
+}
+
+[[nodiscard]] query::ModulePartKey module_part_key_from_record(
+    const query::ModuleKey module_key, const ModuleRecord& module, const ModulePartRecord& part)
+{
+    if (query::is_valid(part.key)) {
+        return part.key;
+    }
+    const query::FileKey file_key =
+        query::file_key(module_package_or_default(module.package), part.path.string(), query::SourceRole::source);
+    return query::module_part_key(
+        module_key, file_key, module_part_key_kind(part.kind), module_part_key_name(part), part.stable_index);
+}
+
+[[nodiscard]] query::StableFingerprint128 module_part_graph_identity_fingerprint(const query::ModulePartKey key)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(INCREMENTAL_CACHE_GRAPH_PART_IDENTITY_TAG);
+    builder.mix_fingerprint(query::stable_key_fingerprint(key.module));
+    builder.mix_fingerprint(query::stable_key_fingerprint(key.file));
+    builder.mix_fingerprint(key.name);
+    builder.mix_u64(static_cast<base::u64>(key.kind));
+    return builder.finish();
 }
 
 [[nodiscard]] query::ModuleKey module_key_from_import(const ModuleImportRecord& import)
@@ -203,7 +244,9 @@ void sort_unique_module_keys(std::vector<query::ModuleKey>& modules)
     builder.mix_u64(static_cast<base::u64>(parts.size()));
     for (base::usize index = 0; index < parts.size(); ++index) {
         const ModulePartRecord& part = *parts[index];
+        const query::ModulePartKey part_key = module_part_key_from_record(key, module, part);
         builder.mix_u64(static_cast<base::u64>(index));
+        builder.mix_fingerprint(module_part_graph_identity_fingerprint(part_key));
         builder.mix_string(module_part_kind_name(part.kind));
         builder.mix_string(part.name);
         builder.mix_string(part.path.string());

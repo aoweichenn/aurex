@@ -78,8 +78,8 @@ private:
         const std::optional<std::filesystem::path>& selected_import_root) const;
     void record_module_imports(syntax::ModuleId module_id, std::string_view owner_part, bool owner_is_primary,
         std::span<const syntax::ResolvedImport> imports, const syntax::AstModule& combined);
-    void record_module_part(
-        syntax::ModuleId module_id, std::string name, std::filesystem::path path, base::u32 stable_index);
+    void record_module_part(syntax::ModuleId module_id, std::string name, std::filesystem::path path,
+        base::u32 stable_index, query::ModulePartKey key);
 
     const CompilerInvocation& invocation_;
     base::SourceManager& sources_;

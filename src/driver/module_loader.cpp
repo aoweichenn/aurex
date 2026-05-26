@@ -33,6 +33,26 @@ namespace {
     return header.name == declaration.name;
 }
 
+inline constexpr std::string_view MODULE_LOADER_PRIMARY_PART_KEY_NAME = "<primary>";
+
+[[nodiscard]] query::ModuleKey module_key_from_path(
+    const query::PackageKey package, const syntax::ModulePath& module_path) noexcept
+{
+    return query::module_key(
+        package, std::span<const std::string_view>{module_path.parts.data(), module_path.parts.size()});
+}
+
+[[nodiscard]] query::ModulePartKey make_module_part_key(const query::PackageKey package,
+    const syntax::ModulePath& module_path, const std::filesystem::path& path, const query::ModulePartKind kind,
+    const std::string_view name, const base::u32 stable_index)
+{
+    const query::ModuleKey module = module_key_from_path(package, module_path);
+    const query::FileKey file = query::file_key(package, path.string());
+    const std::string_view key_name =
+        kind == query::ModulePartKind::primary ? MODULE_LOADER_PRIMARY_PART_KEY_NAME : name;
+    return query::module_part_key(module, file, kind, key_name, stable_index);
+}
+
 [[nodiscard]] std::optional<ModuleSourceRootTopologyRecord> make_module_source_root_topology(
     const std::optional<std::filesystem::path>& source_root, const std::filesystem::path& primary_path)
 {
@@ -58,8 +78,9 @@ void ensure_module_record_source_root_topology(std::vector<ModuleRecord>& record
     }
 }
 
-[[nodiscard]] ModuleRecord make_module_record(const std::string& module_name, const std::filesystem::path& primary_path,
-    const query::PackageKey package, const syntax::ModuleId id, const std::optional<std::filesystem::path>& source_root)
+[[nodiscard]] ModuleRecord make_module_record(const std::string& module_name, const syntax::ModulePath& module_path,
+    const std::filesystem::path& primary_path, const query::PackageKey package, const syntax::ModuleId id,
+    const std::optional<std::filesystem::path>& source_root)
 {
     ModuleRecord record;
     record.name = module_name;
@@ -71,6 +92,7 @@ void ensure_module_record_source_root_topology(std::vector<ModuleRecord>& record
         primary_path,
         0,
         ModulePartRecordKind::primary,
+        make_module_part_key(package, module_path, primary_path, query::ModulePartKind::primary, {}, 0),
     });
     record.source_root_topology = make_module_source_root_topology(source_root, primary_path);
     return record;
@@ -165,8 +187,8 @@ void ModuleLoader::record_module_imports(const syntax::ModuleId module_id, const
     }
 }
 
-void ModuleLoader::record_module_part(
-    const syntax::ModuleId module_id, std::string name, std::filesystem::path path, const base::u32 stable_index)
+void ModuleLoader::record_module_part(const syntax::ModuleId module_id, std::string name, std::filesystem::path path,
+    const base::u32 stable_index, const query::ModulePartKey key)
 {
     if (!syntax::is_valid(module_id) || module_id.value >= this->modules_.size()) {
         return;
@@ -176,6 +198,7 @@ void ModuleLoader::record_module_part(
         std::move(path),
         stable_index,
         ModulePartRecordKind::named,
+        key,
     });
 }
 
@@ -272,8 +295,8 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
         info.path = module.module_path;
         combined.intern_module_path(info.path);
         combined.modules.push_back(std::move(info));
-        this->modules_.push_back(make_module_record(
-            module_name, canonical, package_context.package, module_id, package_context.source_root));
+        this->modules_.push_back(make_module_record(module_name, module.module_path, canonical, package_context.package,
+            module_id, package_context.source_root));
     }
     if (is_root) {
         combined.module_path = module.module_path;
@@ -401,7 +424,9 @@ base::Result<std::vector<ModuleLoader::LoadedModulePartAst>> ModuleLoader::load_
             logical != this->loaded_modules_.end()) {
             logical->second.parts.push_back(LoadedModulePart{part_name, canonical_part_path});
         }
-        this->record_module_part(module_id, part_name, canonical_part_path, stable_part_index);
+        const query::ModulePartKey part_key = make_module_part_key(package_context.package, module_path,
+            canonical_part_path, query::ModulePartKind::fragment, part_name, stable_part_index);
+        this->record_module_part(module_id, part_name, canonical_part_path, stable_part_index, part_key);
         this->record_module_imports(module_id, part_name, false, part_module.imports, combined);
         ++stable_part_index;
         part_modules.push_back(std::move(part_module));

@@ -236,6 +236,7 @@ struct QueryKey {
 [[nodiscard]] bool is_valid(LexFileKey key) noexcept;
 [[nodiscard]] bool is_valid(ParseFileKey key) noexcept;
 [[nodiscard]] bool is_valid(ModuleKey key) noexcept;
+[[nodiscard]] bool is_valid(ModulePartKey key) noexcept;
 [[nodiscard]] bool is_valid(DefKey key) noexcept;
 [[nodiscard]] bool is_valid(MemberKey key) noexcept;
 [[nodiscard]] bool is_valid(BodyKey key) noexcept;
@@ -346,6 +347,10 @@ struct ParseFileKeyHash {
 
 struct ModuleKeyHash {
     [[nodiscard]] std::size_t operator()(ModuleKey key) const;
+};
+
+struct ModulePartKeyHash {
+    [[nodiscard]] std::size_t operator()(ModulePartKey key) const;
 };
 
 struct DefKeyHash {

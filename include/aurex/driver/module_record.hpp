@@ -21,6 +21,7 @@ struct ModulePartRecord {
     std::filesystem::path path;
     base::u32 stable_index = 0;
     ModulePartRecordKind kind = ModulePartRecordKind::primary;
+    query::ModulePartKey key;
 };
 
 struct ModuleImportRecord {

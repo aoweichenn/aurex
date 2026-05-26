@@ -103,6 +103,11 @@ bool is_valid(const ModuleKey key) noexcept
     return is_valid(key.package) && key.global_id != 0;
 }
 
+bool is_valid(const ModulePartKey key) noexcept
+{
+    return is_valid(key.module) && is_valid(key.file) && key.module.package == key.file.package && key.global_id != 0;
+}
+
 bool is_valid(const DefKey key) noexcept
 {
     return is_valid(key.module) && key.kind != DefKind::invalid && key.global_id != 0;
@@ -720,6 +725,11 @@ std::size_t ParseFileKeyHash::operator()(const ParseFileKey key) const
 }
 
 std::size_t ModuleKeyHash::operator()(const ModuleKey key) const
+{
+    return stable_hash_value(stable_key_fingerprint(key));
+}
+
+std::size_t ModulePartKeyHash::operator()(const ModulePartKey key) const
 {
     return stable_hash_value(stable_key_fingerprint(key));
 }

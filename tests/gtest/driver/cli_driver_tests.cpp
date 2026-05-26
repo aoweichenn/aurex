@@ -3705,6 +3705,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheModuleGraphSortsImportTargetPackage
             source,
             0,
             driver::ModulePartRecordKind::primary,
+            {},
         });
         for (const query::PackageKey package : import_packages) {
             module.imports.push_back(driver::ModuleImportRecord{
@@ -3788,6 +3789,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheModuleGraphFingerprintsSourceRootTo
             source,
             0,
             driver::ModulePartRecordKind::primary,
+            {},
         });
         module.source_root_topology = std::move(topology);
         const std::array<driver::ModuleRecord, 1> modules{{std::move(module)}};
@@ -3935,6 +3937,12 @@ TEST_F(AurexIntegrationTest, IncrementalCacheModuleGraphUsesStableLogicalModuleS
                                                           "pub fn exported() -> i32 {\n"
                                                           "  return alpha_value() + beta_value() + gamma_value();\n"
                                                           "}\n";
+    constexpr std::string_view GRAPH_PRIMARY_RENAMED_PART = "module incremental_cache_graph_parts;\n"
+                                                            "part delta;\n"
+                                                            "part beta;\n"
+                                                            "pub fn exported() -> i32 {\n"
+                                                            "  return delta_value() + beta_value();\n"
+                                                            "}\n";
     constexpr std::string_view GRAPH_ALPHA_PART = "module incremental_cache_graph_parts part alpha;\n"
                                                   "fn alpha_value() -> i32 {\n"
                                                   "  return 1;\n"
@@ -3946,6 +3954,10 @@ TEST_F(AurexIntegrationTest, IncrementalCacheModuleGraphUsesStableLogicalModuleS
     constexpr std::string_view GRAPH_GAMMA_PART = "module incremental_cache_graph_parts part gamma;\n"
                                                   "fn gamma_value() -> i32 {\n"
                                                   "  return 3;\n"
+                                                  "}\n";
+    constexpr std::string_view GRAPH_DELTA_PART = "module incremental_cache_graph_parts part delta;\n"
+                                                  "fn delta_value() -> i32 {\n"
+                                                  "  return 4;\n"
                                                   "}\n";
 
     const fs::path cache_dir = tmp_root() / "incremental-cache-module-graph-parts";
@@ -3985,6 +3997,16 @@ TEST_F(AurexIntegrationTest, IncrementalCacheModuleGraphUsesStableLogicalModuleS
         cache_test_module_query_result(read_text(cache), CACHE_TEST_QUERY_MODULE_GRAPH, module_parts);
     ASSERT_TRUE(reordered_graph_result.has_value());
     EXPECT_EQ(*first_graph_result, *reordered_graph_result);
+
+    write_source_file(parts_dir / "delta.ax", GRAPH_DELTA_PART);
+    write_source_file(source, GRAPH_PRIMARY_RENAMED_PART);
+    driver::clear_file_cache();
+    auto renamed = compiler.run(invocation);
+    ASSERT_TRUE(renamed) << renamed.error().message;
+    const std::optional<CacheTestQueryResultFingerprint> renamed_graph_result =
+        cache_test_module_query_result(read_text(cache), CACHE_TEST_QUERY_MODULE_GRAPH, module_parts);
+    ASSERT_TRUE(renamed_graph_result.has_value());
+    EXPECT_FALSE(*first_graph_result == *renamed_graph_result);
 
     write_source_file(parts_dir / "gamma.ax", GRAPH_GAMMA_PART);
     write_source_file(source, GRAPH_PRIMARY_ADDED_PART);

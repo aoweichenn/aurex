@@ -262,6 +262,44 @@ TEST_F(AurexIntegrationTest, ModuleLoaderLoadsPrimarySidecarParts)
         });
 }
 
+TEST_F(AurexIntegrationTest, ModuleLoaderRecordsModulePartKeys)
+{
+    const fs::path work = tmp_root() / "m3-module-part-keys";
+    const fs::path primary = write_import_test_source(work / "owner.ax",
+        "module m3.part_keys;\n"
+        "part worker;\n"
+        "fn main() -> i32 {\n"
+        "  return worker_value();\n"
+        "}\n");
+    static_cast<void>(write_import_test_source(work / "owner.parts" / "worker.ax",
+        "module m3.part_keys part worker;\n"
+        "fn worker_value() -> i32 {\n"
+        "  return 0;\n"
+        "}\n"));
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = primary;
+    invocation.emit_kind = driver::EmitKind::check;
+    base::SourceManager sources;
+    base::DiagnosticSink diagnostics;
+    driver::ModuleLoader loader(invocation, sources, diagnostics);
+    auto ast = loader.load_root();
+    ASSERT_TRUE(ast) << ast.error().message;
+
+    const std::span<const driver::ModuleRecord> modules = loader.modules();
+    ASSERT_EQ(modules.size(), 1U);
+    ASSERT_EQ(modules.front().parts.size(), 2U);
+    const driver::ModulePartRecord& primary_part = modules.front().parts.front();
+    const driver::ModulePartRecord& worker_part = modules.front().parts.back();
+    EXPECT_TRUE(query::is_valid(primary_part.key));
+    EXPECT_TRUE(query::is_valid(worker_part.key));
+    EXPECT_EQ(primary_part.key.kind, query::ModulePartKind::primary);
+    EXPECT_EQ(worker_part.key.kind, query::ModulePartKind::fragment);
+    EXPECT_EQ(worker_part.stable_index, 1U);
+    EXPECT_NE(primary_part.key.global_id, worker_part.key.global_id);
+    EXPECT_NE(query::ModulePartKeyHash{}(worker_part.key), 0U);
+}
+
 TEST_F(AurexIntegrationTest, ModuleLoaderDiscoversOwningPrimaryForPartCheck)
 {
     const fs::path work = tmp_root() / "m3-root-part-check";
@@ -278,8 +316,19 @@ TEST_F(AurexIntegrationTest, ModuleLoaderDiscoversOwningPrimaryForPartCheck)
         "}\n");
 
     static_cast<void>(require_success(aurexc() + " --check " + q(part)));
+    const std::string modules = require_success(aurexc() + " --dump-modules " + q(part)).output;
+    expect_contains_all(modules,
+        {
+            "m3.owner",
+            "part <primary> primary index=0",
+            "part parser fragment index=1",
+            "key=",
+        });
     expect_contains(require_failure(aurexc() + " --emit=llvm-ir " + q(part)).output,
         "cannot emit artifact from module part 'parser'");
+    expect_contains(
+        require_failure(aurexc() + " --emit=ir " + q(part)).output, "cannot emit artifact from module part 'parser'");
+    expect_contains(require_failure(aurexc() + " " + q(part)).output, "cannot emit artifact from module part 'parser'");
 }
 
 TEST_F(AurexIntegrationTest, ModuleLoaderDiagnosticsCoverModulePartGraph)
@@ -621,8 +670,8 @@ TEST_F(AurexIntegrationTest, ModulePartImportsDoNotLeakAcrossPrimaryOrParts)
 
     const fs::path primary_to_part = write_import_test_source(work / "primary_to_part.ax",
         "module m3.primary_to_part;\n"
-        "import lib.tools;\n"
         "part parser;\n"
+        "import lib.tools;\n"
         "fn main() -> i32 {\n"
         "  return 0;\n"
         "}\n");

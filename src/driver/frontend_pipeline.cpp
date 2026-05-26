@@ -46,6 +46,25 @@ namespace {
     };
 }
 
+[[nodiscard]] std::string_view module_part_record_kind_name(const ModulePartRecordKind kind) noexcept
+{
+    switch (kind) {
+        case ModulePartRecordKind::primary:
+            return "primary";
+        case ModulePartRecordKind::named:
+            return "fragment";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] std::string_view module_part_record_display_name(const ModulePartRecord& part) noexcept
+{
+    if (part.kind == ModulePartRecordKind::primary) {
+        return "<primary>";
+    }
+    return part.name;
+}
+
 } // namespace
 
 FrontendPipeline::FrontendPipeline(CompilationSession& session) noexcept : session_(session)
@@ -131,6 +150,15 @@ base::Result<void> FrontendPipeline::dump_module_graph_output(const std::vector<
     std::cout << "modules\n";
     for (const ModuleRecord& record : modules) {
         std::cout << "  " << record.name << " " << record.path.string() << "\n";
+        for (const ModulePartRecord& part : record.parts) {
+            std::cout << "    part " << module_part_record_display_name(part) << " "
+                      << module_part_record_kind_name(part.kind) << " index=" << part.stable_index
+                      << " path=" << part.path.string();
+            if (query::is_valid(part.key)) {
+                std::cout << " key=" << part.key.global_id;
+            }
+            std::cout << "\n";
+        }
     }
     return base::Result<void>::ok();
 }

@@ -85,6 +85,7 @@ base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invoca
     }
 
     const std::vector<std::filesystem::path> imports = normalized_import_paths(invocation);
+    const std::vector<std::string> import_packages = normalized_import_package_identities(invocation);
     const std::vector<ModuleRecord> module_records = sorted_modules(modules);
     const std::vector<SourceFingerprintRecord> source_records = collect_source_fingerprints(sources, module_records);
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
@@ -135,6 +136,12 @@ base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invoca
         for (const std::filesystem::path& import_path : imports) {
             out << INCREMENTAL_CACHE_FIELD_IMPORT_PATH << INCREMENTAL_CACHE_SEPARATOR;
             write_hex_field(out, import_path.string());
+            out << '\n';
+        }
+        write_header_field(out, INCREMENTAL_CACHE_FIELD_IMPORT_PACKAGES, std::to_string(import_packages.size()));
+        for (const std::string& import_package : import_packages) {
+            out << INCREMENTAL_CACHE_FIELD_IMPORT_PACKAGE << INCREMENTAL_CACHE_SEPARATOR;
+            write_hex_field(out, import_package);
             out << '\n';
         }
         write_header_field(out, INCREMENTAL_CACHE_FIELD_SOURCES, std::to_string(source_records.size()));

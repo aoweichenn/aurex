@@ -3469,8 +3469,11 @@ TEST_F(AurexIntegrationTest, IncrementalCacheKeysImportPathManifestSourceRoot)
     ASSERT_TRUE(result) << result.error().message;
 
     const std::string cache_text = read_text(cache);
+    const std::string import_package_identity = driver::package_identity_for_import_root(import_root.string());
     expect_contains(cache_text, "import_paths\t1");
     expect_contains(cache_text, "import_path\t" + hex_encode_cache_test_field(resolved_import_source_root->string()));
+    expect_contains(cache_text, "import_packages\t1");
+    expect_contains(cache_text, "import_package\t" + hex_encode_cache_test_field(import_package_identity));
     expect_contains(cache_text, "module_source_root_topologies\t1");
     expect_contains(cache_text,
         "module\t" + hex_encode_cache_test_field("shared.util") + "\t"
@@ -3528,7 +3531,10 @@ TEST_F(AurexIntegrationTest, IncrementalCacheReusesUnusedImportPathManifestSourc
     ASSERT_TRUE(result) << result.error().message;
 
     const std::string cache_text = read_text(cache);
+    const std::string import_package_identity = driver::package_identity_for_import_root(import_root.string());
     expect_contains(cache_text, "import_path\t" + hex_encode_cache_test_field(resolved_import_source_root->string()));
+    expect_contains(cache_text, "import_packages\t1");
+    expect_contains(cache_text, "import_package\t" + hex_encode_cache_test_field(import_package_identity));
     expect_contains(cache_text, "module_source_root_topologies\t0");
 
     auto reuse = driver::try_reuse_incremental_check_cache(invocation);
@@ -3536,6 +3542,201 @@ TEST_F(AurexIntegrationTest, IncrementalCacheReusesUnusedImportPathManifestSourc
     EXPECT_TRUE(reuse.value());
 
     driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheRejectsImportPathManifestIdentityChanges)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view ROOT_SOURCE = "module incremental_cache_import_manifest_identity;\n"
+                                             "import shared.util as util;\n"
+                                             "fn main() -> i32 {\n"
+                                             "  return util.value();\n"
+                                             "}\n";
+    constexpr std::string_view IMPORT_SOURCE = "module shared.util;\n"
+                                               "pub fn value() -> i32 {\n"
+                                               "  return 7;\n"
+                                               "}\n";
+    constexpr std::string_view FIRST_MANIFEST = "[package]\n"
+                                                "name = \"manifest.identity.import.pkg\"\n"
+                                                "version = \"1.0.0\"\n";
+    constexpr std::string_view SECOND_MANIFEST = "[package]\n"
+                                                 "name = \"manifest.identity.import.pkg\"\n"
+                                                 "version = \"2.0.0\"\n";
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-import-manifest-identity";
+    const fs::path import_root = cache_dir / "deps" / "shared_pkg";
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    const fs::path manifest = import_root / std::string(driver::DRIVER_PACKAGE_MANIFEST_FILE_NAME);
+    const auto write_source_file = [](const fs::path& path, const std::string_view text) {
+        fs::create_directories(path.parent_path());
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
+    write_source_file(source, ROOT_SOURCE);
+    write_source_file(import_root / "shared" / "util.ax", IMPORT_SOURCE);
+    write_source_file(manifest, FIRST_MANIFEST);
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+    invocation.import_paths.push_back(import_root);
+
+    driver::Compiler compiler;
+    auto first = compiler.run(invocation);
+    ASSERT_TRUE(first) << first.error().message;
+    const std::string first_cache = read_text(cache);
+    expect_contains(first_cache, "import_packages\t1");
+    expect_contains(first_cache,
+        "import_package\t"
+            + hex_encode_cache_test_field(driver::package_identity_for_import_root(import_root.string())));
+
+    write_source_file(manifest, SECOND_MANIFEST);
+    driver::clear_file_cache();
+
+    auto reuse = driver::try_reuse_incremental_check_cache(invocation);
+    ASSERT_TRUE(reuse) << reuse.error().message;
+    EXPECT_FALSE(reuse.value());
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheModuleGraphFingerprintsImportTargetPackage)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view ROOT_SOURCE = "module incremental_cache_import_target_package;\n"
+                                             "import shared.util as util;\n"
+                                             "fn main() -> i32 {\n"
+                                             "  return util.value();\n"
+                                             "}\n";
+    constexpr std::string_view IMPORT_SOURCE = "module shared.util;\n"
+                                               "pub fn value() -> i32 {\n"
+                                               "  return 11;\n"
+                                               "}\n";
+    constexpr std::string_view FIRST_MANIFEST = "[package]\n"
+                                                "name = \"target.package.first\"\n"
+                                                "version = \"1.0.0\"\n";
+    constexpr std::string_view SECOND_MANIFEST = "[package]\n"
+                                                 "name = \"target.package.second\"\n"
+                                                 "version = \"1.0.0\"\n";
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-import-target-package";
+    const fs::path import_root_a = cache_dir / "deps" / "first";
+    const fs::path import_root_b = cache_dir / "deps" / "second";
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache_a = cache_dir / "first.axic";
+    const fs::path cache_b = cache_dir / "second.axic";
+    const auto write_source_file = [](const fs::path& path, const std::string_view text) {
+        fs::create_directories(path.parent_path());
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
+    write_source_file(source, ROOT_SOURCE);
+    write_source_file(import_root_a / std::string(driver::DRIVER_PACKAGE_MANIFEST_FILE_NAME), FIRST_MANIFEST);
+    write_source_file(import_root_b / std::string(driver::DRIVER_PACKAGE_MANIFEST_FILE_NAME), SECOND_MANIFEST);
+    write_source_file(import_root_a / "shared" / "util.ax", IMPORT_SOURCE);
+    write_source_file(import_root_b / "shared" / "util.ax", IMPORT_SOURCE);
+
+    driver::Compiler compiler;
+    driver::CompilerInvocation first_invocation;
+    first_invocation.input_path = source;
+    first_invocation.emit_kind = driver::EmitKind::check;
+    first_invocation.incremental_cache_path = cache_a;
+    first_invocation.import_paths.push_back(import_root_a);
+    auto first = compiler.run(first_invocation);
+    ASSERT_TRUE(first) << first.error().message;
+
+    driver::clear_file_cache();
+    driver::CompilerInvocation second_invocation;
+    second_invocation.input_path = source;
+    second_invocation.emit_kind = driver::EmitKind::check;
+    second_invocation.incremental_cache_path = cache_b;
+    second_invocation.import_paths.push_back(import_root_b);
+    auto second = compiler.run(second_invocation);
+    ASSERT_TRUE(second) << second.error().message;
+
+    const std::array<std::string_view, 1> module_parts{"incremental_cache_import_target_package"};
+    const std::optional<CacheTestQueryResultFingerprint> first_graph =
+        cache_test_module_query_result(read_text(cache_a), CACHE_TEST_QUERY_MODULE_GRAPH, module_parts);
+    const std::optional<CacheTestQueryResultFingerprint> second_graph =
+        cache_test_module_query_result(read_text(cache_b), CACHE_TEST_QUERY_MODULE_GRAPH, module_parts);
+    ASSERT_TRUE(first_graph.has_value());
+    ASSERT_TRUE(second_graph.has_value());
+    EXPECT_FALSE(*first_graph == *second_graph);
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheModuleGraphSortsImportTargetPackagesDeterministically)
+{
+    constexpr std::string_view MODULE_NAME = "incremental_cache_import_package_sort";
+    constexpr std::string_view SOURCE = "module incremental_cache_import_package_sort;\n";
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-import-package-sort";
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path first_cache = cache_dir / "first.axic";
+    const fs::path second_cache = cache_dir / "second.axic";
+    const query::PackageKey package_a = driver::package_key_from_identity("sort.package.a");
+    const query::PackageKey package_b = driver::package_key_from_identity("sort.package.b");
+    const std::array<std::string_view, 1> module_parts{MODULE_NAME};
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+
+    const auto write_cache_with_imports =
+        [&](const fs::path& cache_path,
+            const std::array<query::PackageKey, 2>& import_packages) -> std::optional<CacheTestQueryResultFingerprint> {
+        base::SourceManager sources;
+        static_cast<void>(sources.add_source(source.string(), std::string(SOURCE)));
+
+        driver::ModuleRecord module;
+        module.name = std::string(MODULE_NAME);
+        module.path = source;
+        module.package = cache_test_default_package();
+        module.id = syntax::ModuleId{0};
+        module.parts.push_back(driver::ModulePartRecord{
+            {},
+            source,
+            0,
+            driver::ModulePartRecordKind::primary,
+        });
+        for (const query::PackageKey package : import_packages) {
+            module.imports.push_back(driver::ModuleImportRecord{
+                {},
+                "shared.util",
+                "util",
+                package,
+                true,
+                syntax::Visibility::private_,
+                false,
+            });
+        }
+        const std::array<driver::ModuleRecord, 1> modules{{std::move(module)}};
+
+        sema::CheckedModule checked;
+        driver::CompilerInvocation cache_invocation = invocation;
+        cache_invocation.incremental_cache_path = cache_path;
+        auto write_result = driver::write_incremental_cache(cache_invocation, sources, modules, checked);
+        EXPECT_TRUE(write_result) << write_result.error().message;
+        if (!write_result) {
+            return std::nullopt;
+        }
+        return cache_test_module_query_result(read_text(cache_path), CACHE_TEST_QUERY_MODULE_GRAPH, module_parts);
+    };
+
+    const std::optional<CacheTestQueryResultFingerprint> first_graph =
+        write_cache_with_imports(first_cache, std::array<query::PackageKey, 2>{package_a, package_b});
+    const std::optional<CacheTestQueryResultFingerprint> second_graph =
+        write_cache_with_imports(second_cache, std::array<query::PackageKey, 2>{package_b, package_a});
+    ASSERT_TRUE(first_graph.has_value());
+    ASSERT_TRUE(second_graph.has_value());
+    EXPECT_TRUE(*first_graph == *second_graph);
 }
 
 TEST_F(AurexIntegrationTest, IncrementalCacheModuleGraphFingerprintsSourceRootTopologyRecords)
@@ -3948,6 +4149,13 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
     write_cache("aurex-incremental-cache-v1\nschema\t1\nimport_paths\tnope\n");
     expect_not_reused();
 
+    write_cache(cache_test_header(canonical_source) + "import_packages\t1\nsources\t0\nmodules\t0\ndefinitions\t0\n");
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source)
+        + "import_packages\t1\nimport_package\tzz\nsources\t0\nmodules\t0\ndefinitions\t0\n");
+    expect_not_reused();
+
     write_cache(cache_test_header(canonical_source, {cache_dir / "imports-a"})
         + "import_path\nsources\t0\nmodules\t0\ndefinitions\t0\n");
     expect_not_reused();
@@ -4209,6 +4417,23 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
     auto wrong_import_value_reuse = driver::try_reuse_incremental_check_cache(wrong_import_value);
     ASSERT_TRUE(wrong_import_value_reuse) << wrong_import_value_reuse.error().message;
     EXPECT_FALSE(wrong_import_value_reuse.value());
+
+    write_cache(
+        cache_test_header(canonical_source, {cache_dir / "imports"}) + "sources\t0\nmodules\t0\ndefinitions\t0\n");
+    driver::CompilerInvocation missing_import_package_identity = invocation;
+    missing_import_package_identity.import_paths.push_back(cache_dir / "imports");
+    auto missing_import_package_identity_reuse =
+        driver::try_reuse_incremental_check_cache(missing_import_package_identity);
+    ASSERT_TRUE(missing_import_package_identity_reuse) << missing_import_package_identity_reuse.error().message;
+    EXPECT_FALSE(missing_import_package_identity_reuse.value());
+
+    write_cache(cache_test_header(canonical_source, {cache_dir / "imports"})
+        + "import_packages\t0\nsources\t0\nmodules\t0\ndefinitions\t0\n");
+    driver::CompilerInvocation wrong_import_package_count = invocation;
+    wrong_import_package_count.import_paths.push_back(cache_dir / "imports");
+    auto wrong_import_package_count_reuse = driver::try_reuse_incremental_check_cache(wrong_import_package_count);
+    ASSERT_TRUE(wrong_import_package_count_reuse) << wrong_import_package_count_reuse.error().message;
+    EXPECT_FALSE(wrong_import_package_count_reuse.value());
 
     write_cache(minimal_cache_without_sources(canonical_source));
     expect_not_reused();

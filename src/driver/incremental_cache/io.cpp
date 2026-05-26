@@ -185,6 +185,9 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     if (kind == INCREMENTAL_CACHE_FIELD_IMPORT_PATHS) {
         return assign_count(cache.expected_import_paths, value);
     }
+    if (kind == INCREMENTAL_CACHE_FIELD_IMPORT_PACKAGES) {
+        return assign_count(cache.expected_import_packages, value);
+    }
     if (kind == INCREMENTAL_CACHE_FIELD_SOURCES) {
         return assign_count(cache.expected_sources, value);
     }
@@ -217,6 +220,20 @@ void append_hex_string(std::ostream& out, const std::string_view value)
         return false;
     }
     cache.import_paths.push_back(*path);
+    return true;
+}
+
+[[nodiscard]] bool parse_import_package_line(ParsedCache& cache, const std::vector<std::string_view>& fields)
+{
+    if (fields.size() != INCREMENTAL_CACHE_HEADER_FIELD_COUNT
+        || fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_IMPORT_PACKAGE) {
+        return false;
+    }
+    std::optional<std::string> identity = decode_hex_string(fields[INCREMENTAL_CACHE_FIRST_VALUE_FIELD]);
+    if (!identity || identity->empty()) {
+        return false;
+    }
+    cache.import_package_identities.push_back(std::move(*identity));
     return true;
 }
 
@@ -539,6 +556,9 @@ struct QueryKeyFieldLayout {
     if (kind == INCREMENTAL_CACHE_FIELD_IMPORT_PATH) {
         return parse_import_path_line(cache, fields);
     }
+    if (kind == INCREMENTAL_CACHE_FIELD_IMPORT_PACKAGE) {
+        return parse_import_package_line(cache, fields);
+    }
     if (kind == INCREMENTAL_CACHE_FIELD_SOURCE) {
         return parse_source_line(cache, fields);
     }
@@ -688,6 +708,17 @@ struct QueryKeyFieldLayout {
             package_source_root_for_import_root(canonical_import_root.string()).value_or(canonical_import_root));
     }
     return paths;
+}
+
+[[nodiscard]] std::vector<std::string> normalized_import_package_identities(const CompilerInvocation& invocation)
+{
+    std::vector<std::string> identities;
+    identities.reserve(invocation.import_paths.size());
+    for (const std::filesystem::path& path : invocation.import_paths) {
+        const std::filesystem::path canonical_import_root = canonical_or_absolute(path);
+        identities.push_back(package_identity_for_import_root(canonical_import_root.string()));
+    }
+    return identities;
 }
 
 [[nodiscard]] bool invocation_uses_manifest_source_root(const CompilerInvocation& invocation)
@@ -919,9 +950,13 @@ void write_query_dependency_edge_record(std::ostream& out, const query::QueryDep
     const bool query_edges_match = cache.expected_query_edges.has_value()
         ? cache.query_edges.size() == *cache.expected_query_edges
         : cache.query_edges.empty();
+    const bool import_packages_match = cache.expected_import_packages.has_value()
+        ? cache.import_package_identities.size() == *cache.expected_import_packages
+        : cache.import_package_identities.empty();
     if (!cache.expected_import_paths || !cache.expected_sources || !cache.expected_modules
         || !cache.expected_definitions || cache.import_paths.size() != *cache.expected_import_paths
-        || cache.sources.size() != *cache.expected_sources || cache.module_count != *cache.expected_modules
+        || !import_packages_match || cache.sources.size() != *cache.expected_sources
+        || cache.module_count != *cache.expected_modules
         || (cache.expected_module_source_root_topologies.has_value()
             && cache.module_source_root_topology_count != *cache.expected_module_source_root_topologies)
         || cache.definition_count != *cache.expected_definitions || !queries_match || !query_edges_match) {
@@ -962,6 +997,18 @@ void write_query_dependency_edge_record(std::ostream& out, const query::QueryDep
     const std::vector<std::filesystem::path> imports = normalized_import_paths(invocation);
     for (base::usize index = 0; index < cache.import_paths.size(); ++index) {
         if (cache.import_paths[index] != imports[index]) {
+            return false;
+        }
+    }
+    if (!cache.expected_import_packages.has_value() && !invocation.import_paths.empty()) {
+        return false;
+    }
+    const std::vector<std::string> import_packages = normalized_import_package_identities(invocation);
+    if (cache.import_package_identities.size() != import_packages.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < cache.import_package_identities.size(); ++index) {
+        if (cache.import_package_identities[index] != import_packages[index]) {
             return false;
         }
     }

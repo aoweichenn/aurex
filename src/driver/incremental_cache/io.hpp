@@ -23,6 +23,7 @@ namespace aurex::driver::incremental_cache_detail {
 [[nodiscard]] bool same_fingerprint(const SourceFingerprintRecord& lhs, const SourceFingerprintRecord& rhs) noexcept;
 
 [[nodiscard]] std::vector<std::filesystem::path> normalized_import_paths(const CompilerInvocation& invocation);
+[[nodiscard]] std::vector<std::string> normalized_import_package_identities(const CompilerInvocation& invocation);
 [[nodiscard]] std::vector<SourceFingerprintRecord> collect_source_fingerprints(
     const base::SourceManager& sources, std::span<const ModuleRecord> modules);
 [[nodiscard]] std::vector<ModuleRecord> sorted_modules(std::span<const ModuleRecord> modules);

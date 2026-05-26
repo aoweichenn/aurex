@@ -97,6 +97,8 @@ constexpr std::string_view INCREMENTAL_CACHE_FIELD_ROOT = "root";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_PACKAGE = "package";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_IMPORT_PATHS = "import_paths";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_IMPORT_PATH = "import_path";
+constexpr std::string_view INCREMENTAL_CACHE_FIELD_IMPORT_PACKAGES = "import_packages";
+constexpr std::string_view INCREMENTAL_CACHE_FIELD_IMPORT_PACKAGE = "import_package";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_SOURCES = "sources";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_SOURCE = "source";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_MODULES = "modules";
@@ -157,6 +159,7 @@ struct ParsedCache {
     std::filesystem::path root_path;
     std::optional<std::string> package_identity;
     std::vector<std::filesystem::path> import_paths;
+    std::vector<std::string> import_package_identities;
     std::vector<SourceFingerprintRecord> sources;
     std::vector<ParsedQueryRecord> queries;
     std::vector<query::QueryDependencyEdge> query_edges;
@@ -164,6 +167,7 @@ struct ParsedCache {
     base::usize module_source_root_topology_count = 0;
     base::usize definition_count = 0;
     std::optional<base::usize> expected_import_paths;
+    std::optional<base::usize> expected_import_packages;
     std::optional<base::usize> expected_sources;
     std::optional<base::usize> expected_modules;
     std::optional<base::usize> expected_module_source_root_topologies;

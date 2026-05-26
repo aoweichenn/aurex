@@ -1,8 +1,9 @@
 # Aurex M3 模块系统设计稿
 
-状态：M3.0 当前设计基线，Phase 1-5 与 Phase 6A-1/2/3/4/5/6 已进入实现闭环
-日期：2026-05-26
-适用范围：同一 package 内的 logical module / source-file part 分离、module graph、exports query、跨 part `priv` 可见性
+状态：M3.0 当前设计基线，Phase 1-5、Phase 6A、Phase 6B 与 Phase 6C 已进入实现闭环
+日期：2026-05-27
+适用范围：同一 package 内的 logical module / source-file part 分离、module graph、exports query、
+package identity、manifest source-root、跨 part `priv` 可见性
 
 ## 1. 设计结论
 
@@ -805,6 +806,21 @@ Phase 6B-3 实现收口状态（2026-05-27）：
   manifest source-root 时，缺少 topology row 且缺少 topology 计数头的旧 cache 不走 fast check 复用。
 - 该阶段只把 source-root 拓扑提升为 module/query/cache 可见事实，不引入 workspace resolver、
   dependency graph、nested module tree 或 `pub(in path)`。
+
+Phase 6C 实现收口状态（2026-05-27）：
+
+- `ModuleGraph(ModuleKey)` 的 import fact 现在包含目标 module 的 package identity。相同 logical
+  module path 解析到不同 package 时，owner module graph 会变红，避免把 package 边界变化误判为
+  graph green。
+- incremental cache header 现在记录每个 `-I` / `--import-path` 对应的 resolved package identity：
+  manifest-backed import root 写 manifest name/version/root/source-root identity，无 manifest import root
+  写 canonical import-root identity。当前 invocation 的 import package identity 与 cache 不一致时，
+  不走 fast check 复用。
+- 新 cache 写出 `import_packages` / `import_package` rows；无 import path 的旧 cache 继续兼容。有 import
+  path 但缺少 import package identity rows 的旧 cache 会被保守拒绝，避免 manifest name/version 变化、
+  源文件内容不变时错误复用。
+- Phase 6C 是 query/cache 边界 hardening，不新增 workspace resolver、dependency graph、lockfile、
+  nested module tree、selective re-export 或 `pub(in path)`。
 
 ### 7.1 `priv` 跨 part
 

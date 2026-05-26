@@ -227,6 +227,15 @@ source-root 与相对路径，使 source layout 变化会进入 query red/green 
 不再走 fast check 复用。该阶段仍不引入 workspace、dependency resolver、nested module tree 或
 `pub(in path)`。
 
+2026-05-27：Phase 6C Module Query / Topology Hardening 已完成。`ModuleGraph(ModuleKey)` 的 import
+fact 现在混入目标 module 的 `PackageKey`，相同 logical module path 解析到不同 package 时，owner graph
+不再错误保持 green。incremental cache header 新增 `import_packages` / `import_package` rows，记录每个
+`-I` / `--import-path` 的 resolved package identity；import root manifest name/version/source-root 或
+fallback import-root identity 与当前 invocation 不一致时，不走 fast check 复用。有 import path 但缺少
+import package identity rows 的旧 cache 会被保守拒绝；无 import path 的旧 cache 保持兼容。该阶段是
+M3.0 query/cache 边界加固，不引入 workspace、dependency resolver、lockfile、nested module tree 或
+`pub(in path)`。
+
 ## 验收
 
 M3.0 模块验收：

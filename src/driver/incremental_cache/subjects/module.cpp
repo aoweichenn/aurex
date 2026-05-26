@@ -125,6 +125,12 @@ constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
     return query::stable_serialize(lhs) < query::stable_serialize(rhs);
 }
 
+[[nodiscard]] bool package_key_less(const query::PackageKey lhs, const query::PackageKey rhs) noexcept
+{
+    return std::tie(lhs.global_id, lhs.identity.primary, lhs.identity.secondary, lhs.identity.byte_count)
+        < std::tie(rhs.global_id, rhs.identity.primary, rhs.identity.secondary, rhs.identity.byte_count);
+}
+
 [[nodiscard]] std::vector<query::ModuleKey> primary_public_reexport_dependencies(const ModuleRecord& module)
 {
     std::vector<query::ModuleKey> dependencies;
@@ -214,6 +220,11 @@ void sort_unique_module_keys(std::vector<query::ModuleKey>& modules)
         if (lhs_key != rhs_key) {
             return lhs_key < rhs_key;
         }
+        const query::PackageKey lhs_package = module_package_or_default(lhs->module_package);
+        const query::PackageKey rhs_package = module_package_or_default(rhs->module_package);
+        if (lhs_package != rhs_package) {
+            return package_key_less(lhs_package, rhs_package);
+        }
         return syntax::visibility_rank(lhs->visibility) < syntax::visibility_rank(rhs->visibility);
     });
     builder.mix_u64(static_cast<base::u64>(imports.size()));
@@ -223,6 +234,7 @@ void sort_unique_module_keys(std::vector<query::ModuleKey>& modules)
         builder.mix_bool(import.owner_is_primary);
         builder.mix_string(import.owner_part);
         builder.mix_string(import.module_name);
+        builder.mix_fingerprint(query::stable_key_fingerprint(module_package_or_default(import.module_package)));
         builder.mix_string(import.alias);
         builder.mix_u64(syntax::visibility_rank(import.visibility));
     }

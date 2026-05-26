@@ -201,6 +201,15 @@ public re-export 保持跨包可见、private import 不重导出，以及 packa
 manifest name/version/root 改动后复用旧 cache。该阶段不引入 dependency resolver、lockfile、workspace
 或 package manager，只把 manifest 作为模块系统和 `pub(package)` 边界的稳定身份输入。
 
+2026-05-26：Phase 6B-1 Manifest source-root / module-root lookup 已完成模块布局收口。Manifest 现在可在
+`[package]` 下声明 `source-root = "src"`；相对路径按 manifest root 解析，并且只在 manifest root 内生效。
+Root package 的 local import 和带 manifest 的 `-I` import root 会优先从 source-root 下按 logical module
+path 查找文件，例如 `import app.util;` 映射到 `src/app/util.ax`。无 source-root 的 manifest、无 manifest
+import root 和单文件调用保持旧的 importer-dir / import-root 查找行为。显式 source-root 会进入
+manifest-backed package identity，因此同名同版本但 source layout 不同的编译会话不会共享包级 query key；
+incremental cache 的 import path layout 也记录 canonical source-root，避免 import root source layout 改动后
+误复用旧 check cache。该阶段仍不引入 workspace、dependency resolver、lockfile、版本求解或 package manager。
+
 ## 验收
 
 M3.0 模块验收：

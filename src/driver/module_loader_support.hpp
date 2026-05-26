@@ -47,6 +47,10 @@ struct ImportFileResolution {
 [[nodiscard]] ImportFileResolution resolve_import_file(const syntax::ModulePath& path,
     const std::filesystem::path& importer_dir, const std::vector<std::filesystem::path>& import_paths);
 
+[[nodiscard]] ImportFileResolution resolve_import_file(const syntax::ModulePath& path,
+    const std::filesystem::path& importer_dir, const std::optional<std::filesystem::path>& package_source_root,
+    const std::vector<std::filesystem::path>& import_paths);
+
 [[nodiscard]] std::vector<std::filesystem::path> import_candidates(const syntax::ModulePath& path,
     const std::filesystem::path& importer_dir, const std::vector<std::filesystem::path>& import_paths);
 

@@ -2,6 +2,7 @@
 
 #include <aurex/driver/driver_messages.hpp>
 #include <aurex/driver/file_cache.hpp>
+#include <aurex/driver/package_identity.hpp>
 #include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/driver/profile.hpp>
 #include <aurex/lex/lexer.hpp>
@@ -16,6 +17,11 @@
 
 namespace aurex::driver {
 namespace {
+
+struct ImportSearchCandidate {
+    std::filesystem::path path;
+    std::optional<std::filesystem::path> selected_import_root;
+};
 
 [[nodiscard]] bool import_candidate_exists(const std::filesystem::path& candidate)
 {
@@ -66,6 +72,29 @@ void push_module_loader_error(base::DiagnosticSink& diagnostics, const base::Sou
         return base::Result<syntax::AstModule>::fail(ast_result.error());
     }
     return base::Result<syntax::AstModule>::ok(ast_result.take_value());
+}
+
+[[nodiscard]] std::vector<ImportSearchCandidate> import_search_candidates(const syntax::ModulePath& path,
+    const std::filesystem::path& importer_dir, const std::optional<std::filesystem::path>& package_source_root,
+    const std::vector<std::filesystem::path>& import_paths)
+{
+    const std::filesystem::path relative = syntax::module_path_to_relative_file(path);
+    std::vector<ImportSearchCandidate> candidates;
+    candidates.reserve(import_paths.size() + 1);
+    candidates.push_back(ImportSearchCandidate{
+        package_source_root.value_or(importer_dir) / relative,
+        std::nullopt,
+    });
+    for (const std::filesystem::path& import_path : import_paths) {
+        const std::filesystem::path canonical_import_root = module_loader_canonical_or_absolute(import_path);
+        const std::optional<std::filesystem::path> import_source_root =
+            package_source_root_for_import_root(canonical_import_root.string());
+        candidates.push_back(ImportSearchCandidate{
+            import_source_root.value_or(import_path) / relative,
+            canonical_import_root,
+        });
+    }
+    return candidates;
 }
 
 } // namespace
@@ -129,17 +158,28 @@ std::optional<std::filesystem::path> find_import_file(const syntax::ModulePath& 
 ImportFileResolution resolve_import_file(const syntax::ModulePath& path, const std::filesystem::path& importer_dir,
     const std::vector<std::filesystem::path>& import_paths)
 {
+    return resolve_import_file(path, importer_dir, std::nullopt, import_paths);
+}
+
+ImportFileResolution resolve_import_file(const syntax::ModulePath& path, const std::filesystem::path& importer_dir,
+    const std::optional<std::filesystem::path>& package_source_root,
+    const std::vector<std::filesystem::path>& import_paths)
+{
     ImportFileResolution resolution;
-    resolution.searched_candidates = import_candidates(path, importer_dir, import_paths);
+    const std::vector<ImportSearchCandidate> candidates =
+        import_search_candidates(path, importer_dir, package_source_root, import_paths);
+    resolution.searched_candidates.reserve(candidates.size());
+    for (const ImportSearchCandidate& candidate : candidates) {
+        resolution.searched_candidates.push_back(candidate.path);
+    }
 
     std::unordered_set<std::string> seen_canonical_paths;
-    for (base::usize index = 0; index < resolution.searched_candidates.size(); ++index) {
-        const std::filesystem::path& candidate = resolution.searched_candidates[index];
-        if (!import_candidate_exists(candidate)) {
+    for (const ImportSearchCandidate& candidate : candidates) {
+        if (!import_candidate_exists(candidate.path)) {
             continue;
         }
 
-        const std::filesystem::path canonical = module_loader_canonical_or_absolute(candidate);
+        const std::filesystem::path canonical = module_loader_canonical_or_absolute(candidate.path);
         if (seen_canonical_paths.insert(canonical.string()).second) {
             resolution.matching_candidates.push_back(canonical);
         }
@@ -147,15 +187,12 @@ ImportFileResolution resolve_import_file(const syntax::ModulePath& path, const s
 
     if (resolution.matching_candidates.size() == 1) {
         resolution.selected = resolution.matching_candidates.front();
-        for (base::usize index = 0; index < resolution.searched_candidates.size(); ++index) {
-            const std::filesystem::path canonical =
-                module_loader_canonical_or_absolute(resolution.searched_candidates[index]);
+        for (const ImportSearchCandidate& candidate : candidates) {
+            const std::filesystem::path canonical = module_loader_canonical_or_absolute(candidate.path);
             if (canonical != *resolution.selected) {
                 continue;
             }
-            if (index > 0) {
-                resolution.selected_import_root = module_loader_canonical_or_absolute(import_paths[index - 1]);
-            }
+            resolution.selected_import_root = candidate.selected_import_root;
             break;
         }
     }

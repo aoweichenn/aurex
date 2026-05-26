@@ -668,7 +668,9 @@ struct QueryKeyFieldLayout {
     std::vector<std::filesystem::path> paths;
     paths.reserve(invocation.import_paths.size());
     for (const std::filesystem::path& path : invocation.import_paths) {
-        paths.push_back(canonical_or_absolute(path));
+        const std::filesystem::path canonical_import_root = canonical_or_absolute(path);
+        paths.push_back(
+            package_source_root_for_import_root(canonical_import_root.string()).value_or(canonical_import_root));
     }
     return paths;
 }
@@ -908,8 +910,9 @@ void write_query_dependency_edge_record(std::ostream& out, const query::QueryDep
     if (cache.import_paths.size() != invocation.import_paths.size()) {
         return false;
     }
+    const std::vector<std::filesystem::path> imports = normalized_import_paths(invocation);
     for (base::usize index = 0; index < cache.import_paths.size(); ++index) {
-        if (cache.import_paths[index] != canonical_or_absolute(invocation.import_paths[index])) {
+        if (cache.import_paths[index] != imports[index]) {
             return false;
         }
     }

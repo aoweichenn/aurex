@@ -23,12 +23,15 @@ inline constexpr char PACKAGE_MANIFEST_COMMENT = '#';
 inline constexpr char PACKAGE_MANIFEST_ESCAPE = '\\';
 inline constexpr char PACKAGE_MANIFEST_QUOTE = '"';
 inline constexpr base::usize PACKAGE_IDENTITY_MANIFEST_FIELD_SEPARATOR_COUNT = 3U;
+inline constexpr base::usize PACKAGE_IDENTITY_MANIFEST_SOURCE_ROOT_FIELD_SEPARATOR_COUNT = 4U;
 inline constexpr base::usize PACKAGE_IDENTITY_IMPORT_ROOT_FIELD_SEPARATOR_COUNT = 1U;
 
 struct PackageManifestIdentityFields {
     std::string name;
     std::string version;
-    std::filesystem::path root;
+    std::filesystem::path manifest_path;
+    std::filesystem::path manifest_root;
+    std::optional<std::filesystem::path> source_root;
 };
 
 [[nodiscard]] bool path_exists(const std::filesystem::path& path) noexcept
@@ -41,6 +44,21 @@ struct PackageManifestIdentityFields {
 {
     std::error_code error;
     return std::filesystem::is_directory(path, error) && !error;
+}
+
+[[nodiscard]] bool path_is_within_or_equal(
+    const std::filesystem::path& child, const std::filesystem::path& parent) noexcept
+{
+    auto child_part = child.begin();
+    auto parent_part = parent.begin();
+    while (parent_part != parent.end()) {
+        if (child_part == child.end() || *child_part != *parent_part) {
+            return false;
+        }
+        ++child_part;
+        ++parent_part;
+    }
+    return true;
 }
 
 [[nodiscard]] std::filesystem::path manifest_search_start(const std::filesystem::path& anchor)
@@ -123,6 +141,16 @@ struct PackageManifestIdentityFields {
     return std::nullopt;
 }
 
+[[nodiscard]] std::filesystem::path resolve_manifest_source_root(
+    const std::filesystem::path& manifest_root, const std::string_view source_root)
+{
+    std::filesystem::path root{std::string(source_root)};
+    if (root.is_relative()) {
+        root = manifest_root / root;
+    }
+    return module_loader_canonical_or_absolute(root);
+}
+
 [[nodiscard]] std::optional<PackageManifestIdentityFields> read_manifest_identity_fields(
     const std::filesystem::path& manifest_path)
 {
@@ -133,7 +161,8 @@ struct PackageManifestIdentityFields {
 
     PackageManifestIdentityFields fields;
     fields.version = DRIVER_PACKAGE_MANIFEST_DEFAULT_VERSION;
-    fields.root = module_loader_canonical_or_absolute(manifest_path).parent_path();
+    fields.manifest_path = module_loader_canonical_or_absolute(manifest_path);
+    fields.manifest_root = fields.manifest_path.parent_path();
 
     bool in_package_section = false;
     std::string line;
@@ -164,6 +193,11 @@ struct PackageManifestIdentityFields {
             fields.name = std::move(*parsed_value);
         } else if (key == PACKAGE_MANIFEST_KEY_VERSION) {
             fields.version = std::move(*parsed_value);
+        } else if (key == DRIVER_PACKAGE_MANIFEST_SOURCE_ROOT_KEY) {
+            const std::filesystem::path source_root = resolve_manifest_source_root(fields.manifest_root, *parsed_value);
+            if (path_is_within_or_equal(source_root, fields.manifest_root)) {
+                fields.source_root = source_root;
+            }
         }
     }
 
@@ -175,18 +209,36 @@ struct PackageManifestIdentityFields {
 
 [[nodiscard]] std::string package_identity_from_manifest_fields(const PackageManifestIdentityFields& fields)
 {
-    const std::string root = fields.root.string();
+    const std::string manifest_root = fields.manifest_root.string();
+    const std::string source_root = fields.source_root.has_value() ? fields.source_root->string() : std::string{};
+    const base::usize separator_count = fields.source_root.has_value()
+        ? PACKAGE_IDENTITY_MANIFEST_SOURCE_ROOT_FIELD_SEPARATOR_COUNT
+        : PACKAGE_IDENTITY_MANIFEST_FIELD_SEPARATOR_COUNT;
     std::string identity;
     identity.reserve(DRIVER_MANIFEST_PACKAGE_IDENTITY_KIND.size() + fields.name.size() + fields.version.size()
-        + root.size() + PACKAGE_IDENTITY_MANIFEST_FIELD_SEPARATOR_COUNT);
+        + manifest_root.size() + source_root.size() + separator_count);
     identity.append(DRIVER_MANIFEST_PACKAGE_IDENTITY_KIND);
     identity.push_back(DRIVER_PACKAGE_IDENTITY_FIELD_SEPARATOR);
     identity.append(fields.name);
     identity.push_back(DRIVER_PACKAGE_IDENTITY_FIELD_SEPARATOR);
     identity.append(fields.version);
     identity.push_back(DRIVER_PACKAGE_IDENTITY_FIELD_SEPARATOR);
-    identity.append(root);
+    identity.append(manifest_root);
+    if (fields.source_root.has_value()) {
+        identity.push_back(DRIVER_PACKAGE_IDENTITY_FIELD_SEPARATOR);
+        identity.append(source_root);
+    }
     return identity;
+}
+
+[[nodiscard]] PackageManifestInfo package_manifest_info_from_fields(const PackageManifestIdentityFields& fields)
+{
+    return PackageManifestInfo{
+        fields.manifest_path,
+        fields.manifest_root,
+        fields.source_root,
+        package_identity_from_manifest_fields(fields),
+    };
 }
 
 } // namespace
@@ -228,7 +280,7 @@ std::optional<std::filesystem::path> find_package_manifest_for_path(const std::f
     return std::nullopt;
 }
 
-std::optional<std::string> package_manifest_identity_for_path(const std::filesystem::path& anchor)
+std::optional<PackageManifestInfo> package_manifest_info_for_path(const std::filesystem::path& anchor)
 {
     const std::optional<std::filesystem::path> manifest = find_package_manifest_for_path(anchor);
     if (!manifest.has_value()) {
@@ -238,7 +290,25 @@ std::optional<std::string> package_manifest_identity_for_path(const std::filesys
     if (!fields.has_value()) {
         return std::nullopt;
     }
-    return package_identity_from_manifest_fields(*fields);
+    return package_manifest_info_from_fields(*fields);
+}
+
+std::optional<std::string> package_manifest_identity_for_path(const std::filesystem::path& anchor)
+{
+    const std::optional<PackageManifestInfo> manifest = package_manifest_info_for_path(anchor);
+    if (!manifest.has_value()) {
+        return std::nullopt;
+    }
+    return manifest->identity;
+}
+
+std::optional<std::filesystem::path> package_manifest_source_root_for_path(const std::filesystem::path& anchor)
+{
+    const std::optional<PackageManifestInfo> manifest = package_manifest_info_for_path(anchor);
+    if (!manifest.has_value()) {
+        return std::nullopt;
+    }
+    return manifest->source_root;
 }
 
 std::string package_identity_for_invocation(const CompilerInvocation& invocation)
@@ -263,6 +333,16 @@ std::string package_identity_for_import_root(const std::string_view canonical_im
     identity.push_back(DRIVER_PACKAGE_IDENTITY_FIELD_SEPARATOR);
     identity.append(canonical_import_root);
     return identity;
+}
+
+std::optional<std::filesystem::path> package_source_root_for_invocation(const CompilerInvocation& invocation)
+{
+    return package_manifest_source_root_for_path(invocation.input_path);
+}
+
+std::optional<std::filesystem::path> package_source_root_for_import_root(const std::string_view canonical_import_root)
+{
+    return package_manifest_source_root_for_path(std::filesystem::path(canonical_import_root));
 }
 
 query::PackageKey package_key_for_invocation(const CompilerInvocation& invocation)

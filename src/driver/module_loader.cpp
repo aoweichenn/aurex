@@ -89,7 +89,10 @@ private:
 ModuleLoader::ModuleLoader(const CompilerInvocation& invocation, base::SourceManager& sources,
     base::DiagnosticSink& diagnostics, CompilationProfiler* const profiler) noexcept
     : invocation_(invocation), sources_(sources), diagnostics_(diagnostics), profiler_(profiler),
-      import_paths_(invocation.import_paths), root_package_(package_key_for_invocation(invocation))
+      import_paths_(invocation.import_paths), root_context_(PackageLoadContext{
+                                                  package_key_for_invocation(invocation),
+                                                  package_source_root_for_invocation(invocation),
+                                              })
 {
 }
 
@@ -97,7 +100,7 @@ base::Result<syntax::AstModule> ModuleLoader::load_root()
 {
     syntax::AstModule combined;
     const auto result = this->load_file(module_loader_canonical_or_absolute(this->invocation_.input_path), combined, 0,
-        true, nullptr, this->root_package_);
+        true, nullptr, this->root_context_);
     if (!result) {
         return base::Result<syntax::AstModule>::fail(result.error());
     }
@@ -151,7 +154,7 @@ void ModuleLoader::record_module_part(
 
 base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::path& path, syntax::AstModule& combined,
     const base::usize depth, const bool is_root, const syntax::ModulePath* expected_module,
-    const query::PackageKey package)
+    const PackageLoadContext& package_context)
 {
     if (depth > base::config::AUREX_MAX_INCLUDE_DEPTH) {
         return base::Result<syntax::ModuleId>::fail(module_loader_depth_exceeded_error());
@@ -188,7 +191,7 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
     syntax::AstModule module = std::move(loaded.module);
     if (module.file_kind == syntax::ModuleFileKind::part) {
         if (is_root) {
-            return this->redirect_root_part(canonical, key, module, combined, depth, package);
+            return this->redirect_root_part(canonical, key, module, combined, depth, package_context);
         }
         return base::Result<syntax::ModuleId>::fail(
             report_module_part_imported(this->diagnostics_, module, expected_module).error());
@@ -206,9 +209,9 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
         return base::Result<syntax::ModuleId>::fail(import_path_validation.error());
     }
     const std::string module_name = syntax::module_path_to_string(module.module_path);
-    const std::string logical_key = logical_module_key(package, module_name);
+    const std::string logical_key = logical_module_key(package_context.package, module_name);
     const auto module_inserted = this->loaded_modules_.emplace(
-        logical_key, LoadedLogicalModule{canonical, package, syntax::INVALID_MODULE_ID, {}});
+        logical_key, LoadedLogicalModule{canonical, package_context.package, syntax::INVALID_MODULE_ID, {}});
     if (!module_inserted.second) {
         const auto identity_validation = validate_unique_module_identity(module_name, canonical,
             module_inserted.first->second.primary_path, module.module_path.range, this->diagnostics_);
@@ -225,7 +228,7 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
         info.path = module.module_path;
         combined.intern_module_path(info.path);
         combined.modules.push_back(std::move(info));
-        this->modules_.push_back(make_module_record(module_name, canonical, package, module_id));
+        this->modules_.push_back(make_module_record(module_name, canonical, package_context.package, module_id));
     }
     if (is_root) {
         combined.module_path = module.module_path;
@@ -235,14 +238,14 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
     std::vector<syntax::ResolvedImport> direct_imports;
     direct_imports.reserve(module.imports.size());
     const auto import_result =
-        this->resolve_imports_for_file(module, canonical, combined, depth, direct_imports, package);
+        this->resolve_imports_for_file(module, canonical, combined, depth, direct_imports, package_context);
     if (!import_result) {
         return base::Result<syntax::ModuleId>::fail(import_result.error());
     }
     this->record_module_imports(module_id, {}, true, direct_imports, combined);
 
-    auto parts_result = this->load_declared_parts(
-        canonical, module_name, module.module_path, module.part_declarations, combined, depth, module_id, package);
+    auto parts_result = this->load_declared_parts(canonical, module_name, module.module_path, module.part_declarations,
+        combined, depth, module_id, package_context);
     if (!parts_result) {
         return base::Result<syntax::ModuleId>::fail(parts_result.error());
     }
@@ -269,12 +272,12 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
 
 base::Result<void> ModuleLoader::resolve_imports_for_file(const syntax::AstModule& module,
     const std::filesystem::path& canonical, syntax::AstModule& combined, const base::usize depth,
-    std::vector<syntax::ResolvedImport>& direct_imports, const query::PackageKey package)
+    std::vector<syntax::ResolvedImport>& direct_imports, const PackageLoadContext& package_context)
 {
     direct_imports.reserve(direct_imports.size() + module.imports.size());
     for (const syntax::ImportDecl& import : module.imports) {
         const ImportFileResolution resolution =
-            resolve_import_file(import.path, canonical.parent_path(), this->import_paths_);
+            resolve_import_file(import.path, canonical.parent_path(), package_context.source_root, this->import_paths_);
         if (resolution.matching_candidates.empty()) {
             return report_import_resolution_failure(
                 this->diagnostics_, import.path, format_import_candidates(resolution.searched_candidates));
@@ -284,10 +287,10 @@ base::Result<void> ModuleLoader::resolve_imports_for_file(const syntax::AstModul
                 this->diagnostics_, import.path, format_import_candidates(resolution.matching_candidates));
         }
 
-        const query::PackageKey import_package =
-            this->package_for_import_resolution(package, resolution.selected_import_root);
+        const PackageLoadContext import_context =
+            this->package_context_for_import_resolution(package_context, resolution.selected_import_root);
         auto import_result =
-            this->load_file(*resolution.selected, combined, depth + 1, false, &import.path, import_package);
+            this->load_file(*resolution.selected, combined, depth + 1, false, &import.path, import_context);
         if (!import_result) {
             return base::Result<void>::fail(import_result.error());
         }
@@ -307,7 +310,7 @@ base::Result<void> ModuleLoader::resolve_imports_for_file(const syntax::AstModul
 base::Result<std::vector<ModuleLoader::LoadedModulePartAst>> ModuleLoader::load_declared_parts(
     const std::filesystem::path& primary_path, const std::string& module_name, const syntax::ModulePath& module_path,
     const std::span<const syntax::ModulePartDecl> part_declarations, syntax::AstModule& combined,
-    const base::usize depth, const syntax::ModuleId module_id, const query::PackageKey package)
+    const base::usize depth, const syntax::ModuleId module_id, const PackageLoadContext& package_context)
 {
     std::vector<LoadedModulePartAst> part_modules;
     part_modules.reserve(part_declarations.size());
@@ -343,13 +346,13 @@ base::Result<std::vector<ModuleLoader::LoadedModulePartAst>> ModuleLoader::load_
         }
 
         auto part_result =
-            this->load_module_part(part_path, part_decl, module_path, combined, depth, module_id, package);
+            this->load_module_part(part_path, part_decl, module_path, combined, depth, module_id, package_context);
         if (!part_result) {
             return base::Result<std::vector<LoadedModulePartAst>>::fail(part_result.error());
         }
         LoadedModulePartAst part_module = part_result.take_value();
         const std::filesystem::path canonical_part_path = module_loader_canonical_or_absolute(part_path);
-        if (auto logical = this->loaded_modules_.find(logical_module_key(package, module_name));
+        if (auto logical = this->loaded_modules_.find(logical_module_key(package_context.package, module_name));
             logical != this->loaded_modules_.end()) {
             logical->second.parts.push_back(LoadedModulePart{part_name, canonical_part_path});
         }
@@ -364,7 +367,7 @@ base::Result<std::vector<ModuleLoader::LoadedModulePartAst>> ModuleLoader::load_
 
 base::Result<ModuleLoader::LoadedModulePartAst> ModuleLoader::load_module_part(const std::filesystem::path& part_path,
     const syntax::ModulePartDecl& part_decl, const syntax::ModulePath& expected_module, syntax::AstModule& combined,
-    const base::usize depth, const syntax::ModuleId module_id, const query::PackageKey package)
+    const base::usize depth, const syntax::ModuleId module_id, const PackageLoadContext& package_context)
 {
     if (depth > base::config::AUREX_MAX_INCLUDE_DEPTH) {
         return base::Result<LoadedModulePartAst>::fail(module_loader_depth_exceeded_error());
@@ -396,7 +399,7 @@ base::Result<ModuleLoader::LoadedModulePartAst> ModuleLoader::load_module_part(c
     std::vector<syntax::ResolvedImport> part_imports;
     part_imports.reserve(part_module.imports.size());
     const auto import_result =
-        this->resolve_imports_for_file(part_module, canonical, combined, depth, part_imports, package);
+        this->resolve_imports_for_file(part_module, canonical, combined, depth, part_imports, package_context);
     if (!import_result) {
         return base::Result<LoadedModulePartAst>::fail(import_result.error());
     }
@@ -417,7 +420,7 @@ base::Result<ModuleLoader::LoadedModulePartAst> ModuleLoader::load_module_part(c
 
 base::Result<syntax::ModuleId> ModuleLoader::redirect_root_part(const std::filesystem::path& canonical,
     const std::string& key, const syntax::AstModule& module, syntax::AstModule& combined, const base::usize depth,
-    const query::PackageKey package)
+    const PackageLoadContext& package_context)
 {
     const std::optional<std::filesystem::path> primary_path = owning_primary_for_part_file(canonical);
     if (!primary_path.has_value() || !module_loader_path_exists(*primary_path)) {
@@ -432,7 +435,7 @@ base::Result<syntax::ModuleId> ModuleLoader::redirect_root_part(const std::files
             report_module_part_artifact_root(this->diagnostics_, module, canonical_primary).error());
     }
 
-    auto owner_result = this->load_file(canonical_primary, combined, depth, true, nullptr, package);
+    auto owner_result = this->load_file(canonical_primary, combined, depth, true, nullptr, package_context);
     if (!owner_result) {
         return owner_result;
     }
@@ -443,14 +446,17 @@ base::Result<syntax::ModuleId> ModuleLoader::redirect_root_part(const std::files
     return owner_result;
 }
 
-query::PackageKey ModuleLoader::package_for_import_resolution(
-    const query::PackageKey importing_package, const std::optional<std::filesystem::path>& selected_import_root) const
+ModuleLoader::PackageLoadContext ModuleLoader::package_context_for_import_resolution(
+    const PackageLoadContext& importing_context, const std::optional<std::filesystem::path>& selected_import_root) const
 {
     if (!selected_import_root.has_value()) {
-        return importing_package;
+        return importing_context;
     }
     const std::string import_root = module_loader_canonical_or_absolute(*selected_import_root).string();
-    return package_key_for_import_root(import_root);
+    return PackageLoadContext{
+        package_key_for_import_root(import_root),
+        package_source_root_for_import_root(import_root),
+    };
 }
 
 } // namespace aurex::driver

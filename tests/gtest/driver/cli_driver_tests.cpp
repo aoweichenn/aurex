@@ -3420,6 +3420,61 @@ TEST_F(AurexIntegrationTest, IncrementalCacheKeysRootPackageManifestIdentity)
     driver::clear_file_cache();
 }
 
+TEST_F(AurexIntegrationTest, IncrementalCacheKeysImportPathManifestSourceRoot)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view IMPORT_MANIFEST = "[package]\n"
+                                                 "name = \"manifest.cache.import.pkg\"\n"
+                                                 "version = \"1.0.0\"\n"
+                                                 "source-root = \"src\"\n";
+    constexpr std::string_view ROOT_SOURCE = "module incremental_cache_import_source_root;\n"
+                                             "import shared.util as util;\n"
+                                             "fn main() -> i32 {\n"
+                                             "  return util.twice(21) - 42;\n"
+                                             "}\n";
+    constexpr std::string_view IMPORT_SOURCE = "module shared.util;\n"
+                                               "pub fn twice(value: i32) -> i32 {\n"
+                                               "  return value + value;\n"
+                                               "}\n";
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-import-source-root";
+    const fs::path import_root = cache_dir / "deps" / "shared_pkg";
+    const fs::path import_source_root = import_root / "src";
+    const fs::path import_source = import_source_root / "shared" / "util.ax";
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    const auto write_source_file = [](const fs::path& path, const std::string_view text) {
+        fs::create_directories(path.parent_path());
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << text;
+    };
+    write_source_file(import_root / std::string(driver::DRIVER_PACKAGE_MANIFEST_FILE_NAME), IMPORT_MANIFEST);
+    write_source_file(import_source, IMPORT_SOURCE);
+    write_source_file(source, ROOT_SOURCE);
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+    invocation.import_paths.push_back(import_root);
+
+    const std::optional<fs::path> resolved_import_source_root =
+        driver::package_source_root_for_import_root(import_root.string());
+    ASSERT_TRUE(resolved_import_source_root.has_value());
+
+    driver::Compiler compiler;
+    auto result = compiler.run(invocation);
+    ASSERT_TRUE(result) << result.error().message;
+
+    const std::string cache_text = read_text(cache);
+    expect_contains(cache_text, "import_paths\t1");
+    expect_contains(cache_text, "import_path\t" + hex_encode_cache_test_field(resolved_import_source_root->string()));
+
+    driver::clear_file_cache();
+}
+
 TEST_F(AurexIntegrationTest, IncrementalCacheSemanticSubjectsUseModuleIdPackagesForSplitLogicalNames)
 {
     driver::clear_file_cache();

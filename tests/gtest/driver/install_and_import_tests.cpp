@@ -1048,6 +1048,138 @@ TEST_F(AurexIntegrationTest, ModuleLoaderUsesPackageManifestIdentities)
     driver::clear_file_cache();
 }
 
+TEST_F(AurexIntegrationTest, ModuleLoaderUsesManifestSourceRootForLocalPackageImports)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view MANIFEST = "[package]\n"
+                                          "name = \"source.root.app\"\n"
+                                          "version = \"1.0.0\"\n"
+                                          "source-root = \"src\"\n";
+    constexpr std::string_view ROOT_SOURCE = "module app.main;\n"
+                                             "import app.util as util;\n"
+                                             "fn main() -> i32 {\n"
+                                             "  return util.value();\n"
+                                             "}\n";
+    constexpr std::string_view UTIL_SOURCE = "module app.util;\n"
+                                             "pub fn value() -> i32 {\n"
+                                             "  return 7;\n"
+                                             "}\n";
+
+    const fs::path work = tmp_root() / "module-loader-manifest-source-root-local";
+    const fs::path source_root = work / "src";
+    const fs::path source = source_root / "app" / "main.ax";
+    const fs::path util_source = source_root / "app" / "util.ax";
+
+    static_cast<void>(
+        write_import_test_source(work / std::string(driver::DRIVER_PACKAGE_MANIFEST_FILE_NAME), MANIFEST));
+    static_cast<void>(write_import_test_source(source, ROOT_SOURCE));
+    static_cast<void>(write_import_test_source(util_source, UTIL_SOURCE));
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+
+    const std::optional<fs::path> resolved_source_root = driver::package_source_root_for_invocation(invocation);
+    ASSERT_TRUE(resolved_source_root.has_value());
+    EXPECT_EQ(*resolved_source_root, driver::module_loader_canonical_or_absolute(source_root));
+
+    const std::optional<driver::PackageManifestInfo> manifest = driver::package_manifest_info_for_path(source);
+    ASSERT_TRUE(manifest.has_value());
+    const std::string manifest_root = driver::module_loader_canonical_or_absolute(work).string();
+    const std::string canonical_source_root = driver::module_loader_canonical_or_absolute(source_root).string();
+    const std::array<std::string_view, 5> expected_identity{
+        driver::DRIVER_MANIFEST_PACKAGE_IDENTITY_KIND,
+        "source.root.app",
+        "1.0.0",
+        std::string_view(manifest_root),
+        std::string_view(canonical_source_root),
+    };
+    EXPECT_EQ(driver::package_key_from_identity(manifest->identity), query::package_key(expected_identity));
+
+    base::SourceManager sources;
+    base::DiagnosticSink diagnostics;
+    driver::ModuleLoader loader(invocation, sources, diagnostics);
+    auto ast = loader.load_root();
+    ASSERT_TRUE(ast) << ast.error().message;
+
+    const std::span<const driver::ModuleRecord> modules = loader.modules();
+    ASSERT_EQ(modules.size(), 2U);
+    ASSERT_EQ(modules.front().imports.size(), 1U);
+    EXPECT_EQ(modules[0].package, modules[1].package);
+    EXPECT_EQ(modules.front().imports.front().module_package, modules[1].package);
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, ModuleLoaderUsesManifestSourceRootForImportPathPackages)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view IMPORT_MANIFEST = "[package]\n"
+                                                 "name = \"source.root.lib\"\n"
+                                                 "version = \"2.0.0\"\n"
+                                                 "source-root = \"src\"\n";
+    constexpr std::string_view ROOT_SOURCE = "module source_root_import_app;\n"
+                                             "import lib.visible as visible;\n"
+                                             "fn main() -> i32 {\n"
+                                             "  return visible.value();\n"
+                                             "}\n";
+    constexpr std::string_view VISIBLE_SOURCE = "module lib.visible;\n"
+                                                "import lib.helper as helper;\n"
+                                                "pub fn value() -> i32 {\n"
+                                                "  return helper.value();\n"
+                                                "}\n";
+    constexpr std::string_view HELPER_SOURCE = "module lib.helper;\n"
+                                               "pub fn value() -> i32 {\n"
+                                               "  return 11;\n"
+                                               "}\n";
+
+    const fs::path work = tmp_root() / "module-loader-manifest-source-root-import";
+    const fs::path import_root = work / "deps" / "libpkg";
+    const fs::path import_source_root = import_root / "src";
+    const fs::path source = work / "main.ax";
+    const fs::path visible_source = import_source_root / "lib" / "visible.ax";
+    const fs::path helper_source = import_source_root / "lib" / "helper.ax";
+
+    static_cast<void>(write_import_test_source(
+        import_root / std::string(driver::DRIVER_PACKAGE_MANIFEST_FILE_NAME), IMPORT_MANIFEST));
+    static_cast<void>(write_import_test_source(source, ROOT_SOURCE));
+    static_cast<void>(write_import_test_source(visible_source, VISIBLE_SOURCE));
+    static_cast<void>(write_import_test_source(helper_source, HELPER_SOURCE));
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.import_paths.push_back(import_root);
+
+    const std::string canonical_import_root = driver::module_loader_canonical_or_absolute(import_root).string();
+    const std::optional<fs::path> resolved_import_source_root =
+        driver::package_source_root_for_import_root(canonical_import_root);
+    ASSERT_TRUE(resolved_import_source_root.has_value());
+    EXPECT_EQ(*resolved_import_source_root, driver::module_loader_canonical_or_absolute(import_source_root));
+
+    base::SourceManager sources;
+    base::DiagnosticSink diagnostics;
+    driver::ModuleLoader loader(invocation, sources, diagnostics);
+    auto ast = loader.load_root();
+    ASSERT_TRUE(ast) << ast.error().message;
+
+    const std::span<const driver::ModuleRecord> modules = loader.modules();
+    ASSERT_EQ(modules.size(), 3U);
+    ASSERT_EQ(modules[0].imports.size(), 1U);
+    ASSERT_EQ(modules[1].imports.size(), 1U);
+
+    const query::PackageKey root_package = driver::package_key_for_invocation(invocation);
+    const query::PackageKey import_package = driver::package_key_for_import_root(canonical_import_root);
+    EXPECT_EQ(modules[0].package, root_package);
+    EXPECT_EQ(modules[1].package, import_package);
+    EXPECT_EQ(modules[2].package, import_package);
+    EXPECT_NE(root_package, import_package);
+    EXPECT_EQ(modules[0].imports.front().module_package, import_package);
+    EXPECT_EQ(modules[1].imports.front().module_package, import_package);
+
+    driver::clear_file_cache();
+}
+
 TEST_F(AurexIntegrationTest, ModuleLoaderPackageManifestIdentityHandlesSyntaxAndFallbacks)
 {
     const fs::path work = tmp_root() / "package-manifest-identity-unit";
@@ -1064,7 +1196,8 @@ TEST_F(AurexIntegrationTest, ModuleLoaderPackageManifestIdentityHandlesSyntaxAnd
         "[package]\n"
         "not_a_pair\n"
         "name = \"escaped\\\"pkg#core\" # trailing comment\n"
-        "version = \"3.4.5\"\n");
+        "version = \"3.4.5\"\n"
+        "source-root = \"src/core\"\n");
     const fs::path source = work / "pkg" / "src" / "main.ax";
     const std::optional<fs::path> found_manifest = driver::find_package_manifest_for_path(source);
     ASSERT_TRUE(found_manifest.has_value());
@@ -1073,13 +1206,20 @@ TEST_F(AurexIntegrationTest, ModuleLoaderPackageManifestIdentityHandlesSyntaxAnd
     const std::optional<std::string> identity = driver::package_manifest_identity_for_path(source);
     ASSERT_TRUE(identity.has_value());
     const std::string manifest_root = driver::module_loader_canonical_or_absolute(root_manifest).parent_path().string();
-    const std::array<std::string_view, 4> expected_parts{
+    const std::string source_root =
+        driver::module_loader_canonical_or_absolute(root_manifest.parent_path() / "src" / "core").string();
+    const std::array<std::string_view, 5> expected_parts{
         driver::DRIVER_MANIFEST_PACKAGE_IDENTITY_KIND,
         "escaped\"pkg#core",
         "3.4.5",
         std::string_view(manifest_root),
+        std::string_view(source_root),
     };
     EXPECT_EQ(driver::package_key_from_identity(*identity), query::package_key(expected_parts));
+    const std::optional<fs::path> parsed_source_root = driver::package_manifest_source_root_for_path(source);
+    ASSERT_TRUE(parsed_source_root.has_value());
+    EXPECT_EQ(
+        *parsed_source_root, driver::module_loader_canonical_or_absolute(root_manifest.parent_path() / "src" / "core"));
 
     static_cast<void>(write_import_test_source(work / "default_version" / "aurex.toml",
         "[package]\n"
@@ -1102,6 +1242,15 @@ TEST_F(AurexIntegrationTest, ModuleLoaderPackageManifestIdentityHandlesSyntaxAnd
         "name = bare\n"
         "version = \"1\"\n"));
     EXPECT_FALSE(driver::package_manifest_identity_for_path(work / "invalid").has_value());
+
+    static_cast<void>(write_import_test_source(work / "outside_source_root" / "aurex.toml",
+        "[package]\n"
+        "name = \"outside.source.root\"\n"
+        "source-root = \"../outside\"\n"));
+    const std::optional<driver::PackageManifestInfo> outside_source_root =
+        driver::package_manifest_info_for_path(work / "outside_source_root");
+    ASSERT_TRUE(outside_source_root.has_value());
+    EXPECT_FALSE(outside_source_root->source_root.has_value());
 
     fs::create_directories(work / "no_manifest");
     const std::string fallback_root = driver::module_loader_canonical_or_absolute(work / "no_manifest").string();

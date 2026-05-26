@@ -215,11 +215,15 @@ M3.0 对 `PackageKey` 的承诺必须保守：
   编译时不会被旧 coarse source reuse 直接复用。
 - Parser 已接入 `pub(package)`，same-package access 和 package-visible surface 泄漏检查消费同一套
   `PackageKey`。
+- manifest 现在可选 `[package] source-root = "src"`。该字段只定义 package 内 logical module path 到
+  source tree 的查找根；它不是 dependency resolver，也不引入 workspace 或 package manager。
+- 显式 source-root 会作为 manifest-backed package identity 的一部分进入 `PackageKey`，避免同一
+  name/version/root 但不同 source layout 的编译会话共享包级 query key。
 
 仍未承诺的部分：
 
-- manifest 暂只识别 `[package] name/version` 和 manifest root，不支持 workspace、dependency、profile、
-  feature 或 source-root override。
+- manifest 暂只识别 `[package] name/version/source-root` 和 manifest root，不支持 workspace、
+  dependency、profile 或 feature。
 - 没有 dependency package lock 或版本求解。
 - 没有跨 package 同名 logical module 的完整 namespace UX；loader 已先把 logical module cache key
   做成 package-aware，用户级 package import 语法仍在后续阶段设计。
@@ -762,7 +766,20 @@ Phase 6A-6 之后仍未完成的部分：
 
 - `pub(crate)` 是否作为 `pub(package)` 别名的最终语言决策。
 - `pub(in path)` / nested module tree 如果进入语言，需要另起作用域拓扑设计。
-- manifest source-root、workspace、dependency graph、lockfile 和版本求解仍未进入 M3.0。
+- workspace、dependency graph、lockfile 和版本求解仍未进入 M3.0。
+
+Phase 6B-1 实现收口状态（2026-05-26）：
+
+- manifest 支持 `[package] source-root = "src"`；相对路径按 manifest root 解析，必须留在 manifest
+  root 内，避免 package layout 越界污染其他源码树。
+- root package 的 local import 在存在 source-root 时从该 root 下按 module path 查找，例如
+  `import app.util;` 映射到 `src/app/util.ax`，不再受当前 importer 所在子目录影响。
+- `-I` / `--import-path` 指向带 manifest 的 package root 时，import candidate 使用该 package 的
+  source-root；如果 `-I` 已经指向 source-root 本身，向上发现的 manifest 会给出同一 package identity。
+- 没有 source-root 的 manifest、没有 manifest 的 import root 和无 manifest 单文件场景继续保留旧的
+  importer-dir / import-root 查找行为。
+- incremental cache 的 import path layout 记录 source-root canonical path，避免 import root manifest
+  的 source layout 变化后误复用旧 check cache。
 
 ### 7.1 `priv` 跨 part
 

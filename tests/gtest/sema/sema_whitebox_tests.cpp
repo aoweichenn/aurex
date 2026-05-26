@@ -1123,17 +1123,44 @@ TEST(CoreUnit, SemanticWhiteBoxVisibilityLatticeAccessAndSurfaceLeaks)
     sema::SemanticAnalyzerCore analyzer(module, diagnostics);
     analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
 
-    EXPECT_TRUE(analyzer.can_access(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::public_));
-    EXPECT_TRUE(analyzer.can_access(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::package_));
-    EXPECT_FALSE(analyzer.can_access(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::private_));
-    EXPECT_TRUE(analyzer.can_access(module_id(SEMA_TEST_ROOT_MODULE_INDEX), syntax::Visibility::private_));
+    const sema::DeclContext root_declaration = analyzer.declaration_context(module_id(SEMA_TEST_ROOT_MODULE_INDEX));
+    const sema::DeclContext lib_declaration = analyzer.declaration_context(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX));
+    const sema::AccessContext root_access = analyzer.current_access_context();
+    const sema::VisibilityPolicy policy;
+
+    EXPECT_TRUE(query::is_valid(root_declaration.module));
+    EXPECT_TRUE(query::is_valid(root_access.module));
+    EXPECT_TRUE(sema::access_context_same_module(root_declaration, root_access));
+    EXPECT_FALSE(sema::access_context_same_module(lib_declaration, root_access));
+    EXPECT_TRUE(sema::access_context_same_package(lib_declaration, root_access));
+    EXPECT_TRUE(policy.can_access(syntax::Visibility::public_, lib_declaration, root_access));
+    EXPECT_TRUE(policy.can_access(syntax::Visibility::package_, lib_declaration, root_access));
+    EXPECT_FALSE(policy.can_access(syntax::Visibility::private_, lib_declaration, root_access));
+    EXPECT_TRUE(policy.can_expose_type(syntax::Visibility::package_, syntax::Visibility::package_));
+    EXPECT_FALSE(policy.can_expose_type(syntax::Visibility::public_, syntax::Visibility::package_));
+
+    const std::array<std::string_view, 1> package_one{"package-one"};
+    const std::array<std::string_view, 1> package_two{"package-two"};
+    const std::array<std::string_view, 1> package_module{"visible"};
+    const query::ModuleKey package_one_module = query::module_key(query::package_key(package_one), package_module);
+    const query::ModuleKey package_two_module = query::module_key(query::package_key(package_two), package_module);
+    const sema::DeclContext package_one_declaration = sema::decl_context_from_module_key(package_one_module);
+    const sema::AccessContext package_two_access = sema::access_context_from_module_key(package_two_module);
+    EXPECT_FALSE(sema::access_context_same_package(package_one_declaration, package_two_access));
+    EXPECT_FALSE(policy.can_access(syntax::Visibility::package_, package_one_declaration, package_two_access));
+
+    EXPECT_TRUE(analyzer.can_access_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::public_));
+    EXPECT_TRUE(analyzer.can_access_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::package_));
+    EXPECT_FALSE(analyzer.can_access_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::private_));
+    EXPECT_TRUE(analyzer.can_access_module(module_id(SEMA_TEST_ROOT_MODULE_INDEX), syntax::Visibility::private_));
 
     analyzer.state_.flow.current_module = syntax::INVALID_MODULE_ID;
-    EXPECT_TRUE(analyzer.can_access(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::public_));
-    EXPECT_FALSE(analyzer.can_access(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::package_));
+    EXPECT_TRUE(analyzer.can_access_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::public_));
+    EXPECT_FALSE(analyzer.can_access_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::package_));
+    EXPECT_FALSE(query::is_valid(analyzer.current_access_context().module));
 
     analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
-    EXPECT_FALSE(analyzer.can_access(syntax::INVALID_MODULE_ID, syntax::Visibility::package_));
+    EXPECT_FALSE(analyzer.can_access_module(syntax::INVALID_MODULE_ID, syntax::Visibility::package_));
 
     sema::TypeTable& types = analyzer.state_.checked.types;
     const TypeHandle package_type = types.named_struct("root.PackageOnly", "root_PackageOnly", false);

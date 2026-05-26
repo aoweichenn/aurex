@@ -222,7 +222,7 @@ std::string_view SemanticAnalyzerCore::nearest_value_name_in_module(
             if (entry.first.module != candidate_module.value || entry.second == nullptr) {
                 continue;
             }
-            if (!this->can_access(candidate_module, entry.second->visibility)) {
+            if (!this->can_access_module(candidate_module, entry.second->visibility)) {
                 continue;
             }
             const std::string_view candidate = this->ctx_.module.identifier_text(entry.first.name);
@@ -270,7 +270,7 @@ std::string_view SemanticAnalyzerCore::nearest_type_name_in_module(
     }
     const auto consider_module_key = [&](const ModuleLookupKey key, const syntax::Visibility visibility) {
         const syntax::ModuleId owner{key.module};
-        if (this->can_access(owner, visibility)) {
+        if (this->can_access_module(owner, visibility)) {
             consider_suggestion(best, name, this->ctx_.module.identifier_text(key.name));
         }
     };
@@ -336,7 +336,7 @@ std::string_view SemanticAnalyzerCore::nearest_function_name_in_module(
             if (entry.first.module != candidate_module.value || entry.second == nullptr) {
                 continue;
             }
-            if (!this->can_access(candidate_module, entry.second->visibility)) {
+            if (!this->can_access_module(candidate_module, entry.second->visibility)) {
                 continue;
             }
             consider_suggestion(best, name, this->ctx_.module.identifier_text(entry.first.name));
@@ -345,7 +345,7 @@ std::string_view SemanticAnalyzerCore::nearest_function_name_in_module(
             if (entry.first.module != candidate_module.value || entry.second == nullptr) {
                 continue;
             }
-            if (!this->can_access(candidate_module, entry.second->visibility)) {
+            if (!this->can_access_module(candidate_module, entry.second->visibility)) {
                 continue;
             }
             consider_suggestion(best, name, this->ctx_.module.identifier_text(entry.first.name));
@@ -371,7 +371,7 @@ std::string_view SemanticAnalyzerCore::nearest_field_name(const StructInfo& info
 {
     NameSuggestion best;
     for (const StructFieldInfo& field : info.fields) {
-        if (!this->can_access(info.module, field.visibility)) {
+        if (!this->can_access_module(info.module, field.visibility)) {
             continue;
         }
         consider_suggestion(best, name, field.name);
@@ -388,7 +388,7 @@ std::string_view SemanticAnalyzerCore::nearest_enum_case_name(
         return best.name;
     }
     for (const EnumCaseInfo* const enum_case : *cases) {
-        if (enum_case == nullptr || !this->can_access(enum_case->module, enum_case->visibility)) {
+        if (enum_case == nullptr || !this->can_access_module(enum_case->module, enum_case->visibility)) {
             continue;
         }
         consider_suggestion(best, name, enum_case->case_name);
@@ -405,7 +405,7 @@ std::string_view SemanticAnalyzerCore::nearest_visible_enum_case_name(const std:
     for (const auto& entry : this->state_.names.enum_cases_by_module_name) {
         const syntax::ModuleId owner{entry.first.module};
         if (entry.second == nullptr || owner.value != this->state_.flow.current_module.value
-            || !this->can_access(owner, entry.second->visibility)) {
+            || !this->can_access_module(owner, entry.second->visibility)) {
             continue;
         }
         consider_suggestion(best, name, entry.second->case_name);
@@ -591,15 +591,41 @@ std::string SemanticAnalyzerCore::method_c_symbol_name(const TypeHandle owner_ty
     return this->state_.checked.types.c_name(owner_type) + "_" + std::string(name);
 }
 
-bool SemanticAnalyzerCore::can_access(const syntax::ModuleId owner, const syntax::Visibility visibility) const noexcept
+DeclContext SemanticAnalyzerCore::declaration_context(const syntax::ModuleId owner) const noexcept
+{
+    if (syntax::is_valid(owner) && owner.value < this->ctx_.module.modules.size()) {
+        return decl_context_from_module_key(this->query_module_key(owner));
+    }
+    return {};
+}
+
+AccessContext SemanticAnalyzerCore::current_access_context() const noexcept
+{
+    if (syntax::is_valid(this->state_.flow.current_module)
+        && this->state_.flow.current_module.value < this->ctx_.module.modules.size()) {
+        return access_context_from_module_key(this->query_module_key(this->state_.flow.current_module));
+    }
+    return {};
+}
+
+bool SemanticAnalyzerCore::can_access(
+    const DeclContext& declaration, const syntax::Visibility visibility) const noexcept
+{
+    const VisibilityPolicy policy;
+    return policy.can_access(visibility, declaration, this->current_access_context());
+}
+
+bool SemanticAnalyzerCore::can_access_module(
+    const syntax::ModuleId owner, const syntax::Visibility visibility) const noexcept
 {
     if (syntax::visibility_is_public(visibility)) {
         return true;
     }
-    if (syntax::visibility_at_least(visibility, syntax::Visibility::package_)) {
-        return syntax::is_valid(owner) && syntax::is_valid(this->state_.flow.current_module);
+    if (syntax::visibility_is_module_private(visibility)) {
+        return syntax::is_valid(owner) && owner.value == this->state_.flow.current_module.value;
     }
-    return owner.value == this->state_.flow.current_module.value;
+    const DeclContext declaration = this->declaration_context(owner);
+    return this->can_access(declaration, visibility);
 }
 
 syntax::ModuleId SemanticAnalyzerCore::owner_module(const TypeHandle owner_type) const noexcept
@@ -636,7 +662,7 @@ const FunctionSignature* SemanticAnalyzerCore::find_method_in_owner_module(
     if (signature == nullptr || !signature->is_method || (require_self && !signature->has_self_param)) {
         return nullptr;
     }
-    if (!this->can_access(owner, signature->visibility)) {
+    if (!this->can_access_module(owner, signature->visibility)) {
         return nullptr;
     }
     return signature;

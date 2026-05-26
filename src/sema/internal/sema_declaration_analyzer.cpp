@@ -795,6 +795,7 @@ SemanticAnalyzerCore::DeclarationAnalyzer::private_type_exposed_by_surface_type(
     pending.reserve(SEMA_EXPORT_SURFACE_INITIAL_STACK_CAPACITY);
     visited.reserve(SEMA_EXPORT_SURFACE_INITIAL_STACK_CAPACITY);
     pending.push_back(root);
+    const VisibilityPolicy policy;
 
     while (!pending.empty()) {
         const TypeHandle current = pending.back();
@@ -831,8 +832,8 @@ SemanticAnalyzerCore::DeclarationAnalyzer::private_type_exposed_by_surface_type(
                 break;
             case TypeKind::struct_:
             case TypeKind::opaque_struct:
-                if (const StructInfo* const struct_info = this->core_.find_struct(current); struct_info != nullptr
-                    && !syntax::visibility_at_least(struct_info->visibility, surface_visibility)) {
+                if (const StructInfo* const struct_info = this->core_.find_struct(current);
+                    struct_info != nullptr && !policy.can_expose_type(surface_visibility, struct_info->visibility)) {
                     return ExportSurfacePrivateType{
                         struct_display_name(this->core_.state_.checked.types, *struct_info),
                         {},
@@ -847,7 +848,7 @@ SemanticAnalyzerCore::DeclarationAnalyzer::private_type_exposed_by_surface_type(
                     found != this->core_.state_.names.enum_cases_by_type.end() && !found->second.empty()
                     && found->second.front() != nullptr) {
                     const EnumCaseInfo& enum_case = *found->second.front();
-                    if (!syntax::visibility_at_least(enum_case.visibility, surface_visibility)) {
+                    if (!policy.can_expose_type(surface_visibility, enum_case.visibility)) {
                         return ExportSurfacePrivateType{
                             enum_display_name(this->core_.state_.checked.types, enum_case),
                             enum_case.range,

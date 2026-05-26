@@ -1330,7 +1330,7 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
         if (candidate == nullptr) {
             continue;
         }
-        if (!this->core_.can_access(candidate_module, candidate->visibility)) {
+        if (!this->core_.can_access_module(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
                 this->core_.report_visibility(
                     range, sema_private_generic_type_message(this->core_.module_name(candidate_module), name));
@@ -1397,7 +1397,7 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
         if (candidate == nullptr) {
             continue;
         }
-        if (!this->core_.can_access(candidate_module, candidate->visibility)) {
+        if (!this->core_.can_access_module(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
                 this->core_.report_visibility(
                     range, sema_private_generic_type_message(this->core_.module_name(candidate_module), name));
@@ -1464,7 +1464,7 @@ SemanticAnalyzerCore::GenericAnalyzer::find_generic_type_alias_in_module(const s
         if (candidate == nullptr) {
             continue;
         }
-        if (!this->core_.can_access(candidate_module, candidate->visibility)) {
+        if (!this->core_.can_access_module(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
                 this->core_.report_visibility(
                     range, sema_private_generic_type_message(this->core_.module_name(candidate_module), name));
@@ -1494,7 +1494,7 @@ bool SemanticAnalyzerCore::GenericAnalyzer::generic_type_template_exists_in_modu
     for (const syntax::ModuleId candidate_module : this->core_.module_export_modules(module)) {
         if (const GenericTemplateInfo* const found =
                 this->core_.find_any_generic_type_template_in_module(candidate_module, name_id, name);
-            found != nullptr && this->core_.can_access(candidate_module, found->visibility)) {
+            found != nullptr && this->core_.can_access_module(candidate_module, found->visibility)) {
             return true;
         }
     }
@@ -1532,7 +1532,7 @@ bool SemanticAnalyzerCore::GenericAnalyzer::report_generic_type_requires_args_if
 {
     if (const GenericTemplateInfo* const found =
             this->core_.find_any_generic_type_template_in_module(this->core_.state_.flow.current_module, name_id, name);
-        found != nullptr && this->core_.can_access(this->core_.state_.flow.current_module, found->visibility)) {
+        found != nullptr && this->core_.can_access_module(this->core_.state_.flow.current_module, found->visibility)) {
         this->core_.report_type(range, sema_generic_type_requires_args_message(name));
         return true;
     }
@@ -1558,7 +1558,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::report_generic_type_template_in_modu
         if (has_struct_template) {
             if (const GenericTemplateInfo* info =
                     this->core_.find_any_generic_type_template_in_module(candidate_module, name_id, name);
-                info != nullptr && this->core_.can_access(candidate_module, info->visibility)) {
+                info != nullptr && this->core_.can_access_module(candidate_module, info->visibility)) {
                 this->core_.report_type(range, sema_generic_type_requires_args_message(name));
                 return;
             }
@@ -1568,7 +1568,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::report_generic_type_template_in_modu
         if (has_enum_template) {
             if (const GenericTemplateInfo* info =
                     this->core_.find_any_generic_type_template_in_module(candidate_module, name_id, name);
-                info != nullptr && this->core_.can_access(candidate_module, info->visibility)) {
+                info != nullptr && this->core_.can_access_module(candidate_module, info->visibility)) {
                 this->core_.report_type(range, sema_generic_type_requires_args_message(name));
                 return;
             }
@@ -1578,7 +1578,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::report_generic_type_template_in_modu
         if (has_alias_template) {
             if (const GenericTemplateInfo* info =
                     this->core_.find_any_generic_type_template_in_module(candidate_module, name_id, name);
-                info != nullptr && this->core_.can_access(candidate_module, info->visibility)) {
+                info != nullptr && this->core_.can_access_module(candidate_module, info->visibility)) {
                 this->core_.report_type(range, sema_generic_type_requires_args_message(name));
                 return;
             }
@@ -1633,7 +1633,7 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
         if (candidate == nullptr) {
             continue;
         }
-        if (!this->core_.can_access(candidate_module, candidate->visibility)) {
+        if (!this->core_.can_access_module(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
                 this->core_.report_visibility(
                     range, sema_private_generic_function_message(this->core_.module_name(candidate_module), name));
@@ -2423,7 +2423,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::find_generic_method_in
                 continue;
             }
             const GenericTemplateInfo& info = *candidate_info;
-            if (!this->core_.can_access(module, info.visibility)) {
+            if (!this->core_.can_access_module(module, info.visibility)) {
                 continue;
             }
             std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash> inferred;

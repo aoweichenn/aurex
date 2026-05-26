@@ -468,7 +468,7 @@ TypeHandle SemanticAnalyzerCore::ProjectionAggregateExpressionAnalyzer::analyze_
             this->core_.report_lookup_suggestion(init.range, this->core_.nearest_field_name(*info, init.name));
             continue;
         }
-        if (!this->core_.can_access(info->module, field_info->visibility)) {
+        if (!this->core_.can_access_module(info->module, field_info->visibility)) {
             this->core_.report_visibility(init.range, sema_private_field_message(init.name));
             continue;
         }

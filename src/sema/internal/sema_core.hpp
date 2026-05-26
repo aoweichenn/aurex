@@ -2,6 +2,7 @@
 
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/base/result.hpp>
+#include <aurex/sema/access_control.hpp>
 #include <aurex/sema/checked_module.hpp>
 #include <aurex/sema/diagnostic_kind.hpp>
 #include <aurex/sema/function.hpp>
@@ -707,6 +708,8 @@ private:
     [[nodiscard]] std::string generic_function_instance_key(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] query::ModuleKey query_module_key(syntax::ModuleId module) const noexcept;
+    [[nodiscard]] DeclContext declaration_context(syntax::ModuleId module) const noexcept;
+    [[nodiscard]] AccessContext current_access_context() const noexcept;
     [[nodiscard]] query::DefKey generic_template_query_key(
         const GenericTemplateInfo& info, query::DefNamespace name_space) const noexcept;
     [[nodiscard]] std::optional<query::DefKey> canonical_nominal_type_query_key(
@@ -860,7 +863,8 @@ private:
     [[nodiscard]] bool function_lookup_complete() const noexcept;
     [[nodiscard]] bool global_value_lookup_complete() const noexcept;
     [[nodiscard]] bool enum_case_module_lookup_complete() const noexcept;
-    [[nodiscard]] bool can_access(syntax::ModuleId owner, syntax::Visibility visibility) const noexcept;
+    [[nodiscard]] bool can_access(const DeclContext& declaration, syntax::Visibility visibility) const noexcept;
+    [[nodiscard]] bool can_access_module(syntax::ModuleId owner, syntax::Visibility visibility) const noexcept;
     void record_stmt_local_type(syntax::StmtId stmt, TypeHandle type);
     void record_expr_c_name(syntax::ExprId expr, std::string_view c_name);
     void record_pattern_c_name(syntax::PatternId pattern, std::string_view c_name);

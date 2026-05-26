@@ -143,7 +143,7 @@ const FunctionSignature* SemanticAnalyzerCore::LookupResolver::find_method_in_vi
         if (signature == nullptr || !signature->is_method || (require_self && !signature->has_self_param)) {
             continue;
         }
-        if (!this->core_.can_access(module, signature->visibility)) {
+        if (!this->core_.can_access_module(module, signature->visibility)) {
             if (inaccessible_result == nullptr) {
                 inaccessible_result = signature;
             }
@@ -214,7 +214,7 @@ TypeHandle SemanticAnalyzerCore::LookupResolver::find_type_in_module(const synta
         if (is_valid(lookup_key)) {
             if (const auto found = this->core_.state_.names.named_types_by_name.find(lookup_key);
                 found != this->core_.state_.names.named_types_by_name.end()) {
-                if (!this->core_.can_access(candidate_module, found->second.visibility)) {
+                if (!this->core_.can_access_module(candidate_module, found->second.visibility)) {
                     if (candidate_module.value == module.value && report_unknown) {
                         this->mutable_core().report_visibility(
                             range, sema_private_type_message(this->core_.module_name(candidate_module), name));
@@ -225,7 +225,7 @@ TypeHandle SemanticAnalyzerCore::LookupResolver::find_type_in_module(const synta
                 candidate = found->second.type;
             } else if (const auto alias_found = this->core_.state_.names.type_aliases_by_name.find(lookup_key);
                 alias_found != this->core_.state_.names.type_aliases_by_name.end() && alias_found->second != nullptr) {
-                if (!this->core_.can_access(candidate_module, alias_found->second->visibility)) {
+                if (!this->core_.can_access_module(candidate_module, alias_found->second->visibility)) {
                     if (candidate_module.value == module.value && report_unknown) {
                         this->mutable_core().report_visibility(
                             range, sema_private_type_message(this->core_.module_name(candidate_module), name));
@@ -307,7 +307,7 @@ const FunctionSignature* SemanticAnalyzerCore::LookupResolver::find_function_in_
         if (candidate == nullptr) {
             continue;
         }
-        if (!this->core_.can_access(candidate_module, candidate->visibility)) {
+        if (!this->core_.can_access_module(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
                 this->mutable_core().report_visibility(
                     range, sema_private_function_message(this->core_.module_name(candidate_module), name));
@@ -360,7 +360,7 @@ const Symbol* SemanticAnalyzerCore::LookupResolver::find_symbol_in_module(const 
         if (candidate == nullptr) {
             continue;
         }
-        if (!this->core_.can_access(candidate_module, candidate->visibility)) {
+        if (!this->core_.can_access_module(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
                 this->mutable_core().report_visibility(
                     range, sema_private_name_message(this->core_.module_name(candidate_module), name));

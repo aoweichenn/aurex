@@ -202,16 +202,16 @@ bool SemanticAnalyzerCore::LookupIndexer::visible_type_name_exists(
             if (const auto found = this->core_.state_.names.named_types_by_name.find(lookup_key);
                 found != this->core_.state_.names.named_types_by_name.end()) {
                 return module.value == this->core_.state_.flow.current_module.value
-                    || this->core_.can_access(module, found->second.visibility);
+                    || this->core_.can_access_module(module, found->second.visibility);
             }
             if (const auto alias = this->core_.state_.names.type_aliases_by_name.find(lookup_key);
                 alias != this->core_.state_.names.type_aliases_by_name.end() && alias->second != nullptr) {
-                return this->core_.can_access(module, alias->second->visibility);
+                return this->core_.can_access_module(module, alias->second->visibility);
             }
         }
         const GenericTemplateInfo* const generic =
             this->core_.find_any_generic_type_template_in_module(module, name_id, name);
-        return generic != nullptr && this->core_.can_access(module, generic->visibility);
+        return generic != nullptr && this->core_.can_access_module(module, generic->visibility);
     };
     if (type_visible_in_module(this->core_.state_.flow.current_module)) {
         return true;

@@ -148,6 +148,15 @@ manager 混入当前模块系统主线。
 二值 public/private 判断。Phase 6A-1 的边界是“内部模型和增量边界先稳定”，不开放
 `pub(package)` 源码语法，也不新增 `ModulePackageExports` query kind。
 
+2026-05-26：Phase 6A-2 Access Control Architecture 已完成第二步内部重构。当前代码层已经新增
+`sema::DeclContext{PackageKey, ModuleKey, ModulePartKey}`、
+`sema::AccessContext{PackageKey, ModuleKey, ModulePartKey}` 和 `sema::VisibilityPolicy`；
+`SemanticAnalyzerCore::can_access` 只接受声明上下文，旧的 module-id 入口改名为
+`can_access_module` 桥接函数。lookup、generic lookup、field access 和 projected aggregate access
+调用点已经迁移到桥接入口，export surface 泄漏检查也改为消费 `VisibilityPolicy::can_expose_type`。
+这一步仍不开放 `pub(package)` 源码语法，也不引入 manifest package identity；真实 `PackageKey`
+来源、`ModulePackageExports` query 和 package-level re-export 进入后续阶段。
+
 ## 验收
 
 M3.0 模块验收：

@@ -764,7 +764,7 @@ SemanticAnalyzerCore::PlaceInfo SemanticAnalyzerCore::analyze_place_info(
                         continue;
                     }
                     saw_field = true;
-                    if (!this->can_access(info->module, field.visibility)) {
+                    if (!this->can_access_module(info->module, field.visibility)) {
                         if (emit_diagnostics) {
                             this->report_visibility(projection_range, sema_private_field_message(field_name));
                         }

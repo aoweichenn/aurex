@@ -191,6 +191,9 @@ void append_hex_string(std::ostream& out, const std::string_view value)
     if (kind == INCREMENTAL_CACHE_FIELD_MODULES) {
         return assign_count(cache.expected_modules, value);
     }
+    if (kind == INCREMENTAL_CACHE_FIELD_MODULE_SOURCE_ROOT_TOPOLOGIES) {
+        return assign_count(cache.expected_module_source_root_topologies, value);
+    }
     if (kind == INCREMENTAL_CACHE_FIELD_DEFINITIONS) {
         return assign_count(cache.expected_definitions, value);
     }
@@ -266,11 +269,23 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 
 [[nodiscard]] bool parse_module_line(ParsedCache& cache, const std::vector<std::string_view>& fields)
 {
-    if (fields.size() != INCREMENTAL_CACHE_MODULE_FIELD_COUNT
+    if ((fields.size() != INCREMENTAL_CACHE_MODULE_LEGACY_FIELD_COUNT
+            && fields.size() != INCREMENTAL_CACHE_MODULE_FIELD_COUNT)
         || fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_MODULE
         || !decode_hex_string(fields[INCREMENTAL_CACHE_MODULE_NAME_FIELD])
         || !decode_path(fields[INCREMENTAL_CACHE_MODULE_PATH_FIELD])) {
         return false;
+    }
+    if (fields.size() == INCREMENTAL_CACHE_MODULE_FIELD_COUNT) {
+        const std::optional<std::filesystem::path> source_root =
+            decode_path(fields[INCREMENTAL_CACHE_MODULE_SOURCE_ROOT_FIELD]);
+        const std::optional<std::filesystem::path> source_relative =
+            decode_path(fields[INCREMENTAL_CACHE_MODULE_SOURCE_RELATIVE_FIELD]);
+        if (!source_root.has_value() || source_root->empty() || !source_root->is_absolute()
+            || !source_relative.has_value() || source_relative->empty() || source_relative->is_absolute()) {
+            return false;
+        }
+        cache.module_source_root_topology_count += 1;
     }
     cache.module_count += 1;
     return true;
@@ -675,6 +690,20 @@ struct QueryKeyFieldLayout {
     return paths;
 }
 
+[[nodiscard]] bool invocation_uses_manifest_source_root(const CompilerInvocation& invocation)
+{
+    if (package_source_root_for_invocation(invocation).has_value()) {
+        return true;
+    }
+    for (const std::filesystem::path& path : invocation.import_paths) {
+        const std::filesystem::path canonical_import_root = canonical_or_absolute(path);
+        if (package_source_root_for_import_root(canonical_import_root.string()).has_value()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 [[nodiscard]] std::unordered_map<std::string, query::PackageKey> source_package_index(
     const std::span<const ModuleRecord> modules)
 {
@@ -730,6 +759,12 @@ struct QueryKeyFieldLayout {
         normalized.path = canonical_or_absolute(module.path);
         for (ModulePartRecord& part : normalized.parts) {
             part.path = canonical_or_absolute(part.path);
+        }
+        if (normalized.source_root_topology.has_value()) {
+            normalized.source_root_topology->source_root =
+                canonical_or_absolute(normalized.source_root_topology->source_root);
+            normalized.source_root_topology->source_relative_path =
+                normalized.source_root_topology->source_relative_path.lexically_normal();
         }
         sorted.push_back(std::move(normalized));
     }
@@ -804,6 +839,12 @@ void write_module_record(std::ostream& out, const ModuleRecord& record)
     write_hex_field(out, record.name);
     out << INCREMENTAL_CACHE_SEPARATOR;
     write_hex_field(out, record.path.string());
+    if (record.source_root_topology.has_value()) {
+        out << INCREMENTAL_CACHE_SEPARATOR;
+        write_hex_field(out, record.source_root_topology->source_root.string());
+        out << INCREMENTAL_CACHE_SEPARATOR;
+        write_hex_field(out, record.source_root_topology->source_relative_path.string());
+    }
     out << '\n';
 }
 
@@ -881,6 +922,8 @@ void write_query_dependency_edge_record(std::ostream& out, const query::QueryDep
     if (!cache.expected_import_paths || !cache.expected_sources || !cache.expected_modules
         || !cache.expected_definitions || cache.import_paths.size() != *cache.expected_import_paths
         || cache.sources.size() != *cache.expected_sources || cache.module_count != *cache.expected_modules
+        || (cache.expected_module_source_root_topologies.has_value()
+            && cache.module_source_root_topology_count != *cache.expected_module_source_root_topologies)
         || cache.definition_count != *cache.expected_definitions || !queries_match || !query_edges_match) {
         return ParsedCacheValidationStatus::malformed_cache;
     }
@@ -897,12 +940,18 @@ void write_query_dependency_edge_record(std::ostream& out, const query::QueryDep
     return parsed_cache_validation_status(cache) == ParsedCacheValidationStatus::valid;
 }
 
+[[nodiscard]] bool parsed_cache_declares_source_root_topology(const ParsedCache& cache) noexcept
+{
+    return cache.expected_module_source_root_topologies.has_value() || cache.module_source_root_topology_count != 0;
+}
+
 [[nodiscard]] bool parsed_cache_header_matches(const ParsedCache& cache, const CompilerInvocation& invocation)
 {
     if (cache.schema != INCREMENTAL_CACHE_SCHEMA_VERSION || cache.compiler_version != base::config::AUREX_VERSION_STRING
         || cache.mode != INCREMENTAL_CACHE_MODE_SEMANTIC_OK
         || cache.root_path != canonical_or_absolute(invocation.input_path)
         || cache.package_identity.value_or(std::string{}) != package_identity_for_invocation(invocation)
+        || (invocation_uses_manifest_source_root(invocation) && !parsed_cache_declares_source_root_topology(cache))
         || !parsed_cache_counts_match(cache)) {
         return false;
     }

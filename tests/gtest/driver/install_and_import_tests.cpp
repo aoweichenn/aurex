@@ -1109,6 +1109,12 @@ TEST_F(AurexIntegrationTest, ModuleLoaderUsesManifestSourceRootForLocalPackageIm
     EXPECT_EQ(modules[0].package, modules[1].package);
     EXPECT_EQ(modules.front().imports[0].module_package, modules[1].package);
     EXPECT_EQ(modules.front().imports[1].module_package, modules[1].package);
+    ASSERT_TRUE(modules[0].source_root_topology.has_value());
+    ASSERT_TRUE(modules[1].source_root_topology.has_value());
+    EXPECT_EQ(modules[0].source_root_topology->source_root, *resolved_source_root);
+    EXPECT_EQ(modules[0].source_root_topology->source_relative_path, fs::path("app") / "main.ax");
+    EXPECT_EQ(modules[1].source_root_topology->source_root, *resolved_source_root);
+    EXPECT_EQ(modules[1].source_root_topology->source_relative_path, fs::path("app") / "util.ax");
 
     driver::clear_file_cache();
 }
@@ -1178,6 +1184,13 @@ TEST_F(AurexIntegrationTest, ModuleLoaderUsesManifestSourceRootForImportPathPack
     EXPECT_NE(root_package, import_package);
     EXPECT_EQ(modules[0].imports.front().module_package, import_package);
     EXPECT_EQ(modules[1].imports.front().module_package, import_package);
+    EXPECT_FALSE(modules[0].source_root_topology.has_value());
+    ASSERT_TRUE(modules[1].source_root_topology.has_value());
+    ASSERT_TRUE(modules[2].source_root_topology.has_value());
+    EXPECT_EQ(modules[1].source_root_topology->source_root, *resolved_import_source_root);
+    EXPECT_EQ(modules[1].source_root_topology->source_relative_path, fs::path("lib") / "visible.ax");
+    EXPECT_EQ(modules[2].source_root_topology->source_root, *resolved_import_source_root);
+    EXPECT_EQ(modules[2].source_root_topology->source_relative_path, fs::path("lib") / "helper.ax");
 
     driver::clear_file_cache();
 }

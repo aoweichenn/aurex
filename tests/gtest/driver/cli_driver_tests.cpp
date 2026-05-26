@@ -2516,7 +2516,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     static_cast<void>(sources.add_source(source.string(), std::string(DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SOURCE)));
     const std::array<driver::ModuleRecord, 1> modules{{
         driver::ModuleRecord{std::string(DRIVER_INCREMENTAL_CACHE_SYNTHETIC_MODULE), source,
-            query::package_key(std::span<const std::string_view>{})},
+            query::package_key(std::span<const std::string_view>{}), syntax::INVALID_MODULE_ID, {}, {}, std::nullopt},
     }};
 
     sema::CheckedModule checked;
@@ -3077,7 +3077,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
     static_cast<void>(sources.add_source(source.string(), std::string(DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE)));
     const std::array<driver::ModuleRecord, 1> modules{{
         driver::ModuleRecord{std::string(DRIVER_INCREMENTAL_CACHE_EDGE_MODULE), source,
-            query::package_key(std::span<const std::string_view>{})},
+            query::package_key(std::span<const std::string_view>{}), syntax::INVALID_MODULE_ID, {}, {}, std::nullopt},
     }};
     sema::CheckedModule checked;
     const sema::InternedText function_name = checked.intern_text(DRIVER_INCREMENTAL_CACHE_EDGE_FUNCTION);
@@ -3471,6 +3471,164 @@ TEST_F(AurexIntegrationTest, IncrementalCacheKeysImportPathManifestSourceRoot)
     const std::string cache_text = read_text(cache);
     expect_contains(cache_text, "import_paths\t1");
     expect_contains(cache_text, "import_path\t" + hex_encode_cache_test_field(resolved_import_source_root->string()));
+    expect_contains(cache_text, "module_source_root_topologies\t1");
+    expect_contains(cache_text,
+        "module\t" + hex_encode_cache_test_field("shared.util") + "\t"
+            + hex_encode_cache_test_field(fs::weakly_canonical(import_source).string()) + "\t"
+            + hex_encode_cache_test_field(resolved_import_source_root->string()) + "\t"
+            + hex_encode_cache_test_field((fs::path("shared") / "util.ax").string()));
+
+    auto reuse = driver::try_reuse_incremental_check_cache(invocation);
+    ASSERT_TRUE(reuse) << reuse.error().message;
+    EXPECT_TRUE(reuse.value());
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheReusesUnusedImportPathManifestSourceRoot)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view IMPORT_MANIFEST = "[package]\n"
+                                                 "name = \"unused.manifest.cache.import.pkg\"\n"
+                                                 "version = \"1.0.0\"\n"
+                                                 "source-root = \"src\"\n";
+    constexpr std::string_view ROOT_SOURCE = "module incremental_cache_unused_import_source_root;\n";
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-unused-import-source-root";
+    const fs::path import_root = cache_dir / "deps" / "unused_pkg";
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    fs::create_directories(import_root);
+    fs::create_directories(source.parent_path());
+    {
+        std::ofstream out(
+            import_root / std::string(driver::DRIVER_PACKAGE_MANIFEST_FILE_NAME), std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << IMPORT_MANIFEST;
+    }
+    {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << ROOT_SOURCE;
+    }
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+    invocation.import_paths.push_back(import_root);
+
+    const std::optional<fs::path> resolved_import_source_root =
+        driver::package_source_root_for_import_root(import_root.string());
+    ASSERT_TRUE(resolved_import_source_root.has_value());
+
+    driver::Compiler compiler;
+    auto result = compiler.run(invocation);
+    ASSERT_TRUE(result) << result.error().message;
+
+    const std::string cache_text = read_text(cache);
+    expect_contains(cache_text, "import_path\t" + hex_encode_cache_test_field(resolved_import_source_root->string()));
+    expect_contains(cache_text, "module_source_root_topologies\t0");
+
+    auto reuse = driver::try_reuse_incremental_check_cache(invocation);
+    ASSERT_TRUE(reuse) << reuse.error().message;
+    EXPECT_TRUE(reuse.value());
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheModuleGraphFingerprintsSourceRootTopologyRecords)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view MODULE_NAME = "incremental_cache_source_root_topology";
+    constexpr std::string_view PACKAGE_IDENTITY = "source.root.topology.cache.pkg";
+    constexpr std::string_view SOURCE = "module incremental_cache_source_root_topology;\n";
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-source-root-topology";
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path source_root = cache_dir / "topology-root";
+    const fs::path source_relative = fs::path("app") / "main.ax";
+    const fs::path no_topology_cache = cache_dir / "no-topology.axic";
+    const fs::path no_topology_repeat_cache = cache_dir / "no-topology-repeat.axic";
+    const fs::path topology_cache = cache_dir / "with-topology.axic";
+    fs::create_directories(source.parent_path());
+    fs::create_directories(source_root);
+    {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << SOURCE;
+    }
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.package_identity = PACKAGE_IDENTITY;
+
+    const query::PackageKey package = driver::package_key_from_identity(PACKAGE_IDENTITY);
+    const std::array<std::string_view, 1> module_parts{MODULE_NAME};
+    const std::string encoded_module_key = cache_test_encoded_module_key(package, module_parts);
+    const fs::path canonical_source_root = fs::weakly_canonical(source_root);
+
+    const auto write_cache_for_topology = [&](const fs::path& cache_path,
+                                              std::optional<driver::ModuleSourceRootTopologyRecord> topology)
+        -> std::optional<CacheTestQueryResultFingerprint> {
+        base::SourceManager sources;
+        static_cast<void>(sources.add_source(source.string(), std::string(SOURCE)));
+
+        driver::ModuleRecord module;
+        module.name = std::string(MODULE_NAME);
+        module.path = source;
+        module.package = package;
+        module.id = syntax::ModuleId{0};
+        module.parts.push_back(driver::ModulePartRecord{
+            {},
+            source,
+            0,
+            driver::ModulePartRecordKind::primary,
+        });
+        module.source_root_topology = std::move(topology);
+        const std::array<driver::ModuleRecord, 1> modules{{std::move(module)}};
+
+        sema::CheckedModule checked;
+        driver::CompilerInvocation cache_invocation = invocation;
+        cache_invocation.incremental_cache_path = cache_path;
+        auto write_result = driver::write_incremental_cache(cache_invocation, sources, modules, checked);
+        EXPECT_TRUE(write_result) << write_result.error().message;
+        if (!write_result) {
+            return std::nullopt;
+        }
+        return cache_test_query_result(read_text(cache_path), CACHE_TEST_QUERY_MODULE_GRAPH, encoded_module_key);
+    };
+
+    const std::optional<CacheTestQueryResultFingerprint> no_topology =
+        write_cache_for_topology(no_topology_cache, std::nullopt);
+    const std::optional<CacheTestQueryResultFingerprint> no_topology_repeat =
+        write_cache_for_topology(no_topology_repeat_cache, std::nullopt);
+    const std::optional<CacheTestQueryResultFingerprint> with_topology = write_cache_for_topology(topology_cache,
+        driver::ModuleSourceRootTopologyRecord{
+            canonical_source_root,
+            source_relative,
+        });
+    ASSERT_TRUE(no_topology.has_value());
+    ASSERT_TRUE(no_topology_repeat.has_value());
+    ASSERT_TRUE(with_topology.has_value());
+    EXPECT_EQ(*no_topology, *no_topology_repeat);
+    EXPECT_FALSE(*no_topology == *with_topology);
+
+    const std::string no_topology_text = read_text(no_topology_cache);
+    const std::string topology_text = read_text(topology_cache);
+    const std::string encoded_source_root = hex_encode_cache_test_field(canonical_source_root.string());
+    const std::string encoded_source_relative = hex_encode_cache_test_field(source_relative.string());
+    EXPECT_EQ(no_topology_text.find(encoded_source_root), std::string::npos);
+    expect_contains(topology_text, encoded_source_root + "\t" + encoded_source_relative);
+
+    driver::CompilerInvocation reuse_invocation = invocation;
+    reuse_invocation.incremental_cache_path = topology_cache;
+    auto reuse = driver::try_reuse_incremental_check_cache(reuse_invocation);
+    ASSERT_TRUE(reuse) << reuse.error().message;
+    EXPECT_TRUE(reuse.value());
 
     driver::clear_file_cache();
 }
@@ -3500,8 +3658,10 @@ TEST_F(AurexIntegrationTest, IncrementalCacheSemanticSubjectsUseModuleIdPackages
     const query::PackageKey local_package = driver::package_key_from_identity(LOCAL_PACKAGE);
     const query::PackageKey import_package = driver::package_key_for_import_root(IMPORT_ROOT);
     const std::array<driver::ModuleRecord, 2> modules{{
-        driver::ModuleRecord{std::string("shared.util"), local_source, local_package, syntax::ModuleId{0}},
-        driver::ModuleRecord{std::string("shared.util"), import_source, import_package, syntax::ModuleId{1}},
+        driver::ModuleRecord{
+            std::string("shared.util"), local_source, local_package, syntax::ModuleId{0}, {}, {}, std::nullopt},
+        driver::ModuleRecord{
+            std::string("shared.util"), import_source, import_package, syntax::ModuleId{1}, {}, {}, std::nullopt},
     }};
 
     base::SourceManager sources;
@@ -3875,6 +4035,23 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
     expect_not_reused();
 
     write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t1\nmodule\t0\t00\n" + "definitions\t0\n");
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source)
+        + "sources\t0\nmodules\t0\nmodule_source_root_topologies\t1\ndefinitions\t0\n");
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t1\nmodule\t"
+        + hex_encode_cache_test_field("incremental_cache_malformed") + "\t"
+        + hex_encode_cache_test_field(canonical_source.string()) + "\tzz\t"
+        + hex_encode_cache_test_field((fs::path("app") / "main.ax").string()) + "\ndefinitions\t0\n");
+    expect_not_reused();
+
+    write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t1\nmodule\t"
+        + hex_encode_cache_test_field("incremental_cache_malformed") + "\t"
+        + hex_encode_cache_test_field(canonical_source.string()) + "\t"
+        + hex_encode_cache_test_field(cache_dir.string()) + "\t"
+        + hex_encode_cache_test_field(canonical_source.string()) + "\ndefinitions\t0\n");
     expect_not_reused();
 
     write_cache(cache_test_header(canonical_source) + "sources\t0\nmodules\t0\ndefinitions\t1\n" + "def\ttoo-few\n");

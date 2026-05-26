@@ -5,6 +5,7 @@
 #include <aurex/syntax/ast/nodes.hpp>
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,11 @@ struct ModuleImportRecord {
     bool is_public = false;
 };
 
+struct ModuleSourceRootTopologyRecord {
+    std::filesystem::path source_root;
+    std::filesystem::path source_relative_path;
+};
+
 struct ModuleRecord {
     std::string name;
     std::filesystem::path path;
@@ -39,6 +45,7 @@ struct ModuleRecord {
     syntax::ModuleId id = syntax::INVALID_MODULE_ID;
     std::vector<ModulePartRecord> parts{};
     std::vector<ModuleImportRecord> imports{};
+    std::optional<ModuleSourceRootTopologyRecord> source_root_topology;
 };
 
 } // namespace aurex::driver

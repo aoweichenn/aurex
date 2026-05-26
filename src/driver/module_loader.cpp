@@ -6,6 +6,7 @@
 #include <aurex/syntax/module.hpp>
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -32,8 +33,33 @@ namespace {
     return header.name == declaration.name;
 }
 
+[[nodiscard]] std::optional<ModuleSourceRootTopologyRecord> make_module_source_root_topology(
+    const std::optional<std::filesystem::path>& source_root, const std::filesystem::path& primary_path)
+{
+    if (!source_root.has_value()) {
+        return std::nullopt;
+    }
+
+    const std::filesystem::path canonical_source_root = module_loader_canonical_or_absolute(*source_root);
+    const std::filesystem::path canonical_primary_path = module_loader_canonical_or_absolute(primary_path);
+    return ModuleSourceRootTopologyRecord{
+        canonical_source_root,
+        canonical_primary_path.lexically_relative(canonical_source_root).lexically_normal(),
+    };
+}
+
+void ensure_module_record_source_root_topology(std::vector<ModuleRecord>& records, const syntax::ModuleId module_id,
+    const std::optional<std::filesystem::path>& source_root, const std::filesystem::path& primary_path)
+{
+    std::optional<ModuleSourceRootTopologyRecord> topology =
+        make_module_source_root_topology(source_root, primary_path);
+    if (topology.has_value() && syntax::is_valid(module_id) && module_id.value < records.size()) {
+        records[module_id.value].source_root_topology = std::move(*topology);
+    }
+}
+
 [[nodiscard]] ModuleRecord make_module_record(const std::string& module_name, const std::filesystem::path& primary_path,
-    const query::PackageKey package, const syntax::ModuleId id)
+    const query::PackageKey package, const syntax::ModuleId id, const std::optional<std::filesystem::path>& source_root)
 {
     ModuleRecord record;
     record.name = module_name;
@@ -46,6 +72,7 @@ namespace {
         0,
         ModulePartRecordKind::primary,
     });
+    record.source_root_topology = make_module_source_root_topology(source_root, primary_path);
     return record;
 }
 
@@ -186,6 +213,8 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
             if (!topology_validation) {
                 return base::Result<syntax::ModuleId>::fail(topology_validation.error());
             }
+            ensure_module_record_source_root_topology(
+                this->modules_, module_id, package_context.source_root, canonical);
         }
         return base::Result<syntax::ModuleId>::ok(loaded->second);
     }
@@ -243,7 +272,8 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
         info.path = module.module_path;
         combined.intern_module_path(info.path);
         combined.modules.push_back(std::move(info));
-        this->modules_.push_back(make_module_record(module_name, canonical, package_context.package, module_id));
+        this->modules_.push_back(make_module_record(
+            module_name, canonical, package_context.package, module_id, package_context.source_root));
     }
     if (is_root) {
         combined.module_path = module.module_path;

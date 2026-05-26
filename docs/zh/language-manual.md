@@ -177,6 +177,8 @@ priv import internal.detail as detail;
   `source-root = "src"`，用于把 logical module path 映射到 package source root 下的文件路径。
   启用 source-root 后，primary module 文件路径必须和 `module path;` 一致；例如
   `module app.util;` 必须位于 `src/app/util.ax`。
+  编译器会把该 source-root topology 记录到 module graph / incremental cache 边界中，因此 package
+  source layout 变化不会只停留在文件查找层。
   `-I` import root 也会优先使用其 manifest identity 和 source-root；缺失 manifest 时回退到
   import root 路径 identity 与旧的 import root 文件布局。
 - 当前不支持 glob import、selective import、dependency manifest、workspace 或 package manager。

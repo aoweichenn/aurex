@@ -6,6 +6,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <span>
 #include <sstream>
 #include <vector>
 
@@ -18,6 +19,21 @@
 namespace aurex::driver::incremental_cache_detail {
 namespace cache_format = incremental_cache_format;
 using namespace cache_format;
+
+namespace {
+
+[[nodiscard]] base::usize module_source_root_topology_count(const std::span<const ModuleRecord> modules) noexcept
+{
+    base::usize count = 0;
+    for (const ModuleRecord& module : modules) {
+        if (module.source_root_topology.has_value()) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+} // namespace
 
 base::Result<bool> try_reuse_incremental_check_cache_impl(
     const CompilerInvocation& invocation, CompilationProfiler* const profiler)
@@ -126,6 +142,8 @@ base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invoca
             write_source_record(out, record);
         }
         write_header_field(out, INCREMENTAL_CACHE_FIELD_MODULES, std::to_string(module_records.size()));
+        write_header_field(out, INCREMENTAL_CACHE_FIELD_MODULE_SOURCE_ROOT_TOPOLOGIES,
+            std::to_string(module_source_root_topology_count(module_records)));
         for (const ModuleRecord& record : module_records) {
             write_module_record(out, record);
         }

@@ -25,6 +25,7 @@ constexpr std::string_view INCREMENTAL_CACHE_EXPORT_VARIADIC_TAG = "variadic";
 constexpr std::string_view INCREMENTAL_CACHE_EXPORT_FIXED_TAG = "fixed";
 constexpr std::string_view INCREMENTAL_CACHE_GRAPH_PRIMARY_PART_TAG = "primary";
 constexpr std::string_view INCREMENTAL_CACHE_GRAPH_NAMED_PART_TAG = "named";
+constexpr std::string_view INCREMENTAL_CACHE_GRAPH_SOURCE_ROOT_TOPOLOGY_TAG = "source-root";
 constexpr std::string_view INCREMENTAL_CACHE_INVALID_TYPE_TAG = "<invalid>";
 constexpr base::usize INCREMENTAL_CACHE_EXPORT_PARAM_TEXT_BUDGET = 16;
 constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
@@ -179,6 +180,11 @@ void sort_unique_module_keys(std::vector<query::ModuleKey>& modules)
     builder.mix_fingerprint(query::stable_key_fingerprint(key));
     builder.mix_string(module.name);
     builder.mix_string(module.path.string());
+    if (module.source_root_topology.has_value()) {
+        builder.mix_string(INCREMENTAL_CACHE_GRAPH_SOURCE_ROOT_TOPOLOGY_TAG);
+        builder.mix_string(module.source_root_topology->source_root.string());
+        builder.mix_string(module.source_root_topology->source_relative_path.string());
+    }
 
     std::vector<const ModulePartRecord*> parts;
     parts.reserve(module.parts.size());

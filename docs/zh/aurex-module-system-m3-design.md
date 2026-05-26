@@ -790,6 +790,22 @@ Phase 6B-2 实现收口状态（2026-05-26）：
   primary 和显式 part list 校验，不使用 module path 到文件路径的一对一规则。
 - 无 source-root 的 manifest、无 manifest import root 和历史单文件场景继续保持旧行为。
 
+Phase 6B-3 实现收口状态（2026-05-27）：
+
+- `ModuleRecord` 现在保存 source-root topology 元数据：canonical source-root 与 primary module 的
+  source-root-relative path。无 source-root 的模块保持空 topology。
+- Module loader 在首次加载 primary module 时写入 topology；如果同一文件经 cached loader hit 复用，
+  也会在 source-root 校验通过后补齐缺失的 topology。
+- incremental cache 的 module row 对有 source-root topology 的模块额外写出 source-root 和相对路径；
+  无 source-root module row 保持旧三字段布局，旧 cache 仍可解析。新 cache 还会写出
+  `module_source_root_topologies` 计数头，即使当前 source-root import path 未被实际导入、计数为 0，
+  也不会让新 cache 自我失效；缺少该计数头且没有 topology row 的旧 source-root 会话 cache 仍不会复用。
+- `ModuleGraph(ModuleKey)` result fingerprint 在存在 topology 时混入 source-root 与相对路径，使
+  package source layout 变动进入 query red/green 边界。当前 invocation 或 import root 使用
+  manifest source-root 时，缺少 topology row 且缺少 topology 计数头的旧 cache 不走 fast check 复用。
+- 该阶段只把 source-root 拓扑提升为 module/query/cache 可见事实，不引入 workspace resolver、
+  dependency graph、nested module tree 或 `pub(in path)`。
+
 ### 7.1 `priv` 跨 part
 
 ```aurex
@@ -1281,6 +1297,8 @@ semantics。Aurex 需要 explicit `part` 作为 language-level membership。
 交付：
 
 - `ModuleGraph(ModuleKey)` query 结果结构化，基于当前 logical module 的 primary / parts / imports。
+- manifest source-root 启用时，`ModuleGraph(ModuleKey)` 结果同时包含 source-root topology：
+  canonical source-root 与 primary module 的 source-root-relative path。
 - `ModuleExports(ModuleKey)` query 结果结构化，基于 public API surface 和 primary re-export edges。
 - `ModulePackageExports(ModuleKey)` query 结果结构化，基于 package-visible API surface 和 primary
   `pub(package)` / same-package re-export edges。

@@ -781,6 +781,15 @@ Phase 6B-1 实现收口状态（2026-05-26）：
 - incremental cache 的 import path layout 记录 source-root canonical path，避免 import root manifest
   的 source layout 变化后误复用旧 check cache。
 
+Phase 6B-2 实现收口状态（2026-05-26）：
+
+- manifest 显式启用 source-root 后，primary module 文件路径必须和 `module path;` 一致。`module app.util;`
+  的权威文件位置是 `<source-root>/app/util.ax`。
+- source-root 下的 root input 也受同一规则约束，避免从任意文件启动时绕过 package module topology。
+- source-root 外的 primary module 文件会被拒绝，并提示当前 package source-root；part 文件仍按 owning
+  primary 和显式 part list 校验，不使用 module path 到文件路径的一对一规则。
+- 无 source-root 的 manifest、无 manifest import root 和历史单文件场景继续保持旧行为。
+
 ### 7.1 `priv` 跨 part
 
 ```aurex

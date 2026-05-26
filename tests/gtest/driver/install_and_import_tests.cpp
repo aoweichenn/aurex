@@ -1058,6 +1058,7 @@ TEST_F(AurexIntegrationTest, ModuleLoaderUsesManifestSourceRootForLocalPackageIm
                                           "source-root = \"src\"\n";
     constexpr std::string_view ROOT_SOURCE = "module app.main;\n"
                                              "import app.util as util;\n"
+                                             "import app.util as util_again;\n"
                                              "fn main() -> i32 {\n"
                                              "  return util.value();\n"
                                              "}\n";
@@ -1104,9 +1105,10 @@ TEST_F(AurexIntegrationTest, ModuleLoaderUsesManifestSourceRootForLocalPackageIm
 
     const std::span<const driver::ModuleRecord> modules = loader.modules();
     ASSERT_EQ(modules.size(), 2U);
-    ASSERT_EQ(modules.front().imports.size(), 1U);
+    ASSERT_EQ(modules.front().imports.size(), 2U);
     EXPECT_EQ(modules[0].package, modules[1].package);
-    EXPECT_EQ(modules.front().imports.front().module_package, modules[1].package);
+    EXPECT_EQ(modules.front().imports[0].module_package, modules[1].package);
+    EXPECT_EQ(modules.front().imports[1].module_package, modules[1].package);
 
     driver::clear_file_cache();
 }
@@ -1178,6 +1180,39 @@ TEST_F(AurexIntegrationTest, ModuleLoaderUsesManifestSourceRootForImportPathPack
     EXPECT_EQ(modules[1].imports.front().module_package, import_package);
 
     driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, ModuleLoaderRejectsManifestSourceRootPathTopologyMismatches)
+{
+    constexpr std::string_view MANIFEST = "[package]\n"
+                                          "name = \"source.root.diagnostics\"\n"
+                                          "version = \"1.0.0\"\n"
+                                          "source-root = \"src\"\n";
+
+    const fs::path work = tmp_root() / "module-loader-manifest-source-root-diagnostics";
+    const fs::path source_root = work / "src";
+    static_cast<void>(
+        write_import_test_source(work / std::string(driver::DRIVER_PACKAGE_MANIFEST_FILE_NAME), MANIFEST));
+
+    const fs::path mismatch = write_import_test_source(source_root / "app" / "main.ax",
+        "module app.wrong;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    const std::string mismatch_output = require_failure(aurexc() + " --check " + q(mismatch)).output;
+    expect_contains(mismatch_output, "expects source path");
+    expect_contains(mismatch_output, (source_root / "app" / "wrong.ax").string());
+    expect_contains(mismatch_output, mismatch.string());
+
+    const fs::path outside = write_import_test_source(work / "tools" / "main.ax",
+        "module tools.main;\n"
+        "fn main() -> i32 {\n"
+        "  return 0;\n"
+        "}\n");
+    const std::string outside_output = require_failure(aurexc() + " --check " + q(outside)).output;
+    expect_contains(outside_output, "outside package source-root");
+    expect_contains(outside_output, source_root.string());
+    expect_contains(outside_output, outside.string());
 }
 
 TEST_F(AurexIntegrationTest, ModuleLoaderPackageManifestIdentityHandlesSyntaxAndFallbacks)

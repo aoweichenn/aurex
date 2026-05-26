@@ -210,6 +210,12 @@ manifest-backed package identity，因此同名同版本但 source layout 不同
 incremental cache 的 import path layout 也记录 canonical source-root，避免 import root source layout 改动后
 误复用旧 check cache。该阶段仍不引入 workspace、dependency resolver、lockfile、版本求解或 package manager。
 
+2026-05-26：Phase 6B-2 Source-root module topology diagnostics 已完成。启用 manifest
+`source-root` 后，primary module 文件路径必须和 `module path;` 对齐；`module app.util;` 的权威文件
+位置是 `<source-root>/app/util.ax`。Root input 同样受该规则约束，source-root 外的 primary module 会被
+拒绝并给出 source-root 诊断；part 文件继续由 owning primary 和显式 part list 管理，不套用一对一模块
+路径规则。无 source-root 的 manifest 和旧单文件/import-root 布局保持兼容。
+
 ## 验收
 
 M3.0 模块验收：

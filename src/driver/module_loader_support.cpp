@@ -29,6 +29,21 @@ struct ImportSearchCandidate {
     return std::filesystem::exists(candidate, error) && !error;
 }
 
+[[nodiscard]] bool path_is_within_or_equal(
+    const std::filesystem::path& child, const std::filesystem::path& parent) noexcept
+{
+    auto child_part = child.begin();
+    auto parent_part = parent.begin();
+    while (parent_part != parent.end()) {
+        if (child_part == child.end() || *child_part != *parent_part) {
+            return false;
+        }
+        ++child_part;
+        ++parent_part;
+    }
+    return true;
+}
+
 void push_module_loader_error(base::DiagnosticSink& diagnostics, const base::SourceRange& range, std::string message)
 {
     diagnostics.push(base::Diagnostic{
@@ -392,6 +407,29 @@ base::Result<void> validate_module_import_path(const syntax::ModulePath& declare
     push_module_loader_error(diagnostics, declared_module.range,
         driver_module_import_mismatch_message(
             syntax::module_path_to_string(declared_module), syntax::module_path_to_string(*expected_module)));
+    return fail_module_loading(base::ErrorCode::parse_error);
+}
+
+base::Result<void> validate_source_root_module_path(const syntax::ModulePath& declared_module,
+    const std::filesystem::path& canonical_path, const std::filesystem::path& source_root,
+    base::DiagnosticSink& diagnostics)
+{
+    const std::filesystem::path canonical_source_root = module_loader_canonical_or_absolute(source_root);
+    if (!path_is_within_or_equal(canonical_path, canonical_source_root)) {
+        push_module_loader_error(diagnostics, declared_module.range,
+            driver_module_source_root_outside_message(canonical_path.string(), canonical_source_root.string()));
+        return fail_module_loading(base::ErrorCode::parse_error);
+    }
+
+    const std::filesystem::path expected_path = module_loader_canonical_or_absolute(
+        canonical_source_root / syntax::module_path_to_relative_file(declared_module));
+    if (canonical_path == expected_path) {
+        return base::Result<void>::ok();
+    }
+
+    push_module_loader_error(diagnostics, declared_module.range,
+        driver_module_source_root_mismatch_message(
+            syntax::module_path_to_string(declared_module), canonical_path.string(), expected_path.string()));
     return fail_module_loading(base::ErrorCode::parse_error);
 }
 

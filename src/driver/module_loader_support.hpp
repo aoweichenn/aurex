@@ -109,6 +109,10 @@ struct ImportFileResolution {
 [[nodiscard]] base::Result<void> validate_module_import_path(const syntax::ModulePath& declared_module,
     const syntax::ModulePath* expected_module, base::DiagnosticSink& diagnostics);
 
+[[nodiscard]] base::Result<void> validate_source_root_module_path(const syntax::ModulePath& declared_module,
+    const std::filesystem::path& canonical_path, const std::filesystem::path& source_root,
+    base::DiagnosticSink& diagnostics);
+
 [[nodiscard]] base::Result<void> validate_unique_module_identity(std::string_view module_name,
     const std::filesystem::path& canonical_path, const std::filesystem::path& existing_path,
     const base::SourceRange& declaration_range, base::DiagnosticSink& diagnostics);

@@ -179,6 +179,14 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
         if (!validation) {
             return base::Result<syntax::ModuleId>::fail(validation.error());
         }
+        if (package_context.source_root.has_value() && syntax::is_valid(module_id)
+            && module_id.value < combined.modules.size()) {
+            const auto topology_validation = validate_source_root_module_path(
+                combined.modules[module_id.value].path, canonical, *package_context.source_root, this->diagnostics_);
+            if (!topology_validation) {
+                return base::Result<syntax::ModuleId>::fail(topology_validation.error());
+            }
+        }
         return base::Result<syntax::ModuleId>::ok(loaded->second);
     }
 
@@ -207,6 +215,13 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
         validate_module_import_path(module.module_path, expected_module, this->diagnostics_);
     if (!import_path_validation) {
         return base::Result<syntax::ModuleId>::fail(import_path_validation.error());
+    }
+    if (package_context.source_root.has_value()) {
+        const auto topology_validation = validate_source_root_module_path(
+            module.module_path, canonical, *package_context.source_root, this->diagnostics_);
+        if (!topology_validation) {
+            return base::Result<syntax::ModuleId>::fail(topology_validation.error());
+        }
     }
     const std::string module_name = syntax::module_path_to_string(module.module_path);
     const std::string logical_key = logical_module_key(package_context.package, module_name);

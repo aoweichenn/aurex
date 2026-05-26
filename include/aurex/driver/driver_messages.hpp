@@ -52,6 +52,19 @@ inline constexpr std::string_view DRIVER_IMPORTABLE_MODULE_DECL_REQUIRED =
     return "module declaration '" + std::string(declared) + "' does not match import '" + std::string(expected) + "'";
 }
 
+[[nodiscard]] inline std::string driver_module_source_root_outside_message(
+    const std::string_view file_path, const std::string_view source_root)
+{
+    return "module file " + std::string(file_path) + " is outside package source-root " + std::string(source_root);
+}
+
+[[nodiscard]] inline std::string driver_module_source_root_mismatch_message(
+    const std::string_view declared, const std::string_view file_path, const std::string_view expected_path)
+{
+    return "module declaration '" + std::string(declared) + "' expects source path " + std::string(expected_path)
+        + " but file is " + std::string(file_path);
+}
+
 [[nodiscard]] inline std::string driver_duplicate_module_name_message(
     const std::string_view module_name, const std::string_view loaded_path)
 {

@@ -12,6 +12,9 @@ namespace {
 using syntax::TokenKind;
 
 inline constexpr std::string_view PARSER_CONTEXTUAL_PART_KEYWORD_TEXT = "part";
+inline constexpr base::usize PARSER_SCOPED_VISIBILITY_SCOPE_OFFSET = 2;
+inline constexpr base::usize PARSER_SCOPED_VISIBILITY_CLOSE_OFFSET = 3;
+inline constexpr base::usize PARSER_SCOPED_VISIBILITY_IMPORT_OFFSET = 4;
 
 [[nodiscard]] bool token_is_contextual_part_keyword(const syntax::Token& token) noexcept
 {
@@ -23,6 +26,24 @@ inline constexpr std::string_view PARSER_CONTEXTUAL_PART_KEYWORD_TEXT = "part";
 Parser::Parser(const std::span<const syntax::Token> tokens, base::DiagnosticSink& diagnostics)
     : session_(tokens, diagnostics)
 {
+}
+
+bool Parser::check_visibility_import_prefix() const noexcept
+{
+    if (this->check(TokenKind::kw_priv)) {
+        return this->check_next(TokenKind::kw_import);
+    }
+    if (!this->check(TokenKind::kw_pub)) {
+        return false;
+    }
+    if (this->check_next(TokenKind::kw_import)) {
+        return true;
+    }
+    return this->check_next(TokenKind::l_paren)
+        && this->peek_at(PARSER_SCOPED_VISIBILITY_SCOPE_OFFSET).kind == TokenKind::identifier
+        && this->peek_at(PARSER_SCOPED_VISIBILITY_SCOPE_OFFSET).text() == PARSER_VISIBILITY_PACKAGE_SCOPE_TEXT
+        && this->peek_at(PARSER_SCOPED_VISIBILITY_CLOSE_OFFSET).kind == TokenKind::r_paren
+        && this->peek_at(PARSER_SCOPED_VISIBILITY_IMPORT_OFFSET).kind == TokenKind::kw_import;
 }
 
 base::Result<syntax::AstModule> Parser::parse_module()
@@ -51,9 +72,7 @@ base::Result<syntax::AstModule> Parser::parse_module()
         this->session_.module.part_declarations.push_back(items.parse_module_part_decl());
     }
 
-    while (this->check(TokenKind::kw_import)
-        || ((this->check(TokenKind::kw_pub) || this->check(TokenKind::kw_priv))
-            && this->check_next(TokenKind::kw_import))) {
+    while (this->check(TokenKind::kw_import) || this->check_visibility_import_prefix()) {
         this->session_.module.imports.push_back(items.parse_import_decl());
     }
 

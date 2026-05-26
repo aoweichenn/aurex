@@ -400,6 +400,73 @@ TEST_F(AurexIntegrationTest, ExportedSignatureSurfacesRejectPrivateTypes)
         "public method `public_leak_method.Box.take` exposes private type `public_leak_method.Secret`");
 }
 
+TEST_F(AurexIntegrationTest, PackageVisibilityControlsPackageSurface)
+{
+    const fs::path same_package_work = tmp_root() / "package_visibility_same_package";
+    static_cast<void>(write_visibility_test_source(same_package_work / "lib" / "shared.ax",
+        "module lib.shared;\n"
+        "pub(package) fn package_value() -> i32 {\n"
+        "  return 7;\n"
+        "}\n"));
+    const fs::path same_package_root = write_visibility_test_source(same_package_work / "main.ax",
+        "module package_visibility_same;\n"
+        "import lib.shared as shared;\n"
+        "fn main() -> i32 {\n"
+        "  return shared.package_value() - 7;\n"
+        "}\n");
+    const std::string same_package_ir = require_success(aurexc() + " --emit=llvm-ir " + q(same_package_root)).output;
+    expect_contains(same_package_ir, "@m0_lib_shared_package_value");
+
+    const fs::path cross_package_work = tmp_root() / "package_visibility_cross_package";
+    const fs::path import_dir = cross_package_work / "imports";
+    static_cast<void>(write_visibility_test_source(import_dir / "lib" / "shared.ax",
+        "module lib.shared;\n"
+        "pub(package) fn package_value() -> i32 {\n"
+        "  return 7;\n"
+        "}\n"));
+    const fs::path cross_package_root = write_visibility_test_source(cross_package_work / "main.ax",
+        "module package_visibility_cross;\n"
+        "import lib.shared as shared;\n"
+        "fn main() -> i32 {\n"
+        "  return shared.package_value();\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(cross_package_root)).output,
+        "function is private: lib.shared.package_value");
+}
+
+TEST_F(AurexIntegrationTest, PackageVisibilitySurfaceLeaksUseVisibilityAwareDiagnostics)
+{
+    const fs::path package_leak = write_visibility_test_source(tmp_root() / "package_visibility_surface_leak.ax",
+        "module package_visibility_surface_leak;\n"
+        "priv struct Secret {\n"
+        "  pub value: i32;\n"
+        "}\n"
+        "pub(package) fn expose(secret: Secret) -> i32 {\n"
+        "  return secret.value;\n"
+        "}\n"
+        "pub(package) struct Wrapper {\n"
+        "  pub(package) secret: Secret;\n"
+        "}\n");
+    const std::string package_output = require_failure(aurexc() + " --check " + q(package_leak)).output;
+    expect_contains(package_output,
+        "package-visible function `expose` exposes private type `package_visibility_surface_leak.Secret`");
+    expect_contains(package_output,
+        "package-visible struct field `package_visibility_surface_leak.Wrapper.secret` exposes private type "
+        "`package_visibility_surface_leak.Secret`");
+
+    const fs::path public_leak = write_visibility_test_source(tmp_root() / "public_package_visibility_surface_leak.ax",
+        "module public_package_visibility_surface_leak;\n"
+        "pub(package) struct PackageOnly {\n"
+        "  pub(package) value: i32;\n"
+        "}\n"
+        "pub fn expose() -> PackageOnly {\n"
+        "  return PackageOnly { value: 1 };\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(public_leak)).output,
+        "public function `expose` exposes package-visible type "
+        "`public_package_visibility_surface_leak.PackageOnly`");
+}
+
 TEST_F(AurexIntegrationTest, PublicMethodsOnPrivateTypesAreNotExportedSurfaces)
 {
     const fs::path source = write_visibility_test_source(tmp_root() / "private_method_owner_surface.ax",

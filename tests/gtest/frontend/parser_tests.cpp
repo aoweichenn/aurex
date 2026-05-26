@@ -507,6 +507,53 @@ TEST(CoreUnit, ParserAcceptsFunctionTypes)
         });
 }
 
+TEST(CoreUnit, ParserAcceptsPackageVisibilitySyntax)
+{
+    constexpr std::string_view source = "module parser.package_visibility;\n"
+                                        "pub(package) import support.visible as visible;\n"
+                                        "pub(package) type PackageInt = i32;\n"
+                                        "pub(package) const PACKAGE_ANSWER: i32 = 42;\n"
+                                        "pub(package) struct PackageBox {\n"
+                                        "  pub(package) value: i32;\n"
+                                        "}\n"
+                                        "impl PackageBox {\n"
+                                        "  pub(package) fn read(self: PackageBox) -> i32 {\n"
+                                        "    return self.value;\n"
+                                        "  }\n"
+                                        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    ASSERT_EQ(module.imports.size(), 1U);
+    EXPECT_EQ(module.imports.front().visibility, syntax::Visibility::package_);
+    EXPECT_TRUE(module.imports.front().explicit_visibility);
+
+    const syntax::ItemNode* const alias = find_item(module, "PackageInt");
+    const syntax::ItemNode* const constant = find_item(module, "PACKAGE_ANSWER");
+    const syntax::ItemNode* const box = find_item(module, "PackageBox");
+    const syntax::ItemNode* const read = find_item(module, "read");
+    ASSERT_NE(alias, nullptr);
+    ASSERT_NE(constant, nullptr);
+    ASSERT_NE(box, nullptr);
+    ASSERT_NE(read, nullptr);
+    EXPECT_EQ(alias->visibility, syntax::Visibility::package_);
+    EXPECT_EQ(constant->visibility, syntax::Visibility::package_);
+    EXPECT_EQ(box->visibility, syntax::Visibility::package_);
+    EXPECT_EQ(read->visibility, syntax::Visibility::package_);
+    ASSERT_EQ(box->fields.size(), 1U);
+    EXPECT_EQ(box->fields.front().visibility, syntax::Visibility::package_);
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "pub(package) import support.visible as visible",
+            "item #0 pub(package) type_alias PackageInt",
+            "item #1 pub(package) const PACKAGE_ANSWER",
+            "item #2 pub(package) struct PackageBox",
+            "field pub(package) value : i32",
+            "pub(package) fn read",
+        });
+}
+
 TEST(CoreUnit, ParserAcceptsCAsOrdinaryIdentifier)
 {
     constexpr std::string_view source = "module parser.c_identifier;\n"
@@ -2668,6 +2715,12 @@ TEST(CoreUnit, ParserCoversAdditionalDiagnosticBranches)
     expect_parse_error("module parser.bad_function_type_abi;\n"
                        "type Bad = extern x fn(i32) -> i32;\n",
         "expected 'c' after 'extern' in function type");
+    expect_parse_error("module parser.unsupported_visibility_scope;\n"
+                       "pub(crate) fn package_only() -> i32 { return 0; }\n",
+        "unsupported visibility scope; only pub(package) is supported");
+    expect_parse_error("module parser.missing_visibility_scope;\n"
+                       "pub() fn package_only() -> i32 { return 0; }\n",
+        "expected visibility scope 'package'");
     expect_parse_error("module parser.recovered_function_type_abi;\n"
                        "type Bad = extern @ c fn(i32) -> i32;\n",
         "expected 'c' after 'extern' in function type");

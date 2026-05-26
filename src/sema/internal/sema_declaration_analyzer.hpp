@@ -26,12 +26,13 @@ public:
     void analyze_const_decls();
     bool is_const_evaluable_expr(const syntax::ExprId expr_id, ModuleLookupSet& dependencies);
 
-    struct ExportSurfacePrivateType {
+    struct ExportSurfaceRestrictedType {
         std::string name;
         base::SourceRange range{};
+        syntax::Visibility visibility = syntax::Visibility::private_;
     };
 
-    [[nodiscard]] std::optional<ExportSurfacePrivateType> private_type_exposed_by_surface_type(
+    [[nodiscard]] std::optional<ExportSurfaceRestrictedType> restricted_type_exposed_by_surface_type(
         TypeHandle root, syntax::Visibility surface_visibility) const;
 
 private:

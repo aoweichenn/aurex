@@ -160,6 +160,7 @@ module app.main;
 import common.status;
 import common.result as result;
 pub import common.metrics as metrics;
+pub(package) import common.package_metrics as package_metrics;
 priv import internal.detail as detail;
 ```
 
@@ -168,6 +169,8 @@ priv import internal.detail as detail;
 - `import path;` 默认 alias 是最后一个路径段。
 - `import path as name;` 显式指定 alias。
 - `pub import` 可 re-export 给其他模块。
+- `pub(package) import` 当前会保留 package visibility 标记；package-level re-export 图语义仍在 M3
+  后续阶段收口。
 - `priv import` 明确表示私有导入。
 - 当前不支持 glob import、selective import 或 package manifest。
 - 未限定名字不会自动搜索导入模块，跨模块成员需要写 `alias.name` 或可见完整模块路径。
@@ -176,10 +179,12 @@ priv import internal.detail as detail;
 
 ```aurex
 pub fn api() -> i32 { return 1; }
+pub(package) fn package_api() -> i32 { return 2; }
 priv fn helper() -> i32 { return 2; }
 
 pub struct PublicBox {
     pub value: i32;
+    pub(package) package_value: i32;
     priv secret: i32;
 }
 ```
@@ -191,6 +196,8 @@ pub struct PublicBox {
 - impl method 默认 private。
 - import 默认 private。
 - 跨模块 API、字段和方法必须显式 `pub`。
+- `pub(package)` 表示同一 package 内可见，跨 `-I` import path 派生的 package 不可见。
+- `pub(crate)`、`pub(in path)` 和其他 scoped visibility 当前不支持。
 - `export c fn` 是对外 ABI 符号，不能作为 private API。
 
 ## 5. 类型语法

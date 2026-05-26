@@ -37,6 +37,15 @@ inline constexpr std::string_view PARSER_EXPECT_IMPORT_ALIAS = "expected import 
 
 inline constexpr std::string_view PARSER_EXPECT_ITEM_DECLARATION = "expected item declaration";
 
+inline constexpr std::string_view PARSER_VISIBILITY_PACKAGE_SCOPE_TEXT = "package";
+
+inline constexpr std::string_view PARSER_EXPECT_VISIBILITY_SCOPE = "expected visibility scope 'package'";
+
+inline constexpr std::string_view PARSER_EXPECT_VISIBILITY_SCOPE_END = "expected ')' after visibility scope";
+
+inline constexpr std::string_view PARSER_UNSUPPORTED_VISIBILITY_SCOPE =
+    "unsupported visibility scope; only pub(package) is supported";
+
 inline constexpr std::string_view PARSER_EXPECT_CONST_KEYWORD = "expected 'const'";
 
 inline constexpr std::string_view PARSER_EXPECT_CONST_NAME = "expected const name";

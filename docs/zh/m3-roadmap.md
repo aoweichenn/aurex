@@ -170,6 +170,16 @@ dependency key 已消费同一套 package key；语义 subject 优先用 syntax 
 避免同一源码用不同 package identity 编译时被 coarse source reuse 误复用。该阶段仍不开放
 `pub(package)` 源码语法，也不引入 manifest、版本求解或 package manager。
 
+2026-05-26：Phase 6A-4 Package Visibility Syntax 已完成第四步用户语法接入。Parser 现在接受
+`pub(package)` 作为 contextual visibility scope，不新增 `package` 关键字；顶层 item、struct field、
+impl method 和 import 均能在 AST / dump 中保留 `Visibility::package_`。`pub(crate)`、
+`pub(in path)` 和任意其他 scoped visibility 仍明确拒绝，避免提前继承 Rust 语义。Sema 的 exported
+surface 检查从只检查 `pub` 扩展为检查 `pub(package)`，因此 package-visible function、field、
+enum case、type alias 和 const 不能泄漏 `priv` type；`pub` surface 也会用分层文案诊断
+package-visible type 泄漏。该阶段仍不引入 manifest / 版本求解 / package manager，也暂不新增
+`ModulePackageExports` query；`pub(package) import` 已能解析并进入 AST，package-level re-export
+图语义留给下一阶段独立收口。
+
 ## 验收
 
 M3.0 模块验收：

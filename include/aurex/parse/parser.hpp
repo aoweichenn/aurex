@@ -36,6 +36,7 @@ private:
     [[nodiscard]] const syntax::Token& previous() const noexcept;
     [[nodiscard]] bool check(syntax::TokenKind kind) const noexcept;
     [[nodiscard]] bool check_next(syntax::TokenKind kind) const noexcept;
+    [[nodiscard]] bool check_visibility_import_prefix() const noexcept;
     [[nodiscard]] const syntax::Token& peek_at(base::usize offset) const noexcept;
     [[nodiscard]] base::usize mark() const noexcept;
     void rewind(base::usize position) noexcept;

@@ -194,6 +194,11 @@ struct AbiSymbolInfo {
     return checked.syntax_type_handles[type.value];
 }
 
+[[nodiscard]] bool visibility_has_export_surface(const syntax::Visibility visibility) noexcept
+{
+    return syntax::visibility_at_least(visibility, syntax::Visibility::package_);
+}
+
 [[nodiscard]] bool is_top_level_type_item(const syntax::ItemKind kind) noexcept
 {
     return kind == syntax::ItemKind::struct_decl || kind == syntax::ItemKind::enum_decl
@@ -782,8 +787,8 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_function_prototypes() c
     }
 }
 
-std::optional<SemanticAnalyzerCore::DeclarationAnalyzer::ExportSurfacePrivateType>
-SemanticAnalyzerCore::DeclarationAnalyzer::private_type_exposed_by_surface_type(
+std::optional<SemanticAnalyzerCore::DeclarationAnalyzer::ExportSurfaceRestrictedType>
+SemanticAnalyzerCore::DeclarationAnalyzer::restricted_type_exposed_by_surface_type(
     const TypeHandle root, const syntax::Visibility surface_visibility) const
 {
     if (!is_valid(root)) {
@@ -834,9 +839,10 @@ SemanticAnalyzerCore::DeclarationAnalyzer::private_type_exposed_by_surface_type(
             case TypeKind::opaque_struct:
                 if (const StructInfo* const struct_info = this->core_.find_struct(current);
                     struct_info != nullptr && !policy.can_expose_type(surface_visibility, struct_info->visibility)) {
-                    return ExportSurfacePrivateType{
+                    return ExportSurfaceRestrictedType{
                         struct_display_name(this->core_.state_.checked.types, *struct_info),
                         {},
+                        struct_info->visibility,
                     };
                 }
                 for (const TypeHandle arg : info.generic_args) {
@@ -849,9 +855,10 @@ SemanticAnalyzerCore::DeclarationAnalyzer::private_type_exposed_by_surface_type(
                     && found->second.front() != nullptr) {
                     const EnumCaseInfo& enum_case = *found->second.front();
                     if (!policy.can_expose_type(surface_visibility, enum_case.visibility)) {
-                        return ExportSurfacePrivateType{
+                        return ExportSurfaceRestrictedType{
                             enum_display_name(this->core_.state_.checked.types, enum_case),
                             enum_case.range,
+                            enum_case.visibility,
                         };
                     }
                 }
@@ -872,105 +879,106 @@ bool SemanticAnalyzerCore::DeclarationAnalyzer::method_signature_is_exported_sur
     if (!signature.is_method) {
         return true;
     }
-    const std::optional<ExportSurfacePrivateType> private_receiver =
-        this->private_type_exposed_by_surface_type(signature.method_owner_type, signature.visibility);
-    return !private_receiver.has_value();
+    const std::optional<ExportSurfaceRestrictedType> restricted_receiver =
+        this->restricted_type_exposed_by_surface_type(signature.method_owner_type, signature.visibility);
+    return !restricted_receiver.has_value();
 }
 
 void SemanticAnalyzerCore::DeclarationAnalyzer::validate_exported_signature_surfaces() const
 {
-    const auto report_if_private = [&](const std::string_view surface, const std::string_view name,
-                                       const syntax::ModuleId exported_module, const TypeHandle type,
-                                       const base::SourceRange& range) {
-        static_cast<void>(exported_module);
-        const std::optional<ExportSurfacePrivateType> private_type =
-            this->private_type_exposed_by_surface_type(type, syntax::Visibility::public_);
-        if (!private_type.has_value()) {
+    const auto report_if_restricted = [&](const syntax::Visibility surface_visibility, const std::string_view surface,
+                                          const std::string_view name, const TypeHandle type,
+                                          const base::SourceRange& range) {
+        const std::optional<ExportSurfaceRestrictedType> restricted_type =
+            this->restricted_type_exposed_by_surface_type(type, surface_visibility);
+        if (!restricted_type.has_value()) {
             return;
         }
-        this->core_.report_visibility(
-            range, sema_public_api_exposes_private_type_message(surface, name, private_type->name));
-        if (!private_type->range.empty()) {
-            this->core_.report_note(private_type->range, SemanticDiagnosticKind::visibility,
-                sema_previous_declaration_note_message(private_type->name));
+        this->core_.report_visibility(range,
+            sema_export_surface_exposes_restricted_type_message(
+                surface_visibility, surface, name, restricted_type->visibility, restricted_type->name));
+        if (!restricted_type->range.empty()) {
+            this->core_.report_note(restricted_type->range, SemanticDiagnosticKind::visibility,
+                sema_previous_declaration_note_message(restricted_type->name));
         }
     };
 
     for (const auto& entry : this->core_.state_.checked.functions) {
         const FunctionSignature& signature = entry.second;
-        if (!syntax::visibility_is_public(signature.visibility) || signature.has_conflict
+        if (!visibility_has_export_surface(signature.visibility) || signature.has_conflict
             || !this->method_signature_is_exported_surface(signature)) {
             continue;
         }
         const std::string display_name = function_surface_name(this->core_.state_.checked.types, signature);
         const std::string_view surface =
             signature.is_method ? std::string_view{"method"} : std::string_view{"function"};
-        report_if_private(surface, display_name, signature.module, signature.return_type, signature.range);
+        report_if_restricted(signature.visibility, surface, display_name, signature.return_type, signature.range);
         for (const TypeHandle param_type : signature.param_types) {
-            report_if_private(surface, display_name, signature.module, param_type, signature.range);
+            report_if_restricted(signature.visibility, surface, display_name, param_type, signature.range);
         }
     }
 
     for (const auto& entry : this->core_.state_.generics.placeholder_functions) {
         const FunctionSignature& signature = entry.second;
-        if (!syntax::visibility_is_public(signature.visibility) || signature.has_conflict
+        if (!visibility_has_export_surface(signature.visibility) || signature.has_conflict
             || !this->method_signature_is_exported_surface(signature)) {
             continue;
         }
         const std::string display_name = function_surface_name(this->core_.state_.checked.types, signature);
         const std::string_view surface =
             signature.is_method ? std::string_view{"method"} : std::string_view{"function"};
-        report_if_private(surface, display_name, signature.module, signature.return_type, signature.range);
+        report_if_restricted(signature.visibility, surface, display_name, signature.return_type, signature.range);
         for (const TypeHandle param_type : signature.param_types) {
-            report_if_private(surface, display_name, signature.module, param_type, signature.range);
+            report_if_restricted(signature.visibility, surface, display_name, param_type, signature.range);
         }
     }
 
     for (const auto& entry : this->core_.state_.checked.structs) {
         const StructInfo& info = entry.second;
-        if (!syntax::visibility_is_public(info.visibility)) {
+        if (!visibility_has_export_surface(info.visibility)) {
             continue;
         }
         const std::string struct_name = struct_display_name(this->core_.state_.checked.types, info);
         for (const StructFieldInfo& field : info.fields) {
-            if (!syntax::visibility_is_public(field.visibility)) {
+            const syntax::Visibility field_surface = syntax::effective_visibility(info.visibility, field.visibility);
+            if (!visibility_has_export_surface(field_surface)) {
                 continue;
             }
             const std::string field_name = struct_name + "." + std::string(field.name);
-            report_if_private("struct field", field_name, info.module, field.type, field.range);
+            report_if_restricted(field_surface, "struct field", field_name, field.type, field.range);
         }
     }
 
     for (const auto& entry : this->core_.state_.checked.enum_cases) {
         const EnumCaseInfo& info = entry.second;
-        if (!syntax::visibility_is_public(info.visibility)) {
+        if (!visibility_has_export_surface(info.visibility)) {
             continue;
         }
         const std::string case_name = enum_case_display_name(this->core_.state_.checked.types, info);
         for (const TypeHandle payload_type : info.payload_types) {
-            report_if_private("enum case", case_name, info.module, payload_type, info.range);
+            report_if_restricted(info.visibility, "enum case", case_name, payload_type, info.range);
         }
         if (info.payload_types.empty()) {
-            report_if_private("enum case", case_name, info.module, info.payload_type, info.range);
+            report_if_restricted(info.visibility, "enum case", case_name, info.payload_type, info.range);
         }
     }
 
     for (const auto& entry : this->core_.state_.checked.type_aliases) {
         const TypeAliasInfo& info = entry.second;
-        if (!syntax::visibility_is_public(info.visibility)) {
+        if (!visibility_has_export_surface(info.visibility)) {
             continue;
         }
         const std::optional<TypeHandle> target = cached_checked_syntax_type(this->core_.state_.checked, info.target);
-        report_if_private("type alias", info.name, info.module,
+        report_if_restricted(info.visibility, "type alias", info.name,
             target.has_value() ? *target : this->core_.resolve_type_alias(info, false), info.range);
     }
 
     for (const auto& entry : this->core_.state_.functions.global_values) {
         const Symbol& symbol = entry.second;
-        if (symbol.kind != SymbolKind::const_ || !syntax::visibility_is_public(symbol.visibility)) {
+        if (symbol.kind != SymbolKind::const_ || !visibility_has_export_surface(symbol.visibility)) {
             continue;
         }
-        report_if_private("const", symbol.name, symbol.module, symbol.type, symbol.range);
+        report_if_restricted(symbol.visibility, "const", symbol.name, symbol.type, symbol.range);
     }
 }
 

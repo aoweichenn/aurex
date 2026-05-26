@@ -39,13 +39,9 @@ syntax::ModulePath ItemParser::parse_path() const
 syntax::ImportDecl ItemParser::parse_import_decl()
 {
     syntax::ImportDecl import;
-    if (this->match(TokenKind::kw_pub)) {
-        import.visibility = syntax::Visibility::public_;
-        import.explicit_visibility = true;
-    } else if (this->match(TokenKind::kw_priv)) {
-        import.visibility = syntax::Visibility::private_;
-        import.explicit_visibility = true;
-    }
+    const ParsedVisibility visibility = this->parse_visibility();
+    import.visibility = visibility.visibility;
+    import.explicit_visibility = visibility.explicit_visibility;
     this->expect(TokenKind::kw_import, std::string(PARSER_EXPECT_IMPORT_KEYWORD));
     import.path = this->parse_path();
     if (this->match(TokenKind::kw_as)) {
@@ -149,6 +145,22 @@ void ItemParser::recover_import_alias() const
 ParsedVisibility ItemParser::parse_visibility() const
 {
     if (this->match(syntax::TokenKind::kw_pub)) {
+        if (this->match(TokenKind::l_paren)) {
+            const syntax::Token& opening = this->previous();
+            const syntax::Token& scope = this->expect_recovered(TokenKind::identifier,
+                std::string(PARSER_EXPECT_VISIBILITY_SCOPE), RecoveryContext::grouped_expression);
+            syntax::Visibility visibility = syntax::Visibility::public_;
+            if (scope.kind == TokenKind::identifier) {
+                if (scope.text() == PARSER_VISIBILITY_PACKAGE_SCOPE_TEXT) {
+                    visibility = syntax::Visibility::package_;
+                } else {
+                    this->report_at(scope, std::string(PARSER_UNSUPPORTED_VISIBILITY_SCOPE));
+                }
+            }
+            this->expect_recovered_after(TokenKind::r_paren, std::string(PARSER_EXPECT_VISIBILITY_SCOPE_END),
+                RecoveryContext::grouped_expression, opening);
+            return ParsedVisibility{visibility, true};
+        }
         return ParsedVisibility{syntax::Visibility::public_, true};
     }
     if (this->match(syntax::TokenKind::kw_priv)) {

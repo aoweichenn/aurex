@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/integer.hpp>
+#include <aurex/syntax/ast/nodes.hpp>
 
 #include <string>
 #include <string_view>
@@ -37,6 +38,20 @@ inline constexpr std::string_view SEMA_GENERIC_RESOURCE_CAPABILITY_UNSUPPORTED =
 
 inline constexpr std::string_view SEMA_VARIADIC_EXTERN_C_ONLY =
     "variadic functions are only supported for extern c declarations";
+
+[[nodiscard]] inline constexpr std::string_view sema_visibility_surface_name(
+    const syntax::Visibility visibility) noexcept
+{
+    switch (visibility) {
+        case syntax::Visibility::private_:
+            return "private";
+        case syntax::Visibility::package_:
+            return "package-visible";
+        case syntax::Visibility::public_:
+            return "public";
+    }
+    return "private";
+}
 
 inline constexpr std::string_view SEMA_VARIADIC_FUNCTION_TYPE_EXTERN_C_ONLY =
     "variadic function types are only supported for extern c fn";
@@ -973,11 +988,13 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
     return "function is private: " + std::string(module) + "." + std::string(name);
 }
 
-[[nodiscard]] inline std::string sema_public_api_exposes_private_type_message(
-    const std::string_view surface, const std::string_view name, const std::string_view type)
+[[nodiscard]] inline std::string sema_export_surface_exposes_restricted_type_message(
+    const syntax::Visibility surface_visibility, const std::string_view surface, const std::string_view name,
+    const syntax::Visibility type_visibility, const std::string_view type)
 {
-    return "public " + std::string(surface) + " `" + std::string(name) + "` exposes private type `" + std::string(type)
-        + "`";
+    return std::string(sema_visibility_surface_name(surface_visibility)) + " " + std::string(surface) + " `"
+        + std::string(name) + "` exposes " + std::string(sema_visibility_surface_name(type_visibility)) + " type `"
+        + std::string(type) + "`";
 }
 
 [[nodiscard]] inline std::string sema_ambiguous_enum_case_message(

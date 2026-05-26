@@ -1,6 +1,6 @@
 # Aurex M3 模块系统设计稿
 
-状态：M3.0 当前设计基线，Phase 1-5 与 Phase 6A-1/2/3 已进入实现闭环
+状态：M3.0 当前设计基线，Phase 1-5 与 Phase 6A-1/2/3/4 已进入实现闭环
 日期：2026-05-26
 适用范围：同一 package 内的 logical module / source-file part 分离、module graph、exports query、跨 part `priv` 可见性
 
@@ -187,12 +187,12 @@ source root
 
 M3.0 对 `PackageKey` 的承诺必须保守：
 
-- 它用于同一次 compilation session 内的 query grouping、module identity 和 future-proof visibility 边界。
+- 它用于同一次 compilation session 内的 query grouping、module identity 和 `pub(package)` visibility 边界。
 - 它不承诺 manifest 级 package identity。
 - 同一份源码如果用不同 root file、import path 或 compiler config 编译，短期内可以得到不同 `PackageKey`。
-- `pub(package)` 在 manifest / package model 稳定前不进入第一阶段语义，避免把临时 `PackageKey` 当成最终包身份。
+- `pub(package)` 使用当前编译会话内 `PackageKey`，但这仍不是 manifest 级最终包身份。
 
-当前 Phase 6A-3 的实现状态：
+当前 Phase 6A-3 / 6A-4 的实现状态：
 
 - root package identity 可由 `CompilerInvocation::package_identity` / CLI `--package` 指定；空值继续映射到
   历史默认 package key。
@@ -203,6 +203,8 @@ M3.0 对 `PackageKey` 的承诺必须保守：
   module query subjects 已消费同一套 package key。
 - cache header 记录 root package identity；同一源码用不同 `--package` 编译时不会被旧 coarse source
   reuse 直接复用。
+- Parser 已接入 `pub(package)`，same-package access 和 package-visible surface 泄漏检查消费同一套
+  `PackageKey`。
 
 仍未承诺的部分：
 
@@ -684,13 +686,24 @@ Phase 6A-3 实现收口状态（2026-05-26）：
 - 已补正常测试覆盖 CLI 解析、stable-id package-aware adapter、ModuleLoader import-path package
   隔离、sema package access 和 package-aware incremental cache module key。
 
-Phase 6A-3 之后仍未完成的部分：
+Phase 6A-4 实现收口状态（2026-05-26）：
 
-- `pub(package)` parser 语法和诊断。
+- Parser 已接受 `pub(package)` contextual visibility scope，不把 `package` 提升为保留关键字。
+- 顶层 item、struct field、impl method 和 import 都能从源码产生 `Visibility::package_`，AST /
+  checked dump 使用既有 `visibility_name` 稳定输出 `pub(package)`。
+- `pub(crate)`、`pub(in path)` 和其他 scoped visibility 仍拒绝，避免把 Rust 的 crate/path visibility
+  语义过早复制进 Aurex。
+- Sema exported surface 检查已覆盖 `pub(package)`：package-visible surface 不能泄漏 `priv` type；
+  public surface 泄漏 package-visible type 时诊断文案会明确写出 `package-visible type`，不再笼统称为
+  private type。
+- 正常测试已覆盖 parser positive/negative、same-package 访问、cross-package import-path 隔离，以及
+  package-visible surface 泄漏诊断。
+
+Phase 6A-4 之后仍未完成的部分：
+
 - manifest / package model 产生最终 `PackageKey`。
 - `ModulePackageExports(ModuleKey)` 独立 query kind。
 - `pub(package) import` 的 package-level re-export 语义。
-- package-private surface 泄漏诊断文案从“private type”升级为分层 visibility 文案。
 
 ### 7.1 `priv` 跨 part
 
@@ -728,8 +741,8 @@ pub fn compile(pattern: str) -> Regex {
 }
 ```
 
-即使 `regex.api` 和 `regex.vm` 在同一个 package 内，M3.0 第一阶段也不能访问 `priv`。
-这个中间层由后续 `pub(package)` 解决。
+即使 `regex.api` 和 `regex.vm` 在同一个 package 内，也不能访问 `priv`；需要把 API 明确提升为
+`pub(package)` 才能被同包其他 module 使用。
 
 ### 7.3 Public API 泄漏 private type
 
@@ -1201,7 +1214,7 @@ semantics。Aurex 需要 explicit `part` 作为 language-level membership。
 
 候选：
 
-- `pub(package)` / `pub(crate)`。
+- `pub(crate)` alias 是否保留，以及 `pub(in path)` 是否进入语言。
 - `pub use` / selective re-export。
 - non-conventional part path，例如 `part parser from "parts/parser.ax";`。
 
@@ -1307,7 +1320,8 @@ ModuleGraph / ModuleExports query 化
 - `ModuleExports` fingerprint 必须基于 stable keys 和 exported signature surface，而不是 source text。
 - IDE degraded graph recovery 不能悄悄把 part 当作独立 module，也不能放宽 artifact-producing emit 的
   root identity 规则。
-- `pub(package)`、`pub use` 和 custom `part from` 必须后置，不能混入 M3.0 第一阶段。
+- `pub(package)` 已在 6A-4 作为独立阶段进入；`pub use`、custom `part from` 和更复杂 scoped
+  visibility 仍必须后置，不能混入 M3.0 第一阶段。
 
 进入实现前的结论：可以开始 Phase 1 Parser / AST，但每个阶段都必须带对应 negative tests；
 尤其是 part lookup、part root check discovery、part artifact root rejection、import-to-part、

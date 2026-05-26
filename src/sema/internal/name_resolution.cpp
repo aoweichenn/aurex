@@ -193,7 +193,7 @@ const SemanticAnalyzerCore::ModuleIdList& ModuleVisibilityResolver::visible_modu
         if (seen.insert(import.module.value).second) {
             result.push_back(import.module);
         }
-        this->append_public_reexports(import.module, result, seen);
+        this->append_reexports_for_access(import.module, module, result, seen);
     }
     const auto inserted = item_scoped
         ? this->core_.state_.modules.item_visible_modules_cache.emplace(
@@ -297,6 +297,28 @@ const SemanticAnalyzerCore::ModuleIdList& ModuleVisibilityResolver::module_expor
     return inserted.first->second;
 }
 
+SemanticAnalyzerCore::ModuleIdList ModuleVisibilityResolver::accessible_module_export_modules(
+    const syntax::ModuleId module) const
+{
+    SemanticAnalyzerCore::ModuleIdList result = this->make_module_id_list();
+    if (!syntax::is_valid(module)) {
+        return result;
+    }
+    if (module.value >= this->core_.ctx_.module.modules.size()) {
+        result.reserve(1);
+        result.push_back(module);
+        return result;
+    }
+    const base::usize import_count = this->core_.ctx_.module.modules[module.value].imports.size();
+    result.reserve(import_count + 1);
+    result.push_back(module);
+    std::unordered_set<base::u32> seen;
+    seen.reserve(import_count + 1);
+    seen.insert(module.value);
+    this->append_reexports_for_access(module, this->core_.state_.flow.current_module, result, seen);
+    return result;
+}
+
 void ModuleVisibilityResolver::append_public_reexports(const syntax::ModuleId module,
     SemanticAnalyzerCore::ModuleIdList& result, std::unordered_set<base::u32>& seen) const
 {
@@ -311,6 +333,49 @@ void ModuleVisibilityResolver::append_public_reexports(const syntax::ModuleId mo
         }
         for (const syntax::ResolvedImport& import : this->core_.ctx_.module.modules[current.value].imports) {
             if (!syntax::visibility_is_public(import.visibility) || !syntax::is_valid(import.module)) {
+                continue;
+            }
+            if (seen.insert(import.module.value).second) {
+                result.push_back(import.module);
+                pending.push_back(import.module);
+            }
+        }
+    }
+}
+
+bool ModuleVisibilityResolver::reexport_visible_to_module(const syntax::ModuleId exporter,
+    const syntax::Visibility visibility, const syntax::ModuleId access_module) const noexcept
+{
+    if (syntax::visibility_is_public(visibility)) {
+        return true;
+    }
+    if (syntax::visibility_is_module_private(visibility) || !syntax::is_valid(exporter)
+        || !syntax::is_valid(access_module) || exporter.value >= this->core_.ctx_.module.modules.size()
+        || access_module.value >= this->core_.ctx_.module.modules.size()) {
+        return false;
+    }
+
+    const VisibilityPolicy policy;
+    return policy.can_access(visibility, this->core_.declaration_context(exporter),
+        access_context_from_module_key(this->core_.query_module_key(access_module)));
+}
+
+void ModuleVisibilityResolver::append_reexports_for_access(const syntax::ModuleId module,
+    const syntax::ModuleId access_module, SemanticAnalyzerCore::ModuleIdList& result,
+    std::unordered_set<base::u32>& seen) const
+{
+    SemanticAnalyzerCore::ModuleIdList pending = this->make_module_id_list();
+    pending.reserve(result.size());
+    pending.push_back(module);
+    while (!pending.empty()) {
+        const syntax::ModuleId current = pending.back();
+        pending.pop_back();
+        if (!syntax::is_valid(current) || current.value >= this->core_.ctx_.module.modules.size()) {
+            continue;
+        }
+        for (const syntax::ResolvedImport& import : this->core_.ctx_.module.modules[current.value].imports) {
+            if (!syntax::is_valid(import.module)
+                || !this->reexport_visible_to_module(current, import.visibility, access_module)) {
                 continue;
             }
             if (seen.insert(import.module.value).second) {

@@ -18,6 +18,8 @@ void collect_source_file_query_subjects(
     std::span<const ModuleRecord> modules);
 [[nodiscard]] std::vector<ModuleExportsQuerySubject> collect_module_exports_query_subjects(
     std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const syntax::AstModule* ast);
+[[nodiscard]] std::vector<ModulePackageExportsQuerySubject> collect_module_package_exports_query_subjects(
+    std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const syntax::AstModule* ast);
 [[nodiscard]] std::vector<ItemListQuerySubject> collect_item_list_query_subjects(
     std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const syntax::AstModule* ast);
 

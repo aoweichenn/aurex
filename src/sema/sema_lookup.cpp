@@ -217,7 +217,7 @@ std::string_view SemanticAnalyzerCore::nearest_value_name_in_module(
     if (!syntax::is_valid(module)) {
         return best.name;
     }
-    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+    for (const syntax::ModuleId candidate_module : this->accessible_module_export_modules(module)) {
         for (const auto& entry : this->state_.names.global_values_by_name) {
             if (entry.first.module != candidate_module.value || entry.second == nullptr) {
                 continue;
@@ -274,7 +274,7 @@ std::string_view SemanticAnalyzerCore::nearest_type_name_in_module(
             consider_suggestion(best, name, this->ctx_.module.identifier_text(key.name));
         }
     };
-    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+    for (const syntax::ModuleId candidate_module : this->accessible_module_export_modules(module)) {
         for (const auto& entry : this->state_.names.named_types_by_name) {
             if (entry.first.module == candidate_module.value) {
                 consider_module_key(entry.first, entry.second.visibility);
@@ -331,7 +331,7 @@ std::string_view SemanticAnalyzerCore::nearest_function_name_in_module(
     if (!syntax::is_valid(module)) {
         return best.name;
     }
-    for (const syntax::ModuleId candidate_module : this->module_export_modules(module)) {
+    for (const syntax::ModuleId candidate_module : this->accessible_module_export_modules(module)) {
         for (const auto& entry : this->state_.names.functions_by_name) {
             if (entry.first.module != candidate_module.value || entry.second == nullptr) {
                 continue;

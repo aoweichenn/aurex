@@ -10,6 +10,7 @@ namespace aurex::driver::incremental_cache_detail {
     collection.module_graphs = collect_module_graph_query_subjects(modules);
     collection.item_lists = collect_item_list_query_subjects(modules, checked, ast);
     collection.module_exports = collect_module_exports_query_subjects(modules, checked, ast);
+    collection.module_package_exports = collect_module_package_exports_query_subjects(modules, checked, ast);
     collection.item_signatures = collect_item_signature_query_subjects(checked, modules);
     collect_function_body_query_subjects(
         checked, sources, ast, modules, collection.function_body_syntaxes, collection.type_check_bodies);

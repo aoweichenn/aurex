@@ -28,10 +28,10 @@ struct LowerGenericInstanceIRQueryRequest {
 };
 
 using QueryRequestInput = std::variant<FileContentProviderInput, LexFileProviderInput, ParseFileProviderInput,
-    ModuleGraphProviderInput, ItemListProviderInput, ModuleExportsProviderInput, ItemSignatureProviderInput,
-    GenericTemplateSignatureProviderInput, GenericInstanceSignatureQueryRequest, FunctionBodySyntaxProviderInput,
-    TypeCheckBodyProviderInput, GenericInstanceBodyQueryRequest, LowerFunctionIRProviderInput,
-    LowerGenericInstanceIRQueryRequest, DiagnosticsProviderInput>;
+    ModuleGraphProviderInput, ItemListProviderInput, ModuleExportsProviderInput, ModulePackageExportsProviderInput,
+    ItemSignatureProviderInput, GenericTemplateSignatureProviderInput, GenericInstanceSignatureQueryRequest,
+    FunctionBodySyntaxProviderInput, TypeCheckBodyProviderInput, GenericInstanceBodyQueryRequest,
+    LowerFunctionIRProviderInput, LowerGenericInstanceIRQueryRequest, DiagnosticsProviderInput>;
 
 struct QueryRequest {
     QueryRequestInput input;

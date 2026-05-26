@@ -1318,7 +1318,7 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
     }
     const GenericTemplateInfo* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.module_export_modules(module)) {
+    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
         const GenericTemplateInfo* candidate = nullptr;
         const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {
@@ -1385,7 +1385,7 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
     }
     const GenericTemplateInfo* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.module_export_modules(module)) {
+    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
         const GenericTemplateInfo* candidate = nullptr;
         const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {
@@ -1452,7 +1452,7 @@ SemanticAnalyzerCore::GenericAnalyzer::find_generic_type_alias_in_module(const s
     }
     const GenericTemplateInfo* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.module_export_modules(module)) {
+    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
         const GenericTemplateInfo* candidate = nullptr;
         const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {
@@ -1491,7 +1491,7 @@ SemanticAnalyzerCore::GenericAnalyzer::find_generic_type_alias_in_module(const s
 bool SemanticAnalyzerCore::GenericAnalyzer::generic_type_template_exists_in_module(
     const syntax::ModuleId module, const IdentId name_id, const std::string_view name) const
 {
-    for (const syntax::ModuleId candidate_module : this->core_.module_export_modules(module)) {
+    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
         if (const GenericTemplateInfo* const found =
                 this->core_.find_any_generic_type_template_in_module(candidate_module, name_id, name);
             found != nullptr && this->core_.can_access_module(candidate_module, found->visibility)) {
@@ -1547,7 +1547,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::report_generic_type_template_in_modu
         return;
     }
 
-    for (const syntax::ModuleId candidate_module : this->core_.module_export_modules(module)) {
+    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
         const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
         const bool has_struct_template =
             is_valid(lookup_key) && this->core_.state_.names.generic_struct_templates_by_name.contains(lookup_key);
@@ -1621,7 +1621,7 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
     }
     const GenericTemplateInfo* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.module_export_modules(module)) {
+    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
         const GenericTemplateInfo* candidate = nullptr;
         const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {

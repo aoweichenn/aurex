@@ -113,6 +113,13 @@ struct ModuleExportsQuerySubject {
     std::vector<query::ModuleKey> reexport_dependencies;
 };
 
+struct ModulePackageExportsQuerySubject {
+    query::ModuleKey key;
+    query::QueryResultFingerprint result;
+    std::vector<query::ModuleKey> public_surface_dependencies;
+    std::vector<query::ModuleKey> package_surface_dependencies;
+};
+
 struct ModuleGraphQuerySubject {
     query::ModuleKey key;
     query::QueryResultFingerprint result;
@@ -190,6 +197,7 @@ enum class QuerySubjectKind : base::u8 {
     parse_file,
     module_graph,
     module_exports,
+    module_package_exports,
     item_list,
     item_signature,
     function_body_syntax,
@@ -210,6 +218,7 @@ struct QuerySubject {
 struct QuerySubjectCollection {
     std::vector<ModuleGraphQuerySubject> module_graphs;
     std::vector<ModuleExportsQuerySubject> module_exports;
+    std::vector<ModulePackageExportsQuerySubject> module_package_exports;
     std::vector<ItemListQuerySubject> item_lists;
     std::vector<ItemSignatureQuerySubject> item_signatures;
     std::vector<FunctionBodySyntaxQuerySubject> function_body_syntaxes;

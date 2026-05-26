@@ -798,6 +798,7 @@ private:
     [[nodiscard]] syntax::ModuleId find_visible_module_path(const std::vector<std::string_view>& parts) const;
     [[nodiscard]] const ModuleIdList& visible_modules(syntax::ModuleId module) const;
     [[nodiscard]] const ModuleIdList& module_export_modules(syntax::ModuleId module) const;
+    [[nodiscard]] ModuleIdList accessible_module_export_modules(syntax::ModuleId module) const;
     void append_public_reexports(
         syntax::ModuleId module, ModuleIdList& result, std::unordered_set<base::u32>& seen) const;
     [[nodiscard]] std::string module_name(syntax::ModuleId module) const;

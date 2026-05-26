@@ -37,6 +37,11 @@ struct QueryRequestKeyVisitor {
         return module_exports_query_key(input.key);
     }
 
+    [[nodiscard]] std::optional<QueryKey> operator()(const ModulePackageExportsProviderInput& input) const noexcept
+    {
+        return module_package_exports_query_key(input.key);
+    }
+
     [[nodiscard]] std::optional<QueryKey> operator()(const ItemSignatureProviderInput& input) const noexcept
     {
         return item_signature_query_key(input.key);
@@ -114,6 +119,11 @@ struct QueryEvaluateVisitor {
     [[nodiscard]] QueryEvaluationResult operator()(const ModuleExportsProviderInput& input) const
     {
         return this->context.evaluate_module_exports(input);
+    }
+
+    [[nodiscard]] QueryEvaluationResult operator()(const ModulePackageExportsProviderInput& input) const
+    {
+        return this->context.evaluate_module_package_exports(input);
     }
 
     [[nodiscard]] QueryEvaluationResult operator()(const ItemSignatureProviderInput& input) const

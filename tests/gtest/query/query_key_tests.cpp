@@ -738,6 +738,7 @@ TEST(QueryUnit, StableKeyDecoderMatchesStableKeyLayoutToQueryKind)
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::parse_file, parse_file_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::module_graph, module_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::module_exports, module_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::module_package_exports, module_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::item_list, module_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::item_signature, def_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::generic_template_signature, def_bytes));
@@ -1081,6 +1082,20 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_EQ(exports_record->stable_key_bytes, query::stable_serialize(module));
     EXPECT_EQ(exports_record->result, exports_result);
 
+    const query::ModulePackageExportsQueryInput package_exports_input{
+        module,
+        exports_result,
+    };
+    EXPECT_TRUE(query::is_valid(package_exports_input));
+    const std::optional<query::QueryRecord> package_exports_record =
+        query::module_package_exports_query_record(package_exports_input);
+    ASSERT_TRUE(package_exports_record.has_value());
+    EXPECT_TRUE(query::is_valid(*package_exports_record));
+    EXPECT_EQ(package_exports_record->key.kind, query::QueryKind::module_package_exports);
+    EXPECT_EQ(package_exports_record->key.payload, query::stable_key_fingerprint(module));
+    EXPECT_EQ(package_exports_record->stable_key_bytes, query::stable_serialize(module));
+    EXPECT_EQ(package_exports_record->result, exports_result);
+
     const query::QueryResultFingerprint item_list_result =
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_ITEM_LIST));
     const query::ItemListQueryInput item_list_input{
@@ -1292,6 +1307,15 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
             .has_value());
     EXPECT_FALSE(query::module_exports_query_record(query::ModuleKey{}, result).has_value());
     EXPECT_FALSE(query::module_exports_query_record(module, query::QueryResultFingerprint{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::ModulePackageExportsQueryInput{}));
+    EXPECT_FALSE(
+        query::module_package_exports_query_record(query::ModulePackageExportsQueryInput{query::ModuleKey{}, result})
+            .has_value());
+    EXPECT_FALSE(query::module_package_exports_query_record(
+        query::ModulePackageExportsQueryInput{module, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::module_package_exports_query_record(query::ModuleKey{}, result).has_value());
+    EXPECT_FALSE(query::module_package_exports_query_record(module, query::QueryResultFingerprint{}).has_value());
     EXPECT_FALSE(query::is_valid(query::ItemListQueryInput{}));
     EXPECT_FALSE(
         query::item_list_query_record(query::ItemListQueryInput{query::ModuleKey{}, item_list_result}).has_value());
@@ -1690,6 +1714,18 @@ TEST(QueryUnit, QueryGraphDependencyKindRulesCoverEveryQueryKind)
             make_other_key(query::QueryKind::module_exports),
         },
         query::QueryDependencyEdge{
+            make_key(query::QueryKind::module_package_exports),
+            make_key(query::QueryKind::item_list),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::module_package_exports),
+            make_key(query::QueryKind::module_exports),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::module_package_exports),
+            make_other_key(query::QueryKind::module_package_exports),
+        },
+        query::QueryDependencyEdge{
             make_key(query::QueryKind::item_signature),
             make_key(query::QueryKind::module_exports),
         },
@@ -1737,6 +1773,10 @@ TEST(QueryUnit, QueryGraphDependencyKindRulesCoverEveryQueryKind)
         query::QueryDependencyEdge{make_key(query::QueryKind::item_list), make_key(query::QueryKind::module_exports)},
         query::QueryDependencyEdge{
             make_key(query::QueryKind::module_exports),
+            make_key(query::QueryKind::module_graph),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::module_package_exports),
             make_key(query::QueryKind::module_graph),
         },
         query::QueryDependencyEdge{make_key(query::QueryKind::item_signature), make_key(query::QueryKind::item_list)},
@@ -2018,6 +2058,78 @@ TEST(QueryUnit, ModuleExportsProviderAddsReexportModuleDependencies)
     invalid_dependency_input.reexport_dependencies.push_back(query::ModuleKey{});
     EXPECT_FALSE(query::is_valid(invalid_dependency_input));
     EXPECT_FALSE(query::provide_module_exports_query(invalid_dependency_input).has_value());
+}
+
+TEST(QueryUnit, ModulePackageExportsProviderAddsPublicAndPackageDependencies)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::ModuleKey public_reexported_module = test_reexported_module(package);
+    const std::array<std::string_view, 2> package_reexported_parts{"pkg", "internal"};
+    const query::ModuleKey package_reexported_module = query::module_key(package, package_reexported_parts);
+    const query::QueryResultFingerprint exports =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_MODULE_EXPORTS_SIGNATURE));
+    const query::ModulePackageExportsProviderInput input{
+        module,
+        exports,
+        {
+            public_reexported_module,
+            public_reexported_module,
+            module,
+        },
+        {
+            package_reexported_module,
+            package_reexported_module,
+            module,
+        },
+    };
+
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::ModulePackageExportsProviderOutput> output =
+        query::provide_module_package_exports_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    const std::optional<query::QueryKey> item_list_key = query::item_list_query_key(module);
+    const std::optional<query::QueryKey> public_exports_key = query::module_exports_query_key(public_reexported_module);
+    const std::optional<query::QueryKey> package_exports_key =
+        query::module_package_exports_query_key(package_reexported_module);
+    ASSERT_TRUE(item_list_key.has_value());
+    ASSERT_TRUE(public_exports_key.has_value());
+    ASSERT_TRUE(package_exports_key.has_value());
+    std::vector<query::QueryKey> expected_dependencies{
+        *item_list_key,
+        *public_exports_key,
+        *package_exports_key,
+    };
+    sort_query_test_keys(expected_dependencies);
+    EXPECT_EQ(output->dependencies, expected_dependencies);
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::module_package_exports);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(module));
+    EXPECT_EQ(output->result, exports);
+
+    EXPECT_FALSE(query::module_package_exports_query_key(query::ModuleKey{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::ModulePackageExportsProviderInput{}));
+    EXPECT_FALSE(query::provide_module_package_exports_query(
+        query::ModulePackageExportsProviderInput{query::ModuleKey{}, exports})
+            .has_value());
+    EXPECT_FALSE(query::provide_module_package_exports_query(
+        query::ModulePackageExportsProviderInput{module, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::ModulePackageExportsProviderOutput{}));
+
+    query::ModulePackageExportsProviderInput invalid_public_dependency = input;
+    invalid_public_dependency.public_surface_dependencies.push_back(query::ModuleKey{});
+    EXPECT_FALSE(query::is_valid(invalid_public_dependency));
+    EXPECT_FALSE(query::provide_module_package_exports_query(invalid_public_dependency).has_value());
+
+    query::ModulePackageExportsProviderInput invalid_package_dependency = input;
+    invalid_package_dependency.package_surface_dependencies.push_back(query::ModuleKey{});
+    EXPECT_FALSE(query::is_valid(invalid_package_dependency));
+    EXPECT_FALSE(query::provide_module_package_exports_query(invalid_package_dependency).has_value());
+
+    query::ModulePackageExportsProviderOutput invalid_dependency_output = *output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
 }
 
 TEST(QueryUnit, ModuleGraphAndItemListProvidersBuildRecordsAndDependencies)

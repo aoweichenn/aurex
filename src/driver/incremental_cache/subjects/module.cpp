@@ -3,6 +3,9 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "detail.hpp"
@@ -139,6 +142,35 @@ constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
     return dependencies;
 }
 
+struct ModulePackageReexportDependencies {
+    std::vector<query::ModuleKey> public_surface;
+    std::vector<query::ModuleKey> package_surface;
+};
+
+[[nodiscard]] std::string module_key_identity(const query::ModuleKey key)
+{
+    return query::is_valid(key) ? query::stable_serialize(key) : std::string{};
+}
+
+[[nodiscard]] std::unordered_map<std::string, base::usize> module_key_index(const std::span<const ModuleRecord> modules)
+{
+    std::unordered_map<std::string, base::usize> index;
+    index.reserve(modules.size());
+    for (base::usize module_index = 0; module_index < modules.size(); ++module_index) {
+        const query::ModuleKey key = module_key_from_record(modules[module_index]);
+        if (query::is_valid(key)) {
+            index.emplace(module_key_identity(key), module_index);
+        }
+    }
+    return index;
+}
+
+void sort_unique_module_keys(std::vector<query::ModuleKey>& modules)
+{
+    std::sort(modules.begin(), modules.end(), module_key_less);
+    modules.erase(std::unique(modules.begin(), modules.end()), modules.end());
+}
+
 [[nodiscard]] query::QueryResultFingerprint module_graph_result_fingerprint(
     const query::ModuleKey key, const ModuleRecord& module)
 {
@@ -226,25 +258,25 @@ void push_item_list_signature_entry(std::vector<ItemListSignatureEntry>& entries
     return query::is_valid(stable_id) && stable_id.module == module;
 }
 
-[[nodiscard]] bool function_signature_is_exported_surface(
+[[nodiscard]] syntax::Visibility function_signature_surface_visibility(
     const sema::CheckedModule& checked, const sema::FunctionSignature& signature)
 {
     if (!signature.is_method) {
-        return true;
+        return signature.visibility;
     }
     for (const auto& entry : checked.structs) {
         const sema::StructInfo& info = entry.second;
         if (info.type.value == signature.method_owner_type.value) {
-            return syntax::visibility_is_public(info.visibility);
+            return syntax::effective_visibility(info.visibility, signature.visibility);
         }
     }
     for (const auto& entry : checked.enum_cases) {
         const sema::EnumCaseInfo& info = entry.second;
         if (info.type.value == signature.method_owner_type.value) {
-            return syntax::visibility_is_public(info.visibility);
+            return syntax::effective_visibility(info.visibility, signature.visibility);
         }
     }
-    return true;
+    return signature.visibility;
 }
 
 [[nodiscard]] std::string function_export_name(
@@ -321,7 +353,8 @@ void collect_const_item_list_entries(std::vector<ItemListSignatureEntry>& entrie
 }
 
 void collect_const_module_export_entries(std::vector<ModuleExportsSignatureEntry>& entries,
-    const sema::CheckedModule& checked, const syntax::AstModule* const ast, const sema::StableModuleId& module)
+    const sema::CheckedModule& checked, const syntax::AstModule* const ast, const sema::StableModuleId& module,
+    const syntax::Visibility minimum_visibility)
 {
     if (ast == nullptr) {
         return;
@@ -332,7 +365,8 @@ void collect_const_module_export_entries(std::vector<ModuleExportsSignatureEntry
         }
         const syntax::ItemNode item = ast->items[index];
         const sema::StableDefId stable_id = stable_const_id(*ast, item, ast->item_modules[index]);
-        if (!syntax::visibility_is_public(item.visibility) || !stable_id_belongs_to_module(stable_id, module)) {
+        if (!syntax::visibility_at_least(item.visibility, minimum_visibility)
+            || !stable_id_belongs_to_module(stable_id, module)) {
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_CONST, item.name, item.visibility,
@@ -340,10 +374,11 @@ void collect_const_module_export_entries(std::vector<ModuleExportsSignatureEntry
     }
 }
 
-void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& entries, const ModuleRecord& module)
+void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& entries, const ModuleRecord& module,
+    const syntax::Visibility minimum_visibility)
 {
     for (const ModuleImportRecord& import : module.imports) {
-        if (!import.owner_is_primary || !syntax::visibility_is_public(import.visibility)) {
+        if (!import.owner_is_primary || !syntax::visibility_at_least(import.visibility, minimum_visibility)) {
             continue;
         }
         const query::ModuleKey reexported = module_key_from_import(import);
@@ -351,13 +386,13 @@ void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& 
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_REEXPORT, import.alias,
-            syntax::Visibility::public_, query::stable_serialize(reexported), import.module_name);
+            import.visibility, query::stable_serialize(reexported), import.module_name);
     }
 }
 
 [[nodiscard]] std::vector<ModuleExportsSignatureEntry> collect_module_exports_signature_entries(
     const ModuleRecord& module_record, const sema::CheckedModule& checked, const syntax::AstModule* const ast,
-    const sema::StableModuleId& module)
+    const sema::StableModuleId& module, const syntax::Visibility minimum_visibility)
 {
     std::vector<ModuleExportsSignatureEntry> entries;
     entries.reserve(checked.functions.size() + checked.structs.size() + checked.enum_cases.size()
@@ -365,36 +400,39 @@ void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& 
 
     for (const auto& entry : checked.functions) {
         const sema::FunctionSignature& signature = entry.second;
-        if (!syntax::visibility_is_public(signature.visibility) || signature.has_conflict
+        const syntax::Visibility surface_visibility = function_signature_surface_visibility(checked, signature);
+        if (!syntax::visibility_at_least(surface_visibility, minimum_visibility) || signature.has_conflict
             || !stable_id_belongs_to_module(signature.stable_id, module)
-            || !function_signature_is_exported_surface(checked, signature)) {
+            || !syntax::visibility_at_least(signature.visibility, minimum_visibility)) {
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_FUNCTION,
-            function_export_name(checked, signature), signature.visibility, stable_identity_string(signature.stable_id),
+            function_export_name(checked, signature), surface_visibility, stable_identity_string(signature.stable_id),
             function_export_signature(checked, signature));
     }
     for (const auto& entry : checked.structs) {
         const sema::StructInfo& info = entry.second;
-        if (!syntax::visibility_is_public(info.visibility) || !stable_id_belongs_to_module(info.stable_id, module)) {
+        if (!syntax::visibility_at_least(info.visibility, minimum_visibility)
+            || !stable_id_belongs_to_module(info.stable_id, module)) {
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_STRUCT, info.name.view(),
             info.visibility, stable_identity_string(info.stable_id), info.is_opaque ? "opaque" : "struct");
         const std::string struct_name = sema::struct_display_name(checked.types, info);
         for (const sema::StructFieldInfo& field : info.fields) {
-            if (!syntax::visibility_is_public(field.visibility)) {
+            const syntax::Visibility field_surface = syntax::effective_visibility(info.visibility, field.visibility);
+            if (!syntax::visibility_at_least(field_surface, minimum_visibility)) {
                 continue;
             }
             push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_STRUCT_FIELD,
-                struct_name + "." + std::string(field.name.view()),
-                syntax::effective_visibility(info.visibility, field.visibility),
+                struct_name + "." + std::string(field.name.view()), field_surface,
                 stable_identity_string(field.stable_key), type_display_name(checked, field.type));
         }
     }
     for (const auto& entry : checked.enum_cases) {
         const sema::EnumCaseInfo& info = entry.second;
-        if (!syntax::visibility_is_public(info.visibility) || !stable_id_belongs_to_module(info.stable_id, module)) {
+        if (!syntax::visibility_at_least(info.visibility, minimum_visibility)
+            || !stable_id_belongs_to_module(info.stable_id, module)) {
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_ENUM_CASE,
@@ -403,7 +441,8 @@ void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& 
     }
     for (const auto& entry : checked.type_aliases) {
         const sema::TypeAliasInfo& info = entry.second;
-        if (!syntax::visibility_is_public(info.visibility) || !stable_id_belongs_to_module(info.stable_id, module)) {
+        if (!syntax::visibility_at_least(info.visibility, minimum_visibility)
+            || !stable_id_belongs_to_module(info.stable_id, module)) {
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_TYPE_ALIAS, info.name.view(),
@@ -411,15 +450,15 @@ void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& 
             checked_syntax_type_display_name(checked, info.target));
     }
     for (const sema::GenericTemplateSignatureInfo& info : checked.generic_template_signatures) {
-        if (!syntax::visibility_is_public(info.visibility) || !stable_id_belongs_to_module(info.stable_id, module)
-            || !query::is_valid(info.incremental_key)) {
+        if (!syntax::visibility_at_least(info.visibility, minimum_visibility)
+            || !stable_id_belongs_to_module(info.stable_id, module) || !query::is_valid(info.incremental_key)) {
             continue;
         }
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_GENERIC_TEMPLATE, info.name.view(),
             info.visibility, stable_identity_string(info.stable_id), query::stable_serialize(info.incremental_key));
     }
-    collect_const_module_export_entries(entries, checked, ast, module);
-    collect_primary_reexport_entries(entries, module_record);
+    collect_const_module_export_entries(entries, checked, ast, module, minimum_visibility);
+    collect_primary_reexport_entries(entries, module_record, minimum_visibility);
 
     std::sort(entries.begin(), entries.end(), module_exports_signature_entry_less);
     return entries;
@@ -477,11 +516,12 @@ void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& 
     return entries;
 }
 
-[[nodiscard]] query::QueryResultFingerprint module_exports_result_fingerprint(
-    const query::ModuleKey key, const std::vector<ModuleExportsSignatureEntry>& entries)
+[[nodiscard]] query::QueryResultFingerprint module_exports_result_fingerprint(const query::ModuleKey key,
+    const std::vector<ModuleExportsSignatureEntry>& entries,
+    const std::string_view marker = INCREMENTAL_CACHE_MODULE_EXPORTS_RESULT_MARKER)
 {
     query::StableHashBuilder builder;
-    builder.mix_string(INCREMENTAL_CACHE_MODULE_EXPORTS_RESULT_MARKER);
+    builder.mix_string(marker);
     builder.mix_fingerprint(query::stable_key_fingerprint(key));
     builder.mix_u64(static_cast<base::u64>(entries.size()));
     for (base::usize index = 0; index < entries.size(); ++index) {
@@ -536,11 +576,134 @@ void push_module_exports_query_subject(std::vector<ModuleExportsQuerySubject>& s
     }
 
     const std::vector<ModuleExportsSignatureEntry> entries =
-        collect_module_exports_signature_entries(module, checked, ast, stable_module);
+        collect_module_exports_signature_entries(module, checked, ast, stable_module, syntax::Visibility::public_);
     subjects.push_back(ModuleExportsQuerySubject{
         key,
         module_exports_result_fingerprint(key, entries),
         primary_public_reexport_dependencies(module),
+    });
+}
+
+[[nodiscard]] bool module_has_direct_package_export_entries(
+    const ModuleRecord& module, const sema::CheckedModule& checked, const syntax::AstModule* const ast)
+{
+    const sema::StableModuleId stable_module = stable_module_id_from_record(module);
+    if (!query::is_valid(stable_module)) {
+        return false;
+    }
+    const std::vector<ModuleExportsSignatureEntry> entries =
+        collect_module_exports_signature_entries(module, checked, ast, stable_module, syntax::Visibility::package_);
+    return std::any_of(entries.begin(), entries.end(), [](const ModuleExportsSignatureEntry& entry) {
+        return entry.visibility_rank == syntax::VISIBILITY_RANK_PACKAGE;
+    });
+}
+
+[[nodiscard]] bool import_can_propagate_package_exports(const ModuleImportRecord& import) noexcept
+{
+    return import.owner_is_primary && syntax::visibility_at_least(import.visibility, syntax::Visibility::package_);
+}
+
+struct ModulePackageExportPlan {
+    std::vector<bool> enabled;
+    std::unordered_set<std::string> enabled_keys;
+};
+
+[[nodiscard]] ModulePackageExportPlan module_package_export_plan(
+    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const syntax::AstModule* const ast)
+{
+    const std::unordered_map<std::string, base::usize> index_by_key = module_key_index(modules);
+    std::vector<bool> enabled(modules.size(), false);
+    for (base::usize index = 0; index < modules.size(); ++index) {
+        enabled[index] = module_has_direct_package_export_entries(modules[index], checked, ast);
+    }
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (base::usize index = 0; index < modules.size(); ++index) {
+            if (enabled[index]) {
+                continue;
+            }
+            const query::ModuleKey module_key = module_key_from_record(modules[index]);
+            for (const ModuleImportRecord& import : modules[index].imports) {
+                if (!import_can_propagate_package_exports(import)) {
+                    continue;
+                }
+                const query::ModuleKey target = module_key_from_import(import);
+                const auto target_index = index_by_key.find(module_key_identity(target));
+                if (target_index == index_by_key.end() || target.package != module_key.package
+                    || !enabled[target_index->second]) {
+                    continue;
+                }
+                enabled[index] = true;
+                changed = true;
+                break;
+            }
+        }
+    }
+
+    std::unordered_set<std::string> enabled_keys;
+    enabled_keys.reserve(modules.size());
+    for (base::usize index = 0; index < modules.size(); ++index) {
+        if (!enabled[index]) {
+            continue;
+        }
+        const query::ModuleKey key = module_key_from_record(modules[index]);
+        if (query::is_valid(key)) {
+            enabled_keys.insert(module_key_identity(key));
+        }
+    }
+    return ModulePackageExportPlan{
+        std::move(enabled),
+        std::move(enabled_keys),
+    };
+}
+
+[[nodiscard]] ModulePackageReexportDependencies primary_package_reexport_dependencies(
+    const ModuleRecord& module, const std::unordered_set<std::string>& package_export_keys)
+{
+    ModulePackageReexportDependencies dependencies;
+    dependencies.public_surface.reserve(module.imports.size());
+    dependencies.package_surface.reserve(module.imports.size());
+
+    const query::ModuleKey module_key = module_key_from_record(module);
+    for (const ModuleImportRecord& import : module.imports) {
+        if (!import_can_propagate_package_exports(import)) {
+            continue;
+        }
+        const query::ModuleKey target = module_key_from_import(import);
+        if (!query::is_valid(target)) {
+            continue;
+        }
+        if (target.package == module_key.package && package_export_keys.contains(module_key_identity(target))) {
+            dependencies.package_surface.push_back(target);
+            continue;
+        }
+        dependencies.public_surface.push_back(target);
+    }
+    sort_unique_module_keys(dependencies.public_surface);
+    sort_unique_module_keys(dependencies.package_surface);
+    return dependencies;
+}
+
+void push_module_package_exports_query_subject(std::vector<ModulePackageExportsQuerySubject>& subjects,
+    const ModuleRecord& module, const sema::CheckedModule& checked, const syntax::AstModule* const ast,
+    const std::unordered_set<std::string>& package_export_keys)
+{
+    const sema::StableModuleId stable_module = stable_module_id_from_record(module);
+    const query::ModuleKey key = module_key_from_record(module);
+    if (!query::is_valid(stable_module) || !query::is_valid(key)) {
+        return;
+    }
+
+    const std::vector<ModuleExportsSignatureEntry> entries =
+        collect_module_exports_signature_entries(module, checked, ast, stable_module, syntax::Visibility::package_);
+    ModulePackageReexportDependencies dependencies = primary_package_reexport_dependencies(module, package_export_keys);
+    subjects.push_back(ModulePackageExportsQuerySubject{
+        key,
+        module_exports_result_fingerprint(key, entries, INCREMENTAL_CACHE_MODULE_PACKAGE_EXPORTS_RESULT_MARKER),
+        std::move(dependencies.public_surface),
+        std::move(dependencies.package_surface),
     });
 }
 
@@ -581,6 +744,21 @@ void push_item_list_query_subject(std::vector<ItemListQuerySubject>& subjects, c
     subjects.reserve(modules.size());
     for (const ModuleRecord& module : modules) {
         push_module_exports_query_subject(subjects, module, checked, ast);
+    }
+    return subjects;
+}
+
+[[nodiscard]] std::vector<ModulePackageExportsQuerySubject> collect_module_package_exports_query_subjects(
+    const std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const syntax::AstModule* const ast)
+{
+    const ModulePackageExportPlan plan = module_package_export_plan(modules, checked, ast);
+    std::vector<ModulePackageExportsQuerySubject> subjects;
+    subjects.reserve(plan.enabled_keys.size());
+    for (base::usize index = 0; index < modules.size(); ++index) {
+        if (!plan.enabled[index]) {
+            continue;
+        }
+        push_module_package_exports_query_subject(subjects, modules[index], checked, ast, plan.enabled_keys);
     }
     return subjects;
 }

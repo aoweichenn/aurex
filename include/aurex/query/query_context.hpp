@@ -27,6 +27,7 @@ public:
     void set_parse_file_provider(ParseFileProvider provider);
     void set_module_graph_provider(ModuleGraphProvider provider);
     void set_module_exports_provider(ModuleExportsProvider provider);
+    void set_module_package_exports_provider(ModulePackageExportsProvider provider);
     void set_item_list_provider(ItemListProvider provider);
     void set_item_signature_provider(ItemSignatureProvider provider);
     void set_generic_template_signature_provider(GenericTemplateSignatureProvider provider);
@@ -42,6 +43,7 @@ public:
     [[nodiscard]] QueryEvaluationResult evaluate_parse_file(const ParseFileProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_module_graph(const ModuleGraphProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_module_exports(const ModuleExportsProviderInput& input);
+    [[nodiscard]] QueryEvaluationResult evaluate_module_package_exports(const ModulePackageExportsProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_item_list(const ItemListProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_item_signature(const ItemSignatureProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_generic_template_signature(

@@ -21,6 +21,9 @@ bool query_dependency_edge_kind_is_expected(const QueryDependencyEdge edge) noex
             return edge.dependency.kind == QueryKind::module_graph;
         case QueryKind::module_exports:
             return edge.dependency.kind == QueryKind::item_list || edge.dependency.kind == QueryKind::module_exports;
+        case QueryKind::module_package_exports:
+            return edge.dependency.kind == QueryKind::item_list || edge.dependency.kind == QueryKind::module_exports
+                || edge.dependency.kind == QueryKind::module_package_exports;
         case QueryKind::item_signature:
             return edge.dependency.kind == QueryKind::module_exports;
         case QueryKind::generic_template_signature:

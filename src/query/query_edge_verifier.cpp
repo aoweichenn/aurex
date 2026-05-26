@@ -67,6 +67,16 @@ namespace {
                     && stable_key_has_module_key_layout(dependency_key);
             }
             return false;
+        case QueryKind::module_package_exports:
+            if (dependency.key.kind == QueryKind::item_list) {
+                return stable_module_keys_match(dependent_key, dependency_key);
+            }
+            if (dependency.key.kind == QueryKind::module_exports
+                || dependency.key.kind == QueryKind::module_package_exports) {
+                return stable_key_has_module_key_layout(dependent_key)
+                    && stable_key_has_module_key_layout(dependency_key);
+            }
+            return false;
         case QueryKind::generic_instance_body:
             return stable_generic_instance_keys_match(dependent_key, dependency_key);
         case QueryKind::item_signature:

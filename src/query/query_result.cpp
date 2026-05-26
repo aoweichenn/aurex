@@ -59,6 +59,11 @@ bool is_valid(const ModuleExportsQueryInput& input) noexcept
     return is_valid(input.key) && is_valid(input.result);
 }
 
+bool is_valid(const ModulePackageExportsQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
 bool is_valid(const ItemListQueryInput& input) noexcept
 {
     return is_valid(input.key) && is_valid(input.result);
@@ -240,6 +245,23 @@ std::optional<QueryRecord> module_exports_query_record(const ModuleExportsQueryI
 std::optional<QueryRecord> module_exports_query_record(const ModuleKey key, const QueryResultFingerprint result)
 {
     return module_exports_query_record(ModuleExportsQueryInput{
+        key,
+        result,
+    });
+}
+
+std::optional<QueryRecord> module_package_exports_query_record(const ModulePackageExportsQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(QueryKind::module_package_exports, stable_key_fingerprint(input.key),
+        stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> module_package_exports_query_record(const ModuleKey key, const QueryResultFingerprint result)
+{
+    return module_package_exports_query_record(ModulePackageExportsQueryInput{
         key,
         result,
     });

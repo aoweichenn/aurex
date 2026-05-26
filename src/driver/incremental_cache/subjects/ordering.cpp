@@ -66,6 +66,18 @@ void evaluate_module_exports_query_subject(query::QueryContext& context, const M
     static_cast<void>(context.evaluate_module_exports(input));
 }
 
+void evaluate_module_package_exports_query_subject(
+    query::QueryContext& context, const ModulePackageExportsQuerySubject& subject)
+{
+    const query::ModulePackageExportsProviderInput input{
+        subject.key,
+        subject.result,
+        subject.public_surface_dependencies,
+        subject.package_surface_dependencies,
+    };
+    static_cast<void>(context.evaluate_module_package_exports(input));
+}
+
 void evaluate_item_list_query_subject(query::QueryContext& context, const ItemListQuerySubject& subject)
 {
     const query::ItemListProviderInput input{
@@ -189,6 +201,12 @@ void evaluate_diagnostics_query_subject(query::QueryContext& context, const Diag
     return query::module_exports_query_record(subject.key, subject.result);
 }
 
+[[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(
+    const ModulePackageExportsQuerySubject& subject)
+{
+    return query::module_package_exports_query_record(subject.key, subject.result);
+}
+
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const ItemListQuerySubject& subject)
 {
     return query::item_list_query_record(subject.key, subject.result);
@@ -292,14 +310,14 @@ void build_ordered_query_subjects(QuerySubjectCollection& collection)
 {
     collection.subjects.reserve(collection.file_contents.size() + collection.lex_files.size()
         + collection.parse_files.size() + collection.module_graphs.size() + collection.module_exports.size()
-        + collection.item_lists.size() + collection.item_signatures.size() + collection.function_body_syntaxes.size()
-        + collection.type_check_bodies.size() + collection.generic_template_signatures.size()
-        + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size()
-        + collection.lower_function_irs.size());
+        + collection.module_package_exports.size() + collection.item_lists.size() + collection.item_signatures.size()
+        + collection.function_body_syntaxes.size() + collection.type_check_bodies.size()
+        + collection.generic_template_signatures.size() + collection.generic_instance_signatures.size()
+        + collection.generic_instance_bodies.size() + collection.lower_function_irs.size());
     std::unordered_set<query::QueryKey, query::QueryKeyHash> keys;
     keys.reserve(collection.file_contents.size() + collection.lex_files.size() + collection.parse_files.size()
-        + collection.module_graphs.size() + collection.module_exports.size() + collection.item_lists.size()
-        + collection.item_signatures.size() + collection.function_body_syntaxes.size()
+        + collection.module_graphs.size() + collection.module_exports.size() + collection.module_package_exports.size()
+        + collection.item_lists.size() + collection.item_signatures.size() + collection.function_body_syntaxes.size()
         + collection.type_check_bodies.size() + collection.generic_template_signatures.size()
         + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size()
         + collection.lower_function_irs.size());
@@ -323,6 +341,10 @@ void build_ordered_query_subjects(QuerySubjectCollection& collection)
     for (base::usize index = 0; index < collection.module_exports.size(); ++index) {
         push_query_subject(collection.subjects, keys, QuerySubjectKind::module_exports, index,
             query_record_for_subject(collection.module_exports[index]));
+    }
+    for (base::usize index = 0; index < collection.module_package_exports.size(); ++index) {
+        push_query_subject(collection.subjects, keys, QuerySubjectKind::module_package_exports, index,
+            query_record_for_subject(collection.module_package_exports[index]));
     }
     for (base::usize index = 0; index < collection.item_lists.size(); ++index) {
         push_query_subject(collection.subjects, keys, QuerySubjectKind::item_list, index,
@@ -391,6 +413,9 @@ void evaluate_query_subject(
             return;
         case QuerySubjectKind::module_exports:
             evaluate_module_exports_query_subject(context, collection.module_exports[subject.index]);
+            return;
+        case QuerySubjectKind::module_package_exports:
+            evaluate_module_package_exports_query_subject(context, collection.module_package_exports[subject.index]);
             return;
         case QuerySubjectKind::item_list:
             evaluate_item_list_query_subject(context, collection.item_lists[subject.index]);

@@ -183,6 +183,7 @@ constexpr std::string_view CACHE_TEST_QUERY_LEX_FILE = "lex_file";
 constexpr std::string_view CACHE_TEST_QUERY_PARSE_FILE = "parse_file";
 constexpr std::string_view CACHE_TEST_QUERY_MODULE_GRAPH = "module_graph";
 constexpr std::string_view CACHE_TEST_QUERY_MODULE_EXPORTS = "module_exports";
+constexpr std::string_view CACHE_TEST_QUERY_MODULE_PACKAGE_EXPORTS = "module_package_exports";
 constexpr std::string_view CACHE_TEST_QUERY_ITEM_LIST = "item_list";
 constexpr std::string_view CACHE_TEST_QUERY_ITEM_SIGNATURE = "item_signature";
 constexpr std::string_view CACHE_TEST_QUERY_FUNCTION_BODY_SYNTAX = "function_body_syntax";
@@ -199,6 +200,7 @@ constexpr auto CACHE_TEST_QUERY_SCHEDULE = std::to_array<std::string_view>({
     CACHE_TEST_QUERY_MODULE_GRAPH,
     CACHE_TEST_QUERY_ITEM_LIST,
     CACHE_TEST_QUERY_MODULE_EXPORTS,
+    CACHE_TEST_QUERY_MODULE_PACKAGE_EXPORTS,
     CACHE_TEST_QUERY_ITEM_SIGNATURE,
     CACHE_TEST_QUERY_GENERIC_TEMPLATE_SIGNATURE,
     CACHE_TEST_QUERY_GENERIC_INSTANCE_SIGNATURE,
@@ -537,6 +539,9 @@ struct CacheTestQueryResultFingerprint {
     if (kind == query::QueryKind::module_exports) {
         return CACHE_TEST_QUERY_MODULE_EXPORTS;
     }
+    if (kind == query::QueryKind::module_package_exports) {
+        return CACHE_TEST_QUERY_MODULE_PACKAGE_EXPORTS;
+    }
     if (kind == query::QueryKind::item_list) {
         return CACHE_TEST_QUERY_ITEM_LIST;
     }
@@ -715,6 +720,10 @@ void expect_cache_query_kind_before(
     }
     if (dependent == CACHE_TEST_QUERY_MODULE_EXPORTS) {
         return dependency == CACHE_TEST_QUERY_ITEM_LIST || dependency == CACHE_TEST_QUERY_MODULE_EXPORTS;
+    }
+    if (dependent == CACHE_TEST_QUERY_MODULE_PACKAGE_EXPORTS) {
+        return dependency == CACHE_TEST_QUERY_ITEM_LIST || dependency == CACHE_TEST_QUERY_MODULE_EXPORTS
+            || dependency == CACHE_TEST_QUERY_MODULE_PACKAGE_EXPORTS;
     }
     if (dependent == CACHE_TEST_QUERY_ITEM_SIGNATURE) {
         return dependency == CACHE_TEST_QUERY_MODULE_EXPORTS;

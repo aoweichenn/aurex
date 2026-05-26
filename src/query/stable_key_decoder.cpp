@@ -202,7 +202,7 @@ template <typename Enum>
 
 [[nodiscard]] bool read_query_kind(StableKeyReader& reader) noexcept
 {
-    return read_enum_value(reader, enum_byte(QueryKind::file_content), enum_byte(QueryKind::lower_function_ir));
+    return read_enum_value(reader, enum_byte(QueryKind::file_content), enum_byte(QueryKind::module_package_exports));
 }
 
 [[nodiscard]] bool read_builtin_type_kind(StableKeyReader& reader) noexcept
@@ -533,6 +533,7 @@ bool stable_key_layout_matches_query_kind(const QueryKind kind, const std::strin
             return decode_parse_file_key_identity(bytes).has_value();
         case QueryKind::module_graph:
         case QueryKind::module_exports:
+        case QueryKind::module_package_exports:
         case QueryKind::item_list:
             return stable_key_has_module_key_layout(bytes);
         case QueryKind::item_signature:

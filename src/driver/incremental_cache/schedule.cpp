@@ -20,6 +20,8 @@ namespace aurex::driver::incremental_cache_detail {
             return INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_LIST_RANK;
         case query::QueryKind::module_exports:
             return INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_EXPORTS_RANK;
+        case query::QueryKind::module_package_exports:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_EXPORTS_RANK;
         case query::QueryKind::item_signature:
             return INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_SIGNATURE_RANK;
         case query::QueryKind::generic_template_signature:

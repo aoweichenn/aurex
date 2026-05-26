@@ -44,6 +44,7 @@ QueryProviderSet::QueryProviderSet(QueryProviderOverrides overrides)
     this->set_parse_file_provider(std::move(overrides.parse_file));
     this->set_module_graph_provider(std::move(overrides.module_graph));
     this->set_module_exports_provider(std::move(overrides.module_exports));
+    this->set_module_package_exports_provider(std::move(overrides.module_package_exports));
     this->set_item_list_provider(std::move(overrides.item_list));
     this->set_item_signature_provider(std::move(overrides.item_signature));
     this->set_generic_template_signature_provider(std::move(overrides.generic_template_signature));
@@ -99,6 +100,12 @@ void QueryProviderSet::set_module_exports_provider(ModuleExportsProvider provide
 {
     this->module_exports_provider_ =
         provider ? std::move(provider) : ModuleExportsProvider{provide_module_exports_query};
+}
+
+void QueryProviderSet::set_module_package_exports_provider(ModulePackageExportsProvider provider)
+{
+    this->module_package_exports_provider_ =
+        provider ? std::move(provider) : ModulePackageExportsProvider{provide_module_package_exports_query};
 }
 
 void QueryProviderSet::set_item_list_provider(ItemListProvider provider)
@@ -189,6 +196,12 @@ std::optional<ModuleExportsProviderOutput> QueryProviderSet::provide_module_expo
     const ModuleExportsProviderInput& input) const
 {
     return this->module_exports_provider_(input);
+}
+
+std::optional<ModulePackageExportsProviderOutput> QueryProviderSet::provide_module_package_exports(
+    const ModulePackageExportsProviderInput& input) const
+{
+    return this->module_package_exports_provider_(input);
 }
 
 std::optional<ItemListProviderOutput> QueryProviderSet::provide_item_list(const ItemListProviderInput& input) const

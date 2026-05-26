@@ -31,6 +31,8 @@ using LowerGenericInstanceIRProvider =
 using ModuleGraphProvider = std::function<std::optional<ModuleGraphProviderOutput>(const ModuleGraphProviderInput&)>;
 using ModuleExportsProvider =
     std::function<std::optional<ModuleExportsProviderOutput>(const ModuleExportsProviderInput&)>;
+using ModulePackageExportsProvider =
+    std::function<std::optional<ModulePackageExportsProviderOutput>(const ModulePackageExportsProviderInput&)>;
 using ItemListProvider = std::function<std::optional<ItemListProviderOutput>(const ItemListProviderInput&)>;
 using GenericTemplateSignatureProvider =
     std::function<std::optional<GenericTemplateSignatureProviderOutput>(const GenericTemplateSignatureProviderInput&)>;
@@ -49,6 +51,7 @@ struct QueryProviderOverrides final {
     ParseFileProvider parse_file;
     ModuleGraphProvider module_graph;
     ModuleExportsProvider module_exports;
+    ModulePackageExportsProvider module_package_exports;
     ItemListProvider item_list;
     ItemSignatureProvider item_signature;
     GenericTemplateSignatureProvider generic_template_signature;
@@ -76,6 +79,7 @@ public:
     void set_parse_file_provider(ParseFileProvider provider);
     void set_module_graph_provider(ModuleGraphProvider provider);
     void set_module_exports_provider(ModuleExportsProvider provider);
+    void set_module_package_exports_provider(ModulePackageExportsProvider provider);
     void set_item_list_provider(ItemListProvider provider);
     void set_item_signature_provider(ItemSignatureProvider provider);
     void set_generic_template_signature_provider(GenericTemplateSignatureProvider provider);
@@ -95,6 +99,8 @@ public:
         const ModuleGraphProviderInput& input) const;
     [[nodiscard]] std::optional<ModuleExportsProviderOutput> provide_module_exports(
         const ModuleExportsProviderInput& input) const;
+    [[nodiscard]] std::optional<ModulePackageExportsProviderOutput> provide_module_package_exports(
+        const ModulePackageExportsProviderInput& input) const;
     [[nodiscard]] std::optional<ItemListProviderOutput> provide_item_list(const ItemListProviderInput& input) const;
     [[nodiscard]] std::optional<ItemSignatureProviderOutput> provide_item_signature(
         const ItemSignatureProviderInput& input) const;
@@ -121,6 +127,7 @@ private:
     ParseFileProvider parse_file_provider_;
     ModuleGraphProvider module_graph_provider_;
     ModuleExportsProvider module_exports_provider_;
+    ModulePackageExportsProvider module_package_exports_provider_;
     ItemListProvider item_list_provider_;
     ItemSignatureProvider item_signature_provider_;
     GenericTemplateSignatureProvider generic_template_signature_provider_;

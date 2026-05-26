@@ -47,6 +47,11 @@ struct ModuleExportsQueryInput {
     QueryResultFingerprint result;
 };
 
+struct ModulePackageExportsQueryInput {
+    ModuleKey key;
+    QueryResultFingerprint result;
+};
+
 struct ItemListQueryInput {
     ModuleKey key;
     QueryResultFingerprint result;
@@ -112,6 +117,7 @@ enum class QueryRecordChangeStatus : base::u8 {
 [[nodiscard]] bool is_valid(const ParseFileQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ModuleGraphQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ModuleExportsQueryInput& input) noexcept;
+[[nodiscard]] bool is_valid(const ModulePackageExportsQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ItemListQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ItemSignatureQueryInput& input) noexcept;
 [[nodiscard]] bool is_valid(const GenericTemplateSignatureQueryInput& input) noexcept;
@@ -145,6 +151,11 @@ enum class QueryRecordChangeStatus : base::u8 {
 
 [[nodiscard]] std::optional<QueryRecord> module_exports_query_record(const ModuleExportsQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> module_exports_query_record(ModuleKey key, QueryResultFingerprint result);
+
+[[nodiscard]] std::optional<QueryRecord> module_package_exports_query_record(
+    const ModulePackageExportsQueryInput& input);
+[[nodiscard]] std::optional<QueryRecord> module_package_exports_query_record(
+    ModuleKey key, QueryResultFingerprint result);
 
 [[nodiscard]] std::optional<QueryRecord> item_list_query_record(const ItemListQueryInput& input);
 [[nodiscard]] std::optional<QueryRecord> item_list_query_record(ModuleKey key, QueryResultFingerprint result);

@@ -107,6 +107,12 @@ const SemanticAnalyzerCore::ModuleIdList& SemanticAnalyzerCore::LookupResolver::
     return ModuleVisibilityResolver(this->core_).module_export_modules(module);
 }
 
+SemanticAnalyzerCore::ModuleIdList SemanticAnalyzerCore::LookupResolver::accessible_module_export_modules(
+    const syntax::ModuleId module) const
+{
+    return ModuleVisibilityResolver(this->core_).accessible_module_export_modules(module);
+}
+
 void SemanticAnalyzerCore::LookupResolver::append_public_reexports(
     const syntax::ModuleId module, ModuleIdList& result, std::unordered_set<base::u32>& seen) const
 {
@@ -208,7 +214,7 @@ TypeHandle SemanticAnalyzerCore::LookupResolver::find_type_in_module(const synta
 
     TypeHandle result = INVALID_TYPE_HANDLE;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.module_export_modules(module)) {
+    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
         TypeHandle candidate = INVALID_TYPE_HANDLE;
         const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {
@@ -295,7 +301,7 @@ const FunctionSignature* SemanticAnalyzerCore::LookupResolver::find_function_in_
 
     const FunctionSignature* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.module_export_modules(module)) {
+    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
         const FunctionSignature* candidate = nullptr;
         const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {
@@ -348,7 +354,7 @@ const Symbol* SemanticAnalyzerCore::LookupResolver::find_symbol_in_module(const 
 
     const Symbol* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.module_export_modules(module)) {
+    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
         const Symbol* candidate = nullptr;
         const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
         if (is_valid(lookup_key)) {
@@ -551,6 +557,12 @@ const SemanticAnalyzerCore::ModuleIdList& SemanticAnalyzerCore::module_export_mo
     const syntax::ModuleId module) const
 {
     return this->lookup_resolver().module_export_modules(module);
+}
+
+SemanticAnalyzerCore::ModuleIdList SemanticAnalyzerCore::accessible_module_export_modules(
+    const syntax::ModuleId module) const
+{
+    return this->lookup_resolver().accessible_module_export_modules(module);
 }
 
 void SemanticAnalyzerCore::append_public_reexports(

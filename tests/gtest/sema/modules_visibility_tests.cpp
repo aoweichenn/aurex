@@ -434,6 +434,85 @@ TEST_F(AurexIntegrationTest, PackageVisibilityControlsPackageSurface)
         "function is private: lib.shared.package_value");
 }
 
+TEST_F(AurexIntegrationTest, PackageVisibilityControlsPackageReexports)
+{
+    const fs::path same_package_work = tmp_root() / "package_reexport_same_package";
+    static_cast<void>(write_visibility_test_source(same_package_work / "lib" / "inner.ax",
+        "module lib.inner;\n"
+        "pub(package) fn package_value() -> i32 {\n"
+        "  return 11;\n"
+        "}\n"
+        "pub fn public_value() -> i32 {\n"
+        "  return 13;\n"
+        "}\n"));
+    static_cast<void>(write_visibility_test_source(same_package_work / "lib" / "facade.ax",
+        "module lib.facade;\n"
+        "pub(package) import lib.inner as inner;\n"
+        "pub fn facade_value() -> i32 {\n"
+        "  return inner.public_value();\n"
+        "}\n"));
+    const fs::path same_package_root = write_visibility_test_source(same_package_work / "main.ax",
+        "module package_reexport_same;\n"
+        "import lib.facade as facade;\n"
+        "fn main() -> i32 {\n"
+        "  return facade.package_value() + facade.facade_value() - 24;\n"
+        "}\n");
+    const std::string same_package_ir = require_success(aurexc() + " --emit=llvm-ir " + q(same_package_root)).output;
+    expect_contains_all(same_package_ir,
+        {
+            "@m0_lib_inner_package_value",
+            "@m0_lib_facade_facade_value",
+        });
+
+    const fs::path cross_package_work = tmp_root() / "package_reexport_cross_package";
+    const fs::path import_dir = cross_package_work / "imports";
+    static_cast<void>(write_visibility_test_source(import_dir / "lib" / "inner.ax",
+        "module lib.inner;\n"
+        "pub(package) fn package_value() -> i32 {\n"
+        "  return 11;\n"
+        "}\n"
+        "pub fn public_value() -> i32 {\n"
+        "  return 13;\n"
+        "}\n"));
+    static_cast<void>(write_visibility_test_source(import_dir / "lib" / "facade.ax",
+        "module lib.facade;\n"
+        "pub(package) import lib.inner as inner;\n"
+        "pub fn facade_value() -> i32 {\n"
+        "  return inner.public_value();\n"
+        "}\n"));
+    const fs::path cross_package_root = write_visibility_test_source(cross_package_work / "main.ax",
+        "module package_reexport_cross;\n"
+        "import lib.facade as facade;\n"
+        "fn main() -> i32 {\n"
+        "  return facade.package_value();\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " -I " + q(import_dir) + " --check " + q(cross_package_root)).output,
+        "unknown function in module lib.facade: package_value");
+
+    static_cast<void>(write_visibility_test_source(import_dir / "lib" / "public_facade.ax",
+        "module lib.public_facade;\n"
+        "pub import lib.inner as inner;\n"));
+    const fs::path public_cross_root = write_visibility_test_source(cross_package_work / "public_main.ax",
+        "module package_reexport_public_cross;\n"
+        "import lib.public_facade as facade;\n"
+        "fn main() -> i32 {\n"
+        "  return facade.public_value() - 13;\n"
+        "}\n");
+    require_success(aurexc() + " -I " + q(import_dir) + " --check " + q(public_cross_root));
+
+    static_cast<void>(write_visibility_test_source(same_package_work / "lib" / "private_facade.ax",
+        "module lib.private_facade;\n"
+        "import lib.inner as inner;\n"));
+    const fs::path private_same_root = write_visibility_test_source(same_package_work / "private_main.ax",
+        "module package_reexport_private_same;\n"
+        "import lib.private_facade as facade;\n"
+        "fn main() -> i32 {\n"
+        "  return facade.public_value();\n"
+        "}\n");
+    expect_contains(require_failure(aurexc() + " --check " + q(private_same_root)).output,
+        "unknown function in module lib.private_facade: public_value");
+}
+
 TEST_F(AurexIntegrationTest, PackageVisibilitySurfaceLeaksUseVisibilityAwareDiagnostics)
 {
     const fs::path package_leak = write_visibility_test_source(tmp_root() / "package_visibility_surface_leak.ax",

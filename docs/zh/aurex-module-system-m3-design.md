@@ -619,15 +619,34 @@ ItemList(ModuleKey)                // 仍只记录 def identity
 ItemSignature(DefKey)              // 记录 item 自身 signature
 ```
 
-如果短期不新增 query kind，也必须在 `ModuleExports(ModuleKey)` 的结构化结果里记录 visibility
-level，让后续拆分 query 时不会改变 stable semantics。长期更理想的 query 边界是 public exports
-和 package exports 分开，避免 package-private signature 改动误打红外部 package。
+当前实现已经采用分层 query 边界：`ModuleExports(ModuleKey)` 是跨 package public API 的唯一权威，
+`ModulePackageExports(ModuleKey)` 是同 package facade 和同包增量失效使用的 package surface。二者
+不能合并成“带 visibility rank 的同一个结果”，否则同一 facade 在同包和跨包消费者下会得到不同可见
+闭包，污染只按 exporting module 缓存的 public export 查询。
 
 import visibility 也使用同一层级，但语义分开看：
 
 - `priv import`：只给当前 part 的 name resolution 使用。
 - `pub(package) import`：同 package 内 re-export，可供 package 内 facade 使用。
 - `pub import`：public re-export，进入 public `ModuleExports`。
+
+re-export traversal 的访问规则是按边判断，而不是只看最终目标：
+
+```text
+public edge        -> 所有消费者都可穿过
+package edge       -> 只有 access.package == exporter.package 时可穿过
+private edge       -> 不形成 re-export；只给 exporter 本地解析使用
+```
+
+因此，如果当前包 `P` 的 facade `A` 通过 `pub import` 指向外部包 `Q` 的模块 `B`，同包消费者可以
+穿过 `A -> B`，但只能看到 `B` 对 `P` 可见的 public surface，不能因为 `A` 是同包 facade 就拿到
+`Q` 内部的 `pub(package)` surface。增量查询也按这个约束建边：
+
+```text
+ModulePackageExports(A)
+  -> ModulePackageExports(B)   // B.package == A.package 且 B 有 package surface
+  -> ModuleExports(B)          // B 是外部 package，或 B 没有 package surface
+```
 
 Phase 6A 暂不做：
 
@@ -699,11 +718,28 @@ Phase 6A-4 实现收口状态（2026-05-26）：
 - 正常测试已覆盖 parser positive/negative、same-package 访问、cross-package import-path 隔离，以及
   package-visible surface 泄漏诊断。
 
-Phase 6A-4 之后仍未完成的部分：
+Phase 6A-5 实现收口状态（2026-05-26）：
+
+- Sema 保留 public-only `module_export_modules` 缓存；qualified lookup、module path lookup、
+  suggestions 和 generic selector 改用 access-aware export closure，避免同一 exporting module 的缓存
+  在同包/跨包消费者之间串用。
+- `pub(package) import` 已具备 package-level re-export 语义：同一 `PackageKey` 内可通过 facade
+  访问，被 `-I` import path 切到不同 package 的消费者不可见。
+- `priv import` 不进入任何 re-export closure，只作为当前模块本地解析输入。
+- 增量缓存新增 `module_package_exports` query kind；`ModulePackageExports(ModuleKey)` 只在模块存在
+  package-visible surface 或需要传播同包 package surface 时生成，减少无包级导出的旧代码缓存 churn。
+- package exports query 记录 `pub + pub(package)` surface；同包 re-export dependency 指向
+  `ModulePackageExports`，外部 package 或无 package surface 的目标指向 public `ModuleExports`。
+- public `ModuleExports` fingerprint 和 dependency edge 保持 public-only，不包含 `pub(package) import`。
+- 正常测试覆盖 same-package / cross-package package re-export、public re-export、private import 不重导出、
+  public cache 与 access-aware lookup 分离，以及 package import visibility 对 package exports query 的
+  增量影响。
+
+Phase 6A-5 之后仍未完成的部分：
 
 - manifest / package model 产生最终 `PackageKey`。
-- `ModulePackageExports(ModuleKey)` 独立 query kind。
-- `pub(package) import` 的 package-level re-export 语义。
+- `pub(crate)` 是否作为 `pub(package)` 别名的最终语言决策。
+- `pub(in path)` / nested module tree 如果进入语言，需要另起作用域拓扑设计。
 
 ### 7.1 `priv` 跨 part
 
@@ -1197,8 +1233,12 @@ semantics。Aurex 需要 explicit `part` 作为 language-level membership。
 
 - `ModuleGraph(ModuleKey)` query 结果结构化，基于当前 logical module 的 primary / parts / imports。
 - `ModuleExports(ModuleKey)` query 结果结构化，基于 public API surface 和 primary re-export edges。
+- `ModulePackageExports(ModuleKey)` query 结果结构化，基于 package-visible API surface 和 primary
+  `pub(package)` / same-package re-export edges。
 - `ItemList(ModuleKey)` 只记录稳定 def identity，不混入签名 fingerprint。
 - `ModuleExports -> ModuleExports` query edge 用于 primary-level `pub import` re-export dependency。
+- `ModulePackageExports -> ModulePackageExports` / `ModulePackageExports -> ModuleExports` query edge 用于
+  package-level re-export dependency。
 - `DefKey` 不依赖 traversal order。
 - query fingerprint 和 red/green tests。
 
@@ -1209,6 +1249,8 @@ semantics。Aurex 需要 explicit `part` 作为 language-level membership。
 - public signature edit 让 `ModuleExports` red，`ItemList` green。
 - part list 重排保持 `ModuleGraph` green；新增 part 让 `ModuleGraph` red。
 - primary `pub import` 生成 `ModuleExports -> ModuleExports` edge；part-local `pub import` 不生成该 edge。
+- primary `pub(package) import` 生成 package exports query surface；part-local `pub(package) import` 不生成
+  re-export edge。
 
 ### Phase 6：M3.0-late / M3.2 候选
 

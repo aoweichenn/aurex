@@ -120,6 +120,11 @@ void QueryContext::set_module_exports_provider(ModuleExportsProvider provider)
     this->providers_.set_module_exports_provider(std::move(provider));
 }
 
+void QueryContext::set_module_package_exports_provider(ModulePackageExportsProvider provider)
+{
+    this->providers_.set_module_package_exports_provider(std::move(provider));
+}
+
 void QueryContext::set_item_list_provider(ItemListProvider provider)
 {
     this->providers_.set_item_list_provider(std::move(provider));
@@ -203,6 +208,14 @@ QueryEvaluationResult QueryContext::evaluate_module_exports(const ModuleExportsP
     return this->evaluate_query<ModuleExportsProviderOutput>(module_exports_query_key(input.key), [this, &input] {
         return this->providers_.provide_module_exports(input);
     });
+}
+
+QueryEvaluationResult QueryContext::evaluate_module_package_exports(const ModulePackageExportsProviderInput& input)
+{
+    return this->evaluate_query<ModulePackageExportsProviderOutput>(
+        module_package_exports_query_key(input.key), [this, &input] {
+            return this->providers_.provide_module_package_exports(input);
+        });
 }
 
 QueryEvaluationResult QueryContext::evaluate_item_list(const ItemListProviderInput& input)

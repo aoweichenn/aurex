@@ -1359,6 +1359,7 @@ TEST(CoreUnit, SemanticWhiteBoxLookupsAndMethodReceivers)
 
 TEST(CoreUnit, SemanticWhiteBoxModuleVisibilityResolverEdges)
 {
+    constexpr base::u32 SEMA_TEST_CORE_MODULE_INDEX = 3;
     syntax::AstModule module;
     module.modules = {
         module_info({"root"}),
@@ -1370,6 +1371,9 @@ TEST(CoreUnit, SemanticWhiteBoxModuleVisibilityResolverEdges)
         resolved_import(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), "lib"),
         resolved_import(module_id(2), ""),
         resolved_import(module_id(SEMA_TEST_MISSING_MODULE_INDEX), "ghost", syntax::Visibility::public_),
+    };
+    module.modules[SEMA_TEST_LIB_ONE_MODULE_INDEX].imports = {
+        resolved_import(module_id(SEMA_TEST_CORE_MODULE_INDEX), "core", syntax::Visibility::package_),
     };
 
     base::DiagnosticSink diagnostics;
@@ -1389,6 +1393,24 @@ TEST(CoreUnit, SemanticWhiteBoxModuleVisibilityResolverEdges)
                       return module.value == SEMA_TEST_MISSING_MODULE_INDEX;
                   }),
         visible.end());
+    EXPECT_NE(std::find_if(visible.begin(), visible.end(),
+                  [](const syntax::ModuleId module) {
+                      return module.value == SEMA_TEST_CORE_MODULE_INDEX;
+                  }),
+        visible.end());
+    const auto& public_exports = analyzer.module_export_modules(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX));
+    EXPECT_EQ(std::find_if(public_exports.begin(), public_exports.end(),
+                  [](const syntax::ModuleId module) {
+                      return module.value == SEMA_TEST_CORE_MODULE_INDEX;
+                  }),
+        public_exports.end());
+    const auto accessible_exports =
+        analyzer.accessible_module_export_modules(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX));
+    EXPECT_NE(std::find_if(accessible_exports.begin(), accessible_exports.end(),
+                  [](const syntax::ModuleId module) {
+                      return module.value == SEMA_TEST_CORE_MODULE_INDEX;
+                  }),
+        accessible_exports.end());
     EXPECT_FALSE(analyzer.visible_root_module_name_exists("ghost"));
     EXPECT_FALSE(syntax::is_valid(analyzer.find_visible_module_path({"ghost", "child"})));
     EXPECT_FALSE(analyzer.visible_module_path_prefix_exists({"ghost", "child", "leaf"}));

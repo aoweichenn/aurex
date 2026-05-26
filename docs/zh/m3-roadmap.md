@@ -180,6 +180,19 @@ package-visible type 泄漏。该阶段仍不引入 manifest / 版本求解 / pa
 `ModulePackageExports` query；`pub(package) import` 已能解析并进入 AST，package-level re-export
 图语义留给下一阶段独立收口。
 
+2026-05-26：Phase 6A-5 Package Re-export Surface 已完成第五步语义收口。Sema 现在把
+public-only `ModuleExports` 缓存和 access-aware lookup 视图分开：`module_export_modules(ModuleKey)`
+仍只返回 public re-export 闭包，qualified lookup、module path lookup、补全建议和泛型 selector 使用
+当前访问上下文计算的导出闭包。`pub(package) import` 只会在同一 `PackageKey` 内重导出，跨 package
+消费者不能通过 facade 看到该边；`priv import` 仍只服务当前模块本地解析，不形成重导出。
+增量缓存新增 `ModulePackageExports(ModuleKey)` query kind，只在模块存在 package-visible surface 或需要
+传播同包 package surface 时生成；该 query 记录 `pub + pub(package)` surface，并通过
+`ModulePackageExports -> ModulePackageExports` / `ModulePackageExports -> ModuleExports` 依赖区分同包目标和
+外部 package 目标，避免把外部依赖的 package-private surface 误并入当前包。public `ModuleExports`
+fingerprint 不包含 `pub(package) import`，正常测试覆盖 same-package facade、cross-package 隔离、
+public re-export 保持跨包可见、private import 不重导出，以及 package import visibility 只影响
+`ModuleGraph` / `ModulePackageExports` 而不污染 `ModuleExports`。
+
 ## 验收
 
 M3.0 模块验收：

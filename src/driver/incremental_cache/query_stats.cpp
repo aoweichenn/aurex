@@ -19,6 +19,7 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const QuerySub
             counts.module_graphs += 1;
             return;
         case QuerySubjectKind::module_exports:
+        case QuerySubjectKind::module_package_exports:
             counts.module_exports += 1;
             return;
         case QuerySubjectKind::item_list:
@@ -73,6 +74,7 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
             counts.module_graphs += 1;
             return;
         case query::QueryKind::module_exports:
+        case query::QueryKind::module_package_exports:
             counts.module_exports += 1;
             return;
         case query::QueryKind::item_list:

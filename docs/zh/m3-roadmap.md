@@ -193,6 +193,14 @@ fingerprint 不包含 `pub(package) import`，正常测试覆盖 same-package fa
 public re-export 保持跨包可见、private import 不重导出，以及 package import visibility 只影响
 `ModuleGraph` / `ModulePackageExports` 而不污染 `ModuleExports`。
 
+2026-05-26：Phase 6A-6 Manifest-backed PackageKey 已完成第六步 package identity 收口。Driver 现在在
+没有显式 `--package` 时，会从 root input 所在目录向上查找 `aurex.toml`，读取 `[package] name/version`
+与 manifest root 形成 root `PackageKey`；显式 `-I` / `--import-path` 命中的 import root 也会优先使用
+该 root 或其祖先的 manifest identity，缺失 manifest 时继续回退到 canonical import root identity。CLI
+`--package` 仍是最高优先级 override。增量缓存 header 改为记录解析后的 root package identity，避免
+manifest name/version/root 改动后复用旧 cache。该阶段不引入 dependency resolver、lockfile、workspace
+或 package manager，只把 manifest 作为模块系统和 `pub(package)` 边界的稳定身份输入。
+
 ## 验收
 
 M3.0 模块验收：

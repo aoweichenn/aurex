@@ -172,7 +172,10 @@ priv import internal.detail as detail;
 - `pub(package) import` 只在同一 `PackageKey` 内 re-export；跨 package 消费者不能通过该 facade
   看到被重导出的模块。
 - `priv import` 明确表示私有导入。
-- 当前不支持 glob import、selective import 或 package manifest。
+- `PackageKey` 可由 CLI `--package` 指定；如果未指定，driver 会从输入文件所在目录向上识别
+  `aurex.toml` 的 `[package] name/version` 作为 package identity。`-I` import root 也会优先使用
+  其 manifest identity，缺失 manifest 时回退到 import root 路径 identity。
+- 当前不支持 glob import、selective import、dependency manifest、workspace 或 package manager。
 - 未限定名字不会自动搜索导入模块，跨模块成员需要写 `alias.name` 或可见完整模块路径。
 
 ### 4.3 可见性

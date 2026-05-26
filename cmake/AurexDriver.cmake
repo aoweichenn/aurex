@@ -25,6 +25,7 @@ add_library(aurex_driver
     src/driver/module_loader_remap.cpp
     src/driver/module_loader_support.cpp
     src/driver/native_toolchain.cpp
+    src/driver/package_identity.cpp
     src/driver/profile.cpp
 )
 target_link_libraries(aurex_driver PUBLIC aurex_base aurex_syntax aurex_lex aurex_parse aurex_sema aurex_ir)

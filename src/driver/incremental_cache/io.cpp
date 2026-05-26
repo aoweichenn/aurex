@@ -1,6 +1,7 @@
 #include "io.hpp"
 
 #include <aurex/base/config.hpp>
+#include <aurex/driver/package_identity.hpp>
 #include <aurex/query/query_edge_verifier.hpp>
 
 #include <algorithm>
@@ -899,7 +900,7 @@ void write_query_dependency_edge_record(std::ostream& out, const query::QueryDep
     if (cache.schema != INCREMENTAL_CACHE_SCHEMA_VERSION || cache.compiler_version != base::config::AUREX_VERSION_STRING
         || cache.mode != INCREMENTAL_CACHE_MODE_SEMANTIC_OK
         || cache.root_path != canonical_or_absolute(invocation.input_path)
-        || cache.package_identity.value_or(std::string{}) != invocation.package_identity
+        || cache.package_identity.value_or(std::string{}) != package_identity_for_invocation(invocation)
         || !parsed_cache_counts_match(cache)) {
         return false;
     }

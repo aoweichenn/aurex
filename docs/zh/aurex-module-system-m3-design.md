@@ -1,6 +1,6 @@
 # Aurex M3 模块系统设计稿
 
-状态：M3.0 当前设计基线，Phase 1-5 与 Phase 6A-1/2/3/4 已进入实现闭环
+状态：M3.0 当前设计基线，Phase 1-5 与 Phase 6A-1/2/3/4/5/6 已进入实现闭环
 日期：2026-05-26
 适用范围：同一 package 内的 logical module / source-file part 分离、module graph、exports query、跨 part `priv` 可见性
 
@@ -174,41 +174,52 @@ Aurex 不采纳：
 
 `PackageKey` 是 compilation package 的稳定身份，也是未来 `pub(package)` 的边界。
 
-M3.0 第一阶段不做 package manager、版本求解或外部 dependency resolver。短期可以由：
+M3.0 第一阶段不做 package manager、版本求解或外部 dependency resolver。当前实现已经支持
+manifest-backed package identity，但只把 manifest 作为 `PackageKey` 的稳定输入，不把它扩展成依赖
+解析系统。可参与 package identity 的输入是：
 
 ```text
 root file
 import paths
 compiler config subset
 source root
+manifest package name/version/root
 ```
 
-派生 package identity。长期再切换到 manifest name、version、source root 和 dependency identity。
+长期再把 dependency source、lockfile 和版本求解纳入完整 package identity。
 
 M3.0 对 `PackageKey` 的承诺必须保守：
 
 - 它用于同一次 compilation session 内的 query grouping、module identity 和 `pub(package)` visibility 边界。
-- 它不承诺 manifest 级 package identity。
+- 它承诺当前编译会话内 manifest name/version/root 级 package identity，但不承诺 dependency graph 级
+  package identity。
 - 同一份源码如果用不同 root file、import path 或 compiler config 编译，短期内可以得到不同 `PackageKey`。
-- `pub(package)` 使用当前编译会话内 `PackageKey`，但这仍不是 manifest 级最终包身份。
+- `pub(package)` 使用当前编译会话内 `PackageKey`；如果存在有效 `aurex.toml`，则优先由 manifest
+  identity 决定。
 
-当前 Phase 6A-3 / 6A-4 的实现状态：
+当前 Phase 6A-3 到 6A-6 的实现状态：
 
 - root package identity 可由 `CompilerInvocation::package_identity` / CLI `--package` 指定；空值继续映射到
   历史默认 package key。
+- 当没有显式 `--package` 时，driver 会从 root input 所在目录向上查找 `aurex.toml`，读取 `[package]`
+  下的 `name` 和可选 `version`，并以 manifest root 一起派生 root `PackageKey`。
+- 显式 `-I` / `--import-path` import root 如果存在可识别 `aurex.toml`，外部模块使用该 manifest
+  identity；否则继续回退到 canonical import root identity。
+- CLI `--package` 仍是最高优先级 override，便于测试、工具集成和非 manifest 单文件场景。
 - 从当前文件目录解析到的 local-relative import 继承 importer 的 `PackageKey`。
 - 从显式 `-I` / `--import-path` import root 解析到的模块派生独立 `PackageKey`，避免未来
   `pub(package)` 把外部依赖误判为同包。
 - `ModuleRecord`、`ModuleImportRecord`、sema `SemanticOptions::module_packages` 和增量缓存 source /
   module query subjects 已消费同一套 package key。
-- cache header 记录 root package identity；同一源码用不同 `--package` 编译时不会被旧 coarse source
-  reuse 直接复用。
+- cache header 记录解析后的 root package identity；同一源码用不同 `--package` 或不同 manifest identity
+  编译时不会被旧 coarse source reuse 直接复用。
 - Parser 已接入 `pub(package)`，same-package access 和 package-visible surface 泄漏检查消费同一套
   `PackageKey`。
 
 仍未承诺的部分：
 
-- 没有 manifest name/version/source identity。
+- manifest 暂只识别 `[package] name/version` 和 manifest root，不支持 workspace、dependency、profile、
+  feature 或 source-root override。
 - 没有 dependency package lock 或版本求解。
 - 没有跨 package 同名 logical module 的完整 namespace UX；loader 已先把 logical module cache key
   做成 package-aware，用户级 package import 语法仍在后续阶段设计。
@@ -735,11 +746,23 @@ Phase 6A-5 实现收口状态（2026-05-26）：
   public cache 与 access-aware lookup 分离，以及 package import visibility 对 package exports query 的
   增量影响。
 
-Phase 6A-5 之后仍未完成的部分：
+Phase 6A-6 实现收口状态（2026-05-26）：
 
-- manifest / package model 产生最终 `PackageKey`。
+- driver 新增 manifest-backed package identity：当 `CompilerInvocation::package_identity` 为空时，
+  root input 从所在目录向上查找 `aurex.toml`，读取 `[package] name/version` 形成 root `PackageKey`。
+- import root identity 同样优先使用 import root 或其祖先中的有效 `aurex.toml`；没有 manifest 时保持
+  旧的 canonical import root 派生策略。
+- CLI `--package` 保持最高优先级 override，确保单文件、测试和工具调用不被附近 manifest 隐式改写。
+- incremental cache header 改为记录解析后的 root package identity，因此 manifest name/version/root
+  变化会阻止旧 cache 复用。
+- 正常测试覆盖 root/import manifest package 分离、CLI override 优先级，以及 manifest identity 进入
+  incremental cache query key。
+
+Phase 6A-6 之后仍未完成的部分：
+
 - `pub(crate)` 是否作为 `pub(package)` 别名的最终语言决策。
 - `pub(in path)` / nested module tree 如果进入语言，需要另起作用域拓扑设计。
+- manifest source-root、workspace、dependency graph、lockfile 和版本求解仍未进入 M3.0。
 
 ### 7.1 `priv` 跨 part
 

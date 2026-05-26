@@ -3369,6 +3369,57 @@ TEST_F(AurexIntegrationTest, IncrementalCacheKeysRootPackageIdentity)
     driver::clear_file_cache();
 }
 
+TEST_F(AurexIntegrationTest, IncrementalCacheKeysRootPackageManifestIdentity)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view MANIFEST = "[package]\n"
+                                          "name = \"manifest.cache.pkg\"\n"
+                                          "version = \"2.0.0\"\n";
+    constexpr std::string_view SOURCE = "module incremental_cache_manifest_package_identity;\n"
+                                        "pub fn exported() -> i32 {\n"
+                                        "  return 1;\n"
+                                        "}\n";
+    const fs::path cache_dir = tmp_root() / "incremental-cache-manifest-package-identity";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "src" / "main.ax";
+    const fs::path manifest = cache_dir / std::string(driver::DRIVER_PACKAGE_MANIFEST_FILE_NAME);
+    const fs::path cache = cache_dir / "main.axic";
+    {
+        fs::create_directories(source.parent_path());
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << SOURCE;
+    }
+    {
+        std::ofstream out(manifest, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << MANIFEST;
+    }
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+
+    driver::Compiler compiler;
+    auto result = compiler.run(invocation);
+    ASSERT_TRUE(result) << result.error().message;
+
+    const std::string cache_text = read_text(cache);
+    const std::string package_identity = driver::package_identity_for_invocation(invocation);
+    ASSERT_FALSE(package_identity.empty());
+    const std::array<std::string_view, 1> module_parts{"incremental_cache_manifest_package_identity"};
+    const query::PackageKey package = driver::package_key_for_invocation(invocation);
+    EXPECT_NE(cache_text.find("package\t" + hex_encode_cache_test_field(package_identity)), std::string::npos);
+    EXPECT_TRUE(cache_test_query_result(
+        cache_text, CACHE_TEST_QUERY_MODULE_GRAPH, cache_test_encoded_module_key(package, module_parts))
+            .has_value());
+    EXPECT_FALSE(cache_test_module_query_result(cache_text, CACHE_TEST_QUERY_MODULE_GRAPH, module_parts).has_value());
+
+    driver::clear_file_cache();
+}
+
 TEST_F(AurexIntegrationTest, IncrementalCacheSemanticSubjectsUseModuleIdPackagesForSplitLogicalNames)
 {
     driver::clear_file_cache();

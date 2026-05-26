@@ -1,6 +1,7 @@
 #include "query.hpp"
 
 #include <aurex/base/config.hpp>
+#include <aurex/driver/package_identity.hpp>
 
 #include <chrono>
 #include <filesystem>
@@ -113,7 +114,7 @@ base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invoca
         write_encoded_header_field(out, {INCREMENTAL_CACHE_FIELD_MODE, INCREMENTAL_CACHE_MODE_SEMANTIC_OK});
         write_encoded_header_field(
             out, {INCREMENTAL_CACHE_FIELD_ROOT, canonical_or_absolute(invocation.input_path).string()});
-        write_encoded_header_field(out, {INCREMENTAL_CACHE_FIELD_PACKAGE, invocation.package_identity});
+        write_encoded_header_field(out, {INCREMENTAL_CACHE_FIELD_PACKAGE, package_identity_for_invocation(invocation)});
         write_header_field(out, INCREMENTAL_CACHE_FIELD_IMPORT_PATHS, std::to_string(imports.size()));
         for (const std::filesystem::path& import_path : imports) {
             out << INCREMENTAL_CACHE_FIELD_IMPORT_PATH << INCREMENTAL_CACHE_SEPARATOR;

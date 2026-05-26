@@ -1,8 +1,8 @@
 #pragma once
 
-#include "types.hpp"
-
 #include <span>
+
+#include "types.hpp"
 
 namespace aurex::driver::incremental_cache_detail {
 

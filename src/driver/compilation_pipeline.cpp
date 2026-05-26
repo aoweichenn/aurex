@@ -67,7 +67,7 @@ base::Result<void> CompilationPipeline::run()
         return session.finish(frontend_pipeline.dump_module_graph_output(frontend.modules));
     }
 
-    auto checked_result = frontend_pipeline.run_semantic_analysis(frontend.ast);
+    auto checked_result = frontend_pipeline.run_semantic_analysis(frontend.ast, frontend.modules);
     if (!checked_result) {
         session.render_diagnostics_to_stderr();
         return session.finish(base::Result<void>::fail(checked_result.error()));

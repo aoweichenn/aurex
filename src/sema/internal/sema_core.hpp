@@ -707,6 +707,7 @@ private:
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] std::string generic_function_instance_key(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
+    [[nodiscard]] query::PackageKey query_package_key(syntax::ModuleId module) const noexcept;
     [[nodiscard]] query::ModuleKey query_module_key(syntax::ModuleId module) const noexcept;
     [[nodiscard]] DeclContext declaration_context(syntax::ModuleId module) const noexcept;
     [[nodiscard]] AccessContext current_access_context() const noexcept;

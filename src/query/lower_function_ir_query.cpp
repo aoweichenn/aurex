@@ -64,8 +64,7 @@ bool is_valid(const LowerGenericInstanceIRProviderOutput& output) noexcept
         && dependencies_are_valid(output.dependencies);
 }
 
-std::optional<LowerFunctionIRProviderOutput> provide_lower_function_ir_query(
-    const LowerFunctionIRProviderInput& input)
+std::optional<LowerFunctionIRProviderOutput> provide_lower_function_ir_query(const LowerFunctionIRProviderInput& input)
 {
     if (!is_valid(input)) {
         return std::nullopt;

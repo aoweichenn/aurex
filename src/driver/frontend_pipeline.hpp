@@ -25,7 +25,8 @@ public:
     [[nodiscard]] base::Result<FrontendModuleOutput> load_modules();
     [[nodiscard]] base::Result<void> dump_ast_output(const syntax::AstModule& ast);
     [[nodiscard]] base::Result<void> dump_module_graph_output(const std::vector<ModuleRecord>& modules);
-    [[nodiscard]] base::Result<sema::CheckedModule> run_semantic_analysis(syntax::AstModule& ast);
+    [[nodiscard]] base::Result<sema::CheckedModule> run_semantic_analysis(
+        syntax::AstModule& ast, const std::vector<ModuleRecord>& modules);
     [[nodiscard]] base::Result<void> write_checked_incremental_cache(
         const std::vector<ModuleRecord>& modules, const syntax::AstModule& ast, const sema::CheckedModule& checked);
 

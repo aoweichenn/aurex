@@ -2341,6 +2341,29 @@ TEST(QueryUnit, ItemSignatureProviderBuildsRecordFromStableDefinition)
     EXPECT_FALSE(query::is_valid(mismatched_result_output));
 }
 
+TEST(QueryUnit, StableIdAdaptersCanBindPackageAwareQueryKeys)
+{
+    const std::array<std::string_view, 2> stable_module_path{"regex", "vm"};
+    const query::StableModuleId stable_module = query::stable_module_id(stable_module_path);
+    const query::StableDefId stable_function =
+        query::stable_definition_id(stable_module, query::StableSymbolKind::function, "compute");
+    const query::PackageKey package = test_package();
+    const query::ModuleKey legacy_module = query::module_key_from_stable_id(stable_module);
+    const query::ModuleKey packaged_module = query::module_key_from_stable_id(package, stable_module);
+    const query::DefKey legacy_function =
+        query::def_key_from_stable_id(stable_function, query::DefNamespace::value, query::DefKind::function);
+    const query::DefKey packaged_function =
+        query::def_key_from_stable_id(package, stable_function, query::DefNamespace::value, query::DefKind::function);
+
+    ASSERT_TRUE(query::is_valid(packaged_module));
+    ASSERT_TRUE(query::is_valid(packaged_function));
+    EXPECT_EQ(packaged_module.package, package);
+    EXPECT_EQ(packaged_function.module, packaged_module);
+    EXPECT_EQ(packaged_function.path, stable_function.name);
+    EXPECT_NE(packaged_module, legacy_module);
+    EXPECT_NE(packaged_function, legacy_function);
+}
+
 TEST(QueryUnit, GenericTemplateSignatureProviderBuildsRecordFromStableTemplate)
 {
     const query::PackageKey package = test_package();

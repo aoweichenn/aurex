@@ -15,6 +15,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -172,6 +173,14 @@ void append_hex_string(std::ostream& out, const std::string_view value)
         cache.root_path = *path;
         return true;
     }
+    if (kind == INCREMENTAL_CACHE_FIELD_PACKAGE) {
+        std::optional<std::string> package_identity = decode_hex_string(value);
+        if (!package_identity || cache.package_identity.has_value()) {
+            return false;
+        }
+        cache.package_identity = std::move(*package_identity);
+        return true;
+    }
     if (kind == INCREMENTAL_CACHE_FIELD_IMPORT_PATHS) {
         return assign_count(cache.expected_import_paths, value);
     }
@@ -209,7 +218,8 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 
 [[nodiscard]] bool parse_source_line(ParsedCache& cache, const std::vector<std::string_view>& fields)
 {
-    if (fields.size() != INCREMENTAL_CACHE_SOURCE_FIELD_COUNT
+    if ((fields.size() != INCREMENTAL_CACHE_SOURCE_LEGACY_FIELD_COUNT
+            && fields.size() != INCREMENTAL_CACHE_SOURCE_FIELD_COUNT)
         || fields[INCREMENTAL_CACHE_KIND_FIELD] != INCREMENTAL_CACHE_FIELD_SOURCE) {
         return false;
     }
@@ -229,6 +239,26 @@ void append_hex_string(std::ostream& out, const std::string_view value)
         return false;
     }
     record.path = *path;
+    if (fields.size() == INCREMENTAL_CACHE_SOURCE_FIELD_COUNT) {
+        base::u64 package_global = 0;
+        base::u64 package_primary = 0;
+        base::u64 package_secondary = 0;
+        base::u32 package_bytes = 0;
+        if (!parse_u64(fields[INCREMENTAL_CACHE_SOURCE_PACKAGE_GLOBAL_FIELD], package_global)
+            || !parse_u64(fields[INCREMENTAL_CACHE_SOURCE_PACKAGE_PRIMARY_FIELD], package_primary)
+            || !parse_u64(fields[INCREMENTAL_CACHE_SOURCE_PACKAGE_SECONDARY_FIELD], package_secondary)
+            || !parse_u32(fields[INCREMENTAL_CACHE_SOURCE_PACKAGE_BYTES_FIELD], package_bytes) || package_global == 0) {
+            return false;
+        }
+        record.package = query::PackageKey{
+            query::StableFingerprint128{
+                package_primary,
+                package_secondary,
+                package_bytes,
+            },
+            package_global,
+        };
+    }
     cache.sources.push_back(std::move(record));
     return true;
 }
@@ -608,6 +638,16 @@ struct QueryKeyFieldLayout {
         && lhs.fingerprint.byte_count == rhs.fingerprint.byte_count;
 }
 
+[[nodiscard]] query::PackageKey default_cache_package_key() noexcept
+{
+    return query::package_key(std::span<const std::string_view>{});
+}
+
+[[nodiscard]] query::PackageKey source_package_or_default(const query::PackageKey package) noexcept
+{
+    return query::is_valid(package) ? package : default_cache_package_key();
+}
+
 [[nodiscard]] std::optional<SourceFingerprintRecord> fingerprint_file(const std::filesystem::path& path)
 {
     const std::optional<std::string> text = read_file_for_fingerprint(path);
@@ -618,6 +658,7 @@ struct QueryKeyFieldLayout {
         canonical_or_absolute(path),
         text->size(),
         fingerprint_text(*text),
+        default_cache_package_key(),
     };
 }
 
@@ -631,15 +672,43 @@ struct QueryKeyFieldLayout {
     return paths;
 }
 
-[[nodiscard]] std::vector<SourceFingerprintRecord> collect_source_fingerprints(const base::SourceManager& sources)
+[[nodiscard]] std::unordered_map<std::string, query::PackageKey> source_package_index(
+    const std::span<const ModuleRecord> modules)
 {
+    std::unordered_map<std::string, query::PackageKey> packages;
+    for (const ModuleRecord& module : modules) {
+        const query::PackageKey package = source_package_or_default(module.package);
+        packages[canonical_or_absolute(module.path).string()] = package;
+        for (const ModulePartRecord& part : module.parts) {
+            packages[canonical_or_absolute(part.path).string()] = package;
+        }
+    }
+    return packages;
+}
+
+[[nodiscard]] query::PackageKey source_package_for_path(
+    const std::unordered_map<std::string, query::PackageKey>& packages, const std::filesystem::path& path)
+{
+    const auto found = packages.find(canonical_or_absolute(path).string());
+    if (found != packages.end()) {
+        return source_package_or_default(found->second);
+    }
+    return default_cache_package_key();
+}
+
+[[nodiscard]] std::vector<SourceFingerprintRecord> collect_source_fingerprints(
+    const base::SourceManager& sources, const std::span<const ModuleRecord> modules)
+{
+    const std::unordered_map<std::string, query::PackageKey> source_packages = source_package_index(modules);
     std::vector<SourceFingerprintRecord> records;
     records.reserve(sources.files().size());
     for (const base::SourceFile& file : sources.files()) {
+        const std::filesystem::path path(file.path());
         records.push_back(SourceFingerprintRecord{
-            canonical_or_absolute(std::filesystem::path(file.path())),
+            canonical_or_absolute(path),
             file.text().size(),
             fingerprint_text(file.text()),
+            source_package_for_path(source_packages, path),
         });
     }
     std::sort(
@@ -716,11 +785,14 @@ void write_encoded_header_field(std::ostream& out, const EncodedHeaderField fiel
 
 void write_source_record(std::ostream& out, const SourceFingerprintRecord& record)
 {
+    const query::PackageKey package = source_package_or_default(record.package);
     out << INCREMENTAL_CACHE_FIELD_SOURCE << INCREMENTAL_CACHE_SEPARATOR << record.size << INCREMENTAL_CACHE_SEPARATOR
         << record.fingerprint.primary << INCREMENTAL_CACHE_SEPARATOR << record.fingerprint.secondary
         << INCREMENTAL_CACHE_SEPARATOR << record.fingerprint.byte_count << INCREMENTAL_CACHE_SEPARATOR;
     write_hex_field(out, record.path.string());
-    out << '\n';
+    out << INCREMENTAL_CACHE_SEPARATOR << package.global_id << INCREMENTAL_CACHE_SEPARATOR << package.identity.primary
+        << INCREMENTAL_CACHE_SEPARATOR << package.identity.secondary << INCREMENTAL_CACHE_SEPARATOR
+        << package.identity.byte_count << '\n';
 }
 
 void write_module_record(std::ostream& out, const ModuleRecord& record)
@@ -826,7 +898,9 @@ void write_query_dependency_edge_record(std::ostream& out, const query::QueryDep
 {
     if (cache.schema != INCREMENTAL_CACHE_SCHEMA_VERSION || cache.compiler_version != base::config::AUREX_VERSION_STRING
         || cache.mode != INCREMENTAL_CACHE_MODE_SEMANTIC_OK
-        || cache.root_path != canonical_or_absolute(invocation.input_path) || !parsed_cache_counts_match(cache)) {
+        || cache.root_path != canonical_or_absolute(invocation.input_path)
+        || cache.package_identity.value_or(std::string{}) != invocation.package_identity
+        || !parsed_cache_counts_match(cache)) {
         return false;
     }
 

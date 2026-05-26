@@ -60,15 +60,25 @@ constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
     return sema::stable_module_id(std::span<const std::string_view>{parts.data(), parts.size()});
 }
 
-[[nodiscard]] sema::StableModuleId stable_module_id_from_name(const std::string_view module_name)
+[[nodiscard]] query::PackageKey module_package_or_default(const query::PackageKey package) noexcept
 {
-    const std::vector<std::string_view> parts = module_name_parts(module_name);
-    return sema::stable_module_id(std::span<const std::string_view>{parts.data(), parts.size()});
+    if (query::is_valid(package)) {
+        return package;
+    }
+    return query::package_key(std::span<const std::string_view>{});
 }
 
-[[nodiscard]] query::ModuleKey module_key_from_name(const std::string_view module_name)
+[[nodiscard]] query::ModuleKey module_key_from_record(const ModuleRecord& module)
 {
-    return query::module_key_from_stable_id(stable_module_id_from_name(module_name));
+    return query::module_key_from_stable_id(
+        module_package_or_default(module.package), stable_module_id_from_record(module));
+}
+
+[[nodiscard]] query::ModuleKey module_key_from_import(const ModuleImportRecord& import)
+{
+    const std::vector<std::string_view> parts = module_name_parts(import.module_name);
+    return query::module_key_from_stable_id(module_package_or_default(import.module_package),
+        sema::stable_module_id(std::span<const std::string_view>{parts.data(), parts.size()}));
 }
 
 [[nodiscard]] std::string stable_identity_string(const sema::StableDefId& stable_id)
@@ -119,7 +129,7 @@ constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
         if (!import.owner_is_primary || !syntax::visibility_is_public(import.visibility)) {
             continue;
         }
-        const query::ModuleKey key = module_key_from_name(import.module_name);
+        const query::ModuleKey key = module_key_from_import(import);
         if (query::is_valid(key)) {
             dependencies.push_back(key);
         }
@@ -336,7 +346,7 @@ void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& 
         if (!import.owner_is_primary || !syntax::visibility_is_public(import.visibility)) {
             continue;
         }
-        const query::ModuleKey reexported = module_key_from_name(import.module_name);
+        const query::ModuleKey reexported = module_key_from_import(import);
         if (!query::is_valid(reexported)) {
             continue;
         }
@@ -506,7 +516,7 @@ void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& 
 void push_module_graph_query_subject(std::vector<ModuleGraphQuerySubject>& subjects, const ModuleRecord& module)
 {
     const sema::StableModuleId stable_module = stable_module_id_from_record(module);
-    const query::ModuleKey key = query::module_key_from_stable_id(stable_module);
+    const query::ModuleKey key = module_key_from_record(module);
     if (!query::is_valid(stable_module) || !query::is_valid(key)) {
         return;
     }
@@ -520,7 +530,7 @@ void push_module_exports_query_subject(std::vector<ModuleExportsQuerySubject>& s
     const sema::CheckedModule& checked, const syntax::AstModule* const ast)
 {
     const sema::StableModuleId stable_module = stable_module_id_from_record(module);
-    const query::ModuleKey key = query::module_key_from_stable_id(stable_module);
+    const query::ModuleKey key = module_key_from_record(module);
     if (!query::is_valid(stable_module) || !query::is_valid(key)) {
         return;
     }
@@ -538,7 +548,7 @@ void push_item_list_query_subject(std::vector<ItemListQuerySubject>& subjects, c
     const sema::CheckedModule& checked, const syntax::AstModule* const ast)
 {
     const sema::StableModuleId stable_module = stable_module_id_from_record(module);
-    const query::ModuleKey key = query::module_key_from_stable_id(stable_module);
+    const query::ModuleKey key = module_key_from_record(module);
     if (!query::is_valid(stable_module) || !query::is_valid(key)) {
         return;
     }

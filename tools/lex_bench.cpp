@@ -55,17 +55,14 @@ constexpr std::string_view identifier_benchmark_snippet =
     "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str mut cast "
     "ptrcast bitcast sizeof alignof ptraddr ptrat strptr strblen strraw\n";
 
-constexpr std::string_view number_benchmark_snippet =
-    "0 1 12 123 1_000 123_456_789 0x2A 0XFF 0xCAFE_BABE "
-    "0b1010 0B1111_0000 1.0 12.34 1e10 1e+10 1.25e-2\n";
+constexpr std::string_view number_benchmark_snippet = "0 1 12 123 1_000 123_456_789 0x2A 0XFF 0xCAFE_BABE "
+                                                      "0b1010 0B1111_0000 1.0 12.34 1e10 1e+10 1.25e-2\n";
 
-constexpr std::string_view string_benchmark_snippet =
-    "\"plain ascii\" \"escaped\\n\\t\\\"\" \"unicode \\u{03A9}\" "
-    "c\"plain\" c\"escaped\\n\" b'a' b'\\n'\n";
+constexpr std::string_view string_benchmark_snippet = "\"plain ascii\" \"escaped\\n\\t\\\"\" \"unicode \\u{03A9}\" "
+                                                      "c\"plain\" c\"escaped\\n\" b'a' b'\\n'\n";
 
-constexpr std::string_view punctuation_benchmark_snippet =
-    "... . :: : -> - => == = != ! <= << < >= >> > && & || | "
-    "( ) { } [ ] , ; + * / % ^ ~ @ ?\n";
+constexpr std::string_view punctuation_benchmark_snippet = "... . :: : -> - => == = != ! <= << < >= >> > && & || | "
+                                                           "( ) { } [ ] , ; + * / % ^ ~ @ ?\n";
 
 struct BenchmarkConfig final {
     aurex::base::usize iterations = default_iterations;
@@ -88,7 +85,8 @@ struct MetricSummary final {
     double average = 0.0;
 };
 
-[[nodiscard]] BenchmarkScenario parse_scenario(const std::string_view text) noexcept {
+[[nodiscard]] BenchmarkScenario parse_scenario(const std::string_view text) noexcept
+{
     if (text == "identifiers") {
         return BenchmarkScenario::identifiers;
     }
@@ -104,57 +102,60 @@ struct MetricSummary final {
     return BenchmarkScenario::mixed;
 }
 
-[[nodiscard]] bool is_option(const std::string_view text) noexcept {
+[[nodiscard]] bool is_option(const std::string_view text) noexcept
+{
     return text.starts_with("--");
 }
 
-[[nodiscard]] bool option_requires_value(const std::string_view text) noexcept {
+[[nodiscard]] bool option_requires_value(const std::string_view text) noexcept
+{
     return text == "--file" || text == "--warmup" || text == "--runs";
 }
 
-[[nodiscard]] std::string_view scenario_name(const BenchmarkScenario scenario) noexcept {
+[[nodiscard]] std::string_view scenario_name(const BenchmarkScenario scenario) noexcept
+{
     switch (scenario) {
-    case BenchmarkScenario::mixed:
-        return "mixed";
-    case BenchmarkScenario::identifiers:
-        return "identifiers";
-    case BenchmarkScenario::numbers:
-        return "numbers";
-    case BenchmarkScenario::strings:
-        return "strings";
-    case BenchmarkScenario::punctuation:
-        return "punctuation";
+        case BenchmarkScenario::mixed:
+            return "mixed";
+        case BenchmarkScenario::identifiers:
+            return "identifiers";
+        case BenchmarkScenario::numbers:
+            return "numbers";
+        case BenchmarkScenario::strings:
+            return "strings";
+        case BenchmarkScenario::punctuation:
+            return "punctuation";
     }
     return "mixed";
 }
 
-[[nodiscard]] std::string_view scenario_snippet(const BenchmarkScenario scenario) noexcept {
+[[nodiscard]] std::string_view scenario_snippet(const BenchmarkScenario scenario) noexcept
+{
     switch (scenario) {
-    case BenchmarkScenario::mixed:
-        return mixed_benchmark_snippet;
-    case BenchmarkScenario::identifiers:
-        return identifier_benchmark_snippet;
-    case BenchmarkScenario::numbers:
-        return number_benchmark_snippet;
-    case BenchmarkScenario::strings:
-        return string_benchmark_snippet;
-    case BenchmarkScenario::punctuation:
-        return punctuation_benchmark_snippet;
+        case BenchmarkScenario::mixed:
+            return mixed_benchmark_snippet;
+        case BenchmarkScenario::identifiers:
+            return identifier_benchmark_snippet;
+        case BenchmarkScenario::numbers:
+            return number_benchmark_snippet;
+        case BenchmarkScenario::strings:
+            return string_benchmark_snippet;
+        case BenchmarkScenario::punctuation:
+            return punctuation_benchmark_snippet;
     }
     return mixed_benchmark_snippet;
 }
 
-[[nodiscard]] std::string input_name(const BenchmarkConfig& config) {
+[[nodiscard]] std::string input_name(const BenchmarkConfig& config)
+{
     if (!config.file_path.empty()) {
         return config.file_path;
     }
     return std::string(scenario_name(config.scenario));
 }
 
-[[nodiscard]] aurex::base::usize parse_positive_usize(
-    const char* const text,
-    const aurex::base::usize fallback
-) {
+[[nodiscard]] aurex::base::usize parse_positive_usize(const char* const text, const aurex::base::usize fallback)
+{
     try {
         const auto parsed = static_cast<aurex::base::usize>(std::stoull(text));
         return parsed == 0 ? fallback : parsed;
@@ -163,27 +164,25 @@ struct MetricSummary final {
     }
 }
 
-void apply_position_arg(BenchmarkConfig& config, const aurex::base::usize position, const char* const text) {
+void apply_position_arg(BenchmarkConfig& config, const aurex::base::usize position, const char* const text)
+{
     switch (position) {
-    case 0:
-        config.iterations = parse_positive_usize(text, default_iterations);
-        return;
-    case 1:
-        config.repetitions = parse_positive_usize(text, default_repetitions);
-        return;
-    case 2:
-        config.scenario = parse_scenario(text);
-        return;
-    default:
-        return;
+        case 0:
+            config.iterations = parse_positive_usize(text, default_iterations);
+            return;
+        case 1:
+            config.repetitions = parse_positive_usize(text, default_repetitions);
+            return;
+        case 2:
+            config.scenario = parse_scenario(text);
+            return;
+        default:
+            return;
     }
 }
 
-bool apply_option(
-    BenchmarkConfig& config,
-    const std::string_view option,
-    const char* const value
-) {
+bool apply_option(BenchmarkConfig& config, const std::string_view option, const char* const value)
+{
     if (option == "--file") {
         config.file_path = value;
         return true;
@@ -199,7 +198,8 @@ bool apply_option(
     return false;
 }
 
-[[nodiscard]] BenchmarkConfig parse_config(const int argc, char** argv) {
+[[nodiscard]] BenchmarkConfig parse_config(const int argc, char** argv)
+{
     BenchmarkConfig config;
     aurex::base::usize position = 0;
     for (int index = first_position_arg; index < argc; ++index) {
@@ -224,7 +224,8 @@ bool apply_option(
     return config;
 }
 
-[[nodiscard]] std::string read_file(const std::string& path) {
+[[nodiscard]] std::string read_file(const std::string& path)
+{
     std::ifstream file(path, std::ios::binary);
     if (!file) {
         return {};
@@ -234,10 +235,8 @@ bool apply_option(
     return buffer.str();
 }
 
-[[nodiscard]] std::string make_source(
-    const aurex::base::usize repetitions,
-    const std::string_view snippet
-) {
+[[nodiscard]] std::string make_source(const aurex::base::usize repetitions, const std::string_view snippet)
+{
     std::string source;
     source.reserve(snippet.size() * repetitions);
     for (aurex::base::usize index = 0; index < repetitions; ++index) {
@@ -246,7 +245,8 @@ bool apply_option(
     return source;
 }
 
-[[nodiscard]] std::string make_source(const BenchmarkConfig& config) {
+[[nodiscard]] std::string make_source(const BenchmarkConfig& config)
+{
     if (!config.file_path.empty()) {
         const std::string file_text = read_file(config.file_path);
         return make_source(config.repetitions, file_text);
@@ -255,10 +255,8 @@ bool apply_option(
 }
 
 [[nodiscard]] bool tokenize_source(
-    const std::string& source,
-    const aurex::base::usize iterations,
-    aurex::base::usize& total_tokens
-) {
+    const std::string& source, const aurex::base::usize iterations, aurex::base::usize& total_tokens)
+{
     total_tokens = 0;
     for (aurex::base::usize iteration = 0; iteration < iterations; ++iteration) {
         aurex::base::DiagnosticSink diagnostics;
@@ -272,10 +270,8 @@ bool apply_option(
     return true;
 }
 
-[[nodiscard]] RunMeasurement measure_run(
-    const std::string& source,
-    const aurex::base::usize iterations
-) {
+[[nodiscard]] RunMeasurement measure_run(const std::string& source, const aurex::base::usize iterations)
+{
     aurex::base::usize total_tokens = 0;
     const auto started = std::chrono::steady_clock::now();
     if (!tokenize_source(source, iterations, total_tokens)) {
@@ -283,20 +279,21 @@ bool apply_option(
     }
     const auto elapsed = std::chrono::steady_clock::now() - started;
     const auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count();
-    return RunMeasurement {
+    return RunMeasurement{
         static_cast<aurex::base::usize>(elapsed_ns),
         total_tokens,
     };
 }
 
-[[nodiscard]] MetricSummary summarize(std::vector<double> values) {
+[[nodiscard]] MetricSummary summarize(std::vector<double> values)
+{
     std::sort(values.begin(), values.end());
     double total = 0.0;
     for (const double value : values) {
         total += value;
     }
     const aurex::base::usize median_index = values.size() / 2;
-    return MetricSummary {
+    return MetricSummary{
         values.front(),
         values[median_index],
         values.back(),
@@ -304,7 +301,8 @@ bool apply_option(
     };
 }
 
-void print_summary(const std::string_view label, const MetricSummary& summary) {
+void print_summary(const std::string_view label, const MetricSummary& summary)
+{
     std::cout << label << "_min: " << summary.min << '\n'
               << label << "_median: " << summary.median << '\n'
               << label << "_max: " << summary.max << '\n'
@@ -313,7 +311,8 @@ void print_summary(const std::string_view label, const MetricSummary& summary) {
 
 } // namespace
 
-int main(const int argc, char** argv) {
+int main(const int argc, char** argv)
+{
     const BenchmarkConfig config = parse_config(argc, argv);
     const std::string source = make_source(config);
     if (source.empty()) {
@@ -351,15 +350,15 @@ int main(const int argc, char** argv) {
         last_total_tokens = measurement.total_tokens;
     }
 
-    std::cout << std::setprecision(6)
-              << "input: " << input_name(config) << '\n'
+    std::cout << std::setprecision(6) << "input: " << input_name(config) << '\n'
               << "iterations: " << config.iterations << '\n'
               << "repetitions: " << config.repetitions << '\n'
               << "warmup_iterations: " << config.warmup_iterations << '\n'
               << "runs: " << config.runs << '\n'
               << "source_bytes: " << source.size() << '\n'
               << "total_bytes_per_run: "
-              << static_cast<unsigned long long>(static_cast<double>(source.size()) * static_cast<double>(config.iterations))
+              << static_cast<unsigned long long>(
+                     static_cast<double>(source.size()) * static_cast<double>(config.iterations))
               << '\n'
               << "total_tokens_per_run: " << last_total_tokens << '\n';
     print_summary("elapsed_ms", summarize(elapsed_ms_values));

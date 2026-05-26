@@ -30,7 +30,8 @@ constexpr base::usize INCREMENTAL_CACHE_HEX_BYTE_WIDTH = 2;
 constexpr base::usize INCREMENTAL_CACHE_KIND_FIELD = 0;
 constexpr base::usize INCREMENTAL_CACHE_FIRST_VALUE_FIELD = 1;
 constexpr base::usize INCREMENTAL_CACHE_HEADER_FIELD_COUNT = 2;
-constexpr base::usize INCREMENTAL_CACHE_SOURCE_FIELD_COUNT = 6;
+constexpr base::usize INCREMENTAL_CACHE_SOURCE_LEGACY_FIELD_COUNT = 6;
+constexpr base::usize INCREMENTAL_CACHE_SOURCE_FIELD_COUNT = 10;
 constexpr base::usize INCREMENTAL_CACHE_MODULE_FIELD_COUNT = 3;
 constexpr base::usize INCREMENTAL_CACHE_DEF_FIELD_COUNT = 12;
 constexpr base::usize INCREMENTAL_CACHE_QUERY_FIELD_COUNT = 12;
@@ -41,6 +42,10 @@ constexpr base::usize INCREMENTAL_CACHE_SOURCE_PRIMARY_FIELD = 2;
 constexpr base::usize INCREMENTAL_CACHE_SOURCE_SECONDARY_FIELD = 3;
 constexpr base::usize INCREMENTAL_CACHE_SOURCE_BYTES_FIELD = 4;
 constexpr base::usize INCREMENTAL_CACHE_SOURCE_PATH_FIELD = 5;
+constexpr base::usize INCREMENTAL_CACHE_SOURCE_PACKAGE_GLOBAL_FIELD = 6;
+constexpr base::usize INCREMENTAL_CACHE_SOURCE_PACKAGE_PRIMARY_FIELD = 7;
+constexpr base::usize INCREMENTAL_CACHE_SOURCE_PACKAGE_SECONDARY_FIELD = 8;
+constexpr base::usize INCREMENTAL_CACHE_SOURCE_PACKAGE_BYTES_FIELD = 9;
 
 constexpr base::usize INCREMENTAL_CACHE_MODULE_NAME_FIELD = 1;
 constexpr base::usize INCREMENTAL_CACHE_MODULE_PATH_FIELD = 2;
@@ -86,6 +91,7 @@ constexpr std::string_view INCREMENTAL_CACHE_FIELD_SCHEMA = "schema";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_COMPILER = "compiler";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_MODE = "mode";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_ROOT = "root";
+constexpr std::string_view INCREMENTAL_CACHE_FIELD_PACKAGE = "package";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_IMPORT_PATHS = "import_paths";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_IMPORT_PATH = "import_path";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_SOURCES = "sources";
@@ -125,6 +131,7 @@ struct SourceFingerprintRecord {
     std::filesystem::path path;
     base::usize size = 0;
     sema::StableFingerprint128 fingerprint;
+    query::PackageKey package;
 };
 
 struct DefinitionRecord {
@@ -143,6 +150,7 @@ struct ParsedCache {
     std::string compiler_version;
     std::string mode;
     std::filesystem::path root_path;
+    std::optional<std::string> package_identity;
     std::vector<std::filesystem::path> import_paths;
     std::vector<SourceFingerprintRecord> sources;
     std::vector<ParsedQueryRecord> queries;

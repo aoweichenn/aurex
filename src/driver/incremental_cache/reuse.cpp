@@ -1,14 +1,15 @@
-#include "io.hpp"
-#include "query_stats.hpp"
 #include "reuse.hpp"
-#include "schedule.hpp"
-#include "source_stage.hpp"
-#include "subjects.hpp"
 
 #include <aurex/query/query_edge_verifier.hpp>
 
 #include <utility>
 #include <vector>
+
+#include "io.hpp"
+#include "query_stats.hpp"
+#include "schedule.hpp"
+#include "source_stage.hpp"
+#include "subjects.hpp"
 
 namespace aurex::driver::incremental_cache_detail {
 namespace cache_format = incremental_cache_format;
@@ -281,6 +282,5 @@ void evaluate_recomputed_query_subjects(query::QueryContext& context, const Quer
         stats,
     };
 }
-
 
 } // namespace aurex::driver::incremental_cache_detail

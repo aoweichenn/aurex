@@ -1,17 +1,91 @@
-#include "detail.hpp"
-
 #include <algorithm>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
+
+#include "detail.hpp"
 
 namespace aurex::driver::incremental_cache_detail {
 namespace cache_format = incremental_cache_format;
 using namespace cache_format;
 
 namespace {
+
+[[nodiscard]] query::PackageKey cache_package_key_or_default(const query::PackageKey package) noexcept
+{
+    if (query::is_valid(package)) {
+        return package;
+    }
+    return query::package_key(std::span<const std::string_view>{});
+}
+
+[[nodiscard]] std::vector<std::string_view> module_name_parts(const std::string_view module_name)
+{
+    std::vector<std::string_view> parts;
+    base::usize begin = 0;
+    while (begin < module_name.size()) {
+        const base::usize end = module_name.find(INCREMENTAL_CACHE_MODULE_NAME_SEPARATOR, begin);
+        if (end == std::string_view::npos) {
+            parts.push_back(module_name.substr(begin));
+            break;
+        }
+        parts.push_back(module_name.substr(begin, end - begin));
+        begin = end + 1;
+    }
+    return parts;
+}
+
+[[nodiscard]] sema::StableModuleId stable_module_id_from_record(const ModuleRecord& module)
+{
+    const std::vector<std::string_view> parts = module_name_parts(module.name);
+    return sema::stable_module_id(std::span<const std::string_view>{parts.data(), parts.size()});
+}
+
+struct PackageIndex {
+    std::unordered_map<base::u32, query::PackageKey> by_module_id;
+    std::unordered_map<std::string, query::PackageKey> by_stable_module;
+};
+
+[[nodiscard]] PackageIndex package_index_for_modules(const std::span<const ModuleRecord> modules)
+{
+    PackageIndex packages;
+    packages.by_module_id.reserve(modules.size());
+    packages.by_stable_module.reserve(modules.size());
+    for (const ModuleRecord& module : modules) {
+        const query::PackageKey package = cache_package_key_or_default(module.package);
+        if (syntax::is_valid(module.id)) {
+            packages.by_module_id.emplace(module.id.value, package);
+        }
+        packages.by_stable_module.emplace(query::stable_serialize(stable_module_id_from_record(module)), package);
+    }
+    return packages;
+}
+
+[[nodiscard]] query::PackageKey package_for_definition(
+    const PackageIndex& packages, const sema::StableModuleId stable_module, const syntax::ModuleId module_id)
+{
+    if (syntax::is_valid(module_id)) {
+        const auto found_by_id = packages.by_module_id.find(module_id.value);
+        if (found_by_id != packages.by_module_id.end()) {
+            return cache_package_key_or_default(found_by_id->second);
+        }
+    }
+    const auto found_by_stable_id = packages.by_stable_module.find(query::stable_serialize(stable_module));
+    if (found_by_stable_id != packages.by_stable_module.end()) {
+        return cache_package_key_or_default(found_by_stable_id->second);
+    }
+    return cache_package_key_or_default({});
+}
+
+[[nodiscard]] query::DefKey def_key_from_stable_id(const PackageIndex& packages, const sema::StableDefId& stable_id,
+    const syntax::ModuleId module_id, const query::DefNamespace name_space, const query::DefKind kind)
+{
+    return query::def_key_from_stable_id(
+        package_for_definition(packages, stable_id.module, module_id), stable_id, name_space, kind);
+}
 
 [[nodiscard]] query::DefKind function_signature_def_kind(const sema::FunctionSignature& signature) noexcept
 {
@@ -32,10 +106,10 @@ namespace {
     return std::string_view{text.data() + range.begin, range.end - range.begin};
 }
 
-[[nodiscard]] query::BodyKey function_body_key(const sema::FunctionSignature& signature) noexcept
+[[nodiscard]] query::BodyKey function_body_key(const sema::FunctionSignature& signature, const PackageIndex& packages)
 {
-    return query::body_key(query::def_key_from_stable_id(
-                               signature.stable_id, query::DefNamespace::value, function_signature_def_kind(signature)),
+    return query::body_key(def_key_from_stable_id(packages, signature.stable_id, signature.module,
+                               query::DefNamespace::value, function_signature_def_kind(signature)),
         query::BodySlotKind::function_body);
 }
 
@@ -65,8 +139,8 @@ namespace {
 [[nodiscard]] std::optional<base::SourceRange> function_signature_body_range(
     const sema::FunctionSignature& signature, const syntax::AstModule& ast) noexcept
 {
-    const syntax::ItemId item = syntax::is_valid(signature.definition_item) ? signature.definition_item
-                                                                            : signature.prototype_item;
+    const syntax::ItemId item =
+        syntax::is_valid(signature.definition_item) ? signature.definition_item : signature.prototype_item;
     if (!syntax::is_valid(item) || item.value >= ast.items.size()) {
         return std::nullopt;
     }
@@ -135,24 +209,22 @@ void push_definition(std::vector<DefinitionRecord>& records, const std::string_v
 }
 
 void push_item_signature_query_subject(std::vector<ItemSignatureQuerySubject>& subjects,
-    const sema::StableDefId& stable_id, const sema::IncrementalKey& incremental_key,
-    const query::DefNamespace name_space, const query::DefKind kind)
+    const sema::StableDefId& stable_id, const sema::IncrementalKey& incremental_key, const syntax::ModuleId module_id,
+    const query::DefNamespace name_space, const query::DefKind kind, const PackageIndex& packages)
 {
     subjects.push_back(ItemSignatureQuerySubject{
-        stable_id,
+        def_key_from_stable_id(packages, stable_id, module_id, name_space, kind),
         incremental_key,
-        name_space,
-        kind,
     });
 }
 
-void push_generic_template_signature_query_subject(
-    std::vector<GenericTemplateSignatureQuerySubject>& subjects, const sema::GenericTemplateSignatureInfo& info)
+void push_generic_template_signature_query_subject(std::vector<GenericTemplateSignatureQuerySubject>& subjects,
+    const sema::GenericTemplateSignatureInfo& info, const PackageIndex& packages)
 {
     subjects.push_back(GenericTemplateSignatureQuerySubject{
-        info.stable_id,
+        def_key_from_stable_id(
+            packages, info.stable_id, info.module, info.name_space, query::DefKind::generic_template),
         info.incremental_key,
-        info.name_space,
     });
 }
 
@@ -218,13 +290,13 @@ void push_lower_generic_instance_ir_query_subject(
 
 void push_function_body_query_subjects(std::vector<FunctionBodySyntaxQuerySubject>& syntax_subjects,
     std::vector<TypeCheckBodyQuerySubject>& type_check_subjects, const sema::FunctionSignature& signature,
-    const base::SourceManager& sources, const syntax::AstModule* const ast)
+    const base::SourceManager& sources, const syntax::AstModule* const ast, const PackageIndex& packages)
 {
     if (!signature.has_definition || signature.has_conflict || !query::is_valid(signature.stable_id)
         || !query::is_valid(signature.incremental_key)) {
         return;
     }
-    const query::BodyKey key = function_body_key(signature);
+    const query::BodyKey key = function_body_key(signature, packages);
     if (!query::is_valid(key)) {
         return;
     }
@@ -250,42 +322,44 @@ void push_function_body_query_subjects(std::vector<FunctionBodySyntaxQuerySubjec
 } // namespace
 
 [[nodiscard]] std::vector<ItemSignatureQuerySubject> collect_item_signature_query_subjects(
-    const sema::CheckedModule& checked)
+    const sema::CheckedModule& checked, const std::span<const ModuleRecord> modules)
 {
+    const PackageIndex packages = package_index_for_modules(modules);
     std::vector<ItemSignatureQuerySubject> subjects;
     subjects.reserve(
         checked.functions.size() + checked.structs.size() + checked.enum_cases.size() + checked.type_aliases.size());
 
     for (const auto& entry : checked.functions) {
         const sema::FunctionSignature& signature = entry.second;
-        push_item_signature_query_subject(subjects, signature.stable_id, signature.incremental_key,
-            query::DefNamespace::value, function_signature_def_kind(signature));
+        push_item_signature_query_subject(subjects, signature.stable_id, signature.incremental_key, signature.module,
+            query::DefNamespace::value, function_signature_def_kind(signature), packages);
     }
     for (const auto& entry : checked.structs) {
         const sema::StructInfo& info = entry.second;
-        push_item_signature_query_subject(
-            subjects, info.stable_id, info.incremental_key, query::DefNamespace::type, query::DefKind::struct_);
+        push_item_signature_query_subject(subjects, info.stable_id, info.incremental_key, info.module,
+            query::DefNamespace::type, query::DefKind::struct_, packages);
     }
     for (const auto& entry : checked.enum_cases) {
         const sema::EnumCaseInfo& info = entry.second;
-        push_item_signature_query_subject(
-            subjects, info.stable_id, info.incremental_key, query::DefNamespace::value, query::DefKind::enum_case);
+        push_item_signature_query_subject(subjects, info.stable_id, info.incremental_key, info.module,
+            query::DefNamespace::value, query::DefKind::enum_case, packages);
     }
     for (const auto& entry : checked.type_aliases) {
         const sema::TypeAliasInfo& info = entry.second;
-        push_item_signature_query_subject(
-            subjects, info.stable_id, info.incremental_key, query::DefNamespace::type, query::DefKind::type_alias);
+        push_item_signature_query_subject(subjects, info.stable_id, info.incremental_key, info.module,
+            query::DefNamespace::type, query::DefKind::type_alias, packages);
     }
     return subjects;
 }
 
 [[nodiscard]] std::vector<GenericTemplateSignatureQuerySubject> collect_generic_template_signature_query_subjects(
-    const sema::CheckedModule& checked)
+    const sema::CheckedModule& checked, const std::span<const ModuleRecord> modules)
 {
+    const PackageIndex packages = package_index_for_modules(modules);
     std::vector<GenericTemplateSignatureQuerySubject> subjects;
     subjects.reserve(checked.generic_template_signatures.size());
     for (const sema::GenericTemplateSignatureInfo& info : checked.generic_template_signatures) {
-        push_generic_template_signature_query_subject(subjects, info);
+        push_generic_template_signature_query_subject(subjects, info, packages);
     }
     return subjects;
 }
@@ -319,13 +393,15 @@ void push_function_body_query_subjects(std::vector<FunctionBodySyntaxQuerySubjec
 }
 
 void collect_function_body_query_subjects(const sema::CheckedModule& checked, const base::SourceManager& sources,
-    const syntax::AstModule* const ast, std::vector<FunctionBodySyntaxQuerySubject>& syntax_subjects,
+    const syntax::AstModule* const ast, const std::span<const ModuleRecord> modules,
+    std::vector<FunctionBodySyntaxQuerySubject>& syntax_subjects,
     std::vector<TypeCheckBodyQuerySubject>& type_check_subjects)
 {
+    const PackageIndex packages = package_index_for_modules(modules);
     syntax_subjects.reserve(checked.functions.size());
     type_check_subjects.reserve(checked.functions.size());
     for (const auto& entry : checked.functions) {
-        push_function_body_query_subjects(syntax_subjects, type_check_subjects, entry.second, sources, ast);
+        push_function_body_query_subjects(syntax_subjects, type_check_subjects, entry.second, sources, ast, packages);
     }
 }
 

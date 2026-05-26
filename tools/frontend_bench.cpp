@@ -5,15 +5,15 @@
 #include <aurex/parse/parser.hpp>
 #include <aurex/sema/sema.hpp>
 
-#include <benchmark/benchmark.h>
-
 #include <cstdint>
 #include <string>
 #include <string_view>
 
+#include <benchmark/benchmark.h>
+
 namespace {
 
-constexpr aurex::base::SourceId FRONTEND_BENCH_SOURCE_ID {1};
+constexpr aurex::base::SourceId FRONTEND_BENCH_SOURCE_ID{1};
 constexpr aurex::base::usize LOOKUP_SOURCE_BYTES_PER_ITEM_ESTIMATE = 360;
 constexpr aurex::base::usize GENERIC_SOURCE_BYTES_PER_ITEM_ESTIMATE = 430;
 constexpr aurex::base::usize AST_SOURCE_BYTES_PER_STATEMENT_ESTIMATE = 34;
@@ -54,9 +54,8 @@ struct FrontendRunResult final {
 };
 
 [[nodiscard]] std::string first_diagnostic_or(
-    const aurex::base::DiagnosticSink& diagnostics,
-    const std::string_view fallback
-) {
+    const aurex::base::DiagnosticSink& diagnostics, const std::string_view fallback)
+{
     const auto all = diagnostics.diagnostics();
     if (all.empty()) {
         return std::string(fallback);
@@ -64,21 +63,22 @@ struct FrontendRunResult final {
     return std::string(fallback) + ": " + all.front().message;
 }
 
-[[nodiscard]] FrontendRunResult tokenize_source(const std::string_view source) {
+[[nodiscard]] FrontendRunResult tokenize_source(const std::string_view source)
+{
     aurex::base::DiagnosticSink diagnostics;
     aurex::lex::Lexer lexer(FRONTEND_BENCH_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     if (!tokens) {
-        return FrontendRunResult {
+        return FrontendRunResult{
             false,
             first_diagnostic_or(diagnostics, "lexing failed"),
             {},
         };
     }
-    return FrontendRunResult {
+    return FrontendRunResult{
         true,
         {},
-        FrontendSummary {
+        FrontendSummary{
             tokens.value().size(),
             0,
             0,
@@ -88,12 +88,13 @@ struct FrontendRunResult final {
     };
 }
 
-[[nodiscard]] FrontendRunResult analyze_source(const std::string_view source) {
+[[nodiscard]] FrontendRunResult analyze_source(const std::string_view source)
+{
     aurex::base::DiagnosticSink diagnostics;
     aurex::lex::Lexer lexer(FRONTEND_BENCH_SOURCE_ID, source, diagnostics);
     auto tokens = lexer.tokenize();
     if (!tokens) {
-        return FrontendRunResult {
+        return FrontendRunResult{
             false,
             first_diagnostic_or(diagnostics, "lexing failed"),
             {},
@@ -103,7 +104,7 @@ struct FrontendRunResult final {
     aurex::parse::Parser parser(tokens.value(), diagnostics);
     auto parsed = parser.parse_module();
     if (!parsed) {
-        return FrontendRunResult {
+        return FrontendRunResult{
             false,
             first_diagnostic_or(diagnostics, "parsing failed"),
             {},
@@ -120,7 +121,7 @@ struct FrontendRunResult final {
     aurex::sema::SemanticAnalyzer analyzer(parsed.value(), diagnostics, options);
     auto checked = analyzer.analyze();
     if (!checked) {
-        return FrontendRunResult {
+        return FrontendRunResult{
             false,
             first_diagnostic_or(diagnostics, "semantic analysis failed"),
             {},
@@ -136,24 +137,22 @@ struct FrontendRunResult final {
             }
         }
     }
-    return FrontendRunResult {
+    return FrontendRunResult{
         true,
         {},
         summary,
     };
 }
 
-void append_repeated_snippet(
-    std::string& source,
-    const std::string_view snippet,
-    const aurex::base::usize repetitions
-) {
+void append_repeated_snippet(std::string& source, const std::string_view snippet, const aurex::base::usize repetitions)
+{
     for (aurex::base::usize index = 0; index < repetitions; ++index) {
         source += snippet;
     }
 }
 
-void append_lookup_record(std::string& source, const aurex::base::usize index) {
+void append_lookup_record(std::string& source, const aurex::base::usize index)
+{
     const std::string suffix = std::to_string(index);
     source += "struct Rec";
     source += suffix;
@@ -163,7 +162,8 @@ void append_lookup_record(std::string& source, const aurex::base::usize index) {
               "}\n\n";
 }
 
-void append_lookup_function(std::string& source, const aurex::base::usize index) {
+void append_lookup_function(std::string& source, const aurex::base::usize index)
+{
     const std::string suffix = std::to_string(index);
     source += "fn helper";
     source += suffix;
@@ -186,7 +186,8 @@ void append_lookup_function(std::string& source, const aurex::base::usize index)
               "}\n\n";
 }
 
-[[nodiscard]] std::string make_lookup_source(const aurex::base::usize item_count) {
+[[nodiscard]] std::string make_lookup_source(const aurex::base::usize item_count)
+{
     std::string source;
     source.reserve(LOOKUP_SOURCE_BYTES_PER_ITEM_ESTIMATE * item_count);
     source += "module bench.lookup;\n\n";
@@ -210,7 +211,8 @@ void append_lookup_function(std::string& source, const aurex::base::usize index)
     return source;
 }
 
-void append_payload_record(std::string& source, const aurex::base::usize index) {
+void append_payload_record(std::string& source, const aurex::base::usize index)
+{
     const std::string suffix = std::to_string(index);
     source += "struct Payload";
     source += suffix;
@@ -219,7 +221,8 @@ void append_payload_record(std::string& source, const aurex::base::usize index) 
               "}\n\n";
 }
 
-void append_payload_use_function(std::string& source, const aurex::base::usize index) {
+void append_payload_use_function(std::string& source, const aurex::base::usize index)
+{
     const std::string suffix = std::to_string(index);
     source += "fn use_payload";
     source += suffix;
@@ -243,23 +246,23 @@ void append_payload_use_function(std::string& source, const aurex::base::usize i
               "}\n\n";
 }
 
-[[nodiscard]] std::string make_generic_source(const aurex::base::usize item_count) {
+[[nodiscard]] std::string make_generic_source(const aurex::base::usize item_count)
+{
     std::string source;
     source.reserve(GENERIC_SOURCE_BYTES_PER_ITEM_ESTIMATE * item_count);
-    source +=
-        "module bench.generics;\n\n"
-        "struct Box[T] {\n"
-        "    value: T;\n"
-        "}\n\n"
-        "fn id[T](value: T) -> T {\n"
-        "    return value;\n"
-        "}\n\n"
-        "fn make_box[T](value: T) -> Box[T] {\n"
-        "    return Box[T] { value: value };\n"
-        "}\n\n"
-        "fn unwrap_box[T](box: Box[T]) -> T {\n"
-        "    return box.value;\n"
-        "}\n\n";
+    source += "module bench.generics;\n\n"
+              "struct Box[T] {\n"
+              "    value: T;\n"
+              "}\n\n"
+              "fn id[T](value: T) -> T {\n"
+              "    return value;\n"
+              "}\n\n"
+              "fn make_box[T](value: T) -> Box[T] {\n"
+              "    return Box[T] { value: value };\n"
+              "}\n\n"
+              "fn unwrap_box[T](box: Box[T]) -> T {\n"
+              "    return box.value;\n"
+              "}\n\n";
     for (aurex::base::usize index = 0; index < item_count; ++index) {
         append_payload_record(source, index);
     }
@@ -280,14 +283,16 @@ void append_payload_use_function(std::string& source, const aurex::base::usize i
     return source;
 }
 
-[[nodiscard]] std::string make_lex_source(const aurex::base::usize repetitions) {
+[[nodiscard]] std::string make_lex_source(const aurex::base::usize repetitions)
+{
     std::string source;
     source.reserve(LEX_MIXED_SNIPPET.size() * repetitions);
     append_repeated_snippet(source, LEX_MIXED_SNIPPET, repetitions);
     return source;
 }
 
-[[nodiscard]] std::string make_ast_source(const aurex::base::usize statement_count) {
+[[nodiscard]] std::string make_ast_source(const aurex::base::usize statement_count)
+{
     std::string source;
     source.reserve(AST_SOURCE_BYTES_PER_STATEMENT_ESTIMATE * statement_count);
     source += "module bench.ast;\n\n"
@@ -303,29 +308,24 @@ void append_payload_use_function(std::string& source, const aurex::base::usize i
     return source;
 }
 
-[[nodiscard]] std::int64_t processed_count(
-    const std::int64_t iterations,
-    const aurex::base::usize count
-) noexcept {
+[[nodiscard]] std::int64_t processed_count(const std::int64_t iterations, const aurex::base::usize count) noexcept
+{
     return iterations * static_cast<std::int64_t>(count);
 }
 
-void set_frontend_counters(
-    benchmark::State& state,
-    const std::string& source,
-    const FrontendSummary& summary
-) {
+void set_frontend_counters(benchmark::State& state, const std::string& source, const FrontendSummary& summary)
+{
     state.counters["source_bytes"] = benchmark::Counter(static_cast<double>(source.size()));
     state.counters["tokens"] = benchmark::Counter(static_cast<double>(summary.token_count));
     state.counters["ast_items"] = benchmark::Counter(static_cast<double>(summary.item_count));
     state.counters["ast_exprs"] = benchmark::Counter(static_cast<double>(summary.expr_count));
     state.counters["functions"] = benchmark::Counter(static_cast<double>(summary.function_count));
-    state.counters["generic_function_instances"] = benchmark::Counter(
-        static_cast<double>(summary.generic_function_instance_count)
-    );
+    state.counters["generic_function_instances"] =
+        benchmark::Counter(static_cast<double>(summary.generic_function_instance_count));
 }
 
-void BM_LexMixed(benchmark::State& state) {
+void BM_LexMixed(benchmark::State& state)
+{
     const auto repetitions = static_cast<aurex::base::usize>(state.range(0));
     const std::string source = make_lex_source(repetitions);
     FrontendSummary summary;
@@ -345,7 +345,8 @@ void BM_LexMixed(benchmark::State& state) {
     set_frontend_counters(state, source, summary);
 }
 
-void BM_SemaLookup(benchmark::State& state) {
+void BM_SemaLookup(benchmark::State& state)
+{
     const auto item_count = static_cast<aurex::base::usize>(state.range(0));
     const std::string source = make_lookup_source(item_count);
     FrontendSummary summary;
@@ -365,7 +366,8 @@ void BM_SemaLookup(benchmark::State& state) {
     set_frontend_counters(state, source, summary);
 }
 
-void BM_SemaGenerics(benchmark::State& state) {
+void BM_SemaGenerics(benchmark::State& state)
+{
     const auto item_count = static_cast<aurex::base::usize>(state.range(0));
     const std::string source = make_generic_source(item_count);
     FrontendSummary summary;
@@ -385,7 +387,8 @@ void BM_SemaGenerics(benchmark::State& state) {
     set_frontend_counters(state, source, summary);
 }
 
-void BM_SemaAstBulk(benchmark::State& state) {
+void BM_SemaAstBulk(benchmark::State& state)
+{
     const auto statement_count = static_cast<aurex::base::usize>(state.range(0));
     const std::string source = make_ast_source(statement_count);
     FrontendSummary summary;

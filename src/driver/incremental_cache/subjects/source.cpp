@@ -1,7 +1,3 @@
-#include "detail.hpp"
-
-#include "../io.hpp"
-
 #include <aurex/lex/lexer.hpp>
 #include <aurex/syntax/lossless.hpp>
 
@@ -10,7 +6,11 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
+
+#include "../io.hpp"
+#include "detail.hpp"
 
 namespace aurex::driver::incremental_cache_detail {
 namespace cache_format = incremental_cache_format;
@@ -18,15 +18,18 @@ using namespace cache_format;
 
 namespace {
 
-[[nodiscard]] query::PackageKey cache_package_key() noexcept
+[[nodiscard]] query::PackageKey cache_package_key(const query::PackageKey package) noexcept
 {
+    if (query::is_valid(package)) {
+        return package;
+    }
     return query::package_key(std::span<const std::string_view>{});
 }
 
-[[nodiscard]] query::FileKey source_file_key(const base::SourceFile& file)
+[[nodiscard]] query::FileKey source_file_key(const base::SourceFile& file, const query::PackageKey package)
 {
     const std::filesystem::path canonical_path = canonical_or_absolute(std::filesystem::path(file.path()));
-    return query::file_key(cache_package_key(), canonical_path.string());
+    return query::file_key(cache_package_key(package), canonical_path.string());
 }
 
 [[nodiscard]] query::QueryResultFingerprint file_content_result_fingerprint(
@@ -133,12 +136,12 @@ void mix_lossless_parse_result(
 }
 
 [[nodiscard]] std::optional<SourceStageQueryRecords> source_stage_query_records_for_text(
-    const std::filesystem::path& path, std::string text)
+    const std::filesystem::path& path, std::string text, const query::PackageKey package)
 {
     base::SourceManager sources;
     const base::SourceId source_id = sources.add_source(path.string(), std::move(text));
     const base::SourceFile& file = sources.get(source_id);
-    const query::FileKey file_key = source_file_key(file);
+    const query::FileKey file_key = source_file_key(file, package);
     const query::LexConfigKey lex_config = query::lex_config_key();
     const query::ParserConfigKey parser_config = query::parser_config_key(lex_config);
     const query::LexFileKey lex_key = query::lex_file_key(file_key, lex_config);
@@ -161,9 +164,34 @@ void mix_lossless_parse_result(
     };
 }
 
-void push_source_file_query_subjects(QuerySubjectCollection& collection, const base::SourceFile& file)
+[[nodiscard]] std::unordered_map<std::string, query::PackageKey> source_package_index(
+    const std::span<const ModuleRecord> modules)
 {
-    const query::FileKey file_key = source_file_key(file);
+    std::unordered_map<std::string, query::PackageKey> packages;
+    for (const ModuleRecord& module : modules) {
+        const query::PackageKey package = cache_package_key(module.package);
+        packages[canonical_or_absolute(module.path).string()] = package;
+        for (const ModulePartRecord& part : module.parts) {
+            packages[canonical_or_absolute(part.path).string()] = package;
+        }
+    }
+    return packages;
+}
+
+[[nodiscard]] query::PackageKey source_package_for_file(
+    const std::unordered_map<std::string, query::PackageKey>& packages, const base::SourceFile& file)
+{
+    const std::filesystem::path canonical_path = canonical_or_absolute(std::filesystem::path(file.path()));
+    if (const auto found = packages.find(canonical_path.string()); found != packages.end()) {
+        return cache_package_key(found->second);
+    }
+    return cache_package_key({});
+}
+
+void push_source_file_query_subjects(
+    QuerySubjectCollection& collection, const base::SourceFile& file, const query::PackageKey package)
+{
+    const query::FileKey file_key = source_file_key(file, package);
     const query::LexConfigKey lex_config = query::lex_config_key();
     const query::ParserConfigKey parser_config = query::parser_config_key(lex_config);
     const query::LexFileKey lex_key = query::lex_file_key(file_key, lex_config);
@@ -196,23 +224,25 @@ void push_source_file_query_subjects(QuerySubjectCollection& collection, const b
 } // namespace
 
 [[nodiscard]] std::optional<SourceStageQueryRecords> source_stage_query_records_for_file(
-    const std::filesystem::path& path)
+    const std::filesystem::path& path, const query::PackageKey package)
 {
     std::optional<std::string> text = read_file_for_fingerprint(path);
     if (!text) {
         return std::nullopt;
     }
-    return source_stage_query_records_for_text(path, std::move(*text));
+    return source_stage_query_records_for_text(path, std::move(*text), package);
 }
 
-void collect_source_file_query_subjects(QuerySubjectCollection& collection, const base::SourceManager& sources)
+void collect_source_file_query_subjects(
+    QuerySubjectCollection& collection, const base::SourceManager& sources, const std::span<const ModuleRecord> modules)
 {
     const std::span<const base::SourceFile> files = sources.files();
+    const std::unordered_map<std::string, query::PackageKey> source_packages = source_package_index(modules);
     collection.file_contents.reserve(files.size());
     collection.lex_files.reserve(files.size());
     collection.parse_files.reserve(files.size());
     for (const base::SourceFile& file : files) {
-        push_source_file_query_subjects(collection, file);
+        push_source_file_query_subjects(collection, file, source_package_for_file(source_packages, file));
     }
 }
 

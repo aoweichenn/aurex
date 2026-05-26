@@ -1,6 +1,6 @@
 # Aurex M3 模块系统设计稿
 
-状态：M3.0 当前设计基线，Phase 1-5 已进入实现闭环
+状态：M3.0 当前设计基线，Phase 1-5 与 Phase 6A-1/2/3 已进入实现闭环
 日期：2026-05-26
 适用范围：同一 package 内的 logical module / source-file part 分离、module graph、exports query、跨 part `priv` 可见性
 
@@ -191,6 +191,25 @@ M3.0 对 `PackageKey` 的承诺必须保守：
 - 它不承诺 manifest 级 package identity。
 - 同一份源码如果用不同 root file、import path 或 compiler config 编译，短期内可以得到不同 `PackageKey`。
 - `pub(package)` 在 manifest / package model 稳定前不进入第一阶段语义，避免把临时 `PackageKey` 当成最终包身份。
+
+当前 Phase 6A-3 的实现状态：
+
+- root package identity 可由 `CompilerInvocation::package_identity` / CLI `--package` 指定；空值继续映射到
+  历史默认 package key。
+- 从当前文件目录解析到的 local-relative import 继承 importer 的 `PackageKey`。
+- 从显式 `-I` / `--import-path` import root 解析到的模块派生独立 `PackageKey`，避免未来
+  `pub(package)` 把外部依赖误判为同包。
+- `ModuleRecord`、`ModuleImportRecord`、sema `SemanticOptions::module_packages` 和增量缓存 source /
+  module query subjects 已消费同一套 package key。
+- cache header 记录 root package identity；同一源码用不同 `--package` 编译时不会被旧 coarse source
+  reuse 直接复用。
+
+仍未承诺的部分：
+
+- 没有 manifest name/version/source identity。
+- 没有 dependency package lock 或版本求解。
+- 没有跨 package 同名 logical module 的完整 namespace UX；loader 已先把 logical module cache key
+  做成 package-aware，用户级 package import 语法仍在后续阶段设计。
 
 ### 4.2 ModuleKey
 
@@ -640,8 +659,8 @@ Phase 6A-2 实现收口状态（2026-05-26）：
 - 已新增 `sema::VisibilityPolicy`，集中处理 `can_access` 和 `can_expose_type`。
 - `SemanticAnalyzerCore::can_access` 已改为只接受 `DeclContext`；旧的 module-id 入口降级为
   `can_access_module` 桥接函数，调用点不再继续复用旧函数名。
-- 当前 `DeclContext` / `AccessContext` 的 `PackageKey` 仍来自现有 query key 体系；在没有 manifest
-  package identity 前，编译会话内 source module 仍共享当前默认 package key。
+- `DeclContext` / `AccessContext` 的 `PackageKey` 来自现有 query key 体系；6A-2 只先完成 policy
+  抽象，真实 package 来源由 6A-3 承接。
 - `priv` 仍按 module 边界判断，保持当前 module-part 设计；`ModulePartKey` 字段先进入上下文模型，
   但不改变现有 `priv` 跨 part 语义。
 - Export surface 检查改为通过 `VisibilityPolicy::can_expose_type` 判断，避免后续在 sema 内继续散落
@@ -649,10 +668,26 @@ Phase 6A-2 实现收口状态（2026-05-26）：
 - 正常白盒测试已覆盖 same-module、same-package、cross-package、invalid-current-context、
   package surface 和 public surface 的 policy 行为。
 
-Phase 6A-2 之后仍未完成的部分：
+Phase 6A-3 实现收口状态（2026-05-26）：
+
+- 已新增 root package identity 通道：`CompilerInvocation::package_identity` 和 CLI `--package`。
+- `ModuleLoader` 已把 root/local-relative imports 与显式 import path 命中的外部 root 区分成不同
+  `PackageKey`；同一 physical import root 的 package identity 由 canonical import root 派生。
+- `ModuleRecord` 保存 owner package 与 syntax `ModuleId`，`ModuleImportRecord` 保存 imported module
+  package；re-export dependency key 不再默认落到空 package。
+- `SemanticOptions::module_packages` 按 `ModuleId` 传入 sema；`query_module_key`、泛型 template
+  query key 和 access policy 的 package 判断已消费真实 package 表。
+- 增量缓存 source rows 写入 source package key，`ModuleGraph` / `ModuleExports` / `ItemList`
+  query record 使用 package-aware `ModuleKey`；语义 subject 优先按 syntax `ModuleId` 绑定 package，
+  防止不同包内同名 logical module 的 item signature 混用 package；cache header 写入 root package
+  identity，防止不同 `--package` 编译复用同一 coarse source cache。
+- 已补正常测试覆盖 CLI 解析、stable-id package-aware adapter、ModuleLoader import-path package
+  隔离、sema package access 和 package-aware incremental cache module key。
+
+Phase 6A-3 之后仍未完成的部分：
 
 - `pub(package)` parser 语法和诊断。
-- manifest / package model 产生真实 `PackageKey`，并灌入 `AccessContext`。
+- manifest / package model 产生最终 `PackageKey`。
 - `ModulePackageExports(ModuleKey)` 独立 query kind。
 - `pub(package) import` 的 package-level re-export 语义。
 - package-private surface 泄漏诊断文案从“private type”升级为分层 visibility 文案。

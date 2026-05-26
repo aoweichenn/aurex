@@ -1,10 +1,11 @@
 #pragma once
 
-#include "types.hpp"
-
 #include <aurex/driver/invocation.hpp>
+
 #include <filesystem>
 #include <span>
+
+#include "types.hpp"
 
 namespace aurex::driver::incremental_cache_detail {
 

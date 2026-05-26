@@ -334,6 +334,42 @@ ModuleKey module_key_from_stable_id(const StableModuleId stable_module) noexcept
     };
 }
 
+ModuleKey module_key_from_stable_id(const PackageKey package, const StableModuleId stable_module) noexcept
+{
+    base::u64 global_id = mix_key_field(QUERY_MODULE_KEY_MARKER, package.global_id);
+    global_id = mix_key_fingerprint(global_id, stable_module.path);
+    global_id = mix_key_field(global_id, stable_module.part_count);
+    global_id = mix_key_field(global_id, static_cast<base::u64>(ModuleKind::source));
+    return ModuleKey{
+        package,
+        stable_module.path,
+        stable_module.part_count,
+        ModuleKind::source,
+        global_id,
+    };
+}
+
+DefKey def_key_from_stable_id(
+    const PackageKey package, const StableDefId stable_id, const DefNamespace name_space, const DefKind kind) noexcept
+{
+    const ModuleKey module = module_key_from_stable_id(package, stable_id.module);
+    base::u64 global_id = mix_key_field(QUERY_DEF_KEY_MARKER, module.global_id);
+    global_id = mix_key_fingerprint(global_id, stable_id.name);
+    global_id = mix_key_field(global_id, QUERY_DEF_KEY_STABLE_ID_PATH_COMPONENT_COUNT);
+    global_id = mix_key_field(global_id, static_cast<base::u64>(name_space));
+    global_id = mix_key_field(global_id, static_cast<base::u64>(kind));
+    global_id = mix_key_field(global_id, stable_id.disambiguator);
+    return DefKey{
+        module,
+        stable_id.name,
+        QUERY_DEF_KEY_STABLE_ID_PATH_COMPONENT_COUNT,
+        name_space,
+        kind,
+        stable_id.disambiguator,
+        global_id,
+    };
+}
+
 DefKey def_key_from_stable_id(const StableDefId stable_id, const DefNamespace name_space, const DefKind kind) noexcept
 {
     return DefKey{

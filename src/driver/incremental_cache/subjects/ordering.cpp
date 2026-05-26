@@ -78,7 +78,7 @@ void evaluate_item_list_query_subject(query::QueryContext& context, const ItemLi
 void evaluate_item_signature_query_subject(query::QueryContext& context, const ItemSignatureQuerySubject& subject)
 {
     const query::ItemSignatureProviderInput input{
-        query::def_key_from_stable_id(subject.stable_id, subject.name_space, subject.kind),
+        subject.key,
         subject.incremental_key,
     };
     static_cast<void>(context.evaluate_item_signature(input));
@@ -88,7 +88,7 @@ void evaluate_generic_template_signature_query_subject(
     query::QueryContext& context, const GenericTemplateSignatureQuerySubject& subject)
 {
     const query::GenericTemplateSignatureProviderInput input{
-        query::def_key_from_stable_id(subject.stable_id, subject.name_space, query::DefKind::generic_template),
+        subject.key,
         subject.incremental_key,
     };
     static_cast<void>(context.evaluate_generic_template_signature(input));
@@ -196,17 +196,14 @@ void evaluate_diagnostics_query_subject(query::QueryContext& context, const Diag
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const ItemSignatureQuerySubject& subject)
 {
-    const query::DefKey key = query::def_key_from_stable_id(subject.stable_id, subject.name_space, subject.kind);
-    return query::item_signature_query_record(key, query::query_result_fingerprint(subject.incremental_key));
+    return query::item_signature_query_record(subject.key, query::query_result_fingerprint(subject.incremental_key));
 }
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(
     const GenericTemplateSignatureQuerySubject& subject)
 {
-    const query::DefKey key =
-        query::def_key_from_stable_id(subject.stable_id, subject.name_space, query::DefKind::generic_template);
     return query::generic_template_signature_query_record(
-        key, query::query_result_fingerprint(subject.incremental_key));
+        subject.key, query::query_result_fingerprint(subject.incremental_key));
 }
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(

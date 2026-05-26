@@ -1,9 +1,11 @@
 #pragma once
 
 #include <aurex/base/result.hpp>
+#include <aurex/query/query_key.hpp>
 #include <aurex/sema/checked_module.hpp>
 
 #include <memory>
+#include <vector>
 
 namespace aurex::base {
 class DiagnosticSink;
@@ -16,6 +18,8 @@ struct AstModule;
 namespace aurex::sema {
 
 struct SemanticOptions {
+    query::PackageKey default_package;
+    std::vector<query::PackageKey> module_packages;
     bool retain_generic_side_tables = true;
 };
 

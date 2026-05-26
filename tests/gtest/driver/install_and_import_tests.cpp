@@ -1,8 +1,12 @@
 #include <aurex/base/config.hpp>
+#include <aurex/base/diagnostic.hpp>
 #include <aurex/base/integer.hpp>
+#include <aurex/base/source.hpp>
 #include <aurex/driver/compiler.hpp>
 #include <aurex/driver/file_cache.hpp>
 #include <aurex/driver/invocation.hpp>
+#include <aurex/driver/module_loader.hpp>
+#include <aurex/driver/package_identity.hpp>
 #include <aurex/query/query_key.hpp>
 #include <aurex/query/stable_identity.hpp>
 #include <aurex/sema/identifier.hpp>
@@ -12,6 +16,7 @@
 #include <array>
 #include <fstream>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -91,7 +96,8 @@ fs::path write_import_test_source(const fs::path& path, const std::string_view t
     const std::string& cache_text, const std::string_view query_kind, const std::string_view module_name)
 {
     const std::array<std::string_view, 1> module_parts{module_name};
-    const query::ModuleKey module_key = query::module_key_from_stable_id(sema::stable_module_id(module_parts));
+    const query::ModuleKey module_key = query::module_key_from_stable_id(
+        driver::package_key_from_identity({}), sema::stable_module_id(std::span<const std::string_view>{module_parts}));
     const std::string stable_key = import_test_hex_encode(query::stable_serialize(module_key));
 
     base::usize begin = 0;
@@ -845,6 +851,52 @@ TEST_F(AurexIntegrationTest, ModuleLoaderImportVisibilityChangesGraphAndExportsO
     EXPECT_FALSE(*first_graph == *second_graph);
     EXPECT_FALSE(*first_exports == *second_exports);
     EXPECT_EQ(*first_items, *second_items);
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, ModuleLoaderAssignsImportPathModulesToDistinctPackages)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view ROOT_SOURCE = "module package_identity_root;\n"
+                                             "import lib.visible as visible;\n"
+                                             "fn main() -> i32 {\n"
+                                             "  return visible.value();\n"
+                                             "}\n";
+    constexpr std::string_view IMPORT_SOURCE = "module lib.visible;\n"
+                                               "pub fn value() -> i32 {\n"
+                                               "  return 1;\n"
+                                               "}\n";
+
+    const fs::path work = tmp_root() / "module-loader-package-identity";
+    const fs::path import_dir = work / "imports";
+    const fs::path source = work / "main.ax";
+    const fs::path import_source = import_dir / "lib" / "visible.ax";
+
+    static_cast<void>(write_import_test_source(source, ROOT_SOURCE));
+    static_cast<void>(write_import_test_source(import_source, IMPORT_SOURCE));
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.import_paths.push_back(import_dir);
+
+    base::SourceManager sources;
+    base::DiagnosticSink diagnostics;
+    driver::ModuleLoader loader(invocation, sources, diagnostics);
+    auto ast = loader.load_root();
+    ASSERT_TRUE(ast) << ast.error().message;
+    const std::span<const driver::ModuleRecord> modules = loader.modules();
+    ASSERT_EQ(modules.size(), 2U);
+    ASSERT_EQ(modules.front().imports.size(), 1U);
+
+    const query::PackageKey root_package = driver::package_key_for_invocation(invocation);
+    const query::PackageKey import_package =
+        driver::package_key_for_import_root(driver::module_loader_canonical_or_absolute(import_dir).string());
+    EXPECT_EQ(modules[0].package, root_package);
+    EXPECT_EQ(modules[1].package, import_package);
+    EXPECT_NE(modules[0].package, modules[1].package);
+    EXPECT_EQ(modules.front().imports.front().module_package, modules[1].package);
 
     driver::clear_file_cache();
 }

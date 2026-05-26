@@ -26,10 +26,15 @@ namespace {
         || emit_kind == EmitKind::object || emit_kind == EmitKind::executable;
 }
 
-[[nodiscard]] sema::SemanticOptions make_semantic_options(const EmitKind emit_kind) noexcept
+[[nodiscard]] sema::SemanticOptions make_semantic_options(
+    const EmitKind emit_kind, const std::span<const ModuleRecord> modules)
 {
     sema::SemanticOptions sema_options;
     sema_options.retain_generic_side_tables = emit_kind_requires_ir_lowering(emit_kind) || emit_kind == EmitKind::typed;
+    sema_options.module_packages.reserve(modules.size());
+    for (const ModuleRecord& module : modules) {
+        sema_options.module_packages.push_back(module.package);
+    }
     return sema_options;
 }
 
@@ -130,11 +135,12 @@ base::Result<void> FrontendPipeline::dump_module_graph_output(const std::vector<
     return base::Result<void>::ok();
 }
 
-base::Result<sema::CheckedModule> FrontendPipeline::run_semantic_analysis(syntax::AstModule& ast)
+base::Result<sema::CheckedModule> FrontendPipeline::run_semantic_analysis(
+    syntax::AstModule& ast, const std::vector<ModuleRecord>& modules)
 {
     ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::sema_analyze);
-    sema::SemanticAnalyzer analyzer(
-        ast, this->session_.diagnostics(), make_semantic_options(this->session_.invocation().emit_kind));
+    sema::SemanticAnalyzer analyzer(ast, this->session_.diagnostics(),
+        make_semantic_options(this->session_.invocation().emit_kind, std::span<const ModuleRecord>(modules)));
     return analyzer.analyze();
 }
 

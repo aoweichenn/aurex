@@ -1,8 +1,8 @@
 #include "profile.hpp"
 
-#include "query_stats.hpp"
-
 #include <sstream>
+
+#include "query_stats.hpp"
 
 namespace aurex::driver::incremental_cache_detail {
 

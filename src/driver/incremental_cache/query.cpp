@@ -1,9 +1,4 @@
-#include "io.hpp"
-#include "profile.hpp"
 #include "query.hpp"
-#include "reuse.hpp"
-#include "source_stage.hpp"
-#include "subjects.hpp"
 
 #include <aurex/base/config.hpp>
 
@@ -12,6 +7,12 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+
+#include "io.hpp"
+#include "profile.hpp"
+#include "reuse.hpp"
+#include "source_stage.hpp"
+#include "subjects.hpp"
 
 namespace aurex::driver::incremental_cache_detail {
 namespace cache_format = incremental_cache_format;
@@ -47,9 +48,9 @@ base::Result<bool> try_reuse_incremental_check_cache_impl(
     return base::Result<bool>::ok(source_stage_reuse.reusable);
 }
 
-base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invocation, const base::SourceManager& sources,
-    const std::span<const ModuleRecord> modules, const syntax::AstModule& ast, const sema::CheckedModule& checked,
-    CompilationProfiler* const profiler)
+base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invocation,
+    const base::SourceManager& sources, const std::span<const ModuleRecord> modules, const syntax::AstModule& ast,
+    const sema::CheckedModule& checked, CompilationProfiler* const profiler)
 {
     if (invocation.incremental_cache_path.empty()) {
         return base::Result<void>::ok();
@@ -67,8 +68,8 @@ base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invoca
     }
 
     const std::vector<std::filesystem::path> imports = normalized_import_paths(invocation);
-    const std::vector<SourceFingerprintRecord> source_records = collect_source_fingerprints(sources);
     const std::vector<ModuleRecord> module_records = sorted_modules(modules);
+    const std::vector<SourceFingerprintRecord> source_records = collect_source_fingerprints(sources, module_records);
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
     const QuerySubjectCollection query_subjects = collect_query_subjects(module_records, checked, sources, &ast);
     const auto query_diff_started = std::chrono::steady_clock::now();
@@ -110,7 +111,9 @@ base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invoca
         write_header_field(out, INCREMENTAL_CACHE_FIELD_SCHEMA, std::to_string(INCREMENTAL_CACHE_SCHEMA_VERSION));
         write_encoded_header_field(out, {INCREMENTAL_CACHE_FIELD_COMPILER, base::config::AUREX_VERSION_STRING});
         write_encoded_header_field(out, {INCREMENTAL_CACHE_FIELD_MODE, INCREMENTAL_CACHE_MODE_SEMANTIC_OK});
-        write_encoded_header_field(out, {INCREMENTAL_CACHE_FIELD_ROOT, canonical_or_absolute(invocation.input_path).string()});
+        write_encoded_header_field(
+            out, {INCREMENTAL_CACHE_FIELD_ROOT, canonical_or_absolute(invocation.input_path).string()});
+        write_encoded_header_field(out, {INCREMENTAL_CACHE_FIELD_PACKAGE, invocation.package_identity});
         write_header_field(out, INCREMENTAL_CACHE_FIELD_IMPORT_PATHS, std::to_string(imports.size()));
         for (const std::filesystem::path& import_path : imports) {
             out << INCREMENTAL_CACHE_FIELD_IMPORT_PATH << INCREMENTAL_CACHE_SEPARATOR;

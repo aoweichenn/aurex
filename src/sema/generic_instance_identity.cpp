@@ -71,17 +71,31 @@ private:
 
 query::ModuleKey SemanticAnalyzerCore::query_module_key(const syntax::ModuleId module) const noexcept
 {
-    const query::PackageKey package = query::package_key(std::span<const std::string_view>{});
+    const query::PackageKey package = this->query_package_key(module);
     if (!syntax::is_valid(module) || module.value >= this->ctx_.module.modules.size()) {
-        return query::module_key(package, std::span<const std::string_view>{});
+        return query::module_key_from_stable_id(package, sema::stable_module_id(std::span<const std::string_view>{}));
     }
-    return query::module_key(package, this->ctx_.module.modules[module.value].path.parts);
+    return query::module_key_from_stable_id(
+        package, sema::stable_module_id(this->ctx_.module.modules[module.value].path.parts));
+}
+
+query::PackageKey SemanticAnalyzerCore::query_package_key(const syntax::ModuleId module) const noexcept
+{
+    if (syntax::is_valid(module) && module.value < this->ctx_.options.module_packages.size()
+        && query::is_valid(this->ctx_.options.module_packages[module.value])) {
+        return this->ctx_.options.module_packages[module.value];
+    }
+    if (query::is_valid(this->ctx_.options.default_package)) {
+        return this->ctx_.options.default_package;
+    }
+    return query::package_key(std::span<const std::string_view>{});
 }
 
 query::DefKey SemanticAnalyzerCore::generic_template_query_key(
     const GenericTemplateInfo& info, const query::DefNamespace name_space) const noexcept
 {
-    return query::def_key_from_stable_id(info.stable_id, name_space, query::DefKind::generic_template);
+    return query::def_key_from_stable_id(
+        this->query_package_key(info.module), info.stable_id, name_space, query::DefKind::generic_template);
 }
 
 void SemanticAnalyzerCore::index_generic_param_query_keys(

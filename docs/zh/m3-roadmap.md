@@ -157,6 +157,19 @@ manager 混入当前模块系统主线。
 这一步仍不开放 `pub(package)` 源码语法，也不引入 manifest package identity；真实 `PackageKey`
 来源、`ModulePackageExports` query 和 package-level re-export 进入后续阶段。
 
+2026-05-26：Phase 6A-3 Package Identity Groundwork 已完成第三步内部重构。当前代码层已经把
+root package identity 从 `CompilerInvocation::package_identity` 接入 driver，并新增 `--package`
+CLI 选项；未显式指定时继续使用历史默认空 package key，保持现有用户行为和旧缓存兼容。`ModuleLoader`
+现在为 root/local-relative imports 继承同一 `PackageKey`，为显式 `-I` / `--import-path` 命中的外部
+import root 派生独立 `PackageKey`，并把 package 写入 `ModuleRecord` / `ModuleImportRecord`。Sema
+通过 `SemanticOptions::module_packages` 按 `ModuleId` 获得 package 表，`query_module_key`、泛型
+template query key 和 `pub(package)` 内部 policy 不再只能看到默认空 package。增量缓存的
+source rows、`ModuleGraph`、`ModuleExports`、`ItemList`、item/generic signature subjects 和 re-export
+dependency key 已消费同一套 package key；语义 subject 优先用 syntax `ModuleId` 绑定 package，避免
+不同包内同名 logical module 混用 stable module fallback；cache header 记录 root package identity，
+避免同一源码用不同 package identity 编译时被 coarse source reuse 误复用。该阶段仍不开放
+`pub(package)` 源码语法，也不引入 manifest、版本求解或 package manager。
+
 ## 验收
 
 M3.0 模块验收：

@@ -23,6 +23,7 @@ struct LoadedModuleSource {
 
 struct ImportFileResolution {
     std::optional<std::filesystem::path> selected;
+    std::optional<std::filesystem::path> selected_import_root;
     std::vector<std::filesystem::path> searched_candidates;
     std::vector<std::filesystem::path> matching_candidates;
 };

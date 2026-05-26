@@ -393,7 +393,7 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
     const base::SourceRange fallback_range) noexcept
 {
     if (query::is_valid(stable_id)) {
-        return query::def_key_from_stable_id(stable_id, name_space, kind);
+        return query::def_key_from_stable_id(module_key_for_snapshot(snapshot).package, stable_id, name_space, kind);
     }
     const std::array<std::string_view, 1> path{fallback_name};
     return query::def_key(

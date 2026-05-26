@@ -1,8 +1,8 @@
 #include <aurex/base/config.hpp>
 #include <aurex/driver/cli.hpp>
 #include <aurex/driver/compiler.hpp>
-#include <aurex/driver/driver_messages.hpp>
 #include <aurex/driver/diagnostic_renderer.hpp>
+#include <aurex/driver/driver_messages.hpp>
 
 #include <filesystem>
 #include <ostream>
@@ -65,6 +65,7 @@ enum class OptionEffectKind {
     set_emit_kind,
     parse_emit_kind,
     set_output_path,
+    set_package_identity,
     append_import_path,
     set_incremental_cache_path,
     enable_query_pruning,
@@ -188,6 +189,7 @@ inline constexpr OptionEffect CLI_EFFECT_PARSE_EMIT_KIND{
     OptionConflictGroup::primary_action,
 };
 inline constexpr OptionEffect CLI_EFFECT_SET_OUTPUT_PATH{OptionEffectKind::set_output_path};
+inline constexpr OptionEffect CLI_EFFECT_SET_PACKAGE_IDENTITY{OptionEffectKind::set_package_identity};
 inline constexpr OptionEffect CLI_EFFECT_APPEND_IMPORT_PATH{OptionEffectKind::append_import_path};
 inline constexpr OptionEffect CLI_EFFECT_SET_INCREMENTAL_CACHE_PATH{OptionEffectKind::set_incremental_cache_path};
 inline constexpr OptionEffect CLI_EFFECT_ENABLE_QUERY_PRUNING{OptionEffectKind::enable_query_pruning};
@@ -390,6 +392,16 @@ inline constexpr auto OPTION_SPECS = std::to_array<OptionSpec>({
         CLI_EFFECT_SET_OUTPUT_PATH,
         "path",
         "set output path",
+    },
+    {
+        OptionLevel::secondary,
+        OptionGroup::search_path,
+        OptionApplicability::any,
+        "--package",
+        OptionValueStyle::separate,
+        CLI_EFFECT_SET_PACKAGE_IDENTITY,
+        "name",
+        "set the root package identity for module and query keys",
     },
     {
         OptionLevel::secondary,
@@ -845,6 +857,9 @@ private:
                 return this->apply_emit_kind(result, option.value);
             case OptionEffectKind::set_output_path:
                 result.invocation.output_path = option.value;
+                return base::Result<void>::ok();
+            case OptionEffectKind::set_package_identity:
+                result.invocation.package_identity = option.value;
                 return base::Result<void>::ok();
             case OptionEffectKind::append_import_path:
                 result.invocation.import_paths.push_back(std::filesystem::path(option.value));

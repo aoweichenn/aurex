@@ -265,7 +265,10 @@ struct QueryKey {
     DefKey owner, base::u32 index, GenericParamKind kind = GenericParamKind::type) noexcept;
 [[nodiscard]] QueryKey query_key(
     QueryKind kind, StableFingerprint128 payload, base::u16 schema = QUERY_KEY_SCHEMA_VERSION) noexcept;
+[[nodiscard]] ModuleKey module_key_from_stable_id(PackageKey package, StableModuleId stable_module) noexcept;
 [[nodiscard]] ModuleKey module_key_from_stable_id(StableModuleId stable_module) noexcept;
+[[nodiscard]] DefKey def_key_from_stable_id(
+    PackageKey package, StableDefId stable_id, DefNamespace name_space, DefKind kind) noexcept;
 [[nodiscard]] DefKey def_key_from_stable_id(StableDefId stable_id, DefNamespace name_space, DefKind kind) noexcept;
 
 void append_stable_key(StableKeyWriter& writer, PackageKey key);

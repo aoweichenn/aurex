@@ -1,13 +1,28 @@
-#include "io.hpp"
 #include "source_stage.hpp"
-#include "subjects.hpp"
 
+#include <span>
+#include <string_view>
 #include <utility>
 #include <vector>
+
+#include "io.hpp"
+#include "subjects.hpp"
 
 namespace aurex::driver::incremental_cache_detail {
 namespace cache_format = incremental_cache_format;
 using namespace cache_format;
+
+namespace {
+
+[[nodiscard]] query::PackageKey cache_source_package(const SourceFingerprintRecord& source) noexcept
+{
+    if (query::is_valid(source.package)) {
+        return source.package;
+    }
+    return query::package_key(std::span<const std::string_view>{});
+}
+
+} // namespace
 
 [[nodiscard]] query::QueryRecordChangeStatus cached_query_record_status(
     const query::QueryContext& cached_context, const query::QueryRecord& current)
@@ -50,7 +65,8 @@ void update_source_stage_reuse_summary_for_source(SourceStageReuseSummary& summa
     const query::QueryContext& cached_context, const SourceFingerprintRecord& cached_source)
 {
     ++summary.sources;
-    const std::optional<SourceStageQueryRecords> current = source_stage_query_records_for_file(cached_source.path);
+    const std::optional<SourceStageQueryRecords> current =
+        source_stage_query_records_for_file(cached_source.path, cache_source_package(cached_source));
     if (!current) {
         ++summary.source_failures;
         reject_source_stage_reuse(summary, INCREMENTAL_CACHE_PROFILE_REASON_SOURCE_FAILURE);

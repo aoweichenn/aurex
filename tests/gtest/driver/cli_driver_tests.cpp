@@ -5,6 +5,7 @@
 #include <aurex/driver/diagnostic_renderer.hpp>
 #include <aurex/driver/file_cache.hpp>
 #include <aurex/driver/incremental_cache.hpp>
+#include <aurex/driver/package_identity.hpp>
 #include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/driver/profile.hpp>
 #include <aurex/query/generic_instance_key.hpp>
@@ -804,12 +805,36 @@ void expect_cache_query_edges_follow_dependency_schedule(const std::string_view 
     return std::nullopt;
 }
 
+[[nodiscard]] query::PackageKey cache_test_default_package() noexcept
+{
+    return driver::package_key_from_identity(std::string_view{});
+}
+
+template <base::usize PART_COUNT>
+[[nodiscard]] query::ModuleKey cache_test_module_key(const std::array<std::string_view, PART_COUNT>& module_parts)
+{
+    return query::module_key_from_stable_id(cache_test_default_package(),
+        sema::stable_module_id(std::span<const std::string_view>{module_parts.data(), module_parts.size()}));
+}
+
+[[nodiscard]] query::DefKey cache_test_def_key_from_stable_id(
+    const sema::StableDefId& stable_id, const query::DefNamespace name_space, const query::DefKind kind)
+{
+    return query::def_key_from_stable_id(cache_test_default_package(), stable_id, name_space, kind);
+}
+
 template <base::usize PART_COUNT>
 [[nodiscard]] std::string cache_test_encoded_module_key(const std::array<std::string_view, PART_COUNT>& module_parts)
 {
-    const sema::StableModuleId stable_module =
-        sema::stable_module_id(std::span<const std::string_view>{module_parts.data(), module_parts.size()});
-    const query::ModuleKey module_key = query::module_key_from_stable_id(stable_module);
+    return hex_encode_cache_test_field(query::stable_serialize(cache_test_module_key(module_parts)));
+}
+
+template <base::usize PART_COUNT>
+[[nodiscard]] std::string cache_test_encoded_module_key(
+    const query::PackageKey package, const std::array<std::string_view, PART_COUNT>& module_parts)
+{
+    const query::ModuleKey module_key = query::module_key_from_stable_id(
+        package, sema::stable_module_id(std::span<const std::string_view>{module_parts.data(), module_parts.size()}));
     return hex_encode_cache_test_field(query::stable_serialize(module_key));
 }
 
@@ -961,6 +986,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms)
         "--opt-level=O2",
         "--incremental-cache",
         "build/hello.axic",
+        "--package=demo.pkg",
         "--profile-output",
         "build/hello.profile.json",
         "examples/hello.ax",
@@ -976,6 +1002,7 @@ TEST(CoreUnit, CliParserIsTableDrivenAndSupportsModernDriverForms)
     EXPECT_EQ(object_parse.invocation.clang_args.front(), "-fno-color-diagnostics");
     EXPECT_EQ(object_parse.invocation.optimization_level, ir::OptimizationLevel::standard);
     EXPECT_EQ(object_parse.invocation.incremental_cache_path, fs::path("build/hello.axic"));
+    EXPECT_EQ(object_parse.invocation.package_identity, "demo.pkg");
     EXPECT_TRUE(object_parse.invocation.query_pruning_enabled);
     EXPECT_EQ(object_parse.invocation.profile_output_path, fs::path("build/hello.profile.json"));
 
@@ -1857,6 +1884,7 @@ TEST_F(AurexIntegrationTest, CliAndFrontendDumps)
             "--dump-modules",
             "--dump-lossless",
             "--incremental-cache",
+            "--package",
             "--query-pruning",
             "--no-query-pruning",
             "--diagnostics",
@@ -2478,7 +2506,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     base::SourceManager sources;
     static_cast<void>(sources.add_source(source.string(), std::string(DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SOURCE)));
     const std::array<driver::ModuleRecord, 1> modules{{
-        driver::ModuleRecord{std::string(DRIVER_INCREMENTAL_CACHE_SYNTHETIC_MODULE), source},
+        driver::ModuleRecord{std::string(DRIVER_INCREMENTAL_CACHE_SYNTHETIC_MODULE), source,
+            query::package_key(std::span<const std::string_view>{})},
     }};
 
     sema::CheckedModule checked;
@@ -2486,8 +2515,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     const sema::StableModuleId stable_module = sema::stable_module_id(module_parts);
     const sema::StableDefId template_stable_id = sema::stable_definition_id(
         stable_module, sema::StableSymbolKind::generic_template, DRIVER_INCREMENTAL_CACHE_SYNTHETIC_FUNCTION);
-    const query::DefKey template_def =
-        query::def_key_from_stable_id(template_stable_id, query::DefNamespace::value, query::DefKind::generic_template);
+    const query::DefKey template_def = cache_test_def_key_from_stable_id(
+        template_stable_id, query::DefNamespace::value, query::DefKind::generic_template);
     const query::CanonicalTypeKey i32_arg = query::canonical_builtin(query::BuiltinTypeKey::i32);
     const std::array<query::CanonicalTypeKey, 1> type_args{i32_arg};
     const query::GenericInstanceKey generic_instance_key = query::generic_instance_key(
@@ -2569,7 +2598,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     expect_contains(cache_text, "query_edge\tlex_file");
     expect_contains(cache_text, "query_edge\tparse_file");
     const query::DefKey expected_item_signature_key =
-        query::def_key_from_stable_id(duplicate_stable_id, query::DefNamespace::value, query::DefKind::function);
+        cache_test_def_key_from_stable_id(duplicate_stable_id, query::DefNamespace::value, query::DefKind::function);
     expect_contains(cache_text, hex_encode_cache_test_field(query::stable_serialize(expected_item_signature_key)));
     const std::string encoded_generic_instance_key =
         hex_encode_cache_test_field(query::stable_serialize(generic_instance_key));
@@ -2851,11 +2880,11 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
 
     const std::array<std::string_view, 1> module_parts{DRIVER_INCREMENTAL_CACHE_EDGE_MODULE};
     const sema::StableModuleId stable_module = sema::stable_module_id(module_parts);
-    const query::ModuleKey module_key = query::module_key_from_stable_id(stable_module);
+    const query::ModuleKey module_key = cache_test_module_key(module_parts);
     const sema::StableDefId stable_id = sema::stable_definition_id(
         stable_module, sema::StableSymbolKind::function, DRIVER_INCREMENTAL_CACHE_EDGE_FUNCTION);
     const query::DefKey def_key =
-        query::def_key_from_stable_id(stable_id, query::DefNamespace::value, query::DefKind::function);
+        cache_test_def_key_from_stable_id(stable_id, query::DefNamespace::value, query::DefKind::function);
     const query::QueryResultFingerprint exports_result = query::query_result_fingerprint(
         sema::stable_incremental_key(stable_id, DRIVER_INCREMENTAL_CACHE_EDGE_EXPORTS_SIGNATURE));
     const query::QueryResultFingerprint item_list_result =
@@ -3038,7 +3067,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
     base::SourceManager sources;
     static_cast<void>(sources.add_source(source.string(), std::string(DRIVER_INCREMENTAL_CACHE_EDGE_SOURCE)));
     const std::array<driver::ModuleRecord, 1> modules{{
-        driver::ModuleRecord{std::string(DRIVER_INCREMENTAL_CACHE_EDGE_MODULE), source},
+        driver::ModuleRecord{std::string(DRIVER_INCREMENTAL_CACHE_EDGE_MODULE), source,
+            query::package_key(std::span<const std::string_view>{})},
     }};
     sema::CheckedModule checked;
     const sema::InternedText function_name = checked.intern_text(DRIVER_INCREMENTAL_CACHE_EDGE_FUNCTION);
@@ -3109,11 +3139,11 @@ TEST_F(AurexIntegrationTest, IncrementalCacheItemSignatureIgnoresBodyOnlyChanges
 
     const std::array<std::string_view, 1> module_parts{"incremental_cache_signature"};
     const sema::StableModuleId stable_module = sema::stable_module_id(module_parts);
-    const query::ModuleKey module_key = query::module_key_from_stable_id(stable_module);
+    const query::ModuleKey module_key = cache_test_module_key(module_parts);
     const sema::StableDefId helper_stable_id =
         sema::stable_definition_id(stable_module, sema::StableSymbolKind::function, "helper");
     const query::DefKey helper_def_key =
-        query::def_key_from_stable_id(helper_stable_id, query::DefNamespace::value, query::DefKind::function);
+        cache_test_def_key_from_stable_id(helper_stable_id, query::DefNamespace::value, query::DefKind::function);
     const query::BodyKey helper_body_key = query::body_key(helper_def_key, query::BodySlotKind::function_body);
     const std::string encoded_helper_key = hex_encode_cache_test_field(query::stable_serialize(helper_def_key));
     const std::string encoded_helper_body_key = hex_encode_cache_test_field(query::stable_serialize(helper_body_key));
@@ -3191,11 +3221,11 @@ TEST_F(AurexIntegrationTest, IncrementalCacheItemSignatureChangesWhenSignatureCh
 
     const std::array<std::string_view, 1> module_parts{"incremental_cache_signature_change"};
     const sema::StableModuleId stable_module = sema::stable_module_id(module_parts);
-    const query::ModuleKey module_key = query::module_key_from_stable_id(stable_module);
+    const query::ModuleKey module_key = cache_test_module_key(module_parts);
     const sema::StableDefId helper_stable_id =
         sema::stable_definition_id(stable_module, sema::StableSymbolKind::function, "helper");
     const query::DefKey helper_def_key =
-        query::def_key_from_stable_id(helper_stable_id, query::DefNamespace::value, query::DefKind::function);
+        cache_test_def_key_from_stable_id(helper_stable_id, query::DefNamespace::value, query::DefKind::function);
     const std::string encoded_helper_key = hex_encode_cache_test_field(query::stable_serialize(helper_def_key));
     const std::string encoded_module_key = hex_encode_cache_test_field(query::stable_serialize(module_key));
 
@@ -3285,6 +3315,123 @@ TEST_F(AurexIntegrationTest, IncrementalCacheModuleExportsTracksPublicSignatureW
 
     EXPECT_FALSE(*first_exports_result == *second_exports_result);
     EXPECT_EQ(*first_item_list_result, *second_item_list_result);
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheKeysRootPackageIdentity)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view SOURCE = "module incremental_cache_package_identity;\n"
+                                        "pub fn exported() -> i32 {\n"
+                                        "  return 1;\n"
+                                        "}\n";
+    constexpr std::string_view PACKAGE_IDENTITY = "demo.package.identity";
+    const fs::path cache_dir = tmp_root() / "incremental-cache-package-identity";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << SOURCE;
+    }
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+    invocation.package_identity = PACKAGE_IDENTITY;
+
+    driver::Compiler compiler;
+    auto result = compiler.run(invocation);
+    ASSERT_TRUE(result) << result.error().message;
+
+    const std::string cache_text = read_text(cache);
+    const std::array<std::string_view, 1> module_parts{"incremental_cache_package_identity"};
+    const query::PackageKey package = driver::package_key_from_identity(PACKAGE_IDENTITY);
+    EXPECT_NE(cache_text.find("package\t" + hex_encode_cache_test_field(PACKAGE_IDENTITY)), std::string::npos);
+    EXPECT_TRUE(cache_test_query_result(
+        cache_text, CACHE_TEST_QUERY_MODULE_GRAPH, cache_test_encoded_module_key(package, module_parts))
+            .has_value());
+    EXPECT_FALSE(cache_test_module_query_result(cache_text, CACHE_TEST_QUERY_MODULE_GRAPH, module_parts).has_value());
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheSemanticSubjectsUseModuleIdPackagesForSplitLogicalNames)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view MODULE_TEXT = "module shared.util;\n";
+    constexpr std::string_view FUNCTION_NAME = "value";
+    constexpr std::string_view LOCAL_PACKAGE = "local.package";
+    constexpr std::string_view IMPORT_ROOT = "/virtual/import/root";
+    const fs::path cache_dir = tmp_root() / "incremental-cache-split-package-subjects";
+    fs::create_directories(cache_dir);
+    const fs::path local_source = cache_dir / "local.ax";
+    const fs::path import_source = cache_dir / "import.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    {
+        std::ofstream local_out(local_source, std::ios::binary | std::ios::trunc);
+        std::ofstream import_out(import_source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(local_out.is_open());
+        ASSERT_TRUE(import_out.is_open());
+        local_out << MODULE_TEXT;
+        import_out << MODULE_TEXT;
+    }
+
+    const query::PackageKey local_package = driver::package_key_from_identity(LOCAL_PACKAGE);
+    const query::PackageKey import_package = driver::package_key_for_import_root(IMPORT_ROOT);
+    const std::array<driver::ModuleRecord, 2> modules{{
+        driver::ModuleRecord{std::string("shared.util"), local_source, local_package, syntax::ModuleId{0}},
+        driver::ModuleRecord{std::string("shared.util"), import_source, import_package, syntax::ModuleId{1}},
+    }};
+
+    base::SourceManager sources;
+    static_cast<void>(sources.add_source(local_source.string(), std::string(MODULE_TEXT)));
+    static_cast<void>(sources.add_source(import_source.string(), std::string(MODULE_TEXT)));
+
+    sema::CheckedModule checked;
+    const sema::InternedText name = checked.intern_text(FUNCTION_NAME);
+    const std::array<std::string_view, 2> module_parts{"shared", "util"};
+    const sema::StableModuleId stable_module = sema::stable_module_id(module_parts);
+    const sema::StableDefId stable_id =
+        sema::stable_definition_id(stable_module, sema::StableSymbolKind::function, FUNCTION_NAME);
+    for (base::u32 module_index = 0; module_index < modules.size(); ++module_index) {
+        sema::FunctionSignature signature = checked.make_function_signature();
+        signature.name = name;
+        signature.name_id = name.id;
+        signature.module = syntax::ModuleId{module_index};
+        signature.stable_id = stable_id;
+        signature.incremental_key = sema::stable_incremental_key(
+            stable_id, "signature:" + std::to_string(static_cast<unsigned long long>(module_index)));
+        checked.functions.emplace(sema::FunctionLookupKey{module_index, 0, name.id}, std::move(signature));
+    }
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = local_source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+    invocation.package_identity = LOCAL_PACKAGE;
+
+    driver::CompilationProfiler profiler(true);
+    auto write_result = driver::write_incremental_cache(invocation, sources, modules, checked, &profiler);
+    ASSERT_TRUE(write_result) << write_result.error().message;
+
+    const std::string cache_text = read_text(cache);
+    const query::DefKey local_def =
+        query::def_key_from_stable_id(local_package, stable_id, query::DefNamespace::value, query::DefKind::function);
+    const query::DefKey import_def =
+        query::def_key_from_stable_id(import_package, stable_id, query::DefNamespace::value, query::DefKind::function);
+    EXPECT_TRUE(cache_test_query_result(
+        cache_text, CACHE_TEST_QUERY_ITEM_SIGNATURE, hex_encode_cache_test_field(query::stable_serialize(local_def)))
+            .has_value());
+    EXPECT_TRUE(cache_test_query_result(
+        cache_text, CACHE_TEST_QUERY_ITEM_SIGNATURE, hex_encode_cache_test_field(query::stable_serialize(import_def)))
+            .has_value());
+    EXPECT_NE(local_def, import_def);
 
     driver::clear_file_cache();
 }
@@ -3493,7 +3640,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheRejectsMalformedMismatchedAndBlocke
         const sema::StableDefId stable_id =
             sema::stable_definition_id(stable_module, sema::StableSymbolKind::function, "helper");
         const query::DefKey def_key =
-            query::def_key_from_stable_id(stable_id, query::DefNamespace::value, query::DefKind::function);
+            cache_test_def_key_from_stable_id(stable_id, query::DefNamespace::value, query::DefKind::function);
         const query::QueryResultFingerprint result =
             query::query_result_fingerprint(sema::stable_incremental_key(stable_id, "signature:i32"));
         const std::optional<query::QueryRecord> record = query::item_signature_query_record(def_key, result);

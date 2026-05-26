@@ -1,7 +1,5 @@
 #pragma once
 
-#include "types.hpp"
-
 #include <aurex/base/result.hpp>
 #include <aurex/base/source.hpp>
 #include <aurex/driver/invocation.hpp>
@@ -14,6 +12,8 @@
 #include <string_view>
 #include <vector>
 
+#include "types.hpp"
+
 namespace aurex::driver::incremental_cache_detail {
 
 [[nodiscard]] std::filesystem::path canonical_or_absolute(const std::filesystem::path& path);
@@ -23,7 +23,8 @@ namespace aurex::driver::incremental_cache_detail {
 [[nodiscard]] bool same_fingerprint(const SourceFingerprintRecord& lhs, const SourceFingerprintRecord& rhs) noexcept;
 
 [[nodiscard]] std::vector<std::filesystem::path> normalized_import_paths(const CompilerInvocation& invocation);
-[[nodiscard]] std::vector<SourceFingerprintRecord> collect_source_fingerprints(const base::SourceManager& sources);
+[[nodiscard]] std::vector<SourceFingerprintRecord> collect_source_fingerprints(
+    const base::SourceManager& sources, std::span<const ModuleRecord> modules);
 [[nodiscard]] std::vector<ModuleRecord> sorted_modules(std::span<const ModuleRecord> modules);
 [[nodiscard]] std::string_view stable_symbol_kind_name(sema::StableSymbolKind kind) noexcept;
 [[nodiscard]] std::optional<query::QueryKind> parse_query_kind_name(std::string_view name) noexcept;

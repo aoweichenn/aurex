@@ -133,7 +133,8 @@ ImportFileResolution resolve_import_file(const syntax::ModulePath& path, const s
     resolution.searched_candidates = import_candidates(path, importer_dir, import_paths);
 
     std::unordered_set<std::string> seen_canonical_paths;
-    for (const std::filesystem::path& candidate : resolution.searched_candidates) {
+    for (base::usize index = 0; index < resolution.searched_candidates.size(); ++index) {
+        const std::filesystem::path& candidate = resolution.searched_candidates[index];
         if (!import_candidate_exists(candidate)) {
             continue;
         }
@@ -146,6 +147,17 @@ ImportFileResolution resolve_import_file(const syntax::ModulePath& path, const s
 
     if (resolution.matching_candidates.size() == 1) {
         resolution.selected = resolution.matching_candidates.front();
+        for (base::usize index = 0; index < resolution.searched_candidates.size(); ++index) {
+            const std::filesystem::path canonical =
+                module_loader_canonical_or_absolute(resolution.searched_candidates[index]);
+            if (canonical != *resolution.selected) {
+                continue;
+            }
+            if (index > 0) {
+                resolution.selected_import_root = module_loader_canonical_or_absolute(import_paths[index - 1]);
+            }
+            break;
+        }
     }
     return resolution;
 }

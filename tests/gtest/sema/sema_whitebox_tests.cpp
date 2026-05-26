@@ -1154,6 +1154,19 @@ TEST(CoreUnit, SemanticWhiteBoxVisibilityLatticeAccessAndSurfaceLeaks)
     EXPECT_FALSE(analyzer.can_access_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::private_));
     EXPECT_TRUE(analyzer.can_access_module(module_id(SEMA_TEST_ROOT_MODULE_INDEX), syntax::Visibility::private_));
 
+    sema::SemanticOptions split_package_options;
+    split_package_options.module_packages = {
+        query::package_key(package_one),
+        query::package_key(package_two),
+        query::package_key(package_two),
+    };
+    sema::SemanticAnalyzerCore split_package_analyzer(module, diagnostics, split_package_options);
+    split_package_analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    EXPECT_FALSE(split_package_analyzer.can_access_module(
+        module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::package_));
+    EXPECT_NE(split_package_analyzer.query_module_key(module_id(SEMA_TEST_ROOT_MODULE_INDEX)).package,
+        split_package_analyzer.query_module_key(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX)).package);
+
     analyzer.state_.flow.current_module = syntax::INVALID_MODULE_ID;
     EXPECT_TRUE(analyzer.can_access_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::public_));
     EXPECT_FALSE(analyzer.can_access_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), syntax::Visibility::package_));
@@ -2671,8 +2684,9 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstanceResolverCoversIdentityEdges)
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzerCore analyzer(module, diagnostics);
 
+    const query::PackageKey default_package = query::package_key(std::span<const std::string_view>{});
     const query::ModuleKey empty_module =
-        query::module_key(query::package_key(std::span<const std::string_view>{}), std::span<const std::string_view>{});
+        query::module_key_from_stable_id(default_package, sema::stable_module_id(std::span<const std::string_view>{}));
     EXPECT_EQ(analyzer.query_module_key(syntax::INVALID_MODULE_ID), empty_module);
     EXPECT_EQ(analyzer.query_module_key(module_id(SEMA_TEST_MISSING_MODULE_INDEX)), empty_module);
 

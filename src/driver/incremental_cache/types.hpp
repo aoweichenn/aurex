@@ -138,16 +138,13 @@ struct ItemListQuerySubject {
 };
 
 struct ItemSignatureQuerySubject {
-    sema::StableDefId stable_id;
+    query::DefKey key;
     sema::IncrementalKey incremental_key;
-    query::DefNamespace name_space = query::DefNamespace::value;
-    query::DefKind kind = query::DefKind::invalid;
 };
 
 struct GenericTemplateSignatureQuerySubject {
-    sema::StableDefId stable_id;
+    query::DefKey key;
     sema::IncrementalKey incremental_key;
-    query::DefNamespace name_space = query::DefNamespace::value;
 };
 
 struct GenericInstanceSignatureQuerySubject {

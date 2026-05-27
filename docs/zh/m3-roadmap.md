@@ -247,7 +247,7 @@ part 的 display name、kind、stable index、path 和 part key global id；从 
 覆盖了 query key、loader part key、part root dump/artifact 行为和既有 part diagnostics；该阶段仍不引入
 workspace、dependency resolver、lockfile、nested module tree、selective `pub use` 或 `pub(in path)`。
 
-2026-05-27：Phase 8A-C Sema Part Identity / ModulePart Query Boundary 已完成。8A 把 loader 产生的
+2026-05-27：Phase 8A-D Sema Part Identity / ModulePart Query Boundary 已完成。8A 把 loader 产生的
 part stable index 贯通到 combined AST item：`AstModule::item_part_indices` 与 import scope part index
 记录每个 item/import scope 来自 primary 还是 named part；parser-only 路径继续默认 primary part，
 syntax 层仍不直接依赖 query key。`SemanticOptions::module_part_keys` 由 driver 按 `ModuleRecord.parts`
@@ -260,8 +260,11 @@ identity 已有自身 fingerprint，且必须继续保持 part 声明重排 gree
 dependency 会错误放大 invalidation。8C 进一步把 part-local import scope 变成 sema 入口处的可验证
 不变量：scope 必须覆盖有效 item 区间、覆盖的 item 必须全部来自同一 `ModuleId` 和同一
 `part_index`，并且在 `SemanticOptions::module_part_keys` 存在时该 index 必须指向有效
-`ModulePartKey`。普通 gtest 覆盖 sema part context、part-local import scope contract、
-module_part query provider、stable key layout、
+`ModulePartKey`。8D 把该 part origin 消费到 checked metadata 与 debug dump：函数、结构体、枚举
+case、类型别名和泛型模板签名都记录来源 `part_index`；当 checked module 含有非 primary part 声明时，
+`--emit=checked` / `dump_checked_module` 会以 `@part=N` 暴露来源，函数原型/定义合并时以定义所在 part
+为主，若只有 prototype 则使用 prototype 所在 part。普通 gtest 覆盖 sema part context、part-local
+import scope contract、checked dump part origin、module_part query provider、stable key layout、
 edge verifier、query executor 和 incremental cache 写入/profile 行为。该阶段不引入 per-part sema
 isolation、per-part codegen artifact、workspace resolver、dependency graph、lockfile、nested module
 tree、selective `pub use` 或 `pub(in path)`。

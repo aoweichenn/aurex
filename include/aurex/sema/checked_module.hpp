@@ -94,6 +94,7 @@ struct StructInfo {
     StableDefId stable_id;
     IncrementalKey incremental_key;
     query::GenericInstanceKey generic_instance_key;
+    base::u32 part_index = 0;
 };
 
 struct EnumCaseInfo {
@@ -113,6 +114,7 @@ struct EnumCaseInfo {
     StableDefId stable_id;
     StableMemberKey stable_case_key;
     IncrementalKey incremental_key;
+    base::u32 part_index = 0;
 };
 
 struct TypeAliasInfo {
@@ -125,6 +127,7 @@ struct TypeAliasInfo {
     syntax::Visibility visibility = syntax::Visibility::public_;
     StableDefId stable_id;
     IncrementalKey incremental_key;
+    base::u32 part_index = 0;
 };
 
 struct GenericTemplateSignatureInfo {
@@ -136,6 +139,7 @@ struct GenericTemplateSignatureInfo {
     IncrementalKey incremental_key;
     query::DefNamespace name_space = query::DefNamespace::value;
     base::u32 param_count = 0;
+    base::u32 part_index = 0;
 };
 
 using CheckedFunctionMap = SemaMap<FunctionLookupKey, FunctionSignature, FunctionLookupKeyHash>;

@@ -65,6 +65,7 @@ void FunctionRegistry::register_function(const FunctionRegistrationRequest& requ
     signature.visibility = item.visibility;
     signature.prototype_item = is_prototype ? request.item_id : syntax::INVALID_ITEM_ID;
     signature.definition_item = signature.has_definition ? request.item_id : syntax::INVALID_ITEM_ID;
+    signature.part_index = request.part_index;
 
     if (syntax::is_valid(request.item_id) && request.item_id.value < this->checked_.item_c_name_ids.size()) {
         this->checked_.item_c_name_ids[request.item_id.value] = signature.c_name.id;
@@ -117,6 +118,7 @@ void FunctionRegistry::merge_function(const FunctionLookupKey key, FunctionSigna
         prior.visibility = signature.visibility;
         prior.prototype_item = signature.prototype_item;
         prior.range = signature.range;
+        prior.part_index = signature.part_index;
         this->refresh_function_value(key, prior);
         return;
     }
@@ -131,6 +133,7 @@ void FunctionRegistry::merge_function(const FunctionLookupKey key, FunctionSigna
     prior.visibility = signature.visibility;
     prior.definition_item = signature.definition_item;
     prior.range = signature.range;
+    prior.part_index = signature.part_index;
     this->refresh_function_value(key, prior);
 }
 

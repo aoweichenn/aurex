@@ -35,6 +35,7 @@ struct FunctionSignature {
     syntax::Visibility visibility = syntax::Visibility::public_;
     syntax::ItemId prototype_item = syntax::INVALID_ITEM_ID;
     syntax::ItemId definition_item = syntax::INVALID_ITEM_ID;
+    base::u32 part_index = 0;
 };
 
 [[nodiscard]] std::string function_display_name(const TypeTable& types, const FunctionSignature& signature);

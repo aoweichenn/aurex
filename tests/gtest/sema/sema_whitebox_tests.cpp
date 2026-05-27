@@ -1285,6 +1285,192 @@ TEST(CoreUnit, SemanticWhiteBoxModulePartContextsTrackCurrentItem)
     EXPECT_FALSE(query::is_valid(analyzer.query_module_part_key(syntax::INVALID_ITEM_ID)));
 }
 
+TEST(CoreUnit, SemanticWhiteBoxCheckedDumpSurfacesModulePartOrigins)
+{
+    constexpr base::u32 SEMA_TEST_PRIMARY_PART_INDEX = 0;
+    constexpr base::u32 SEMA_TEST_FRAGMENT_PART_INDEX = 2;
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId generic_type = module.push_type(named_node(SEMA_TEST_GENERIC_PARAM_NAME));
+    const ExprId zero = push_integer_text(module, "0");
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = zero;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+    const syntax::StmtId body = push_block(module, {return_stmt_id});
+
+    syntax::ItemNode primary_function;
+    primary_function.kind = syntax::ItemKind::fn_decl;
+    primary_function.name = "primary";
+    primary_function.return_type = i32_type;
+    primary_function.body = body;
+    static_cast<void>(module.push_item_for_module(
+        primary_function, module_id(SEMA_TEST_ROOT_MODULE_INDEX), SEMA_TEST_PRIMARY_PART_INDEX));
+
+    syntax::ItemNode part_function;
+    part_function.kind = syntax::ItemKind::fn_decl;
+    part_function.name = "from_part";
+    part_function.return_type = i32_type;
+    part_function.body = body;
+    const syntax::ItemId first_part_item = module.push_item_for_module(
+        part_function, module_id(SEMA_TEST_ROOT_MODULE_INDEX), SEMA_TEST_FRAGMENT_PART_INDEX);
+
+    syntax::ItemNode part_struct;
+    part_struct.kind = syntax::ItemKind::struct_decl;
+    part_struct.name = "PartRecord";
+    static_cast<void>(module.push_item_for_module(
+        part_struct, module_id(SEMA_TEST_ROOT_MODULE_INDEX), SEMA_TEST_FRAGMENT_PART_INDEX));
+
+    syntax::ItemNode part_alias;
+    part_alias.kind = syntax::ItemKind::type_alias;
+    part_alias.name = "PartAlias";
+    part_alias.alias_type = i32_type;
+    static_cast<void>(
+        module.push_item_for_module(part_alias, module_id(SEMA_TEST_ROOT_MODULE_INDEX), SEMA_TEST_FRAGMENT_PART_INDEX));
+
+    syntax::EnumCaseDecl enum_case;
+    enum_case.name = "some";
+    syntax::ItemNode part_enum;
+    part_enum.kind = syntax::ItemKind::enum_decl;
+    part_enum.name = "PartChoice";
+    part_enum.enum_cases = {enum_case};
+    static_cast<void>(
+        module.push_item_for_module(part_enum, module_id(SEMA_TEST_ROOT_MODULE_INDEX), SEMA_TEST_FRAGMENT_PART_INDEX));
+
+    syntax::ItemNode generic_struct;
+    generic_struct.kind = syntax::ItemKind::struct_decl;
+    generic_struct.name = "Box";
+    generic_struct.generic_params = {syntax::GenericParamDecl{std::string(SEMA_TEST_GENERIC_PARAM_NAME), {}}};
+    generic_struct.fields = {syntax::FieldDecl{"value", generic_type, {}}};
+    static_cast<void>(module.push_item_for_module(
+        generic_struct, module_id(SEMA_TEST_ROOT_MODULE_INDEX), SEMA_TEST_FRAGMENT_PART_INDEX));
+
+    syntax::ItemImportScope part_scope;
+    part_scope.item_begin = first_part_item.value;
+    part_scope.item_count = static_cast<base::u32>(module.items.size() - first_part_item.value);
+    part_scope.part_index = SEMA_TEST_FRAGMENT_PART_INDEX;
+    module.item_import_scopes.push_back(std::move(part_scope));
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    const sema::CheckedModule& checked = checked_result.value();
+
+    const auto function_part_index = [&](const std::string_view name) -> std::optional<base::u32> {
+        for (const auto& entry : checked.functions) {
+            const FunctionSignature& signature = entry.second;
+            if (signature.name == name) {
+                return signature.part_index;
+            }
+        }
+        return std::nullopt;
+    };
+    ASSERT_TRUE(function_part_index("primary").has_value());
+    ASSERT_TRUE(function_part_index("from_part").has_value());
+    EXPECT_EQ(function_part_index("primary").value(), SEMA_TEST_PRIMARY_PART_INDEX);
+    EXPECT_EQ(function_part_index("from_part").value(), SEMA_TEST_FRAGMENT_PART_INDEX);
+
+    bool struct_part_found = false;
+    for (const auto& entry : checked.structs) {
+        const StructInfo& info = entry.second;
+        if (info.name == "PartRecord") {
+            struct_part_found = true;
+            EXPECT_EQ(info.part_index, SEMA_TEST_FRAGMENT_PART_INDEX);
+        }
+    }
+    EXPECT_TRUE(struct_part_found);
+
+    bool alias_part_found = false;
+    for (const auto& entry : checked.type_aliases) {
+        const sema::TypeAliasInfo& alias = entry.second;
+        if (alias.name == "PartAlias") {
+            alias_part_found = true;
+            EXPECT_EQ(alias.part_index, SEMA_TEST_FRAGMENT_PART_INDEX);
+        }
+    }
+    EXPECT_TRUE(alias_part_found);
+
+    bool enum_part_found = false;
+    for (const auto& entry : checked.enum_cases) {
+        const EnumCaseInfo& info = entry.second;
+        if (info.enum_name == "PartChoice" && info.case_name == "some") {
+            enum_part_found = true;
+            EXPECT_EQ(info.part_index, SEMA_TEST_FRAGMENT_PART_INDEX);
+        }
+    }
+    EXPECT_TRUE(enum_part_found);
+
+    bool template_part_found = false;
+    for (const sema::GenericTemplateSignatureInfo& info : checked.generic_template_signatures) {
+        if (info.name == "Box") {
+            template_part_found = true;
+            EXPECT_EQ(info.part_index, SEMA_TEST_FRAGMENT_PART_INDEX);
+        }
+    }
+    EXPECT_TRUE(template_part_found);
+
+    const std::string checked_dump = sema::dump_checked_module(checked);
+    EXPECT_NE(checked_dump.find("template priv type Box params=1 @part=2"), std::string::npos);
+    EXPECT_NE(checked_dump.find("fn priv primary -> i32"), std::string::npos);
+    EXPECT_NE(checked_dump.find("fn priv from_part -> i32"), std::string::npos);
+    EXPECT_NE(checked_dump.find("struct priv PartRecord @part=2 fields=0"), std::string::npos);
+    EXPECT_NE(checked_dump.find("type priv PartAlias = i32 @part=2"), std::string::npos);
+    EXPECT_NE(checked_dump.find("case PartChoice_some"), std::string::npos);
+    EXPECT_NE(checked_dump.find("@part=0"), std::string::npos);
+    EXPECT_NE(checked_dump.find("@part=2"), std::string::npos);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxCheckedDumpCoversPrimaryOnlyAndTemplateNamespaces)
+{
+    sema::CheckedModule primary_checked;
+    const sema::InternedText primary_name = primary_checked.intern_text("primary_only");
+    FunctionSignature primary_signature = primary_checked.make_function_signature();
+    primary_signature.name = primary_name;
+    primary_signature.name_id = primary_name.id;
+    primary_signature.c_name = primary_name;
+    primary_signature.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    primary_signature.return_type = primary_checked.types.builtin(BuiltinType::i32);
+    primary_signature.semantic_key = sema::FunctionLookupKey{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        primary_name.id,
+    };
+    primary_checked.functions.emplace(primary_signature.semantic_key, std::move(primary_signature));
+
+    const std::string primary_dump = sema::dump_checked_module(primary_checked);
+    EXPECT_NE(primary_dump.find("fn primary_only -> i32"), std::string::npos);
+    EXPECT_EQ(primary_dump.find("@part="), std::string::npos);
+
+    sema::CheckedModule template_checked;
+    constexpr base::u32 SEMA_TEST_TEMPLATE_PART_INDEX = 1;
+    const std::array<query::DefNamespace, 5> namespaces{
+        query::DefNamespace::value,
+        query::DefNamespace::member,
+        query::DefNamespace::trait_,
+        query::DefNamespace::impl_,
+        query::DefNamespace::synthetic,
+    };
+    for (base::usize index = 0; index < namespaces.size(); ++index) {
+        sema::GenericTemplateSignatureInfo info;
+        info.name = template_checked.intern_text("Template" + std::to_string(index));
+        info.name_id = info.name.id;
+        info.name_space = namespaces[index];
+        info.param_count = static_cast<base::u32>(index);
+        info.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+        template_checked.generic_template_signatures.push_back(info);
+    }
+
+    const std::string template_dump = sema::dump_checked_module(template_checked);
+    EXPECT_NE(template_dump.find("template value Template0 params=0 @part=1"), std::string::npos);
+    EXPECT_NE(template_dump.find("template member Template1 params=1 @part=1"), std::string::npos);
+    EXPECT_NE(template_dump.find("template trait Template2 params=2 @part=1"), std::string::npos);
+    EXPECT_NE(template_dump.find("template impl Template3 params=3 @part=1"), std::string::npos);
+    EXPECT_NE(template_dump.find("template synthetic Template4 params=4 @part=1"), std::string::npos);
+}
+
 TEST(CoreUnit, SemanticWhiteBoxLookupsAndMethodReceivers)
 {
     syntax::AstModule module;
@@ -3430,6 +3616,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     EXPECT_EQ(side_move_assigned.sparse_fallbacks.total(), 3U);
 
     sema::CheckedModule checked;
+    constexpr base::u32 SEMA_TEST_CHECKED_COPY_PART_INDEX = 4;
     const IdentId checked_c_name = checked.intern_c_name("m0_test");
     checked.expr_intrinsic_types.push_back(i32);
     checked.expr_types.push_back(i32);
@@ -3460,6 +3647,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     signature.param_types.push_back(i32);
     signature.generic_args.push_back(i64);
     signature.return_type = i32;
+    signature.part_index = SEMA_TEST_CHECKED_COPY_PART_INDEX;
     checked.functions.emplace(signature.semantic_key, signature);
     StructInfo struct_info = checked.make_struct_info();
     struct_info.name = checked.intern_text("S");
@@ -3467,6 +3655,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     struct_info.c_name = checked.intern_text("m0_S");
     struct_info.module = module_id(0);
     struct_info.type = i32;
+    struct_info.part_index = SEMA_TEST_CHECKED_COPY_PART_INDEX;
     struct_info.fields.push_back(StructFieldInfo{
         checked.intern_text("field"),
         beta_id,
@@ -3486,6 +3675,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     enum_case.case_name_id = beta_id;
     enum_case.c_name = checked.intern_text("m0_E_case");
     enum_case.type = i64;
+    enum_case.part_index = SEMA_TEST_CHECKED_COPY_PART_INDEX;
     enum_case.payload_types.push_back(i32);
     const sema::ModuleLookupKey enum_case_key{module_id(0).value, beta_id};
     checked.enum_cases.emplace(enum_case_key, enum_case);
@@ -3494,8 +3684,15 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     alias_info.name_id = alpha_id;
     alias_info.module = module_id(0);
     alias_info.target = TypeId{0};
+    alias_info.part_index = SEMA_TEST_CHECKED_COPY_PART_INDEX;
     const sema::ModuleLookupKey alias_key{module_id(0).value, alpha_id};
     checked.type_aliases.emplace(alias_key, alias_info);
+
+    sema::GenericTemplateSignatureInfo template_info;
+    template_info.name = checked.intern_text("G");
+    template_info.name_id = alpha_id;
+    template_info.part_index = SEMA_TEST_CHECKED_COPY_PART_INDEX;
+    checked.generic_template_signatures.push_back(template_info);
 
     sema::GenericFunctionInstanceInfo instance;
     instance.key = sema::FunctionLookupKey{
@@ -3526,6 +3723,9 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     EXPECT_EQ(checked_copy.expr_intrinsic_types.front().value, i32.value);
     EXPECT_EQ(checked_copy.c_name_text(checked_copy.expr_c_name_ids.front()), "m0_test");
     EXPECT_EQ(checked_copy.generic_function_instances.front().signature.name, "f");
+    EXPECT_EQ(checked_copy.generic_function_instances.front().signature.part_index, SEMA_TEST_CHECKED_COPY_PART_INDEX);
+    ASSERT_EQ(checked_copy.generic_template_signatures.size(), 1U);
+    EXPECT_EQ(checked_copy.generic_template_signatures.front().part_index, SEMA_TEST_CHECKED_COPY_PART_INDEX);
     EXPECT_EQ(checked_copy.generic_side_table_layouts.size(), 1U);
     EXPECT_EQ(checked_copy.generic_function_instances.front().side_tables.layout,
         &checked_copy.generic_side_table_layouts.front());
@@ -3542,14 +3742,17 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     sema::CheckedModule checked_assigned;
     checked_assigned = checked;
     EXPECT_EQ(checked_assigned.enum_cases.at(enum_case_key).payload_types.front().value, i32.value);
+    EXPECT_EQ(checked_assigned.enum_cases.at(enum_case_key).part_index, SEMA_TEST_CHECKED_COPY_PART_INDEX);
     sema::CheckedModule checked_moved(std::move(checked_copy));
     EXPECT_EQ(checked_moved.structs.at(struct_key).name, "S");
+    EXPECT_EQ(checked_moved.structs.at(struct_key).part_index, SEMA_TEST_CHECKED_COPY_PART_INDEX);
     ASSERT_EQ(checked_moved.structs.at(struct_key).fields.size(), 1U);
     EXPECT_EQ(checked_moved.structs.at(struct_key).fields.front().name, "field");
     EXPECT_EQ(checked_moved.structs.at(struct_key).fields.front().c_name, "m0_S_field");
     sema::CheckedModule checked_move_assigned;
     checked_move_assigned = std::move(checked_assigned);
     EXPECT_EQ(checked_move_assigned.type_aliases.at(alias_key).name, "Alias");
+    EXPECT_EQ(checked_move_assigned.type_aliases.at(alias_key).part_index, SEMA_TEST_CHECKED_COPY_PART_INDEX);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxSourceNamesBorrowAstInternerAcrossCheckedModuleMoves)

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <memory>
 #include <sstream>
+#include <string_view>
 #include <utility>
 
 namespace aurex::sema {
@@ -619,6 +620,7 @@ void CheckedModule::copy_from(const CheckedModule& other)
         alias.visibility = entry.second.visibility;
         alias.stable_id = entry.second.stable_id;
         alias.incremental_key = entry.second.incremental_key;
+        alias.part_index = entry.second.part_index;
         this->type_aliases.emplace(entry.first, alias);
     }
     this->generic_template_signatures.clear();
@@ -764,6 +766,7 @@ FunctionSignature CheckedModule::clone_function_signature(const FunctionSignatur
     copy.visibility = other.visibility;
     copy.prototype_item = other.prototype_item;
     copy.definition_item = other.definition_item;
+    copy.part_index = other.part_index;
     return copy;
 }
 
@@ -782,6 +785,7 @@ StructInfo CheckedModule::clone_struct_info(const StructInfo& other)
     copy.stable_id = other.stable_id;
     copy.incremental_key = other.incremental_key;
     copy.generic_instance_key = other.generic_instance_key;
+    copy.part_index = other.part_index;
     return copy;
 }
 
@@ -804,6 +808,7 @@ EnumCaseInfo CheckedModule::clone_enum_case_info(const EnumCaseInfo& other)
     copy.stable_id = other.stable_id;
     copy.stable_case_key = other.stable_case_key;
     copy.incremental_key = other.incremental_key;
+    copy.part_index = other.part_index;
     return copy;
 }
 
@@ -819,6 +824,7 @@ GenericTemplateSignatureInfo CheckedModule::clone_generic_template_signature_inf
         other.incremental_key,
         other.name_space,
         other.param_count,
+        other.part_index,
     };
 }
 
@@ -941,6 +947,64 @@ void CheckedModule::reserve_side_table_storage(const base::usize expr_count, con
 
 namespace {
 
+constexpr base::u32 SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX = 0;
+
+[[nodiscard]] std::string_view generic_template_namespace_name(const query::DefNamespace name_space) noexcept
+{
+    switch (name_space) {
+        case query::DefNamespace::value:
+            return "value";
+        case query::DefNamespace::type:
+            return "type";
+        case query::DefNamespace::member:
+            return "member";
+        case query::DefNamespace::trait_:
+            return "trait";
+        case query::DefNamespace::impl_:
+            return "impl";
+        case query::DefNamespace::synthetic:
+            return "synthetic";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] bool checked_has_non_primary_parts(const CheckedModule& checked)
+{
+    for (const auto& entry : checked.functions) {
+        if (entry.second.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
+    for (const auto& entry : checked.structs) {
+        if (entry.second.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
+    for (const auto& entry : checked.type_aliases) {
+        if (entry.second.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
+    for (const auto& entry : checked.enum_cases) {
+        if (entry.second.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
+    for (const GenericTemplateSignatureInfo& info : checked.generic_template_signatures) {
+        if (info.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void append_part_origin(std::ostringstream& out, const bool show_parts, const base::u32 part_index)
+{
+    if (show_parts) {
+        out << " @part=" << part_index;
+    }
+}
+
 [[nodiscard]] std::span<const TypeHandle> generic_args_for_type(const TypeTable& types, const TypeHandle type)
 {
     if (!is_valid(type) || type.value >= types.size()) {
@@ -974,6 +1038,37 @@ std::string dump_checked_module(const CheckedModule& checked)
     std::ostringstream out;
     out << "checked_module\n";
     out << "  expr_types " << checked.expr_types.size() << "\n";
+    const bool show_parts = checked_has_non_primary_parts(checked);
+
+    std::vector<const GenericTemplateSignatureInfo*> template_names;
+    template_names.reserve(checked.generic_template_signatures.size());
+    for (const GenericTemplateSignatureInfo& info : checked.generic_template_signatures) {
+        template_names.push_back(&info);
+    }
+    std::sort(template_names.begin(), template_names.end(),
+        [](const GenericTemplateSignatureInfo* lhs, const GenericTemplateSignatureInfo* rhs) {
+            if (lhs->name.view() != rhs->name.view()) {
+                return lhs->name.view() < rhs->name.view();
+            }
+            if (lhs->name_space != rhs->name_space) {
+                return static_cast<base::u8>(lhs->name_space) < static_cast<base::u8>(rhs->name_space);
+            }
+            return lhs->param_count < rhs->param_count;
+        });
+    if (!template_names.empty()) {
+        out << "  generic_templates " << template_names.size() << "\n";
+        for (const GenericTemplateSignatureInfo* const info_ptr : template_names) {
+            const GenericTemplateSignatureInfo& info = *info_ptr;
+            out << "    template ";
+            if (!syntax::visibility_is_public(info.visibility)) {
+                out << syntax::visibility_name(info.visibility) << " ";
+            }
+            out << generic_template_namespace_name(info.name_space) << " " << info.name
+                << " params=" << info.param_count;
+            append_part_origin(out, show_parts, info.part_index);
+            out << "\n";
+        }
+    }
 
     std::vector<const FunctionSignature*> function_names;
     function_names.reserve(checked.functions.size());
@@ -1011,6 +1106,7 @@ std::string dump_checked_module(const CheckedModule& checked)
         if (fn.is_export_c) {
             out << " export_c";
         }
+        append_part_origin(out, show_parts, fn.part_index);
         out << "\n";
     }
 
@@ -1036,6 +1132,7 @@ std::string dump_checked_module(const CheckedModule& checked)
         if (info.is_generic_placeholder) {
             out << " generic_placeholder";
         }
+        append_part_origin(out, show_parts, info.part_index);
         out << " fields=" << info.fields.size() << "\n";
     }
 
@@ -1058,7 +1155,9 @@ std::string dump_checked_module(const CheckedModule& checked)
         if (!syntax::visibility_is_public(alias.visibility)) {
             out << syntax::visibility_name(alias.visibility) << " ";
         }
-        out << alias.name << " = " << checked.types.display_name(resolved) << "\n";
+        out << alias.name << " = " << checked.types.display_name(resolved);
+        append_part_origin(out, show_parts, alias.part_index);
+        out << "\n";
     }
 
     out << "  enum_cases " << checked.enum_cases.size() << "\n";
@@ -1086,7 +1185,9 @@ std::string dump_checked_module(const CheckedModule& checked)
         } else if (is_valid(info.payload_type)) {
             out << "(" << checked.types.display_name(info.payload_type) << ")";
         }
-        out << " @c_name=" << info.c_name << "\n";
+        out << " @c_name=" << info.c_name;
+        append_part_origin(out, show_parts, info.part_index);
+        out << "\n";
     }
     return out.str();
 }

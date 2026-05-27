@@ -310,7 +310,9 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_type_names()
                     constraint.param_range, sema_unknown_generic_constraint_param_message(constraint.param_name));
             }
         }
-        const syntax::ModuleId owner = this->core_.item_module(syntax::ItemId{item_index});
+        const syntax::ItemId item_id{item_index};
+        const syntax::ModuleId owner = this->core_.item_module(item_id);
+        const base::u32 part_index = this->core_.item_part_index(item_id);
         const ModuleLookupKey key = this->core_.module_lookup_key(owner, item.name_id);
         const std::string qualified = this->core_.qualified_name(owner, item.name);
         const std::string c_name = this->core_.c_symbol_name(owner, item.name);
@@ -320,13 +322,14 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_type_names()
             alias.name = this->core_.source_name_text(item.name_id, item.name);
             alias.name_id = item.name_id;
             alias.module = owner;
-            alias.item = syntax::ItemId{item_index};
+            alias.item = item_id;
             alias.target = item.alias_type;
             alias.range = item.range;
             alias.visibility = item.visibility;
             alias.stable_id = this->core_.stable_definition_id(owner, StableSymbolKind::type, item.name_id, item.name);
             alias.incremental_key = this->core_.stable_incremental_key(
                 alias.stable_id, std::string(item.name) + std::string(SEMA_STABLE_TYPE_ALIAS_INCREMENTAL_TAG));
+            alias.part_index = part_index;
             auto alias_inserted = this->core_.state_.checked.type_aliases.emplace(key, alias);
             if (!alias_inserted.second) {
                 report_duplicate_type(key, owner, item.range, item.name);
@@ -394,6 +397,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_type_names()
             info.stable_id = this->core_.stable_definition_id(owner, StableSymbolKind::type, item.name_id, item.name);
             info.incremental_key = this->core_.stable_incremental_key(
                 info.stable_id, std::string(item.name) + std::string(SEMA_STABLE_STRUCT_INCREMENTAL_TAG));
+            info.part_index = part_index;
             auto struct_inserted = this->core_.state_.checked.structs.emplace(key, std::move(info));
             if (!struct_inserted.second) {
                 this->core_.report_duplicate(
@@ -416,6 +420,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_enum_cases_for_item(con
     const syntax::ModuleId owner, const TypeHandle named_enum_type, std::string enum_display_name,
     const std::string& case_prefix, const std::string& c_prefix, const syntax::Visibility visibility)
 {
+    const base::u32 part_index = this->core_.item_part_index(this->core_.state_.flow.current_item);
     const auto make_enum_display_name = [&]() {
         if (!is_valid(named_enum_type)) {
             return enum_display_name;
@@ -503,6 +508,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_enum_cases_for_item(con
                 this->core_.stable_module_id(owner), StableSymbolKind::synthetic, payload_type_name);
             payload_info.incremental_key =
                 this->core_.stable_incremental_key(payload_info.stable_id, payload_type_name);
+            payload_info.part_index = part_index;
             payload_info.fields.reserve(payload_types.size());
             for (base::usize i = 0; i < payload_types.size(); ++i) {
                 const std::string field_name =
@@ -582,6 +588,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_enum_cases_for_item(con
             this->core_.stable_definition_id(owner, StableSymbolKind::type, item.name_id, item.name),
             StableSymbolKind::enum_case, enum_case.name_id, enum_case.name);
         case_info.incremental_key = this->core_.stable_incremental_key(case_info.stable_id, value_text);
+        case_info.part_index = part_index;
         const auto case_inserted = this->core_.state_.checked.enum_cases.emplace(enum_case_key, std::move(case_info));
         if (!case_inserted.second) {
             this->core_.report_duplicate(
@@ -718,6 +725,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
                 return_type,
                 param_types,
                 syntax::ItemId{item_index},
+                this->core_.item_part_index(syntax::ItemId{item_index}),
                 stable_id,
                 incremental_key,
             });

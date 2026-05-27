@@ -117,6 +117,7 @@ private:
     struct GenericTemplateInfo {
         syntax::ItemId item = syntax::INVALID_ITEM_ID;
         syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+        base::u32 part_index = 0;
         InternedText name;
         IdentId name_id = INVALID_IDENT_ID;
         ModuleLookupKey key;

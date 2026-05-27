@@ -24,6 +24,7 @@ struct FunctionRegistrationRequest {
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     std::span<const TypeHandle> param_types;
     syntax::ItemId item_id = syntax::INVALID_ITEM_ID;
+    base::u32 part_index = 0;
     StableDefId stable_id;
     IncrementalKey incremental_key;
 };

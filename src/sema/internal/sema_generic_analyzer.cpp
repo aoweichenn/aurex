@@ -871,6 +871,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::record_generic_template_signature(
         info.incremental_key,
         name_space,
         static_cast<base::u32>(info.params.size()),
+        info.part_index,
     });
 }
 
@@ -916,6 +917,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::register_generic_template(
     GenericTemplateInfo info = this->core_.make_generic_template_info();
     info.item = item_id;
     info.module = owner;
+    info.part_index = this->core_.item_part_index(item_id);
     info.name = this->core_.source_name_text(item.name_id, item.name);
     info.name_id = item.name_id;
     info.key = this->core_.module_lookup_key(owner, item.name_id);
@@ -1704,6 +1706,7 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(con
     struct_info.module = info.module;
     struct_info.type = handle;
     struct_info.visibility = info.visibility;
+    struct_info.part_index = info.part_index;
     struct_info.stable_id = sema::stable_definition_id(
         this->core_.stable_module_id(info.module), StableSymbolKind::type, instance_identity.value().fingerprint_text);
     struct_info.incremental_key =
@@ -2024,6 +2027,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_pl
         signature.stable_id = info.stable_id;
         signature.generic_args = this->core_.state_.checked.copy_type_handle_list(args);
         signature.module = info.module;
+        signature.part_index = info.part_index;
         signature.return_type = syntax::is_valid(function.return_type) ? this->core_.resolve_type(function.return_type)
                                                                        : INVALID_TYPE_HANDLE;
         signature.range = function.range;
@@ -2156,6 +2160,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
             info.module, std::string(info.name.view()) + this->core_.generic_instance_abi_suffix(args)));
         signature.generic_args = this->core_.state_.checked.copy_type_handle_list(args);
         signature.module = info.module;
+        signature.part_index = info.part_index;
         signature.return_type = syntax::is_valid(function.return_type) ? this->core_.resolve_type(function.return_type)
                                                                        : INVALID_TYPE_HANDLE;
         signature.range = function.range;
@@ -2294,6 +2299,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_me
             this->core_.state_.checked.intern_text(this->core_.method_c_symbol_name(owner_type, info.name));
         signature.generic_args = this->core_.state_.checked.copy_type_handle_list(args);
         signature.module = info.module;
+        signature.part_index = info.part_index;
         signature.method_owner_type = owner_type;
         signature.return_type = syntax::is_valid(function.return_type) ? this->core_.resolve_type(function.return_type)
                                                                        : INVALID_TYPE_HANDLE;
@@ -2480,6 +2486,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::analyze_generic_function_definition(
         signature.stable_id = info.stable_id;
         signature.c_name = signature.name;
         signature.module = info.module;
+        signature.part_index = info.part_index;
         signature.return_type = syntax::is_valid(function.return_type) ? this->core_.resolve_type(function.return_type)
                                                                        : INVALID_TYPE_HANDLE;
         signature.range = function.range;

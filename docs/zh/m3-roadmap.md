@@ -247,7 +247,7 @@ part 的 display name、kind、stable index、path 和 part key global id；从 
 覆盖了 query key、loader part key、part root dump/artifact 行为和既有 part diagnostics；该阶段仍不引入
 workspace、dependency resolver、lockfile、nested module tree、selective `pub use` 或 `pub(in path)`。
 
-2026-05-27：Phase 8A-E Sema Part Identity / ModulePart Query Boundary 已完成。8A 把 loader 产生的
+2026-05-27：Phase 8A-F Sema Part Identity / ModulePart Query Boundary 已完成。8A 把 loader 产生的
 part stable index 贯通到 combined AST item：`AstModule::item_part_indices` 与 import scope part index
 记录每个 item/import scope 来自 primary 还是 named part；parser-only 路径继续默认 primary part，
 syntax 层仍不直接依赖 query key。`SemanticOptions::module_part_keys` 由 driver 按 `ModuleRecord.parts`
@@ -266,11 +266,15 @@ case、类型别名和泛型模板签名都记录来源 `part_index`；当 check
 为主，若只有 prototype 则使用 prototype 所在 part。8E 把 checked part origin 继续推进到
 IDE/tooling definition surface：`IdeDefinition` 现在暴露结构化 `part_index`，hover 的 definition
 也能携带该来源；checked global symbol 从函数、结构体、结构体字段、枚举 case、类型别名和泛型模板签名
-复制 part origin，AST/local fallback 保持 primary part。普通 gtest 覆盖 sema part context、part-local
-import scope contract、checked dump part origin、IDE definition part origin、module_part query provider、stable key layout、
-edge verifier、query executor 和 incremental cache 写入/profile 行为。该阶段不引入 per-part sema
-isolation、per-part codegen artifact、workspace resolver、dependency graph、lockfile、nested module
-tree、selective `pub use` 或 `pub(in path)`。
+复制 part origin，AST/local fallback 保持 primary part。8F 把 source-file part context 暴露到
+IDE/tooling snapshot 和 structured diagnostics：primary buffer 会返回 resolved `ModulePartKey`、`part_index=0`
+与 `<primary>` part name；独立打开的 part buffer 只返回从 `module path part name;` 解析出的语法
+module/part 上下文，`resolved=false` 且不伪造 `ModulePartKey`，避免把 parser-only buffer 误声明为
+拥有稳定 loader graph 的 module part。普通 gtest 覆盖 sema part context、part-local import scope
+contract、checked dump part origin、IDE definition part origin、IDE diagnostic/source part context、
+module_part query provider、stable key layout、edge verifier、query executor 和 incremental cache
+写入/profile 行为。该阶段不引入 per-part sema isolation、per-part codegen artifact、workspace resolver、
+dependency graph、lockfile、nested module tree、selective `pub use` 或 `pub(in path)`。
 
 ## 验收
 

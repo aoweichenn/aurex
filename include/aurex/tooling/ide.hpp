@@ -25,6 +25,19 @@ struct IdeSnapshotRequest {
 
 using IdePipelineStageOwner = driver::PipelineStageMetadata;
 
+struct IdeModulePartContext {
+    query::ModuleKey module_key;
+    query::ModulePartKey part_key;
+    query::ModulePartKind kind = query::ModulePartKind::primary;
+    base::SourceRange module_range{};
+    base::SourceRange part_range{};
+    std::string module_name;
+    std::string part_name;
+    base::u32 part_index = 0;
+    bool resolved = false;
+    bool valid = false;
+};
+
 struct IdeDiagnostic {
     base::Severity severity = base::Severity::error;
     base::DiagnosticCategory category = base::DiagnosticCategory::general;
@@ -35,6 +48,7 @@ struct IdeDiagnostic {
     std::string path;
     std::string message;
     std::vector<IdePipelineStageOwner> owner_stages;
+    IdeModulePartContext source_part;
 };
 
 struct IdeQuerySnapshot {
@@ -51,6 +65,7 @@ struct IdeSnapshot {
     sema::CheckedModule checked;
     IdeQuerySnapshot query;
     std::vector<IdeDiagnostic> diagnostics;
+    IdeModulePartContext source_part;
     bool lexed = false;
     bool parsed = false;
     bool checked_semantics = false;

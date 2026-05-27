@@ -37,6 +37,7 @@ constexpr std::string_view IDE_SYMBOL_KIND_PARAMETER = "parameter";
 constexpr std::string_view IDE_SYMBOL_KIND_STRUCT = "struct";
 constexpr std::string_view IDE_SYMBOL_KIND_STRUCT_FIELD = "struct_field";
 constexpr std::string_view IDE_SYMBOL_KIND_TYPE_ALIAS = "type_alias";
+constexpr std::string_view IDE_PRIMARY_PART_NAME = "<primary>";
 constexpr base::u32 IDE_PRIMARY_PART_INDEX = 0;
 
 struct ItemDefinitionMetadata {
@@ -188,8 +189,8 @@ void mix_lossless_tree(query::StableHashBuilder& builder, const syntax::Lossless
     return owners;
 }
 
-[[nodiscard]] std::vector<IdeDiagnostic> collect_ide_diagnostics(
-    const base::SourceManager& sources, const query::DiagnosticsEventStream& diagnostics)
+[[nodiscard]] std::vector<IdeDiagnostic> collect_ide_diagnostics(const base::SourceManager& sources,
+    const query::DiagnosticsEventStream& diagnostics, const IdeModulePartContext& source_part)
 {
     std::vector<IdeDiagnostic> result;
     result.reserve(diagnostics.events.size());
@@ -205,6 +206,7 @@ void mix_lossless_tree(query::StableHashBuilder& builder, const syntax::Lossless
             std::string(file.path()),
             diagnostic.message,
             ide_diagnostic_owner_stages(diagnostic.category),
+            source_part,
         });
     }
     return result;
@@ -350,6 +352,47 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
         parts.push_back("ide");
     }
     return query::module_key(snapshot.query.source_stage.file.package, parts);
+}
+
+[[nodiscard]] std::string module_path_display_name(const syntax::ModulePath& path)
+{
+    std::string result;
+    for (const std::string_view part : path.parts) {
+        if (!result.empty()) {
+            result.push_back('.');
+        }
+        result.append(part);
+    }
+    return result;
+}
+
+[[nodiscard]] IdeModulePartContext source_part_context_for_snapshot(const IdeSnapshot& snapshot)
+{
+    IdeModulePartContext context;
+    if (!snapshot.parsed || snapshot.ast.module_path.parts.empty()) {
+        return context;
+    }
+
+    context.module_key = module_key_for_snapshot(snapshot);
+    context.module_range = snapshot.ast.module_path.range;
+    context.module_name = module_path_display_name(snapshot.ast.module_path);
+    if (snapshot.ast.file_kind == syntax::ModuleFileKind::part) {
+        context.kind = query::ModulePartKind::fragment;
+        context.part_range = snapshot.ast.part_header.range;
+        context.part_name = std::string(snapshot.ast.part_header.name);
+        context.valid = !context.module_name.empty() && !context.part_name.empty();
+        return context;
+    }
+
+    context.kind = query::ModulePartKind::primary;
+    context.part_range = snapshot.ast.module_path.range;
+    context.part_name = std::string(IDE_PRIMARY_PART_NAME);
+    context.part_index = IDE_PRIMARY_PART_INDEX;
+    context.part_key = query::module_part_key(
+        context.module_key, snapshot.query.source_stage.file, context.kind, IDE_PRIMARY_PART_NAME, context.part_index);
+    context.resolved = query::is_valid(context.part_key);
+    context.valid = context.resolved;
+    return context;
 }
 
 [[nodiscard]] bool range_contains_offset(const base::SourceRange range, const base::usize offset) noexcept
@@ -889,8 +932,9 @@ IdeSnapshot build_ide_snapshot(const IdeSnapshotRequest& request)
     const query::QueryResultFingerprint diagnostic_result =
         diagnostics_result_fingerprint(diagnostic_stream.events, snapshot.parsed, snapshot.checked_semantics);
     evaluate_source_queries(snapshot, request.text, lex_result, parse_result, diagnostic_result, diagnostic_stream);
+    snapshot.source_part = source_part_context_for_snapshot(snapshot);
     snapshot.has_errors = diagnostics.has_error();
-    snapshot.diagnostics = collect_ide_diagnostics(snapshot.sources, diagnostic_stream);
+    snapshot.diagnostics = collect_ide_diagnostics(snapshot.sources, diagnostic_stream, snapshot.source_part);
     return snapshot;
 }
 

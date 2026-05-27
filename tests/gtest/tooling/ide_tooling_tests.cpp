@@ -29,6 +29,7 @@ constexpr base::u32 IDE_TOOLING_STRUCT_PART_INDEX = 4;
 constexpr base::u32 IDE_TOOLING_ALIAS_PART_INDEX = 5;
 constexpr base::u32 IDE_TOOLING_ENUM_CASE_PART_INDEX = 6;
 constexpr base::u32 IDE_TOOLING_TEMPLATE_PART_INDEX = 7;
+constexpr std::string_view IDE_TOOLING_PRIMARY_PART_NAME = "<primary>";
 constexpr std::string_view IDE_TOOLING_STAGE_TOKENS_LEX = "tokens.lex";
 constexpr std::string_view IDE_TOOLING_STAGE_MODULE_LEX = "module.lex";
 constexpr std::string_view IDE_TOOLING_STAGE_MODULE_PARSE = "module.parse";
@@ -98,6 +99,33 @@ void expect_definition_kind(const tooling::IdeSnapshot& snapshot, const std::str
     EXPECT_EQ(definition->key.kind, def_kind);
     EXPECT_EQ(definition->part_index, IDE_TOOLING_PRIMARY_PART_INDEX);
     EXPECT_EQ(source.substr(definition->range.begin, definition->range.length()), name);
+}
+
+void expect_primary_source_part(const tooling::IdeModulePartContext& context, const std::string_view module_name)
+{
+    EXPECT_TRUE(context.valid);
+    EXPECT_TRUE(context.resolved);
+    EXPECT_TRUE(query::is_valid(context.module_key));
+    EXPECT_TRUE(query::is_valid(context.part_key));
+    EXPECT_EQ(context.kind, query::ModulePartKind::primary);
+    EXPECT_EQ(context.module_name, module_name);
+    EXPECT_EQ(context.part_name, IDE_TOOLING_PRIMARY_PART_NAME);
+    EXPECT_EQ(context.part_index, IDE_TOOLING_PRIMARY_PART_INDEX);
+    EXPECT_EQ(context.part_key.kind, query::ModulePartKind::primary);
+    EXPECT_EQ(context.part_key.stable_index, IDE_TOOLING_PRIMARY_PART_INDEX);
+}
+
+void expect_unresolved_fragment_source_part(
+    const tooling::IdeModulePartContext& context, const std::string_view module_name, const std::string_view part_name)
+{
+    EXPECT_TRUE(context.valid);
+    EXPECT_FALSE(context.resolved);
+    EXPECT_TRUE(query::is_valid(context.module_key));
+    EXPECT_FALSE(query::is_valid(context.part_key));
+    EXPECT_EQ(context.kind, query::ModulePartKind::fragment);
+    EXPECT_EQ(context.module_name, module_name);
+    EXPECT_EQ(context.part_name, part_name);
+    EXPECT_EQ(context.part_index, IDE_TOOLING_PRIMARY_PART_INDEX);
 }
 
 void mark_checked_function_part(tooling::IdeSnapshot& snapshot, const std::string_view name, const base::u32 part_index)
@@ -206,6 +234,10 @@ TEST(CoreUnit, IdeToolingBuildsQueryBackedLosslessSnapshot)
     EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::lex_file, query::QueryKind::file_content));
     EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::parse_file, query::QueryKind::lex_file));
     EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::diagnostics, query::QueryKind::parse_file));
+    expect_primary_source_part(snapshot.source_part, "ide.snapshot");
+    EXPECT_EQ(
+        IDE_TOOLING_SOURCE.substr(snapshot.source_part.module_range.begin, snapshot.source_part.module_range.length()),
+        "ide.snapshot");
 
     const std::optional<tooling::IdeTokenInfo> eof_token =
         tooling::token_info_at_offset(snapshot, IDE_TOOLING_SOURCE.size());
@@ -241,6 +273,10 @@ TEST(CoreUnit, IdeToolingHandlesDefaultPackageEmptyBuffersAndInvalidOffsets)
     EXPECT_FALSE(tooling::definition_at_offset(snapshot, 0U).has_value());
     EXPECT_TRUE(tooling::references_at_offset(snapshot, 0U).empty());
     EXPECT_FALSE(tooling::hover_at_offset(snapshot, 1U).has_value());
+    EXPECT_FALSE(snapshot.source_part.valid);
+    EXPECT_FALSE(snapshot.source_part.resolved);
+    EXPECT_FALSE(query::is_valid(snapshot.source_part.module_key));
+    EXPECT_FALSE(query::is_valid(snapshot.source_part.part_key));
 
     const std::optional<tooling::IdeHoverInfo> eof_hover = tooling::hover_at_offset(snapshot, 0U);
     ASSERT_TRUE(eof_hover.has_value());
@@ -588,7 +624,9 @@ TEST(CoreUnit, IdeToolingReturnsStructuredDiagnosticsForInvalidSource)
     EXPECT_TRUE(snapshot.parsed);
     EXPECT_FALSE(snapshot.checked_semantics);
     EXPECT_TRUE(snapshot.has_errors);
+    expect_primary_source_part(snapshot.source_part, "ide.invalid");
     ASSERT_FALSE(snapshot.diagnostics.empty());
+    expect_primary_source_part(snapshot.diagnostics.front().source_part, "ide.invalid");
     EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::diagnostics));
     EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::diagnostics, query::QueryKind::parse_file));
     EXPECT_TRUE(std::ranges::any_of(snapshot.diagnostics, [](const tooling::IdeDiagnostic& diagnostic) {
@@ -598,6 +636,32 @@ TEST(CoreUnit, IdeToolingReturnsStructuredDiagnosticsForInvalidSource)
     }));
     EXPECT_TRUE(
         has_diagnostic_owner_stage_profile(snapshot, base::DiagnosticCategory::type, IDE_TOOLING_STAGE_SEMA_ANALYZE));
+}
+
+TEST(CoreUnit, IdeToolingCarriesUnresolvedFragmentPartContextOnDiagnostics)
+{
+    constexpr std::string_view source = "module ide.invalid_part part parser;\n"
+                                        "fn main() -> i32 {\n"
+                                        "  let value: i32 = true;\n"
+                                        "  return value;\n"
+                                        "}\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
+
+    EXPECT_TRUE(snapshot.lexed);
+    EXPECT_TRUE(snapshot.parsed);
+    EXPECT_FALSE(snapshot.checked_semantics);
+    EXPECT_TRUE(snapshot.has_errors);
+    expect_unresolved_fragment_source_part(snapshot.source_part, "ide.invalid_part", "parser");
+    EXPECT_EQ(
+        source.substr(snapshot.source_part.part_range.begin, snapshot.source_part.part_range.length()), "part parser");
+
+    ASSERT_FALSE(snapshot.diagnostics.empty());
+    expect_unresolved_fragment_source_part(snapshot.diagnostics.front().source_part, "ide.invalid_part", "parser");
+    EXPECT_TRUE(std::ranges::any_of(snapshot.diagnostics, [](const tooling::IdeDiagnostic& diagnostic) {
+        return diagnostic.category == base::DiagnosticCategory::type
+            && diagnostic.code == base::DiagnosticCode::semantic_type_mismatch && diagnostic.source_part.valid
+            && !diagnostic.source_part.resolved && diagnostic.source_part.kind == query::ModulePartKind::fragment;
+    }));
 }
 
 TEST(CoreUnit, IdeToolingSeparatesLexAndParseFailuresIntoQuerySnapshots)

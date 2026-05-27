@@ -1,10 +1,10 @@
 # Aurex M3 模块系统设计稿
 
-状态：M3.0 当前设计基线，Phase 1-5、Phase 6A、Phase 6B、Phase 6C、Phase 7A-D 与 Phase 8A-E 已进入实现闭环
+状态：M3.0 当前设计基线，Phase 1-5、Phase 6A、Phase 6B、Phase 6C、Phase 7A-D 与 Phase 8A-F 已进入实现闭环
 日期：2026-05-27
 适用范围：同一 package 内的 logical module / source-file part 分离、module graph、exports query、
 package identity、manifest source-root、跨 part `priv` 可见性、sema part identity、module_part query boundary、
-part-local import scope contract、checked debug part origin、IDE definition part origin
+part-local import scope contract、checked debug part origin、IDE definition part origin、IDE diagnostic/source part context
 
 ## 1. 设计结论
 
@@ -378,9 +378,9 @@ CLI 和 tooling 需要区分：
 - codegen / native artifact 输出，例如 `--emit=ir`、`--emit=llvm-ir`、`--emit=asm`、`--emit=obj`
   和默认 executable，不能以 part 文件作为 root input。诊断应提示用户改为编译 owning primary module，
   避免“从 implementation fragment 生成哪个 module artifact”的身份歧义。
-- IDE / tooling 可以临时解析 part buffer，但必须通过 `module path part name;` 反查 owning primary，
-  再构建完整 module graph 后进行语义诊断；找不到 primary 时只能进入 degraded parsing，不能给出
-  “该 part 独立可编译”的假象。
+- IDE / tooling 可以临时解析 part buffer，并把 `module path part name;` 暴露为 structured source-part
+  context；但只有通过 owning primary 构建完整 module graph 后，才能得到 resolved `ModulePartKey`。
+  找不到 primary 时只能进入 degraded parsing，不能给出“该 part 独立可编译”或“已有稳定 part index”的假象。
 
 ### 5.3 Import
 
@@ -845,7 +845,7 @@ Phase 7A-D 实现收口状态（2026-05-27）：
   collision/import-to-part/private-surface/part-local import 行为继续通过。该阶段仍不引入 workspace
   resolver、dependency graph、lockfile、nested module tree、selective `pub use` 或 `pub(in path)`。
 
-Phase 8A-E 实现收口状态（2026-05-27）：
+Phase 8A-F 实现收口状态（2026-05-27）：
 
 - Phase 8A 把 part stable index 从 loader 贯通到 sema item context。`AstModule` 现在为每个 item 保存
   `item_part_indices`，`ItemImportScope` 也记录 owner part index；parser-only 路径继续默认 primary part，
@@ -884,9 +884,15 @@ Phase 8A-E 实现收口状态（2026-05-27）：
   结构体字段继承 owning struct 的 part origin。AST fallback、参数和局部变量仍报告 primary part，这维持了
   parser-only / local scope 路径的兼容行为。hover label 文本保持稳定，避免把 debug source origin 混入用户
   可见的简短提示字符串。
+- Phase 8F 把 source-file part context 暴露给 IDE/tooling snapshot 与 structured diagnostics。primary
+  module buffer 会返回 resolved `ModulePartKey`、`part_index=0` 和 `<primary>` part name；standalone part
+  buffer 只返回从 `module path part name;` 解析出的语法 module/part 上下文，`resolved=false`，不生成假的
+  fragment `ModulePartKey`，因为 stable index 只能来自 primary part list 和 loader/query graph。这条规则
+  对齐“tooling buffer 是 part file 时可以 degraded recovery，但不能把 part 当独立 module”的设计约束。
 - 普通 gtest 覆盖了 sema current-item part context、AST item part contract、`module_part` query record、
-  part-local import scope contract、checked dump part origin、IDE definition part origin、stable key layout /
-  malformed rejection、edge verifier、query executor/provider、incremental cache subject 写入和 profile 计数。
+  part-local import scope contract、checked dump part origin、IDE definition part origin、IDE diagnostic/source
+  part context、stable key layout / malformed rejection、edge verifier、query executor/provider、
+  incremental cache subject 写入和 profile 计数。
   该阶段不引入
   per-part sema isolation、per-part codegen artifact、
   workspace resolver、dependency graph、lockfile、nested module tree、selective `pub use` 或

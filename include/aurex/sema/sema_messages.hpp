@@ -22,6 +22,12 @@ inline constexpr std::string_view SEMA_AST_ITEM_MODULE_INVALID =
 inline constexpr std::string_view SEMA_AST_ITEM_PART_INVALID =
     "semantic AST contract violation: item module part owner is invalid";
 
+inline constexpr std::string_view SEMA_AST_ITEM_IMPORT_SCOPE_MODULE_INVALID =
+    "semantic AST contract violation: item import scope module owner is invalid";
+
+inline constexpr std::string_view SEMA_AST_ITEM_IMPORT_SCOPE_PART_INVALID =
+    "semantic AST contract violation: item import scope part owner is invalid";
+
 inline constexpr std::string_view SEMA_DUPLICATE_SYMBOL = "duplicate symbol";
 
 inline constexpr std::string_view SEMA_DUPLICATE_DEFINITION_OR_SHADOWING =

@@ -21,7 +21,6 @@ struct ModulePartProviderOutput {
 [[nodiscard]] std::optional<QueryKey> module_part_query_key(ModulePartKey key) noexcept;
 [[nodiscard]] bool is_valid(const ModulePartProviderInput& input) noexcept;
 [[nodiscard]] bool is_valid(const ModulePartProviderOutput& output) noexcept;
-[[nodiscard]] std::optional<ModulePartProviderOutput> provide_module_part_query(
-    const ModulePartProviderInput& input);
+[[nodiscard]] std::optional<ModulePartProviderOutput> provide_module_part_query(const ModulePartProviderInput& input);
 
 } // namespace aurex::query

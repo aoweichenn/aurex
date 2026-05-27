@@ -1,9 +1,10 @@
 # Aurex M3 模块系统设计稿
 
-状态：M3.0 当前设计基线，Phase 1-5、Phase 6A、Phase 6B、Phase 6C、Phase 7A-D 与 Phase 8A-B 已进入实现闭环
+状态：M3.0 当前设计基线，Phase 1-5、Phase 6A、Phase 6B、Phase 6C、Phase 7A-D 与 Phase 8A-C 已进入实现闭环
 日期：2026-05-27
 适用范围：同一 package 内的 logical module / source-file part 分离、module graph、exports query、
-package identity、manifest source-root、跨 part `priv` 可见性、sema part identity、module_part query boundary
+package identity、manifest source-root、跨 part `priv` 可见性、sema part identity、module_part query boundary、
+part-local import scope contract
 
 ## 1. 设计结论
 
@@ -284,6 +285,12 @@ ModulePartKey {
 
 `stable_index` 来自 primary part list 的声明顺序，仅用于 deterministic dumps、diagnostics 和
 incremental bookkeeping，不影响 language semantics。
+
+`ItemImportScope` 是 combined AST 兼容路径中的 part-local import 边界。它必须只覆盖同一个
+`ModuleKey` 和同一个 `ModulePartKey.stable_index` 对应的连续 item 区间；如果 sema 拿到了
+`SemanticOptions::module_part_keys`，该 `part_index` 还必须能映射到有效的 `ModulePartKey`。这条
+契约让 name resolution 可以安全地把 import alias 限定在当前 source-file part 内，同时不把 import
+scope 提升成 module-level re-export 或 per-part visibility island。
 
 ### 4.4 DefKey
 
@@ -838,7 +845,7 @@ Phase 7A-D 实现收口状态（2026-05-27）：
   collision/import-to-part/private-surface/part-local import 行为继续通过。该阶段仍不引入 workspace
   resolver、dependency graph、lockfile、nested module tree、selective `pub use` 或 `pub(in path)`。
 
-Phase 8A-B 实现收口状态（2026-05-27）：
+Phase 8A-C 实现收口状态（2026-05-27）：
 
 - Phase 8A 把 part stable index 从 loader 贯通到 sema item context。`AstModule` 现在为每个 item 保存
   `item_part_indices`，`ItemImportScope` 也记录 owner part index；parser-only 路径继续默认 primary part，
@@ -859,9 +866,15 @@ Phase 8A-B 实现收口状态（2026-05-27）：
 - `ModuleGraph(ModuleKey)` 仍不依赖 `ModulePartQuery`。Graph 的 part fact 已混入 module/file/name/kind
   identity，并刻意排除 `stable_index` 的 semantic 影响；若 graph 依赖 `module_part`，part list 重排会因
   `ModulePartKey.stable_index` 改变而误 red，违背 Phase 7C 固定的 red/green contract。
+- Phase 8C 加固 sema 对 part-local import scope 的 AST 契约：非空 scope 必须覆盖有效 item 区间，
+  覆盖的每个 item 都必须属于同一个 `ModuleId` 和 scope 记录的同一个 `part_index`；当 driver 提供了
+  `SemanticOptions::module_part_keys` 时，该 index 还必须指向有效 `ModulePartKey`。这一步只把
+  8A 写入 AST 的 part identity 变成 sema 入口处可验证的不变量，不改变 import 语法、re-export 行为、
+  `priv` 跨 part 可见性或 graph red/green 规则。
 - 普通 gtest 覆盖了 sema current-item part context、AST item part contract、`module_part` query record、
-  stable key layout / malformed rejection、edge verifier、query executor/provider、incremental cache
-  subject 写入和 profile 计数。该阶段不引入 per-part sema isolation、per-part codegen artifact、
+  part-local import scope contract、stable key layout / malformed rejection、edge verifier、query
+  executor/provider、incremental cache subject 写入和 profile 计数。该阶段不引入 per-part sema
+  isolation、per-part codegen artifact、
   workspace resolver、dependency graph、lockfile、nested module tree、selective `pub use` 或
   `pub(in path)`。
 

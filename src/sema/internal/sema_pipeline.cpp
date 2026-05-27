@@ -121,6 +121,47 @@ struct SemaItemCounts {
     return counts;
 }
 
+[[nodiscard]] bool sema_item_import_scope_range_is_valid(
+    const syntax::ItemImportScope& scope, const base::usize item_count) noexcept
+{
+    const base::usize item_begin = scope.item_begin;
+    const base::usize item_count_in_scope = scope.item_count;
+    return item_count_in_scope != 0 && item_begin < item_count && item_count_in_scope <= item_count - item_begin;
+}
+
+[[nodiscard]] bool sema_item_import_scope_part_matches_items(
+    const syntax::ItemImportScope& scope, const std::vector<base::u32>& item_part_indices) noexcept
+{
+    if (!sema_item_import_scope_range_is_valid(scope, item_part_indices.size())) {
+        return false;
+    }
+    const base::usize item_begin = scope.item_begin;
+    const base::usize item_end = item_begin + scope.item_count;
+    for (base::usize item = item_begin; item < item_end; ++item) {
+        if (item_part_indices[item] != scope.part_index) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool sema_item_import_scope_module_matches_items(
+    const syntax::ItemImportScope& scope, const std::vector<syntax::ModuleId>& item_modules) noexcept
+{
+    if (!sema_item_import_scope_range_is_valid(scope, item_modules.size())) {
+        return false;
+    }
+    const base::usize item_begin = scope.item_begin;
+    const base::usize item_end = item_begin + scope.item_count;
+    const syntax::ModuleId scope_owner = item_modules[item_begin];
+    for (base::usize item = item_begin; item < item_end; ++item) {
+        if (item_modules[item].value != scope_owner.value) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 SemanticAnalysisPipeline::SemanticAnalysisPipeline(SemanticAnalyzerCore& core) noexcept : core_(core)
@@ -308,11 +349,35 @@ bool SemanticAnalysisPipeline::validate_ast_contract() const
         if (scope.item_count == 0) {
             continue;
         }
-        const base::usize last_item = static_cast<base::usize>(scope.item_begin) + scope.item_count - 1;
-        if (scope.item_begin >= this->core_.ctx_.module.items.size()
-            || last_item >= this->core_.ctx_.module.items.size()) {
+        if (!sema_item_import_scope_range_is_valid(scope, this->core_.ctx_.module.items.size())) {
             this->core_.report_internal_contract({}, std::string(SEMA_AST_ITEM_MODULE_CONTRACT));
             valid = false;
+            continue;
+        }
+        if (!sema_item_import_scope_range_is_valid(scope, this->core_.ctx_.module.item_modules.size())) {
+            this->core_.report_internal_contract({}, std::string(SEMA_AST_ITEM_MODULE_CONTRACT));
+            valid = false;
+            continue;
+        }
+        if (!sema_item_import_scope_module_matches_items(scope, this->core_.ctx_.module.item_modules)) {
+            this->core_.report_internal_contract({}, std::string(SEMA_AST_ITEM_IMPORT_SCOPE_MODULE_INVALID));
+            valid = false;
+            continue;
+        }
+        if (!sema_item_import_scope_part_matches_items(scope, this->core_.ctx_.module.item_part_indices)) {
+            this->core_.report_internal_contract({}, std::string(SEMA_AST_ITEM_IMPORT_SCOPE_PART_INVALID));
+            valid = false;
+            continue;
+        }
+        const syntax::ModuleId scope_owner = this->core_.ctx_.module.item_modules[scope.item_begin];
+        if (syntax::is_valid(scope_owner) && scope_owner.value < this->core_.ctx_.options.module_part_keys.size()
+            && !this->core_.ctx_.options.module_part_keys[scope_owner.value].empty()) {
+            const std::vector<query::ModulePartKey>& part_keys =
+                this->core_.ctx_.options.module_part_keys[scope_owner.value];
+            if (scope.part_index >= part_keys.size() || !query::is_valid(part_keys[scope.part_index])) {
+                this->core_.report_internal_contract({}, std::string(SEMA_AST_ITEM_IMPORT_SCOPE_PART_INVALID));
+                valid = false;
+            }
         }
     }
     const base::usize count =

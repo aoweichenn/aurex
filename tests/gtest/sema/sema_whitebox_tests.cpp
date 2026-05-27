@@ -1220,6 +1220,7 @@ TEST(CoreUnit, SemanticWhiteBoxModulePartContextsTrackCurrentItem)
 {
     constexpr base::u32 SEMA_TEST_PRIMARY_PART_INDEX = 0;
     constexpr base::u32 SEMA_TEST_FRAGMENT_PART_INDEX = 2;
+    constexpr base::usize SEMA_TEST_PART_KEY_TABLE_SIZE = SEMA_TEST_FRAGMENT_PART_INDEX + 1;
     const std::array<std::string_view, 1> package_parts{"part-package"};
     const std::array<std::string_view, 1> module_parts{"root"};
     const query::PackageKey package = query::package_key(package_parts);
@@ -1243,11 +1244,16 @@ TEST(CoreUnit, SemanticWhiteBoxModulePartContextsTrackCurrentItem)
     part_item.kind = syntax::ItemKind::fn_decl;
     part_item.name = "from_part";
     const syntax::ItemId part_id = module.push_item_for_module(part_item, module_id(0), SEMA_TEST_FRAGMENT_PART_INDEX);
+    syntax::ItemImportScope part_import_scope;
+    part_import_scope.item_begin = part_id.value;
+    part_import_scope.item_count = 1;
+    part_import_scope.part_index = SEMA_TEST_FRAGMENT_PART_INDEX;
+    module.item_import_scopes.push_back(std::move(part_import_scope));
 
     sema::SemanticOptions options;
     options.module_packages.push_back(package);
-    options.module_part_keys.resize(1);
-    options.module_part_keys[0].resize(3);
+    options.module_part_keys.resize(module.modules.size());
+    options.module_part_keys[0].resize(SEMA_TEST_PART_KEY_TABLE_SIZE);
     options.module_part_keys[0][SEMA_TEST_PRIMARY_PART_INDEX] = primary_key;
     options.module_part_keys[0][SEMA_TEST_FRAGMENT_PART_INDEX] = part_key;
 
@@ -1257,6 +1263,9 @@ TEST(CoreUnit, SemanticWhiteBoxModulePartContextsTrackCurrentItem)
     EXPECT_EQ(analyzer.item_part_index(part_id), SEMA_TEST_FRAGMENT_PART_INDEX);
     EXPECT_EQ(analyzer.query_module_part_key(primary_id), primary_key);
     EXPECT_EQ(analyzer.query_module_part_key(part_id), part_key);
+    const syntax::ItemImportScope* const found_part_scope = analyzer.item_import_scope(part_id);
+    ASSERT_NE(found_part_scope, nullptr);
+    EXPECT_EQ(found_part_scope->part_index, SEMA_TEST_FRAGMENT_PART_INDEX);
 
     const sema::DeclContext part_declaration = analyzer.declaration_context(part_id);
     EXPECT_EQ(part_declaration.module, module_key);
@@ -3665,6 +3674,8 @@ TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized)
     EXPECT_EQ(module.modules.size(), 1U);
     EXPECT_EQ(module.item_modules.size(), 1U);
     EXPECT_EQ(module.item_modules.front().value, 0U);
+    EXPECT_EQ(module.item_part_indices.size(), 1U);
+    EXPECT_EQ(module.item_part_indices.front(), 0U);
 
     syntax::AstModule discard_module;
     discard_module.modules = {module_info({"root"})};
@@ -3719,6 +3730,149 @@ TEST(CoreUnit, SemanticWhiteBoxParserAstRequiresItemModulesWhenModulesExist)
     for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
         found = found
             || diagnostic.message.find("item_modules must contain one module owner per item") != std::string::npos;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxItemImportScopeRangeContractIsValidated)
+{
+    constexpr base::u32 SEMA_TEST_PRIMARY_PART_INDEX = 0;
+    constexpr base::u32 SEMA_TEST_TOO_WIDE_SCOPE_ITEM_COUNT = 2;
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "main";
+    const syntax::ItemId item = module.push_item_for_module(function, module_id(0), SEMA_TEST_PRIMARY_PART_INDEX);
+
+    syntax::ItemImportScope out_of_range_scope;
+    out_of_range_scope.item_begin = item.value;
+    out_of_range_scope.item_count = SEMA_TEST_TOO_WIDE_SCOPE_ITEM_COUNT;
+    out_of_range_scope.part_index = SEMA_TEST_PRIMARY_PART_INDEX;
+    module.item_import_scopes.push_back(std::move(out_of_range_scope));
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    EXPECT_FALSE(checked_result);
+    ASSERT_TRUE(diagnostics.has_error());
+    constexpr std::string_view SEMA_TEST_EXPECTED_MESSAGE = sema::SEMA_AST_ITEM_MODULE_CONTRACT;
+    bool found = false;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        found = found || diagnostic.message.find(SEMA_TEST_EXPECTED_MESSAGE) != std::string::npos;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxItemImportScopeModuleContractIsValidated)
+{
+    constexpr base::u32 SEMA_TEST_PRIMARY_PART_INDEX = 0;
+    syntax::AstModule module;
+    module.modules = {
+        module_info({"root"}),
+        module_info({"dep"}),
+    };
+
+    syntax::ItemNode root_function;
+    root_function.kind = syntax::ItemKind::fn_decl;
+    root_function.name = "root_fn";
+    const syntax::ItemId root_item =
+        module.push_item_for_module(root_function, module_id(0), SEMA_TEST_PRIMARY_PART_INDEX);
+
+    syntax::ItemNode dep_function;
+    dep_function.kind = syntax::ItemKind::fn_decl;
+    dep_function.name = "dep_fn";
+    static_cast<void>(module.push_item_for_module(dep_function, module_id(1), SEMA_TEST_PRIMARY_PART_INDEX));
+
+    syntax::ItemImportScope cross_module_scope;
+    cross_module_scope.item_begin = root_item.value;
+    cross_module_scope.item_count = 2;
+    cross_module_scope.part_index = SEMA_TEST_PRIMARY_PART_INDEX;
+    module.item_import_scopes.push_back(std::move(cross_module_scope));
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    EXPECT_FALSE(checked_result);
+    ASSERT_TRUE(diagnostics.has_error());
+    constexpr std::string_view SEMA_TEST_EXPECTED_MESSAGE = sema::SEMA_AST_ITEM_IMPORT_SCOPE_MODULE_INVALID;
+    bool found = false;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        found = found || diagnostic.message.find(SEMA_TEST_EXPECTED_MESSAGE) != std::string::npos;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxItemImportScopePartContractIsValidated)
+{
+    constexpr base::u32 SEMA_TEST_PRIMARY_PART_INDEX = 0;
+    constexpr base::u32 SEMA_TEST_FRAGMENT_PART_INDEX = 1;
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    syntax::ItemNode primary_function;
+    primary_function.kind = syntax::ItemKind::fn_decl;
+    primary_function.name = "primary";
+    const syntax::ItemId primary_item =
+        module.push_item_for_module(primary_function, module_id(0), SEMA_TEST_PRIMARY_PART_INDEX);
+
+    syntax::ItemNode part_function;
+    part_function.kind = syntax::ItemKind::fn_decl;
+    part_function.name = "from_part";
+    static_cast<void>(module.push_item_for_module(part_function, module_id(0), SEMA_TEST_FRAGMENT_PART_INDEX));
+
+    syntax::ItemImportScope cross_part_scope;
+    cross_part_scope.item_begin = primary_item.value;
+    cross_part_scope.item_count = 2;
+    cross_part_scope.part_index = SEMA_TEST_PRIMARY_PART_INDEX;
+    module.item_import_scopes.push_back(std::move(cross_part_scope));
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    EXPECT_FALSE(checked_result);
+    ASSERT_TRUE(diagnostics.has_error());
+    constexpr std::string_view SEMA_TEST_EXPECTED_MESSAGE = sema::SEMA_AST_ITEM_IMPORT_SCOPE_PART_INVALID;
+    bool found = false;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        found = found || diagnostic.message.find(SEMA_TEST_EXPECTED_MESSAGE) != std::string::npos;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxItemImportScopePartKeyContractIsValidated)
+{
+    constexpr base::u32 SEMA_TEST_FRAGMENT_PART_INDEX = 1;
+    constexpr base::usize SEMA_TEST_PART_KEY_TABLE_SIZE = SEMA_TEST_FRAGMENT_PART_INDEX + 1;
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    syntax::ItemNode part_function;
+    part_function.kind = syntax::ItemKind::fn_decl;
+    part_function.name = "from_part";
+    const syntax::ItemId part_item =
+        module.push_item_for_module(part_function, module_id(0), SEMA_TEST_FRAGMENT_PART_INDEX);
+
+    syntax::ItemImportScope part_scope;
+    part_scope.item_begin = part_item.value;
+    part_scope.item_count = 1;
+    part_scope.part_index = SEMA_TEST_FRAGMENT_PART_INDEX;
+    module.item_import_scopes.push_back(std::move(part_scope));
+
+    sema::SemanticOptions options;
+    options.module_part_keys.resize(module.modules.size());
+    options.module_part_keys[0].resize(SEMA_TEST_PART_KEY_TABLE_SIZE);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics, options);
+    auto checked_result = analyzer.analyze();
+    EXPECT_FALSE(checked_result);
+    ASSERT_TRUE(diagnostics.has_error());
+    constexpr std::string_view SEMA_TEST_EXPECTED_MESSAGE = sema::SEMA_AST_ITEM_IMPORT_SCOPE_PART_INVALID;
+    bool found = false;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        found = found || diagnostic.message.find(SEMA_TEST_EXPECTED_MESSAGE) != std::string::npos;
     }
     EXPECT_TRUE(found);
 }

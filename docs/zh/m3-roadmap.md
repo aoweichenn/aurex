@@ -247,7 +247,7 @@ part 的 display name、kind、stable index、path 和 part key global id；从 
 覆盖了 query key、loader part key、part root dump/artifact 行为和既有 part diagnostics；该阶段仍不引入
 workspace、dependency resolver、lockfile、nested module tree、selective `pub use` 或 `pub(in path)`。
 
-2026-05-27：Phase 8A-B Sema Part Identity / ModulePart Query Boundary 已完成。8A 把 loader 产生的
+2026-05-27：Phase 8A-C Sema Part Identity / ModulePart Query Boundary 已完成。8A 把 loader 产生的
 part stable index 贯通到 combined AST item：`AstModule::item_part_indices` 与 import scope part index
 记录每个 item/import scope 来自 primary 还是 named part；parser-only 路径继续默认 primary part，
 syntax 层仍不直接依赖 query key。`SemanticOptions::module_part_keys` 由 driver 按 `ModuleRecord.parts`
@@ -257,8 +257,14 @@ syntax 层仍不直接依赖 query key。`SemanticOptions::module_part_keys` 由
 支持和 incremental cache subject/profile/stat 字段；cache 现在可写出 `module_part` query record 以及
 `module_part -> parse_file` dependency edge。`module_graph` 暂不依赖 `module_part`，因为 graph 的 part
 identity 已有自身 fingerprint，且必须继续保持 part 声明重排 green；把 `stable_index` 传播为 graph
-dependency 会错误放大 invalidation。普通 gtest 覆盖 sema part context、module_part query provider、
-stable key layout、edge verifier、query executor 和 incremental cache 写入/profile 行为。
+dependency 会错误放大 invalidation。8C 进一步把 part-local import scope 变成 sema 入口处的可验证
+不变量：scope 必须覆盖有效 item 区间、覆盖的 item 必须全部来自同一 `ModuleId` 和同一
+`part_index`，并且在 `SemanticOptions::module_part_keys` 存在时该 index 必须指向有效
+`ModulePartKey`。普通 gtest 覆盖 sema part context、part-local import scope contract、
+module_part query provider、stable key layout、
+edge verifier、query executor 和 incremental cache 写入/profile 行为。该阶段不引入 per-part sema
+isolation、per-part codegen artifact、workspace resolver、dependency graph、lockfile、nested module
+tree、selective `pub use` 或 `pub(in path)`。
 
 ## 验收
 

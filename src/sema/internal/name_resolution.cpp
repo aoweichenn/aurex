@@ -24,6 +24,29 @@ struct NameSuggestion {
     base::usize distance = std::numeric_limits<base::usize>::max();
 };
 
+struct SelectiveReexportFrame {
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    IdentId name_id = INVALID_IDENT_ID;
+    std::string_view name;
+};
+
+struct SelectiveReexportSeenKey {
+    base::u32 module = syntax::ModuleId::INVALID_VALUE;
+    base::u32 name = IdentId::INVALID_VALUE;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const SelectiveReexportSeenKey& lhs, const SelectiveReexportSeenKey& rhs) noexcept = default;
+};
+
+struct SelectiveReexportSeenKeyHash {
+    [[nodiscard]] std::size_t operator()(const SelectiveReexportSeenKey& key) const noexcept
+    {
+        std::size_t hash = static_cast<std::size_t>(key.module);
+        hash ^= static_cast<std::size_t>(key.name) + 0x9e3779b97f4a7c15ULL + (hash << 6U) + (hash >> 2U);
+        return hash;
+    }
+};
+
 [[nodiscard]] base::usize suggestion_distance_limit(const std::string_view name) noexcept
 {
     if (name.size() < SEMA_LOOKUP_SHORT_SUGGESTION_NAME_LENGTH) {
@@ -343,6 +366,15 @@ void ModuleVisibilityResolver::append_public_reexports(const syntax::ModuleId mo
     }
 }
 
+bool ModuleVisibilityResolver::reexport_alias_matches(
+    const syntax::ResolvedUse& reexport, const IdentId name_id, const std::string_view name) const noexcept
+{
+    if (syntax::is_valid(reexport.alias_id) && syntax::is_valid(name_id)) {
+        return reexport.alias_id == name_id;
+    }
+    return reexport.alias == name;
+}
+
 bool ModuleVisibilityResolver::reexport_visible_to_module(const syntax::ModuleId exporter,
     const syntax::Visibility visibility, const syntax::ModuleId access_module) const noexcept
 {
@@ -358,6 +390,59 @@ bool ModuleVisibilityResolver::reexport_visible_to_module(const syntax::ModuleId
     const VisibilityPolicy policy;
     return policy.can_access(visibility, this->core_.declaration_context(exporter),
         access_context_from_module_key(this->core_.query_module_key(access_module)));
+}
+
+SemanticAnalyzerCore::SelectiveReexportTargetList ModuleVisibilityResolver::accessible_selective_reexports(
+    const syntax::ModuleId module, const IdentId name_id, const std::string_view name) const
+{
+    SemanticAnalyzerCore::SelectiveReexportTargetList result;
+    if (!syntax::is_valid(module)) {
+        return result;
+    }
+
+    std::vector<SelectiveReexportFrame> pending;
+    std::unordered_set<SelectiveReexportSeenKey, SelectiveReexportSeenKeyHash> seen;
+    const syntax::ModuleId access_module = this->core_.state_.flow.current_module;
+    const SemanticAnalyzerCore::ModuleIdList roots = this->accessible_module_export_modules(module);
+    pending.reserve(roots.size());
+    seen.reserve(roots.size());
+    for (const syntax::ModuleId root : roots) {
+        if (!syntax::is_valid(root)) {
+            continue;
+        }
+        pending.push_back(SelectiveReexportFrame{root, name_id, name});
+        seen.insert(SelectiveReexportSeenKey{root.value, syntax::is_valid(name_id) ? name_id.value : 0U});
+    }
+
+    while (!pending.empty()) {
+        const SelectiveReexportFrame frame = pending.back();
+        pending.pop_back();
+        if (!syntax::is_valid(frame.module) || frame.module.value >= this->core_.ctx_.module.modules.size()) {
+            continue;
+        }
+        for (const syntax::ResolvedUse& reexport : this->core_.ctx_.module.modules[frame.module.value].reexports) {
+            if (!this->reexport_alias_matches(reexport, frame.name_id, frame.name) || !syntax::is_valid(reexport.module)
+                || !this->reexport_visible_to_module(frame.module, reexport.visibility, access_module)) {
+                continue;
+            }
+            result.push_back(SemanticAnalyzerCore::SelectiveReexportTarget{
+                reexport.module,
+                reexport.target_name_id,
+                reexport.target_name,
+                frame.module,
+                reexport.visibility,
+            });
+            const SelectiveReexportSeenKey key{
+                reexport.module.value,
+                syntax::is_valid(reexport.target_name_id) ? reexport.target_name_id.value : 0U,
+            };
+            if (seen.insert(key).second) {
+                pending.push_back(
+                    SelectiveReexportFrame{reexport.module, reexport.target_name_id, reexport.target_name});
+            }
+        }
+    }
+    return result;
 }
 
 void ModuleVisibilityResolver::append_reexports_for_access(const syntax::ModuleId module,

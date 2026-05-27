@@ -113,6 +113,12 @@ SemanticAnalyzerCore::ModuleIdList SemanticAnalyzerCore::LookupResolver::accessi
     return ModuleVisibilityResolver(this->core_).accessible_module_export_modules(module);
 }
 
+SemanticAnalyzerCore::SelectiveReexportTargetList SemanticAnalyzerCore::LookupResolver::accessible_selective_reexports(
+    const syntax::ModuleId module, const IdentId name_id, const std::string_view name) const
+{
+    return ModuleVisibilityResolver(this->core_).accessible_selective_reexports(module, name_id, name);
+}
+
 void SemanticAnalyzerCore::LookupResolver::append_public_reexports(
     const syntax::ModuleId module, ModuleIdList& result, std::unordered_set<base::u32>& seen) const
 {
@@ -214,9 +220,11 @@ TypeHandle SemanticAnalyzerCore::LookupResolver::find_type_in_module(const synta
 
     TypeHandle result = INVALID_TYPE_HANDLE;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
+    const auto consider_candidate = [&](const syntax::ModuleId candidate_module, const IdentId lookup_name_id,
+                                        const std::string_view lookup_name) -> bool {
+        static_cast<void>(lookup_name);
         TypeHandle candidate = INVALID_TYPE_HANDLE;
-        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
+        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, lookup_name_id);
         if (is_valid(lookup_key)) {
             if (const auto found = this->core_.state_.names.named_types_by_name.find(lookup_key);
                 found != this->core_.state_.names.named_types_by_name.end()) {
@@ -224,9 +232,9 @@ TypeHandle SemanticAnalyzerCore::LookupResolver::find_type_in_module(const synta
                     if (candidate_module.value == module.value && report_unknown) {
                         this->mutable_core().report_visibility(
                             range, sema_private_type_message(this->core_.module_name(candidate_module), name));
-                        return INVALID_TYPE_HANDLE;
+                        return true;
                     }
-                    continue;
+                    return false;
                 }
                 candidate = found->second.type;
             } else if (const auto alias_found = this->core_.state_.names.type_aliases_by_name.find(lookup_key);
@@ -235,15 +243,18 @@ TypeHandle SemanticAnalyzerCore::LookupResolver::find_type_in_module(const synta
                     if (candidate_module.value == module.value && report_unknown) {
                         this->mutable_core().report_visibility(
                             range, sema_private_type_message(this->core_.module_name(candidate_module), name));
-                        return INVALID_TYPE_HANDLE;
+                        return true;
                     }
-                    continue;
+                    return false;
                 }
                 candidate = this->mutable_core().resolve_type_alias(*alias_found->second, opaque_allowed_as_pointee);
             }
         }
         if (!is_valid(candidate)) {
-            continue;
+            return false;
+        }
+        if (is_valid(result) && result.value == candidate.value) {
+            return false;
         }
         if (is_valid(result)) {
             if (report_unknown) {
@@ -251,10 +262,30 @@ TypeHandle SemanticAnalyzerCore::LookupResolver::find_type_in_module(const synta
                     sema_ambiguous_type_name_message(
                         name, this->core_.module_name(result_module), this->core_.module_name(candidate_module)));
             }
-            return INVALID_TYPE_HANDLE;
+            result = INVALID_TYPE_HANDLE;
+            return true;
         }
         result = candidate;
         result_module = candidate_module;
+        return false;
+    };
+    const auto consider_exported_modules = [&](const syntax::ModuleId exported_module, const IdentId lookup_name_id,
+                                               const std::string_view lookup_name) -> bool {
+        for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(exported_module)) {
+            if (consider_candidate(candidate_module, lookup_name_id, lookup_name)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (consider_exported_modules(module, name_id, name)) {
+        return INVALID_TYPE_HANDLE;
+    }
+    for (const SelectiveReexportTarget& target : this->core_.accessible_selective_reexports(module, name_id, name)) {
+        if (consider_exported_modules(target.module, target.name_id, target.name)) {
+            return INVALID_TYPE_HANDLE;
+        }
     }
     if (is_valid(result)) {
         return result;
@@ -301,9 +332,9 @@ const FunctionSignature* SemanticAnalyzerCore::LookupResolver::find_function_in_
 
     const FunctionSignature* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
+    const auto consider_candidate = [&](const syntax::ModuleId candidate_module, const IdentId lookup_name_id) -> bool {
         const FunctionSignature* candidate = nullptr;
-        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
+        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, lookup_name_id);
         if (is_valid(lookup_key)) {
             if (const auto found = this->core_.state_.names.functions_by_name.find(lookup_key);
                 found != this->core_.state_.names.functions_by_name.end()) {
@@ -311,15 +342,18 @@ const FunctionSignature* SemanticAnalyzerCore::LookupResolver::find_function_in_
             }
         }
         if (candidate == nullptr) {
-            continue;
+            return false;
         }
         if (!this->core_.can_access_module(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
                 this->mutable_core().report_visibility(
                     range, sema_private_function_message(this->core_.module_name(candidate_module), name));
-                return nullptr;
+                return true;
             }
-            continue;
+            return false;
+        }
+        if (result == candidate) {
+            return false;
         }
         if (result != nullptr) {
             if (report_unknown) {
@@ -327,10 +361,29 @@ const FunctionSignature* SemanticAnalyzerCore::LookupResolver::find_function_in_
                     sema_ambiguous_function_name_message(
                         name, this->core_.module_name(result_module), this->core_.module_name(candidate_module)));
             }
-            return nullptr;
+            result = nullptr;
+            return true;
         }
         result = candidate;
         result_module = candidate_module;
+        return false;
+    };
+    const auto consider_exported_modules = [&](const syntax::ModuleId exported_module, const IdentId lookup_name_id) {
+        for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(exported_module)) {
+            if (consider_candidate(candidate_module, lookup_name_id)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (consider_exported_modules(module, name_id)) {
+        return nullptr;
+    }
+    for (const SelectiveReexportTarget& target : this->core_.accessible_selective_reexports(module, name_id, name)) {
+        if (consider_exported_modules(target.module, target.name_id)) {
+            return nullptr;
+        }
     }
     if (result == nullptr && report_unknown) {
         this->mutable_core().report_lookup(
@@ -354,9 +407,9 @@ const Symbol* SemanticAnalyzerCore::LookupResolver::find_symbol_in_module(const 
 
     const Symbol* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
+    const auto consider_candidate = [&](const syntax::ModuleId candidate_module, const IdentId lookup_name_id) -> bool {
         const Symbol* candidate = nullptr;
-        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
+        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, lookup_name_id);
         if (is_valid(lookup_key)) {
             if (const auto found = this->core_.state_.names.global_values_by_name.find(lookup_key);
                 found != this->core_.state_.names.global_values_by_name.end()) {
@@ -364,15 +417,18 @@ const Symbol* SemanticAnalyzerCore::LookupResolver::find_symbol_in_module(const 
             }
         }
         if (candidate == nullptr) {
-            continue;
+            return false;
         }
         if (!this->core_.can_access_module(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
                 this->mutable_core().report_visibility(
                     range, sema_private_name_message(this->core_.module_name(candidate_module), name));
-                return nullptr;
+                return true;
             }
-            continue;
+            return false;
+        }
+        if (result == candidate) {
+            return false;
         }
         if (result != nullptr) {
             if (report_unknown) {
@@ -380,10 +436,29 @@ const Symbol* SemanticAnalyzerCore::LookupResolver::find_symbol_in_module(const 
                     sema_ambiguous_name_message(
                         name, this->core_.module_name(result_module), this->core_.module_name(candidate_module)));
             }
-            return nullptr;
+            result = nullptr;
+            return true;
         }
         result = candidate;
         result_module = candidate_module;
+        return false;
+    };
+    const auto consider_exported_modules = [&](const syntax::ModuleId exported_module, const IdentId lookup_name_id) {
+        for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(exported_module)) {
+            if (consider_candidate(candidate_module, lookup_name_id)) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (consider_exported_modules(module, name_id)) {
+        return nullptr;
+    }
+    for (const SelectiveReexportTarget& target : this->core_.accessible_selective_reexports(module, name_id, name)) {
+        if (consider_exported_modules(target.module, target.name_id)) {
+            return nullptr;
+        }
     }
     if (result == nullptr && report_unknown) {
         this->mutable_core().report_lookup(
@@ -563,6 +638,12 @@ SemanticAnalyzerCore::ModuleIdList SemanticAnalyzerCore::accessible_module_expor
     const syntax::ModuleId module) const
 {
     return this->lookup_resolver().accessible_module_export_modules(module);
+}
+
+SemanticAnalyzerCore::SelectiveReexportTargetList SemanticAnalyzerCore::accessible_selective_reexports(
+    const syntax::ModuleId module, const IdentId name_id, const std::string_view name) const
+{
+    return this->lookup_resolver().accessible_selective_reexports(module, name_id, name);
 }
 
 void SemanticAnalyzerCore::append_public_reexports(

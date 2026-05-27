@@ -29,6 +29,27 @@ inline constexpr std::string_view PARSER_EXPECT_IMPORT_KEYWORD = "expected 'impo
 
 inline constexpr std::string_view PARSER_EXPECT_IMPORT_TERMINATOR = "expected ';' after import declaration";
 
+inline constexpr std::string_view PARSER_EXPECT_USE_KEYWORD = "expected 'use'";
+
+inline constexpr std::string_view PARSER_EXPECT_USE_PATH = "expected module item path after 'use'";
+
+inline constexpr std::string_view PARSER_EXPECT_USE_TARGET = "expected item name in selective use re-export";
+
+inline constexpr std::string_view PARSER_EXPECT_USE_ALIAS = "expected use alias after 'as'";
+
+inline constexpr std::string_view PARSER_EXPECT_USE_TERMINATOR = "expected ';' after use declaration";
+
+inline constexpr std::string_view PARSER_USE_GLOB_UNSUPPORTED =
+    "glob use is not supported; re-export specific items with 'pub use module.Item'";
+
+inline constexpr std::string_view PARSER_USE_PRIVATE_UNSUPPORTED =
+    "selective use re-export must use pub or pub(package)";
+
+inline constexpr std::string_view PARSER_MODULE_PART_USE_UNSUPPORTED =
+    "module part files cannot declare selective re-exports; add pub use to the primary module file";
+
+inline constexpr std::string_view PARSER_USE_AFTER_ITEM = "use declarations must appear before items";
+
 inline constexpr std::string_view PARSER_EXPECT_PATH_IDENTIFIER = "expected identifier in path";
 
 inline constexpr std::string_view PARSER_EXPECT_PATH_IDENTIFIER_AFTER_DOT = "expected identifier after '.'";

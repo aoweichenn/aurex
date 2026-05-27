@@ -5,6 +5,7 @@
 #include <optional>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace aurex::parse {
 namespace {
@@ -12,6 +13,12 @@ namespace {
 using syntax::TokenKind;
 
 inline constexpr std::string_view PARSER_CONTEXTUAL_PART_KEYWORD_TEXT = "part";
+inline constexpr std::string_view PARSER_CONTEXTUAL_USE_KEYWORD_TEXT = "use";
+
+struct ParsedUsePathSegment {
+    std::string_view text;
+    base::SourceRange range{};
+};
 
 } // namespace
 
@@ -54,6 +61,71 @@ syntax::ImportDecl ItemParser::parse_import_decl()
         this->expect_item_terminator(std::string(PARSER_EXPECT_IMPORT_TERMINATOR));
     this->reset_panic();
     return import;
+}
+
+syntax::UseDecl ItemParser::parse_use_decl()
+{
+    syntax::UseDecl use;
+    const ParsedVisibility visibility = this->parse_visibility();
+    use.visibility = visibility.visibility;
+    use.explicit_visibility = visibility.explicit_visibility;
+    if (syntax::visibility_is_module_private(use.visibility)) {
+        this->report_at(this->previous(), std::string(PARSER_USE_PRIVATE_UNSUPPORTED));
+        use.visibility = syntax::Visibility::public_;
+    }
+
+    const syntax::Token& keyword = this->expect(TokenKind::identifier, std::string(PARSER_EXPECT_USE_KEYWORD));
+    if (keyword.kind == TokenKind::identifier && keyword.text() != PARSER_CONTEXTUAL_USE_KEYWORD_TEXT) {
+        this->report_at(keyword, std::string(PARSER_EXPECT_USE_KEYWORD));
+    }
+
+    std::vector<ParsedUsePathSegment> segments;
+    if (const std::optional<syntax::Token> first = this->parse_path_segment(std::string(PARSER_EXPECT_USE_PATH))) {
+        segments.push_back(ParsedUsePathSegment{first->text(), first->range});
+    }
+
+    bool saw_glob = false;
+    while (this->match(TokenKind::dot)) {
+        if (this->check(TokenKind::star)) {
+            const syntax::Token& star = this->advance();
+            this->report_at(star, std::string(PARSER_USE_GLOB_UNSUPPORTED));
+            saw_glob = true;
+            break;
+        }
+        std::optional<syntax::Token> segment =
+            this->parse_path_segment(std::string(PARSER_EXPECT_PATH_IDENTIFIER_AFTER_DOT));
+        if (segment.has_value()) {
+            segments.push_back(ParsedUsePathSegment{segment->text(), segment->range});
+        }
+    }
+
+    if (!saw_glob && segments.size() < 2U) {
+        const base::SourceRange range = segments.empty() ? this->peek().range : segments.back().range;
+        this->report_at(syntax::Token{TokenKind::identifier, range, {}}, std::string(PARSER_EXPECT_USE_TARGET));
+    }
+
+    if (!saw_glob && segments.size() >= 2U) {
+        const ParsedUsePathSegment& target = segments.back();
+        use.target_name = target.text;
+        use.target_range = target.range;
+        use.alias = target.text;
+        use.alias_range = target.range;
+        use.module_path.range = segments.size() == 2U
+            ? segments.front().range
+            : this->merge(segments.front().range, segments[segments.size() - 2U].range);
+        use.module_path.parts.reserve(segments.size() - 1U);
+        for (base::usize index = 0; index + 1U < segments.size(); ++index) {
+            use.module_path.parts.push_back(segments[index].text);
+        }
+    }
+
+    if (this->match(TokenKind::kw_as)) {
+        this->parse_use_alias(use);
+    }
+    [[maybe_unused]] const syntax::Token& terminator =
+        this->expect_item_terminator(std::string(PARSER_EXPECT_USE_TERMINATOR));
+    this->reset_panic();
+    return use;
 }
 
 syntax::ModulePartDecl ItemParser::parse_module_part_decl()
@@ -140,6 +212,17 @@ void ItemParser::recover_import_alias() const
     if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::import_alias)) {
         this->synchronize(RecoveryContext::import_alias);
     }
+}
+
+void ItemParser::parse_use_alias(syntax::UseDecl& use)
+{
+    const syntax::Token& alias = this->expect_identifier_recovered(std::string(PARSER_EXPECT_USE_ALIAS));
+    if (alias.kind == TokenKind::identifier) {
+        use.alias = alias.text();
+        use.alias_range = alias.range;
+        return;
+    }
+    this->recover_import_alias();
 }
 
 ParsedVisibility ItemParser::parse_visibility() const

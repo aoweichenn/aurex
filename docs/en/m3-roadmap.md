@@ -58,6 +58,10 @@ Core deliverables:
   boundaries with `ModuleKey` / `ModulePartKey`.
 - Produce precise diagnostics for module parts, import paths, duplicate parts,
   missing parts, and part/import cycles.
+- Recover IDE/tooling source-part context from an owning primary when a real
+  part buffer is listed by that primary; keep unowned buffers unresolved.
+- Include selective re-exports in module graph/export query fingerprints without
+  changing local item-list identity.
 
 ### M3.1: Generics Completion
 
@@ -101,16 +105,19 @@ fixes these initial directions:
 
 - `module path;` remains the primary module-file declaration.
 - `module path part name;` is the recommended part-file declaration.
-- Whether the primary file also needs explicit `part name;` declarations is
-  decided in the M3 module design. If adopted, the list prevents implicit
-  directory scanning and hidden file discovery.
+- The primary file explicitly lists module parts with `part name;`; the list
+  prevents implicit directory scanning and hidden file discovery.
 - `priv` means visible within the same logical module, including the primary
   file and all parts.
 - `pub` continues to mean public API across modules.
-- `pub(package)` / `pub(crate)` can be M3.0-late or M3.2 design work. It should
-  not block the first module-part slice.
-- `pub use` / selective re-export is a candidate module feature, but lower
-  priority than module parts and exports queries.
+- `pub(package)` is part of M3.0 package visibility. `pub(crate)` remains only a
+  future spelling question.
+- Primary-level `pub use module.Item [as Alias];` and
+  `pub(package) use module.Item [as Alias];` are the M3.0 selective re-export
+  forms.
+- M3.0 still rejects glob import/use, part-local `pub use`, bare/private use,
+  nested module trees, `pub(in path)`, workspace/dependency resolvers,
+  lockfiles, version solving, and package management.
 
 ## Generic Design Direction
 

@@ -69,7 +69,9 @@ M3.0 的第一批实现顺序：
    artifact root、case-fold path collision 和循环；检查型 part root 需要反查 owning primary。
 3. Sema 按 `ModuleKey` 合并 item list，检测跨 part duplicate item，并让 `priv` 跨同一 logical module 所有 parts 可见。
 4. 对齐 module graph / exports / item list / item signature 的 query key、dependency、fingerprint 和 invalidation 边界。
-5. 在 M3.0 稳定后，再进入 `pub(package)` / `pub use` 候选能力和 M3.1 泛型 ABI 稳定化。
+5. 已进入 M3.0 收口段：`pub(package)`、primary-level selective `pub use`、IDE part buffer owning-primary
+   恢复和 module/query/cache 契约必须作为当前模块系统验收的一部分；M3.0 收口后再进入 M3.1 泛型 ABI
+   稳定化。
 
 ## 当前分支原则
 

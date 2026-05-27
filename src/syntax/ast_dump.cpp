@@ -1276,6 +1276,18 @@ std::string dump_ast(const AstModule& module)
         }
         out << "\n";
     }
+    for (const UseDecl& use : module.reexports) {
+        dump_visibility(out, use.visibility);
+        out << "use";
+        dump_module_path(out, use.module_path);
+        if (!use.target_name.empty()) {
+            out << "." << use.target_name;
+        }
+        if (!use.alias.empty() && use.alias != use.target_name) {
+            out << " as " << use.alias;
+        }
+        out << "\n";
+    }
     const std::unordered_set<base::u32> nested = collect_nested_items(module);
     for (base::u32 i = 0; i < module.items.size(); ++i) {
         if (nested.contains(i)) {

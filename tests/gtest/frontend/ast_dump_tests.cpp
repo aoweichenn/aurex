@@ -1057,6 +1057,43 @@ TEST(CoreUnit, AstDumpPrintsPackageVisibilityForInternalLattice)
         });
 }
 
+TEST(CoreUnit, AstDumpPrintsSelectiveUseReexports)
+{
+    syntax::AstModule module;
+    module.module_path.parts = {"use_reexport_dump"};
+
+    syntax::ModulePath type_path;
+    type_path.parts = {"pkg", "api"};
+    module.reexports.push_back(syntax::UseDecl{
+        type_path,
+        "Value",
+        {},
+        "Value",
+        {},
+        syntax::Visibility::public_,
+        true,
+    });
+
+    syntax::ModulePath function_path;
+    function_path.parts = {"pkg", "api"};
+    module.reexports.push_back(syntax::UseDecl{
+        function_path,
+        "make",
+        {},
+        "make_value",
+        {},
+        syntax::Visibility::package_,
+        true,
+    });
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "pub use pkg.api.Value",
+            "pub(package) use pkg.api.make as make_value",
+        });
+}
+
 TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels)
 {
     std::vector<Token> tokens = {

@@ -237,6 +237,141 @@ TEST_F(AurexIntegrationTest, PublicImportReexport)
         "unknown type in module samplelib.reexport_facade: SecretMode");
 }
 
+TEST_F(AurexIntegrationTest, SelectiveUseReexport)
+{
+    const fs::path work = tmp_root() / "selective_use_reexport";
+    fs::create_directories(work);
+    const fs::path inner = work / "selective_inner.ax";
+    const fs::path facade = work / "selective_facade.ax";
+    const fs::path consumer = work / "selective_consumer.ax";
+    const fs::path package_consumer = work / "selective_package_consumer.ax";
+    const fs::path private_facade = work / "selective_private_facade.ax";
+    const fs::path unknown_facade = work / "selective_unknown_facade.ax";
+
+    write_visibility_test_source(inner,
+        "module selective_inner;\n"
+        "pub const base: i32 = 40;\n"
+        "const hidden: i32 = 1;\n"
+        "pub(package) type Count = i32;\n"
+        "pub struct Value {\n"
+        "  pub amount: i32;\n"
+        "}\n"
+        "pub fn make() -> Value {\n"
+        "  return Value { amount: base };\n"
+        "}\n");
+    write_visibility_test_source(facade,
+        "module selective_facade;\n"
+        "pub use selective_inner.Value;\n"
+        "pub use selective_inner.make as make_value;\n"
+        "pub(package) use selective_inner.Count as PackageCount;\n");
+    write_visibility_test_source(consumer,
+        "module selective_consumer;\n"
+        "import selective_facade as facade;\n"
+        "fn main() -> i32 {\n"
+        "  var value: facade.Value = facade.make_value();\n"
+        "  return value.amount;\n"
+        "}\n");
+    write_visibility_test_source(package_consumer,
+        "module selective_package_consumer;\n"
+        "import selective_facade as facade;\n"
+        "type LocalCount = facade.PackageCount;\n"
+        "fn main() -> i32 {\n"
+        "  let value: LocalCount = 2;\n"
+        "  return value;\n"
+        "}\n");
+    write_visibility_test_source(private_facade,
+        "module selective_private_facade;\n"
+        "pub use selective_inner.hidden as hidden;\n");
+    write_visibility_test_source(unknown_facade,
+        "module selective_unknown_facade;\n"
+        "pub use selective_inner.Missing;\n");
+
+    const std::string import_flags = "-I " + q(work);
+    const std::string ast = require_success(aurexc() + " " + import_flags + " --emit=ast " + q(facade)).output;
+    expect_contains_all(ast,
+        {
+            "pub use selective_inner.Value",
+            "pub use selective_inner.make as make_value",
+            "pub(package) use selective_inner.Count as PackageCount",
+        });
+
+    const std::string checked =
+        require_success(aurexc() + " " + import_flags + " --emit=checked " + q(consumer)).output;
+    expect_contains_all(checked,
+        {
+            "struct Value fields=1",
+            "fn make -> selective_inner.Value",
+        });
+
+    const std::string ir = require_success(aurexc() + " " + import_flags + " --emit=ir " + q(consumer)).output;
+    expect_contains_all(ir,
+        {
+            "call m0_selective_inner_make",
+            "record Value @m0_selective_inner_Value",
+        });
+
+    require_success(aurexc() + " " + import_flags + " --check " + q(package_consumer));
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(private_facade)).output,
+        "selective re-export target is not visible enough in module selective_inner: hidden");
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(unknown_facade)).output,
+        "unknown selective re-export target in module selective_inner: Missing");
+}
+
+TEST_F(AurexIntegrationTest, SelectiveUseReexportGenericItems)
+{
+    const fs::path work = tmp_root() / "selective_use_reexport_generics";
+    fs::create_directories(work);
+    const fs::path inner = work / "selective_generic_inner.ax";
+    const fs::path facade = work / "selective_generic_facade.ax";
+    const fs::path consumer = work / "selective_generic_consumer.ax";
+    const fs::path missing_args = work / "selective_generic_missing_args.ax";
+
+    write_visibility_test_source(inner,
+        "module selective_generic_inner;\n"
+        "pub struct Box[T] {\n"
+        "  pub value: T;\n"
+        "}\n"
+        "pub enum Maybe[T] { some(T), none }\n"
+        "pub type BoxAlias[T] = Box[T];\n"
+        "pub fn wrap[T](value: T) -> Box[T] {\n"
+        "  return Box[T] { value: value };\n"
+        "}\n");
+    write_visibility_test_source(facade,
+        "module selective_generic_facade;\n"
+        "pub use selective_generic_inner.Box as ReBox;\n"
+        "pub use selective_generic_inner.Maybe as ReMaybe;\n"
+        "pub use selective_generic_inner.BoxAlias as ReAlias;\n"
+        "pub use selective_generic_inner.wrap as re_wrap;\n");
+    write_visibility_test_source(consumer,
+        "module selective_generic_consumer;\n"
+        "import selective_generic_facade as facade;\n"
+        "fn unwrap(value: facade.ReMaybe[i32]) -> i32 {\n"
+        "  return match value { .some(inner) => inner, .none => 0 };\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let box: facade.ReBox[i32] = facade.re_wrap[i32](21);\n"
+        "  let alias_box: facade.ReAlias[i32] = facade.ReBox[i32] { value: box.value };\n"
+        "  let maybe: facade.ReMaybe[i32] = facade.ReMaybe[i32].some(alias_box.value);\n"
+        "  return unwrap(maybe) - 21;\n"
+        "}\n");
+    write_visibility_test_source(missing_args,
+        "module selective_generic_missing_args;\n"
+        "import selective_generic_facade as facade;\n"
+        "type MissingArgs = facade.ReBox;\n");
+
+    const std::string import_flags = "-I " + q(work);
+    const std::string checked =
+        require_success(aurexc() + " " + import_flags + " --emit=checked " + q(consumer)).output;
+    expect_contains_all(checked,
+        {
+            "selective_generic_inner.Box[i32]",
+            "selective_generic_inner.Maybe[i32]",
+            "fn wrap[i32] -> selective_generic_inner.Box[i32]",
+        });
+    expect_contains(require_failure(aurexc() + " " + import_flags + " --check " + q(missing_args)).output,
+        "generic type ReBox requires type arguments");
+}
+
 TEST_F(AurexIntegrationTest, DefaultPrivateVisibility)
 {
     const fs::path import_dir = tmp_root() / "default_private_imports";

@@ -1320,9 +1320,9 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
     }
     const GenericTemplateInfo* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
+    const auto consider_candidate = [&](const syntax::ModuleId candidate_module, const IdentId lookup_name_id) -> bool {
         const GenericTemplateInfo* candidate = nullptr;
-        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
+        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, lookup_name_id);
         if (is_valid(lookup_key)) {
             if (const auto found = this->core_.state_.names.generic_struct_templates_by_name.find(lookup_key);
                 found != this->core_.state_.names.generic_struct_templates_by_name.end()) {
@@ -1330,24 +1330,45 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
             }
         }
         if (candidate == nullptr) {
-            continue;
+            return false;
         }
         if (!this->core_.can_access_module(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
                 this->core_.report_visibility(
                     range, sema_private_generic_type_message(this->core_.module_name(candidate_module), name));
-                return nullptr;
+                return true;
             }
-            continue;
+            return false;
+        }
+        if (result == candidate) {
+            return false;
         }
         if (result != nullptr) {
             this->core_.report_lookup(range,
                 sema_ambiguous_generic_type_name_message(
                     name, this->core_.module_name(result_module), this->core_.module_name(candidate_module)));
-            return nullptr;
+            result = nullptr;
+            return true;
         }
         result = candidate;
         result_module = candidate_module;
+        return false;
+    };
+    const auto consider_exported_modules = [&](const syntax::ModuleId exported_module, const IdentId lookup_name_id) {
+        for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(exported_module)) {
+            if (consider_candidate(candidate_module, lookup_name_id)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (consider_exported_modules(module, name_id)) {
+        return nullptr;
+    }
+    for (const SelectiveReexportTarget& target : this->core_.accessible_selective_reexports(module, name_id, name)) {
+        if (consider_exported_modules(target.module, target.name_id)) {
+            return nullptr;
+        }
     }
     if (result == nullptr && report_unknown) {
         this->core_.report_lookup(
@@ -1387,9 +1408,9 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
     }
     const GenericTemplateInfo* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
+    const auto consider_candidate = [&](const syntax::ModuleId candidate_module, const IdentId lookup_name_id) -> bool {
         const GenericTemplateInfo* candidate = nullptr;
-        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
+        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, lookup_name_id);
         if (is_valid(lookup_key)) {
             if (const auto found = this->core_.state_.names.generic_enum_templates_by_name.find(lookup_key);
                 found != this->core_.state_.names.generic_enum_templates_by_name.end()) {
@@ -1397,24 +1418,45 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
             }
         }
         if (candidate == nullptr) {
-            continue;
+            return false;
         }
         if (!this->core_.can_access_module(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
                 this->core_.report_visibility(
                     range, sema_private_generic_type_message(this->core_.module_name(candidate_module), name));
-                return nullptr;
+                return true;
             }
-            continue;
+            return false;
+        }
+        if (result == candidate) {
+            return false;
         }
         if (result != nullptr) {
             this->core_.report_lookup(range,
                 sema_ambiguous_generic_type_name_message(
                     name, this->core_.module_name(result_module), this->core_.module_name(candidate_module)));
-            return nullptr;
+            result = nullptr;
+            return true;
         }
         result = candidate;
         result_module = candidate_module;
+        return false;
+    };
+    const auto consider_exported_modules = [&](const syntax::ModuleId exported_module, const IdentId lookup_name_id) {
+        for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(exported_module)) {
+            if (consider_candidate(candidate_module, lookup_name_id)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (consider_exported_modules(module, name_id)) {
+        return nullptr;
+    }
+    for (const SelectiveReexportTarget& target : this->core_.accessible_selective_reexports(module, name_id, name)) {
+        if (consider_exported_modules(target.module, target.name_id)) {
+            return nullptr;
+        }
     }
     if (result == nullptr && report_unknown) {
         this->core_.report_lookup(
@@ -1454,9 +1496,9 @@ SemanticAnalyzerCore::GenericAnalyzer::find_generic_type_alias_in_module(const s
     }
     const GenericTemplateInfo* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
+    const auto consider_candidate = [&](const syntax::ModuleId candidate_module, const IdentId lookup_name_id) -> bool {
         const GenericTemplateInfo* candidate = nullptr;
-        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
+        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, lookup_name_id);
         if (is_valid(lookup_key)) {
             if (const auto found = this->core_.state_.names.generic_type_alias_templates_by_name.find(lookup_key);
                 found != this->core_.state_.names.generic_type_alias_templates_by_name.end()) {
@@ -1464,24 +1506,45 @@ SemanticAnalyzerCore::GenericAnalyzer::find_generic_type_alias_in_module(const s
             }
         }
         if (candidate == nullptr) {
-            continue;
+            return false;
         }
         if (!this->core_.can_access_module(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
                 this->core_.report_visibility(
                     range, sema_private_generic_type_message(this->core_.module_name(candidate_module), name));
-                return nullptr;
+                return true;
             }
-            continue;
+            return false;
+        }
+        if (result == candidate) {
+            return false;
         }
         if (result != nullptr) {
             this->core_.report_lookup(range,
                 sema_ambiguous_generic_type_name_message(
                     name, this->core_.module_name(result_module), this->core_.module_name(candidate_module)));
-            return nullptr;
+            result = nullptr;
+            return true;
         }
         result = candidate;
         result_module = candidate_module;
+        return false;
+    };
+    const auto consider_exported_modules = [&](const syntax::ModuleId exported_module, const IdentId lookup_name_id) {
+        for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(exported_module)) {
+            if (consider_candidate(candidate_module, lookup_name_id)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (consider_exported_modules(module, name_id)) {
+        return nullptr;
+    }
+    for (const SelectiveReexportTarget& target : this->core_.accessible_selective_reexports(module, name_id, name)) {
+        if (consider_exported_modules(target.module, target.name_id)) {
+            return nullptr;
+        }
     }
     if (result == nullptr && report_unknown) {
         this->core_.report_lookup(
@@ -1498,6 +1561,15 @@ bool SemanticAnalyzerCore::GenericAnalyzer::generic_type_template_exists_in_modu
                 this->core_.find_any_generic_type_template_in_module(candidate_module, name_id, name);
             found != nullptr && this->core_.can_access_module(candidate_module, found->visibility)) {
             return true;
+        }
+    }
+    for (const SelectiveReexportTarget& target : this->core_.accessible_selective_reexports(module, name_id, name)) {
+        for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(target.module)) {
+            if (const GenericTemplateInfo* const found =
+                    this->core_.find_any_generic_type_template_in_module(candidate_module, target.name_id, target.name);
+                found != nullptr && this->core_.can_access_module(candidate_module, found->visibility)) {
+                return true;
+            }
         }
     }
     return false;
@@ -1549,42 +1621,58 @@ void SemanticAnalyzerCore::GenericAnalyzer::report_generic_type_template_in_modu
         return;
     }
 
-    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
-        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
-        const bool has_struct_template =
-            is_valid(lookup_key) && this->core_.state_.names.generic_struct_templates_by_name.contains(lookup_key);
-        const bool has_enum_template =
-            is_valid(lookup_key) && this->core_.state_.names.generic_enum_templates_by_name.contains(lookup_key);
-        const bool has_alias_template =
-            is_valid(lookup_key) && this->core_.state_.names.generic_type_alias_templates_by_name.contains(lookup_key);
-        if (has_struct_template) {
-            if (const GenericTemplateInfo* info =
-                    this->core_.find_any_generic_type_template_in_module(candidate_module, name_id, name);
-                info != nullptr && this->core_.can_access_module(candidate_module, info->visibility)) {
-                this->core_.report_type(range, sema_generic_type_requires_args_message(name));
-                return;
+    const auto report_from_exported_modules = [&](const syntax::ModuleId exported_module, const IdentId lookup_name_id,
+                                                  const std::string_view diagnostic_name) -> bool {
+        for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(exported_module)) {
+            const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, lookup_name_id);
+            const bool has_struct_template =
+                is_valid(lookup_key) && this->core_.state_.names.generic_struct_templates_by_name.contains(lookup_key);
+            const bool has_enum_template =
+                is_valid(lookup_key) && this->core_.state_.names.generic_enum_templates_by_name.contains(lookup_key);
+            const bool has_alias_template = is_valid(lookup_key)
+                && this->core_.state_.names.generic_type_alias_templates_by_name.contains(lookup_key);
+            if (has_struct_template) {
+                if (const GenericTemplateInfo* info =
+                        this->core_.find_any_generic_type_template_in_module(candidate_module, lookup_name_id, name);
+                    info != nullptr && this->core_.can_access_module(candidate_module, info->visibility)) {
+                    this->core_.report_type(range, sema_generic_type_requires_args_message(diagnostic_name));
+                    return true;
+                }
+                static_cast<void>(
+                    this->core_.find_generic_struct_in_module(exported_module, lookup_name_id, name, range, true));
+                return true;
             }
-            static_cast<void>(this->core_.find_generic_struct_in_module(module, name_id, name, range, true));
-            return;
+            if (has_enum_template) {
+                if (const GenericTemplateInfo* info =
+                        this->core_.find_any_generic_type_template_in_module(candidate_module, lookup_name_id, name);
+                    info != nullptr && this->core_.can_access_module(candidate_module, info->visibility)) {
+                    this->core_.report_type(range, sema_generic_type_requires_args_message(diagnostic_name));
+                    return true;
+                }
+                static_cast<void>(
+                    this->core_.find_generic_enum_in_module(exported_module, lookup_name_id, name, range, true));
+                return true;
+            }
+            if (has_alias_template) {
+                if (const GenericTemplateInfo* info =
+                        this->core_.find_any_generic_type_template_in_module(candidate_module, lookup_name_id, name);
+                    info != nullptr && this->core_.can_access_module(candidate_module, info->visibility)) {
+                    this->core_.report_type(range, sema_generic_type_requires_args_message(diagnostic_name));
+                    return true;
+                }
+                static_cast<void>(
+                    this->core_.find_generic_type_alias_in_module(exported_module, lookup_name_id, name, range, true));
+                return true;
+            }
         }
-        if (has_enum_template) {
-            if (const GenericTemplateInfo* info =
-                    this->core_.find_any_generic_type_template_in_module(candidate_module, name_id, name);
-                info != nullptr && this->core_.can_access_module(candidate_module, info->visibility)) {
-                this->core_.report_type(range, sema_generic_type_requires_args_message(name));
-                return;
-            }
-            static_cast<void>(this->core_.find_generic_enum_in_module(module, name_id, name, range, true));
-            return;
-        }
-        if (has_alias_template) {
-            if (const GenericTemplateInfo* info =
-                    this->core_.find_any_generic_type_template_in_module(candidate_module, name_id, name);
-                info != nullptr && this->core_.can_access_module(candidate_module, info->visibility)) {
-                this->core_.report_type(range, sema_generic_type_requires_args_message(name));
-                return;
-            }
-            static_cast<void>(this->core_.find_generic_type_alias_in_module(module, name_id, name, range, true));
+        return false;
+    };
+
+    if (report_from_exported_modules(module, name_id, name)) {
+        return;
+    }
+    for (const SelectiveReexportTarget& target : this->core_.accessible_selective_reexports(module, name_id, name)) {
+        if (report_from_exported_modules(target.module, target.name_id, name)) {
             return;
         }
     }
@@ -1623,9 +1711,9 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
     }
     const GenericTemplateInfo* result = nullptr;
     syntax::ModuleId result_module = syntax::INVALID_MODULE_ID;
-    for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(module)) {
+    const auto consider_candidate = [&](const syntax::ModuleId candidate_module, const IdentId lookup_name_id) -> bool {
         const GenericTemplateInfo* candidate = nullptr;
-        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, name_id);
+        const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(candidate_module, lookup_name_id);
         if (is_valid(lookup_key)) {
             if (const auto found = this->core_.state_.names.generic_function_templates_by_name.find(lookup_key);
                 found != this->core_.state_.names.generic_function_templates_by_name.end()) {
@@ -1633,24 +1721,45 @@ const SemanticAnalyzerCore::GenericTemplateInfo* SemanticAnalyzerCore::GenericAn
             }
         }
         if (candidate == nullptr) {
-            continue;
+            return false;
         }
         if (!this->core_.can_access_module(candidate_module, candidate->visibility)) {
             if (candidate_module.value == module.value && report_unknown) {
                 this->core_.report_visibility(
                     range, sema_private_generic_function_message(this->core_.module_name(candidate_module), name));
-                return nullptr;
+                return true;
             }
-            continue;
+            return false;
+        }
+        if (result == candidate) {
+            return false;
         }
         if (result != nullptr) {
             this->core_.report_lookup(range,
                 sema_ambiguous_generic_function_name_message(
                     name, this->core_.module_name(result_module), this->core_.module_name(candidate_module)));
-            return nullptr;
+            result = nullptr;
+            return true;
         }
         result = candidate;
         result_module = candidate_module;
+        return false;
+    };
+    const auto consider_exported_modules = [&](const syntax::ModuleId exported_module, const IdentId lookup_name_id) {
+        for (const syntax::ModuleId candidate_module : this->core_.accessible_module_export_modules(exported_module)) {
+            if (consider_candidate(candidate_module, lookup_name_id)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (consider_exported_modules(module, name_id)) {
+        return nullptr;
+    }
+    for (const SelectiveReexportTarget& target : this->core_.accessible_selective_reexports(module, name_id, name)) {
+        if (consider_exported_modules(target.module, target.name_id)) {
+            return nullptr;
+        }
     }
     if (result == nullptr && report_unknown) {
         this->core_.report_lookup(

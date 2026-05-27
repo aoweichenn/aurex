@@ -51,6 +51,7 @@ private:
         base::u32 stable_index = 0;
         syntax::AstModule module;
         std::vector<syntax::ResolvedImport> imports;
+        std::vector<syntax::ResolvedUse> reexports;
     };
 
     struct PackageLoadContext {
@@ -64,6 +65,9 @@ private:
     [[nodiscard]] base::Result<void> resolve_imports_for_file(const syntax::AstModule& module,
         const std::filesystem::path& canonical, syntax::AstModule& combined, base::usize depth,
         std::vector<syntax::ResolvedImport>& direct_imports, const PackageLoadContext& package_context);
+    [[nodiscard]] base::Result<void> resolve_reexports_for_file(const syntax::AstModule& module,
+        const std::filesystem::path& canonical, syntax::AstModule& combined, base::usize depth,
+        std::vector<syntax::ResolvedUse>& direct_reexports, const PackageLoadContext& package_context);
     [[nodiscard]] base::Result<std::vector<LoadedModulePartAst>> load_declared_parts(
         const std::filesystem::path& primary_path, const std::string& module_name,
         const syntax::ModulePath& module_path, std::span<const syntax::ModulePartDecl> part_declarations,
@@ -79,6 +83,8 @@ private:
         const std::optional<std::filesystem::path>& selected_import_root) const;
     void record_module_imports(syntax::ModuleId module_id, std::string_view owner_part, bool owner_is_primary,
         std::span<const syntax::ResolvedImport> imports, const syntax::AstModule& combined);
+    void record_module_reexports(syntax::ModuleId module_id, std::string_view owner_part, bool owner_is_primary,
+        std::span<const syntax::ResolvedUse> reexports, const syntax::AstModule& combined);
     void record_module_part(syntax::ModuleId module_id, std::string name, std::filesystem::path path,
         base::u32 stable_index, query::ModulePartKey key);
 

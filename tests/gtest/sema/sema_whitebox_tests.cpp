@@ -213,6 +213,20 @@ private:
     return import;
 }
 
+[[nodiscard]] syntax::ResolvedUse resolved_use(const ModuleId module, const std::string_view target_name,
+    const std::string_view alias, const syntax::Visibility visibility, const IdentId target_name_id,
+    const IdentId alias_id)
+{
+    syntax::ResolvedUse use;
+    use.module = module;
+    use.target_name = target_name;
+    use.alias = alias;
+    use.visibility = visibility;
+    use.target_name_id = target_name_id;
+    use.alias_id = alias_id;
+    return use;
+}
+
 [[nodiscard]] syntax::TypeNode primitive_node(const syntax::PrimitiveTypeKind kind)
 {
     syntax::TypeNode node;
@@ -2142,6 +2156,79 @@ TEST(CoreUnit, SemanticWhiteBoxTypedLookupIndexesCoverHotPaths)
         analyzer.find_function_in_module(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX), missing_id, "missing", {}, false),
         nullptr);
     EXPECT_EQ(analyzer.ctx_.module.identifiers.size(), interned_before_miss);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxGenericLookupUsesSelectiveReexports)
+{
+    constexpr u32 SEMA_TEST_SELECTIVE_FACADE_MODULE_INDEX = 1;
+    constexpr u32 SEMA_TEST_SELECTIVE_INNER_MODULE_INDEX = 2;
+
+    syntax::AstModule module;
+    module.modules = {
+        module_info({"root"}),
+        module_info({"facade"}),
+        module_info({"inner"}),
+    };
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.flow.current_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const ModuleId facade_module = module_id(SEMA_TEST_SELECTIVE_FACADE_MODULE_INDEX);
+    const ModuleId inner_module = module_id(SEMA_TEST_SELECTIVE_INNER_MODULE_INDEX);
+    const IdentId box_id = intern_identifier(analyzer, "Box");
+    const IdentId re_box_id = intern_identifier(analyzer, "ReBox");
+    const IdentId choice_id = intern_identifier(analyzer, "Choice");
+    const IdentId re_choice_id = intern_identifier(analyzer, "ReChoice");
+    const IdentId alias_box_id = intern_identifier(analyzer, "AliasBox");
+    const IdentId re_alias_box_id = intern_identifier(analyzer, "ReAliasBox");
+    const IdentId make_id = intern_identifier(analyzer, "make");
+    const IdentId re_make_id = intern_identifier(analyzer, "re_make");
+
+    analyzer.ctx_.module.modules[SEMA_TEST_SELECTIVE_FACADE_MODULE_INDEX].reexports = {
+        resolved_use(inner_module, "Box", "ReBox", syntax::Visibility::public_, box_id, re_box_id),
+        resolved_use(inner_module, "Choice", "ReChoice", syntax::Visibility::public_, choice_id, re_choice_id),
+        resolved_use(
+            inner_module, "AliasBox", "ReAliasBox", syntax::Visibility::public_, alias_box_id, re_alias_box_id),
+        resolved_use(inner_module, "make", "re_make", syntax::Visibility::public_, make_id, re_make_id),
+    };
+
+    sema::SemanticAnalyzerCore::GenericTemplateInfo box = generic_template_info(analyzer, inner_module, "Box");
+    const auto box_inserted = analyzer.state_.generics.struct_templates.emplace(box.key, std::move(box));
+    ASSERT_TRUE(box_inserted.second);
+    analyzer.index_generic_struct_template(box_inserted.first->second);
+
+    sema::SemanticAnalyzerCore::GenericTemplateInfo choice = generic_template_info(analyzer, inner_module, "Choice");
+    const auto choice_inserted = analyzer.state_.generics.enum_templates.emplace(choice.key, std::move(choice));
+    ASSERT_TRUE(choice_inserted.second);
+    analyzer.index_generic_enum_template(choice_inserted.first->second);
+
+    sema::SemanticAnalyzerCore::GenericTemplateInfo alias_box =
+        generic_template_info(analyzer, inner_module, "AliasBox");
+    const auto alias_box_inserted =
+        analyzer.state_.generics.type_alias_templates.emplace(alias_box.key, std::move(alias_box));
+    ASSERT_TRUE(alias_box_inserted.second);
+    analyzer.index_generic_type_alias_template(alias_box_inserted.first->second);
+
+    sema::SemanticAnalyzerCore::GenericTemplateInfo make = generic_template_info(analyzer, inner_module, "make");
+    const auto make_inserted = analyzer.state_.generics.function_templates.emplace(make.key, std::move(make));
+    ASSERT_TRUE(make_inserted.second);
+    analyzer.index_generic_function_template(make_inserted.first->second);
+
+    EXPECT_EQ(analyzer.find_generic_struct_in_module(facade_module, re_box_id, "ReBox", {}, false),
+        &box_inserted.first->second);
+    EXPECT_EQ(analyzer.find_generic_enum_in_module(facade_module, re_choice_id, "ReChoice", {}, false),
+        &choice_inserted.first->second);
+    EXPECT_EQ(analyzer.find_generic_type_alias_in_module(facade_module, re_alias_box_id, "ReAliasBox", {}, false),
+        &alias_box_inserted.first->second);
+    EXPECT_TRUE(analyzer.generic_type_template_exists_in_module(facade_module, re_box_id, "ReBox"));
+    EXPECT_EQ(analyzer.find_generic_function_in_module(facade_module, re_make_id, "re_make", {}, false),
+        &make_inserted.first->second);
+
+    const base::usize diagnostic_count = diagnostics.diagnostics().size();
+    analyzer.report_generic_type_template_in_module(facade_module, re_box_id, "ReBox", {});
+    ASSERT_EQ(diagnostics.diagnostics().size(), diagnostic_count + 1U);
+    EXPECT_EQ(diagnostics.diagnostics()[diagnostic_count].message, "generic type ReBox requires type arguments");
 }
 
 TEST(CoreUnit, SemanticWhiteBoxTypedLookupRejectsUnindexedLegacyMaps)

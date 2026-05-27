@@ -22,6 +22,7 @@ public:
     [[nodiscard]] syntax::ModulePartDecl parse_module_part_decl();
     [[nodiscard]] syntax::ModulePartHeader parse_module_part_header();
     [[nodiscard]] syntax::ImportDecl parse_import_decl();
+    [[nodiscard]] syntax::UseDecl parse_use_decl();
     [[nodiscard]] syntax::ItemId parse_item();
 
 private:
@@ -32,6 +33,7 @@ private:
     void parse_import_alias(syntax::ImportDecl& import);
     void recover_import_alias() const;
     [[nodiscard]] ParsedVisibility parse_visibility() const;
+    void parse_use_alias(syntax::UseDecl& use);
     [[nodiscard]] std::vector<syntax::GenericParamDecl> parse_optional_generic_params();
     void reject_legacy_angle_generic_params() const;
     void parse_generic_params(std::vector<syntax::GenericParamDecl>& params);

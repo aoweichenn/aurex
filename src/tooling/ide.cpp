@@ -1,14 +1,18 @@
 #include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/lex/lexer.hpp>
 #include <aurex/parse/lossless_parse.hpp>
+#include <aurex/parse/parser.hpp>
 #include <aurex/query/diagnostics_query.hpp>
 #include <aurex/query/stable_hash.hpp>
 #include <aurex/sema/function.hpp>
 #include <aurex/sema/sema.hpp>
+#include <aurex/syntax/module.hpp>
 #include <aurex/tooling/ide.hpp>
 
 #include <algorithm>
 #include <array>
+#include <filesystem>
+#include <fstream>
 #include <optional>
 #include <span>
 #include <sstream>
@@ -39,6 +43,7 @@ constexpr std::string_view IDE_SYMBOL_KIND_STRUCT_FIELD = "struct_field";
 constexpr std::string_view IDE_SYMBOL_KIND_TYPE_ALIAS = "type_alias";
 constexpr std::string_view IDE_PRIMARY_PART_NAME = "<primary>";
 constexpr base::u32 IDE_PRIMARY_PART_INDEX = 0;
+constexpr base::u32 IDE_FIRST_NAMED_PART_INDEX = 1;
 
 struct ItemDefinitionMetadata {
     query::DefNamespace namespace_ = query::DefNamespace::value;
@@ -366,7 +371,110 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
     return result;
 }
 
-[[nodiscard]] IdeModulePartContext source_part_context_for_snapshot(const IdeSnapshot& snapshot)
+[[nodiscard]] std::filesystem::path ide_canonical_or_absolute(const std::filesystem::path& path)
+{
+    std::error_code error;
+    std::filesystem::path canonical = std::filesystem::weakly_canonical(path, error);
+    if (!error) {
+        return canonical;
+    }
+    return std::filesystem::absolute(path);
+}
+
+[[nodiscard]] bool ide_path_exists(const std::filesystem::path& path)
+{
+    std::error_code error;
+    return std::filesystem::exists(path, error) && !error;
+}
+
+[[nodiscard]] std::optional<std::filesystem::path> ide_owning_primary_for_part_file(
+    const std::filesystem::path& part_file)
+{
+    const std::filesystem::path part_dir = part_file.parent_path();
+    if (part_dir.extension() != ".parts") {
+        return std::nullopt;
+    }
+    std::filesystem::path primary = part_dir.parent_path() / part_dir.stem();
+    primary += ".ax";
+    return primary;
+}
+
+[[nodiscard]] std::filesystem::path ide_module_part_file_path(
+    const std::filesystem::path& primary_file, const std::string_view part_name)
+{
+    std::filesystem::path base = primary_file;
+    base.replace_extension();
+    base += ".parts";
+    return base / (std::string(part_name) + ".ax");
+}
+
+[[nodiscard]] std::optional<std::string> read_ide_text_file(const std::filesystem::path& path)
+{
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return std::nullopt;
+    }
+    std::ostringstream contents;
+    contents << file.rdbuf();
+    return contents.str();
+}
+
+[[nodiscard]] std::optional<syntax::AstModule> parse_ide_module_file(const std::filesystem::path& path)
+{
+    std::optional<std::string> text = read_ide_text_file(path);
+    if (!text.has_value()) {
+        return std::nullopt;
+    }
+    base::SourceManager sources;
+    base::DiagnosticSink diagnostics;
+    const base::SourceId source_id = sources.add_source(path.string(), *text);
+    lex::Lexer lexer(source_id, sources.text(source_id), diagnostics);
+    auto tokens = lexer.tokenize();
+    if (!tokens) {
+        return std::nullopt;
+    }
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    if (!parsed) {
+        return std::nullopt;
+    }
+    return parsed.take_value();
+}
+
+void recover_resolved_fragment_source_part(
+    IdeModulePartContext& context, const IdeSnapshot& snapshot, const IdeSnapshotRequest& request)
+{
+    const std::filesystem::path part_path = ide_canonical_or_absolute(request.path);
+    const std::optional<std::filesystem::path> primary_path = ide_owning_primary_for_part_file(part_path);
+    if (!primary_path.has_value() || !ide_path_exists(*primary_path)) {
+        return;
+    }
+    std::optional<syntax::AstModule> primary = parse_ide_module_file(*primary_path);
+    if (!primary.has_value() || primary->file_kind != syntax::ModuleFileKind::primary
+        || !syntax::module_paths_equal(primary->module_path, snapshot.ast.module_path)) {
+        return;
+    }
+    for (base::u32 index = 0; index < primary->part_declarations.size(); ++index) {
+        const syntax::ModulePartDecl& declaration = primary->part_declarations[index];
+        if (declaration.name != context.part_name) {
+            continue;
+        }
+        const std::filesystem::path expected_part =
+            ide_canonical_or_absolute(ide_module_part_file_path(*primary_path, declaration.name));
+        if (expected_part != part_path) {
+            continue;
+        }
+        context.part_index = index + IDE_FIRST_NAMED_PART_INDEX;
+        context.part_key = query::module_part_key(
+            context.module_key, snapshot.query.source_stage.file, context.kind, context.part_name, context.part_index);
+        context.resolved = query::is_valid(context.part_key);
+        context.valid = context.resolved;
+        return;
+    }
+}
+
+[[nodiscard]] IdeModulePartContext source_part_context_for_snapshot(
+    const IdeSnapshot& snapshot, const IdeSnapshotRequest& request)
 {
     IdeModulePartContext context;
     if (!snapshot.parsed || snapshot.ast.module_path.parts.empty()) {
@@ -381,6 +489,7 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
         context.part_range = snapshot.ast.part_header.range;
         context.part_name = std::string(snapshot.ast.part_header.name);
         context.valid = !context.module_name.empty() && !context.part_name.empty();
+        recover_resolved_fragment_source_part(context, snapshot, request);
         return context;
     }
 
@@ -932,7 +1041,7 @@ IdeSnapshot build_ide_snapshot(const IdeSnapshotRequest& request)
     const query::QueryResultFingerprint diagnostic_result =
         diagnostics_result_fingerprint(diagnostic_stream.events, snapshot.parsed, snapshot.checked_semantics);
     evaluate_source_queries(snapshot, request.text, lex_result, parse_result, diagnostic_result, diagnostic_stream);
-    snapshot.source_part = source_part_context_for_snapshot(snapshot);
+    snapshot.source_part = source_part_context_for_snapshot(snapshot, request);
     snapshot.has_errors = diagnostics.has_error();
     snapshot.diagnostics = collect_ide_diagnostics(snapshot.sources, diagnostic_stream, snapshot.source_part);
     return snapshot;

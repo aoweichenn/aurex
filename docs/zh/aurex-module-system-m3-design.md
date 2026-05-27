@@ -138,7 +138,8 @@ Aurex 采纳：
 - public API 必须显式。
 - re-export 必须进入 module exports。
 - duplicate item 应在同一 namespace 内稳定报错。
-- `pub(package)` 可以作为后续 package-private visibility。
+- `pub(package)` 作为 Aurex 的 package-private visibility；M3.0 已将其用于同包可见 surface 和
+  package re-export。
 
 Aurex 不采纳为 M3.0 第一阶段能力：
 
@@ -436,14 +437,14 @@ M3.0 兼容当前：
 pub import regex.api as api;
 ```
 
-后续扩展：
+M3.0 Phase 9 已支持 selective item re-export：
 
 ```aurex
 pub use regex.api.Regex;
 pub use regex.api.compile as compile_regex;
 ```
 
-M3.0 第一阶段不实现 glob import / glob re-export：
+M3.0 仍不实现 glob import / glob re-export：
 
 ```aurex
 use regex.api.*;
@@ -453,7 +454,7 @@ pub use regex.api.*;
 原因：glob 会显著增加 ambiguity、incremental invalidation 和 diagnostics 难度，不应阻塞
 module part 主线。
 
-`pub import` 和未来 `pub use` 的边界必须固定：
+`pub import` 和 selective `pub use` 的边界必须固定：
 
 ```text
 pub import module as alias  -> module re-export
@@ -1119,14 +1120,13 @@ public type defs
 public value defs
 public methods / fields
 pub import reexports
-future pub use reexports
+selective pub use reexports
 visibility leakage diagnostics
 export fingerprint
 ```
 
-M3.0 第一阶段继续支持 `pub import`，把它转成 module-level re-export edge。
-
-后续 `pub use` 进入时，`ModuleExports` 必须能表示 selective re-export：
+M3.0 继续支持 `pub import`，把它转成 module-level re-export edge。Phase 9 进一步把 primary-level
+`pub use` / `pub(package) use` 转成 item-level selective re-export edge：
 
 ```text
 exported_name -> original DefKey
@@ -1138,6 +1138,7 @@ exported_name -> original DefKey
 
 - exported def stable keys。
 - module re-export edges。
+- selective re-export edges。
 - exported aliases。
 - exported signature surface 中引用的 stable keys。
 - visibility leakage diagnostics 的结构化结果。
@@ -1410,18 +1411,25 @@ semantics。Aurex 需要 explicit `part` 作为 language-level membership。
 - primary `pub import` 生成 `ModuleExports -> ModuleExports` edge；part-local `pub import` 不生成该 edge。
 - primary `pub(package) import` 生成 package exports query surface；part-local `pub(package) import` 不生成
   re-export edge。
+- primary `pub use` 生成 selective re-export surface；part-local `pub use` 拒绝。
 
-### Phase 6：M3.0-late / M3.2 候选
+### Phase 6：M3.0-late / M3.2 候选与已收口项
 
 候选：
 
 - `pub(crate)` alias 是否保留，以及 `pub(in path)` 是否进入语言。
-- `pub use` / selective re-export。
 - non-conventional part path，例如 `part parser from "parts/parser.ax";`。
+
+已在 M3.0 Phase 9 收口：
+
+- `pub use module.Item [as Alias];` / `pub(package) use module.Item [as Alias];` selective re-export。
 
 不进入第一阶段：
 
 - glob import。
+- glob use。
+- part-local `pub use`。
+- bare/private use。
 - package manager。
 - external dependency resolver。
 - trait / protocol / dynamic dispatch。
@@ -1440,6 +1448,9 @@ Parser:
 - `part` 出现在 import 之后或 item 之后。
 - part 文件里再次声明 `part name;`。
 - module / part declaration recovery 后仍解析后续 item。
+- primary `pub use module.Item;`、`pub use module.Item as Alias;` 和 `pub(package) use module.Item as Alias;`。
+- `pub use module.*;`、`priv use module.Item;`、part file 中的 `pub use` 和 item 之后的 late `pub use`
+  都必须拒绝。
 
 Loader:
 
@@ -1458,6 +1469,9 @@ Loader:
 - codegen / native artifact 从 part file 启动时拒绝，并提示 owning primary。
 - module / part path case-fold collision 给出 portability diagnostic。
 - tooling buffer part recovery 不把 part 当独立 module。
+- primary selective re-export 使用普通 import resolution 加载目标模块，并记录 target module、target item、
+  alias、visibility 和 package identity。
+- selective re-export 改 alias / target / visibility 必须改变 `ModuleGraph` 与 exports query fingerprint。
 
 Sema:
 
@@ -1469,6 +1483,10 @@ Sema:
 - public field / enum case / type alias / generic signature 泄漏 private type。
 - resolved signature 跨 parts 可用但 alias 不跨 parts 传播。
 - const/global dependency cycle diagnostics 不依赖 part order。
+- selective re-export 支持 type / value / function / generic template 的 qualified lookup。
+- chained selective re-export 使用迭代 worklist 解析，不能引入递归 traversal。
+- selective re-export alias 和 import alias、本模块 type/value namespace 冲突必须诊断。
+- unknown target、target visibility 不足、package-private target 被 public re-export 都必须诊断。
 
 Query:
 
@@ -1479,6 +1497,9 @@ Query:
 - reordering part list 不改变不依赖 order 的 semantic results；只允许 deterministic dump / source metadata 变化。
 - duplicate top-level def 不使用 traversal-order disambiguator 静默改名。
 - adding an unrelated file under an importable module directory does not change module graph unless explicitly imported or listed as part。
+- primary selective `pub use` 进入 `ModuleGraph`、`ModuleExports` 和必要时的 `ModulePackageExports`。
+- public selective re-export 依赖 target `ModuleExports`；package selective re-export 在同 package 内参与
+  package export propagation，跨 package 不泄漏 package-private surface。
 
 Integration:
 
@@ -1503,7 +1524,7 @@ ModuleGraph / ModuleExports query 化
 - part lookup 已从“约定查找”收紧为 primary-sidecar 固定规则。
 - CLI root compile 和 IDE/tooling buffer recovery 已分开。
 - part-local import 和跨 part resolved signature sharing 已分开。
-- `pub import` 和未来 `pub use` 的 re-export 语义已分开。
+- `pub import` 和 selective `pub use` 的 re-export 语义已分开。
 - `priv` 已明确为 module-private，不是 file-private。
 - public leakage 已扩展成 exported signature surface 检查。
 - `DefKey` 已明确不能依赖 traversal order。
@@ -1511,6 +1532,8 @@ ModuleGraph / ModuleExports query 化
 - top-level code 已明确不会因 module loading 执行。
 - `PackageKey` 已明确是 M3.0 临时 package grouping，不承诺 manifest 级身份。
 - parser / module declaration recovery 已纳入第一阶段交付。
+- primary-level selective `pub use` / `pub(package) use` 已纳入 M3.0 收口项，且明确不包含 glob、
+  part-local use、bare/private use 或 `pub(in path)`。
 
 仍需在实现阶段重点盯住的风险：
 
@@ -1521,10 +1544,10 @@ ModuleGraph / ModuleExports query 化
 - `ModuleExports` fingerprint 必须基于 stable keys 和 exported signature surface，而不是 source text。
 - IDE degraded graph recovery 不能悄悄把 part 当作独立 module，也不能放宽 artifact-producing emit 的
   root identity 规则。
-- `pub(package)` 已在 6A-4 作为独立阶段进入；`pub use`、custom `part from` 和更复杂 scoped
-  visibility 仍必须后置，不能混入 M3.0 第一阶段。
+- `pub(package)` 已在 6A-4 作为独立阶段进入；primary selective `pub use` 已在 Phase 9 收口。
+  custom `part from`、glob use/import 和更复杂 scoped visibility 仍必须后置，不能混入 M3.0 第一阶段。
 
-进入实现前的结论：可以开始 Phase 1 Parser / AST，但每个阶段都必须带对应 negative tests；
+阶段收口后的结论：M3.0 当前实现必须继续保持每个阶段都有对应 positive/negative tests；
 尤其是 part lookup、part root check discovery、part artifact root rejection、import-to-part、
 part-local alias、duplicate item、exported surface leakage 和 traversal-order stability 不能后补。
 
@@ -1674,7 +1697,120 @@ ModuleGraph / ModuleExports query 化
 进入实现时，Phase 1 / Phase 2 不能只做 AST 和 loader happy path；必须把这些用户路径作为第一批
 negative / integration tests。否则 M3.0 会在内部结构上现代化，但在使用体验上显得割裂。
 
-## 20. 参考资料
+## 20. Phase 9A-D M3.0 模块系统收口
+
+Phase 9 的目标不是继续扩大模块系统，而是把 M3.0 已经落地的语言级模块能力收成可维护契约：
+
+```text
+9A  契约审计和文档矩阵
+9B  IDE/tooling part buffer owning-primary 恢复
+9C  selective pub use / pub(package) use item re-export
+9D  conformance tests、全量验证、提交收口
+```
+
+M3.0 的边界到这里固定为“语言级 module / part / visibility / re-export / query system”。它仍不是
+package manager，不负责 workspace、外部 dependency graph、lockfile、version solving 或 registry
+resolution。
+
+### 20.1 9A 契约审计矩阵
+
+| 契约面 | M3.0 状态 | 强制边界 |
+| --- | --- | --- |
+| Module identity | `PackageKey + ModuleKey` 是 logical module 身份，文件路径只参与 discovery/topology | 不允许把 combined AST 顺序或 root path 当成 module identity |
+| Part identity | `ModulePartKey` 由 owning module、source file、kind、part name、stable index 构成 | part list 重排不改变 semantic graph；新增/删除/改名/换文件改变 graph |
+| Source layout | primary sidecar `.parts/<name>.ax` 是默认 part 文件布局 | sidecar 目录不参与普通 import search；不实现 `part from` |
+| Part root | `--check` / inspection 可从 part 反查 primary；artifact emit 拒绝 part root | part 文件不能生成独立 module artifact |
+| Visibility | `priv < pub(package) < pub`，`priv` 是 module-private | 不实现 file-private、`pub(super)` 或 `pub(in path)` |
+| Imports | import 是 part-local；primary `pub import` 和 `pub(package) import` 形成 re-export surface | part-local `pub import` 不提升为 module-level re-export |
+| Selective re-export | primary `pub use module.Item [as Alias]` 和 `pub(package) use ...` 形成 item-level re-export | 拒绝 glob use、bare/private use、part-local use、late use |
+| Query graph | `ModuleGraph`、`ModuleExports`、`ModulePackageExports`、`ModulePart` 都有结构化 key/fingerprint | 不用 source text hash 或 traversal order 代替语义事实 |
+| IDE/tooling | snapshot 和 diagnostics 暴露 source-part context；可证明 ownership 时恢复 resolved part key | 不能通过隐式扫描把 unowned part buffer 变成稳定 part |
+| Package boundary | manifest/`--package`/import root 提供 package identity，服务 `pub(package)` | 不实现 resolver、lockfile、version solving 或 package manager |
+
+### 20.2 9B IDE/tooling part buffer 恢复
+
+Phase 8F 的保守规则是 standalone part buffer 只提供 syntax-derived module/part context，`resolved=false`。
+Phase 9B 在不放宽语言语义的前提下增加可证明恢复：
+
+1. buffer path 必须是真实 `<primary>.parts/<part>.ax` 形状。
+2. 根据 sidecar 规则能推导出 `<primary>.ax`，且 primary 文件存在。
+3. primary 可以被正常 lex/parse，且是 primary module 文件。
+4. primary 的 `module path;` 必须和 part buffer 的 `module path part name;` 一致。
+5. primary 的显式 part list 必须包含该 `part name;`。
+6. 由 primary part declaration order 派生 stable `part_index`，并构造 resolved `ModulePartKey`。
+
+任何条件不满足时，IDE snapshot 保持原先 degraded behavior：`source_part.valid=true` 表示语法上识别出
+part buffer，`source_part.resolved=false` 表示没有稳定 loader/query graph ownership。这样既能让用户在
+真实 part 文件里看到准确 diagnostics，又不会让临时 buffer、未列出文件或错误 module path 获得假的
+module identity。
+
+### 20.3 9C Selective Re-export 语义
+
+语法：
+
+```aurex
+pub use support.visible.Value;
+pub use support.visible.make as make_visible;
+pub(package) use support.visible.Count as PackageCount;
+```
+
+语义：
+
+- `use` 是 contextual identifier，不是新的全局 keyword。
+- `pub use module.Item` re-export 单个 item，默认 alias 是 `Item`。
+- `pub use module.Item as Alias` 用 `Alias` 作为 facade 暴露名。
+- `pub(package) use` 只在同一 package access context 中作为 re-export surface。
+- target module 使用和 `import` 相同的 resolution、package identity 和 source-root topology 规则。
+- target item 必须存在，且 target visibility 必须至少达到 re-export visibility。
+- alias 与同一 module 的 import alias、本地 type namespace、本地 value namespace 或其他 selective
+  re-export alias 冲突时诊断。
+- selective re-export chain 使用显式 worklist 解析，避免递归 traversal；lookup 只把匹配 alias 展开为
+  target module/name，再走现有 type/value/function/generic lookup。
+
+拒绝项：
+
+- `pub use module.*;`：M3.0 不做 glob use，避免 ambiguous surface 难以解释。
+- `priv use module.Item;` 和 bare `use module.Item;`：selective re-export 必须显式 public/package surface。
+- part file 中的 `pub use`：item-level facade 属于 logical module primary API，不属于 part-local import
+  scope。
+- item 之后的 `pub use`：保持 module header / part list / import / re-export / item 的 deterministic
+  顶层顺序。
+
+### 20.4 Query / Cache 契约
+
+Selective re-export 进入 query/cache 的方式是结构化事实，而不是 dump 文本：
+
+- `ModuleGraph(ModuleKey)` 混入 owner part、target module、target package、target item、alias 和
+  visibility，使 facade API 边改变时 graph red。
+- `ModuleExports(ModuleKey)` 记录 public selective re-export entry，并依赖 target `ModuleExports`。
+- `ModulePackageExports(ModuleKey)` 记录 package selective re-export entry；同 package target 可以传播
+  package surface，跨 package target 只能依赖 public surface。
+- `ItemList(ModuleKey)` 不因为 selective re-export alias 改变而 red，因为它不声明新本地 definition。
+- target module public/package API 的变化通过 exports dependency 传播，target private body edit 不应污染
+  facade public exports。
+
+### 20.5 Conformance 覆盖
+
+Phase 9D 的普通 gtest 覆盖面：
+
+- Parser：接受 public/package selective use，拒绝 glob/private/part-local/late use。
+- AST dump：稳定打印 `pub use` / `pub(package) use`。
+- ModuleLoader / incremental cache：selective use alias 改变 `ModuleGraph` 和 exports fingerprint，
+  不改变 `ItemList`。
+- Sema integration：public type/function re-export、package re-export、unknown target 和 visibility 不足。
+- IDE/tooling：真实 part buffer 能从 owning primary 恢复 resolved source-part context；module mismatch
+  和 unlisted part 仍 unresolved。
+- Full validation：format check、full build、core/full ctest、coverage、diff whitespace check。
+
+### 20.6 Phase 9 后仍不进入 M3.0 的范围
+
+- workspace resolver、dependency resolver、lockfile、version solving、package manager。
+- nested module tree、implicit directory module discovery、glob import/use。
+- `pub(in path)`、`pub(super)`、file-private、friend/protected 可见性。
+- custom `part from`、part-as-module dual identity、per-part codegen artifact。
+- trait/protocol/dynamic dispatch、RAII/Drop/borrow checker、standard library rebuild。
+
+## 21. 参考资料
 
 - Python import system: <https://docs.python.org/3/reference/import.html>
 - Python modules tutorial: <https://docs.python.org/3/tutorial/modules.html>

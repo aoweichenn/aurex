@@ -18,6 +18,7 @@ namespace {
 
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_CONST = "const";
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_REEXPORT = "reexport";
+constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_USE_REEXPORT = "use_reexport";
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_STRUCT_FIELD = "struct_field";
 constexpr std::string_view INCREMENTAL_CACHE_EXPORT_EXTERN_C_TAG = "extern_c";
 constexpr std::string_view INCREMENTAL_CACHE_EXPORT_AUREX_TAG = "aurex";
@@ -126,6 +127,13 @@ constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
         sema::stable_module_id(std::span<const std::string_view>{parts.data(), parts.size()}));
 }
 
+[[nodiscard]] query::ModuleKey module_key_from_use(const ModuleUseRecord& use)
+{
+    const std::vector<std::string_view> parts = module_name_parts(use.module_name);
+    return query::module_key_from_stable_id(module_package_or_default(use.module_package),
+        sema::stable_module_id(std::span<const std::string_view>{parts.data(), parts.size()}));
+}
+
 [[nodiscard]] std::string stable_identity_string(const sema::StableDefId& stable_id)
 {
     return query::is_valid(stable_id) ? query::stable_serialize(stable_id) : std::string{};
@@ -189,12 +197,21 @@ constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
 [[nodiscard]] std::vector<query::ModuleKey> primary_public_reexport_dependencies(const ModuleRecord& module)
 {
     std::vector<query::ModuleKey> dependencies;
-    dependencies.reserve(module.imports.size());
+    dependencies.reserve(module.imports.size() + module.reexports.size());
     for (const ModuleImportRecord& import : module.imports) {
         if (!import.owner_is_primary || !syntax::visibility_is_public(import.visibility)) {
             continue;
         }
         const query::ModuleKey key = module_key_from_import(import);
+        if (query::is_valid(key)) {
+            dependencies.push_back(key);
+        }
+    }
+    for (const ModuleUseRecord& reexport : module.reexports) {
+        if (!reexport.owner_is_primary || !syntax::visibility_is_public(reexport.visibility)) {
+            continue;
+        }
+        const query::ModuleKey key = module_key_from_use(reexport);
         if (query::is_valid(key)) {
             dependencies.push_back(key);
         }
@@ -294,6 +311,39 @@ void sort_unique_module_keys(std::vector<query::ModuleKey>& modules)
         builder.mix_fingerprint(query::stable_key_fingerprint(module_package_or_default(import.module_package)));
         builder.mix_string(import.alias);
         builder.mix_u64(syntax::visibility_rank(import.visibility));
+    }
+
+    std::vector<const ModuleUseRecord*> reexports;
+    reexports.reserve(module.reexports.size());
+    for (const ModuleUseRecord& reexport : module.reexports) {
+        reexports.push_back(&reexport);
+    }
+    std::sort(reexports.begin(), reexports.end(), [](const ModuleUseRecord* lhs, const ModuleUseRecord* rhs) {
+        const auto lhs_key =
+            std::tie(lhs->owner_is_primary, lhs->owner_part, lhs->module_name, lhs->target_name, lhs->alias);
+        const auto rhs_key =
+            std::tie(rhs->owner_is_primary, rhs->owner_part, rhs->module_name, rhs->target_name, rhs->alias);
+        if (lhs_key != rhs_key) {
+            return lhs_key < rhs_key;
+        }
+        const query::PackageKey lhs_package = module_package_or_default(lhs->module_package);
+        const query::PackageKey rhs_package = module_package_or_default(rhs->module_package);
+        if (lhs_package != rhs_package) {
+            return package_key_less(lhs_package, rhs_package);
+        }
+        return syntax::visibility_rank(lhs->visibility) < syntax::visibility_rank(rhs->visibility);
+    });
+    builder.mix_u64(static_cast<base::u64>(reexports.size()));
+    for (base::usize index = 0; index < reexports.size(); ++index) {
+        const ModuleUseRecord& reexport = *reexports[index];
+        builder.mix_u64(static_cast<base::u64>(index));
+        builder.mix_bool(reexport.owner_is_primary);
+        builder.mix_string(reexport.owner_part);
+        builder.mix_string(reexport.module_name);
+        builder.mix_fingerprint(query::stable_key_fingerprint(module_package_or_default(reexport.module_package)));
+        builder.mix_string(reexport.target_name);
+        builder.mix_string(reexport.alias);
+        builder.mix_u64(syntax::visibility_rank(reexport.visibility));
     }
     return query::query_result_fingerprint(builder.finish());
 }
@@ -463,6 +513,18 @@ void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& 
         push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_REEXPORT, import.alias,
             import.visibility, query::stable_serialize(reexported), import.module_name);
     }
+    for (const ModuleUseRecord& reexport : module.reexports) {
+        if (!reexport.owner_is_primary || !syntax::visibility_at_least(reexport.visibility, minimum_visibility)) {
+            continue;
+        }
+        const query::ModuleKey target_module = module_key_from_use(reexport);
+        if (!query::is_valid(target_module)) {
+            continue;
+        }
+        push_module_exports_signature_entry(entries, INCREMENTAL_CACHE_CATEGORY_USE_REEXPORT, reexport.alias,
+            reexport.visibility, query::stable_serialize(target_module) + "#" + reexport.target_name,
+            reexport.module_name + "." + reexport.target_name);
+    }
 }
 
 [[nodiscard]] std::vector<ModuleExportsSignatureEntry> collect_module_exports_signature_entries(
@@ -471,7 +533,8 @@ void collect_primary_reexport_entries(std::vector<ModuleExportsSignatureEntry>& 
 {
     std::vector<ModuleExportsSignatureEntry> entries;
     entries.reserve(checked.functions.size() + checked.structs.size() + checked.enum_cases.size()
-        + checked.type_aliases.size() + checked.generic_template_signatures.size() + module_record.imports.size());
+        + checked.type_aliases.size() + checked.generic_template_signatures.size() + module_record.imports.size()
+        + module_record.reexports.size());
 
     for (const auto& entry : checked.functions) {
         const sema::FunctionSignature& signature = entry.second;
@@ -697,6 +760,11 @@ void push_module_exports_query_subject(std::vector<ModuleExportsQuerySubject>& s
     return import.owner_is_primary && syntax::visibility_at_least(import.visibility, syntax::Visibility::package_);
 }
 
+[[nodiscard]] bool use_can_propagate_package_exports(const ModuleUseRecord& reexport) noexcept
+{
+    return reexport.owner_is_primary && syntax::visibility_at_least(reexport.visibility, syntax::Visibility::package_);
+}
+
 struct ModulePackageExportPlan {
     std::vector<bool> enabled;
     std::unordered_set<std::string> enabled_keys;
@@ -724,6 +792,23 @@ struct ModulePackageExportPlan {
                     continue;
                 }
                 const query::ModuleKey target = module_key_from_import(import);
+                const auto target_index = index_by_key.find(module_key_identity(target));
+                if (target_index == index_by_key.end() || target.package != module_key.package
+                    || !enabled[target_index->second]) {
+                    continue;
+                }
+                enabled[index] = true;
+                changed = true;
+                break;
+            }
+            if (enabled[index]) {
+                continue;
+            }
+            for (const ModuleUseRecord& reexport : modules[index].reexports) {
+                if (!use_can_propagate_package_exports(reexport)) {
+                    continue;
+                }
+                const query::ModuleKey target = module_key_from_use(reexport);
                 const auto target_index = index_by_key.find(module_key_identity(target));
                 if (target_index == index_by_key.end() || target.package != module_key.package
                     || !enabled[target_index->second]) {
@@ -766,6 +851,20 @@ struct ModulePackageExportPlan {
             continue;
         }
         const query::ModuleKey target = module_key_from_import(import);
+        if (!query::is_valid(target)) {
+            continue;
+        }
+        if (target.package == module_key.package && package_export_keys.contains(module_key_identity(target))) {
+            dependencies.package_surface.push_back(target);
+            continue;
+        }
+        dependencies.public_surface.push_back(target);
+    }
+    for (const ModuleUseRecord& reexport : module.reexports) {
+        if (!use_can_propagate_package_exports(reexport)) {
+            continue;
+        }
+        const query::ModuleKey target = module_key_from_use(reexport);
         if (!query::is_valid(target)) {
             continue;
         }

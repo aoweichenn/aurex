@@ -9,6 +9,15 @@
 
 2026-05-25 R5 Compilation Pipeline / Driver Action core 已完成。M2.5 前端地基和收尾拆分完成后，重构主线已完成现代编译器 driver/session/pipeline 边界：`CompilerInvocation` 保持纯配置，`Compiler` 退回 public facade，一次编译的 source、diagnostics、profile、cache policy 和 backend emitter 由内部 `CompilationSession` 持有，source/frontend/sema/cache/lowering/backend 阶段由 `CompilationPipeline` 显式编排。R5.2 已把 source/token/lossless/module graph/AST dump/sema/cache write 收口到内部 `FrontendPipeline`；R5.3 继续把 checked dump、IR lowering、IR pass pipeline 和 IR dump 收口到 `LoweringPipeline`，把 LLVM IR emission、LLVM IR dump、temporary LLVM file、clang native invocation 和 native 输出路径校验收口到 `BackendPipeline`，并用 `PipelineStage` 固定 driver 主阶段的 profile/input/output/diagnostic/cache-query 契约；R5.4 已建立轻量 IR pass manager、`PassResult`、`PreservedAnalyses` 和 verifier gate；R5.5 已建立 `ModuleAnalysisManager`，惰性缓存 CFG、dominance 和 value-use analysis，并按 `PreservedAnalyses` 自动失效；R5.6 已给 IR verifier gate failure 接入稳定 `stage/profile/verifier/pass` 上下文，同时保持原始 verifier body 和 `ErrorCode` 不变，并让 `LoweringPipeline` 从 `PipelineStage` record 传递 IR pass pipeline 阶段名；R5.7 已让 profile JSON 为 driver 主阶段 phase 输出来自 `PipelineStageRecord` 的 `stage` 元数据对象；R5.8 已让 incremental-cache profile 子事件通过 `parent_stage` 挂回 `incremental_cache.lookup` 或 `incremental_cache.write`；R5.9 已让 `DiagnosticCategory` 通过 `PipelineStage` 反查候选 owner stage，lexer 诊断保留 `tokens.lex` / `module.lex` 双归属，sema 类诊断归属 `sema.analyze`，且 diagnostics text/JSON 协议保持不变；R5.10 已让 `aurex_tooling` 的 `IdeDiagnostic.owner_stages` 消费同一份 `PipelineStageRecord`，供后续 LSP/IDE 阶段视图直接复用；R5.11 已把阶段目录头文件提升为公开只读 API，并用 `PipelineStageMetadata` 统一 profile writer 和 tooling diagnostics 的 metadata 形状；R5.12 已让 profile 记录入口直接接收 `PipelineStageId` / `PipelineProfileSubeventId`，调用点不再散落阶段 profile name 字符串；R5.13 已增加 `pipeline_profile_phase_classification(...)`，profile JSON writer 和后续 viewer/LSP adapter 可以通过同一入口区分 driver 主阶段、profile 子事件和 unknown。当前最高优先级切到 [M3 模块系统](m3-roadmap.md)：先实现同一 package 内的 logical module / source-file part 分离，并复用 R5 稳定下来的 driver/session/query/diagnostics/pipeline 主路径。
 
+2026-05-28 M3.0 Phase 9A-D 进入模块系统收口：文档已把 M3.0 contract matrix 固定为
+ModuleKey/ModulePartKey、part root、package visibility、source-root topology、IDE source-part context、
+selective re-export 和 query/cache 边界；IDE/tooling 对真实 `.parts/<name>.ax` buffer 可以在 owning primary
+存在且显式列出该 part 时恢复 resolved `ModulePartKey`，无法证明 ownership 时继续保持 unresolved；primary-level
+`pub use module.Item [as Alias]` / `pub(package) use ...` 已作为 selective item re-export 进入 parser、AST、
+loader、sema、ModuleGraph、ModuleExports 和 ModulePackageExports。M3.0 仍明确拒绝 glob import/use、
+part-local `pub use`、bare/private use、nested module tree、`pub(in path)`、file-private、workspace/dependency
+resolver、lockfile、version solving 和 package manager。
+
 M1 阶段已经舍弃。主要原因不是单个功能失败，而是整体设计方向不稳：
 
 - 标准库、host support、构建工具样例和语言核心同时扩张，导致测试结果很难判断是语言问题、库问题还是工具链问题。

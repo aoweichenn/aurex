@@ -172,6 +172,22 @@ priv import internal.detail as detail;
 - `pub(package) import` 只在同一 `PackageKey` 内 re-export；跨 package 消费者不能通过该 facade
   看到被重导出的模块。
 - `priv import` 明确表示私有导入。
+- primary module 文件可以声明 selective re-export：
+
+```aurex
+pub use common.status.Status;
+pub use common.status.make as make_status;
+pub(package) use common.status.PackageStatus as PackageStatus;
+```
+
+规则：
+
+- `pub use module.Item;` 只把目标模块的单个 item 暴露为当前模块 facade API。
+- `as Alias` 会改变 facade 暴露名，不改变目标 item 的定义身份。
+- `pub(package) use` 只在同一 `PackageKey` 内可见。
+- `pub use` 只能写在 primary module 的 import/re-export 区域，不能写在 part 文件或 item 之后。
+- 当前不支持 glob use、bare `use` 或 `priv use`。
+
 - `PackageKey` 可由 CLI `--package` 指定；如果未指定，driver 会从输入文件所在目录向上识别
   `aurex.toml` 的 `[package] name/version` 作为 package identity。manifest 可选
   `source-root = "src"`，用于把 logical module path 映射到 package source root 下的文件路径。
@@ -181,7 +197,8 @@ priv import internal.detail as detail;
   source layout 变化不会只停留在文件查找层。
   `-I` import root 也会优先使用其 manifest identity 和 source-root；缺失 manifest 时回退到
   import root 路径 identity 与旧的 import root 文件布局。
-- 当前不支持 glob import、selective import、dependency manifest、workspace 或 package manager。
+- 当前不支持 glob import/use、general selective import、dependency resolver、workspace、lockfile、
+  version solving 或 package manager。
 - 未限定名字不会自动搜索导入模块，跨模块成员需要写 `alias.name` 或可见完整模块路径。
 
 ### 4.3 可见性

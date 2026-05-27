@@ -34,6 +34,16 @@ struct ModuleImportRecord {
     bool is_public = false;
 };
 
+struct ModuleUseRecord {
+    std::string owner_part;
+    std::string module_name;
+    std::string target_name;
+    std::string alias;
+    query::PackageKey module_package;
+    bool owner_is_primary = false;
+    syntax::Visibility visibility = syntax::Visibility::public_;
+};
+
 struct ModuleSourceRootTopologyRecord {
     std::filesystem::path source_root;
     std::filesystem::path source_relative_path;
@@ -47,6 +57,7 @@ struct ModuleRecord {
     std::vector<ModulePartRecord> parts{};
     std::vector<ModuleImportRecord> imports{};
     std::optional<ModuleSourceRootTopologyRecord> source_root_topology;
+    std::vector<ModuleUseRecord> reexports{};
 };
 
 } // namespace aurex::driver

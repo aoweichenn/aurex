@@ -154,6 +154,8 @@ module app.main;
 
 import common.result as result;
 pub import common.status as status;
+pub use common.status.Status;
+pub(package) use common.status.PackageStatus as PackageStatus;
 priv import internal.detail as detail;
 ```
 
@@ -164,9 +166,11 @@ priv import internal.detail as detail;
 - import 通过导入者目录和显式 `-I` 查找。
 - import 默认 private。
 - `pub import` 可 re-export。
+- primary-level `pub use module.Item [as Alias]` / `pub(package) use ...` 可 selective re-export 单个 item。
 - 使用 `alias.item` 做限定查找；语法统一使用 `.`，语义按 base kind
   区分 module / type / value / member。
-- 当前没有 package manifest、glob import、selective import、版本化依赖或 package root 语法。
+- 当前没有 glob import/use、general selective import、workspace、dependency resolver、lockfile、
+  version solving 或 package manager。
 
 ### 可见性
 

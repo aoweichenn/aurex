@@ -271,6 +271,83 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_module_namespace_confli
         const auto* const begin = this->core_.ctx_.module.modules.data();
         const syntax::ModuleId owner{static_cast<base::u32>(&module_info - begin)};
         validate_import_scope(owner, module_info.imports);
+        std::unordered_set<IdentId, IdentIdHash> import_aliases;
+        import_aliases.reserve(module_info.imports.size());
+        for (const syntax::ResolvedImport& import : module_info.imports) {
+            import_aliases.insert(import.alias_id);
+        }
+        std::unordered_set<IdentId, IdentIdHash> reexport_aliases;
+        reexport_aliases.reserve(module_info.reexports.size());
+        for (const syntax::ResolvedUse& reexport : module_info.reexports) {
+            if (!reexport_aliases.insert(reexport.alias_id).second) {
+                this->core_.report_duplicate(reexport.alias_range,
+                    sema_duplicate_namespace_member_message(this->core_.module_name(owner), reexport.alias));
+            }
+            if (import_aliases.contains(reexport.alias_id)) {
+                this->core_.report_duplicate(reexport.alias_range,
+                    sema_duplicate_namespace_member_message(this->core_.module_name(owner), reexport.alias));
+            }
+            const ModuleLookupKey key = this->core_.module_lookup_key(owner, reexport.alias_id);
+            if (type_names.contains(key) || value_names.contains(key)) {
+                this->core_.report_duplicate(reexport.alias_range,
+                    sema_duplicate_namespace_member_message(this->core_.module_name(owner), reexport.alias));
+            }
+            if (!syntax::is_valid(reexport.module) || reexport.module.value >= this->core_.ctx_.module.modules.size()) {
+                continue;
+            }
+            const ModuleLookupKey target_key =
+                this->core_.find_module_lookup_key(reexport.module, reexport.target_name_id);
+            bool target_exists = false;
+            bool target_visible_enough = false;
+            const auto consider_visibility = [&](const syntax::Visibility visibility) {
+                target_exists = true;
+                target_visible_enough =
+                    target_visible_enough || syntax::visibility_at_least(visibility, reexport.visibility);
+            };
+            if (is_valid(target_key)) {
+                if (const auto found = this->core_.state_.names.named_types_by_name.find(target_key);
+                    found != this->core_.state_.names.named_types_by_name.end()) {
+                    consider_visibility(found->second.visibility);
+                }
+                if (const auto found = this->core_.state_.names.type_aliases_by_name.find(target_key);
+                    found != this->core_.state_.names.type_aliases_by_name.end() && found->second != nullptr) {
+                    consider_visibility(found->second->visibility);
+                }
+                if (const auto found = this->core_.state_.names.global_values_by_name.find(target_key);
+                    found != this->core_.state_.names.global_values_by_name.end() && found->second != nullptr) {
+                    consider_visibility(found->second->visibility);
+                }
+                if (const auto found = this->core_.state_.names.generic_struct_templates_by_name.find(target_key);
+                    found != this->core_.state_.names.generic_struct_templates_by_name.end()
+                    && found->second != nullptr) {
+                    consider_visibility(found->second->visibility);
+                }
+                if (const auto found = this->core_.state_.names.generic_enum_templates_by_name.find(target_key);
+                    found != this->core_.state_.names.generic_enum_templates_by_name.end()
+                    && found->second != nullptr) {
+                    consider_visibility(found->second->visibility);
+                }
+                if (const auto found = this->core_.state_.names.generic_type_alias_templates_by_name.find(target_key);
+                    found != this->core_.state_.names.generic_type_alias_templates_by_name.end()
+                    && found->second != nullptr) {
+                    consider_visibility(found->second->visibility);
+                }
+                if (const auto found = this->core_.state_.names.generic_function_templates_by_name.find(target_key);
+                    found != this->core_.state_.names.generic_function_templates_by_name.end()
+                    && found->second != nullptr) {
+                    consider_visibility(found->second->visibility);
+                }
+            }
+            if (!target_exists) {
+                this->core_.report_lookup(reexport.target_range,
+                    sema_unknown_reexport_target_message(
+                        this->core_.module_name(reexport.module), reexport.target_name));
+            } else if (!target_visible_enough) {
+                this->core_.report_visibility(reexport.target_range,
+                    sema_private_reexport_target_message(
+                        this->core_.module_name(reexport.module), reexport.target_name));
+            }
+        }
     }
     for (const syntax::ItemImportScope& scope : this->core_.ctx_.module.item_import_scopes) {
         if (scope.item_count == 0) {

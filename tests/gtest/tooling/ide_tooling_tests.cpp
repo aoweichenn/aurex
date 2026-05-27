@@ -2,7 +2,13 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -12,6 +18,8 @@
 
 namespace aurex::test {
 namespace {
+
+namespace fs = std::filesystem;
 
 constexpr std::string_view IDE_TOOLING_SOURCE = "module ide.snapshot;\n"
                                                 "fn add(a: i32, b: i32) -> i32 {\n"
@@ -29,11 +37,39 @@ constexpr base::u32 IDE_TOOLING_STRUCT_PART_INDEX = 4;
 constexpr base::u32 IDE_TOOLING_ALIAS_PART_INDEX = 5;
 constexpr base::u32 IDE_TOOLING_ENUM_CASE_PART_INDEX = 6;
 constexpr base::u32 IDE_TOOLING_TEMPLATE_PART_INDEX = 7;
+constexpr base::u32 IDE_TOOLING_RECOVERED_PARSER_PART_INDEX = 2;
 constexpr std::string_view IDE_TOOLING_PRIMARY_PART_NAME = "<primary>";
 constexpr std::string_view IDE_TOOLING_STAGE_TOKENS_LEX = "tokens.lex";
 constexpr std::string_view IDE_TOOLING_STAGE_MODULE_LEX = "module.lex";
 constexpr std::string_view IDE_TOOLING_STAGE_MODULE_PARSE = "module.parse";
 constexpr std::string_view IDE_TOOLING_STAGE_SEMA_ANALYZE = "sema.analyze";
+
+std::atomic<std::uint64_t> ide_tooling_temp_counter{0};
+
+[[nodiscard]] std::string ide_tooling_sanitize_test_name(const std::string_view name)
+{
+    std::string result;
+    result.reserve(name.size());
+    for (const char ch : name) {
+        const bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
+        result.push_back(ok ? ch : '_');
+    }
+    return result;
+}
+
+[[nodiscard]] fs::path ide_tooling_tmp_root()
+{
+    const ::testing::TestInfo* const info = ::testing::UnitTest::GetInstance()->current_test_info();
+    std::string test_name = "suite";
+    if (info != nullptr) {
+        test_name = std::string(info->test_suite_name()) + "_" + std::string(info->name());
+    }
+    const auto tick = static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+    const std::uint64_t seq = ide_tooling_temp_counter.fetch_add(1U, std::memory_order_relaxed);
+    return fs::temp_directory_path()
+        / ("aurex-ide-tooling-" + ide_tooling_sanitize_test_name(test_name) + "-" + std::to_string(tick) + "-"
+            + std::to_string(seq));
+}
 
 [[nodiscard]] tooling::IdeSnapshotRequest request_for(const std::string_view source)
 {
@@ -43,6 +79,24 @@ constexpr std::string_view IDE_TOOLING_STAGE_SEMA_ANALYZE = "sema.analyze";
     request.package_identity = "tooling-test";
     request.virtual_buffer_identity = "buffer:1";
     return request;
+}
+
+[[nodiscard]] tooling::IdeSnapshotRequest request_for_path(const std::string_view source, const fs::path& path)
+{
+    tooling::IdeSnapshotRequest request = request_for(source);
+    request.path = path.string();
+    return request;
+}
+
+fs::path write_ide_tooling_source(const fs::path& path, const std::string_view text)
+{
+    fs::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::binary);
+    if (!out) {
+        throw std::runtime_error("failed to open " + path.string());
+    }
+    out << text;
+    return path;
 }
 
 [[nodiscard]] bool has_record_kind(const tooling::IdeSnapshot& snapshot, const query::QueryKind kind)
@@ -113,6 +167,21 @@ void expect_primary_source_part(const tooling::IdeModulePartContext& context, co
     EXPECT_EQ(context.part_index, IDE_TOOLING_PRIMARY_PART_INDEX);
     EXPECT_EQ(context.part_key.kind, query::ModulePartKind::primary);
     EXPECT_EQ(context.part_key.stable_index, IDE_TOOLING_PRIMARY_PART_INDEX);
+}
+
+void expect_resolved_fragment_source_part(const tooling::IdeModulePartContext& context,
+    const std::string_view module_name, const std::string_view part_name, const base::u32 part_index)
+{
+    EXPECT_TRUE(context.valid);
+    EXPECT_TRUE(context.resolved);
+    EXPECT_TRUE(query::is_valid(context.module_key));
+    EXPECT_TRUE(query::is_valid(context.part_key));
+    EXPECT_EQ(context.kind, query::ModulePartKind::fragment);
+    EXPECT_EQ(context.module_name, module_name);
+    EXPECT_EQ(context.part_name, part_name);
+    EXPECT_EQ(context.part_index, part_index);
+    EXPECT_EQ(context.part_key.kind, query::ModulePartKind::fragment);
+    EXPECT_EQ(context.part_key.stable_index, part_index);
 }
 
 void expect_unresolved_fragment_source_part(
@@ -662,6 +731,83 @@ TEST(CoreUnit, IdeToolingCarriesUnresolvedFragmentPartContextOnDiagnostics)
             && diagnostic.code == base::DiagnosticCode::semantic_type_mismatch && diagnostic.source_part.valid
             && !diagnostic.source_part.resolved && diagnostic.source_part.kind == query::ModulePartKind::fragment;
     }));
+}
+
+TEST(CoreUnit, IdeToolingRecoversFragmentPartContextFromOwningPrimary)
+{
+    const fs::path work = ide_tooling_tmp_root() / "ide-owned-part-context";
+    static_cast<void>(write_ide_tooling_source(work / "vm.ax",
+        "module ide.owned_part;\n"
+        "part lexer;\n"
+        "part parser;\n"
+        "fn primary() -> i32 { return 0; }\n"));
+    static_cast<void>(write_ide_tooling_source(work / "vm.parts" / "lexer.ax",
+        "module ide.owned_part part lexer;\n"
+        "fn scan() -> i32 { return 1; }\n"));
+    const fs::path parser_path = write_ide_tooling_source(work / "vm.parts" / "parser.ax",
+        "module ide.owned_part part parser;\n"
+        "fn main() -> i32 {\n"
+        "  let value: i32 = true;\n"
+        "  return value;\n"
+        "}\n");
+    const std::string part_source = "module ide.owned_part part parser;\n"
+                                    "fn main() -> i32 {\n"
+                                    "  let value: i32 = true;\n"
+                                    "  return value;\n"
+                                    "}\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for_path(part_source, parser_path));
+
+    EXPECT_TRUE(snapshot.lexed);
+    EXPECT_TRUE(snapshot.parsed);
+    EXPECT_FALSE(snapshot.checked_semantics);
+    EXPECT_TRUE(snapshot.has_errors);
+    expect_resolved_fragment_source_part(
+        snapshot.source_part, "ide.owned_part", "parser", IDE_TOOLING_RECOVERED_PARSER_PART_INDEX);
+    EXPECT_EQ(part_source.substr(snapshot.source_part.part_range.begin, snapshot.source_part.part_range.length()),
+        "part parser");
+
+    ASSERT_FALSE(snapshot.diagnostics.empty());
+    expect_resolved_fragment_source_part(
+        snapshot.diagnostics.front().source_part, "ide.owned_part", "parser", IDE_TOOLING_RECOVERED_PARSER_PART_INDEX);
+    EXPECT_TRUE(std::ranges::any_of(snapshot.diagnostics, [](const tooling::IdeDiagnostic& diagnostic) {
+        return diagnostic.category == base::DiagnosticCategory::type
+            && diagnostic.code == base::DiagnosticCode::semantic_type_mismatch && diagnostic.source_part.valid
+            && diagnostic.source_part.resolved && diagnostic.source_part.kind == query::ModulePartKind::fragment
+            && diagnostic.source_part.part_index == IDE_TOOLING_RECOVERED_PARSER_PART_INDEX;
+    }));
+}
+
+TEST(CoreUnit, IdeToolingLeavesFragmentContextUnresolvedWhenPrimaryDoesNotOwnPart)
+{
+    const fs::path mismatch_work = ide_tooling_tmp_root() / "ide-mismatched-part-context";
+    static_cast<void>(write_ide_tooling_source(mismatch_work / "vm.ax",
+        "module ide.other_owner;\n"
+        "part parser;\n"));
+    const fs::path mismatch_parser_path = write_ide_tooling_source(mismatch_work / "vm.parts" / "parser.ax",
+        "module ide.requested_owner part parser;\n"
+        "fn main() -> i32 { return 0; }\n");
+    const tooling::IdeSnapshot mismatch_snapshot =
+        tooling::build_ide_snapshot(request_for_path("module ide.requested_owner part parser;\n"
+                                                     "fn main() -> i32 { return 0; }\n",
+            mismatch_parser_path));
+
+    ASSERT_TRUE(mismatch_snapshot.parsed);
+    expect_unresolved_fragment_source_part(mismatch_snapshot.source_part, "ide.requested_owner", "parser");
+
+    const fs::path unlisted_work = ide_tooling_tmp_root() / "ide-unlisted-part-context";
+    static_cast<void>(write_ide_tooling_source(unlisted_work / "vm.ax",
+        "module ide.unlisted_owner;\n"
+        "part lexer;\n"));
+    const fs::path unlisted_parser_path = write_ide_tooling_source(unlisted_work / "vm.parts" / "parser.ax",
+        "module ide.unlisted_owner part parser;\n"
+        "fn main() -> i32 { return 0; }\n");
+    const tooling::IdeSnapshot unlisted_snapshot =
+        tooling::build_ide_snapshot(request_for_path("module ide.unlisted_owner part parser;\n"
+                                                     "fn main() -> i32 { return 0; }\n",
+            unlisted_parser_path));
+
+    ASSERT_TRUE(unlisted_snapshot.parsed);
+    expect_unresolved_fragment_source_part(unlisted_snapshot.source_part, "ide.unlisted_owner", "parser");
 }
 
 TEST(CoreUnit, IdeToolingSeparatesLexAndParseFailuresIntoQuerySnapshots)

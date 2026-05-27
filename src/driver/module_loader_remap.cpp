@@ -537,6 +537,10 @@ void append_module_into(syntax::AstModule& destination, syntax::AstModule&& sour
             destination.intern_import_decl(import);
             destination.imports.push_back(std::move(import));
         }
+        for (syntax::UseDecl use : source.reexports) {
+            destination.intern_use_decl(use);
+            destination.reexports.push_back(std::move(use));
+        }
     }
 }
 

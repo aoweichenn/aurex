@@ -187,6 +187,31 @@ void ModuleLoader::record_module_imports(const syntax::ModuleId module_id, const
     }
 }
 
+void ModuleLoader::record_module_reexports(const syntax::ModuleId module_id, const std::string_view owner_part,
+    const bool owner_is_primary, const std::span<const syntax::ResolvedUse> reexports,
+    const syntax::AstModule& combined)
+{
+    if (!syntax::is_valid(module_id) || module_id.value >= this->modules_.size()) {
+        return;
+    }
+    ModuleRecord& record = this->modules_[module_id.value];
+    record.reexports.reserve(record.reexports.size() + reexports.size());
+    for (const syntax::ResolvedUse& reexport : reexports) {
+        if (!syntax::is_valid(reexport.module) || reexport.module.value >= combined.modules.size()) {
+            continue;
+        }
+        record.reexports.push_back(ModuleUseRecord{
+            std::string(owner_part),
+            syntax::module_path_to_string(combined.modules[reexport.module.value].path),
+            std::string(reexport.target_name),
+            std::string(reexport.alias),
+            this->modules_[reexport.module.value].package,
+            owner_is_primary,
+            reexport.visibility,
+        });
+    }
+}
+
 void ModuleLoader::record_module_part(const syntax::ModuleId module_id, std::string name, std::filesystem::path path,
     const base::u32 stable_index, const query::ModulePartKey key)
 {
@@ -311,6 +336,14 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
         return base::Result<syntax::ModuleId>::fail(import_result.error());
     }
     this->record_module_imports(module_id, {}, true, direct_imports, combined);
+    std::vector<syntax::ResolvedUse> direct_reexports;
+    direct_reexports.reserve(module.reexports.size());
+    const auto reexport_result =
+        this->resolve_reexports_for_file(module, canonical, combined, depth, direct_reexports, package_context);
+    if (!reexport_result) {
+        return base::Result<syntax::ModuleId>::fail(reexport_result.error());
+    }
+    this->record_module_reexports(module_id, {}, true, direct_reexports, combined);
 
     auto parts_result = this->load_declared_parts(canonical, module_name, module.module_path, module.part_declarations,
         combined, depth, module_id, package_context);
@@ -321,13 +354,14 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
 
     {
         ScopedCompilationPhase phase(this->profiler_, PipelineStageId::module_append, module_name);
-        if (is_root && module.imports.empty() && module.part_declarations.empty() && module_id.value == 0
-            && combined.modules.size() == 1 && ast_payloads_empty(combined)) {
+        if (is_root && module.imports.empty() && module.reexports.empty() && module.part_declarations.empty()
+            && module_id.value == 0 && combined.modules.size() == 1 && ast_payloads_empty(combined)) {
             move_root_module_into_empty_combined(combined, std::move(module), module_id);
         } else {
             append_module_into(combined, std::move(module), is_root, module_id, 0, direct_imports);
             if (syntax::is_valid(module_id) && module_id.value < combined.modules.size()) {
                 combined.modules[module_id.value].imports = std::move(direct_imports);
+                combined.modules[module_id.value].reexports = std::move(direct_reexports);
             }
             for (LoadedModulePartAst& part_module : part_modules) {
                 append_module_into(combined, std::move(part_module.module), false, module_id, part_module.stable_index,
@@ -372,6 +406,46 @@ base::Result<void> ModuleLoader::resolve_imports_for_file(const syntax::AstModul
         };
         combined.intern_resolved_import(resolved);
         direct_imports.push_back(resolved);
+    }
+    return base::Result<void>::ok();
+}
+
+base::Result<void> ModuleLoader::resolve_reexports_for_file(const syntax::AstModule& module,
+    const std::filesystem::path& canonical, syntax::AstModule& combined, const base::usize depth,
+    std::vector<syntax::ResolvedUse>& direct_reexports, const PackageLoadContext& package_context)
+{
+    direct_reexports.reserve(direct_reexports.size() + module.reexports.size());
+    for (const syntax::UseDecl& use : module.reexports) {
+        const ImportFileResolution resolution = resolve_import_file(
+            use.module_path, canonical.parent_path(), package_context.source_root, this->import_paths_);
+        if (resolution.matching_candidates.empty()) {
+            return report_import_resolution_failure(
+                this->diagnostics_, use.module_path, format_import_candidates(resolution.searched_candidates));
+        }
+        if (resolution.matching_candidates.size() > 1) {
+            return report_import_ambiguity(
+                this->diagnostics_, use.module_path, format_import_candidates(resolution.matching_candidates));
+        }
+
+        const PackageLoadContext import_context =
+            this->package_context_for_import_resolution(package_context, resolution.selected_import_root);
+        auto import_result =
+            this->load_file(*resolution.selected, combined, depth + 1, false, &use.module_path, import_context);
+        if (!import_result) {
+            return base::Result<void>::fail(import_result.error());
+        }
+        syntax::ResolvedUse resolved{
+            import_result.value(),
+            use.target_name,
+            use.target_range,
+            use.alias,
+            use.alias_range,
+            use.visibility,
+            use.target_name_id,
+            use.alias_id,
+        };
+        combined.intern_resolved_use(resolved);
+        direct_reexports.push_back(resolved);
     }
     return base::Result<void>::ok();
 }
@@ -488,6 +562,7 @@ base::Result<ModuleLoader::LoadedModulePartAst> ModuleLoader::load_module_part(c
         0,
         std::move(part_module),
         std::move(part_imports),
+        {},
     });
 }
 

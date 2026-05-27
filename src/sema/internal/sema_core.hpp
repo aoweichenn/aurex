@@ -254,6 +254,16 @@ private:
         bool failed_as_module_selector = false;
     };
 
+    struct SelectiveReexportTarget {
+        syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+        IdentId name_id = INVALID_IDENT_ID;
+        std::string_view name;
+        syntax::ModuleId exporter = syntax::INVALID_MODULE_ID;
+        syntax::Visibility visibility = syntax::Visibility::public_;
+    };
+
+    using SelectiveReexportTargetList = std::vector<SelectiveReexportTarget>;
+
     struct IndexedTypeInfo {
         TypeHandle type = INVALID_TYPE_HANDLE;
         syntax::Visibility visibility = syntax::Visibility::public_;
@@ -805,6 +815,8 @@ private:
     [[nodiscard]] const ModuleIdList& visible_modules(syntax::ModuleId module) const;
     [[nodiscard]] const ModuleIdList& module_export_modules(syntax::ModuleId module) const;
     [[nodiscard]] ModuleIdList accessible_module_export_modules(syntax::ModuleId module) const;
+    [[nodiscard]] SelectiveReexportTargetList accessible_selective_reexports(
+        syntax::ModuleId module, IdentId name_id, std::string_view name) const;
     void append_public_reexports(
         syntax::ModuleId module, ModuleIdList& result, std::unordered_set<base::u32>& seen) const;
     [[nodiscard]] std::string module_name(syntax::ModuleId module) const;

@@ -15,9 +15,9 @@ AstModule::AstModule()
 
 AstModule::AstModule(const AstModule& other)
     : module_path(other.module_path), file_kind(other.file_kind), part_header(other.part_header),
-      part_declarations(other.part_declarations), imports(other.imports), modules(other.modules), types(other.types),
-      exprs(other.exprs), patterns(other.patterns), stmts(other.stmts), items(other.items),
-      item_modules(other.item_modules), item_part_indices(other.item_part_indices),
+      part_declarations(other.part_declarations), imports(other.imports), reexports(other.reexports),
+      modules(other.modules), types(other.types), exprs(other.exprs), patterns(other.patterns), stmts(other.stmts),
+      items(other.items), item_modules(other.item_modules), item_part_indices(other.item_part_indices),
       item_import_scopes(other.item_import_scopes), identifiers(other.identifiers), identifiers_ready_(false)
 {
     this->intern_identifiers();
@@ -33,6 +33,7 @@ AstModule& AstModule::operator=(const AstModule& other)
     this->part_header = other.part_header;
     this->part_declarations = other.part_declarations;
     this->imports = other.imports;
+    this->reexports = other.reexports;
     this->modules = other.modules;
     this->types = other.types;
     this->exprs = other.exprs;
@@ -437,6 +438,19 @@ void AstModule::intern_resolved_import(ResolvedImport& import)
     this->intern_identifier_text(import.alias, import.alias_id);
 }
 
+void AstModule::intern_use_decl(UseDecl& use)
+{
+    this->intern_module_path(use.module_path);
+    this->intern_identifier_text(use.target_name, use.target_name_id);
+    this->intern_identifier_text(use.alias, use.alias_id);
+}
+
+void AstModule::intern_resolved_use(ResolvedUse& use)
+{
+    this->intern_identifier_text(use.target_name, use.target_name_id);
+    this->intern_identifier_text(use.alias, use.alias_id);
+}
+
 void AstModule::intern_identifier_text(std::string_view& text, IdentId& id)
 {
     id = this->identifiers.intern(text);
@@ -524,10 +538,16 @@ void AstModule::intern_module_metadata()
     for (ImportDecl& import : this->imports) {
         this->intern_import_decl(import);
     }
+    for (UseDecl& use : this->reexports) {
+        this->intern_use_decl(use);
+    }
     for (ModuleInfo& module : this->modules) {
         this->intern_module_path(module.path);
         for (ResolvedImport& import : module.imports) {
             this->intern_resolved_import(import);
+        }
+        for (ResolvedUse& use : module.reexports) {
+            this->intern_resolved_use(use);
         }
     }
     for (ItemImportScope& scope : this->item_import_scopes) {

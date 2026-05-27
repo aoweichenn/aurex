@@ -901,6 +901,19 @@ inline constexpr std::string_view SEMA_IMPORTS_ARE_PART_LOCAL_HELP =
     return "ambiguous import alias: " + std::string(alias);
 }
 
+[[nodiscard]] inline std::string sema_unknown_reexport_target_message(
+    const std::string_view module, const std::string_view name)
+{
+    return "unknown selective re-export target in module " + std::string(module) + ": " + std::string(name);
+}
+
+[[nodiscard]] inline std::string sema_private_reexport_target_message(
+    const std::string_view module, const std::string_view name)
+{
+    return "selective re-export target is not visible enough in module " + std::string(module) + ": "
+        + std::string(name);
+}
+
 [[nodiscard]] inline std::string sema_unknown_module_path_message(const std::string_view path)
 {
     return "unknown module path: " + std::string(path);

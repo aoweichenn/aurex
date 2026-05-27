@@ -46,6 +46,18 @@ struct ImportDecl {
     IdentId alias_id = INVALID_IDENT_ID;
 };
 
+struct UseDecl {
+    ModulePath module_path;
+    std::string_view target_name;
+    base::SourceRange target_range{};
+    std::string_view alias;
+    base::SourceRange alias_range{};
+    Visibility visibility = Visibility::public_;
+    bool explicit_visibility = false;
+    IdentId target_name_id = INVALID_IDENT_ID;
+    IdentId alias_id = INVALID_IDENT_ID;
+};
+
 struct ResolvedImport {
     ModuleId module = INVALID_MODULE_ID;
     std::string_view alias;
@@ -54,9 +66,21 @@ struct ResolvedImport {
     IdentId alias_id = INVALID_IDENT_ID;
 };
 
+struct ResolvedUse {
+    ModuleId module = INVALID_MODULE_ID;
+    std::string_view target_name;
+    base::SourceRange target_range{};
+    std::string_view alias;
+    base::SourceRange alias_range{};
+    Visibility visibility = Visibility::public_;
+    IdentId target_name_id = INVALID_IDENT_ID;
+    IdentId alias_id = INVALID_IDENT_ID;
+};
+
 struct ModuleInfo {
     ModulePath path;
     std::vector<ResolvedImport> imports;
+    std::vector<ResolvedUse> reexports;
 };
 
 struct ItemImportScope {
@@ -80,6 +104,7 @@ struct AstModule {
     ModulePartHeader part_header;
     std::vector<ModulePartDecl> part_declarations;
     std::vector<ImportDecl> imports;
+    std::vector<UseDecl> reexports;
     std::vector<ModuleInfo> modules;
     TypeNodeList types;
     ExprNodeList exprs;
@@ -298,6 +323,8 @@ struct AstModule {
     void intern_module_part_header(ModulePartHeader& part);
     void intern_import_decl(ImportDecl& import);
     void intern_resolved_import(ResolvedImport& import);
+    void intern_use_decl(UseDecl& use);
+    void intern_resolved_use(ResolvedUse& use);
 
 private:
     void intern_identifier_text(std::string_view& text, IdentId& id);

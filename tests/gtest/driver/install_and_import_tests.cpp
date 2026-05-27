@@ -909,6 +909,69 @@ TEST_F(AurexIntegrationTest, ModuleLoaderImportVisibilityChangesGraphAndExportsO
     driver::clear_file_cache();
 }
 
+TEST_F(AurexIntegrationTest, ModuleLoaderSelectiveUseReexportChangesGraphAndExportsOnly)
+{
+    driver::clear_file_cache();
+
+    constexpr std::string_view MODULE_NAME = "incremental_cache_selective_use";
+    constexpr std::string_view FIRST_SOURCE = "module incremental_cache_selective_use;\n"
+                                              "pub use lib.visible.Value;\n";
+    constexpr std::string_view SECOND_SOURCE = "module incremental_cache_selective_use;\n"
+                                               "pub use lib.visible.Value as PublicValue;\n";
+    constexpr std::string_view IMPORT_SOURCE = "module lib.visible;\n"
+                                               "pub struct Value {\n"
+                                               "  pub data: i32;\n"
+                                               "}\n";
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-selective-use";
+    const fs::path import_dir = cache_dir / "imports";
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    const fs::path import_source = import_dir / "lib" / "visible.ax";
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.incremental_cache_path = cache;
+    invocation.import_paths.push_back(import_dir);
+
+    static_cast<void>(write_import_test_source(import_source, IMPORT_SOURCE));
+    static_cast<void>(write_import_test_source(source, FIRST_SOURCE));
+    driver::Compiler compiler;
+    auto first = compiler.run(invocation);
+    ASSERT_TRUE(first) << first.error().message;
+    const std::string first_cache = read_import_test_text(cache);
+    const std::optional<CacheFingerprint> first_graph =
+        module_query_fingerprint(first_cache, "module_graph", MODULE_NAME);
+    const std::optional<CacheFingerprint> first_exports =
+        module_query_fingerprint(first_cache, "module_exports", MODULE_NAME);
+    const std::optional<CacheFingerprint> first_items = module_query_fingerprint(first_cache, "item_list", MODULE_NAME);
+    ASSERT_TRUE(first_graph.has_value());
+    ASSERT_TRUE(first_exports.has_value());
+    ASSERT_TRUE(first_items.has_value());
+
+    static_cast<void>(write_import_test_source(source, SECOND_SOURCE));
+    driver::clear_file_cache();
+    auto second = compiler.run(invocation);
+    ASSERT_TRUE(second) << second.error().message;
+    const std::string second_cache = read_import_test_text(cache);
+    const std::optional<CacheFingerprint> second_graph =
+        module_query_fingerprint(second_cache, "module_graph", MODULE_NAME);
+    const std::optional<CacheFingerprint> second_exports =
+        module_query_fingerprint(second_cache, "module_exports", MODULE_NAME);
+    const std::optional<CacheFingerprint> second_items =
+        module_query_fingerprint(second_cache, "item_list", MODULE_NAME);
+    ASSERT_TRUE(second_graph.has_value());
+    ASSERT_TRUE(second_exports.has_value());
+    ASSERT_TRUE(second_items.has_value());
+
+    EXPECT_FALSE(*first_graph == *second_graph);
+    EXPECT_FALSE(*first_exports == *second_exports);
+    EXPECT_EQ(*first_items, *second_items);
+
+    driver::clear_file_cache();
+}
+
 TEST_F(AurexIntegrationTest, ModuleLoaderPackageImportVisibilityChangesPackageExportsOnly)
 {
     driver::clear_file_cache();

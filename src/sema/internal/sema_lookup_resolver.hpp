@@ -20,6 +20,8 @@ public:
     [[nodiscard]] syntax::ModuleId resolve_type_scope(const syntax::TypeNode& type, bool report_unknown);
     [[nodiscard]] const ModuleIdList& module_export_modules(syntax::ModuleId module) const;
     [[nodiscard]] ModuleIdList accessible_module_export_modules(syntax::ModuleId module) const;
+    [[nodiscard]] SelectiveReexportTargetList accessible_selective_reexports(
+        syntax::ModuleId module, IdentId name_id, std::string_view name) const;
     void append_public_reexports(
         syntax::ModuleId module, ModuleIdList& result, std::unordered_set<base::u32>& seen) const;
     [[nodiscard]] std::string module_name(syntax::ModuleId module) const;

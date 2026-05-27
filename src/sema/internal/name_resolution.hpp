@@ -25,6 +25,8 @@ public:
     [[nodiscard]] bool visible_module_path_prefix_exists(const std::vector<std::string_view>& parts) const;
     [[nodiscard]] const SemanticAnalyzerCore::ModuleIdList& module_export_modules(syntax::ModuleId module) const;
     [[nodiscard]] SemanticAnalyzerCore::ModuleIdList accessible_module_export_modules(syntax::ModuleId module) const;
+    [[nodiscard]] SemanticAnalyzerCore::SelectiveReexportTargetList accessible_selective_reexports(
+        syntax::ModuleId module, IdentId name_id, std::string_view name) const;
     void append_public_reexports(
         syntax::ModuleId module, SemanticAnalyzerCore::ModuleIdList& result, std::unordered_set<base::u32>& seen) const;
     [[nodiscard]] std::string module_name(syntax::ModuleId module) const;
@@ -33,6 +35,8 @@ private:
     [[nodiscard]] bool reexport_visible_to_module(
         syntax::ModuleId exporter, syntax::Visibility visibility, syntax::ModuleId access_module) const noexcept;
     [[nodiscard]] SemanticAnalyzerCore::ModuleIdList make_module_id_list() const;
+    [[nodiscard]] bool reexport_alias_matches(
+        const syntax::ResolvedUse& reexport, IdentId name_id, std::string_view name) const noexcept;
     void append_reexports_for_access(syntax::ModuleId module, syntax::ModuleId access_module,
         SemanticAnalyzerCore::ModuleIdList& result, std::unordered_set<base::u32>& seen) const;
     void report_lookup(const base::SourceRange& range, std::string message) const;

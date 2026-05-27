@@ -554,6 +554,35 @@ TEST(CoreUnit, ParserAcceptsPackageVisibilitySyntax)
         });
 }
 
+TEST(CoreUnit, ParserAcceptsSelectiveUseReexports)
+{
+    constexpr std::string_view source = "module parser.use_reexports;\n"
+                                        "pub use support.visible.Value;\n"
+                                        "pub(package) use support.visible.make as make_visible;\n"
+                                        "fn local() -> i32 { return 0; }\n";
+    const syntax::AstModule module = parse_success(source);
+
+    ASSERT_EQ(module.reexports.size(), 2U);
+    EXPECT_EQ(module.reexports[0].visibility, syntax::Visibility::public_);
+    EXPECT_EQ(module.reexports[0].module_path.parts, std::vector<std::string_view>({"support", "visible"}));
+    EXPECT_EQ(module.reexports[0].target_name, "Value");
+    EXPECT_EQ(module.reexports[0].alias, "Value");
+    EXPECT_EQ(module.reexports[0].target_name_id, module.find_identifier("Value"));
+    EXPECT_EQ(module.reexports[0].alias_id, module.find_identifier("Value"));
+    EXPECT_EQ(module.reexports[1].visibility, syntax::Visibility::package_);
+    EXPECT_EQ(module.reexports[1].target_name, "make");
+    EXPECT_EQ(module.reexports[1].alias, "make_visible");
+    EXPECT_EQ(module.reexports[1].alias_id, module.find_identifier("make_visible"));
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "pub use support.visible.Value",
+            "pub(package) use support.visible.make as make_visible",
+            "priv fn local",
+        });
+}
+
 TEST(CoreUnit, ParserAcceptsCAsOrdinaryIdentifier)
 {
     constexpr std::string_view source = "module parser.c_identifier;\n"
@@ -735,6 +764,19 @@ TEST(CoreUnit, ParserRejectsMalformedModulePartDeclarations)
                        "part nested;\n"
                        "fn ok() -> i32 { return 0; }\n",
         "module part files cannot declare nested part lists");
+    expect_parse_error("module parser.glob_use;\n"
+                       "pub use support.visible.*;\n",
+        "glob use is not supported");
+    expect_parse_error("module parser.private_use;\n"
+                       "priv use support.visible.Value;\n",
+        "selective use re-export must use pub or pub(package)");
+    expect_parse_error("module parser.part_file part parser;\n"
+                       "pub use support.visible.Value;\n",
+        "module part files cannot declare selective re-exports");
+    expect_parse_error("module parser.late_use;\n"
+                       "fn first() -> i32 { return 0; }\n"
+                       "pub use support.visible.Value;\n",
+        "use declarations must appear before items");
 }
 
 TEST(CoreUnit, ParserRejectsBareSliceType)

@@ -434,7 +434,8 @@ void remap_item_node(syntax::ItemNode& node, const IdMap& map)
 [[nodiscard]] bool ast_payloads_empty(const syntax::AstModule& module) noexcept
 {
     return module.types.empty() && module.exprs.empty() && module.patterns.empty() && module.stmts.empty()
-        && module.items.empty() && module.item_modules.empty() && module.item_import_scopes.empty();
+        && module.items.empty() && module.item_modules.empty() && module.item_part_indices.empty()
+        && module.item_import_scopes.empty();
 }
 
 void move_root_module_into_empty_combined(
@@ -448,10 +449,12 @@ void move_root_module_into_empty_combined(
     combined.modules.clear();
     combined.modules.push_back(std::move(root_info));
     combined.item_modules.assign(combined.items.size(), owner_module);
+    combined.item_part_indices.assign(combined.items.size(), 0);
 }
 
 void append_module_into(syntax::AstModule& destination, syntax::AstModule&& source, const bool keep_imports,
-    const syntax::ModuleId owner_module, const std::span<const syntax::ResolvedImport> visible_imports)
+    const syntax::ModuleId owner_module, const base::u32 owner_part_index,
+    const std::span<const syntax::ResolvedImport> visible_imports)
 {
     IdMap map;
     const base::usize source_type_count = source.types.size();
@@ -476,6 +479,7 @@ void append_module_into(syntax::AstModule& destination, syntax::AstModule&& sour
     destination.stmts.reserve(stmt_begin + source_stmt_count);
     destination.items.reserve(item_begin + source_item_count);
     destination.item_modules.reserve(destination.item_modules.size() + source_item_count);
+    destination.item_part_indices.reserve(destination.item_part_indices.size() + source_item_count);
 
     for (base::usize i = 0; i < source_type_count; ++i) {
         map.types.push_back(syntax::TypeId{static_cast<base::u32>(type_begin + i)});
@@ -514,12 +518,13 @@ void append_module_into(syntax::AstModule& destination, syntax::AstModule&& sour
     for (base::usize i = 0; i < source_item_count; ++i) {
         syntax::ItemNode node = source.items.take(i);
         remap_item_node(node, map);
-        static_cast<void>(destination.push_item_for_module(std::move(node), owner_module));
+        static_cast<void>(destination.push_item_for_module(std::move(node), owner_module, owner_part_index));
     }
     if (source_item_count != 0) {
         syntax::ItemImportScope scope;
         scope.item_begin = static_cast<base::u32>(item_begin);
         scope.item_count = static_cast<base::u32>(source_item_count);
+        scope.part_index = owner_part_index;
         scope.imports.assign(visible_imports.begin(), visible_imports.end());
         for (syntax::ResolvedImport& import : scope.imports) {
             destination.intern_resolved_import(import);

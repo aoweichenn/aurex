@@ -11,6 +11,7 @@
 #include <aurex/syntax/ast_dump.hpp>
 #include <aurex/syntax/lossless.hpp>
 
+#include <algorithm>
 #include <iostream>
 #include <span>
 #include <string>
@@ -32,8 +33,23 @@ namespace {
     sema::SemanticOptions sema_options;
     sema_options.retain_generic_side_tables = emit_kind_requires_ir_lowering(emit_kind) || emit_kind == EmitKind::typed;
     sema_options.module_packages.reserve(modules.size());
+    sema_options.module_part_keys.reserve(modules.size());
     for (const ModuleRecord& module : modules) {
         sema_options.module_packages.push_back(module.package);
+        std::vector<query::ModulePartKey> part_keys;
+        if (!module.parts.empty()) {
+            base::u32 max_part_index = 0;
+            for (const ModulePartRecord& part : module.parts) {
+                max_part_index = std::max(max_part_index, part.stable_index);
+            }
+            part_keys.resize(static_cast<base::usize>(max_part_index) + 1);
+            for (const ModulePartRecord& part : module.parts) {
+                if (query::is_valid(part.key)) {
+                    part_keys[part.stable_index] = part.key;
+                }
+            }
+        }
+        sema_options.module_part_keys.push_back(std::move(part_keys));
     }
     return sema_options;
 }

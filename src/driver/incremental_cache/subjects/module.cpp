@@ -161,6 +161,20 @@ constexpr base::usize INCREMENTAL_CACHE_EXPORT_BASE_TEXT_BUDGET = 64;
     return {};
 }
 
+[[nodiscard]] query::QueryResultFingerprint module_part_result_fingerprint(
+    const query::ModulePartKey key, const ModuleRecord& module, const ModulePartRecord& part)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(INCREMENTAL_CACHE_MODULE_PART_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(key));
+    builder.mix_string(module.name);
+    builder.mix_string(module_part_kind_name(part.kind));
+    builder.mix_string(part.name);
+    builder.mix_string(part.path.string());
+    builder.mix_u64(part.stable_index);
+    return query::query_result_fingerprint(builder.finish());
+}
+
 [[nodiscard]] bool module_key_less(const query::ModuleKey lhs, const query::ModuleKey rhs)
 {
     return query::stable_serialize(lhs) < query::stable_serialize(rhs);
@@ -627,6 +641,25 @@ void push_module_graph_query_subject(std::vector<ModuleGraphQuerySubject>& subje
     });
 }
 
+void push_module_part_query_subjects(std::vector<ModulePartQuerySubject>& subjects, const ModuleRecord& module)
+{
+    const query::ModuleKey module_key = module_key_from_record(module);
+    if (!query::is_valid(module_key)) {
+        return;
+    }
+    subjects.reserve(subjects.size() + module.parts.size());
+    for (const ModulePartRecord& part : module.parts) {
+        const query::ModulePartKey part_key = module_part_key_from_record(module_key, module, part);
+        if (!query::is_valid(part_key)) {
+            continue;
+        }
+        subjects.push_back(ModulePartQuerySubject{
+            part_key,
+            module_part_result_fingerprint(part_key, module, part),
+        });
+    }
+}
+
 void push_module_exports_query_subject(std::vector<ModuleExportsQuerySubject>& subjects, const ModuleRecord& module,
     const sema::CheckedModule& checked, const syntax::AstModule* const ast)
 {
@@ -794,6 +827,21 @@ void push_item_list_query_subject(std::vector<ItemListQuerySubject>& subjects, c
     subjects.reserve(modules.size());
     for (const ModuleRecord& module : modules) {
         push_module_graph_query_subject(subjects, module);
+    }
+    return subjects;
+}
+
+[[nodiscard]] std::vector<ModulePartQuerySubject> collect_module_part_query_subjects(
+    const std::span<const ModuleRecord> modules)
+{
+    std::vector<ModulePartQuerySubject> subjects;
+    base::usize part_count = 0;
+    for (const ModuleRecord& module : modules) {
+        part_count += module.parts.size();
+    }
+    subjects.reserve(part_count);
+    for (const ModuleRecord& module : modules) {
+        push_module_part_query_subjects(subjects, module);
     }
     return subjects;
 }

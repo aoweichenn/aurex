@@ -32,6 +32,7 @@ enum class QueryKind : base::u8 {
     diagnostics,
     lower_function_ir,
     module_package_exports,
+    module_part,
 };
 
 enum class SourceRole : base::u8 {

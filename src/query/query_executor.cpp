@@ -27,6 +27,11 @@ struct QueryRequestKeyVisitor {
         return module_graph_query_key(input.key);
     }
 
+    [[nodiscard]] std::optional<QueryKey> operator()(const ModulePartProviderInput& input) const noexcept
+    {
+        return module_part_query_key(input.key);
+    }
+
     [[nodiscard]] std::optional<QueryKey> operator()(const ItemListProviderInput& input) const noexcept
     {
         return item_list_query_key(input.key);
@@ -109,6 +114,11 @@ struct QueryEvaluateVisitor {
     [[nodiscard]] QueryEvaluationResult operator()(const ModuleGraphProviderInput& input) const
     {
         return this->context.evaluate_module_graph(input);
+    }
+
+    [[nodiscard]] QueryEvaluationResult operator()(const ModulePartProviderInput& input) const
+    {
+        return this->context.evaluate_module_part(input);
     }
 
     [[nodiscard]] QueryEvaluationResult operator()(const ItemListProviderInput& input) const

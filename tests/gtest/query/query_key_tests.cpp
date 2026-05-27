@@ -9,6 +9,7 @@
 #include <aurex/query/lower_function_ir_query.hpp>
 #include <aurex/query/module_exports_query.hpp>
 #include <aurex/query/module_graph_query.hpp>
+#include <aurex/query/module_part_query.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_edge_verifier.hpp>
 #include <aurex/query/query_executor.hpp>
@@ -68,6 +69,7 @@ constexpr std::string_view QUERY_TEST_FILE_CONTENT = "file-content:module regex.
 constexpr std::string_view QUERY_TEST_LEX_FILE = "lex-file:tokens";
 constexpr std::string_view QUERY_TEST_PARSE_FILE = "parse-file:ast";
 constexpr std::string_view QUERY_TEST_MODULE_GRAPH = "module-graph:regex.vm";
+constexpr std::string_view QUERY_TEST_MODULE_PART = "module-part:regex.vm.primary";
 constexpr std::string_view QUERY_TEST_BODY_SYNTAX = "body-syntax:return value";
 constexpr std::string_view QUERY_TEST_ITEM_LIST = "item-list:compute";
 constexpr std::string_view QUERY_TEST_GENERIC_TEMPLATE_SIGNATURE = "generic-template-signature:T";
@@ -632,13 +634,19 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
 TEST(QueryUnit, StableKeyDecoderProjectsSourceIdentitySlices)
 {
     const QueryContextSourceSubject source_subject = test_source_subject();
+    const query::ModuleKey module = test_module(source_subject.file.package);
+    const query::ModulePartKey module_part =
+        query::module_part_key(module, source_subject.file, query::ModulePartKind::primary, "<primary>");
     const std::string file_bytes = query::stable_serialize(source_subject.file);
+    const std::string module_bytes = query::stable_serialize(module);
+    const std::string module_part_bytes = query::stable_serialize(module_part);
     const std::string lex_config_bytes = query::stable_serialize(source_subject.lex_file.config);
     const std::string lex_file_bytes = query::stable_serialize(source_subject.lex_file);
     const std::string parse_file_bytes = query::stable_serialize(source_subject.parse_file);
 
     EXPECT_TRUE(query::stable_key_has_file_key_layout(file_bytes));
     EXPECT_FALSE(query::stable_key_has_file_key_layout(lex_file_bytes));
+    EXPECT_TRUE(query::stable_key_has_module_part_key_layout(module_part_bytes));
 
     const std::optional<query::DecodedLexFileKeyIdentity> lex_identity =
         query::decode_lex_file_key_identity(lex_file_bytes);
@@ -651,6 +659,12 @@ TEST(QueryUnit, StableKeyDecoderProjectsSourceIdentitySlices)
     ASSERT_TRUE(parse_identity.has_value());
     EXPECT_EQ(parse_identity->file, file_bytes);
     EXPECT_EQ(parse_identity->lex_config, lex_config_bytes);
+
+    const std::optional<query::DecodedModulePartKeyIdentity> module_part_identity =
+        query::decode_module_part_key_identity(module_part_bytes);
+    ASSERT_TRUE(module_part_identity.has_value());
+    EXPECT_EQ(module_part_identity->module, module_bytes);
+    EXPECT_EQ(module_part_identity->file, file_bytes);
 }
 
 TEST(QueryUnit, StableKeyDecoderProjectsDefinitionBodyGenericAndQueryIdentitySlices)
@@ -732,6 +746,8 @@ TEST(QueryUnit, StableKeyDecoderMatchesStableKeyLayoutToQueryKind)
     const QueryContextSourceSubject source_subject = test_source_subject();
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
+    const query::ModulePartKey module_part =
+        query::module_part_key(module, source_subject.file, query::ModulePartKind::primary, "<primary>");
     const query::DefKey function_def = test_function_def(module);
     const query::DefKey template_def = test_template_def(module);
     const query::BodyKey body = query::body_key(function_def, query::BodySlotKind::function_body);
@@ -745,6 +761,7 @@ TEST(QueryUnit, StableKeyDecoderMatchesStableKeyLayoutToQueryKind)
     const std::string lex_file_bytes = query::stable_serialize(source_subject.lex_file);
     const std::string parse_file_bytes = query::stable_serialize(source_subject.parse_file);
     const std::string module_bytes = query::stable_serialize(module);
+    const std::string module_part_bytes = query::stable_serialize(module_part);
     const std::string def_bytes = query::stable_serialize(function_def);
     const std::string body_bytes = query::stable_serialize(body);
     const std::string instance_bytes = query::stable_serialize(instance);
@@ -753,6 +770,7 @@ TEST(QueryUnit, StableKeyDecoderMatchesStableKeyLayoutToQueryKind)
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::file_content, file_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::lex_file, lex_file_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::parse_file, parse_file_bytes));
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::module_part, module_part_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::module_graph, module_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::module_exports, module_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::module_package_exports, module_bytes));
@@ -769,6 +787,7 @@ TEST(QueryUnit, StableKeyDecoderMatchesStableKeyLayoutToQueryKind)
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::diagnostics, producer_bytes));
 
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::file_content, lex_file_bytes));
+    EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::module_part, module_bytes));
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::item_signature, module_bytes));
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::lower_function_ir, module_bytes));
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::diagnostics, def_bytes));
@@ -780,6 +799,8 @@ TEST(QueryUnit, StableKeyDecoderRejectsMalformedStableKeys)
     const QueryContextSourceSubject source_subject = test_source_subject();
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
+    const query::ModulePartKey module_part =
+        query::module_part_key(module, source_subject.file, query::ModulePartKind::primary, "<primary>");
     const query::DefKey function_def = test_function_def(module);
     const query::DefKey template_def = test_template_def(module);
     const query::BodyKey body = query::body_key(function_def, query::BodySlotKind::function_body);
@@ -788,6 +809,7 @@ TEST(QueryUnit, StableKeyDecoderRejectsMalformedStableKeys)
         std::span<const query::StableFingerprint128>{}, query::param_env_key(std::span<const std::string_view>{}));
     const std::string lex_file_bytes = query::stable_serialize(source_subject.lex_file);
     const std::string parse_file_bytes = query::stable_serialize(source_subject.parse_file);
+    const std::string module_part_bytes = query::stable_serialize(module_part);
     const std::string function_def_bytes = query::stable_serialize(function_def);
     const std::string body_bytes = query::stable_serialize(body);
     const std::string instance_bytes = query::stable_serialize(instance);
@@ -819,6 +841,14 @@ TEST(QueryUnit, StableKeyDecoderRejectsMalformedStableKeys)
         parser_config_offset + QUERY_TEST_STABLE_U64_WIDTH + lex_config_bytes.size();
     parse_file_with_truncated_parser_schema.resize(parser_schema_offset + QUERY_TEST_STABLE_U8_WIDTH);
     EXPECT_FALSE(query::decode_parse_file_key_identity(parse_file_with_truncated_parser_schema).has_value());
+
+    std::string module_part_with_bad_file = module_part_bytes;
+    const std::string file_bytes = query::stable_serialize(source_subject.file);
+    const base::usize module_part_file_offset = module_part_with_bad_file.find(file_bytes);
+    ASSERT_NE(module_part_file_offset, std::string::npos);
+    query_test_flip_stable_byte_at(module_part_with_bad_file, module_part_file_offset);
+    EXPECT_FALSE(query::decode_module_part_key_identity(module_part_with_bad_file).has_value());
+    EXPECT_FALSE(query::stable_key_has_module_part_key_layout(query_test_with_trailing_stable_byte(module_part_bytes)));
 
     EXPECT_FALSE(query::decode_def_key_identity(query_test_with_trailing_stable_byte(function_def_bytes)).has_value());
     std::string def_with_bad_module = function_def_bytes;
@@ -1071,6 +1101,23 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_EQ(parse_file_record->stable_key_bytes, query::stable_serialize(source_subject.parse_file));
     EXPECT_EQ(parse_file_record->result, source_subject.syntax);
 
+    const query::ModulePartKey module_part =
+        query::module_part_key(module, source_subject.file, query::ModulePartKind::primary, "<primary>");
+    const query::QueryResultFingerprint module_part_result =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_MODULE_PART));
+    const query::ModulePartQueryInput module_part_input{
+        module_part,
+        module_part_result,
+    };
+    EXPECT_TRUE(query::is_valid(module_part_input));
+    const std::optional<query::QueryRecord> module_part_record = query::module_part_query_record(module_part_input);
+    ASSERT_TRUE(module_part_record.has_value());
+    EXPECT_TRUE(query::is_valid(*module_part_record));
+    EXPECT_EQ(module_part_record->key.kind, query::QueryKind::module_part);
+    EXPECT_EQ(module_part_record->key.payload, query::stable_key_fingerprint(module_part));
+    EXPECT_EQ(module_part_record->stable_key_bytes, query::stable_serialize(module_part));
+    EXPECT_EQ(module_part_record->result, module_part_result);
+
     const query::QueryResultFingerprint module_graph_result =
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_MODULE_GRAPH));
     const query::ModuleGraphQueryInput module_graph_input{
@@ -1236,10 +1283,11 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
     EXPECT_EQ(diagnostics_record->key.payload, query::stable_key_fingerprint(item_record->key));
     EXPECT_EQ(diagnostics_record->stable_key_bytes, query::stable_serialize(item_record->key));
 
-    const std::array<const query::QueryRecord*, 13> records_with_stable_identity{
+    const std::array<const query::QueryRecord*, 14> records_with_stable_identity{
         &*file_content_record,
         &*lex_file_record,
         &*parse_file_record,
+        &*module_part_record,
         &*module_graph_record,
         &*exports_record,
         &*item_list_record,
@@ -1310,6 +1358,15 @@ TEST(QueryUnit, QueryRecordsBindTypedKeysToResultFingerprints)
         query::ParseFileQueryInput{source_subject.parse_file, query::QueryResultFingerprint{}})
             .has_value());
     EXPECT_FALSE(query::is_valid(query::ModuleGraphQueryInput{}));
+    EXPECT_FALSE(query::is_valid(query::ModulePartQueryInput{}));
+    EXPECT_FALSE(
+        query::module_part_query_record(query::ModulePartQueryInput{query::ModulePartKey{}, module_part_result})
+            .has_value());
+    EXPECT_FALSE(
+        query::module_part_query_record(query::ModulePartQueryInput{module_part, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::module_part_query_record(query::ModulePartKey{}, module_part_result).has_value());
+    EXPECT_FALSE(query::module_part_query_record(module_part, query::QueryResultFingerprint{}).has_value());
     EXPECT_FALSE(query::module_graph_query_record(query::ModuleGraphQueryInput{query::ModuleKey{}, module_graph_result})
             .has_value());
     EXPECT_FALSE(query::module_graph_query_record(query::ModuleGraphQueryInput{module, query::QueryResultFingerprint{}})
@@ -1504,6 +1561,8 @@ TEST(QueryUnit, QueryExecutorEvaluatesOwnedRequestsOnDemand)
     const QueryContextSourceSubject source_subject = test_source_subject();
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
+    const query::ModulePartKey module_part =
+        query::module_part_key(module, source_subject.file, query::ModulePartKind::primary, "<primary>");
     const query::DefKey template_def = test_template_def(module);
     const std::array<std::string_view, 2> template_module_path{"regex", "vm"};
     const query::IncrementalKey template_signature =
@@ -1525,6 +1584,7 @@ TEST(QueryUnit, QueryExecutorEvaluatesOwnedRequestsOnDemand)
         query::QueryRequest{query::LexFileProviderInput{source_subject.lex_file, source_subject.tokens}},
         query::QueryRequest{query::ParseFileProviderInput{source_subject.parse_file, source_subject.syntax}},
         query::QueryRequest{query::ModuleGraphProviderInput{module, test_query_result(QUERY_TEST_MODULE_GRAPH)}},
+        query::QueryRequest{query::ModulePartProviderInput{module_part, test_query_result(QUERY_TEST_MODULE_PART)}},
         query::QueryRequest{query::ItemListProviderInput{module, test_query_result(QUERY_TEST_ITEM_LIST)}},
         query::QueryRequest{
             query::ModuleExportsProviderInput{module, test_query_result(QUERY_TEST_MODULE_EXPORTS_SIGNATURE)}},
@@ -1724,6 +1784,7 @@ TEST(QueryUnit, QueryGraphDependencyKindRulesCoverEveryQueryKind)
     const std::array accepted_edges{
         query::QueryDependencyEdge{make_key(query::QueryKind::lex_file), make_key(query::QueryKind::file_content)},
         query::QueryDependencyEdge{make_key(query::QueryKind::parse_file), make_key(query::QueryKind::lex_file)},
+        query::QueryDependencyEdge{make_key(query::QueryKind::module_part), make_key(query::QueryKind::parse_file)},
         query::QueryDependencyEdge{make_key(query::QueryKind::item_list), make_key(query::QueryKind::module_graph)},
         query::QueryDependencyEdge{make_key(query::QueryKind::module_exports), make_key(query::QueryKind::item_list)},
         query::QueryDependencyEdge{
@@ -1787,6 +1848,7 @@ TEST(QueryUnit, QueryGraphDependencyKindRulesCoverEveryQueryKind)
     const std::array rejected_edges{
         query::QueryDependencyEdge{make_key(query::QueryKind::lex_file), make_key(query::QueryKind::parse_file)},
         query::QueryDependencyEdge{make_key(query::QueryKind::parse_file), make_key(query::QueryKind::file_content)},
+        query::QueryDependencyEdge{make_key(query::QueryKind::module_part), make_key(query::QueryKind::lex_file)},
         query::QueryDependencyEdge{make_key(query::QueryKind::item_list), make_key(query::QueryKind::module_exports)},
         query::QueryDependencyEdge{
             make_key(query::QueryKind::module_exports),
@@ -1835,12 +1897,19 @@ TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
         query::lex_file_query_record(source_subject.lex_file, source_subject.tokens);
     const std::optional<query::QueryRecord> parse_file_record =
         query::parse_file_query_record(source_subject.parse_file, source_subject.syntax);
+    const query::ModuleKey source_module = test_module(source_subject.file.package);
+    const query::ModulePartKey module_part =
+        query::module_part_key(source_module, source_subject.file, query::ModulePartKind::primary, "<primary>");
+    const std::optional<query::QueryRecord> module_part_record =
+        query::module_part_query_record(module_part, test_query_result(QUERY_TEST_MODULE_PART));
     ASSERT_TRUE(file_content_record.has_value());
     ASSERT_TRUE(lex_file_record.has_value());
     ASSERT_TRUE(parse_file_record.has_value());
+    ASSERT_TRUE(module_part_record.has_value());
     EXPECT_EQ(query::validate_query_dependency_edge_records(*lex_file_record, *file_content_record),
         query::QueryDependencyEdgeValidationStatus::valid);
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*parse_file_record, *lex_file_record));
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*module_part_record, *parse_file_record));
 
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
@@ -1963,6 +2032,20 @@ TEST(QueryUnit, QueryEdgeVerifierRejectsMalformedKindsAndStableIdentities)
         query::lex_file_query_record(wrong_lex_file, source_subject.tokens);
     ASSERT_TRUE(wrong_lex_record.has_value());
     EXPECT_EQ(query::validate_query_dependency_edge_records(*parse_file_record, *wrong_lex_record),
+        query::QueryDependencyEdgeValidationStatus::invalid_identity);
+
+    const query::ModuleKey source_module = test_module(source_subject.file.package);
+    const query::ModulePartKey module_part =
+        query::module_part_key(source_module, source_subject.file, query::ModulePartKind::primary, "<primary>");
+    const query::FileKey wrong_source_file = query::file_key(source_subject.file.package, "/workspace/root/other.ax");
+    const query::ParseFileKey wrong_parse_file = query::parse_file_key(wrong_source_file, query::parser_config_key());
+    const std::optional<query::QueryRecord> module_part_record =
+        query::module_part_query_record(module_part, test_query_result(QUERY_TEST_MODULE_PART));
+    const std::optional<query::QueryRecord> wrong_parse_record =
+        query::parse_file_query_record(wrong_parse_file, source_subject.syntax);
+    ASSERT_TRUE(module_part_record.has_value());
+    ASSERT_TRUE(wrong_parse_record.has_value());
+    EXPECT_EQ(query::validate_query_dependency_edge_records(*module_part_record, *wrong_parse_record),
         query::QueryDependencyEdgeValidationStatus::invalid_identity);
 
     const query::PackageKey package = test_package();
@@ -2145,6 +2228,53 @@ TEST(QueryUnit, ModulePackageExportsProviderAddsPublicAndPackageDependencies)
     EXPECT_FALSE(query::provide_module_package_exports_query(invalid_package_dependency).has_value());
 
     query::ModulePackageExportsProviderOutput invalid_dependency_output = *output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+}
+
+TEST(QueryUnit, ModulePartProviderBuildsRecordAndParseDependency)
+{
+    const QueryContextSourceSubject subject = test_source_subject();
+    const query::ModuleKey module = test_module(subject.file.package);
+    const query::ModulePartKey module_part =
+        query::module_part_key(module, subject.file, query::ModulePartKind::primary, "<primary>");
+    const query::QueryResultFingerprint part = test_query_result(QUERY_TEST_MODULE_PART);
+    const std::optional<query::QueryKey> expected_key = query::module_part_query_key(module_part);
+    const std::optional<query::QueryKey> expected_parse_key = query::parse_file_query_key(subject.parse_file);
+    ASSERT_TRUE(expected_key.has_value());
+    ASSERT_TRUE(expected_parse_key.has_value());
+
+    const query::ModulePartProviderInput input{
+        module_part,
+        part,
+    };
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::ModulePartProviderOutput> output = query::provide_module_part_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    EXPECT_EQ(output->dependencies, std::vector<query::QueryKey>{*expected_parse_key});
+    EXPECT_EQ(output->record.key, *expected_key);
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::module_part);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(module_part));
+    EXPECT_EQ(output->result, part);
+    EXPECT_EQ(output->record.result, output->result);
+
+    query::QueryContext context;
+    const query::QueryEvaluationResult result = context.evaluate_module_part(input);
+    EXPECT_EQ(result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_NE(result.node, nullptr);
+    EXPECT_TRUE(context.has_dependency(*expected_key, *expected_parse_key));
+
+    EXPECT_FALSE(query::module_part_query_key(query::ModulePartKey{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::ModulePartProviderInput{}));
+    EXPECT_FALSE(
+        query::provide_module_part_query(query::ModulePartProviderInput{query::ModulePartKey{}, part}).has_value());
+    EXPECT_FALSE(
+        query::provide_module_part_query(query::ModulePartProviderInput{module_part, query::QueryResultFingerprint{}})
+            .has_value());
+    EXPECT_FALSE(query::is_valid(query::ModulePartProviderOutput{}));
+
+    query::ModulePartProviderOutput invalid_dependency_output = *output;
     invalid_dependency_output.dependencies.push_back(query::QueryKey{});
     EXPECT_FALSE(query::is_valid(invalid_dependency_output));
 }

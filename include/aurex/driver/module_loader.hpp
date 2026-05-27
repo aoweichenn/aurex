@@ -48,6 +48,7 @@ private:
     struct LoadedModulePartAst {
         std::string name;
         std::filesystem::path path;
+        base::u32 stable_index = 0;
         syntax::AstModule module;
         std::vector<syntax::ResolvedImport> imports;
     };

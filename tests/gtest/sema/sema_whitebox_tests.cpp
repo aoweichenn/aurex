@@ -1216,6 +1216,66 @@ TEST(CoreUnit, SemanticWhiteBoxVisibilityLatticeAccessAndSurfaceLeaks)
     EXPECT_EQ(package_leak->visibility, syntax::Visibility::private_);
 }
 
+TEST(CoreUnit, SemanticWhiteBoxModulePartContextsTrackCurrentItem)
+{
+    constexpr base::u32 SEMA_TEST_PRIMARY_PART_INDEX = 0;
+    constexpr base::u32 SEMA_TEST_FRAGMENT_PART_INDEX = 2;
+    const std::array<std::string_view, 1> package_parts{"part-package"};
+    const std::array<std::string_view, 1> module_parts{"root"};
+    const query::PackageKey package = query::package_key(package_parts);
+    const query::ModuleKey module_key = query::module_key_from_stable_id(
+        package, sema::stable_module_id(std::span<const std::string_view>{module_parts.data(), module_parts.size()}));
+    const query::FileKey primary_file = query::file_key(package, "/workspace/root.ax");
+    const query::FileKey part_file = query::file_key(package, "/workspace/root.parts/types.ax");
+    const query::ModulePartKey primary_key = query::module_part_key(
+        module_key, primary_file, query::ModulePartKind::primary, "<primary>", SEMA_TEST_PRIMARY_PART_INDEX);
+    const query::ModulePartKey part_key = query::module_part_key(
+        module_key, part_file, query::ModulePartKind::fragment, "types", SEMA_TEST_FRAGMENT_PART_INDEX);
+
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+    syntax::ItemNode primary_item;
+    primary_item.kind = syntax::ItemKind::fn_decl;
+    primary_item.name = "primary";
+    const syntax::ItemId primary_id =
+        module.push_item_for_module(primary_item, module_id(0), SEMA_TEST_PRIMARY_PART_INDEX);
+    syntax::ItemNode part_item;
+    part_item.kind = syntax::ItemKind::fn_decl;
+    part_item.name = "from_part";
+    const syntax::ItemId part_id = module.push_item_for_module(part_item, module_id(0), SEMA_TEST_FRAGMENT_PART_INDEX);
+
+    sema::SemanticOptions options;
+    options.module_packages.push_back(package);
+    options.module_part_keys.resize(1);
+    options.module_part_keys[0].resize(3);
+    options.module_part_keys[0][SEMA_TEST_PRIMARY_PART_INDEX] = primary_key;
+    options.module_part_keys[0][SEMA_TEST_FRAGMENT_PART_INDEX] = part_key;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics, options);
+    EXPECT_EQ(analyzer.item_part_index(primary_id), SEMA_TEST_PRIMARY_PART_INDEX);
+    EXPECT_EQ(analyzer.item_part_index(part_id), SEMA_TEST_FRAGMENT_PART_INDEX);
+    EXPECT_EQ(analyzer.query_module_part_key(primary_id), primary_key);
+    EXPECT_EQ(analyzer.query_module_part_key(part_id), part_key);
+
+    const sema::DeclContext part_declaration = analyzer.declaration_context(part_id);
+    EXPECT_EQ(part_declaration.module, module_key);
+    EXPECT_EQ(part_declaration.part, part_key);
+    EXPECT_FALSE(query::is_valid(analyzer.declaration_context(module_id(0)).part));
+
+    analyzer.state_.flow.current_module = module_id(0);
+    analyzer.state_.flow.current_item = part_id;
+    const sema::AccessContext part_access = analyzer.current_access_context();
+    EXPECT_EQ(part_access.module, module_key);
+    EXPECT_EQ(part_access.part, part_key);
+
+    analyzer.state_.flow.current_item = syntax::INVALID_ITEM_ID;
+    const sema::AccessContext module_only_access = analyzer.current_access_context();
+    EXPECT_EQ(module_only_access.module, module_key);
+    EXPECT_FALSE(query::is_valid(module_only_access.part));
+    EXPECT_FALSE(query::is_valid(analyzer.query_module_part_key(syntax::INVALID_ITEM_ID)));
+}
+
 TEST(CoreUnit, SemanticWhiteBoxLookupsAndMethodReceivers)
 {
     syntax::AstModule module;

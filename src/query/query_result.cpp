@@ -54,6 +54,11 @@ bool is_valid(const ModuleGraphQueryInput& input) noexcept
     return is_valid(input.key) && is_valid(input.result);
 }
 
+bool is_valid(const ModulePartQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
 bool is_valid(const ModuleExportsQueryInput& input) noexcept
 {
     return is_valid(input.key) && is_valid(input.result);
@@ -228,6 +233,23 @@ std::optional<QueryRecord> module_graph_query_record(const ModuleGraphQueryInput
 std::optional<QueryRecord> module_graph_query_record(const ModuleKey key, const QueryResultFingerprint result)
 {
     return module_graph_query_record(ModuleGraphQueryInput{
+        key,
+        result,
+    });
+}
+
+std::optional<QueryRecord> module_part_query_record(const ModulePartQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::module_part, stable_key_fingerprint(input.key), stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> module_part_query_record(const ModulePartKey key, const QueryResultFingerprint result)
+{
+    return module_part_query_record(ModulePartQueryInput{
         key,
         result,
     });

@@ -33,6 +33,7 @@ struct QueryKindExecutionCounts {
     base::usize file_contents = 0;
     base::usize lex_files = 0;
     base::usize parse_files = 0;
+    base::usize module_parts = 0;
     base::usize module_graphs = 0;
     base::usize module_exports = 0;
     base::usize item_lists = 0;
@@ -125,6 +126,11 @@ struct ModuleGraphQuerySubject {
     query::QueryResultFingerprint result;
 };
 
+struct ModulePartQuerySubject {
+    query::ModulePartKey key;
+    query::QueryResultFingerprint result;
+};
+
 struct ModuleExportsSignatureEntry {
     std::string category;
     std::string name;
@@ -195,6 +201,7 @@ enum class QuerySubjectKind : base::u8 {
     file_content,
     lex_file,
     parse_file,
+    module_part,
     module_graph,
     module_exports,
     module_package_exports,
@@ -216,6 +223,7 @@ struct QuerySubject {
 };
 
 struct QuerySubjectCollection {
+    std::vector<ModulePartQuerySubject> module_parts;
     std::vector<ModuleGraphQuerySubject> module_graphs;
     std::vector<ModuleExportsQuerySubject> module_exports;
     std::vector<ModulePackageExportsQuerySubject> module_package_exports;

@@ -79,6 +79,27 @@ query::ModuleKey SemanticAnalyzerCore::query_module_key(const syntax::ModuleId m
         package, sema::stable_module_id(this->ctx_.module.modules[module.value].path.parts));
 }
 
+query::ModulePartKey SemanticAnalyzerCore::query_module_part_key(
+    const syntax::ModuleId module, const base::u32 part_index) const noexcept
+{
+    if (!syntax::is_valid(module) || module.value >= this->ctx_.options.module_part_keys.size()) {
+        return {};
+    }
+    const std::vector<query::ModulePartKey>& part_keys = this->ctx_.options.module_part_keys[module.value];
+    if (part_index >= part_keys.size()) {
+        return {};
+    }
+    return part_keys[part_index];
+}
+
+query::ModulePartKey SemanticAnalyzerCore::query_module_part_key(const syntax::ItemId item) const noexcept
+{
+    if (!syntax::is_valid(item) || item.value >= this->ctx_.module.items.size()) {
+        return {};
+    }
+    return this->query_module_part_key(this->item_module(item), this->item_part_index(item));
+}
+
 query::PackageKey SemanticAnalyzerCore::query_package_key(const syntax::ModuleId module) const noexcept
 {
     if (syntax::is_valid(module) && module.value < this->ctx_.options.module_packages.size()

@@ -62,6 +62,7 @@ struct ModuleInfo {
 struct ItemImportScope {
     base::u32 item_begin = 0;
     base::u32 item_count = 0;
+    base::u32 part_index = 0;
     std::vector<ResolvedImport> imports;
 
     [[nodiscard]] bool contains(const ItemId item) const noexcept
@@ -86,6 +87,7 @@ struct AstModule {
     StmtNodeList stmts;
     ItemNodeList items;
     std::vector<ModuleId> item_modules;
+    std::vector<base::u32> item_part_indices;
     std::vector<ItemImportScope> item_import_scopes;
     IdentifierInterner identifiers;
 
@@ -213,7 +215,7 @@ struct AstModule {
     [[nodiscard]] PatternId push_pattern(PatternNode node);
     [[nodiscard]] StmtId push_stmt(StmtNode node);
     [[nodiscard]] ItemId push_item(ItemNode node);
-    [[nodiscard]] ItemId push_item_for_module(ItemNode node, ModuleId module);
+    [[nodiscard]] ItemId push_item_for_module(ItemNode node, ModuleId module, base::u32 part_index = 0);
 
     void set_invalid_expr(base::usize index, const base::SourceRange& range);
 

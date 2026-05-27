@@ -15,6 +15,9 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const QuerySub
         case QuerySubjectKind::parse_file:
             counts.parse_files += 1;
             return;
+        case QuerySubjectKind::module_part:
+            counts.module_parts += 1;
+            return;
         case QuerySubjectKind::module_graph:
             counts.module_graphs += 1;
             return;
@@ -69,6 +72,9 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
             return;
         case query::QueryKind::parse_file:
             counts.parse_files += 1;
+            return;
+        case query::QueryKind::module_part:
+            counts.module_parts += 1;
             return;
         case query::QueryKind::module_graph:
             counts.module_graphs += 1;

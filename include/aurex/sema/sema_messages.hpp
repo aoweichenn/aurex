@@ -13,8 +13,14 @@ inline constexpr std::string_view SEMA_ANALYSIS_FAILED = "semantic analysis fail
 inline constexpr std::string_view SEMA_AST_ITEM_MODULE_CONTRACT =
     "semantic AST contract violation: item_modules must contain one module owner per item";
 
+inline constexpr std::string_view SEMA_AST_ITEM_PART_CONTRACT =
+    "semantic AST contract violation: item_part_indices must contain one part owner per item";
+
 inline constexpr std::string_view SEMA_AST_ITEM_MODULE_INVALID =
     "semantic AST contract violation: item module owner is invalid";
+
+inline constexpr std::string_view SEMA_AST_ITEM_PART_INVALID =
+    "semantic AST contract violation: item module part owner is invalid";
 
 inline constexpr std::string_view SEMA_DUPLICATE_SYMBOL = "duplicate symbol";
 

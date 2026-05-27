@@ -1,9 +1,9 @@
 # Aurex M3 模块系统设计稿
 
-状态：M3.0 当前设计基线，Phase 1-5、Phase 6A、Phase 6B、Phase 6C 与 Phase 7A-D 已进入实现闭环
+状态：M3.0 当前设计基线，Phase 1-5、Phase 6A、Phase 6B、Phase 6C、Phase 7A-D 与 Phase 8A-B 已进入实现闭环
 日期：2026-05-27
 适用范围：同一 package 内的 logical module / source-file part 分离、module graph、exports query、
-package identity、manifest source-root、跨 part `priv` 可见性
+package identity、manifest source-root、跨 part `priv` 可见性、sema part identity、module_part query boundary
 
 ## 1. 设计结论
 
@@ -837,6 +837,33 @@ Phase 7A-D 实现收口状态（2026-05-27）：
   `--dump-modules` part identity 展示、part root artifact 拒绝、既有 duplicate/missing/mismatch/case
   collision/import-to-part/private-surface/part-local import 行为继续通过。该阶段仍不引入 workspace
   resolver、dependency graph、lockfile、nested module tree、selective `pub use` 或 `pub(in path)`。
+
+Phase 8A-B 实现收口状态（2026-05-27）：
+
+- Phase 8A 把 part stable index 从 loader 贯通到 sema item context。`AstModule` 现在为每个 item 保存
+  `item_part_indices`，`ItemImportScope` 也记录 owner part index；parser-only 路径继续默认 primary part，
+  保持 syntax 层不直接依赖 query key。`ModuleLoader` 在合并 primary / named part AST 时写入对应
+  stable index，`FrontendPipeline` 再把 `ModuleRecord.parts[].key` 映射为
+  `SemanticOptions::module_part_keys`。
+- Sema 现在可以由 `ItemId` 查询所属 part index 和 `ModulePartKey`，并在
+  `declaration_context(ItemId)` / `current_access_context()` 的当前 item 路径中携带真实 part identity；
+  `declaration_context(ModuleId)` 仍是 module-only fallback，part 保持 invalid。这样 access policy、
+  diagnostics 和未来 IDE/LSP 增量分析可以区分“当前声明来自哪个 part”，但不会把 module-level visibility
+  判断误升级成 part-level isolation。
+- Phase 8B 新增 `QueryKind::module_part` 和 `ModulePartQuery` provider。该 query 的 key 是
+  `ModulePartKey`，result fingerprint 描述该 part 作为 cache subject 的稳定事实，provider 只依赖同一
+  source file 的 `ParseFileKey`，因此 query graph 中允许 `module_part -> parse_file` dependency edge。
+- Stable key decoder、edge verifier、query executor、query provider set、query context、incremental cache
+  schedule/profile/stats/subjects/ordering 均已识别 `module_part`。增量缓存可写出 `query\tmodule_part`
+  和 `query_edge\tmodule_part`，profile 中单独统计 reused/recomputed/seeded/evaluated module parts。
+- `ModuleGraph(ModuleKey)` 仍不依赖 `ModulePartQuery`。Graph 的 part fact 已混入 module/file/name/kind
+  identity，并刻意排除 `stable_index` 的 semantic 影响；若 graph 依赖 `module_part`，part list 重排会因
+  `ModulePartKey.stable_index` 改变而误 red，违背 Phase 7C 固定的 red/green contract。
+- 普通 gtest 覆盖了 sema current-item part context、AST item part contract、`module_part` query record、
+  stable key layout / malformed rejection、edge verifier、query executor/provider、incremental cache
+  subject 写入和 profile 计数。该阶段不引入 per-part sema isolation、per-part codegen artifact、
+  workspace resolver、dependency graph、lockfile、nested module tree、selective `pub use` 或
+  `pub(in path)`。
 
 ### 7.1 `priv` 跨 part
 

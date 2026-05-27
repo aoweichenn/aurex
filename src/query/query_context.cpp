@@ -115,6 +115,11 @@ void QueryContext::set_module_graph_provider(ModuleGraphProvider provider)
     this->providers_.set_module_graph_provider(std::move(provider));
 }
 
+void QueryContext::set_module_part_provider(ModulePartProvider provider)
+{
+    this->providers_.set_module_part_provider(std::move(provider));
+}
+
 void QueryContext::set_module_exports_provider(ModuleExportsProvider provider)
 {
     this->providers_.set_module_exports_provider(std::move(provider));
@@ -200,6 +205,13 @@ QueryEvaluationResult QueryContext::evaluate_module_graph(const ModuleGraphProvi
 {
     return this->evaluate_query<ModuleGraphProviderOutput>(module_graph_query_key(input.key), [this, &input] {
         return this->providers_.provide_module_graph(input);
+    });
+}
+
+QueryEvaluationResult QueryContext::evaluate_module_part(const ModulePartProviderInput& input)
+{
+    return this->evaluate_query<ModulePartProviderOutput>(module_part_query_key(input.key), [this, &input] {
+        return this->providers_.provide_module_part(input);
     });
 }
 

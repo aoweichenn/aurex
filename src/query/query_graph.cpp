@@ -17,6 +17,8 @@ bool query_dependency_edge_kind_is_expected(const QueryDependencyEdge edge) noex
             return edge.dependency.kind == QueryKind::file_content;
         case QueryKind::parse_file:
             return edge.dependency.kind == QueryKind::lex_file;
+        case QueryKind::module_part:
+            return edge.dependency.kind == QueryKind::parse_file;
         case QueryKind::item_list:
             return edge.dependency.kind == QueryKind::module_graph;
         case QueryKind::module_exports:

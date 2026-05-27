@@ -25,6 +25,17 @@ namespace {
     return dependent_key == dependency_key && stable_key_has_generic_instance_key_layout(dependent_key);
 }
 
+[[nodiscard]] bool stable_module_part_depends_on_parse_file(
+    const std::string_view dependent_key, const std::string_view dependency_key) noexcept
+{
+    const std::optional<DecodedModulePartKeyIdentity> dependent_identity =
+        decode_module_part_key_identity(dependent_key);
+    const std::optional<DecodedParseFileKeyIdentity> dependency_identity =
+        decode_parse_file_key_identity(dependency_key);
+    return dependent_identity.has_value() && dependency_identity.has_value()
+        && dependent_identity->file == dependency_identity->file;
+}
+
 [[nodiscard]] bool lower_function_ir_dependency_identity_is_valid(
     const QueryRecord& dependent, const QueryRecord& dependency) noexcept
 {
@@ -56,6 +67,8 @@ namespace {
                 && dependent_identity->file == dependency_identity->file
                 && dependent_identity->lex_config == dependency_identity->lex_config;
         }
+        case QueryKind::module_part:
+            return stable_module_part_depends_on_parse_file(dependent_key, dependency_key);
         case QueryKind::item_list:
             return stable_module_keys_match(dependent_key, dependency_key);
         case QueryKind::module_exports:

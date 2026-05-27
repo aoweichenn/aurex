@@ -291,8 +291,13 @@ TEST_F(AurexIntegrationTest, ModuleLoaderRecordsModulePartKeys)
     ASSERT_EQ(modules.front().parts.size(), 2U);
     const driver::ModulePartRecord& primary_part = modules.front().parts.front();
     const driver::ModulePartRecord& worker_part = modules.front().parts.back();
+    const std::array<std::string_view, 2> module_path{"m3", "part_keys"};
+    const query::ModuleKey expected_module = query::module_key_from_stable_id(modules.front().package,
+        sema::stable_module_id(std::span<const std::string_view>{module_path.data(), module_path.size()}));
     EXPECT_TRUE(query::is_valid(primary_part.key));
     EXPECT_TRUE(query::is_valid(worker_part.key));
+    EXPECT_EQ(primary_part.key.module, expected_module);
+    EXPECT_EQ(worker_part.key.module, expected_module);
     EXPECT_EQ(primary_part.key.kind, query::ModulePartKind::primary);
     EXPECT_EQ(worker_part.key.kind, query::ModulePartKind::fragment);
     EXPECT_EQ(worker_part.stable_index, 1U);

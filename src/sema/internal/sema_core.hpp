@@ -709,7 +709,11 @@ private:
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     [[nodiscard]] query::PackageKey query_package_key(syntax::ModuleId module) const noexcept;
     [[nodiscard]] query::ModuleKey query_module_key(syntax::ModuleId module) const noexcept;
+    [[nodiscard]] query::ModulePartKey query_module_part_key(
+        syntax::ModuleId module, base::u32 part_index) const noexcept;
+    [[nodiscard]] query::ModulePartKey query_module_part_key(syntax::ItemId item) const noexcept;
     [[nodiscard]] DeclContext declaration_context(syntax::ModuleId module) const noexcept;
+    [[nodiscard]] DeclContext declaration_context(syntax::ItemId item) const noexcept;
     [[nodiscard]] AccessContext current_access_context() const noexcept;
     [[nodiscard]] query::DefKey generic_template_query_key(
         const GenericTemplateInfo& info, query::DefNamespace name_space) const noexcept;
@@ -787,6 +791,7 @@ private:
     void validate_unsafe_call(const FunctionSignature& signature, const base::SourceRange& range) const;
     void validate_unsafe_function_value_call(TypeHandle callee_type, const base::SourceRange& range) const;
     [[nodiscard]] syntax::ModuleId item_module(syntax::ItemId item) const noexcept;
+    [[nodiscard]] base::u32 item_part_index(syntax::ItemId item) const noexcept;
     [[nodiscard]] const syntax::ItemImportScope* item_import_scope(syntax::ItemId item) const noexcept;
     [[nodiscard]] std::span<const syntax::ResolvedImport> imports_for_scope(syntax::ModuleId module) const noexcept;
     [[nodiscard]] bool uses_item_import_scope(syntax::ModuleId module) const noexcept;

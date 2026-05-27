@@ -10,6 +10,7 @@
 #include <aurex/query/lower_function_ir_query.hpp>
 #include <aurex/query/module_exports_query.hpp>
 #include <aurex/query/module_graph_query.hpp>
+#include <aurex/query/module_part_query.hpp>
 #include <aurex/query/source_file_query.hpp>
 #include <aurex/query/type_check_body_query.hpp>
 
@@ -29,6 +30,7 @@ using LowerFunctionIRProvider =
 using LowerGenericInstanceIRProvider =
     std::function<std::optional<LowerGenericInstanceIRProviderOutput>(const LowerGenericInstanceIRProviderInput&)>;
 using ModuleGraphProvider = std::function<std::optional<ModuleGraphProviderOutput>(const ModuleGraphProviderInput&)>;
+using ModulePartProvider = std::function<std::optional<ModulePartProviderOutput>(const ModulePartProviderInput&)>;
 using ModuleExportsProvider =
     std::function<std::optional<ModuleExportsProviderOutput>(const ModuleExportsProviderInput&)>;
 using ModulePackageExportsProvider =
@@ -50,6 +52,7 @@ struct QueryProviderOverrides final {
     LexFileProvider lex_file;
     ParseFileProvider parse_file;
     ModuleGraphProvider module_graph;
+    ModulePartProvider module_part;
     ModuleExportsProvider module_exports;
     ModulePackageExportsProvider module_package_exports;
     ItemListProvider item_list;
@@ -78,6 +81,7 @@ public:
     void set_lex_file_provider(LexFileProvider provider);
     void set_parse_file_provider(ParseFileProvider provider);
     void set_module_graph_provider(ModuleGraphProvider provider);
+    void set_module_part_provider(ModulePartProvider provider);
     void set_module_exports_provider(ModuleExportsProvider provider);
     void set_module_package_exports_provider(ModulePackageExportsProvider provider);
     void set_item_list_provider(ItemListProvider provider);
@@ -97,6 +101,8 @@ public:
     [[nodiscard]] std::optional<ParseFileProviderOutput> provide_parse_file(const ParseFileProviderInput& input) const;
     [[nodiscard]] std::optional<ModuleGraphProviderOutput> provide_module_graph(
         const ModuleGraphProviderInput& input) const;
+    [[nodiscard]] std::optional<ModulePartProviderOutput> provide_module_part(
+        const ModulePartProviderInput& input) const;
     [[nodiscard]] std::optional<ModuleExportsProviderOutput> provide_module_exports(
         const ModuleExportsProviderInput& input) const;
     [[nodiscard]] std::optional<ModulePackageExportsProviderOutput> provide_module_package_exports(
@@ -126,6 +132,7 @@ private:
     LexFileProvider lex_file_provider_;
     ParseFileProvider parse_file_provider_;
     ModuleGraphProvider module_graph_provider_;
+    ModulePartProvider module_part_provider_;
     ModuleExportsProvider module_exports_provider_;
     ModulePackageExportsProvider module_package_exports_provider_;
     ItemListProvider item_list_provider_;

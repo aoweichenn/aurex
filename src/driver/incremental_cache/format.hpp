@@ -124,6 +124,7 @@ constexpr std::string_view INCREMENTAL_CACHE_LEX_FILE_ERROR_MARKER = "lex-error"
 constexpr std::string_view INCREMENTAL_CACHE_PARSE_FILE_RESULT_MARKER = "parse-file:v1";
 constexpr std::string_view INCREMENTAL_CACHE_PARSE_FILE_ERROR_MARKER = "parse-error";
 constexpr std::string_view INCREMENTAL_CACHE_MODULE_GRAPH_RESULT_MARKER = "module-graph:v1";
+constexpr std::string_view INCREMENTAL_CACHE_MODULE_PART_RESULT_MARKER = "module-part:v1";
 constexpr std::string_view INCREMENTAL_CACHE_MODULE_EXPORTS_RESULT_MARKER = "module-exports:v1";
 constexpr std::string_view INCREMENTAL_CACHE_MODULE_PACKAGE_EXPORTS_RESULT_MARKER = "module-package-exports:v1";
 constexpr std::string_view INCREMENTAL_CACHE_ITEM_LIST_RESULT_MARKER = "item-list:v1";
@@ -204,6 +205,7 @@ constexpr auto INCREMENTAL_CACHE_QUERY_KIND_NAMES = std::to_array<QueryKindCache
     {query::QueryKind::lex_file, "lex_file"},
     {query::QueryKind::parse_file, "parse_file"},
     {query::QueryKind::module_graph, "module_graph"},
+    {query::QueryKind::module_part, "module_part"},
     {query::QueryKind::module_exports, "module_exports"},
     {query::QueryKind::module_package_exports, "module_package_exports"},
     {query::QueryKind::item_list, "item_list"},

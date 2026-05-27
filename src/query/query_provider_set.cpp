@@ -43,6 +43,7 @@ QueryProviderSet::QueryProviderSet(QueryProviderOverrides overrides)
     this->set_lex_file_provider(std::move(overrides.lex_file));
     this->set_parse_file_provider(std::move(overrides.parse_file));
     this->set_module_graph_provider(std::move(overrides.module_graph));
+    this->set_module_part_provider(std::move(overrides.module_part));
     this->set_module_exports_provider(std::move(overrides.module_exports));
     this->set_module_package_exports_provider(std::move(overrides.module_package_exports));
     this->set_item_list_provider(std::move(overrides.item_list));
@@ -94,6 +95,11 @@ void QueryProviderSet::set_parse_file_provider(ParseFileProvider provider)
 void QueryProviderSet::set_module_graph_provider(ModuleGraphProvider provider)
 {
     this->module_graph_provider_ = provider ? std::move(provider) : ModuleGraphProvider{provide_module_graph_query};
+}
+
+void QueryProviderSet::set_module_part_provider(ModulePartProvider provider)
+{
+    this->module_part_provider_ = provider ? std::move(provider) : ModulePartProvider{provide_module_part_query};
 }
 
 void QueryProviderSet::set_module_exports_provider(ModuleExportsProvider provider)
@@ -190,6 +196,12 @@ std::optional<ModuleGraphProviderOutput> QueryProviderSet::provide_module_graph(
     const ModuleGraphProviderInput& input) const
 {
     return this->module_graph_provider_(input);
+}
+
+std::optional<ModulePartProviderOutput> QueryProviderSet::provide_module_part(
+    const ModulePartProviderInput& input) const
+{
+    return this->module_part_provider_(input);
 }
 
 std::optional<ModuleExportsProviderOutput> QueryProviderSet::provide_module_exports(

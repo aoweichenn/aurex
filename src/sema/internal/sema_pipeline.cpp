@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <utility>
+#include <vector>
 
 #include <sema/internal/sema_core.hpp>
 #include <sema/internal/sema_pipeline.hpp>
@@ -288,6 +289,7 @@ void SemanticAnalysisPipeline::normalize_parser_only_module_contract()
     root.path = this->core_.ctx_.module.module_path;
     this->core_.ctx_.module.modules.push_back(std::move(root));
     this->core_.ctx_.module.item_modules.assign(this->core_.ctx_.module.items.size(), syntax::ModuleId{0});
+    this->core_.ctx_.module.item_part_indices.assign(this->core_.ctx_.module.items.size(), 0);
     this->core_.state_.checked.normalized_ast.parser_only_module_contract_added = true;
 }
 
@@ -296,6 +298,10 @@ bool SemanticAnalysisPipeline::validate_ast_contract() const
     bool valid = true;
     if (this->core_.ctx_.module.item_modules.size() != this->core_.ctx_.module.items.size()) {
         this->core_.report_internal_contract({}, std::string(SEMA_AST_ITEM_MODULE_CONTRACT));
+        valid = false;
+    }
+    if (this->core_.ctx_.module.item_part_indices.size() != this->core_.ctx_.module.items.size()) {
+        this->core_.report_internal_contract({}, std::string(SEMA_AST_ITEM_PART_CONTRACT));
         valid = false;
     }
     for (const syntax::ItemImportScope& scope : this->core_.ctx_.module.item_import_scopes) {
@@ -317,6 +323,17 @@ bool SemanticAnalysisPipeline::validate_ast_contract() const
             this->core_.report_internal_contract(
                 this->core_.ctx_.module.items.range(i), std::string(SEMA_AST_ITEM_MODULE_INVALID));
             valid = false;
+        }
+        if (owner.value < this->core_.ctx_.options.module_part_keys.size()
+            && !this->core_.ctx_.options.module_part_keys[owner.value].empty()) {
+            const std::vector<query::ModulePartKey>& part_keys = this->core_.ctx_.options.module_part_keys[owner.value];
+            if (i >= this->core_.ctx_.module.item_part_indices.size()
+                || this->core_.ctx_.module.item_part_indices[i] >= part_keys.size()
+                || !query::is_valid(part_keys[this->core_.ctx_.module.item_part_indices[i]])) {
+                this->core_.report_internal_contract(
+                    this->core_.ctx_.module.items.range(i), std::string(SEMA_AST_ITEM_PART_INVALID));
+                valid = false;
+            }
         }
     }
     return valid;

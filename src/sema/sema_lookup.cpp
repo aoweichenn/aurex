@@ -103,6 +103,14 @@ syntax::ModuleId SemanticAnalyzerCore::item_module(const syntax::ItemId item) co
     return this->ctx_.module.item_modules[item.value];
 }
 
+base::u32 SemanticAnalyzerCore::item_part_index(const syntax::ItemId item) const noexcept
+{
+    if (!syntax::is_valid(item) || item.value >= this->ctx_.module.item_part_indices.size()) {
+        return 0;
+    }
+    return this->ctx_.module.item_part_indices[item.value];
+}
+
 const syntax::ItemImportScope* SemanticAnalyzerCore::item_import_scope(const syntax::ItemId item) const noexcept
 {
     if (!syntax::is_valid(item)) {
@@ -599,8 +607,28 @@ DeclContext SemanticAnalyzerCore::declaration_context(const syntax::ModuleId own
     return {};
 }
 
+DeclContext SemanticAnalyzerCore::declaration_context(const syntax::ItemId item) const noexcept
+{
+    if (!syntax::is_valid(item) || item.value >= this->ctx_.module.items.size()) {
+        return {};
+    }
+    const syntax::ModuleId owner = this->item_module(item);
+    if (syntax::is_valid(owner) && owner.value < this->ctx_.module.modules.size()) {
+        return decl_context_from_module_key(this->query_module_key(owner), this->query_module_part_key(item));
+    }
+    return {};
+}
+
 AccessContext SemanticAnalyzerCore::current_access_context() const noexcept
 {
+    if (syntax::is_valid(this->state_.flow.current_item)
+        && this->state_.flow.current_item.value < this->ctx_.module.items.size()) {
+        const syntax::ModuleId item_owner = this->item_module(this->state_.flow.current_item);
+        if (syntax::is_valid(item_owner) && item_owner.value < this->ctx_.module.modules.size()) {
+            return access_context_from_module_key(
+                this->query_module_key(item_owner), this->query_module_part_key(this->state_.flow.current_item));
+        }
+    }
     if (syntax::is_valid(this->state_.flow.current_module)
         && this->state_.flow.current_module.value < this->ctx_.module.modules.size()) {
         return access_context_from_module_key(this->query_module_key(this->state_.flow.current_module));

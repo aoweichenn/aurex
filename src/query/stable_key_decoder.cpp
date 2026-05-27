@@ -14,6 +14,7 @@ constexpr base::u64 QUERY_PARSER_CONFIG_KEY_MARKER = 0x5150434647303031ULL;
 constexpr base::u64 QUERY_LEX_FILE_KEY_MARKER = 0x514c5846494c4531ULL;
 constexpr base::u64 QUERY_PARSE_FILE_KEY_MARKER = 0x5150525346494c45ULL;
 constexpr base::u64 QUERY_MODULE_KEY_MARKER = 0x514d4f4459303031ULL;
+constexpr base::u64 QUERY_MODULE_PART_KEY_MARKER = 0x514d504152543031ULL;
 constexpr base::u64 QUERY_DEF_KEY_MARKER = 0x514445464b455931ULL;
 constexpr base::u64 QUERY_MEMBER_KEY_MARKER = 0x514d454d4b455931ULL;
 constexpr base::u64 QUERY_BODY_KEY_MARKER = 0x51424f4459303031ULL;
@@ -175,6 +176,11 @@ template <typename Enum>
     return read_enum_value(reader, enum_byte(ModuleKind::source), enum_byte(ModuleKind::synthetic));
 }
 
+[[nodiscard]] bool read_module_part_kind(StableKeyReader& reader) noexcept
+{
+    return read_enum_value(reader, enum_byte(ModulePartKind::primary), enum_byte(ModulePartKind::generated));
+}
+
 [[nodiscard]] bool read_def_namespace(StableKeyReader& reader) noexcept
 {
     return read_enum_value(reader, enum_byte(DefNamespace::value), enum_byte(DefNamespace::synthetic));
@@ -202,7 +208,7 @@ template <typename Enum>
 
 [[nodiscard]] bool read_query_kind(StableKeyReader& reader) noexcept
 {
-    return read_enum_value(reader, enum_byte(QueryKind::file_content), enum_byte(QueryKind::module_package_exports));
+    return read_enum_value(reader, enum_byte(QueryKind::file_content), enum_byte(QueryKind::module_part));
 }
 
 [[nodiscard]] bool read_builtin_type_kind(StableKeyReader& reader) noexcept
@@ -224,6 +230,7 @@ template <typename Enum>
 [[nodiscard]] bool skip_file_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_lex_config_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_module_key(StableKeyReader& reader) noexcept;
+[[nodiscard]] bool skip_module_part_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_def_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_member_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_body_key(StableKeyReader& reader) noexcept;
@@ -258,6 +265,14 @@ template <typename Enum>
         return std::nullopt;
     }
     return reader.slice_from(start);
+}
+
+[[nodiscard]] std::optional<std::string_view> read_module_part_key_module_slice(StableKeyReader& reader) noexcept
+{
+    if (!read_marker(reader, QUERY_MODULE_PART_KEY_MARKER)) {
+        return std::nullopt;
+    }
+    return read_module_key_slice(reader);
 }
 
 [[nodiscard]] std::optional<std::string_view> read_def_key_slice(StableKeyReader& reader) noexcept
@@ -305,6 +320,13 @@ template <typename Enum>
 {
     return read_marker(reader, QUERY_MODULE_KEY_MARKER) && skip_package_key(reader) && skip_fingerprint(reader)
         && reader.skip(QUERY_STABLE_U32_BYTES) && read_module_kind(reader) && read_nonzero_u64(reader);
+}
+
+[[nodiscard]] bool skip_module_part_key(StableKeyReader& reader) noexcept
+{
+    return read_marker(reader, QUERY_MODULE_PART_KEY_MARKER) && skip_module_key(reader) && skip_file_key(reader)
+        && skip_fingerprint(reader) && reader.skip(QUERY_STABLE_U32_BYTES) && read_module_part_kind(reader)
+        && read_nonzero_u64(reader);
 }
 
 [[nodiscard]] bool skip_def_key(StableKeyReader& reader) noexcept
@@ -507,6 +529,11 @@ bool stable_key_has_module_key_layout(const std::string_view bytes) noexcept
     return stable_key_has_layout(bytes, skip_module_key);
 }
 
+bool stable_key_has_module_part_key_layout(const std::string_view bytes) noexcept
+{
+    return stable_key_has_layout(bytes, skip_module_part_key);
+}
+
 bool stable_key_has_body_key_layout(const std::string_view bytes) noexcept
 {
     return stable_key_has_layout(bytes, skip_body_key);
@@ -531,6 +558,8 @@ bool stable_key_layout_matches_query_kind(const QueryKind kind, const std::strin
             return decode_lex_file_key_identity(bytes).has_value();
         case QueryKind::parse_file:
             return decode_parse_file_key_identity(bytes).has_value();
+        case QueryKind::module_part:
+            return stable_key_has_module_part_key_layout(bytes);
         case QueryKind::module_graph:
         case QueryKind::module_exports:
         case QueryKind::module_package_exports:
@@ -584,6 +613,23 @@ std::optional<DecodedParseFileKeyIdentity> decode_parse_file_key_identity(const 
     return DecodedParseFileKeyIdentity{
         *file,
         *lex_config,
+    };
+}
+
+std::optional<DecodedModulePartKeyIdentity> decode_module_part_key_identity(const std::string_view bytes) noexcept
+{
+    StableKeyReader reader(bytes);
+    std::optional<std::string_view> module;
+    std::optional<std::string_view> file;
+    if (!(module = read_module_part_key_module_slice(reader)).has_value()
+        || !(file = read_file_key_slice(reader)).has_value() || !skip_fingerprint(reader)
+        || !reader.skip(QUERY_STABLE_U32_BYTES) || !read_module_part_kind(reader) || !read_nonzero_u64(reader)
+        || !reader.eof()) {
+        return std::nullopt;
+    }
+    return DecodedModulePartKeyIdentity{
+        *module,
+        *file,
     };
 }
 

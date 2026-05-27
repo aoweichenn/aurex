@@ -16,6 +16,8 @@ void collect_source_file_query_subjects(
 
 [[nodiscard]] std::vector<ModuleGraphQuerySubject> collect_module_graph_query_subjects(
     std::span<const ModuleRecord> modules);
+[[nodiscard]] std::vector<ModulePartQuerySubject> collect_module_part_query_subjects(
+    std::span<const ModuleRecord> modules);
 [[nodiscard]] std::vector<ModuleExportsQuerySubject> collect_module_exports_query_subjects(
     std::span<const ModuleRecord> modules, const sema::CheckedModule& checked, const syntax::AstModule* ast);
 [[nodiscard]] std::vector<ModulePackageExportsQuerySubject> collect_module_package_exports_query_subjects(

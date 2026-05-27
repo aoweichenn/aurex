@@ -17,8 +17,8 @@ AstModule::AstModule(const AstModule& other)
     : module_path(other.module_path), file_kind(other.file_kind), part_header(other.part_header),
       part_declarations(other.part_declarations), imports(other.imports), modules(other.modules), types(other.types),
       exprs(other.exprs), patterns(other.patterns), stmts(other.stmts), items(other.items),
-      item_modules(other.item_modules), item_import_scopes(other.item_import_scopes), identifiers(other.identifiers),
-      identifiers_ready_(false)
+      item_modules(other.item_modules), item_part_indices(other.item_part_indices),
+      item_import_scopes(other.item_import_scopes), identifiers(other.identifiers), identifiers_ready_(false)
 {
     this->intern_identifiers();
 }
@@ -40,6 +40,7 @@ AstModule& AstModule::operator=(const AstModule& other)
     this->stmts = other.stmts;
     this->items = other.items;
     this->item_modules = other.item_modules;
+    this->item_part_indices = other.item_part_indices;
     this->item_import_scopes = other.item_import_scopes;
     this->identifiers = other.identifiers;
     this->identifiers_ready_ = false;
@@ -212,11 +213,12 @@ ItemId AstModule::push_item(ItemNode node)
     return this->push_item_for_module(std::move(node), INVALID_MODULE_ID);
 }
 
-ItemId AstModule::push_item_for_module(ItemNode node, const ModuleId module)
+ItemId AstModule::push_item_for_module(ItemNode node, const ModuleId module, const base::u32 part_index)
 {
     this->intern_item_node(node);
     const ItemId id = this->items.append(std::move(node));
     this->item_modules.push_back(module);
+    this->item_part_indices.push_back(part_index);
     return id;
 }
 

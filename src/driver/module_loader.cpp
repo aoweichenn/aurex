@@ -38,8 +38,8 @@ inline constexpr std::string_view MODULE_LOADER_PRIMARY_PART_KEY_NAME = "<primar
 [[nodiscard]] query::ModuleKey module_key_from_path(
     const query::PackageKey package, const syntax::ModulePath& module_path) noexcept
 {
-    return query::module_key(
-        package, std::span<const std::string_view>{module_path.parts.data(), module_path.parts.size()});
+    const std::span<const std::string_view> parts{module_path.parts.data(), module_path.parts.size()};
+    return query::module_key_from_stable_id(package, query::stable_module_id(parts));
 }
 
 [[nodiscard]] query::ModulePartKey make_module_part_key(const query::PackageKey package,
@@ -325,12 +325,13 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
             && combined.modules.size() == 1 && ast_payloads_empty(combined)) {
             move_root_module_into_empty_combined(combined, std::move(module), module_id);
         } else {
-            append_module_into(combined, std::move(module), is_root, module_id, direct_imports);
+            append_module_into(combined, std::move(module), is_root, module_id, 0, direct_imports);
             if (syntax::is_valid(module_id) && module_id.value < combined.modules.size()) {
                 combined.modules[module_id.value].imports = std::move(direct_imports);
             }
             for (LoadedModulePartAst& part_module : part_modules) {
-                append_module_into(combined, std::move(part_module.module), false, module_id, part_module.imports);
+                append_module_into(combined, std::move(part_module.module), false, module_id, part_module.stable_index,
+                    part_module.imports);
             }
         }
     }
@@ -428,6 +429,7 @@ base::Result<std::vector<ModuleLoader::LoadedModulePartAst>> ModuleLoader::load_
             canonical_part_path, query::ModulePartKind::fragment, part_name, stable_part_index);
         this->record_module_part(module_id, part_name, canonical_part_path, stable_part_index, part_key);
         this->record_module_imports(module_id, part_name, false, part_module.imports, combined);
+        part_module.stable_index = stable_part_index;
         ++stable_part_index;
         part_modules.push_back(std::move(part_module));
     }
@@ -483,6 +485,7 @@ base::Result<ModuleLoader::LoadedModulePartAst> ModuleLoader::load_module_part(c
     return base::Result<LoadedModulePartAst>::ok(LoadedModulePartAst{
         std::string(part_decl.name),
         canonical,
+        0,
         std::move(part_module),
         std::move(part_imports),
     });

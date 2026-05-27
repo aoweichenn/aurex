@@ -20,6 +20,7 @@ namespace aurex::sema {
 struct SemanticOptions {
     query::PackageKey default_package;
     std::vector<query::PackageKey> module_packages;
+    std::vector<std::vector<query::ModulePartKey>> module_part_keys;
     bool retain_generic_side_tables = true;
 };
 

@@ -34,6 +34,7 @@ namespace aurex::driver::incremental_cache_detail {
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_FILE_CONTENTS << result.reused.file_contents
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LEX_FILES << result.reused.lex_files
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_PARSE_FILES << result.reused.parse_files
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_MODULE_PARTS << result.reused.module_parts
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_MODULE_GRAPHS << result.reused.module_graphs
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_MODULE_EXPORTS << result.reused.module_exports
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_ITEM_LISTS << result.reused.item_lists
@@ -50,6 +51,7 @@ namespace aurex::driver::incremental_cache_detail {
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_FILE_CONTENTS << result.recomputed.file_contents
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_LEX_FILES << result.recomputed.lex_files
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_PARSE_FILES << result.recomputed.parse_files
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_PARTS << result.recomputed.module_parts
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_GRAPHS << result.recomputed.module_graphs
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_EXPORTS << result.recomputed.module_exports
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_ITEM_LISTS << result.recomputed.item_lists
@@ -80,6 +82,7 @@ namespace aurex::driver::incremental_cache_detail {
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_FILE_CONTENTS << stats.seeded.file_contents
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LEX_FILES << stats.seeded.lex_files
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_PARSE_FILES << stats.seeded.parse_files
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_MODULE_PARTS << stats.seeded.module_parts
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_MODULE_GRAPHS << stats.seeded.module_graphs
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_MODULE_EXPORTS << stats.seeded.module_exports
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_ITEM_LISTS << stats.seeded.item_lists
@@ -97,7 +100,8 @@ namespace aurex::driver::incremental_cache_detail {
            << stats.seeded.diagnostics << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_FILE_CONTENTS
            << stats.evaluated.file_contents << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_LEX_FILES
            << stats.evaluated.lex_files << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_PARSE_FILES
-           << stats.evaluated.parse_files << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_GRAPHS
+           << stats.evaluated.parse_files << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_PARTS
+           << stats.evaluated.module_parts << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_GRAPHS
            << stats.evaluated.module_graphs << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_EXPORTS
            << stats.evaluated.module_exports << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_ITEM_LISTS
            << stats.evaluated.item_lists << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_ITEM_SIGNATURES

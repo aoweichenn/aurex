@@ -14,6 +14,8 @@ namespace aurex::driver::incremental_cache_detail {
             return INCREMENTAL_CACHE_QUERY_SCHEDULE_LEX_FILE_RANK;
         case query::QueryKind::parse_file:
             return INCREMENTAL_CACHE_QUERY_SCHEDULE_PARSE_FILE_RANK;
+        case query::QueryKind::module_part:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_PART_RANK;
         case query::QueryKind::module_graph:
             return INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_GRAPH_RANK;
         case query::QueryKind::item_list:

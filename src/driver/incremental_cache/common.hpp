@@ -62,6 +62,7 @@ inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED =
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_FILE_CONTENTS = ",reused_file_contents=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LEX_FILES = ",reused_lex_files=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_PARSE_FILES = ",reused_parse_files=";
+inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_MODULE_PARTS = ",reused_module_parts=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_MODULE_GRAPHS = ",reused_module_graphs=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_MODULE_EXPORTS = ",reused_module_exports=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_ITEM_LISTS = ",reused_item_lists=";
@@ -83,6 +84,8 @@ inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_F
     ",recomputed_file_contents=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_LEX_FILES = ",recomputed_lex_files=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_PARSE_FILES = ",recomputed_parse_files=";
+inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_PARTS =
+    ",recomputed_module_parts=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_GRAPHS =
     ",recomputed_module_graphs=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_MODULE_EXPORTS =
@@ -113,6 +116,7 @@ inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED
     ",seeded_file_contents=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LEX_FILES = ",seeded_lex_files=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_PARSE_FILES = ",seeded_parse_files=";
+inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_MODULE_PARTS = ",seeded_module_parts=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_MODULE_GRAPHS =
     ",seeded_module_graphs=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_MODULE_EXPORTS =
@@ -138,6 +142,8 @@ inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUA
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_LEX_FILES = ",evaluated_lex_files=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_PARSE_FILES =
     ",evaluated_parse_files=";
+inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_PARTS =
+    ",evaluated_module_parts=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_GRAPHS =
     ",evaluated_module_graphs=";
 inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_EXPORTS =
@@ -164,17 +170,18 @@ inline constexpr std::string_view INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUA
 inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_FILE_CONTENT_RANK = 0;
 inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_LEX_FILE_RANK = 1;
 inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_PARSE_FILE_RANK = 2;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_GRAPH_RANK = 3;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_LIST_RANK = 4;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_EXPORTS_RANK = 5;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_SIGNATURE_RANK = 6;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_TEMPLATE_SIGNATURE_RANK = 7;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_SIGNATURE_RANK = 8;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_FUNCTION_BODY_SYNTAX_RANK = 9;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_TYPE_CHECK_BODY_RANK = 10;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_BODY_RANK = 11;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_LOWER_FUNCTION_IR_RANK = 12;
-inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_DIAGNOSTICS_RANK = 13;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_PART_RANK = 3;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_GRAPH_RANK = 4;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_LIST_RANK = 5;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_MODULE_EXPORTS_RANK = 6;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_ITEM_SIGNATURE_RANK = 7;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_TEMPLATE_SIGNATURE_RANK = 8;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_SIGNATURE_RANK = 9;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_FUNCTION_BODY_SYNTAX_RANK = 10;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_TYPE_CHECK_BODY_RANK = 11;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_GENERIC_INSTANCE_BODY_RANK = 12;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_LOWER_FUNCTION_IR_RANK = 13;
+inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_DIAGNOSTICS_RANK = 14;
 inline constexpr base::usize INCREMENTAL_CACHE_QUERY_SCHEDULE_INVALID_RANK = std::numeric_limits<base::usize>::max();
 
 } // namespace aurex::driver::incremental_cache_detail

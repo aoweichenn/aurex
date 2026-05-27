@@ -14,6 +14,7 @@ add_library(aurex_query
     src/query/source_file_query.cpp
     src/query/diagnostics_query.cpp
     src/query/module_graph_query.cpp
+    src/query/module_part_query.cpp
     src/query/module_exports_query.cpp
     src/query/item_list_query.cpp
     src/query/item_signature_query.cpp

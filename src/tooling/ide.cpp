@@ -37,6 +37,7 @@ constexpr std::string_view IDE_SYMBOL_KIND_PARAMETER = "parameter";
 constexpr std::string_view IDE_SYMBOL_KIND_STRUCT = "struct";
 constexpr std::string_view IDE_SYMBOL_KIND_STRUCT_FIELD = "struct_field";
 constexpr std::string_view IDE_SYMBOL_KIND_TYPE_ALIAS = "type_alias";
+constexpr base::u32 IDE_PRIMARY_PART_INDEX = 0;
 
 struct ItemDefinitionMetadata {
     query::DefNamespace namespace_ = query::DefNamespace::value;
@@ -51,6 +52,7 @@ struct IdeSymbol {
     std::string name;
     std::string kind;
     std::string detail;
+    base::u32 part_index = 0;
     bool local = false;
     bool checked = false;
 };
@@ -456,6 +458,7 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                 std::string(info.name.view()),
                 std::string(IDE_SYMBOL_KIND_GENERIC_TEMPLATE),
                 std::string(IDE_SYMBOL_KIND_GENERIC_TEMPLATE) + " " + std::string(info.name.view()),
+                info.part_index,
                 false,
                 true,
             });
@@ -474,6 +477,7 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                 std::string(signature.name.view()),
                 std::string(signature.is_method ? IDE_SYMBOL_KIND_METHOD : IDE_SYMBOL_KIND_FUNCTION),
                 function_detail(snapshot.checked, signature),
+                signature.part_index,
                 false,
                 true,
             });
@@ -492,6 +496,7 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                 std::string(info.is_opaque ? IDE_SYMBOL_KIND_OPAQUE_STRUCT : IDE_SYMBOL_KIND_STRUCT),
                 typed_detail(snapshot.checked, info.is_opaque ? IDE_SYMBOL_KIND_OPAQUE_STRUCT : IDE_SYMBOL_KIND_STRUCT,
                     info.name.view(), info.type),
+                info.part_index,
                 false,
                 true,
             });
@@ -506,6 +511,7 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                     std::string(field.name.view()),
                     std::string(IDE_SYMBOL_KIND_STRUCT_FIELD),
                     typed_detail(snapshot.checked, IDE_SYMBOL_KIND_STRUCT_FIELD, field.name.view(), field.type),
+                    info.part_index,
                     false,
                     true,
                 });
@@ -523,6 +529,7 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                 std::string(info.case_name.view()),
                 std::string(IDE_SYMBOL_KIND_ENUM_CASE),
                 sema::enum_case_display_name(snapshot.checked.types, info),
+                info.part_index,
                 false,
                 true,
             });
@@ -539,6 +546,7 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                 std::string(info.name.view()),
                 std::string(IDE_SYMBOL_KIND_TYPE_ALIAS),
                 std::string(IDE_SYMBOL_KIND_TYPE_ALIAS) + " " + std::string(info.name.view()),
+                info.part_index,
                 false,
                 true,
             });
@@ -560,6 +568,7 @@ void push_ast_global_symbol(const IdeSnapshot& snapshot, SymbolIndex& index, con
             std::string(item.name),
             std::string(metadata->label),
             std::string(metadata->label) + " " + std::string(item.name),
+            IDE_PRIMARY_PART_INDEX,
             false,
             false,
         });
@@ -601,6 +610,7 @@ void push_parameter_symbols(const IdeSnapshot& snapshot, SymbolIndex& index, con
                 std::string(param.name),
                 std::string(IDE_SYMBOL_KIND_PARAMETER),
                 std::move(detail),
+                IDE_PRIMARY_PART_INDEX,
                 true,
                 snapshot.checked_semantics,
             });
@@ -626,6 +636,7 @@ void push_local_stmt_symbol(const IdeSnapshot& snapshot, SymbolIndex& index, con
             std::string(stmt.name),
             std::string(IDE_SYMBOL_KIND_LOCAL),
             std::move(detail),
+            IDE_PRIMARY_PART_INDEX,
             true,
             snapshot.checked_semantics,
         });
@@ -751,6 +762,7 @@ void collect_local_symbols_from_function(
         symbol.range,
         symbol.name,
         symbol.kind,
+        symbol.part_index,
         true,
     };
 }

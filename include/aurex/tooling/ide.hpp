@@ -73,6 +73,7 @@ struct IdeDefinition {
     base::SourceRange range{};
     std::string name;
     std::string kind;
+    base::u32 part_index = 0;
     bool valid = false;
 };
 

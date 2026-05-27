@@ -1,10 +1,10 @@
 # Aurex M3 模块系统设计稿
 
-状态：M3.0 当前设计基线，Phase 1-5、Phase 6A、Phase 6B、Phase 6C、Phase 7A-D 与 Phase 8A-D 已进入实现闭环
+状态：M3.0 当前设计基线，Phase 1-5、Phase 6A、Phase 6B、Phase 6C、Phase 7A-D 与 Phase 8A-E 已进入实现闭环
 日期：2026-05-27
 适用范围：同一 package 内的 logical module / source-file part 分离、module graph、exports query、
 package identity、manifest source-root、跨 part `priv` 可见性、sema part identity、module_part query boundary、
-part-local import scope contract、checked debug part origin
+part-local import scope contract、checked debug part origin、IDE definition part origin
 
 ## 1. 设计结论
 
@@ -845,7 +845,7 @@ Phase 7A-D 实现收口状态（2026-05-27）：
   collision/import-to-part/private-surface/part-local import 行为继续通过。该阶段仍不引入 workspace
   resolver、dependency graph、lockfile、nested module tree、selective `pub use` 或 `pub(in path)`。
 
-Phase 8A-D 实现收口状态（2026-05-27）：
+Phase 8A-E 实现收口状态（2026-05-27）：
 
 - Phase 8A 把 part stable index 从 loader 贯通到 sema item context。`AstModule` 现在为每个 item 保存
   `item_part_indices`，`ItemImportScope` 也记录 owner part index；parser-only 路径继续默认 primary part，
@@ -878,9 +878,16 @@ Phase 8A-D 实现收口状态（2026-05-27）：
   prototype/definition 合并时，若存在 definition，checked signature 的 part origin 以 definition 所在
   part 为准；只有 prototype 时才使用 prototype 所在 part。这是 source/debug metadata，不改变
   `DefKey`、ABI 名称、visibility、lookup 或 module graph red/green 语义。
+- Phase 8E 把 checked part origin 暴露给 IDE/tooling definition surface。`IdeDefinition` 现在包含
+  `part_index`，`definition_at_offset` 与 `hover_at_offset(...).definition` 都会返回该结构化来源。checked
+  global symbols 从函数、结构体、结构体字段、枚举 case、类型别名和泛型模板签名复制 `part_index`；其中
+  结构体字段继承 owning struct 的 part origin。AST fallback、参数和局部变量仍报告 primary part，这维持了
+  parser-only / local scope 路径的兼容行为。hover label 文本保持稳定，避免把 debug source origin 混入用户
+  可见的简短提示字符串。
 - 普通 gtest 覆盖了 sema current-item part context、AST item part contract、`module_part` query record、
-  part-local import scope contract、checked dump part origin、stable key layout / malformed rejection、edge
-  verifier、query executor/provider、incremental cache subject 写入和 profile 计数。该阶段不引入
+  part-local import scope contract、checked dump part origin、IDE definition part origin、stable key layout /
+  malformed rejection、edge verifier、query executor/provider、incremental cache subject 写入和 profile 计数。
+  该阶段不引入
   per-part sema isolation、per-part codegen artifact、
   workspace resolver、dependency graph、lockfile、nested module tree、selective `pub use` 或
   `pub(in path)`。

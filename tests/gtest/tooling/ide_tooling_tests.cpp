@@ -23,6 +23,12 @@ constexpr std::string_view IDE_TOOLING_SOURCE = "module ide.snapshot;\n"
                                                 "}\n";
 
 constexpr base::usize IDE_TOOLING_LARGE_FUNCTION_COUNT = 128;
+constexpr base::u32 IDE_TOOLING_PRIMARY_PART_INDEX = 0;
+constexpr base::u32 IDE_TOOLING_FUNCTION_PART_INDEX = 3;
+constexpr base::u32 IDE_TOOLING_STRUCT_PART_INDEX = 4;
+constexpr base::u32 IDE_TOOLING_ALIAS_PART_INDEX = 5;
+constexpr base::u32 IDE_TOOLING_ENUM_CASE_PART_INDEX = 6;
+constexpr base::u32 IDE_TOOLING_TEMPLATE_PART_INDEX = 7;
 constexpr std::string_view IDE_TOOLING_STAGE_TOKENS_LEX = "tokens.lex";
 constexpr std::string_view IDE_TOOLING_STAGE_MODULE_LEX = "module.lex";
 constexpr std::string_view IDE_TOOLING_STAGE_MODULE_PARSE = "module.parse";
@@ -90,7 +96,75 @@ void expect_definition_kind(const tooling::IdeSnapshot& snapshot, const std::str
     EXPECT_EQ(definition->name, name);
     EXPECT_EQ(definition->kind, kind);
     EXPECT_EQ(definition->key.kind, def_kind);
+    EXPECT_EQ(definition->part_index, IDE_TOOLING_PRIMARY_PART_INDEX);
     EXPECT_EQ(source.substr(definition->range.begin, definition->range.length()), name);
+}
+
+void mark_checked_function_part(tooling::IdeSnapshot& snapshot, const std::string_view name, const base::u32 part_index)
+{
+    bool updated = false;
+    for (auto& entry : snapshot.checked.functions) {
+        sema::FunctionSignature& signature = entry.second;
+        if (signature.name == name) {
+            signature.part_index = part_index;
+            updated = true;
+        }
+    }
+    ASSERT_TRUE(updated) << name;
+}
+
+void mark_checked_struct_part(tooling::IdeSnapshot& snapshot, const std::string_view name, const base::u32 part_index)
+{
+    bool updated = false;
+    for (auto& entry : snapshot.checked.structs) {
+        sema::StructInfo& info = entry.second;
+        if (info.name == name) {
+            info.part_index = part_index;
+            updated = true;
+        }
+    }
+    ASSERT_TRUE(updated) << name;
+}
+
+void mark_checked_type_alias_part(
+    tooling::IdeSnapshot& snapshot, const std::string_view name, const base::u32 part_index)
+{
+    bool updated = false;
+    for (auto& entry : snapshot.checked.type_aliases) {
+        sema::TypeAliasInfo& info = entry.second;
+        if (info.name == name) {
+            info.part_index = part_index;
+            updated = true;
+        }
+    }
+    ASSERT_TRUE(updated) << name;
+}
+
+void mark_checked_enum_case_part(tooling::IdeSnapshot& snapshot, const std::string_view enum_name,
+    const std::string_view case_name, const base::u32 part_index)
+{
+    bool updated = false;
+    for (auto& entry : snapshot.checked.enum_cases) {
+        sema::EnumCaseInfo& info = entry.second;
+        if (info.enum_name == enum_name && info.case_name == case_name) {
+            info.part_index = part_index;
+            updated = true;
+        }
+    }
+    ASSERT_TRUE(updated) << enum_name << "." << case_name;
+}
+
+void mark_checked_generic_template_part(
+    tooling::IdeSnapshot& snapshot, const std::string_view name, const base::u32 part_index)
+{
+    bool updated = false;
+    for (sema::GenericTemplateSignatureInfo& info : snapshot.checked.generic_template_signatures) {
+        if (info.name == name) {
+            info.part_index = part_index;
+            updated = true;
+        }
+    }
+    ASSERT_TRUE(updated) << name;
 }
 
 [[nodiscard]] std::string large_tooling_source()
@@ -202,6 +276,7 @@ TEST(CoreUnit, IdeToolingServesTokenHoverDefinitionReferencesAndEditImpact)
     EXPECT_EQ(definition->kind, "function");
     EXPECT_EQ(IDE_TOOLING_SOURCE.substr(definition->range.begin, definition->range.length()), "add");
     EXPECT_EQ(definition->key.kind, query::DefKind::function);
+    EXPECT_EQ(definition->part_index, IDE_TOOLING_PRIMARY_PART_INDEX);
 
     const std::vector<tooling::IdeReference> references = tooling::references_at_offset(snapshot, call_offset);
     ASSERT_GE(references.size(), 2U);
@@ -218,6 +293,7 @@ TEST(CoreUnit, IdeToolingServesTokenHoverDefinitionReferencesAndEditImpact)
     EXPECT_NE(hover->label.find("identifier `add` -> function"), std::string::npos);
     ASSERT_TRUE(hover->definition.has_value());
     EXPECT_EQ(hover->definition->name, "add");
+    EXPECT_EQ(hover->definition->part_index, IDE_TOOLING_PRIMARY_PART_INDEX);
 
     const base::usize parameter_offset = IDE_TOOLING_SOURCE.find("a: i32");
     ASSERT_NE(parameter_offset, std::string_view::npos);
@@ -229,6 +305,7 @@ TEST(CoreUnit, IdeToolingServesTokenHoverDefinitionReferencesAndEditImpact)
     EXPECT_EQ(parameter_definition->kind, "parameter");
     EXPECT_EQ(IDE_TOOLING_SOURCE.substr(parameter_definition->range.begin, parameter_definition->range.length()), "a");
     EXPECT_EQ(parameter_definition->key.kind, query::DefKind::value);
+    EXPECT_EQ(parameter_definition->part_index, IDE_TOOLING_PRIMARY_PART_INDEX);
 
     const std::vector<tooling::IdeReference> parameter_references =
         tooling::references_at_offset(snapshot, parameter_offset);
@@ -242,6 +319,7 @@ TEST(CoreUnit, IdeToolingServesTokenHoverDefinitionReferencesAndEditImpact)
     EXPECT_NE(parameter_hover->label.find("identifier `a` -> parameter"), std::string::npos);
     ASSERT_TRUE(parameter_hover->definition.has_value());
     EXPECT_EQ(parameter_hover->definition->name, "a");
+    EXPECT_EQ(parameter_hover->definition->part_index, IDE_TOOLING_PRIMARY_PART_INDEX);
 
     const base::usize edit_offset = IDE_TOOLING_SOURCE.find("return value");
     ASSERT_NE(edit_offset, std::string_view::npos);
@@ -254,6 +332,98 @@ TEST(CoreUnit, IdeToolingServesTokenHoverDefinitionReferencesAndEditImpact)
     EXPECT_NE(impact.node, snapshot.lossless.root_id());
     EXPECT_LE(impact.range.begin, edit_offset);
     EXPECT_GT(impact.range.end, edit_offset);
+}
+
+TEST(CoreUnit, IdeToolingExposesCheckedModulePartOriginsThroughDefinitions)
+{
+    constexpr std::string_view source = "module ide.parts;\n"
+                                        "fn from_part() -> i32 { return 1; }\n"
+                                        "struct Carrier { count: i32; }\n"
+                                        "fn use(carrier: Carrier) -> i32 {\n"
+                                        "  return from_part() + carrier.count;\n"
+                                        "}\n";
+    tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
+    ASSERT_TRUE(snapshot.parsed);
+    ASSERT_TRUE(snapshot.checked_semantics);
+
+    mark_checked_function_part(snapshot, "from_part", IDE_TOOLING_FUNCTION_PART_INDEX);
+    mark_checked_struct_part(snapshot, "Carrier", IDE_TOOLING_STRUCT_PART_INDEX);
+
+    const base::usize function_call_offset = source.find("from_part() +");
+    ASSERT_NE(function_call_offset, std::string_view::npos);
+    const std::optional<tooling::IdeDefinition> function_definition =
+        tooling::definition_at_offset(snapshot, function_call_offset);
+    ASSERT_TRUE(function_definition.has_value());
+    EXPECT_TRUE(function_definition->valid);
+    EXPECT_EQ(function_definition->name, "from_part");
+    EXPECT_EQ(function_definition->kind, "function");
+    EXPECT_EQ(function_definition->part_index, IDE_TOOLING_FUNCTION_PART_INDEX);
+
+    const std::optional<tooling::IdeHoverInfo> function_hover =
+        tooling::hover_at_offset(snapshot, function_call_offset);
+    ASSERT_TRUE(function_hover.has_value());
+    ASSERT_TRUE(function_hover->definition.has_value());
+    EXPECT_EQ(function_hover->definition->part_index, IDE_TOOLING_FUNCTION_PART_INDEX);
+    EXPECT_NE(function_hover->label.find("identifier `from_part` -> function"), std::string::npos);
+
+    const base::usize field_use_offset = source.rfind("count");
+    ASSERT_NE(field_use_offset, std::string_view::npos);
+    const std::optional<tooling::IdeDefinition> field_definition =
+        tooling::definition_at_offset(snapshot, field_use_offset);
+    ASSERT_TRUE(field_definition.has_value());
+    EXPECT_TRUE(field_definition->valid);
+    EXPECT_EQ(field_definition->name, "count");
+    EXPECT_EQ(field_definition->kind, "struct_field");
+    EXPECT_EQ(field_definition->part_index, IDE_TOOLING_STRUCT_PART_INDEX);
+
+    const std::optional<tooling::IdeHoverInfo> field_hover = tooling::hover_at_offset(snapshot, field_use_offset);
+    ASSERT_TRUE(field_hover.has_value());
+    ASSERT_TRUE(field_hover->definition.has_value());
+    EXPECT_EQ(field_hover->definition->part_index, IDE_TOOLING_STRUCT_PART_INDEX);
+    EXPECT_NE(field_hover->label.find("identifier `count` -> struct_field"), std::string::npos);
+}
+
+TEST(CoreUnit, IdeToolingExposesCheckedPartOriginsForTemplatesAliasesAndEnumCases)
+{
+    constexpr std::string_view source = "module ide.more_parts;\n"
+                                        "type Count = i32;\n"
+                                        "enum Mode: u8 { fast = 1, slow = 2 }\n"
+                                        "struct Box[T] { value: T; }\n"
+                                        "fn keep(value: Count) -> Count { return value; }\n";
+    tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
+    ASSERT_TRUE(snapshot.parsed);
+    ASSERT_TRUE(snapshot.checked_semantics);
+
+    mark_checked_type_alias_part(snapshot, "Count", IDE_TOOLING_ALIAS_PART_INDEX);
+    mark_checked_enum_case_part(snapshot, "Mode", "fast", IDE_TOOLING_ENUM_CASE_PART_INDEX);
+    mark_checked_generic_template_part(snapshot, "Box", IDE_TOOLING_TEMPLATE_PART_INDEX);
+
+    const base::usize alias_use_offset = source.find("Count) ->");
+    ASSERT_NE(alias_use_offset, std::string_view::npos);
+    const std::optional<tooling::IdeDefinition> alias_definition =
+        tooling::definition_at_offset(snapshot, alias_use_offset);
+    ASSERT_TRUE(alias_definition.has_value());
+    EXPECT_EQ(alias_definition->name, "Count");
+    EXPECT_EQ(alias_definition->kind, "type_alias");
+    EXPECT_EQ(alias_definition->part_index, IDE_TOOLING_ALIAS_PART_INDEX);
+
+    const base::usize enum_case_offset = source.find("fast");
+    ASSERT_NE(enum_case_offset, std::string_view::npos);
+    const std::optional<tooling::IdeDefinition> enum_case_definition =
+        tooling::definition_at_offset(snapshot, enum_case_offset);
+    ASSERT_TRUE(enum_case_definition.has_value());
+    EXPECT_EQ(enum_case_definition->name, "fast");
+    EXPECT_EQ(enum_case_definition->kind, "enum_case");
+    EXPECT_EQ(enum_case_definition->part_index, IDE_TOOLING_ENUM_CASE_PART_INDEX);
+
+    const base::usize template_offset = source.find("Box[T]");
+    ASSERT_NE(template_offset, std::string_view::npos);
+    const std::optional<tooling::IdeDefinition> template_definition =
+        tooling::definition_at_offset(snapshot, template_offset);
+    ASSERT_TRUE(template_definition.has_value());
+    EXPECT_EQ(template_definition->name, "Box");
+    EXPECT_EQ(template_definition->kind, "generic_template");
+    EXPECT_EQ(template_definition->part_index, IDE_TOOLING_TEMPLATE_PART_INDEX);
 }
 
 TEST(CoreUnit, IdeToolingReportsKeywordTriviaUndefinedReferenceAndCrossNodeEdit)
@@ -286,12 +456,14 @@ TEST(CoreUnit, IdeToolingReportsKeywordTriviaUndefinedReferenceAndCrossNodeEdit)
     EXPECT_EQ(local_definition->name, "value");
     EXPECT_EQ(local_definition->kind, "local");
     EXPECT_EQ(IDE_TOOLING_SOURCE.substr(local_definition->range.begin, local_definition->range.length()), "value");
+    EXPECT_EQ(local_definition->part_index, IDE_TOOLING_PRIMARY_PART_INDEX);
     const std::optional<tooling::IdeHoverInfo> local_hover = tooling::hover_at_offset(snapshot, local_value_offset);
     ASSERT_TRUE(local_hover.has_value());
     EXPECT_TRUE(local_hover->valid);
     EXPECT_NE(local_hover->label.find("identifier `value` -> local"), std::string::npos);
     ASSERT_TRUE(local_hover->definition.has_value());
     EXPECT_EQ(local_hover->definition->name, "value");
+    EXPECT_EQ(local_hover->definition->part_index, IDE_TOOLING_PRIMARY_PART_INDEX);
     const std::vector<tooling::IdeReference> local_references =
         tooling::references_at_offset(snapshot, local_value_offset);
     ASSERT_GE(local_references.size(), 2U);
@@ -334,6 +506,32 @@ TEST(CoreUnit, IdeToolingReportsKeywordTriviaUndefinedReferenceAndCrossNodeEdit)
         tooling::edit_impact_for_range(snapshot, IDE_TOOLING_SOURCE.size() + 1U, 0U);
     EXPECT_TRUE(eof_insert.valid);
     EXPECT_TRUE(eof_insert.node_key.has_value());
+}
+
+TEST(CoreUnit, IdeToolingRestrictsLocalReferencesToDeclaringFunction)
+{
+    constexpr std::string_view source = "module ide.local_scope;\n"
+                                        "fn first() -> i32 {\n"
+                                        "  let value = 1;\n"
+                                        "  return value;\n"
+                                        "}\n"
+                                        "fn second() -> i32 {\n"
+                                        "  let value = 2;\n"
+                                        "  return value;\n"
+                                        "}\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
+    ASSERT_TRUE(snapshot.parsed);
+
+    const base::usize first_value_offset = source.find("value = 1");
+    const base::usize second_function_offset = source.find("fn second");
+    ASSERT_NE(first_value_offset, std::string_view::npos);
+    ASSERT_NE(second_function_offset, std::string_view::npos);
+
+    const std::vector<tooling::IdeReference> references = tooling::references_at_offset(snapshot, first_value_offset);
+    ASSERT_EQ(references.size(), 2U);
+    for (const tooling::IdeReference& reference : references) {
+        EXPECT_LT(reference.range.begin, second_function_offset);
+    }
 }
 
 TEST(CoreUnit, IdeToolingResolvesSupportedTopLevelDefinitionKinds)

@@ -875,11 +875,43 @@ GenericFunctionInstanceInfo CheckedModule::clone_generic_function_instance(const
     GenericFunctionInstanceInfo copy;
     copy.key = other.key;
     copy.item = other.item;
+    copy.body = other.body;
     copy.generic_instance_key = other.generic_instance_key;
     copy.signature = this->clone_function_signature(other.signature);
     copy.side_table_layout_index = other.side_table_layout_index;
     copy.side_tables = other.side_tables;
     return copy;
+}
+
+GenericFunctionInstanceBodyView CheckedModule::generic_function_instance_body_view(
+    const syntax::AstModule& ast, const base::usize index) const noexcept
+{
+    if (index >= this->generic_function_instances.size()) {
+        return {};
+    }
+    return this->generic_function_instance_body_view(ast, this->generic_function_instances[index]);
+}
+
+GenericFunctionInstanceBodyView CheckedModule::generic_function_instance_body_view(
+    const syntax::AstModule& ast, const GenericFunctionInstanceInfo& instance) const noexcept
+{
+    if (!syntax::is_valid(instance.item) || instance.item.value >= ast.items.size()) {
+        return {};
+    }
+    const syntax::ItemNode* const item = ast.items.ptr(instance.item.value);
+    if (item == nullptr || item->kind != syntax::ItemKind::fn_decl) {
+        return {};
+    }
+    if (!syntax::is_valid(instance.body) || instance.body.value >= ast.stmts.size()) {
+        return {};
+    }
+    return GenericFunctionInstanceBodyView{
+        &instance,
+        &instance.signature,
+        &instance.side_tables,
+        item,
+        instance.body,
+    };
 }
 
 void CheckedModule::prepare_analysis_only_storage(const base::usize expr_count)
@@ -971,6 +1003,15 @@ void CheckedModule::reserve_side_table_storage(const base::usize expr_count, con
     const base::usize ident_slots = expr_count + pattern_count + item_count;
     const base::usize bytes = type_handle_slots * sizeof(TypeHandle) + ident_slots * sizeof(IdentId);
     this->arena_->reserve_touched(bytes);
+}
+
+bool is_valid(const GenericFunctionInstanceBodyView& view) noexcept
+{
+    return view.instance != nullptr && view.signature != nullptr && view.side_tables != nullptr && view.item != nullptr
+        && view.item->kind == syntax::ItemKind::fn_decl && syntax::is_valid(view.body)
+        && query::is_valid(view.instance->generic_instance_key)
+        && view.signature->generic_instance_key == view.instance->generic_instance_key && view.signature->has_definition
+        && !view.signature->has_conflict;
 }
 
 namespace {

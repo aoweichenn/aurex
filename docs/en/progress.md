@@ -99,6 +99,21 @@ sensitivity, generic signature/body dependencies, fallback/cycle behavior,
 generic aggregate shape, generic cache rows, query-pruning reuse, and malformed
 graph/identity repair.
 
+As of 2026-05-28, WP-3 Generic Body And Lowering Closure is complete. Retained
+generic function instances now store their `body` in `GenericFunctionInstanceInfo`,
+and `CheckedModule::generic_function_instance_body_view(...)` binds the
+instance, signature, side tables, AST item, and body into one sema-authority
+view. IR generic declaration/body lowering consumes that view, and `lower_ast`
+returns an internal error when a retained generic body view is missing instead
+of silently skipping or reinterpreting generic identity in the lowerer.
+Incremental-cache generic body checked-result fingerprinting now reads the
+retained AST block range for the instance body. `--emit=typed` writes generic
+body query rows without lower generic IR rows, while IR/LLVM/native emit modes
+collect lower generic instance IR subjects. New and updated sema, IR white-box,
+driver-cache, and sample runtime coverage exercise retained/discarded emit-mode
+boundaries, generic body views, missing-view rejection, checked-module copy/move
+body preservation, and native execution for `generics/basic_m2.ax`.
+
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,
 and language syntax. The result made it hard to tell whether a failure came from

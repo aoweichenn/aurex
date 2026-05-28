@@ -22,6 +22,12 @@ using namespace cache_format;
 
 namespace {
 
+[[nodiscard]] bool emit_kind_requires_ir_lowering(const EmitKind emit_kind) noexcept
+{
+    return emit_kind == EmitKind::ir || emit_kind == EmitKind::llvm_ir || emit_kind == EmitKind::assembly
+        || emit_kind == EmitKind::object || emit_kind == EmitKind::executable;
+}
+
 [[nodiscard]] base::usize module_source_root_topology_count(const std::span<const ModuleRecord> modules) noexcept
 {
     base::usize count = 0;
@@ -89,7 +95,8 @@ base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invoca
     const std::vector<ModuleRecord> module_records = sorted_modules(modules);
     const std::vector<SourceFingerprintRecord> source_records = collect_source_fingerprints(sources, module_records);
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
-    const QuerySubjectCollection query_subjects = collect_query_subjects(module_records, checked, sources, &ast);
+    const QuerySubjectCollection query_subjects = collect_query_subjects(
+        module_records, checked, sources, &ast, emit_kind_requires_ir_lowering(invocation.emit_kind));
     const auto query_diff_started = std::chrono::steady_clock::now();
     const QueryReuseEvaluation query_reuse_evaluation =
         build_existing_query_reuse_evaluation(cache_path, query_subjects.records);

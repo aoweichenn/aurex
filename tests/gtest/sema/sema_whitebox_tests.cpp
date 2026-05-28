@@ -3041,6 +3041,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables)
     ASSERT_EQ(checked.generic_function_instances.size(), 1U);
     const sema::GenericFunctionInstanceInfo& instance = checked.generic_function_instances.front();
     EXPECT_TRUE(query::is_valid(instance.generic_instance_key));
+    EXPECT_EQ(instance.body.value, body.value);
     ASSERT_EQ(instance.generic_instance_key.type_args.size(), 1U);
     EXPECT_EQ(instance.generic_instance_key.type_args.front(), query::canonical_builtin(query::BuiltinTypeKey::i32));
     EXPECT_EQ(instance.generic_instance_key.param_env.predicate_count, 0U);
@@ -3055,6 +3056,16 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables)
     EXPECT_TRUE(checked.functions.contains(signature.semantic_key));
     EXPECT_EQ(checked.functions.at(signature.semantic_key).generic_instance_key, instance.generic_instance_key);
     EXPECT_NE(sema::dump_checked_module(checked).find("id[i32]"), std::string::npos);
+    const sema::GenericFunctionInstanceBodyView body_view =
+        checked.generic_function_instance_body_view(analyzer.ctx_.module, 0);
+    EXPECT_TRUE(sema::is_valid(body_view));
+    EXPECT_EQ(body_view.instance, &instance);
+    EXPECT_EQ(body_view.signature, &instance.signature);
+    EXPECT_EQ(body_view.side_tables, &instance.side_tables);
+    ASSERT_NE(body_view.item, nullptr);
+    EXPECT_EQ(body_view.item->name, "id");
+    EXPECT_EQ(body_view.body.value, body.value);
+    EXPECT_FALSE(sema::is_valid(checked.generic_function_instance_body_view(analyzer.ctx_.module, 1)));
 
     const sema::GenericSideTables& side_tables = checked.generic_function_instances.front().side_tables;
     EXPECT_TRUE(side_tables.sparse);
@@ -4084,6 +4095,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
         checked.intern_c_name("f[i32]"),
     };
     instance.item = syntax::ItemId{0};
+    instance.body = syntax::StmtId{2};
     instance.generic_instance_key = checked_generic_instance_key;
     instance.signature = checked.clone_function_signature(signature);
     instance.side_table_layout_index = checked.append_generic_side_table_layout(sema::GenericSideTableLocalLayoutView{
@@ -4108,6 +4120,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     EXPECT_EQ(checked_copy.c_name_text(checked_copy.expr_c_name_ids.front()), "m0_test");
     EXPECT_EQ(checked_copy.functions.at(signature.semantic_key).generic_instance_key, checked_generic_instance_key);
     EXPECT_EQ(checked_copy.generic_function_instances.front().signature.name, "f");
+    EXPECT_EQ(checked_copy.generic_function_instances.front().body.value, 2U);
     EXPECT_EQ(checked_copy.generic_function_instances.front().generic_instance_key, checked_generic_instance_key);
     EXPECT_EQ(
         checked_copy.generic_function_instances.front().signature.generic_instance_key, checked_generic_instance_key);

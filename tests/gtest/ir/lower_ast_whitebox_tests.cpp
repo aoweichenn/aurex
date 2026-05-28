@@ -1,5 +1,8 @@
 #include <aurex/ir/lower_ast.hpp>
+#include <aurex/query/query_key.hpp>
 
+#include <array>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -65,6 +68,21 @@ using syntax::TypeId;
 [[nodiscard]] ExprId push_invalid_expr(syntax::AstModule& ast)
 {
     return ast.push_invalid_expr({});
+}
+
+[[nodiscard]] query::GenericInstanceKey test_generic_instance_key()
+{
+    constexpr std::string_view LOWER_AST_GENERIC_TEST_MODULE = "lower_ast_generic";
+    constexpr std::string_view LOWER_AST_GENERIC_TEST_FUNCTION = "id";
+    const std::array<std::string_view, 1> module_path{LOWER_AST_GENERIC_TEST_MODULE};
+    const std::array<std::string_view, 1> def_path{LOWER_AST_GENERIC_TEST_FUNCTION};
+    const query::PackageKey package = query::package_key(std::span<const std::string_view>{});
+    const query::ModuleKey module = query::module_key(package, module_path);
+    const query::DefKey def =
+        query::def_key(module, query::DefNamespace::value, query::DefKind::generic_template, def_path);
+    const std::array<query::CanonicalTypeKey, 1> args{query::canonical_builtin(query::BuiltinTypeKey::i32)};
+    return query::generic_instance_key(def, args, std::span<const query::StableFingerprint128>{},
+        query::param_env_key(std::span<const std::string_view>{}));
 }
 
 void set_expr_type(CheckedModule& checked, const ExprId expr, const TypeHandle type)
@@ -377,6 +395,122 @@ TEST(CoreUnit, LowerAstWhiteBoxDeclarationFallbacks)
     EXPECT_EQ(lowerer.module_.text(lowerer.item_symbol(99, abi_named)), "plain_abi");
 
     EXPECT_FALSE(sema::is_valid(lowerer.enum_case_type(lowerer.module_.intern("missing"))));
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxGenericBodiesUseRetainedSemaView)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    syntax::TypeNode generic_type_node;
+    generic_type_node.kind = syntax::TypeKind::named;
+    generic_type_node.name = "T";
+    generic_type_node.name_id = ast.intern_identifier("T");
+    const TypeId generic_type = ast.push_type(generic_type_node);
+
+    const ExprId value = push_name(ast, "value");
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = value;
+    const StmtId return_stmt_id = ast.push_stmt(return_stmt);
+    syntax::StmtNode body_stmt;
+    body_stmt.kind = syntax::StmtKind::block;
+    body_stmt.statements = {return_stmt_id};
+    const StmtId body = ast.push_stmt(body_stmt);
+
+    syntax::ItemNode id_function;
+    id_function.kind = syntax::ItemKind::fn_decl;
+    id_function.name = "id";
+    id_function.name_id = ast.intern_identifier("id");
+    id_function.generic_params = {syntax::GenericParamDecl{"T", {}}};
+    id_function.params = {syntax::ParamDecl{"value", generic_type, {}, ast.intern_identifier("value")}};
+    id_function.return_type = generic_type;
+    id_function.body = body;
+    const syntax::ItemId id_item = ast.push_item(id_function);
+
+    const TypeHandle i32 = checked.types.builtin(BuiltinType::i32);
+    sema::GenericFunctionInstanceInfo instance;
+    instance.item = id_item;
+    instance.body = body;
+    instance.generic_instance_key = test_generic_instance_key();
+    instance.signature = checked.make_function_signature();
+    instance.signature.name = checked.intern_text("id");
+    instance.signature.name_id = id_function.name_id;
+    instance.signature.c_name = checked.intern_text("lower_ast_generic_id_i32");
+    instance.signature.generic_instance_key = instance.generic_instance_key;
+    instance.signature.return_type = i32;
+    instance.signature.has_definition = true;
+    instance.signature.definition_item = id_item;
+    instance.signature.param_types.push_back(i32);
+    instance.side_tables.configure_local_dense(
+        sema::GenericNodeSpan{value.value, 1U}, {}, {}, sema::GenericNodeSpan{return_stmt_id.value, 1U});
+    instance.side_tables.expr_intrinsic_types.front() = i32;
+    instance.side_tables.expr_types.front() = i32;
+    instance.side_tables.release_analysis_only_storage();
+    checked.generic_function_instances.push_back(std::move(instance));
+
+    auto lowered = ir::lower_ast(ast, checked);
+    ASSERT_TRUE(lowered) << lowered.error().message;
+    ASSERT_EQ(lowered.value().functions.size(), 1U);
+    const ir::Function& function = lowered.value().functions.front();
+    EXPECT_EQ(lowered.value().text(function.symbol), "lower_ast_generic_id_i32");
+    ASSERT_EQ(function.signature_params.size(), 1U);
+    EXPECT_TRUE(lowered.value().types.same(function.signature_params.front().type, i32));
+    ASSERT_FALSE(function.blocks.empty());
+    EXPECT_EQ(function.blocks.front().terminator.kind, TerminatorKind::return_);
+    ASSERT_TRUE(is_valid(function.blocks.front().terminator.value));
+    ASSERT_LT(function.blocks.front().terminator.value.value, lowered.value().values.size());
+    EXPECT_EQ(lowered.value().values[function.blocks.front().terminator.value.value].kind, ValueKind::load);
+    EXPECT_TRUE(
+        lowered.value().types.same(lowered.value().values[function.blocks.front().terminator.value.value].type, i32));
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxRejectsMissingRetainedGenericBodyView)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    sema::GenericFunctionInstanceInfo instance;
+    instance.generic_instance_key = test_generic_instance_key();
+    instance.signature = checked.make_function_signature();
+    instance.signature.generic_instance_key = instance.generic_instance_key;
+    instance.signature.has_definition = true;
+    checked.generic_function_instances.push_back(std::move(instance));
+
+    auto lowered = ir::lower_ast(ast, checked);
+    ASSERT_FALSE(lowered);
+    EXPECT_EQ(lowered.error().code, base::ErrorCode::internal_error);
+    EXPECT_NE(lowered.error().message.find("generic instance body missing retained sema view"), std::string::npos);
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxRejectsInvalidRetainedGenericBody)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    syntax::StmtNode body_stmt;
+    body_stmt.kind = syntax::StmtKind::block;
+    const StmtId body = ast.push_stmt(body_stmt);
+
+    syntax::ItemNode id_function;
+    id_function.kind = syntax::ItemKind::fn_decl;
+    id_function.name = "id";
+    id_function.name_id = ast.intern_identifier("id");
+    id_function.body = body;
+    const syntax::ItemId id_item = ast.push_item(id_function);
+
+    sema::GenericFunctionInstanceInfo instance;
+    instance.item = id_item;
+    instance.generic_instance_key = test_generic_instance_key();
+    instance.signature = checked.make_function_signature();
+    instance.signature.generic_instance_key = instance.generic_instance_key;
+    instance.signature.has_definition = true;
+    checked.generic_function_instances.push_back(std::move(instance));
+
+    auto lowered = ir::lower_ast(ast, checked);
+    ASSERT_FALSE(lowered);
+    EXPECT_EQ(lowered.error().code, base::ErrorCode::internal_error);
+    EXPECT_NE(lowered.error().message.find("generic instance body missing retained sema view"), std::string::npos);
 }
 
 } // namespace aurex::test

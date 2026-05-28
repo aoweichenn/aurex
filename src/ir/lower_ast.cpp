@@ -79,6 +79,17 @@ namespace {
     return false;
 }
 
+[[nodiscard]] bool generic_instance_body_views_are_valid(
+    const syntax::AstModule& ast, const sema::CheckedModule& checked) noexcept
+{
+    for (base::usize index = 0; index < checked.generic_function_instances.size(); ++index) {
+        if (!sema::is_valid(checked.generic_function_instance_body_view(ast, index))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checked) : ast_(ast), checked_(checked)
@@ -115,11 +126,11 @@ Module Lowerer::lower()
         if (item.is_extern_c || !syntax::is_valid(item.body)) {
             continue;
         }
-        this->lower_function_body(this->item_functions_[index], item);
+        this->lower_function_body(this->item_functions_[index], FunctionBodyView{item.params, item.body});
     }
     for (base::u32 index = 0; index < this->checked_.generic_function_instances.size(); ++index) {
-        this->lower_generic_function_body(
-            this->generic_instance_functions_[index], this->checked_.generic_function_instances[index]);
+        this->lower_generic_function_body(this->generic_instance_functions_[index],
+            this->checked_.generic_function_instance_body_view(this->ast_, index));
     }
     return std::move(this->module_);
 }
@@ -303,7 +314,12 @@ void Lowerer::lower_function_declarations()
     }
 
     for (base::u32 index = 0; index < this->checked_.generic_function_instances.size(); ++index) {
-        const sema::GenericFunctionInstanceInfo& instance = this->checked_.generic_function_instances[index];
+        const sema::GenericFunctionInstanceBodyView body =
+            this->checked_.generic_function_instance_body_view(this->ast_, index);
+        if (!sema::is_valid(body)) {
+            continue;
+        }
+        const sema::GenericFunctionInstanceInfo& instance = *body.instance;
         Function function = this->module_.make_function();
         function.name = this->module_.intern(sema::function_display_name(this->checked_.types, instance.signature));
         function.symbol = this->module_.intern(instance.signature.c_name);
@@ -313,17 +329,14 @@ void Lowerer::lower_function_declarations()
         function.is_unsafe = instance.signature.is_unsafe;
         function.is_variadic = false;
         function.return_type = instance.signature.return_type;
-        if (syntax::is_valid(instance.item) && instance.item.value < this->ast_.items.size()) {
-            const syntax::ItemNode item = this->ast_.items[instance.item.value];
-            for (base::usize param_index = 0; param_index < item.params.size(); ++param_index) {
-                const sema::TypeHandle param_type = param_index < instance.signature.param_types.size()
-                    ? instance.signature.param_types[param_index]
-                    : sema::INVALID_TYPE_HANDLE;
-                function.signature_params.push_back(FunctionParam{
-                    this->module_.intern(item.params[param_index].name),
-                    param_type,
-                });
-            }
+        for (base::usize param_index = 0; param_index < body.item->params.size(); ++param_index) {
+            const sema::TypeHandle param_type = param_index < instance.signature.param_types.size()
+                ? instance.signature.param_types[param_index]
+                : sema::INVALID_TYPE_HANDLE;
+            function.signature_params.push_back(FunctionParam{
+                this->module_.intern(body.item->params[param_index].name),
+                param_type,
+            });
         }
         const FunctionId function_id = add_function(this->module_, function);
         this->generic_instance_functions_[index] = function_id;
@@ -411,6 +424,10 @@ namespace aurex::ir {
 
 base::Result<Module> lower_ast(const syntax::AstModule& ast, const sema::CheckedModule& checked)
 {
+    if (!detail::generic_instance_body_views_are_valid(ast, checked)) {
+        return base::Result<Module>::fail(
+            {base::ErrorCode::internal_error, "generic instance body missing retained sema view for IR lowering"});
+    }
     detail::Lowerer lowerer(ast, checked);
     return base::Result<Module>::ok(lowerer.lower());
 }

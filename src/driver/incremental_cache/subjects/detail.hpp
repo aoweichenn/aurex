@@ -32,7 +32,7 @@ void collect_source_file_query_subjects(
 [[nodiscard]] std::vector<GenericInstanceSignatureQuerySubject> collect_generic_instance_signature_query_subjects(
     const sema::CheckedModule& checked);
 [[nodiscard]] std::vector<GenericInstanceBodyQuerySubject> collect_generic_instance_body_query_subjects(
-    const sema::CheckedModule& checked, const base::SourceManager& sources);
+    const sema::CheckedModule& checked, const base::SourceManager& sources, const syntax::AstModule* ast);
 void collect_function_body_query_subjects(const sema::CheckedModule& checked, const base::SourceManager& sources,
     const syntax::AstModule* ast, std::span<const ModuleRecord> modules,
     std::vector<FunctionBodySyntaxQuerySubject>& syntax_subjects,

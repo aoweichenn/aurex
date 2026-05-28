@@ -3,7 +3,8 @@
 namespace aurex::driver::incremental_cache_detail {
 
 [[nodiscard]] QuerySubjectCollection collect_query_subjects(const std::span<const ModuleRecord> modules,
-    const sema::CheckedModule& checked, const base::SourceManager& sources, const syntax::AstModule* const ast)
+    const sema::CheckedModule& checked, const base::SourceManager& sources, const syntax::AstModule* const ast,
+    const bool include_lowering_subjects)
 {
     QuerySubjectCollection collection;
     collect_source_file_query_subjects(collection, sources, modules);
@@ -17,9 +18,11 @@ namespace aurex::driver::incremental_cache_detail {
         checked, sources, ast, modules, collection.function_body_syntaxes, collection.type_check_bodies);
     collection.generic_template_signatures = collect_generic_template_signature_query_subjects(checked, modules);
     collection.generic_instance_signatures = collect_generic_instance_signature_query_subjects(checked);
-    collection.generic_instance_bodies = collect_generic_instance_body_query_subjects(checked, sources);
-    collection.lower_function_irs =
-        collect_lower_function_ir_query_subjects(collection.type_check_bodies, collection.generic_instance_bodies);
+    collection.generic_instance_bodies = collect_generic_instance_body_query_subjects(checked, sources, ast);
+    if (include_lowering_subjects) {
+        collection.lower_function_irs =
+            collect_lower_function_ir_query_subjects(collection.type_check_bodies, collection.generic_instance_bodies);
+    }
     build_ordered_query_subjects(collection);
     return collection;
 }

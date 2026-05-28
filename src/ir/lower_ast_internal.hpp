@@ -147,6 +147,11 @@ private:
         syntax::ExprId cast_expr = syntax::INVALID_EXPR_ID;
     };
 
+    struct FunctionBodyView {
+        std::span<const syntax::ParamDecl> params{};
+        syntax::StmtId body = syntax::INVALID_STMT_ID;
+    };
+
     [[nodiscard]] ExprView expr_view(syntax::ExprId expr_id) const noexcept;
 
     void lower_record_layouts();
@@ -174,8 +179,8 @@ private:
         ValueId source_address, sema::TypeHandle source_type, ValueId index, sema::TypeHandle element_type);
     [[nodiscard]] ValueId append_pattern_source_length(ValueId source_address, sema::TypeHandle source_type);
 
-    void lower_function_body(FunctionId function_id, const syntax::ItemNode& item);
-    void lower_generic_function_body(FunctionId function_id, const sema::GenericFunctionInstanceInfo& instance);
+    void lower_function_body(FunctionId function_id, FunctionBodyView body);
+    void lower_generic_function_body(FunctionId function_id, const sema::GenericFunctionInstanceBodyView& body);
     void lower_block(syntax::StmtId block_id);
     void lower_block_contents(syntax::StmtId block_id);
     void lower_stmt(syntax::StmtId stmt_id);

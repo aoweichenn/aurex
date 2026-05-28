@@ -407,10 +407,19 @@ private:
 struct GenericFunctionInstanceInfo {
     FunctionLookupKey key;
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    syntax::StmtId body = syntax::INVALID_STMT_ID;
     query::GenericInstanceKey generic_instance_key;
     FunctionSignature signature;
     base::usize side_table_layout_index = SEMA_GENERIC_SIDE_TABLE_INVALID_LAYOUT_INDEX;
     GenericSideTables side_tables;
+};
+
+struct GenericFunctionInstanceBodyView {
+    const GenericFunctionInstanceInfo* instance = nullptr;
+    const FunctionSignature* signature = nullptr;
+    const GenericSideTables* side_tables = nullptr;
+    const syntax::ItemNode* item = nullptr;
+    syntax::StmtId body = syntax::INVALID_STMT_ID;
 };
 
 struct NormalizedAstOverlay {
@@ -508,6 +517,10 @@ public:
     [[nodiscard]] GenericTypeAliasInstanceInfo clone_generic_type_alias_instance(
         const GenericTypeAliasInstanceInfo& other) const;
     [[nodiscard]] GenericFunctionInstanceInfo clone_generic_function_instance(const GenericFunctionInstanceInfo& other);
+    [[nodiscard]] GenericFunctionInstanceBodyView generic_function_instance_body_view(
+        const syntax::AstModule& ast, base::usize index) const noexcept;
+    [[nodiscard]] GenericFunctionInstanceBodyView generic_function_instance_body_view(
+        const syntax::AstModule& ast, const GenericFunctionInstanceInfo& instance) const noexcept;
     void prepare_analysis_only_storage(base::usize expr_count);
     void release_analysis_only_storage();
     void reserve_side_table_storage(base::usize expr_count, base::usize pattern_count, base::usize type_count,
@@ -531,5 +544,6 @@ private:
 [[nodiscard]] std::string struct_display_name(const TypeTable& types, const StructInfo& info);
 [[nodiscard]] std::string enum_display_name(const TypeTable& types, const EnumCaseInfo& info);
 [[nodiscard]] std::string enum_case_display_name(const TypeTable& types, const EnumCaseInfo& info);
+[[nodiscard]] bool is_valid(const GenericFunctionInstanceBodyView& view) noexcept;
 
 } // namespace aurex::sema

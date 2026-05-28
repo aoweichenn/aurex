@@ -374,6 +374,11 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_const_pattern)
     run_positive_runtime_smoke_sample("pattern_matching", "const_pattern.ax");
 }
 
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_generic_basic)
+{
+    run_positive_runtime_smoke_sample("generics", "basic_m2.ax");
+}
+
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_imported_samples)
 {
     verify_import_runtime_samples();

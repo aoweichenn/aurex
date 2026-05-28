@@ -2326,11 +2326,13 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesQueryRowsInDependencySchedule
 
     driver::CompilerInvocation invocation;
     invocation.input_path = source;
-    invocation.emit_kind = driver::EmitKind::typed;
+    invocation.emit_kind = driver::EmitKind::ir;
     invocation.incremental_cache_path = cache;
 
     driver::Compiler compiler;
+    testing::internal::CaptureStdout();
     auto first = compiler.run(invocation);
+    static_cast<void>(testing::internal::GetCapturedStdout());
     ASSERT_TRUE(first) << first.error().message;
 
     const std::string cache_text = read_text(cache);
@@ -2821,7 +2823,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     driver::clear_file_cache();
 }
 
-TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceBodyRowsForTypedGenericFunctions)
+TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericBodyRowsButSkipsLowerIRRowsForTypedGenericFunctions)
 {
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_GENERIC_BODY_SOURCE =
         "module incremental_cache_generic_body;\n"
@@ -2852,10 +2854,26 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceBodyRowsForTyp
     const std::string cache_text = read_text(cache);
     expect_contains(cache_text, "query\tgeneric_instance_signature");
     expect_contains(cache_text, "query\tgeneric_instance_body");
-    expect_contains(cache_text, "query\tlower_function_ir");
     expect_contains(cache_text, "query\tdiagnostics");
     expect_contains(cache_text, "query_edge\tgeneric_instance_body");
-    expect_contains(cache_text, "query_edge\tlower_function_ir");
+    expect_not_contains(cache_text, "query\tlower_function_ir");
+    expect_not_contains(cache_text, "query_edge\tlower_function_ir");
+
+    const fs::path ir_cache = cache_dir / "main.ir.axic";
+    driver::CompilerInvocation ir_invocation = invocation;
+    ir_invocation.emit_kind = driver::EmitKind::ir;
+    ir_invocation.incremental_cache_path = ir_cache;
+    testing::internal::CaptureStdout();
+    auto ir_result = compiler.run(ir_invocation);
+    static_cast<void>(testing::internal::GetCapturedStdout());
+    ASSERT_TRUE(ir_result) << ir_result.error().message;
+
+    const std::string ir_cache_text = read_text(ir_cache);
+    expect_contains(ir_cache_text, "query\tgeneric_instance_signature");
+    expect_contains(ir_cache_text, "query\tgeneric_instance_body");
+    expect_contains(ir_cache_text, "query\tlower_function_ir");
+    expect_contains(ir_cache_text, "query_edge\tgeneric_instance_body");
+    expect_contains(ir_cache_text, "query_edge\tlower_function_ir");
 
     driver::clear_file_cache();
 }

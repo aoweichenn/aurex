@@ -41,7 +41,7 @@ constexpr std::string_view IR_FOR_RANGE_ONE_LITERAL = "1";
 
 } // namespace
 
-void Lowerer::lower_function_body(const FunctionId function_id, const syntax::ItemNode& item)
+void Lowerer::lower_function_body(const FunctionId function_id, const FunctionBodyView body)
 {
     if (!is_valid(function_id) || function_id.value >= this->module_.functions.size()) {
         return;
@@ -54,8 +54,8 @@ void Lowerer::lower_function_body(const FunctionId function_id, const syntax::It
     this->push_local_scope();
     this->current_block_ = add_block(this->module_, *this->current_function_, "entry");
 
-    for (base::usize i = 0; i < item.params.size(); ++i) {
-        const syntax::ParamDecl& param = item.params[i];
+    for (base::usize i = 0; i < body.params.size(); ++i) {
+        const syntax::ParamDecl& param = body.params[i];
         const sema::TypeHandle param_type =
             this->current_function_ != nullptr && i < this->current_function_->signature_params.size()
             ? this->current_function_->signature_params[i].type
@@ -76,7 +76,7 @@ void Lowerer::lower_function_body(const FunctionId function_id, const syntax::It
         this->append_store(slot_id, param_id);
     }
 
-    this->lower_block(item.body);
+    this->lower_block(body.body);
     if (!this->has_terminator(this->current_block_)) {
         Terminator term;
         term.kind = TerminatorKind::return_;
@@ -89,22 +89,21 @@ void Lowerer::lower_function_body(const FunctionId function_id, const syntax::It
 }
 
 void Lowerer::lower_generic_function_body(
-    const FunctionId function_id, const sema::GenericFunctionInstanceInfo& instance)
+    const FunctionId function_id, const sema::GenericFunctionInstanceBodyView& body)
 {
-    if (!syntax::is_valid(instance.item) || instance.item.value >= this->ast_.items.size()) {
+    if (!sema::is_valid(body)) {
         return;
     }
     const ActiveSideTables previous_tables = this->active_side_tables_;
     this->active_side_tables_ = ActiveSideTables{
-        &instance.side_tables,
-        &instance.side_tables.expr_types,
-        &instance.side_tables.expr_c_name_ids,
-        &instance.side_tables.pattern_c_name_ids,
-        &instance.side_tables.syntax_type_handles,
-        &instance.side_tables.stmt_local_types,
+        body.side_tables,
+        &body.side_tables->expr_types,
+        &body.side_tables->expr_c_name_ids,
+        &body.side_tables->pattern_c_name_ids,
+        &body.side_tables->syntax_type_handles,
+        &body.side_tables->stmt_local_types,
     };
-    const syntax::ItemNode item = this->ast_.items[instance.item.value];
-    this->lower_function_body(function_id, item);
+    this->lower_function_body(function_id, FunctionBodyView{body.item->params, body.body});
     this->active_side_tables_ = previous_tables;
 }
 

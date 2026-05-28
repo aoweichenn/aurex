@@ -17,7 +17,8 @@ namespace aurex::driver::incremental_cache_detail {
     const std::filesystem::path& path, query::PackageKey package);
 [[nodiscard]] std::vector<DefinitionRecord> collect_definitions(const sema::CheckedModule& checked);
 [[nodiscard]] QuerySubjectCollection collect_query_subjects(std::span<const ModuleRecord> modules,
-    const sema::CheckedModule& checked, const base::SourceManager& sources, const syntax::AstModule* ast);
+    const sema::CheckedModule& checked, const base::SourceManager& sources, const syntax::AstModule* ast,
+    bool include_lowering_subjects);
 void evaluate_query_subject(
     query::QueryContext& context, const QuerySubjectCollection& collection, const QuerySubject& subject);
 

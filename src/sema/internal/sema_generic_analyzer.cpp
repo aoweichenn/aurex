@@ -2402,6 +2402,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
     GenericFunctionInstanceInfo instance;
     instance.key = key;
     instance.item = info.item;
+    instance.body = function.body;
     instance.generic_instance_key = instance_query_key;
     instance.signature = std::move(signature);
     if (info.has_sparse_node_ids()) {
@@ -2547,6 +2548,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_me
     GenericFunctionInstanceInfo instance;
     instance.key = key;
     instance.item = info.item;
+    instance.body = function.body;
     instance.generic_instance_key = instance_query_key;
     instance.signature = std::move(signature);
     if (info.has_sparse_node_ids()) {

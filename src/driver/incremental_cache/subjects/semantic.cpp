@@ -319,6 +319,29 @@ struct PackageIndex {
     return source_range_text(sources, signature.range);
 }
 
+[[nodiscard]] std::optional<base::SourceRange> generic_function_instance_body_range(const sema::CheckedModule& checked,
+    const sema::GenericFunctionInstanceInfo& instance, const syntax::AstModule& ast) noexcept
+{
+    const sema::GenericFunctionInstanceBodyView body = checked.generic_function_instance_body_view(ast, instance);
+    if (!sema::is_valid(body) || body.body.value >= ast.stmts.size()) {
+        return std::nullopt;
+    }
+    return ast.stmts.range(body.body.value);
+}
+
+[[nodiscard]] std::optional<std::string_view> generic_function_instance_body_text(const sema::CheckedModule& checked,
+    const base::SourceManager& sources, const sema::GenericFunctionInstanceInfo& instance,
+    const syntax::AstModule* const ast) noexcept
+{
+    if (ast != nullptr) {
+        if (const std::optional<base::SourceRange> body_range =
+                generic_function_instance_body_range(checked, instance, *ast)) {
+            return source_range_text(sources, *body_range);
+        }
+    }
+    return source_range_text(sources, instance.signature.range);
+}
+
 [[nodiscard]] query::QueryResultFingerprint generic_instance_body_checked_result_fingerprint(
     const query::GenericInstanceKey& key, const sema::IncrementalKey& signature_key, const std::string_view body_text)
 {
@@ -460,7 +483,8 @@ void push_unique_generic_instance_signature_query_subject(std::vector<GenericIns
 }
 
 void push_generic_instance_body_query_subject(std::vector<GenericInstanceBodyQuerySubject>& subjects,
-    const sema::GenericFunctionInstanceInfo& instance, const base::SourceManager& sources)
+    const sema::CheckedModule& checked, const sema::GenericFunctionInstanceInfo& instance,
+    const base::SourceManager& sources, const syntax::AstModule* const ast)
 {
     const query::GenericInstanceKey& instance_key = query::is_valid(instance.signature.generic_instance_key)
         ? instance.signature.generic_instance_key
@@ -469,7 +493,8 @@ void push_generic_instance_body_query_subject(std::vector<GenericInstanceBodyQue
         || !instance.signature.has_definition || instance.signature.has_conflict) {
         return;
     }
-    const std::optional<std::string_view> body_text = source_range_text(sources, instance.signature.range);
+    const std::optional<std::string_view> body_text =
+        generic_function_instance_body_text(checked, sources, instance, ast);
     if (!body_text) {
         return;
     }
@@ -630,12 +655,12 @@ void push_function_body_query_subjects(std::vector<FunctionBodySyntaxQuerySubjec
 }
 
 [[nodiscard]] std::vector<GenericInstanceBodyQuerySubject> collect_generic_instance_body_query_subjects(
-    const sema::CheckedModule& checked, const base::SourceManager& sources)
+    const sema::CheckedModule& checked, const base::SourceManager& sources, const syntax::AstModule* const ast)
 {
     std::vector<GenericInstanceBodyQuerySubject> subjects;
     subjects.reserve(checked.generic_function_instances.size());
     for (const sema::GenericFunctionInstanceInfo& instance : checked.generic_function_instances) {
-        push_generic_instance_body_query_subject(subjects, instance, sources);
+        push_generic_instance_body_query_subject(subjects, checked, instance, sources, ast);
     }
     return subjects;
 }

@@ -52,6 +52,16 @@ count、sparse fallback count 和 retained/local-dense/sparse flags。incrementa
 fallback/cycle、generic aggregate shape、generic cache rows、query pruning reuse 和 malformed graph / identity
 repair。
 
+2026-05-28 WP-3 Generic Body And Lowering Closure 已完成：retained generic function instance 现在在
+`GenericFunctionInstanceInfo` 中显式保存 `body`，`CheckedModule::generic_function_instance_body_view(...)`
+把 instance、signature、side table、AST item 和 body 组成唯一的 sema-authority 视图。IR lowerer 的 generic
+declaration/body lowering 改为消费该 view，`lower_ast` 在缺失 retained body view 时直接返回 internal error，
+不再静默跳过或在 lowerer 侧重新解释 generic identity。incremental cache 的 generic body checked-result
+fingerprint 改为读取 retained body 对应 AST block range，`--emit=typed` 只写 generic body query rows，不再写
+lower generic IR rows，IR/LLVM/native emit mode 才收集 lower generic instance IR subject。新增/更新 sema、IR
+whitebox、driver cache 和 sample runtime 覆盖 retained/discarded emit-mode 边界、generic body view、缺失 view
+拒绝、checked module copy/move body 保真和 `generics/basic_m2.ax` native execution。
+
 M1 阶段已经舍弃。主要原因不是单个功能失败，而是整体设计方向不稳：
 
 - 标准库、host support、构建工具样例和语言核心同时扩张，导致测试结果很难判断是语言问题、库问题还是工具链问题。

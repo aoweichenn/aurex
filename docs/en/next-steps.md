@@ -1,6 +1,6 @@
 # Next Steps
 
-## Current Highest Priority: M3.0 Modules
+## Current Highest Priority: M3.1 Generics Completion
 
 The R5 Compilation Pipeline / Driver Action core is now closed:
 `CompilerInvocation`, the `Compiler` facade, `CompilationSession`,
@@ -10,13 +10,25 @@ profile metadata, diagnostic stage owners, and tooling/profile consumer
 contracts are all on the main path while preserving the existing CLI,
 diagnostics JSON, profile JSON, incremental-cache, and emit-mode behavior.
 
-The current highest priority moves to M3.0 in the [M3 Roadmap](m3-roadmap.md):
+M3.0 module-system closure is complete. The current highest priority moves to
+M3.1 in the [M3 Roadmap](m3-roadmap.md):
 
-- Upgrade the current "one file, one module, recursively import and append into
-  a combined AST" model into separate logical modules and source-file parts.
-- In the first slice, solve only same-package module parts. Do not add package
-  management, version solving, or external dependency systems.
-- M3 work must consume the R5 driver/session/query/diagnostics/pipeline path
+- `GenericTemplateSignature`, `GenericInstanceSignature`, and
+  `GenericInstanceBody` become the authoritative generic checking, reuse, and
+  invalidation boundaries.
+- Generic ABI suffixes, stable ids, and incremental keys must derive from
+  `GenericInstanceKey` / canonical type identity instead of this session's
+  `TypeHandle` numbers, display strings, or reverse-engineered C ABI names.
+- `sizeof[T]` / `alignof[T]` must work inside generic function bodies through
+  sema, IR lowering, and LLVM lowering.
+- Method-local generics move from M2 unsupported into M3.1 design and
+  implementation, including lookup, inference, ABI, query keys, diagnostics,
+  IR/native behavior, and positive/negative samples.
+- M3.1 still uses only the current built-in non-resource capabilities:
+  `Sized`, `Eq`, `Ord`, and `Hash`. User traits, associated types, const
+  generics, resource capabilities, trait objects, and RAII stay out of this
+  stage.
+- M3.1 work must consume the R5 driver/session/query/diagnostics/pipeline path
   instead of opening bypasses.
 - R5 profile/tooling contracts remain the consumer boundary for future profile
   viewers, LSP adapters, and IDE stage views.
@@ -70,25 +82,34 @@ should consume this classification API instead of carrying their own phase-name
 maps.
 
 Next, keep `PipelineStage` as the single profile/cache/query/diagnostics/IDE
-stage directory. M3 modules, generic backend completion, LSP adapter work, and
-subtree reparse must consume the R5 driver/session/query/diagnostics path,
+stage directory. M3.1 generics, later LSP adapter work, and subtree reparse
+must consume the R5 driver/session/query/diagnostics path,
 including public `PipelineStageMetadata`,
 `pipeline_profile_phase_classification(...)`, `stage` / `parent_stage` profile
 metadata, and `IdeDiagnostic` owner-stage metadata, instead of bypassing it.
 
-M3.0 first implementation order:
+M3.1 first implementation order:
 
-1. Close the module-part semantics and parser/AST shape, including the
-   `module path part name;` declaration rule.
-2. Teach `ModuleLoader` to support multiple `ModulePartKey`s under one
-   `ModuleKey`, while rejecting duplicate parts, path mismatches, and cycles.
-3. Design sema visibility: `priv` is visible across all parts of the same
-   logical module; cross-module access still follows imports/re-exports and
-   public API.
-4. Align module graph / exports / item list / item signature query keys,
-   dependencies, and invalidation boundaries.
-5. After M3.0 stabilizes, move to M3.1 generic ABI stabilization and
-   query-backed generic signature/body work.
+1. Stabilize generic ABI suffixes: generic struct / enum / function / later
+   method instance symbols derive from `GenericInstanceKey`, not
+   `TypeHandle.value`.
+2. Propagate generic instance identity: record `GenericInstanceIdentity`,
+   fingerprints, and semantic keys on generic struct, enum, type alias,
+   function, and method metadata instead of letting ABI, dumps, lookup, and
+   query subjects each recreate identity.
+3. Harden generic query authority: move template signature, instance signature,
+   and instance body computation behind query provider boundaries. Eager sema
+   should consume or materialize query results.
+4. Close generic body/lowering: retained typed bodies, IR lowering, LLVM
+   lowering, and native execution consume the same generic instance body and
+   side-table view.
+5. Complete `sizeof[T]` / `alignof[T]`: add generic-function sema, IR, LLVM,
+   and diagnostic coverage for built-in type operands.
+6. Implement method-local generics after query/ABI boundaries are stable,
+   including positive, negative, checked-dump, IR/native, and incremental-cache
+   coverage.
+7. Keep the quality gates green: generic gtests, samples, stress, query
+   pruning, full tests, and coverage must not regress.
 
 ## Branch Principle
 

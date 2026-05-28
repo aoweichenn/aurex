@@ -22,7 +22,10 @@ constexpr std::string_view SEMA_GENERIC_INSTANCE_SEPARATOR = "$";
 constexpr std::string_view SEMA_GENERIC_KEY_ARG_PREFIX = "t";
 constexpr std::string_view SEMA_GENERIC_KEY_ARG_SEPARATOR = ".";
 constexpr std::string_view SEMA_GENERIC_ABI_SUFFIX_PREFIX = "__aurexg";
-constexpr std::string_view SEMA_GENERIC_ABI_ARG_PREFIX = "_t";
+constexpr std::string_view SEMA_GENERIC_ABI_GLOBAL_ID_PREFIX = "_k";
+constexpr std::string_view SEMA_GENERIC_ABI_PRIMARY_PREFIX = "_p";
+constexpr std::string_view SEMA_GENERIC_ABI_SECONDARY_PREFIX = "_s";
+constexpr std::string_view SEMA_GENERIC_ABI_BYTE_COUNT_PREFIX = "_n";
 constexpr std::string_view SEMA_CAPABILITY_COPY = "Copy";
 constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
 constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_MARKER = "generic-param";
@@ -37,7 +40,7 @@ constexpr base::u32 SEMA_GENERIC_PARAM_IDENTITY_BYTE_BITS = 8;
 constexpr base::u64 SEMA_GENERIC_PARAM_IDENTITY_BYTE_MASK = 0xFFU;
 constexpr base::usize SEMA_DECIMAL_U64_MAX_DIGITS = 20;
 constexpr base::usize SEMA_GENERIC_KEY_ARG_SIZE_ESTIMATE = 12;
-constexpr base::usize SEMA_GENERIC_ABI_ARG_SIZE_ESTIMATE = 14;
+constexpr base::usize SEMA_GENERIC_ABI_SUFFIX_SIZE_ESTIMATE = 96;
 constexpr base::usize SEMA_GENERIC_SPAN_LINEAR_DEDUP_LIMIT = 64;
 
 [[nodiscard]] GenericSideTables make_generic_side_tables(const GenericSideTableLocalLayoutView& layout)
@@ -1241,14 +1244,19 @@ std::string SemanticAnalyzerCore::GenericAnalyzer::generic_instance_key_suffix(
 }
 
 std::string SemanticAnalyzerCore::GenericAnalyzer::generic_instance_abi_suffix(
-    const std::vector<TypeHandle>& args) const
+    const query::GenericInstanceKey& key) const
 {
     std::string suffix(SEMA_GENERIC_ABI_SUFFIX_PREFIX);
-    suffix.reserve(SEMA_GENERIC_ABI_SUFFIX_PREFIX.size() + args.size() * SEMA_GENERIC_ABI_ARG_SIZE_ESTIMATE);
-    for (const TypeHandle arg : args) {
-        suffix += SEMA_GENERIC_ABI_ARG_PREFIX;
-        append_decimal(suffix, arg.value);
-    }
+    suffix.reserve(SEMA_GENERIC_ABI_SUFFIX_SIZE_ESTIMATE);
+    const query::StableFingerprint128 fingerprint = query::stable_key_fingerprint(key);
+    suffix += SEMA_GENERIC_ABI_GLOBAL_ID_PREFIX;
+    append_decimal(suffix, key.global_id);
+    suffix += SEMA_GENERIC_ABI_PRIMARY_PREFIX;
+    append_decimal(suffix, fingerprint.primary);
+    suffix += SEMA_GENERIC_ABI_SECONDARY_PREFIX;
+    append_decimal(suffix, fingerprint.secondary);
+    suffix += SEMA_GENERIC_ABI_BYTE_COUNT_PREFIX;
+    append_decimal(suffix, fingerprint.byte_count);
     return suffix;
 }
 
@@ -1799,7 +1807,7 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(con
     }
 
     const syntax::ItemNode item = this->core_.ctx_.module.items[info.item.value];
-    const std::string abi_suffix = this->core_.generic_instance_abi_suffix(args);
+    const std::string abi_suffix = this->core_.generic_instance_abi_suffix(instance_identity.value().key);
     const std::string qualified = this->core_.qualified_name(info.module, item.name);
     const std::string c_name = this->core_.c_symbol_name(info.module, std::string(item.name) + abi_suffix);
 
@@ -1891,8 +1899,15 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_enum(const
         return found->second;
     }
 
+    base::Result<GenericInstanceIdentity> instance_identity =
+        this->core_.generic_instance_identity(info, args, query::DefNamespace::type);
+    if (!instance_identity) {
+        this->core_.report_internal_contract(use_type.range, instance_identity.error().message);
+        return INVALID_TYPE_HANDLE;
+    }
+
     const syntax::ItemNode item = this->core_.ctx_.module.items[info.item.value];
-    const std::string abi_suffix = this->core_.generic_instance_abi_suffix(args);
+    const std::string abi_suffix = this->core_.generic_instance_abi_suffix(instance_identity.value().key);
     const std::string qualified = this->core_.qualified_name(info.module, item.name);
     const std::string c_name = this->core_.c_symbol_name(info.module, std::string(item.name) + abi_suffix);
 
@@ -2265,8 +2280,8 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
         signature.semantic_key = key;
         signature.stable_id = sema::stable_definition_id(this->core_.stable_module_id(info.module),
             StableSymbolKind::function, instance_identity.value().fingerprint_text);
-        signature.c_name = this->core_.state_.checked.intern_text(this->core_.c_symbol_name(
-            info.module, std::string(info.name.view()) + this->core_.generic_instance_abi_suffix(args)));
+        signature.c_name = this->core_.state_.checked.intern_text(this->core_.c_symbol_name(info.module,
+            std::string(info.name.view()) + this->core_.generic_instance_abi_suffix(instance_identity.value().key)));
         signature.generic_args = this->core_.state_.checked.copy_type_handle_list(args);
         signature.module = info.module;
         signature.part_index = info.part_index;
@@ -2780,9 +2795,9 @@ std::string SemanticAnalyzerCore::generic_instance_key_suffix(const std::vector<
     return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_instance_key_suffix(args);
 }
 
-std::string SemanticAnalyzerCore::generic_instance_abi_suffix(const std::vector<TypeHandle>& args) const
+std::string SemanticAnalyzerCore::generic_instance_abi_suffix(const query::GenericInstanceKey& key) const
 {
-    return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_instance_abi_suffix(args);
+    return GenericAnalyzer(const_cast<SemanticAnalyzerCore&>(*this)).generic_instance_abi_suffix(key);
 }
 
 std::string SemanticAnalyzerCore::generic_instance_key(

@@ -1,7 +1,7 @@
 # Current Progress
 
 Version: 0.1.2
-Stage: M3.0 modules
+Stage: M3.1 generics
 
 ## Overall Status
 
@@ -42,9 +42,24 @@ main stages and incremental-cache sub-events enter the profiler through
 name strings. R5.13 added `pipeline_profile_phase_classification(...)`, so the
 profile JSON writer and future viewer/LSP adapter consumers can classify a phase
 name as a driver main stage, profile sub-event, or unknown through the same
-stage directory. The current highest priority is now [M3 modules](m3-roadmap.md):
-separate logical modules from source-file parts inside one package while reusing
-the R5 driver/session/query/diagnostics/pipeline path.
+stage directory. M3 implementation continues to reuse the R5
+driver/session/query/diagnostics/pipeline path.
+
+As of 2026-05-28, M3.0 module-system closure is complete and M3.1 Generics
+Completion is active on the `m3.1` branch. M3.1 does not widen traits,
+resources, or the standard library. It turns the existing usable generic
+implementation into a stable query-backed system: `GenericTemplateSignature`,
+`GenericInstanceSignature`, and `GenericInstanceBody` are the authority
+boundaries; generic ABI suffixes, stable ids, and incremental keys derive from
+`GenericInstanceKey` / canonical type identity; generic bodies, IR lowering,
+LLVM lowering, and native execution consume the same instance identity and
+side-table view; `sizeof[T]` / `alignof[T]` close through sema/IR/LLVM inside
+generic functions; and method-local generics move into implementation after ABI
+and query boundaries are stable. The first M3.1 code step changes generic
+struct / enum / function ABI suffixes from session-only `TypeHandle.value`
+concatenation to a stable `GenericInstanceKey` fingerprint, so separate compiler
+sessions do not generate different instance symbols only because handle
+allocation differed.
 
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,

@@ -3022,6 +3022,10 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstanceQueryKeysIgnoreSessionTypeHandles)
     EXPECT_EQ(first_identity.value().key, second_identity.value().key);
     EXPECT_EQ(query::stable_key_fingerprint(first_identity.value().key),
         query::stable_key_fingerprint(second_identity.value().key));
+    EXPECT_EQ(first_analyzer.generic_instance_abi_suffix(first_identity.value().key),
+        second_analyzer.generic_instance_abi_suffix(second_identity.value().key));
+    EXPECT_NE(
+        first_analyzer.generic_instance_abi_suffix(first_identity.value().key).find("__aurexg_k"), std::string::npos);
     EXPECT_EQ(first_identity.value().key.param_env.predicate_count, 1U);
     ASSERT_EQ(first_identity.value().key.type_args.size(), 1U);
     ASSERT_EQ(second_identity.value().key.type_args.size(), 1U);

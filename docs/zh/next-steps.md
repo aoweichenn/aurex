@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M3.0 模块系统
+## 当前最高优先级：M3.1 泛型闭环
 
 R5 Compilation Pipeline / Driver Action 重构 core 已收口：`CompilerInvocation`、`Compiler`
 facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`LoweringPipeline`、
@@ -8,18 +8,21 @@ facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`Lo
 stage owner 和 tooling/profile consumer contract 都已经进入主路径，并保持原有 CLI、diagnostics JSON、
 profile JSON、incremental cache 和 emit mode 行为。
 
-当前最高优先级切到 [M3 路线图](m3-roadmap.md) 的 M3.0 模块系统：
+M3.0 模块系统已完成 Phase 9A-D 收口，当前最高优先级切到
+[M3 路线图](m3-roadmap.md) 的 M3.1 泛型闭环：
 
-- 把当前“一个文件一个模块，loader 递归 import 后拼成 combined AST”的模型，升级为逻辑模块和
-  source-file part 分离的模型。
-- 当前模块设计基线已经收束到 [Aurex M3 模块系统设计稿](aurex-module-system-m3-design.md)：
-  M3.0 采用显式 primary module 文件、显式 `part name;` 列表和 `module path part name;`
-  part 文件自声明，不用隐式目录扫描定义语言语义。
-- 第四轮使用者视角审视已经纳入设计基线：`--check` / frontend inspection 可以从 part 文件反查
-  owning primary，IR / LLVM IR / native artifact 输出不能从 part root 隐式生成；`.parts` 可发现性、
-  part-local import 误用、module-private `priv` 误解和大小写冲突必须有可操作 diagnostics。
-- 第一阶段只解决同一 package 内的 module part，不做 package manager、版本求解或外部依赖系统。
-- M3 后续功能必须复用 R5 后稳定下来的 driver/session/query/diagnostics/pipeline 主路径，不能另开旁路。
+- `GenericTemplateSignature`、`GenericInstanceSignature` 和 `GenericInstanceBody`
+  成为泛型检查、实例复用和增量失效的权威边界。
+- 泛型 ABI suffix、stable id 和 incremental key 必须由 `GenericInstanceKey` /
+  canonical type identity 派生，不能再依赖本次 session 的 `TypeHandle` 数字、display string
+  或 C ABI 名称反推身份。
+- `sizeof[T]` / `alignof[T]` 要在 generic function body 中完整通过 sema、IR lowering 和 LLVM lowering，
+  不能只在非泛型路径可用。
+- method-local generics 从 M2 unsupported 进入 M3.1 设计和实现，必须覆盖 lookup、inference、ABI、
+  query key、diagnostics、IR/native 行为和正负样例。
+- M3.1 仍只使用当前内建非资源 capability：`Sized`、`Eq`、`Ord`、`Hash`；用户 trait、
+  associated type、const generic、resource capability、trait object 和 RAII 不进入本阶段。
+- M3.1 继续复用 R5 后稳定下来的 driver/session/query/diagnostics/pipeline 主路径，不能另开旁路。
 - R5 的 profile/tooling contract 继续作为后续 profile viewer、LSP adapter 和 IDE stage view 的消费边界。
 
 R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分；
@@ -62,16 +65,21 @@ R5.13 已完成 profile/tooling 消费者分类契约：`pipeline_profile_phase_
 已通过这个入口输出原有 `stage` / `parent_stage` metadata，协议字段保持不变。后续 profile viewer
 和 LSP/IDE 阶段视图必须复用这个分类 API，不再维护独立 phase-name 映射表。
 
-M3.0 的第一批实现顺序：
+M3.1 的第一批实现顺序：
 
-1. Parser / AST 支持 `module path part name;` 和 primary `part name;`，并补 parser dumps / negative tests。
-2. 让 `ModuleLoader` 由 primary part list 加载同一 `ModuleKey` 下多个 `ModulePartKey`，并拒绝重复 part、路径不匹配、
-   artifact root、case-fold path collision 和循环；检查型 part root 需要反查 owning primary。
-3. Sema 按 `ModuleKey` 合并 item list，检测跨 part duplicate item，并让 `priv` 跨同一 logical module 所有 parts 可见。
-4. 对齐 module graph / exports / item list / item signature 的 query key、dependency、fingerprint 和 invalidation 边界。
-5. 已进入 M3.0 收口段：`pub(package)`、primary-level selective `pub use`、IDE part buffer owning-primary
-   恢复和 module/query/cache 契约必须作为当前模块系统验收的一部分；M3.0 收口后再进入 M3.1 泛型 ABI
-   稳定化。
+1. 泛型 ABI 稳定化：泛型 struct / enum / function / 后续 method 的实例符号名统一从
+   `GenericInstanceKey` 派生，不再拼接 `TypeHandle.value`。
+2. 泛型实例身份贯通：把 `GenericInstanceIdentity` / fingerprint / semantic key 明确记录到
+   generic struct、enum、type alias、function 和 method metadata，避免 ABI、dump、lookup、
+   query subject 各自生成身份。
+3. 泛型 query 权威化：把 template signature、instance signature 和 instance body 的计算收束到
+   query provider 边界，eager sema 只能消费或 materialize query 结果。
+4. 泛型 body/lowering 闭环：让 retained typed body、IR lowering、LLVM lowering 和 native execution
+   都消费同一份 generic instance body 与 side table 视图。
+5. `sizeof[T]` / `alignof[T]` 闭环：补齐 generic function 内建 type operand 的 sema、IR、LLVM 和诊断测试。
+6. method-local generics：在 query/ABI 边界稳定后实现，并补 positive、negative、checked dump、
+   IR/native 和 incremental cache 覆盖。
+7. 质量门：泛型 gtest、samples、stress、query pruning、全量测试和 coverage 必须不回退。
 
 ## 当前分支原则
 

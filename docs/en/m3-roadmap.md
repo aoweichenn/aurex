@@ -11,8 +11,9 @@ stage around two systems:
 2. Generics.
 
 As of 2026-05-25, the R5 Compilation Pipeline / Driver Action core is complete.
-M3.0 is now the highest priority, but every M3 implementation must reuse the R5
-`CompilationSession`, `CompilationPipeline`, `FrontendPipeline`,
+As of 2026-05-28, M3.0 module-system closure is complete and the current
+highest priority is M3.1 generics completion. Every M3 implementation must
+reuse the R5 `CompilationSession`, `CompilationPipeline`, `FrontendPipeline`,
 `LoweringPipeline`, `BackendPipeline`, `PipelineStage`, query, diagnostics, and
 profile/tooling contracts. Do not open a parallel compilation path in the module
 loader, parser/sema, or query layers.
@@ -43,7 +44,8 @@ PackageKey
         +-- ModuleExports    public API and re-export table
 ```
 
-The first stage only solves same-package module decomposition. It does not add a
+Status: M3.0 Phase 9A-D has closed the language-level module-system work. The
+first stage only solves same-package module decomposition. It does not add a
 package manager, version solver, or external dependency system.
 
 Core deliverables:
@@ -136,24 +138,60 @@ these initial directions:
 - Method-local generics need lookup, inference, ABI, query-key, and diagnostic
   design before implementation.
 
+The M3.1 implementation route is:
+
+1. **1A generic ABI stabilization**: generic struct / enum / function / method
+   instance symbols derive from `GenericInstanceKey` and stable fingerprints;
+   do not concatenate session-only `TypeHandle.value`.
+2. **1B generic instance identity propagation**: record
+   `GenericInstanceIdentity`, fingerprint text, stable definition ids, and
+   semantic keys on generic struct, enum, type alias, function, and method
+   checked metadata. Dumps, lookup, query subjects, and lowering should not each
+   rebuild identity independently.
+3. **2 generic query authority**: upgrade `GenericTemplateSignature`,
+   `GenericInstanceSignature`, and `GenericInstanceBody` from useful records to
+   provider authorities. Eager sema materializes or consumes query results
+   instead of being the only source of truth.
+4. **3 generic body/lowering closure**: retained typed bodies, generic side
+   tables, IR lowering, LLVM lowering, native execution, and checked dumps all
+   consume the same instance-body view.
+5. **4 `sizeof[T]` / `alignof[T]` closure**: give generic-function type
+   operands verifiable sema semantics, carry them through IR/LLVM, and keep
+   negative cases in sema diagnostics.
+6. **5 method-local generics**: implement local generic parameter scope, lookup,
+   inference, ABI, query keys, capability constraints, diagnostics, IR/native,
+   and incremental-cache behavior.
+7. **6 quality gates**: keep gtests, positive/negative samples, native
+   execution, generic stress, query pruning, coverage, and full tests green.
+
 ## Recommended Implementation Order
 
-1. Documentation closure: M2.5 keeps only frontend-foundation work, and M3 owns
-   modules and generics.
-2. Module AST and parser design: add part information to module declarations and
-   decide the primary/part file syntax.
-3. ModuleLoader design: allow multiple `ModulePartKey`s under one `ModuleKey`,
-   while rejecting duplicate parts, mismatched paths, and cycles.
-4. Sema visibility design: `priv` is visible across all parts of one logical
-   module; cross-module access still follows imports/re-exports and public API.
-5. Module graph/export queries: keep the current combined AST path as an
-   implementation detail, but record queries by `ModuleKey` / `ModulePartKey`.
-6. Generic ABI stabilization: derive generic instance symbol names and
-   incremental keys from `GenericInstanceKey` instead of session handles.
-7. Generic query authority: move instance signature/body computation from eager
-   sema paths toward provider boundaries.
-8. Method-local generics: implement after module and generic query boundaries are
-   stable.
+The completed M3.0 module order remains as historical acceptance: documentation
+closure, module AST/parser, ModuleLoader, sema visibility, module graph/export
+queries, package visibility, source-root topology, ModulePartKey, IDE part
+recovery, and selective re-export are closed. The active M3.1 order is:
+
+1. 1A generic ABI stabilization.
+2. 1B generic instance identity propagation.
+3. 2 generic query authority.
+4. 3 generic body/lowering closure.
+5. 4 `sizeof[T]` / `alignof[T]` closure.
+6. 5 method-local generics.
+7. 6 quality gates and coverage closure.
+
+## Current Implementation Progress
+
+2026-05-28: M3.1 Generics Completion has started on the `m3.1` branch. The
+first 1A generic ABI stabilization step is implemented: `generic_instance_abi_suffix`
+takes a `GenericInstanceKey` instead of `std::vector<TypeHandle>`, and the
+suffix is formed from the key global id plus `stable_key_fingerprint(key)`
+primary / secondary / byte_count values. Generic struct, generic enum, and
+generic function instantiation compute `GenericInstanceIdentity` first and use
+its key for the C ABI suffix. A white-box test covers two sema sessions whose
+`TypeHandle.value` assignments differ but whose canonical generic instance keys
+match, and requires equal ABI suffixes. The next 1B step will audit
+method-local generic ABI, generic type-alias metadata, checked dumps, query
+subjects, and lowering for any remaining independently rebuilt identity paths.
 
 ## Acceptance
 

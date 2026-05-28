@@ -39,7 +39,7 @@ public:
     void populate_generic_concrete_context(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, GenericContext& context) const;
     std::string generic_instance_key_suffix(const std::vector<TypeHandle>& args) const;
-    std::string generic_instance_abi_suffix(const std::vector<TypeHandle>& args) const;
+    std::string generic_instance_abi_suffix(const query::GenericInstanceKey& key) const;
     std::string generic_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     std::string generic_struct_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;
     std::string generic_enum_instance_key(const GenericTemplateInfo& info, const std::vector<TypeHandle>& args) const;

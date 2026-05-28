@@ -2926,12 +2926,14 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables)
     EXPECT_EQ(instance.generic_instance_key.param_env.predicate_count, 0U);
 
     const sema::FunctionSignature& signature = instance.signature;
+    EXPECT_EQ(signature.generic_instance_key, instance.generic_instance_key);
     EXPECT_EQ(signature.name, "id");
     EXPECT_TRUE(sema::is_valid(signature.semantic_key));
     ASSERT_EQ(signature.generic_args.size(), 1U);
     EXPECT_TRUE(checked.types.same(signature.generic_args.front(), checked.types.builtin(sema::BuiltinType::i32)));
     EXPECT_EQ(sema::function_display_name(checked.types, signature), "id[i32]");
     EXPECT_TRUE(checked.functions.contains(signature.semantic_key));
+    EXPECT_EQ(checked.functions.at(signature.semantic_key).generic_instance_key, instance.generic_instance_key);
     EXPECT_NE(sema::dump_checked_module(checked).find("id[i32]"), std::string::npos);
 
     const sema::GenericSideTables& side_tables = checked.generic_function_instances.front().side_tables;
@@ -2970,8 +2972,11 @@ TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables)
         std::move(discard_side_tables_module), discard_diagnostics, discard_options);
     auto discard_result = discard_analyzer.analyze();
     ASSERT_TRUE(discard_result) << discard_result.error().message;
-    EXPECT_TRUE(discard_result.value().generic_function_instances.empty());
-    EXPECT_TRUE(discard_result.value().functions.contains(signature.semantic_key));
+    const sema::CheckedModule& discard_checked = discard_result.value();
+    EXPECT_TRUE(discard_checked.generic_function_instances.empty());
+    ASSERT_TRUE(discard_checked.functions.contains(signature.semantic_key));
+    EXPECT_TRUE(query::is_valid(discard_checked.functions.at(signature.semantic_key).generic_instance_key));
+    EXPECT_EQ(discard_checked.functions.at(signature.semantic_key).generic_instance_key, instance.generic_instance_key);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxGenericInstanceQueryKeysIgnoreSessionTypeHandles)
@@ -3334,9 +3339,17 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     box_i32_type_node.type_args = {i32_type};
     const TypeId box_i32_type = module.push_type(box_i32_type_node);
 
+    syntax::TypeNode box_generic_type_node = named_node("Box");
+    box_generic_type_node.type_args = {generic_type};
+    const TypeId box_generic_type = module.push_type(box_generic_type_node);
+
     syntax::TypeNode maybe_i32_type_node = named_node("Maybe");
     maybe_i32_type_node.type_args = {i32_type};
     const TypeId maybe_i32_type = module.push_type(maybe_i32_type_node);
+
+    syntax::TypeNode alias_i32_type_node = named_node("AliasBox");
+    alias_i32_type_node.type_args = {i32_type};
+    const TypeId alias_i32_type = module.push_type(alias_i32_type_node);
 
     syntax::ItemNode box_item;
     box_item.kind = syntax::ItemKind::struct_decl;
@@ -3359,6 +3372,14 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     const syntax::ItemId maybe_item_id = module.push_item(maybe_item);
     module.item_modules[maybe_item_id.value] = module_id(0);
 
+    syntax::ItemNode alias_item;
+    alias_item.kind = syntax::ItemKind::type_alias;
+    alias_item.name = "AliasBox";
+    alias_item.generic_params = {syntax::GenericParamDecl{"T", {}}};
+    alias_item.alias_type = box_generic_type;
+    const syntax::ItemId alias_item_id = module.push_item(alias_item);
+    module.item_modules[alias_item_id.value] = module_id(0);
+
     const ExprId zero = push_integer(module);
     syntax::StmtNode return_stmt;
     return_stmt.kind = syntax::StmtKind::return_;
@@ -3372,6 +3393,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     use_item.params = {
         syntax::ParamDecl{"box", box_i32_type, {}},
         syntax::ParamDecl{"maybe", maybe_i32_type, {}},
+        syntax::ParamDecl{"alias", alias_i32_type, {}},
     };
     use_item.return_type = i32_type;
     use_item.body = body;
@@ -3401,18 +3423,39 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     EXPECT_EQ(checked.types.get(generic_box->type).name, "generic_type_display.Box");
     EXPECT_EQ(checked.types.display_name(generic_box->type), "generic_type_display.Box[i32]");
 
+    ASSERT_EQ(checked.generic_enum_instances.size(), 1U);
+    const sema::GenericEnumInstanceInfo& generic_maybe_instance = checked.generic_enum_instances.front();
+    EXPECT_TRUE(query::is_valid(generic_maybe_instance.generic_instance_key));
+    ASSERT_EQ(generic_maybe_instance.generic_instance_key.type_args.size(), 1U);
+    EXPECT_EQ(generic_maybe_instance.generic_instance_key.type_args.front(),
+        query::canonical_builtin(query::BuiltinTypeKey::i32));
+    EXPECT_EQ(checked.types.display_name(generic_maybe_instance.type), "generic_type_display.Maybe[i32]");
+
     const sema::EnumCaseInfo* generic_some = nullptr;
+    const sema::EnumCaseInfo* generic_none = nullptr;
     for (const auto& entry : checked.enum_cases) {
         const sema::EnumCaseInfo& info = entry.second;
         if (info.enum_name == "Maybe" && info.case_name == "some") {
             generic_some = &info;
-            break;
+        } else if (info.enum_name == "Maybe" && info.case_name == "none") {
+            generic_none = &info;
         }
     }
     ASSERT_NE(generic_some, nullptr);
+    ASSERT_NE(generic_none, nullptr);
     EXPECT_EQ(generic_some->enum_name, "Maybe");
+    EXPECT_EQ(generic_some->generic_instance_key, generic_maybe_instance.generic_instance_key);
+    EXPECT_EQ(generic_none->generic_instance_key, generic_maybe_instance.generic_instance_key);
     EXPECT_EQ(checked.types.display_name(generic_some->type), "generic_type_display.Maybe[i32]");
     EXPECT_EQ(generic_some->name.view().find("[i32]"), std::string::npos);
+
+    ASSERT_EQ(checked.generic_type_alias_instances.size(), 1U);
+    const sema::GenericTypeAliasInstanceInfo& alias_instance = checked.generic_type_alias_instances.front();
+    EXPECT_TRUE(query::is_valid(alias_instance.generic_instance_key));
+    ASSERT_EQ(alias_instance.generic_instance_key.type_args.size(), 1U);
+    EXPECT_EQ(
+        alias_instance.generic_instance_key.type_args.front(), query::canonical_builtin(query::BuiltinTypeKey::i32));
+    EXPECT_EQ(checked.types.display_name(alias_instance.resolved_type), "generic_type_display.Box[i32]");
 
     const std::string checked_dump = sema::dump_checked_module(checked);
     EXPECT_NE(checked_dump.find("struct priv Box[i32]"), std::string::npos);
@@ -3709,6 +3752,18 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     sema::CheckedModule checked;
     constexpr base::u32 SEMA_TEST_CHECKED_COPY_PART_INDEX = 4;
     const IdentId checked_c_name = checked.intern_c_name("m0_test");
+    const std::array<std::string_view, 1> checked_module_parts{"checked_copy"};
+    const sema::StableModuleId checked_stable_module = sema::stable_module_id(checked_module_parts);
+    const sema::StableDefId checked_template_stable_id =
+        sema::stable_definition_id(checked_stable_module, sema::StableSymbolKind::generic_template, "CopyGeneric");
+    const query::DefKey checked_template_key =
+        query::def_key_from_stable_id(query::package_key(std::span<const std::string_view>{}),
+            checked_template_stable_id, query::DefNamespace::value, query::DefKind::generic_template);
+    const std::array<query::CanonicalTypeKey, 1> checked_generic_args{
+        query::canonical_builtin(query::BuiltinTypeKey::i32),
+    };
+    const query::GenericInstanceKey checked_generic_instance_key = query::generic_instance_key(checked_template_key,
+        checked_generic_args, std::span<const query::StableFingerprint128>{}, query::param_env_key({}));
     checked.expr_intrinsic_types.push_back(i32);
     checked.expr_types.push_back(i32);
     checked.prepare_analysis_only_storage(1U);
@@ -3735,6 +3790,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
         alpha_id,
     };
     signature.c_name = checked.intern_text("m0_f");
+    signature.generic_instance_key = checked_generic_instance_key;
     signature.param_types.push_back(i32);
     signature.generic_args.push_back(i64);
     signature.return_type = i32;
@@ -3747,6 +3803,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     struct_info.module = module_id(0);
     struct_info.type = i32;
     struct_info.part_index = SEMA_TEST_CHECKED_COPY_PART_INDEX;
+    struct_info.generic_instance_key = checked_generic_instance_key;
     struct_info.fields.push_back(StructFieldInfo{
         checked.intern_text("field"),
         beta_id,
@@ -3767,6 +3824,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     enum_case.c_name = checked.intern_text("m0_E_case");
     enum_case.type = i64;
     enum_case.part_index = SEMA_TEST_CHECKED_COPY_PART_INDEX;
+    enum_case.generic_instance_key = checked_generic_instance_key;
     enum_case.payload_types.push_back(i32);
     const sema::ModuleLookupKey enum_case_key{module_id(0).value, beta_id};
     checked.enum_cases.emplace(enum_case_key, enum_case);
@@ -3785,6 +3843,26 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     template_info.part_index = SEMA_TEST_CHECKED_COPY_PART_INDEX;
     checked.generic_template_signatures.push_back(template_info);
 
+    sema::GenericEnumInstanceInfo enum_instance;
+    enum_instance.key = enum_case_key;
+    enum_instance.item = syntax::ItemId{0};
+    enum_instance.generic_instance_key = checked_generic_instance_key;
+    enum_instance.type = i64;
+    enum_instance.stable_id = enum_case.stable_id;
+    enum_instance.incremental_key = enum_case.incremental_key;
+    enum_instance.part_index = SEMA_TEST_CHECKED_COPY_PART_INDEX;
+    checked.generic_enum_instances.push_back(enum_instance);
+
+    sema::GenericTypeAliasInstanceInfo alias_instance;
+    alias_instance.key = alias_key;
+    alias_instance.item = syntax::ItemId{0};
+    alias_instance.generic_instance_key = checked_generic_instance_key;
+    alias_instance.resolved_type = i32;
+    alias_instance.stable_id = alias_info.stable_id;
+    alias_instance.incremental_key = alias_info.incremental_key;
+    alias_instance.part_index = SEMA_TEST_CHECKED_COPY_PART_INDEX;
+    checked.generic_type_alias_instances.push_back(alias_instance);
+
     sema::GenericFunctionInstanceInfo instance;
     instance.key = sema::FunctionLookupKey{
         module_id(0).value,
@@ -3792,6 +3870,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
         checked.intern_c_name("f[i32]"),
     };
     instance.item = syntax::ItemId{0};
+    instance.generic_instance_key = checked_generic_instance_key;
     instance.signature = checked.clone_function_signature(signature);
     instance.side_table_layout_index = checked.append_generic_side_table_layout(sema::GenericSideTableLocalLayoutView{
         sema::GenericNodeSpan{4U, 3U},
@@ -3813,11 +3892,19 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     ASSERT_EQ(checked_copy.functions.size(), 1U);
     EXPECT_EQ(checked_copy.expr_intrinsic_types.front().value, i32.value);
     EXPECT_EQ(checked_copy.c_name_text(checked_copy.expr_c_name_ids.front()), "m0_test");
+    EXPECT_EQ(checked_copy.functions.at(signature.semantic_key).generic_instance_key, checked_generic_instance_key);
     EXPECT_EQ(checked_copy.generic_function_instances.front().signature.name, "f");
+    EXPECT_EQ(checked_copy.generic_function_instances.front().generic_instance_key, checked_generic_instance_key);
+    EXPECT_EQ(
+        checked_copy.generic_function_instances.front().signature.generic_instance_key, checked_generic_instance_key);
     EXPECT_EQ(checked_copy.generic_function_instances.front().signature.part_index, SEMA_TEST_CHECKED_COPY_PART_INDEX);
     ASSERT_EQ(checked_copy.generic_template_signatures.size(), 1U);
     EXPECT_EQ(checked_copy.generic_template_signatures.front().part_index, SEMA_TEST_CHECKED_COPY_PART_INDEX);
     EXPECT_EQ(checked_copy.generic_side_table_layouts.size(), 1U);
+    ASSERT_EQ(checked_copy.generic_enum_instances.size(), 1U);
+    EXPECT_EQ(checked_copy.generic_enum_instances.front().generic_instance_key, checked_generic_instance_key);
+    ASSERT_EQ(checked_copy.generic_type_alias_instances.size(), 1U);
+    EXPECT_EQ(checked_copy.generic_type_alias_instances.front().generic_instance_key, checked_generic_instance_key);
     EXPECT_EQ(checked_copy.generic_function_instances.front().side_tables.layout,
         &checked_copy.generic_side_table_layouts.front());
     EXPECT_EQ(checked_copy.generic_function_instances.front().side_tables.local_expr_index(ExprId{4U}), 0U);
@@ -3833,9 +3920,11 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     sema::CheckedModule checked_assigned;
     checked_assigned = checked;
     EXPECT_EQ(checked_assigned.enum_cases.at(enum_case_key).payload_types.front().value, i32.value);
+    EXPECT_EQ(checked_assigned.enum_cases.at(enum_case_key).generic_instance_key, checked_generic_instance_key);
     EXPECT_EQ(checked_assigned.enum_cases.at(enum_case_key).part_index, SEMA_TEST_CHECKED_COPY_PART_INDEX);
     sema::CheckedModule checked_moved(std::move(checked_copy));
     EXPECT_EQ(checked_moved.structs.at(struct_key).name, "S");
+    EXPECT_EQ(checked_moved.structs.at(struct_key).generic_instance_key, checked_generic_instance_key);
     EXPECT_EQ(checked_moved.structs.at(struct_key).part_index, SEMA_TEST_CHECKED_COPY_PART_INDEX);
     ASSERT_EQ(checked_moved.structs.at(struct_key).fields.size(), 1U);
     EXPECT_EQ(checked_moved.structs.at(struct_key).fields.front().name, "field");
@@ -3844,6 +3933,11 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     checked_move_assigned = std::move(checked_assigned);
     EXPECT_EQ(checked_move_assigned.type_aliases.at(alias_key).name, "Alias");
     EXPECT_EQ(checked_move_assigned.type_aliases.at(alias_key).part_index, SEMA_TEST_CHECKED_COPY_PART_INDEX);
+    ASSERT_EQ(checked_move_assigned.generic_enum_instances.size(), 1U);
+    EXPECT_EQ(checked_move_assigned.generic_enum_instances.front().generic_instance_key, checked_generic_instance_key);
+    ASSERT_EQ(checked_move_assigned.generic_type_alias_instances.size(), 1U);
+    EXPECT_EQ(
+        checked_move_assigned.generic_type_alias_instances.front().generic_instance_key, checked_generic_instance_key);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxSourceNamesBorrowAstInternerAcrossCheckedModuleMoves)

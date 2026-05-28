@@ -64,6 +64,19 @@ allocation differed. The remaining M3.1 execution entry point is now the
 advances by work package and reads only the required local context plus direct
 callers/callees by default.
 
+As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
+`FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and
+`GenericTypeAliasInstanceInfo` carry structured `GenericInstanceKey` values.
+Generic function and owner-generic method instantiation write identity into
+checked signatures in both retained and non-retained side-table modes. Generic
+type alias instances record their resolved target type and a target-sensitive
+instance-signature incremental key while preserving transparent-alias semantics.
+Incremental-cache generic instance signature subjects are collected from checked
+metadata, deduplicated by key, and invalid keys are skipped. New white-box
+coverage checks function signature identity, generic enum case identity, generic
+type alias instance identity, checked module copy/move preservation, and driver
+cache rows.
+
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,
 and language syntax. The result made it hard to tell whether a failure came from

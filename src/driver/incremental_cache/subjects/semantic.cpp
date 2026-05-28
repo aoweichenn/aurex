@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "detail.hpp"
@@ -231,16 +232,35 @@ void push_generic_template_signature_query_subject(std::vector<GenericTemplateSi
 void push_generic_instance_signature_query_subject(std::vector<GenericInstanceSignatureQuerySubject>& subjects,
     const query::GenericInstanceKey& key, const sema::IncrementalKey& incremental_key)
 {
+    if (!query::is_valid(key) || !query::is_valid(incremental_key)) {
+        return;
+    }
     subjects.push_back(GenericInstanceSignatureQuerySubject{
         &key,
         incremental_key,
     });
 }
 
+void push_unique_generic_instance_signature_query_subject(std::vector<GenericInstanceSignatureQuerySubject>& subjects,
+    std::unordered_set<query::GenericInstanceKey, query::GenericInstanceKeyHash>& seen,
+    const query::GenericInstanceKey& key, const sema::IncrementalKey& incremental_key)
+{
+    if (!query::is_valid(key) || !query::is_valid(incremental_key)) {
+        return;
+    }
+    if (!seen.insert(key).second) {
+        return;
+    }
+    push_generic_instance_signature_query_subject(subjects, key, incremental_key);
+}
+
 void push_generic_instance_body_query_subject(std::vector<GenericInstanceBodyQuerySubject>& subjects,
     const sema::GenericFunctionInstanceInfo& instance, const base::SourceManager& sources)
 {
-    if (!query::is_valid(instance.generic_instance_key) || !query::is_valid(instance.signature.incremental_key)
+    const query::GenericInstanceKey& instance_key = query::is_valid(instance.signature.generic_instance_key)
+        ? instance.signature.generic_instance_key
+        : instance.generic_instance_key;
+    if (!query::is_valid(instance_key) || !query::is_valid(instance.signature.incremental_key)
         || !instance.signature.has_definition || instance.signature.has_conflict) {
         return;
     }
@@ -248,13 +268,13 @@ void push_generic_instance_body_query_subject(std::vector<GenericInstanceBodyQue
     if (!body_text) {
         return;
     }
-    const query::QueryResultFingerprint result = generic_instance_body_result_fingerprint(
-        instance.generic_instance_key, instance.signature.incremental_key, *body_text);
+    const query::QueryResultFingerprint result =
+        generic_instance_body_result_fingerprint(instance_key, instance.signature.incremental_key, *body_text);
     if (!query::is_valid(result)) {
         return;
     }
     subjects.push_back(GenericInstanceBodyQuerySubject{
-        &instance.generic_instance_key,
+        &instance_key,
         result,
     });
 }
@@ -368,15 +388,35 @@ void push_function_body_query_subjects(std::vector<FunctionBodySyntaxQuerySubjec
     const sema::CheckedModule& checked)
 {
     std::vector<GenericInstanceSignatureQuerySubject> subjects;
-    subjects.reserve(checked.generic_function_instances.size() + checked.structs.size());
+    const base::usize generic_instance_capacity = checked.functions.size() + checked.generic_function_instances.size()
+        + checked.structs.size() + checked.generic_enum_instances.size() + checked.generic_type_alias_instances.size();
+    subjects.reserve(generic_instance_capacity);
+    std::unordered_set<query::GenericInstanceKey, query::GenericInstanceKeyHash> seen;
+    seen.reserve(generic_instance_capacity);
 
+    for (const auto& entry : checked.functions) {
+        const sema::FunctionSignature& signature = entry.second;
+        push_unique_generic_instance_signature_query_subject(
+            subjects, seen, signature.generic_instance_key, signature.incremental_key);
+    }
     for (const sema::GenericFunctionInstanceInfo& instance : checked.generic_function_instances) {
-        push_generic_instance_signature_query_subject(
-            subjects, instance.generic_instance_key, instance.signature.incremental_key);
+        push_unique_generic_instance_signature_query_subject(subjects, seen,
+            query::is_valid(instance.signature.generic_instance_key) ? instance.signature.generic_instance_key
+                                                                     : instance.generic_instance_key,
+            instance.signature.incremental_key);
     }
     for (const auto& entry : checked.structs) {
         const sema::StructInfo& info = entry.second;
-        push_generic_instance_signature_query_subject(subjects, info.generic_instance_key, info.incremental_key);
+        push_unique_generic_instance_signature_query_subject(
+            subjects, seen, info.generic_instance_key, info.incremental_key);
+    }
+    for (const sema::GenericEnumInstanceInfo& instance : checked.generic_enum_instances) {
+        push_unique_generic_instance_signature_query_subject(
+            subjects, seen, instance.generic_instance_key, instance.incremental_key);
+    }
+    for (const sema::GenericTypeAliasInstanceInfo& instance : checked.generic_type_alias_instances) {
+        push_unique_generic_instance_signature_query_subject(
+            subjects, seen, instance.generic_instance_key, instance.incremental_key);
     }
     return subjects;
 }

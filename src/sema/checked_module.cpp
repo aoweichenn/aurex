@@ -480,6 +480,8 @@ CheckedModule::CheckedModule()
           make_sema_map<ModuleLookupKey, TypeAliasInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{})),
       generic_template_signatures(make_sema_vector<GenericTemplateSignatureInfo>(*this->arena_)),
       generic_side_table_layouts(make_sema_deque<GenericSideTableLayout>(*this->arena_)),
+      generic_enum_instances(make_sema_deque<GenericEnumInstanceInfo>(*this->arena_)),
+      generic_type_alias_instances(make_sema_deque<GenericTypeAliasInstanceInfo>(*this->arena_)),
       generic_function_instances(make_sema_deque<GenericFunctionInstanceInfo>(*this->arena_))
 {
 }
@@ -512,6 +514,8 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       type_aliases(std::move(other.type_aliases)),
       generic_template_signatures(std::move(other.generic_template_signatures)),
       generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
+      generic_enum_instances(std::move(other.generic_enum_instances)),
+      generic_type_alias_instances(std::move(other.generic_type_alias_instances)),
       generic_function_instances(std::move(other.generic_function_instances)), normalized_ast(other.normalized_ast)
 {
     this->rebind_interned_texts(&other.c_names, this->c_names);
@@ -564,6 +568,8 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->type_aliases.swap(other.type_aliases);
     this->generic_template_signatures.swap(other.generic_template_signatures);
     this->generic_side_table_layouts.swap(other.generic_side_table_layouts);
+    this->generic_enum_instances.swap(other.generic_enum_instances);
+    this->generic_type_alias_instances.swap(other.generic_type_alias_instances);
     this->generic_function_instances.swap(other.generic_function_instances);
     swap(this->normalized_ast, other.normalized_ast);
     this->rebind_interned_texts(other_c_names, this->c_names);
@@ -631,6 +637,14 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->generic_side_table_layouts.clear();
     for (const GenericSideTableLayout& layout : other.generic_side_table_layouts) {
         this->generic_side_table_layouts.push_back(this->clone_generic_side_table_layout(layout));
+    }
+    this->generic_enum_instances.clear();
+    for (const GenericEnumInstanceInfo& instance : other.generic_enum_instances) {
+        this->generic_enum_instances.push_back(this->clone_generic_enum_instance(instance));
+    }
+    this->generic_type_alias_instances.clear();
+    for (const GenericTypeAliasInstanceInfo& instance : other.generic_type_alias_instances) {
+        this->generic_type_alias_instances.push_back(this->clone_generic_type_alias_instance(instance));
     }
     this->generic_function_instances.clear();
     for (const GenericFunctionInstanceInfo& instance : other.generic_function_instances) {
@@ -747,6 +761,7 @@ FunctionSignature CheckedModule::clone_function_signature(const FunctionSignatur
     copy.semantic_key = other.semantic_key;
     copy.stable_id = other.stable_id;
     copy.incremental_key = other.incremental_key;
+    copy.generic_instance_key = other.generic_instance_key;
     copy.c_name = this->intern_text(other.c_name);
     copy.module = other.module;
     copy.method_owner_type = other.method_owner_type;
@@ -808,6 +823,7 @@ EnumCaseInfo CheckedModule::clone_enum_case_info(const EnumCaseInfo& other)
     copy.stable_id = other.stable_id;
     copy.stable_case_key = other.stable_case_key;
     copy.incremental_key = other.incremental_key;
+    copy.generic_instance_key = other.generic_instance_key;
     copy.part_index = other.part_index;
     return copy;
 }
@@ -840,6 +856,17 @@ GenericSideTableLayout CheckedModule::clone_generic_side_table_layout(const Gene
         other.type_node_ids,
         other.stmt_node_ids,
     });
+}
+
+GenericEnumInstanceInfo CheckedModule::clone_generic_enum_instance(const GenericEnumInstanceInfo& other) const
+{
+    return other;
+}
+
+GenericTypeAliasInstanceInfo CheckedModule::clone_generic_type_alias_instance(
+    const GenericTypeAliasInstanceInfo& other) const
+{
+    return other;
 }
 
 GenericFunctionInstanceInfo CheckedModule::clone_generic_function_instance(const GenericFunctionInstanceInfo& other)

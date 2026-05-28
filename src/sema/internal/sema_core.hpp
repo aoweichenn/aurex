@@ -517,7 +517,7 @@ private:
     void register_value_names();
     void register_enum_cases_for_item(const syntax::ItemNode& item, syntax::ModuleId owner, TypeHandle named_enum_type,
         std::string enum_display_name, const std::string& case_prefix, const std::string& c_prefix,
-        syntax::Visibility visibility);
+        syntax::Visibility visibility, const query::GenericInstanceKey& generic_instance_key);
     void validate_function_prototypes() const;
     void validate_exported_signature_surfaces() const;
     void validate_abi_symbols() const;
@@ -738,6 +738,8 @@ private:
     [[nodiscard]] base::Result<std::string> generic_instance_signature_fingerprint(const GenericTemplateInfo& info,
         const GenericInstanceIdentity& identity, TypeHandle return_type, std::span<const TypeHandle> param_types,
         bool is_method, bool is_variadic) const;
+    [[nodiscard]] base::Result<std::string> generic_type_alias_instance_signature_fingerprint(
+        const GenericTemplateInfo& info, const GenericInstanceIdentity& identity, TypeHandle target_type) const;
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;
     [[nodiscard]] bool is_valid_storage_type(TypeHandle type) const;
     [[nodiscard]] bool check_m2_value_abi(

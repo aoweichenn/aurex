@@ -16,7 +16,8 @@ public:
     void resolve_type_alias_decls();
     void register_enum_cases_for_item(const syntax::ItemNode& item, const syntax::ModuleId owner,
         const TypeHandle named_enum_type, std::string enum_display_name, const std::string& case_prefix,
-        const std::string& c_prefix, const syntax::Visibility visibility);
+        const std::string& c_prefix, const syntax::Visibility visibility,
+        const query::GenericInstanceKey& generic_instance_key);
     void register_value_names();
     void validate_function_prototypes() const;
     void validate_exported_signature_surfaces() const;

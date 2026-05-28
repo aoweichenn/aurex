@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/source.hpp>
+#include <aurex/query/generic_instance_key.hpp>
 #include <aurex/sema/identifier.hpp>
 #include <aurex/sema/type.hpp>
 #include <aurex/syntax/ast.hpp>
@@ -16,6 +17,7 @@ struct FunctionSignature {
     FunctionLookupKey semantic_key;
     StableDefId stable_id;
     IncrementalKey incremental_key;
+    query::GenericInstanceKey generic_instance_key;
     InternedText c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle method_owner_type = INVALID_TYPE_HANDLE;

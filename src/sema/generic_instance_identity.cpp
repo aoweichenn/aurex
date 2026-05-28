@@ -16,11 +16,15 @@ namespace {
 
 constexpr std::string_view SEMA_GENERIC_INSTANCE_FINGERPRINT_PREFIX = "generic-instance:";
 constexpr std::string_view SEMA_GENERIC_SIGNATURE_FINGERPRINT_PREFIX = "generic-signature:";
+constexpr std::string_view SEMA_GENERIC_TYPE_ALIAS_SIGNATURE_FINGERPRINT_PREFIX = "generic-alias-signature:";
 constexpr std::string_view SEMA_GENERIC_PARAM_ENV_SEPARATOR = ":";
 constexpr std::string_view SEMA_GENERIC_INSTANCE_QUERY_KEY_ERROR = "failed to build generic instance query key: ";
 constexpr std::string_view SEMA_GENERIC_SIGNATURE_QUERY_KEY_ERROR =
     "failed to build generic instance signature fingerprint: ";
+constexpr std::string_view SEMA_GENERIC_TYPE_ALIAS_SIGNATURE_QUERY_KEY_ERROR =
+    "failed to build generic type alias instance signature fingerprint: ";
 constexpr base::u64 SEMA_GENERIC_INSTANCE_SIGNATURE_KEY_MARKER = 0x53454d4147495347ULL;
+constexpr base::u64 SEMA_GENERIC_TYPE_ALIAS_SIGNATURE_KEY_MARKER = 0x53454d4147414c49ULL;
 constexpr base::usize SEMA_GENERIC_PARAM_ENV_PREDICATE_SIZE_ESTIMATE = 16;
 constexpr char SEMA_GENERIC_TEMPLATE_KEY_SEPARATOR = ':';
 
@@ -301,6 +305,31 @@ base::Result<std::string> SemanticAnalyzerCore::generic_instance_signature_finge
     }
 
     std::string fingerprint(SEMA_GENERIC_SIGNATURE_FINGERPRINT_PREFIX);
+    fingerprint += query::debug_string(writer.fingerprint());
+    return base::Result<std::string>::ok(std::move(fingerprint));
+}
+
+base::Result<std::string> SemanticAnalyzerCore::generic_type_alias_instance_signature_fingerprint(
+    const GenericTemplateInfo& info, const GenericInstanceIdentity& identity, const TypeHandle target_type) const
+{
+    GenericInstanceCanonicalResolver resolver(*this, info, identity.key.template_def);
+    query::StableKeyWriter writer;
+    writer.write_u64(SEMA_GENERIC_TYPE_ALIAS_SIGNATURE_KEY_MARKER);
+    query::append_stable_key(writer, identity.key);
+    writer.write_bool(is_valid(target_type));
+    if (is_valid(target_type)) {
+        base::Result<query::CanonicalTypeKey> canonical_target =
+            build_canonical_type_key(this->state_.checked.types, target_type, resolver);
+        if (!canonical_target) {
+            return base::Result<std::string>::fail({
+                base::ErrorCode::internal_error,
+                std::string(SEMA_GENERIC_TYPE_ALIAS_SIGNATURE_QUERY_KEY_ERROR) + canonical_target.error().message,
+            });
+        }
+        query::append_stable_key(writer, canonical_target.value());
+    }
+
+    std::string fingerprint(SEMA_GENERIC_TYPE_ALIAS_SIGNATURE_FINGERPRINT_PREFIX);
     fingerprint += query::debug_string(writer.fingerprint());
     return base::Result<std::string>::ok(std::move(fingerprint));
 }

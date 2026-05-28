@@ -29,6 +29,15 @@ M3.1 第一笔代码变更已经把 generic struct / enum / function 的 ABI suf
 不同实例符号。M3.1 后续执行入口已收束为 [Aurex M3.1 泛型闭环执行计划](m3.1-generics-plan.md)，后续按
 work package 推进，默认只读取当前包的必读上下文和直接调用链。
 
+2026-05-28 WP-1B Generic Instance Identity Propagation 已完成：`FunctionSignature`、`EnumCaseInfo`、
+`GenericEnumInstanceInfo` 和 `GenericTypeAliasInstanceInfo` 都携带结构化 `GenericInstanceKey`；
+generic function / owner-generic method 的 retained 与 non-retained 路径都会把 identity 写入 checked
+signature；generic type alias 实例保存 resolved target type 和对 target type 敏感的 instance signature
+incremental key，但仍保持透明别名语义；incremental cache 的 generic instance signature subject 从 checked
+metadata 收集并按 key 去重，invalid key 不再进入 query subject。新增白盒覆盖 function signature identity、
+generic enum case identity、generic type alias instance identity、checked module copy/move 保真和 driver cache
+rows。
+
 M1 阶段已经舍弃。主要原因不是单个功能失败，而是整体设计方向不稳：
 
 - 标准库、host support、构建工具样例和语言核心同时扩张，导致测试结果很难判断是语言问题、库问题还是工具链问题。

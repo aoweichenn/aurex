@@ -114,6 +114,7 @@ struct EnumCaseInfo {
     StableDefId stable_id;
     StableMemberKey stable_case_key;
     IncrementalKey incremental_key;
+    query::GenericInstanceKey generic_instance_key;
     base::u32 part_index = 0;
 };
 
@@ -139,6 +140,26 @@ struct GenericTemplateSignatureInfo {
     IncrementalKey incremental_key;
     query::DefNamespace name_space = query::DefNamespace::value;
     base::u32 param_count = 0;
+    base::u32 part_index = 0;
+};
+
+struct GenericEnumInstanceInfo {
+    ModuleLookupKey key;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    query::GenericInstanceKey generic_instance_key;
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    StableDefId stable_id;
+    IncrementalKey incremental_key;
+    base::u32 part_index = 0;
+};
+
+struct GenericTypeAliasInstanceInfo {
+    ModuleLookupKey key;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    query::GenericInstanceKey generic_instance_key;
+    TypeHandle resolved_type = INVALID_TYPE_HANDLE;
+    StableDefId stable_id;
+    IncrementalKey incremental_key;
     base::u32 part_index = 0;
 };
 
@@ -443,6 +464,8 @@ public:
     CheckedTypeAliasMap type_aliases;
     SemaVector<GenericTemplateSignatureInfo> generic_template_signatures;
     SemaDeque<GenericSideTableLayout> generic_side_table_layouts;
+    SemaDeque<GenericEnumInstanceInfo> generic_enum_instances;
+    SemaDeque<GenericTypeAliasInstanceInfo> generic_type_alias_instances;
     SemaDeque<GenericFunctionInstanceInfo> generic_function_instances;
     NormalizedAstOverlay normalized_ast;
 
@@ -480,6 +503,9 @@ public:
     [[nodiscard]] StructInfo clone_struct_info(const StructInfo& other);
     [[nodiscard]] EnumCaseInfo clone_enum_case_info(const EnumCaseInfo& other);
     [[nodiscard]] GenericSideTableLayout clone_generic_side_table_layout(const GenericSideTableLayout& other) const;
+    [[nodiscard]] GenericEnumInstanceInfo clone_generic_enum_instance(const GenericEnumInstanceInfo& other) const;
+    [[nodiscard]] GenericTypeAliasInstanceInfo clone_generic_type_alias_instance(
+        const GenericTypeAliasInstanceInfo& other) const;
     [[nodiscard]] GenericFunctionInstanceInfo clone_generic_function_instance(const GenericFunctionInstanceInfo& other);
     void prepare_analysis_only_storage(base::usize expr_count);
     void release_analysis_only_storage();

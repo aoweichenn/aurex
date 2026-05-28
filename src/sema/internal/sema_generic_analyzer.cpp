@@ -1805,9 +1805,10 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(con
         this->core_.report_internal_contract(use_type.range, instance_identity.error().message);
         return INVALID_TYPE_HANDLE;
     }
+    const query::GenericInstanceKey instance_query_key = instance_identity.value().key;
 
     const syntax::ItemNode item = this->core_.ctx_.module.items[info.item.value];
-    const std::string abi_suffix = this->core_.generic_instance_abi_suffix(instance_identity.value().key);
+    const std::string abi_suffix = this->core_.generic_instance_abi_suffix(instance_query_key);
     const std::string qualified = this->core_.qualified_name(info.module, item.name);
     const std::string c_name = this->core_.c_symbol_name(info.module, std::string(item.name) + abi_suffix);
 
@@ -1828,7 +1829,7 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(con
         this->core_.stable_module_id(info.module), StableSymbolKind::type, instance_identity.value().fingerprint_text);
     struct_info.incremental_key =
         this->core_.stable_incremental_key(struct_info.stable_id, instance_identity.value().fingerprint_text);
-    struct_info.generic_instance_key = std::move(instance_identity.value().key);
+    struct_info.generic_instance_key = instance_query_key;
     struct_info.is_generic_placeholder = std::ranges::any_of(args, [&](const TypeHandle arg) {
         return is_valid(arg) && this->core_.state_.checked.types.get(arg).kind == TypeKind::generic_param;
     });
@@ -1905,9 +1906,10 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_enum(const
         this->core_.report_internal_contract(use_type.range, instance_identity.error().message);
         return INVALID_TYPE_HANDLE;
     }
+    const query::GenericInstanceKey instance_query_key = instance_identity.value().key;
 
     const syntax::ItemNode item = this->core_.ctx_.module.items[info.item.value];
-    const std::string abi_suffix = this->core_.generic_instance_abi_suffix(instance_identity.value().key);
+    const std::string abi_suffix = this->core_.generic_instance_abi_suffix(instance_query_key);
     const std::string qualified = this->core_.qualified_name(info.module, item.name);
     const std::string c_name = this->core_.c_symbol_name(info.module, std::string(item.name) + abi_suffix);
 
@@ -1916,13 +1918,26 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_enum(const
         handle, this->core_.generic_template_key_prefix(info.module, info.name_id, info.name), args);
     this->core_.state_.generics.enum_instances[instance_key_id] = handle;
 
+    GenericEnumInstanceInfo enum_instance;
+    enum_instance.key = ModuleLookupKey{info.module.value, instance_key_id};
+    enum_instance.item = info.item;
+    enum_instance.generic_instance_key = instance_query_key;
+    enum_instance.type = handle;
+    enum_instance.stable_id = sema::stable_definition_id(
+        this->core_.stable_module_id(info.module), StableSymbolKind::type, instance_identity.value().fingerprint_text);
+    enum_instance.incremental_key =
+        this->core_.stable_incremental_key(enum_instance.stable_id, instance_identity.value().fingerprint_text);
+    enum_instance.part_index = info.part_index;
+    this->core_.state_.checked.generic_enum_instances.push_back(std::move(enum_instance));
+
     GenericContext generic_context = this->core_.make_generic_context();
     this->core_.populate_generic_concrete_context(info, args, generic_context);
 
     {
         GenericAnalysisScope scope(this->core_, info.module, &generic_context, nullptr, false, info.item);
         this->core_.register_enum_cases_for_item(item, info.module, handle, std::string(item.name),
-            std::string(item.name) + abi_suffix + "_", std::string(item.name) + abi_suffix + "_", info.visibility);
+            std::string(item.name) + abi_suffix + "_", std::string(item.name) + abi_suffix + "_", info.visibility,
+            instance_query_key);
     }
     return handle;
 }
@@ -1959,6 +1974,15 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_type_alias
         return INVALID_TYPE_HANDLE;
     }
 
+    base::Result<GenericInstanceIdentity> instance_identity =
+        this->core_.generic_instance_identity(info, args, query::DefNamespace::type);
+    if (!instance_identity) {
+        this->core_.report_internal_contract(use_type.range, instance_identity.error().message);
+        this->core_.state_.generics.resolved_type_aliases[instance_key_id] = INVALID_TYPE_HANDLE;
+        return INVALID_TYPE_HANDLE;
+    }
+    const query::GenericInstanceKey instance_query_key = instance_identity.value().key;
+
     const syntax::ItemNode item = this->core_.ctx_.module.items[info.item.value];
     this->core_.state_.types.resolving_type_aliases.push_back(ModuleLookupKey{info.module.value, instance_key_id});
     GenericContext generic_context = this->core_.make_generic_context();
@@ -1969,6 +1993,27 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_type_alias
         return this->core_.resolve_type(item.alias_type, opaque_allowed_as_pointee);
     }();
     this->core_.state_.types.resolving_type_aliases.pop_back();
+
+    if (is_valid(resolved)) {
+        base::Result<std::string> signature_fingerprint =
+            this->core_.generic_type_alias_instance_signature_fingerprint(info, instance_identity.value(), resolved);
+        if (!signature_fingerprint) {
+            this->core_.report_internal_contract(use_type.range, signature_fingerprint.error().message);
+            this->core_.state_.generics.resolved_type_aliases[instance_key_id] = INVALID_TYPE_HANDLE;
+            return INVALID_TYPE_HANDLE;
+        }
+        GenericTypeAliasInstanceInfo alias_instance;
+        alias_instance.key = ModuleLookupKey{info.module.value, instance_key_id};
+        alias_instance.item = info.item;
+        alias_instance.generic_instance_key = instance_query_key;
+        alias_instance.resolved_type = resolved;
+        alias_instance.stable_id = sema::stable_definition_id(this->core_.stable_module_id(info.module),
+            StableSymbolKind::type, instance_identity.value().fingerprint_text);
+        alias_instance.incremental_key =
+            this->core_.stable_incremental_key(alias_instance.stable_id, signature_fingerprint.value());
+        alias_instance.part_index = info.part_index;
+        this->core_.state_.checked.generic_type_alias_instances.push_back(std::move(alias_instance));
+    }
     this->core_.state_.generics.resolved_type_aliases[instance_key_id] = resolved;
     return resolved;
 }
@@ -2266,6 +2311,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
         this->core_.report_internal_contract(use_range, instance_identity.error().message);
         return nullptr;
     }
+    const query::GenericInstanceKey instance_query_key = instance_identity.value().key;
 
     const syntax::ItemNode function = this->core_.ctx_.module.items[info.item.value];
 
@@ -2280,8 +2326,9 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
         signature.semantic_key = key;
         signature.stable_id = sema::stable_definition_id(this->core_.stable_module_id(info.module),
             StableSymbolKind::function, instance_identity.value().fingerprint_text);
-        signature.c_name = this->core_.state_.checked.intern_text(this->core_.c_symbol_name(info.module,
-            std::string(info.name.view()) + this->core_.generic_instance_abi_suffix(instance_identity.value().key)));
+        signature.c_name = this->core_.state_.checked.intern_text(this->core_.c_symbol_name(
+            info.module, std::string(info.name.view()) + this->core_.generic_instance_abi_suffix(instance_query_key)));
+        signature.generic_instance_key = instance_query_key;
         signature.generic_args = this->core_.state_.checked.copy_type_handle_list(args);
         signature.module = info.module;
         signature.part_index = info.part_index;
@@ -2332,7 +2379,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
     GenericFunctionInstanceInfo instance;
     instance.key = key;
     instance.item = info.item;
-    instance.generic_instance_key = std::move(instance_identity.value().key);
+    instance.generic_instance_key = instance_query_key;
     instance.signature = std::move(signature);
     if (info.has_sparse_node_ids()) {
         instance.side_table_layout_index = this->core_.generic_side_table_layout_index(info);
@@ -2406,6 +2453,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_me
         this->core_.report_internal_contract(use_range, instance_identity.error().message);
         return nullptr;
     }
+    const query::GenericInstanceKey instance_query_key = instance_identity.value().key;
 
     const syntax::ItemNode function = this->core_.ctx_.module.items[info.item.value];
     GenericContext generic_context = this->core_.make_generic_context();
@@ -2421,6 +2469,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_me
             StableSymbolKind::method, instance_identity.value().fingerprint_text);
         signature.c_name =
             this->core_.state_.checked.intern_text(this->core_.method_c_symbol_name(owner_type, info.name));
+        signature.generic_instance_key = instance_query_key;
         signature.generic_args = this->core_.state_.checked.copy_type_handle_list(args);
         signature.module = info.module;
         signature.part_index = info.part_index;
@@ -2475,7 +2524,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_me
     GenericFunctionInstanceInfo instance;
     instance.key = key;
     instance.item = info.item;
-    instance.generic_instance_key = std::move(instance_identity.value().key);
+    instance.generic_instance_key = instance_query_key;
     instance.signature = std::move(signature);
     if (info.has_sparse_node_ids()) {
         instance.side_table_layout_index = this->core_.generic_side_table_layout_index(info);

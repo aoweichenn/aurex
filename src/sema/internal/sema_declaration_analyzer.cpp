@@ -495,7 +495,8 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::resolve_type_alias_decls()
 
 void SemanticAnalyzerCore::DeclarationAnalyzer::register_enum_cases_for_item(const syntax::ItemNode& item,
     const syntax::ModuleId owner, const TypeHandle named_enum_type, std::string enum_display_name,
-    const std::string& case_prefix, const std::string& c_prefix, const syntax::Visibility visibility)
+    const std::string& case_prefix, const std::string& c_prefix, const syntax::Visibility visibility,
+    const query::GenericInstanceKey& generic_instance_key)
 {
     const base::u32 part_index = this->core_.item_part_index(this->core_.state_.flow.current_item);
     const auto make_enum_display_name = [&]() {
@@ -665,6 +666,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_enum_cases_for_item(con
             this->core_.stable_definition_id(owner, StableSymbolKind::type, item.name_id, item.name),
             StableSymbolKind::enum_case, enum_case.name_id, enum_case.name);
         case_info.incremental_key = this->core_.stable_incremental_key(case_info.stable_id, value_text);
+        case_info.generic_instance_key = generic_instance_key;
         case_info.part_index = part_index;
         const auto case_inserted = this->core_.state_.checked.enum_cases.emplace(enum_case_key, std::move(case_info));
         if (!case_inserted.second) {
@@ -848,7 +850,8 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
             const auto type_found = this->core_.state_.types.named_types.find(item_type_key);
             this->core_.register_enum_cases_for_item(item, this->core_.state_.flow.current_module,
                 type_found == this->core_.state_.types.named_types.end() ? INVALID_TYPE_HANDLE : type_found->second,
-                std::string(item.name), std::string(item.name) + "_", std::string(item.name) + "_", item.visibility);
+                std::string(item.name), std::string(item.name) + "_", std::string(item.name) + "_", item.visibility,
+                query::GenericInstanceKey{});
         }
     }
     this->core_.state_.flow.current_module = syntax::INVALID_MODULE_ID;
@@ -1622,10 +1625,11 @@ void SemanticAnalyzerCore::resolve_type_alias_decls()
 
 void SemanticAnalyzerCore::register_enum_cases_for_item(const syntax::ItemNode& item, const syntax::ModuleId owner,
     const TypeHandle named_enum_type, std::string enum_display_name, const std::string& case_prefix,
-    const std::string& c_prefix, const syntax::Visibility visibility)
+    const std::string& c_prefix, const syntax::Visibility visibility,
+    const query::GenericInstanceKey& generic_instance_key)
 {
     DeclarationAnalyzer(*this).register_enum_cases_for_item(
-        item, owner, named_enum_type, enum_display_name, case_prefix, c_prefix, visibility);
+        item, owner, named_enum_type, enum_display_name, case_prefix, c_prefix, visibility, generic_instance_key);
 }
 
 void SemanticAnalyzerCore::register_value_names()

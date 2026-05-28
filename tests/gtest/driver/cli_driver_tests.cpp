@@ -2597,6 +2597,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
         stable_module, sema::StableSymbolKind::function, DRIVER_INCREMENTAL_CACHE_SYNTHETIC_STABLE_ID);
     instance.signature.incremental_key =
         sema::stable_incremental_key(instance.signature.stable_id, DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SIGNATURE);
+    instance.signature.generic_instance_key = generic_instance_key;
     checked.generic_function_instances.push_back(std::move(instance));
 
     driver::CompilerInvocation no_cache_pruning_invocation = invocation;

@@ -147,6 +147,26 @@ samples for arity, inference failure, unsatisfied `where`, and explicit type
 args on a non-generic method, plus a regression update replacing the old
 unsupported diagnostic with checked-dump coverage.
 
+As of 2026-05-28, WP-7 Generic Closure Audit And Release Baseline is complete,
+and M3.1 generics are at an acceptance baseline. The audit confirms that
+`generic_instance_abi_suffix` only takes `GenericInstanceKey`, and stable ids,
+ABI suffixes, incremental keys, and query subjects for generic structs, enums,
+type aliases, functions, owner-generic methods, and method-local generic
+methods derive from `GenericInstanceIdentity` or structured `GenericInstanceKey`
+metadata in the checked module. `generic_instance_key_suffix` may still use
+session-local `TypeHandle.value`, but only as a per-compilation lookup/cache
+fast key; white-box coverage verifies that this suffix can differ across
+sessions while the stable instance key and ABI suffix remain equal. Checked
+dumps, diagnostics, and IR dumps use display strings / c_names as presentation
+outputs only, while incremental-cache generic signature/body/lower-IR subjects
+are collected from checked metadata and authority structures and deduplicated by
+`GenericInstanceKey`. The new
+`generics/method_local_identity_closure_m3_1.ax` runtime smoke sample covers
+owner-only methods, method-local methods, and identical method-local type args
+across different owner instances. The M3.1 release baseline explicitly excludes
+user traits, associated types, const generics, resource capabilities, RAII,
+closures, async/generators/iterators, and standard-library rebuilds.
+
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,
 and language syntax. The result made it hard to tell whether a failure came from

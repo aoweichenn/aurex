@@ -82,6 +82,19 @@ method-local generic，普通方法调用可从参数推断局部泛型，显式
 `generics/method_local_m3_1.ax` 正样例和 arity、无法推断、where 不满足、非泛型方法误传 type args 负样例；
 原 “method-local generic unsupported” 回归测试已更新为新语义 checked dump 覆盖。
 
+2026-05-28 WP-7 Generic Closure Audit And Release Baseline 已完成，M3.1 泛型闭环进入可验收基线：
+审计确认 `generic_instance_abi_suffix` 只接收 `GenericInstanceKey`，generic struct / enum / type alias /
+function / owner-generic method / method-local generic method 的 stable id、ABI suffix、incremental key 和
+query subject 都从 `GenericInstanceIdentity` 或 checked metadata 中的结构化 `GenericInstanceKey` 派生。
+`generic_instance_key_suffix` 仍可使用 session-local `TypeHandle.value`，但只作为本次编译的 lookup/cache fast
+key；白盒测试已经验证它跨 session 可不同，而 stable instance key 和 ABI suffix 相同。checked dump、
+diagnostics、IR dump 中的 display string / c_name 只作为展示输出，incremental cache generic
+signature/body/lower-IR subjects 从 checked metadata 和 authority 结构收集并按 `GenericInstanceKey` 去重。
+新增 `generics/method_local_identity_closure_m3_1.ax` 和 runtime smoke 覆盖同一 owner-generic 类型上的
+owner-only method、method-local method，以及相同 method-local type args 跨不同 owner instance 的 native
+行为。M3.1 当前 release baseline 明确不包含用户 trait、associated type、const generic、resource
+capability、RAII、closure、async/generator/iterator 或标准库重建。
+
 M1 阶段已经舍弃。主要原因不是单个功能失败，而是整体设计方向不稳：
 
 - 标准库、host support、构建工具样例和语言核心同时扩张，导致测试结果很难判断是语言问题、库问题还是工具链问题。

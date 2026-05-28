@@ -84,6 +84,14 @@ M3.1 的第一批实现顺序：
    IR/native 和 incremental cache 覆盖。
 7. 质量门：泛型 gtest、samples、stress、query pruning、全量测试和 coverage 必须不回退。
 
+2026-05-28 收口更新：上述 M3.1 七项已通过 WP-7 Generic Closure Audit And Release Baseline 统一复审。
+当前泛型 release baseline 固定为：generic struct / enum / type alias / function / owner-generic method /
+method-local generic method 都以 `GenericInstanceKey` / `GenericInstanceIdentity` 作为 stable id、ABI suffix、
+incremental key、query subject 和 checked metadata 的权威身份；`TypeHandle.value` 只允许留在本 session 的
+lookup/cache fast key；display string、checked dump、diagnostics、IR dump 和 c_name 都只作为输出，不反向作为
+语义 identity。后续若继续深化泛型 query provider、trait/resource/const generic 设计或 LSP/IDE 消费，必须以
+这个 M3.1 baseline 为输入，不再重新打开已经收口的身份和 ABI 路径。
+
 ## 当前分支原则
 
 旧标准库已冻结并从 M2 当前树删除。下一阶段不要继续扩张 std，也不要用 std 样例证明语言能力。所有新能力先用自包含 `.ax` 样例验证；库层必须等基础语法、类型系统和模块边界稳定后重新设计，不复用旧 std 路线。

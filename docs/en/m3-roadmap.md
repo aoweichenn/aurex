@@ -187,17 +187,20 @@ recovery, and selective re-export are closed. The active M3.1 order is:
 
 ## Current Implementation Progress
 
-2026-05-28: M3.1 Generics Completion has started on the `m3.1` branch. The
-first 1A generic ABI stabilization step is implemented: `generic_instance_abi_suffix`
-takes a `GenericInstanceKey` instead of `std::vector<TypeHandle>`, and the
-suffix is formed from the key global id plus `stable_key_fingerprint(key)`
-primary / secondary / byte_count values. Generic struct, generic enum, and
-generic function instantiation compute `GenericInstanceIdentity` first and use
-its key for the C ABI suffix. A white-box test covers two sema sessions whose
-`TypeHandle.value` assignments differ but whose canonical generic instance keys
-match, and requires equal ABI suffixes. The next 1B step will audit
-method-local generic ABI, generic type-alias metadata, checked dumps, query
-subjects, and lowering for any remaining independently rebuilt identity paths.
+2026-05-28: M3.1 Generics Completion has reached the current closure baseline
+on the `m3.1` branch. `generic_instance_abi_suffix` now takes a
+`GenericInstanceKey` instead of `std::vector<TypeHandle>`, and generic structs,
+generic enums, generic type aliases, generic functions, owner-generic methods,
+and method-local generic methods compute `GenericInstanceIdentity` before
+deriving stable ids, ABI suffixes, instance-signature incremental keys, and
+query subjects. `GenericTemplateSignature`, `GenericInstanceSignature`, and
+`GenericInstanceBody` are the current query-authority boundaries; retained
+bodies, side tables, IR lowering, LLVM lowering, and native execution consume
+one instance-body view; generic builtin type operands and value-only builtins
+close through sema/IR/LLVM. The WP-7 audit confirms that `TypeHandle.value`
+remains only a session-local lookup/cache fast key, while display strings,
+checked dumps, diagnostics, IR dumps, and c_names are outputs rather than
+reverse generic identity inputs.
 
 ## Acceptance
 
@@ -222,5 +225,7 @@ M3.1 generic acceptance:
 - `sizeof[T]` / `alignof[T]` work in generic functions through IR/LLVM.
 - Method-local generics have positive/negative samples, diagnostics, and
   lowering coverage.
+- Owner-generic and method-local generic methods have stable identity, lookup,
+  ABI, IR/native behavior in the release baseline.
 - Existing generic stress, query pruning, sample suite, and native execution
   tests do not regress.

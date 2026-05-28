@@ -323,13 +323,15 @@ parser/AST dump、module loader cache、sema integration、IDE tooling part reco
 `part from`、`pub(in path)`、file-private、workspace/dependency resolver、lockfile、version solving 和
 package manager；M3.0 的范围是语言级模块系统闭环，不是包管理系统。
 
-2026-05-28：M3.1 Generics Completion 已从 `m3.1` 分支启动。第一步 1A 泛型 ABI 稳定化已经进入实现：
-`generic_instance_abi_suffix` 的输入从 `std::vector<TypeHandle>` 改为 `GenericInstanceKey`，suffix 由
-global id 与 `stable_key_fingerprint(key)` 的 primary / secondary / byte_count 组成；generic struct、
-generic enum 和 generic function 实例化路径先计算 `GenericInstanceIdentity`，再用其中的 key 生成 C ABI
-后缀。白盒测试覆盖不同 sema session 中 `TypeHandle.value` 不同但 canonical generic instance key 相同的场景，
-要求 ABI suffix 保持一致。后续 1B 会继续检查 method-local generic ABI、generic type alias metadata、
-checked dump / query subject / lowering 是否仍存在各自重建身份的路径。
+2026-05-28：M3.1 Generics Completion 已在 `m3.1` 分支完成当前闭环基线。`generic_instance_abi_suffix`
+的输入从 `std::vector<TypeHandle>` 改为 `GenericInstanceKey`，generic struct、generic enum、generic
+type alias、generic function、owner-generic method 和 method-local generic method 都先计算
+`GenericInstanceIdentity`，再用其中的 key 生成 stable id、ABI suffix、instance signature incremental key
+和 query subject。`GenericTemplateSignature`、`GenericInstanceSignature`、`GenericInstanceBody` 已成为当前
+query authority 边界；retained body、side table、IR lowering、LLVM lowering 和 native execution 消费同一份
+instance body view；generic builtin type operand 和 value-only builtin 已通过 sema/IR/LLVM 闭环。WP-7
+审计确认 `TypeHandle.value` 只保留为本 session lookup/cache fast key，display string、checked dump、
+diagnostics、IR dump 和 c_name 都只作为输出，不再反向作为泛型 identity。
 
 ## 验收
 
@@ -353,4 +355,6 @@ M3.1 泛型验收：
 - generic ABI suffix 稳定，不依赖本次 session 的 `TypeHandle` 数值。
 - `sizeof[T]` / `alignof[T]` 在 generic function 中可完整通过 IR/LLVM。
 - method-local generics 有正负样例、diagnostics 和 lowering 覆盖。
+- owner-generic method 与 method-local generic method 的 stable identity、lookup、ABI、IR/native 行为已进入
+  release baseline。
 - 现有泛型 stress、query pruning、sample suite 和 native execution tests 不回退。

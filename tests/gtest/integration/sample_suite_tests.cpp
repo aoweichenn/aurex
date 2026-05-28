@@ -422,6 +422,11 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_method_local_generics)
     run_positive_runtime_smoke_sample("generics", "method_local_m3_1.ax");
 }
 
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_method_local_identity_closure_generics)
+{
+    run_positive_runtime_smoke_sample("generics", "method_local_identity_closure_m3_1.ax");
+}
+
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_imported_samples)
 {
     verify_import_runtime_samples();

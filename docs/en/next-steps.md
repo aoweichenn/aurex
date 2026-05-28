@@ -116,6 +116,18 @@ M3.1 first implementation order:
 7. Keep the quality gates green: generic gtests, samples, stress, query
    pruning, full tests, and coverage must not regress.
 
+2026-05-28 closure update: the seven M3.1 items above have been reviewed
+through WP-7 Generic Closure Audit And Release Baseline. The generic release
+baseline is now fixed: generic structs, enums, type aliases, functions,
+owner-generic methods, and method-local generic methods use
+`GenericInstanceKey` / `GenericInstanceIdentity` as the authority for stable
+ids, ABI suffixes, incremental keys, query subjects, and checked metadata.
+`TypeHandle.value` is allowed only as a session-local lookup/cache fast key.
+Display strings, checked dumps, diagnostics, IR dumps, and c_names are outputs,
+not semantic identity inputs. Any later generic query-provider deepening,
+trait/resource/const-generic design, or LSP/IDE consumption must start from this
+M3.1 baseline instead of reopening the closed identity and ABI paths.
+
 ## Branch Principle
 
 The standard library is frozen and removed from the current M2 tree. Do not expand std

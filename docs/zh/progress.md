@@ -26,7 +26,8 @@ LLVM lowering 和 native execution 消费同一份实例身份与 side table 视
 在 generic function 中补齐 sema/IR/LLVM 闭环；method-local generics 在 ABI/query 边界稳定后进入实现。
 M3.1 第一笔代码变更已经把 generic struct / enum / function 的 ABI suffix 从拼接 session-only
 `TypeHandle.value` 改为基于 `GenericInstanceKey` 的稳定 fingerprint，避免不同编译会话因 handle 分配差异生成
-不同实例符号。
+不同实例符号。M3.1 后续执行入口已收束为 [Aurex M3.1 泛型闭环执行计划](m3.1-generics-plan.md)，后续按
+work package 推进，默认只读取当前包的必读上下文和直接调用链。
 
 M1 阶段已经舍弃。主要原因不是单个功能失败，而是整体设计方向不稳：
 

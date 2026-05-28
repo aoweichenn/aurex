@@ -25,6 +25,9 @@ M3.0 模块系统已完成 Phase 9A-D 收口，当前最高优先级切到
 - M3.1 继续复用 R5 后稳定下来的 driver/session/query/diagnostics/pipeline 主路径，不能另开旁路。
 - R5 的 profile/tooling contract 继续作为后续 profile viewer、LSP adapter 和 IDE stage view 的消费边界。
 
+后续 M3.1 具体执行以 [Aurex M3.1 泛型闭环执行计划](m3.1-generics-plan.md) 为入口。每次只推进一个
+work package，并按该文档列出的必读文件、允许修改范围、禁止事项和验收门槛执行。
+
 R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分；
 R5.3 已完成 `LoweringPipeline`、`BackendPipeline` 和 `PipelineStage` 记录。当前 driver 总控已经只保留
 阶段顺序、emit mode 停止点和 error/profile finish，checked dump、IR lowering、IR pass pipeline、IR dump、

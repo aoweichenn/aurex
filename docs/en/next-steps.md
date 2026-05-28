@@ -33,6 +33,11 @@ M3.1 in the [M3 Roadmap](m3-roadmap.md):
 - R5 profile/tooling contracts remain the consumer boundary for future profile
   viewers, LSP adapters, and IDE stage views.
 
+The concrete M3.1 execution entry point is the
+[Aurex M3.1 Generics Completion Plan](m3.1-generics-plan.md). Future steps
+advance one work package at a time, using that document's required files,
+allowed scope, forbidden shortcuts, and acceptance gates.
+
 R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
 stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
 `PreservedAnalyses`, verifier gate, and pass-pipeline summary. R5.5 added

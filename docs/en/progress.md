@@ -59,7 +59,10 @@ and query boundaries are stable. The first M3.1 code step changes generic
 struct / enum / function ABI suffixes from session-only `TypeHandle.value`
 concatenation to a stable `GenericInstanceKey` fingerprint, so separate compiler
 sessions do not generate different instance symbols only because handle
-allocation differed.
+allocation differed. The remaining M3.1 execution entry point is now the
+[Aurex M3.1 Generics Completion Plan](m3.1-generics-plan.md); future work
+advances by work package and reads only the required local context plus direct
+callers/callees by default.
 
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,

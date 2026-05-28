@@ -87,6 +87,12 @@ M3.1 still uses only the current built-in non-resource capabilities: `Sized`,
 `Eq`, `Ord`, and `Hash`. User traits, associated types, const generics, and
 resource capabilities do not enter M3.1.
 
+The execution entry point for the rest of M3.1 is the
+[Aurex M3.1 Generics Completion Plan](m3.1-generics-plan.md). Future work should
+advance by work package from that document so each step reads the minimum local
+context while preserving the global sema / query / lowering / backend
+invariants.
+
 ## Non-goals
 
 - No RAII, `Drop`, `Copy`, move-only structs, borrow checker, lifetimes, or

@@ -865,6 +865,14 @@ std::string SemanticAnalyzerCore::GenericAnalyzer::generic_template_incremental_
 void SemanticAnalyzerCore::GenericAnalyzer::record_generic_template_signature(
     const GenericTemplateInfo& info, const query::DefNamespace name_space)
 {
+    base::u32 constraint_count = 0;
+    for (const IdentId param_id : info.params) {
+        const auto found = info.constraints.find(param_id);
+        if (found == info.constraints.end()) {
+            continue;
+        }
+        constraint_count += static_cast<base::u32>(found->second.size());
+    }
     this->core_.state_.checked.generic_template_signatures.push_back(GenericTemplateSignatureInfo{
         this->core_.state_.checked.intern_text(info.name.view()),
         info.name_id,
@@ -874,6 +882,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::record_generic_template_signature(
         info.incremental_key,
         name_space,
         static_cast<base::u32>(info.params.size()),
+        constraint_count,
         info.part_index,
     });
 }
@@ -1827,8 +1836,6 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(con
     struct_info.part_index = info.part_index;
     struct_info.stable_id = sema::stable_definition_id(
         this->core_.stable_module_id(info.module), StableSymbolKind::type, instance_identity.value().fingerprint_text);
-    struct_info.incremental_key =
-        this->core_.stable_incremental_key(struct_info.stable_id, instance_identity.value().fingerprint_text);
     struct_info.generic_instance_key = instance_query_key;
     struct_info.is_generic_placeholder = std::ranges::any_of(args, [&](const TypeHandle arg) {
         return is_valid(arg) && this->core_.state_.checked.types.get(arg).kind == TypeKind::generic_param;
@@ -1866,6 +1873,15 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_struct(con
             });
         }
     }
+
+    base::Result<std::string> signature_fingerprint =
+        this->core_.generic_struct_instance_signature_fingerprint(info, instance_identity.value(), struct_info);
+    if (!signature_fingerprint) {
+        this->core_.report_internal_contract(use_type.range, signature_fingerprint.error().message);
+        return INVALID_TYPE_HANDLE;
+    }
+    struct_info.incremental_key =
+        this->core_.stable_incremental_key(struct_info.stable_id, signature_fingerprint.value());
 
     this->core_.state_.checked.types.set_record_contains_array(handle, contains_array);
     auto inserted = this->core_.state_.checked.structs.emplace(
@@ -1925,10 +1941,7 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_enum(const
     enum_instance.type = handle;
     enum_instance.stable_id = sema::stable_definition_id(
         this->core_.stable_module_id(info.module), StableSymbolKind::type, instance_identity.value().fingerprint_text);
-    enum_instance.incremental_key =
-        this->core_.stable_incremental_key(enum_instance.stable_id, instance_identity.value().fingerprint_text);
     enum_instance.part_index = info.part_index;
-    this->core_.state_.checked.generic_enum_instances.push_back(std::move(enum_instance));
 
     GenericContext generic_context = this->core_.make_generic_context();
     this->core_.populate_generic_concrete_context(info, args, generic_context);
@@ -1939,6 +1952,16 @@ TypeHandle SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_enum(const
             std::string(item.name) + abi_suffix + "_", std::string(item.name) + abi_suffix + "_", info.visibility,
             instance_query_key);
     }
+
+    base::Result<std::string> signature_fingerprint =
+        this->core_.generic_enum_instance_signature_fingerprint(info, instance_identity.value(), handle);
+    if (!signature_fingerprint) {
+        this->core_.report_internal_contract(use_type.range, signature_fingerprint.error().message);
+        return INVALID_TYPE_HANDLE;
+    }
+    enum_instance.incremental_key =
+        this->core_.stable_incremental_key(enum_instance.stable_id, signature_fingerprint.value());
+    this->core_.state_.checked.generic_enum_instances.push_back(std::move(enum_instance));
     return handle;
 }
 

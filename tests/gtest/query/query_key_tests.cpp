@@ -40,6 +40,7 @@ namespace {
 constexpr base::u32 QUERY_TEST_DISAMBIGUATOR = 1;
 constexpr base::u32 QUERY_TEST_GENERIC_PARAM_INDEX = 0;
 constexpr base::u32 QUERY_TEST_STABLE_ORDINAL = 0;
+constexpr base::u8 QUERY_TEST_PUBLIC_VISIBILITY_RANK = 2;
 constexpr base::u64 QUERY_TEST_ARRAY_COUNT = 4;
 constexpr base::u32 QUERY_TEST_WRITER_VALUE = 7;
 constexpr base::usize QUERY_TEST_STABLE_U8_WIDTH = 1;
@@ -108,6 +109,47 @@ constexpr std::string_view QUERY_TEST_DIAGNOSTICS = "diagnostics:empty";
     return query::def_key(module, query::DefNamespace::value, query::DefKind::function, path);
 }
 
+[[nodiscard]] query::ModulePartKey test_primary_module_part(const query::ModuleKey module)
+{
+    const query::FileKey file = query::file_key(module.package, "/workspace/root/regex/vm.ax");
+    return query::module_part_key(module, file, query::ModulePartKind::primary, "<primary>");
+}
+
+[[nodiscard]] query::GenericTemplateSignatureAuthority test_template_signature_authority(
+    const query::DefKey template_def, const query::IncrementalKey signature, const base::u32 param_count = 1,
+    const base::u32 constraint_count = 0)
+{
+    return query::GenericTemplateSignatureAuthority{
+        signature,
+        test_primary_module_part(template_def.module),
+        template_def.name_space,
+        QUERY_TEST_PUBLIC_VISIBILITY_RANK,
+        param_count,
+        constraint_count,
+    };
+}
+
+[[nodiscard]] query::GenericInstanceSignatureAuthority test_generic_instance_signature_authority(
+    const query::GenericInstanceKey& key, const query::IncrementalKey signature,
+    const query::GenericInstanceSignatureKind kind = query::GenericInstanceSignatureKind::function)
+{
+    return query::GenericInstanceSignatureAuthority{
+        signature,
+        kind,
+        QUERY_TEST_PUBLIC_VISIBILITY_RANK,
+        static_cast<base::u32>(key.type_args.size()),
+        static_cast<base::u32>(key.const_args.size()),
+        key.param_env.predicate_count,
+        1,
+        static_cast<base::u32>(key.type_args.size()),
+        true,
+        false,
+        false,
+        false,
+        true,
+    };
+}
+
 struct QueryContextItemSignatureSubject {
     query::DefKey def;
     query::ItemSignatureProviderInput input;
@@ -116,6 +158,7 @@ struct QueryContextItemSignatureSubject {
 struct QueryContextGenericInstanceSignatureSubject {
     query::GenericInstanceKey key;
     query::IncrementalKey signature;
+    query::GenericInstanceSignatureAuthority authority;
 };
 
 struct QueryContextSourceSubject {
@@ -168,9 +211,11 @@ struct QueryContextBodySubject {
     const query::StableModuleId stable_module = query::stable_module_id(stable_module_path);
     const query::StableDefId stable_def =
         query::stable_definition_id(stable_module, query::StableSymbolKind::function, template_name);
+    const query::IncrementalKey incremental_signature = query::stable_incremental_key(stable_def, signature);
     return QueryContextGenericInstanceSignatureSubject{
         key,
-        query::stable_incremental_key(stable_def, signature),
+        incremental_signature,
+        test_generic_instance_signature_authority(key, incremental_signature),
     };
 }
 
@@ -179,7 +224,7 @@ struct QueryContextBodySubject {
 {
     return query::GenericInstanceSignatureProviderInput{
         &subject.key,
-        subject.signature,
+        subject.authority,
     };
 }
 
@@ -188,7 +233,10 @@ struct QueryContextBodySubject {
 {
     return query::GenericInstanceBodyProviderInput{
         &subject.key,
-        result,
+        query::GenericInstanceBodyAuthority{
+            result,
+            query::generic_instance_signature_result_fingerprint(subject.authority),
+        },
     };
 }
 
@@ -1573,6 +1621,10 @@ TEST(QueryUnit, QueryExecutorEvaluatesOwnedRequestsOnDemand)
         test_item_signature_subject("executor_compute", QUERY_TEST_PROVIDER_SIGNATURE);
     const QueryContextGenericInstanceSignatureSubject generic_subject = test_generic_instance_signature_subject(
         "ExecutorVec", query::BuiltinTypeKey::i32, QUERY_TEST_PROVIDER_SIGNATURE);
+    const query::GenericTemplateSignatureAuthority template_authority =
+        test_template_signature_authority(template_def, template_signature);
+    const query::GenericInstanceBodyProviderInput generic_body_input =
+        generic_instance_body_provider_input(generic_subject, test_query_result(QUERY_TEST_GENERIC_INSTANCE_BODY));
     const QueryContextBodySubject body_subject = test_body_subject("executor_body");
     const std::optional<query::QueryKey> item_query = query::item_signature_query_key(item_subject.def);
     ASSERT_TRUE(item_query.has_value());
@@ -1589,13 +1641,12 @@ TEST(QueryUnit, QueryExecutorEvaluatesOwnedRequestsOnDemand)
         query::QueryRequest{
             query::ModuleExportsProviderInput{module, test_query_result(QUERY_TEST_MODULE_EXPORTS_SIGNATURE)}},
         query::QueryRequest{item_subject.input},
-        query::QueryRequest{query::GenericTemplateSignatureProviderInput{template_def, template_signature}},
+        query::QueryRequest{query::GenericTemplateSignatureProviderInput{template_def, template_authority}},
         query::QueryRequest{
-            query::GenericInstanceSignatureQueryRequest{generic_subject.key, generic_subject.signature}},
+            query::GenericInstanceSignatureQueryRequest{generic_subject.key, generic_subject.authority}},
         query::QueryRequest{query::FunctionBodySyntaxProviderInput{body_subject.body, body_subject.syntax}},
         query::QueryRequest{query::TypeCheckBodyProviderInput{body_subject.body, body_subject.checked_body}},
-        query::QueryRequest{query::GenericInstanceBodyQueryRequest{
-            generic_subject.key, test_query_result(QUERY_TEST_GENERIC_INSTANCE_BODY)}},
+        query::QueryRequest{query::GenericInstanceBodyQueryRequest{generic_subject.key, generic_body_input.authority}},
         query::QueryRequest{query::LowerFunctionIRProviderInput{body_subject.body, body_subject.lowered_ir}},
         query::QueryRequest{query::LowerGenericInstanceIRQueryRequest{generic_subject.key, body_subject.lowered_ir}},
         query::QueryRequest{query::DiagnosticsProviderInput{*item_query, test_query_result(QUERY_TEST_DIAGNOSTICS)}},
@@ -2634,12 +2685,14 @@ TEST(QueryUnit, GenericTemplateSignatureProviderBuildsRecordFromStableTemplate)
         query::stable_definition_id(stable_module, query::StableSymbolKind::generic_template, "Vec");
     const query::IncrementalKey signature =
         query::stable_incremental_key(stable_template, QUERY_TEST_GENERIC_TEMPLATE_SIGNATURE);
+    const query::GenericTemplateSignatureAuthority authority =
+        test_template_signature_authority(template_def, signature);
     const std::optional<query::QueryKey> expected_key = query::generic_template_signature_query_key(template_def);
     ASSERT_TRUE(expected_key.has_value());
 
     const query::GenericTemplateSignatureProviderInput input{
         template_def,
-        signature,
+        authority,
     };
     ASSERT_TRUE(query::is_valid(input));
     const std::optional<query::GenericTemplateSignatureProviderOutput> output =
@@ -2652,20 +2705,31 @@ TEST(QueryUnit, GenericTemplateSignatureProviderBuildsRecordFromStableTemplate)
     EXPECT_EQ(output->record.key, *expected_key);
     EXPECT_EQ(output->record.key.kind, query::QueryKind::generic_template_signature);
     EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(template_def));
-    EXPECT_EQ(output->result, query::query_result_fingerprint(signature));
+    EXPECT_EQ(output->result, query::generic_template_signature_result_fingerprint(authority));
     EXPECT_EQ(output->record.result, output->result);
 
+    query::GenericTemplateSignatureAuthority different_constraint_authority = authority;
+    ++different_constraint_authority.constraint_count;
+    EXPECT_NE(query::generic_template_signature_result_fingerprint(different_constraint_authority), output->result);
+
     const query::DefKey function_def = test_function_def(module);
+    query::GenericTemplateSignatureAuthority invalid_authority = authority;
+    invalid_authority.signature = {};
+    query::GenericTemplateSignatureAuthority invalid_part_authority = authority;
+    invalid_part_authority.module_part = {};
     EXPECT_FALSE(query::generic_template_signature_query_key(query::DefKey{}).has_value());
     EXPECT_FALSE(query::is_valid(query::GenericTemplateSignatureProviderInput{}));
     EXPECT_FALSE(query::provide_generic_template_signature_query(
-        query::GenericTemplateSignatureProviderInput{query::DefKey{}, signature})
+        query::GenericTemplateSignatureProviderInput{query::DefKey{}, authority})
             .has_value());
     EXPECT_FALSE(query::provide_generic_template_signature_query(
-        query::GenericTemplateSignatureProviderInput{function_def, signature})
+        query::GenericTemplateSignatureProviderInput{function_def, authority})
             .has_value());
     EXPECT_FALSE(query::provide_generic_template_signature_query(
-        query::GenericTemplateSignatureProviderInput{template_def, query::IncrementalKey{}})
+        query::GenericTemplateSignatureProviderInput{template_def, invalid_authority})
+            .has_value());
+    EXPECT_FALSE(query::provide_generic_template_signature_query(
+        query::GenericTemplateSignatureProviderInput{template_def, invalid_part_authority})
             .has_value());
     EXPECT_FALSE(query::is_valid(query::GenericTemplateSignatureProviderOutput{}));
 
@@ -2699,17 +2763,29 @@ TEST(QueryUnit, GenericInstanceSignatureProviderBuildsRecordFromStableInstance)
     EXPECT_EQ(output->record.key, *expected_key);
     EXPECT_EQ(output->record.key.kind, query::QueryKind::generic_instance_signature);
     EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.key));
-    EXPECT_EQ(output->result, query::query_result_fingerprint(subject.signature));
+    EXPECT_EQ(output->result, query::generic_instance_signature_result_fingerprint(subject.authority));
     EXPECT_EQ(output->record.result, output->result);
 
+    query::GenericInstanceSignatureAuthority method_authority = subject.authority;
+    method_authority.kind = query::GenericInstanceSignatureKind::method;
+    method_authority.has_receiver_type = true;
+    EXPECT_NE(query::generic_instance_signature_result_fingerprint(method_authority), output->result);
+
     const query::GenericInstanceKey invalid_key;
+    query::GenericInstanceSignatureAuthority invalid_authority = subject.authority;
+    invalid_authority.signature = {};
+    query::GenericInstanceSignatureAuthority mismatched_arg_count_authority = subject.authority;
+    ++mismatched_arg_count_authority.type_arg_count;
     EXPECT_FALSE(query::generic_instance_signature_query_key(query::GenericInstanceKey{}).has_value());
     EXPECT_FALSE(query::is_valid(query::GenericInstanceSignatureProviderInput{}));
     EXPECT_FALSE(query::provide_generic_instance_signature_query(
-        query::GenericInstanceSignatureProviderInput{&invalid_key, subject.signature})
+        query::GenericInstanceSignatureProviderInput{&invalid_key, subject.authority})
             .has_value());
     EXPECT_FALSE(query::provide_generic_instance_signature_query(
-        query::GenericInstanceSignatureProviderInput{&subject.key, query::IncrementalKey{}})
+        query::GenericInstanceSignatureProviderInput{&subject.key, invalid_authority})
+            .has_value());
+    EXPECT_FALSE(query::provide_generic_instance_signature_query(
+        query::GenericInstanceSignatureProviderInput{&subject.key, mismatched_arg_count_authority})
             .has_value());
     EXPECT_FALSE(query::is_valid(query::GenericInstanceSignatureProviderOutput{}));
 
@@ -2744,16 +2820,28 @@ TEST(QueryUnit, GenericInstanceBodyProviderBuildsRecordAndSignatureDependency)
     EXPECT_EQ(output->record.key, *expected_key);
     EXPECT_EQ(output->record.key.kind, query::QueryKind::generic_instance_body);
     EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.key));
-    EXPECT_EQ(output->result, body);
+    EXPECT_EQ(output->result, query::generic_instance_body_result_fingerprint(input.authority));
     EXPECT_EQ(output->record.result, output->result);
 
+    query::GenericInstanceBodyAuthority side_table_authority = input.authority;
+    ++side_table_authority.expr_side_table_count;
+    EXPECT_NE(query::generic_instance_body_result_fingerprint(side_table_authority), output->result);
+
     const query::GenericInstanceKey invalid_key;
+    query::GenericInstanceBodyAuthority invalid_authority = input.authority;
+    invalid_authority.checked_body = {};
+    query::GenericInstanceBodyAuthority invalid_signature_authority = input.authority;
+    invalid_signature_authority.signature_result = {};
     EXPECT_FALSE(query::generic_instance_body_query_key(query::GenericInstanceKey{}).has_value());
     EXPECT_FALSE(query::is_valid(query::GenericInstanceBodyProviderInput{}));
-    EXPECT_FALSE(query::provide_generic_instance_body_query(query::GenericInstanceBodyProviderInput{&invalid_key, body})
+    EXPECT_FALSE(query::provide_generic_instance_body_query(
+        query::GenericInstanceBodyProviderInput{&invalid_key, input.authority})
             .has_value());
     EXPECT_FALSE(query::provide_generic_instance_body_query(
-        query::GenericInstanceBodyProviderInput{&subject.key, query::QueryResultFingerprint{}})
+        query::GenericInstanceBodyProviderInput{&subject.key, invalid_authority})
+            .has_value());
+    EXPECT_FALSE(query::provide_generic_instance_body_query(
+        query::GenericInstanceBodyProviderInput{&subject.key, invalid_signature_authority})
             .has_value());
     EXPECT_FALSE(query::is_valid(query::GenericInstanceBodyProviderOutput{}));
 
@@ -3206,6 +3294,8 @@ TEST(QueryUnit, QueryContextCachesModuleGraphItemListAndGenericTemplateSignature
         query::stable_definition_id(stable_module, query::StableSymbolKind::generic_template, "Vec");
     const query::IncrementalKey template_signature =
         query::stable_incremental_key(stable_template, QUERY_TEST_GENERIC_TEMPLATE_SIGNATURE);
+    const query::GenericTemplateSignatureAuthority template_authority =
+        test_template_signature_authority(template_def, template_signature);
     const std::optional<query::QueryKey> module_graph_key = query::module_graph_query_key(module);
     const std::optional<query::QueryKey> item_list_key = query::item_list_query_key(module);
     const std::optional<query::QueryKey> template_key = query::generic_template_signature_query_key(template_def);
@@ -3248,7 +3338,7 @@ TEST(QueryUnit, QueryContextCachesModuleGraphItemListAndGenericTemplateSignature
     EXPECT_EQ(context.dependencies_for(*item_list_key), std::vector<query::QueryKey>{*module_graph_key});
 
     const query::QueryEvaluationResult template_result = context.evaluate_generic_template_signature(
-        query::GenericTemplateSignatureProviderInput{template_def, template_signature});
+        query::GenericTemplateSignatureProviderInput{template_def, template_authority});
     ASSERT_EQ(template_result.status, query::QueryEvaluationStatus::computed);
     ASSERT_NE(template_result.node, nullptr);
     EXPECT_EQ(template_result.node->key, *template_key);
@@ -3262,7 +3352,7 @@ TEST(QueryUnit, QueryContextCachesModuleGraphItemListAndGenericTemplateSignature
         query::QueryEvaluationStatus::cached);
     EXPECT_EQ(context
                   .evaluate_generic_template_signature(
-                      query::GenericTemplateSignatureProviderInput{template_def, template_signature})
+                      query::GenericTemplateSignatureProviderInput{template_def, template_authority})
                   .status,
         query::QueryEvaluationStatus::cached);
     EXPECT_EQ(module_graph_provider_calls, 1U);
@@ -3281,7 +3371,7 @@ TEST(QueryUnit, QueryContextCachesModuleGraphItemListAndGenericTemplateSignature
         query::QueryEvaluationStatus::computed);
     EXPECT_EQ(context
                   .evaluate_generic_template_signature(
-                      query::GenericTemplateSignatureProviderInput{template_def, template_signature})
+                      query::GenericTemplateSignatureProviderInput{template_def, template_authority})
                   .status,
         query::QueryEvaluationStatus::computed);
     EXPECT_EQ(module_graph_provider_calls, 1U);
@@ -3842,17 +3932,19 @@ TEST(QueryUnit, QueryContextTracksGenericBodyFailuresAndProviderFallbacks)
         test_generic_instance_signature_subject("Vec", query::BuiltinTypeKey::i64, QUERY_TEST_PROVIDER_SIGNATURE);
     const query::QueryResultFingerprint generic_body =
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_GENERIC_INSTANCE_BODY));
+    const query::GenericInstanceBodyProviderInput generic_body_input =
+        generic_instance_body_provider_input(subject, generic_body);
     const std::optional<query::QueryKey> expected_key = query::generic_instance_body_query_key(subject.key);
     ASSERT_TRUE(expected_key.has_value());
 
     query::QueryContext invalid_input_context;
     const query::QueryEvaluationResult null_key_result = invalid_input_context.evaluate_generic_instance_body(
-        query::GenericInstanceBodyProviderInput{nullptr, generic_body});
+        query::GenericInstanceBodyProviderInput{nullptr, generic_body_input.authority});
     EXPECT_EQ(null_key_result.status, query::QueryEvaluationStatus::failed);
     EXPECT_EQ(null_key_result.node, nullptr);
     const query::GenericInstanceKey invalid_key;
     const query::QueryEvaluationResult invalid_key_result = invalid_input_context.evaluate_generic_instance_body(
-        query::GenericInstanceBodyProviderInput{&invalid_key, generic_body});
+        query::GenericInstanceBodyProviderInput{&invalid_key, generic_body_input.authority});
     EXPECT_EQ(invalid_key_result.status, query::QueryEvaluationStatus::failed);
     EXPECT_EQ(invalid_key_result.node, nullptr);
 
@@ -4605,13 +4697,13 @@ TEST(QueryUnit, QueryContextTracksGenericInstanceDependenciesFailuresAndCycles)
     EXPECT_EQ(dependency_result.node->dependencies.front(), dependency);
 
     const query::QueryEvaluationResult null_key_result = dependency_context.evaluate_generic_instance_signature(
-        query::GenericInstanceSignatureProviderInput{nullptr, subject.signature});
+        query::GenericInstanceSignatureProviderInput{nullptr, subject.authority});
     EXPECT_EQ(null_key_result.status, query::QueryEvaluationStatus::failed);
     EXPECT_EQ(null_key_result.node, nullptr);
 
     const query::GenericInstanceKey invalid_key;
     const query::QueryEvaluationResult invalid_key_result = dependency_context.evaluate_generic_instance_signature(
-        query::GenericInstanceSignatureProviderInput{&invalid_key, subject.signature});
+        query::GenericInstanceSignatureProviderInput{&invalid_key, subject.authority});
     EXPECT_EQ(invalid_key_result.status, query::QueryEvaluationStatus::failed);
     EXPECT_EQ(invalid_key_result.node, nullptr);
 

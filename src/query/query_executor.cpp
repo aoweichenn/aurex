@@ -150,7 +150,7 @@ struct QueryEvaluateVisitor {
     {
         return this->context.evaluate_generic_instance_signature(GenericInstanceSignatureProviderInput{
             &request.key,
-            request.signature,
+            request.authority,
         });
     }
 
@@ -168,7 +168,7 @@ struct QueryEvaluateVisitor {
     {
         return this->context.evaluate_generic_instance_body(GenericInstanceBodyProviderInput{
             &request.key,
-            request.checked_body,
+            request.authority,
         });
     }
 

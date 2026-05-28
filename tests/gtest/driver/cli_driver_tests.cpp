@@ -9,6 +9,7 @@
 #include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/driver/profile.hpp>
 #include <aurex/query/generic_instance_key.hpp>
+#include <aurex/query/generic_instance_signature_query.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/sema/checked_module.hpp>
@@ -2564,6 +2565,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
         sema::stable_incremental_key(template_stable_id, DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SIGNATURE),
         query::DefNamespace::value,
         1,
+        0,
     });
     const sema::StableDefId duplicate_stable_id = sema::stable_definition_id(
         stable_module, sema::StableSymbolKind::function, DRIVER_INCREMENTAL_CACHE_SYNTHETIC_STABLE_ID);
@@ -2654,8 +2656,23 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
 
     const sema::IncrementalKey expected_generic_incremental_key =
         sema::stable_incremental_key(duplicate_stable_id, DRIVER_INCREMENTAL_CACHE_SYNTHETIC_SIGNATURE);
+    const query::GenericInstanceSignatureAuthority expected_generic_authority{
+        expected_generic_incremental_key,
+        query::GenericInstanceSignatureKind::function,
+        syntax::visibility_rank(syntax::Visibility::public_),
+        static_cast<base::u32>(generic_instance_key.type_args.size()),
+        static_cast<base::u32>(generic_instance_key.const_args.size()),
+        generic_instance_key.param_env.predicate_count,
+        0,
+        0,
+        false,
+        false,
+        false,
+        false,
+        false,
+    };
     const std::optional<query::QueryRecord> expected_generic_record = query::generic_instance_signature_query_record(
-        generic_instance_key, query::query_result_fingerprint(expected_generic_incremental_key));
+        generic_instance_key, query::generic_instance_signature_result_fingerprint(expected_generic_authority));
     ASSERT_TRUE(expected_generic_record.has_value());
     const std::string cached_query_text = read_text(cache);
     const std::optional<CacheTestQueryResultFingerprint> expected_generic_diagnostics_result =

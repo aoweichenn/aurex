@@ -157,17 +157,17 @@ struct ItemSignatureQuerySubject {
 
 struct GenericTemplateSignatureQuerySubject {
     query::DefKey key;
-    sema::IncrementalKey incremental_key;
+    query::GenericTemplateSignatureAuthority authority;
 };
 
 struct GenericInstanceSignatureQuerySubject {
     const query::GenericInstanceKey* key = nullptr;
-    sema::IncrementalKey incremental_key;
+    query::GenericInstanceSignatureAuthority authority;
 };
 
 struct GenericInstanceBodyQuerySubject {
     const query::GenericInstanceKey* key = nullptr;
-    query::QueryResultFingerprint result;
+    query::GenericInstanceBodyAuthority authority;
 };
 
 struct FunctionBodySyntaxQuerySubject {

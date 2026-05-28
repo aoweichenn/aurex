@@ -738,6 +738,10 @@ private:
     [[nodiscard]] base::Result<std::string> generic_instance_signature_fingerprint(const GenericTemplateInfo& info,
         const GenericInstanceIdentity& identity, TypeHandle return_type, std::span<const TypeHandle> param_types,
         bool is_method, bool is_variadic) const;
+    [[nodiscard]] base::Result<std::string> generic_struct_instance_signature_fingerprint(
+        const GenericTemplateInfo& info, const GenericInstanceIdentity& identity, const StructInfo& struct_info) const;
+    [[nodiscard]] base::Result<std::string> generic_enum_instance_signature_fingerprint(
+        const GenericTemplateInfo& info, const GenericInstanceIdentity& identity, TypeHandle enum_type) const;
     [[nodiscard]] base::Result<std::string> generic_type_alias_instance_signature_fingerprint(
         const GenericTemplateInfo& info, const GenericInstanceIdentity& identity, TypeHandle target_type) const;
     [[nodiscard]] bool can_assign(TypeHandle dst, TypeHandle src, syntax::ExprId value) const noexcept;

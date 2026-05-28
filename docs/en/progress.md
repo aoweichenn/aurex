@@ -77,6 +77,28 @@ coverage checks function signature identity, generic enum case identity, generic
 type alias instance identity, checked module copy/move preservation, and driver
 cache rows.
 
+As of 2026-05-28, WP-2 Generic Query Authority is complete. Generic query
+provider inputs now carry `GenericTemplateSignatureAuthority`,
+`GenericInstanceSignatureAuthority`, and `GenericInstanceBodyAuthority` instead
+of binding results only to a bare `IncrementalKey` or body fingerprint. Template
+authority records the signature, `ModulePartKey`, namespace, visibility rank,
+parameter count, and constraint count. Instance-signature authority records
+instance kind, type/const argument counts, param-env predicate count,
+value/generic parameter counts, return/receiver flags, unsafe/variadic/
+definition flags, and the signature fingerprint. Body authority records the
+checked body, signature result, generic side-table layout counts, sparse
+fallback count, and retained/local-dense/sparse flags. Incremental-cache
+subjects build these authorities from checked metadata and module records, and
+provider execution, provider-skip replay, query pruning, and
+`query_record_for_subject` all share the same result-fingerprint helpers.
+Generic struct / enum instance upstream signature fingerprints are also
+resolved-shape-sensitive now, so struct fields and enum payloads changing under
+the same `GenericInstanceKey` change the signature result. New query/sema/driver
+coverage checks authority valid/invalid paths, semantic fingerprint
+sensitivity, generic signature/body dependencies, fallback/cycle behavior,
+generic aggregate shape, generic cache rows, query-pruning reuse, and malformed
+graph/identity repair.
+
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,
 and language syntax. The result made it hard to tell whether a failure came from

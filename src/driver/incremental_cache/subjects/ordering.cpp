@@ -110,7 +110,7 @@ void evaluate_generic_template_signature_query_subject(
 {
     const query::GenericTemplateSignatureProviderInput input{
         subject.key,
-        subject.incremental_key,
+        subject.authority,
     };
     static_cast<void>(context.evaluate_generic_template_signature(input));
 }
@@ -120,7 +120,7 @@ void evaluate_generic_instance_signature_query_subject(
 {
     const query::GenericInstanceSignatureProviderInput input{
         subject.key,
-        subject.incremental_key,
+        subject.authority,
     };
     static_cast<void>(context.evaluate_generic_instance_signature(input));
 }
@@ -130,7 +130,7 @@ void evaluate_generic_instance_body_query_subject(
 {
     const query::GenericInstanceBodyProviderInput input{
         subject.key,
-        subject.result,
+        subject.authority,
     };
     static_cast<void>(context.evaluate_generic_instance_body(input));
 }
@@ -235,7 +235,7 @@ void evaluate_diagnostics_query_subject(query::QueryContext& context, const Diag
     const GenericTemplateSignatureQuerySubject& subject)
 {
     return query::generic_template_signature_query_record(
-        subject.key, query::query_result_fingerprint(subject.incremental_key));
+        subject.key, query::generic_template_signature_result_fingerprint(subject.authority));
 }
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(
@@ -245,7 +245,7 @@ void evaluate_diagnostics_query_subject(query::QueryContext& context, const Diag
         return std::nullopt;
     }
     return query::generic_instance_signature_query_record(
-        *subject.key, query::query_result_fingerprint(subject.incremental_key));
+        *subject.key, query::generic_instance_signature_result_fingerprint(subject.authority));
 }
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const GenericInstanceBodyQuerySubject& subject)
@@ -253,7 +253,8 @@ void evaluate_diagnostics_query_subject(query::QueryContext& context, const Diag
     if (subject.key == nullptr) {
         return std::nullopt;
     }
-    return query::generic_instance_body_query_record(*subject.key, subject.result);
+    return query::generic_instance_body_query_record(
+        *subject.key, query::generic_instance_body_result_fingerprint(subject.authority));
 }
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const LowerFunctionIRQuerySubject& subject)

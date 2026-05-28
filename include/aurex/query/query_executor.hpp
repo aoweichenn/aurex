@@ -14,12 +14,12 @@ class QueryContext;
 
 struct GenericInstanceSignatureQueryRequest {
     GenericInstanceKey key;
-    IncrementalKey signature;
+    GenericInstanceSignatureAuthority authority;
 };
 
 struct GenericInstanceBodyQueryRequest {
     GenericInstanceKey key;
-    QueryResultFingerprint checked_body;
+    GenericInstanceBodyAuthority authority;
 };
 
 struct LowerGenericInstanceIRQueryRequest {

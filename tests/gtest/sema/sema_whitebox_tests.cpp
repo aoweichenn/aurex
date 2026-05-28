@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstddef>
+#include <initializer_list>
 #include <limits>
 #include <optional>
 #include <span>
@@ -241,6 +242,125 @@ private:
     node.kind = syntax::TypeKind::named;
     node.name = name;
     return node;
+}
+
+[[nodiscard]] ExprId push_integer(syntax::AstModule& module);
+[[nodiscard]] syntax::StmtId push_block(syntax::AstModule& module, std::initializer_list<syntax::StmtId> statements);
+
+enum class GenericAggregateSignatureVariant : base::u8 {
+    generic_param,
+    concrete_i64,
+};
+
+struct GenericAggregateSignatureSnapshot {
+    query::GenericInstanceKey struct_key;
+    sema::IncrementalKey struct_signature;
+    query::GenericInstanceKey enum_key;
+    sema::IncrementalKey enum_signature;
+};
+
+[[nodiscard]] TypeId generic_aggregate_variant_type(
+    const GenericAggregateSignatureVariant variant, const TypeId generic_type, const TypeId i64_type) noexcept
+{
+    switch (variant) {
+        case GenericAggregateSignatureVariant::generic_param:
+            return generic_type;
+        case GenericAggregateSignatureVariant::concrete_i64:
+            return i64_type;
+    }
+    return generic_type;
+}
+
+[[nodiscard]] std::optional<GenericAggregateSignatureSnapshot> generic_aggregate_signature_snapshot(
+    const GenericAggregateSignatureVariant struct_field_variant,
+    const GenericAggregateSignatureVariant enum_payload_variant)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"generic_signature_sensitivity"})};
+
+    const TypeId generic_type = module.push_type(named_node("T"));
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId i64_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i64));
+    const TypeId struct_field_type = generic_aggregate_variant_type(struct_field_variant, generic_type, i64_type);
+    const TypeId enum_payload_type = generic_aggregate_variant_type(enum_payload_variant, generic_type, i64_type);
+
+    syntax::TypeNode box_i32_type_node = named_node("Box");
+    box_i32_type_node.type_args = {i32_type};
+    const TypeId box_i32_type = module.push_type(box_i32_type_node);
+
+    syntax::TypeNode maybe_i32_type_node = named_node("Maybe");
+    maybe_i32_type_node.type_args = {i32_type};
+    const TypeId maybe_i32_type = module.push_type(maybe_i32_type_node);
+
+    syntax::ItemNode box_item;
+    box_item.kind = syntax::ItemKind::struct_decl;
+    box_item.name = "Box";
+    box_item.generic_params = {syntax::GenericParamDecl{"T", {}}};
+    box_item.fields = {syntax::FieldDecl{"value", struct_field_type, {}}};
+    const syntax::ItemId box_item_id = module.push_item(box_item);
+    module.item_modules[box_item_id.value] = module_id(0);
+
+    syntax::EnumCaseDecl some_case;
+    some_case.name = "some";
+    some_case.payload_types = {enum_payload_type};
+    syntax::EnumCaseDecl none_case;
+    none_case.name = "none";
+    syntax::ItemNode maybe_item;
+    maybe_item.kind = syntax::ItemKind::enum_decl;
+    maybe_item.name = "Maybe";
+    maybe_item.generic_params = {syntax::GenericParamDecl{"T", {}}};
+    maybe_item.enum_cases = {some_case, none_case};
+    const syntax::ItemId maybe_item_id = module.push_item(maybe_item);
+    module.item_modules[maybe_item_id.value] = module_id(0);
+
+    const ExprId zero = push_integer(module);
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = zero;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+    const syntax::StmtId body = push_block(module, {return_stmt_id});
+
+    syntax::ItemNode use_item;
+    use_item.kind = syntax::ItemKind::fn_decl;
+    use_item.name = "use";
+    use_item.params = {
+        syntax::ParamDecl{"box", box_i32_type, {}},
+        syntax::ParamDecl{"maybe", maybe_i32_type, {}},
+    };
+    use_item.return_type = i32_type;
+    use_item.body = body;
+    const syntax::ItemId use_item_id = module.push_item(use_item);
+    module.item_modules[use_item_id.value] = module_id(0);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    if (!checked_result) {
+        ADD_FAILURE() << checked_result.error().message;
+        return std::nullopt;
+    }
+    const sema::CheckedModule& checked = checked_result.value();
+
+    const sema::StructInfo* generic_box = nullptr;
+    for (const auto& entry : checked.structs) {
+        const sema::StructInfo& info = entry.second;
+        if (info.name == "Box" && query::is_valid(info.generic_instance_key)) {
+            generic_box = &info;
+            break;
+        }
+    }
+    if (generic_box == nullptr || checked.generic_enum_instances.empty()) {
+        ADD_FAILURE() << "missing generic aggregate instance";
+        return std::nullopt;
+    }
+
+    const sema::GenericEnumInstanceInfo& generic_maybe = checked.generic_enum_instances.front();
+    return GenericAggregateSignatureSnapshot{
+        generic_box->generic_instance_key,
+        generic_box->incremental_key,
+        generic_maybe.generic_instance_key,
+        generic_maybe.incremental_key,
+    };
 }
 
 [[nodiscard]] FunctionSignature function_signature(const std::string_view name, const ModuleId module,
@@ -3460,6 +3580,100 @@ TEST(CoreUnit, SemanticWhiteBoxGenericTypeDisplaysAreLazy)
     const std::string checked_dump = sema::dump_checked_module(checked);
     EXPECT_NE(checked_dump.find("struct priv Box[i32]"), std::string::npos);
     EXPECT_NE(checked_dump.find("case Maybe[i32]_some"), std::string::npos);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxGenericAggregateInstanceSignaturesTrackResolvedShape)
+{
+    const std::optional<GenericAggregateSignatureSnapshot> generic_shape = generic_aggregate_signature_snapshot(
+        GenericAggregateSignatureVariant::generic_param, GenericAggregateSignatureVariant::generic_param);
+    ASSERT_TRUE(generic_shape.has_value());
+
+    const std::optional<GenericAggregateSignatureSnapshot> changed_struct_shape = generic_aggregate_signature_snapshot(
+        GenericAggregateSignatureVariant::concrete_i64, GenericAggregateSignatureVariant::generic_param);
+    ASSERT_TRUE(changed_struct_shape.has_value());
+    EXPECT_EQ(generic_shape->struct_key, changed_struct_shape->struct_key);
+    EXPECT_NE(generic_shape->struct_signature, changed_struct_shape->struct_signature);
+    EXPECT_EQ(generic_shape->enum_key, changed_struct_shape->enum_key);
+    EXPECT_EQ(generic_shape->enum_signature, changed_struct_shape->enum_signature);
+
+    const std::optional<GenericAggregateSignatureSnapshot> changed_enum_shape = generic_aggregate_signature_snapshot(
+        GenericAggregateSignatureVariant::generic_param, GenericAggregateSignatureVariant::concrete_i64);
+    ASSERT_TRUE(changed_enum_shape.has_value());
+    EXPECT_EQ(generic_shape->enum_key, changed_enum_shape->enum_key);
+    EXPECT_NE(generic_shape->enum_signature, changed_enum_shape->enum_signature);
+    EXPECT_EQ(generic_shape->struct_key, changed_enum_shape->struct_key);
+    EXPECT_EQ(generic_shape->struct_signature, changed_enum_shape->struct_signature);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxGenericAggregateSignatureFailuresReportInternalContract)
+{
+    {
+        syntax::AstModule module;
+        module.modules = {module_info({"generic_struct_signature_failure"})};
+        const TypeId external_type = module.push_type(named_node("External"));
+        syntax::ItemNode box_item;
+        box_item.kind = syntax::ItemKind::struct_decl;
+        box_item.name = "Box";
+        box_item.generic_params = {syntax::GenericParamDecl{"T", {}}};
+        box_item.fields = {syntax::FieldDecl{"value", external_type, {}}};
+        const syntax::ItemId box_item_id = module.push_item(box_item);
+        module.item_modules[box_item_id.value] = module_id(0);
+
+        base::DiagnosticSink diagnostics;
+        sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+        const TypeHandle external_handle =
+            analyzer.state_.checked.types.named_struct("generic_struct_signature_failure.External", "External", false);
+        static_cast<void>(add_named_type(analyzer, module_id(0), "External", external_handle));
+
+        sema::SemanticAnalyzerCore::GenericTemplateInfo box_info = generic_template_info(analyzer, module_id(0), "Box");
+        box_info.item = box_item_id;
+        box_info.stable_id = analyzer.stable_definition_id(
+            module_id(0), sema::StableSymbolKind::generic_template, box_info.name_id, box_info.name);
+        analyzer.populate_generic_param_identities(box_info);
+
+        syntax::TypeNode use_type = named_node("Box");
+        const std::vector<TypeHandle> args{analyzer.state_.checked.types.builtin(BuiltinType::i32)};
+        sema::SemanticAnalyzerCore::GenericAnalyzer generic(analyzer);
+        EXPECT_FALSE(is_valid(generic.instantiate_generic_struct(box_info, use_type, syntax::INVALID_TYPE_ID, args)));
+        EXPECT_NE(
+            diagnostic_messages(diagnostics).find("generic struct instance signature fingerprint"), std::string::npos);
+    }
+
+    {
+        syntax::AstModule module;
+        module.modules = {module_info({"generic_enum_signature_failure"})};
+        const TypeId external_type = module.push_type(named_node("External"));
+        syntax::EnumCaseDecl some_case;
+        some_case.name = "some";
+        some_case.payload_types = {external_type};
+        syntax::ItemNode maybe_item;
+        maybe_item.kind = syntax::ItemKind::enum_decl;
+        maybe_item.name = "Maybe";
+        maybe_item.generic_params = {syntax::GenericParamDecl{"T", {}}};
+        maybe_item.enum_cases = {some_case};
+        const syntax::ItemId maybe_item_id = module.push_item(maybe_item);
+        module.item_modules[maybe_item_id.value] = module_id(0);
+
+        base::DiagnosticSink diagnostics;
+        sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+        const TypeHandle external_handle =
+            analyzer.state_.checked.types.named_struct("generic_enum_signature_failure.External", "External", false);
+        static_cast<void>(add_named_type(analyzer, module_id(0), "External", external_handle));
+
+        sema::SemanticAnalyzerCore::GenericTemplateInfo maybe_info =
+            generic_template_info(analyzer, module_id(0), "Maybe");
+        maybe_info.item = maybe_item_id;
+        maybe_info.stable_id = analyzer.stable_definition_id(
+            module_id(0), sema::StableSymbolKind::generic_template, maybe_info.name_id, maybe_info.name);
+        analyzer.populate_generic_param_identities(maybe_info);
+
+        syntax::TypeNode use_type = named_node("Maybe");
+        const std::vector<TypeHandle> args{analyzer.state_.checked.types.builtin(BuiltinType::i32)};
+        sema::SemanticAnalyzerCore::GenericAnalyzer generic(analyzer);
+        EXPECT_FALSE(is_valid(generic.instantiate_generic_enum(maybe_info, use_type, syntax::INVALID_TYPE_ID, args)));
+        EXPECT_NE(
+            diagnostic_messages(diagnostics).find("generic enum instance signature fingerprint"), std::string::npos);
+    }
 }
 
 TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)

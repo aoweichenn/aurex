@@ -840,6 +840,7 @@ GenericTemplateSignatureInfo CheckedModule::clone_generic_template_signature_inf
         other.incremental_key,
         other.name_space,
         other.param_count,
+        other.constraint_count,
         other.part_index,
     };
 }

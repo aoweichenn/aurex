@@ -58,7 +58,9 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"enum_hash_rejected", "does not satisfy capability `Hash`"},
     {"float_eq_rejected", "type f64 does not satisfy capability `Eq`"},
     {"float_ord_rejected", "type f64 does not satisfy capability `Ord`"},
+    {"generic_ptrat_non_pointer", "ptrat target type must be a pointer"},
     {"generic_raw_pointer_method_reference_receiver_rejected", "method receiver type mismatch"},
+    {"generic_sizeof_missing_sized", "generic type parameter cannot be queried by sizeof or alignof"},
     {"increment_syntax", "increment operator is not supported"},
     {"enum_payload_bool_missing_witness", "match expression is not exhaustive for enum case"},
     {"import_alias_namespace_conflict",
@@ -227,6 +229,29 @@ void verify_const_enum_lowering()
     expect_contains(const_enum, "load i32, ptr @m0_const_enum_answer");
 }
 
+void verify_generic_builtin_ir()
+{
+    const std::string generic_builtins = require_compiler_success(
+        sample_invocation(positive_sample("generics", "builtins_m3_1.ax"), driver::EmitKind::ir))
+                                             .output;
+    expect_contains_all(generic_builtins,
+        {
+            "sizeof i32",
+            "alignof i32",
+            "ptraddr",
+            "ptrat",
+            "ptrcast",
+            "bitcast",
+            "slice_data",
+            "slice_len",
+            "strptr",
+            "strblen",
+            "strvalid",
+            "strfromutf8",
+            "strraw",
+        });
+}
+
 [[nodiscard]] std::optional<std::string_view> expected_negative_diagnostic(const fs::path& src)
 {
     const std::string name = stem(src);
@@ -312,6 +337,7 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveSamples)
 {
     verify_positive_samples_llvm_ir();
     verify_const_enum_lowering();
+    verify_generic_builtin_ir();
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_pointer_field_write)
@@ -377,6 +403,11 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_const_pattern)
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_generic_basic)
 {
     run_positive_runtime_smoke_sample("generics", "basic_m2.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_generic_builtins)
+{
+    run_positive_runtime_smoke_sample("generics", "builtins_m3_1.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_imported_samples)

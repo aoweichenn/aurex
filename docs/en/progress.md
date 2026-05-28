@@ -53,11 +53,12 @@ implementation into a stable query-backed system: `GenericTemplateSignature`,
 boundaries; generic ABI suffixes, stable ids, and incremental keys derive from
 `GenericInstanceKey` / canonical type identity; generic bodies, IR lowering,
 LLVM lowering, and native execution consume the same instance identity and
-side-table view; `sizeof[T]` / `alignof[T]` close through sema/IR/LLVM inside
-generic functions; and method-local generics move into implementation after ABI
-and query boundaries are stable. The first M3.1 code step changes generic
-struct / enum / function ABI suffixes from session-only `TypeHandle.value`
-concatenation to a stable `GenericInstanceKey` fingerprint, so separate compiler
+side-table view; generic builtin type operands and value-only builtins close
+through sema/IR/LLVM inside generic functions; and method-local generics move
+into implementation after ABI and query boundaries are stable. The first M3.1
+code step changes generic struct / enum / function ABI suffixes from
+session-only `TypeHandle.value` concatenation to a stable
+`GenericInstanceKey` fingerprint, so separate compiler
 sessions do not generate different instance symbols only because handle
 allocation differed. The remaining M3.1 execution entry point is now the
 [Aurex M3.1 Generics Completion Plan](m3.1-generics-plan.md); future work
@@ -113,6 +114,19 @@ collect lower generic instance IR subjects. New and updated sema, IR white-box,
 driver-cache, and sample runtime coverage exercise retained/discarded emit-mode
 boundaries, generic body views, missing-view rejection, checked-module copy/move
 body preservation, and native execution for `generics/basic_m2.ax`.
+
+As of 2026-05-28, WP-4 Generic Builtin Operand Closure is complete. Generic
+function and method instance-body `GenericAnalysisScope` now caches syntax type
+handles in retained and non-retained side-table paths, so `sizeof[T]` /
+`alignof[T]`, `ptrat[*const T]`, `ptrcast[*const T]`, and `bitcast[*const T]`
+are written by sema as concrete instantiated types and consumed by IR lowering
+from the same retained side table. `ptraddr`, `sliceptr`, `slicelen`,
+`strptr`, `strblen`, `strvalid`, `strfromutf8`, and `strraw` are covered in a
+generic positive sample through retained expression side tables. The new
+`generics/builtins_m3_1.ax` sample has IR-dump and native-smoke coverage, and
+negative samples cover missing `Sized` for `sizeof[T]` and invalid `ptrat[T]`
+targets. Top-level `cast[T](value)` remains limited by the existing scalar-cast
+rule; M3.1 does not add a new `Scalar` / `Cast` capability.
 
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,

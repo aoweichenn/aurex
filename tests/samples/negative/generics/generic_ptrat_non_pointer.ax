@@ -1,0 +1,9 @@
+module generic_ptrat_non_pointer;
+
+fn bad[T](addr: usize) -> T where T: Sized {
+    return unsafe { ptrat[T](addr) };
+}
+
+fn main() -> i32 {
+    return 0;
+}

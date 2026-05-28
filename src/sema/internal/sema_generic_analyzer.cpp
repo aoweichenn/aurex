@@ -2392,7 +2392,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
         this->core_.populate_generic_concrete_context(info, args, body_context);
         {
             GenericAnalysisScope scope(
-                this->core_, info.module, &body_context, &transient_side_tables, false, info.item);
+                this->core_, info.module, &body_context, &transient_side_tables, true, info.item);
             this->core_.analyze_function_body_with_signature(
                 function, key, function_inserted.first->second, this->core_.state_.functions.body_states[key]);
         }
@@ -2432,7 +2432,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_fu
     this->core_.populate_generic_concrete_context(info, args, body_context);
     {
         GenericAnalysisScope scope(this->core_, info.module, &body_context,
-            &this->core_.state_.checked.generic_function_instances[instance_index].side_tables, false, info.item);
+            &this->core_.state_.checked.generic_function_instances[instance_index].side_tables, true, info.item);
         this->core_.analyze_function_body_with_signature(function, key,
             this->core_.state_.checked.generic_function_instances[instance_index].signature,
             this->core_.state_.functions.body_states[key]);
@@ -2538,7 +2538,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_me
         this->core_.populate_generic_concrete_context(info, args, body_context);
         {
             GenericAnalysisScope scope(
-                this->core_, info.module, &body_context, &transient_side_tables, false, info.item);
+                this->core_, info.module, &body_context, &transient_side_tables, true, info.item);
             this->core_.analyze_function_body_with_signature(
                 function, key, function_inserted.first->second, this->core_.state_.functions.body_states[key]);
         }
@@ -2579,7 +2579,7 @@ FunctionSignature* SemanticAnalyzerCore::GenericAnalyzer::instantiate_generic_me
     this->core_.populate_generic_concrete_context(info, args, body_context);
     {
         GenericAnalysisScope scope(this->core_, info.module, &body_context,
-            &this->core_.state_.checked.generic_function_instances[instance_index].side_tables, false, info.item);
+            &this->core_.state_.checked.generic_function_instances[instance_index].side_tables, true, info.item);
         this->core_.analyze_function_body_with_signature(function, key,
             this->core_.state_.checked.generic_function_instances[instance_index].signature,
             this->core_.state_.functions.body_states[key]);
@@ -2714,7 +2714,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::analyze_generic_function_body(const 
     GenericContext generic_context = this->core_.make_generic_context();
     this->core_.populate_generic_placeholder_context(info, generic_context);
     GenericSideTables side_tables = make_generic_side_tables(info);
-    GenericAnalysisScope scope(this->core_, info.module, &generic_context, &side_tables, false, info.item);
+    GenericAnalysisScope scope(this->core_, info.module, &generic_context, &side_tables, true, info.item);
     this->core_.analyze_function_body_with_signature(function, info.function_key, signature, state);
 }
 

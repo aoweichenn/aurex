@@ -1,0 +1,70 @@
+module builtins_m3_1;
+
+fn layout_sum[T](value: T) -> usize where T: Sized {
+    let value_addr: usize = ptraddr(&value);
+    if value_addr == 0usize {
+        return 99usize;
+    }
+    return sizeof[T] + alignof[T];
+}
+
+fn pointer_ops[T](value: &T) -> bool where T: Sized {
+    let addr: usize = ptraddr(value);
+    let raw: *const T = unsafe { ptrat[*const T](addr) };
+    let casted: *const T = unsafe { ptrcast[*const T](raw) };
+    let recast: *const T = unsafe { bitcast[*const T](casted) };
+    return ptraddr(recast) == addr;
+}
+
+fn slice_ops[T](values: []const T) -> usize where T: Sized {
+    let data: *const T = sliceptr(values);
+    if ptraddr(data) == 0usize {
+        return 99usize;
+    }
+    return slicelen(values);
+}
+
+fn utf8_ops[T](marker: T, bytes: []const u8) -> usize where T: Sized {
+    if sizeof[T] == 0usize {
+        return 99usize;
+    }
+    if ptraddr(&marker) == 0usize {
+        return 98usize;
+    }
+    if !strvalid(bytes) {
+        return 97usize;
+    }
+    let text: str = strfromutf8(bytes);
+    let raw: str = unsafe { strraw(strptr(text), strblen(text)) };
+    return strblen(raw);
+}
+
+fn cast_inside_generic[T](value: T, number: usize) -> i32 where T: Sized {
+    if ptraddr(&value) == 0usize {
+        return -1;
+    }
+    return cast[i32](number);
+}
+
+fn main() -> i32 {
+    let value: i32 = 7;
+    let numbers: [3]i32 = [1, 2, 3];
+    let bytes: [3]u8 = b"abc";
+
+    if layout_sum[i32](value) != 8usize {
+        return 1;
+    }
+    if !pointer_ops[i32](&value) {
+        return 2;
+    }
+    if slice_ops[i32](numbers[:]) != 3usize {
+        return 3;
+    }
+    if utf8_ops[i32](value, bytes[:]) != 3usize {
+        return 4;
+    }
+    if cast_inside_generic[i32](value, 5usize) != 5 {
+        return 5;
+    }
+    return 0;
+}

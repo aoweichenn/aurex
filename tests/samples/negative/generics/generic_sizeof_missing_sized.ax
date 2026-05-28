@@ -1,0 +1,12 @@
+module generic_sizeof_missing_sized;
+
+fn bad[T](value: T) -> usize {
+    if ptraddr(&value) == 0usize {
+        return 0usize;
+    }
+    return sizeof[T];
+}
+
+fn main() -> i32 {
+    return cast[i32](bad[i32](1));
+}

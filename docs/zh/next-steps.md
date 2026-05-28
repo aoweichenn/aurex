@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M3.1 泛型闭环
+## 当前最高优先级：M3.2 Query-backed Sema
 
 R5 Compilation Pipeline / Driver Action 重构 core 已收口：`CompilerInvocation`、`Compiler`
 facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`LoweringPipeline`、
@@ -8,25 +8,23 @@ facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`Lo
 stage owner 和 tooling/profile consumer contract 都已经进入主路径，并保持原有 CLI、diagnostics JSON、
 profile JSON、incremental cache 和 emit mode 行为。
 
-M3.0 模块系统已完成 Phase 9A-D 收口，当前最高优先级切到
-[M3 路线图](m3-roadmap.md) 的 M3.1 泛型闭环：
+M3.0 模块系统和 M3.1 泛型闭环已经合并回 `m3`，当前最高优先级切到
+[M3 路线图](m3-roadmap.md) 的 M3.2 Query-backed Sema：
 
-- `GenericTemplateSignature`、`GenericInstanceSignature` 和 `GenericInstanceBody`
-  成为泛型检查、实例复用和增量失效的权威边界。
-- 泛型 ABI suffix、stable id 和 incremental key 必须由 `GenericInstanceKey` /
-  canonical type identity 派生，不能再依赖本次 session 的 `TypeHandle` 数字、display string
-  或 C ABI 名称反推身份。
-- `sizeof[T]` / `alignof[T]` 要在 generic function body 中完整通过 sema、IR lowering 和 LLVM lowering，
-  不能只在非泛型路径可用。
-- method-local generics 从 M2 unsupported 进入 M3.1 设计和实现，必须覆盖 lookup、inference、ABI、
-  query key、diagnostics、IR/native 行为和正负样例。
-- M3.1 仍只使用当前内建非资源 capability：`Sized`、`Eq`、`Ord`、`Hash`；用户 trait、
-  associated type、const generic、resource capability、trait object 和 RAII 不进入本阶段。
-- M3.1 继续复用 R5 后稳定下来的 driver/session/query/diagnostics/pipeline 主路径，不能另开旁路。
-- R5 的 profile/tooling contract 继续作为后续 profile viewer、LSP adapter 和 IDE stage view 的消费边界。
+- `ItemSignature`、`BodySyntax`、`TypeCheckBody`、`GenericTemplateSignature`、
+  `GenericInstanceSignature` 和 `GenericInstanceBody` 必须形成统一 query authority 边界。
+- eager sema 可以 materialize query result，但不能继续作为 checked semantic facts 的唯一事实源。
+- `CheckedModule` 要分清 durable facts、session-local caches 和 lowering-only side tables，并能说明每类事实来自
+  哪个 query authority。
+- incremental cache、query pruning 和 provider-skip replay 要能解释 sema 级结果复用，而不只是文件级复用。
+- `aurex_tooling::IdeSnapshot` 和后续 LSP/IDE 消费必须读取 query-backed semantic facts，不允许绕过
+  parser/sema/query。
+- M3.2 不引入用户 trait、associated type、const generic、resource capability、RAII、closure、async/iterator
+  或标准库重建；这些专题必须等 query-backed sema 边界稳定后再设计。
+- M3.2 必须继承 M3.1 泛型 release baseline，不能重新打开已经收口的 identity、ABI、IR/native 路径。
 
-后续 M3.1 具体执行以 [Aurex M3.1 泛型闭环执行计划](m3.1-generics-plan.md) 为入口。每次只推进一个
-work package，并按该文档列出的必读文件、允许修改范围、禁止事项和验收门槛执行。
+后续 M3.2 具体执行以 [Aurex M3.2 Query-backed Sema 设计与执行计划](m3.2-query-backed-sema-plan.md) 为入口。
+每次只推进一个 work package，并按该文档列出的必读文件、允许修改范围、禁止事项和验收门槛执行。
 
 R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分；
 R5.3 已完成 `LoweringPipeline`、`BackendPipeline` 和 `PipelineStage` 记录。当前 driver 总控已经只保留
@@ -68,23 +66,16 @@ R5.13 已完成 profile/tooling 消费者分类契约：`pipeline_profile_phase_
 已通过这个入口输出原有 `stage` / `parent_stage` metadata，协议字段保持不变。后续 profile viewer
 和 LSP/IDE 阶段视图必须复用这个分类 API，不再维护独立 phase-name 映射表。
 
-M3.1 的第一批实现顺序：
+M3.2 的第一批实现顺序：
 
-1. 泛型 ABI 稳定化：泛型 struct / enum / function / 后续 method 的实例符号名统一从
-   `GenericInstanceKey` 派生，不再拼接 `TypeHandle.value`。
-2. 泛型实例身份贯通：把 `GenericInstanceIdentity` / fingerprint / semantic key 明确记录到
-   generic struct、enum、type alias、function 和 method metadata，避免 ABI、dump、lookup、
-   query subject 各自生成身份。
-3. 泛型 query 权威化：把 template signature、instance signature 和 instance body 的计算收束到
-   query provider 边界，eager sema 只能消费或 materialize query 结果。
-4. 泛型 body/lowering 闭环：让 retained typed body、IR lowering、LLVM lowering 和 native execution
-   都消费同一份 generic instance body 与 side table 视图。
-5. `sizeof[T]` / `alignof[T]` 闭环：补齐 generic function 内建 type operand 的 sema、IR、LLVM 和诊断测试。
-6. method-local generics：在 query/ABI 边界稳定后实现，并补 positive、negative、checked dump、
-   IR/native 和 incremental cache 覆盖。
-7. 质量门：泛型 gtest、samples、stress、query pruning、全量测试和 coverage 必须不回退。
+1. Sema query authority inventory：列清 checked facts、stable keys、provider authority 和失效条件。
+2. Item/body provider boundary：把 item signature、body syntax、type-check body 的输入/输出结构化。
+3. Checked fact materialization：让 eager sema materialize query result，并记录 durable fact 来源。
+4. Sema service boundary split：拆分 lookup/type/generic/body-check service，降低 `SemanticAnalyzerCore` 聚合度。
+5. Tooling semantic query surface：让 `IdeSnapshot` 暴露 query-backed semantic facts 和 dependency edges。
+6. Incremental reuse / quality gates：query pruning、query graph fuzz、coverage、stress、native 全部不回退。
 
-2026-05-28 收口更新：上述 M3.1 七项已通过 WP-7 Generic Closure Audit And Release Baseline 统一复审。
+2026-05-28 收口更新：原 M3.1 work packages 已通过 WP-7 Generic Closure Audit And Release Baseline 统一复审。
 当前泛型 release baseline 固定为：generic struct / enum / type alias / function / owner-generic method /
 method-local generic method 都以 `GenericInstanceKey` / `GenericInstanceIdentity` 作为 stable id、ABI suffix、
 incremental key、query subject 和 checked metadata 的权威身份；`TypeHandle.value` 只允许留在本 session 的

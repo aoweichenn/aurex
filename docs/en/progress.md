@@ -1,7 +1,7 @@
 # Current Progress
 
-Version: 0.1.2
-Stage: M3.1 generics
+Version: 0.1.3
+Stage: M3.2 query-backed sema
 
 ## Overall Status
 
@@ -46,24 +46,26 @@ stage directory. M3 implementation continues to reuse the R5
 driver/session/query/diagnostics/pipeline path.
 
 As of 2026-05-28, M3.0 module-system closure is complete and M3.1 Generics
-Completion is active on the `m3.1` branch. M3.1 does not widen traits,
-resources, or the standard library. It turns the existing usable generic
-implementation into a stable query-backed system: `GenericTemplateSignature`,
-`GenericInstanceSignature`, and `GenericInstanceBody` are the authority
+Completion has reached a release baseline. `GenericTemplateSignature`,
+`GenericInstanceSignature`, and `GenericInstanceBody` are generic authority
 boundaries; generic ABI suffixes, stable ids, and incremental keys derive from
 `GenericInstanceKey` / canonical type identity; generic bodies, IR lowering,
 LLVM lowering, and native execution consume the same instance identity and
 side-table view; generic builtin type operands and value-only builtins close
-through sema/IR/LLVM inside generic functions; and method-local generics move
-into implementation after ABI and query boundaries are stable. The first M3.1
-code step changes generic struct / enum / function ABI suffixes from
-session-only `TypeHandle.value` concatenation to a stable
-`GenericInstanceKey` fingerprint, so separate compiler
-sessions do not generate different instance symbols only because handle
-allocation differed. The remaining M3.1 execution entry point is now the
-[Aurex M3.1 Generics Completion Plan](m3.1-generics-plan.md); future work
-advances by work package and reads only the required local context plus direct
-callers/callees by default.
+through sema/IR/LLVM inside generic functions; and method-local generics are on
+the ABI/query/diagnostic/lowering/native path. As of 2026-05-29, `m3.1` has
+been fast-forward merged back to `m3`, and `m3.2` has been created for
+Query-backed Sema design and implementation. The current highest priority is
+moving sema from "one eager analyzer produces a checked module" to a
+query-backed semantic authority: `ItemSignature`, `BodySyntax`,
+`TypeCheckBody`, `GenericTemplateSignature`, `GenericInstanceSignature`, and
+`GenericInstanceBody` form one authority boundary; `CheckedModule` separates
+durable facts, session-local caches, and lowering-only side tables; and
+incremental cache / query pruning / provider-skip replay can explain sema
+result reuse. The M3.2 execution entry point is now the
+[Aurex M3.2 Query-backed Sema Design And Execution Plan](m3.2-query-backed-sema-plan.md);
+future work advances by work package and reads only the required local context
+plus direct callers/callees by default.
 
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and

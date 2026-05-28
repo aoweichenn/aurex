@@ -1,6 +1,6 @@
 # Next Steps
 
-## Current Highest Priority: M3.1 Generics Completion
+## Current Highest Priority: M3.2 Query-backed Sema
 
 The R5 Compilation Pipeline / Driver Action core is now closed:
 `CompilerInvocation`, the `Compiler` facade, `CompilationSession`,
@@ -10,33 +10,31 @@ profile metadata, diagnostic stage owners, and tooling/profile consumer
 contracts are all on the main path while preserving the existing CLI,
 diagnostics JSON, profile JSON, incremental-cache, and emit-mode behavior.
 
-M3.0 module-system closure is complete. The current highest priority moves to
-M3.1 in the [M3 Roadmap](m3-roadmap.md):
+M3.0 module-system closure and M3.1 generics closure have both been merged back
+to `m3`. The current highest priority moves to M3.2 Query-backed Sema in the
+[M3 Roadmap](m3-roadmap.md):
 
-- `GenericTemplateSignature`, `GenericInstanceSignature`, and
-  `GenericInstanceBody` become the authoritative generic checking, reuse, and
-  invalidation boundaries.
-- Generic ABI suffixes, stable ids, and incremental keys must derive from
-  `GenericInstanceKey` / canonical type identity instead of this session's
-  `TypeHandle` numbers, display strings, or reverse-engineered C ABI names.
-- `sizeof[T]` / `alignof[T]` must work inside generic function bodies through
-  sema, IR lowering, and LLVM lowering.
-- Method-local generics move from M2 unsupported into M3.1 design and
-  implementation, including lookup, inference, ABI, query keys, diagnostics,
-  IR/native behavior, and positive/negative samples.
-- M3.1 still uses only the current built-in non-resource capabilities:
-  `Sized`, `Eq`, `Ord`, and `Hash`. User traits, associated types, const
-  generics, resource capabilities, trait objects, and RAII stay out of this
-  stage.
-- M3.1 work must consume the R5 driver/session/query/diagnostics/pipeline path
-  instead of opening bypasses.
-- R5 profile/tooling contracts remain the consumer boundary for future profile
-  viewers, LSP adapters, and IDE stage views.
+- `ItemSignature`, `BodySyntax`, `TypeCheckBody`,
+  `GenericTemplateSignature`, `GenericInstanceSignature`, and
+  `GenericInstanceBody` must form one query-authority boundary.
+- Eager sema may materialize query results, but it should not remain the only
+  source of checked semantic facts.
+- `CheckedModule` must separate durable facts, session-local caches, and
+  lowering-only side tables, and it must be possible to explain which query
+  authority owns each durable fact.
+- Incremental cache, query pruning, and provider-skip replay must explain sema
+  result reuse, not only file-level reuse.
+- `aurex_tooling::IdeSnapshot` and later LSP/IDE consumers must read
+  query-backed semantic facts instead of bypassing parser/sema/query.
+- M3.2 does not add user traits, associated types, const generics, resource
+  capabilities, RAII, closures, async/iterators, or standard-library rebuilds.
+- M3.2 inherits the M3.1 generic release baseline and must not reopen the closed
+  identity, ABI, IR/native paths.
 
-The concrete M3.1 execution entry point is the
-[Aurex M3.1 Generics Completion Plan](m3.1-generics-plan.md). Future steps
-advance one work package at a time, using that document's required files,
-allowed scope, forbidden shortcuts, and acceptance gates.
+The concrete M3.2 execution entry point is the
+[Aurex M3.2 Query-backed Sema Design And Execution Plan](m3.2-query-backed-sema-plan.md).
+Future steps advance one work package at a time, using that document's required
+files, allowed scope, forbidden shortcuts, and acceptance gates.
 
 R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
 stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
@@ -93,30 +91,22 @@ including public `PipelineStageMetadata`,
 `pipeline_profile_phase_classification(...)`, `stage` / `parent_stage` profile
 metadata, and `IdeDiagnostic` owner-stage metadata, instead of bypassing it.
 
-M3.1 first implementation order:
+M3.2 first implementation order:
 
-1. Stabilize generic ABI suffixes: generic struct / enum / function / later
-   method instance symbols derive from `GenericInstanceKey`, not
-   `TypeHandle.value`.
-2. Propagate generic instance identity: record `GenericInstanceIdentity`,
-   fingerprints, and semantic keys on generic struct, enum, type alias,
-   function, and method metadata instead of letting ABI, dumps, lookup, and
-   query subjects each recreate identity.
-3. Harden generic query authority: move template signature, instance signature,
-   and instance body computation behind query provider boundaries. Eager sema
-   should consume or materialize query results.
-4. Close generic body/lowering: retained typed bodies, IR lowering, LLVM
-   lowering, and native execution consume the same generic instance body and
-   side-table view.
-5. Complete `sizeof[T]` / `alignof[T]`: add generic-function sema, IR, LLVM,
-   and diagnostic coverage for built-in type operands.
-6. Implement method-local generics after query/ABI boundaries are stable,
-   including positive, negative, checked-dump, IR/native, and incremental-cache
-   coverage.
-7. Keep the quality gates green: generic gtests, samples, stress, query
-   pruning, full tests, and coverage must not regress.
+1. Sema query authority inventory: list checked facts, stable keys, provider
+   authority, and invalidation conditions.
+2. Item/body provider boundary: structure item signature, body syntax, and
+   type-check body inputs/outputs.
+3. Checked fact materialization: let eager sema materialize query results and
+   record durable fact provenance.
+4. Sema service boundary split: split lookup/type/generic/body-check services
+   and reduce `SemanticAnalyzerCore` aggregation.
+5. Tooling semantic query surface: expose query-backed semantic facts and
+   dependency edges through `IdeSnapshot`.
+6. Incremental reuse / quality gates: keep query pruning, query graph fuzz,
+   coverage, stress, and native execution green.
 
-2026-05-28 closure update: the seven M3.1 items above have been reviewed
+2026-05-28 closure update: the original M3.1 work packages have been reviewed
 through WP-7 Generic Closure Audit And Release Baseline. The generic release
 baseline is now fixed: generic structs, enums, type aliases, functions,
 owner-generic methods, and method-local generic methods use

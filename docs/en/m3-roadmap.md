@@ -4,19 +4,22 @@
 
 M3 builds on the M2.5 frontend-foundation work. M2.5 closed the query-key,
 structured-diagnostic, lossless-syntax, and IDE-native snapshot foundations. M3
-does not keep widening that infrastructure track; it starts the next language
-stage around two systems:
+first closes the most important language-layer systems, then pushes those facts
+down into query-backed sema architecture:
 
 1. Modules.
 2. Generics.
+3. Query-backed sema and IDE/tooling-consumable semantic facts.
 
 As of 2026-05-25, the R5 Compilation Pipeline / Driver Action core is complete.
-As of 2026-05-28, M3.0 module-system closure is complete and the current
-highest priority is M3.1 generics completion. Every M3 implementation must
-reuse the R5 `CompilationSession`, `CompilationPipeline`, `FrontendPipeline`,
-`LoweringPipeline`, `BackendPipeline`, `PipelineStage`, query, diagnostics, and
-profile/tooling contracts. Do not open a parallel compilation path in the module
-loader, parser/sema, or query layers.
+As of 2026-05-28, M3.0 module-system closure and the M3.1 generic release
+baseline are complete. As of 2026-05-29, `m3.1` has been fast-forward merged
+back to `m3`, and the current highest priority is M3.2 Query-backed Sema. Every
+M3 implementation must reuse the R5 `CompilationSession`,
+`CompilationPipeline`, `FrontendPipeline`, `LoweringPipeline`,
+`BackendPipeline`, `PipelineStage`, query, diagnostics, and profile/tooling
+contracts. Do not open a parallel compilation path in the module loader,
+parser/sema, or query layers.
 
 M3 explicitly does not implement RAII first, and it does not pull traits,
 closures, iterators, derive, package management, or standard-library rebuilds
@@ -87,11 +90,35 @@ M3.1 still uses only the current built-in non-resource capabilities: `Sized`,
 `Eq`, `Ord`, and `Hash`. User traits, associated types, const generics, and
 resource capabilities do not enter M3.1.
 
-The execution entry point for the rest of M3.1 is the
-[Aurex M3.1 Generics Completion Plan](m3.1-generics-plan.md). Future work should
-advance by work package from that document so each step reads the minimum local
-context while preserving the global sema / query / lowering / backend
-invariants.
+The completed M3.1 execution record is the
+[Aurex M3.1 Generics Completion Plan](m3.1-generics-plan.md). M3.1 reached its
+release baseline at `59a2ddf Complete M3.1 generic closure audit` and has been
+merged back to `m3`.
+
+### M3.2: Query-backed Sema
+
+M3.2 moves sema from "one eager analyzer produces a checked module" toward a
+query-backed semantic authority:
+
+- `ItemSignature`, `BodySyntax`, `TypeCheckBody`,
+  `GenericTemplateSignature`, `GenericInstanceSignature`, and
+  `GenericInstanceBody` form one query authority boundary.
+- Eager sema may materialize query results, but it must not remain the only
+  source of checked semantic facts.
+- `CheckedModule` separates durable facts, session-local caches, and
+  lowering-only side tables, and each fact class must identify its query
+  authority.
+- Incremental cache, query pruning, and provider-skip replay can explain sema
+  result reuse, not only file-level reuse.
+- `aurex_tooling::IdeSnapshot` and future LSP/IDE consumers read query-backed
+  semantic facts without bypassing parser/sema/query.
+- M3.2 inherits the M3.1 generic release baseline and must not reopen the closed
+  identity, ABI, IR/native paths.
+
+M3.2 still does not implement user traits, associated types, const generics,
+resource capabilities, RAII, closures, async/iterators, or standard-library
+rebuilds. Its execution entry point is the
+[Aurex M3.2 Query-backed Sema Design And Execution Plan](m3.2-query-backed-sema-plan.md).
 
 ## Non-goals
 
@@ -172,18 +199,15 @@ The M3.1 implementation route is:
 
 ## Recommended Implementation Order
 
-The completed M3.0 module order remains as historical acceptance: documentation
-closure, module AST/parser, ModuleLoader, sema visibility, module graph/export
-queries, package visibility, source-root topology, ModulePartKey, IDE part
-recovery, and selective re-export are closed. The active M3.1 order is:
+The completed M3.0 module and M3.1 generic orders remain as historical
+acceptance. The active order starts from M3.2:
 
-1. 1A generic ABI stabilization.
-2. 1B generic instance identity propagation.
-3. 2 generic query authority.
-4. 3 generic body/lowering closure.
-5. 4 `sizeof[T]` / `alignof[T]` closure.
-6. 5 method-local generics.
-7. 6 quality gates and coverage closure.
+1. Sema query authority inventory.
+2. Item/body provider boundary.
+3. Checked fact materialization.
+4. Sema service boundary split.
+5. Tooling semantic query surface.
+6. Incremental reuse and quality gates.
 
 ## Current Implementation Progress
 
@@ -201,6 +225,11 @@ close through sema/IR/LLVM. The WP-7 audit confirms that `TypeHandle.value`
 remains only a session-local lookup/cache fast key, while display strings,
 checked dumps, diagnostics, IR dumps, and c_names are outputs rather than
 reverse generic identity inputs.
+
+2026-05-29: `m3.1` has been fast-forward merged into `m3`, and `m3.2` has been
+created for Query-backed Sema design and implementation. The M3.2 design entry
+point is now fixed as `m3.2-query-backed-sema-plan.md`; subsequent work should
+advance by M3.2 work package instead of rereading the full M3 history.
 
 ## Acceptance
 
@@ -229,3 +258,16 @@ M3.1 generic acceptance:
   ABI, IR/native behavior in the release baseline.
 - Existing generic stress, query pruning, sample suite, and native execution
   tests do not regress.
+
+M3.2 query-backed sema acceptance:
+
+- Sema authority boundaries are explicit for item signatures, body syntax, body
+  type checking, and generic template/instance signatures and bodies.
+- Eager checked-module materialization consumes or records query facts instead
+  of becoming the only semantic fact source.
+- Durable checked facts, session-local caches, and lowering-only side tables are
+  separated and documented.
+- Provider skip, query pruning, and incremental cache traces can explain sema
+  reuse at query granularity.
+- Tooling-facing semantic snapshots consume the same query-backed facts as the
+  compiler pipeline.

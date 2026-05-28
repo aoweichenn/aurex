@@ -28,9 +28,9 @@ ABI/query/diagnostics/lowering/native 路径。2026-05-29 `m3.1` 已 fast-forwar
 checked module”推进为 query-backed semantic authority：`ItemSignature`、`BodySyntax`、
 `TypeCheckBody`、`GenericTemplateSignature`、`GenericInstanceSignature` 和 `GenericInstanceBody`
 形成统一 authority 边界，`CheckedModule` 分清 durable facts、session-local caches 和 lowering-only side
-tables，incremental cache / query pruning / provider-skip replay 能解释 sema 级结果复用。M3.2 执行入口已收束为
-[Aurex M3.2 Query-backed Sema 设计与执行计划](m3.2-query-backed-sema-plan.md)，后续按 work package 推进，
-默认只读取当前包的必读上下文和直接调用链。
+tables，incremental cache / query pruning / provider-skip replay 能解释 sema 级结果复用。M3.2 执行记录已收束为
+[Aurex M3.2 Query-backed Sema 设计与执行计划](m3.2-query-backed-sema-plan.md)，后续新专题应进入新的 M3.3 /
+LSP adapter / 更细粒度 incremental sema 计划，不再向 M3.2 追加新范围。
 
 2026-05-29 M3.2 WP-1/2/3 Query-backed Sema authority batch 已完成：非泛型
 `ItemSignature`、`FunctionBodySyntax` 和 `TypeCheckBody` 已补齐到 M3.1 泛型 authority 的同级边界。
@@ -45,8 +45,17 @@ result helper。`CheckedModule` 当前仍作为 eager sema 聚合结果，但 du
 来自 stable id、incremental key、module id、part index、body range 和 side-table summaries；跨 session 的事实
 由 query record/cache 保存，lowering-only side table 仍留在 checked aggregate 内。新增/更新 query、robustness
 和 driver cache 覆盖 authority valid/invalid、语义敏感 fingerprint、依赖边、split logical module package rows
-和手工 query record fixture。下一步进入 WP-4 Sema Service Boundary Split，把 lookup/type/generic/body-check
-服务边界从 `SemanticAnalyzerCore` 中拆出来。
+和手工 query record fixture。
+
+2026-05-29 M3.2 WP-4/5/6 已完成并收口 Query-backed Sema 当前批次：新增
+`SemanticLookupService`、`SemanticTypeService`、`SemanticGenericService` 和 `SemanticBodyCheckService`
+作为 `SemanticAnalyzerCore` 的内部 service boundary；pipeline 的 generic definition、ordinary function body
+和 type layout validation 已通过这些 service 进入现有 analyzer/resolver，不复制 analyzer state、不重写语义算法。
+`aurex_tooling::IdeSnapshot` 现在在同一个 `query` snapshot 中暴露 module/item/signature/body/type-check
+query records、dependency edges 和 `semantic_facts`；semantic facts 携带 stable `DefKey` / `MemberKey` /
+`BodyKey` / `GenericInstanceKey`、source range、part index 和 checked 标记。IDE semantic module identity
+已对齐 sema stable module identity，避免 tooling `ModuleKey` 与 checked stable def key 分叉。M3.2 当前
+work package 已全部完成，后续若继续推进，应以新的 M3.3 / LSP adapter / 更细粒度 incremental sema 计划为入口。
 
 2026-05-28 WP-1B Generic Instance Identity Propagation 已完成：`FunctionSignature`、`EnumCaseInfo`、
 `GenericEnumInstanceInfo` 和 `GenericTypeAliasInstanceInfo` 都携带结构化 `GenericInstanceKey`；

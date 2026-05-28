@@ -14,7 +14,7 @@ down into query-backed sema architecture:
 As of 2026-05-25, the R5 Compilation Pipeline / Driver Action core is complete.
 As of 2026-05-28, M3.0 module-system closure and the M3.1 generic release
 baseline are complete. As of 2026-05-29, `m3.1` has been fast-forward merged
-back to `m3`, and the current highest priority is M3.2 Query-backed Sema. Every
+back to `m3`, and M3.2 Query-backed Sema WP-1 through WP-6 are complete. Every
 M3 implementation must reuse the R5 `CompilationSession`,
 `CompilationPipeline`, `FrontendPipeline`, `LoweringPipeline`,
 `BackendPipeline`, `PipelineStage`, query, diagnostics, and profile/tooling
@@ -120,12 +120,14 @@ resource capabilities, RAII, closures, async/iterators, or standard-library
 rebuilds. Its execution entry point is the
 [Aurex M3.2 Query-backed Sema Design And Execution Plan](m3.2-query-backed-sema-plan.md).
 
-Status: as of 2026-05-29, WP-1 Sema Query Authority Inventory, WP-2 Item And
-Body Provider Boundary, and WP-3 Checked Fact Materialization are complete.
-Non-generic item/body queries now use authority-backed provider inputs and
-shared result helpers, and incremental-cache subjects / provider-skip replay can
-explain sema-level reuse for item signatures, function body syntax, and
-type-check bodies. The next package is WP-4 Sema Service Boundary Split.
+Status: as of 2026-05-29, M3.2 WP-1 through WP-6 are complete. Non-generic
+item/body queries now use authority-backed provider inputs and shared result
+helpers, and incremental-cache subjects / provider-skip replay can explain
+sema-level reuse for item signatures, function body syntax, and type-check
+bodies. Lookup/type/generic/body-check service boundaries are now on the sema
+pipeline path, and `IdeSnapshot` exposes query-backed semantic facts, records,
+and dependency edges. New topics should start as a separate M3.3, LSP adapter,
+or finer-grained incremental sema plan.
 
 ## Non-goals
 

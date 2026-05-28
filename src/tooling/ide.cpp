@@ -3,7 +3,15 @@
 #include <aurex/parse/lossless_parse.hpp>
 #include <aurex/parse/parser.hpp>
 #include <aurex/query/diagnostics_query.hpp>
+#include <aurex/query/function_body_syntax_query.hpp>
+#include <aurex/query/generic_template_signature_query.hpp>
+#include <aurex/query/item_list_query.hpp>
+#include <aurex/query/item_signature_query.hpp>
+#include <aurex/query/module_exports_query.hpp>
+#include <aurex/query/module_graph_query.hpp>
+#include <aurex/query/module_part_query.hpp>
 #include <aurex/query/stable_hash.hpp>
+#include <aurex/query/type_check_body_query.hpp>
 #include <aurex/sema/function.hpp>
 #include <aurex/sema/sema.hpp>
 #include <aurex/syntax/module.hpp>
@@ -28,9 +36,19 @@ constexpr std::string_view IDE_CONTENT_RESULT_MARKER = "ide-content:v1";
 constexpr std::string_view IDE_LEX_RESULT_MARKER = "ide-lex:v1";
 constexpr std::string_view IDE_PARSE_RESULT_MARKER = "ide-parse:v1";
 constexpr std::string_view IDE_DIAGNOSTICS_RESULT_MARKER = "ide-diagnostics:v1";
+constexpr std::string_view IDE_MODULE_GRAPH_RESULT_MARKER = "module-graph:v1";
+constexpr std::string_view IDE_MODULE_PART_RESULT_MARKER = "module-part:v1";
+constexpr std::string_view IDE_MODULE_EXPORTS_RESULT_MARKER = "module-exports:v1";
+constexpr std::string_view IDE_ITEM_LIST_RESULT_MARKER = "item-list:v1";
+constexpr std::string_view IDE_FUNCTION_BODY_SYNTAX_RESULT_MARKER = "function-body-syntax:v1";
+constexpr std::string_view IDE_TYPE_CHECK_BODY_RESULT_MARKER = "type-check-body:v1";
 constexpr std::string_view IDE_PARSE_SKIPPED_MARKER = "parse-skipped";
 constexpr std::string_view IDE_HOVER_IDENTIFIER_PREFIX = "identifier ";
 constexpr std::string_view IDE_HOVER_TOKEN_PREFIX = "token ";
+constexpr std::string_view IDE_SEMANTIC_FACT_ITEM_SIGNATURE = "item_signature";
+constexpr std::string_view IDE_SEMANTIC_FACT_GENERIC_TEMPLATE_SIGNATURE = "generic_template_signature";
+constexpr std::string_view IDE_SEMANTIC_FACT_FUNCTION_BODY_SYNTAX = "function_body_syntax";
+constexpr std::string_view IDE_SEMANTIC_FACT_TYPE_CHECK_BODY = "type_check_body";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM_CASE = "enum_case";
 constexpr std::string_view IDE_SYMBOL_KIND_FUNCTION = "function";
 constexpr std::string_view IDE_SYMBOL_KIND_GENERIC_TEMPLATE = "generic_template";
@@ -52,6 +70,16 @@ struct ItemDefinitionMetadata {
 };
 
 struct IdeSymbol {
+    IdeSymbol() = default;
+    IdeSymbol(query::DefKey key, base::SourceRange range, base::SourceRange scope_range, std::string name,
+        std::string kind, std::string detail, base::u32 part_index, bool local, bool checked,
+        query::MemberKey member = {}, query::GenericInstanceKey generic_instance = {})
+        : key(key), range(range), scope_range(scope_range), name(std::move(name)), kind(std::move(kind)),
+          detail(std::move(detail)), part_index(part_index), local(local), checked(checked), member(member),
+          generic_instance(std::move(generic_instance))
+    {
+    }
+
     query::DefKey key;
     base::SourceRange range{};
     base::SourceRange scope_range{};
@@ -61,6 +89,8 @@ struct IdeSymbol {
     base::u32 part_index = 0;
     bool local = false;
     bool checked = false;
+    query::MemberKey member;
+    query::GenericInstanceKey generic_instance;
 };
 
 struct SymbolIndex {
@@ -356,7 +386,7 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
     if (parts.empty()) {
         parts.push_back("ide");
     }
-    return query::module_key(snapshot.query.source_stage.file.package, parts);
+    return query::module_key_from_stable_id(snapshot.query.source_stage.file.package, query::stable_module_id(parts));
 }
 
 [[nodiscard]] std::string module_path_display_name(const syntax::ModulePath& path)
@@ -554,6 +584,167 @@ void recover_resolved_fragment_source_part(
         module_key_for_snapshot(snapshot), name_space, kind, path, static_cast<base::u32>(fallback_range.begin));
 }
 
+[[nodiscard]] std::optional<std::string_view> source_range_text(
+    const base::SourceManager& sources, const base::SourceRange& range) noexcept
+{
+    const std::span<const base::SourceFile> files = sources.files();
+    if (range.source.value >= files.size() || range.begin > range.end) {
+        return std::nullopt;
+    }
+    const std::string_view text = files[range.source.value].text();
+    if (range.end > text.size()) {
+        return std::nullopt;
+    }
+    return std::string_view{text.data() + range.begin, range.end - range.begin};
+}
+
+[[nodiscard]] query::ModulePartKey ide_module_part_key_for_part_index(
+    const IdeSnapshot& snapshot, const base::u32 part_index)
+{
+    if (snapshot.source_part.valid && snapshot.source_part.part_index == part_index
+        && query::is_valid(snapshot.source_part.part_key)) {
+        return snapshot.source_part.part_key;
+    }
+    const query::ModulePartKind kind =
+        part_index == IDE_PRIMARY_PART_INDEX ? query::ModulePartKind::primary : query::ModulePartKind::fragment;
+    if (part_index == IDE_PRIMARY_PART_INDEX) {
+        return query::module_part_key(
+            module_key_for_snapshot(snapshot), snapshot.query.source_stage.file, kind, IDE_PRIMARY_PART_NAME);
+    }
+    const std::string part_name = "<ide-part-" + std::to_string(part_index) + ">";
+    return query::module_part_key(
+        module_key_for_snapshot(snapshot), snapshot.query.source_stage.file, kind, part_name, part_index);
+}
+
+[[nodiscard]] query::DefKind function_signature_def_kind(const sema::FunctionSignature& signature) noexcept
+{
+    return signature.is_method ? query::DefKind::method : query::DefKind::function;
+}
+
+[[nodiscard]] query::DefKey function_signature_def_key(
+    const IdeSnapshot& snapshot, const sema::FunctionSignature& signature)
+{
+    return symbol_def_key(snapshot, signature.stable_id, query::DefNamespace::value,
+        function_signature_def_kind(signature), signature.name.view(), signature.range);
+}
+
+[[nodiscard]] query::QueryResultFingerprint ide_module_graph_result_fingerprint(const IdeSnapshot& snapshot)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(IDE_MODULE_GRAPH_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(module_key_for_snapshot(snapshot)));
+    builder.mix_string(snapshot.source_part.module_name);
+    builder.mix_u64(snapshot.ast.modules.size());
+    builder.mix_u64(snapshot.ast.part_declarations.size());
+    for (const syntax::ModulePartDecl& declaration : snapshot.ast.part_declarations) {
+        builder.mix_string(declaration.name);
+        mix_source_range(builder, declaration.range);
+    }
+    return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] query::QueryResultFingerprint ide_module_part_result_fingerprint(const IdeSnapshot& snapshot)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(IDE_MODULE_PART_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(snapshot.source_part.part_key));
+    builder.mix_string(snapshot.source_part.module_name);
+    builder.mix_string(snapshot.source_part.part_name);
+    builder.mix_u32(snapshot.source_part.part_index);
+    builder.mix_u8(static_cast<base::u8>(snapshot.source_part.kind));
+    mix_source_range(builder, snapshot.source_part.module_range);
+    mix_source_range(builder, snapshot.source_part.part_range);
+    return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] base::u32 ide_item_part_index(const IdeSnapshot& snapshot, const base::usize item_index) noexcept
+{
+    return item_index < snapshot.ast.item_part_indices.size() ? snapshot.ast.item_part_indices[item_index]
+                                                              : IDE_PRIMARY_PART_INDEX;
+}
+
+[[nodiscard]] query::QueryResultFingerprint ide_item_list_result_fingerprint(const IdeSnapshot& snapshot)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(IDE_ITEM_LIST_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(module_key_for_snapshot(snapshot)));
+    builder.mix_u64(snapshot.ast.items.size());
+    for (base::usize index = 0; index < snapshot.ast.items.size(); ++index) {
+        const syntax::ItemNode* const item = snapshot.ast.items.ptr(index);
+        if (item == nullptr) {
+            continue;
+        }
+        builder.mix_u64(index);
+        builder.mix_u8(static_cast<base::u8>(item->kind));
+        builder.mix_string(item->name);
+        builder.mix_u32(ide_item_part_index(snapshot, index));
+        builder.mix_u32(static_cast<base::u32>(item->generic_params.size()));
+        mix_source_range(builder, item->range);
+    }
+    return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] query::QueryResultFingerprint ide_module_exports_result_fingerprint(
+    const IdeSnapshot& snapshot, const query::QueryResultFingerprint item_list_result)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(IDE_MODULE_EXPORTS_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(module_key_for_snapshot(snapshot)));
+    builder.mix_u64(item_list_result.global_id);
+    builder.mix_fingerprint(item_list_result.fingerprint);
+    builder.mix_u64(snapshot.checked.functions.size());
+    builder.mix_u64(snapshot.checked.structs.size());
+    builder.mix_u64(snapshot.checked.enum_cases.size());
+    builder.mix_u64(snapshot.checked.type_aliases.size());
+    builder.mix_u64(snapshot.checked.generic_template_signatures.size());
+    return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] query::QueryResultFingerprint function_body_syntax_content_fingerprint(
+    const query::BodyKey key, const std::string_view body_text)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(IDE_FUNCTION_BODY_SYNTAX_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(key));
+    builder.mix_string(body_text);
+    return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] query::QueryResultFingerprint type_check_body_checked_result_fingerprint(const query::BodyKey key,
+    const query::QueryResultFingerprint body_syntax_result, const query::QueryResultFingerprint signature_result)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(IDE_TYPE_CHECK_BODY_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(key));
+    builder.mix_u64(body_syntax_result.global_id);
+    builder.mix_fingerprint(body_syntax_result.fingerprint);
+    builder.mix_u64(signature_result.global_id);
+    builder.mix_fingerprint(signature_result.fingerprint);
+    return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] std::optional<base::SourceRange> function_signature_body_range(
+    const IdeSnapshot& snapshot, const sema::FunctionSignature& signature) noexcept
+{
+    const syntax::ItemId item =
+        syntax::is_valid(signature.definition_item) ? signature.definition_item : signature.prototype_item;
+    if (!syntax::is_valid(item) || item.value >= snapshot.ast.items.size()) {
+        return std::nullopt;
+    }
+    const syntax::ItemNode* const node = snapshot.ast.items.ptr(item.value);
+    if (node == nullptr || node->kind != syntax::ItemKind::fn_decl || !syntax::is_valid(node->body)
+        || node->body.value >= snapshot.ast.stmts.size()) {
+        return std::nullopt;
+    }
+    return snapshot.ast.stmts.range(node->body.value);
+}
+
+[[nodiscard]] bool query_evaluation_completed(const query::QueryEvaluationResult& result) noexcept
+{
+    return result.status == query::QueryEvaluationStatus::computed
+        || result.status == query::QueryEvaluationStatus::cached;
+}
+
 [[nodiscard]] std::string function_detail(const sema::CheckedModule& checked, const sema::FunctionSignature& signature)
 {
     std::ostringstream label;
@@ -703,6 +894,414 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                 true,
             });
     }
+}
+
+[[nodiscard]] query::ItemSignatureAuthority item_signature_authority_base(const IdeSnapshot& snapshot,
+    const query::IncrementalKey incremental_key, const base::u32 part_index, const query::DefNamespace name_space,
+    const query::DefKind kind, const syntax::Visibility visibility)
+{
+    return query::ItemSignatureAuthority{
+        incremental_key,
+        ide_module_part_key_for_part_index(snapshot, part_index),
+        name_space,
+        kind,
+        syntax::visibility_rank(visibility),
+    };
+}
+
+[[nodiscard]] query::ItemSignatureAuthority item_signature_authority(
+    const IdeSnapshot& snapshot, const sema::FunctionSignature& signature)
+{
+    query::ItemSignatureAuthority authority = item_signature_authority_base(snapshot, signature.incremental_key,
+        signature.part_index, query::DefNamespace::value, function_signature_def_kind(signature), signature.visibility);
+    authority.value_component_count = static_cast<base::u32>(signature.param_types.size());
+    authority.generic_param_count = static_cast<base::u32>(signature.generic_args.size());
+    authority.has_return_type = sema::is_valid(signature.return_type);
+    authority.has_receiver_type = sema::is_valid(signature.method_owner_type) || signature.has_self_param;
+    authority.is_unsafe = signature.is_unsafe;
+    authority.is_variadic = signature.is_variadic;
+    authority.has_definition = signature.has_definition;
+    return authority;
+}
+
+[[nodiscard]] query::ItemSignatureAuthority item_signature_authority(
+    const IdeSnapshot& snapshot, const sema::StructInfo& info)
+{
+    query::ItemSignatureAuthority authority = item_signature_authority_base(snapshot, info.incremental_key,
+        info.part_index, query::DefNamespace::type, query::DefKind::struct_, info.visibility);
+    authority.value_component_count = static_cast<base::u32>(info.fields.size());
+    authority.generic_param_count = static_cast<base::u32>(info.generic_instance_key.type_args.size());
+    authority.has_return_type = sema::is_valid(info.type);
+    authority.has_definition = !info.is_opaque;
+    return authority;
+}
+
+[[nodiscard]] query::ItemSignatureAuthority item_signature_authority(
+    const IdeSnapshot& snapshot, const sema::EnumCaseInfo& info)
+{
+    query::ItemSignatureAuthority authority = item_signature_authority_base(snapshot, info.incremental_key,
+        info.part_index, query::DefNamespace::value, query::DefKind::enum_case, info.visibility);
+    authority.value_component_count = static_cast<base::u32>(info.payload_types.size());
+    authority.generic_param_count = static_cast<base::u32>(info.generic_instance_key.type_args.size());
+    authority.has_return_type = sema::is_valid(info.type);
+    authority.has_definition = true;
+    return authority;
+}
+
+[[nodiscard]] query::ItemSignatureAuthority item_signature_authority(
+    const IdeSnapshot& snapshot, const sema::TypeAliasInfo& info)
+{
+    query::ItemSignatureAuthority authority = item_signature_authority_base(snapshot, info.incremental_key,
+        info.part_index, query::DefNamespace::type, query::DefKind::type_alias, info.visibility);
+    authority.value_component_count = syntax::is_valid(info.target) ? 1U : 0U;
+    authority.has_return_type = syntax::is_valid(info.target);
+    authority.has_definition = true;
+    return authority;
+}
+
+[[nodiscard]] query::GenericTemplateSignatureAuthority generic_template_signature_authority(
+    const IdeSnapshot& snapshot, const sema::GenericTemplateSignatureInfo& info)
+{
+    return query::GenericTemplateSignatureAuthority{
+        info.incremental_key,
+        ide_module_part_key_for_part_index(snapshot, info.part_index),
+        info.name_space,
+        syntax::visibility_rank(info.visibility),
+        info.param_count,
+        info.constraint_count,
+    };
+}
+
+void push_item_signature_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::DefKey key,
+    const query::ItemSignatureAuthority& authority, IdeSemanticFact fact)
+{
+    if (!query::is_valid(key) || !query::is_valid(authority)) {
+        return;
+    }
+    const query::QueryEvaluationResult result = context.evaluate_item_signature(query::ItemSignatureProviderInput{
+        key,
+        authority,
+    });
+    if (!query_evaluation_completed(result)) {
+        return;
+    }
+    const std::optional<query::QueryKey> query_key = query::item_signature_query_key(key);
+    if (!query_key.has_value()) {
+        return;
+    }
+    fact.kind = IdeSemanticFactKind::item_signature;
+    fact.query = *query_key;
+    fact.definition = key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
+void push_generic_template_signature_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::DefKey key,
+    const query::GenericTemplateSignatureAuthority& authority, IdeSemanticFact fact)
+{
+    if (!query::is_valid(key) || !query::is_valid(authority)) {
+        return;
+    }
+    const query::QueryEvaluationResult result =
+        context.evaluate_generic_template_signature(query::GenericTemplateSignatureProviderInput{
+            key,
+            authority,
+        });
+    if (!query_evaluation_completed(result)) {
+        return;
+    }
+    const std::optional<query::QueryKey> query_key = query::generic_template_signature_query_key(key);
+    if (!query_key.has_value()) {
+        return;
+    }
+    fact.kind = IdeSemanticFactKind::generic_template_signature;
+    fact.query = *query_key;
+    fact.definition = key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
+void evaluate_function_item_signature_query(
+    query::QueryContext& context, IdeSnapshot& snapshot, const sema::FunctionSignature& signature)
+{
+    const query::DefKey key = function_signature_def_key(snapshot, signature);
+    const base::SourceRange range =
+        item_name_range(snapshot, signature.definition_item, signature.name.view(), signature.range);
+    IdeSemanticFact fact;
+    fact.range = range;
+    fact.name = std::string(signature.name.view());
+    fact.detail = std::string(IDE_SEMANTIC_FACT_ITEM_SIGNATURE);
+    fact.part_index = signature.part_index;
+    fact.generic_instance = signature.generic_instance_key;
+    push_item_signature_fact(context, snapshot, key, item_signature_authority(snapshot, signature), std::move(fact));
+}
+
+void evaluate_struct_item_signature_query(
+    query::QueryContext& context, IdeSnapshot& snapshot, const sema::StructInfo& info)
+{
+    const base::SourceRange range =
+        first_item_name_range(snapshot, info.name.view(), base::SourceRange{snapshot.source_id, 0U, 0U});
+    const query::DefKey key = symbol_def_key(
+        snapshot, info.stable_id, query::DefNamespace::type, query::DefKind::struct_, info.name.view(), range);
+    IdeSemanticFact fact;
+    fact.range = range;
+    fact.name = std::string(info.name.view());
+    fact.detail = std::string(IDE_SEMANTIC_FACT_ITEM_SIGNATURE);
+    fact.part_index = info.part_index;
+    fact.generic_instance = info.generic_instance_key;
+    push_item_signature_fact(context, snapshot, key, item_signature_authority(snapshot, info), std::move(fact));
+}
+
+void evaluate_enum_case_item_signature_query(
+    query::QueryContext& context, IdeSnapshot& snapshot, const sema::EnumCaseInfo& info)
+{
+    const base::SourceRange range = name_range_in_range(snapshot.lossless, info.case_name.view(), info.range);
+    const query::DefKey key = symbol_def_key(
+        snapshot, info.stable_id, query::DefNamespace::value, query::DefKind::enum_case, info.case_name.view(), range);
+    IdeSemanticFact fact;
+    fact.range = range;
+    fact.name = std::string(info.case_name.view());
+    fact.detail = std::string(IDE_SEMANTIC_FACT_ITEM_SIGNATURE);
+    fact.part_index = info.part_index;
+    fact.generic_instance = info.generic_instance_key;
+    push_item_signature_fact(context, snapshot, key, item_signature_authority(snapshot, info), std::move(fact));
+}
+
+void evaluate_type_alias_item_signature_query(
+    query::QueryContext& context, IdeSnapshot& snapshot, const sema::TypeAliasInfo& info)
+{
+    const base::SourceRange range = first_item_name_range(snapshot, info.name.view(), info.range);
+    const query::DefKey key = symbol_def_key(
+        snapshot, info.stable_id, query::DefNamespace::type, query::DefKind::type_alias, info.name.view(), range);
+    IdeSemanticFact fact;
+    fact.range = range;
+    fact.name = std::string(info.name.view());
+    fact.detail = std::string(IDE_SEMANTIC_FACT_ITEM_SIGNATURE);
+    fact.part_index = info.part_index;
+    push_item_signature_fact(context, snapshot, key, item_signature_authority(snapshot, info), std::move(fact));
+}
+
+void evaluate_generic_template_signature_query(
+    query::QueryContext& context, IdeSnapshot& snapshot, const sema::GenericTemplateSignatureInfo& info)
+{
+    const base::SourceRange range =
+        first_item_name_range(snapshot, info.name.view(), base::SourceRange{snapshot.source_id, 0U, 0U});
+    const query::DefKey key = symbol_def_key(
+        snapshot, info.stable_id, info.name_space, query::DefKind::generic_template, info.name.view(), range);
+    IdeSemanticFact fact;
+    fact.range = range;
+    fact.name = std::string(info.name.view());
+    fact.detail = std::string(IDE_SEMANTIC_FACT_GENERIC_TEMPLATE_SIGNATURE);
+    fact.part_index = info.part_index;
+    push_generic_template_signature_fact(
+        context, snapshot, key, generic_template_signature_authority(snapshot, info), std::move(fact));
+}
+
+void evaluate_checked_item_signature_queries(query::QueryContext& context, IdeSnapshot& snapshot)
+{
+    for (const auto& entry : snapshot.checked.functions) {
+        evaluate_function_item_signature_query(context, snapshot, entry.second);
+    }
+    for (const auto& entry : snapshot.checked.structs) {
+        evaluate_struct_item_signature_query(context, snapshot, entry.second);
+    }
+    for (const auto& entry : snapshot.checked.enum_cases) {
+        evaluate_enum_case_item_signature_query(context, snapshot, entry.second);
+    }
+    for (const auto& entry : snapshot.checked.type_aliases) {
+        evaluate_type_alias_item_signature_query(context, snapshot, entry.second);
+    }
+    for (const sema::GenericTemplateSignatureInfo& info : snapshot.checked.generic_template_signatures) {
+        evaluate_generic_template_signature_query(context, snapshot, info);
+    }
+}
+
+[[nodiscard]] std::optional<query::FunctionBodySyntaxAuthority> function_body_syntax_authority(
+    const IdeSnapshot& snapshot, const query::BodyKey key, const sema::FunctionSignature& signature)
+{
+    const std::optional<base::SourceRange> body_range = function_signature_body_range(snapshot, signature);
+    if (!body_range.has_value()) {
+        return std::nullopt;
+    }
+    const std::optional<std::string_view> body_text = source_range_text(snapshot.sources, *body_range);
+    if (!body_text.has_value()) {
+        return std::nullopt;
+    }
+    return query::FunctionBodySyntaxAuthority{
+        function_body_syntax_content_fingerprint(key, *body_text),
+        key.owner,
+        ide_module_part_key_for_part_index(snapshot, signature.part_index),
+        static_cast<base::u64>(body_range->begin),
+        static_cast<base::u64>(body_range->end),
+        key.slot,
+        key.ordinal,
+    };
+}
+
+[[nodiscard]] query::TypeCheckBodyAuthority type_check_body_authority(const query::BodyKey key,
+    const query::QueryResultFingerprint body_syntax_result,
+    const query::QueryResultFingerprint signature_result) noexcept
+{
+    query::TypeCheckBodyAuthority authority;
+    authority.checked_body = type_check_body_checked_result_fingerprint(key, body_syntax_result, signature_result);
+    authority.body_syntax_result = body_syntax_result;
+    authority.signature_result = signature_result;
+    return authority;
+}
+
+void push_function_body_syntax_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::BodyKey key,
+    const query::FunctionBodySyntaxAuthority& authority, const sema::FunctionSignature& signature,
+    const base::SourceRange range)
+{
+    if (!query::is_valid(key) || !query::is_valid(authority)) {
+        return;
+    }
+    const query::QueryEvaluationResult result =
+        context.evaluate_function_body_syntax(query::FunctionBodySyntaxProviderInput{
+            key,
+            authority,
+        });
+    if (!query_evaluation_completed(result)) {
+        return;
+    }
+    const std::optional<query::QueryKey> query_key = query::function_body_syntax_query_key(key);
+    if (!query_key.has_value()) {
+        return;
+    }
+    IdeSemanticFact fact;
+    fact.kind = IdeSemanticFactKind::function_body_syntax;
+    fact.query = *query_key;
+    fact.definition = key.owner;
+    fact.body = key;
+    fact.range = range;
+    fact.name = std::string(signature.name.view());
+    fact.detail = std::string(IDE_SEMANTIC_FACT_FUNCTION_BODY_SYNTAX);
+    fact.part_index = signature.part_index;
+    fact.generic_instance = signature.generic_instance_key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
+void push_type_check_body_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::BodyKey key,
+    const query::TypeCheckBodyAuthority& authority, const sema::FunctionSignature& signature,
+    const base::SourceRange range)
+{
+    if (!query::is_valid(key) || !query::is_valid(authority)) {
+        return;
+    }
+    const query::QueryEvaluationResult result = context.evaluate_type_check_body(query::TypeCheckBodyProviderInput{
+        key,
+        authority,
+    });
+    if (!query_evaluation_completed(result)) {
+        return;
+    }
+    const std::optional<query::QueryKey> query_key = query::type_check_body_query_key(key);
+    if (!query_key.has_value()) {
+        return;
+    }
+    IdeSemanticFact fact;
+    fact.kind = IdeSemanticFactKind::type_check_body;
+    fact.query = *query_key;
+    fact.definition = key.owner;
+    fact.body = key;
+    fact.range = range;
+    fact.name = std::string(signature.name.view());
+    fact.detail = std::string(IDE_SEMANTIC_FACT_TYPE_CHECK_BODY);
+    fact.part_index = signature.part_index;
+    fact.generic_instance = signature.generic_instance_key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
+void evaluate_function_body_queries(
+    query::QueryContext& context, IdeSnapshot& snapshot, const sema::FunctionSignature& signature)
+{
+    if (!signature.has_definition || signature.has_conflict || !query::is_valid(signature.stable_id)
+        || !query::is_valid(signature.incremental_key)) {
+        return;
+    }
+    const query::DefKey def = function_signature_def_key(snapshot, signature);
+    const query::BodyKey body = query::body_key(def, query::BodySlotKind::function_body);
+    if (!query::is_valid(body)) {
+        return;
+    }
+    const std::optional<base::SourceRange> range = function_signature_body_range(snapshot, signature);
+    if (!range.has_value()) {
+        return;
+    }
+    const std::optional<query::FunctionBodySyntaxAuthority> syntax_authority =
+        function_body_syntax_authority(snapshot, body, signature);
+    if (!syntax_authority.has_value() || !query::is_valid(*syntax_authority)) {
+        return;
+    }
+    push_function_body_syntax_fact(context, snapshot, body, *syntax_authority, signature, *range);
+
+    const query::ItemSignatureAuthority signature_authority = item_signature_authority(snapshot, signature);
+    const query::QueryResultFingerprint signature_result =
+        query::item_signature_result_fingerprint(signature_authority);
+    const query::QueryResultFingerprint syntax_result =
+        query::function_body_syntax_result_fingerprint(*syntax_authority);
+    const query::TypeCheckBodyAuthority type_check_authority =
+        type_check_body_authority(body, syntax_result, signature_result);
+    push_type_check_body_fact(context, snapshot, body, type_check_authority, signature, *range);
+}
+
+void evaluate_checked_function_body_queries(query::QueryContext& context, IdeSnapshot& snapshot)
+{
+    for (const auto& entry : snapshot.checked.functions) {
+        evaluate_function_body_queries(context, snapshot, entry.second);
+    }
+}
+
+void evaluate_module_query_surface(query::QueryContext& context, const IdeSnapshot& snapshot)
+{
+    if (!snapshot.parsed || !snapshot.source_part.valid || !query::is_valid(snapshot.source_part.part_key)) {
+        return;
+    }
+    const query::ModuleKey module = module_key_for_snapshot(snapshot);
+    const query::QueryResultFingerprint graph_result = ide_module_graph_result_fingerprint(snapshot);
+    const query::QueryResultFingerprint part_result = ide_module_part_result_fingerprint(snapshot);
+    const query::QueryResultFingerprint item_list_result = ide_item_list_result_fingerprint(snapshot);
+    const query::QueryResultFingerprint exports_result =
+        ide_module_exports_result_fingerprint(snapshot, item_list_result);
+
+    static_cast<void>(context.evaluate_module_graph(query::ModuleGraphProviderInput{
+        module,
+        graph_result,
+    }));
+    static_cast<void>(context.evaluate_module_part(query::ModulePartProviderInput{
+        snapshot.source_part.part_key,
+        part_result,
+    }));
+    static_cast<void>(context.evaluate_item_list(query::ItemListProviderInput{
+        module,
+        item_list_result,
+    }));
+    static_cast<void>(context.evaluate_module_exports(query::ModuleExportsProviderInput{
+        module,
+        exports_result,
+        {},
+    }));
+}
+
+void append_semantic_query_surface(IdeSnapshot& snapshot, const query::QueryContext& context)
+{
+    std::vector<query::QueryRecord> records = context.completed_records();
+    snapshot.query.records.insert(snapshot.query.records.end(), records.begin(), records.end());
+    std::vector<query::QueryDependencyEdge> dependencies = context.dependency_edges();
+    snapshot.query.dependencies.insert(snapshot.query.dependencies.end(), dependencies.begin(), dependencies.end());
+}
+
+void evaluate_semantic_queries(IdeSnapshot& snapshot)
+{
+    query::QueryContext context;
+    evaluate_module_query_surface(context, snapshot);
+    if (snapshot.checked_semantics) {
+        evaluate_checked_item_signature_queries(context, snapshot);
+        evaluate_checked_function_body_queries(context, snapshot);
+    }
+    append_semantic_query_surface(snapshot, context);
 }
 
 void push_ast_global_symbol(const IdeSnapshot& snapshot, SymbolIndex& index, const syntax::ItemNode& item)
@@ -911,6 +1510,8 @@ void collect_local_symbols_from_function(
 {
     return IdeDefinition{
         symbol.key,
+        symbol.member,
+        symbol.generic_instance,
         symbol.range,
         symbol.name,
         symbol.kind,
@@ -1040,8 +1641,9 @@ IdeSnapshot build_ide_snapshot(const IdeSnapshotRequest& request)
         query::diagnostic_events_from_sink(diagnostics.diagnostics());
     const query::QueryResultFingerprint diagnostic_result =
         diagnostics_result_fingerprint(diagnostic_stream.events, snapshot.parsed, snapshot.checked_semantics);
-    evaluate_source_queries(snapshot, request.text, lex_result, parse_result, diagnostic_result, diagnostic_stream);
     snapshot.source_part = source_part_context_for_snapshot(snapshot, request);
+    evaluate_source_queries(snapshot, request.text, lex_result, parse_result, diagnostic_result, diagnostic_stream);
+    evaluate_semantic_queries(snapshot);
     snapshot.has_errors = diagnostics.has_error();
     snapshot.diagnostics = collect_ide_diagnostics(snapshot.sources, diagnostic_stream, snapshot.source_part);
     return snapshot;

@@ -31,6 +31,7 @@
 #include <sema/internal/sema_pattern_match_analyzer.hpp>
 #include <sema/internal/sema_pipeline.hpp>
 #include <sema/internal/sema_projection_aggregate_expression_analyzer.hpp>
+#include <sema/internal/sema_services.hpp>
 #include <sema/internal/sema_side_tables.hpp>
 #include <sema/internal/sema_statement_analyzer.hpp>
 #include <sema/internal/sema_type_services.hpp>
@@ -6272,6 +6273,96 @@ TEST(CoreUnit, StableSemanticIdsSeparateModulesMembersAndIncrementalKeys)
     EXPECT_EQ(first_fingerprint, same_fingerprint);
     EXPECT_NE(first_fingerprint, changed_fingerprint);
     EXPECT_EQ(first_fingerprint.definition, function_id);
+}
+
+TEST(CoreUnit, SemanticServicesExposeExplicitBoundaryDomains)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"service_boundary"})};
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+
+    sema::SemanticServiceBundle services = analyzer.services();
+    EXPECT_EQ(&services.context().module, &analyzer.ctx_.module);
+    EXPECT_EQ(&services.context().diagnostics, &diagnostics);
+
+    sema::SemanticLookupService lookup = services.lookup();
+    sema::SemanticTypeService type = services.type();
+    sema::SemanticGenericService generic = services.generic();
+    sema::SemanticBodyCheckService body_check = services.body_check();
+
+    EXPECT_EQ(analyzer.lookup_service().boundary().domain, sema::SemanticServiceDomain::lookup);
+    EXPECT_EQ(analyzer.type_service().boundary().domain, sema::SemanticServiceDomain::type);
+    EXPECT_EQ(analyzer.generic_service().boundary().domain, sema::SemanticServiceDomain::generic);
+    EXPECT_EQ(analyzer.body_check_service().boundary().domain, sema::SemanticServiceDomain::body_check);
+
+    EXPECT_EQ(lookup.boundary().domain, sema::SemanticServiceDomain::lookup);
+    EXPECT_EQ(lookup.boundary().name, "lookup");
+    EXPECT_FALSE(lookup.boundary().owns_analyzer_state);
+    EXPECT_TRUE(lookup.accepts_authority(query::QueryKind::module_exports));
+    EXPECT_FALSE(lookup.accepts_authority(query::QueryKind::lower_function_ir));
+
+    EXPECT_EQ(type.boundary().domain, sema::SemanticServiceDomain::type);
+    EXPECT_EQ(type.boundary().name, "type");
+    EXPECT_TRUE(type.accepts_authority(query::QueryKind::item_signature));
+    EXPECT_TRUE(type.accepts_authority(query::QueryKind::type_check_body));
+
+    EXPECT_EQ(generic.boundary().domain, sema::SemanticServiceDomain::generic);
+    EXPECT_EQ(generic.boundary().name, "generic");
+    EXPECT_TRUE(generic.accepts_authority(query::QueryKind::generic_template_signature));
+    EXPECT_TRUE(generic.accepts_authority(query::QueryKind::generic_instance_body));
+
+    EXPECT_EQ(body_check.boundary().domain, sema::SemanticServiceDomain::body_check);
+    EXPECT_EQ(body_check.boundary().name, "body_check");
+    EXPECT_TRUE(body_check.accepts_authority(query::QueryKind::function_body_syntax));
+    EXPECT_TRUE(body_check.accepts_authority(query::QueryKind::type_check_body));
+
+    syntax::ItemNode nongeneric_item;
+    EXPECT_FALSE(generic.has_generic_params(nongeneric_item));
+    syntax::ItemNode generic_item;
+    generic_item.generic_params = {syntax::GenericParamDecl{"T", {}}};
+    EXPECT_TRUE(generic.has_generic_params(generic_item));
+
+    analyzer.state_.flow.current_module = module_id(0);
+    const TypeHandle i32 = analyzer.state_.checked.types.builtin(BuiltinType::i32);
+    const TypeId i32_type_id = analyzer.ctx_.module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    analyzer.state_.checked.syntax_type_handles.assign(analyzer.ctx_.module.types.size(), INVALID_TYPE_HANDLE);
+    EXPECT_TRUE(analyzer.state_.checked.types.same(type.resolve_type(i32_type_id), i32));
+    EXPECT_TRUE(type.can_assign(i32, i32, syntax::INVALID_EXPR_ID));
+    EXPECT_TRUE(type.is_valid_storage_type(i32));
+    type.validate_type_layouts();
+
+    const sema::ModuleLookupKey known_type_key = add_named_type(analyzer, module_id(0), "KnownServiceType", i32);
+    const IdentId known_type_id = known_type_key.name;
+    EXPECT_TRUE(analyzer.state_.checked.types.same(
+        lookup.find_type_in_visible_modules(known_type_id, "KnownServiceType", {}, false, false), i32));
+
+    const sema::FunctionLookupKey known_function_key =
+        add_function(analyzer, indexed_function_signature(analyzer, "known_service_fn", module_id(0), i32));
+    const FunctionSignature* const known_function =
+        lookup.find_function_in_visible_modules(known_function_key.name, "known_service_fn", {}, false);
+    ASSERT_NE(known_function, nullptr);
+    EXPECT_EQ(known_function->semantic_key, known_function_key);
+
+    const sema::SemanticLookupService& const_lookup = lookup;
+    EXPECT_TRUE(const_lookup.visible_modules(syntax::INVALID_MODULE_ID).empty());
+    static_cast<void>(type.resolver());
+    static_cast<void>(type.validator());
+    static_cast<void>(type.abi_checker());
+    static_cast<void>(generic.analyzer());
+    static_cast<void>(body_check.expression_analyzer());
+    static_cast<void>(body_check.statement_analyzer());
+
+    syntax::ItemNode missing_body_function;
+    missing_body_function.kind = syntax::ItemKind::fn_decl;
+    missing_body_function.name = "missing_body_function";
+    missing_body_function.name_id = intern_identifier(analyzer, missing_body_function.name);
+    body_check.analyze_function_body(missing_body_function, syntax::INVALID_ITEM_ID);
+    sema::SemanticAnalyzerCore::FunctionBodyState analyzed_state =
+        sema::SemanticAnalyzerCore::FunctionBodyState::analyzed;
+    body_check.analyze_function_body_with_signature(
+        missing_body_function, known_function_key, *known_function, analyzed_state);
+    EXPECT_EQ(analyzed_state, sema::SemanticAnalyzerCore::FunctionBodyState::analyzed);
 }
 
 TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds)

@@ -6,6 +6,7 @@
 
 #include <sema/internal/sema_core.hpp>
 #include <sema/internal/sema_pipeline.hpp>
+#include <sema/internal/sema_services.hpp>
 
 namespace aurex::sema {
 
@@ -281,11 +282,15 @@ void SemanticAnalysisPipeline::run_declaration_phases()
 
 void SemanticAnalysisPipeline::run_function_body_phases()
 {
+    SemanticServiceBundle services = this->core_.services();
+    SemanticGenericService generic = services.generic();
+    SemanticBodyCheckService body_check = services.body_check();
+
     for (const auto& entry : this->core_.state_.generics.function_templates) {
-        this->core_.analyze_generic_function_definition(entry.second);
+        generic.analyze_function_definition(entry.second);
     }
     for (const auto& entry : this->core_.state_.generics.method_templates) {
-        this->core_.analyze_generic_function_definition(entry.second);
+        generic.analyze_function_definition(entry.second);
     }
 
     for (base::u32 index = 0; index < this->core_.ctx_.module.items.size(); ++index) {
@@ -293,19 +298,20 @@ void SemanticAnalysisPipeline::run_function_body_phases()
             continue;
         }
         const syntax::ItemNode item = this->core_.ctx_.module.items[index];
-        if (!this->core_.has_generic_params(item) && !item.is_extern_c && !item.is_prototype
+        if (!generic.has_generic_params(item) && !item.is_extern_c && !item.is_prototype
             && syntax::is_valid(item.body)) {
-            this->core_.analyze_function_body(item, syntax::ItemId{index});
+            body_check.analyze_function_body(item, syntax::ItemId{index});
         }
     }
 }
 
 void SemanticAnalysisPipeline::run_validation_phases()
 {
+    SemanticServiceBundle services = this->core_.services();
     this->core_.analyze_entry_points();
     this->core_.analyze_const_decls();
     this->core_.validate_exported_signature_surfaces();
-    this->core_.validate_type_layouts();
+    services.type().validate_type_layouts();
     this->core_.validate_abi_symbols();
 }
 

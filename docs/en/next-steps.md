@@ -1,6 +1,6 @@
 # Next Steps
 
-## Current Highest Priority: M3.2 Query-backed Sema
+## Current Status: M3.2 Query-backed Sema Closed
 
 The R5 Compilation Pipeline / Driver Action core is now closed:
 `CompilerInvocation`, the `Compiler` facade, `CompilationSession`,
@@ -11,8 +11,9 @@ contracts are all on the main path while preserving the existing CLI,
 diagnostics JSON, profile JSON, incremental-cache, and emit-mode behavior.
 
 M3.0 module-system closure and M3.1 generics closure have both been merged back
-to `m3`. The current highest priority moves to M3.2 Query-backed Sema in the
-[M3 Roadmap](m3-roadmap.md):
+to `m3`. M3.2 Query-backed Sema has completed WP-1 through WP-6 in the current
+plan. New topics should not be added to M3.2; they should start as a separate
+M3.3, LSP adapter, or finer-grained incremental sema plan:
 
 - `ItemSignature`, `BodySyntax`, `TypeCheckBody`,
   `GenericTemplateSignature`, `GenericInstanceSignature`, and
@@ -31,10 +32,10 @@ to `m3`. The current highest priority moves to M3.2 Query-backed Sema in the
 - M3.2 inherits the M3.1 generic release baseline and must not reopen the closed
   identity, ABI, IR/native paths.
 
-The concrete M3.2 execution entry point is the
+The M3.2 execution record is the
 [Aurex M3.2 Query-backed Sema Design And Execution Plan](m3.2-query-backed-sema-plan.md).
-Future steps advance one work package at a time, using that document's required
-files, allowed scope, forbidden shortcuts, and acceptance gates.
+Future stages should inherit the query authority, service boundary, tooling
+semantic facts, and quality gates established there.
 
 R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
 stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
@@ -102,12 +103,13 @@ M3.2 first implementation order:
 3. Checked fact materialization: completed. Eager sema still produces the
    `CheckedModule` aggregate, but durable sema query records are materialized
    from authority results.
-4. Sema service boundary split: next. Split lookup/type/generic/body-check
-   services and reduce `SemanticAnalyzerCore` aggregation.
-5. Tooling semantic query surface: expose query-backed semantic facts and
-   dependency edges through `IdeSnapshot`.
-6. Incremental reuse / quality gates: keep query pruning, query graph fuzz,
-   coverage, stress, and native execution green.
+4. Sema service boundary split: completed. Lookup/type/generic/body-check
+   service boundaries are now on the sema pipeline path.
+5. Tooling semantic query surface: completed. `IdeSnapshot` exposes
+   query-backed semantic facts, records, and dependency edges.
+6. Incremental reuse / quality gates: completed / continuous gate. Query
+   pruning, query graph fuzzing, coverage, stress, and native execution must not
+   regress.
 
 2026-05-28 closure update: the original M3.1 work packages have been reviewed
 through WP-7 Generic Closure Audit And Release Baseline. The generic release

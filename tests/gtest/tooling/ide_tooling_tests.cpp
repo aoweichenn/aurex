@@ -115,6 +115,23 @@ fs::path write_ide_tooling_source(const fs::path& path, const std::string_view t
         });
 }
 
+[[nodiscard]] bool has_semantic_fact_query_kind(
+    const tooling::IdeSnapshot& snapshot, const query::QueryKind kind, const std::string_view name)
+{
+    return std::ranges::any_of(snapshot.query.semantic_facts, [kind, name](const tooling::IdeSemanticFact& fact) {
+        return fact.query.kind == kind && fact.name == name && fact.checked;
+    });
+}
+
+[[nodiscard]] bool has_semantic_fact_kind(const tooling::IdeSnapshot& snapshot, const tooling::IdeSemanticFactKind kind,
+    const query::QueryKind query_kind, const std::string_view name)
+{
+    return std::ranges::any_of(
+        snapshot.query.semantic_facts, [kind, query_kind, name](const tooling::IdeSemanticFact& fact) {
+            return fact.kind == kind && fact.query.kind == query_kind && fact.name == name && fact.checked;
+        });
+}
+
 [[nodiscard]] bool has_diagnostic_category(
     const tooling::IdeSnapshot& snapshot, const base::DiagnosticCategory category)
 {
@@ -289,6 +306,7 @@ TEST(CoreUnit, IdeToolingBuildsQueryBackedLosslessSnapshot)
     EXPECT_TRUE(snapshot.lexed);
     EXPECT_TRUE(snapshot.parsed);
     EXPECT_TRUE(snapshot.checked_semantics);
+    EXPECT_GT(snapshot.checked.functions.size(), 0U);
     EXPECT_FALSE(snapshot.has_errors);
     EXPECT_TRUE(snapshot.diagnostics.empty());
     EXPECT_EQ(snapshot.sources.text(snapshot.source_id), IDE_TOOLING_SOURCE);
@@ -299,10 +317,29 @@ TEST(CoreUnit, IdeToolingBuildsQueryBackedLosslessSnapshot)
     EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::file_content));
     EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::lex_file));
     EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::parse_file));
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::module_graph));
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::module_part));
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::item_list));
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::module_exports));
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::item_signature));
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::function_body_syntax));
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::type_check_body));
     EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::diagnostics));
     EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::lex_file, query::QueryKind::file_content));
     EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::parse_file, query::QueryKind::lex_file));
+    EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::module_part, query::QueryKind::parse_file));
+    EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::item_list, query::QueryKind::module_graph));
+    EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::module_exports, query::QueryKind::item_list));
+    EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::item_signature, query::QueryKind::module_exports));
+    EXPECT_TRUE(
+        has_dependency_kind(snapshot, query::QueryKind::type_check_body, query::QueryKind::function_body_syntax));
+    EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::type_check_body, query::QueryKind::item_signature));
     EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::diagnostics, query::QueryKind::parse_file));
+    EXPECT_TRUE(has_semantic_fact_query_kind(snapshot, query::QueryKind::item_signature, "add"));
+    EXPECT_TRUE(has_semantic_fact_kind(
+        snapshot, tooling::IdeSemanticFactKind::function_body_syntax, query::QueryKind::function_body_syntax, "add"));
+    EXPECT_TRUE(has_semantic_fact_kind(
+        snapshot, tooling::IdeSemanticFactKind::type_check_body, query::QueryKind::type_check_body, "main"));
     expect_primary_source_part(snapshot.source_part, "ide.snapshot");
     EXPECT_EQ(
         IDE_TOOLING_SOURCE.substr(snapshot.source_part.module_range.begin, snapshot.source_part.module_range.length()),
@@ -498,6 +535,8 @@ TEST(CoreUnit, IdeToolingExposesCheckedPartOriginsForTemplatesAliasesAndEnumCase
     tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
     ASSERT_TRUE(snapshot.parsed);
     ASSERT_TRUE(snapshot.checked_semantics);
+    EXPECT_TRUE(has_semantic_fact_kind(snapshot, tooling::IdeSemanticFactKind::generic_template_signature,
+        query::QueryKind::generic_template_signature, "Box"));
 
     mark_checked_type_alias_part(snapshot, "Count", IDE_TOOLING_ALIAS_PART_INDEX);
     mark_checked_enum_case_part(snapshot, "Mode", "fast", IDE_TOOLING_ENUM_CASE_PART_INDEX);

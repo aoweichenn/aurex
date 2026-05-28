@@ -19,6 +19,7 @@ add_library(aurex_sema
     src/sema/internal/sema_operator_expression_analyzer.cpp
     src/sema/internal/sema_pipeline.cpp
     src/sema/internal/sema_projection_aggregate_expression_analyzer.cpp
+    src/sema/internal/sema_services.cpp
     src/sema/internal/sema_side_tables.cpp
     src/sema/internal/sema_statement_analyzer.cpp
     src/sema/internal/sema_type_services.cpp

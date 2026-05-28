@@ -2,6 +2,7 @@
 
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/driver/pipeline_stage.hpp>
+#include <aurex/query/generic_instance_key.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/sema/checked_module.hpp>
 #include <aurex/syntax/ast.hpp>
@@ -51,10 +52,32 @@ struct IdeDiagnostic {
     IdeModulePartContext source_part;
 };
 
+enum class IdeSemanticFactKind : base::u8 {
+    item_signature,
+    generic_template_signature,
+    function_body_syntax,
+    type_check_body,
+};
+
+struct IdeSemanticFact {
+    IdeSemanticFactKind kind = IdeSemanticFactKind::item_signature;
+    query::QueryKey query;
+    query::DefKey definition;
+    query::MemberKey member;
+    query::BodyKey body;
+    query::GenericInstanceKey generic_instance;
+    base::SourceRange range{};
+    std::string name;
+    std::string detail;
+    base::u32 part_index = 0;
+    bool checked = false;
+};
+
 struct IdeQuerySnapshot {
     query::QuerySourceStageKeys source_stage;
     std::vector<query::QueryRecord> records;
     std::vector<query::QueryDependencyEdge> dependencies;
+    std::vector<IdeSemanticFact> semantic_facts;
 };
 
 struct IdeSnapshot {
@@ -85,6 +108,8 @@ struct IdeTokenInfo {
 
 struct IdeDefinition {
     query::DefKey key;
+    query::MemberKey member;
+    query::GenericInstanceKey generic_instance;
     base::SourceRange range{};
     std::string name;
     std::string kind;

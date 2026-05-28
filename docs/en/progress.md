@@ -54,18 +54,18 @@ LLVM lowering, and native execution consume the same instance identity and
 side-table view; generic builtin type operands and value-only builtins close
 through sema/IR/LLVM inside generic functions; and method-local generics are on
 the ABI/query/diagnostic/lowering/native path. As of 2026-05-29, `m3.1` has
-been fast-forward merged back to `m3`, and `m3.2` has been created for
-Query-backed Sema design and implementation. The current highest priority is
-moving sema from "one eager analyzer produces a checked module" to a
-query-backed semantic authority: `ItemSignature`, `BodySyntax`,
+been fast-forward merged back to `m3`, and `m3.2` was created for Query-backed
+Sema design and implementation. The completed M3.2 target is moving sema from
+"one eager analyzer produces a checked module" to a query-backed semantic
+authority: `ItemSignature`, `BodySyntax`,
 `TypeCheckBody`, `GenericTemplateSignature`, `GenericInstanceSignature`, and
 `GenericInstanceBody` form one authority boundary; `CheckedModule` separates
 durable facts, session-local caches, and lowering-only side tables; and
 incremental cache / query pruning / provider-skip replay can explain sema
-result reuse. The M3.2 execution entry point is now the
+result reuse. The M3.2 execution record is the
 [Aurex M3.2 Query-backed Sema Design And Execution Plan](m3.2-query-backed-sema-plan.md);
-future work advances by work package and reads only the required local context
-plus direct callers/callees by default.
+future follow-up work should use a new M3.3, LSP adapter, or finer-grained
+incremental sema plan instead of adding new scope to M3.2.
 
 As of 2026-05-29, the M3.2 WP-1/2/3 Query-backed Sema authority batch is
 complete. Non-generic `ItemSignature`, `FunctionBodySyntax`, and
@@ -87,9 +87,23 @@ ranges, and side-table summaries. Cross-session facts live in query
 records/cache; lowering-only side tables remain in the checked aggregate. New
 and updated query, robustness, and driver-cache tests cover authority
 valid/invalid paths, semantic fingerprint sensitivity, dependency edges, split
-logical-module package rows, and manual query-record fixtures. The next package
-is WP-4 Sema Service Boundary Split, extracting lookup/type/generic/body-check
-service boundaries from `SemanticAnalyzerCore`.
+logical-module package rows, and manual query-record fixtures.
+
+As of 2026-05-29, M3.2 WP-4/5/6 is complete and closes the current
+Query-backed Sema batch. `SemanticLookupService`, `SemanticTypeService`,
+`SemanticGenericService`, and `SemanticBodyCheckService` now form internal
+service boundaries around `SemanticAnalyzerCore`; the pipeline reaches generic
+definitions, ordinary function bodies, and type-layout validation through these
+services while continuing to delegate to the existing analyzers/resolvers
+without copying analyzer state or rewriting semantic algorithms.
+`aurex_tooling::IdeSnapshot` now exposes module/item/signature/body/type-check
+query records, dependency edges, and `semantic_facts` in the same query
+snapshot. Semantic facts carry stable `DefKey` / `MemberKey` / `BodyKey` /
+`GenericInstanceKey`, source range, part index, and checked flag. IDE semantic
+module identity is aligned with sema stable module identity, avoiding a split
+between tooling `ModuleKey` values and checked stable def keys. All M3.2 work
+packages are now complete; follow-up work should start from a new M3.3, LSP
+adapter, or finer-grained incremental sema plan.
 
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and

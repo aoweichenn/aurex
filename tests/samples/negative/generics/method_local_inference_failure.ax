@@ -1,0 +1,16 @@
+module method_local_inference_failure;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn marker[T](self: &Box) -> i32 {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    let box: Box = Box { value: 1 };
+    return box.marker();
+}

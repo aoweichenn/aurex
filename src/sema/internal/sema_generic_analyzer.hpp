@@ -81,6 +81,14 @@ public:
         std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>& inferred) const;
     bool infer_generic_arguments(
         const GenericTemplateInfo& info, const SemanticAnalyzerCore::ExprView& call, std::vector<TypeHandle>& args);
+    std::unordered_set<GenericParamIdentity, GenericParamIdentityHash> generic_param_identities_in_type(
+        const TypeHandle type) const;
+    std::vector<base::usize> method_local_generic_param_indices(const GenericTemplateInfo& info) const;
+    bool infer_generic_method_arguments(const GenericTemplateInfo& info, const TypeHandle owner_type,
+        const SemanticAnalyzerCore::ExprView& call, base::usize receiver_count, std::vector<TypeHandle>& args);
+    bool apply_explicit_generic_method_arguments(const GenericTemplateInfo& info, const TypeHandle owner_type,
+        std::span<const syntax::TypeId> explicit_type_args, const base::SourceRange& use_range,
+        std::vector<TypeHandle>& args);
     FunctionSignature* instantiate_generic_placeholder_function(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range);
     bool type_contains_generic_param(const TypeHandle type) const;
@@ -89,8 +97,10 @@ public:
     FunctionSignature* instantiate_generic_method(const GenericTemplateInfo& info, const TypeHandle owner_type,
         const std::vector<TypeHandle>& args, const base::SourceRange& use_range);
     FunctionSignature* find_generic_method_in_visible_modules(const TypeHandle owner_type, const IdentId name_id,
-        const std::string_view name, const base::SourceRange& range, const bool require_self,
-        const bool report_unknown);
+        const std::string_view name, const base::SourceRange& range, const bool require_self, const bool report_unknown,
+        const SemanticAnalyzerCore::ExprView* call = nullptr, base::usize receiver_count = 0,
+        bool has_explicit_type_args = false, std::span<const syntax::TypeId> explicit_type_args = {},
+        bool* saw_matching_template = nullptr);
     void analyze_generic_function_definition(const GenericTemplateInfo& info);
     void analyze_generic_function_body(const syntax::ItemNode& function, const GenericTemplateInfo& info,
         const FunctionSignature& signature, FunctionBodyState& state);

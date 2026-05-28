@@ -579,9 +579,18 @@ ValueId Lowerer::lower_call_expr(const syntax::ExprId expr_id, const ExprView& e
     value.name = target.symbol;
     value.call_target = target.function;
     base::usize param_offset = 0;
+    syntax::ExprId receiver_callee = expr.callee;
+    if (syntax::is_valid(receiver_callee) && receiver_callee.value < this->ast_.exprs.size()
+        && this->ast_.exprs.kind(receiver_callee.value) == syntax::ExprKind::generic_apply) {
+        if (const syntax::GenericApplyExprPayload* const apply =
+                this->ast_.exprs.generic_apply_payload(receiver_callee.value);
+            apply != nullptr) {
+            receiver_callee = apply->callee;
+        }
+    }
     const syntax::FieldExprPayload* const callee_field =
-        syntax::is_valid(expr.callee) && expr.callee.value < this->ast_.exprs.size()
-        ? this->ast_.exprs.field_payload(expr.callee.value)
+        syntax::is_valid(receiver_callee) && receiver_callee.value < this->ast_.exprs.size()
+        ? this->ast_.exprs.field_payload(receiver_callee.value)
         : nullptr;
     if (callee_field != nullptr && is_valid(target.function) && target.function.value < this->module_.functions.size()
         && this->module_.functions[target.function.value].signature_params.size()

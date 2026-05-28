@@ -630,6 +630,12 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
     return "method requires a receiver: " + std::string(owner) + "." + std::string(method);
 }
 
+[[nodiscard]] inline std::string sema_method_not_generic_message(
+    const std::string_view owner, const std::string_view method)
+{
+    return "method " + std::string(owner) + "." + std::string(method) + " is not generic";
+}
+
 [[nodiscard]] inline std::string sema_unknown_field_message(const std::string_view field_name)
 {
     return "unknown field: " + std::string(field_name);

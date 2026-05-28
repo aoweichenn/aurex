@@ -128,6 +128,25 @@ negative samples cover missing `Sized` for `sizeof[T]` and invalid `ptrat[T]`
 targets. Top-level `cast[T](value)` remains limited by the existing scalar-cast
 rule; M3.1 does not add a new `Scalar` / `Cast` capability.
 
+As of 2026-05-28, WP-5 Method-local Generics is complete. Owner parameters from
+`impl[T] Owner[T]` remain the prefix of a method item's `generic_params`, while
+method-local parameters keep distinct `GenericParamIdentity` values. Sema
+registration now accepts method-local generics; ordinary method calls infer
+local method params from arguments, and explicit `value.method[T](...)` /
+`Type.method[T](...)` binds only method-local params while owner params are
+inferred from the receiver or associated owner. Generic method instances now use
+`GenericInstanceKey` with `DefNamespace::member` plus generated semantic keys
+and ABI suffixes, so repeated instances such as `method[i32]` and
+`method[bool]` on the same owner cannot collide in lookup or C symbols.
+Instantiated generic methods are not inserted into ordinary method-name lookup;
+call resolution returns to the template bucket and selects the exact instance
+for the current type args. IR lowering recognizes explicit generic method
+callees shaped as `generic_apply(field(...))` and still inserts receiver
+arguments. New coverage includes `generics/method_local_m3_1.ax`, negative
+samples for arity, inference failure, unsatisfied `where`, and explicit type
+args on a non-generic method, plus a regression update replacing the old
+unsupported diagnostic with checked-dump coverage.
+
 M1 was discarded because too many concerns expanded at once: standard library
 APIs, host support, build-tool examples, selfhost experiments, resource rules,
 and language syntax. The result made it hard to tell whether a failure came from

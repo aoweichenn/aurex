@@ -84,6 +84,13 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"tuple_open_domain_bool_missing_witness",
         "match expression over tuple, struct, array, or slice requires an irrefutable arm"},
     {"method_abi_collision", "duplicate ABI symbol"},
+    {"method_explicit_non_generic", "method method_explicit_non_generic.Box.read is not generic"},
+    {"method_local_arg_unify_failure", "cannot infer generic type argument for call to pick"},
+    {"method_local_argument_count", "argument count mismatch"},
+    {"method_local_explicit_unknown_type", "unknown type: Missing"},
+    {"method_local_inference_failure", "cannot infer generic type argument `T` for call to marker"},
+    {"method_local_type_arg_count", "too many generic method type arguments for id: expected 1, got 2"},
+    {"method_local_where_unsatisfied", "type f64 does not satisfy capability `Eq`"},
     {"module_member_namespace_conflict",
         "duplicate module member across namespaces in module module_member_namespace_conflict: File"},
     {"module_name_mismatch", "does not match import 'bad.name'"},
@@ -408,6 +415,11 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_generic_basic)
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_generic_builtins)
 {
     run_positive_runtime_smoke_sample("generics", "builtins_m3_1.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_method_local_generics)
+{
+    run_positive_runtime_smoke_sample("generics", "method_local_m3_1.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_imported_samples)

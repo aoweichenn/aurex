@@ -1868,9 +1868,17 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "impl Box {\n"
         "  fn id[T](self: &Box, value: T) -> T { return value; }\n"
         "}\n"
-        "fn main() -> i32 { return 0; }\n");
-    expect_contains(require_failure(aurexc() + " --check " + q(generic_method)).output,
-        "method-local generic parameters are not supported by M2 semantic analysis");
+        "fn main() -> i32 {\n"
+        "  let box: Box = Box { value: 1 };\n"
+        "  let flag: bool = box.id[bool](true);\n"
+        "  if flag { return box.id(41) + 1; }\n"
+        "  return 1;\n"
+        "}\n");
+    expect_contains_all(require_success(aurexc() + " --emit=checked " + q(generic_method)).output,
+        {
+            "method generic_method.Box.id[bool] -> bool",
+            "method generic_method.Box.id[i32] -> i32",
+        });
 
     const fs::path generic_method_call = write_source_file(tmp_root() / "generic_method_call.ax",
         "module generic_method_call;\n"
@@ -1883,7 +1891,7 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "  return box.read[i32]();\n"
         "}\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_method_call)).output,
-        "explicit generic calls use '[...]', for example id[i32](...)");
+        "method generic_method_call.Box.read is not generic");
 
     const fs::path generic_return_inference = write_source_file(tmp_root() / "generic_return_inference.ax",
         "module generic_return_inference;\n"

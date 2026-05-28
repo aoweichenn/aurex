@@ -617,6 +617,8 @@ private:
     [[nodiscard]] TypeHandle analyze_str_utf8_slice_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] TypeHandle analyze_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] TypeHandle analyze_call_expr(syntax::ExprId expr_id, const ExprView& expr, TypeHandle expected_type);
+    [[nodiscard]] TypeHandle analyze_explicit_generic_method_call_expr(
+        syntax::ExprId expr_id, const ExprView& expr, const ExprView& generic_apply, TypeHandle expected_type);
     [[nodiscard]] TypeHandle analyze_enum_constructor_call(
         syntax::ExprId expr_id, const ExprView& expr, const EnumCaseInfo& enum_case);
     [[nodiscard]] TypeHandle analyze_field_call_expr(syntax::ExprId expr_id, const ExprView& expr,
@@ -661,6 +663,11 @@ private:
     [[nodiscard]] TypeHandle resolve_type_alias(const TypeAliasInfo& alias, bool opaque_allowed_as_pointee);
     [[nodiscard]] bool infer_generic_arguments(
         const GenericTemplateInfo& info, const ExprView& call, std::vector<TypeHandle>& args);
+    [[nodiscard]] bool infer_generic_method_arguments(const GenericTemplateInfo& info, TypeHandle owner_type,
+        const ExprView& call, base::usize receiver_count, std::vector<TypeHandle>& args);
+    [[nodiscard]] bool apply_explicit_generic_method_arguments(const GenericTemplateInfo& info, TypeHandle owner_type,
+        std::span<const syntax::TypeId> explicit_type_args, const base::SourceRange& use_range,
+        std::vector<TypeHandle>& args);
     [[nodiscard]] bool unify_generic_type(TypeHandle pattern, TypeHandle actual,
         std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>& inferred) const;
     [[nodiscard]] const GenericTemplateInfo* find_generic_function_in_visible_modules(
@@ -694,7 +701,9 @@ private:
     [[nodiscard]] FunctionSignature* instantiate_generic_placeholder_function(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range);
     [[nodiscard]] FunctionSignature* find_generic_method_in_visible_modules(TypeHandle owner_type, IdentId name_id,
-        std::string_view name, const base::SourceRange& range, bool require_self, bool report_unknown = true);
+        std::string_view name, const base::SourceRange& range, bool require_self, bool report_unknown = true,
+        const ExprView* call = nullptr, base::usize receiver_count = 0, bool has_explicit_type_args = false,
+        std::span<const syntax::TypeId> explicit_type_args = {}, bool* saw_matching_template = nullptr);
     [[nodiscard]] bool type_contains_generic_param(TypeHandle type) const;
     void populate_generic_param_identities(GenericTemplateInfo& info);
     [[nodiscard]] GenericParamIdentity make_generic_param_identity(

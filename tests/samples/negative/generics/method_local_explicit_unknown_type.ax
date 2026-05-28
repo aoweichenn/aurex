@@ -1,0 +1,16 @@
+module method_local_explicit_unknown_type;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn id[T](self: &Box, value: T) -> T {
+        return value;
+    }
+}
+
+fn main() -> i32 {
+    let box: Box = Box { value: 1 };
+    return box.id[Missing](1);
+}

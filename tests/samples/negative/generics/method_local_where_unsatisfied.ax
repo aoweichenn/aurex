@@ -1,0 +1,17 @@
+module method_local_where_unsatisfied;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn id[T](self: &Box, value: T) -> T where T: Eq {
+        return value;
+    }
+}
+
+fn main() -> i32 {
+    let box: Box = Box { value: 1 };
+    box.id(1.5);
+    return 0;
+}

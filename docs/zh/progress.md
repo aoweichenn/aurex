@@ -72,6 +72,16 @@ retained expression side table 路径。新增 `generics/builtins_m3_1.ax` 的 I
 并新增缺 `Sized` 的 `sizeof[T]`、非法 `ptrat[T]` target 负样例。`cast[T](value)` 仍受现有 scalar-cast
 规则限制，M3.1 不引入新的 `Scalar` / `Cast` capability。
 
+2026-05-28 WP-5 Method-local Generics 已完成：`impl[T] Owner[T]` 的 owner 参数继续作为 method
+`generic_params` 前缀，method-local 参数保持独立 `GenericParamIdentity`；sema 注册阶段不再拒绝
+method-local generic，普通方法调用可从参数推断局部泛型，显式 `value.method[T](...)` / `Type.method[T](...)`
+只绑定 method-local 参数。generic method instance 现在使用 `DefNamespace::member` 的 `GenericInstanceKey`
+和生成 semantic key / ABI suffix，避免同一 owner 上不同 method-local 实参实例发生 lookup 或 C 符号碰撞；
+实例不再写入普通 method-name lookup，调用解析始终回到 template bucket。IR lowering 已支持
+`generic_apply(field(...))` 显式泛型方法 callee 并正确补 receiver 参数。新增
+`generics/method_local_m3_1.ax` 正样例和 arity、无法推断、where 不满足、非泛型方法误传 type args 负样例；
+原 “method-local generic unsupported” 回归测试已更新为新语义 checked dump 覆盖。
+
 M1 阶段已经舍弃。主要原因不是单个功能失败，而是整体设计方向不稳：
 
 - 标准库、host support、构建工具样例和语言核心同时扩张，导致测试结果很难判断是语言问题、库问题还是工具链问题。

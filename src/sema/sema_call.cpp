@@ -411,6 +411,7 @@ TypeHandle SemanticAnalyzerCore::analyze_call_expr(
                         static_cast<void>(this->resolve_module_selector(generic_callee.object, true));
                         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
                     }
+                    return this->analyze_explicit_generic_method_call_expr(expr_id, expr, callee, expected_type);
                 }
             }
             this->report_general(callee.range, std::string(SEMA_EXPLICIT_GENERIC_CALL_SYNTAX));
@@ -485,6 +486,83 @@ TypeHandle SemanticAnalyzerCore::analyze_explicit_generic_function_call_expr(con
     return this->record_expr_type(expr_id, signature->return_type);
 }
 
+TypeHandle SemanticAnalyzerCore::analyze_explicit_generic_method_call_expr(const syntax::ExprId expr_id,
+    const SemanticAnalyzerCore::ExprView& expr, const SemanticAnalyzerCore::ExprView& generic_apply, const TypeHandle)
+{
+    if (!syntax::is_valid(generic_apply.callee) || generic_apply.callee.value >= this->ctx_.module.exprs.size()) {
+        this->report_general(generic_apply.range, std::string(SEMA_EXPLICIT_GENERIC_CALL_SYNTAX));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    const SemanticAnalyzerCore::ExprView callee = this->expr_view(generic_apply.callee);
+    if (callee.kind != syntax::ExprKind::field) {
+        this->report_general(generic_apply.range, std::string(SEMA_EXPLICIT_GENERIC_CALL_SYNTAX));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    const std::string_view name = callee.field_name;
+    const auto finish_call = [&](const FunctionSignature& signature, const bool has_receiver,
+                                 const bool receiver_valid) -> TypeHandle {
+        this->ensure_function_return_known(signature, callee.range);
+        this->validate_unsafe_call(signature, callee.range);
+        this->record_expr_c_name(expr.callee, signature.c_name);
+        const base::usize receiver_count = has_receiver ? SEMA_RECEIVER_ARGUMENT_COUNT : 0;
+        if (!receiver_valid || signature.param_types.size() < receiver_count) {
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
+        this->validate_call_arguments(expr, name, signature.param_types, receiver_count, signature.is_variadic);
+        return this->record_expr_type(expr_id, signature.return_type);
+    };
+
+    if (syntax::is_valid(callee.object) && callee.object.value < this->ctx_.module.exprs.size()) {
+        const TypeHandle associated_owner = this->resolve_type_selector(callee.object, false);
+        if (is_valid(associated_owner)) {
+            if (const FunctionSignature* const plain = this->find_method_in_visible_modules(
+                    associated_owner, callee.field_name_id, callee.field_name, callee.range, false, false);
+                plain != nullptr) {
+                this->report_type(callee.range,
+                    sema_method_not_generic_message(
+                        this->state_.checked.types.display_name(associated_owner), callee.field_name));
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+            }
+            FunctionSignature* signature =
+                this->find_generic_method_in_visible_modules(associated_owner, callee.field_name_id, callee.field_name,
+                    callee.range, false, true, &expr, 0, true, generic_apply.type_args);
+            if (signature == nullptr) {
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+            }
+            bool receiver_valid = true;
+            if (signature->has_self_param) {
+                this->report_general(callee.range,
+                    sema_method_requires_receiver_message(
+                        this->state_.checked.types.display_name(associated_owner), name));
+                receiver_valid = false;
+            }
+            return finish_call(*signature, false, receiver_valid);
+        }
+    }
+
+    const TypeHandle receiver_type = this->analyze_expr(callee.object);
+    TypeHandle owner_type = receiver_type;
+    if (this->state_.checked.types.is_pointer(owner_type) || this->state_.checked.types.is_reference(owner_type)) {
+        owner_type = this->state_.checked.types.get(owner_type).pointee;
+    }
+    if (const FunctionSignature* const plain = this->find_method_in_visible_modules(
+            owner_type, callee.field_name_id, callee.field_name, callee.range, true, false);
+        plain != nullptr) {
+        this->report_type(callee.range,
+            sema_method_not_generic_message(this->state_.checked.types.display_name(owner_type), callee.field_name));
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+
+    FunctionSignature* signature =
+        this->find_generic_method_in_visible_modules(owner_type, callee.field_name_id, callee.field_name, callee.range,
+            true, true, &expr, SEMA_RECEIVER_ARGUMENT_COUNT, true, generic_apply.type_args);
+    if (signature == nullptr) {
+        return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+    }
+    return finish_call(*signature, true, this->method_receiver_matches(*signature, receiver_type, callee.object));
+}
+
 TypeHandle SemanticAnalyzerCore::analyze_enum_constructor_call(
     const syntax::ExprId expr_id, const SemanticAnalyzerCore::ExprView& expr, const EnumCaseInfo& enum_case)
 {
@@ -531,8 +609,12 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
             signature = this->find_method_in_visible_modules(
                 associated_owner, callee.field_name_id, callee.field_name, callee.range, false, false);
             if (signature == nullptr) {
-                signature = this->find_generic_method_in_visible_modules(
-                    associated_owner, callee.field_name_id, callee.field_name, callee.range, false, false);
+                bool saw_generic_candidate = false;
+                signature = this->find_generic_method_in_visible_modules(associated_owner, callee.field_name_id,
+                    callee.field_name, callee.range, false, false, &expr, 0, false, {}, &saw_generic_candidate);
+                if (signature == nullptr && saw_generic_candidate) {
+                    return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+                }
             }
             if (signature == nullptr) {
                 static_cast<void>(this->find_method_in_visible_modules(
@@ -557,8 +639,13 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         signature = this->find_method_in_visible_modules(
             owner_type, callee.field_name_id, callee.field_name, callee.range, true, false);
         if (signature == nullptr) {
-            signature = this->find_generic_method_in_visible_modules(
-                owner_type, callee.field_name_id, callee.field_name, callee.range, true, false);
+            bool saw_generic_candidate = false;
+            signature =
+                this->find_generic_method_in_visible_modules(owner_type, callee.field_name_id, callee.field_name,
+                    callee.range, true, false, &expr, SEMA_RECEIVER_ARGUMENT_COUNT, false, {}, &saw_generic_candidate);
+            if (signature == nullptr && saw_generic_candidate) {
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+            }
         }
         if (signature == nullptr) {
             const TypeHandle callee_type = this->analyze_expr(expr.callee);

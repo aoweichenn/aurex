@@ -1,0 +1,16 @@
+module method_local_arg_unify_failure;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn pick[T](self: &Box, left: T, right: T) -> T {
+        return left;
+    }
+}
+
+fn main() -> i32 {
+    let box: Box = Box { value: 1 };
+    return box.pick(1, true);
+}

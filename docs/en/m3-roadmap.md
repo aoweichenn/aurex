@@ -120,6 +120,13 @@ resource capabilities, RAII, closures, async/iterators, or standard-library
 rebuilds. Its execution entry point is the
 [Aurex M3.2 Query-backed Sema Design And Execution Plan](m3.2-query-backed-sema-plan.md).
 
+Status: as of 2026-05-29, WP-1 Sema Query Authority Inventory, WP-2 Item And
+Body Provider Boundary, and WP-3 Checked Fact Materialization are complete.
+Non-generic item/body queries now use authority-backed provider inputs and
+shared result helpers, and incremental-cache subjects / provider-skip replay can
+explain sema-level reuse for item signatures, function body syntax, and
+type-check bodies. The next package is WP-4 Sema Service Boundary Split.
+
 ## Non-goals
 
 - No RAII, `Drop`, `Copy`, move-only structs, borrow checker, lifetimes, or

@@ -100,7 +100,7 @@ void evaluate_item_signature_query_subject(query::QueryContext& context, const I
 {
     const query::ItemSignatureProviderInput input{
         subject.key,
-        subject.incremental_key,
+        subject.authority,
     };
     static_cast<void>(context.evaluate_item_signature(input));
 }
@@ -162,7 +162,7 @@ void evaluate_function_body_syntax_query_subject(
 {
     const query::FunctionBodySyntaxProviderInput input{
         subject.key,
-        subject.result,
+        subject.authority,
     };
     static_cast<void>(context.evaluate_function_body_syntax(input));
 }
@@ -171,7 +171,7 @@ void evaluate_type_check_body_query_subject(query::QueryContext& context, const 
 {
     const query::TypeCheckBodyProviderInput input{
         subject.key,
-        subject.result,
+        subject.authority,
     };
     static_cast<void>(context.evaluate_type_check_body(input));
 }
@@ -228,7 +228,7 @@ void evaluate_diagnostics_query_subject(query::QueryContext& context, const Diag
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const ItemSignatureQuerySubject& subject)
 {
-    return query::item_signature_query_record(subject.key, query::query_result_fingerprint(subject.incremental_key));
+    return query::item_signature_query_record(subject.key, query::item_signature_result_fingerprint(subject.authority));
 }
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(
@@ -273,12 +273,14 @@ void evaluate_diagnostics_query_subject(query::QueryContext& context, const Diag
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const FunctionBodySyntaxQuerySubject& subject)
 {
-    return query::function_body_syntax_query_record(subject.key, subject.result);
+    return query::function_body_syntax_query_record(
+        subject.key, query::function_body_syntax_result_fingerprint(subject.authority));
 }
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const TypeCheckBodyQuerySubject& subject)
 {
-    return query::type_check_body_query_record(subject.key, subject.result);
+    return query::type_check_body_query_record(
+        subject.key, query::type_check_body_result_fingerprint(subject.authority));
 }
 
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const DiagnosticsQuerySubject& subject)

@@ -32,6 +32,22 @@ tables，incremental cache / query pruning / provider-skip replay 能解释 sema
 [Aurex M3.2 Query-backed Sema 设计与执行计划](m3.2-query-backed-sema-plan.md)，后续按 work package 推进，
 默认只读取当前包的必读上下文和直接调用链。
 
+2026-05-29 M3.2 WP-1/2/3 Query-backed Sema authority batch 已完成：非泛型
+`ItemSignature`、`FunctionBodySyntax` 和 `TypeCheckBody` 已补齐到 M3.1 泛型 authority 的同级边界。
+`ItemSignatureAuthority` 显式记录 signature incremental key、`ModulePartKey`、namespace、`DefKind`、
+visibility rank、value/generic 参数数量、return/receiver/unsafe/variadic/definition flags；
+`FunctionBodySyntaxAuthority` 记录 body syntax fingerprint、owner `DefKey`、`ModulePartKey`、body source
+range、body slot 和 ordinal；`TypeCheckBodyAuthority` 记录 checked body fingerprint、body syntax result、
+item signature result、side-table summary、coercion count、retained-side-table flag 和 diagnostics flag。
+provider input 不再接收非泛型 item/body 的裸 `IncrementalKey` 或裸 body fingerprint，provider 默认实现、
+provider-skip replay、incremental-cache subject ordering 和 `query_record_for_subject` 共用同一套 authority
+result helper。`CheckedModule` 当前仍作为 eager sema 聚合结果，但 durable sema facts 的 materialization 输入
+来自 stable id、incremental key、module id、part index、body range 和 side-table summaries；跨 session 的事实
+由 query record/cache 保存，lowering-only side table 仍留在 checked aggregate 内。新增/更新 query、robustness
+和 driver cache 覆盖 authority valid/invalid、语义敏感 fingerprint、依赖边、split logical module package rows
+和手工 query record fixture。下一步进入 WP-4 Sema Service Boundary Split，把 lookup/type/generic/body-check
+服务边界从 `SemanticAnalyzerCore` 中拆出来。
+
 2026-05-28 WP-1B Generic Instance Identity Propagation 已完成：`FunctionSignature`、`EnumCaseInfo`、
 `GenericEnumInstanceInfo` 和 `GenericTypeAliasInstanceInfo` 都携带结构化 `GenericInstanceKey`；
 generic function / owner-generic method 的 retained 与 non-retained 路径都会把 identity 写入 checked

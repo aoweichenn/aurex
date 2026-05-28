@@ -48,6 +48,12 @@ constexpr base::usize QUERY_ROBUSTNESS_EDGES_PER_MODULE = 7;
 constexpr base::u32 QUERY_ROBUSTNESS_SHUFFLE_SEED = 0xA17E2026U;
 constexpr base::u32 QUERY_ROBUSTNESS_INVALID_REPLAY_MODE = 255;
 constexpr base::u32 QUERY_ROBUSTNESS_EMPTY_STABLE_INDEX = 0;
+constexpr base::u32 QUERY_ROBUSTNESS_PUBLIC_VISIBILITY_RANK = 2;
+constexpr base::u32 QUERY_ROBUSTNESS_VALUE_COMPONENT_COUNT = 1;
+constexpr base::u32 QUERY_ROBUSTNESS_GENERIC_PARAM_COUNT = 0;
+constexpr base::u64 QUERY_ROBUSTNESS_BODY_RANGE_BASE = 16;
+constexpr base::u64 QUERY_ROBUSTNESS_BODY_RANGE_STRIDE = 32;
+constexpr base::u64 QUERY_ROBUSTNESS_BODY_RANGE_WIDTH = 12;
 constexpr char QUERY_ROBUSTNESS_CORRUPT_STABLE_BYTE = '\x7f';
 constexpr std::string_view QUERY_ROBUSTNESS_PACKAGE_PART = "robustness";
 constexpr std::string_view QUERY_ROBUSTNESS_ROOT_PART = "root";
@@ -68,6 +74,7 @@ constexpr std::string_view QUERY_ROBUSTNESS_IR_PAYLOAD = "ir";
 constexpr std::string_view QUERY_ROBUSTNESS_DIAGNOSTICS_PAYLOAD = "diagnostics";
 
 struct QueryRobustnessSubject {
+    base::usize index = 0;
     query::ModuleKey module;
     query::DefKey function_def;
     query::BodyKey body;
@@ -115,6 +122,15 @@ struct QueryRobustnessSubject {
     return query::module_key(robustness_package(), path);
 }
 
+[[nodiscard]] std::string robustness_source_path(const base::usize index)
+{
+    std::string path{QUERY_ROBUSTNESS_SOURCE_PATH_PREFIX};
+    path += QUERY_ROBUSTNESS_MODULE_PREFIX;
+    path += std::to_string(index);
+    path += QUERY_ROBUSTNESS_SOURCE_EXTENSION;
+    return path;
+}
+
 [[nodiscard]] query::DefKey robustness_function_def(const query::ModuleKey module, const base::usize index)
 {
     const std::string function_name = robustness_indexed_name(QUERY_ROBUSTNESS_FUNCTION_PREFIX, index);
@@ -141,6 +157,7 @@ struct QueryRobustnessSubject {
     const query::ModuleKey module = robustness_module(index);
     const query::DefKey function_def = robustness_function_def(module, index);
     return QueryRobustnessSubject{
+        index,
         module,
         function_def,
         query::body_key(function_def, query::BodySlotKind::function_body),
@@ -152,6 +169,64 @@ struct QueryRobustnessSubject {
         robustness_result(QUERY_ROBUSTNESS_CHECKED_BODY_PAYLOAD, index),
         robustness_result(QUERY_ROBUSTNESS_IR_PAYLOAD, index),
         robustness_result(QUERY_ROBUSTNESS_DIAGNOSTICS_PAYLOAD, index),
+    };
+}
+
+[[nodiscard]] query::FileKey robustness_file_key(
+    const base::usize index, const query::SourceRole role, const std::string_view virtual_buffer)
+{
+    return query::file_key(robustness_package(), robustness_source_path(index), role, virtual_buffer);
+}
+
+[[nodiscard]] query::ModulePartKey robustness_module_part(const QueryRobustnessSubject& subject)
+{
+    return query::module_part_key(subject.module,
+        robustness_file_key(subject.index, query::SourceRole::source, std::string_view{}),
+        query::ModulePartKind::primary, "<primary>");
+}
+
+[[nodiscard]] query::ItemSignatureAuthority robustness_item_signature_authority(const QueryRobustnessSubject& subject)
+{
+    return query::ItemSignatureAuthority{
+        subject.signature,
+        robustness_module_part(subject),
+        subject.function_def.name_space,
+        subject.function_def.kind,
+        QUERY_ROBUSTNESS_PUBLIC_VISIBILITY_RANK,
+        QUERY_ROBUSTNESS_VALUE_COMPONENT_COUNT,
+        QUERY_ROBUSTNESS_GENERIC_PARAM_COUNT,
+        true,
+        false,
+        false,
+        false,
+        true,
+    };
+}
+
+[[nodiscard]] query::FunctionBodySyntaxAuthority robustness_function_body_syntax_authority(
+    const QueryRobustnessSubject& subject)
+{
+    const base::u64 range_begin =
+        QUERY_ROBUSTNESS_BODY_RANGE_BASE + (static_cast<base::u64>(subject.index) * QUERY_ROBUSTNESS_BODY_RANGE_STRIDE);
+    return query::FunctionBodySyntaxAuthority{
+        subject.syntax,
+        subject.function_def,
+        robustness_module_part(subject),
+        range_begin,
+        range_begin + QUERY_ROBUSTNESS_BODY_RANGE_WIDTH,
+        subject.body.slot,
+        subject.body.ordinal,
+    };
+}
+
+[[nodiscard]] query::TypeCheckBodyAuthority robustness_type_check_body_authority(const QueryRobustnessSubject& subject)
+{
+    const query::FunctionBodySyntaxAuthority syntax_authority = robustness_function_body_syntax_authority(subject);
+    const query::ItemSignatureAuthority signature_authority = robustness_item_signature_authority(subject);
+    return query::TypeCheckBodyAuthority{
+        subject.checked_body,
+        query::function_body_syntax_result_fingerprint(syntax_authority),
+        query::item_signature_result_fingerprint(signature_authority),
     };
 }
 
@@ -172,15 +247,15 @@ void append_pipeline_requests_for_subject(
     }});
     requests.push_back(query::QueryRequest{query::ItemSignatureProviderInput{
         subject.function_def,
-        subject.signature,
+        robustness_item_signature_authority(subject),
     }});
     requests.push_back(query::QueryRequest{query::FunctionBodySyntaxProviderInput{
         subject.body,
-        subject.syntax,
+        robustness_function_body_syntax_authority(subject),
     }});
     requests.push_back(query::QueryRequest{query::TypeCheckBodyProviderInput{
         subject.body,
-        subject.checked_body,
+        robustness_type_check_body_authority(subject),
     }});
     requests.push_back(query::QueryRequest{query::LowerFunctionIRProviderInput{
         subject.body,
@@ -279,8 +354,8 @@ void replace_node_dependencies(
 [[nodiscard]] query::QueryRecord robustness_item_signature_record(const base::usize index)
 {
     const QueryRobustnessSubject subject = robustness_subject(index);
-    const std::optional<query::QueryRecord> record =
-        query::item_signature_query_record(subject.function_def, query::query_result_fingerprint(subject.signature));
+    const std::optional<query::QueryRecord> record = query::item_signature_query_record(
+        subject.function_def, query::item_signature_result_fingerprint(robustness_item_signature_authority(subject)));
     return record.value_or(query::QueryRecord{});
 }
 
@@ -293,8 +368,8 @@ void replace_node_dependencies(
 
 [[nodiscard]] query::QueryRecord robustness_item_signature_record(const QueryRobustnessSubject& subject)
 {
-    const std::optional<query::QueryRecord> record =
-        query::item_signature_query_record(subject.function_def, query::query_result_fingerprint(subject.signature));
+    const std::optional<query::QueryRecord> record = query::item_signature_query_record(
+        subject.function_def, query::item_signature_result_fingerprint(robustness_item_signature_authority(subject)));
     return record.value_or(query::QueryRecord{});
 }
 
@@ -307,11 +382,7 @@ void replace_node_dependencies(
 
 [[nodiscard]] query::FileKey robustness_file_key(const query::SourceRole role, const std::string_view virtual_buffer)
 {
-    std::string path{QUERY_ROBUSTNESS_SOURCE_PATH_PREFIX};
-    path += QUERY_ROBUSTNESS_MODULE_PREFIX;
-    path += std::to_string(QUERY_ROBUSTNESS_EMPTY_STABLE_INDEX);
-    path += QUERY_ROBUSTNESS_SOURCE_EXTENSION;
-    return query::file_key(robustness_package(), path, role, virtual_buffer);
+    return robustness_file_key(QUERY_ROBUSTNESS_EMPTY_STABLE_INDEX, role, virtual_buffer);
 }
 
 TEST(QueryUnit, QueryInternerHandlesCapacityBoundariesAndBulkRecords)

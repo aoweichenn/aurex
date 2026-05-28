@@ -93,14 +93,17 @@ metadata, and `IdeDiagnostic` owner-stage metadata, instead of bypassing it.
 
 M3.2 first implementation order:
 
-1. Sema query authority inventory: list checked facts, stable keys, provider
-   authority, and invalidation conditions.
-2. Item/body provider boundary: structure item signature, body syntax, and
-   type-check body inputs/outputs.
-3. Checked fact materialization: let eager sema materialize query results and
-   record durable fact provenance.
-4. Sema service boundary split: split lookup/type/generic/body-check services
-   and reduce `SemanticAnalyzerCore` aggregation.
+1. Sema query authority inventory: completed. Checked facts, stable keys,
+   provider authority, and invalidation conditions are recorded in the
+   bilingual M3.2 plan authority matrix.
+2. Item/body provider boundary: completed. Item signature, body syntax, and
+   type-check body provider inputs/outputs are authority-backed and share result
+   helpers with provider replay / cache writing.
+3. Checked fact materialization: completed. Eager sema still produces the
+   `CheckedModule` aggregate, but durable sema query records are materialized
+   from authority results.
+4. Sema service boundary split: next. Split lookup/type/generic/body-check
+   services and reduce `SemanticAnalyzerCore` aggregation.
 5. Tooling semantic query surface: expose query-backed semantic facts and
    dependency edges through `IdeSnapshot`.
 6. Incremental reuse / quality gates: keep query pruning, query graph fuzz,

@@ -168,6 +168,71 @@ struct PackageIndex {
     return signature.is_method ? query::DefKind::method : query::DefKind::function;
 }
 
+[[nodiscard]] query::ItemSignatureAuthority item_signature_authority_base(const sema::StableDefId& stable_id,
+    const sema::IncrementalKey& incremental_key, const syntax::ModuleId module_id, const base::u32 part_index,
+    const query::DefNamespace name_space, const query::DefKind kind, const syntax::Visibility visibility,
+    const PackageIndex& packages)
+{
+    return query::ItemSignatureAuthority{
+        incremental_key,
+        module_part_key_for_definition(packages, stable_id.module, module_id, part_index),
+        name_space,
+        kind,
+        syntax::visibility_rank(visibility),
+    };
+}
+
+[[nodiscard]] query::ItemSignatureAuthority item_signature_authority(
+    const sema::FunctionSignature& signature, const PackageIndex& packages)
+{
+    query::ItemSignatureAuthority authority = item_signature_authority_base(signature.stable_id,
+        signature.incremental_key, signature.module, signature.part_index, query::DefNamespace::value,
+        function_signature_def_kind(signature), signature.visibility, packages);
+    authority.value_component_count = static_cast<base::u32>(signature.param_types.size());
+    authority.generic_param_count = static_cast<base::u32>(signature.generic_args.size());
+    authority.has_return_type = sema::is_valid(signature.return_type);
+    authority.has_receiver_type = sema::is_valid(signature.method_owner_type) || signature.has_self_param;
+    authority.is_unsafe = signature.is_unsafe;
+    authority.is_variadic = signature.is_variadic;
+    authority.has_definition = signature.has_definition;
+    return authority;
+}
+
+[[nodiscard]] query::ItemSignatureAuthority item_signature_authority(
+    const sema::StructInfo& info, const PackageIndex& packages)
+{
+    query::ItemSignatureAuthority authority = item_signature_authority_base(info.stable_id, info.incremental_key,
+        info.module, info.part_index, query::DefNamespace::type, query::DefKind::struct_, info.visibility, packages);
+    authority.value_component_count = static_cast<base::u32>(info.fields.size());
+    authority.generic_param_count = static_cast<base::u32>(info.generic_instance_key.type_args.size());
+    authority.has_return_type = sema::is_valid(info.type);
+    authority.has_definition = !info.is_opaque;
+    return authority;
+}
+
+[[nodiscard]] query::ItemSignatureAuthority item_signature_authority(
+    const sema::EnumCaseInfo& info, const PackageIndex& packages)
+{
+    query::ItemSignatureAuthority authority = item_signature_authority_base(info.stable_id, info.incremental_key,
+        info.module, info.part_index, query::DefNamespace::value, query::DefKind::enum_case, info.visibility, packages);
+    authority.value_component_count = static_cast<base::u32>(info.payload_types.size());
+    authority.generic_param_count = static_cast<base::u32>(info.generic_instance_key.type_args.size());
+    authority.has_return_type = sema::is_valid(info.type);
+    authority.has_definition = true;
+    return authority;
+}
+
+[[nodiscard]] query::ItemSignatureAuthority item_signature_authority(
+    const sema::TypeAliasInfo& info, const PackageIndex& packages)
+{
+    query::ItemSignatureAuthority authority = item_signature_authority_base(info.stable_id, info.incremental_key,
+        info.module, info.part_index, query::DefNamespace::type, query::DefKind::type_alias, info.visibility, packages);
+    authority.value_component_count = syntax::is_valid(info.target) ? 1U : 0U;
+    authority.has_return_type = syntax::is_valid(info.target);
+    authority.has_definition = true;
+    return authority;
+}
+
 [[nodiscard]] query::GenericTemplateSignatureAuthority generic_template_signature_authority(
     const sema::GenericTemplateSignatureInfo& info, const PackageIndex& packages)
 {
@@ -281,17 +346,41 @@ struct PackageIndex {
     return query::query_result_fingerprint(builder.finish());
 }
 
-[[nodiscard]] query::QueryResultFingerprint type_check_body_result_fingerprint(const query::BodyKey key,
-    const query::QueryResultFingerprint body_syntax_result, const sema::IncrementalKey& signature_key)
+[[nodiscard]] query::FunctionBodySyntaxAuthority function_body_syntax_authority(const query::BodyKey key,
+    const query::ModulePartKey module_part, const base::SourceRange body_range, const std::string_view body_text)
+{
+    return query::FunctionBodySyntaxAuthority{
+        function_body_syntax_result_fingerprint(key, body_text),
+        key.owner,
+        module_part,
+        static_cast<base::u64>(body_range.begin),
+        static_cast<base::u64>(body_range.end),
+        key.slot,
+        key.ordinal,
+    };
+}
+
+[[nodiscard]] query::QueryResultFingerprint type_check_body_checked_result_fingerprint(const query::BodyKey key,
+    const query::QueryResultFingerprint body_syntax_result, const query::QueryResultFingerprint signature_result)
 {
     query::StableHashBuilder builder;
     builder.mix_string(INCREMENTAL_CACHE_TYPE_CHECK_BODY_RESULT_MARKER);
     builder.mix_fingerprint(query::stable_key_fingerprint(key));
     builder.mix_u64(body_syntax_result.global_id);
     builder.mix_fingerprint(body_syntax_result.fingerprint);
-    builder.mix_u64(signature_key.global_id);
-    builder.mix_fingerprint(signature_key.fingerprint);
+    builder.mix_u64(signature_result.global_id);
+    builder.mix_fingerprint(signature_result.fingerprint);
     return query::query_result_fingerprint(builder.finish());
+}
+
+[[nodiscard]] query::TypeCheckBodyAuthority type_check_body_authority(const query::BodyKey key,
+    const query::QueryResultFingerprint body_syntax_result, const query::QueryResultFingerprint signature_result)
+{
+    return query::TypeCheckBodyAuthority{
+        type_check_body_checked_result_fingerprint(key, body_syntax_result, signature_result),
+        body_syntax_result,
+        signature_result,
+    };
 }
 
 [[nodiscard]] std::optional<base::SourceRange> function_signature_body_range(
@@ -308,15 +397,6 @@ struct PackageIndex {
         return std::nullopt;
     }
     return ast.stmts.range(node->body.value);
-}
-
-[[nodiscard]] std::optional<std::string_view> function_body_text(
-    const base::SourceManager& sources, const sema::FunctionSignature& signature, const syntax::AstModule& ast) noexcept
-{
-    if (const std::optional<base::SourceRange> body_range = function_signature_body_range(signature, ast)) {
-        return source_range_text(sources, *body_range);
-    }
-    return source_range_text(sources, signature.range);
 }
 
 [[nodiscard]] std::optional<base::SourceRange> generic_function_instance_body_range(const sema::CheckedModule& checked,
@@ -432,13 +512,15 @@ void push_definition(std::vector<DefinitionRecord>& records, const std::string_v
     });
 }
 
-void push_item_signature_query_subject(std::vector<ItemSignatureQuerySubject>& subjects,
-    const sema::StableDefId& stable_id, const sema::IncrementalKey& incremental_key, const syntax::ModuleId module_id,
-    const query::DefNamespace name_space, const query::DefKind kind, const PackageIndex& packages)
+void push_item_signature_query_subject(std::vector<ItemSignatureQuerySubject>& subjects, const query::DefKey key,
+    const query::ItemSignatureAuthority& authority)
 {
+    if (!query::is_valid(key) || !query::is_valid(authority)) {
+        return;
+    }
     subjects.push_back(ItemSignatureQuerySubject{
-        def_key_from_stable_id(packages, stable_id, module_id, name_space, kind),
-        incremental_key,
+        key,
+        authority,
     });
 }
 
@@ -514,8 +596,8 @@ void push_generic_instance_body_query_subject(std::vector<GenericInstanceBodyQue
 void push_lower_function_ir_query_subject(
     std::vector<LowerFunctionIRQuerySubject>& subjects, const TypeCheckBodyQuerySubject& type_check_subject)
 {
-    const query::QueryResultFingerprint result =
-        lower_function_ir_result_fingerprint(type_check_subject.key, type_check_subject.result);
+    const query::QueryResultFingerprint result = lower_function_ir_result_fingerprint(
+        type_check_subject.key, query::type_check_body_result_fingerprint(type_check_subject.authority));
     subjects.push_back(LowerFunctionIRQuerySubject{
         LowerFunctionIRSubjectKind::body,
         type_check_subject.key,
@@ -552,22 +634,43 @@ void push_function_body_query_subjects(std::vector<FunctionBodySyntaxQuerySubjec
     if (!query::is_valid(key)) {
         return;
     }
-    const std::optional<std::string_view> body_text =
-        ast == nullptr ? source_range_text(sources, signature.range) : function_body_text(sources, signature, *ast);
+    const std::optional<base::SourceRange> body_range = ast == nullptr
+        ? std::optional<base::SourceRange>{signature.range}
+        : function_signature_body_range(signature, *ast);
+    if (!body_range) {
+        return;
+    }
+    const std::optional<std::string_view> body_text = source_range_text(sources, *body_range);
     if (!body_text) {
         return;
     }
-    const query::QueryResultFingerprint syntax_result = function_body_syntax_result_fingerprint(key, *body_text);
-    if (!query::is_valid(syntax_result)) {
+    const query::ModulePartKey module_part =
+        module_part_key_for_definition(packages, signature.stable_id.module, signature.module, signature.part_index);
+    const query::FunctionBodySyntaxAuthority syntax_authority =
+        function_body_syntax_authority(key, module_part, *body_range, *body_text);
+    if (!query::is_valid(syntax_authority)) {
+        return;
+    }
+    const query::ItemSignatureAuthority signature_authority = item_signature_authority(signature, packages);
+    const query::QueryResultFingerprint signature_result =
+        query::item_signature_result_fingerprint(signature_authority);
+    if (!query::is_valid(signature_result)) {
+        return;
+    }
+    const query::QueryResultFingerprint syntax_result =
+        query::function_body_syntax_result_fingerprint(syntax_authority);
+    const query::TypeCheckBodyAuthority type_check_authority =
+        type_check_body_authority(key, syntax_result, signature_result);
+    if (!query::is_valid(type_check_authority)) {
         return;
     }
     syntax_subjects.push_back(FunctionBodySyntaxQuerySubject{
         key,
-        syntax_result,
+        syntax_authority,
     });
     type_check_subjects.push_back(TypeCheckBodyQuerySubject{
         key,
-        type_check_body_result_fingerprint(key, syntax_result, signature.incremental_key),
+        type_check_authority,
     });
 }
 
@@ -583,23 +686,27 @@ void push_function_body_query_subjects(std::vector<FunctionBodySyntaxQuerySubjec
 
     for (const auto& entry : checked.functions) {
         const sema::FunctionSignature& signature = entry.second;
-        push_item_signature_query_subject(subjects, signature.stable_id, signature.incremental_key, signature.module,
-            query::DefNamespace::value, function_signature_def_kind(signature), packages);
+        const query::DefKey key = def_key_from_stable_id(packages, signature.stable_id, signature.module,
+            query::DefNamespace::value, function_signature_def_kind(signature));
+        push_item_signature_query_subject(subjects, key, item_signature_authority(signature, packages));
     }
     for (const auto& entry : checked.structs) {
         const sema::StructInfo& info = entry.second;
-        push_item_signature_query_subject(subjects, info.stable_id, info.incremental_key, info.module,
-            query::DefNamespace::type, query::DefKind::struct_, packages);
+        const query::DefKey key = def_key_from_stable_id(
+            packages, info.stable_id, info.module, query::DefNamespace::type, query::DefKind::struct_);
+        push_item_signature_query_subject(subjects, key, item_signature_authority(info, packages));
     }
     for (const auto& entry : checked.enum_cases) {
         const sema::EnumCaseInfo& info = entry.second;
-        push_item_signature_query_subject(subjects, info.stable_id, info.incremental_key, info.module,
-            query::DefNamespace::value, query::DefKind::enum_case, packages);
+        const query::DefKey key = def_key_from_stable_id(
+            packages, info.stable_id, info.module, query::DefNamespace::value, query::DefKind::enum_case);
+        push_item_signature_query_subject(subjects, key, item_signature_authority(info, packages));
     }
     for (const auto& entry : checked.type_aliases) {
         const sema::TypeAliasInfo& info = entry.second;
-        push_item_signature_query_subject(subjects, info.stable_id, info.incremental_key, info.module,
-            query::DefNamespace::type, query::DefKind::type_alias, packages);
+        const query::DefKey key = def_key_from_stable_id(
+            packages, info.stable_id, info.module, query::DefNamespace::type, query::DefKind::type_alias);
+        push_item_signature_query_subject(subjects, key, item_signature_authority(info, packages));
     }
     return subjects;
 }

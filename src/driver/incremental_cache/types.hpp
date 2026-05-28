@@ -152,7 +152,7 @@ struct ItemListQuerySubject {
 
 struct ItemSignatureQuerySubject {
     query::DefKey key;
-    sema::IncrementalKey incremental_key;
+    query::ItemSignatureAuthority authority;
 };
 
 struct GenericTemplateSignatureQuerySubject {
@@ -172,12 +172,12 @@ struct GenericInstanceBodyQuerySubject {
 
 struct FunctionBodySyntaxQuerySubject {
     query::BodyKey key;
-    query::QueryResultFingerprint result;
+    query::FunctionBodySyntaxAuthority authority;
 };
 
 struct TypeCheckBodyQuerySubject {
     query::BodyKey key;
-    query::QueryResultFingerprint result;
+    query::TypeCheckBodyAuthority authority;
 };
 
 enum class LowerFunctionIRSubjectKind : base::u8 {

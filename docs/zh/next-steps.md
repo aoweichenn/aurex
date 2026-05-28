@@ -68,10 +68,14 @@ R5.13 已完成 profile/tooling 消费者分类契约：`pipeline_profile_phase_
 
 M3.2 的第一批实现顺序：
 
-1. Sema query authority inventory：列清 checked facts、stable keys、provider authority 和失效条件。
-2. Item/body provider boundary：把 item signature、body syntax、type-check body 的输入/输出结构化。
-3. Checked fact materialization：让 eager sema materialize query result，并记录 durable fact 来源。
-4. Sema service boundary split：拆分 lookup/type/generic/body-check service，降低 `SemanticAnalyzerCore` 聚合度。
+1. Sema query authority inventory：已完成。checked facts、stable keys、provider authority 和失效条件已写入
+   中英文 M3.2 plan 的 authority matrix。
+2. Item/body provider boundary：已完成。item signature、body syntax、type-check body provider input/output 已
+   改为 authority-backed，并和 provider replay / cache writer 共用 result helper。
+3. Checked fact materialization：已完成。eager sema 继续产出 `CheckedModule` aggregate，但 durable sema fact
+   的 query record 从 authority result materialize。
+4. Sema service boundary split：下一步。拆分 lookup/type/generic/body-check service，降低
+   `SemanticAnalyzerCore` 聚合度。
 5. Tooling semantic query surface：让 `IdeSnapshot` 暴露 query-backed semantic facts 和 dependency edges。
 6. Incremental reuse / quality gates：query pruning、query graph fuzz、coverage、stress、native 全部不回退。
 

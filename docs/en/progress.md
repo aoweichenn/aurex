@@ -67,6 +67,30 @@ result reuse. The M3.2 execution entry point is now the
 future work advances by work package and reads only the required local context
 plus direct callers/callees by default.
 
+As of 2026-05-29, the M3.2 WP-1/2/3 Query-backed Sema authority batch is
+complete. Non-generic `ItemSignature`, `FunctionBodySyntax`, and
+`TypeCheckBody` now sit at the same authority level as the M3.1 generic
+queries. `ItemSignatureAuthority` records the signature incremental key,
+`ModulePartKey`, namespace, `DefKind`, visibility rank, value/generic parameter
+counts, return/receiver/unsafe/variadic flags, and definition flag.
+`FunctionBodySyntaxAuthority` records the body syntax fingerprint, owner
+`DefKey`, `ModulePartKey`, body source range, body slot, and ordinal.
+`TypeCheckBodyAuthority` records the checked body fingerprint, body syntax
+result, item signature result, side-table summary, coercion count,
+retained-side-table flag, and diagnostics flag. Provider inputs no longer accept
+bare non-generic item/body `IncrementalKey` or body fingerprints, and provider
+defaults, provider-skip replay, incremental-cache subject ordering, and
+`query_record_for_subject` share the same authority result helpers.
+`CheckedModule` remains the eager sema aggregate, but durable sema facts are
+materialized from stable ids, incremental keys, module ids, part indices, body
+ranges, and side-table summaries. Cross-session facts live in query
+records/cache; lowering-only side tables remain in the checked aggregate. New
+and updated query, robustness, and driver-cache tests cover authority
+valid/invalid paths, semantic fingerprint sensitivity, dependency edges, split
+logical-module package rows, and manual query-record fixtures. The next package
+is WP-4 Sema Service Boundary Split, extracting lookup/type/generic/body-check
+service boundaries from `SemanticAnalyzerCore`.
+
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and
 `GenericTypeAliasInstanceInfo` carry structured `GenericInstanceKey` values.

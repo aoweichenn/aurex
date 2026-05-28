@@ -10,6 +10,7 @@
 #include <aurex/driver/profile.hpp>
 #include <aurex/query/generic_instance_key.hpp>
 #include <aurex/query/generic_instance_signature_query.hpp>
+#include <aurex/query/item_signature_query.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_result.hpp>
 #include <aurex/sema/checked_module.hpp>
@@ -838,6 +839,13 @@ template <base::usize PART_COUNT>
 {
     return query::module_key_from_stable_id(cache_test_default_package(),
         sema::stable_module_id(std::span<const std::string_view>{module_parts.data(), module_parts.size()}));
+}
+
+[[nodiscard]] query::ModulePartKey cache_test_primary_module_part_key(
+    const query::ModuleKey module, const query::PackageKey package, const fs::path& source)
+{
+    const query::FileKey file = query::file_key(package, source.string(), query::SourceRole::source);
+    return query::module_part_key(module, file, query::ModulePartKind::primary, "<primary>");
 }
 
 [[nodiscard]] query::DefKey cache_test_def_key_from_stable_id(
@@ -2963,8 +2971,14 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
         sema::stable_incremental_key(stable_id, DRIVER_INCREMENTAL_CACHE_EDGE_EXPORTS_SIGNATURE));
     const query::QueryResultFingerprint item_list_result =
         query::query_result_fingerprint(query::stable_fingerprint(DRIVER_INCREMENTAL_CACHE_EDGE_ITEM_LIST));
-    const query::QueryResultFingerprint item_result = query::query_result_fingerprint(
-        sema::stable_incremental_key(stable_id, DRIVER_INCREMENTAL_CACHE_EDGE_ITEM_SIGNATURE));
+    const query::ItemSignatureAuthority item_authority{
+        sema::stable_incremental_key(stable_id, DRIVER_INCREMENTAL_CACHE_EDGE_ITEM_SIGNATURE),
+        cache_test_primary_module_part_key(module_key, cache_test_default_package(), canonical_source),
+        query::DefNamespace::value,
+        query::DefKind::function,
+        syntax::visibility_rank(syntax::Visibility::public_),
+    };
+    const query::QueryResultFingerprint item_result = query::item_signature_result_fingerprint(item_authority);
     const std::optional<query::QueryRecord> item_list_record =
         query::item_list_query_record(module_key, item_list_result);
     const std::optional<query::QueryRecord> exports_record = query::query_record(query::QueryKind::module_exports,
@@ -3933,11 +3947,29 @@ TEST_F(AurexIntegrationTest, IncrementalCacheSemanticSubjectsUseModuleIdPackages
 
     const query::PackageKey local_package = driver::package_key_from_identity(LOCAL_PACKAGE);
     const query::PackageKey import_package = driver::package_key_for_import_root(IMPORT_ROOT);
+    const std::array<std::string_view, 2> module_parts{"shared", "util"};
+    const sema::StableModuleId stable_module = sema::stable_module_id(module_parts);
+    const query::ModuleKey local_module = query::module_key_from_stable_id(local_package, stable_module);
+    const query::ModuleKey import_module = query::module_key_from_stable_id(import_package, stable_module);
+    const std::vector<driver::ModulePartRecord> local_parts{driver::ModulePartRecord{
+        {},
+        local_source,
+        0,
+        driver::ModulePartRecordKind::primary,
+        cache_test_primary_module_part_key(local_module, local_package, local_source),
+    }};
+    const std::vector<driver::ModulePartRecord> import_parts{driver::ModulePartRecord{
+        {},
+        import_source,
+        0,
+        driver::ModulePartRecordKind::primary,
+        cache_test_primary_module_part_key(import_module, import_package, import_source),
+    }};
     const std::array<driver::ModuleRecord, 2> modules{{
-        driver::ModuleRecord{
-            std::string("shared.util"), local_source, local_package, syntax::ModuleId{0}, {}, {}, std::nullopt},
-        driver::ModuleRecord{
-            std::string("shared.util"), import_source, import_package, syntax::ModuleId{1}, {}, {}, std::nullopt},
+        driver::ModuleRecord{std::string("shared.util"), local_source, local_package, syntax::ModuleId{0}, local_parts,
+            {}, std::nullopt},
+        driver::ModuleRecord{std::string("shared.util"), import_source, import_package, syntax::ModuleId{1},
+            import_parts, {}, std::nullopt},
     }};
 
     base::SourceManager sources;
@@ -3946,8 +3978,6 @@ TEST_F(AurexIntegrationTest, IncrementalCacheSemanticSubjectsUseModuleIdPackages
 
     sema::CheckedModule checked;
     const sema::InternedText name = checked.intern_text(FUNCTION_NAME);
-    const std::array<std::string_view, 2> module_parts{"shared", "util"};
-    const sema::StableModuleId stable_module = sema::stable_module_id(module_parts);
     const sema::StableDefId stable_id =
         sema::stable_definition_id(stable_module, sema::StableSymbolKind::function, FUNCTION_NAME);
     for (base::u32 module_index = 0; module_index < modules.size(); ++module_index) {

@@ -2,9 +2,15 @@
 #include <aurex/query/item_signature_query.hpp>
 #include <aurex/query/type_check_body_query.hpp>
 
+#include <string_view>
 #include <utility>
 
 namespace aurex::query {
+namespace {
+
+constexpr std::string_view QUERY_TYPE_CHECK_BODY_AUTHORITY_MARKER = "query.type_check_body.authority.v1";
+
+} // namespace
 
 std::optional<QueryKey> type_check_body_query_key(const BodyKey key) noexcept
 {
@@ -14,9 +20,15 @@ std::optional<QueryKey> type_check_body_query_key(const BodyKey key) noexcept
     return query_key(QueryKind::type_check_body, stable_key_fingerprint(key));
 }
 
+bool is_valid(const TypeCheckBodyAuthority& authority) noexcept
+{
+    return is_valid(authority.checked_body) && is_valid(authority.body_syntax_result)
+        && is_valid(authority.signature_result);
+}
+
 bool is_valid(const TypeCheckBodyProviderInput& input) noexcept
 {
-    return is_valid(input.key) && is_valid(input.checked_body);
+    return is_valid(input.key) && is_valid(input.authority);
 }
 
 bool is_valid(const TypeCheckBodyProviderOutput& output) noexcept
@@ -33,13 +45,37 @@ bool is_valid(const TypeCheckBodyProviderOutput& output) noexcept
     return true;
 }
 
+QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAuthority& authority) noexcept
+{
+    if (!is_valid(authority)) {
+        return {};
+    }
+    StableHashBuilder builder;
+    builder.mix_string(QUERY_TYPE_CHECK_BODY_AUTHORITY_MARKER);
+    builder.mix_u64(authority.checked_body.global_id);
+    builder.mix_fingerprint(authority.checked_body.fingerprint);
+    builder.mix_u64(authority.body_syntax_result.global_id);
+    builder.mix_fingerprint(authority.body_syntax_result.fingerprint);
+    builder.mix_u64(authority.signature_result.global_id);
+    builder.mix_fingerprint(authority.signature_result.fingerprint);
+    builder.mix_u32(authority.expr_side_table_count);
+    builder.mix_u32(authority.pattern_side_table_count);
+    builder.mix_u32(authority.type_side_table_count);
+    builder.mix_u32(authority.stmt_side_table_count);
+    builder.mix_u32(authority.coercion_count);
+    builder.mix_bool(authority.retained_side_tables);
+    builder.mix_bool(authority.has_diagnostics);
+    return query_result_fingerprint(builder.finish());
+}
+
 std::optional<TypeCheckBodyProviderOutput> provide_type_check_body_query(const TypeCheckBodyProviderInput& input)
 {
     if (!is_valid(input)) {
         return std::nullopt;
     }
 
-    std::optional<QueryRecord> record = type_check_body_query_record(input.key, input.checked_body);
+    const QueryResultFingerprint result = type_check_body_result_fingerprint(input.authority);
+    std::optional<QueryRecord> record = type_check_body_query_record(input.key, result);
     std::vector<QueryKey> dependencies;
     if (const std::optional<QueryKey> function_body_key = function_body_syntax_query_key(input.key)) {
         dependencies.push_back(*function_body_key);
@@ -49,7 +85,7 @@ std::optional<TypeCheckBodyProviderOutput> provide_type_check_body_query(const T
     }
     return TypeCheckBodyProviderOutput{
         std::move(*record),
-        input.checked_body,
+        result,
         std::move(dependencies),
     };
 }

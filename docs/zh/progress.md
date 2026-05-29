@@ -1,7 +1,7 @@
 # 当前进度文档
 
 版本：0.1.3
-阶段：M3.2 query-backed sema
+阶段：M3.3 tooling session and incremental sema
 
 ## 总体状态
 
@@ -23,9 +23,9 @@ resolver、lockfile、version solving 和 package manager。
 incremental key 来自 `GenericInstanceKey` / canonical type identity；generic body、IR lowering、
 LLVM lowering 和 native execution 消费同一份实例身份与 side table 视图；generic builtin type operand
 和 value-only builtin 在 generic function 中完成 sema/IR/LLVM 闭环；method-local generics 已进入
-ABI/query/diagnostics/lowering/native 路径。2026-05-29 `m3.1` 已 fast-forward 合并回 `m3`，并切出
-`m3.2` 作为 Query-backed Sema 的设计和实现分支。当前最高优先级是把 sema 从“单次 eager analyzer 产生
-checked module”推进为 query-backed semantic authority：`ItemSignature`、`BodySyntax`、
+ABI/query/diagnostics/lowering/native 路径。2026-05-29 `m3.1` 已 fast-forward 合并回 `m3`，随后
+`m3.2` 完成 Query-backed Sema 设计和实现。M3.2 已把 sema 从“单次 eager analyzer 产生 checked module”
+推进为 query-backed semantic authority：`ItemSignature`、`BodySyntax`、
 `TypeCheckBody`、`GenericTemplateSignature`、`GenericInstanceSignature` 和 `GenericInstanceBody`
 形成统一 authority 边界，`CheckedModule` 分清 durable facts、session-local caches 和 lowering-only side
 tables，incremental cache / query pruning / provider-skip replay 能解释 sema 级结果复用。M3.2 执行记录已收束为
@@ -56,6 +56,12 @@ query records、dependency edges 和 `semantic_facts`；semantic facts 携带 st
 `BodyKey` / `GenericInstanceKey`、source range、part index 和 checked 标记。IDE semantic module identity
 已对齐 sema stable module identity，避免 tooling `ModuleKey` 与 checked stable def key 分叉。M3.2 当前
 work package 已全部完成，后续若继续推进，应以新的 M3.3 / LSP adapter / 更细粒度 incremental sema 计划为入口。
+
+2026-05-29：M3.2 已 fast-forward 合并回 `m3`，并已切出 `m3.3` 处理 Tooling Session 与
+Incremental Sema。新的设计入口是
+[Aurex M3.3 Tooling Session 与 Incremental Sema 计划](m3.3-tooling-incremental-plan.md)。第一批实现包是
+WP-1 Tooling Session And VFS Boundary：先做 versioned open-document state、`IdeSnapshot` 上方的 snapshot
+cache，以及协议无关 diagnostics/hover/definition/reference wrappers，再扩 LSP 功能面。
 
 2026-05-28 WP-1B Generic Instance Identity Propagation 已完成：`FunctionSignature`、`EnumCaseInfo`、
 `GenericEnumInstanceInfo` 和 `GenericTypeAliasInstanceInfo` 都携带结构化 `GenericInstanceKey`；

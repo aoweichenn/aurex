@@ -1,7 +1,7 @@
 # Current Progress
 
 Version: 0.1.3
-Stage: M3.2 query-backed sema
+Stage: M3.3 tooling session and incremental sema
 
 ## Overall Status
 
@@ -104,6 +104,15 @@ module identity is aligned with sema stable module identity, avoiding a split
 between tooling `ModuleKey` values and checked stable def keys. All M3.2 work
 packages are now complete; follow-up work should start from a new M3.3, LSP
 adapter, or finer-grained incremental sema plan.
+
+As of 2026-05-29, M3.2 has been fast-forward merged back to `m3`, and `m3.3`
+has been created for Tooling Session and Incremental Sema work. The new design
+entry point is the
+[Aurex M3.3 Tooling Session And Incremental Sema Plan](m3.3-tooling-incremental-plan.md).
+The first implementation package is WP-1 Tooling Session And VFS Boundary:
+versioned open-document state, snapshot caching above `IdeSnapshot`, and
+protocol-neutral diagnostics/hover/definition/reference wrappers before any
+larger LSP feature surface.
 
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and

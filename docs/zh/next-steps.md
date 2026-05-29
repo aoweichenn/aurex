@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前状态：M3.2 Query-backed Sema 已收口
+## 当前最高优先级：M3.3 Tooling Session And Incremental Sema
 
 R5 Compilation Pipeline / Driver Action 重构 core 已收口：`CompilerInvocation`、`Compiler`
 facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`LoweringPipeline`、
@@ -8,24 +8,18 @@ facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`Lo
 stage owner 和 tooling/profile consumer contract 都已经进入主路径，并保持原有 CLI、diagnostics JSON、
 profile JSON、incremental cache 和 emit mode 行为。
 
-M3.0 模块系统和 M3.1 泛型闭环已经合并回 `m3`。M3.2 Query-backed Sema 已完成
-WP-1 到 WP-6 当前计划，不再继续把新专题塞进 M3.2；后续应单独开 M3.3 / LSP adapter /
-更细粒度 incremental sema 计划：
+M3.0 模块系统、M3.1 泛型闭环和 M3.2 Query-backed Sema WP-1 到 WP-6 都已经合并回 `m3`。
+当前活动分支是 `m3.3`，聚焦 tooling session、LSP adapter 边界和更细粒度 incremental sema：
 
-- `ItemSignature`、`BodySyntax`、`TypeCheckBody`、`GenericTemplateSignature`、
-  `GenericInstanceSignature` 和 `GenericInstanceBody` 必须形成统一 query authority 边界。
-- eager sema 可以 materialize query result，但不能继续作为 checked semantic facts 的唯一事实源。
-- `CheckedModule` 要分清 durable facts、session-local caches 和 lowering-only side tables，并能说明每类事实来自
-  哪个 query authority。
-- incremental cache、query pruning 和 provider-skip replay 要能解释 sema 级结果复用，而不只是文件级复用。
-- `aurex_tooling::IdeSnapshot` 和后续 LSP/IDE 消费必须读取 query-backed semantic facts，不允许绕过
-  parser/sema/query。
-- M3.2 不引入用户 trait、associated type、const generic、resource capability、RAII、closure、async/iterator
-  或标准库重建；这些专题必须等 query-backed sema 边界稳定后再设计。
-- M3.2 必须继承 M3.1 泛型 release baseline，不能重新打开已经收口的 identity、ABI、IR/native 路径。
+- 在 `IdeSnapshot` 上方增加协议无关 `ToolingSession`。
+- LSP JSON-RPC 只作为 adapter，不成为编译器内部状态。
+- open-buffer edits 必须带版本、可复现、可诊断。
+- diagnostics、hover、definition 和 references 通过 tooling session 与 M3.2 query-backed semantic facts 路由。
+- 使用 `IdeEditImpact`、query records 和 dependency edges 解释 edit invalidation 和 reuse。
+- 在完整 background index 之前，先为 open files 增加小型 dynamic workspace semantic index。
 
-M3.2 执行记录以 [Aurex M3.2 Query-backed Sema 设计与执行计划](m3.2-query-backed-sema-plan.md) 为入口。
-后续新阶段继续沿用该文档形成的 query authority、service boundary、tooling semantic facts 和质量门槛。
+M3.3 执行入口是 [Aurex M3.3 Tooling Session 与 Incremental Sema 计划](m3.3-tooling-incremental-plan.md)。
+M3.2 保持 closed authority baseline，不再追加新范围。
 
 R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分；
 R5.3 已完成 `LoweringPipeline`、`BackendPipeline` 和 `PipelineStage` 记录。当前 driver 总控已经只保留
@@ -67,17 +61,14 @@ R5.13 已完成 profile/tooling 消费者分类契约：`pipeline_profile_phase_
 已通过这个入口输出原有 `stage` / `parent_stage` metadata，协议字段保持不变。后续 profile viewer
 和 LSP/IDE 阶段视图必须复用这个分类 API，不再维护独立 phase-name 映射表。
 
-M3.2 的第一批实现顺序：
+M3.3 的第一批实现顺序：
 
-1. Sema query authority inventory：已完成。checked facts、stable keys、provider authority 和失效条件已写入
-   中英文 M3.2 plan 的 authority matrix。
-2. Item/body provider boundary：已完成。item signature、body syntax、type-check body provider input/output 已
-   改为 authority-backed，并和 provider replay / cache writer 共用 result helper。
-3. Checked fact materialization：已完成。eager sema 继续产出 `CheckedModule` aggregate，但 durable sema fact
-   的 query record 从 authority result materialize。
-4. Sema service boundary split：已完成。lookup/type/generic/body-check service boundary 已进入 sema pipeline。
-5. Tooling semantic query surface：已完成。`IdeSnapshot` 暴露 query-backed semantic facts、records 和 dependency edges。
-6. Incremental reuse / quality gates：已完成 / 持续门禁。query pruning、query graph fuzz、coverage、stress、native 不回退。
+1. WP-1A：新增协议无关 `ToolingSession` 和 versioned document store。
+2. WP-1B：按 document id/version 和 package config 缓存 `IdeSnapshot`。
+3. WP-1C：新增 session-level diagnostics/hover/definition/reference wrappers。
+4. WP-2A：新增 deterministic JSON-RPC message parser/writer fixture tests。
+5. WP-2B：新增 lifecycle 和 text-document sync handlers。
+6. WP-2C：通过 `ToolingSession` 路由 hover/definition/references/diagnostics。
 
 2026-05-28 收口更新：原 M3.1 work packages 已通过 WP-7 Generic Closure Audit And Release Baseline 统一复审。
 当前泛型 release baseline 固定为：generic struct / enum / type alias / function / owner-generic method /

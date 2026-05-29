@@ -10,11 +10,13 @@ down into query-backed sema architecture:
 1. Modules.
 2. Generics.
 3. Query-backed sema and IDE/tooling-consumable semantic facts.
+4. Tooling sessions, LSP adapter boundaries, and finer-grained incremental sema.
 
 As of 2026-05-25, the R5 Compilation Pipeline / Driver Action core is complete.
 As of 2026-05-28, M3.0 module-system closure and the M3.1 generic release
-baseline are complete. As of 2026-05-29, `m3.1` has been fast-forward merged
-back to `m3`, and M3.2 Query-backed Sema WP-1 through WP-6 are complete. Every
+baseline are complete. As of 2026-05-29, M3.2 Query-backed Sema WP-1 through
+WP-6 have been merged back to `m3`, and `m3.3` has been created for tooling
+sessions, LSP adapter boundaries, and finer-grained incremental sema. Every
 M3 implementation must reuse the R5 `CompilationSession`,
 `CompilationPipeline`, `FrontendPipeline`, `LoweringPipeline`,
 `BackendPipeline`, `PipelineStage`, query, diagnostics, and profile/tooling
@@ -126,8 +128,33 @@ helpers, and incremental-cache subjects / provider-skip replay can explain
 sema-level reuse for item signatures, function body syntax, and type-check
 bodies. Lookup/type/generic/body-check service boundaries are now on the sema
 pipeline path, and `IdeSnapshot` exposes query-backed semantic facts, records,
-and dependency edges. New topics should start as a separate M3.3, LSP adapter,
-or finer-grained incremental sema plan.
+and dependency edges.
+
+### M3.3: Tooling Session And Incremental Sema
+
+M3.3 turns the M3.2 `IdeSnapshot` surface into a long-lived tooling layer and a
+small LSP-consumable adapter boundary:
+
+- `ToolingSession` owns versioned open-document state, package/source-role
+  configuration, and snapshot cache.
+- LSP JSON-RPC is an adapter around tooling value types, not a compiler
+  internal API.
+- Diagnostics, hover, definition, and references consume `IdeSnapshot`,
+  `PipelineStageMetadata`, and query-backed semantic facts.
+- Incremental reuse planning uses `IdeEditImpact`, query records, and dependency
+  edges to explain what an edit invalidates.
+- A small workspace semantic index can merge open-file facts before any full
+  background index exists.
+
+M3.3 still does not implement full completion, rename, formatting, semantic
+tokens, multi-threaded scheduling, remote indexing, package management, user
+traits, resource semantics, RAII, closures, or const generics. The execution
+entry point is the
+[Aurex M3.3 Tooling Session And Incremental Sema Plan](m3.3-tooling-incremental-plan.md).
+
+Status: as of 2026-05-29, the `m3.3` branch has been created and the bilingual
+design plan is the active entry point. The first implementation target is WP-1
+Tooling Session And VFS Boundary.
 
 ## Non-goals
 
@@ -208,15 +235,16 @@ The M3.1 implementation route is:
 
 ## Recommended Implementation Order
 
-The completed M3.0 module and M3.1 generic orders remain as historical
-acceptance. The active order starts from M3.2:
+The completed M3.0 module, M3.1 generic, and M3.2 query-backed sema orders
+remain as historical acceptance. The active order starts from M3.3:
 
-1. Sema query authority inventory.
-2. Item/body provider boundary.
-3. Checked fact materialization.
-4. Sema service boundary split.
-5. Tooling semantic query surface.
-6. Incremental reuse and quality gates.
+1. Tooling session and versioned document store.
+2. Snapshot cache and session-level IDE wrappers.
+3. LSP JSON-RPC protocol shell.
+4. Diagnostics, hover, definition, and references routed through
+   `ToolingSession`.
+5. Incremental reuse planner over `IdeEditImpact` and query dependency edges.
+6. Small workspace semantic index for open files and package-local facts.
 
 ## Current Implementation Progress
 
@@ -239,6 +267,11 @@ reverse generic identity inputs.
 created for Query-backed Sema design and implementation. The M3.2 design entry
 point is now fixed as `m3.2-query-backed-sema-plan.md`; subsequent work should
 advance by M3.2 work package instead of rereading the full M3 history.
+
+2026-05-29: M3.2 WP-1 through WP-6 have been fast-forward merged back to `m3`,
+and `m3.3` has been created from that closed baseline. The M3.3 design entry
+point is `m3.3-tooling-incremental-plan.md`; the next implementation package is
+WP-1 Tooling Session And VFS Boundary.
 
 ## Acceptance
 
@@ -278,5 +311,18 @@ M3.2 query-backed sema acceptance:
   separated and documented.
 - Provider skip, query pruning, and incremental cache traces can explain sema
   reuse at query granularity.
+
+M3.3 tooling/incremental sema acceptance:
+
+- A protocol-neutral `ToolingSession` owns versioned open-document state and
+  snapshot cache.
+- LSP JSON-RPC handlers consume tooling value types and do not bypass
+  parser/sema/query internals.
+- Diagnostics, hover, definition, and references reuse `IdeSnapshot`,
+  `PipelineStageMetadata`, and query-backed semantic facts.
+- Edit-impact and query dependency records explain unchanged, recomputed, and
+  invalidated facts.
+- JSON-RPC fixture tests, normal gtests, coverage, query pruning, fuzz, and
+  stress gates remain green.
 - Tooling-facing semantic snapshots consume the same query-backed facts as the
   compiler pipeline.

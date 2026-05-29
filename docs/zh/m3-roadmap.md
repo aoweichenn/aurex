@@ -7,10 +7,12 @@ M3 建立在 M2.5 frontend-foundation 之上。M2.5 已经把 query key、结构
 1. 模块系统完善。
 2. 泛型闭环完善。
 3. Query-backed sema 和 IDE/tooling 可消费语义事实。
+4. Tooling session、LSP adapter 边界和更细粒度 incremental sema。
 
 2026-05-25：R5 Compilation Pipeline / Driver Action core 已完成。2026-05-28：M3.0 模块系统
-Phase 9A-D 与 M3.1 泛型 release baseline 都已完成。2026-05-29：`m3.1` 已 fast-forward 合并回
-`m3`，M3.2 Query-backed Sema WP-1 到 WP-6 已完成当前收口。
+Phase 9A-D 与 M3.1 泛型 release baseline 都已完成。2026-05-29：M3.2 Query-backed Sema WP-1
+到 WP-6 已 fast-forward 合并回 `m3`，并已切出 `m3.3` 处理 tooling session、LSP adapter 边界和
+更细粒度 incremental sema。
 所有 M3 实现必须复用
 R5 稳定下来的 `CompilationSession`、`CompilationPipeline`、
 `FrontendPipeline`、`LoweringPipeline`、`BackendPipeline`、`PipelineStage`、query、diagnostics
@@ -87,7 +89,24 @@ M3.2 仍不实现用户 trait、associated type、const generic、resource capab
 input 和共享 result helper，incremental cache subject / provider-skip replay 能解释 item signature、
 function body syntax 和 type-check body 的 sema 级复用；lookup/type/generic/body-check service boundary
 已进入 sema pipeline；`IdeSnapshot` 已暴露 query-backed semantic facts、records 和 dependency edges。
-后续新专题应单独进入 M3.3 / LSP adapter / 更细粒度 incremental sema 计划。
+
+### M3.3：Tooling Session And Incremental Sema
+
+M3.3 把 M3.2 的 `IdeSnapshot` 语义面推进为长期运行的 tooling 层和最小 LSP adapter 边界：
+
+- `ToolingSession` 持有带版本的 open-document state、package/source-role config 和 snapshot cache。
+- LSP JSON-RPC 只是 tooling value types 外面的 adapter，不成为编译器内部 API。
+- diagnostics、hover、definition 和 references 消费 `IdeSnapshot`、`PipelineStageMetadata` 和
+  query-backed semantic facts。
+- incremental reuse planner 使用 `IdeEditImpact`、query records 和 dependency edges 解释一次编辑失效了什么。
+- 在完整后台索引之前，先用小型 workspace semantic index 合并 open-file facts。
+
+M3.3 仍不实现完整 completion、rename、formatting、semantic tokens、多线程 scheduler、remote index、
+package manager、用户 trait、resource semantics、RAII、closure 或 const generic。执行入口见
+[Aurex M3.3 Tooling Session 与 Incremental Sema 计划](m3.3-tooling-incremental-plan.md)。
+
+状态：2026-05-29，`m3.3` 分支已创建，中英文设计计划是当前入口。第一批实现目标是 WP-1
+Tooling Session And VFS Boundary。
 
 ## 非目标
 
@@ -159,14 +178,15 @@ M3.1 开发路线固定为：
 
 ## 推荐落地顺序
 
-已完成的 M3.0 模块和 M3.1 泛型顺序作为历史验收保留。当前从 M3.2 开始按下列顺序推进：
+已完成的 M3.0 模块、M3.1 泛型和 M3.2 query-backed sema 顺序作为历史验收保留。当前从 M3.3
+开始按下列顺序推进：
 
-1. Sema query authority inventory。
-2. Item/body provider boundary。
-3. Checked fact materialization。
-4. Sema service boundary split。
-5. Tooling semantic query surface。
-6. Incremental reuse and quality gates。
+1. Tooling session 和 versioned document store。
+2. Snapshot cache 和 session-level IDE wrappers。
+3. LSP JSON-RPC protocol shell。
+4. diagnostics、hover、definition、references 通过 `ToolingSession` 路由。
+5. 基于 `IdeEditImpact` 和 query dependency edges 的 incremental reuse planner。
+6. 面向 open files 和 package-local facts 的小型 workspace semantic index。
 
 ## 当前实现进度
 
@@ -361,6 +381,10 @@ diagnostics、IR dump 和 c_name 都只作为输出，不再反向作为泛型 i
 M3.2 的设计入口固定为 `m3.2-query-backed-sema-plan.md`；后续推进以 M3.2 work package 为单位，不再每次重新读取
 全部 M3 历史。
 
+2026-05-29：M3.2 WP-1 到 WP-6 已 fast-forward 合并回 `m3`，并已从收口基线切出 `m3.3`。
+M3.3 的设计入口固定为 `m3.3-tooling-incremental-plan.md`；下一实现包是 WP-1 Tooling Session And
+VFS Boundary。
+
 ## 验收
 
 M3.0 模块验收：
@@ -395,3 +419,12 @@ M3.2 query-backed sema 验收：
 - durable checked facts、session-local caches 和 lowering-only side tables 被清晰分离并文档化。
 - provider skip、query pruning 和 incremental cache trace 能以 query 粒度解释 sema 结果复用。
 - tooling-facing semantic snapshot 消费和编译流水线一致的 query-backed facts。
+
+M3.3 tooling / incremental sema 验收：
+
+- 协议无关 `ToolingSession` 持有带版本的 open-document state 和 snapshot cache。
+- LSP JSON-RPC handler 消费 tooling value types，不绕过 parser/sema/query internals。
+- diagnostics、hover、definition 和 references 复用 `IdeSnapshot`、`PipelineStageMetadata` 和
+  query-backed semantic facts。
+- edit-impact 和 query dependency records 可以解释 unchanged、recomputed 和 invalidated facts。
+- JSON-RPC fixture tests、普通 gtest、coverage、query pruning、fuzz 和 stress gates 保持 green。

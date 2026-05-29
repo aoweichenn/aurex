@@ -1,6 +1,6 @@
 # Next Steps
 
-## Current Status: M3.2 Query-backed Sema Closed
+## Current Highest Priority: M3.3 Tooling Session And Incremental Sema
 
 The R5 Compilation Pipeline / Driver Action core is now closed:
 `CompilerInvocation`, the `Compiler` facade, `CompilationSession`,
@@ -10,32 +10,24 @@ profile metadata, diagnostic stage owners, and tooling/profile consumer
 contracts are all on the main path while preserving the existing CLI,
 diagnostics JSON, profile JSON, incremental-cache, and emit-mode behavior.
 
-M3.0 module-system closure and M3.1 generics closure have both been merged back
-to `m3`. M3.2 Query-backed Sema has completed WP-1 through WP-6 in the current
-plan. New topics should not be added to M3.2; they should start as a separate
-M3.3, LSP adapter, or finer-grained incremental sema plan:
+M3.0 module-system closure, M3.1 generics closure, and M3.2 Query-backed Sema
+WP-1 through WP-6 have all been merged back to `m3`. The active branch is
+`m3.3`, focused on tooling sessions, LSP adapter boundaries, and finer-grained
+incremental sema:
 
-- `ItemSignature`, `BodySyntax`, `TypeCheckBody`,
-  `GenericTemplateSignature`, `GenericInstanceSignature`, and
-  `GenericInstanceBody` must form one query-authority boundary.
-- Eager sema may materialize query results, but it should not remain the only
-  source of checked semantic facts.
-- `CheckedModule` must separate durable facts, session-local caches, and
-  lowering-only side tables, and it must be possible to explain which query
-  authority owns each durable fact.
-- Incremental cache, query pruning, and provider-skip replay must explain sema
-  result reuse, not only file-level reuse.
-- `aurex_tooling::IdeSnapshot` and later LSP/IDE consumers must read
-  query-backed semantic facts instead of bypassing parser/sema/query.
-- M3.2 does not add user traits, associated types, const generics, resource
-  capabilities, RAII, closures, async/iterators, or standard-library rebuilds.
-- M3.2 inherits the M3.1 generic release baseline and must not reopen the closed
-  identity, ABI, IR/native paths.
+- Add a protocol-neutral `ToolingSession` above `IdeSnapshot`.
+- Keep LSP JSON-RPC as an adapter, not as compiler-internal state.
+- Make open-buffer edits versioned and deterministic.
+- Route diagnostics, hover, definition, and references through the tooling
+  session and M3.2 query-backed semantic facts.
+- Use `IdeEditImpact`, query records, and dependency edges to explain edit
+  invalidation and reuse.
+- Add a small dynamic workspace semantic index for open files before building a
+  full background index.
 
-The M3.2 execution record is the
-[Aurex M3.2 Query-backed Sema Design And Execution Plan](m3.2-query-backed-sema-plan.md).
-Future stages should inherit the query authority, service boundary, tooling
-semantic facts, and quality gates established there.
+The M3.3 execution entry point is the
+[Aurex M3.3 Tooling Session And Incremental Sema Plan](m3.3-tooling-incremental-plan.md).
+M3.2 remains the closed authority baseline and should not receive new scope.
 
 R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
 stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
@@ -92,24 +84,15 @@ including public `PipelineStageMetadata`,
 `pipeline_profile_phase_classification(...)`, `stage` / `parent_stage` profile
 metadata, and `IdeDiagnostic` owner-stage metadata, instead of bypassing it.
 
-M3.2 first implementation order:
+M3.3 first implementation order:
 
-1. Sema query authority inventory: completed. Checked facts, stable keys,
-   provider authority, and invalidation conditions are recorded in the
-   bilingual M3.2 plan authority matrix.
-2. Item/body provider boundary: completed. Item signature, body syntax, and
-   type-check body provider inputs/outputs are authority-backed and share result
-   helpers with provider replay / cache writing.
-3. Checked fact materialization: completed. Eager sema still produces the
-   `CheckedModule` aggregate, but durable sema query records are materialized
-   from authority results.
-4. Sema service boundary split: completed. Lookup/type/generic/body-check
-   service boundaries are now on the sema pipeline path.
-5. Tooling semantic query surface: completed. `IdeSnapshot` exposes
-   query-backed semantic facts, records, and dependency edges.
-6. Incremental reuse / quality gates: completed / continuous gate. Query
-   pruning, query graph fuzzing, coverage, stress, and native execution must not
-   regress.
+1. WP-1A: Add protocol-neutral `ToolingSession` and versioned document store.
+2. WP-1B: Cache `IdeSnapshot` by document id/version and package config.
+3. WP-1C: Add session-level diagnostics/hover/definition/reference wrappers.
+4. WP-2A: Add deterministic JSON-RPC message parser/writer fixture tests.
+5. WP-2B: Add lifecycle and text-document sync handlers.
+6. WP-2C: Route hover/definition/references/diagnostics through
+   `ToolingSession`.
 
 2026-05-28 closure update: the original M3.1 work packages have been reviewed
 through WP-7 Generic Closure Audit And Release Baseline. The generic release

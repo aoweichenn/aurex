@@ -206,8 +206,9 @@ tooling::IdeEditImpact impact =
 ```
 
 `IdeSnapshot` 面向内存 buffer：一次构建会保留 source manager、lossless syntax tree、
-AST、checked module、结构化 diagnostics，以及 file/lex/parse/diagnostics 的 query
-records 和 dependency edges。当前入口已覆盖 diagnostics、token/hover、顶层定义跳转、
+AST、checked module、结构化 diagnostics，以及 file/lex/parse/diagnostics 加上
+module/item/signature/body/type-check 的 query records、dependency edges 和 query-backed
+`semantic_facts`。当前入口已覆盖 diagnostics、token/hover、顶层定义跳转、
 同名 identifier references、checked-backed 全局符号与 AST 局部参数 / `let` 绑定 fallback，
 以及编辑影响 node 选择；diagnostics 会先归一为结构化 event stream，再进入 query
 fingerprint 或 CLI 渲染。每个 `IdeDiagnostic` 还携带 `owner_stages`，这些 stage metadata

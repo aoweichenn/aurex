@@ -87,10 +87,10 @@ metadata, and `IdeDiagnostic` owner-stage metadata, instead of bypassing it.
 
 M3.4 first implementation order:
 
-1. WP-1A: Add incremental snapshot input/result value types.
-2. WP-1B: Thread previous snapshot context through `ToolingSession`.
+1. WP-1A: Add incremental snapshot input/result value types. Completed.
+2. WP-1B: Thread previous snapshot context through `ToolingSession`. Completed.
 3. WP-1C: Add no-previous, matching-previous, stale-version, and malformed
-   input tests.
+   input tests. Completed.
 4. WP-2A: Reuse unchanged query records as executable semantic fact inputs.
 5. WP-2B: Validate body-local and signature-local edit behavior.
 6. WP-3A: Stabilize semantic fact identity through repeated edit cycles.
@@ -107,6 +107,14 @@ gates are now complete for this batch.
 M3.4 real incremental sema execution, M3.5 incremental syntax/stable AST
 identity, M3.6 project graph/persistent query DB, M3.7 IDE semantic features,
 M3.8 query-backed lowering/backend reuse, and M3.9 release closure.
+
+2026-05-29 M3.4 WP-1 implementation update: `ToolingSession` now preserves the
+previous materialized snapshot on document change, threads previous
+snapshot/query summary into the next snapshot build result, exposes
+`ToolingIncrementalSnapshotInput` / `ToolingIncrementalSnapshotResult` through
+`ToolingSnapshotHandle`, and classifies clean builds, cache hits, accepted
+previous context, stale context, mismatched context, and malformed context.
+Next implementation target: WP-2A executable query-record reuse.
 
 2026-05-28 closure update: the original M3.1 work packages have been reviewed
 through WP-7 Generic Closure Audit And Release Baseline. The generic release

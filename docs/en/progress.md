@@ -125,6 +125,16 @@ remain stable across body-local/signature/module edits, and the workspace index
 should update by affected fact identity where possible. The broader M3.4-M3.9
 route is now explicit in the [M3 Roadmap](m3-roadmap.md).
 
+As of 2026-05-29, M3.4 WP-1 Incremental Snapshot Build Input is complete for
+the current acceptance boundary. `ToolingSession` preserves the previous
+materialized snapshot when a document changes, and the next `snapshot(...)`
+call records whether it was a clean build, cache hit, accepted previous
+context, rejected stale context, rejected mismatched context, or rejected
+malformed context. `ToolingSnapshotHandle` carries
+`ToolingIncrementalSnapshotResult`, and focused tests cover no-previous,
+matching-previous, stale, mismatched, malformed, and cache-hit paths. The next
+target is WP-2A executable query-record reuse.
+
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and
 `GenericTypeAliasInstanceInfo` carry structured `GenericInstanceKey` values.

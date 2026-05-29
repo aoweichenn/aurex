@@ -14,6 +14,18 @@ constexpr std::string_view TOOLING_DEFAULT_PACKAGE_IDENTITY = "ide";
 constexpr std::string_view TOOLING_FILE_URI_PREFIX = "file://";
 constexpr std::string_view TOOLING_FILE_URI_LOCALHOST_PREFIX = "file://localhost";
 constexpr std::string_view TOOLING_URI_HEX_DIGITS = "0123456789ABCDEF";
+constexpr std::string_view TOOLING_INCREMENTAL_STATUS_CLEAN_BUILD = "clean_build";
+constexpr std::string_view TOOLING_INCREMENTAL_STATUS_CACHED_SNAPSHOT = "cached_snapshot";
+constexpr std::string_view TOOLING_INCREMENTAL_STATUS_PREVIOUS_CONTEXT = "previous_context";
+constexpr std::string_view TOOLING_INCREMENTAL_STATUS_REJECTED_MISMATCHED_PREVIOUS = "rejected_mismatched_previous";
+constexpr std::string_view TOOLING_INCREMENTAL_STATUS_REJECTED_STALE_PREVIOUS = "rejected_stale_previous";
+constexpr std::string_view TOOLING_INCREMENTAL_STATUS_REJECTED_MALFORMED_PREVIOUS = "rejected_malformed_previous";
+constexpr std::string_view TOOLING_INCREMENTAL_REASON_NO_PREVIOUS = "no previous snapshot context";
+constexpr std::string_view TOOLING_INCREMENTAL_REASON_MISMATCHED_PREVIOUS =
+    "previous snapshot context does not match document";
+constexpr std::string_view TOOLING_INCREMENTAL_REASON_STALE_PREVIOUS =
+    "previous snapshot version is not older than current version";
+constexpr std::string_view TOOLING_INCREMENTAL_REASON_MALFORMED_PREVIOUS = "previous snapshot context is malformed";
 constexpr char TOOLING_DOCUMENT_KEY_SEPARATOR = '\x1F';
 constexpr char TOOLING_URI_PERCENT = '%';
 constexpr char TOOLING_URI_SPACE = ' ';
@@ -95,6 +107,33 @@ void tooling_append_percent_encoded(std::string& out, const unsigned char ch)
 {
     return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '.'
         || ch == '-' || ch == '_' || ch == '~' || ch == TOOLING_URI_SLASH || ch == TOOLING_URI_COLON;
+}
+
+[[nodiscard]] bool tooling_version_is_older(
+    const ToolingDocumentVersion& previous, const ToolingDocumentVersion& current) noexcept
+{
+    if (previous.generation >= current.generation) {
+        return false;
+    }
+    if (previous.client_version.has_value() && current.client_version.has_value()
+        && *previous.client_version >= *current.client_version) {
+        return false;
+    }
+    return true;
+}
+
+[[nodiscard]] bool tooling_incremental_input_shape_is_malformed(const ToolingIncrementalSnapshotInput& input) noexcept
+{
+    return input.previous_context_malformed
+        || (input.previous_query_records == 0
+            && (input.previous_dependency_edges != 0 || input.previous_semantic_facts != 0));
+}
+
+void tooling_fill_current_incremental_counts(ToolingIncrementalSnapshotResult& result, const IdeSnapshot& snapshot)
+{
+    result.current_query_records = snapshot.query.records.size();
+    result.current_dependency_edges = snapshot.query.dependencies.size();
+    result.current_semantic_facts = snapshot.query.semantic_facts.size();
 }
 
 [[nodiscard]] std::string tooling_kind_for_item(const syntax::ItemKind kind)
@@ -466,6 +505,56 @@ ToolingSourcePosition tooling_position_for_offset(const std::string_view text, c
     return position;
 }
 
+std::string_view tooling_incremental_snapshot_status_name(const ToolingIncrementalSnapshotStatus status) noexcept
+{
+    switch (status) {
+        case ToolingIncrementalSnapshotStatus::clean_build:
+            return TOOLING_INCREMENTAL_STATUS_CLEAN_BUILD;
+        case ToolingIncrementalSnapshotStatus::cached_snapshot:
+            return TOOLING_INCREMENTAL_STATUS_CACHED_SNAPSHOT;
+        case ToolingIncrementalSnapshotStatus::previous_context:
+            return TOOLING_INCREMENTAL_STATUS_PREVIOUS_CONTEXT;
+        case ToolingIncrementalSnapshotStatus::rejected_mismatched_previous:
+            return TOOLING_INCREMENTAL_STATUS_REJECTED_MISMATCHED_PREVIOUS;
+        case ToolingIncrementalSnapshotStatus::rejected_stale_previous:
+            return TOOLING_INCREMENTAL_STATUS_REJECTED_STALE_PREVIOUS;
+        case ToolingIncrementalSnapshotStatus::rejected_malformed_previous:
+            return TOOLING_INCREMENTAL_STATUS_REJECTED_MALFORMED_PREVIOUS;
+    }
+    return TOOLING_INCREMENTAL_STATUS_REJECTED_MALFORMED_PREVIOUS;
+}
+
+ToolingIncrementalSnapshotResult tooling_incremental_snapshot_result(
+    const ToolingIncrementalSnapshotInput& input, const IdeSnapshot& snapshot)
+{
+    ToolingIncrementalSnapshotResult result;
+    result.input = input;
+    tooling_fill_current_incremental_counts(result, snapshot);
+    if (!input.has_previous_snapshot) {
+        result.status = ToolingIncrementalSnapshotStatus::clean_build;
+        result.fallback_reason = std::string(TOOLING_INCREMENTAL_REASON_NO_PREVIOUS);
+        return result;
+    }
+    if (!input.previous_document_matches) {
+        result.status = ToolingIncrementalSnapshotStatus::rejected_mismatched_previous;
+        result.fallback_reason = std::string(TOOLING_INCREMENTAL_REASON_MISMATCHED_PREVIOUS);
+        return result;
+    }
+    if (!input.previous_version_is_older) {
+        result.status = ToolingIncrementalSnapshotStatus::rejected_stale_previous;
+        result.fallback_reason = std::string(TOOLING_INCREMENTAL_REASON_STALE_PREVIOUS);
+        return result;
+    }
+    if (tooling_incremental_input_shape_is_malformed(input)) {
+        result.status = ToolingIncrementalSnapshotStatus::rejected_malformed_previous;
+        result.fallback_reason = std::string(TOOLING_INCREMENTAL_REASON_MALFORMED_PREVIOUS);
+        return result;
+    }
+    result.status = ToolingIncrementalSnapshotStatus::previous_context;
+    result.used_previous_context = true;
+    return result;
+}
+
 ToolingSession::ToolingSession() = default;
 
 ToolingSession::ToolingSession(ToolingProjectConfig config) : config_(std::move(config))
@@ -526,6 +615,13 @@ base::Result<ToolingDocumentVersion> ToolingSession::change_document(
         && *client_version <= *found->second.state.version.client_version) {
         return base::Result<ToolingDocumentVersion>::fail(
             {base::ErrorCode::invalid_source, "stale tooling document version"});
+    }
+    if (found->second.cached_snapshot != nullptr && found->second.cached_version == found->second.state.version) {
+        found->second.previous_cached_snapshot = found->second.cached_snapshot;
+        found->second.previous_cached_version = found->second.cached_version;
+    } else {
+        found->second.previous_cached_snapshot.reset();
+        found->second.previous_cached_version = {};
     }
     const ToolingDocumentVersion version = this->next_version(client_version);
     this->workspace_index_.remove_document(found->second.state.id);
@@ -588,10 +684,16 @@ base::Result<ToolingSnapshotHandle> ToolingSession::snapshot(const ToolingDocume
     }
     DocumentSlot& slot = found->second;
     if (slot.cached_snapshot != nullptr && slot.cached_version == slot.state.version) {
-        ToolingSnapshotHandle handle{slot.state.id, slot.state.version, slot.cached_snapshot};
+        ToolingIncrementalSnapshotResult cached_result = slot.last_snapshot_result;
+        cached_result.status = ToolingIncrementalSnapshotStatus::cached_snapshot;
+        cached_result.from_cache = true;
+        cached_result.used_previous_context = false;
+        cached_result.fallback_reason.clear();
+        ToolingSnapshotHandle handle{slot.state.id, slot.state.version, slot.cached_snapshot, std::move(cached_result)};
         this->workspace_index_.index_snapshot(handle);
         return base::Result<ToolingSnapshotHandle>::ok(std::move(handle));
     }
+    const ToolingIncrementalSnapshotInput incremental_input = this->incremental_input_for_slot(slot);
     IdeSnapshotRequest request;
     request.path = slot.state.id.path;
     request.text = slot.state.text;
@@ -601,9 +703,10 @@ base::Result<ToolingSnapshotHandle> ToolingSession::snapshot(const ToolingDocume
     request.source_role = slot.state.id.source_role;
     auto cached = std::make_shared<IdeSnapshot>();
     build_ide_snapshot_into(*cached, request);
+    slot.last_snapshot_result = tooling_incremental_snapshot_result(incremental_input, *cached);
     slot.cached_snapshot = std::move(cached);
     slot.cached_version = slot.state.version;
-    ToolingSnapshotHandle handle{slot.state.id, slot.state.version, slot.cached_snapshot};
+    ToolingSnapshotHandle handle{slot.state.id, slot.state.version, slot.cached_snapshot, slot.last_snapshot_result};
     this->workspace_index_.index_snapshot(handle);
     return base::Result<ToolingSnapshotHandle>::ok(std::move(handle));
 }
@@ -818,6 +921,25 @@ ToolingDocumentVersion ToolingSession::next_version(const std::optional<base::i6
 {
     ++this->next_generation_;
     return ToolingDocumentVersion{this->next_generation_, client_version};
+}
+
+ToolingIncrementalSnapshotInput ToolingSession::incremental_input_for_slot(const DocumentSlot& slot) const
+{
+    ToolingIncrementalSnapshotInput input;
+    input.document = slot.state.id;
+    input.current_version = slot.state.version;
+    if (slot.previous_cached_snapshot == nullptr) {
+        return input;
+    }
+    input.previous_version = slot.previous_cached_version;
+    input.has_previous_snapshot = true;
+    input.previous_document_matches = true;
+    input.previous_version_is_older = tooling_version_is_older(input.previous_version, input.current_version);
+    input.previous_query_records = slot.previous_cached_snapshot->query.records.size();
+    input.previous_dependency_edges = slot.previous_cached_snapshot->query.dependencies.size();
+    input.previous_semantic_facts = slot.previous_cached_snapshot->query.semantic_facts.size();
+    input.previous_context_malformed = tooling_incremental_input_shape_is_malformed(input);
+    return input;
 }
 
 std::unordered_map<std::string, ToolingSession::DocumentSlot>::iterator ToolingSession::find_slot(

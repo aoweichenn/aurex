@@ -383,7 +383,7 @@ The M3.1 implementation route is:
 The completed M3.0 module, M3.1 generic, M3.2 query-backed sema, and M3.3
 tooling orders remain as historical acceptance. The active M3.4 order is:
 
-1. Incremental snapshot build input.
+1. Incremental snapshot build input. Completed.
 2. Query record reuse execution.
 3. Semantic fact stability for body-local and signature-local edits.
 4. Workspace index incremental update.
@@ -423,6 +423,12 @@ and `m3.4` has been created from that closed baseline. The M3.4 design entry
 point is `m3.4-real-incremental-sema-plan.md`; the phase now prioritizes real
 incremental sema execution before syntax incrementality, project graph
 persistence, advanced IDE features, and query-backed lowering.
+
+2026-05-29: M3.4 WP-1 Incremental Snapshot Build Input is complete.
+`ToolingSession` preserves previous materialized snapshots across document
+changes, and `ToolingSnapshotHandle` now exposes
+`ToolingIncrementalSnapshotResult` for clean builds, cache hits, accepted
+previous context, stale/mismatched context, and malformed context.
 
 ## Acceptance
 

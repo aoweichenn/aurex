@@ -286,7 +286,7 @@ M3.1 开发路线固定为：
 已完成的 M3.0 模块、M3.1 泛型、M3.2 query-backed sema 和 M3.3 tooling 顺序作为历史验收保留。
 当前 M3.4 按下列顺序推进：
 
-1. Incremental snapshot build input。
+1. Incremental snapshot build input。已完成。
 2. Query record reuse execution。
 3. Body-local / signature-local edit 的 semantic fact stability。
 4. Workspace index incremental update。
@@ -493,6 +493,11 @@ M3.3 的设计入口固定为 `m3.3-tooling-incremental-plan.md`；WP-1 到 WP-6
 2026-05-29：M3.3 已 fast-forward 合并回 `m3`，并已从收口基线切出 `m3.4`。M3.4 的设计入口固定为
 `m3.4-real-incremental-sema-plan.md`；当前阶段优先做真实 incremental sema execution，然后再进入
 incremental syntax、project graph persistence、高级 IDE features 和 query-backed lowering。
+
+2026-05-29：M3.4 WP-1 Incremental Snapshot Build Input 已完成。`ToolingSession` 在 document change
+后保留 previous materialized snapshot；`ToolingSnapshotHandle` 现在暴露
+`ToolingIncrementalSnapshotResult`，用于记录 clean build、cache hit、accepted previous context、
+stale/mismatched context 和 malformed context。
 
 ## 验收
 

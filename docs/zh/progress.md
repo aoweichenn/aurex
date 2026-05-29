@@ -70,6 +70,13 @@ snapshot/query context，query reuse decision 必须驱动局部重算，semanti
 signature / module edits 后保持稳定，workspace index 尽量按 affected fact identity 更新。完整 M3.4-M3.9
 路线已写入 [M3 路线图](m3-roadmap.md)。
 
+2026-05-29：M3.4 WP-1 Incremental Snapshot Build Input 已完成当前验收边界。`ToolingSession` 在 document
+change 时保留上一版已经 materialized 的 snapshot，下一次 `snapshot(...)` 会记录 clean build、cache hit、
+accepted previous context、rejected stale context、rejected mismatched context 或 rejected malformed context。
+`ToolingSnapshotHandle` 携带 `ToolingIncrementalSnapshotResult`；聚焦测试覆盖 no-previous、
+matching-previous、stale、mismatched、malformed 和 cache-hit 路径。下一目标是 WP-2A executable
+query-record reuse。
+
 2026-05-28 WP-1B Generic Instance Identity Propagation 已完成：`FunctionSignature`、`EnumCaseInfo`、
 `GenericEnumInstanceInfo` 和 `GenericTypeAliasInstanceInfo` 都携带结构化 `GenericInstanceKey`；
 generic function / owner-generic method 的 retained 与 non-retained 路径都会把 identity 写入 checked

@@ -45,10 +45,44 @@ struct ToolingDocumentState {
     bool open = false;
 };
 
+enum class ToolingIncrementalSnapshotStatus : base::u8 {
+    clean_build,
+    cached_snapshot,
+    previous_context,
+    rejected_mismatched_previous,
+    rejected_stale_previous,
+    rejected_malformed_previous,
+};
+
+struct ToolingIncrementalSnapshotInput {
+    ToolingDocumentId document;
+    ToolingDocumentVersion current_version;
+    ToolingDocumentVersion previous_version;
+    bool has_previous_snapshot = false;
+    bool previous_document_matches = false;
+    bool previous_version_is_older = false;
+    bool previous_context_malformed = false;
+    base::usize previous_query_records = 0;
+    base::usize previous_dependency_edges = 0;
+    base::usize previous_semantic_facts = 0;
+};
+
+struct ToolingIncrementalSnapshotResult {
+    ToolingIncrementalSnapshotStatus status = ToolingIncrementalSnapshotStatus::clean_build;
+    ToolingIncrementalSnapshotInput input;
+    base::usize current_query_records = 0;
+    base::usize current_dependency_edges = 0;
+    base::usize current_semantic_facts = 0;
+    std::string fallback_reason;
+    bool used_previous_context = false;
+    bool from_cache = false;
+};
+
 struct ToolingSnapshotHandle {
     ToolingDocumentId document;
     ToolingDocumentVersion version;
     std::shared_ptr<const IdeSnapshot> snapshot;
+    ToolingIncrementalSnapshotResult incremental;
 
     [[nodiscard]] explicit operator bool() const noexcept
     {
@@ -267,6 +301,10 @@ private:
 [[nodiscard]] base::usize tooling_offset_for_position(
     std::string_view text, ToolingSourcePosition position) noexcept;
 [[nodiscard]] ToolingSourcePosition tooling_position_for_offset(std::string_view text, base::usize offset) noexcept;
+[[nodiscard]] std::string_view tooling_incremental_snapshot_status_name(
+    ToolingIncrementalSnapshotStatus status) noexcept;
+[[nodiscard]] ToolingIncrementalSnapshotResult tooling_incremental_snapshot_result(
+    const ToolingIncrementalSnapshotInput& input, const IdeSnapshot& snapshot);
 [[nodiscard]] std::string_view tooling_reuse_fact_status_name(ToolingReuseFactStatus status) noexcept;
 [[nodiscard]] ToolingReusePlan tooling_plan_reuse(
     const IdeSnapshot& before, const IdeSnapshot& after, const IdeEditImpact& impact);
@@ -311,10 +349,14 @@ private:
         ToolingDocumentState state;
         ToolingDocumentVersion cached_version;
         std::shared_ptr<const IdeSnapshot> cached_snapshot;
+        ToolingDocumentVersion previous_cached_version;
+        std::shared_ptr<const IdeSnapshot> previous_cached_snapshot;
+        ToolingIncrementalSnapshotResult last_snapshot_result;
     };
 
     [[nodiscard]] ToolingDocumentId normalize_document_id(const ToolingDocumentId& id) const;
     [[nodiscard]] ToolingDocumentVersion next_version(std::optional<base::i64> client_version);
+    [[nodiscard]] ToolingIncrementalSnapshotInput incremental_input_for_slot(const DocumentSlot& slot) const;
     [[nodiscard]] std::unordered_map<std::string, DocumentSlot>::iterator find_slot(const ToolingDocumentId& id);
     [[nodiscard]] std::unordered_map<std::string, DocumentSlot>::const_iterator find_slot(
         const ToolingDocumentId& id) const;

@@ -302,9 +302,19 @@ TEST(CoreUnit, ToolingSessionManagesVersionedDocumentsAndSnapshotCache)
 
     base::Result<tooling::ToolingSnapshotHandle> first_snapshot = session.snapshot(document);
     ASSERT_TRUE(first_snapshot);
+    EXPECT_EQ(first_snapshot.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::clean_build);
+    EXPECT_FALSE(first_snapshot.value().incremental.used_previous_context);
+    EXPECT_FALSE(first_snapshot.value().incremental.from_cache);
+    EXPECT_FALSE(first_snapshot.value().incremental.input.has_previous_snapshot);
+    EXPECT_EQ(first_snapshot.value().incremental.current_query_records,
+        first_snapshot.value().snapshot->query.records.size());
+    EXPECT_EQ(
+        tooling::tooling_incremental_snapshot_status_name(first_snapshot.value().incremental.status), "clean_build");
     base::Result<tooling::ToolingSnapshotHandle> reused_snapshot = session.snapshot(document);
     ASSERT_TRUE(reused_snapshot);
     EXPECT_EQ(first_snapshot.value().snapshot.get(), reused_snapshot.value().snapshot.get());
+    EXPECT_EQ(reused_snapshot.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::cached_snapshot);
+    EXPECT_TRUE(reused_snapshot.value().incremental.from_cache);
 
     constexpr std::array<std::string_view, 1> expected_package{TOOLING_SESSION_PACKAGE};
     EXPECT_EQ(first_snapshot.value().snapshot->query.source_stage.file.package, query::package_key(expected_package));
@@ -325,6 +335,17 @@ TEST(CoreUnit, ToolingSessionManagesVersionedDocumentsAndSnapshotCache)
     ASSERT_TRUE(changed_snapshot);
     EXPECT_NE(first_snapshot.value().snapshot.get(), changed_snapshot.value().snapshot.get());
     EXPECT_TRUE(changed_snapshot.value().snapshot->has_errors);
+    EXPECT_EQ(changed_snapshot.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::previous_context);
+    EXPECT_TRUE(changed_snapshot.value().incremental.used_previous_context);
+    EXPECT_TRUE(changed_snapshot.value().incremental.input.has_previous_snapshot);
+    EXPECT_TRUE(changed_snapshot.value().incremental.input.previous_document_matches);
+    EXPECT_TRUE(changed_snapshot.value().incremental.input.previous_version_is_older);
+    EXPECT_GT(changed_snapshot.value().incremental.input.previous_query_records, 0U);
+    EXPECT_GT(changed_snapshot.value().incremental.input.previous_semantic_facts, 0U);
+    EXPECT_EQ(changed_snapshot.value().incremental.input.previous_version.client_version,
+        std::optional<base::i64>(TOOLING_VERSION_ONE));
+    EXPECT_EQ(tooling::tooling_incremental_snapshot_status_name(changed_snapshot.value().incremental.status),
+        "previous_context");
 
     base::Result<std::vector<tooling::ToolingDiagnostic>> diagnostics = session.diagnostics(document);
     ASSERT_TRUE(diagnostics);
@@ -336,6 +357,67 @@ TEST(CoreUnit, ToolingSessionManagesVersionedDocumentsAndSnapshotCache)
     EXPECT_TRUE(session.close_document(document));
     EXPECT_FALSE(session.is_open(document));
     EXPECT_FALSE(session.snapshot(document));
+}
+
+TEST(CoreUnit, ToolingSessionClassifiesIncrementalSnapshotInputs)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.change_document(document, std::string(TOOLING_SESSION_INVALID_SOURCE), TOOLING_VERSION_TWO));
+
+    base::Result<tooling::ToolingSnapshotHandle> no_previous_snapshot = session.snapshot(document);
+    ASSERT_TRUE(no_previous_snapshot);
+    EXPECT_EQ(no_previous_snapshot.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::clean_build);
+    EXPECT_FALSE(no_previous_snapshot.value().incremental.input.has_previous_snapshot);
+    EXPECT_FALSE(no_previous_snapshot.value().incremental.fallback_reason.empty());
+    EXPECT_EQ(no_previous_snapshot.value().incremental.current_query_records,
+        no_previous_snapshot.value().snapshot->query.records.size());
+    EXPECT_EQ(
+        tooling::tooling_incremental_snapshot_status_name(tooling::ToolingIncrementalSnapshotStatus::cached_snapshot),
+        "cached_snapshot");
+
+    tooling::ToolingIncrementalSnapshotInput input;
+    input.document = document;
+    input.current_version = no_previous_snapshot.value().version;
+    input.has_previous_snapshot = true;
+
+    tooling::ToolingIncrementalSnapshotResult mismatch =
+        tooling::tooling_incremental_snapshot_result(input, *no_previous_snapshot.value().snapshot);
+    EXPECT_EQ(mismatch.status, tooling::ToolingIncrementalSnapshotStatus::rejected_mismatched_previous);
+    EXPECT_FALSE(mismatch.used_previous_context);
+    EXPECT_FALSE(mismatch.fallback_reason.empty());
+    EXPECT_EQ(tooling::tooling_incremental_snapshot_status_name(mismatch.status), "rejected_mismatched_previous");
+
+    input.previous_document_matches = true;
+    tooling::ToolingIncrementalSnapshotResult stale =
+        tooling::tooling_incremental_snapshot_result(input, *no_previous_snapshot.value().snapshot);
+    EXPECT_EQ(stale.status, tooling::ToolingIncrementalSnapshotStatus::rejected_stale_previous);
+    EXPECT_EQ(tooling::tooling_incremental_snapshot_status_name(stale.status), "rejected_stale_previous");
+
+    input.previous_version_is_older = true;
+    input.previous_context_malformed = true;
+    tooling::ToolingIncrementalSnapshotResult malformed =
+        tooling::tooling_incremental_snapshot_result(input, *no_previous_snapshot.value().snapshot);
+    EXPECT_EQ(malformed.status, tooling::ToolingIncrementalSnapshotStatus::rejected_malformed_previous);
+    EXPECT_FALSE(malformed.used_previous_context);
+    EXPECT_EQ(tooling::tooling_incremental_snapshot_status_name(malformed.status), "rejected_malformed_previous");
+
+    input.previous_context_malformed = false;
+    input.previous_query_records = 0U;
+    input.previous_dependency_edges = 1U;
+    tooling::ToolingIncrementalSnapshotResult malformed_shape =
+        tooling::tooling_incremental_snapshot_result(input, *no_previous_snapshot.value().snapshot);
+    EXPECT_EQ(malformed_shape.status, tooling::ToolingIncrementalSnapshotStatus::rejected_malformed_previous);
+
+    input.previous_dependency_edges = 0U;
+    input.previous_query_records = 1U;
+    tooling::ToolingIncrementalSnapshotResult accepted =
+        tooling::tooling_incremental_snapshot_result(input, *no_previous_snapshot.value().snapshot);
+    EXPECT_EQ(accepted.status, tooling::ToolingIncrementalSnapshotStatus::previous_context);
+    EXPECT_TRUE(accepted.used_previous_context);
+    EXPECT_TRUE(accepted.fallback_reason.empty());
 }
 
 TEST(CoreUnit, ToolingSessionProjectsIdeFeaturesWithoutLspTypes)
@@ -712,6 +794,7 @@ TEST(CoreUnit, ToolingSessionProjectsMemberDefinitionsReferencesAndNoModuleIndex
         symbol_snapshot.value().document,
         symbol_snapshot.value().version,
         std::make_shared<tooling::IdeSnapshot>(std::move(no_module_snapshot)),
+        {},
     });
     const tooling::ToolingWorkspaceIndexStats no_module_stats = no_module_index.stats();
     EXPECT_EQ(no_module_stats.documents, 1U);
@@ -741,6 +824,7 @@ TEST(CoreUnit, ToolingWorkspaceIndexHandlesInvalidAndFallbackStableSymbols)
         handle.value().document,
         handle.value().version,
         std::make_shared<tooling::IdeSnapshot>(std::move(invalid_snapshot)),
+        {},
     });
     const tooling::ToolingWorkspaceIndexStats invalid_stats = invalid_index.stats();
     EXPECT_EQ(invalid_stats.documents, 1U);
@@ -763,6 +847,7 @@ TEST(CoreUnit, ToolingWorkspaceIndexHandlesInvalidAndFallbackStableSymbols)
         handle.value().document,
         handle.value().version,
         std::make_shared<tooling::IdeSnapshot>(std::move(malformed_fact_snapshot)),
+        {},
     });
     const std::vector<tooling::ToolingIndexedSemanticFact> malformed_input_facts =
         malformed_fact_index.facts_for_document(handle.value().document);
@@ -783,6 +868,7 @@ TEST(CoreUnit, ToolingWorkspaceIndexHandlesInvalidAndFallbackStableSymbols)
         handle.value().document,
         handle.value().version,
         std::make_shared<tooling::IdeSnapshot>(std::move(fallback_snapshot)),
+        {},
     });
     const tooling::ToolingWorkspaceIndexStats fallback_stats = fallback_index.stats();
     EXPECT_EQ(fallback_stats.documents, 1U);
@@ -802,6 +888,7 @@ TEST(CoreUnit, ToolingWorkspaceIndexHandlesInvalidAndFallbackStableSymbols)
         handle.value().document,
         handle.value().version,
         std::make_shared<tooling::IdeSnapshot>(std::move(invalid_field_snapshot)),
+        {},
     });
     const tooling::ToolingWorkspaceIndexStats invalid_field_stats = invalid_field_index.stats();
     EXPECT_EQ(invalid_field_stats.documents, 1U);

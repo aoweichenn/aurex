@@ -60,6 +60,7 @@ if(BUILD_TESTING)
         tests/gtest/frontend/parser_tests.cpp
         tests/gtest/sema/sema_whitebox_tests.cpp
         tests/gtest/tooling/ide_tooling_tests.cpp
+        tests/gtest/tooling/session_lsp_tooling_tests.cpp
     )
     target_link_libraries(aurex_frontend_tests PRIVATE
         GTest::gtest_main
@@ -128,6 +129,7 @@ if(BUILD_TESTING)
             tests/gtest/sema/sema_whitebox_tests.cpp
             tests/gtest/sema/type_alias_tests.cpp
             tests/gtest/tooling/ide_tooling_tests.cpp
+            tests/gtest/tooling/session_lsp_tooling_tests.cpp
         )
         target_link_libraries(aurex_tests PRIVATE
             GTest::gtest_main

@@ -13,13 +13,13 @@ diagnostics JSON, profile JSON, incremental-cache, and emit-mode behavior.
 M3.0 module-system closure, M3.1 generics closure, and M3.2 Query-backed Sema
 WP-1 through WP-6 have all been merged back to `m3`. The active branch is
 `m3.3`, focused on tooling sessions, LSP adapter boundaries, and finer-grained
-incremental sema:
+incremental sema. WP-1 through WP-3 are now implemented on this branch:
 
-- Add a protocol-neutral `ToolingSession` above `IdeSnapshot`.
-- Keep LSP JSON-RPC as an adapter, not as compiler-internal state.
-- Make open-buffer edits versioned and deterministic.
-- Route diagnostics, hover, definition, and references through the tooling
-  session and M3.2 query-backed semantic facts.
+- Added a protocol-neutral `ToolingSession` above `IdeSnapshot`.
+- Kept LSP JSON-RPC as an adapter, not as compiler-internal state.
+- Made open-buffer edits versioned and deterministic.
+- Routed diagnostics, hover, definition, references, and document symbols through
+  the tooling session and M3.2 query-backed semantic facts.
 - Use `IdeEditImpact`, query records, and dependency edges to explain edit
   invalidation and reuse.
 - Add a small dynamic workspace semantic index for open files before building a
@@ -84,15 +84,26 @@ including public `PipelineStageMetadata`,
 `pipeline_profile_phase_classification(...)`, `stage` / `parent_stage` profile
 metadata, and `IdeDiagnostic` owner-stage metadata, instead of bypassing it.
 
-M3.3 first implementation order:
+M3.3 first implementation order, now closed:
 
 1. WP-1A: Add protocol-neutral `ToolingSession` and versioned document store.
+   Completed.
 2. WP-1B: Cache `IdeSnapshot` by document id/version and package config.
+   Completed.
 3. WP-1C: Add session-level diagnostics/hover/definition/reference wrappers.
+   Completed.
 4. WP-2A: Add deterministic JSON-RPC message parser/writer fixture tests.
-5. WP-2B: Add lifecycle and text-document sync handlers.
+   Completed.
+5. WP-2B: Add lifecycle and text-document sync handlers. Completed.
 6. WP-2C: Route hover/definition/references/diagnostics through
-   `ToolingSession`.
+   `ToolingSession`. Completed.
+
+2026-05-29 M3.3 WP-1/2/3 implementation update: `aurex_tooling` now has a
+versioned `ToolingSession`, in-place `IdeSnapshot` cache construction, and a
+minimal `LspServer` adapter for JSON-RPC lifecycle, full text sync,
+diagnostics, hover, definition, references, and document symbols. The next
+implementation batch is WP-4 incremental reuse planning, followed by WP-5
+workspace semantic indexing.
 
 2026-05-28 closure update: the original M3.1 work packages have been reviewed
 through WP-7 Generic Closure Audit And Release Baseline. The generic release

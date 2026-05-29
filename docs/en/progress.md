@@ -109,10 +109,14 @@ As of 2026-05-29, M3.2 has been fast-forward merged back to `m3`, and `m3.3`
 has been created for Tooling Session and Incremental Sema work. The new design
 entry point is the
 [Aurex M3.3 Tooling Session And Incremental Sema Plan](m3.3-tooling-incremental-plan.md).
-The first implementation package is WP-1 Tooling Session And VFS Boundary:
-versioned open-document state, snapshot caching above `IdeSnapshot`, and
-protocol-neutral diagnostics/hover/definition/reference wrappers before any
-larger LSP feature surface.
+WP-1/2/3 are now complete for the current implementation batch: protocol-neutral
+`ToolingSession`, versioned open-document state, `IdeSnapshot` snapshot cache,
+in-place snapshot construction, session-level diagnostics/hover/definition/
+reference wrappers, and a minimal `LspServer` JSON-RPC adapter. The LSP layer
+consumes tooling value types only and does not read parser/sema/query/driver
+internals. Document symbols prefer M3.2 checked `semantic_facts` and fall back
+to AST projection when checked facts are absent. The next batch is WP-4
+Incremental Reuse Planner, followed by WP-5 Workspace Semantic Index.
 
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and

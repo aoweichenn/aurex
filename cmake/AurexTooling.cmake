@@ -1,5 +1,7 @@
 add_library(aurex_tooling
     src/tooling/ide.cpp
+    src/tooling/lsp.cpp
+    src/tooling/session.cpp
 )
 target_link_libraries(aurex_tooling PUBLIC
     aurex_base

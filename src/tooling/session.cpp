@@ -1,0 +1,712 @@
+#include <aurex/base/diagnostic.hpp>
+#include <aurex/query/query_key.hpp>
+#include <aurex/syntax/token.hpp>
+#include <aurex/tooling/session.hpp>
+
+#include <algorithm>
+#include <filesystem>
+#include <utility>
+
+namespace aurex::tooling {
+namespace {
+
+constexpr std::string_view TOOLING_DEFAULT_PACKAGE_IDENTITY = "ide";
+constexpr std::string_view TOOLING_FILE_URI_PREFIX = "file://";
+constexpr std::string_view TOOLING_FILE_URI_LOCALHOST_PREFIX = "file://localhost";
+constexpr std::string_view TOOLING_URI_HEX_DIGITS = "0123456789ABCDEF";
+constexpr char TOOLING_DOCUMENT_KEY_SEPARATOR = '\x1F';
+constexpr char TOOLING_URI_PERCENT = '%';
+constexpr char TOOLING_URI_SPACE = ' ';
+constexpr char TOOLING_URI_SLASH = '/';
+constexpr char TOOLING_URI_COLON = ':';
+constexpr char TOOLING_URI_BACKSLASH = '\\';
+constexpr base::usize TOOLING_URI_PERCENT_ESCAPE_LENGTH = 3;
+constexpr base::usize TOOLING_HEX_DIGIT_COUNT = 16;
+constexpr int TOOLING_DECIMAL_DIGIT_COUNT = 10;
+constexpr base::usize TOOLING_FIRST_HEX_NIBBLE_SHIFT = 4;
+constexpr base::u32 TOOLING_PRIMARY_PART_INDEX = 0;
+
+[[nodiscard]] std::string_view tooling_package_or_default(const std::string_view package) noexcept
+{
+    return package.empty() ? TOOLING_DEFAULT_PACKAGE_IDENTITY : package;
+}
+
+[[nodiscard]] std::filesystem::path tooling_canonical_or_absolute(const std::filesystem::path& path)
+{
+    std::error_code error;
+    std::filesystem::path canonical = std::filesystem::weakly_canonical(path, error);
+    if (!error) {
+        return canonical;
+    }
+    return std::filesystem::absolute(path);
+}
+
+[[nodiscard]] std::string tooling_normalize_path(const std::string_view path, const ToolingProjectConfig& config)
+{
+    std::filesystem::path candidate{std::string(path)};
+    if (candidate.is_relative() && !config.root_path.empty()) {
+        candidate = std::filesystem::path(config.root_path) / candidate;
+    }
+    return tooling_canonical_or_absolute(candidate).generic_string();
+}
+
+[[nodiscard]] int tooling_hex_value(const char ch) noexcept
+{
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return ch - 'a' + TOOLING_DECIMAL_DIGIT_COUNT;
+    }
+    if (ch >= 'A' && ch <= 'F') {
+        return ch - 'A' + TOOLING_DECIMAL_DIGIT_COUNT;
+    }
+    return -1;
+}
+
+[[nodiscard]] std::string tooling_percent_decode(const std::string_view text)
+{
+    std::string result;
+    result.reserve(text.size());
+    for (base::usize index = 0; index < text.size(); ++index) {
+        if (text[index] == TOOLING_URI_PERCENT && index + TOOLING_URI_PERCENT_ESCAPE_LENGTH <= text.size()) {
+            const int high = tooling_hex_value(text[index + 1U]);
+            const int low = tooling_hex_value(text[index + 2U]);
+            if (high >= 0 && low >= 0) {
+                const int decoded = (high << TOOLING_FIRST_HEX_NIBBLE_SHIFT) | low;
+                result.push_back(static_cast<char>(decoded));
+                index += TOOLING_URI_PERCENT_ESCAPE_LENGTH - 1U;
+                continue;
+            }
+        }
+        result.push_back(text[index]);
+    }
+    return result;
+}
+
+void tooling_append_percent_encoded(std::string& out, const unsigned char ch)
+{
+    out.push_back(TOOLING_URI_PERCENT);
+    out.push_back(TOOLING_URI_HEX_DIGITS[(ch >> TOOLING_FIRST_HEX_NIBBLE_SHIFT) % TOOLING_HEX_DIGIT_COUNT]);
+    out.push_back(TOOLING_URI_HEX_DIGITS[ch % TOOLING_HEX_DIGIT_COUNT]);
+}
+
+[[nodiscard]] bool tooling_uri_char_is_plain(const unsigned char ch) noexcept
+{
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '.'
+        || ch == '-' || ch == '_' || ch == '~' || ch == TOOLING_URI_SLASH || ch == TOOLING_URI_COLON;
+}
+
+[[nodiscard]] std::string tooling_kind_for_item(const syntax::ItemKind kind)
+{
+    switch (kind) {
+        case syntax::ItemKind::const_decl:
+            return "const";
+        case syntax::ItemKind::type_alias:
+            return "type_alias";
+        case syntax::ItemKind::struct_decl:
+            return "struct";
+        case syntax::ItemKind::enum_decl:
+            return "enum";
+        case syntax::ItemKind::opaque_struct_decl:
+            return "opaque_struct";
+        case syntax::ItemKind::fn_decl:
+            return "function";
+        case syntax::ItemKind::extern_block:
+            return "extern_block";
+        case syntax::ItemKind::impl_block:
+            return "impl_block";
+    }
+    return "item";
+}
+
+[[nodiscard]] std::string tooling_kind_for_definition(const query::DefKind kind)
+{
+    switch (kind) {
+        case query::DefKind::function:
+            return "function";
+        case query::DefKind::method:
+            return "method";
+        case query::DefKind::value:
+            return "value";
+        case query::DefKind::const_:
+            return "const";
+        case query::DefKind::global:
+            return "global";
+        case query::DefKind::type_alias:
+            return "type_alias";
+        case query::DefKind::struct_:
+            return "struct";
+        case query::DefKind::enum_:
+            return "enum";
+        case query::DefKind::enum_case:
+            return "enum_case";
+        case query::DefKind::struct_field:
+            return "struct_field";
+        case query::DefKind::generic_template:
+            return "generic_template";
+        case query::DefKind::trait_:
+            return "trait";
+        case query::DefKind::trait_method:
+            return "trait_method";
+        case query::DefKind::associated_type:
+            return "associated_type";
+        case query::DefKind::associated_const:
+            return "associated_const";
+        case query::DefKind::synthetic:
+            return "synthetic";
+        case query::DefKind::invalid:
+            return "invalid";
+    }
+    return "definition";
+}
+
+[[nodiscard]] const base::SourceFile* tooling_source_file_for_range(
+    const IdeSnapshot& snapshot, const base::SourceRange& range) noexcept
+{
+    const std::span<const base::SourceFile> files = snapshot.sources.files();
+    if (range.source.value >= files.size()) {
+        return nullptr;
+    }
+    return &files[range.source.value];
+}
+
+[[nodiscard]] ToolingTextRange tooling_text_range_for_snapshot(
+    const IdeSnapshot& snapshot, const base::SourceRange& range)
+{
+    ToolingTextRange result;
+    result.range = range;
+    const base::SourceFile* const file = tooling_source_file_for_range(snapshot, range);
+    if (file == nullptr) {
+        return result;
+    }
+    result.path = std::string(file->path());
+    result.start = file->line_column(range.begin);
+    result.end = file->line_column(range.end);
+    return result;
+}
+
+[[nodiscard]] std::string tooling_stable_key_or_empty(const query::DefKey key)
+{
+    return query::is_valid(key) ? query::debug_string(key) : std::string{};
+}
+
+[[nodiscard]] std::string tooling_stable_key_or_empty(const query::MemberKey key)
+{
+    return query::is_valid(key) ? query::debug_string(key) : std::string{};
+}
+
+[[nodiscard]] std::string tooling_stable_key_or_empty(const query::QueryKey key)
+{
+    return query::is_valid(key) ? query::debug_string(key) : std::string{};
+}
+
+[[nodiscard]] std::string tooling_stable_key_or_empty(const query::GenericInstanceKey& key)
+{
+    return query::is_valid(key) ? query::debug_string(key) : std::string{};
+}
+
+[[nodiscard]] ToolingDefinition tooling_project_definition(
+    const IdeSnapshot& snapshot, const IdeDefinition& definition)
+{
+    return ToolingDefinition{
+        definition.key,
+        definition.member,
+        definition.generic_instance,
+        tooling_text_range_for_snapshot(snapshot, definition.range),
+        definition.name,
+        definition.kind,
+        tooling_stable_key_or_empty(definition.key),
+        tooling_stable_key_or_empty(definition.member),
+        tooling_stable_key_or_empty(definition.generic_instance),
+        definition.part_index,
+        definition.valid,
+    };
+}
+
+[[nodiscard]] const IdeSemanticFact* tooling_semantic_fact_for_definition(
+    const IdeSnapshot& snapshot, const IdeDefinition& definition) noexcept
+{
+    for (const IdeSemanticFact& fact : snapshot.query.semantic_facts) {
+        if (query::is_valid(definition.key) && fact.definition == definition.key) {
+            return &fact;
+        }
+        if (fact.name == definition.name && fact.range.source.value == definition.range.source.value
+            && fact.range.begin == definition.range.begin && fact.range.end == definition.range.end) {
+            return &fact;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] base::SourceRange tooling_name_range_in_item(
+    const IdeSnapshot& snapshot, const syntax::ItemNode& item) noexcept
+{
+    for (const syntax::Token& token : snapshot.lossless.tokens()) {
+        if (token.kind == syntax::TokenKind::identifier && token.text() == item.name
+            && item.range.begin <= token.range.begin && token.range.end <= item.range.end) {
+            return token.range;
+        }
+    }
+    return item.range;
+}
+
+[[nodiscard]] ToolingDocumentSymbol tooling_symbol_from_fact(
+    const IdeSnapshot& snapshot, const IdeSemanticFact& fact)
+{
+    ToolingDocumentSymbol symbol;
+    symbol.name = fact.name;
+    symbol.kind = tooling_kind_for_definition(fact.definition.kind);
+    symbol.detail = fact.detail;
+    symbol.range = tooling_text_range_for_snapshot(snapshot, fact.range);
+    symbol.selection_range = symbol.range;
+    symbol.query = fact.query;
+    symbol.definition = fact.definition;
+    symbol.stable_query_key = tooling_stable_key_or_empty(fact.query);
+    symbol.stable_definition_key = tooling_stable_key_or_empty(fact.definition);
+    symbol.part_index = fact.part_index;
+    symbol.checked = fact.checked;
+    return symbol;
+}
+
+[[nodiscard]] ToolingDocumentSymbol tooling_symbol_from_item(
+    const IdeSnapshot& snapshot, const syntax::ItemNode& item, const base::u32 part_index)
+{
+    ToolingDocumentSymbol symbol;
+    symbol.name = std::string(item.name);
+    symbol.kind = tooling_kind_for_item(item.kind);
+    symbol.detail = symbol.kind + " " + symbol.name;
+    symbol.range = tooling_text_range_for_snapshot(snapshot, item.range);
+    symbol.selection_range = tooling_text_range_for_snapshot(snapshot, tooling_name_range_in_item(snapshot, item));
+    symbol.part_index = part_index;
+    symbol.checked = false;
+    return symbol;
+}
+
+[[nodiscard]] bool tooling_fact_is_document_symbol(const IdeSemanticFact& fact) noexcept
+{
+    return fact.kind == IdeSemanticFactKind::item_signature
+        || fact.kind == IdeSemanticFactKind::generic_template_signature;
+}
+
+[[nodiscard]] base::u32 tooling_item_part_index(const IdeSnapshot& snapshot, const base::usize index) noexcept
+{
+    return index < snapshot.ast.item_part_indices.size() ? snapshot.ast.item_part_indices[index]
+                                                         : TOOLING_PRIMARY_PART_INDEX;
+}
+
+[[nodiscard]] base::Result<void> tooling_missing_document_error()
+{
+    return base::Result<void>::fail({base::ErrorCode::invalid_source, "tooling document is not open"});
+}
+
+} // namespace
+
+ToolingDocumentId tooling_document_id_from_path(const std::string_view path, const ToolingProjectConfig& config)
+{
+    ToolingDocumentId id;
+    id.path = tooling_normalize_path(path, config);
+    id.uri = tooling_file_uri_from_path(id.path);
+    id.package_identity = std::string(tooling_package_or_default(config.package_identity));
+    id.virtual_buffer_identity = id.uri;
+    id.source_role = config.default_source_role;
+    return id;
+}
+
+ToolingDocumentId tooling_document_id_from_uri(const std::string_view uri, const ToolingProjectConfig& config)
+{
+    const std::optional<std::string> path = tooling_path_from_file_uri(uri);
+    ToolingDocumentId id = tooling_document_id_from_path(path.value_or(std::string(uri)), config);
+    id.uri = std::string(uri);
+    id.virtual_buffer_identity = id.uri;
+    return id;
+}
+
+std::string tooling_document_store_key(const ToolingDocumentId& id)
+{
+    std::string key;
+    key.reserve(id.package_identity.size() + id.path.size() + id.virtual_buffer_identity.size());
+    key.append(id.package_identity);
+    key.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+    key.append(id.path);
+    key.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+    key.append(std::to_string(static_cast<base::u32>(id.source_role)));
+    key.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+    key.append(id.virtual_buffer_identity);
+    return key;
+}
+
+std::string tooling_file_uri_from_path(const std::string_view path)
+{
+    std::string normalized = tooling_normalize_path(path, {});
+    std::replace(normalized.begin(), normalized.end(), TOOLING_URI_BACKSLASH, TOOLING_URI_SLASH);
+    std::string uri;
+    uri.reserve(TOOLING_FILE_URI_PREFIX.size() + normalized.size());
+    uri.append(TOOLING_FILE_URI_PREFIX);
+    for (const unsigned char ch : normalized) {
+        if (ch == TOOLING_URI_SPACE || !tooling_uri_char_is_plain(ch)) {
+            tooling_append_percent_encoded(uri, ch);
+            continue;
+        }
+        uri.push_back(static_cast<char>(ch));
+    }
+    return uri;
+}
+
+std::optional<std::string> tooling_path_from_file_uri(const std::string_view uri)
+{
+    std::string_view path = uri;
+    if (uri.starts_with(TOOLING_FILE_URI_LOCALHOST_PREFIX)) {
+        path = uri.substr(TOOLING_FILE_URI_LOCALHOST_PREFIX.size());
+    } else if (uri.starts_with(TOOLING_FILE_URI_PREFIX)) {
+        path = uri.substr(TOOLING_FILE_URI_PREFIX.size());
+    } else {
+        return std::nullopt;
+    }
+    return tooling_percent_decode(path);
+}
+
+base::usize tooling_offset_for_position(const std::string_view text, const ToolingSourcePosition position) noexcept
+{
+    base::usize line = 0;
+    base::usize line_begin = 0;
+    for (base::usize index = 0; index < text.size() && line < position.line; ++index) {
+        if (text[index] == '\n') {
+            ++line;
+            line_begin = index + 1U;
+        }
+    }
+    if (line < position.line) {
+        return text.size();
+    }
+    base::usize line_end = text.size();
+    for (base::usize index = line_begin; index < text.size(); ++index) {
+        if (text[index] == '\n') {
+            line_end = index;
+            break;
+        }
+    }
+    return std::min(line_begin + position.character, line_end);
+}
+
+ToolingSourcePosition tooling_position_for_offset(const std::string_view text, const base::usize offset) noexcept
+{
+    ToolingSourcePosition position;
+    const base::usize limit = std::min(offset, text.size());
+    base::usize line_begin = 0;
+    for (base::usize index = 0; index < limit; ++index) {
+        if (text[index] == '\n') {
+            ++position.line;
+            line_begin = index + 1U;
+        }
+    }
+    position.character = limit - line_begin;
+    return position;
+}
+
+ToolingSession::ToolingSession() = default;
+
+ToolingSession::ToolingSession(ToolingProjectConfig config) : config_(std::move(config))
+{
+    if (this->config_.package_identity.empty()) {
+        this->config_.package_identity = std::string(TOOLING_DEFAULT_PACKAGE_IDENTITY);
+    }
+}
+
+const ToolingProjectConfig& ToolingSession::project_config() const noexcept
+{
+    return this->config_;
+}
+
+bool ToolingSession::is_open(const ToolingDocumentId& id) const
+{
+    return this->find_slot(id) != this->documents_.end();
+}
+
+std::optional<ToolingDocumentState> ToolingSession::document_state(const ToolingDocumentId& id) const
+{
+    const auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return std::nullopt;
+    }
+    return found->second.state;
+}
+
+base::Result<ToolingDocumentVersion> ToolingSession::open_document(
+    ToolingDocumentId id, std::string text, const std::optional<base::i64> client_version)
+{
+    ToolingDocumentId normalized = this->normalize_document_id(id);
+    const std::string key = tooling_document_store_key(normalized);
+    if (this->documents_.contains(key)) {
+        return base::Result<ToolingDocumentVersion>::fail(
+            {base::ErrorCode::invalid_source, "tooling document is already open"});
+    }
+    const ToolingDocumentVersion version = this->next_version(client_version);
+    DocumentSlot slot;
+    slot.state.id = std::move(normalized);
+    slot.state.version = version;
+    slot.state.text = std::move(text);
+    slot.state.open = true;
+    slot.cached_version = {};
+    this->documents_.emplace(key, std::move(slot));
+    return base::Result<ToolingDocumentVersion>::ok(version);
+}
+
+base::Result<ToolingDocumentVersion> ToolingSession::change_document(
+    const ToolingDocumentId& id, std::string text, const std::optional<base::i64> client_version)
+{
+    auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return base::Result<ToolingDocumentVersion>::fail(
+            {base::ErrorCode::invalid_source, "tooling document is not open"});
+    }
+    if (client_version.has_value() && found->second.state.version.client_version.has_value()
+        && *client_version <= *found->second.state.version.client_version) {
+        return base::Result<ToolingDocumentVersion>::fail(
+            {base::ErrorCode::invalid_source, "stale tooling document version"});
+    }
+    const ToolingDocumentVersion version = this->next_version(client_version);
+    found->second.state.text = std::move(text);
+    found->second.state.version = version;
+    found->second.cached_snapshot.reset();
+    found->second.cached_version = {};
+    return base::Result<ToolingDocumentVersion>::ok(version);
+}
+
+base::Result<void> ToolingSession::close_document(const ToolingDocumentId& id)
+{
+    auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return tooling_missing_document_error();
+    }
+    this->documents_.erase(found);
+    return base::Result<void>::ok();
+}
+
+base::Result<ToolingSnapshotHandle> ToolingSession::snapshot(const ToolingDocumentId& id)
+{
+    auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return base::Result<ToolingSnapshotHandle>::fail(
+            {base::ErrorCode::invalid_source, "tooling document is not open"});
+    }
+    DocumentSlot& slot = found->second;
+    if (slot.cached_snapshot != nullptr && slot.cached_version == slot.state.version) {
+        return base::Result<ToolingSnapshotHandle>::ok(
+            ToolingSnapshotHandle{slot.state.id, slot.state.version, slot.cached_snapshot});
+    }
+    IdeSnapshotRequest request;
+    request.path = slot.state.id.path;
+    request.text = slot.state.text;
+    request.package_identity = std::string(tooling_package_or_default(slot.state.id.package_identity));
+    request.virtual_buffer_identity =
+        slot.state.id.virtual_buffer_identity.empty() ? slot.state.id.uri : slot.state.id.virtual_buffer_identity;
+    request.source_role = slot.state.id.source_role;
+    auto cached = std::make_shared<IdeSnapshot>();
+    build_ide_snapshot_into(*cached, request);
+    slot.cached_snapshot = std::move(cached);
+    slot.cached_version = slot.state.version;
+    return base::Result<ToolingSnapshotHandle>::ok(
+        ToolingSnapshotHandle{slot.state.id, slot.state.version, slot.cached_snapshot});
+}
+
+base::Result<std::vector<ToolingDiagnostic>> ToolingSession::diagnostics(const ToolingDocumentId& id)
+{
+    base::Result<ToolingSnapshotHandle> handle = this->snapshot(id);
+    if (!handle) {
+        return base::Result<std::vector<ToolingDiagnostic>>::fail(handle.error());
+    }
+    const IdeSnapshot& snapshot = *handle.value().snapshot;
+    std::vector<ToolingDiagnostic> result;
+    result.reserve(snapshot.diagnostics.size());
+    for (const IdeDiagnostic& diagnostic : snapshot.diagnostics) {
+        result.push_back(ToolingDiagnostic{
+            diagnostic.severity,
+            diagnostic.category,
+            diagnostic.code,
+            tooling_text_range_for_snapshot(snapshot, diagnostic.range),
+            std::string(base::severity_name(diagnostic.severity)),
+            std::string(base::diagnostic_category_name(diagnostic.category)),
+            std::string(base::diagnostic_code_name(diagnostic.code)),
+            diagnostic.message,
+            diagnostic.owner_stages,
+            diagnostic.source_part,
+        });
+    }
+    return base::Result<std::vector<ToolingDiagnostic>>::ok(std::move(result));
+}
+
+base::Result<std::optional<ToolingHover>> ToolingSession::hover_at_offset(
+    const ToolingDocumentId& id, const base::usize offset)
+{
+    base::Result<ToolingSnapshotHandle> handle = this->snapshot(id);
+    if (!handle) {
+        return base::Result<std::optional<ToolingHover>>::fail(handle.error());
+    }
+    const IdeSnapshot& snapshot = *handle.value().snapshot;
+    const std::optional<IdeHoverInfo> hover = tooling::hover_at_offset(snapshot, offset);
+    if (!hover.has_value()) {
+        return base::Result<std::optional<ToolingHover>>::ok(std::nullopt);
+    }
+
+    ToolingHover projected;
+    projected.range = tooling_text_range_for_snapshot(snapshot, hover->range);
+    projected.label = hover->label;
+    projected.valid = hover->valid;
+    if (hover->definition.has_value()) {
+        projected.definition = tooling_project_definition(snapshot, *hover->definition);
+        const IdeSemanticFact* const fact = tooling_semantic_fact_for_definition(snapshot, *hover->definition);
+        if (fact != nullptr) {
+            projected.detail = fact->detail;
+            projected.semantic_fact_detail = fact->detail;
+            projected.semantic_fact_key = tooling_stable_key_or_empty(fact->query);
+        }
+    }
+    return base::Result<std::optional<ToolingHover>>::ok(std::move(projected));
+}
+
+base::Result<std::optional<ToolingHover>> ToolingSession::hover_at_position(
+    const ToolingDocumentId& id, const ToolingSourcePosition position)
+{
+    const auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return base::Result<std::optional<ToolingHover>>::fail(
+            {base::ErrorCode::invalid_source, "tooling document is not open"});
+    }
+    return this->hover_at_offset(id, tooling_offset_for_position(found->second.state.text, position));
+}
+
+base::Result<std::optional<ToolingDefinition>> ToolingSession::definition_at_offset(
+    const ToolingDocumentId& id, const base::usize offset)
+{
+    base::Result<ToolingSnapshotHandle> handle = this->snapshot(id);
+    if (!handle) {
+        return base::Result<std::optional<ToolingDefinition>>::fail(handle.error());
+    }
+    const IdeSnapshot& snapshot = *handle.value().snapshot;
+    const std::optional<IdeDefinition> definition = tooling::definition_at_offset(snapshot, offset);
+    if (!definition.has_value()) {
+        return base::Result<std::optional<ToolingDefinition>>::ok(std::nullopt);
+    }
+    return base::Result<std::optional<ToolingDefinition>>::ok(tooling_project_definition(snapshot, *definition));
+}
+
+base::Result<std::optional<ToolingDefinition>> ToolingSession::definition_at_position(
+    const ToolingDocumentId& id, const ToolingSourcePosition position)
+{
+    const auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return base::Result<std::optional<ToolingDefinition>>::fail(
+            {base::ErrorCode::invalid_source, "tooling document is not open"});
+    }
+    return this->definition_at_offset(id, tooling_offset_for_position(found->second.state.text, position));
+}
+
+base::Result<std::vector<ToolingReference>> ToolingSession::references_at_offset(
+    const ToolingDocumentId& id, const base::usize offset)
+{
+    base::Result<ToolingSnapshotHandle> handle = this->snapshot(id);
+    if (!handle) {
+        return base::Result<std::vector<ToolingReference>>::fail(handle.error());
+    }
+    const IdeSnapshot& snapshot = *handle.value().snapshot;
+    const std::vector<IdeReference> references = tooling::references_at_offset(snapshot, offset);
+    std::vector<ToolingReference> projected;
+    projected.reserve(references.size());
+    for (const IdeReference& reference : references) {
+        projected.push_back(ToolingReference{
+            tooling_text_range_for_snapshot(snapshot, reference.range),
+            reference.name,
+            reference.is_definition,
+        });
+    }
+    return base::Result<std::vector<ToolingReference>>::ok(std::move(projected));
+}
+
+base::Result<std::vector<ToolingReference>> ToolingSession::references_at_position(
+    const ToolingDocumentId& id, const ToolingSourcePosition position)
+{
+    const auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return base::Result<std::vector<ToolingReference>>::fail(
+            {base::ErrorCode::invalid_source, "tooling document is not open"});
+    }
+    return this->references_at_offset(id, tooling_offset_for_position(found->second.state.text, position));
+}
+
+base::Result<std::vector<ToolingDocumentSymbol>> ToolingSession::document_symbols(const ToolingDocumentId& id)
+{
+    base::Result<ToolingSnapshotHandle> handle = this->snapshot(id);
+    if (!handle) {
+        return base::Result<std::vector<ToolingDocumentSymbol>>::fail(handle.error());
+    }
+    const IdeSnapshot& snapshot = *handle.value().snapshot;
+    std::vector<ToolingDocumentSymbol> symbols;
+    symbols.reserve(snapshot.query.semantic_facts.size());
+    for (const IdeSemanticFact& fact : snapshot.query.semantic_facts) {
+        if (tooling_fact_is_document_symbol(fact)) {
+            symbols.push_back(tooling_symbol_from_fact(snapshot, fact));
+        }
+    }
+    if (symbols.empty() && snapshot.parsed) {
+        symbols.reserve(snapshot.ast.items.size());
+        for (base::usize index = 0; index < snapshot.ast.items.size(); ++index) {
+            const syntax::ItemNode* const item = snapshot.ast.items.ptr(index);
+            if (item == nullptr || item->name.empty()) {
+                continue;
+            }
+            symbols.push_back(tooling_symbol_from_item(snapshot, *item, tooling_item_part_index(snapshot, index)));
+        }
+    }
+    std::ranges::sort(symbols, [](const ToolingDocumentSymbol& lhs, const ToolingDocumentSymbol& rhs) {
+        if (lhs.selection_range.range.begin == rhs.selection_range.range.begin) {
+            return lhs.name < rhs.name;
+        }
+        return lhs.selection_range.range.begin < rhs.selection_range.range.begin;
+    });
+    return base::Result<std::vector<ToolingDocumentSymbol>>::ok(std::move(symbols));
+}
+
+ToolingDocumentId ToolingSession::normalize_document_id(const ToolingDocumentId& id) const
+{
+    ToolingDocumentId normalized = id;
+    if (normalized.path.empty()) {
+        const std::optional<std::string> path = tooling_path_from_file_uri(normalized.uri);
+        if (path.has_value()) {
+            normalized.path = *path;
+        }
+    }
+    normalized.path = tooling_normalize_path(normalized.path, this->config_);
+    if (normalized.uri.empty()) {
+        normalized.uri = tooling_file_uri_from_path(normalized.path);
+    }
+    if (normalized.package_identity.empty()) {
+        normalized.package_identity = std::string(tooling_package_or_default(this->config_.package_identity));
+    }
+    if (normalized.virtual_buffer_identity.empty()) {
+        normalized.virtual_buffer_identity = normalized.uri;
+    }
+    return normalized;
+}
+
+ToolingDocumentVersion ToolingSession::next_version(const std::optional<base::i64> client_version)
+{
+    ++this->next_generation_;
+    return ToolingDocumentVersion{this->next_generation_, client_version};
+}
+
+std::unordered_map<std::string, ToolingSession::DocumentSlot>::iterator ToolingSession::find_slot(
+    const ToolingDocumentId& id)
+{
+    const ToolingDocumentId normalized = this->normalize_document_id(id);
+    return this->documents_.find(tooling_document_store_key(normalized));
+}
+
+std::unordered_map<std::string, ToolingSession::DocumentSlot>::const_iterator ToolingSession::find_slot(
+    const ToolingDocumentId& id) const
+{
+    const ToolingDocumentId normalized = this->normalize_document_id(id);
+    return this->documents_.find(tooling_document_store_key(normalized));
+}
+
+} // namespace aurex::tooling

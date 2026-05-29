@@ -1595,6 +1595,13 @@ void collect_local_symbols_from_function(
 IdeSnapshot build_ide_snapshot(const IdeSnapshotRequest& request)
 {
     IdeSnapshot snapshot;
+    build_ide_snapshot_into(snapshot, request);
+    return snapshot;
+}
+
+void build_ide_snapshot_into(IdeSnapshot& snapshot, const IdeSnapshotRequest& request)
+{
+    snapshot = IdeSnapshot{};
     snapshot.source_id = snapshot.sources.add_source(request.path, request.text);
     const query::FileKey file = ide_file_key(request);
     if (const std::optional<query::QuerySourceStageKeys> keys =
@@ -1646,7 +1653,6 @@ IdeSnapshot build_ide_snapshot(const IdeSnapshotRequest& request)
     evaluate_semantic_queries(snapshot);
     snapshot.has_errors = diagnostics.has_error();
     snapshot.diagnostics = collect_ide_diagnostics(snapshot.sources, diagnostic_stream, snapshot.source_part);
-    return snapshot;
 }
 
 std::optional<IdeTokenInfo> token_info_at_offset(const IdeSnapshot& snapshot, const base::usize offset)

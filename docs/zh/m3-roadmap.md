@@ -105,8 +105,10 @@ M3.3 仍不实现完整 completion、rename、formatting、semantic tokens、多
 package manager、用户 trait、resource semantics、RAII、closure 或 const generic。执行入口见
 [Aurex M3.3 Tooling Session 与 Incremental Sema 计划](m3.3-tooling-incremental-plan.md)。
 
-状态：2026-05-29，`m3.3` 分支已创建，中英文设计计划是当前入口。第一批实现目标是 WP-1
-Tooling Session And VFS Boundary。
+状态：2026-05-29，`m3.3` 分支已完成 WP-1/2/3 当前实现批次：协议无关 `ToolingSession`、
+versioned open-document state、snapshot cache、最小 `LspServer` JSON-RPC adapter，以及
+diagnostics、hover、definition、references、document symbols 的 tooling projection。下一批实现目标是
+WP-4 Incremental Reuse Planner，然后推进 WP-5 Workspace Semantic Index。
 
 ## 非目标
 
@@ -178,13 +180,13 @@ M3.1 开发路线固定为：
 
 ## 推荐落地顺序
 
-已完成的 M3.0 模块、M3.1 泛型和 M3.2 query-backed sema 顺序作为历史验收保留。当前从 M3.3
-开始按下列顺序推进：
+已完成的 M3.0 模块、M3.1 泛型和 M3.2 query-backed sema 顺序作为历史验收保留。M3.3
+当前按下列顺序推进：
 
-1. Tooling session 和 versioned document store。
-2. Snapshot cache 和 session-level IDE wrappers。
-3. LSP JSON-RPC protocol shell。
-4. diagnostics、hover、definition、references 通过 `ToolingSession` 路由。
+1. Tooling session 和 versioned document store。已完成。
+2. Snapshot cache 和 session-level IDE wrappers。已完成。
+3. LSP JSON-RPC protocol shell。已完成。
+4. diagnostics、hover、definition、references 和 document symbols 通过 `ToolingSession` 路由。已完成。
 5. 基于 `IdeEditImpact` 和 query dependency edges 的 incremental reuse planner。
 6. 面向 open files 和 package-local facts 的小型 workspace semantic index。
 
@@ -382,8 +384,8 @@ M3.2 的设计入口固定为 `m3.2-query-backed-sema-plan.md`；后续推进以
 全部 M3 历史。
 
 2026-05-29：M3.2 WP-1 到 WP-6 已 fast-forward 合并回 `m3`，并已从收口基线切出 `m3.3`。
-M3.3 的设计入口固定为 `m3.3-tooling-incremental-plan.md`；下一实现包是 WP-1 Tooling Session And
-VFS Boundary。
+M3.3 的设计入口固定为 `m3.3-tooling-incremental-plan.md`；WP-1/2/3 当前批次已完成，下一实现包是
+WP-4 Incremental Reuse Planner。
 
 ## 验收
 

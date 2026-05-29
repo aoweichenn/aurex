@@ -140,6 +140,7 @@ struct IdeEditImpact {
 };
 
 [[nodiscard]] IdeSnapshot build_ide_snapshot(const IdeSnapshotRequest& request);
+void build_ide_snapshot_into(IdeSnapshot& snapshot, const IdeSnapshotRequest& request);
 [[nodiscard]] std::optional<IdeTokenInfo> token_info_at_offset(const IdeSnapshot& snapshot, base::usize offset);
 [[nodiscard]] std::optional<IdeDefinition> definition_at_offset(const IdeSnapshot& snapshot, base::usize offset);
 [[nodiscard]] std::vector<IdeReference> references_at_offset(const IdeSnapshot& snapshot, base::usize offset);

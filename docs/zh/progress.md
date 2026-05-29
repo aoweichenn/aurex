@@ -59,9 +59,12 @@ work package 已全部完成，后续若继续推进，应以新的 M3.3 / LSP a
 
 2026-05-29：M3.2 已 fast-forward 合并回 `m3`，并已切出 `m3.3` 处理 Tooling Session 与
 Incremental Sema。新的设计入口是
-[Aurex M3.3 Tooling Session 与 Incremental Sema 计划](m3.3-tooling-incremental-plan.md)。第一批实现包是
-WP-1 Tooling Session And VFS Boundary：先做 versioned open-document state、`IdeSnapshot` 上方的 snapshot
-cache，以及协议无关 diagnostics/hover/definition/reference wrappers，再扩 LSP 功能面。
+[Aurex M3.3 Tooling Session 与 Incremental Sema 计划](m3.3-tooling-incremental-plan.md)。WP-1/2/3
+已完成当前实现批次：新增协议无关 `ToolingSession`、versioned open-document state、`IdeSnapshot`
+snapshot cache、in-place snapshot 构建入口、session-level diagnostics/hover/definition/reference wrappers，
+以及最小 `LspServer` JSON-RPC adapter。LSP 层只消费 tooling value types，不读取 parser/sema/query/driver
+internals；document symbols 已优先消费 M3.2 checked `semantic_facts`，无 checked facts 时退回 AST
+projection。下一批进入 WP-4 incremental reuse planner，然后是 WP-5 workspace semantic index。
 
 2026-05-28 WP-1B Generic Instance Identity Propagation 已完成：`FunctionSignature`、`EnumCaseInfo`、
 `GenericEnumInstanceInfo` 和 `GenericTypeAliasInstanceInfo` 都携带结构化 `GenericInstanceKey`；

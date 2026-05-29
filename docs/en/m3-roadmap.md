@@ -152,9 +152,12 @@ traits, resource semantics, RAII, closures, or const generics. The execution
 entry point is the
 [Aurex M3.3 Tooling Session And Incremental Sema Plan](m3.3-tooling-incremental-plan.md).
 
-Status: as of 2026-05-29, the `m3.3` branch has been created and the bilingual
-design plan is the active entry point. The first implementation target is WP-1
-Tooling Session And VFS Boundary.
+Status: as of 2026-05-29, the `m3.3` branch has completed the current WP-1/2/3
+batch: protocol-neutral `ToolingSession`, versioned open-document state,
+snapshot cache, a minimal `LspServer` JSON-RPC adapter, and tooling projection
+for diagnostics, hover, definition, references, and document symbols. The next
+implementation target is WP-4 Incremental Reuse Planner, followed by WP-5
+Workspace Semantic Index.
 
 ## Non-goals
 
@@ -236,13 +239,13 @@ The M3.1 implementation route is:
 ## Recommended Implementation Order
 
 The completed M3.0 module, M3.1 generic, and M3.2 query-backed sema orders
-remain as historical acceptance. The active order starts from M3.3:
+remain as historical acceptance. The active M3.3 order is:
 
-1. Tooling session and versioned document store.
-2. Snapshot cache and session-level IDE wrappers.
-3. LSP JSON-RPC protocol shell.
-4. Diagnostics, hover, definition, and references routed through
-   `ToolingSession`.
+1. Tooling session and versioned document store. Completed.
+2. Snapshot cache and session-level IDE wrappers. Completed.
+3. LSP JSON-RPC protocol shell. Completed.
+4. Diagnostics, hover, definition, references, and document symbols routed
+   through `ToolingSession`. Completed.
 5. Incremental reuse planner over `IdeEditImpact` and query dependency edges.
 6. Small workspace semantic index for open files and package-local facts.
 
@@ -270,8 +273,9 @@ advance by M3.2 work package instead of rereading the full M3 history.
 
 2026-05-29: M3.2 WP-1 through WP-6 have been fast-forward merged back to `m3`,
 and `m3.3` has been created from that closed baseline. The M3.3 design entry
-point is `m3.3-tooling-incremental-plan.md`; the next implementation package is
-WP-1 Tooling Session And VFS Boundary.
+point is `m3.3-tooling-incremental-plan.md`; the current WP-1/2/3 batch is
+complete, and the next implementation package is WP-4 Incremental Reuse
+Planner.
 
 ## Acceptance
 

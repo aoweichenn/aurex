@@ -8,11 +8,15 @@ M3 建立在 M2.5 frontend-foundation 之上。M2.5 已经把 query key、结构
 2. 泛型闭环完善。
 3. Query-backed sema 和 IDE/tooling 可消费语义事实。
 4. Tooling session、LSP adapter 边界和更细粒度 incremental sema。
+5. 基于 query graph 的真实 incremental sema execution。
+6. Incremental syntax 和稳定 AST identity。
+7. Project graph 和 persistent query database。
+8. IDE semantic features 与 query-backed lowering 闭环。
 
 2026-05-25：R5 Compilation Pipeline / Driver Action core 已完成。2026-05-28：M3.0 模块系统
-Phase 9A-D 与 M3.1 泛型 release baseline 都已完成。2026-05-29：M3.2 Query-backed Sema WP-1
-到 WP-6 已 fast-forward 合并回 `m3`，并已切出 `m3.3` 处理 tooling session、LSP adapter 边界和
-更细粒度 incremental sema。
+Phase 9A-D 与 M3.1 泛型 release baseline 都已完成。2026-05-29：M3.2 Query-backed Sema 和
+M3.3 Tooling Session And Incremental Sema 都已 fast-forward 合并回 `m3`。当前新主线是 `m3.4`，
+重点是把 query reuse explanation 推进为真实 incremental sema execution。
 所有 M3 实现必须复用
 R5 稳定下来的 `CompilationSession`、`CompilationPipeline`、
 `FrontendPipeline`、`LoweringPipeline`、`BackendPipeline`、`PipelineStage`、query、diagnostics
@@ -105,10 +109,109 @@ M3.3 仍不实现完整 completion、rename、formatting、semantic tokens、多
 package manager、用户 trait、resource semantics、RAII、closure 或 const generic。执行入口见
 [Aurex M3.3 Tooling Session 与 Incremental Sema 计划](m3.3-tooling-incremental-plan.md)。
 
-状态：2026-05-29，`m3.3` 分支已完成 WP-1/2/3 当前实现批次：协议无关 `ToolingSession`、
-versioned open-document state、snapshot cache、最小 `LspServer` JSON-RPC adapter，以及
-diagnostics、hover、definition、references、document symbols 的 tooling projection。下一批实现目标是
-WP-4 Incremental Reuse Planner，然后推进 WP-5 Workspace Semantic Index。
+状态：2026-05-29，M3.3 WP-1 到 WP-6 已完成并合并回 `m3`。协议无关 `ToolingSession`、
+versioned open-document state、snapshot cache、最小 `LspServer`、diagnostics、hover、definition、
+references、document symbols、reuse planning、workspace semantic indexing 和 quality gates 组成
+M3.3 基线。后续 tooling feature 必须建立在这条基线上，不能直接读取 parser、sema、query 或 driver
+内部状态。
+
+### M3.4：Real Incremental Sema Execution
+
+M3.4 把 M3.3 的 reuse explanation 变成真实局部重算。当前编译器已经能记录 query facts、
+dependency edges 和 reuse summary；M3.4 要让 `ToolingSession`、`IdeSnapshot`、sema service 和
+query provider 消费 previous snapshot / previous query context，使局部编辑可以复用未受影响的语义事实。
+
+执行入口见 [Aurex M3.4 Real Incremental Sema Execution 计划](m3.4-real-incremental-sema-plan.md)。
+
+核心交付：
+
+- 给 IDE/tooling snapshot build path 增加 previous-snapshot 和 previous-query-cache 输入，同时不改变 CLI 语义。
+- 让 query reuse decision 可执行：unchanged query record 必须进入下一次 snapshot 的 reusable semantic facts，
+  而不是只出现在 debug explanation。
+- 保持 body-local edit 行为：单个函数体内部编辑只重算对应 body syntax / type-check fact，不失效无关
+  item signature、body、generic instance、module export 和 workspace fact。
+- signature edit 与 module-surface edit 必须扩大到正确 invalidation roots，但不能退回 whole-workspace rebuild。
+- workspace semantic index 尽量按 affected fact identity 更新。
+- 新增 correctness、malformed-reuse、stress、profile、coverage 和 regression gates。
+
+M3.4 仍不实现 completion、rename、semantic tokens、后台多线程 scheduler、package manager、用户 trait、
+RAII、closure 或 resource semantics。
+
+### M3.5：Incremental Syntax And Stable AST Identity
+
+M3.5 把同一条现代编译器主线下沉到 syntax 层。它不新增语言语法，而是让现有 lossless syntax 和 AST lowering
+适合反复 IDE 编辑。
+
+核心交付：
+
+- versioned document store 支持 range-based text edits，而不只做 full-text replacement。
+- 复用未变化的 lossless syntax subtree，并让 syntax node key 在局部编辑后尽量稳定。
+- reparse 未影响区域时保持 AST item/body identity 稳定。
+- incomplete editor buffer 下 parser recovery diagnostics 保持局部、确定。
+- tooling 的 offset-to-token、syntax-node、AST-node 和 semantic-fact projection 保持一致。
+
+该阶段把 rust-analyzer/rowan 风格 immutable syntax reuse，以及 SwiftSyntax/Roslyn 风格 lossless tree
+纪律裁剪到 Aurex 现有 parser 和 AST arena 上；不会引入第二套 frontend。
+
+### M3.6：Project Graph And Persistent Query DB
+
+M3.6 把 module/package identity 提升为工程级执行模型。M3.0 已经解决语言级 module identity，
+M3.3 增加了 open-file index；M3.6 要让 CLI check 和 tooling session 共享 project graph 与持久 query DB。
+
+核心交付：
+
+- 定义 `ProjectModel` / `WorkspaceModel` 输入：package root、source root、import roots、target config、
+  command-line options 和 open buffers。
+- source-root、package identity、target config、module graph 和相关 driver options 进入稳定 cache key。
+- 从显式 graph nodes 调度 module graph check，而不是依赖 module loader 偶然递归顺序。
+- 用 `--check` 和 tooling session 共享的数据库形状持久化 semantic query results。
+- profile / invalidation 输出解释哪些 project inputs 改变，以及哪些 query facts 被复用。
+
+该阶段仍不引入 package manager、dependency resolver、lockfile、registry protocol 或 version solver。
+
+### M3.7：IDE Semantic Features
+
+M3.7 只在 M3.4 到 M3.6 稳定后新增高层 IDE 能力。LSP 层继续只是 protocol-neutral tooling value types
+外面的 adapter。
+
+核心交付：
+
+- completion 基于 syntax context、sema scope、visible module exports 和 checked generic/member facts。
+- rename 基于 symbol identity、visibility checks、conflict detection 和 cross-file edit planning。
+- semantic tokens 由 syntax 加 checked semantic facts 合成。
+- code actions / quick fixes 只服务携带结构化可修复上下文的 diagnostics。
+- inlay hints、workspace symbols 和 cross-file references 来自 workspace semantic index。
+- cancellation / generation handling 防止 stale snapshot 结果被发布。
+
+M3.7 不允许 LSP DTO 泄漏进编译器内部。
+
+### M3.8：Query-backed Lowering, IR, And Backend Reuse
+
+M3.8 把 query architecture 推进到 sema 以下。M3.2-M3.4 已让 checked semantic facts query-backed；
+lowering、IR 和 backend 仍需要显式事实边界，后续 native build 才能复用未受影响的 unit。
+
+核心交付：
+
+- 为单个函数体 lowering 和单个 generic instance body lowering 增加 query authority。
+- 增加 type layout、enum layout、ABI symbol 和 lower-generic-IR query facts。
+- 在可行处把 IR pass-manager analysis preservation / invalidation 接入 query dependency invalidation。
+- target-independent IR unit 与 LLVM module/function emission unit 保持分离。
+- verifier gates、profile metadata、diagnostics ownership 和 native execution 行为继续走现有 R5 pipeline。
+
+该阶段借鉴 LLVM new pass manager 的 analysis preservation 和 rustc 风格 codegen-unit reuse，但不引入它们的完整复杂度。
+
+### M3.9：M3 Closure And Release Baseline
+
+M3.9 是 hardening 和收口阶段，不是新功能阶段。
+
+核心交付：
+
+- 对齐 M3.0 到 M3.8 的中英文文档。
+- 清理 stale roadmap、obsolete unsupported notes、dead code，以及 M3.4-M3.8 暴露出的 unreachable fallback paths。
+- 保持 `ctest`、coverage、query-pruning、query-graph fuzz、generic stress、module graph stress、
+  incremental-edit stress、native smoke 和 performance threshold gates green。
+- 审计 public API，确保 parser、sema、query、tooling、LSP、lowering 和 backend 不绕过彼此的 authority boundary。
+- 在进入 trait/resource/language expressiveness 工作前记录最终 M3 release baseline。
 
 ## 非目标
 
@@ -180,15 +283,15 @@ M3.1 开发路线固定为：
 
 ## 推荐落地顺序
 
-已完成的 M3.0 模块、M3.1 泛型和 M3.2 query-backed sema 顺序作为历史验收保留。M3.3
-当前按下列顺序推进：
+已完成的 M3.0 模块、M3.1 泛型、M3.2 query-backed sema 和 M3.3 tooling 顺序作为历史验收保留。
+当前 M3.4 按下列顺序推进：
 
-1. Tooling session 和 versioned document store。已完成。
-2. Snapshot cache 和 session-level IDE wrappers。已完成。
-3. LSP JSON-RPC protocol shell。已完成。
-4. diagnostics、hover、definition、references 和 document symbols 通过 `ToolingSession` 路由。已完成。
-5. 基于 `IdeEditImpact` 和 query dependency edges 的 incremental reuse planner。
-6. 面向 open files 和 package-local facts 的小型 workspace semantic index。
+1. Incremental snapshot build input。
+2. Query record reuse execution。
+3. Body-local / signature-local edit 的 semantic fact stability。
+4. Workspace index incremental update。
+5. Performance、malformed-reuse、coverage 和 stress gates。
+6. 当前阶段文档和 release closure。
 
 ## 当前实现进度
 
@@ -384,8 +487,12 @@ M3.2 的设计入口固定为 `m3.2-query-backed-sema-plan.md`；后续推进以
 全部 M3 历史。
 
 2026-05-29：M3.2 WP-1 到 WP-6 已 fast-forward 合并回 `m3`，并已从收口基线切出 `m3.3`。
-M3.3 的设计入口固定为 `m3.3-tooling-incremental-plan.md`；WP-1/2/3 当前批次已完成，下一实现包是
-WP-4 Incremental Reuse Planner。
+M3.3 的设计入口固定为 `m3.3-tooling-incremental-plan.md`；WP-1 到 WP-6 已完成并合并回 `m3`，
+形成 `ToolingSession`、LSP adapter、reuse planner 和 workspace semantic index 基线。
+
+2026-05-29：M3.3 已 fast-forward 合并回 `m3`，并已从收口基线切出 `m3.4`。M3.4 的设计入口固定为
+`m3.4-real-incremental-sema-plan.md`；当前阶段优先做真实 incremental sema execution，然后再进入
+incremental syntax、project graph persistence、高级 IDE features 和 query-backed lowering。
 
 ## 验收
 
@@ -430,3 +537,12 @@ M3.3 tooling / incremental sema 验收：
   query-backed semantic facts。
 - edit-impact 和 query dependency records 可以解释 unchanged、recomputed 和 invalidated facts。
 - JSON-RPC fixture tests、普通 gtest、coverage、query pruning、fuzz 和 stress gates 保持 green。
+
+M3.4 real incremental sema execution 验收：
+
+- snapshot construction 可以消费 previous snapshot/query context，同时不改变 one-shot caller。
+- query reuse decision 可执行，并能把 facts 分类为 reused、recomputed、invalidated 或 malformed。
+- body-local edit 复用无关 item signature、body、generic instance、module fact 和 workspace index entry。
+- signature 和 module-surface edit 只把 invalidation 扩大到依赖 facts。
+- malformed previous reuse input 回退重算，不触发 assertion。
+- tests、coverage、query pruning、edit stress 和相关 generic/module stress gates 保持 green。

@@ -1,6 +1,6 @@
 # Next Steps
 
-## Current Highest Priority: M3.3 Tooling Session And Incremental Sema
+## Current Highest Priority: M3.4 Real Incremental Sema Execution
 
 The R5 Compilation Pipeline / Driver Action core is now closed:
 `CompilerInvocation`, the `Compiler` facade, `CompilationSession`,
@@ -10,24 +10,25 @@ profile metadata, diagnostic stage owners, and tooling/profile consumer
 contracts are all on the main path while preserving the existing CLI,
 diagnostics JSON, profile JSON, incremental-cache, and emit-mode behavior.
 
-M3.0 module-system closure, M3.1 generics closure, and M3.2 Query-backed Sema
-WP-1 through WP-6 have all been merged back to `m3`. The active branch is
-`m3.3`, focused on tooling sessions, LSP adapter boundaries, and finer-grained
-incremental sema. WP-1 through WP-3 are now implemented on this branch:
+M3.0 module-system closure, M3.1 generics closure, M3.2 Query-backed Sema, and
+M3.3 Tooling Session And Incremental Sema have all been merged back to `m3`.
+The active branch is `m3.4`, focused on turning M3.3 reuse explanation into
+real incremental sema execution:
 
-- Added a protocol-neutral `ToolingSession` above `IdeSnapshot`.
-- Kept LSP JSON-RPC as an adapter, not as compiler-internal state.
-- Made open-buffer edits versioned and deterministic.
-- Routed diagnostics, hover, definition, references, and document symbols through
-  the tooling session and M3.2 query-backed semantic facts.
-- Use `IdeEditImpact`, query records, and dependency edges to explain edit
-  invalidation and reuse.
-- Add a small dynamic workspace semantic index for open files before building a
-  full background index.
+- Thread previous snapshot/query context through `ToolingSession`.
+- Convert query reuse decisions into executable semantic fact reuse.
+- Preserve body-local, signature-local, generic, and module-surface invalidation
+  boundaries.
+- Update the workspace semantic index by affected fact identity where possible.
+- Keep CLI, diagnostics JSON, profile JSON, incremental-cache, and LSP protocol
+  behavior compatible unless an explicit work package changes them.
+- Keep tests, coverage, query pruning, fuzz, and stress gates green.
 
-The M3.3 execution entry point is the
-[Aurex M3.3 Tooling Session And Incremental Sema Plan](m3.3-tooling-incremental-plan.md).
-M3.2 remains the closed authority baseline and should not receive new scope.
+The M3.4 execution entry point is the
+[Aurex M3.4 Real Incremental Sema Execution Plan](m3.4-real-incremental-sema-plan.md).
+The wider M3.4-M3.9 route is recorded in the [M3 Roadmap](m3-roadmap.md).
+M3.3 remains the closed tooling/session baseline and should not receive new
+scope.
 
 R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
 stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
@@ -84,19 +85,15 @@ including public `PipelineStageMetadata`,
 `pipeline_profile_phase_classification(...)`, `stage` / `parent_stage` profile
 metadata, and `IdeDiagnostic` owner-stage metadata, instead of bypassing it.
 
-M3.3 first implementation order, now closed:
+M3.4 first implementation order:
 
-1. WP-1A: Add protocol-neutral `ToolingSession` and versioned document store.
-   Completed.
-2. WP-1B: Cache `IdeSnapshot` by document id/version and package config.
-   Completed.
-3. WP-1C: Add session-level diagnostics/hover/definition/reference wrappers.
-   Completed.
-4. WP-2A: Add deterministic JSON-RPC message parser/writer fixture tests.
-   Completed.
-5. WP-2B: Add lifecycle and text-document sync handlers. Completed.
-6. WP-2C: Route hover/definition/references/diagnostics through
-   `ToolingSession`. Completed.
+1. WP-1A: Add incremental snapshot input/result value types.
+2. WP-1B: Thread previous snapshot context through `ToolingSession`.
+3. WP-1C: Add no-previous, matching-previous, stale-version, and malformed
+   input tests.
+4. WP-2A: Reuse unchanged query records as executable semantic fact inputs.
+5. WP-2B: Validate body-local and signature-local edit behavior.
+6. WP-3A: Stabilize semantic fact identity through repeated edit cycles.
 
 2026-05-29 M3.3 WP-1/2/3 implementation update: `aurex_tooling` now has a
 versioned `ToolingSession`, in-place `IdeSnapshot` cache construction, and a
@@ -104,6 +101,12 @@ minimal `LspServer` adapter for JSON-RPC lifecycle, full text sync,
 diagnostics, hover, definition, references, and document symbols. WP-4
 incremental reuse planning, WP-5 workspace semantic indexing, and WP-6 quality
 gates are now complete for this batch.
+
+2026-05-29 M3.4 planning update: M3.3 has been fast-forward merged back to
+`m3`, `m3.4` has been created, and the M3.4-M3.9 route is now explicit:
+M3.4 real incremental sema execution, M3.5 incremental syntax/stable AST
+identity, M3.6 project graph/persistent query DB, M3.7 IDE semantic features,
+M3.8 query-backed lowering/backend reuse, and M3.9 release closure.
 
 2026-05-28 closure update: the original M3.1 work packages have been reviewed
 through WP-7 Generic Closure Audit And Release Baseline. The generic release

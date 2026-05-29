@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M3.3 Tooling Session And Incremental Sema
+## 当前最高优先级：M3.4 Real Incremental Sema Execution
 
 R5 Compilation Pipeline / Driver Action 重构 core 已收口：`CompilerInvocation`、`Compiler`
 facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`LoweringPipeline`、
@@ -8,18 +8,22 @@ facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`Lo
 stage owner 和 tooling/profile consumer contract 都已经进入主路径，并保持原有 CLI、diagnostics JSON、
 profile JSON、incremental cache 和 emit mode 行为。
 
-M3.0 模块系统、M3.1 泛型闭环和 M3.2 Query-backed Sema WP-1 到 WP-6 都已经合并回 `m3`。
-当前活动分支是 `m3.3`，聚焦 tooling session、LSP adapter 边界和更细粒度 incremental sema：
+M3.0 模块系统、M3.1 泛型闭环、M3.2 Query-backed Sema 和 M3.3 Tooling Session And Incremental
+Sema 都已经合并回 `m3`。当前活动分支是 `m3.4`，聚焦把 M3.3 的 reuse explanation 推进为真实
+incremental sema execution：
 
-- 在 `IdeSnapshot` 上方增加协议无关 `ToolingSession`。
-- LSP JSON-RPC 只作为 adapter，不成为编译器内部状态。
-- open-buffer edits 必须带版本、可复现、可诊断。
-- diagnostics、hover、definition 和 references 通过 tooling session 与 M3.2 query-backed semantic facts 路由。
-- 使用 `IdeEditImpact`、query records 和 dependency edges 解释 edit invalidation 和 reuse。
-- 在完整 background index 之前，先为 open files 增加小型 dynamic workspace semantic index。
+- 通过 `ToolingSession` 传递 previous snapshot / query context。
+- 把 query reuse decision 变成可执行 semantic fact reuse。
+- 保持 body-local、signature-local、generic 和 module-surface invalidation 边界。
+- workspace semantic index 尽量按 affected fact identity 更新。
+- CLI、diagnostics JSON、profile JSON、incremental-cache 和 LSP protocol 行为保持兼容，除非明确 work package
+  改动它们。
+- tests、coverage、query pruning、fuzz 和 stress gates 保持 green。
 
-M3.3 执行入口是 [Aurex M3.3 Tooling Session 与 Incremental Sema 计划](m3.3-tooling-incremental-plan.md)。
-M3.2 保持 closed authority baseline，不再追加新范围。
+M3.4 执行入口是
+[Aurex M3.4 Real Incremental Sema Execution 计划](m3.4-real-incremental-sema-plan.md)。
+更完整的 M3.4-M3.9 路线记录在 [M3 路线图](m3-roadmap.md)。M3.3 保持 closed tooling/session
+baseline，不再追加新范围。
 
 R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分；
 R5.3 已完成 `LoweringPipeline`、`BackendPipeline` 和 `PipelineStage` 记录。当前 driver 总控已经只保留
@@ -61,14 +65,14 @@ R5.13 已完成 profile/tooling 消费者分类契约：`pipeline_profile_phase_
 已通过这个入口输出原有 `stage` / `parent_stage` metadata，协议字段保持不变。后续 profile viewer
 和 LSP/IDE 阶段视图必须复用这个分类 API，不再维护独立 phase-name 映射表。
 
-M3.3 的第一批实现顺序：
+M3.4 的第一批实现顺序：
 
-1. WP-1A：新增协议无关 `ToolingSession` 和 versioned document store。
-2. WP-1B：按 document id/version 和 package config 缓存 `IdeSnapshot`。
-3. WP-1C：新增 session-level diagnostics/hover/definition/reference wrappers。
-4. WP-2A：新增 deterministic JSON-RPC message parser/writer fixture tests。
-5. WP-2B：新增 lifecycle 和 text-document sync handlers。
-6. WP-2C：通过 `ToolingSession` 路由 hover/definition/references/diagnostics。
+1. WP-1A：新增 incremental snapshot input/result value types。
+2. WP-1B：通过 `ToolingSession` 传递 previous snapshot context。
+3. WP-1C：增加 no-previous、matching-previous、stale-version 和 malformed input tests。
+4. WP-2A：把 unchanged query records 作为 executable semantic fact inputs 复用。
+5. WP-2B：验证 body-local 和 signature-local edit 行为。
+6. WP-3A：让 semantic fact identity 在重复编辑循环中保持稳定。
 
 2026-05-28 收口更新：原 M3.1 work packages 已通过 WP-7 Generic Closure Audit And Release Baseline 统一复审。
 当前泛型 release baseline 固定为：generic struct / enum / type alias / function / owner-generic method /
@@ -77,6 +81,11 @@ incremental key、query subject 和 checked metadata 的权威身份；`TypeHand
 lookup/cache fast key；display string、checked dump、diagnostics、IR dump 和 c_name 都只作为输出，不反向作为
 语义 identity。后续若继续深化泛型 query provider、trait/resource/const generic 设计或 LSP/IDE 消费，必须以
 这个 M3.1 baseline 为输入，不再重新打开已经收口的身份和 ABI 路径。
+
+2026-05-29 M3.4 规划更新：M3.3 已 fast-forward 合并回 `m3`，`m3.4` 已创建，M3.4-M3.9 路线已固定为：
+M3.4 real incremental sema execution、M3.5 incremental syntax / stable AST identity、M3.6 project graph /
+persistent query DB、M3.7 IDE semantic features、M3.8 query-backed lowering / backend reuse、M3.9 release
+closure。
 
 ## 当前分支原则
 

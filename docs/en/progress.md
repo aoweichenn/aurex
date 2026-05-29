@@ -1,7 +1,7 @@
 # Current Progress
 
 Version: 0.1.3
-Stage: M3.3 tooling session and incremental sema
+Stage: M3.4 real incremental sema execution
 
 ## Overall Status
 
@@ -105,19 +105,25 @@ between tooling `ModuleKey` values and checked stable def keys. All M3.2 work
 packages are now complete; follow-up work should start from a new M3.3, LSP
 adapter, or finer-grained incremental sema plan.
 
-As of 2026-05-29, M3.2 has been fast-forward merged back to `m3`, and `m3.3`
-has been created for Tooling Session and Incremental Sema work. The new design
-entry point is the
-[Aurex M3.3 Tooling Session And Incremental Sema Plan](m3.3-tooling-incremental-plan.md).
-WP-1/2/3 are now complete for the current implementation batch: protocol-neutral
-`ToolingSession`, versioned open-document state, `IdeSnapshot` snapshot cache,
-in-place snapshot construction, session-level diagnostics/hover/definition/
-reference wrappers, and a minimal `LspServer` JSON-RPC adapter. The LSP layer
+As of 2026-05-29, M3.2 has been fast-forward merged back to `m3`, and M3.3
+Tooling Session And Incremental Sema has also been completed and merged back to
+`m3`. The closed M3.3 baseline adds protocol-neutral `ToolingSession`,
+versioned open-document state, `IdeSnapshot` snapshot cache, in-place snapshot
+construction, session-level diagnostics/hover/definition/reference wrappers, a
+minimal `LspServer` JSON-RPC adapter, document symbols, incremental reuse
+planning, workspace semantic indexing, and quality gates. The LSP layer
 consumes tooling value types only and does not read parser/sema/query/driver
-internals. Document symbols prefer M3.2 checked `semantic_facts` and fall back
-to AST projection when checked facts are absent. WP-4 Incremental Reuse
-Planner, WP-5 Workspace Semantic Index, and WP-6 quality gates are now
-complete for this batch.
+internals.
+
+As of 2026-05-29, `m3.4` has been created from the M3.3 closure baseline. The
+new execution entry point is the
+[Aurex M3.4 Real Incremental Sema Execution Plan](m3.4-real-incremental-sema-plan.md).
+M3.4's priority is converting M3.3 reuse explanations into executable semantic
+fact reuse: snapshot construction must accept previous snapshot/query context,
+query reuse decisions must drive partial recomputation, semantic facts must
+remain stable across body-local/signature/module edits, and the workspace index
+should update by affected fact identity where possible. The broader M3.4-M3.9
+route is now explicit in the [M3 Roadmap](m3-roadmap.md).
 
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and

@@ -11,13 +11,18 @@ down into query-backed sema architecture:
 2. Generics.
 3. Query-backed sema and IDE/tooling-consumable semantic facts.
 4. Tooling sessions, LSP adapter boundaries, and finer-grained incremental sema.
+5. Real incremental sema execution over the query graph.
+6. Incremental syntax and stable AST identity.
+7. Project graph and persistent query database.
+8. IDE semantic features and query-backed lowering closure.
 
 As of 2026-05-25, the R5 Compilation Pipeline / Driver Action core is complete.
 As of 2026-05-28, M3.0 module-system closure and the M3.1 generic release
-baseline are complete. As of 2026-05-29, M3.2 Query-backed Sema WP-1 through
-WP-6 have been merged back to `m3`, and `m3.3` has been created for tooling
-sessions, LSP adapter boundaries, and finer-grained incremental sema. Every
-M3 implementation must reuse the R5 `CompilationSession`,
+baseline are complete. As of 2026-05-29, M3.2 Query-backed Sema and M3.3
+Tooling Session And Incremental Sema have been merged back to `m3`. The next
+active line is `m3.4`, focused on turning query reuse explanation into real
+incremental sema execution. Every M3 implementation must reuse the R5
+`CompilationSession`,
 `CompilationPipeline`, `FrontendPipeline`, `LoweringPipeline`,
 `BackendPipeline`, `PipelineStage`, query, diagnostics, and profile/tooling
 contracts. Do not open a parallel compilation path in the module loader,
@@ -152,12 +157,149 @@ traits, resource semantics, RAII, closures, or const generics. The execution
 entry point is the
 [Aurex M3.3 Tooling Session And Incremental Sema Plan](m3.3-tooling-incremental-plan.md).
 
-Status: as of 2026-05-29, the `m3.3` branch has completed the current WP-1/2/3
-batch: protocol-neutral `ToolingSession`, versioned open-document state,
-snapshot cache, a minimal `LspServer` JSON-RPC adapter, and tooling projection
-for diagnostics, hover, definition, references, and document symbols. The next
-implementation target is WP-4 Incremental Reuse Planner, followed by WP-5
-Workspace Semantic Index.
+Status: as of 2026-05-29, M3.3 WP-1 through WP-6 are complete and merged back
+to `m3`. Protocol-neutral `ToolingSession`, versioned open-document state,
+snapshot cache, minimal `LspServer`, diagnostics, hover, definition,
+references, document symbols, reuse planning, workspace semantic indexing, and
+quality gates form the M3.3 baseline. Later tooling features must build on this
+baseline instead of reading parser, sema, query, or driver internals directly.
+
+### M3.4: Real Incremental Sema Execution
+
+M3.4 turns M3.3's reuse explanation into actual partial recomputation. The
+current compiler can record query facts, dependency edges, and reuse summaries;
+M3.4 makes `ToolingSession`, `IdeSnapshot`, sema services, and query providers
+consume previous snapshot/query context so local edits can reuse unaffected
+semantic facts.
+
+The execution entry point is the
+[Aurex M3.4 Real Incremental Sema Execution Plan](m3.4-real-incremental-sema-plan.md).
+
+Core deliverables:
+
+- Add previous-snapshot and previous-query-cache input to the IDE/tooling
+  snapshot build path without changing CLI semantics.
+- Make query reuse decisions executable: unchanged query records must feed the
+  next snapshot as reusable semantic facts rather than only appearing in a debug
+  explanation.
+- Preserve body-local edit behavior: edits inside one function body should
+  recompute that body syntax/type-check fact and leave unrelated item
+  signatures, bodies, generic instances, module exports, and workspace facts
+  reusable.
+- Promote signature and module-surface edits to the correct wider invalidation
+  roots without falling back to a whole-workspace rebuild.
+- Update the workspace semantic index by affected fact identity when possible.
+- Add focused correctness, malformed-reuse, stress, profile, coverage, and
+  regression gates.
+
+M3.4 still does not implement completion, rename, semantic tokens, background
+multi-threaded scheduling, package management, user traits, RAII, closures, or
+resource semantics.
+
+### M3.5: Incremental Syntax And Stable AST Identity
+
+M3.5 moves the same modern compiler architecture down to the syntax layer. It
+does not add new language syntax; it makes the existing lossless syntax and AST
+lowering usable for repeated IDE edits.
+
+Core deliverables:
+
+- Apply range-based text edits in the versioned document store instead of only
+  full-text replacement.
+- Reuse unchanged lossless syntax subtrees and keep syntax node keys stable
+  across local edits.
+- Preserve stable AST item/body identity when reparsing unaffected syntax.
+- Make parser recovery diagnostics local and deterministic under incomplete
+  editor buffers.
+- Keep offset-to-token, syntax-node, AST-node, and semantic-fact projections
+  aligned for tooling consumers.
+
+This phase adapts rust-analyzer/rowan-style immutable syntax reuse and
+SwiftSyntax/Roslyn-style lossless tree discipline to Aurex's existing parser
+and AST arenas. It does not replace the parser with a second frontend.
+
+### M3.6: Project Graph And Persistent Query DB
+
+M3.6 promotes module/package identity into a project-level execution model.
+M3.0 solved language-level module identity, and M3.3 added open-file indexing;
+M3.6 makes CLI checks and tooling sessions share a project graph and a
+persistent query database.
+
+Core deliverables:
+
+- Define `ProjectModel` / `WorkspaceModel` inputs: package root, source root,
+  import roots, target configuration, command-line options, and open buffers.
+- Make source-root, package identity, target configuration, module graph, and
+  relevant driver options part of stable cache keys.
+- Schedule module graph checks from explicit graph nodes instead of incidental
+  recursive loading order.
+- Persist semantic query results in a database shape shared by `--check` and
+  tooling sessions.
+- Expose invalidation and profile output that explains which project inputs
+  changed and which query facts were reused.
+
+This phase still does not introduce a package manager, dependency resolver,
+lockfile, registry protocol, or version solver.
+
+### M3.7: IDE Semantic Features
+
+M3.7 adds higher-level IDE features only after M3.4 through M3.6 stabilize the
+facts they need. The LSP layer remains an adapter around protocol-neutral
+tooling value types.
+
+Core deliverables:
+
+- Completion from syntax context, sema scope, visible module exports, and
+  checked generic/member facts.
+- Rename with symbol identity, visibility checks, conflict detection, and
+  cross-file edit planning.
+- Semantic tokens from syntax plus checked semantic facts.
+- Code actions and quick fixes only for diagnostics that carry structured
+  fixable context.
+- Inlay hints, workspace symbols, and cross-file references from the workspace
+  semantic index.
+- Request cancellation/generation handling that prevents stale snapshot results
+  from being published.
+
+M3.7 must not let LSP DTOs leak into compiler internals.
+
+### M3.8: Query-backed Lowering, IR, And Backend Reuse
+
+M3.8 extends the query architecture below sema. Checked semantic facts are
+already query-backed by M3.2-M3.4; lowering, IR, and backend work still need
+explicit fact boundaries so later native builds can reuse unaffected units.
+
+Core deliverables:
+
+- Add query authority for lowering one function body and one generic instance
+  body.
+- Add type layout, enum layout, ABI symbol, and lower-generic-IR query facts.
+- Connect IR pass-manager analysis preservation/invalidation to query
+  dependency invalidation where practical.
+- Keep target-independent IR units separate from LLVM module/function emission
+  units.
+- Keep verifier gates, profile metadata, diagnostics ownership, and native
+  execution behavior on the existing R5 pipeline path.
+
+This phase adapts LLVM new pass manager analysis preservation and rustc-style
+codegen-unit reuse without importing their full compilation-unit complexity.
+
+### M3.9: M3 Closure And Release Baseline
+
+M3.9 is a hardening and closure phase, not a new feature stage.
+
+Core deliverables:
+
+- Align English and Chinese documentation for M3.0 through M3.8.
+- Remove stale roadmap entries, obsolete unsupported notes, dead code, and
+  unreachable fallback paths discovered by the M3.4-M3.8 work.
+- Keep `ctest`, coverage, query-pruning, query-graph fuzz, generic stress,
+  module graph stress, incremental-edit stress, native smoke, and performance
+  threshold gates green.
+- Audit public APIs so parser, sema, query, tooling, LSP, lowering, and backend
+  layers do not bypass each other's authority boundaries.
+- Record the final M3 release baseline before starting trait/resource/language
+  expressiveness work.
 
 ## Non-goals
 
@@ -238,16 +380,15 @@ The M3.1 implementation route is:
 
 ## Recommended Implementation Order
 
-The completed M3.0 module, M3.1 generic, and M3.2 query-backed sema orders
-remain as historical acceptance. The active M3.3 order is:
+The completed M3.0 module, M3.1 generic, M3.2 query-backed sema, and M3.3
+tooling orders remain as historical acceptance. The active M3.4 order is:
 
-1. Tooling session and versioned document store. Completed.
-2. Snapshot cache and session-level IDE wrappers. Completed.
-3. LSP JSON-RPC protocol shell. Completed.
-4. Diagnostics, hover, definition, references, and document symbols routed
-   through `ToolingSession`. Completed.
-5. Incremental reuse planner over `IdeEditImpact` and query dependency edges.
-6. Small workspace semantic index for open files and package-local facts.
+1. Incremental snapshot build input.
+2. Query record reuse execution.
+3. Semantic fact stability for body-local and signature-local edits.
+4. Workspace index incremental update.
+5. Performance, malformed-reuse, coverage, and stress gates.
+6. Documentation and release closure for the phase.
 
 ## Current Implementation Progress
 
@@ -273,9 +414,15 @@ advance by M3.2 work package instead of rereading the full M3 history.
 
 2026-05-29: M3.2 WP-1 through WP-6 have been fast-forward merged back to `m3`,
 and `m3.3` has been created from that closed baseline. The M3.3 design entry
-point is `m3.3-tooling-incremental-plan.md`; the current WP-1/2/3 batch is
-complete, and the next implementation package is WP-4 Incremental Reuse
-Planner.
+point is `m3.3-tooling-incremental-plan.md`; WP-1 through WP-6 are complete and
+merged back to `m3`, forming the `ToolingSession`, LSP adapter, reuse planner,
+and workspace semantic index baseline.
+
+2026-05-29: M3.3 WP-1 through WP-6 have been fast-forward merged back to `m3`,
+and `m3.4` has been created from that closed baseline. The M3.4 design entry
+point is `m3.4-real-incremental-sema-plan.md`; the phase now prioritizes real
+incremental sema execution before syntax incrementality, project graph
+persistence, advanced IDE features, and query-backed lowering.
 
 ## Acceptance
 
@@ -330,3 +477,16 @@ M3.3 tooling/incremental sema acceptance:
   stress gates remain green.
 - Tooling-facing semantic snapshots consume the same query-backed facts as the
   compiler pipeline.
+
+M3.4 real incremental sema execution acceptance:
+
+- Snapshot construction can consume previous snapshot/query context without
+  changing one-shot callers.
+- Query reuse decisions are executable and classify facts as reused,
+  recomputed, invalidated, or malformed.
+- Body-local edits reuse unrelated item signatures, bodies, generic instances,
+  module facts, and workspace index entries.
+- Signature and module-surface edits widen invalidation only to dependent facts.
+- Malformed previous reuse input falls back to recomputation without assertions.
+- Tests, coverage, query pruning, edit stress, and relevant generic/module
+  stress gates remain green.

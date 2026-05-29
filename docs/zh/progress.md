@@ -1,7 +1,7 @@
 # 当前进度文档
 
 版本：0.1.3
-阶段：M3.3 tooling session and incremental sema
+阶段：M3.4 real incremental sema execution
 
 ## 总体状态
 
@@ -57,15 +57,18 @@ query records、dependency edges 和 `semantic_facts`；semantic facts 携带 st
 已对齐 sema stable module identity，避免 tooling `ModuleKey` 与 checked stable def key 分叉。M3.2 当前
 work package 已全部完成，后续若继续推进，应以新的 M3.3 / LSP adapter / 更细粒度 incremental sema 计划为入口。
 
-2026-05-29：M3.2 已 fast-forward 合并回 `m3`，并已切出 `m3.3` 处理 Tooling Session 与
-Incremental Sema。新的设计入口是
-[Aurex M3.3 Tooling Session 与 Incremental Sema 计划](m3.3-tooling-incremental-plan.md)。WP-1/2/3
-已完成当前实现批次：新增协议无关 `ToolingSession`、versioned open-document state、`IdeSnapshot`
-snapshot cache、in-place snapshot 构建入口、session-level diagnostics/hover/definition/reference wrappers，
-以及最小 `LspServer` JSON-RPC adapter。LSP 层只消费 tooling value types，不读取 parser/sema/query/driver
-internals；document symbols 已优先消费 M3.2 checked `semantic_facts`，无 checked facts 时退回 AST
-projection。WP-4 incremental reuse planner、WP-5 workspace semantic index 和 WP-6 quality gates
-已完成并收口。
+2026-05-29：M3.2 已 fast-forward 合并回 `m3`，M3.3 Tooling Session And Incremental Sema 也已完成并合并回
+`m3`。M3.3 收口基线包括协议无关 `ToolingSession`、versioned open-document state、`IdeSnapshot`
+snapshot cache、in-place snapshot 构建入口、session-level diagnostics/hover/definition/reference wrappers、
+最小 `LspServer` JSON-RPC adapter、document symbols、incremental reuse planning、workspace semantic indexing
+和 quality gates。LSP 层只消费 tooling value types，不读取 parser/sema/query/driver internals。
+
+2026-05-29：`m3.4` 已从 M3.3 收口基线切出。新的执行入口是
+[Aurex M3.4 Real Incremental Sema Execution 计划](m3.4-real-incremental-sema-plan.md)。M3.4 的优先级是把
+M3.3 reuse explanation 变成 executable semantic fact reuse：snapshot construction 必须接收 previous
+snapshot/query context，query reuse decision 必须驱动局部重算，semantic facts 必须在 body-local /
+signature / module edits 后保持稳定，workspace index 尽量按 affected fact identity 更新。完整 M3.4-M3.9
+路线已写入 [M3 路线图](m3-roadmap.md)。
 
 2026-05-28 WP-1B Generic Instance Identity Propagation 已完成：`FunctionSignature`、`EnumCaseInfo`、
 `GenericEnumInstanceInfo` 和 `GenericTypeAliasInstanceInfo` 都携带结构化 `GenericInstanceKey`；

@@ -537,6 +537,72 @@ TEST(CoreUnit, LosslessSyntaxDumpEscapesTokenText)
     expect_contains(dump, R"(10..17 whitespace `\`\\\r\t\x01\x7fA`)");
 }
 
+TEST(CoreUnit, LosslessStableNodeKeySurvivesPrefixEdit)
+{
+    constexpr std::string_view source = "module stable.syntax;\n"
+                                        "fn add(a: i32, b: i32) -> i32 {\n"
+                                        "  return a + b;\n"
+                                        "}\n"
+                                        "fn main() -> i32 {\n"
+                                        "  return add(1, 2);\n"
+                                        "}\n";
+    constexpr std::string_view changed_source = "module stable.syntax;\n"
+                                                "import helper;\n"
+                                                "fn add(a: i32, b: i32) -> i32 {\n"
+                                                "  return a + b;\n"
+                                                "}\n"
+                                                "fn main() -> i32 {\n"
+                                                "  return add(1, 2);\n"
+                                                "}\n";
+    const lex::TokenBuffer before_tokens = tokenize_lossless(source);
+    const lex::TokenBuffer after_tokens = tokenize_lossless(changed_source);
+    const syntax::LosslessSyntaxTree before = syntax::build_lossless_syntax_tree(before_tokens.span());
+    const syntax::LosslessSyntaxTree after = syntax::build_lossless_syntax_tree(after_tokens.span());
+
+    syntax::LosslessNodeId before_add = syntax::INVALID_LOSSLESS_NODE_ID;
+    for (base::usize index = 0; index < before.node_count(); ++index) {
+        const syntax::LosslessNodeId id{index};
+        const syntax::LosslessNode* const node = before.node(id);
+        if (node != nullptr && node->kind == syntax::LosslessNodeKind::function_decl
+            && before.reconstruct_text(id).find("fn add") != std::string::npos) {
+            before_add = id;
+            break;
+        }
+    }
+    syntax::LosslessNodeId after_add = syntax::INVALID_LOSSLESS_NODE_ID;
+    for (base::usize index = 0; index < after.node_count(); ++index) {
+        const syntax::LosslessNodeId id{index};
+        const syntax::LosslessNode* const node = after.node(id);
+        if (node != nullptr && node->kind == syntax::LosslessNodeKind::function_decl
+            && after.reconstruct_text(id).find("fn add") != std::string::npos) {
+            after_add = id;
+            break;
+        }
+    }
+
+    ASSERT_NE(before_add, syntax::INVALID_LOSSLESS_NODE_ID);
+    ASSERT_NE(after_add, syntax::INVALID_LOSSLESS_NODE_ID);
+    ASSERT_TRUE(before.node_key(before_add).has_value());
+    ASSERT_TRUE(after.node_key(after_add).has_value());
+    EXPECT_NE(before.node_key(before_add)->range.begin, after.node_key(after_add)->range.begin);
+    ASSERT_TRUE(before.stable_node_key(before_add).has_value());
+    ASSERT_TRUE(after.stable_node_key(after_add).has_value());
+    EXPECT_EQ(*before.stable_node_key(before_add), *after.stable_node_key(after_add));
+    EXPECT_FALSE(before.stable_node_key(syntax::INVALID_LOSSLESS_NODE_ID).has_value());
+
+    const syntax::LosslessSyntaxReuseStats stats = syntax::compare_lossless_stable_nodes(before, after);
+    EXPECT_TRUE(stats.reused);
+    EXPECT_GT(stats.reused_nodes, 0U);
+    EXPECT_GT(stats.recomputed_nodes, 0U);
+    EXPECT_GT(stats.invalidated_nodes, 0U);
+    EXPECT_EQ(stats.current_nodes, after.node_count());
+
+    const syntax::LosslessSyntaxReuseStats identical_stats = syntax::compare_lossless_stable_nodes(before, before);
+    EXPECT_EQ(identical_stats.reused_nodes, before.node_count());
+    EXPECT_EQ(identical_stats.recomputed_nodes, 0U);
+    EXPECT_EQ(identical_stats.invalidated_nodes, 0U);
+}
+
 TEST(CoreUnit, LosslessSyntaxNamesUnknownNodeKinds)
 {
     EXPECT_EQ(syntax::lossless_node_kind_name(static_cast<syntax::LosslessNodeKind>(LOSSLESS_UNKNOWN_NODE_KIND_VALUE)),

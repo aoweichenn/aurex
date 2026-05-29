@@ -174,6 +174,66 @@ void tooling_attach_reuse_execution(
     result.reuse_execution = tooling_reuse_execution_summary(*plan);
 }
 
+[[nodiscard]] ToolingSyntaxReuseExecutionSummary tooling_syntax_reuse_execution_summary(
+    const syntax::LosslessSyntaxReuseStats& stats) noexcept
+{
+    return ToolingSyntaxReuseExecutionSummary{
+        stats.previous_nodes,
+        stats.current_nodes,
+        stats.reused_nodes,
+        stats.recomputed_nodes,
+        stats.invalidated_nodes,
+        stats.stable_key_collisions,
+        stats.reused,
+    };
+}
+
+void tooling_attach_syntax_reuse_execution(
+    ToolingIncrementalSnapshotResult& result, const IdeSnapshot& previous, const IdeSnapshot& current) noexcept
+{
+    result.syntax_reuse = tooling_syntax_reuse_execution_summary(
+        syntax::compare_lossless_stable_nodes(previous.lossless, current.lossless));
+}
+
+[[nodiscard]] bool tooling_text_edit_range_is_valid(
+    const std::string_view text, const ToolingDocumentTextEdit& edit) noexcept
+{
+    return edit.begin <= text.size() && edit.removed_length <= text.size() - edit.begin;
+}
+
+[[nodiscard]] base::Result<std::string> tooling_apply_text_edit(
+    const std::string_view text, const ToolingDocumentTextEdit& edit)
+{
+    if (!tooling_text_edit_range_is_valid(text, edit)) {
+        return base::Result<std::string>::fail({base::ErrorCode::invalid_source, "tooling text edit is out of range"});
+    }
+    std::string result;
+    result.reserve(text.size() - edit.removed_length + edit.inserted_text.size());
+    result.append(text.substr(0U, edit.begin));
+    result.append(edit.inserted_text);
+    result.append(text.substr(edit.begin + edit.removed_length));
+    return base::Result<std::string>::ok(std::move(result));
+}
+
+[[nodiscard]] ToolingDocumentTextEdit tooling_text_edit_from_replacement(const std::string_view before,
+    const std::string_view after, const base::usize begin, const base::usize removed_length)
+{
+    ToolingDocumentTextEdit edit;
+    edit.begin = begin;
+    edit.removed_length = removed_length;
+    if (!tooling_text_edit_range_is_valid(before, edit)) {
+        return edit;
+    }
+    const base::usize prefix_size = begin;
+    const base::usize suffix_size = before.size() - begin - removed_length;
+    if (after.size() < prefix_size + suffix_size) {
+        return edit;
+    }
+    const base::usize inserted_size = after.size() - prefix_size - suffix_size;
+    edit.inserted_text = std::string(after.substr(begin, inserted_size));
+    return edit;
+}
+
 [[nodiscard]] std::string tooling_kind_for_item(const syntax::ItemKind kind)
 {
     switch (kind) {
@@ -278,9 +338,28 @@ void tooling_attach_reuse_execution(
     return query::is_valid(key) ? query::debug_string(key) : std::string{};
 }
 
+[[nodiscard]] std::string tooling_stable_key_or_empty(const query::BodyKey key)
+{
+    return query::is_valid(key) ? query::debug_string(key) : std::string{};
+}
+
 [[nodiscard]] std::string tooling_stable_key_or_empty(const query::GenericInstanceKey& key)
 {
     return query::is_valid(key) ? query::debug_string(key) : std::string{};
+}
+
+[[nodiscard]] ToolingAstNode tooling_project_ast_node(const IdeSnapshot& snapshot, const IdeAstNodeInfo& node)
+{
+    return ToolingAstNode{
+        node.kind,
+        tooling_text_range_for_snapshot(snapshot, node.range),
+        node.name,
+        node.detail,
+        tooling_stable_key_or_empty(node.definition),
+        tooling_stable_key_or_empty(node.body),
+        node.part_index,
+        node.valid,
+    };
 }
 
 [[nodiscard]] ToolingDefinition tooling_project_definition(const IdeSnapshot& snapshot, const IdeDefinition& definition)
@@ -673,6 +752,36 @@ base::Result<ToolingDocumentVersion> ToolingSession::change_document(
     return base::Result<ToolingDocumentVersion>::ok(version);
 }
 
+base::Result<ToolingDocumentVersion> ToolingSession::change_document_range(
+    const ToolingDocumentId& id, ToolingDocumentTextEdit edit, const std::optional<base::i64> client_version)
+{
+    auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return base::Result<ToolingDocumentVersion>::fail(
+            {base::ErrorCode::invalid_source, "tooling document is not open"});
+    }
+
+    std::optional<IdeEditImpact> pending_edit_impact;
+    if (found->second.cached_snapshot != nullptr && found->second.cached_version == found->second.state.version
+        && tooling_text_edit_range_is_valid(found->second.state.text, edit)) {
+        pending_edit_impact = edit_impact_for_range(*found->second.cached_snapshot, edit.begin, edit.removed_length);
+    }
+    base::Result<std::string> changed_text = tooling_apply_text_edit(found->second.state.text, edit);
+    if (!changed_text) {
+        return base::Result<ToolingDocumentVersion>::fail(changed_text.error());
+    }
+    base::Result<ToolingDocumentVersion> changed =
+        this->change_document(id, std::move(changed_text.value()), client_version);
+    if (!changed) {
+        return changed;
+    }
+    auto changed_slot = this->find_slot(id);
+    if (changed_slot != this->documents_.end() && pending_edit_impact.has_value()) {
+        changed_slot->second.pending_edit_impact = *pending_edit_impact;
+    }
+    return changed;
+}
+
 base::Result<ToolingDocumentChangeResult> ToolingSession::change_document_with_reuse_plan(const ToolingDocumentId& id,
     std::string text, const base::usize edit_begin, const base::usize removed_length,
     const std::optional<base::i64> client_version)
@@ -689,6 +798,9 @@ base::Result<ToolingDocumentChangeResult> ToolingSession::change_document_with_r
     }
     const IdeSnapshot& before_snapshot = *before.value().snapshot;
     const IdeEditImpact impact = edit_impact_for_range(before_snapshot, edit_begin, removed_length);
+    const std::string_view before_text = before_snapshot.sources.text(before_snapshot.source_id);
+    ToolingDocumentTextEdit applied_edit =
+        tooling_text_edit_from_replacement(before_text, text, edit_begin, removed_length);
 
     base::Result<ToolingDocumentVersion> changed = this->change_document(id, std::move(text), client_version);
     if (!changed) {
@@ -707,6 +819,54 @@ base::Result<ToolingDocumentChangeResult> ToolingSession::change_document_with_r
         : *after.value().incremental.reuse_plan;
     return base::Result<ToolingDocumentChangeResult>::ok(ToolingDocumentChangeResult{
         changed.value(),
+        std::move(applied_edit),
+        impact,
+        std::move(reuse_plan),
+        after.value().incremental,
+    });
+}
+
+base::Result<ToolingDocumentChangeResult> ToolingSession::change_document_range_with_reuse_plan(
+    const ToolingDocumentId& id, ToolingDocumentTextEdit edit, const std::optional<base::i64> client_version)
+{
+    auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return base::Result<ToolingDocumentChangeResult>::fail(
+            {base::ErrorCode::invalid_source, "tooling document is not open"});
+    }
+
+    base::Result<ToolingSnapshotHandle> before = this->snapshot(id);
+    if (!before) {
+        return base::Result<ToolingDocumentChangeResult>::fail(before.error());
+    }
+    const IdeSnapshot& before_snapshot = *before.value().snapshot;
+    const std::string_view before_text = before_snapshot.sources.text(before_snapshot.source_id);
+    base::Result<std::string> changed_text = tooling_apply_text_edit(before_text, edit);
+    if (!changed_text) {
+        return base::Result<ToolingDocumentChangeResult>::fail(changed_text.error());
+    }
+    const IdeEditImpact impact = edit_impact_for_range(before_snapshot, edit.begin, edit.removed_length);
+
+    base::Result<ToolingDocumentVersion> changed =
+        this->change_document(id, std::move(changed_text.value()), client_version);
+    if (!changed) {
+        return base::Result<ToolingDocumentChangeResult>::fail(changed.error());
+    }
+    auto changed_slot = this->find_slot(id);
+    if (changed_slot != this->documents_.end()) {
+        changed_slot->second.pending_edit_impact = impact;
+    }
+    base::Result<ToolingSnapshotHandle> after = this->snapshot(id);
+    if (!after) {
+        return base::Result<ToolingDocumentChangeResult>::fail(after.error());
+    }
+    ToolingReusePlan reuse_plan = after.value().incremental.reuse_plan == nullptr
+        ? tooling_plan_reuse(before_snapshot, *after.value().snapshot, impact)
+        : *after.value().incremental.reuse_plan;
+    return base::Result<ToolingDocumentChangeResult>::ok(ToolingDocumentChangeResult{
+        changed.value(),
+        std::move(edit),
+        impact,
         std::move(reuse_plan),
         after.value().incremental,
     });
@@ -771,6 +931,7 @@ base::Result<ToolingSnapshotHandle> ToolingSession::snapshot(const ToolingDocume
         std::shared_ptr<const ToolingReusePlan> reuse_plan =
             std::make_shared<ToolingReusePlan>(tooling_plan_reuse(*slot.previous_cached_snapshot, *cached, impact));
         tooling_attach_reuse_execution(slot.last_snapshot_result, reuse_plan);
+        tooling_attach_syntax_reuse_execution(slot.last_snapshot_result, *slot.previous_cached_snapshot, *cached);
     }
     slot.pending_edit_impact.reset();
     slot.cached_snapshot = std::move(cached);
@@ -893,6 +1054,32 @@ base::Result<std::optional<ToolingDefinition>> ToolingSession::definition_at_pos
             {base::ErrorCode::invalid_source, "tooling document is not open"});
     }
     return this->definition_at_offset(id, tooling_offset_for_position(found->second.state.text, position));
+}
+
+base::Result<std::optional<ToolingAstNode>> ToolingSession::ast_node_at_offset(
+    const ToolingDocumentId& id, const base::usize offset)
+{
+    base::Result<ToolingSnapshotHandle> handle = this->snapshot(id);
+    if (!handle) {
+        return base::Result<std::optional<ToolingAstNode>>::fail(handle.error());
+    }
+    const IdeSnapshot& snapshot = *handle.value().snapshot;
+    const std::optional<IdeAstNodeInfo> ast_node = tooling::ast_node_at_offset(snapshot, offset);
+    if (!ast_node.has_value()) {
+        return base::Result<std::optional<ToolingAstNode>>::ok(std::nullopt);
+    }
+    return base::Result<std::optional<ToolingAstNode>>::ok(tooling_project_ast_node(snapshot, *ast_node));
+}
+
+base::Result<std::optional<ToolingAstNode>> ToolingSession::ast_node_at_position(
+    const ToolingDocumentId& id, const ToolingSourcePosition position)
+{
+    const auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return base::Result<std::optional<ToolingAstNode>>::fail(
+            {base::ErrorCode::invalid_source, "tooling document is not open"});
+    }
+    return this->ast_node_at_offset(id, tooling_offset_for_position(found->second.state.text, position));
 }
 
 base::Result<std::vector<ToolingReference>> ToolingSession::references_at_offset(

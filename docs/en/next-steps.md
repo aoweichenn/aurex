@@ -1,6 +1,6 @@
 # Next Steps
 
-## Current Highest Priority: M3.5 Incremental Syntax And Stable AST Identity
+## Current Highest Priority: M3.6 Project Graph And Persistent Query DB
 
 The R5 Compilation Pipeline / Driver Action core is now closed:
 `CompilerInvocation`, the `Compiler` facade, `CompilationSession`,
@@ -27,8 +27,10 @@ turning M3.3 reuse explanation into real incremental sema execution:
 The closed M3.4 execution entry point is the
 [Aurex M3.4 Real Incremental Sema Execution Plan](m3.4-real-incremental-sema-plan.md).
 The wider M3.4-M3.9 route is recorded in the [M3 Roadmap](m3-roadmap.md).
-The next implementation branch should be M3.5, centered on incremental syntax,
-stable AST node identity, and edit-range-to-subtree reuse.
+M3.5 is closed in the
+[Aurex M3.5 Incremental Syntax And Stable AST Identity Plan](m3.5-incremental-syntax-stable-ast-plan.md).
+The next implementation branch should be M3.6, centered on project graph,
+workspace model, and persistent query DB work.
 
 R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
 stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
@@ -85,19 +87,33 @@ including public `PipelineStageMetadata`,
 `pipeline_profile_phase_classification(...)`, `stage` / `parent_stage` profile
 metadata, and `IdeDiagnostic` owner-stage metadata, instead of bypassing it.
 
-M3.4 first implementation order:
+M3.5 current completed surface:
 
-1. WP-1A: Add incremental snapshot input/result value types. Completed.
-2. WP-1B: Thread previous snapshot context through `ToolingSession`. Completed.
-3. WP-1C: Add no-previous, matching-previous, stale-version, and malformed
-   input tests. Completed.
-4. WP-2A: Reuse unchanged query records as executable semantic fact inputs.
-   Completed.
-5. WP-2B: Validate body-local and signature-local edit behavior. Completed.
-6. WP-3A: Stabilize semantic fact identity through repeated edit cycles.
-   Completed.
-7. WP-4: Update workspace index by stable fact identity. Completed.
-8. WP-5/WP-6: Run quality gates and close docs. Completed.
+1. Range-based document edits: `ToolingDocumentTextEdit`,
+   `change_document_range(...)`, and
+   `change_document_range_with_reuse_plan(...)` are complete.
+2. Syntax stable identity: `LosslessNodeStableKey` is complete, so unchanged
+   subtrees are not matched through absolute ranges/token indexes.
+3. Syntax reuse stats: `compare_lossless_stable_nodes(...)` and
+   `ToolingIncrementalSnapshotResult::syntax_reuse` are complete.
+4. AST projection: `IdeAstNodeInfo` / `ToolingAstNode` are complete, projecting
+   offsets to AST item/function-body stable `DefKey` / `BodyKey` values.
+5. Test coverage: prefix-edit stable syntax keys, range-edit syntax reuse,
+   stable AST body keys, and the plain range-edit path are covered.
+
+Suggested first M3.6 implementation order:
+
+1. WP-1: Define `ProjectModel` / `WorkspaceModel` value types and normalize
+   package root, source root, import roots, target config, CLI options, and open
+   buffers.
+2. WP-2: Make CLI check and `ToolingSession` share the same project graph input
+   instead of assembling module roots separately.
+3. WP-3: Include source root, package identity, target config, and module graph
+   rows in persistent query DB keys.
+4. WP-4: Add project graph invalidation / profile explanations for changed
+   project inputs.
+5. WP-5: Add tests, coverage, query pruning/fuzz/stress gates, and close M3.6
+   docs.
 
 2026-05-29 M3.3 WP-1/2/3 implementation update: `aurex_tooling` now has a
 versioned `ToolingSession`, in-place `IdeSnapshot` cache construction, and a
@@ -121,7 +137,17 @@ exposes the executed reuse plan, reuse counters, and workspace-index update
 stats. Focused tests cover accepted/rejected previous context, body-local reuse,
 removed-definition invalidation, repeated stable-fact edits, generic body-edit
 reuse, malformed reuse plans, and stale-version-free workspace index updates.
-Next implementation target: M3.5 incremental syntax and stable AST identity.
+That phase is closed; the next implementation target has moved to M3.6 project
+graph and persistent query DB.
+
+2026-05-29 M3.5 closure update: `ToolingSession` supports range-based text
+edits. `LosslessNodeStableKey` and `compare_lossless_stable_nodes(...)` turn
+syntax subtree reuse into reportable stable-key multiset counters.
+`ToolingIncrementalSnapshotResult::syntax_reuse` exposes syntax
+reused/recomputed/invalidated counters. `IdeAstNodeInfo` / `ToolingAstNode`
+project offsets to AST items/function bodies and expose stable `DefKey` /
+`BodyKey` strings. Next implementation target: M3.6 project graph and
+persistent query DB.
 
 2026-05-28 closure update: the original M3.1 work packages have been reviewed
 through WP-7 Generic Closure Audit And Release Baseline. The generic release

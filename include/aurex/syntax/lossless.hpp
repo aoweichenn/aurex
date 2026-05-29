@@ -1,8 +1,10 @@
 #pragma once
 
 #include <aurex/base/source.hpp>
+#include <aurex/syntax/identifier.hpp>
 #include <aurex/syntax/token.hpp>
 
+#include <cstddef>
 #include <optional>
 #include <span>
 #include <string>
@@ -92,6 +94,33 @@ struct LosslessNodeKey {
     }
 };
 
+struct LosslessNodeStableKey {
+    LosslessNodeKind kind = LosslessNodeKind::source_file;
+    StableHash64 anchor_hash;
+    StableHash64 subtree_hash;
+    base::usize token_count = 0;
+    base::usize semantic_token_count = 0;
+    base::usize child_count = 0;
+    base::usize depth = 0;
+
+    [[nodiscard]] friend constexpr bool operator==(
+        LosslessNodeStableKey lhs, LosslessNodeStableKey rhs) noexcept = default;
+};
+
+struct LosslessNodeStableKeyHash {
+    [[nodiscard]] std::size_t operator()(LosslessNodeStableKey key) const noexcept;
+};
+
+struct LosslessSyntaxReuseStats {
+    base::usize previous_nodes = 0;
+    base::usize current_nodes = 0;
+    base::usize reused_nodes = 0;
+    base::usize recomputed_nodes = 0;
+    base::usize invalidated_nodes = 0;
+    base::usize stable_key_collisions = 0;
+    bool reused = false;
+};
+
 class LosslessSyntaxTree final {
 public:
     LosslessSyntaxTree();
@@ -110,6 +139,7 @@ public:
     [[nodiscard]] std::span<const Token> tokens() const noexcept;
     [[nodiscard]] std::span<const Token> token_span(LosslessNodeId id) const noexcept;
     [[nodiscard]] std::optional<LosslessNodeKey> node_key(LosslessNodeId id) const noexcept;
+    [[nodiscard]] std::optional<LosslessNodeStableKey> stable_node_key(LosslessNodeId id) const noexcept;
     [[nodiscard]] LosslessNodeId node_at_offset(base::usize offset) const noexcept;
     [[nodiscard]] LosslessTokenId token_at_offset(base::usize offset) const noexcept;
     [[nodiscard]] bool is_structurally_valid() const noexcept;
@@ -164,6 +194,8 @@ constexpr LosslessTokenId LosslessElement::token_id() const noexcept
 [[nodiscard]] std::string_view lossless_node_kind_name(LosslessNodeKind kind) noexcept;
 [[nodiscard]] std::string_view lossless_element_kind_name(LosslessElementKind kind) noexcept;
 [[nodiscard]] LosslessSyntaxTree build_lossless_syntax_tree(std::span<const Token> tokens);
+[[nodiscard]] LosslessSyntaxReuseStats compare_lossless_stable_nodes(
+    const LosslessSyntaxTree& previous, const LosslessSyntaxTree& current);
 [[nodiscard]] std::string dump_lossless_syntax_tree(const LosslessSyntaxTree& tree);
 
 } // namespace aurex::syntax

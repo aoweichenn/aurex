@@ -195,7 +195,11 @@ auto ast = parse::lower_lossless_syntax_to_ast(tree, diagnostics);
 immutable-style tree through `LosslessNode` / `LosslessElement`. Each node
 records its parent, child range, contiguous token span, and source range.
 `LosslessNodeKey` provides a stable identity from kind/range/token span/depth
-for query, local reparse, and IDE tooling indexes.
+for precise query/debug projection. `LosslessNodeStableKey` is the
+position-independent identity for incremental syntax reuse: it avoids absolute
+source ranges and token indexes, and `compare_lossless_stable_nodes(previous,
+current)` reports reused, recomputed, invalidated, and collision counters for
+two immutable lossless trees.
 
 ## C++ IDE Tooling API
 
@@ -218,6 +222,7 @@ auto hover = tooling::hover_at_offset(snapshot, offset);
 auto definition = tooling::definition_at_offset(snapshot, offset);
 std::vector<tooling::IdeReference> refs =
     tooling::references_at_offset(snapshot, offset);
+auto ast_node = tooling::ast_node_at_offset(snapshot, offset);
 tooling::IdeEditImpact impact =
     tooling::edit_impact_for_range(snapshot, edit_begin, removed_length);
 ```
@@ -228,13 +233,20 @@ file/lex/parse/diagnostics plus module/item/signature/body/type-check query
 records, dependency edges, and query-backed `semantic_facts`. The current entry
 point covers diagnostics, token/hover queries, top-level definition lookup,
 same-name identifier references, checked-backed globals with AST-local fallbacks
-for parameters and `let` bindings, and edit-impact node selection.
+for parameters and `let` bindings, AST item/body projection, and edit-impact
+node selection.
 Each `IdeDiagnostic` also carries `owner_stages` metadata sourced from
 `PipelineStageMetadata` for later LSP/IDE stage visualization; the
 `aurex-diagnostics-v1` output protocol is unchanged.
 Diagnostics are normalized into a structured event stream before query
 fingerprinting or CLI rendering. It is the data source for an LSP adapter, not
 a direct dependency on the LSP protocol.
+
+`ToolingSession` also supports range-based edits through
+`ToolingDocumentTextEdit`, `change_document_range(...)`, and
+`change_document_range_with_reuse_plan(...)`. The incremental snapshot result
+now exposes sema query reuse, syntax subtree reuse, and workspace-index update
+counters together.
 
 ## IR Pass API
 

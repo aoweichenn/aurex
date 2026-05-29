@@ -92,6 +92,16 @@ struct ToolingWorkspaceIndexUpdateStats {
     bool updated = false;
 };
 
+struct ToolingSyntaxReuseExecutionSummary {
+    base::usize previous_nodes = 0;
+    base::usize current_nodes = 0;
+    base::usize reused_nodes = 0;
+    base::usize recomputed_nodes = 0;
+    base::usize invalidated_nodes = 0;
+    base::usize stable_key_collisions = 0;
+    bool executed = false;
+};
+
 struct ToolingIncrementalSnapshotResult {
     ToolingIncrementalSnapshotStatus status = ToolingIncrementalSnapshotStatus::clean_build;
     ToolingIncrementalSnapshotInput input;
@@ -100,6 +110,7 @@ struct ToolingIncrementalSnapshotResult {
     base::usize current_semantic_facts = 0;
     std::shared_ptr<const ToolingReusePlan> reuse_plan;
     ToolingQueryReuseExecutionSummary reuse_execution;
+    ToolingSyntaxReuseExecutionSummary syntax_reuse;
     ToolingWorkspaceIndexUpdateStats workspace_update;
     std::string fallback_reason;
     bool used_previous_context = false;
@@ -173,6 +184,17 @@ struct ToolingHover {
     std::string semantic_fact_detail;
     std::vector<IdePipelineStageOwner> owner_stages;
     std::optional<ToolingDefinition> definition;
+    bool valid = false;
+};
+
+struct ToolingAstNode {
+    IdeAstNodeKind kind = IdeAstNodeKind::item;
+    ToolingTextRange range;
+    std::string name;
+    std::string detail;
+    std::string stable_definition_key;
+    std::string stable_body_key;
+    base::u32 part_index = 0;
     bool valid = false;
 };
 
@@ -252,8 +274,16 @@ struct ToolingReusePlan {
     bool valid = false;
 };
 
+struct ToolingDocumentTextEdit {
+    base::usize begin = 0;
+    base::usize removed_length = 0;
+    std::string inserted_text;
+};
+
 struct ToolingDocumentChangeResult {
     ToolingDocumentVersion version;
+    ToolingDocumentTextEdit applied_edit;
+    IdeEditImpact edit_impact;
     ToolingReusePlan reuse_plan;
     ToolingIncrementalSnapshotResult incremental;
 };
@@ -351,8 +381,13 @@ public:
         ToolingDocumentId id, std::string text, std::optional<base::i64> client_version = std::nullopt);
     [[nodiscard]] base::Result<ToolingDocumentVersion> change_document(
         const ToolingDocumentId& id, std::string text, std::optional<base::i64> client_version = std::nullopt);
+    [[nodiscard]] base::Result<ToolingDocumentVersion> change_document_range(const ToolingDocumentId& id,
+        ToolingDocumentTextEdit edit, std::optional<base::i64> client_version = std::nullopt);
     [[nodiscard]] base::Result<ToolingDocumentChangeResult> change_document_with_reuse_plan(const ToolingDocumentId& id,
         std::string text, base::usize edit_begin, base::usize removed_length,
+        std::optional<base::i64> client_version = std::nullopt);
+    [[nodiscard]] base::Result<ToolingDocumentChangeResult> change_document_range_with_reuse_plan(
+        const ToolingDocumentId& id, ToolingDocumentTextEdit edit,
         std::optional<base::i64> client_version = std::nullopt);
     [[nodiscard]] base::Result<void> close_document(const ToolingDocumentId& id);
     [[nodiscard]] base::Result<ToolingSnapshotHandle> snapshot(const ToolingDocumentId& id);
@@ -366,6 +401,10 @@ public:
     [[nodiscard]] base::Result<std::optional<ToolingDefinition>> definition_at_offset(
         const ToolingDocumentId& id, base::usize offset);
     [[nodiscard]] base::Result<std::optional<ToolingDefinition>> definition_at_position(
+        const ToolingDocumentId& id, ToolingSourcePosition position);
+    [[nodiscard]] base::Result<std::optional<ToolingAstNode>> ast_node_at_offset(
+        const ToolingDocumentId& id, base::usize offset);
+    [[nodiscard]] base::Result<std::optional<ToolingAstNode>> ast_node_at_position(
         const ToolingDocumentId& id, ToolingSourcePosition position);
     [[nodiscard]] base::Result<std::vector<ToolingReference>> references_at_offset(
         const ToolingDocumentId& id, base::usize offset);

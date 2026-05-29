@@ -134,6 +134,24 @@ struct IdeHoverInfo {
     bool valid = false;
 };
 
+enum class IdeAstNodeKind : base::u8 {
+    item,
+    function_body,
+};
+
+struct IdeAstNodeInfo {
+    IdeAstNodeKind kind = IdeAstNodeKind::item;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    syntax::StmtId body_stmt = syntax::INVALID_STMT_ID;
+    query::DefKey definition;
+    query::BodyKey body;
+    base::SourceRange range{};
+    std::string name;
+    std::string detail;
+    base::u32 part_index = 0;
+    bool valid = false;
+};
+
 struct IdeEditImpact {
     syntax::LosslessNodeId node = syntax::INVALID_LOSSLESS_NODE_ID;
     base::SourceRange range{};
@@ -151,6 +169,7 @@ void build_ide_snapshot_into(
 [[nodiscard]] std::optional<IdeDefinition> definition_at_offset(const IdeSnapshot& snapshot, base::usize offset);
 [[nodiscard]] std::vector<IdeReference> references_at_offset(const IdeSnapshot& snapshot, base::usize offset);
 [[nodiscard]] std::optional<IdeHoverInfo> hover_at_offset(const IdeSnapshot& snapshot, base::usize offset);
+[[nodiscard]] std::optional<IdeAstNodeInfo> ast_node_at_offset(const IdeSnapshot& snapshot, base::usize offset);
 [[nodiscard]] IdeEditImpact edit_impact_for_range(
     const IdeSnapshot& snapshot, base::usize begin, base::usize removed_length);
 

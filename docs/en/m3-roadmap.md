@@ -225,6 +225,24 @@ This phase adapts rust-analyzer/rowan-style immutable syntax reuse and
 SwiftSyntax/Roslyn-style lossless tree discipline to Aurex's existing parser
 and AST arenas. It does not replace the parser with a second frontend.
 
+Current closure status:
+
+- `ToolingSession` now has `ToolingDocumentTextEdit`,
+  `change_document_range(...)`, and
+  `change_document_range_with_reuse_plan(...)`; range edits can reuse the M3.4
+  previous snapshot/query context.
+- `LosslessNodeStableKey` is now the position-independent syntax identity. It
+  avoids absolute source ranges and token indexes, so unchanged subtrees can be
+  matched again after prefix/local edits.
+- `compare_lossless_stable_nodes(...)` and
+  `ToolingIncrementalSnapshotResult::syntax_reuse` report reused, recomputed,
+  and invalidated syntax node counters.
+- `IdeAstNodeInfo` / `ToolingAstNode` project offsets to AST items/function
+  bodies and expose stable `DefKey` / `BodyKey` strings.
+- The implementation remains eager aggregate snapshot construction. Physical
+  green-tree grafting, full subtree reparse, background scheduling, and
+  persistent DB work remain later phases.
+
 ### M3.6: Project Graph And Persistent Query DB
 
 M3.6 promotes module/package identity into a project-level execution model.
@@ -438,8 +456,18 @@ document changes. `IdeIncrementalSnapshotInput` feeds previous query records
 into `build_ide_snapshot_into(...)`, `QueryContext` executes green reuse for
 unchanged file/module/signature/body records, and
 `ToolingIncrementalSnapshotResult` exposes the executed reuse plan, reuse
-counters, and workspace-index update stats. The next stage is M3.5
-Incremental Syntax And Stable AST Identity.
+counters, and workspace-index update stats. That phase is closed, and later
+work has advanced into M3.5/M3.6.
+
+2026-05-29: M3.5 Incremental Syntax And Stable AST Identity is complete for the
+current deterministic tooling/syntax boundary. `ToolingSession` supports
+range-based text edits. `LosslessNodeStableKey` and
+`compare_lossless_stable_nodes(...)` provide position-independent syntax subtree
+reuse counters. `ToolingIncrementalSnapshotResult::syntax_reuse` exposes
+syntax reused/recomputed/invalidated counters. `IdeAstNodeInfo` /
+`ToolingAstNode` project offsets to AST items or function bodies and expose
+stable `DefKey` / `BodyKey` strings. The next stage is M3.6 Project Graph And
+Persistent Query DB.
 
 ## Acceptance
 
@@ -507,3 +535,17 @@ M3.4 real incremental sema execution acceptance:
 - Malformed previous reuse input falls back to recomputation without assertions.
 - Tests, coverage, query pruning, edit stress, and relevant generic/module
   stress gates remain green.
+
+M3.5 incremental syntax / stable AST identity acceptance:
+
+- The versioned document store supports both range-based edits and full-text
+  replacement.
+- `LosslessNodeStableKey` can match unchanged subtrees after prefix/local edits
+  without relying on absolute ranges or token indexes.
+- `ToolingIncrementalSnapshotResult` reports sema query reuse, syntax reuse,
+  and workspace-index update counters together.
+- Offset-to-token, syntax-node, AST item/body, and semantic-fact projections
+  keep stable keys aligned.
+- Incomplete editor buffers and out-of-range edits do not corrupt session state.
+- Tests, coverage, query pruning, query graph fuzz, and generic stress gates
+  remain green.

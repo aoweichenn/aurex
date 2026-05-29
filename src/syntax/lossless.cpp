@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <unordered_map>
 #include <utility>
 
 namespace aurex::syntax {
@@ -20,6 +21,12 @@ constexpr unsigned int LOSSLESS_DUMP_LOW_NIBBLE_MASK = 0x0fU;
 constexpr char LOSSLESS_DUMP_HEX_DIGITS[] = "0123456789abcdef";
 constexpr base::usize LOSSLESS_SOURCE_FILE_NODE_INDEX = 0;
 constexpr base::usize LOSSLESS_TOKEN_STREAM_NODE_INDEX = 1;
+constexpr base::u64 LOSSLESS_STABLE_HASH_OFFSET = 14695981039346656037ULL;
+constexpr base::u64 LOSSLESS_STABLE_HASH_PRIME = 1099511628211ULL;
+constexpr base::u64 LOSSLESS_STABLE_HASH_KIND_MARKER = 0xA11CE50000000001ULL;
+constexpr base::u64 LOSSLESS_STABLE_HASH_TEXT_MARKER = 0xA11CE50000000002ULL;
+constexpr base::u64 LOSSLESS_STABLE_HASH_ANCHOR_MARKER = 0xA11CE50000000003ULL;
+constexpr base::u64 LOSSLESS_STABLE_HASH_EMPTY_ANCHOR = 0xA11CE50000000004ULL;
 
 struct LosslessBuildNode {
     LosslessNodeKind kind = LosslessNodeKind::source_file;
@@ -76,6 +83,57 @@ struct LosslessTopLevelMatch {
 [[nodiscard]] bool lossless_token_is_grammar_visible(const TokenKind kind) noexcept
 {
     return kind != TokenKind::eof && !is_trivia_token(kind);
+}
+
+[[nodiscard]] base::u64 lossless_stable_mix_u64(base::u64 hash, const base::u64 value) noexcept
+{
+    for (base::usize shift = 0U; shift < sizeof(base::u64); ++shift) {
+        hash ^= (value >> (shift * 8U)) & 0xffU;
+        hash *= LOSSLESS_STABLE_HASH_PRIME;
+    }
+    return hash;
+}
+
+[[nodiscard]] base::u64 lossless_stable_mix_text(base::u64 hash, const std::string_view text) noexcept
+{
+    hash = lossless_stable_mix_u64(hash, LOSSLESS_STABLE_HASH_TEXT_MARKER);
+    for (const unsigned char byte : text) {
+        hash ^= static_cast<base::u64>(byte);
+        hash *= LOSSLESS_STABLE_HASH_PRIME;
+    }
+    return hash;
+}
+
+[[nodiscard]] StableHash64 lossless_stable_subtree_hash(
+    const LosslessNodeKind kind, const std::span<const Token> tokens) noexcept
+{
+    base::u64 hash = lossless_stable_mix_u64(LOSSLESS_STABLE_HASH_OFFSET, LOSSLESS_STABLE_HASH_KIND_MARKER);
+    hash = lossless_stable_mix_u64(hash, static_cast<base::u64>(kind));
+    for (const Token& token : tokens) {
+        if (token.kind == TokenKind::eof) {
+            continue;
+        }
+        hash = lossless_stable_mix_u64(hash, static_cast<base::u64>(token.kind));
+        hash = lossless_stable_mix_text(hash, token.text());
+    }
+    return StableHash64{hash};
+}
+
+[[nodiscard]] StableHash64 lossless_stable_anchor_hash(const std::span<const Token> tokens) noexcept
+{
+    base::u64 hash = lossless_stable_mix_u64(LOSSLESS_STABLE_HASH_OFFSET, LOSSLESS_STABLE_HASH_ANCHOR_MARKER);
+    bool saw_anchor = false;
+    for (const Token& token : tokens) {
+        if (token.kind != TokenKind::identifier) {
+            continue;
+        }
+        hash = lossless_stable_mix_text(hash, token.text());
+        saw_anchor = true;
+    }
+    if (saw_anchor) {
+        return StableHash64{hash};
+    }
+    return StableHash64{lossless_stable_mix_u64(hash, LOSSLESS_STABLE_HASH_EMPTY_ANCHOR)};
 }
 
 [[nodiscard]] base::usize next_grammar_token(
@@ -555,6 +613,48 @@ void append_node_summary(std::ostringstream& out, const LosslessNode& node)
     return text;
 }
 
+[[nodiscard]] base::usize lossless_semantic_token_count(const std::span<const Token> tokens) noexcept
+{
+    base::usize count = 0;
+    for (const Token& token : tokens) {
+        if (lossless_token_is_grammar_visible(token.kind)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+using LosslessStableKeyCountMap = std::unordered_map<LosslessNodeStableKey, base::usize, LosslessNodeStableKeyHash>;
+
+void count_lossless_stable_key(LosslessStableKeyCountMap& counts, const std::optional<LosslessNodeStableKey>& key)
+{
+    if (!key.has_value()) {
+        return;
+    }
+    counts[*key] += 1U;
+}
+
+[[nodiscard]] LosslessStableKeyCountMap lossless_stable_key_counts(const LosslessSyntaxTree& tree)
+{
+    LosslessStableKeyCountMap counts;
+    counts.reserve(tree.node_count());
+    for (base::usize index = 0; index < tree.node_count(); ++index) {
+        count_lossless_stable_key(counts, tree.stable_node_key(LosslessNodeId{index}));
+    }
+    return counts;
+}
+
+[[nodiscard]] base::usize lossless_stable_key_collision_count(const LosslessStableKeyCountMap& counts) noexcept
+{
+    base::usize collisions = 0;
+    for (const auto& entry : counts) {
+        if (entry.second > 1U) {
+            collisions += entry.second - 1U;
+        }
+    }
+    return collisions;
+}
+
 } // namespace
 
 LosslessSyntaxTree::LosslessSyntaxTree()
@@ -723,6 +823,39 @@ std::optional<LosslessNodeKey> LosslessSyntaxTree::node_key(const LosslessNodeId
         current->range,
         current->first_token,
         current->token_count,
+        depth,
+    };
+}
+
+std::optional<LosslessNodeStableKey> LosslessSyntaxTree::stable_node_key(const LosslessNodeId id) const noexcept
+{
+    const LosslessNode* current = this->node(id);
+    if (current == nullptr) {
+        return std::nullopt;
+    }
+
+    base::usize depth = 0;
+    LosslessNodeId parent_id = current->parent;
+    while (parent_id != INVALID_LOSSLESS_NODE_ID) {
+        if (depth >= this->nodes_.size()) {
+            return std::nullopt;
+        }
+        const LosslessNode* parent_node = this->node(parent_id);
+        if (parent_node == nullptr) {
+            return std::nullopt;
+        }
+        ++depth;
+        parent_id = parent_node->parent;
+    }
+
+    const std::span<const Token> tokens = this->token_span(id);
+    return LosslessNodeStableKey{
+        current->kind,
+        lossless_stable_anchor_hash(tokens),
+        lossless_stable_subtree_hash(current->kind, tokens),
+        current->token_count,
+        lossless_semantic_token_count(tokens),
+        current->child_count,
         depth,
     };
 }
@@ -907,11 +1040,48 @@ std::string_view lossless_element_kind_name(const LosslessElementKind kind) noex
     return "unknown";
 }
 
+std::size_t LosslessNodeStableKeyHash::operator()(const LosslessNodeStableKey key) const noexcept
+{
+    base::u64 hash = lossless_stable_mix_u64(LOSSLESS_STABLE_HASH_OFFSET, static_cast<base::u64>(key.kind));
+    hash = lossless_stable_mix_u64(hash, key.anchor_hash.value);
+    hash = lossless_stable_mix_u64(hash, key.subtree_hash.value);
+    hash = lossless_stable_mix_u64(hash, static_cast<base::u64>(key.token_count));
+    hash = lossless_stable_mix_u64(hash, static_cast<base::u64>(key.semantic_token_count));
+    hash = lossless_stable_mix_u64(hash, static_cast<base::u64>(key.child_count));
+    hash = lossless_stable_mix_u64(hash, static_cast<base::u64>(key.depth));
+    return static_cast<std::size_t>(hash);
+}
+
 LosslessSyntaxTree build_lossless_syntax_tree(const std::span<const Token> tokens)
 {
     std::vector<Token> owned_tokens;
     owned_tokens.assign(tokens.begin(), tokens.end());
     return LosslessSyntaxTree{LosslessNodeKind::source_file, lossless_root_range(tokens), std::move(owned_tokens)};
+}
+
+LosslessSyntaxReuseStats compare_lossless_stable_nodes(
+    const LosslessSyntaxTree& previous, const LosslessSyntaxTree& current)
+{
+    const LosslessStableKeyCountMap previous_counts = lossless_stable_key_counts(previous);
+    const LosslessStableKeyCountMap current_counts = lossless_stable_key_counts(current);
+
+    LosslessSyntaxReuseStats stats;
+    stats.previous_nodes = previous.node_count();
+    stats.current_nodes = current.node_count();
+    stats.stable_key_collisions =
+        lossless_stable_key_collision_count(previous_counts) + lossless_stable_key_collision_count(current_counts);
+    for (const auto& entry : current_counts) {
+        const auto previous_entry = previous_counts.find(entry.first);
+        if (previous_entry == previous_counts.end()) {
+            continue;
+        }
+        stats.reused_nodes += std::min(previous_entry->second, entry.second);
+    }
+    stats.recomputed_nodes = stats.current_nodes >= stats.reused_nodes ? stats.current_nodes - stats.reused_nodes : 0U;
+    stats.invalidated_nodes =
+        stats.previous_nodes >= stats.reused_nodes ? stats.previous_nodes - stats.reused_nodes : 0U;
+    stats.reused = true;
+    return stats;
 }
 
 std::string dump_lossless_syntax_tree(const LosslessSyntaxTree& tree)

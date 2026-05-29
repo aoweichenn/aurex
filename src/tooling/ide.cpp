@@ -379,6 +379,26 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
         case syntax::ItemKind::impl_block:
             return std::nullopt;
     }
+    return std::nullopt;
+}
+
+[[nodiscard]] query::StableSymbolKind item_stable_symbol_kind(const syntax::ItemKind kind) noexcept
+{
+    switch (kind) {
+        case syntax::ItemKind::const_decl:
+            return query::StableSymbolKind::value;
+        case syntax::ItemKind::type_alias:
+        case syntax::ItemKind::struct_decl:
+        case syntax::ItemKind::enum_decl:
+        case syntax::ItemKind::opaque_struct_decl:
+            return query::StableSymbolKind::type;
+        case syntax::ItemKind::fn_decl:
+            return query::StableSymbolKind::function;
+        case syntax::ItemKind::extern_block:
+        case syntax::ItemKind::impl_block:
+            return query::StableSymbolKind::invalid;
+    }
+    return query::StableSymbolKind::invalid;
 }
 
 [[nodiscard]] base::SourceRange definition_name_range(
@@ -684,6 +704,33 @@ void recover_resolved_fragment_source_part(
 {
     return symbol_def_key(snapshot, signature.stable_id, query::DefNamespace::value,
         function_signature_def_kind(signature), signature.name.view(), signature.range);
+}
+
+[[nodiscard]] query::DefKey ast_item_def_key(const IdeSnapshot& snapshot, const syntax::ItemNode& item)
+{
+    const std::optional<ItemDefinitionMetadata> metadata = item_definition_metadata(item.kind);
+    const query::StableSymbolKind stable_kind = item_stable_symbol_kind(item.kind);
+    if (!metadata.has_value() || stable_kind == query::StableSymbolKind::invalid || item.name.empty()) {
+        return {};
+    }
+    std::vector<std::string_view> parts = snapshot.ast.module_path.parts;
+    if (parts.empty()) {
+        parts.push_back("ide");
+    }
+    const query::StableDefId stable_id =
+        query::stable_definition_id(query::stable_module_id(parts), stable_kind, item.name);
+    return query::def_key_from_stable_id(
+        module_key_for_snapshot(snapshot).package, stable_id, metadata->namespace_, metadata->kind);
+}
+
+[[nodiscard]] std::optional<base::SourceRange> ast_item_body_range(
+    const IdeSnapshot& snapshot, const syntax::ItemNode& item) noexcept
+{
+    if (item.kind != syntax::ItemKind::fn_decl || !syntax::is_valid(item.body)
+        || item.body.value >= snapshot.ast.stmts.size()) {
+        return std::nullopt;
+    }
+    return snapshot.ast.stmts.range(item.body.value);
 }
 
 [[nodiscard]] query::QueryResultFingerprint ide_module_graph_result_fingerprint(const IdeSnapshot& snapshot)
@@ -1828,6 +1875,55 @@ std::optional<IdeHoverInfo> hover_at_offset(const IdeSnapshot& snapshot, const b
     label << IDE_HOVER_TOKEN_PREFIX << syntax::token_kind_name(info->kind);
     hover.label = label.str();
     return hover;
+}
+
+std::optional<IdeAstNodeInfo> ast_node_at_offset(const IdeSnapshot& snapshot, const base::usize offset)
+{
+    if (!snapshot.parsed) {
+        return std::nullopt;
+    }
+
+    for (base::usize index = 0; index < snapshot.ast.items.size(); ++index) {
+        const syntax::ItemNode* const item = snapshot.ast.items.ptr(index);
+        if (item == nullptr || !range_contains_offset(item->range, offset)) {
+            continue;
+        }
+
+        const syntax::ItemId item_id{static_cast<base::u32>(index)};
+        const query::DefKey definition = ast_item_def_key(snapshot, *item);
+        const base::u32 part_index = ide_item_part_index(snapshot, index);
+        if (const std::optional<base::SourceRange> body_range = ast_item_body_range(snapshot, *item);
+            body_range.has_value() && range_contains_offset(*body_range, offset)) {
+            const query::BodyKey body = query::body_key(definition, query::BodySlotKind::function_body);
+            return IdeAstNodeInfo{
+                IdeAstNodeKind::function_body,
+                item_id,
+                item->body,
+                definition,
+                body,
+                *body_range,
+                std::string(item->name),
+                std::string(IDE_SEMANTIC_FACT_FUNCTION_BODY_SYNTAX),
+                part_index,
+                query::is_valid(definition) && query::is_valid(body),
+            };
+        }
+
+        const std::optional<ItemDefinitionMetadata> metadata = item_definition_metadata(item->kind);
+        return IdeAstNodeInfo{
+            IdeAstNodeKind::item,
+            item_id,
+            syntax::INVALID_STMT_ID,
+            definition,
+            {},
+            item->range,
+            std::string(item->name),
+            metadata.has_value() ? std::string(metadata->label) : std::string("item"),
+            part_index,
+            query::is_valid(definition),
+        };
+    }
+    return std::nullopt;
 }
 
 IdeEditImpact edit_impact_for_range(

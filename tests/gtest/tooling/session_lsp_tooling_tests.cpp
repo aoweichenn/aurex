@@ -102,9 +102,11 @@ constexpr std::string_view TOOLING_SESSION_PACKAGE = "tooling-session-test";
 constexpr std::string_view TOOLING_LSP_PACKAGE = "tooling-lsp-test";
 constexpr std::string_view TOOLING_WORKSPACE_PACKAGE = "tooling-workspace-test";
 constexpr std::string_view TOOLING_MALFORMED_FACT_NAME = "missing-decision";
+constexpr std::string_view TOOLING_RETURN_VALUE_TEXT = "return value";
 constexpr base::i64 TOOLING_VERSION_ONE = 1;
 constexpr base::i64 TOOLING_VERSION_TWO = 2;
 constexpr base::i64 TOOLING_VERSION_THREE = 3;
+constexpr base::i64 TOOLING_VERSION_FOUR = 4;
 constexpr std::array<base::i64, 2> TOOLING_BODY_EDIT_VERSIONS{TOOLING_VERSION_TWO, TOOLING_VERSION_THREE};
 constexpr int TOOLING_LSP_ID_INITIALIZE = 1;
 constexpr int TOOLING_LSP_ID_HOVER = 2;
@@ -746,6 +748,233 @@ TEST(CoreUnit, ToolingSessionKeepsStableFactsAcrossRepeatedBodyLocalEdits)
         ASSERT_NE(current_add_symbol, nullptr);
         EXPECT_EQ(current_add_symbol->stable_definition_key, stable_add_definition);
     }
+}
+
+TEST(CoreUnit, ToolingSessionRangeEditReportsSyntaxReuseAndStableAstBody)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.snapshot(document));
+
+    const base::usize function_offset = TOOLING_SESSION_SOURCE.find("fn main");
+    ASSERT_NE(function_offset, std::string_view::npos);
+    const base::Result<std::optional<tooling::ToolingAstNode>> item_ast =
+        session.ast_node_at_offset(document, function_offset);
+    ASSERT_TRUE(item_ast);
+    ASSERT_TRUE(item_ast.value().has_value());
+    EXPECT_EQ(item_ast.value()->kind, tooling::IdeAstNodeKind::item);
+    EXPECT_FALSE(item_ast.value()->stable_definition_key.empty());
+
+    const base::usize return_value_offset = TOOLING_SESSION_SOURCE.find("return value");
+    ASSERT_NE(return_value_offset, std::string_view::npos);
+    const base::Result<std::optional<tooling::ToolingAstNode>> before_ast =
+        session.ast_node_at_offset(document, return_value_offset);
+    ASSERT_TRUE(before_ast);
+    ASSERT_TRUE(before_ast.value().has_value());
+    ASSERT_EQ(before_ast.value()->kind, tooling::IdeAstNodeKind::function_body);
+    ASSERT_FALSE(before_ast.value()->stable_definition_key.empty());
+    ASSERT_FALSE(before_ast.value()->stable_body_key.empty());
+    const std::string stable_main_definition = before_ast.value()->stable_definition_key;
+    const std::string stable_main_body = before_ast.value()->stable_body_key;
+
+    tooling::ToolingDocumentTextEdit edit;
+    edit.begin = return_value_offset + std::string_view{"return value"}.size();
+    edit.removed_length = 0U;
+    edit.inserted_text = " + 0";
+    const base::Result<tooling::ToolingDocumentChangeResult> changed =
+        session.change_document_range_with_reuse_plan(document, edit, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    EXPECT_EQ(changed.value().applied_edit.begin, edit.begin);
+    EXPECT_EQ(changed.value().applied_edit.removed_length, edit.removed_length);
+    EXPECT_EQ(changed.value().applied_edit.inserted_text, edit.inserted_text);
+    EXPECT_TRUE(changed.value().edit_impact.valid);
+    EXPECT_EQ(changed.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::previous_context);
+    EXPECT_TRUE(changed.value().incremental.syntax_reuse.executed);
+    EXPECT_GT(changed.value().incremental.syntax_reuse.reused_nodes, 0U);
+    EXPECT_GT(changed.value().incremental.syntax_reuse.recomputed_nodes, 0U);
+    EXPECT_GT(changed.value().incremental.syntax_reuse.invalidated_nodes, 0U);
+    EXPECT_GT(changed.value().incremental.syntax_reuse.current_nodes, 0U);
+
+    const std::optional<tooling::ToolingDocumentState> state = session.document_state(document);
+    ASSERT_TRUE(state.has_value());
+    EXPECT_NE(state->text.find("return value + 0;"), std::string::npos);
+    const base::Result<std::optional<tooling::ToolingAstNode>> after_ast =
+        session.ast_node_at_offset(document, return_value_offset);
+    ASSERT_TRUE(after_ast);
+    ASSERT_TRUE(after_ast.value().has_value());
+    EXPECT_EQ(after_ast.value()->kind, tooling::IdeAstNodeKind::function_body);
+    EXPECT_EQ(after_ast.value()->stable_definition_key, stable_main_definition);
+    EXPECT_EQ(after_ast.value()->stable_body_key, stable_main_body);
+
+    tooling::ToolingDocumentTextEdit invalid_edit;
+    invalid_edit.begin = state->text.size() + 1U;
+    EXPECT_FALSE(session.change_document_range(document, invalid_edit, TOOLING_VERSION_THREE));
+}
+
+TEST(CoreUnit, ToolingSessionAppliesRangeEditWithoutReusePlan)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.snapshot(document));
+
+    tooling::ToolingDocumentTextEdit edit;
+    const base::usize return_value_offset = TOOLING_SESSION_SOURCE.find("return value");
+    ASSERT_NE(return_value_offset, std::string_view::npos);
+    edit.begin = return_value_offset + std::string_view{"return value"}.size();
+    edit.inserted_text = " + 1";
+    const base::Result<tooling::ToolingDocumentVersion> changed =
+        session.change_document_range(document, edit, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    EXPECT_EQ(changed.value().client_version, std::optional<base::i64>(TOOLING_VERSION_TWO));
+
+    const std::optional<tooling::ToolingDocumentState> state = session.document_state(document);
+    ASSERT_TRUE(state.has_value());
+    EXPECT_NE(state->text.find("return value + 1;"), std::string::npos);
+    const base::Result<tooling::ToolingSnapshotHandle> snapshot = session.snapshot(document);
+    ASSERT_TRUE(snapshot);
+    EXPECT_EQ(snapshot.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::previous_context);
+    EXPECT_TRUE(snapshot.value().incremental.syntax_reuse.executed);
+    EXPECT_GT(snapshot.value().incremental.syntax_reuse.reused_nodes, 0U);
+}
+
+TEST(CoreUnit, ToolingSessionRangeEditHandlesColdStateAndFailureEdges)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+
+    tooling::ToolingDocumentTextEdit unopened_edit;
+    unopened_edit.begin = 0U;
+    unopened_edit.inserted_text = "\n";
+    EXPECT_FALSE(session.change_document_range(document, unopened_edit, TOOLING_VERSION_ONE));
+    EXPECT_FALSE(session.change_document_range_with_reuse_plan(document, unopened_edit, TOOLING_VERSION_ONE));
+    EXPECT_FALSE(session.ast_node_at_offset(document, 0U));
+    EXPECT_FALSE(session.ast_node_at_position(document, tooling::ToolingSourcePosition{}));
+
+    tooling::IdeSnapshot unparsed_snapshot;
+    EXPECT_FALSE(tooling::ast_node_at_offset(unparsed_snapshot, 0U).has_value());
+
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    const base::Result<tooling::ToolingDocumentVersion> cold_change =
+        session.change_document_range(document, unopened_edit, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(cold_change);
+    base::Result<tooling::ToolingSnapshotHandle> cold_snapshot = session.snapshot(document);
+    ASSERT_TRUE(cold_snapshot);
+    EXPECT_EQ(cold_snapshot.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::clean_build);
+    EXPECT_FALSE(cold_snapshot.value().incremental.syntax_reuse.executed);
+
+    const base::Result<std::optional<tooling::ToolingAstNode>> module_gap = session.ast_node_at_offset(document, 0U);
+    ASSERT_TRUE(module_gap);
+    EXPECT_FALSE(module_gap.value().has_value());
+
+    const std::optional<tooling::ToolingDocumentState> state = session.document_state(document);
+    ASSERT_TRUE(state.has_value());
+    const base::usize return_value_offset = state->text.find(TOOLING_RETURN_VALUE_TEXT);
+    ASSERT_NE(return_value_offset, std::string::npos);
+
+    tooling::ToolingDocumentTextEdit body_edit;
+    body_edit.begin = return_value_offset + TOOLING_RETURN_VALUE_TEXT.size();
+    body_edit.inserted_text = " + 2";
+    EXPECT_FALSE(session.change_document_range(document, body_edit, TOOLING_VERSION_TWO));
+    EXPECT_FALSE(session.change_document_range_with_reuse_plan(document, body_edit, TOOLING_VERSION_TWO));
+
+    tooling::ToolingDocumentTextEdit invalid_edit;
+    invalid_edit.begin = state->text.size() + TOOLING_TEST_PAST_EOF_OFFSET_DELTA;
+    const base::Result<tooling::ToolingDocumentChangeResult> invalid_with_reuse =
+        session.change_document_range_with_reuse_plan(document, invalid_edit, TOOLING_VERSION_FOUR);
+    EXPECT_FALSE(invalid_with_reuse);
+
+    tooling::ToolingDocumentTextEdit over_remove_edit;
+    over_remove_edit.begin = state->text.size();
+    over_remove_edit.removed_length = 1U;
+    EXPECT_FALSE(session.change_document_range_with_reuse_plan(document, over_remove_edit, TOOLING_VERSION_FOUR));
+
+    const std::optional<tooling::ToolingDocumentState> unchanged_state = session.document_state(document);
+    ASSERT_TRUE(unchanged_state.has_value());
+    EXPECT_EQ(unchanged_state->version.client_version, std::optional<base::i64>(TOOLING_VERSION_TWO));
+    EXPECT_EQ(unchanged_state->text, state->text);
+}
+
+TEST(CoreUnit, ToolingSessionAstNodeProjectsNonDefiningImplItem)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_LSP_METHOD_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_LSP_METHOD_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::usize impl_offset = TOOLING_LSP_METHOD_SYMBOL_SOURCE.find("impl Counter");
+    ASSERT_NE(impl_offset, std::string_view::npos);
+    const base::Result<std::optional<tooling::ToolingAstNode>> impl_ast =
+        session.ast_node_at_offset(document, impl_offset);
+    ASSERT_TRUE(impl_ast);
+    ASSERT_TRUE(impl_ast.value().has_value());
+    EXPECT_EQ(impl_ast.value()->kind, tooling::IdeAstNodeKind::item);
+    EXPECT_EQ(impl_ast.value()->detail, "item");
+    EXPECT_TRUE(impl_ast.value()->stable_definition_key.empty());
+    EXPECT_FALSE(impl_ast.value()->valid);
+}
+
+TEST(CoreUnit, ToolingSessionAstNodeProjectsStableTopLevelItemKinds)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_LSP_FALLBACK_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(
+        session.open_document(document, std::string(TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+
+    struct ExpectedAstItem {
+        std::string_view needle;
+        std::string_view name;
+        std::string_view detail;
+    };
+    constexpr std::array<ExpectedAstItem, 5> EXPECTED_ITEMS{{
+        {"const answer", "answer", "const"},
+        {"type Count", "Count", "type_alias"},
+        {"opaque struct Handle", "Handle", "opaque_struct"},
+        {"struct Point", "Point", "struct"},
+        {"enum Mode", "Mode", "enum"},
+    }};
+
+    for (const ExpectedAstItem& expected : EXPECTED_ITEMS) {
+        const base::usize offset = TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE.find(expected.needle);
+        ASSERT_NE(offset, std::string_view::npos);
+        const base::Result<std::optional<tooling::ToolingAstNode>> ast_node =
+            session.ast_node_at_offset(document, offset);
+        ASSERT_TRUE(ast_node);
+        ASSERT_TRUE(ast_node.value().has_value());
+        EXPECT_EQ(ast_node.value()->kind, tooling::IdeAstNodeKind::item);
+        EXPECT_EQ(ast_node.value()->name, expected.name);
+        EXPECT_EQ(ast_node.value()->detail, expected.detail);
+        EXPECT_FALSE(ast_node.value()->stable_definition_key.empty());
+        EXPECT_TRUE(ast_node.value()->valid);
+    }
+}
+
+TEST(CoreUnit, ToolingSessionFullTextReusePlanHandlesFailureEdges)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+
+    EXPECT_FALSE(session.change_document_with_reuse_plan(
+        document, std::string(TOOLING_SESSION_SOURCE), 0U, 0U, TOOLING_VERSION_ONE));
+
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    EXPECT_FALSE(session.change_document_with_reuse_plan(
+        document, std::string(TOOLING_SESSION_INVALID_SOURCE), 0U, 0U, TOOLING_VERSION_ONE));
+
+    const base::usize invalid_edit_begin = TOOLING_SESSION_SOURCE.size() + TOOLING_TEST_PAST_EOF_OFFSET_DELTA;
+    const base::Result<tooling::ToolingDocumentChangeResult> changed = session.change_document_with_reuse_plan(
+        document, std::string(TOOLING_SESSION_SOURCE), invalid_edit_begin, 0U, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    EXPECT_EQ(changed.value().applied_edit.begin, invalid_edit_begin);
+    EXPECT_TRUE(changed.value().applied_edit.inserted_text.empty());
+    EXPECT_TRUE(changed.value().edit_impact.valid);
+    EXPECT_EQ(changed.value().version.client_version, std::optional<base::i64>(TOOLING_VERSION_TWO));
 }
 
 TEST(CoreUnit, ToolingSessionTracksAddedDependenciesAndEmptyReusePlan)

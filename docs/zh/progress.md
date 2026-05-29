@@ -1,7 +1,7 @@
 # 当前进度文档
 
 版本：0.1.3
-阶段：M3.4 real incremental sema execution
+阶段：M3.5 incremental syntax / stable AST identity 已完成，下一阶段 M3.6 project graph / persistent query DB
 
 ## 总体状态
 
@@ -78,7 +78,17 @@ function-body-syntax 和 type-check-body records 会在 provider evaluation 前 
 update stats；`ToolingWorkspaceSemanticIndex` 报告 retained、replaced、removed、inserted facts，并避免对外返回
 旧 document version 的 stale entries。聚焦测试覆盖 accepted/rejected previous context、重复 body-local edit
 稳定性、removed-definition invalidation、generic body-edit reuse、malformed reuse 和无旧版本泄漏的 workspace
-facts。下一目标是 M3.5 Incremental Syntax And Stable AST Identity。
+facts。该阶段已收口，后续目标已经推进到 M3.5/M3.6。
+
+2026-05-29：M3.5 Incremental Syntax And Stable AST Identity 已完成当前 deterministic tooling/syntax 边界。
+`ToolingSession` 新增 range-based edit 入口，`ToolingDocumentTextEdit` 能描述 begin / removed length / inserted
+text，并在 `change_document_range_with_reuse_plan(...)` 中返回 applied edit、精确 edit impact、reuse plan 和
+incremental snapshot result。`LosslessNodeStableKey` 已作为位置无关 syntax identity 落地，不使用绝对 source
+range 或 token index；`compare_lossless_stable_nodes(...)` 通过 stable-key multiset 报告 reused、recomputed、
+invalidated 和 collision counters；这些结果进入 `ToolingIncrementalSnapshotResult::syntax_reuse`。新增
+`IdeAstNodeInfo` / `ToolingAstNode` 将 offset 投影到 AST item 或 function body，并输出稳定 `DefKey` /
+`BodyKey`，使 offset-to-token、syntax-node、AST-node 和 semantic-fact projection 能在同一个 snapshot 中对齐。
+下一目标是 M3.6 Project Graph And Persistent Query DB。
 
 2026-05-28 WP-1B Generic Instance Identity Propagation 已完成：`FunctionSignature`、`EnumCaseInfo`、
 `GenericEnumInstanceInfo` 和 `GenericTypeAliasInstanceInfo` 都携带结构化 `GenericInstanceKey`；

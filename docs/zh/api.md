@@ -178,7 +178,10 @@ auto ast = parse::lower_lossless_syntax_to_ast(tree, diagnostics);
 `LosslessSyntaxTree` 保留完整 token/trivia 序列，并用 `LosslessNode` /
 `LosslessElement` 表示 immutable-style tree。每个 node 记录 parent、children
 区间、连续 token span 和 source range；`LosslessNodeKey` 提供以 kind/range/token
-span/depth 组成的稳定节点身份，用于 query、局部重解析和 IDE tooling 的上层索引。
+span/depth 组成的精确 query/debug 投影身份。`LosslessNodeStableKey` 是增量 syntax
+reuse 使用的位置无关身份：它不依赖绝对 source range 或 token index，
+`compare_lossless_stable_nodes(previous, current)` 会比较两棵 immutable lossless tree，并报告 reused、
+recomputed、invalidated 和 collision counters。
 
 ## C++ IDE Tooling 接口
 
@@ -201,6 +204,7 @@ auto hover = tooling::hover_at_offset(snapshot, offset);
 auto definition = tooling::definition_at_offset(snapshot, offset);
 std::vector<tooling::IdeReference> refs =
     tooling::references_at_offset(snapshot, offset);
+auto ast_node = tooling::ast_node_at_offset(snapshot, offset);
 tooling::IdeEditImpact impact =
     tooling::edit_impact_for_range(snapshot, edit_begin, removed_length);
 ```
@@ -210,10 +214,14 @@ AST、checked module、结构化 diagnostics，以及 file/lex/parse/diagnostics
 module/item/signature/body/type-check 的 query records、dependency edges 和 query-backed
 `semantic_facts`。当前入口已覆盖 diagnostics、token/hover、顶层定义跳转、
 同名 identifier references、checked-backed 全局符号与 AST 局部参数 / `let` 绑定 fallback，
-以及编辑影响 node 选择；diagnostics 会先归一为结构化 event stream，再进入 query
+AST item/body projection，以及编辑影响 node 选择；diagnostics 会先归一为结构化 event stream，再进入 query
 fingerprint 或 CLI 渲染。每个 `IdeDiagnostic` 还携带 `owner_stages`，这些 stage metadata
 来自 `PipelineStageMetadata`，用于后续 LSP/IDE 阶段可视化；`aurex-diagnostics-v1` 输出协议不因此改变。
 它是 LSP adapter 的数据源，不直接绑定 LSP protocol。
+
+`ToolingSession` 同时支持 `ToolingDocumentTextEdit`、`change_document_range(...)` 和
+`change_document_range_with_reuse_plan(...)` 形式的 range-based edit。incremental snapshot result 现在能在同一
+结果中暴露 sema query reuse、syntax subtree reuse 和 workspace-index update counters。
 
 ## IR Pass 接口
 

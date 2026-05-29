@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M3.5 Incremental Syntax And Stable AST Identity
+## 当前最高优先级：M3.6 Project Graph And Persistent Query DB
 
 R5 Compilation Pipeline / Driver Action 重构 core 已收口：`CompilerInvocation`、`Compiler`
 facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`LoweringPipeline`、
@@ -22,8 +22,9 @@ reuse explanation 推进为真实 incremental sema execution：
 
 已收口的 M3.4 执行入口是
 [Aurex M3.4 Real Incremental Sema Execution 计划](m3.4-real-incremental-sema-plan.md)。
-更完整的 M3.4-M3.9 路线记录在 [M3 路线图](m3-roadmap.md)。下一实现分支应进入 M3.5，重点处理
-incremental syntax、stable AST node identity 和 edit-range-to-subtree reuse。
+更完整的 M3.4-M3.9 路线记录在 [M3 路线图](m3-roadmap.md)。M3.5 已在
+[Aurex M3.5 Incremental Syntax And Stable AST Identity 计划](m3.5-incremental-syntax-stable-ast-plan.md)
+中收口。下一实现分支应进入 M3.6，重点处理 project graph、workspace model 和 persistent query DB。
 
 R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分；
 R5.3 已完成 `LoweringPipeline`、`BackendPipeline` 和 `PipelineStage` 记录。当前 driver 总控已经只保留
@@ -65,17 +66,25 @@ R5.13 已完成 profile/tooling 消费者分类契约：`pipeline_profile_phase_
 已通过这个入口输出原有 `stage` / `parent_stage` metadata，协议字段保持不变。后续 profile viewer
 和 LSP/IDE 阶段视图必须复用这个分类 API，不再维护独立 phase-name 映射表。
 
-M3.4 的第一批实现顺序：
+M3.5 的当前完成面：
 
-1. WP-1A：新增 incremental snapshot input/result value types。已完成。
-2. WP-1B：通过 `ToolingSession` 传递 previous snapshot context。已完成。
-3. WP-1C：增加 no-previous、matching-previous、stale-version 和 malformed input tests。已完成。
-4. WP-2A：把 unchanged query records 作为 executable semantic fact inputs 复用。
-   已完成。
-5. WP-2B：验证 body-local 和 signature-local edit 行为。已完成。
-6. WP-3A：让 semantic fact identity 在重复编辑循环中保持稳定。已完成。
-7. WP-4：按 stable fact identity 更新 workspace index。已完成。
-8. WP-5/WP-6：运行质量门并收口文档。已完成。
+1. range-based document edit：`ToolingDocumentTextEdit`、`change_document_range(...)` 和
+   `change_document_range_with_reuse_plan(...)` 已完成。
+2. syntax stable identity：`LosslessNodeStableKey` 已完成，未变化 subtree 不再依赖绝对 range/token index 匹配。
+3. syntax reuse stats：`compare_lossless_stable_nodes(...)` 和
+   `ToolingIncrementalSnapshotResult::syntax_reuse` 已完成。
+4. AST projection：`IdeAstNodeInfo` / `ToolingAstNode` 已完成，offset 可投影到 AST item/function body 的稳定
+   `DefKey` / `BodyKey`。
+5. 测试覆盖：prefix edit stable syntax key、range edit syntax reuse、stable AST body key 和 plain range edit 已完成。
+
+M3.6 的建议第一批实现顺序：
+
+1. WP-1：定义 `ProjectModel` / `WorkspaceModel` value types，并把 package root、source root、import roots、
+   target config、CLI options 和 open buffers 归一化。
+2. WP-2：让 CLI check 和 `ToolingSession` 共享同一套 project graph 输入，不再各自临时拼装 module roots。
+3. WP-3：把 source-root、package identity、target config 和 module graph row 接入 persistent query DB key。
+4. WP-4：增加 project graph invalidation / profile explanation，解释哪些 project input 改变。
+5. WP-5：补 tests、coverage、query pruning/fuzz/stress gates，并收口 M3.6 文档。
 
 2026-05-28 收口更新：原 M3.1 work packages 已通过 WP-7 Generic Closure Audit And Release Baseline 统一复审。
 当前泛型 release baseline 固定为：generic struct / enum / type alias / function / owner-generic method /
@@ -96,7 +105,13 @@ records 接入 snapshot construction；`QueryContext` 对 unchanged file/module/
 green reuse；`ToolingIncrementalSnapshotResult` 暴露已执行的 reuse plan、reuse counters 和 workspace-index
 update stats。聚焦测试覆盖 accepted/rejected previous context、body-local reuse、removed-definition
 invalidation、重复 stable-fact edits、generic body-edit reuse、malformed reuse plan 和无旧版本泄漏的 workspace
-index update。下一实现目标：M3.5 incremental syntax 和 stable AST identity。
+index update。该阶段已收口，下一实现目标已经推进到 M3.6 project graph 和 persistent query DB。
+
+2026-05-29 M3.5 收口更新：`ToolingSession` 已支持 range-based text edit；`LosslessNodeStableKey` 和
+`compare_lossless_stable_nodes(...)` 已把 syntax subtree reuse 变成可报告的 stable-key multiset 统计；
+`ToolingIncrementalSnapshotResult::syntax_reuse` 暴露 syntax reused/recomputed/invalidated counters；
+`IdeAstNodeInfo` / `ToolingAstNode` 已将 offset 投影到 AST item/function body，并输出稳定 `DefKey` / `BodyKey`。
+下一实现目标：M3.6 project graph 和 persistent query DB。
 
 ## 当前分支原则
 

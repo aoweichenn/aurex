@@ -1,7 +1,7 @@
 # Current Progress
 
 Version: 0.1.3
-Stage: M3.4 real incremental sema execution
+Stage: M3.5 incremental syntax / stable AST identity complete; next stage M3.6 project graph / persistent query DB
 
 ## Overall Status
 
@@ -137,8 +137,23 @@ reuse-execution counters, and workspace-index update stats.
 inserted facts while avoiding externally visible stale document entries.
 Focused tests cover accepted/rejected previous context, repeated body-local edit
 stability, removed-definition invalidation, generic body-edit reuse, malformed
-reuse, and stale-version-free workspace facts. The next target is M3.5
-Incremental Syntax And Stable AST Identity.
+reuse, and stale-version-free workspace facts.
+
+As of 2026-05-29, M3.5 Incremental Syntax And Stable AST Identity is complete
+for the current deterministic tooling/syntax boundary. `ToolingSession` now has
+range-based edit entry points. `ToolingDocumentTextEdit` describes begin,
+removed length, and inserted text, and
+`change_document_range_with_reuse_plan(...)` returns the applied edit, precise
+edit impact, reuse plan, and incremental snapshot result. `LosslessNodeStableKey`
+is the position-independent syntax identity and avoids absolute source ranges
+or token indexes. `compare_lossless_stable_nodes(...)` reports reused,
+recomputed, invalidated, and collision counters through stable-key multisets,
+and those counters are exposed as
+`ToolingIncrementalSnapshotResult::syntax_reuse`. `IdeAstNodeInfo` /
+`ToolingAstNode` project offsets to AST items or function bodies and expose
+stable `DefKey` / `BodyKey` strings, keeping offset-to-token, syntax-node,
+AST-node, and semantic-fact projections aligned within one snapshot. The next
+target is M3.6 Project Graph And Persistent Query DB.
 
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and

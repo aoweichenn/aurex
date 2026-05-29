@@ -3,6 +3,7 @@ add_library(aurex_ir
     src/ir/enum_layout.cpp
     src/ir/ir.cpp
     src/ir/ir_dump.cpp
+    src/ir/ir_fingerprint.cpp
     src/ir/lower_ast.cpp
     src/ir/lower_ast_expr.cpp
     src/ir/lower_ast_match.cpp

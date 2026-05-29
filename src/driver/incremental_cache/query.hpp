@@ -13,6 +13,10 @@ namespace aurex::sema {
 struct CheckedModule;
 } // namespace aurex::sema
 
+namespace aurex::ir {
+struct Module;
+} // namespace aurex::ir
+
 namespace aurex::syntax {
 struct AstModule;
 } // namespace aurex::syntax
@@ -29,7 +33,7 @@ namespace incremental_cache_detail {
 
 [[nodiscard]] base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invocation,
     const base::SourceManager& sources, std::span<const ModuleRecord> modules, const syntax::AstModule& ast,
-    const sema::CheckedModule& checked, CompilationProfiler* profiler);
+    const sema::CheckedModule& checked, const ir::Module* lowered_ir, CompilationProfiler* profiler);
 
 } // namespace incremental_cache_detail
 

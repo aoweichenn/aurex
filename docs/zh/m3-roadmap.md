@@ -17,7 +17,8 @@ M3 建立在 M2.5 frontend-foundation 之上。M2.5 已经把 query key、结构
 Phase 9A-D 与 M3.1 泛型 release baseline 都已完成。2026-05-29：M3.2 Query-backed Sema 和
 M3.3 Tooling Session And Incremental Sema 都已 fast-forward 合并回 `m3`。M3.4、M3.5、M3.6 和
 M3.7 已依次完成 real incremental sema execution、stable syntax identity、project graph/persistent query DB
-和 IDE semantic features。当前新主线应进入 M3.8，重点是把 query architecture 下沉到 lowering、IR 和 backend。
+和 IDE semantic features。M3.8 已完成 query-backed lowering、IR unit fingerprint 和 backend emission unit
+边界。当前新主线进入 M3.9 release baseline hardening。
 所有 M3 实现必须复用
 R5 稳定下来的 `CompilationSession`、`CompilationPipeline`、
 `FrontendPipeline`、`LoweringPipeline`、`BackendPipeline`、`PipelineStage`、query、diagnostics
@@ -212,18 +213,19 @@ M3.7 不允许 LSP DTO 泄漏进编译器内部。
 
 ### M3.8：Query-backed Lowering, IR, And Backend Reuse
 
-M3.8 把 query architecture 推进到 sema 以下。M3.2-M3.4 已让 checked semantic facts query-backed；
-lowering、IR 和 backend 仍需要显式事实边界，后续 native build 才能复用未受影响的 unit。
+M3.8 已把 query architecture 推进到 sema 以下。M3.2-M3.4 已让 checked semantic facts query-backed；
+M3.8 补齐 lowering、IR 和 backend 的显式事实边界，后续 native build 才能复用未受影响的 unit。
 
 核心交付：
 
-- 为单个函数体 lowering 和单个 generic instance body lowering 增加 query authority。
-- 增加 type layout、enum layout、ABI symbol 和 lower-generic-IR query facts。
-- 在可行处把 IR pass-manager analysis preservation / invalidation 接入 query dependency invalidation。
-- target-independent IR unit 与 LLVM module/function emission unit 保持分离。
+- 单个函数体 lowering 和单个 generic instance body lowering 已进入 query authority。
+- type layout、enum layout、ABI symbol 和 lower-generic-IR facts 已通过真实 IR unit/layout fingerprint 写入。
+- IR pass-manager analysis preservation / invalidation 已进入 pass summary 和 profile detail。
+- target-independent IR unit 与 LLVM module/function emission unit 已通过独立 fingerprint 边界分离。
 - verifier gates、profile metadata、diagnostics ownership 和 native execution 行为继续走现有 R5 pipeline。
 
 该阶段借鉴 LLVM new pass manager 的 analysis preservation 和 rustc 风格 codegen-unit reuse，但不引入它们的完整复杂度。
+收口记录见 [Aurex M3.8 Query-backed Lowering / Backend Reuse 计划与收口记录](m3.8-query-backed-lowering-backend-reuse-plan.md)。
 
 ### M3.9：M3 Closure And Release Baseline
 

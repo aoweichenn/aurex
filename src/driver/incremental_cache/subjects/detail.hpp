@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/source.hpp>
+#include <aurex/ir/ir.hpp>
 #include <aurex/project/project_model.hpp>
 #include <aurex/sema/checked_module.hpp>
 #include <aurex/syntax/ast.hpp>
@@ -42,7 +43,8 @@ void collect_function_body_query_subjects(const sema::CheckedModule& checked, co
     std::vector<TypeCheckBodyQuerySubject>& type_check_subjects);
 [[nodiscard]] std::vector<LowerFunctionIRQuerySubject> collect_lower_function_ir_query_subjects(
     const std::vector<TypeCheckBodyQuerySubject>& type_check_subjects,
-    const std::vector<GenericInstanceBodyQuerySubject>& generic_body_subjects);
+    const std::vector<GenericInstanceBodyQuerySubject>& generic_body_subjects, const sema::CheckedModule& checked,
+    std::span<const ModuleRecord> modules, const ir::Module& lowered_ir);
 
 void build_ordered_query_subjects(QuerySubjectCollection& collection);
 

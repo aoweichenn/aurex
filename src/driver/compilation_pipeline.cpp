@@ -74,21 +74,31 @@ base::Result<void> CompilationPipeline::run()
     }
     sema::CheckedModule checked = checked_result.take_value();
 
-    auto incremental_cache_result =
-        frontend_pipeline.write_checked_incremental_cache(frontend.modules, frontend.ast, checked);
-    if (!incremental_cache_result) {
-        return session.finish(base::Result<void>::fail(incremental_cache_result.error()));
-    }
+    const auto write_checked_cache = [&](const ir::Module* const lowered_ir) -> base::Result<void> {
+        return frontend_pipeline.write_checked_incremental_cache(frontend.modules, frontend.ast, checked, lowered_ir);
+    };
 
     if (this->invocation_.emit_kind == EmitKind::check) {
+        auto incremental_cache_result = write_checked_cache(nullptr);
+        if (!incremental_cache_result) {
+            return session.finish(base::Result<void>::fail(incremental_cache_result.error()));
+        }
         return session.finish(base::Result<void>::ok());
     }
 
     if (this->invocation_.emit_kind == EmitKind::typed) {
+        auto incremental_cache_result = write_checked_cache(nullptr);
+        if (!incremental_cache_result) {
+            return session.finish(base::Result<void>::fail(incremental_cache_result.error()));
+        }
         return session.finish(base::Result<void>::ok());
     }
 
     if (this->invocation_.emit_kind == EmitKind::checked) {
+        auto incremental_cache_result = write_checked_cache(nullptr);
+        if (!incremental_cache_result) {
+            return session.finish(base::Result<void>::fail(incremental_cache_result.error()));
+        }
         return session.finish(lowering_pipeline.dump_checked_output(checked));
     }
 
@@ -97,6 +107,10 @@ base::Result<void> CompilationPipeline::run()
         if (!ir_result) {
             return session.finish(base::Result<void>::fail(ir_result.error()));
         }
+        auto incremental_cache_result = write_checked_cache(&ir_result.value());
+        if (!incremental_cache_result) {
+            return session.finish(base::Result<void>::fail(incremental_cache_result.error()));
+        }
         return session.finish(lowering_pipeline.dump_ir_output(ir_result.value()));
     }
 
@@ -104,6 +118,10 @@ base::Result<void> CompilationPipeline::run()
         auto ir_result = lower_or_fail(lowering_pipeline, frontend.ast, checked);
         if (!ir_result) {
             return session.finish(base::Result<void>::fail(ir_result.error()));
+        }
+        auto incremental_cache_result = write_checked_cache(&ir_result.value());
+        if (!incremental_cache_result) {
+            return session.finish(base::Result<void>::fail(incremental_cache_result.error()));
         }
         return session.finish(backend_pipeline.emit_llvm_ir_output(ir_result.value()));
     }
@@ -116,6 +134,10 @@ base::Result<void> CompilationPipeline::run()
         auto ir_result = lower_or_fail(lowering_pipeline, frontend.ast, checked);
         if (!ir_result) {
             return session.finish(base::Result<void>::fail(ir_result.error()));
+        }
+        auto incremental_cache_result = write_checked_cache(&ir_result.value());
+        if (!incremental_cache_result) {
+            return session.finish(base::Result<void>::fail(incremental_cache_result.error()));
         }
         return session.finish(backend_pipeline.emit_native_output(ir_result.value()));
     }

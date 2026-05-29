@@ -877,6 +877,34 @@ void expect_cache_query_edges_follow_dependency_schedule(const std::string_view 
     return std::nullopt;
 }
 
+[[nodiscard]] std::optional<CacheTestQueryResultFingerprint> first_cache_test_query_result(
+    const std::string_view cache_text, const std::string_view query_kind)
+{
+    base::usize line_start = 0;
+    while (line_start < cache_text.size()) {
+        const base::usize line_end = cache_text.find('\n', line_start);
+        const std::string_view line = line_end == std::string_view::npos
+            ? cache_text.substr(line_start)
+            : cache_text.substr(line_start, line_end - line_start);
+        const std::vector<std::string_view> fields = split_cache_test_fields(line);
+        if (fields.size() == CACHE_TEST_QUERY_FIELD_COUNT
+            && fields[CACHE_TEST_QUERY_ROW_KIND_FIELD] == CACHE_TEST_QUERY_ROW_KIND
+            && fields[CACHE_TEST_QUERY_KIND_FIELD] == query_kind) {
+            return CacheTestQueryResultFingerprint{
+                std::string(fields[CACHE_TEST_QUERY_RESULT_GLOBAL_FIELD]),
+                std::string(fields[CACHE_TEST_QUERY_RESULT_PRIMARY_FIELD]),
+                std::string(fields[CACHE_TEST_QUERY_RESULT_SECONDARY_FIELD]),
+                std::string(fields[CACHE_TEST_QUERY_RESULT_BYTES_FIELD]),
+            };
+        }
+        if (line_end == std::string_view::npos) {
+            break;
+        }
+        line_start = line_end + 1;
+    }
+    return std::nullopt;
+}
+
 [[nodiscard]] query::PackageKey cache_test_default_package() noexcept
 {
     return driver::package_key_from_identity(std::string_view{});
@@ -2370,6 +2398,70 @@ TEST_F(AurexIntegrationTest, IncrementalCacheReportsWriteOpenFailure)
     EXPECT_EQ(result.error().code, base::ErrorCode::io_error);
 }
 
+TEST_F(AurexIntegrationTest, IncrementalCachePipelineReportsWriteFailureAtEmitStopPoints)
+{
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_PIPELINE_FAILURE_SOURCE =
+        "module incremental_cache_pipeline_failure;\n"
+        "fn main() -> i32 { let value: i32 = 7; return value; }\n";
+    constexpr std::size_t DRIVER_INCREMENTAL_CACHE_PIPELINE_FAILURE_LONG_FILE_NAME_LENGTH = 300;
+    constexpr char DRIVER_INCREMENTAL_CACHE_PIPELINE_FAILURE_LONG_FILE_NAME_CHAR = 'x';
+
+    struct CacheFailureEmitCase {
+        driver::EmitKind emit_kind;
+        bool requires_llvm_backend = false;
+        bool requires_output_path = false;
+    };
+
+    const std::array<CacheFailureEmitCase, 6> cases{{
+        {driver::EmitKind::check, false, false},
+        {driver::EmitKind::typed, false, false},
+        {driver::EmitKind::checked, false, false},
+        {driver::EmitKind::ir, false, false},
+        {driver::EmitKind::llvm_ir, true, false},
+        {driver::EmitKind::object, true, true},
+    }};
+
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-pipeline-write-failure";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << DRIVER_INCREMENTAL_CACHE_PIPELINE_FAILURE_SOURCE;
+    }
+
+    for (base::usize index = 0; index < cases.size(); ++index) {
+        const CacheFailureEmitCase test_case = cases[index];
+        driver::CompilerInvocation invocation;
+        invocation.input_path = source;
+        invocation.emit_kind = test_case.emit_kind;
+        invocation.incremental_cache_path = cache_dir
+            / (std::string(DRIVER_INCREMENTAL_CACHE_PIPELINE_FAILURE_LONG_FILE_NAME_LENGTH,
+                   DRIVER_INCREMENTAL_CACHE_PIPELINE_FAILURE_LONG_FILE_NAME_CHAR)
+                + std::to_string(index));
+        if (test_case.requires_output_path) {
+            invocation.output_path = cache_dir / ("out" + std::to_string(index) + ".o");
+        }
+
+        testing::internal::CaptureStdout();
+        base::Result<void> result = base::Result<void>::ok();
+        if (test_case.requires_llvm_backend) {
+            driver::Compiler compiler(driver::llvm_backend_ir_emitter());
+            result = compiler.run(invocation);
+        } else {
+            driver::Compiler compiler;
+            result = compiler.run(invocation);
+        }
+        static_cast<void>(testing::internal::GetCapturedStdout());
+        ASSERT_FALSE(result) << index;
+        EXPECT_EQ(result.error().code, base::ErrorCode::io_error) << index;
+    }
+
+    driver::clear_file_cache();
+}
+
 TEST_F(AurexIntegrationTest, IncrementalCacheWritesQueryRowsInDependencyScheduleOrder)
 {
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_QUERY_SCHEDULE_SOURCE =
@@ -2941,6 +3033,57 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericBodyRowsButSkipsLowerI
     expect_contains(ir_cache_text, "query\tlower_function_ir");
     expect_contains(ir_cache_text, "query_edge\tgeneric_instance_body");
     expect_contains(ir_cache_text, "query_edge\tlower_function_ir");
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, IncrementalCacheLowerIRRowsUseOptimizedIrUnitFingerprint)
+{
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_LOWER_IR_SOURCE =
+        "module incremental_cache_lower_ir;\n"
+        "fn main() -> i32 { let value: i32 = 7; return value; }\n";
+
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-lower-ir-fingerprint";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path o0_cache = cache_dir / "main.o0.axic";
+    const fs::path o1_cache = cache_dir / "main.o1.axic";
+    {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << DRIVER_INCREMENTAL_CACHE_LOWER_IR_SOURCE;
+    }
+
+    driver::Compiler compiler;
+    driver::CompilerInvocation o0_invocation;
+    o0_invocation.input_path = source;
+    o0_invocation.emit_kind = driver::EmitKind::ir;
+    o0_invocation.incremental_cache_path = o0_cache;
+    o0_invocation.optimization_level = ir::OptimizationLevel::none;
+
+    testing::internal::CaptureStdout();
+    auto o0_result = compiler.run(o0_invocation);
+    static_cast<void>(testing::internal::GetCapturedStdout());
+    ASSERT_TRUE(o0_result) << o0_result.error().message;
+
+    driver::CompilerInvocation o1_invocation = o0_invocation;
+    o1_invocation.incremental_cache_path = o1_cache;
+    o1_invocation.optimization_level = ir::OptimizationLevel::basic;
+
+    testing::internal::CaptureStdout();
+    auto o1_result = compiler.run(o1_invocation);
+    static_cast<void>(testing::internal::GetCapturedStdout());
+    ASSERT_TRUE(o1_result) << o1_result.error().message;
+
+    const std::optional<CacheTestQueryResultFingerprint> o0_lower =
+        first_cache_test_query_result(read_text(o0_cache), CACHE_TEST_QUERY_LOWER_FUNCTION_IR);
+    const std::optional<CacheTestQueryResultFingerprint> o1_lower =
+        first_cache_test_query_result(read_text(o1_cache), CACHE_TEST_QUERY_LOWER_FUNCTION_IR);
+    ASSERT_TRUE(o0_lower.has_value());
+    ASSERT_TRUE(o1_lower.has_value());
+    EXPECT_NE(*o0_lower, *o1_lower);
 
     driver::clear_file_cache();
 }

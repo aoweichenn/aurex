@@ -2,6 +2,7 @@
 #include <aurex/ir/pass_manager.hpp>
 #include <aurex/ir/verify.hpp>
 
+#include <array>
 #include <string>
 #include <utility>
 
@@ -20,6 +21,21 @@ constexpr std::string_view PASS_MANAGER_VERIFY_CONTEXT_END = "]";
 constexpr std::string_view PASS_MANAGER_VERIFY_INPUT_NAME = "input";
 constexpr std::string_view PASS_MANAGER_VERIFY_AFTER_PASS_NAME = "after_pass";
 constexpr std::string_view PASS_MANAGER_VERIFY_OUTPUT_NAME = "output";
+constexpr std::string_view PASS_MANAGER_ANALYSIS_CONTROL_FLOW_GRAPH = "control_flow_graph";
+constexpr std::string_view PASS_MANAGER_ANALYSIS_DOMINANCE = "dominance";
+constexpr std::string_view PASS_MANAGER_ANALYSIS_VALUE_USES = "value_uses";
+constexpr std::string_view PASS_MANAGER_ANALYSIS_TYPE_TABLE = "type_table";
+constexpr std::string_view PASS_MANAGER_ANALYSIS_SYMBOL_TABLE = "symbol_table";
+constexpr std::string_view PASS_MANAGER_ANALYSIS_RECORD_LAYOUTS = "record_layouts";
+constexpr std::string_view PASS_MANAGER_ANALYSIS_UNKNOWN = "unknown";
+constexpr std::array<AnalysisId, IR_ANALYSIS_COUNT> PASS_MANAGER_ANALYSIS_IDS{{
+    AnalysisId::control_flow_graph,
+    AnalysisId::dominance,
+    AnalysisId::value_uses,
+    AnalysisId::type_table,
+    AnalysisId::symbol_table,
+    AnalysisId::record_layouts,
+}};
 
 enum class VerifierInvocationKind {
     input,
@@ -43,6 +59,29 @@ enum class VerifierInvocationKind {
             return PASS_MANAGER_VERIFY_OUTPUT_NAME;
     }
     return PASS_MANAGER_VERIFY_OUTPUT_NAME;
+}
+
+[[nodiscard]] bool contains_analysis(const std::vector<AnalysisId>& analyses, const AnalysisId analysis) noexcept
+{
+    for (const AnalysisId existing : analyses) {
+        if (existing == analysis) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void append_invalidated_analyses(std::vector<AnalysisId>& invalidated, const PreservedAnalyses& preserved_analyses)
+{
+    if (preserved_analyses.preserves_all()) {
+        return;
+    }
+    for (const AnalysisId analysis : PASS_MANAGER_ANALYSIS_IDS) {
+        if (preserved_analyses.preserves(analysis) || contains_analysis(invalidated, analysis)) {
+            continue;
+        }
+        invalidated.push_back(analysis);
+    }
 }
 
 [[nodiscard]] std::string_view verifier_stage_name(const VerifierGateOptions& options) noexcept
@@ -94,6 +133,25 @@ void append_verifier_context(std::string& message, const VerifierGateOptions& op
 }
 
 } // namespace
+
+std::string_view analysis_id_name(const AnalysisId id) noexcept
+{
+    switch (id) {
+        case AnalysisId::control_flow_graph:
+            return PASS_MANAGER_ANALYSIS_CONTROL_FLOW_GRAPH;
+        case AnalysisId::dominance:
+            return PASS_MANAGER_ANALYSIS_DOMINANCE;
+        case AnalysisId::value_uses:
+            return PASS_MANAGER_ANALYSIS_VALUE_USES;
+        case AnalysisId::type_table:
+            return PASS_MANAGER_ANALYSIS_TYPE_TABLE;
+        case AnalysisId::symbol_table:
+            return PASS_MANAGER_ANALYSIS_SYMBOL_TABLE;
+        case AnalysisId::record_layouts:
+            return PASS_MANAGER_ANALYSIS_RECORD_LAYOUTS;
+    }
+    return PASS_MANAGER_ANALYSIS_UNKNOWN;
+}
 
 PreservedAnalyses PreservedAnalyses::all() noexcept
 {
@@ -248,6 +306,7 @@ base::Result<PassPipelineRunSummary> ModulePassManager::run(
         summary.changed = summary.changed || pass_result.value().changed;
         summary.preserved_analyses.intersect(pass_result.value().preserved_analyses);
         if (pass_result.value().changed) {
+            append_invalidated_analyses(summary.invalidated_analyses, pass_result.value().preserved_analyses);
             analyses.invalidate(pass_result.value().preserved_analyses);
         }
 

@@ -24,6 +24,8 @@ enum class AnalysisId {
 
 inline constexpr std::size_t IR_ANALYSIS_COUNT = static_cast<std::size_t>(AnalysisId::record_layouts) + 1U;
 
+[[nodiscard]] std::string_view analysis_id_name(AnalysisId id) noexcept;
+
 class PreservedAnalyses final {
 public:
     [[nodiscard]] static PreservedAnalyses all() noexcept;
@@ -93,6 +95,7 @@ struct PassPipelineRunSummary {
     std::size_t executed_pass_count = 0;
     bool changed = false;
     PreservedAnalyses preserved_analyses = PreservedAnalyses::all();
+    std::vector<AnalysisId> invalidated_analyses;
 };
 
 class ModulePassManager final {

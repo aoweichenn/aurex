@@ -5,6 +5,7 @@
 #include <aurex/driver/native_toolchain.hpp>
 #include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/driver/profile.hpp>
+#include <aurex/ir/ir_fingerprint.hpp>
 
 #include <chrono>
 #include <filesystem>
@@ -14,9 +15,14 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 namespace aurex::driver {
 namespace {
+
+constexpr std::string_view BACKEND_LLVM_EMIT_DETAIL_FUNCTIONS = "functions=";
+constexpr std::string_view BACKEND_LLVM_EMIT_DETAIL_LAYOUT_ABI = ",layout_abi=";
+constexpr std::string_view BACKEND_LLVM_EMIT_DETAIL_FAILED = "failed";
 
 [[nodiscard]] bool emit_kind_is_native_artifact(const EmitKind emit_kind) noexcept
 {
@@ -94,6 +100,18 @@ private:
     return emitter(LlvmIrEmitRequest{&module, std::move(module_name)});
 }
 
+[[nodiscard]] std::string llvm_emission_unit_detail(const ir::Module& module)
+{
+    const std::vector<ir::FunctionIRUnitFingerprint> units = ir::function_ir_unit_fingerprints(module);
+    const query::QueryResultFingerprint layout = ir::layout_abi_fingerprint(module);
+    std::string detail;
+    detail += BACKEND_LLVM_EMIT_DETAIL_FUNCTIONS;
+    detail += std::to_string(units.size());
+    detail += BACKEND_LLVM_EMIT_DETAIL_LAYOUT_ABI;
+    detail += std::to_string(layout.global_id);
+    return detail;
+}
+
 [[nodiscard]] NativeCompileRequest make_native_compile_request(
     const CompilerInvocation& invocation, const std::filesystem::path& input_path)
 {
@@ -130,9 +148,13 @@ base::Result<void> BackendPipeline::validate_native_output_request() const
 base::Result<std::string> BackendPipeline::emit_llvm_ir_text(const ir::Module& module)
 {
     auto llvm_result = [&] {
-        ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::llvm_emit_ir);
-        return emit_llvm_ir(
+        const auto started = std::chrono::steady_clock::now();
+        auto result = emit_llvm_ir(
             this->session_.llvm_ir_emitter(), module, this->session_.invocation().input_path.stem().string());
+        const std::chrono::steady_clock::duration elapsed = std::chrono::steady_clock::now() - started;
+        this->session_.profiler()->record(PipelineStageId::llvm_emit_ir,
+            result ? llvm_emission_unit_detail(module) : BACKEND_LLVM_EMIT_DETAIL_FAILED, elapsed);
+        return result;
     }();
     if (!llvm_result) {
         return base::Result<std::string>::fail(llvm_result.error());

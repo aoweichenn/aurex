@@ -9,6 +9,10 @@
 
 #include "compilation_session.hpp"
 
+namespace aurex::ir {
+struct Module;
+} // namespace aurex::ir
+
 namespace aurex::driver {
 
 struct FrontendModuleOutput {
@@ -27,8 +31,8 @@ public:
     [[nodiscard]] base::Result<void> dump_module_graph_output(const std::vector<ModuleRecord>& modules);
     [[nodiscard]] base::Result<sema::CheckedModule> run_semantic_analysis(
         syntax::AstModule& ast, const std::vector<ModuleRecord>& modules);
-    [[nodiscard]] base::Result<void> write_checked_incremental_cache(
-        const std::vector<ModuleRecord>& modules, const syntax::AstModule& ast, const sema::CheckedModule& checked);
+    [[nodiscard]] base::Result<void> write_checked_incremental_cache(const std::vector<ModuleRecord>& modules,
+        const syntax::AstModule& ast, const sema::CheckedModule& checked, const ir::Module* lowered_ir = nullptr);
 
 private:
     CompilationSession& session_;

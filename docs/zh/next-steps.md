@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M3.8 Query-backed Lowering / Backend Reuse
+## 当前最高优先级：M3.9 Release Baseline Hardening
 
 R5 Compilation Pipeline / Driver Action 重构 core 已收口：`CompilerInvocation`、`Compiler`
 facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`LoweringPipeline`、
@@ -29,8 +29,9 @@ reuse explanation 推进为真实 incremental sema execution：
 中收口。M3.7 已在
 [Aurex M3.7 IDE Semantic Features 计划与收口记录](m3.7-ide-semantic-features-plan.md)
 中完成 IDE 语义能力第一层：completion、rename、semantic tokens、inlay hints、code actions、
-workspace symbols 和 LSP projection。下一实现分支应进入 M3.8，重点处理 lowering、IR、LLVM/backend
-query authority 与复用边界。
+workspace symbols 和 LSP projection。M3.8 已在
+[Aurex M3.8 Query-backed Lowering / Backend Reuse 计划与收口记录](m3.8-query-backed-lowering-backend-reuse-plan.md)
+中收口；下一阶段进入 M3.9 release baseline hardening。
 
 R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分；
 R5.3 已完成 `LoweringPipeline`、`BackendPipeline` 和 `PipelineStage` 记录。当前 driver 总控已经只保留
@@ -103,13 +104,20 @@ M3.7 的当前完成面：
 5. workspace symbols 与 LSP projection：workspace index materialization、stale-generation guard 和
    completion/rename/semanticTokens/codeAction/workspaceSymbol/inlayHint provider。
 
-M3.8 的建议第一批实现顺序：
+M3.8 已完成：
 
 1. WP-1：function body lowering query authority。
 2. WP-2：generic instance lowering query authority。
 3. WP-3：type layout / enum layout / ABI symbol query facts。
 4. WP-4：IR pass analysis preservation 与 query invalidation 接入。
 5. WP-5：LLVM emission unit 与 target-independent IR unit 边界。
+
+M3.9 的建议第一批实现顺序：
+
+1. 文档对齐和 stale roadmap 清理。
+2. public API authority audit。
+3. dead/unreachable path cleanup。
+4. 全量 gates、coverage 和 stress baseline 固化。
 
 2026-05-28 收口更新：原 M3.1 work packages 已通过 WP-7 Generic Closure Audit And Release Baseline 统一复审。
 当前泛型 release baseline 固定为：generic struct / enum / type alias / function / owner-generic method /

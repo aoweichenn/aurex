@@ -1,3 +1,5 @@
+#include <aurex/ir/ir_fingerprint.hpp>
+
 #include <algorithm>
 #include <optional>
 #include <span>
@@ -16,6 +18,8 @@ using namespace cache_format;
 namespace {
 
 constexpr std::string_view INCREMENTAL_CACHE_PRIMARY_MODULE_PART_KEY_NAME = "<primary>";
+constexpr std::string_view INCREMENTAL_CACHE_LOWER_FUNCTION_IR_BODY_KIND = "body";
+constexpr std::string_view INCREMENTAL_CACHE_LOWER_FUNCTION_IR_GENERIC_INSTANCE_KIND = "generic-instance";
 
 [[nodiscard]] query::PackageKey cache_package_key_or_default(const query::PackageKey package) noexcept
 {
@@ -477,27 +481,38 @@ struct PackageIndex {
     };
 }
 
-[[nodiscard]] query::QueryResultFingerprint lower_function_ir_result_fingerprint(
-    const query::BodyKey key, const query::QueryResultFingerprint type_check_result)
+[[nodiscard]] query::QueryResultFingerprint lower_function_ir_result_fingerprint(const query::BodyKey key,
+    const query::QueryResultFingerprint type_check_result, const ir::FunctionIRUnitFingerprint& ir_unit)
 {
     query::StableHashBuilder builder;
     builder.mix_string(INCREMENTAL_CACHE_LOWER_FUNCTION_IR_RESULT_MARKER);
-    builder.mix_string("body");
+    builder.mix_string(INCREMENTAL_CACHE_LOWER_FUNCTION_IR_BODY_KIND);
     builder.mix_fingerprint(query::stable_key_fingerprint(key));
     builder.mix_u64(type_check_result.global_id);
     builder.mix_fingerprint(type_check_result.fingerprint);
+    builder.mix_string(ir_unit.symbol);
+    builder.mix_u64(ir_unit.target_independent_ir.global_id);
+    builder.mix_fingerprint(ir_unit.target_independent_ir.fingerprint);
+    builder.mix_u64(ir_unit.llvm_emission_unit.global_id);
+    builder.mix_fingerprint(ir_unit.llvm_emission_unit.fingerprint);
     return query::query_result_fingerprint(builder.finish());
 }
 
 [[nodiscard]] query::QueryResultFingerprint lower_generic_instance_ir_result_fingerprint(
-    const query::GenericInstanceKey& key, const query::QueryResultFingerprint generic_body_result)
+    const query::GenericInstanceKey& key, const query::QueryResultFingerprint generic_body_result,
+    const ir::FunctionIRUnitFingerprint& ir_unit)
 {
     query::StableHashBuilder builder;
     builder.mix_string(INCREMENTAL_CACHE_LOWER_FUNCTION_IR_RESULT_MARKER);
-    builder.mix_string("generic-instance");
+    builder.mix_string(INCREMENTAL_CACHE_LOWER_FUNCTION_IR_GENERIC_INSTANCE_KIND);
     builder.mix_fingerprint(query::stable_key_fingerprint(key));
     builder.mix_u64(generic_body_result.global_id);
     builder.mix_fingerprint(generic_body_result.fingerprint);
+    builder.mix_string(ir_unit.symbol);
+    builder.mix_u64(ir_unit.target_independent_ir.global_id);
+    builder.mix_fingerprint(ir_unit.target_independent_ir.fingerprint);
+    builder.mix_u64(ir_unit.llvm_emission_unit.global_id);
+    builder.mix_fingerprint(ir_unit.llvm_emission_unit.fingerprint);
     return query::query_result_fingerprint(builder.finish());
 }
 
@@ -593,11 +608,11 @@ void push_generic_instance_body_query_subject(std::vector<GenericInstanceBodyQue
     });
 }
 
-void push_lower_function_ir_query_subject(
-    std::vector<LowerFunctionIRQuerySubject>& subjects, const TypeCheckBodyQuerySubject& type_check_subject)
+void push_lower_function_ir_query_subject(std::vector<LowerFunctionIRQuerySubject>& subjects,
+    const TypeCheckBodyQuerySubject& type_check_subject, const ir::FunctionIRUnitFingerprint& ir_unit)
 {
     const query::QueryResultFingerprint result = lower_function_ir_result_fingerprint(
-        type_check_subject.key, query::type_check_body_result_fingerprint(type_check_subject.authority));
+        type_check_subject.key, query::type_check_body_result_fingerprint(type_check_subject.authority), ir_unit);
     subjects.push_back(LowerFunctionIRQuerySubject{
         LowerFunctionIRSubjectKind::body,
         type_check_subject.key,
@@ -606,14 +621,14 @@ void push_lower_function_ir_query_subject(
     });
 }
 
-void push_lower_generic_instance_ir_query_subject(
-    std::vector<LowerFunctionIRQuerySubject>& subjects, const GenericInstanceBodyQuerySubject& generic_body_subject)
+void push_lower_generic_instance_ir_query_subject(std::vector<LowerFunctionIRQuerySubject>& subjects,
+    const GenericInstanceBodyQuerySubject& generic_body_subject, const ir::FunctionIRUnitFingerprint& ir_unit)
 {
     if (generic_body_subject.key == nullptr) {
         return;
     }
-    const query::QueryResultFingerprint result = lower_generic_instance_ir_result_fingerprint(
-        *generic_body_subject.key, query::generic_instance_body_result_fingerprint(generic_body_subject.authority));
+    const query::QueryResultFingerprint result = lower_generic_instance_ir_result_fingerprint(*generic_body_subject.key,
+        query::generic_instance_body_result_fingerprint(generic_body_subject.authority), ir_unit);
     subjects.push_back(LowerFunctionIRQuerySubject{
         LowerFunctionIRSubjectKind::generic_instance,
         {},
@@ -672,6 +687,88 @@ void push_function_body_query_subjects(std::vector<FunctionBodySyntaxQuerySubjec
         key,
         type_check_authority,
     });
+}
+
+using SymbolByStableKey = std::unordered_map<std::string, std::string>;
+using IRUnitBySymbol = std::unordered_map<std::string, ir::FunctionIRUnitFingerprint>;
+
+[[nodiscard]] SymbolByStableKey function_body_symbols_by_stable_key(
+    const sema::CheckedModule& checked, const PackageIndex& packages)
+{
+    SymbolByStableKey symbols;
+    symbols.reserve(checked.functions.size());
+    for (const auto& entry : checked.functions) {
+        const sema::FunctionSignature& signature = entry.second;
+        if (!signature.has_definition || signature.has_conflict) {
+            continue;
+        }
+        const query::BodyKey key = function_body_key(signature, packages);
+        if (!query::is_valid(key) || signature.c_name.empty()) {
+            continue;
+        }
+        symbols.emplace(query::stable_serialize(key), std::string(signature.c_name.view()));
+    }
+    return symbols;
+}
+
+[[nodiscard]] SymbolByStableKey generic_instance_symbols_by_stable_key(const sema::CheckedModule& checked)
+{
+    SymbolByStableKey symbols;
+    symbols.reserve(checked.generic_function_instances.size());
+    for (const sema::GenericFunctionInstanceInfo& instance : checked.generic_function_instances) {
+        const query::GenericInstanceKey& instance_key = query::is_valid(instance.signature.generic_instance_key)
+            ? instance.signature.generic_instance_key
+            : instance.generic_instance_key;
+        if (!query::is_valid(instance_key) || instance.signature.c_name.empty()) {
+            continue;
+        }
+        symbols.emplace(query::stable_serialize(instance_key), std::string(instance.signature.c_name.view()));
+    }
+    return symbols;
+}
+
+[[nodiscard]] IRUnitBySymbol ir_units_by_symbol(const ir::Module& lowered_ir)
+{
+    IRUnitBySymbol units;
+    std::vector<ir::FunctionIRUnitFingerprint> fingerprints = ir::function_ir_unit_fingerprints(lowered_ir);
+    units.reserve(fingerprints.size());
+    for (ir::FunctionIRUnitFingerprint& unit : fingerprints) {
+        std::string symbol = unit.symbol;
+        units.emplace(std::move(symbol), std::move(unit));
+    }
+    return units;
+}
+
+void push_lower_function_ir_query_subject_for_symbol(std::vector<LowerFunctionIRQuerySubject>& subjects,
+    const TypeCheckBodyQuerySubject& type_check_subject, const SymbolByStableKey& symbols, const IRUnitBySymbol& units)
+{
+    const auto symbol = symbols.find(query::stable_serialize(type_check_subject.key));
+    if (symbol == symbols.end()) {
+        return;
+    }
+    const auto unit = units.find(symbol->second);
+    if (unit == units.end()) {
+        return;
+    }
+    push_lower_function_ir_query_subject(subjects, type_check_subject, unit->second);
+}
+
+void push_lower_generic_instance_ir_query_subject_for_symbol(std::vector<LowerFunctionIRQuerySubject>& subjects,
+    const GenericInstanceBodyQuerySubject& generic_body_subject, const SymbolByStableKey& symbols,
+    const IRUnitBySymbol& units)
+{
+    if (generic_body_subject.key == nullptr) {
+        return;
+    }
+    const auto symbol = symbols.find(query::stable_serialize(*generic_body_subject.key));
+    if (symbol == symbols.end()) {
+        return;
+    }
+    const auto unit = units.find(symbol->second);
+    if (unit == units.end()) {
+        return;
+    }
+    push_lower_generic_instance_ir_query_subject(subjects, generic_body_subject, unit->second);
 }
 
 } // namespace
@@ -787,15 +884,21 @@ void collect_function_body_query_subjects(const sema::CheckedModule& checked, co
 
 [[nodiscard]] std::vector<LowerFunctionIRQuerySubject> collect_lower_function_ir_query_subjects(
     const std::vector<TypeCheckBodyQuerySubject>& type_check_subjects,
-    const std::vector<GenericInstanceBodyQuerySubject>& generic_body_subjects)
+    const std::vector<GenericInstanceBodyQuerySubject>& generic_body_subjects, const sema::CheckedModule& checked,
+    const std::span<const ModuleRecord> modules, const ir::Module& lowered_ir)
 {
+    const PackageIndex packages = package_index_for_modules(modules);
+    const SymbolByStableKey function_symbols = function_body_symbols_by_stable_key(checked, packages);
+    const SymbolByStableKey generic_symbols = generic_instance_symbols_by_stable_key(checked);
+    const IRUnitBySymbol units = ir_units_by_symbol(lowered_ir);
+
     std::vector<LowerFunctionIRQuerySubject> subjects;
     subjects.reserve(type_check_subjects.size() + generic_body_subjects.size());
     for (const TypeCheckBodyQuerySubject& type_check_subject : type_check_subjects) {
-        push_lower_function_ir_query_subject(subjects, type_check_subject);
+        push_lower_function_ir_query_subject_for_symbol(subjects, type_check_subject, function_symbols, units);
     }
     for (const GenericInstanceBodyQuerySubject& generic_body_subject : generic_body_subjects) {
-        push_lower_generic_instance_ir_query_subject(subjects, generic_body_subject);
+        push_lower_generic_instance_ir_query_subject_for_symbol(subjects, generic_body_subject, generic_symbols, units);
     }
     return subjects;
 }

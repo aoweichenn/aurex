@@ -188,10 +188,15 @@ base::Result<sema::CheckedModule> FrontendPipeline::run_semantic_analysis(
     return analyzer.analyze();
 }
 
-base::Result<void> FrontendPipeline::write_checked_incremental_cache(
-    const std::vector<ModuleRecord>& modules, const syntax::AstModule& ast, const sema::CheckedModule& checked)
+base::Result<void> FrontendPipeline::write_checked_incremental_cache(const std::vector<ModuleRecord>& modules,
+    const syntax::AstModule& ast, const sema::CheckedModule& checked, const ir::Module* const lowered_ir)
 {
     ScopedCompilationPhase phase(this->session_.profiler(), PipelineStageId::incremental_cache_write);
+    if (lowered_ir != nullptr) {
+        return write_incremental_cache(this->session_.invocation(), this->session_.sources(),
+            std::span<const ModuleRecord>(modules.data(), modules.size()), ast, checked, *lowered_ir,
+            this->session_.profiler());
+    }
     return write_incremental_cache(this->session_.invocation(), this->session_.sources(),
         std::span<const ModuleRecord>(modules.data(), modules.size()), ast, checked, this->session_.profiler());
 }

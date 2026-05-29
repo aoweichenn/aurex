@@ -77,6 +77,12 @@ TEST(CoreUnit, PassManagerTracksAnalysesAndVerifierGate)
         EXPECT_EQ(ir::pass_id_name(ir::PassId::cfg_cleanup), "cfg_cleanup");
         EXPECT_EQ(ir::pass_id_name(ir::PassId::custom), "custom");
         EXPECT_EQ(ir::pass_id_name(static_cast<ir::PassId>(PASS_MANAGER_UNKNOWN_PASS_ID)), "unknown");
+        EXPECT_EQ(ir::analysis_id_name(ir::AnalysisId::control_flow_graph), "control_flow_graph");
+        EXPECT_EQ(ir::analysis_id_name(ir::AnalysisId::dominance), "dominance");
+        EXPECT_EQ(ir::analysis_id_name(ir::AnalysisId::value_uses), "value_uses");
+        EXPECT_EQ(ir::analysis_id_name(ir::AnalysisId::type_table), "type_table");
+        EXPECT_EQ(ir::analysis_id_name(ir::AnalysisId::symbol_table), "symbol_table");
+        EXPECT_EQ(ir::analysis_id_name(ir::AnalysisId::record_layouts), "record_layouts");
     }
     {
         Module module = make_simple_module();
@@ -97,6 +103,7 @@ TEST(CoreUnit, PassManagerTracksAnalysesAndVerifierGate)
         EXPECT_TRUE(result.value().changed);
         EXPECT_TRUE(result.value().preserved_analyses.preserves(ir::AnalysisId::type_table));
         EXPECT_FALSE(result.value().preserved_analyses.preserves(ir::AnalysisId::control_flow_graph));
+        EXPECT_EQ(result.value().invalidated_analyses.size(), ir::IR_ANALYSIS_COUNT - 1U);
     }
     {
         Module module = make_simple_module();
@@ -231,6 +238,9 @@ TEST(CoreUnit, PassPipelineSummaryExposesScheduledPassesAndPreservedAnalyses)
         EXPECT_TRUE(result.value().preserved_analyses.preserves(ir::AnalysisId::control_flow_graph));
         EXPECT_TRUE(result.value().preserved_analyses.preserves(ir::AnalysisId::type_table));
         EXPECT_FALSE(result.value().preserved_analyses.preserves_all());
+        EXPECT_EQ(result.value().invalidated_analyses.size(), 2U);
+        EXPECT_EQ(result.value().invalidated_analyses[0], ir::AnalysisId::dominance);
+        EXPECT_EQ(result.value().invalidated_analyses[1], ir::AnalysisId::value_uses);
     }
     {
         Module module = make_simple_module();

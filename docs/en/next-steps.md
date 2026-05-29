@@ -1,6 +1,6 @@
 # Next Steps
 
-## Current Highest Priority: M3.8 Query-backed Lowering / Backend Reuse
+## Current Highest Priority: M3.9 Release Baseline Hardening
 
 The R5 Compilation Pipeline / Driver Action core is now closed:
 `CompilerInvocation`, the `Compiler` facade, `CompilationSession`,
@@ -34,9 +34,9 @@ M3.6 is closed in the
 M3.7 is closed in the
 [Aurex M3.7 IDE Semantic Features Plan And Closure Record](m3.7-ide-semantic-features-plan.md),
 covering completion, rename, semantic tokens, inlay hints, code actions,
-workspace symbols, and LSP projection. The next implementation branch should be
-M3.8, centered on lowering, IR, LLVM/backend query authority, and reuse
-boundaries.
+workspace symbols, and LSP projection. M3.8 is now closed in the
+[Aurex M3.8 Query-backed Lowering / Backend Reuse Plan And Closure Record](m3.8-query-backed-lowering-backend-reuse-plan.md);
+the next stage is M3.9 release-baseline hardening.
 
 R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
 stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
@@ -138,13 +138,20 @@ M3.7 current completed surface:
    stale-generation guards, and completion/rename/semanticTokens/codeAction/
    workspaceSymbol/inlayHint providers.
 
-Suggested first M3.8 implementation order:
+M3.8 is complete:
 
 1. WP-1: Function-body lowering query authority.
 2. WP-2: Generic-instance lowering query authority.
 3. WP-3: Type-layout / enum-layout / ABI-symbol query facts.
 4. WP-4: Connect IR pass analysis preservation to query invalidation.
 5. WP-5: Split LLVM emission units from target-independent IR units.
+
+Suggested first M3.9 implementation order:
+
+1. Align documentation and remove stale roadmap notes.
+2. Audit public API authority boundaries.
+3. Clean up dead and unreachable paths exposed by M3.4-M3.8.
+4. Freeze full gates, coverage, and stress baselines.
 
 2026-05-29 M3.3 WP-1/2/3 implementation update: `aurex_tooling` now has a
 versioned `ToolingSession`, in-place `IdeSnapshot` cache construction, and a

@@ -81,7 +81,7 @@ base::Result<bool> try_reuse_incremental_check_cache_impl(
 
 base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invocation,
     const base::SourceManager& sources, const std::span<const ModuleRecord> modules, const syntax::AstModule& ast,
-    const sema::CheckedModule& checked, CompilationProfiler* const profiler)
+    const sema::CheckedModule& checked, const ir::Module* const lowered_ir, CompilationProfiler* const profiler)
 {
     if (invocation.incremental_cache_path.empty()) {
         return base::Result<void>::ok();
@@ -104,8 +104,8 @@ base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invoca
     const project::ProjectModel project_model = project_model_from_invocation(invocation);
     const std::vector<SourceFingerprintRecord> source_records = collect_source_fingerprints(sources, module_records);
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
-    const QuerySubjectCollection query_subjects = collect_query_subjects(
-        module_records, checked, sources, &ast, project_model, emit_kind_requires_ir_lowering(invocation.emit_kind));
+    const QuerySubjectCollection query_subjects = collect_query_subjects(module_records, checked, sources, &ast,
+        project_model, lowered_ir, emit_kind_requires_ir_lowering(invocation.emit_kind));
     const auto query_diff_started = std::chrono::steady_clock::now();
     const QueryReuseEvaluation query_reuse_evaluation =
         build_existing_query_reuse_evaluation(cache_path, query_subjects.records);

@@ -113,6 +113,7 @@ if(BUILD_TESTING)
             tests/gtest/integration/sample_suite_tests.cpp
             tests/gtest/ir/analysis_manager_tests.cpp
             tests/gtest/ir/ir_dump_tests.cpp
+            tests/gtest/ir/ir_fingerprint_tests.cpp
             tests/gtest/ir/ir_verifier_edge_tests.cpp
             tests/gtest/ir/ir_verifier_structural_tests.cpp
             tests/gtest/ir/lower_ast_whitebox_tests.cpp

@@ -22,8 +22,9 @@ baseline are complete. As of 2026-05-29, M3.2 Query-backed Sema and M3.3
 Tooling Session And Incremental Sema have been merged back to `m3`. M3.4,
 M3.5, M3.6, and M3.7 have since closed real incremental sema execution, stable
 syntax identity, project graph / persistent query DB, and IDE semantic
-features. The next active line should be M3.8, focused on pushing the query
-architecture into lowering, IR, and backend work. Every M3 implementation must reuse the R5
+features. M3.8 has closed query-backed lowering, IR-unit fingerprints, and
+backend emission-unit boundaries. The next active line is M3.9 release-baseline
+hardening. Every M3 implementation must reuse the R5
 `CompilationSession`,
 `CompilationPipeline`, `FrontendPipeline`, `LoweringPipeline`,
 `BackendPipeline`, `PipelineStage`, query, diagnostics, and profile/tooling
@@ -301,23 +302,26 @@ M3.7 must not let LSP DTOs leak into compiler internals.
 ### M3.8: Query-backed Lowering, IR, And Backend Reuse
 
 M3.8 extends the query architecture below sema. Checked semantic facts are
-already query-backed by M3.2-M3.4; lowering, IR, and backend work still need
-explicit fact boundaries so later native builds can reuse unaffected units.
+already query-backed by M3.2-M3.4; M3.8 completes explicit lowering, IR, and
+backend fact boundaries so later native builds can reuse unaffected units.
 
 Core deliverables:
 
-- Add query authority for lowering one function body and one generic instance
-  body.
-- Add type layout, enum layout, ABI symbol, and lower-generic-IR query facts.
-- Connect IR pass-manager analysis preservation/invalidation to query
-  dependency invalidation where practical.
-- Keep target-independent IR units separate from LLVM module/function emission
-  units.
-- Keep verifier gates, profile metadata, diagnostics ownership, and native
-  execution behavior on the existing R5 pipeline path.
+- Query authority for lowering one function body and one generic instance body
+  is in place.
+- Type layout, enum layout, ABI symbol, and lower-generic-IR facts are captured
+  through real IR-unit/layout fingerprints.
+- IR pass-manager analysis preservation/invalidation is exposed through pass
+  summaries and profile detail.
+- Target-independent IR units are separated from LLVM module/function emission
+  units through distinct fingerprint boundaries.
+- Verifier gates, profile metadata, diagnostics ownership, and native execution
+  behavior stay on the existing R5 pipeline path.
 
 This phase adapts LLVM new pass manager analysis preservation and rustc-style
 codegen-unit reuse without importing their full compilation-unit complexity.
+The closure record is
+[Aurex M3.8 Query-backed Lowering / Backend Reuse Plan And Closure Record](m3.8-query-backed-lowering-backend-reuse-plan.md).
 
 ### M3.9: M3 Closure And Release Baseline
 

@@ -1,4 +1,5 @@
 #include <aurex/driver/incremental_cache.hpp>
+#include <aurex/ir/ir.hpp>
 #include <aurex/syntax/ast.hpp>
 
 #include "incremental_cache/query.hpp"
@@ -15,7 +16,16 @@ base::Result<void> write_incremental_cache(const CompilerInvocation& invocation,
     const std::span<const ModuleRecord> modules, const syntax::AstModule& ast, const sema::CheckedModule& checked,
     CompilationProfiler* const profiler)
 {
-    return incremental_cache_detail::write_incremental_cache_impl(invocation, sources, modules, ast, checked, profiler);
+    return incremental_cache_detail::write_incremental_cache_impl(
+        invocation, sources, modules, ast, checked, nullptr, profiler);
+}
+
+base::Result<void> write_incremental_cache(const CompilerInvocation& invocation, const base::SourceManager& sources,
+    const std::span<const ModuleRecord> modules, const syntax::AstModule& ast, const sema::CheckedModule& checked,
+    const ir::Module& lowered_ir, CompilationProfiler* const profiler)
+{
+    return incremental_cache_detail::write_incremental_cache_impl(
+        invocation, sources, modules, ast, checked, &lowered_ir, profiler);
 }
 
 base::Result<void> write_incremental_cache(const CompilerInvocation& invocation, const base::SourceManager& sources,

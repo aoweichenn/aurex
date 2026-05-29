@@ -1,7 +1,7 @@
 # Current Progress
 
 Version: 0.1.3
-Stage: M3.7 IDE semantic features complete; next stage M3.8 query-backed lowering / backend reuse
+Stage: M3.8 query-backed lowering / backend reuse complete; next stage M3.9 release baseline hardening
 
 ## Overall Status
 
@@ -186,7 +186,23 @@ and now handles `textDocument/completion`, `textDocument/rename`,
 document request boundaries to avoid stale result publication. The detailed plan
 is [Aurex M3.7 IDE Semantic Features Plan And Closure Record](m3.7-ide-semantic-features-plan.md).
 
-The next target is M3.8 Query-backed Lowering / Backend Reuse.
+As of 2026-05-30, M3.8 Query-backed Lowering / Backend Reuse is complete for
+the current lowering/IR/backend reuse boundary. `lower_function_ir` query rows
+are written to the incremental cache only after real lowering and the IR pass
+pipeline complete. Ordinary function bodies map through `BodyKey`; generic
+function instances map through `GenericInstanceKey` to the lowered IR function
+symbol; results use real target-independent IR unit fingerprints. The new
+`ir::layout_abi_fingerprint(...)`, `ir::function_ir_unit_fingerprints(...)`,
+and `ir::llvm_emission_unit_fingerprint(...)` APIs separate type layout,
+payload enum layout, ABI symbol, target-independent IR unit, and LLVM emission
+unit facts into stable observable boundaries. `PassPipelineRunSummary` now
+records invalidated analyses; `ir.pass_pipeline` profile detail emits
+scheduled/executed/changed/preserved/invalidated summary fields; and
+`llvm.emit_ir` profile detail emits function unit count plus the layout/ABI
+fingerprint global id. `check`, `typed`, and `checked` still skip lower IR
+rows, while `ir`, `llvm-ir`, and native emit modes write real lower IR rows
+after lowering/pass execution. The detailed closure record is
+[Aurex M3.8 Query-backed Lowering / Backend Reuse Plan And Closure Record](m3.8-query-backed-lowering-backend-reuse-plan.md).
 
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and

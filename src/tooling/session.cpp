@@ -224,6 +224,40 @@ void tooling_append_percent_encoded(std::string& out, const unsigned char ch)
     };
 }
 
+[[nodiscard]] bool tooling_indexed_fact_is_definition_entry(const ToolingIndexedSemanticFact& fact) noexcept
+{
+    return fact.semantic_kind == IdeSemanticFactKind::item_signature
+        || fact.semantic_kind == IdeSemanticFactKind::generic_template_signature;
+}
+
+[[nodiscard]] const ToolingIndexedSemanticFact* tooling_best_definition_fact(
+    const std::vector<ToolingIndexedSemanticFact>& facts) noexcept
+{
+    for (const ToolingIndexedSemanticFact& fact : facts) {
+        if (tooling_indexed_fact_is_definition_entry(fact)) {
+            return &fact;
+        }
+    }
+    return facts.empty() ? nullptr : &facts.front();
+}
+
+[[nodiscard]] ToolingDefinition tooling_project_definition_from_indexed_fact(const ToolingIndexedSemanticFact& fact)
+{
+    return ToolingDefinition{
+        fact.definition,
+        fact.member,
+        fact.generic_instance,
+        fact.range,
+        fact.name,
+        tooling_kind_for_definition(fact.definition.kind),
+        fact.stable_definition_key,
+        fact.stable_member_key,
+        fact.stable_generic_instance_key,
+        fact.part_index,
+        true,
+    };
+}
+
 [[nodiscard]] const IdeSemanticFact* tooling_semantic_fact_for_definition(
     const IdeSnapshot& snapshot, const IdeDefinition& definition) noexcept
 {
@@ -298,6 +332,34 @@ void tooling_append_percent_encoded(std::string& out, const unsigned char ch)
 [[nodiscard]] base::Result<void> tooling_missing_document_error()
 {
     return base::Result<void>::fail({base::ErrorCode::invalid_source, "tooling document is not open"});
+}
+
+[[nodiscard]] bool tooling_same_reference_range(
+    const ToolingReference& reference, const ToolingIndexedSemanticFact& fact) noexcept
+{
+    return reference.range.path == fact.range.path && reference.range.range.source.value == fact.range.range.source.value
+        && reference.range.range.begin == fact.range.range.begin && reference.range.range.end == fact.range.range.end;
+}
+
+void tooling_push_workspace_definition_references(std::vector<ToolingReference>& references,
+    const std::vector<ToolingIndexedSemanticFact>& indexed_facts)
+{
+    for (const ToolingIndexedSemanticFact& fact : indexed_facts) {
+        if (!tooling_indexed_fact_is_definition_entry(fact)) {
+            continue;
+        }
+        const bool exists = std::ranges::any_of(references, [&fact](const ToolingReference& reference) {
+            return tooling_same_reference_range(reference, fact);
+        });
+        if (exists) {
+            continue;
+        }
+        references.push_back(ToolingReference{
+            fact.range,
+            fact.name,
+            true,
+        });
+    }
 }
 
 } // namespace
@@ -466,11 +528,44 @@ base::Result<ToolingDocumentVersion> ToolingSession::change_document(
             {base::ErrorCode::invalid_source, "stale tooling document version"});
     }
     const ToolingDocumentVersion version = this->next_version(client_version);
+    this->workspace_index_.remove_document(found->second.state.id);
     found->second.state.text = std::move(text);
     found->second.state.version = version;
     found->second.cached_snapshot.reset();
     found->second.cached_version = {};
     return base::Result<ToolingDocumentVersion>::ok(version);
+}
+
+base::Result<ToolingDocumentChangeResult> ToolingSession::change_document_with_reuse_plan(const ToolingDocumentId& id,
+    std::string text, const base::usize edit_begin, const base::usize removed_length,
+    const std::optional<base::i64> client_version)
+{
+    auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return base::Result<ToolingDocumentChangeResult>::fail(
+            {base::ErrorCode::invalid_source, "tooling document is not open"});
+    }
+
+    base::Result<ToolingSnapshotHandle> before = this->snapshot(id);
+    if (!before) {
+        return base::Result<ToolingDocumentChangeResult>::fail(before.error());
+    }
+    const IdeSnapshot& before_snapshot = *before.value().snapshot;
+    const IdeEditImpact impact = edit_impact_for_range(before_snapshot, edit_begin, removed_length);
+
+    base::Result<ToolingDocumentVersion> changed = this->change_document(id, std::move(text), client_version);
+    if (!changed) {
+        return base::Result<ToolingDocumentChangeResult>::fail(changed.error());
+    }
+    base::Result<ToolingSnapshotHandle> after = this->snapshot(id);
+    if (!after) {
+        return base::Result<ToolingDocumentChangeResult>::fail(after.error());
+    }
+    ToolingReusePlan reuse_plan = tooling_plan_reuse(before_snapshot, *after.value().snapshot, impact);
+    return base::Result<ToolingDocumentChangeResult>::ok(ToolingDocumentChangeResult{
+        changed.value(),
+        std::move(reuse_plan),
+    });
 }
 
 base::Result<void> ToolingSession::close_document(const ToolingDocumentId& id)
@@ -479,6 +574,7 @@ base::Result<void> ToolingSession::close_document(const ToolingDocumentId& id)
     if (found == this->documents_.end()) {
         return tooling_missing_document_error();
     }
+    this->workspace_index_.remove_document(found->second.state.id);
     this->documents_.erase(found);
     return base::Result<void>::ok();
 }
@@ -492,8 +588,9 @@ base::Result<ToolingSnapshotHandle> ToolingSession::snapshot(const ToolingDocume
     }
     DocumentSlot& slot = found->second;
     if (slot.cached_snapshot != nullptr && slot.cached_version == slot.state.version) {
-        return base::Result<ToolingSnapshotHandle>::ok(
-            ToolingSnapshotHandle{slot.state.id, slot.state.version, slot.cached_snapshot});
+        ToolingSnapshotHandle handle{slot.state.id, slot.state.version, slot.cached_snapshot};
+        this->workspace_index_.index_snapshot(handle);
+        return base::Result<ToolingSnapshotHandle>::ok(std::move(handle));
     }
     IdeSnapshotRequest request;
     request.path = slot.state.id.path;
@@ -506,8 +603,14 @@ base::Result<ToolingSnapshotHandle> ToolingSession::snapshot(const ToolingDocume
     build_ide_snapshot_into(*cached, request);
     slot.cached_snapshot = std::move(cached);
     slot.cached_version = slot.state.version;
-    return base::Result<ToolingSnapshotHandle>::ok(
-        ToolingSnapshotHandle{slot.state.id, slot.state.version, slot.cached_snapshot});
+    ToolingSnapshotHandle handle{slot.state.id, slot.state.version, slot.cached_snapshot};
+    this->workspace_index_.index_snapshot(handle);
+    return base::Result<ToolingSnapshotHandle>::ok(std::move(handle));
+}
+
+const ToolingWorkspaceSemanticIndex& ToolingSession::workspace_index() const noexcept
+{
+    return this->workspace_index_;
 }
 
 base::Result<std::vector<ToolingDiagnostic>> ToolingSession::diagnostics(const ToolingDocumentId& id)
@@ -588,7 +691,18 @@ base::Result<std::optional<ToolingDefinition>> ToolingSession::definition_at_off
     if (!definition.has_value()) {
         return base::Result<std::optional<ToolingDefinition>>::ok(std::nullopt);
     }
-    return base::Result<std::optional<ToolingDefinition>>::ok(tooling_project_definition(snapshot, *definition));
+    ToolingDefinition projected = tooling_project_definition(snapshot, *definition);
+    std::vector<ToolingIndexedSemanticFact> indexed;
+    if (query::is_valid(projected.member)) {
+        indexed = this->workspace_index_.members(projected.member);
+    }
+    if (indexed.empty()) {
+        indexed = this->workspace_index_.definitions(projected.key);
+    }
+    if (const ToolingIndexedSemanticFact* const fact = tooling_best_definition_fact(indexed); fact != nullptr) {
+        projected = tooling_project_definition_from_indexed_fact(*fact);
+    }
+    return base::Result<std::optional<ToolingDefinition>>::ok(std::move(projected));
 }
 
 base::Result<std::optional<ToolingDefinition>> ToolingSession::definition_at_position(
@@ -619,6 +733,17 @@ base::Result<std::vector<ToolingReference>> ToolingSession::references_at_offset
             reference.name,
             reference.is_definition,
         });
+    }
+    const std::optional<IdeDefinition> definition = tooling::definition_at_offset(snapshot, offset);
+    if (definition.has_value()) {
+        std::vector<ToolingIndexedSemanticFact> indexed;
+        if (query::is_valid(definition->member)) {
+            indexed = this->workspace_index_.members(definition->member);
+        }
+        if (indexed.empty() && query::is_valid(definition->key)) {
+            indexed = this->workspace_index_.definitions(definition->key);
+        }
+        tooling_push_workspace_definition_references(projected, indexed);
     }
     return base::Result<std::vector<ToolingReference>>::ok(std::move(projected));
 }

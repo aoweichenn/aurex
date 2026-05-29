@@ -4,9 +4,11 @@
 
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -69,6 +71,23 @@ constexpr std::string_view TOOLING_LSP_METHOD_SYMBOL_SOURCE = "module tooling.me
                                                               "  return counter.read();\n"
                                                               "}\n";
 
+constexpr std::string_view TOOLING_WORKSPACE_LEFT_SOURCE = "module tooling.left;\n"
+                                                           "fn left() -> i32 {\n"
+                                                           "  return 1;\n"
+                                                           "}\n";
+
+constexpr std::string_view TOOLING_WORKSPACE_RIGHT_SOURCE = "module tooling.right;\n"
+                                                            "fn right() -> i32 {\n"
+                                                            "  return 2;\n"
+                                                            "}\n";
+
+constexpr std::string_view TOOLING_WORKSPACE_SYMBOL_SOURCE = "module tooling.index;\n"
+                                                             "enum Mode { fast }\n"
+                                                             "struct Box[T] { value: T; }\n"
+                                                             "fn read(box: Box[i32]) -> i32 {\n"
+                                                             "  return box.value;\n"
+                                                             "}\n";
+
 constexpr std::string_view TOOLING_SESSION_URI = "file:///workspace/tooling_session.ax";
 constexpr std::string_view TOOLING_LSP_URI = "file:///workspace/lsp.ax";
 constexpr std::string_view TOOLING_LSP_SYMBOL_URI = "file:///workspace/lsp_symbols.ax";
@@ -76,8 +95,13 @@ constexpr std::string_view TOOLING_LSP_FALLBACK_SYMBOL_URI = "file:///workspace/
 constexpr std::string_view TOOLING_LSP_METHOD_SYMBOL_URI = "file:///workspace/lsp_method_symbols.ax";
 constexpr std::string_view TOOLING_LSP_ESCAPE_URI = "file:///workspace/lsp_escape.ax";
 constexpr std::string_view TOOLING_LSP_NO_MODULE_URI = "file:///workspace/lsp_no_module.ax";
+constexpr std::string_view TOOLING_WORKSPACE_LEFT_URI = "file:///workspace/workspace_left.ax";
+constexpr std::string_view TOOLING_WORKSPACE_RIGHT_URI = "file:///workspace/workspace_right.ax";
+constexpr std::string_view TOOLING_WORKSPACE_SYMBOL_URI = "file:///workspace/workspace_symbols.ax";
 constexpr std::string_view TOOLING_SESSION_PACKAGE = "tooling-session-test";
 constexpr std::string_view TOOLING_LSP_PACKAGE = "tooling-lsp-test";
+constexpr std::string_view TOOLING_WORKSPACE_PACKAGE = "tooling-workspace-test";
+constexpr std::string_view TOOLING_MALFORMED_FACT_NAME = "missing-decision";
 constexpr base::i64 TOOLING_VERSION_ONE = 1;
 constexpr base::i64 TOOLING_VERSION_TWO = 2;
 constexpr base::i64 TOOLING_VERSION_THREE = 3;
@@ -225,6 +249,41 @@ constexpr std::string_view TOOLING_TEST_JSON_HEX_DIGITS = "0123456789ABCDEF";
     return std::ranges::any_of(symbols, [name](const tooling::ToolingDocumentSymbol& symbol) {
         return symbol.name == name;
     });
+}
+
+[[nodiscard]] bool contains_reuse_fact(const tooling::ToolingReusePlan& plan,
+    const tooling::ToolingReuseFactStatus status, const std::string_view name, const std::string_view kind)
+{
+    return std::ranges::any_of(plan.facts, [status, name, kind](const tooling::ToolingReuseFact& fact) {
+        return fact.status == status && fact.name == name && fact.kind == kind;
+    });
+}
+
+[[nodiscard]] bool contains_invalidation_root(
+    const tooling::ToolingReusePlan& plan, const std::string_view name, const std::string_view kind)
+{
+    return std::ranges::any_of(plan.invalidation_roots, [name, kind](const tooling::ToolingInvalidationRoot& root) {
+        return root.name == name && root.kind == kind;
+    });
+}
+
+[[nodiscard]] const tooling::ToolingDocumentSymbol* find_symbol_named(
+    const std::vector<tooling::ToolingDocumentSymbol>& symbols, const std::string_view name)
+{
+    const auto found = std::ranges::find_if(symbols, [name](const tooling::ToolingDocumentSymbol& symbol) {
+        return symbol.name == name;
+    });
+    return found == symbols.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const tooling::ToolingIndexedSemanticFact* find_index_fact(
+    const std::vector<tooling::ToolingIndexedSemanticFact>& facts, const std::string_view name,
+    const std::string_view kind)
+{
+    const auto found = std::ranges::find_if(facts, [name, kind](const tooling::ToolingIndexedSemanticFact& fact) {
+        return fact.name == name && fact.kind == kind;
+    });
+    return found == facts.end() ? nullptr : &*found;
 }
 
 } // namespace
@@ -431,6 +490,409 @@ TEST(CoreUnit, ToolingSessionProjectsAbsentIdeFeaturesAndSuggestionDiagnostics)
         return diagnostic.severity == base::Severity::help && diagnostic.message.find("did you mean `count`")
             != std::string::npos;
     }));
+}
+
+TEST(CoreUnit, ToolingSessionPlansBodyLocalIncrementalReuse)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.snapshot(document));
+
+    std::string changed_source{TOOLING_SESSION_SOURCE};
+    const base::usize insert_offset = changed_source.find("return value;") + std::string_view{"return value"}.size();
+    ASSERT_NE(insert_offset, std::string::npos);
+    changed_source.insert(insert_offset, " + 0");
+
+    const base::Result<tooling::ToolingDocumentChangeResult> changed =
+        session.change_document_with_reuse_plan(document, changed_source, insert_offset, 0U, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    EXPECT_EQ(changed.value().version.client_version, std::optional<base::i64>(TOOLING_VERSION_TWO));
+    const tooling::ToolingReusePlan& plan = changed.value().reuse_plan;
+    EXPECT_TRUE(plan.valid);
+    EXPECT_TRUE(plan.impact.valid);
+    EXPECT_TRUE(plan.summary.body_local);
+    EXPECT_GT(plan.summary.unchanged_facts, 0U);
+    EXPECT_GT(plan.summary.recomputed_facts, 0U);
+    EXPECT_EQ(plan.summary.invalidated_facts, 0U);
+    EXPECT_GT(plan.query_plan.summary.changed, 0U);
+    EXPECT_GT(plan.dependencies.unchanged, 0U);
+    EXPECT_EQ(tooling::tooling_reuse_fact_status_name(tooling::ToolingReuseFactStatus::recomputed), "recomputed");
+    EXPECT_TRUE(contains_invalidation_root(plan, "main", "function_body_syntax"));
+    EXPECT_TRUE(contains_invalidation_root(plan, "main", "type_check_body"));
+    EXPECT_TRUE(
+        contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "main", "function_body_syntax"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "main", "type_check_body"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "add", "item_signature"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "main", "item_signature"));
+}
+
+TEST(CoreUnit, ToolingSessionReportsInvalidatedFactsForRemovedDefinition)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.snapshot(document));
+
+    const base::usize add_begin = TOOLING_SESSION_SOURCE.find("fn add");
+    const base::usize main_begin = TOOLING_SESSION_SOURCE.find("fn main");
+    ASSERT_NE(add_begin, std::string_view::npos);
+    ASSERT_NE(main_begin, std::string_view::npos);
+    ASSERT_GT(main_begin, add_begin);
+    constexpr std::string_view changed_source = "module tooling.session;\n"
+                                                "fn main() -> i32 {\n"
+                                                "  return 0;\n"
+                                                "}\n";
+
+    const base::Result<tooling::ToolingDocumentChangeResult> changed = session.change_document_with_reuse_plan(
+        document, std::string(changed_source), add_begin, main_begin - add_begin, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    const tooling::ToolingReusePlan& plan = changed.value().reuse_plan;
+    EXPECT_TRUE(plan.valid);
+    EXPECT_FALSE(plan.summary.body_local);
+    EXPECT_GT(plan.summary.invalidated_facts, 0U);
+    EXPECT_TRUE(contains_invalidation_root(plan, "add", "item_signature"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::invalidated, "add", "item_signature"));
+    EXPECT_TRUE(
+        contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::invalidated, "add", "function_body_syntax"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "main", "item_signature"));
+}
+
+TEST(CoreUnit, ToolingSessionPlansGenericTemplateIncrementalReuse)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_WORKSPACE_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(
+        session.open_document(document, std::string(TOOLING_WORKSPACE_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.snapshot(document));
+
+    std::string changed_source{TOOLING_WORKSPACE_SYMBOL_SOURCE};
+    const base::usize return_offset = changed_source.find("return box.value;");
+    ASSERT_NE(return_offset, std::string::npos);
+    const base::usize insert_offset = return_offset + std::string_view{"return box.value"}.size();
+    changed_source.insert(insert_offset, " + 0");
+
+    const base::Result<tooling::ToolingDocumentChangeResult> changed = session.change_document_with_reuse_plan(
+        document, changed_source, insert_offset, 0U, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    const tooling::ToolingReusePlan& plan = changed.value().reuse_plan;
+    EXPECT_TRUE(plan.valid);
+    EXPECT_TRUE(plan.summary.body_local);
+    EXPECT_GT(plan.summary.unchanged_facts, 0U);
+    EXPECT_GT(plan.summary.recomputed_facts, 0U);
+    EXPECT_EQ(tooling::tooling_reuse_fact_status_name(tooling::ToolingReuseFactStatus::invalidated), "invalidated");
+    EXPECT_EQ(tooling::tooling_reuse_fact_status_name(tooling::ToolingReuseFactStatus::malformed), "malformed");
+    EXPECT_TRUE(contains_invalidation_root(plan, "read", "function_body_syntax"));
+    EXPECT_TRUE(contains_invalidation_root(plan, "read", "type_check_body"));
+    EXPECT_TRUE(
+        contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "Box",
+            "generic_template_signature"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "Box", "item_signature"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "read",
+        "function_body_syntax"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "read", "type_check_body"));
+}
+
+TEST(CoreUnit, ToolingSessionTracksAddedDependenciesAndEmptyReusePlan)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::Result<tooling::ToolingSnapshotHandle> handle = session.snapshot(document);
+    ASSERT_TRUE(handle);
+    ASSERT_GE(handle.value().snapshot->query.records.size(), 2U);
+
+    tooling::IdeSnapshot before = *handle.value().snapshot;
+    tooling::IdeSnapshot after = before;
+    const query::QueryKey extra_dependency = query::query_key(
+        before.query.records.front().key.kind, before.query.records.front().key.payload,
+        static_cast<base::u16>(before.query.records.front().key.schema + 1U));
+    const query::QueryDependencyEdge extra_edge{before.query.records.front().key, extra_dependency};
+    after.query.dependencies.push_back(extra_edge);
+
+    const base::usize edit_offset = TOOLING_SESSION_SOURCE.find("return value;");
+    ASSERT_NE(edit_offset, std::string_view::npos);
+    const tooling::IdeEditImpact impact = tooling::edit_impact_for_range(before, edit_offset, 0U);
+    const tooling::ToolingReusePlan plan = tooling::tooling_plan_reuse(before, after, impact);
+    EXPECT_TRUE(plan.valid);
+    EXPECT_GT(plan.dependencies.added, 0U);
+    EXPECT_TRUE(plan.dependencies.unchanged > 0U);
+    EXPECT_EQ(tooling::tooling_reuse_fact_status_name(tooling::ToolingReuseFactStatus::unchanged), "unchanged");
+
+    tooling::IdeSnapshot added_tail_before = before;
+    tooling::IdeSnapshot added_tail_after = before;
+    added_tail_before.query.dependencies.clear();
+    added_tail_after.query.dependencies.clear();
+    added_tail_after.query.dependencies.push_back(extra_edge);
+    const tooling::ToolingReusePlan added_tail_plan =
+        tooling::tooling_plan_reuse(added_tail_before, added_tail_after, impact);
+    EXPECT_TRUE(added_tail_plan.valid);
+    EXPECT_EQ(added_tail_plan.dependencies.added, 1U);
+    EXPECT_EQ(added_tail_plan.dependencies.removed, 0U);
+
+    tooling::IdeSnapshot removed_tail_before = before;
+    tooling::IdeSnapshot removed_tail_after = before;
+    removed_tail_before.query.dependencies.clear();
+    removed_tail_after.query.dependencies.clear();
+    removed_tail_before.query.dependencies.push_back(extra_edge);
+    const tooling::ToolingReusePlan removed_tail_plan =
+        tooling::tooling_plan_reuse(removed_tail_before, removed_tail_after, impact);
+    EXPECT_TRUE(removed_tail_plan.valid);
+    EXPECT_EQ(removed_tail_plan.dependencies.added, 0U);
+    EXPECT_EQ(removed_tail_plan.dependencies.removed, 1U);
+
+    ASSERT_FALSE(before.query.semantic_facts.empty());
+    tooling::IdeSnapshot malformed_after = before;
+    tooling::IdeSemanticFact malformed_fact = malformed_after.query.semantic_facts.front();
+    malformed_fact.kind = tooling::IdeSemanticFactKind::item_signature;
+    malformed_fact.query = extra_dependency;
+    malformed_fact.name = std::string(TOOLING_MALFORMED_FACT_NAME);
+    malformed_after.query.semantic_facts.push_back(std::move(malformed_fact));
+    const tooling::ToolingReusePlan malformed_plan = tooling::tooling_plan_reuse(before, malformed_after, impact);
+    EXPECT_TRUE(malformed_plan.valid);
+    EXPECT_GT(malformed_plan.summary.malformed_facts, 0U);
+    EXPECT_TRUE(contains_reuse_fact(malformed_plan, tooling::ToolingReuseFactStatus::malformed,
+        TOOLING_MALFORMED_FACT_NAME, "item_signature"));
+
+    const tooling::ToolingReusePlan empty_plan =
+        tooling::tooling_plan_reuse(tooling::IdeSnapshot{}, tooling::IdeSnapshot{}, tooling::IdeEditImpact{});
+    EXPECT_FALSE(empty_plan.valid);
+}
+
+TEST(CoreUnit, ToolingSessionProjectsMemberDefinitionsReferencesAndNoModuleIndex)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_WORKSPACE_PACKAGE));
+    const tooling::ToolingDocumentId symbol_document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(
+        session.open_document(symbol_document, std::string(TOOLING_WORKSPACE_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::usize access_offset = TOOLING_WORKSPACE_SYMBOL_SOURCE.find("box.value");
+    ASSERT_NE(access_offset, std::string_view::npos);
+    const base::usize field_offset = TOOLING_WORKSPACE_SYMBOL_SOURCE.find("value", access_offset);
+    ASSERT_NE(field_offset, std::string_view::npos);
+
+    const base::Result<std::optional<tooling::ToolingDefinition>> definition =
+        session.definition_at_offset(symbol_document, field_offset);
+    ASSERT_TRUE(definition);
+    ASSERT_TRUE(definition.value().has_value());
+    EXPECT_TRUE(definition.value()->valid);
+    EXPECT_EQ(definition.value()->name, "value");
+    EXPECT_EQ(definition.value()->kind, "struct_field");
+    EXPECT_TRUE(query::is_valid(definition.value()->member));
+    EXPECT_NE(definition.value()->stable_member_key.find("MemberKey"), std::string::npos);
+    EXPECT_NE(definition.value()->stable_definition_key.find("DefKey"), std::string::npos);
+
+    const std::vector<tooling::ToolingIndexedSemanticFact> member_facts =
+        session.workspace_index().members(definition.value()->member);
+    ASSERT_FALSE(member_facts.empty());
+    EXPECT_NE(find_index_fact(member_facts, "value", "item_signature"), nullptr);
+
+    const base::Result<std::vector<tooling::ToolingReference>> references =
+        session.references_at_offset(symbol_document, field_offset);
+    ASSERT_TRUE(references);
+    EXPECT_TRUE(std::ranges::any_of(references.value(), [](const tooling::ToolingReference& reference) {
+        return reference.name == "value" && reference.is_definition;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(references.value(), [](const tooling::ToolingReference& reference) {
+        return reference.name == "value" && !reference.is_definition;
+    }));
+
+    const base::Result<tooling::ToolingSnapshotHandle> symbol_snapshot = session.snapshot(symbol_document);
+    ASSERT_TRUE(symbol_snapshot);
+    tooling::IdeSnapshot no_module_snapshot = *symbol_snapshot.value().snapshot;
+    no_module_snapshot.ast.module_path.parts.clear();
+    tooling::ToolingWorkspaceSemanticIndex no_module_index;
+    no_module_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        symbol_snapshot.value().document,
+        symbol_snapshot.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(no_module_snapshot)),
+    });
+    const tooling::ToolingWorkspaceIndexStats no_module_stats = no_module_index.stats();
+    EXPECT_EQ(no_module_stats.documents, 1U);
+    EXPECT_GT(no_module_stats.facts, 0U);
+    EXPECT_GT(no_module_stats.definitions, 0U);
+    EXPECT_GT(no_module_stats.members, 0U);
+    EXPECT_GT(no_module_stats.generic_instances, 0U);
+    EXPECT_FALSE(no_module_index.all_facts().empty());
+}
+
+TEST(CoreUnit, ToolingWorkspaceIndexHandlesInvalidAndFallbackStableSymbols)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_WORKSPACE_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_WORKSPACE_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::Result<tooling::ToolingSnapshotHandle> handle = session.snapshot(document);
+    ASSERT_TRUE(handle);
+
+    tooling::ToolingWorkspaceSemanticIndex invalid_index;
+    tooling::IdeSnapshot invalid_snapshot = *handle.value().snapshot;
+    invalid_snapshot.ast.module_path.parts.clear();
+    ASSERT_FALSE(invalid_snapshot.checked.enum_cases.empty());
+    invalid_snapshot.checked.enum_cases.begin()->second.stable_case_key.kind = query::StableSymbolKind::invalid;
+    invalid_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        handle.value().document,
+        handle.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(invalid_snapshot)),
+    });
+    const tooling::ToolingWorkspaceIndexStats invalid_stats = invalid_index.stats();
+    EXPECT_EQ(invalid_stats.documents, 1U);
+    EXPECT_GT(invalid_stats.facts, 0U);
+    EXPECT_GT(invalid_stats.definitions, 0U);
+    EXPECT_GT(invalid_stats.members, 0U);
+    EXPECT_GT(invalid_stats.generic_instances, 0U);
+    EXPECT_FALSE(invalid_index.all_facts().empty());
+
+    tooling::ToolingWorkspaceSemanticIndex malformed_fact_index;
+    tooling::IdeSnapshot malformed_fact_snapshot = *handle.value().snapshot;
+    ASSERT_FALSE(malformed_fact_snapshot.query.semantic_facts.empty());
+    const base::u32 invalid_source_id =
+        static_cast<base::u32>(malformed_fact_snapshot.sources.files().size());
+    malformed_fact_snapshot.query.semantic_facts.front().range.source.value = invalid_source_id;
+    tooling::IdeSemanticFact invalid_query_fact = malformed_fact_snapshot.query.semantic_facts.front();
+    invalid_query_fact.query = {};
+    malformed_fact_snapshot.query.semantic_facts.push_back(std::move(invalid_query_fact));
+    malformed_fact_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        handle.value().document,
+        handle.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(malformed_fact_snapshot)),
+    });
+    const std::vector<tooling::ToolingIndexedSemanticFact> malformed_input_facts =
+        malformed_fact_index.facts_for_document(handle.value().document);
+    ASSERT_FALSE(malformed_input_facts.empty());
+    EXPECT_TRUE(std::ranges::any_of(malformed_input_facts,
+        [](const tooling::ToolingIndexedSemanticFact& fact) {
+            return fact.range.path.empty();
+        }));
+
+    tooling::ToolingWorkspaceSemanticIndex fallback_index;
+    tooling::IdeSnapshot fallback_snapshot = *handle.value().snapshot;
+    fallback_snapshot.ast.module_path.parts.clear();
+    ASSERT_FALSE(fallback_snapshot.checked.enum_cases.empty());
+    sema::EnumCaseInfo& fallback_case = fallback_snapshot.checked.enum_cases.begin()->second;
+    fallback_case.stable_id = {};
+    fallback_case.case_name = sema::intern_text(fallback_snapshot.ast.identifiers, "missing_fast");
+    fallback_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        handle.value().document,
+        handle.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(fallback_snapshot)),
+    });
+    const tooling::ToolingWorkspaceIndexStats fallback_stats = fallback_index.stats();
+    EXPECT_EQ(fallback_stats.documents, 1U);
+    EXPECT_GT(fallback_stats.facts, 0U);
+    EXPECT_GT(fallback_stats.definitions, 0U);
+    EXPECT_GT(fallback_stats.members, 0U);
+    EXPECT_GT(fallback_stats.generic_instances, 0U);
+    EXPECT_FALSE(fallback_index.all_facts().empty());
+
+    tooling::ToolingWorkspaceSemanticIndex invalid_field_index;
+    tooling::IdeSnapshot invalid_field_snapshot = *handle.value().snapshot;
+    ASSERT_FALSE(invalid_field_snapshot.checked.structs.empty());
+    sema::StructInfo& invalid_field_struct = invalid_field_snapshot.checked.structs.begin()->second;
+    ASSERT_FALSE(invalid_field_struct.fields.empty());
+    invalid_field_struct.fields.front().stable_key.kind = query::StableSymbolKind::invalid;
+    invalid_field_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        handle.value().document,
+        handle.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(invalid_field_snapshot)),
+    });
+    const tooling::ToolingWorkspaceIndexStats invalid_field_stats = invalid_field_index.stats();
+    EXPECT_EQ(invalid_field_stats.documents, 1U);
+    EXPECT_GT(invalid_field_stats.facts, 0U);
+    EXPECT_GT(invalid_field_stats.definitions, 0U);
+    EXPECT_GT(invalid_field_stats.members, 0U);
+}
+
+TEST(CoreUnit, ToolingSessionMaintainsWorkspaceSemanticIndex)
+{
+    tooling::ToolingWorkspaceSemanticIndex empty_index;
+    empty_index.index_snapshot(tooling::ToolingSnapshotHandle{});
+    empty_index.clear();
+    EXPECT_TRUE(empty_index.all_facts().empty());
+
+    tooling::ToolingSession session(tooling_project_config(TOOLING_WORKSPACE_PACKAGE));
+    const tooling::ToolingDocumentId left_document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_LEFT_URI, session.project_config());
+    const tooling::ToolingDocumentId right_document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_RIGHT_URI, session.project_config());
+    const tooling::ToolingDocumentId symbol_document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(left_document, std::string(TOOLING_WORKSPACE_LEFT_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.open_document(right_document, std::string(TOOLING_WORKSPACE_RIGHT_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(
+        session.open_document(symbol_document, std::string(TOOLING_WORKSPACE_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+
+    ASSERT_TRUE(session.snapshot(left_document));
+    ASSERT_TRUE(session.snapshot(right_document));
+    ASSERT_TRUE(session.snapshot(symbol_document));
+    tooling::ToolingWorkspaceIndexStats stats = session.workspace_index().stats();
+    EXPECT_EQ(stats.documents, 3U);
+    EXPECT_GE(stats.facts, 6U);
+    EXPECT_GE(stats.definitions, 6U);
+    EXPECT_GT(stats.members, 0U);
+    EXPECT_GE(stats.bodies, 4U);
+    EXPECT_GT(stats.generic_instances, 0U);
+    EXPECT_TRUE(session.workspace_index().members(query::MemberKey{}).empty());
+    EXPECT_TRUE(session.workspace_index().generic_instances(query::GenericInstanceKey{}).empty());
+    EXPECT_TRUE(session.workspace_index().facts_for_document(
+        tooling::tooling_document_id_from_uri("file:///workspace/missing_index.ax", session.project_config()))
+                    .empty());
+
+    base::Result<std::vector<tooling::ToolingDocumentSymbol>> left_symbols =
+        session.document_symbols(left_document);
+    ASSERT_TRUE(left_symbols);
+    const tooling::ToolingDocumentSymbol* const left_symbol = find_symbol_named(left_symbols.value(), "left");
+    ASSERT_NE(left_symbol, nullptr);
+    const std::vector<tooling::ToolingIndexedSemanticFact> left_definitions =
+        session.workspace_index().definitions(left_symbol->definition);
+    ASSERT_FALSE(left_definitions.empty());
+    EXPECT_NE(find_index_fact(left_definitions, "left", "item_signature"), nullptr);
+
+    const std::vector<tooling::ToolingIndexedSemanticFact> left_facts = session.workspace_index().all_facts();
+    const tooling::ToolingIndexedSemanticFact* const left_body =
+        find_index_fact(left_facts, "left", "function_body_syntax");
+    ASSERT_NE(left_body, nullptr);
+    EXPECT_FALSE(session.workspace_index().bodies(left_body->body).empty());
+    EXPECT_TRUE(session.workspace_index().definitions(query::DefKey{}).empty());
+    EXPECT_TRUE(session.workspace_index().bodies(query::BodyKey{}).empty());
+
+    const std::vector<tooling::ToolingIndexedSemanticFact> symbol_facts =
+        session.workspace_index().facts_for_document(symbol_document);
+    const tooling::ToolingIndexedSemanticFact* const field_fact =
+        find_index_fact(symbol_facts, "value", "item_signature");
+    ASSERT_NE(field_fact, nullptr);
+    ASSERT_TRUE(query::is_valid(field_fact->member));
+    const std::vector<tooling::ToolingIndexedSemanticFact> member_facts =
+        session.workspace_index().members(field_fact->member);
+    EXPECT_NE(find_index_fact(member_facts, "value", "item_signature"), nullptr);
+
+    const tooling::ToolingIndexedSemanticFact* const generic_fact =
+        find_index_fact(symbol_facts, "Box", "item_signature");
+    ASSERT_NE(generic_fact, nullptr);
+    ASSERT_TRUE(query::is_valid(generic_fact->generic_instance));
+    const std::vector<tooling::ToolingIndexedSemanticFact> generic_facts =
+        session.workspace_index().generic_instances(generic_fact->generic_instance);
+    EXPECT_NE(find_index_fact(generic_facts, "Box", "item_signature"), nullptr);
+
+    constexpr std::string_view changed_left = "module tooling.left;\n"
+                                              "fn left() -> i32 {\n"
+                                              "  return 10;\n"
+                                              "}\n";
+    ASSERT_TRUE(session.change_document(left_document, std::string(changed_left), TOOLING_VERSION_TWO));
+    EXPECT_EQ(session.workspace_index().stats().documents, 2U);
+    ASSERT_TRUE(session.snapshot(left_document));
+    EXPECT_EQ(session.workspace_index().stats().documents, 3U);
+
+    ASSERT_TRUE(session.close_document(right_document));
+    EXPECT_EQ(session.workspace_index().stats().documents, 2U);
+    EXPECT_TRUE(session.workspace_index().facts_for_document(right_document).empty());
 }
 
 TEST(CoreUnit, LspFramingParsesAndWritesDeterministicContentMessages)

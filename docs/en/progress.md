@@ -115,8 +115,9 @@ in-place snapshot construction, session-level diagnostics/hover/definition/
 reference wrappers, and a minimal `LspServer` JSON-RPC adapter. The LSP layer
 consumes tooling value types only and does not read parser/sema/query/driver
 internals. Document symbols prefer M3.2 checked `semantic_facts` and fall back
-to AST projection when checked facts are absent. The next batch is WP-4
-Incremental Reuse Planner, followed by WP-5 Workspace Semantic Index.
+to AST projection when checked facts are absent. WP-4 Incremental Reuse
+Planner, WP-5 Workspace Semantic Index, and WP-6 quality gates are now
+complete for this batch.
 
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and

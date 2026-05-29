@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/result.hpp>
+#include <aurex/query/query_reuse.hpp>
 #include <aurex/tooling/ide.hpp>
 
 #include <memory>
@@ -127,6 +128,135 @@ struct ToolingDocumentSymbol {
     bool checked = false;
 };
 
+enum class ToolingReuseFactStatus : base::u8 {
+    unchanged,
+    recomputed,
+    invalidated,
+    malformed,
+};
+
+struct ToolingReuseFact {
+    ToolingReuseFactStatus status = ToolingReuseFactStatus::malformed;
+    query::QueryRecordChangeStatus change_status = query::QueryRecordChangeStatus::malformed;
+    query::QueryKey query;
+    query::DefKey definition;
+    query::MemberKey member;
+    query::BodyKey body;
+    query::GenericInstanceKey generic_instance;
+    ToolingTextRange range;
+    std::string name;
+    std::string kind;
+    std::string detail;
+    std::string stable_query_key;
+    std::string stable_definition_key;
+    std::string stable_member_key;
+    std::string stable_body_key;
+    std::string stable_generic_instance_key;
+    base::u32 part_index = 0;
+};
+
+struct ToolingInvalidationRoot {
+    query::QueryKey query;
+    ToolingTextRange range;
+    std::string name;
+    std::string kind;
+    std::string reason;
+    std::string stable_query_key;
+};
+
+struct ToolingDependencyDiff {
+    base::usize unchanged = 0;
+    base::usize added = 0;
+    base::usize removed = 0;
+};
+
+struct ToolingReuseSummary {
+    base::usize total_facts = 0;
+    base::usize unchanged_facts = 0;
+    base::usize recomputed_facts = 0;
+    base::usize invalidated_facts = 0;
+    base::usize malformed_facts = 0;
+    bool body_local = false;
+};
+
+struct ToolingReusePlan {
+    IdeEditImpact impact;
+    ToolingTextRange impact_range;
+    query::QueryReusePlan query_plan;
+    ToolingDependencyDiff dependencies;
+    ToolingReuseSummary summary;
+    std::vector<ToolingInvalidationRoot> invalidation_roots;
+    std::vector<ToolingReuseFact> facts;
+    bool valid = false;
+};
+
+struct ToolingDocumentChangeResult {
+    ToolingDocumentVersion version;
+    ToolingReusePlan reuse_plan;
+};
+
+struct ToolingIndexedSemanticFact {
+    ToolingDocumentId document;
+    ToolingDocumentVersion version;
+    IdeSemanticFactKind semantic_kind = IdeSemanticFactKind::item_signature;
+    query::QueryKey query;
+    query::DefKey definition;
+    query::MemberKey member;
+    query::BodyKey body;
+    query::GenericInstanceKey generic_instance;
+    ToolingTextRange range;
+    std::string name;
+    std::string kind;
+    std::string detail;
+    std::string stable_query_key;
+    std::string stable_definition_key;
+    std::string stable_member_key;
+    std::string stable_body_key;
+    std::string stable_generic_instance_key;
+    base::u32 part_index = 0;
+    bool checked = false;
+};
+
+struct ToolingWorkspaceIndexStats {
+    base::usize documents = 0;
+    base::usize facts = 0;
+    base::usize definitions = 0;
+    base::usize members = 0;
+    base::usize bodies = 0;
+    base::usize generic_instances = 0;
+};
+
+class ToolingWorkspaceSemanticIndex {
+public:
+    void clear();
+    void remove_document(const ToolingDocumentId& id);
+    void index_snapshot(const ToolingSnapshotHandle& handle);
+
+    [[nodiscard]] ToolingWorkspaceIndexStats stats() const noexcept;
+    [[nodiscard]] std::vector<ToolingIndexedSemanticFact> all_facts() const;
+    [[nodiscard]] std::vector<ToolingIndexedSemanticFact> facts_for_document(const ToolingDocumentId& id) const;
+    [[nodiscard]] std::vector<ToolingIndexedSemanticFact> definitions(query::DefKey key) const;
+    [[nodiscard]] std::vector<ToolingIndexedSemanticFact> members(query::MemberKey key) const;
+    [[nodiscard]] std::vector<ToolingIndexedSemanticFact> bodies(query::BodyKey key) const;
+    [[nodiscard]] std::vector<ToolingIndexedSemanticFact> generic_instances(
+        const query::GenericInstanceKey& key) const;
+
+private:
+    using FactMap = std::unordered_map<std::string, std::vector<ToolingIndexedSemanticFact>>;
+
+    static void erase_document_from_map(FactMap& map, std::string_view document_key);
+    static std::vector<ToolingIndexedSemanticFact> facts_for_key(
+        const FactMap& map, std::string_view stable_key);
+    void rebuild_stats() noexcept;
+
+    FactMap facts_by_document_;
+    FactMap definitions_;
+    FactMap members_;
+    FactMap bodies_;
+    FactMap generic_instances_;
+    ToolingWorkspaceIndexStats stats_;
+};
+
 [[nodiscard]] ToolingDocumentId tooling_document_id_from_path(
     std::string_view path, const ToolingProjectConfig& config = {});
 [[nodiscard]] ToolingDocumentId tooling_document_id_from_uri(
@@ -137,6 +267,9 @@ struct ToolingDocumentSymbol {
 [[nodiscard]] base::usize tooling_offset_for_position(
     std::string_view text, ToolingSourcePosition position) noexcept;
 [[nodiscard]] ToolingSourcePosition tooling_position_for_offset(std::string_view text, base::usize offset) noexcept;
+[[nodiscard]] std::string_view tooling_reuse_fact_status_name(ToolingReuseFactStatus status) noexcept;
+[[nodiscard]] ToolingReusePlan tooling_plan_reuse(
+    const IdeSnapshot& before, const IdeSnapshot& after, const IdeEditImpact& impact);
 
 class ToolingSession {
 public:
@@ -151,8 +284,12 @@ public:
         ToolingDocumentId id, std::string text, std::optional<base::i64> client_version = std::nullopt);
     [[nodiscard]] base::Result<ToolingDocumentVersion> change_document(
         const ToolingDocumentId& id, std::string text, std::optional<base::i64> client_version = std::nullopt);
+    [[nodiscard]] base::Result<ToolingDocumentChangeResult> change_document_with_reuse_plan(
+        const ToolingDocumentId& id, std::string text, base::usize edit_begin, base::usize removed_length,
+        std::optional<base::i64> client_version = std::nullopt);
     [[nodiscard]] base::Result<void> close_document(const ToolingDocumentId& id);
     [[nodiscard]] base::Result<ToolingSnapshotHandle> snapshot(const ToolingDocumentId& id);
+    [[nodiscard]] const ToolingWorkspaceSemanticIndex& workspace_index() const noexcept;
 
     [[nodiscard]] base::Result<std::vector<ToolingDiagnostic>> diagnostics(const ToolingDocumentId& id);
     [[nodiscard]] base::Result<std::optional<ToolingHover>> hover_at_offset(
@@ -185,6 +322,7 @@ private:
     ToolingProjectConfig config_;
     base::u64 next_generation_ = 0;
     std::unordered_map<std::string, DocumentSlot> documents_;
+    ToolingWorkspaceSemanticIndex workspace_index_;
 };
 
 } // namespace aurex::tooling

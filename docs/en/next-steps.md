@@ -101,9 +101,9 @@ M3.3 first implementation order, now closed:
 2026-05-29 M3.3 WP-1/2/3 implementation update: `aurex_tooling` now has a
 versioned `ToolingSession`, in-place `IdeSnapshot` cache construction, and a
 minimal `LspServer` adapter for JSON-RPC lifecycle, full text sync,
-diagnostics, hover, definition, references, and document symbols. The next
-implementation batch is WP-4 incremental reuse planning, followed by WP-5
-workspace semantic indexing.
+diagnostics, hover, definition, references, and document symbols. WP-4
+incremental reuse planning, WP-5 workspace semantic indexing, and WP-6 quality
+gates are now complete for this batch.
 
 2026-05-28 closure update: the original M3.1 work packages have been reviewed
 through WP-7 Generic Closure Audit And Release Baseline. The generic release

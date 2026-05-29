@@ -549,27 +549,21 @@ void recover_resolved_fragment_source_part(
 
 [[nodiscard]] query::DefKind symbol_kind_to_def_kind(const query::StableSymbolKind kind) noexcept
 {
-    switch (kind) {
-        case query::StableSymbolKind::function:
-            return query::DefKind::function;
-        case query::StableSymbolKind::method:
-            return query::DefKind::method;
-        case query::StableSymbolKind::value:
-            return query::DefKind::value;
-        case query::StableSymbolKind::type:
-            return query::DefKind::struct_;
-        case query::StableSymbolKind::enum_case:
-            return query::DefKind::enum_case;
-        case query::StableSymbolKind::struct_field:
-            return query::DefKind::struct_field;
-        case query::StableSymbolKind::generic_template:
-            return query::DefKind::generic_template;
-        case query::StableSymbolKind::synthetic:
-            return query::DefKind::synthetic;
-        case query::StableSymbolKind::invalid:
-            return query::DefKind::invalid;
+    if (kind == query::StableSymbolKind::struct_field) {
+        return query::DefKind::struct_field;
     }
     return query::DefKind::invalid;
+}
+
+[[nodiscard]] query::MemberKind symbol_kind_to_member_kind(const query::StableSymbolKind kind) noexcept
+{
+    if (kind == query::StableSymbolKind::enum_case) {
+        return query::MemberKind::enum_case;
+    }
+    if (kind == query::StableSymbolKind::struct_field) {
+        return query::MemberKind::struct_field;
+    }
+    return query::MemberKind::invalid;
 }
 
 [[nodiscard]] query::DefKey symbol_def_key(const IdeSnapshot& snapshot, const query::StableDefId stable_id,
@@ -582,6 +576,23 @@ void recover_resolved_fragment_source_part(
     const std::array<std::string_view, 1> path{fallback_name};
     return query::def_key(
         module_key_for_snapshot(snapshot), name_space, kind, path, static_cast<base::u32>(fallback_range.begin));
+}
+
+[[nodiscard]] query::MemberKey symbol_member_key(const IdeSnapshot& snapshot,
+    const query::StableMemberKey stable_key, const query::DefKind owner_kind, const std::string_view fallback_name)
+{
+    const query::MemberKind kind = symbol_kind_to_member_kind(stable_key.kind);
+    if (!query::is_valid(stable_key) || kind == query::MemberKind::invalid || owner_kind == query::DefKind::invalid) {
+        return {};
+    }
+    const query::DefKey owner =
+        query::def_key_from_stable_id(module_key_for_snapshot(snapshot).package, stable_key.owner,
+            query::DefNamespace::type, owner_kind);
+    if (!query::is_valid(owner)) {
+        return {};
+    }
+    const query::MemberKey member = query::member_key(owner, kind, fallback_name, stable_key.disambiguator);
+    return query::is_valid(member) ? member : query::MemberKey{};
 }
 
 [[nodiscard]] std::optional<std::string_view> source_range_text(
@@ -823,6 +834,8 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                 signature.part_index,
                 false,
                 true,
+                {},
+                signature.generic_instance_key,
             });
     }
     for (const auto& entry : snapshot.checked.structs) {
@@ -842,9 +855,13 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                 info.part_index,
                 false,
                 true,
+                {},
+                info.generic_instance_key,
             });
         for (const sema::StructFieldInfo& field : info.fields) {
             const query::DefKind field_kind = symbol_kind_to_def_kind(field.stable_key.kind);
+            const query::MemberKey member =
+                symbol_member_key(snapshot, field.stable_key, query::DefKind::struct_, field.name.view());
             push_global_symbol(index,
                 IdeSymbol{
                     symbol_def_key(snapshot, field.stable_key.owner, query::DefNamespace::member, field_kind,
@@ -857,12 +874,16 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                     info.part_index,
                     false,
                     true,
+                    member,
+                    info.generic_instance_key,
                 });
         }
     }
     for (const auto& entry : snapshot.checked.enum_cases) {
         const sema::EnumCaseInfo& info = entry.second;
         const base::SourceRange range = name_range_in_range(snapshot.lossless, info.case_name.view(), info.range);
+        const query::MemberKey member =
+            symbol_member_key(snapshot, info.stable_case_key, query::DefKind::enum_, info.case_name.view());
         push_global_symbol(index,
             IdeSymbol{
                 symbol_def_key(snapshot, info.stable_id, query::DefNamespace::value, query::DefKind::enum_case,
@@ -875,6 +896,8 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                 info.part_index,
                 false,
                 true,
+                member,
+                info.generic_instance_key,
             });
     }
     for (const auto& entry : snapshot.checked.type_aliases) {

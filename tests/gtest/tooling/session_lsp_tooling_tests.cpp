@@ -32,9 +32,9 @@ constexpr std::string_view TOOLING_SESSION_INVALID_SOURCE = "module tooling.sess
                                                             "}\n";
 
 constexpr std::string_view TOOLING_SESSION_NO_MODULE_SOURCE = "module ;\n"
-                                                             "fn main() -> i32 {\n"
-                                                             "  return 0;\n"
-                                                             "}\n";
+                                                              "fn main() -> i32 {\n"
+                                                              "  return 0;\n"
+                                                              "}\n";
 
 constexpr std::string_view TOOLING_SESSION_SUGGESTION_SOURCE = "module tooling.suggestion;\n"
                                                                "fn main() -> i32 {\n"
@@ -105,6 +105,7 @@ constexpr std::string_view TOOLING_MALFORMED_FACT_NAME = "missing-decision";
 constexpr base::i64 TOOLING_VERSION_ONE = 1;
 constexpr base::i64 TOOLING_VERSION_TWO = 2;
 constexpr base::i64 TOOLING_VERSION_THREE = 3;
+constexpr std::array<base::i64, 2> TOOLING_BODY_EDIT_VERSIONS{TOOLING_VERSION_TWO, TOOLING_VERSION_THREE};
 constexpr int TOOLING_LSP_ID_INITIALIZE = 1;
 constexpr int TOOLING_LSP_ID_HOVER = 2;
 constexpr int TOOLING_LSP_ID_DEFINITION = 3;
@@ -160,8 +161,8 @@ constexpr std::string_view TOOLING_TEST_JSON_HEX_DIGITS = "0123456789ABCDEF";
             default:
                 if (raw_ch < TOOLING_TEST_JSON_CONTROL_LIMIT) {
                     result.append("\\u00");
-                    result.push_back(TOOLING_TEST_JSON_HEX_DIGITS[
-                        (raw_ch >> TOOLING_TEST_JSON_HEX_NIBBLE_SHIFT) & TOOLING_TEST_JSON_HEX_NIBBLE_MASK]);
+                    result.push_back(TOOLING_TEST_JSON_HEX_DIGITS[(raw_ch >> TOOLING_TEST_JSON_HEX_NIBBLE_SHIFT)
+                        & TOOLING_TEST_JSON_HEX_NIBBLE_MASK]);
                     result.push_back(TOOLING_TEST_JSON_HEX_DIGITS[raw_ch & TOOLING_TEST_JSON_HEX_NIBBLE_MASK]);
                 } else {
                     result.push_back(ch);
@@ -173,8 +174,7 @@ constexpr std::string_view TOOLING_TEST_JSON_HEX_DIGITS = "0123456789ABCDEF";
     return result;
 }
 
-[[nodiscard]] std::string lsp_request_json(
-    const int id, const std::string_view method, const std::string_view params)
+[[nodiscard]] std::string lsp_request_json(const int id, const std::string_view method, const std::string_view params)
 {
     std::string request = "{\"jsonrpc\":\"2.0\",\"id\":";
     request += std::to_string(id);
@@ -257,6 +257,15 @@ constexpr std::string_view TOOLING_TEST_JSON_HEX_DIGITS = "0123456789ABCDEF";
     return std::ranges::any_of(plan.facts, [status, name, kind](const tooling::ToolingReuseFact& fact) {
         return fact.status == status && fact.name == name && fact.kind == kind;
     });
+}
+
+[[nodiscard]] const tooling::ToolingReuseFact* find_reuse_fact(const tooling::ToolingReusePlan& plan,
+    const tooling::ToolingReuseFactStatus status, const std::string_view name, const std::string_view kind)
+{
+    const auto found = std::ranges::find_if(plan.facts, [status, name, kind](const tooling::ToolingReuseFact& fact) {
+        return fact.status == status && fact.name == name && fact.kind == kind;
+    });
+    return found == plan.facts.end() ? nullptr : &*found;
 }
 
 [[nodiscard]] bool contains_invalidation_root(
@@ -480,8 +489,8 @@ TEST(CoreUnit, ToolingSessionCoversNormalizationFallbacksAndErrorPaths)
     EXPECT_NE(tooling::tooling_file_uri_from_path("/workspace/space file.ax").find("%20"), std::string::npos);
     EXPECT_EQ(tooling::tooling_offset_for_position("one\n", tooling::ToolingSourcePosition{4U, 0U}), 4U);
     EXPECT_EQ(tooling::tooling_position_for_offset("one\n", 40U).line, 1U);
-    EXPECT_EQ(tooling::tooling_document_id_from_path("relative.ax", session.project_config()).path,
-        "/workspace/relative.ax");
+    EXPECT_EQ(
+        tooling::tooling_document_id_from_path("relative.ax", session.project_config()).path, "/workspace/relative.ax");
     EXPECT_EQ(tooling::tooling_document_id_from_path("/workspace/colon:name.ax", session.project_config()).uri,
         "file:///workspace/colon:name.ax");
     EXPECT_EQ(tooling::tooling_path_from_file_uri("file:///workspace/bad%zz.ax").value(), "/workspace/bad%zz.ax");
@@ -569,8 +578,8 @@ TEST(CoreUnit, ToolingSessionProjectsAbsentIdeFeaturesAndSuggestionDiagnostics)
     base::Result<std::vector<tooling::ToolingDiagnostic>> diagnostics = session.diagnostics(document);
     ASSERT_TRUE(diagnostics);
     EXPECT_TRUE(std::ranges::any_of(diagnostics.value(), [](const tooling::ToolingDiagnostic& diagnostic) {
-        return diagnostic.severity == base::Severity::help && diagnostic.message.find("did you mean `count`")
-            != std::string::npos;
+        return diagnostic.severity == base::Severity::help
+            && diagnostic.message.find("did you mean `count`") != std::string::npos;
     }));
 }
 
@@ -592,6 +601,16 @@ TEST(CoreUnit, ToolingSessionPlansBodyLocalIncrementalReuse)
     ASSERT_TRUE(changed);
     EXPECT_EQ(changed.value().version.client_version, std::optional<base::i64>(TOOLING_VERSION_TWO));
     const tooling::ToolingReusePlan& plan = changed.value().reuse_plan;
+    EXPECT_EQ(changed.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::previous_context);
+    ASSERT_NE(changed.value().incremental.reuse_plan, nullptr);
+    EXPECT_TRUE(changed.value().incremental.reuse_execution.executed);
+    EXPECT_TRUE(changed.value().incremental.reuse_execution.body_local);
+    EXPECT_GT(changed.value().incremental.reuse_execution.reused_query_records, 0U);
+    EXPECT_GT(changed.value().incremental.reuse_execution.recomputed_query_records, 0U);
+    EXPECT_GT(changed.value().incremental.reuse_execution.reused_semantic_facts, 0U);
+    EXPECT_GT(changed.value().incremental.reuse_execution.recomputed_semantic_facts, 0U);
+    EXPECT_GT(changed.value().incremental.workspace_update.retained_facts, 0U);
+    EXPECT_GT(changed.value().incremental.workspace_update.replaced_facts, 0U);
     EXPECT_TRUE(plan.valid);
     EXPECT_TRUE(plan.impact.valid);
     EXPECT_TRUE(plan.summary.body_local);
@@ -603,8 +622,7 @@ TEST(CoreUnit, ToolingSessionPlansBodyLocalIncrementalReuse)
     EXPECT_EQ(tooling::tooling_reuse_fact_status_name(tooling::ToolingReuseFactStatus::recomputed), "recomputed");
     EXPECT_TRUE(contains_invalidation_root(plan, "main", "function_body_syntax"));
     EXPECT_TRUE(contains_invalidation_root(plan, "main", "type_check_body"));
-    EXPECT_TRUE(
-        contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "main", "function_body_syntax"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "main", "function_body_syntax"));
     EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "main", "type_check_body"));
     EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "add", "item_signature"));
     EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "main", "item_signature"));
@@ -632,13 +650,16 @@ TEST(CoreUnit, ToolingSessionReportsInvalidatedFactsForRemovedDefinition)
         document, std::string(changed_source), add_begin, main_begin - add_begin, TOOLING_VERSION_TWO);
     ASSERT_TRUE(changed);
     const tooling::ToolingReusePlan& plan = changed.value().reuse_plan;
+    EXPECT_TRUE(changed.value().incremental.reuse_execution.executed);
+    EXPECT_FALSE(changed.value().incremental.reuse_execution.body_local);
+    EXPECT_GT(changed.value().incremental.reuse_execution.invalidated_semantic_facts, 0U);
+    EXPECT_GT(changed.value().incremental.workspace_update.removed_facts, 0U);
     EXPECT_TRUE(plan.valid);
     EXPECT_FALSE(plan.summary.body_local);
     EXPECT_GT(plan.summary.invalidated_facts, 0U);
     EXPECT_TRUE(contains_invalidation_root(plan, "add", "item_signature"));
     EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::invalidated, "add", "item_signature"));
-    EXPECT_TRUE(
-        contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::invalidated, "add", "function_body_syntax"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::invalidated, "add", "function_body_syntax"));
     EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "main", "item_signature"));
 }
 
@@ -647,8 +668,7 @@ TEST(CoreUnit, ToolingSessionPlansGenericTemplateIncrementalReuse)
     tooling::ToolingSession session(tooling_project_config(TOOLING_WORKSPACE_PACKAGE));
     const tooling::ToolingDocumentId document =
         tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_SYMBOL_URI, session.project_config());
-    ASSERT_TRUE(
-        session.open_document(document, std::string(TOOLING_WORKSPACE_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_WORKSPACE_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
     ASSERT_TRUE(session.snapshot(document));
 
     std::string changed_source{TOOLING_WORKSPACE_SYMBOL_SOURCE};
@@ -657,8 +677,8 @@ TEST(CoreUnit, ToolingSessionPlansGenericTemplateIncrementalReuse)
     const base::usize insert_offset = return_offset + std::string_view{"return box.value"}.size();
     changed_source.insert(insert_offset, " + 0");
 
-    const base::Result<tooling::ToolingDocumentChangeResult> changed = session.change_document_with_reuse_plan(
-        document, changed_source, insert_offset, 0U, TOOLING_VERSION_TWO);
+    const base::Result<tooling::ToolingDocumentChangeResult> changed =
+        session.change_document_with_reuse_plan(document, changed_source, insert_offset, 0U, TOOLING_VERSION_TWO);
     ASSERT_TRUE(changed);
     const tooling::ToolingReusePlan& plan = changed.value().reuse_plan;
     EXPECT_TRUE(plan.valid);
@@ -670,12 +690,62 @@ TEST(CoreUnit, ToolingSessionPlansGenericTemplateIncrementalReuse)
     EXPECT_TRUE(contains_invalidation_root(plan, "read", "function_body_syntax"));
     EXPECT_TRUE(contains_invalidation_root(plan, "read", "type_check_body"));
     EXPECT_TRUE(
-        contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "Box",
-            "generic_template_signature"));
+        contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "Box", "generic_template_signature"));
     EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "Box", "item_signature"));
-    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "read",
-        "function_body_syntax"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "read", "function_body_syntax"));
     EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "read", "type_check_body"));
+}
+
+TEST(CoreUnit, ToolingSessionKeepsStableFactsAcrossRepeatedBodyLocalEdits)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.snapshot(document));
+
+    const base::Result<std::vector<tooling::ToolingDocumentSymbol>> initial_symbols =
+        session.document_symbols(document);
+    ASSERT_TRUE(initial_symbols);
+    const tooling::ToolingDocumentSymbol* const initial_add_symbol = find_symbol_named(initial_symbols.value(), "add");
+    ASSERT_NE(initial_add_symbol, nullptr);
+    const std::string stable_add_definition = initial_add_symbol->stable_definition_key;
+    ASSERT_FALSE(stable_add_definition.empty());
+
+    std::string current_source{TOOLING_SESSION_SOURCE};
+    std::string stable_add_body;
+    for (const base::i64 version : TOOLING_BODY_EDIT_VERSIONS) {
+        const base::usize return_value_offset = current_source.find("return value");
+        ASSERT_NE(return_value_offset, std::string::npos);
+        const base::usize insert_offset = return_value_offset + std::string_view{"return value"}.size();
+        current_source.insert(insert_offset, version == TOOLING_VERSION_TWO ? " + 0" : " + 1");
+
+        const base::Result<tooling::ToolingDocumentChangeResult> changed =
+            session.change_document_with_reuse_plan(document, current_source, insert_offset, 0U, version);
+        ASSERT_TRUE(changed);
+        EXPECT_TRUE(changed.value().incremental.reuse_execution.executed);
+        EXPECT_TRUE(changed.value().incremental.reuse_execution.body_local);
+
+        const tooling::ToolingReuseFact* const add_signature = find_reuse_fact(
+            changed.value().reuse_plan, tooling::ToolingReuseFactStatus::unchanged, "add", "item_signature");
+        ASSERT_NE(add_signature, nullptr);
+        EXPECT_EQ(add_signature->stable_definition_key, stable_add_definition);
+
+        const tooling::ToolingReuseFact* const add_body = find_reuse_fact(
+            changed.value().reuse_plan, tooling::ToolingReuseFactStatus::unchanged, "add", "function_body_syntax");
+        ASSERT_NE(add_body, nullptr);
+        ASSERT_FALSE(add_body->stable_body_key.empty());
+        if (stable_add_body.empty()) {
+            stable_add_body = add_body->stable_body_key;
+        }
+        EXPECT_EQ(add_body->stable_body_key, stable_add_body);
+
+        const base::Result<std::vector<tooling::ToolingDocumentSymbol>> symbols = session.document_symbols(document);
+        ASSERT_TRUE(symbols);
+        const tooling::ToolingDocumentSymbol* const current_add_symbol = find_symbol_named(symbols.value(), "add");
+        ASSERT_NE(current_add_symbol, nullptr);
+        EXPECT_EQ(current_add_symbol->stable_definition_key, stable_add_definition);
+    }
 }
 
 TEST(CoreUnit, ToolingSessionTracksAddedDependenciesAndEmptyReusePlan)
@@ -691,9 +761,8 @@ TEST(CoreUnit, ToolingSessionTracksAddedDependenciesAndEmptyReusePlan)
 
     tooling::IdeSnapshot before = *handle.value().snapshot;
     tooling::IdeSnapshot after = before;
-    const query::QueryKey extra_dependency = query::query_key(
-        before.query.records.front().key.kind, before.query.records.front().key.payload,
-        static_cast<base::u16>(before.query.records.front().key.schema + 1U));
+    const query::QueryKey extra_dependency = query::query_key(before.query.records.front().key.kind,
+        before.query.records.front().key.payload, static_cast<base::u16>(before.query.records.front().key.schema + 1U));
     const query::QueryDependencyEdge extra_edge{before.query.records.front().key, extra_dependency};
     after.query.dependencies.push_back(extra_edge);
 
@@ -738,8 +807,8 @@ TEST(CoreUnit, ToolingSessionTracksAddedDependenciesAndEmptyReusePlan)
     const tooling::ToolingReusePlan malformed_plan = tooling::tooling_plan_reuse(before, malformed_after, impact);
     EXPECT_TRUE(malformed_plan.valid);
     EXPECT_GT(malformed_plan.summary.malformed_facts, 0U);
-    EXPECT_TRUE(contains_reuse_fact(malformed_plan, tooling::ToolingReuseFactStatus::malformed,
-        TOOLING_MALFORMED_FACT_NAME, "item_signature"));
+    EXPECT_TRUE(contains_reuse_fact(
+        malformed_plan, tooling::ToolingReuseFactStatus::malformed, TOOLING_MALFORMED_FACT_NAME, "item_signature"));
 
     const tooling::ToolingReusePlan empty_plan =
         tooling::tooling_plan_reuse(tooling::IdeSnapshot{}, tooling::IdeSnapshot{}, tooling::IdeEditImpact{});
@@ -837,8 +906,7 @@ TEST(CoreUnit, ToolingWorkspaceIndexHandlesInvalidAndFallbackStableSymbols)
     tooling::ToolingWorkspaceSemanticIndex malformed_fact_index;
     tooling::IdeSnapshot malformed_fact_snapshot = *handle.value().snapshot;
     ASSERT_FALSE(malformed_fact_snapshot.query.semantic_facts.empty());
-    const base::u32 invalid_source_id =
-        static_cast<base::u32>(malformed_fact_snapshot.sources.files().size());
+    const base::u32 invalid_source_id = static_cast<base::u32>(malformed_fact_snapshot.sources.files().size());
     malformed_fact_snapshot.query.semantic_facts.front().range.source.value = invalid_source_id;
     tooling::IdeSemanticFact invalid_query_fact = malformed_fact_snapshot.query.semantic_facts.front();
     invalid_query_fact.query = {};
@@ -852,10 +920,9 @@ TEST(CoreUnit, ToolingWorkspaceIndexHandlesInvalidAndFallbackStableSymbols)
     const std::vector<tooling::ToolingIndexedSemanticFact> malformed_input_facts =
         malformed_fact_index.facts_for_document(handle.value().document);
     ASSERT_FALSE(malformed_input_facts.empty());
-    EXPECT_TRUE(std::ranges::any_of(malformed_input_facts,
-        [](const tooling::ToolingIndexedSemanticFact& fact) {
-            return fact.range.path.empty();
-        }));
+    EXPECT_TRUE(std::ranges::any_of(malformed_input_facts, [](const tooling::ToolingIndexedSemanticFact& fact) {
+        return fact.range.path.empty();
+    }));
 
     tooling::ToolingWorkspaceSemanticIndex fallback_index;
     tooling::IdeSnapshot fallback_snapshot = *handle.value().snapshot;
@@ -912,7 +979,8 @@ TEST(CoreUnit, ToolingSessionMaintainsWorkspaceSemanticIndex)
     const tooling::ToolingDocumentId symbol_document =
         tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_SYMBOL_URI, session.project_config());
     ASSERT_TRUE(session.open_document(left_document, std::string(TOOLING_WORKSPACE_LEFT_SOURCE), TOOLING_VERSION_ONE));
-    ASSERT_TRUE(session.open_document(right_document, std::string(TOOLING_WORKSPACE_RIGHT_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(
+        session.open_document(right_document, std::string(TOOLING_WORKSPACE_RIGHT_SOURCE), TOOLING_VERSION_ONE));
     ASSERT_TRUE(
         session.open_document(symbol_document, std::string(TOOLING_WORKSPACE_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
 
@@ -928,12 +996,12 @@ TEST(CoreUnit, ToolingSessionMaintainsWorkspaceSemanticIndex)
     EXPECT_GT(stats.generic_instances, 0U);
     EXPECT_TRUE(session.workspace_index().members(query::MemberKey{}).empty());
     EXPECT_TRUE(session.workspace_index().generic_instances(query::GenericInstanceKey{}).empty());
-    EXPECT_TRUE(session.workspace_index().facts_for_document(
-        tooling::tooling_document_id_from_uri("file:///workspace/missing_index.ax", session.project_config()))
-                    .empty());
+    EXPECT_TRUE(session.workspace_index()
+            .facts_for_document(
+                tooling::tooling_document_id_from_uri("file:///workspace/missing_index.ax", session.project_config()))
+            .empty());
 
-    base::Result<std::vector<tooling::ToolingDocumentSymbol>> left_symbols =
-        session.document_symbols(left_document);
+    base::Result<std::vector<tooling::ToolingDocumentSymbol>> left_symbols = session.document_symbols(left_document);
     ASSERT_TRUE(left_symbols);
     const tooling::ToolingDocumentSymbol* const left_symbol = find_symbol_named(left_symbols.value(), "left");
     ASSERT_NE(left_symbol, nullptr);
@@ -980,6 +1048,86 @@ TEST(CoreUnit, ToolingSessionMaintainsWorkspaceSemanticIndex)
     ASSERT_TRUE(session.close_document(right_document));
     EXPECT_EQ(session.workspace_index().stats().documents, 2U);
     EXPECT_TRUE(session.workspace_index().facts_for_document(right_document).empty());
+}
+
+TEST(CoreUnit, ToolingWorkspaceIndexReportsIncrementalUpdateStats)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::Result<tooling::ToolingSnapshotHandle> initial = session.snapshot(document);
+    ASSERT_TRUE(initial);
+    EXPECT_TRUE(initial.value().incremental.workspace_update.updated);
+    EXPECT_EQ(initial.value().incremental.workspace_update.previous_document_facts, 0U);
+    EXPECT_GT(initial.value().incremental.workspace_update.inserted_facts, 0U);
+    const std::vector<tooling::ToolingIndexedSemanticFact> initial_indexed =
+        session.workspace_index().facts_for_document(document);
+    ASSERT_FALSE(initial_indexed.empty());
+
+    std::vector<tooling::ToolingIndexedSemanticFact> synthetic_previous;
+    tooling::ToolingIndexedSemanticFact body_identity;
+    body_identity.document = document;
+    body_identity.version = initial.value().version;
+    body_identity.kind = "function_body_syntax";
+    body_identity.name = "body_identity";
+    body_identity.stable_body_key = "BodyKey(synthetic)";
+    synthetic_previous.push_back(body_identity);
+    tooling::ToolingIndexedSemanticFact definition_identity;
+    definition_identity.document = document;
+    definition_identity.version = initial.value().version;
+    definition_identity.kind = "item_signature";
+    definition_identity.name = "definition_identity";
+    definition_identity.stable_definition_key = "DefKey(synthetic)";
+    synthetic_previous.push_back(definition_identity);
+    tooling::ToolingIndexedSemanticFact generic_identity;
+    generic_identity.document = document;
+    generic_identity.version = initial.value().version;
+    generic_identity.kind = "item_signature";
+    generic_identity.name = "generic_identity";
+    generic_identity.stable_generic_instance_key = "GenericInstanceKey(synthetic)";
+    synthetic_previous.push_back(generic_identity);
+    tooling::ToolingIndexedSemanticFact range_identity;
+    range_identity.document = document;
+    range_identity.version = initial.value().version;
+    range_identity.kind = "item_signature";
+    range_identity.name = "range_identity";
+    range_identity.range = initial_indexed.front().range;
+    synthetic_previous.push_back(range_identity);
+    tooling::ToolingWorkspaceSemanticIndex synthetic_index;
+    const tooling::ToolingWorkspaceIndexUpdateStats synthetic_stats =
+        synthetic_index.update_snapshot(initial.value(), synthetic_previous);
+    EXPECT_GE(synthetic_stats.removed_facts, synthetic_previous.size());
+
+    std::string changed_source{TOOLING_SESSION_SOURCE};
+    const base::usize return_value_offset = changed_source.find("return value");
+    ASSERT_NE(return_value_offset, std::string::npos);
+    const base::usize insert_offset = return_value_offset + std::string_view{"return value"}.size();
+    changed_source.insert(insert_offset, " + 0");
+    const base::Result<tooling::ToolingDocumentChangeResult> changed =
+        session.change_document_with_reuse_plan(document, changed_source, insert_offset, 0U, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    EXPECT_TRUE(changed.value().incremental.workspace_update.updated);
+    EXPECT_GT(changed.value().incremental.workspace_update.retained_facts, 0U);
+    EXPECT_GT(changed.value().incremental.workspace_update.replaced_facts, 0U);
+    EXPECT_EQ(changed.value().incremental.workspace_update.removed_facts, 0U);
+
+    const std::vector<tooling::ToolingIndexedSemanticFact> indexed =
+        session.workspace_index().facts_for_document(document);
+    ASSERT_FALSE(indexed.empty());
+    EXPECT_TRUE(std::ranges::all_of(indexed, [](const tooling::ToolingIndexedSemanticFact& fact) {
+        return fact.version.client_version == std::optional<base::i64>(TOOLING_VERSION_TWO);
+    }));
+
+    const base::Result<tooling::ToolingSnapshotHandle> cached = session.snapshot(document);
+    ASSERT_TRUE(cached);
+    EXPECT_EQ(cached.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::cached_snapshot);
+    EXPECT_TRUE(cached.value().incremental.workspace_update.updated);
+    EXPECT_EQ(cached.value().incremental.workspace_update.retained_facts, indexed.size());
+    EXPECT_EQ(cached.value().incremental.workspace_update.inserted_facts, 0U);
+    EXPECT_EQ(cached.value().incremental.workspace_update.replaced_facts, 0U);
+    EXPECT_EQ(cached.value().incremental.workspace_update.removed_facts, 0U);
 }
 
 TEST(CoreUnit, LspFramingParsesAndWritesDeterministicContentMessages)
@@ -1054,19 +1202,19 @@ TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("-32601"), std::string::npos);
     EXPECT_TRUE(server.handle_json_message(lsp_notification_json("$/cancelRequest", "{}")).empty());
-    const std::string invalid_short_escape = "{\"jsonrpc\":\"2.0\",\"id\":"
-        + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\q\"}";
+    const std::string invalid_short_escape =
+        "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\q\"}";
     responses = server.handle_json_message(invalid_short_escape);
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("-32600"), std::string::npos);
-    const std::string invalid_unicode_escape = "{\"jsonrpc\":\"2.0\",\"id\":"
-        + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\u00xx\"}";
+    const std::string invalid_unicode_escape =
+        "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\u00xx\"}";
     responses = server.handle_json_message(invalid_unicode_escape);
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("-32600"), std::string::npos);
     EXPECT_FALSE(server.session()
-            .document_state(
-                tooling::tooling_document_id_from_uri("file:///workspace/missing.ax", server.session().project_config()))
+            .document_state(tooling::tooling_document_id_from_uri(
+                "file:///workspace/missing.ax", server.session().project_config()))
             .has_value());
 
     EXPECT_TRUE(server.handle_json_message(lsp_notification_json("textDocument/didOpen", "{}")).empty());
@@ -1076,66 +1224,57 @@ TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
                   .front()
                   .find("\"result\":null"),
         std::string::npos);
-    EXPECT_NE(server.handle_json_message(
-                        "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/definition\",\"params\":{}}")
-                  .front()
-                  .find("\"result\":null"),
+    EXPECT_NE(
+        server
+            .handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/definition\",\"params\":{}}")
+            .front()
+            .find("\"result\":null"),
         std::string::npos);
     EXPECT_NE(server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_REFERENCES, "textDocument/references", "{}"))
                   .front()
                   .find("\"result\":[]"),
         std::string::npos);
-    EXPECT_NE(
-        server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", "{}"))
-            .front()
-            .find("\"result\":[]"),
-        std::string::npos);
-    EXPECT_NE(server.handle_json_message(
-                        "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/hover\"}")
-                  .front()
-                  .find("\"result\":null"),
-        std::string::npos);
-    EXPECT_NE(server.handle_json_message(
-                        "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/definition\"}")
-                  .front()
-                  .find("\"result\":null"),
-        std::string::npos);
-    EXPECT_NE(server.handle_json_message(
-                        "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/references\"}")
+    EXPECT_NE(server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", "{}"))
                   .front()
                   .find("\"result\":[]"),
         std::string::npos);
-    EXPECT_NE(server.handle_json_message(
-                        "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/documentSymbol\"}")
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/hover\"}")
+                  .front()
+                  .find("\"result\":null"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/definition\"}")
+                  .front()
+                  .find("\"result\":null"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/references\"}")
                   .front()
                   .find("\"result\":[]"),
         std::string::npos);
-    EXPECT_TRUE(server.handle_json_message(
-                          "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\"}")
-                    .empty());
-    EXPECT_TRUE(server.handle_json_message(
-                          "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\"}")
-                    .empty());
-    EXPECT_TRUE(server.handle_json_message(
-                          "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didClose\"}")
-                    .empty());
-    EXPECT_TRUE(server.handle_json_message(
-                          "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{}}}")
-                    .empty());
-    EXPECT_TRUE(server.handle_json_message(
-                          "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\","
-                          "\"params\":{\"textDocument\":{\"uri\":\"file:///workspace/missing.ax\"},"
-                          "\"contentChanges\":[]}}")
-                    .empty());
-    EXPECT_TRUE(server.handle_json_message(
-                          "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\","
-                          "\"params\":{\"textDocument\":{\"uri\":\"file:///workspace/missing.ax\"},"
-                          "\"contentChanges\":[{}]}}")
-                    .empty());
-    EXPECT_NE(server.handle_json_message(
-                        "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/hover\","
-                        "\"params\":{\"textDocument\":{\"uri\":\"file:///workspace/missing.ax\"},"
-                        "\"position\":{\"line\":0}}}")
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/documentSymbol\"}")
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    EXPECT_TRUE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\"}").empty());
+    EXPECT_TRUE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\"}").empty());
+    EXPECT_TRUE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didClose\"}").empty());
+    EXPECT_TRUE(server
+            .handle_json_message(
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{}}}")
+            .empty());
+    EXPECT_TRUE(server
+            .handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\","
+                                 "\"params\":{\"textDocument\":{\"uri\":\"file:///workspace/missing.ax\"},"
+                                 "\"contentChanges\":[]}}")
+            .empty());
+    EXPECT_TRUE(server
+            .handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\","
+                                 "\"params\":{\"textDocument\":{\"uri\":\"file:///workspace/missing.ax\"},"
+                                 "\"contentChanges\":[{}]}}")
+            .empty());
+    EXPECT_NE(server
+                  .handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/hover\","
+                                       "\"params\":{\"textDocument\":{\"uri\":\"file:///workspace/missing.ax\"},"
+                                       "\"position\":{\"line\":0}}}")
                   .front()
                   .find("\"result\":null"),
         std::string::npos);
@@ -1176,21 +1315,19 @@ TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("publishDiagnostics"), std::string::npos);
 
-    responses = server.handle_json_message(lsp_notification_json(
-        "textDocument/didOpen", did_open_params(TOOLING_LSP_NO_MODULE_URI,
-                                    TOOLING_SESSION_NO_MODULE_SOURCE, TOOLING_VERSION_ONE)));
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_NO_MODULE_URI, TOOLING_SESSION_NO_MODULE_SOURCE, TOOLING_VERSION_ONE)));
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"resolved\":false"), std::string::npos);
     EXPECT_NE(responses.front().find("\"valid\":false"), std::string::npos);
 
-    responses = server.handle_json_message(
-        lsp_notification_json("textDocument/didOpen", did_open_params(TOOLING_LSP_SYMBOL_URI,
-                                                  TOOLING_LSP_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_SYMBOL_URI, TOOLING_LSP_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
     ASSERT_EQ(responses.size(), 1U);
-    EXPECT_TRUE(server.handle_json_message(lsp_notification_json(
-                           "textDocument/didChange", did_change_params(TOOLING_LSP_SYMBOL_URI,
-                                                       TOOLING_LSP_SYMBOL_SOURCE, TOOLING_VERSION_ONE)))
-                    .empty());
+    EXPECT_TRUE(server
+            .handle_json_message(lsp_notification_json("textDocument/didChange",
+                did_change_params(TOOLING_LSP_SYMBOL_URI, TOOLING_LSP_SYMBOL_SOURCE, TOOLING_VERSION_ONE)))
+            .empty());
 
     responses = server.handle_json_message(lsp_request_json(
         TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_LSP_SYMBOL_URI)));
@@ -1198,9 +1335,8 @@ TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
     EXPECT_NE(responses.front().find("\"aurexKind\":\"generic_template\""), std::string::npos);
     EXPECT_NE(responses.front().find("\"aurexKind\":\"enum_case\""), std::string::npos);
 
-    responses = server.handle_json_message(
-        lsp_notification_json("textDocument/didOpen", did_open_params(TOOLING_LSP_FALLBACK_SYMBOL_URI,
-                                                  TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_FALLBACK_SYMBOL_URI, TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
     ASSERT_EQ(responses.size(), 1U);
     responses = server.handle_json_message(lsp_request_json(
         TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_LSP_FALLBACK_SYMBOL_URI)));
@@ -1211,9 +1347,8 @@ TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
     EXPECT_NE(responses.front().find("\"aurexKind\":\"enum\""), std::string::npos);
     EXPECT_NE(responses.front().find("\"checked\":false"), std::string::npos);
 
-    responses = server.handle_json_message(
-        lsp_notification_json("textDocument/didOpen", did_open_params(TOOLING_LSP_METHOD_SYMBOL_URI,
-                                                  TOOLING_LSP_METHOD_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_METHOD_SYMBOL_URI, TOOLING_LSP_METHOD_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
     ASSERT_EQ(responses.size(), 1U);
     responses = server.handle_json_message(lsp_request_json(
         TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_LSP_METHOD_SYMBOL_URI)));
@@ -1235,9 +1370,8 @@ TEST(CoreUnit, LspServerHandlesLifecycleSyncDiagnosticsAndIdeRequests)
     EXPECT_TRUE(server.handle_json_message(lsp_notification_json("initialized", "{}")).empty());
     EXPECT_TRUE(server.initialized());
 
-    responses = server.handle_json_message(
-        lsp_notification_json("textDocument/didOpen", did_open_params(TOOLING_LSP_URI, TOOLING_SESSION_SOURCE,
-                                                  TOOLING_VERSION_ONE)));
+    responses = server.handle_json_message(lsp_notification_json(
+        "textDocument/didOpen", did_open_params(TOOLING_LSP_URI, TOOLING_SESSION_SOURCE, TOOLING_VERSION_ONE)));
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"method\":\"textDocument/publishDiagnostics\""), std::string::npos);
     EXPECT_NE(responses.front().find("\"diagnostics\":[]"), std::string::npos);
@@ -1247,16 +1381,16 @@ TEST(CoreUnit, LspServerHandlesLifecycleSyncDiagnosticsAndIdeRequests)
     const tooling::ToolingSourcePosition call_position =
         tooling::tooling_position_for_offset(TOOLING_SESSION_SOURCE, call_offset);
 
-    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_HOVER, "textDocument/hover",
-        text_document_position_params(TOOLING_LSP_URI, call_position)));
+    responses = server.handle_json_message(lsp_request_json(
+        TOOLING_LSP_ID_HOVER, "textDocument/hover", text_document_position_params(TOOLING_LSP_URI, call_position)));
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("identifier `add` -> function"), std::string::npos);
     EXPECT_NE(responses.front().find("semanticFactKey"), std::string::npos);
 
     const std::string missing_document_position_params =
         text_document_position_params("file:///workspace/not_open.ax", call_position);
-    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_HOVER, "textDocument/hover",
-        missing_document_position_params));
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_HOVER, "textDocument/hover", missing_document_position_params));
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"result\":null"), std::string::npos);
 
@@ -1266,8 +1400,8 @@ TEST(CoreUnit, LspServerHandlesLifecycleSyncDiagnosticsAndIdeRequests)
     EXPECT_NE(responses.front().find("\"uri\":\"file:///workspace/lsp.ax\""), std::string::npos);
     EXPECT_NE(responses.front().find("\"range\""), std::string::npos);
 
-    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_DEFINITION, "textDocument/definition",
-        missing_document_position_params));
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_DEFINITION, "textDocument/definition", missing_document_position_params));
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"result\":null"), std::string::npos);
 
@@ -1277,8 +1411,8 @@ TEST(CoreUnit, LspServerHandlesLifecycleSyncDiagnosticsAndIdeRequests)
     EXPECT_NE(responses.front().find("\"result\":["), std::string::npos);
     EXPECT_NE(responses.front().find("\"uri\":\"file:///workspace/lsp.ax\""), std::string::npos);
 
-    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_REFERENCES, "textDocument/references",
-        missing_document_position_params));
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_REFERENCES, "textDocument/references", missing_document_position_params));
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"result\":[]"), std::string::npos);
 
@@ -1287,8 +1421,8 @@ TEST(CoreUnit, LspServerHandlesLifecycleSyncDiagnosticsAndIdeRequests)
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"result\":null"), std::string::npos);
 
-    responses = server.handle_json_message(lsp_request_json(
-        TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_LSP_URI)));
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_LSP_URI)));
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"name\":\"add\""), std::string::npos);
     EXPECT_NE(responses.front().find("\"aurexKind\":\"function\""), std::string::npos);
@@ -1306,13 +1440,13 @@ TEST(CoreUnit, LspServerHandlesLifecycleSyncDiagnosticsAndIdeRequests)
     EXPECT_NE(responses.front().find("\"severity\":4"), std::string::npos);
     EXPECT_NE(responses.front().find("did you mean `count`"), std::string::npos);
 
-    responses =
-        server.handle_json_message(lsp_notification_json("textDocument/didClose", text_document_params(TOOLING_LSP_URI)));
+    responses = server.handle_json_message(
+        lsp_notification_json("textDocument/didClose", text_document_params(TOOLING_LSP_URI)));
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"diagnostics\":[]"), std::string::npos);
 
-    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol",
-        text_document_params(TOOLING_LSP_URI)));
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_LSP_URI)));
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"result\":[]"), std::string::npos);
 

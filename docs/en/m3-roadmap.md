@@ -166,6 +166,13 @@ baseline instead of reading parser, sema, query, or driver internals directly.
 
 ### M3.4: Real Incremental Sema Execution
 
+Status: as of 2026-05-29, M3.4 is complete on `m3.4` for the deterministic
+tooling/query boundary. Previous query records are executable inputs to
+`IdeSnapshot` construction, reuse execution is reported through
+`ToolingIncrementalSnapshotResult`, and workspace index updates report
+retained/replaced/removed/inserted facts without exposing stale document
+versions.
+
 M3.4 turns M3.3's reuse explanation into actual partial recomputation. The
 current compiler can record query facts, dependency edges, and reuse summaries;
 M3.4 makes `ToolingSession`, `IdeSnapshot`, sema services, and query providers
@@ -381,14 +388,14 @@ The M3.1 implementation route is:
 ## Recommended Implementation Order
 
 The completed M3.0 module, M3.1 generic, M3.2 query-backed sema, and M3.3
-tooling orders remain as historical acceptance. The active M3.4 order is:
+tooling orders remain as historical acceptance. The M3.4 order is now closed:
 
 1. Incremental snapshot build input. Completed.
-2. Query record reuse execution.
-3. Semantic fact stability for body-local and signature-local edits.
-4. Workspace index incremental update.
-5. Performance, malformed-reuse, coverage, and stress gates.
-6. Documentation and release closure for the phase.
+2. Query record reuse execution. Completed.
+3. Semantic fact stability for body-local and signature-local edits. Completed.
+4. Workspace index incremental update. Completed.
+5. Performance, malformed-reuse, coverage, and stress gates. Completed.
+6. Documentation and release closure for the phase. Completed.
 
 ## Current Implementation Progress
 
@@ -424,11 +431,15 @@ point is `m3.4-real-incremental-sema-plan.md`; the phase now prioritizes real
 incremental sema execution before syntax incrementality, project graph
 persistence, advanced IDE features, and query-backed lowering.
 
-2026-05-29: M3.4 WP-1 Incremental Snapshot Build Input is complete.
-`ToolingSession` preserves previous materialized snapshots across document
-changes, and `ToolingSnapshotHandle` now exposes
-`ToolingIncrementalSnapshotResult` for clean builds, cache hits, accepted
-previous context, stale/mismatched context, and malformed context.
+2026-05-29: M3.4 Real Incremental Sema Execution is complete for the current
+deterministic tooling/query boundary. `ToolingSession` preserves previous
+materialized snapshots, precise edit impact, and pending workspace facts across
+document changes. `IdeIncrementalSnapshotInput` feeds previous query records
+into `build_ide_snapshot_into(...)`, `QueryContext` executes green reuse for
+unchanged file/module/signature/body records, and
+`ToolingIncrementalSnapshotResult` exposes the executed reuse plan, reuse
+counters, and workspace-index update stats. The next stage is M3.5
+Incremental Syntax And Stable AST Identity.
 
 ## Acceptance
 

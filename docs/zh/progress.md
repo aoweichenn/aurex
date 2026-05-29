@@ -70,12 +70,15 @@ snapshot/query context，query reuse decision 必须驱动局部重算，semanti
 signature / module edits 后保持稳定，workspace index 尽量按 affected fact identity 更新。完整 M3.4-M3.9
 路线已写入 [M3 路线图](m3-roadmap.md)。
 
-2026-05-29：M3.4 WP-1 Incremental Snapshot Build Input 已完成当前验收边界。`ToolingSession` 在 document
-change 时保留上一版已经 materialized 的 snapshot，下一次 `snapshot(...)` 会记录 clean build、cache hit、
-accepted previous context、rejected stale context、rejected mismatched context 或 rejected malformed context。
-`ToolingSnapshotHandle` 携带 `ToolingIncrementalSnapshotResult`；聚焦测试覆盖 no-previous、
-matching-previous、stale、mismatched、malformed 和 cache-hit 路径。下一目标是 WP-2A executable
-query-record reuse。
+2026-05-29：M3.4 Real Incremental Sema Execution 已完成当前 deterministic tooling/query 边界。
+`IdeIncrementalSnapshotInput` 会把 previous query snapshot 传入 `build_ide_snapshot_into(...)`；可证明
+unchanged 的 file/lex/parse/diagnostics、module-surface、item-signature、generic-template-signature、
+function-body-syntax 和 type-check-body records 会在 provider evaluation 前 seed 到 `QueryContext`。
+`ToolingIncrementalSnapshotResult` 暴露已执行的 reuse plan、reuse-execution counters 和 workspace-index
+update stats；`ToolingWorkspaceSemanticIndex` 报告 retained、replaced、removed、inserted facts，并避免对外返回
+旧 document version 的 stale entries。聚焦测试覆盖 accepted/rejected previous context、重复 body-local edit
+稳定性、removed-definition invalidation、generic body-edit reuse、malformed reuse 和无旧版本泄漏的 workspace
+facts。下一目标是 M3.5 Incremental Syntax And Stable AST Identity。
 
 2026-05-28 WP-1B Generic Instance Identity Propagation 已完成：`FunctionSignature`、`EnumCaseInfo`、
 `GenericEnumInstanceInfo` 和 `GenericTypeAliasInstanceInfo` 都携带结构化 `GenericInstanceKey`；

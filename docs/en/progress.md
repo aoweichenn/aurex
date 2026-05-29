@@ -125,15 +125,20 @@ remain stable across body-local/signature/module edits, and the workspace index
 should update by affected fact identity where possible. The broader M3.4-M3.9
 route is now explicit in the [M3 Roadmap](m3-roadmap.md).
 
-As of 2026-05-29, M3.4 WP-1 Incremental Snapshot Build Input is complete for
-the current acceptance boundary. `ToolingSession` preserves the previous
-materialized snapshot when a document changes, and the next `snapshot(...)`
-call records whether it was a clean build, cache hit, accepted previous
-context, rejected stale context, rejected mismatched context, or rejected
-malformed context. `ToolingSnapshotHandle` carries
-`ToolingIncrementalSnapshotResult`, and focused tests cover no-previous,
-matching-previous, stale, mismatched, malformed, and cache-hit paths. The next
-target is WP-2A executable query-record reuse.
+As of 2026-05-29, M3.4 Real Incremental Sema Execution is complete for the
+current deterministic tooling/query boundary. `IdeIncrementalSnapshotInput`
+carries previous query snapshots into `build_ide_snapshot_into(...)`; reusable
+file/lex/parse/diagnostics, module-surface, item-signature,
+generic-template-signature, function-body-syntax, and type-check-body records
+are seeded into `QueryContext` before provider evaluation.
+`ToolingIncrementalSnapshotResult` exposes the executed reuse plan,
+reuse-execution counters, and workspace-index update stats.
+`ToolingWorkspaceSemanticIndex` reports retained, replaced, removed, and
+inserted facts while avoiding externally visible stale document entries.
+Focused tests cover accepted/rejected previous context, repeated body-local edit
+stability, removed-definition invalidation, generic body-edit reuse, malformed
+reuse, and stale-version-free workspace facts. The next target is M3.5
+Incremental Syntax And Stable AST Identity.
 
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and

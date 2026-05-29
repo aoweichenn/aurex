@@ -16,6 +16,7 @@ constexpr std::string_view TOOLING_INDEX_KIND_ITEM_SIGNATURE = "item_signature";
 constexpr std::string_view TOOLING_INDEX_KIND_GENERIC_TEMPLATE_SIGNATURE = "generic_template_signature";
 constexpr std::string_view TOOLING_INDEX_KIND_FUNCTION_BODY_SYNTAX = "function_body_syntax";
 constexpr std::string_view TOOLING_INDEX_KIND_TYPE_CHECK_BODY = "type_check_body";
+constexpr char TOOLING_INDEX_FACT_IDENTITY_SEPARATOR = '\x1E';
 
 [[nodiscard]] const base::SourceFile* tooling_index_source_file_for_range(
     const IdeSnapshot& snapshot, const base::SourceRange range) noexcept
@@ -91,8 +92,7 @@ constexpr std::string_view TOOLING_INDEX_KIND_TYPE_CHECK_BODY = "type_check_body
     return query::module_key_from_stable_id(snapshot.query.source_stage.file.package, query::stable_module_id(parts));
 }
 
-[[nodiscard]] query::MemberKind tooling_index_symbol_kind_to_member_kind(
-    const query::StableSymbolKind kind) noexcept
+[[nodiscard]] query::MemberKind tooling_index_symbol_kind_to_member_kind(const query::StableSymbolKind kind) noexcept
 {
     if (kind == query::StableSymbolKind::enum_case) {
         return query::MemberKind::enum_case;
@@ -107,8 +107,8 @@ constexpr std::string_view TOOLING_INDEX_KIND_TYPE_CHECK_BODY = "type_check_body
     const IdeSnapshot& snapshot, const std::string_view name, const base::SourceRange fallback) noexcept
 {
     for (const syntax::Token& token : snapshot.lossless.tokens()) {
-        if (token.kind == syntax::TokenKind::identifier && token.text() == name
-            && fallback.begin <= token.range.begin && token.range.end <= fallback.end) {
+        if (token.kind == syntax::TokenKind::identifier && token.text() == name && fallback.begin <= token.range.begin
+            && token.range.end <= fallback.end) {
             return token.range;
         }
     }
@@ -135,9 +135,8 @@ constexpr std::string_view TOOLING_INDEX_KIND_TYPE_CHECK_BODY = "type_check_body
     if (!query::is_valid(stable_key) || kind == query::MemberKind::invalid || owner_kind == query::DefKind::invalid) {
         return {};
     }
-    const query::DefKey owner =
-        query::def_key_from_stable_id(tooling_index_module_key_for_snapshot(snapshot).package, stable_key.owner,
-            query::DefNamespace::type, owner_kind);
+    const query::DefKey owner = query::def_key_from_stable_id(tooling_index_module_key_for_snapshot(snapshot).package,
+        stable_key.owner, query::DefNamespace::type, owner_kind);
     if (!query::is_valid(owner)) {
         return {};
     }
@@ -200,11 +199,11 @@ constexpr std::string_view TOOLING_INDEX_KIND_TYPE_CHECK_BODY = "type_check_body
 
 void tooling_index_sort_facts(std::vector<ToolingIndexedSemanticFact>& facts)
 {
-    std::sort(facts.begin(), facts.end(), [](const ToolingIndexedSemanticFact& lhs,
-                                              const ToolingIndexedSemanticFact& rhs) {
-        return std::tie(lhs.document.uri, lhs.range.range.begin, lhs.range.range.end, lhs.kind, lhs.name)
-            < std::tie(rhs.document.uri, rhs.range.range.begin, rhs.range.range.end, rhs.kind, rhs.name);
-    });
+    std::sort(
+        facts.begin(), facts.end(), [](const ToolingIndexedSemanticFact& lhs, const ToolingIndexedSemanticFact& rhs) {
+            return std::tie(lhs.document.uri, lhs.range.range.begin, lhs.range.range.end, lhs.kind, lhs.name)
+                < std::tie(rhs.document.uri, rhs.range.range.begin, rhs.range.range.end, rhs.kind, rhs.name);
+        });
 }
 
 void tooling_index_push_fact(
@@ -214,6 +213,162 @@ void tooling_index_push_fact(
         return;
     }
     map[stable_key].push_back(fact);
+}
+
+void tooling_index_append_identity_part(std::string& identity, const std::string_view part)
+{
+    identity.push_back(TOOLING_INDEX_FACT_IDENTITY_SEPARATOR);
+    identity.append(part);
+}
+
+[[nodiscard]] std::string tooling_index_fact_identity(const ToolingIndexedSemanticFact& fact)
+{
+    std::string identity;
+    tooling_index_append_identity_part(identity, fact.kind);
+    if (!fact.stable_query_key.empty()) {
+        tooling_index_append_identity_part(identity, "query");
+        tooling_index_append_identity_part(identity, fact.stable_query_key);
+        return identity;
+    }
+    if (!fact.stable_member_key.empty()) {
+        tooling_index_append_identity_part(identity, "member");
+        tooling_index_append_identity_part(identity, fact.stable_member_key);
+        return identity;
+    }
+    if (!fact.stable_body_key.empty()) {
+        tooling_index_append_identity_part(identity, "body");
+        tooling_index_append_identity_part(identity, fact.stable_body_key);
+        return identity;
+    }
+    if (!fact.stable_definition_key.empty()) {
+        tooling_index_append_identity_part(identity, "definition");
+        tooling_index_append_identity_part(identity, fact.stable_definition_key);
+        return identity;
+    }
+    if (!fact.stable_generic_instance_key.empty()) {
+        tooling_index_append_identity_part(identity, "generic_instance");
+        tooling_index_append_identity_part(identity, fact.stable_generic_instance_key);
+        return identity;
+    }
+    tooling_index_append_identity_part(identity, "range");
+    tooling_index_append_identity_part(identity, fact.name);
+    tooling_index_append_identity_part(identity, std::to_string(fact.range.range.source.value));
+    tooling_index_append_identity_part(identity, std::to_string(fact.range.range.begin));
+    tooling_index_append_identity_part(identity, std::to_string(fact.range.range.end));
+    return identity;
+}
+
+[[nodiscard]] bool tooling_index_same_range(const ToolingTextRange& lhs, const ToolingTextRange& rhs) noexcept
+{
+    return lhs.path == rhs.path && lhs.range.source.value == rhs.range.source.value
+        && lhs.range.begin == rhs.range.begin && lhs.range.end == rhs.range.end && lhs.start.line == rhs.start.line
+        && lhs.start.column == rhs.start.column && lhs.end.line == rhs.end.line && lhs.end.column == rhs.end.column;
+}
+
+[[nodiscard]] bool tooling_index_same_semantic_payload(
+    const ToolingIndexedSemanticFact& lhs, const ToolingIndexedSemanticFact& rhs) noexcept
+{
+    return lhs.semantic_kind == rhs.semantic_kind && lhs.query == rhs.query && lhs.definition == rhs.definition
+        && lhs.member == rhs.member && lhs.body == rhs.body && lhs.generic_instance == rhs.generic_instance
+        && tooling_index_same_range(lhs.range, rhs.range) && lhs.name == rhs.name && lhs.kind == rhs.kind
+        && lhs.detail == rhs.detail && lhs.stable_query_key == rhs.stable_query_key
+        && lhs.stable_definition_key == rhs.stable_definition_key && lhs.stable_member_key == rhs.stable_member_key
+        && lhs.stable_body_key == rhs.stable_body_key
+        && lhs.stable_generic_instance_key == rhs.stable_generic_instance_key && lhs.part_index == rhs.part_index
+        && lhs.checked == rhs.checked;
+}
+
+[[nodiscard]] std::unordered_map<std::string, ToolingIndexedSemanticFact> tooling_index_identity_map(
+    const std::vector<ToolingIndexedSemanticFact>& facts)
+{
+    std::unordered_map<std::string, ToolingIndexedSemanticFact> by_identity;
+    by_identity.reserve(facts.size());
+    for (const ToolingIndexedSemanticFact& fact : facts) {
+        by_identity[tooling_index_fact_identity(fact)] = fact;
+    }
+    return by_identity;
+}
+
+[[nodiscard]] ToolingWorkspaceIndexUpdateStats tooling_index_update_stats(
+    const std::vector<ToolingIndexedSemanticFact>& previous, const std::vector<ToolingIndexedSemanticFact>& current)
+{
+    ToolingWorkspaceIndexUpdateStats stats;
+    stats.previous_document_facts = previous.size();
+    stats.current_document_facts = current.size();
+    const std::unordered_map<std::string, ToolingIndexedSemanticFact> previous_by_identity =
+        tooling_index_identity_map(previous);
+    const std::unordered_map<std::string, ToolingIndexedSemanticFact> current_by_identity =
+        tooling_index_identity_map(current);
+    for (const auto& entry : previous_by_identity) {
+        if (!current_by_identity.contains(entry.first)) {
+            stats.removed_facts += 1;
+        }
+    }
+    for (const auto& entry : current_by_identity) {
+        const auto previous_entry = previous_by_identity.find(entry.first);
+        if (previous_entry == previous_by_identity.end()) {
+            stats.inserted_facts += 1;
+            continue;
+        }
+        if (tooling_index_same_semantic_payload(previous_entry->second, entry.second)) {
+            stats.retained_facts += 1;
+            continue;
+        }
+        stats.replaced_facts += 1;
+    }
+    stats.updated = true;
+    return stats;
+}
+
+[[nodiscard]] std::vector<ToolingIndexedSemanticFact> tooling_index_collect_snapshot_facts(
+    const ToolingSnapshotHandle& handle)
+{
+    std::vector<ToolingIndexedSemanticFact> facts;
+    facts.reserve(handle.snapshot->query.semantic_facts.size());
+    for (const IdeSemanticFact& fact : handle.snapshot->query.semantic_facts) {
+        if (!query::is_valid(fact.query)) {
+            continue;
+        }
+        facts.push_back(tooling_indexed_fact_from_semantic_fact(handle, fact));
+    }
+    for (const auto& entry : handle.snapshot->checked.structs) {
+        const sema::StructInfo& info = entry.second;
+        for (const sema::StructFieldInfo& field : info.fields) {
+            const query::MemberKey member = tooling_index_member_key(
+                *handle.snapshot, field.stable_key, query::DefKind::struct_, field.name.view());
+            if (!query::is_valid(member)) {
+                continue;
+            }
+            const query::DefKey definition = tooling_index_symbol_def_key(*handle.snapshot, field.stable_key.owner,
+                query::DefNamespace::member, query::DefKind::struct_field, field.name.view(), field.range);
+            if (!query::is_valid(definition)) {
+                continue;
+            }
+            const base::SourceRange range =
+                tooling_index_name_range_in_range(*handle.snapshot, field.name.view(), field.range);
+            facts.push_back(tooling_indexed_member_fact(
+                handle, definition, member, info.generic_instance_key, range, field.name.view(), info.part_index));
+        }
+    }
+    for (const auto& entry : handle.snapshot->checked.enum_cases) {
+        const sema::EnumCaseInfo& info = entry.second;
+        const query::MemberKey member = tooling_index_member_key(
+            *handle.snapshot, info.stable_case_key, query::DefKind::enum_, info.case_name.view());
+        if (!query::is_valid(member)) {
+            continue;
+        }
+        const query::DefKey definition = tooling_index_symbol_def_key(*handle.snapshot, info.stable_id,
+            query::DefNamespace::value, query::DefKind::enum_case, info.case_name.view(), info.range);
+        if (!query::is_valid(definition)) {
+            continue;
+        }
+        const base::SourceRange range =
+            tooling_index_name_range_in_range(*handle.snapshot, info.case_name.view(), info.range);
+        facts.push_back(tooling_indexed_member_fact(
+            handle, definition, member, info.generic_instance_key, range, info.case_name.view(), info.part_index));
+    }
+    tooling_index_sort_facts(facts);
+    return facts;
 }
 
 [[nodiscard]] base::usize tooling_index_fact_count(const ToolingIndexFactMap& map) noexcept
@@ -265,68 +420,35 @@ void ToolingWorkspaceSemanticIndex::remove_document(const ToolingDocumentId& id)
 
 void ToolingWorkspaceSemanticIndex::index_snapshot(const ToolingSnapshotHandle& handle)
 {
+    static_cast<void>(this->update_snapshot(handle));
+}
+
+ToolingWorkspaceIndexUpdateStats ToolingWorkspaceSemanticIndex::update_snapshot(const ToolingSnapshotHandle& handle)
+{
+    return this->update_snapshot(handle, this->facts_for_document(handle.document));
+}
+
+ToolingWorkspaceIndexUpdateStats ToolingWorkspaceSemanticIndex::update_snapshot(
+    const ToolingSnapshotHandle& handle, const std::vector<ToolingIndexedSemanticFact>& previous_facts)
+{
     if (!handle || handle.snapshot == nullptr) {
-        return;
+        return {};
     }
+    std::vector<ToolingIndexedSemanticFact> current_facts = tooling_index_collect_snapshot_facts(handle);
+    ToolingWorkspaceIndexUpdateStats update = tooling_index_update_stats(previous_facts, current_facts);
+
     this->remove_document(handle.document);
     const std::string document_key = tooling_document_store_key(handle.document);
     std::vector<ToolingIndexedSemanticFact>& document_facts = this->facts_by_document_[document_key];
-    document_facts.reserve(handle.snapshot->query.semantic_facts.size());
-    auto push_indexed = [this, &document_facts](ToolingIndexedSemanticFact indexed) {
-        document_facts.push_back(std::move(indexed));
-        const ToolingIndexedSemanticFact& fact = document_facts.back();
+    document_facts = std::move(current_facts);
+    for (const ToolingIndexedSemanticFact& fact : document_facts) {
         tooling_index_push_fact(this->definitions_, fact.stable_definition_key, fact);
         tooling_index_push_fact(this->members_, fact.stable_member_key, fact);
         tooling_index_push_fact(this->bodies_, fact.stable_body_key, fact);
         tooling_index_push_fact(this->generic_instances_, fact.stable_generic_instance_key, fact);
-    };
-    for (const IdeSemanticFact& fact : handle.snapshot->query.semantic_facts) {
-        if (!query::is_valid(fact.query)) {
-            continue;
-        }
-        ToolingIndexedSemanticFact indexed = tooling_indexed_fact_from_semantic_fact(handle, fact);
-        push_indexed(std::move(indexed));
     }
-    for (const auto& entry : handle.snapshot->checked.structs) {
-        const sema::StructInfo& info = entry.second;
-        for (const sema::StructFieldInfo& field : info.fields) {
-            const query::MemberKey member =
-                tooling_index_member_key(*handle.snapshot, field.stable_key, query::DefKind::struct_, field.name.view());
-            if (!query::is_valid(member)) {
-                continue;
-            }
-            const query::DefKey definition =
-                tooling_index_symbol_def_key(*handle.snapshot, field.stable_key.owner, query::DefNamespace::member,
-                    query::DefKind::struct_field, field.name.view(), field.range);
-            if (!query::is_valid(definition)) {
-                continue;
-            }
-            const base::SourceRange range =
-                tooling_index_name_range_in_range(*handle.snapshot, field.name.view(), field.range);
-            push_indexed(tooling_indexed_member_fact(
-                handle, definition, member, info.generic_instance_key, range, field.name.view(), info.part_index));
-        }
-    }
-    for (const auto& entry : handle.snapshot->checked.enum_cases) {
-        const sema::EnumCaseInfo& info = entry.second;
-        const query::MemberKey member =
-            tooling_index_member_key(*handle.snapshot, info.stable_case_key, query::DefKind::enum_, info.case_name.view());
-        if (!query::is_valid(member)) {
-            continue;
-        }
-        const query::DefKey definition =
-            tooling_index_symbol_def_key(*handle.snapshot, info.stable_id, query::DefNamespace::value,
-                query::DefKind::enum_case, info.case_name.view(), info.range);
-        if (!query::is_valid(definition)) {
-            continue;
-        }
-        const base::SourceRange range =
-            tooling_index_name_range_in_range(*handle.snapshot, info.case_name.view(), info.range);
-        push_indexed(tooling_indexed_member_fact(
-            handle, definition, member, info.generic_instance_key, range, info.case_name.view(), info.part_index));
-    }
-    tooling_index_sort_facts(document_facts);
     this->rebuild_stats();
+    return update;
 }
 
 ToolingWorkspaceIndexStats ToolingWorkspaceSemanticIndex::stats() const noexcept

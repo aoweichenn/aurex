@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M3.4 Real Incremental Sema Execution
+## 当前最高优先级：M3.5 Incremental Syntax And Stable AST Identity
 
 R5 Compilation Pipeline / Driver Action 重构 core 已收口：`CompilerInvocation`、`Compiler`
 facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`LoweringPipeline`、
@@ -9,8 +9,8 @@ stage owner 和 tooling/profile consumer contract 都已经进入主路径，并
 profile JSON、incremental cache 和 emit mode 行为。
 
 M3.0 模块系统、M3.1 泛型闭环、M3.2 Query-backed Sema 和 M3.3 Tooling Session And Incremental
-Sema 都已经合并回 `m3`。当前活动分支是 `m3.4`，聚焦把 M3.3 的 reuse explanation 推进为真实
-incremental sema execution：
+Sema 都已经合并回 `m3`。M3.4 Real Incremental Sema Execution 已在 `m3.4` 收口，核心是把 M3.3 的
+reuse explanation 推进为真实 incremental sema execution：
 
 - 通过 `ToolingSession` 传递 previous snapshot / query context。
 - 把 query reuse decision 变成可执行 semantic fact reuse。
@@ -20,10 +20,10 @@ incremental sema execution：
   改动它们。
 - tests、coverage、query pruning、fuzz 和 stress gates 保持 green。
 
-M3.4 执行入口是
+已收口的 M3.4 执行入口是
 [Aurex M3.4 Real Incremental Sema Execution 计划](m3.4-real-incremental-sema-plan.md)。
-更完整的 M3.4-M3.9 路线记录在 [M3 路线图](m3-roadmap.md)。M3.3 保持 closed tooling/session
-baseline，不再追加新范围。
+更完整的 M3.4-M3.9 路线记录在 [M3 路线图](m3-roadmap.md)。下一实现分支应进入 M3.5，重点处理
+incremental syntax、stable AST node identity 和 edit-range-to-subtree reuse。
 
 R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分；
 R5.3 已完成 `LoweringPipeline`、`BackendPipeline` 和 `PipelineStage` 记录。当前 driver 总控已经只保留
@@ -71,8 +71,11 @@ M3.4 的第一批实现顺序：
 2. WP-1B：通过 `ToolingSession` 传递 previous snapshot context。已完成。
 3. WP-1C：增加 no-previous、matching-previous、stale-version 和 malformed input tests。已完成。
 4. WP-2A：把 unchanged query records 作为 executable semantic fact inputs 复用。
-5. WP-2B：验证 body-local 和 signature-local edit 行为。
-6. WP-3A：让 semantic fact identity 在重复编辑循环中保持稳定。
+   已完成。
+5. WP-2B：验证 body-local 和 signature-local edit 行为。已完成。
+6. WP-3A：让 semantic fact identity 在重复编辑循环中保持稳定。已完成。
+7. WP-4：按 stable fact identity 更新 workspace index。已完成。
+8. WP-5/WP-6：运行质量门并收口文档。已完成。
 
 2026-05-28 收口更新：原 M3.1 work packages 已通过 WP-7 Generic Closure Audit And Release Baseline 统一复审。
 当前泛型 release baseline 固定为：generic struct / enum / type alias / function / owner-generic method /
@@ -87,11 +90,13 @@ M3.4 real incremental sema execution、M3.5 incremental syntax / stable AST iden
 persistent query DB、M3.7 IDE semantic features、M3.8 query-backed lowering / backend reuse、M3.9 release
 closure。
 
-2026-05-29 M3.4 WP-1 实现更新：`ToolingSession` 现在会在 document change 时保留上一版已经 materialized
-的 snapshot，把 previous snapshot/query summary 接入下一次 snapshot build result；`ToolingSnapshotHandle`
-暴露 `ToolingIncrementalSnapshotInput` / `ToolingIncrementalSnapshotResult`；当前已能分类 clean build、
-cache hit、accepted previous context、stale context、mismatched context 和 malformed context。下一实现目标：
-WP-2A executable query-record reuse。
+2026-05-29 M3.4 收口更新：`ToolingSession` 现在会在 document change 时保留 previous materialized
+snapshot、精确 edit impact 和 pending workspace facts；`IdeIncrementalSnapshotInput` 把 previous query
+records 接入 snapshot construction；`QueryContext` 对 unchanged file/module/signature/body query records 执行
+green reuse；`ToolingIncrementalSnapshotResult` 暴露已执行的 reuse plan、reuse counters 和 workspace-index
+update stats。聚焦测试覆盖 accepted/rejected previous context、body-local reuse、removed-definition
+invalidation、重复 stable-fact edits、generic body-edit reuse、malformed reuse plan 和无旧版本泄漏的 workspace
+index update。下一实现目标：M3.5 incremental syntax 和 stable AST identity。
 
 ## 当前分支原则
 

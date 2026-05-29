@@ -247,26 +247,74 @@ void mix_lossless_tree(query::StableHashBuilder& builder, const syntax::Lossless
     return result;
 }
 
+[[nodiscard]] const query::QueryRecord* reusable_previous_query_record(
+    const IdeQuerySnapshot& previous, const query::QueryRecord& current)
+{
+    for (const query::QueryRecord& record : previous.records) {
+        if (record.key == current.key
+            && query::query_record_change_status(&record, current) == query::QueryRecordChangeStatus::unchanged) {
+            return &record;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] std::vector<query::QueryKey> previous_dependencies_for_query(
+    const IdeQuerySnapshot& previous, const query::QueryKey key)
+{
+    std::vector<query::QueryKey> dependencies;
+    for (const query::QueryDependencyEdge& edge : previous.dependencies) {
+        if (edge.dependent == key) {
+            dependencies.push_back(edge.dependency);
+        }
+    }
+    return dependencies;
+}
+
+void seed_reusable_query_record(query::QueryContext& context, const IdeIncrementalSnapshotInput& incremental,
+    const std::optional<query::QueryRecord>& current_record)
+{
+    if (incremental.previous_query == nullptr || !current_record.has_value()) {
+        return;
+    }
+    const query::QueryRecord* const previous =
+        reusable_previous_query_record(*incremental.previous_query, *current_record);
+    if (previous == nullptr) {
+        return;
+    }
+    static_cast<void>(context.seed_completed_record(
+        *previous, previous_dependencies_for_query(*incremental.previous_query, previous->key)));
+}
+
 void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view source_text,
     const query::QueryResultFingerprint lex_result, const query::QueryResultFingerprint parse_result,
-    const query::QueryResultFingerprint diagnostics_result, const query::DiagnosticsEventStream& diagnostics)
+    const query::QueryResultFingerprint diagnostics_result, const query::DiagnosticsEventStream& diagnostics,
+    const IdeIncrementalSnapshotInput& incremental)
 {
     query::QueryContext context;
     const query::QueryResultFingerprint content_result = content_result_fingerprint(source_text);
+    seed_reusable_query_record(
+        context, incremental, query::file_content_query_record(snapshot.query.source_stage.file, content_result));
     static_cast<void>(context.evaluate_file_content(query::FileContentProviderInput{
         snapshot.query.source_stage.file,
         content_result,
     }));
+    seed_reusable_query_record(
+        context, incremental, query::lex_file_query_record(snapshot.query.source_stage.lex_file, lex_result));
     static_cast<void>(context.evaluate_lex_file(query::LexFileProviderInput{
         snapshot.query.source_stage.lex_file,
         lex_result,
     }));
+    seed_reusable_query_record(
+        context, incremental, query::parse_file_query_record(snapshot.query.source_stage.parse_file, parse_result));
     static_cast<void>(context.evaluate_parse_file(query::ParseFileProviderInput{
         snapshot.query.source_stage.parse_file,
         parse_result,
     }));
     if (const std::optional<query::QueryKey> parse_query =
             query::parse_file_query_key(snapshot.query.source_stage.parse_file)) {
+        seed_reusable_query_record(
+            context, incremental, query::diagnostics_query_record(*parse_query, diagnostics_result));
         static_cast<void>(context.evaluate_diagnostics(query::DiagnosticsProviderInput{
             *parse_query,
             diagnostics_result,
@@ -578,16 +626,15 @@ void recover_resolved_fragment_source_part(
         module_key_for_snapshot(snapshot), name_space, kind, path, static_cast<base::u32>(fallback_range.begin));
 }
 
-[[nodiscard]] query::MemberKey symbol_member_key(const IdeSnapshot& snapshot,
-    const query::StableMemberKey stable_key, const query::DefKind owner_kind, const std::string_view fallback_name)
+[[nodiscard]] query::MemberKey symbol_member_key(const IdeSnapshot& snapshot, const query::StableMemberKey stable_key,
+    const query::DefKind owner_kind, const std::string_view fallback_name)
 {
     const query::MemberKind kind = symbol_kind_to_member_kind(stable_key.kind);
     if (!query::is_valid(stable_key) || kind == query::MemberKind::invalid || owner_kind == query::DefKind::invalid) {
         return {};
     }
-    const query::DefKey owner =
-        query::def_key_from_stable_id(module_key_for_snapshot(snapshot).package, stable_key.owner,
-            query::DefNamespace::type, owner_kind);
+    const query::DefKey owner = query::def_key_from_stable_id(
+        module_key_for_snapshot(snapshot).package, stable_key.owner, query::DefNamespace::type, owner_kind);
     if (!query::is_valid(owner)) {
         return {};
     }
@@ -996,11 +1043,14 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
 }
 
 void push_item_signature_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::DefKey key,
-    const query::ItemSignatureAuthority& authority, IdeSemanticFact fact)
+    const query::ItemSignatureAuthority& authority, IdeSemanticFact fact,
+    const IdeIncrementalSnapshotInput& incremental)
 {
     if (!query::is_valid(key) || !query::is_valid(authority)) {
         return;
     }
+    seed_reusable_query_record(context, incremental,
+        query::item_signature_query_record(key, query::item_signature_result_fingerprint(authority)));
     const query::QueryEvaluationResult result = context.evaluate_item_signature(query::ItemSignatureProviderInput{
         key,
         authority,
@@ -1020,11 +1070,15 @@ void push_item_signature_fact(query::QueryContext& context, IdeSnapshot& snapsho
 }
 
 void push_generic_template_signature_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::DefKey key,
-    const query::GenericTemplateSignatureAuthority& authority, IdeSemanticFact fact)
+    const query::GenericTemplateSignatureAuthority& authority, IdeSemanticFact fact,
+    const IdeIncrementalSnapshotInput& incremental)
 {
     if (!query::is_valid(key) || !query::is_valid(authority)) {
         return;
     }
+    seed_reusable_query_record(context, incremental,
+        query::generic_template_signature_query_record(
+            key, query::generic_template_signature_result_fingerprint(authority)));
     const query::QueryEvaluationResult result =
         context.evaluate_generic_template_signature(query::GenericTemplateSignatureProviderInput{
             key,
@@ -1044,8 +1098,8 @@ void push_generic_template_signature_fact(query::QueryContext& context, IdeSnaps
     snapshot.query.semantic_facts.push_back(std::move(fact));
 }
 
-void evaluate_function_item_signature_query(
-    query::QueryContext& context, IdeSnapshot& snapshot, const sema::FunctionSignature& signature)
+void evaluate_function_item_signature_query(query::QueryContext& context, IdeSnapshot& snapshot,
+    const sema::FunctionSignature& signature, const IdeIncrementalSnapshotInput& incremental)
 {
     const query::DefKey key = function_signature_def_key(snapshot, signature);
     const base::SourceRange range =
@@ -1056,11 +1110,12 @@ void evaluate_function_item_signature_query(
     fact.detail = std::string(IDE_SEMANTIC_FACT_ITEM_SIGNATURE);
     fact.part_index = signature.part_index;
     fact.generic_instance = signature.generic_instance_key;
-    push_item_signature_fact(context, snapshot, key, item_signature_authority(snapshot, signature), std::move(fact));
+    push_item_signature_fact(
+        context, snapshot, key, item_signature_authority(snapshot, signature), std::move(fact), incremental);
 }
 
-void evaluate_struct_item_signature_query(
-    query::QueryContext& context, IdeSnapshot& snapshot, const sema::StructInfo& info)
+void evaluate_struct_item_signature_query(query::QueryContext& context, IdeSnapshot& snapshot,
+    const sema::StructInfo& info, const IdeIncrementalSnapshotInput& incremental)
 {
     const base::SourceRange range =
         first_item_name_range(snapshot, info.name.view(), base::SourceRange{snapshot.source_id, 0U, 0U});
@@ -1072,11 +1127,12 @@ void evaluate_struct_item_signature_query(
     fact.detail = std::string(IDE_SEMANTIC_FACT_ITEM_SIGNATURE);
     fact.part_index = info.part_index;
     fact.generic_instance = info.generic_instance_key;
-    push_item_signature_fact(context, snapshot, key, item_signature_authority(snapshot, info), std::move(fact));
+    push_item_signature_fact(
+        context, snapshot, key, item_signature_authority(snapshot, info), std::move(fact), incremental);
 }
 
-void evaluate_enum_case_item_signature_query(
-    query::QueryContext& context, IdeSnapshot& snapshot, const sema::EnumCaseInfo& info)
+void evaluate_enum_case_item_signature_query(query::QueryContext& context, IdeSnapshot& snapshot,
+    const sema::EnumCaseInfo& info, const IdeIncrementalSnapshotInput& incremental)
 {
     const base::SourceRange range = name_range_in_range(snapshot.lossless, info.case_name.view(), info.range);
     const query::DefKey key = symbol_def_key(
@@ -1087,11 +1143,12 @@ void evaluate_enum_case_item_signature_query(
     fact.detail = std::string(IDE_SEMANTIC_FACT_ITEM_SIGNATURE);
     fact.part_index = info.part_index;
     fact.generic_instance = info.generic_instance_key;
-    push_item_signature_fact(context, snapshot, key, item_signature_authority(snapshot, info), std::move(fact));
+    push_item_signature_fact(
+        context, snapshot, key, item_signature_authority(snapshot, info), std::move(fact), incremental);
 }
 
-void evaluate_type_alias_item_signature_query(
-    query::QueryContext& context, IdeSnapshot& snapshot, const sema::TypeAliasInfo& info)
+void evaluate_type_alias_item_signature_query(query::QueryContext& context, IdeSnapshot& snapshot,
+    const sema::TypeAliasInfo& info, const IdeIncrementalSnapshotInput& incremental)
 {
     const base::SourceRange range = first_item_name_range(snapshot, info.name.view(), info.range);
     const query::DefKey key = symbol_def_key(
@@ -1101,11 +1158,12 @@ void evaluate_type_alias_item_signature_query(
     fact.name = std::string(info.name.view());
     fact.detail = std::string(IDE_SEMANTIC_FACT_ITEM_SIGNATURE);
     fact.part_index = info.part_index;
-    push_item_signature_fact(context, snapshot, key, item_signature_authority(snapshot, info), std::move(fact));
+    push_item_signature_fact(
+        context, snapshot, key, item_signature_authority(snapshot, info), std::move(fact), incremental);
 }
 
-void evaluate_generic_template_signature_query(
-    query::QueryContext& context, IdeSnapshot& snapshot, const sema::GenericTemplateSignatureInfo& info)
+void evaluate_generic_template_signature_query(query::QueryContext& context, IdeSnapshot& snapshot,
+    const sema::GenericTemplateSignatureInfo& info, const IdeIncrementalSnapshotInput& incremental)
 {
     const base::SourceRange range =
         first_item_name_range(snapshot, info.name.view(), base::SourceRange{snapshot.source_id, 0U, 0U});
@@ -1117,25 +1175,26 @@ void evaluate_generic_template_signature_query(
     fact.detail = std::string(IDE_SEMANTIC_FACT_GENERIC_TEMPLATE_SIGNATURE);
     fact.part_index = info.part_index;
     push_generic_template_signature_fact(
-        context, snapshot, key, generic_template_signature_authority(snapshot, info), std::move(fact));
+        context, snapshot, key, generic_template_signature_authority(snapshot, info), std::move(fact), incremental);
 }
 
-void evaluate_checked_item_signature_queries(query::QueryContext& context, IdeSnapshot& snapshot)
+void evaluate_checked_item_signature_queries(
+    query::QueryContext& context, IdeSnapshot& snapshot, const IdeIncrementalSnapshotInput& incremental)
 {
     for (const auto& entry : snapshot.checked.functions) {
-        evaluate_function_item_signature_query(context, snapshot, entry.second);
+        evaluate_function_item_signature_query(context, snapshot, entry.second, incremental);
     }
     for (const auto& entry : snapshot.checked.structs) {
-        evaluate_struct_item_signature_query(context, snapshot, entry.second);
+        evaluate_struct_item_signature_query(context, snapshot, entry.second, incremental);
     }
     for (const auto& entry : snapshot.checked.enum_cases) {
-        evaluate_enum_case_item_signature_query(context, snapshot, entry.second);
+        evaluate_enum_case_item_signature_query(context, snapshot, entry.second, incremental);
     }
     for (const auto& entry : snapshot.checked.type_aliases) {
-        evaluate_type_alias_item_signature_query(context, snapshot, entry.second);
+        evaluate_type_alias_item_signature_query(context, snapshot, entry.second, incremental);
     }
     for (const sema::GenericTemplateSignatureInfo& info : snapshot.checked.generic_template_signatures) {
-        evaluate_generic_template_signature_query(context, snapshot, info);
+        evaluate_generic_template_signature_query(context, snapshot, info, incremental);
     }
 }
 
@@ -1174,11 +1233,13 @@ void evaluate_checked_item_signature_queries(query::QueryContext& context, IdeSn
 
 void push_function_body_syntax_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::BodyKey key,
     const query::FunctionBodySyntaxAuthority& authority, const sema::FunctionSignature& signature,
-    const base::SourceRange range)
+    const base::SourceRange range, const IdeIncrementalSnapshotInput& incremental)
 {
     if (!query::is_valid(key) || !query::is_valid(authority)) {
         return;
     }
+    seed_reusable_query_record(context, incremental,
+        query::function_body_syntax_query_record(key, query::function_body_syntax_result_fingerprint(authority)));
     const query::QueryEvaluationResult result =
         context.evaluate_function_body_syntax(query::FunctionBodySyntaxProviderInput{
             key,
@@ -1207,11 +1268,13 @@ void push_function_body_syntax_fact(query::QueryContext& context, IdeSnapshot& s
 
 void push_type_check_body_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::BodyKey key,
     const query::TypeCheckBodyAuthority& authority, const sema::FunctionSignature& signature,
-    const base::SourceRange range)
+    const base::SourceRange range, const IdeIncrementalSnapshotInput& incremental)
 {
     if (!query::is_valid(key) || !query::is_valid(authority)) {
         return;
     }
+    seed_reusable_query_record(context, incremental,
+        query::type_check_body_query_record(key, query::type_check_body_result_fingerprint(authority)));
     const query::QueryEvaluationResult result = context.evaluate_type_check_body(query::TypeCheckBodyProviderInput{
         key,
         authority,
@@ -1237,8 +1300,8 @@ void push_type_check_body_fact(query::QueryContext& context, IdeSnapshot& snapsh
     snapshot.query.semantic_facts.push_back(std::move(fact));
 }
 
-void evaluate_function_body_queries(
-    query::QueryContext& context, IdeSnapshot& snapshot, const sema::FunctionSignature& signature)
+void evaluate_function_body_queries(query::QueryContext& context, IdeSnapshot& snapshot,
+    const sema::FunctionSignature& signature, const IdeIncrementalSnapshotInput& incremental)
 {
     if (!signature.has_definition || signature.has_conflict || !query::is_valid(signature.stable_id)
         || !query::is_valid(signature.incremental_key)) {
@@ -1258,7 +1321,7 @@ void evaluate_function_body_queries(
     if (!syntax_authority.has_value() || !query::is_valid(*syntax_authority)) {
         return;
     }
-    push_function_body_syntax_fact(context, snapshot, body, *syntax_authority, signature, *range);
+    push_function_body_syntax_fact(context, snapshot, body, *syntax_authority, signature, *range, incremental);
 
     const query::ItemSignatureAuthority signature_authority = item_signature_authority(snapshot, signature);
     const query::QueryResultFingerprint signature_result =
@@ -1267,17 +1330,19 @@ void evaluate_function_body_queries(
         query::function_body_syntax_result_fingerprint(*syntax_authority);
     const query::TypeCheckBodyAuthority type_check_authority =
         type_check_body_authority(body, syntax_result, signature_result);
-    push_type_check_body_fact(context, snapshot, body, type_check_authority, signature, *range);
+    push_type_check_body_fact(context, snapshot, body, type_check_authority, signature, *range, incremental);
 }
 
-void evaluate_checked_function_body_queries(query::QueryContext& context, IdeSnapshot& snapshot)
+void evaluate_checked_function_body_queries(
+    query::QueryContext& context, IdeSnapshot& snapshot, const IdeIncrementalSnapshotInput& incremental)
 {
     for (const auto& entry : snapshot.checked.functions) {
-        evaluate_function_body_queries(context, snapshot, entry.second);
+        evaluate_function_body_queries(context, snapshot, entry.second, incremental);
     }
 }
 
-void evaluate_module_query_surface(query::QueryContext& context, const IdeSnapshot& snapshot)
+void evaluate_module_query_surface(
+    query::QueryContext& context, const IdeSnapshot& snapshot, const IdeIncrementalSnapshotInput& incremental)
 {
     if (!snapshot.parsed || !snapshot.source_part.valid || !query::is_valid(snapshot.source_part.part_key)) {
         return;
@@ -1289,18 +1354,23 @@ void evaluate_module_query_surface(query::QueryContext& context, const IdeSnapsh
     const query::QueryResultFingerprint exports_result =
         ide_module_exports_result_fingerprint(snapshot, item_list_result);
 
+    seed_reusable_query_record(context, incremental, query::module_graph_query_record(module, graph_result));
     static_cast<void>(context.evaluate_module_graph(query::ModuleGraphProviderInput{
         module,
         graph_result,
     }));
+    seed_reusable_query_record(
+        context, incremental, query::module_part_query_record(snapshot.source_part.part_key, part_result));
     static_cast<void>(context.evaluate_module_part(query::ModulePartProviderInput{
         snapshot.source_part.part_key,
         part_result,
     }));
+    seed_reusable_query_record(context, incremental, query::item_list_query_record(module, item_list_result));
     static_cast<void>(context.evaluate_item_list(query::ItemListProviderInput{
         module,
         item_list_result,
     }));
+    seed_reusable_query_record(context, incremental, query::module_exports_query_record(module, exports_result));
     static_cast<void>(context.evaluate_module_exports(query::ModuleExportsProviderInput{
         module,
         exports_result,
@@ -1316,13 +1386,13 @@ void append_semantic_query_surface(IdeSnapshot& snapshot, const query::QueryCont
     snapshot.query.dependencies.insert(snapshot.query.dependencies.end(), dependencies.begin(), dependencies.end());
 }
 
-void evaluate_semantic_queries(IdeSnapshot& snapshot)
+void evaluate_semantic_queries(IdeSnapshot& snapshot, const IdeIncrementalSnapshotInput& incremental)
 {
     query::QueryContext context;
-    evaluate_module_query_surface(context, snapshot);
+    evaluate_module_query_surface(context, snapshot, incremental);
     if (snapshot.checked_semantics) {
-        evaluate_checked_item_signature_queries(context, snapshot);
-        evaluate_checked_function_body_queries(context, snapshot);
+        evaluate_checked_item_signature_queries(context, snapshot, incremental);
+        evaluate_checked_function_body_queries(context, snapshot, incremental);
     }
     append_semantic_query_surface(snapshot, context);
 }
@@ -1615,14 +1685,15 @@ void collect_local_symbols_from_function(
 
 } // namespace
 
-IdeSnapshot build_ide_snapshot(const IdeSnapshotRequest& request)
+IdeSnapshot build_ide_snapshot(const IdeSnapshotRequest& request, const IdeIncrementalSnapshotInput incremental)
 {
     IdeSnapshot snapshot;
-    build_ide_snapshot_into(snapshot, request);
+    build_ide_snapshot_into(snapshot, request, incremental);
     return snapshot;
 }
 
-void build_ide_snapshot_into(IdeSnapshot& snapshot, const IdeSnapshotRequest& request)
+void build_ide_snapshot_into(
+    IdeSnapshot& snapshot, const IdeSnapshotRequest& request, const IdeIncrementalSnapshotInput incremental)
 {
     snapshot = IdeSnapshot{};
     snapshot.source_id = snapshot.sources.add_source(request.path, request.text);
@@ -1672,8 +1743,9 @@ void build_ide_snapshot_into(IdeSnapshot& snapshot, const IdeSnapshotRequest& re
     const query::QueryResultFingerprint diagnostic_result =
         diagnostics_result_fingerprint(diagnostic_stream.events, snapshot.parsed, snapshot.checked_semantics);
     snapshot.source_part = source_part_context_for_snapshot(snapshot, request);
-    evaluate_source_queries(snapshot, request.text, lex_result, parse_result, diagnostic_result, diagnostic_stream);
-    evaluate_semantic_queries(snapshot);
+    evaluate_source_queries(
+        snapshot, request.text, lex_result, parse_result, diagnostic_result, diagnostic_stream, incremental);
+    evaluate_semantic_queries(snapshot, incremental);
     snapshot.has_errors = diagnostics.has_error();
     snapshot.diagnostics = collect_ide_diagnostics(snapshot.sources, diagnostic_stream, snapshot.source_part);
 }

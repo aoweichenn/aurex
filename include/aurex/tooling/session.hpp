@@ -13,6 +13,8 @@
 
 namespace aurex::tooling {
 
+struct ToolingReusePlan;
+
 struct ToolingProjectConfig {
     std::string root_path;
     std::string package_identity = "ide";
@@ -67,12 +69,38 @@ struct ToolingIncrementalSnapshotInput {
     base::usize previous_semantic_facts = 0;
 };
 
+struct ToolingQueryReuseExecutionSummary {
+    base::usize total_query_decisions = 0;
+    base::usize reused_query_records = 0;
+    base::usize recomputed_query_records = 0;
+    base::usize malformed_query_records = 0;
+    base::usize reused_semantic_facts = 0;
+    base::usize recomputed_semantic_facts = 0;
+    base::usize invalidated_semantic_facts = 0;
+    base::usize malformed_semantic_facts = 0;
+    bool executed = false;
+    bool body_local = false;
+};
+
+struct ToolingWorkspaceIndexUpdateStats {
+    base::usize previous_document_facts = 0;
+    base::usize current_document_facts = 0;
+    base::usize retained_facts = 0;
+    base::usize replaced_facts = 0;
+    base::usize removed_facts = 0;
+    base::usize inserted_facts = 0;
+    bool updated = false;
+};
+
 struct ToolingIncrementalSnapshotResult {
     ToolingIncrementalSnapshotStatus status = ToolingIncrementalSnapshotStatus::clean_build;
     ToolingIncrementalSnapshotInput input;
     base::usize current_query_records = 0;
     base::usize current_dependency_edges = 0;
     base::usize current_semantic_facts = 0;
+    std::shared_ptr<const ToolingReusePlan> reuse_plan;
+    ToolingQueryReuseExecutionSummary reuse_execution;
+    ToolingWorkspaceIndexUpdateStats workspace_update;
     std::string fallback_reason;
     bool used_previous_context = false;
     bool from_cache = false;
@@ -227,6 +255,7 @@ struct ToolingReusePlan {
 struct ToolingDocumentChangeResult {
     ToolingDocumentVersion version;
     ToolingReusePlan reuse_plan;
+    ToolingIncrementalSnapshotResult incremental;
 };
 
 struct ToolingIndexedSemanticFact {
@@ -265,6 +294,9 @@ public:
     void clear();
     void remove_document(const ToolingDocumentId& id);
     void index_snapshot(const ToolingSnapshotHandle& handle);
+    [[nodiscard]] ToolingWorkspaceIndexUpdateStats update_snapshot(const ToolingSnapshotHandle& handle);
+    [[nodiscard]] ToolingWorkspaceIndexUpdateStats update_snapshot(
+        const ToolingSnapshotHandle& handle, const std::vector<ToolingIndexedSemanticFact>& previous_facts);
 
     [[nodiscard]] ToolingWorkspaceIndexStats stats() const noexcept;
     [[nodiscard]] std::vector<ToolingIndexedSemanticFact> all_facts() const;
@@ -272,15 +304,13 @@ public:
     [[nodiscard]] std::vector<ToolingIndexedSemanticFact> definitions(query::DefKey key) const;
     [[nodiscard]] std::vector<ToolingIndexedSemanticFact> members(query::MemberKey key) const;
     [[nodiscard]] std::vector<ToolingIndexedSemanticFact> bodies(query::BodyKey key) const;
-    [[nodiscard]] std::vector<ToolingIndexedSemanticFact> generic_instances(
-        const query::GenericInstanceKey& key) const;
+    [[nodiscard]] std::vector<ToolingIndexedSemanticFact> generic_instances(const query::GenericInstanceKey& key) const;
 
 private:
     using FactMap = std::unordered_map<std::string, std::vector<ToolingIndexedSemanticFact>>;
 
     static void erase_document_from_map(FactMap& map, std::string_view document_key);
-    static std::vector<ToolingIndexedSemanticFact> facts_for_key(
-        const FactMap& map, std::string_view stable_key);
+    static std::vector<ToolingIndexedSemanticFact> facts_for_key(const FactMap& map, std::string_view stable_key);
     void rebuild_stats() noexcept;
 
     FactMap facts_by_document_;
@@ -298,8 +328,7 @@ private:
 [[nodiscard]] std::string tooling_document_store_key(const ToolingDocumentId& id);
 [[nodiscard]] std::string tooling_file_uri_from_path(std::string_view path);
 [[nodiscard]] std::optional<std::string> tooling_path_from_file_uri(std::string_view uri);
-[[nodiscard]] base::usize tooling_offset_for_position(
-    std::string_view text, ToolingSourcePosition position) noexcept;
+[[nodiscard]] base::usize tooling_offset_for_position(std::string_view text, ToolingSourcePosition position) noexcept;
 [[nodiscard]] ToolingSourcePosition tooling_position_for_offset(std::string_view text, base::usize offset) noexcept;
 [[nodiscard]] std::string_view tooling_incremental_snapshot_status_name(
     ToolingIncrementalSnapshotStatus status) noexcept;
@@ -322,8 +351,8 @@ public:
         ToolingDocumentId id, std::string text, std::optional<base::i64> client_version = std::nullopt);
     [[nodiscard]] base::Result<ToolingDocumentVersion> change_document(
         const ToolingDocumentId& id, std::string text, std::optional<base::i64> client_version = std::nullopt);
-    [[nodiscard]] base::Result<ToolingDocumentChangeResult> change_document_with_reuse_plan(
-        const ToolingDocumentId& id, std::string text, base::usize edit_begin, base::usize removed_length,
+    [[nodiscard]] base::Result<ToolingDocumentChangeResult> change_document_with_reuse_plan(const ToolingDocumentId& id,
+        std::string text, base::usize edit_begin, base::usize removed_length,
         std::optional<base::i64> client_version = std::nullopt);
     [[nodiscard]] base::Result<void> close_document(const ToolingDocumentId& id);
     [[nodiscard]] base::Result<ToolingSnapshotHandle> snapshot(const ToolingDocumentId& id);
@@ -351,6 +380,8 @@ private:
         std::shared_ptr<const IdeSnapshot> cached_snapshot;
         ToolingDocumentVersion previous_cached_version;
         std::shared_ptr<const IdeSnapshot> previous_cached_snapshot;
+        std::optional<IdeEditImpact> pending_edit_impact;
+        std::vector<ToolingIndexedSemanticFact> pending_workspace_facts;
         ToolingIncrementalSnapshotResult last_snapshot_result;
     };
 

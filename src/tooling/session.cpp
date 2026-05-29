@@ -105,8 +105,8 @@ void tooling_append_percent_encoded(std::string& out, const unsigned char ch)
 
 [[nodiscard]] bool tooling_uri_char_is_plain(const unsigned char ch) noexcept
 {
-    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '.'
-        || ch == '-' || ch == '_' || ch == '~' || ch == TOOLING_URI_SLASH || ch == TOOLING_URI_COLON;
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '-'
+        || ch == '_' || ch == '~' || ch == TOOLING_URI_SLASH || ch == TOOLING_URI_COLON;
 }
 
 [[nodiscard]] bool tooling_version_is_older(
@@ -134,6 +134,44 @@ void tooling_fill_current_incremental_counts(ToolingIncrementalSnapshotResult& r
     result.current_query_records = snapshot.query.records.size();
     result.current_dependency_edges = snapshot.query.dependencies.size();
     result.current_semantic_facts = snapshot.query.semantic_facts.size();
+}
+
+[[nodiscard]] bool tooling_incremental_input_can_use_previous(const ToolingIncrementalSnapshotInput& input) noexcept
+{
+    return input.has_previous_snapshot && input.previous_document_matches && input.previous_version_is_older
+        && !tooling_incremental_input_shape_is_malformed(input);
+}
+
+[[nodiscard]] IdeEditImpact tooling_full_document_edit_impact(const IdeSnapshot& snapshot)
+{
+    const base::SourceFile& file = snapshot.sources.get(snapshot.source_id);
+    return edit_impact_for_range(snapshot, 0U, file.text().size());
+}
+
+[[nodiscard]] ToolingQueryReuseExecutionSummary tooling_reuse_execution_summary(const ToolingReusePlan& plan) noexcept
+{
+    ToolingQueryReuseExecutionSummary summary;
+    summary.total_query_decisions = plan.query_plan.summary.total;
+    summary.reused_query_records = plan.query_plan.reusable.size();
+    summary.recomputed_query_records = plan.query_plan.recompute.size();
+    summary.malformed_query_records = plan.query_plan.summary.malformed;
+    summary.reused_semantic_facts = plan.summary.unchanged_facts;
+    summary.recomputed_semantic_facts = plan.summary.recomputed_facts;
+    summary.invalidated_semantic_facts = plan.summary.invalidated_facts;
+    summary.malformed_semantic_facts = plan.summary.malformed_facts;
+    summary.executed = plan.valid;
+    summary.body_local = plan.summary.body_local;
+    return summary;
+}
+
+void tooling_attach_reuse_execution(
+    ToolingIncrementalSnapshotResult& result, const std::shared_ptr<const ToolingReusePlan>& plan)
+{
+    if (plan == nullptr) {
+        return;
+    }
+    result.reuse_plan = plan;
+    result.reuse_execution = tooling_reuse_execution_summary(*plan);
 }
 
 [[nodiscard]] std::string tooling_kind_for_item(const syntax::ItemKind kind)
@@ -245,8 +283,7 @@ void tooling_fill_current_incremental_counts(ToolingIncrementalSnapshotResult& r
     return query::is_valid(key) ? query::debug_string(key) : std::string{};
 }
 
-[[nodiscard]] ToolingDefinition tooling_project_definition(
-    const IdeSnapshot& snapshot, const IdeDefinition& definition)
+[[nodiscard]] ToolingDefinition tooling_project_definition(const IdeSnapshot& snapshot, const IdeDefinition& definition)
 {
     return ToolingDefinition{
         definition.key,
@@ -324,8 +361,7 @@ void tooling_fill_current_incremental_counts(ToolingIncrementalSnapshotResult& r
     return item.range;
 }
 
-[[nodiscard]] ToolingDocumentSymbol tooling_symbol_from_fact(
-    const IdeSnapshot& snapshot, const IdeSemanticFact& fact)
+[[nodiscard]] ToolingDocumentSymbol tooling_symbol_from_fact(const IdeSnapshot& snapshot, const IdeSemanticFact& fact)
 {
     ToolingDocumentSymbol symbol;
     symbol.name = fact.name;
@@ -376,12 +412,13 @@ void tooling_fill_current_incremental_counts(ToolingIncrementalSnapshotResult& r
 [[nodiscard]] bool tooling_same_reference_range(
     const ToolingReference& reference, const ToolingIndexedSemanticFact& fact) noexcept
 {
-    return reference.range.path == fact.range.path && reference.range.range.source.value == fact.range.range.source.value
+    return reference.range.path == fact.range.path
+        && reference.range.range.source.value == fact.range.range.source.value
         && reference.range.range.begin == fact.range.range.begin && reference.range.range.end == fact.range.range.end;
 }
 
-void tooling_push_workspace_definition_references(std::vector<ToolingReference>& references,
-    const std::vector<ToolingIndexedSemanticFact>& indexed_facts)
+void tooling_push_workspace_definition_references(
+    std::vector<ToolingReference>& references, const std::vector<ToolingIndexedSemanticFact>& indexed_facts)
 {
     for (const ToolingIndexedSemanticFact& fact : indexed_facts) {
         if (!tooling_indexed_fact_is_definition_entry(fact)) {
@@ -616,7 +653,9 @@ base::Result<ToolingDocumentVersion> ToolingSession::change_document(
         return base::Result<ToolingDocumentVersion>::fail(
             {base::ErrorCode::invalid_source, "stale tooling document version"});
     }
+    std::optional<IdeEditImpact> pending_edit_impact;
     if (found->second.cached_snapshot != nullptr && found->second.cached_version == found->second.state.version) {
+        pending_edit_impact = tooling_full_document_edit_impact(*found->second.cached_snapshot);
         found->second.previous_cached_snapshot = found->second.cached_snapshot;
         found->second.previous_cached_version = found->second.cached_version;
     } else {
@@ -624,11 +663,13 @@ base::Result<ToolingDocumentVersion> ToolingSession::change_document(
         found->second.previous_cached_version = {};
     }
     const ToolingDocumentVersion version = this->next_version(client_version);
+    found->second.pending_workspace_facts = this->workspace_index_.facts_for_document(found->second.state.id);
     this->workspace_index_.remove_document(found->second.state.id);
     found->second.state.text = std::move(text);
     found->second.state.version = version;
     found->second.cached_snapshot.reset();
     found->second.cached_version = {};
+    found->second.pending_edit_impact = std::move(pending_edit_impact);
     return base::Result<ToolingDocumentVersion>::ok(version);
 }
 
@@ -653,14 +694,21 @@ base::Result<ToolingDocumentChangeResult> ToolingSession::change_document_with_r
     if (!changed) {
         return base::Result<ToolingDocumentChangeResult>::fail(changed.error());
     }
+    auto changed_slot = this->find_slot(id);
+    if (changed_slot != this->documents_.end()) {
+        changed_slot->second.pending_edit_impact = impact;
+    }
     base::Result<ToolingSnapshotHandle> after = this->snapshot(id);
     if (!after) {
         return base::Result<ToolingDocumentChangeResult>::fail(after.error());
     }
-    ToolingReusePlan reuse_plan = tooling_plan_reuse(before_snapshot, *after.value().snapshot, impact);
+    ToolingReusePlan reuse_plan = after.value().incremental.reuse_plan == nullptr
+        ? tooling_plan_reuse(before_snapshot, *after.value().snapshot, impact)
+        : *after.value().incremental.reuse_plan;
     return base::Result<ToolingDocumentChangeResult>::ok(ToolingDocumentChangeResult{
         changed.value(),
         std::move(reuse_plan),
+        after.value().incremental,
     });
 }
 
@@ -690,7 +738,14 @@ base::Result<ToolingSnapshotHandle> ToolingSession::snapshot(const ToolingDocume
         cached_result.used_previous_context = false;
         cached_result.fallback_reason.clear();
         ToolingSnapshotHandle handle{slot.state.id, slot.state.version, slot.cached_snapshot, std::move(cached_result)};
-        this->workspace_index_.index_snapshot(handle);
+        if (slot.pending_workspace_facts.empty()) {
+            handle.incremental.workspace_update = this->workspace_index_.update_snapshot(handle);
+        } else {
+            handle.incremental.workspace_update =
+                this->workspace_index_.update_snapshot(handle, slot.pending_workspace_facts);
+            slot.pending_workspace_facts.clear();
+        }
+        slot.last_snapshot_result.workspace_update = handle.incremental.workspace_update;
         return base::Result<ToolingSnapshotHandle>::ok(std::move(handle));
     }
     const ToolingIncrementalSnapshotInput incremental_input = this->incremental_input_for_slot(slot);
@@ -702,12 +757,33 @@ base::Result<ToolingSnapshotHandle> ToolingSession::snapshot(const ToolingDocume
         slot.state.id.virtual_buffer_identity.empty() ? slot.state.id.uri : slot.state.id.virtual_buffer_identity;
     request.source_role = slot.state.id.source_role;
     auto cached = std::make_shared<IdeSnapshot>();
-    build_ide_snapshot_into(*cached, request);
+    IdeIncrementalSnapshotInput ide_incremental;
+    if (slot.previous_cached_snapshot != nullptr && tooling_incremental_input_can_use_previous(incremental_input)) {
+        ide_incremental.previous_query = &slot.previous_cached_snapshot->query;
+    }
+    build_ide_snapshot_into(*cached, request, ide_incremental);
     slot.last_snapshot_result = tooling_incremental_snapshot_result(incremental_input, *cached);
+    if (slot.last_snapshot_result.status == ToolingIncrementalSnapshotStatus::previous_context
+        && slot.previous_cached_snapshot != nullptr) {
+        const IdeEditImpact impact = slot.pending_edit_impact.has_value()
+            ? *slot.pending_edit_impact
+            : tooling_full_document_edit_impact(*slot.previous_cached_snapshot);
+        std::shared_ptr<const ToolingReusePlan> reuse_plan =
+            std::make_shared<ToolingReusePlan>(tooling_plan_reuse(*slot.previous_cached_snapshot, *cached, impact));
+        tooling_attach_reuse_execution(slot.last_snapshot_result, reuse_plan);
+    }
+    slot.pending_edit_impact.reset();
     slot.cached_snapshot = std::move(cached);
     slot.cached_version = slot.state.version;
     ToolingSnapshotHandle handle{slot.state.id, slot.state.version, slot.cached_snapshot, slot.last_snapshot_result};
-    this->workspace_index_.index_snapshot(handle);
+    if (slot.pending_workspace_facts.empty()) {
+        handle.incremental.workspace_update = this->workspace_index_.update_snapshot(handle);
+    } else {
+        handle.incremental.workspace_update =
+            this->workspace_index_.update_snapshot(handle, slot.pending_workspace_facts);
+        slot.pending_workspace_facts.clear();
+    }
+    slot.last_snapshot_result.workspace_update = handle.incremental.workspace_update;
     return base::Result<ToolingSnapshotHandle>::ok(std::move(handle));
 }
 

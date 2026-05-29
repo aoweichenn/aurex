@@ -1,6 +1,6 @@
 # Next Steps
 
-## Current Highest Priority: M3.4 Real Incremental Sema Execution
+## Current Highest Priority: M3.5 Incremental Syntax And Stable AST Identity
 
 The R5 Compilation Pipeline / Driver Action core is now closed:
 `CompilerInvocation`, the `Compiler` facade, `CompilationSession`,
@@ -12,8 +12,8 @@ diagnostics JSON, profile JSON, incremental-cache, and emit-mode behavior.
 
 M3.0 module-system closure, M3.1 generics closure, M3.2 Query-backed Sema, and
 M3.3 Tooling Session And Incremental Sema have all been merged back to `m3`.
-The active branch is `m3.4`, focused on turning M3.3 reuse explanation into
-real incremental sema execution:
+M3.4 Real Incremental Sema Execution is now closed on `m3.4`, focused on
+turning M3.3 reuse explanation into real incremental sema execution:
 
 - Thread previous snapshot/query context through `ToolingSession`.
 - Convert query reuse decisions into executable semantic fact reuse.
@@ -24,11 +24,11 @@ real incremental sema execution:
   behavior compatible unless an explicit work package changes them.
 - Keep tests, coverage, query pruning, fuzz, and stress gates green.
 
-The M3.4 execution entry point is the
+The closed M3.4 execution entry point is the
 [Aurex M3.4 Real Incremental Sema Execution Plan](m3.4-real-incremental-sema-plan.md).
 The wider M3.4-M3.9 route is recorded in the [M3 Roadmap](m3-roadmap.md).
-M3.3 remains the closed tooling/session baseline and should not receive new
-scope.
+The next implementation branch should be M3.5, centered on incremental syntax,
+stable AST node identity, and edit-range-to-subtree reuse.
 
 R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
 stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
@@ -92,8 +92,12 @@ M3.4 first implementation order:
 3. WP-1C: Add no-previous, matching-previous, stale-version, and malformed
    input tests. Completed.
 4. WP-2A: Reuse unchanged query records as executable semantic fact inputs.
-5. WP-2B: Validate body-local and signature-local edit behavior.
+   Completed.
+5. WP-2B: Validate body-local and signature-local edit behavior. Completed.
 6. WP-3A: Stabilize semantic fact identity through repeated edit cycles.
+   Completed.
+7. WP-4: Update workspace index by stable fact identity. Completed.
+8. WP-5/WP-6: Run quality gates and close docs. Completed.
 
 2026-05-29 M3.3 WP-1/2/3 implementation update: `aurex_tooling` now has a
 versioned `ToolingSession`, in-place `IdeSnapshot` cache construction, and a
@@ -108,13 +112,16 @@ M3.4 real incremental sema execution, M3.5 incremental syntax/stable AST
 identity, M3.6 project graph/persistent query DB, M3.7 IDE semantic features,
 M3.8 query-backed lowering/backend reuse, and M3.9 release closure.
 
-2026-05-29 M3.4 WP-1 implementation update: `ToolingSession` now preserves the
-previous materialized snapshot on document change, threads previous
-snapshot/query summary into the next snapshot build result, exposes
-`ToolingIncrementalSnapshotInput` / `ToolingIncrementalSnapshotResult` through
-`ToolingSnapshotHandle`, and classifies clean builds, cache hits, accepted
-previous context, stale context, mismatched context, and malformed context.
-Next implementation target: WP-2A executable query-record reuse.
+2026-05-29 M3.4 closure update: `ToolingSession` now preserves previous
+materialized snapshots, precise edit impact, and pending workspace facts across
+document changes. `IdeIncrementalSnapshotInput` threads previous query records
+into snapshot construction, `QueryContext` executes green reuse for unchanged
+file/module/signature/body query records, and `ToolingIncrementalSnapshotResult`
+exposes the executed reuse plan, reuse counters, and workspace-index update
+stats. Focused tests cover accepted/rejected previous context, body-local reuse,
+removed-definition invalidation, repeated stable-fact edits, generic body-edit
+reuse, malformed reuse plans, and stale-version-free workspace index updates.
+Next implementation target: M3.5 incremental syntax and stable AST identity.
 
 2026-05-28 closure update: the original M3.1 work packages have been reviewed
 through WP-7 Generic Closure Audit And Release Baseline. The generic release

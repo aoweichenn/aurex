@@ -145,6 +145,17 @@ struct ToolingTextRange {
     base::LineColumn end{};
 };
 
+struct ToolingDiagnosticChild {
+    base::Severity severity = base::Severity::note;
+    base::DiagnosticCategory category = base::DiagnosticCategory::general;
+    base::DiagnosticCode code = base::DiagnosticCode::none;
+    ToolingTextRange range;
+    std::string severity_name;
+    std::string category_name;
+    std::string code_name;
+    std::string message;
+};
+
 struct ToolingDiagnostic {
     base::Severity severity = base::Severity::error;
     base::DiagnosticCategory category = base::DiagnosticCategory::general;
@@ -154,6 +165,7 @@ struct ToolingDiagnostic {
     std::string category_name;
     std::string code_name;
     std::string message;
+    std::vector<ToolingDiagnosticChild> children;
     std::vector<IdePipelineStageOwner> owner_stages;
     IdeModulePartContext source_part;
 };
@@ -187,6 +199,94 @@ struct ToolingHover {
     std::vector<IdePipelineStageOwner> owner_stages;
     std::optional<ToolingDefinition> definition;
     bool valid = false;
+};
+
+struct ToolingCompletionItem {
+    IdeCompletionContextKind context = IdeCompletionContextKind::expression;
+    ToolingTextRange replacement_range;
+    std::string label;
+    std::string kind;
+    std::string detail;
+    std::string stable_definition_key;
+    std::string stable_member_key;
+    std::string stable_generic_instance_key;
+    base::u32 part_index = 0;
+    bool local = false;
+    bool checked = false;
+    bool from_workspace = false;
+};
+
+struct ToolingSemanticToken {
+    ToolingTextRange range;
+    std::string text;
+    std::string token_type;
+    std::vector<std::string> modifiers;
+    std::string stable_definition_key;
+    std::string stable_member_key;
+    bool checked = false;
+};
+
+struct ToolingInlayHint {
+    ToolingTextRange range;
+    ToolingSourcePosition position;
+    std::string label;
+    std::string kind;
+    bool checked = false;
+};
+
+struct ToolingCodeActionEdit {
+    ToolingDocumentId document;
+    ToolingTextRange range;
+    std::string new_text;
+};
+
+struct ToolingCodeAction {
+    std::string title;
+    std::string kind;
+    std::string diagnostic_code;
+    std::string data;
+    std::vector<ToolingCodeActionEdit> edits;
+    bool preferred = false;
+};
+
+struct ToolingRenameConflict {
+    ToolingTextRange range;
+    std::string name;
+    std::string kind;
+    std::string reason;
+    std::string stable_definition_key;
+    std::string stable_member_key;
+};
+
+struct ToolingRenameEdit {
+    ToolingDocumentId document;
+    ToolingTextRange range;
+    std::string new_text;
+};
+
+struct ToolingRenamePlan {
+    ToolingDocumentVersion version;
+    ToolingDefinition target;
+    std::string old_name;
+    std::string new_name;
+    std::vector<ToolingRenameEdit> edits;
+    std::vector<ToolingRenameConflict> conflicts;
+    bool valid = false;
+};
+
+struct ToolingWorkspaceSymbol {
+    ToolingDocumentId document;
+    ToolingTextRange range;
+    std::string name;
+    std::string kind;
+    std::string detail;
+    std::string container_name;
+    std::string stable_query_key;
+    std::string stable_definition_key;
+    std::string stable_member_key;
+    std::string stable_generic_instance_key;
+    base::u32 part_index = 0;
+    bool checked = false;
 };
 
 struct ToolingAstNode {
@@ -378,6 +478,7 @@ public:
     [[nodiscard]] const ToolingProjectConfig& project_config() const noexcept;
     [[nodiscard]] const project::WorkspaceModel& workspace_model() const noexcept;
     [[nodiscard]] bool is_open(const ToolingDocumentId& id) const;
+    [[nodiscard]] bool is_generation_current(const ToolingDocumentId& id, ToolingDocumentVersion version) const;
     [[nodiscard]] std::optional<ToolingDocumentState> document_state(const ToolingDocumentId& id) const;
 
     [[nodiscard]] base::Result<ToolingDocumentVersion> open_document(
@@ -414,6 +515,18 @@ public:
     [[nodiscard]] base::Result<std::vector<ToolingReference>> references_at_position(
         const ToolingDocumentId& id, ToolingSourcePosition position);
     [[nodiscard]] base::Result<std::vector<ToolingDocumentSymbol>> document_symbols(const ToolingDocumentId& id);
+    [[nodiscard]] base::Result<std::vector<ToolingCompletionItem>> completion_at_offset(
+        const ToolingDocumentId& id, base::usize offset);
+    [[nodiscard]] base::Result<std::vector<ToolingCompletionItem>> completion_at_position(
+        const ToolingDocumentId& id, ToolingSourcePosition position);
+    [[nodiscard]] base::Result<ToolingRenamePlan> rename_at_offset(
+        const ToolingDocumentId& id, base::usize offset, std::string new_name);
+    [[nodiscard]] base::Result<ToolingRenamePlan> rename_at_position(
+        const ToolingDocumentId& id, ToolingSourcePosition position, std::string new_name);
+    [[nodiscard]] base::Result<std::vector<ToolingSemanticToken>> semantic_tokens(const ToolingDocumentId& id);
+    [[nodiscard]] base::Result<std::vector<ToolingInlayHint>> inlay_hints(const ToolingDocumentId& id);
+    [[nodiscard]] base::Result<std::vector<ToolingCodeAction>> code_actions(const ToolingDocumentId& id);
+    [[nodiscard]] base::Result<std::vector<ToolingWorkspaceSymbol>> workspace_symbols(std::string_view query);
 
 private:
     struct DocumentSlot {

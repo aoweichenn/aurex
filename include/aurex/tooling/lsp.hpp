@@ -40,6 +40,12 @@ private:
     [[nodiscard]] std::vector<std::string> handle_definition(std::string_view id, std::string_view params);
     [[nodiscard]] std::vector<std::string> handle_references(std::string_view id, std::string_view params);
     [[nodiscard]] std::vector<std::string> handle_document_symbols(std::string_view id, std::string_view params);
+    [[nodiscard]] std::vector<std::string> handle_completion(std::string_view id, std::string_view params);
+    [[nodiscard]] std::vector<std::string> handle_rename(std::string_view id, std::string_view params);
+    [[nodiscard]] std::vector<std::string> handle_semantic_tokens(std::string_view id, std::string_view params);
+    [[nodiscard]] std::vector<std::string> handle_code_actions(std::string_view id, std::string_view params);
+    [[nodiscard]] std::vector<std::string> handle_workspace_symbols(std::string_view id, std::string_view params);
+    [[nodiscard]] std::vector<std::string> handle_inlay_hints(std::string_view id, std::string_view params);
 
     ToolingSession session_;
     bool initialized_ = false;

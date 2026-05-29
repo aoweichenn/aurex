@@ -1,7 +1,7 @@
 # 当前进度文档
 
 版本：0.1.3
-阶段：M3.6 project graph / persistent query DB 已完成，下一阶段 M3.7 IDE semantic features
+阶段：M3.7 IDE semantic features 已完成，下一阶段 M3.8 query-backed lowering / backend reuse
 
 ## 总体状态
 
@@ -100,6 +100,18 @@ header 写入 project identity、package/source root、target config、command o
 inputs。测试覆盖 project graph key/layout/provider、edge verifier、driver cache row/edge/profile 和 tooling
 workspace model open/change/close 行为。详细计划见
 [Aurex M3.6 Project Graph And Persistent Query DB 计划](m3.6-project-graph-persistent-query-db-plan.md)。
+
+2026-05-30：M3.7 IDE Semantic Features 已完成当前协议无关 IDE 能力第一层。
+`IdeSnapshot` / `ToolingSession` 新增 completion、rename、semantic tokens、inlay hints、code actions 和
+workspace symbols value types；completion 合并 syntax context、sema scope、keyword 和 open workspace
+semantic facts；rename 基于 symbol identity 生成 workspace edit plan，并检查 identifier、reserved keyword
+和可见符号冲突；semantic tokens 由 syntax token kind 加 checked symbol facts 合成；inlay hints 当前覆盖缺少显式
+类型标注的 checked locals；code actions 从结构化 help diagnostics 生成 lookup suggestion quick fix。
+LSP adapter 只做投影，新增 `textDocument/completion`、`textDocument/rename`、
+`textDocument/semanticTokens/full`、`textDocument/codeAction`、`workspace/symbol` 和
+`textDocument/inlayHint`，并在文档请求边界使用 generation guard 防止 stale result 发布。详细计划见
+[Aurex M3.7 IDE Semantic Features 计划与收口记录](m3.7-ide-semantic-features-plan.md)。下一目标进入
+M3.8 Query-backed Lowering / Backend Reuse。
 
 2026-05-28 WP-1B Generic Instance Identity Propagation 已完成：`FunctionSignature`、`EnumCaseInfo`、
 `GenericEnumInstanceInfo` 和 `GenericTypeAliasInstanceInfo` 都携带结构化 `GenericInstanceKey`；

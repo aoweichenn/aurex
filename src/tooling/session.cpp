@@ -8,7 +8,9 @@
 #include <array>
 #include <filesystem>
 #include <span>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 namespace aurex::tooling {
 namespace {
@@ -33,6 +35,14 @@ constexpr std::string_view TOOLING_INCREMENTAL_REASON_MISMATCHED_PREVIOUS =
 constexpr std::string_view TOOLING_INCREMENTAL_REASON_STALE_PREVIOUS =
     "previous snapshot version is not older than current version";
 constexpr std::string_view TOOLING_INCREMENTAL_REASON_MALFORMED_PREVIOUS = "previous snapshot context is malformed";
+constexpr std::string_view TOOLING_SYMBOL_KIND_KEYWORD = "keyword";
+constexpr std::string_view TOOLING_CODE_ACTION_KIND_QUICKFIX = "quickfix";
+constexpr std::string_view TOOLING_CODE_ACTION_DATA_LOOKUP_SUGGESTION = "lookup-suggestion";
+constexpr std::string_view TOOLING_RENAME_CONFLICT_INVALID_IDENTIFIER = "new name is not a valid identifier";
+constexpr std::string_view TOOLING_RENAME_CONFLICT_VISIBLE_SYMBOL = "new name conflicts with a visible symbol";
+constexpr std::string_view TOOLING_RENAME_CONFLICT_KEYWORD = "new name is a reserved keyword";
+constexpr std::string_view TOOLING_SUGGESTION_MESSAGE_PREFIX = "did you mean `";
+constexpr char TOOLING_SUGGESTION_MESSAGE_END = '`';
 constexpr char TOOLING_DOCUMENT_KEY_SEPARATOR = '\x1F';
 constexpr char TOOLING_URI_PERCENT = '%';
 constexpr char TOOLING_URI_SPACE = ' ';
@@ -44,6 +54,59 @@ constexpr base::usize TOOLING_HEX_DIGIT_COUNT = 16;
 constexpr int TOOLING_DECIMAL_DIGIT_COUNT = 10;
 constexpr base::usize TOOLING_FIRST_HEX_NIBBLE_SHIFT = 4;
 constexpr base::u32 TOOLING_PRIMARY_PART_INDEX = 0;
+
+constexpr auto TOOLING_RESERVED_WORDS = std::to_array<std::string_view>({
+    "alignof",
+    "as",
+    "bitcast",
+    "bool",
+    "cast",
+    "char",
+    "const",
+    "else",
+    "enum",
+    "extern",
+    "f32",
+    "f64",
+    "false",
+    "fn",
+    "for",
+    "i16",
+    "i32",
+    "i64",
+    "i8",
+    "if",
+    "impl",
+    "import",
+    "in",
+    "isize",
+    "let",
+    "match",
+    "module",
+    "null",
+    "priv",
+    "ptraddr",
+    "ptrat",
+    "ptrcast",
+    "pub",
+    "return",
+    "sizeof",
+    "slicelen",
+    "sliceptr",
+    "str",
+    "struct",
+    "true",
+    "type",
+    "u16",
+    "u32",
+    "u64",
+    "u8",
+    "unsafe",
+    "usize",
+    "var",
+    "void",
+    "while",
+});
 
 [[nodiscard]] std::string_view tooling_package_or_default(const std::string_view package) noexcept
 {
@@ -422,6 +485,34 @@ void tooling_attach_syntax_reuse_execution(
     return query::is_valid(key) ? query::debug_string(key) : std::string{};
 }
 
+[[nodiscard]] bool tooling_identifier_start(const char ch) noexcept
+{
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_';
+}
+
+[[nodiscard]] bool tooling_identifier_continue(const char ch) noexcept
+{
+    return tooling_identifier_start(ch) || (ch >= '0' && ch <= '9');
+}
+
+[[nodiscard]] bool tooling_is_reserved_word(const std::string_view text) noexcept
+{
+    return std::ranges::find(TOOLING_RESERVED_WORDS, text) != TOOLING_RESERVED_WORDS.end();
+}
+
+[[nodiscard]] bool tooling_is_valid_identifier(const std::string_view text) noexcept
+{
+    if (text.empty() || !tooling_identifier_start(text.front()) || tooling_is_reserved_word(text)) {
+        return false;
+    }
+    for (const char ch : text.substr(1U)) {
+        if (!tooling_identifier_continue(ch)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] ToolingAstNode tooling_project_ast_node(const IdeSnapshot& snapshot, const IdeAstNodeInfo& node)
 {
     return ToolingAstNode{
@@ -433,6 +524,21 @@ void tooling_attach_syntax_reuse_execution(
         tooling_stable_key_or_empty(node.body),
         node.part_index,
         node.valid,
+    };
+}
+
+[[nodiscard]] ToolingDiagnosticChild tooling_project_diagnostic_child(
+    const IdeSnapshot& snapshot, const base::DiagnosticChild& child)
+{
+    return ToolingDiagnosticChild{
+        child.severity,
+        child.category,
+        child.code,
+        tooling_text_range_for_snapshot(snapshot, child.range),
+        std::string(base::severity_name(child.severity)),
+        std::string(base::diagnostic_category_name(child.category)),
+        std::string(base::diagnostic_code_name(child.code)),
+        child.message,
     };
 }
 
@@ -450,6 +556,51 @@ void tooling_attach_syntax_reuse_execution(
         tooling_stable_key_or_empty(definition.generic_instance),
         definition.part_index,
         definition.valid,
+    };
+}
+
+[[nodiscard]] ToolingCompletionItem tooling_project_completion(
+    const IdeSnapshot& snapshot, const IdeCompletionItem& item)
+{
+    return ToolingCompletionItem{
+        item.context,
+        tooling_text_range_for_snapshot(snapshot, item.replacement_range),
+        item.label,
+        item.kind,
+        item.detail,
+        tooling_stable_key_or_empty(item.definition),
+        tooling_stable_key_or_empty(item.member),
+        tooling_stable_key_or_empty(item.generic_instance),
+        item.part_index,
+        item.local,
+        item.checked,
+        false,
+    };
+}
+
+[[nodiscard]] ToolingSemanticToken tooling_project_semantic_token(
+    const IdeSnapshot& snapshot, const IdeSemanticToken& token)
+{
+    return ToolingSemanticToken{
+        tooling_text_range_for_snapshot(snapshot, token.range),
+        token.text,
+        token.token_type,
+        token.modifiers,
+        tooling_stable_key_or_empty(token.definition),
+        tooling_stable_key_or_empty(token.member),
+        token.checked,
+    };
+}
+
+[[nodiscard]] ToolingInlayHint tooling_project_inlay_hint(const IdeSnapshot& snapshot, const IdeInlayHint& hint)
+{
+    const std::string_view text = snapshot.sources.text(snapshot.source_id);
+    return ToolingInlayHint{
+        tooling_text_range_for_snapshot(snapshot, hint.position),
+        tooling_position_for_offset(text, hint.position.begin),
+        hint.label,
+        hint.kind,
+        hint.checked,
     };
 }
 
@@ -485,6 +636,100 @@ void tooling_attach_syntax_reuse_execution(
         fact.part_index,
         true,
     };
+}
+
+[[nodiscard]] bool tooling_indexed_fact_matches_query(
+    const ToolingIndexedSemanticFact& fact, const std::string_view query) noexcept
+{
+    return query.empty() || fact.name.find(query) != std::string::npos || fact.detail.find(query) != std::string::npos;
+}
+
+[[nodiscard]] ToolingWorkspaceSymbol tooling_project_workspace_symbol(const ToolingIndexedSemanticFact& fact)
+{
+    return ToolingWorkspaceSymbol{
+        fact.document,
+        fact.range,
+        fact.name,
+        tooling_kind_for_definition(fact.definition.kind),
+        fact.detail,
+        fact.document.path,
+        fact.stable_query_key,
+        fact.stable_definition_key,
+        fact.stable_member_key,
+        fact.stable_generic_instance_key,
+        fact.part_index,
+        fact.checked,
+    };
+}
+
+[[nodiscard]] bool tooling_completion_label_matches_prefix(
+    const std::string_view label, const std::string_view prefix) noexcept
+{
+    return prefix.empty() || (label.size() >= prefix.size() && label.substr(0U, prefix.size()) == prefix);
+}
+
+[[nodiscard]] std::string tooling_completion_identity(const ToolingCompletionItem& item)
+{
+    std::string identity;
+    identity.reserve(item.label.size() + item.kind.size() + item.stable_definition_key.size()
+        + item.stable_member_key.size() + item.stable_generic_instance_key.size());
+    identity.append(item.label);
+    identity.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+    identity.append(item.kind);
+    identity.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+    identity.append(item.stable_definition_key);
+    identity.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+    identity.append(item.stable_member_key);
+    identity.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+    identity.append(item.stable_generic_instance_key);
+    return identity;
+}
+
+void tooling_push_completion_if_new(
+    std::vector<ToolingCompletionItem>& completions, std::vector<std::string>& seen, ToolingCompletionItem item)
+{
+    const std::string identity = tooling_completion_identity(item);
+    if (std::ranges::find(seen, identity) != seen.end()) {
+        return;
+    }
+    seen.push_back(identity);
+    completions.push_back(std::move(item));
+}
+
+[[nodiscard]] ToolingCompletionItem tooling_workspace_completion_item(const ToolingIndexedSemanticFact& fact,
+    const IdeCompletionContextKind context, const ToolingTextRange& replacement_range)
+{
+    return ToolingCompletionItem{
+        context,
+        replacement_range,
+        fact.name,
+        tooling_kind_for_definition(fact.definition.kind),
+        fact.detail,
+        fact.stable_definition_key,
+        fact.stable_member_key,
+        fact.stable_generic_instance_key,
+        fact.part_index,
+        false,
+        fact.checked,
+        true,
+    };
+}
+
+void tooling_append_workspace_completions(std::vector<ToolingCompletionItem>& completions,
+    std::vector<std::string>& seen, const std::vector<ToolingIndexedSemanticFact>& facts,
+    const IdeCompletionContextKind context, const ToolingTextRange& replacement_range, const std::string_view prefix)
+{
+    if (context == IdeCompletionContextKind::member || context == IdeCompletionContextKind::module_path) {
+        return;
+    }
+    for (const ToolingIndexedSemanticFact& fact : facts) {
+        if (!tooling_indexed_fact_is_definition_entry(fact)
+            || !tooling_completion_label_matches_prefix(fact.name, prefix)) {
+            continue;
+        }
+        tooling_push_completion_if_new(
+            completions, seen, tooling_workspace_completion_item(fact, context, replacement_range));
+    }
 }
 
 [[nodiscard]] const IdeSemanticFact* tooling_semantic_fact_for_definition(
@@ -570,6 +815,12 @@ void tooling_attach_syntax_reuse_execution(
         && reference.range.range.begin == fact.range.range.begin && reference.range.range.end == fact.range.range.end;
 }
 
+[[nodiscard]] bool tooling_same_range(const ToolingTextRange& lhs, const ToolingTextRange& rhs) noexcept
+{
+    return lhs.path == rhs.path && lhs.range.source.value == rhs.range.source.value
+        && lhs.range.begin == rhs.range.begin && lhs.range.end == rhs.range.end;
+}
+
 void tooling_push_workspace_definition_references(
     std::vector<ToolingReference>& references, const std::vector<ToolingIndexedSemanticFact>& indexed_facts)
 {
@@ -589,6 +840,150 @@ void tooling_push_workspace_definition_references(
             true,
         });
     }
+}
+
+[[nodiscard]] std::optional<std::string> tooling_lookup_suggestion_from_message(const std::string_view message)
+{
+    const base::usize prefix = message.find(TOOLING_SUGGESTION_MESSAGE_PREFIX);
+    if (prefix == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const base::usize name_begin = prefix + TOOLING_SUGGESTION_MESSAGE_PREFIX.size();
+    const base::usize name_end = message.find(TOOLING_SUGGESTION_MESSAGE_END, name_begin);
+    if (name_end == std::string_view::npos || name_end == name_begin) {
+        return std::nullopt;
+    }
+    return std::string(message.substr(name_begin, name_end - name_begin));
+}
+
+[[nodiscard]] std::string tooling_code_action_identity(const ToolingCodeAction& action)
+{
+    std::string identity;
+    identity.reserve(action.kind.size() + action.title.size() + action.data.size());
+    identity.append(action.kind);
+    identity.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+    identity.append(action.title);
+    identity.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+    identity.append(action.data);
+    for (const ToolingCodeActionEdit& edit : action.edits) {
+        identity.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+        identity.append(tooling_document_store_key(edit.document));
+        identity.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+        identity.append(std::to_string(edit.range.range.begin));
+        identity.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+        identity.append(std::to_string(edit.range.range.end));
+        identity.push_back(TOOLING_DOCUMENT_KEY_SEPARATOR);
+        identity.append(edit.new_text);
+    }
+    return identity;
+}
+
+void tooling_push_code_action_if_new(
+    std::vector<ToolingCodeAction>& actions, std::vector<std::string>& seen, ToolingCodeAction action)
+{
+    const std::string identity = tooling_code_action_identity(action);
+    if (std::ranges::find(seen, identity) != seen.end()) {
+        return;
+    }
+    seen.push_back(identity);
+    actions.push_back(std::move(action));
+}
+
+void tooling_append_lookup_suggestion_action(std::vector<ToolingCodeAction>& actions, std::vector<std::string>& seen,
+    const ToolingDocumentId& document, const ToolingTextRange& range, const base::Severity severity,
+    const std::string_view message, const std::string_view code_name)
+{
+    if (severity != base::Severity::help) {
+        return;
+    }
+    const std::optional<std::string> suggestion = tooling_lookup_suggestion_from_message(message);
+    if (!suggestion.has_value()) {
+        return;
+    }
+    ToolingCodeAction action;
+    action.title = "Replace with `" + *suggestion + "`";
+    action.kind = std::string(TOOLING_CODE_ACTION_KIND_QUICKFIX);
+    action.diagnostic_code = std::string(code_name);
+    action.data = std::string(TOOLING_CODE_ACTION_DATA_LOOKUP_SUGGESTION);
+    action.edits.push_back(ToolingCodeActionEdit{
+        document,
+        range,
+        *suggestion,
+    });
+    action.preferred = true;
+    tooling_push_code_action_if_new(actions, seen, std::move(action));
+}
+
+[[nodiscard]] bool tooling_completion_matches_definition(
+    const ToolingCompletionItem& item, const ToolingDefinition& definition) noexcept
+{
+    if (!definition.stable_member_key.empty()) {
+        return item.stable_member_key == definition.stable_member_key;
+    }
+    if (!definition.stable_definition_key.empty()) {
+        return item.stable_definition_key == definition.stable_definition_key;
+    }
+    return item.label == definition.name && item.kind == definition.kind;
+}
+
+void tooling_append_rename_conflict(std::vector<ToolingRenameConflict>& conflicts, const ToolingTextRange& range,
+    const std::string_view name, const std::string_view kind, const std::string_view reason,
+    const std::string_view stable_definition_key, const std::string_view stable_member_key)
+{
+    const bool exists = std::ranges::any_of(conflicts, [&range, name, kind, reason](const ToolingRenameConflict& item) {
+        return tooling_same_range(item.range, range) && item.name == name && item.kind == kind && item.reason == reason;
+    });
+    if (exists) {
+        return;
+    }
+    conflicts.push_back(ToolingRenameConflict{
+        range,
+        std::string(name),
+        std::string(kind),
+        std::string(reason),
+        std::string(stable_definition_key),
+        std::string(stable_member_key),
+    });
+}
+
+void tooling_append_rename_conflicts_from_completion(std::vector<ToolingRenameConflict>& conflicts,
+    const std::vector<ToolingCompletionItem>& completions, const ToolingDefinition& target,
+    const std::string_view new_name)
+{
+    for (const ToolingCompletionItem& item : completions) {
+        if (item.label != new_name || item.kind == TOOLING_SYMBOL_KIND_KEYWORD
+            || tooling_completion_matches_definition(item, target)) {
+            continue;
+        }
+        tooling_append_rename_conflict(conflicts, item.replacement_range, item.label, item.kind,
+            TOOLING_RENAME_CONFLICT_VISIBLE_SYMBOL, item.stable_definition_key, item.stable_member_key);
+    }
+}
+
+[[nodiscard]] ToolingDocumentId tooling_document_for_edit_range(
+    const ToolingDocumentId& current_document, const ToolingTextRange& range, const ToolingProjectConfig& config)
+{
+    if (range.path.empty() || range.path == current_document.path) {
+        return current_document;
+    }
+    return tooling_document_id_from_path(range.path, config);
+}
+
+void tooling_push_rename_edit_if_new(std::vector<ToolingRenameEdit>& edits, const ToolingDocumentId& document,
+    const ToolingTextRange& range, const std::string_view new_name)
+{
+    const bool exists = std::ranges::any_of(edits, [&document, &range](const ToolingRenameEdit& edit) {
+        return tooling_document_store_key(edit.document) == tooling_document_store_key(document)
+            && tooling_same_range(edit.range, range);
+    });
+    if (exists) {
+        return;
+    }
+    edits.push_back(ToolingRenameEdit{
+        document,
+        range,
+        std::string(new_name),
+    });
 }
 
 } // namespace
@@ -770,6 +1165,15 @@ const project::WorkspaceModel& ToolingSession::workspace_model() const noexcept
 bool ToolingSession::is_open(const ToolingDocumentId& id) const
 {
     return this->find_slot(id) != this->documents_.end();
+}
+
+bool ToolingSession::is_generation_current(const ToolingDocumentId& id, const ToolingDocumentVersion version) const
+{
+    const auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return false;
+    }
+    return found->second.state.version == version;
 }
 
 std::optional<ToolingDocumentState> ToolingSession::document_state(const ToolingDocumentId& id) const
@@ -1048,6 +1452,11 @@ base::Result<std::vector<ToolingDiagnostic>> ToolingSession::diagnostics(const T
     std::vector<ToolingDiagnostic> result;
     result.reserve(snapshot.diagnostics.size());
     for (const IdeDiagnostic& diagnostic : snapshot.diagnostics) {
+        std::vector<ToolingDiagnosticChild> children;
+        children.reserve(diagnostic.children.size());
+        for (const base::DiagnosticChild& child : diagnostic.children) {
+            children.push_back(tooling_project_diagnostic_child(snapshot, child));
+        }
         result.push_back(ToolingDiagnostic{
             diagnostic.severity,
             diagnostic.category,
@@ -1057,6 +1466,7 @@ base::Result<std::vector<ToolingDiagnostic>> ToolingSession::diagnostics(const T
             std::string(base::diagnostic_category_name(diagnostic.category)),
             std::string(base::diagnostic_code_name(diagnostic.code)),
             diagnostic.message,
+            std::move(children),
             diagnostic.owner_stages,
             diagnostic.source_part,
         });
@@ -1241,6 +1651,228 @@ base::Result<std::vector<ToolingDocumentSymbol>> ToolingSession::document_symbol
         return lhs.selection_range.range.begin < rhs.selection_range.range.begin;
     });
     return base::Result<std::vector<ToolingDocumentSymbol>>::ok(std::move(symbols));
+}
+
+base::Result<std::vector<ToolingCompletionItem>> ToolingSession::completion_at_offset(
+    const ToolingDocumentId& id, const base::usize offset)
+{
+    base::Result<ToolingSnapshotHandle> handle = this->snapshot(id);
+    if (!handle) {
+        return base::Result<std::vector<ToolingCompletionItem>>::fail(handle.error());
+    }
+    const IdeSnapshot& snapshot = *handle.value().snapshot;
+    const std::vector<IdeCompletionItem> ide_items = tooling::completion_items_at_offset(snapshot, offset);
+    std::vector<ToolingCompletionItem> result;
+    result.reserve(ide_items.size());
+    std::vector<std::string> seen;
+    seen.reserve(ide_items.size());
+    for (const IdeCompletionItem& item : ide_items) {
+        tooling_push_completion_if_new(result, seen, tooling_project_completion(snapshot, item));
+    }
+    if (!ide_items.empty()) {
+        const IdeCompletionItem& first = ide_items.front();
+        const std::string_view source = snapshot.sources.text(snapshot.source_id);
+        const base::usize prefix_begin = std::min(first.replacement_range.begin, source.size());
+        const base::usize prefix_end = std::min(offset, source.size());
+        const std::string_view prefix =
+            prefix_end >= prefix_begin ? source.substr(prefix_begin, prefix_end - prefix_begin) : std::string_view{};
+        tooling_append_workspace_completions(result, seen, this->workspace_index_.all_facts(), first.context,
+            tooling_text_range_for_snapshot(snapshot, first.replacement_range), prefix);
+    }
+    std::ranges::sort(result, [](const ToolingCompletionItem& lhs, const ToolingCompletionItem& rhs) {
+        if (lhs.local != rhs.local) {
+            return lhs.local && !rhs.local;
+        }
+        if (lhs.from_workspace != rhs.from_workspace) {
+            return !lhs.from_workspace && rhs.from_workspace;
+        }
+        if (lhs.checked != rhs.checked) {
+            return lhs.checked && !rhs.checked;
+        }
+        if (lhs.label == rhs.label) {
+            return lhs.kind < rhs.kind;
+        }
+        return lhs.label < rhs.label;
+    });
+    return base::Result<std::vector<ToolingCompletionItem>>::ok(std::move(result));
+}
+
+base::Result<std::vector<ToolingCompletionItem>> ToolingSession::completion_at_position(
+    const ToolingDocumentId& id, const ToolingSourcePosition position)
+{
+    const auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return base::Result<std::vector<ToolingCompletionItem>>::fail(
+            {base::ErrorCode::invalid_source, "tooling document is not open"});
+    }
+    return this->completion_at_offset(id, tooling_offset_for_position(found->second.state.text, position));
+}
+
+base::Result<ToolingRenamePlan> ToolingSession::rename_at_offset(
+    const ToolingDocumentId& id, const base::usize offset, std::string new_name)
+{
+    base::Result<ToolingSnapshotHandle> handle = this->snapshot(id);
+    if (!handle) {
+        return base::Result<ToolingRenamePlan>::fail(handle.error());
+    }
+    const IdeSnapshot& snapshot = *handle.value().snapshot;
+    ToolingRenamePlan plan;
+    plan.version = handle.value().version;
+    plan.new_name = std::move(new_name);
+
+    const std::optional<IdeDefinition> ide_definition = tooling::definition_at_offset(snapshot, offset);
+    if (!ide_definition.has_value()) {
+        return base::Result<ToolingRenamePlan>::ok(std::move(plan));
+    }
+    plan.target = tooling_project_definition(snapshot, *ide_definition);
+    plan.old_name = plan.target.name;
+
+    if (tooling_is_reserved_word(plan.new_name)) {
+        tooling_append_rename_conflict(plan.conflicts, plan.target.range, plan.new_name, plan.target.kind,
+            TOOLING_RENAME_CONFLICT_KEYWORD, plan.target.stable_definition_key, plan.target.stable_member_key);
+    } else if (!tooling_is_valid_identifier(plan.new_name)) {
+        tooling_append_rename_conflict(plan.conflicts, plan.target.range, plan.new_name, plan.target.kind,
+            TOOLING_RENAME_CONFLICT_INVALID_IDENTIFIER, plan.target.stable_definition_key,
+            plan.target.stable_member_key);
+    }
+
+    base::Result<std::vector<ToolingCompletionItem>> completions =
+        this->completion_at_offset(id, ide_definition->range.begin);
+    if (completions) {
+        tooling_append_rename_conflicts_from_completion(
+            plan.conflicts, completions.value(), plan.target, plan.new_name);
+    }
+
+    base::Result<std::vector<ToolingReference>> references = this->references_at_offset(id, offset);
+    if (!references) {
+        return base::Result<ToolingRenamePlan>::fail(references.error());
+    }
+    for (const ToolingReference& reference : references.value()) {
+        const ToolingDocumentId edit_document =
+            tooling_document_for_edit_range(handle.value().document, reference.range, this->config_);
+        tooling_push_rename_edit_if_new(plan.edits, edit_document, reference.range, plan.new_name);
+    }
+    if (plan.edits.empty()) {
+        tooling_push_rename_edit_if_new(plan.edits, handle.value().document, plan.target.range, plan.new_name);
+    }
+    std::ranges::sort(plan.edits, [](const ToolingRenameEdit& lhs, const ToolingRenameEdit& rhs) {
+        const std::string lhs_key = tooling_document_store_key(lhs.document);
+        const std::string rhs_key = tooling_document_store_key(rhs.document);
+        if (lhs_key == rhs_key) {
+            return lhs.range.range.begin < rhs.range.range.begin;
+        }
+        return lhs_key < rhs_key;
+    });
+    plan.valid = plan.conflicts.empty() && !plan.edits.empty();
+    return base::Result<ToolingRenamePlan>::ok(std::move(plan));
+}
+
+base::Result<ToolingRenamePlan> ToolingSession::rename_at_position(
+    const ToolingDocumentId& id, const ToolingSourcePosition position, std::string new_name)
+{
+    const auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return base::Result<ToolingRenamePlan>::fail({base::ErrorCode::invalid_source, "tooling document is not open"});
+    }
+    return this->rename_at_offset(
+        id, tooling_offset_for_position(found->second.state.text, position), std::move(new_name));
+}
+
+base::Result<std::vector<ToolingSemanticToken>> ToolingSession::semantic_tokens(const ToolingDocumentId& id)
+{
+    base::Result<ToolingSnapshotHandle> handle = this->snapshot(id);
+    if (!handle) {
+        return base::Result<std::vector<ToolingSemanticToken>>::fail(handle.error());
+    }
+    const IdeSnapshot& snapshot = *handle.value().snapshot;
+    const std::vector<IdeSemanticToken> ide_tokens = tooling::semantic_tokens(snapshot);
+    std::vector<ToolingSemanticToken> result;
+    result.reserve(ide_tokens.size());
+    for (const IdeSemanticToken& token : ide_tokens) {
+        result.push_back(tooling_project_semantic_token(snapshot, token));
+    }
+    return base::Result<std::vector<ToolingSemanticToken>>::ok(std::move(result));
+}
+
+base::Result<std::vector<ToolingInlayHint>> ToolingSession::inlay_hints(const ToolingDocumentId& id)
+{
+    base::Result<ToolingSnapshotHandle> handle = this->snapshot(id);
+    if (!handle) {
+        return base::Result<std::vector<ToolingInlayHint>>::fail(handle.error());
+    }
+    const IdeSnapshot& snapshot = *handle.value().snapshot;
+    const std::vector<IdeInlayHint> ide_hints = tooling::inlay_hints(snapshot);
+    std::vector<ToolingInlayHint> result;
+    result.reserve(ide_hints.size());
+    for (const IdeInlayHint& hint : ide_hints) {
+        result.push_back(tooling_project_inlay_hint(snapshot, hint));
+    }
+    return base::Result<std::vector<ToolingInlayHint>>::ok(std::move(result));
+}
+
+base::Result<std::vector<ToolingCodeAction>> ToolingSession::code_actions(const ToolingDocumentId& id)
+{
+    base::Result<std::vector<ToolingDiagnostic>> diagnostics = this->diagnostics(id);
+    if (!diagnostics) {
+        return base::Result<std::vector<ToolingCodeAction>>::fail(diagnostics.error());
+    }
+    const auto found = this->find_slot(id);
+    if (found == this->documents_.end()) {
+        return base::Result<std::vector<ToolingCodeAction>>::fail(
+            {base::ErrorCode::invalid_source, "tooling document is not open"});
+    }
+    std::vector<ToolingCodeAction> actions;
+    std::vector<std::string> seen;
+    for (const ToolingDiagnostic& diagnostic : diagnostics.value()) {
+        tooling_append_lookup_suggestion_action(actions, seen, found->second.state.id, diagnostic.range,
+            diagnostic.severity, diagnostic.message, diagnostic.code_name);
+        for (const ToolingDiagnosticChild& child : diagnostic.children) {
+            tooling_append_lookup_suggestion_action(
+                actions, seen, found->second.state.id, child.range, child.severity, child.message, child.code_name);
+        }
+    }
+    std::ranges::sort(actions, [](const ToolingCodeAction& lhs, const ToolingCodeAction& rhs) {
+        if (lhs.preferred != rhs.preferred) {
+            return lhs.preferred && !rhs.preferred;
+        }
+        return lhs.title < rhs.title;
+    });
+    return base::Result<std::vector<ToolingCodeAction>>::ok(std::move(actions));
+}
+
+base::Result<std::vector<ToolingWorkspaceSymbol>> ToolingSession::workspace_symbols(const std::string_view query)
+{
+    std::vector<ToolingDocumentId> documents;
+    documents.reserve(this->documents_.size());
+    for (const auto& entry : this->documents_) {
+        documents.push_back(entry.second.state.id);
+    }
+    for (const ToolingDocumentId& document : documents) {
+        base::Result<ToolingSnapshotHandle> handle = this->snapshot(document);
+        if (!handle) {
+            return base::Result<std::vector<ToolingWorkspaceSymbol>>::fail(handle.error());
+        }
+    }
+
+    std::vector<ToolingWorkspaceSymbol> result;
+    const std::vector<ToolingIndexedSemanticFact> facts = this->workspace_index_.all_facts();
+    result.reserve(facts.size());
+    for (const ToolingIndexedSemanticFact& fact : facts) {
+        if (!tooling_indexed_fact_is_definition_entry(fact) || !tooling_indexed_fact_matches_query(fact, query)) {
+            continue;
+        }
+        result.push_back(tooling_project_workspace_symbol(fact));
+    }
+    std::ranges::sort(result, [](const ToolingWorkspaceSymbol& lhs, const ToolingWorkspaceSymbol& rhs) {
+        if (lhs.name == rhs.name) {
+            if (lhs.document.uri == rhs.document.uri) {
+                return lhs.range.range.begin < rhs.range.range.begin;
+            }
+            return lhs.document.uri < rhs.document.uri;
+        }
+        return lhs.name < rhs.name;
+    });
+    return base::Result<std::vector<ToolingWorkspaceSymbol>>::ok(std::move(result));
 }
 
 ToolingDocumentId ToolingSession::normalize_document_id(const ToolingDocumentId& id) const

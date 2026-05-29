@@ -49,7 +49,9 @@ constexpr std::string_view IDE_SEMANTIC_FACT_ITEM_SIGNATURE = "item_signature";
 constexpr std::string_view IDE_SEMANTIC_FACT_GENERIC_TEMPLATE_SIGNATURE = "generic_template_signature";
 constexpr std::string_view IDE_SEMANTIC_FACT_FUNCTION_BODY_SYNTAX = "function_body_syntax";
 constexpr std::string_view IDE_SEMANTIC_FACT_TYPE_CHECK_BODY = "type_check_body";
+constexpr std::string_view IDE_SYMBOL_KIND_CONST = "const";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM_CASE = "enum_case";
+constexpr std::string_view IDE_SYMBOL_KIND_ENUM = "enum";
 constexpr std::string_view IDE_SYMBOL_KIND_FUNCTION = "function";
 constexpr std::string_view IDE_SYMBOL_KIND_GENERIC_TEMPLATE = "generic_template";
 constexpr std::string_view IDE_SYMBOL_KIND_LOCAL = "local";
@@ -59,9 +61,71 @@ constexpr std::string_view IDE_SYMBOL_KIND_PARAMETER = "parameter";
 constexpr std::string_view IDE_SYMBOL_KIND_STRUCT = "struct";
 constexpr std::string_view IDE_SYMBOL_KIND_STRUCT_FIELD = "struct_field";
 constexpr std::string_view IDE_SYMBOL_KIND_TYPE_ALIAS = "type_alias";
+constexpr std::string_view IDE_COMPLETION_KIND_KEYWORD = "keyword";
+constexpr std::string_view IDE_COMPLETION_DETAIL_KEYWORD = "keyword";
+constexpr std::string_view IDE_TOKEN_TYPE_COMMENT = "comment";
+constexpr std::string_view IDE_TOKEN_TYPE_ENUM = "enum";
+constexpr std::string_view IDE_TOKEN_TYPE_ENUM_MEMBER = "enumMember";
+constexpr std::string_view IDE_TOKEN_TYPE_FUNCTION = "function";
+constexpr std::string_view IDE_TOKEN_TYPE_KEYWORD = "keyword";
+constexpr std::string_view IDE_TOKEN_TYPE_METHOD = "method";
+constexpr std::string_view IDE_TOKEN_TYPE_NUMBER = "number";
+constexpr std::string_view IDE_TOKEN_TYPE_OPERATOR = "operator";
+constexpr std::string_view IDE_TOKEN_TYPE_PARAMETER = "parameter";
+constexpr std::string_view IDE_TOKEN_TYPE_PROPERTY = "property";
+constexpr std::string_view IDE_TOKEN_TYPE_PUNCTUATION = "punctuation";
+constexpr std::string_view IDE_TOKEN_TYPE_STRING = "string";
+constexpr std::string_view IDE_TOKEN_TYPE_TYPE = "type";
+constexpr std::string_view IDE_TOKEN_TYPE_TYPE_PARAMETER = "typeParameter";
+constexpr std::string_view IDE_TOKEN_TYPE_VARIABLE = "variable";
+constexpr std::string_view IDE_TOKEN_MODIFIER_DECLARATION = "declaration";
+constexpr std::string_view IDE_TOKEN_MODIFIER_DEFINITION = "definition";
+constexpr std::string_view IDE_TOKEN_MODIFIER_READONLY = "readonly";
+constexpr std::string_view IDE_INLAY_HINT_KIND_TYPE = "type";
+constexpr std::string_view IDE_DETAIL_TYPE_SEPARATOR = ": ";
 constexpr std::string_view IDE_PRIMARY_PART_NAME = "<primary>";
 constexpr base::u32 IDE_PRIMARY_PART_INDEX = 0;
 constexpr base::u32 IDE_FIRST_NAMED_PART_INDEX = 1;
+
+constexpr std::array<std::string_view, 10> IDE_ITEM_COMPLETION_KEYWORDS{
+    "fn",
+    "struct",
+    "enum",
+    "type",
+    "const",
+    "impl",
+    "extern",
+    "import",
+    "pub",
+    "priv",
+};
+
+constexpr std::array<std::string_view, 24> IDE_EXPRESSION_COMPLETION_KEYWORDS{
+    "let",
+    "var",
+    "return",
+    "if",
+    "else",
+    "match",
+    "while",
+    "for",
+    "in",
+    "unsafe",
+    "true",
+    "false",
+    "null",
+    "sizeof",
+    "alignof",
+    "cast",
+    "ptrcast",
+    "bitcast",
+    "ptraddr",
+    "ptrat",
+    "sliceptr",
+    "slicelen",
+    "strptr",
+    "strblen",
+};
 
 struct ItemDefinitionMetadata {
     query::DefNamespace namespace_ = query::DefNamespace::value;
@@ -240,6 +304,7 @@ void mix_lossless_tree(query::StableHashBuilder& builder, const syntax::Lossless
             file.line_column(diagnostic.range.end),
             std::string(file.path()),
             diagnostic.message,
+            diagnostic.children,
             ide_diagnostic_owner_stages(diagnostic.category),
             source_part,
         });
@@ -1731,6 +1796,328 @@ void collect_local_symbols_from_function(
     return lhs;
 }
 
+[[nodiscard]] bool ide_identifier_char(const char ch) noexcept
+{
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_';
+}
+
+[[nodiscard]] bool ide_completion_label_matches_prefix(
+    const std::string_view label, const std::string_view prefix) noexcept
+{
+    return prefix.empty() || (label.size() >= prefix.size() && label.substr(0, prefix.size()) == prefix);
+}
+
+struct IdeCompletionPrefix {
+    base::SourceRange range{};
+    std::string_view text;
+};
+
+[[nodiscard]] IdeCompletionPrefix ide_completion_prefix_at_offset(const IdeSnapshot& snapshot, const base::usize offset)
+{
+    const std::string_view text = snapshot.sources.text(snapshot.source_id);
+    const base::usize clamped_offset = std::min(offset, text.size());
+    base::usize begin = clamped_offset;
+    while (begin > 0U && ide_identifier_char(text[begin - 1U])) {
+        --begin;
+    }
+    base::usize end = clamped_offset;
+    while (end < text.size() && ide_identifier_char(text[end])) {
+        ++end;
+    }
+    return IdeCompletionPrefix{
+        base::SourceRange{snapshot.source_id, begin, end},
+        text.substr(begin, clamped_offset - begin),
+    };
+}
+
+[[nodiscard]] std::optional<char> ide_previous_non_space(const std::string_view text, base::usize offset) noexcept
+{
+    offset = std::min(offset, text.size());
+    while (offset > 0U) {
+        --offset;
+        const char ch = text[offset];
+        if (ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r') {
+            return ch;
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::string_view ide_line_prefix(const std::string_view text, const base::usize offset) noexcept
+{
+    const base::usize clamped_offset = std::min(offset, text.size());
+    const base::usize line_begin = text.rfind('\n', clamped_offset == 0U ? 0U : clamped_offset - 1U);
+    const base::usize begin = line_begin == std::string_view::npos ? 0U : line_begin + 1U;
+    return text.substr(begin, clamped_offset - begin);
+}
+
+[[nodiscard]] bool ide_line_contains_module_path_keyword(const std::string_view line) noexcept
+{
+    return line.find("module") != std::string_view::npos || line.find("import") != std::string_view::npos;
+}
+
+[[nodiscard]] bool ide_offset_in_function_body(const IdeSnapshot& snapshot, const base::usize offset) noexcept
+{
+    if (!snapshot.parsed) {
+        return false;
+    }
+    for (base::usize index = 0; index < snapshot.ast.items.size(); ++index) {
+        const syntax::ItemNode* const item = snapshot.ast.items.ptr(index);
+        if (item == nullptr || item->kind != syntax::ItemKind::fn_decl) {
+            continue;
+        }
+        const std::optional<base::SourceRange> body_range = ast_item_body_range(snapshot, *item);
+        if (body_range.has_value() && range_contains_offset(*body_range, offset)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] IdeCompletionContextKind ide_completion_context_at_offset(
+    const IdeSnapshot& snapshot, const IdeCompletionPrefix& prefix, const base::usize offset)
+{
+    const std::string_view text = snapshot.sources.text(snapshot.source_id);
+    if (const std::optional<char> previous = ide_previous_non_space(text, prefix.range.begin);
+        previous.has_value() && *previous == '.') {
+        return IdeCompletionContextKind::member;
+    }
+    if (ide_line_contains_module_path_keyword(ide_line_prefix(text, prefix.range.begin))) {
+        return IdeCompletionContextKind::module_path;
+    }
+    return ide_offset_in_function_body(snapshot, offset) ? IdeCompletionContextKind::expression
+                                                         : IdeCompletionContextKind::item;
+}
+
+[[nodiscard]] bool ide_completion_symbol_visible(
+    const IdeSymbol& symbol, const IdeCompletionContextKind context, const base::usize offset) noexcept
+{
+    if (context == IdeCompletionContextKind::member) {
+        return symbol.kind == IDE_SYMBOL_KIND_METHOD || symbol.kind == IDE_SYMBOL_KIND_STRUCT_FIELD
+            || symbol.kind == IDE_SYMBOL_KIND_ENUM_CASE;
+    }
+    if (symbol.kind == IDE_SYMBOL_KIND_STRUCT_FIELD && context != IdeCompletionContextKind::member) {
+        return false;
+    }
+    if (!symbol.local) {
+        return true;
+    }
+    return range_contains_offset(symbol.scope_range, offset) && symbol.range.begin <= offset;
+}
+
+[[nodiscard]] std::string ide_completion_identity(const IdeCompletionItem& item)
+{
+    std::string identity;
+    identity.reserve(item.label.size() + item.kind.size() + IDE_DETAIL_TYPE_SEPARATOR.size());
+    identity.append(item.label);
+    identity.push_back('\x1F');
+    identity.append(item.kind);
+    identity.push_back('\x1F');
+    identity.append(std::to_string(item.definition.global_id));
+    identity.push_back('\x1F');
+    identity.append(std::to_string(item.member.global_id));
+    return identity;
+}
+
+void ide_push_completion_item(
+    std::vector<IdeCompletionItem>& items, std::unordered_map<std::string, bool>& seen, IdeCompletionItem item)
+{
+    const std::string identity = ide_completion_identity(item);
+    if (seen.contains(identity)) {
+        return;
+    }
+    seen.emplace(identity, true);
+    items.push_back(std::move(item));
+}
+
+void ide_append_keyword_completions(std::vector<IdeCompletionItem>& items, std::unordered_map<std::string, bool>& seen,
+    const IdeCompletionContextKind context, const base::SourceRange replacement_range, const std::string_view prefix)
+{
+    const auto append_keywords = [&](const std::span<const std::string_view> keywords) {
+        for (const std::string_view keyword : keywords) {
+            if (!ide_completion_label_matches_prefix(keyword, prefix)) {
+                continue;
+            }
+            ide_push_completion_item(items, seen,
+                IdeCompletionItem{
+                    context,
+                    {},
+                    {},
+                    {},
+                    replacement_range,
+                    std::string(keyword),
+                    std::string(IDE_COMPLETION_KIND_KEYWORD),
+                    std::string(IDE_COMPLETION_DETAIL_KEYWORD),
+                    IDE_PRIMARY_PART_INDEX,
+                    false,
+                    false,
+                });
+        }
+    };
+
+    if (context == IdeCompletionContextKind::item || context == IdeCompletionContextKind::module_path) {
+        append_keywords(IDE_ITEM_COMPLETION_KEYWORDS);
+    }
+    if (context == IdeCompletionContextKind::expression) {
+        append_keywords(IDE_EXPRESSION_COMPLETION_KEYWORDS);
+    }
+}
+
+void ide_append_symbol_completions(std::vector<IdeCompletionItem>& items, std::unordered_map<std::string, bool>& seen,
+    const SymbolIndex& index, const IdeCompletionContextKind context, const base::SourceRange replacement_range,
+    const std::string_view prefix, const base::usize offset)
+{
+    for (const IdeSymbol& symbol : index.symbols) {
+        if (!ide_completion_symbol_visible(symbol, context, offset)
+            || !ide_completion_label_matches_prefix(symbol.name, prefix)) {
+            continue;
+        }
+        ide_push_completion_item(items, seen,
+            IdeCompletionItem{
+                context,
+                symbol.key,
+                symbol.member,
+                symbol.generic_instance,
+                replacement_range,
+                symbol.name,
+                symbol.kind,
+                symbol.detail,
+                symbol.part_index,
+                symbol.local,
+                symbol.checked,
+            });
+    }
+}
+
+[[nodiscard]] bool ide_source_has_explicit_type_annotation_after(
+    const IdeSnapshot& snapshot, const base::SourceRange range) noexcept
+{
+    const std::string_view text = snapshot.sources.text(snapshot.source_id);
+    base::usize offset = std::min(range.end, text.size());
+    while (offset < text.size() && (text[offset] == ' ' || text[offset] == '\t')) {
+        ++offset;
+    }
+    return offset < text.size() && text[offset] == ':';
+}
+
+[[nodiscard]] std::optional<std::string> ide_type_hint_from_detail(const std::string_view detail)
+{
+    const base::usize separator = detail.find(IDE_DETAIL_TYPE_SEPARATOR);
+    if (separator == std::string_view::npos) {
+        return std::nullopt;
+    }
+    std::string label;
+    label.append(IDE_DETAIL_TYPE_SEPARATOR);
+    label.append(detail.substr(separator + IDE_DETAIL_TYPE_SEPARATOR.size()));
+    return label;
+}
+
+[[nodiscard]] bool ide_token_kind_is_keyword(const syntax::TokenKind kind) noexcept
+{
+    return kind >= syntax::TokenKind::kw_module && kind <= syntax::TokenKind::kw_strraw;
+}
+
+[[nodiscard]] bool ide_token_kind_is_builtin_type(const syntax::TokenKind kind) noexcept
+{
+    return kind == syntax::TokenKind::kw_void || kind == syntax::TokenKind::kw_bool || kind == syntax::TokenKind::kw_i8
+        || kind == syntax::TokenKind::kw_u8 || kind == syntax::TokenKind::kw_i16 || kind == syntax::TokenKind::kw_u16
+        || kind == syntax::TokenKind::kw_i32 || kind == syntax::TokenKind::kw_u32 || kind == syntax::TokenKind::kw_i64
+        || kind == syntax::TokenKind::kw_u64 || kind == syntax::TokenKind::kw_isize
+        || kind == syntax::TokenKind::kw_usize || kind == syntax::TokenKind::kw_f32 || kind == syntax::TokenKind::kw_f64
+        || kind == syntax::TokenKind::kw_str || kind == syntax::TokenKind::kw_char;
+}
+
+[[nodiscard]] bool ide_token_kind_is_number(const syntax::TokenKind kind) noexcept
+{
+    return kind == syntax::TokenKind::integer_literal || kind == syntax::TokenKind::float_literal;
+}
+
+[[nodiscard]] bool ide_token_kind_is_string_like(const syntax::TokenKind kind) noexcept
+{
+    return kind == syntax::TokenKind::string_literal || kind == syntax::TokenKind::c_string_literal
+        || kind == syntax::TokenKind::raw_string_literal || kind == syntax::TokenKind::byte_string_literal
+        || kind == syntax::TokenKind::byte_literal || kind == syntax::TokenKind::char_literal;
+}
+
+[[nodiscard]] bool ide_token_kind_is_comment(const syntax::TokenKind kind) noexcept
+{
+    return kind == syntax::TokenKind::line_comment || kind == syntax::TokenKind::block_comment;
+}
+
+[[nodiscard]] bool ide_token_kind_is_punctuation(const syntax::TokenKind kind) noexcept
+{
+    return kind == syntax::TokenKind::l_paren || kind == syntax::TokenKind::r_paren
+        || kind == syntax::TokenKind::l_brace || kind == syntax::TokenKind::r_brace
+        || kind == syntax::TokenKind::l_bracket || kind == syntax::TokenKind::r_bracket
+        || kind == syntax::TokenKind::comma || kind == syntax::TokenKind::dot || kind == syntax::TokenKind::semicolon
+        || kind == syntax::TokenKind::colon || kind == syntax::TokenKind::colon_colon
+        || kind == syntax::TokenKind::ellipsis;
+}
+
+[[nodiscard]] std::string_view ide_symbol_kind_token_type(const std::string_view kind) noexcept
+{
+    if (kind == IDE_SYMBOL_KIND_FUNCTION) {
+        return IDE_TOKEN_TYPE_FUNCTION;
+    }
+    if (kind == IDE_SYMBOL_KIND_METHOD) {
+        return IDE_TOKEN_TYPE_METHOD;
+    }
+    if (kind == IDE_SYMBOL_KIND_PARAMETER) {
+        return IDE_TOKEN_TYPE_PARAMETER;
+    }
+    if (kind == IDE_SYMBOL_KIND_STRUCT || kind == IDE_SYMBOL_KIND_OPAQUE_STRUCT || kind == IDE_SYMBOL_KIND_TYPE_ALIAS) {
+        return IDE_TOKEN_TYPE_TYPE;
+    }
+    if (kind == IDE_SYMBOL_KIND_ENUM) {
+        return IDE_TOKEN_TYPE_ENUM;
+    }
+    if (kind == IDE_SYMBOL_KIND_ENUM_CASE) {
+        return IDE_TOKEN_TYPE_ENUM_MEMBER;
+    }
+    if (kind == IDE_SYMBOL_KIND_GENERIC_TEMPLATE) {
+        return IDE_TOKEN_TYPE_TYPE_PARAMETER;
+    }
+    if (kind == IDE_SYMBOL_KIND_STRUCT_FIELD) {
+        return IDE_TOKEN_TYPE_PROPERTY;
+    }
+    return IDE_TOKEN_TYPE_VARIABLE;
+}
+
+[[nodiscard]] std::string_view ide_syntax_token_type(const syntax::TokenKind kind) noexcept
+{
+    if (ide_token_kind_is_comment(kind)) {
+        return IDE_TOKEN_TYPE_COMMENT;
+    }
+    if (ide_token_kind_is_builtin_type(kind)) {
+        return IDE_TOKEN_TYPE_TYPE;
+    }
+    if (ide_token_kind_is_keyword(kind)) {
+        return IDE_TOKEN_TYPE_KEYWORD;
+    }
+    if (ide_token_kind_is_number(kind)) {
+        return IDE_TOKEN_TYPE_NUMBER;
+    }
+    if (ide_token_kind_is_string_like(kind)) {
+        return IDE_TOKEN_TYPE_STRING;
+    }
+    if (ide_token_kind_is_punctuation(kind)) {
+        return IDE_TOKEN_TYPE_PUNCTUATION;
+    }
+    return IDE_TOKEN_TYPE_OPERATOR;
+}
+
+void ide_append_symbol_token_modifiers(
+    std::vector<std::string>& modifiers, const IdeSymbol& symbol, const syntax::Token& token)
+{
+    if (same_range(symbol.range, token.range)) {
+        modifiers.push_back(std::string(IDE_TOKEN_MODIFIER_DECLARATION));
+        modifiers.push_back(std::string(IDE_TOKEN_MODIFIER_DEFINITION));
+    }
+    if (symbol.kind == IDE_SYMBOL_KIND_ENUM_CASE || symbol.kind == IDE_SYMBOL_KIND_CONST) {
+        modifiers.push_back(std::string(IDE_TOKEN_MODIFIER_READONLY));
+    }
+}
+
 } // namespace
 
 IdeSnapshot build_ide_snapshot(const IdeSnapshotRequest& request, const IdeIncrementalSnapshotInput incremental)
@@ -1876,6 +2263,110 @@ std::optional<IdeHoverInfo> hover_at_offset(const IdeSnapshot& snapshot, const b
     label << IDE_HOVER_TOKEN_PREFIX << syntax::token_kind_name(info->kind);
     hover.label = label.str();
     return hover;
+}
+
+std::vector<IdeCompletionItem> completion_items_at_offset(const IdeSnapshot& snapshot, const base::usize offset)
+{
+    if (!snapshot.parsed) {
+        return {};
+    }
+    const IdeCompletionPrefix prefix = ide_completion_prefix_at_offset(snapshot, offset);
+    const IdeCompletionContextKind context = ide_completion_context_at_offset(snapshot, prefix, offset);
+    const SymbolIndex index = build_symbol_index(snapshot);
+
+    std::vector<IdeCompletionItem> items;
+    std::unordered_map<std::string, bool> seen;
+    ide_append_symbol_completions(items, seen, index, context, prefix.range, prefix.text, offset);
+    ide_append_keyword_completions(items, seen, context, prefix.range, prefix.text);
+    std::ranges::sort(items, [](const IdeCompletionItem& lhs, const IdeCompletionItem& rhs) {
+        if (lhs.local != rhs.local) {
+            return lhs.local && !rhs.local;
+        }
+        if (lhs.checked != rhs.checked) {
+            return lhs.checked && !rhs.checked;
+        }
+        if (lhs.label == rhs.label) {
+            return lhs.kind < rhs.kind;
+        }
+        return lhs.label < rhs.label;
+    });
+    return items;
+}
+
+std::vector<IdeSemanticToken> semantic_tokens(const IdeSnapshot& snapshot)
+{
+    if (!snapshot.lexed) {
+        return {};
+    }
+
+    const SymbolIndex index = build_symbol_index(snapshot);
+    std::vector<IdeSemanticToken> result;
+    result.reserve(snapshot.lossless.token_count());
+    for (const syntax::Token& token : snapshot.lossless.tokens()) {
+        if (token.kind == syntax::TokenKind::eof || token.kind == syntax::TokenKind::whitespace) {
+            continue;
+        }
+
+        IdeSemanticToken semantic;
+        semantic.range = token.range;
+        semantic.text = std::string(token.text());
+        semantic.token_type = std::string(ide_syntax_token_type(token.kind));
+
+        if (token.kind == syntax::TokenKind::identifier) {
+            const IdeSymbol* const symbol = best_symbol_for_identifier(index, token.text(), token.range.begin);
+            if (symbol != nullptr) {
+                semantic.definition = symbol->key;
+                semantic.member = symbol->member;
+                semantic.token_type = std::string(ide_symbol_kind_token_type(symbol->kind));
+                semantic.checked = symbol->checked;
+                ide_append_symbol_token_modifiers(semantic.modifiers, *symbol, token);
+            } else {
+                semantic.token_type = std::string(IDE_TOKEN_TYPE_VARIABLE);
+            }
+        }
+
+        result.push_back(std::move(semantic));
+    }
+    std::ranges::sort(result, [](const IdeSemanticToken& lhs, const IdeSemanticToken& rhs) {
+        if (lhs.range.source.value == rhs.range.source.value) {
+            return lhs.range.begin < rhs.range.begin;
+        }
+        return lhs.range.source.value < rhs.range.source.value;
+    });
+    return result;
+}
+
+std::vector<IdeInlayHint> inlay_hints(const IdeSnapshot& snapshot)
+{
+    if (!snapshot.checked_semantics) {
+        return {};
+    }
+
+    const SymbolIndex index = build_symbol_index(snapshot);
+    std::vector<IdeInlayHint> result;
+    for (const IdeSymbol& symbol : index.symbols) {
+        if (!symbol.checked || symbol.kind != IDE_SYMBOL_KIND_LOCAL
+            || ide_source_has_explicit_type_annotation_after(snapshot, symbol.range)) {
+            continue;
+        }
+        const std::optional<std::string> label = ide_type_hint_from_detail(symbol.detail);
+        if (!label.has_value()) {
+            continue;
+        }
+        result.push_back(IdeInlayHint{
+            base::SourceRange{symbol.range.source, symbol.range.end, symbol.range.end},
+            *label,
+            std::string(IDE_INLAY_HINT_KIND_TYPE),
+            true,
+        });
+    }
+    std::ranges::sort(result, [](const IdeInlayHint& lhs, const IdeInlayHint& rhs) {
+        if (lhs.position.source.value == rhs.position.source.value) {
+            return lhs.position.begin < rhs.position.begin;
+        }
+        return lhs.position.source.value < rhs.position.source.value;
+    });
+    return result;
 }
 
 std::optional<IdeAstNodeInfo> ast_node_at_offset(const IdeSnapshot& snapshot, const base::usize offset)

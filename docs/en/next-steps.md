@@ -1,6 +1,6 @@
 # Next Steps
 
-## Current Highest Priority: M3.7 IDE Semantic Features
+## Current Highest Priority: M3.8 Query-backed Lowering / Backend Reuse
 
 The R5 Compilation Pipeline / Driver Action core is now closed:
 `CompilerInvocation`, the `Compiler` facade, `CompilationSession`,
@@ -31,8 +31,12 @@ M3.5 is closed in the
 [Aurex M3.5 Incremental Syntax And Stable AST Identity Plan](m3.5-incremental-syntax-stable-ast-plan.md).
 M3.6 is closed in the
 [Aurex M3.6 Project Graph And Persistent Query DB Plan](m3.6-project-graph-persistent-query-db-plan.md).
-The next implementation branch should be M3.7, centered on completion, rename,
-semantic tokens, code actions, and workspace symbols.
+M3.7 is closed in the
+[Aurex M3.7 IDE Semantic Features Plan And Closure Record](m3.7-ide-semantic-features-plan.md),
+covering completion, rename, semantic tokens, inlay hints, code actions,
+workspace symbols, and LSP projection. The next implementation branch should be
+M3.8, centered on lowering, IR, LLVM/backend query authority, and reuse
+boundaries.
 
 R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
 stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
@@ -120,17 +124,27 @@ M3.6 current completed surface:
 6. Tests/docs: query, driver-cache, tooling workspace model, and M3.6 docs are
    closed.
 
-Suggested first M3.7 implementation order:
+M3.7 current completed surface:
 
-1. WP-1: Model completion inputs from syntax context, visible module exports,
-   and sema scope.
-2. WP-2: Implement rename planning around symbol identity, conflict detection,
-   and cross-file edits.
-3. WP-3: Build semantic tokens from syntax kinds plus checked semantic facts.
-4. WP-4: Add code actions / quick fixes only for diagnostics carrying
-   structured fix context.
-5. WP-5: Add workspace symbols, cross-file references, and stale-generation
-   handling.
+1. Protocol-neutral completion merges syntax context, sema scope, workspace
+   facts, and keywords.
+2. Protocol-neutral rename uses symbol identity, identifier/keyword/conflict
+   checks, and workspace edit plans.
+3. Semantic tokens and inlay hints combine syntax token kinds with checked
+   semantic facts.
+4. Code actions generate lookup-suggestion quick fixes from structured help
+   diagnostics.
+5. Workspace symbols and LSP projection cover workspace-index materialization,
+   stale-generation guards, and completion/rename/semanticTokens/codeAction/
+   workspaceSymbol/inlayHint providers.
+
+Suggested first M3.8 implementation order:
+
+1. WP-1: Function-body lowering query authority.
+2. WP-2: Generic-instance lowering query authority.
+3. WP-3: Type-layout / enum-layout / ABI-symbol query facts.
+4. WP-4: Connect IR pass analysis preservation to query invalidation.
+5. WP-5: Split LLVM emission units from target-independent IR units.
 
 2026-05-29 M3.3 WP-1/2/3 implementation update: `aurex_tooling` now has a
 versioned `ToolingSession`, in-place `IdeSnapshot` cache construction, and a

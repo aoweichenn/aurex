@@ -1,7 +1,7 @@
 # Current Progress
 
 Version: 0.1.3
-Stage: M3.6 project graph / persistent query DB complete; next stage M3.7 IDE semantic features
+Stage: M3.7 IDE semantic features complete; next stage M3.8 query-backed lowering / backend reuse
 
 ## Overall Status
 
@@ -170,7 +170,23 @@ rows/edges/profile output, and tooling workspace-model identity across
 open/change/close flows. The detailed plan is
 [Aurex M3.6 Project Graph And Persistent Query DB Plan](m3.6-project-graph-persistent-query-db-plan.md).
 
-The next target is M3.7 IDE Semantic Features.
+As of 2026-05-30, M3.7 IDE Semantic Features is complete for the first
+protocol-neutral IDE feature layer. `IdeSnapshot` / `ToolingSession` now expose
+completion, rename, semantic tokens, inlay hints, code actions, and workspace
+symbols as value types. Completion merges syntax context, sema scope, keywords,
+and open-workspace semantic facts. Rename uses symbol identity to produce a
+workspace edit plan and checks identifiers, reserved keywords, and visible
+symbol conflicts. Semantic tokens are synthesized from syntax token kinds plus
+checked symbol facts. Inlay hints currently cover checked locals without
+explicit type annotations. Code actions generate lookup-suggestion quick fixes
+from structured help diagnostics. The LSP adapter remains a projection layer
+and now handles `textDocument/completion`, `textDocument/rename`,
+`textDocument/semanticTokens/full`, `textDocument/codeAction`,
+`workspace/symbol`, and `textDocument/inlayHint`, with generation guards at
+document request boundaries to avoid stale result publication. The detailed plan
+is [Aurex M3.7 IDE Semantic Features Plan And Closure Record](m3.7-ide-semantic-features-plan.md).
+
+The next target is M3.8 Query-backed Lowering / Backend Reuse.
 
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and

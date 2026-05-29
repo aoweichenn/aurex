@@ -19,9 +19,11 @@ down into query-backed sema architecture:
 As of 2026-05-25, the R5 Compilation Pipeline / Driver Action core is complete.
 As of 2026-05-28, M3.0 module-system closure and the M3.1 generic release
 baseline are complete. As of 2026-05-29, M3.2 Query-backed Sema and M3.3
-Tooling Session And Incremental Sema have been merged back to `m3`. The next
-active line is `m3.4`, focused on turning query reuse explanation into real
-incremental sema execution. Every M3 implementation must reuse the R5
+Tooling Session And Incremental Sema have been merged back to `m3`. M3.4,
+M3.5, M3.6, and M3.7 have since closed real incremental sema execution, stable
+syntax identity, project graph / persistent query DB, and IDE semantic
+features. The next active line should be M3.8, focused on pushing the query
+architecture into lowering, IR, and backend work. Every M3 implementation must reuse the R5
 `CompilationSession`,
 `CompilationPipeline`, `FrontendPipeline`, `LoweringPipeline`,
 `BackendPipeline`, `PipelineStage`, query, diagnostics, and profile/tooling
@@ -272,23 +274,27 @@ lockfile, registry protocol, or version solver.
 
 ### M3.7: IDE Semantic Features
 
+Status: 2026-05-30. M3.7 is complete for the first IDE semantic feature layer.
+Execution details are recorded in the
+[Aurex M3.7 IDE Semantic Features Plan And Closure Record](m3.7-ide-semantic-features-plan.md).
+
 M3.7 adds higher-level IDE features only after M3.4 through M3.6 stabilize the
 facts they need. The LSP layer remains an adapter around protocol-neutral
 tooling value types.
 
 Core deliverables:
 
-- Completion from syntax context, sema scope, visible module exports, and
+- Completion now uses syntax context, sema scope, open-workspace facts, and
   checked generic/member facts.
-- Rename with symbol identity, visibility checks, conflict detection, and
-  cross-file edit planning.
-- Semantic tokens from syntax plus checked semantic facts.
-- Code actions and quick fixes only for diagnostics that carry structured
-  fixable context.
-- Inlay hints, workspace symbols, and cross-file references from the workspace
+- Rename now uses symbol identity, identifier/keyword/conflict checks, and
+  workspace edit planning.
+- Semantic tokens are synthesized from syntax kinds plus checked semantic facts.
+- Code actions / quick fixes are generated from structured help diagnostics for
+  lookup suggestions.
+- Inlay hints, workspace symbols, and cross-file surface come from the workspace
   semantic index.
-- Request cancellation/generation handling that prevents stale snapshot results
-  from being published.
+- Generation handling at LSP document request boundaries prevents stale snapshot
+  results from being published.
 
 M3.7 must not let LSP DTOs leak into compiler internals.
 

@@ -1,6 +1,8 @@
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/tooling/lsp.hpp>
 
+#include <algorithm>
+#include <array>
 #include <charconv>
 #include <optional>
 #include <sstream>
@@ -29,6 +31,12 @@ constexpr std::string_view LSP_METHOD_HOVER = "textDocument/hover";
 constexpr std::string_view LSP_METHOD_DEFINITION = "textDocument/definition";
 constexpr std::string_view LSP_METHOD_REFERENCES = "textDocument/references";
 constexpr std::string_view LSP_METHOD_DOCUMENT_SYMBOL = "textDocument/documentSymbol";
+constexpr std::string_view LSP_METHOD_COMPLETION = "textDocument/completion";
+constexpr std::string_view LSP_METHOD_RENAME = "textDocument/rename";
+constexpr std::string_view LSP_METHOD_SEMANTIC_TOKENS_FULL = "textDocument/semanticTokens/full";
+constexpr std::string_view LSP_METHOD_CODE_ACTION = "textDocument/codeAction";
+constexpr std::string_view LSP_METHOD_WORKSPACE_SYMBOL = "workspace/symbol";
+constexpr std::string_view LSP_METHOD_INLAY_HINT = "textDocument/inlayHint";
 constexpr std::string_view LSP_METHOD_PUBLISH_DIAGNOSTICS = "textDocument/publishDiagnostics";
 constexpr std::string_view LSP_PROP_ID = "id";
 constexpr std::string_view LSP_PROP_METHOD = "method";
@@ -41,6 +49,8 @@ constexpr std::string_view LSP_PROP_TEXT = "text";
 constexpr std::string_view LSP_PROP_VERSION = "version";
 constexpr std::string_view LSP_PROP_LINE = "line";
 constexpr std::string_view LSP_PROP_CHARACTER = "character";
+constexpr std::string_view LSP_PROP_NEW_NAME = "newName";
+constexpr std::string_view LSP_PROP_QUERY = "query";
 constexpr std::string_view LSP_MARKUP_KIND_PLAINTEXT = "plaintext";
 constexpr std::string_view LSP_JSON_ESCAPE_HEX_DIGITS = "0123456789ABCDEF";
 constexpr char LSP_JSON_QUOTE = '"';
@@ -83,6 +93,55 @@ constexpr int LSP_SYMBOL_KIND_CONSTANT = 14;
 constexpr int LSP_SYMBOL_KIND_ENUM_MEMBER = 22;
 constexpr int LSP_SYMBOL_KIND_STRUCT = 23;
 constexpr int LSP_SYMBOL_KIND_TYPE_PARAMETER = 26;
+constexpr int LSP_COMPLETION_ITEM_KIND_METHOD = 2;
+constexpr int LSP_COMPLETION_ITEM_KIND_FUNCTION = 3;
+constexpr int LSP_COMPLETION_ITEM_KIND_FIELD = 5;
+constexpr int LSP_COMPLETION_ITEM_KIND_VARIABLE = 6;
+constexpr int LSP_COMPLETION_ITEM_KIND_CLASS = 7;
+constexpr int LSP_COMPLETION_ITEM_KIND_MODULE = 9;
+constexpr int LSP_COMPLETION_ITEM_KIND_VALUE = 12;
+constexpr int LSP_COMPLETION_ITEM_KIND_ENUM = 13;
+constexpr int LSP_COMPLETION_ITEM_KIND_KEYWORD = 14;
+constexpr int LSP_COMPLETION_ITEM_KIND_CONSTANT = 21;
+constexpr int LSP_COMPLETION_ITEM_KIND_ENUM_MEMBER = 20;
+constexpr int LSP_COMPLETION_ITEM_KIND_TYPE_PARAMETER = 25;
+constexpr int LSP_INLAY_HINT_KIND_TYPE = 1;
+constexpr int LSP_SEMANTIC_TOKEN_MODIFIER_DECLARATION_BIT = 1;
+constexpr int LSP_SEMANTIC_TOKEN_MODIFIER_DEFINITION_BIT = 2;
+constexpr int LSP_SEMANTIC_TOKEN_MODIFIER_READONLY_BIT = 4;
+
+constexpr auto LSP_SEMANTIC_TOKEN_TYPES = std::to_array<std::string_view>({
+    "namespace",
+    "type",
+    "class",
+    "enum",
+    "interface",
+    "struct",
+    "typeParameter",
+    "parameter",
+    "variable",
+    "property",
+    "enumMember",
+    "event",
+    "function",
+    "method",
+    "macro",
+    "keyword",
+    "modifier",
+    "comment",
+    "string",
+    "number",
+    "regexp",
+    "operator",
+    "decorator",
+    "punctuation",
+});
+
+constexpr auto LSP_SEMANTIC_TOKEN_MODIFIERS = std::to_array<std::string_view>({
+    "declaration",
+    "definition",
+    "readonly",
+});
 
 struct JsonSlice {
     std::string_view text;
@@ -165,11 +224,10 @@ struct JsonSlice {
     return std::nullopt;
 }
 
-[[nodiscard]] std::optional<base::usize> lsp_json_scalar_end(
-    const std::string_view text, base::usize begin) noexcept
+[[nodiscard]] std::optional<base::usize> lsp_json_scalar_end(const std::string_view text, base::usize begin) noexcept
 {
     while (begin < text.size() && text[begin] != LSP_JSON_COMMA && text[begin] != LSP_JSON_OBJECT_CLOSE
-           && text[begin] != LSP_JSON_ARRAY_CLOSE && !lsp_json_is_whitespace(text[begin])) {
+        && text[begin] != LSP_JSON_ARRAY_CLOSE && !lsp_json_is_whitespace(text[begin])) {
         ++begin;
     }
     return begin;
@@ -316,8 +374,7 @@ struct JsonSlice {
     return lsp_json_unescape_string(value.text);
 }
 
-[[nodiscard]] std::optional<base::i64> lsp_json_i64_property(
-    const std::string_view object, const std::string_view name)
+[[nodiscard]] std::optional<base::i64> lsp_json_i64_property(const std::string_view object, const std::string_view name)
 {
     const JsonSlice value = lsp_json_property(object, name);
     if (!value.found) {
@@ -418,8 +475,7 @@ void lsp_append_json_escaped(std::string& out, const std::string_view text)
     return out;
 }
 
-[[nodiscard]] std::string lsp_error_response(
-    const std::string_view id, const int code, const std::string_view message)
+[[nodiscard]] std::string lsp_error_response(const std::string_view id, const int code, const std::string_view message)
 {
     std::string out;
     out.push_back(LSP_JSON_OBJECT_OPEN);
@@ -470,6 +526,15 @@ void lsp_append_range(std::string& out, const ToolingTextRange& range)
     out.push_back(LSP_JSON_OBJECT_CLOSE);
 }
 
+void lsp_append_source_position(std::string& out, const ToolingSourcePosition position)
+{
+    out.append("{\"line\":");
+    out.append(std::to_string(position.line));
+    out.append(",\"character\":");
+    out.append(std::to_string(position.character));
+    out.push_back(LSP_JSON_OBJECT_CLOSE);
+}
+
 [[nodiscard]] int lsp_diagnostic_severity(const base::Severity severity) noexcept
 {
     switch (severity) {
@@ -516,6 +581,69 @@ void lsp_append_range(std::string& out, const ToolingTextRange& range)
         return LSP_SYMBOL_KIND_TYPE_PARAMETER;
     }
     return LSP_SYMBOL_KIND_CLASS;
+}
+
+[[nodiscard]] int lsp_completion_item_kind(const std::string_view kind) noexcept
+{
+    if (kind == "keyword") {
+        return LSP_COMPLETION_ITEM_KIND_KEYWORD;
+    }
+    if (kind == "function") {
+        return LSP_COMPLETION_ITEM_KIND_FUNCTION;
+    }
+    if (kind == "method") {
+        return LSP_COMPLETION_ITEM_KIND_METHOD;
+    }
+    if (kind == "const") {
+        return LSP_COMPLETION_ITEM_KIND_CONSTANT;
+    }
+    if (kind == "struct_field") {
+        return LSP_COMPLETION_ITEM_KIND_FIELD;
+    }
+    if (kind == "local" || kind == "parameter" || kind == "value" || kind == "global") {
+        return LSP_COMPLETION_ITEM_KIND_VARIABLE;
+    }
+    if (kind == "struct" || kind == "opaque_struct") {
+        return LSP_COMPLETION_ITEM_KIND_CLASS;
+    }
+    if (kind == "enum") {
+        return LSP_COMPLETION_ITEM_KIND_ENUM;
+    }
+    if (kind == "enum_case") {
+        return LSP_COMPLETION_ITEM_KIND_ENUM_MEMBER;
+    }
+    if (kind == "type_alias") {
+        return LSP_COMPLETION_ITEM_KIND_VALUE;
+    }
+    if (kind == "generic_template") {
+        return LSP_COMPLETION_ITEM_KIND_TYPE_PARAMETER;
+    }
+    return LSP_COMPLETION_ITEM_KIND_MODULE;
+}
+
+[[nodiscard]] base::usize lsp_semantic_token_type_index(const std::string_view token_type) noexcept
+{
+    const auto found = std::ranges::find(LSP_SEMANTIC_TOKEN_TYPES, token_type);
+    if (found == LSP_SEMANTIC_TOKEN_TYPES.end()) {
+        return static_cast<base::usize>(std::ranges::find(LSP_SEMANTIC_TOKEN_TYPES, std::string_view{"variable"})
+            - LSP_SEMANTIC_TOKEN_TYPES.begin());
+    }
+    return static_cast<base::usize>(found - LSP_SEMANTIC_TOKEN_TYPES.begin());
+}
+
+[[nodiscard]] int lsp_semantic_token_modifier_bits(const std::vector<std::string>& modifiers) noexcept
+{
+    int bits = 0;
+    for (const std::string& modifier : modifiers) {
+        if (modifier == "declaration") {
+            bits |= LSP_SEMANTIC_TOKEN_MODIFIER_DECLARATION_BIT;
+        } else if (modifier == "definition") {
+            bits |= LSP_SEMANTIC_TOKEN_MODIFIER_DEFINITION_BIT;
+        } else if (modifier == "readonly") {
+            bits |= LSP_SEMANTIC_TOKEN_MODIFIER_READONLY_BIT;
+        }
+    }
+    return bits;
 }
 
 void lsp_append_owner_stages(std::string& out, const std::vector<IdePipelineStageOwner>& stages)
@@ -728,6 +856,225 @@ void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic
     return out;
 }
 
+[[nodiscard]] std::optional<ToolingDocumentVersion> lsp_document_generation(
+    const ToolingSession& session, const ToolingDocumentId& document)
+{
+    const std::optional<ToolingDocumentState> state = session.document_state(document);
+    if (!state.has_value()) {
+        return std::nullopt;
+    }
+    return state->version;
+}
+
+[[nodiscard]] bool lsp_generation_is_current(
+    const ToolingSession& session, const ToolingDocumentId& document, const ToolingDocumentVersion version)
+{
+    return session.is_generation_current(document, version);
+}
+
+[[nodiscard]] std::string lsp_completion_result(const std::vector<ToolingCompletionItem>& completions)
+{
+    std::string out;
+    out.append("{\"isIncomplete\":false,\"items\":[");
+    for (base::usize index = 0; index < completions.size(); ++index) {
+        if (index != 0U) {
+            out.push_back(LSP_JSON_COMMA);
+        }
+        const ToolingCompletionItem& item = completions[index];
+        out.append("{\"label\":");
+        lsp_append_json_escaped(out, item.label);
+        out.append(",\"kind\":");
+        out.append(std::to_string(lsp_completion_item_kind(item.kind)));
+        out.append(",\"detail\":");
+        lsp_append_json_escaped(out, item.detail);
+        out.append(",\"textEdit\":{\"range\":");
+        lsp_append_range(out, item.replacement_range);
+        out.append(",\"newText\":");
+        lsp_append_json_escaped(out, item.label);
+        out.append("},\"data\":{\"aurexKind\":");
+        lsp_append_json_escaped(out, item.kind);
+        out.append(",\"stableDefinitionKey\":");
+        lsp_append_json_escaped(out, item.stable_definition_key);
+        out.append(",\"stableMemberKey\":");
+        lsp_append_json_escaped(out, item.stable_member_key);
+        out.append(",\"partIndex\":");
+        out.append(std::to_string(item.part_index));
+        out.append(",\"checked\":");
+        out.append(item.checked ? "true" : "false");
+        out.append(",\"fromWorkspace\":");
+        out.append(item.from_workspace ? "true" : "false");
+        out.append("}}");
+    }
+    out.append("]}");
+    return out;
+}
+
+void lsp_append_text_edit(std::string& out, const ToolingTextRange& range, const std::string_view new_text)
+{
+    out.append("{\"range\":");
+    lsp_append_range(out, range);
+    out.append(",\"newText\":");
+    lsp_append_json_escaped(out, new_text);
+    out.push_back(LSP_JSON_OBJECT_CLOSE);
+}
+
+template <typename EditRange>
+void lsp_append_workspace_changes(std::string& out, const std::vector<EditRange>& edits)
+{
+    out.append("{\"changes\":{");
+    std::vector<std::string> uris;
+    uris.reserve(edits.size());
+    for (const EditRange& edit : edits) {
+        const std::string& uri = edit.document.uri;
+        if (std::ranges::find(uris, uri) == uris.end()) {
+            uris.push_back(uri);
+        }
+    }
+    std::ranges::sort(uris);
+    for (base::usize uri_index = 0; uri_index < uris.size(); ++uri_index) {
+        if (uri_index != 0U) {
+            out.push_back(LSP_JSON_COMMA);
+        }
+        lsp_append_json_escaped(out, uris[uri_index]);
+        out.append(":[");
+        bool first_edit = true;
+        for (const EditRange& edit : edits) {
+            if (edit.document.uri != uris[uri_index]) {
+                continue;
+            }
+            if (!first_edit) {
+                out.push_back(LSP_JSON_COMMA);
+            }
+            first_edit = false;
+            lsp_append_text_edit(out, edit.range, edit.new_text);
+        }
+        out.push_back(LSP_JSON_ARRAY_CLOSE);
+    }
+    out.append("}}");
+}
+
+[[nodiscard]] std::string lsp_rename_result(const ToolingRenamePlan& plan)
+{
+    std::string out;
+    lsp_append_workspace_changes(out, plan.edits);
+    return out;
+}
+
+[[nodiscard]] std::string lsp_semantic_tokens_result(const std::vector<ToolingSemanticToken>& tokens)
+{
+    std::string out;
+    out.append("{\"data\":[");
+    base::usize previous_line = 0;
+    base::usize previous_start = 0;
+    for (base::usize index = 0; index < tokens.size(); ++index) {
+        if (index != 0U) {
+            out.push_back(LSP_JSON_COMMA);
+        }
+        const ToolingSemanticToken& token = tokens[index];
+        const base::usize line = lsp_zero_based(token.range.start.line);
+        const base::usize start = lsp_zero_based(token.range.start.column);
+        const base::usize delta_line = index == 0U ? line : line - previous_line;
+        const base::usize delta_start = delta_line == 0U ? start - previous_start : start;
+        const base::usize length = token.range.range.length();
+        out.append(std::to_string(delta_line));
+        out.push_back(LSP_JSON_COMMA);
+        out.append(std::to_string(delta_start));
+        out.push_back(LSP_JSON_COMMA);
+        out.append(std::to_string(length));
+        out.push_back(LSP_JSON_COMMA);
+        out.append(std::to_string(lsp_semantic_token_type_index(token.token_type)));
+        out.push_back(LSP_JSON_COMMA);
+        out.append(std::to_string(lsp_semantic_token_modifier_bits(token.modifiers)));
+        previous_line = line;
+        previous_start = start;
+    }
+    out.append("]}");
+    return out;
+}
+
+[[nodiscard]] std::string lsp_code_action_result(const std::vector<ToolingCodeAction>& actions)
+{
+    std::string out;
+    out.push_back(LSP_JSON_ARRAY_OPEN);
+    for (base::usize index = 0; index < actions.size(); ++index) {
+        if (index != 0U) {
+            out.push_back(LSP_JSON_COMMA);
+        }
+        const ToolingCodeAction& action = actions[index];
+        out.append("{\"title\":");
+        lsp_append_json_escaped(out, action.title);
+        out.append(",\"kind\":");
+        lsp_append_json_escaped(out, action.kind);
+        out.append(",\"isPreferred\":");
+        out.append(action.preferred ? "true" : "false");
+        out.append(",\"edit\":");
+        lsp_append_workspace_changes(out, action.edits);
+        out.append(",\"data\":");
+        lsp_append_json_escaped(out, action.data);
+        out.push_back(LSP_JSON_OBJECT_CLOSE);
+    }
+    out.push_back(LSP_JSON_ARRAY_CLOSE);
+    return out;
+}
+
+[[nodiscard]] std::string lsp_workspace_symbol_result(const std::vector<ToolingWorkspaceSymbol>& symbols)
+{
+    std::string out;
+    out.push_back(LSP_JSON_ARRAY_OPEN);
+    for (base::usize index = 0; index < symbols.size(); ++index) {
+        if (index != 0U) {
+            out.push_back(LSP_JSON_COMMA);
+        }
+        const ToolingWorkspaceSymbol& symbol = symbols[index];
+        out.append("{\"name\":");
+        lsp_append_json_escaped(out, symbol.name);
+        out.append(",\"kind\":");
+        out.append(std::to_string(lsp_symbol_kind(symbol.kind)));
+        out.append(",\"location\":");
+        out.append(lsp_location_json(symbol.document.uri, symbol.range));
+        out.append(",\"containerName\":");
+        lsp_append_json_escaped(out, symbol.container_name);
+        out.append(",\"data\":{\"aurexKind\":");
+        lsp_append_json_escaped(out, symbol.kind);
+        out.append(",\"stableQueryKey\":");
+        lsp_append_json_escaped(out, symbol.stable_query_key);
+        out.append(",\"stableDefinitionKey\":");
+        lsp_append_json_escaped(out, symbol.stable_definition_key);
+        out.append(",\"partIndex\":");
+        out.append(std::to_string(symbol.part_index));
+        out.append(",\"checked\":");
+        out.append(symbol.checked ? "true" : "false");
+        out.append("}}");
+    }
+    out.push_back(LSP_JSON_ARRAY_CLOSE);
+    return out;
+}
+
+[[nodiscard]] std::string lsp_inlay_hint_result(const std::vector<ToolingInlayHint>& hints)
+{
+    std::string out;
+    out.push_back(LSP_JSON_ARRAY_OPEN);
+    for (base::usize index = 0; index < hints.size(); ++index) {
+        if (index != 0U) {
+            out.push_back(LSP_JSON_COMMA);
+        }
+        const ToolingInlayHint& hint = hints[index];
+        out.append("{\"position\":");
+        lsp_append_source_position(out, hint.position);
+        out.append(",\"label\":");
+        lsp_append_json_escaped(out, hint.label);
+        out.append(",\"kind\":");
+        out.append(std::to_string(LSP_INLAY_HINT_KIND_TYPE));
+        out.append(",\"data\":{\"aurexKind\":");
+        lsp_append_json_escaped(out, hint.kind);
+        out.append(",\"checked\":");
+        out.append(hint.checked ? "true" : "false");
+        out.append("}}");
+    }
+    out.push_back(LSP_JSON_ARRAY_CLOSE);
+    return out;
+}
+
 [[nodiscard]] bool lsp_header_name_matches(const std::string_view line, const std::string_view name) noexcept
 {
     return line.size() >= name.size() && line.substr(0, name.size()) == name;
@@ -738,8 +1085,8 @@ void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic
     base::usize search = 0;
     while (search <= header.size()) {
         const base::usize line_end = header.find(LSP_LINE_SEPARATOR, search);
-        const std::string_view line = line_end == std::string_view::npos ? header.substr(search)
-                                                                         : header.substr(search, line_end - search);
+        const std::string_view line =
+            line_end == std::string_view::npos ? header.substr(search) : header.substr(search, line_end - search);
         if (lsp_header_name_matches(line, LSP_HEADER_CONTENT_LENGTH)) {
             const base::usize colon = line.find(LSP_HEADER_COLON);
             if (colon == std::string_view::npos) {
@@ -815,8 +1162,8 @@ std::vector<std::string> LspServer::handle_json_message(const std::string_view b
     const JsonSlice id = lsp_json_property(body, LSP_PROP_ID);
     const JsonSlice params = lsp_json_property(body, LSP_PROP_PARAMS);
     if (!method.has_value()) {
-        return id.found ? std::vector<std::string>{lsp_error_response(id.text, LSP_ERROR_INVALID_REQUEST,
-                              "JSON-RPC request is missing method")}
+        return id.found ? std::vector<std::string>{lsp_error_response(
+                              id.text, LSP_ERROR_INVALID_REQUEST, "JSON-RPC request is missing method")}
                         : std::vector<std::string>{};
     }
     if (*method == LSP_METHOD_INITIALIZE) {
@@ -859,6 +1206,30 @@ std::vector<std::string> LspServer::handle_json_message(const std::string_view b
     }
     if (*method == LSP_METHOD_DOCUMENT_SYMBOL) {
         return params.found ? this->handle_document_symbols(id.text, params.text)
+                            : std::vector<std::string>{lsp_response(id.text, "[]")};
+    }
+    if (*method == LSP_METHOD_COMPLETION) {
+        return params.found ? this->handle_completion(id.text, params.text)
+                            : std::vector<std::string>{lsp_response(id.text, "{\"isIncomplete\":false,\"items\":[]}")};
+    }
+    if (*method == LSP_METHOD_RENAME) {
+        return params.found ? this->handle_rename(id.text, params.text)
+                            : std::vector<std::string>{lsp_response(id.text, LSP_NULL)};
+    }
+    if (*method == LSP_METHOD_SEMANTIC_TOKENS_FULL) {
+        return params.found ? this->handle_semantic_tokens(id.text, params.text)
+                            : std::vector<std::string>{lsp_response(id.text, "{\"data\":[]}")};
+    }
+    if (*method == LSP_METHOD_CODE_ACTION) {
+        return params.found ? this->handle_code_actions(id.text, params.text)
+                            : std::vector<std::string>{lsp_response(id.text, "[]")};
+    }
+    if (*method == LSP_METHOD_WORKSPACE_SYMBOL) {
+        return params.found ? this->handle_workspace_symbols(id.text, params.text)
+                            : std::vector<std::string>{lsp_response(id.text, "[]")};
+    }
+    if (*method == LSP_METHOD_INLAY_HINT) {
+        return params.found ? this->handle_inlay_hints(id.text, params.text)
                             : std::vector<std::string>{lsp_response(id.text, "[]")};
     }
     return id.found
@@ -910,10 +1281,29 @@ const ToolingSession& LspServer::session() const noexcept
 std::vector<std::string> LspServer::handle_initialize(const std::string_view id)
 {
     std::ostringstream result;
-    result << "{\"capabilities\":{\"textDocumentSync\":{\"openClose\":true,\"change\":"
-           << LSP_TEXT_DOCUMENT_SYNC_FULL
+    result << "{\"capabilities\":{\"textDocumentSync\":{\"openClose\":true,\"change\":" << LSP_TEXT_DOCUMENT_SYNC_FULL
            << "},\"hoverProvider\":true,\"definitionProvider\":true,\"referencesProvider\":true,"
-              "\"documentSymbolProvider\":true}}";
+              "\"documentSymbolProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\",\":\"]},"
+              "\"renameProvider\":true,\"semanticTokensProvider\":{\"legend\":{\"tokenTypes\":[";
+    for (base::usize index = 0; index < LSP_SEMANTIC_TOKEN_TYPES.size(); ++index) {
+        if (index != 0U) {
+            result << ',';
+        }
+        std::string escaped;
+        lsp_append_json_escaped(escaped, LSP_SEMANTIC_TOKEN_TYPES[index]);
+        result << escaped;
+    }
+    result << "],\"tokenModifiers\":[";
+    for (base::usize index = 0; index < LSP_SEMANTIC_TOKEN_MODIFIERS.size(); ++index) {
+        if (index != 0U) {
+            result << ',';
+        }
+        std::string escaped;
+        lsp_append_json_escaped(escaped, LSP_SEMANTIC_TOKEN_MODIFIERS[index]);
+        result << escaped;
+    }
+    result << "]},\"full\":true},\"codeActionProvider\":true,\"workspaceSymbolProvider\":true,"
+              "\"inlayHintProvider\":true}}";
     return {lsp_response(id, result.str())};
 }
 
@@ -1004,7 +1394,8 @@ std::vector<std::string> LspServer::handle_references(const std::string_view id,
     if (!document.has_value() || !position.has_value()) {
         return {lsp_response(id, "[]")};
     }
-    base::Result<std::vector<ToolingReference>> references = this->session_.references_at_position(*document, *position);
+    base::Result<std::vector<ToolingReference>> references =
+        this->session_.references_at_position(*document, *position);
     if (!references) {
         return {lsp_response(id, "[]")};
     }
@@ -1031,6 +1422,106 @@ std::vector<std::string> LspServer::handle_document_symbols(const std::string_vi
         return {lsp_response(id, "[]")};
     }
     return {lsp_response(id, lsp_document_symbol_result(symbols.value()))};
+}
+
+std::vector<std::string> LspServer::handle_completion(const std::string_view id, const std::string_view params)
+{
+    const std::optional<ToolingDocumentId> document = lsp_document_from_params(params, this->session_.project_config());
+    const std::optional<ToolingSourcePosition> position = lsp_position_from_params(params);
+    if (!document.has_value() || !position.has_value()) {
+        return {lsp_response(id, "{\"isIncomplete\":false,\"items\":[]}")};
+    }
+    const std::optional<ToolingDocumentVersion> generation = lsp_document_generation(this->session_, *document);
+    if (!generation.has_value()) {
+        return {lsp_response(id, "{\"isIncomplete\":false,\"items\":[]}")};
+    }
+    base::Result<std::vector<ToolingCompletionItem>> completions =
+        this->session_.completion_at_position(*document, *position);
+    if (!completions || !lsp_generation_is_current(this->session_, *document, *generation)) {
+        return {lsp_response(id, "{\"isIncomplete\":false,\"items\":[]}")};
+    }
+    return {lsp_response(id, lsp_completion_result(completions.value()))};
+}
+
+std::vector<std::string> LspServer::handle_rename(const std::string_view id, const std::string_view params)
+{
+    const std::optional<ToolingDocumentId> document = lsp_document_from_params(params, this->session_.project_config());
+    const std::optional<ToolingSourcePosition> position = lsp_position_from_params(params);
+    const std::optional<std::string> new_name = lsp_json_string_property(params, LSP_PROP_NEW_NAME);
+    if (!document.has_value() || !position.has_value() || !new_name.has_value()) {
+        return {lsp_response(id, LSP_NULL)};
+    }
+    const std::optional<ToolingDocumentVersion> generation = lsp_document_generation(this->session_, *document);
+    if (!generation.has_value()) {
+        return {lsp_response(id, LSP_NULL)};
+    }
+    base::Result<ToolingRenamePlan> rename = this->session_.rename_at_position(*document, *position, *new_name);
+    if (!rename || !rename.value().valid || !lsp_generation_is_current(this->session_, *document, *generation)) {
+        return {lsp_response(id, LSP_NULL)};
+    }
+    return {lsp_response(id, lsp_rename_result(rename.value()))};
+}
+
+std::vector<std::string> LspServer::handle_semantic_tokens(const std::string_view id, const std::string_view params)
+{
+    const std::optional<ToolingDocumentId> document = lsp_document_from_params(params, this->session_.project_config());
+    if (!document.has_value()) {
+        return {lsp_response(id, "{\"data\":[]}")};
+    }
+    const std::optional<ToolingDocumentVersion> generation = lsp_document_generation(this->session_, *document);
+    if (!generation.has_value()) {
+        return {lsp_response(id, "{\"data\":[]}")};
+    }
+    base::Result<std::vector<ToolingSemanticToken>> tokens = this->session_.semantic_tokens(*document);
+    if (!tokens || !lsp_generation_is_current(this->session_, *document, *generation)) {
+        return {lsp_response(id, "{\"data\":[]}")};
+    }
+    return {lsp_response(id, lsp_semantic_tokens_result(tokens.value()))};
+}
+
+std::vector<std::string> LspServer::handle_code_actions(const std::string_view id, const std::string_view params)
+{
+    const std::optional<ToolingDocumentId> document = lsp_document_from_params(params, this->session_.project_config());
+    if (!document.has_value()) {
+        return {lsp_response(id, "[]")};
+    }
+    const std::optional<ToolingDocumentVersion> generation = lsp_document_generation(this->session_, *document);
+    if (!generation.has_value()) {
+        return {lsp_response(id, "[]")};
+    }
+    base::Result<std::vector<ToolingCodeAction>> actions = this->session_.code_actions(*document);
+    if (!actions || !lsp_generation_is_current(this->session_, *document, *generation)) {
+        return {lsp_response(id, "[]")};
+    }
+    return {lsp_response(id, lsp_code_action_result(actions.value()))};
+}
+
+std::vector<std::string> LspServer::handle_workspace_symbols(const std::string_view id, const std::string_view params)
+{
+    const std::optional<std::string> query = lsp_json_string_property(params, LSP_PROP_QUERY);
+    base::Result<std::vector<ToolingWorkspaceSymbol>> symbols =
+        this->session_.workspace_symbols(query.value_or(std::string{}));
+    if (!symbols) {
+        return {lsp_response(id, "[]")};
+    }
+    return {lsp_response(id, lsp_workspace_symbol_result(symbols.value()))};
+}
+
+std::vector<std::string> LspServer::handle_inlay_hints(const std::string_view id, const std::string_view params)
+{
+    const std::optional<ToolingDocumentId> document = lsp_document_from_params(params, this->session_.project_config());
+    if (!document.has_value()) {
+        return {lsp_response(id, "[]")};
+    }
+    const std::optional<ToolingDocumentVersion> generation = lsp_document_generation(this->session_, *document);
+    if (!generation.has_value()) {
+        return {lsp_response(id, "[]")};
+    }
+    base::Result<std::vector<ToolingInlayHint>> hints = this->session_.inlay_hints(*document);
+    if (!hints || !lsp_generation_is_current(this->session_, *document, *generation)) {
+        return {lsp_response(id, "[]")};
+    }
+    return {lsp_response(id, lsp_inlay_hint_result(hints.value()))};
 }
 
 } // namespace aurex::tooling

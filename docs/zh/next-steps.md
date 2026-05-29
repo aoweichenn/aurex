@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M3.7 IDE Semantic Features
+## 当前最高优先级：M3.8 Query-backed Lowering / Backend Reuse
 
 R5 Compilation Pipeline / Driver Action 重构 core 已收口：`CompilerInvocation`、`Compiler`
 facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`LoweringPipeline`、
@@ -26,8 +26,11 @@ reuse explanation 推进为真实 incremental sema execution：
 [Aurex M3.5 Incremental Syntax And Stable AST Identity 计划](m3.5-incremental-syntax-stable-ast-plan.md)
 中收口。M3.6 已在
 [Aurex M3.6 Project Graph And Persistent Query DB 计划](m3.6-project-graph-persistent-query-db-plan.md)
-中收口。下一实现分支应进入 M3.7，重点处理 completion、rename、semantic tokens、code actions 和
-workspace symbols。
+中收口。M3.7 已在
+[Aurex M3.7 IDE Semantic Features 计划与收口记录](m3.7-ide-semantic-features-plan.md)
+中完成 IDE 语义能力第一层：completion、rename、semantic tokens、inlay hints、code actions、
+workspace symbols 和 LSP projection。下一实现分支应进入 M3.8，重点处理 lowering、IR、LLVM/backend
+query authority 与复用边界。
 
 R5.1 已完成 `Compiler` facade 和内部 `CompilationPipeline` 拆分；R5.2 已完成前端阶段拆分；
 R5.3 已完成 `LoweringPipeline`、`BackendPipeline` 和 `PipelineStage` 记录。当前 driver 总控已经只保留
@@ -91,13 +94,22 @@ M3.6 的当前完成面：
 5. invalidation/profile：`incremental_cache.project_inputs` 能解释 reuse/reject 和 changed inputs。
 6. 测试与文档：query、driver cache、tooling workspace model 和 M3.6 文档已收口。
 
-M3.7 的建议第一批实现顺序：
+M3.7 的当前完成面：
 
-1. WP-1：completion 的 syntax context、visible module exports 和 sema scope 输入建模。
-2. WP-2：rename 的 symbol identity、conflict detection 和 cross-file edit planning。
-3. WP-3：semantic tokens 由 syntax kind 加 checked semantic facts 合成。
-4. WP-4：code actions / quick fixes 只服务携带结构化修复上下文的 diagnostics。
-5. WP-5：workspace symbols、cross-file references 和 stale-generation handling。
+1. 协议无关 completion：syntax context、sema scope、workspace facts 和 keyword 合并。
+2. 协议无关 rename：symbol identity、identifier/keyword/conflict 检查和 workspace edit plan。
+3. semantic tokens / inlay hints：syntax token kind 与 checked semantic facts 合成。
+4. code actions：从结构化 help diagnostic 生成 lookup suggestion quick fix。
+5. workspace symbols 与 LSP projection：workspace index materialization、stale-generation guard 和
+   completion/rename/semanticTokens/codeAction/workspaceSymbol/inlayHint provider。
+
+M3.8 的建议第一批实现顺序：
+
+1. WP-1：function body lowering query authority。
+2. WP-2：generic instance lowering query authority。
+3. WP-3：type layout / enum layout / ABI symbol query facts。
+4. WP-4：IR pass analysis preservation 与 query invalidation 接入。
+5. WP-5：LLVM emission unit 与 target-independent IR unit 边界。
 
 2026-05-28 收口更新：原 M3.1 work packages 已通过 WP-7 Generic Closure Audit And Release Baseline 统一复审。
 当前泛型 release baseline 固定为：generic struct / enum / type alias / function / owner-generic method /

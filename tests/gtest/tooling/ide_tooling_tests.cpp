@@ -476,6 +476,166 @@ TEST(CoreUnit, IdeToolingServesTokenHoverDefinitionReferencesAndEditImpact)
     EXPECT_GT(impact.range.end, edit_offset);
 }
 
+TEST(CoreUnit, IdeToolingServesCompletionSemanticTokensAndInlayHints)
+{
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(IDE_TOOLING_SOURCE));
+    ASSERT_TRUE(snapshot.checked_semantics);
+
+    const base::usize return_offset = IDE_TOOLING_SOURCE.find("return value");
+    ASSERT_NE(return_offset, std::string_view::npos);
+    const std::vector<tooling::IdeCompletionItem> keyword_completions =
+        tooling::completion_items_at_offset(snapshot, return_offset + std::string_view{"retu"}.size());
+    EXPECT_TRUE(std::ranges::any_of(keyword_completions, [](const tooling::IdeCompletionItem& item) {
+        return item.label == "return" && item.kind == "keyword"
+            && item.context == tooling::IdeCompletionContextKind::expression;
+    }));
+
+    const base::usize value_offset = IDE_TOOLING_SOURCE.find("value;");
+    ASSERT_NE(value_offset, std::string_view::npos);
+    const std::vector<tooling::IdeCompletionItem> local_completions =
+        tooling::completion_items_at_offset(snapshot, value_offset + std::string_view{"va"}.size());
+    EXPECT_TRUE(std::ranges::any_of(local_completions, [](const tooling::IdeCompletionItem& item) {
+        return item.label == "value" && item.kind == "local" && item.local && item.checked;
+    }));
+
+    const base::usize call_offset = IDE_TOOLING_SOURCE.find("add(1");
+    ASSERT_NE(call_offset, std::string_view::npos);
+    const std::vector<tooling::IdeCompletionItem> function_completions =
+        tooling::completion_items_at_offset(snapshot, call_offset + std::string_view{"ad"}.size());
+    EXPECT_TRUE(std::ranges::any_of(function_completions, [](const tooling::IdeCompletionItem& item) {
+        return item.label == "add" && item.kind == "function" && item.checked;
+    }));
+
+    const base::usize top_level_offset = IDE_TOOLING_SOURCE.find("fn add");
+    ASSERT_NE(top_level_offset, std::string_view::npos);
+    const std::vector<tooling::IdeCompletionItem> item_completions =
+        tooling::completion_items_at_offset(snapshot, top_level_offset + std::string_view{"fn"}.size());
+    EXPECT_TRUE(std::ranges::any_of(item_completions, [](const tooling::IdeCompletionItem& item) {
+        return item.label == "fn" && item.kind == "keyword" && item.context == tooling::IdeCompletionContextKind::item;
+    }));
+
+    const base::usize before_local_offset = IDE_TOOLING_SOURCE.find("let value");
+    ASSERT_NE(before_local_offset, std::string_view::npos);
+    const std::vector<tooling::IdeCompletionItem> before_local_completions =
+        tooling::completion_items_at_offset(snapshot, before_local_offset);
+    EXPECT_TRUE(std::ranges::none_of(before_local_completions, [](const tooling::IdeCompletionItem& item) {
+        return item.label == "value" && item.kind == "local";
+    }));
+
+    constexpr std::string_view member_source = "module ide.member;\n"
+                                               "struct Point { count: i32; }\n"
+                                               "fn main() -> i32 {\n"
+                                               "  let point = Point { count: 1 };\n"
+                                               "  return point.count;\n"
+                                               "}\n";
+    const tooling::IdeSnapshot member_snapshot = tooling::build_ide_snapshot(request_for(member_source));
+    const base::usize member_offset = member_source.find("point.count");
+    ASSERT_NE(member_offset, std::string_view::npos);
+    const std::vector<tooling::IdeCompletionItem> member_completions =
+        tooling::completion_items_at_offset(member_snapshot, member_offset + std::string_view{"point."}.size());
+    EXPECT_TRUE(std::ranges::any_of(member_completions, [](const tooling::IdeCompletionItem& item) {
+        return item.label == "count" && item.kind == "struct_field"
+            && item.context == tooling::IdeCompletionContextKind::member;
+    }));
+    const std::vector<tooling::IdeSemanticToken> member_tokens = tooling::semantic_tokens(member_snapshot);
+    EXPECT_TRUE(std::ranges::any_of(member_tokens, [](const tooling::IdeSemanticToken& token) {
+        return token.text == "count" && token.token_type == "property" && token.checked;
+    }));
+
+    constexpr std::string_view method_source = "module ide.method_tokens;\n"
+                                               "struct Counter { value: i32; }\n"
+                                               "impl Counter {\n"
+                                               "  fn read(self: &Counter) -> i32 { return self.value; }\n"
+                                               "}\n"
+                                               "fn main() -> i32 {\n"
+                                               "  let counter = Counter { value: 1 };\n"
+                                               "  return counter.read();\n"
+                                               "}\n";
+    const tooling::IdeSnapshot method_snapshot = tooling::build_ide_snapshot(request_for(method_source));
+    const std::vector<tooling::IdeSemanticToken> method_tokens = tooling::semantic_tokens(method_snapshot);
+    EXPECT_TRUE(std::ranges::any_of(method_tokens, [](const tooling::IdeSemanticToken& token) {
+        return token.text == "read" && token.token_type == "method" && token.checked;
+    }));
+
+    constexpr std::string_view module_path_source = "module ide.module_path;\n"
+                                                    "import ide.member;\n"
+                                                    "fn main() -> i32 { return 0; }\n";
+    const tooling::IdeSnapshot module_path_snapshot = tooling::build_ide_snapshot(request_for(module_path_source));
+    const base::usize import_offset = module_path_source.find("import ");
+    ASSERT_NE(import_offset, std::string_view::npos);
+    const base::usize module_path_offset = import_offset + std::string_view{"import "}.size();
+    const std::vector<tooling::IdeCompletionItem> module_path_completions =
+        tooling::completion_items_at_offset(module_path_snapshot, module_path_offset);
+    EXPECT_TRUE(std::ranges::any_of(module_path_completions, [](const tooling::IdeCompletionItem& item) {
+        return item.label == "import" && item.context == tooling::IdeCompletionContextKind::module_path;
+    }));
+
+    const std::vector<tooling::IdeSemanticToken> tokens = tooling::semantic_tokens(snapshot);
+    EXPECT_TRUE(std::ranges::any_of(tokens, [](const tooling::IdeSemanticToken& token) {
+        return token.text == "add" && token.token_type == "function" && token.checked;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(tokens, [](const tooling::IdeSemanticToken& token) {
+        return token.text == "return" && token.token_type == "keyword";
+    }));
+    EXPECT_TRUE(std::ranges::any_of(tokens, [](const tooling::IdeSemanticToken& token) {
+        return token.text == "value" && token.token_type == "variable"
+            && std::ranges::find(token.modifiers, "declaration") != token.modifiers.end();
+    }));
+
+    constexpr std::string_view readonly_source = "module ide.readonly;\n"
+                                                 "const answer: i32 = 1;\n"
+                                                 "enum Mode { fast }\n"
+                                                 "fn main() -> i32 { return answer; }\n";
+    const tooling::IdeSnapshot readonly_snapshot = tooling::build_ide_snapshot(request_for(readonly_source));
+    const std::vector<tooling::IdeSemanticToken> readonly_tokens = tooling::semantic_tokens(readonly_snapshot);
+    EXPECT_TRUE(std::ranges::any_of(readonly_tokens, [](const tooling::IdeSemanticToken& token) {
+        return (token.text == "answer" || token.text == "fast")
+            && std::ranges::find(token.modifiers, "readonly") != token.modifiers.end();
+    }));
+
+    constexpr std::string_view lexical_token_source = "module ide.lexical_tokens;\n"
+                                                      "// token comment\n"
+                                                      "fn main() -> str { return \"ok\"; }\n";
+    const tooling::IdeSnapshot lexical_token_snapshot = tooling::build_ide_snapshot(request_for(lexical_token_source));
+    const std::vector<tooling::IdeSemanticToken> lexical_tokens = tooling::semantic_tokens(lexical_token_snapshot);
+    EXPECT_TRUE(std::ranges::any_of(lexical_tokens, [](const tooling::IdeSemanticToken& token) {
+        return token.text.find("token comment") != std::string::npos && token.token_type == "comment";
+    }));
+    EXPECT_TRUE(std::ranges::any_of(lexical_tokens, [](const tooling::IdeSemanticToken& token) {
+        return token.text == "\"ok\"" && token.token_type == "string";
+    }));
+
+    const std::vector<tooling::IdeInlayHint> hints = tooling::inlay_hints(snapshot);
+    EXPECT_TRUE(std::ranges::any_of(hints, [](const tooling::IdeInlayHint& hint) {
+        return hint.label == ": i32" && hint.kind == "type" && hint.checked;
+    }));
+
+    constexpr std::string_view multiple_hint_source = "module ide.hints;\n"
+                                                      "fn main() -> i32 {\n"
+                                                      "  let first = 1;\n"
+                                                      "  let second = 2;\n"
+                                                      "  return first + second;\n"
+                                                      "}\n";
+    const tooling::IdeSnapshot multiple_hint_snapshot = tooling::build_ide_snapshot(request_for(multiple_hint_source));
+    const std::vector<tooling::IdeInlayHint> multiple_hints = tooling::inlay_hints(multiple_hint_snapshot);
+    ASSERT_GE(multiple_hints.size(), 2U);
+    EXPECT_LE(multiple_hints.front().position.begin, multiple_hints.back().position.begin);
+
+    constexpr std::string_view explicit_type_source = "module ide.snapshot;\n"
+                                                      "fn add(a: i32, b: i32) -> i32 {\n"
+                                                      "  return a + b;\n"
+                                                      "}\n"
+                                                      "fn main() -> i32 {\n"
+                                                      "  let value: i32 = add(1, 2);\n"
+                                                      "  return value;\n"
+                                                      "}\n";
+    const tooling::IdeSnapshot explicit_snapshot = tooling::build_ide_snapshot(request_for(explicit_type_source));
+    const std::vector<tooling::IdeInlayHint> explicit_hints = tooling::inlay_hints(explicit_snapshot);
+    EXPECT_TRUE(std::ranges::none_of(explicit_hints, [](const tooling::IdeInlayHint& hint) {
+        return hint.label == ": i32";
+    }));
+}
+
 TEST(CoreUnit, IdeToolingExposesCheckedModulePartOriginsThroughDefinitions)
 {
     constexpr std::string_view source = "module ide.parts;\n"
@@ -869,6 +1029,7 @@ TEST(CoreUnit, IdeToolingSeparatesLexAndParseFailuresIntoQuerySnapshots)
     EXPECT_TRUE(has_record_kind(lex_snapshot, query::QueryKind::lex_file));
     EXPECT_TRUE(has_record_kind(lex_snapshot, query::QueryKind::parse_file));
     EXPECT_TRUE(has_record_kind(lex_snapshot, query::QueryKind::diagnostics));
+    EXPECT_TRUE(tooling::semantic_tokens(lex_snapshot).empty());
 
     constexpr std::string_view parse_error_source = "module ide.parse;\n"
                                                     "let top_level = 1;\n"
@@ -883,6 +1044,8 @@ TEST(CoreUnit, IdeToolingSeparatesLexAndParseFailuresIntoQuerySnapshots)
     EXPECT_TRUE(has_diagnostic_owner_stage_profile(
         parse_snapshot, base::DiagnosticCategory::parser, IDE_TOOLING_STAGE_MODULE_PARSE));
     EXPECT_FALSE(tooling::definition_at_offset(parse_snapshot, parse_error_source.find("top_level")).has_value());
+    EXPECT_TRUE(tooling::completion_items_at_offset(parse_snapshot, parse_error_source.find("top_level")).empty());
+    EXPECT_TRUE(tooling::inlay_hints(parse_snapshot).empty());
     EXPECT_TRUE(has_record_kind(parse_snapshot, query::QueryKind::parse_file));
     EXPECT_TRUE(has_dependency_kind(parse_snapshot, query::QueryKind::parse_file, query::QueryKind::lex_file));
 }

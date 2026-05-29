@@ -48,6 +48,7 @@ struct IdeDiagnostic {
     base::LineColumn end{};
     std::string path;
     std::string message;
+    std::vector<base::DiagnosticChild> children;
     std::vector<IdePipelineStageOwner> owner_stages;
     IdeModulePartContext source_part;
 };
@@ -134,6 +135,44 @@ struct IdeHoverInfo {
     bool valid = false;
 };
 
+enum class IdeCompletionContextKind : base::u8 {
+    item,
+    expression,
+    member,
+    module_path,
+};
+
+struct IdeCompletionItem {
+    IdeCompletionContextKind context = IdeCompletionContextKind::expression;
+    query::DefKey definition;
+    query::MemberKey member;
+    query::GenericInstanceKey generic_instance;
+    base::SourceRange replacement_range{};
+    std::string label;
+    std::string kind;
+    std::string detail;
+    base::u32 part_index = 0;
+    bool local = false;
+    bool checked = false;
+};
+
+struct IdeSemanticToken {
+    query::DefKey definition;
+    query::MemberKey member;
+    base::SourceRange range{};
+    std::string text;
+    std::string token_type;
+    std::vector<std::string> modifiers;
+    bool checked = false;
+};
+
+struct IdeInlayHint {
+    base::SourceRange position{};
+    std::string label;
+    std::string kind;
+    bool checked = false;
+};
+
 enum class IdeAstNodeKind : base::u8 {
     item,
     function_body,
@@ -169,6 +208,10 @@ void build_ide_snapshot_into(
 [[nodiscard]] std::optional<IdeDefinition> definition_at_offset(const IdeSnapshot& snapshot, base::usize offset);
 [[nodiscard]] std::vector<IdeReference> references_at_offset(const IdeSnapshot& snapshot, base::usize offset);
 [[nodiscard]] std::optional<IdeHoverInfo> hover_at_offset(const IdeSnapshot& snapshot, base::usize offset);
+[[nodiscard]] std::vector<IdeCompletionItem> completion_items_at_offset(
+    const IdeSnapshot& snapshot, base::usize offset);
+[[nodiscard]] std::vector<IdeSemanticToken> semantic_tokens(const IdeSnapshot& snapshot);
+[[nodiscard]] std::vector<IdeInlayHint> inlay_hints(const IdeSnapshot& snapshot);
 [[nodiscard]] std::optional<IdeAstNodeInfo> ast_node_at_offset(const IdeSnapshot& snapshot, base::usize offset);
 [[nodiscard]] IdeEditImpact edit_impact_for_range(
     const IdeSnapshot& snapshot, base::usize begin, base::usize removed_length);

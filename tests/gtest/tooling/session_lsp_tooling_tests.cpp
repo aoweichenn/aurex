@@ -302,6 +302,12 @@ constexpr std::string_view TOOLING_TEST_JSON_HEX_DIGITS = "0123456789ABCDEF";
 TEST(CoreUnit, ToolingSessionManagesVersionedDocumentsAndSnapshotCache)
 {
     tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const project::WorkspaceModel initial_workspace = session.workspace_model();
+    ASSERT_EQ(initial_workspace.projects.size(), 1U);
+    EXPECT_TRUE(initial_workspace.projects.front().open_buffers.empty());
+    EXPECT_EQ(initial_workspace.projects.front().session_kind, project::ProjectSessionKind::tooling);
+    EXPECT_EQ(initial_workspace.projects.front().package_identity, TOOLING_SESSION_PACKAGE);
+    EXPECT_TRUE(query::is_valid(initial_workspace.projects.front().key));
     const tooling::ToolingDocumentId document =
         tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
 
@@ -310,6 +316,11 @@ TEST(CoreUnit, ToolingSessionManagesVersionedDocumentsAndSnapshotCache)
     ASSERT_TRUE(opened);
     EXPECT_EQ(opened.value().client_version, std::optional<base::i64>(TOOLING_VERSION_ONE));
     EXPECT_TRUE(session.is_open(document));
+    ASSERT_EQ(session.workspace_model().projects.size(), 1U);
+    ASSERT_EQ(session.workspace_model().projects.front().open_buffers.size(), 1U);
+    EXPECT_NE(session.workspace_model().identity, initial_workspace.identity);
+    EXPECT_EQ(session.workspace_model().projects.front().open_buffers.front().uri, TOOLING_SESSION_URI);
+    EXPECT_EQ(session.workspace_model().projects.front().open_buffers.front().generation, opened.value().generation);
 
     base::Result<tooling::ToolingSnapshotHandle> first_snapshot = session.snapshot(document);
     ASSERT_TRUE(first_snapshot);
@@ -342,6 +353,10 @@ TEST(CoreUnit, ToolingSessionManagesVersionedDocumentsAndSnapshotCache)
         session.change_document(document, std::string(TOOLING_SESSION_INVALID_SOURCE), TOOLING_VERSION_TWO);
     ASSERT_TRUE(changed);
     EXPECT_EQ(changed.value().client_version, std::optional<base::i64>(TOOLING_VERSION_TWO));
+    ASSERT_EQ(session.workspace_model().projects.front().open_buffers.size(), 1U);
+    EXPECT_EQ(session.workspace_model().projects.front().open_buffers.front().generation, changed.value().generation);
+    EXPECT_EQ(session.workspace_model().projects.front().open_buffers.front().text_size,
+        TOOLING_SESSION_INVALID_SOURCE.size());
     base::Result<tooling::ToolingSnapshotHandle> changed_snapshot = session.snapshot(document);
     ASSERT_TRUE(changed_snapshot);
     EXPECT_NE(first_snapshot.value().snapshot.get(), changed_snapshot.value().snapshot.get());
@@ -367,6 +382,9 @@ TEST(CoreUnit, ToolingSessionManagesVersionedDocumentsAndSnapshotCache)
 
     EXPECT_TRUE(session.close_document(document));
     EXPECT_FALSE(session.is_open(document));
+    ASSERT_EQ(session.workspace_model().projects.size(), 1U);
+    EXPECT_TRUE(session.workspace_model().projects.front().open_buffers.empty());
+    EXPECT_EQ(session.workspace_model().identity, initial_workspace.identity);
     EXPECT_FALSE(session.snapshot(document));
 }
 

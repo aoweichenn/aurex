@@ -250,6 +250,10 @@ M3.0 solved language-level module identity, and M3.3 added open-file indexing;
 M3.6 makes CLI checks and tooling sessions share a project graph and a
 persistent query database.
 
+Status: 2026-05-30. M3.6 is complete for the current implementation boundary.
+Execution details are recorded in the
+[Aurex M3.6 Project Graph And Persistent Query DB Plan](m3.6-project-graph-persistent-query-db-plan.md).
+
 Core deliverables:
 
 - Define `ProjectModel` / `WorkspaceModel` inputs: package root, source root,
@@ -466,8 +470,15 @@ range-based text edits. `LosslessNodeStableKey` and
 reuse counters. `ToolingIncrementalSnapshotResult::syntax_reuse` exposes
 syntax reused/recomputed/invalidated counters. `IdeAstNodeInfo` /
 `ToolingAstNode` project offsets to AST items or function bodies and expose
-stable `DefKey` / `BodyKey` strings. The next stage is M3.6 Project Graph And
-Persistent Query DB.
+stable `DefKey` / `BodyKey` strings. This stage is closed, and the later M3.6
+Project Graph And Persistent Query DB stage is also complete.
+
+2026-05-30: M3.6 Project Graph And Persistent Query DB is complete for the
+current project graph and persistent query DB boundary. `ProjectModel` /
+`WorkspaceModel`, `ProjectKey`, the `project_graph` query, incremental cache
+schema v2, explicit module-graph project/module-part dependencies, project
+input profile explanations, and the tooling workspace model are now on the main
+path. The next stage is M3.7 IDE Semantic Features.
 
 ## Acceptance
 
@@ -549,3 +560,17 @@ M3.5 incremental syntax / stable AST identity acceptance:
 - Incomplete editor buffers and out-of-range edits do not corrupt session state.
 - Tests, coverage, query pruning, query graph fuzz, and generic stress gates
   remain green.
+
+M3.6 project graph / persistent query DB acceptance:
+
+- CLI `--check` and tooling sessions consume the same project/workspace input
+  shape.
+- Source root, package identity, target config, driver options, module graph,
+  and open buffers enter stable cache keys.
+- Persistent cache can write/read `project_graph` query rows and dependency
+  edges.
+- Module graph explicitly depends on project graph and module parts, and query
+  edge verification rejects malformed kind/identity edges.
+- Profile output explains project-input reuse/reject and changed inputs.
+- Tests, coverage, query pruning, query graph fuzz, and stress gates remain
+  green.

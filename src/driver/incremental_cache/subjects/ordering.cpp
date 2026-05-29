@@ -2,6 +2,7 @@
 #include <optional>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "../schedule.hpp"
 #include "detail.hpp"
@@ -29,6 +30,15 @@ void evaluate_file_content_query_subject(query::QueryContext& context, const Fil
     static_cast<void>(context.evaluate_file_content(input));
 }
 
+void evaluate_project_graph_query_subject(query::QueryContext& context, const ProjectGraphQuerySubject& subject)
+{
+    const query::ProjectGraphProviderInput input{
+        subject.key,
+        subject.result,
+    };
+    static_cast<void>(context.evaluate_project_graph(input));
+}
+
 void evaluate_lex_file_query_subject(query::QueryContext& context, const LexFileQuerySubject& subject)
 {
     const query::LexFileProviderInput input{
@@ -49,9 +59,20 @@ void evaluate_parse_file_query_subject(query::QueryContext& context, const Parse
 
 void evaluate_module_graph_query_subject(query::QueryContext& context, const ModuleGraphQuerySubject& subject)
 {
+    std::vector<query::QueryKey> dependencies;
+    dependencies.reserve(subject.part_dependencies.size() + 1U);
+    if (const std::optional<query::QueryKey> project_graph = query::project_graph_query_key(subject.project)) {
+        dependencies.push_back(*project_graph);
+    }
+    for (const query::ModulePartKey& part : subject.part_dependencies) {
+        if (const std::optional<query::QueryKey> part_key = query::module_part_query_key(part)) {
+            dependencies.push_back(*part_key);
+        }
+    }
     const query::ModuleGraphProviderInput input{
         subject.key,
         subject.result,
+        std::move(dependencies),
     };
     static_cast<void>(context.evaluate_module_graph(input));
 }
@@ -190,6 +211,11 @@ void evaluate_diagnostics_query_subject(query::QueryContext& context, const Diag
     return query::file_content_query_record(subject.key, subject.result);
 }
 
+[[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const ProjectGraphQuerySubject& subject)
+{
+    return query::project_graph_query_record(subject.key, subject.result);
+}
+
 [[nodiscard]] std::optional<query::QueryRecord> query_record_for_subject(const LexFileQuerySubject& subject)
 {
     return query::lex_file_query_record(subject.key, subject.result);
@@ -325,21 +351,26 @@ void collect_diagnostics_query_subjects(QuerySubjectCollection& collection)
 
 void build_ordered_query_subjects(QuerySubjectCollection& collection)
 {
-    collection.subjects.reserve(collection.file_contents.size() + collection.lex_files.size()
+    collection.subjects.reserve(collection.project_graphs.size() + collection.file_contents.size()
+        + collection.lex_files.size() + collection.parse_files.size() + collection.module_parts.size()
+        + collection.module_graphs.size() + collection.module_exports.size() + collection.module_package_exports.size()
+        + collection.item_lists.size() + collection.item_signatures.size() + collection.function_body_syntaxes.size()
+        + collection.type_check_bodies.size() + collection.generic_template_signatures.size()
+        + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size()
+        + collection.lower_function_irs.size());
+    std::unordered_set<query::QueryKey, query::QueryKeyHash> keys;
+    keys.reserve(collection.project_graphs.size() + collection.file_contents.size() + collection.lex_files.size()
         + collection.parse_files.size() + collection.module_parts.size() + collection.module_graphs.size()
         + collection.module_exports.size() + collection.module_package_exports.size() + collection.item_lists.size()
         + collection.item_signatures.size() + collection.function_body_syntaxes.size()
         + collection.type_check_bodies.size() + collection.generic_template_signatures.size()
         + collection.generic_instance_signatures.size() + collection.generic_instance_bodies.size()
         + collection.lower_function_irs.size());
-    std::unordered_set<query::QueryKey, query::QueryKeyHash> keys;
-    keys.reserve(collection.file_contents.size() + collection.lex_files.size() + collection.parse_files.size()
-        + collection.module_parts.size() + collection.module_graphs.size() + collection.module_exports.size()
-        + collection.module_package_exports.size() + collection.item_lists.size() + collection.item_signatures.size()
-        + collection.function_body_syntaxes.size() + collection.type_check_bodies.size()
-        + collection.generic_template_signatures.size() + collection.generic_instance_signatures.size()
-        + collection.generic_instance_bodies.size() + collection.lower_function_irs.size());
 
+    for (base::usize index = 0; index < collection.project_graphs.size(); ++index) {
+        push_query_subject(collection.subjects, keys, QuerySubjectKind::project_graph, index,
+            query_record_for_subject(collection.project_graphs[index]));
+    }
     for (base::usize index = 0; index < collection.file_contents.size(); ++index) {
         push_query_subject(collection.subjects, keys, QuerySubjectKind::file_content, index,
             query_record_for_subject(collection.file_contents[index]));
@@ -421,6 +452,9 @@ void evaluate_query_subject(
     query::QueryContext& context, const QuerySubjectCollection& collection, const QuerySubject& subject)
 {
     switch (subject.kind) {
+        case QuerySubjectKind::project_graph:
+            evaluate_project_graph_query_subject(context, collection.project_graphs[subject.index]);
+            return;
         case QuerySubjectKind::file_content:
             evaluate_file_content_query_subject(context, collection.file_contents[subject.index]);
             return;

@@ -203,6 +203,11 @@ constexpr std::array<PipelineStageRecord, PIPELINE_STAGE_RECORD_COUNT> PIPELINE_
 constexpr std::array<PipelineProfileSubeventRecord, PIPELINE_PROFILE_SUBEVENT_RECORD_COUNT>
     PIPELINE_PROFILE_SUBEVENT_RECORDS{{
         {
+            PipelineProfileSubeventId::incremental_cache_project_inputs,
+            incremental_cache_detail::INCREMENTAL_CACHE_PROFILE_PROJECT_INPUTS,
+            PipelineStageId::incremental_cache_lookup,
+        },
+        {
             PipelineProfileSubeventId::incremental_cache_source_stage_reuse,
             incremental_cache_detail::INCREMENTAL_CACHE_PROFILE_SOURCE_STAGE_REUSE,
             PipelineStageId::incremental_cache_lookup,

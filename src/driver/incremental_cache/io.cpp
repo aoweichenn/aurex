@@ -2,6 +2,7 @@
 
 #include <aurex/base/config.hpp>
 #include <aurex/driver/package_identity.hpp>
+#include <aurex/driver/project_model.hpp>
 #include <aurex/query/query_edge_verifier.hpp>
 
 #include <algorithm>
@@ -173,6 +174,49 @@ void append_hex_string(std::ostream& out, const std::string_view value)
         }
         cache.root_path = *path;
         return true;
+    }
+    if (kind == INCREMENTAL_CACHE_FIELD_PROJECT_IDENTITY) {
+        std::optional<std::string> project_identity = decode_hex_string(value);
+        if (!project_identity || cache.project_identity.has_value()) {
+            return false;
+        }
+        cache.project_identity = std::move(*project_identity);
+        return true;
+    }
+    if (kind == INCREMENTAL_CACHE_FIELD_PACKAGE_ROOT) {
+        const std::optional<std::filesystem::path> path = decode_path(value);
+        if (!path || cache.package_root.has_value()) {
+            return false;
+        }
+        cache.package_root = *path;
+        return true;
+    }
+    if (kind == INCREMENTAL_CACHE_FIELD_SOURCE_ROOT) {
+        const std::optional<std::filesystem::path> path = decode_path(value);
+        if (!path || cache.source_root.has_value()) {
+            return false;
+        }
+        cache.source_root = *path;
+        return true;
+    }
+    if (kind == INCREMENTAL_CACHE_FIELD_TARGET_CONFIG) {
+        std::optional<std::string> target_config = decode_hex_string(value);
+        if (!target_config || cache.target_config.has_value()) {
+            return false;
+        }
+        cache.target_config = std::move(*target_config);
+        return true;
+    }
+    if (kind == INCREMENTAL_CACHE_FIELD_COMMAND_OPTIONS) {
+        std::optional<std::string> command_options = decode_hex_string(value);
+        if (!command_options || cache.command_options.has_value()) {
+            return false;
+        }
+        cache.command_options = std::move(*command_options);
+        return true;
+    }
+    if (kind == INCREMENTAL_CACHE_FIELD_OPEN_BUFFERS) {
+        return assign_count(cache.expected_open_buffers, value);
     }
     if (kind == INCREMENTAL_CACHE_FIELD_PACKAGE) {
         std::optional<std::string> package_identity = decode_hex_string(value);
@@ -953,7 +997,10 @@ void write_query_dependency_edge_record(std::ostream& out, const query::QueryDep
     const bool import_packages_match = cache.expected_import_packages.has_value()
         ? cache.import_package_identities.size() == *cache.expected_import_packages
         : cache.import_package_identities.empty();
-    if (!cache.expected_import_paths || !cache.expected_sources || !cache.expected_modules
+    if (!cache.project_identity.has_value() || !cache.package_root.has_value() || !cache.source_root.has_value()
+        || !cache.target_config.has_value() || !cache.command_options.has_value()
+        || !cache.expected_open_buffers.has_value() || cache.expected_open_buffers.value() != 0
+        || !cache.expected_import_paths || !cache.expected_sources || !cache.expected_modules
         || !cache.expected_definitions || cache.import_paths.size() != *cache.expected_import_paths
         || !import_packages_match || cache.sources.size() != *cache.expected_sources
         || cache.module_count != *cache.expected_modules
@@ -982,9 +1029,16 @@ void write_query_dependency_edge_record(std::ostream& out, const query::QueryDep
 
 [[nodiscard]] bool parsed_cache_header_matches(const ParsedCache& cache, const CompilerInvocation& invocation)
 {
+    const project::ProjectModel project_model = project_model_from_invocation(invocation);
     if (cache.schema != INCREMENTAL_CACHE_SCHEMA_VERSION || cache.compiler_version != base::config::AUREX_VERSION_STRING
         || cache.mode != INCREMENTAL_CACHE_MODE_SEMANTIC_OK
         || cache.root_path != canonical_or_absolute(invocation.input_path)
+        || cache.project_identity.value_or(std::string{}) != project::stable_serialize(project_model)
+        || cache.package_root.value_or(std::filesystem::path{}) != project_model.package_root
+        || cache.source_root.value_or(std::filesystem::path{}) != project_model.source_root
+        || cache.target_config.value_or(std::string{}) != project::stable_serialize(project_model.target)
+        || cache.command_options.value_or(std::string{}) != project::stable_serialize(project_model.command_options)
+        || cache.expected_open_buffers.value_or(base::usize{1}) != project_model.open_buffers.size()
         || cache.package_identity.value_or(std::string{}) != package_identity_for_invocation(invocation)
         || (invocation_uses_manifest_source_root(invocation) && !parsed_cache_declares_source_root_topology(cache))
         || !parsed_cache_counts_match(cache)) {
@@ -1013,6 +1067,80 @@ void write_query_dependency_edge_record(std::ostream& out, const query::QueryDep
         }
     }
     return true;
+}
+
+[[nodiscard]] std::string parsed_cache_project_input_changes(
+    const ParsedCache& cache, const CompilerInvocation& invocation)
+{
+    const project::ProjectModel project_model = project_model_from_invocation(invocation);
+    std::vector<std::string_view> changed;
+    if (cache.schema != INCREMENTAL_CACHE_SCHEMA_VERSION) {
+        changed.push_back("schema");
+    }
+    if (cache.compiler_version != base::config::AUREX_VERSION_STRING) {
+        changed.push_back("compiler");
+    }
+    if (cache.mode != INCREMENTAL_CACHE_MODE_SEMANTIC_OK) {
+        changed.push_back("mode");
+    }
+    if (cache.root_path != canonical_or_absolute(invocation.input_path)) {
+        changed.push_back("root");
+    }
+    if (cache.project_identity.value_or(std::string{}) != project::stable_serialize(project_model)) {
+        changed.push_back("project_identity");
+    }
+    if (cache.package_root.value_or(std::filesystem::path{}) != project_model.package_root) {
+        changed.push_back("package_root");
+    }
+    if (cache.source_root.value_or(std::filesystem::path{}) != project_model.source_root) {
+        changed.push_back("source_root");
+    }
+    if (cache.target_config.value_or(std::string{}) != project::stable_serialize(project_model.target)) {
+        changed.push_back("target_config");
+    }
+    if (cache.command_options.value_or(std::string{}) != project::stable_serialize(project_model.command_options)) {
+        changed.push_back("command_options");
+    }
+    if (cache.expected_open_buffers.value_or(base::usize{1}) != project_model.open_buffers.size()) {
+        changed.push_back("open_buffers");
+    }
+    if (cache.package_identity.value_or(std::string{}) != package_identity_for_invocation(invocation)) {
+        changed.push_back("package");
+    }
+    if (cache.import_paths.size() != invocation.import_paths.size()) {
+        changed.push_back("import_paths");
+    }
+    const std::vector<std::filesystem::path> imports = normalized_import_paths(invocation);
+    if (cache.import_paths.size() == imports.size()) {
+        for (base::usize index = 0; index < imports.size(); ++index) {
+            if (cache.import_paths[index] != imports[index]) {
+                changed.push_back("import_paths");
+                break;
+            }
+        }
+    }
+    const std::vector<std::string> import_packages = normalized_import_package_identities(invocation);
+    if (cache.import_package_identities.size() != import_packages.size()) {
+        changed.push_back("import_packages");
+    } else {
+        for (base::usize index = 0; index < import_packages.size(); ++index) {
+            if (cache.import_package_identities[index] != import_packages[index]) {
+                changed.push_back("import_packages");
+                break;
+            }
+        }
+    }
+    if (changed.empty()) {
+        return std::string(INCREMENTAL_CACHE_PROFILE_REASON_NONE);
+    }
+    std::string result;
+    for (base::usize index = 0; index < changed.size(); ++index) {
+        if (index != 0) {
+            result.push_back('|');
+        }
+        result.append(changed[index]);
+    }
+    return result;
 }
 
 [[nodiscard]] ParsedCacheReadResult read_incremental_cache_with_status(const std::filesystem::path& cache_path)

@@ -38,6 +38,7 @@ enum class PipelineStageId {
 };
 
 enum class PipelineProfileSubeventId {
+    incremental_cache_project_inputs,
     incremental_cache_source_stage_reuse,
     incremental_cache_query_diff,
     incremental_cache_query_plan,

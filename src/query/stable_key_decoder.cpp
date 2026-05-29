@@ -8,6 +8,7 @@ namespace aurex::query {
 namespace {
 
 constexpr base::u64 QUERY_PACKAGE_KEY_MARKER = 0x51504b4759313031ULL;
+constexpr base::u64 QUERY_PROJECT_KEY_MARKER = 0x5150524f4a303031ULL;
 constexpr base::u64 QUERY_FILE_KEY_MARKER = 0x5146494c45593031ULL;
 constexpr base::u64 QUERY_LEX_CONFIG_KEY_MARKER = 0x514c584346473031ULL;
 constexpr base::u64 QUERY_PARSER_CONFIG_KEY_MARKER = 0x5150434647303031ULL;
@@ -208,7 +209,7 @@ template <typename Enum>
 
 [[nodiscard]] bool read_query_kind(StableKeyReader& reader) noexcept
 {
-    return read_enum_value(reader, enum_byte(QueryKind::file_content), enum_byte(QueryKind::module_part));
+    return read_enum_value(reader, enum_byte(QueryKind::project_graph), enum_byte(QueryKind::module_part));
 }
 
 [[nodiscard]] bool read_builtin_type_kind(StableKeyReader& reader) noexcept
@@ -227,6 +228,7 @@ template <typename Enum>
 }
 
 [[nodiscard]] bool skip_package_key(StableKeyReader& reader) noexcept;
+[[nodiscard]] bool skip_project_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_file_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_lex_config_key(StableKeyReader& reader) noexcept;
 [[nodiscard]] bool skip_module_key(StableKeyReader& reader) noexcept;
@@ -301,6 +303,11 @@ template <typename Enum>
 [[nodiscard]] bool skip_package_key(StableKeyReader& reader) noexcept
 {
     return read_marker(reader, QUERY_PACKAGE_KEY_MARKER) && skip_fingerprint(reader) && read_nonzero_u64(reader);
+}
+
+[[nodiscard]] bool skip_project_key(StableKeyReader& reader) noexcept
+{
+    return read_marker(reader, QUERY_PROJECT_KEY_MARKER) && skip_fingerprint(reader) && read_nonzero_u64(reader);
 }
 
 [[nodiscard]] bool skip_file_key(StableKeyReader& reader) noexcept
@@ -524,6 +531,11 @@ bool stable_key_has_file_key_layout(const std::string_view bytes) noexcept
     return stable_key_has_layout(bytes, skip_file_key);
 }
 
+bool stable_key_has_project_key_layout(const std::string_view bytes) noexcept
+{
+    return stable_key_has_layout(bytes, skip_project_key);
+}
+
 bool stable_key_has_module_key_layout(const std::string_view bytes) noexcept
 {
     return stable_key_has_layout(bytes, skip_module_key);
@@ -552,6 +564,8 @@ bool stable_key_has_query_key_layout(const std::string_view bytes) noexcept
 bool stable_key_layout_matches_query_kind(const QueryKind kind, const std::string_view bytes) noexcept
 {
     switch (kind) {
+        case QueryKind::project_graph:
+            return stable_key_has_project_key_layout(bytes);
         case QueryKind::file_content:
             return stable_key_has_file_key_layout(bytes);
         case QueryKind::lex_file:

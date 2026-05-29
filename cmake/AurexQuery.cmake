@@ -11,6 +11,7 @@ add_library(aurex_query
     src/query/query_edge_verifier.cpp
     src/query/query_result.cpp
     src/query/query_reuse.cpp
+    src/query/project_graph_query.cpp
     src/query/source_file_query.cpp
     src/query/diagnostics_query.cpp
     src/query/module_graph_query.cpp

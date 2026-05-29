@@ -14,7 +14,15 @@ std::optional<QueryKey> module_graph_query_key(const ModuleKey key) noexcept
 
 bool is_valid(const ModuleGraphProviderInput& input) noexcept
 {
-    return is_valid(input.key) && is_valid(input.graph);
+    if (!is_valid(input.key) || !is_valid(input.graph)) {
+        return false;
+    }
+    for (const QueryKey& dependency : input.dependencies) {
+        if (!is_valid(dependency)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool is_valid(const ModuleGraphProviderOutput& output) noexcept
@@ -23,7 +31,7 @@ bool is_valid(const ModuleGraphProviderOutput& output) noexcept
         || output.record.result != output.result) {
         return false;
     }
-    for (const QueryKey dependency : output.dependencies) {
+    for (const QueryKey& dependency : output.dependencies) {
         if (!is_valid(dependency)) {
             return false;
         }
@@ -41,7 +49,7 @@ std::optional<ModuleGraphProviderOutput> provide_module_graph_query(const Module
     return ModuleGraphProviderOutput{
         std::move(*record),
         input.graph,
-        {},
+        input.dependencies,
     };
 }
 

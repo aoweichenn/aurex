@@ -1,6 +1,6 @@
 # Next Steps
 
-## Current Highest Priority: M3.6 Project Graph And Persistent Query DB
+## Current Highest Priority: M3.7 IDE Semantic Features
 
 The R5 Compilation Pipeline / Driver Action core is now closed:
 `CompilerInvocation`, the `Compiler` facade, `CompilationSession`,
@@ -29,8 +29,10 @@ The closed M3.4 execution entry point is the
 The wider M3.4-M3.9 route is recorded in the [M3 Roadmap](m3-roadmap.md).
 M3.5 is closed in the
 [Aurex M3.5 Incremental Syntax And Stable AST Identity Plan](m3.5-incremental-syntax-stable-ast-plan.md).
-The next implementation branch should be M3.6, centered on project graph,
-workspace model, and persistent query DB work.
+M3.6 is closed in the
+[Aurex M3.6 Project Graph And Persistent Query DB Plan](m3.6-project-graph-persistent-query-db-plan.md).
+The next implementation branch should be M3.7, centered on completion, rename,
+semantic tokens, code actions, and workspace symbols.
 
 R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
 stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
@@ -101,19 +103,34 @@ M3.5 current completed surface:
 5. Test coverage: prefix-edit stable syntax keys, range-edit syntax reuse,
    stable AST body keys, and the plain range-edit path are covered.
 
-Suggested first M3.6 implementation order:
+M3.6 current completed surface:
 
-1. WP-1: Define `ProjectModel` / `WorkspaceModel` value types and normalize
-   package root, source root, import roots, target config, CLI options, and open
-   buffers.
-2. WP-2: Make CLI check and `ToolingSession` share the same project graph input
-   instead of assembling module roots separately.
-3. WP-3: Include source root, package identity, target config, and module graph
-   rows in persistent query DB keys.
-4. WP-4: Add project graph invalidation / profile explanations for changed
-   project inputs.
-5. WP-5: Add tests, coverage, query pruning/fuzz/stress gates, and close M3.6
-   docs.
+1. Project/workspace model: `ProjectModel` / `WorkspaceModel`, `ProjectKey`,
+   and stable identity are complete.
+2. Shared driver/tooling input: CLI invocations and `ToolingSession` share
+   package root, source root, import roots, target config, command options, and
+   open-buffer inputs.
+3. Project graph query: `QueryKind::project_graph`, provider,
+   executor/context/provider set wiring, and stable key decoder support are
+   complete.
+4. Persistent query DB: incremental cache schema v2 writes project inputs and
+   persists `project_graph` rows/edges.
+5. Invalidation/profile: `incremental_cache.project_inputs` explains
+   reuse/reject and changed inputs.
+6. Tests/docs: query, driver-cache, tooling workspace model, and M3.6 docs are
+   closed.
+
+Suggested first M3.7 implementation order:
+
+1. WP-1: Model completion inputs from syntax context, visible module exports,
+   and sema scope.
+2. WP-2: Implement rename planning around symbol identity, conflict detection,
+   and cross-file edits.
+3. WP-3: Build semantic tokens from syntax kinds plus checked semantic facts.
+4. WP-4: Add code actions / quick fixes only for diagnostics carrying
+   structured fix context.
+5. WP-5: Add workspace symbols, cross-file references, and stale-generation
+   handling.
 
 2026-05-29 M3.3 WP-1/2/3 implementation update: `aurex_tooling` now has a
 versioned `ToolingSession`, in-place `IdeSnapshot` cache construction, and a
@@ -137,8 +154,9 @@ exposes the executed reuse plan, reuse counters, and workspace-index update
 stats. Focused tests cover accepted/rejected previous context, body-local reuse,
 removed-definition invalidation, repeated stable-fact edits, generic body-edit
 reuse, malformed reuse plans, and stale-version-free workspace index updates.
-That phase is closed; the next implementation target has moved to M3.6 project
-graph and persistent query DB.
+That phase is closed; M3.6 project graph and persistent query DB is also
+closed, and the next implementation target has moved to M3.7 IDE semantic
+features.
 
 2026-05-29 M3.5 closure update: `ToolingSession` supports range-based text
 edits. `LosslessNodeStableKey` and `compare_lossless_stable_nodes(...)` turn
@@ -146,8 +164,8 @@ syntax subtree reuse into reportable stable-key multiset counters.
 `ToolingIncrementalSnapshotResult::syntax_reuse` exposes syntax
 reused/recomputed/invalidated counters. `IdeAstNodeInfo` / `ToolingAstNode`
 project offsets to AST items/function bodies and expose stable `DefKey` /
-`BodyKey` strings. Next implementation target: M3.6 project graph and
-persistent query DB.
+`BodyKey` strings. M3.6 project graph and persistent query DB is closed. Next
+implementation target: M3.7 IDE semantic features.
 
 2026-05-28 closure update: the original M3.1 work packages have been reviewed
 through WP-7 Generic Closure Audit And Release Baseline. The generic release

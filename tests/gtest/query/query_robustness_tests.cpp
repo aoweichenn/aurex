@@ -236,6 +236,7 @@ void append_pipeline_requests_for_subject(
     requests.push_back(query::QueryRequest{query::ModuleGraphProviderInput{
         subject.module,
         subject.graph,
+        {},
     }});
     requests.push_back(query::QueryRequest{query::ItemListProviderInput{
         subject.module,

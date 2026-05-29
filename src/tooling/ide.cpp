@@ -1405,6 +1405,7 @@ void evaluate_module_query_surface(
     static_cast<void>(context.evaluate_module_graph(query::ModuleGraphProviderInput{
         module,
         graph_result,
+        {},
     }));
     seed_reusable_query_record(
         context, incremental, query::module_part_query_record(snapshot.source_part.part_key, part_result));

@@ -36,6 +36,15 @@ namespace {
         && dependent_identity->file == dependency_identity->file;
 }
 
+[[nodiscard]] bool stable_module_graph_depends_on_module_part(
+    const std::string_view dependent_key, const std::string_view dependency_key) noexcept
+{
+    const std::optional<DecodedModulePartKeyIdentity> dependency_identity =
+        decode_module_part_key_identity(dependency_key);
+    return dependency_identity.has_value() && dependent_key == dependency_identity->module
+        && stable_key_has_module_key_layout(dependent_key);
+}
+
 [[nodiscard]] bool lower_function_ir_dependency_identity_is_valid(
     const QueryRecord& dependent, const QueryRecord& dependency) noexcept
 {
@@ -69,6 +78,15 @@ namespace {
         }
         case QueryKind::module_part:
             return stable_module_part_depends_on_parse_file(dependent_key, dependency_key);
+        case QueryKind::module_graph:
+            if (dependency.key.kind == QueryKind::project_graph) {
+                return stable_key_has_module_key_layout(dependent_key)
+                    && stable_key_has_project_key_layout(dependency_key);
+            }
+            if (dependency.key.kind == QueryKind::module_part) {
+                return stable_module_graph_depends_on_module_part(dependent_key, dependency_key);
+            }
+            return false;
         case QueryKind::item_list:
             return stable_module_keys_match(dependent_key, dependency_key);
         case QueryKind::module_exports:

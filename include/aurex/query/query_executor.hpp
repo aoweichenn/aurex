@@ -27,12 +27,12 @@ struct LowerGenericInstanceIRQueryRequest {
     QueryResultFingerprint ir;
 };
 
-using QueryRequestInput =
-    std::variant<FileContentProviderInput, LexFileProviderInput, ParseFileProviderInput, ModuleGraphProviderInput,
-        ModulePartProviderInput, ItemListProviderInput, ModuleExportsProviderInput, ModulePackageExportsProviderInput,
-        ItemSignatureProviderInput, GenericTemplateSignatureProviderInput, GenericInstanceSignatureQueryRequest,
-        FunctionBodySyntaxProviderInput, TypeCheckBodyProviderInput, GenericInstanceBodyQueryRequest,
-        LowerFunctionIRProviderInput, LowerGenericInstanceIRQueryRequest, DiagnosticsProviderInput>;
+using QueryRequestInput = std::variant<ProjectGraphProviderInput, FileContentProviderInput, LexFileProviderInput,
+    ParseFileProviderInput, ModuleGraphProviderInput, ModulePartProviderInput, ItemListProviderInput,
+    ModuleExportsProviderInput, ModulePackageExportsProviderInput, ItemSignatureProviderInput,
+    GenericTemplateSignatureProviderInput, GenericInstanceSignatureQueryRequest, FunctionBodySyntaxProviderInput,
+    TypeCheckBodyProviderInput, GenericInstanceBodyQueryRequest, LowerFunctionIRProviderInput,
+    LowerGenericInstanceIRQueryRequest, DiagnosticsProviderInput>;
 
 struct QueryRequest {
     QueryRequestInput input;

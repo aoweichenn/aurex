@@ -55,6 +55,7 @@ endif()
 include(cmake/AurexWarnings.cmake)
 include(cmake/AurexBase.cmake)
 include(cmake/AurexQuery.cmake)
+include(cmake/AurexProject.cmake)
 include(cmake/AurexSyntax.cmake)
 include(cmake/AurexFrontend.cmake)
 include(cmake/AurexSema.cmake)
@@ -75,6 +76,7 @@ else()
     set(AUREX_WARNING_TARGETS
         aurex_base
         aurex_query
+        aurex_project
         aurex_syntax
         aurex_lex
         aurex_parse

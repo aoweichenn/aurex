@@ -9,10 +9,12 @@ bool query_dependency_edge_kind_is_expected(const QueryDependencyEdge edge) noex
     }
 
     switch (edge.dependent.kind) {
+        case QueryKind::project_graph:
         case QueryKind::file_content:
-        case QueryKind::module_graph:
         case QueryKind::function_body_syntax:
             return false;
+        case QueryKind::module_graph:
+            return edge.dependency.kind == QueryKind::project_graph || edge.dependency.kind == QueryKind::module_part;
         case QueryKind::lex_file:
             return edge.dependency.kind == QueryKind::file_content;
         case QueryKind::parse_file:

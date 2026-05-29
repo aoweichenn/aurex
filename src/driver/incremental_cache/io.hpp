@@ -55,5 +55,7 @@ void write_query_dependency_edge_record(std::ostream& out, const query::QueryDep
 [[nodiscard]] ParsedCacheValidationStatus parsed_cache_validation_status(const ParsedCache& cache);
 [[nodiscard]] bool parsed_cache_counts_match(const ParsedCache& cache);
 [[nodiscard]] bool parsed_cache_header_matches(const ParsedCache& cache, const CompilerInvocation& invocation);
+[[nodiscard]] std::string parsed_cache_project_input_changes(
+    const ParsedCache& cache, const CompilerInvocation& invocation);
 
 } // namespace aurex::driver::incremental_cache_detail

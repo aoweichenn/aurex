@@ -1,7 +1,7 @@
 # Current Progress
 
 Version: 0.1.3
-Stage: M3.5 incremental syntax / stable AST identity complete; next stage M3.6 project graph / persistent query DB
+Stage: M3.6 project graph / persistent query DB complete; next stage M3.7 IDE semantic features
 
 ## Overall Status
 
@@ -152,8 +152,25 @@ and those counters are exposed as
 `ToolingIncrementalSnapshotResult::syntax_reuse`. `IdeAstNodeInfo` /
 `ToolingAstNode` project offsets to AST items or function bodies and expose
 stable `DefKey` / `BodyKey` strings, keeping offset-to-token, syntax-node,
-AST-node, and semantic-fact projections aligned within one snapshot. The next
-target is M3.6 Project Graph And Persistent Query DB.
+AST-node, and semantic-fact projections aligned within one snapshot.
+
+As of 2026-05-30, M3.6 Project Graph And Persistent Query DB is complete for
+the current project-level query/cache boundary. `ProjectModel` /
+`WorkspaceModel` now live in the public `aurex_project` target, and both driver
+invocations and `ToolingSession` consume the same package root, source root,
+import roots, target config, command options, and open-buffer input shape. The
+query layer now has `ProjectKey`, `QueryKind::project_graph`, and a project
+graph provider; `module_graph` explicitly depends on project graph and module
+part queries. Incremental cache schema 2 writes project identity,
+package/source root, target config, command options, and open-buffer count into
+the header. The `incremental_cache.project_inputs` profile sub-event explains
+project-input reuse/reject and the concrete changed inputs. Tests cover project
+graph key/layout/provider behavior, edge verification, driver cache
+rows/edges/profile output, and tooling workspace-model identity across
+open/change/close flows. The detailed plan is
+[Aurex M3.6 Project Graph And Persistent Query DB Plan](m3.6-project-graph-persistent-query-db-plan.md).
+
+The next target is M3.7 IDE Semantic Features.
 
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and

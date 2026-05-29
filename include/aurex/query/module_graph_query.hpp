@@ -10,6 +10,7 @@ namespace aurex::query {
 struct ModuleGraphProviderInput {
     ModuleKey key;
     QueryResultFingerprint graph;
+    std::vector<QueryKey> dependencies;
 };
 
 struct ModuleGraphProviderOutput {

@@ -34,6 +34,11 @@ bool query_record_stable_identity_is_valid(const QueryRecord& record) noexcept
         && stable_key_layout_matches_query_kind(record.key.kind, record.stable_key_bytes);
 }
 
+bool is_valid(const ProjectGraphQueryInput& input) noexcept
+{
+    return is_valid(input.key) && is_valid(input.result);
+}
+
 bool is_valid(const FileContentQueryInput& input) noexcept
 {
     return is_valid(input.key) && is_valid(input.result);
@@ -168,6 +173,23 @@ std::optional<QueryRecord> query_record(const QueryKind kind, const StableFinger
         return std::nullopt;
     }
     return record;
+}
+
+std::optional<QueryRecord> project_graph_query_record(const ProjectGraphQueryInput& input)
+{
+    if (!is_valid(input)) {
+        return std::nullopt;
+    }
+    return query_record(
+        QueryKind::project_graph, stable_key_fingerprint(input.key), stable_serialize(input.key), input.result);
+}
+
+std::optional<QueryRecord> project_graph_query_record(const ProjectKey key, const QueryResultFingerprint result)
+{
+    return project_graph_query_record(ProjectGraphQueryInput{
+        key,
+        result,
+    });
 }
 
 std::optional<QueryRecord> file_content_query_record(const FileContentQueryInput& input)

@@ -2,6 +2,7 @@
 
 #include <aurex/base/config.hpp>
 #include <aurex/driver/package_identity.hpp>
+#include <aurex/driver/project_model.hpp>
 
 #include <chrono>
 #include <filesystem>
@@ -52,7 +53,14 @@ base::Result<bool> try_reuse_incremental_check_cache_impl(
     if (!cache) {
         return base::Result<bool>::ok(false);
     }
-    if (!parsed_cache_header_matches(*cache, invocation)) {
+    const auto project_input_started = std::chrono::steady_clock::now();
+    const bool project_inputs_match = parsed_cache_header_matches(*cache, invocation);
+    const std::string project_input_changes = project_inputs_match
+        ? std::string(INCREMENTAL_CACHE_PROFILE_REASON_NONE)
+        : parsed_cache_project_input_changes(*cache, invocation);
+    record_project_input_summary(profiler, project_inputs_match, project_input_changes,
+        std::chrono::steady_clock::now() - project_input_started);
+    if (!project_inputs_match) {
         return base::Result<bool>::ok(false);
     }
     if (cache_sources_match(*cache)) {
@@ -93,10 +101,11 @@ base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invoca
     const std::vector<std::filesystem::path> imports = normalized_import_paths(invocation);
     const std::vector<std::string> import_packages = normalized_import_package_identities(invocation);
     const std::vector<ModuleRecord> module_records = sorted_modules(modules);
+    const project::ProjectModel project_model = project_model_from_invocation(invocation);
     const std::vector<SourceFingerprintRecord> source_records = collect_source_fingerprints(sources, module_records);
     const std::vector<DefinitionRecord> definition_records = collect_definitions(checked);
     const QuerySubjectCollection query_subjects = collect_query_subjects(
-        module_records, checked, sources, &ast, emit_kind_requires_ir_lowering(invocation.emit_kind));
+        module_records, checked, sources, &ast, project_model, emit_kind_requires_ir_lowering(invocation.emit_kind));
     const auto query_diff_started = std::chrono::steady_clock::now();
     const QueryReuseEvaluation query_reuse_evaluation =
         build_existing_query_reuse_evaluation(cache_path, query_subjects.records);
@@ -138,6 +147,16 @@ base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invoca
         write_encoded_header_field(out, {INCREMENTAL_CACHE_FIELD_MODE, INCREMENTAL_CACHE_MODE_SEMANTIC_OK});
         write_encoded_header_field(
             out, {INCREMENTAL_CACHE_FIELD_ROOT, canonical_or_absolute(invocation.input_path).string()});
+        write_encoded_header_field(
+            out, {INCREMENTAL_CACHE_FIELD_PROJECT_IDENTITY, project::stable_serialize(project_model)});
+        write_encoded_header_field(out, {INCREMENTAL_CACHE_FIELD_PACKAGE_ROOT, project_model.package_root.string()});
+        write_encoded_header_field(out, {INCREMENTAL_CACHE_FIELD_SOURCE_ROOT, project_model.source_root.string()});
+        write_encoded_header_field(
+            out, {INCREMENTAL_CACHE_FIELD_TARGET_CONFIG, project::stable_serialize(project_model.target)});
+        write_encoded_header_field(
+            out, {INCREMENTAL_CACHE_FIELD_COMMAND_OPTIONS, project::stable_serialize(project_model.command_options)});
+        write_header_field(
+            out, INCREMENTAL_CACHE_FIELD_OPEN_BUFFERS, std::to_string(project_model.open_buffers.size()));
         write_encoded_header_field(out, {INCREMENTAL_CACHE_FIELD_PACKAGE, package_identity_for_invocation(invocation)});
         write_header_field(out, INCREMENTAL_CACHE_FIELD_IMPORT_PATHS, std::to_string(imports.size()));
         for (const std::filesystem::path& import_path : imports) {

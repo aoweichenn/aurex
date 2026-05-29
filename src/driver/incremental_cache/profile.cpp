@@ -31,6 +31,7 @@ namespace aurex::driver::incremental_cache_detail {
            << INCREMENTAL_CACHE_PROFILE_PRUNING_APPLIED << (result.applied ? 1 : 0)
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED << total_query_execution_count(result.reused)
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED << total_query_execution_count(result.recomputed)
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_PROJECT_GRAPHS << result.reused.project_graphs
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_FILE_CONTENTS << result.reused.file_contents
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LEX_FILES << result.reused.lex_files
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_PARSE_FILES << result.reused.parse_files
@@ -48,6 +49,7 @@ namespace aurex::driver::incremental_cache_detail {
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_GENERIC_INSTANCE_BODIES << result.reused.generic_instance_bodies
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_LOWER_FUNCTION_IRS << result.reused.lower_function_irs
            << INCREMENTAL_CACHE_PROFILE_PRUNING_REUSED_DIAGNOSTICS << result.reused.diagnostics
+           << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_PROJECT_GRAPHS << result.recomputed.project_graphs
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_FILE_CONTENTS << result.recomputed.file_contents
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_LEX_FILES << result.recomputed.lex_files
            << INCREMENTAL_CACHE_PROFILE_PRUNING_RECOMPUTED_PARSE_FILES << result.recomputed.parse_files
@@ -79,6 +81,7 @@ namespace aurex::driver::incremental_cache_detail {
                             : INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_MODE_FULL)
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED << total_query_execution_count(stats.seeded)
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED << total_query_execution_count(stats.evaluated)
+           << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_PROJECT_GRAPHS << stats.seeded.project_graphs
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_FILE_CONTENTS << stats.seeded.file_contents
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LEX_FILES << stats.seeded.lex_files
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_PARSE_FILES << stats.seeded.parse_files
@@ -97,7 +100,8 @@ namespace aurex::driver::incremental_cache_detail {
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_GENERIC_INSTANCE_BODIES
            << stats.seeded.generic_instance_bodies << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_LOWER_FUNCTION_IRS
            << stats.seeded.lower_function_irs << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_SEEDED_DIAGNOSTICS
-           << stats.seeded.diagnostics << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_FILE_CONTENTS
+           << stats.seeded.diagnostics << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_PROJECT_GRAPHS
+           << stats.evaluated.project_graphs << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_FILE_CONTENTS
            << stats.evaluated.file_contents << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_LEX_FILES
            << stats.evaluated.lex_files << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_PARSE_FILES
            << stats.evaluated.parse_files << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_MODULE_PARTS
@@ -117,6 +121,15 @@ namespace aurex::driver::incremental_cache_detail {
            << stats.evaluated.generic_instance_bodies
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_LOWER_FUNCTION_IRS << stats.evaluated.lower_function_irs
            << INCREMENTAL_CACHE_PROFILE_PROVIDER_EVAL_EVALUATED_DIAGNOSTICS << stats.evaluated.diagnostics;
+    return detail.str();
+}
+
+[[nodiscard]] std::string project_input_summary_detail(const bool reusable, const std::string_view changed_inputs)
+{
+    std::ostringstream detail;
+    detail << INCREMENTAL_CACHE_PROFILE_RESULT
+           << (reusable ? INCREMENTAL_CACHE_PROFILE_REUSE : INCREMENTAL_CACHE_PROFILE_REJECT)
+           << INCREMENTAL_CACHE_PROFILE_PROJECT_CHANGED_INPUTS << changed_inputs;
     return detail.str();
 }
 
@@ -181,6 +194,16 @@ void record_source_stage_reuse_summary(CompilationProfiler* const profiler, cons
     }
     profiler->record(PipelineProfileSubeventId::incremental_cache_source_stage_reuse,
         source_stage_reuse_summary_detail(summary), elapsed);
+}
+
+void record_project_input_summary(CompilationProfiler* const profiler, const bool reusable,
+    const std::string_view changed_inputs, const std::chrono::steady_clock::duration elapsed)
+{
+    if (profiler == nullptr || !profiler->enabled()) {
+        return;
+    }
+    profiler->record(PipelineProfileSubeventId::incremental_cache_project_inputs,
+        project_input_summary_detail(reusable, changed_inputs), elapsed);
 }
 
 } // namespace aurex::driver::incremental_cache_detail

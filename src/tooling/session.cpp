@@ -1,16 +1,23 @@
 #include <aurex/base/diagnostic.hpp>
+#include <aurex/project/project_model.hpp>
 #include <aurex/query/query_key.hpp>
 #include <aurex/syntax/token.hpp>
 #include <aurex/tooling/session.hpp>
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
+#include <span>
 #include <utility>
 
 namespace aurex::tooling {
 namespace {
 
 constexpr std::string_view TOOLING_DEFAULT_PACKAGE_IDENTITY = "ide";
+constexpr std::string_view TOOLING_PROJECT_IMPORT_PACKAGE_PREFIX = "tooling-import-root:";
+constexpr std::string_view TOOLING_PROJECT_TARGET_EMIT_KIND = "tooling-snapshot";
+constexpr std::string_view TOOLING_PROJECT_TARGET_OPTIMIZATION = "none";
+constexpr std::string_view TOOLING_PROJECT_DIAGNOSTIC_FORMAT = "tooling";
 constexpr std::string_view TOOLING_FILE_URI_PREFIX = "file://";
 constexpr std::string_view TOOLING_FILE_URI_LOCALHOST_PREFIX = "file://localhost";
 constexpr std::string_view TOOLING_URI_HEX_DIGITS = "0123456789ABCDEF";
@@ -43,6 +50,12 @@ constexpr base::u32 TOOLING_PRIMARY_PART_INDEX = 0;
     return package.empty() ? TOOLING_DEFAULT_PACKAGE_IDENTITY : package;
 }
 
+[[nodiscard]] query::PackageKey tooling_package_key(const std::string_view package) noexcept
+{
+    const std::array<std::string_view, 1> parts{tooling_package_or_default(package)};
+    return query::package_key(parts);
+}
+
 [[nodiscard]] std::filesystem::path tooling_canonical_or_absolute(const std::filesystem::path& path)
 {
     std::error_code error;
@@ -60,6 +73,67 @@ constexpr base::u32 TOOLING_PRIMARY_PART_INDEX = 0;
         candidate = std::filesystem::path(config.root_path) / candidate;
     }
     return tooling_canonical_or_absolute(candidate).generic_string();
+}
+
+[[nodiscard]] std::filesystem::path tooling_project_root_path(const ToolingProjectConfig& config)
+{
+    if (!config.root_path.empty()) {
+        return tooling_canonical_or_absolute(std::filesystem::path(config.root_path));
+    }
+    if (!config.source_root.empty()) {
+        return tooling_canonical_or_absolute(std::filesystem::path(config.source_root));
+    }
+    return tooling_canonical_or_absolute(std::filesystem::current_path());
+}
+
+[[nodiscard]] std::filesystem::path tooling_project_source_root(const ToolingProjectConfig& config)
+{
+    if (!config.source_root.empty()) {
+        std::filesystem::path source_root{config.source_root};
+        if (source_root.is_relative() && !config.root_path.empty()) {
+            source_root = std::filesystem::path(config.root_path) / source_root;
+        }
+        return tooling_canonical_or_absolute(source_root);
+    }
+    return tooling_project_root_path(config);
+}
+
+[[nodiscard]] project::ProjectTargetConfig tooling_project_target_config()
+{
+    return project::ProjectTargetConfig{
+        std::string(TOOLING_PROJECT_TARGET_EMIT_KIND),
+        std::string(TOOLING_PROJECT_TARGET_OPTIMIZATION),
+        {},
+        {},
+    };
+}
+
+[[nodiscard]] project::ProjectCommandOptions tooling_project_command_options()
+{
+    return project::ProjectCommandOptions{
+        std::string(TOOLING_PROJECT_DIAGNOSTIC_FORMAT),
+        true,
+    };
+}
+
+[[nodiscard]] std::vector<project::ProjectImportRoot> tooling_project_import_roots(const ToolingProjectConfig& config)
+{
+    std::vector<project::ProjectImportRoot> roots;
+    roots.reserve(config.import_paths.size());
+    for (const std::string& import_path : config.import_paths) {
+        const std::filesystem::path normalized{tooling_normalize_path(import_path, config)};
+        std::string identity;
+        identity.reserve(TOOLING_PROJECT_IMPORT_PACKAGE_PREFIX.size() + normalized.generic_string().size());
+        identity.append(TOOLING_PROJECT_IMPORT_PACKAGE_PREFIX);
+        identity.append(normalized.generic_string());
+        const std::array<std::string_view, 1> parts{std::string_view{identity}};
+        roots.push_back(project::ProjectImportRoot{
+            normalized,
+            identity,
+            query::package_key(parts),
+        });
+    }
+    return roots;
 }
 
 [[nodiscard]] int tooling_hex_value(const char ch) noexcept
@@ -671,18 +745,26 @@ ToolingIncrementalSnapshotResult tooling_incremental_snapshot_result(
     return result;
 }
 
-ToolingSession::ToolingSession() = default;
+ToolingSession::ToolingSession() : ToolingSession(ToolingProjectConfig{})
+{
+}
 
 ToolingSession::ToolingSession(ToolingProjectConfig config) : config_(std::move(config))
 {
     if (this->config_.package_identity.empty()) {
         this->config_.package_identity = std::string(TOOLING_DEFAULT_PACKAGE_IDENTITY);
     }
+    this->refresh_workspace_model();
 }
 
 const ToolingProjectConfig& ToolingSession::project_config() const noexcept
 {
     return this->config_;
+}
+
+const project::WorkspaceModel& ToolingSession::workspace_model() const noexcept
+{
+    return this->workspace_model_;
 }
 
 bool ToolingSession::is_open(const ToolingDocumentId& id) const
@@ -716,6 +798,7 @@ base::Result<ToolingDocumentVersion> ToolingSession::open_document(
     slot.state.open = true;
     slot.cached_version = {};
     this->documents_.emplace(key, std::move(slot));
+    this->refresh_workspace_model();
     return base::Result<ToolingDocumentVersion>::ok(version);
 }
 
@@ -749,6 +832,7 @@ base::Result<ToolingDocumentVersion> ToolingSession::change_document(
     found->second.cached_snapshot.reset();
     found->second.cached_version = {};
     found->second.pending_edit_impact = std::move(pending_edit_impact);
+    this->refresh_workspace_model();
     return base::Result<ToolingDocumentVersion>::ok(version);
 }
 
@@ -880,6 +964,7 @@ base::Result<void> ToolingSession::close_document(const ToolingDocumentId& id)
     }
     this->workspace_index_.remove_document(found->second.state.id);
     this->documents_.erase(found);
+    this->refresh_workspace_model();
     return base::Result<void>::ok();
 }
 
@@ -1203,6 +1288,40 @@ ToolingIncrementalSnapshotInput ToolingSession::incremental_input_for_slot(const
     input.previous_semantic_facts = slot.previous_cached_snapshot->query.semantic_facts.size();
     input.previous_context_malformed = tooling_incremental_input_shape_is_malformed(input);
     return input;
+}
+
+void ToolingSession::refresh_workspace_model()
+{
+    std::vector<project::ProjectOpenBuffer> buffers;
+    buffers.reserve(this->documents_.size());
+    for (const auto& entry : this->documents_) {
+        const DocumentSlot& slot = entry.second;
+        buffers.push_back(project::ProjectOpenBuffer{
+            std::filesystem::path(slot.state.id.path),
+            slot.state.id.uri,
+            std::string(tooling_package_or_default(slot.state.id.package_identity)),
+            slot.state.id.virtual_buffer_identity.empty() ? slot.state.id.uri : slot.state.id.virtual_buffer_identity,
+            slot.state.id.source_role,
+            project::project_open_buffer_fingerprint(slot.state.text),
+            static_cast<base::u64>(slot.state.text.size()),
+            slot.state.version.generation,
+        });
+    }
+
+    project::ProjectModel model = project::build_project_model(project::ProjectModelInput{
+        project::ProjectSessionKind::tooling,
+        tooling_project_root_path(this->config_),
+        tooling_project_source_root(this->config_),
+        std::string(tooling_package_or_default(this->config_.package_identity)),
+        tooling_package_key(this->config_.package_identity),
+        tooling_project_import_roots(this->config_),
+        tooling_project_target_config(),
+        tooling_project_command_options(),
+        std::move(buffers),
+    });
+    const std::array<project::ProjectModel, 1> projects{std::move(model)};
+    this->workspace_model_ =
+        project::build_workspace_model(std::span<const project::ProjectModel>(projects.data(), projects.size()));
 }
 
 std::unordered_map<std::string, ToolingSession::DocumentSlot>::iterator ToolingSession::find_slot(

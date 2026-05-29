@@ -8,6 +8,7 @@
 #include <aurex/driver/package_identity.hpp>
 #include <aurex/driver/pipeline_stage.hpp>
 #include <aurex/driver/profile.hpp>
+#include <aurex/driver/project_model.hpp>
 #include <aurex/query/generic_instance_key.hpp>
 #include <aurex/query/generic_instance_signature_query.hpp>
 #include <aurex/query/item_signature_query.hpp>
@@ -180,6 +181,7 @@ constexpr base::usize CACHE_TEST_QUERY_EDGE_DEPENDENCY_KIND_FIELD = 7;
 constexpr base::usize CACHE_TEST_QUERY_EDGE_FIELD_COUNT = 13;
 constexpr std::string_view CACHE_TEST_QUERY_ROW_KIND = "query";
 constexpr std::string_view CACHE_TEST_QUERY_EDGE_ROW_KIND = "query_edge";
+constexpr std::string_view CACHE_TEST_QUERY_PROJECT_GRAPH = "project_graph";
 constexpr std::string_view CACHE_TEST_QUERY_FILE_CONTENT = "file_content";
 constexpr std::string_view CACHE_TEST_QUERY_LEX_FILE = "lex_file";
 constexpr std::string_view CACHE_TEST_QUERY_PARSE_FILE = "parse_file";
@@ -197,6 +199,7 @@ constexpr std::string_view CACHE_TEST_QUERY_GENERIC_INSTANCE_BODY = "generic_ins
 constexpr std::string_view CACHE_TEST_QUERY_LOWER_FUNCTION_IR = "lower_function_ir";
 constexpr std::string_view CACHE_TEST_QUERY_DIAGNOSTICS = "diagnostics";
 constexpr auto CACHE_TEST_QUERY_SCHEDULE = std::to_array<std::string_view>({
+    CACHE_TEST_QUERY_PROJECT_GRAPH,
     CACHE_TEST_QUERY_FILE_CONTENT,
     CACHE_TEST_QUERY_LEX_FILE,
     CACHE_TEST_QUERY_PARSE_FILE,
@@ -218,7 +221,9 @@ constexpr std::string_view CACHE_TEST_QUERY_DIFF_PROFILE_PHASE = "incremental_ca
 constexpr std::string_view CACHE_TEST_QUERY_PLAN_PROFILE_PHASE = "incremental_cache.query_plan";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_PROFILE_PHASE = "incremental_cache.query_pruning";
 constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_PROFILE_PHASE = "incremental_cache.query_provider_eval";
+constexpr std::string_view CACHE_TEST_PROJECT_INPUTS_PROFILE_PHASE = "incremental_cache.project_inputs";
 constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE = "incremental_cache.source_stage_reuse";
+constexpr std::string_view CACHE_TEST_PROJECT_INPUTS_REUSE_DETAIL = "result=reuse,changed_inputs=none";
 constexpr std::string_view PROFILE_TEST_STAGE_FIELD = "\"stage\": {";
 constexpr std::string_view PROFILE_TEST_PARENT_STAGE_FIELD = "\"parent_stage\": {";
 constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_GREEN_DETAIL =
@@ -241,43 +246,46 @@ constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_SOURCE_FAILURE_DETAIL =
     "result=reject,reason=source_failure,sources=1,queries=0,unchanged=0,missing=0,changed=0,malformed=0,"
     "source_failures=1";
 constexpr std::string_view CACHE_TEST_QUERY_DIFF_MISSING_DETAIL =
-    "total=22,missing=22,unchanged=0,changed=0,malformed=0";
+    "total=24,missing=24,unchanged=0,changed=0,malformed=0";
 constexpr std::string_view CACHE_TEST_QUERY_DIFF_UNCHANGED_DETAIL =
-    "total=22,missing=0,unchanged=22,changed=0,malformed=0";
+    "total=24,missing=0,unchanged=24,changed=0,malformed=0";
 constexpr std::string_view CACHE_TEST_QUERY_DIFF_CHANGED_DETAIL =
-    "total=22,missing=0,unchanged=21,changed=1,malformed=0";
+    "total=24,missing=0,unchanged=23,changed=1,malformed=0";
 constexpr std::string_view CACHE_TEST_QUERY_PLAN_MISSING_DETAIL =
-    "reusable=0,recompute_roots=22,propagated_recompute=0,recompute=22";
+    "reusable=0,recompute_roots=24,propagated_recompute=0,recompute=24";
 constexpr std::string_view CACHE_TEST_QUERY_PLAN_UNCHANGED_DETAIL =
-    "reusable=22,recompute_roots=0,propagated_recompute=0,recompute=0";
+    "reusable=24,recompute_roots=0,propagated_recompute=0,recompute=0";
 constexpr std::string_view CACHE_TEST_QUERY_PLAN_CHANGED_DETAIL =
-    "reusable=21,recompute_roots=1,propagated_recompute=0,recompute=1";
+    "reusable=23,recompute_roots=1,propagated_recompute=0,recompute=1";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_NO_CACHE_DETAIL =
-    "enabled=1,applied=0,reused=0,recomputed=22,reused_file_contents=0,reused_lex_files=0,"
+    "enabled=1,applied=0,reused=0,recomputed=24,reused_project_graphs=0,reused_file_contents=0,reused_lex_files=0,"
     "reused_parse_files=0,reused_module_parts=0,reused_module_graphs=0,reused_module_exports=0,reused_item_lists=0,"
     "reused_item_signatures=0,"
     "reused_function_body_syntaxes=0,reused_type_check_bodies=0,reused_generic_template_signatures=0,"
     "reused_generic_instance_signatures=0,reused_generic_instance_bodies=0,reused_lower_function_irs=0,"
     "reused_diagnostics=0,"
-    "recomputed_file_contents=1,recomputed_lex_files=1,recomputed_parse_files=1,recomputed_module_parts=1,"
+    "recomputed_project_graphs=1,recomputed_file_contents=1,recomputed_lex_files=1,recomputed_parse_files=1,"
+    "recomputed_module_parts=1,"
     "recomputed_module_graphs=1,"
     "recomputed_module_exports=1,recomputed_item_lists=1,"
     "recomputed_item_signatures=2,recomputed_function_body_syntaxes=0,recomputed_type_check_bodies=0,"
     "recomputed_generic_template_signatures=1,recomputed_generic_instance_signatures=1,"
     "recomputed_generic_instance_bodies=0,"
-    "recomputed_lower_function_irs=0,recomputed_diagnostics=11,fallback=no_cache";
+    "recomputed_lower_function_irs=0,recomputed_diagnostics=12,fallback=no_cache";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_NO_CACHE_FALLBACK_FIELD = "fallback=no_cache";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_FALLBACK_MALFORMED_CACHE = "malformed_cache";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_FALLBACK_MALFORMED_QUERY_GRAPH = "malformed_query_graph";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_FALLBACK_MALFORMED_QUERY_IDENTITY = "malformed_query_identity";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_REUSE_ALL_DETAIL =
-    "enabled=1,applied=1,reused=22,recomputed=0,reused_file_contents=1,reused_lex_files=1,"
+    "enabled=1,applied=1,reused=24,recomputed=0,reused_project_graphs=1,reused_file_contents=1,"
+    "reused_lex_files=1,"
     "reused_parse_files=1,reused_module_parts=1,reused_module_graphs=1,reused_module_exports=1,reused_item_lists=1,"
     "reused_item_signatures=2,"
     "reused_function_body_syntaxes=0,reused_type_check_bodies=0,reused_generic_template_signatures=1,"
     "reused_generic_instance_signatures=1,reused_generic_instance_bodies=0,reused_lower_function_irs=0,"
-    "reused_diagnostics=11,"
-    "recomputed_file_contents=0,recomputed_lex_files=0,recomputed_parse_files=0,recomputed_module_parts=0,"
+    "reused_diagnostics=12,"
+    "recomputed_project_graphs=0,recomputed_file_contents=0,recomputed_lex_files=0,recomputed_parse_files=0,"
+    "recomputed_module_parts=0,"
     "recomputed_module_graphs=0,"
     "recomputed_module_exports=0,recomputed_item_lists=0,"
     "recomputed_item_signatures=0,recomputed_function_body_syntaxes=0,recomputed_type_check_bodies=0,"
@@ -285,13 +293,15 @@ constexpr std::string_view CACHE_TEST_QUERY_PRUNING_REUSE_ALL_DETAIL =
     "recomputed_generic_instance_bodies=0,"
     "recomputed_lower_function_irs=0,recomputed_diagnostics=0,fallback=none";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_CHANGED_DETAIL =
-    "enabled=1,applied=1,reused=21,recomputed=1,reused_file_contents=1,reused_lex_files=1,"
+    "enabled=1,applied=1,reused=23,recomputed=1,reused_project_graphs=1,reused_file_contents=1,"
+    "reused_lex_files=1,"
     "reused_parse_files=1,reused_module_parts=1,reused_module_graphs=1,reused_module_exports=1,reused_item_lists=1,"
     "reused_item_signatures=2,"
     "reused_function_body_syntaxes=0,reused_type_check_bodies=0,reused_generic_template_signatures=1,"
     "reused_generic_instance_signatures=0,reused_generic_instance_bodies=0,reused_lower_function_irs=0,"
-    "reused_diagnostics=11,"
-    "recomputed_file_contents=0,recomputed_lex_files=0,recomputed_parse_files=0,recomputed_module_parts=0,"
+    "reused_diagnostics=12,"
+    "recomputed_project_graphs=0,recomputed_file_contents=0,recomputed_lex_files=0,recomputed_parse_files=0,"
+    "recomputed_module_parts=0,"
     "recomputed_module_graphs=0,"
     "recomputed_module_exports=0,recomputed_item_lists=0,"
     "recomputed_item_signatures=0,recomputed_function_body_syntaxes=0,recomputed_type_check_bodies=0,"
@@ -299,12 +309,14 @@ constexpr std::string_view CACHE_TEST_QUERY_PRUNING_CHANGED_DETAIL =
     "recomputed_generic_instance_bodies=0,"
     "recomputed_lower_function_irs=0,recomputed_diagnostics=0,fallback=none";
 constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_REUSE_ALL_DETAIL =
-    "mode=pruned,seeded=22,evaluated=0,seeded_file_contents=1,seeded_lex_files=1,seeded_parse_files=1,"
+    "mode=pruned,seeded=24,evaluated=0,seeded_project_graphs=1,seeded_file_contents=1,seeded_lex_files=1,"
+    "seeded_parse_files=1,"
     "seeded_module_parts=1,seeded_module_graphs=1,seeded_module_exports=1,seeded_item_lists=1,seeded_item_signatures=2,"
     "seeded_function_body_syntaxes=0,seeded_type_check_bodies=0,seeded_generic_template_signatures=1,"
     "seeded_generic_instance_signatures=1,seeded_generic_instance_bodies=0,seeded_lower_function_irs=0,"
-    "seeded_diagnostics=11,"
-    "evaluated_file_contents=0,evaluated_lex_files=0,evaluated_parse_files=0,evaluated_module_parts=0,"
+    "seeded_diagnostics=12,"
+    "evaluated_project_graphs=0,evaluated_file_contents=0,evaluated_lex_files=0,evaluated_parse_files=0,"
+    "evaluated_module_parts=0,"
     "evaluated_module_graphs=0,"
     "evaluated_module_exports=0,evaluated_item_lists=0,"
     "evaluated_item_signatures=0,evaluated_function_body_syntaxes=0,evaluated_type_check_bodies=0,"
@@ -312,12 +324,14 @@ constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_REUSE_ALL_DETAIL =
     "evaluated_generic_instance_bodies=0,"
     "evaluated_lower_function_irs=0,evaluated_diagnostics=0";
 constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_CHANGED_DETAIL =
-    "mode=pruned,seeded=21,evaluated=1,seeded_file_contents=1,seeded_lex_files=1,seeded_parse_files=1,"
+    "mode=pruned,seeded=23,evaluated=1,seeded_project_graphs=1,seeded_file_contents=1,seeded_lex_files=1,"
+    "seeded_parse_files=1,"
     "seeded_module_parts=1,seeded_module_graphs=1,seeded_module_exports=1,seeded_item_lists=1,seeded_item_signatures=2,"
     "seeded_function_body_syntaxes=0,seeded_type_check_bodies=0,seeded_generic_template_signatures=1,"
     "seeded_generic_instance_signatures=0,seeded_generic_instance_bodies=0,seeded_lower_function_irs=0,"
-    "seeded_diagnostics=11,"
-    "evaluated_file_contents=0,evaluated_lex_files=0,evaluated_parse_files=0,evaluated_module_parts=0,"
+    "seeded_diagnostics=12,"
+    "evaluated_project_graphs=0,evaluated_file_contents=0,evaluated_lex_files=0,evaluated_parse_files=0,"
+    "evaluated_module_parts=0,"
     "evaluated_module_graphs=0,"
     "evaluated_module_exports=0,evaluated_item_lists=0,"
     "evaluated_item_signatures=0,evaluated_function_body_syntaxes=0,evaluated_type_check_bodies=0,"
@@ -400,32 +414,60 @@ struct CacheTestQueryResultFingerprint {
     return encoded;
 }
 
-[[nodiscard]] std::string cache_test_header(const fs::path& root, const std::vector<fs::path>& import_paths = {})
+[[nodiscard]] driver::CompilerInvocation cache_test_header_invocation(
+    const fs::path& root, const std::vector<fs::path>& import_paths)
 {
+    driver::CompilerInvocation invocation;
+    invocation.input_path = root;
+    invocation.emit_kind = driver::EmitKind::check;
+    invocation.import_paths = import_paths;
+    return invocation;
+}
+
+[[nodiscard]] fs::path cache_test_import_source_root(const fs::path& import_path)
+{
+    const fs::path canonical_root = project::canonical_or_absolute_project_path(import_path);
+    return driver::package_source_root_for_import_root(canonical_root.string()).value_or(canonical_root);
+}
+
+[[nodiscard]] std::string cache_test_header_with_compiler_and_mode(const fs::path& root,
+    const std::string_view compiler_version, const std::string_view mode,
+    const std::vector<fs::path>& import_paths = {})
+{
+    const driver::CompilerInvocation invocation = cache_test_header_invocation(root, import_paths);
+    const project::ProjectModel project_model = driver::project_model_from_invocation(invocation);
     std::string cache;
     cache += "aurex-incremental-cache-v1\n";
-    cache += "schema\t1\n";
-    cache += "compiler\t" + hex_encode_cache_test_field(base::config::AUREX_VERSION_STRING) + "\n";
-    cache += "mode\t" + hex_encode_cache_test_field("semantic-ok") + "\n";
-    cache += "root\t" + hex_encode_cache_test_field(root.string()) + "\n";
+    cache += "schema\t2\n";
+    cache += "compiler\t" + hex_encode_cache_test_field(compiler_version) + "\n";
+    cache += "mode\t" + hex_encode_cache_test_field(mode) + "\n";
+    cache += "root\t" + hex_encode_cache_test_field(project::canonical_or_absolute_project_path(root).string()) + "\n";
+    cache += "project_identity\t" + hex_encode_cache_test_field(project::stable_serialize(project_model)) + "\n";
+    cache += "package_root\t" + hex_encode_cache_test_field(project_model.package_root.string()) + "\n";
+    cache += "source_root\t" + hex_encode_cache_test_field(project_model.source_root.string()) + "\n";
+    cache += "target_config\t" + hex_encode_cache_test_field(project::stable_serialize(project_model.target)) + "\n";
+    cache += "command_options\t" + hex_encode_cache_test_field(project::stable_serialize(project_model.command_options))
+        + "\n";
+    cache += "open_buffers\t0\n";
+    cache += "package\t" + hex_encode_cache_test_field(driver::package_identity_for_invocation(invocation)) + "\n";
     cache += "import_paths\t" + std::to_string(import_paths.size()) + "\n";
     for (const fs::path& import_path : import_paths) {
-        cache += "import_path\t" + hex_encode_cache_test_field(import_path.string()) + "\n";
+        cache +=
+            "import_path\t" + hex_encode_cache_test_field(cache_test_import_source_root(import_path).string()) + "\n";
+    }
+    cache += "import_packages\t" + std::to_string(import_paths.size()) + "\n";
+    for (const fs::path& import_path : import_paths) {
+        const fs::path canonical_root = project::canonical_or_absolute_project_path(import_path);
+        cache += "import_package\t"
+            + hex_encode_cache_test_field(driver::package_identity_for_import_root(canonical_root.string())) + "\n";
     }
     return cache;
 }
 
-[[nodiscard]] std::string cache_test_header_with_compiler_and_mode(
-    const fs::path& root, const std::string_view compiler_version, const std::string_view mode)
+[[nodiscard]] std::string cache_test_header(const fs::path& root, const std::vector<fs::path>& import_paths = {})
 {
-    std::string cache;
-    cache += "aurex-incremental-cache-v1\n";
-    cache += "schema\t1\n";
-    cache += "compiler\t" + hex_encode_cache_test_field(compiler_version) + "\n";
-    cache += "mode\t" + hex_encode_cache_test_field(mode) + "\n";
-    cache += "root\t" + hex_encode_cache_test_field(root.string()) + "\n";
-    cache += "import_paths\t0\n";
-    return cache;
+    return cache_test_header_with_compiler_and_mode(
+        root, base::config::AUREX_VERSION_STRING, "semantic-ok", import_paths);
 }
 
 [[nodiscard]] std::string minimal_cache_without_sources(
@@ -533,6 +575,9 @@ struct CacheTestQueryResultFingerprint {
 
 [[nodiscard]] std::string_view cache_test_query_kind_name(const query::QueryKind kind) noexcept
 {
+    if (kind == query::QueryKind::project_graph) {
+        return CACHE_TEST_QUERY_PROJECT_GRAPH;
+    }
     if (kind == query::QueryKind::file_content) {
         return CACHE_TEST_QUERY_FILE_CONTENT;
     }
@@ -730,6 +775,9 @@ void expect_cache_query_kind_before(
     if (dependent == CACHE_TEST_QUERY_MODULE_PART) {
         return dependency == CACHE_TEST_QUERY_PARSE_FILE;
     }
+    if (dependent == CACHE_TEST_QUERY_MODULE_GRAPH) {
+        return dependency == CACHE_TEST_QUERY_PROJECT_GRAPH || dependency == CACHE_TEST_QUERY_MODULE_PART;
+    }
     if (dependent == CACHE_TEST_QUERY_ITEM_LIST) {
         return dependency == CACHE_TEST_QUERY_MODULE_GRAPH;
     }
@@ -920,12 +968,14 @@ template <base::usize PART_COUNT>
     return cache_test_query_result(cache_text, CACHE_TEST_QUERY_TYPE_CHECK_BODY, encoded_stable_key);
 }
 
-void expect_single_profile_phase(
-    const driver::CompilationProfiler& profiler, const std::string_view name, const std::string_view detail)
+void expect_project_inputs_and_source_stage_profile_phases(
+    const driver::CompilationProfiler& profiler, const std::string_view source_stage_detail)
 {
-    ASSERT_EQ(profiler.phases().size(), 1U);
-    EXPECT_EQ(profiler.phases()[0].name, name);
-    EXPECT_EQ(profiler.phases()[0].detail, detail);
+    ASSERT_EQ(profiler.phases().size(), 2U);
+    EXPECT_EQ(profiler.phases()[0].name, CACHE_TEST_PROJECT_INPUTS_PROFILE_PHASE);
+    EXPECT_EQ(profiler.phases()[0].detail, CACHE_TEST_PROJECT_INPUTS_REUSE_DETAIL);
+    EXPECT_EQ(profiler.phases()[1].name, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE);
+    EXPECT_EQ(profiler.phases()[1].detail, source_stage_detail);
 }
 
 void expect_query_profile_phases_with_pruning(const driver::CompilationProfiler& profiler,
@@ -1470,6 +1520,11 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
     ASSERT_NE(source_stage_reuse_subevent, nullptr);
     EXPECT_EQ(source_stage_reuse_subevent->parent_stage, driver::PipelineStageId::incremental_cache_lookup);
 
+    const driver::PipelineProfileSubeventRecord* const project_inputs_subevent =
+        driver::pipeline_profile_subevent_record_for_profile_name(CACHE_TEST_PROJECT_INPUTS_PROFILE_PHASE);
+    ASSERT_NE(project_inputs_subevent, nullptr);
+    EXPECT_EQ(project_inputs_subevent->parent_stage, driver::PipelineStageId::incremental_cache_lookup);
+
     const driver::PipelineProfileSubeventRecord* const query_diff_subevent =
         driver::pipeline_profile_subevent_record_for_profile_name(CACHE_TEST_QUERY_DIFF_PROFILE_PHASE);
     ASSERT_NE(query_diff_subevent, nullptr);
@@ -1497,6 +1552,8 @@ TEST_F(AurexIntegrationTest, CompilerPipelineStageRecordsCoverDriverProfileContr
         subevents.front().profile_name);
     EXPECT_EQ(driver::pipeline_profile_subevent_record_for_profile_name("unknown.phase"), nullptr);
     EXPECT_EQ(driver::pipeline_profile_phase_classification(CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE).kind,
+        driver::PipelineProfilePhaseKind::profile_subevent);
+    EXPECT_EQ(driver::pipeline_profile_phase_classification(CACHE_TEST_PROJECT_INPUTS_PROFILE_PHASE).kind,
         driver::PipelineProfilePhaseKind::profile_subevent);
 }
 
@@ -2344,6 +2401,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesQueryRowsInDependencySchedule
     ASSERT_TRUE(first) << first.error().message;
 
     const std::string cache_text = read_text(cache);
+    expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_PROJECT_GRAPH, CACHE_TEST_QUERY_MODULE_GRAPH);
     expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_FILE_CONTENT, CACHE_TEST_QUERY_LEX_FILE);
     expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_LEX_FILE, CACHE_TEST_QUERY_PARSE_FILE);
     expect_cache_query_kind_before(cache_text, CACHE_TEST_QUERY_PARSE_FILE, CACHE_TEST_QUERY_MODULE_GRAPH);
@@ -2409,8 +2467,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheQueryPruningReusesCommentOnlySource
     auto source_stage_green_reuse = driver::try_reuse_incremental_check_cache(invocation, &source_stage_green_profiler);
     ASSERT_TRUE(source_stage_green_reuse) << source_stage_green_reuse.error().message;
     EXPECT_TRUE(source_stage_green_reuse.value());
-    expect_single_profile_phase(source_stage_green_profiler, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE,
-        CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_GREEN_DETAIL);
+    expect_project_inputs_and_source_stage_profile_phases(
+        source_stage_green_profiler, CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_GREEN_DETAIL);
 
     driver::CompilerInvocation profiled_pruning_invocation = invocation;
     profiled_pruning_invocation.profile_output_path = cache_dir / "source-stage-green.profile.json";
@@ -2430,8 +2488,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheQueryPruningReusesCommentOnlySource
     auto token_changed_reuse = driver::try_reuse_incremental_check_cache(invocation, &token_changed_profiler);
     ASSERT_TRUE(token_changed_reuse) << token_changed_reuse.error().message;
     EXPECT_FALSE(token_changed_reuse.value());
-    expect_single_profile_phase(token_changed_profiler, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE,
-        CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_CHANGED_DETAIL);
+    expect_project_inputs_and_source_stage_profile_phases(
+        token_changed_profiler, CACHE_TEST_SOURCE_STAGE_REUSE_SINGLE_CHANGED_DETAIL);
 
     driver::clear_file_cache();
 }
@@ -2465,7 +2523,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheQueryPruningProfilesSourceStageReje
         auto reuse = driver::try_reuse_incremental_check_cache(pruning_invocation, &profiler);
         ASSERT_TRUE(reuse) << reuse.error().message;
         EXPECT_FALSE(reuse.value());
-        expect_single_profile_phase(profiler, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE, expected_detail);
+        expect_project_inputs_and_source_stage_profile_phases(profiler, expected_detail);
     };
 
     write_source(DRIVER_INCREMENTAL_CACHE_FIRST_SOURCE);
@@ -2628,8 +2686,9 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
         CACHE_TEST_QUERY_PLAN_MISSING_DETAIL, CACHE_TEST_QUERY_PRUNING_NO_CACHE_DETAIL);
 
     const std::string cache_text = read_text(cache);
-    expect_contains(cache_text, "queries\t22");
-    expect_contains(cache_text, "query_edges\t20");
+    expect_contains(cache_text, "queries\t24");
+    expect_contains(cache_text, "query_edges\t23");
+    expect_contains(cache_text, "query\tproject_graph");
     expect_contains(cache_text, "query\tfile_content");
     expect_contains(cache_text, "query\tlex_file");
     expect_contains(cache_text, "query\tparse_file");
@@ -2740,11 +2799,11 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     };
     const std::string wrong_graph_cached_edge_row = cache_test_query_edge_row(wrong_graph_cached_edge);
     std::string cache_with_wrong_graph_edge = cached_query_text;
-    const std::string original_query_edge_count = "query_edges\t20\n";
+    const std::string original_query_edge_count = "query_edges\t23\n";
     const std::size_t graph_query_edge_count_pos = cache_with_wrong_graph_edge.find(original_query_edge_count);
     ASSERT_NE(graph_query_edge_count_pos, std::string::npos);
     cache_with_wrong_graph_edge.replace(
-        graph_query_edge_count_pos, original_query_edge_count.size(), "query_edges\t21\n");
+        graph_query_edge_count_pos, original_query_edge_count.size(), "query_edges\t24\n");
     cache_with_wrong_graph_edge += wrong_graph_cached_edge_row;
     write_cache_text(cache_with_wrong_graph_edge);
 
@@ -2755,7 +2814,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     expect_query_profile_phases_with_pruning(malformed_graph_write_profiler, CACHE_TEST_QUERY_DIFF_MISSING_DETAIL,
         CACHE_TEST_QUERY_PLAN_MISSING_DETAIL, malformed_graph_pruning_detail);
     const std::string graph_repaired_cache_text = read_text(cache);
-    expect_contains(graph_repaired_cache_text, "query_edges\t20");
+    expect_contains(graph_repaired_cache_text, "query_edges\t23");
     EXPECT_EQ(graph_repaired_cache_text.find(wrong_graph_cached_edge_row), std::string::npos);
 
     const query::QueryDependencyEdge wrong_identity_cached_edge{
@@ -2766,7 +2825,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     std::string cache_with_wrong_identity_edge = cached_query_text;
     const std::size_t query_edge_count_pos = cache_with_wrong_identity_edge.find(original_query_edge_count);
     ASSERT_NE(query_edge_count_pos, std::string::npos);
-    cache_with_wrong_identity_edge.replace(query_edge_count_pos, original_query_edge_count.size(), "query_edges\t21\n");
+    cache_with_wrong_identity_edge.replace(query_edge_count_pos, original_query_edge_count.size(), "query_edges\t24\n");
     cache_with_wrong_identity_edge += wrong_identity_cached_edge_row;
     write_cache_text(cache_with_wrong_identity_edge);
 
@@ -2777,7 +2836,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
     expect_query_profile_phases_with_pruning(malformed_edge_write_profiler, CACHE_TEST_QUERY_DIFF_MISSING_DETAIL,
         CACHE_TEST_QUERY_PLAN_MISSING_DETAIL, malformed_identity_pruning_detail);
     const std::string repaired_cache_text = read_text(cache);
-    expect_contains(repaired_cache_text, "query_edges\t20");
+    expect_contains(repaired_cache_text, "query_edges\t23");
     EXPECT_EQ(repaired_cache_text.find(wrong_identity_cached_edge_row), std::string::npos);
 
     const std::optional<query::QueryRecord> malformed_item_shape_record = query::query_record(
@@ -2810,7 +2869,7 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericInstanceQueryRowsWhenA
         CACHE_TEST_QUERY_DIFF_UNCHANGED_DETAIL, CACHE_TEST_QUERY_PLAN_UNCHANGED_DETAIL,
         CACHE_TEST_QUERY_PRUNING_REUSE_ALL_DETAIL, CACHE_TEST_QUERY_PROVIDER_EVAL_REUSE_ALL_DETAIL);
     const std::string pruned_cache_text = read_text(cache);
-    expect_contains(pruned_cache_text, "query_edges\t20");
+    expect_contains(pruned_cache_text, "query_edges\t23");
     EXPECT_EQ(pruned_cache_text.find(wrong_identity_cached_edge_row), std::string::npos);
 
     checked.generic_function_instances.front().signature.incremental_key =
@@ -2897,34 +2956,38 @@ TEST_F(AurexIntegrationTest, IncrementalCacheParsesQueryDependencyEdgeRows)
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_UNKNOWN_KIND = "unknown_query";
     constexpr base::u32 DRIVER_INCREMENTAL_CACHE_EDGE_PRIMARY_PART_INDEX = 0;
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_CHANGED_DETAIL =
-        "total=16,missing=14,unchanged=1,changed=1,malformed=0";
+        "total=18,missing=16,unchanged=1,changed=1,malformed=0";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_PLAN_DETAIL =
-        "reusable=1,recompute_roots=15,propagated_recompute=0,recompute=15";
+        "reusable=1,recompute_roots=17,propagated_recompute=0,recompute=17";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_PRUNING_DETAIL =
-        "enabled=1,applied=1,reused=1,recomputed=15,reused_file_contents=0,reused_lex_files=0,"
+        "enabled=1,applied=1,reused=1,recomputed=17,reused_project_graphs=0,reused_file_contents=0,"
+        "reused_lex_files=0,"
         "reused_parse_files=0,reused_module_parts=0,reused_module_graphs=0,reused_module_exports=0,"
         "reused_item_lists=0,"
         "reused_item_signatures=1,reused_function_body_syntaxes=0,reused_type_check_bodies=0,"
         "reused_generic_template_signatures=0,reused_generic_instance_signatures=0,"
         "reused_generic_instance_bodies=0,reused_lower_function_irs=0,reused_diagnostics=0,"
-        "recomputed_file_contents=1,recomputed_lex_files=1,recomputed_parse_files=1,recomputed_module_parts=1,"
+        "recomputed_project_graphs=1,recomputed_file_contents=1,recomputed_lex_files=1,recomputed_parse_files=1,"
+        "recomputed_module_parts=1,"
         "recomputed_module_graphs=1,"
         "recomputed_module_exports=1,recomputed_item_lists=1,recomputed_item_signatures=0,"
         "recomputed_function_body_syntaxes=0,recomputed_type_check_bodies=0,"
         "recomputed_generic_template_signatures=0,recomputed_generic_instance_signatures=0,"
-        "recomputed_generic_instance_bodies=0,recomputed_lower_function_irs=0,recomputed_diagnostics=8,"
+        "recomputed_generic_instance_bodies=0,recomputed_lower_function_irs=0,recomputed_diagnostics=9,"
         "fallback=none";
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_EDGE_PROVIDER_EVAL_DETAIL =
-        "mode=pruned,seeded=1,evaluated=15,seeded_file_contents=0,seeded_lex_files=0,seeded_parse_files=0,"
+        "mode=pruned,seeded=1,evaluated=17,seeded_project_graphs=0,seeded_file_contents=0,seeded_lex_files=0,"
+        "seeded_parse_files=0,"
         "seeded_module_parts=0,seeded_module_graphs=0,seeded_module_exports=0,seeded_item_lists=0,"
         "seeded_item_signatures=1,"
         "seeded_function_body_syntaxes=0,seeded_type_check_bodies=0,seeded_generic_template_signatures=0,"
         "seeded_generic_instance_signatures=0,seeded_generic_instance_bodies=0,seeded_lower_function_irs=0,"
-        "seeded_diagnostics=0,evaluated_file_contents=1,evaluated_lex_files=1,evaluated_parse_files=1,"
+        "seeded_diagnostics=0,evaluated_project_graphs=1,evaluated_file_contents=1,evaluated_lex_files=1,"
+        "evaluated_parse_files=1,"
         "evaluated_module_parts=1,evaluated_module_graphs=1,evaluated_module_exports=1,evaluated_item_lists=1,"
         "evaluated_item_signatures=0,evaluated_function_body_syntaxes=0,evaluated_type_check_bodies=0,"
         "evaluated_generic_template_signatures=0,evaluated_generic_instance_signatures=0,"
-        "evaluated_generic_instance_bodies=0,evaluated_lower_function_irs=0,evaluated_diagnostics=8";
+        "evaluated_generic_instance_bodies=0,evaluated_lower_function_irs=0,evaluated_diagnostics=9";
 
     driver::clear_file_cache();
 
@@ -4672,8 +4735,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheTracksImportPathAndDependencyFinger
     auto import_green_reuse = driver::try_reuse_incremental_check_cache(invocation, &import_green_profiler);
     ASSERT_TRUE(import_green_reuse) << import_green_reuse.error().message;
     EXPECT_TRUE(import_green_reuse.value());
-    expect_single_profile_phase(import_green_profiler, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE,
-        CACHE_TEST_SOURCE_STAGE_REUSE_IMPORT_GREEN_DETAIL);
+    expect_project_inputs_and_source_stage_profile_phases(
+        import_green_profiler, CACHE_TEST_SOURCE_STAGE_REUSE_IMPORT_GREEN_DETAIL);
 
     write_import_source(DRIVER_INCREMENTAL_CACHE_IMPORT_SECOND_SOURCE);
     driver::clear_file_cache();
@@ -4685,8 +4748,8 @@ TEST_F(AurexIntegrationTest, IncrementalCacheTracksImportPathAndDependencyFinger
     auto import_changed_reuse = driver::try_reuse_incremental_check_cache(invocation, &import_changed_profiler);
     ASSERT_TRUE(import_changed_reuse) << import_changed_reuse.error().message;
     EXPECT_FALSE(import_changed_reuse.value());
-    expect_single_profile_phase(import_changed_profiler, CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE,
-        CACHE_TEST_SOURCE_STAGE_REUSE_IMPORT_CHANGED_DETAIL);
+    expect_project_inputs_and_source_stage_profile_phases(
+        import_changed_profiler, CACHE_TEST_SOURCE_STAGE_REUSE_IMPORT_CHANGED_DETAIL);
 
     auto second = compiler.run(invocation);
     ASSERT_TRUE(second) << second.error().message;

@@ -15,7 +15,7 @@
 namespace aurex::driver::incremental_cache_format {
 
 constexpr std::string_view INCREMENTAL_CACHE_MAGIC = "aurex-incremental-cache-v1";
-constexpr base::u64 INCREMENTAL_CACHE_SCHEMA_VERSION = 1;
+constexpr base::u64 INCREMENTAL_CACHE_SCHEMA_VERSION = 2;
 constexpr std::string_view INCREMENTAL_CACHE_MODE_SEMANTIC_OK = "semantic-ok";
 constexpr char INCREMENTAL_CACHE_SEPARATOR = '\t';
 constexpr char INCREMENTAL_CACHE_HEX_DIGIT_PREFIX = '0';
@@ -94,6 +94,12 @@ constexpr std::string_view INCREMENTAL_CACHE_FIELD_SCHEMA = "schema";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_COMPILER = "compiler";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_MODE = "mode";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_ROOT = "root";
+constexpr std::string_view INCREMENTAL_CACHE_FIELD_PROJECT_IDENTITY = "project_identity";
+constexpr std::string_view INCREMENTAL_CACHE_FIELD_PACKAGE_ROOT = "package_root";
+constexpr std::string_view INCREMENTAL_CACHE_FIELD_SOURCE_ROOT = "source_root";
+constexpr std::string_view INCREMENTAL_CACHE_FIELD_TARGET_CONFIG = "target_config";
+constexpr std::string_view INCREMENTAL_CACHE_FIELD_COMMAND_OPTIONS = "command_options";
+constexpr std::string_view INCREMENTAL_CACHE_FIELD_OPEN_BUFFERS = "open_buffers";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_PACKAGE = "package";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_IMPORT_PATHS = "import_paths";
 constexpr std::string_view INCREMENTAL_CACHE_FIELD_IMPORT_PATH = "import_path";
@@ -124,6 +130,7 @@ constexpr std::string_view INCREMENTAL_CACHE_LEX_FILE_ERROR_MARKER = "lex-error"
 constexpr std::string_view INCREMENTAL_CACHE_PARSE_FILE_RESULT_MARKER = "parse-file:v1";
 constexpr std::string_view INCREMENTAL_CACHE_PARSE_FILE_ERROR_MARKER = "parse-error";
 constexpr std::string_view INCREMENTAL_CACHE_MODULE_GRAPH_RESULT_MARKER = "module-graph:v1";
+constexpr std::string_view INCREMENTAL_CACHE_PROJECT_GRAPH_RESULT_MARKER = "project-graph:v1";
 constexpr std::string_view INCREMENTAL_CACHE_MODULE_PART_RESULT_MARKER = "module-part:v1";
 constexpr std::string_view INCREMENTAL_CACHE_MODULE_EXPORTS_RESULT_MARKER = "module-exports:v1";
 constexpr std::string_view INCREMENTAL_CACHE_MODULE_PACKAGE_EXPORTS_RESULT_MARKER = "module-package-exports:v1";
@@ -158,6 +165,12 @@ struct ParsedCache {
     std::string compiler_version;
     std::string mode;
     std::filesystem::path root_path;
+    std::optional<std::string> project_identity;
+    std::optional<std::filesystem::path> package_root;
+    std::optional<std::filesystem::path> source_root;
+    std::optional<std::string> target_config;
+    std::optional<std::string> command_options;
+    std::optional<base::usize> expected_open_buffers;
     std::optional<std::string> package_identity;
     std::vector<std::filesystem::path> import_paths;
     std::vector<std::string> import_package_identities;
@@ -201,6 +214,7 @@ struct QueryKindCacheName {
 };
 
 constexpr auto INCREMENTAL_CACHE_QUERY_KIND_NAMES = std::to_array<QueryKindCacheName>({
+    {query::QueryKind::project_graph, "project_graph"},
     {query::QueryKind::file_content, "file_content"},
     {query::QueryKind::lex_file, "lex_file"},
     {query::QueryKind::parse_file, "parse_file"},

@@ -17,6 +17,7 @@ inline constexpr bool QUERY_PARSER_CONFIG_DEFAULT_BUILD_LOSSLESS_TREE = false;
 
 enum class QueryKind : base::u8 {
     invalid = 0,
+    project_graph,
     file_content,
     lex_file,
     parse_file,
@@ -114,6 +115,13 @@ struct PackageKey {
     base::u64 global_id = 0;
 
     [[nodiscard]] friend constexpr bool operator==(PackageKey lhs, PackageKey rhs) noexcept = default;
+};
+
+struct ProjectKey {
+    StableFingerprint128 identity;
+    base::u64 global_id = 0;
+
+    [[nodiscard]] friend constexpr bool operator==(ProjectKey lhs, ProjectKey rhs) noexcept = default;
 };
 
 struct FileKey {
@@ -231,6 +239,7 @@ struct QueryKey {
 };
 
 [[nodiscard]] bool is_valid(PackageKey key) noexcept;
+[[nodiscard]] bool is_valid(ProjectKey key) noexcept;
 [[nodiscard]] bool is_valid(FileKey key) noexcept;
 [[nodiscard]] bool is_valid(LexConfigKey key) noexcept;
 [[nodiscard]] bool is_valid(ParserConfigKey key) noexcept;
@@ -245,6 +254,7 @@ struct QueryKey {
 [[nodiscard]] bool is_valid(QueryKey key) noexcept;
 
 [[nodiscard]] PackageKey package_key(std::span<const std::string_view> identity_parts) noexcept;
+[[nodiscard]] ProjectKey project_key(StableFingerprint128 identity) noexcept;
 [[nodiscard]] FileKey file_key(PackageKey package, std::string_view canonical_path,
     SourceRole role = SourceRole::source, std::string_view virtual_buffer = {}) noexcept;
 [[nodiscard]] LexConfigKey lex_config_key(bool retain_trivia = QUERY_LEX_CONFIG_DEFAULT_RETAIN_TRIVIA) noexcept;
@@ -275,6 +285,7 @@ struct QueryKey {
 [[nodiscard]] DefKey def_key_from_stable_id(StableDefId stable_id, DefNamespace name_space, DefKind kind) noexcept;
 
 void append_stable_key(StableKeyWriter& writer, PackageKey key);
+void append_stable_key(StableKeyWriter& writer, ProjectKey key);
 void append_stable_key(StableKeyWriter& writer, FileKey key);
 void append_stable_key(StableKeyWriter& writer, LexConfigKey key);
 void append_stable_key(StableKeyWriter& writer, ParserConfigKey key);
@@ -289,6 +300,7 @@ void append_stable_key(StableKeyWriter& writer, GenericParamKey key);
 void append_stable_key(StableKeyWriter& writer, QueryKey key);
 
 [[nodiscard]] std::string stable_serialize(PackageKey key);
+[[nodiscard]] std::string stable_serialize(ProjectKey key);
 [[nodiscard]] std::string stable_serialize(FileKey key);
 [[nodiscard]] std::string stable_serialize(LexConfigKey key);
 [[nodiscard]] std::string stable_serialize(ParserConfigKey key);
@@ -303,6 +315,7 @@ void append_stable_key(StableKeyWriter& writer, QueryKey key);
 [[nodiscard]] std::string stable_serialize(QueryKey key);
 
 [[nodiscard]] StableFingerprint128 stable_key_fingerprint(PackageKey key);
+[[nodiscard]] StableFingerprint128 stable_key_fingerprint(ProjectKey key);
 [[nodiscard]] StableFingerprint128 stable_key_fingerprint(FileKey key);
 [[nodiscard]] StableFingerprint128 stable_key_fingerprint(LexConfigKey key);
 [[nodiscard]] StableFingerprint128 stable_key_fingerprint(ParserConfigKey key);
@@ -317,6 +330,7 @@ void append_stable_key(StableKeyWriter& writer, QueryKey key);
 [[nodiscard]] StableFingerprint128 stable_key_fingerprint(QueryKey key);
 
 [[nodiscard]] std::string debug_string(PackageKey key);
+[[nodiscard]] std::string debug_string(ProjectKey key);
 [[nodiscard]] std::string debug_string(FileKey key);
 [[nodiscard]] std::string debug_string(LexConfigKey key);
 [[nodiscard]] std::string debug_string(ParserConfigKey key);
@@ -332,6 +346,10 @@ void append_stable_key(StableKeyWriter& writer, QueryKey key);
 
 struct PackageKeyHash {
     [[nodiscard]] std::size_t operator()(PackageKey key) const;
+};
+
+struct ProjectKeyHash {
+    [[nodiscard]] std::size_t operator()(ProjectKey key) const;
 };
 
 struct FileKeyHash {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/source.hpp>
+#include <aurex/project/project_model.hpp>
 #include <aurex/sema/checked_module.hpp>
 #include <aurex/syntax/ast.hpp>
 
@@ -13,6 +14,8 @@ namespace aurex::driver::incremental_cache_detail {
 
 void collect_source_file_query_subjects(
     QuerySubjectCollection& collection, const base::SourceManager& sources, std::span<const ModuleRecord> modules);
+void collect_project_graph_query_subjects(
+    QuerySubjectCollection& collection, const project::ProjectModel& model, std::span<const ModuleRecord> modules);
 
 [[nodiscard]] std::vector<ModuleGraphQuerySubject> collect_module_graph_query_subjects(
     std::span<const ModuleRecord> modules);

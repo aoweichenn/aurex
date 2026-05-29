@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/source.hpp>
+#include <aurex/project/project_model.hpp>
 #include <aurex/sema/checked_module.hpp>
 #include <aurex/syntax/ast.hpp>
 
@@ -18,7 +19,7 @@ namespace aurex::driver::incremental_cache_detail {
 [[nodiscard]] std::vector<DefinitionRecord> collect_definitions(const sema::CheckedModule& checked);
 [[nodiscard]] QuerySubjectCollection collect_query_subjects(std::span<const ModuleRecord> modules,
     const sema::CheckedModule& checked, const base::SourceManager& sources, const syntax::AstModule* ast,
-    bool include_lowering_subjects);
+    const project::ProjectModel& project_model, bool include_lowering_subjects);
 void evaluate_query_subject(
     query::QueryContext& context, const QuerySubjectCollection& collection, const QuerySubject& subject);
 

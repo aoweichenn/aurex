@@ -6,6 +6,7 @@ namespace aurex::query {
 namespace {
 
 constexpr base::u64 QUERY_PACKAGE_KEY_MARKER = 0x51504b4759313031ULL;
+constexpr base::u64 QUERY_PROJECT_KEY_MARKER = 0x5150524f4a303031ULL;
 constexpr base::u64 QUERY_FILE_KEY_MARKER = 0x5146494c45593031ULL;
 constexpr base::u64 QUERY_LEX_CONFIG_KEY_MARKER = 0x514c584346473031ULL;
 constexpr base::u64 QUERY_PARSER_CONFIG_KEY_MARKER = 0x5150434647303031ULL;
@@ -69,6 +70,11 @@ template <typename Key>
 } // namespace
 
 bool is_valid(const PackageKey key) noexcept
+{
+    return key.global_id != 0;
+}
+
+bool is_valid(const ProjectKey key) noexcept
 {
     return key.global_id != 0;
 }
@@ -139,6 +145,17 @@ PackageKey package_key(const std::span<const std::string_view> identity_parts) n
     return PackageKey{
         identity,
         nonzero_global_id(QUERY_PACKAGE_KEY_MARKER, identity),
+    };
+}
+
+ProjectKey project_key(const StableFingerprint128 identity) noexcept
+{
+    if (identity.byte_count == 0) {
+        return {};
+    }
+    return ProjectKey{
+        identity,
+        nonzero_global_id(QUERY_PROJECT_KEY_MARKER, identity),
     };
 }
 
@@ -395,6 +412,13 @@ void append_stable_key(StableKeyWriter& writer, const PackageKey key)
     writer.write_u64(key.global_id);
 }
 
+void append_stable_key(StableKeyWriter& writer, const ProjectKey key)
+{
+    writer.write_u64(QUERY_PROJECT_KEY_MARKER);
+    writer.write_fingerprint(key.identity);
+    writer.write_u64(key.global_id);
+}
+
 void append_stable_key(StableKeyWriter& writer, const FileKey key)
 {
     writer.write_u64(QUERY_FILE_KEY_MARKER);
@@ -514,6 +538,11 @@ std::string stable_serialize(const PackageKey key)
     return serialize_with<PackageKey>(append_stable_key, key);
 }
 
+std::string stable_serialize(const ProjectKey key)
+{
+    return serialize_with<ProjectKey>(append_stable_key, key);
+}
+
 std::string stable_serialize(const FileKey key)
 {
     return serialize_with<FileKey>(append_stable_key, key);
@@ -577,6 +606,11 @@ std::string stable_serialize(const QueryKey key)
 StableFingerprint128 stable_key_fingerprint(const PackageKey key)
 {
     return fingerprint_with<PackageKey>(append_stable_key, key);
+}
+
+StableFingerprint128 stable_key_fingerprint(const ProjectKey key)
+{
+    return fingerprint_with<ProjectKey>(append_stable_key, key);
 }
 
 StableFingerprint128 stable_key_fingerprint(const FileKey key)
@@ -644,6 +678,11 @@ std::string debug_string(const PackageKey key)
     return finish_debug_string("PackageKey", key.global_id, key.identity);
 }
 
+std::string debug_string(const ProjectKey key)
+{
+    return finish_debug_string("ProjectKey", key.global_id, key.identity);
+}
+
 std::string debug_string(const FileKey key)
 {
     return finish_debug_string("FileKey", key.global_id, key.path);
@@ -705,6 +744,11 @@ std::string debug_string(const QueryKey key)
 }
 
 std::size_t PackageKeyHash::operator()(const PackageKey key) const
+{
+    return stable_hash_value(stable_key_fingerprint(key));
+}
+
+std::size_t ProjectKeyHash::operator()(const ProjectKey key) const
 {
     return stable_hash_value(stable_key_fingerprint(key));
 }

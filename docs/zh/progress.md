@@ -1,7 +1,7 @@
 # 当前进度文档
 
 版本：0.1.3
-阶段：M3.5 incremental syntax / stable AST identity 已完成，下一阶段 M3.6 project graph / persistent query DB
+阶段：M3.6 project graph / persistent query DB 已完成，下一阶段 M3.7 IDE semantic features
 
 ## 总体状态
 
@@ -88,7 +88,18 @@ range 或 token index；`compare_lossless_stable_nodes(...)` 通过 stable-key m
 invalidated 和 collision counters；这些结果进入 `ToolingIncrementalSnapshotResult::syntax_reuse`。新增
 `IdeAstNodeInfo` / `ToolingAstNode` 将 offset 投影到 AST item 或 function body，并输出稳定 `DefKey` /
 `BodyKey`，使 offset-to-token、syntax-node、AST-node 和 semantic-fact projection 能在同一个 snapshot 中对齐。
-下一目标是 M3.6 Project Graph And Persistent Query DB。
+M3.6 Project Graph And Persistent Query DB 已完成，下一目标是 M3.7 IDE Semantic Features。
+
+2026-05-30：M3.6 Project Graph And Persistent Query DB 已完成当前工程级 query/cache 边界。
+`ProjectModel` / `WorkspaceModel` 已作为 `aurex_project` 公共目标落地，driver invocation 和
+`ToolingSession` 都消费同一套 package root、source root、import roots、target config、command options
+和 open buffers 输入。query 层新增 `ProjectKey`、`QueryKind::project_graph` 和 project graph provider；
+`module_graph` 现在显式依赖 project graph 和 module part queries。incremental cache schema 升到 2，
+header 写入 project identity、package/source root、target config、command options 和 open buffer count；
+`incremental_cache.project_inputs` profile 子事件能说明 project input 是 reuse 还是 reject，以及具体 changed
+inputs。测试覆盖 project graph key/layout/provider、edge verifier、driver cache row/edge/profile 和 tooling
+workspace model open/change/close 行为。详细计划见
+[Aurex M3.6 Project Graph And Persistent Query DB 计划](m3.6-project-graph-persistent-query-db-plan.md)。
 
 2026-05-28 WP-1B Generic Instance Identity Propagation 已完成：`FunctionSignature`、`EnumCaseInfo`、
 `GenericEnumInstanceInfo` 和 `GenericTypeAliasInstanceInfo` 都携带结构化 `GenericInstanceKey`；

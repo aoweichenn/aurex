@@ -6,6 +6,9 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const QuerySub
 {
     counts.total += 1;
     switch (kind) {
+        case QuerySubjectKind::project_graph:
+            counts.project_graphs += 1;
+            return;
         case QuerySubjectKind::file_content:
             counts.file_contents += 1;
             return;
@@ -64,6 +67,9 @@ void increment_query_kind_count(QueryKindExecutionCounts& counts, const query::Q
 {
     counts.total += 1;
     switch (kind) {
+        case query::QueryKind::project_graph:
+            counts.project_graphs += 1;
+            return;
         case query::QueryKind::file_content:
             counts.file_contents += 1;
             return;

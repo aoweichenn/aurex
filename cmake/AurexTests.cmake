@@ -99,6 +99,7 @@ if(BUILD_TESTING)
             tests/gtest/driver/cli_driver_tests.cpp
             tests/gtest/driver/install_and_import_tests.cpp
             tests/gtest/driver/native_toolchain_tests.cpp
+            tests/gtest/driver/project_model_tests.cpp
             tests/gtest/frontend/ast_dump_tests.cpp
             tests/gtest/frontend/randomized_frontend_tests.cpp
             tests/gtest/frontend/lexer_tests.cpp

@@ -4,12 +4,13 @@ namespace aurex::driver::incremental_cache_detail {
 
 [[nodiscard]] QuerySubjectCollection collect_query_subjects(const std::span<const ModuleRecord> modules,
     const sema::CheckedModule& checked, const base::SourceManager& sources, const syntax::AstModule* const ast,
-    const bool include_lowering_subjects)
+    const project::ProjectModel& project_model, const bool include_lowering_subjects)
 {
     QuerySubjectCollection collection;
     collect_source_file_query_subjects(collection, sources, modules);
     collection.module_parts = collect_module_part_query_subjects(modules);
     collection.module_graphs = collect_module_graph_query_subjects(modules);
+    collect_project_graph_query_subjects(collection, project_model, modules);
     collection.item_lists = collect_item_list_query_subjects(modules, checked, ast);
     collection.module_exports = collect_module_exports_query_subjects(modules, checked, ast);
     collection.module_package_exports = collect_module_package_exports_query_subjects(modules, checked, ast);

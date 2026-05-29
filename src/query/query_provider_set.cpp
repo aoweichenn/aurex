@@ -42,6 +42,7 @@ QueryProviderSet::QueryProviderSet(QueryProviderOverrides overrides)
     this->set_file_content_provider(std::move(overrides.file_content));
     this->set_lex_file_provider(std::move(overrides.lex_file));
     this->set_parse_file_provider(std::move(overrides.parse_file));
+    this->set_project_graph_provider(std::move(overrides.project_graph));
     this->set_module_graph_provider(std::move(overrides.module_graph));
     this->set_module_part_provider(std::move(overrides.module_part));
     this->set_module_exports_provider(std::move(overrides.module_exports));
@@ -90,6 +91,11 @@ void QueryProviderSet::set_lex_file_provider(LexFileProvider provider)
 void QueryProviderSet::set_parse_file_provider(ParseFileProvider provider)
 {
     this->parse_file_provider_ = provider ? std::move(provider) : ParseFileProvider{provide_parse_file_query};
+}
+
+void QueryProviderSet::set_project_graph_provider(ProjectGraphProvider provider)
+{
+    this->project_graph_provider_ = provider ? std::move(provider) : ProjectGraphProvider{provide_project_graph_query};
 }
 
 void QueryProviderSet::set_module_graph_provider(ModuleGraphProvider provider)
@@ -190,6 +196,12 @@ std::optional<LexFileProviderOutput> QueryProviderSet::provide_lex_file(const Le
 std::optional<ParseFileProviderOutput> QueryProviderSet::provide_parse_file(const ParseFileProviderInput& input) const
 {
     return this->parse_file_provider_(input);
+}
+
+std::optional<ProjectGraphProviderOutput> QueryProviderSet::provide_project_graph(
+    const ProjectGraphProviderInput& input) const
+{
+    return this->project_graph_provider_(input);
 }
 
 std::optional<ModuleGraphProviderOutput> QueryProviderSet::provide_module_graph(

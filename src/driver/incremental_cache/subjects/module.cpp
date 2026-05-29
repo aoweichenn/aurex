@@ -348,6 +348,40 @@ void sort_unique_module_keys(std::vector<query::ModuleKey>& modules)
     return query::query_result_fingerprint(builder.finish());
 }
 
+[[nodiscard]] query::QueryResultFingerprint project_graph_result_fingerprint(
+    const project::ProjectModel& model, const std::span<const ModuleRecord> modules)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(INCREMENTAL_CACHE_PROJECT_GRAPH_RESULT_MARKER);
+    builder.mix_fingerprint(model.identity);
+    builder.mix_u64(model.global_id);
+    builder.mix_string(model.package_root.string());
+    builder.mix_string(model.source_root.string());
+    builder.mix_string(model.package_identity);
+    builder.mix_u64(static_cast<base::u64>(model.import_roots.size()));
+    for (base::usize index = 0; index < model.import_roots.size(); ++index) {
+        const project::ProjectImportRoot& import_root = model.import_roots[index];
+        builder.mix_u64(static_cast<base::u64>(index));
+        builder.mix_string(import_root.root.string());
+        builder.mix_string(import_root.package_identity);
+        builder.mix_fingerprint(query::stable_key_fingerprint(import_root.package));
+    }
+    builder.mix_string(project::stable_serialize(model.target));
+    builder.mix_string(project::stable_serialize(model.command_options));
+    builder.mix_u64(static_cast<base::u64>(modules.size()));
+    for (base::usize index = 0; index < modules.size(); ++index) {
+        const ModuleRecord& module = modules[index];
+        const query::ModuleKey module_key = module_key_from_record(module);
+        builder.mix_u64(static_cast<base::u64>(index));
+        builder.mix_string(module.name);
+        builder.mix_string(module.path.string());
+        if (query::is_valid(module_key)) {
+            builder.mix_fingerprint(query::stable_key_fingerprint(module_key));
+        }
+    }
+    return query::query_result_fingerprint(builder.finish());
+}
+
 void push_module_exports_signature_entry(std::vector<ModuleExportsSignatureEntry>& entries,
     const std::string_view category, const std::string_view name, const syntax::Visibility visibility,
     std::string identity, std::string signature)
@@ -698,9 +732,19 @@ void push_module_graph_query_subject(std::vector<ModuleGraphQuerySubject>& subje
     if (!query::is_valid(stable_module) || !query::is_valid(key)) {
         return;
     }
+    std::vector<query::ModulePartKey> part_dependencies;
+    part_dependencies.reserve(module.parts.size());
+    for (const ModulePartRecord& part : module.parts) {
+        const query::ModulePartKey part_key = module_part_key_from_record(key, module, part);
+        if (query::is_valid(part_key)) {
+            part_dependencies.push_back(part_key);
+        }
+    }
     subjects.push_back(ModuleGraphQuerySubject{
         key,
         module_graph_result_fingerprint(key, module),
+        std::move(part_dependencies),
+        {},
     });
 }
 
@@ -918,6 +962,21 @@ void push_item_list_query_subject(std::vector<ItemListQuerySubject>& subjects, c
 }
 
 } // namespace
+
+void collect_project_graph_query_subjects(
+    QuerySubjectCollection& collection, const project::ProjectModel& model, const std::span<const ModuleRecord> modules)
+{
+    if (!query::is_valid(model.key)) {
+        return;
+    }
+    collection.project_graphs.push_back(ProjectGraphQuerySubject{
+        model.key,
+        project_graph_result_fingerprint(model, modules),
+    });
+    for (ModuleGraphQuerySubject& subject : collection.module_graphs) {
+        subject.project = model.key;
+    }
+}
 
 [[nodiscard]] std::vector<ModuleGraphQuerySubject> collect_module_graph_query_subjects(
     const std::span<const ModuleRecord> modules)

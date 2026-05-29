@@ -30,6 +30,7 @@ struct QueryCollection {
 
 struct QueryKindExecutionCounts {
     base::usize total = 0;
+    base::usize project_graphs = 0;
     base::usize file_contents = 0;
     base::usize lex_files = 0;
     base::usize parse_files = 0;
@@ -98,6 +99,11 @@ struct FileContentQuerySubject {
     query::QueryResultFingerprint result;
 };
 
+struct ProjectGraphQuerySubject {
+    query::ProjectKey key;
+    query::QueryResultFingerprint result;
+};
+
 struct LexFileQuerySubject {
     query::LexFileKey key;
     query::QueryResultFingerprint result;
@@ -124,6 +130,8 @@ struct ModulePackageExportsQuerySubject {
 struct ModuleGraphQuerySubject {
     query::ModuleKey key;
     query::QueryResultFingerprint result;
+    std::vector<query::ModulePartKey> part_dependencies;
+    query::ProjectKey project;
 };
 
 struct ModulePartQuerySubject {
@@ -198,6 +206,7 @@ struct DiagnosticsQuerySubject {
 };
 
 enum class QuerySubjectKind : base::u8 {
+    project_graph,
     file_content,
     lex_file,
     parse_file,
@@ -236,6 +245,7 @@ struct QuerySubjectCollection {
     std::vector<GenericInstanceBodyQuerySubject> generic_instance_bodies;
     std::vector<LowerFunctionIRQuerySubject> lower_function_irs;
     std::vector<FileContentQuerySubject> file_contents;
+    std::vector<ProjectGraphQuerySubject> project_graphs;
     std::vector<LexFileQuerySubject> lex_files;
     std::vector<ParseFileQuerySubject> parse_files;
     std::vector<DiagnosticsQuerySubject> diagnostics;

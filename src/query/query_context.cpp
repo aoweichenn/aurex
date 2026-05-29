@@ -110,6 +110,11 @@ void QueryContext::set_parse_file_provider(ParseFileProvider provider)
     this->providers_.set_parse_file_provider(std::move(provider));
 }
 
+void QueryContext::set_project_graph_provider(ProjectGraphProvider provider)
+{
+    this->providers_.set_project_graph_provider(std::move(provider));
+}
+
 void QueryContext::set_module_graph_provider(ModuleGraphProvider provider)
 {
     this->providers_.set_module_graph_provider(std::move(provider));
@@ -198,6 +203,13 @@ QueryEvaluationResult QueryContext::evaluate_parse_file(const ParseFileProviderI
 {
     return this->evaluate_query<ParseFileProviderOutput>(parse_file_query_key(input.key), [this, &input] {
         return this->providers_.provide_parse_file(input);
+    });
+}
+
+QueryEvaluationResult QueryContext::evaluate_project_graph(const ProjectGraphProviderInput& input)
+{
+    return this->evaluate_query<ProjectGraphProviderOutput>(project_graph_query_key(input.key), [this, &input] {
+        return this->providers_.provide_project_graph(input);
     });
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/result.hpp>
+#include <aurex/project/project_model.hpp>
 #include <aurex/query/query_reuse.hpp>
 #include <aurex/tooling/ide.hpp>
 
@@ -17,6 +18,7 @@ struct ToolingReusePlan;
 
 struct ToolingProjectConfig {
     std::string root_path;
+    std::string source_root;
     std::string package_identity = "ide";
     std::vector<std::string> import_paths;
     query::SourceRole default_source_role = query::SourceRole::virtual_buffer;
@@ -374,6 +376,7 @@ public:
     explicit ToolingSession(ToolingProjectConfig config);
 
     [[nodiscard]] const ToolingProjectConfig& project_config() const noexcept;
+    [[nodiscard]] const project::WorkspaceModel& workspace_model() const noexcept;
     [[nodiscard]] bool is_open(const ToolingDocumentId& id) const;
     [[nodiscard]] std::optional<ToolingDocumentState> document_state(const ToolingDocumentId& id) const;
 
@@ -427,11 +430,13 @@ private:
     [[nodiscard]] ToolingDocumentId normalize_document_id(const ToolingDocumentId& id) const;
     [[nodiscard]] ToolingDocumentVersion next_version(std::optional<base::i64> client_version);
     [[nodiscard]] ToolingIncrementalSnapshotInput incremental_input_for_slot(const DocumentSlot& slot) const;
+    void refresh_workspace_model();
     [[nodiscard]] std::unordered_map<std::string, DocumentSlot>::iterator find_slot(const ToolingDocumentId& id);
     [[nodiscard]] std::unordered_map<std::string, DocumentSlot>::const_iterator find_slot(
         const ToolingDocumentId& id) const;
 
     ToolingProjectConfig config_;
+    project::WorkspaceModel workspace_model_;
     base::u64 next_generation_ = 0;
     std::unordered_map<std::string, DocumentSlot> documents_;
     ToolingWorkspaceSemanticIndex workspace_index_;

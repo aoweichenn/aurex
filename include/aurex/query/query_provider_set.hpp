@@ -11,6 +11,7 @@
 #include <aurex/query/module_exports_query.hpp>
 #include <aurex/query/module_graph_query.hpp>
 #include <aurex/query/module_part_query.hpp>
+#include <aurex/query/project_graph_query.hpp>
 #include <aurex/query/source_file_query.hpp>
 #include <aurex/query/type_check_body_query.hpp>
 
@@ -30,6 +31,7 @@ using LowerFunctionIRProvider =
 using LowerGenericInstanceIRProvider =
     std::function<std::optional<LowerGenericInstanceIRProviderOutput>(const LowerGenericInstanceIRProviderInput&)>;
 using ModuleGraphProvider = std::function<std::optional<ModuleGraphProviderOutput>(const ModuleGraphProviderInput&)>;
+using ProjectGraphProvider = std::function<std::optional<ProjectGraphProviderOutput>(const ProjectGraphProviderInput&)>;
 using ModulePartProvider = std::function<std::optional<ModulePartProviderOutput>(const ModulePartProviderInput&)>;
 using ModuleExportsProvider =
     std::function<std::optional<ModuleExportsProviderOutput>(const ModuleExportsProviderInput&)>;
@@ -51,6 +53,7 @@ struct QueryProviderOverrides final {
     FileContentProvider file_content;
     LexFileProvider lex_file;
     ParseFileProvider parse_file;
+    ProjectGraphProvider project_graph;
     ModuleGraphProvider module_graph;
     ModulePartProvider module_part;
     ModuleExportsProvider module_exports;
@@ -80,6 +83,7 @@ public:
     void set_file_content_provider(FileContentProvider provider);
     void set_lex_file_provider(LexFileProvider provider);
     void set_parse_file_provider(ParseFileProvider provider);
+    void set_project_graph_provider(ProjectGraphProvider provider);
     void set_module_graph_provider(ModuleGraphProvider provider);
     void set_module_part_provider(ModulePartProvider provider);
     void set_module_exports_provider(ModuleExportsProvider provider);
@@ -99,6 +103,8 @@ public:
         const FileContentProviderInput& input) const;
     [[nodiscard]] std::optional<LexFileProviderOutput> provide_lex_file(const LexFileProviderInput& input) const;
     [[nodiscard]] std::optional<ParseFileProviderOutput> provide_parse_file(const ParseFileProviderInput& input) const;
+    [[nodiscard]] std::optional<ProjectGraphProviderOutput> provide_project_graph(
+        const ProjectGraphProviderInput& input) const;
     [[nodiscard]] std::optional<ModuleGraphProviderOutput> provide_module_graph(
         const ModuleGraphProviderInput& input) const;
     [[nodiscard]] std::optional<ModulePartProviderOutput> provide_module_part(
@@ -131,6 +137,7 @@ private:
     FileContentProvider file_content_provider_;
     LexFileProvider lex_file_provider_;
     ParseFileProvider parse_file_provider_;
+    ProjectGraphProvider project_graph_provider_;
     ModuleGraphProvider module_graph_provider_;
     ModulePartProvider module_part_provider_;
     ModuleExportsProvider module_exports_provider_;

@@ -8,6 +8,8 @@ namespace aurex::driver::incremental_cache_detail {
 [[nodiscard]] base::usize query_kind_schedule_rank(const query::QueryKind kind) noexcept
 {
     switch (kind) {
+        case query::QueryKind::project_graph:
+            return INCREMENTAL_CACHE_QUERY_SCHEDULE_PROJECT_GRAPH_RANK;
         case query::QueryKind::file_content:
             return INCREMENTAL_CACHE_QUERY_SCHEDULE_FILE_CONTENT_RANK;
         case query::QueryKind::lex_file:

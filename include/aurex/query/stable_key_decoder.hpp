@@ -35,6 +35,7 @@ struct DecodedGenericInstanceKeyIdentity {
 };
 
 [[nodiscard]] bool stable_key_has_file_key_layout(std::string_view bytes) noexcept;
+[[nodiscard]] bool stable_key_has_project_key_layout(std::string_view bytes) noexcept;
 [[nodiscard]] bool stable_key_has_module_key_layout(std::string_view bytes) noexcept;
 [[nodiscard]] bool stable_key_has_module_part_key_layout(std::string_view bytes) noexcept;
 [[nodiscard]] bool stable_key_has_body_key_layout(std::string_view bytes) noexcept;

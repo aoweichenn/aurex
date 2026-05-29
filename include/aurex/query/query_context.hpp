@@ -25,6 +25,7 @@ public:
     void set_file_content_provider(FileContentProvider provider);
     void set_lex_file_provider(LexFileProvider provider);
     void set_parse_file_provider(ParseFileProvider provider);
+    void set_project_graph_provider(ProjectGraphProvider provider);
     void set_module_graph_provider(ModuleGraphProvider provider);
     void set_module_part_provider(ModulePartProvider provider);
     void set_module_exports_provider(ModuleExportsProvider provider);
@@ -42,6 +43,7 @@ public:
     [[nodiscard]] QueryEvaluationResult evaluate_file_content(const FileContentProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_lex_file(const LexFileProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_parse_file(const ParseFileProviderInput& input);
+    [[nodiscard]] QueryEvaluationResult evaluate_project_graph(const ProjectGraphProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_module_graph(const ModuleGraphProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_module_part(const ModulePartProviderInput& input);
     [[nodiscard]] QueryEvaluationResult evaluate_module_exports(const ModuleExportsProviderInput& input);

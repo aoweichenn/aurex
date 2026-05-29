@@ -7,6 +7,11 @@ namespace aurex::query {
 namespace {
 
 struct QueryRequestKeyVisitor {
+    [[nodiscard]] std::optional<QueryKey> operator()(const ProjectGraphProviderInput& input) const noexcept
+    {
+        return project_graph_query_key(input.key);
+    }
+
     [[nodiscard]] std::optional<QueryKey> operator()(const FileContentProviderInput& input) const noexcept
     {
         return file_content_query_key(input.key);
@@ -95,6 +100,11 @@ struct QueryRequestKeyVisitor {
 
 struct QueryEvaluateVisitor {
     QueryContext& context;
+
+    [[nodiscard]] QueryEvaluationResult operator()(const ProjectGraphProviderInput& input) const
+    {
+        return this->context.evaluate_project_graph(input);
+    }
 
     [[nodiscard]] QueryEvaluationResult operator()(const FileContentProviderInput& input) const
     {

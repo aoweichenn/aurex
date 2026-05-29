@@ -10,6 +10,7 @@
 #include <aurex/query/module_exports_query.hpp>
 #include <aurex/query/module_graph_query.hpp>
 #include <aurex/query/module_part_query.hpp>
+#include <aurex/query/project_graph_query.hpp>
 #include <aurex/query/query_context.hpp>
 #include <aurex/query/query_edge_verifier.hpp>
 #include <aurex/query/query_executor.hpp>
@@ -74,6 +75,7 @@ constexpr std::string_view QUERY_TEST_FILE_CONTENT = "file-content:module regex.
 constexpr std::string_view QUERY_TEST_LEX_FILE = "lex-file:tokens";
 constexpr std::string_view QUERY_TEST_PARSE_FILE = "parse-file:ast";
 constexpr std::string_view QUERY_TEST_MODULE_GRAPH = "module-graph:regex.vm";
+constexpr std::string_view QUERY_TEST_PROJECT_GRAPH = "project-graph:workspace";
 constexpr std::string_view QUERY_TEST_MODULE_PART = "module-part:regex.vm.primary";
 constexpr std::string_view QUERY_TEST_BODY_SYNTAX = "body-syntax:return value";
 constexpr std::string_view QUERY_TEST_ITEM_LIST = "item-list:compute";
@@ -93,6 +95,11 @@ constexpr std::string_view QUERY_TEST_DIAGNOSTICS = "diagnostics:empty";
 {
     const std::array<std::string_view, 2> path{"regex", "vm"};
     return query::module_key(package, path);
+}
+
+[[nodiscard]] query::ProjectKey test_project_key()
+{
+    return query::project_key(query::stable_fingerprint(QUERY_TEST_PROJECT_GRAPH));
 }
 
 [[nodiscard]] query::ModuleKey test_reexported_module(const query::PackageKey package)
@@ -453,6 +460,9 @@ TEST(QueryUnit, StableSemanticKeysSeparateFilesModulesDefinitionsAndBodies)
     const query::PackageKey package = test_package();
     ASSERT_TRUE(query::is_valid(package));
 
+    const query::ProjectKey project = test_project_key();
+    EXPECT_TRUE(query::is_valid(project));
+
     const query::FileKey source_file = query::file_key(package, "/workspace/root/regex/vm.ax");
     const query::FileKey virtual_file =
         query::file_key(package, "/workspace/root/regex/vm.ax", query::SourceRole::virtual_buffer, "buffer:1");
@@ -563,6 +573,7 @@ TEST(QueryUnit, QuerySourceStageKeysSeparateSemanticAndLosslessToolingModes)
 
 TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
 {
+    const query::ProjectKey project = test_project_key();
     const query::PackageKey package = test_package();
     const query::FileKey source_file = query::file_key(package, "/workspace/root/regex/vm.ax");
     const query::LexConfigKey lex_config = query::lex_config_key();
@@ -595,6 +606,7 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_TRUE(query::is_valid(body));
     EXPECT_TRUE(query::is_valid(generic_param));
     EXPECT_TRUE(query::is_valid(diagnostics_query));
+    EXPECT_FALSE(query::is_valid(query::ProjectKey{}));
     EXPECT_FALSE(query::is_valid(query::PackageKey{}));
     EXPECT_FALSE(query::is_valid(query::FileKey{}));
     EXPECT_FALSE(query::is_valid(query::LexConfigKey{}));
@@ -650,6 +662,9 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     zero_global_generic_param.global_id = 0;
     query::QueryKey zero_global_query = diagnostics_query;
     zero_global_query.global_id = 0;
+    query::ProjectKey zero_global_project = project;
+    zero_global_project.global_id = 0;
+    EXPECT_FALSE(query::is_valid(zero_global_project));
     EXPECT_FALSE(query::is_valid(zero_global_file));
     EXPECT_FALSE(query::is_valid(zero_global_lex_config));
     EXPECT_FALSE(query::is_valid(wrong_schema_lex_config));
@@ -672,6 +687,7 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_FALSE(query::is_valid(zero_global_query));
 
     EXPECT_FALSE(query::stable_serialize(package).empty());
+    EXPECT_FALSE(query::stable_serialize(project).empty());
     EXPECT_FALSE(query::stable_serialize(source_file).empty());
     EXPECT_FALSE(query::stable_serialize(lex_config).empty());
     EXPECT_FALSE(query::stable_serialize(parser_config).empty());
@@ -686,6 +702,7 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_FALSE(query::stable_serialize(diagnostics_query).empty());
 
     EXPECT_GT(query::stable_key_fingerprint(package).byte_count, 0U);
+    EXPECT_GT(query::stable_key_fingerprint(project).byte_count, 0U);
     EXPECT_GT(query::stable_key_fingerprint(source_file).byte_count, 0U);
     EXPECT_GT(query::stable_key_fingerprint(lex_config).byte_count, 0U);
     EXPECT_GT(query::stable_key_fingerprint(parser_config).byte_count, 0U);
@@ -700,6 +717,7 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_GT(query::stable_key_fingerprint(diagnostics_query).byte_count, 0U);
 
     EXPECT_NE(query::debug_string(package).find("PackageKey"), std::string::npos);
+    EXPECT_NE(query::debug_string(project).find("ProjectKey"), std::string::npos);
     EXPECT_NE(query::debug_string(source_file).find("FileKey"), std::string::npos);
     EXPECT_NE(query::debug_string(lex_config).find("LexConfigKey"), std::string::npos);
     EXPECT_NE(query::debug_string(parser_config).find("ParserConfigKey"), std::string::npos);
@@ -714,6 +732,7 @@ TEST(QueryUnit, QueryKeysSerializeFingerprintHashAndDebugEveryPublicKeyShape)
     EXPECT_NE(query::debug_string(diagnostics_query).find("QueryKey"), std::string::npos);
 
     EXPECT_NE(query::PackageKeyHash{}(package), 0U);
+    EXPECT_NE(query::ProjectKeyHash{}(project), 0U);
     EXPECT_NE(query::FileKeyHash{}(source_file), 0U);
     EXPECT_NE(query::LexFileKeyHash{}(lex_file), 0U);
     EXPECT_NE(query::ParseFileKeyHash{}(parse_file), 0U);
@@ -761,6 +780,7 @@ TEST(QueryUnit, StableKeyDecoderProjectsSourceIdentitySlices)
 
 TEST(QueryUnit, StableKeyDecoderProjectsDefinitionBodyGenericAndQueryIdentitySlices)
 {
+    const query::ProjectKey project = test_project_key();
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
     const query::DefKey function_def = test_function_def(module);
@@ -807,6 +827,7 @@ TEST(QueryUnit, StableKeyDecoderProjectsDefinitionBodyGenericAndQueryIdentitySli
         query::param_env_key(predicates));
     const query::QueryKey diagnostics_key =
         query::query_key(query::QueryKind::diagnostics, query::stable_key_fingerprint(function_def));
+    const std::string project_bytes = query::stable_serialize(project);
     const std::string module_bytes = query::stable_serialize(module);
     const std::string function_def_bytes = query::stable_serialize(function_def);
     const std::string template_def_bytes = query::stable_serialize(template_def);
@@ -814,6 +835,7 @@ TEST(QueryUnit, StableKeyDecoderProjectsDefinitionBodyGenericAndQueryIdentitySli
     const std::string instance_bytes = query::stable_serialize(instance);
     const std::string diagnostics_key_bytes = query::stable_serialize(diagnostics_key);
 
+    EXPECT_TRUE(query::stable_key_has_project_key_layout(project_bytes));
     EXPECT_TRUE(query::stable_key_has_module_key_layout(module_bytes));
     EXPECT_TRUE(query::stable_key_has_body_key_layout(body_bytes));
     EXPECT_TRUE(query::stable_key_has_generic_instance_key_layout(instance_bytes));
@@ -836,6 +858,7 @@ TEST(QueryUnit, StableKeyDecoderProjectsDefinitionBodyGenericAndQueryIdentitySli
 TEST(QueryUnit, StableKeyDecoderMatchesStableKeyLayoutToQueryKind)
 {
     const QueryContextSourceSubject source_subject = test_source_subject();
+    const query::ProjectKey project = test_project_key();
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
     const query::ModulePartKey module_part =
@@ -849,6 +872,7 @@ TEST(QueryUnit, StableKeyDecoderMatchesStableKeyLayoutToQueryKind)
     const query::QueryKey producer =
         query::query_key(query::QueryKind::item_signature, query::stable_key_fingerprint(function_def));
 
+    const std::string project_bytes = query::stable_serialize(project);
     const std::string file_bytes = query::stable_serialize(source_subject.file);
     const std::string lex_file_bytes = query::stable_serialize(source_subject.lex_file);
     const std::string parse_file_bytes = query::stable_serialize(source_subject.parse_file);
@@ -859,6 +883,7 @@ TEST(QueryUnit, StableKeyDecoderMatchesStableKeyLayoutToQueryKind)
     const std::string instance_bytes = query::stable_serialize(instance);
     const std::string producer_bytes = query::stable_serialize(producer);
 
+    EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::project_graph, project_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::file_content, file_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::lex_file, lex_file_bytes));
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::parse_file, parse_file_bytes));
@@ -879,6 +904,7 @@ TEST(QueryUnit, StableKeyDecoderMatchesStableKeyLayoutToQueryKind)
     EXPECT_TRUE(query::stable_key_layout_matches_query_kind(query::QueryKind::diagnostics, producer_bytes));
 
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::file_content, lex_file_bytes));
+    EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::project_graph, module_bytes));
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::module_part, module_bytes));
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::item_signature, module_bytes));
     EXPECT_FALSE(query::stable_key_layout_matches_query_kind(query::QueryKind::lower_function_ir, module_bytes));
@@ -1651,6 +1677,7 @@ TEST(QueryUnit, QueryInternerAssignsNodeIdsAndBindsStableIdentities)
 TEST(QueryUnit, QueryExecutorEvaluatesOwnedRequestsOnDemand)
 {
     const QueryContextSourceSubject source_subject = test_source_subject();
+    const query::ProjectKey project = test_project_key();
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
     const query::ModulePartKey module_part =
@@ -1676,10 +1703,11 @@ TEST(QueryUnit, QueryExecutorEvaluatesOwnedRequestsOnDemand)
     query::QueryContext context;
     query::QueryExecutor executor{context};
     std::vector<query::QueryRequest> requests{
+        query::QueryRequest{query::ProjectGraphProviderInput{project, test_query_result(QUERY_TEST_PROJECT_GRAPH)}},
         query::QueryRequest{query::FileContentProviderInput{source_subject.file, source_subject.content}},
         query::QueryRequest{query::LexFileProviderInput{source_subject.lex_file, source_subject.tokens}},
         query::QueryRequest{query::ParseFileProviderInput{source_subject.parse_file, source_subject.syntax}},
-        query::QueryRequest{query::ModuleGraphProviderInput{module, test_query_result(QUERY_TEST_MODULE_GRAPH)}},
+        query::QueryRequest{query::ModuleGraphProviderInput{module, test_query_result(QUERY_TEST_MODULE_GRAPH), {}}},
         query::QueryRequest{query::ModulePartProviderInput{module_part, test_query_result(QUERY_TEST_MODULE_PART)}},
         query::QueryRequest{query::ItemListProviderInput{module, test_query_result(QUERY_TEST_ITEM_LIST)}},
         query::QueryRequest{
@@ -1867,8 +1895,8 @@ TEST(QueryUnit, QueryGraphDependencyKindRulesCoverEveryQueryKind)
     };
 
     const std::array invalid_dependents{
+        query::QueryKind::project_graph,
         query::QueryKind::file_content,
-        query::QueryKind::module_graph,
         query::QueryKind::function_body_syntax,
     };
     for (const query::QueryKind dependent : invalid_dependents) {
@@ -1880,6 +1908,14 @@ TEST(QueryUnit, QueryGraphDependencyKindRulesCoverEveryQueryKind)
         query::QueryDependencyEdge{make_key(query::QueryKind::lex_file), make_key(query::QueryKind::file_content)},
         query::QueryDependencyEdge{make_key(query::QueryKind::parse_file), make_key(query::QueryKind::lex_file)},
         query::QueryDependencyEdge{make_key(query::QueryKind::module_part), make_key(query::QueryKind::parse_file)},
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::module_graph),
+            make_key(query::QueryKind::project_graph),
+        },
+        query::QueryDependencyEdge{
+            make_key(query::QueryKind::module_graph),
+            make_key(query::QueryKind::module_part),
+        },
         query::QueryDependencyEdge{make_key(query::QueryKind::item_list), make_key(query::QueryKind::module_graph)},
         query::QueryDependencyEdge{make_key(query::QueryKind::module_exports), make_key(query::QueryKind::item_list)},
         query::QueryDependencyEdge{
@@ -1944,6 +1980,7 @@ TEST(QueryUnit, QueryGraphDependencyKindRulesCoverEveryQueryKind)
         query::QueryDependencyEdge{make_key(query::QueryKind::lex_file), make_key(query::QueryKind::parse_file)},
         query::QueryDependencyEdge{make_key(query::QueryKind::parse_file), make_key(query::QueryKind::file_content)},
         query::QueryDependencyEdge{make_key(query::QueryKind::module_part), make_key(query::QueryKind::lex_file)},
+        query::QueryDependencyEdge{make_key(query::QueryKind::module_graph), make_key(query::QueryKind::lex_file)},
         query::QueryDependencyEdge{make_key(query::QueryKind::item_list), make_key(query::QueryKind::module_exports)},
         query::QueryDependencyEdge{
             make_key(query::QueryKind::module_exports),
@@ -2009,11 +2046,14 @@ TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
     const query::PackageKey package = test_package();
     const query::ModuleKey module = test_module(package);
     const query::ModuleKey reexported_module = test_reexported_module(package);
+    const query::ProjectKey project = test_project_key();
     const query::DefKey function_def = test_function_def(module);
     const query::DefKey template_def = test_template_def(module);
     const query::BodyKey function_body = query::body_key(function_def, query::BodySlotKind::function_body);
     const std::optional<query::QueryRecord> module_graph_record =
         query::module_graph_query_record(module, test_query_result(QUERY_TEST_MODULE_GRAPH));
+    const std::optional<query::QueryRecord> project_graph_record =
+        query::project_graph_query_record(project, test_query_result(QUERY_TEST_PROJECT_GRAPH));
     const std::optional<query::QueryRecord> item_list_record =
         query::item_list_query_record(module, test_query_result(QUERY_TEST_ITEM_LIST));
     const std::optional<query::QueryRecord> exports_record =
@@ -2031,6 +2071,7 @@ TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
     const std::optional<query::QueryRecord> lower_body_record =
         query::lower_function_ir_query_record(function_body, test_query_result(QUERY_TEST_LOWER_FUNCTION_IR));
     ASSERT_TRUE(module_graph_record.has_value());
+    ASSERT_TRUE(project_graph_record.has_value());
     ASSERT_TRUE(item_list_record.has_value());
     ASSERT_TRUE(exports_record.has_value());
     ASSERT_TRUE(reexported_exports_record.has_value());
@@ -2040,6 +2081,8 @@ TEST(QueryUnit, QueryEdgeVerifierAcceptsExpectedStableIdentityShapes)
     ASSERT_TRUE(type_check_record.has_value());
     ASSERT_TRUE(lower_body_record.has_value());
 
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*module_graph_record, *project_graph_record));
+    EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*module_graph_record, *module_part_record));
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*item_list_record, *module_graph_record));
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*exports_record, *item_list_record));
     EXPECT_TRUE(query::query_dependency_edge_records_are_valid(*exports_record, *reexported_exports_record));
@@ -2374,27 +2417,110 @@ TEST(QueryUnit, ModulePartProviderBuildsRecordAndParseDependency)
     EXPECT_FALSE(query::is_valid(invalid_dependency_output));
 }
 
+TEST(QueryUnit, ProjectGraphProviderBuildsRecordWithoutIncidentalDependencies)
+{
+    const query::ProjectKey project = test_project_key();
+    const query::QueryResultFingerprint graph = test_query_result(QUERY_TEST_PROJECT_GRAPH);
+    const std::optional<query::QueryKey> expected_key = query::project_graph_query_key(project);
+    ASSERT_TRUE(expected_key.has_value());
+
+    const query::ProjectGraphProviderInput input{
+        project,
+        graph,
+    };
+    ASSERT_TRUE(query::is_valid(input));
+    const std::optional<query::ProjectGraphProviderOutput> output = query::provide_project_graph_query(input);
+    ASSERT_TRUE(output.has_value());
+    EXPECT_TRUE(query::is_valid(*output));
+    EXPECT_EQ(output->record.key, *expected_key);
+    EXPECT_EQ(output->record.key.kind, query::QueryKind::project_graph);
+    EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(project));
+    EXPECT_EQ(output->result, graph);
+    EXPECT_EQ(output->record.result, output->result);
+    EXPECT_TRUE(output->dependencies.empty());
+
+    EXPECT_FALSE(query::project_graph_query_key(query::ProjectKey{}).has_value());
+    EXPECT_FALSE(query::is_valid(query::ProjectGraphProviderInput{}));
+    EXPECT_FALSE(
+        query::provide_project_graph_query(query::ProjectGraphProviderInput{query::ProjectKey{}, graph}).has_value());
+    EXPECT_FALSE(query::provide_project_graph_query(query::ProjectGraphProviderInput{
+                                                        project,
+                                                        query::QueryResultFingerprint{},
+                                                    })
+            .has_value());
+
+    query::ProjectGraphProviderOutput invalid_dependency_output = *output;
+    invalid_dependency_output.dependencies.push_back(query::QueryKey{});
+    EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::ProjectGraphProviderOutput mismatched_result_output = *output;
+    mismatched_result_output.result = test_query_result(QUERY_TEST_CHANGED_MODULE_EXPORTS_SIGNATURE);
+    EXPECT_FALSE(query::is_valid(mismatched_result_output));
+}
+
+TEST(QueryUnit, QueryContextProjectGraphOverrideFailureKeepsFailedNodeOutOfEdges)
+{
+    const query::ProjectKey project = test_project_key();
+    const query::QueryResultFingerprint graph = test_query_result(QUERY_TEST_PROJECT_GRAPH);
+    const std::optional<query::QueryKey> project_graph_key = query::project_graph_query_key(project);
+    ASSERT_TRUE(project_graph_key.has_value());
+
+    query::QueryContext context;
+    context.set_project_graph_provider(
+        [](const query::ProjectGraphProviderInput&) -> std::optional<query::ProjectGraphProviderOutput> {
+            return std::nullopt;
+        });
+    context.set_module_part_provider([](const query::ModulePartProviderInput& input) {
+        return query::provide_module_part_query(input);
+    });
+    context.set_module_package_exports_provider([](const query::ModulePackageExportsProviderInput& input) {
+        return query::provide_module_package_exports_query(input);
+    });
+
+    const query::QueryEvaluationResult result = context.evaluate_project_graph(query::ProjectGraphProviderInput{
+        project,
+        graph,
+    });
+    EXPECT_EQ(result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(result.node, nullptr);
+    EXPECT_TRUE(context.dependency_edges().empty());
+
+    const std::optional<query::QueryNodeId> node_id = context.node_id_for(*project_graph_key);
+    ASSERT_TRUE(node_id.has_value());
+    EXPECT_EQ(context.find(*node_id), result.node);
+}
+
 TEST(QueryUnit, ModuleGraphAndItemListProvidersBuildRecordsAndDependencies)
 {
     const query::ModuleKey module = test_module(test_package());
+    const QueryContextSourceSubject source_subject = test_source_subject();
+    const query::ModulePartKey module_part =
+        query::module_part_key(module, source_subject.file, query::ModulePartKind::primary, "<primary>");
+    const query::ProjectKey project = test_project_key();
     const query::QueryResultFingerprint graph =
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_MODULE_GRAPH));
     const query::QueryResultFingerprint items =
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_ITEM_LIST));
+    const std::optional<query::QueryKey> project_graph_key = query::project_graph_query_key(project);
+    const std::optional<query::QueryKey> module_part_key = query::module_part_query_key(module_part);
     const std::optional<query::QueryKey> graph_key = query::module_graph_query_key(module);
     const std::optional<query::QueryKey> item_list_key = query::item_list_query_key(module);
+    ASSERT_TRUE(project_graph_key.has_value());
+    ASSERT_TRUE(module_part_key.has_value());
     ASSERT_TRUE(graph_key.has_value());
     ASSERT_TRUE(item_list_key.has_value());
+    const std::vector<query::QueryKey> graph_dependencies{*project_graph_key, *module_part_key};
 
     const query::ModuleGraphProviderInput graph_input{
         module,
         graph,
+        graph_dependencies,
     };
     ASSERT_TRUE(query::is_valid(graph_input));
     const std::optional<query::ModuleGraphProviderOutput> graph_output = query::provide_module_graph_query(graph_input);
     ASSERT_TRUE(graph_output.has_value());
     EXPECT_TRUE(query::is_valid(*graph_output));
-    EXPECT_TRUE(graph_output->dependencies.empty());
+    EXPECT_EQ(graph_output->dependencies, graph_dependencies);
     EXPECT_EQ(graph_output->record.key, *graph_key);
     EXPECT_EQ(graph_output->record.key.kind, query::QueryKind::module_graph);
     EXPECT_EQ(graph_output->record.stable_key_bytes, query::stable_serialize(module));
@@ -2421,9 +2547,11 @@ TEST(QueryUnit, ModuleGraphAndItemListProvidersBuildRecordsAndDependencies)
     EXPECT_FALSE(query::is_valid(query::ModuleGraphProviderInput{}));
     EXPECT_FALSE(query::is_valid(query::ItemListProviderInput{}));
     EXPECT_FALSE(
-        query::provide_module_graph_query(query::ModuleGraphProviderInput{query::ModuleKey{}, graph}).has_value());
+        query::provide_module_graph_query(query::ModuleGraphProviderInput{query::ModuleKey{}, graph, {}}).has_value());
     EXPECT_FALSE(
-        query::provide_module_graph_query(query::ModuleGraphProviderInput{module, query::QueryResultFingerprint{}})
+        query::provide_module_graph_query(query::ModuleGraphProviderInput{module, query::QueryResultFingerprint{}, {}})
+            .has_value());
+    EXPECT_FALSE(query::provide_module_graph_query(query::ModuleGraphProviderInput{module, graph, {query::QueryKey{}}})
             .has_value());
     EXPECT_FALSE(query::provide_item_list_query(query::ItemListProviderInput{query::ModuleKey{}, items}).has_value());
     EXPECT_FALSE(query::provide_item_list_query(query::ItemListProviderInput{module, query::QueryResultFingerprint{}})
@@ -3383,7 +3511,7 @@ TEST(QueryUnit, QueryContextCachesModuleGraphItemListAndGenericTemplateSignature
         });
 
     const query::QueryEvaluationResult graph_result =
-        context.evaluate_module_graph(query::ModuleGraphProviderInput{module, graph});
+        context.evaluate_module_graph(query::ModuleGraphProviderInput{module, graph, {}});
     ASSERT_EQ(graph_result.status, query::QueryEvaluationStatus::computed);
     ASSERT_NE(graph_result.node, nullptr);
     EXPECT_EQ(graph_result.node->key, *module_graph_key);
@@ -3406,7 +3534,7 @@ TEST(QueryUnit, QueryContextCachesModuleGraphItemListAndGenericTemplateSignature
     EXPECT_EQ(context.dependencies_for(*template_key), std::vector<query::QueryKey>{*item_list_key});
     EXPECT_EQ(context.dependency_edge_count(), 2U);
 
-    EXPECT_EQ(context.evaluate_module_graph(query::ModuleGraphProviderInput{module, graph}).status,
+    EXPECT_EQ(context.evaluate_module_graph(query::ModuleGraphProviderInput{module, graph, {}}).status,
         query::QueryEvaluationStatus::cached);
     EXPECT_EQ(context.evaluate_item_list(query::ItemListProviderInput{module, items}).status,
         query::QueryEvaluationStatus::cached);
@@ -3425,7 +3553,7 @@ TEST(QueryUnit, QueryContextCachesModuleGraphItemListAndGenericTemplateSignature
     ASSERT_TRUE(context.invalidate(*module_graph_key));
     ASSERT_TRUE(context.invalidate(*item_list_key));
     ASSERT_TRUE(context.invalidate(*template_key));
-    EXPECT_EQ(context.evaluate_module_graph(query::ModuleGraphProviderInput{module, graph}).status,
+    EXPECT_EQ(context.evaluate_module_graph(query::ModuleGraphProviderInput{module, graph, {}}).status,
         query::QueryEvaluationStatus::computed);
     EXPECT_EQ(context.evaluate_item_list(query::ItemListProviderInput{module, items}).status,
         query::QueryEvaluationStatus::computed);

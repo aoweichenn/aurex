@@ -1,9 +1,18 @@
 # 当前进度文档
 
-版本：0.1.3
-阶段：M3 已完成；M3.9 release baseline hardening 已收口
+版本：0.1.4
+阶段：M4 已启动；M4-WP1 trait/protocol design baseline 已收口
 
 ## 总体状态
+
+2026-05-30：M4 trait/protocol 系统设计阶段已启动，并完成 M4-WP1 调研与设计基线。当前正式设计选择是
+nominal static trait：语言关键字为 `trait`，`protocol` 只作为行为契约的设计术语；conformance 由显式
+`impl Trait for Type` 给出；泛型约束进入 canonical trait predicate / `ParamEnv`；调用默认静态分派，单态化后降低为具体
+impl method direct call。M4-WP1 已把 RAII、`Drop`、`Copy`、resource semantics、dynamic trait object、vtable
+ABI、class inheritance、default methods、specialization、negative impl、auto trait 和 structural interface 明确排除在当前阶段之外。
+完整设计见 [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)，阶段路线见
+[M4 Trait / Protocol 系统路线图](m4-roadmap.md)。下一步是 M4-WP2：Syntax / AST / Query Identity
+Scaffolding。
 
 当前仓库已经从 M2 language-core-no-std 基线进入 M2.5 frontend-foundation 阶段。M2 的目标不是继续修补 M1，而是重新收口语言核心：冻结并删除标准库和 M1 系统样例，把注意力放回基础语法、类型系统、模式匹配、`unsafe` 边界、IR 和 LLVM 后端。M2.5 建立在这条已收口主线之上，开始处理 query 化、lossless syntax 和 IDE-native 前端所需的结构化地基。
 

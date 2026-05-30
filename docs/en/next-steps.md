@@ -1,6 +1,31 @@
 # Next Steps
 
-## Current Highest Priority: Post-M3 Design Gate
+## Current Highest Priority: M4-WP1 Trait / Protocol Design Baseline
+
+The M3 release baseline is closed, and the current highest priority is now the
+M4 trait/protocol system design. M4-WP1 is fixed in the
+[Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
+with the staged route in the
+[M4 Trait / Protocol System Roadmap](m4-roadmap.md).
+
+The stage decision is: Aurex implements nominal static traits first. The
+language keyword is `trait`, while `protocol` remains design terminology;
+conformance must be explicit through `impl Trait for Type`; generic bounds
+lower to canonical trait predicates; calls use static dispatch by default and
+lower to direct impl-method calls after monomorphization. M4-WP1 explicitly does
+not include RAII, `Drop`, `Copy`, resource semantics, dynamic trait objects,
+vtable ABI, class inheritance, default methods, specialization, negative impls,
+auto traits, or Go-style structural interfaces.
+
+Later M4 work proceeds through WP2 to WP8: Syntax / AST / Query Identity
+Scaffolding, Trait Declaration And Impl Registry, Coherence And Generic
+Predicates, Static Method Resolution And Lowering, Associated Type Model,
+Tooling And Diagnostics, and Release Closure. The next implementation step
+should enter M4-WP2 only, landing token, parser, AST, query identity, and
+docs/test foundations without pulling solver, lowering, associated types, or
+dynamic dispatch into the first slice.
+
+## M3 Closure Context
 
 The R5 Compilation Pipeline / Driver Action core is now closed:
 `CompilerInvocation`, the `Compiler` facade, `CompilationSession`,

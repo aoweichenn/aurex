@@ -1,6 +1,23 @@
 # 下一步计划
 
-## 当前最高优先级：M3 后设计闸门
+## 当前最高优先级：M4-WP1 Trait / Protocol 设计基线
+
+M3 release baseline 已收口，当前最高优先级切换为 M4 trait/protocol 系统设计。M4-WP1 已固定为
+[Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)，阶段路线见
+[M4 Trait / Protocol 系统路线图](m4-roadmap.md)。
+
+本阶段结论：Aurex 先实现 nominal static trait，语言关键字使用 `trait`，`protocol` 只作为设计术语；
+conformance 必须通过显式 `impl Trait for Type` 给出；泛型约束降低为 canonical trait predicate；调用默认静态分派，
+单态化后落到具体 impl method direct call。M4-WP1 明确不做 RAII、`Drop`、`Copy`、resource semantics、
+dynamic trait object、vtable ABI、class inheritance、default methods、specialization、negative impl、auto trait
+或 Go-style structural interface。
+
+M4 后续入口按 WP2 到 WP8 推进：Syntax / AST / Query Identity Scaffolding、Trait Declaration And Impl Registry、
+Coherence And Generic Predicates、Static Method Resolution And Lowering、Associated Type Model、Tooling And
+Diagnostics、Release Closure。下一步实现只应进入 M4-WP2，先落 token、parser、AST、query identity 和文档/测试基线，不提前把 solver、
+lowering、associated type 或 dynamic dispatch 混进第一刀。
+
+## M3 收口背景
 
 R5 Compilation Pipeline / Driver Action 重构 core 已收口：`CompilerInvocation`、`Compiler`
 facade、`CompilationSession`、`CompilationPipeline`、`FrontendPipeline`、`LoweringPipeline`、

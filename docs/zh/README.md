@@ -27,6 +27,8 @@
 - [M2.5 路线图](m2.5-roadmap.md)
 - [M2.5 Query Key 设计](m2.5-query-key-design.md)
 - [M3 路线图](m3-roadmap.md)
+- [M4 Trait / Protocol 系统路线图](m4-roadmap.md)
+- [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)
 - [下一步计划文档](next-steps.md)

@@ -23,6 +23,8 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/progress.md",
         "docs/zh/m3-roadmap.md",
         "docs/zh/m3.9-m3-release-baseline.md",
+        "docs/zh/m4-roadmap.md",
+        "docs/zh/m4-trait-protocol-system-design.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -36,6 +38,8 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/en/progress.md",
         "docs/en/m3-roadmap.md",
         "docs/en/m3.9-m3-release-baseline.md",
+        "docs/en/m4-roadmap.md",
+        "docs/en/m4-trait-protocol-system-design.md",
     };
     for (const fs::path& path : required) {
         EXPECT_TRUE(fs::exists(source_root() / path)) << path;

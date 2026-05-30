@@ -1,9 +1,24 @@
 # Current Progress
 
-Version: 0.1.3
-Stage: M3 complete; M3.9 release baseline hardening closed
+Version: 0.1.4
+Stage: M4 started; M4-WP1 trait/protocol design baseline closed
 
 ## Overall Status
+
+As of 2026-05-30, the M4 trait/protocol design track has started and M4-WP1 is
+closed as a research and design baseline. The selected design is nominal static
+traits: the language keyword is `trait`, `protocol` remains design terminology
+for behavioral contracts, conformance is explicit through `impl Trait for
+Type`, generic bounds enter canonical trait predicates / `ParamEnv`, and calls
+use static dispatch by default before lowering to concrete impl-method direct
+calls after monomorphization. M4-WP1 explicitly keeps RAII, `Drop`, `Copy`,
+resource semantics, dynamic trait objects, vtable ABI, class inheritance,
+default methods, specialization, negative impls, auto traits, and structural
+interfaces out of the current stage. The full design is recorded in the
+[Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
+and the stage route is recorded in the
+[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The next step is M4-WP2:
+Syntax / AST / Query Identity Scaffolding.
 
 The repository has moved from the closed M2 language-core-no-std baseline into
 the M2.5 frontend-foundation stage. M2 does not continue the abandoned M1 track.

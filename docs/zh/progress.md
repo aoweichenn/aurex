@@ -1,7 +1,7 @@
 # 当前进度文档
 
 版本：0.1.3
-阶段：M3.8 query-backed lowering / backend reuse 已完成，下一阶段 M3.9 release baseline hardening
+阶段：M3 已完成；M3.9 release baseline hardening 已收口
 
 ## 总体状态
 
@@ -123,6 +123,14 @@ scheduled/executed/changed/preserved/invalidated 摘要；`llvm.emit_ir` profile
 layout/ABI fingerprint global id。`check` / `typed` / `checked` 仍不写 lower IR rows，`ir` / `llvm-ir` /
 native emit 在 lowering/pass pipeline 后写真实 lower IR rows。详细收口记录见
 [Aurex M3.8 Query-backed Lowering / Backend Reuse 计划与收口记录](m3.8-query-backed-lowering-backend-reuse-plan.md)。
+
+2026-05-30：M3.9 已完成完整 M3 release baseline 收口。`m3` 分支现在包含 M3.0 到 M3.8 的全部阶段成果，
+并新增最终 authority-boundary audit 和质量门基线。固定的公开边界是：source/lex 产出 source facts；
+parse/syntax 持有 AST 和 stable syntax identity；module/project 持有 `ModuleRecord`、`ModulePartKey`
+和 project graph facts；sema 持有 query-backed durable checked facts；tooling 通过 `IdeSnapshot` 和
+`ToolingSession` 消费事实；LSP 只作为 adapter；lowering 持有 verified Aurex IR 和 IR unit fingerprints；
+backend 消费 optimized Aurex IR，不回读 AST 或 sema 私有状态。详细收口记录见
+[Aurex M3.9 M3 Release Baseline 与 Authority Audit](m3.9-m3-release-baseline.md)。
 
 2026-05-28 WP-1B Generic Instance Identity Propagation 已完成：`FunctionSignature`、`EnumCaseInfo`、
 `GenericEnumInstanceInfo` 和 `GenericTypeAliasInstanceInfo` 都携带结构化 `GenericInstanceKey`；

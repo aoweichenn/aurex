@@ -18,8 +18,8 @@ Phase 9A-D 与 M3.1 泛型 release baseline 都已完成。2026-05-29：M3.2 Que
 M3.3 Tooling Session And Incremental Sema 都已 fast-forward 合并回 `m3`。M3.4、M3.5、M3.6 和
 M3.7 已依次完成 real incremental sema execution、stable syntax identity、project graph/persistent query DB
 和 IDE semantic features。M3.8 已完成 query-backed lowering、IR unit fingerprint 和 backend emission unit
-边界。当前新主线进入 M3.9 release baseline hardening。
-所有 M3 实现必须复用
+边界。2026-05-30：M3.9 已完成最终 M3 release baseline 和 authority audit 收口。
+后续 M3 之后的实现必须复用
 R5 稳定下来的 `CompilationSession`、`CompilationPipeline`、
 `FrontendPipeline`、`LoweringPipeline`、`BackendPipeline`、`PipelineStage`、query、diagnostics
 和 profile/tooling contract，不允许在 module loader、parser/sema 或 query 之外另开编译旁路。
@@ -229,16 +229,19 @@ M3.8 补齐 lowering、IR 和 backend 的显式事实边界，后续 native buil
 
 ### M3.9：M3 Closure And Release Baseline
 
-M3.9 是 hardening 和收口阶段，不是新功能阶段。
+M3.9 已于 2026-05-30 完成。它是 hardening 和收口阶段，不是新功能阶段。最终 release baseline
+记录见 [Aurex M3.9 M3 Release Baseline 与 Authority Audit](m3.9-m3-release-baseline.md)。
 
 核心交付：
 
-- 对齐 M3.0 到 M3.8 的中英文文档。
-- 清理 stale roadmap、obsolete unsupported notes、dead code，以及 M3.4-M3.8 暴露出的 unreachable fallback paths。
-- 保持 `ctest`、coverage、query-pruning、query-graph fuzz、generic stress、module graph stress、
-  incremental-edit stress、native smoke 和 performance threshold gates green。
-- 审计 public API，确保 parser、sema、query、tooling、LSP、lowering 和 backend 不绕过彼此的 authority boundary。
-- 在进入 trait/resource/language expressiveness 工作前记录最终 M3 release baseline。
+- M3.0 到 M3.8 的中英文文档已对齐到最终 M3.9 baseline。
+- stale roadmap 已收束到显式 release-baseline 记录；剩余 unsupported notes 被分类为 M3 后非目标，
+  不再作为 M3 活跃任务。
+- `ctest`、coverage、query-pruning、query-graph fuzz、generic stress、format 和 diff gates 固定为
+  M3 release baseline。
+- public API 已审计，parser、sema、query、tooling、LSP、lowering 和 backend 不允许绕过彼此的 authority
+  boundary。
+- 进入 trait/resource/language expressiveness 工作前，最终 M3 release baseline 已记录。
 
 ## 非目标
 

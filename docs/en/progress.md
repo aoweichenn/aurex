@@ -1,7 +1,7 @@
 # Current Progress
 
 Version: 0.1.3
-Stage: M3.8 query-backed lowering / backend reuse complete; next stage M3.9 release baseline hardening
+Stage: M3 complete; M3.9 release baseline hardening closed
 
 ## Overall Status
 
@@ -203,6 +203,17 @@ fingerprint global id. `check`, `typed`, and `checked` still skip lower IR
 rows, while `ir`, `llvm-ir`, and native emit modes write real lower IR rows
 after lowering/pass execution. The detailed closure record is
 [Aurex M3.8 Query-backed Lowering / Backend Reuse Plan And Closure Record](m3.8-query-backed-lowering-backend-reuse-plan.md).
+
+As of 2026-05-30, M3.9 closes the full M3 release baseline. The M3 branch now
+contains M3.0 through M3.8 plus the final authority-boundary audit and gate
+baseline. The recorded public boundary is: source/lex produces source facts;
+parse/syntax owns AST and stable syntax identity; module/project owns
+`ModuleRecord`, `ModulePartKey`, and project graph facts; sema owns
+query-backed durable checked facts; tooling consumes `IdeSnapshot` and
+`ToolingSession`; LSP remains an adapter; lowering owns verified Aurex IR and IR
+unit fingerprints; backend consumes optimized Aurex IR rather than AST or sema
+private state. The detailed closure record is
+[Aurex M3.9 M3 Release Baseline And Authority Audit](m3.9-m3-release-baseline.md).
 
 As of 2026-05-28, WP-1B Generic Instance Identity Propagation is complete:
 `FunctionSignature`, `EnumCaseInfo`, `GenericEnumInstanceInfo`, and

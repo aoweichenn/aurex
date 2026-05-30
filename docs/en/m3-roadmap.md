@@ -23,8 +23,9 @@ Tooling Session And Incremental Sema have been merged back to `m3`. M3.4,
 M3.5, M3.6, and M3.7 have since closed real incremental sema execution, stable
 syntax identity, project graph / persistent query DB, and IDE semantic
 features. M3.8 has closed query-backed lowering, IR-unit fingerprints, and
-backend emission-unit boundaries. The next active line is M3.9 release-baseline
-hardening. Every M3 implementation must reuse the R5
+backend emission-unit boundaries. As of 2026-05-30, M3.9 has closed the final
+M3 release baseline and authority audit. Every post-M3 implementation must
+reuse the R5
 `CompilationSession`,
 `CompilationPipeline`, `FrontendPipeline`, `LoweringPipeline`,
 `BackendPipeline`, `PipelineStage`, query, diagnostics, and profile/tooling
@@ -325,20 +326,23 @@ The closure record is
 
 ### M3.9: M3 Closure And Release Baseline
 
-M3.9 is a hardening and closure phase, not a new feature stage.
+M3.9 is complete as of 2026-05-30. It is a hardening and closure phase, not a
+new feature stage. The release-baseline record is
+[Aurex M3.9 M3 Release Baseline And Authority Audit](m3.9-m3-release-baseline.md).
 
 Core deliverables:
 
-- Align English and Chinese documentation for M3.0 through M3.8.
-- Remove stale roadmap entries, obsolete unsupported notes, dead code, and
-  unreachable fallback paths discovered by the M3.4-M3.8 work.
-- Keep `ctest`, coverage, query-pruning, query-graph fuzz, generic stress,
-  module graph stress, incremental-edit stress, native smoke, and performance
-  threshold gates green.
-- Audit public APIs so parser, sema, query, tooling, LSP, lowering, and backend
-  layers do not bypass each other's authority boundaries.
-- Record the final M3 release baseline before starting trait/resource/language
-  expressiveness work.
+- English and Chinese documentation for M3.0 through M3.8 is aligned against
+  the final M3.9 baseline.
+- Stale roadmap entries are closed into an explicit release-baseline record;
+  remaining unsupported notes are classified as post-M3 non-goals rather than
+  active M3 tasks.
+- `ctest`, coverage, query-pruning, query-graph fuzz, generic stress, format,
+  and diff gates define the M3 release baseline.
+- Public APIs are audited so parser, sema, query, tooling, LSP, lowering, and
+  backend layers do not bypass each other's authority boundaries.
+- The final M3 release baseline is recorded before starting trait/resource/
+  language-expressiveness work.
 
 ## Non-goals
 

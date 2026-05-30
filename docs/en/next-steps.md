@@ -1,6 +1,6 @@
 # Next Steps
 
-## Current Highest Priority: M3.9 Release Baseline Hardening
+## Current Highest Priority: Post-M3 Design Gate
 
 The R5 Compilation Pipeline / Driver Action core is now closed:
 `CompilerInvocation`, the `Compiler` facade, `CompilationSession`,
@@ -36,7 +36,10 @@ M3.7 is closed in the
 covering completion, rename, semantic tokens, inlay hints, code actions,
 workspace symbols, and LSP projection. M3.8 is now closed in the
 [Aurex M3.8 Query-backed Lowering / Backend Reuse Plan And Closure Record](m3.8-query-backed-lowering-backend-reuse-plan.md);
-the next stage is M3.9 release-baseline hardening.
+M3.9 is closed in
+[Aurex M3.9 M3 Release Baseline And Authority Audit](m3.9-m3-release-baseline.md).
+The next work should be designed as a post-M3 stream, not as another M3 feature
+slice.
 
 R5.1 through R5.3 split the driver facade, frontend, lowering/backend, and
 stage records. R5.4 added the lightweight IR pass manager, `PassResult`,
@@ -146,12 +149,23 @@ M3.8 is complete:
 4. WP-4: Connect IR pass analysis preservation to query invalidation.
 5. WP-5: Split LLVM emission units from target-independent IR units.
 
-Suggested first M3.9 implementation order:
+M3.9 is complete:
 
-1. Align documentation and remove stale roadmap notes.
-2. Audit public API authority boundaries.
-3. Clean up dead and unreachable paths exposed by M3.4-M3.8.
-4. Freeze full gates, coverage, and stress baselines.
+1. The M3.0-M3.8 documentation set is aligned against the final baseline.
+2. Public API authority boundaries are recorded in the release-baseline audit.
+3. Remaining unsupported/resource/trait/package topics are classified as
+   post-M3 non-goals rather than active M3 work.
+4. Full tests, coverage, query gates, generic stress, format, and diff checks
+   are the final M3 quality baseline.
+
+Post-M3 work should start with design, not implementation, for one of these
+tracks:
+
+1. Trait/protocol system and associated type model.
+2. Resource semantics, ownership/drop timing, and ABI impact.
+3. Package/dependency resolver and workspace database beyond the current
+   project/query cache boundary.
+4. Backend codegen-unit scheduling and multi-target reuse policy.
 
 2026-05-29 M3.3 WP-1/2/3 implementation update: `aurex_tooling` now has a
 versioned `ToolingSession`, in-place `IdeSnapshot` cache construction, and a

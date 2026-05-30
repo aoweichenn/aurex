@@ -1,11 +1,11 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M4-WP3 trait declaration and impl registry 已收口；下一步 M4-WP4 coherence / generic predicates
+阶段：M4-WP4 coherence / generic predicates 已收口；下一步 M4-WP5 trait method resolution / lowering
 
 ## 总体状态
 
-2026-05-30：M4 trait/protocol 系统已完成 WP1、WP2 和 WP3。M4-WP1 完成调研与设计基线，正式选择
+2026-05-31：M4 trait/protocol 系统已完成 WP1、WP2、WP3 和 WP4。M4-WP1 完成调研与设计基线，正式选择
 nominal static trait：语言关键字为 `trait`，`protocol` 只作为行为契约的设计术语；conformance 由显式
 `impl Trait for Type` 给出；泛型约束进入 canonical trait predicate / `ParamEnv`；调用默认静态分派，单态化后降低为具体
 impl method direct call。M4-WP2 已把 `trait` / `impl Trait for Type` 的 token、parser、AST payload、AST
@@ -13,17 +13,25 @@ dump、lossless syntax 和 query identity scaffold 落到可回归基线。M4-WP
 接入 query-backed sema aggregate：`CheckedModule::traits` 记录 `TraitSignature`、generic params、visibility
 和结构化 requirement；trait requirement prototype 不再作为普通 top-level function/prototype 校验；`CheckedModule::trait_impls`
 记录 `impl Trait for Type` fact；sema 已校验缺方法、重复 impl method、未知 impl method、签名不匹配、trait
-不可见、trait target 非命名 trait、self target 非命名类型、trait generic arity 和重复 exact impl key。
+不可见、trait target 非命名 trait、self target 非命名类型、trait generic arity 和重复 exact impl key。M4-WP4 已在
+`CheckedModule` 中新增 `TraitPredicate`、`TraitObligation`、`TraitEvidence` 和 `ParamEnvInfo`，把
+`where T: Trait` 降低为正式 predicate；`Sized`、`Eq`、`Ord`、`Hash` 保持旧 capability 检查并同步记录
+compiler-owned builtin trait predicate；generic instantiation 已按 ParamEnv 做 user trait candidate rejection；
+trait impl registry 已增加 canonical coherence fingerprint、orphan rule 和 first-pass overlap check。
 
-M4-WP3 的测试已落到常规仓库测试，而不是临时目录：`tests/gtest/sema/trait_tests.cpp` 覆盖白盒 checked facts、dump
+M4-WP3/WP4 的测试已落到常规仓库测试，而不是临时目录：`tests/gtest/sema/trait_tests.cpp` 覆盖白盒 checked facts、dump
 和正负样例，`tests/samples/positive/traits/trait_impl_registry.ax` 覆盖正样例，`tests/samples/negative/traits/*.ax`
-覆盖诊断路径，`tests/samples/imports/samplelib/traits.ax` 覆盖跨模块可见性。完整设计见
+覆盖诊断路径，`tests/samples/positive/traits/trait_predicate_where_generic.ax`、
+`tests/samples/negative/traits/trait_predicate_unsatisfied_generic_arg.ax` 和
+`tests/samples/negative/traits/trait_impl_orphan_external.ax` 覆盖 WP4 predicate/candidate/orphan 路径，
+`tests/samples/imports/samplelib/traits.ax` 覆盖跨模块可见性。完整设计见
 [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)，阶段路线见
-[M4 Trait / Protocol 系统路线图](m4-roadmap.md)。下一步是 M4-WP4：Coherence And Generic Predicates。
+[M4 Trait / Protocol 系统路线图](m4-roadmap.md)。下一步是 M4-WP5：Static Method Resolution And Lowering。
 
-当前仍未把 WP3 误扩成完整 trait 系统：coherence / orphan / overlap、generic trait obligations、`ParamEnv`、
-trait method call resolution、lowering/backend direct call、associated types、builtin capability migration、dynamic trait
-object 和 RAII/resource semantics 仍分别由 WP4、WP5、WP6 或后续资源设计承接。
+当前仍未把 WP4 误扩成完整 trait 系统：trait method call resolution、lowering/backend direct call、associated
+types、dynamic trait object 和 RAII/resource semantics 仍分别由 WP5、WP6 或后续资源设计承接。WP4 的
+`where` grammar 仍只支持单个 identifier predicate 名称；qualified where predicate、generic trait predicate
+arguments 和 associated type constraints 后续再进入 solver/associated type 阶段。
 
 当前仓库已经从 M2 language-core-no-std 基线进入 M2.5 frontend-foundation 阶段。M2 的目标不是继续修补 M1，而是重新收口语言核心：冻结并删除标准库和 M1 系统样例，把注意力放回基础语法、类型系统、模式匹配、`unsafe` 边界、IR 和 LLVM 后端。M2.5 建立在这条已收口主线之上，开始处理 query 化、lossless syntax 和 IDE-native 前端所需的结构化地基。
 

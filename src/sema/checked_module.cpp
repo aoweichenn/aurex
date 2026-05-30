@@ -508,6 +508,10 @@ CheckedModule::CheckedModule()
       traits(make_sema_map<ModuleLookupKey, TraitSignature, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{})),
       trait_impls(make_sema_map<TraitImplLookupKey, TraitImplInfo, TraitImplLookupKeyHash>(
           *this->arena_, TraitImplLookupKeyHash{})),
+      trait_predicates(make_sema_vector<TraitPredicate>(*this->arena_)),
+      trait_obligations(make_sema_vector<TraitObligation>(*this->arena_)),
+      trait_evidence(make_sema_vector<TraitEvidence>(*this->arena_)),
+      param_envs(make_sema_vector<ParamEnvInfo>(*this->arena_)),
       generic_template_signatures(make_sema_vector<GenericTemplateSignatureInfo>(*this->arena_)),
       generic_side_table_layouts(make_sema_deque<GenericSideTableLayout>(*this->arena_)),
       generic_enum_instances(make_sema_deque<GenericEnumInstanceInfo>(*this->arena_)),
@@ -542,7 +546,9 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       item_c_name_ids(std::move(other.item_c_name_ids)), coercions(std::move(other.coercions)),
       functions(std::move(other.functions)), structs(std::move(other.structs)), enum_cases(std::move(other.enum_cases)),
       type_aliases(std::move(other.type_aliases)), traits(std::move(other.traits)),
-      trait_impls(std::move(other.trait_impls)),
+      trait_impls(std::move(other.trait_impls)), trait_predicates(std::move(other.trait_predicates)),
+      trait_obligations(std::move(other.trait_obligations)), trait_evidence(std::move(other.trait_evidence)),
+      param_envs(std::move(other.param_envs)),
       generic_template_signatures(std::move(other.generic_template_signatures)),
       generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
       generic_enum_instances(std::move(other.generic_enum_instances)),
@@ -599,6 +605,10 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->type_aliases.swap(other.type_aliases);
     this->traits.swap(other.traits);
     this->trait_impls.swap(other.trait_impls);
+    this->trait_predicates.swap(other.trait_predicates);
+    this->trait_obligations.swap(other.trait_obligations);
+    this->trait_evidence.swap(other.trait_evidence);
+    this->param_envs.swap(other.param_envs);
     this->generic_template_signatures.swap(other.generic_template_signatures);
     this->generic_side_table_layouts.swap(other.generic_side_table_layouts);
     this->generic_enum_instances.swap(other.generic_enum_instances);
@@ -671,6 +681,26 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->trait_impls.reserve(other.trait_impls.size());
     for (const auto& entry : other.trait_impls) {
         this->trait_impls.emplace(entry.first, this->clone_trait_impl_info(entry.second));
+    }
+    this->trait_predicates.clear();
+    this->trait_predicates.reserve(other.trait_predicates.size());
+    for (const TraitPredicate& predicate : other.trait_predicates) {
+        this->trait_predicates.push_back(this->clone_trait_predicate(predicate));
+    }
+    this->trait_obligations.clear();
+    this->trait_obligations.reserve(other.trait_obligations.size());
+    for (const TraitObligation& obligation : other.trait_obligations) {
+        this->trait_obligations.push_back(this->clone_trait_obligation(obligation));
+    }
+    this->trait_evidence.clear();
+    this->trait_evidence.reserve(other.trait_evidence.size());
+    for (const TraitEvidence& evidence : other.trait_evidence) {
+        this->trait_evidence.push_back(this->clone_trait_evidence(evidence));
+    }
+    this->param_envs.clear();
+    this->param_envs.reserve(other.param_envs.size());
+    for (const ParamEnvInfo& param_env : other.param_envs) {
+        this->param_envs.push_back(this->clone_param_env_info(param_env));
     }
     this->generic_template_signatures.clear();
     this->generic_template_signatures.reserve(other.generic_template_signatures.size());
@@ -794,6 +824,30 @@ TraitImplInfo CheckedModule::make_trait_impl_info() const
     TraitImplInfo info;
     info.trait_args = this->make_type_handle_list();
     info.methods = make_sema_vector<TraitImplMethodInfo>(*this->arena_);
+    return info;
+}
+
+TraitPredicate CheckedModule::make_trait_predicate() const
+{
+    TraitPredicate predicate;
+    predicate.trait_args = this->make_type_handle_list();
+    return predicate;
+}
+
+TraitObligation CheckedModule::make_trait_obligation() const
+{
+    return {};
+}
+
+TraitEvidence CheckedModule::make_trait_evidence() const
+{
+    return {};
+}
+
+ParamEnvInfo CheckedModule::make_param_env_info() const
+{
+    ParamEnvInfo info;
+    info.predicate_indices = this->make_index_table();
     return info;
 }
 
@@ -958,6 +1012,8 @@ TraitImplInfo CheckedModule::clone_trait_impl_info(const TraitImplInfo& other)
     copy.trait_module = other.trait_module;
     copy.self_type = other.self_type;
     copy.trait_args = this->copy_type_handle_list(other.trait_args);
+    copy.coherence_fingerprint = other.coherence_fingerprint;
+    copy.predicate_index = other.predicate_index;
     copy.item = other.item;
     copy.module = other.module;
     copy.visibility = other.visibility;
@@ -967,6 +1023,55 @@ TraitImplInfo CheckedModule::clone_trait_impl_info(const TraitImplInfo& other)
     for (const TraitImplMethodInfo& method : other.methods) {
         copy.methods.push_back(this->clone_trait_impl_method_info(method));
     }
+    copy.range = other.range;
+    copy.part_index = other.part_index;
+    return copy;
+}
+
+TraitPredicate CheckedModule::clone_trait_predicate(const TraitPredicate& other)
+{
+    TraitPredicate copy = this->make_trait_predicate();
+    copy.index = other.index;
+    copy.kind = other.kind;
+    copy.origin = other.origin;
+    copy.subject_type = other.subject_type;
+    copy.subject_param_name_id = other.subject_param_name_id;
+    copy.subject_param_identity = other.subject_param_identity;
+    copy.subject_param_index = other.subject_param_index;
+    copy.builtin_capability = other.builtin_capability;
+    copy.trait_name = this->intern_text(other.trait_name);
+    copy.trait_name_id = other.trait_name_id;
+    copy.trait_module = other.trait_module;
+    copy.trait_stable_id = other.trait_stable_id;
+    copy.trait_args = this->copy_type_handle_list(other.trait_args);
+    copy.canonical_fingerprint = other.canonical_fingerprint;
+    copy.module = other.module;
+    copy.item = other.item;
+    copy.range = other.range;
+    copy.part_index = other.part_index;
+    return copy;
+}
+
+TraitObligation CheckedModule::clone_trait_obligation(const TraitObligation& other) const
+{
+    return other;
+}
+
+TraitEvidence CheckedModule::clone_trait_evidence(const TraitEvidence& other) const
+{
+    return other;
+}
+
+ParamEnvInfo CheckedModule::clone_param_env_info(const ParamEnvInfo& other)
+{
+    ParamEnvInfo copy = this->make_param_env_info();
+    copy.module = other.module;
+    copy.item = other.item;
+    copy.owner_name = this->intern_text(other.owner_name);
+    copy.owner_name_id = other.owner_name_id;
+    copy.owner_stable_id = other.owner_stable_id;
+    copy.key = other.key;
+    copy.predicate_indices = this->copy_index_table(other.predicate_indices);
     copy.range = other.range;
     copy.part_index = other.part_index;
     return copy;
@@ -1124,6 +1229,18 @@ void rebind_trait_impl_info_texts(
     }
 }
 
+void rebind_trait_predicate_texts(
+    TraitPredicate& predicate, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
+{
+    rebind_interned_text(predicate.trait_name, from, to);
+}
+
+void rebind_param_env_info_texts(
+    ParamEnvInfo& param_env, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
+{
+    rebind_interned_text(param_env.owner_name, from, to);
+}
+
 } // namespace
 
 void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
@@ -1145,6 +1262,12 @@ void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, 
     }
     for (auto& entry : this->trait_impls) {
         rebind_trait_impl_info_texts(entry.second, from, to);
+    }
+    for (TraitPredicate& predicate : this->trait_predicates) {
+        rebind_trait_predicate_texts(predicate, from, to);
+    }
+    for (ParamEnvInfo& param_env : this->param_envs) {
+        rebind_param_env_info_texts(param_env, from, to);
     }
     for (GenericTemplateSignatureInfo& signature : this->generic_template_signatures) {
         rebind_interned_text(signature.name, from, to);
@@ -1237,6 +1360,16 @@ constexpr base::u32 SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX = 0;
             return true;
         }
     }
+    for (const TraitPredicate& predicate : checked.trait_predicates) {
+        if (predicate.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
+    for (const ParamEnvInfo& param_env : checked.param_envs) {
+        if (param_env.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
     for (const GenericTemplateSignatureInfo& info : checked.generic_template_signatures) {
         if (info.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
             return true;
@@ -1291,6 +1424,49 @@ void append_type_list(std::ostringstream& out, const CheckedModule& checked, std
         }
         out << checked.types.display_name(types[index]);
     }
+}
+
+[[nodiscard]] std::string_view trait_predicate_kind_name(const TraitPredicateKind kind) noexcept
+{
+    switch (kind) {
+        case TraitPredicateKind::builtin:
+            return "builtin";
+        case TraitPredicateKind::declared_trait:
+            return "trait";
+    }
+    return "trait";
+}
+
+[[nodiscard]] std::string_view trait_predicate_origin_name(const TraitPredicateOrigin origin) noexcept
+{
+    switch (origin) {
+        case TraitPredicateOrigin::explicit_where:
+            return "where";
+        case TraitPredicateOrigin::explicit_impl:
+            return "impl";
+    }
+    return "where";
+}
+
+[[nodiscard]] std::string_view trait_evidence_kind_name(const TraitEvidenceKind kind) noexcept
+{
+    switch (kind) {
+        case TraitEvidenceKind::param_env:
+            return "param_env";
+        case TraitEvidenceKind::builtin:
+            return "builtin";
+        case TraitEvidenceKind::explicit_impl:
+            return "impl";
+    }
+    return "param_env";
+}
+
+[[nodiscard]] std::string trait_predicate_trait_name(const CheckedModule& checked, const TraitPredicate& predicate)
+{
+    if (predicate.kind == TraitPredicateKind::builtin) {
+        return std::string(capability_name(predicate.builtin_capability));
+    }
+    return checked.types.display_name(predicate.trait_name, predicate.trait_args);
 }
 
 } // namespace
@@ -1407,6 +1583,70 @@ std::string dump_checked_module(const CheckedModule& checked)
         for (const TraitImplMethodInfo& method : info.methods) {
             out << "      method " << method.name << " requirement=" << method.requirement_ordinal << "\n";
         }
+    }
+
+    std::vector<const TraitPredicate*> trait_predicates;
+    trait_predicates.reserve(checked.trait_predicates.size());
+    for (const TraitPredicate& predicate : checked.trait_predicates) {
+        trait_predicates.push_back(&predicate);
+    }
+    std::sort(
+        trait_predicates.begin(), trait_predicates.end(), [&](const TraitPredicate* lhs, const TraitPredicate* rhs) {
+            const std::string lhs_display =
+                checked.types.display_name(lhs->subject_type) + ": " + trait_predicate_trait_name(checked, *lhs);
+            const std::string rhs_display =
+                checked.types.display_name(rhs->subject_type) + ": " + trait_predicate_trait_name(checked, *rhs);
+            if (lhs_display != rhs_display) {
+                return lhs_display < rhs_display;
+            }
+            return lhs->index < rhs->index;
+        });
+    out << "  trait_predicates " << trait_predicates.size() << "\n";
+    for (const TraitPredicate* const predicate_ptr : trait_predicates) {
+        const TraitPredicate& predicate = *predicate_ptr;
+        out << "    predicate #" << predicate.index << " " << trait_predicate_kind_name(predicate.kind) << " "
+            << checked.types.display_name(predicate.subject_type) << ": "
+            << trait_predicate_trait_name(checked, predicate)
+            << " origin=" << trait_predicate_origin_name(predicate.origin);
+        append_part_origin(out, show_parts, predicate.part_index);
+        out << "\n";
+    }
+
+    out << "  trait_obligations " << checked.trait_obligations.size() << "\n";
+    for (base::usize index = 0; index < checked.trait_obligations.size(); ++index) {
+        const TraitObligation& obligation = checked.trait_obligations[index];
+        out << "    obligation #" << index << " predicate=" << obligation.predicate_index;
+        append_part_origin(out, show_parts, obligation.part_index);
+        out << "\n";
+    }
+
+    out << "  trait_evidence " << checked.trait_evidence.size() << "\n";
+    for (base::usize index = 0; index < checked.trait_evidence.size(); ++index) {
+        const TraitEvidence& evidence = checked.trait_evidence[index];
+        out << "    evidence #" << index << " " << trait_evidence_kind_name(evidence.kind)
+            << " predicate=" << evidence.predicate_index;
+        append_part_origin(out, show_parts, evidence.part_index);
+        out << "\n";
+    }
+
+    std::vector<const ParamEnvInfo*> param_envs;
+    param_envs.reserve(checked.param_envs.size());
+    for (const ParamEnvInfo& param_env : checked.param_envs) {
+        param_envs.push_back(&param_env);
+    }
+    std::sort(param_envs.begin(), param_envs.end(), [](const ParamEnvInfo* lhs, const ParamEnvInfo* rhs) {
+        if (lhs->owner_name.view() != rhs->owner_name.view()) {
+            return lhs->owner_name.view() < rhs->owner_name.view();
+        }
+        return lhs->predicate_indices.size() < rhs->predicate_indices.size();
+    });
+    out << "  param_envs " << param_envs.size() << "\n";
+    for (const ParamEnvInfo* const param_env_ptr : param_envs) {
+        const ParamEnvInfo& param_env = *param_env_ptr;
+        out << "    param_env " << param_env.owner_name << " predicates=" << param_env.predicate_indices.size()
+            << " key=" << query::debug_string(param_env.key);
+        append_part_origin(out, show_parts, param_env.part_index);
+        out << "\n";
     }
 
     std::vector<const FunctionSignature*> function_names;

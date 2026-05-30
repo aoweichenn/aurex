@@ -226,23 +226,34 @@ std::optional<query::GenericParamKey> SemanticAnalyzerCore::canonical_generic_pa
 query::ParamEnvKey SemanticAnalyzerCore::generic_param_env_key(const GenericTemplateInfo& info) const
 {
     std::vector<std::string> predicates;
-    predicates.reserve(info.constraints.size());
-    for (base::usize param_index = 0; param_index < info.params.size(); ++param_index) {
-        const auto found = info.constraints.find(info.params[param_index]);
-        if (found == info.constraints.end()) {
-            continue;
+    predicates.reserve(info.predicate_indices.empty() ? info.constraints.size() : info.predicate_indices.size());
+    if (!info.predicate_indices.empty()) {
+        for (const base::u32 predicate_index : info.predicate_indices) {
+            if (predicate_index >= this->state_.checked.trait_predicates.size()) {
+                continue;
+            }
+            predicates.push_back(
+                query::debug_string(this->state_.checked.trait_predicates[predicate_index].canonical_fingerprint));
         }
-        std::vector<CapabilityKind> capabilities(found->second.begin(), found->second.end());
-        std::ranges::sort(capabilities, [](const CapabilityKind lhs, const CapabilityKind rhs) {
-            return static_cast<base::u8>(lhs) < static_cast<base::u8>(rhs);
-        });
-        for (const CapabilityKind capability : capabilities) {
-            std::string predicate;
-            predicate.reserve(SEMA_GENERIC_PARAM_ENV_PREDICATE_SIZE_ESTIMATE);
-            predicate += std::to_string(param_index);
-            predicate += SEMA_GENERIC_PARAM_ENV_SEPARATOR;
-            predicate += capability_name(capability);
-            predicates.push_back(std::move(predicate));
+        std::ranges::sort(predicates);
+    } else {
+        for (base::usize param_index = 0; param_index < info.params.size(); ++param_index) {
+            const auto found = info.constraints.find(info.params[param_index]);
+            if (found == info.constraints.end()) {
+                continue;
+            }
+            std::vector<CapabilityKind> capabilities(found->second.begin(), found->second.end());
+            std::ranges::sort(capabilities, [](const CapabilityKind lhs, const CapabilityKind rhs) {
+                return static_cast<base::u8>(lhs) < static_cast<base::u8>(rhs);
+            });
+            for (const CapabilityKind capability : capabilities) {
+                std::string predicate;
+                predicate.reserve(SEMA_GENERIC_PARAM_ENV_PREDICATE_SIZE_ESTIMATE);
+                predicate += std::to_string(param_index);
+                predicate += SEMA_GENERIC_PARAM_ENV_SEPARATOR;
+                predicate += capability_name(capability);
+                predicates.push_back(std::move(predicate));
+            }
         }
     }
 

@@ -24,13 +24,6 @@
 
 namespace aurex::sema {
 
-enum class CapabilityKind {
-    sized,
-    eq,
-    ord,
-    hash,
-};
-
 enum class ValueAbiContext {
     parameter,
     function_type_parameter,
@@ -41,15 +34,6 @@ enum class ValueAbiContext {
     enum_payload_argument,
     argument,
 };
-
-struct CapabilityKindHash {
-    [[nodiscard]] std::size_t operator()(const CapabilityKind kind) const noexcept
-    {
-        return static_cast<std::size_t>(kind);
-    }
-};
-
-[[nodiscard]] std::string_view capability_name(CapabilityKind capability) noexcept;
 
 struct SemaContext final {
     syntax::AstModule& module;
@@ -133,6 +117,10 @@ private:
         SemaVector<IdentId> params;
         SemaVector<GenericParamIdentity> param_identities;
         CapabilityMap constraints;
+        SemaIndexTable predicate_indices;
+        SemaIndexTable obligation_indices;
+        query::ParamEnvKey param_env_key;
+        base::u32 param_env_index = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
         TypeHandle impl_type_pattern = INVALID_TYPE_HANDLE;
         syntax::Visibility visibility = syntax::Visibility::private_;
         GenericNodeSpan expr_span;
@@ -153,6 +141,9 @@ private:
         SemaMap<IdentId, GenericParamIdentity, IdentIdHash> param_identities;
         CapabilityMap constraints;
         CapabilityIdentityMap constraints_by_identity;
+        SemaIndexTable predicate_indices;
+        SemaIndexTable obligation_indices;
+        query::ParamEnvKey param_env_key;
     };
 
     struct GenericSideTableScope {
@@ -524,6 +515,10 @@ private:
     void copy_capability_map(CapabilityMap& target, const CapabilityMap& source) const;
     [[nodiscard]] CapabilitySet& capability_bucket(CapabilityMap& map, IdentId key) const;
     [[nodiscard]] CapabilitySet& capability_bucket(CapabilityIdentityMap& map, GenericParamIdentity key) const;
+    [[nodiscard]] const TraitSignature* find_trait_in_visible_modules(
+        IdentId name_id, std::string_view name, const base::SourceRange& range, bool report_unknown = true);
+    [[nodiscard]] query::StableFingerprint128 generic_trait_predicate_fingerprint(const GenericTemplateInfo& info,
+        base::usize param_index, TraitPredicateKind kind, CapabilityKind capability, const TraitSignature* trait) const;
     [[nodiscard]] bool generic_param_has_capability(std::string_view param, CapabilityKind capability) const;
     [[nodiscard]] bool generic_param_has_capability(TypeHandle param, CapabilityKind capability) const;
     [[nodiscard]] bool type_satisfies_capability(TypeHandle type, CapabilityKind capability) const;

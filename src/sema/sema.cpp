@@ -51,6 +51,8 @@ SemanticAnalyzerCore::GenericTemplateInfo SemanticAnalyzerCore::make_generic_tem
     info.params = make_sema_vector<IdentId>(*this->state_.arena);
     info.param_identities = make_sema_vector<GenericParamIdentity>(*this->state_.arena);
     info.constraints = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->state_.arena, IdentIdHash{});
+    info.predicate_indices = make_sema_vector<base::u32>(*this->state_.arena);
+    info.obligation_indices = make_sema_vector<base::u32>(*this->state_.arena);
     info.expr_node_ids = make_sema_vector<base::u32>(*this->state_.arena);
     info.pattern_node_ids = make_sema_vector<base::u32>(*this->state_.arena);
     info.type_node_ids = make_sema_vector<base::u32>(*this->state_.arena);
@@ -67,6 +69,8 @@ SemanticAnalyzerCore::GenericContext SemanticAnalyzerCore::make_generic_context(
     context.constraints = make_sema_map<IdentId, CapabilitySet, IdentIdHash>(*this->state_.arena, IdentIdHash{});
     context.constraints_by_identity = make_sema_map<GenericParamIdentity, CapabilitySet, GenericParamIdentityHash>(
         *this->state_.arena, GenericParamIdentityHash{});
+    context.predicate_indices = make_sema_vector<base::u32>(*this->state_.arena);
+    context.obligation_indices = make_sema_vector<base::u32>(*this->state_.arena);
     return context;
 }
 

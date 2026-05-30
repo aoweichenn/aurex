@@ -23,6 +23,23 @@ inline constexpr base::usize SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX = static_cast
 inline constexpr base::usize SEMA_GENERIC_SIDE_TABLE_BLOCK_BYTES = 1024U;
 inline constexpr base::usize SEMA_PATTERN_CASE_NAME_TABLE_BLOCK_BYTES = 1024U;
 inline constexpr base::usize SEMA_GENERIC_SIDE_TABLE_INVALID_LAYOUT_INDEX = static_cast<base::usize>(-1);
+inline constexpr base::u32 SEMA_TRAIT_PREDICATE_INVALID_INDEX = static_cast<base::u32>(-1);
+
+enum class CapabilityKind {
+    sized,
+    eq,
+    ord,
+    hash,
+};
+
+struct CapabilityKindHash {
+    [[nodiscard]] std::size_t operator()(const CapabilityKind kind) const noexcept
+    {
+        return static_cast<std::size_t>(kind);
+    }
+};
+
+[[nodiscard]] std::string_view capability_name(CapabilityKind capability) noexcept;
 
 class PatternCaseNameTable final {
 public:
@@ -198,12 +215,83 @@ struct TraitImplInfo {
     syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
     TypeHandle self_type = INVALID_TYPE_HANDLE;
     TypeHandleList trait_args;
+    query::StableFingerprint128 coherence_fingerprint;
+    base::u32 predicate_index = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     syntax::Visibility visibility = syntax::Visibility::public_;
     StableDefId stable_id;
     IncrementalKey incremental_key;
     TraitImplMethodInfoList methods;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+enum class TraitPredicateKind {
+    builtin,
+    declared_trait,
+};
+
+enum class TraitPredicateOrigin {
+    explicit_where,
+    explicit_impl,
+};
+
+enum class TraitEvidenceKind {
+    param_env,
+    builtin,
+    explicit_impl,
+};
+
+struct TraitPredicate {
+    base::u32 index = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    TraitPredicateKind kind = TraitPredicateKind::declared_trait;
+    TraitPredicateOrigin origin = TraitPredicateOrigin::explicit_where;
+    TypeHandle subject_type = INVALID_TYPE_HANDLE;
+    IdentId subject_param_name_id = INVALID_IDENT_ID;
+    GenericParamIdentity subject_param_identity = INVALID_GENERIC_PARAM_IDENTITY;
+    base::u32 subject_param_index = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    CapabilityKind builtin_capability = CapabilityKind::sized;
+    InternedText trait_name;
+    IdentId trait_name_id = INVALID_IDENT_ID;
+    syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
+    StableDefId trait_stable_id;
+    TypeHandleList trait_args;
+    query::StableFingerprint128 canonical_fingerprint;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+struct TraitObligation {
+    base::u32 predicate_index = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    query::StableFingerprint128 predicate_fingerprint;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+struct TraitEvidence {
+    TraitEvidenceKind kind = TraitEvidenceKind::param_env;
+    base::u32 predicate_index = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    query::StableFingerprint128 predicate_fingerprint;
+    TraitImplLookupKey impl_key;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+struct ParamEnvInfo {
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    InternedText owner_name;
+    IdentId owner_name_id = INVALID_IDENT_ID;
+    StableDefId owner_stable_id;
+    query::ParamEnvKey key;
+    SemaIndexTable predicate_indices;
     base::SourceRange range{};
     base::u32 part_index = 0;
 };
@@ -247,6 +335,10 @@ using CheckedEnumCaseMap = SemaMap<ModuleLookupKey, EnumCaseInfo, ModuleLookupKe
 using CheckedTypeAliasMap = SemaMap<ModuleLookupKey, TypeAliasInfo, ModuleLookupKeyHash>;
 using CheckedTraitMap = SemaMap<ModuleLookupKey, TraitSignature, ModuleLookupKeyHash>;
 using CheckedTraitImplMap = SemaMap<TraitImplLookupKey, TraitImplInfo, TraitImplLookupKeyHash>;
+using TraitPredicateList = SemaVector<TraitPredicate>;
+using TraitObligationList = SemaVector<TraitObligation>;
+using TraitEvidenceList = SemaVector<TraitEvidence>;
+using ParamEnvList = SemaVector<ParamEnvInfo>;
 
 enum class CoercionKind {
     contextual_integer_literal,
@@ -553,6 +645,10 @@ public:
     CheckedTypeAliasMap type_aliases;
     CheckedTraitMap traits;
     CheckedTraitImplMap trait_impls;
+    TraitPredicateList trait_predicates;
+    TraitObligationList trait_obligations;
+    TraitEvidenceList trait_evidence;
+    ParamEnvList param_envs;
     SemaVector<GenericTemplateSignatureInfo> generic_template_signatures;
     SemaDeque<GenericSideTableLayout> generic_side_table_layouts;
     SemaDeque<GenericEnumInstanceInfo> generic_enum_instances;
@@ -588,6 +684,10 @@ public:
     [[nodiscard]] TraitSignature make_trait_signature() const;
     [[nodiscard]] TraitImplMethodInfo make_trait_impl_method_info() const;
     [[nodiscard]] TraitImplInfo make_trait_impl_info() const;
+    [[nodiscard]] TraitPredicate make_trait_predicate() const;
+    [[nodiscard]] TraitObligation make_trait_obligation() const;
+    [[nodiscard]] TraitEvidence make_trait_evidence() const;
+    [[nodiscard]] ParamEnvInfo make_param_env_info() const;
     [[nodiscard]] GenericTemplateSignatureInfo clone_generic_template_signature_info(
         const GenericTemplateSignatureInfo& other);
     [[nodiscard]] GenericSideTableLayout make_generic_side_table_layout(
@@ -601,6 +701,10 @@ public:
     [[nodiscard]] TraitSignature clone_trait_signature(const TraitSignature& other);
     [[nodiscard]] TraitImplMethodInfo clone_trait_impl_method_info(const TraitImplMethodInfo& other);
     [[nodiscard]] TraitImplInfo clone_trait_impl_info(const TraitImplInfo& other);
+    [[nodiscard]] TraitPredicate clone_trait_predicate(const TraitPredicate& other);
+    [[nodiscard]] TraitObligation clone_trait_obligation(const TraitObligation& other) const;
+    [[nodiscard]] TraitEvidence clone_trait_evidence(const TraitEvidence& other) const;
+    [[nodiscard]] ParamEnvInfo clone_param_env_info(const ParamEnvInfo& other);
     [[nodiscard]] GenericSideTableLayout clone_generic_side_table_layout(const GenericSideTableLayout& other) const;
     [[nodiscard]] GenericEnumInstanceInfo clone_generic_enum_instance(const GenericEnumInstanceInfo& other) const;
     [[nodiscard]] GenericTypeAliasInstanceInfo clone_generic_type_alias_instance(

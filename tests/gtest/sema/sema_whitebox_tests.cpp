@@ -3396,6 +3396,50 @@ TEST(CoreUnit, SemanticWhiteBoxGenericCapabilityAndParameterFallbackEdges)
         i32, static_cast<sema::CapabilityKind>(SEMA_TEST_INVALID_CAPABILITY_KIND_VALUE)));
     EXPECT_TRUE(analyzer.type_satisfies_equality_capability(enum_type));
     EXPECT_TRUE(analyzer.type_supports_equality_operator(enum_type));
+
+    sema::TraitPredicate reader_predicate = analyzer.state_.checked.make_trait_predicate();
+    reader_predicate.kind = sema::TraitPredicateKind::declared_trait;
+    reader_predicate.trait_name = checked_text(analyzer.state_.checked, "Reader");
+    reader_predicate.trait_name_id = intern_identifier(analyzer, "Reader");
+
+    sema::SemanticAnalyzerCore::GenericAnalyzer generic(analyzer);
+    EXPECT_FALSE(generic.generic_param_has_trait_predicate(INVALID_TYPE_HANDLE, reader_predicate));
+    EXPECT_FALSE(generic.generic_param_has_trait_predicate(i32, reader_predicate));
+    EXPECT_FALSE(generic.type_satisfies_trait_predicate(INVALID_TYPE_HANDLE, reader_predicate, {}));
+
+    context.predicate_indices.push_back(sema::SEMA_TRAIT_PREDICATE_INVALID_INDEX);
+    EXPECT_FALSE(generic.generic_param_has_trait_predicate(param_type, reader_predicate));
+    EXPECT_FALSE(generic.type_satisfies_trait_predicate(param_type, reader_predicate, {}));
+    context.predicate_indices.clear();
+
+    sema::TraitPredicate builtin_predicate = analyzer.state_.checked.make_trait_predicate();
+    builtin_predicate.kind = sema::TraitPredicateKind::builtin;
+    builtin_predicate.subject_param_index = 0;
+    const base::u32 builtin_predicate_index = static_cast<base::u32>(analyzer.state_.checked.trait_predicates.size());
+    analyzer.state_.checked.trait_predicates.push_back(std::move(builtin_predicate));
+
+    sema::SemanticAnalyzerCore::GenericTemplateInfo predicate_info =
+        generic_template_info(analyzer, module_id(0), "Predicated");
+    predicate_info.predicate_indices.push_back(sema::SEMA_TRAIT_PREDICATE_INVALID_INDEX);
+    predicate_info.predicate_indices.push_back(builtin_predicate_index);
+    const std::vector<TypeHandle> predicate_args{i32};
+    EXPECT_TRUE(analyzer.validate_generic_arguments(predicate_info, predicate_args, {}));
+    syntax::ItemNode predicate_item;
+    predicate_item.kind = syntax::ItemKind::fn_decl;
+    predicate_item.name = "Predicated";
+    EXPECT_NE(analyzer.generic_template_incremental_fingerprint(predicate_item, predicate_info).find("Predicated"),
+        std::string::npos);
+
+    sema::TraitPredicate declared_predicate = analyzer.state_.checked.make_trait_predicate();
+    declared_predicate.kind = sema::TraitPredicateKind::declared_trait;
+    declared_predicate.subject_param_identity = param_identity;
+    declared_predicate.trait_stable_id = reader_predicate.trait_stable_id;
+    const base::u32 declared_predicate_index = static_cast<base::u32>(analyzer.state_.checked.trait_predicates.size());
+    analyzer.state_.checked.trait_predicates.push_back(std::move(declared_predicate));
+    context.predicate_indices.push_back(declared_predicate_index);
+    EXPECT_TRUE(generic.generic_param_has_trait_predicate(param_type, reader_predicate));
+    EXPECT_TRUE(generic.type_satisfies_trait_predicate(param_type, reader_predicate, {}));
+
     analyzer.state_.flow.current_generic_context = nullptr;
 
     sema::SemanticAnalyzerCore::GenericTemplateInfo info = generic_template_info(analyzer, module_id(0), "Fallback");
@@ -3901,11 +3945,24 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     const TypeHandle i32{static_cast<base::u32>(BuiltinType::i32)};
     const TypeHandle i64{static_cast<base::u32>(BuiltinType::i64)};
 
+    sema::PatternCaseNameTable empty_pattern_names;
+    const sema::PatternCaseNameTable& const_empty_pattern_names = empty_pattern_names;
+    EXPECT_EQ(empty_pattern_names.begin(), empty_pattern_names.end());
+    EXPECT_EQ(const_empty_pattern_names.find(0), const_empty_pattern_names.end());
+    EXPECT_EQ(empty_pattern_names.arena_blocks(), 0U);
+    empty_pattern_names.reserve(0);
+    sema::CNameIdSet empty_pattern_bucket = empty_pattern_names.make_bucket();
+    empty_pattern_names.merge(0, empty_pattern_bucket);
+    EXPECT_FALSE(empty_pattern_names.contains(0));
+
     sema::PatternCaseNameTable pattern_names;
     pattern_names.reserve(2);
     pattern_names.insert(10, alpha_id);
     pattern_names.insert(20, beta_id);
     pattern_names.merge(10, pattern_names[20]);
+    sema::PatternCaseNameTable* const pattern_self = &pattern_names;
+    pattern_names = *pattern_self;
+    pattern_names = std::move(*pattern_self);
     ASSERT_TRUE(pattern_names.contains(10));
     EXPECT_NE(pattern_names.find(10), pattern_names.end());
     EXPECT_TRUE(pattern_names[10].contains(alpha_id));
@@ -3945,6 +4002,9 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::expr_intrinsic_type);
     side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::expr_type);
     side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::stmt_local_type);
+    sema::GenericSideTables* const side_self = &side_tables;
+    side_tables = *side_self;
+    side_tables = std::move(*side_self);
     side_tables.release_analysis_only_storage();
     EXPECT_TRUE(side_tables.expr_expected_types.empty());
     EXPECT_TRUE(side_tables.sparse_expr_expected_types.empty());
@@ -4114,6 +4174,9 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     instance.side_tables.expr_types.front() = i32;
     instance.side_tables.expr_expected_types.front() = i64;
     checked.generic_function_instances.push_back(std::move(instance));
+    sema::CheckedModule* const checked_self = &checked;
+    checked = *checked_self;
+    checked = std::move(*checked_self);
 
     sema::CheckedModule checked_copy(checked);
     ASSERT_EQ(checked_copy.functions.size(), 1U);

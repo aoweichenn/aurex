@@ -92,18 +92,17 @@ void expect_negative_trait_sample(const std::string_view filename, const std::st
 
 TEST(CoreUnit, TraitSemaRegistryRecordsTraitAndImplFacts)
 {
-    const std::string_view source =
-        "module trait_registry_whitebox;\n"
-        "pub trait Reader[T] {\n"
-        "  fn read(self: &Self, value: T) -> i32;\n"
-        "}\n"
-        "struct File { handle: i32; }\n"
-        "impl Reader[i32] for File {\n"
-        "  fn read(self: &File, value: i32) -> i32 {\n"
-        "    return value;\n"
-        "  }\n"
-        "}\n"
-        "fn main() -> i32 { return 0; }\n";
+    const std::string_view source = "module trait_registry_whitebox;\n"
+                                    "pub trait Reader[T] {\n"
+                                    "  fn read(self: &Self, value: T) -> i32;\n"
+                                    "}\n"
+                                    "struct File { handle: i32; }\n"
+                                    "impl Reader[i32] for File {\n"
+                                    "  fn read(self: &File, value: i32) -> i32 {\n"
+                                    "    return value;\n"
+                                    "  }\n"
+                                    "}\n"
+                                    "fn main() -> i32 { return 0; }\n";
 
     const sema::CheckedModule checked = analyze_trait_source(source);
     ASSERT_EQ(checked.traits.size(), 1U);
@@ -156,29 +155,28 @@ TEST(CoreUnit, TraitSemaRegistryRecordsTraitAndImplFacts)
 
 TEST(CoreUnit, TraitSemaRegistrySubstitutesCompositeRequirementTypes)
 {
-    const std::string_view source =
-        "module trait_registry_composite_whitebox;\n"
-        "struct Token { value: i32; }\n"
-        "enum Mode { fast, slow }\n"
-        "pub trait Shape[T] {\n"
-        "  fn ptr(self: *const Self, value: *mut T) -> *const T;\n"
-        "  fn slice(self: &Self, values: []const T) -> T;\n"
-        "  fn pair(self: &Self, value: (Self, T)) -> T;\n"
-        "  fn callback(self: &Self, op: fn(T) -> T) -> T;\n"
-        "  fn concrete(self: &Self, token: Token, mode: Mode) -> Token;\n"
-        "}\n"
-        "struct Box { value: i32; }\n"
-        "impl Shape[i32] for Box {\n"
-        "  fn ptr(self: *const Box, value: *mut i32) -> *const i32 { return null; }\n"
-        "  fn slice(self: &Box, values: []const i32) -> i32 { return values[0]; }\n"
-        "  fn pair(self: &Box, value: (Box, i32)) -> i32 {\n"
-        "    let (_, right) = value;\n"
-        "    return right;\n"
-        "  }\n"
-        "  fn callback(self: &Box, op: fn(i32) -> i32) -> i32 { return op(1); }\n"
-        "  fn concrete(self: &Box, token: Token, mode: Mode) -> Token { return token; }\n"
-        "}\n"
-        "fn main() -> i32 { return 0; }\n";
+    const std::string_view source = "module trait_registry_composite_whitebox;\n"
+                                    "struct Token { value: i32; }\n"
+                                    "enum Mode { fast, slow }\n"
+                                    "pub trait Shape[T] {\n"
+                                    "  fn ptr(self: *const Self, value: *mut T) -> *const T;\n"
+                                    "  fn slice(self: &Self, values: []const T) -> T;\n"
+                                    "  fn pair(self: &Self, value: (Self, T)) -> T;\n"
+                                    "  fn callback(self: &Self, op: fn(T) -> T) -> T;\n"
+                                    "  fn concrete(self: &Self, token: Token, mode: Mode) -> Token;\n"
+                                    "}\n"
+                                    "struct Box { value: i32; }\n"
+                                    "impl Shape[i32] for Box {\n"
+                                    "  fn ptr(self: *const Box, value: *mut i32) -> *const i32 { return null; }\n"
+                                    "  fn slice(self: &Box, values: []const i32) -> i32 { return values[0]; }\n"
+                                    "  fn pair(self: &Box, value: (Box, i32)) -> i32 {\n"
+                                    "    let (_, right) = value;\n"
+                                    "    return right;\n"
+                                    "  }\n"
+                                    "  fn callback(self: &Box, op: fn(i32) -> i32) -> i32 { return op(1); }\n"
+                                    "  fn concrete(self: &Box, token: Token, mode: Mode) -> Token { return token; }\n"
+                                    "}\n"
+                                    "fn main() -> i32 { return 0; }\n";
 
     const sema::CheckedModule checked = analyze_trait_source(source);
     ASSERT_EQ(checked.traits.size(), 1U);
@@ -202,19 +200,18 @@ TEST(CoreUnit, TraitSemaRegistrySubstitutesCompositeRequirementTypes)
 
 TEST(CoreUnit, TraitSemaRegistryAcceptsEnumSelfTargets)
 {
-    const std::string_view source =
-        "module trait_registry_self_targets_whitebox;\n"
-        "trait Marker {}\n"
-        "trait Extra {}\n"
-        "trait UnsafeReader { unsafe fn read(self: &Self) -> i32; }\n"
-        "struct Box { value: i32; }\n"
-        "enum Mode { fast, slow }\n"
-        "impl Marker for Mode {}\n"
-        "impl Marker for Box {}\n"
-        "impl UnsafeReader for Box {\n"
-        "  unsafe fn read(self: &Box) -> i32 { return self.value; }\n"
-        "}\n"
-        "fn main() -> i32 { return 0; }\n";
+    const std::string_view source = "module trait_registry_self_targets_whitebox;\n"
+                                    "trait Marker {}\n"
+                                    "trait Extra {}\n"
+                                    "trait UnsafeReader { unsafe fn read(self: &Self) -> i32; }\n"
+                                    "struct Box { value: i32; }\n"
+                                    "enum Mode { fast, slow }\n"
+                                    "impl Marker for Mode {}\n"
+                                    "impl Marker for Box {}\n"
+                                    "impl UnsafeReader for Box {\n"
+                                    "  unsafe fn read(self: &Box) -> i32 { return self.value; }\n"
+                                    "}\n"
+                                    "fn main() -> i32 { return 0; }\n";
 
     const sema::CheckedModule checked = analyze_trait_source(source);
     ASSERT_EQ(checked.traits.size(), 3U);
@@ -232,6 +229,111 @@ TEST(CoreUnit, TraitSemaRegistryAcceptsEnumSelfTargets)
             "impl Marker for trait_registry_self_targets_whitebox.Box methods=0",
             "impl Marker for trait_registry_self_targets_whitebox.Mode methods=0",
             "impl UnsafeReader for trait_registry_self_targets_whitebox.Box methods=1",
+        });
+}
+
+TEST(CoreUnit, TraitPredicatesLowerWhereBoundsAndValidateGenericCandidates)
+{
+    const std::string_view source = "module trait_predicate_where_whitebox;\n"
+                                    "trait Reader { fn read(self: &Self) -> i32; }\n"
+                                    "struct File { value: i32; }\n"
+                                    "impl Reader for File {\n"
+                                    "  fn read(self: &File) -> i32 { return self.value; }\n"
+                                    "}\n"
+                                    "fn use_reader[T](value: T) -> i32 where T: Reader {\n"
+                                    "  return 0;\n"
+                                    "}\n"
+                                    "fn forward_reader[T](value: T) -> i32 where T: Reader {\n"
+                                    "  return use_reader[T](value);\n"
+                                    "}\n"
+                                    "fn main() -> i32 {\n"
+                                    "  let file = File { value: 7 };\n"
+                                    "  return forward_reader[File](file);\n"
+                                    "}\n";
+
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    ASSERT_EQ(checked.traits.size(), 1U);
+    ASSERT_EQ(checked.trait_impls.size(), 1U);
+    EXPECT_EQ(checked.trait_predicates.size(), 3U);
+    EXPECT_EQ(checked.trait_obligations.size(), 2U);
+    EXPECT_EQ(checked.trait_evidence.size(), 3U);
+    EXPECT_EQ(checked.param_envs.size(), 2U);
+
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "trait_predicates 3",
+            "T: Reader origin=where",
+            "trait_predicate_where_whitebox.File: Reader origin=impl",
+            "trait_obligations 2",
+            "trait_evidence 3",
+            "param_envs 2",
+            "param_env forward_reader predicates=1",
+            "param_env use_reader predicates=1",
+        });
+
+    sema::CheckedModule copied = checked;
+    EXPECT_EQ(copied.trait_predicates.size(), 3U);
+    EXPECT_EQ(copied.trait_obligations.size(), 2U);
+    EXPECT_EQ(copied.trait_evidence.size(), 3U);
+    EXPECT_EQ(copied.param_envs.size(), 2U);
+}
+
+TEST(CoreUnit, TraitPredicatesRejectUnsatisfiedGenericArguments)
+{
+    const std::string_view source = "module trait_predicate_unsatisfied_whitebox;\n"
+                                    "trait Reader { fn read(self: &Self) -> i32; }\n"
+                                    "struct File { value: i32; }\n"
+                                    "struct Other { value: i32; }\n"
+                                    "impl Reader for File {\n"
+                                    "  fn read(self: &File) -> i32 { return self.value; }\n"
+                                    "}\n"
+                                    "fn use_reader[T](value: T) -> i32 where T: Reader {\n"
+                                    "  return 0;\n"
+                                    "}\n"
+                                    "fn main() -> i32 {\n"
+                                    "  let other = Other { value: 9 };\n"
+                                    "  return use_reader[Other](other);\n"
+                                    "}\n";
+
+    expect_trait_source_diagnostic(
+        source, "type trait_predicate_unsatisfied_whitebox.Other does not satisfy trait predicate `Reader`");
+}
+
+TEST(CoreUnit, TraitPredicatesLowerBuiltinAndDeclaredBoundsTogether)
+{
+    const std::string_view source = "module trait_predicate_mixed_bounds_whitebox;\n"
+                                    "trait Reader { fn read(self: &Self) -> i32; }\n"
+                                    "enum Flag { no, yes }\n"
+                                    "impl Reader for Flag {\n"
+                                    "  fn read(self: &Flag) -> i32 { return 1; }\n"
+                                    "}\n"
+                                    "fn use_flag[T](value: T) -> i32 where T: Eq + Reader {\n"
+                                    "  return 0;\n"
+                                    "}\n"
+                                    "fn main() -> i32 {\n"
+                                    "  let flag: Flag = Flag.yes;\n"
+                                    "  return use_flag[Flag](flag);\n"
+                                    "}\n";
+
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    EXPECT_EQ(checked.trait_predicates.size(), 3U);
+    EXPECT_EQ(checked.trait_obligations.size(), 2U);
+    EXPECT_EQ(checked.trait_evidence.size(), 3U);
+    ASSERT_EQ(checked.param_envs.size(), 1U);
+    EXPECT_EQ(checked.param_envs.front().predicate_indices.size(), 2U);
+
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "trait_predicates 3",
+            "T: Eq origin=where",
+            "T: Reader origin=where",
+            "trait_predicate_mixed_bounds_whitebox.Flag: Reader origin=impl",
+            "trait_obligations 2",
+            "evidence #0 builtin",
+            "evidence #1 param_env",
+            "param_env use_flag predicates=2",
         });
 }
 
@@ -422,6 +524,36 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
             "fn main() -> i32 { return 0; }\n",
             "variadic functions are only supported for extern c declarations",
         },
+        {
+            "module trait_predicate_duplicate_bound_whitebox;\n"
+            "trait Reader { fn read(self: &Self) -> i32; }\n"
+            "fn use_reader[T](value: T) -> i32 where T: Reader + Reader {\n"
+            "  return 0;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "duplicate capability `Reader` for generic parameter `T`",
+        },
+        {
+            "module trait_predicate_generic_arity_whitebox;\n"
+            "trait Needs[T] {}\n"
+            "fn use_needs[U](value: U) -> i32 where U: Needs {\n"
+            "  return 0;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "too few trait predicate type arguments for Needs: expected 1, got 0",
+        },
+        {
+            "module trait_predicate_forward_missing_bound_whitebox;\n"
+            "trait Reader { fn read(self: &Self) -> i32; }\n"
+            "fn use_reader[T](value: T) -> i32 where T: Reader {\n"
+            "  return 0;\n"
+            "}\n"
+            "fn forward_reader[T](value: T) -> i32 {\n"
+            "  return use_reader[T](value);\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "does not satisfy trait predicate `Reader`",
+        },
     };
 
     for (const auto& [source, diagnostic] : cases) {
@@ -463,15 +595,61 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
 
     expect_negative_trait_sample("trait_impl_missing_method.ax", "trait impl missing method");
     expect_negative_trait_sample("trait_impl_duplicate_method.ax", "duplicate trait impl method");
-    expect_negative_trait_sample("trait_impl_signature_mismatch.ax",
-        "trait impl method signature does not match requirement");
+    expect_negative_trait_sample(
+        "trait_impl_signature_mismatch.ax", "trait impl method signature does not match requirement");
     expect_negative_trait_sample("trait_impl_unknown_method.ax", "trait impl method is not required");
     expect_negative_trait_sample("trait_impl_unknown_trait.ax", "unknown trait: Missing");
     expect_negative_trait_sample("trait_impl_target_not_named.ax", "trait impl target must be a named trait");
     expect_negative_trait_sample("trait_impl_self_type_not_named.ax", "impl target must be a named type");
     expect_negative_trait_sample("trait_impl_private_trait.ax", "trait is private: samplelib.traits.Hidden");
-    expect_negative_trait_sample("trait_impl_unknown_qualified_trait.ax",
-        "unknown trait in module samplelib.traits: Missing");
+    expect_negative_trait_sample(
+        "trait_impl_unknown_qualified_trait.ax", "unknown trait in module samplelib.traits: Missing");
+
+    const fs::path predicate_source = positive_sample("traits", "trait_predicate_where_generic.ax");
+    const std::string predicate_checked = require_success(aurexc() + " --emit=checked " + q(predicate_source)).output;
+    expect_contains_all(predicate_checked,
+        {
+            "trait_predicates 3",
+            "T: Reader origin=where",
+            "trait_predicate_where_generic.File: Reader origin=impl",
+            "param_env forward_reader predicates=1",
+            "param_env use_reader predicates=1",
+        });
+    require_success(aurexc() + " --emit=llvm-ir " + q(predicate_source));
+
+    expect_negative_trait_sample(
+        "trait_predicate_unsatisfied_generic_arg.ax", "does not satisfy trait predicate `Reader`");
+    expect_negative_trait_sample("trait_impl_orphan_external.ax", "orphan trait impl is not allowed");
+    expect_negative_trait_sample("trait_predicate_duplicate_bound.ax", "duplicate capability `Reader`");
+    expect_negative_trait_sample(
+        "trait_predicate_generic_trait_arity.ax", "too few trait predicate type arguments for Needs");
+    expect_negative_trait_sample(
+        "trait_predicate_forward_missing_bound.ax", "does not satisfy trait predicate `Reader`");
+
+    const fs::path mixed_source = positive_sample("traits", "trait_predicate_mixed_bounds.ax");
+    const std::string mixed_checked = require_success(aurexc() + " --emit=checked " + q(mixed_source)).output;
+    expect_contains_all(mixed_checked,
+        {
+            "trait_predicates 3",
+            "T: Eq origin=where",
+            "T: Reader origin=where",
+            "trait_predicate_mixed_bounds.Flag: Reader origin=impl",
+            "param_env use_flag predicates=2",
+        });
+    require_success(aurexc() + " --emit=llvm-ir " + q(mixed_source));
+
+    const fs::path local_trait_external_self =
+        positive_sample("traits", "trait_impl_orphan_local_trait_external_self.ax");
+    const std::string local_trait_checked =
+        require_success(aurexc() + " --emit=checked " + sample_import_flags() + " " + q(local_trait_external_self))
+            .output;
+    expect_contains_all(local_trait_checked,
+        {
+            "trait_impls 1",
+            "impl LocalReader for samplelib.traits.HiddenFile methods=1",
+            "samplelib.traits.HiddenFile: LocalReader origin=impl",
+        });
+    require_success(aurexc() + " --emit=llvm-ir " + sample_import_flags() + " " + q(local_trait_external_self));
 }
 
 } // namespace aurex::test

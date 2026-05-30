@@ -73,7 +73,7 @@ inline constexpr std::string_view SEMA_IMPL_TARGET_NAMED_TYPE = "impl target mus
 inline constexpr std::string_view SEMA_TRAIT_IMPL_TARGET_NAMED_TRAIT = "trait impl target must be a named trait";
 
 inline constexpr std::string_view SEMA_TRAIT_IMPL_GENERIC_UNSUPPORTED =
-    "generic trait impl blocks are not supported by M4-WP3 semantic analysis";
+    "generic trait impl blocks are not supported by M4-WP4 semantic analysis";
 
 inline constexpr std::string_view SEMA_C_ABI_RETURN_TYPE_EXPLICIT = "C ABI function return type must be explicit";
 
@@ -699,7 +699,7 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 
 [[nodiscard]] inline std::string sema_unknown_capability_message(const std::string_view name)
 {
-    return "unknown M2 capability `" + std::string(name) + "`";
+    return "unknown generic capability or trait predicate `" + std::string(name) + "`";
 }
 
 [[nodiscard]] inline std::string sema_duplicate_capability_message(
@@ -1065,6 +1065,31 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
     const std::string_view trait_name, const std::string_view self_type)
 {
     return "duplicate trait impl: " + std::string(trait_name) + " for " + std::string(self_type);
+}
+
+[[nodiscard]] inline std::string sema_overlapping_trait_impl_message(
+    const std::string_view trait_name, const std::string_view self_type)
+{
+    return "overlapping trait impl: " + std::string(trait_name) + " for " + std::string(self_type);
+}
+
+[[nodiscard]] inline std::string sema_previous_trait_impl_note_message(
+    const std::string_view trait_name, const std::string_view self_type)
+{
+    return "previous trait impl: " + std::string(trait_name) + " for " + std::string(self_type);
+}
+
+[[nodiscard]] inline std::string sema_trait_impl_orphan_rule_message(
+    const std::string_view trait_name, const std::string_view self_type, const std::string_view impl_module)
+{
+    return "orphan trait impl is not allowed in module " + std::string(impl_module) + ": neither trait "
+        + std::string(trait_name) + " nor type " + std::string(self_type) + " is local";
+}
+
+[[nodiscard]] inline std::string sema_trait_predicate_not_satisfied_message(
+    const std::string_view type_name, const std::string_view trait_name)
+{
+    return "type " + std::string(type_name) + " does not satisfy trait predicate `" + std::string(trait_name) + "`";
 }
 
 [[nodiscard]] inline std::string sema_ambiguous_function_name_message(

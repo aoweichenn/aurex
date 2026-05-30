@@ -1,0 +1,13 @@
+module trait_predicate_duplicate_bound;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+fn use_reader[T](value: T) -> i32 where T: Reader + Reader {
+    return 0;
+}
+
+fn main() -> i32 {
+    return 0;
+}

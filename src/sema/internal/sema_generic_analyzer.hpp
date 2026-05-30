@@ -12,6 +12,10 @@ public:
     bool has_generic_constraints(const syntax::ItemNode& item) const noexcept;
     void validate_generic_parameter_list(const syntax::ItemNode& item);
     void validate_generic_constraints(const syntax::ItemNode& item, GenericTemplateInfo& info);
+    base::u32 record_generic_trait_predicate(GenericTemplateInfo& info, const syntax::GenericConstraintDecl& constraint,
+        base::usize param_index, base::usize capability_index, TraitPredicateKind kind, CapabilityKind capability,
+        const TraitSignature* trait);
+    void record_generic_param_env(GenericTemplateInfo& info, const syntax::ItemNode& item);
     bool generic_param_has_capability(const std::string_view param, const CapabilityKind capability) const;
     bool generic_param_has_capability(const TypeHandle param, const CapabilityKind capability) const;
     bool type_satisfies_capability(const TypeHandle type, const CapabilityKind capability) const;
@@ -22,6 +26,9 @@ public:
     bool type_supports_hash_capability(const TypeHandle type) const;
     bool validate_generic_arguments(
         const GenericTemplateInfo& info, const std::vector<TypeHandle>& args, const base::SourceRange& use_range);
+    [[nodiscard]] bool type_satisfies_trait_predicate(
+        TypeHandle type, const TraitPredicate& predicate, const base::SourceRange& use_range);
+    [[nodiscard]] bool generic_param_has_trait_predicate(TypeHandle param, const TraitPredicate& predicate) const;
     void populate_generic_template_node_spans(GenericTemplateInfo& info, const syntax::ItemNode& item) const;
     std::string generic_template_incremental_fingerprint(
         const syntax::ItemNode& item, const GenericTemplateInfo& info) const;

@@ -944,7 +944,7 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions)
         "duplicate function definition");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "where_unknown_capability.ax"))).output,
-        "unknown M2 capability");
+        "unknown generic capability or trait predicate");
     expect_contains(
         require_failure(aurexc() + " --check " + q(negative_sample("generics", "where_empty_clause.ax"))).output,
         "expected generic parameter name in where clause");

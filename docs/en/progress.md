@@ -1,12 +1,13 @@
 # Current Progress
 
 Version: 0.1.4
-Stage: M4-WP3 trait declaration and impl registry closed; next is M4-WP4
-coherence / generic predicates
+Stage: M4-WP4 coherence / generic predicates closed; next is M4-WP5 trait
+method resolution / lowering
 
 ## Overall Status
 
-As of 2026-05-30, M4 trait/protocol work has completed WP1, WP2, and WP3.
+As of 2026-05-31, M4 trait/protocol work has completed WP1, WP2, WP3, and
+WP4.
 M4-WP1 closed the research and design baseline with nominal static traits: the
 language keyword is `trait`, `protocol` remains design terminology for
 behavioral contracts, conformance is explicit through `impl Trait for Type`,
@@ -22,24 +23,36 @@ function/prototype validation; `CheckedModule::trait_impls` records
 `impl Trait for Type` facts; and sema validates missing methods, duplicate impl
 methods, unknown impl methods, signature mismatches, invisible traits, non-trait
 impl targets, non-named self targets, trait generic arity, and duplicate exact
-impl keys.
+impl keys. M4-WP4 adds `TraitPredicate`, `TraitObligation`, `TraitEvidence`,
+and `ParamEnvInfo` to `CheckedModule`, lowers `where T: Trait` into formal
+predicates, keeps `Sized`, `Eq`, `Ord`, and `Hash` on the old capability checks
+while also recording compiler-owned built-in trait predicates, performs user
+trait candidate rejection during generic instantiation, and adds canonical
+coherence fingerprints, orphan rules, and first-pass overlap checks to the trait
+impl registry.
 
-M4-WP3 tests are normal repository tests, not temporary fixtures:
+M4-WP3/WP4 tests are normal repository tests, not temporary fixtures:
 `tests/gtest/sema/trait_tests.cpp` covers whitebox checked facts, checked dumps,
 and positive/negative samples; `tests/samples/positive/traits/trait_impl_registry.ax`
 covers the positive sample; `tests/samples/negative/traits/*.ax` covers
-diagnostic paths; and `tests/samples/imports/samplelib/traits.ax` covers
-cross-module visibility. The full design is recorded in the
+diagnostic paths;
+`tests/samples/positive/traits/trait_predicate_where_generic.ax`,
+`tests/samples/negative/traits/trait_predicate_unsatisfied_generic_arg.ax`, and
+`tests/samples/negative/traits/trait_impl_orphan_external.ax` cover WP4
+predicate, candidate-rejection, and orphan paths; and
+`tests/samples/imports/samplelib/traits.ax` covers cross-module visibility. The
+full design is recorded in the
 [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
 and the stage route is recorded in the
-[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The next step is M4-WP4:
-Coherence And Generic Predicates.
+[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The next step is M4-WP5:
+Static Method Resolution And Lowering.
 
-WP3 is still not presented as a complete trait system. Coherence / orphan /
-overlap, generic trait obligations, `ParamEnv`, trait method call resolution,
-lowering/backend direct calls, associated types, built-in capability migration,
-dynamic trait objects, and RAII/resource semantics remain WP4, WP5, WP6, or
-later resource-system work.
+WP4 is still not presented as a complete trait system. Trait method call
+resolution, lowering/backend direct calls, associated types, dynamic trait
+objects, and RAII/resource semantics remain WP5, WP6, or later resource-system
+work. The WP4 `where` grammar still supports only single identifier predicate
+names; qualified where predicates, generic trait predicate arguments, and
+associated-type constraints remain future solver/associated-type work.
 
 The repository has moved from the closed M2 language-core-no-std baseline into
 the M2.5 frontend-foundation stage. M2 does not continue the abandoned M1 track.

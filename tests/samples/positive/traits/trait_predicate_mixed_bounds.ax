@@ -1,0 +1,25 @@
+module trait_predicate_mixed_bounds;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+enum Flag {
+    no,
+    yes,
+}
+
+impl Reader for Flag {
+    fn read(self: &Flag) -> i32 {
+        return 1;
+    }
+}
+
+fn use_flag[T](value: T) -> i32 where T: Eq + Reader {
+    return 0;
+}
+
+fn main() -> i32 {
+    let flag: Flag = Flag.yes;
+    return use_flag[Flag](flag);
+}

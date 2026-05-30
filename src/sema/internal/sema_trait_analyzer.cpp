@@ -1,3 +1,4 @@
+#include <aurex/sema/canonical_type_builder.hpp>
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
@@ -19,6 +20,7 @@ constexpr std::string_view SEMA_TRAIT_INCREMENTAL_TAG = "|trait";
 constexpr std::string_view SEMA_TRAIT_IMPL_INCREMENTAL_TAG = "|trait_impl";
 constexpr std::string_view SEMA_TRAIT_SELF_NAME = "Self";
 constexpr base::usize SEMA_TRAIT_SUBSTITUTION_STACK_INITIAL_CAPACITY = 8;
+constexpr base::u64 SEMA_TRAIT_IMPL_COHERENCE_KEY_MARKER = 0x53454d4154524348ULL;
 
 enum class TraitTypeSubstitutionActionKind {
     visit,
@@ -162,9 +164,8 @@ struct TraitTypeSubstitutionAction {
                     info.tuple_elements.size(),
                 });
                 for (base::usize index = info.tuple_elements.size(); index > 0; --index) {
-                    actions.push_back(
-                        TraitTypeSubstitutionAction{TraitTypeSubstitutionActionKind::visit,
-                            info.tuple_elements[index - 1]});
+                    actions.push_back(TraitTypeSubstitutionAction{
+                        TraitTypeSubstitutionActionKind::visit, info.tuple_elements[index - 1]});
                 }
                 break;
             case TypeKind::function:
@@ -181,9 +182,8 @@ struct TraitTypeSubstitutionAction {
                 actions.push_back(
                     TraitTypeSubstitutionAction{TraitTypeSubstitutionActionKind::visit, info.function_return});
                 for (base::usize index = info.function_params.size(); index > 0; --index) {
-                    actions.push_back(
-                        TraitTypeSubstitutionAction{TraitTypeSubstitutionActionKind::visit,
-                            info.function_params[index - 1]});
+                    actions.push_back(TraitTypeSubstitutionAction{
+                        TraitTypeSubstitutionActionKind::visit, info.function_params[index - 1]});
                 }
                 break;
             case TypeKind::builtin:
@@ -205,7 +205,40 @@ struct TraitTypeSubstitutionAction {
         && requirement.is_unsafe == signature.is_unsafe && requirement.is_variadic == signature.is_variadic;
 }
 
+[[nodiscard]] base::Result<void> append_trait_impl_canonical_type(query::StableKeyWriter& writer,
+    const TypeTable& types, const TypeHandle type, const CanonicalTypeKeyResolver& resolver)
+{
+    base::Result<query::CanonicalTypeKey> key = build_canonical_type_key(types, type, resolver);
+    if (!key) {
+        return base::Result<void>::fail(key.error());
+    }
+    query::append_stable_key(writer, key.value());
+    return base::Result<void>::ok();
+}
+
 } // namespace
+
+class SemanticAnalyzerCore::TraitAnalyzer::TraitImplCanonicalResolver final : public CanonicalTypeKeyResolver {
+public:
+    explicit TraitImplCanonicalResolver(const TraitAnalyzer& analyzer) : analyzer_(analyzer)
+    {
+    }
+
+    [[nodiscard]] std::optional<query::DefKey> nominal_type_key(
+        const TypeHandle handle, const TypeInfo& info) const override
+    {
+        return this->analyzer_.core_.canonical_nominal_type_query_key(handle, info);
+    }
+
+    [[nodiscard]] std::optional<query::GenericParamKey> generic_param_key(
+        const TypeHandle, const TypeInfo&) const override
+    {
+        return std::nullopt;
+    }
+
+private:
+    const TraitAnalyzer& analyzer_;
+};
 
 struct SemanticAnalyzerCore::TraitAnalyzer::TraitAnalysisScope {
     TraitAnalysisScope(SemanticAnalyzerCore& analyzer, const syntax::ModuleId module, const syntax::ItemId item,
@@ -347,9 +380,8 @@ void SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_signature(TraitSignature
     }
 }
 
-TraitMethodRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_requirement(
-    const TraitSignature& trait, const syntax::ItemNode& requirement, const syntax::ItemId requirement_id,
-    const base::u32 ordinal)
+TraitMethodRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_requirement(const TraitSignature& trait,
+    const syntax::ItemNode& requirement, const syntax::ItemId requirement_id, const base::u32 ordinal)
 {
     TraitMethodRequirement info = this->core_.state_.checked.make_trait_method_requirement();
     info.name = this->core_.source_name_text(requirement.name_id, requirement.name);
@@ -393,8 +425,8 @@ void SemanticAnalyzerCore::TraitAnalyzer::register_trait_signatures()
     }
 }
 
-const TraitSignature* SemanticAnalyzerCore::TraitAnalyzer::find_trait_in_visible_modules(const IdentId name_id,
-    const std::string_view name, const base::SourceRange& range, const bool report_unknown)
+const TraitSignature* SemanticAnalyzerCore::TraitAnalyzer::find_trait_in_visible_modules(
+    const IdentId name_id, const std::string_view name, const base::SourceRange& range, const bool report_unknown)
 {
     const ModuleLookupKey key = this->core_.find_module_lookup_key(this->core_.state_.flow.current_module, name_id);
     if (is_valid(key)) {
@@ -415,7 +447,8 @@ const TraitSignature* SemanticAnalyzerCore::TraitAnalyzer::find_trait_in_module(
 {
     if (!syntax::is_valid(module)) {
         if (report_unknown) {
-            this->core_.report_lookup(range, sema_unknown_trait_in_module_message(this->core_.module_name(module), name));
+            this->core_.report_lookup(
+                range, sema_unknown_trait_in_module_message(this->core_.module_name(module), name));
             this->core_.report_lookup_suggestion(range, this->core_.nearest_visible_type_name(name));
         }
         return nullptr;
@@ -443,7 +476,8 @@ const TraitSignature* SemanticAnalyzerCore::TraitAnalyzer::find_trait_in_module(
         }
         if (result != nullptr && result != found->second) {
             if (report_unknown) {
-                this->core_.report_lookup(range, sema_unknown_trait_in_module_message(this->core_.module_name(module), name));
+                this->core_.report_lookup(
+                    range, sema_unknown_trait_in_module_message(this->core_.module_name(module), name));
             }
             result = nullptr;
             return true;
@@ -485,7 +519,8 @@ SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_reference(
     const syntax::ItemNode& impl_block, const syntax::ItemId impl_id)
 {
     ResolvedTraitReference result;
-    if (!syntax::is_valid(impl_block.trait_type) || impl_block.trait_type.value >= this->core_.ctx_.module.types.size()) {
+    if (!syntax::is_valid(impl_block.trait_type)
+        || impl_block.trait_type.value >= this->core_.ctx_.module.types.size()) {
         this->core_.report_lookup(impl_block.range, std::string(SEMA_TRAIT_IMPL_TARGET_NAMED_TRAIT));
         return result;
     }
@@ -547,6 +582,106 @@ TraitImplLookupKey SemanticAnalyzerCore::TraitAnalyzer::make_trait_impl_lookup_k
         self_type.value,
         hash.finish(),
     };
+}
+
+std::optional<query::StableFingerprint128> SemanticAnalyzerCore::TraitAnalyzer::make_trait_impl_coherence_fingerprint(
+    const TraitSignature& trait, const TypeHandle self_type, const std::span<const TypeHandle> trait_args) const
+{
+    TraitImplCanonicalResolver resolver(*this);
+    query::StableKeyWriter writer;
+    writer.write_u64(SEMA_TRAIT_IMPL_COHERENCE_KEY_MARKER);
+    query::append_stable_key(writer, trait.stable_id);
+    base::Result<void> self_result =
+        append_trait_impl_canonical_type(writer, this->core_.state_.checked.types, self_type, resolver);
+    if (!self_result) {
+        this->core_.report_internal_contract({}, self_result.error().message);
+        return std::nullopt;
+    }
+    writer.write_u64(static_cast<base::u64>(trait_args.size()));
+    for (const TypeHandle arg : trait_args) {
+        base::Result<void> arg_result =
+            append_trait_impl_canonical_type(writer, this->core_.state_.checked.types, arg, resolver);
+        if (!arg_result) {
+            this->core_.report_internal_contract({}, arg_result.error().message);
+            return std::nullopt;
+        }
+    }
+    return writer.fingerprint();
+}
+
+syntax::ModuleId SemanticAnalyzerCore::TraitAnalyzer::nominal_type_module(const TypeHandle type) const
+{
+    if (!is_valid(type) || type.value >= this->core_.state_.checked.types.size()) {
+        return syntax::INVALID_MODULE_ID;
+    }
+    if (const auto found = this->core_.state_.types.struct_infos_by_type.find(type.value);
+        found != this->core_.state_.types.struct_infos_by_type.end() && found->second != nullptr) {
+        return found->second->module;
+    }
+    for (const auto& entry : this->core_.state_.checked.enum_cases) {
+        if (entry.second.type.value == type.value) {
+            return entry.second.module;
+        }
+    }
+    return syntax::INVALID_MODULE_ID;
+}
+
+bool SemanticAnalyzerCore::TraitAnalyzer::trait_impl_obeys_orphan_rule(
+    const TraitSignature& trait, const TypeHandle self_type, const syntax::ModuleId impl_module) const
+{
+    const query::PackageKey impl_package = this->core_.query_package_key(impl_module);
+    const bool trait_is_local = this->core_.query_package_key(trait.module) == impl_package;
+    const syntax::ModuleId self_module = this->nominal_type_module(self_type);
+    const bool self_is_local =
+        syntax::is_valid(self_module) && this->core_.query_package_key(self_module) == impl_package;
+    return trait_is_local || self_is_local;
+}
+
+const TraitImplInfo* SemanticAnalyzerCore::TraitAnalyzer::find_overlapping_trait_impl(
+    const query::StableFingerprint128 coherence_fingerprint) const
+{
+    for (const auto& entry : this->core_.state_.checked.trait_impls) {
+        if (entry.second.coherence_fingerprint == coherence_fingerprint) {
+            return &entry.second;
+        }
+    }
+    return nullptr;
+}
+
+base::u32 SemanticAnalyzerCore::TraitAnalyzer::record_trait_impl_predicate(
+    const TraitSignature& trait, TraitImplInfo& impl_info, const query::StableFingerprint128 fingerprint) const
+{
+    TraitPredicate predicate = this->core_.state_.checked.make_trait_predicate();
+    predicate.index = static_cast<base::u32>(this->core_.state_.checked.trait_predicates.size());
+    predicate.kind = TraitPredicateKind::declared_trait;
+    predicate.origin = TraitPredicateOrigin::explicit_impl;
+    predicate.subject_type = impl_info.self_type;
+    predicate.trait_name = this->core_.state_.checked.intern_text(trait.name);
+    predicate.trait_name_id = trait.name_id;
+    predicate.trait_module = trait.module;
+    predicate.trait_stable_id = trait.stable_id;
+    predicate.trait_args = this->core_.state_.checked.copy_type_handle_list(impl_info.trait_args);
+    predicate.canonical_fingerprint = fingerprint;
+    predicate.module = impl_info.module;
+    predicate.item = impl_info.item;
+    predicate.range = impl_info.range;
+    predicate.part_index = impl_info.part_index;
+    this->core_.state_.checked.trait_predicates.push_back(std::move(predicate));
+    return static_cast<base::u32>(this->core_.state_.checked.trait_predicates.size() - 1U);
+}
+
+void SemanticAnalyzerCore::TraitAnalyzer::record_trait_impl_evidence(const TraitImplInfo& impl_info) const
+{
+    TraitEvidence evidence = this->core_.state_.checked.make_trait_evidence();
+    evidence.kind = TraitEvidenceKind::explicit_impl;
+    evidence.predicate_index = impl_info.predicate_index;
+    evidence.predicate_fingerprint = impl_info.coherence_fingerprint;
+    evidence.impl_key = impl_info.key;
+    evidence.module = impl_info.module;
+    evidence.item = impl_info.item;
+    evidence.range = impl_info.range;
+    evidence.part_index = impl_info.part_index;
+    this->core_.state_.checked.trait_evidence.push_back(evidence);
 }
 
 std::string SemanticAnalyzerCore::TraitAnalyzer::trait_display_name(
@@ -620,12 +755,30 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
         return;
     }
 
-    const TraitImplLookupKey impl_key =
-        this->make_trait_impl_lookup_key(trait, self_type, trait_reference.trait_args);
+    const TraitImplLookupKey impl_key = this->make_trait_impl_lookup_key(trait, self_type, trait_reference.trait_args);
     const std::string trait_name = this->trait_display_name(trait, trait_reference.trait_args);
     const std::string self_name = this->core_.state_.checked.types.display_name(self_type);
+    const syntax::ModuleId impl_module = this->core_.item_module(impl_id);
+    if (!this->trait_impl_obeys_orphan_rule(trait, self_type, impl_module)) {
+        this->core_.report_type(impl_block.range,
+            sema_trait_impl_orphan_rule_message(trait_name, self_name, this->core_.module_name(impl_module)));
+        return;
+    }
     if (this->core_.state_.checked.trait_impls.contains(impl_key)) {
         this->core_.report_duplicate(impl_block.range, sema_duplicate_trait_impl_message(trait_name, self_name));
+        return;
+    }
+    const std::optional<query::StableFingerprint128> coherence_fingerprint =
+        this->make_trait_impl_coherence_fingerprint(trait, self_type, trait_reference.trait_args);
+    if (!coherence_fingerprint.has_value()) {
+        return;
+    }
+    if (const TraitImplInfo* const overlap = this->find_overlapping_trait_impl(*coherence_fingerprint);
+        overlap != nullptr) {
+        this->core_.report_duplicate(impl_block.range, sema_overlapping_trait_impl_message(trait_name, self_name));
+        this->core_.report_note(overlap->range, SemanticDiagnosticKind::duplicate,
+            sema_previous_trait_impl_note_message(this->trait_display_name(trait, overlap->trait_args),
+                this->core_.state_.checked.types.display_name(overlap->self_type)));
         return;
     }
 
@@ -646,17 +799,19 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
     impl_info.trait_module = trait.module;
     impl_info.self_type = self_type;
     impl_info.trait_args = this->core_.state_.checked.copy_type_handle_list(trait_reference.trait_args);
+    impl_info.coherence_fingerprint = *coherence_fingerprint;
     impl_info.item = impl_id;
-    impl_info.module = this->core_.item_module(impl_id);
+    impl_info.module = impl_module;
     impl_info.visibility = impl_block.visibility;
-    const std::string impl_fingerprint = trait_name + " for " + self_name + std::string(SEMA_TRAIT_IMPL_INCREMENTAL_TAG);
-    impl_info.stable_id =
-        sema::stable_definition_id(this->core_.stable_module_id(impl_info.module), StableSymbolKind::synthetic,
-            impl_fingerprint);
+    const std::string impl_fingerprint =
+        trait_name + " for " + self_name + std::string(SEMA_TRAIT_IMPL_INCREMENTAL_TAG);
+    impl_info.stable_id = sema::stable_definition_id(
+        this->core_.stable_module_id(impl_info.module), StableSymbolKind::synthetic, impl_fingerprint);
     impl_info.incremental_key = this->core_.stable_incremental_key(impl_info.stable_id, impl_fingerprint);
     impl_info.range = impl_block.range;
     impl_info.part_index = this->core_.item_part_index(impl_id);
     impl_info.methods.reserve(impl_block.impl_items.size());
+    impl_info.predicate_index = this->record_trait_impl_predicate(trait, impl_info, *coherence_fingerprint);
 
     for (const syntax::ItemId method_id : impl_block.impl_items) {
         if (!syntax::is_valid(method_id) || method_id.value >= this->core_.ctx_.module.items.size()) {
@@ -708,6 +863,7 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
         }
     }
 
+    this->record_trait_impl_evidence(impl_info);
     this->core_.state_.checked.trait_impls.emplace(impl_key, std::move(impl_info));
 }
 
@@ -734,6 +890,12 @@ void SemanticAnalyzerCore::register_trait_signatures()
 void SemanticAnalyzerCore::validate_trait_impls()
 {
     TraitAnalyzer(*this).validate_trait_impls();
+}
+
+const TraitSignature* SemanticAnalyzerCore::find_trait_in_visible_modules(
+    const IdentId name_id, const std::string_view name, const base::SourceRange& range, const bool report_unknown)
+{
+    return TraitAnalyzer(*this).find_trait_in_visible_modules(name_id, name, range, report_unknown);
 }
 
 bool SemanticAnalyzerCore::is_trait_requirement_item(const syntax::ItemId item) const

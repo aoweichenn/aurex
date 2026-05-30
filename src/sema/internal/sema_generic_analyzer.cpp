@@ -32,7 +32,11 @@ constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_MARKER = "generic-param";
 constexpr std::string_view SEMA_GENERIC_TEMPLATE_INCREMENTAL_TAG = "|generic_template";
 constexpr std::string_view SEMA_GENERIC_TEMPLATE_PARAM_TAG = "|param:";
 constexpr std::string_view SEMA_GENERIC_TEMPLATE_CONSTRAINT_TAG = "|constraint:";
+constexpr std::string_view SEMA_GENERIC_TEMPLATE_PREDICATE_TAG = "|predicate:";
 constexpr std::string_view SEMA_GENERIC_TEMPLATE_FIELD_SEPARATOR = ":";
+constexpr base::u64 SEMA_TRAIT_GENERIC_PREDICATE_KEY_MARKER = 0x53454d4154525052ULL;
+constexpr base::u8 SEMA_TRAIT_PREDICATE_KIND_BUILTIN = 1;
+constexpr base::u8 SEMA_TRAIT_PREDICATE_KIND_DECLARED = 2;
 constexpr base::u64 SEMA_GENERIC_PARAM_IDENTITY_OFFSET = 14695981039346656037ULL;
 constexpr base::u64 SEMA_GENERIC_PARAM_IDENTITY_PRIME = 1099511628211ULL;
 constexpr base::u32 SEMA_GENERIC_PARAM_IDENTITY_U64_BITS = 64;
@@ -647,18 +651,139 @@ void SemanticAnalyzerCore::GenericAnalyzer::validate_generic_parameter_list(cons
     }
 }
 
+query::StableFingerprint128 SemanticAnalyzerCore::generic_trait_predicate_fingerprint(const GenericTemplateInfo& info,
+    const base::usize param_index, const TraitPredicateKind kind, const CapabilityKind capability,
+    const TraitSignature* const trait) const
+{
+    query::StableKeyWriter writer;
+    writer.write_u64(SEMA_TRAIT_GENERIC_PREDICATE_KEY_MARKER);
+    writer.write_u64(info.stable_id.global_id);
+    writer.write_u64(static_cast<base::u64>(param_index));
+    const GenericParamIdentity identity = param_index < info.param_identities.size()
+        ? info.param_identities[param_index]
+        : INVALID_GENERIC_PARAM_IDENTITY;
+    writer.write_u64(identity.value);
+    if (kind == TraitPredicateKind::builtin) {
+        writer.write_u8(SEMA_TRAIT_PREDICATE_KIND_BUILTIN);
+        writer.write_u8(static_cast<base::u8>(capability));
+    } else {
+        writer.write_u8(SEMA_TRAIT_PREDICATE_KIND_DECLARED);
+        if (trait != nullptr) {
+            query::append_stable_key(writer, trait->stable_id);
+        }
+    }
+    return writer.fingerprint();
+}
+
+base::u32 SemanticAnalyzerCore::GenericAnalyzer::record_generic_trait_predicate(GenericTemplateInfo& info,
+    const syntax::GenericConstraintDecl& constraint, const base::usize param_index, const base::usize capability_index,
+    const TraitPredicateKind kind, const CapabilityKind capability, const TraitSignature* const trait)
+{
+    TraitPredicate predicate = this->core_.state_.checked.make_trait_predicate();
+    predicate.index = static_cast<base::u32>(this->core_.state_.checked.trait_predicates.size());
+    predicate.kind = kind;
+    predicate.origin = TraitPredicateOrigin::explicit_where;
+    predicate.subject_type = this->core_.generic_param_placeholder(info, param_index);
+    predicate.subject_param_name_id = constraint.param_name_id;
+    predicate.subject_param_identity = param_index < info.param_identities.size() ? info.param_identities[param_index]
+                                                                                  : INVALID_GENERIC_PARAM_IDENTITY;
+    predicate.subject_param_index = static_cast<base::u32>(param_index);
+    predicate.builtin_capability = capability;
+    if (trait != nullptr) {
+        predicate.trait_name = this->core_.state_.checked.intern_text(trait->name);
+        predicate.trait_name_id = trait->name_id;
+        predicate.trait_module = trait->module;
+        predicate.trait_stable_id = trait->stable_id;
+    } else {
+        predicate.trait_name = this->core_.state_.checked.intern_text(capability_name(capability));
+    }
+    predicate.canonical_fingerprint =
+        this->core_.generic_trait_predicate_fingerprint(info, param_index, kind, capability, trait);
+    predicate.module = info.module;
+    predicate.item = info.item;
+    predicate.range = capability_index < constraint.capability_ranges.size()
+        ? constraint.capability_ranges[capability_index]
+        : constraint.range;
+    predicate.part_index = info.part_index;
+    const base::u32 predicate_index = predicate.index;
+    this->core_.state_.checked.trait_predicates.push_back(std::move(predicate));
+    info.predicate_indices.push_back(predicate_index);
+
+    TraitObligation obligation = this->core_.state_.checked.make_trait_obligation();
+    obligation.predicate_index = predicate_index;
+    obligation.predicate_fingerprint =
+        this->core_.state_.checked.trait_predicates[predicate_index].canonical_fingerprint;
+    obligation.module = info.module;
+    obligation.item = info.item;
+    obligation.range = this->core_.state_.checked.trait_predicates[predicate_index].range;
+    obligation.part_index = info.part_index;
+    const base::u32 obligation_index = static_cast<base::u32>(this->core_.state_.checked.trait_obligations.size());
+    this->core_.state_.checked.trait_obligations.push_back(obligation);
+    info.obligation_indices.push_back(obligation_index);
+
+    TraitEvidence evidence = this->core_.state_.checked.make_trait_evidence();
+    evidence.kind = kind == TraitPredicateKind::builtin ? TraitEvidenceKind::builtin : TraitEvidenceKind::param_env;
+    evidence.predicate_index = predicate_index;
+    evidence.predicate_fingerprint = obligation.predicate_fingerprint;
+    evidence.module = info.module;
+    evidence.item = info.item;
+    evidence.range = obligation.range;
+    evidence.part_index = info.part_index;
+    this->core_.state_.checked.trait_evidence.push_back(evidence);
+    return predicate_index;
+}
+
+void SemanticAnalyzerCore::GenericAnalyzer::record_generic_param_env(
+    GenericTemplateInfo& info, const syntax::ItemNode& item)
+{
+    std::vector<std::string> predicates;
+    predicates.reserve(info.predicate_indices.size());
+    for (const base::u32 predicate_index : info.predicate_indices) {
+        if (predicate_index >= this->core_.state_.checked.trait_predicates.size()) {
+            continue;
+        }
+        predicates.push_back(
+            query::debug_string(this->core_.state_.checked.trait_predicates[predicate_index].canonical_fingerprint));
+    }
+    std::ranges::sort(predicates);
+    std::vector<std::string_view> predicate_views;
+    predicate_views.reserve(predicates.size());
+    for (const std::string& predicate : predicates) {
+        predicate_views.push_back(predicate);
+    }
+    info.param_env_key = query::param_env_key(predicate_views);
+
+    ParamEnvInfo param_env = this->core_.state_.checked.make_param_env_info();
+    param_env.module = info.module;
+    param_env.item = info.item;
+    param_env.owner_name = this->core_.state_.checked.intern_text(info.name);
+    param_env.owner_name_id = info.name_id;
+    param_env.owner_stable_id = info.stable_id;
+    param_env.key = info.param_env_key;
+    param_env.predicate_indices = this->core_.state_.checked.copy_index_table(info.predicate_indices);
+    param_env.range = item.range;
+    param_env.part_index = info.part_index;
+    info.param_env_index = static_cast<base::u32>(this->core_.state_.checked.param_envs.size());
+    this->core_.state_.checked.param_envs.push_back(std::move(param_env));
+}
+
 void SemanticAnalyzerCore::GenericAnalyzer::validate_generic_constraints(
     const syntax::ItemNode& item, GenericTemplateInfo& info)
 {
     info.constraints.reserve(item.generic_params.size());
-    std::unordered_set<IdentId, IdentIdHash> params;
+    info.predicate_indices.clear();
+    info.obligation_indices.clear();
+    std::unordered_map<IdentId, base::usize, IdentIdHash> params;
     params.reserve(item.generic_params.size());
-    for (const syntax::GenericParamDecl& param : item.generic_params) {
-        params.insert(param.name_id);
+    for (base::usize index = 0; index < item.generic_params.size(); ++index) {
+        params.emplace(item.generic_params[index].name_id, index);
     }
 
+    GenericContext lookup_context = this->core_.make_generic_context();
+    GenericAnalysisScope scope(this->core_, info.module, &lookup_context, nullptr, false, info.item);
     for (const syntax::GenericConstraintDecl& constraint : item.where_constraints) {
-        if (!params.contains(constraint.param_name_id)) {
+        const auto param = params.find(constraint.param_name_id);
+        if (param == params.end()) {
             this->core_.report_lookup(
                 constraint.param_range, sema_unknown_generic_constraint_param_message(constraint.param_name));
             continue;
@@ -674,16 +799,51 @@ void SemanticAnalyzerCore::GenericAnalyzer::validate_generic_constraints(
                 continue;
             }
             const std::optional<CapabilityKind> capability = parse_capability_kind(capability_name);
-            if (!capability.has_value()) {
+            if (capability.has_value()) {
+                if (!capabilities.insert(*capability).second) {
+                    this->core_.report_capability(
+                        capability_range, sema_duplicate_capability_message(constraint.param_name, capability_name));
+                    continue;
+                }
+                this->record_generic_trait_predicate(
+                    info, constraint, param->second, i, TraitPredicateKind::builtin, *capability, nullptr);
+                continue;
+            }
+
+            const IdentId predicate_name_id =
+                i < constraint.capability_name_ids.size() ? constraint.capability_name_ids[i] : INVALID_IDENT_ID;
+            const TraitSignature* const trait =
+                this->core_.find_trait_in_visible_modules(predicate_name_id, capability_name, capability_range, false);
+            if (trait == nullptr) {
                 this->core_.report_capability(capability_range, sema_unknown_capability_message(capability_name));
                 continue;
             }
-            if (!capabilities.insert(*capability).second) {
+            if (!trait->generic_params.empty()) {
+                this->core_.report_type(capability_range,
+                    sema_generic_argument_count_message(
+                        "trait predicate type arguments", trait->name, 0, trait->generic_params.size()));
+                continue;
+            }
+            const bool duplicate_trait =
+                std::ranges::any_of(info.predicate_indices, [&](const base::u32 predicate_index) {
+                    if (predicate_index >= this->core_.state_.checked.trait_predicates.size()) {
+                        return false;
+                    }
+                    const TraitPredicate& predicate = this->core_.state_.checked.trait_predicates[predicate_index];
+                    return predicate.kind == TraitPredicateKind::declared_trait
+                        && predicate.subject_param_name_id == constraint.param_name_id
+                        && predicate.trait_stable_id == trait->stable_id;
+                });
+            if (duplicate_trait) {
                 this->core_.report_capability(
                     capability_range, sema_duplicate_capability_message(constraint.param_name, capability_name));
+                continue;
             }
+            this->record_generic_trait_predicate(
+                info, constraint, param->second, i, TraitPredicateKind::declared_trait, CapabilityKind::sized, trait);
         }
     }
+    this->record_generic_param_env(info, item);
 }
 
 bool SemanticAnalyzerCore::GenericAnalyzer::generic_param_has_capability(
@@ -812,7 +972,76 @@ bool SemanticAnalyzerCore::GenericAnalyzer::validate_generic_arguments(
             }
         }
     }
+    for (const base::u32 predicate_index : info.predicate_indices) {
+        if (predicate_index >= this->core_.state_.checked.trait_predicates.size()) {
+            continue;
+        }
+        const TraitPredicate& predicate = this->core_.state_.checked.trait_predicates[predicate_index];
+        if (predicate.kind != TraitPredicateKind::declared_trait
+            || predicate.subject_param_index == SEMA_TRAIT_PREDICATE_INVALID_INDEX
+            || predicate.subject_param_index >= args.size()) {
+            continue;
+        }
+        if (!this->type_satisfies_trait_predicate(args[predicate.subject_param_index], predicate, use_range)) {
+            ok = false;
+        }
+    }
     return ok;
+}
+
+bool SemanticAnalyzerCore::GenericAnalyzer::generic_param_has_trait_predicate(
+    const TypeHandle param, const TraitPredicate& predicate) const
+{
+    if (this->core_.state_.flow.current_generic_context == nullptr || !is_valid(param)
+        || param.value >= this->core_.state_.checked.types.size()) {
+        return false;
+    }
+    const TypeInfo& info = this->core_.state_.checked.types.get(param);
+    if (info.kind != TypeKind::generic_param || !is_valid(info.generic_identity)) {
+        return false;
+    }
+    for (const base::u32 predicate_index : this->core_.state_.flow.current_generic_context->predicate_indices) {
+        if (predicate_index >= this->core_.state_.checked.trait_predicates.size()) {
+            continue;
+        }
+        const TraitPredicate& candidate = this->core_.state_.checked.trait_predicates[predicate_index];
+        if (candidate.kind == TraitPredicateKind::declared_trait
+            && candidate.subject_param_identity == info.generic_identity
+            && candidate.trait_stable_id == predicate.trait_stable_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool SemanticAnalyzerCore::GenericAnalyzer::type_satisfies_trait_predicate(
+    const TypeHandle type, const TraitPredicate& predicate, const base::SourceRange& use_range)
+{
+    if (!is_valid(type) || type.value >= this->core_.state_.checked.types.size()) {
+        return false;
+    }
+    const TypeInfo& info = this->core_.state_.checked.types.get(type);
+    if (info.kind == TypeKind::generic_param) {
+        const bool satisfied = this->generic_param_has_trait_predicate(type, predicate);
+        if (!satisfied) {
+            this->core_.report_capability(use_range,
+                sema_trait_predicate_not_satisfied_message(
+                    this->core_.state_.checked.types.display_name(type), predicate.trait_name));
+        }
+        return satisfied;
+    }
+
+    for (const auto& entry : this->core_.state_.checked.trait_impls) {
+        const TraitImplInfo& impl = entry.second;
+        if (impl.trait_module.value == predicate.trait_module.value && impl.trait_name_id == predicate.trait_name_id
+            && this->core_.state_.checked.types.same(impl.self_type, type) && impl.trait_args.empty()) {
+            return true;
+        }
+    }
+    this->core_.report_capability(use_range,
+        sema_trait_predicate_not_satisfied_message(
+            this->core_.state_.checked.types.display_name(type), predicate.trait_name));
+    return false;
 }
 
 void SemanticAnalyzerCore::GenericAnalyzer::populate_generic_template_node_spans(
@@ -860,19 +1089,37 @@ std::string SemanticAnalyzerCore::GenericAnalyzer::generic_template_incremental_
             fingerprint += capability_name(capability);
         }
     }
+    if (!info.predicate_indices.empty()) {
+        std::vector<std::string> predicates;
+        predicates.reserve(info.predicate_indices.size());
+        for (const base::u32 predicate_index : info.predicate_indices) {
+            if (predicate_index >= this->core_.state_.checked.trait_predicates.size()) {
+                continue;
+            }
+            predicates.push_back(query::debug_string(
+                this->core_.state_.checked.trait_predicates[predicate_index].canonical_fingerprint));
+        }
+        std::ranges::sort(predicates);
+        for (const std::string& predicate : predicates) {
+            fingerprint += SEMA_GENERIC_TEMPLATE_PREDICATE_TAG;
+            fingerprint += predicate;
+        }
+    }
     return fingerprint;
 }
 
 void SemanticAnalyzerCore::GenericAnalyzer::record_generic_template_signature(
     const GenericTemplateInfo& info, const query::DefNamespace name_space)
 {
-    base::u32 constraint_count = 0;
-    for (const IdentId param_id : info.params) {
-        const auto found = info.constraints.find(param_id);
-        if (found == info.constraints.end()) {
-            continue;
+    base::u32 constraint_count = static_cast<base::u32>(info.predicate_indices.size());
+    if (constraint_count == 0) {
+        for (const IdentId param_id : info.params) {
+            const auto found = info.constraints.find(param_id);
+            if (found == info.constraints.end()) {
+                continue;
+            }
+            constraint_count += static_cast<base::u32>(found->second.size());
         }
-        constraint_count += static_cast<base::u32>(found->second.size());
     }
     this->core_.state_.checked.generic_template_signatures.push_back(GenericTemplateSignatureInfo{
         this->core_.state_.checked.intern_text(info.name.view()),
@@ -1157,6 +1404,9 @@ void SemanticAnalyzerCore::GenericAnalyzer::populate_generic_placeholder_context
     context.param_identities.clear();
     this->core_.copy_capability_map(context.constraints, info.constraints);
     context.constraints_by_identity.clear();
+    context.predicate_indices.assign(info.predicate_indices.begin(), info.predicate_indices.end());
+    context.obligation_indices.assign(info.obligation_indices.begin(), info.obligation_indices.end());
+    context.param_env_key = info.param_env_key;
     context.params.reserve(info.params.size());
     context.param_identities.reserve(info.params.size());
     context.constraints_by_identity.reserve(info.params.size());
@@ -1178,6 +1428,9 @@ void SemanticAnalyzerCore::GenericAnalyzer::populate_generic_concrete_context(
     context.param_identities.clear();
     this->core_.copy_capability_map(context.constraints, info.constraints);
     context.constraints_by_identity.clear();
+    context.predicate_indices.assign(info.predicate_indices.begin(), info.predicate_indices.end());
+    context.obligation_indices.assign(info.obligation_indices.begin(), info.obligation_indices.end());
+    context.param_env_key = info.param_env_key;
     context.params.reserve(info.params.size());
     context.param_identities.reserve(info.params.size());
     context.constraints_by_identity.reserve(info.params.size());

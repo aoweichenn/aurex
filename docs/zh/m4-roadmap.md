@@ -96,21 +96,33 @@ inheritance、closure、async/generator、derive、macro 或 package manager 混
 
 ### M4-WP4：Coherence And Generic Predicates
 
-状态：当前下一步。
+状态：已完成。
 
 目标：把 trait bound 变成正式 obligation，并实现第一版 coherence。
 
 交付：
 
-- `TraitPredicate`、`TraitObligation`、`TraitEvidence` 和 `ParamEnv` predicate list。
-- `where T: TraitA + TraitB` 降低为 canonical predicate。
-- orphan rule、overlap check 和 candidate rejection diagnostics。
-- `Sized`、`Eq`、`Ord`、`Hash` 迁移到 builtin trait predicate，保持旧样例兼容。
+- `CheckedModule` 新增 `TraitPredicate`、`TraitObligation`、`TraitEvidence` 和 `ParamEnvInfo`，`--emit=checked`
+  会输出 predicate / obligation / evidence / param env facts，copy/move/rebind 路径同步覆盖。
+- `where T: TraitA + TraitB` 进入正式 predicate lowering：`Sized`、`Eq`、`Ord`、`Hash` 继续保持原 capability
+  行为，同时记录 compiler-owned builtin trait predicate；非内置名字解析为当前可见 user trait predicate。
+- generic instantiation 会用 ParamEnv predicate 做 candidate rejection；具体类型必须有 matching `impl Trait for Type`，
+  generic-to-generic 传递则要求调用点当前 ParamEnv 已有同一 trait predicate。
+- trait impl registry 增加 canonical coherence fingerprint，保留 WP3 exact duplicate 诊断，并补 orphan rule 与
+  first-pass overlap check。
+- 正负测试已落到常规仓库测试：`tests/gtest/sema/trait_tests.cpp`、
+  `tests/samples/positive/traits/trait_predicate_where_generic.ax`、
+  `tests/samples/negative/traits/trait_predicate_unsatisfied_generic_arg.ax` 和
+  `tests/samples/negative/traits/trait_impl_orphan_external.ax`。
 
 风险控制：
 
-- M4.0 禁止 arbitrary blanket impl。
-- solver 必须有 cycle detection 和 depth budget。
+- M4.0 继续禁止 arbitrary blanket impl；generic trait impl block 仍被拒绝，避免在 solver 未成形前引入 Rust-style
+  blanket impl/overlap 复杂度。
+- 当前 `where` grammar 仍只支持单个 identifier predicate 名称；qualified where predicate、generic trait predicate
+  arguments、associated type constraints 和 arbitrary requires-expression 不在 WP4 范围。
+- WP4 只做 first-pass candidate check，不引入全局隐式搜索；真正 trait method binding / evidence lowering 进入 WP5。
+- 未来 solver 引入递归 obligation 时必须补 cycle detection 和 depth budget。
 
 ### M4-WP5：Static Method Resolution And Lowering
 
@@ -187,12 +199,13 @@ inheritance、closure、async/generator、derive、macro 或 package manager 混
 
 ## 当前下一步
 
-M4-WP1、WP2 和 WP3 已完成。当前下一步是 M4-WP4：Coherence And Generic Predicates。
+M4-WP1、WP2、WP3 和 WP4 已完成。当前下一步是 M4-WP5：Static Method Resolution And Lowering。
 
-WP4 必须在 WP3 registry 之上补齐正式 `TraitPredicate` / `TraitObligation` / `TraitEvidence` / `ParamEnv`
-边界，把 `where T: TraitA + TraitB` 降低为 canonical predicate，并实现第一版 orphan / overlap / candidate rejection
-诊断。WP4 还要把当前 `Sized`、`Eq`、`Ord`、`Hash` capability 的迁移入口固定为 compiler-owned builtin trait
-provider，同时保持现有样例兼容。
+WP4 已在 WP3 registry 之上补齐正式 `TraitPredicate` / `TraitObligation` / `TraitEvidence` / `ParamEnv`
+边界，把 `where T: TraitA + TraitB` 降低为 predicate，并实现第一版 orphan / overlap / candidate rejection
+诊断。`Sized`、`Eq`、`Ord`、`Hash` 现在保持旧 capability 检查，同时进入 compiler-owned builtin trait predicate
+fact，用于后续 solver/evidence 统一。
 
-WP4 仍不进入 trait method lowering、associated type、dynamic trait object 或 RAII/resource semantics；这些分别由
-WP5、WP6 和后续资源系统设计承接。
+WP5 的核心是 trait method resolution 和 lowering：generic body 中的 trait method call 必须从当前 ParamEnv /
+impl registry 绑定到唯一 evidence，单态化后降为具体 impl method direct call。associated type、dynamic trait
+object 和 RAII/resource semantics 仍分别由 WP6 和后续资源系统设计承接。

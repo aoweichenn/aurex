@@ -1,0 +1,17 @@
+module trait_impl_orphan_local_trait_external_self;
+
+import samplelib.traits as traits;
+
+trait LocalReader {
+    fn read(self: &Self) -> i32;
+}
+
+impl LocalReader for traits.HiddenFile {
+    fn read(self: &traits.HiddenFile) -> i32 {
+        return 0;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -127,23 +127,46 @@ Risk controls:
 
 ### M4-WP4: Coherence And Generic Predicates
 
-Status: current next step.
+Status: complete.
 
 Goal: make trait bounds formal obligations and implement first-pass coherence.
 
 Deliverables:
 
-- `TraitPredicate`, `TraitObligation`, `TraitEvidence`, and predicate lists in
-  `ParamEnv`.
-- Lower `where T: TraitA + TraitB` to canonical predicates.
-- Orphan rules, overlap checks, and candidate rejection diagnostics.
-- Migrate `Sized`, `Eq`, `Ord`, and `Hash` to built-in trait predicates while
-  preserving existing sample compatibility.
+- `CheckedModule` now records `TraitPredicate`, `TraitObligation`,
+  `TraitEvidence`, and `ParamEnvInfo`; `--emit=checked` dumps predicate,
+  obligation, evidence, and param-env facts, and copy/move/rebind paths cover
+  the new facts.
+- `where T: TraitA + TraitB` is lowered into formal predicates. `Sized`, `Eq`,
+  `Ord`, and `Hash` keep their existing capability behavior while also
+  recording compiler-owned built-in trait predicates; non-built-in names resolve
+  to currently visible user traits.
+- Generic instantiation uses ParamEnv predicates for candidate rejection.
+  Concrete types must have a matching `impl Trait for Type`; generic-to-generic
+  forwarding requires the caller's current ParamEnv to carry the same trait
+  predicate.
+- The trait impl registry now carries canonical coherence fingerprints, keeps
+  the WP3 exact duplicate diagnostic, and adds orphan-rule plus first-pass
+  overlap checks.
+- Positive and negative coverage lives in normal repository tests:
+  `tests/gtest/sema/trait_tests.cpp`,
+  `tests/samples/positive/traits/trait_predicate_where_generic.ax`,
+  `tests/samples/negative/traits/trait_predicate_unsatisfied_generic_arg.ax`,
+  and `tests/samples/negative/traits/trait_impl_orphan_external.ax`.
 
 Risk controls:
 
-- M4.0 forbids arbitrary blanket impls.
-- The solver must have cycle detection and a depth budget.
+- M4.0 still forbids arbitrary blanket impls. Generic trait impl blocks remain
+  rejected so Rust-style blanket impl and overlap complexity is not introduced
+  before the solver exists.
+- The current `where` grammar still supports only single identifier predicate
+  names. Qualified where predicates, generic trait predicate arguments,
+  associated-type constraints, and arbitrary requires-expressions are outside
+  WP4.
+- WP4 only performs first-pass candidate checks and does not add global implicit
+  search. Trait method binding and evidence lowering move to WP5.
+- Any future recursive obligation solver must add cycle detection and a depth
+  budget.
 
 ### M4-WP5: Static Method Resolution And Lowering
 
@@ -233,17 +256,18 @@ Deliverables:
 
 ## Current Next Step
 
-M4-WP1, WP2, and WP3 are complete. The current next step is M4-WP4: Coherence
-And Generic Predicates.
+M4-WP1, WP2, WP3, and WP4 are complete. The current next step is M4-WP5:
+Static Method Resolution And Lowering.
 
-WP4 must build on the WP3 registry by adding formal `TraitPredicate`,
+WP4 has built on the WP3 registry by adding formal `TraitPredicate`,
 `TraitObligation`, `TraitEvidence`, and `ParamEnv` boundaries, lowering
-`where T: TraitA + TraitB` into canonical predicates, and implementing the
-first orphan / overlap / candidate-rejection diagnostics. WP4 also needs to fix
-the migration entry point for the current `Sized`, `Eq`, `Ord`, and `Hash`
-capabilities as compiler-owned built-in trait providers while preserving
-existing sample compatibility.
+`where T: TraitA + TraitB` into predicates, and implementing first orphan /
+overlap / candidate-rejection diagnostics. `Sized`, `Eq`, `Ord`, and `Hash`
+still use the old capability checks while also producing compiler-owned
+built-in trait predicate facts for later solver/evidence unification.
 
-WP4 still does not include trait method lowering, associated types, dynamic
-trait objects, or RAII/resource semantics. Those remain WP5, WP6, and later
-resource-system design work.
+WP5 is now the trait method resolution and lowering step: trait method calls in
+generic bodies must bind through the current ParamEnv / impl registry to unique
+evidence, then monomorphization lowers them to concrete impl-method direct
+calls. Associated types, dynamic trait objects, and RAII/resource semantics
+remain WP6 or later resource-system work.

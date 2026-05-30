@@ -1,21 +1,28 @@
 # 下一步计划
 
-## 当前最高优先级：M4-WP1 Trait / Protocol 设计基线
+## 当前最高优先级：M4-WP4 Coherence And Generic Predicates
 
-M3 release baseline 已收口，当前最高优先级切换为 M4 trait/protocol 系统设计。M4-WP1 已固定为
+M3 release baseline 已收口，M4 trait/protocol 系统已完成 WP1、WP2 和 WP3。M4-WP1 固定
 [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)，阶段路线见
-[M4 Trait / Protocol 系统路线图](m4-roadmap.md)。
+[M4 Trait / Protocol 系统路线图](m4-roadmap.md)。M4-WP2 已完成 token、parser、AST、AST dump、lossless
+syntax 和 query identity scaffold。M4-WP3 已完成 trait declaration 和 impl registry 的 query-backed sema
+接入。
 
-本阶段结论：Aurex 先实现 nominal static trait，语言关键字使用 `trait`，`protocol` 只作为设计术语；
-conformance 必须通过显式 `impl Trait for Type` 给出；泛型约束降低为 canonical trait predicate；调用默认静态分派，
-单态化后落到具体 impl method direct call。M4-WP1 明确不做 RAII、`Drop`、`Copy`、resource semantics、
-dynamic trait object、vtable ABI、class inheritance、default methods、specialization、negative impl、auto trait
-或 Go-style structural interface。
+当前真实能力：Aurex 使用 nominal static trait，语言关键字为 `trait`，conformance 通过显式
+`impl Trait for Type` 给出。`CheckedModule::traits` 记录 `TraitSignature`、generic params、visibility 和结构化
+requirement；`CheckedModule::trait_impls` 记录 exact impl facts；sema 已覆盖 requirement matching、`Self`
+替换、trait generic 参数替换、qualified trait reference、可见性、trait generic arity、缺方法、重复方法、未知方法、签名不匹配、
+非 trait impl target、非 named self target 和重复 exact impl。相关测试全部位于常规仓库测试目录：
+`tests/gtest/sema/trait_tests.cpp`、`tests/samples/positive/traits/trait_impl_registry.ax`、
+`tests/samples/negative/traits/*.ax` 和 `tests/samples/imports/samplelib/traits.ax`。
 
-M4 后续入口按 WP2 到 WP8 推进：Syntax / AST / Query Identity Scaffolding、Trait Declaration And Impl Registry、
-Coherence And Generic Predicates、Static Method Resolution And Lowering、Associated Type Model、Tooling And
-Diagnostics、Release Closure。下一步实现只应进入 M4-WP2，先落 token、parser、AST、query identity 和文档/测试基线，不提前把 solver、
-lowering、associated type 或 dynamic dispatch 混进第一刀。
+下一步只进入 M4-WP4：把 trait bound 变成正式 obligation，并实现第一版 coherence。WP4 要新增
+`TraitPredicate`、`TraitObligation`、`TraitEvidence` 和 `ParamEnv` predicate list，把 `where T: TraitA + TraitB`
+降低为 canonical predicate，实现 orphan rule、overlap check 和 candidate rejection diagnostics，并规划
+`Sized`、`Eq`、`Ord`、`Hash` 从现有 capability 迁移到 compiler-owned builtin trait predicate。
+
+WP4 不做 trait method lowering、associated type、dynamic trait object 或 RAII/resource semantics。trait method
+call 绑定和 direct lowering 进入 WP5；associated type 进入 WP6；dynamic trait object 和资源系统继续保持 M4 当前非目标。
 
 ## M3 收口背景
 

@@ -1,12 +1,39 @@
 #include <aurex/sema/checked_module.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <sstream>
 #include <string_view>
 #include <utility>
 
 namespace aurex::sema {
+
+namespace {
+
+constexpr std::size_t SEMA_TRAIT_IMPL_HASH_MIX = 0x9e3779b97f4a7c15ULL;
+constexpr base::usize SEMA_TRAIT_IMPL_HASH_LEFT_SHIFT = 6;
+constexpr base::usize SEMA_TRAIT_IMPL_HASH_RIGHT_SHIFT = 2;
+
+[[nodiscard]] std::size_t mix_trait_impl_hash(std::size_t hash, const std::uint64_t value) noexcept
+{
+    hash ^= static_cast<std::size_t>(value) + SEMA_TRAIT_IMPL_HASH_MIX + (hash << SEMA_TRAIT_IMPL_HASH_LEFT_SHIFT)
+        + (hash >> SEMA_TRAIT_IMPL_HASH_RIGHT_SHIFT);
+    return hash;
+}
+
+} // namespace
+
+std::size_t TraitImplLookupKeyHash::operator()(const TraitImplLookupKey key) const noexcept
+{
+    std::size_t hash = static_cast<std::size_t>(key.trait_module);
+    hash = mix_trait_impl_hash(hash, static_cast<std::uint64_t>(key.trait_name.value));
+    hash = mix_trait_impl_hash(hash, key.self_type);
+    hash = mix_trait_impl_hash(hash, key.trait_args.primary);
+    hash = mix_trait_impl_hash(hash, key.trait_args.secondary);
+    hash = mix_trait_impl_hash(hash, key.trait_args.byte_count);
+    return hash;
+}
 
 PatternCaseNameTable::PatternCaseNameTable() : names_()
 {
@@ -478,6 +505,9 @@ CheckedModule::CheckedModule()
           make_sema_map<ModuleLookupKey, EnumCaseInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{})),
       type_aliases(
           make_sema_map<ModuleLookupKey, TypeAliasInfo, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{})),
+      traits(make_sema_map<ModuleLookupKey, TraitSignature, ModuleLookupKeyHash>(*this->arena_, ModuleLookupKeyHash{})),
+      trait_impls(make_sema_map<TraitImplLookupKey, TraitImplInfo, TraitImplLookupKeyHash>(
+          *this->arena_, TraitImplLookupKeyHash{})),
       generic_template_signatures(make_sema_vector<GenericTemplateSignatureInfo>(*this->arena_)),
       generic_side_table_layouts(make_sema_deque<GenericSideTableLayout>(*this->arena_)),
       generic_enum_instances(make_sema_deque<GenericEnumInstanceInfo>(*this->arena_)),
@@ -511,7 +541,8 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       syntax_type_handles(std::move(other.syntax_type_handles)), stmt_local_types(std::move(other.stmt_local_types)),
       item_c_name_ids(std::move(other.item_c_name_ids)), coercions(std::move(other.coercions)),
       functions(std::move(other.functions)), structs(std::move(other.structs)), enum_cases(std::move(other.enum_cases)),
-      type_aliases(std::move(other.type_aliases)),
+      type_aliases(std::move(other.type_aliases)), traits(std::move(other.traits)),
+      trait_impls(std::move(other.trait_impls)),
       generic_template_signatures(std::move(other.generic_template_signatures)),
       generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
       generic_enum_instances(std::move(other.generic_enum_instances)),
@@ -566,6 +597,8 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->structs.swap(other.structs);
     this->enum_cases.swap(other.enum_cases);
     this->type_aliases.swap(other.type_aliases);
+    this->traits.swap(other.traits);
+    this->trait_impls.swap(other.trait_impls);
     this->generic_template_signatures.swap(other.generic_template_signatures);
     this->generic_side_table_layouts.swap(other.generic_side_table_layouts);
     this->generic_enum_instances.swap(other.generic_enum_instances);
@@ -628,6 +661,16 @@ void CheckedModule::copy_from(const CheckedModule& other)
         alias.incremental_key = entry.second.incremental_key;
         alias.part_index = entry.second.part_index;
         this->type_aliases.emplace(entry.first, alias);
+    }
+    this->traits.clear();
+    this->traits.reserve(other.traits.size());
+    for (const auto& entry : other.traits) {
+        this->traits.emplace(entry.first, this->clone_trait_signature(entry.second));
+    }
+    this->trait_impls.clear();
+    this->trait_impls.reserve(other.trait_impls.size());
+    for (const auto& entry : other.trait_impls) {
+        this->trait_impls.emplace(entry.first, this->clone_trait_impl_info(entry.second));
     }
     this->generic_template_signatures.clear();
     this->generic_template_signatures.reserve(other.generic_template_signatures.size());
@@ -723,6 +766,34 @@ EnumCaseInfo CheckedModule::make_enum_case_info() const
 {
     EnumCaseInfo info;
     info.payload_types = this->make_type_handle_list();
+    return info;
+}
+
+TraitMethodRequirement CheckedModule::make_trait_method_requirement() const
+{
+    TraitMethodRequirement requirement;
+    requirement.param_types = this->make_type_handle_list();
+    return requirement;
+}
+
+TraitSignature CheckedModule::make_trait_signature() const
+{
+    TraitSignature signature;
+    signature.generic_params = make_sema_vector<IdentId>(*this->arena_);
+    signature.requirements = make_sema_vector<TraitMethodRequirement>(*this->arena_);
+    return signature;
+}
+
+TraitImplMethodInfo CheckedModule::make_trait_impl_method_info() const
+{
+    return {};
+}
+
+TraitImplInfo CheckedModule::make_trait_impl_info() const
+{
+    TraitImplInfo info;
+    info.trait_args = this->make_type_handle_list();
+    info.methods = make_sema_vector<TraitImplMethodInfo>(*this->arena_);
     return info;
 }
 
@@ -824,6 +895,79 @@ EnumCaseInfo CheckedModule::clone_enum_case_info(const EnumCaseInfo& other)
     copy.stable_case_key = other.stable_case_key;
     copy.incremental_key = other.incremental_key;
     copy.generic_instance_key = other.generic_instance_key;
+    copy.part_index = other.part_index;
+    return copy;
+}
+
+TraitMethodRequirement CheckedModule::clone_trait_method_requirement(const TraitMethodRequirement& other)
+{
+    TraitMethodRequirement copy = this->make_trait_method_requirement();
+    copy.name = this->intern_text(other.name);
+    copy.name_id = other.name_id;
+    copy.module = other.module;
+    copy.item = other.item;
+    copy.return_type = other.return_type;
+    copy.param_types = this->copy_type_handle_list(other.param_types);
+    copy.range = other.range;
+    copy.is_unsafe = other.is_unsafe;
+    copy.is_variadic = other.is_variadic;
+    copy.visibility = other.visibility;
+    copy.stable_key = other.stable_key;
+    copy.ordinal = other.ordinal;
+    return copy;
+}
+
+TraitSignature CheckedModule::clone_trait_signature(const TraitSignature& other)
+{
+    TraitSignature copy = this->make_trait_signature();
+    copy.name = this->intern_text(other.name);
+    copy.name_id = other.name_id;
+    copy.module = other.module;
+    copy.item = other.item;
+    copy.visibility = other.visibility;
+    copy.stable_id = other.stable_id;
+    copy.incremental_key = other.incremental_key;
+    copy.generic_params.reserve(other.generic_params.size());
+    copy.generic_params.insert(copy.generic_params.end(), other.generic_params.begin(), other.generic_params.end());
+    copy.requirements.reserve(other.requirements.size());
+    for (const TraitMethodRequirement& requirement : other.requirements) {
+        copy.requirements.push_back(this->clone_trait_method_requirement(requirement));
+    }
+    copy.range = other.range;
+    copy.part_index = other.part_index;
+    return copy;
+}
+
+TraitImplMethodInfo CheckedModule::clone_trait_impl_method_info(const TraitImplMethodInfo& other)
+{
+    TraitImplMethodInfo copy = this->make_trait_impl_method_info();
+    copy.name = this->intern_text(other.name);
+    copy.name_id = other.name_id;
+    copy.item = other.item;
+    copy.function_key = other.function_key;
+    copy.requirement_ordinal = other.requirement_ordinal;
+    return copy;
+}
+
+TraitImplInfo CheckedModule::clone_trait_impl_info(const TraitImplInfo& other)
+{
+    TraitImplInfo copy = this->make_trait_impl_info();
+    copy.key = other.key;
+    copy.trait_name = this->intern_text(other.trait_name);
+    copy.trait_name_id = other.trait_name_id;
+    copy.trait_module = other.trait_module;
+    copy.self_type = other.self_type;
+    copy.trait_args = this->copy_type_handle_list(other.trait_args);
+    copy.item = other.item;
+    copy.module = other.module;
+    copy.visibility = other.visibility;
+    copy.stable_id = other.stable_id;
+    copy.incremental_key = other.incremental_key;
+    copy.methods.reserve(other.methods.size());
+    for (const TraitImplMethodInfo& method : other.methods) {
+        copy.methods.push_back(this->clone_trait_impl_method_info(method));
+    }
+    copy.range = other.range;
     copy.part_index = other.part_index;
     return copy;
 }
@@ -962,6 +1106,24 @@ void rebind_enum_case_info_texts(
     rebind_interned_text(info.case_name, from, to);
 }
 
+void rebind_trait_signature_texts(
+    TraitSignature& signature, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
+{
+    rebind_interned_text(signature.name, from, to);
+    for (TraitMethodRequirement& requirement : signature.requirements) {
+        rebind_interned_text(requirement.name, from, to);
+    }
+}
+
+void rebind_trait_impl_info_texts(
+    TraitImplInfo& info, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
+{
+    rebind_interned_text(info.trait_name, from, to);
+    for (TraitImplMethodInfo& method : info.methods) {
+        rebind_interned_text(method.name, from, to);
+    }
+}
+
 } // namespace
 
 void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
@@ -977,6 +1139,12 @@ void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, 
     }
     for (auto& entry : this->type_aliases) {
         rebind_interned_text(entry.second.name, from, to);
+    }
+    for (auto& entry : this->traits) {
+        rebind_trait_signature_texts(entry.second, from, to);
+    }
+    for (auto& entry : this->trait_impls) {
+        rebind_trait_impl_info_texts(entry.second, from, to);
     }
     for (GenericTemplateSignatureInfo& signature : this->generic_template_signatures) {
         rebind_interned_text(signature.name, from, to);
@@ -1059,6 +1227,16 @@ constexpr base::u32 SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX = 0;
             return true;
         }
     }
+    for (const auto& entry : checked.traits) {
+        if (entry.second.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
+    for (const auto& entry : checked.trait_impls) {
+        if (entry.second.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
     for (const GenericTemplateSignatureInfo& info : checked.generic_template_signatures) {
         if (info.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
             return true;
@@ -1080,6 +1258,39 @@ void append_part_origin(std::ostringstream& out, const bool show_parts, const ba
         return {};
     }
     return types.get(type).generic_args;
+}
+
+[[nodiscard]] std::string trait_signature_display_name(const CheckedModule& checked, const TraitSignature& trait)
+{
+    static_cast<void>(checked);
+    std::string display = std::string(trait.name);
+    if (!trait.generic_params.empty()) {
+        display.push_back('[');
+        for (base::usize index = 0; index < trait.generic_params.size(); ++index) {
+            if (index > 0) {
+                display.append(", ");
+            }
+            display.push_back('T');
+            display += std::to_string(index);
+        }
+        display.push_back(']');
+    }
+    return display;
+}
+
+[[nodiscard]] std::string trait_impl_display_name(const CheckedModule& checked, const TraitImplInfo& info)
+{
+    return checked.types.display_name(info.trait_name, info.trait_args);
+}
+
+void append_type_list(std::ostringstream& out, const CheckedModule& checked, std::span<const TypeHandle> types)
+{
+    for (base::usize index = 0; index < types.size(); ++index) {
+        if (index > 0) {
+            out << ", ";
+        }
+        out << checked.types.display_name(types[index]);
+    }
 }
 
 } // namespace
@@ -1136,6 +1347,65 @@ std::string dump_checked_module(const CheckedModule& checked)
                 << " params=" << info.param_count;
             append_part_origin(out, show_parts, info.part_index);
             out << "\n";
+        }
+    }
+
+    std::vector<const TraitSignature*> trait_names;
+    trait_names.reserve(checked.traits.size());
+    for (const auto& entry : checked.traits) {
+        trait_names.push_back(&entry.second);
+    }
+    std::sort(trait_names.begin(), trait_names.end(), [&](const TraitSignature* lhs, const TraitSignature* rhs) {
+        return trait_signature_display_name(checked, *lhs) < trait_signature_display_name(checked, *rhs);
+    });
+    out << "  traits " << trait_names.size() << "\n";
+    for (const TraitSignature* const trait_ptr : trait_names) {
+        const TraitSignature& trait = *trait_ptr;
+        out << "    trait ";
+        if (!syntax::visibility_is_public(trait.visibility)) {
+            out << syntax::visibility_name(trait.visibility) << " ";
+        }
+        out << trait_signature_display_name(checked, trait) << " params=" << trait.generic_params.size()
+            << " requirements=" << trait.requirements.size();
+        append_part_origin(out, show_parts, trait.part_index);
+        out << "\n";
+        for (const TraitMethodRequirement& requirement : trait.requirements) {
+            out << "      requirement ";
+            if (requirement.is_unsafe) {
+                out << "unsafe ";
+            }
+            out << requirement.name << "(";
+            append_type_list(out, checked, requirement.param_types);
+            out << ") -> " << checked.types.display_name(requirement.return_type);
+            if (requirement.is_variadic) {
+                out << " variadic";
+            }
+            out << "\n";
+        }
+    }
+
+    std::vector<const TraitImplInfo*> trait_impl_names;
+    trait_impl_names.reserve(checked.trait_impls.size());
+    for (const auto& entry : checked.trait_impls) {
+        trait_impl_names.push_back(&entry.second);
+    }
+    std::sort(
+        trait_impl_names.begin(), trait_impl_names.end(), [&](const TraitImplInfo* lhs, const TraitImplInfo* rhs) {
+            const std::string lhs_display =
+                trait_impl_display_name(checked, *lhs) + " for " + checked.types.display_name(lhs->self_type);
+            const std::string rhs_display =
+                trait_impl_display_name(checked, *rhs) + " for " + checked.types.display_name(rhs->self_type);
+            return lhs_display < rhs_display;
+        });
+    out << "  trait_impls " << trait_impl_names.size() << "\n";
+    for (const TraitImplInfo* const info_ptr : trait_impl_names) {
+        const TraitImplInfo& info = *info_ptr;
+        out << "    impl " << trait_impl_display_name(checked, info) << " for "
+            << checked.types.display_name(info.self_type) << " methods=" << info.methods.size();
+        append_part_origin(out, show_parts, info.part_index);
+        out << "\n";
+        for (const TraitImplMethodInfo& method : info.methods) {
+            out << "      method " << method.name << " requirement=" << method.requirement_ordinal << "\n";
         }
     }
 

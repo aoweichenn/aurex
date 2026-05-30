@@ -1,0 +1,18 @@
+module trait_impl_selective_registry;
+
+import samplelib.trait_facade as traits;
+
+struct File {
+    value: i32;
+}
+
+impl traits.ReVisible for File {
+    fn read(self: &File) -> i32 {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    let file = File { value: 0 };
+    return file.value;
+}

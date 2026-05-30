@@ -202,7 +202,8 @@ struct AbiSymbolInfo {
 [[nodiscard]] bool is_top_level_type_item(const syntax::ItemKind kind) noexcept
 {
     return kind == syntax::ItemKind::struct_decl || kind == syntax::ItemKind::enum_decl
-        || kind == syntax::ItemKind::opaque_struct_decl || kind == syntax::ItemKind::type_alias;
+        || kind == syntax::ItemKind::opaque_struct_decl || kind == syntax::ItemKind::type_alias
+        || kind == syntax::ItemKind::trait_decl;
 }
 
 [[nodiscard]] bool is_top_level_value_item(const syntax::ItemNode& item) noexcept
@@ -337,6 +338,10 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_module_namespace_confli
                     && found->second != nullptr) {
                     consider_visibility(found->second->visibility);
                 }
+                if (const auto found = this->core_.state_.names.traits_by_name.find(target_key);
+                    found != this->core_.state_.names.traits_by_name.end() && found->second != nullptr) {
+                    consider_visibility(found->second->visibility);
+                }
             }
             if (!target_exists) {
                 this->core_.report_lookup(reexport.target_range,
@@ -377,6 +382,10 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_type_names()
 
     for (base::u32 item_index = 0; item_index < this->core_.ctx_.module.items.size(); ++item_index) {
         const syntax::ItemNode item = this->core_.ctx_.module.items[item_index];
+        if (item.kind == syntax::ItemKind::trait_decl) {
+            this->core_.register_trait_name(item, syntax::ItemId{item_index});
+            continue;
+        }
         if (this->core_.has_generic_params(item)) {
             this->core_.register_generic_template(item, syntax::ItemId{item_index});
             continue;
@@ -423,12 +432,16 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_type_names()
                 || this->core_.state_.generics.type_alias_templates.contains(key)) {
                 report_duplicate_type(key, owner, item.range, item.name);
             }
+            if (this->core_.state_.checked.traits.contains(key)) {
+                report_duplicate_type(key, owner, item.range, item.name);
+            }
             continue;
         }
         if (item.kind == syntax::ItemKind::struct_decl) {
             if (this->core_.state_.generics.struct_templates.contains(key)
                 || this->core_.state_.generics.enum_templates.contains(key)
-                || this->core_.state_.generics.type_alias_templates.contains(key)) {
+                || this->core_.state_.generics.type_alias_templates.contains(key)
+                || this->core_.state_.checked.traits.contains(key)) {
                 report_duplicate_type(key, owner, item.range, item.name);
                 continue;
             }
@@ -436,7 +449,8 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_type_names()
         } else if (item.kind == syntax::ItemKind::enum_decl) {
             if (this->core_.state_.generics.struct_templates.contains(key)
                 || this->core_.state_.generics.enum_templates.contains(key)
-                || this->core_.state_.generics.type_alias_templates.contains(key)) {
+                || this->core_.state_.generics.type_alias_templates.contains(key)
+                || this->core_.state_.checked.traits.contains(key)) {
                 report_duplicate_type(key, owner, item.range, item.name);
                 continue;
             }
@@ -458,6 +472,10 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_type_names()
         }
         this->core_.index_named_type(owner, item.name_id, handle, item.visibility);
         if (this->core_.state_.checked.type_aliases.contains(key)) {
+            report_duplicate_type(key, owner, item.range, item.name);
+            continue;
+        }
+        if (this->core_.state_.checked.traits.contains(key)) {
             report_duplicate_type(key, owner, item.range, item.name);
             continue;
         }
@@ -695,6 +713,9 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
         this->core_.owned_module_.has_value() ? nullptr : &this->core_.ctx_.module.identifiers);
     for (base::u32 item_index = 0; item_index < this->core_.ctx_.module.items.size(); ++item_index) {
         const syntax::ItemNode item = this->core_.ctx_.module.items[item_index];
+        if (this->core_.is_trait_requirement_item(syntax::ItemId{item_index})) {
+            continue;
+        }
         if (this->core_.has_generic_params(item)) {
             continue;
         }

@@ -1,0 +1,20 @@
+module trait_impl_registry;
+
+pub trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+struct File {
+    handle: i32;
+}
+
+impl Reader for File {
+    fn read(self: &File) -> i32 {
+        return 7;
+    }
+}
+
+fn main() -> i32 {
+    let file = File { handle: 7 };
+    return file.handle - 7;
+}

@@ -1,0 +1,15 @@
+module trait_impl_unknown_trait;
+
+struct File {
+    handle: i32;
+}
+
+impl Missing for File {
+    fn read(self: &File) -> i32 {
+        return 1;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

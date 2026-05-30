@@ -22,6 +22,7 @@ add_library(aurex_sema
     src/sema/internal/sema_services.cpp
     src/sema/internal/sema_side_tables.cpp
     src/sema/internal/sema_statement_analyzer.cpp
+    src/sema/internal/sema_trait_analyzer.cpp
     src/sema/internal/sema_type_services.cpp
     src/sema/internal/sema_pattern_match_analyzer.cpp
     src/sema/sema_call.cpp

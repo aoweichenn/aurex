@@ -1,0 +1,19 @@
+module trait_impl_signature_mismatch;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+struct File {
+    handle: i32;
+}
+
+impl Reader for File {
+    fn read(self: &File) -> u32 {
+        return 1;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

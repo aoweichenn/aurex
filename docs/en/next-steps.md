@@ -1,29 +1,42 @@
 # Next Steps
 
-## Current Highest Priority: M4-WP1 Trait / Protocol Design Baseline
+## Current Highest Priority: M4-WP4 Coherence And Generic Predicates
 
-The M3 release baseline is closed, and the current highest priority is now the
-M4 trait/protocol system design. M4-WP1 is fixed in the
+The M3 release baseline is closed, and M4 trait/protocol work has completed
+WP1, WP2, and WP3. M4-WP1 fixed the
 [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
 with the staged route in the
-[M4 Trait / Protocol System Roadmap](m4-roadmap.md).
+[M4 Trait / Protocol System Roadmap](m4-roadmap.md). M4-WP2 completed the token,
+parser, AST, AST dump, lossless syntax, and query identity scaffolding. M4-WP3
+completed query-backed sema support for trait declarations and the impl
+registry.
 
-The stage decision is: Aurex implements nominal static traits first. The
-language keyword is `trait`, while `protocol` remains design terminology;
-conformance must be explicit through `impl Trait for Type`; generic bounds
-lower to canonical trait predicates; calls use static dispatch by default and
-lower to direct impl-method calls after monomorphization. M4-WP1 explicitly does
-not include RAII, `Drop`, `Copy`, resource semantics, dynamic trait objects,
-vtable ABI, class inheritance, default methods, specialization, negative impls,
-auto traits, or Go-style structural interfaces.
+The current implemented surface is nominal static traits. The language keyword
+is `trait`, and conformance is explicit through `impl Trait for Type`.
+`CheckedModule::traits` records `TraitSignature`, generic parameters,
+visibility, and structured requirements. `CheckedModule::trait_impls` records
+exact impl facts. Sema covers requirement matching, `Self` substitution, trait
+generic parameter substitution, qualified trait references, visibility, trait
+generic arity, missing methods, duplicate methods, unknown methods, signature
+mismatches, non-trait impl targets, non-named self targets, and duplicate exact
+impls. The tests live in normal repository locations:
+`tests/gtest/sema/trait_tests.cpp`,
+`tests/samples/positive/traits/trait_impl_registry.ax`,
+`tests/samples/negative/traits/*.ax`, and
+`tests/samples/imports/samplelib/traits.ax`.
 
-Later M4 work proceeds through WP2 to WP8: Syntax / AST / Query Identity
-Scaffolding, Trait Declaration And Impl Registry, Coherence And Generic
-Predicates, Static Method Resolution And Lowering, Associated Type Model,
-Tooling And Diagnostics, and Release Closure. The next implementation step
-should enter M4-WP2 only, landing token, parser, AST, query identity, and
-docs/test foundations without pulling solver, lowering, associated types, or
-dynamic dispatch into the first slice.
+The next step is M4-WP4 only: make trait bounds formal obligations and implement
+first-pass coherence. WP4 needs `TraitPredicate`, `TraitObligation`,
+`TraitEvidence`, and `ParamEnv` predicate lists, must lower
+`where T: TraitA + TraitB` into canonical predicates, must implement orphan
+rules, overlap checks, and candidate-rejection diagnostics, and must plan the
+migration of `Sized`, `Eq`, `Ord`, and `Hash` from current capabilities to
+compiler-owned built-in trait predicates.
+
+WP4 does not include trait method lowering, associated types, dynamic trait
+objects, or RAII/resource semantics. Trait method binding and direct lowering
+are WP5, associated types are WP6, and dynamic trait objects plus the resource
+system remain outside the current M4 target.
 
 ## M3 Closure Context
 

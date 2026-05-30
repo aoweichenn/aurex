@@ -44,7 +44,7 @@ The complete design baseline is
 
 ### M4-WP1: Research And Design Baseline
 
-Status: current phase.
+Status: complete.
 
 Deliverables:
 
@@ -62,6 +62,8 @@ Acceptance:
 - Format, documentation test, and diff checks pass.
 
 ### M4-WP2: Syntax / AST / Query Identity Scaffolding
+
+Status: complete.
 
 Goal: add syntax and structured identity only, without full trait sema.
 
@@ -85,23 +87,47 @@ Risk controls:
 
 ### M4-WP3: Trait Declaration And Impl Registry
 
+Status: complete.
+
 Goal: make trait declarations and impl facts query-backed sema facts.
 
 Deliverables:
 
-- `TraitSignature` or equivalent item-signature authority.
-- Structured trait method requirements.
-- Impl registry query indexed by package, module, trait, and self type.
-- Impl method requirement matching.
-- Positive and negative tests for missing methods, duplicate methods,
-  signature mismatch, invisible traits, and unnamed impl targets.
+- `CheckedModule::traits` owns `TraitSignature` facts with stable trait
+  identity, visibility, generic parameters, and structured method
+  requirements.
+- Trait requirement prototypes do not enter ordinary top-level function /
+  prototype validation, so a trait contract is not reported as a missing
+  function definition.
+- `CheckedModule::trait_impls` provides the first impl-registry fact keyed by
+  trait, self type, and trait arguments.
+- `impl Trait for Type` performs requirement matching across `Self`, trait
+  generic substitution, parameters, return type, unsafe shape, and variadic
+  shape.
+- Qualified trait references, visibility checks, trait generic arity
+  diagnostics, and named impl self-target checks are covered.
+- Positive and negative tests are normal repository tests:
+  `tests/gtest/sema/trait_tests.cpp`,
+  `tests/samples/positive/traits/trait_impl_registry.ax`, and
+  `tests/samples/negative/traits/*.ax`.
 
 Risk controls:
 
 - No promised impls or partial impls.
-- Built-in primitive trait facts are owned by a compiler provider.
+- WP3 only checks duplicate exact impl keys. It does not claim full coherence /
+  orphan / overlap coverage.
+- Generic trait impl blocks, `where T: Trait`, `ParamEnv` obligations, trait
+  method call resolution, lowering/backend direct calls, associated types, and
+  built-in capability migration remain WP4/WP5/WP6 work.
+- The current trait-argument fingerprint in the impl key is a WP3 registry
+  display-stability compromise; WP4 coherence must move impl / predicate
+  identity to canonical type identity.
+- Built-in primitive trait facts are owned by a compiler provider and cannot be
+  forged by user modules.
 
 ### M4-WP4: Coherence And Generic Predicates
+
+Status: current next step.
 
 Goal: make trait bounds formal obligations and implement first-pass coherence.
 
@@ -207,8 +233,17 @@ Deliverables:
 
 ## Current Next Step
 
-After M4-WP1 closes, the next step is M4-WP2: Syntax / AST / Query Identity
-Scaffolding. WP2 only lands syntax and identity foundations. It does not pull in
-the solver or lowering early. This creates a regression baseline for token,
-parser, AST dump, lossless syntax, query identity, docs, and tests before WP3 /
-WP4 add sema and coherence.
+M4-WP1, WP2, and WP3 are complete. The current next step is M4-WP4: Coherence
+And Generic Predicates.
+
+WP4 must build on the WP3 registry by adding formal `TraitPredicate`,
+`TraitObligation`, `TraitEvidence`, and `ParamEnv` boundaries, lowering
+`where T: TraitA + TraitB` into canonical predicates, and implementing the
+first orphan / overlap / candidate-rejection diagnostics. WP4 also needs to fix
+the migration entry point for the current `Sized`, `Eq`, `Ord`, and `Hash`
+capabilities as compiler-owned built-in trait providers while preserving
+existing sample compatibility.
+
+WP4 still does not include trait method lowering, associated types, dynamic
+trait objects, or RAII/resource semantics. Those remain WP5, WP6, and later
+resource-system design work.

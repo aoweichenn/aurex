@@ -1,0 +1,17 @@
+module trait_impl_private_trait;
+
+import samplelib.traits as traits;
+
+struct File {
+    value: i32;
+}
+
+impl traits.Hidden for File {
+    fn read(self: &File) -> i32 {
+        return 0;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

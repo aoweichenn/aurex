@@ -118,6 +118,7 @@ private:
     class PatternMatchAnalyzer;
     class ProjectionAggregateExpressionAnalyzer;
     class StatementAnalyzer;
+    class TraitAnalyzer;
 
     struct GenericTemplateInfo {
         syntax::ItemId item = syntax::INVALID_ITEM_ID;
@@ -222,6 +223,14 @@ private:
         SemaMap<FunctionLookupKey, Symbol, FunctionLookupKeyHash> global_values;
         SemaMap<FunctionLookupKey, syntax::ItemId, FunctionLookupKeyHash> definition_items;
         SemaMap<FunctionLookupKey, FunctionBodyState, FunctionLookupKeyHash> body_states;
+    };
+
+    struct TraitState {
+        explicit TraitState(base::BumpAllocator& arena) : requirement_items(make_sema_set<base::u32>(arena))
+        {
+        }
+
+        SemaSet<base::u32> requirement_items;
     };
 
     struct GenericInstanceIdentity {
@@ -423,6 +432,8 @@ private:
                   arena, ModuleLookupKeyHash{})),
               methods_by_name(make_sema_map<MethodLookupKey, const FunctionSignature*, MethodLookupKeyHash>(
                   arena, MethodLookupKeyHash{})),
+              traits_by_name(make_sema_map<ModuleLookupKey, const TraitSignature*, ModuleLookupKeyHash>(
+                  arena, ModuleLookupKeyHash{})),
               global_values_by_name(
                   make_sema_map<ModuleLookupKey, const Symbol*, ModuleLookupKeyHash>(arena, ModuleLookupKeyHash{})),
               method_global_values_by_name(
@@ -446,6 +457,7 @@ private:
         base::usize generic_method_lookup_indexed_count = 0;
         SemaMap<ModuleLookupKey, const FunctionSignature*, ModuleLookupKeyHash> functions_by_name;
         SemaMap<MethodLookupKey, const FunctionSignature*, MethodLookupKeyHash> methods_by_name;
+        SemaMap<ModuleLookupKey, const TraitSignature*, ModuleLookupKeyHash> traits_by_name;
         base::usize internal_function_lookup_exclusions = 0;
         SemaMap<ModuleLookupKey, const Symbol*, ModuleLookupKeyHash> global_values_by_name;
         SemaMap<MethodLookupKey, const Symbol*, MethodLookupKeyHash> method_global_values_by_name;
@@ -475,7 +487,7 @@ private:
     struct SemaState {
         SemaState()
             : arena(std::make_unique<base::BumpAllocator>()), names(*this->arena), types(*this->arena),
-              generics(*this->arena), functions(*this->arena), modules(*this->arena)
+              generics(*this->arena), functions(*this->arena), traits(*this->arena), modules(*this->arena)
         {
         }
 
@@ -485,11 +497,16 @@ private:
         TypeState types;
         GenericState generics;
         FunctionState functions;
+        TraitState traits;
         mutable ModuleState modules;
         FlowState flow;
     };
 
     void register_type_names();
+    void register_trait_name(const syntax::ItemNode& item, syntax::ItemId item_id);
+    void register_trait_signatures();
+    void validate_trait_impls();
+    [[nodiscard]] bool is_trait_requirement_item(syntax::ItemId item) const;
     void register_generic_template(const syntax::ItemNode& item, syntax::ItemId item_id);
     void validate_generic_parameter_list(const syntax::ItemNode& item);
     void validate_generic_constraints(const syntax::ItemNode& item, GenericTemplateInfo& info);

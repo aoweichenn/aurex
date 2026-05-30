@@ -1,0 +1,19 @@
+module trait_impl_unknown_method;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+struct File {
+    handle: i32;
+}
+
+impl Reader for File {
+    fn write(self: &File) -> i32 {
+        return 1;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

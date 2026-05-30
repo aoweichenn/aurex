@@ -1,0 +1,13 @@
+module samplelib.traits;
+
+trait Hidden {
+    fn read(self: &Self) -> i32;
+}
+
+pub trait Visible {
+    fn read(self: &Self) -> i32;
+}
+
+pub struct HiddenFile {
+    value: i32;
+}

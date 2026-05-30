@@ -33,7 +33,7 @@ inheritance、closure、async/generator、derive、macro 或 package manager 混
 
 ### M4-WP1：Research And Design Baseline
 
-状态：当前阶段。
+状态：已完成。
 
 交付：
 
@@ -49,6 +49,8 @@ inheritance、closure、async/generator、derive、macro 或 package manager 混
 - 格式、文档测试和 diff check 通过。
 
 ### M4-WP2：Syntax / AST / Query Identity Scaffolding
+
+状态：已完成。
 
 目标：只新增语法和结构化身份，不实现完整 trait sema。
 
@@ -67,22 +69,34 @@ inheritance、closure、async/generator、derive、macro 或 package manager 混
 
 ### M4-WP3：Trait Declaration And Impl Registry
 
+状态：已完成。
+
 目标：让 trait declaration 和 impl fact 进入 query-backed sema。
 
 交付：
 
-- `TraitSignature` 或等价 item signature authority。
-- trait method requirement 结构化记录。
-- impl registry query：按 package、module、trait 和 self type 建索引。
-- impl method requirement matching。
-- 正负测试覆盖缺方法、重复方法、签名不匹配、trait 不可见、impl target 不可命名。
+- `CheckedModule::traits` 持有 `TraitSignature`，记录稳定 trait identity、visibility、generic 参数和结构化 method
+  requirements。
+- trait requirement prototype 不进入普通 top-level function/prototype validation，避免把 trait contract 误判成缺实现函数。
+- `CheckedModule::trait_impls` 按 trait、self type 和 trait args 建立第一版 registry fact。
+- `impl Trait for Type` 做 requirement matching，覆盖 `Self`、trait generic 参数替换、参数/返回类型、unsafe 和 variadic 形状。
+- 支持 qualified trait reference、可见性检查、trait generic arity 诊断和 impl self target named-type 检查。
+- 正负测试已落到常规仓库测试：`tests/gtest/sema/trait_tests.cpp`、
+  `tests/samples/positive/traits/trait_impl_registry.ax` 和 `tests/samples/negative/traits/*.ax`。
 
 风险控制：
 
 - 不允许 promised impl 或 partial impl。
-- builtin primitive trait facts 必须由 compiler-owned provider 管理。
+- WP3 只做 exact impl key duplicate 检查，不声称完成 coherence / orphan / overlap。
+- trait impl generic block、`where T: Trait`、`ParamEnv` obligation、trait method call resolution、lowering/backend direct call、
+  associated type 和 builtin capability migration 都保留到 WP4/WP5/WP6。
+- 当前 trait impl key 的 trait args fingerprint 是 WP3 registry 级别的稳定展示键；WP4 coherence 需要升级到 canonical type
+  identity / predicate identity。
+- builtin primitive trait facts 必须由 compiler-owned provider 管理，不能由用户模块伪造。
 
 ### M4-WP4：Coherence And Generic Predicates
+
+状态：当前下一步。
 
 目标：把 trait bound 变成正式 obligation，并实现第一版 coherence。
 
@@ -173,6 +187,12 @@ inheritance、closure、async/generator、derive、macro 或 package manager 混
 
 ## 当前下一步
 
-M4-WP1 收口后，下一步是 M4-WP2：Syntax / AST / Query Identity Scaffolding。WP2 只落语法和身份地基，不提前实现 solver
-和 lowering。这样可以先让 token、parser、AST dump、lossless syntax、query identity 和 docs/test 形成可回归基线，再进入 WP3 / WP4
-的 sema 和 coherence。
+M4-WP1、WP2 和 WP3 已完成。当前下一步是 M4-WP4：Coherence And Generic Predicates。
+
+WP4 必须在 WP3 registry 之上补齐正式 `TraitPredicate` / `TraitObligation` / `TraitEvidence` / `ParamEnv`
+边界，把 `where T: TraitA + TraitB` 降低为 canonical predicate，并实现第一版 orphan / overlap / candidate rejection
+诊断。WP4 还要把当前 `Sized`、`Eq`、`Ord`、`Hash` capability 的迁移入口固定为 compiler-owned builtin trait
+provider，同时保持现有样例兼容。
+
+WP4 仍不进入 trait method lowering、associated type、dynamic trait object 或 RAII/resource semantics；这些分别由
+WP5、WP6 和后续资源系统设计承接。

@@ -131,6 +131,83 @@ struct TypeAliasInfo {
     base::u32 part_index = 0;
 };
 
+struct TraitMethodRequirement {
+    InternedText name;
+    IdentId name_id = INVALID_IDENT_ID;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
+    TypeHandleList param_types;
+    base::SourceRange range{};
+    bool is_unsafe = false;
+    bool is_variadic = false;
+    syntax::Visibility visibility = syntax::Visibility::public_;
+    StableMemberKey stable_key;
+    base::u32 ordinal = 0;
+};
+
+using TraitMethodRequirementList = SemaVector<TraitMethodRequirement>;
+
+struct TraitSignature {
+    InternedText name;
+    IdentId name_id = INVALID_IDENT_ID;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    syntax::Visibility visibility = syntax::Visibility::public_;
+    StableDefId stable_id;
+    IncrementalKey incremental_key;
+    SemaVector<IdentId> generic_params;
+    TraitMethodRequirementList requirements;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+struct TraitImplLookupKey {
+    base::u32 trait_module = SEMA_LOOKUP_INVALID_KEY_PART;
+    IdentId trait_name = INVALID_IDENT_ID;
+    base::u32 self_type = TypeHandle::INVALID_VALUE;
+    query::StableFingerprint128 trait_args;
+
+    [[nodiscard]] friend constexpr bool operator==(TraitImplLookupKey lhs, TraitImplLookupKey rhs) noexcept = default;
+};
+
+[[nodiscard]] inline constexpr bool is_valid(const TraitImplLookupKey key) noexcept
+{
+    return key.trait_module != SEMA_LOOKUP_INVALID_KEY_PART && is_valid(key.trait_name)
+        && key.self_type != TypeHandle::INVALID_VALUE;
+}
+
+struct TraitImplLookupKeyHash {
+    [[nodiscard]] std::size_t operator()(TraitImplLookupKey key) const noexcept;
+};
+
+struct TraitImplMethodInfo {
+    InternedText name;
+    IdentId name_id = INVALID_IDENT_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    FunctionLookupKey function_key;
+    base::u32 requirement_ordinal = 0;
+};
+
+using TraitImplMethodInfoList = SemaVector<TraitImplMethodInfo>;
+
+struct TraitImplInfo {
+    TraitImplLookupKey key;
+    InternedText trait_name;
+    IdentId trait_name_id = INVALID_IDENT_ID;
+    syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
+    TypeHandle self_type = INVALID_TYPE_HANDLE;
+    TypeHandleList trait_args;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::Visibility visibility = syntax::Visibility::public_;
+    StableDefId stable_id;
+    IncrementalKey incremental_key;
+    TraitImplMethodInfoList methods;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
 struct GenericTemplateSignatureInfo {
     InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
@@ -168,6 +245,8 @@ using CheckedFunctionMap = SemaMap<FunctionLookupKey, FunctionSignature, Functio
 using CheckedModuleInfoMap = SemaMap<ModuleLookupKey, StructInfo, ModuleLookupKeyHash>;
 using CheckedEnumCaseMap = SemaMap<ModuleLookupKey, EnumCaseInfo, ModuleLookupKeyHash>;
 using CheckedTypeAliasMap = SemaMap<ModuleLookupKey, TypeAliasInfo, ModuleLookupKeyHash>;
+using CheckedTraitMap = SemaMap<ModuleLookupKey, TraitSignature, ModuleLookupKeyHash>;
+using CheckedTraitImplMap = SemaMap<TraitImplLookupKey, TraitImplInfo, TraitImplLookupKeyHash>;
 
 enum class CoercionKind {
     contextual_integer_literal,
@@ -472,6 +551,8 @@ public:
     CheckedModuleInfoMap structs;
     CheckedEnumCaseMap enum_cases;
     CheckedTypeAliasMap type_aliases;
+    CheckedTraitMap traits;
+    CheckedTraitImplMap trait_impls;
     SemaVector<GenericTemplateSignatureInfo> generic_template_signatures;
     SemaDeque<GenericSideTableLayout> generic_side_table_layouts;
     SemaDeque<GenericEnumInstanceInfo> generic_enum_instances;
@@ -503,6 +584,10 @@ public:
     [[nodiscard]] FunctionSignature make_function_signature() const;
     [[nodiscard]] StructInfo make_struct_info() const;
     [[nodiscard]] EnumCaseInfo make_enum_case_info() const;
+    [[nodiscard]] TraitMethodRequirement make_trait_method_requirement() const;
+    [[nodiscard]] TraitSignature make_trait_signature() const;
+    [[nodiscard]] TraitImplMethodInfo make_trait_impl_method_info() const;
+    [[nodiscard]] TraitImplInfo make_trait_impl_info() const;
     [[nodiscard]] GenericTemplateSignatureInfo clone_generic_template_signature_info(
         const GenericTemplateSignatureInfo& other);
     [[nodiscard]] GenericSideTableLayout make_generic_side_table_layout(
@@ -512,6 +597,10 @@ public:
     [[nodiscard]] FunctionSignature clone_function_signature(const FunctionSignature& other);
     [[nodiscard]] StructInfo clone_struct_info(const StructInfo& other);
     [[nodiscard]] EnumCaseInfo clone_enum_case_info(const EnumCaseInfo& other);
+    [[nodiscard]] TraitMethodRequirement clone_trait_method_requirement(const TraitMethodRequirement& other);
+    [[nodiscard]] TraitSignature clone_trait_signature(const TraitSignature& other);
+    [[nodiscard]] TraitImplMethodInfo clone_trait_impl_method_info(const TraitImplMethodInfo& other);
+    [[nodiscard]] TraitImplInfo clone_trait_impl_info(const TraitImplInfo& other);
     [[nodiscard]] GenericSideTableLayout clone_generic_side_table_layout(const GenericSideTableLayout& other) const;
     [[nodiscard]] GenericEnumInstanceInfo clone_generic_enum_instance(const GenericEnumInstanceInfo& other) const;
     [[nodiscard]] GenericTypeAliasInstanceInfo clone_generic_type_alias_instance(

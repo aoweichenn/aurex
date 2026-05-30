@@ -28,6 +28,9 @@ struct SemaItemCounts {
     base::usize non_generic_methods = 0;
     base::usize const_items = 0;
     base::usize type_aliases = 0;
+    base::usize traits = 0;
+    base::usize trait_impls = 0;
+    base::usize trait_requirements = 0;
     base::usize value_items = 0;
 
     [[nodiscard]] base::usize checked_function_entries() const noexcept
@@ -79,6 +82,13 @@ struct SemaItemCounts {
         }
         if (item.kind == syntax::ItemKind::type_alias) {
             counts.type_aliases += 1;
+        }
+        if (item.kind == syntax::ItemKind::trait_decl) {
+            counts.traits += 1;
+            counts.trait_requirements += item.trait_items.size();
+        }
+        if (item.kind == syntax::ItemKind::impl_block && syntax::is_valid(item.trait_type)) {
+            counts.trait_impls += 1;
         }
         if (item.kind == syntax::ItemKind::const_decl) {
             counts.const_items += 1;
@@ -228,6 +238,8 @@ void SemanticAnalysisPipeline::reserve_analysis_storage()
     this->core_.state_.checked.structs.reserve(item_counts.struct_like_items);
     this->core_.state_.checked.enum_cases.reserve(item_counts.enum_cases);
     this->core_.state_.checked.type_aliases.reserve(item_counts.type_aliases);
+    this->core_.state_.checked.traits.reserve(item_counts.traits);
+    this->core_.state_.checked.trait_impls.reserve(item_counts.trait_impls);
     this->core_.state_.types.named_types.reserve(item_counts.type_items);
     this->core_.state_.generics.struct_templates.reserve(item_counts.generic_struct_templates);
     this->core_.state_.generics.enum_templates.reserve(item_counts.generic_enum_templates);
@@ -244,6 +256,7 @@ void SemanticAnalysisPipeline::reserve_analysis_storage()
     this->core_.state_.functions.global_values.reserve(item_counts.named_value_entries());
     this->core_.state_.functions.definition_items.reserve(item_counts.function_like_entries());
     this->core_.state_.functions.body_states.reserve(expected_function_entries);
+    this->core_.state_.traits.requirement_items.reserve(item_counts.trait_requirements);
     this->core_.state_.types.struct_infos_by_type.reserve(item_counts.struct_like_items);
     const base::usize expected_identifier_count =
         this->core_.ctx_.module.identifiers.size() + item_counts.items + item_counts.enum_cases + item_counts.modules;
@@ -259,6 +272,7 @@ void SemanticAnalysisPipeline::reserve_analysis_storage()
         item_counts.non_generic_functions + item_counts.generic_function_templates);
     this->core_.state_.names.methods_by_name.reserve(
         item_counts.non_generic_methods + item_counts.generic_method_templates);
+    this->core_.state_.names.traits_by_name.reserve(item_counts.traits);
     this->core_.state_.names.global_values_by_name.reserve(item_counts.named_value_entries());
     this->core_.state_.names.method_global_values_by_name.reserve(
         item_counts.non_generic_methods + item_counts.generic_method_templates);
@@ -275,7 +289,9 @@ void SemanticAnalysisPipeline::run_declaration_phases()
     this->core_.register_type_names();
     this->core_.resolve_type_alias_decls();
     this->core_.analyze_struct_properties();
+    this->core_.register_trait_signatures();
     this->core_.register_value_names();
+    this->core_.validate_trait_impls();
     this->core_.validate_module_namespace_conflicts();
     this->core_.validate_function_prototypes();
 }
@@ -295,6 +311,9 @@ void SemanticAnalysisPipeline::run_function_body_phases()
 
     for (base::u32 index = 0; index < this->core_.ctx_.module.items.size(); ++index) {
         if (this->core_.ctx_.module.items.kind(index) != syntax::ItemKind::fn_decl) {
+            continue;
+        }
+        if (this->core_.is_trait_requirement_item(syntax::ItemId{index})) {
             continue;
         }
         const syntax::ItemNode item = this->core_.ctx_.module.items[index];

@@ -1,0 +1,16 @@
+module trait_impl_self_type_not_named;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+struct File {
+    handle: i32;
+}
+
+impl Reader for *const File {
+}
+
+fn main() -> i32 {
+    return 0;
+}

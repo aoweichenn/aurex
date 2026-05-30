@@ -171,7 +171,8 @@ bool SemanticAnalyzerCore::LookupIndexer::module_type_or_value_name_exists(
     const ModuleLookupKey lookup_key = this->core_.find_module_lookup_key(module, name_id);
     const bool typed_type_found = is_valid(lookup_key)
         && (this->core_.state_.names.named_types_by_name.contains(lookup_key)
-            || this->core_.state_.names.type_aliases_by_name.contains(lookup_key));
+            || this->core_.state_.names.type_aliases_by_name.contains(lookup_key)
+            || this->core_.state_.names.traits_by_name.contains(lookup_key));
     if (typed_type_found || this->core_.find_any_generic_type_template_in_module(module, name_id, name) != nullptr
         || this->core_.top_level_value_name_exists(module, name_id, name)
         || (is_valid(lookup_key) && this->core_.state_.names.generic_function_templates_by_name.contains(lookup_key))) {
@@ -207,6 +208,10 @@ bool SemanticAnalyzerCore::LookupIndexer::visible_type_name_exists(
             if (const auto alias = this->core_.state_.names.type_aliases_by_name.find(lookup_key);
                 alias != this->core_.state_.names.type_aliases_by_name.end() && alias->second != nullptr) {
                 return this->core_.can_access_module(module, alias->second->visibility);
+            }
+            if (const auto trait = this->core_.state_.names.traits_by_name.find(lookup_key);
+                trait != this->core_.state_.names.traits_by_name.end() && trait->second != nullptr) {
+                return this->core_.can_access_module(module, trait->second->visibility);
             }
         }
         const GenericTemplateInfo* const generic =

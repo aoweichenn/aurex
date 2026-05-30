@@ -70,6 +70,11 @@ inline constexpr std::string_view SEMA_VARIADIC_FUNCTION_TYPE_EXTERN_C_ONLY =
 
 inline constexpr std::string_view SEMA_IMPL_TARGET_NAMED_TYPE = "impl target must be a named type";
 
+inline constexpr std::string_view SEMA_TRAIT_IMPL_TARGET_NAMED_TRAIT = "trait impl target must be a named trait";
+
+inline constexpr std::string_view SEMA_TRAIT_IMPL_GENERIC_UNSUPPORTED =
+    "generic trait impl blocks are not supported by M4-WP3 semantic analysis";
+
 inline constexpr std::string_view SEMA_C_ABI_RETURN_TYPE_EXPLICIT = "C ABI function return type must be explicit";
 
 inline constexpr std::string_view SEMA_PROTOTYPE_RETURN_TYPE_EXPLICIT =
@@ -500,6 +505,12 @@ inline constexpr std::string_view SEMA_ENUM_STORAGE_OVERFLOW = "enum storage siz
     return "duplicate type definition in module " + std::string(module) + ": " + std::string(name);
 }
 
+[[nodiscard]] inline std::string sema_duplicate_trait_definition_message(
+    const std::string_view module, const std::string_view name)
+{
+    return "duplicate trait definition in module " + std::string(module) + ": " + std::string(name);
+}
+
 [[nodiscard]] inline std::string sema_duplicate_struct_definition_message(
     const std::string_view module, const std::string_view name)
 {
@@ -664,6 +675,11 @@ inline constexpr std::string_view SEMA_ORDINARY_MAIN_EXPORTED_C_MAIN =
 [[nodiscard]] inline std::string sema_type_not_generic_message(const std::string_view name)
 {
     return "type " + std::string(name) + " is not generic";
+}
+
+[[nodiscard]] inline std::string sema_trait_not_generic_message(const std::string_view name)
+{
+    return "trait " + std::string(name) + " is not generic";
 }
 
 [[nodiscard]] inline std::string sema_generic_type_requires_args_message(const std::string_view name)
@@ -993,6 +1009,62 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
     const std::string_view module, const std::string_view name)
 {
     return "unknown type in module " + std::string(module) + ": " + std::string(name);
+}
+
+[[nodiscard]] inline std::string sema_unknown_trait_message(const std::string_view name)
+{
+    return "unknown trait: " + std::string(name);
+}
+
+[[nodiscard]] inline std::string sema_unknown_trait_in_module_message(
+    const std::string_view module, const std::string_view name)
+{
+    return "unknown trait in module " + std::string(module) + ": " + std::string(name);
+}
+
+[[nodiscard]] inline std::string sema_private_trait_message(const std::string_view module, const std::string_view name)
+{
+    return "trait is private: " + std::string(module) + "." + std::string(name);
+}
+
+[[nodiscard]] inline std::string sema_duplicate_trait_requirement_message(
+    const std::string_view trait_name, const std::string_view method)
+{
+    return "duplicate trait requirement: " + std::string(trait_name) + "." + std::string(method);
+}
+
+[[nodiscard]] inline std::string sema_duplicate_trait_impl_method_message(
+    const std::string_view trait_name, const std::string_view self_type, const std::string_view method)
+{
+    return "duplicate trait impl method: " + std::string(trait_name) + " for " + std::string(self_type) + "."
+        + std::string(method);
+}
+
+[[nodiscard]] inline std::string sema_trait_impl_missing_method_message(
+    const std::string_view trait_name, const std::string_view self_type, const std::string_view method)
+{
+    return "trait impl missing method: " + std::string(trait_name) + " for " + std::string(self_type) + "."
+        + std::string(method);
+}
+
+[[nodiscard]] inline std::string sema_trait_impl_unknown_method_message(
+    const std::string_view trait_name, const std::string_view self_type, const std::string_view method)
+{
+    return "trait impl method is not required: " + std::string(trait_name) + " for " + std::string(self_type) + "."
+        + std::string(method);
+}
+
+[[nodiscard]] inline std::string sema_trait_impl_method_signature_message(
+    const std::string_view trait_name, const std::string_view self_type, const std::string_view method)
+{
+    return "trait impl method signature does not match requirement: " + std::string(trait_name) + " for "
+        + std::string(self_type) + "." + std::string(method);
+}
+
+[[nodiscard]] inline std::string sema_duplicate_trait_impl_message(
+    const std::string_view trait_name, const std::string_view self_type)
+{
+    return "duplicate trait impl: " + std::string(trait_name) + " for " + std::string(self_type);
 }
 
 [[nodiscard]] inline std::string sema_ambiguous_function_name_message(

@@ -266,6 +266,9 @@ std::string_view SemanticAnalyzerCore::nearest_visible_type_name(const std::stri
     for (const auto& entry : this->state_.names.generic_type_alias_templates_by_name) {
         consider_local_module_key(entry.first);
     }
+    for (const auto& entry : this->state_.names.traits_by_name) {
+        consider_local_module_key(entry.first);
+    }
     return best.name;
 }
 
@@ -304,6 +307,11 @@ std::string_view SemanticAnalyzerCore::nearest_type_name_in_module(
             }
         }
         for (const auto& entry : this->state_.names.generic_type_alias_templates_by_name) {
+            if (entry.first.module == candidate_module.value && entry.second != nullptr) {
+                consider_module_key(entry.first, entry.second->visibility);
+            }
+        }
+        for (const auto& entry : this->state_.names.traits_by_name) {
             if (entry.first.module == candidate_module.value && entry.second != nullptr) {
                 consider_module_key(entry.first, entry.second->visibility);
             }

@@ -1,0 +1,3 @@
+module samplelib.trait_facade;
+
+pub use samplelib.traits.Visible as ReVisible;

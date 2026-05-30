@@ -1,24 +1,45 @@
 # Current Progress
 
 Version: 0.1.4
-Stage: M4 started; M4-WP1 trait/protocol design baseline closed
+Stage: M4-WP3 trait declaration and impl registry closed; next is M4-WP4
+coherence / generic predicates
 
 ## Overall Status
 
-As of 2026-05-30, the M4 trait/protocol design track has started and M4-WP1 is
-closed as a research and design baseline. The selected design is nominal static
-traits: the language keyword is `trait`, `protocol` remains design terminology
-for behavioral contracts, conformance is explicit through `impl Trait for
-Type`, generic bounds enter canonical trait predicates / `ParamEnv`, and calls
-use static dispatch by default before lowering to concrete impl-method direct
-calls after monomorphization. M4-WP1 explicitly keeps RAII, `Drop`, `Copy`,
-resource semantics, dynamic trait objects, vtable ABI, class inheritance,
-default methods, specialization, negative impls, auto traits, and structural
-interfaces out of the current stage. The full design is recorded in the
+As of 2026-05-30, M4 trait/protocol work has completed WP1, WP2, and WP3.
+M4-WP1 closed the research and design baseline with nominal static traits: the
+language keyword is `trait`, `protocol` remains design terminology for
+behavioral contracts, conformance is explicit through `impl Trait for Type`,
+generic bounds enter canonical trait predicates / `ParamEnv`, and calls use
+static dispatch by default before lowering to concrete impl-method direct calls
+after monomorphization. M4-WP2 landed the `trait` / `impl Trait for Type`
+token, parser, AST payload, AST dump, lossless syntax, and query identity
+scaffolding as a regression baseline. M4-WP3 connects trait declarations and
+the impl registry to the query-backed sema aggregate: `CheckedModule::traits`
+records `TraitSignature`, generic parameters, visibility, and structured
+requirements; trait requirement prototypes no longer enter ordinary top-level
+function/prototype validation; `CheckedModule::trait_impls` records
+`impl Trait for Type` facts; and sema validates missing methods, duplicate impl
+methods, unknown impl methods, signature mismatches, invisible traits, non-trait
+impl targets, non-named self targets, trait generic arity, and duplicate exact
+impl keys.
+
+M4-WP3 tests are normal repository tests, not temporary fixtures:
+`tests/gtest/sema/trait_tests.cpp` covers whitebox checked facts, checked dumps,
+and positive/negative samples; `tests/samples/positive/traits/trait_impl_registry.ax`
+covers the positive sample; `tests/samples/negative/traits/*.ax` covers
+diagnostic paths; and `tests/samples/imports/samplelib/traits.ax` covers
+cross-module visibility. The full design is recorded in the
 [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
 and the stage route is recorded in the
-[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The next step is M4-WP2:
-Syntax / AST / Query Identity Scaffolding.
+[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The next step is M4-WP4:
+Coherence And Generic Predicates.
+
+WP3 is still not presented as a complete trait system. Coherence / orphan /
+overlap, generic trait obligations, `ParamEnv`, trait method call resolution,
+lowering/backend direct calls, associated types, built-in capability migration,
+dynamic trait objects, and RAII/resource semantics remain WP4, WP5, WP6, or
+later resource-system work.
 
 The repository has moved from the closed M2 language-core-no-std baseline into
 the M2.5 frontend-foundation stage. M2 does not continue the abandoned M1 track.

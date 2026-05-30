@@ -1,0 +1,23 @@
+module trait_impl_duplicate_method;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+struct File {
+    handle: i32;
+}
+
+impl Reader for File {
+    fn read(self: &File) -> i32 {
+        return 1;
+    }
+
+    fn read(self: &File) -> i32 {
+        return 2;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

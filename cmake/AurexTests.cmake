@@ -129,6 +129,7 @@ if(BUILD_TESTING)
             tests/gtest/sema/modules_visibility_tests.cpp
             tests/gtest/sema/pattern_matching_tests.cpp
             tests/gtest/sema/sema_whitebox_tests.cpp
+            tests/gtest/sema/trait_tests.cpp
             tests/gtest/sema/type_alias_tests.cpp
             tests/gtest/tooling/ide_tooling_tests.cpp
             tests/gtest/tooling/session_lsp_tooling_tests.cpp

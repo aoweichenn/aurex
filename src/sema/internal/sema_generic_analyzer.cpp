@@ -957,6 +957,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::register_generic_template(
     if (item.kind == syntax::ItemKind::struct_decl) {
         if (this->core_.state_.types.named_types.contains(info.key)
             || this->core_.state_.checked.type_aliases.contains(info.key)
+            || this->core_.state_.checked.traits.contains(info.key)
             || this->core_.state_.generics.struct_templates.contains(info.key)
             || this->core_.state_.generics.enum_templates.contains(info.key)
             || this->core_.state_.generics.type_alias_templates.contains(info.key)) {
@@ -975,6 +976,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::register_generic_template(
     if (item.kind == syntax::ItemKind::enum_decl) {
         if (this->core_.state_.types.named_types.contains(info.key)
             || this->core_.state_.checked.type_aliases.contains(info.key)
+            || this->core_.state_.checked.traits.contains(info.key)
             || this->core_.state_.generics.struct_templates.contains(info.key)
             || this->core_.state_.generics.enum_templates.contains(info.key)
             || this->core_.state_.generics.type_alias_templates.contains(info.key)) {
@@ -993,6 +995,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::register_generic_template(
     if (item.kind == syntax::ItemKind::type_alias) {
         if (this->core_.state_.types.named_types.contains(info.key)
             || this->core_.state_.checked.type_aliases.contains(info.key)
+            || this->core_.state_.checked.traits.contains(info.key)
             || this->core_.state_.generics.struct_templates.contains(info.key)
             || this->core_.state_.generics.enum_templates.contains(info.key)
             || this->core_.state_.generics.type_alias_templates.contains(info.key)) {

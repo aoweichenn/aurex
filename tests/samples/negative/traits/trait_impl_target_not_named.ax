@@ -1,0 +1,15 @@
+module trait_impl_target_not_named;
+
+struct File {
+    handle: i32;
+}
+
+impl *const File for File {
+    fn read(self: &File) -> i32 {
+        return 1;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

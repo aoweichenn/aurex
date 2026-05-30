@@ -55,6 +55,10 @@ void SemanticAnalyzerCore::LookupIndexer::index_generic_method_template(const Ge
 void SemanticAnalyzerCore::LookupIndexer::index_function_lookup(const FunctionSignature& signature)
 {
     if (signature.is_method) {
+        if (signature.is_trait_impl_method) {
+            this->core_.state_.names.internal_function_lookup_exclusions += 1;
+            return;
+        }
         this->core_.index_method_lookup(signature.module, signature.method_owner_type, signature.name_id, signature);
         return;
     }
@@ -72,6 +76,10 @@ void SemanticAnalyzerCore::LookupIndexer::index_method_lookup(const syntax::Modu
 void SemanticAnalyzerCore::LookupIndexer::index_function_value(const FunctionSignature& signature)
 {
     if (signature.is_method) {
+        if (signature.is_trait_impl_method) {
+            this->core_.state_.names.internal_global_value_lookup_exclusions += 1;
+            return;
+        }
         const auto found = this->core_.state_.functions.global_values.find(signature.semantic_key);
         if (found != this->core_.state_.functions.global_values.end()) {
             const MethodLookupKey key =
@@ -143,6 +151,7 @@ bool SemanticAnalyzerCore::LookupIndexer::global_value_lookup_complete() const n
 {
     return this->core_.state_.names.global_values_by_name.size()
         + this->core_.state_.names.method_global_values_by_name.size()
+        + this->core_.state_.names.internal_global_value_lookup_exclusions
         == this->core_.state_.functions.global_values.size();
 }
 
@@ -274,7 +283,8 @@ bool SemanticAnalyzerCore::LookupIndexer::type_member_name_exists(
     }
     for (const auto& entry : this->core_.state_.checked.functions) {
         const FunctionSignature& signature = entry.second;
-        if (signature.is_method && this->core_.state_.checked.types.same(signature.method_owner_type, owner_type)
+        if (signature.is_method && !signature.is_trait_impl_method
+            && this->core_.state_.checked.types.same(signature.method_owner_type, owner_type)
             && signature.name_id == name_id) {
             return true;
         }

@@ -1,13 +1,13 @@
 # Current Progress
 
 Version: 0.1.4
-Stage: M4-WP4 coherence / generic predicates closed; next is M4-WP5 trait
-method resolution / lowering
+Stage: M4-WP5 static trait method dispatch closed; next is M4-WP6 associated
+type model
 
 ## Overall Status
 
-As of 2026-05-31, M4 trait/protocol work has completed WP1, WP2, WP3, and
-WP4.
+As of 2026-05-31, M4 trait/protocol work has completed WP1, WP2, WP3, WP4, and
+WP5.
 M4-WP1 closed the research and design baseline with nominal static traits: the
 language keyword is `trait`, `protocol` remains design terminology for
 behavioral contracts, conformance is explicit through `impl Trait for Type`,
@@ -30,8 +30,15 @@ while also recording compiler-owned built-in trait predicates, performs user
 trait candidate rejection during generic instantiation, and adds canonical
 coherence fingerprints, orphan rules, and first-pass overlap checks to the trait
 impl registry.
+M4-WP5 completes static trait method resolution and lowering: trait impl
+methods do not enter ordinary inherent method lookup; inherent methods still
+win first; trait calls inside generic bodies bind through the current
+`ParamEnv` as `param_env` `TraitMethodCallBinding` facts; concrete receivers
+bind through visible traits plus the impl registry as unique `impl` direct
+calls; and LLVM IR directly calls the concrete impl method after
+monomorphization.
 
-M4-WP3/WP4 tests are normal repository tests, not temporary fixtures:
+M4-WP3/WP4/WP5 tests are normal repository tests, not temporary fixtures:
 `tests/gtest/sema/trait_tests.cpp` covers whitebox checked facts, checked dumps,
 and positive/negative samples; `tests/samples/positive/traits/trait_impl_registry.ax`
 covers the positive sample; `tests/samples/negative/traits/*.ax` covers
@@ -39,20 +46,34 @@ diagnostic paths;
 `tests/samples/positive/traits/trait_predicate_where_generic.ax`,
 `tests/samples/negative/traits/trait_predicate_unsatisfied_generic_arg.ax`, and
 `tests/samples/negative/traits/trait_impl_orphan_external.ax` cover WP4
-predicate, candidate-rejection, and orphan paths; and
+predicate, candidate-rejection, and orphan paths;
+`tests/samples/positive/traits/trait_method_static_dispatch.ax`,
+`tests/samples/positive/traits/trait_method_associated_static_dispatch.ax`, and
+`tests/samples/positive/traits/trait_method_inherent_precedence.ax` cover WP5
+positive receiver direct-call, associated/static direct-call, and
+inherent-first paths;
+`tests/samples/positive/traits/trait_method_function_field_precedence.ax`
+covers function-valued field-call fallback not being preempted by a missing
+trait-impl diagnostic;
+`tests/samples/negative/traits/trait_method_ambiguous_bound.ax`,
+`tests/samples/negative/traits/trait_method_ambiguous_impl.ax`,
+`tests/samples/negative/traits/trait_method_associated_missing_impl.ax`,
+`tests/samples/negative/traits/trait_method_missing_bound.ax`, and
+`tests/samples/negative/traits/trait_method_missing_impl.ax` cover WP5 negative
+diagnostics; and
 `tests/samples/imports/samplelib/traits.ax` covers cross-module visibility. The
 full design is recorded in the
 [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
 and the stage route is recorded in the
-[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The next step is M4-WP5:
-Static Method Resolution And Lowering.
+[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The next step is M4-WP6:
+Associated Type Model.
 
-WP4 is still not presented as a complete trait system. Trait method call
-resolution, lowering/backend direct calls, associated types, dynamic trait
-objects, and RAII/resource semantics remain WP5, WP6, or later resource-system
-work. The WP4 `where` grammar still supports only single identifier predicate
-names; qualified where predicates, generic trait predicate arguments, and
-associated-type constraints remain future solver/associated-type work.
+WP5 is still not presented as a complete trait system. Associated types,
+dynamic trait objects, and RAII/resource semantics remain WP6 or later
+resource-system work. The WP4/WP5 `where` grammar still supports only single
+identifier predicate names; qualified where predicates, generic trait predicate
+arguments, and associated-type constraints remain future solver/associated-type
+work.
 
 The repository has moved from the closed M2 language-core-no-std baseline into
 the M2.5 frontend-foundation stage. M2 does not continue the abandoned M1 track.

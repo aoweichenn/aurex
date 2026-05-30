@@ -21,6 +21,8 @@ struct FunctionSignature {
     InternedText c_name;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
+    syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
+    IdentId trait_name_id = INVALID_IDENT_ID;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     TypeHandleList param_types;
     TypeHandleList generic_args;
@@ -34,6 +36,7 @@ struct FunctionSignature {
     bool has_conflict = false;
     bool is_method = false;
     bool has_self_param = false;
+    bool is_trait_impl_method = false;
     syntax::Visibility visibility = syntax::Visibility::public_;
     syntax::ItemId prototype_item = syntax::INVALID_ITEM_ID;
     syntax::ItemId definition_item = syntax::INVALID_ITEM_ID;

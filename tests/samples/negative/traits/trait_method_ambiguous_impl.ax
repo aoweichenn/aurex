@@ -1,0 +1,30 @@
+module trait_method_ambiguous_impl;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+trait Scanner {
+    fn read(self: &Self) -> i32;
+}
+
+struct File {
+    value: i32;
+}
+
+impl Reader for File {
+    fn read(self: &File) -> i32 {
+        return self.value;
+    }
+}
+
+impl Scanner for File {
+    fn read(self: &File) -> i32 {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    let file = File { value: 1 };
+    return file.read();
+}

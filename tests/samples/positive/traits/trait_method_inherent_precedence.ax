@@ -1,0 +1,26 @@
+module trait_method_inherent_precedence;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+struct File {
+    value: i32;
+}
+
+impl File {
+    fn read(self: &File) -> i32 {
+        return 100;
+    }
+}
+
+impl Reader for File {
+    fn read(self: &File) -> i32 {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    let file = File { value: 42 };
+    return file.read() - 100;
+}

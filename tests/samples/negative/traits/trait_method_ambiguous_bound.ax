@@ -1,0 +1,17 @@
+module trait_method_ambiguous_bound;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+trait Scanner {
+    fn read(self: &Self) -> i32;
+}
+
+fn use_reader[T](value: &T) -> i32 where T: Reader + Scanner {
+    return value.read();
+}
+
+fn main() -> i32 {
+    return 0;
+}

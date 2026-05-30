@@ -23,6 +23,17 @@ constexpr std::string_view SEMA_INCREMENTAL_FINGERPRINT_FUNCTION_TAG = "function
 constexpr std::string_view SEMA_INCREMENTAL_FINGERPRINT_VARIADIC_TAG = "variadic";
 constexpr std::string_view SEMA_INCREMENTAL_FINGERPRINT_FIXED_TAG = "fixed";
 
+[[nodiscard]] std::string c_symbol_component(const std::string_view text)
+{
+    std::string result;
+    result.reserve(text.size());
+    for (const char c : text) {
+        const bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+        result += alnum ? c : '_';
+    }
+    return result;
+}
+
 struct NameSuggestion {
     std::string_view name;
     base::usize distance = std::numeric_limits<base::usize>::max();
@@ -449,8 +460,7 @@ std::string SemanticAnalyzerCore::generic_template_key_prefix(
     return key;
 }
 
-FunctionLookupKey SemanticAnalyzerCore::function_key(
-    const syntax::ItemNode& function, const syntax::ItemId function_id) const
+FunctionLookupKey SemanticAnalyzerCore::function_key(const syntax::ItemNode& function, const syntax::ItemId function_id)
 {
     const syntax::ModuleId module = this->item_module(function_id);
     if (this->has_generic_params(function)) {
@@ -462,6 +472,10 @@ FunctionLookupKey SemanticAnalyzerCore::function_key(
     const TypeHandle owner_type = function.impl_type.value < this->state_.checked.syntax_type_handles.size()
         ? this->state_.checked.syntax_type_handles[function.impl_type.value]
         : INVALID_TYPE_HANDLE;
+    if (syntax::is_valid(function.trait_type)) {
+        return this->method_function_lookup_key(
+            module, owner_type, this->intern_generated_key(this->trait_impl_method_key_name(function)));
+    }
     return this->method_function_lookup_key(module, owner_type, function.name_id);
 }
 
@@ -604,7 +618,42 @@ MethodLookupKey SemanticAnalyzerCore::find_method_lookup_key(
 
 std::string SemanticAnalyzerCore::method_c_symbol_name(const TypeHandle owner_type, const std::string_view name) const
 {
-    return this->state_.checked.types.c_name(owner_type) + "_" + std::string(name);
+    return this->state_.checked.types.c_name(owner_type) + "_" + c_symbol_component(name);
+}
+
+std::string SemanticAnalyzerCore::trait_impl_method_key_name(const syntax::ItemNode& function) const
+{
+    std::string key = "trait_impl:";
+    if (syntax::is_valid(function.trait_type) && function.trait_type.value < this->ctx_.module.types.size()) {
+        const syntax::TypeNode& trait_type = this->ctx_.module.types[function.trait_type.value];
+        for (const std::string_view scope_part : trait_type.scope_parts) {
+            key += scope_part;
+            key += ".";
+        }
+        key += trait_type.name;
+        if (!trait_type.type_args.empty()) {
+            key += "[";
+            for (base::usize index = 0; index < trait_type.type_args.size(); ++index) {
+                if (index != 0) {
+                    key += ",";
+                }
+                key += std::to_string(trait_type.type_args[index].value);
+            }
+            key += "]";
+        }
+    } else {
+        key += "<invalid>";
+    }
+    key += "::";
+    key += function.name;
+    return key;
+}
+
+std::string SemanticAnalyzerCore::trait_impl_method_c_symbol_name(
+    const TypeHandle owner_type, const std::string_view trait_key, const std::string_view name) const
+{
+    static_cast<void>(name);
+    return this->method_c_symbol_name(owner_type, trait_key);
 }
 
 DeclContext SemanticAnalyzerCore::declaration_context(const syntax::ModuleId owner) const noexcept

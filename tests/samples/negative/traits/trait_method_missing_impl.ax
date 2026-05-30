@@ -1,0 +1,14 @@
+module trait_method_missing_impl;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+struct File {
+    value: i32;
+}
+
+fn main() -> i32 {
+    let file = File { value: 1 };
+    return file.read();
+}

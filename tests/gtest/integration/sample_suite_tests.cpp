@@ -127,6 +127,11 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"trait_impl_unknown_qualified_trait", "unknown trait in module samplelib.traits: Missing"},
     {"trait_impl_unknown_method", "trait impl method is not required"},
     {"trait_impl_unknown_trait", "unknown trait: Missing"},
+    {"trait_method_ambiguous_bound", "ambiguous trait method `read`"},
+    {"trait_method_ambiguous_impl", "ambiguous trait method `read`"},
+    {"trait_method_associated_missing_impl", "has no visible impl for trait method"},
+    {"trait_method_missing_bound", "requires a trait bound"},
+    {"trait_method_missing_impl", "has no visible impl for trait method"},
     {"unknown_module_expr_member", "unknown name in module samplelib.visibility: missing"},
     {"unknown_module_expr_path", "unknown module path: samplelib.missing"},
     {"unknown_module_type_path", "unknown module path: missing.path"},
@@ -434,6 +439,26 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_method_local_generics)
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_method_local_identity_closure_generics)
 {
     run_positive_runtime_smoke_sample("generics", "method_local_identity_closure_m3_1.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_trait_method_static_dispatch)
+{
+    run_positive_runtime_smoke_sample("traits", "trait_method_static_dispatch.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_trait_method_associated_static_dispatch)
+{
+    run_positive_runtime_smoke_sample("traits", "trait_method_associated_static_dispatch.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_trait_method_inherent_precedence)
+{
+    run_positive_runtime_smoke_sample("traits", "trait_method_inherent_precedence.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_trait_method_function_field_precedence)
+{
+    run_positive_runtime_smoke_sample("traits", "trait_method_function_field_precedence.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_imported_samples)

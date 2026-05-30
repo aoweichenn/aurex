@@ -511,6 +511,7 @@ CheckedModule::CheckedModule()
       trait_predicates(make_sema_vector<TraitPredicate>(*this->arena_)),
       trait_obligations(make_sema_vector<TraitObligation>(*this->arena_)),
       trait_evidence(make_sema_vector<TraitEvidence>(*this->arena_)),
+      trait_method_calls(make_sema_vector<TraitMethodCallBinding>(*this->arena_)),
       param_envs(make_sema_vector<ParamEnvInfo>(*this->arena_)),
       generic_template_signatures(make_sema_vector<GenericTemplateSignatureInfo>(*this->arena_)),
       generic_side_table_layouts(make_sema_deque<GenericSideTableLayout>(*this->arena_)),
@@ -548,7 +549,7 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       type_aliases(std::move(other.type_aliases)), traits(std::move(other.traits)),
       trait_impls(std::move(other.trait_impls)), trait_predicates(std::move(other.trait_predicates)),
       trait_obligations(std::move(other.trait_obligations)), trait_evidence(std::move(other.trait_evidence)),
-      param_envs(std::move(other.param_envs)),
+      trait_method_calls(std::move(other.trait_method_calls)), param_envs(std::move(other.param_envs)),
       generic_template_signatures(std::move(other.generic_template_signatures)),
       generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
       generic_enum_instances(std::move(other.generic_enum_instances)),
@@ -608,6 +609,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->trait_predicates.swap(other.trait_predicates);
     this->trait_obligations.swap(other.trait_obligations);
     this->trait_evidence.swap(other.trait_evidence);
+    this->trait_method_calls.swap(other.trait_method_calls);
     this->param_envs.swap(other.param_envs);
     this->generic_template_signatures.swap(other.generic_template_signatures);
     this->generic_side_table_layouts.swap(other.generic_side_table_layouts);
@@ -696,6 +698,11 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->trait_evidence.reserve(other.trait_evidence.size());
     for (const TraitEvidence& evidence : other.trait_evidence) {
         this->trait_evidence.push_back(this->clone_trait_evidence(evidence));
+    }
+    this->trait_method_calls.clear();
+    this->trait_method_calls.reserve(other.trait_method_calls.size());
+    for (const TraitMethodCallBinding& binding : other.trait_method_calls) {
+        this->trait_method_calls.push_back(this->clone_trait_method_call_binding(binding));
     }
     this->param_envs.clear();
     this->param_envs.reserve(other.param_envs.size());
@@ -844,6 +851,11 @@ TraitEvidence CheckedModule::make_trait_evidence() const
     return {};
 }
 
+TraitMethodCallBinding CheckedModule::make_trait_method_call_binding() const
+{
+    return {};
+}
+
 ParamEnvInfo CheckedModule::make_param_env_info() const
 {
     ParamEnvInfo info;
@@ -890,6 +902,8 @@ FunctionSignature CheckedModule::clone_function_signature(const FunctionSignatur
     copy.c_name = this->intern_text(other.c_name);
     copy.module = other.module;
     copy.method_owner_type = other.method_owner_type;
+    copy.trait_module = other.trait_module;
+    copy.trait_name_id = other.trait_name_id;
     copy.return_type = other.return_type;
     copy.param_types = this->copy_type_handle_list(other.param_types);
     copy.generic_args = this->copy_type_handle_list(other.generic_args);
@@ -903,6 +917,7 @@ FunctionSignature CheckedModule::clone_function_signature(const FunctionSignatur
     copy.has_conflict = other.has_conflict;
     copy.is_method = other.is_method;
     copy.has_self_param = other.has_self_param;
+    copy.is_trait_impl_method = other.is_trait_impl_method;
     copy.visibility = other.visibility;
     copy.prototype_item = other.prototype_item;
     copy.definition_item = other.definition_item;
@@ -965,6 +980,7 @@ TraitMethodRequirement CheckedModule::clone_trait_method_requirement(const Trait
     copy.range = other.range;
     copy.is_unsafe = other.is_unsafe;
     copy.is_variadic = other.is_variadic;
+    copy.has_self_param = other.has_self_param;
     copy.visibility = other.visibility;
     copy.stable_key = other.stable_key;
     copy.ordinal = other.ordinal;
@@ -1060,6 +1076,13 @@ TraitObligation CheckedModule::clone_trait_obligation(const TraitObligation& oth
 TraitEvidence CheckedModule::clone_trait_evidence(const TraitEvidence& other) const
 {
     return other;
+}
+
+TraitMethodCallBinding CheckedModule::clone_trait_method_call_binding(const TraitMethodCallBinding& other)
+{
+    TraitMethodCallBinding copy = other;
+    copy.method_name = this->intern_text(other.method_name);
+    return copy;
 }
 
 ParamEnvInfo CheckedModule::clone_param_env_info(const ParamEnvInfo& other)
@@ -1241,6 +1264,12 @@ void rebind_param_env_info_texts(
     rebind_interned_text(param_env.owner_name, from, to);
 }
 
+void rebind_trait_method_call_binding_texts(
+    TraitMethodCallBinding& binding, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
+{
+    rebind_interned_text(binding.method_name, from, to);
+}
+
 } // namespace
 
 void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
@@ -1265,6 +1294,9 @@ void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, 
     }
     for (TraitPredicate& predicate : this->trait_predicates) {
         rebind_trait_predicate_texts(predicate, from, to);
+    }
+    for (TraitMethodCallBinding& binding : this->trait_method_calls) {
+        rebind_trait_method_call_binding_texts(binding, from, to);
     }
     for (ParamEnvInfo& param_env : this->param_envs) {
         rebind_param_env_info_texts(param_env, from, to);
@@ -1365,6 +1397,11 @@ constexpr base::u32 SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX = 0;
             return true;
         }
     }
+    for (const TraitMethodCallBinding& binding : checked.trait_method_calls) {
+        if (binding.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
     for (const ParamEnvInfo& param_env : checked.param_envs) {
         if (param_env.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
             return true;
@@ -1456,6 +1493,17 @@ void append_type_list(std::ostringstream& out, const CheckedModule& checked, std
         case TraitEvidenceKind::builtin:
             return "builtin";
         case TraitEvidenceKind::explicit_impl:
+            return "impl";
+    }
+    return "param_env";
+}
+
+[[nodiscard]] std::string_view trait_method_dispatch_kind_name(const TraitMethodDispatchKind kind) noexcept
+{
+    switch (kind) {
+        case TraitMethodDispatchKind::param_env:
+            return "param_env";
+        case TraitMethodDispatchKind::explicit_impl:
             return "impl";
     }
     return "param_env";
@@ -1626,6 +1674,20 @@ std::string dump_checked_module(const CheckedModule& checked)
         out << "    evidence #" << index << " " << trait_evidence_kind_name(evidence.kind)
             << " predicate=" << evidence.predicate_index;
         append_part_origin(out, show_parts, evidence.part_index);
+        out << "\n";
+    }
+
+    out << "  trait_method_calls " << checked.trait_method_calls.size() << "\n";
+    for (base::usize index = 0; index < checked.trait_method_calls.size(); ++index) {
+        const TraitMethodCallBinding& binding = checked.trait_method_calls[index];
+        out << "    trait_call #" << index << " " << trait_method_dispatch_kind_name(binding.dispatch) << " "
+            << checked.types.display_name(binding.self_type) << ".";
+        out << (binding.method_name.empty() ? std::string_view{"<invalid>"} : binding.method_name.view());
+        out << " -> " << checked.types.display_name(binding.return_type);
+        if (binding.predicate_index != SEMA_TRAIT_PREDICATE_INVALID_INDEX) {
+            out << " predicate=" << binding.predicate_index;
+        }
+        append_part_origin(out, show_parts, binding.part_index);
         out << "\n";
     }
 

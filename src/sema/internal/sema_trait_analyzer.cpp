@@ -391,6 +391,7 @@ TraitMethodRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_requir
     info.range = requirement.range;
     info.is_unsafe = requirement.is_unsafe;
     info.is_variadic = requirement.is_variadic;
+    info.has_self_param = !requirement.params.empty() && requirement.params.front().name == "self";
     info.visibility = requirement.visibility;
     info.stable_key = this->core_.stable_member_key(
         trait.stable_id, StableSymbolKind::method, requirement.name_id, requirement.name, ordinal);
@@ -684,6 +685,231 @@ void SemanticAnalyzerCore::TraitAnalyzer::record_trait_impl_evidence(const Trait
     this->core_.state_.checked.trait_evidence.push_back(evidence);
 }
 
+const TraitMethodRequirement* SemanticAnalyzerCore::TraitAnalyzer::find_trait_method_requirement(
+    const TraitSignature& trait, const IdentId name_id, const bool require_self) const
+{
+    for (const TraitMethodRequirement& requirement : trait.requirements) {
+        if (requirement.name_id == name_id && (!require_self || requirement.has_self_param)) {
+            return &requirement;
+        }
+    }
+    return nullptr;
+}
+
+SemanticAnalyzerCore::TraitMethodCallResolution
+SemanticAnalyzerCore::TraitAnalyzer::make_param_env_trait_method_resolution(const TraitSignature& trait,
+    const TraitPredicate& predicate, const TraitMethodRequirement& requirement, const TypeHandle owner_type) const
+{
+    TraitMethodCallResolution resolution;
+    resolution.trait = &trait;
+    resolution.requirement = &requirement;
+    resolution.predicate = &predicate;
+    resolution.return_type =
+        this->substitute_requirement_type(requirement.return_type, owner_type, predicate.trait_args, trait);
+    resolution.param_types.reserve(requirement.param_types.size());
+    for (const TypeHandle param : requirement.param_types) {
+        resolution.param_types.push_back(
+            this->substitute_requirement_type(param, owner_type, predicate.trait_args, trait));
+    }
+    resolution.from_param_env = true;
+    resolution.found = true;
+    return resolution;
+}
+
+SemanticAnalyzerCore::TraitMethodCallResolution SemanticAnalyzerCore::TraitAnalyzer::make_impl_trait_method_resolution(
+    const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement,
+    const FunctionSignature& signature) const
+{
+    TraitMethodCallResolution resolution;
+    resolution.trait = &trait;
+    resolution.requirement = &requirement;
+    resolution.impl = &impl;
+    if (impl.predicate_index < this->core_.state_.checked.trait_predicates.size()) {
+        resolution.predicate = &this->core_.state_.checked.trait_predicates[impl.predicate_index];
+    }
+    resolution.signature = &signature;
+    resolution.return_type = signature.return_type;
+    resolution.param_types.assign(signature.param_types.begin(), signature.param_types.end());
+    resolution.found = true;
+    return resolution;
+}
+
+const TraitSignature* SemanticAnalyzerCore::TraitAnalyzer::trait_signature_for_impl(const TraitImplInfo& impl) const
+{
+    const auto found = this->core_.state_.checked.traits.find(ModuleLookupKey{
+        impl.trait_module.value,
+        impl.trait_name_id,
+    });
+    return found == this->core_.state_.checked.traits.end() ? nullptr : &found->second;
+}
+
+bool SemanticAnalyzerCore::TraitAnalyzer::trait_visible_for_method_call(
+    const TraitSignature& trait, const base::SourceRange& range)
+{
+    const TraitSignature* const visible = this->find_trait_in_visible_modules(trait.name_id, trait.name, range, false);
+    return visible != nullptr && visible->stable_id == trait.stable_id;
+}
+
+bool SemanticAnalyzerCore::TraitAnalyzer::visible_trait_has_method(
+    const IdentId name_id, const bool require_self, const base::SourceRange& range)
+{
+    for (const auto& entry : this->core_.state_.checked.traits) {
+        const TraitSignature& trait = entry.second;
+        if (!this->trait_visible_for_method_call(trait, range)) {
+            continue;
+        }
+        if (this->find_trait_method_requirement(trait, name_id, require_self) != nullptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+SemanticAnalyzerCore::TraitMethodCallResolution
+SemanticAnalyzerCore::TraitAnalyzer::resolve_param_env_trait_method_call(const TypeHandle owner_type,
+    const IdentId name_id, const std::string_view name, const base::SourceRange& range, const bool require_self,
+    const bool report_failure)
+{
+    TraitMethodCallResolution result;
+    if (this->core_.state_.flow.current_generic_context == nullptr || !is_valid(owner_type)
+        || owner_type.value >= this->core_.state_.checked.types.size()) {
+        return result;
+    }
+    const TypeInfo& owner = this->core_.state_.checked.types.get(owner_type);
+    if (owner.kind != TypeKind::generic_param || !is_valid(owner.generic_identity)) {
+        return result;
+    }
+
+    std::string first_trait_name;
+    for (const base::u32 predicate_index : this->core_.state_.flow.current_generic_context->predicate_indices) {
+        if (predicate_index >= this->core_.state_.checked.trait_predicates.size()) {
+            continue;
+        }
+        const TraitPredicate& predicate = this->core_.state_.checked.trait_predicates[predicate_index];
+        if (predicate.kind != TraitPredicateKind::declared_trait
+            || predicate.subject_param_identity != owner.generic_identity) {
+            continue;
+        }
+        const auto trait_found = this->core_.state_.checked.traits.find(ModuleLookupKey{
+            predicate.trait_module.value,
+            predicate.trait_name_id,
+        });
+        if (trait_found == this->core_.state_.checked.traits.end()) {
+            continue;
+        }
+        const TraitSignature& trait = trait_found->second;
+        const TraitMethodRequirement* const requirement =
+            this->find_trait_method_requirement(trait, name_id, require_self);
+        if (requirement == nullptr) {
+            continue;
+        }
+        if (result.found) {
+            TraitMethodCallResolution failure;
+            failure.reported_failure = report_failure;
+            if (report_failure) {
+                const std::string second_trait_name = this->trait_display_name(trait, predicate.trait_args);
+                this->core_.report_lookup(range,
+                    sema_ambiguous_trait_method_message(this->core_.state_.checked.types.display_name(owner_type), name,
+                        first_trait_name, second_trait_name));
+            }
+            return failure;
+        }
+        first_trait_name = this->trait_display_name(trait, predicate.trait_args);
+        result = this->make_param_env_trait_method_resolution(trait, predicate, *requirement, owner_type);
+    }
+
+    if (!result.found && report_failure && this->visible_trait_has_method(name_id, require_self, range)) {
+        this->core_.report_capability(range,
+            sema_trait_method_missing_bound_message(this->core_.state_.checked.types.display_name(owner_type), name));
+        result.reported_failure = true;
+    }
+    return result;
+}
+
+SemanticAnalyzerCore::TraitMethodCallResolution SemanticAnalyzerCore::TraitAnalyzer::resolve_impl_trait_method_call(
+    const TypeHandle owner_type, const IdentId name_id, const std::string_view name, const base::SourceRange& range,
+    const bool require_self, const bool report_failure)
+{
+    TraitMethodCallResolution result;
+    bool saw_visible_trait_method = false;
+    std::string first_trait_name;
+    for (const auto& entry : this->core_.state_.checked.trait_impls) {
+        const TraitImplInfo& impl = entry.second;
+        if (!this->core_.state_.checked.types.same(impl.self_type, owner_type)) {
+            continue;
+        }
+        const TraitSignature* const trait = this->trait_signature_for_impl(impl);
+        if (trait == nullptr || !this->trait_visible_for_method_call(*trait, range)) {
+            continue;
+        }
+        const TraitMethodRequirement* const requirement =
+            this->find_trait_method_requirement(*trait, name_id, require_self);
+        if (requirement == nullptr) {
+            continue;
+        }
+        saw_visible_trait_method = true;
+        const auto method = std::ranges::find_if(impl.methods, [&](const TraitImplMethodInfo& candidate) {
+            return candidate.name_id == name_id;
+        });
+        if (method == impl.methods.end()) {
+            continue;
+        }
+        const auto signature = this->core_.state_.checked.functions.find(method->function_key);
+        if (signature == this->core_.state_.checked.functions.end()) {
+            continue;
+        }
+        if (require_self && !signature->second.has_self_param) {
+            continue;
+        }
+        if (result.found) {
+            TraitMethodCallResolution failure;
+            failure.reported_failure = report_failure;
+            if (report_failure) {
+                const std::string second_trait_name = this->trait_display_name(*trait, impl.trait_args);
+                this->core_.report_lookup(range,
+                    sema_ambiguous_trait_method_message(this->core_.state_.checked.types.display_name(owner_type), name,
+                        first_trait_name, second_trait_name));
+            }
+            return failure;
+        }
+        first_trait_name = this->trait_display_name(*trait, impl.trait_args);
+        result = this->make_impl_trait_method_resolution(*trait, impl, *requirement, signature->second);
+    }
+    if (!result.found && report_failure
+        && (saw_visible_trait_method || this->visible_trait_has_method(name_id, require_self, range))) {
+        this->core_.report_capability(range,
+            sema_trait_method_impl_missing_message(this->core_.state_.checked.types.display_name(owner_type), name));
+        result.reported_failure = true;
+    }
+    return result;
+}
+
+SemanticAnalyzerCore::TraitMethodCallResolution SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_method_call(
+    const TypeHandle owner_type, const IdentId name_id, const std::string_view name, const base::SourceRange& range,
+    const bool require_self, const bool report_failure)
+{
+    if (!is_valid(owner_type) || owner_type.value >= this->core_.state_.checked.types.size()) {
+        return {};
+    }
+    TraitMethodCallResolution resolution =
+        this->resolve_param_env_trait_method_call(owner_type, name_id, name, range, require_self, false);
+    if (resolution.found) {
+        return resolution;
+    }
+    resolution = this->resolve_impl_trait_method_call(owner_type, name_id, name, range, require_self, false);
+    if (resolution.found) {
+        return resolution;
+    }
+    if (report_failure) {
+        if (this->core_.state_.checked.types.get(owner_type).kind == TypeKind::generic_param) {
+            return this->resolve_param_env_trait_method_call(owner_type, name_id, name, range, require_self, true);
+        } else {
+            return this->resolve_impl_trait_method_call(owner_type, name_id, name, range, require_self, true);
+        }
+    }
+    return {};
+}
+
 std::string SemanticAnalyzerCore::TraitAnalyzer::trait_display_name(
     const TraitSignature& trait, const std::span<const TypeHandle> trait_args) const
 {
@@ -896,6 +1122,14 @@ const TraitSignature* SemanticAnalyzerCore::find_trait_in_visible_modules(
     const IdentId name_id, const std::string_view name, const base::SourceRange& range, const bool report_unknown)
 {
     return TraitAnalyzer(*this).find_trait_in_visible_modules(name_id, name, range, report_unknown);
+}
+
+SemanticAnalyzerCore::TraitMethodCallResolution SemanticAnalyzerCore::resolve_trait_method_call(
+    const TypeHandle owner_type, const IdentId name_id, const std::string_view name, const base::SourceRange& range,
+    const bool require_self, const bool report_failure)
+{
+    return TraitAnalyzer(*this).resolve_trait_method_call(
+        owner_type, name_id, name, range, require_self, report_failure);
 }
 
 bool SemanticAnalyzerCore::is_trait_requirement_item(const syntax::ItemId item) const

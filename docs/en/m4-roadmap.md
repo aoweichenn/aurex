@@ -170,23 +170,39 @@ Risk controls:
 
 ### M4-WP5: Static Method Resolution And Lowering
 
+Status: complete.
+
 Goal: bind trait method calls from sema through lowering / backend.
 
 Deliverables:
 
-- Inherent methods win first; trait methods resolve through lexical bounds,
-  imported traits, and the impl registry.
-- Trait calls inside generic bodies bind to evidence.
-- Monomorphized calls become direct calls to concrete impl methods.
-- IR dump / LLVM / native smoke tests cover trait calls.
-- Diagnostics cover ambiguous trait methods, missing bounds, missing impls, and
-  method signature mismatch.
+- Inherent methods win first, and trait impl methods no longer enter ordinary
+  inherent method lookup, so same-name inherent and trait methods do not pollute
+  each other.
+- Trait calls inside generic bodies bind through the current `ParamEnv`
+  predicate as `TraitMethodCallBinding` facts.
+- Concrete receiver trait calls resolve through visible traits plus the impl
+  registry to a unique impl method and record the direct-call C symbol.
+- Associated/static `Type.method()` trait calls use the same visible-trait plus
+  impl-registry resolution path.
+- Monomorphized generic trait calls are re-analyzed to the concrete impl method,
+  and LLVM lowering emits a direct call to that implementation.
+- `--emit=checked` dumps `trait_method_calls` and distinguishes `param_env`
+  from `impl` dispatch.
+- IR dump / LLVM / native smoke tests cover receiver trait calls,
+  associated/static trait calls, function-valued field fallback, and
+  inherent-first priority.
+- Diagnostics cover ambiguous trait methods, missing bounds, receiver/associated
+  missing impls, and method signature mismatch.
 
 Risk controls:
 
 - No vtable emission.
 - No trait object layout.
 - Trait method resolution is not implicit global search.
+- Trait requirement method-local generics remain rejected by the existing rule;
+  generic trait impl blocks, associated types, dynamic trait objects, and RAII /
+  resource semantics are outside WP5.
 
 ### M4-WP6: Associated Type Model
 
@@ -256,8 +272,8 @@ Deliverables:
 
 ## Current Next Step
 
-M4-WP1, WP2, WP3, and WP4 are complete. The current next step is M4-WP5:
-Static Method Resolution And Lowering.
+M4-WP1, WP2, WP3, WP4, and WP5 are complete. The current next step is M4-WP6:
+Associated Type Model.
 
 WP4 has built on the WP3 registry by adding formal `TraitPredicate`,
 `TraitObligation`, `TraitEvidence`, and `ParamEnv` boundaries, lowering
@@ -266,8 +282,15 @@ overlap / candidate-rejection diagnostics. `Sized`, `Eq`, `Ord`, and `Hash`
 still use the old capability checks while also producing compiler-owned
 built-in trait predicate facts for later solver/evidence unification.
 
-WP5 is now the trait method resolution and lowering step: trait method calls in
-generic bodies must bind through the current ParamEnv / impl registry to unique
-evidence, then monomorphization lowers them to concrete impl-method direct
-calls. Associated types, dynamic trait objects, and RAII/resource semantics
-remain WP6 or later resource-system work.
+WP5 has closed trait method resolution and lowering: trait method calls inside
+generic bodies bind from the current ParamEnv as `param_env` call facts,
+concrete receivers bind through visible traits plus the impl registry as `impl`
+direct calls, inherent methods still win first, trait impl methods do not
+pollute ordinary method lookup, and LLVM IR directly calls the concrete impl
+method after monomorphization.
+
+WP6 is about the associated type model: without reopening WP5's static dispatch
+boundary, it must design trait associated type declarations, impl associated
+type assignments, canonical types for `Self.Item` / generic projections, and
+`Trait[Item = Type]` equality predicates. Dynamic trait objects and RAII /
+resource semantics remain separate future designs.

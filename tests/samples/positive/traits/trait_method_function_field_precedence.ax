@@ -1,0 +1,18 @@
+module trait_method_function_field_precedence;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+fn constant() -> i32 {
+    return 13;
+}
+
+struct Callback {
+    read: fn() -> i32;
+}
+
+fn main() -> i32 {
+    let callback = Callback { read: constant };
+    return callback.read() - 13;
+}

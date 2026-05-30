@@ -1,9 +1,9 @@
 # Next Steps
 
-## Current Highest Priority: M4-WP5 Static Method Resolution And Lowering
+## Current Highest Priority: M4-WP6 Associated Type Model
 
 The M3 release baseline is closed, and M4 trait/protocol work has completed
-WP1, WP2, WP3, and WP4. M4-WP1 fixed the
+WP1, WP2, WP3, WP4, and WP5. M4-WP1 fixed the
 [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
 with the staged route in the
 [M4 Trait / Protocol System Roadmap](m4-roadmap.md). M4-WP2 completed the token,
@@ -15,6 +15,12 @@ and `ParamEnvInfo`; `where T: Trait` lowers into predicates; built-in
 capabilities also produce compiler-owned built-in trait predicates; generic
 instantiation performs candidate rejection; and the trait impl registry now has
 canonical coherence fingerprints, orphan rules, and first-pass overlap checks.
+M4-WP5 completed static trait method resolution and lowering: inherent methods
+win first, trait impl methods do not pollute ordinary method lookup, generic
+body trait calls bind through `ParamEnv` as `param_env` call facts, concrete
+receivers bind through visible traits plus the impl registry as `impl` direct
+calls, and LLVM IR directly calls the concrete impl method after
+monomorphization.
 
 The current implemented surface is nominal static traits. The language keyword
 is `trait`, and conformance is explicit through `impl Trait for Type`.
@@ -29,22 +35,24 @@ tests live in normal repository locations:
 `tests/gtest/sema/trait_tests.cpp`,
 `tests/samples/positive/traits/trait_impl_registry.ax`,
 `tests/samples/positive/traits/trait_predicate_where_generic.ax`,
+`tests/samples/positive/traits/trait_method_static_dispatch.ax`,
+`tests/samples/positive/traits/trait_method_associated_static_dispatch.ax`,
+`tests/samples/positive/traits/trait_method_inherent_precedence.ax`,
+`tests/samples/positive/traits/trait_method_function_field_precedence.ax`,
 `tests/samples/negative/traits/*.ax`, and
 `tests/samples/imports/samplelib/traits.ax`.
 
-The next step is M4-WP5 only: trait method resolution and lowering. WP5 must
-bind trait method calls in generic bodies through the current ParamEnv / impl
-registry to unique evidence, handle inherent-method priority, trait-method
-ambiguity, missing bounds, missing impls, and signature mismatches, then lower
-monomorphized calls to concrete impl-method direct calls with IR dump / LLVM /
-native smoke coverage.
+The next step is M4-WP6 only: associated type model. WP6 must add trait
+associated type declarations, impl associated type assignments, canonical types
+for `Self.Item` / generic projections, `Trait[Item = Type]` equality
+predicates, and ambiguity / projection-cycle diagnostics without reopening the
+WP5 static-dispatch boundary.
 
-WP5 does not include associated types, dynamic trait objects, or RAII/resource
-semantics. Associated types move to WP6, and dynamic trait objects plus the
-resource system remain outside the current M4 target. The WP4 `where` grammar
-still supports only single identifier predicate names; qualified where
-predicates and generic trait predicate arguments remain future solver /
-associated-type work.
+WP6 does not include dynamic trait objects or RAII/resource semantics. Dynamic
+trait objects and the resource system remain outside the current M4 target. The
+WP4/WP5 `where` grammar still supports only single identifier predicate names;
+qualified where predicates and generic trait predicate arguments remain future
+solver / associated-type work.
 
 ## M3 Closure Context
 

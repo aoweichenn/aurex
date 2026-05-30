@@ -337,6 +337,54 @@ TEST(CoreUnit, TraitPredicatesLowerBuiltinAndDeclaredBoundsTogether)
         });
 }
 
+TEST(CoreUnit, TraitMethodCallsRecordParamEnvAndImplDispatchBindings)
+{
+    const std::string_view source = "module trait_method_dispatch_whitebox;\n"
+                                    "trait Reader { fn read(self: &Self) -> i32; }\n"
+                                    "struct File { value: i32; }\n"
+                                    "impl Reader for File {\n"
+                                    "  fn read(self: &File) -> i32 { return self.value; }\n"
+                                    "}\n"
+                                    "fn use_reader[T](value: &T) -> i32 where T: Reader {\n"
+                                    "  return value.read();\n"
+                                    "}\n"
+                                    "fn main() -> i32 {\n"
+                                    "  let file = File { value: 7 };\n"
+                                    "  return use_reader[File](&file);\n"
+                                    "}\n";
+
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    ASSERT_EQ(checked.trait_method_calls.size(), 2U);
+    const sema::TraitMethodCallBinding& param_env_call = checked.trait_method_calls[0];
+    EXPECT_EQ(param_env_call.dispatch, sema::TraitMethodDispatchKind::param_env);
+    EXPECT_EQ(param_env_call.predicate_index, 0U);
+    EXPECT_EQ(param_env_call.method_name, "read");
+    EXPECT_EQ(checked.types.display_name(param_env_call.self_type), "T");
+    EXPECT_EQ(checked.types.display_name(param_env_call.return_type), "i32");
+
+    const sema::TraitMethodCallBinding& impl_call = checked.trait_method_calls[1];
+    EXPECT_EQ(impl_call.dispatch, sema::TraitMethodDispatchKind::explicit_impl);
+    EXPECT_EQ(impl_call.predicate_index, 1U);
+    EXPECT_EQ(impl_call.method_name, "read");
+    EXPECT_EQ(checked.types.display_name(impl_call.self_type), "trait_method_dispatch_whitebox.File");
+    EXPECT_EQ(checked.types.display_name(impl_call.return_type), "i32");
+
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "trait_method_calls 2",
+            "trait_call #0 param_env T.read -> i32 predicate=0",
+            "trait_call #1 impl trait_method_dispatch_whitebox.File.read -> i32 predicate=1",
+            "fn method trait_method_dispatch_whitebox.File.read -> i32 "
+            "@c_name=m0_trait_method_dispatch_whitebox_File_trait_impl_Reader__read",
+        });
+
+    const sema::CheckedModule copied = checked;
+    ASSERT_EQ(copied.trait_method_calls.size(), 2U);
+    EXPECT_EQ(copied.trait_method_calls[0].method_name, "read");
+    EXPECT_EQ(copied.trait_method_calls[1].dispatch, sema::TraitMethodDispatchKind::explicit_impl);
+}
+
 TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
 {
     const std::vector<std::pair<std::string_view, std::string_view>> cases = {
@@ -573,6 +621,47 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
         });
     require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
+    const fs::path static_dispatch_source = positive_sample("traits", "trait_method_static_dispatch.ax");
+    const std::string static_dispatch_checked =
+        require_success(aurexc() + " --emit=checked " + q(static_dispatch_source)).output;
+    expect_contains_all(static_dispatch_checked,
+        {
+            "trait_method_calls 2",
+            "trait_call #0 param_env T.read -> i32 predicate=0",
+            "trait_call #1 impl trait_method_static_dispatch.File.read -> i32 predicate=1",
+            "@c_name=m0_trait_method_static_dispatch_File_trait_impl_Reader__read",
+        });
+    const std::string static_dispatch_llvm =
+        require_success(aurexc() + " --emit=llvm-ir " + q(static_dispatch_source)).output;
+    expect_contains(static_dispatch_llvm, "call i32 @m0_trait_method_static_dispatch_File_trait_impl_Reader__read");
+
+    const fs::path associated_static_source = positive_sample("traits", "trait_method_associated_static_dispatch.ax");
+    const std::string associated_static_checked =
+        require_success(aurexc() + " --emit=checked " + q(associated_static_source)).output;
+    expect_contains_all(associated_static_checked,
+        {
+            "trait_method_calls 1",
+            "trait_call #0 impl trait_method_associated_static_dispatch.File.answer -> i32 predicate=0",
+            "@c_name=m0_trait_method_associated_static_dispatch_File_trait_impl_Factory__answer",
+        });
+    const std::string associated_static_llvm =
+        require_success(aurexc() + " --emit=llvm-ir " + q(associated_static_source)).output;
+    expect_contains(
+        associated_static_llvm, "call i32 @m0_trait_method_associated_static_dispatch_File_trait_impl_Factory__answer");
+
+    const fs::path inherent_precedence_source = positive_sample("traits", "trait_method_inherent_precedence.ax");
+    const std::string inherent_precedence_checked =
+        require_success(aurexc() + " --emit=checked " + q(inherent_precedence_source)).output;
+    expect_contains_all(inherent_precedence_checked,
+        {
+            "trait_method_calls 0",
+            "@c_name=m0_trait_method_inherent_precedence_File_trait_impl_Reader__read",
+            "@c_name=m0_trait_method_inherent_precedence_File_read",
+        });
+    const std::string inherent_precedence_llvm =
+        require_success(aurexc() + " --emit=llvm-ir " + q(inherent_precedence_source)).output;
+    expect_contains(inherent_precedence_llvm, "call i32 @m0_trait_method_inherent_precedence_File_read");
+
     const fs::path qualified_source = positive_sample("traits", "trait_impl_qualified_registry.ax");
     const std::string qualified_checked =
         require_success(aurexc() + " --emit=checked " + sample_import_flags() + " " + q(qualified_source)).output;
@@ -604,6 +693,11 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
     expect_negative_trait_sample("trait_impl_private_trait.ax", "trait is private: samplelib.traits.Hidden");
     expect_negative_trait_sample(
         "trait_impl_unknown_qualified_trait.ax", "unknown trait in module samplelib.traits: Missing");
+    expect_negative_trait_sample("trait_method_ambiguous_bound.ax", "ambiguous trait method `read`");
+    expect_negative_trait_sample("trait_method_ambiguous_impl.ax", "ambiguous trait method `read`");
+    expect_negative_trait_sample("trait_method_associated_missing_impl.ax", "has no visible impl for trait method");
+    expect_negative_trait_sample("trait_method_missing_bound.ax", "requires a trait bound");
+    expect_negative_trait_sample("trait_method_missing_impl.ax", "has no visible impl for trait method");
 
     const fs::path predicate_source = positive_sample("traits", "trait_predicate_where_generic.ax");
     const std::string predicate_checked = require_success(aurexc() + " --emit=checked " + q(predicate_source)).output;

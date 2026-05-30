@@ -1092,6 +1092,26 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
     return "type " + std::string(type_name) + " does not satisfy trait predicate `" + std::string(trait_name) + "`";
 }
 
+[[nodiscard]] inline std::string sema_ambiguous_trait_method_message(const std::string_view type_name,
+    const std::string_view method_name, const std::string_view first_trait, const std::string_view second_trait)
+{
+    return "ambiguous trait method `" + std::string(method_name) + "` for type " + std::string(type_name)
+        + ": candidates from " + std::string(first_trait) + " and " + std::string(second_trait);
+}
+
+[[nodiscard]] inline std::string sema_trait_method_missing_bound_message(
+    const std::string_view type_name, const std::string_view method_name)
+{
+    return "trait method `" + std::string(method_name) + "` requires a trait bound for type " + std::string(type_name);
+}
+
+[[nodiscard]] inline std::string sema_trait_method_impl_missing_message(
+    const std::string_view type_name, const std::string_view method_name)
+{
+    return "type " + std::string(type_name) + " has no visible impl for trait method `" + std::string(method_name)
+        + "`";
+}
+
 [[nodiscard]] inline std::string sema_ambiguous_function_name_message(
     const std::string_view name, const std::string_view first_module, const std::string_view second_module)
 {

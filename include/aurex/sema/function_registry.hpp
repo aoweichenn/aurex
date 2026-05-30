@@ -16,17 +16,24 @@ struct CheckedModule;
 struct Symbol;
 
 struct FunctionRegistrationRequest {
+    explicit FunctionRegistrationRequest(const syntax::ItemNode& function_item) noexcept : item(function_item)
+    {
+    }
+
     const syntax::ItemNode& item;
     syntax::ModuleId owner = syntax::INVALID_MODULE_ID;
     FunctionLookupKey key;
     std::string_view c_name;
     TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
+    syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
+    IdentId trait_name_id = INVALID_IDENT_ID;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     std::span<const TypeHandle> param_types;
     syntax::ItemId item_id = syntax::INVALID_ITEM_ID;
     base::u32 part_index = 0;
     StableDefId stable_id;
     IncrementalKey incremental_key;
+    bool is_trait_impl_method = false;
 };
 
 class FunctionRegistry final {

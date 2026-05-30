@@ -727,6 +727,9 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
         std::string c_name = this->core_.c_symbol_name(this->core_.state_.flow.current_module, item.name);
         if (item.kind == syntax::ItemKind::fn_decl) {
             const bool is_method = syntax::is_valid(item.impl_type);
+            const bool is_trait_impl_method = is_method && syntax::is_valid(item.trait_type);
+            const std::string trait_impl_method_key =
+                is_trait_impl_method ? this->core_.trait_impl_method_key_name(item) : std::string{};
             TypeHandle method_owner_type = INVALID_TYPE_HANDLE;
             if (!is_method && this->core_.state_.generics.function_templates.contains(item_type_key)) {
                 this->core_.report_duplicate(item.range,
@@ -746,9 +749,14 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
                         this->core_.report_general(item.range, std::string(SEMA_IMPL_TARGET_NAMED_TYPE));
                     }
                 }
-                key = this->core_.method_function_lookup_key(
-                    this->core_.state_.flow.current_module, method_owner_type, item.name_id);
-                c_name = this->core_.method_c_symbol_name(method_owner_type, item.name);
+                key = is_trait_impl_method
+                    ? this->core_.method_function_lookup_key(this->core_.state_.flow.current_module, method_owner_type,
+                          this->core_.intern_generated_key(trait_impl_method_key))
+                    : this->core_.method_function_lookup_key(
+                          this->core_.state_.flow.current_module, method_owner_type, item.name_id);
+                c_name = is_trait_impl_method
+                    ? this->core_.trait_impl_method_c_symbol_name(method_owner_type, trait_impl_method_key, item.name)
+                    : this->core_.method_c_symbol_name(method_owner_type, item.name);
             }
             const bool has_explicit_return = syntax::is_valid(item.return_type);
             TypeHandle return_type = INVALID_TYPE_HANDLE;
@@ -794,7 +802,8 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
                         this->core_.report_general(item.params.front().range, std::string(SEMA_METHOD_SELF_TYPE));
                     }
                 }
-                if (this->core_.type_member_name_exists(method_owner_type, item.name_id, item.name)) {
+                if (!is_trait_impl_method
+                    && this->core_.type_member_name_exists(method_owner_type, item.name_id, item.name)) {
                     this->core_.report_duplicate(item.range,
                         sema_duplicate_type_member_message(
                             this->core_.state_.checked.types.display_name(method_owner_type), item.name));
@@ -806,8 +815,9 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
             std::string stable_function_name(item.name);
             StableSymbolKind stable_function_kind = StableSymbolKind::function;
             if (is_method && is_valid(method_owner_type)) {
-                stable_function_name =
-                    this->core_.state_.checked.types.display_name(method_owner_type) + "." + std::string(item.name);
+                stable_function_name = is_trait_impl_method
+                    ? this->core_.state_.checked.types.display_name(method_owner_type) + "." + trait_impl_method_key
+                    : this->core_.state_.checked.types.display_name(method_owner_type) + "." + std::string(item.name);
                 stable_function_kind = StableSymbolKind::method;
             }
             const StableDefId stable_id =
@@ -816,19 +826,26 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
             const IncrementalKey incremental_key = this->core_.stable_incremental_key(stable_id,
                 this->core_.function_incremental_fingerprint(
                     stable_function_name, return_type, param_types, is_method, item.is_variadic));
-            functions.register_function(FunctionRegistrationRequest{
-                item,
-                this->core_.state_.flow.current_module,
-                key,
-                c_name,
-                method_owner_type,
-                return_type,
-                param_types,
-                syntax::ItemId{item_index},
-                this->core_.item_part_index(syntax::ItemId{item_index}),
-                stable_id,
-                incremental_key,
-            });
+            IdentId trait_name_id = INVALID_IDENT_ID;
+            if (is_trait_impl_method && item.trait_type.value < this->core_.ctx_.module.types.size()) {
+                trait_name_id = this->core_.ctx_.module.types[item.trait_type.value].name_id;
+            }
+            FunctionRegistrationRequest request(item);
+            request.owner = this->core_.state_.flow.current_module;
+            request.key = key;
+            request.c_name = c_name;
+            request.method_owner_type = method_owner_type;
+            request.trait_module =
+                is_trait_impl_method ? this->core_.state_.flow.current_module : syntax::INVALID_MODULE_ID;
+            request.trait_name_id = trait_name_id;
+            request.return_type = return_type;
+            request.param_types = std::span<const TypeHandle>{param_types.data(), param_types.size()};
+            request.item_id = syntax::ItemId{item_index};
+            request.part_index = this->core_.item_part_index(syntax::ItemId{item_index});
+            request.stable_id = stable_id;
+            request.incremental_key = incremental_key;
+            request.is_trait_impl_method = is_trait_impl_method;
+            functions.register_function(request);
             if (const auto found = this->core_.state_.checked.functions.find(key);
                 found != this->core_.state_.checked.functions.end()) {
                 this->core_.index_function_lookup(found->second);

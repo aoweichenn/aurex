@@ -126,21 +126,29 @@ inheritance、closure、async/generator、derive、macro 或 package manager 混
 
 ### M4-WP5：Static Method Resolution And Lowering
 
+状态：已完成。
+
 目标：让 trait method call 从 sema 绑定到 lowering / backend。
 
 交付：
 
-- inherent method 优先，trait method 按 lexical bounds / imported trait / impl registry 解析。
-- generic body 中 trait call 绑定到 evidence。
-- 单态化后生成具体 impl method direct call。
-- IR dump / LLVM / native smoke 覆盖 trait call。
-- 诊断覆盖 ambiguous trait method、bound missing、impl missing 和 method signature mismatch。
+- inherent method 优先；trait impl method 不再进入普通 inherent method lookup，避免同名 inherent/trait method 污染。
+- generic body 中 trait call 通过当前 `ParamEnv` predicate 绑定为 `TraitMethodCallBinding`。
+- concrete receiver trait call 通过 visible trait + impl registry 解析到唯一 impl method，并记录 direct-call c symbol。
+- associated/static 形式的 `Type.method()` trait call 也走同一条 visible trait + impl registry 解析路径。
+- 单态化后的 generic trait call 会重新分析到 concrete impl method，LLVM lowering 生成具体 impl method direct call。
+- `--emit=checked` 输出 `trait_method_calls`，区分 `param_env` 和 `impl` dispatch。
+- IR dump / LLVM / native smoke 覆盖 receiver trait call、associated/static trait call、function-valued field fallback
+  和 inherent-first 优先级。
+- 诊断覆盖 ambiguous trait method、bound missing、receiver/associated impl missing 和 method signature mismatch。
 
 风险控制：
 
 - 不生成 vtable。
 - 不引入 trait object layout。
 - 不把 trait method resolution 做成隐式全局搜索。
+- trait requirement method-local generic 仍按现有规则拒绝；generic trait impl block、associated type、dynamic trait
+  object 和 RAII/resource semantics 不进入 WP5。
 
 ### M4-WP6：Associated Type Model
 
@@ -199,13 +207,17 @@ inheritance、closure、async/generator、derive、macro 或 package manager 混
 
 ## 当前下一步
 
-M4-WP1、WP2、WP3 和 WP4 已完成。当前下一步是 M4-WP5：Static Method Resolution And Lowering。
+M4-WP1、WP2、WP3、WP4 和 WP5 已完成。当前下一步是 M4-WP6：Associated Type Model。
 
 WP4 已在 WP3 registry 之上补齐正式 `TraitPredicate` / `TraitObligation` / `TraitEvidence` / `ParamEnv`
 边界，把 `where T: TraitA + TraitB` 降低为 predicate，并实现第一版 orphan / overlap / candidate rejection
 诊断。`Sized`、`Eq`、`Ord`、`Hash` 现在保持旧 capability 检查，同时进入 compiler-owned builtin trait predicate
 fact，用于后续 solver/evidence 统一。
 
-WP5 的核心是 trait method resolution 和 lowering：generic body 中的 trait method call 必须从当前 ParamEnv /
-impl registry 绑定到唯一 evidence，单态化后降为具体 impl method direct call。associated type、dynamic trait
-object 和 RAII/resource semantics 仍分别由 WP6 和后续资源系统设计承接。
+WP5 已把 trait method resolution 和 lowering 收口：generic body 中的 trait method call 会从当前 ParamEnv
+绑定为 `param_env` call fact，concrete receiver 会通过 visible trait + impl registry 绑定为 `impl` direct call；
+inherent method 继续优先，trait impl method 不污染普通 method lookup；单态化后 LLVM IR 直接调用具体 impl method。
+
+WP6 的核心是 associated type model：在不重新打开 WP5 静态分派边界的前提下，设计 trait associated type
+declaration、impl associated type assignment、`Self.Item` / generic projection 的 canonical type，以及
+`Trait[Item = Type]` equality predicate。dynamic trait object 和 RAII/resource semantics 仍由后续独立设计承接。

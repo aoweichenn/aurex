@@ -16,6 +16,8 @@ public:
     void validate_trait_impls();
     [[nodiscard]] const TraitSignature* find_trait_in_visible_modules(
         IdentId name_id, std::string_view name, const base::SourceRange& range, bool report_unknown = true);
+    [[nodiscard]] TraitMethodCallResolution resolve_trait_method_call(TypeHandle owner_type, IdentId name_id,
+        std::string_view name, const base::SourceRange& range, bool require_self, bool report_failure = true);
 
 private:
     struct TraitAnalysisScope;
@@ -49,6 +51,19 @@ private:
     [[nodiscard]] base::u32 record_trait_impl_predicate(
         const TraitSignature& trait, TraitImplInfo& impl_info, query::StableFingerprint128 fingerprint) const;
     void record_trait_impl_evidence(const TraitImplInfo& impl_info) const;
+    [[nodiscard]] const TraitMethodRequirement* find_trait_method_requirement(
+        const TraitSignature& trait, IdentId name_id, bool require_self) const;
+    [[nodiscard]] TraitMethodCallResolution make_param_env_trait_method_resolution(const TraitSignature& trait,
+        const TraitPredicate& predicate, const TraitMethodRequirement& requirement, TypeHandle owner_type) const;
+    [[nodiscard]] TraitMethodCallResolution make_impl_trait_method_resolution(const TraitSignature& trait,
+        const TraitImplInfo& impl, const TraitMethodRequirement& requirement, const FunctionSignature& signature) const;
+    [[nodiscard]] const TraitSignature* trait_signature_for_impl(const TraitImplInfo& impl) const;
+    [[nodiscard]] bool trait_visible_for_method_call(const TraitSignature& trait, const base::SourceRange& range);
+    [[nodiscard]] bool visible_trait_has_method(IdentId name_id, bool require_self, const base::SourceRange& range);
+    [[nodiscard]] TraitMethodCallResolution resolve_param_env_trait_method_call(TypeHandle owner_type, IdentId name_id,
+        std::string_view name, const base::SourceRange& range, bool require_self, bool report_failure);
+    [[nodiscard]] TraitMethodCallResolution resolve_impl_trait_method_call(TypeHandle owner_type, IdentId name_id,
+        std::string_view name, const base::SourceRange& range, bool require_self, bool report_failure);
     [[nodiscard]] bool trait_impl_method_matches(const TraitMethodRequirement& requirement,
         const FunctionSignature& signature, TypeHandle self_type, std::span<const TypeHandle> trait_args,
         const TraitSignature& trait) const;

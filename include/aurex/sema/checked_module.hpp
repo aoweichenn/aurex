@@ -158,6 +158,7 @@ struct TraitMethodRequirement {
     base::SourceRange range{};
     bool is_unsafe = false;
     bool is_variadic = false;
+    bool has_self_param = false;
     syntax::Visibility visibility = syntax::Visibility::public_;
     StableMemberKey stable_key;
     base::u32 ordinal = 0;
@@ -243,6 +244,11 @@ enum class TraitEvidenceKind {
     explicit_impl,
 };
 
+enum class TraitMethodDispatchKind {
+    param_env,
+    explicit_impl,
+};
+
 struct TraitPredicate {
     base::u32 index = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
     TraitPredicateKind kind = TraitPredicateKind::declared_trait;
@@ -280,6 +286,25 @@ struct TraitEvidence {
     TraitImplLookupKey impl_key;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+struct TraitMethodCallBinding {
+    syntax::ExprId call_expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId callee_expr = syntax::INVALID_EXPR_ID;
+    TraitMethodDispatchKind dispatch = TraitMethodDispatchKind::param_env;
+    base::u32 predicate_index = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    query::StableFingerprint128 predicate_fingerprint;
+    TraitImplLookupKey impl_key;
+    FunctionLookupKey function_key;
+    syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
+    IdentId trait_name_id = INVALID_IDENT_ID;
+    InternedText method_name;
+    IdentId method_name_id = INVALID_IDENT_ID;
+    TypeHandle receiver_type = INVALID_TYPE_HANDLE;
+    TypeHandle self_type = INVALID_TYPE_HANDLE;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
     base::SourceRange range{};
     base::u32 part_index = 0;
 };
@@ -338,6 +363,7 @@ using CheckedTraitImplMap = SemaMap<TraitImplLookupKey, TraitImplInfo, TraitImpl
 using TraitPredicateList = SemaVector<TraitPredicate>;
 using TraitObligationList = SemaVector<TraitObligation>;
 using TraitEvidenceList = SemaVector<TraitEvidence>;
+using TraitMethodCallBindingList = SemaVector<TraitMethodCallBinding>;
 using ParamEnvList = SemaVector<ParamEnvInfo>;
 
 enum class CoercionKind {
@@ -648,6 +674,7 @@ public:
     TraitPredicateList trait_predicates;
     TraitObligationList trait_obligations;
     TraitEvidenceList trait_evidence;
+    TraitMethodCallBindingList trait_method_calls;
     ParamEnvList param_envs;
     SemaVector<GenericTemplateSignatureInfo> generic_template_signatures;
     SemaDeque<GenericSideTableLayout> generic_side_table_layouts;
@@ -687,6 +714,7 @@ public:
     [[nodiscard]] TraitPredicate make_trait_predicate() const;
     [[nodiscard]] TraitObligation make_trait_obligation() const;
     [[nodiscard]] TraitEvidence make_trait_evidence() const;
+    [[nodiscard]] TraitMethodCallBinding make_trait_method_call_binding() const;
     [[nodiscard]] ParamEnvInfo make_param_env_info() const;
     [[nodiscard]] GenericTemplateSignatureInfo clone_generic_template_signature_info(
         const GenericTemplateSignatureInfo& other);
@@ -704,6 +732,7 @@ public:
     [[nodiscard]] TraitPredicate clone_trait_predicate(const TraitPredicate& other);
     [[nodiscard]] TraitObligation clone_trait_obligation(const TraitObligation& other) const;
     [[nodiscard]] TraitEvidence clone_trait_evidence(const TraitEvidence& other) const;
+    [[nodiscard]] TraitMethodCallBinding clone_trait_method_call_binding(const TraitMethodCallBinding& other);
     [[nodiscard]] ParamEnvInfo clone_param_env_info(const ParamEnvInfo& other);
     [[nodiscard]] GenericSideTableLayout clone_generic_side_table_layout(const GenericSideTableLayout& other) const;
     [[nodiscard]] GenericEnumInstanceInfo clone_generic_enum_instance(const GenericEnumInstanceInfo& other) const;

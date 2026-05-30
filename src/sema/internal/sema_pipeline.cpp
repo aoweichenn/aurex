@@ -243,6 +243,7 @@ void SemanticAnalysisPipeline::reserve_analysis_storage()
     this->core_.state_.checked.trait_predicates.reserve(item_counts.trait_impls + item_counts.items);
     this->core_.state_.checked.trait_obligations.reserve(item_counts.items);
     this->core_.state_.checked.trait_evidence.reserve(item_counts.trait_impls + item_counts.items);
+    this->core_.state_.checked.trait_method_calls.reserve(item_counts.items);
     this->core_.state_.checked.param_envs.reserve(item_counts.items);
     this->core_.state_.types.named_types.reserve(item_counts.type_items);
     this->core_.state_.generics.struct_templates.reserve(item_counts.generic_struct_templates);

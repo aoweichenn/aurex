@@ -1,0 +1,24 @@
+module trait_method_static_dispatch;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+}
+
+struct File {
+    value: i32;
+}
+
+impl Reader for File {
+    fn read(self: &File) -> i32 {
+        return self.value;
+    }
+}
+
+fn use_reader[T](value: &T) -> i32 where T: Reader {
+    return value.read();
+}
+
+fn main() -> i32 {
+    let file = File { value: 42 };
+    return use_reader[File](&file) - 42;
+}

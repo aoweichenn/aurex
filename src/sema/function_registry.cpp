@@ -51,6 +51,8 @@ void FunctionRegistry::register_function(const FunctionRegistrationRequest& requ
     signature.c_name = this->checked_.intern_text(abi_or_c_name(item, request.c_name));
     signature.module = request.owner;
     signature.method_owner_type = request.method_owner_type;
+    signature.trait_module = request.trait_module;
+    signature.trait_name_id = request.trait_name_id;
     signature.return_type = request.return_type;
     signature.param_types = this->checked_.copy_type_handle_list(request.param_types);
     signature.range = item.range;
@@ -62,6 +64,7 @@ void FunctionRegistry::register_function(const FunctionRegistrationRequest& requ
     signature.has_definition = !is_prototype && !item.is_extern_c;
     signature.is_method = syntax::is_valid(item.impl_type);
     signature.has_self_param = signature.is_method && !item.params.empty() && item.params.front().name == "self";
+    signature.is_trait_impl_method = request.is_trait_impl_method;
     signature.visibility = item.visibility;
     signature.prototype_item = is_prototype ? request.item_id : syntax::INVALID_ITEM_ID;
     signature.definition_item = signature.has_definition ? request.item_id : syntax::INVALID_ITEM_ID;

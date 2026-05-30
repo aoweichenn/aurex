@@ -1,0 +1,19 @@
+module trait_method_associated_static_dispatch;
+
+trait Factory {
+    fn answer() -> i32;
+}
+
+struct File {
+    value: i32;
+}
+
+impl Factory for File {
+    fn answer() -> i32 {
+        return 42;
+    }
+}
+
+fn main() -> i32 {
+    return File.answer() - 42;
+}

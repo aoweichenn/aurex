@@ -146,6 +146,19 @@ private:
         query::ParamEnvKey param_env_key;
     };
 
+    struct TraitMethodCallResolution {
+        const TraitSignature* trait = nullptr;
+        const TraitMethodRequirement* requirement = nullptr;
+        const TraitImplInfo* impl = nullptr;
+        const TraitPredicate* predicate = nullptr;
+        const FunctionSignature* signature = nullptr;
+        std::vector<TypeHandle> param_types;
+        TypeHandle return_type = INVALID_TYPE_HANDLE;
+        bool from_param_env = false;
+        bool found = false;
+        bool reported_failure = false;
+    };
+
     struct GenericSideTableScope {
         GenericSideTables* side_tables = nullptr;
         bool cache_syntax_types = true;
@@ -450,6 +463,7 @@ private:
         SemaMap<MethodLookupKey, const FunctionSignature*, MethodLookupKeyHash> methods_by_name;
         SemaMap<ModuleLookupKey, const TraitSignature*, ModuleLookupKeyHash> traits_by_name;
         base::usize internal_function_lookup_exclusions = 0;
+        base::usize internal_global_value_lookup_exclusions = 0;
         SemaMap<ModuleLookupKey, const Symbol*, ModuleLookupKeyHash> global_values_by_name;
         SemaMap<MethodLookupKey, const Symbol*, MethodLookupKeyHash> method_global_values_by_name;
         SemaMap<ModuleLookupKey, const EnumCaseInfo*, ModuleLookupKeyHash> enum_cases_by_module_name;
@@ -517,6 +531,8 @@ private:
     [[nodiscard]] CapabilitySet& capability_bucket(CapabilityIdentityMap& map, GenericParamIdentity key) const;
     [[nodiscard]] const TraitSignature* find_trait_in_visible_modules(
         IdentId name_id, std::string_view name, const base::SourceRange& range, bool report_unknown = true);
+    [[nodiscard]] TraitMethodCallResolution resolve_trait_method_call(TypeHandle owner_type, IdentId name_id,
+        std::string_view name, const base::SourceRange& range, bool require_self, bool report_failure = true);
     [[nodiscard]] query::StableFingerprint128 generic_trait_predicate_fingerprint(const GenericTemplateInfo& info,
         base::usize param_index, TraitPredicateKind kind, CapabilityKind capability, const TraitSignature* trait) const;
     [[nodiscard]] bool generic_param_has_capability(std::string_view param, CapabilityKind capability) const;
@@ -867,8 +883,11 @@ private:
     [[nodiscard]] std::string c_symbol_name(syntax::ModuleId module, std::string_view name) const;
     [[nodiscard]] std::string generic_template_key_prefix(
         syntax::ModuleId module, IdentId name_id, std::string_view fallback_name = {}) const;
-    [[nodiscard]] FunctionLookupKey function_key(const syntax::ItemNode& function, syntax::ItemId function_id) const;
+    [[nodiscard]] FunctionLookupKey function_key(const syntax::ItemNode& function, syntax::ItemId function_id);
     [[nodiscard]] std::string method_c_symbol_name(TypeHandle owner_type, std::string_view name) const;
+    [[nodiscard]] std::string trait_impl_method_key_name(const syntax::ItemNode& function) const;
+    [[nodiscard]] std::string trait_impl_method_c_symbol_name(
+        TypeHandle owner_type, std::string_view trait_key, std::string_view name) const;
     [[nodiscard]] ModuleLookupKey module_lookup_key(syntax::ModuleId module, IdentId name) const noexcept;
     [[nodiscard]] MethodLookupKey method_lookup_key(
         syntax::ModuleId module, TypeHandle owner_type, IdentId name) const noexcept;

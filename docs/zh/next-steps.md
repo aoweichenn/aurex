@@ -1,15 +1,18 @@
 # 下一步计划
 
-## 当前最高优先级：M4-WP5 Static Method Resolution And Lowering
+## 当前最高优先级：M4-WP6 Associated Type Model
 
-M3 release baseline 已收口，M4 trait/protocol 系统已完成 WP1、WP2、WP3 和 WP4。M4-WP1 固定
+M3 release baseline 已收口，M4 trait/protocol 系统已完成 WP1、WP2、WP3、WP4 和 WP5。M4-WP1 固定
 [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)，阶段路线见
 [M4 Trait / Protocol 系统路线图](m4-roadmap.md)。M4-WP2 已完成 token、parser、AST、AST dump、lossless
 syntax 和 query identity scaffold。M4-WP3 已完成 trait declaration 和 impl registry 的 query-backed sema
 接入。M4-WP4 已完成 coherence / generic predicates：`CheckedModule` 记录 `TraitPredicate`、
 `TraitObligation`、`TraitEvidence` 和 `ParamEnvInfo`；`where T: Trait` 降低为 predicate；builtin
 capability 同步进入 compiler-owned builtin trait predicate；generic instantiation 做 candidate rejection；
-trait impl registry 具备 canonical coherence fingerprint、orphan rule 和 first-pass overlap check。
+trait impl registry 具备 canonical coherence fingerprint、orphan rule 和 first-pass overlap check。M4-WP5
+已完成 static trait method resolution and lowering：inherent method 优先，trait impl method 不污染普通
+method lookup，generic body trait call 通过 `ParamEnv` 绑定为 `param_env` call fact，concrete receiver
+通过 visible trait + impl registry 绑定为 `impl` direct call，LLVM IR 单态化后直接调用具体 impl method。
 
 当前真实能力：Aurex 使用 nominal static trait，语言关键字为 `trait`，conformance 通过显式
 `impl Trait for Type` 给出。`CheckedModule::traits` 记录 `TraitSignature`、generic params、visibility 和结构化
@@ -18,17 +21,20 @@ requirement；`CheckedModule::trait_impls` 记录 exact impl facts；sema 已覆
 非 trait impl target、非 named self target、重复 exact impl、orphan rule、first-pass overlap 和 generic candidate
 rejection。相关测试全部位于常规仓库测试目录：
 `tests/gtest/sema/trait_tests.cpp`、`tests/samples/positive/traits/trait_impl_registry.ax`、
-`tests/samples/positive/traits/trait_predicate_where_generic.ax`、`tests/samples/negative/traits/*.ax` 和
+`tests/samples/positive/traits/trait_predicate_where_generic.ax`、
+`tests/samples/positive/traits/trait_method_static_dispatch.ax`、
+`tests/samples/positive/traits/trait_method_associated_static_dispatch.ax`、
+`tests/samples/positive/traits/trait_method_inherent_precedence.ax`、
+`tests/samples/positive/traits/trait_method_function_field_precedence.ax`、`tests/samples/negative/traits/*.ax` 和
 `tests/samples/imports/samplelib/traits.ax`。
 
-下一步只进入 M4-WP5：trait method resolution and lowering。WP5 要让 generic body 中的 trait method call 从当前
-ParamEnv / impl registry 绑定到唯一 evidence，处理 inherent method 优先、trait method ambiguity、bound missing、
-impl missing 和 signature mismatch，单态化后降低为具体 impl method direct call，并补 IR dump / LLVM / native
-smoke 覆盖。
+下一步只进入 M4-WP6：associated type model。WP6 要在不重新打开 WP5 静态分派边界的前提下，新增 trait
+associated type declaration、impl associated type assignment、`Self.Item` / generic projection 的 canonical
+type、`Trait[Item = Type]` equality predicate，以及 ambiguity / projection cycle diagnostics。
 
-WP5 不做 associated type、dynamic trait object 或 RAII/resource semantics。associated type 进入 WP6；dynamic
-trait object 和资源系统继续保持 M4 当前非目标。WP4 的 `where` grammar 仍只支持单个 identifier predicate 名称；
-qualified where predicate 和 generic trait predicate arguments 后续再进入 solver/associated type 阶段。
+WP6 不做 dynamic trait object 或 RAII/resource semantics。dynamic trait object 和资源系统继续保持 M4 当前非目标。
+WP4/WP5 的 `where` grammar 仍只支持单个 identifier predicate 名称；qualified where predicate 和 generic trait
+predicate arguments 后续再进入 solver/associated type 阶段。
 
 ## M3 收口背景
 

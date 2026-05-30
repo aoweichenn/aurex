@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <sema/internal/sema_core.hpp>
 
@@ -602,6 +603,63 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
     TypeHandle receiver_type = INVALID_TYPE_HANDLE;
     bool has_receiver = false;
     bool receiver_valid = true;
+    const auto finish_trait_method_call = [&](const TraitMethodCallResolution& resolution,
+                                              const TypeHandle owner_type) -> TypeHandle {
+        FunctionSignature param_env_signature = this->state_.checked.make_function_signature();
+        const FunctionSignature* call_signature = resolution.signature;
+        if (call_signature == nullptr) {
+            param_env_signature.name = this->state_.checked.intern_text(name);
+            param_env_signature.name_id = callee.field_name_id;
+            param_env_signature.return_type = resolution.return_type;
+            param_env_signature.param_types = this->state_.checked.copy_type_handle_list(resolution.param_types);
+            param_env_signature.range = callee.range;
+            param_env_signature.is_unsafe = resolution.requirement != nullptr && resolution.requirement->is_unsafe;
+            param_env_signature.is_variadic = resolution.requirement != nullptr && resolution.requirement->is_variadic;
+            param_env_signature.is_method = true;
+            param_env_signature.has_self_param =
+                resolution.requirement != nullptr && resolution.requirement->has_self_param;
+            call_signature = &param_env_signature;
+        } else {
+            this->ensure_function_return_known(*call_signature, callee.range);
+            this->record_expr_c_name(expr.callee, call_signature->c_name);
+        }
+        this->validate_unsafe_call(*call_signature, callee.range);
+        const base::usize receiver_count = has_receiver ? SEMA_RECEIVER_ARGUMENT_COUNT : 0;
+        const bool trait_receiver_valid =
+            !has_receiver || this->method_receiver_matches(*call_signature, receiver_type, callee.object);
+        if (!trait_receiver_valid || resolution.param_types.size() < receiver_count) {
+            return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+        }
+        this->validate_call_arguments(expr, name, resolution.param_types, receiver_count, call_signature->is_variadic);
+        TraitMethodCallBinding binding = this->state_.checked.make_trait_method_call_binding();
+        binding.call_expr = expr_id;
+        binding.callee_expr = expr.callee;
+        binding.dispatch =
+            resolution.from_param_env ? TraitMethodDispatchKind::param_env : TraitMethodDispatchKind::explicit_impl;
+        if (resolution.predicate != nullptr) {
+            binding.predicate_index = resolution.predicate->index;
+            binding.predicate_fingerprint = resolution.predicate->canonical_fingerprint;
+        }
+        if (resolution.impl != nullptr) {
+            binding.impl_key = resolution.impl->key;
+        }
+        if (resolution.signature != nullptr) {
+            binding.function_key = resolution.signature->semantic_key;
+        }
+        if (resolution.trait != nullptr) {
+            binding.trait_module = resolution.trait->module;
+            binding.trait_name_id = resolution.trait->name_id;
+        }
+        binding.method_name = this->state_.checked.intern_text(name);
+        binding.method_name_id = callee.field_name_id;
+        binding.receiver_type = receiver_type;
+        binding.self_type = owner_type;
+        binding.return_type = resolution.return_type;
+        binding.range = callee.range;
+        binding.part_index = this->item_part_index(this->state_.flow.current_item);
+        this->state_.checked.trait_method_calls.push_back(std::move(binding));
+        return this->record_expr_type(expr_id, resolution.return_type);
+    };
 
     if (syntax::is_valid(callee.object) && callee.object.value < this->ctx_.module.exprs.size()) {
         const TypeHandle associated_owner = this->resolve_type_selector(callee.object, false);
@@ -617,8 +675,17 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
                 }
             }
             if (signature == nullptr) {
-                static_cast<void>(this->find_method_in_visible_modules(
-                    associated_owner, callee.field_name_id, callee.field_name, callee.range, false));
+                const TraitMethodCallResolution trait_resolution = this->resolve_trait_method_call(
+                    associated_owner, callee.field_name_id, callee.field_name, callee.range, false, false);
+                if (trait_resolution.found) {
+                    return finish_trait_method_call(trait_resolution, associated_owner);
+                }
+                const TraitMethodCallResolution reported_trait_resolution = this->resolve_trait_method_call(
+                    associated_owner, callee.field_name_id, callee.field_name, callee.range, false, true);
+                if (!reported_trait_resolution.found && !reported_trait_resolution.reported_failure) {
+                    static_cast<void>(this->find_method_in_visible_modules(
+                        associated_owner, callee.field_name_id, callee.field_name, callee.range, false));
+                }
                 return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
             }
             if (signature->has_self_param) {
@@ -648,12 +715,27 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
             }
         }
         if (signature == nullptr) {
-            const TypeHandle callee_type = this->analyze_expr(expr.callee);
-            if (this->state_.checked.types.is_function(callee_type)) {
+            const TraitMethodCallResolution trait_resolution = this->resolve_trait_method_call(
+                owner_type, callee.field_name_id, callee.field_name, callee.range, true, false);
+            if (trait_resolution.found) {
+                return finish_trait_method_call(trait_resolution, owner_type);
+            }
+            const PlaceInfo callee_place = this->analyze_place_info(expr.callee, false);
+            if (this->state_.checked.types.is_function(callee_place.type)) {
                 return this->analyze_function_value_call_expr(expr_id, expr, name);
             }
-            static_cast<void>(this->find_method_in_visible_modules(
-                owner_type, callee.field_name_id, callee.field_name, callee.range, true));
+            const TraitMethodCallResolution reported_trait_resolution = this->resolve_trait_method_call(
+                owner_type, callee.field_name_id, callee.field_name, callee.range, true, true);
+            if (reported_trait_resolution.found) {
+                return finish_trait_method_call(reported_trait_resolution, owner_type);
+            }
+            if (reported_trait_resolution.reported_failure) {
+                return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
+            }
+            if (!reported_trait_resolution.reported_failure) {
+                static_cast<void>(this->find_method_in_visible_modules(
+                    owner_type, callee.field_name_id, callee.field_name, callee.range, true));
+            }
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         receiver_valid = this->method_receiver_matches(*signature, receiver_type, callee.object);

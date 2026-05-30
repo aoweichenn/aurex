@@ -1,0 +1,13 @@
+module trait_method_associated_missing_impl;
+
+trait Factory {
+    fn answer() -> i32;
+}
+
+struct File {
+    value: i32;
+}
+
+fn main() -> i32 {
+    return File.answer();
+}

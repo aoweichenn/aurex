@@ -98,6 +98,7 @@ void ItemNodeList::reserve(const base::usize size)
     this->payloads_.structs.reserve(primary);
     this->payloads_.enums.reserve(primary);
     this->payloads_.opaque_structs.reserve(rare);
+    this->payloads_.traits.reserve(secondary);
     this->payloads_.functions.reserve(primary);
     this->payloads_.extern_blocks.reserve(rare);
     this->payloads_.impl_blocks.reserve(secondary);
@@ -326,6 +327,15 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                     node.name,
                     node.name_id,
                 });
+        case ItemKind::trait_decl:
+            return this->push_payload(this->payloads_.traits,
+                TraitItemPayload{
+                    node.name,
+                    node.name_id,
+                    this->copy_list(node.generic_params),
+                    this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
+                    this->copy_list(node.trait_items),
+                });
         case ItemKind::fn_decl:
             return this->push_payload(this->payloads_.functions,
                 FunctionItemPayload{
@@ -337,6 +347,7 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                     node.return_type,
                     node.body,
                     node.impl_type,
+                    node.trait_type,
                     node.abi_name,
                 });
         case ItemKind::extern_block:
@@ -350,6 +361,7 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                     this->copy_list(node.generic_params),
                     this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
                     node.impl_type,
+                    node.trait_type,
                     this->copy_list(node.impl_items),
                 });
     }
@@ -414,6 +426,15 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.name = this->payloads_.opaque_structs[header.payload].name;
             node.name_id = this->payloads_.opaque_structs[header.payload].name_id;
             break;
+        case ItemKind::trait_decl: {
+            const TraitItemPayload& payload = this->payloads_.traits[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.trait_items = copy_std_vector(payload.items);
+            break;
+        }
         case ItemKind::fn_decl: {
             const FunctionItemPayload& payload = this->payloads_.functions[header.payload];
             node.name = payload.name;
@@ -424,6 +445,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.return_type = payload.return_type;
             node.body = payload.body;
             node.impl_type = payload.impl_type;
+            node.trait_type = payload.trait_type;
             node.abi_name = payload.abi_name;
             break;
         }
@@ -435,6 +457,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.impl_type = payload.impl_type;
+            node.trait_type = payload.trait_type;
             node.impl_items = copy_std_vector(payload.items);
             break;
         }
@@ -492,6 +515,15 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.name = this->payloads_.opaque_structs[header.payload].name;
             node.name_id = this->payloads_.opaque_structs[header.payload].name_id;
             break;
+        case ItemKind::trait_decl: {
+            TraitItemPayload& payload = this->payloads_.traits[header.payload];
+            node.name = payload.name;
+            node.name_id = payload.name_id;
+            node.generic_params = copy_std_vector(payload.generic_params);
+            node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
+            node.trait_items = copy_std_vector(payload.items);
+            break;
+        }
         case ItemKind::fn_decl: {
             FunctionItemPayload& payload = this->payloads_.functions[header.payload];
             node.name = payload.name;
@@ -502,6 +534,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.return_type = payload.return_type;
             node.body = payload.body;
             node.impl_type = payload.impl_type;
+            node.trait_type = payload.trait_type;
             node.abi_name = payload.abi_name;
             break;
         }
@@ -513,6 +546,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.impl_type = payload.impl_type;
+            node.trait_type = payload.trait_type;
             node.impl_items = copy_std_vector(payload.items);
             break;
         }

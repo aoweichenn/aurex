@@ -78,6 +78,8 @@ std::string_view token_kind_name(const TokenKind kind) noexcept
             return "kw_type";
         case TokenKind::kw_impl:
             return "kw_impl";
+        case TokenKind::kw_trait:
+            return "kw_trait";
         case TokenKind::kw_where:
             return "kw_where";
         case TokenKind::kw_match:
@@ -737,6 +739,8 @@ std::string_view item_kind_name(const ItemKind kind)
             return "enum";
         case ItemKind::opaque_struct_decl:
             return "opaque_struct";
+        case ItemKind::trait_decl:
+            return "trait";
         case ItemKind::fn_decl:
             return "fn";
         case ItemKind::extern_block:
@@ -1127,8 +1131,14 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
             out << "]";
         }
     }
-    if (is_valid(item.impl_type)) {
+    if (item.kind == ItemKind::impl_block && is_valid(item.trait_type) && is_valid(item.impl_type)) {
+        out << " " << type_label(module, item.trait_type) << " for " << type_label(module, item.impl_type);
+    } else if (is_valid(item.trait_type) && is_valid(item.impl_type)) {
+        out << " for " << type_label(module, item.impl_type) << " in " << type_label(module, item.trait_type);
+    } else if (is_valid(item.impl_type)) {
         out << " for " << type_label(module, item.impl_type);
+    } else if (is_valid(item.trait_type)) {
+        out << " in " << type_label(module, item.trait_type);
     }
     if (!item.where_constraints.empty()) {
         out << " where ";
@@ -1209,6 +1219,9 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     if (is_valid(item.body)) {
         dump_stmt(out, module, item.body, depth + 1);
     }
+    for (const ItemId trait_item : item.trait_items) {
+        dump_item(out, module, trait_item, depth + 1);
+    }
     for (const ItemId extern_item : item.extern_items) {
         dump_item(out, module, extern_item, depth + 1);
     }
@@ -1222,7 +1235,13 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     std::unordered_set<base::u32> nested;
     for (base::usize i = 0; i < module.items.size(); ++i) {
         const ItemNode item = module.items[i];
-        if (item.kind == ItemKind::extern_block) {
+        if (item.kind == ItemKind::trait_decl) {
+            for (ItemId id : item.trait_items) {
+                if (is_valid(id)) {
+                    nested.insert(id.value);
+                }
+            }
+        } else if (item.kind == ItemKind::extern_block) {
             for (ItemId id : item.extern_items) {
                 if (is_valid(id)) {
                     nested.insert(id.value);

@@ -67,6 +67,7 @@ bool token_ends_struct_decl_field(const TokenKind kind) noexcept
         case TokenKind::kw_fn:
         case TokenKind::kw_struct:
         case TokenKind::kw_enum:
+        case TokenKind::kw_trait:
         case TokenKind::kw_impl:
         case TokenKind::kw_extern:
         case TokenKind::kw_export:
@@ -85,6 +86,7 @@ bool token_ends_enum_case(const TokenKind kind) noexcept
         case TokenKind::kw_fn:
         case TokenKind::kw_struct:
         case TokenKind::kw_enum:
+        case TokenKind::kw_trait:
         case TokenKind::kw_impl:
         case TokenKind::kw_extern:
         case TokenKind::kw_export:

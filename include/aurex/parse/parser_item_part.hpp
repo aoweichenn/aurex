@@ -12,6 +12,11 @@ struct ParsedVisibility {
     bool explicit_visibility = false;
 };
 
+enum class FunctionBodyPolicy {
+    allow_body_or_prototype,
+    require_prototype,
+};
+
 class ItemParser final : private ParserPartBase {
 public:
     explicit ItemParser(Parser& parser) noexcept : ParserPartBase(parser)
@@ -51,10 +56,12 @@ private:
     [[nodiscard]] syntax::ItemId parse_enum_decl();
     [[nodiscard]] std::optional<syntax::EnumCaseDecl> parse_enum_case_decl();
     [[nodiscard]] bool recover_enum_case_separator() const;
+    [[nodiscard]] syntax::ItemId parse_trait_decl();
     [[nodiscard]] syntax::ItemId parse_impl_block();
     [[nodiscard]] syntax::ItemId parse_extern_block();
     [[nodiscard]] syntax::ItemId parse_opaque_struct_decl();
-    [[nodiscard]] syntax::ItemId parse_fn_decl(bool is_export_c, bool is_extern_c, bool is_unsafe = false);
+    [[nodiscard]] syntax::ItemId parse_fn_decl(bool is_export_c, bool is_extern_c, bool is_unsafe = false,
+        FunctionBodyPolicy body_policy = FunctionBodyPolicy::allow_body_or_prototype);
     void expect_param_list_start(std::string message) const;
     [[nodiscard]] std::vector<syntax::ParamDecl> parse_param_list(bool& is_variadic);
     [[nodiscard]] std::optional<syntax::ParamDecl> parse_param();

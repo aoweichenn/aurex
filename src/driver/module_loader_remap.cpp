@@ -421,6 +421,10 @@ void remap_item_node(syntax::ItemNode& node, const IdMap& map)
     node.return_type = remap_type(node.return_type, map);
     node.body = remap_stmt(node.body, map);
     node.impl_type = remap_type(node.impl_type, map);
+    node.trait_type = remap_type(node.trait_type, map);
+    for (syntax::ItemId& item : node.trait_items) {
+        item = remap_item(item, map);
+    }
     for (syntax::ItemId& item : node.extern_items) {
         item = remap_item(item, map);
     }

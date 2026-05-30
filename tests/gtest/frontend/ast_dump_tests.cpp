@@ -170,6 +170,17 @@ TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata)
     enum_item.enum_cases = {enum_case};
     const syntax::ItemId enum_item_id = module.push_item(enum_item);
 
+    syntax::ItemNode trait_item;
+    trait_item.kind = syntax::ItemKind::trait_decl;
+    trait_item.name = "Readable";
+    trait_item.generic_params = {syntax::GenericParamDecl{"T", {}}};
+    syntax::GenericConstraintDecl trait_constraint;
+    trait_constraint.param_name = "T";
+    trait_constraint.capability_names = {"Copy"};
+    trait_item.where_constraints = {trait_constraint};
+    trait_item.trait_items = {item_id};
+    const syntax::ItemId trait_item_id = module.push_item(trait_item);
+
     module.finalize_identifiers();
 
     const syntax::IdentId value_id = module.find_identifier("value");
@@ -238,6 +249,16 @@ TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata)
     EXPECT_EQ(stored_enum_item.name_id, module.find_identifier("Choice"));
     ASSERT_EQ(stored_enum_item.enum_cases.size(), 1U);
     EXPECT_EQ(stored_enum_item.enum_cases.front().name_id, module.find_identifier("Some"));
+    const syntax::ItemNode stored_trait_item = module.items[trait_item_id.value];
+    EXPECT_EQ(stored_trait_item.name_id, module.find_identifier("Readable"));
+    ASSERT_EQ(stored_trait_item.generic_params.size(), 1U);
+    EXPECT_EQ(stored_trait_item.generic_params.front().name_id, module.find_identifier("T"));
+    ASSERT_EQ(stored_trait_item.where_constraints.size(), 1U);
+    EXPECT_EQ(stored_trait_item.where_constraints.front().param_name_id, module.find_identifier("T"));
+    ASSERT_EQ(stored_trait_item.where_constraints.front().capability_name_ids.size(), 1U);
+    EXPECT_EQ(stored_trait_item.where_constraints.front().capability_name_ids.front(), module.find_identifier("Copy"));
+    ASSERT_EQ(stored_trait_item.trait_items.size(), 1U);
+    EXPECT_EQ(stored_trait_item.trait_items.front().value, item_id.value);
 
     ASSERT_EQ(module.module_path.part_ids.size(), 2U);
     EXPECT_EQ(module.module_path.part_ids.front(), module.find_identifier("app"));
@@ -427,6 +448,7 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads)
     function_item.return_type = syntax::TypeId{14};
     function_item.body = syntax::StmtId{15};
     function_item.impl_type = syntax::TypeId{16};
+    function_item.trait_type = syntax::TypeId{17};
     function_item.is_unsafe = true;
     function_item.abi_name = "aurex_map";
 
@@ -441,23 +463,38 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads)
     syntax::ItemNode moved_item = items.take(0);
     EXPECT_EQ(moved_item.params.front().type.value, 13U);
     EXPECT_EQ(moved_item.impl_type.value, 16U);
+    EXPECT_EQ(moved_item.trait_type.value, 17U);
     EXPECT_EQ(moved_item.abi_name, "aurex_map");
 
     syntax::ItemNode enum_item;
     enum_item.kind = syntax::ItemKind::enum_decl;
     enum_item.name = "Option";
-    enum_item.enum_base_type = syntax::TypeId{17};
+    enum_item.enum_base_type = syntax::TypeId{18};
     enum_item.enum_cases = {
-        syntax::EnumCaseDecl{"some", syntax::TypeId{18}, {syntax::TypeId{18}}, {}, {}},
+        syntax::EnumCaseDecl{"some", syntax::TypeId{19}, {syntax::TypeId{19}}, {}, {}},
         syntax::EnumCaseDecl{"none", syntax::INVALID_TYPE_ID, {}, "0", {}},
     };
 
     syntax::ItemNodeList enum_items;
     enum_items.push_back(enum_item);
-    EXPECT_EQ(enum_items[0].enum_cases.front().payload_types.front().value, 18U);
+    EXPECT_EQ(enum_items[0].enum_cases.front().payload_types.front().value, 19U);
     syntax::ItemNode moved_enum = enum_items.take(0);
-    EXPECT_EQ(moved_enum.enum_base_type.value, 17U);
+    EXPECT_EQ(moved_enum.enum_base_type.value, 18U);
     EXPECT_EQ(moved_enum.enum_cases.back().value_text, "0");
+
+    syntax::ItemNode trait_item;
+    trait_item.kind = syntax::ItemKind::trait_decl;
+    trait_item.name = "Reader";
+    trait_item.generic_params = {syntax::GenericParamDecl{"T", {}}};
+    trait_item.trait_items = {syntax::ItemId{20}, syntax::ItemId{21}};
+    syntax::ItemNodeList trait_items;
+    trait_items.push_back(trait_item);
+    ASSERT_EQ(trait_items[0].trait_items.size(), 2U);
+    EXPECT_EQ(trait_items[0].trait_items.back().value, 21U);
+    syntax::ItemNode moved_trait = trait_items.take(0);
+    EXPECT_EQ(moved_trait.kind, syntax::ItemKind::trait_decl);
+    EXPECT_EQ(moved_trait.generic_params.front().name, "T");
+    EXPECT_EQ(moved_trait.trait_items.front().value, 20U);
 }
 
 TEST(CoreUnit, VisibilityLatticeOrdersNamesAndRoundTripsPackageLevel)
@@ -554,6 +591,7 @@ TEST(CoreUnit, CompactAstStorageMoveAssignmentTransfersArenaBackedPayloads)
     function_item.generic_params = {syntax::GenericParamDecl{"T", {}}};
     function_item.params = {syntax::ParamDecl{"value", syntax::TypeId{10}, {}}};
     function_item.return_type = syntax::TypeId{11};
+    function_item.trait_type = syntax::TypeId{12};
     syntax::ItemNodeList source_items;
     source_items.push_back(function_item);
     syntax::ItemNodeList target_items;
@@ -561,6 +599,7 @@ TEST(CoreUnit, CompactAstStorageMoveAssignmentTransfersArenaBackedPayloads)
     target_items = std::move(source_items);
     EXPECT_EQ(target_items[0].generic_params.front().name, "T");
     EXPECT_EQ(target_items[0].params.front().type.value, 10U);
+    EXPECT_EQ(target_items[0].trait_type.value, 12U);
 }
 
 TEST(CoreUnit, AstModuleReserveEstimatePreTouchesExpressionArena)
@@ -1212,26 +1251,28 @@ TEST(CoreUnit, AstDumpCoversInvalidAndFallbackLabels)
 TEST(CoreUnit, AstDumpCoversSelectorTypePatternAndExpressionLabels)
 {
     std::vector<Token> tokens = {
-        Token{TokenKind::kw_where, {{1}, 0, 5}, "where"},
-        Token{TokenKind::kw_in, {{1}, 6, 8}, "in"},
-        Token{TokenKind::kw_is, {{1}, 9, 11}, "is"},
-        Token{TokenKind::kw_strvalid, {{1}, 12, 20}, "strvalid"},
-        Token{TokenKind::kw_strfromutf8, {{1}, 21, 33}, "strfromutf8"},
-        Token{TokenKind::colon_colon, {{1}, 34, 36}, "::"},
-        Token{TokenKind::plus_plus, {{1}, 37, 39}, "++"},
-        Token{TokenKind::minus_minus, {{1}, 40, 42}, "--"},
-        Token{TokenKind::star_equal, {{1}, 43, 45}, "*="},
-        Token{TokenKind::slash_equal, {{1}, 46, 48}, "/="},
-        Token{TokenKind::percent_equal, {{1}, 49, 51}, "%="},
-        Token{TokenKind::amp_equal, {{1}, 52, 54}, "&="},
-        Token{TokenKind::pipe_equal, {{1}, 55, 57}, "|="},
-        Token{TokenKind::caret_equal, {{1}, 58, 60}, "^="},
-        Token{TokenKind::less_less_equal, {{1}, 61, 64}, "<<="},
-        Token{TokenKind::greater_greater_equal, {{1}, 65, 68}, ">>="},
+        Token{TokenKind::kw_trait, {{1}, 0, 5}, "trait"},
+        Token{TokenKind::kw_where, {{1}, 6, 11}, "where"},
+        Token{TokenKind::kw_in, {{1}, 12, 14}, "in"},
+        Token{TokenKind::kw_is, {{1}, 15, 17}, "is"},
+        Token{TokenKind::kw_strvalid, {{1}, 18, 26}, "strvalid"},
+        Token{TokenKind::kw_strfromutf8, {{1}, 27, 39}, "strfromutf8"},
+        Token{TokenKind::colon_colon, {{1}, 40, 42}, "::"},
+        Token{TokenKind::plus_plus, {{1}, 43, 45}, "++"},
+        Token{TokenKind::minus_minus, {{1}, 46, 48}, "--"},
+        Token{TokenKind::star_equal, {{1}, 49, 51}, "*="},
+        Token{TokenKind::slash_equal, {{1}, 52, 54}, "/="},
+        Token{TokenKind::percent_equal, {{1}, 55, 57}, "%="},
+        Token{TokenKind::amp_equal, {{1}, 58, 60}, "&="},
+        Token{TokenKind::pipe_equal, {{1}, 61, 63}, "|="},
+        Token{TokenKind::caret_equal, {{1}, 64, 66}, "^="},
+        Token{TokenKind::less_less_equal, {{1}, 67, 70}, "<<="},
+        Token{TokenKind::greater_greater_equal, {{1}, 71, 74}, ">>="},
     };
     const std::string token_dump = syntax::dump_tokens(tokens);
     expect_contains_all(token_dump,
         {
+            "kw_trait",
             "kw_where",
             "kw_in",
             "kw_is",

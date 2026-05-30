@@ -236,6 +236,8 @@ struct LosslessTopLevelMatch {
             return LosslessTopLevelStart{true, LosslessNodeKind::struct_decl, true};
         case TokenKind::kw_enum:
             return LosslessTopLevelStart{true, LosslessNodeKind::enum_decl, true};
+        case TokenKind::kw_trait:
+            return LosslessTopLevelStart{true, LosslessNodeKind::trait_decl, true};
         case TokenKind::kw_impl:
             return LosslessTopLevelStart{true, LosslessNodeKind::impl_block, true};
         case TokenKind::kw_const:
@@ -1005,6 +1007,8 @@ std::string_view lossless_node_kind_name(const LosslessNodeKind kind) noexcept
             return "struct_decl";
         case LosslessNodeKind::enum_decl:
             return "enum_decl";
+        case LosslessNodeKind::trait_decl:
+            return "trait_decl";
         case LosslessNodeKind::impl_block:
             return "impl_block";
         case LosslessNodeKind::extern_block:

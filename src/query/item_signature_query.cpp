@@ -22,13 +22,13 @@ constexpr base::u8 QUERY_ITEM_SIGNATURE_MAX_VISIBILITY_RANK = 2;
         case DefKind::enum_:
         case DefKind::enum_case:
         case DefKind::struct_field:
+        case DefKind::trait_:
+        case DefKind::trait_method:
         case DefKind::synthetic:
             return true;
         case DefKind::invalid:
         case DefKind::value:
         case DefKind::generic_template:
-        case DefKind::trait_:
-        case DefKind::trait_method:
         case DefKind::associated_type:
         case DefKind::associated_const:
             return false;

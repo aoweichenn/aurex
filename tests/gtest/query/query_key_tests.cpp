@@ -31,6 +31,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -152,7 +153,7 @@ constexpr std::string_view QUERY_TEST_DIAGNOSTICS = "diagnostics:empty";
         QUERY_TEST_VALUE_COMPONENT_COUNT,
         QUERY_TEST_GENERIC_PARAM_COUNT,
         true,
-        def.kind == query::DefKind::method,
+        def.kind == query::DefKind::method || def.kind == query::DefKind::trait_method,
         false,
         false,
         true,
@@ -2804,6 +2805,39 @@ TEST(QueryUnit, ItemSignatureProviderBuildsRecordFromStableDefinition)
     EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(function_def));
     EXPECT_EQ(output->result, query::item_signature_result_fingerprint(input.authority));
     EXPECT_EQ(output->record.result, output->result);
+
+    const query::StableDefId stable_trait =
+        query::stable_definition_id(stable_module, query::StableSymbolKind::type, "Reader");
+    const query::DefKey trait_def =
+        query::def_key_from_stable_id(stable_trait, query::DefNamespace::trait_, query::DefKind::trait_);
+    const query::StableDefId stable_trait_method =
+        query::stable_definition_id(stable_module, query::StableSymbolKind::method, "Reader.read");
+    const query::DefKey trait_method_def =
+        query::def_key_from_stable_id(stable_trait_method, query::DefNamespace::member, query::DefKind::trait_method);
+    const query::StableDefId stable_impl =
+        query::stable_definition_id(stable_module, query::StableSymbolKind::synthetic, "Reader_for_File");
+    const query::DefKey impl_def =
+        query::def_key_from_stable_id(stable_impl, query::DefNamespace::impl_, query::DefKind::synthetic);
+    const std::array<std::pair<query::DefKey, query::StableDefId>, 3> wp2_defs{
+        std::pair{trait_def, stable_trait},
+        std::pair{trait_method_def, stable_trait_method},
+        std::pair{impl_def, stable_impl},
+    };
+    for (const auto& [def, stable_def] : wp2_defs) {
+        const query::IncrementalKey wp2_signature =
+            query::stable_incremental_key(stable_def, QUERY_TEST_PROVIDER_SIGNATURE);
+        const query::ItemSignatureProviderInput wp2_input{
+            def,
+            test_item_signature_authority(def, wp2_signature),
+        };
+        ASSERT_TRUE(query::is_valid(wp2_input));
+        const std::optional<query::ItemSignatureProviderOutput> wp2_output =
+            query::provide_item_signature_query(wp2_input);
+        ASSERT_TRUE(wp2_output.has_value());
+        EXPECT_TRUE(query::is_valid(*wp2_output));
+        EXPECT_EQ(wp2_output->record.key.kind, query::QueryKind::item_signature);
+        EXPECT_EQ(wp2_output->record.stable_key_bytes, query::stable_serialize(def));
+    }
 
     query::ItemSignatureAuthority invalid_authority = input.authority;
     invalid_authority.signature = {};

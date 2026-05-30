@@ -19,6 +19,7 @@ enum class LosslessNodeKind {
     function_decl,
     struct_decl,
     enum_decl,
+    trait_decl,
     impl_block,
     extern_block,
     const_decl,

@@ -142,6 +142,19 @@ inline constexpr std::string_view PARSER_EXPECT_OPAQUE_STRUCT_NAME = "expected o
 inline constexpr std::string_view PARSER_EXPECT_OPAQUE_STRUCT_TERMINATOR =
     "expected ';' after opaque struct declaration";
 
+inline constexpr std::string_view PARSER_EXPECT_TRAIT_KEYWORD = "expected 'trait'";
+
+inline constexpr std::string_view PARSER_EXPECT_TRAIT_NAME = "expected trait name";
+
+inline constexpr std::string_view PARSER_EXPECT_TRAIT_BODY = "expected '{' after trait name";
+
+inline constexpr std::string_view PARSER_EXPECT_TRAIT_REQUIREMENT =
+    "expected function requirement in trait declaration";
+
+inline constexpr std::string_view PARSER_EXPECT_TRAIT_END = "expected '}' after trait declaration";
+
+inline constexpr std::string_view PARSER_EXPECT_TRAIT_FN_TERMINATOR = "expected ';' after trait function requirement";
+
 inline constexpr std::string_view PARSER_EXPECT_IMPL_KEYWORD = "expected 'impl'";
 
 inline constexpr std::string_view PARSER_EXPECT_IMPL_BODY = "expected '{' after impl type";

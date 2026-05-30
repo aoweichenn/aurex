@@ -40,6 +40,7 @@ enum class ItemKind {
     struct_decl,
     enum_decl,
     opaque_struct_decl,
+    trait_decl,
     fn_decl,
     extern_block,
     impl_block,
@@ -63,12 +64,14 @@ struct ItemNode {
     TypeId return_type = INVALID_TYPE_ID;
     StmtId body = INVALID_STMT_ID;
     TypeId impl_type = INVALID_TYPE_ID;
+    TypeId trait_type = INVALID_TYPE_ID;
     bool is_export_c = false;
     bool is_extern_c = false;
     bool is_unsafe = false;
     bool is_variadic = false;
     bool is_prototype = false;
     std::string_view abi_name;
+    std::vector<ItemId> trait_items;
     std::vector<ItemId> extern_items;
     std::vector<ItemId> impl_items;
 };
@@ -118,6 +121,14 @@ struct OpaqueStructItemPayload {
     IdentId name_id = INVALID_IDENT_ID;
 };
 
+struct TraitItemPayload {
+    std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
+    AstArenaVector<GenericParamDecl> generic_params;
+    AstArenaVector<GenericConstraintDecl> where_constraints;
+    AstArenaVector<ItemId> items;
+};
+
 struct FunctionItemPayload {
     std::string_view name;
     IdentId name_id = INVALID_IDENT_ID;
@@ -127,6 +138,7 @@ struct FunctionItemPayload {
     TypeId return_type = INVALID_TYPE_ID;
     StmtId body = INVALID_STMT_ID;
     TypeId impl_type = INVALID_TYPE_ID;
+    TypeId trait_type = INVALID_TYPE_ID;
     std::string_view abi_name;
 };
 
@@ -138,6 +150,7 @@ struct ImplBlockItemPayload {
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<GenericConstraintDecl> where_constraints;
     TypeId impl_type = INVALID_TYPE_ID;
+    TypeId trait_type = INVALID_TYPE_ID;
     AstArenaVector<ItemId> items;
 };
 
@@ -150,6 +163,7 @@ struct ItemNodePayloadArena {
           structs(base::BumpAllocatorAdapter<StructItemPayload>{arena}),
           enums(base::BumpAllocatorAdapter<EnumItemPayload>{arena}),
           opaque_structs(base::BumpAllocatorAdapter<OpaqueStructItemPayload>{arena}),
+          traits(base::BumpAllocatorAdapter<TraitItemPayload>{arena}),
           functions(base::BumpAllocatorAdapter<FunctionItemPayload>{arena}),
           extern_blocks(base::BumpAllocatorAdapter<ExternBlockItemPayload>{arena}),
           impl_blocks(base::BumpAllocatorAdapter<ImplBlockItemPayload>{arena}),
@@ -164,6 +178,7 @@ struct ItemNodePayloadArena {
         this->structs.swap(other.structs);
         this->enums.swap(other.enums);
         this->opaque_structs.swap(other.opaque_structs);
+        this->traits.swap(other.traits);
         this->functions.swap(other.functions);
         this->extern_blocks.swap(other.extern_blocks);
         this->impl_blocks.swap(other.impl_blocks);
@@ -175,6 +190,7 @@ struct ItemNodePayloadArena {
     AstArenaVector<StructItemPayload> structs;
     AstArenaVector<EnumItemPayload> enums;
     AstArenaVector<OpaqueStructItemPayload> opaque_structs;
+    AstArenaVector<TraitItemPayload> traits;
     AstArenaVector<FunctionItemPayload> functions;
     AstArenaVector<ExternBlockItemPayload> extern_blocks;
     AstArenaVector<ImplBlockItemPayload> impl_blocks;

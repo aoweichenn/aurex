@@ -382,6 +382,8 @@ void tooling_attach_syntax_reuse_execution(
             return "struct";
         case syntax::ItemKind::enum_decl:
             return "enum";
+        case syntax::ItemKind::trait_decl:
+            return "trait";
         case syntax::ItemKind::opaque_struct_decl:
             return "opaque_struct";
         case syntax::ItemKind::fn_decl:

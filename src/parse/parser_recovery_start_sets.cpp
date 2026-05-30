@@ -13,6 +13,7 @@ bool token_starts_item(const TokenKind kind) noexcept
         case TokenKind::kw_fn:
         case TokenKind::kw_struct:
         case TokenKind::kw_enum:
+        case TokenKind::kw_trait:
         case TokenKind::kw_impl:
         case TokenKind::kw_opaque:
         case TokenKind::kw_const:

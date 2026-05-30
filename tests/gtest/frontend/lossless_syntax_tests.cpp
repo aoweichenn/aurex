@@ -170,6 +170,7 @@ TEST(CoreUnit, LosslessSyntaxPreservesTriviaAndReconstructsSource)
     EXPECT_EQ(syntax::lossless_node_kind_name(syntax::LosslessNodeKind::function_decl), "function_decl");
     EXPECT_EQ(syntax::lossless_node_kind_name(syntax::LosslessNodeKind::struct_decl), "struct_decl");
     EXPECT_EQ(syntax::lossless_node_kind_name(syntax::LosslessNodeKind::enum_decl), "enum_decl");
+    EXPECT_EQ(syntax::lossless_node_kind_name(syntax::LosslessNodeKind::trait_decl), "trait_decl");
     EXPECT_EQ(syntax::lossless_node_kind_name(syntax::LosslessNodeKind::impl_block), "impl_block");
     EXPECT_EQ(syntax::lossless_node_kind_name(syntax::LosslessNodeKind::extern_block), "extern_block");
     EXPECT_EQ(syntax::lossless_node_kind_name(syntax::LosslessNodeKind::const_decl), "const_decl");
@@ -415,6 +416,7 @@ TEST(CoreUnit, LosslessSyntaxBuildsTopLevelDeclarationAndGroupNodes)
                                         "pub opaque struct Foreign;\n"
                                         "pub struct Box[T] { pub value: T; }\n"
                                         "enum Mode: u8 { fast = 1, slow = 2, }\n"
+                                        "pub trait Reader { fn read(self: &mut Self) -> i32; }\n"
                                         "impl Box[i32] { pub fn read(self: &Box[i32]) -> i32 { return self.value; } }\n"
                                         "extern C { unsafe fn native(value: i32) -> i32; }\n"
                                         "export C unsafe fn run() -> i32 { return native(0); }\n";
@@ -430,6 +432,7 @@ TEST(CoreUnit, LosslessSyntaxBuildsTopLevelDeclarationAndGroupNodes)
     EXPECT_TRUE(lossless_tree_has_node_kind(tree, syntax::LosslessNodeKind::opaque_struct_decl));
     EXPECT_TRUE(lossless_tree_has_node_kind(tree, syntax::LosslessNodeKind::struct_decl));
     EXPECT_TRUE(lossless_tree_has_node_kind(tree, syntax::LosslessNodeKind::enum_decl));
+    EXPECT_TRUE(lossless_tree_has_node_kind(tree, syntax::LosslessNodeKind::trait_decl));
     EXPECT_TRUE(lossless_tree_has_node_kind(tree, syntax::LosslessNodeKind::impl_block));
     EXPECT_TRUE(lossless_tree_has_node_kind(tree, syntax::LosslessNodeKind::extern_block));
     EXPECT_TRUE(lossless_tree_has_node_kind(tree, syntax::LosslessNodeKind::function_decl));
@@ -446,6 +449,7 @@ TEST(CoreUnit, LosslessSyntaxBuildsTopLevelDeclarationAndGroupNodes)
     expect_contains(dump, "opaque_struct_decl");
     expect_contains(dump, "struct_decl");
     expect_contains(dump, "enum_decl");
+    expect_contains(dump, "trait_decl");
     expect_contains(dump, "impl_block");
     expect_contains(dump, "extern_block");
     expect_contains(dump, "function_decl");

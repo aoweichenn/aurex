@@ -554,6 +554,106 @@ TEST(CoreUnit, ParserAcceptsPackageVisibilitySyntax)
         });
 }
 
+TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
+{
+    constexpr std::string_view source = "module parser.traits;\n"
+                                        "pub trait Reader[T] where T: Sized {\n"
+                                        "  fn read(self: &mut Self, buf: []mut u8) -> usize;\n"
+                                        "  pub fn size(self: &Self) -> usize;\n"
+                                        "  unsafe fn flush(self: &mut Self) -> void;\n"
+                                        "}\n"
+                                        "struct File { handle: i32; }\n"
+                                        "impl Reader[File] for File {\n"
+                                        "  fn read(self: &mut File, buf: []mut u8) -> usize {\n"
+                                        "    return 0;\n"
+                                        "  }\n"
+                                        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* const trait_item = find_item(module, "Reader");
+    ASSERT_NE(trait_item, nullptr);
+    EXPECT_EQ(trait_item->kind, syntax::ItemKind::trait_decl);
+    EXPECT_EQ(trait_item->visibility, syntax::Visibility::public_);
+    ASSERT_EQ(trait_item->generic_params.size(), 1U);
+    EXPECT_EQ(trait_item->generic_params.front().name, "T");
+    ASSERT_EQ(trait_item->where_constraints.size(), 1U);
+    EXPECT_EQ(trait_item->where_constraints.front().param_name, "T");
+    ASSERT_EQ(trait_item->where_constraints.front().capability_names.size(), 1U);
+    EXPECT_EQ(trait_item->where_constraints.front().capability_names.front(), "Sized");
+    ASSERT_EQ(trait_item->trait_items.size(), 3U);
+
+    const syntax::ItemNode requirement = module.items[trait_item->trait_items.front().value];
+    EXPECT_EQ(requirement.kind, syntax::ItemKind::fn_decl);
+    EXPECT_EQ(requirement.name, "read");
+    EXPECT_TRUE(requirement.is_prototype);
+    EXPECT_EQ(requirement.visibility, syntax::Visibility::public_);
+    EXPECT_FALSE(syntax::is_valid(requirement.body));
+    ASSERT_EQ(requirement.params.size(), 2U);
+    EXPECT_EQ(requirement.params.front().name, "self");
+    EXPECT_TRUE(syntax::is_valid(requirement.return_type));
+
+    const syntax::ItemNode explicit_requirement = module.items[trait_item->trait_items[1].value];
+    EXPECT_EQ(explicit_requirement.name, "size");
+    EXPECT_TRUE(explicit_requirement.is_prototype);
+    EXPECT_EQ(explicit_requirement.visibility, syntax::Visibility::public_);
+    EXPECT_FALSE(explicit_requirement.is_unsafe);
+
+    const syntax::ItemNode unsafe_requirement = module.items[trait_item->trait_items[2].value];
+    EXPECT_EQ(unsafe_requirement.name, "flush");
+    EXPECT_TRUE(unsafe_requirement.is_prototype);
+    EXPECT_TRUE(unsafe_requirement.is_unsafe);
+
+    const syntax::ItemNode* impl_block = nullptr;
+    for (base::usize index = 0; index < module.items.size(); ++index) {
+        const syntax::ItemNode* const item = module.items.ptr(index);
+        if (item != nullptr && item->kind == syntax::ItemKind::impl_block && syntax::is_valid(item->trait_type)) {
+            impl_block = item;
+            break;
+        }
+    }
+    ASSERT_NE(impl_block, nullptr);
+    EXPECT_TRUE(syntax::is_valid(impl_block->trait_type));
+    EXPECT_TRUE(syntax::is_valid(impl_block->impl_type));
+    ASSERT_EQ(impl_block->impl_items.size(), 1U);
+
+    const syntax::ItemNode impl_method = module.items[impl_block->impl_items.front().value];
+    EXPECT_EQ(impl_method.kind, syntax::ItemKind::fn_decl);
+    EXPECT_EQ(impl_method.name, "read");
+    EXPECT_EQ(impl_method.visibility, syntax::Visibility::public_);
+    EXPECT_TRUE(syntax::is_valid(impl_method.trait_type));
+    EXPECT_TRUE(syntax::is_valid(impl_method.impl_type));
+    EXPECT_TRUE(syntax::is_valid(impl_method.body));
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "pub trait Reader[T] where T: Sized",
+            "pub fn read prototype",
+            "pub fn size prototype",
+            "pub fn flush unsafe prototype",
+            "impl Reader[File] for File",
+            "pub fn read for File in Reader[File]",
+        });
+}
+
+TEST(CoreUnit, ParserRejectsTraitDefaultMethodBodiesInWp2)
+{
+    expect_parse_diagnostic("module parser.bad_trait;\n"
+                            "trait Reader {\n"
+                            "  fn read() -> i32 { return 1; }\n"
+                            "  fn next() -> i32;\n"
+                            "}\n"
+                            "fn after() -> i32 { return 0; }\n",
+        "expected ';' after trait function requirement");
+    expect_parse_diagnostic("module parser.bad_trait_item;\n"
+                            "trait Reader {\n"
+                            "  const answer: i32 = 1;\n"
+                            "  fn next() -> i32;\n"
+                            "}\n"
+                            "fn after() -> i32 { return 0; }\n",
+        "expected function requirement in trait declaration");
+}
+
 TEST(CoreUnit, ParserAcceptsSelectiveUseReexports)
 {
     constexpr std::string_view source = "module parser.use_reexports;\n"
@@ -2806,6 +2906,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets)
             TokenKind::kw_fn,
             TokenKind::kw_struct,
             TokenKind::kw_enum,
+            TokenKind::kw_trait,
             TokenKind::kw_impl,
             TokenKind::kw_opaque,
             TokenKind::kw_const,
@@ -2983,6 +3084,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets)
             TokenKind::kw_fn,
             TokenKind::kw_struct,
             TokenKind::kw_enum,
+            TokenKind::kw_trait,
             TokenKind::kw_impl,
             TokenKind::kw_extern,
             TokenKind::kw_export,
@@ -2997,6 +3099,7 @@ TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets)
             TokenKind::kw_fn,
             TokenKind::kw_struct,
             TokenKind::kw_enum,
+            TokenKind::kw_trait,
             TokenKind::kw_impl,
             TokenKind::kw_extern,
             TokenKind::kw_export,

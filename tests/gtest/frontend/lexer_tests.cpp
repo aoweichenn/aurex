@@ -131,6 +131,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors)
         "const b: u8 = b'\\n';\n"
         "const ch: char = '\\u{03BB}';\n"
         "struct LexerProbe { value: i32; }\n"
+        "trait LexerReadable { fn read(self: &mut Self, buf: []mut u8) -> usize; }\n"
         "impl LexerProbe { fn value(self: *const LexerProbe) -> i32 { return self.value; } }\n"
         "fn ops(a: i32, b: i32) -> i32 { return ((a / b) % 3) ^ (a << 1) >> 1 | ~b; }\n"
         "fn flags(flag: bool) -> void {\n"
@@ -196,6 +197,7 @@ TEST(CoreUnit, LexerCoversCommentsLiteralsOperatorsAndErrors)
             "kw_f64",
             "kw_char",
             "kw_impl",
+            "kw_trait",
             "kw_defer",
             "kw_for",
             "float_literal",
@@ -285,13 +287,14 @@ TEST(CoreUnit, LexerKeywordLookupCoversIdentifierEdges)
     EXPECT_EQ(lex::keyword_kind("c"), TokenKind::identifier);
     EXPECT_EQ(lex::keyword_kind("modulf"), TokenKind::identifier);
     EXPECT_EQ(lex::keyword_kind("module"), TokenKind::kw_module);
+    EXPECT_EQ(lex::keyword_kind("trait"), TokenKind::kw_trait);
 }
 
 TEST(CoreUnit, LexerRecognizesEveryKeyword)
 {
     DiagnosticSink diagnostics;
     constexpr std::string_view source =
-        "module import as pub priv extern export fn struct opaque enum const type impl match "
+        "module import as pub priv extern export fn struct opaque enum const type impl trait match "
         "let var if else for in is while break continue defer return true false null "
         "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char mut unsafe cast "
         "ptrcast bitcast sizeof alignof ptraddr ptrat sliceptr slicelen strptr strblen strvalid strfromutf8 strraw";
@@ -315,6 +318,7 @@ TEST(CoreUnit, LexerRecognizesEveryKeyword)
         TokenKind::kw_const,
         TokenKind::kw_type,
         TokenKind::kw_impl,
+        TokenKind::kw_trait,
         TokenKind::kw_match,
         TokenKind::kw_let,
         TokenKind::kw_var,

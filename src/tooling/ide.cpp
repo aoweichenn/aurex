@@ -436,6 +436,8 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
             return ItemDefinitionMetadata{query::DefNamespace::type, query::DefKind::struct_, "struct"};
         case syntax::ItemKind::enum_decl:
             return ItemDefinitionMetadata{query::DefNamespace::type, query::DefKind::enum_, "enum"};
+        case syntax::ItemKind::trait_decl:
+            return ItemDefinitionMetadata{query::DefNamespace::trait_, query::DefKind::trait_, "trait"};
         case syntax::ItemKind::opaque_struct_decl:
             return ItemDefinitionMetadata{query::DefNamespace::type, query::DefKind::struct_, "opaque_struct"};
         case syntax::ItemKind::fn_decl:
@@ -455,6 +457,7 @@ void evaluate_source_queries(IdeSnapshot& snapshot, const std::string_view sourc
         case syntax::ItemKind::type_alias:
         case syntax::ItemKind::struct_decl:
         case syntax::ItemKind::enum_decl:
+        case syntax::ItemKind::trait_decl:
         case syntax::ItemKind::opaque_struct_decl:
             return query::StableSymbolKind::type;
         case syntax::ItemKind::fn_decl:

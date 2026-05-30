@@ -44,6 +44,13 @@ syntax::ItemId ItemParser::parse_item()
         }
         return id;
     }
+    if (this->check(TokenKind::kw_trait)) {
+        const syntax::ItemId id = this->parse_trait_decl();
+        if (syntax::is_valid(id)) {
+            this->session_.module.items.set_visibility(id.value, visibility.visibility);
+        }
+        return id;
+    }
     if (this->check(TokenKind::kw_impl)) {
         if (visibility.explicit_visibility && syntax::visibility_is_module_private(visibility.visibility)) {
             this->report_here(std::string(PARSER_IMPL_PRIVATE_UNSUPPORTED));

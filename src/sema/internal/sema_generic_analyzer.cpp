@@ -141,6 +141,7 @@ struct GenericNodeSpanBuilder {
         }
         this->add_type(item.return_type);
         this->add_type(item.impl_type);
+        this->add_type(item.trait_type);
         this->add_stmt(item.body);
         this->drain();
     }

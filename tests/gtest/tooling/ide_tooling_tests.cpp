@@ -396,6 +396,21 @@ TEST(CoreUnit, IdeToolingBuildsQueryBackedLosslessSnapshot)
     EXPECT_EQ(eof_token->node, snapshot.lossless.root_id());
 }
 
+TEST(CoreUnit, IdeToolingRecordsPrimaryModulePartDeclarations)
+{
+    constexpr std::string_view SOURCE = "module ide.parts;\n"
+                                        "part worker;\n"
+                                        "fn main() -> i32 { return 0; }\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(SOURCE));
+
+    EXPECT_TRUE(snapshot.parsed);
+    EXPECT_EQ(snapshot.ast.part_declarations.size(), 1U);
+    EXPECT_EQ(snapshot.ast.part_declarations.front().name, "worker");
+    expect_primary_source_part(snapshot.source_part, "ide.parts");
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::module_graph));
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::module_part));
+}
+
 TEST(CoreUnit, IdeToolingHandlesDefaultPackageEmptyBuffersAndInvalidOffsets)
 {
     tooling::IdeSnapshotRequest request = request_for("");
@@ -502,6 +517,7 @@ TEST(CoreUnit, IdeToolingServesTokenHoverDefinitionReferencesAndEditImpact)
     ASSERT_TRUE(parameter_hover.has_value());
     EXPECT_TRUE(parameter_hover->valid);
     EXPECT_NE(parameter_hover->label.find("identifier `a` -> parameter"), std::string::npos);
+    EXPECT_NE(parameter_hover->label.find("resource=Copy/Discard/Trivial/OwnedValue"), std::string::npos);
     ASSERT_TRUE(parameter_hover->definition.has_value());
     EXPECT_EQ(parameter_hover->definition->name, "a");
     EXPECT_EQ(parameter_hover->definition->part_index, IDE_TOOLING_PRIMARY_PART_INDEX);
@@ -517,6 +533,22 @@ TEST(CoreUnit, IdeToolingServesTokenHoverDefinitionReferencesAndEditImpact)
     EXPECT_NE(impact.node, snapshot.lossless.root_id());
     EXPECT_LE(impact.range.begin, edit_offset);
     EXPECT_GT(impact.range.end, edit_offset);
+}
+
+TEST(CoreUnit, IdeToolingHoverExposesMoveOnlyNeedsDropResources)
+{
+    constexpr std::string_view SOURCE = "module ide.resources;\n"
+                                        "fn hold[T](value: T) {\n"
+                                        "}\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(SOURCE));
+    ASSERT_TRUE(snapshot.checked_semantics);
+
+    const base::usize value_offset = SOURCE.find("value: T");
+    ASSERT_NE(value_offset, std::string_view::npos);
+    const std::optional<tooling::IdeHoverInfo> hover = tooling::hover_at_offset(snapshot, value_offset);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_NE(hover->label.find("identifier `value` -> parameter"), std::string::npos);
+    EXPECT_NE(hover->label.find("resource=MoveOnly/Discard/NeedsDrop/OwnedValue"), std::string::npos) << hover->label;
 }
 
 TEST(CoreUnit, IdeToolingServesCompletionSemanticTokensAndInlayHints)

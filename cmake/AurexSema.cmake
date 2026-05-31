@@ -1,6 +1,7 @@
 add_library(aurex_sema
     src/sema/type.cpp
     src/sema/resource_semantics.cpp
+    src/sema/drop_glue.cpp
     src/sema/canonical_type_builder.cpp
     src/sema/symbol.cpp
     src/sema/identifier.cpp

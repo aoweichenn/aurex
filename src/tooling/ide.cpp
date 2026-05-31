@@ -13,6 +13,7 @@
 #include <aurex/query/stable_hash.hpp>
 #include <aurex/query/type_check_body_query.hpp>
 #include <aurex/sema/function.hpp>
+#include <aurex/sema/resource_semantics.hpp>
 #include <aurex/sema/sema.hpp>
 #include <aurex/syntax/module.hpp>
 #include <aurex/tooling/ide.hpp>
@@ -88,6 +89,7 @@ constexpr std::string_view IDE_TOKEN_MODIFIER_DEFINITION = "definition";
 constexpr std::string_view IDE_TOKEN_MODIFIER_READONLY = "readonly";
 constexpr std::string_view IDE_INLAY_HINT_KIND_TYPE = "type";
 constexpr std::string_view IDE_DETAIL_TYPE_SEPARATOR = ": ";
+constexpr std::string_view IDE_DETAIL_RESOURCE_SEPARATOR = " resource=";
 constexpr std::string_view IDE_PRIMARY_PART_NAME = "<primary>";
 constexpr base::u32 IDE_PRIMARY_PART_INDEX = 0;
 constexpr base::u32 IDE_FIRST_NAMED_PART_INDEX = 1;
@@ -1018,6 +1020,8 @@ void recover_resolved_fragment_source_part(
     label << kind << ' ' << name;
     if (sema::is_valid(type)) {
         label << ": " << checked.types.display_name(type);
+        const sema::ResourceSemanticsSummary resource = sema::ResourceSemanticsClassifier(checked).classify(type);
+        label << IDE_DETAIL_RESOURCE_SEPARATOR << sema::resource_semantics_debug_string(resource);
     }
     return label.str();
 }
@@ -1824,13 +1828,87 @@ void push_ast_global_symbol(const IdeSnapshot& snapshot, SymbolIndex& index, con
     return sema::is_valid(handle) ? std::optional<sema::TypeHandle>{handle} : std::nullopt;
 }
 
-void push_parameter_symbols(const IdeSnapshot& snapshot, SymbolIndex& index, const syntax::ItemNode& function)
+[[nodiscard]] const sema::FunctionSignature* checked_function_signature_for_item(
+    const IdeSnapshot& snapshot, const syntax::ItemId item) noexcept
 {
-    for (const syntax::ParamDecl& param : function.params) {
+    if (!snapshot.checked_semantics || !syntax::is_valid(item)) {
+        return nullptr;
+    }
+    for (const auto& entry : snapshot.checked.functions) {
+        const sema::FunctionSignature& signature = entry.second;
+        if (signature.definition_item.value == item.value || signature.prototype_item.value == item.value) {
+            return &signature;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] bool function_declares_generic_parameter(
+    const syntax::ItemNode& function, const std::string_view name) noexcept
+{
+    for (const syntax::GenericParamDecl& param : function.generic_params) {
+        if (param.name == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] std::optional<sema::TypeHandle> checked_generic_parameter_type(
+    const IdeSnapshot& snapshot, const syntax::ItemNode& function, const syntax::TypeId type_id) noexcept
+{
+    if (!syntax::is_valid(type_id) || type_id.value >= snapshot.ast.types.size()) {
+        return std::nullopt;
+    }
+    const syntax::TypeNode type = snapshot.ast.types[type_id.value];
+    if (type.kind != syntax::TypeKind::named || !type.scope_name.empty() || !type.type_args.empty()
+        || !function_declares_generic_parameter(function, type.name)) {
+        return std::nullopt;
+    }
+
+    std::optional<sema::TypeHandle> match;
+    for (base::usize index = 0; index < snapshot.checked.types.size(); ++index) {
+        const sema::TypeHandle candidate{static_cast<base::u32>(index)};
+        const sema::TypeInfo& info = snapshot.checked.types.get(candidate);
+        if (info.kind != sema::TypeKind::generic_param || info.name.view() != type.name) {
+            continue;
+        }
+        if (match.has_value()) {
+            return std::nullopt;
+        }
+        match = candidate;
+    }
+    return match;
+}
+
+[[nodiscard]] std::optional<sema::TypeHandle> checked_parameter_type(const IdeSnapshot& snapshot,
+    const syntax::ItemNode& function, const syntax::ParamDecl& param, const sema::FunctionSignature* const signature,
+    const base::usize param_index) noexcept
+{
+    if (const std::optional<sema::TypeHandle> type = checked_syntax_type(snapshot, param.type)) {
+        return type;
+    }
+    if (signature == nullptr || param_index >= signature->param_types.size()) {
+        return checked_generic_parameter_type(snapshot, function, param.type);
+    }
+    const sema::TypeHandle type = signature->param_types[param_index];
+    if (sema::is_valid(type)) {
+        return type;
+    }
+    return checked_generic_parameter_type(snapshot, function, param.type);
+}
+
+void push_parameter_symbols(
+    const IdeSnapshot& snapshot, SymbolIndex& index, const syntax::ItemNode& function, const syntax::ItemId function_id)
+{
+    const sema::FunctionSignature* const signature = checked_function_signature_for_item(snapshot, function_id);
+    for (base::usize param_index = 0; param_index < function.params.size(); ++param_index) {
+        const syntax::ParamDecl& param = function.params[param_index];
         const base::SourceRange range = name_range_in_range(snapshot.lossless, param.name, param.range);
         std::string detail = std::string(IDE_SYMBOL_KIND_PARAMETER) + " " + std::string(param.name);
-        if (const std::optional<sema::TypeHandle> type = checked_syntax_type(snapshot, param.type)) {
-            detail += ": " + snapshot.checked.types.display_name(*type);
+        if (const std::optional<sema::TypeHandle> type =
+                checked_parameter_type(snapshot, function, param, signature, param_index)) {
+            detail = typed_detail(snapshot.checked, IDE_SYMBOL_KIND_PARAMETER, param.name, *type);
         }
         push_local_symbol(index,
             IdeSymbol{
@@ -1856,7 +1934,7 @@ void push_local_stmt_symbol(const IdeSnapshot& snapshot, SymbolIndex& index, con
     const base::SourceRange range = name_range_in_range(snapshot.lossless, stmt.name, stmt.range);
     std::string detail = std::string(IDE_SYMBOL_KIND_LOCAL) + " " + std::string(stmt.name);
     if (const std::optional<sema::TypeHandle> type = checked_stmt_local_type(snapshot, stmt_id)) {
-        detail += ": " + snapshot.checked.types.display_name(*type);
+        detail = typed_detail(snapshot.checked, IDE_SYMBOL_KIND_LOCAL, stmt.name, *type);
     }
     push_local_symbol(index,
         IdeSymbol{
@@ -1873,12 +1951,12 @@ void push_local_stmt_symbol(const IdeSnapshot& snapshot, SymbolIndex& index, con
 }
 
 void collect_local_symbols_from_function(
-    const IdeSnapshot& snapshot, SymbolIndex& index, const syntax::ItemNode& function)
+    const IdeSnapshot& snapshot, SymbolIndex& index, const syntax::ItemNode& function, const syntax::ItemId function_id)
 {
     if (!syntax::is_valid(function.body)) {
         return;
     }
-    push_parameter_symbols(snapshot, index, function);
+    push_parameter_symbols(snapshot, index, function, function_id);
 
     std::vector<syntax::StmtId> stack;
     stack.push_back(function.body);
@@ -1933,7 +2011,8 @@ void collect_local_symbols_from_function(
     for (base::usize item_index = 0; item_index < snapshot.ast.items.size(); ++item_index) {
         const syntax::ItemNode* const item = snapshot.ast.items.ptr(item_index);
         if (item != nullptr && item->kind == syntax::ItemKind::fn_decl) {
-            collect_local_symbols_from_function(snapshot, index, *item);
+            collect_local_symbols_from_function(
+                snapshot, index, *item, syntax::ItemId{static_cast<base::u32>(item_index)});
         }
     }
     return index;
@@ -2426,9 +2505,13 @@ void ide_append_symbol_completions(std::vector<IdeCompletionItem>& items, std::u
     if (separator == std::string_view::npos) {
         return std::nullopt;
     }
+    const base::usize resource =
+        detail.find(IDE_DETAIL_RESOURCE_SEPARATOR, separator + IDE_DETAIL_TYPE_SEPARATOR.size());
     std::string label;
     label.append(IDE_DETAIL_TYPE_SEPARATOR);
-    label.append(detail.substr(separator + IDE_DETAIL_TYPE_SEPARATOR.size()));
+    label.append(detail.substr(separator + IDE_DETAIL_TYPE_SEPARATOR.size(),
+        resource == std::string_view::npos ? std::string_view::npos
+                                           : resource - separator - IDE_DETAIL_TYPE_SEPARATOR.size()));
     return label;
 }
 

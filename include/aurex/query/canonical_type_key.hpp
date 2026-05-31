@@ -69,9 +69,18 @@ struct CanonicalTypeKey {
     std::vector<CanonicalTypeKey> children;
 };
 
+struct DropGlueKey {
+    CanonicalTypeKey type;
+    StableFingerprint128 resource;
+    base::u64 global_id = 0;
+};
+
 [[nodiscard]] bool operator==(const CanonicalTypeKey& lhs, const CanonicalTypeKey& rhs) noexcept;
 [[nodiscard]] bool operator!=(const CanonicalTypeKey& lhs, const CanonicalTypeKey& rhs) noexcept;
 [[nodiscard]] bool is_valid(const CanonicalTypeKey& key) noexcept;
+[[nodiscard]] bool operator==(const DropGlueKey& lhs, const DropGlueKey& rhs) noexcept;
+[[nodiscard]] bool operator!=(const DropGlueKey& lhs, const DropGlueKey& rhs) noexcept;
+[[nodiscard]] bool is_valid(const DropGlueKey& key) noexcept;
 
 [[nodiscard]] CanonicalTypeKey canonical_builtin(BuiltinTypeKey builtin);
 [[nodiscard]] CanonicalTypeKey canonical_pointer(PointerMutabilityKey mutability, CanonicalTypeKey pointee);
@@ -86,15 +95,24 @@ struct CanonicalTypeKey {
 [[nodiscard]] CanonicalTypeKey canonical_const_arg(StableFingerprint128 value);
 [[nodiscard]] CanonicalTypeKey canonical_associated_type_projection(
     CanonicalTypeKey base_type, MemberKey associated_member);
+[[nodiscard]] DropGlueKey drop_glue_key(CanonicalTypeKey type, StableFingerprint128 resource);
 
 void append_stable_key(StableKeyWriter& writer, const CanonicalTypeKey& key);
+void append_stable_key(StableKeyWriter& writer, const DropGlueKey& key);
 
 [[nodiscard]] std::string stable_serialize(const CanonicalTypeKey& key);
+[[nodiscard]] std::string stable_serialize(const DropGlueKey& key);
 [[nodiscard]] StableFingerprint128 stable_key_fingerprint(const CanonicalTypeKey& key);
+[[nodiscard]] StableFingerprint128 stable_key_fingerprint(const DropGlueKey& key);
 [[nodiscard]] std::string debug_string(const CanonicalTypeKey& key);
+[[nodiscard]] std::string debug_string(const DropGlueKey& key);
 
 struct CanonicalTypeKeyHash {
     [[nodiscard]] std::size_t operator()(const CanonicalTypeKey& key) const;
+};
+
+struct DropGlueKeyHash {
+    [[nodiscard]] std::size_t operator()(const DropGlueKey& key) const;
 };
 
 } // namespace aurex::query

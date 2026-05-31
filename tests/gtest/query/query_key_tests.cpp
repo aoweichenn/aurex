@@ -1733,6 +1733,8 @@ TEST(QueryUnit, QueryExecutorEvaluatesOwnedRequestsOnDemand)
         query::QueryRequest{query::ItemListProviderInput{module, test_query_result(QUERY_TEST_ITEM_LIST)}},
         query::QueryRequest{
             query::ModuleExportsProviderInput{module, test_query_result(QUERY_TEST_MODULE_EXPORTS_SIGNATURE)}},
+        query::QueryRequest{
+            query::ModulePackageExportsProviderInput{module, test_query_result(QUERY_TEST_MODULE_EXPORTS_SIGNATURE)}},
         query::QueryRequest{item_subject.input},
         query::QueryRequest{query::GenericTemplateSignatureProviderInput{template_def, template_authority}},
         query::QueryRequest{
@@ -2861,17 +2863,77 @@ TEST(QueryUnit, ItemSignatureProviderBuildsRecordFromStableDefinition)
 
     query::ItemSignatureAuthority invalid_authority = input.authority;
     invalid_authority.signature = {};
+    query::ItemSignatureAuthority invalid_part_authority = input.authority;
+    invalid_part_authority.module_part = {};
+    query::ItemSignatureAuthority invalid_kind_authority = input.authority;
+    invalid_kind_authority.kind = query::DefKind::value;
+    query::ItemSignatureAuthority invalid_visibility_authority = input.authority;
+    invalid_visibility_authority.visibility_rank = QUERY_TEST_PUBLIC_VISIBILITY_RANK + 1U;
+    query::ItemSignatureAuthority namespace_mismatch_authority = input.authority;
+    namespace_mismatch_authority.name_space = query::DefNamespace::type;
+    query::ItemSignatureAuthority kind_mismatch_authority = input.authority;
+    kind_mismatch_authority.kind = query::DefKind::method;
+    const std::array<std::string_view, 2> other_module_path{"regex", "other"};
+    const query::ModuleKey other_module = query::module_key_from_stable_id(query::stable_module_id(other_module_path));
+    query::ItemSignatureAuthority module_mismatch_authority = input.authority;
+    module_mismatch_authority.module_part = test_primary_module_part(other_module);
+    const std::array<query::DefKind, 4> additional_valid_item_kinds{
+        query::DefKind::const_,
+        query::DefKind::global,
+        query::DefKind::enum_,
+        query::DefKind::struct_field,
+    };
+    for (const query::DefKind kind : additional_valid_item_kinds) {
+        query::ItemSignatureAuthority authority = input.authority;
+        authority.kind = kind;
+        EXPECT_TRUE(query::is_valid(authority));
+    }
+    const std::array<query::DefKind, 4> additional_invalid_item_kinds{
+        query::DefKind::invalid,
+        query::DefKind::generic_template,
+        query::DefKind::associated_type,
+        query::DefKind::associated_const,
+    };
+    for (const query::DefKind kind : additional_invalid_item_kinds) {
+        query::ItemSignatureAuthority authority = input.authority;
+        authority.kind = kind;
+        EXPECT_FALSE(query::is_valid(authority));
+    }
     EXPECT_FALSE(query::is_valid(query::ItemSignatureProviderInput{}));
+    EXPECT_FALSE(query::is_valid(invalid_part_authority));
+    EXPECT_FALSE(query::is_valid(invalid_kind_authority));
+    EXPECT_FALSE(query::is_valid(invalid_visibility_authority));
+    EXPECT_FALSE(query::is_valid(query::ItemSignatureProviderInput{function_def, namespace_mismatch_authority}));
+    EXPECT_FALSE(query::is_valid(query::ItemSignatureProviderInput{function_def, kind_mismatch_authority}));
+    EXPECT_FALSE(query::is_valid(query::ItemSignatureProviderInput{function_def, module_mismatch_authority}));
+    EXPECT_FALSE(query::is_valid(query::item_signature_result_fingerprint(invalid_kind_authority)));
     EXPECT_FALSE(
         query::provide_item_signature_query(query::ItemSignatureProviderInput{query::DefKey{}, input.authority})
             .has_value());
     EXPECT_FALSE(query::provide_item_signature_query(query::ItemSignatureProviderInput{function_def, invalid_authority})
+            .has_value());
+    EXPECT_FALSE(query::provide_item_signature_query(
+        query::ItemSignatureProviderInput{function_def, namespace_mismatch_authority})
+            .has_value());
+    EXPECT_FALSE(
+        query::provide_item_signature_query(query::ItemSignatureProviderInput{function_def, kind_mismatch_authority})
+            .has_value());
+    EXPECT_FALSE(
+        query::provide_item_signature_query(query::ItemSignatureProviderInput{function_def, module_mismatch_authority})
             .has_value());
     EXPECT_FALSE(query::is_valid(query::ItemSignatureProviderOutput{}));
 
     query::ItemSignatureProviderOutput invalid_dependency_output = *output;
     invalid_dependency_output.dependencies.push_back(query::QueryKey{});
     EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::ItemSignatureProviderOutput invalid_result_output = *output;
+    invalid_result_output.result = {};
+    EXPECT_FALSE(query::is_valid(invalid_result_output));
+
+    query::ItemSignatureProviderOutput wrong_kind_output = *output;
+    wrong_kind_output.record.key.kind = query::QueryKind::module_exports;
+    EXPECT_FALSE(query::is_valid(wrong_kind_output));
 
     query::ItemSignatureProviderOutput mismatched_result_output = *output;
     mismatched_result_output.result = query::query_result_fingerprint(
@@ -2945,8 +3007,12 @@ TEST(QueryUnit, GenericTemplateSignatureProviderBuildsRecordFromStableTemplate)
     invalid_authority.signature = {};
     query::GenericTemplateSignatureAuthority invalid_part_authority = authority;
     invalid_part_authority.module_part = {};
+    query::GenericTemplateSignatureAuthority invalid_visibility_authority = authority;
+    invalid_visibility_authority.visibility_rank = QUERY_TEST_PUBLIC_VISIBILITY_RANK + 1U;
     EXPECT_FALSE(query::generic_template_signature_query_key(query::DefKey{}).has_value());
     EXPECT_FALSE(query::is_valid(query::GenericTemplateSignatureProviderInput{}));
+    EXPECT_FALSE(query::is_valid(invalid_visibility_authority));
+    EXPECT_EQ(query::generic_template_signature_result_fingerprint(invalid_authority), query::QueryResultFingerprint{});
     EXPECT_FALSE(query::provide_generic_template_signature_query(
         query::GenericTemplateSignatureProviderInput{query::DefKey{}, authority})
             .has_value());
@@ -2964,6 +3030,10 @@ TEST(QueryUnit, GenericTemplateSignatureProviderBuildsRecordFromStableTemplate)
     query::GenericTemplateSignatureProviderOutput invalid_dependency_output = *output;
     invalid_dependency_output.dependencies.push_back(query::QueryKey{});
     EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::GenericTemplateSignatureProviderOutput invalid_result_output = *output;
+    invalid_result_output.result = {};
+    EXPECT_FALSE(query::is_valid(invalid_result_output));
 
     query::GenericTemplateSignatureProviderOutput mismatched_result_output = *output;
     mismatched_result_output.result = query::query_result_fingerprint(
@@ -2998,14 +3068,34 @@ TEST(QueryUnit, GenericInstanceSignatureProviderBuildsRecordFromStableInstance)
     method_authority.kind = query::GenericInstanceSignatureKind::method;
     method_authority.has_receiver_type = true;
     EXPECT_NE(query::generic_instance_signature_result_fingerprint(method_authority), output->result);
+    query::GenericInstanceSignatureAuthority struct_authority = subject.authority;
+    struct_authority.kind = query::GenericInstanceSignatureKind::struct_;
+    EXPECT_TRUE(query::is_valid(struct_authority));
+    query::GenericInstanceSignatureAuthority enum_authority = subject.authority;
+    enum_authority.kind = query::GenericInstanceSignatureKind::enum_;
+    EXPECT_TRUE(query::is_valid(enum_authority));
+    query::GenericInstanceSignatureAuthority type_alias_authority = subject.authority;
+    type_alias_authority.kind = query::GenericInstanceSignatureKind::type_alias;
+    EXPECT_TRUE(query::is_valid(type_alias_authority));
 
     const query::GenericInstanceKey invalid_key;
     query::GenericInstanceSignatureAuthority invalid_authority = subject.authority;
     invalid_authority.signature = {};
+    query::GenericInstanceSignatureAuthority invalid_kind_authority = subject.authority;
+    invalid_kind_authority.kind = query::GenericInstanceSignatureKind::invalid;
+    query::GenericInstanceSignatureAuthority invalid_visibility_authority = subject.authority;
+    invalid_visibility_authority.visibility_rank = QUERY_TEST_PUBLIC_VISIBILITY_RANK + 1U;
     query::GenericInstanceSignatureAuthority mismatched_arg_count_authority = subject.authority;
     ++mismatched_arg_count_authority.type_arg_count;
+    query::GenericInstanceSignatureAuthority mismatched_const_count_authority = subject.authority;
+    ++mismatched_const_count_authority.const_arg_count;
+    query::GenericInstanceSignatureAuthority mismatched_predicate_count_authority = subject.authority;
+    ++mismatched_predicate_count_authority.param_env_predicate_count;
     EXPECT_FALSE(query::generic_instance_signature_query_key(query::GenericInstanceKey{}).has_value());
     EXPECT_FALSE(query::is_valid(query::GenericInstanceSignatureProviderInput{}));
+    EXPECT_FALSE(query::is_valid(invalid_kind_authority));
+    EXPECT_FALSE(query::is_valid(invalid_visibility_authority));
+    EXPECT_FALSE(query::is_valid(query::generic_instance_signature_result_fingerprint(invalid_kind_authority)));
     EXPECT_FALSE(query::provide_generic_instance_signature_query(
         query::GenericInstanceSignatureProviderInput{&invalid_key, subject.authority})
             .has_value());
@@ -3015,11 +3105,25 @@ TEST(QueryUnit, GenericInstanceSignatureProviderBuildsRecordFromStableInstance)
     EXPECT_FALSE(query::provide_generic_instance_signature_query(
         query::GenericInstanceSignatureProviderInput{&subject.key, mismatched_arg_count_authority})
             .has_value());
+    EXPECT_FALSE(query::provide_generic_instance_signature_query(
+        query::GenericInstanceSignatureProviderInput{&subject.key, mismatched_const_count_authority})
+            .has_value());
+    EXPECT_FALSE(query::provide_generic_instance_signature_query(
+        query::GenericInstanceSignatureProviderInput{&subject.key, mismatched_predicate_count_authority})
+            .has_value());
     EXPECT_FALSE(query::is_valid(query::GenericInstanceSignatureProviderOutput{}));
 
     query::GenericInstanceSignatureProviderOutput invalid_dependency_output = *output;
     invalid_dependency_output.dependencies.push_back(query::QueryKey{});
     EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::GenericInstanceSignatureProviderOutput invalid_result_output = *output;
+    invalid_result_output.result = {};
+    EXPECT_FALSE(query::is_valid(invalid_result_output));
+
+    query::GenericInstanceSignatureProviderOutput wrong_kind_output = *output;
+    wrong_kind_output.record.key.kind = query::QueryKind::item_signature;
+    EXPECT_FALSE(query::is_valid(wrong_kind_output));
 
     query::GenericInstanceSignatureProviderOutput mismatched_result_output = *output;
     mismatched_result_output.result = query::query_result_fingerprint(
@@ -3060,6 +3164,7 @@ TEST(QueryUnit, GenericInstanceBodyProviderBuildsRecordAndSignatureDependency)
     invalid_authority.checked_body = {};
     query::GenericInstanceBodyAuthority invalid_signature_authority = input.authority;
     invalid_signature_authority.signature_result = {};
+    EXPECT_EQ(query::generic_instance_body_result_fingerprint(invalid_authority), query::QueryResultFingerprint{});
     EXPECT_FALSE(query::generic_instance_body_query_key(query::GenericInstanceKey{}).has_value());
     EXPECT_FALSE(query::is_valid(query::GenericInstanceBodyProviderInput{}));
     EXPECT_FALSE(query::provide_generic_instance_body_query(
@@ -3076,6 +3181,10 @@ TEST(QueryUnit, GenericInstanceBodyProviderBuildsRecordAndSignatureDependency)
     query::GenericInstanceBodyProviderOutput invalid_dependency_output = *output;
     invalid_dependency_output.dependencies.push_back(query::QueryKey{});
     EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::GenericInstanceBodyProviderOutput invalid_result_output = *output;
+    invalid_result_output.result = {};
+    EXPECT_FALSE(query::is_valid(invalid_result_output));
 
     query::GenericInstanceBodyProviderOutput mismatched_result_output = *output;
     mismatched_result_output.result =
@@ -3164,6 +3273,11 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
 
     query::TypeCheckBodyAuthority invalid_type_authority = subject.type_check_authority;
     invalid_type_authority.checked_body = {};
+    query::TypeCheckBodyAuthority invalid_body_syntax_authority = subject.type_check_authority;
+    invalid_body_syntax_authority.body_syntax_result = {};
+    query::TypeCheckBodyAuthority invalid_signature_authority = subject.type_check_authority;
+    invalid_signature_authority.signature_result = {};
+    EXPECT_EQ(query::type_check_body_result_fingerprint(invalid_type_authority), query::QueryResultFingerprint{});
     EXPECT_FALSE(query::type_check_body_query_key(query::BodyKey{}).has_value());
     EXPECT_FALSE(query::is_valid(query::TypeCheckBodyProviderInput{}));
     EXPECT_FALSE(query::provide_type_check_body_query(
@@ -3172,11 +3286,21 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
     EXPECT_FALSE(
         query::provide_type_check_body_query(query::TypeCheckBodyProviderInput{subject.body, invalid_type_authority})
             .has_value());
+    EXPECT_FALSE(query::provide_type_check_body_query(
+        query::TypeCheckBodyProviderInput{subject.body, invalid_body_syntax_authority})
+            .has_value());
+    EXPECT_FALSE(query::provide_type_check_body_query(
+        query::TypeCheckBodyProviderInput{subject.body, invalid_signature_authority})
+            .has_value());
     EXPECT_FALSE(query::is_valid(query::TypeCheckBodyProviderOutput{}));
 
     query::TypeCheckBodyProviderOutput invalid_dependency_output = *output;
     invalid_dependency_output.dependencies.push_back(query::QueryKey{});
     EXPECT_FALSE(query::is_valid(invalid_dependency_output));
+
+    query::TypeCheckBodyProviderOutput invalid_result_output = *output;
+    invalid_result_output.result = {};
+    EXPECT_FALSE(query::is_valid(invalid_result_output));
 
     query::TypeCheckBodyProviderOutput mismatched_result_output = *output;
     mismatched_result_output.result =
@@ -5149,6 +5273,46 @@ TEST(QueryUnit, CanonicalTypeKeyIsStructuralAndHandleFree)
         query::canonical_function(query::FunctionCallConvKey::aurex, false, false, params, i32);
     EXPECT_TRUE(query::is_valid(function_type));
     EXPECT_NE(query::debug_string(function_type).find("function"), std::string::npos);
+}
+
+TEST(QueryUnit, DropGlueAndDestructorBodyKeysAreStableAndHandleFree)
+{
+    const query::PackageKey package = test_package();
+    const query::ModuleKey module = test_module(package);
+    const query::DefKey function_def = test_function_def(module);
+    const query::BodyKey destructor_body =
+        query::body_key(function_def, query::BodySlotKind::destructor_drop, QUERY_TEST_STABLE_ORDINAL);
+    EXPECT_TRUE(query::is_valid(destructor_body));
+    const std::string destructor_body_bytes = query::stable_serialize(destructor_body);
+    const std::optional<query::DecodedBodyKeyIdentity> destructor_identity =
+        query::decode_body_key_identity(destructor_body_bytes);
+    ASSERT_TRUE(destructor_identity.has_value());
+    EXPECT_EQ(destructor_identity->owner, query::stable_serialize(function_def));
+
+    const query::CanonicalTypeKey i32 = query::canonical_builtin(query::BuiltinTypeKey::i32);
+    const query::CanonicalTypeKey array_i32 = query::canonical_array(QUERY_TEST_ARRAY_COUNT, i32);
+    const query::StableFingerprint128 resource = query::stable_fingerprint("resource:Copy/Discard/Trivial");
+    const query::DropGlueKey glue = query::drop_glue_key(array_i32, resource);
+    const query::DropGlueKey repeated = query::drop_glue_key(array_i32, resource);
+    const query::DropGlueKey different_resource =
+        query::drop_glue_key(array_i32, query::stable_fingerprint("resource:MoveOnly/Discard/NeedsDrop"));
+    query::DropGlueKey invalid_type_glue = glue;
+    invalid_type_glue.type = query::CanonicalTypeKey{};
+    query::DropGlueKey invalid_resource_glue = glue;
+    invalid_resource_glue.resource = query::StableFingerprint128{};
+    query::DropGlueKey invalid_global_glue = glue;
+    invalid_global_glue.global_id = 0;
+    EXPECT_TRUE(query::is_valid(glue));
+    EXPECT_FALSE(query::is_valid(invalid_type_glue));
+    EXPECT_FALSE(query::is_valid(invalid_resource_glue));
+    EXPECT_FALSE(query::is_valid(invalid_global_glue));
+    EXPECT_EQ(glue, repeated);
+    EXPECT_NE(glue, different_resource);
+    EXPECT_NE(glue, invalid_global_glue);
+    EXPECT_EQ(query::stable_key_fingerprint(glue), query::stable_key_fingerprint(repeated));
+    EXPECT_NE(query::stable_serialize(glue), query::stable_serialize(invalid_global_glue));
+    EXPECT_NE(query::DropGlueKeyHash{}(glue), 0U);
+    EXPECT_NE(query::debug_string(glue).find("DropGlueKey"), std::string::npos);
 }
 
 TEST(QueryUnit, CanonicalTypeKeyCoversConstProjectionTraitAndUtilityPaths)

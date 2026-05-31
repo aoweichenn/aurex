@@ -1,20 +1,22 @@
 # 版本文档
 
-## M6-WP2/WP3/WP4 资源分类、move analysis 与 cleanup 基线
+## M6-WP2/WP3/WP4/WP5/WP6/WP7 资源、cleanup、drop-glue 与 tooling 基线
 
 当前实现阶段是 M6 Resource And Access Semantics。M6-WP1 已完成三轮设计审视，完整设计基线记录在
 [Aurex M6 资源、值生命周期与访问语义调研和三轮设计审视基线](m6-resource-access-semantics-design.md)，
 执行路线记录在 [M6 资源、值生命周期与访问语义路线图](m6-roadmap.md)。
 
-M6-WP2/WP3/WP4 已完成第一批资源语义实现：compiler-owned `Copy`、内部 `Discard` / `NeedsDrop` /
+M6-WP2/WP3/WP4/WP5/WP6/WP7 已完成 M6 实现基线：compiler-owned `Copy`、内部 `Discard` / `NeedsDrop` /
 ownership resource summary、结构化类型分类、stable resource fingerprint、checked dump resource summary、
 expression owned-use side table、whole-local move analysis、move 后重新初始化、consume-origin diagnostics、
 lexical cleanup-action stack lowering、`defer` 组合、drop flag，以及正式 IR `drop` / `drop_if` cleanup 节点。
-partial field move、indexed move-out、consuming pattern payload 和 non-`Copy` `?` payload transfer 仍然拒绝。
+收口内容还包括 `BodySlotKind::destructor_drop` destructor body identity、stable drop-glue key、
+target-independent drop-glue planner、IDE resource hover projection、generic parameter hover fallback 和
+`aurex-lsp` stdio 入口。partial field move、indexed move-out、consuming pattern payload 和 non-`Copy` `?`
+payload transfer 仍然拒绝；用户 destructor syntax 与 custom destructor lowering 继续后移。
 
-下一实现包是 M6-WP5 Destructor Protocol 和 Aggregate / Generic Drop Glue。destructor protocol、aggregate /
-generic drop glue、完整 borrow checker、lifetime surface、partial move、`dyn Trait`、region、async drop、全量
-array ABI 解禁和标准库重建继续后移。
+下一实现包是 M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking。完整 borrow checker、lifetime surface、
+partial move、`dyn Trait`、region、async drop、全量 array ABI 解禁和标准库重建继续后移。
 
 ## M5 default trait methods release baseline
 

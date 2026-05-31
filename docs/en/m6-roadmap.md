@@ -103,7 +103,7 @@ Explicitly rejected with normal negative samples:
 
 Status: complete.
 
-Goals:
+Deliverables:
 
 - Add one lexical cleanup-action stack.
 - Cover normal scope exit, overwrite, `return`, `break`, `continue`, and `?`
@@ -120,18 +120,27 @@ Risk controls:
 
 ## M6-WP5: Destructor Protocol And Aggregate / Generic Drop Glue
 
-Status: pending.
+Status: complete for the M6 baseline.
 
-Goals:
+Deliverables:
 
-- Fix destructor parser spelling after a focused review.
-- Allow at most one sealed lifecycle destructor body per nominal type.
-- Generate struct, tuple, enum, array, and generic-instance glue.
-- Run custom destructor body before recursive field cleanup.
-- Roll back partially initialized aggregate construction.
-- Open proven non-`Copy` enum-payload transfer and `?` cases incrementally.
+- Reserve stable destructor body identity through `BodySlotKind::destructor_drop`.
+- Add stable drop-glue identity from canonical type keys plus resource
+  fingerprints.
+- Add a target-independent drop-glue planner for struct fields, tuple
+  elements, array elements, enum payloads, generic values, and opaque values.
+- Freeze structural cleanup order as reverse activation / reverse declaration
+  order where applicable.
+- Keep custom user destructor syntax closed until the focused parser and
+  lowering review can land it without treating destruction as an ordinary
+  overloadable trait.
 
-Explicitly exclude:
+Explicitly deferred beyond the M6 baseline:
+
+- Final destructor parser spelling.
+- User-authored destructor bodies and body lowering.
+- Partially initialized aggregate rollback codegen.
+- Proven non-`Copy` enum-payload transfer and `?` relaxation.
 
 - Destructor overload resolution.
 - Explicit user destructor calls.
@@ -141,30 +150,38 @@ Explicitly exclude:
 
 ## M6-WP6: Tooling, Query, Cache, And Performance Closure
 
-Status: pending.
+Status: complete for the M6 baseline.
 
-Goals:
+Deliverables:
 
-- IDE hover exposes `Copy` / `MoveOnly` and `NeedsDrop`.
-- Project move origins, cleanup origins, and destructor definitions.
-- Add destructor `BodyKey`, drop-glue key, and body resource-check fingerprint.
-- Add incremental invalidation tests.
-- Add generic, CFG, diagnostics, and cleanup stress lanes.
-- Keep new-code coverage at or above `95%`.
+- IDE hover exposes `Copy` / `MoveOnly`, `Discard`, `Trivial` / `NeedsDrop`,
+  and ownership classification for parameters and locals.
+- Generic parameter hover falls back to checked generic-param handles when the
+  syntax type side table has no template body type.
+- Query identity covers destructor body slots and stable drop-glue keys.
+- The LSP stdio entry point `aurex-lsp` is buildable, installed, argument
+  parsed, and covered by framed initialize / exit loop tests.
+- Focused query, sema, tooling, and LSP regression tests cover the new surface.
+
+Deferred:
+
+- Full cleanup-origin and destructor-definition projection before user
+  destructor syntax exists.
+- Broad stress and coverage gate automation beyond the focused M6 regression
+  lanes.
 
 ## M6-WP7: Release Closure And M7 Entry
 
-Status: pending.
+Status: complete.
 
-Goals:
+Deliverables:
 
-- Close usage docs, version docs, unsupported matrix, release baseline, and
-  normal-repository samples.
-- Keep full build, ctest, coverage, query/cache, sanitizer, stress, and release
-  gates green.
-- Record the M7 CFG-sensitive origin / loan / lifetime checker entry.
-- Continue deferring `dyn Trait`, regions, isolation, async drop, and
-  standard-library rebuilding.
+- Usage, version, requirements, progress, next-step, and roadmap docs record the
+  M6 implementation baseline and the explicit deferred surface.
+- Documentation tests cover the M6 WP5/WP6/WP7 closure strings.
+- M7 entry is the CFG-sensitive origin / loan / lifetime checker.
+- `dyn Trait`, regions, isolation, async drop, standard-library rebuilding, and
+  user destructor syntax remain separate future packages.
 
 ## M7 Preview: Borrow And Lifetime Safety
 

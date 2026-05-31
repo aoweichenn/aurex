@@ -1,6 +1,6 @@
 # Version Document
 
-## M6-WP2/WP3/WP4 Resource Classification, Move Analysis, And Cleanup Baseline
+## M6-WP2/WP3/WP4/WP5/WP6/WP7 Resource, Cleanup, Drop-Glue, And Tooling Baseline
 
 The active implementation stage is M6 Resource And Access Semantics. M6-WP1 has closed
 three design-review passes. The complete baseline is recorded in the
@@ -8,20 +8,24 @@ three design-review passes. The complete baseline is recorded in the
 with the execution route in the
 [M6 Resource, Value Lifetime, And Access Semantics Roadmap](m6-roadmap.md).
 
-M6-WP2/WP3/WP4 have completed the first resource-semantics implementation batch:
+M6-WP2/WP3/WP4/WP5/WP6/WP7 have completed the M6 implementation baseline:
 compiler-owned `Copy`, internal `Discard` / `NeedsDrop` / ownership resource
 summaries, structural type classification, stable resource fingerprints,
 checked-dump resource summaries, expression owned-use side tables, whole-local
 move analysis, reinitialization after moves, consume-origin diagnostics,
 lexical cleanup-action stack lowering, `defer` composition, drop flags, and
-formal IR `drop` / `drop_if` cleanup nodes.
+formal IR `drop` / `drop_if` cleanup nodes. The closure also adds destructor
+body identity through `BodySlotKind::destructor_drop`, stable drop-glue keys,
+a target-independent drop-glue planner, IDE resource hover projection, generic
+parameter hover fallback, and the `aurex-lsp` stdio entry point.
 Partial field moves, indexed move-out, consuming payload patterns, and
-non-`Copy` `?` payload transfer remain rejected.
+non-`Copy` `?` payload transfer remain rejected. User destructor syntax and
+custom destructor lowering remain deferred.
 
-The next package is M6-WP5 Destructor Protocol And Aggregate / Generic Drop
-Glue. Destructor protocol, aggregate/generic drop glue, complete borrow
-checking, lifetime surfaces, partial moves, `dyn Trait`, regions, async drop,
-broad array ABI enablement, and standard-library rebuilding remain deferred.
+The next package is M7 CFG-Sensitive Origin, Loan, And Lifetime Checking.
+Complete borrow checking, lifetime surfaces, partial moves, `dyn Trait`,
+regions, async drop, broad array ABI enablement, and standard-library
+rebuilding remain deferred.
 
 ## M5 default trait methods release baseline
 

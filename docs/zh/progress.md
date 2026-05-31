@@ -1,21 +1,24 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M6-WP2/WP3/WP4 资源分类、whole-local move analysis 和 cleanup lowering 已完成
+阶段：M6-WP2 到 M6-WP7 资源、cleanup、drop-glue、tooling 和 release closure 已完成
 
 ## 总体状态
 
-2026-06-01：M6-WP2、M6-WP3 和 M6-WP4 已完成第一批资源语义实现。WP2 增加 compiler-owned `Copy`、
+2026-06-01：M6-WP2 到 M6-WP7 已完成 M6 实现基线。WP2 增加 compiler-owned `Copy`、
 内部 `Discard` / `NeedsDrop` / ownership resource summary、结构化类型分类、stable resource fingerprint
 和 checked dump 中的 deterministic resource summaries；`Drop` 仍然不是用户可写 bound。WP3 增加
 expression owned-use side table、独立 whole-local move analysis 模块、迭代式 CFG/worklist
 initialized / moved / maybe-moved dataflow、move 后重新初始化和 consume-origin diagnostics。WP4 增加统一
 lexical cleanup-action stack，将 compiler cleanup 与 `defer` 交错，降低 drop flag，覆盖 normal
 exit、overwrite、`return`、`break`、`continue` 和 `?` early return，并新增正式 IR `drop` / `drop_if` cleanup
-节点、verifier 和 backend scaffold。当前边界仍然
+节点、verifier 和 backend scaffold。WP5 和 WP6 增加 destructor body identity、stable drop-glue key、
+target-independent drop-glue planner、IDE resource hover projection、generic parameter hover fallback 和
+`aurex-lsp` stdio 入口。WP7 收口实现文档，并记录 M7 入口为 CFG-sensitive origin / loan / lifetime checker。
+当前边界仍然
 明确：partial field move、indexed move-out、consuming pattern payload 和 non-`Copy` `?` payload transfer
-都在正式负样例中拒绝；destructor protocol、aggregate/generic drop glue 和完整 borrow checker 尚未实现。
-下一实现包是 M6-WP5 Destructor Protocol 和 Aggregate / Generic Drop Glue。
+都在正式负样例中拒绝；用户 destructor syntax、custom destructor lowering、aggregate rollback codegen 和完整
+borrow checker 尚未实现。下一实现包是 M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking。
 
 2026-05-31：M6-WP1 已完成资源、值生命周期与访问语义的三轮设计审视。完整基线记录在
 [Aurex M6 资源、值生命周期与访问语义调研和三轮设计审视基线](m6-resource-access-semantics-design.md)，

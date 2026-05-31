@@ -7,6 +7,7 @@ namespace aurex::query {
 namespace {
 
 constexpr base::u64 QUERY_CANONICAL_TYPE_KEY_MARKER = 0x5143545950453031ULL;
+constexpr base::u64 QUERY_DROP_GLUE_KEY_MARKER = 0x5144524f50303131ULL;
 constexpr base::usize QUERY_CANONICAL_TYPE_STACK_RESERVE = 16;
 
 [[nodiscard]] std::string_view canonical_type_kind_name(const CanonicalTypeKind kind) noexcept
@@ -120,9 +121,24 @@ bool operator!=(const CanonicalTypeKey& lhs, const CanonicalTypeKey& rhs) noexce
     return !(lhs == rhs);
 }
 
+bool operator==(const DropGlueKey& lhs, const DropGlueKey& rhs) noexcept
+{
+    return lhs.type == rhs.type && lhs.resource == rhs.resource && lhs.global_id == rhs.global_id;
+}
+
+bool operator!=(const DropGlueKey& lhs, const DropGlueKey& rhs) noexcept
+{
+    return !(lhs == rhs);
+}
+
 bool is_valid(const CanonicalTypeKey& key) noexcept
 {
     return key.kind != CanonicalTypeKind::invalid;
+}
+
+bool is_valid(const DropGlueKey& key) noexcept
+{
+    return is_valid(key.type) && key.resource.byte_count != 0 && key.global_id != 0;
 }
 
 CanonicalTypeKey canonical_builtin(const BuiltinTypeKey builtin)
@@ -234,6 +250,19 @@ CanonicalTypeKey canonical_associated_type_projection(CanonicalTypeKey base_type
     return key;
 }
 
+DropGlueKey drop_glue_key(CanonicalTypeKey type, const StableFingerprint128 resource)
+{
+    DropGlueKey key;
+    key.type = std::move(type);
+    key.resource = resource;
+    const StableFingerprint128 fingerprint = stable_key_fingerprint(key);
+    base::u64 global_id = stable_mix(QUERY_DROP_GLUE_KEY_MARKER, fingerprint.primary);
+    global_id = stable_mix(global_id, fingerprint.secondary);
+    global_id = stable_mix(global_id, fingerprint.byte_count);
+    key.global_id = global_id == 0 ? QUERY_DROP_GLUE_KEY_MARKER : global_id;
+    return key;
+}
+
 void append_stable_key(StableKeyWriter& writer, const CanonicalTypeKey& key)
 {
     std::vector<const CanonicalTypeKey*> pending;
@@ -250,7 +279,22 @@ void append_stable_key(StableKeyWriter& writer, const CanonicalTypeKey& key)
     }
 }
 
+void append_stable_key(StableKeyWriter& writer, const DropGlueKey& key)
+{
+    writer.write_u64(QUERY_DROP_GLUE_KEY_MARKER);
+    append_stable_key(writer, key.type);
+    writer.write_fingerprint(key.resource);
+    writer.write_u64(key.global_id);
+}
+
 std::string stable_serialize(const CanonicalTypeKey& key)
+{
+    StableKeyWriter writer;
+    append_stable_key(writer, key);
+    return writer.storage();
+}
+
+std::string stable_serialize(const DropGlueKey& key)
 {
     StableKeyWriter writer;
     append_stable_key(writer, key);
@@ -264,6 +308,15 @@ StableFingerprint128 stable_key_fingerprint(const CanonicalTypeKey& key)
     return writer.fingerprint();
 }
 
+StableFingerprint128 stable_key_fingerprint(const DropGlueKey& key)
+{
+    StableKeyWriter writer;
+    writer.write_u64(QUERY_DROP_GLUE_KEY_MARKER);
+    append_stable_key(writer, key.type);
+    writer.write_fingerprint(key.resource);
+    return writer.fingerprint();
+}
+
 std::string debug_string(const CanonicalTypeKey& key)
 {
     std::ostringstream out;
@@ -272,7 +325,20 @@ std::string debug_string(const CanonicalTypeKey& key)
     return out.str();
 }
 
+std::string debug_string(const DropGlueKey& key)
+{
+    std::ostringstream out;
+    out << "DropGlueKey{global=" << key.global_id << ",fingerprint=" << debug_string(stable_key_fingerprint(key))
+        << '}';
+    return out.str();
+}
+
 std::size_t CanonicalTypeKeyHash::operator()(const CanonicalTypeKey& key) const
+{
+    return stable_hash_value(stable_key_fingerprint(key));
+}
+
+std::size_t DropGlueKeyHash::operator()(const DropGlueKey& key) const
 {
     return stable_hash_value(stable_key_fingerprint(key));
 }

@@ -20,19 +20,23 @@ M6-WP1 completed three design-review passes:
    initialization, self-reference, shared-ownership cycles, and future
    `dyn Trait`.
 
-M6-WP2/WP3/WP4 have completed the first implementation batch:
+M6-WP2 through M6-WP7 have completed the M6 implementation baseline:
 compiler-owned `Copy`, internal `Discard` / `NeedsDrop` / ownership resource
 summaries, structural type classification, stable fingerprints, checked-dump
 resource summaries, expression owned-use side tables, whole-local move
 analysis, reinitialization after moves, consume-origin diagnostics, lexical
 cleanup-action stack lowering, `defer` composition, drop flags, and formal IR
-`drop` / `drop_if` cleanup nodes.
+`drop` / `drop_if` cleanup nodes. The baseline also includes destructor body
+identity, stable drop-glue keys, a target-independent drop-glue planner, IDE
+resource hover projection, generic parameter hover fallback, LSP stdio server
+entry, and release documentation closure.
 
-The next implementation package is M6-WP5 Destructor Protocol And Aggregate /
-Generic Drop Glue. WP5 should keep the WP4 cleanup obligations as its input,
-then add the destructor surface, aggregate/generic drop glue, and proven
-aggregate rollback paths. WP5 does not implement the complete borrow checker;
-that remains an M7 responsibility.
+The next implementation package is M7 CFG-Sensitive Origin, Loan, And Lifetime
+Checking. M7 should keep the M6 cleanup and resource facts as input, then add
+loan origins, projection-aware access conflicts, borrowed-return contracts, and
+the lifetime surface. User destructor syntax, custom destructor lowering,
+aggregate rollback codegen, and complete borrow checking remain outside the M6
+baseline.
 
 ## Closed Background: Post-M5 Design Selection
 

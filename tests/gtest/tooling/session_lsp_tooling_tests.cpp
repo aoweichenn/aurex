@@ -1,11 +1,13 @@
 #include <aurex/query/query_key.hpp>
 #include <aurex/tooling/lsp.hpp>
+#include <aurex/tooling/lsp_stdio.hpp>
 #include <aurex/tooling/session.hpp>
 
 #include <algorithm>
 #include <array>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -1769,6 +1771,234 @@ TEST(CoreUnit, LspFramingParsesAndWritesDeterministicContentMessages)
         tooling::parse_lsp_content_messages("Content-Length: 12\r\n\r\n{}");
     EXPECT_FALSE(invalid);
     EXPECT_FALSE(tooling::parse_lsp_content_messages("Content-Length\r\n\r\n{}"));
+}
+
+TEST(CoreUnit, LspStdioParsesOptions)
+{
+    const std::array<std::string_view, 10> arguments{
+        "aurex-lsp",
+        "--root",
+        "/workspace",
+        "--source-root",
+        "src",
+        "--package",
+        "tooling-lsp-stdio-test",
+        "-I",
+        "deps",
+        "--help",
+    };
+
+    base::Result<tooling::LspStdioOptions> options = tooling::parse_lsp_stdio_arguments(arguments);
+    ASSERT_TRUE(options) << options.error().message;
+    EXPECT_TRUE(options.value().help);
+    EXPECT_EQ(options.value().config.root_path, "/workspace");
+    EXPECT_EQ(options.value().config.source_root, "src");
+    EXPECT_EQ(options.value().config.package_identity, "tooling-lsp-stdio-test");
+    ASSERT_EQ(options.value().config.import_paths.size(), 1U);
+    EXPECT_EQ(options.value().config.import_paths.front(), "deps");
+}
+
+TEST(CoreUnit, LspStdioRejectsMissingOptionValue)
+{
+    const std::array<std::string_view, 2> arguments{"aurex-lsp", "--root"};
+
+    base::Result<tooling::LspStdioOptions> options = tooling::parse_lsp_stdio_arguments(arguments);
+    ASSERT_FALSE(options);
+    EXPECT_EQ(options.error().code, base::ErrorCode::invalid_source);
+    EXPECT_NE(options.error().message.find("missing value"), std::string::npos);
+}
+
+TEST(CoreUnit, LspStdioCoversHelpAndRuntimeErrorPaths)
+{
+    class FailingBuffer final : public std::stringbuf {
+    protected:
+        int overflow(int) override
+        {
+            return traits_type::eof();
+        }
+    };
+
+    {
+        std::ostringstream output;
+        tooling::print_lsp_stdio_usage(output, "");
+        EXPECT_NE(output.str().find("usage: aurex-lsp"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 2> arguments{"aurex-lsp", "--help"};
+        std::istringstream input;
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 0);
+        EXPECT_NE(output.str().find("usage: aurex-lsp"), std::string::npos);
+        EXPECT_TRUE(error.str().empty());
+    }
+    {
+        const std::array<std::string_view, 2> arguments{"aurex-lsp", "-h"};
+        std::istringstream input;
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 0);
+        EXPECT_NE(output.str().find("usage: aurex-lsp"), std::string::npos);
+        EXPECT_TRUE(error.str().empty());
+    }
+    {
+        const std::array<std::string_view, 2> arguments{"aurex-lsp", "--bad-option"};
+        std::istringstream input;
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 2);
+        EXPECT_TRUE(output.str().empty());
+        EXPECT_NE(error.str().find("unknown LSP option"), std::string::npos);
+        EXPECT_NE(error.str().find("usage: aurex-lsp"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Content-Type: application/vscode-jsonrpc\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_TRUE(output.str().empty());
+        EXPECT_NE(error.str().find("missing LSP Content-Length header"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("content-lengxh: 2\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_TRUE(output.str().empty());
+        EXPECT_NE(error.str().find("missing LSP Content-Length header"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("content-length: bad\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_NE(error.str().find("invalid LSP Content-Length header"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Content-Length: 12x\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_NE(error.str().find("invalid LSP Content-Length header"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Content-Length: 18446744073709551615\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_NE(error.str().find("LSP message body is too large"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Content-Length: 10\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_NE(error.str().find("unexpected EOF while reading LSP body"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Content-Length: 2\r\n");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_NE(error.str().find("unexpected EOF while reading LSP headers"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input;
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 0);
+        EXPECT_TRUE(output.str().empty());
+        EXPECT_TRUE(error.str().empty());
+    }
+    {
+        const std::array<std::string_view, 0> arguments{};
+        std::istringstream input;
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 0);
+        EXPECT_TRUE(output.str().empty());
+        EXPECT_TRUE(error.str().empty());
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Content-Length:\t2\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 0);
+        EXPECT_TRUE(output.str().empty());
+        EXPECT_TRUE(error.str().empty());
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Ignored-Header\r\nCONTENT-LENGTH: 2\t \r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 0);
+        EXPECT_TRUE(error.str().empty());
+    }
+    {
+        const std::string initialize =
+            tooling::write_lsp_content_message(lsp_request_json(TOOLING_LSP_ID_INITIALIZE, "initialize", "{}"));
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input(initialize);
+        FailingBuffer buffer;
+        std::ostream output(&buffer);
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_NE(error.str().find("failed to write LSP response"), std::string::npos);
+    }
+}
+
+TEST(CoreUnit, LspStdioRunsServerLoop)
+{
+    const std::string initialize =
+        tooling::write_lsp_content_message(lsp_request_json(TOOLING_LSP_ID_INITIALIZE, "initialize", "{}"));
+    const std::string initialized = tooling::write_lsp_content_message(lsp_notification_json("initialized", "{}"));
+    const std::string exit = tooling::write_lsp_content_message(lsp_notification_json("exit", "{}"));
+    std::istringstream input(initialize + initialized + exit);
+    std::ostringstream output;
+    std::ostringstream error;
+    const std::array<std::string_view, 7> arguments{
+        "aurex-lsp",
+        "--root",
+        "/workspace",
+        "--package",
+        "tooling-lsp-stdio-test",
+        "--import-path",
+        "/workspace/deps",
+    };
+
+    const int exit_code = tooling::run_lsp_stdio(arguments, input, output, error);
+    EXPECT_EQ(exit_code, 0) << error.str();
+    EXPECT_TRUE(error.str().empty());
+    base::Result<std::vector<tooling::LspContentMessage>> messages = tooling::parse_lsp_content_messages(output.str());
+    ASSERT_TRUE(messages) << messages.error().message;
+    ASSERT_EQ(messages.value().size(), 1U);
+    EXPECT_NE(messages.value().front().body.find("\"hoverProvider\":true"), std::string::npos);
+    EXPECT_NE(messages.value().front().body.find("\"inlayHintProvider\":true"), std::string::npos);
 }
 
 TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)

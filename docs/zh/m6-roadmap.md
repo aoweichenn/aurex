@@ -100,19 +100,24 @@ resource summary
 
 ## M6-WP5：Destructor Protocol 和 Aggregate / Generic Drop Glue
 
-状态：待开始。
+状态：M6 基线已完成。
 
-目标：
+交付：
 
-- 在单独 parser 审视后固定 destructor surface spelling。
-- nominal 类型最多一个 sealed lifecycle destructor body。
-- struct、tuple、enum、array 和 generic instance drop glue。
-- custom destructor body 后按规则递归 drop fields。
-- aggregate 分步初始化失败回滚。
-- 逐步开放已证明正确的 non-`Copy` enum payload transfer 和 `?`。
+- 通过 `BodySlotKind::destructor_drop` 保留稳定 destructor body identity。
+- 用 canonical type key 加 resource fingerprint 固定稳定 drop-glue identity。
+- 增加 target-independent drop-glue planner，覆盖 struct field、tuple element、array
+  element、enum payload、generic value 和 opaque value。
+- 将结构化 cleanup 顺序固定为适用位置的 reverse activation / reverse declaration。
+- custom 用户 destructor syntax 继续关闭，直到 parser 和 lowering 审视能在不把
+  destruction 降级成普通 overloadable trait 的前提下落地。
 
-明确不做：
+M6 基线后继续暂缓：
 
+- 最终 destructor parser spelling。
+- 用户编写 destructor body 及其 lowering。
+- partial aggregate rollback codegen。
+- 已证明正确的 non-`Copy` enum payload transfer 和 `?` 放开。
 - destructor overload resolution。
 - 用户显式 destructor 调用。
 - unwind cleanup。
@@ -121,27 +126,37 @@ resource summary
 
 ## M6-WP6：Tooling、Query、Cache 和性能闭环
 
-状态：待开始。
+状态：M6 基线已完成。
 
-目标：
+交付：
 
-- IDE hover 暴露 `Copy` / `MoveOnly` 和 `NeedsDrop`。
-- move origin、cleanup origin 和 destructor definition projection。
-- destructor `BodyKey`、drop glue key 和 body resource-check fingerprint。
-- incremental invalidation tests。
-- generic、CFG、diagnostics 和 cleanup stress lanes。
-- 新增代码覆盖率至少 `95%`。
+- IDE hover 暴露参数和局部变量的 `Copy` / `MoveOnly`、`Discard`、
+  `Trivial` / `NeedsDrop` 和 ownership 分类。
+- 当 syntax type side table 没有 template body type 时，generic parameter hover
+  回退到 checked generic-param handle。
+- query identity 覆盖 destructor body slot 和稳定 drop-glue key。
+- LSP stdio 入口 `aurex-lsp` 可构建、安装、解析参数，并有 framed initialize /
+  exit loop 测试覆盖。
+- query、sema、tooling 和 LSP 都有聚焦回归测试覆盖新增表面。
+
+暂缓：
+
+- 在用户 destructor syntax 存在之前，不做完整 cleanup-origin 和
+  destructor-definition projection。
+- 聚焦 M6 regression lane 之外的全量 stress 和 coverage gate 自动化。
 
 ## M6-WP7：Release Closure 和 M7 入口
 
-状态：待开始。
+状态：已完成。
 
-目标：
+交付：
 
-- usage、version、unsupported matrix、release baseline 和 normal repository samples 收口。
-- full build、ctest、coverage、query/cache、sanitizer、stress 和 release gates green。
-- 记录 M7 CFG-sensitive origin / loan / lifetime checker 入口。
-- 继续后移 `dyn Trait`、region、isolation、async drop 和标准库重建。
+- usage、version、requirements、progress、next-step 和 roadmap 文档记录 M6
+  实现基线与明确暂缓表面。
+- documentation tests 覆盖 M6 WP5/WP6/WP7 收口字符串。
+- M7 入口固定为 CFG-sensitive origin / loan / lifetime checker。
+- `dyn Trait`、region、isolation、async drop、标准库重建和用户 destructor syntax
+  都保持为独立未来包。
 
 ## M7 预告：借用和生命周期安全
 

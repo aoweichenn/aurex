@@ -15,14 +15,17 @@ M6-WP1 已完成三轮设计审视：
 3. 用户案例压力测试：regex 手工 `destroy`、owned string/vector、文件、锁、FFI、覆盖赋值、分支、循环、
    `?`、pattern、partial initialization、自引用、shared ownership cycle 和未来 `dyn Trait`。
 
-M6-WP2/WP3/WP4 已完成第一批实现：compiler-owned `Copy`、内部 `Discard` / `NeedsDrop` / ownership
+M6-WP2 到 M6-WP7 已完成 M6 实现基线：compiler-owned `Copy`、内部 `Discard` / `NeedsDrop` / ownership
 resource summary、结构化类型分类、stable fingerprint、checked dump resource summaries、expression
 owned-use side table、whole-local move analysis、move 后重新初始化、consume-origin diagnostics、lexical
-cleanup-action stack lowering、`defer` 组合、drop flag，以及正式 IR `drop` / `drop_if` cleanup 节点。
+cleanup-action stack lowering、`defer` 组合、drop flag，以及正式 IR `drop` / `drop_if` cleanup 节点。该基线还包括
+destructor body identity、stable drop-glue key、target-independent drop-glue planner、IDE resource hover projection、
+generic parameter hover fallback、LSP stdio server 入口和 release documentation closure。
 
-下一实现包是 M6-WP5 Destructor Protocol 和 Aggregate / Generic Drop Glue。WP5 应以 WP4 cleanup obligations
-为输入，继续补 destructor surface、aggregate/generic drop glue 和已经证明正确的 aggregate rollback 路径。WP5
-不实现完整 borrow checker；这仍然属于 M7。
+下一实现包是 M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking。M7 应以 M6 cleanup 和 resource facts 为输入，
+继续增加 loan origin、projection-aware access conflict、borrowed-return contract 和 lifetime surface。用户
+destructor syntax、custom destructor lowering、aggregate rollback codegen 和完整 borrow checker 都不属于 M6
+baseline。
 
 ## 已收口背景：Post-M5 Design Selection
 

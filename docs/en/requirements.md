@@ -3,8 +3,9 @@
 ## Branch Goal
 
 The active implementation baseline is M6 Resource And Access Semantics.
-M6-WP2/WP3/WP4 have landed resource classification, whole-local move analysis,
-and cleanup obligation lowering. The older M2 `language-core-no-std` stage
+M6-WP2 through M6-WP7 have landed resource classification, whole-local move
+analysis, cleanup obligation lowering, drop-glue identity/planning, tooling
+projection, and release closure. The older M2 `language-core-no-std` stage
 isolated language-core validation:
 
 - The compiler must build, install, and run without a standard-library tree.
@@ -30,6 +31,9 @@ isolated language-core validation:
   or-patterns.
 - `if` expressions, block expressions, `while`, `for`, `break`, and `continue`.
 - `defer` and `?`.
+- Compiler-owned `Copy`, internal `Discard` / `NeedsDrop` resource summaries,
+  whole-local move diagnostics, lexical cleanup lowering, stable drop-glue
+  identity, IDE resource hover, and the `aurex-lsp` stdio entry point.
 - Ordinary value semantics, with the current restriction that arrays and
   array-containing types cannot be by-value function parameters, returns,
   assignment targets, or enum payloads.
@@ -43,7 +47,8 @@ isolated language-core validation:
 - Dynamic trait objects, object safety, vtable ABI, associated constants,
   default associated types, generic associated types, specialization, minimal
   implementation annotations, complete borrow checking, partial moves,
-  regions, async drop, and standard-library rebuilding.
+  regions, user destructor syntax, custom destructor lowering, aggregate
+  rollback codegen, async drop, and standard-library rebuilding.
 
 The M1 language-level `move(...)` and `noncopy struct` syntax is no longer part
 of the current M2 requirements. M6 does not revive that ad hoc surface; it

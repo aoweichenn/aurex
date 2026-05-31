@@ -1,4 +1,5 @@
 #include <aurex/sema/canonical_type_builder.hpp>
+#include <aurex/sema/drop_glue.hpp>
 #include <aurex/sema/resource_semantics.hpp>
 #include <aurex/sema/sema.hpp>
 #include <aurex/sema/sema_messages.hpp>
@@ -3729,6 +3730,161 @@ TEST(CoreUnit, SemanticWhiteBoxResourceSemanticsClassifiesStructuralTypesAndFing
     EXPECT_NE(sema::resource_semantics_fingerprint(copy_owned), sema::resource_semantics_fingerprint(conservative));
     EXPECT_NE(sema::dump_checked_module(checked).find("resource_summaries"), std::string::npos);
     EXPECT_NE(sema::dump_checked_module(checked).find("Copy/Discard/Trivial/OwnedValue"), std::string::npos);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxDropGluePlansStructuralGenericAndOpaqueCleanup)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"drop_glue"})};
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    sema::CheckedModule& checked = analyzer.state_.checked;
+    sema::TypeTable& types = checked.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const sema::GenericParamIdentity param_identity = sema::generic_param_identity_from_text("drop_glue.T");
+    const TypeHandle param = types.generic_param(param_identity, SEMA_TEST_GENERIC_PARAM_NAME);
+    const TypeHandle tuple = types.tuple({i32, param});
+    const TypeHandle array = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, tuple);
+    const TypeHandle record = types.named_struct("drop_glue.Record", "drop_glue_Record", false);
+    const TypeHandle choice = types.named_enum("drop_glue.Choice", "drop_glue_Choice");
+    const TypeHandle opaque = types.opaque_struct("drop_glue.Opaque", "drop_glue_Opaque");
+    types.set_enum_underlying(choice, i32);
+
+    const StructInfo& record_info = add_struct_info(analyzer, module_id(0), "Record", record);
+    const_cast<StructInfo&>(record_info)
+        .fields.push_back(StructFieldInfo{
+            checked.intern_text("copy"),
+            intern_identifier(analyzer, "copy"),
+            checked.intern_text("drop_glue_Record_copy"),
+            module_id(0),
+            i32,
+            {},
+            syntax::Visibility::public_,
+            {},
+        });
+    const_cast<StructInfo&>(record_info)
+        .fields.push_back(StructFieldInfo{
+            checked.intern_text("owned"),
+            intern_identifier(analyzer, "owned"),
+            checked.intern_text("drop_glue_Record_owned"),
+            module_id(0),
+            array,
+            {},
+            syntax::Visibility::public_,
+            {},
+        });
+    static_cast<void>(add_enum_case(analyzer, module_id(0), "Choice_record", "record", choice, record, {record}));
+
+    base::Result<sema::DropGluePlan> record_plan = sema::build_drop_glue_plan(checked, record);
+    ASSERT_TRUE(record_plan) << record_plan.error().message;
+    EXPECT_TRUE(sema::drop_glue_plan_needs_drop(record_plan.value()));
+    ASSERT_EQ(record_plan.value().steps.size(), 4U);
+    EXPECT_EQ(record_plan.value().steps[0].kind, sema::DropGlueStepKind::struct_field);
+    EXPECT_EQ(record_plan.value().steps[0].ordinal, 1U);
+    EXPECT_EQ(record_plan.value().steps[1].kind, sema::DropGlueStepKind::array_element);
+    EXPECT_EQ(record_plan.value().steps[2].kind, sema::DropGlueStepKind::tuple_element);
+    EXPECT_EQ(record_plan.value().steps[2].ordinal, 1U);
+    EXPECT_EQ(record_plan.value().steps[3].kind, sema::DropGlueStepKind::generic_value);
+    EXPECT_NE(record_plan.value().fingerprint.byte_count, 0U);
+    EXPECT_EQ(sema::drop_glue_step_kind_name(record_plan.value().steps[0].kind), "struct_field");
+
+    base::Result<sema::DropGluePlan> enum_plan = sema::build_drop_glue_plan(checked, choice);
+    ASSERT_TRUE(enum_plan) << enum_plan.error().message;
+    ASSERT_FALSE(enum_plan.value().steps.empty());
+    EXPECT_EQ(enum_plan.value().steps.front().kind, sema::DropGlueStepKind::enum_payload);
+
+    base::Result<sema::DropGluePlan> opaque_plan = sema::build_drop_glue_plan(checked, opaque);
+    ASSERT_TRUE(opaque_plan) << opaque_plan.error().message;
+    ASSERT_EQ(opaque_plan.value().steps.size(), 1U);
+    EXPECT_EQ(opaque_plan.value().steps.front().kind, sema::DropGlueStepKind::opaque_value);
+
+    base::Result<sema::DropGluePlan> trivial_plan = sema::build_drop_glue_plan(checked, i32);
+    ASSERT_TRUE(trivial_plan) << trivial_plan.error().message;
+    EXPECT_FALSE(sema::drop_glue_plan_needs_drop(trivial_plan.value()));
+    EXPECT_TRUE(trivial_plan.value().steps.empty());
+    EXPECT_FALSE(sema::build_drop_glue_plan(checked, INVALID_TYPE_HANDLE));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxDropGlueCoversMissingRecursiveEnumAndInvalidEdges)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"drop_glue_edges"})};
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    sema::CheckedModule& checked = analyzer.state_.checked;
+    sema::TypeTable& types = checked.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle missing_record = types.named_struct("drop_glue_edges.Missing", "drop_glue_edges_Missing", false);
+    const TypeHandle recursive_record =
+        types.named_struct("drop_glue_edges.Recursive", "drop_glue_edges_Recursive", false);
+    const TypeHandle empty_choice = types.named_enum("drop_glue_edges.EmptyChoice", "drop_glue_edges_EmptyChoice");
+    const TypeHandle missing_choice =
+        types.named_enum("drop_glue_edges.MissingChoice", "drop_glue_edges_MissingChoice");
+    const TypeHandle mixed_choice = types.named_enum("drop_glue_edges.MixedChoice", "drop_glue_edges_MixedChoice");
+    const query::MemberKey associated_member = query::member_key(
+        query::DefKey{}, query::MemberKind::associated_type, "Item", SEMA_TEST_GENERIC_FIRST_PARAM_INDEX);
+    const TypeHandle associated_projection = types.associated_projection(recursive_record, associated_member, "Item");
+    types.set_enum_underlying(empty_choice, i32);
+    types.set_enum_underlying(mixed_choice, i32);
+
+    const StructInfo& recursive_info = add_struct_info(analyzer, module_id(0), "Recursive", recursive_record);
+    const_cast<StructInfo&>(recursive_info)
+        .fields.push_back(StructFieldInfo{
+            checked.intern_text("next"),
+            intern_identifier(analyzer, "next"),
+            checked.intern_text("drop_glue_edges_Recursive_next"),
+            module_id(0),
+            recursive_record,
+            {},
+            syntax::Visibility::public_,
+            {},
+        });
+    static_cast<void>(add_enum_case(analyzer, module_id(0), "Mixed_i32", "i32", mixed_choice, i32, {i32}));
+    static_cast<void>(add_enum_case(
+        analyzer, module_id(0), "Mixed_recursive", "recursive", mixed_choice, recursive_record, {recursive_record}));
+
+    base::Result<sema::DropGluePlan> missing_record_plan = sema::build_drop_glue_plan(checked, missing_record);
+    ASSERT_TRUE(missing_record_plan) << missing_record_plan.error().message;
+    ASSERT_EQ(missing_record_plan.value().steps.size(), 1U);
+    EXPECT_EQ(missing_record_plan.value().steps.front().kind, sema::DropGlueStepKind::opaque_value);
+
+    base::Result<sema::DropGluePlan> recursive_plan = sema::build_drop_glue_plan(checked, recursive_record);
+    ASSERT_TRUE(recursive_plan) << recursive_plan.error().message;
+    ASSERT_EQ(recursive_plan.value().steps.size(), 2U);
+    EXPECT_EQ(recursive_plan.value().steps[0].kind, sema::DropGlueStepKind::struct_field);
+    EXPECT_EQ(recursive_plan.value().steps[1].kind, sema::DropGlueStepKind::generic_value);
+
+    base::Result<sema::DropGluePlan> empty_enum_plan = sema::build_drop_glue_plan(checked, empty_choice);
+    ASSERT_TRUE(empty_enum_plan) << empty_enum_plan.error().message;
+    EXPECT_FALSE(sema::drop_glue_plan_needs_drop(empty_enum_plan.value()));
+    EXPECT_TRUE(empty_enum_plan.value().steps.empty());
+
+    base::Result<sema::DropGluePlan> missing_enum_plan = sema::build_drop_glue_plan(checked, missing_choice);
+    ASSERT_TRUE(missing_enum_plan) << missing_enum_plan.error().message;
+    EXPECT_TRUE(sema::drop_glue_plan_needs_drop(missing_enum_plan.value()));
+    EXPECT_TRUE(missing_enum_plan.value().steps.empty());
+
+    base::Result<sema::DropGluePlan> mixed_enum_plan = sema::build_drop_glue_plan(checked, mixed_choice);
+    ASSERT_TRUE(mixed_enum_plan) << mixed_enum_plan.error().message;
+    ASSERT_EQ(mixed_enum_plan.value().steps.size(), 3U);
+    EXPECT_EQ(mixed_enum_plan.value().steps.front().kind, sema::DropGlueStepKind::enum_payload);
+
+    base::Result<sema::DropGluePlan> associated_plan = sema::build_drop_glue_plan(checked, associated_projection);
+    ASSERT_TRUE(associated_plan) << associated_plan.error().message;
+    ASSERT_EQ(associated_plan.value().steps.size(), 1U);
+    EXPECT_EQ(associated_plan.value().steps.front().kind, sema::DropGlueStepKind::generic_value);
+
+    EXPECT_EQ(sema::drop_glue_step_kind_name(sema::DropGlueStepKind::custom_destructor), "custom_destructor");
+    EXPECT_EQ(sema::drop_glue_step_kind_name(sema::DropGlueStepKind::tuple_element), "tuple_element");
+    EXPECT_EQ(sema::drop_glue_step_kind_name(sema::DropGlueStepKind::array_element), "array_element");
+    EXPECT_EQ(sema::drop_glue_step_kind_name(sema::DropGlueStepKind::enum_payload), "enum_payload");
+    EXPECT_EQ(sema::drop_glue_step_kind_name(sema::DropGlueStepKind::generic_value), "generic_value");
+    EXPECT_EQ(sema::drop_glue_step_kind_name(sema::DropGlueStepKind::opaque_value), "opaque_value");
+    EXPECT_EQ(
+        sema::drop_glue_step_kind_name(static_cast<sema::DropGlueStepKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE)),
+        "invalid");
+    EXPECT_FALSE(sema::build_drop_glue_plan(
+        checked, TypeHandle{static_cast<base::u32>(types.size() + SEMA_TEST_MISSING_MODULE_INDEX)}));
 }
 
 TEST(CoreUnit, SemanticWhiteBoxGenericInstanceIdentityReportsCanonicalizationErrors)

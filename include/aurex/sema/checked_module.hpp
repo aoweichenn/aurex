@@ -659,6 +659,27 @@ struct GenericFunctionInstanceBodyView {
     syntax::StmtId body = syntax::INVALID_STMT_ID;
 };
 
+struct TraitDefaultMethodInstanceInfo {
+    FunctionLookupKey key;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    syntax::StmtId body = syntax::INVALID_STMT_ID;
+    TraitImplLookupKey impl_key;
+    syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
+    IdentId trait_name_id = INVALID_IDENT_ID;
+    base::u32 requirement_ordinal = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    FunctionSignature signature;
+    base::usize side_table_layout_index = SEMA_GENERIC_SIDE_TABLE_INVALID_LAYOUT_INDEX;
+    GenericSideTables side_tables;
+};
+
+struct TraitDefaultMethodInstanceBodyView {
+    const TraitDefaultMethodInstanceInfo* instance = nullptr;
+    const FunctionSignature* signature = nullptr;
+    const GenericSideTables* side_tables = nullptr;
+    const syntax::ItemNode* item = nullptr;
+    syntax::StmtId body = syntax::INVALID_STMT_ID;
+};
+
 struct NormalizedAstOverlay {
     // Sema normalizes the caller-owned AST in place. The checked module keeps
     // only normalization bounds/flags, never an owning AST snapshot.
@@ -721,6 +742,7 @@ public:
     SemaDeque<GenericEnumInstanceInfo> generic_enum_instances;
     SemaDeque<GenericTypeAliasInstanceInfo> generic_type_alias_instances;
     SemaDeque<GenericFunctionInstanceInfo> generic_function_instances;
+    SemaDeque<TraitDefaultMethodInstanceInfo> trait_default_method_instances;
     NormalizedAstOverlay normalized_ast;
 
     [[nodiscard]] IdentId intern_c_name(const std::string_view c_name)
@@ -785,10 +807,16 @@ public:
     [[nodiscard]] GenericTypeAliasInstanceInfo clone_generic_type_alias_instance(
         const GenericTypeAliasInstanceInfo& other) const;
     [[nodiscard]] GenericFunctionInstanceInfo clone_generic_function_instance(const GenericFunctionInstanceInfo& other);
+    [[nodiscard]] TraitDefaultMethodInstanceInfo clone_trait_default_method_instance(
+        const TraitDefaultMethodInstanceInfo& other);
     [[nodiscard]] GenericFunctionInstanceBodyView generic_function_instance_body_view(
         const syntax::AstModule& ast, base::usize index) const noexcept;
     [[nodiscard]] GenericFunctionInstanceBodyView generic_function_instance_body_view(
         const syntax::AstModule& ast, const GenericFunctionInstanceInfo& instance) const noexcept;
+    [[nodiscard]] TraitDefaultMethodInstanceBodyView trait_default_method_instance_body_view(
+        const syntax::AstModule& ast, base::usize index) const noexcept;
+    [[nodiscard]] TraitDefaultMethodInstanceBodyView trait_default_method_instance_body_view(
+        const syntax::AstModule& ast, const TraitDefaultMethodInstanceInfo& instance) const noexcept;
     void prepare_analysis_only_storage(base::usize expr_count);
     void release_analysis_only_storage();
     void reserve_side_table_storage(base::usize expr_count, base::usize pattern_count, base::usize type_count,
@@ -813,5 +841,6 @@ private:
 [[nodiscard]] std::string enum_display_name(const TypeTable& types, const EnumCaseInfo& info);
 [[nodiscard]] std::string enum_case_display_name(const TypeTable& types, const EnumCaseInfo& info);
 [[nodiscard]] bool is_valid(const GenericFunctionInstanceBodyView& view) noexcept;
+[[nodiscard]] bool is_valid(const TraitDefaultMethodInstanceBodyView& view) noexcept;
 
 } // namespace aurex::sema

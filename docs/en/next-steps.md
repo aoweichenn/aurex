@@ -1,6 +1,6 @@
 # Next Steps
 
-## Current Highest Priority: M5 Default Trait Methods WP5
+## Current Highest Priority: M5 Default Trait Methods WP7 Release Closure
 
 M5 is now the active post-M4 implementation stream. M5-WP1 fixed the
 [Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md)
@@ -8,9 +8,13 @@ and the [M5 Default Trait Methods Roadmap](m5-roadmap.md). M5-WP2 has landed
 the syntax / AST / body-identity baseline. M5-WP3 and M5-WP4 now type-check
 default method bodies once in trait context, allow impls to inherit defaulted
 requirements, preserve missing non-default requirement diagnostics, and record
-selected method origin in checked facts. The next priority is M5-WP5: lower
-selected `trait_default` calls to direct trait-owned default body instances
-without changing the static dispatch model.
+selected method origin in checked facts. M5-WP5 and M5-WP6 now lower selected
+`trait_default` calls to direct concrete trait-owned default method instances,
+preserve generic reselection and associated-type substitution, expose
+default/override origin through IDE hover/definition, and record stable
+incremental-cache/query rows for default instances. The next priority is
+M5-WP7: close the release baseline, update user-facing language notes and the
+unsupported matrix, and keep full build/test/coverage gates green.
 
 The selected M5 target is deliberately narrow:
 
@@ -24,6 +28,8 @@ The selected M5 target is deliberately narrow:
   `param_env`.
 - Type-check default bodies in trait context and lower selected default calls
   to direct trait-owned default body instances after monomorphization.
+- Expose selected default origin in IDE/tooling and incremental-cache query
+  records without introducing runtime dispatch.
 
 M5 must not add `dyn Trait`, object safety, vtable ABI, specialization,
 associated constants, default associated types, GATs, blanket impls, RAII /

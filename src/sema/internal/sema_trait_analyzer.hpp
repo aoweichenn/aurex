@@ -54,8 +54,11 @@ private:
         const TraitSignature& trait, std::string_view name, base::u32 ordinal) const noexcept;
     [[nodiscard]] const TraitAssociatedTypeRequirement* find_trait_associated_type_requirement(
         const TraitSignature& trait, IdentId name_id) const;
+    [[nodiscard]] const TraitSignature* find_current_trait_signature() const;
     [[nodiscard]] const TraitAssociatedTypeRequirement* find_current_trait_associated_type_requirement(
         IdentId name_id) const;
+    [[nodiscard]] TypeHandle resolve_current_trait_concrete_associated_type(
+        TypeHandle base_type, const TraitAssociatedTypeRequirement& requirement) const;
     [[nodiscard]] ResolvedTraitReference resolve_trait_reference(
         const syntax::ItemNode& impl_block, syntax::ItemId impl_id);
     void validate_trait_impl_block(const syntax::ItemNode& impl_block, syntax::ItemId impl_id);
@@ -78,7 +81,23 @@ private:
     [[nodiscard]] TraitMethodCallResolution make_impl_trait_method_resolution(const TraitSignature& trait,
         const TraitImplInfo& impl, const TraitMethodRequirement& requirement, const FunctionSignature& signature) const;
     [[nodiscard]] TraitMethodCallResolution make_trait_default_method_resolution(
+        const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement);
+    [[nodiscard]] FunctionLookupKey trait_default_method_instance_key(
         const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const;
+    [[nodiscard]] std::string trait_default_method_instance_key_name(
+        const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const;
+    [[nodiscard]] std::string trait_default_method_instance_stable_name(
+        const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const;
+    [[nodiscard]] std::string trait_default_method_instance_c_symbol_name(
+        const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const;
+    [[nodiscard]] FunctionSignature make_trait_default_method_instance_signature(const TraitSignature& trait,
+        const TraitImplInfo& impl, const TraitMethodRequirement& requirement, const FunctionLookupKey& key) const;
+    [[nodiscard]] GenericContext make_trait_default_method_instance_context(
+        const TraitSignature& trait, const TraitImplInfo& impl) const;
+    [[nodiscard]] GenericTemplateInfo make_trait_default_method_instance_layout_info(
+        const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const;
+    [[nodiscard]] FunctionSignature* instantiate_trait_default_method(
+        const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement);
     [[nodiscard]] const TraitSignature* trait_signature_for_impl(const TraitImplInfo& impl) const;
     [[nodiscard]] bool trait_visible_for_method_call(const TraitSignature& trait, const base::SourceRange& range);
     [[nodiscard]] bool visible_trait_has_associated_type(

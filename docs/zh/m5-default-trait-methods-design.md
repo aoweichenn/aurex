@@ -54,7 +54,7 @@ M4 release baseline 已提供所需地基：
 - `resolve_impl_trait_method_call()` 现在会把 selected impl 省略的 defaulted requirement 绑定到
   `trait_default` origin，而不是继续当作 missing method。
 
-剩余 M5-WP5/WP6 工作是通过 `BodySlotKind::trait_default_method` materialize default-body query identity，
+M5-WP5/WP6 现在已经通过 `BodySlotKind::trait_default_method` materialize default-body query identity，
 按 selected impl environment 实例化 trait-owned default，并把 selected `trait_default` call 降低为 direct symbol，
 同时保持 M4 的 static dispatch 模型。
 

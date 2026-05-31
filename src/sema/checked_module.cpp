@@ -517,7 +517,8 @@ CheckedModule::CheckedModule()
       generic_side_table_layouts(make_sema_deque<GenericSideTableLayout>(*this->arena_)),
       generic_enum_instances(make_sema_deque<GenericEnumInstanceInfo>(*this->arena_)),
       generic_type_alias_instances(make_sema_deque<GenericTypeAliasInstanceInfo>(*this->arena_)),
-      generic_function_instances(make_sema_deque<GenericFunctionInstanceInfo>(*this->arena_))
+      generic_function_instances(make_sema_deque<GenericFunctionInstanceInfo>(*this->arena_)),
+      trait_default_method_instances(make_sema_deque<TraitDefaultMethodInstanceInfo>(*this->arena_))
 {
 }
 
@@ -554,7 +555,9 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
       generic_enum_instances(std::move(other.generic_enum_instances)),
       generic_type_alias_instances(std::move(other.generic_type_alias_instances)),
-      generic_function_instances(std::move(other.generic_function_instances)), normalized_ast(other.normalized_ast)
+      generic_function_instances(std::move(other.generic_function_instances)),
+      trait_default_method_instances(std::move(other.trait_default_method_instances)),
+      normalized_ast(other.normalized_ast)
 {
     this->rebind_interned_texts(&other.c_names, this->c_names);
     this->rebind_generic_instance_layouts();
@@ -616,6 +619,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->generic_enum_instances.swap(other.generic_enum_instances);
     this->generic_type_alias_instances.swap(other.generic_type_alias_instances);
     this->generic_function_instances.swap(other.generic_function_instances);
+    this->trait_default_method_instances.swap(other.trait_default_method_instances);
     swap(this->normalized_ast, other.normalized_ast);
     this->rebind_interned_texts(other_c_names, this->c_names);
     other.rebind_interned_texts(this_c_names, other.c_names);
@@ -729,6 +733,10 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->generic_function_instances.clear();
     for (const GenericFunctionInstanceInfo& instance : other.generic_function_instances) {
         this->generic_function_instances.push_back(this->clone_generic_function_instance(instance));
+    }
+    this->trait_default_method_instances.clear();
+    for (const TraitDefaultMethodInstanceInfo& instance : other.trait_default_method_instances) {
+        this->trait_default_method_instances.push_back(this->clone_trait_default_method_instance(instance));
     }
     this->rebind_generic_instance_layouts();
     this->normalized_ast = other.normalized_ast;
@@ -931,6 +939,7 @@ FunctionSignature CheckedModule::clone_function_signature(const FunctionSignatur
     copy.is_method = other.is_method;
     copy.has_self_param = other.has_self_param;
     copy.is_trait_impl_method = other.is_trait_impl_method;
+    copy.is_trait_default_method_instance = other.is_trait_default_method_instance;
     copy.visibility = other.visibility;
     copy.prototype_item = other.prototype_item;
     copy.definition_item = other.definition_item;
@@ -1213,6 +1222,23 @@ GenericFunctionInstanceInfo CheckedModule::clone_generic_function_instance(const
     return copy;
 }
 
+TraitDefaultMethodInstanceInfo CheckedModule::clone_trait_default_method_instance(
+    const TraitDefaultMethodInstanceInfo& other)
+{
+    TraitDefaultMethodInstanceInfo copy;
+    copy.key = other.key;
+    copy.item = other.item;
+    copy.body = other.body;
+    copy.impl_key = other.impl_key;
+    copy.trait_module = other.trait_module;
+    copy.trait_name_id = other.trait_name_id;
+    copy.requirement_ordinal = other.requirement_ordinal;
+    copy.signature = this->clone_function_signature(other.signature);
+    copy.side_table_layout_index = other.side_table_layout_index;
+    copy.side_tables = other.side_tables;
+    return copy;
+}
+
 GenericFunctionInstanceBodyView CheckedModule::generic_function_instance_body_view(
     const syntax::AstModule& ast, const base::usize index) const noexcept
 {
@@ -1244,6 +1270,37 @@ GenericFunctionInstanceBodyView CheckedModule::generic_function_instance_body_vi
     };
 }
 
+TraitDefaultMethodInstanceBodyView CheckedModule::trait_default_method_instance_body_view(
+    const syntax::AstModule& ast, const base::usize index) const noexcept
+{
+    if (index >= this->trait_default_method_instances.size()) {
+        return {};
+    }
+    return this->trait_default_method_instance_body_view(ast, this->trait_default_method_instances[index]);
+}
+
+TraitDefaultMethodInstanceBodyView CheckedModule::trait_default_method_instance_body_view(
+    const syntax::AstModule& ast, const TraitDefaultMethodInstanceInfo& instance) const noexcept
+{
+    if (!syntax::is_valid(instance.item) || instance.item.value >= ast.items.size()) {
+        return {};
+    }
+    const syntax::ItemNode* const item = ast.items.ptr(instance.item.value);
+    if (item == nullptr || item->kind != syntax::ItemKind::fn_decl || !item->is_trait_default_method) {
+        return {};
+    }
+    if (!syntax::is_valid(instance.body) || instance.body.value >= ast.stmts.size()) {
+        return {};
+    }
+    return TraitDefaultMethodInstanceBodyView{
+        &instance,
+        &instance.signature,
+        &instance.side_tables,
+        item,
+        instance.body,
+    };
+}
+
 void CheckedModule::prepare_analysis_only_storage(const base::usize expr_count)
 {
     this->expr_expected_types = SemaTypeTable{};
@@ -1258,6 +1315,9 @@ void CheckedModule::release_analysis_only_storage()
     this->analysis_arena_.reset();
     this->pattern_case_name_ids = PatternCaseNameTable{};
     for (GenericFunctionInstanceInfo& instance : this->generic_function_instances) {
+        instance.side_tables.release_analysis_only_storage();
+    }
+    for (TraitDefaultMethodInstanceInfo& instance : this->trait_default_method_instances) {
         instance.side_tables.release_analysis_only_storage();
     }
 }
@@ -1374,11 +1434,20 @@ void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, 
     for (GenericFunctionInstanceInfo& instance : this->generic_function_instances) {
         rebind_function_signature_texts(instance.signature, from, to);
     }
+    for (TraitDefaultMethodInstanceInfo& instance : this->trait_default_method_instances) {
+        rebind_function_signature_texts(instance.signature, from, to);
+    }
 }
 
 void CheckedModule::rebind_generic_instance_layouts() noexcept
 {
     for (GenericFunctionInstanceInfo& instance : this->generic_function_instances) {
+        const GenericSideTableLayout* const layout = this->generic_side_table_layout(instance.side_table_layout_index);
+        if (layout != nullptr && instance.side_tables.local_dense) {
+            instance.side_tables.bind_local_dense_layout(*layout);
+        }
+    }
+    for (TraitDefaultMethodInstanceInfo& instance : this->trait_default_method_instances) {
         const GenericSideTableLayout* const layout = this->generic_side_table_layout(instance.side_table_layout_index);
         if (layout != nullptr && instance.side_tables.local_dense) {
             instance.side_tables.bind_local_dense_layout(*layout);
@@ -1402,6 +1471,14 @@ bool is_valid(const GenericFunctionInstanceBodyView& view) noexcept
         && query::is_valid(view.instance->generic_instance_key)
         && view.signature->generic_instance_key == view.instance->generic_instance_key && view.signature->has_definition
         && !view.signature->has_conflict;
+}
+
+bool is_valid(const TraitDefaultMethodInstanceBodyView& view) noexcept
+{
+    return view.instance != nullptr && view.signature != nullptr && view.side_tables != nullptr && view.item != nullptr
+        && view.item->kind == syntax::ItemKind::fn_decl && view.item->is_trait_default_method
+        && syntax::is_valid(view.body) && is_valid(view.instance->impl_key) && view.signature->has_definition
+        && !view.signature->has_conflict && view.signature->is_trait_default_method_instance;
 }
 
 namespace {
@@ -1790,6 +1867,20 @@ std::string dump_checked_module(const CheckedModule& checked)
             out << " requirement=" << binding.requirement_ordinal;
         }
         append_part_origin(out, show_parts, binding.part_index);
+        out << "\n";
+    }
+
+    out << "  trait_default_method_instances " << checked.trait_default_method_instances.size() << "\n";
+    for (base::usize index = 0; index < checked.trait_default_method_instances.size(); ++index) {
+        const TraitDefaultMethodInstanceInfo& instance = checked.trait_default_method_instances[index];
+        out << "    trait_default_instance #" << index << " "
+            << checked.types.display_name(instance.signature.method_owner_type) << "." << instance.signature.name
+            << " -> " << checked.types.display_name(instance.signature.return_type)
+            << " requirement=" << instance.requirement_ordinal;
+        if (!instance.signature.c_name.empty()) {
+            out << " @c_name=" << instance.signature.c_name;
+        }
+        append_part_origin(out, show_parts, instance.signature.part_index);
         out << "\n";
     }
 

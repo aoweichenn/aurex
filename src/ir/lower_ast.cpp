@@ -93,17 +93,31 @@ namespace {
     return true;
 }
 
+[[nodiscard]] bool trait_default_method_instance_body_views_are_valid(
+    const syntax::AstModule& ast, const sema::CheckedModule& checked) noexcept
+{
+    for (base::usize index = 0; index < checked.trait_default_method_instances.size(); ++index) {
+        if (!sema::is_valid(checked.trait_default_method_instance_body_view(ast, index))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checked) : ast_(ast), checked_(checked)
 {
     this->module_.types = this->checked_.types;
     this->module_.reserve(this->ast_.exprs.size(),
-        this->ast_.items.size() + this->checked_.generic_function_instances.size(),
+        this->ast_.items.size() + this->checked_.generic_function_instances.size()
+            + this->checked_.trait_default_method_instances.size(),
         this->checked_.structs.size() + this->checked_.enum_cases.size(),
         this->ast_.items.size() + this->checked_.enum_cases.size());
     this->item_functions_.assign(this->ast_.items.size(), INVALID_FUNCTION_ID);
     this->generic_instance_functions_.assign(this->checked_.generic_function_instances.size(), INVALID_FUNCTION_ID);
+    this->trait_default_instance_functions_.assign(
+        this->checked_.trait_default_method_instances.size(), INVALID_FUNCTION_ID);
     this->active_side_tables_ = ActiveSideTables{
         nullptr,
         &this->checked_.expr_types,
@@ -126,7 +140,7 @@ Module Lowerer::lower()
             continue;
         }
         const syntax::ItemNode item = this->ast_.items[index];
-        if (item.is_extern_c || !syntax::is_valid(item.body)) {
+        if (item.is_trait_default_method || item.is_extern_c || !syntax::is_valid(item.body)) {
             continue;
         }
         this->lower_function_body(this->item_functions_[index], FunctionBodyView{item.params, item.body});
@@ -134,6 +148,10 @@ Module Lowerer::lower()
     for (base::u32 index = 0; index < this->checked_.generic_function_instances.size(); ++index) {
         this->lower_generic_function_body(this->generic_instance_functions_[index],
             this->checked_.generic_function_instance_body_view(this->ast_, index));
+    }
+    for (base::u32 index = 0; index < this->checked_.trait_default_method_instances.size(); ++index) {
+        this->lower_trait_default_method_body(this->trait_default_instance_functions_[index],
+            this->checked_.trait_default_method_instance_body_view(this->ast_, index));
     }
     return std::move(this->module_);
 }
@@ -293,7 +311,7 @@ void Lowerer::lower_function_declarations()
             continue;
         }
         const syntax::ItemNode item = this->ast_.items[index];
-        if (item.is_prototype || !item.generic_params.empty()) {
+        if (item.is_trait_default_method || item.is_prototype || !item.generic_params.empty()) {
             continue;
         }
         Function function = this->module_.make_function();
@@ -343,6 +361,36 @@ void Lowerer::lower_function_declarations()
         }
         const FunctionId function_id = add_function(this->module_, function);
         this->generic_instance_functions_[index] = function_id;
+        this->function_symbols_[this->module_.functions[function_id.value].symbol] = function_id;
+    }
+
+    for (base::u32 index = 0; index < this->checked_.trait_default_method_instances.size(); ++index) {
+        const sema::TraitDefaultMethodInstanceBodyView body =
+            this->checked_.trait_default_method_instance_body_view(this->ast_, index);
+        if (!sema::is_valid(body)) {
+            continue;
+        }
+        const sema::TraitDefaultMethodInstanceInfo& instance = *body.instance;
+        Function function = this->module_.make_function();
+        function.name = this->module_.intern(sema::function_display_name(this->checked_.types, instance.signature));
+        function.symbol = this->module_.intern(instance.signature.c_name);
+        function.linkage = Linkage::internal;
+        function.call_conv = AbiCallConv::aurex;
+        function.is_entry = false;
+        function.is_unsafe = instance.signature.is_unsafe;
+        function.is_variadic = false;
+        function.return_type = instance.signature.return_type;
+        for (base::usize param_index = 0; param_index < body.item->params.size(); ++param_index) {
+            const sema::TypeHandle param_type = param_index < instance.signature.param_types.size()
+                ? instance.signature.param_types[param_index]
+                : sema::INVALID_TYPE_HANDLE;
+            function.signature_params.push_back(FunctionParam{
+                this->module_.intern(body.item->params[param_index].name),
+                param_type,
+            });
+        }
+        const FunctionId function_id = add_function(this->module_, function);
+        this->trait_default_instance_functions_[index] = function_id;
         this->function_symbols_[this->module_.functions[function_id.value].symbol] = function_id;
     }
 }
@@ -430,6 +478,10 @@ base::Result<Module> lower_ast(const syntax::AstModule& ast, const sema::Checked
     if (!detail::generic_instance_body_views_are_valid(ast, checked)) {
         return base::Result<Module>::fail(
             {base::ErrorCode::internal_error, "generic instance body missing retained sema view for IR lowering"});
+    }
+    if (!detail::trait_default_method_instance_body_views_are_valid(ast, checked)) {
+        return base::Result<Module>::fail({base::ErrorCode::internal_error,
+            "trait default method instance body missing retained sema view for IR lowering"});
     }
     detail::Lowerer lowerer(ast, checked);
     return base::Result<Module>::ok(lowerer.lower());

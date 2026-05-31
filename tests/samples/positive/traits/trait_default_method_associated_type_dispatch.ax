@@ -1,0 +1,28 @@
+module trait_default_method_associated_type_dispatch;
+
+trait Source {
+    type Item;
+    fn get(self: &Self) -> Self.Item;
+
+    fn fallback(self: &Self, value: Self.Item) -> Self.Item {
+        let copy: Self.Item = value;
+        return copy;
+    }
+}
+
+struct Bytes {
+    value: i32;
+}
+
+impl Source for Bytes {
+    type Item = i32;
+
+    fn get(self: &Bytes) -> i32 {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    let bytes = Bytes { value: 7 };
+    return bytes.fallback(12) - 12;
+}

@@ -3070,6 +3070,77 @@ TEST_F(AurexIntegrationTest, IncrementalCacheWritesGenericBodyRowsButSkipsLowerI
     driver::clear_file_cache();
 }
 
+TEST_F(AurexIntegrationTest, IncrementalCacheRecordsTraitDefaultMethodInstanceRows)
+{
+    constexpr std::string_view DRIVER_INCREMENTAL_CACHE_TRAIT_DEFAULT_SOURCE =
+        "module incremental_cache_trait_default;\n"
+        "trait Reader {\n"
+        "  fn read(self: &Self) -> i32;\n"
+        "  fn is_empty(self: &Self) -> bool {\n"
+        "    return self.read() == 0;\n"
+        "  }\n"
+        "}\n"
+        "struct File { value: i32; }\n"
+        "impl Reader for File {\n"
+        "  fn read(self: &File) -> i32 { return self.value; }\n"
+        "}\n"
+        "fn main() -> i32 {\n"
+        "  let file = File { value: 0 };\n"
+        "  if file.is_empty() { return 0; }\n"
+        "  return 1;\n"
+        "}\n";
+
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "incremental-cache-trait-default";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << DRIVER_INCREMENTAL_CACHE_TRAIT_DEFAULT_SOURCE;
+    }
+
+    driver::CompilerInvocation invocation;
+    invocation.input_path = source;
+    invocation.emit_kind = driver::EmitKind::ir;
+    invocation.incremental_cache_path = cache;
+
+    driver::Compiler compiler;
+    testing::internal::CaptureStdout();
+    auto result = compiler.run(invocation);
+    static_cast<void>(testing::internal::GetCapturedStdout());
+    ASSERT_TRUE(result) << result.error().message;
+
+    const std::string cache_text = read_text(cache);
+    expect_contains(cache_text, "def\ttrait_default_method_instance\tmethod");
+    const std::string encoded_default_method_name = hex_encode_cache_test_field("is_empty");
+    bool saw_default_as_plain_function = false;
+    std::string_view remaining_cache = cache_text;
+    while (!remaining_cache.empty()) {
+        const base::usize newline = remaining_cache.find('\n');
+        const std::string_view row = remaining_cache.substr(0U, newline);
+        if (row.starts_with("def\tfunction\tmethod")
+            && row.find(encoded_default_method_name) != std::string_view::npos) {
+            saw_default_as_plain_function = true;
+            break;
+        }
+        if (newline == std::string_view::npos) {
+            break;
+        }
+        remaining_cache.remove_prefix(newline + 1U);
+    }
+    EXPECT_FALSE(saw_default_as_plain_function);
+    expect_contains(cache_text, "query\tfunction_body_syntax");
+    expect_contains(cache_text, "query\ttype_check_body");
+    expect_contains(cache_text, "query\tlower_function_ir");
+    expect_contains(cache_text, "query_edge\ttype_check_body");
+    expect_contains(cache_text, "query_edge\tlower_function_ir");
+
+    driver::clear_file_cache();
+}
+
 TEST_F(AurexIntegrationTest, IncrementalCacheLowerIRRowsUseOptimizedIrUnitFingerprint)
 {
     constexpr std::string_view DRIVER_INCREMENTAL_CACHE_LOWER_IR_SOURCE =

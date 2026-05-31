@@ -19,6 +19,10 @@ namespace {
 constexpr std::string_view SEMA_TRAIT_INCREMENTAL_TAG = "|trait";
 constexpr std::string_view SEMA_TRAIT_IMPL_INCREMENTAL_TAG = "|trait_impl";
 constexpr std::string_view SEMA_TRAIT_SELF_NAME = "Self";
+constexpr std::string_view SEMA_TRAIT_DEFAULT_INSTANCE_KEY_PREFIX = "trait_default:";
+constexpr std::string_view SEMA_TRAIT_DEFAULT_INSTANCE_STABLE_PREFIX = "trait-default:";
+constexpr std::string_view SEMA_TRAIT_DEFAULT_OVERRIDE_SIGNATURE_NOTE =
+    "trait method has a default body, but an explicit override must still match the requirement signature";
 constexpr base::usize SEMA_TRAIT_SUBSTITUTION_STACK_INITIAL_CAPACITY = 8;
 constexpr base::u64 SEMA_TRAIT_IMPL_COHERENCE_KEY_MARKER = 0x53454d4154524348ULL;
 constexpr base::u64 SEMA_TRAIT_SELF_PREDICATE_KEY_MARKER = 0x53454d4154525346ULL;
@@ -285,14 +289,20 @@ private:
 
 struct SemanticAnalyzerCore::TraitAnalyzer::TraitAnalysisScope {
     TraitAnalysisScope(SemanticAnalyzerCore& analyzer, const syntax::ModuleId module, const syntax::ItemId item,
-        GenericContext* const generic_context = nullptr)
+        GenericContext* const generic_context = nullptr, GenericSideTables* const side_tables = nullptr,
+        const bool cache_syntax_types = false)
         : analyzer(analyzer), previous_module(analyzer.state_.flow.current_module),
           previous_item(analyzer.state_.flow.current_item),
-          previous_generic_context(analyzer.state_.flow.current_generic_context)
+          previous_generic_context(analyzer.state_.flow.current_generic_context),
+          previous_side_tables(analyzer.state_.flow.current_side_tables)
     {
         this->analyzer.state_.flow.current_module = module;
         this->analyzer.state_.flow.current_item = item;
         this->analyzer.state_.flow.current_generic_context = generic_context;
+        if (side_tables != nullptr) {
+            this->analyzer.state_.flow.current_side_tables.side_tables = side_tables;
+        }
+        this->analyzer.state_.flow.current_side_tables.cache_syntax_types = cache_syntax_types;
     }
 
     TraitAnalysisScope(const TraitAnalysisScope&) = delete;
@@ -303,12 +313,14 @@ struct SemanticAnalyzerCore::TraitAnalyzer::TraitAnalysisScope {
         this->analyzer.state_.flow.current_module = this->previous_module;
         this->analyzer.state_.flow.current_item = this->previous_item;
         this->analyzer.state_.flow.current_generic_context = this->previous_generic_context;
+        this->analyzer.state_.flow.current_side_tables = this->previous_side_tables;
     }
 
     SemanticAnalyzerCore& analyzer;
     syntax::ModuleId previous_module;
     syntax::ItemId previous_item;
     GenericContext* previous_generic_context = nullptr;
+    GenericSideTableScope previous_side_tables{};
 };
 
 SemanticAnalyzerCore::TraitAnalyzer::TraitAnalyzer(SemanticAnalyzerCore& core) noexcept : core_(core)
@@ -529,16 +541,54 @@ const TraitAssociatedTypeRequirement* SemanticAnalyzerCore::TraitAnalyzer::find_
     return nullptr;
 }
 
-const TraitAssociatedTypeRequirement*
-SemanticAnalyzerCore::TraitAnalyzer::find_current_trait_associated_type_requirement(const IdentId name_id) const
+const TraitSignature* SemanticAnalyzerCore::TraitAnalyzer::find_current_trait_signature() const
 {
     for (const auto& entry : this->core_.state_.checked.traits) {
         const TraitSignature& trait = entry.second;
         if (trait.item.value == this->core_.state_.flow.current_item.value) {
-            return this->find_trait_associated_type_requirement(trait, name_id);
+            return &trait;
+        }
+        for (const TraitAssociatedTypeRequirement& associated_type : trait.associated_types) {
+            if (associated_type.item.value == this->core_.state_.flow.current_item.value) {
+                return &trait;
+            }
+        }
+        for (const TraitMethodRequirement& requirement : trait.requirements) {
+            if (requirement.item.value == this->core_.state_.flow.current_item.value) {
+                return &trait;
+            }
         }
     }
     return nullptr;
+}
+
+const TraitAssociatedTypeRequirement*
+SemanticAnalyzerCore::TraitAnalyzer::find_current_trait_associated_type_requirement(const IdentId name_id) const
+{
+    const TraitSignature* const trait = this->find_current_trait_signature();
+    return trait == nullptr ? nullptr : this->find_trait_associated_type_requirement(*trait, name_id);
+}
+
+TypeHandle SemanticAnalyzerCore::TraitAnalyzer::resolve_current_trait_concrete_associated_type(
+    const TypeHandle base_type, const TraitAssociatedTypeRequirement& requirement) const
+{
+    const TraitSignature* const trait = this->find_current_trait_signature();
+    if (trait == nullptr) {
+        return INVALID_TYPE_HANDLE;
+    }
+    for (const auto& entry : this->core_.state_.checked.trait_impls) {
+        const TraitImplInfo& impl = entry.second;
+        if (impl.trait_module.value != trait->module.value || impl.trait_name_id != trait->name_id
+            || !this->core_.state_.checked.types.same(impl.self_type, base_type)) {
+            continue;
+        }
+        for (const TraitImplAssociatedTypeInfo& associated_type : impl.associated_types) {
+            if (associated_type.member_key == requirement.member_key) {
+                return associated_type.value_type;
+            }
+        }
+    }
+    return INVALID_TYPE_HANDLE;
 }
 
 void SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_signature(TraitSignature& signature)
@@ -1054,9 +1104,230 @@ SemanticAnalyzerCore::TraitMethodCallResolution SemanticAnalyzerCore::TraitAnaly
     return resolution;
 }
 
+std::string SemanticAnalyzerCore::TraitAnalyzer::trait_default_method_instance_key_name(
+    const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const
+{
+    std::string key;
+    key += SEMA_TRAIT_DEFAULT_INSTANCE_KEY_PREFIX;
+    key += std::to_string(trait.module.value);
+    key.push_back(':');
+    key += trait.name.view();
+    key.push_back('[');
+    key += this->core_.state_.checked.types.display_name(impl.self_type);
+    for (const TypeHandle arg : impl.trait_args) {
+        key.push_back(',');
+        key += this->core_.state_.checked.types.display_name(arg);
+    }
+    key += "]::";
+    key += std::to_string(requirement.ordinal);
+    key.push_back(':');
+    key += requirement.name.view();
+    return key;
+}
+
+std::string SemanticAnalyzerCore::TraitAnalyzer::trait_default_method_instance_stable_name(
+    const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const
+{
+    std::string stable_name;
+    stable_name += SEMA_TRAIT_DEFAULT_INSTANCE_STABLE_PREFIX;
+    stable_name += this->trait_display_name(trait, impl.trait_args);
+    stable_name += ":";
+    stable_name += this->core_.state_.checked.types.display_name(impl.self_type);
+    stable_name += ":";
+    stable_name += std::to_string(requirement.ordinal);
+    stable_name += ":";
+    stable_name += requirement.name.view();
+    return stable_name;
+}
+
+FunctionLookupKey SemanticAnalyzerCore::TraitAnalyzer::trait_default_method_instance_key(
+    const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const
+{
+    const IdentId key_id =
+        this->core_.intern_generated_key(this->trait_default_method_instance_key_name(trait, impl, requirement));
+    return this->core_.method_function_lookup_key(requirement.module, impl.self_type, key_id);
+}
+
+std::string SemanticAnalyzerCore::TraitAnalyzer::trait_default_method_instance_c_symbol_name(
+    const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const
+{
+    return this->core_.method_c_symbol_name(
+        impl.self_type, this->trait_default_method_instance_stable_name(trait, impl, requirement));
+}
+
+FunctionSignature SemanticAnalyzerCore::TraitAnalyzer::make_trait_default_method_instance_signature(
+    const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement,
+    const FunctionLookupKey& key) const
+{
+    FunctionSignature signature = this->core_.state_.checked.make_function_signature();
+    signature.name = this->core_.state_.checked.intern_text(requirement.name);
+    signature.name_id = requirement.name_id;
+    signature.semantic_key = key;
+    signature.module = requirement.module;
+    signature.trait_module = trait.module;
+    signature.trait_name_id = trait.name_id;
+    signature.method_owner_type = impl.self_type;
+    signature.return_type = this->substitute_requirement_type(
+        requirement.return_type, impl.self_type, impl.trait_args, trait, impl.associated_types);
+    signature.param_types.reserve(requirement.param_types.size());
+    for (const TypeHandle param : requirement.param_types) {
+        signature.param_types.push_back(
+            this->substitute_requirement_type(param, impl.self_type, impl.trait_args, trait, impl.associated_types));
+    }
+    signature.range = requirement.range;
+    signature.is_unsafe = requirement.is_unsafe;
+    signature.is_variadic = requirement.is_variadic;
+    signature.has_definition = true;
+    signature.is_method = true;
+    signature.has_self_param = requirement.has_self_param;
+    signature.is_trait_default_method_instance = true;
+    signature.visibility = requirement.visibility;
+    signature.definition_item = requirement.item;
+    signature.part_index = this->core_.item_part_index(requirement.item);
+    const std::string stable_name = this->trait_default_method_instance_stable_name(trait, impl, requirement);
+    signature.stable_id = sema::stable_definition_id(
+        this->core_.stable_module_id(requirement.module), StableSymbolKind::method, stable_name);
+    signature.c_name = this->core_.state_.checked.intern_text(
+        this->trait_default_method_instance_c_symbol_name(trait, impl, requirement));
+    signature.incremental_key = this->core_.stable_incremental_key(signature.stable_id,
+        this->core_.function_incremental_fingerprint(
+            stable_name, signature.return_type, signature.param_types, true, signature.is_variadic));
+    return signature;
+}
+
+SemanticAnalyzerCore::GenericContext SemanticAnalyzerCore::TraitAnalyzer::make_trait_default_method_instance_context(
+    const TraitSignature& trait, const TraitImplInfo& impl) const
+{
+    GenericContext context = this->core_.make_generic_context();
+    const IdentId self_id = this->core_.ctx_.module.intern_identifier(SEMA_TRAIT_SELF_NAME);
+    context.params.emplace(self_id, impl.self_type);
+    context.param_identities.emplace(self_id, generic_param_identity_from_text(SEMA_TRAIT_SELF_NAME));
+    for (base::usize index = 0; index < trait.generic_params.size() && index < impl.trait_args.size(); ++index) {
+        const IdentId param_id = trait.generic_params[index];
+        const std::string_view param_name = this->core_.ctx_.module.identifier_text(param_id);
+        context.params.emplace(param_id, impl.trait_args[index]);
+        context.param_identities.emplace(param_id, generic_param_identity_from_text(param_name));
+    }
+    return context;
+}
+
+SemanticAnalyzerCore::GenericTemplateInfo
+SemanticAnalyzerCore::TraitAnalyzer::make_trait_default_method_instance_layout_info(
+    const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const
+{
+    GenericTemplateInfo info = this->core_.make_generic_template_info();
+    info.item = requirement.item;
+    info.module = requirement.module;
+    info.part_index = this->core_.item_part_index(requirement.item);
+    info.name = this->core_.state_.checked.intern_text(requirement.name);
+    info.name_id = requirement.name_id;
+    info.function_key = this->trait_default_method_instance_key(trait, impl, requirement);
+    info.stable_id = sema::stable_definition_id(this->core_.stable_module_id(requirement.module),
+        StableSymbolKind::method, this->trait_default_method_instance_stable_name(trait, impl, requirement));
+    info.visibility = requirement.visibility;
+    if (syntax::is_valid(requirement.item) && requirement.item.value < this->core_.ctx_.module.items.size()) {
+        this->core_.populate_generic_template_node_spans(info, this->core_.ctx_.module.items[requirement.item.value]);
+    }
+    return info;
+}
+
+FunctionSignature* SemanticAnalyzerCore::TraitAnalyzer::instantiate_trait_default_method(
+    const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement)
+{
+    if (!requirement.has_default_body || !syntax::is_valid(requirement.item)
+        || requirement.item.value >= this->core_.ctx_.module.items.size()) {
+        return nullptr;
+    }
+    const syntax::ItemNode function = this->core_.ctx_.module.items[requirement.item.value];
+    if (!syntax::is_valid(function.body)) {
+        return nullptr;
+    }
+
+    const FunctionLookupKey key = this->trait_default_method_instance_key(trait, impl, requirement);
+    if (const auto found = this->core_.state_.traits.default_method_instances.find(key);
+        found != this->core_.state_.traits.default_method_instances.end()) {
+        return &this->core_.state_.checked.trait_default_method_instances[found->second].signature;
+    }
+    if (!this->core_.ctx_.options.retain_generic_side_tables) {
+        if (const auto found = this->core_.state_.checked.functions.find(key);
+            found != this->core_.state_.checked.functions.end()) {
+            return &found->second;
+        }
+    }
+
+    GenericTemplateInfo layout_info = this->make_trait_default_method_instance_layout_info(trait, impl, requirement);
+    FunctionSignature signature = this->make_trait_default_method_instance_signature(trait, impl, requirement, key);
+    if (!this->core_.ctx_.options.retain_generic_side_tables) {
+        const auto function_inserted = this->core_.state_.checked.functions.emplace(key, signature);
+        if (!function_inserted.second) {
+            function_inserted.first->second = signature;
+        } else {
+            this->core_.state_.names.internal_function_lookup_exclusions += 1;
+        }
+        this->core_.state_.functions.definition_items[key] = requirement.item;
+        this->core_.state_.functions.body_states[key] = FunctionBodyState::not_started;
+        GenericSideTables transient_side_tables = this->core_.make_generic_instance_side_tables(layout_info);
+        GenericContext body_context = this->make_trait_default_method_instance_context(trait, impl);
+        {
+            TraitAnalysisScope scope(
+                this->core_, requirement.module, requirement.item, &body_context, &transient_side_tables, true);
+            this->core_.analyze_function_body_with_signature(
+                function, key, function_inserted.first->second, this->core_.state_.functions.body_states[key]);
+        }
+        return &this->core_.state_.checked.functions.at(key);
+    }
+
+    TraitDefaultMethodInstanceInfo instance;
+    instance.key = key;
+    instance.item = requirement.item;
+    instance.body = function.body;
+    instance.impl_key = impl.key;
+    instance.trait_module = trait.module;
+    instance.trait_name_id = trait.name_id;
+    instance.requirement_ordinal = requirement.ordinal;
+    instance.signature = std::move(signature);
+    if (layout_info.has_sparse_node_ids()) {
+        instance.side_table_layout_index = this->core_.generic_side_table_layout_index(layout_info);
+    }
+    instance.side_tables = this->core_.make_generic_instance_side_tables(layout_info);
+    const base::usize instance_index = this->core_.state_.checked.trait_default_method_instances.size();
+    this->core_.state_.checked.trait_default_method_instances.push_back(std::move(instance));
+    if (const GenericSideTableLayout* const layout = this->core_.state_.checked.generic_side_table_layout(
+            this->core_.state_.checked.trait_default_method_instances[instance_index].side_table_layout_index);
+        layout != nullptr) {
+        this->core_.state_.checked.trait_default_method_instances[instance_index].side_tables.bind_local_dense_layout(
+            *layout);
+    }
+    this->core_.state_.traits.default_method_instances[key] = instance_index;
+
+    FunctionSignature checked_signature =
+        this->core_.state_.checked.trait_default_method_instances[instance_index].signature;
+    const auto function_inserted = this->core_.state_.checked.functions.emplace(key, checked_signature);
+    if (!function_inserted.second) {
+        function_inserted.first->second = checked_signature;
+    } else {
+        this->core_.state_.names.internal_function_lookup_exclusions += 1;
+    }
+    this->core_.state_.functions.definition_items[key] = requirement.item;
+    this->core_.state_.functions.body_states[key] = FunctionBodyState::not_started;
+    GenericContext body_context = this->make_trait_default_method_instance_context(trait, impl);
+    {
+        TraitAnalysisScope scope(this->core_, requirement.module, requirement.item, &body_context,
+            &this->core_.state_.checked.trait_default_method_instances[instance_index].side_tables, true);
+        this->core_.analyze_function_body_with_signature(function, key,
+            this->core_.state_.checked.trait_default_method_instances[instance_index].signature,
+            this->core_.state_.functions.body_states[key]);
+    }
+    this->core_.state_.checked.trait_default_method_instances[instance_index].signature =
+        this->core_.state_.checked.functions.at(key);
+    this->core_.state_.checked.trait_default_method_instances[instance_index]
+        .side_tables.release_analysis_only_storage();
+    return &this->core_.state_.checked.trait_default_method_instances[instance_index].signature;
+}
+
 SemanticAnalyzerCore::TraitMethodCallResolution
 SemanticAnalyzerCore::TraitAnalyzer::make_trait_default_method_resolution(
-    const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const
+    const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement)
 {
     TraitMethodCallResolution resolution;
     resolution.trait = &trait;
@@ -1065,12 +1336,19 @@ SemanticAnalyzerCore::TraitAnalyzer::make_trait_default_method_resolution(
     if (impl.predicate_index < this->core_.state_.checked.trait_predicates.size()) {
         resolution.predicate = &this->core_.state_.checked.trait_predicates[impl.predicate_index];
     }
-    resolution.return_type = this->substitute_requirement_type(
-        requirement.return_type, impl.self_type, impl.trait_args, trait, impl.associated_types);
-    resolution.param_types.reserve(requirement.param_types.size());
-    for (const TypeHandle param : requirement.param_types) {
-        resolution.param_types.push_back(
-            this->substitute_requirement_type(param, impl.self_type, impl.trait_args, trait, impl.associated_types));
+    const FunctionSignature* const signature = this->instantiate_trait_default_method(trait, impl, requirement);
+    if (signature != nullptr) {
+        resolution.signature = signature;
+        resolution.return_type = signature->return_type;
+        resolution.param_types.assign(signature->param_types.begin(), signature->param_types.end());
+    } else {
+        resolution.return_type = this->substitute_requirement_type(
+            requirement.return_type, impl.self_type, impl.trait_args, trait, impl.associated_types);
+        resolution.param_types.reserve(requirement.param_types.size());
+        for (const TypeHandle param : requirement.param_types) {
+            resolution.param_types.push_back(this->substitute_requirement_type(
+                param, impl.self_type, impl.trait_args, trait, impl.associated_types));
+        }
     }
     resolution.dispatch = TraitMethodDispatchKind::trait_default;
     resolution.found = true;
@@ -1133,6 +1411,15 @@ TypeHandle SemanticAnalyzerCore::TraitAnalyzer::resolve_associated_type_projecti
     }
     const TypeInfo& base_info = this->core_.state_.checked.types.get(base_type);
     if (base_info.kind != TypeKind::generic_param || !is_valid(base_info.generic_identity)) {
+        if (const TraitAssociatedTypeRequirement* const current_trait_associated =
+                this->find_current_trait_associated_type_requirement(associated_name_id);
+            current_trait_associated != nullptr) {
+            const TypeHandle resolved =
+                this->resolve_current_trait_concrete_associated_type(base_type, *current_trait_associated);
+            if (is_valid(resolved)) {
+                return resolved;
+            }
+        }
         if (report_failure) {
             this->core_.report_lookup(range,
                 sema_unknown_associated_type_projection_message(
@@ -1599,6 +1886,10 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
                 trait_reference.trait_args, trait, impl_info.associated_types)) {
             this->core_.report_type(
                 method.range, sema_trait_impl_method_signature_message(trait_name, self_name, method.name));
+            if (requirement->second->has_default_body) {
+                this->core_.report_note(requirement->second->range, SemanticDiagnosticKind::type_mismatch,
+                    std::string(SEMA_TRAIT_DEFAULT_OVERRIDE_SIGNATURE_NOTE));
+            }
             continue;
         }
         implemented.insert(method.name_id);

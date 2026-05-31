@@ -1,0 +1,27 @@
+module trait_default_method_inherent_precedence;
+
+trait Reader {
+    fn is_empty(self: &Self) -> bool {
+        return false;
+    }
+}
+
+struct File {
+    value: i32;
+}
+
+impl File {
+    fn is_empty(self: &File) -> bool {
+        return true;
+    }
+}
+
+impl Reader for File {}
+
+fn main() -> i32 {
+    let file = File { value: 1 };
+    if file.is_empty() {
+        return 0;
+    }
+    return 1;
+}

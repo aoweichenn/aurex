@@ -127,6 +127,8 @@ Risk controls:
 
 ### M5-WP5: Lowering / Backend / Monomorphization
 
+Status: complete.
+
 Goal: keep default dispatch direct and static.
 
 Deliverables:
@@ -149,6 +151,8 @@ Risk controls:
 
 ### M5-WP6: Tooling / Diagnostics / Incremental Reuse
 
+Status: complete.
+
 Goal: expose default methods as first-class semantic facts.
 
 Deliverables:
@@ -159,8 +163,21 @@ Deliverables:
 - Workspace semantic index records default method bodies.
 - Diagnostics include origin notes for inherited defaults and override
   mismatches.
-- Incremental tests prove that editing a default body invalidates default users
-  but not override-only call paths.
+- Incremental-cache records expose default method instance body identity and
+  leave default-user versus override-only invalidation visible to the existing
+  query diff/pruning machinery.
+
+Implemented baseline:
+
+- Concrete inherited defaults are represented as
+  `TraitDefaultMethodInstanceInfo` and lowered as internal direct-call
+  functions.
+- `BodySlotKind::trait_default_method` is used for default instance body
+  identity in tooling and incremental-cache subjects.
+- IDE definition/hover resolves inherited default calls to the trait method and
+  explicit override calls to the impl method.
+- Diagnostics add an override-mismatch note when a defaulted requirement is
+  overridden with an invalid signature.
 
 Risk controls:
 

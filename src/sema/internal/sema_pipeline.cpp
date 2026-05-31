@@ -262,6 +262,7 @@ void SemanticAnalysisPipeline::reserve_analysis_storage()
     this->core_.state_.functions.definition_items.reserve(item_counts.function_like_entries());
     this->core_.state_.functions.body_states.reserve(expected_function_entries);
     this->core_.state_.traits.requirement_items.reserve(item_counts.trait_requirements);
+    this->core_.state_.traits.default_method_instances.reserve(item_counts.trait_impls + item_counts.items);
     this->core_.state_.types.struct_infos_by_type.reserve(item_counts.struct_like_items);
     const base::usize expected_identifier_count =
         this->core_.ctx_.module.identifiers.size() + item_counts.items + item_counts.enum_cases + item_counts.modules;

@@ -230,11 +230,15 @@ private:
     };
 
     struct TraitState {
-        explicit TraitState(base::BumpAllocator& arena) : requirement_items(make_sema_set<base::u32>(arena))
+        explicit TraitState(base::BumpAllocator& arena)
+            : requirement_items(make_sema_set<base::u32>(arena)),
+              default_method_instances(
+                  make_sema_map<FunctionLookupKey, base::usize, FunctionLookupKeyHash>(arena, FunctionLookupKeyHash{}))
         {
         }
 
         SemaSet<base::u32> requirement_items;
+        SemaMap<FunctionLookupKey, base::usize, FunctionLookupKeyHash> default_method_instances;
     };
 
     struct GenericInstanceIdentity {

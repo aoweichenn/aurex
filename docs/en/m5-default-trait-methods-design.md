@@ -74,7 +74,7 @@ Implemented M5-WP3/WP4 baseline:
   the trait default method origin instead of treating omission as a missing
   method.
 
-Remaining M5-WP5/WP6 work is to materialize default-body query identity through
+M5-WP5/WP6 now materialize default-body query identity through
 `BodySlotKind::trait_default_method`, instantiate trait-owned defaults for the
 selected impl environment, and lower selected `trait_default` calls to direct
 symbols while preserving M4's static dispatch model.

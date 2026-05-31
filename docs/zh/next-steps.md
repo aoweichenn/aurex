@@ -1,14 +1,17 @@
 # 下一步计划
 
-## 当前最高优先级：M5 Default Trait Methods WP5
+## 当前最高优先级：M5 Default Trait Methods WP7 Release Closure
 
 M5 现在是 M4 后的 active implementation stream。M5-WP1 已固定
 [Aurex M5 Default Trait Methods 调研与设计基线](m5-default-trait-methods-design.md)
 和 [M5 Default Trait Methods 路线图](m5-roadmap.md)。M5-WP2 已落地 syntax / AST /
 body-identity baseline。M5-WP3 和 M5-WP4 现在已经在 trait context 中只 type-check default method body
 一次，允许 impl 继承 defaulted requirement，保持 missing non-default requirement 诊断，并在 checked facts
-中记录 selected method origin。下一优先级是 M5-WP5：把 selected `trait_default` call 降低为 direct
-trait-owned default body instance，同时保持当前 static dispatch 模型。
+中记录 selected method origin。M5-WP5 和 M5-WP6 现在已经把 selected `trait_default` call 降低为
+direct concrete trait-owned default method instance，保留 generic reselection 和 associated-type substitution，
+IDE hover/definition 能暴露 default/override origin，并为 default instance 记录稳定 incremental-cache/query rows。
+下一优先级是 M5-WP7：收口 release baseline、更新用户侧语言说明和 unsupported matrix，并保持 full
+build/test/coverage gates 全绿。
 
 选定的 M5 目标刻意保持窄范围：
 
@@ -20,6 +23,7 @@ trait-owned default body instance，同时保持当前 static dispatch 模型。
 - method origin 显式记录为 `impl_override`、`trait_default` 或 `param_env`。
 - default body 在 trait context 中 type-check；单态化后 selected default call 降低到 direct trait-owned default
   body instance。
+- 在 IDE/tooling 和 incremental-cache query records 中暴露 selected default origin，但不引入 runtime dispatch。
 
 M5 不得引入 `dyn Trait`、object safety、vtable ABI、specialization、associated constants、default associated types、
 GAT、blanket impl、RAII/resource semantics、Swift-style protocol extensions、Scala/Kotlin mixins 或 runtime

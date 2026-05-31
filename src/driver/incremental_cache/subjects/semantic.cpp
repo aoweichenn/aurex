@@ -335,9 +335,12 @@ struct PackageIndex {
 
 [[nodiscard]] query::BodyKey function_body_key(const sema::FunctionSignature& signature, const PackageIndex& packages)
 {
+    const query::BodySlotKind slot = signature.is_trait_default_method_instance
+        ? query::BodySlotKind::trait_default_method
+        : query::BodySlotKind::function_body;
     return query::body_key(def_key_from_stable_id(packages, signature.stable_id, signature.module,
                                query::DefNamespace::value, function_signature_def_kind(signature)),
-        query::BodySlotKind::function_body);
+        slot);
 }
 
 [[nodiscard]] query::QueryResultFingerprint function_body_syntax_result_fingerprint(
@@ -907,8 +910,8 @@ void collect_function_body_query_subjects(const sema::CheckedModule& checked, co
 {
     std::vector<DefinitionRecord> records;
     records.reserve(checked.functions.size() + checked.generic_template_signatures.size()
-        + checked.generic_function_instances.size() + checked.structs.size() + checked.enum_cases.size()
-        + checked.type_aliases.size());
+        + checked.generic_function_instances.size() + checked.trait_default_method_instances.size()
+        + checked.structs.size() + checked.enum_cases.size() + checked.type_aliases.size());
 
     for (const sema::GenericTemplateSignatureInfo& info : checked.generic_template_signatures) {
         push_definition(records, INCREMENTAL_CACHE_CATEGORY_GENERIC_TEMPLATE, info.name.view(), info.stable_id,
@@ -916,12 +919,19 @@ void collect_function_body_query_subjects(const sema::CheckedModule& checked, co
     }
     for (const auto& entry : checked.functions) {
         const sema::FunctionSignature& signature = entry.second;
+        if (signature.is_trait_default_method_instance) {
+            continue;
+        }
         push_definition(records, INCREMENTAL_CACHE_CATEGORY_FUNCTION, signature.name.view(), signature.stable_id,
             signature.incremental_key);
     }
     for (const sema::GenericFunctionInstanceInfo& instance : checked.generic_function_instances) {
         push_definition(records, INCREMENTAL_CACHE_CATEGORY_GENERIC_FUNCTION_INSTANCE, instance.signature.name.view(),
             instance.signature.stable_id, instance.signature.incremental_key);
+    }
+    for (const sema::TraitDefaultMethodInstanceInfo& instance : checked.trait_default_method_instances) {
+        push_definition(records, INCREMENTAL_CACHE_CATEGORY_TRAIT_DEFAULT_METHOD_INSTANCE,
+            instance.signature.name.view(), instance.signature.stable_id, instance.signature.incremental_key);
     }
     for (const auto& entry : checked.structs) {
         const sema::StructInfo& info = entry.second;

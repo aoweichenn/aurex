@@ -513,4 +513,116 @@ TEST(CoreUnit, LowerAstWhiteBoxRejectsInvalidRetainedGenericBody)
     EXPECT_NE(lowered.error().message.find("generic instance body missing retained sema view"), std::string::npos);
 }
 
+TEST(CoreUnit, LowerAstWhiteBoxRejectsMissingRetainedTraitDefaultBodyView)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle i32 = checked.types.builtin(BuiltinType::i32);
+    const sema::IdentId reader_name = ast.intern_identifier("Reader");
+
+    sema::TraitDefaultMethodInstanceInfo instance;
+    instance.impl_key = sema::TraitImplLookupKey{
+        0U,
+        reader_name,
+        i32.value,
+        {},
+    };
+    instance.trait_name_id = reader_name;
+    instance.signature = checked.make_function_signature();
+    instance.signature.name = checked.intern_text("is_empty");
+    instance.signature.name_id = ast.intern_identifier("is_empty");
+    instance.signature.c_name = checked.intern_text("lower_ast_trait_default_is_empty");
+    instance.signature.has_definition = true;
+    instance.signature.is_trait_default_method_instance = true;
+    instance.signature.return_type = checked.types.builtin(BuiltinType::bool_);
+    checked.trait_default_method_instances.push_back(std::move(instance));
+
+    auto lowered = ir::lower_ast(ast, checked);
+    ASSERT_FALSE(lowered);
+    EXPECT_EQ(lowered.error().code, base::ErrorCode::internal_error);
+    EXPECT_NE(lowered.error().message.find("trait default method instance body missing retained sema view"),
+        std::string::npos);
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxTraitDefaultBodyAndDeclarationInvalidViewGuards)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    Lowerer empty_lowerer(ast, checked);
+    empty_lowerer.lower_generic_function_body(INVALID_FUNCTION_ID, {});
+    empty_lowerer.lower_trait_default_method_body(INVALID_FUNCTION_ID, {});
+
+    const TypeHandle i32 = checked.types.builtin(BuiltinType::i32);
+    const sema::IdentId reader_name = ast.intern_identifier("Reader");
+    const sema::IdentId method_name = ast.intern_identifier("is_empty");
+    const sema::IdentId value_name = ast.intern_identifier("value");
+
+    syntax::StmtNode body_stmt;
+    body_stmt.kind = syntax::StmtKind::block;
+    const StmtId body = ast.push_stmt(body_stmt);
+
+    syntax::ItemNode default_method;
+    default_method.kind = syntax::ItemKind::fn_decl;
+    default_method.name = "is_empty";
+    default_method.name_id = method_name;
+    default_method.params = {syntax::ParamDecl{"value", syntax::INVALID_TYPE_ID, {}, value_name}};
+    default_method.body = body;
+    default_method.is_trait_default_method = true;
+    const syntax::ItemId method_item = ast.push_item(default_method);
+
+    const sema::TraitImplLookupKey impl_key{
+        0U,
+        reader_name,
+        i32.value,
+        {},
+    };
+
+    sema::TraitDefaultMethodInstanceInfo invalid_instance;
+    invalid_instance.impl_key = impl_key;
+    invalid_instance.trait_name_id = reader_name;
+    invalid_instance.signature = checked.make_function_signature();
+    invalid_instance.signature.name = checked.intern_text("invalid_default");
+    invalid_instance.signature.name_id = method_name;
+    invalid_instance.signature.c_name = checked.intern_text("invalid_default");
+    invalid_instance.signature.has_definition = true;
+    invalid_instance.signature.is_trait_default_method_instance = true;
+    invalid_instance.signature.return_type = checked.types.builtin(BuiltinType::bool_);
+    checked.trait_default_method_instances.push_back(std::move(invalid_instance));
+
+    sema::GenericFunctionInstanceInfo invalid_generic_instance;
+    invalid_generic_instance.generic_instance_key = test_generic_instance_key();
+    invalid_generic_instance.signature = checked.make_function_signature();
+    invalid_generic_instance.signature.generic_instance_key = invalid_generic_instance.generic_instance_key;
+    invalid_generic_instance.signature.has_definition = true;
+    checked.generic_function_instances.push_back(std::move(invalid_generic_instance));
+
+    sema::TraitDefaultMethodInstanceInfo valid_without_param_types;
+    valid_without_param_types.item = method_item;
+    valid_without_param_types.body = body;
+    valid_without_param_types.impl_key = impl_key;
+    valid_without_param_types.trait_name_id = reader_name;
+    valid_without_param_types.signature = checked.make_function_signature();
+    valid_without_param_types.signature.name = checked.intern_text("is_empty");
+    valid_without_param_types.signature.name_id = method_name;
+    valid_without_param_types.signature.c_name = checked.intern_text("lower_ast_trait_default_missing_param_type");
+    valid_without_param_types.signature.has_definition = true;
+    valid_without_param_types.signature.is_trait_default_method_instance = true;
+    valid_without_param_types.signature.return_type = checked.types.builtin(BuiltinType::bool_);
+    checked.trait_default_method_instances.push_back(std::move(valid_without_param_types));
+
+    Lowerer lowerer(ast, checked);
+    lowerer.lower_function_declarations();
+
+    ASSERT_EQ(lowerer.generic_instance_functions_.size(), 1U);
+    EXPECT_FALSE(is_valid(lowerer.generic_instance_functions_.front()));
+    ASSERT_EQ(lowerer.trait_default_instance_functions_.size(), 2U);
+    EXPECT_FALSE(is_valid(lowerer.trait_default_instance_functions_[0]));
+    ASSERT_TRUE(is_valid(lowerer.trait_default_instance_functions_[1]));
+    const Function& lowered_function = lowerer.module_.functions[lowerer.trait_default_instance_functions_[1].value];
+    ASSERT_EQ(lowered_function.signature_params.size(), 1U);
+    EXPECT_FALSE(sema::is_valid(lowered_function.signature_params.front().type));
+}
+
 } // namespace aurex::test

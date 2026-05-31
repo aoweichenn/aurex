@@ -39,11 +39,12 @@ namespace {
     return parsed.take_value();
 }
 
-[[nodiscard]] sema::CheckedModule analyze_trait_source(const std::string_view source)
+[[nodiscard]] sema::CheckedModule analyze_trait_source(
+    const std::string_view source, const sema::SemanticOptions options)
 {
     syntax::AstModule module = parse_trait_source(source);
     base::DiagnosticSink diagnostics;
-    sema::SemanticAnalyzer analyzer(std::move(module), diagnostics);
+    sema::SemanticAnalyzer analyzer(std::move(module), diagnostics, options);
     auto result = analyzer.analyze();
     if (!result) {
         for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
@@ -53,6 +54,35 @@ namespace {
         return {};
     }
     return result.take_value();
+}
+
+[[nodiscard]] sema::CheckedModule analyze_trait_source(const std::string_view source)
+{
+    return analyze_trait_source(source, sema::SemanticOptions{});
+}
+
+struct TraitAnalysisWithAst {
+    syntax::AstModule module;
+    sema::CheckedModule checked;
+};
+
+[[nodiscard]] TraitAnalysisWithAst analyze_trait_source_with_ast(
+    const std::string_view source, const sema::SemanticOptions options = {})
+{
+    TraitAnalysisWithAst analysis;
+    analysis.module = parse_trait_source(source);
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(analysis.module, diagnostics, options);
+    auto result = analyzer.analyze();
+    if (!result) {
+        for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+            ADD_FAILURE() << diagnostic.message;
+        }
+        ADD_FAILURE() << result.error().message;
+        return analysis;
+    }
+    analysis.checked = result.take_value();
+    return analysis;
 }
 
 [[nodiscard]] std::string analyze_trait_source_failure(const std::string_view source)
@@ -984,7 +1014,9 @@ TEST(CoreUnit, TraitDefaultMethodsTypeCheckAndRecordInheritedOrigin)
                                     "}\n"
                                     "fn main() -> i32 {\n"
                                     "  let file = File { value: 0 };\n"
-                                    "  if file.is_empty() { return 0; }\n"
+                                    "  if file.is_empty() {\n"
+                                    "    if file.is_empty() { return 0; }\n"
+                                    "  }\n"
                                     "  return 1;\n"
                                     "}\n";
 
@@ -1011,18 +1043,55 @@ TEST(CoreUnit, TraitDefaultMethodsTypeCheckAndRecordInheritedOrigin)
     EXPECT_TRUE(saw_read_override);
     EXPECT_TRUE(saw_empty_default);
 
+    ASSERT_EQ(checked.trait_default_method_instances.size(), 1U);
+    const sema::TraitDefaultMethodInstanceInfo& default_instance = checked.trait_default_method_instances.front();
+    EXPECT_EQ(default_instance.requirement_ordinal, 1U);
+    EXPECT_EQ(default_instance.signature.name, "is_empty");
+    EXPECT_TRUE(default_instance.signature.is_trait_default_method_instance);
+    EXPECT_EQ(checked.types.display_name(default_instance.signature.method_owner_type),
+        "trait_default_method_inherited_call.File");
+    const auto default_function = checked.functions.find(default_instance.key);
+    ASSERT_NE(default_function, checked.functions.end());
+    EXPECT_TRUE(default_function->second.is_trait_default_method_instance);
+    EXPECT_EQ(default_function->second.c_name, default_instance.signature.c_name);
+
+    const sema::CheckedModule copied = checked;
+    ASSERT_EQ(copied.trait_default_method_instances.size(), 1U);
+    EXPECT_TRUE(copied.trait_default_method_instances.front().signature.is_trait_default_method_instance);
+    EXPECT_EQ(copied.trait_default_method_instances.front().signature.c_name.view(),
+        default_instance.signature.c_name.view());
+
+    sema::SemanticOptions transient_options;
+    transient_options.retain_generic_side_tables = false;
+    const sema::CheckedModule transient_checked = analyze_trait_source(source, transient_options);
+    EXPECT_TRUE(transient_checked.trait_default_method_instances.empty());
+    bool saw_transient_default_function = false;
+    for (const sema::TraitMethodCallBinding& call : transient_checked.trait_method_calls) {
+        if (call.method_name != "is_empty" || call.dispatch != sema::TraitMethodDispatchKind::trait_default) {
+            continue;
+        }
+        const auto function = transient_checked.functions.find(call.function_key);
+        ASSERT_NE(function, transient_checked.functions.end());
+        saw_transient_default_function = function->second.is_trait_default_method_instance;
+    }
+    EXPECT_TRUE(saw_transient_default_function);
+
     bool saw_default_body_param_env_call = false;
     bool saw_concrete_trait_default_call = false;
+    sema::FunctionLookupKey concrete_default_call_key;
     for (const sema::TraitMethodCallBinding& call : checked.trait_method_calls) {
         if (call.method_name == "read" && call.dispatch == sema::TraitMethodDispatchKind::param_env) {
             saw_default_body_param_env_call = true;
         }
         if (call.method_name == "is_empty" && call.dispatch == sema::TraitMethodDispatchKind::trait_default) {
             saw_concrete_trait_default_call = true;
+            concrete_default_call_key = call.function_key;
+            EXPECT_TRUE(sema::is_valid(call.function_key));
         }
     }
     EXPECT_TRUE(saw_default_body_param_env_call);
     EXPECT_TRUE(saw_concrete_trait_default_call);
+    EXPECT_EQ(concrete_default_call_key, default_instance.key);
 
     const std::string dump = sema::dump_checked_module(checked);
     expect_contains_all(dump,
@@ -1034,7 +1103,131 @@ TEST(CoreUnit, TraitDefaultMethodsTypeCheckAndRecordInheritedOrigin)
             "Self: Reader origin=trait_self",
             "param_env Self.read -> i32",
             "trait_default trait_default_method_inherited_call.File.is_empty -> bool",
+            "trait_default_method_instances 1",
+            "trait_default_instance #0 trait_default_method_inherited_call.File.is_empty -> bool requirement=1",
         });
+}
+
+TEST(CoreUnit, TraitDefaultMethodsInstantiateAssociatedTypeProjectionBody)
+{
+    const std::string_view source = "module trait_default_method_associated_body;\n"
+                                    "trait Source {\n"
+                                    "  type Item;\n"
+                                    "  fn get(self: &Self) -> Self.Item;\n"
+                                    "  fn fallback(self: &Self, value: Self.Item) -> Self.Item {\n"
+                                    "    let copy: Self.Item = value;\n"
+                                    "    return copy;\n"
+                                    "  }\n"
+                                    "}\n"
+                                    "struct Bytes { value: i32; }\n"
+                                    "impl Source for Bytes {\n"
+                                    "  type Item = i32;\n"
+                                    "  fn get(self: &Bytes) -> i32 { return self.value; }\n"
+                                    "}\n"
+                                    "fn main() -> i32 {\n"
+                                    "  let bytes = Bytes { value: 7 };\n"
+                                    "  return bytes.fallback(12) - 12;\n"
+                                    "}\n";
+
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    ASSERT_EQ(checked.trait_default_method_instances.size(), 1U);
+    const sema::TraitDefaultMethodInstanceInfo& instance = checked.trait_default_method_instances.front();
+    EXPECT_EQ(instance.signature.name, "fallback");
+    EXPECT_TRUE(instance.signature.is_trait_default_method_instance);
+    ASSERT_EQ(instance.signature.param_types.size(), 2U);
+    EXPECT_EQ(checked.types.display_name(instance.signature.param_types[1]), "i32");
+    EXPECT_EQ(checked.types.display_name(instance.signature.return_type), "i32");
+
+    bool saw_concrete_fallback = false;
+    for (const sema::TraitMethodCallBinding& call : checked.trait_method_calls) {
+        if (call.method_name == "fallback" && call.dispatch == sema::TraitMethodDispatchKind::trait_default) {
+            saw_concrete_fallback = true;
+            EXPECT_EQ(call.function_key, instance.key);
+            EXPECT_EQ(checked.types.display_name(call.return_type), "i32");
+        }
+    }
+    EXPECT_TRUE(saw_concrete_fallback);
+}
+
+TEST(CoreUnit, TraitDefaultMethodInstanceBodyViewsValidateSyntaxBackedInstances)
+{
+    const std::string_view source = "module trait_default_method_body_view;\n"
+                                    "trait Reader {\n"
+                                    "  fn read(self: &Self) -> i32;\n"
+                                    "  fn is_empty(self: &Self) -> bool {\n"
+                                    "    return self.read() == 0;\n"
+                                    "  }\n"
+                                    "}\n"
+                                    "struct File { value: i32; }\n"
+                                    "impl Reader for File {\n"
+                                    "  fn read(self: &File) -> i32 { return self.value; }\n"
+                                    "}\n"
+                                    "fn main() -> i32 {\n"
+                                    "  let file = File { value: 0 };\n"
+                                    "  if file.is_empty() { return 0; }\n"
+                                    "  return 1;\n"
+                                    "}\n";
+
+    TraitAnalysisWithAst analysis = analyze_trait_source_with_ast(source);
+    ASSERT_EQ(analysis.checked.trait_default_method_instances.size(), 1U);
+    const sema::TraitDefaultMethodInstanceInfo& instance = analysis.checked.trait_default_method_instances.front();
+
+    const sema::TraitDefaultMethodInstanceBodyView view =
+        analysis.checked.trait_default_method_instance_body_view(analysis.module, 0U);
+    ASSERT_TRUE(sema::is_valid(view));
+    ASSERT_NE(view.instance, nullptr);
+    ASSERT_NE(view.signature, nullptr);
+    ASSERT_NE(view.side_tables, nullptr);
+    ASSERT_NE(view.item, nullptr);
+    EXPECT_EQ(view.instance, &instance);
+    EXPECT_EQ(view.signature, &instance.signature);
+    EXPECT_EQ(view.body.value, instance.body.value);
+    EXPECT_TRUE(view.item->is_trait_default_method);
+
+    const sema::TraitDefaultMethodInstanceBodyView out_of_range =
+        analysis.checked.trait_default_method_instance_body_view(
+            analysis.module, analysis.checked.trait_default_method_instances.size());
+    EXPECT_FALSE(sema::is_valid(out_of_range));
+
+    sema::TraitDefaultMethodInstanceInfo missing_item = instance;
+    missing_item.item = syntax::INVALID_ITEM_ID;
+    EXPECT_FALSE(
+        sema::is_valid(analysis.checked.trait_default_method_instance_body_view(analysis.module, missing_item)));
+
+    sema::TraitDefaultMethodInstanceInfo missing_body = instance;
+    missing_body.body = syntax::INVALID_STMT_ID;
+    EXPECT_FALSE(
+        sema::is_valid(analysis.checked.trait_default_method_instance_body_view(analysis.module, missing_body)));
+
+    sema::TraitDefaultMethodInstanceInfo conflicted = instance;
+    conflicted.signature.has_conflict = true;
+    EXPECT_FALSE(sema::is_valid(analysis.checked.trait_default_method_instance_body_view(analysis.module, conflicted)));
+
+    sema::TraitDefaultMethodInstanceInfo invalid_impl = instance;
+    invalid_impl.impl_key = {};
+    EXPECT_FALSE(
+        sema::is_valid(analysis.checked.trait_default_method_instance_body_view(analysis.module, invalid_impl)));
+
+    sema::TraitDefaultMethodInstanceInfo plain_function_signature = instance;
+    plain_function_signature.signature.is_trait_default_method_instance = false;
+    EXPECT_FALSE(sema::is_valid(
+        analysis.checked.trait_default_method_instance_body_view(analysis.module, plain_function_signature)));
+
+    sema::TraitDefaultMethodInstanceInfo plain_function_item = instance;
+    bool found_plain_function = false;
+    for (base::usize index = 0; index < analysis.module.items.size(); ++index) {
+        const syntax::ItemNode* const item = analysis.module.items.ptr(index);
+        if (item != nullptr && item->kind == syntax::ItemKind::fn_decl && !item->is_trait_default_method
+            && syntax::is_valid(item->body)) {
+            plain_function_item.item = syntax::ItemId{static_cast<base::u32>(index)};
+            plain_function_item.body = item->body;
+            found_plain_function = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(found_plain_function);
+    EXPECT_FALSE(
+        sema::is_valid(analysis.checked.trait_default_method_instance_body_view(analysis.module, plain_function_item)));
 }
 
 TEST(CoreUnit, TraitDefaultMethodsExplicitOverrideWins)
@@ -1068,6 +1261,7 @@ TEST(CoreUnit, TraitDefaultMethodsExplicitOverrideWins)
     for (const sema::TraitImplMethodInfo& method : impl.methods) {
         EXPECT_EQ(method.origin, sema::TraitImplMethodOrigin::impl_override);
     }
+    EXPECT_TRUE(checked.trait_default_method_instances.empty());
 
     bool saw_override_call = false;
     bool saw_trait_default_call = false;
@@ -1139,8 +1333,20 @@ TEST(CoreUnit, TraitDefaultMethodsApplyGenericTraitWherePredicates)
     EXPECT_TRUE(saw_generic_trait_self_predicate);
     EXPECT_TRUE(saw_source_where_predicate);
 
+    ASSERT_EQ(checked.trait_default_method_instances.size(), 1U);
+    const sema::TraitDefaultMethodInstanceInfo& default_instance = checked.trait_default_method_instances.front();
+    EXPECT_EQ(default_instance.signature.name, "value");
+    EXPECT_TRUE(default_instance.signature.is_trait_default_method_instance);
+    EXPECT_EQ(checked.types.display_name(default_instance.signature.method_owner_type),
+        "trait_default_method_generic_where.Box");
+    ASSERT_EQ(default_instance.signature.param_types.size(), 2U);
+    EXPECT_EQ(checked.types.display_name(default_instance.signature.param_types[1]),
+        "&trait_default_method_generic_where.Bytes");
+    EXPECT_EQ(checked.types.display_name(default_instance.signature.return_type), "i32");
+
     bool saw_default_body_source_call = false;
     bool saw_concrete_adapter_default_call = false;
+    sema::FunctionLookupKey concrete_default_call_key;
     for (const sema::TraitMethodCallBinding& call : checked.trait_method_calls) {
         if (call.method_name == "get" && call.dispatch == sema::TraitMethodDispatchKind::param_env) {
             saw_default_body_source_call = true;
@@ -1149,11 +1355,14 @@ TEST(CoreUnit, TraitDefaultMethodsApplyGenericTraitWherePredicates)
         }
         if (call.method_name == "value" && call.dispatch == sema::TraitMethodDispatchKind::trait_default) {
             saw_concrete_adapter_default_call = true;
+            concrete_default_call_key = call.function_key;
+            EXPECT_TRUE(sema::is_valid(call.function_key));
             EXPECT_EQ(checked.types.display_name(call.self_type), "trait_default_method_generic_where.Box");
         }
     }
     EXPECT_TRUE(saw_default_body_source_call);
     EXPECT_TRUE(saw_concrete_adapter_default_call);
+    EXPECT_EQ(concrete_default_call_key, default_instance.key);
 
     const std::string dump = sema::dump_checked_module(checked);
     expect_contains_all(dump,
@@ -1167,6 +1376,8 @@ TEST(CoreUnit, TraitDefaultMethodsApplyGenericTraitWherePredicates)
             "method value requirement=0 origin=trait_default",
             "param_env T.get -> i32",
             "trait_default trait_default_method_generic_where.Box.value -> i32",
+            "trait_default_method_instances 1",
+            "trait_default_instance #0 trait_default_method_generic_where.Box.value -> i32 requirement=0",
         });
 }
 
@@ -1190,6 +1401,8 @@ TEST(CoreUnit, TraitDefaultMethodsRejectBadExplicitOverrideWithoutFallingBackToD
     expect_contains(output,
         "trait impl method signature does not match requirement: Reader for "
         "trait_default_method_bad_override.File.read");
+    expect_contains(
+        output, "trait method has a default body, but an explicit override must still match the requirement signature");
     expect_contains(output, "trait impl missing method: Reader for trait_default_method_bad_override.File.read");
 }
 
@@ -1306,6 +1519,56 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
             "impl Reader for trait_default_method_override.File associated_types=0 methods=2",
             "method is_empty requirement=1 origin=impl_override",
         });
+
+    const fs::path inherited_dispatch_source = positive_sample("traits", "trait_default_method_inherited_dispatch.ax");
+    const std::string inherited_dispatch_checked =
+        require_success(aurexc() + " --emit=checked " + q(inherited_dispatch_source)).output;
+    expect_contains_all(inherited_dispatch_checked,
+        {
+            "trait_default trait_default_method_inherited_dispatch.File.is_empty -> bool",
+            "fn method trait_default_method_inherited_dispatch.File.is_empty -> bool",
+            "_trait_default_Reader_",
+        });
+    const std::string inherited_dispatch_ir =
+        require_success(aurexc() + " --emit=ir " + q(inherited_dispatch_source)).output;
+    expect_contains_all(inherited_dispatch_ir,
+        {
+            "trait_default_method_inherited_dispatch_File_trait_default_Reader",
+            "call m0_trait_default_method_inherited_dispatch_File_trait_impl_Reader__read",
+        });
+
+    const fs::path override_dispatch_source = positive_sample("traits", "trait_default_method_override_dispatch.ax");
+    const std::string override_dispatch_llvm =
+        require_success(aurexc() + " --emit=llvm-ir " + q(override_dispatch_source)).output;
+    expect_contains(
+        override_dispatch_llvm, "call i1 @m0_trait_default_method_override_dispatch_File_trait_impl_Reader__is_empty");
+    expect_not_contains(override_dispatch_llvm, "_trait_default_Reader_");
+
+    const fs::path generic_dispatch_source = positive_sample("traits", "trait_default_method_generic_dispatch.ax");
+    const std::string generic_dispatch_llvm =
+        require_success(aurexc() + " --emit=llvm-ir " + q(generic_dispatch_source)).output;
+    expect_contains_all(generic_dispatch_llvm,
+        {
+            "call i1 @m0_trait_default_method_generic_dispatch_File_trait_default_Reader",
+            "call i32 @m0_trait_default_method_generic_dispatch_File_trait_impl_Reader__read",
+        });
+
+    const fs::path associated_default_source =
+        positive_sample("traits", "trait_default_method_associated_type_dispatch.ax");
+    const std::string associated_default_llvm =
+        require_success(aurexc() + " --emit=llvm-ir " + q(associated_default_source)).output;
+    expect_contains_all(associated_default_llvm,
+        {
+            "Bytes_trait_default_Source",
+            "call i32 @m0_trait_default_method_associated_type_dispatch_Bytes_trait_default_Source",
+        });
+
+    const fs::path inherent_default_source = positive_sample("traits", "trait_default_method_inherent_precedence.ax");
+    const std::string inherent_default_llvm =
+        require_success(aurexc() + " --emit=llvm-ir " + q(inherent_default_source)).output;
+    expect_contains(inherent_default_llvm, "call i1 @m0_trait_default_method_inherent_precedence_File_is_empty");
+    expect_not_contains(inherent_default_llvm, "_trait_default_Reader_");
+
     expect_negative_trait_sample("trait_impl_missing_method.ax", "trait impl missing method");
     expect_negative_trait_sample("trait_impl_duplicate_method.ax", "duplicate trait impl method");
     expect_negative_trait_sample(

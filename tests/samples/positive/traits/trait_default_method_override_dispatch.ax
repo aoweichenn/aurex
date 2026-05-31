@@ -1,0 +1,31 @@
+module trait_default_method_override_dispatch;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+
+    fn is_empty(self: &Self) -> bool {
+        return false;
+    }
+}
+
+struct File {
+    value: i32;
+}
+
+impl Reader for File {
+    fn read(self: &File) -> i32 {
+        return self.value;
+    }
+
+    fn is_empty(self: &File) -> bool {
+        return self.value == 0;
+    }
+}
+
+fn main() -> i32 {
+    let file = File { value: 0 };
+    if file.is_empty() {
+        return 0;
+    }
+    return 1;
+}

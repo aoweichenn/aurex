@@ -119,6 +119,7 @@ constexpr std::string_view INCREMENTAL_CACHE_FIELD_QUERY_EDGE = "query_edge";
 
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_FUNCTION = "function";
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_GENERIC_FUNCTION_INSTANCE = "generic_function_instance";
+constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_TRAIT_DEFAULT_METHOD_INSTANCE = "trait_default_method_instance";
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_GENERIC_TEMPLATE = "generic_template";
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_STRUCT = "struct";
 constexpr std::string_view INCREMENTAL_CACHE_CATEGORY_ENUM_CASE = "enum_case";

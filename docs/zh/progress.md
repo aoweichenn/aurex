@@ -1,7 +1,7 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M5 default trait methods WP4 semantic origin baseline 已完成
+阶段：M5 default trait methods WP5/WP6 lowering 和 tooling baseline 已完成
 
 ## 总体状态
 
@@ -11,9 +11,13 @@ M5-WP1 输出是
 和 [M5 Default Trait Methods 路线图](m5-roadmap.md)。M5-WP2 已落地 syntax / AST / body-identity
 基线：parser 接受 trait 内 default method body，prototype requirement 仍然显式保留，AST compact storage
 和 AST dump 区分 `prototype` 与 `trait_default`，query identity 覆盖
-`BodySlotKind::trait_default_method`。M5-WP3 和 M5-WP4 现在已经在 trait context 中只 type-check
+`BodySlotKind::trait_default_method`。M5-WP3 和 M5-WP4 已经在 trait context 中只 type-check
 trait-owned default body 一次，允许 impl 省略 defaulted requirement，保持 missing non-default requirement 报错，
 并在 checked facts 中把 selected method origin 记录为 `impl_override`、`trait_default` 或 `param_env`。
+M5-WP5 和 M5-WP6 现在已经把 selected inherited default 实例化为 concrete trait-owned method instance，
+降低为 direct IR/LLVM call，通过 instance side tables 保持 associated-type substitution，IDE tooling 能区分
+inherited default call 和 explicit override call 的 hover/definition，并通过 `BodySlotKind::trait_default_method`
+给 synthetic default instance 提供稳定 incremental-cache/body-query category。
 M5 的范围是 nominal static trait 上的 trait
 method body、显式 method-origin facts、通过 `BodySlotKind::trait_default_method` 固定 trait-owned default
 body identity、区分 explicit override 和 inherited default 的 impl completeness 规则、单态化后的 static
@@ -53,14 +57,19 @@ adapter 都能暴露 `where T:` 后的 trait completion、trait / trait method /
 现在会给 candidate impl、rejected candidate、associated-type equality mismatch、orphan check 和 overlap
 位置补充 notes。
 
-M5-WP3/WP4 的测试也已经落到常规仓库测试：`tests/gtest/sema/trait_tests.cpp` 覆盖 trait-owned default body
-checking、inherited default method facts、explicit override precedence 和 checked dump origin 字符串；
-`tests/samples/checked/traits/trait_default_method_inherited.ax` 与
-`tests/samples/checked/traits/trait_default_method_override.ax` 是 checked-only 正向 fixture，因为 M5-WP5
-lowering 仍未完成；`tests/samples/negative/traits/trait_default_method_return_mismatch.ax`、
+M5-WP3/WP4/WP5/WP6 的测试也已经落到常规仓库测试：`tests/gtest/sema/trait_tests.cpp` 覆盖
+trait-owned default body checking、inherited default method facts、explicit override precedence、concrete
+default method instance records、direct IR/LLVM lowering、generic reselection、associated-type normalization、
+inherent-first priority 和 checked dump origin 字符串；`tests/gtest/tooling/ide_tooling_tests.cpp` 覆盖
+inherited default 与 explicit override 的 IDE hover/definition；`tests/gtest/driver/cli_driver_tests.cpp`
+覆盖 trait default method instance 的 incremental-cache rows；`tests/samples/checked/traits/trait_default_method_inherited.ax`
+与 `tests/samples/checked/traits/trait_default_method_override.ax` 继续作为 checked-only origin dump fixture；
+常规 positive samples `tests/samples/positive/traits/trait_default_method_inherited_dispatch.ax`、
+`trait_default_method_override_dispatch.ax`、`trait_default_method_generic_dispatch.ax`、
+`trait_default_method_associated_type_dispatch.ax` 和 `trait_default_method_inherent_precedence.ax` 覆盖 lowering；
+`tests/samples/negative/traits/trait_default_method_return_mismatch.ax`、
 `tests/samples/negative/traits/trait_default_method_self_field.ax` 和
-`tests/samples/negative/traits/trait_default_method_missing_required.ax` 覆盖新的 default-body 诊断和 completeness
-规则。
+`tests/samples/negative/traits/trait_default_method_missing_required.ax` 覆盖 default-body 诊断和 completeness 规则。
 
 M4-WP3/WP4/WP5/WP6/WP7 的测试已落到常规仓库测试，而不是临时目录：`tests/gtest/sema/trait_tests.cpp` 覆盖白盒 checked facts、dump
 和正负样例，`tests/samples/positive/traits/trait_impl_registry.ax` 覆盖正样例，`tests/samples/negative/traits/*.ax`

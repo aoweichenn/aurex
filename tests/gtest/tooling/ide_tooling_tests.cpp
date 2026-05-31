@@ -48,6 +48,30 @@ constexpr std::string_view IDE_TOOLING_TRAIT_SOURCE = "module ide.traits;\n"
                                                       "  return read_i32[Bytes](&bytes) - 7;\n"
                                                       "}\n";
 
+constexpr std::string_view IDE_TOOLING_TRAIT_DEFAULT_SOURCE = "module ide.trait_defaults;\n"
+                                                              "trait Reader {\n"
+                                                              "  fn read(self: &Self) -> i32;\n"
+                                                              "  fn is_empty(self: &Self) -> bool {\n"
+                                                              "    return self.read() == 0;\n"
+                                                              "  }\n"
+                                                              "}\n"
+                                                              "struct File { value: i32; }\n"
+                                                              "struct Buffer { value: i32; }\n"
+                                                              "impl Reader for File {\n"
+                                                              "  fn read(self: &File) -> i32 { return self.value; }\n"
+                                                              "}\n"
+                                                              "impl Reader for Buffer {\n"
+                                                              "  fn read(self: &Buffer) -> i32 { return self.value; }\n"
+                                                              "  fn is_empty(self: &Buffer) -> bool { return false; }\n"
+                                                              "}\n"
+                                                              "fn main() -> i32 {\n"
+                                                              "  let file = File { value: 0 };\n"
+                                                              "  let buffer = Buffer { value: 1 };\n"
+                                                              "  if file.is_empty() { return 0; }\n"
+                                                              "  if buffer.is_empty() { return 1; }\n"
+                                                              "  return 2;\n"
+                                                              "}\n";
+
 constexpr base::usize IDE_TOOLING_LARGE_FUNCTION_COUNT = 128;
 constexpr base::u32 IDE_TOOLING_PRIMARY_PART_INDEX = 0;
 constexpr base::u32 IDE_TOOLING_FUNCTION_PART_INDEX = 3;
@@ -56,6 +80,7 @@ constexpr base::u32 IDE_TOOLING_ALIAS_PART_INDEX = 5;
 constexpr base::u32 IDE_TOOLING_ENUM_CASE_PART_INDEX = 6;
 constexpr base::u32 IDE_TOOLING_TEMPLATE_PART_INDEX = 7;
 constexpr base::u32 IDE_TOOLING_RECOVERED_PARSER_PART_INDEX = 2;
+constexpr base::u32 IDE_TOOLING_REQUIREMENT_ORDINAL_FALLBACK_OFFSET = 100U;
 constexpr std::string_view IDE_TOOLING_PRIMARY_PART_NAME = "<primary>";
 constexpr std::string_view IDE_TOOLING_STAGE_TOKENS_LEX = "tokens.lex";
 constexpr std::string_view IDE_TOOLING_STAGE_MODULE_LEX = "module.lex";
@@ -752,6 +777,94 @@ TEST(CoreUnit, IdeToolingExposesM4TraitFactsForWp7)
     EXPECT_TRUE(std::ranges::any_of(tokens, [](const tooling::IdeSemanticToken& token) {
         return token.text == "get" && token.token_type == "method" && token.checked && query::is_valid(token.member);
     }));
+}
+
+TEST(CoreUnit, IdeToolingResolvesM5TraitDefaultMethodOrigins)
+{
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(IDE_TOOLING_TRAIT_DEFAULT_SOURCE));
+    ASSERT_TRUE(snapshot.parsed);
+    ASSERT_TRUE(snapshot.checked_semantics);
+    EXPECT_TRUE(has_semantic_fact_kind(snapshot, tooling::IdeSemanticFactKind::function_body_syntax,
+        query::QueryKind::function_body_syntax, "is_empty"));
+    EXPECT_TRUE(has_semantic_fact_kind(
+        snapshot, tooling::IdeSemanticFactKind::type_check_body, query::QueryKind::type_check_body, "is_empty"));
+
+    const base::usize default_body_offset = IDE_TOOLING_TRAIT_DEFAULT_SOURCE.find("self.read");
+    ASSERT_NE(default_body_offset, std::string_view::npos);
+    const std::optional<tooling::IdeAstNodeInfo> default_body =
+        tooling::ast_node_at_offset(snapshot, default_body_offset);
+    ASSERT_TRUE(default_body.has_value());
+    EXPECT_TRUE(default_body->valid);
+    EXPECT_EQ(default_body->kind, tooling::IdeAstNodeKind::function_body);
+    EXPECT_EQ(default_body->name, "is_empty");
+    EXPECT_EQ(default_body->detail, "function_body_syntax");
+    EXPECT_EQ(default_body->body.slot, query::BodySlotKind::trait_default_method);
+
+    const base::usize inherited_call = IDE_TOOLING_TRAIT_DEFAULT_SOURCE.find("file.is_empty");
+    ASSERT_NE(inherited_call, std::string_view::npos);
+    const base::usize inherited_method = inherited_call + std::string_view{"file."}.size();
+    const std::optional<tooling::IdeDefinition> inherited_definition =
+        tooling::definition_at_offset(snapshot, inherited_method);
+    ASSERT_TRUE(inherited_definition.has_value());
+    EXPECT_EQ(inherited_definition->name, "is_empty");
+    EXPECT_EQ(inherited_definition->kind, "trait_method");
+    EXPECT_EQ(inherited_definition->key.kind, query::DefKind::trait_method);
+    EXPECT_TRUE(query::is_valid(inherited_definition->member));
+
+    const std::optional<tooling::IdeHoverInfo> inherited_hover = tooling::hover_at_offset(snapshot, inherited_method);
+    ASSERT_TRUE(inherited_hover.has_value());
+    EXPECT_NE(inherited_hover->label.find("identifier `is_empty` -> trait_method"), std::string::npos);
+    EXPECT_NE(inherited_hover->label.find("Reader.is_empty(&Self) -> bool default"), std::string::npos);
+    ASSERT_TRUE(inherited_hover->definition.has_value());
+    EXPECT_EQ(inherited_hover->definition->kind, "trait_method");
+
+    tooling::IdeSnapshot ordinal_fallback_snapshot = snapshot;
+    bool mutated_default_binding = false;
+    for (sema::TraitMethodCallBinding& binding : ordinal_fallback_snapshot.checked.trait_method_calls) {
+        if (binding.method_name == "is_empty" && binding.dispatch == sema::TraitMethodDispatchKind::trait_default) {
+            binding.requirement_ordinal += IDE_TOOLING_REQUIREMENT_ORDINAL_FALLBACK_OFFSET;
+            mutated_default_binding = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(mutated_default_binding);
+    const std::optional<tooling::IdeDefinition> ordinal_fallback_definition =
+        tooling::definition_at_offset(ordinal_fallback_snapshot, inherited_method);
+    ASSERT_TRUE(ordinal_fallback_definition.has_value());
+    EXPECT_EQ(ordinal_fallback_definition->kind, "trait_method");
+
+    const base::usize override_call = IDE_TOOLING_TRAIT_DEFAULT_SOURCE.find("buffer.is_empty");
+    ASSERT_NE(override_call, std::string_view::npos);
+    const base::usize override_method = override_call + std::string_view{"buffer."}.size();
+    const std::optional<tooling::IdeDefinition> override_definition =
+        tooling::definition_at_offset(snapshot, override_method);
+    ASSERT_TRUE(override_definition.has_value());
+    EXPECT_EQ(override_definition->name, "is_empty");
+    EXPECT_EQ(override_definition->kind, "impl_method");
+    EXPECT_EQ(override_definition->key.kind, query::DefKind::method);
+    EXPECT_TRUE(query::is_valid(override_definition->member));
+
+    const std::optional<tooling::IdeHoverInfo> override_hover = tooling::hover_at_offset(snapshot, override_method);
+    ASSERT_TRUE(override_hover.has_value());
+    EXPECT_NE(override_hover->label.find("identifier `is_empty` -> impl_method"), std::string::npos);
+    ASSERT_TRUE(override_hover->definition.has_value());
+    EXPECT_EQ(override_hover->definition->kind, "impl_method");
+
+    ASSERT_FALSE(snapshot.checked.trait_default_method_instances.empty());
+    tooling::IdeSnapshot synthetic_override_snapshot = snapshot;
+    bool redirected_override_binding = false;
+    for (sema::TraitMethodCallBinding& binding : synthetic_override_snapshot.checked.trait_method_calls) {
+        if (binding.method_name == "is_empty" && binding.dispatch == sema::TraitMethodDispatchKind::impl_override) {
+            binding.function_key = snapshot.checked.trait_default_method_instances.front().key;
+            redirected_override_binding = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(redirected_override_binding);
+    const std::optional<tooling::IdeDefinition> synthetic_override_definition =
+        tooling::definition_at_offset(synthetic_override_snapshot, override_method);
+    ASSERT_TRUE(synthetic_override_definition.has_value());
+    EXPECT_EQ(synthetic_override_definition->kind, "trait_method");
 }
 
 TEST(CoreUnit, IdeToolingExposesCheckedModulePartOriginsThroughDefinitions)

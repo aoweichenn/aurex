@@ -779,6 +779,12 @@ void recover_resolved_fragment_source_part(
     return signature.is_method ? query::DefKind::method : query::DefKind::function;
 }
 
+[[nodiscard]] query::BodySlotKind function_body_slot_kind(const sema::FunctionSignature& signature) noexcept
+{
+    return signature.is_trait_default_method_instance ? query::BodySlotKind::trait_default_method
+                                                      : query::BodySlotKind::function_body;
+}
+
 [[nodiscard]] query::DefKey function_signature_def_key(
     const IdeSnapshot& snapshot, const sema::FunctionSignature& signature)
 {
@@ -1036,6 +1042,9 @@ void recover_resolved_fragment_source_part(
         label << checked.types.display_name(requirement.param_types[index]);
     }
     label << ") -> " << checked.types.display_name(requirement.return_type);
+    if (requirement.has_default_body) {
+        label << " default";
+    }
     return label.str();
 }
 
@@ -1209,6 +1218,9 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
     }
     for (const auto& entry : snapshot.checked.functions) {
         const sema::FunctionSignature& signature = entry.second;
+        if (signature.is_trait_default_method_instance) {
+            continue;
+        }
         const query::DefKind kind = signature.is_method ? query::DefKind::method : query::DefKind::function;
         const base::SourceRange range =
             item_name_range(snapshot, signature.definition_item, signature.name.view(), signature.range);
@@ -1681,7 +1693,7 @@ void evaluate_function_body_queries(query::QueryContext& context, IdeSnapshot& s
         return;
     }
     const query::DefKey def = function_signature_def_key(snapshot, signature);
-    const query::BodyKey body = query::body_key(def, query::BodySlotKind::function_body);
+    const query::BodyKey body = query::body_key(def, function_body_slot_kind(signature));
     if (!query::is_valid(body)) {
         return;
     }
@@ -2005,6 +2017,89 @@ void collect_local_symbols_from_function(
         symbol.part_index,
         true,
     };
+}
+
+[[nodiscard]] const sema::TraitMethodRequirement* trait_method_call_requirement(
+    const IdeSnapshot& snapshot, const sema::TraitMethodCallBinding& binding, const sema::TraitSignature*& trait)
+{
+    trait = find_trait_signature(snapshot, binding.trait_module, binding.trait_name_id);
+    if (trait == nullptr) {
+        return nullptr;
+    }
+    if (binding.requirement_ordinal < trait->requirements.size()) {
+        const sema::TraitMethodRequirement& requirement = trait->requirements[binding.requirement_ordinal];
+        if (requirement.name_id == binding.method_name_id) {
+            return &requirement;
+        }
+    }
+    return find_trait_method_requirement(*trait, binding.method_name_id);
+}
+
+[[nodiscard]] std::optional<IdeSymbol> trait_method_call_symbol(
+    const IdeSnapshot& snapshot, const sema::TraitMethodCallBinding& binding)
+{
+    if (binding.dispatch == sema::TraitMethodDispatchKind::impl_override && sema::is_valid(binding.function_key)) {
+        const auto found = snapshot.checked.functions.find(binding.function_key);
+        if (found != snapshot.checked.functions.end() && !found->second.is_trait_default_method_instance) {
+            const sema::FunctionSignature& signature = found->second;
+            const base::SourceRange range =
+                item_name_range(snapshot, signature.definition_item, signature.name.view(), signature.range);
+            const query::MemberKey member =
+                signature.is_trait_impl_method ? trait_impl_method_member_key(snapshot, signature) : query::MemberKey{};
+            return IdeSymbol{
+                function_signature_def_key(snapshot, signature),
+                range,
+                signature.range,
+                std::string(signature.name.view()),
+                std::string(function_symbol_kind(signature)),
+                function_detail(snapshot.checked, signature),
+                signature.part_index,
+                false,
+                true,
+                member,
+                signature.generic_instance_key,
+            };
+        }
+    }
+
+    const sema::TraitSignature* trait = nullptr;
+    const sema::TraitMethodRequirement* const requirement = trait_method_call_requirement(snapshot, binding, trait);
+    if (trait == nullptr || requirement == nullptr) {
+        return std::nullopt;
+    }
+    const base::SourceRange range =
+        item_name_range(snapshot, requirement->item, requirement->name.view(), requirement->range);
+    return IdeSymbol{
+        trait_method_definition_key(snapshot, *requirement),
+        range,
+        trait->range,
+        std::string(requirement->name.view()),
+        std::string(IDE_SYMBOL_KIND_TRAIT_METHOD),
+        trait_method_detail(snapshot.checked, *trait, *requirement),
+        trait->part_index,
+        false,
+        true,
+        trait_method_member_key(snapshot, *trait, *requirement),
+    };
+}
+
+[[nodiscard]] std::optional<IdeSymbol> trait_method_call_symbol_at_offset(
+    const IdeSnapshot& snapshot, const IdeTokenInfo& info, const base::usize offset)
+{
+    if (info.kind != syntax::TokenKind::identifier) {
+        return std::nullopt;
+    }
+    for (const sema::TraitMethodCallBinding& binding : snapshot.checked.trait_method_calls) {
+        if (binding.method_name.view() != info.text || !syntax::is_valid(binding.callee_expr)
+            || binding.callee_expr.value >= snapshot.ast.exprs.size()) {
+            continue;
+        }
+        if (!range_contains_offset(snapshot.ast.exprs.range(binding.callee_expr.value), offset)) {
+            continue;
+        }
+        return trait_method_call_symbol(snapshot, binding);
+    }
+    return std::nullopt;
 }
 
 [[nodiscard]] std::optional<IdeTokenInfo> identifier_info_at_offset(
@@ -2529,6 +2624,10 @@ std::optional<IdeDefinition> definition_at_offset(const IdeSnapshot& snapshot, c
     if (!info.has_value()) {
         return std::nullopt;
     }
+    if (const std::optional<IdeSymbol> trait_method_symbol =
+            trait_method_call_symbol_at_offset(snapshot, *info, offset)) {
+        return make_definition_from_symbol(*trait_method_symbol);
+    }
     const SymbolIndex index = build_symbol_index(snapshot);
     const IdeSymbol* const symbol = best_symbol_for_identifier(index, info->text, offset);
     return symbol == nullptr ? std::nullopt : std::optional<IdeDefinition>{make_definition_from_symbol(*symbol)};
@@ -2577,7 +2676,11 @@ std::optional<IdeHoverInfo> hover_at_offset(const IdeSnapshot& snapshot, const b
     hover.valid = true;
     if (info->kind == syntax::TokenKind::identifier) {
         const SymbolIndex index = build_symbol_index(snapshot);
-        const IdeSymbol* const symbol = best_symbol_for_identifier(index, info->text, offset);
+        const std::optional<IdeSymbol> trait_method_symbol =
+            trait_method_call_symbol_at_offset(snapshot, *info, offset);
+        const IdeSymbol* const symbol = trait_method_symbol.has_value()
+            ? &*trait_method_symbol
+            : best_symbol_for_identifier(index, info->text, offset);
         std::ostringstream label;
         label << IDE_HOVER_IDENTIFIER_PREFIX << '`' << info->text << '`';
         if (symbol != nullptr) {
@@ -2718,7 +2821,9 @@ std::optional<IdeAstNodeInfo> ast_node_at_offset(const IdeSnapshot& snapshot, co
         const base::u32 part_index = ide_item_part_index(snapshot, index);
         if (const std::optional<base::SourceRange> body_range = ast_item_body_range(snapshot, *item);
             body_range.has_value() && range_contains_offset(*body_range, offset)) {
-            const query::BodyKey body = query::body_key(definition, query::BodySlotKind::function_body);
+            const query::BodySlotKind slot = item->is_trait_default_method ? query::BodySlotKind::trait_default_method
+                                                                           : query::BodySlotKind::function_body;
+            const query::BodyKey body = query::body_key(definition, slot);
             return IdeAstNodeInfo{
                 IdeAstNodeKind::function_body,
                 item_id,

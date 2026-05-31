@@ -1,0 +1,27 @@
+module trait_default_method_inherited_dispatch;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+
+    fn is_empty(self: &Self) -> bool {
+        return self.read() == 0;
+    }
+}
+
+struct File {
+    value: i32;
+}
+
+impl Reader for File {
+    fn read(self: &File) -> i32 {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    let file = File { value: 0 };
+    if file.is_empty() {
+        return 0;
+    }
+    return 1;
+}

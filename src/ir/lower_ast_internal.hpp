@@ -181,6 +181,7 @@ private:
 
     void lower_function_body(FunctionId function_id, FunctionBodyView body);
     void lower_generic_function_body(FunctionId function_id, const sema::GenericFunctionInstanceBodyView& body);
+    void lower_trait_default_method_body(FunctionId function_id, const sema::TraitDefaultMethodInstanceBodyView& body);
     void lower_block(syntax::StmtId block_id);
     void lower_block_contents(syntax::StmtId block_id);
     void lower_stmt(syntax::StmtId stmt_id);
@@ -297,6 +298,7 @@ private:
     std::vector<PendingConstant> pending_constants_;
     std::vector<FunctionId> item_functions_;
     std::vector<FunctionId> generic_instance_functions_;
+    std::vector<FunctionId> trait_default_instance_functions_;
     std::vector<LoopContext> loop_contexts_;
     std::vector<std::vector<syntax::ExprId>> defer_scopes_;
 };

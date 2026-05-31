@@ -110,6 +110,8 @@ trait 内部的默认方法体。
 
 ### M5-WP5：Lowering / Backend / Monomorphization
 
+状态：已完成。
+
 目标：保持 default dispatch direct and static。
 
 交付：
@@ -128,6 +130,8 @@ trait 内部的默认方法体。
 
 ### M5-WP6：Tooling / Diagnostics / Incremental Reuse
 
+状态：已完成。
+
 目标：把 default methods 暴露为一等 semantic facts。
 
 交付：
@@ -136,7 +140,15 @@ trait 内部的默认方法体。
 - rename 继续基于 trait method `MemberKey`。
 - workspace semantic index 记录 default method bodies。
 - diagnostics 为 inherited default 和 override mismatch 提供 origin notes。
-- incremental tests 证明编辑 default body 会 invalidate default users，但不影响 override-only call paths。
+- incremental-cache records 暴露 default method instance body identity，并把 default-user vs override-only
+  invalidation 留给现有 query diff/pruning 机制表达。
+
+已落地基线：
+
+- Concrete inherited defaults 以 `TraitDefaultMethodInstanceInfo` 表示，并降低为 internal direct-call function。
+- `BodySlotKind::trait_default_method` 用于 tooling 和 incremental-cache subjects 中的 default instance body identity。
+- IDE definition/hover 会把 inherited default call 解析到 trait method，把 explicit override call 解析到 impl method。
+- defaulted requirement 的显式 override 如果签名不匹配，diagnostics 会补充 override mismatch note。
 
 风险控制：
 

@@ -107,6 +107,25 @@ void Lowerer::lower_generic_function_body(
     this->active_side_tables_ = previous_tables;
 }
 
+void Lowerer::lower_trait_default_method_body(
+    const FunctionId function_id, const sema::TraitDefaultMethodInstanceBodyView& body)
+{
+    if (!sema::is_valid(body)) {
+        return;
+    }
+    const ActiveSideTables previous_tables = this->active_side_tables_;
+    this->active_side_tables_ = ActiveSideTables{
+        body.side_tables,
+        &body.side_tables->expr_types,
+        &body.side_tables->expr_c_name_ids,
+        &body.side_tables->pattern_c_name_ids,
+        &body.side_tables->syntax_type_handles,
+        &body.side_tables->stmt_local_types,
+    };
+    this->lower_function_body(function_id, FunctionBodyView{body.item->params, body.body});
+    this->active_side_tables_ = previous_tables;
+}
+
 void Lowerer::lower_block(const syntax::StmtId block_id)
 {
     this->push_local_scope();

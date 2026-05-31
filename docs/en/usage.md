@@ -1,8 +1,9 @@
 # Usage Guide
 
-This document describes the **M2 language-core-no-std** stage. The standard library
-is frozen and removed here, so examples and tests should target syntax,
-semantics, IR, and backend behavior directly.
+This document describes the current **M4 trait/protocol release baseline**.
+The standard library remains frozen and removed, so examples and tests should
+target syntax, semantics, IR, backend behavior, and the static trait surface
+directly.
 
 ## Build
 
@@ -77,6 +78,38 @@ fingerprints do not all match, the driver first tries query-key source-stage
 green reuse and then records red/green provider-skip profile data during cache
 writes. `--query-pruning` only confirms the default behavior; `--no-query-pruning`
 explicitly selects the coarse source-fingerprint compatibility path.
+
+## Trait / Protocol Surface
+
+M4 supports nominal static traits, explicit impls, generic trait predicates,
+static trait method calls, and associated-type equality constraints:
+
+```aurex
+trait Source {
+    type Item;
+    fn get(self: &Self) -> Self.Item;
+}
+
+struct Bytes {
+    value: i32;
+}
+
+impl Source for Bytes {
+    type Item = i32;
+
+    fn get(self: &Bytes) -> i32 {
+        return self.value;
+    }
+}
+
+fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {
+    return value.get();
+}
+```
+
+This is a static-dispatch surface. Dynamic trait objects, vtable ABI, object
+safety, default methods, specialization, generic associated types, associated
+constants, and RAII/resource semantics are still future design tracks.
 
 ## Imports
 

@@ -14,7 +14,7 @@
 
 ## Branch Boundary
 
-M2 `language-core-no-std` removes the standard-library layer:
+The current architecture baseline is M4. M2 removed the standard-library layer:
 
 - No `std/` source tree.
 - The driver does not locate a std root.
@@ -26,19 +26,18 @@ Language-core changes can now be validated with self-contained samples, without
 std loading, host support, or M1 examples obscuring compiler semantics and
 performance.
 
-## Next Architecture Direction
+## Current Architecture Direction
 
-Before designing any future library layer, the language needs the current core abstractions:
+The active compiler architecture is query-backed and static-trait-aware:
 
-- `unsafe` boundaries for raw pointers, unchecked strings, and bit-level casts.
-- ADT enums and pattern matching as the main way to model Result/Option and AST
-  state spaces.
-- Arrays, slices, strings, and function types as std-independent value and ABI
-  foundations.
-- Minimal non-resource `where` capabilities are in place; full traits and
-  protocols remain a later design track.
-- Resource semantics: `Copy`, `Drop`, borrow checking, and move-out remain a
-  later design track, not a current architecture prerequisite.
+- `unsafe` boundaries cover raw pointers, unchecked strings, and bit-level casts.
+- ADT enums, pattern matching, arrays, slices, strings, and function types form
+  the std-independent value and ABI foundation.
+- Nominal static traits, explicit impls, `where` trait predicates, static trait
+  method dispatch, and associated types are part of the M4 baseline.
+- Resource semantics, dynamic trait objects, object safety, default methods,
+  specialization, associated constants, and generic associated types remain
+  separate future design tracks.
 
 ## M2.5 Frontend Direction
 

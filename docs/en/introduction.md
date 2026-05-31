@@ -1,9 +1,12 @@
 # Introduction
 
-Aurex is a systems-language compiler project. The current stage is **M2
-language-core-no-std**. M2 freezes the standard library and moves the active
-work back to the language core: syntax, type checking, generics, sum types,
-pattern matching, control flow, `unsafe` boundaries, and the IR/LLVM backend.
+Aurex is a systems-language compiler project. The current documentation
+baseline is **M4 trait/protocol release baseline**. M2 froze the standard
+library and moved active work back to the language core; M3 closed modules,
+generics, query-backed sema, tooling, incremental syntax, and backend reuse;
+M4 adds nominal static traits, explicit trait impls, generic trait predicates,
+static trait method dispatch, associated types, and tooling/diagnostic
+projection.
 
 M1 has been discarded. It advanced the standard library, host support,
 build-tool examples, selfhost experiments, and language semantics at the same
@@ -17,9 +20,12 @@ Aurex std wrappers.
 
 Near-term goals:
 
-- Continue refining `for`, `defer`, `?`, and match payload semantics.
-- Remove the M1 `move(...)` / `noncopy struct` experiment from the M2 baseline
-  and stabilize ordinary value semantics first.
+- Keep the M4 static trait baseline stable through normal repository tests,
+  coverage, query/cache/profile gates, and documentation checks.
+- Start post-M4 work as a separate design stream, not as edits that reopen the
+  M4 trait contract.
 - Defer ownership, borrow checking, move-out, partial move, drop order,
-  destructor rules, and resource capabilities to a separate later design.
-- Avoid expanding the standard library before syntax and semantics settle.
+  destructor rules, and resource capabilities to a separate resource-semantics
+  design.
+- Defer dynamic trait objects, object safety, default methods, specialization,
+  associated constants, and generic associated types to explicit future designs.

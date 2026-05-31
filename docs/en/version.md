@@ -1,8 +1,23 @@
 # Version Document
 
+## M4 trait/protocol release baseline
+
+The current repository baseline is M4. M4 builds on the closed M2
+language-core-no-std baseline, the M2.5 frontend/query foundation, and the M3
+module/generic/query-backed compiler architecture. It closes nominal static
+traits, explicit trait impls, generic trait predicates, static trait method
+dispatch, associated types, and IDE/tooling/diagnostic projection.
+
+The release contract is recorded in
+[Aurex M4 Trait / Protocol Release Baseline](m4-release-baseline.md). Post-M4
+work should start as a separate design stream; resource semantics, dynamic
+trait objects, default methods, specialization, associated constants, generic
+associated types, package-level coherence, and class-like sugar are not part of
+the M4 baseline.
+
 ## M2 language-core-no-std
 
-The repository is now in the M2 stage. M2 is a deliberate contraction after the
+M2 was a deliberate contraction after the
 failed M1 direction: it stops repairing the M1 standard-library, selfhost, and
 system-example track, removes those distractions from the active tree, and
 returns the project to language-core design.

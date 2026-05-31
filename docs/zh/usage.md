@@ -1,6 +1,6 @@
 # 使用文档
 
-本文描述 **M2 language-core-no-std** 阶段的用法。本阶段冻结并移除了标准库，所有示例和测试都应围绕语言语法、语义、IR 和后端本身展开。
+本文描述当前 **M4 trait/protocol release baseline** 的用法。标准库仍保持冻结并移除，所有示例和测试都应围绕语言语法、语义、IR、后端和 static trait 表面本身展开。
 
 ## 构建
 
@@ -68,6 +68,37 @@ build/full-llvm/bin/aurexc --check --incremental-cache build/main.axic examples/
 driver 会先尝试 query-key source-stage green reuse，再在 cache write 阶段记录
 red/green provider-skip profile。`--query-pruning` 只是显式确认默认行为；
 `--no-query-pruning` 才会退回 coarse source-fingerprint 兼容路径。
+
+## Trait / Protocol 表面
+
+M4 支持 nominal static trait、显式 impl、generic trait predicate、static trait method call 和 associated-type
+equality constraint：
+
+```aurex
+trait Source {
+    type Item;
+    fn get(self: &Self) -> Self.Item;
+}
+
+struct Bytes {
+    value: i32;
+}
+
+impl Source for Bytes {
+    type Item = i32;
+
+    fn get(self: &Bytes) -> i32 {
+        return self.value;
+    }
+}
+
+fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {
+    return value.get();
+}
+```
+
+这是 static-dispatch 表面。dynamic trait object、vtable ABI、object safety、default method、specialization、
+generic associated type、associated const 和 RAII/resource semantics 仍是未来设计流。
 
 ## import
 

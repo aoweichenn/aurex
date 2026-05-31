@@ -221,6 +221,7 @@ constexpr std::string_view CACHE_TEST_QUERY_DIFF_PROFILE_PHASE = "incremental_ca
 constexpr std::string_view CACHE_TEST_QUERY_PLAN_PROFILE_PHASE = "incremental_cache.query_plan";
 constexpr std::string_view CACHE_TEST_QUERY_PRUNING_PROFILE_PHASE = "incremental_cache.query_pruning";
 constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_PROFILE_PHASE = "incremental_cache.query_provider_eval";
+constexpr std::string_view CACHE_TEST_QUERY_PROVIDER_EVAL_MODE_FULL = "mode=full";
 constexpr std::string_view CACHE_TEST_PROJECT_INPUTS_PROFILE_PHASE = "incremental_cache.project_inputs";
 constexpr std::string_view CACHE_TEST_SOURCE_STAGE_REUSE_PROFILE_PHASE = "incremental_cache.source_stage_reuse";
 constexpr std::string_view CACHE_TEST_PROJECT_INPUTS_REUSE_DETAIL = "result=reuse,changed_inputs=none";
@@ -1633,6 +1634,38 @@ TEST_F(AurexIntegrationTest, CliIncrementalCacheUsesQueryKeyPruningByDefault)
             "applied=1",
             "fallback=none",
             "mode=pruned",
+        });
+
+    driver::clear_file_cache();
+}
+
+TEST_F(AurexIntegrationTest, CliIncrementalCacheProfilesProviderEvalWhenPrunedReplayFallsBack)
+{
+    driver::clear_file_cache();
+
+    const fs::path cache_dir = tmp_root() / "cli-query-provider-eval-fallback-cache";
+    fs::create_directories(cache_dir);
+    const fs::path source = cache_dir / "main.ax";
+    const fs::path cache = cache_dir / "main.axic";
+    const fs::path profile = cache_dir / "checked-profile.json";
+
+    {
+        std::ofstream out(source, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.is_open());
+        out << DRIVER_INCREMENTAL_CACHE_FIRST_SOURCE;
+    }
+
+    require_success(aurexc() + " --check --incremental-cache " + q(cache) + " " + q(source));
+    require_success(aurexc() + " --emit=checked --incremental-cache " + q(cache) + " --profile-output " + q(profile)
+        + " " + q(source));
+
+    const std::string profile_text = read_text(profile);
+    expect_contains_all(profile_text,
+        {
+            "\"name\": \"incremental_cache.query_pruning\"",
+            "\"name\": \"incremental_cache.query_provider_eval\"",
+            "applied=1",
+            CACHE_TEST_QUERY_PROVIDER_EVAL_MODE_FULL,
         });
 
     driver::clear_file_cache();

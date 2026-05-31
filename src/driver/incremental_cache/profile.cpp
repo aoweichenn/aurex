@@ -177,9 +177,10 @@ void record_query_pruning_summary(CompilationProfiler* const profiler, const Que
 }
 
 void record_query_provider_evaluation_summary(CompilationProfiler* const profiler,
-    const QueryProviderEvaluationStats& stats, const std::chrono::steady_clock::duration elapsed)
+    const QueryProviderEvaluationStats& stats, const std::chrono::steady_clock::duration elapsed,
+    const bool query_pruning_applied)
 {
-    if (!stats.pruned || profiler == nullptr || !profiler->enabled()) {
+    if ((!stats.pruned && !query_pruning_applied) || profiler == nullptr || !profiler->enabled()) {
         return;
     }
     profiler->record(PipelineProfileSubeventId::incremental_cache_query_provider_eval,

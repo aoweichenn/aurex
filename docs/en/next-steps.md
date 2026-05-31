@@ -1,9 +1,9 @@
 # Next Steps
 
-## Current Highest Priority: M4-WP8 Release Closure
+## Current Highest Priority: Post-M4 Design Selection
 
 The M3 release baseline is closed, and M4 trait/protocol work has completed
-WP1, WP2, WP3, WP4, WP5, WP6, and WP7. M4-WP1 fixed the
+WP1, WP2, WP3, WP4, WP5, WP6, WP7, and WP8. M4-WP1 fixed the
 [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
 with the staged route in the
 [M4 Trait / Protocol System Roadmap](m4-roadmap.md). M4-WP2 completed the token,
@@ -35,6 +35,11 @@ member indexing, rename identity through `DefKey` / `MemberKey`, LSP adapter
 projection without leaking LSP DTOs into compiler internals, and diagnostic
 notes for candidate impls, rejected candidates, associated-type equality
 mismatches, orphan checks, and overlap locations.
+M4-WP8 is complete and records the release contract in
+[Aurex M4 Trait / Protocol Release Baseline](m4-release-baseline.md): docs,
+language-surface notes, unsupported matrix, normal repository tests, coverage,
+query/cache/profile stress gates, and future entry points now agree on the same
+M4 boundary.
 
 The current implemented surface is nominal static traits. The language keyword
 is `trait`, and conformance is explicit through `impl Trait for Type`.
@@ -63,14 +68,14 @@ tests live in normal repository locations:
 `tests/gtest/tooling/ide_tooling_tests.cpp` and
 `tests/gtest/tooling/session_lsp_tooling_tests.cpp`.
 
-The next step is M4-WP8 only: close the M4 trait system as a release baseline.
-WP8 should align the documentation set, language manual, unsupported matrix,
-progress records, coverage report, stress/query/cache/profile gates, and
-release audit so later work on resources, dynamic traits, default methods,
-specialization, class-like sugar, and package-level coherence starts from a
-clear boundary instead of reopening WP1-WP7.
+The next step is no longer an M4 work package. Post-M4 work should start by
+choosing one independent design stream and giving it the same level of research
+and risk analysis that M4-WP1 had. The strongest candidates are resource
+semantics, dynamic trait objects, package-level coherence, default methods /
+specialization, class-like sugar, or a stronger trait solver. Each one must
+start from the M4 release baseline rather than reopening WP1-WP8.
 
-WP8 does not include dynamic trait objects or RAII/resource semantics. Dynamic
+M4 does not include dynamic trait objects or RAII/resource semantics. Dynamic
 trait objects, vtable ABI/object safety, associated constants, specialization,
 generic associated types, and the resource system remain outside the current M4
 target. The WP6/WP7 surface supports identifier trait predicates with
@@ -235,14 +240,15 @@ M3.9 is complete:
 4. Full tests, coverage, query gates, generic stress, format, and diff checks
    are the final M3 quality baseline.
 
-Post-M3 work should start with design, not implementation, for one of these
+Post-M4 work should start with design, not implementation, for one of these
 tracks:
 
-1. Trait/protocol system and associated type model.
-2. Resource semantics, ownership/drop timing, and ABI impact.
+1. Resource semantics, ownership/drop timing, and ABI impact.
+2. Dynamic trait objects, object safety, and vtable ABI.
 3. Package/dependency resolver and workspace database beyond the current
    project/query cache boundary.
-4. Backend codegen-unit scheduling and multi-target reuse policy.
+4. Default trait methods, specialization, and a stronger trait solver.
+5. Backend codegen-unit scheduling and multi-target reuse policy.
 
 2026-05-29 M3.3 WP-1/2/3 implementation update: `aurex_tooling` now has a
 versioned `ToolingSession`, in-place `IdeSnapshot` cache construction, and a

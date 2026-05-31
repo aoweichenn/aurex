@@ -24,7 +24,7 @@ void record_query_reuse_plan_summary(
 void record_query_pruning_summary(
     CompilationProfiler* profiler, const QueryPruningGateResult& result, std::chrono::steady_clock::duration elapsed);
 void record_query_provider_evaluation_summary(CompilationProfiler* profiler, const QueryProviderEvaluationStats& stats,
-    std::chrono::steady_clock::duration elapsed);
+    std::chrono::steady_clock::duration elapsed, bool query_pruning_applied);
 void record_source_stage_reuse_summary(
     CompilationProfiler* profiler, const SourceStageReuseSummary& summary, std::chrono::steady_clock::duration elapsed);
 void record_project_input_summary(CompilationProfiler* profiler, bool reusable, std::string_view changed_inputs,

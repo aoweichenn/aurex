@@ -253,6 +253,8 @@ Risk controls:
 
 ### M4-WP8: Release Closure
 
+Status: complete.
+
 Goal: close the M4 trait system as a release baseline that later features can
 extend.
 
@@ -281,8 +283,10 @@ Deliverables:
 
 ## Current Next Step
 
-M4-WP1 through WP7 are complete. The current next step is M4-WP8 release
-closure.
+M4-WP1 through WP8 are complete. The M4 release baseline is
+[Aurex M4 Trait / Protocol Release Baseline](m4-release-baseline.md). Future
+work should start from a separate design stream instead of reopening this M4
+baseline.
 
 WP4 has built on the WP3 registry by adding formal `TraitPredicate`,
 `TraitObligation`, `TraitEvidence`, and `ParamEnv` boundaries, lowering
@@ -312,3 +316,9 @@ diagnostics: completion, hover, definition, semantic tokens, rename identity,
 and candidate/rejection notes now consume stable compiler facts rather than raw
 sema internals. Dynamic trait objects and RAII / resource semantics remain
 separate future designs.
+
+WP8 has closed the release baseline: the documentation set, language surface,
+unsupported matrix, validation gates, normal repository tests, coverage, query /
+cache / profile stress gates, and future entry points are now recorded as the
+M4 completion contract. The completed M4 surface remains nominal, explicit, and
+static-dispatch-first.

@@ -126,7 +126,8 @@ base::Result<void> write_incremental_cache_impl(const CompilerInvocation& invoca
         : collect_queries_from_subjects(query_subjects);
     const std::chrono::steady_clock::duration query_provider_eval_elapsed =
         std::chrono::steady_clock::now() - query_provider_eval_started;
-    record_query_provider_evaluation_summary(profiler, query_collection_result.stats, query_provider_eval_elapsed);
+    record_query_provider_evaluation_summary(
+        profiler, query_collection_result.stats, query_provider_eval_elapsed, query_pruning.applied);
     const QueryCollection& query_collection = query_collection_result.collection;
     if (!query_collection_records_and_dependency_edges_are_valid(query_collection)) {
         return base::Result<void>::fail(

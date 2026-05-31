@@ -1,12 +1,12 @@
 # Current Progress
 
 Version: 0.1.4
-Stage: M4-WP7 tooling / diagnostics closed; next is M4-WP8 release closure
+Stage: M4 release baseline closed; next is post-M4 design selection
 
 ## Overall Status
 
 As of 2026-05-31, M4 trait/protocol work has completed WP1, WP2, WP3, WP4,
-WP5, WP6, and WP7.
+WP5, WP6, WP7, and WP8.
 M4-WP1 closed the research and design baseline with nominal static traits: the
 language keyword is `trait`, `protocol` remains design terminology for
 behavioral contracts, conformance is explicit through `impl Trait for Type`,
@@ -94,8 +94,15 @@ indexing, LSP projection, and diagnostic notes. The full design is recorded in
 the
 [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
 and the stage route is recorded in the
-[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The next step is M4-WP8
-release closure.
+[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The completed M4 release
+contract is recorded in
+[Aurex M4 Trait / Protocol Release Baseline](m4-release-baseline.md).
+
+M4-WP8 closes the release baseline: roadmap/progress/next-steps, the release
+baseline document, language-surface notes, unsupported matrix, normal
+repository tests, coverage, query/cache/profile stress gates, and future entry
+points now agree that the M4 surface is nominal, explicit, and
+static-dispatch-first. Post-M4 work should start as a separate design stream.
 
 M4 is still not presented as a complete dynamic trait system. Dynamic trait
 objects, vtable ABI/object safety, associated constants, specialization,

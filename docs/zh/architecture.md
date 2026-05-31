@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-M2 `language-core-no-std` 移除了标准库层：
+当前架构基线是 M4。M2 已移除标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。
@@ -23,15 +23,16 @@ M2 `language-core-no-std` 移除了标准库层：
 
 这使语言核心变更能直接通过自包含样例验证，避免标准库加载、host support 和 M1 样例掩盖编译器本身的语义与性能问题。
 
-## 后续架构方向
+## 当前架构方向
 
-未来库层重新设计前应先完成当前基础抽象：
+当前编译器架构已经进入 query-backed 且 static-trait-aware 的形态：
 
-- `unsafe` 边界：raw pointer、unchecked string 和 bit-level cast 不能长期留在 safe surface。
-- ADT enum 与 pattern matching：让 Result/Option/AST 状态空间成为主力表达。
-- array/slice/string/function type：补齐不依赖 std 的基础值和 ABI 表达。
-- trait/where：最小非资源类 `where` capability 已落地；完整 trait / protocol 后置。
-- 资源语义：`Copy` / `Drop` / borrow / move-out 暂缓为后续专题，不作为当前架构前置条件。
+- `unsafe` 边界覆盖 raw pointer、unchecked string 和 bit-level cast。
+- ADT enum、pattern matching、array、slice、string 和 function type 构成不依赖 std 的基础值和 ABI 表达。
+- nominal static trait、显式 impl、`where` trait predicate、static trait method dispatch 和 associated type 已进入
+  M4 baseline。
+- resource semantics、dynamic trait object、object safety、default method、specialization、associated const 和
+  generic associated type 仍是后续独立设计流。
 
 ## M2.5 前端方向
 

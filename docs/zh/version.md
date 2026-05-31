@@ -1,8 +1,18 @@
 # 版本文档
 
+## M4 trait/protocol release baseline
+
+当前仓库基线是 M4。M4 建立在已经收口的 M2 language-core-no-std、M2.5 frontend/query foundation
+和 M3 module/generic/query-backed compiler architecture 之上，完成 nominal static trait、显式 trait impl、
+generic trait predicate、static trait method dispatch、associated type，以及 IDE/tooling/diagnostics 投影。
+
+发布契约记录在 [Aurex M4 Trait / Protocol Release Baseline](m4-release-baseline.md)。M4 后工作应作为独立设计流启动；
+resource semantics、dynamic trait object、default method、specialization、associated const、generic associated type、
+package-level coherence 和 class-like sugar 都不属于 M4 baseline。
+
 ## M2 language-core-no-std
 
-当前仓库处于 M2 阶段。M2 从 M1 的失败经验中收缩出来：停止继续修补 M1 的标准库、自举和系统样例路线，转而冻结标准库、删除干扰项，并重新聚焦语言核心设计。
+M2 从 M1 的失败经验中收缩出来：停止继续修补 M1 的标准库、自举和系统样例路线，转而冻结标准库、删除干扰项，并重新聚焦语言核心设计。
 
 M1 已经舍弃。它的问题是扩张面过大：标准库、host support、构建工具样例、自举实验和语言语义同时推进，导致核心语法与类型规则没有稳定下来。M2 不再把 M1 的 std/selfhost/build-tool 产物当作当前基线。
 

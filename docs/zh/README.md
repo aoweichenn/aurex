@@ -1,7 +1,7 @@
 # Aurex 文档
 
-文档基线：**M2.5 frontend-foundation**，建立在已经收口的
-**M2 language-core-no-std** 基线上。
+文档基线：**M4 trait/protocol release baseline**，建立在已经收口的 M2 language-core-no-std、M2.5
+frontend-foundation 和 M3 query-backed/module/generic 基线上。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -10,7 +10,7 @@
 - [架构设计文档](architecture.md)
 - [运行流程文档](runtime-flow.md)
 - [API 接口文档](api.md)
-- [Aurex M2 语言语法说明书](language-manual.md)
+- [Aurex 语言语法说明书](language-manual.md)
 - [Aurex 正则库语法和实现说明](regex.md)
 - [Aurex 正则库工业化现状报告](regex-industrial-report.md)
 - [字符串基础类型设计草案](string-primitive-design.md)
@@ -29,6 +29,7 @@
 - [M3 路线图](m3-roadmap.md)
 - [M4 Trait / Protocol 系统路线图](m4-roadmap.md)
 - [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)
+- [Aurex M4 Trait / Protocol Release Baseline](m4-release-baseline.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)
 - [下一步计划文档](next-steps.md)

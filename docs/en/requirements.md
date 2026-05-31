@@ -2,7 +2,8 @@
 
 ## Branch Goal
 
-The M2 `language-core-no-std` stage isolates language-core validation:
+The current documentation baseline is M4. The older M2 `language-core-no-std`
+stage isolated language-core validation:
 
 - The compiler must build, install, and run without a standard-library tree.
 - Imports come only from the importing directory and explicit `-I` entries.
@@ -18,7 +19,9 @@ The M2 `language-core-no-std` stage isolates language-core validation:
 - Modules, imports, visibility, and re-exports.
 - Primitive types, structs, ADT-style enums, explicit C-like repr enums,
   generic structs/functions/enums/type aliases, owner-generic impl blocks, and
-  minimal `where` capabilities.
+  `where` capabilities / trait predicates.
+- Nominal static traits, explicit `impl Trait for Type`, static trait method
+  dispatch, and the first associated type model.
 - Tuple types, tuple literals, and tuple destructuring. Anonymous tuple field
   access is intentionally rejected.
 - Pattern matching, multi-field enum payload destructuring, guards, and
@@ -35,6 +38,9 @@ The M2 `language-core-no-std` stage isolates language-core validation:
 - Standard-library APIs, containers, file/dir/process/console support.
 - M1 frontend/build-tool examples.
 - std host support and installed std lookup.
+- Dynamic trait objects, object safety, vtable ABI, associated constants,
+  generic associated types, default methods, specialization, and resource
+  semantics.
 
 The M1 language-level `move(...)` and `noncopy struct` syntax is no longer part
 of the current M2 requirements. Resource semantics should be redesigned after

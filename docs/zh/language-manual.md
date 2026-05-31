@@ -1,10 +1,12 @@
-# Aurex M2 语言语法说明书
+# Aurex 语言语法说明书
 
-日期：2026-05-17
-阶段：M2 language-core-no-std
+日期：2026-05-31
+阶段：M4 trait/protocol release baseline
 状态：按当前仓库实现编写的使用者语法说明，不描述尚未落地的未来功能。
 
-本文说明当前 Aurex 能写什么、怎么写、哪些地方会被拒绝。语法以 `docs/spec/m2_grammar.md`、`include/aurex/syntax/token.hpp`、`src/parse/*`、`src/sema/*`、`tests/samples/**` 和 `examples/**` 的当前实现为准。
+本文说明当前 Aurex 能写什么、怎么写、哪些地方会被拒绝。语法以 `docs/spec/m2_grammar.md`、M4 release
+baseline、`include/aurex/syntax/token.hpp`、`src/parse/*`、`src/sema/*`、`tests/samples/**` 和 `examples/**`
+的当前实现为准。
 
 ## 1. 最小完整程序
 
@@ -944,7 +946,7 @@ impl[T] Box[T] {
 }
 ```
 
-`where` 当前支持内建非资源 capability：
+`where` 当前支持内建非资源 capability 和 M4 nominal static trait predicate：
 
 ```aurex
 fn same[T](left: T, right: T) -> bool where T: Eq {
@@ -958,15 +960,54 @@ fn same[T](left: T, right: T) -> bool where T: Eq {
 - `Eq`
 - `Ord`
 - `Hash`
+- 用户定义 `trait`
+- 显式 `impl Trait for Type`
+- trait method requirement
+- associated type requirement
+- `Trait[Item = Type]` associated-type equality
+
+示例：
+
+```aurex
+trait Source {
+    type Item;
+    fn get(self: &Self) -> Self.Item;
+}
+
+struct Bytes {
+    value: i32;
+}
+
+impl Source for Bytes {
+    type Item = i32;
+
+    fn get(self: &Bytes) -> i32 {
+        return self.value;
+    }
+}
+
+fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {
+    return value.get();
+}
+```
+
+M4 trait 规则：
+
+- trait 是 nominal identity，不按方法形状做 structural conformance。
+- conformance 必须显式写成 `impl Trait for Type`。
+- trait method 默认静态分派；单态化后 lowering 到具体 impl method direct call。
+- associated type 是 impl output，不作为 impl selection input。
+- `Self.Item` shorthand 只在当前 trait bounds 中 associated type 名称唯一或 equality 可归一化时使用。
 
 暂不支持：
 
-- 用户自定义 trait
-- associated type
 - const generic
 - trait object
 - `Copy` / `Drop` 资源能力
-- method-local 独立泛型
+- generic associated type
+- associated const
+- default trait method
+- specialization
 - `<T>` 风格泛型
 
 ## 13. Unsafe 边界

@@ -606,8 +606,9 @@ Migration strategy:
 
 ## 9. M4 Work Packages
 
-Implementation status as of 2026-05-31: M4-WP1 through M4-WP7 are complete.
-M4-WP8 release closure is the only remaining active M4 work package.
+Implementation status as of 2026-05-31: M4-WP1 through M4-WP8 are complete.
+The release baseline is recorded in
+[Aurex M4 Trait / Protocol Release Baseline](m4-release-baseline.md).
 
 | Work package | Goal | Done when |
 |:--|:--|:--|

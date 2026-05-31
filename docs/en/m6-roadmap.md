@@ -101,7 +101,7 @@ Explicitly rejected with normal negative samples:
 
 ## M6-WP4: Cleanup Obligations, `defer` Composition, And IR Elaborator
 
-Status: pending.
+Status: complete.
 
 Goals:
 

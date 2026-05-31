@@ -647,7 +647,7 @@ ValueId Lowerer::lower_try_expr(const syntax::ExprId expr_id, const ExprView& ex
     Terminator ret;
     ret.kind = TerminatorKind::return_;
     ret.value = return_value;
-    emit_deferred_scopes(0);
+    emit_cleanup_scopes(0);
     set_terminator(current_block_, ret);
 
     current_block_ = success_block;
@@ -854,7 +854,8 @@ void Lowerer::collect_pattern_binding_slots(const syntax::PatternId pattern_id, 
                     break;
                 }
                 const ValueId slot = this->append_temp_alloca(pattern->binding_name, frame.type);
-                this->bind_local(pattern->binding_name_id, LocalBinding{slot, is_mutable});
+                this->bind_local(
+                    pattern->binding_name_id, LocalBinding{slot, INVALID_VALUE_ID, frame.type, is_mutable});
                 slots.emplace(pattern->binding_name_id,
                     PatternBindingSlot{
                         this->module_.intern(pattern->binding_name), pattern->binding_name_id, slot, frame.type});

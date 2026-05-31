@@ -461,6 +461,12 @@ private:
                     this->verify_value_type(value->lhs, target, "store source");
                 }
                 break;
+            case ValueKind::drop:
+                this->verify_drop(*value, false);
+                break;
+            case ValueKind::drop_if:
+                this->verify_drop(*value, true);
+                break;
             case ValueKind::unary:
                 this->verify_unary(*value);
                 break;
@@ -538,6 +544,23 @@ private:
                     this->fail(std::string(IR_VERIFY_UNARY_PASSTHROUGH_TYPE));
                 }
                 break;
+        }
+    }
+
+    void verify_drop(const Value& value, const bool conditional)
+    {
+        this->verify_pointer_like_value(value.object, "drop target");
+        this->verify_type(value.type, "drop result");
+        this->verify_type(value.target_type, "drop target type");
+        if (!this->module_.types.is_void(value.type)) {
+            this->fail(std::string(IR_VERIFY_DROP_RESULT_VOID));
+        }
+        if (const sema::TypeHandle target = this->pointee_type(value.object);
+            sema::is_valid(target) && !this->module_.types.same(target, value.target_type)) {
+            this->fail(std::string(IR_VERIFY_DROP_TARGET_TYPE));
+        }
+        if (conditional) {
+            this->verify_value_type(value.lhs, this->module_.types.builtin(sema::BuiltinType::bool_), "drop flag");
         }
     }
 

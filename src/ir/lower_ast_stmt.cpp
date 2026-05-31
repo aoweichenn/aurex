@@ -1,5 +1,6 @@
 #include <ir/lower_ast_internal.hpp>
 
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -50,8 +51,9 @@ void Lowerer::lower_function_body(const FunctionId function_id, const FunctionBo
     this->locals_.clear();
     this->local_scopes_.clear();
     this->loop_contexts_.clear();
-    this->defer_scopes_.clear();
+    this->cleanup_scopes_.clear();
     this->push_local_scope();
+    this->cleanup_scopes_.push_back({});
     this->current_block_ = add_block(this->module_, *this->current_function_, "entry");
 
     for (base::usize i = 0; i < body.params.size(); ++i) {
@@ -72,12 +74,15 @@ void Lowerer::lower_function_body(const FunctionId function_id, const FunctionBo
         slot.name = this->module_.intern(param.name);
         slot.type = this->module_.types.pointer(sema::PointerMutability::mut, param_value.type);
         const ValueId slot_id = this->append_value(slot);
-        this->bind_local(param.name_id, LocalBinding{slot_id, false});
+        LocalBinding binding{slot_id, INVALID_VALUE_ID, param_type, false};
+        this->register_local_cleanup(binding, param.name);
+        this->bind_local(param.name_id, binding);
         this->append_store(slot_id, param_id);
     }
 
     this->lower_block(body.body);
     if (!this->has_terminator(this->current_block_)) {
+        this->emit_cleanup_scopes(0);
         Terminator term;
         term.kind = TerminatorKind::return_;
         this->set_terminator(this->current_block_, term);
@@ -85,6 +90,7 @@ void Lowerer::lower_function_body(const FunctionId function_id, const FunctionBo
     this->pop_local_scope();
     this->locals_.clear();
     this->local_scopes_.clear();
+    this->cleanup_scopes_.clear();
     this->current_function_ = nullptr;
 }
 
@@ -98,6 +104,7 @@ void Lowerer::lower_generic_function_body(
     this->active_side_tables_ = ActiveSideTables{
         body.side_tables,
         &body.side_tables->expr_types,
+        &body.side_tables->expr_owned_use_modes,
         &body.side_tables->expr_c_name_ids,
         &body.side_tables->pattern_c_name_ids,
         &body.side_tables->syntax_type_handles,
@@ -117,6 +124,7 @@ void Lowerer::lower_trait_default_method_body(
     this->active_side_tables_ = ActiveSideTables{
         body.side_tables,
         &body.side_tables->expr_types,
+        &body.side_tables->expr_owned_use_modes,
         &body.side_tables->expr_c_name_ids,
         &body.side_tables->pattern_c_name_ids,
         &body.side_tables->syntax_type_handles,
@@ -129,13 +137,13 @@ void Lowerer::lower_trait_default_method_body(
 void Lowerer::lower_block(const syntax::StmtId block_id)
 {
     this->push_local_scope();
-    const base::usize scope_depth = this->defer_scopes_.size();
-    this->defer_scopes_.push_back({});
+    const base::usize scope_depth = this->cleanup_scopes_.size();
+    this->cleanup_scopes_.push_back({});
     this->lower_block_contents(block_id);
     if (!this->has_terminator(this->current_block_)) {
-        this->emit_deferred_scopes(scope_depth);
+        this->emit_cleanup_scopes(scope_depth);
     }
-    this->defer_scopes_.resize(scope_depth);
+    this->cleanup_scopes_.resize(scope_depth);
     this->pop_local_scope();
 }
 
@@ -206,8 +214,10 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id)
             slot.name = this->module_.intern(stmt.name);
             slot.type = module_.types.pointer(sema::PointerMutability::mut, local_type);
             const ValueId slot_id = append_value(slot);
-            this->bind_local(stmt.name_id, LocalBinding{slot_id, stmt.kind == syntax::StmtKind::var});
+            LocalBinding binding{slot_id, INVALID_VALUE_ID, local_type, stmt.kind == syntax::StmtKind::var};
             append_store(slot_id, lower_expr(stmt.init, local_type));
+            this->register_local_cleanup(binding, stmt.name);
+            this->bind_local(stmt.name_id, binding);
             break;
         }
         case syntax::StmtKind::assign: {
@@ -224,44 +234,60 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id)
                 value.rhs = source;
                 source = this->append_value(value);
             }
+            if (const LocalBinding* const binding = this->local_binding_for_name_expr(stmt.lhs);
+                binding != nullptr && is_valid(binding->cleanup_flag)) {
+                this->append_cleanup_drop_if(binding->slot, binding->cleanup_flag, binding->type,
+                    this->module_.values[binding->slot.value].name);
+            }
             this->append_store(target, source);
+            if (const LocalBinding* const binding = this->local_binding_for_name_expr(stmt.lhs);
+                binding != nullptr && is_valid(binding->cleanup_flag)) {
+                this->append_cleanup_flag_store(binding->cleanup_flag, true);
+            }
             break;
         }
         case syntax::StmtKind::if_:
-            lower_if(stmt);
+            this->lower_if(stmt);
             break;
         case syntax::StmtKind::for_:
-            lower_for(stmt);
+            this->lower_for(stmt);
             break;
         case syntax::StmtKind::for_range:
-            lower_for_range(stmt_id, stmt);
+            this->lower_for_range(stmt_id, stmt);
             break;
         case syntax::StmtKind::while_:
-            lower_while(stmt);
+            this->lower_while(stmt);
             break;
         case syntax::StmtKind::break_: {
-            if (!loop_contexts_.empty()) {
-                emit_deferred_scopes(loop_contexts_.back().defer_depth);
+            if (!this->loop_contexts_.empty()) {
+                this->emit_cleanup_scopes(this->loop_contexts_.back().cleanup_depth);
             }
             Terminator term;
             term.kind = TerminatorKind::branch;
-            term.target = loop_contexts_.empty() ? INVALID_BLOCK_ID : loop_contexts_.back().break_target;
-            set_terminator(current_block_, term);
+            term.target = this->loop_contexts_.empty() ? INVALID_BLOCK_ID : this->loop_contexts_.back().break_target;
+            this->set_terminator(this->current_block_, term);
             break;
         }
         case syntax::StmtKind::continue_: {
-            if (!loop_contexts_.empty()) {
-                emit_deferred_scopes(loop_contexts_.back().defer_depth);
+            if (!this->loop_contexts_.empty()) {
+                this->emit_cleanup_scopes(this->loop_contexts_.back().cleanup_depth);
             }
             Terminator term;
             term.kind = TerminatorKind::branch;
-            term.target = loop_contexts_.empty() ? INVALID_BLOCK_ID : loop_contexts_.back().continue_target;
-            set_terminator(current_block_, term);
+            term.target = this->loop_contexts_.empty() ? INVALID_BLOCK_ID : this->loop_contexts_.back().continue_target;
+            this->set_terminator(this->current_block_, term);
             break;
         }
         case syntax::StmtKind::defer:
-            if (!defer_scopes_.empty()) {
-                defer_scopes_.back().push_back(stmt.init);
+            if (!this->cleanup_scopes_.empty()) {
+                this->cleanup_scopes_.back().push_back(CleanupAction{
+                    CleanupActionKind::defer_call,
+                    INVALID_VALUE_ID,
+                    INVALID_VALUE_ID,
+                    sema::INVALID_TYPE_HANDLE,
+                    stmt.init,
+                    INVALID_IR_TEXT_ID,
+                });
             }
             break;
         case syntax::StmtKind::return_: {
@@ -271,7 +297,7 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id)
                 term.value = coerce_value(
                     lower_expr(stmt.return_value, current_function_->return_type), current_function_->return_type);
             }
-            emit_deferred_scopes(0);
+            emit_cleanup_scopes(0);
             set_terminator(current_block_, term);
             break;
         }
@@ -377,7 +403,7 @@ void Lowerer::lower_while(const syntax::StmtNode& stmt)
     cond.else_target = exit_block;
     set_terminator(current_block_, cond);
 
-    loop_contexts_.push_back(LoopContext{exit_block, condition_block, defer_scopes_.size()});
+    loop_contexts_.push_back(LoopContext{exit_block, condition_block, cleanup_scopes_.size()});
     current_block_ = body_block;
     this->push_local_scope();
     if (syntax::is_valid(stmt.pattern)) {
@@ -394,8 +420,8 @@ void Lowerer::lower_while(const syntax::StmtNode& stmt)
 void Lowerer::lower_for(const syntax::StmtNode& stmt)
 {
     this->push_local_scope();
-    const base::usize scope_depth = this->defer_scopes_.size();
-    this->defer_scopes_.push_back({});
+    const base::usize scope_depth = this->cleanup_scopes_.size();
+    this->cleanup_scopes_.push_back({});
 
     if (syntax::is_valid(stmt.for_init)) {
         lower_stmt(stmt.for_init);
@@ -424,7 +450,7 @@ void Lowerer::lower_for(const syntax::StmtNode& stmt)
         append_branch_if_open(body_block);
     }
 
-    loop_contexts_.push_back(LoopContext{exit_block, update_block, defer_scopes_.size()});
+    loop_contexts_.push_back(LoopContext{exit_block, update_block, cleanup_scopes_.size()});
     current_block_ = body_block;
     lower_block(stmt.body);
     append_branch_if_open(update_block);
@@ -436,9 +462,12 @@ void Lowerer::lower_for(const syntax::StmtNode& stmt)
     append_branch_if_open(condition_block);
     loop_contexts_.pop_back();
 
-    this->defer_scopes_.resize(scope_depth);
-    this->pop_local_scope();
     this->current_block_ = exit_block;
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_cleanup_scopes(scope_depth);
+    }
+    this->cleanup_scopes_.resize(scope_depth);
+    this->pop_local_scope();
 }
 
 ValueId Lowerer::append_for_range_condition(
@@ -466,11 +495,131 @@ ValueId Lowerer::append_for_range_condition(
     return this->append_binary_value(BinaryOp::logical_or, bool_type, forward_active, backward_active);
 }
 
+sema::ResourceSemanticsSummary Lowerer::resource_summary(const sema::TypeHandle type)
+{
+    if (!sema::is_valid(type)) {
+        return this->resources_.classify(type);
+    }
+    const auto found = this->resource_cache_.find(type.value);
+    if (found != this->resource_cache_.end()) {
+        return found->second;
+    }
+    const sema::ResourceSemanticsSummary summary = this->resources_.classify(type);
+    this->resource_cache_.emplace(type.value, summary);
+    return summary;
+}
+
+bool Lowerer::cleanup_required(const sema::TypeHandle type)
+{
+    return sema::is_valid(type) && !this->module_.types.is_void(type)
+        && sema::resource_needs_drop(this->resource_summary(type));
+}
+
+const LocalBinding* Lowerer::local_binding_for_name_expr(const syntax::ExprId expr_id) const noexcept
+{
+    if (!syntax::is_valid(expr_id) || expr_id.value >= this->ast_.exprs.size()
+        || this->ast_.exprs.kind(expr_id.value) != syntax::ExprKind::name) {
+        return nullptr;
+    }
+    const syntax::NameExprPayload* const name = this->ast_.exprs.name_payload(expr_id.value);
+    if (name == nullptr || !name->scope_name.empty()) {
+        return nullptr;
+    }
+    const auto found = this->locals_.find(name->text_id);
+    return found == this->locals_.end() ? nullptr : &found->second;
+}
+
+ValueId Lowerer::append_bool_literal(const bool value)
+{
+    Value literal = this->module_.make_value();
+    literal.kind = ValueKind::bool_literal;
+    literal.type = this->module_.types.builtin(sema::BuiltinType::bool_);
+    literal.text = this->module_.intern(value ? "true" : "false");
+    return this->append_value(literal);
+}
+
+ValueId Lowerer::append_cleanup_flag(const std::string_view name)
+{
+    Value flag = this->module_.make_value();
+    flag.kind = ValueKind::alloca;
+    flag.name = this->module_.intern(std::string("drop.flag.") + std::string(name));
+    flag.type = this->module_.types.pointer(
+        sema::PointerMutability::mut, this->module_.types.builtin(sema::BuiltinType::bool_));
+    return this->append_value(flag);
+}
+
+void Lowerer::append_cleanup_flag_store(const ValueId flag, const bool initialized)
+{
+    if (!is_valid(flag)) {
+        return;
+    }
+    this->append_store(flag, this->append_bool_literal(initialized));
+}
+
+void Lowerer::append_cleanup_drop(const ValueId slot, const sema::TypeHandle type, const IrTextId name)
+{
+    if (!is_valid(slot) || !sema::is_valid(type)) {
+        return;
+    }
+    Value drop = this->module_.make_value();
+    drop.kind = ValueKind::drop;
+    drop.type = this->module_.types.builtin(sema::BuiltinType::void_);
+    drop.object = slot;
+    drop.target_type = type;
+    drop.name = name;
+    static_cast<void>(this->append_value(drop));
+}
+
+void Lowerer::append_cleanup_drop_if(
+    const ValueId slot, const ValueId flag, const sema::TypeHandle type, const IrTextId name)
+{
+    if (!is_valid(slot) || !is_valid(flag) || !sema::is_valid(type)) {
+        return;
+    }
+    const ValueId initialized = this->append_load(
+        flag, this->module_.types.builtin(sema::BuiltinType::bool_), this->module_.intern("drop.flag"));
+    Value drop = this->module_.make_value();
+    drop.kind = ValueKind::drop_if;
+    drop.type = this->module_.types.builtin(sema::BuiltinType::void_);
+    drop.object = slot;
+    drop.lhs = initialized;
+    drop.target_type = type;
+    drop.name = name;
+    static_cast<void>(this->append_value(drop));
+    this->append_cleanup_flag_store(flag, false);
+}
+
+void Lowerer::register_local_cleanup(LocalBinding& binding, const std::string_view name)
+{
+    if (!this->cleanup_required(binding.type) || this->cleanup_scopes_.empty()) {
+        return;
+    }
+    binding.cleanup_flag = this->append_cleanup_flag(name);
+    this->append_cleanup_flag_store(binding.cleanup_flag, true);
+    this->cleanup_scopes_.back().push_back(CleanupAction{
+        CleanupActionKind::drop_local,
+        binding.slot,
+        binding.cleanup_flag,
+        binding.type,
+        syntax::INVALID_EXPR_ID,
+        this->module_.intern(name),
+    });
+}
+
+void Lowerer::mark_local_moved(const sema::IdentId name_id)
+{
+    const auto found = this->locals_.find(name_id);
+    if (found == this->locals_.end()) {
+        return;
+    }
+    this->append_cleanup_flag_store(found->second.cleanup_flag, false);
+}
+
 void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
 {
     this->push_local_scope();
-    const base::usize scope_depth = this->defer_scopes_.size();
-    this->defer_scopes_.push_back({});
+    const base::usize scope_depth = this->cleanup_scopes_.size();
+    this->cleanup_scopes_.push_back({});
 
     const sema::TypeHandle range_type = this->stmt_local_type(stmt_id);
     const ValueId start_value = syntax::is_valid(stmt.range_start)
@@ -507,12 +656,12 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
     cond.else_target = exit_block;
     this->set_terminator(this->current_block_, cond);
 
-    this->loop_contexts_.push_back(LoopContext{exit_block, update_block, this->defer_scopes_.size()});
+    this->loop_contexts_.push_back(LoopContext{exit_block, update_block, this->cleanup_scopes_.size()});
     this->current_block_ = body_block;
     const IrTextId loop_name = this->module_.intern(stmt.name);
     const ValueId loop_value = this->append_load(cursor_slot, range_type, loop_name);
     const ValueId loop_slot = this->append_temp_alloca(stmt.name, range_type);
-    this->bind_local(stmt.name_id, LocalBinding{loop_slot, false});
+    this->bind_local(stmt.name_id, LocalBinding{loop_slot, INVALID_VALUE_ID, range_type, false});
     this->append_store(loop_slot, loop_value);
     this->lower_block(stmt.body);
     this->append_branch_if_open(update_block);
@@ -527,18 +676,30 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
     this->append_branch_if_open(condition_block);
     this->loop_contexts_.pop_back();
 
-    this->defer_scopes_.resize(scope_depth);
-    this->pop_local_scope();
     this->current_block_ = exit_block;
+    if (!this->has_terminator(this->current_block_)) {
+        this->emit_cleanup_scopes(scope_depth);
+    }
+    this->cleanup_scopes_.resize(scope_depth);
+    this->pop_local_scope();
 }
 
-void Lowerer::emit_deferred_scopes(const base::usize keep_depth)
+void Lowerer::emit_cleanup_scopes(const base::usize keep_depth)
 {
-    base::usize depth = defer_scopes_.size();
+    base::usize depth = cleanup_scopes_.size();
     while (depth > keep_depth) {
-        const std::vector<syntax::ExprId>& scope = defer_scopes_[depth - 1];
+        const std::vector<CleanupAction>& scope = cleanup_scopes_[depth - 1];
         for (base::usize i = scope.size(); i > 0; --i) {
-            static_cast<void>(lower_expr(scope[i - 1]));
+            const CleanupAction& action = scope[i - 1];
+            if (action.kind == CleanupActionKind::defer_call) {
+                static_cast<void>(lower_expr(action.defer_expr));
+                continue;
+            }
+            if (is_valid(action.flag)) {
+                this->append_cleanup_drop_if(action.slot, action.flag, action.type, action.name);
+                continue;
+            }
+            this->append_cleanup_drop(action.slot, action.type, action.name);
         }
         --depth;
     }

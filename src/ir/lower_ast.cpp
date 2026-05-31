@@ -106,7 +106,8 @@ namespace {
 
 } // namespace
 
-Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checked) : ast_(ast), checked_(checked)
+Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checked)
+    : ast_(ast), checked_(checked), resources_(checked)
 {
     this->module_.types = this->checked_.types;
     this->module_.reserve(this->ast_.exprs.size(),
@@ -121,6 +122,7 @@ Lowerer::Lowerer(const syntax::AstModule& ast, const sema::CheckedModule& checke
     this->active_side_tables_ = ActiveSideTables{
         nullptr,
         &this->checked_.expr_types,
+        &this->checked_.expr_owned_use_modes,
         &this->checked_.expr_c_name_ids,
         &this->checked_.pattern_c_name_ids,
         &this->checked_.syntax_type_handles,

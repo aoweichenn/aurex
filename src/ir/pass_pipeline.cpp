@@ -157,6 +157,13 @@ struct FunctionUseInfo {
                     record_slot_use(value.object, block_index, true);
                     record_slot_use(value.lhs, block_index, false);
                     break;
+                case ValueKind::drop:
+                    record_slot_use(value.object, block_index, false);
+                    break;
+                case ValueKind::drop_if:
+                    record_slot_use(value.object, block_index, false);
+                    record_slot_use(value.lhs, block_index, false);
+                    break;
                 case ValueKind::unary:
                     record_slot_use(value.lhs, block_index, false);
                     break;

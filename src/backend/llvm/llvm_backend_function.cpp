@@ -37,7 +37,9 @@ void LlvmEmitter::emit_function(const FunctionId function_id, const Function& fu
             if (value.kind == ValueKind::param || value.kind == ValueKind::phi) {
                 continue;
             }
-            values_[value_id.value] = emit_value(value_id);
+            if (llvm::Value* const emitted = emit_value(value_id); emitted != nullptr) {
+                values_[value_id.value] = emitted;
+            }
         }
         emit_terminator(function.blocks[i].terminator);
     }

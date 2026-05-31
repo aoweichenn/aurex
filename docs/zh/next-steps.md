@@ -15,15 +15,14 @@ M6-WP1 已完成三轮设计审视：
 3. 用户案例压力测试：regex 手工 `destroy`、owned string/vector、文件、锁、FFI、覆盖赋值、分支、循环、
    `?`、pattern、partial initialization、自引用、shared ownership cycle 和未来 `dyn Trait`。
 
-M6-WP2/WP3 已完成第一批实现：compiler-owned `Copy`、内部 `Discard` / `NeedsDrop` / ownership
+M6-WP2/WP3/WP4 已完成第一批实现：compiler-owned `Copy`、内部 `Discard` / `NeedsDrop` / ownership
 resource summary、结构化类型分类、stable fingerprint、checked dump resource summaries、expression
-owned-use side table、whole-local move analysis、move 后重新初始化和 consume-origin diagnostics。
+owned-use side table、whole-local move analysis、move 后重新初始化、consume-origin diagnostics、lexical
+cleanup-action stack lowering、`defer` 组合、drop flag，以及正式 IR `drop` / `drop_if` cleanup 节点。
 
-下一实现包是 M6-WP4 Cleanup Obligations、`defer` 组合和 IR Elaborator。WP4 要建立 lexical cleanup
-action stack，覆盖 normal scope exit、overwrite、`return`、`break`、`continue` 和 `?` early return，并把
-cleanup obligations 降低到正式 IR cleanup 节点或等价 CFG 形状。WP4 不冻结 destructor parser spelling，
-不开放用户 `Drop` bound，不实现 aggregate/generic drop glue，也不实现完整 borrow checker；这些继续分别属于
-WP5 和 M7。
+下一实现包是 M6-WP5 Destructor Protocol 和 Aggregate / Generic Drop Glue。WP5 应以 WP4 cleanup obligations
+为输入，继续补 destructor surface、aggregate/generic drop glue 和已经证明正确的 aggregate rollback 路径。WP5
+不实现完整 borrow checker；这仍然属于 M7。
 
 ## 已收口背景：Post-M5 Design Selection
 

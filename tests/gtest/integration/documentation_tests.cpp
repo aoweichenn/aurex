@@ -122,18 +122,19 @@ TEST_F(AurexIntegrationTest, M5ReleaseDocumentationIsClosed)
     expect_document_contains("docs/zh/usage.md", "default method body");
 }
 
-TEST_F(AurexIntegrationTest, M6ResourceSemanticsWp2Wp3AreClosed)
+TEST_F(AurexIntegrationTest, M6ResourceSemanticsWp2ThroughWp4AreClosed)
 {
     expect_document_contains("docs/en/README.md", "M6 Resource, Value Lifetime, And Access Semantics Roadmap");
     expect_document_contains("docs/zh/README.md", "M6 资源、值生命周期与访问语义路线图");
+    expect_document_contains("docs/en/progress.md",
+        "Stage: M6-WP2/WP3/WP4 resource classification, move analysis, and cleanup lowering complete");
     expect_document_contains(
-        "docs/en/progress.md", "Stage: M6-WP2/WP3 resource classification and whole-local move analysis complete");
-    expect_document_contains("docs/zh/progress.md", "阶段：M6-WP2/WP3 资源分类和 whole-local move analysis 已完成");
+        "docs/zh/progress.md", "阶段：M6-WP2/WP3/WP4 资源分类、whole-local move analysis 和 cleanup lowering 已完成");
     expect_document_contains("docs/en/next-steps.md", "Current Highest Priority: M6 Resource And Access Semantics");
     expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M6 Resource And Access Semantics");
     expect_document_contains(
-        "docs/en/version.md", "M6-WP2/WP3 Resource Classification And Whole-Local Move Analysis Baseline");
-    expect_document_contains("docs/zh/version.md", "M6-WP2/WP3 资源分类与 whole-local move analysis 基线");
+        "docs/en/version.md", "M6-WP2/WP3/WP4 Resource Classification, Move Analysis, And Cleanup Baseline");
+    expect_document_contains("docs/zh/version.md", "M6-WP2/WP3/WP4 资源分类、move analysis 与 cleanup 基线");
     expect_document_contains(
         "docs/en/requirements.md", "The active implementation baseline is M6 Resource And Access Semantics");
     expect_document_contains("docs/zh/requirements.md", "当前实现基线是 M6 Resource And Access Semantics");
@@ -143,8 +144,10 @@ TEST_F(AurexIntegrationTest, M6ResourceSemanticsWp2Wp3AreClosed)
     expect_document_contains("docs/zh/m6-roadmap.md", "状态：已完成。");
     expect_document_contains("docs/en/m6-roadmap.md", "M6-WP3: Owned Use Modes And Whole-Local Move Analysis");
     expect_document_contains("docs/zh/m6-roadmap.md", "M6-WP3：Owned Use Mode 和 Whole-Local Move Analysis");
-    expect_document_contains("docs/en/next-steps.md", "The next implementation package is M6-WP4 Cleanup Obligations");
-    expect_document_contains("docs/zh/next-steps.md", "下一实现包是 M6-WP4 Cleanup Obligations");
+    expect_document_contains("docs/en/m6-roadmap.md", "M6-WP4: Cleanup Obligations");
+    expect_document_contains("docs/zh/m6-roadmap.md", "M6-WP4：Cleanup Obligations");
+    expect_document_contains("docs/en/next-steps.md", "The next implementation package is M6-WP5 Destructor Protocol");
+    expect_document_contains("docs/zh/next-steps.md", "下一实现包是 M6-WP5 Destructor Protocol");
     expect_document_contains("docs/en/m6-resource-access-semantics-design.md", "`NeedsDrop`");
     expect_document_contains("docs/zh/m6-resource-access-semantics-design.md", "`NeedsDrop`");
     expect_document_contains("docs/en/m6-resource-access-semantics-design.md", "Third Review Pass: User Cases");

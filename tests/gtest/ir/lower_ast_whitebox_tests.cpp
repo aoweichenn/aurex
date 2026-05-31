@@ -1,4 +1,6 @@
+#include <aurex/ir/ir_dump.hpp>
 #include <aurex/ir/lower_ast.hpp>
+#include <aurex/ir/verify.hpp>
 #include <aurex/query/query_key.hpp>
 
 #include <array>
@@ -94,6 +96,72 @@ void set_expr_type(CheckedModule& checked, const ExprId expr, const TypeHandle t
         checked.expr_c_name_ids.resize(expr.value + 1, sema::INVALID_IDENT_ID);
     }
     checked.expr_types[expr.value] = type;
+}
+
+void set_expr_owned_use_mode(CheckedModule& checked, const ExprId expr, const sema::OwnedUseMode mode)
+{
+    if (checked.expr_owned_use_modes.size() <= expr.value) {
+        checked.expr_owned_use_modes.resize(expr.value + 1, sema::OwnedUseMode::none);
+    }
+    checked.expr_owned_use_modes[expr.value] = mode;
+}
+
+void set_stmt_local_type(CheckedModule& checked, const StmtId stmt, const TypeHandle type)
+{
+    if (checked.stmt_local_types.size() <= stmt.value) {
+        checked.stmt_local_types.resize(stmt.value + 1, INVALID_TYPE_HANDLE);
+    }
+    checked.stmt_local_types[stmt.value] = type;
+}
+
+[[nodiscard]] StmtId push_block(syntax::AstModule& ast, std::vector<StmtId> statements)
+{
+    syntax::StmtNode block;
+    block.kind = syntax::StmtKind::block;
+    block.statements = std::move(statements);
+    return ast.push_stmt(block);
+}
+
+[[nodiscard]] StmtId push_defer_stmt(syntax::AstModule& ast, const ExprId expr)
+{
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::defer;
+    stmt.init = expr;
+    return ast.push_stmt(stmt);
+}
+
+[[nodiscard]] StmtId push_var_stmt(
+    syntax::AstModule& ast, const std::string_view name, const ExprId init, const bool is_mutable)
+{
+    syntax::StmtNode stmt;
+    stmt.kind = is_mutable ? syntax::StmtKind::var : syntax::StmtKind::let;
+    stmt.name = name;
+    stmt.name_id = ast.intern_identifier(name);
+    stmt.init = init;
+    return ast.push_stmt(stmt);
+}
+
+[[nodiscard]] StmtId push_assign_stmt(syntax::AstModule& ast, const ExprId lhs, const ExprId rhs)
+{
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::assign;
+    stmt.lhs = lhs;
+    stmt.rhs = rhs;
+    return ast.push_stmt(stmt);
+}
+
+[[nodiscard]] base::usize count_occurrences(const std::string& text, const std::string_view needle)
+{
+    if (needle.empty()) {
+        return 0;
+    }
+    base::usize count = 0;
+    std::string::size_type position = text.find(needle);
+    while (position != std::string::npos) {
+        ++count;
+        position = text.find(needle, position + needle.size());
+    }
+    return count;
 }
 
 [[nodiscard]] Value typed_value(
@@ -239,7 +307,8 @@ TEST(CoreUnit, LowerAstWhiteBoxPlacesCallsAndTerminators)
     slot_value.kind = ValueKind::alloca;
     slot_value.type = ptr_i32;
     const ValueId slot_id = lowerer.append_value(slot_value);
-    lowerer.locals_.emplace(ast.find_identifier("slot"), ir::detail::LocalBinding{slot_id, true});
+    lowerer.locals_.emplace(
+        ast.find_identifier("slot"), ir::detail::LocalBinding{slot_id, INVALID_VALUE_ID, i32, true});
     const ir::detail::PlaceAddress slot_address = lowerer.lower_place_address(missing_place);
     EXPECT_EQ(slot_address.address.value, slot_id.value);
     EXPECT_TRUE(slot_address.is_mutable);
@@ -463,6 +532,179 @@ TEST(CoreUnit, LowerAstWhiteBoxGenericBodiesUseRetainedSemaView)
     EXPECT_EQ(lowered.value().values[function.blocks.front().terminator.value.value].kind, ValueKind::load);
     EXPECT_TRUE(
         lowered.value().types.same(lowered.value().values[function.blocks.front().terminator.value.value].type, i32));
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxCleanupStackDropsNeedsDropParametersOnImplicitReturn)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle resource_type = checked.types.generic_param("T");
+    const TypeHandle void_type = checked.types.builtin(BuiltinType::void_);
+    const sema::IdentId value_name = ast.intern_identifier("value");
+
+    syntax::StmtNode body_stmt;
+    body_stmt.kind = syntax::StmtKind::block;
+    const StmtId body = ast.push_stmt(body_stmt);
+
+    syntax::ItemNode function_item;
+    function_item.kind = syntax::ItemKind::fn_decl;
+    function_item.name = "cleanup";
+    function_item.name_id = ast.intern_identifier("cleanup");
+    function_item.params = {syntax::ParamDecl{"value", syntax::INVALID_TYPE_ID, {}, value_name}};
+    function_item.return_type = syntax::INVALID_TYPE_ID;
+    function_item.body = body;
+
+    Lowerer lowerer(ast, checked);
+    Function function = lowerer.module_.make_function();
+    function.name = lowerer.module_.intern("cleanup");
+    function.symbol = lowerer.module_.intern("cleanup");
+    function.return_type = void_type;
+    function.signature_params.push_back(ir::FunctionParam{lowerer.module_.intern("value"), resource_type});
+    const FunctionId function_id = add_function(lowerer.module_, function);
+
+    lowerer.lower_function_body(function_id, Lowerer::FunctionBodyView{function_item.params, body});
+
+    const base::Result<void> verified = ir::verify_module(lowerer.module_);
+    ASSERT_TRUE(verified) << verified.error().message;
+    const std::string dump = ir::dump_module(lowerer.module_);
+    EXPECT_NE(dump.find("alloca drop.flag.value"), std::string::npos);
+    EXPECT_NE(dump.find("drop_if"), std::string::npos);
+    EXPECT_NE(dump.find("as T"), std::string::npos);
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxCleanupStackInterleavesDeferredActionsAndDrops)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle resource_type = checked.types.generic_param("T");
+    const TypeHandle void_type = checked.types.builtin(BuiltinType::void_);
+    const TypeHandle i32 = checked.types.builtin(BuiltinType::i32);
+    const sema::IdentId outer_name = ast.intern_identifier("outer");
+    const sema::IdentId inner_name = ast.intern_identifier("inner");
+
+    const ExprId deferred_marker = push_integer(ast, "7");
+    set_expr_type(checked, deferred_marker, i32);
+    const StmtId defer_stmt = push_defer_stmt(ast, deferred_marker);
+    const StmtId body = push_block(ast, {defer_stmt});
+
+    syntax::ItemNode function_item;
+    function_item.kind = syntax::ItemKind::fn_decl;
+    function_item.name = "cleanup_order";
+    function_item.name_id = ast.intern_identifier("cleanup_order");
+    function_item.params = {
+        syntax::ParamDecl{"outer", syntax::INVALID_TYPE_ID, {}, outer_name},
+        syntax::ParamDecl{"inner", syntax::INVALID_TYPE_ID, {}, inner_name},
+    };
+    function_item.return_type = syntax::INVALID_TYPE_ID;
+    function_item.body = body;
+
+    Lowerer lowerer(ast, checked);
+    Function function = lowerer.module_.make_function();
+    function.name = lowerer.module_.intern("cleanup_order");
+    function.symbol = lowerer.module_.intern("cleanup_order");
+    function.return_type = void_type;
+    function.signature_params.push_back(ir::FunctionParam{lowerer.module_.intern("outer"), resource_type});
+    function.signature_params.push_back(ir::FunctionParam{lowerer.module_.intern("inner"), resource_type});
+    const FunctionId function_id = add_function(lowerer.module_, function);
+
+    lowerer.lower_function_body(function_id, Lowerer::FunctionBodyView{function_item.params, body});
+
+    const base::Result<void> verified = ir::verify_module(lowerer.module_);
+    ASSERT_TRUE(verified) << verified.error().message;
+
+    base::usize deferred_marker_index = lowerer.module_.values.size();
+    std::vector<std::string_view> dropped_slots;
+    std::vector<base::usize> drop_indexes;
+    for (base::usize index = 0; index < lowerer.module_.values.size(); ++index) {
+        const Value& value = lowerer.module_.values[index];
+        if (value.kind == ValueKind::integer_literal && lowerer.module_.text(value.text) == "7") {
+            deferred_marker_index = index;
+        }
+        if (value.kind == ValueKind::drop_if) {
+            ASSERT_TRUE(is_valid(value.object));
+            ASSERT_LT(value.object.value, lowerer.module_.values.size());
+            dropped_slots.push_back(lowerer.module_.text(lowerer.module_.values[value.object.value].name));
+            drop_indexes.push_back(index);
+        }
+    }
+
+    ASSERT_EQ(dropped_slots.size(), 2U);
+    ASSERT_EQ(drop_indexes.size(), 2U);
+    ASSERT_LT(deferred_marker_index, drop_indexes.front());
+    EXPECT_EQ(dropped_slots[0], "inner");
+    EXPECT_EQ(dropped_slots[1], "outer");
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxCleanupStackDropsOldWholeLocalBeforeOverwrite)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle resource_type = checked.types.generic_param("T");
+    const TypeHandle void_type = checked.types.builtin(BuiltinType::void_);
+    const sema::IdentId old_value_name = ast.intern_identifier("old_value");
+    const sema::IdentId new_value_name = ast.intern_identifier("new_value");
+
+    const ExprId old_value = push_name(ast, "old_value");
+    const ExprId new_value = push_name(ast, "new_value");
+    const ExprId slot_ref = push_name(ast, "slot");
+    set_expr_type(checked, old_value, resource_type);
+    set_expr_type(checked, new_value, resource_type);
+    set_expr_type(checked, slot_ref, resource_type);
+    set_expr_owned_use_mode(checked, old_value, sema::OwnedUseMode::owned_consume);
+    set_expr_owned_use_mode(checked, new_value, sema::OwnedUseMode::owned_consume);
+
+    const StmtId slot_decl = push_var_stmt(ast, "slot", old_value, true);
+    set_stmt_local_type(checked, slot_decl, resource_type);
+    const StmtId overwrite = push_assign_stmt(ast, slot_ref, new_value);
+    const StmtId body = push_block(ast, {slot_decl, overwrite});
+
+    syntax::ItemNode function_item;
+    function_item.kind = syntax::ItemKind::fn_decl;
+    function_item.name = "cleanup_overwrite";
+    function_item.name_id = ast.intern_identifier("cleanup_overwrite");
+    function_item.params = {
+        syntax::ParamDecl{"old_value", syntax::INVALID_TYPE_ID, {}, old_value_name},
+        syntax::ParamDecl{"new_value", syntax::INVALID_TYPE_ID, {}, new_value_name},
+    };
+    function_item.return_type = syntax::INVALID_TYPE_ID;
+    function_item.body = body;
+
+    Lowerer lowerer(ast, checked);
+    Function function = lowerer.module_.make_function();
+    function.name = lowerer.module_.intern("cleanup_overwrite");
+    function.symbol = lowerer.module_.intern("cleanup_overwrite");
+    function.return_type = void_type;
+    function.signature_params.push_back(ir::FunctionParam{lowerer.module_.intern("old_value"), resource_type});
+    function.signature_params.push_back(ir::FunctionParam{lowerer.module_.intern("new_value"), resource_type});
+    const FunctionId function_id = add_function(lowerer.module_, function);
+
+    lowerer.lower_function_body(function_id, Lowerer::FunctionBodyView{function_item.params, body});
+
+    const base::Result<void> verified = ir::verify_module(lowerer.module_);
+    ASSERT_TRUE(verified) << verified.error().message;
+
+    std::vector<std::string_view> dropped_slots;
+    for (const Value& value : lowerer.module_.values) {
+        if (value.kind != ValueKind::drop_if) {
+            continue;
+        }
+        ASSERT_TRUE(is_valid(value.object));
+        ASSERT_LT(value.object.value, lowerer.module_.values.size());
+        dropped_slots.push_back(lowerer.module_.text(lowerer.module_.values[value.object.value].name));
+    }
+
+    ASSERT_EQ(dropped_slots.size(), 4U);
+    EXPECT_EQ(dropped_slots[0], "slot");
+    EXPECT_EQ(dropped_slots[1], "slot");
+    EXPECT_EQ(dropped_slots[2], "new_value");
+    EXPECT_EQ(dropped_slots[3], "old_value");
+
+    const std::string dump = ir::dump_module(lowerer.module_);
+    EXPECT_EQ(count_occurrences(dump, "drop_if"), 4U);
+    EXPECT_NE(dump.find("alloca drop.flag.slot"), std::string::npos);
 }
 
 TEST(CoreUnit, LowerAstWhiteBoxRejectsMissingRetainedGenericBodyView)

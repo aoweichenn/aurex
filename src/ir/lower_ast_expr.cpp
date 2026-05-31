@@ -323,17 +323,17 @@ ValueId Lowerer::lower_if_expr(const syntax::ExprId expr_id, const ExprView& exp
 ValueId Lowerer::lower_block_expr(const syntax::ExprId expr_id, const ExprView& expr)
 {
     this->push_local_scope();
-    const base::usize scope_depth = this->defer_scopes_.size();
-    this->defer_scopes_.push_back({});
+    const base::usize scope_depth = this->cleanup_scopes_.size();
+    this->cleanup_scopes_.push_back({});
     this->lower_block_contents(expr.block);
     ValueId result = INVALID_VALUE_ID;
     if (syntax::is_valid(expr.block_result)) {
         result = this->lower_expr(expr.block_result, this->expr_type(expr_id));
     }
     if (!this->has_terminator(this->current_block_)) {
-        this->emit_deferred_scopes(scope_depth);
+        this->emit_cleanup_scopes(scope_depth);
     }
-    this->defer_scopes_.resize(scope_depth);
+    this->cleanup_scopes_.resize(scope_depth);
     this->pop_local_scope();
     return result;
 }
@@ -507,7 +507,11 @@ ValueId Lowerer::lower_name(const syntax::ExprId expr_id, const ExprView& expr)
         value.name = this->module_.intern(expr.text);
         value.type = this->local_load_type(local->second.slot);
         value.object = local->second.slot;
-        return this->append_value(value);
+        const ValueId result = this->append_value(value);
+        if (this->expr_owned_use_mode(expr_id) == sema::OwnedUseMode::owned_consume) {
+            this->mark_local_moved(expr.text_id);
+        }
+        return result;
     }
     const IrTextId symbol = this->value_symbol(expr_id, expr);
     if (const ValueId value = this->lower_bound_value_ref(expr_id, symbol); is_valid(value)) {
@@ -1164,6 +1168,28 @@ sema::TypeHandle Lowerer::expr_type(const syntax::ExprId expr) const noexcept
         return sema::INVALID_TYPE_HANDLE;
     }
     return (*this->active_side_tables_.expr_types)[expr.value];
+}
+
+sema::OwnedUseMode Lowerer::expr_owned_use_mode(const syntax::ExprId expr) const noexcept
+{
+    if (syntax::is_valid(expr) && this->active_side_tables_.generic != nullptr
+        && this->active_side_tables_.generic->sparse) {
+        const base::usize local = this->active_side_tables_.generic->local_expr_index(expr);
+        if (local != sema::SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
+            && this->active_side_tables_.expr_owned_use_modes != nullptr
+            && local < this->active_side_tables_.expr_owned_use_modes->size()) {
+            return (*this->active_side_tables_.expr_owned_use_modes)[local];
+        }
+        const auto found = this->active_side_tables_.generic->sparse_expr_owned_use_modes.find(expr.value);
+        if (found != this->active_side_tables_.generic->sparse_expr_owned_use_modes.end()) {
+            return found->second;
+        }
+    }
+    if (!syntax::is_valid(expr) || this->active_side_tables_.expr_owned_use_modes == nullptr
+        || expr.value >= this->active_side_tables_.expr_owned_use_modes->size()) {
+        return sema::OwnedUseMode::none;
+    }
+    return (*this->active_side_tables_.expr_owned_use_modes)[expr.value];
 }
 
 sema::TypeHandle Lowerer::syntax_type(const syntax::TypeId type) const noexcept

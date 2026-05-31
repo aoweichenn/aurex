@@ -1,24 +1,27 @@
 # Current Progress
 
 Version: 0.1.4
-Stage: M6-WP2/WP3 resource classification and whole-local move analysis complete
+Stage: M6-WP2/WP3/WP4 resource classification, move analysis, and cleanup lowering complete
 
 ## Overall Status
 
-As of 2026-05-31, M6-WP2 and M6-WP3 have completed the first implementation
-batch for resource semantics. WP2 adds compiler-owned `Copy`, internal
+As of 2026-06-01, M6-WP2, M6-WP3, and M6-WP4 have completed the first
+implementation batch for resource semantics. WP2 adds compiler-owned `Copy`, internal
 `Discard` / `NeedsDrop` / ownership resource summaries, structural type
 classification, stable resource fingerprints, and deterministic resource
 summaries in the checked dump; `Drop` remains unavailable as a user-written
 bound. WP3 adds expression owned-use side tables, a focused whole-local move
 analysis module, iterative CFG/worklist dataflow for initialized / moved /
 maybe-moved state, reinitialization after moves, and consume-origin diagnostics.
+WP4 adds one lexical cleanup-action stack, composes compiler cleanup with
+`defer`, lowers drop flags, covers normal exit, overwrite, `return`, `break`,
+`continue`, and `?` early return, and adds formal IR `drop` / `drop_if` cleanup
+nodes with verifier and backend scaffolding.
 The current boundary is still explicit: partial field moves, indexed move-out,
 consuming payload patterns, and non-`Copy` `?` payload transfer are rejected by
-normal negative samples. Cleanup obligations, `defer` cleanup composition, IR
-cleanup elaboration, destructor protocol, aggregate/generic drop glue, and the
-complete borrow checker are not implemented yet. The next implementation
-package is M6-WP4 Cleanup Obligations, `defer` Composition, And IR Elaborator.
+normal negative samples. Destructor protocol, aggregate/generic drop glue, and
+the complete borrow checker are not implemented yet. The next implementation
+package is M6-WP5 Destructor Protocol And Aggregate / Generic Drop Glue.
 
 As of 2026-05-31, M6-WP1 has completed the three-pass review for resource,
 value-lifetime, and access semantics. The complete baseline is recorded in the

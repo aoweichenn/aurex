@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/ir/lower_ast.hpp>
+#include <aurex/sema/resource_semantics.hpp>
 
 #include <functional>
 #include <optional>
@@ -24,6 +25,7 @@ namespace aurex::ir::detail {
 struct ActiveSideTables {
     const sema::GenericSideTables* generic = nullptr;
     const sema::SemaTypeTable* expr_types = nullptr;
+    const sema::SemaOwnedUseModeTable* expr_owned_use_modes = nullptr;
     const sema::SemaIdentTable* expr_c_name_ids = nullptr;
     const sema::SemaIdentTable* pattern_c_name_ids = nullptr;
     const sema::SemaTypeTable* syntax_type_handles = nullptr;
@@ -42,6 +44,8 @@ struct PlaceAddress {
 
 struct LocalBinding {
     ValueId slot = INVALID_VALUE_ID;
+    ValueId cleanup_flag = INVALID_VALUE_ID;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
     bool is_mutable = false;
 };
 
@@ -59,7 +63,21 @@ struct PatternBindingSlot {
 struct LoopContext {
     BlockId break_target = INVALID_BLOCK_ID;
     BlockId continue_target = INVALID_BLOCK_ID;
-    base::usize defer_depth = 0;
+    base::usize cleanup_depth = 0;
+};
+
+enum class CleanupActionKind {
+    drop_local,
+    defer_call,
+};
+
+struct CleanupAction {
+    CleanupActionKind kind = CleanupActionKind::drop_local;
+    ValueId slot = INVALID_VALUE_ID;
+    ValueId flag = INVALID_VALUE_ID;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
+    syntax::ExprId defer_expr = syntax::INVALID_EXPR_ID;
+    IrTextId name = INVALID_IR_TEXT_ID;
 };
 
 struct PendingConstant {
@@ -213,6 +231,17 @@ private:
     [[nodiscard]] ValueId append_binary_value(BinaryOp op, sema::TypeHandle type, ValueId lhs, ValueId rhs);
     [[nodiscard]] ValueId append_for_range_condition(
         ValueId cursor_slot, ValueId end_slot, ValueId step_slot, sema::TypeHandle range_type);
+    [[nodiscard]] sema::ResourceSemanticsSummary resource_summary(sema::TypeHandle type);
+    [[nodiscard]] bool cleanup_required(sema::TypeHandle type);
+    [[nodiscard]] sema::OwnedUseMode expr_owned_use_mode(syntax::ExprId expr) const noexcept;
+    [[nodiscard]] const LocalBinding* local_binding_for_name_expr(syntax::ExprId expr_id) const noexcept;
+    [[nodiscard]] ValueId append_bool_literal(bool value);
+    [[nodiscard]] ValueId append_cleanup_flag(std::string_view name);
+    void append_cleanup_flag_store(ValueId flag, bool initialized);
+    void append_cleanup_drop(ValueId slot, sema::TypeHandle type, IrTextId name);
+    void append_cleanup_drop_if(ValueId slot, ValueId flag, sema::TypeHandle type, IrTextId name);
+    void register_local_cleanup(LocalBinding& binding, std::string_view name);
+    void mark_local_moved(sema::IdentId name_id);
     [[nodiscard]] ValueId append_load(ValueId address, sema::TypeHandle value_type, IrTextId name = INVALID_IR_TEXT_ID);
     [[nodiscard]] ValueId enum_field_addr(ValueId object, IrTextId field_name);
     void bind_pattern_locals(syntax::PatternId pattern, ValueId source_address, sema::TypeHandle source_type);
@@ -247,7 +276,7 @@ private:
     [[nodiscard]] ValueId lower_str_utf8_slice_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_str_from_bytes_unchecked_expr(syntax::ExprId expr_id, const ExprView& expr);
 
-    void emit_deferred_scopes(base::usize keep_depth);
+    void emit_cleanup_scopes(base::usize keep_depth);
     void push_local_scope();
     void pop_local_scope();
     void bind_local(sema::IdentId name_id, LocalBinding binding);
@@ -300,7 +329,9 @@ private:
     std::vector<FunctionId> generic_instance_functions_;
     std::vector<FunctionId> trait_default_instance_functions_;
     std::vector<LoopContext> loop_contexts_;
-    std::vector<std::vector<syntax::ExprId>> defer_scopes_;
+    sema::ResourceSemanticsClassifier resources_;
+    std::unordered_map<base::u32, sema::ResourceSemanticsSummary> resource_cache_;
+    std::vector<std::vector<CleanupAction>> cleanup_scopes_;
 };
 
 } // namespace aurex::ir::detail

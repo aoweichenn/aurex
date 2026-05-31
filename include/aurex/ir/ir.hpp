@@ -115,6 +115,8 @@ enum class ValueKind {
     str_from_utf8_checked,
     str_slice_checked,
     str_from_bytes_unchecked,
+    drop,
+    drop_if,
 };
 
 enum class UnaryOp {

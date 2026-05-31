@@ -3,9 +3,8 @@
 ## Branch Goal
 
 The active implementation baseline is M6 Resource And Access Semantics.
-M6-WP2/WP3 have landed resource classification and whole-local move analysis;
-M6-WP4 cleanup obligations are the next implementation package. The older M2
-`language-core-no-std` stage
+M6-WP2/WP3/WP4 have landed resource classification, whole-local move analysis,
+and cleanup obligation lowering. The older M2 `language-core-no-std` stage
 isolated language-core validation:
 
 - The compiler must build, install, and run without a standard-library tree.

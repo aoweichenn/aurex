@@ -196,6 +196,9 @@ llvm::Value* LlvmEmitter::emit_runtime_value(const Value& value)
                 {LLVM_BACKEND_VALUE_STRING_LENGTH_FIELD_INDEX});
             return result;
         }
+        case ValueKind::drop:
+        case ValueKind::drop_if:
+            return nullptr;
         default:
             break;
     }

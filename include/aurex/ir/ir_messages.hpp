@@ -46,6 +46,12 @@ inline constexpr std::string_view IR_VERIFY_STORE_RESULT_VOID = "store result mu
 
 inline constexpr std::string_view IR_VERIFY_STORE_TARGET_MUTABLE = "store target must be mutable";
 
+inline constexpr std::string_view IR_VERIFY_DROP_RESULT_VOID = "drop result must be void";
+
+inline constexpr std::string_view IR_VERIFY_DROP_TARGET_TYPE = "drop target type mismatch";
+
+inline constexpr std::string_view IR_VERIFY_DROP_IF_CONDITION_BOOL = "conditional drop flag must be bool";
+
 inline constexpr std::string_view IR_VERIFY_CAST_RESULT_TARGET = "cast result type must match cast target type";
 
 inline constexpr std::string_view IR_VERIFY_UNARY_OPERAND_INVALID = "unary operand type is invalid";

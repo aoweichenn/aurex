@@ -20,19 +20,19 @@ M6-WP1 completed three design-review passes:
    initialization, self-reference, shared-ownership cycles, and future
    `dyn Trait`.
 
-M6-WP2/WP3 have completed the first implementation batch:
+M6-WP2/WP3/WP4 have completed the first implementation batch:
 compiler-owned `Copy`, internal `Discard` / `NeedsDrop` / ownership resource
 summaries, structural type classification, stable fingerprints, checked-dump
 resource summaries, expression owned-use side tables, whole-local move
-analysis, reinitialization after moves, and consume-origin diagnostics.
+analysis, reinitialization after moves, consume-origin diagnostics, lexical
+cleanup-action stack lowering, `defer` composition, drop flags, and formal IR
+`drop` / `drop_if` cleanup nodes.
 
-The next implementation package is M6-WP4 Cleanup Obligations, `defer`
-Composition, And IR Elaborator. WP4 should add the lexical cleanup-action stack,
-cover normal scope exit, overwrite, `return`, `break`, `continue`, and `?`
-early return, and lower cleanup obligations to formal IR cleanup nodes or an
-equivalent CFG shape. WP4 does not freeze destructor parser spelling, open user
-`Drop` bounds, implement aggregate/generic drop glue, or implement the complete
-borrow checker; those remain WP5 and M7 responsibilities.
+The next implementation package is M6-WP5 Destructor Protocol And Aggregate /
+Generic Drop Glue. WP5 should keep the WP4 cleanup obligations as its input,
+then add the destructor surface, aggregate/generic drop glue, and proven
+aggregate rollback paths. WP5 does not implement the complete borrow checker;
+that remains an M7 responsibility.
 
 ## Closed Background: Post-M5 Design Selection
 

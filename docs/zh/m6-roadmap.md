@@ -82,7 +82,7 @@ resource summary
 
 ## M6-WP4：Cleanup Obligations、`defer` 组合和 IR Elaborator
 
-状态：待开始。
+状态：已完成。
 
 目标：
 

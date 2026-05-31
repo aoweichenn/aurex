@@ -8,8 +8,8 @@ and backend reuse; M4 added nominal static traits, explicit trait impls, generic
 trait predicates, static trait method dispatch, associated types, and
 tooling/diagnostic projection; M5 closed default method bodies on that static
 trait model as a release baseline; M6-WP1 closed the three-pass resource and
-value-lifetime design review, and M6-WP2/WP3 now land resource classification
-and whole-local move analysis before cleanup lowering.
+value-lifetime design review, and M6-WP2/WP3/WP4 now land resource
+classification, whole-local move analysis, and cleanup lowering.
 
 M1 has been discarded. It advanced the standard library, host support,
 build-tool examples, selfhost experiments, and language semantics at the same

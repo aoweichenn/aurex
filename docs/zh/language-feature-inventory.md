@@ -1,8 +1,8 @@
 # Aurex 当前语法与特性清单
 
-日期：2026-05-31
-阶段：M6-WP2/WP3 resource classification and whole-local move analysis baseline
-状态：当前实现清单、M6-WP2/WP3 完成面与后续非目标
+日期：2026-06-01
+阶段：M6-WP2/WP3/WP4 resource classification、whole-local move analysis 和 cleanup lowering baseline
+状态：当前实现清单、M6-WP2/WP3/WP4 完成面与后续非目标
 
 本文记录当前仓库真实支持的 Aurex 语言表面、已具备的高级能力、未完成能力和 M2 下一步基础语法优先级。本文以 `include/aurex/syntax/token.hpp`、`include/aurex/syntax/ast.hpp`、`src/parse/*`、`src/sema/*`、`tests/samples/**` 为准。
 
@@ -11,8 +11,8 @@ M2 当前原则：
 - M1 已舍弃，不再沿着 std/selfhost/build-tool 路线修补。
 - 标准库不在当前树中，语言样例必须自包含。
 - 语言级 `move(...)`、`noncopy struct` 和旧 use-after-move 追踪已从 M2 基线删除。
-- 当前资源语义以 M6 的 compiler-owned `Copy`、内部 resource summary 和 whole-local move analysis 为入口；
-  cleanup lowering、destructor protocol、完整 borrow checker 和 lifetime surface 继续后移。
+- 当前资源语义以 M6 的 compiler-owned `Copy`、内部 resource summary、whole-local move analysis 和 cleanup
+  lowering 为入口；destructor protocol、完整 borrow checker 和 lifetime surface 继续后移。
 
 ## 总体判断
 
@@ -775,9 +775,9 @@ p1 | p2 | p3
 12. typed Aurex IR、IR verifier、pass pipeline、LLVM backend 和 native 输出。
 13. 普通 `fn main` 入口：无参数或 `(argc: i32, argv: *mut *mut u8)`，返回 `i32` 或 `void`。
 14. M5 nominal static trait：`trait` declaration、显式 `impl Trait for Type`、generic trait predicate、static trait method dispatch、associated type declaration/assignment/projection/equality、trait default method body，以及 IDE/tooling/diagnostics 投影。
-15. M6-WP2/WP3 资源基线：compiler-owned `Copy`、内部 resource summary、deterministic resource dump、whole-local move analysis、move 后重新初始化和 use-after-move diagnostics。
+15. M6-WP2/WP3/WP4 资源基线：compiler-owned `Copy`、内部 resource summary、deterministic resource dump、whole-local move analysis、move 后重新初始化、use-after-move diagnostics、cleanup action stack、drop flag 和 IR `drop` / `drop_if` cleanup 节点。
 
-这些能力说明 Aurex 已经超过“基础表达式语言”。仍需继续收口的是更高阶的抽象边界，例如 `?` 目前已有结构化 Result/Option shape 检查但还没有绑定到未来标准库定义，method receiver 还没有 borrow/lifetime 模型，资源语义也只有 resource classification 和 whole-local move 第一层，cleanup lowering / destructor protocol 尚未落地。
+这些能力说明 Aurex 已经超过“基础表达式语言”。仍需继续收口的是更高阶的抽象边界，例如 `?` 目前已有结构化 Result/Option shape 检查但还没有绑定到未来标准库定义，method receiver 还没有 borrow/lifetime 模型，资源语义已经进入 cleanup lowering，但 destructor protocol 和 aggregate/generic drop glue 尚未落地。
 
 ## 已删除或明确不在 M2 基线的能力
 
@@ -1015,7 +1015,7 @@ let all = bytes[:];
 
 7. safe reference：已补最小 M2 版本
 
-   `&T` / `&mut T`、`&place` / `&mut place`、reference 安全解引用和 `&mut` 可写性检查已落地。当前只做基础类型和值语法，不包含 borrow checker、lifetime、borrowed return 或 alias model；资源语义只完成到 M6-WP2/WP3 的分类和 whole-local move。
+   `&T` / `&mut T`、`&place` / `&mut place`、reference 安全解引用和 `&mut` 可写性检查已落地。当前只做基础类型和值语法，不包含 borrow checker、lifetime、borrowed return 或 alias model；资源语义已完成到 M6-WP4 的分类、whole-local move 和 cleanup lowering。
 
 ### P3：M5 后独立设计流
 
@@ -1023,7 +1023,7 @@ let all = bytes[:];
 - match/switch statement context。
 - octal / hex float。
 - doc comment。
-- cleanup obligations / destructor protocol / aggregate and generic drop glue。
+- destructor protocol / aggregate and generic drop glue。
 - dynamic trait object / object safety / vtable ABI。
 - specialization / default associated type / minimal implementation annotation / 更强 trait solver。
 - borrow checker。
@@ -1037,7 +1037,7 @@ let all = bytes[:];
 建议按这个顺序开工：
 
 1. 保持当前 grammar 的 EBNF、syntax matrix、parser/sema tests 同步。
-2. 继续保持 `where` capability / trait predicate 的文档、测试和诊断同步；M6 资源语义下一步进入 cleanup obligations，dynamic trait object 和完整 borrow/lifetime 体系暂缓。
+2. 继续保持 `where` capability / trait predicate 的文档、测试和诊断同步；M6 资源语义下一步进入 destructor protocol 和 aggregate/generic drop glue，dynamic trait object 和完整 borrow/lifetime 体系暂缓。
 3. 继续保持 match witness、dynamic slice/open integer 回归样例和 guard 精确覆盖规则的测试同步。
 4. 继续把 unsafe 维持在最小边界，不扩展到 unsafe trait/impl/extern block；FFI ownership adoption 等资源 unsafe API 等 M6 后续专门设计。
 

@@ -48,8 +48,9 @@ M4 release baseline 已提供所需地基：
   fingerprint。
 - `TraitMethodDispatchKind` 只有 `param_env` 和 `explicit_impl`。M5 至少要区分 `impl_override`、
   `trait_default`，以及 generic `param_env` 这种“最终 origin 要到实例化后再选择”的情况。
-- `parse_trait_decl()` 调用 `parse_fn_decl(..., FunctionBodyPolicy::require_prototype)`。现有 parser 测试明确拒绝
-  trait method body。
+- M5-WP2 已解除旧的 `parse_trait_decl()` prototype-only parser 限制：trait method 现在可以携带 body，
+  AST dump 会把这类方法标记为 `trait_default`。在 WP3 增加 trait-context default body checking 前，sema
+  仍会显式拒绝它们。
 - `validate_trait_impl_block()` 现在会报告所有 missing method，不会检查缺失的 requirement 是否有 default body。
 - `resolve_impl_trait_method_call()` 当前在 selected impl 省略方法时会继续失败。有 default 后，省略可能合法，必须绑定到
   trait default method body。

@@ -1,14 +1,18 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M5 default trait methods design baseline 已启动
+阶段：M5 default trait methods WP2 syntax/AST baseline 已完成
 
 ## 总体状态
 
-2026-05-31：M5 已作为 default trait methods 设计流启动，建立在已经收口的 M4 trait/protocol baseline 之上。
-当前 M5-WP1 输出是
+2026-05-31：M5 已作为 default trait methods 实现流启动，建立在已经收口的 M4 trait/protocol baseline 之上。
+M5-WP1 输出是
 [Aurex M5 Default Trait Methods 调研与设计基线](m5-default-trait-methods-design.md)
-和 [M5 Default Trait Methods 路线图](m5-roadmap.md)。M5 的范围是 nominal static trait 上的 trait
+和 [M5 Default Trait Methods 路线图](m5-roadmap.md)。M5-WP2 已落地 syntax / AST / body-identity
+基线：parser 接受 trait 内 default method body，prototype requirement 仍然显式保留，AST compact storage
+和 AST dump 区分 `prototype` 与 `trait_default`，query identity 覆盖
+`BodySlotKind::trait_default_method`，semantic analysis 在 WP3 trait-context body checking 实现前会用
+M5-WP2 unsupported 诊断明确拒绝 default body。M5 的范围是 nominal static trait 上的 trait
 method body、显式 method-origin facts、通过 `BodySlotKind::trait_default_method` 固定 trait-owned default
 body identity、区分 explicit override 和 inherited default 的 impl completeness 规则、单态化后的 static
 direct-call lowering，以及 selected origin 的 tooling / diagnostics / query projection。M5 明确不做

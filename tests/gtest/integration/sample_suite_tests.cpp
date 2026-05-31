@@ -150,6 +150,8 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"trait_associated_type_unknown_equality", "trait Source has no associated type `Missing`"},
     {"trait_associated_type_unknown_impl",
         "trait impl associated type is not required: Source for trait_associated_type_unknown_impl.Bytes.Other"},
+    {"trait_default_method_semantics_unsupported",
+        "trait default method bodies are parsed by M5-WP2 but not supported by semantic analysis yet"},
     {"unknown_module_expr_member", "unknown name in module samplelib.visibility: missing"},
     {"unknown_module_expr_path", "unknown module path: samplelib.missing"},
     {"unknown_module_type_path", "unknown module path: missing.path"},

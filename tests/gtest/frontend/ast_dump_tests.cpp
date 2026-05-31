@@ -450,6 +450,7 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads)
     function_item.impl_type = syntax::TypeId{16};
     function_item.trait_type = syntax::TypeId{17};
     function_item.is_unsafe = true;
+    function_item.is_trait_default_method = true;
     function_item.abi_name = "aurex_map";
 
     syntax::ItemNodeList items;
@@ -459,11 +460,13 @@ TEST(CoreUnit, CompactAstStorageRoundTripsAndMovesPayloads)
     items.set_visibility(0, syntax::Visibility::public_);
     EXPECT_EQ(items[0].visibility, syntax::Visibility::public_);
     EXPECT_TRUE(items[0].is_unsafe);
+    EXPECT_TRUE(items[0].is_trait_default_method);
     EXPECT_EQ(items[0].where_constraints.front().capability_names.front(), "Copy");
     syntax::ItemNode moved_item = items.take(0);
     EXPECT_EQ(moved_item.params.front().type.value, 13U);
     EXPECT_EQ(moved_item.impl_type.value, 16U);
     EXPECT_EQ(moved_item.trait_type.value, 17U);
+    EXPECT_TRUE(moved_item.is_trait_default_method);
     EXPECT_EQ(moved_item.abi_name, "aurex_map");
 
     syntax::ItemNode enum_item;
@@ -592,6 +595,7 @@ TEST(CoreUnit, CompactAstStorageMoveAssignmentTransfersArenaBackedPayloads)
     function_item.params = {syntax::ParamDecl{"value", syntax::TypeId{10}, {}}};
     function_item.return_type = syntax::TypeId{11};
     function_item.trait_type = syntax::TypeId{12};
+    function_item.is_trait_default_method = true;
     syntax::ItemNodeList source_items;
     source_items.push_back(function_item);
     syntax::ItemNodeList target_items;
@@ -600,6 +604,7 @@ TEST(CoreUnit, CompactAstStorageMoveAssignmentTransfersArenaBackedPayloads)
     EXPECT_EQ(target_items[0].generic_params.front().name, "T");
     EXPECT_EQ(target_items[0].params.front().type.value, 10U);
     EXPECT_EQ(target_items[0].trait_type.value, 12U);
+    EXPECT_TRUE(target_items[0].is_trait_default_method);
 }
 
 TEST(CoreUnit, AstModuleReserveEstimatePreTouchesExpressionArena)

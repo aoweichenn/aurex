@@ -31,7 +31,7 @@ trait 内部的默认方法体。
 
 ### M5-WP1：调研和设计基线
 
-状态：active design baseline。
+状态：已完成。
 
 交付：
 
@@ -47,6 +47,8 @@ trait 内部的默认方法体。
 - format、diff、build、documentation test 和 full ctest gates 通过。
 
 ### M5-WP2：Syntax / AST / Body Identity
+
+状态：已完成。
 
 目标：在 trait declaration 中接受 default body，同时保留 prototype-only requirement。
 
@@ -66,6 +68,8 @@ trait 内部的默认方法体。
 - 不改变 inherent impl parsing。
 
 ### M5-WP3：Default Body Type Checking
+
+状态：下一轮实现包。
 
 目标：在 trait context 下检查 default method bodies。
 

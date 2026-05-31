@@ -70,6 +70,7 @@ struct ItemNode {
     bool is_unsafe = false;
     bool is_variadic = false;
     bool is_prototype = false;
+    bool is_trait_default_method = false;
     std::string_view abi_name;
     std::vector<ItemId> trait_items;
     std::vector<ItemId> extern_items;
@@ -240,6 +241,7 @@ private:
     static constexpr base::u8 ITEM_NODE_FLAG_UNSAFE = 1U << 2U;
     static constexpr base::u8 ITEM_NODE_FLAG_VARIADIC = 1U << 3U;
     static constexpr base::u8 ITEM_NODE_FLAG_PROTOTYPE = 1U << 4U;
+    static constexpr base::u8 ITEM_NODE_FLAG_TRAIT_DEFAULT_METHOD = 1U << 5U;
 
     [[nodiscard]] static base::u8 pack_kind(ItemKind kind) noexcept;
     [[nodiscard]] static base::u8 pack_visibility(Visibility visibility) noexcept;

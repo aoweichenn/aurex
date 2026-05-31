@@ -1,0 +1,26 @@
+module trait_default_method_semantics_unsupported;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+    fn is_empty(self: &Self) -> bool {
+        return false;
+    }
+}
+
+struct File {
+    value: i32;
+}
+
+impl Reader for File {
+    fn read(self: &File) -> i32 {
+        return self.value;
+    }
+
+    fn is_empty(self: &File) -> bool {
+        return false;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

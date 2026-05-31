@@ -121,6 +121,12 @@ constexpr std::string_view QUERY_TEST_DIAGNOSTICS = "diagnostics:empty";
     return query::def_key(module, query::DefNamespace::value, query::DefKind::function, path);
 }
 
+[[nodiscard]] query::DefKey test_trait_method_def(const query::ModuleKey module)
+{
+    const std::array<std::string_view, 2> path{"Reader", "read"};
+    return query::def_key(module, query::DefNamespace::member, query::DefKind::trait_method, path);
+}
+
 [[nodiscard]] query::ModulePartKey test_primary_module_part(const query::ModuleKey module)
 {
     const query::FileKey file = query::file_key(module.package, "/workspace/root/regex/vm.ax");
@@ -506,8 +512,22 @@ TEST(QueryUnit, StableSemanticKeysSeparateFilesModulesDefinitionsAndBodies)
         query::body_key(function_def, query::BodySlotKind::function_body, QUERY_TEST_STABLE_ORDINAL);
     const query::BodyKey default_arg_body =
         query::body_key(function_def, query::BodySlotKind::default_argument, QUERY_TEST_STABLE_ORDINAL);
+    const query::DefKey trait_method_def = test_trait_method_def(module);
+    const query::BodyKey trait_default_body =
+        query::body_key(trait_method_def, query::BodySlotKind::trait_default_method, QUERY_TEST_STABLE_ORDINAL);
     EXPECT_TRUE(query::is_valid(function_body));
+    EXPECT_TRUE(query::is_valid(trait_default_body));
     EXPECT_NE(function_body, default_arg_body);
+    EXPECT_NE(function_body, trait_default_body);
+    EXPECT_NE(default_arg_body, trait_default_body);
+    const std::string trait_method_def_bytes = query::stable_serialize(trait_method_def);
+    const std::string trait_default_body_bytes = query::stable_serialize(trait_default_body);
+    EXPECT_TRUE(query::stable_key_has_body_key_layout(trait_default_body_bytes));
+
+    const std::optional<query::DecodedBodyKeyIdentity> trait_default_identity =
+        query::decode_body_key_identity(trait_default_body_bytes);
+    ASSERT_TRUE(trait_default_identity.has_value());
+    EXPECT_EQ(trait_default_identity->owner, trait_method_def_bytes);
 
     const query::QueryKey signature_query =
         query::query_key(query::QueryKind::item_signature, query::stable_key_fingerprint(function_def));

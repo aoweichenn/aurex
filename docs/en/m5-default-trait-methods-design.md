@@ -66,9 +66,10 @@ Important current limitations:
 - `TraitMethodDispatchKind` has only `param_env` and `explicit_impl`. M5 needs
   to distinguish at least `impl_override`, `trait_default`, and generic
   `param_env` calls whose final origin is selected after instantiation.
-- `parse_trait_decl()` calls `parse_fn_decl(...,
-  FunctionBodyPolicy::require_prototype)`. Existing parser tests deliberately
-  reject a trait method body.
+- M5-WP2 has lifted the old `parse_trait_decl()` prototype-only parser
+  limitation: trait methods may now carry a body, and AST dumps mark those
+  methods as `trait_default`. Sema still rejects them until WP3 adds
+  trait-context default body checking.
 - `validate_trait_impl_block()` reports every missing method. It does not
   check whether the missing requirement has a default body.
 - `resolve_impl_trait_method_call()` currently ignores a trait requirement if

@@ -156,8 +156,6 @@ inline constexpr std::string_view PARSER_EXPECT_TRAIT_ASSOCIATED_TYPE_TERMINATOR
 
 inline constexpr std::string_view PARSER_EXPECT_TRAIT_END = "expected '}' after trait declaration";
 
-inline constexpr std::string_view PARSER_EXPECT_TRAIT_FN_TERMINATOR = "expected ';' after trait function requirement";
-
 inline constexpr std::string_view PARSER_EXPECT_IMPL_KEYWORD = "expected 'impl'";
 
 inline constexpr std::string_view PARSER_EXPECT_IMPL_BODY = "expected '{' after impl type";

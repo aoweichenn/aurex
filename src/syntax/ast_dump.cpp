@@ -1185,6 +1185,9 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     if (item.is_prototype) {
         out << " prototype";
     }
+    if (item.is_trait_default_method) {
+        out << " trait_default";
+    }
     if (!item.abi_name.empty()) {
         out << " @name=" << item.abi_name;
     }

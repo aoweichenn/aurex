@@ -561,6 +561,7 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
                                         "  type Item;\n"
                                         "  fn read(self: &mut Self, buf: []mut u8) -> Self.Item;\n"
                                         "  pub fn size(self: &Self) -> usize;\n"
+                                        "  fn default_size(self: &Self) -> usize { return 0; }\n"
                                         "  unsafe fn flush(self: &mut Self) -> void;\n"
                                         "}\n"
                                         "struct File { handle: i32; }\n"
@@ -582,7 +583,7 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
     EXPECT_EQ(trait_item->where_constraints.front().param_name, "T");
     ASSERT_EQ(trait_item->where_constraints.front().capability_names.size(), 1U);
     EXPECT_EQ(trait_item->where_constraints.front().capability_names.front(), "Sized");
-    ASSERT_EQ(trait_item->trait_items.size(), 4U);
+    ASSERT_EQ(trait_item->trait_items.size(), 5U);
 
     const syntax::ItemNode associated_type = module.items[trait_item->trait_items.front().value];
     EXPECT_EQ(associated_type.kind, syntax::ItemKind::type_alias);
@@ -603,12 +604,21 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
     const syntax::ItemNode explicit_requirement = module.items[trait_item->trait_items[2].value];
     EXPECT_EQ(explicit_requirement.name, "size");
     EXPECT_TRUE(explicit_requirement.is_prototype);
+    EXPECT_FALSE(explicit_requirement.is_trait_default_method);
     EXPECT_EQ(explicit_requirement.visibility, syntax::Visibility::public_);
     EXPECT_FALSE(explicit_requirement.is_unsafe);
 
-    const syntax::ItemNode unsafe_requirement = module.items[trait_item->trait_items[3].value];
+    const syntax::ItemNode default_requirement = module.items[trait_item->trait_items[3].value];
+    EXPECT_EQ(default_requirement.name, "default_size");
+    EXPECT_FALSE(default_requirement.is_prototype);
+    EXPECT_TRUE(default_requirement.is_trait_default_method);
+    EXPECT_EQ(default_requirement.visibility, syntax::Visibility::public_);
+    EXPECT_TRUE(syntax::is_valid(default_requirement.body));
+
+    const syntax::ItemNode unsafe_requirement = module.items[trait_item->trait_items[4].value];
     EXPECT_EQ(unsafe_requirement.name, "flush");
     EXPECT_TRUE(unsafe_requirement.is_prototype);
+    EXPECT_FALSE(unsafe_requirement.is_trait_default_method);
     EXPECT_TRUE(unsafe_requirement.is_unsafe);
 
     const syntax::ItemNode* impl_block = nullptr;
@@ -647,6 +657,7 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
             "pub fn read prototype",
             "return Self.Item",
             "pub fn size prototype",
+            "pub fn default_size trait_default",
             "pub fn flush unsafe prototype",
             "impl Reader[File] for File",
             "pub type_alias Item for File in Reader[File]",
@@ -655,15 +666,47 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
         });
 }
 
-TEST(CoreUnit, ParserRejectsTraitDefaultMethodBodiesInWp2)
+TEST(CoreUnit, ParserAcceptsTraitDefaultMethodBodiesInWp2)
 {
-    expect_parse_diagnostic("module parser.bad_trait;\n"
-                            "trait Reader {\n"
-                            "  fn read() -> i32 { return 1; }\n"
-                            "  fn next() -> i32;\n"
-                            "}\n"
-                            "fn after() -> i32 { return 0; }\n",
-        "expected ';' after trait function requirement");
+    constexpr std::string_view source = "module parser.trait_defaults;\n"
+                                        "trait Reader {\n"
+                                        "  fn read() -> i32 { return 1; }\n"
+                                        "  fn next() -> i32;\n"
+                                        "}\n"
+                                        "fn after() -> i32 { return 0; }\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* const trait_item = find_item(module, "Reader");
+    ASSERT_NE(trait_item, nullptr);
+    ASSERT_EQ(trait_item->trait_items.size(), 2U);
+
+    const syntax::ItemNode default_requirement = module.items[trait_item->trait_items.front().value];
+    EXPECT_EQ(default_requirement.kind, syntax::ItemKind::fn_decl);
+    EXPECT_EQ(default_requirement.name, "read");
+    EXPECT_FALSE(default_requirement.is_prototype);
+    EXPECT_TRUE(default_requirement.is_trait_default_method);
+    EXPECT_TRUE(syntax::is_valid(default_requirement.body));
+
+    const syntax::ItemNode prototype_requirement = module.items[trait_item->trait_items.back().value];
+    EXPECT_EQ(prototype_requirement.name, "next");
+    EXPECT_TRUE(prototype_requirement.is_prototype);
+    EXPECT_FALSE(prototype_requirement.is_trait_default_method);
+    EXPECT_FALSE(syntax::is_valid(prototype_requirement.body));
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "priv trait Reader",
+            "pub fn read trait_default",
+            "return i32",
+            "integer_literal `1`",
+            "pub fn next prototype",
+            "fn after",
+        });
+}
+
+TEST(CoreUnit, ParserRejectsMalformedTraitItemsInWp2)
+{
     expect_parse_diagnostic("module parser.bad_trait_item;\n"
                             "trait Reader {\n"
                             "  const answer: i32 = 1;\n"
@@ -676,7 +719,7 @@ TEST(CoreUnit, ParserRejectsTraitDefaultMethodBodiesInWp2)
                             "  fn read() -> i32\n"
                             "}\n"
                             "fn after() -> i32 { return 0; }\n",
-        "expected ';' after trait function requirement");
+        "expected block");
 }
 
 TEST(CoreUnit, ParserRejectsNonFunctionItemsInInherentImplBlocks)

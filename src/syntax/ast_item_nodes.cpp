@@ -204,6 +204,9 @@ base::u8 ItemNodeList::pack_flags(const ItemNode& node) noexcept
     if (node.is_prototype) {
         flags |= ITEM_NODE_FLAG_PROTOTYPE;
     }
+    if (node.is_trait_default_method) {
+        flags |= ITEM_NODE_FLAG_TRAIT_DEFAULT_METHOD;
+    }
     return flags;
 }
 
@@ -383,6 +386,7 @@ void ItemNodeList::load_header(const ItemNodeHeader& header, ItemNode& node) con
     node.is_unsafe = has_flag(header.flags, ITEM_NODE_FLAG_UNSAFE);
     node.is_variadic = has_flag(header.flags, ITEM_NODE_FLAG_VARIADIC);
     node.is_prototype = has_flag(header.flags, ITEM_NODE_FLAG_PROTOTYPE);
+    node.is_trait_default_method = has_flag(header.flags, ITEM_NODE_FLAG_TRAIT_DEFAULT_METHOD);
 }
 
 ItemNode ItemNodeList::load(const base::usize index) const

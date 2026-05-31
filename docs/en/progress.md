@@ -1,14 +1,20 @@
 # Current Progress
 
 Version: 0.1.4
-Stage: M5 default trait methods design baseline active
+Stage: M5 default trait methods WP2 syntax/AST baseline complete
 
 ## Overall Status
 
-As of 2026-05-31, M5 has started as the default trait methods design stream on
-top of the closed M4 trait/protocol baseline. The current M5-WP1 output is the
+As of 2026-05-31, M5 has started as the default trait methods implementation
+stream on top of the closed M4 trait/protocol baseline. M5-WP1 produced the
 [Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md)
-and the [M5 Default Trait Methods Roadmap](m5-roadmap.md). M5 is scoped to
+and the [M5 Default Trait Methods Roadmap](m5-roadmap.md). M5-WP2 has now
+landed the syntax / AST / body-identity baseline: the parser accepts default
+method bodies inside traits, prototype requirements remain explicit, AST
+compact storage and AST dumps distinguish `prototype` from `trait_default`,
+query identity covers `BodySlotKind::trait_default_method`, and semantic
+analysis deliberately rejects default bodies with an M5-WP2 unsupported
+diagnostic until WP3 performs trait-context body checking. M5 is scoped to
 trait method bodies on nominal static traits, explicit method-origin facts,
 trait-owned default body identity through `BodySlotKind::trait_default_method`,
 impl completeness rules that distinguish explicit overrides from inherited

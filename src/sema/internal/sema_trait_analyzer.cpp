@@ -551,6 +551,9 @@ TraitMethodRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_requir
     if (!requirement.generic_params.empty()) {
         this->core_.report_unsupported(requirement.range, std::string(SEMA_GENERIC_METHODS_UNSUPPORTED));
     }
+    if (requirement.is_trait_default_method || syntax::is_valid(requirement.body)) {
+        this->core_.report_unsupported(requirement.range, std::string(SEMA_TRAIT_DEFAULT_METHOD_BODY_UNSUPPORTED));
+    }
     if (!syntax::is_valid(requirement.return_type)) {
         this->core_.report_general(requirement.range, std::string(SEMA_PROTOTYPE_RETURN_TYPE_EXPLICIT));
         info.return_type = this->core_.state_.checked.types.builtin(BuiltinType::void_);

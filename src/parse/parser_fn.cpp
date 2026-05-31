@@ -24,8 +24,7 @@ constexpr base::usize PARSER_FN_STRING_DELIMITER_PAIR_SIZE = PARSER_FN_STRING_DE
 
 } // namespace
 
-syntax::ItemId ItemParser::parse_fn_decl(
-    const bool is_export_c, const bool is_extern_c, const bool is_unsafe, const FunctionBodyPolicy body_policy)
+syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_extern_c, const bool is_unsafe)
 {
     base::SourceRange begin_range = this->peek().range;
     if (is_unsafe) {
@@ -65,24 +64,15 @@ syntax::ItemId ItemParser::parse_fn_decl(
     if (is_extern_c) {
         const syntax::Token& end = this->expect_item_terminator(std::string(PARSER_EXPECT_EXTERN_FN_TERMINATOR));
         item.range = this->merge(begin_range, end.range);
-    } else if (body_policy == FunctionBodyPolicy::require_prototype) {
-        item.is_prototype = true;
-        if (this->match(TokenKind::semicolon)) {
-            item.range = this->merge(begin_range, this->previous().range);
-        } else if (this->check(TokenKind::l_brace)) {
-            this->report_here(std::string(PARSER_EXPECT_TRAIT_FN_TERMINATOR));
-            const syntax::StmtId rejected_body = this->parse_block();
-            item.range = this->merge(begin_range, this->stmt_range_or(rejected_body, begin.range));
-        } else {
-            const syntax::Token& end = this->expect_item_terminator(std::string(PARSER_EXPECT_TRAIT_FN_TERMINATOR));
-            item.range = this->merge(begin_range, end.range);
-        }
     } else if (this->match(TokenKind::semicolon)) {
         item.is_prototype = true;
         item.range = this->merge(begin_range, this->previous().range);
-    } else {
+    } else if (this->check(TokenKind::l_brace)) {
         item.body = this->parse_block();
         item.range = this->merge(begin_range, this->stmt_range_or(item.body, begin.range));
+    } else {
+        this->report_here(std::string(PARSER_EXPECT_BLOCK));
+        item.range = this->merge(begin_range, this->peek().range);
     }
 
     this->reset_panic();

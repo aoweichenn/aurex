@@ -51,12 +51,12 @@ syntax::ItemId ItemParser::parse_trait_decl()
             continue;
         }
 
-        const syntax::ItemId requirement =
-            this->parse_fn_decl(false, false, is_unsafe, FunctionBodyPolicy::require_prototype);
+        const syntax::ItemId requirement = this->parse_fn_decl(false, false, is_unsafe);
         if (syntax::is_valid(requirement)) {
             syntax::ItemNode requirement_item = this->session_.module.items[requirement.value];
             requirement_item.visibility = trait_requirement_visibility(visibility);
-            requirement_item.is_prototype = true;
+            requirement_item.is_prototype = !syntax::is_valid(requirement_item.body);
+            requirement_item.is_trait_default_method = syntax::is_valid(requirement_item.body);
             this->session_.module.set_item(requirement.value, std::move(requirement_item));
             trait.trait_items.push_back(requirement);
         }

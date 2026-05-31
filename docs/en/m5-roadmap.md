@@ -42,7 +42,7 @@ The complete M5 design baseline is
 
 ### M5-WP1: Research And Design Baseline
 
-Status: active design baseline.
+Status: complete.
 
 Deliverables:
 
@@ -60,6 +60,8 @@ Acceptance:
 - Format, diff, build, documentation test, and full ctest gates pass.
 
 ### M5-WP2: Syntax / AST / Body Identity
+
+Status: complete.
 
 Goal: accept default bodies in trait declarations while preserving
 prototype-only requirements.
@@ -80,6 +82,8 @@ Risk controls:
 - Do not change inherent impl parsing.
 
 ### M5-WP3: Default Body Type Checking
+
+Status: next implementation package.
 
 Goal: check default method bodies under trait context.
 

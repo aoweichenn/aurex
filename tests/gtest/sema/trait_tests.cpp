@@ -1103,6 +1103,8 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
         "trait_associated_type_unknown_equality.ax", "trait Source has no associated type `Missing`");
     expect_negative_trait_sample("trait_associated_type_unknown_impl.ax",
         "trait impl associated type is not required: Source for trait_associated_type_unknown_impl.Bytes.Other");
+    expect_negative_trait_sample("trait_default_method_semantics_unsupported.ax",
+        "trait default method bodies are parsed by M5-WP2 but not supported by semantic analysis yet");
 
     const fs::path predicate_source = positive_sample("traits", "trait_predicate_where_generic.ax");
     const std::string predicate_checked = require_success(aurexc() + " --emit=checked " + q(predicate_source)).output;

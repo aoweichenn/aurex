@@ -1,8 +1,8 @@
 # 下一步计划
 
-## 当前最高优先级：M4-WP7 Tooling And Diagnostics
+## 当前最高优先级：M4-WP8 Release Closure
 
-M3 release baseline 已收口，M4 trait/protocol 系统已完成 WP1、WP2、WP3、WP4、WP5 和 WP6。M4-WP1 固定
+M3 release baseline 已收口，M4 trait/protocol 系统已完成 WP1、WP2、WP3、WP4、WP5、WP6 和 WP7。M4-WP1 固定
 [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)，阶段路线见
 [M4 Trait / Protocol 系统路线图](m4-roadmap.md)。M4-WP2 已完成 token、parser、AST、AST dump、lossless
 syntax 和 query identity scaffold。M4-WP3 已完成 trait declaration 和 impl registry 的 query-backed sema
@@ -18,6 +18,11 @@ M4-WP6 已完成 associated type model：trait declaration 可声明 `type Item;
 `Trait[Item = Type]` 降低为 trait predicate + equality fact，impl requirement matching 会替换 associated
 type output，并且 diagnostics 覆盖 ambiguity、cycle、缺 bound、重复/缺失/未知 associated type、builtin equality
 误用和 equality unsatisfied。
+M4-WP7 已完成 trait fact 的第一层 IDE/tooling 和 diagnostics 投影：`where T:` 后的 completion、trait /
+trait method / impl method / associated type 的 hover/definition、semantic-token 分类、workspace member
+indexing、基于 `DefKey` / `MemberKey` 的 rename identity、LSP adapter 投影且不让 LSP DTO 泄漏进 compiler
+internals，以及 candidate impl、rejected candidate、associated-type equality mismatch、orphan check 和
+overlap 位置的 diagnostic notes。
 
 当前真实能力：Aurex 使用 nominal static trait，语言关键字为 `trait`，conformance 通过显式
 `impl Trait for Type` 给出。`CheckedModule::traits` 记录 `TraitSignature`、generic params、visibility 和结构化
@@ -34,17 +39,19 @@ predicate、method requirement substitution，以及 trait signature / impl / pr
 `tests/samples/positive/traits/trait_method_function_field_precedence.ax`、
 `tests/samples/positive/traits/trait_associated_type_basic.ax`、
 `tests/samples/positive/traits/trait_associated_type_where_equality.ax`、`tests/samples/negative/traits/*.ax` 和
-`tests/samples/imports/samplelib/traits.ax`。
+`tests/samples/imports/samplelib/traits.ax`。WP7 tooling 覆盖位于
+`tests/gtest/tooling/ide_tooling_tests.cpp` 和
+`tests/gtest/tooling/session_lsp_tooling_tests.cpp`。
 
-下一步只进入 M4-WP7：让 IDE/tooling 和 diagnostics 通过稳定 compiler surface 消费 trait / associated-type
-fact，而不是直接耦合 sema 内部结构。WP7 应补齐 `where T:` 后的 trait completion、trait / trait method /
-impl method / associated type 的 hover/definition、semantic token 分类、可 rename 的 member identity，以及
-candidate impl、equality rejection、orphan / overlap 位置相关 diagnostic notes。
+下一步只进入 M4-WP8：把 M4 trait 系统收口为 release baseline。WP8 应对齐文档集、language manual、
+unsupported matrix、progress 记录、coverage 报告、stress/query/cache/profile gates 和 release audit，确保后续
+resource system、dynamic trait、default methods、specialization、class-like sugar 和 package-level coherence
+从清晰边界开始，而不是重新打开 WP1-WP7。
 
-WP7 不做 dynamic trait object 或 RAII/resource semantics。dynamic trait object、vtable ABI/object safety、
+WP8 不做 dynamic trait object 或 RAII/resource semantics。dynamic trait object、vtable ABI/object safety、
 associated constant、specialization、generic associated type 和资源系统继续保持 M4 当前非目标。WP6 的
-`where` grammar 已支持 identifier trait predicate 上的 associated-type equality constraint；qualified where
-predicate 和 generic trait predicate arguments 仍留给后续 solver 阶段。
+`where` grammar 已支持 identifier trait predicate 上的 associated-type equality constraint，WP7 已补齐
+tooling projection；qualified where predicate 和 generic trait predicate arguments 仍留给后续 solver 阶段。
 
 ## M3 收口背景
 

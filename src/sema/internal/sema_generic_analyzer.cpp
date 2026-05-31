@@ -1124,33 +1124,65 @@ bool SemanticAnalyzerCore::GenericAnalyzer::type_satisfies_trait_predicate(
         return satisfied;
     }
 
+    struct RejectedTraitImplCandidate {
+        const TraitImplInfo* impl = nullptr;
+        std::string reason;
+    };
+    std::vector<RejectedTraitImplCandidate> rejected_candidates;
     for (const auto& entry : this->core_.state_.checked.trait_impls) {
         const TraitImplInfo& impl = entry.second;
-        if (impl.trait_module.value == predicate.trait_module.value && impl.trait_name_id == predicate.trait_name_id
-            && this->core_.state_.checked.types.same(impl.self_type, type) && impl.trait_args.empty()) {
-            for (const TraitImplAssociatedTypeInfo& expected : predicate.associated_type_equalities) {
-                const auto actual = std::ranges::find_if(
-                    impl.associated_types, [&](const TraitImplAssociatedTypeInfo& associated_type) {
-                        return associated_type.member_key == expected.member_key;
-                    });
-                if (actual == impl.associated_types.end()
-                    || !this->core_.state_.checked.types.same(actual->value_type, expected.value_type)) {
-                    const std::string actual_type_name = actual == impl.associated_types.end()
-                        ? std::string("<missing>")
-                        : this->core_.state_.checked.types.display_name(actual->value_type);
-                    this->core_.report_capability(use_range,
-                        sema_trait_associated_type_equality_not_satisfied_message(predicate.trait_name,
-                            this->core_.state_.checked.types.display_name(type), expected.name,
-                            this->core_.state_.checked.types.display_name(expected.value_type), actual_type_name));
-                    return false;
-                }
-            }
-            return true;
+        if (impl.trait_module.value != predicate.trait_module.value || impl.trait_name_id != predicate.trait_name_id) {
+            continue;
         }
+        if (!this->core_.state_.checked.types.same(impl.self_type, type)) {
+            rejected_candidates.push_back(RejectedTraitImplCandidate{&impl, "self type mismatch"});
+            continue;
+        }
+        if (!impl.trait_args.empty()) {
+            rejected_candidates.push_back(RejectedTraitImplCandidate{&impl, "trait arguments differ"});
+            continue;
+        }
+        for (const TraitImplAssociatedTypeInfo& expected : predicate.associated_type_equalities) {
+            const auto actual =
+                std::ranges::find_if(impl.associated_types, [&](const TraitImplAssociatedTypeInfo& associated_type) {
+                    return associated_type.member_key == expected.member_key;
+                });
+            if (actual == impl.associated_types.end()
+                || !this->core_.state_.checked.types.same(actual->value_type, expected.value_type)) {
+                const std::string checked_type_name = this->core_.state_.checked.types.display_name(type);
+                const std::string expected_type_name =
+                    this->core_.state_.checked.types.display_name(expected.value_type);
+                const std::string actual_type_name = actual == impl.associated_types.end()
+                    ? std::string("<missing>")
+                    : this->core_.state_.checked.types.display_name(actual->value_type);
+                this->core_.report_capability(use_range,
+                    sema_trait_associated_type_equality_not_satisfied_message(
+                        predicate.trait_name, checked_type_name, expected.name, expected_type_name, actual_type_name));
+                this->core_.report_note(impl.range, SemanticDiagnosticKind::capability,
+                    sema_candidate_trait_impl_note_message(predicate.trait_name, checked_type_name));
+                const base::SourceRange associated_range = actual != impl.associated_types.end()
+                        && syntax::is_valid(actual->item) && actual->item.value < this->core_.ctx_.module.items.size()
+                    ? this->core_.ctx_.module.items[actual->item.value].range
+                    : impl.range;
+                this->core_.report_note(associated_range, SemanticDiagnosticKind::capability,
+                    sema_trait_impl_associated_type_note_message(expected.name, actual_type_name));
+                return false;
+            }
+        }
+        return true;
     }
-    this->core_.report_capability(use_range,
-        sema_trait_predicate_not_satisfied_message(
-            this->core_.state_.checked.types.display_name(type), predicate.trait_name));
+    const std::string checked_type_name = this->core_.state_.checked.types.display_name(type);
+    this->core_.report_capability(
+        use_range, sema_trait_predicate_not_satisfied_message(checked_type_name, predicate.trait_name));
+    for (const RejectedTraitImplCandidate& candidate : rejected_candidates) {
+        if (candidate.impl == nullptr) {
+            continue;
+        }
+        this->core_.report_note(candidate.impl->range, SemanticDiagnosticKind::capability,
+            sema_rejected_trait_impl_note_message(predicate.trait_name,
+                this->core_.state_.checked.types.display_name(candidate.impl->self_type), checked_type_name,
+                candidate.reason));
+    }
     return false;
 }
 

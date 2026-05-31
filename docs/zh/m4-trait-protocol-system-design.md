@@ -462,6 +462,8 @@ where I: Iterator[Item = u8] {
 
 ## 9. M4 work packages
 
+截至 2026-05-31，M4-WP1 到 M4-WP7 已完成。M4-WP8 release closure 是当前唯一剩余的 M4 活跃 work package。
+
 | Work package | 目标 | 完成标准 |
 |:--|:--|:--|
 | M4-WP1 | 调研和设计基线 | 本文档、路线图、风险矩阵、文档测试收口 |

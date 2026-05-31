@@ -140,6 +140,7 @@ enum class IdeCompletionContextKind : base::u8 {
     expression,
     member,
     module_path,
+    trait_bound,
 };
 
 struct IdeCompletionItem {

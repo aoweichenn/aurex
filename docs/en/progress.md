@@ -1,13 +1,12 @@
 # Current Progress
 
 Version: 0.1.4
-Stage: M4-WP6 associated type model closed; next is M4-WP7 tooling /
-diagnostics and M4-WP8 release closure
+Stage: M4-WP7 tooling / diagnostics closed; next is M4-WP8 release closure
 
 ## Overall Status
 
 As of 2026-05-31, M4 trait/protocol work has completed WP1, WP2, WP3, WP4,
-WP5, and WP6.
+WP5, WP6, and WP7.
 M4-WP1 closed the research and design baseline with nominal static traits: the
 language keyword is `trait`, `protocol` remains design terminology for
 behavioral contracts, conformance is explicit through `impl Trait for Type`,
@@ -46,8 +45,17 @@ associated type outputs, generic method calls can normalize through equality
 predicates, and sema diagnoses duplicate/missing/unknown associated types,
 built-in equality constraints, missing bounds, ambiguous shorthand projections,
 projection cycles, and unsatisfied equality predicates.
+M4-WP7 completes the first tooling and diagnostics projection over trait facts:
+IDE snapshots, ToolingSession, and the LSP adapter expose trait completions
+after `where T:`, hover/definition for traits, trait methods, impl methods, and
+associated types, semantic-token classification for trait and associated-type
+symbols, and rename identity through `DefKey` / `MemberKey`. Trait method and
+associated type member facts are indexed in the workspace semantic index, and
+diagnostics now emit notes for candidate impls, rejected candidates,
+associated-type equality mismatches, orphan checks, and overlap locations.
 
-M4-WP3/WP4/WP5/WP6 tests are normal repository tests, not temporary fixtures:
+M4-WP3/WP4/WP5/WP6/WP7 tests are normal repository tests, not temporary
+fixtures:
 `tests/gtest/sema/trait_tests.cpp` covers whitebox checked facts, checked dumps,
 and positive/negative samples; `tests/samples/positive/traits/trait_impl_registry.ax`
 covers the positive sample; `tests/samples/negative/traits/*.ax` covers
@@ -78,13 +86,16 @@ diagnostics for ambiguity, duplicate equality, built-in equality, duplicate
 trait/impl associated items, missing impl outputs, unknown impl/equality names,
 GAT rejection, missing bounds, projection cycles, signature mismatch, and
 unsatisfied equality predicates; and
-`tests/samples/imports/samplelib/traits.ax` covers cross-module visibility. The
-full design is recorded in the
+`tests/samples/imports/samplelib/traits.ax` covers cross-module visibility.
+`tests/gtest/tooling/ide_tooling_tests.cpp` and
+`tests/gtest/tooling/session_lsp_tooling_tests.cpp` cover WP7 trait completion,
+hover/definition, semantic tokens, rename/member identity, workspace member
+indexing, LSP projection, and diagnostic notes. The full design is recorded in
+the
 [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
 and the stage route is recorded in the
-[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The next step is M4-WP7:
-tooling/diagnostic projection over trait and associated-type facts, followed by
-M4-WP8 release closure.
+[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The next step is M4-WP8
+release closure.
 
 M4 is still not presented as a complete dynamic trait system. Dynamic trait
 objects, vtable ABI/object safety, associated constants, specialization,

@@ -87,6 +87,7 @@ constexpr int LSP_SYMBOL_KIND_CLASS = 5;
 constexpr int LSP_SYMBOL_KIND_METHOD = 6;
 constexpr int LSP_SYMBOL_KIND_FIELD = 8;
 constexpr int LSP_SYMBOL_KIND_ENUM = 10;
+constexpr int LSP_SYMBOL_KIND_INTERFACE = 11;
 constexpr int LSP_SYMBOL_KIND_FUNCTION = 12;
 constexpr int LSP_SYMBOL_KIND_VARIABLE = 13;
 constexpr int LSP_SYMBOL_KIND_CONSTANT = 14;
@@ -98,6 +99,7 @@ constexpr int LSP_COMPLETION_ITEM_KIND_FUNCTION = 3;
 constexpr int LSP_COMPLETION_ITEM_KIND_FIELD = 5;
 constexpr int LSP_COMPLETION_ITEM_KIND_VARIABLE = 6;
 constexpr int LSP_COMPLETION_ITEM_KIND_CLASS = 7;
+constexpr int LSP_COMPLETION_ITEM_KIND_INTERFACE = 8;
 constexpr int LSP_COMPLETION_ITEM_KIND_MODULE = 9;
 constexpr int LSP_COMPLETION_ITEM_KIND_VALUE = 12;
 constexpr int LSP_COMPLETION_ITEM_KIND_ENUM = 13;
@@ -556,7 +558,7 @@ void lsp_append_source_position(std::string& out, const ToolingSourcePosition po
     if (kind == "function") {
         return LSP_SYMBOL_KIND_FUNCTION;
     }
-    if (kind == "method") {
+    if (kind == "method" || kind == "impl_method" || kind == "trait_method") {
         return LSP_SYMBOL_KIND_METHOD;
     }
     if (kind == "const") {
@@ -580,6 +582,12 @@ void lsp_append_source_position(std::string& out, const ToolingSourcePosition po
     if (kind == "generic_template") {
         return LSP_SYMBOL_KIND_TYPE_PARAMETER;
     }
+    if (kind == "trait") {
+        return LSP_SYMBOL_KIND_INTERFACE;
+    }
+    if (kind == "associated_type") {
+        return LSP_SYMBOL_KIND_FIELD;
+    }
     return LSP_SYMBOL_KIND_CLASS;
 }
 
@@ -591,7 +599,7 @@ void lsp_append_source_position(std::string& out, const ToolingSourcePosition po
     if (kind == "function") {
         return LSP_COMPLETION_ITEM_KIND_FUNCTION;
     }
-    if (kind == "method") {
+    if (kind == "method" || kind == "impl_method" || kind == "trait_method") {
         return LSP_COMPLETION_ITEM_KIND_METHOD;
     }
     if (kind == "const") {
@@ -617,6 +625,12 @@ void lsp_append_source_position(std::string& out, const ToolingSourcePosition po
     }
     if (kind == "generic_template") {
         return LSP_COMPLETION_ITEM_KIND_TYPE_PARAMETER;
+    }
+    if (kind == "trait") {
+        return LSP_COMPLETION_ITEM_KIND_INTERFACE;
+    }
+    if (kind == "associated_type") {
+        return LSP_COMPLETION_ITEM_KIND_FIELD;
     }
     return LSP_COMPLETION_ITEM_KIND_MODULE;
 }

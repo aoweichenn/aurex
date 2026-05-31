@@ -1,11 +1,11 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M4-WP6 associated type model 已收口；下一步 M4-WP7 tooling/diagnostics 和 M4-WP8 release closure
+阶段：M4-WP7 tooling/diagnostics 已收口；下一步 M4-WP8 release closure
 
 ## 总体状态
 
-2026-05-31：M4 trait/protocol 系统已完成 WP1、WP2、WP3、WP4、WP5 和 WP6。M4-WP1 完成调研与设计基线，正式选择
+2026-05-31：M4 trait/protocol 系统已完成 WP1、WP2、WP3、WP4、WP5、WP6 和 WP7。M4-WP1 完成调研与设计基线，正式选择
 nominal static trait：语言关键字为 `trait`，`protocol` 只作为行为契约的设计术语；conformance 由显式
 `impl Trait for Type` 给出；泛型约束进入 canonical trait predicate / `ParamEnv`；调用默认静态分派，单态化后降低为具体
 impl method direct call。M4-WP2 已把 `trait` / `impl Trait for Type` 的 token、parser、AST payload、AST
@@ -27,8 +27,14 @@ M4-WP6 已完成第一版 associated type model：trait body 支持 `type Item;`
 requirement matching 会用 impl 给出的 associated type output 做替换，generic method call 可以通过 equality
 predicate 归一化，并且 sema 已覆盖重复/缺失/未知 associated type、builtin equality constraint、缺 bound、shorthand
 projection 歧义、projection cycle 和 equality unsatisfied 诊断。
+M4-WP7 已完成 trait fact 的第一层 tooling / diagnostics 投影：IDE snapshot、ToolingSession 和 LSP
+adapter 都能暴露 `where T:` 后的 trait completion、trait / trait method / impl method / associated type
+的 hover/definition、trait 与 associated type 的 semantic-token 分类，以及基于 `DefKey` / `MemberKey`
+的 rename identity。trait method 与 associated type member fact 已进入 workspace semantic index，diagnostics
+现在会给 candidate impl、rejected candidate、associated-type equality mismatch、orphan check 和 overlap
+位置补充 notes。
 
-M4-WP3/WP4/WP5/WP6 的测试已落到常规仓库测试，而不是临时目录：`tests/gtest/sema/trait_tests.cpp` 覆盖白盒 checked facts、dump
+M4-WP3/WP4/WP5/WP6/WP7 的测试已落到常规仓库测试，而不是临时目录：`tests/gtest/sema/trait_tests.cpp` 覆盖白盒 checked facts、dump
 和正负样例，`tests/samples/positive/traits/trait_impl_registry.ax` 覆盖正样例，`tests/samples/negative/traits/*.ax`
 覆盖诊断路径，`tests/samples/positive/traits/trait_predicate_where_generic.ax`、
 `tests/samples/negative/traits/trait_predicate_unsatisfied_generic_arg.ax` 和
@@ -48,10 +54,12 @@ trait missing diagnostic 抢占，
 `tests/samples/positive/traits/trait_associated_type_where_equality.ax` 覆盖 WP6 projection、impl output
 substitution、equality predicate 和 runtime lowering；`trait_associated_type_*.ax` 负样例覆盖 ambiguity、duplicate
 equality、builtin equality、trait/impl associated item 重复、impl output 缺失、未知 impl/equality 名称、GAT
-拒绝、缺 bound、projection cycle、签名不匹配和 equality unsatisfied。完整设计见
+拒绝、缺 bound、projection cycle、签名不匹配和 equality unsatisfied。
+`tests/gtest/tooling/ide_tooling_tests.cpp` 和
+`tests/gtest/tooling/session_lsp_tooling_tests.cpp` 覆盖 WP7 trait completion、hover/definition、semantic
+token、rename/member identity、workspace member indexing、LSP projection 和 diagnostic notes。完整设计见
 [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)，阶段路线见
-[M4 Trait / Protocol 系统路线图](m4-roadmap.md)。下一步是 M4-WP7：tooling/diagnostic projection，然后进入
-M4-WP8 release closure。
+[M4 Trait / Protocol 系统路线图](m4-roadmap.md)。下一步是 M4-WP8 release closure。
 
 当前仍未把 M4 误扩成完整 dynamic trait 系统：dynamic trait object、vtable ABI/object safety、associated
 constant、specialization、generic associated type 和 RAII/resource semantics 仍由后续独立设计承接。WP6 的

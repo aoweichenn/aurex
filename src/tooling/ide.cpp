@@ -54,12 +54,16 @@ constexpr std::string_view IDE_SYMBOL_KIND_ENUM_CASE = "enum_case";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM = "enum";
 constexpr std::string_view IDE_SYMBOL_KIND_FUNCTION = "function";
 constexpr std::string_view IDE_SYMBOL_KIND_GENERIC_TEMPLATE = "generic_template";
+constexpr std::string_view IDE_SYMBOL_KIND_IMPL_METHOD = "impl_method";
 constexpr std::string_view IDE_SYMBOL_KIND_LOCAL = "local";
 constexpr std::string_view IDE_SYMBOL_KIND_METHOD = "method";
 constexpr std::string_view IDE_SYMBOL_KIND_OPAQUE_STRUCT = "opaque_struct";
 constexpr std::string_view IDE_SYMBOL_KIND_PARAMETER = "parameter";
 constexpr std::string_view IDE_SYMBOL_KIND_STRUCT = "struct";
 constexpr std::string_view IDE_SYMBOL_KIND_STRUCT_FIELD = "struct_field";
+constexpr std::string_view IDE_SYMBOL_KIND_TRAIT = "trait";
+constexpr std::string_view IDE_SYMBOL_KIND_TRAIT_METHOD = "trait_method";
+constexpr std::string_view IDE_SYMBOL_KIND_ASSOCIATED_TYPE = "associated_type";
 constexpr std::string_view IDE_SYMBOL_KIND_TYPE_ALIAS = "type_alias";
 constexpr std::string_view IDE_COMPLETION_KIND_KEYWORD = "keyword";
 constexpr std::string_view IDE_COMPLETION_DETAIL_KEYWORD = "keyword";
@@ -67,6 +71,7 @@ constexpr std::string_view IDE_TOKEN_TYPE_COMMENT = "comment";
 constexpr std::string_view IDE_TOKEN_TYPE_ENUM = "enum";
 constexpr std::string_view IDE_TOKEN_TYPE_ENUM_MEMBER = "enumMember";
 constexpr std::string_view IDE_TOKEN_TYPE_FUNCTION = "function";
+constexpr std::string_view IDE_TOKEN_TYPE_INTERFACE = "interface";
 constexpr std::string_view IDE_TOKEN_TYPE_KEYWORD = "keyword";
 constexpr std::string_view IDE_TOKEN_TYPE_METHOD = "method";
 constexpr std::string_view IDE_TOKEN_TYPE_NUMBER = "number";
@@ -87,10 +92,11 @@ constexpr std::string_view IDE_PRIMARY_PART_NAME = "<primary>";
 constexpr base::u32 IDE_PRIMARY_PART_INDEX = 0;
 constexpr base::u32 IDE_FIRST_NAMED_PART_INDEX = 1;
 
-constexpr std::array<std::string_view, 10> IDE_ITEM_COMPLETION_KEYWORDS{
+constexpr std::array<std::string_view, 11> IDE_ITEM_COMPLETION_KEYWORDS{
     "fn",
     "struct",
     "enum",
+    "trait",
     "type",
     "const",
     "impl",
@@ -699,6 +705,12 @@ void recover_resolved_fragment_source_part(
     if (kind == query::StableSymbolKind::struct_field) {
         return query::MemberKind::struct_field;
     }
+    if (kind == query::StableSymbolKind::method) {
+        return query::MemberKind::trait_method;
+    }
+    if (kind == query::StableSymbolKind::type) {
+        return query::MemberKind::associated_type;
+    }
     return query::MemberKind::invalid;
 }
 
@@ -772,6 +784,54 @@ void recover_resolved_fragment_source_part(
 {
     return symbol_def_key(snapshot, signature.stable_id, query::DefNamespace::value,
         function_signature_def_kind(signature), signature.name.view(), signature.range);
+}
+
+[[nodiscard]] query::DefKey trait_signature_def_key(const IdeSnapshot& snapshot, const sema::TraitSignature& trait)
+{
+    return symbol_def_key(
+        snapshot, trait.stable_id, query::DefNamespace::trait_, query::DefKind::trait_, trait.name.view(), trait.range);
+}
+
+[[nodiscard]] query::MemberKey trait_method_member_key(
+    const IdeSnapshot& snapshot, const sema::TraitSignature& trait, const sema::TraitMethodRequirement& requirement)
+{
+    const query::DefKey owner = trait_signature_def_key(snapshot, trait);
+    if (!query::is_valid(owner)) {
+        return {};
+    }
+    const query::MemberKey member =
+        query::member_key(owner, query::MemberKind::trait_method, requirement.name.view(), requirement.ordinal);
+    return query::is_valid(member) ? member : query::MemberKey{};
+}
+
+[[nodiscard]] query::DefKey member_definition_key_from_member_key(const query::MemberKey member,
+    const query::DefKind kind, const std::string_view fallback_name, const base::u32 ordinal) noexcept
+{
+    if (!query::is_valid(member.owner)) {
+        return {};
+    }
+    const std::array<std::string_view, 1> path{fallback_name};
+    return query::def_key(member.owner.module, query::DefNamespace::member, kind, path, ordinal);
+}
+
+[[nodiscard]] query::DefKey associated_type_definition_key(
+    const IdeSnapshot& snapshot, const sema::TraitAssociatedTypeRequirement& associated_type)
+{
+    return symbol_def_key(snapshot, associated_type.stable_key.owner, query::DefNamespace::member,
+        query::DefKind::associated_type, associated_type.name.view(), associated_type.range);
+}
+
+[[nodiscard]] query::DefKey associated_type_definition_key(const sema::TraitImplAssociatedTypeInfo& associated_type)
+{
+    return member_definition_key_from_member_key(associated_type.member_key, query::DefKind::associated_type,
+        associated_type.name.view(), associated_type.requirement_ordinal);
+}
+
+[[nodiscard]] query::DefKey trait_method_definition_key(
+    const IdeSnapshot& snapshot, const sema::TraitMethodRequirement& requirement)
+{
+    return symbol_def_key(snapshot, requirement.stable_key.owner, query::DefNamespace::member,
+        query::DefKind::trait_method, requirement.name.view(), requirement.range);
 }
 
 [[nodiscard]] query::DefKey ast_item_def_key(const IdeSnapshot& snapshot, const syntax::ItemNode& item)
@@ -869,6 +929,8 @@ void recover_resolved_fragment_source_part(
     builder.mix_u64(snapshot.checked.structs.size());
     builder.mix_u64(snapshot.checked.enum_cases.size());
     builder.mix_u64(snapshot.checked.type_aliases.size());
+    builder.mix_u64(snapshot.checked.traits.size());
+    builder.mix_u64(snapshot.checked.trait_impls.size());
     builder.mix_u64(snapshot.checked.generic_template_signatures.size());
     return query::query_result_fingerprint(builder.finish());
 }
@@ -921,8 +983,10 @@ void recover_resolved_fragment_source_part(
 [[nodiscard]] std::string function_detail(const sema::CheckedModule& checked, const sema::FunctionSignature& signature)
 {
     std::ostringstream label;
-    label << (signature.is_method ? IDE_SYMBOL_KIND_METHOD : IDE_SYMBOL_KIND_FUNCTION) << ' '
-          << sema::function_display_name(checked.types, signature) << '(';
+    const std::string_view kind = signature.is_trait_impl_method
+        ? IDE_SYMBOL_KIND_IMPL_METHOD
+        : (signature.is_method ? IDE_SYMBOL_KIND_METHOD : IDE_SYMBOL_KIND_FUNCTION);
+    label << kind << ' ' << sema::function_display_name(checked.types, signature) << '(';
     for (base::usize index = 0; index < signature.param_types.size(); ++index) {
         if (index != 0U) {
             label << ", ";
@@ -933,6 +997,14 @@ void recover_resolved_fragment_source_part(
     return label.str();
 }
 
+[[nodiscard]] std::string_view function_symbol_kind(const sema::FunctionSignature& signature) noexcept
+{
+    if (signature.is_trait_impl_method) {
+        return IDE_SYMBOL_KIND_IMPL_METHOD;
+    }
+    return signature.is_method ? IDE_SYMBOL_KIND_METHOD : IDE_SYMBOL_KIND_FUNCTION;
+}
+
 [[nodiscard]] std::string typed_detail(const sema::CheckedModule& checked, const std::string_view kind,
     const std::string_view name, const sema::TypeHandle type)
 {
@@ -940,6 +1012,40 @@ void recover_resolved_fragment_source_part(
     label << kind << ' ' << name;
     if (sema::is_valid(type)) {
         label << ": " << checked.types.display_name(type);
+    }
+    return label.str();
+}
+
+[[nodiscard]] std::string trait_detail(const sema::TraitSignature& trait)
+{
+    std::ostringstream label;
+    label << IDE_SYMBOL_KIND_TRAIT << ' ' << trait.name << " associated_types=" << trait.associated_types.size()
+          << " requirements=" << trait.requirements.size();
+    return label.str();
+}
+
+[[nodiscard]] std::string trait_method_detail(const sema::CheckedModule& checked, const sema::TraitSignature& trait,
+    const sema::TraitMethodRequirement& requirement)
+{
+    std::ostringstream label;
+    label << IDE_SYMBOL_KIND_TRAIT_METHOD << ' ' << trait.name << '.' << requirement.name << '(';
+    for (base::usize index = 0; index < requirement.param_types.size(); ++index) {
+        if (index != 0U) {
+            label << ", ";
+        }
+        label << checked.types.display_name(requirement.param_types[index]);
+    }
+    label << ") -> " << checked.types.display_name(requirement.return_type);
+    return label.str();
+}
+
+[[nodiscard]] std::string associated_type_detail(const sema::CheckedModule& checked, const std::string_view owner_name,
+    const std::string_view name, const sema::TypeHandle value_type)
+{
+    std::ostringstream label;
+    label << IDE_SYMBOL_KIND_ASSOCIATED_TYPE << ' ' << owner_name << '.' << name;
+    if (sema::is_valid(value_type)) {
+        label << IDE_DETAIL_TYPE_SEPARATOR << checked.types.display_name(value_type);
     }
     return label.str();
 }
@@ -960,8 +1066,130 @@ void push_local_symbol(SymbolIndex& index, IdeSymbol symbol)
     index.locals[name].push_back(symbol_index);
 }
 
+[[nodiscard]] const sema::TraitSignature* find_trait_signature(
+    const IdeSnapshot& snapshot, const syntax::ModuleId module, const sema::IdentId name_id) noexcept
+{
+    for (const auto& entry : snapshot.checked.traits) {
+        const sema::TraitSignature& trait = entry.second;
+        if (trait.module.value == module.value && trait.name_id == name_id) {
+            return &trait;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] const sema::TraitMethodRequirement* find_trait_method_requirement(
+    const sema::TraitSignature& trait, const sema::IdentId name_id) noexcept
+{
+    for (const sema::TraitMethodRequirement& requirement : trait.requirements) {
+        if (requirement.name_id == name_id) {
+            return &requirement;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] query::MemberKey trait_impl_method_member_key(
+    const IdeSnapshot& snapshot, const sema::FunctionSignature& signature)
+{
+    const sema::TraitSignature* const trait =
+        find_trait_signature(snapshot, signature.trait_module, signature.trait_name_id);
+    if (trait == nullptr) {
+        return {};
+    }
+    const sema::TraitMethodRequirement* const requirement = find_trait_method_requirement(*trait, signature.name_id);
+    return requirement == nullptr ? query::MemberKey{} : trait_method_member_key(snapshot, *trait, *requirement);
+}
+
+[[nodiscard]] base::SourceRange trait_impl_associated_type_name_range(const IdeSnapshot& snapshot,
+    const sema::TraitImplAssociatedTypeInfo& associated_type, const base::SourceRange fallback) noexcept
+{
+    return item_name_range(snapshot, associated_type.item, associated_type.name.view(), fallback);
+}
+
+void push_checked_trait_symbols(const IdeSnapshot& snapshot, SymbolIndex& index, const sema::TraitSignature& trait)
+{
+    const base::SourceRange trait_name_range = item_name_range(snapshot, trait.item, trait.name.view(), trait.range);
+    push_global_symbol(index,
+        IdeSymbol{
+            trait_signature_def_key(snapshot, trait),
+            trait_name_range,
+            trait.range,
+            std::string(trait.name.view()),
+            std::string(IDE_SYMBOL_KIND_TRAIT),
+            trait_detail(trait),
+            trait.part_index,
+            false,
+            true,
+        });
+
+    for (const sema::TraitAssociatedTypeRequirement& associated_type : trait.associated_types) {
+        const base::SourceRange range =
+            item_name_range(snapshot, associated_type.item, associated_type.name.view(), associated_type.range);
+        push_global_symbol(index,
+            IdeSymbol{
+                associated_type_definition_key(snapshot, associated_type),
+                range,
+                trait.range,
+                std::string(associated_type.name.view()),
+                std::string(IDE_SYMBOL_KIND_ASSOCIATED_TYPE),
+                associated_type_detail(
+                    snapshot.checked, trait.name.view(), associated_type.name.view(), sema::INVALID_TYPE_HANDLE),
+                trait.part_index,
+                false,
+                true,
+                associated_type.member_key,
+            });
+    }
+
+    for (const sema::TraitMethodRequirement& requirement : trait.requirements) {
+        const base::SourceRange range =
+            item_name_range(snapshot, requirement.item, requirement.name.view(), requirement.range);
+        push_global_symbol(index,
+            IdeSymbol{
+                trait_method_definition_key(snapshot, requirement),
+                range,
+                trait.range,
+                std::string(requirement.name.view()),
+                std::string(IDE_SYMBOL_KIND_TRAIT_METHOD),
+                trait_method_detail(snapshot.checked, trait, requirement),
+                trait.part_index,
+                false,
+                true,
+                trait_method_member_key(snapshot, trait, requirement),
+            });
+    }
+}
+
+void push_checked_trait_impl_symbols(const IdeSnapshot& snapshot, SymbolIndex& index, const sema::TraitImplInfo& impl)
+{
+    for (const sema::TraitImplAssociatedTypeInfo& associated_type : impl.associated_types) {
+        const base::SourceRange range = trait_impl_associated_type_name_range(snapshot, associated_type, impl.range);
+        push_global_symbol(index,
+            IdeSymbol{
+                associated_type_definition_key(associated_type),
+                range,
+                impl.range,
+                std::string(associated_type.name.view()),
+                std::string(IDE_SYMBOL_KIND_ASSOCIATED_TYPE),
+                associated_type_detail(
+                    snapshot.checked, impl.trait_name.view(), associated_type.name.view(), associated_type.value_type),
+                impl.part_index,
+                false,
+                true,
+                associated_type.member_key,
+            });
+    }
+}
+
 void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index)
 {
+    for (const auto& entry : snapshot.checked.traits) {
+        push_checked_trait_symbols(snapshot, index, entry.second);
+    }
+    for (const auto& entry : snapshot.checked.trait_impls) {
+        push_checked_trait_impl_symbols(snapshot, index, entry.second);
+    }
     for (const sema::GenericTemplateSignatureInfo& info : snapshot.checked.generic_template_signatures) {
         const base::SourceRange range =
             first_item_name_range(snapshot, info.name.view(), base::SourceRange{snapshot.source_id, 0U, 0U});
@@ -984,6 +1212,8 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
         const query::DefKind kind = signature.is_method ? query::DefKind::method : query::DefKind::function;
         const base::SourceRange range =
             item_name_range(snapshot, signature.definition_item, signature.name.view(), signature.range);
+        const query::MemberKey member =
+            signature.is_trait_impl_method ? trait_impl_method_member_key(snapshot, signature) : query::MemberKey{};
         push_global_symbol(index,
             IdeSymbol{
                 symbol_def_key(
@@ -991,12 +1221,12 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                 range,
                 signature.range,
                 std::string(signature.name.view()),
-                std::string(signature.is_method ? IDE_SYMBOL_KIND_METHOD : IDE_SYMBOL_KIND_FUNCTION),
+                std::string(function_symbol_kind(signature)),
                 function_detail(snapshot.checked, signature),
                 signature.part_index,
                 false,
                 true,
-                {},
+                member,
                 signature.generic_instance_key,
             });
     }
@@ -1144,6 +1374,17 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
     return authority;
 }
 
+[[nodiscard]] query::ItemSignatureAuthority item_signature_authority(
+    const IdeSnapshot& snapshot, const sema::TraitSignature& trait)
+{
+    query::ItemSignatureAuthority authority = item_signature_authority_base(snapshot, trait.incremental_key,
+        trait.part_index, query::DefNamespace::trait_, query::DefKind::trait_, trait.visibility);
+    authority.value_component_count = static_cast<base::u32>(trait.associated_types.size() + trait.requirements.size());
+    authority.generic_param_count = static_cast<base::u32>(trait.generic_params.size());
+    authority.has_definition = true;
+    return authority;
+}
+
 [[nodiscard]] query::GenericTemplateSignatureAuthority generic_template_signature_authority(
     const IdeSnapshot& snapshot, const sema::GenericTemplateSignatureInfo& info)
 {
@@ -1277,6 +1518,20 @@ void evaluate_type_alias_item_signature_query(query::QueryContext& context, IdeS
         context, snapshot, key, item_signature_authority(snapshot, info), std::move(fact), incremental);
 }
 
+void evaluate_trait_item_signature_query(query::QueryContext& context, IdeSnapshot& snapshot,
+    const sema::TraitSignature& trait, const IdeIncrementalSnapshotInput& incremental)
+{
+    const base::SourceRange range = item_name_range(snapshot, trait.item, trait.name.view(), trait.range);
+    const query::DefKey key = trait_signature_def_key(snapshot, trait);
+    IdeSemanticFact fact;
+    fact.range = range;
+    fact.name = std::string(trait.name.view());
+    fact.detail = std::string(IDE_SEMANTIC_FACT_ITEM_SIGNATURE);
+    fact.part_index = trait.part_index;
+    push_item_signature_fact(
+        context, snapshot, key, item_signature_authority(snapshot, trait), std::move(fact), incremental);
+}
+
 void evaluate_generic_template_signature_query(query::QueryContext& context, IdeSnapshot& snapshot,
     const sema::GenericTemplateSignatureInfo& info, const IdeIncrementalSnapshotInput& incremental)
 {
@@ -1307,6 +1562,9 @@ void evaluate_checked_item_signature_queries(
     }
     for (const auto& entry : snapshot.checked.type_aliases) {
         evaluate_type_alias_item_signature_query(context, snapshot, entry.second, incremental);
+    }
+    for (const auto& entry : snapshot.checked.traits) {
+        evaluate_trait_item_signature_query(context, snapshot, entry.second, incremental);
     }
     for (const sema::GenericTemplateSignatureInfo& info : snapshot.checked.generic_template_signatures) {
         evaluate_generic_template_signature_query(context, snapshot, info, incremental);
@@ -1669,18 +1927,26 @@ void collect_local_symbols_from_function(
     return index;
 }
 
-[[nodiscard]] const IdeSymbol* best_global_symbol(const SymbolIndex& index, const std::string_view name)
+[[nodiscard]] const IdeSymbol* best_global_symbol(
+    const SymbolIndex& index, const std::string_view name, const base::usize offset)
 {
     const auto found = index.globals.find(std::string(name));
     if (found == index.globals.end()) {
         return nullptr;
     }
+    const IdeSymbol* fallback = nullptr;
     for (const base::usize symbol_index : found->second) {
         if (symbol_index < index.symbols.size()) {
-            return &index.symbols[symbol_index];
+            const IdeSymbol& symbol = index.symbols[symbol_index];
+            if (range_contains_offset(symbol.range, offset)) {
+                return &symbol;
+            }
+            if (fallback == nullptr || (!fallback->checked && symbol.checked)) {
+                fallback = &symbol;
+            }
         }
     }
-    return nullptr;
+    return fallback;
 }
 
 [[nodiscard]] const IdeSymbol* best_local_symbol(
@@ -1712,7 +1978,19 @@ void collect_local_symbols_from_function(
     if (const IdeSymbol* local = best_local_symbol(index, name, offset); local != nullptr) {
         return local;
     }
-    return best_global_symbol(index, name);
+    return best_global_symbol(index, name, offset);
+}
+
+[[nodiscard]] bool ide_symbols_reference_same_entity(const IdeSymbol& lhs, const IdeSymbol& rhs) noexcept
+{
+    if (query::is_valid(lhs.member) && query::is_valid(rhs.member)) {
+        return lhs.member == rhs.member;
+    }
+    if (query::is_valid(lhs.key) && query::is_valid(rhs.key)) {
+        return lhs.key == rhs.key;
+    }
+    return lhs.name == rhs.name && lhs.kind == rhs.kind && lhs.range.source.value == rhs.range.source.value
+        && lhs.range.begin == rhs.range.begin && lhs.range.end == rhs.range.end;
 }
 
 [[nodiscard]] IdeDefinition make_definition_from_symbol(const IdeSymbol& symbol)
@@ -1859,6 +2137,40 @@ struct IdeCompletionPrefix {
     return line.find("module") != std::string_view::npos || line.find("import") != std::string_view::npos;
 }
 
+[[nodiscard]] bool ide_token_is_trivia_for_completion(const syntax::Token& token) noexcept
+{
+    return token.kind == syntax::TokenKind::whitespace || token.kind == syntax::TokenKind::line_comment
+        || token.kind == syntax::TokenKind::block_comment;
+}
+
+[[nodiscard]] bool ide_offset_is_trait_bound_completion_context(
+    const IdeSnapshot& snapshot, const IdeCompletionPrefix& prefix) noexcept
+{
+    const base::usize begin = prefix.range.begin;
+    bool saw_bound_colon = false;
+    for (base::usize index = snapshot.lossless.tokens().size(); index > 0U; --index) {
+        const syntax::Token& token = snapshot.lossless.tokens()[index - 1U];
+        if (token.range.end > begin || ide_token_is_trivia_for_completion(token)) {
+            continue;
+        }
+        if (!saw_bound_colon) {
+            if (token.kind != syntax::TokenKind::colon) {
+                return false;
+            }
+            saw_bound_colon = true;
+            continue;
+        }
+        if (token.kind == syntax::TokenKind::kw_where) {
+            return true;
+        }
+        if (token.kind == syntax::TokenKind::semicolon || token.kind == syntax::TokenKind::l_brace
+            || token.kind == syntax::TokenKind::r_brace) {
+            return false;
+        }
+    }
+    return false;
+}
+
 [[nodiscard]] bool ide_offset_in_function_body(const IdeSnapshot& snapshot, const base::usize offset) noexcept
 {
     if (!snapshot.parsed) {
@@ -1888,6 +2200,9 @@ struct IdeCompletionPrefix {
     if (ide_line_contains_module_path_keyword(ide_line_prefix(text, prefix.range.begin))) {
         return IdeCompletionContextKind::module_path;
     }
+    if (ide_offset_is_trait_bound_completion_context(snapshot, prefix)) {
+        return IdeCompletionContextKind::trait_bound;
+    }
     return ide_offset_in_function_body(snapshot, offset) ? IdeCompletionContextKind::expression
                                                          : IdeCompletionContextKind::item;
 }
@@ -1897,9 +2212,16 @@ struct IdeCompletionPrefix {
 {
     if (context == IdeCompletionContextKind::member) {
         return symbol.kind == IDE_SYMBOL_KIND_METHOD || symbol.kind == IDE_SYMBOL_KIND_STRUCT_FIELD
-            || symbol.kind == IDE_SYMBOL_KIND_ENUM_CASE;
+            || symbol.kind == IDE_SYMBOL_KIND_ENUM_CASE || symbol.kind == IDE_SYMBOL_KIND_IMPL_METHOD
+            || symbol.kind == IDE_SYMBOL_KIND_TRAIT_METHOD || symbol.kind == IDE_SYMBOL_KIND_ASSOCIATED_TYPE;
+    }
+    if (context == IdeCompletionContextKind::trait_bound) {
+        return !symbol.local && symbol.kind == IDE_SYMBOL_KIND_TRAIT;
     }
     if (symbol.kind == IDE_SYMBOL_KIND_STRUCT_FIELD && context != IdeCompletionContextKind::member) {
+        return false;
+    }
+    if (symbol.kind == IDE_SYMBOL_KIND_TRAIT_METHOD || symbol.kind == IDE_SYMBOL_KIND_ASSOCIATED_TYPE) {
         return false;
     }
     if (!symbol.local) {
@@ -2062,13 +2384,17 @@ void ide_append_symbol_completions(std::vector<IdeCompletionItem>& items, std::u
     if (kind == IDE_SYMBOL_KIND_FUNCTION) {
         return IDE_TOKEN_TYPE_FUNCTION;
     }
-    if (kind == IDE_SYMBOL_KIND_METHOD) {
+    if (kind == IDE_SYMBOL_KIND_METHOD || kind == IDE_SYMBOL_KIND_IMPL_METHOD || kind == IDE_SYMBOL_KIND_TRAIT_METHOD) {
         return IDE_TOKEN_TYPE_METHOD;
     }
     if (kind == IDE_SYMBOL_KIND_PARAMETER) {
         return IDE_TOKEN_TYPE_PARAMETER;
     }
-    if (kind == IDE_SYMBOL_KIND_STRUCT || kind == IDE_SYMBOL_KIND_OPAQUE_STRUCT || kind == IDE_SYMBOL_KIND_TYPE_ALIAS) {
+    if (kind == IDE_SYMBOL_KIND_TRAIT) {
+        return IDE_TOKEN_TYPE_INTERFACE;
+    }
+    if (kind == IDE_SYMBOL_KIND_STRUCT || kind == IDE_SYMBOL_KIND_OPAQUE_STRUCT || kind == IDE_SYMBOL_KIND_TYPE_ALIAS
+        || kind == IDE_SYMBOL_KIND_ASSOCIATED_TYPE) {
         return IDE_TOKEN_TYPE_TYPE;
     }
     if (kind == IDE_SYMBOL_KIND_ENUM) {
@@ -2225,11 +2551,14 @@ std::vector<IdeReference> references_at_offset(const IdeSnapshot& snapshot, cons
         if (symbol != nullptr && symbol->local && !range_contains_range(symbol->scope_range, token.range)) {
             continue;
         }
-        if (symbol == nullptr || best_symbol_for_identifier(index, token.text(), token.range.begin) == symbol) {
+        const IdeSymbol* const token_symbol = best_symbol_for_identifier(index, token.text(), token.range.begin);
+        if (symbol == nullptr
+            || (token_symbol != nullptr && ide_symbols_reference_same_entity(*token_symbol, *symbol))) {
             references.push_back(IdeReference{
                 token.range,
                 info->text,
-                symbol != nullptr && same_range(token.range, symbol->range),
+                symbol != nullptr
+                    && same_range(token.range, token_symbol != nullptr ? token_symbol->range : symbol->range),
             });
         }
     }

@@ -30,6 +30,24 @@ constexpr std::string_view IDE_TOOLING_SOURCE = "module ide.snapshot;\n"
                                                 "  return value;\n"
                                                 "}\n";
 
+constexpr std::string_view IDE_TOOLING_TRAIT_SOURCE = "module ide.traits;\n"
+                                                      "trait Source {\n"
+                                                      "  type Item;\n"
+                                                      "  fn get(self: &Self) -> Self.Item;\n"
+                                                      "}\n"
+                                                      "struct Bytes { value: i32; }\n"
+                                                      "impl Source for Bytes {\n"
+                                                      "  type Item = i32;\n"
+                                                      "  fn get(self: &Bytes) -> i32 { return self.value; }\n"
+                                                      "}\n"
+                                                      "fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {\n"
+                                                      "  return value.get();\n"
+                                                      "}\n"
+                                                      "fn main() -> i32 {\n"
+                                                      "  let bytes = Bytes { value: 7 };\n"
+                                                      "  return read_i32[Bytes](&bytes) - 7;\n"
+                                                      "}\n";
+
 constexpr base::usize IDE_TOOLING_LARGE_FUNCTION_COUNT = 128;
 constexpr base::u32 IDE_TOOLING_PRIMARY_PART_INDEX = 0;
 constexpr base::u32 IDE_TOOLING_FUNCTION_PART_INDEX = 3;
@@ -541,6 +559,20 @@ TEST(CoreUnit, IdeToolingServesCompletionSemanticTokensAndInlayHints)
     EXPECT_TRUE(std::ranges::any_of(member_tokens, [](const tooling::IdeSemanticToken& token) {
         return token.text == "count" && token.token_type == "property" && token.checked;
     }));
+    const auto expect_mutated_field_kind_is_still_tokenizable = [&](const query::StableSymbolKind kind) {
+        tooling::IdeSnapshot mutated_snapshot = member_snapshot;
+        ASSERT_FALSE(mutated_snapshot.checked.structs.empty());
+        sema::StructInfo& mutated_struct = mutated_snapshot.checked.structs.begin()->second;
+        ASSERT_FALSE(mutated_struct.fields.empty());
+        mutated_struct.fields.front().stable_key.kind = kind;
+        const std::vector<tooling::IdeSemanticToken> mutated_tokens = tooling::semantic_tokens(mutated_snapshot);
+        EXPECT_TRUE(std::ranges::any_of(mutated_tokens, [](const tooling::IdeSemanticToken& token) {
+            return token.text == "count" && token.token_type == "property";
+        }));
+    };
+    expect_mutated_field_kind_is_still_tokenizable(query::StableSymbolKind::method);
+    expect_mutated_field_kind_is_still_tokenizable(query::StableSymbolKind::type);
+    expect_mutated_field_kind_is_still_tokenizable(query::StableSymbolKind::invalid);
 
     constexpr std::string_view method_source = "module ide.method_tokens;\n"
                                                "struct Counter { value: i32; }\n"
@@ -633,6 +665,92 @@ TEST(CoreUnit, IdeToolingServesCompletionSemanticTokensAndInlayHints)
     const std::vector<tooling::IdeInlayHint> explicit_hints = tooling::inlay_hints(explicit_snapshot);
     EXPECT_TRUE(std::ranges::none_of(explicit_hints, [](const tooling::IdeInlayHint& hint) {
         return hint.label == ": i32";
+    }));
+}
+
+TEST(CoreUnit, IdeToolingExposesM4TraitFactsForWp7)
+{
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(IDE_TOOLING_TRAIT_SOURCE));
+    ASSERT_TRUE(snapshot.parsed);
+    ASSERT_TRUE(snapshot.checked_semantics);
+    EXPECT_TRUE(has_semantic_fact_kind(
+        snapshot, tooling::IdeSemanticFactKind::item_signature, query::QueryKind::item_signature, "Source"));
+
+    const base::usize trait_bound_offset = IDE_TOOLING_TRAIT_SOURCE.find("where T: Source");
+    ASSERT_NE(trait_bound_offset, std::string_view::npos);
+    const std::vector<tooling::IdeCompletionItem> trait_completions =
+        tooling::completion_items_at_offset(snapshot, trait_bound_offset + std::string_view{"where T: So"}.size());
+    EXPECT_TRUE(std::ranges::any_of(trait_completions, [](const tooling::IdeCompletionItem& item) {
+        return item.label == "Source" && item.kind == "trait" && item.checked
+            && item.context == tooling::IdeCompletionContextKind::trait_bound
+            && item.definition.kind == query::DefKind::trait_;
+    }));
+    EXPECT_TRUE(std::ranges::none_of(trait_completions, [](const tooling::IdeCompletionItem& item) {
+        return item.kind == "struct" || item.kind == "function";
+    }));
+
+    const base::usize trait_use_offset = IDE_TOOLING_TRAIT_SOURCE.find("Source[Item");
+    ASSERT_NE(trait_use_offset, std::string_view::npos);
+    const std::optional<tooling::IdeDefinition> trait_definition =
+        tooling::definition_at_offset(snapshot, trait_use_offset);
+    ASSERT_TRUE(trait_definition.has_value());
+    EXPECT_EQ(trait_definition->name, "Source");
+    EXPECT_EQ(trait_definition->kind, "trait");
+    EXPECT_EQ(trait_definition->key.kind, query::DefKind::trait_);
+
+    const base::usize requirement_method_offset = IDE_TOOLING_TRAIT_SOURCE.find("fn get(self: &Self)");
+    ASSERT_NE(requirement_method_offset, std::string_view::npos);
+    const std::optional<tooling::IdeDefinition> requirement_method =
+        tooling::definition_at_offset(snapshot, requirement_method_offset + std::string_view{"fn "}.size());
+    ASSERT_TRUE(requirement_method.has_value());
+    EXPECT_EQ(requirement_method->name, "get");
+    EXPECT_EQ(requirement_method->kind, "trait_method");
+    EXPECT_EQ(requirement_method->key.kind, query::DefKind::trait_method);
+    EXPECT_TRUE(query::is_valid(requirement_method->member));
+
+    const base::usize impl_method_offset = IDE_TOOLING_TRAIT_SOURCE.rfind("fn get(self: &Bytes)");
+    ASSERT_NE(impl_method_offset, std::string_view::npos);
+    const std::optional<tooling::IdeDefinition> impl_method =
+        tooling::definition_at_offset(snapshot, impl_method_offset + std::string_view{"fn "}.size());
+    ASSERT_TRUE(impl_method.has_value());
+    EXPECT_EQ(impl_method->name, "get");
+    EXPECT_EQ(impl_method->kind, "impl_method");
+    EXPECT_EQ(impl_method->key.kind, query::DefKind::method);
+    EXPECT_TRUE(query::is_valid(impl_method->member));
+
+    const base::usize impl_associated_offset = IDE_TOOLING_TRAIT_SOURCE.find("Item = i32");
+    ASSERT_NE(impl_associated_offset, std::string_view::npos);
+    const std::optional<tooling::IdeDefinition> associated_type =
+        tooling::definition_at_offset(snapshot, impl_associated_offset);
+    ASSERT_TRUE(associated_type.has_value());
+    EXPECT_EQ(associated_type->name, "Item");
+    EXPECT_EQ(associated_type->kind, "associated_type");
+    EXPECT_EQ(associated_type->key.kind, query::DefKind::associated_type);
+    EXPECT_TRUE(query::is_valid(associated_type->member));
+
+    const std::optional<tooling::IdeHoverInfo> associated_hover =
+        tooling::hover_at_offset(snapshot, impl_associated_offset);
+    ASSERT_TRUE(associated_hover.has_value());
+    EXPECT_NE(associated_hover->label.find("identifier `Item` -> associated_type"), std::string::npos);
+    ASSERT_TRUE(associated_hover->definition.has_value());
+    EXPECT_TRUE(query::is_valid(associated_hover->definition->member));
+
+    const std::vector<tooling::IdeReference> associated_references =
+        tooling::references_at_offset(snapshot, impl_associated_offset);
+    EXPECT_GE(associated_references.size(), 3U);
+    EXPECT_TRUE(std::ranges::any_of(associated_references, [](const tooling::IdeReference& reference) {
+        return reference.is_definition;
+    }));
+
+    const std::vector<tooling::IdeSemanticToken> tokens = tooling::semantic_tokens(snapshot);
+    EXPECT_TRUE(std::ranges::any_of(tokens, [](const tooling::IdeSemanticToken& token) {
+        return token.text == "Source" && token.token_type == "interface" && token.checked;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(tokens, [](const tooling::IdeSemanticToken& token) {
+        return token.text == "Item" && token.token_type == "type" && token.checked && query::is_valid(token.member);
+    }));
+    EXPECT_TRUE(std::ranges::any_of(tokens, [](const tooling::IdeSemanticToken& token) {
+        return token.text == "get" && token.token_type == "method" && token.checked && query::is_valid(token.member);
     }));
 }
 
@@ -904,6 +1022,64 @@ TEST(CoreUnit, IdeToolingReturnsStructuredDiagnosticsForInvalidSource)
     }));
     EXPECT_TRUE(
         has_diagnostic_owner_stage_profile(snapshot, base::DiagnosticCategory::type, IDE_TOOLING_STAGE_SEMA_ANALYZE));
+}
+
+TEST(CoreUnit, IdeToolingReportsTraitCandidateDiagnosticsForWp7)
+{
+    constexpr std::string_view equality_source = "module ide.trait_diag_equality;\n"
+                                                 "trait Source { type Item; fn get(self: &Self) -> Self.Item; }\n"
+                                                 "struct Bytes { value: bool; }\n"
+                                                 "impl Source for Bytes {\n"
+                                                 "  type Item = bool;\n"
+                                                 "  fn get(self: &Bytes) -> bool { return self.value; }\n"
+                                                 "}\n"
+                                                 "fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {\n"
+                                                 "  return value.get();\n"
+                                                 "}\n"
+                                                 "fn main() -> i32 {\n"
+                                                 "  let bytes = Bytes { value: true };\n"
+                                                 "  return read_i32[Bytes](&bytes);\n"
+                                                 "}\n";
+    const tooling::IdeSnapshot equality_snapshot = tooling::build_ide_snapshot(request_for(equality_source));
+    EXPECT_TRUE(equality_snapshot.has_errors);
+    EXPECT_FALSE(equality_snapshot.checked_semantics);
+    EXPECT_TRUE(std::ranges::any_of(equality_snapshot.diagnostics, [](const tooling::IdeDiagnostic& diagnostic) {
+        return diagnostic.message.find("trait associated type equality is not satisfied") != std::string::npos;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(equality_snapshot.diagnostics, [](const tooling::IdeDiagnostic& diagnostic) {
+        return diagnostic.severity == base::Severity::note
+            && diagnostic.message.find("candidate trait impl") != std::string::npos;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(equality_snapshot.diagnostics, [](const tooling::IdeDiagnostic& diagnostic) {
+        return diagnostic.severity == base::Severity::note
+            && diagnostic.message.find("candidate associated type `Item` resolves to bool") != std::string::npos;
+    }));
+
+    constexpr std::string_view rejected_source = "module ide.trait_diag_rejected;\n"
+                                                 "trait Source { type Item; fn get(self: &Self) -> Self.Item; }\n"
+                                                 "struct Bytes { value: i32; }\n"
+                                                 "struct Text { value: i32; }\n"
+                                                 "impl Source for Text {\n"
+                                                 "  type Item = i32;\n"
+                                                 "  fn get(self: &Text) -> i32 { return self.value; }\n"
+                                                 "}\n"
+                                                 "fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {\n"
+                                                 "  return value.get();\n"
+                                                 "}\n"
+                                                 "fn main() -> i32 {\n"
+                                                 "  let bytes = Bytes { value: 1 };\n"
+                                                 "  return read_i32[Bytes](&bytes);\n"
+                                                 "}\n";
+    const tooling::IdeSnapshot rejected_snapshot = tooling::build_ide_snapshot(request_for(rejected_source));
+    EXPECT_TRUE(rejected_snapshot.has_errors);
+    EXPECT_TRUE(std::ranges::any_of(rejected_snapshot.diagnostics, [](const tooling::IdeDiagnostic& diagnostic) {
+        return diagnostic.message.find("does not satisfy trait predicate") != std::string::npos;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(rejected_snapshot.diagnostics, [](const tooling::IdeDiagnostic& diagnostic) {
+        return diagnostic.severity == base::Severity::note
+            && diagnostic.message.find("rejected trait impl candidate") != std::string::npos
+            && diagnostic.message.find("self type mismatch") != std::string::npos;
+    }));
 }
 
 TEST(CoreUnit, IdeToolingCarriesUnresolvedFragmentPartContextOnDiagnostics)

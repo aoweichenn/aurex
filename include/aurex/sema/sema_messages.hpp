@@ -1177,6 +1177,31 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
         + std::string(trait_name) + " nor type " + std::string(self_type) + " is local";
 }
 
+[[nodiscard]] inline std::string sema_candidate_trait_impl_note_message(
+    const std::string_view trait_name, const std::string_view self_type)
+{
+    return "candidate trait impl: " + std::string(trait_name) + " for " + std::string(self_type);
+}
+
+[[nodiscard]] inline std::string sema_rejected_trait_impl_note_message(const std::string_view trait_name,
+    const std::string_view self_type, const std::string_view required_type, const std::string_view reason)
+{
+    return "rejected trait impl candidate: " + std::string(trait_name) + " for " + std::string(self_type)
+        + " while checking " + std::string(required_type) + " (" + std::string(reason) + ")";
+}
+
+[[nodiscard]] inline std::string sema_trait_impl_associated_type_note_message(
+    const std::string_view associated_type, const std::string_view actual_type)
+{
+    return "candidate associated type `" + std::string(associated_type) + "` resolves to " + std::string(actual_type);
+}
+
+[[nodiscard]] inline std::string sema_trait_impl_orphan_rule_note_message(
+    const std::string_view trait_name, const std::string_view self_type)
+{
+    return "orphan check location for " + std::string(trait_name) + " for " + std::string(self_type);
+}
+
 [[nodiscard]] inline std::string sema_trait_predicate_not_satisfied_message(
     const std::string_view type_name, const std::string_view trait_name)
 {

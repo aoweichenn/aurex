@@ -1259,6 +1259,8 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
     if (!this->trait_impl_obeys_orphan_rule(trait, self_type, impl_module)) {
         this->core_.report_type(impl_block.range,
             sema_trait_impl_orphan_rule_message(trait_name, self_name, this->core_.module_name(impl_module)));
+        this->core_.report_note(impl_block.range, SemanticDiagnosticKind::type_mismatch,
+            sema_trait_impl_orphan_rule_note_message(trait_name, self_name));
         return;
     }
     if (this->core_.state_.checked.trait_impls.contains(impl_key)) {

@@ -78,6 +78,25 @@ constexpr std::string_view TOOLING_LSP_METHOD_SYMBOL_SOURCE = "module tooling.me
                                                               "  return counter.read();\n"
                                                               "}\n";
 
+constexpr std::string_view TOOLING_SESSION_TRAIT_SOURCE =
+    "module tooling.traits;\n"
+    "trait Source {\n"
+    "  type Item;\n"
+    "  fn get(self: &Self) -> Self.Item;\n"
+    "}\n"
+    "struct Bytes { value: i32; }\n"
+    "impl Source for Bytes {\n"
+    "  type Item = i32;\n"
+    "  fn get(self: &Bytes) -> i32 { return self.value; }\n"
+    "}\n"
+    "fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {\n"
+    "  return value.get();\n"
+    "}\n"
+    "fn main() -> i32 {\n"
+    "  let bytes = Bytes { value: 7 };\n"
+    "  return read_i32[Bytes](&bytes) - 7;\n"
+    "}\n";
+
 constexpr std::string_view TOOLING_WORKSPACE_LEFT_SOURCE = "module tooling.left;\n"
                                                            "fn left() -> i32 {\n"
                                                            "  return 1;\n"
@@ -100,6 +119,7 @@ constexpr std::string_view TOOLING_LSP_URI = "file:///workspace/lsp.ax";
 constexpr std::string_view TOOLING_LSP_SYMBOL_URI = "file:///workspace/lsp_symbols.ax";
 constexpr std::string_view TOOLING_LSP_FALLBACK_SYMBOL_URI = "file:///workspace/lsp_fallback_symbols.ax";
 constexpr std::string_view TOOLING_LSP_METHOD_SYMBOL_URI = "file:///workspace/lsp_method_symbols.ax";
+constexpr std::string_view TOOLING_SESSION_TRAIT_URI = "file:///workspace/tooling_traits.ax";
 constexpr std::string_view TOOLING_LSP_ESCAPE_URI = "file:///workspace/lsp_escape.ax";
 constexpr std::string_view TOOLING_LSP_NO_MODULE_URI = "file:///workspace/lsp_no_module.ax";
 constexpr std::string_view TOOLING_WORKSPACE_LEFT_URI = "file:///workspace/workspace_left.ax";
@@ -679,6 +699,100 @@ TEST(CoreUnit, ToolingSessionProjectsM37IdeSemanticFeaturesWithoutLspTypes)
     ASSERT_TRUE(workspace_completions);
     EXPECT_TRUE(std::ranges::any_of(workspace_completions.value(), [](const tooling::ToolingCompletionItem& item) {
         return item.label == "right" && item.kind == "function" && item.from_workspace;
+    }));
+}
+
+TEST(CoreUnit, ToolingSessionProjectsM4TraitToolingWithoutLspTypes)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_TRAIT_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_TRAIT_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::usize trait_bound_offset = TOOLING_SESSION_TRAIT_SOURCE.find("where T: Source");
+    ASSERT_NE(trait_bound_offset, std::string_view::npos);
+    base::Result<std::vector<tooling::ToolingCompletionItem>> completions =
+        session.completion_at_offset(document, trait_bound_offset + std::string_view{"where T: So"}.size());
+    ASSERT_TRUE(completions);
+    EXPECT_TRUE(std::ranges::any_of(completions.value(), [](const tooling::ToolingCompletionItem& item) {
+        return item.label == "Source" && item.kind == "trait" && item.checked
+            && item.context == tooling::IdeCompletionContextKind::trait_bound
+            && item.stable_definition_key.find("DefKey") != std::string::npos;
+    }));
+    EXPECT_TRUE(std::ranges::none_of(completions.value(), [](const tooling::ToolingCompletionItem& item) {
+        return item.kind == "struct" || item.kind == "function";
+    }));
+
+    base::Result<std::vector<tooling::ToolingDocumentSymbol>> symbols = session.document_symbols(document);
+    ASSERT_TRUE(symbols);
+    EXPECT_TRUE(std::ranges::any_of(symbols.value(), [](const tooling::ToolingDocumentSymbol& symbol) {
+        return symbol.name == "Source" && symbol.kind == "trait" && symbol.checked
+            && symbol.stable_definition_key.find("DefKey") != std::string::npos;
+    }));
+
+    const base::usize trait_ast_offset = TOOLING_SESSION_TRAIT_SOURCE.find("trait Source");
+    ASSERT_NE(trait_ast_offset, std::string_view::npos);
+    base::Result<std::optional<tooling::ToolingAstNode>> trait_ast =
+        session.ast_node_at_offset(document, trait_ast_offset);
+    ASSERT_TRUE(trait_ast);
+    ASSERT_TRUE(trait_ast.value().has_value());
+    EXPECT_EQ(trait_ast.value()->kind, tooling::IdeAstNodeKind::item);
+    EXPECT_EQ(trait_ast.value()->name, "Source");
+    EXPECT_EQ(trait_ast.value()->detail, "trait");
+    EXPECT_FALSE(trait_ast.value()->stable_definition_key.empty());
+
+    const base::usize associated_offset = TOOLING_SESSION_TRAIT_SOURCE.find("Item = i32");
+    ASSERT_NE(associated_offset, std::string_view::npos);
+    base::Result<std::optional<tooling::ToolingDefinition>> associated_definition =
+        session.definition_at_offset(document, associated_offset);
+    ASSERT_TRUE(associated_definition);
+    ASSERT_TRUE(associated_definition.value().has_value());
+    EXPECT_EQ(associated_definition.value()->name, "Item");
+    EXPECT_EQ(associated_definition.value()->kind, "associated_type");
+    EXPECT_NE(associated_definition.value()->stable_member_key.find("MemberKey"), std::string::npos);
+
+    const std::vector<tooling::ToolingIndexedSemanticFact> associated_facts =
+        session.workspace_index().members(associated_definition.value()->member);
+    ASSERT_FALSE(associated_facts.empty());
+    EXPECT_NE(find_index_fact(associated_facts, "Item", "item_signature"), nullptr);
+
+    const base::usize impl_method_offset = TOOLING_SESSION_TRAIT_SOURCE.rfind("fn get(self: &Bytes)");
+    ASSERT_NE(impl_method_offset, std::string_view::npos);
+    base::Result<std::optional<tooling::ToolingDefinition>> method_definition =
+        session.definition_at_offset(document, impl_method_offset + std::string_view{"fn "}.size());
+    ASSERT_TRUE(method_definition);
+    ASSERT_TRUE(method_definition.value().has_value());
+    EXPECT_EQ(method_definition.value()->name, "get");
+    EXPECT_EQ(method_definition.value()->kind, "trait_method");
+    EXPECT_NE(method_definition.value()->stable_member_key.find("MemberKey"), std::string::npos);
+
+    const base::usize member_completion_offset = TOOLING_SESSION_TRAIT_SOURCE.find("value.get");
+    ASSERT_NE(member_completion_offset, std::string_view::npos);
+    base::Result<std::vector<tooling::ToolingCompletionItem>> member_completions =
+        session.completion_at_offset(document, member_completion_offset + std::string_view{"value."}.size());
+    ASSERT_TRUE(member_completions);
+    EXPECT_TRUE(std::ranges::any_of(member_completions.value(), [](const tooling::ToolingCompletionItem& item) {
+        return item.label == "Item" && item.kind == "associated_type" && item.checked
+            && item.context == tooling::IdeCompletionContextKind::member
+            && item.stable_member_key.find("MemberKey") != std::string::npos;
+    }));
+
+    base::Result<std::vector<tooling::ToolingSemanticToken>> semantic_tokens = session.semantic_tokens(document);
+    ASSERT_TRUE(semantic_tokens);
+    EXPECT_TRUE(std::ranges::any_of(semantic_tokens.value(), [](const tooling::ToolingSemanticToken& token) {
+        return token.text == "Source" && token.token_type == "interface" && token.checked;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(semantic_tokens.value(), [](const tooling::ToolingSemanticToken& token) {
+        return token.text == "Item" && token.token_type == "type" && token.checked
+            && token.stable_member_key.find("MemberKey") != std::string::npos;
+    }));
+
+    base::Result<tooling::ToolingRenamePlan> rename = session.rename_at_offset(document, associated_offset, "Output");
+    ASSERT_TRUE(rename);
+    EXPECT_TRUE(rename.value().valid);
+    EXPECT_GE(rename.value().edits.size(), 3U);
+    EXPECT_TRUE(std::ranges::all_of(rename.value().edits, [](const tooling::ToolingRenameEdit& edit) {
+        return edit.new_text == "Output";
     }));
 }
 
@@ -1429,6 +1543,40 @@ TEST(CoreUnit, ToolingWorkspaceIndexHandlesInvalidAndFallbackStableSymbols)
     EXPECT_GT(invalid_field_stats.facts, 0U);
     EXPECT_GT(invalid_field_stats.definitions, 0U);
     EXPECT_GT(invalid_field_stats.members, 0U);
+
+    tooling::ToolingWorkspaceSemanticIndex trait_member_kind_index;
+    tooling::IdeSnapshot trait_member_kind_snapshot = *handle.value().snapshot;
+    ASSERT_FALSE(trait_member_kind_snapshot.checked.structs.empty());
+    sema::StructInfo& trait_member_kind_struct = trait_member_kind_snapshot.checked.structs.begin()->second;
+    ASSERT_FALSE(trait_member_kind_struct.fields.empty());
+    trait_member_kind_struct.fields.front().stable_key.kind = query::StableSymbolKind::method;
+    trait_member_kind_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        handle.value().document,
+        handle.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(trait_member_kind_snapshot)),
+        {},
+    });
+    const tooling::ToolingWorkspaceIndexStats trait_member_kind_stats = trait_member_kind_index.stats();
+    EXPECT_EQ(trait_member_kind_stats.documents, 1U);
+    EXPECT_GT(trait_member_kind_stats.facts, 0U);
+    EXPECT_GT(trait_member_kind_stats.members, 0U);
+
+    tooling::ToolingWorkspaceSemanticIndex associated_member_kind_index;
+    tooling::IdeSnapshot associated_member_kind_snapshot = *handle.value().snapshot;
+    ASSERT_FALSE(associated_member_kind_snapshot.checked.structs.empty());
+    sema::StructInfo& associated_member_kind_struct = associated_member_kind_snapshot.checked.structs.begin()->second;
+    ASSERT_FALSE(associated_member_kind_struct.fields.empty());
+    associated_member_kind_struct.fields.front().stable_key.kind = query::StableSymbolKind::type;
+    associated_member_kind_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        handle.value().document,
+        handle.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(associated_member_kind_snapshot)),
+        {},
+    });
+    const tooling::ToolingWorkspaceIndexStats associated_member_kind_stats = associated_member_kind_index.stats();
+    EXPECT_EQ(associated_member_kind_stats.documents, 1U);
+    EXPECT_GT(associated_member_kind_stats.facts, 0U);
+    EXPECT_GT(associated_member_kind_stats.members, 0U);
 }
 
 TEST(CoreUnit, ToolingSessionMaintainsWorkspaceSemanticIndex)
@@ -1908,6 +2056,15 @@ TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"aurexKind\":\"method\""), std::string::npos);
     EXPECT_NE(responses.front().find("\"aurexKind\":\"struct\""), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_SESSION_TRAIT_URI, TOOLING_SESSION_TRAIT_SOURCE, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    responses = server.handle_json_message(lsp_request_json(
+        TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_SESSION_TRAIT_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"trait\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"name\":\"Source\""), std::string::npos);
 }
 
 TEST(CoreUnit, LspServerHandlesLifecycleSyncDiagnosticsAndIdeRequests)
@@ -2066,6 +2223,29 @@ TEST(CoreUnit, LspServerHandlesLifecycleSyncDiagnosticsAndIdeRequests)
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"label\":\"read\""), std::string::npos);
     EXPECT_NE(responses.front().find("\"label\":\"value\""), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_SESSION_TRAIT_URI, TOOLING_SESSION_TRAIT_SOURCE, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    const base::usize trait_completion_offset = TOOLING_SESSION_TRAIT_SOURCE.find("where T: Source");
+    ASSERT_NE(trait_completion_offset, std::string_view::npos);
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_COMPLETION, "textDocument/completion",
+        text_document_position_params(TOOLING_SESSION_TRAIT_URI,
+            tooling::tooling_position_for_offset(
+                TOOLING_SESSION_TRAIT_SOURCE, trait_completion_offset + std::string_view{"where T: So"}.size()))));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"label\":\"Source\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"trait\""), std::string::npos);
+
+    const base::usize trait_member_completion_offset = TOOLING_SESSION_TRAIT_SOURCE.find("value.get");
+    ASSERT_NE(trait_member_completion_offset, std::string_view::npos);
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_COMPLETION, "textDocument/completion",
+        text_document_position_params(TOOLING_SESSION_TRAIT_URI,
+            tooling::tooling_position_for_offset(
+                TOOLING_SESSION_TRAIT_SOURCE, trait_member_completion_offset + std::string_view{"value."}.size()))));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"label\":\"Item\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"associated_type\""), std::string::npos);
 
     responses = server.handle_json_message(
         lsp_request_json(TOOLING_LSP_ID_WORKSPACE_SYMBOL, "workspace/symbol", "{\"query\":\"add\"}"));

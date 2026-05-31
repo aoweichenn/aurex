@@ -606,6 +606,9 @@ Migration strategy:
 
 ## 9. M4 Work Packages
 
+Implementation status as of 2026-05-31: M4-WP1 through M4-WP7 are complete.
+M4-WP8 release closure is the only remaining active M4 work package.
+
 | Work package | Goal | Done when |
 |:--|:--|:--|
 | M4-WP1 | Research and design baseline | This document, roadmap, risk matrix, and documentation tests are closed |

@@ -1,9 +1,9 @@
 # Next Steps
 
-## Current Highest Priority: M4-WP7 Tooling And Diagnostics
+## Current Highest Priority: M4-WP8 Release Closure
 
 The M3 release baseline is closed, and M4 trait/protocol work has completed
-WP1, WP2, WP3, WP4, WP5, and WP6. M4-WP1 fixed the
+WP1, WP2, WP3, WP4, WP5, WP6, and WP7. M4-WP1 fixed the
 [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
 with the staged route in the
 [M4 Trait / Protocol System Roadmap](m4-roadmap.md). M4-WP2 completed the token,
@@ -28,6 +28,13 @@ generic projections have canonical associated-projection types,
 requirement matching substitutes associated type outputs, and diagnostics cover
 ambiguity, cycles, missing bounds, duplicate/missing/unknown associated types,
 built-in equality misuse, and unsatisfied equality predicates.
+M4-WP7 completed the first IDE/tooling and diagnostics projection over trait
+facts: completion after `where T:`, hover/definition for traits, trait methods,
+impl methods, and associated types, semantic-token classification, workspace
+member indexing, rename identity through `DefKey` / `MemberKey`, LSP adapter
+projection without leaking LSP DTOs into compiler internals, and diagnostic
+notes for candidate impls, rejected candidates, associated-type equality
+mismatches, orphan checks, and overlap locations.
 
 The current implemented surface is nominal static traits. The language keyword
 is `trait`, and conformance is explicit through `impl Trait for Type`.
@@ -52,22 +59,23 @@ tests live in normal repository locations:
 `tests/samples/positive/traits/trait_associated_type_basic.ax`,
 `tests/samples/positive/traits/trait_associated_type_where_equality.ax`,
 `tests/samples/negative/traits/*.ax`, and
-`tests/samples/imports/samplelib/traits.ax`.
+`tests/samples/imports/samplelib/traits.ax`. WP7 tooling coverage lives in
+`tests/gtest/tooling/ide_tooling_tests.cpp` and
+`tests/gtest/tooling/session_lsp_tooling_tests.cpp`.
 
-The next step is M4-WP7 only: make IDE/tooling and diagnostics consume trait
-and associated-type facts through stable compiler surfaces instead of reaching
-into sema internals. WP7 should add completion after `where T:`, hover /
-definition for traits, trait methods, impl methods, and associated types,
-semantic-token classification, rename-friendly member identities, and better
-diagnostic notes for candidate impls, equality rejection, and orphan / overlap
-locations.
+The next step is M4-WP8 only: close the M4 trait system as a release baseline.
+WP8 should align the documentation set, language manual, unsupported matrix,
+progress records, coverage report, stress/query/cache/profile gates, and
+release audit so later work on resources, dynamic traits, default methods,
+specialization, class-like sugar, and package-level coherence starts from a
+clear boundary instead of reopening WP1-WP7.
 
-WP7 does not include dynamic trait objects or RAII/resource semantics. Dynamic
+WP8 does not include dynamic trait objects or RAII/resource semantics. Dynamic
 trait objects, vtable ABI/object safety, associated constants, specialization,
-generic associated types, and the resource system remain outside the current
-M4 target. The WP6 `where` grammar supports identifier trait predicates with
-associated-type equality constraints; qualified where predicates and generic
-trait predicate arguments remain future solver work.
+generic associated types, and the resource system remain outside the current M4
+target. The WP6/WP7 surface supports identifier trait predicates with
+associated-type equality constraints and tooling projection; qualified where
+predicates and generic trait predicate arguments remain future solver work.
 
 ## M3 Closure Context
 

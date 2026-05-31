@@ -206,6 +206,8 @@ Risk controls:
 
 ### M4-WP6: Associated Type Model
 
+Status: complete.
+
 Goal: add associated types after the basic trait system is stable.
 
 Deliverables:
@@ -224,18 +226,25 @@ Risk controls:
 
 ### M4-WP7: Tooling And Diagnostics
 
+Status: complete.
+
 Goal: make IDE/tooling consume trait facts instead of sema internals.
 
 Deliverables:
 
 - Completion offers visible traits after `where T:`.
 - Hover / definition handles traits, trait methods, impl methods, and associated
-  types.
-- Semantic tokens classify trait names, trait methods, impl blocks, and
-  associated types.
-- Rename is based on `DefKey` / `MemberKey`.
-- Diagnostic notes show candidate impls, rejection reasons, and orphan /
-  overlap locations.
+  types through protocol-neutral `IdeDefinition` values.
+- Semantic tokens classify trait names, trait methods, impl methods, and
+  associated types without adding LSP-specific DTOs to compiler internals.
+- Rename is based on `DefKey` / `MemberKey`; associated types and trait methods
+  share member identity across requirements, impl assignments, impl methods,
+  and uses.
+- Diagnostic notes show candidate impls, rejection reasons, associated-type
+  equality rejection details, and orphan / overlap locations.
+- Normal repository tests cover IDE snapshots, ToolingSession projection, LSP
+  projection, semantic tokens, completion, rename, workspace member indexing,
+  and trait diagnostic notes.
 
 Risk controls:
 
@@ -272,8 +281,8 @@ Deliverables:
 
 ## Current Next Step
 
-M4-WP1, WP2, WP3, WP4, WP5, and WP6 are complete. The current next step is
-M4-WP7: Tooling And Diagnostics, followed by M4-WP8 release closure.
+M4-WP1 through WP7 are complete. The current next step is M4-WP8 release
+closure.
 
 WP4 has built on the WP3 registry by adding formal `TraitPredicate`,
 `TraitObligation`, `TraitEvidence`, and `ParamEnv` boundaries, lowering
@@ -298,8 +307,8 @@ associated type outputs, and sema diagnoses ambiguity, projection cycles,
 missing bounds, missing/unknown/duplicate associated types, built-in equality
 misuse, signature mismatches, and unsatisfied equality predicates.
 
-WP7 should expose those trait and associated-type facts through IDE/tooling and
+WP7 has exposed those trait and associated-type facts through IDE/tooling and
 diagnostics: completion, hover, definition, semantic tokens, rename identity,
-and candidate/rejection notes must consume stable compiler facts rather than
-raw sema internals. Dynamic trait objects and RAII / resource semantics remain
+and candidate/rejection notes now consume stable compiler facts rather than raw
+sema internals. Dynamic trait objects and RAII / resource semantics remain
 separate future designs.

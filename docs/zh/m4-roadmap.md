@@ -152,6 +152,8 @@ inheritance、closure、async/generator、derive、macro 或 package manager 混
 
 ### M4-WP6：Associated Type Model
 
+状态：已完成。
+
 目标：在基础 trait 系统稳定后加入 associated type。
 
 交付：
@@ -170,15 +172,22 @@ inheritance、closure、async/generator、derive、macro 或 package manager 混
 
 ### M4-WP7：Tooling And Diagnostics
 
+状态：已完成。
+
 目标：让 IDE/tooling 消费 trait facts，而不是读取 sema internals。
 
 交付：
 
 - completion：`where T:` 后补可见 trait。
-- hover / definition：trait、trait method、impl method、associated type。
-- semantic tokens：trait name、trait method、impl block、associated type。
-- rename：基于 `DefKey` / `MemberKey`。
-- diagnostics notes：显示候选 impl、被拒绝原因、orphan / overlap 位置。
+- hover / definition：通过 protocol-neutral `IdeDefinition` 处理 trait、trait method、impl method 和
+  associated type。
+- semantic tokens：分类 trait name、trait method、impl method 和 associated type，不把 LSP DTO 引入编译器内部。
+- rename：基于 `DefKey` / `MemberKey`；associated type 和 trait method 在 requirement、impl assignment、
+  impl method 与 use 之间共享 member identity。
+- diagnostics notes：显示候选 impl、被拒绝原因、associated-type equality rejection 细节，以及 orphan /
+  overlap 位置。
+- 常规仓库测试覆盖 IDE snapshot、ToolingSession projection、LSP projection、semantic token、completion、
+  rename、workspace member indexing 和 trait diagnostic notes。
 
 风险控制：
 
@@ -207,8 +216,7 @@ inheritance、closure、async/generator、derive、macro 或 package manager 混
 
 ## 当前下一步
 
-M4-WP1、WP2、WP3、WP4、WP5 和 WP6 已完成。当前下一步是 M4-WP7：Tooling And Diagnostics，随后进入
-M4-WP8 release closure。
+M4-WP1 到 WP7 已完成。当前下一步是 M4-WP8 release closure。
 
 WP4 已在 WP3 registry 之上补齐正式 `TraitPredicate` / `TraitObligation` / `TraitEvidence` / `ParamEnv`
 边界，把 `where T: TraitA + TraitB` 降低为 predicate，并实现第一版 orphan / overlap / candidate rejection
@@ -225,6 +233,6 @@ associated type requirement，trait impl 支持 associated type assignment，`Se
 impl method matching 会替换 impl 给出的 associated type output；sema 已诊断 ambiguity、projection cycle、缺
 bound、缺失/未知/重复 associated type、builtin equality 误用、签名不匹配和 equality unsatisfied。
 
-WP7 应把这些 trait 和 associated-type fact 暴露给 IDE/tooling 和 diagnostics：completion、hover、definition、
-semantic token、rename identity，以及 candidate/rejection notes 都应该消费稳定 compiler fact，而不是直接读取 sema
+WP7 已把这些 trait 和 associated-type fact 暴露给 IDE/tooling 和 diagnostics：completion、hover、definition、
+semantic token、rename identity，以及 candidate/rejection notes 现在都消费稳定 compiler fact，而不是直接读取 sema
 内部结构。dynamic trait object 和 RAII/resource semantics 仍由后续独立设计承接。

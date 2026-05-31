@@ -100,6 +100,12 @@ constexpr char TOOLING_INDEX_FACT_IDENTITY_SEPARATOR = '\x1E';
     if (kind == query::StableSymbolKind::struct_field) {
         return query::MemberKind::struct_field;
     }
+    if (kind == query::StableSymbolKind::method) {
+        return query::MemberKind::trait_method;
+    }
+    if (kind == query::StableSymbolKind::type) {
+        return query::MemberKind::associated_type;
+    }
     return query::MemberKind::invalid;
 }
 
@@ -142,6 +148,71 @@ constexpr char TOOLING_INDEX_FACT_IDENTITY_SEPARATOR = '\x1E';
     }
     const query::MemberKey member = query::member_key(owner, kind, fallback_name, stable_key.disambiguator);
     return query::is_valid(member) ? member : query::MemberKey{};
+}
+
+[[nodiscard]] query::DefKey tooling_index_trait_def_key(const IdeSnapshot& snapshot, const sema::TraitSignature& trait)
+{
+    return tooling_index_symbol_def_key(
+        snapshot, trait.stable_id, query::DefNamespace::trait_, query::DefKind::trait_, trait.name.view(), trait.range);
+}
+
+[[nodiscard]] query::MemberKey tooling_index_trait_method_member_key(
+    const IdeSnapshot& snapshot, const sema::TraitSignature& trait, const sema::TraitMethodRequirement& requirement)
+{
+    const query::DefKey owner = tooling_index_trait_def_key(snapshot, trait);
+    if (!query::is_valid(owner)) {
+        return {};
+    }
+    const query::MemberKey member =
+        query::member_key(owner, query::MemberKind::trait_method, requirement.name.view(), requirement.ordinal);
+    return query::is_valid(member) ? member : query::MemberKey{};
+}
+
+[[nodiscard]] query::DefKey tooling_index_member_definition_key(const query::MemberKey member,
+    const query::DefKind kind, const std::string_view fallback_name, const base::u32 ordinal)
+{
+    if (!query::is_valid(member.owner)) {
+        return {};
+    }
+    const std::array<std::string_view, 1> path{fallback_name};
+    return query::def_key(member.owner.module, query::DefNamespace::member, kind, path, ordinal);
+}
+
+[[nodiscard]] const sema::TraitSignature* tooling_index_find_trait_signature(
+    const IdeSnapshot& snapshot, const syntax::ModuleId module, const sema::IdentId name_id) noexcept
+{
+    for (const auto& entry : snapshot.checked.traits) {
+        const sema::TraitSignature& trait = entry.second;
+        if (trait.module.value == module.value && trait.name_id == name_id) {
+            return &trait;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] const sema::TraitMethodRequirement* tooling_index_find_trait_requirement(
+    const sema::TraitSignature& trait, const sema::IdentId name_id) noexcept
+{
+    for (const sema::TraitMethodRequirement& requirement : trait.requirements) {
+        if (requirement.name_id == name_id) {
+            return &requirement;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] query::MemberKey tooling_index_trait_impl_method_member_key(
+    const IdeSnapshot& snapshot, const sema::FunctionSignature& signature)
+{
+    const sema::TraitSignature* const trait =
+        tooling_index_find_trait_signature(snapshot, signature.trait_module, signature.trait_name_id);
+    if (trait == nullptr) {
+        return {};
+    }
+    const sema::TraitMethodRequirement* const requirement =
+        tooling_index_find_trait_requirement(*trait, signature.name_id);
+    return requirement == nullptr ? query::MemberKey{}
+                                  : tooling_index_trait_method_member_key(snapshot, *trait, *requirement);
 }
 
 [[nodiscard]] ToolingIndexedSemanticFact tooling_indexed_fact_from_semantic_fact(
@@ -366,6 +437,76 @@ void tooling_index_append_identity_part(std::string& identity, const std::string
             tooling_index_name_range_in_range(*handle.snapshot, info.case_name.view(), info.range);
         facts.push_back(tooling_indexed_member_fact(
             handle, definition, member, info.generic_instance_key, range, info.case_name.view(), info.part_index));
+    }
+    for (const auto& entry : handle.snapshot->checked.traits) {
+        const sema::TraitSignature& trait = entry.second;
+        for (const sema::TraitAssociatedTypeRequirement& associated_type : trait.associated_types) {
+            if (!query::is_valid(associated_type.member_key)) {
+                continue;
+            }
+            const query::DefKey definition = tooling_index_symbol_def_key(*handle.snapshot,
+                associated_type.stable_key.owner, query::DefNamespace::member, query::DefKind::associated_type,
+                associated_type.name.view(), associated_type.range);
+            if (!query::is_valid(definition)) {
+                continue;
+            }
+            const base::SourceRange range =
+                tooling_index_name_range_in_range(*handle.snapshot, associated_type.name.view(), associated_type.range);
+            facts.push_back(tooling_indexed_member_fact(handle, definition, associated_type.member_key, {}, range,
+                associated_type.name.view(), trait.part_index));
+        }
+        for (const sema::TraitMethodRequirement& requirement : trait.requirements) {
+            const query::MemberKey member = tooling_index_trait_method_member_key(*handle.snapshot, trait, requirement);
+            if (!query::is_valid(member)) {
+                continue;
+            }
+            const query::DefKey definition = tooling_index_symbol_def_key(*handle.snapshot,
+                requirement.stable_key.owner, query::DefNamespace::member, query::DefKind::trait_method,
+                requirement.name.view(), requirement.range);
+            if (!query::is_valid(definition)) {
+                continue;
+            }
+            const base::SourceRange range =
+                tooling_index_name_range_in_range(*handle.snapshot, requirement.name.view(), requirement.range);
+            facts.push_back(tooling_indexed_member_fact(
+                handle, definition, member, {}, range, requirement.name.view(), trait.part_index));
+        }
+    }
+    for (const auto& entry : handle.snapshot->checked.trait_impls) {
+        const sema::TraitImplInfo& impl = entry.second;
+        for (const sema::TraitImplAssociatedTypeInfo& associated_type : impl.associated_types) {
+            if (!query::is_valid(associated_type.member_key)) {
+                continue;
+            }
+            const query::DefKey definition = tooling_index_member_definition_key(associated_type.member_key,
+                query::DefKind::associated_type, associated_type.name.view(), associated_type.requirement_ordinal);
+            if (!query::is_valid(definition)) {
+                continue;
+            }
+            const base::SourceRange range =
+                tooling_index_name_range_in_range(*handle.snapshot, associated_type.name.view(), impl.range);
+            facts.push_back(tooling_indexed_member_fact(handle, definition, associated_type.member_key, {}, range,
+                associated_type.name.view(), impl.part_index));
+        }
+    }
+    for (const auto& entry : handle.snapshot->checked.functions) {
+        const sema::FunctionSignature& signature = entry.second;
+        if (!signature.is_trait_impl_method) {
+            continue;
+        }
+        const query::MemberKey member = tooling_index_trait_impl_method_member_key(*handle.snapshot, signature);
+        if (!query::is_valid(member)) {
+            continue;
+        }
+        const query::DefKey definition = tooling_index_symbol_def_key(*handle.snapshot, signature.stable_id,
+            query::DefNamespace::value, query::DefKind::method, signature.name.view(), signature.range);
+        if (!query::is_valid(definition)) {
+            continue;
+        }
+        const base::SourceRange range =
+            tooling_index_name_range_in_range(*handle.snapshot, signature.name.view(), signature.range);
+        facts.push_back(tooling_indexed_member_fact(handle, definition, member, signature.generic_instance_key, range,
+            signature.name.view(), signature.part_index));
     }
     tooling_index_sort_facts(facts);
     return facts;

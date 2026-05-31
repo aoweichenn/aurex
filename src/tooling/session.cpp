@@ -96,6 +96,7 @@ constexpr auto TOOLING_RESERVED_WORDS = std::to_array<std::string_view>({
     "str",
     "struct",
     "true",
+    "trait",
     "type",
     "u16",
     "u32",
@@ -106,6 +107,7 @@ constexpr auto TOOLING_RESERVED_WORDS = std::to_array<std::string_view>({
     "var",
     "void",
     "while",
+    "where",
 });
 
 [[nodiscard]] std::string_view tooling_package_or_default(const std::string_view package) noexcept
@@ -727,6 +729,9 @@ void tooling_append_workspace_completions(std::vector<ToolingCompletionItem>& co
     for (const ToolingIndexedSemanticFact& fact : facts) {
         if (!tooling_indexed_fact_is_definition_entry(fact)
             || !tooling_completion_label_matches_prefix(fact.name, prefix)) {
+            continue;
+        }
+        if (context == IdeCompletionContextKind::trait_bound && fact.definition.kind != query::DefKind::trait_) {
             continue;
         }
         tooling_push_completion_if_new(

@@ -1153,6 +1153,20 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
                     out << " + ";
                 }
                 out << constraint.capability_names[capability];
+                if (capability < constraint.capability_associated_constraints.size()
+                    && !constraint.capability_associated_constraints[capability].empty()) {
+                    out << "[";
+                    const std::vector<AssociatedTypeConstraintDecl>& associated_constraints =
+                        constraint.capability_associated_constraints[capability];
+                    for (base::usize associated = 0; associated < associated_constraints.size(); ++associated) {
+                        if (associated != 0) {
+                            out << ", ";
+                        }
+                        out << associated_constraints[associated].name << " = "
+                            << type_label(module, associated_constraints[associated].value_type);
+                    }
+                    out << "]";
+                }
             }
         }
     }

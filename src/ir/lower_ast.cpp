@@ -44,6 +44,9 @@ namespace {
         switch (info.kind) {
             case sema::TypeKind::generic_param:
                 return true;
+            case sema::TypeKind::associated_projection:
+                pending.push_back(info.associated_base);
+                break;
             case sema::TypeKind::pointer:
             case sema::TypeKind::reference:
                 pending.push_back(info.pointee);

@@ -35,6 +35,7 @@ constexpr std::string_view SEMA_TYPE_DISPLAY_FN_RETURN = ") -> ";
 constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_OPEN = "[";
 constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_CLOSE = "]";
 constexpr std::string_view SEMA_TYPE_DISPLAY_GENERIC_ARG_LIST_SEPARATOR = ",";
+constexpr std::string_view SEMA_TYPE_DISPLAY_ASSOCIATED_PROJECTION_SEPARATOR = ".";
 constexpr base::usize SEMA_TYPE_DISPLAY_GENERIC_ARG_SIZE_ESTIMATE = 16;
 constexpr std::size_t SEMA_TYPE_HASH_MULTIPLIER = 1099511628211ULL;
 
@@ -149,7 +150,9 @@ TypeTable::TypeTable()
       tuple_types_(make_sema_map<TupleKey, TypeHandle, TupleKeyHash>(*this->arena_, TupleKeyHash{})),
       function_types_(make_sema_map<FunctionKey, TypeHandle, FunctionKeyHash>(*this->arena_, FunctionKeyHash{})),
       generic_param_types_(make_sema_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>(
-          *this->arena_, GenericParamIdentityHash{}))
+          *this->arena_, GenericParamIdentityHash{})),
+      associated_projection_types_(make_sema_map<AssociatedProjectionKey, TypeHandle, AssociatedProjectionKeyHash>(
+          *this->arena_, AssociatedProjectionKeyHash{}))
 {
     this->initialize_builtins();
 }
@@ -163,7 +166,9 @@ TypeTable::TypeTable(const TypeTable& other)
       tuple_types_(make_sema_map<TupleKey, TypeHandle, TupleKeyHash>(*this->arena_, TupleKeyHash{})),
       function_types_(make_sema_map<FunctionKey, TypeHandle, FunctionKeyHash>(*this->arena_, FunctionKeyHash{})),
       generic_param_types_(make_sema_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>(
-          *this->arena_, GenericParamIdentityHash{}))
+          *this->arena_, GenericParamIdentityHash{})),
+      associated_projection_types_(make_sema_map<AssociatedProjectionKey, TypeHandle, AssociatedProjectionKeyHash>(
+          *this->arena_, AssociatedProjectionKeyHash{}))
 {
     this->copy_from(other);
 }
@@ -183,7 +188,8 @@ TypeTable::TypeTable(TypeTable&& other) noexcept
       reference_types_(std::move(other.reference_types_)), array_types_(std::move(other.array_types_)),
       slice_types_(std::move(other.slice_types_)), tuple_types_(std::move(other.tuple_types_)),
       function_types_(std::move(other.function_types_)), texts_(std::move(other.texts_)),
-      generic_param_types_(std::move(other.generic_param_types_))
+      generic_param_types_(std::move(other.generic_param_types_)),
+      associated_projection_types_(std::move(other.associated_projection_types_))
 {
     this->rebind_interned_texts();
 }
@@ -220,6 +226,7 @@ void TypeTable::swap(TypeTable& other) noexcept
     this->function_types_.swap(other.function_types_);
     swap(this->texts_, other.texts_);
     this->generic_param_types_.swap(other.generic_param_types_);
+    this->associated_projection_types_.swap(other.associated_projection_types_);
     swap(this->arena_, other.arena_);
     this->rebind_interned_texts();
     other.rebind_interned_texts();
@@ -247,10 +254,15 @@ void TypeTable::copy_from(const TypeTable& other)
         this->function_types_.emplace(this->clone_function_key(entry.first), entry.second);
     }
     this->generic_param_types_.clear();
+    this->associated_projection_types_.clear();
     for (base::u32 index = 0; index < this->types_.size(); ++index) {
         const TypeInfo& info = this->types_[index];
         if (info.kind == TypeKind::generic_param && is_valid(info.generic_identity)) {
             this->generic_param_types_.emplace(info.generic_identity, TypeHandle{index});
+        } else if (info.kind == TypeKind::associated_projection) {
+            this->associated_projection_types_.emplace(
+                AssociatedProjectionKey{info.associated_base.value, info.associated_member.global_id},
+                TypeHandle{index});
         }
     }
 }
@@ -336,6 +348,8 @@ TypeInfo TypeTable::clone_type_info(const TypeInfo& other)
     copy.enum_payload_size = other.enum_payload_size;
     copy.enum_payload_align = other.enum_payload_align;
     copy.generic_identity = other.generic_identity;
+    copy.associated_base = other.associated_base;
+    copy.associated_member = other.associated_member;
     copy.name = this->intern_text(other.name);
     copy.c_name = this->intern_text(other.c_name);
     copy.generic_origin_key = this->intern_text(other.generic_origin_key);
@@ -572,6 +586,25 @@ TypeHandle TypeTable::generic_param(const GenericParamIdentity identity, const s
     info.generic_identity = identity;
     const TypeHandle handle = this->push(std::move(info));
     this->generic_param_types_.emplace(identity, handle);
+    return handle;
+}
+
+TypeHandle TypeTable::associated_projection(
+    const TypeHandle base, const query::MemberKey associated_member, const std::string_view associated_name)
+{
+    const AssociatedProjectionKey key{base.value, associated_member.global_id};
+    if (const auto found = this->associated_projection_types_.find(key);
+        found != this->associated_projection_types_.end()) {
+        return found->second;
+    }
+
+    TypeInfo info = this->make_type_info();
+    info.kind = TypeKind::associated_projection;
+    info.associated_base = base;
+    info.associated_member = associated_member;
+    info.name = this->intern_text(associated_name);
+    const TypeHandle handle = this->push(std::move(info));
+    this->associated_projection_types_.emplace(key, handle);
     return handle;
 }
 
@@ -827,6 +860,19 @@ std::string TypeTable::display_name(const TypeHandle type) const
             case TypeKind::generic_param:
                 name += info.name.view();
                 break;
+            case TypeKind::associated_projection:
+                pending.push_back(TypeDisplayTask{
+                    TypeDisplayTaskKind::text,
+                    INVALID_TYPE_HANDLE,
+                    std::string(info.name.view()),
+                });
+                pending.push_back(TypeDisplayTask{
+                    TypeDisplayTaskKind::text,
+                    INVALID_TYPE_HANDLE,
+                    std::string(SEMA_TYPE_DISPLAY_ASSOCIATED_PROJECTION_SEPARATOR),
+                });
+                pending.push_back(TypeDisplayTask{TypeDisplayTaskKind::type, info.associated_base, {}});
+                break;
             default:
                 name.append(SEMA_TYPE_DISPLAY_UNKNOWN_NAME);
                 break;
@@ -924,6 +970,11 @@ std::size_t TypeTable::TupleKeyHash::operator()(const TupleKey& key) const noexc
         hash = (hash * SEMA_TYPE_HASH_MULTIPLIER) ^ static_cast<std::size_t>(element);
     }
     return hash;
+}
+
+std::size_t TypeTable::AssociatedProjectionKeyHash::operator()(const AssociatedProjectionKey& key) const noexcept
+{
+    return static_cast<std::size_t>(key.base) ^ (static_cast<std::size_t>(key.member) * SEMA_TYPE_HASH_MULTIPLIER);
 }
 
 } // namespace aurex::sema

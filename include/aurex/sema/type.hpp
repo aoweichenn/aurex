@@ -1,6 +1,7 @@
 #pragma once
 
 #include <aurex/base/integer.hpp>
+#include <aurex/query/query_key.hpp>
 #include <aurex/sema/identifier.hpp>
 #include <aurex/sema/storage.hpp>
 
@@ -59,6 +60,7 @@ enum class TypeKind {
     enum_,
     opaque_struct,
     generic_param,
+    associated_projection,
 };
 
 enum class PointerMutability {
@@ -91,6 +93,8 @@ struct TypeInfo {
     base::u64 enum_payload_size = 0;
     base::u64 enum_payload_align = 1;
     GenericParamIdentity generic_identity = INVALID_GENERIC_PARAM_IDENTITY;
+    TypeHandle associated_base = INVALID_TYPE_HANDLE;
+    query::MemberKey associated_member;
     InternedText name;
     InternedText c_name;
     InternedText generic_origin_key;
@@ -132,6 +136,8 @@ public:
     [[nodiscard]] TypeHandle opaque_struct(std::string_view name, std::string_view c_name);
     [[nodiscard]] TypeHandle generic_param(std::string_view name);
     [[nodiscard]] TypeHandle generic_param(GenericParamIdentity identity, std::string_view display_name);
+    [[nodiscard]] TypeHandle associated_projection(
+        TypeHandle base, query::MemberKey associated_member, std::string_view associated_name);
 
     void set_record_contains_array(TypeHandle handle, bool contains_array) noexcept;
     void set_enum_underlying(TypeHandle handle, TypeHandle underlying) noexcept;
@@ -219,6 +225,16 @@ private:
         }
     };
 
+    struct AssociatedProjectionKey {
+        base::u32 base = TypeHandle::INVALID_VALUE;
+        base::u64 member = 0;
+
+        [[nodiscard]] bool operator==(const AssociatedProjectionKey& other) const noexcept
+        {
+            return base == other.base && member == other.member;
+        }
+    };
+
     struct PointerKeyHash {
         [[nodiscard]] std::size_t operator()(const PointerKey& key) const noexcept;
     };
@@ -237,6 +253,10 @@ private:
 
     struct TupleKeyHash {
         [[nodiscard]] std::size_t operator()(const TupleKey& key) const noexcept;
+    };
+
+    struct AssociatedProjectionKeyHash {
+        [[nodiscard]] std::size_t operator()(const AssociatedProjectionKey& key) const noexcept;
     };
 
     void initialize_builtins();
@@ -265,6 +285,7 @@ private:
     SemaMap<FunctionKey, TypeHandle, FunctionKeyHash> function_types_;
     IdentifierInterner texts_;
     SemaMap<GenericParamIdentity, TypeHandle, GenericParamIdentityHash> generic_param_types_;
+    SemaMap<AssociatedProjectionKey, TypeHandle, AssociatedProjectionKeyHash> associated_projection_types_;
 };
 
 } // namespace aurex::sema

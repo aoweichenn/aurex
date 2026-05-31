@@ -1,0 +1,9 @@
+module trait_associated_type_generic_unsupported;
+
+trait Source {
+    type Item[T];
+}
+
+fn main() -> i32 {
+    return 0;
+}

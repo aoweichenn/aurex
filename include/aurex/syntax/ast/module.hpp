@@ -353,6 +353,12 @@ private:
         for (GenericConstraintDecl& constraint : constraints) {
             this->intern_identifier_text(constraint.param_name, constraint.param_name_id);
             this->intern_identifier_list(constraint.capability_names, constraint.capability_name_ids);
+            for (std::vector<AssociatedTypeConstraintDecl>& associated_constraints :
+                constraint.capability_associated_constraints) {
+                for (AssociatedTypeConstraintDecl& associated : associated_constraints) {
+                    this->intern_identifier_text(associated.name, associated.name_id);
+                }
+            }
         }
     }
 

@@ -1,11 +1,11 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M4-WP5 static trait method dispatch 已收口；下一步 M4-WP6 associated type model
+阶段：M4-WP6 associated type model 已收口；下一步 M4-WP7 tooling/diagnostics 和 M4-WP8 release closure
 
 ## 总体状态
 
-2026-05-31：M4 trait/protocol 系统已完成 WP1、WP2、WP3、WP4 和 WP5。M4-WP1 完成调研与设计基线，正式选择
+2026-05-31：M4 trait/protocol 系统已完成 WP1、WP2、WP3、WP4、WP5 和 WP6。M4-WP1 完成调研与设计基线，正式选择
 nominal static trait：语言关键字为 `trait`，`protocol` 只作为行为契约的设计术语；conformance 由显式
 `impl Trait for Type` 给出；泛型约束进入 canonical trait predicate / `ParamEnv`；调用默认静态分派，单态化后降低为具体
 impl method direct call。M4-WP2 已把 `trait` / `impl Trait for Type` 的 token、parser、AST payload、AST
@@ -21,8 +21,14 @@ trait impl registry 已增加 canonical coherence fingerprint、orphan rule 和 
 static trait method resolution and lowering：trait impl method 不进入普通 inherent method lookup；inherent method
 继续优先；generic body trait call 通过当前 `ParamEnv` 绑定为 `param_env` `TraitMethodCallBinding`；concrete
 receiver 通过 visible trait + impl registry 绑定为唯一 `impl` direct call；单态化后 LLVM IR 直接调用具体 impl method。
+M4-WP6 已完成第一版 associated type model：trait body 支持 `type Item;`，trait impl body 支持
+`type Item = Type;`，`Self.Item` 和 generic projection 降低为 canonical associated-projection type，
+`Trait[Item = Type]` where predicate 降低为 trait predicate + associated type equality fact，impl method
+requirement matching 会用 impl 给出的 associated type output 做替换，generic method call 可以通过 equality
+predicate 归一化，并且 sema 已覆盖重复/缺失/未知 associated type、builtin equality constraint、缺 bound、shorthand
+projection 歧义、projection cycle 和 equality unsatisfied 诊断。
 
-M4-WP3/WP4/WP5 的测试已落到常规仓库测试，而不是临时目录：`tests/gtest/sema/trait_tests.cpp` 覆盖白盒 checked facts、dump
+M4-WP3/WP4/WP5/WP6 的测试已落到常规仓库测试，而不是临时目录：`tests/gtest/sema/trait_tests.cpp` 覆盖白盒 checked facts、dump
 和正负样例，`tests/samples/positive/traits/trait_impl_registry.ax` 覆盖正样例，`tests/samples/negative/traits/*.ax`
 覆盖诊断路径，`tests/samples/positive/traits/trait_predicate_where_generic.ax`、
 `tests/samples/negative/traits/trait_predicate_unsatisfied_generic_arg.ax` 和
@@ -38,14 +44,19 @@ trait missing diagnostic 抢占，
 `tests/samples/negative/traits/trait_method_associated_missing_impl.ax`、
 `tests/samples/negative/traits/trait_method_missing_bound.ax` 和
 `tests/samples/negative/traits/trait_method_missing_impl.ax` 覆盖 WP5 负向诊断，`tests/samples/imports/samplelib/traits.ax`
-覆盖跨模块可见性。完整设计见
+覆盖跨模块可见性；`tests/samples/positive/traits/trait_associated_type_basic.ax` 和
+`tests/samples/positive/traits/trait_associated_type_where_equality.ax` 覆盖 WP6 projection、impl output
+substitution、equality predicate 和 runtime lowering；`trait_associated_type_*.ax` 负样例覆盖 ambiguity、duplicate
+equality、builtin equality、trait/impl associated item 重复、impl output 缺失、未知 impl/equality 名称、GAT
+拒绝、缺 bound、projection cycle、签名不匹配和 equality unsatisfied。完整设计见
 [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)，阶段路线见
-[M4 Trait / Protocol 系统路线图](m4-roadmap.md)。下一步是 M4-WP6：Associated Type Model。
+[M4 Trait / Protocol 系统路线图](m4-roadmap.md)。下一步是 M4-WP7：tooling/diagnostic projection，然后进入
+M4-WP8 release closure。
 
-当前仍未把 WP5 误扩成完整 trait 系统：associated types、dynamic trait object 和 RAII/resource semantics
-仍分别由 WP6 或后续资源设计承接。WP4/WP5 的 `where` grammar 仍只支持单个 identifier predicate 名称；
-qualified where predicate、generic trait predicate arguments 和 associated type constraints 后续再进入
-solver/associated type 阶段。
+当前仍未把 M4 误扩成完整 dynamic trait 系统：dynamic trait object、vtable ABI/object safety、associated
+constant、specialization、generic associated type 和 RAII/resource semantics 仍由后续独立设计承接。WP6 的
+`where` grammar 已支持 identifier trait predicate 上的 associated-type equality，但 qualified where predicate
+和 generic trait predicate arguments 仍留给后续 solver 阶段。
 
 当前仓库已经从 M2 language-core-no-std 基线进入 M2.5 frontend-foundation 阶段。M2 的目标不是继续修补 M1，而是重新收口语言核心：冻结并删除标准库和 M1 系统样例，把注意力放回基础语法、类型系统、模式匹配、`unsafe` 边界、IR 和 LLVM 后端。M2.5 建立在这条已收口主线之上，开始处理 query 化、lossless syntax 和 IDE-native 前端所需的结构化地基。
 

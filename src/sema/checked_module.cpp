@@ -813,10 +813,16 @@ TraitMethodRequirement CheckedModule::make_trait_method_requirement() const
     return requirement;
 }
 
+TraitAssociatedTypeRequirement CheckedModule::make_trait_associated_type_requirement() const
+{
+    return {};
+}
+
 TraitSignature CheckedModule::make_trait_signature() const
 {
     TraitSignature signature;
     signature.generic_params = make_sema_vector<IdentId>(*this->arena_);
+    signature.associated_types = make_sema_vector<TraitAssociatedTypeRequirement>(*this->arena_);
     signature.requirements = make_sema_vector<TraitMethodRequirement>(*this->arena_);
     return signature;
 }
@@ -826,10 +832,16 @@ TraitImplMethodInfo CheckedModule::make_trait_impl_method_info() const
     return {};
 }
 
+TraitImplAssociatedTypeInfo CheckedModule::make_trait_impl_associated_type_info() const
+{
+    return {};
+}
+
 TraitImplInfo CheckedModule::make_trait_impl_info() const
 {
     TraitImplInfo info;
     info.trait_args = this->make_type_handle_list();
+    info.associated_types = make_sema_vector<TraitImplAssociatedTypeInfo>(*this->arena_);
     info.methods = make_sema_vector<TraitImplMethodInfo>(*this->arena_);
     return info;
 }
@@ -838,6 +850,7 @@ TraitPredicate CheckedModule::make_trait_predicate() const
 {
     TraitPredicate predicate;
     predicate.trait_args = this->make_type_handle_list();
+    predicate.associated_type_equalities = make_sema_vector<TraitImplAssociatedTypeInfo>(*this->arena_);
     return predicate;
 }
 
@@ -987,6 +1000,22 @@ TraitMethodRequirement CheckedModule::clone_trait_method_requirement(const Trait
     return copy;
 }
 
+TraitAssociatedTypeRequirement CheckedModule::clone_trait_associated_type_requirement(
+    const TraitAssociatedTypeRequirement& other)
+{
+    TraitAssociatedTypeRequirement copy = this->make_trait_associated_type_requirement();
+    copy.name = this->intern_text(other.name);
+    copy.name_id = other.name_id;
+    copy.module = other.module;
+    copy.item = other.item;
+    copy.range = other.range;
+    copy.visibility = other.visibility;
+    copy.stable_key = other.stable_key;
+    copy.member_key = other.member_key;
+    copy.ordinal = other.ordinal;
+    return copy;
+}
+
 TraitSignature CheckedModule::clone_trait_signature(const TraitSignature& other)
 {
     TraitSignature copy = this->make_trait_signature();
@@ -999,12 +1028,30 @@ TraitSignature CheckedModule::clone_trait_signature(const TraitSignature& other)
     copy.incremental_key = other.incremental_key;
     copy.generic_params.reserve(other.generic_params.size());
     copy.generic_params.insert(copy.generic_params.end(), other.generic_params.begin(), other.generic_params.end());
+    copy.associated_types.reserve(other.associated_types.size());
+    for (const TraitAssociatedTypeRequirement& associated_type : other.associated_types) {
+        copy.associated_types.push_back(this->clone_trait_associated_type_requirement(associated_type));
+    }
     copy.requirements.reserve(other.requirements.size());
     for (const TraitMethodRequirement& requirement : other.requirements) {
         copy.requirements.push_back(this->clone_trait_method_requirement(requirement));
     }
     copy.range = other.range;
     copy.part_index = other.part_index;
+    return copy;
+}
+
+TraitImplAssociatedTypeInfo CheckedModule::clone_trait_impl_associated_type_info(
+    const TraitImplAssociatedTypeInfo& other)
+{
+    TraitImplAssociatedTypeInfo copy = this->make_trait_impl_associated_type_info();
+    copy.name = this->intern_text(other.name);
+    copy.name_id = other.name_id;
+    copy.item = other.item;
+    copy.syntax_type = other.syntax_type;
+    copy.value_type = other.value_type;
+    copy.member_key = other.member_key;
+    copy.requirement_ordinal = other.requirement_ordinal;
     return copy;
 }
 
@@ -1035,6 +1082,10 @@ TraitImplInfo CheckedModule::clone_trait_impl_info(const TraitImplInfo& other)
     copy.visibility = other.visibility;
     copy.stable_id = other.stable_id;
     copy.incremental_key = other.incremental_key;
+    copy.associated_types.reserve(other.associated_types.size());
+    for (const TraitImplAssociatedTypeInfo& associated_type : other.associated_types) {
+        copy.associated_types.push_back(this->clone_trait_impl_associated_type_info(associated_type));
+    }
     copy.methods.reserve(other.methods.size());
     for (const TraitImplMethodInfo& method : other.methods) {
         copy.methods.push_back(this->clone_trait_impl_method_info(method));
@@ -1060,6 +1111,10 @@ TraitPredicate CheckedModule::clone_trait_predicate(const TraitPredicate& other)
     copy.trait_module = other.trait_module;
     copy.trait_stable_id = other.trait_stable_id;
     copy.trait_args = this->copy_type_handle_list(other.trait_args);
+    copy.associated_type_equalities.reserve(other.associated_type_equalities.size());
+    for (const TraitImplAssociatedTypeInfo& equality : other.associated_type_equalities) {
+        copy.associated_type_equalities.push_back(this->clone_trait_impl_associated_type_info(equality));
+    }
     copy.canonical_fingerprint = other.canonical_fingerprint;
     copy.module = other.module;
     copy.item = other.item;
@@ -1238,6 +1293,9 @@ void rebind_trait_signature_texts(
     TraitSignature& signature, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
 {
     rebind_interned_text(signature.name, from, to);
+    for (TraitAssociatedTypeRequirement& associated_type : signature.associated_types) {
+        rebind_interned_text(associated_type.name, from, to);
+    }
     for (TraitMethodRequirement& requirement : signature.requirements) {
         rebind_interned_text(requirement.name, from, to);
     }
@@ -1247,6 +1305,9 @@ void rebind_trait_impl_info_texts(
     TraitImplInfo& info, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
 {
     rebind_interned_text(info.trait_name, from, to);
+    for (TraitImplAssociatedTypeInfo& associated_type : info.associated_types) {
+        rebind_interned_text(associated_type.name, from, to);
+    }
     for (TraitImplMethodInfo& method : info.methods) {
         rebind_interned_text(method.name, from, to);
     }
@@ -1256,6 +1317,9 @@ void rebind_trait_predicate_texts(
     TraitPredicate& predicate, const IdentifierInterner* const from, const IdentifierInterner& to) noexcept
 {
     rebind_interned_text(predicate.trait_name, from, to);
+    for (TraitImplAssociatedTypeInfo& equality : predicate.associated_type_equalities) {
+        rebind_interned_text(equality.name, from, to);
+    }
 }
 
 void rebind_param_env_info_texts(
@@ -1590,9 +1654,12 @@ std::string dump_checked_module(const CheckedModule& checked)
             out << syntax::visibility_name(trait.visibility) << " ";
         }
         out << trait_signature_display_name(checked, trait) << " params=" << trait.generic_params.size()
-            << " requirements=" << trait.requirements.size();
+            << " associated_types=" << trait.associated_types.size() << " requirements=" << trait.requirements.size();
         append_part_origin(out, show_parts, trait.part_index);
         out << "\n";
+        for (const TraitAssociatedTypeRequirement& associated_type : trait.associated_types) {
+            out << "      assoc_type " << associated_type.name << "\n";
+        }
         for (const TraitMethodRequirement& requirement : trait.requirements) {
             out << "      requirement ";
             if (requirement.is_unsafe) {
@@ -1625,9 +1692,15 @@ std::string dump_checked_module(const CheckedModule& checked)
     for (const TraitImplInfo* const info_ptr : trait_impl_names) {
         const TraitImplInfo& info = *info_ptr;
         out << "    impl " << trait_impl_display_name(checked, info) << " for "
-            << checked.types.display_name(info.self_type) << " methods=" << info.methods.size();
+            << checked.types.display_name(info.self_type) << " associated_types=" << info.associated_types.size()
+            << " methods=" << info.methods.size();
         append_part_origin(out, show_parts, info.part_index);
         out << "\n";
+        for (const TraitImplAssociatedTypeInfo& associated_type : info.associated_types) {
+            out << "      assoc_type " << associated_type.name << " = "
+                << checked.types.display_name(associated_type.value_type)
+                << " requirement=" << associated_type.requirement_ordinal << "\n";
+        }
         for (const TraitImplMethodInfo& method : info.methods) {
             out << "      method " << method.name << " requirement=" << method.requirement_ordinal << "\n";
         }
@@ -1658,6 +1731,10 @@ std::string dump_checked_module(const CheckedModule& checked)
             << " origin=" << trait_predicate_origin_name(predicate.origin);
         append_part_origin(out, show_parts, predicate.part_index);
         out << "\n";
+        for (const TraitImplAssociatedTypeInfo& equality : predicate.associated_type_equalities) {
+            out << "      assoc_eq " << equality.name << " = " << checked.types.display_name(equality.value_type)
+                << "\n";
+        }
     }
 
     out << "  trait_obligations " << checked.trait_obligations.size() << "\n";

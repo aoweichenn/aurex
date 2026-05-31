@@ -47,9 +47,15 @@ private:
     [[nodiscard]] std::vector<syntax::GenericConstraintDecl> parse_optional_where_constraints();
     [[nodiscard]] std::optional<syntax::GenericConstraintDecl> parse_where_constraint();
     void parse_where_capabilities(syntax::GenericConstraintDecl& constraint);
+    [[nodiscard]] std::vector<syntax::AssociatedTypeConstraintDecl> parse_associated_type_constraints();
+    [[nodiscard]] std::optional<syntax::AssociatedTypeConstraintDecl> parse_associated_type_constraint();
+    [[nodiscard]] bool recover_associated_type_constraint_separator() const;
     [[nodiscard]] bool recover_where_constraint_separator() const;
     [[nodiscard]] syntax::ItemId parse_const_decl();
     [[nodiscard]] syntax::ItemId parse_type_alias_decl();
+    [[nodiscard]] syntax::ItemId parse_trait_associated_type_decl(ParsedVisibility visibility);
+    [[nodiscard]] syntax::ItemId parse_impl_associated_type_decl(
+        ParsedVisibility visibility, syntax::TypeId impl_type, syntax::TypeId trait_type);
     [[nodiscard]] syntax::ItemId parse_struct_decl();
     [[nodiscard]] std::optional<syntax::FieldDecl> parse_struct_field_decl();
     [[nodiscard]] bool recover_struct_field_decl_separator() const;

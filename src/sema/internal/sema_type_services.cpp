@@ -458,6 +458,19 @@ TypeHandle SemanticTypeResolver::resolve_named_type(
     const syntax::TypeId type_id, const syntax::TypeNode& type, const bool opaque_allowed_as_pointee)
 {
     const std::vector<std::string_view> scope_parts = this->core_.type_scope_parts(type);
+    if (scope_parts.size() == 1 && this->core_.state_.flow.current_generic_context != nullptr) {
+        const IdentId scope_name_id = type.scope_part_ids.empty()
+            ? this->core_.ctx_.module.find_identifier(scope_parts.front())
+            : type.scope_part_ids.front();
+        if (const auto found = this->core_.state_.flow.current_generic_context->params.find(scope_name_id);
+            found != this->core_.state_.flow.current_generic_context->params.end()) {
+            if (!type.type_args.empty()) {
+                this->core_.report_type(type.range, sema_generic_param_type_args_message(scope_parts.front()));
+                return INVALID_TYPE_HANDLE;
+            }
+            return this->core_.resolve_associated_type_projection(found->second, type.name_id, type.name, type.range);
+        }
+    }
     const bool qualified = !scope_parts.empty();
     syntax::ModuleId scope_module = syntax::INVALID_MODULE_ID;
     if (qualified) {
@@ -583,7 +596,7 @@ bool SemanticTypeValidator::is_valid_storage_type(const TypeHandle type) const
             return false;
         }
         const TypeInfo& info = this->core_.state_.checked.types.get(current);
-        if (info.kind == TypeKind::generic_param) {
+        if (info.kind == TypeKind::generic_param || info.kind == TypeKind::associated_projection) {
             return true;
         }
         if (this->core_.state_.checked.types.is_void(current) || info.kind == TypeKind::opaque_struct) {
@@ -772,8 +785,8 @@ void SemanticAbiChecker::validate_type_layouts() const
         }
         const TypeInfo& info = this->core_.state_.checked.types.get(type);
         if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::reference
-            || info.kind == TypeKind::slice || info.kind == TypeKind::function
-            || info.kind == TypeKind::generic_param) {
+            || info.kind == TypeKind::slice || info.kind == TypeKind::function || info.kind == TypeKind::generic_param
+            || info.kind == TypeKind::associated_projection) {
             return primitive_layout(type);
         }
         if (info.kind == TypeKind::opaque_struct) {
@@ -931,6 +944,7 @@ void SemanticAbiChecker::validate_type_layouts() const
         if (dependency_info.kind == TypeKind::builtin || dependency_info.kind == TypeKind::pointer
             || dependency_info.kind == TypeKind::reference || dependency_info.kind == TypeKind::slice
             || dependency_info.kind == TypeKind::function || dependency_info.kind == TypeKind::generic_param
+            || dependency_info.kind == TypeKind::associated_projection
             || dependency_info.kind == TypeKind::opaque_struct || results.contains(dependency.value)) {
             return;
         }
@@ -986,8 +1000,8 @@ void SemanticAbiChecker::validate_type_layouts() const
         }
         const TypeInfo& info = this->core_.state_.checked.types.get(type);
         if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::reference
-            || info.kind == TypeKind::slice || info.kind == TypeKind::function
-            || info.kind == TypeKind::generic_param) {
+            || info.kind == TypeKind::slice || info.kind == TypeKind::function || info.kind == TypeKind::generic_param
+            || info.kind == TypeKind::associated_projection) {
             return primitive_layout(type);
         }
         if (info.kind == TypeKind::opaque_struct) {
@@ -1150,6 +1164,7 @@ SemanticAnalyzerCore::TypeAbiLayout SemanticAbiChecker::abi_layout(const TypeHan
             }
             case TypeKind::opaque_struct:
             case TypeKind::generic_param:
+            case TypeKind::associated_projection:
                 return SemanticAnalyzerCore::TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
         }
         return SemanticAnalyzerCore::TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
@@ -1165,7 +1180,8 @@ SemanticAnalyzerCore::TypeAbiLayout SemanticAbiChecker::abi_layout(const TypeHan
             const TypeInfo& info = this->core_.state_.checked.types.get(dependency);
             if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::reference
                 || info.kind == TypeKind::slice || info.kind == TypeKind::function
-                || info.kind == TypeKind::generic_param || info.kind == TypeKind::opaque_struct) {
+                || info.kind == TypeKind::generic_param || info.kind == TypeKind::associated_projection
+                || info.kind == TypeKind::opaque_struct) {
                 stack.push_back(TypeLayoutFrame{dependency, {}, TypeLayoutFrameStage::enter});
                 return;
             }
@@ -1209,6 +1225,7 @@ SemanticAnalyzerCore::TypeAbiLayout SemanticAbiChecker::abi_layout(const TypeHan
             case TypeKind::function:
             case TypeKind::generic_param:
             case TypeKind::opaque_struct:
+            case TypeKind::associated_projection:
                 break;
         }
     };
@@ -1236,7 +1253,7 @@ SemanticAnalyzerCore::TypeAbiLayout SemanticAbiChecker::abi_layout(const TypeHan
         }
         if (info.kind == TypeKind::builtin || info.kind == TypeKind::pointer || info.kind == TypeKind::reference
             || info.kind == TypeKind::slice || info.kind == TypeKind::function || info.kind == TypeKind::generic_param
-            || info.kind == TypeKind::opaque_struct) {
+            || info.kind == TypeKind::associated_projection || info.kind == TypeKind::opaque_struct) {
             layouts[frame.type.value] = finish_type(frame.type, layouts);
             states[frame.type.value] = TypeLayoutVisitState::done;
             continue;

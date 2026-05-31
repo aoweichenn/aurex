@@ -1,0 +1,17 @@
+module trait_associated_type_ambiguous_projection;
+
+trait SourceA {
+    type Item;
+}
+
+trait SourceB {
+    type Item;
+}
+
+fn use_item[T](value: T) -> T.Item where T: SourceA + SourceB {
+    return value;
+}
+
+fn main() -> i32 {
+    return 0;
+}

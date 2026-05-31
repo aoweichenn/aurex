@@ -207,7 +207,8 @@ inheritance、closure、async/generator、derive、macro 或 package manager 混
 
 ## 当前下一步
 
-M4-WP1、WP2、WP3、WP4 和 WP5 已完成。当前下一步是 M4-WP6：Associated Type Model。
+M4-WP1、WP2、WP3、WP4、WP5 和 WP6 已完成。当前下一步是 M4-WP7：Tooling And Diagnostics，随后进入
+M4-WP8 release closure。
 
 WP4 已在 WP3 registry 之上补齐正式 `TraitPredicate` / `TraitObligation` / `TraitEvidence` / `ParamEnv`
 边界，把 `where T: TraitA + TraitB` 降低为 predicate，并实现第一版 orphan / overlap / candidate rejection
@@ -218,6 +219,12 @@ WP5 已把 trait method resolution 和 lowering 收口：generic body 中的 tra
 绑定为 `param_env` call fact，concrete receiver 会通过 visible trait + impl registry 绑定为 `impl` direct call；
 inherent method 继续优先，trait impl method 不污染普通 method lookup；单态化后 LLVM IR 直接调用具体 impl method。
 
-WP6 的核心是 associated type model：在不重新打开 WP5 静态分派边界的前提下，设计 trait associated type
-declaration、impl associated type assignment、`Self.Item` / generic projection 的 canonical type，以及
-`Trait[Item = Type]` equality predicate。dynamic trait object 和 RAII/resource semantics 仍由后续独立设计承接。
+WP6 已在不重新打开 WP5 静态分派边界的前提下收口第一版 associated type model：trait declaration 支持
+associated type requirement，trait impl 支持 associated type assignment，`Self.Item` / generic projection
+降低为 canonical associated-projection type，`Trait[Item = Type]` 会给 trait predicate 增加 equality fact，
+impl method matching 会替换 impl 给出的 associated type output；sema 已诊断 ambiguity、projection cycle、缺
+bound、缺失/未知/重复 associated type、builtin equality 误用、签名不匹配和 equality unsatisfied。
+
+WP7 应把这些 trait 和 associated-type fact 暴露给 IDE/tooling 和 diagnostics：completion、hover、definition、
+semantic token、rename identity，以及 candidate/rejection notes 都应该消费稳定 compiler fact，而不是直接读取 sema
+内部结构。dynamic trait object 和 RAII/resource semantics 仍由后续独立设计承接。

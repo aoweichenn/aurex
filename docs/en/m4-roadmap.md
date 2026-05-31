@@ -272,8 +272,8 @@ Deliverables:
 
 ## Current Next Step
 
-M4-WP1, WP2, WP3, WP4, and WP5 are complete. The current next step is M4-WP6:
-Associated Type Model.
+M4-WP1, WP2, WP3, WP4, WP5, and WP6 are complete. The current next step is
+M4-WP7: Tooling And Diagnostics, followed by M4-WP8 release closure.
 
 WP4 has built on the WP3 registry by adding formal `TraitPredicate`,
 `TraitObligation`, `TraitEvidence`, and `ParamEnv` boundaries, lowering
@@ -289,8 +289,17 @@ direct calls, inherent methods still win first, trait impl methods do not
 pollute ordinary method lookup, and LLVM IR directly calls the concrete impl
 method after monomorphization.
 
-WP6 is about the associated type model: without reopening WP5's static dispatch
-boundary, it must design trait associated type declarations, impl associated
-type assignments, canonical types for `Self.Item` / generic projections, and
-`Trait[Item = Type]` equality predicates. Dynamic trait objects and RAII /
-resource semantics remain separate future designs.
+WP6 has closed the first associated type model without reopening WP5's static
+dispatch boundary: trait declarations support associated type requirements,
+trait impls provide associated type assignments, `Self.Item` / generic
+projections lower to canonical associated-projection types, `Trait[Item = Type]`
+adds equality facts to trait predicates, impl method matching substitutes impl
+associated type outputs, and sema diagnoses ambiguity, projection cycles,
+missing bounds, missing/unknown/duplicate associated types, built-in equality
+misuse, signature mismatches, and unsatisfied equality predicates.
+
+WP7 should expose those trait and associated-type facts through IDE/tooling and
+diagnostics: completion, hover, definition, semantic tokens, rename identity,
+and candidate/rejection notes must consume stable compiler facts rather than
+raw sema internals. Dynamic trait objects and RAII / resource semantics remain
+separate future designs.

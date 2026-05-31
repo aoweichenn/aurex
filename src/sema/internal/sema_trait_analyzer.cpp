@@ -30,6 +30,7 @@ enum class TraitTypeSubstitutionActionKind {
     build_slice,
     build_tuple,
     build_function,
+    build_associated_projection,
 };
 
 struct TraitTypeSubstitutionAction {
@@ -41,12 +42,70 @@ struct TraitTypeSubstitutionAction {
     FunctionCallConv call_conv = FunctionCallConv::aurex;
     bool is_unsafe = false;
     bool is_variadic = false;
+    query::MemberKey associated_member;
+    InternedText associated_name;
 };
 
-[[nodiscard]] TypeHandle substitute_trait_type_iterative(TypeTable& types, const TypeHandle root,
-    const std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>& substitutions)
+[[nodiscard]] TraitTypeSubstitutionAction trait_substitution_visit(const TypeHandle type) noexcept
 {
-    if (!is_valid(root) || substitutions.empty()) {
+    TraitTypeSubstitutionAction action;
+    action.kind = TraitTypeSubstitutionActionKind::visit;
+    action.type = type;
+    return action;
+}
+
+[[nodiscard]] TraitTypeSubstitutionAction trait_substitution_unary(
+    const TraitTypeSubstitutionActionKind kind, const PointerMutability mutability) noexcept
+{
+    TraitTypeSubstitutionAction action;
+    action.kind = kind;
+    action.mutability = mutability;
+    return action;
+}
+
+[[nodiscard]] TraitTypeSubstitutionAction trait_substitution_array(const base::u64 count) noexcept
+{
+    TraitTypeSubstitutionAction action;
+    action.kind = TraitTypeSubstitutionActionKind::build_array;
+    action.array_count = count;
+    return action;
+}
+
+[[nodiscard]] TraitTypeSubstitutionAction trait_substitution_tuple(const base::usize child_count) noexcept
+{
+    TraitTypeSubstitutionAction action;
+    action.kind = TraitTypeSubstitutionActionKind::build_tuple;
+    action.child_count = child_count;
+    return action;
+}
+
+[[nodiscard]] TraitTypeSubstitutionAction trait_substitution_function(const base::usize child_count,
+    const FunctionCallConv call_conv, const bool is_unsafe, const bool is_variadic) noexcept
+{
+    TraitTypeSubstitutionAction action;
+    action.kind = TraitTypeSubstitutionActionKind::build_function;
+    action.child_count = child_count;
+    action.call_conv = call_conv;
+    action.is_unsafe = is_unsafe;
+    action.is_variadic = is_variadic;
+    return action;
+}
+
+[[nodiscard]] TraitTypeSubstitutionAction trait_substitution_associated_projection(
+    const query::MemberKey member, const InternedText name) noexcept
+{
+    TraitTypeSubstitutionAction action;
+    action.kind = TraitTypeSubstitutionActionKind::build_associated_projection;
+    action.associated_member = member;
+    action.associated_name = name;
+    return action;
+}
+
+[[nodiscard]] TypeHandle substitute_trait_type_iterative(TypeTable& types, const TypeHandle root,
+    const std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash>& substitutions,
+    const std::span<const TraitImplAssociatedTypeInfo> associated_types)
+{
+    if (!is_valid(root) || (substitutions.empty() && associated_types.empty())) {
         return root;
     }
 
@@ -54,7 +113,7 @@ struct TraitTypeSubstitutionAction {
     std::vector<TypeHandle> values;
     actions.reserve(SEMA_TRAIT_SUBSTITUTION_STACK_INITIAL_CAPACITY);
     values.reserve(SEMA_TRAIT_SUBSTITUTION_STACK_INITIAL_CAPACITY);
-    actions.push_back(TraitTypeSubstitutionAction{TraitTypeSubstitutionActionKind::visit, root});
+    actions.push_back(trait_substitution_visit(root));
 
     while (!actions.empty()) {
         const TraitTypeSubstitutionAction action = actions.back();
@@ -107,6 +166,18 @@ struct TraitTypeSubstitutionAction {
                     types.function(action.call_conv, action.is_unsafe, action.is_variadic, params, return_type));
                 continue;
             }
+            case TraitTypeSubstitutionActionKind::build_associated_projection: {
+                const TypeHandle base = values.back();
+                values.pop_back();
+                const auto found =
+                    std::ranges::find_if(associated_types, [&](const TraitImplAssociatedTypeInfo& associated_type) {
+                        return associated_type.member_key == action.associated_member;
+                    });
+                values.push_back(found == associated_types.end()
+                        ? types.associated_projection(base, action.associated_member, action.associated_name)
+                        : found->value_type);
+                continue;
+            }
         }
 
         if (!is_valid(action.type) || action.type.value >= types.size()) {
@@ -121,70 +192,41 @@ struct TraitTypeSubstitutionAction {
                 break;
             }
             case TypeKind::pointer:
-                actions.push_back(TraitTypeSubstitutionAction{
-                    TraitTypeSubstitutionActionKind::build_pointer,
-                    INVALID_TYPE_HANDLE,
-                    info.pointer_mutability,
-                });
-                actions.push_back(TraitTypeSubstitutionAction{TraitTypeSubstitutionActionKind::visit, info.pointee});
+                actions.push_back(
+                    trait_substitution_unary(TraitTypeSubstitutionActionKind::build_pointer, info.pointer_mutability));
+                actions.push_back(trait_substitution_visit(info.pointee));
                 break;
             case TypeKind::reference:
-                actions.push_back(TraitTypeSubstitutionAction{
-                    TraitTypeSubstitutionActionKind::build_reference,
-                    INVALID_TYPE_HANDLE,
-                    info.pointer_mutability,
-                });
-                actions.push_back(TraitTypeSubstitutionAction{TraitTypeSubstitutionActionKind::visit, info.pointee});
+                actions.push_back(trait_substitution_unary(
+                    TraitTypeSubstitutionActionKind::build_reference, info.pointer_mutability));
+                actions.push_back(trait_substitution_visit(info.pointee));
                 break;
             case TypeKind::array:
-                actions.push_back(TraitTypeSubstitutionAction{
-                    TraitTypeSubstitutionActionKind::build_array,
-                    INVALID_TYPE_HANDLE,
-                    PointerMutability::const_,
-                    info.array_count,
-                });
-                actions.push_back(
-                    TraitTypeSubstitutionAction{TraitTypeSubstitutionActionKind::visit, info.array_element});
+                actions.push_back(trait_substitution_array(info.array_count));
+                actions.push_back(trait_substitution_visit(info.array_element));
                 break;
             case TypeKind::slice:
-                actions.push_back(TraitTypeSubstitutionAction{
-                    TraitTypeSubstitutionActionKind::build_slice,
-                    INVALID_TYPE_HANDLE,
-                    info.slice_mutability,
-                });
                 actions.push_back(
-                    TraitTypeSubstitutionAction{TraitTypeSubstitutionActionKind::visit, info.slice_element});
+                    trait_substitution_unary(TraitTypeSubstitutionActionKind::build_slice, info.slice_mutability));
+                actions.push_back(trait_substitution_visit(info.slice_element));
                 break;
             case TypeKind::tuple:
-                actions.push_back(TraitTypeSubstitutionAction{
-                    TraitTypeSubstitutionActionKind::build_tuple,
-                    INVALID_TYPE_HANDLE,
-                    PointerMutability::const_,
-                    0,
-                    info.tuple_elements.size(),
-                });
+                actions.push_back(trait_substitution_tuple(info.tuple_elements.size()));
                 for (base::usize index = info.tuple_elements.size(); index > 0; --index) {
-                    actions.push_back(TraitTypeSubstitutionAction{
-                        TraitTypeSubstitutionActionKind::visit, info.tuple_elements[index - 1]});
+                    actions.push_back(trait_substitution_visit(info.tuple_elements[index - 1]));
                 }
                 break;
             case TypeKind::function:
-                actions.push_back(TraitTypeSubstitutionAction{
-                    TraitTypeSubstitutionActionKind::build_function,
-                    INVALID_TYPE_HANDLE,
-                    PointerMutability::const_,
-                    0,
-                    info.function_params.size(),
-                    info.function_call_conv,
-                    info.function_is_unsafe,
-                    info.function_is_variadic,
-                });
-                actions.push_back(
-                    TraitTypeSubstitutionAction{TraitTypeSubstitutionActionKind::visit, info.function_return});
+                actions.push_back(trait_substitution_function(info.function_params.size(), info.function_call_conv,
+                    info.function_is_unsafe, info.function_is_variadic));
+                actions.push_back(trait_substitution_visit(info.function_return));
                 for (base::usize index = info.function_params.size(); index > 0; --index) {
-                    actions.push_back(TraitTypeSubstitutionAction{
-                        TraitTypeSubstitutionActionKind::visit, info.function_params[index - 1]});
+                    actions.push_back(trait_substitution_visit(info.function_params[index - 1]));
                 }
+                break;
+            case TypeKind::associated_projection:
+                actions.push_back(trait_substitution_associated_projection(info.associated_member, info.name));
+                actions.push_back(trait_substitution_visit(info.associated_base));
                 break;
             case TypeKind::builtin:
             case TypeKind::struct_:
@@ -312,6 +354,30 @@ void SemanticAnalyzerCore::TraitAnalyzer::register_trait_name(
     for (const syntax::GenericParamDecl& param : item.generic_params) {
         signature.generic_params.push_back(param.name_id);
     }
+    signature.associated_types.reserve(item.trait_items.size());
+    for (base::u32 ordinal = 0; ordinal < item.trait_items.size(); ++ordinal) {
+        const syntax::ItemId requirement_id = item.trait_items[ordinal];
+        if (!syntax::is_valid(requirement_id) || requirement_id.value >= this->core_.ctx_.module.items.size()) {
+            continue;
+        }
+        const syntax::ItemNode requirement = this->core_.ctx_.module.items[requirement_id.value];
+        if (requirement.kind != syntax::ItemKind::type_alias) {
+            continue;
+        }
+        TraitAssociatedTypeRequirement associated_type =
+            this->core_.state_.checked.make_trait_associated_type_requirement();
+        associated_type.name = this->core_.source_name_text(requirement.name_id, requirement.name);
+        associated_type.name_id = requirement.name_id;
+        associated_type.module = owner;
+        associated_type.item = requirement_id;
+        associated_type.range = requirement.range;
+        associated_type.visibility = requirement.visibility;
+        associated_type.stable_key = this->core_.stable_member_key(
+            signature.stable_id, StableSymbolKind::type, requirement.name_id, requirement.name, ordinal);
+        associated_type.member_key = this->trait_associated_type_member_key(signature, associated_type.name, ordinal);
+        associated_type.ordinal = ordinal;
+        signature.associated_types.push_back(associated_type);
+    }
     signature.range = item.range;
     signature.part_index = this->core_.item_part_index(item_id);
 
@@ -343,6 +409,41 @@ SemanticAnalyzerCore::GenericContext SemanticAnalyzerCore::TraitAnalyzer::make_t
     return context;
 }
 
+query::DefKey SemanticAnalyzerCore::TraitAnalyzer::trait_query_key(const TraitSignature& trait) const noexcept
+{
+    return query::def_key_from_stable_id(this->core_.query_package_key(trait.module), trait.stable_id,
+        query::DefNamespace::trait_, query::DefKind::trait_);
+}
+
+query::MemberKey SemanticAnalyzerCore::TraitAnalyzer::trait_associated_type_member_key(
+    const TraitSignature& trait, const std::string_view name, const base::u32 ordinal) const noexcept
+{
+    return query::member_key(this->trait_query_key(trait), query::MemberKind::associated_type, name, ordinal);
+}
+
+const TraitAssociatedTypeRequirement* SemanticAnalyzerCore::TraitAnalyzer::find_trait_associated_type_requirement(
+    const TraitSignature& trait, const IdentId name_id) const
+{
+    for (const TraitAssociatedTypeRequirement& associated_type : trait.associated_types) {
+        if (associated_type.name_id == name_id) {
+            return &associated_type;
+        }
+    }
+    return nullptr;
+}
+
+const TraitAssociatedTypeRequirement*
+SemanticAnalyzerCore::TraitAnalyzer::find_current_trait_associated_type_requirement(const IdentId name_id) const
+{
+    for (const auto& entry : this->core_.state_.checked.traits) {
+        const TraitSignature& trait = entry.second;
+        if (trait.item.value == this->core_.state_.flow.current_item.value) {
+            return this->find_trait_associated_type_requirement(trait, name_id);
+        }
+    }
+    return nullptr;
+}
+
 void SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_signature(TraitSignature& signature)
 {
     if (!syntax::is_valid(signature.item) || signature.item.value >= this->core_.ctx_.module.items.size()) {
@@ -353,8 +454,31 @@ void SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_signature(TraitSignature
     GenericContext context = this->make_trait_generic_context(trait);
     TraitAnalysisScope scope(this->core_, signature.module, signature.item, &context);
 
-    std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen_requirements;
-    seen_requirements.reserve(trait.trait_items.size());
+    std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen_items;
+    seen_items.reserve(trait.trait_items.size());
+    signature.associated_types.clear();
+    signature.associated_types.reserve(trait.trait_items.size());
+    for (base::u32 ordinal = 0; ordinal < trait.trait_items.size(); ++ordinal) {
+        const syntax::ItemId requirement_id = trait.trait_items[ordinal];
+        if (!syntax::is_valid(requirement_id) || requirement_id.value >= this->core_.ctx_.module.items.size()) {
+            continue;
+        }
+        const syntax::ItemNode requirement = this->core_.ctx_.module.items[requirement_id.value];
+        if (requirement.kind != syntax::ItemKind::type_alias) {
+            continue;
+        }
+        const auto inserted = seen_items.emplace(requirement.name_id, requirement.range);
+        if (!inserted.second) {
+            this->core_.report_duplicate(
+                requirement.range, sema_duplicate_trait_associated_item_message(signature.name, requirement.name));
+            this->core_.report_note(inserted.first->second, SemanticDiagnosticKind::duplicate,
+                sema_previous_declaration_note_message(requirement.name));
+            continue;
+        }
+        signature.associated_types.push_back(
+            this->resolve_trait_associated_type_requirement(signature, requirement, requirement_id, ordinal));
+    }
+
     signature.requirements.clear();
     signature.requirements.reserve(trait.trait_items.size());
     for (base::u32 ordinal = 0; ordinal < trait.trait_items.size(); ++ordinal) {
@@ -363,14 +487,18 @@ void SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_signature(TraitSignature
             continue;
         }
         const syntax::ItemNode requirement = this->core_.ctx_.module.items[requirement_id.value];
-        if (requirement.kind != syntax::ItemKind::fn_decl) {
-            this->core_.report_internal_contract(requirement.range, "trait requirement item must be a function");
+        if (requirement.kind == syntax::ItemKind::type_alias) {
             continue;
         }
-        const auto inserted = seen_requirements.emplace(requirement.name_id, requirement.range);
+        if (requirement.kind != syntax::ItemKind::fn_decl) {
+            this->core_.report_internal_contract(
+                requirement.range, "trait associated item must be a function or associated type");
+            continue;
+        }
+        const auto inserted = seen_items.emplace(requirement.name_id, requirement.range);
         if (!inserted.second) {
             this->core_.report_duplicate(
-                requirement.range, sema_duplicate_trait_requirement_message(signature.name, requirement.name));
+                requirement.range, sema_duplicate_trait_associated_item_message(signature.name, requirement.name));
             this->core_.report_note(inserted.first->second, SemanticDiagnosticKind::duplicate,
                 sema_previous_declaration_note_message(requirement.name));
             continue;
@@ -378,6 +506,30 @@ void SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_signature(TraitSignature
         signature.requirements.push_back(
             this->resolve_trait_requirement(signature, requirement, requirement_id, ordinal));
     }
+}
+
+TraitAssociatedTypeRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_associated_type_requirement(
+    const TraitSignature& trait, const syntax::ItemNode& requirement, const syntax::ItemId requirement_id,
+    const base::u32 ordinal)
+{
+    TraitAssociatedTypeRequirement info = this->core_.state_.checked.make_trait_associated_type_requirement();
+    info.name = this->core_.source_name_text(requirement.name_id, requirement.name);
+    info.name_id = requirement.name_id;
+    info.module = trait.module;
+    info.item = requirement_id;
+    info.range = requirement.range;
+    info.visibility = requirement.visibility;
+    info.stable_key = this->core_.stable_member_key(
+        trait.stable_id, StableSymbolKind::type, requirement.name_id, requirement.name, ordinal);
+    info.member_key = this->trait_associated_type_member_key(trait, info.name, ordinal);
+    info.ordinal = ordinal;
+    if (!requirement.generic_params.empty() || !requirement.where_constraints.empty()) {
+        this->core_.report_unsupported(requirement.range, std::string(SEMA_ASSOCIATED_TYPE_GENERIC_UNSUPPORTED));
+    }
+    if (syntax::is_valid(requirement.alias_type)) {
+        this->core_.report_general(requirement.range, "trait associated type requirement must not have a target type");
+    }
+    return info;
 }
 
 TraitMethodRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_requirement(const TraitSignature& trait,
@@ -704,12 +856,12 @@ SemanticAnalyzerCore::TraitAnalyzer::make_param_env_trait_method_resolution(cons
     resolution.trait = &trait;
     resolution.requirement = &requirement;
     resolution.predicate = &predicate;
-    resolution.return_type =
-        this->substitute_requirement_type(requirement.return_type, owner_type, predicate.trait_args, trait);
+    resolution.return_type = this->substitute_requirement_type(
+        requirement.return_type, owner_type, predicate.trait_args, trait, predicate.associated_type_equalities);
     resolution.param_types.reserve(requirement.param_types.size());
     for (const TypeHandle param : requirement.param_types) {
-        resolution.param_types.push_back(
-            this->substitute_requirement_type(param, owner_type, predicate.trait_args, trait));
+        resolution.param_types.push_back(this->substitute_requirement_type(
+            param, owner_type, predicate.trait_args, trait, predicate.associated_type_equalities));
     }
     resolution.from_param_env = true;
     resolution.found = true;
@@ -750,6 +902,22 @@ bool SemanticAnalyzerCore::TraitAnalyzer::trait_visible_for_method_call(
     return visible != nullptr && visible->stable_id == trait.stable_id;
 }
 
+bool SemanticAnalyzerCore::TraitAnalyzer::visible_trait_has_associated_type(
+    const IdentId name_id, const std::string_view name, const base::SourceRange& range)
+{
+    static_cast<void>(name);
+    for (const auto& entry : this->core_.state_.checked.traits) {
+        const TraitSignature& trait = entry.second;
+        if (!this->trait_visible_for_method_call(trait, range)) {
+            continue;
+        }
+        if (this->find_trait_associated_type_requirement(trait, name_id) != nullptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool SemanticAnalyzerCore::TraitAnalyzer::visible_trait_has_method(
     const IdentId name_id, const bool require_self, const base::SourceRange& range)
 {
@@ -763,6 +931,108 @@ bool SemanticAnalyzerCore::TraitAnalyzer::visible_trait_has_method(
         }
     }
     return false;
+}
+
+TypeHandle SemanticAnalyzerCore::TraitAnalyzer::resolve_associated_type_projection(const TypeHandle base_type,
+    const IdentId associated_name_id, const std::string_view associated_name, const base::SourceRange& range,
+    const bool report_failure)
+{
+    if (!is_valid(base_type) || base_type.value >= this->core_.state_.checked.types.size()) {
+        return INVALID_TYPE_HANDLE;
+    }
+    const TypeInfo& base_info = this->core_.state_.checked.types.get(base_type);
+    if (base_info.kind != TypeKind::generic_param || !is_valid(base_info.generic_identity)) {
+        if (report_failure) {
+            this->core_.report_lookup(range,
+                sema_unknown_associated_type_projection_message(
+                    this->core_.state_.checked.types.display_name(base_type), associated_name));
+        }
+        return INVALID_TYPE_HANDLE;
+    }
+
+    if (const TraitAssociatedTypeRequirement* const current_trait_associated =
+            this->find_current_trait_associated_type_requirement(associated_name_id);
+        current_trait_associated != nullptr) {
+        return this->core_.state_.checked.types.associated_projection(
+            base_type, current_trait_associated->member_key, current_trait_associated->name);
+    }
+
+    if (this->core_.state_.flow.current_generic_context == nullptr) {
+        if (report_failure) {
+            this->core_.report_lookup(range,
+                sema_unknown_associated_type_projection_message(
+                    this->core_.state_.checked.types.display_name(base_type), associated_name));
+        }
+        return INVALID_TYPE_HANDLE;
+    }
+
+    const TraitSignature* selected_trait = nullptr;
+    const TraitAssociatedTypeRequirement* selected_associated_type = nullptr;
+    const TraitImplAssociatedTypeInfo* selected_equality = nullptr;
+    std::string first_trait_name;
+    for (const base::u32 predicate_index : this->core_.state_.flow.current_generic_context->predicate_indices) {
+        if (predicate_index >= this->core_.state_.checked.trait_predicates.size()) {
+            continue;
+        }
+        const TraitPredicate& predicate = this->core_.state_.checked.trait_predicates[predicate_index];
+        if (predicate.kind != TraitPredicateKind::declared_trait
+            || predicate.subject_param_identity != base_info.generic_identity) {
+            continue;
+        }
+        const auto trait_found = this->core_.state_.checked.traits.find(ModuleLookupKey{
+            predicate.trait_module.value,
+            predicate.trait_name_id,
+        });
+        if (trait_found == this->core_.state_.checked.traits.end()) {
+            continue;
+        }
+        const TraitSignature& trait = trait_found->second;
+        const TraitAssociatedTypeRequirement* const associated_type =
+            this->find_trait_associated_type_requirement(trait, associated_name_id);
+        if (associated_type == nullptr) {
+            continue;
+        }
+        if (selected_associated_type != nullptr) {
+            if (report_failure) {
+                this->core_.report_lookup(range,
+                    sema_ambiguous_associated_type_projection_message(
+                        this->core_.state_.checked.types.display_name(base_type), associated_name, first_trait_name,
+                        this->trait_display_name(trait, predicate.trait_args)));
+            }
+            return INVALID_TYPE_HANDLE;
+        }
+        selected_trait = &trait;
+        selected_associated_type = associated_type;
+        first_trait_name = this->trait_display_name(trait, predicate.trait_args);
+        const auto equality = std::ranges::find_if(
+            predicate.associated_type_equalities, [&](const TraitImplAssociatedTypeInfo& candidate) {
+                return candidate.member_key == associated_type->member_key;
+            });
+        if (equality != predicate.associated_type_equalities.end()) {
+            selected_equality = &*equality;
+        }
+    }
+
+    if (selected_equality != nullptr) {
+        return selected_equality->value_type;
+    }
+    if (selected_associated_type != nullptr) {
+        static_cast<void>(selected_trait);
+        return this->core_.state_.checked.types.associated_projection(
+            base_type, selected_associated_type->member_key, selected_associated_type->name);
+    }
+    if (report_failure) {
+        if (this->visible_trait_has_associated_type(associated_name_id, associated_name, range)) {
+            this->core_.report_capability(range,
+                sema_associated_type_projection_missing_bound_message(
+                    this->core_.state_.checked.types.display_name(base_type), associated_name));
+        } else {
+            this->core_.report_lookup(range,
+                sema_unknown_associated_type_projection_message(
+                    this->core_.state_.checked.types.display_name(base_type), associated_name));
+        }
+    }
+    return INVALID_TYPE_HANDLE;
 }
 
 SemanticAnalyzerCore::TraitMethodCallResolution
@@ -917,7 +1187,8 @@ std::string SemanticAnalyzerCore::TraitAnalyzer::trait_display_name(
 }
 
 TypeHandle SemanticAnalyzerCore::TraitAnalyzer::substitute_requirement_type(const TypeHandle type,
-    const TypeHandle self_type, const std::span<const TypeHandle> trait_args, const TraitSignature& trait) const
+    const TypeHandle self_type, const std::span<const TypeHandle> trait_args, const TraitSignature& trait,
+    const std::span<const TraitImplAssociatedTypeInfo> associated_types) const
 {
     std::unordered_map<GenericParamIdentity, TypeHandle, GenericParamIdentityHash> substitutions;
     substitutions.reserve(trait_args.size() + 1U);
@@ -926,24 +1197,24 @@ TypeHandle SemanticAnalyzerCore::TraitAnalyzer::substitute_requirement_type(cons
         const std::string_view name = this->core_.ctx_.module.identifier_text(trait.generic_params[index]);
         substitutions.emplace(generic_param_identity_from_text(name), trait_args[index]);
     }
-    return substitute_trait_type_iterative(this->core_.state_.checked.types, type, substitutions);
+    return substitute_trait_type_iterative(this->core_.state_.checked.types, type, substitutions, associated_types);
 }
 
 bool SemanticAnalyzerCore::TraitAnalyzer::trait_impl_method_matches(const TraitMethodRequirement& requirement,
     const FunctionSignature& signature, const TypeHandle self_type, const std::span<const TypeHandle> trait_args,
-    const TraitSignature& trait) const
+    const TraitSignature& trait, const std::span<const TraitImplAssociatedTypeInfo> associated_types) const
 {
     if (!trait_method_signature_shape_matches(requirement, signature)) {
         return false;
     }
     const TypeHandle expected_return =
-        this->substitute_requirement_type(requirement.return_type, self_type, trait_args, trait);
+        this->substitute_requirement_type(requirement.return_type, self_type, trait_args, trait, associated_types);
     if (!this->core_.state_.checked.types.same(expected_return, signature.return_type)) {
         return false;
     }
     for (base::usize index = 0; index < requirement.param_types.size(); ++index) {
-        const TypeHandle expected_param =
-            this->substitute_requirement_type(requirement.param_types[index], self_type, trait_args, trait);
+        const TypeHandle expected_param = this->substitute_requirement_type(
+            requirement.param_types[index], self_type, trait_args, trait, associated_types);
         if (!this->core_.state_.checked.types.same(expected_param, signature.param_types[index])) {
             return false;
         }
@@ -1013,6 +1284,15 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
     for (const TraitMethodRequirement& requirement : trait.requirements) {
         requirements_by_name.emplace(requirement.name_id, &requirement);
     }
+    std::unordered_map<IdentId, const TraitAssociatedTypeRequirement*, IdentIdHash> associated_types_by_name;
+    associated_types_by_name.reserve(trait.associated_types.size());
+    for (const TraitAssociatedTypeRequirement& associated_type : trait.associated_types) {
+        associated_types_by_name.emplace(associated_type.name_id, &associated_type);
+    }
+    std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen_associated_types;
+    seen_associated_types.reserve(impl_block.impl_items.size());
+    std::unordered_set<IdentId, IdentIdHash> implemented_associated_types;
+    implemented_associated_types.reserve(impl_block.impl_items.size());
     std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen_methods;
     seen_methods.reserve(impl_block.impl_items.size());
     std::unordered_set<IdentId, IdentIdHash> implemented;
@@ -1036,8 +1316,54 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
     impl_info.incremental_key = this->core_.stable_incremental_key(impl_info.stable_id, impl_fingerprint);
     impl_info.range = impl_block.range;
     impl_info.part_index = this->core_.item_part_index(impl_id);
+    impl_info.associated_types.reserve(impl_block.impl_items.size());
     impl_info.methods.reserve(impl_block.impl_items.size());
     impl_info.predicate_index = this->record_trait_impl_predicate(trait, impl_info, *coherence_fingerprint);
+
+    for (const syntax::ItemId associated_type_id : impl_block.impl_items) {
+        if (!syntax::is_valid(associated_type_id) || associated_type_id.value >= this->core_.ctx_.module.items.size()) {
+            continue;
+        }
+        const syntax::ItemNode associated_item = this->core_.ctx_.module.items[associated_type_id.value];
+        if (associated_item.kind != syntax::ItemKind::type_alias) {
+            continue;
+        }
+        const auto inserted = seen_associated_types.emplace(associated_item.name_id, associated_item.range);
+        if (!inserted.second) {
+            this->core_.report_duplicate(associated_item.range,
+                sema_duplicate_trait_impl_associated_type_message(trait_name, self_name, associated_item.name));
+            this->core_.report_note(inserted.first->second, SemanticDiagnosticKind::duplicate,
+                sema_previous_declaration_note_message(associated_item.name));
+            continue;
+        }
+        const auto requirement = associated_types_by_name.find(associated_item.name_id);
+        if (requirement == associated_types_by_name.end() || requirement->second == nullptr) {
+            this->core_.report_lookup(associated_item.range,
+                sema_trait_impl_unknown_associated_type_message(trait_name, self_name, associated_item.name));
+            continue;
+        }
+        if (!associated_item.generic_params.empty() || !associated_item.where_constraints.empty()) {
+            this->core_.report_unsupported(
+                associated_item.range, std::string(SEMA_ASSOCIATED_TYPE_GENERIC_UNSUPPORTED));
+            continue;
+        }
+        if (!syntax::is_valid(associated_item.alias_type)) {
+            this->core_.report_type(associated_item.range,
+                sema_trait_impl_missing_associated_type_message(trait_name, self_name, associated_item.name));
+            continue;
+        }
+
+        TraitImplAssociatedTypeInfo associated_type = this->core_.state_.checked.make_trait_impl_associated_type_info();
+        associated_type.name = this->core_.source_name_text(associated_item.name_id, associated_item.name);
+        associated_type.name_id = associated_item.name_id;
+        associated_type.item = associated_type_id;
+        associated_type.syntax_type = associated_item.alias_type;
+        associated_type.value_type = this->core_.resolve_type(associated_item.alias_type);
+        associated_type.member_key = requirement->second->member_key;
+        associated_type.requirement_ordinal = requirement->second->ordinal;
+        implemented_associated_types.insert(associated_item.name_id);
+        impl_info.associated_types.push_back(associated_type);
+    }
 
     for (const syntax::ItemId method_id : impl_block.impl_items) {
         if (!syntax::is_valid(method_id) || method_id.value >= this->core_.ctx_.module.items.size()) {
@@ -1066,8 +1392,8 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
         if (signature == this->core_.state_.checked.functions.end()) {
             continue;
         }
-        if (!this->trait_impl_method_matches(
-                *requirement->second, signature->second, self_type, trait_reference.trait_args, trait)) {
+        if (!this->trait_impl_method_matches(*requirement->second, signature->second, self_type,
+                trait_reference.trait_args, trait, impl_info.associated_types)) {
             this->core_.report_type(
                 method.range, sema_trait_impl_method_signature_message(trait_name, self_name, method.name));
             continue;
@@ -1080,6 +1406,13 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
         method_info.function_key = function_key;
         method_info.requirement_ordinal = requirement->second->ordinal;
         impl_info.methods.push_back(method_info);
+    }
+
+    for (const TraitAssociatedTypeRequirement& associated_type : trait.associated_types) {
+        if (!implemented_associated_types.contains(associated_type.name_id)) {
+            this->core_.report_type(impl_block.range,
+                sema_trait_impl_missing_associated_type_message(trait_name, self_name, associated_type.name));
+        }
     }
 
     for (const TraitMethodRequirement& requirement : trait.requirements) {
@@ -1130,6 +1463,14 @@ SemanticAnalyzerCore::TraitMethodCallResolution SemanticAnalyzerCore::resolve_tr
 {
     return TraitAnalyzer(*this).resolve_trait_method_call(
         owner_type, name_id, name, range, require_self, report_failure);
+}
+
+TypeHandle SemanticAnalyzerCore::resolve_associated_type_projection(const TypeHandle base_type,
+    const IdentId associated_name_id, const std::string_view associated_name, const base::SourceRange& range,
+    const bool report_failure)
+{
+    return TraitAnalyzer(*this).resolve_associated_type_projection(
+        base_type, associated_name_id, associated_name, range, report_failure);
 }
 
 bool SemanticAnalyzerCore::is_trait_requirement_item(const syntax::ItemId item) const

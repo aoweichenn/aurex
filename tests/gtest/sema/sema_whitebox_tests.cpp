@@ -77,6 +77,8 @@ constexpr base::u64 SEMA_TEST_SMALL_ARRAY_COUNT = 3;
 constexpr base::u32 SEMA_TEST_U8_DOMAIN_SIZE = 256;
 constexpr base::u64 SEMA_TEST_LARGE_ARRAY_MATCH_COUNT = 4097;
 constexpr base::usize SEMA_TEST_SLICE_PATTERN_OVERFLOW_ELEMENT_COUNT = 4097;
+constexpr base::usize SEMA_TEST_GENERIC_FIRST_PARAM_INDEX = 0;
+constexpr base::usize SEMA_TEST_GENERIC_SECOND_PARAM_INDEX = 1;
 constexpr int SEMA_TEST_UNKNOWN_EXPR_KIND_VALUE = 255;
 constexpr base::u64 SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT = std::numeric_limits<base::u64>::max();
 constexpr base::usize SEMA_TEST_LARGE_GENERIC_SPAN_EXPR_COUNT = 70;
@@ -921,6 +923,35 @@ TEST(CoreUnit, CanonicalTypeBuilderMapsCompoundNominalAndGenericTypes)
     EXPECT_EQ(key.value(), expected_function);
     EXPECT_EQ(empty_function_key.value(), expected_empty_function);
     EXPECT_EQ(query::stable_key_fingerprint(key.value()), query::stable_key_fingerprint(expected_function));
+}
+
+TEST(CoreUnit, CanonicalTypeBuilderMapsAssociatedProjectionTypes)
+{
+    sema::TypeTable types;
+    CanonicalTypeBuilderTestResolver resolver;
+    const query::ModuleKey module = query_test_module_key();
+    const std::array<std::string_view, 1> source_path{"Source"};
+    const query::DefKey source_def =
+        query::def_key(module, query::DefNamespace::trait_, query::DefKind::trait_, source_path);
+    const query::MemberKey item_member =
+        query::member_key(source_def, query::MemberKind::associated_type, "Item", SEMA_TEST_PATTERN_FIRST_INDEX);
+    const sema::GenericParamIdentity type_param_identity = sema::generic_param_identity_from_text("types.Source.T");
+    const query::GenericParamKey type_param_key = query::generic_param_key(source_def, SEMA_TEST_PATTERN_FIRST_INDEX);
+
+    const TypeHandle type_param = types.generic_param(type_param_identity, "T");
+    const TypeHandle projection = types.associated_projection(type_param, item_member, "Item");
+    resolver.bind_generic(type_param_identity, type_param_key);
+
+    base::Result<query::CanonicalTypeKey> key = sema::build_canonical_type_key(types, projection, resolver);
+    ASSERT_TRUE(key.has_value());
+    const query::CanonicalTypeKey expected =
+        query::canonical_associated_type_projection(query::canonical_generic_param(type_param_key), item_member);
+    EXPECT_EQ(key.value(), expected);
+
+    types.types_[projection.value].associated_member = query::MemberKey{};
+    base::Result<query::CanonicalTypeKey> invalid_member = sema::build_canonical_type_key(types, projection, resolver);
+    EXPECT_FALSE(invalid_member.has_value());
+    EXPECT_NE(invalid_member.error().message.find("unresolved associated type member"), std::string::npos);
 }
 
 TEST(CoreUnit, CanonicalTypeBuilderRejectsUnresolvedOrInvalidTypes)
@@ -3401,6 +3432,16 @@ TEST(CoreUnit, SemanticWhiteBoxGenericCapabilityAndParameterFallbackEdges)
     reader_predicate.kind = sema::TraitPredicateKind::declared_trait;
     reader_predicate.trait_name = checked_text(analyzer.state_.checked, "Reader");
     reader_predicate.trait_name_id = intern_identifier(analyzer, "Reader");
+    const std::array<std::string_view, 1> reader_path{"Reader"};
+    const query::DefKey reader_key =
+        query::def_key(query_test_module_key(), query::DefNamespace::trait_, query::DefKind::trait_, reader_path);
+    sema::TraitImplAssociatedTypeInfo item_equality = analyzer.state_.checked.make_trait_impl_associated_type_info();
+    item_equality.name = checked_text(analyzer.state_.checked, "Item");
+    item_equality.name_id = intern_identifier(analyzer, "Item");
+    item_equality.member_key =
+        query::member_key(reader_key, query::MemberKind::associated_type, "Item", SEMA_TEST_GENERIC_FIRST_PARAM_INDEX);
+    item_equality.value_type = i32;
+    reader_predicate.associated_type_equalities.push_back(item_equality);
 
     sema::SemanticAnalyzerCore::GenericAnalyzer generic(analyzer);
     EXPECT_FALSE(generic.generic_param_has_trait_predicate(INVALID_TYPE_HANDLE, reader_predicate));
@@ -3434,13 +3475,62 @@ TEST(CoreUnit, SemanticWhiteBoxGenericCapabilityAndParameterFallbackEdges)
     declared_predicate.kind = sema::TraitPredicateKind::declared_trait;
     declared_predicate.subject_param_identity = param_identity;
     declared_predicate.trait_stable_id = reader_predicate.trait_stable_id;
+    declared_predicate.associated_type_equalities.push_back(item_equality);
     const base::u32 declared_predicate_index = static_cast<base::u32>(analyzer.state_.checked.trait_predicates.size());
     analyzer.state_.checked.trait_predicates.push_back(std::move(declared_predicate));
     context.predicate_indices.push_back(declared_predicate_index);
     EXPECT_TRUE(generic.generic_param_has_trait_predicate(param_type, reader_predicate));
     EXPECT_TRUE(generic.type_satisfies_trait_predicate(param_type, reader_predicate, {}));
 
+    sema::TraitPredicate mismatched_predicate = analyzer.state_.checked.make_trait_predicate();
+    mismatched_predicate.kind = sema::TraitPredicateKind::declared_trait;
+    mismatched_predicate.trait_name = reader_predicate.trait_name;
+    mismatched_predicate.trait_name_id = reader_predicate.trait_name_id;
+    mismatched_predicate.trait_stable_id = reader_predicate.trait_stable_id;
+    sema::TraitImplAssociatedTypeInfo mismatched_equality = item_equality;
+    mismatched_equality.value_type = types.builtin(BuiltinType::u8);
+    mismatched_predicate.associated_type_equalities.push_back(mismatched_equality);
+    EXPECT_FALSE(generic.generic_param_has_trait_predicate(param_type, mismatched_predicate));
+
     analyzer.state_.flow.current_generic_context = nullptr;
+
+    sema::SemanticAnalyzerCore::GenericTemplateInfo fingerprint_info =
+        generic_template_info(analyzer, module_id(0), "FingerprintFallback");
+    fingerprint_info.param_identities.clear();
+    const query::StableFingerprint128 missing_identity_fingerprint =
+        analyzer.generic_trait_predicate_fingerprint(fingerprint_info, SEMA_TEST_GENERIC_SECOND_PARAM_INDEX,
+            sema::TraitPredicateKind::builtin, sema::CapabilityKind::eq, nullptr);
+    EXPECT_NE(query::debug_string(missing_identity_fingerprint), query::debug_string(query::StableFingerprint128{}));
+
+    syntax::GenericConstraintDecl record_constraint;
+    record_constraint.param_name = SEMA_TEST_GENERIC_PARAM_NAME;
+    record_constraint.param_name_id = param_id;
+    record_constraint.capability_names = {"Eq"};
+    sema::SemanticAnalyzerCore::GenericTemplateInfo recorded_predicate_info =
+        generic_template_info(analyzer, module_id(0), "RecordedPredicateFallback");
+    recorded_predicate_info.param_identities.clear();
+    const base::u32 recorded_predicate_index = generic.record_generic_trait_predicate(recorded_predicate_info,
+        record_constraint, SEMA_TEST_GENERIC_FIRST_PARAM_INDEX, SEMA_TEST_GENERIC_FIRST_PARAM_INDEX,
+        sema::TraitPredicateKind::builtin, sema::CapabilityKind::eq, nullptr);
+    ASSERT_LT(recorded_predicate_index, analyzer.state_.checked.trait_predicates.size());
+    EXPECT_EQ(analyzer.state_.checked.trait_predicates[recorded_predicate_index].subject_param_identity,
+        sema::INVALID_GENERIC_PARAM_IDENTITY);
+
+    syntax::ItemNode constraint_item;
+    constraint_item.kind = syntax::ItemKind::fn_decl;
+    constraint_item.name = "ConstraintFallback";
+    constraint_item.name_id = intern_identifier(analyzer, constraint_item.name);
+    constraint_item.generic_params = {syntax::GenericParamDecl{SEMA_TEST_GENERIC_PARAM_NAME, {}, param_id}};
+    syntax::GenericConstraintDecl fallback_constraint;
+    fallback_constraint.param_name = SEMA_TEST_GENERIC_PARAM_NAME;
+    fallback_constraint.param_name_id = param_id;
+    fallback_constraint.capability_names = {"Eq", "Drop"};
+    constraint_item.where_constraints = {fallback_constraint};
+    sema::SemanticAnalyzerCore::GenericTemplateInfo constraint_info =
+        generic_template_info(analyzer, module_id(0), "ConstraintFallback");
+    generic.validate_generic_constraints(constraint_item, constraint_info);
+    EXPECT_TRUE(diagnostics.has_error());
+    EXPECT_FALSE(constraint_info.predicate_indices.empty());
 
     sema::SemanticAnalyzerCore::GenericTemplateInfo info = generic_template_info(analyzer, module_id(0), "Fallback");
     EXPECT_TRUE(analyzer.generic_param_name(info, info.params.size()).empty());
@@ -6163,9 +6253,14 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks)
     EXPECT_FALSE(kind_table.is_float(out_of_range_type));
     EXPECT_FALSE(kind_table.is_bool(out_of_range_type));
     EXPECT_FALSE(kind_table.is_str(out_of_range_type));
+    EXPECT_FALSE(kind_table.is_char(out_of_range_type));
     EXPECT_FALSE(kind_table.is_void(out_of_range_type));
     EXPECT_FALSE(kind_table.is_pointer(out_of_range_type));
+    EXPECT_FALSE(kind_table.is_reference(out_of_range_type));
     EXPECT_FALSE(kind_table.is_array(out_of_range_type));
+    EXPECT_FALSE(kind_table.is_slice(out_of_range_type));
+    EXPECT_FALSE(kind_table.is_tuple(out_of_range_type));
+    EXPECT_FALSE(kind_table.is_function(out_of_range_type));
     EXPECT_FALSE(kind_table.contains_array(out_of_range_type));
     EXPECT_EQ(kind_table.display_name(out_of_range_type), SEMA_TEST_INVALID_TYPE_DISPLAY);
     EXPECT_EQ(kind_table.c_name(out_of_range_type), "void");
@@ -6177,7 +6272,11 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks)
     EXPECT_FALSE(kind_table.is_char(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(kind_table.is_void(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(kind_table.is_pointer(INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(kind_table.is_reference(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(kind_table.is_array(INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(kind_table.is_slice(INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(kind_table.is_tuple(INVALID_TYPE_HANDLE));
+    EXPECT_FALSE(kind_table.is_function(INVALID_TYPE_HANDLE));
     EXPECT_FALSE(kind_table.contains_array(INVALID_TYPE_HANDLE));
 
     EXPECT_FALSE(kind_table.is_integer(builtin_type));
@@ -6187,7 +6286,11 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks)
     EXPECT_FALSE(kind_table.is_char(builtin_type));
     EXPECT_FALSE(kind_table.is_void(builtin_type));
     EXPECT_FALSE(kind_table.is_pointer(builtin_type));
+    EXPECT_FALSE(kind_table.is_reference(builtin_type));
     EXPECT_FALSE(kind_table.is_array(builtin_type));
+    EXPECT_FALSE(kind_table.is_slice(builtin_type));
+    EXPECT_FALSE(kind_table.is_tuple(builtin_type));
+    EXPECT_FALSE(kind_table.is_function(builtin_type));
     EXPECT_FALSE(kind_table.contains_array(builtin_type));
 
     sema::TypeTable storage_table;
@@ -6199,7 +6302,11 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks)
     const TypeHandle slice = storage_table.slice(PointerMutability::const_, i32);
     const TypeHandle tuple = storage_table.tuple({i32, bool_type});
     const TypeHandle function = storage_table.function(sema::FunctionCallConv::aurex, false, {i32, pointer}, bool_type);
+    const std::array<TypeHandle, 1> span_function_params{i32};
+    const TypeHandle span_function = storage_table.function(
+        sema::FunctionCallConv::aurex, true, std::span<const TypeHandle>(span_function_params), bool_type);
     const TypeHandle generic = storage_table.generic_param(sema::generic_param_identity_from_text("test.T"), "T");
+    EXPECT_FALSE(is_valid(storage_table.generic_param(sema::INVALID_GENERIC_PARAM_IDENTITY, "Invalid")));
     storage_table.set_generic_instance(tuple, "tuple.origin", {generic});
     storage_table.set_record_contains_array(tuple, true);
     storage_table.set_enum_underlying(function, i32);
@@ -6209,6 +6316,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks)
     EXPECT_EQ(copied_table.display_name(pointer), "*const i32");
     EXPECT_TRUE(copied_table.is_reference(reference));
     EXPECT_TRUE(copied_table.is_slice(slice));
+    EXPECT_TRUE(copied_table.is_function(span_function));
     sema::TypeTable assigned_table;
     assigned_table = storage_table;
     EXPECT_TRUE(assigned_table.contains_array(tuple));

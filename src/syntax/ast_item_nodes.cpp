@@ -214,6 +214,7 @@ GenericConstraintDecl ItemNodeList::copy_generic_constraint(const GenericConstra
     copy.param_range = constraint.param_range;
     copy.capability_names = this->copy_list(constraint.capability_names);
     copy.capability_ranges = this->copy_list(constraint.capability_ranges);
+    copy.capability_associated_constraints = constraint.capability_associated_constraints;
     copy.range = constraint.range;
     copy.param_name_id = constraint.param_name_id;
     copy.capability_name_ids = this->copy_list(constraint.capability_name_ids);
@@ -227,6 +228,7 @@ GenericConstraintDecl ItemNodeList::copy_or_move_generic_constraint(GenericConst
     copy.param_range = constraint.param_range;
     copy.capability_names = this->copy_or_move_list(std::move(constraint.capability_names));
     copy.capability_ranges = this->copy_or_move_list(std::move(constraint.capability_ranges));
+    copy.capability_associated_constraints = std::move(constraint.capability_associated_constraints);
     copy.range = constraint.range;
     copy.param_name_id = constraint.param_name_id;
     copy.capability_name_ids = this->copy_or_move_list(std::move(constraint.capability_name_ids));
@@ -264,6 +266,7 @@ GenericConstraintDecl ItemNodeList::detach_generic_constraint(const GenericConst
     copy.param_range = constraint.param_range;
     copy.capability_names = copy_detached_ast_vector(constraint.capability_names);
     copy.capability_ranges = copy_detached_ast_vector(constraint.capability_ranges);
+    copy.capability_associated_constraints = constraint.capability_associated_constraints;
     copy.range = constraint.range;
     copy.param_name_id = constraint.param_name_id;
     copy.capability_name_ids = copy_detached_ast_vector(constraint.capability_name_ids);
@@ -301,6 +304,8 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                     this->copy_list(node.generic_params),
                     this->copy_or_move_generic_constraints(std::move(node.where_constraints)),
                     node.alias_type,
+                    node.impl_type,
+                    node.trait_type,
                 });
         case ItemKind::struct_decl:
             return this->push_payload(this->payloads_.structs,
@@ -401,6 +406,8 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.alias_type = payload.target;
+            node.impl_type = payload.impl_type;
+            node.trait_type = payload.trait_type;
             break;
         }
         case ItemKind::struct_decl: {
@@ -490,6 +497,8 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.alias_type = payload.target;
+            node.impl_type = payload.impl_type;
+            node.trait_type = payload.trait_type;
             break;
         }
         case ItemKind::struct_decl: {

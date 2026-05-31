@@ -13,6 +13,7 @@ constexpr std::string_view SEMA_CANONICAL_TYPE_INVALID_HANDLE = "invalid type ha
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNKNOWN_HANDLE = "unknown type handle";
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNRESOLVED_NOMINAL = "unresolved nominal type key";
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNRESOLVED_GENERIC_PARAM = "unresolved generic parameter key";
+constexpr std::string_view SEMA_CANONICAL_TYPE_UNRESOLVED_ASSOCIATED_MEMBER = "unresolved associated type member key";
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNSUPPORTED_KIND = "unsupported type kind";
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNSUPPORTED_BUILTIN = "unsupported builtin type";
 constexpr std::string_view SEMA_CANONICAL_TYPE_UNSUPPORTED_MUTABILITY = "unsupported pointer mutability";
@@ -243,6 +244,22 @@ void push_children_reverse(
     return base::Result<void>::ok();
 }
 
+[[nodiscard]] base::Result<void> lower_associated_projection_type(
+    std::vector<TypeBuildFrame>& pending, const TypeInfo& info, query::CanonicalTypeKey& target)
+{
+    if (!query::is_valid(info.associated_member)) {
+        return base::Result<void>::fail({
+            base::ErrorCode::internal_error,
+            std::string(SEMA_CANONICAL_TYPE_UNRESOLVED_ASSOCIATED_MEMBER),
+        });
+    }
+    target.kind = query::CanonicalTypeKind::associated_type_projection;
+    target.associated_member = info.associated_member;
+    target.children.resize(1);
+    push_child(pending, info.associated_base, target.children.front());
+    return base::Result<void>::ok();
+}
+
 [[nodiscard]] base::Result<void> lower_type_frame(std::vector<TypeBuildFrame>& pending, const TypeTable& types,
     const CanonicalTypeKeyResolver& resolver, const TypeBuildFrame frame)
 {
@@ -281,6 +298,8 @@ void push_children_reverse(
             return lower_nominal_type(pending, resolver, frame.source, info, *frame.target);
         case TypeKind::generic_param:
             return lower_generic_param_type(resolver, frame.source, info, *frame.target);
+        case TypeKind::associated_projection:
+            return lower_associated_projection_type(pending, info, *frame.target);
     }
     return base::Result<void>::fail({
         base::ErrorCode::internal_error,

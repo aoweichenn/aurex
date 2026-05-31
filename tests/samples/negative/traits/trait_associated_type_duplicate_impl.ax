@@ -1,0 +1,18 @@
+module trait_associated_type_duplicate_impl;
+
+trait Source {
+    type Item;
+}
+
+struct Bytes {
+    value: i32;
+}
+
+impl Source for Bytes {
+    type Item = i32;
+    type Item = i32;
+}
+
+fn main() -> i32 {
+    return 0;
+}

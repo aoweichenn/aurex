@@ -1,0 +1,22 @@
+module trait_associated_type_equality_unsatisfied;
+
+trait Source {
+    type Item;
+}
+
+struct Bytes {
+    value: i32;
+}
+
+impl Source for Bytes {
+    type Item = u8;
+}
+
+fn read_i32[T](value: T) -> i32 where T: Source[Item = i32] {
+    return 0;
+}
+
+fn main() -> i32 {
+    let bytes = Bytes { value: 1 };
+    return read_i32[Bytes](bytes);
+}

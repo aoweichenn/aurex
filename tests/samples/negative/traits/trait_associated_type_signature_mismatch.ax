@@ -1,0 +1,22 @@
+module trait_associated_type_signature_mismatch;
+
+trait Source {
+    type Item;
+    fn get(self: &Self) -> Self.Item;
+}
+
+struct Bytes {
+    value: i32;
+}
+
+impl Source for Bytes {
+    type Item = i32;
+
+    fn get(self: &Bytes) -> u8 {
+        return 0u8;
+    }
+}
+
+fn main() -> i32 {
+    return 0;
+}

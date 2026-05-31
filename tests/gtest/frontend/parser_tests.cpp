@@ -558,12 +558,14 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
 {
     constexpr std::string_view source = "module parser.traits;\n"
                                         "pub trait Reader[T] where T: Sized {\n"
-                                        "  fn read(self: &mut Self, buf: []mut u8) -> usize;\n"
+                                        "  type Item;\n"
+                                        "  fn read(self: &mut Self, buf: []mut u8) -> Self.Item;\n"
                                         "  pub fn size(self: &Self) -> usize;\n"
                                         "  unsafe fn flush(self: &mut Self) -> void;\n"
                                         "}\n"
                                         "struct File { handle: i32; }\n"
                                         "impl Reader[File] for File {\n"
+                                        "  type Item = usize;\n"
                                         "  fn read(self: &mut File, buf: []mut u8) -> usize {\n"
                                         "    return 0;\n"
                                         "  }\n"
@@ -580,9 +582,15 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
     EXPECT_EQ(trait_item->where_constraints.front().param_name, "T");
     ASSERT_EQ(trait_item->where_constraints.front().capability_names.size(), 1U);
     EXPECT_EQ(trait_item->where_constraints.front().capability_names.front(), "Sized");
-    ASSERT_EQ(trait_item->trait_items.size(), 3U);
+    ASSERT_EQ(trait_item->trait_items.size(), 4U);
 
-    const syntax::ItemNode requirement = module.items[trait_item->trait_items.front().value];
+    const syntax::ItemNode associated_type = module.items[trait_item->trait_items.front().value];
+    EXPECT_EQ(associated_type.kind, syntax::ItemKind::type_alias);
+    EXPECT_EQ(associated_type.name, "Item");
+    EXPECT_EQ(associated_type.visibility, syntax::Visibility::public_);
+    EXPECT_FALSE(syntax::is_valid(associated_type.alias_type));
+
+    const syntax::ItemNode requirement = module.items[trait_item->trait_items[1].value];
     EXPECT_EQ(requirement.kind, syntax::ItemKind::fn_decl);
     EXPECT_EQ(requirement.name, "read");
     EXPECT_TRUE(requirement.is_prototype);
@@ -592,13 +600,13 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
     EXPECT_EQ(requirement.params.front().name, "self");
     EXPECT_TRUE(syntax::is_valid(requirement.return_type));
 
-    const syntax::ItemNode explicit_requirement = module.items[trait_item->trait_items[1].value];
+    const syntax::ItemNode explicit_requirement = module.items[trait_item->trait_items[2].value];
     EXPECT_EQ(explicit_requirement.name, "size");
     EXPECT_TRUE(explicit_requirement.is_prototype);
     EXPECT_EQ(explicit_requirement.visibility, syntax::Visibility::public_);
     EXPECT_FALSE(explicit_requirement.is_unsafe);
 
-    const syntax::ItemNode unsafe_requirement = module.items[trait_item->trait_items[2].value];
+    const syntax::ItemNode unsafe_requirement = module.items[trait_item->trait_items[3].value];
     EXPECT_EQ(unsafe_requirement.name, "flush");
     EXPECT_TRUE(unsafe_requirement.is_prototype);
     EXPECT_TRUE(unsafe_requirement.is_unsafe);
@@ -614,9 +622,16 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
     ASSERT_NE(impl_block, nullptr);
     EXPECT_TRUE(syntax::is_valid(impl_block->trait_type));
     EXPECT_TRUE(syntax::is_valid(impl_block->impl_type));
-    ASSERT_EQ(impl_block->impl_items.size(), 1U);
+    ASSERT_EQ(impl_block->impl_items.size(), 2U);
 
-    const syntax::ItemNode impl_method = module.items[impl_block->impl_items.front().value];
+    const syntax::ItemNode impl_associated_type = module.items[impl_block->impl_items.front().value];
+    EXPECT_EQ(impl_associated_type.kind, syntax::ItemKind::type_alias);
+    EXPECT_EQ(impl_associated_type.name, "Item");
+    EXPECT_TRUE(syntax::is_valid(impl_associated_type.alias_type));
+    EXPECT_TRUE(syntax::is_valid(impl_associated_type.trait_type));
+    EXPECT_TRUE(syntax::is_valid(impl_associated_type.impl_type));
+
+    const syntax::ItemNode impl_method = module.items[impl_block->impl_items[1].value];
     EXPECT_EQ(impl_method.kind, syntax::ItemKind::fn_decl);
     EXPECT_EQ(impl_method.name, "read");
     EXPECT_EQ(impl_method.visibility, syntax::Visibility::public_);
@@ -628,10 +643,14 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
     expect_contains_all(ast,
         {
             "pub trait Reader[T] where T: Sized",
+            "pub type_alias Item",
             "pub fn read prototype",
+            "return Self.Item",
             "pub fn size prototype",
             "pub fn flush unsafe prototype",
             "impl Reader[File] for File",
+            "pub type_alias Item for File in Reader[File]",
+            "alias usize",
             "pub fn read for File in Reader[File]",
         });
 }
@@ -651,7 +670,39 @@ TEST(CoreUnit, ParserRejectsTraitDefaultMethodBodiesInWp2)
                             "  fn next() -> i32;\n"
                             "}\n"
                             "fn after() -> i32 { return 0; }\n",
-        "expected function requirement in trait declaration");
+        "expected function requirement or associated type in trait declaration");
+    expect_parse_diagnostic("module parser.bad_trait_requirement_terminator;\n"
+                            "trait Reader {\n"
+                            "  fn read() -> i32\n"
+                            "}\n"
+                            "fn after() -> i32 { return 0; }\n",
+        "expected ';' after trait function requirement");
+}
+
+TEST(CoreUnit, ParserRejectsNonFunctionItemsInInherentImplBlocks)
+{
+    expect_parse_diagnostic("module parser.bad_inherent_impl_item;\n"
+                            "struct Box { value: i32; }\n"
+                            "impl Box {\n"
+                            "  type Item = i32;\n"
+                            "  fn ok(self: &Box) -> i32 { return self.value; }\n"
+                            "}\n",
+        "expected function declaration in impl block");
+}
+
+TEST(CoreUnit, ParserAcceptsUnsafeExternFunctions)
+{
+    const syntax::AstModule module = parse_success("module parser.unsafe_extern;\n"
+                                                   "extern c {\n"
+                                                   "  unsafe fn read() -> i32;\n"
+                                                   "}\n");
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "extern_block extern_c",
+            "fn read extern_c unsafe",
+        });
 }
 
 TEST(CoreUnit, ParserAcceptsSelectiveUseReexports)
@@ -3765,15 +3816,93 @@ TEST(CoreUnit, ParserRejectsLegacyScopeSelectorSyntax)
 
 TEST(CoreUnit, ParserParsesWhereCapabilityClauses)
 {
-    syntax::AstModule module = parse_success("module parser.where_clause;\n"
-                                             "fn id[T](value: T) -> T where T: Eq + Hash { return value; }\n");
+    syntax::AstModule module =
+        parse_success("module parser.where_clause;\n"
+                      "fn id[T](value: T) -> T where T: Eq + Iterator[Item = i32, Error = bool] { return value; }\n");
     const syntax::ItemNode* id = find_item(module, "id");
     ASSERT_NE(id, nullptr);
     ASSERT_EQ(id->where_constraints.size(), 1U);
     EXPECT_EQ(id->where_constraints.front().param_name, "T");
     ASSERT_EQ(id->where_constraints.front().capability_names.size(), 2U);
     EXPECT_EQ(id->where_constraints.front().capability_names[0], "Eq");
-    EXPECT_EQ(id->where_constraints.front().capability_names[1], "Hash");
+    EXPECT_EQ(id->where_constraints.front().capability_names[1], "Iterator");
+    ASSERT_EQ(id->where_constraints.front().capability_associated_constraints.size(), 2U);
+    EXPECT_TRUE(id->where_constraints.front().capability_associated_constraints.front().empty());
+    const std::vector<syntax::AssociatedTypeConstraintDecl>& associated_constraints =
+        id->where_constraints.front().capability_associated_constraints[1];
+    ASSERT_EQ(associated_constraints.size(), 2U);
+    EXPECT_EQ(associated_constraints[0].name, "Item");
+    EXPECT_EQ(associated_constraints[1].name, "Error");
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains(ast, "where T: Eq + Iterator[Item = i32, Error = bool]");
+}
+
+TEST(CoreUnit, ParserParsesAssociatedTypeConstraintSeparatorEdges)
+{
+    const syntax::AstModule module =
+        parse_success("module parser.where_associated_edges;\n"
+                      "fn empty[T](value: T) -> T where T: Iterator[] { return value; }\n"
+                      "fn trailing[T](value: T) -> T where T: Iterator[Item = i32,] { return value; }\n"
+                      "fn pair[T, U](left: T, right: U) -> T where T: Iterator[Item = i32], U: Eq {\n"
+                      "  return left;\n"
+                      "}\n");
+
+    const syntax::ItemNode* const empty = find_item(module, "empty");
+    ASSERT_NE(empty, nullptr);
+    ASSERT_EQ(empty->where_constraints.size(), 1U);
+    ASSERT_EQ(empty->where_constraints.front().capability_associated_constraints.size(), 1U);
+    EXPECT_TRUE(empty->where_constraints.front().capability_associated_constraints.front().empty());
+
+    const syntax::ItemNode* const trailing = find_item(module, "trailing");
+    ASSERT_NE(trailing, nullptr);
+    ASSERT_EQ(trailing->where_constraints.size(), 1U);
+    ASSERT_EQ(trailing->where_constraints.front().capability_associated_constraints.size(), 1U);
+    ASSERT_EQ(trailing->where_constraints.front().capability_associated_constraints.front().size(), 1U);
+    EXPECT_EQ(trailing->where_constraints.front().capability_associated_constraints.front().front().name, "Item");
+
+    const syntax::ItemNode* const pair = find_item(module, "pair");
+    ASSERT_NE(pair, nullptr);
+    ASSERT_EQ(pair->where_constraints.size(), 2U);
+    EXPECT_EQ(pair->where_constraints.front().param_name, "T");
+    EXPECT_EQ(pair->where_constraints[1].param_name, "U");
+    ASSERT_EQ(pair->where_constraints.front().capability_associated_constraints.size(), 1U);
+    ASSERT_EQ(pair->where_constraints.front().capability_associated_constraints.front().size(), 1U);
+    EXPECT_EQ(pair->where_constraints.front().capability_associated_constraints.front().front().name, "Item");
+    ASSERT_EQ(pair->where_constraints[1].capability_associated_constraints.size(), 1U);
+    EXPECT_TRUE(pair->where_constraints[1].capability_associated_constraints.front().empty());
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "where T: Iterator",
+            "where T: Iterator[Item = i32]",
+            "where T: Iterator[Item = i32], U: Eq",
+        });
+}
+
+TEST(CoreUnit, ParserRecoversMalformedAssociatedTypeConstraints)
+{
+    expect_parse_diagnostic("module parser.bad_where_associated_constraint;\n"
+                            "fn recovered[T](value: T) -> T where T: Iterator[Item = i32 Error bool] {\n"
+                            "  return value;\n"
+                            "}\n",
+        "expected ',' or ']' after associated type constraint");
+    expect_parse_diagnostic("module parser.bad_where_associated_equal;\n"
+                            "fn recovered[T](value: T) -> T where T: Iterator[Item i32] {\n"
+                            "  return value;\n"
+                            "}\n",
+        "expected '=' in associated type constraint");
+    expect_parse_diagnostic("module parser.bad_where_associated_name;\n"
+                            "fn recovered[T](value: T) -> T where T: Iterator[= i32] {\n"
+                            "  return value;\n"
+                            "}\n",
+        "expected associated type constraint name");
+    expect_parse_diagnostic("module parser.bad_where_associated_recovered_comma;\n"
+                            "fn recovered[T](value: T) -> T where T: Iterator[Item = i32 @, Error = bool] {\n"
+                            "  return value;\n"
+                            "}\n",
+        "expected ',' or ']' after associated type constraint");
 }
 
 } // namespace aurex::test

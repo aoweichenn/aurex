@@ -149,7 +149,10 @@ inline constexpr std::string_view PARSER_EXPECT_TRAIT_NAME = "expected trait nam
 inline constexpr std::string_view PARSER_EXPECT_TRAIT_BODY = "expected '{' after trait name";
 
 inline constexpr std::string_view PARSER_EXPECT_TRAIT_REQUIREMENT =
-    "expected function requirement in trait declaration";
+    "expected function requirement or associated type in trait declaration";
+
+inline constexpr std::string_view PARSER_EXPECT_TRAIT_ASSOCIATED_TYPE_TERMINATOR =
+    "expected ';' after trait associated type requirement";
 
 inline constexpr std::string_view PARSER_EXPECT_TRAIT_END = "expected '}' after trait declaration";
 
@@ -160,6 +163,24 @@ inline constexpr std::string_view PARSER_EXPECT_IMPL_KEYWORD = "expected 'impl'"
 inline constexpr std::string_view PARSER_EXPECT_IMPL_BODY = "expected '{' after impl type";
 
 inline constexpr std::string_view PARSER_EXPECT_IMPL_FN = "expected function declaration in impl block";
+
+inline constexpr std::string_view PARSER_EXPECT_IMPL_ITEM =
+    "expected function declaration or associated type assignment in impl block";
+
+inline constexpr std::string_view PARSER_EXPECT_IMPL_ASSOCIATED_TYPE_TERMINATOR =
+    "expected ';' after impl associated type assignment";
+
+inline constexpr std::string_view PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_NAME =
+    "expected associated type constraint name";
+
+inline constexpr std::string_view PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_EQUAL =
+    "expected '=' in associated type constraint";
+
+inline constexpr std::string_view PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_SEPARATOR =
+    "expected ',' or ']' after associated type constraint";
+
+inline constexpr std::string_view PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_END =
+    "expected ']' after associated type constraints";
 
 inline constexpr std::string_view PARSER_EXPECT_IMPL_END = "expected '}' after impl block";
 

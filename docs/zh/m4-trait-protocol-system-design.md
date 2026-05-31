@@ -346,7 +346,8 @@ M4 必须从第一版实现 coherence，否则跨模块和未来 package resolve
 
 ### 5.5 Associated types
 
-associated type 进入 M4 设计，但不进入 M4.0 首批实现。
+associated type 进入 M4 设计，并已在 M4-WP6 落地第一版实现。当前实现刻意限定在这里描述的 static-dispatch、
+non-object、non-GAT 模型。
 
 目标语义：
 
@@ -375,6 +376,9 @@ where I: Iterator[Item = u8] {
 - 投影的 canonical type 使用现有 `CanonicalTypeKind::associated_type_projection`，base type 是 `Self` 或 generic parameter，member key 指向 trait associated type。
 - 如果 `T.Item` 在多个 trait bound 中不唯一，必须报 ambiguity；后续可引入显式 `(T as Iterator).Item` 消歧。
 - M4 不做 generic associated types。GAT 会把 solver、lifetime/resource 和 equality constraint 全部拉复杂。
+- M4-WP6 暂不做 associated constant、default associated type value、显式 qualified projection syntax 和
+  trait-object projection ABI。当前 `T.Item` shorthand 只有在当前 trait bound 中 associated type 名称唯一，或可由匹配的
+  equality predicate 归一化时才接受。
 
 ### 5.6 Capability migration
 

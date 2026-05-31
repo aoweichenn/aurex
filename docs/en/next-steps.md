@@ -1,9 +1,9 @@
 # Next Steps
 
-## Current Highest Priority: M4-WP6 Associated Type Model
+## Current Highest Priority: M4-WP7 Tooling And Diagnostics
 
 The M3 release baseline is closed, and M4 trait/protocol work has completed
-WP1, WP2, WP3, WP4, and WP5. M4-WP1 fixed the
+WP1, WP2, WP3, WP4, WP5, and WP6. M4-WP1 fixed the
 [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
 with the staged route in the
 [M4 Trait / Protocol System Roadmap](m4-roadmap.md). M4-WP2 completed the token,
@@ -21,6 +21,13 @@ body trait calls bind through `ParamEnv` as `param_env` call facts, concrete
 receivers bind through visible traits plus the impl registry as `impl` direct
 calls, and LLVM IR directly calls the concrete impl method after
 monomorphization.
+M4-WP6 completed the associated type model: trait declarations can declare
+`type Item;`, trait impls can assign `type Item = Type;`, `Self.Item` /
+generic projections have canonical associated-projection types,
+`Trait[Item = Type]` lowers to trait predicates plus equality facts, impl
+requirement matching substitutes associated type outputs, and diagnostics cover
+ambiguity, cycles, missing bounds, duplicate/missing/unknown associated types,
+built-in equality misuse, and unsatisfied equality predicates.
 
 The current implemented surface is nominal static traits. The language keyword
 is `trait`, and conformance is explicit through `impl Trait for Type`.
@@ -31,6 +38,9 @@ generic parameter substitution, qualified trait references, visibility, trait
 generic arity, missing methods, duplicate methods, unknown methods, signature
 mismatches, non-trait impl targets, non-named self targets, and duplicate exact
 impls, orphan rules, first-pass overlap, and generic candidate rejection. The
+associated type surface covers declarations, impl assignments, projection
+normalization, equality predicates, method requirement substitution, and checked
+facts for trait signatures, impls, and predicates. The
 tests live in normal repository locations:
 `tests/gtest/sema/trait_tests.cpp`,
 `tests/samples/positive/traits/trait_impl_registry.ax`,
@@ -39,20 +49,25 @@ tests live in normal repository locations:
 `tests/samples/positive/traits/trait_method_associated_static_dispatch.ax`,
 `tests/samples/positive/traits/trait_method_inherent_precedence.ax`,
 `tests/samples/positive/traits/trait_method_function_field_precedence.ax`,
+`tests/samples/positive/traits/trait_associated_type_basic.ax`,
+`tests/samples/positive/traits/trait_associated_type_where_equality.ax`,
 `tests/samples/negative/traits/*.ax`, and
 `tests/samples/imports/samplelib/traits.ax`.
 
-The next step is M4-WP6 only: associated type model. WP6 must add trait
-associated type declarations, impl associated type assignments, canonical types
-for `Self.Item` / generic projections, `Trait[Item = Type]` equality
-predicates, and ambiguity / projection-cycle diagnostics without reopening the
-WP5 static-dispatch boundary.
+The next step is M4-WP7 only: make IDE/tooling and diagnostics consume trait
+and associated-type facts through stable compiler surfaces instead of reaching
+into sema internals. WP7 should add completion after `where T:`, hover /
+definition for traits, trait methods, impl methods, and associated types,
+semantic-token classification, rename-friendly member identities, and better
+diagnostic notes for candidate impls, equality rejection, and orphan / overlap
+locations.
 
-WP6 does not include dynamic trait objects or RAII/resource semantics. Dynamic
-trait objects and the resource system remain outside the current M4 target. The
-WP4/WP5 `where` grammar still supports only single identifier predicate names;
-qualified where predicates and generic trait predicate arguments remain future
-solver / associated-type work.
+WP7 does not include dynamic trait objects or RAII/resource semantics. Dynamic
+trait objects, vtable ABI/object safety, associated constants, specialization,
+generic associated types, and the resource system remain outside the current
+M4 target. The WP6 `where` grammar supports identifier trait predicates with
+associated-type equality constraints; qualified where predicates and generic
+trait predicate arguments remain future solver work.
 
 ## M3 Closure Context
 

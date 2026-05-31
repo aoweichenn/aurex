@@ -945,6 +945,100 @@ TEST(CoreUnit, ExprNodeListSettersUpdateCompactPayloads)
     EXPECT_EQ(exprs.struct_literal_payload(struct_slot.value)->name, "Record");
 }
 
+TEST(CoreUnit, AstModuleExpressionWrapperMutatorsDelegateToNodeStorage)
+{
+    constexpr base::SourceRange SET_RANGE{{90}, 4, 8};
+    constexpr base::usize TOKEN_RESERVE_ESTIMATE = 16;
+
+    syntax::AstModule module;
+    module.reserve_for_tokens(TOKEN_RESERVE_ESTIMATE);
+    const syntax::TypeId type_id = push_primitive_type(module, syntax::PrimitiveTypeKind::i32);
+    const syntax::ExprId literal_id = module.push_literal_expr(syntax::ExprKind::integer_literal, SET_RANGE, "1");
+    const syntax::StmtId block_stmt = push_expr_stmt(module, literal_id);
+
+    const syntax::TryExprPayload try_push_payload{literal_id};
+    const syntax::ExprId pushed_try = module.push_try_expr(SET_RANGE, try_push_payload);
+    ASSERT_NE(module.exprs.try_payload(pushed_try.value), nullptr);
+    EXPECT_EQ(module.exprs.try_payload(pushed_try.value)->operand.value, literal_id.value);
+
+    const syntax::BlockExprPayload block_payload{block_stmt, literal_id};
+    const syntax::ExprId pushed_block = module.push_block_expr(syntax::ExprKind::block_expr, SET_RANGE, block_payload);
+    ASSERT_NE(module.exprs.block_payload(pushed_block.value), nullptr);
+    EXPECT_EQ(module.exprs.block_payload(pushed_block.value)->block.value, block_stmt.value);
+
+    const auto append_slot = [&module]() {
+        return module.push_invalid_expr({});
+    };
+
+    const syntax::ExprId invalid_slot = append_slot();
+    module.set_invalid_expr(invalid_slot.value, SET_RANGE);
+    EXPECT_EQ(module.exprs.kind(invalid_slot.value), syntax::ExprKind::invalid);
+    EXPECT_EQ(module.exprs.range(invalid_slot.value).begin, SET_RANGE.begin);
+
+    syntax::GenericApplyExprPayload generic_payload;
+    generic_payload.callee = literal_id;
+    generic_payload.type_args = {type_id};
+    const syntax::ExprId generic_slot = append_slot();
+    module.set_generic_apply_expr(generic_slot.value, SET_RANGE, generic_payload);
+    ASSERT_NE(module.exprs.generic_apply_payload(generic_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.generic_apply_payload(generic_slot.value)->callee.value, literal_id.value);
+
+    syntax::UnaryExprPayload unary_payload;
+    unary_payload.op = syntax::UnaryOp::bitwise_not;
+    unary_payload.operand = literal_id;
+    const syntax::ExprId unary_slot = append_slot();
+    module.set_unary_expr(unary_slot.value, syntax::ExprKind::unary, SET_RANGE, unary_payload);
+    ASSERT_NE(module.exprs.unary_payload(unary_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.unary_payload(unary_slot.value)->op, syntax::UnaryOp::bitwise_not);
+
+    const syntax::ExprId try_slot = append_slot();
+    module.set_try_expr(try_slot.value, SET_RANGE, try_push_payload);
+    ASSERT_NE(module.exprs.try_payload(try_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.try_payload(try_slot.value)->operand.value, literal_id.value);
+
+    syntax::CallExprPayload call_payload;
+    call_payload.callee = literal_id;
+    call_payload.args = {pushed_try};
+    const syntax::ExprId call_slot = append_slot();
+    module.set_call_expr(call_slot.value, syntax::ExprKind::call, SET_RANGE, call_payload);
+    ASSERT_NE(module.exprs.call_payload(call_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.call_payload(call_slot.value)->args.front().value, pushed_try.value);
+
+    syntax::FieldExprPayload field_payload;
+    field_payload.object = literal_id;
+    field_payload.field_name = "field";
+    const syntax::ExprId field_slot = append_slot();
+    module.set_field_expr(field_slot.value, SET_RANGE, field_payload);
+    ASSERT_NE(module.exprs.field_payload(field_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.field_payload(field_slot.value)->field_name, "field");
+
+    syntax::IndexExprPayload index_payload;
+    index_payload.object = literal_id;
+    index_payload.index = pushed_try;
+    const syntax::ExprId index_slot = append_slot();
+    module.set_index_expr(index_slot.value, SET_RANGE, index_payload);
+    ASSERT_NE(module.exprs.index_payload(index_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.index_payload(index_slot.value)->index.value, pushed_try.value);
+
+    syntax::SliceExprPayload slice_payload;
+    slice_payload.object = literal_id;
+    slice_payload.start = pushed_try;
+    slice_payload.end = pushed_block;
+    const syntax::ExprId slice_slot = append_slot();
+    module.set_slice_expr(slice_slot.value, SET_RANGE, slice_payload);
+    ASSERT_NE(module.exprs.slice_payload(slice_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.slice_payload(slice_slot.value)->end.value, pushed_block.value);
+
+    syntax::StructLiteralExprPayload struct_payload;
+    struct_payload.object = literal_id;
+    struct_payload.name = "Record";
+    struct_payload.type_args = {type_id};
+    const syntax::ExprId struct_slot = append_slot();
+    module.set_struct_literal_expr(struct_slot.value, SET_RANGE, struct_payload);
+    ASSERT_NE(module.exprs.struct_literal_payload(struct_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.struct_literal_payload(struct_slot.value)->name, "Record");
+}
+
 TEST(CoreUnit, ExprNodeListCopyPreservesEveryCompactExpressionPayload)
 {
     constexpr base::SourceRange COPY_RANGE{{77}, 1, 5};

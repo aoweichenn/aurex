@@ -97,6 +97,8 @@ struct TypeAliasItemPayload {
     AstArenaVector<GenericParamDecl> generic_params;
     AstArenaVector<GenericConstraintDecl> where_constraints;
     TypeId target = INVALID_TYPE_ID;
+    TypeId impl_type = INVALID_TYPE_ID;
+    TypeId trait_type = INVALID_TYPE_ID;
 };
 
 struct StructItemPayload {

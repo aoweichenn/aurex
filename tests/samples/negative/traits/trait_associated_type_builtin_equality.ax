@@ -1,0 +1,9 @@
+module trait_associated_type_builtin_equality;
+
+fn use_eq[T](value: T) -> i32 where T: Eq[Item = i32] {
+    return 0;
+}
+
+fn main() -> i32 {
+    return 0;
+}

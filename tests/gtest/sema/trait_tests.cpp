@@ -127,10 +127,10 @@ TEST(CoreUnit, TraitSemaRegistryRecordsTraitAndImplFacts)
     expect_contains_all(dump,
         {
             "traits 1",
-            "trait Reader[T0] params=1 requirements=1",
+            "trait Reader[T0] params=1 associated_types=0 requirements=1",
             "requirement read(&Self, T) -> i32",
             "trait_impls 1",
-            "impl Reader[i32] for trait_registry_whitebox.File methods=1",
+            "impl Reader[i32] for trait_registry_whitebox.File associated_types=0 methods=1",
         });
 
     sema::CheckedModule copied = checked;
@@ -187,14 +187,14 @@ TEST(CoreUnit, TraitSemaRegistrySubstitutesCompositeRequirementTypes)
     const std::string dump = sema::dump_checked_module(checked);
     expect_contains_all(dump,
         {
-            "trait Shape[T0] params=1 requirements=5",
+            "trait Shape[T0] params=1 associated_types=0 requirements=5",
             "requirement ptr(*const Self, *mut T) -> *const T",
             "requirement slice(&Self, []const T) -> T",
             "requirement pair(&Self, (Self, T)) -> T",
             "requirement callback(&Self, fn(T) -> T) -> T",
             "requirement concrete(&Self, trait_registry_composite_whitebox.Token, "
             "trait_registry_composite_whitebox.Mode) -> trait_registry_composite_whitebox.Token",
-            "impl Shape[i32] for trait_registry_composite_whitebox.Box methods=5",
+            "impl Shape[i32] for trait_registry_composite_whitebox.Box associated_types=0 methods=5",
         });
 }
 
@@ -221,14 +221,14 @@ TEST(CoreUnit, TraitSemaRegistryAcceptsEnumSelfTargets)
     expect_contains_all(dump,
         {
             "traits 3",
-            "trait priv Extra params=0 requirements=0",
-            "trait priv Marker params=0 requirements=0",
-            "trait priv UnsafeReader params=0 requirements=1",
+            "trait priv Extra params=0 associated_types=0 requirements=0",
+            "trait priv Marker params=0 associated_types=0 requirements=0",
+            "trait priv UnsafeReader params=0 associated_types=0 requirements=1",
             "requirement unsafe read(&Self) -> i32",
             "trait_impls 3",
-            "impl Marker for trait_registry_self_targets_whitebox.Box methods=0",
-            "impl Marker for trait_registry_self_targets_whitebox.Mode methods=0",
-            "impl UnsafeReader for trait_registry_self_targets_whitebox.Box methods=1",
+            "impl Marker for trait_registry_self_targets_whitebox.Box associated_types=0 methods=0",
+            "impl Marker for trait_registry_self_targets_whitebox.Mode associated_types=0 methods=0",
+            "impl UnsafeReader for trait_registry_self_targets_whitebox.Box associated_types=0 methods=1",
         });
 }
 
@@ -385,6 +385,214 @@ TEST(CoreUnit, TraitMethodCallsRecordParamEnvAndImplDispatchBindings)
     EXPECT_EQ(copied.trait_method_calls[1].dispatch, sema::TraitMethodDispatchKind::explicit_impl);
 }
 
+TEST(CoreUnit, TraitAssociatedTypesRecordProjectionEqualitiesAndDispatch)
+{
+    const std::string_view source = "module trait_associated_type_whitebox;\n"
+                                    "trait Source {\n"
+                                    "  type Item;\n"
+                                    "  fn get(self: &Self) -> Self.Item;\n"
+                                    "}\n"
+                                    "struct Bytes { value: i32; }\n"
+                                    "impl Source for Bytes {\n"
+                                    "  type Item = i32;\n"
+                                    "  fn get(self: &Bytes) -> i32 { return self.value; }\n"
+                                    "}\n"
+                                    "fn use_i32[T](value: &T) -> i32 where T: Source[Item = i32] {\n"
+                                    "  return value.get();\n"
+                                    "}\n"
+                                    "fn main() -> i32 {\n"
+                                    "  let bytes = Bytes { value: 5 };\n"
+                                    "  return use_i32[Bytes](&bytes);\n"
+                                    "}\n";
+
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    ASSERT_EQ(checked.traits.size(), 1U);
+    ASSERT_EQ(checked.trait_impls.size(), 1U);
+    ASSERT_EQ(checked.trait_predicates.size(), 2U);
+    ASSERT_EQ(checked.trait_method_calls.size(), 2U);
+
+    const sema::TraitSignature& trait = checked.traits.begin()->second;
+    ASSERT_EQ(trait.associated_types.size(), 1U);
+    EXPECT_EQ(trait.associated_types.front().name, "Item");
+    EXPECT_EQ(trait.associated_types.front().ordinal, 0U);
+    EXPECT_TRUE(query::is_valid(trait.associated_types.front().member_key));
+    ASSERT_EQ(trait.requirements.size(), 1U);
+    EXPECT_EQ(checked.types.display_name(trait.requirements.front().return_type), "Self.Item");
+
+    const sema::TraitImplInfo& impl = checked.trait_impls.begin()->second;
+    ASSERT_EQ(impl.associated_types.size(), 1U);
+    EXPECT_EQ(impl.associated_types.front().name, "Item");
+    EXPECT_EQ(checked.types.display_name(impl.associated_types.front().value_type), "i32");
+    EXPECT_EQ(impl.associated_types.front().member_key, trait.associated_types.front().member_key);
+
+    const sema::TraitPredicate& where_predicate = checked.trait_predicates.front();
+    ASSERT_EQ(where_predicate.associated_type_equalities.size(), 1U);
+    EXPECT_EQ(where_predicate.associated_type_equalities.front().name, "Item");
+    EXPECT_EQ(checked.types.display_name(where_predicate.associated_type_equalities.front().value_type), "i32");
+
+    const sema::TraitMethodCallBinding& param_env_call = checked.trait_method_calls.front();
+    EXPECT_EQ(param_env_call.dispatch, sema::TraitMethodDispatchKind::param_env);
+    EXPECT_EQ(param_env_call.method_name, "get");
+    EXPECT_EQ(checked.types.display_name(param_env_call.return_type), "i32");
+
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "trait priv Source params=0 associated_types=1 requirements=1",
+            "assoc_type Item",
+            "requirement get(&Self) -> Self.Item",
+            "impl Source for trait_associated_type_whitebox.Bytes associated_types=1 methods=1",
+            "assoc_type Item = i32 requirement=0",
+            "T: Source origin=where",
+            "assoc_eq Item = i32",
+            "trait_associated_type_whitebox.Bytes: Source origin=impl",
+            "trait_call #0 param_env T.get -> i32 predicate=0",
+            "trait_call #1 impl trait_associated_type_whitebox.Bytes.get -> i32 predicate=1",
+        });
+
+    const sema::CheckedModule copied = checked;
+    ASSERT_EQ(copied.traits.begin()->second.associated_types.size(), 1U);
+    ASSERT_EQ(copied.trait_impls.begin()->second.associated_types.size(), 1U);
+    ASSERT_EQ(copied.trait_predicates.front().associated_type_equalities.size(), 1U);
+    EXPECT_EQ(copied.trait_predicates.front().associated_type_equalities.front().name, "Item");
+}
+
+TEST(CoreUnit, TraitAssociatedTypeEqualityNormalizesGenericProjectionTypes)
+{
+    const std::string_view source = "module trait_associated_projection_equality_whitebox;\n"
+                                    "trait Source { type Item; }\n"
+                                    "struct Bytes { value: i32; }\n"
+                                    "impl Source for Bytes { type Item = i32; }\n"
+                                    "fn project[T](value: T) -> T.Item where T: Source[Item = i32] {\n"
+                                    "  return 1;\n"
+                                    "}\n"
+                                    "fn main() -> i32 {\n"
+                                    "  return 0;\n"
+                                    "}\n";
+
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "trait priv Source params=0 associated_types=1 requirements=0",
+            "assoc_type Item",
+            "T: Source origin=where",
+            "assoc_eq Item = i32",
+            "template priv value project params=1",
+        });
+}
+
+TEST(CoreUnit, TraitAssociatedProjectionStaysAbstractWithoutEquality)
+{
+    const std::string_view source = "module trait_associated_projection_abstract_whitebox;\n"
+                                    "trait Source {\n"
+                                    "  type Item;\n"
+                                    "  fn get(self: &Self) -> Self.Item;\n"
+                                    "}\n"
+                                    "fn project[T](value: &T) -> T.Item where T: Source {\n"
+                                    "  return value.get();\n"
+                                    "}\n"
+                                    "fn main() -> i32 { return 0; }\n";
+
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "trait priv Source params=0 associated_types=1 requirements=1",
+            "requirement get(&Self) -> Self.Item",
+            "T: Source origin=where",
+            "trait_call #0 param_env T.get -> T.Item predicate=0",
+        });
+}
+
+TEST(CoreUnit, TraitAssociatedTypeRequirementsSupportMultipleOutputs)
+{
+    const std::string_view source = "module trait_associated_multiple_outputs_whitebox;\n"
+                                    "trait Source {\n"
+                                    "  type Item;\n"
+                                    "  type Error;\n"
+                                    "  fn convert(self: &Self, value: Self.Item) -> Self.Error;\n"
+                                    "}\n"
+                                    "struct Bytes { value: i32; }\n"
+                                    "impl Source for Bytes {\n"
+                                    "  type Item = i32;\n"
+                                    "  type Error = u8;\n"
+                                    "  fn convert(self: &Bytes, value: i32) -> u8 {\n"
+                                    "    return 1u8;\n"
+                                    "  }\n"
+                                    "}\n"
+                                    "fn main() -> i32 { return 0; }\n";
+
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    ASSERT_EQ(checked.traits.size(), 1U);
+    ASSERT_EQ(checked.trait_impls.size(), 1U);
+    const sema::TraitSignature& trait = checked.traits.begin()->second;
+    ASSERT_EQ(trait.associated_types.size(), 2U);
+    EXPECT_EQ(trait.associated_types[0].name, "Item");
+    EXPECT_EQ(trait.associated_types[1].name, "Error");
+
+    const sema::TraitImplInfo& impl = checked.trait_impls.begin()->second;
+    ASSERT_EQ(impl.associated_types.size(), 2U);
+    EXPECT_EQ(checked.types.display_name(impl.associated_types[0].value_type), "i32");
+    EXPECT_EQ(checked.types.display_name(impl.associated_types[1].value_type), "u8");
+
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "trait priv Source params=0 associated_types=2 requirements=1",
+            "assoc_type Item",
+            "assoc_type Error",
+            "requirement convert(&Self, Self.Item) -> Self.Error",
+            "impl Source for trait_associated_multiple_outputs_whitebox.Bytes associated_types=2 methods=1",
+            "assoc_type Item = i32 requirement=0",
+            "assoc_type Error = u8 requirement=1",
+        });
+}
+
+TEST(CoreUnit, TraitAssociatedTypeEqualityAcceptsDifferentProjection)
+{
+    const std::string_view source = "module trait_associated_projection_equality_chain_whitebox;\n"
+                                    "trait Source {\n"
+                                    "  type Item;\n"
+                                    "  type Error;\n"
+                                    "}\n"
+                                    "fn project[T](value: T) -> i32 where T: Source[Item = T.Error] {\n"
+                                    "  return 0;\n"
+                                    "}\n"
+                                    "fn main() -> i32 { return 0; }\n";
+
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    ASSERT_EQ(checked.trait_predicates.size(), 1U);
+    const sema::TraitPredicate& predicate = checked.trait_predicates.front();
+    ASSERT_EQ(predicate.associated_type_equalities.size(), 1U);
+    EXPECT_EQ(predicate.associated_type_equalities.front().name, "Item");
+    EXPECT_EQ(checked.types.display_name(predicate.associated_type_equalities.front().value_type), "T.Error");
+
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "trait priv Source params=0 associated_types=2 requirements=0",
+            "T: Source origin=where",
+            "assoc_eq Item = T.Error",
+        });
+}
+
+TEST(CoreUnit, TraitAssociatedProjectionTypeTableInternsDisplayAndCopies)
+{
+    sema::TypeTable types;
+    const sema::TypeHandle base = types.generic_param("T");
+    query::MemberKey member;
+    member.global_id = 42;
+
+    const sema::TypeHandle first = types.associated_projection(base, member, "Item");
+    const sema::TypeHandle second = types.associated_projection(base, member, "Item");
+    EXPECT_EQ(first.value, second.value);
+    EXPECT_EQ(types.display_name(first), "T.Item");
+
+    const sema::TypeTable copied = types;
+    EXPECT_EQ(copied.display_name(first), "T.Item");
+}
+
 TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
 {
     const std::vector<std::pair<std::string_view, std::string_view>> cases = {
@@ -402,7 +610,7 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
             "  fn read(self: &Self) -> i32;\n"
             "}\n"
             "fn main() -> i32 { return 0; }\n",
-            "duplicate trait requirement: Reader.read",
+            "duplicate trait associated item: Reader.read",
         },
         {
             "module trait_self_generic_whitebox;\n"
@@ -602,6 +810,156 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
             "fn main() -> i32 { return 0; }\n",
             "does not satisfy trait predicate `Reader`",
         },
+        {
+            "module trait_associated_type_duplicate_trait_whitebox;\n"
+            "trait Source {\n"
+            "  type Item;\n"
+            "  type Item;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "duplicate trait associated item: Source.Item",
+        },
+        {
+            "module trait_associated_type_generic_unsupported_whitebox;\n"
+            "trait Source {\n"
+            "  type Item[T];\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "generic associated types are not supported",
+        },
+        {
+            "module trait_associated_type_impl_generic_unsupported_whitebox;\n"
+            "trait Source { type Item; }\n"
+            "struct Bytes { value: i32; }\n"
+            "impl Source for Bytes {\n"
+            "  type Item[T] = i32;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "generic associated types are not supported",
+        },
+        {
+            "module trait_associated_type_missing_impl_whitebox;\n"
+            "trait Source { type Item; }\n"
+            "struct Bytes { value: i32; }\n"
+            "impl Source for Bytes {}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "trait impl missing associated type: Source for trait_associated_type_missing_impl_whitebox.Bytes.Item",
+        },
+        {
+            "module trait_associated_type_unknown_impl_whitebox;\n"
+            "trait Source { type Item; }\n"
+            "struct Bytes { value: i32; }\n"
+            "impl Source for Bytes {\n"
+            "  type Other = i32;\n"
+            "  type Item = i32;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "trait impl associated type is not required: Source for "
+            "trait_associated_type_unknown_impl_whitebox.Bytes.Other",
+        },
+        {
+            "module trait_associated_type_duplicate_impl_whitebox;\n"
+            "trait Source { type Item; }\n"
+            "struct Bytes { value: i32; }\n"
+            "impl Source for Bytes {\n"
+            "  type Item = i32;\n"
+            "  type Item = i32;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "duplicate trait impl associated type: Source for "
+            "trait_associated_type_duplicate_impl_whitebox.Bytes.Item",
+        },
+        {
+            "module trait_associated_type_signature_mismatch_whitebox;\n"
+            "trait Source {\n"
+            "  type Item;\n"
+            "  fn get(self: &Self) -> Self.Item;\n"
+            "}\n"
+            "struct Bytes { value: i32; }\n"
+            "impl Source for Bytes {\n"
+            "  type Item = i32;\n"
+            "  fn get(self: &Bytes) -> u8 { return 0u8; }\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "trait impl method signature does not match requirement",
+        },
+        {
+            "module trait_associated_type_unknown_equality_whitebox;\n"
+            "trait Source { type Item; }\n"
+            "fn use_source[T](value: T) -> i32 where T: Source[Missing = i32] {\n"
+            "  return 0;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "trait Source has no associated type `Missing`",
+        },
+        {
+            "module trait_associated_type_duplicate_equality_whitebox;\n"
+            "trait Source { type Item; }\n"
+            "fn use_source[T](value: T) -> i32 where T: Source[Item = i32, Item = i32] {\n"
+            "  return 0;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "duplicate associated type equality for Source.Item",
+        },
+        {
+            "module trait_associated_type_builtin_equality_whitebox;\n"
+            "fn use_eq[T](value: T) -> i32 where T: Eq[Item = i32] {\n"
+            "  return 0;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "builtin capability `Eq` has no associated type `Item`",
+        },
+        {
+            "module trait_associated_type_missing_bound_whitebox;\n"
+            "trait Source { type Item; }\n"
+            "fn use_item[T](value: T) -> T.Item {\n"
+            "  return value;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "associated type projection T.Item requires a trait bound",
+        },
+        {
+            "module trait_associated_type_unknown_projection_whitebox;\n"
+            "fn use_item[T](value: T) -> T.Item {\n"
+            "  return value;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "unknown associated type projection T.Item",
+        },
+        {
+            "module trait_associated_type_ambiguous_projection_whitebox;\n"
+            "trait SourceA { type Item; }\n"
+            "trait SourceB { type Item; }\n"
+            "fn use_item[T](value: T) -> T.Item where T: SourceA + SourceB {\n"
+            "  return value;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "ambiguous associated type projection T.Item",
+        },
+        {
+            "module trait_associated_type_projection_cycle_whitebox;\n"
+            "trait Source { type Item; }\n"
+            "fn use_item[T](value: T) -> i32 where T: Source[Item = T.Item] {\n"
+            "  return 0;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "associated type equality forms a projection cycle: Source.Item",
+        },
+        {
+            "module trait_associated_type_equality_unsatisfied_whitebox;\n"
+            "trait Source { type Item; }\n"
+            "struct Bytes { value: i32; }\n"
+            "impl Source for Bytes { type Item = u8; }\n"
+            "fn use_i32[T](value: T) -> i32 where T: Source[Item = i32] {\n"
+            "  return 0;\n"
+            "}\n"
+            "fn main() -> i32 {\n"
+            "  let bytes = Bytes { value: 1 };\n"
+            "  return use_i32[Bytes](bytes);\n"
+            "}\n",
+            "trait associated type equality is not satisfied: Source for "
+            "trait_associated_type_equality_unsatisfied_whitebox.Bytes.Item expected i32, got u8",
+        },
     };
 
     for (const auto& [source, diagnostic] : cases) {
@@ -615,9 +973,9 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
     const std::string checked = require_success(aurexc() + " --emit=checked " + q(source)).output;
     expect_contains_all(checked,
         {
-            "trait Reader params=0 requirements=1",
+            "trait Reader params=0 associated_types=0 requirements=1",
             "requirement read(&Self) -> i32",
-            "impl Reader for trait_impl_registry.File methods=1",
+            "impl Reader for trait_impl_registry.File associated_types=0 methods=1",
         });
     require_success(aurexc() + " --emit=llvm-ir " + q(source));
 
@@ -649,6 +1007,26 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
     expect_contains(
         associated_static_llvm, "call i32 @m0_trait_method_associated_static_dispatch_File_trait_impl_Factory__answer");
 
+    const fs::path associated_type_source = positive_sample("traits", "trait_associated_type_where_equality.ax");
+    const std::string associated_type_checked =
+        require_success(aurexc() + " --emit=checked " + q(associated_type_source)).output;
+    expect_contains_all(associated_type_checked,
+        {
+            "trait priv Source params=0 associated_types=1 requirements=1",
+            "assoc_type Item",
+            "requirement get(&Self) -> Self.Item",
+            "impl Source for trait_associated_type_where_equality.Bytes associated_types=1 methods=1",
+            "assoc_type Item = i32 requirement=0",
+            "T: Source origin=where",
+            "assoc_eq Item = i32",
+            "trait_call #0 param_env T.get -> i32 predicate=0",
+            "trait_call #1 impl trait_associated_type_where_equality.Bytes.get -> i32 predicate=1",
+        });
+    const std::string associated_type_llvm =
+        require_success(aurexc() + " --emit=llvm-ir " + q(associated_type_source)).output;
+    expect_contains(
+        associated_type_llvm, "call i32 @m0_trait_associated_type_where_equality_Bytes_trait_impl_Source__get");
+
     const fs::path inherent_precedence_source = positive_sample("traits", "trait_method_inherent_precedence.ax");
     const std::string inherent_precedence_checked =
         require_success(aurexc() + " --emit=checked " + q(inherent_precedence_source)).output;
@@ -668,7 +1046,7 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
     expect_contains_all(qualified_checked,
         {
             "trait_impls 1",
-            "impl Visible for trait_impl_qualified_registry.File methods=1",
+            "impl Visible for trait_impl_qualified_registry.File associated_types=0 methods=1",
         });
     require_success(aurexc() + " --emit=llvm-ir " + sample_import_flags() + " " + q(qualified_source));
 
@@ -678,7 +1056,7 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
     expect_contains_all(selective_checked,
         {
             "trait_impls 1",
-            "impl Visible for trait_impl_selective_registry.File methods=1",
+            "impl Visible for trait_impl_selective_registry.File associated_types=0 methods=1",
         });
     require_success(aurexc() + " --emit=llvm-ir " + sample_import_flags() + " " + q(selective_source));
 
@@ -698,6 +1076,33 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
     expect_negative_trait_sample("trait_method_associated_missing_impl.ax", "has no visible impl for trait method");
     expect_negative_trait_sample("trait_method_missing_bound.ax", "requires a trait bound");
     expect_negative_trait_sample("trait_method_missing_impl.ax", "has no visible impl for trait method");
+    expect_negative_trait_sample(
+        "trait_associated_type_ambiguous_projection.ax", "ambiguous associated type projection T.Item");
+    expect_negative_trait_sample(
+        "trait_associated_type_builtin_equality.ax", "builtin capability `Eq` has no associated type `Item`");
+    expect_negative_trait_sample(
+        "trait_associated_type_duplicate_equality.ax", "duplicate associated type equality for Source.Item");
+    expect_negative_trait_sample("trait_associated_type_duplicate_impl.ax",
+        "duplicate trait impl associated type: Source for trait_associated_type_duplicate_impl.Bytes.Item");
+    expect_negative_trait_sample(
+        "trait_associated_type_duplicate_trait.ax", "duplicate trait associated item: Source.Item");
+    expect_negative_trait_sample("trait_associated_type_equality_unsatisfied.ax",
+        "trait associated type equality is not satisfied: Source for "
+        "trait_associated_type_equality_unsatisfied.Bytes.Item expected i32, got u8");
+    expect_negative_trait_sample(
+        "trait_associated_type_generic_unsupported.ax", "generic associated types are not supported");
+    expect_negative_trait_sample(
+        "trait_associated_type_missing_bound.ax", "associated type projection T.Item requires a trait bound");
+    expect_negative_trait_sample("trait_associated_type_missing_impl.ax",
+        "trait impl missing associated type: Source for trait_associated_type_missing_impl.Bytes.Item");
+    expect_negative_trait_sample(
+        "trait_associated_type_projection_cycle.ax", "associated type equality forms a projection cycle: Source.Item");
+    expect_negative_trait_sample(
+        "trait_associated_type_signature_mismatch.ax", "trait impl method signature does not match requirement");
+    expect_negative_trait_sample(
+        "trait_associated_type_unknown_equality.ax", "trait Source has no associated type `Missing`");
+    expect_negative_trait_sample("trait_associated_type_unknown_impl.ax",
+        "trait impl associated type is not required: Source for trait_associated_type_unknown_impl.Bytes.Other");
 
     const fs::path predicate_source = positive_sample("traits", "trait_predicate_where_generic.ax");
     const std::string predicate_checked = require_success(aurexc() + " --emit=checked " + q(predicate_source)).output;
@@ -740,7 +1145,7 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
     expect_contains_all(local_trait_checked,
         {
             "trait_impls 1",
-            "impl LocalReader for samplelib.traits.HiddenFile methods=1",
+            "impl LocalReader for samplelib.traits.HiddenFile associated_types=0 methods=1",
             "samplelib.traits.HiddenFile: LocalReader origin=impl",
         });
     require_success(aurexc() + " --emit=llvm-ir " + sample_import_flags() + " " + q(local_trait_external_self));

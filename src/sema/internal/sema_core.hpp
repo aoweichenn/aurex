@@ -533,6 +533,8 @@ private:
         IdentId name_id, std::string_view name, const base::SourceRange& range, bool report_unknown = true);
     [[nodiscard]] TraitMethodCallResolution resolve_trait_method_call(TypeHandle owner_type, IdentId name_id,
         std::string_view name, const base::SourceRange& range, bool require_self, bool report_failure = true);
+    [[nodiscard]] TypeHandle resolve_associated_type_projection(TypeHandle base_type, IdentId associated_name_id,
+        std::string_view associated_name, const base::SourceRange& range, bool report_failure = true);
     [[nodiscard]] query::StableFingerprint128 generic_trait_predicate_fingerprint(const GenericTemplateInfo& info,
         base::usize param_index, TraitPredicateKind kind, CapabilityKind capability, const TraitSignature* trait) const;
     [[nodiscard]] bool generic_param_has_capability(std::string_view param, CapabilityKind capability) const;

@@ -36,6 +36,14 @@ syntax::ItemId ItemParser::parse_trait_decl()
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
         const ParsedVisibility visibility = this->parse_visibility();
         const bool is_unsafe = this->check(TokenKind::kw_unsafe);
+        if (this->check(TokenKind::kw_type)) {
+            const syntax::ItemId associated_type = this->parse_trait_associated_type_decl(visibility);
+            if (syntax::is_valid(associated_type)) {
+                trait.trait_items.push_back(associated_type);
+            }
+            this->reset_panic();
+            continue;
+        }
         if (!this->check(TokenKind::kw_fn) && !(is_unsafe && this->check_next(TokenKind::kw_fn))) {
             this->report_here(std::string(PARSER_EXPECT_TRAIT_REQUIREMENT));
             this->synchronize(RecoveryContext::item);

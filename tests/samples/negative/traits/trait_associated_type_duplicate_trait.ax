@@ -1,0 +1,10 @@
+module trait_associated_type_duplicate_trait;
+
+trait Source {
+    type Item;
+    type Item;
+}
+
+fn main() -> i32 {
+    return 0;
+}

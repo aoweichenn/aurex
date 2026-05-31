@@ -1,0 +1,16 @@
+module trait_associated_type_missing_impl;
+
+trait Source {
+    type Item;
+}
+
+struct Bytes {
+    value: i32;
+}
+
+impl Source for Bytes {
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -132,6 +132,24 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"trait_method_associated_missing_impl", "has no visible impl for trait method"},
     {"trait_method_missing_bound", "requires a trait bound"},
     {"trait_method_missing_impl", "has no visible impl for trait method"},
+    {"trait_associated_type_ambiguous_projection", "ambiguous associated type projection T.Item"},
+    {"trait_associated_type_builtin_equality", "builtin capability `Eq` has no associated type `Item`"},
+    {"trait_associated_type_duplicate_equality", "duplicate associated type equality for Source.Item"},
+    {"trait_associated_type_duplicate_impl",
+        "duplicate trait impl associated type: Source for trait_associated_type_duplicate_impl.Bytes.Item"},
+    {"trait_associated_type_duplicate_trait", "duplicate trait associated item: Source.Item"},
+    {"trait_associated_type_equality_unsatisfied",
+        "trait associated type equality is not satisfied: Source for "
+        "trait_associated_type_equality_unsatisfied.Bytes.Item expected i32, got u8"},
+    {"trait_associated_type_generic_unsupported", "generic associated types are not supported"},
+    {"trait_associated_type_missing_bound", "associated type projection T.Item requires a trait bound"},
+    {"trait_associated_type_missing_impl",
+        "trait impl missing associated type: Source for trait_associated_type_missing_impl.Bytes.Item"},
+    {"trait_associated_type_projection_cycle", "associated type equality forms a projection cycle: Source.Item"},
+    {"trait_associated_type_signature_mismatch", "trait impl method signature does not match requirement"},
+    {"trait_associated_type_unknown_equality", "trait Source has no associated type `Missing`"},
+    {"trait_associated_type_unknown_impl",
+        "trait impl associated type is not required: Source for trait_associated_type_unknown_impl.Bytes.Other"},
     {"unknown_module_expr_member", "unknown name in module samplelib.visibility: missing"},
     {"unknown_module_expr_path", "unknown module path: samplelib.missing"},
     {"unknown_module_type_path", "unknown module path: missing.path"},
@@ -449,6 +467,11 @@ TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_trait_method_static_dis
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_trait_method_associated_static_dispatch)
 {
     run_positive_runtime_smoke_sample("traits", "trait_method_associated_static_dispatch.ax");
+}
+
+TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_trait_associated_type_where_equality)
+{
+    run_positive_runtime_smoke_sample("traits", "trait_associated_type_where_equality.ax");
 }
 
 TEST_F(AurexIntegrationTest, SampleSuite_PositiveRuntime_trait_method_inherent_precedence)

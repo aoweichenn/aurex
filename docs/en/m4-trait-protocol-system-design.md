@@ -467,8 +467,9 @@ principle, adapted to Aurex's current module / package baseline.
 
 ### 5.5 Associated Types
 
-Associated types are in the M4 design but not the first M4.0 implementation
-slice.
+Associated types are in the M4 design and the first implementation slice landed
+in M4-WP6. The implemented subset is intentionally the static-dispatch,
+non-object, non-GAT model described here.
 
 Target semantics:
 
@@ -504,6 +505,11 @@ Design principles:
 - M4 does not implement generic associated types. GATs would pull solver,
   lifetime/resource, and equality-constraint complexity into the first trait
   release.
+- M4-WP6 deliberately keeps associated constants, default associated type
+  values, explicit qualified projection syntax, and trait-object projection ABI
+  out of scope. The current shorthand `T.Item` is accepted only when the
+  associated type name is unique in the current trait bounds or normalized by a
+  matching equality predicate.
 
 ### 5.6 Capability Migration
 

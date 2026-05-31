@@ -1,0 +1,23 @@
+module trait_associated_type_basic;
+
+trait Cell {
+    type Value;
+    fn get(self: &Self) -> Self.Value;
+}
+
+struct IntCell {
+    value: i32;
+}
+
+impl Cell for IntCell {
+    type Value = i32;
+
+    fn get(self: &IntCell) -> i32 {
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    let cell = IntCell { value: 42 };
+    return cell.get() - 42;
+}

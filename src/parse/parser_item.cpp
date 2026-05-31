@@ -154,4 +154,50 @@ syntax::ItemId ItemParser::parse_type_alias_decl()
     return this->session_.module.push_item(std::move(item));
 }
 
+syntax::ItemId ItemParser::parse_trait_associated_type_decl(const ParsedVisibility visibility)
+{
+    const syntax::Token& begin = this->expect(TokenKind::kw_type, std::string(PARSER_EXPECT_TYPE_KEYWORD));
+    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE_ALIAS_NAME));
+    std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
+    std::vector<syntax::GenericConstraintDecl> where_constraints = this->parse_optional_where_constraints();
+    const syntax::Token& end =
+        this->expect_item_terminator(std::string(PARSER_EXPECT_TRAIT_ASSOCIATED_TYPE_TERMINATOR));
+
+    syntax::ItemNode item;
+    item.kind = syntax::ItemKind::type_alias;
+    item.range = this->merge(begin.range, end.range);
+    item.name = name.text();
+    item.generic_params = std::move(generic_params);
+    item.where_constraints = std::move(where_constraints);
+    item.visibility = visibility.explicit_visibility ? visibility.visibility : syntax::Visibility::public_;
+    this->reset_panic();
+    return this->session_.module.push_item(std::move(item));
+}
+
+syntax::ItemId ItemParser::parse_impl_associated_type_decl(
+    const ParsedVisibility visibility, const syntax::TypeId impl_type, const syntax::TypeId trait_type)
+{
+    const syntax::Token& begin = this->expect(TokenKind::kw_type, std::string(PARSER_EXPECT_TYPE_KEYWORD));
+    const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE_ALIAS_NAME));
+    std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
+    std::vector<syntax::GenericConstraintDecl> where_constraints = this->parse_optional_where_constraints();
+    this->expect_initializer_equal(std::string(PARSER_EXPECT_TYPE_ALIAS_INITIALIZER_EQUAL));
+    const syntax::TypeId target = this->parse_type();
+    const syntax::Token& end = this->expect_item_terminator(std::string(PARSER_EXPECT_IMPL_ASSOCIATED_TYPE_TERMINATOR));
+
+    syntax::ItemNode item;
+    item.kind = syntax::ItemKind::type_alias;
+    item.range = this->merge(begin.range, end.range);
+    item.name = name.text();
+    item.generic_params = std::move(generic_params);
+    item.where_constraints = std::move(where_constraints);
+    item.alias_type = target;
+    item.impl_type = impl_type;
+    item.trait_type = trait_type;
+    item.visibility = syntax::is_valid(trait_type) && !visibility.explicit_visibility ? syntax::Visibility::public_
+                                                                                      : visibility.visibility;
+    this->reset_panic();
+    return this->session_.module.push_item(std::move(item));
+}
+
 } // namespace aurex::parse

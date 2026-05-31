@@ -324,14 +324,78 @@ void ItemParser::parse_where_capabilities(syntax::GenericConstraintDecl& constra
     while (!this->is_eof()) {
         const syntax::Token& capability =
             this->expect_identifier_recovered(std::string(PARSER_EXPECT_WHERE_CAPABILITY));
+        std::vector<syntax::AssociatedTypeConstraintDecl> associated_constraints;
         if (capability.kind == TokenKind::identifier) {
+            if (this->check(TokenKind::l_bracket)) {
+                associated_constraints = this->parse_associated_type_constraints();
+            }
             constraint.capability_names.push_back(capability.text());
             constraint.capability_ranges.push_back(capability.range);
+            constraint.capability_associated_constraints.push_back(std::move(associated_constraints));
         }
         if (!this->match(TokenKind::plus)) {
             break;
         }
     }
+}
+
+std::vector<syntax::AssociatedTypeConstraintDecl> ItemParser::parse_associated_type_constraints()
+{
+    const syntax::Token& begin =
+        this->expect(TokenKind::l_bracket, std::string(PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_END));
+    std::vector<syntax::AssociatedTypeConstraintDecl> constraints;
+    while (!this->is_eof() && !this->check(TokenKind::r_bracket)) {
+        if (std::optional<syntax::AssociatedTypeConstraintDecl> constraint = this->parse_associated_type_constraint()) {
+            constraints.push_back(constraint.value());
+        }
+        this->reset_panic();
+        if (!this->recover_associated_type_constraint_separator()) {
+            break;
+        }
+    }
+    static_cast<void>(this->expect_recovered_after(TokenKind::r_bracket,
+        std::string(PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_END), RecoveryContext::generic_type_argument, begin));
+    return constraints;
+}
+
+std::optional<syntax::AssociatedTypeConstraintDecl> ItemParser::parse_associated_type_constraint()
+{
+    const syntax::Token& name =
+        this->expect_identifier_recovered(std::string(PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_NAME));
+    this->expect_recovered(TokenKind::equal, std::string(PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_EQUAL),
+        RecoveryContext::type_annotation);
+    const syntax::TypeId value_type = this->parse_type();
+    if (name.kind != TokenKind::identifier) {
+        return std::nullopt;
+    }
+    return syntax::AssociatedTypeConstraintDecl{
+        name.text(),
+        name.range,
+        value_type,
+        this->merge(name.range, this->type_range_or(value_type, name.range)),
+    };
+}
+
+bool ItemParser::recover_associated_type_constraint_separator() const
+{
+    if (this->check(TokenKind::r_bracket)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+
+    this->report_here(std::string(PARSER_EXPECT_ASSOCIATED_TYPE_CONSTRAINT_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::generic_type_argument)) {
+        this->synchronize(RecoveryContext::generic_type_argument);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket);
+    }
+    this->reset_panic();
+    return false;
 }
 
 bool ItemParser::recover_where_constraint_separator() const

@@ -199,11 +199,16 @@ struct AbiSymbolInfo {
     return syntax::visibility_at_least(visibility, syntax::Visibility::package_);
 }
 
-[[nodiscard]] bool is_top_level_type_item(const syntax::ItemKind kind) noexcept
+[[nodiscard]] bool is_top_level_type_item(const syntax::ItemNode& item) noexcept
 {
-    return kind == syntax::ItemKind::struct_decl || kind == syntax::ItemKind::enum_decl
-        || kind == syntax::ItemKind::opaque_struct_decl || kind == syntax::ItemKind::type_alias
-        || kind == syntax::ItemKind::trait_decl;
+    if (item.kind == syntax::ItemKind::type_alias
+        && (syntax::is_valid(item.impl_type) || syntax::is_valid(item.trait_type)
+            || !syntax::is_valid(item.alias_type))) {
+        return false;
+    }
+    return item.kind == syntax::ItemKind::struct_decl || item.kind == syntax::ItemKind::enum_decl
+        || item.kind == syntax::ItemKind::opaque_struct_decl || item.kind == syntax::ItemKind::type_alias
+        || item.kind == syntax::ItemKind::trait_decl;
 }
 
 [[nodiscard]] bool is_top_level_value_item(const syntax::ItemNode& item) noexcept
@@ -225,7 +230,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_module_namespace_confli
     for (base::u32 index = 0; index < this->core_.ctx_.module.items.size(); ++index) {
         const syntax::ItemNode item = this->core_.ctx_.module.items[index];
         const syntax::ModuleId owner = this->core_.item_module(syntax::ItemId{index});
-        if (is_top_level_type_item(item.kind)) {
+        if (is_top_level_type_item(item)) {
             type_names.emplace(this->core_.module_lookup_key(owner, item.name_id), item.range);
         } else if (is_top_level_value_item(item)) {
             value_names.emplace(this->core_.module_lookup_key(owner, item.name_id), item.range);
@@ -384,6 +389,11 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_type_names()
         const syntax::ItemNode item = this->core_.ctx_.module.items[item_index];
         if (item.kind == syntax::ItemKind::trait_decl) {
             this->core_.register_trait_name(item, syntax::ItemId{item_index});
+            continue;
+        }
+        if (item.kind == syntax::ItemKind::type_alias
+            && (syntax::is_valid(item.impl_type) || syntax::is_valid(item.trait_type)
+                || !syntax::is_valid(item.alias_type))) {
             continue;
         }
         if (this->core_.has_generic_params(item)) {
@@ -939,6 +949,9 @@ SemanticAnalyzerCore::DeclarationAnalyzer::restricted_type_exposed_by_surface_ty
         switch (info.kind) {
             case TypeKind::builtin:
             case TypeKind::generic_param:
+                break;
+            case TypeKind::associated_projection:
+                pending.push_back(info.associated_base);
                 break;
             case TypeKind::pointer:
             case TypeKind::reference:

@@ -1,13 +1,13 @@
 # Current Progress
 
 Version: 0.1.4
-Stage: M4-WP5 static trait method dispatch closed; next is M4-WP6 associated
-type model
+Stage: M4-WP6 associated type model closed; next is M4-WP7 tooling /
+diagnostics and M4-WP8 release closure
 
 ## Overall Status
 
-As of 2026-05-31, M4 trait/protocol work has completed WP1, WP2, WP3, WP4, and
-WP5.
+As of 2026-05-31, M4 trait/protocol work has completed WP1, WP2, WP3, WP4,
+WP5, and WP6.
 M4-WP1 closed the research and design baseline with nominal static traits: the
 language keyword is `trait`, `protocol` remains design terminology for
 behavioral contracts, conformance is explicit through `impl Trait for Type`,
@@ -37,8 +37,17 @@ win first; trait calls inside generic bodies bind through the current
 bind through visible traits plus the impl registry as unique `impl` direct
 calls; and LLVM IR directly calls the concrete impl method after
 monomorphization.
+M4-WP6 completes the first associated type model: trait bodies accept
+`type Item;`, trait impl bodies assign `type Item = Type;`, `Self.Item` and
+generic projections lower to canonical associated-projection types,
+`Trait[Item = Type]` where predicates lower to trait predicates plus associated
+type equality facts, impl method requirement matching substitutes impl
+associated type outputs, generic method calls can normalize through equality
+predicates, and sema diagnoses duplicate/missing/unknown associated types,
+built-in equality constraints, missing bounds, ambiguous shorthand projections,
+projection cycles, and unsatisfied equality predicates.
 
-M4-WP3/WP4/WP5 tests are normal repository tests, not temporary fixtures:
+M4-WP3/WP4/WP5/WP6 tests are normal repository tests, not temporary fixtures:
 `tests/gtest/sema/trait_tests.cpp` covers whitebox checked facts, checked dumps,
 and positive/negative samples; `tests/samples/positive/traits/trait_impl_registry.ax`
 covers the positive sample; `tests/samples/negative/traits/*.ax` covers
@@ -60,20 +69,29 @@ trait-impl diagnostic;
 `tests/samples/negative/traits/trait_method_associated_missing_impl.ax`,
 `tests/samples/negative/traits/trait_method_missing_bound.ax`, and
 `tests/samples/negative/traits/trait_method_missing_impl.ax` cover WP5 negative
-diagnostics; and
+diagnostics;
+`tests/samples/positive/traits/trait_associated_type_basic.ax` and
+`tests/samples/positive/traits/trait_associated_type_where_equality.ax` cover
+WP6 projection, impl output substitution, equality predicates, and runtime
+lowering; the `trait_associated_type_*.ax` negative samples cover WP6
+diagnostics for ambiguity, duplicate equality, built-in equality, duplicate
+trait/impl associated items, missing impl outputs, unknown impl/equality names,
+GAT rejection, missing bounds, projection cycles, signature mismatch, and
+unsatisfied equality predicates; and
 `tests/samples/imports/samplelib/traits.ax` covers cross-module visibility. The
 full design is recorded in the
 [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md),
 and the stage route is recorded in the
-[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The next step is M4-WP6:
-Associated Type Model.
+[M4 Trait / Protocol System Roadmap](m4-roadmap.md). The next step is M4-WP7:
+tooling/diagnostic projection over trait and associated-type facts, followed by
+M4-WP8 release closure.
 
-WP5 is still not presented as a complete trait system. Associated types,
-dynamic trait objects, and RAII/resource semantics remain WP6 or later
-resource-system work. The WP4/WP5 `where` grammar still supports only single
-identifier predicate names; qualified where predicates, generic trait predicate
-arguments, and associated-type constraints remain future solver/associated-type
-work.
+M4 is still not presented as a complete dynamic trait system. Dynamic trait
+objects, vtable ABI/object safety, associated constants, specialization,
+generic associated types, and RAII/resource semantics remain separate future
+designs. The WP6 `where` grammar supports identifier trait predicates with
+associated-type equalities, but qualified where predicates and generic trait
+predicate arguments remain future solver work.
 
 The repository has moved from the closed M2 language-core-no-std baseline into
 the M2.5 frontend-foundation stage. M2 does not continue the abandoned M1 track.

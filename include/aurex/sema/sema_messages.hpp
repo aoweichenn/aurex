@@ -75,6 +75,9 @@ inline constexpr std::string_view SEMA_TRAIT_IMPL_TARGET_NAMED_TRAIT = "trait im
 inline constexpr std::string_view SEMA_TRAIT_IMPL_GENERIC_UNSUPPORTED =
     "generic trait impl blocks are not supported by M4-WP4 semantic analysis";
 
+inline constexpr std::string_view SEMA_ASSOCIATED_TYPE_GENERIC_UNSUPPORTED =
+    "generic associated types are not supported by M4-WP6 semantic analysis";
+
 inline constexpr std::string_view SEMA_C_ABI_RETURN_TYPE_EXPLICIT = "C ABI function return type must be explicit";
 
 inline constexpr std::string_view SEMA_PROTOTYPE_RETURN_TYPE_EXPLICIT =
@@ -1031,6 +1034,94 @@ inline constexpr std::string_view SEMA_MUTABLE_METHOD_RECEIVER_WRITABLE =
     const std::string_view trait_name, const std::string_view method)
 {
     return "duplicate trait requirement: " + std::string(trait_name) + "." + std::string(method);
+}
+
+[[nodiscard]] inline std::string sema_duplicate_trait_associated_type_message(
+    const std::string_view trait_name, const std::string_view associated_type)
+{
+    return "duplicate trait associated type: " + std::string(trait_name) + "." + std::string(associated_type);
+}
+
+[[nodiscard]] inline std::string sema_duplicate_trait_associated_item_message(
+    const std::string_view trait_name, const std::string_view associated_item)
+{
+    return "duplicate trait associated item: " + std::string(trait_name) + "." + std::string(associated_item);
+}
+
+[[nodiscard]] inline std::string sema_duplicate_trait_impl_associated_type_message(
+    const std::string_view trait_name, const std::string_view self_type, const std::string_view associated_type)
+{
+    return "duplicate trait impl associated type: " + std::string(trait_name) + " for " + std::string(self_type) + "."
+        + std::string(associated_type);
+}
+
+[[nodiscard]] inline std::string sema_trait_impl_missing_associated_type_message(
+    const std::string_view trait_name, const std::string_view self_type, const std::string_view associated_type)
+{
+    return "trait impl missing associated type: " + std::string(trait_name) + " for " + std::string(self_type) + "."
+        + std::string(associated_type);
+}
+
+[[nodiscard]] inline std::string sema_trait_impl_unknown_associated_type_message(
+    const std::string_view trait_name, const std::string_view self_type, const std::string_view associated_type)
+{
+    return "trait impl associated type is not required: " + std::string(trait_name) + " for " + std::string(self_type)
+        + "." + std::string(associated_type);
+}
+
+[[nodiscard]] inline std::string sema_unknown_associated_type_constraint_message(
+    const std::string_view trait_name, const std::string_view associated_type)
+{
+    return "trait " + std::string(trait_name) + " has no associated type `" + std::string(associated_type) + "`";
+}
+
+[[nodiscard]] inline std::string sema_duplicate_associated_type_constraint_message(
+    const std::string_view trait_name, const std::string_view associated_type)
+{
+    return "duplicate associated type equality for " + std::string(trait_name) + "." + std::string(associated_type);
+}
+
+[[nodiscard]] inline std::string sema_associated_type_constraint_on_builtin_message(
+    const std::string_view capability_name, const std::string_view associated_type)
+{
+    return "builtin capability `" + std::string(capability_name) + "` has no associated type `"
+        + std::string(associated_type) + "`";
+}
+
+[[nodiscard]] inline std::string sema_unknown_associated_type_projection_message(
+    const std::string_view base_type, const std::string_view associated_type)
+{
+    return "unknown associated type projection " + std::string(base_type) + "." + std::string(associated_type);
+}
+
+[[nodiscard]] inline std::string sema_associated_type_projection_missing_bound_message(
+    const std::string_view base_type, const std::string_view associated_type)
+{
+    return "associated type projection " + std::string(base_type) + "." + std::string(associated_type)
+        + " requires a trait bound";
+}
+
+[[nodiscard]] inline std::string sema_ambiguous_associated_type_projection_message(const std::string_view base_type,
+    const std::string_view associated_type, const std::string_view first_trait, const std::string_view second_trait)
+{
+    return "ambiguous associated type projection " + std::string(base_type) + "." + std::string(associated_type)
+        + ": candidates from " + std::string(first_trait) + " and " + std::string(second_trait);
+}
+
+[[nodiscard]] inline std::string sema_associated_type_projection_cycle_message(
+    const std::string_view trait_name, const std::string_view associated_type)
+{
+    return "associated type equality forms a projection cycle: " + std::string(trait_name) + "."
+        + std::string(associated_type);
+}
+
+[[nodiscard]] inline std::string sema_trait_associated_type_equality_not_satisfied_message(
+    const std::string_view trait_name, const std::string_view self_type, const std::string_view associated_type,
+    const std::string_view expected_type, const std::string_view actual_type)
+{
+    return "trait associated type equality is not satisfied: " + std::string(trait_name) + " for "
+        + std::string(self_type) + "." + std::string(associated_type) + " expected " + std::string(expected_type)
+        + ", got " + std::string(actual_type);
 }
 
 [[nodiscard]] inline std::string sema_duplicate_trait_impl_method_message(

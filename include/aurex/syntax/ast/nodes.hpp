@@ -112,11 +112,20 @@ struct GenericParamDecl {
     IdentId name_id = INVALID_IDENT_ID;
 };
 
+struct AssociatedTypeConstraintDecl {
+    std::string_view name;
+    base::SourceRange name_range{};
+    TypeId value_type = INVALID_TYPE_ID;
+    base::SourceRange range{};
+    IdentId name_id = INVALID_IDENT_ID;
+};
+
 struct GenericConstraintDecl {
     std::string_view param_name;
     base::SourceRange param_range{};
     AstArenaVector<std::string_view> capability_names;
     AstArenaVector<base::SourceRange> capability_ranges;
+    std::vector<std::vector<AssociatedTypeConstraintDecl>> capability_associated_constraints;
     base::SourceRange range{};
     IdentId param_name_id = INVALID_IDENT_ID;
     AstArenaVector<IdentId> capability_name_ids;

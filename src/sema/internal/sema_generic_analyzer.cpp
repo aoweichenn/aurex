@@ -780,6 +780,16 @@ void SemanticAnalyzerCore::GenericAnalyzer::validate_generic_constraints(
     }
 
     GenericContext lookup_context = this->core_.make_generic_context();
+    lookup_context.params.reserve(item.generic_params.size());
+    lookup_context.param_identities.reserve(item.generic_params.size());
+    for (base::usize index = 0; index < item.generic_params.size(); ++index) {
+        const syntax::GenericParamDecl& param = item.generic_params[index];
+        const GenericParamIdentity identity = index < info.param_identities.size()
+            ? info.param_identities[index]
+            : this->core_.make_generic_param_identity(info, index);
+        lookup_context.params.emplace(param.name_id, this->core_.generic_param_placeholder(info, index));
+        lookup_context.param_identities.emplace(param.name_id, identity);
+    }
     GenericAnalysisScope scope(this->core_, info.module, &lookup_context, nullptr, false, info.item);
     for (const syntax::GenericConstraintDecl& constraint : item.where_constraints) {
         const auto param = params.find(constraint.param_name_id);
@@ -789,10 +799,15 @@ void SemanticAnalyzerCore::GenericAnalyzer::validate_generic_constraints(
             continue;
         }
         CapabilitySet& capabilities = this->core_.capability_bucket(info.constraints, constraint.param_name_id);
+        const std::vector<syntax::AssociatedTypeConstraintDecl> empty_associated_constraints;
         for (base::usize i = 0; i < constraint.capability_names.size(); ++i) {
             const std::string_view capability_name = constraint.capability_names[i];
             const base::SourceRange capability_range =
                 i < constraint.capability_ranges.size() ? constraint.capability_ranges[i] : constraint.range;
+            const std::vector<syntax::AssociatedTypeConstraintDecl>& associated_constraints =
+                i < constraint.capability_associated_constraints.size()
+                ? constraint.capability_associated_constraints[i]
+                : empty_associated_constraints;
             if (is_resource_capability(capability_name)) {
                 this->core_.report_unsupported(
                     capability_range, std::string(SEMA_GENERIC_RESOURCE_CAPABILITY_UNSUPPORTED));
@@ -804,6 +819,11 @@ void SemanticAnalyzerCore::GenericAnalyzer::validate_generic_constraints(
                     this->core_.report_capability(
                         capability_range, sema_duplicate_capability_message(constraint.param_name, capability_name));
                     continue;
+                }
+                for (const syntax::AssociatedTypeConstraintDecl& associated_constraint : associated_constraints) {
+                    this->core_.report_capability(associated_constraint.range,
+                        sema_associated_type_constraint_on_builtin_message(
+                            capability_name, associated_constraint.name));
                 }
                 this->record_generic_trait_predicate(
                     info, constraint, param->second, i, TraitPredicateKind::builtin, *capability, nullptr);
@@ -839,8 +859,69 @@ void SemanticAnalyzerCore::GenericAnalyzer::validate_generic_constraints(
                     capability_range, sema_duplicate_capability_message(constraint.param_name, capability_name));
                 continue;
             }
-            this->record_generic_trait_predicate(
+            const base::u32 predicate_index = this->record_generic_trait_predicate(
                 info, constraint, param->second, i, TraitPredicateKind::declared_trait, CapabilityKind::sized, trait);
+            lookup_context.predicate_indices.push_back(predicate_index);
+            TraitPredicate& predicate = this->core_.state_.checked.trait_predicates[predicate_index];
+            std::unordered_map<IdentId, base::SourceRange, IdentIdHash> seen_associated_constraints;
+            seen_associated_constraints.reserve(associated_constraints.size());
+            for (const syntax::AssociatedTypeConstraintDecl& associated_constraint : associated_constraints) {
+                const auto inserted =
+                    seen_associated_constraints.emplace(associated_constraint.name_id, associated_constraint.range);
+                if (!inserted.second) {
+                    this->core_.report_capability(associated_constraint.range,
+                        sema_duplicate_associated_type_constraint_message(trait->name, associated_constraint.name));
+                    this->core_.report_note(inserted.first->second, SemanticDiagnosticKind::duplicate,
+                        sema_previous_declaration_note_message(associated_constraint.name));
+                    continue;
+                }
+                const auto associated_requirement = std::ranges::find_if(
+                    trait->associated_types, [&](const TraitAssociatedTypeRequirement& requirement) {
+                        return requirement.name_id == associated_constraint.name_id;
+                    });
+                if (associated_requirement == trait->associated_types.end()) {
+                    this->core_.report_capability(associated_constraint.range,
+                        sema_unknown_associated_type_constraint_message(trait->name, associated_constraint.name));
+                    continue;
+                }
+                TraitImplAssociatedTypeInfo equality =
+                    this->core_.state_.checked.make_trait_impl_associated_type_info();
+                equality.name = this->core_.source_name_text(associated_constraint.name_id, associated_constraint.name);
+                equality.name_id = associated_constraint.name_id;
+                equality.syntax_type = associated_constraint.value_type;
+                equality.value_type = this->core_.resolve_type(associated_constraint.value_type);
+                equality.member_key = associated_requirement->member_key;
+                equality.requirement_ordinal = associated_requirement->ordinal;
+                if (is_valid(equality.value_type)
+                    && this->core_.state_.checked.types.get(equality.value_type).kind
+                        == TypeKind::associated_projection) {
+                    const TypeInfo& equality_info = this->core_.state_.checked.types.get(equality.value_type);
+                    if (equality_info.associated_member == equality.member_key) {
+                        this->core_.report_type(associated_constraint.range,
+                            sema_associated_type_projection_cycle_message(trait->name, associated_constraint.name));
+                    }
+                }
+                predicate.associated_type_equalities.push_back(equality);
+            }
+            if (!predicate.associated_type_equalities.empty()) {
+                query::StableHashBuilder hash;
+                hash.mix_fingerprint(predicate.canonical_fingerprint);
+                for (const TraitImplAssociatedTypeInfo& equality : predicate.associated_type_equalities) {
+                    hash.mix_u64(equality.member_key.global_id);
+                    hash.mix_string(this->core_.state_.checked.types.display_name(equality.value_type));
+                }
+                predicate.canonical_fingerprint = hash.finish();
+                for (TraitObligation& obligation : this->core_.state_.checked.trait_obligations) {
+                    if (obligation.predicate_index == predicate_index) {
+                        obligation.predicate_fingerprint = predicate.canonical_fingerprint;
+                    }
+                }
+                for (TraitEvidence& evidence : this->core_.state_.checked.trait_evidence) {
+                    if (evidence.predicate_index == predicate_index) {
+                        evidence.predicate_fingerprint = predicate.canonical_fingerprint;
+                    }
+                }
+            }
         }
     }
     this->record_generic_param_env(info, item);
@@ -1005,9 +1086,21 @@ bool SemanticAnalyzerCore::GenericAnalyzer::generic_param_has_trait_predicate(
             continue;
         }
         const TraitPredicate& candidate = this->core_.state_.checked.trait_predicates[predicate_index];
-        if (candidate.kind == TraitPredicateKind::declared_trait
-            && candidate.subject_param_identity == info.generic_identity
-            && candidate.trait_stable_id == predicate.trait_stable_id) {
+        if (candidate.kind != TraitPredicateKind::declared_trait
+            || candidate.subject_param_identity != info.generic_identity
+            || candidate.trait_stable_id != predicate.trait_stable_id) {
+            continue;
+        }
+        bool equalities_satisfied = true;
+        for (const TraitImplAssociatedTypeInfo& expected : predicate.associated_type_equalities) {
+            const auto found = std::ranges::find_if(
+                candidate.associated_type_equalities, [&](const TraitImplAssociatedTypeInfo& actual) {
+                    return actual.member_key == expected.member_key
+                        && this->core_.state_.checked.types.same(actual.value_type, expected.value_type);
+                });
+            equalities_satisfied = equalities_satisfied && found != candidate.associated_type_equalities.end();
+        }
+        if (equalities_satisfied) {
             return true;
         }
     }
@@ -1035,6 +1128,23 @@ bool SemanticAnalyzerCore::GenericAnalyzer::type_satisfies_trait_predicate(
         const TraitImplInfo& impl = entry.second;
         if (impl.trait_module.value == predicate.trait_module.value && impl.trait_name_id == predicate.trait_name_id
             && this->core_.state_.checked.types.same(impl.self_type, type) && impl.trait_args.empty()) {
+            for (const TraitImplAssociatedTypeInfo& expected : predicate.associated_type_equalities) {
+                const auto actual = std::ranges::find_if(
+                    impl.associated_types, [&](const TraitImplAssociatedTypeInfo& associated_type) {
+                        return associated_type.member_key == expected.member_key;
+                    });
+                if (actual == impl.associated_types.end()
+                    || !this->core_.state_.checked.types.same(actual->value_type, expected.value_type)) {
+                    const std::string actual_type_name = actual == impl.associated_types.end()
+                        ? std::string("<missing>")
+                        : this->core_.state_.checked.types.display_name(actual->value_type);
+                    this->core_.report_capability(use_range,
+                        sema_trait_associated_type_equality_not_satisfied_message(predicate.trait_name,
+                            this->core_.state_.checked.types.display_name(type), expected.name,
+                            this->core_.state_.checked.types.display_name(expected.value_type), actual_type_name));
+                    return false;
+                }
+            }
             return true;
         }
     }
@@ -2288,6 +2398,7 @@ bool SemanticAnalyzerCore::GenericAnalyzer::unify_generic_type(const TypeHandle 
         switch (pattern_info.kind) {
             case TypeKind::builtin:
             case TypeKind::opaque_struct:
+            case TypeKind::associated_projection:
                 if (!this->core_.state_.checked.types.same(current_pattern, current_actual)) {
                     return false;
                 }
@@ -2418,6 +2529,9 @@ SemanticAnalyzerCore::GenericAnalyzer::generic_param_identities_in_type(const Ty
         switch (type_info.kind) {
             case TypeKind::generic_param:
                 identities.insert(this->core_.generic_param_identity(type_info));
+                break;
+            case TypeKind::associated_projection:
+                pending.push_back(type_info.associated_base);
                 break;
             case TypeKind::pointer:
             case TypeKind::reference:
@@ -2633,6 +2747,9 @@ bool SemanticAnalyzerCore::GenericAnalyzer::type_contains_generic_param(const Ty
         switch (info.kind) {
             case TypeKind::generic_param:
                 return true;
+            case TypeKind::associated_projection:
+                pending.push_back(info.associated_base);
+                break;
             case TypeKind::pointer:
             case TypeKind::reference:
                 pending.push_back(info.pointee);

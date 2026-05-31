@@ -166,6 +166,20 @@ struct TraitMethodRequirement {
 
 using TraitMethodRequirementList = SemaVector<TraitMethodRequirement>;
 
+struct TraitAssociatedTypeRequirement {
+    InternedText name;
+    IdentId name_id = INVALID_IDENT_ID;
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    base::SourceRange range{};
+    syntax::Visibility visibility = syntax::Visibility::public_;
+    StableMemberKey stable_key;
+    query::MemberKey member_key;
+    base::u32 ordinal = 0;
+};
+
+using TraitAssociatedTypeRequirementList = SemaVector<TraitAssociatedTypeRequirement>;
+
 struct TraitSignature {
     InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
@@ -175,6 +189,7 @@ struct TraitSignature {
     StableDefId stable_id;
     IncrementalKey incremental_key;
     SemaVector<IdentId> generic_params;
+    TraitAssociatedTypeRequirementList associated_types;
     TraitMethodRequirementList requirements;
     base::SourceRange range{};
     base::u32 part_index = 0;
@@ -209,6 +224,18 @@ struct TraitImplMethodInfo {
 
 using TraitImplMethodInfoList = SemaVector<TraitImplMethodInfo>;
 
+struct TraitImplAssociatedTypeInfo {
+    InternedText name;
+    IdentId name_id = INVALID_IDENT_ID;
+    syntax::ItemId item = syntax::INVALID_ITEM_ID;
+    syntax::TypeId syntax_type = syntax::INVALID_TYPE_ID;
+    TypeHandle value_type = INVALID_TYPE_HANDLE;
+    query::MemberKey member_key;
+    base::u32 requirement_ordinal = 0;
+};
+
+using TraitImplAssociatedTypeInfoList = SemaVector<TraitImplAssociatedTypeInfo>;
+
 struct TraitImplInfo {
     TraitImplLookupKey key;
     InternedText trait_name;
@@ -223,6 +250,7 @@ struct TraitImplInfo {
     syntax::Visibility visibility = syntax::Visibility::public_;
     StableDefId stable_id;
     IncrementalKey incremental_key;
+    TraitImplAssociatedTypeInfoList associated_types;
     TraitImplMethodInfoList methods;
     base::SourceRange range{};
     base::u32 part_index = 0;
@@ -263,6 +291,7 @@ struct TraitPredicate {
     syntax::ModuleId trait_module = syntax::INVALID_MODULE_ID;
     StableDefId trait_stable_id;
     TypeHandleList trait_args;
+    TraitImplAssociatedTypeInfoList associated_type_equalities;
     query::StableFingerprint128 canonical_fingerprint;
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
@@ -708,8 +737,10 @@ public:
     [[nodiscard]] StructInfo make_struct_info() const;
     [[nodiscard]] EnumCaseInfo make_enum_case_info() const;
     [[nodiscard]] TraitMethodRequirement make_trait_method_requirement() const;
+    [[nodiscard]] TraitAssociatedTypeRequirement make_trait_associated_type_requirement() const;
     [[nodiscard]] TraitSignature make_trait_signature() const;
     [[nodiscard]] TraitImplMethodInfo make_trait_impl_method_info() const;
+    [[nodiscard]] TraitImplAssociatedTypeInfo make_trait_impl_associated_type_info() const;
     [[nodiscard]] TraitImplInfo make_trait_impl_info() const;
     [[nodiscard]] TraitPredicate make_trait_predicate() const;
     [[nodiscard]] TraitObligation make_trait_obligation() const;
@@ -726,8 +757,12 @@ public:
     [[nodiscard]] StructInfo clone_struct_info(const StructInfo& other);
     [[nodiscard]] EnumCaseInfo clone_enum_case_info(const EnumCaseInfo& other);
     [[nodiscard]] TraitMethodRequirement clone_trait_method_requirement(const TraitMethodRequirement& other);
+    [[nodiscard]] TraitAssociatedTypeRequirement clone_trait_associated_type_requirement(
+        const TraitAssociatedTypeRequirement& other);
     [[nodiscard]] TraitSignature clone_trait_signature(const TraitSignature& other);
     [[nodiscard]] TraitImplMethodInfo clone_trait_impl_method_info(const TraitImplMethodInfo& other);
+    [[nodiscard]] TraitImplAssociatedTypeInfo clone_trait_impl_associated_type_info(
+        const TraitImplAssociatedTypeInfo& other);
     [[nodiscard]] TraitImplInfo clone_trait_impl_info(const TraitImplInfo& other);
     [[nodiscard]] TraitPredicate clone_trait_predicate(const TraitPredicate& other);
     [[nodiscard]] TraitObligation clone_trait_obligation(const TraitObligation& other) const;

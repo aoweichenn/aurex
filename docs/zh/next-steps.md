@@ -1,6 +1,25 @@
 # 下一步计划
 
-## 当前最高优先级：Post-M5 Design Selection
+## 当前最高优先级：M6 Resource And Access Semantics
+
+Post-M5 design selection 已完成。下一阶段正式选择
+[Aurex M6 资源、值生命周期与访问语义调研和三轮设计审视基线](m6-resource-access-semantics-design.md)，
+执行路线记录在 [M6 资源、值生命周期与访问语义路线图](m6-roadmap.md)。
+
+M6-WP1 已完成三轮设计审视：
+
+1. 跨语言和研究证据矩阵：C++、Rust、Swift、Mojo、Move、Zig、Go、Hylo、Pony、Verona、Cyclone、
+   Lean、Koka、Roc、Linear Haskell、Idris 2、Austral、Carbon、Clang 和相关论文。
+2. Aurex 语义选择：拆开 `Copy`、`Discard`、`NeedsDrop` 和 future `MustConsume`；第一版只做
+   whole-local move、CFG-sensitive initialized state、确定性 cleanup 和 generic drop glue。
+3. 用户案例压力测试：regex 手工 `destroy`、owned string/vector、文件、锁、FFI、覆盖赋值、分支、循环、
+   `?`、pattern、partial initialization、自引用、shared ownership cycle 和未来 `dyn Trait`。
+
+下一实现包是 M6-WP2 Resource Classification Scaffold。M6-WP2 只实现 compiler-owned `Copy`、
+内部 `Discard` / `NeedsDrop`、结构化类型分类、stable fingerprint、checked dump 和 diagnostics；
+不提前加入 destructor parser spelling，不实现完整 borrow checker，也不重新打开 M5 static trait baseline。
+
+## 已收口背景：Post-M5 Design Selection
 
 M5 default trait methods 已经收口为 release baseline。M5-WP1 已固定
 [Aurex M5 Default Trait Methods 调研与设计基线](m5-default-trait-methods-design.md)，阶段路线记录在

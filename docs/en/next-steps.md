@@ -1,6 +1,32 @@
 # Next Steps
 
-## Current Highest Priority: Post-M5 Design Selection
+## Current Highest Priority: M6 Resource And Access Semantics
+
+Post-M5 design selection is complete. The next stage is the
+[Aurex M6 Resource, Value Lifetime, And Access Semantics Research And Three-Pass Design Review Baseline](m6-resource-access-semantics-design.md),
+with the execution route recorded in the
+[M6 Resource, Value Lifetime, And Access Semantics Roadmap](m6-roadmap.md).
+
+M6-WP1 completed three design-review passes:
+
+1. Cross-language and research evidence: C++, Rust, Swift, Mojo, Move, Zig, Go,
+   Hylo, Pony, Verona, Cyclone, Lean, Koka, Roc, Linear Haskell, Idris 2,
+   Austral, Carbon, Clang, and related papers.
+2. Aurex semantic selection: split `Copy`, `Discard`, `NeedsDrop`, and future
+   `MustConsume`; keep the first release to whole-local moves, CFG-sensitive
+   initialized state, deterministic cleanup, and generic drop glue.
+3. User-case pressure review: regex manual `destroy`, owned strings/vectors,
+   files, locks, FFI, overwrite, branches, loops, `?`, patterns, partial
+   initialization, self-reference, shared-ownership cycles, and future
+   `dyn Trait`.
+
+The next implementation package is M6-WP2 Resource Classification Scaffold.
+M6-WP2 adds only compiler-owned `Copy`, internal `Discard` / `NeedsDrop`,
+structural type classification, stable fingerprints, checked dumps, and
+diagnostics. It does not freeze destructor parser spelling, implement a full
+borrow checker, or reopen the M5 static-trait baseline.
+
+## Closed Background: Post-M5 Design Selection
 
 M5 default trait methods are now closed as a release baseline. M5-WP1 fixed the
 [Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md),

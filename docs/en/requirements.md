@@ -2,8 +2,10 @@
 
 ## Branch Goal
 
-The current documentation baseline is M5 default trait methods. The older M2
-`language-core-no-std` stage isolated language-core validation:
+The active design baseline is the M6 Resource And Access Semantics three-pass
+review. M6-WP1 fixes semantics and route; Resource Classification Scaffold is
+the next implementation package. The older M2 `language-core-no-std` stage
+isolated language-core validation:
 
 - The compiler must build, install, and run without a standard-library tree.
 - Imports come only from the importing directory and explicit `-I` entries.
@@ -40,9 +42,10 @@ The current documentation baseline is M5 default trait methods. The older M2
 - std host support and installed std lookup.
 - Dynamic trait objects, object safety, vtable ABI, associated constants,
   default associated types, generic associated types, specialization, minimal
-  implementation annotations, and resource semantics.
+  implementation annotations, complete borrow checking, partial moves,
+  regions, async drop, and standard-library rebuilding.
 
 The M1 language-level `move(...)` and `noncopy struct` syntax is no longer part
-of the current M2 requirements. Resource semantics should be redesigned after
-core syntax, `unsafe`, slices/strings, the safe-reference direction, and
-minimal non-resource `where` capabilities are stable.
+of the current M2 requirements. M6 does not revive that ad hoc surface; it
+advances resource semantics through separate `Copy`, `Discard`, `NeedsDrop`,
+and future `MustConsume` dimensions.

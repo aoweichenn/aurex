@@ -2,7 +2,8 @@
 
 ## 当前分支目标
 
-当前文档基线是 M5 default trait methods。较早的 M2 `language-core-no-std` 阶段用于隔离语言核心验证：
+当前设计基线是 M6 Resource And Access Semantics 三轮设计审视。M6-WP1 已固定语义和路线，下一实现包是
+Resource Classification Scaffold；较早的 M2 `language-core-no-std` 阶段用于隔离语言核心验证：
 
 - 编译器必须能在没有标准库源树的情况下构建、安装和运行。
 - import 只能来自导入者目录和显式 `-I`。
@@ -29,6 +30,8 @@
 - M1 frontend/build-tool 样例。
 - std host support 和安装后 std 查找。
 - dynamic trait object、object safety、vtable ABI、associated const、default associated type、generic associated type、
-  specialization、minimal implementation annotation 和资源语义。
+  specialization、minimal implementation annotation、完整 borrow checker、partial move、region、async drop 和
+  标准库重建。
 
-M1 的语言级 `move(...)` 和 `noncopy struct` 不再属于 M2 当前需求；资源语义要等基础语法、`unsafe`、slice/string、最小 safe reference 和最小非资源类 `where` capability 稳定后再单独重新设计。
+M1 的语言级 `move(...)` 和 `noncopy struct` 不再属于 M2 当前需求。M6 不复活这套 ad hoc surface，而是按
+`Copy`、`Discard`、`NeedsDrop`、future `MustConsume` 四维模型重新推进资源语义。

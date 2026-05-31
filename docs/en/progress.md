@@ -1,9 +1,25 @@
 # Current Progress
 
 Version: 0.1.4
-Stage: M5 default trait methods release baseline complete
+Stage: M6-WP1 resource, value-lifetime, and access-semantics three-pass design review complete
 
 ## Overall Status
+
+As of 2026-05-31, M6-WP1 has completed the three-pass review for resource,
+value-lifetime, and access semantics. The complete baseline is recorded in the
+[Aurex M6 Resource, Value Lifetime, And Access Semantics Research And Three-Pass Design Review Baseline](m6-resource-access-semantics-design.md),
+with the execution route in the
+[M6 Resource, Value Lifetime, And Access Semantics Roadmap](m6-roadmap.md).
+The first pass compared C++, Rust, Swift, Mojo, Move, Zig, Go, Hylo, Pony,
+Verona, Cyclone, Lean, Koka, Roc, Linear Haskell, Idris 2, Austral, Carbon,
+Clang, and related research. The second pass fixed the Aurex four-dimensional
+resource model: `Copy`, `Discard`, `NeedsDrop`, and future `MustConsume`, plus
+whole-local moves, CFG-sensitive initialized state, one lexical cleanup-action
+stack, interleaved `defer`, and generic drop glue. The third pass pressure-tested
+regex, owned containers, files, locks, FFI, overwrite, branches, loops, `?`,
+patterns, partial initialization, self-reference, shared-ownership cycles, and
+future `dyn Trait`. The next implementation package is M6-WP2 Resource
+Classification Scaffold. Complete borrow checking remains a separate M7 stream.
 
 As of 2026-05-31, M5 has closed as the default trait methods release baseline
 on top of the closed M4 trait/protocol baseline. M5-WP1 produced the

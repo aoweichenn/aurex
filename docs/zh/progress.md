@@ -1,9 +1,19 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M5 default trait methods release baseline 已完成
+阶段：M6-WP1 资源、值生命周期与访问语义三轮设计审视已完成
 
 ## 总体状态
+
+2026-05-31：M6-WP1 已完成资源、值生命周期与访问语义的三轮设计审视。完整基线记录在
+[Aurex M6 资源、值生命周期与访问语义调研和三轮设计审视基线](m6-resource-access-semantics-design.md)，
+阶段路线记录在 [M6 资源、值生命周期与访问语义路线图](m6-roadmap.md)。第一轮比较 C++、Rust、Swift、
+Mojo、Move、Zig、Go、Hylo、Pony、Verona、Cyclone、Lean、Koka、Roc、Linear Haskell、Idris 2、
+Austral、Carbon、Clang 和相关研究；第二轮固定 Aurex 四维资源模型：`Copy`、`Discard`、`NeedsDrop`
+和 future `MustConsume`，并选择 whole-local move、CFG-sensitive initialized state、词法 cleanup action
+stack、`defer` 交错和 generic drop glue；第三轮通过 regex、owned container、文件、锁、FFI、覆盖赋值、
+分支、循环、`?`、pattern、partial initialization、自引用、shared ownership cycle 和 future `dyn Trait`
+案例压力测试边界。下一实现包是 M6-WP2 Resource Classification Scaffold。完整 borrow checker 后移到 M7。
 
 2026-05-31：M5 已作为 default trait methods release baseline 收口，建立在已经收口的 M4 trait/protocol baseline
 之上。

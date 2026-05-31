@@ -1,5 +1,21 @@
 # Version Document
 
+## M6 Resource, Value Lifetime, And Access Semantics Three-Pass Design-Review Baseline
+
+The active design stage is M6 Resource And Access Semantics. M6-WP1 has closed
+three design-review passes. The complete baseline is recorded in the
+[Aurex M6 Resource, Value Lifetime, And Access Semantics Research And Three-Pass Design Review Baseline](m6-resource-access-semantics-design.md),
+with the execution route in the
+[M6 Resource, Value Lifetime, And Access Semantics Roadmap](m6-roadmap.md).
+
+M6-WP1 fixes semantics and implementation order only; it does not claim that
+resource semantics are implemented. The next package is M6-WP2 Resource
+Classification Scaffold: compiler-owned `Copy`, internal `Discard` /
+`NeedsDrop`, structural classification, stable fingerprints, checked dumps,
+and diagnostics. Complete borrow checking, lifetime surfaces, partial moves,
+`dyn Trait`, regions, async drop, broad array ABI enablement, and
+standard-library rebuilding remain deferred.
+
 ## M5 default trait methods release baseline
 
 The current documentation baseline is M5 default trait methods release. M5

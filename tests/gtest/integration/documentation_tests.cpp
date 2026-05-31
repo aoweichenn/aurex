@@ -40,6 +40,8 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m5-roadmap.md",
         "docs/zh/m5-default-trait-methods-design.md",
         "docs/zh/m5-release-baseline.md",
+        "docs/zh/m6-roadmap.md",
+        "docs/zh/m6-resource-access-semantics-design.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -59,6 +61,8 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/en/m5-roadmap.md",
         "docs/en/m5-default-trait-methods-design.md",
         "docs/en/m5-release-baseline.md",
+        "docs/en/m6-roadmap.md",
+        "docs/en/m6-resource-access-semantics-design.md",
     };
     for (const fs::path& path : required) {
         EXPECT_TRUE(fs::exists(source_root() / path)) << path;
@@ -100,10 +104,10 @@ TEST_F(AurexIntegrationTest, M5ReleaseDocumentationIsClosed)
     expect_document_contains("docs/zh/README.md", "M5 Default Trait Methods 路线图");
     expect_document_contains("docs/en/README.md", "M5 Default Trait Methods Release Baseline");
     expect_document_contains("docs/zh/README.md", "M5 Default Trait Methods Release Baseline");
-    expect_document_contains("docs/en/progress.md", "Stage: M5 default trait methods release baseline complete");
-    expect_document_contains("docs/zh/progress.md", "阶段：M5 default trait methods release baseline 已完成");
-    expect_document_contains("docs/en/next-steps.md", "Current Highest Priority: Post-M5 Design Selection");
-    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：Post-M5 Design Selection");
+    expect_document_contains("docs/en/progress.md", "M5 has closed as the default trait methods release baseline");
+    expect_document_contains("docs/zh/progress.md", "M5 已作为 default trait methods release baseline 收口");
+    expect_document_contains("docs/en/next-steps.md", "Closed Background: Post-M5 Design Selection");
+    expect_document_contains("docs/zh/next-steps.md", "已收口背景：Post-M5 Design Selection");
     expect_document_contains("docs/en/m5-roadmap.md", "M5-WP1: Research And Design Baseline");
     expect_document_contains("docs/zh/m5-roadmap.md", "M5-WP1：调研和设计基线");
     expect_document_contains("docs/en/m5-roadmap.md", "M5-WP1 through M5-WP7 are complete");
@@ -116,6 +120,31 @@ TEST_F(AurexIntegrationTest, M5ReleaseDocumentationIsClosed)
     expect_document_contains("docs/zh/m5-release-baseline.md", "M5-WP1 到 M5-WP7 已全部完成");
     expect_document_contains("docs/en/usage.md", "method bodies inside traits");
     expect_document_contains("docs/zh/usage.md", "default method body");
+}
+
+TEST_F(AurexIntegrationTest, M6ResourceSemanticsDesignReviewIsClosed)
+{
+    expect_document_contains("docs/en/README.md", "M6 Resource, Value Lifetime, And Access Semantics Roadmap");
+    expect_document_contains("docs/zh/README.md", "M6 资源、值生命周期与访问语义路线图");
+    expect_document_contains("docs/en/progress.md",
+        "Stage: M6-WP1 resource, value-lifetime, and access-semantics three-pass design review complete");
+    expect_document_contains("docs/zh/progress.md", "阶段：M6-WP1 资源、值生命周期与访问语义三轮设计审视已完成");
+    expect_document_contains("docs/en/next-steps.md", "Current Highest Priority: M6 Resource And Access Semantics");
+    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M6 Resource And Access Semantics");
+    expect_document_contains(
+        "docs/en/version.md", "M6 Resource, Value Lifetime, And Access Semantics Three-Pass Design-Review Baseline");
+    expect_document_contains("docs/zh/version.md", "M6 资源、值生命周期与访问语义三轮设计审视基线");
+    expect_document_contains(
+        "docs/en/requirements.md", "The active design baseline is the M6 Resource And Access Semantics");
+    expect_document_contains("docs/zh/requirements.md", "当前设计基线是 M6 Resource And Access Semantics");
+    expect_document_contains("docs/en/m6-roadmap.md", "M6-WP1: Three-Pass Research And Design Review");
+    expect_document_contains("docs/zh/m6-roadmap.md", "M6-WP1：三轮调研和设计审视");
+    expect_document_contains("docs/en/m6-roadmap.md", "Status: complete.");
+    expect_document_contains("docs/zh/m6-roadmap.md", "状态：已完成。");
+    expect_document_contains("docs/en/m6-resource-access-semantics-design.md", "`NeedsDrop`");
+    expect_document_contains("docs/zh/m6-resource-access-semantics-design.md", "`NeedsDrop`");
+    expect_document_contains("docs/en/m6-resource-access-semantics-design.md", "Third Review Pass: User Cases");
+    expect_document_contains("docs/zh/m6-resource-access-semantics-design.md", "第三轮审视：用户案例");
 }
 
 } // namespace aurex::test

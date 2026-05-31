@@ -1,8 +1,9 @@
 # Aurex Documentation
 
-Documentation baseline: **M5 default trait methods release baseline**, built on
-the closed M2 language-core-no-std, M2.5 frontend-foundation, M3
-query-backed/module/generic, and M4 trait/protocol baselines.
+Documentation baseline: **M6 resource, value lifetime, and access semantics
+three-pass design-review baseline**, built on the closed M2 language-core-no-std,
+M2.5 frontend-foundation, M3 query-backed/module/generic, M4 trait/protocol, and
+M5 default-trait-method baselines.
 
 This directory is organized by language. The main Chinese and English trees use
 the same document names so readers can switch languages without learning a
@@ -31,6 +32,8 @@ language they were written in.
 - [M5 Default Trait Methods 路线图](zh/m5-roadmap.md)
 - [Aurex M5 Default Trait Methods 调研与设计基线](zh/m5-default-trait-methods-design.md)
 - [Aurex M5 Default Trait Methods Release Baseline](zh/m5-release-baseline.md)
+- [M6 资源、值生命周期与访问语义路线图](zh/m6-roadmap.md)
+- [Aurex M6 资源、值生命周期与访问语义调研和三轮设计审视基线](zh/m6-resource-access-semantics-design.md)
 - [使用文档](zh/usage.md)
 - [版本文档](zh/version.md)
 - [下一步计划文档](zh/next-steps.md)
@@ -52,6 +55,8 @@ language they were written in.
 - [M5 Default Trait Methods Roadmap](en/m5-roadmap.md)
 - [Aurex M5 Default Trait Methods Research And Design Baseline](en/m5-default-trait-methods-design.md)
 - [Aurex M5 Default Trait Methods Release Baseline](en/m5-release-baseline.md)
+- [M6 Resource, Value Lifetime, And Access Semantics Roadmap](en/m6-roadmap.md)
+- [Aurex M6 Resource, Value Lifetime, And Access Semantics Research And Three-Pass Design Review Baseline](en/m6-resource-access-semantics-design.md)
 - [Usage Guide](en/usage.md)
 - [Version Document](en/version.md)
 - [Next Steps](en/next-steps.md)

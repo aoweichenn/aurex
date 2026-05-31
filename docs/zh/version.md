@@ -1,5 +1,16 @@
 # 版本文档
 
+## M6 资源、值生命周期与访问语义三轮设计审视基线
+
+当前设计阶段是 M6 Resource And Access Semantics。M6-WP1 已完成三轮设计审视，完整设计基线记录在
+[Aurex M6 资源、值生命周期与访问语义调研和三轮设计审视基线](m6-resource-access-semantics-design.md)，
+执行路线记录在 [M6 资源、值生命周期与访问语义路线图](m6-roadmap.md)。
+
+M6-WP1 只固定语义和实现路线，不宣称资源语义已经实现。下一实现包是 M6-WP2 Resource Classification
+Scaffold：compiler-owned `Copy`、内部 `Discard` / `NeedsDrop`、结构化类型分类、stable fingerprint、
+checked dump 和 diagnostics。完整 borrow checker、lifetime surface、partial move、`dyn Trait`、region、
+async drop、全量 array ABI 解禁和标准库重建继续后移。
+
 ## M5 default trait methods release baseline
 
 当前文档基线是 M5 default trait methods release。M5 建立在已经收口的 M4 trait/protocol release baseline

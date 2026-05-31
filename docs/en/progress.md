@@ -1,9 +1,27 @@
 # Current Progress
 
 Version: 0.1.4
-Stage: M4 release baseline closed; next is post-M4 design selection
+Stage: M5 default trait methods design baseline active
 
 ## Overall Status
+
+As of 2026-05-31, M5 has started as the default trait methods design stream on
+top of the closed M4 trait/protocol baseline. The current M5-WP1 output is the
+[Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md)
+and the [M5 Default Trait Methods Roadmap](m5-roadmap.md). M5 is scoped to
+trait method bodies on nominal static traits, explicit method-origin facts,
+trait-owned default body identity through `BodySlotKind::trait_default_method`,
+impl completeness rules that distinguish explicit overrides from inherited
+defaults, static direct-call lowering after monomorphization, and
+tooling/diagnostic/query projection for selected origin. M5 explicitly does
+not add `dyn Trait`, vtable ABI, object safety, specialization, associated
+constants, default associated types, GATs, blanket impls, RAII/resource
+semantics, Swift-style protocol extensions, Scala/Kotlin mixins, or runtime
+interface dispatch. The design draws from Rust default trait methods, Swift
+protocol-extension dispatch pitfalls, Kotlin/Java/C# default-interface conflict
+rules, Haskell/GHC minimal-method lessons, Scala trait linearization risks, Go
+structural-interface rejection, C++ inheritance/concepts tradeoffs, and MLIR
+interface-model architecture.
 
 As of 2026-05-31, M4 trait/protocol work has completed WP1, WP2, WP3, WP4,
 WP5, WP6, WP7, and WP8.

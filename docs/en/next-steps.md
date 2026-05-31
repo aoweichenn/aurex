@@ -1,6 +1,29 @@
 # Next Steps
 
-## Current Highest Priority: Post-M4 Design Selection
+## Current Highest Priority: M5 Default Trait Methods Design
+
+M5 is now the active post-M4 design stream. The current priority is to carry
+the [Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md)
+and the [M5 Default Trait Methods Roadmap](m5-roadmap.md) into implementation
+only after the design remains coherent under compiler-engineering review.
+
+The selected M5 target is deliberately narrow:
+
+- Allow a trait method requirement to carry a default body.
+- Keep explicit `impl Trait for Type`, nominal identity, coherence, associated
+  types, and static dispatch from M4.
+- Treat impl methods as explicit overrides when signatures match.
+- Treat omitted defaulted requirements as inherited defaults.
+- Keep omitted non-default requirements as errors.
+- Record method origin explicitly as `impl_override`, `trait_default`, or
+  `param_env`.
+- Type-check default bodies in trait context and lower selected default calls
+  to direct trait-owned default body instances after monomorphization.
+
+M5 must not add `dyn Trait`, object safety, vtable ABI, specialization,
+associated constants, default associated types, GATs, blanket impls, RAII /
+resource semantics, Swift-style protocol extensions, Scala/Kotlin mixins, or
+runtime interface dispatch. Those remain separate future design streams.
 
 The M3 release baseline is closed, and M4 trait/protocol work has completed
 WP1, WP2, WP3, WP4, WP5, WP6, WP7, and WP8. M4-WP1 fixed the
@@ -68,12 +91,11 @@ tests live in normal repository locations:
 `tests/gtest/tooling/ide_tooling_tests.cpp` and
 `tests/gtest/tooling/session_lsp_tooling_tests.cpp`.
 
-The next step is no longer an M4 work package. Post-M4 work should start by
-choosing one independent design stream and giving it the same level of research
-and risk analysis that M4-WP1 had. The strongest candidates are resource
-semantics, dynamic trait objects, package-level coherence, default methods /
-specialization, class-like sugar, or a stronger trait solver. Each one must
-start from the M4 release baseline rather than reopening WP1-WP8.
+The next step is no longer an open-ended post-M4 selection. The selected stream
+is M5 default trait methods. Resource semantics, dynamic trait objects,
+package-level coherence, specialization, class-like sugar, and a stronger trait
+solver remain future candidates, but they must not displace the M5 default
+method route unless a new design decision explicitly changes priority.
 
 M4 does not include dynamic trait objects or RAII/resource semantics. Dynamic
 trait objects, vtable ABI/object safety, associated constants, specialization,

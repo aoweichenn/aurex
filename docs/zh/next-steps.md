@@ -1,6 +1,25 @@
 # 下一步计划
 
-## 当前最高优先级：M4 后设计选择
+## 当前最高优先级：M5 Default Trait Methods 设计
+
+M5 现在是 M4 后的 active design stream。当前最高优先级是把
+[Aurex M5 Default Trait Methods 调研与设计基线](m5-default-trait-methods-design.md)
+和 [M5 Default Trait Methods 路线图](m5-roadmap.md) 审稳，然后再按路线进入实现。
+
+选定的 M5 目标刻意保持窄范围：
+
+- 允许 trait method requirement 携带 default body。
+- 继续使用 M4 的显式 `impl Trait for Type`、nominal identity、coherence、associated types 和 static dispatch。
+- impl 中签名匹配的方法是 explicit override。
+- 省略 defaulted requirement 的 impl 继承 inherited default。
+- 省略 non-default requirement 仍然报错。
+- method origin 显式记录为 `impl_override`、`trait_default` 或 `param_env`。
+- default body 在 trait context 中 type-check；单态化后 selected default call 降低到 direct trait-owned default
+  body instance。
+
+M5 不得引入 `dyn Trait`、object safety、vtable ABI、specialization、associated constants、default associated types、
+GAT、blanket impl、RAII/resource semantics、Swift-style protocol extensions、Scala/Kotlin mixins 或 runtime
+interface dispatch。这些继续作为独立未来设计流。
 
 M3 release baseline 已收口，M4 trait/protocol 系统已完成 WP1、WP2、WP3、WP4、WP5、WP6、WP7 和 WP8。M4-WP1 固定
 [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)，阶段路线见
@@ -47,9 +66,9 @@ predicate、method requirement substitution，以及 trait signature / impl / pr
 `tests/gtest/tooling/ide_tooling_tests.cpp` 和
 `tests/gtest/tooling/session_lsp_tooling_tests.cpp`。
 
-下一步不再是 M4 work package。M4 后续应先选择一个独立设计流，并按 M4-WP1 的标准做完整调研和风险分析。
-最强候选是 resource semantics、dynamic trait object、package-level coherence、default methods / specialization、
-class-like sugar 或更强 trait solver。每个方向都必须从 M4 release baseline 出发，而不是重新打开 WP1-WP8。
+下一步不再是开放式 M4 后设计选择。当前选定路线是 M5 default trait methods。resource semantics、dynamic
+trait objects、package-level coherence、specialization、class-like sugar 和更强 trait solver 仍是后续候选，但除非新的设计决策明确改变优先级，
+否则不能挤占 M5 default method 路线。
 
 M4 不做 dynamic trait object 或 RAII/resource semantics。dynamic trait object、vtable ABI/object safety、
 associated constant、specialization、generic associated type 和资源系统继续保持 M4 当前非目标。WP6 的

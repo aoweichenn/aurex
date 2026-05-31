@@ -1,9 +1,22 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M4 release baseline 已收口；下一步进入 M4 后设计选择
+阶段：M5 default trait methods design baseline 已启动
 
 ## 总体状态
+
+2026-05-31：M5 已作为 default trait methods 设计流启动，建立在已经收口的 M4 trait/protocol baseline 之上。
+当前 M5-WP1 输出是
+[Aurex M5 Default Trait Methods 调研与设计基线](m5-default-trait-methods-design.md)
+和 [M5 Default Trait Methods 路线图](m5-roadmap.md)。M5 的范围是 nominal static trait 上的 trait
+method body、显式 method-origin facts、通过 `BodySlotKind::trait_default_method` 固定 trait-owned default
+body identity、区分 explicit override 和 inherited default 的 impl completeness 规则、单态化后的 static
+direct-call lowering，以及 selected origin 的 tooling / diagnostics / query projection。M5 明确不做
+`dyn Trait`、vtable ABI、object safety、specialization、associated constants、default associated types、GAT、
+blanket impl、RAII/resource semantics、Swift-style protocol extensions、Scala/Kotlin mixins 或 runtime
+interface dispatch。设计调研已覆盖 Rust default trait methods、Swift protocol-extension dispatch 陷阱、Kotlin /
+Java / C# default-interface 冲突规则、Haskell/GHC minimal-method 经验、Scala trait linearization 风险、Go
+structural interface 反例、C++ inheritance/concepts 取舍和 MLIR interface-model 架构。
 
 2026-05-31：M4 trait/protocol 系统已完成 WP1、WP2、WP3、WP4、WP5、WP6、WP7 和 WP8。M4-WP1 完成调研与设计基线，正式选择
 nominal static trait：语言关键字为 `trait`，`protocol` 只作为行为契约的设计术语；conformance 由显式

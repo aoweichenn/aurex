@@ -1,8 +1,8 @@
 # Aurex Documentation
 
-Documentation baseline: **M4 trait/protocol release baseline**, built on the
-closed M2 language-core-no-std, M2.5 frontend-foundation, and M3
-query-backed/module/generic baselines.
+Documentation baseline: **M5 default trait methods design baseline**, built on
+the closed M2 language-core-no-std, M2.5 frontend-foundation, M3
+query-backed/module/generic, and M4 trait/protocol baselines.
 
 This directory is organized by language. The main Chinese and English trees use
 the same document names so readers can switch languages without learning a
@@ -28,6 +28,8 @@ language they were written in.
 - [M4 Trait / Protocol 系统路线图](zh/m4-roadmap.md)
 - [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](zh/m4-trait-protocol-system-design.md)
 - [Aurex M4 Trait / Protocol Release Baseline](zh/m4-release-baseline.md)
+- [M5 Default Trait Methods 路线图](zh/m5-roadmap.md)
+- [Aurex M5 Default Trait Methods 调研与设计基线](zh/m5-default-trait-methods-design.md)
 - [使用文档](zh/usage.md)
 - [版本文档](zh/version.md)
 - [下一步计划文档](zh/next-steps.md)
@@ -46,6 +48,8 @@ language they were written in.
 - [M4 Trait / Protocol System Roadmap](en/m4-roadmap.md)
 - [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](en/m4-trait-protocol-system-design.md)
 - [Aurex M4 Trait / Protocol Release Baseline](en/m4-release-baseline.md)
+- [M5 Default Trait Methods Roadmap](en/m5-roadmap.md)
+- [Aurex M5 Default Trait Methods Research And Design Baseline](en/m5-default-trait-methods-design.md)
 - [Usage Guide](en/usage.md)
 - [Version Document](en/version.md)
 - [Next Steps](en/next-steps.md)

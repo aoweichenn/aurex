@@ -1,7 +1,7 @@
 # Aurex 文档
 
-文档基线：**M4 trait/protocol release baseline**，建立在已经收口的 M2 language-core-no-std、M2.5
-frontend-foundation 和 M3 query-backed/module/generic 基线上。
+文档基线：**M5 default trait methods design baseline**，建立在已经收口的 M2 language-core-no-std、M2.5
+frontend-foundation、M3 query-backed/module/generic 和 M4 trait/protocol 基线上。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 
@@ -30,6 +30,8 @@ frontend-foundation 和 M3 query-backed/module/generic 基线上。
 - [M4 Trait / Protocol 系统路线图](m4-roadmap.md)
 - [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)
 - [Aurex M4 Trait / Protocol Release Baseline](m4-release-baseline.md)
+- [M5 Default Trait Methods 路线图](m5-roadmap.md)
+- [Aurex M5 Default Trait Methods 调研与设计基线](m5-default-trait-methods-design.md)
 - [使用文档](usage.md)
 - [版本文档](version.md)
 - [下一步计划文档](next-steps.md)

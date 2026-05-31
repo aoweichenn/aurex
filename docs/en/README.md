@@ -1,8 +1,8 @@
 # Aurex Documentation
 
-Documentation baseline: **M4 trait/protocol release baseline**, built on the
-closed M2 language-core-no-std, M2.5 frontend-foundation, and M3
-query-backed/module/generic baselines.
+Documentation baseline: **M5 default trait methods design baseline**, built on
+the closed M2 language-core-no-std, M2.5 frontend-foundation, M3
+query-backed/module/generic, and M4 trait/protocol baselines.
 
 This directory provides the English documentation set. Documents are organized
 by topic instead of small incremental `0.1.0`, `0.1.1`, and similar release
@@ -20,6 +20,8 @@ notes.
 - [M4 Trait / Protocol System Roadmap](m4-roadmap.md)
 - [Aurex M4-WP1 Trait / Protocol System Research And Design Baseline](m4-trait-protocol-system-design.md)
 - [Aurex M4 Trait / Protocol Release Baseline](m4-release-baseline.md)
+- [M5 Default Trait Methods Roadmap](m5-roadmap.md)
+- [Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md)
 - [Usage Guide](usage.md)
 - [Version Document](version.md)
 - [Next Steps](next-steps.md)

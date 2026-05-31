@@ -1,19 +1,34 @@
 # Version Document
 
+## M5 default trait methods design baseline
+
+The current documentation baseline is M5 default trait methods design. M5
+builds on the closed M4 trait/protocol release baseline and selects one focused
+post-M4 stream: default method bodies on nominal static traits.
+
+The M5 design baseline is recorded in
+[Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md),
+with the staged route in the [M5 Default Trait Methods Roadmap](m5-roadmap.md).
+M5 is scoped to trait-owned default bodies, explicit method origin, impl
+override vs inherited-default completeness, static direct-call lowering after
+monomorphization, and tooling/diagnostic/query projection.
+
+M5 does not include dynamic trait objects, object safety, vtable ABI,
+specialization, associated constants, default associated types, generic
+associated types, blanket impls, package-level coherence expansion, class-like
+sugar, or resource semantics.
+
 ## M4 trait/protocol release baseline
 
-The current repository baseline is M4. M4 builds on the closed M2
+The current implemented trait baseline is M4. M4 builds on the closed M2
 language-core-no-std baseline, the M2.5 frontend/query foundation, and the M3
 module/generic/query-backed compiler architecture. It closes nominal static
 traits, explicit trait impls, generic trait predicates, static trait method
 dispatch, associated types, and IDE/tooling/diagnostic projection.
 
 The release contract is recorded in
-[Aurex M4 Trait / Protocol Release Baseline](m4-release-baseline.md). Post-M4
-work should start as a separate design stream; resource semantics, dynamic
-trait objects, default methods, specialization, associated constants, generic
-associated types, package-level coherence, and class-like sugar are not part of
-the M4 baseline.
+[Aurex M4 Trait / Protocol Release Baseline](m4-release-baseline.md). M5 starts
+from that baseline rather than reopening M4 WP1-WP8.
 
 ## M2 language-core-no-std
 

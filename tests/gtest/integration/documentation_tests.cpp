@@ -37,6 +37,8 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m4-roadmap.md",
         "docs/zh/m4-trait-protocol-system-design.md",
         "docs/zh/m4-release-baseline.md",
+        "docs/zh/m5-roadmap.md",
+        "docs/zh/m5-default-trait-methods-design.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -53,6 +55,8 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/en/m4-roadmap.md",
         "docs/en/m4-trait-protocol-system-design.md",
         "docs/en/m4-release-baseline.md",
+        "docs/en/m5-roadmap.md",
+        "docs/en/m5-default-trait-methods-design.md",
     };
     for (const fs::path& path : required) {
         EXPECT_TRUE(fs::exists(source_root() / path)) << path;
@@ -82,10 +86,24 @@ TEST_F(AurexIntegrationTest, M4ReleaseDocumentationIsClosed)
     expect_document_contains("docs/zh/m4-roadmap.md", "M4-WP1 到 WP8 已完成");
     expect_document_contains("docs/en/m4-release-baseline.md", "M4-WP1 through M4-WP8 are complete");
     expect_document_contains("docs/zh/m4-release-baseline.md", "M4-WP1 到 M4-WP8 已全部完成");
-    expect_document_contains("docs/en/progress.md", "Stage: M4 release baseline closed");
-    expect_document_contains("docs/zh/progress.md", "阶段：M4 release baseline 已收口");
+    expect_document_contains("docs/en/progress.md", "M4 trait/protocol work has completed WP1");
+    expect_document_contains("docs/zh/progress.md", "M4 trait/protocol 系统已完成 WP1");
     expect_document_contains("docs/en/next-steps.md", "M4-WP8 is complete");
     expect_document_contains("docs/zh/next-steps.md", "M4-WP8 已完成");
+}
+
+TEST_F(AurexIntegrationTest, M5DefaultTraitMethodsDesignIsPlanned)
+{
+    expect_document_contains("docs/en/README.md", "M5 Default Trait Methods Roadmap");
+    expect_document_contains("docs/zh/README.md", "M5 Default Trait Methods 路线图");
+    expect_document_contains("docs/en/progress.md", "Stage: M5 default trait methods design baseline active");
+    expect_document_contains("docs/zh/progress.md", "阶段：M5 default trait methods design baseline 已启动");
+    expect_document_contains("docs/en/next-steps.md", "Current Highest Priority: M5 Default Trait Methods Design");
+    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M5 Default Trait Methods 设计");
+    expect_document_contains("docs/en/m5-roadmap.md", "M5-WP1: Research And Design Baseline");
+    expect_document_contains("docs/zh/m5-roadmap.md", "M5-WP1：调研和设计基线");
+    expect_document_contains("docs/en/m5-default-trait-methods-design.md", "TraitMethodDispatchKind");
+    expect_document_contains("docs/zh/m5-default-trait-methods-design.md", "TraitMethodDispatchKind");
 }
 
 } // namespace aurex::test

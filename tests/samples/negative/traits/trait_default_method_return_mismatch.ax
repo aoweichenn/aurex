@@ -1,0 +1,17 @@
+module trait_default_method_return_mismatch;
+
+trait Flag {
+    fn is_set(self: &Self) -> bool {
+        return 1;
+    }
+}
+
+struct File {
+    value: i32;
+}
+
+impl Flag for File {}
+
+fn main() -> i32 {
+    return 0;
+}

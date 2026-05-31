@@ -75,9 +75,6 @@ inline constexpr std::string_view SEMA_TRAIT_IMPL_TARGET_NAMED_TRAIT = "trait im
 inline constexpr std::string_view SEMA_TRAIT_IMPL_GENERIC_UNSUPPORTED =
     "generic trait impl blocks are not supported by M4-WP4 semantic analysis";
 
-inline constexpr std::string_view SEMA_TRAIT_DEFAULT_METHOD_BODY_UNSUPPORTED =
-    "trait default method bodies are parsed by M5-WP2 but not supported by semantic analysis yet";
-
 inline constexpr std::string_view SEMA_ASSOCIATED_TYPE_GENERIC_UNSUPPORTED =
     "generic associated types are not supported by M4-WP6 semantic analysis";
 

@@ -154,7 +154,7 @@ private:
         const FunctionSignature* signature = nullptr;
         std::vector<TypeHandle> param_types;
         TypeHandle return_type = INVALID_TYPE_HANDLE;
-        bool from_param_env = false;
+        TraitMethodDispatchKind dispatch = TraitMethodDispatchKind::param_env;
         bool found = false;
         bool reported_failure = false;
     };
@@ -511,6 +511,7 @@ private:
     void register_trait_name(const syntax::ItemNode& item, syntax::ItemId item_id);
     void register_trait_signatures();
     void validate_trait_impls();
+    void analyze_trait_default_method_bodies();
     [[nodiscard]] bool is_trait_requirement_item(syntax::ItemId item) const;
     void register_generic_template(const syntax::ItemNode& item, syntax::ItemId item_id);
     void validate_generic_parameter_list(const syntax::ItemNode& item);

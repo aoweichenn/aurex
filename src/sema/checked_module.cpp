@@ -990,10 +990,12 @@ TraitMethodRequirement CheckedModule::clone_trait_method_requirement(const Trait
     copy.item = other.item;
     copy.return_type = other.return_type;
     copy.param_types = this->copy_type_handle_list(other.param_types);
+    copy.default_body = other.default_body;
     copy.range = other.range;
     copy.is_unsafe = other.is_unsafe;
     copy.is_variadic = other.is_variadic;
     copy.has_self_param = other.has_self_param;
+    copy.has_default_body = other.has_default_body;
     copy.visibility = other.visibility;
     copy.stable_key = other.stable_key;
     copy.ordinal = other.ordinal;
@@ -1063,6 +1065,7 @@ TraitImplMethodInfo CheckedModule::clone_trait_impl_method_info(const TraitImplM
     copy.item = other.item;
     copy.function_key = other.function_key;
     copy.requirement_ordinal = other.requirement_ordinal;
+    copy.origin = other.origin;
     return copy;
 }
 
@@ -1545,6 +1548,8 @@ void append_type_list(std::ostringstream& out, const CheckedModule& checked, std
             return "where";
         case TraitPredicateOrigin::explicit_impl:
             return "impl";
+        case TraitPredicateOrigin::trait_self:
+            return "trait_self";
     }
     return "where";
 }
@@ -1567,10 +1572,23 @@ void append_type_list(std::ostringstream& out, const CheckedModule& checked, std
     switch (kind) {
         case TraitMethodDispatchKind::param_env:
             return "param_env";
-        case TraitMethodDispatchKind::explicit_impl:
-            return "impl";
+        case TraitMethodDispatchKind::impl_override:
+            return "impl_override";
+        case TraitMethodDispatchKind::trait_default:
+            return "trait_default";
     }
     return "param_env";
+}
+
+[[nodiscard]] std::string_view trait_impl_method_origin_name(const TraitImplMethodOrigin origin) noexcept
+{
+    switch (origin) {
+        case TraitImplMethodOrigin::impl_override:
+            return "impl_override";
+        case TraitImplMethodOrigin::trait_default:
+            return "trait_default";
+    }
+    return "impl_override";
 }
 
 [[nodiscard]] std::string trait_predicate_trait_name(const CheckedModule& checked, const TraitPredicate& predicate)
@@ -1671,6 +1689,9 @@ std::string dump_checked_module(const CheckedModule& checked)
             if (requirement.is_variadic) {
                 out << " variadic";
             }
+            if (requirement.has_default_body) {
+                out << " default";
+            }
             out << "\n";
         }
     }
@@ -1702,7 +1723,8 @@ std::string dump_checked_module(const CheckedModule& checked)
                 << " requirement=" << associated_type.requirement_ordinal << "\n";
         }
         for (const TraitImplMethodInfo& method : info.methods) {
-            out << "      method " << method.name << " requirement=" << method.requirement_ordinal << "\n";
+            out << "      method " << method.name << " requirement=" << method.requirement_ordinal
+                << " origin=" << trait_impl_method_origin_name(method.origin) << "\n";
         }
     }
 
@@ -1763,6 +1785,9 @@ std::string dump_checked_module(const CheckedModule& checked)
         out << " -> " << checked.types.display_name(binding.return_type);
         if (binding.predicate_index != SEMA_TRAIT_PREDICATE_INVALID_INDEX) {
             out << " predicate=" << binding.predicate_index;
+        }
+        if (binding.requirement_ordinal != SEMA_TRAIT_PREDICATE_INVALID_INDEX) {
+            out << " requirement=" << binding.requirement_ordinal;
         }
         append_part_origin(out, show_parts, binding.part_index);
         out << "\n";

@@ -1,7 +1,8 @@
-module trait_default_method_semantics_unsupported;
+module trait_default_method_override;
 
 trait Reader {
     fn read(self: &Self) -> i32;
+
     fn is_empty(self: &Self) -> bool {
         return false;
     }
@@ -17,7 +18,7 @@ impl Reader for File {
     }
 
     fn is_empty(self: &File) -> bool {
-        return false;
+        return self.value == 0;
     }
 }
 

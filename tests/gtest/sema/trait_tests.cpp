@@ -363,7 +363,7 @@ TEST(CoreUnit, TraitMethodCallsRecordParamEnvAndImplDispatchBindings)
     EXPECT_EQ(checked.types.display_name(param_env_call.return_type), "i32");
 
     const sema::TraitMethodCallBinding& impl_call = checked.trait_method_calls[1];
-    EXPECT_EQ(impl_call.dispatch, sema::TraitMethodDispatchKind::explicit_impl);
+    EXPECT_EQ(impl_call.dispatch, sema::TraitMethodDispatchKind::impl_override);
     EXPECT_EQ(impl_call.predicate_index, 1U);
     EXPECT_EQ(impl_call.method_name, "read");
     EXPECT_EQ(checked.types.display_name(impl_call.self_type), "trait_method_dispatch_whitebox.File");
@@ -374,7 +374,7 @@ TEST(CoreUnit, TraitMethodCallsRecordParamEnvAndImplDispatchBindings)
         {
             "trait_method_calls 2",
             "trait_call #0 param_env T.read -> i32 predicate=0",
-            "trait_call #1 impl trait_method_dispatch_whitebox.File.read -> i32 predicate=1",
+            "trait_call #1 impl_override trait_method_dispatch_whitebox.File.read -> i32 predicate=1",
             "fn method trait_method_dispatch_whitebox.File.read -> i32 "
             "@c_name=m0_trait_method_dispatch_whitebox_File_trait_impl_Reader__read",
         });
@@ -382,7 +382,7 @@ TEST(CoreUnit, TraitMethodCallsRecordParamEnvAndImplDispatchBindings)
     const sema::CheckedModule copied = checked;
     ASSERT_EQ(copied.trait_method_calls.size(), 2U);
     EXPECT_EQ(copied.trait_method_calls[0].method_name, "read");
-    EXPECT_EQ(copied.trait_method_calls[1].dispatch, sema::TraitMethodDispatchKind::explicit_impl);
+    EXPECT_EQ(copied.trait_method_calls[1].dispatch, sema::TraitMethodDispatchKind::impl_override);
 }
 
 TEST(CoreUnit, TraitAssociatedTypesRecordProjectionEqualitiesAndDispatch)
@@ -447,7 +447,7 @@ TEST(CoreUnit, TraitAssociatedTypesRecordProjectionEqualitiesAndDispatch)
             "assoc_eq Item = i32",
             "trait_associated_type_whitebox.Bytes: Source origin=impl",
             "trait_call #0 param_env T.get -> i32 predicate=0",
-            "trait_call #1 impl trait_associated_type_whitebox.Bytes.get -> i32 predicate=1",
+            "trait_call #1 impl_override trait_associated_type_whitebox.Bytes.get -> i32 predicate=1",
         });
 
     const sema::CheckedModule copied = checked;
@@ -967,6 +967,232 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
     }
 }
 
+TEST(CoreUnit, TraitDefaultMethodsTypeCheckAndRecordInheritedOrigin)
+{
+    const std::string_view source = "module trait_default_method_inherited_call;\n"
+                                    "trait Reader {\n"
+                                    "  fn read(self: &Self) -> i32;\n"
+                                    "  fn is_empty(self: &Self) -> bool {\n"
+                                    "    return self.read() == 0;\n"
+                                    "  }\n"
+                                    "}\n"
+                                    "struct File { value: i32; }\n"
+                                    "impl Reader for File {\n"
+                                    "  fn read(self: &File) -> i32 {\n"
+                                    "    return self.value;\n"
+                                    "  }\n"
+                                    "}\n"
+                                    "fn main() -> i32 {\n"
+                                    "  let file = File { value: 0 };\n"
+                                    "  if file.is_empty() { return 0; }\n"
+                                    "  return 1;\n"
+                                    "}\n";
+
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    ASSERT_EQ(checked.traits.size(), 1U);
+    const sema::TraitSignature& trait = checked.traits.begin()->second;
+    ASSERT_EQ(trait.requirements.size(), 2U);
+    EXPECT_FALSE(trait.requirements[0].has_default_body);
+    EXPECT_TRUE(trait.requirements[1].has_default_body);
+
+    ASSERT_EQ(checked.trait_impls.size(), 1U);
+    const sema::TraitImplInfo& impl = checked.trait_impls.begin()->second;
+    ASSERT_EQ(impl.methods.size(), 2U);
+    bool saw_read_override = false;
+    bool saw_empty_default = false;
+    for (const sema::TraitImplMethodInfo& method : impl.methods) {
+        if (method.name == "read") {
+            saw_read_override = method.origin == sema::TraitImplMethodOrigin::impl_override;
+        }
+        if (method.name == "is_empty") {
+            saw_empty_default = method.origin == sema::TraitImplMethodOrigin::trait_default;
+        }
+    }
+    EXPECT_TRUE(saw_read_override);
+    EXPECT_TRUE(saw_empty_default);
+
+    bool saw_default_body_param_env_call = false;
+    bool saw_concrete_trait_default_call = false;
+    for (const sema::TraitMethodCallBinding& call : checked.trait_method_calls) {
+        if (call.method_name == "read" && call.dispatch == sema::TraitMethodDispatchKind::param_env) {
+            saw_default_body_param_env_call = true;
+        }
+        if (call.method_name == "is_empty" && call.dispatch == sema::TraitMethodDispatchKind::trait_default) {
+            saw_concrete_trait_default_call = true;
+        }
+    }
+    EXPECT_TRUE(saw_default_body_param_env_call);
+    EXPECT_TRUE(saw_concrete_trait_default_call);
+
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "requirement is_empty(&Self) -> bool default",
+            "impl Reader for trait_default_method_inherited_call.File associated_types=0 methods=2",
+            "method read requirement=0 origin=impl_override",
+            "method is_empty requirement=1 origin=trait_default",
+            "Self: Reader origin=trait_self",
+            "param_env Self.read -> i32",
+            "trait_default trait_default_method_inherited_call.File.is_empty -> bool",
+        });
+}
+
+TEST(CoreUnit, TraitDefaultMethodsExplicitOverrideWins)
+{
+    const std::string_view source = "module trait_default_method_override_call;\n"
+                                    "trait Reader {\n"
+                                    "  fn read(self: &Self) -> i32;\n"
+                                    "  fn is_empty(self: &Self) -> bool {\n"
+                                    "    return false;\n"
+                                    "  }\n"
+                                    "}\n"
+                                    "struct File { value: i32; }\n"
+                                    "impl Reader for File {\n"
+                                    "  fn read(self: &File) -> i32 {\n"
+                                    "    return self.value;\n"
+                                    "  }\n"
+                                    "  fn is_empty(self: &File) -> bool {\n"
+                                    "    return self.value == 0;\n"
+                                    "  }\n"
+                                    "}\n"
+                                    "fn main() -> i32 {\n"
+                                    "  let file = File { value: 0 };\n"
+                                    "  if file.is_empty() { return 0; }\n"
+                                    "  return 1;\n"
+                                    "}\n";
+
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    ASSERT_EQ(checked.trait_impls.size(), 1U);
+    const sema::TraitImplInfo& impl = checked.trait_impls.begin()->second;
+    ASSERT_EQ(impl.methods.size(), 2U);
+    for (const sema::TraitImplMethodInfo& method : impl.methods) {
+        EXPECT_EQ(method.origin, sema::TraitImplMethodOrigin::impl_override);
+    }
+
+    bool saw_override_call = false;
+    bool saw_trait_default_call = false;
+    for (const sema::TraitMethodCallBinding& call : checked.trait_method_calls) {
+        if (call.method_name == "is_empty" && call.dispatch == sema::TraitMethodDispatchKind::impl_override) {
+            saw_override_call = true;
+        }
+        if (call.method_name == "is_empty" && call.dispatch == sema::TraitMethodDispatchKind::trait_default) {
+            saw_trait_default_call = true;
+        }
+    }
+    EXPECT_TRUE(saw_override_call);
+    EXPECT_FALSE(saw_trait_default_call);
+
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "requirement is_empty(&Self) -> bool default",
+            "method is_empty requirement=1 origin=impl_override",
+            "impl_override trait_default_method_override_call.File.is_empty -> bool",
+        });
+}
+
+TEST(CoreUnit, TraitDefaultMethodsApplyGenericTraitWherePredicates)
+{
+    const std::string_view source = "module trait_default_method_generic_where;\n"
+                                    "trait Source {\n"
+                                    "  type Item;\n"
+                                    "  fn get(self: &Self) -> Self.Item;\n"
+                                    "}\n"
+                                    "trait Adapter[T] where T: Source[Item = i32] {\n"
+                                    "  fn value(self: &Self, input: &T) -> i32 {\n"
+                                    "    return input.get();\n"
+                                    "  }\n"
+                                    "}\n"
+                                    "struct Bytes { value: i32; }\n"
+                                    "impl Source for Bytes {\n"
+                                    "  type Item = i32;\n"
+                                    "  fn get(self: &Bytes) -> i32 { return self.value; }\n"
+                                    "}\n"
+                                    "struct Box { value: i32; }\n"
+                                    "impl Adapter[Bytes] for Box {}\n"
+                                    "fn main() -> i32 {\n"
+                                    "  let box = Box { value: 0 };\n"
+                                    "  let bytes = Bytes { value: 9 };\n"
+                                    "  return box.value(&bytes);\n"
+                                    "}\n";
+
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    ASSERT_EQ(checked.traits.size(), 2U);
+    ASSERT_EQ(checked.trait_impls.size(), 2U);
+
+    bool saw_generic_trait_self_predicate = false;
+    bool saw_source_where_predicate = false;
+    for (const sema::TraitPredicate& predicate : checked.trait_predicates) {
+        if (predicate.origin == sema::TraitPredicateOrigin::trait_self && predicate.trait_name == "Adapter") {
+            saw_generic_trait_self_predicate = true;
+            EXPECT_EQ(predicate.trait_args.size(), 1U);
+            ASSERT_FALSE(predicate.trait_args.empty());
+            EXPECT_EQ(checked.types.display_name(predicate.trait_args.front()), "T");
+        }
+        if (predicate.origin == sema::TraitPredicateOrigin::explicit_where && predicate.trait_name == "Source") {
+            saw_source_where_predicate = true;
+            ASSERT_EQ(predicate.associated_type_equalities.size(), 1U);
+            EXPECT_EQ(predicate.associated_type_equalities.front().name, "Item");
+            EXPECT_EQ(checked.types.display_name(predicate.associated_type_equalities.front().value_type), "i32");
+        }
+    }
+    EXPECT_TRUE(saw_generic_trait_self_predicate);
+    EXPECT_TRUE(saw_source_where_predicate);
+
+    bool saw_default_body_source_call = false;
+    bool saw_concrete_adapter_default_call = false;
+    for (const sema::TraitMethodCallBinding& call : checked.trait_method_calls) {
+        if (call.method_name == "get" && call.dispatch == sema::TraitMethodDispatchKind::param_env) {
+            saw_default_body_source_call = true;
+            EXPECT_EQ(checked.types.display_name(call.self_type), "T");
+            EXPECT_EQ(checked.types.display_name(call.return_type), "i32");
+        }
+        if (call.method_name == "value" && call.dispatch == sema::TraitMethodDispatchKind::trait_default) {
+            saw_concrete_adapter_default_call = true;
+            EXPECT_EQ(checked.types.display_name(call.self_type), "trait_default_method_generic_where.Box");
+        }
+    }
+    EXPECT_TRUE(saw_default_body_source_call);
+    EXPECT_TRUE(saw_concrete_adapter_default_call);
+
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "trait priv Adapter[T0] params=1 associated_types=0 requirements=1",
+            "requirement value(&Self, &T) -> i32 default",
+            "T: Source origin=where",
+            "Self: Adapter[T] origin=trait_self",
+            "impl Adapter[trait_default_method_generic_where.Bytes] for trait_default_method_generic_where.Box "
+            "associated_types=0 methods=1",
+            "method value requirement=0 origin=trait_default",
+            "param_env T.get -> i32",
+            "trait_default trait_default_method_generic_where.Box.value -> i32",
+        });
+}
+
+TEST(CoreUnit, TraitDefaultMethodsRejectBadExplicitOverrideWithoutFallingBackToDefault)
+{
+    const std::string_view source = "module trait_default_method_bad_override;\n"
+                                    "trait Reader {\n"
+                                    "  fn read(self: &Self) -> i32 {\n"
+                                    "    return 0;\n"
+                                    "  }\n"
+                                    "}\n"
+                                    "struct File { value: i32; }\n"
+                                    "impl Reader for File {\n"
+                                    "  fn read(self: &File) -> bool {\n"
+                                    "    return false;\n"
+                                    "  }\n"
+                                    "}\n"
+                                    "fn main() -> i32 { return 0; }\n";
+
+    const std::string output = analyze_trait_source_failure(source);
+    expect_contains(output,
+        "trait impl method signature does not match requirement: Reader for "
+        "trait_default_method_bad_override.File.read");
+    expect_contains(output, "trait impl missing method: Reader for trait_default_method_bad_override.File.read");
+}
+
 TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
 {
     const fs::path source = positive_sample("traits", "trait_impl_registry.ax");
@@ -986,7 +1212,7 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
         {
             "trait_method_calls 2",
             "trait_call #0 param_env T.read -> i32 predicate=0",
-            "trait_call #1 impl trait_method_static_dispatch.File.read -> i32 predicate=1",
+            "trait_call #1 impl_override trait_method_static_dispatch.File.read -> i32 predicate=1",
             "@c_name=m0_trait_method_static_dispatch_File_trait_impl_Reader__read",
         });
     const std::string static_dispatch_llvm =
@@ -999,7 +1225,7 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
     expect_contains_all(associated_static_checked,
         {
             "trait_method_calls 1",
-            "trait_call #0 impl trait_method_associated_static_dispatch.File.answer -> i32 predicate=0",
+            "trait_call #0 impl_override trait_method_associated_static_dispatch.File.answer -> i32 predicate=0",
             "@c_name=m0_trait_method_associated_static_dispatch_File_trait_impl_Factory__answer",
         });
     const std::string associated_static_llvm =
@@ -1020,7 +1246,7 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
             "T: Source origin=where",
             "assoc_eq Item = i32",
             "trait_call #0 param_env T.get -> i32 predicate=0",
-            "trait_call #1 impl trait_associated_type_where_equality.Bytes.get -> i32 predicate=1",
+            "trait_call #1 impl_override trait_associated_type_where_equality.Bytes.get -> i32 predicate=1",
         });
     const std::string associated_type_llvm =
         require_success(aurexc() + " --emit=llvm-ir " + q(associated_type_source)).output;
@@ -1060,6 +1286,26 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
         });
     require_success(aurexc() + " --emit=llvm-ir " + sample_import_flags() + " " + q(selective_source));
 
+    const fs::path inherited_default_source =
+        samples_root() / "checked" / "traits" / "trait_default_method_inherited.ax";
+    const std::string inherited_default_checked =
+        require_success(aurexc() + " --emit=checked " + q(inherited_default_source)).output;
+    expect_contains_all(inherited_default_checked,
+        {
+            "requirement is_empty(&Self) -> bool default",
+            "impl Reader for trait_default_method_inherited.File associated_types=0 methods=2",
+            "method is_empty requirement=1 origin=trait_default",
+            "param_env Self.read -> i32",
+        });
+    const fs::path override_default_source = samples_root() / "checked" / "traits" / "trait_default_method_override.ax";
+    const std::string override_default_checked =
+        require_success(aurexc() + " --emit=checked " + q(override_default_source)).output;
+    expect_contains_all(override_default_checked,
+        {
+            "requirement is_empty(&Self) -> bool default",
+            "impl Reader for trait_default_method_override.File associated_types=0 methods=2",
+            "method is_empty requirement=1 origin=impl_override",
+        });
     expect_negative_trait_sample("trait_impl_missing_method.ax", "trait impl missing method");
     expect_negative_trait_sample("trait_impl_duplicate_method.ax", "duplicate trait impl method");
     expect_negative_trait_sample(
@@ -1103,8 +1349,11 @@ TEST_F(AurexIntegrationTest, TraitImplRegistrySamples)
         "trait_associated_type_unknown_equality.ax", "trait Source has no associated type `Missing`");
     expect_negative_trait_sample("trait_associated_type_unknown_impl.ax",
         "trait impl associated type is not required: Source for trait_associated_type_unknown_impl.Bytes.Other");
-    expect_negative_trait_sample("trait_default_method_semantics_unsupported.ax",
-        "trait default method bodies are parsed by M5-WP2 but not supported by semantic analysis yet");
+    expect_negative_trait_sample("trait_default_method_missing_required.ax",
+        "trait impl missing method: Reader for trait_default_method_missing_required.File.read");
+    expect_negative_trait_sample("trait_default_method_return_mismatch.ax", "return type mismatch");
+    expect_negative_trait_sample(
+        "trait_default_method_self_field.ax", "field access requires a non-opaque struct value");
 
     const fs::path predicate_source = positive_sample("traits", "trait_predicate_where_generic.ax");
     const std::string predicate_checked = require_success(aurexc() + " --emit=checked " + q(predicate_source)).output;

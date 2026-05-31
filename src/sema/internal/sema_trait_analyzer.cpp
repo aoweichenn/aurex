@@ -21,6 +21,7 @@ constexpr std::string_view SEMA_TRAIT_IMPL_INCREMENTAL_TAG = "|trait_impl";
 constexpr std::string_view SEMA_TRAIT_SELF_NAME = "Self";
 constexpr base::usize SEMA_TRAIT_SUBSTITUTION_STACK_INITIAL_CAPACITY = 8;
 constexpr base::u64 SEMA_TRAIT_IMPL_COHERENCE_KEY_MARKER = 0x53454d4154524348ULL;
+constexpr base::u64 SEMA_TRAIT_SELF_PREDICATE_KEY_MARKER = 0x53454d4154525346ULL;
 
 enum class TraitTypeSubstitutionActionKind {
     visit,
@@ -409,6 +410,102 @@ SemanticAnalyzerCore::GenericContext SemanticAnalyzerCore::TraitAnalyzer::make_t
     return context;
 }
 
+void SemanticAnalyzerCore::TraitAnalyzer::merge_trait_where_constraints(
+    const syntax::ItemNode& trait, const TraitSignature& signature, GenericContext& context)
+{
+    if (trait.where_constraints.empty()) {
+        return;
+    }
+
+    GenericTemplateInfo info = this->core_.make_generic_template_info();
+    info.item = signature.item;
+    info.module = signature.module;
+    info.part_index = signature.part_index;
+    info.name = this->core_.state_.checked.intern_text(signature.name);
+    info.name_id = signature.name_id;
+    info.key = this->core_.module_lookup_key(signature.module, signature.name_id);
+    info.function_key = this->core_.function_lookup_key(signature.module, signature.name_id);
+    info.stable_id = signature.stable_id;
+    info.visibility = signature.visibility;
+    info.params.reserve(trait.generic_params.size());
+    info.param_identities.reserve(trait.generic_params.size());
+    for (const syntax::GenericParamDecl& param : trait.generic_params) {
+        info.params.push_back(param.name_id);
+        info.param_identities.push_back(generic_param_identity_from_text(param.name));
+    }
+
+    this->core_.validate_generic_constraints(trait, info);
+    this->core_.copy_capability_map(context.constraints, info.constraints);
+    context.predicate_indices.insert(
+        context.predicate_indices.end(), info.predicate_indices.begin(), info.predicate_indices.end());
+    context.obligation_indices.insert(
+        context.obligation_indices.end(), info.obligation_indices.begin(), info.obligation_indices.end());
+    context.param_env_key = info.param_env_key;
+    for (const syntax::GenericParamDecl& param : trait.generic_params) {
+        const auto identity = context.param_identities.find(param.name_id);
+        const auto constraints = context.constraints.find(param.name_id);
+        if (identity == context.param_identities.end() || constraints == context.constraints.end()) {
+            continue;
+        }
+        context.constraints_by_identity.emplace(identity->second, this->core_.copy_capability_set(constraints->second));
+    }
+}
+
+base::u32 SemanticAnalyzerCore::TraitAnalyzer::record_trait_self_predicate(
+    const TraitSignature& trait, const syntax::ItemNode& trait_item, const GenericContext& context) const
+{
+    const IdentId self_id = this->core_.ctx_.module.intern_identifier(SEMA_TRAIT_SELF_NAME);
+    const auto self_type = context.params.find(self_id);
+    if (self_type == context.params.end()) {
+        return SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    }
+
+    query::StableKeyWriter writer;
+    writer.write_u64(SEMA_TRAIT_SELF_PREDICATE_KEY_MARKER);
+    query::append_stable_key(writer, trait.stable_id);
+    writer.write_u64(static_cast<base::u64>(trait.generic_params.size()));
+    for (const IdentId param : trait.generic_params) {
+        writer.write_u64(param.value);
+    }
+
+    TraitPredicate predicate = this->core_.state_.checked.make_trait_predicate();
+    predicate.index = static_cast<base::u32>(this->core_.state_.checked.trait_predicates.size());
+    predicate.kind = TraitPredicateKind::declared_trait;
+    predicate.origin = TraitPredicateOrigin::trait_self;
+    predicate.subject_type = self_type->second;
+    predicate.subject_param_name_id = self_id;
+    predicate.subject_param_identity = generic_param_identity_from_text(SEMA_TRAIT_SELF_NAME);
+    predicate.trait_name = this->core_.state_.checked.intern_text(trait.name);
+    predicate.trait_name_id = trait.name_id;
+    predicate.trait_module = trait.module;
+    predicate.trait_stable_id = trait.stable_id;
+    predicate.trait_args.reserve(trait.generic_params.size());
+    for (const IdentId param : trait.generic_params) {
+        if (const auto arg = context.params.find(param); arg != context.params.end()) {
+            predicate.trait_args.push_back(arg->second);
+        }
+    }
+    predicate.canonical_fingerprint = writer.fingerprint();
+    predicate.module = trait.module;
+    predicate.item = trait.item;
+    predicate.range = trait_item.range;
+    predicate.part_index = trait.part_index;
+
+    const base::u32 predicate_index = predicate.index;
+    this->core_.state_.checked.trait_predicates.push_back(std::move(predicate));
+
+    TraitEvidence evidence = this->core_.state_.checked.make_trait_evidence();
+    evidence.kind = TraitEvidenceKind::param_env;
+    evidence.predicate_index = predicate_index;
+    evidence.predicate_fingerprint = this->core_.state_.checked.trait_predicates[predicate_index].canonical_fingerprint;
+    evidence.module = trait.module;
+    evidence.item = trait.item;
+    evidence.range = trait_item.range;
+    evidence.part_index = trait.part_index;
+    this->core_.state_.checked.trait_evidence.push_back(evidence);
+    return predicate_index;
+}
+
 query::DefKey SemanticAnalyzerCore::TraitAnalyzer::trait_query_key(const TraitSignature& trait) const noexcept
 {
     return query::def_key_from_stable_id(this->core_.query_package_key(trait.module), trait.stable_id,
@@ -544,15 +641,14 @@ TraitMethodRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_requir
     info.is_unsafe = requirement.is_unsafe;
     info.is_variadic = requirement.is_variadic;
     info.has_self_param = !requirement.params.empty() && requirement.params.front().name == "self";
+    info.has_default_body = requirement.is_trait_default_method || syntax::is_valid(requirement.body);
+    info.default_body = info.has_default_body ? requirement.body : syntax::INVALID_STMT_ID;
     info.visibility = requirement.visibility;
     info.stable_key = this->core_.stable_member_key(
         trait.stable_id, StableSymbolKind::method, requirement.name_id, requirement.name, ordinal);
     info.ordinal = ordinal;
     if (!requirement.generic_params.empty()) {
         this->core_.report_unsupported(requirement.range, std::string(SEMA_GENERIC_METHODS_UNSUPPORTED));
-    }
-    if (requirement.is_trait_default_method || syntax::is_valid(requirement.body)) {
-        this->core_.report_unsupported(requirement.range, std::string(SEMA_TRAIT_DEFAULT_METHOD_BODY_UNSUPPORTED));
     }
     if (!syntax::is_valid(requirement.return_type)) {
         this->core_.report_general(requirement.range, std::string(SEMA_PROTOTYPE_RETURN_TYPE_EXPLICIT));
@@ -578,6 +674,74 @@ void SemanticAnalyzerCore::TraitAnalyzer::register_trait_signatures()
 {
     for (auto& entry : this->core_.state_.checked.traits) {
         this->resolve_trait_signature(entry.second);
+    }
+}
+
+FunctionSignature SemanticAnalyzerCore::TraitAnalyzer::make_trait_default_method_signature(
+    const TraitSignature& trait, const TraitMethodRequirement& requirement) const
+{
+    FunctionSignature signature = this->core_.state_.checked.make_function_signature();
+    signature.name = this->core_.state_.checked.intern_text(requirement.name);
+    signature.name_id = requirement.name_id;
+    signature.semantic_key = this->core_.function_lookup_key(requirement.module, requirement.name_id);
+    signature.module = requirement.module;
+    signature.trait_module = trait.module;
+    signature.trait_name_id = trait.name_id;
+    signature.return_type = requirement.return_type;
+    signature.param_types = this->core_.state_.checked.copy_type_handle_list(requirement.param_types);
+    signature.range = requirement.range;
+    signature.is_unsafe = requirement.is_unsafe;
+    signature.is_variadic = requirement.is_variadic;
+    signature.has_definition = true;
+    signature.is_method = true;
+    signature.has_self_param = requirement.has_self_param;
+    signature.visibility = requirement.visibility;
+    signature.definition_item = requirement.item;
+    signature.part_index = this->core_.item_part_index(requirement.item);
+    return signature;
+}
+
+void SemanticAnalyzerCore::TraitAnalyzer::analyze_trait_default_method_body(
+    const TraitSignature& trait, const TraitMethodRequirement& requirement, GenericContext& context)
+{
+    if (!requirement.has_default_body || !syntax::is_valid(requirement.item)
+        || requirement.item.value >= this->core_.ctx_.module.items.size()) {
+        return;
+    }
+    const syntax::ItemNode method = this->core_.ctx_.module.items[requirement.item.value];
+    if (!syntax::is_valid(method.body)) {
+        return;
+    }
+
+    TraitAnalysisScope scope(this->core_, trait.module, requirement.item, &context);
+    FunctionBodyState state = FunctionBodyState::not_started;
+    const FunctionSignature signature = this->make_trait_default_method_signature(trait, requirement);
+    this->core_.analyze_function_body_with_signature(method, signature.semantic_key, signature, state);
+}
+
+void SemanticAnalyzerCore::TraitAnalyzer::analyze_trait_default_method_bodies()
+{
+    for (const auto& entry : this->core_.state_.checked.traits) {
+        const TraitSignature& trait = entry.second;
+        const bool has_default_body =
+            std::ranges::any_of(trait.requirements, [](const TraitMethodRequirement& requirement) {
+                return requirement.has_default_body;
+            });
+        if (!has_default_body || !syntax::is_valid(trait.item)
+            || trait.item.value >= this->core_.ctx_.module.items.size()) {
+            continue;
+        }
+
+        const syntax::ItemNode trait_item = this->core_.ctx_.module.items[trait.item.value];
+        GenericContext context = this->make_trait_generic_context(trait_item);
+        this->merge_trait_where_constraints(trait_item, trait, context);
+        const base::u32 self_predicate = this->record_trait_self_predicate(trait, trait_item, context);
+        if (self_predicate != SEMA_TRAIT_PREDICATE_INVALID_INDEX) {
+            context.predicate_indices.push_back(self_predicate);
+        }
+        for (const TraitMethodRequirement& requirement : trait.requirements) {
+            this->analyze_trait_default_method_body(trait, requirement, context);
+        }
     }
 }
 
@@ -866,7 +1030,7 @@ SemanticAnalyzerCore::TraitAnalyzer::make_param_env_trait_method_resolution(cons
         resolution.param_types.push_back(this->substitute_requirement_type(
             param, owner_type, predicate.trait_args, trait, predicate.associated_type_equalities));
     }
-    resolution.from_param_env = true;
+    resolution.dispatch = TraitMethodDispatchKind::param_env;
     resolution.found = true;
     return resolution;
 }
@@ -885,6 +1049,30 @@ SemanticAnalyzerCore::TraitMethodCallResolution SemanticAnalyzerCore::TraitAnaly
     resolution.signature = &signature;
     resolution.return_type = signature.return_type;
     resolution.param_types.assign(signature.param_types.begin(), signature.param_types.end());
+    resolution.dispatch = TraitMethodDispatchKind::impl_override;
+    resolution.found = true;
+    return resolution;
+}
+
+SemanticAnalyzerCore::TraitMethodCallResolution
+SemanticAnalyzerCore::TraitAnalyzer::make_trait_default_method_resolution(
+    const TraitSignature& trait, const TraitImplInfo& impl, const TraitMethodRequirement& requirement) const
+{
+    TraitMethodCallResolution resolution;
+    resolution.trait = &trait;
+    resolution.requirement = &requirement;
+    resolution.impl = &impl;
+    if (impl.predicate_index < this->core_.state_.checked.trait_predicates.size()) {
+        resolution.predicate = &this->core_.state_.checked.trait_predicates[impl.predicate_index];
+    }
+    resolution.return_type = this->substitute_requirement_type(
+        requirement.return_type, impl.self_type, impl.trait_args, trait, impl.associated_types);
+    resolution.param_types.reserve(requirement.param_types.size());
+    for (const TypeHandle param : requirement.param_types) {
+        resolution.param_types.push_back(
+            this->substitute_requirement_type(param, impl.self_type, impl.trait_args, trait, impl.associated_types));
+    }
+    resolution.dispatch = TraitMethodDispatchKind::trait_default;
     resolution.found = true;
     return resolution;
 }
@@ -1127,12 +1315,22 @@ SemanticAnalyzerCore::TraitMethodCallResolution SemanticAnalyzerCore::TraitAnaly
         if (method == impl.methods.end()) {
             continue;
         }
-        const auto signature = this->core_.state_.checked.functions.find(method->function_key);
-        if (signature == this->core_.state_.checked.functions.end()) {
-            continue;
-        }
-        if (require_self && !signature->second.has_self_param) {
-            continue;
+        TraitMethodCallResolution candidate_resolution;
+        if (method->origin == TraitImplMethodOrigin::trait_default) {
+            if (!requirement->has_default_body) {
+                continue;
+            }
+            candidate_resolution = this->make_trait_default_method_resolution(*trait, impl, *requirement);
+        } else {
+            const auto signature = this->core_.state_.checked.functions.find(method->function_key);
+            if (signature == this->core_.state_.checked.functions.end()) {
+                continue;
+            }
+            if (require_self && !signature->second.has_self_param) {
+                continue;
+            }
+            candidate_resolution =
+                this->make_impl_trait_method_resolution(*trait, impl, *requirement, signature->second);
         }
         if (result.found) {
             TraitMethodCallResolution failure;
@@ -1146,7 +1344,7 @@ SemanticAnalyzerCore::TraitMethodCallResolution SemanticAnalyzerCore::TraitAnaly
             return failure;
         }
         first_trait_name = this->trait_display_name(*trait, impl.trait_args);
-        result = this->make_impl_trait_method_resolution(*trait, impl, *requirement, signature->second);
+        result = std::move(candidate_resolution);
     }
     if (!result.found && report_failure
         && (saw_visible_trait_method || this->visible_trait_has_method(name_id, require_self, range))) {
@@ -1322,7 +1520,7 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
     impl_info.range = impl_block.range;
     impl_info.part_index = this->core_.item_part_index(impl_id);
     impl_info.associated_types.reserve(impl_block.impl_items.size());
-    impl_info.methods.reserve(impl_block.impl_items.size());
+    impl_info.methods.reserve(trait.requirements.size());
     impl_info.predicate_index = this->record_trait_impl_predicate(trait, impl_info, *coherence_fingerprint);
 
     for (const syntax::ItemId associated_type_id : impl_block.impl_items) {
@@ -1410,6 +1608,7 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
         method_info.item = method_id;
         method_info.function_key = function_key;
         method_info.requirement_ordinal = requirement->second->ordinal;
+        method_info.origin = TraitImplMethodOrigin::impl_override;
         impl_info.methods.push_back(method_info);
     }
 
@@ -1421,10 +1620,21 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
     }
 
     for (const TraitMethodRequirement& requirement : trait.requirements) {
-        if (!implemented.contains(requirement.name_id)) {
-            this->core_.report_type(
-                impl_block.range, sema_trait_impl_missing_method_message(trait_name, self_name, requirement.name));
+        if (implemented.contains(requirement.name_id)) {
+            continue;
         }
+        if (requirement.has_default_body && !seen_methods.contains(requirement.name_id)) {
+            TraitImplMethodInfo method_info = this->core_.state_.checked.make_trait_impl_method_info();
+            method_info.name = this->core_.state_.checked.intern_text(requirement.name);
+            method_info.name_id = requirement.name_id;
+            method_info.item = requirement.item;
+            method_info.requirement_ordinal = requirement.ordinal;
+            method_info.origin = TraitImplMethodOrigin::trait_default;
+            impl_info.methods.push_back(method_info);
+            continue;
+        }
+        this->core_.report_type(
+            impl_block.range, sema_trait_impl_missing_method_message(trait_name, self_name, requirement.name));
     }
 
     this->record_trait_impl_evidence(impl_info);
@@ -1454,6 +1664,11 @@ void SemanticAnalyzerCore::register_trait_signatures()
 void SemanticAnalyzerCore::validate_trait_impls()
 {
     TraitAnalyzer(*this).validate_trait_impls();
+}
+
+void SemanticAnalyzerCore::analyze_trait_default_method_bodies()
+{
+    TraitAnalyzer(*this).analyze_trait_default_method_bodies();
 }
 
 const TraitSignature* SemanticAnalyzerCore::find_trait_in_visible_modules(

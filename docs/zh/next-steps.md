@@ -1,14 +1,14 @@
 # 下一步计划
 
-## 当前最高优先级：M5 Default Trait Methods WP3
+## 当前最高优先级：M5 Default Trait Methods WP5
 
 M5 现在是 M4 后的 active implementation stream。M5-WP1 已固定
 [Aurex M5 Default Trait Methods 调研与设计基线](m5-default-trait-methods-design.md)
 和 [M5 Default Trait Methods 路线图](m5-roadmap.md)。M5-WP2 已落地 syntax / AST /
-body-identity baseline：trait method body 可以 parse，AST dump 标记 `trait_default`，
-`BodySlotKind::trait_default_method` 已有 query identity 测试覆盖，sema 在 default-body checking
-真正实现前会用显式 unsupported 诊断拒绝 default body。下一优先级是 M5-WP3：在 trait context 中只
-type-check default method body 一次。
+body-identity baseline。M5-WP3 和 M5-WP4 现在已经在 trait context 中只 type-check default method body
+一次，允许 impl 继承 defaulted requirement，保持 missing non-default requirement 诊断，并在 checked facts
+中记录 selected method origin。下一优先级是 M5-WP5：把 selected `trait_default` call 降低为 direct
+trait-owned default body instance，同时保持当前 static dispatch 模型。
 
 选定的 M5 目标刻意保持窄范围：
 

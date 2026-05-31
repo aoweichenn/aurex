@@ -634,8 +634,7 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         TraitMethodCallBinding binding = this->state_.checked.make_trait_method_call_binding();
         binding.call_expr = expr_id;
         binding.callee_expr = expr.callee;
-        binding.dispatch =
-            resolution.from_param_env ? TraitMethodDispatchKind::param_env : TraitMethodDispatchKind::explicit_impl;
+        binding.dispatch = resolution.dispatch;
         if (resolution.predicate != nullptr) {
             binding.predicate_index = resolution.predicate->index;
             binding.predicate_fingerprint = resolution.predicate->canonical_fingerprint;
@@ -652,6 +651,9 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         }
         binding.method_name = this->state_.checked.intern_text(name);
         binding.method_name_id = callee.field_name_id;
+        if (resolution.requirement != nullptr) {
+            binding.requirement_ordinal = resolution.requirement->ordinal;
+        }
         binding.receiver_type = receiver_type;
         binding.self_type = owner_type;
         binding.return_type = resolution.return_type;

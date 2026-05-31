@@ -38,23 +38,25 @@ M4 release baseline 已提供所需地基：
 - `TraitSignature` 记录 generic params、visibility、associated type requirements 和 method requirements。
 - `TraitImplInfo` 记录显式 impl facts、associated type assignments 和 impl methods。
 - `TraitPredicate`、`TraitObligation`、`TraitEvidence` 和 `ParamEnvInfo` 描述 generic trait bound 和 evidence。
-- `TraitMethodCallBinding` 记录 trait method call，目前分为 `param_env` 或 `explicit_impl`。
+- `TraitMethodCallBinding` 记录 trait method call，当前分为 `param_env`、`impl_override` 或
+  `trait_default`。
 - static trait call 在单态化后降低为 direct call。
 - tooling 已通过 stable key 索引 trait definition、trait method、impl method、associated type 和 rename identity。
 
-当前关键限制：
+已实现的 M5-WP3/WP4 baseline：
 
-- `TraitMethodRequirement` 只有签名和元数据，没有 `BodyKey`、body syntax id、default-body flag 或 default-body
-  fingerprint。
-- `TraitMethodDispatchKind` 只有 `param_env` 和 `explicit_impl`。M5 至少要区分 `impl_override`、
-  `trait_default`，以及 generic `param_env` 这种“最终 origin 要到实例化后再选择”的情况。
-- M5-WP2 已解除旧的 `parse_trait_decl()` prototype-only parser 限制：trait method 现在可以携带 body，
-  AST dump 会把这类方法标记为 `trait_default`。在 WP3 增加 trait-context default body checking 前，sema
-  仍会显式拒绝它们。
-- `validate_trait_impl_block()` 现在会报告所有 missing method，不会检查缺失的 requirement 是否有 default body。
-- `resolve_impl_trait_method_call()` 当前在 selected impl 省略方法时会继续失败。有 default 后，省略可能合法，必须绑定到
-  trait default method body。
-- query 层已经预留 `BodySlotKind::trait_default_method`，但 M4 实现还没有 materialize 或 type-check 这类 body。
+- `TraitMethodRequirement` 记录 requirement 是否有 default body，以及 body syntax id。
+- default body 会在 trait context 中只 type-check 一次，并使用 `Self`、trait generic params、trait where
+  predicates、associated projections 和 `trait_self` evidence。
+- `TraitMethodDispatchKind` 已区分 `param_env`、`impl_override` 和 `trait_default`。
+- `validate_trait_impl_block()` 会把省略的 defaulted requirement 视为 inherited default，同时保持省略
+  non-default requirement 报错。
+- `resolve_impl_trait_method_call()` 现在会把 selected impl 省略的 defaulted requirement 绑定到
+  `trait_default` origin，而不是继续当作 missing method。
+
+剩余 M5-WP5/WP6 工作是通过 `BodySlotKind::trait_default_method` materialize default-body query identity，
+按 selected impl environment 实例化 trait-owned default，并把 selected `trait_default` call 降低为 direct symbol，
+同时保持 M4 的 static dispatch 模型。
 
 因此 M5 不是“parser 放开 `{ ... }`”这么简单，而是要补 method origin、稳定 default-body identity、trait context
 下的类型检查，以及保持 M4 direct-call 模型的 lowering 策略。

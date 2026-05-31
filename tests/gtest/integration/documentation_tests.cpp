@@ -96,10 +96,12 @@ TEST_F(AurexIntegrationTest, M5DefaultTraitMethodsDesignIsPlanned)
 {
     expect_document_contains("docs/en/README.md", "M5 Default Trait Methods Roadmap");
     expect_document_contains("docs/zh/README.md", "M5 Default Trait Methods 路线图");
-    expect_document_contains("docs/en/progress.md", "Stage: M5 default trait methods WP2 syntax/AST baseline complete");
-    expect_document_contains("docs/zh/progress.md", "阶段：M5 default trait methods WP2 syntax/AST baseline 已完成");
-    expect_document_contains("docs/en/next-steps.md", "Current Highest Priority: M5 Default Trait Methods WP3");
-    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M5 Default Trait Methods WP3");
+    expect_document_contains(
+        "docs/en/progress.md", "Stage: M5 default trait methods WP4 semantic origin baseline complete");
+    expect_document_contains(
+        "docs/zh/progress.md", "阶段：M5 default trait methods WP4 semantic origin baseline 已完成");
+    expect_document_contains("docs/en/next-steps.md", "Current Highest Priority: M5 Default Trait Methods WP5");
+    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M5 Default Trait Methods WP5");
     expect_document_contains("docs/en/m5-roadmap.md", "M5-WP1: Research And Design Baseline");
     expect_document_contains("docs/zh/m5-roadmap.md", "M5-WP1：调研和设计基线");
     expect_document_contains("docs/en/m5-roadmap.md", "Status: complete.");

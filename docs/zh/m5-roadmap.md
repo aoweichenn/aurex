@@ -69,7 +69,7 @@ trait 内部的默认方法体。
 
 ### M5-WP3：Default Body Type Checking
 
-状态：下一轮实现包。
+状态：已完成。
 
 目标：在 trait context 下检查 default method bodies。
 
@@ -80,8 +80,8 @@ trait 内部的默认方法体。
   trait evidence。
 - default body errors 指向 trait source。
 - default bodies 可以通过 evidence 调用其他 trait requirements。
-- negative tests 覆盖 abstract `Self` 上的 concrete field lookup、return type mismatch、missing bound、associated-type
-  ambiguity 和 unsupported generic method edges。
+- negative tests 覆盖 abstract `Self` 上的 concrete field lookup、return type mismatch，以及带 inherited default
+  时仍缺少 non-default requirement 的路径。
 
 风险控制：
 
@@ -89,6 +89,8 @@ trait 内部的默认方法体。
 - 本 WP 不推断 minimal method sets 或 dependency graphs。
 
 ### M5-WP4：Impl Completeness And Method Origin
+
+状态：已完成。
 
 目标：让 impl 可以省略 defaulted requirements，并记录 selected origin。
 

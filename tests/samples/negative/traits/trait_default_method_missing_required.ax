@@ -1,0 +1,19 @@
+module trait_default_method_missing_required;
+
+trait Reader {
+    fn read(self: &Self) -> i32;
+
+    fn is_empty(self: &Self) -> bool {
+        return self.read() == 0;
+    }
+}
+
+struct File {
+    value: i32;
+}
+
+impl Reader for File {}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -53,30 +53,31 @@ The M4 release baseline provides the required foundation:
   impl methods.
 - `TraitPredicate`, `TraitObligation`, `TraitEvidence`, and `ParamEnvInfo`
   model generic trait bounds and evidence.
-- `TraitMethodCallBinding` records trait method calls, currently as
-  `param_env` or `explicit_impl`.
+- `TraitMethodCallBinding` records trait method calls as `param_env`,
+  `impl_override`, or `trait_default`.
 - Static trait calls are lowered to direct calls after monomorphization.
 - Tooling indexes trait definitions, trait methods, impl methods, associated
   types, and rename identity through stable keys.
 
-Important current limitations:
+Implemented M5-WP3/WP4 baseline:
 
-- `TraitMethodRequirement` has only a signature and metadata. It has no
-  `BodyKey`, body syntax id, default-body flag, or default-body fingerprint.
-- `TraitMethodDispatchKind` has only `param_env` and `explicit_impl`. M5 needs
-  to distinguish at least `impl_override`, `trait_default`, and generic
-  `param_env` calls whose final origin is selected after instantiation.
-- M5-WP2 has lifted the old `parse_trait_decl()` prototype-only parser
-  limitation: trait methods may now carry a body, and AST dumps mark those
-  methods as `trait_default`. Sema still rejects them until WP3 adds
-  trait-context default body checking.
-- `validate_trait_impl_block()` reports every missing method. It does not
-  check whether the missing requirement has a default body.
-- `resolve_impl_trait_method_call()` currently ignores a trait requirement if
-  the selected impl omitted the matching method. With defaults, omission may be
-  valid and must bind to the trait default method body instead.
-- The query layer already has `BodySlotKind::trait_default_method`, but the
-  M4 implementation does not materialize or type-check such bodies.
+- `TraitMethodRequirement` records whether a requirement has a default body and
+  the body syntax id.
+- Default bodies are type-checked once in trait context with `Self`, trait
+  generic params, trait where predicates, associated projections, and
+  `trait_self` evidence.
+- `TraitMethodDispatchKind` distinguishes `param_env`, `impl_override`, and
+  `trait_default`.
+- `validate_trait_impl_block()` treats omitted defaulted requirements as
+  inherited defaults while keeping omitted non-default requirements as errors.
+- `resolve_impl_trait_method_call()` now binds selected omitted requirements to
+  the trait default method origin instead of treating omission as a missing
+  method.
+
+Remaining M5-WP5/WP6 work is to materialize default-body query identity through
+`BodySlotKind::trait_default_method`, instantiate trait-owned defaults for the
+selected impl environment, and lower selected `trait_default` calls to direct
+symbols while preserving M4's static dispatch model.
 
 Therefore M5 is not a surface-only parser change. It must add explicit method
 origin, stable default-body identity, type-checking under the trait parameter

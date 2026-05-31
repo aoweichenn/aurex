@@ -155,10 +155,12 @@ struct TraitMethodRequirement {
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     TypeHandleList param_types;
+    syntax::StmtId default_body = syntax::INVALID_STMT_ID;
     base::SourceRange range{};
     bool is_unsafe = false;
     bool is_variadic = false;
     bool has_self_param = false;
+    bool has_default_body = false;
     syntax::Visibility visibility = syntax::Visibility::public_;
     StableMemberKey stable_key;
     base::u32 ordinal = 0;
@@ -214,12 +216,18 @@ struct TraitImplLookupKeyHash {
     [[nodiscard]] std::size_t operator()(TraitImplLookupKey key) const noexcept;
 };
 
+enum class TraitImplMethodOrigin {
+    impl_override,
+    trait_default,
+};
+
 struct TraitImplMethodInfo {
     InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
     FunctionLookupKey function_key;
     base::u32 requirement_ordinal = 0;
+    TraitImplMethodOrigin origin = TraitImplMethodOrigin::impl_override;
 };
 
 using TraitImplMethodInfoList = SemaVector<TraitImplMethodInfo>;
@@ -264,6 +272,7 @@ enum class TraitPredicateKind {
 enum class TraitPredicateOrigin {
     explicit_where,
     explicit_impl,
+    trait_self,
 };
 
 enum class TraitEvidenceKind {
@@ -274,7 +283,8 @@ enum class TraitEvidenceKind {
 
 enum class TraitMethodDispatchKind {
     param_env,
-    explicit_impl,
+    impl_override,
+    trait_default,
 };
 
 struct TraitPredicate {
@@ -331,6 +341,7 @@ struct TraitMethodCallBinding {
     IdentId trait_name_id = INVALID_IDENT_ID;
     InternedText method_name;
     IdentId method_name_id = INVALID_IDENT_ID;
+    base::u32 requirement_ordinal = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
     TypeHandle receiver_type = INVALID_TYPE_HANDLE;
     TypeHandle self_type = INVALID_TYPE_HANDLE;
     TypeHandle return_type = INVALID_TYPE_HANDLE;

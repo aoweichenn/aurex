@@ -83,7 +83,7 @@ Risk controls:
 
 ### M5-WP3: Default Body Type Checking
 
-Status: next implementation package.
+Status: complete.
 
 Goal: check default method bodies under trait context.
 
@@ -95,8 +95,7 @@ Deliverables:
 - Default body errors point to trait source.
 - Default bodies can call other trait requirements through evidence.
 - Negative tests cover concrete field lookup on abstract `Self`, return type
-  mismatch, missing bound, associated-type ambiguity, and unsupported generic
-  method edges.
+  mismatch, and missing non-default requirements alongside inherited defaults.
 
 Risk controls:
 
@@ -104,6 +103,8 @@ Risk controls:
 - Do not infer minimal method sets or dependency graphs in this package.
 
 ### M5-WP4: Impl Completeness And Method Origin
+
+Status: complete.
 
 Goal: let impls omit defaulted requirements and record selected origin.
 

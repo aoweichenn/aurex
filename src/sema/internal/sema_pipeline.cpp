@@ -314,6 +314,8 @@ void SemanticAnalysisPipeline::run_function_body_phases()
         generic.analyze_function_definition(entry.second);
     }
 
+    this->core_.analyze_trait_default_method_bodies();
+
     for (base::u32 index = 0; index < this->core_.ctx_.module.items.size(); ++index) {
         if (this->core_.ctx_.module.items.kind(index) != syntax::ItemKind::fn_decl) {
             continue;

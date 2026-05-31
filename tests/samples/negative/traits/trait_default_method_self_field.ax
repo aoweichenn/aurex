@@ -1,0 +1,17 @@
+module trait_default_method_self_field;
+
+trait BadField {
+    fn value(self: &Self) -> i32 {
+        return self.value;
+    }
+}
+
+struct File {
+    value: i32;
+}
+
+impl BadField for File {}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -1,15 +1,16 @@
 # Next Steps
 
-## Current Highest Priority: M5 Default Trait Methods WP3
+## Current Highest Priority: M5 Default Trait Methods WP5
 
 M5 is now the active post-M4 implementation stream. M5-WP1 fixed the
 [Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md)
 and the [M5 Default Trait Methods Roadmap](m5-roadmap.md). M5-WP2 has landed
-the syntax / AST / body-identity baseline: trait method bodies parse, AST dumps
-mark `trait_default`, `BodySlotKind::trait_default_method` is covered by query
-identity tests, and sema rejects default bodies with an explicit unsupported
-diagnostic until default-body checking exists. The next priority is M5-WP3:
-type-check default method bodies once in trait context.
+the syntax / AST / body-identity baseline. M5-WP3 and M5-WP4 now type-check
+default method bodies once in trait context, allow impls to inherit defaulted
+requirements, preserve missing non-default requirement diagnostics, and record
+selected method origin in checked facts. The next priority is M5-WP5: lower
+selected `trait_default` calls to direct trait-owned default body instances
+without changing the static dispatch model.
 
 The selected M5 target is deliberately narrow:
 

@@ -1,10 +1,10 @@
 # Aurex 语言语法说明书
 
 日期：2026-05-31
-阶段：M4 trait/protocol release baseline
+阶段：M5 default trait methods release baseline
 状态：按当前仓库实现编写的使用者语法说明，不描述尚未落地的未来功能。
 
-本文说明当前 Aurex 能写什么、怎么写、哪些地方会被拒绝。语法以 `docs/spec/m2_grammar.md`、M4 release
+本文说明当前 Aurex 能写什么、怎么写、哪些地方会被拒绝。语法以 `docs/spec/m2_grammar.md`、M5 release
 baseline、`include/aurex/syntax/token.hpp`、`src/parse/*`、`src/sema/*`、`tests/samples/**` 和 `examples/**`
 的当前实现为准。
 
@@ -946,7 +946,7 @@ impl[T] Box[T] {
 }
 ```
 
-`where` 当前支持内建非资源 capability 和 M4 nominal static trait predicate：
+`where` 当前支持内建非资源 capability 和 M5 nominal static trait predicate：
 
 ```aurex
 fn same[T](left: T, right: T) -> bool where T: Eq {
@@ -963,6 +963,7 @@ fn same[T](left: T, right: T) -> bool where T: Eq {
 - 用户定义 `trait`
 - 显式 `impl Trait for Type`
 - trait method requirement
+- trait default method body
 - associated type requirement
 - `Trait[Item = Type]` associated-type equality
 
@@ -972,6 +973,10 @@ fn same[T](left: T, right: T) -> bool where T: Eq {
 trait Source {
     type Item;
     fn get(self: &Self) -> Self.Item;
+
+    fn fallback(self: &Self, value: Self.Item) -> Self.Item {
+        return value;
+    }
 }
 
 struct Bytes {
@@ -987,15 +992,18 @@ impl Source for Bytes {
 }
 
 fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {
-    return value.get();
+    return value.fallback(value.get());
 }
 ```
 
-M4 trait 规则：
+M5 trait 规则：
 
 - trait 是 nominal identity，不按方法形状做 structural conformance。
 - conformance 必须显式写成 `impl Trait for Type`。
-- trait method 默认静态分派；单态化后 lowering 到具体 impl method direct call。
+- trait method 默认静态分派；显式 override lowering 到具体 impl method direct call，inherited default
+  lowering 到 concrete trait-owned default method instance direct call。
+- 带 body 的 trait method requirement 可以被 impl 省略；不带 body 的 requirement 仍必须实现。
+- 显式 override 必须在 `Self`、trait args 和 associated type output 替换后匹配 requirement 签名。
 - associated type 是 impl output，不作为 impl selection input。
 - `Self.Item` shorthand 只在当前 trait bounds 中 associated type 名称唯一或 equality 可归一化时使用。
 
@@ -1006,7 +1014,6 @@ M4 trait 规则：
 - `Copy` / `Drop` 资源能力
 - generic associated type
 - associated const
-- default trait method
 - specialization
 - `<T>` 风格泛型
 

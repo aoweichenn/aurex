@@ -1,6 +1,6 @@
 # Usage Guide
 
-This document describes the current **M4 trait/protocol release baseline**.
+This document describes the current **M5 default trait methods release baseline**.
 The standard library remains frozen and removed, so examples and tests should
 target syntax, semantics, IR, backend behavior, and the static trait surface
 directly.
@@ -81,13 +81,18 @@ explicitly selects the coarse source-fingerprint compatibility path.
 
 ## Trait / Protocol Surface
 
-M4 supports nominal static traits, explicit impls, generic trait predicates,
-static trait method calls, and associated-type equality constraints:
+M5 supports nominal static traits, explicit impls, generic trait predicates,
+static trait method calls, associated-type equality constraints, and default
+method bodies inside traits:
 
 ```aurex
 trait Source {
     type Item;
     fn get(self: &Self) -> Self.Item;
+
+    fn fallback(self: &Self, value: Self.Item) -> Self.Item {
+        return value;
+    }
 }
 
 struct Bytes {
@@ -103,13 +108,17 @@ impl Source for Bytes {
 }
 
 fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {
-    return value.get();
+    return value.fallback(value.get());
 }
 ```
 
-This is a static-dispatch surface. Dynamic trait objects, vtable ABI, object
-safety, default methods, specialization, generic associated types, associated
-constants, and RAII/resource semantics are still future design tracks.
+Default method bodies are checked in trait context and selected inherited
+defaults lower to internal direct-call functions after monomorphization.
+Explicit impl methods remain overrides when their substituted signatures match.
+This is still a static-dispatch surface. Dynamic trait objects, vtable ABI,
+object safety, specialization, default associated types, generic associated
+types, associated constants, and RAII/resource semantics are future design
+tracks.
 
 ## Imports
 

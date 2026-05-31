@@ -14,7 +14,7 @@
 
 ## Branch Boundary
 
-The current architecture baseline is M4. M2 removed the standard-library layer:
+The current architecture baseline is M5. M2 removed the standard-library layer:
 
 - No `std/` source tree.
 - The driver does not locate a std root.
@@ -34,10 +34,11 @@ The active compiler architecture is query-backed and static-trait-aware:
 - ADT enums, pattern matching, arrays, slices, strings, and function types form
   the std-independent value and ABI foundation.
 - Nominal static traits, explicit impls, `where` trait predicates, static trait
-  method dispatch, and associated types are part of the M4 baseline.
-- Resource semantics, dynamic trait objects, object safety, default methods,
-  specialization, associated constants, and generic associated types remain
-  separate future design tracks.
+  method dispatch, associated types, and trait default method bodies are part
+  of the M5 baseline.
+- Resource semantics, dynamic trait objects, object safety, specialization,
+  default associated types, associated constants, and generic associated types
+  remain separate future design tracks.
 
 ## M2.5 Frontend Direction
 

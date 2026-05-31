@@ -11,6 +11,8 @@ traits.
 
 The complete M5 design baseline is
 [Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md).
+The completed M5 release contract is
+[Aurex M5 Default Trait Methods Release Baseline](m5-release-baseline.md).
 
 ## Goals
 
@@ -186,6 +188,8 @@ Risk controls:
 
 ### M5-WP7: Release Closure
 
+Status: complete.
+
 Goal: close M5 as a release-quality static default-method baseline.
 
 Deliverables:
@@ -200,7 +204,7 @@ Deliverables:
 
 ## Completion Contract
 
-M5 is complete when Aurex can:
+M5-WP1 through M5-WP7 are complete. M5 is complete because Aurex can:
 
 - Declare a default method body inside a trait.
 - Omit that method in an impl and inherit the default.

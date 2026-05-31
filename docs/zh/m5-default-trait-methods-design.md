@@ -590,6 +590,11 @@ Tooling 期望：
 - 后续入口写清楚：dyn traits、specialization、minimal implementation annotations、default associated types 和 resource
   semantics。
 
+收口记录：
+
+- 完整发布契约记录在
+  [Aurex M5 Default Trait Methods Release Baseline](m5-release-baseline.md)。
+
 ## 10. M5-WP1 验收门禁
 
 M5-WP1 完成条件：
@@ -597,7 +602,7 @@ M5-WP1 完成条件：
 - 中英文设计文档存在，并覆盖 research、semantic model、selected design、rejected alternatives、risk matrix、
   compiler pipeline、diagnostics、work packages 和 references。
 - 中英文 M5 roadmap docs 存在。
-- `README`、`next-steps` 和 `progress` 都说明 M5 default trait methods 是当前 active design stream。
+- `README`、`next-steps` 和 `progress` 都说明 M5 default trait methods 已是 closed release baseline，并把 M5 后工作作为新的独立设计决策。
 - documentation integration tests 要求新增 M5 docs。
 - 至少通过：
   - `tools/format_check.py $(git diff --name-only -- '*.cpp' '*.hpp') $(git ls-files --others --exclude-standard -- '*.cpp' '*.hpp')`

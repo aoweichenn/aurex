@@ -9,6 +9,8 @@ trait 内部的默认方法体。
 
 完整设计基线见
 [Aurex M5 Default Trait Methods 调研与设计基线](m5-default-trait-methods-design.md)。
+完整发布契约见
+[Aurex M5 Default Trait Methods Release Baseline](m5-release-baseline.md)。
 
 ## 目标
 
@@ -157,6 +159,8 @@ trait 内部的默认方法体。
 
 ### M5-WP7：Release Closure
 
+状态：已完成。
+
 目标：把 M5 收口成 release-quality static default-method baseline。
 
 交付：
@@ -169,7 +173,7 @@ trait 内部的默认方法体。
 
 ## 完成契约
 
-M5 完成时，Aurex 应能：
+M5-WP1 到 M5-WP7 已完成。M5 已完成，因为 Aurex 现在能：
 
 - 在 trait 内声明 default method body。
 - 在 impl 中省略该方法并继承 default。

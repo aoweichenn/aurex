@@ -1,6 +1,6 @@
 # Aurex Documentation
 
-Documentation baseline: **M5 default trait methods design baseline**, built on
+Documentation baseline: **M5 default trait methods release baseline**, built on
 the closed M2 language-core-no-std, M2.5 frontend-foundation, M3
 query-backed/module/generic, and M4 trait/protocol baselines.
 
@@ -30,6 +30,7 @@ language they were written in.
 - [Aurex M4 Trait / Protocol Release Baseline](zh/m4-release-baseline.md)
 - [M5 Default Trait Methods 路线图](zh/m5-roadmap.md)
 - [Aurex M5 Default Trait Methods 调研与设计基线](zh/m5-default-trait-methods-design.md)
+- [Aurex M5 Default Trait Methods Release Baseline](zh/m5-release-baseline.md)
 - [使用文档](zh/usage.md)
 - [版本文档](zh/version.md)
 - [下一步计划文档](zh/next-steps.md)
@@ -50,6 +51,7 @@ language they were written in.
 - [Aurex M4 Trait / Protocol Release Baseline](en/m4-release-baseline.md)
 - [M5 Default Trait Methods Roadmap](en/m5-roadmap.md)
 - [Aurex M5 Default Trait Methods Research And Design Baseline](en/m5-default-trait-methods-design.md)
+- [Aurex M5 Default Trait Methods Release Baseline](en/m5-release-baseline.md)
 - [Usage Guide](en/usage.md)
 - [Version Document](en/version.md)
 - [Next Steps](en/next-steps.md)

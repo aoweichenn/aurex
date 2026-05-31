@@ -704,6 +704,11 @@ Deliverables:
 - Future entries are documented for dyn traits, specialization, minimal
   implementation annotations, default associated types, and resource semantics.
 
+Closure record:
+
+- The completed release contract is
+  [Aurex M5 Default Trait Methods Release Baseline](m5-release-baseline.md).
+
 ## 10. Acceptance Gates For M5-WP1
 
 M5-WP1 is complete when:
@@ -713,7 +718,8 @@ M5-WP1 is complete when:
   diagnostics, work packages, and references.
 - Chinese and English M5 roadmap docs exist.
 - `README`, `next-steps`, and `progress` state that M5 default trait methods
-  are the active design stream.
+  are the closed release baseline and identify post-M5 work as a separate
+  design decision.
 - Documentation integration tests require the new M5 docs.
 - At least these commands pass:
   - `tools/format_check.py $(git diff --name-only -- '*.cpp' '*.hpp') $(git ls-files --others --exclude-standard -- '*.cpp' '*.hpp')`

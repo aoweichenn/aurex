@@ -1,16 +1,19 @@
 # Version Document
 
-## M5 default trait methods design baseline
+## M5 default trait methods release baseline
 
-The current documentation baseline is M5 default trait methods design. M5
-builds on the closed M4 trait/protocol release baseline and selects one focused
+The current documentation baseline is M5 default trait methods release. M5
+builds on the closed M4 trait/protocol release baseline and closes one focused
 post-M4 stream: default method bodies on nominal static traits.
 
 The M5 design baseline is recorded in
 [Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md),
-with the staged route in the [M5 Default Trait Methods Roadmap](m5-roadmap.md).
-M5 is scoped to trait-owned default bodies, explicit method origin, impl
-override vs inherited-default completeness, static direct-call lowering after
+the staged route is recorded in the
+[M5 Default Trait Methods Roadmap](m5-roadmap.md), and the release contract is
+recorded in
+[Aurex M5 Default Trait Methods Release Baseline](m5-release-baseline.md). M5
+is scoped to trait-owned default bodies, explicit method origin, impl override
+vs inherited-default completeness, static direct-call lowering after
 monomorphization, and tooling/diagnostic/query projection.
 
 M5 does not include dynamic trait objects, object safety, vtable ABI,

@@ -1,27 +1,32 @@
 # Current Progress
 
 Version: 0.1.4
-Stage: M5 default trait methods WP5/WP6 lowering and tooling baseline complete
+Stage: M5 default trait methods release baseline complete
 
 ## Overall Status
 
-As of 2026-05-31, M5 has started as the default trait methods implementation
-stream on top of the closed M4 trait/protocol baseline. M5-WP1 produced the
+As of 2026-05-31, M5 has closed as the default trait methods release baseline
+on top of the closed M4 trait/protocol baseline. M5-WP1 produced the
 [Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md)
-and the [M5 Default Trait Methods Roadmap](m5-roadmap.md). M5-WP2 landed the
-syntax / AST / body-identity baseline: the parser accepts default method bodies
-inside traits, prototype requirements remain explicit, AST compact storage and
-AST dumps distinguish `prototype` from `trait_default`, and query identity
-covers `BodySlotKind::trait_default_method`. M5-WP3 and M5-WP4 type-check
-trait-owned default bodies once in trait context, let impls omit defaulted
-requirements, keep missing non-default requirements as errors, and record
-selected method origin as `impl_override`, `trait_default`, or `param_env` in
-checked facts. M5-WP5 and M5-WP6 now instantiate selected inherited defaults
-as concrete trait-owned method instances, lower them to direct IR/LLVM calls,
-preserve associated-type substitution through instance side tables, expose
-default-call hover/definition behavior in IDE tooling, and give synthetic
-default instances stable incremental-cache/body-query categories through
-`BodySlotKind::trait_default_method`. M5 is scoped to
+and the [M5 Default Trait Methods Roadmap](m5-roadmap.md). The completed release
+contract is recorded in
+[Aurex M5 Default Trait Methods Release Baseline](m5-release-baseline.md).
+M5-WP2 landed the syntax / AST / body-identity baseline: the parser accepts
+default method bodies inside traits, prototype requirements remain explicit,
+AST compact storage and AST dumps distinguish `prototype` from
+`trait_default`, and query identity covers `BodySlotKind::trait_default_method`.
+M5-WP3 and M5-WP4 type-check trait-owned default bodies once in trait context,
+let impls omit defaulted requirements, keep missing non-default requirements as
+errors, and record selected method origin as `impl_override`, `trait_default`,
+or `param_env` in checked facts. M5-WP5 and M5-WP6 instantiate selected
+inherited defaults as concrete trait-owned method instances, lower them to
+direct IR/LLVM calls, preserve associated-type substitution through instance
+side tables, expose default-call hover/definition behavior in IDE tooling, and
+give synthetic default instances stable incremental-cache/body-query categories
+through `BodySlotKind::trait_default_method`. M5-WP7 closes the release
+baseline docs, usage notes, version notes, unsupported matrix, validation
+matrix, normal repository tests, coverage, query/cache gates, and stress gates.
+M5 is scoped to
 trait method bodies on nominal static traits, explicit method-origin facts,
 trait-owned default body identity through `BodySlotKind::trait_default_method`,
 impl completeness rules that distinguish explicit overrides from inherited
@@ -85,7 +90,8 @@ associated type member facts are indexed in the workspace semantic index, and
 diagnostics now emit notes for candidate impls, rejected candidates,
 associated-type equality mismatches, orphan checks, and overlap locations.
 
-M5-WP3/WP4/WP5/WP6 tests are normal repository tests as well:
+M5-WP1 through M5-WP7 tests and documentation checks are normal repository
+tests:
 `tests/gtest/sema/trait_tests.cpp` covers trait-owned default body checking,
 inherited default method facts, explicit override precedence, concrete default
 method instance records, direct IR/LLVM lowering, generic reselection,
@@ -93,7 +99,9 @@ associated-type normalization, inherent-first priority, and checked dump origin
 strings; `tests/gtest/tooling/ide_tooling_tests.cpp` covers IDE
 hover/definition for inherited defaults versus explicit overrides;
 `tests/gtest/driver/cli_driver_tests.cpp` covers incremental-cache rows for
-trait default method instances; `tests/samples/checked/traits/trait_default_method_inherited.ax`
+trait default method instances; `tests/gtest/integration/documentation_tests.cpp`
+checks the M5 release documentation contract;
+`tests/samples/checked/traits/trait_default_method_inherited.ax`
 and `tests/samples/checked/traits/trait_default_method_override.ax` remain
 checked-only positive fixtures for origin dumps; the normal positive samples
 `tests/samples/positive/traits/trait_default_method_inherited_dispatch.ax`,

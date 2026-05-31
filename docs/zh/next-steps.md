@@ -1,19 +1,16 @@
 # 下一步计划
 
-## 当前最高优先级：M5 Default Trait Methods WP7 Release Closure
+## 当前最高优先级：Post-M5 Design Selection
 
-M5 现在是 M4 后的 active implementation stream。M5-WP1 已固定
-[Aurex M5 Default Trait Methods 调研与设计基线](m5-default-trait-methods-design.md)
-和 [M5 Default Trait Methods 路线图](m5-roadmap.md)。M5-WP2 已落地 syntax / AST /
-body-identity baseline。M5-WP3 和 M5-WP4 现在已经在 trait context 中只 type-check default method body
-一次，允许 impl 继承 defaulted requirement，保持 missing non-default requirement 诊断，并在 checked facts
-中记录 selected method origin。M5-WP5 和 M5-WP6 现在已经把 selected `trait_default` call 降低为
-direct concrete trait-owned default method instance，保留 generic reselection 和 associated-type substitution，
-IDE hover/definition 能暴露 default/override origin，并为 default instance 记录稳定 incremental-cache/query rows。
-下一优先级是 M5-WP7：收口 release baseline、更新用户侧语言说明和 unsupported matrix，并保持 full
-build/test/coverage gates 全绿。
+M5 default trait methods 已经收口为 release baseline。M5-WP1 已固定
+[Aurex M5 Default Trait Methods 调研与设计基线](m5-default-trait-methods-design.md)，阶段路线记录在
+[M5 Default Trait Methods 路线图](m5-roadmap.md)，完整发布契约记录在
+[Aurex M5 Default Trait Methods Release Baseline](m5-release-baseline.md)。M5-WP2 到 M5-WP6 已完成
+syntax / AST / body identity、trait-context default body checking、impl completeness 与 method-origin facts、
+static lowering、tooling / diagnostics 和 incremental-cache projection。M5-WP7 已收口 usage notes、version notes、
+unsupported matrix、常规仓库 samples、文档测试、full build/test/coverage gates、query/cache gates 和 stress gates。
 
-选定的 M5 目标刻意保持窄范围：
+已经收口的 M5 目标刻意保持窄范围：
 
 - 允许 trait method requirement 携带 default body。
 - 继续使用 M4 的显式 `impl Trait for Type`、nominal identity、coherence、associated types 和 static dispatch。
@@ -25,9 +22,13 @@ build/test/coverage gates 全绿。
   body instance。
 - 在 IDE/tooling 和 incremental-cache query records 中暴露 selected default origin，但不引入 runtime dispatch。
 
-M5 不得引入 `dyn Trait`、object safety、vtable ABI、specialization、associated constants、default associated types、
+M5 不包含 `dyn Trait`、object safety、vtable ABI、specialization、associated constants、default associated types、
 GAT、blanket impl、RAII/resource semantics、Swift-style protocol extensions、Scala/Kotlin mixins 或 runtime
 interface dispatch。这些继续作为独立未来设计流。
+
+下一阶段应该从新的设计决策开始。最强候选是 resource semantics、dynamic trait object、specialization、
+default associated type、associated const、minimal implementation annotation、package-level coherence 或更强
+trait solver。这些都不应该重新打开 M5 static default-method baseline。
 
 M3 release baseline 已收口，M4 trait/protocol 系统已完成 WP1、WP2、WP3、WP4、WP5、WP6、WP7 和 WP8。M4-WP1 固定
 [Aurex M4-WP1 Trait / Protocol 系统调研与设计基线](m4-trait-protocol-system-design.md)，阶段路线见
@@ -55,13 +56,15 @@ M4-WP8 已完成，并在
 unsupported matrix、常规仓库测试、coverage、query/cache/profile stress gates 和后续入口已经对齐到同一个
 M4 边界。
 
-当前真实能力：Aurex 使用 nominal static trait，语言关键字为 `trait`，conformance 通过显式
+当前真实能力：Aurex 使用带 default method body 的 nominal static trait，语言关键字为 `trait`，conformance 通过显式
 `impl Trait for Type` 给出。`CheckedModule::traits` 记录 `TraitSignature`、generic params、visibility 和结构化
 requirement；`CheckedModule::trait_impls` 记录 exact impl facts；sema 已覆盖 requirement matching、`Self`
 替换、trait generic 参数替换、qualified trait reference、可见性、trait generic arity、缺方法、重复方法、未知方法、签名不匹配、
 非 trait impl target、非 named self target、重复 exact impl、orphan rule、first-pass overlap 和 generic candidate
 rejection。associated type surface 已覆盖 declaration、impl assignment、projection normalization、equality
-predicate、method requirement substitution，以及 trait signature / impl / predicate 的 checked fact。相关测试全部位于常规仓库测试目录：
+predicate、method requirement substitution，以及 trait signature / impl / predicate 的 checked fact。default method
+surface 已覆盖 trait-owned body、inherited default、explicit override、static default instance lowering、IDE origin
+projection 和 incremental-cache rows。相关测试全部位于常规仓库测试目录：
 `tests/gtest/sema/trait_tests.cpp`、`tests/samples/positive/traits/trait_impl_registry.ax`、
 `tests/samples/positive/traits/trait_predicate_where_generic.ax`、
 `tests/samples/positive/traits/trait_method_static_dispatch.ax`、
@@ -69,19 +72,22 @@ predicate、method requirement substitution，以及 trait signature / impl / pr
 `tests/samples/positive/traits/trait_method_inherent_precedence.ax`、
 `tests/samples/positive/traits/trait_method_function_field_precedence.ax`、
 `tests/samples/positive/traits/trait_associated_type_basic.ax`、
-`tests/samples/positive/traits/trait_associated_type_where_equality.ax`、`tests/samples/negative/traits/*.ax` 和
+`tests/samples/positive/traits/trait_associated_type_where_equality.ax`、
+`tests/samples/positive/traits/trait_default_method_*.ax`、`tests/samples/negative/traits/*.ax` 和
 `tests/samples/imports/samplelib/traits.ax`。WP7 tooling 覆盖位于
 `tests/gtest/tooling/ide_tooling_tests.cpp` 和
-`tests/gtest/tooling/session_lsp_tooling_tests.cpp`。
+`tests/gtest/tooling/session_lsp_tooling_tests.cpp`。M5 release documentation coverage 位于
+`tests/gtest/integration/documentation_tests.cpp`。
 
-下一步不再是开放式 M4 后设计选择。当前选定路线是 M5 default trait methods。resource semantics、dynamic
-trait objects、package-level coherence、specialization、class-like sugar 和更强 trait solver 仍是后续候选，但除非新的设计决策明确改变优先级，
-否则不能挤占 M5 default method 路线。
+下一步不再是 M5 实现。resource semantics、dynamic trait object、package-level coherence、specialization、
+class-like sugar、default associated type、minimal implementation annotation 和更强 trait solver 都是 M5 后候选，
+需要独立设计后再进入代码修改。
 
-M4 不做 dynamic trait object 或 RAII/resource semantics。dynamic trait object、vtable ABI/object safety、
-associated constant、specialization、generic associated type 和资源系统继续保持 M4 当前非目标。WP6 的
-`where` grammar 已支持 identifier trait predicate 上的 associated-type equality constraint，WP7 已补齐
-tooling projection；qualified where predicate 和 generic trait predicate arguments 仍留给后续 solver 阶段。
+M5 不做 dynamic trait object 或 RAII/resource semantics。dynamic trait object、vtable ABI/object safety、
+associated const、default associated type、specialization、generic associated type、minimal implementation annotation
+和资源系统继续保持 M5 当前非目标。M5 surface 已支持 identifier trait predicate 上的 associated-type equality
+constraint、static default methods 和 tooling projection；qualified where predicate 和 generic trait predicate arguments
+仍留给后续 solver 阶段。
 
 ## M3 收口背景
 

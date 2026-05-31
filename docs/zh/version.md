@@ -1,15 +1,16 @@
 # 版本文档
 
-## M5 default trait methods design baseline
+## M5 default trait methods release baseline
 
-当前文档基线是 M5 default trait methods design。M5 建立在已经收口的 M4 trait/protocol release baseline
-之上，只选择一个聚焦的 M4 后设计流：nominal static trait 上的 default method body。
+当前文档基线是 M5 default trait methods release。M5 建立在已经收口的 M4 trait/protocol release baseline
+之上，已经收口一个聚焦的 M4 后设计流：nominal static trait 上的 default method body。
 
 M5 设计基线记录在
 [Aurex M5 Default Trait Methods 调研与设计基线](m5-default-trait-methods-design.md)，阶段路线见
-[M5 Default Trait Methods 路线图](m5-roadmap.md)。M5 范围是 trait-owned default bodies、显式 method origin、
-impl override vs inherited-default completeness、单态化后的 static direct-call lowering，以及 tooling /
-diagnostics / query projection。
+[M5 Default Trait Methods 路线图](m5-roadmap.md)，发布契约记录在
+[Aurex M5 Default Trait Methods Release Baseline](m5-release-baseline.md)。M5 范围是 trait-owned default
+bodies、显式 method origin、impl override vs inherited-default completeness、单态化后的 static direct-call
+lowering，以及 tooling / diagnostics / query projection。
 
 M5 不包含 dynamic trait object、object safety、vtable ABI、specialization、associated constants、default
 associated types、generic associated types、blanket impl、package-level coherence expansion、class-like sugar 或

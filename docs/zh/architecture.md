@@ -13,7 +13,7 @@
 
 ## 分支边界
 
-当前架构基线是 M4。M2 已移除标准库层：
+当前架构基线是 M5。M2 已移除标准库层：
 
 - 没有 `std/` 源树。
 - driver 不查找 std root。
@@ -29,9 +29,9 @@
 
 - `unsafe` 边界覆盖 raw pointer、unchecked string 和 bit-level cast。
 - ADT enum、pattern matching、array、slice、string 和 function type 构成不依赖 std 的基础值和 ABI 表达。
-- nominal static trait、显式 impl、`where` trait predicate、static trait method dispatch 和 associated type 已进入
-  M4 baseline。
-- resource semantics、dynamic trait object、object safety、default method、specialization、associated const 和
+- nominal static trait、显式 impl、`where` trait predicate、static trait method dispatch、associated type 和 trait
+  default method body 已进入 M5 baseline。
+- resource semantics、dynamic trait object、object safety、specialization、default associated type、associated const 和
   generic associated type 仍是后续独立设计流。
 
 ## M2.5 前端方向

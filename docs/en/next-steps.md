@@ -1,22 +1,21 @@
 # Next Steps
 
-## Current Highest Priority: M5 Default Trait Methods WP7 Release Closure
+## Current Highest Priority: Post-M5 Design Selection
 
-M5 is now the active post-M4 implementation stream. M5-WP1 fixed the
-[Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md)
-and the [M5 Default Trait Methods Roadmap](m5-roadmap.md). M5-WP2 has landed
-the syntax / AST / body-identity baseline. M5-WP3 and M5-WP4 now type-check
-default method bodies once in trait context, allow impls to inherit defaulted
-requirements, preserve missing non-default requirement diagnostics, and record
-selected method origin in checked facts. M5-WP5 and M5-WP6 now lower selected
-`trait_default` calls to direct concrete trait-owned default method instances,
-preserve generic reselection and associated-type substitution, expose
-default/override origin through IDE hover/definition, and record stable
-incremental-cache/query rows for default instances. The next priority is
-M5-WP7: close the release baseline, update user-facing language notes and the
-unsupported matrix, and keep full build/test/coverage gates green.
+M5 default trait methods are now closed as a release baseline. M5-WP1 fixed the
+[Aurex M5 Default Trait Methods Research And Design Baseline](m5-default-trait-methods-design.md),
+the staged route is recorded in the
+[M5 Default Trait Methods Roadmap](m5-roadmap.md), and the completed release
+contract is recorded in
+[Aurex M5 Default Trait Methods Release Baseline](m5-release-baseline.md).
+M5-WP2 through M5-WP6 landed syntax / AST / body identity, trait-context
+default body checking, impl completeness and method-origin facts, static
+lowering, tooling / diagnostics, and incremental-cache projection. M5-WP7
+closed usage notes, version notes, unsupported matrix, normal repository
+samples, documentation tests, full build/test/coverage gates, query/cache
+gates, and stress gates.
 
-The selected M5 target is deliberately narrow:
+The closed M5 target is deliberately narrow:
 
 - Allow a trait method requirement to carry a default body.
 - Keep explicit `impl Trait for Type`, nominal identity, coherence, associated
@@ -31,10 +30,16 @@ The selected M5 target is deliberately narrow:
 - Expose selected default origin in IDE/tooling and incremental-cache query
   records without introducing runtime dispatch.
 
-M5 must not add `dyn Trait`, object safety, vtable ABI, specialization,
+M5 does not add `dyn Trait`, object safety, vtable ABI, specialization,
 associated constants, default associated types, GATs, blanket impls, RAII /
 resource semantics, Swift-style protocol extensions, Scala/Kotlin mixins, or
 runtime interface dispatch. Those remain separate future design streams.
+
+The next stage should start from a fresh design decision. The strongest
+candidates are resource semantics, dynamic trait objects, specialization,
+default associated types, associated constants, minimal implementation
+annotations, package-level coherence, or a stronger trait solver. None of those
+should reopen the M5 static default-method baseline.
 
 The M3 release baseline is closed, and M4 trait/protocol work has completed
 WP1, WP2, WP3, WP4, WP5, WP6, WP7, and WP8. M4-WP1 fixed the
@@ -75,8 +80,9 @@ language-surface notes, unsupported matrix, normal repository tests, coverage,
 query/cache/profile stress gates, and future entry points now agree on the same
 M4 boundary.
 
-The current implemented surface is nominal static traits. The language keyword
-is `trait`, and conformance is explicit through `impl Trait for Type`.
+The current implemented surface is nominal static traits with default method
+bodies. The language keyword is `trait`, and conformance is explicit through
+`impl Trait for Type`.
 `CheckedModule::traits` records `TraitSignature`, generic parameters,
 visibility, and structured requirements. `CheckedModule::trait_impls` records
 exact impl facts. Sema covers requirement matching, `Self` substitution, trait
@@ -86,7 +92,10 @@ mismatches, non-trait impl targets, non-named self targets, and duplicate exact
 impls, orphan rules, first-pass overlap, and generic candidate rejection. The
 associated type surface covers declarations, impl assignments, projection
 normalization, equality predicates, method requirement substitution, and checked
-facts for trait signatures, impls, and predicates. The
+facts for trait signatures, impls, and predicates. The default method surface
+covers trait-owned bodies, inherited defaults, explicit overrides, static
+default instance lowering, IDE origin projection, and incremental-cache rows.
+The
 tests live in normal repository locations:
 `tests/gtest/sema/trait_tests.cpp`,
 `tests/samples/positive/traits/trait_impl_registry.ax`,
@@ -97,23 +106,27 @@ tests live in normal repository locations:
 `tests/samples/positive/traits/trait_method_function_field_precedence.ax`,
 `tests/samples/positive/traits/trait_associated_type_basic.ax`,
 `tests/samples/positive/traits/trait_associated_type_where_equality.ax`,
+`tests/samples/positive/traits/trait_default_method_*.ax`,
 `tests/samples/negative/traits/*.ax`, and
 `tests/samples/imports/samplelib/traits.ax`. WP7 tooling coverage lives in
 `tests/gtest/tooling/ide_tooling_tests.cpp` and
 `tests/gtest/tooling/session_lsp_tooling_tests.cpp`.
+M5 release documentation coverage lives in
+`tests/gtest/integration/documentation_tests.cpp`.
 
-The next step is no longer an open-ended post-M4 selection. The selected stream
-is M5 default trait methods. Resource semantics, dynamic trait objects,
-package-level coherence, specialization, class-like sugar, and a stronger trait
-solver remain future candidates, but they must not displace the M5 default
-method route unless a new design decision explicitly changes priority.
+The next step is no longer M5 implementation. Resource semantics, dynamic trait
+objects, package-level coherence, specialization, class-like sugar, default
+associated types, minimal implementation annotations, and a stronger trait
+solver are post-M5 candidates that need independent design before code changes.
 
-M4 does not include dynamic trait objects or RAII/resource semantics. Dynamic
-trait objects, vtable ABI/object safety, associated constants, specialization,
-generic associated types, and the resource system remain outside the current M4
-target. The WP6/WP7 surface supports identifier trait predicates with
-associated-type equality constraints and tooling projection; qualified where
-predicates and generic trait predicate arguments remain future solver work.
+M5 does not include dynamic trait objects or RAII/resource semantics. Dynamic
+trait objects, vtable ABI/object safety, associated constants, default
+associated types, specialization, generic associated types, minimal
+implementation annotations, and the resource system remain outside the current
+M5 target. The M5 surface supports identifier trait predicates with
+associated-type equality constraints, static default methods, and tooling
+projection; qualified where predicates and generic trait predicate arguments
+remain future solver work.
 
 ## M3 Closure Context
 

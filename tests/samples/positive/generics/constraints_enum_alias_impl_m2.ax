@@ -21,7 +21,7 @@ struct Box[T] {
     value: T;
 }
 
-impl[T] Box[T] where T: Eq {
+impl[T] Box[T] where T: Eq + Copy {
     fn get(self: &Box[T]) -> T {
         return self.value;
     }
@@ -43,7 +43,7 @@ fn hashable[T](value: T) -> i32 where T: Hash {
     return 1;
 }
 
-fn unwrap_or[T](value: Option[T], fallback: T) -> T {
+fn unwrap_or[T](value: Option[T], fallback: T) -> T where T: Copy {
     return match value {
         .some(inner) => inner,
         .none => fallback,

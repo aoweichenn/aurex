@@ -6,7 +6,7 @@ struct PairBox[T] {
 }
 
 impl[T] PairBox[T] {
-    fn owner(self: &PairBox[T]) -> T {
+    fn owner(self: &PairBox[T]) -> T where T: Copy {
         return self.left;
     }
 

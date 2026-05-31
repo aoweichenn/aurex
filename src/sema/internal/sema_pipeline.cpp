@@ -214,6 +214,7 @@ void SemanticAnalysisPipeline::reserve_analysis_storage()
         this->core_.ctx_.module.stmts.size(), this->core_.ctx_.module.items.size());
     this->core_.state_.checked.expr_intrinsic_types.assign(this->core_.ctx_.module.exprs.size(), INVALID_TYPE_HANDLE);
     this->core_.state_.checked.expr_types.assign(this->core_.ctx_.module.exprs.size(), INVALID_TYPE_HANDLE);
+    this->core_.state_.checked.expr_owned_use_modes.clear();
     this->core_.state_.checked.prepare_analysis_only_storage(this->core_.ctx_.module.exprs.size());
     this->core_.state_.checked.expr_expected_types.assign(this->core_.ctx_.module.exprs.size(), INVALID_TYPE_HANDLE);
     this->core_.state_.checked.expr_c_name_ids.assign(this->core_.ctx_.module.exprs.size(), INVALID_IDENT_ID);

@@ -15,9 +15,15 @@ M6-WP1 已完成三轮设计审视：
 3. 用户案例压力测试：regex 手工 `destroy`、owned string/vector、文件、锁、FFI、覆盖赋值、分支、循环、
    `?`、pattern、partial initialization、自引用、shared ownership cycle 和未来 `dyn Trait`。
 
-下一实现包是 M6-WP2 Resource Classification Scaffold。M6-WP2 只实现 compiler-owned `Copy`、
-内部 `Discard` / `NeedsDrop`、结构化类型分类、stable fingerprint、checked dump 和 diagnostics；
-不提前加入 destructor parser spelling，不实现完整 borrow checker，也不重新打开 M5 static trait baseline。
+M6-WP2/WP3 已完成第一批实现：compiler-owned `Copy`、内部 `Discard` / `NeedsDrop` / ownership
+resource summary、结构化类型分类、stable fingerprint、checked dump resource summaries、expression
+owned-use side table、whole-local move analysis、move 后重新初始化和 consume-origin diagnostics。
+
+下一实现包是 M6-WP4 Cleanup Obligations、`defer` 组合和 IR Elaborator。WP4 要建立 lexical cleanup
+action stack，覆盖 normal scope exit、overwrite、`return`、`break`、`continue` 和 `?` early return，并把
+cleanup obligations 降低到正式 IR cleanup 节点或等价 CFG 形状。WP4 不冻结 destructor parser spelling，
+不开放用户 `Drop` bound，不实现 aggregate/generic drop glue，也不实现完整 borrow checker；这些继续分别属于
+WP5 和 M7。
 
 ## 已收口背景：Post-M5 Design Selection
 

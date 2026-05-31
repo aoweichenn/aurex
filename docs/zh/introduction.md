@@ -1,6 +1,6 @@
 # 介绍文档
 
-Aurex 是一个系统语言编译器项目。当前设计基线是 **M6 资源、值生命周期与访问语义三轮设计审视基线**。M2 已冻结标准库并把工程重心拉回语言核心；M3 已收口模块、泛型、query-backed sema、tooling、incremental syntax 和 backend reuse；M4 新增 nominal static trait、显式 trait impl、generic trait predicate、静态 trait method dispatch、associated type，以及 tooling/diagnostics 投影；M5 已在这条 static trait 模型上把 default method bodies 收口为 release baseline；M6-WP1 现在已经完成资源和值生命周期专题的三轮设计审视，下一步进入 resource classification scaffold。
+Aurex 是一个系统语言编译器项目。当前实现基线是 **M6 资源、值生命周期与访问语义实现基线**。M2 已冻结标准库并把工程重心拉回语言核心；M3 已收口模块、泛型、query-backed sema、tooling、incremental syntax 和 backend reuse；M4 新增 nominal static trait、显式 trait impl、generic trait predicate、静态 trait method dispatch、associated type，以及 tooling/diagnostics 投影；M5 已在这条 static trait 模型上把 default method bodies 收口为 release baseline；M6-WP1 已完成资源和值生命周期专题的三轮设计审视，M6-WP2/WP3 已落地 resource classification 和 whole-local move analysis，下一步进入 cleanup lowering。
 
 M1 阶段已经舍弃。它把标准库、host support、构建工具样例、自举实验和语言核心同时推进，导致基础语法与类型规则没有形成稳定基线。M2 不再沿着 M1 修补，而是先把语言地基重新做稳。
 

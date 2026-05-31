@@ -1,3 +1,4 @@
+#include <aurex/sema/resource_semantics.hpp>
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
@@ -26,7 +27,6 @@ constexpr std::string_view SEMA_GENERIC_ABI_GLOBAL_ID_PREFIX = "_k";
 constexpr std::string_view SEMA_GENERIC_ABI_PRIMARY_PREFIX = "_p";
 constexpr std::string_view SEMA_GENERIC_ABI_SECONDARY_PREFIX = "_s";
 constexpr std::string_view SEMA_GENERIC_ABI_BYTE_COUNT_PREFIX = "_n";
-constexpr std::string_view SEMA_CAPABILITY_COPY = "Copy";
 constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
 constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_MARKER = "generic-param";
 constexpr std::string_view SEMA_GENERIC_TEMPLATE_INCREMENTAL_TAG = "|generic_template";
@@ -539,12 +539,15 @@ private:
     if (name == capability_name(CapabilityKind::hash)) {
         return CapabilityKind::hash;
     }
+    if (name == capability_name(CapabilityKind::copy)) {
+        return CapabilityKind::copy;
+    }
     return std::nullopt;
 }
 
 [[nodiscard]] bool is_resource_capability(const std::string_view name) noexcept
 {
-    return name == SEMA_CAPABILITY_COPY || name == SEMA_CAPABILITY_DROP;
+    return name == SEMA_CAPABILITY_DROP;
 }
 
 void append_decimal(std::string& output, const base::u64 value)
@@ -623,6 +626,8 @@ std::string_view capability_name(const CapabilityKind capability) noexcept
             return "Ord";
         case CapabilityKind::hash:
             return "Hash";
+        case CapabilityKind::copy:
+            return "Copy";
     }
     return "<invalid>";
 }
@@ -988,6 +993,11 @@ bool SemanticAnalyzerCore::GenericAnalyzer::type_satisfies_capability(
     }
     if (capability == CapabilityKind::hash) {
         return this->core_.type_supports_hash_capability(type);
+    }
+    if (capability == CapabilityKind::copy) {
+        return resource_is_copy(ResourceSemanticsClassifier(this->core_.state_.checked, [this](const TypeHandle param) {
+            return this->core_.generic_param_has_capability(param, CapabilityKind::copy);
+        }).classify(type));
     }
     return false;
 }

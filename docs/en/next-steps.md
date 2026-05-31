@@ -20,11 +20,19 @@ M6-WP1 completed three design-review passes:
    initialization, self-reference, shared-ownership cycles, and future
    `dyn Trait`.
 
-The next implementation package is M6-WP2 Resource Classification Scaffold.
-M6-WP2 adds only compiler-owned `Copy`, internal `Discard` / `NeedsDrop`,
-structural type classification, stable fingerprints, checked dumps, and
-diagnostics. It does not freeze destructor parser spelling, implement a full
-borrow checker, or reopen the M5 static-trait baseline.
+M6-WP2/WP3 have completed the first implementation batch:
+compiler-owned `Copy`, internal `Discard` / `NeedsDrop` / ownership resource
+summaries, structural type classification, stable fingerprints, checked-dump
+resource summaries, expression owned-use side tables, whole-local move
+analysis, reinitialization after moves, and consume-origin diagnostics.
+
+The next implementation package is M6-WP4 Cleanup Obligations, `defer`
+Composition, And IR Elaborator. WP4 should add the lexical cleanup-action stack,
+cover normal scope exit, overwrite, `return`, `break`, `continue`, and `?`
+early return, and lower cleanup obligations to formal IR cleanup nodes or an
+equivalent CFG shape. WP4 does not freeze destructor parser spelling, open user
+`Drop` bounds, implement aggregate/generic drop glue, or implement the complete
+borrow checker; those remain WP5 and M7 responsibilities.
 
 ## Closed Background: Post-M5 Design Selection
 

@@ -15,7 +15,7 @@ impl Marker {
 }
 
 impl[T] Box[T] {
-    fn get(self: &Box[T]) -> T {
+    fn get(self: &Box[T]) -> T where T: Copy {
         return self.value;
     }
 

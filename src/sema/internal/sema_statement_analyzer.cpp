@@ -447,6 +447,7 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
         static_cast<void>(inserted);
     }
     this->core_.analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
+    this->core_.analyze_body_moves(function, signature);
     this->core_.state_.names.symbols.pop_scope();
     if (infer_return_type) {
         this->core_.finalize_inferred_return(function, key, return_inference);

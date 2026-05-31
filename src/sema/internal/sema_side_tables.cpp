@@ -122,6 +122,33 @@ TypeHandle SemanticSideTableReader::cached_expr_expected_type(const syntax::Expr
     return expr.value < expr_expected_types.size() ? expr_expected_types[expr.value] : INVALID_TYPE_HANDLE;
 }
 
+OwnedUseMode SemanticSideTableReader::cached_expr_owned_use_mode(const syntax::ExprId expr) const noexcept
+{
+    if (!syntax::is_valid(expr)) {
+        return OwnedUseMode::none;
+    }
+    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
+        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
+        const base::usize local_index = this->core_.state_.flow.current_side_tables.side_tables->local_expr_index(expr);
+        const OwnedUseMode local =
+            cached_local_dense_slot(this->core_.state_.flow.current_side_tables.side_tables->expr_owned_use_modes,
+                local_index, OwnedUseMode::none);
+        if (local != OwnedUseMode::none) {
+            return local;
+        }
+        const auto found =
+            this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_owned_use_modes.find(expr.value);
+        return found == this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_owned_use_modes.end()
+            ? OwnedUseMode::none
+            : found->second;
+    }
+    const SemaOwnedUseModeTable& expr_owned_use_modes =
+        this->core_.state_.flow.current_side_tables.side_tables == nullptr
+        ? this->core_.state_.checked.expr_owned_use_modes
+        : this->core_.state_.flow.current_side_tables.side_tables->expr_owned_use_modes;
+    return expr.value < expr_owned_use_modes.size() ? expr_owned_use_modes[expr.value] : OwnedUseMode::none;
+}
+
 TypeHandle SemanticSideTableReader::cached_expr_type_for_expected(
     const syntax::ExprId expr, const TypeHandle expected_type) const noexcept
 {
@@ -155,6 +182,30 @@ TypeHandle SemanticSideTableReader::cached_syntax_type(const syntax::TypeId type
         ? this->core_.state_.checked.syntax_type_handles
         : this->core_.state_.flow.current_side_tables.side_tables->syntax_type_handles;
     return type.value < syntax_type_handles.size() ? syntax_type_handles[type.value] : INVALID_TYPE_HANDLE;
+}
+
+TypeHandle SemanticSideTableReader::cached_stmt_local_type(const syntax::StmtId stmt) const noexcept
+{
+    if (!syntax::is_valid(stmt)) {
+        return INVALID_TYPE_HANDLE;
+    }
+    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
+        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
+        const base::usize local_index = this->core_.state_.flow.current_side_tables.side_tables->local_stmt_index(stmt);
+        if (local_index != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
+            && local_index < this->core_.state_.flow.current_side_tables.side_tables->stmt_local_types.size()) {
+            return this->core_.state_.flow.current_side_tables.side_tables->stmt_local_types[local_index];
+        }
+        const auto found =
+            this->core_.state_.flow.current_side_tables.side_tables->sparse_stmt_local_types.find(stmt.value);
+        return found == this->core_.state_.flow.current_side_tables.side_tables->sparse_stmt_local_types.end()
+            ? INVALID_TYPE_HANDLE
+            : found->second;
+    }
+    const SemaTypeTable& stmt_local_types = this->core_.state_.flow.current_side_tables.side_tables == nullptr
+        ? this->core_.state_.checked.stmt_local_types
+        : this->core_.state_.flow.current_side_tables.side_tables->stmt_local_types;
+    return stmt.value < stmt_local_types.size() ? stmt_local_types[stmt.value] : INVALID_TYPE_HANDLE;
 }
 
 std::string_view SemanticSideTableReader::cached_expr_c_name(const syntax::ExprId expr) const noexcept
@@ -448,6 +499,24 @@ void SemanticSideTableStore::record_expr_expected_type(const syntax::ExprId expr
     }
 }
 
+void SemanticSideTableStore::record_expr_owned_use_mode(const syntax::ExprId expr, const OwnedUseMode mode)
+{
+    if (!syntax::is_valid(expr) || mode == OwnedUseMode::none) {
+        return;
+    }
+    if (this->core_.state_.flow.current_side_tables.side_tables != nullptr
+        && this->core_.state_.flow.current_side_tables.side_tables->sparse) {
+        const base::usize local_index = this->core_.state_.flow.current_side_tables.side_tables->local_expr_index(expr);
+        record_sparse_fallback(*this->core_.state_.flow.current_side_tables.side_tables,
+            GenericSparseFallbackKind::expr_owned_use_mode, local_index);
+        this->core_.state_.flow.current_side_tables.side_tables->sparse_expr_owned_use_modes[expr.value] = mode;
+        return;
+    }
+    SemaOwnedUseModeTable& expr_owned_use_modes = this->active_expr_owned_use_modes();
+    ensure_side_table_slot(expr_owned_use_modes, expr.value);
+    expr_owned_use_modes[expr.value] = mode;
+}
+
 void SemanticSideTableStore::record_coercion(
     const syntax::ExprId expr, const TypeHandle from_type, const TypeHandle to_type, const CoercionKind kind)
 {
@@ -484,6 +553,13 @@ SemaTypeTable& SemanticSideTableStore::active_expr_expected_types() noexcept
     return this->core_.state_.flow.current_side_tables.side_tables == nullptr
         ? this->core_.state_.checked.expr_expected_types
         : this->core_.state_.flow.current_side_tables.side_tables->expr_expected_types;
+}
+
+SemaOwnedUseModeTable& SemanticSideTableStore::active_expr_owned_use_modes() noexcept
+{
+    return this->core_.state_.flow.current_side_tables.side_tables == nullptr
+        ? this->core_.state_.checked.expr_owned_use_modes
+        : this->core_.state_.flow.current_side_tables.side_tables->expr_owned_use_modes;
 }
 
 SemaIdentTable& SemanticSideTableStore::active_expr_c_name_ids() noexcept

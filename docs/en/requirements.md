@@ -2,9 +2,10 @@
 
 ## Branch Goal
 
-The active design baseline is the M6 Resource And Access Semantics three-pass
-review. M6-WP1 fixes semantics and route; Resource Classification Scaffold is
-the next implementation package. The older M2 `language-core-no-std` stage
+The active implementation baseline is M6 Resource And Access Semantics.
+M6-WP2/WP3 have landed resource classification and whole-local move analysis;
+M6-WP4 cleanup obligations are the next implementation package. The older M2
+`language-core-no-std` stage
 isolated language-core validation:
 
 - The compiler must build, install, and run without a standard-library tree.

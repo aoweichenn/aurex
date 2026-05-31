@@ -1,0 +1,9 @@
+module move_use_after_move;
+
+fn duplicate[T](value: T) -> (T, T) {
+    return (value, value);
+}
+
+fn main() -> i32 {
+    return 0;
+}

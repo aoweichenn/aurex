@@ -2,8 +2,8 @@
 
 ## 当前分支目标
 
-当前设计基线是 M6 Resource And Access Semantics 三轮设计审视。M6-WP1 已固定语义和路线，下一实现包是
-Resource Classification Scaffold；较早的 M2 `language-core-no-std` 阶段用于隔离语言核心验证：
+当前实现基线是 M6 Resource And Access Semantics。M6-WP2/WP3 已落地资源分类和 whole-local move
+analysis，M6-WP4 cleanup obligations 是下一实现包；较早的 M2 `language-core-no-std` 阶段用于隔离语言核心验证：
 
 - 编译器必须能在没有标准库源树的情况下构建、安装和运行。
 - import 只能来自导入者目录和显式 `-I`。

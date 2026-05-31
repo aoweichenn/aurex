@@ -15,9 +15,11 @@ public:
     [[nodiscard]] TypeHandle cached_expr_intrinsic_type(syntax::ExprId expr) const noexcept;
     [[nodiscard]] TypeHandle cached_expr_type(syntax::ExprId expr) const noexcept;
     [[nodiscard]] TypeHandle cached_expr_expected_type(syntax::ExprId expr) const noexcept;
+    [[nodiscard]] OwnedUseMode cached_expr_owned_use_mode(syntax::ExprId expr) const noexcept;
     [[nodiscard]] TypeHandle cached_expr_type_for_expected(
         syntax::ExprId expr, TypeHandle expected_type) const noexcept;
     [[nodiscard]] TypeHandle cached_syntax_type(syntax::TypeId type) const noexcept;
+    [[nodiscard]] TypeHandle cached_stmt_local_type(syntax::StmtId stmt) const noexcept;
     [[nodiscard]] std::string_view cached_expr_c_name(syntax::ExprId expr) const noexcept;
     [[nodiscard]] std::string_view cached_pattern_c_name(syntax::PatternId pattern) const noexcept;
 
@@ -39,11 +41,13 @@ public:
     [[nodiscard]] TypeHandle record_expr_types(syntax::ExprId expr, TypeHandle intrinsic_type, TypeHandle final_type);
     [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type);
     void record_expr_expected_type(syntax::ExprId expr, TypeHandle expected_type);
+    void record_expr_owned_use_mode(syntax::ExprId expr, OwnedUseMode mode);
     void record_coercion(syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, CoercionKind kind);
 
     [[nodiscard]] SemaTypeTable& active_expr_intrinsic_types() noexcept;
     [[nodiscard]] SemaTypeTable& active_expr_types() noexcept;
     [[nodiscard]] SemaTypeTable& active_expr_expected_types() noexcept;
+    [[nodiscard]] SemaOwnedUseModeTable& active_expr_owned_use_modes() noexcept;
     [[nodiscard]] SemaIdentTable& active_expr_c_name_ids() noexcept;
     [[nodiscard]] SemaIdentTable& active_pattern_c_name_ids() noexcept;
     [[nodiscard]] PatternCaseNameTable& active_pattern_case_name_ids() noexcept;

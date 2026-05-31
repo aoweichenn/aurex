@@ -1,0 +1,114 @@
+module move_cfg_constructs;
+
+struct Pair {
+    left: i32;
+    right: i32;
+}
+
+fn consume_copy(value: i32) -> void {
+    if value < 0 {
+        return;
+    }
+}
+
+fn discard_generic[T](value: T) -> void {
+    let borrowed: &T = &value;
+    if ptraddr(borrowed) == 0usize {
+        return;
+    }
+    let nil: *const T = null;
+    if nil != null {
+        return;
+    }
+    return;
+}
+
+fn exercise[T](value: T, replacement: T, flag: bool) -> T {
+    var total: i32 = 0;
+    if flag && true {
+        total += 1;
+    } else if flag || false {
+        total += 2;
+    } else {
+        total += 3;
+    }
+
+    for var i: i32 = 0; i < 2; i += 1 {
+        defer consume_copy(i);
+        if i == 0 {
+            continue;
+        }
+        total += i;
+    }
+    for ; ; {
+        break;
+    }
+    for i in range(2) {
+        if i == 0 {
+            continue;
+        }
+        total += i;
+    }
+    for i in range(0, 2, 1) {
+        total += i;
+    }
+
+    {
+        let value: i32 = 1;
+        total += value;
+    }
+
+    let values: [2]i32 = [total, 2];
+    let repeated: [2]i32 = [0; 2];
+    let view: []const i32 = values[:];
+    let window: []const i32 = values[0:2];
+    let empty: [0]i32 = [];
+    let pair = Pair { left: view[0], right: repeated[0] };
+    let tuple = (pair.left, pair.right);
+    let (tuple_left, tuple_right) = tuple;
+    let selected: i32 = if flag { pair.left } else { view[0] };
+    let guarded: i32 = match flag {
+        true if flag => 1,
+        false => 2,
+        _ => 3,
+    };
+    let block_total: i32 = {
+        let nested: i32 = tuple_left + tuple_right + selected + guarded;
+        nested + total
+    };
+
+    let borrowed: &T = &value;
+    let raw: *const T = unsafe { ptrat[*const T](ptraddr(borrowed)) };
+    let casted: *const T = unsafe { ptrcast[*const T](raw) };
+    let recast: *const T = unsafe { bitcast[*const T](casted) };
+    let raw_addr: usize = unsafe { ptraddr(recast) };
+    let casted_addr: i32 = cast[i32](raw_addr != 0usize);
+
+    var current: T = value;
+    let mutable_borrow: &mut T = &mut current;
+    if ptraddr(mutable_borrow) == 0usize {
+        return current;
+    }
+
+    let bytes: [2]u8 = b"ok";
+    let byte_view: []const u8 = bytes[:];
+    let text: str = strfromutf8(byte_view);
+    let raw_text: str = unsafe { strraw(strptr(text), strblen(text)) };
+    if !strvalid(byte_view) || strblen(raw_text) != 2usize || slicelen(window) != 2usize ||
+        block_total + casted_addr < 0 {
+        consume_copy(total);
+    }
+    let raw_literal: str = r"C:\tmp\a";
+    let char_value: char = 'x';
+    if strblen(raw_literal) == 0usize || char_value == '\0' {
+        consume_copy(total);
+    }
+
+    current = replacement;
+    return current;
+}
+
+fn main() -> i32 {
+    discard_generic[i32](0);
+    return exercise[i32](1, 2, true) - 2;
+}

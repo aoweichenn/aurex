@@ -1,0 +1,10 @@
+module where_copy_capability;
+
+fn duplicate[T](value: T) -> (T, T) where T: Copy {
+    return (value, value);
+}
+
+fn main() -> i32 {
+    let values: (i32, i32) = duplicate(1);
+    return 0;
+}

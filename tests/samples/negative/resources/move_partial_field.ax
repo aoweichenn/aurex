@@ -1,0 +1,13 @@
+module move_partial_field;
+
+struct Box[T] {
+    value: T;
+}
+
+fn unwrap[T](box: Box[T]) -> T {
+    return box.value;
+}
+
+fn main() -> i32 {
+    return 0;
+}

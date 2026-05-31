@@ -1,0 +1,7 @@
+module copy_value_reuse;
+
+fn main() -> i32 {
+    let first: i32 = 1;
+    let second: i32 = first;
+    return first + second - 2;
+}

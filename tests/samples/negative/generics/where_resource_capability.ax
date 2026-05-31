@@ -1,9 +1,0 @@
-module where_resource_capability;
-
-fn id[T](value: T) -> T where T: Copy {
-    return value;
-}
-
-fn main() -> i32 {
-    return id(1);
-}

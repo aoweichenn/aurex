@@ -1,9 +1,24 @@
 # Current Progress
 
 Version: 0.1.4
-Stage: M6-WP1 resource, value-lifetime, and access-semantics three-pass design review complete
+Stage: M6-WP2/WP3 resource classification and whole-local move analysis complete
 
 ## Overall Status
+
+As of 2026-05-31, M6-WP2 and M6-WP3 have completed the first implementation
+batch for resource semantics. WP2 adds compiler-owned `Copy`, internal
+`Discard` / `NeedsDrop` / ownership resource summaries, structural type
+classification, stable resource fingerprints, and deterministic resource
+summaries in the checked dump; `Drop` remains unavailable as a user-written
+bound. WP3 adds expression owned-use side tables, a focused whole-local move
+analysis module, iterative CFG/worklist dataflow for initialized / moved /
+maybe-moved state, reinitialization after moves, and consume-origin diagnostics.
+The current boundary is still explicit: partial field moves, indexed move-out,
+consuming payload patterns, and non-`Copy` `?` payload transfer are rejected by
+normal negative samples. Cleanup obligations, `defer` cleanup composition, IR
+cleanup elaboration, destructor protocol, aggregate/generic drop glue, and the
+complete borrow checker are not implemented yet. The next implementation
+package is M6-WP4 Cleanup Obligations, `defer` Composition, And IR Elaborator.
 
 As of 2026-05-31, M6-WP1 has completed the three-pass review for resource,
 value-lifetime, and access semantics. The complete baseline is recorded in the
@@ -18,8 +33,7 @@ whole-local moves, CFG-sensitive initialized state, one lexical cleanup-action
 stack, interleaved `defer`, and generic drop glue. The third pass pressure-tested
 regex, owned containers, files, locks, FFI, overwrite, branches, loops, `?`,
 patterns, partial initialization, self-reference, shared-ownership cycles, and
-future `dyn Trait`. The next implementation package is M6-WP2 Resource
-Classification Scaffold. Complete borrow checking remains a separate M7 stream.
+future `dyn Trait`. Complete borrow checking remains a separate M7 stream.
 
 As of 2026-05-31, M5 has closed as the default trait methods release baseline
 on top of the closed M4 trait/protocol baseline. M5-WP1 produced the
@@ -638,6 +652,13 @@ compatibility aliases for that same release gate. The stress JSON records
 raw/effective thresholds, machine info, profile/scale calibration,
 Release/LTO build options, process wall/user/sys/RSS/page-fault metrics, and
 the `aurex-profile-v1` compiler phase profile emitted by `--profile-output`.
+For M6-WP2/WP3, the 5000 mixed generic Release+LTO curve measured peak RSS at
+about 132.5/239.0/348.3/455.0/560.0 MiB for 1000/2000/3000/4000/5000
+instances, parse-after RSS at about 77.5/135.0/192.1/250.0/307.0 MiB, and sema
+delta at about 53.2/103.9/156.1/204.9/252.9 MiB. The endpoint slope is about
+`+106.9 MiB / 1000` instances, split into about `+57.4 MiB / 1000` for parse
+and `+49.9 MiB / 1000` for sema; the release generic RSS threshold is therefore
+calibrated to 640 MiB while the light 100/200 generic gate remains at 512 MiB.
 Generic
 function instance signatures, generic struct/enum
 `TypeInfo`, and checked enum case display now keep internal semantic keys and

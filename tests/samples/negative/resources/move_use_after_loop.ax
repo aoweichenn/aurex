@@ -1,0 +1,13 @@
+module move_use_after_loop;
+
+fn maybe_move[T](value: T, flag: bool) -> T {
+    while flag {
+        let consumed: T = value;
+        break;
+    }
+    return value;
+}
+
+fn main() -> i32 {
+    return 0;
+}

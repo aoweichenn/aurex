@@ -13,7 +13,7 @@ fn id[T](x: T) -> T {
     return x;
 }
 
-fn first[A, B](p: Pair[A, B]) -> A {
+fn first[A, B](p: Pair[A, B]) -> A where A: Copy {
     return p.first;
 }
 
@@ -21,7 +21,7 @@ fn make_box[T](value: T) -> Box[T] {
     return Box[T] { value: value };
 }
 
-fn unwrap[T](box: Box[T]) -> T {
+fn unwrap[T](box: Box[T]) -> T where T: Copy {
     return box.value;
 }
 

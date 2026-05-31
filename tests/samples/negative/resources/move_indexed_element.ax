@@ -1,0 +1,9 @@
+module move_indexed_element;
+
+fn first[T](values: []const T) -> T {
+    return values[0];
+}
+
+fn main() -> i32 {
+    return 0;
+}

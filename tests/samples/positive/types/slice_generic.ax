@@ -1,6 +1,6 @@
 module slice_generic;
 
-fn first[T](values: []const T) -> T {
+fn first[T](values: []const T) -> T where T: Copy {
     return values[0];
 }
 

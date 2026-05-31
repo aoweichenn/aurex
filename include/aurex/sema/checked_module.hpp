@@ -19,6 +19,19 @@ using SemaTypeTable = SemaVector<TypeHandle>;
 using SemaIdentTable = SemaVector<IdentId>;
 using SemaIndexTable = SemaVector<base::u32>;
 
+enum class OwnedUseMode : base::u8 {
+    none,
+    owned_copy,
+    owned_consume,
+    shared_borrow,
+    mutable_borrow,
+    place_only,
+};
+
+using SemaOwnedUseModeTable = SemaVector<OwnedUseMode>;
+
+[[nodiscard]] std::string_view owned_use_mode_name(OwnedUseMode mode) noexcept;
+
 inline constexpr base::usize SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX = static_cast<base::usize>(-1);
 inline constexpr base::usize SEMA_GENERIC_SIDE_TABLE_BLOCK_BYTES = 1024U;
 inline constexpr base::usize SEMA_PATTERN_CASE_NAME_TABLE_BLOCK_BYTES = 1024U;
@@ -30,6 +43,7 @@ enum class CapabilityKind {
     eq,
     ord,
     hash,
+    copy,
 };
 
 struct CapabilityKindHash {
@@ -445,6 +459,7 @@ enum class GenericSparseFallbackKind {
     expr_intrinsic_type,
     expr_type,
     expr_expected_type,
+    expr_owned_use_mode,
     expr_c_name,
     pattern_c_name,
     pattern_case_name,
@@ -456,6 +471,7 @@ struct GenericSparseFallbackStats {
     base::usize expr_intrinsic_types = 0;
     base::usize expr_types = 0;
     base::usize expr_expected_types = 0;
+    base::usize expr_owned_use_modes = 0;
     base::usize expr_c_name_ids = 0;
     base::usize pattern_c_name_ids = 0;
     base::usize pattern_case_name_ids = 0;
@@ -464,8 +480,8 @@ struct GenericSparseFallbackStats {
 
     [[nodiscard]] base::usize total() const noexcept
     {
-        return this->expr_intrinsic_types + this->expr_types + this->expr_expected_types + this->expr_c_name_ids
-            + this->pattern_c_name_ids + this->pattern_case_name_ids + this->syntax_type_handles
+        return this->expr_intrinsic_types + this->expr_types + this->expr_expected_types + this->expr_owned_use_modes
+            + this->expr_c_name_ids + this->pattern_c_name_ids + this->pattern_case_name_ids + this->syntax_type_handles
             + this->stmt_local_types;
     }
 
@@ -528,6 +544,7 @@ public:
     SemaTypeTable expr_intrinsic_types;
     SemaTypeTable expr_types;
     SemaTypeTable expr_expected_types;
+    SemaOwnedUseModeTable expr_owned_use_modes;
     SemaIdentTable expr_c_name_ids;
     SemaIdentTable pattern_c_name_ids;
     SemaTypeTable syntax_type_handles;
@@ -535,6 +552,7 @@ public:
     SemaMap<base::u32, TypeHandle> sparse_expr_intrinsic_types;
     SemaMap<base::u32, TypeHandle> sparse_expr_types;
     SemaMap<base::u32, TypeHandle> sparse_expr_expected_types;
+    SemaMap<base::u32, OwnedUseMode> sparse_expr_owned_use_modes;
     SemaMap<base::u32, IdentId> sparse_expr_c_name_ids;
     SemaMap<base::u32, IdentId> sparse_pattern_c_name_ids;
     PatternCaseNameTable pattern_case_name_ids;
@@ -719,6 +737,7 @@ public:
     SemaTypeTable expr_intrinsic_types;
     SemaTypeTable expr_types;
     SemaTypeTable expr_expected_types;
+    SemaOwnedUseModeTable expr_owned_use_modes;
     SemaIdentTable expr_c_name_ids;
     SemaIdentTable pattern_c_name_ids;
     PatternCaseNameTable pattern_case_name_ids;

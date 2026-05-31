@@ -175,6 +175,31 @@ TEST_F(AurexIntegrationTest, DiagnosticQualityRegressions)
             "help: did you mean `count`?",
         });
 
+    const fs::path invalid_initializer_move_recovery =
+        write_source_file(tmp_root() / "diagnostic_invalid_initializer_move_recovery.ax",
+            "module diagnostic_invalid_initializer_move_recovery;\n"
+            "fn main() -> i32 {\n"
+            "  let failed = (1 + 2)();\n"
+            "  let again = failed;\n"
+            "  return again;\n"
+            "}\n");
+    const std::string invalid_initializer_move_recovery_output =
+        require_failure(aurexc() + " --check " + q(invalid_initializer_move_recovery)).output;
+    expect_contains(invalid_initializer_move_recovery_output, "callee must be a function value");
+    expect_not_contains(invalid_initializer_move_recovery_output, "use of moved value `failed`");
+
+    const fs::path void_local_move_recovery = write_source_file(tmp_root() / "diagnostic_void_local_move_recovery.ax",
+        "module diagnostic_void_local_move_recovery;\n"
+        "fn main() -> i32 {\n"
+        "  let failed: void = 0;\n"
+        "  let again = failed;\n"
+        "  return 0;\n"
+        "}\n");
+    const std::string void_local_move_recovery_output =
+        require_failure(aurexc() + " --check " + q(void_local_move_recovery)).output;
+    expect_contains(void_local_move_recovery_output, "local variable type is not valid storage");
+    expect_not_contains(void_local_move_recovery_output, "use of moved value `failed`");
+
     const fs::path enum_case_suggestion = write_source_file(tmp_root() / "diagnostic_enum_case_suggestion.ax",
         "module diagnostic_enum_case_suggestion;\n"
         "enum Choice { ready, failed }\n"
@@ -965,16 +990,7 @@ TEST_F(AurexIntegrationTest, M2GenericRegressions)
             "\"category\": \"capability\"",
             "\"code\": \"SEM0450\"",
         });
-    expect_contains(
-        require_failure(aurexc() + " --check " + q(negative_sample("generics", "where_resource_capability.ax"))).output,
-        "resource capabilities are not part of M2 where constraints");
-    expect_contains_all(require_failure(aurexc() + " --check --diagnostics=json "
-                            + q(negative_sample("generics", "where_resource_capability.ax")))
-                            .output,
-        {
-            "\"category\": \"unsupported\"",
-            "\"code\": \"SEM0300\"",
-        });
+    require_success(aurexc() + " --check " + q(positive_sample("generics", "where_copy_capability.ax")));
     expect_contains_all(require_failure(aurexc() + " --check --diagnostics=json "
                             + q(negative_sample("pointers", "raw_pointer_field_requires_unsafe.ax")))
                             .output,
@@ -1200,7 +1216,7 @@ TEST_F(AurexIntegrationTest, M2GenericCapabilityConcreteTypeRegressions)
         "  return 0;\n"
         "}\n"
         "impl[T] Box[T] {\n"
-        "  fn get(self: &Box[T]) -> T { return self.value; }\n"
+        "  fn get(self: &Box[T]) -> T where T: Copy { return self.value; }\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  var left: i32 = 1;\n"
@@ -1399,19 +1415,19 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "module generic_method_ext_a;\n"
         "import generic_method_owner as owner;\n"
         "impl[T] owner.Box[T] {\n"
-        "  pub fn read(self: &owner.Box[T]) -> T { return self.value; }\n"
+        "  pub fn read(self: &owner.Box[T]) -> T where T: Copy { return self.value; }\n"
         "}\n"));
     static_cast<void>(write_source_file(import_dir / "generic_method_ext_b.ax",
         "module generic_method_ext_b;\n"
         "import generic_method_owner as owner;\n"
         "impl[T] owner.Box[T] {\n"
-        "  pub fn read(self: &owner.Box[T]) -> T { return self.value; }\n"
+        "  pub fn read(self: &owner.Box[T]) -> T where T: Copy { return self.value; }\n"
         "}\n"));
     static_cast<void>(write_source_file(import_dir / "generic_method_ext_private.ax",
         "module generic_method_ext_private;\n"
         "import generic_method_owner as owner;\n"
         "impl[T] owner.Box[T] {\n"
-        "  priv fn hidden(self: &owner.Box[T]) -> T { return self.value; }\n"
+        "  priv fn hidden(self: &owner.Box[T]) -> T where T: Copy { return self.value; }\n"
         "}\n"));
 
     const fs::path use_imported = write_source_file(tmp_root() / "use_imported_generics.ax",

@@ -1,0 +1,27 @@
+module move_reinitialize;
+
+fn identity[T](value: T) -> T {
+    return value;
+}
+
+fn reinitialize[T](value: T, replacement: T) -> T {
+    var current: T = value;
+    let consumed: T = current;
+    current = replacement;
+    return current;
+}
+
+fn borrow_then_return[T](value: T) -> T {
+    let borrowed: &T = &value;
+    if ptraddr(borrowed) == 0usize {
+        return value;
+    }
+    return value;
+}
+
+fn main() -> i32 {
+    let first: i32 = identity(1);
+    let second: i32 = reinitialize(2, 3);
+    let third: i32 = borrow_then_return(4);
+    return first + second + third - 8;
+}

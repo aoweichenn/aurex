@@ -44,36 +44,36 @@ resource summary
 
 ## M6-WP2：Resource Classification Scaffold
 
-状态：待开始。
+状态：已完成。
 
-目标：
+交付：
 
-- 增加 compiler-owned `Copy`。
-- 增加内部 `Discard` / `NeedsDrop` 分类。
-- 对 builtin、pointer、reference、slice、`str`、tuple、array、struct、enum 和 generic param 做结构化传播。
-- 增加 stable resource fingerprint、checked dump 和 diagnostics。
+- 增加 compiler-owned `Copy` capability，并保持 `Drop` 不作为用户可写 bound。
+- 增加内部四维资源摘要：`Copy` / `MoveOnly`、`Discard` / `MustConsume`、`Trivial` / `NeedsDrop`、owned / borrowed / raw / shared ownership。
+- 对 builtin、pointer、reference、slice、`str`、tuple、array、struct、enum、generic param、associated projection 和 opaque struct 做结构化或保守分类。
+- 增加 stable resource fingerprint 和 checked dump 中的 deterministic resource summary。
 - 保持当前 `Drop` 用户 bound 拒绝，直到 destructor protocol surface 单独落地。
 
 验收：
 
-- sema unit tests 覆盖结构化分类。
-- query-key tests 覆盖稳定 identity。
-- negative tests 覆盖伪造 `Copy`、错误 aggregate 分类和不支持 surface。
-- full tests、coverage、stress 和 query sanitizer green。
+- sema whitebox 覆盖结构化分类、`Copy` capability 和 fingerprint。
+- checked dump 覆盖 deterministic resource summary。
+- 正常仓库样例覆盖 `where T: Copy` 正向路径，并删除旧的 `Copy` 拒绝负样例。
+- `Drop` 用户 bound 继续由负样例确认拒绝。
 
 ## M6-WP3：Owned Use Mode 和 Whole-Local Move Analysis
 
-状态：待开始。
+状态：已完成。
 
-目标：
+交付：
 
-- 给 expression use 增加 owned-copy、owned-consume、shared-borrow、mutable-borrow 和 place-only 模式。
-- 使用迭代式 CFG worklist 和 block bitset 实现 initialized / moved / maybe-moved。
+- 给 expression use 增加 `owned_copy`、`owned_consume`、`shared_borrow`、`mutable_borrow` 和 `place_only` checked side-table fact。
+- 增加独立 body move analysis 模块，使用迭代式 CFG build 和 worklist dataflow 实现 initialized / moved / maybe-moved。
 - 支持 move 后重新初始化。
 - diagnostics 指向 consume origin。
 - 第一版只允许 whole-local move。
 
-明确拒绝：
+已用正式负样例明确拒绝：
 
 - partial field move。
 - indexed move-out。

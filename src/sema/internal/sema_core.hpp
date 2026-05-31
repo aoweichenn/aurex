@@ -54,8 +54,11 @@ class SemanticSideTableReader;
 class SemanticSideTableStore;
 class SemanticTypeResolver;
 class SemanticTypeValidator;
+class BodyMoveAnalysis;
 
 class SemanticAnalyzerCore final {
+    friend class BodyMoveAnalysis;
+
 public:
     SemanticAnalyzerCore(
         syntax::AstModule& module, base::DiagnosticSink& diagnostics, SemanticOptions options = {}) noexcept;
@@ -92,6 +95,7 @@ private:
     using CapabilityIdentityMap = SemaMap<GenericParamIdentity, CapabilitySet, GenericParamIdentityHash>;
 
     class BuiltinExpressionAnalyzer;
+    class BodyMoveAnalyzer;
     class ControlExpressionAnalyzer;
     class DeclarationAnalyzer;
     class ExpressionAnalyzer;
@@ -570,6 +574,7 @@ private:
     void analyze_function_body(const syntax::ItemNode& function, syntax::ItemId function_id);
     void analyze_function_body_with_signature(const syntax::ItemNode& function, const FunctionLookupKey& key,
         const FunctionSignature& signature, FunctionBodyState& state);
+    void analyze_body_moves(const syntax::ItemNode& function, const FunctionSignature& signature);
     void analyze_generic_function_definition(const GenericTemplateInfo& info);
     void analyze_generic_function_body(const syntax::ItemNode& function, const GenericTemplateInfo& info,
         const FunctionSignature& signature, FunctionBodyState& state);
@@ -981,18 +986,22 @@ private:
     [[nodiscard]] TypeHandle record_expr_types(syntax::ExprId expr, TypeHandle intrinsic_type, TypeHandle final_type);
     [[nodiscard]] TypeHandle record_expr_type(syntax::ExprId expr, TypeHandle type);
     void record_expr_expected_type(syntax::ExprId expr, TypeHandle expected_type);
+    void record_expr_owned_use_mode(syntax::ExprId expr, OwnedUseMode mode);
     void record_coercion(syntax::ExprId expr, TypeHandle from_type, TypeHandle to_type, CoercionKind kind);
     [[nodiscard]] TypeHandle cached_expr_intrinsic_type(syntax::ExprId expr) const noexcept;
     [[nodiscard]] TypeHandle cached_expr_type(syntax::ExprId expr) const noexcept;
     [[nodiscard]] TypeHandle cached_expr_expected_type(syntax::ExprId expr) const noexcept;
+    [[nodiscard]] OwnedUseMode cached_expr_owned_use_mode(syntax::ExprId expr) const noexcept;
     [[nodiscard]] TypeHandle cached_expr_type_for_expected(
         syntax::ExprId expr, TypeHandle expected_type) const noexcept;
     [[nodiscard]] TypeHandle cached_syntax_type(syntax::TypeId type) const noexcept;
+    [[nodiscard]] TypeHandle cached_stmt_local_type(syntax::StmtId stmt) const noexcept;
     [[nodiscard]] std::string_view cached_expr_c_name(syntax::ExprId expr) const noexcept;
     [[nodiscard]] std::string_view cached_pattern_c_name(syntax::PatternId pattern) const noexcept;
     [[nodiscard]] SemaTypeTable& active_expr_intrinsic_types() noexcept;
     [[nodiscard]] SemaTypeTable& active_expr_types() noexcept;
     [[nodiscard]] SemaTypeTable& active_expr_expected_types() noexcept;
+    [[nodiscard]] SemaOwnedUseModeTable& active_expr_owned_use_modes() noexcept;
     [[nodiscard]] SemaIdentTable& active_expr_c_name_ids() noexcept;
     [[nodiscard]] SemaIdentTable& active_pattern_c_name_ids() noexcept;
     [[nodiscard]] PatternCaseNameTable& active_pattern_case_name_ids() noexcept;

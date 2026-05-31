@@ -24,7 +24,7 @@ pub fn free_typed[T](ptr: *mut T) -> void where T: Sized {
     free_bytes(unsafe { ptrcast[*mut u8](ptr) });
 }
 
-pub fn copy_items[T](dst: *mut T, src: *const T, count: usize) -> void where T: Sized {
+pub fn copy_items[T](dst: *mut T, src: *const T, count: usize) -> void where T: Sized + Copy {
     var index: usize = 0usize;
     while index < count {
         unsafe {

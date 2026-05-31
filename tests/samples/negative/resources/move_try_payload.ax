@@ -1,0 +1,15 @@
+module move_try_payload;
+
+enum Result[T, E] {
+    ok(T),
+    err(E),
+}
+
+fn forward[T, E](value: Result[T, E]) -> Result[T, E] {
+    let inner: T = value?;
+    return Result[T, E].ok(inner);
+}
+
+fn main() -> i32 {
+    return 0;
+}

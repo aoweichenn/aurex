@@ -1089,6 +1089,38 @@ Large closure additionally runs:
 make perf-release-threshold
 ```
 
+After M6-WP2/WP3 added resource classification and whole-local move analysis,
+the `5000 mixed generic` release lane carries more semantic work than the early
+fixed `512 MiB` threshold was meant to cover: the generated source is about
+`7.0 MiB` / `170092` lines, with `5000` payload structs, `5000` use functions,
+about `10001` `unwrap_box[...]` sites, about `20001` `make_box[...]` generic
+calls, and `where T: Copy` evidence checks that feed structural resource
+classification and function-body move-use analysis. On 2026-05-31, the local
+Release+LTO `build/perf-lto` run of
+`tools/generic_stress.py --counts 1000,2000,3000,4000,5000 --shape mixed --emit check`
+measured:
+
+| instances | source KiB | wall ms | user s | peak RSS MiB | parse after MiB | sema delta MiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1000 | 1428.7 | 1353.1 | 0.70 | 132.5 | 77.5 | 53.2 |
+| 2000 | 2876.3 | 2575.7 | 2.55 | 239.0 | 135.0 | 103.9 |
+| 3000 | 4324.0 | 6386.0 | 6.32 | 348.3 | 192.1 | 156.1 |
+| 4000 | 5771.7 | 13985.7 | 13.87 | 455.0 | 250.0 | 204.9 |
+| 5000 | 7219.3 | 27556.8 | 27.34 | 560.0 | 307.0 | 252.9 |
+
+The endpoint slope is about `+106.9 MiB / 1000` instances overall: parse-held
+syntax/AST state contributes about `+57.4 MiB / 1000`, while sema resource
+classification, generic evidence, and body analysis add about
+`+49.9 MiB / 1000`. CPU remains well below the `120000 ms` release threshold.
+The dense `OwnedUseMode` table no longer preallocates, `OwnedUseMode::none` is
+not stored, and copy-only functions use the lightweight mode traversal; no
+short-term temporary container explains the roughly `48 MiB` excess over the
+old limit. The release-only `AUREX_RELEASE_GENERIC_STRESS_MAX_RSS_MIB` is
+therefore calibrated to `640 MiB`, leaving about `80 MiB` for platform RSS
+variance and the new M6 resource facts. The light `perf-stress-threshold`
+`100/200` generic lane remains at `512 MiB` so small-scale regressions are not
+masked.
+
 Coverage targets:
 
 - New code lines / functions / regions at least `95%`.

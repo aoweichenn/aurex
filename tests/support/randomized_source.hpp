@@ -245,7 +245,7 @@ inline void append_statement(DeterministicRandom& random, std::ostringstream& ou
         << "enum Mode: u8 { a = 1, b = 2, }\n";
 
     out << "fn id[T](value: T) -> T { return value; }\n"
-        << "fn first[T](holder: Holder[T]) -> T { return holder.value; }\n"
+        << "fn first[T](holder: Holder[T]) -> T where T: Copy { return holder.value; }\n"
         << "fn make_holder[T](value: T) -> Holder[T] {\n"
         << "  return Holder[T] { value: id(value) };\n"
         << "}\n";

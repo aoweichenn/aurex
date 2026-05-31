@@ -1,5 +1,6 @@
 add_library(aurex_sema
     src/sema/type.cpp
+    src/sema/resource_semantics.cpp
     src/sema/canonical_type_builder.cpp
     src/sema/symbol.cpp
     src/sema/identifier.cpp
@@ -10,6 +11,7 @@ add_library(aurex_sema
     src/sema/checked_module.cpp
     src/sema/internal/name_resolution.cpp
     src/sema/internal/sema_builtin_expression_analyzer.cpp
+    src/sema/internal/sema_body_move_analysis.cpp
     src/sema/internal/sema_control_expression_analyzer.cpp
     src/sema/internal/sema_declaration_analyzer.cpp
     src/sema/internal/sema_diagnostics.cpp

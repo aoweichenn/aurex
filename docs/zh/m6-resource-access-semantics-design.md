@@ -962,6 +962,32 @@ make query-sanitizer
 make perf-release-threshold
 ```
 
+M6-WP2/WP3 合入资源分类和 whole-local move analysis 后，`5000 mixed generic`
+发布 lane 的语义负载已经高于早期 `512 MiB` 固定阈值覆盖的功能面：生成源码约 `7.0 MiB` /
+`170092` 行，包含 `5000` 个 payload struct、`5000` 个 use function、约 `10001`
+处 `unwrap_box[...]` 和约 `20001` 处 `make_box[...]` 泛型调用，并触发 `where T: Copy`
+证据查询、结构化资源分类和函数体 move-use 模式分析。2026-05-31 在本机
+Release+LTO `build/perf-lto` 上用
+`tools/generic_stress.py --counts 1000,2000,3000,4000,5000 --shape mixed --emit check`
+实测如下：
+
+| instances | source KiB | wall ms | user s | peak RSS MiB | parse after MiB | sema delta MiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1000 | 1428.7 | 1353.1 | 0.70 | 132.5 | 77.5 | 53.2 |
+| 2000 | 2876.3 | 2575.7 | 2.55 | 239.0 | 135.0 | 103.9 |
+| 3000 | 4324.0 | 6386.0 | 6.32 | 348.3 | 192.1 | 156.1 |
+| 4000 | 5771.7 | 13985.7 | 13.87 | 455.0 | 250.0 | 204.9 |
+| 5000 | 7219.3 | 27556.8 | 27.34 | 560.0 | 307.0 | 252.9 |
+
+端点斜率约为：总 RSS `+106.9 MiB / 1000` 实例，其中 parse 后 AST/语法持有约
+`+57.4 MiB / 1000`，sema 资源分类、泛型证据和 body analysis 额外约
+`+49.9 MiB / 1000`；CPU 仍远低于 `120000 ms` 发布阈值。已确认
+`OwnedUseMode` 稠密表不再预分配，`OwnedUseMode::none` 不落表，copy-only 函数只走轻量模式遍历；
+短期没有单点临时容器能解释旧阈值上方的约 `48 MiB`。因此发布级
+`AUREX_RELEASE_GENERIC_STRESS_MAX_RSS_MIB` 调整为 `640 MiB`，保留约 `80 MiB`
+余量，用于覆盖平台 RSS 抖动和 M6 资源语义新增事实；轻量 `perf-stress-threshold`
+的 `100/200` generic lane 仍保持 `512 MiB`，防止小规模回归被掩盖。
+
 新增代码覆盖率目标：
 
 - 新增代码 lines / functions / regions 至少 `95%`。

@@ -1,4 +1,5 @@
 #include <aurex/sema/canonical_type_builder.hpp>
+#include <aurex/sema/resource_semantics.hpp>
 #include <aurex/sema/sema.hpp>
 #include <aurex/sema/sema_messages.hpp>
 
@@ -18,6 +19,7 @@
 
 #include <gtest/gtest.h>
 
+#include <sema/internal/sema_body_move_analysis.hpp>
 #include <sema/internal/sema_builtin_expression_analyzer.hpp>
 #include <sema/internal/sema_control_expression_analyzer.hpp>
 #include <sema/internal/sema_core.hpp>
@@ -50,6 +52,12 @@ using sema::IdentifierInterner;
 using sema::INVALID_TYPE_HANDLE;
 using sema::is_valid;
 using sema::PointerMutability;
+using sema::ResourceCleanupKind;
+using sema::ResourceCopyKind;
+using sema::ResourceDiscardKind;
+using sema::ResourceOwnershipKind;
+using sema::ResourceSemanticsClassifier;
+using sema::ResourceSemanticsSummary;
 using sema::StructFieldInfo;
 using sema::StructInfo;
 using sema::Symbol;
@@ -86,6 +94,7 @@ constexpr base::u32 SEMA_TEST_STALE_STRUCT_CACHE_OFFSET = 1;
 constexpr base::u32 SEMA_TEST_INVALID_SEMA_TYPE_KIND_VALUE = 99;
 constexpr base::u32 SEMA_TEST_INVALID_BUILTIN_TYPE_VALUE = 99;
 constexpr base::u32 SEMA_TEST_INVALID_CAPABILITY_KIND_VALUE = 99;
+constexpr base::u32 SEMA_TEST_INVALID_RESOURCE_KIND_VALUE = 99;
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_ONE = "1";
 constexpr std::string_view SEMA_TEST_IMPORT_ALIAS_ONE = "one";
 constexpr std::string_view SEMA_TEST_CONST_VALUE_NAME = "VALUE";
@@ -690,6 +699,9 @@ TEST(CoreUnit, SemanticWhiteBoxFacadeDelegatesBorrowedAndOwnedModules)
     static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::BuiltinExpressionAnalyzer>);
     static_assert(
         std::is_constructible_v<sema::SemanticAnalyzerCore::BuiltinExpressionAnalyzer, sema::SemanticAnalyzerCore&>);
+    static_assert(std::is_final_v<sema::SemanticAnalyzerCore::BodyMoveAnalyzer>);
+    static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::BodyMoveAnalyzer>);
+    static_assert(std::is_constructible_v<sema::SemanticAnalyzerCore::BodyMoveAnalyzer, sema::SemanticAnalyzerCore&>);
     static_assert(std::is_final_v<sema::SemanticAnalyzerCore::ControlExpressionAnalyzer>);
     static_assert(!std::is_default_constructible_v<sema::SemanticAnalyzerCore::ControlExpressionAnalyzer>);
     static_assert(
@@ -3423,6 +3435,7 @@ TEST(CoreUnit, SemanticWhiteBoxGenericCapabilityAndParameterFallbackEdges)
     EXPECT_TRUE(analyzer.type_satisfies_capability(i32, sema::CapabilityKind::eq));
     EXPECT_TRUE(analyzer.type_satisfies_capability(i32, sema::CapabilityKind::ord));
     EXPECT_TRUE(analyzer.type_satisfies_capability(i32, sema::CapabilityKind::hash));
+    EXPECT_TRUE(analyzer.type_satisfies_capability(i32, sema::CapabilityKind::copy));
     EXPECT_FALSE(analyzer.type_satisfies_capability(
         i32, static_cast<sema::CapabilityKind>(SEMA_TEST_INVALID_CAPABILITY_KIND_VALUE)));
     EXPECT_TRUE(analyzer.type_satisfies_equality_capability(enum_type));
@@ -3539,6 +3552,183 @@ TEST(CoreUnit, SemanticWhiteBoxGenericCapabilityAndParameterFallbackEdges)
     sema::TypeInfo fallback_info;
     fallback_info.name = checked_text(analyzer.state_.checked, "FallbackParam");
     EXPECT_TRUE(is_valid(analyzer.generic_param_identity(fallback_info)));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxResourceSemanticsClassifiesStructuralTypesAndFingerprints)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"resource_semantics"})};
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    sema::CheckedModule& checked = analyzer.state_.checked;
+    sema::TypeTable& types = checked.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle str = types.builtin(BuiltinType::str);
+    const TypeHandle pointer = types.pointer(PointerMutability::mut, i32);
+    const TypeHandle reference = types.reference(PointerMutability::const_, i32);
+    const TypeHandle slice = types.slice(PointerMutability::const_, i32);
+    const TypeHandle array = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, i32);
+    const TypeHandle tuple = types.tuple({i32, reference});
+    const TypeHandle function =
+        types.function(sema::FunctionCallConv::aurex, false, false, std::span<const TypeHandle>{}, i32);
+    const sema::GenericParamIdentity param_identity = sema::generic_param_identity_from_text("resource_semantics.T");
+    const TypeHandle param = types.generic_param(param_identity, SEMA_TEST_GENERIC_PARAM_NAME);
+    const query::MemberKey item_member = query::member_key(
+        query::DefKey{}, query::MemberKind::associated_type, "Item", SEMA_TEST_GENERIC_FIRST_PARAM_INDEX);
+    const TypeHandle projection = types.associated_projection(param, item_member, "Item");
+    const TypeHandle generic_tuple = types.tuple({i32, param});
+    const TypeHandle invalid_tuple = types.tuple({i32, INVALID_TYPE_HANDLE});
+    const TypeHandle empty_tuple = types.tuple(std::span<const TypeHandle>{});
+    const TypeHandle record = types.named_struct("resource_semantics.Record", "resource_semantics_Record", false);
+    const TypeHandle empty_record =
+        types.named_struct("resource_semantics.EmptyRecord", "resource_semantics_EmptyRecord", false);
+    const TypeHandle missing_record =
+        types.named_struct("resource_semantics.MissingRecord", "resource_semantics_MissingRecord", false);
+    const TypeHandle recursive_record =
+        types.named_struct("resource_semantics.RecursiveRecord", "resource_semantics_RecursiveRecord", false);
+    const TypeHandle opaque = types.opaque_struct("resource_semantics.Opaque", "resource_semantics_Opaque");
+    const TypeHandle choice = types.named_enum("resource_semantics.Choice", "resource_semantics_Choice");
+    const TypeHandle empty_choice =
+        types.named_enum("resource_semantics.EmptyChoice", "resource_semantics_EmptyChoice");
+    const TypeHandle missing_choice =
+        types.named_enum("resource_semantics.MissingChoice", "resource_semantics_MissingChoice");
+    types.set_enum_underlying(choice, i32);
+    types.set_enum_underlying(empty_choice, i32);
+
+    const StructInfo& record_info = add_struct_info(analyzer, module_id(0), "Record", record);
+    const_cast<StructInfo&>(record_info)
+        .fields.push_back(StructFieldInfo{
+            checked.intern_text("value"),
+            intern_identifier(analyzer, "value"),
+            checked.intern_text("resource_semantics_Record_value"),
+            module_id(0),
+            generic_tuple,
+            {},
+            syntax::Visibility::public_,
+            {},
+        });
+    static_cast<void>(add_struct_info(analyzer, module_id(0), "EmptyRecord", empty_record));
+    const StructInfo& recursive_record_info =
+        add_struct_info(analyzer, module_id(0), "RecursiveRecord", recursive_record);
+    const_cast<StructInfo&>(recursive_record_info)
+        .fields.push_back(StructFieldInfo{
+            checked.intern_text("next"),
+            intern_identifier(analyzer, "next"),
+            checked.intern_text("resource_semantics_RecursiveRecord_next"),
+            module_id(0),
+            recursive_record,
+            {},
+            syntax::Visibility::public_,
+            {},
+        });
+    static_cast<void>(add_enum_case(analyzer, module_id(0), "Choice_value", "value", choice, record, {record}));
+    EnumCaseInfo invalid_case = checked.make_enum_case_info();
+    invalid_case.name = checked.intern_text("InvalidCase");
+    invalid_case.name_id = intern_identifier(analyzer, "InvalidCase");
+    invalid_case.case_name = checked.intern_text("invalid");
+    invalid_case.case_name_id = intern_identifier(analyzer, "invalid");
+    const std::array invalid_payload_types{record};
+    invalid_case.payload_types = checked.copy_type_handle_list(invalid_payload_types);
+    checked.enum_cases.emplace(semantic_module_key(analyzer, module_id(0), "InvalidCase"), invalid_case);
+
+    const ResourceSemanticsSummary copy_owned{
+        ResourceCopyKind::copy,
+        ResourceDiscardKind::discard,
+        ResourceCleanupKind::trivial,
+        ResourceOwnershipKind::owned_value,
+    };
+    const ResourceSemanticsSummary borrowed{
+        ResourceCopyKind::copy,
+        ResourceDiscardKind::discard,
+        ResourceCleanupKind::trivial,
+        ResourceOwnershipKind::borrowed_view,
+    };
+    const ResourceSemanticsSummary raw{
+        ResourceCopyKind::copy,
+        ResourceDiscardKind::discard,
+        ResourceCleanupKind::trivial,
+        ResourceOwnershipKind::raw_pointer,
+    };
+    const ResourceSemanticsSummary conservative{
+        ResourceCopyKind::move_only,
+        ResourceDiscardKind::discard,
+        ResourceCleanupKind::needs_drop,
+        ResourceOwnershipKind::owned_value,
+    };
+    const ResourceSemanticsSummary copy_needs_drop{
+        ResourceCopyKind::copy,
+        ResourceDiscardKind::discard,
+        ResourceCleanupKind::needs_drop,
+        ResourceOwnershipKind::owned_value,
+    };
+    const ResourceSemanticsSummary shared_must_consume{
+        ResourceCopyKind::copy,
+        ResourceDiscardKind::must_consume,
+        ResourceCleanupKind::needs_drop,
+        ResourceOwnershipKind::shared_managed,
+    };
+
+    const ResourceSemanticsClassifier resources(checked);
+    EXPECT_EQ(resources.classify(i32), copy_owned);
+    EXPECT_EQ(resources.classify(str), borrowed);
+    EXPECT_EQ(resources.classify(pointer), raw);
+    EXPECT_EQ(resources.classify(reference), borrowed);
+    EXPECT_EQ(resources.classify(slice), borrowed);
+    EXPECT_EQ(resources.classify(function), copy_owned);
+    EXPECT_EQ(resources.classify(array), copy_owned);
+    EXPECT_EQ(resources.classify(tuple), copy_owned);
+    EXPECT_EQ(resources.classify(empty_tuple), copy_owned);
+    EXPECT_EQ(resources.classify(param), conservative);
+    EXPECT_EQ(resources.classify(projection), conservative);
+    EXPECT_EQ(resources.classify(generic_tuple), conservative);
+    EXPECT_EQ(resources.classify(invalid_tuple), conservative);
+    EXPECT_EQ(resources.classify(record), conservative);
+    EXPECT_EQ(resources.classify(empty_record), copy_owned);
+    EXPECT_EQ(resources.classify(missing_record), conservative);
+    EXPECT_EQ(resources.classify(recursive_record), conservative);
+    EXPECT_EQ(resources.classify(opaque), conservative);
+    EXPECT_EQ(resources.classify(choice), conservative);
+    EXPECT_EQ(resources.classify(empty_choice), copy_owned);
+    EXPECT_EQ(resources.classify(missing_choice), conservative);
+    EXPECT_EQ(resources.classify(INVALID_TYPE_HANDLE), conservative);
+    EXPECT_EQ(resources.classify(TypeHandle{static_cast<base::u32>(types.size() + SEMA_TEST_MISSING_MODULE_INDEX)}),
+        conservative);
+
+    const ResourceSemanticsClassifier copy_resources(checked, [param](const TypeHandle candidate) {
+        return candidate.value == param.value;
+    });
+    EXPECT_EQ(copy_resources.classify(generic_tuple), copy_needs_drop);
+    EXPECT_EQ(copy_resources.classify(record), copy_needs_drop);
+    EXPECT_EQ(copy_resources.classify(choice), copy_needs_drop);
+    const ResourceSemanticsClassifier missing_provider_resources(
+        checked, {}, [](const TypeHandle) -> std::optional<std::vector<TypeHandle>> {
+            return std::nullopt;
+        });
+    const ResourceSemanticsClassifier empty_provider_resources(
+        checked, {}, [](const TypeHandle) -> std::optional<std::vector<TypeHandle>> {
+            return std::vector<TypeHandle>{};
+        });
+    EXPECT_EQ(missing_provider_resources.classify(tuple), conservative);
+    EXPECT_EQ(empty_provider_resources.classify(tuple), copy_owned);
+    EXPECT_EQ(sema::resource_semantics_debug_string(copy_owned), "Copy/Discard/Trivial/OwnedValue");
+    EXPECT_EQ(sema::resource_semantics_debug_string(shared_must_consume), "Copy/MustConsume/NeedsDrop/SharedManaged");
+    EXPECT_TRUE(sema::resource_is_copy(copy_owned));
+    EXPECT_FALSE(sema::resource_is_copy(conservative));
+    EXPECT_FALSE(sema::resource_needs_drop(copy_owned));
+    EXPECT_TRUE(sema::resource_needs_drop(conservative));
+    EXPECT_EQ(sema::resource_copy_kind_name(static_cast<ResourceCopyKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE)),
+        "<invalid>");
+    EXPECT_EQ(sema::resource_discard_kind_name(static_cast<ResourceDiscardKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE)),
+        "<invalid>");
+    EXPECT_EQ(sema::resource_cleanup_kind_name(static_cast<ResourceCleanupKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE)),
+        "<invalid>");
+    EXPECT_EQ(
+        sema::resource_ownership_kind_name(static_cast<ResourceOwnershipKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE)),
+        "<invalid>");
+    EXPECT_EQ(sema::resource_semantics_fingerprint(copy_owned), sema::resource_semantics_fingerprint(copy_owned));
+    EXPECT_NE(sema::resource_semantics_fingerprint(copy_owned), sema::resource_semantics_fingerprint(conservative));
+    EXPECT_NE(sema::dump_checked_module(checked).find("resource_summaries"), std::string::npos);
+    EXPECT_NE(sema::dump_checked_module(checked).find("Copy/Discard/Trivial/OwnedValue"), std::string::npos);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxGenericInstanceIdentityReportsCanonicalizationErrors)
@@ -3855,6 +4045,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     static_cast<void>(analyzer.record_expr_intrinsic_type(expr_id, i32));
     static_cast<void>(analyzer.record_expr_type(expr_id, i32));
     analyzer.record_expr_expected_type(expr_id, i64);
+    analyzer.record_expr_owned_use_mode(expr_id, sema::OwnedUseMode::owned_copy);
     analyzer.record_expr_c_name(expr_id, "dense_expr");
     analyzer.record_pattern_c_name(pattern_id, "dense_pattern");
     analyzer.record_pattern_case_name(pattern_id, "DenseCase");
@@ -3866,6 +4057,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(expr_id), i32));
     EXPECT_TRUE(types.same(analyzer.cached_expr_type(expr_id), i32));
     EXPECT_TRUE(types.same(analyzer.cached_expr_expected_type(expr_id), i64));
+    EXPECT_EQ(analyzer.cached_expr_owned_use_mode(expr_id), sema::OwnedUseMode::owned_copy);
     EXPECT_TRUE(types.same(analyzer.cached_syntax_type(type_id), i32));
     EXPECT_EQ(analyzer.cached_expr_c_name(expr_id), "dense_expr");
     EXPECT_EQ(analyzer.cached_pattern_c_name(pattern_id), "dense_pattern");
@@ -3873,15 +4065,19 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_TRUE(dense_side_tables.pattern_case_name_ids[pattern_id.value].contains(
         analyzer.state_.checked.intern_c_name("DenseAlternative")));
     EXPECT_TRUE(types.same(dense_side_tables.stmt_local_types[stmt_id.value], i64));
+    EXPECT_TRUE(types.same(analyzer.cached_stmt_local_type(stmt_id), i64));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_intrinsic_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_expected_type(missing_expr_id)));
+    EXPECT_EQ(analyzer.cached_expr_owned_use_mode(missing_expr_id), sema::OwnedUseMode::none);
+    EXPECT_FALSE(is_valid(analyzer.cached_stmt_local_type(syntax::INVALID_STMT_ID)));
     EXPECT_FALSE(is_valid(analyzer.cached_syntax_type(missing_type_id)));
     EXPECT_TRUE(analyzer.cached_expr_c_name(missing_expr_id).empty());
     EXPECT_TRUE(analyzer.cached_pattern_c_name(missing_pattern_id).empty());
     EXPECT_EQ(&analyzer.active_expr_intrinsic_types(), &dense_side_tables.expr_intrinsic_types);
     EXPECT_EQ(&analyzer.active_expr_types(), &dense_side_tables.expr_types);
     EXPECT_EQ(&analyzer.active_expr_expected_types(), &dense_side_tables.expr_expected_types);
+    EXPECT_EQ(&analyzer.active_expr_owned_use_modes(), &dense_side_tables.expr_owned_use_modes);
     EXPECT_EQ(&analyzer.active_expr_c_name_ids(), &dense_side_tables.expr_c_name_ids);
     EXPECT_EQ(&analyzer.active_pattern_c_name_ids(), &dense_side_tables.pattern_c_name_ids);
     EXPECT_EQ(&analyzer.active_pattern_case_name_ids(), &dense_side_tables.pattern_case_name_ids);
@@ -3899,6 +4095,8 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     static_cast<void>(analyzer.record_expr_type(expr_id, i64));
     static_cast<void>(analyzer.record_expr_type(syntax::INVALID_EXPR_ID, i64));
     analyzer.record_expr_expected_type(expr_id, i32);
+    analyzer.record_expr_owned_use_mode(expr_id, sema::OwnedUseMode::owned_consume);
+    analyzer.record_expr_owned_use_mode(syntax::INVALID_EXPR_ID, sema::OwnedUseMode::owned_copy);
     analyzer.record_expr_expected_type(syntax::INVALID_EXPR_ID, i32);
     analyzer.record_expr_c_name(expr_id, "sparse_expr");
     analyzer.record_pattern_c_name(pattern_id, "sparse_pattern");
@@ -3911,6 +4109,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(expr_id), i64));
     EXPECT_TRUE(types.same(analyzer.cached_expr_type(expr_id), i64));
     EXPECT_TRUE(types.same(analyzer.cached_expr_expected_type(expr_id), i32));
+    EXPECT_EQ(analyzer.cached_expr_owned_use_mode(expr_id), sema::OwnedUseMode::owned_consume);
     EXPECT_TRUE(types.same(analyzer.cached_syntax_type(type_id), i64));
     EXPECT_EQ(analyzer.cached_expr_c_name(expr_id), "sparse_expr");
     EXPECT_EQ(analyzer.cached_pattern_c_name(pattern_id), "sparse_pattern");
@@ -3918,12 +4117,15 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_TRUE(sparse_side_tables.pattern_case_name_ids[pattern_id.value].contains(
         analyzer.state_.checked.intern_c_name("SparseAlternative")));
     EXPECT_TRUE(types.same(sparse_side_tables.sparse_stmt_local_types[stmt_id.value], i32));
+    EXPECT_TRUE(types.same(analyzer.cached_stmt_local_type(stmt_id), i32));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_intrinsic_type(syntax::INVALID_EXPR_ID)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_type(syntax::INVALID_EXPR_ID)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_expected_type(syntax::INVALID_EXPR_ID)));
+    EXPECT_EQ(analyzer.cached_expr_owned_use_mode(syntax::INVALID_EXPR_ID), sema::OwnedUseMode::none);
     EXPECT_FALSE(is_valid(analyzer.cached_expr_intrinsic_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_type(missing_expr_id)));
     EXPECT_FALSE(is_valid(analyzer.cached_expr_expected_type(missing_expr_id)));
+    EXPECT_EQ(analyzer.cached_expr_owned_use_mode(missing_expr_id), sema::OwnedUseMode::none);
     EXPECT_FALSE(is_valid(analyzer.cached_syntax_type(syntax::INVALID_TYPE_ID)));
     EXPECT_FALSE(is_valid(analyzer.cached_syntax_type(missing_type_id)));
     EXPECT_TRUE(analyzer.cached_expr_c_name(syntax::INVALID_EXPR_ID).empty());
@@ -3943,6 +4145,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     static_cast<void>(analyzer.record_expr_intrinsic_type(expr_id, i32));
     static_cast<void>(analyzer.record_expr_type(expr_id, i32));
     analyzer.record_expr_expected_type(expr_id, i64);
+    analyzer.record_expr_owned_use_mode(expr_id, sema::OwnedUseMode::shared_borrow);
     analyzer.record_expr_c_name(expr_id, "local_expr");
     analyzer.record_pattern_c_name(pattern_id, "local_pattern");
     analyzer.record_syntax_type_handle(type_id, i32);
@@ -3959,6 +4162,9 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_TRUE(types.same(local_side_tables.expr_intrinsic_types[local_expr], i32));
     EXPECT_TRUE(types.same(local_side_tables.expr_types[local_expr], i32));
     EXPECT_TRUE(types.same(local_side_tables.expr_expected_types[local_expr], i64));
+    EXPECT_TRUE(local_side_tables.expr_owned_use_modes.empty());
+    EXPECT_EQ(local_side_tables.sparse_expr_owned_use_modes.at(expr_id.value), sema::OwnedUseMode::shared_borrow);
+    EXPECT_EQ(analyzer.cached_expr_owned_use_mode(expr_id), sema::OwnedUseMode::shared_borrow);
     EXPECT_EQ(analyzer.state_.checked.c_name_text(local_side_tables.expr_c_name_ids[local_expr]), "local_expr");
     EXPECT_EQ(
         analyzer.state_.checked.c_name_text(local_side_tables.pattern_c_name_ids[local_pattern]), "local_pattern");
@@ -3971,7 +4177,8 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_TRUE(local_side_tables.sparse_pattern_c_name_ids.empty());
     EXPECT_TRUE(local_side_tables.sparse_syntax_type_handles.empty());
     EXPECT_TRUE(local_side_tables.sparse_stmt_local_types.empty());
-    EXPECT_TRUE(local_side_tables.sparse_fallbacks.empty());
+    EXPECT_EQ(local_side_tables.sparse_fallbacks.expr_owned_use_modes, 0U);
+    EXPECT_EQ(local_side_tables.sparse_fallbacks.total(), 0U);
 
     sema::GenericSideTables sparse_local_side_tables;
     constexpr base::u32 SEMA_TEST_SPARSE_LOCAL_SPAN_BEGIN = 10U;
@@ -4007,6 +4214,7 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     static_cast<void>(analyzer.record_expr_intrinsic_type(ExprId{sparse_expr_ids.front() + 1U}, i32));
     static_cast<void>(analyzer.record_expr_type(ExprId{sparse_expr_ids.front() + 1U}, i32));
     analyzer.record_expr_expected_type(ExprId{sparse_expr_ids.front() + 1U}, i64);
+    analyzer.record_expr_owned_use_mode(ExprId{sparse_expr_ids.front() + 1U}, sema::OwnedUseMode::mutable_borrow);
     analyzer.record_expr_c_name(ExprId{sparse_expr_ids.front() + 1U}, "sparse_local_expr");
     analyzer.record_pattern_c_name(syntax::PatternId{sparse_pattern_ids.front() + 1U}, "sparse_local_pattern");
     analyzer.record_pattern_case_name(syntax::PatternId{sparse_pattern_ids.front()}, "SparseLocalAlternative");
@@ -4020,12 +4228,22 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_intrinsic_types, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_types, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_expected_types, 1U);
+    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_owned_use_modes, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.expr_c_name_ids, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.pattern_c_name_ids, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.pattern_case_name_ids, 3U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.syntax_type_handles, 1U);
     EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.stmt_local_types, 1U);
-    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.total(), 10U);
+    EXPECT_EQ(sparse_local_side_tables.sparse_fallbacks.total(), 11U);
+    EXPECT_EQ(
+        analyzer.cached_expr_owned_use_mode(ExprId{sparse_expr_ids.front() + 1U}), sema::OwnedUseMode::mutable_borrow);
+    EXPECT_EQ(sema::owned_use_mode_name(sema::OwnedUseMode::none), "none");
+    EXPECT_EQ(sema::owned_use_mode_name(sema::OwnedUseMode::owned_copy), "owned_copy");
+    EXPECT_EQ(sema::owned_use_mode_name(sema::OwnedUseMode::owned_consume), "owned_consume");
+    EXPECT_EQ(sema::owned_use_mode_name(sema::OwnedUseMode::shared_borrow), "shared_borrow");
+    EXPECT_EQ(sema::owned_use_mode_name(sema::OwnedUseMode::mutable_borrow), "mutable_borrow");
+    EXPECT_EQ(sema::owned_use_mode_name(sema::OwnedUseMode::place_only), "place_only");
+    EXPECT_EQ(sema::owned_use_mode_name(static_cast<sema::OwnedUseMode>(99)), "<invalid>");
 }
 
 TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
@@ -4077,6 +4295,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     side_tables.expr_types.push_back(i32);
     side_tables.prepare_analysis_only_storage(1U);
     side_tables.expr_expected_types.push_back(i64);
+    side_tables.expr_owned_use_modes.push_back(sema::OwnedUseMode::owned_consume);
     side_tables.expr_c_name_ids.push_back(alpha_id);
     side_tables.pattern_c_name_ids.push_back(beta_id);
     side_tables.syntax_type_handles.push_back(i32);
@@ -4084,6 +4303,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     side_tables.sparse_expr_intrinsic_types.emplace(3U, i32);
     side_tables.sparse_expr_types.emplace(4U, i32);
     side_tables.sparse_expr_expected_types.emplace(5U, i64);
+    side_tables.sparse_expr_owned_use_modes.emplace(5U, sema::OwnedUseMode::shared_borrow);
     side_tables.sparse_expr_c_name_ids.emplace(6U, alpha_id);
     side_tables.sparse_pattern_c_name_ids.emplace(7U, beta_id);
     side_tables.sparse_syntax_type_handles.emplace(8U, i32);
@@ -4091,6 +4311,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     side_tables.pattern_case_name_ids.insert(10, alpha_id);
     side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::expr_intrinsic_type);
     side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::expr_type);
+    side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::expr_owned_use_mode);
     side_tables.record_sparse_fallback(sema::GenericSparseFallbackKind::stmt_local_type);
     sema::GenericSideTables* const side_self = &side_tables;
     side_tables = *side_self;
@@ -4111,19 +4332,22 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     EXPECT_EQ(side_copy.expr_types.front().value, i32.value);
     EXPECT_EQ(side_copy.sparse_expr_intrinsic_types.at(3U).value, i32.value);
     EXPECT_EQ(side_copy.sparse_expr_c_name_ids.at(6U).value, alpha_id.value);
-    EXPECT_EQ(side_copy.sparse_fallbacks.total(), 3U);
+    EXPECT_EQ(side_copy.expr_owned_use_modes.front(), sema::OwnedUseMode::owned_consume);
+    EXPECT_EQ(side_copy.sparse_expr_owned_use_modes.at(5U), sema::OwnedUseMode::shared_borrow);
+    EXPECT_EQ(side_copy.sparse_fallbacks.total(), 4U);
     sema::GenericSideTables side_assigned;
     side_assigned = side_tables;
     EXPECT_EQ(side_assigned.sparse_stmt_local_types.at(9U).value, i64.value);
     EXPECT_EQ(side_assigned.sparse_fallbacks.expr_intrinsic_types, 1U);
     EXPECT_EQ(side_assigned.sparse_fallbacks.expr_types, 1U);
+    EXPECT_EQ(side_assigned.sparse_fallbacks.expr_owned_use_modes, 1U);
     sema::GenericSideTables side_moved(std::move(side_copy));
     EXPECT_TRUE(side_moved.pattern_case_name_ids[10].contains(alpha_id));
     EXPECT_EQ(side_moved.sparse_fallbacks.stmt_local_types, 1U);
     sema::GenericSideTables side_move_assigned;
     side_move_assigned = std::move(side_assigned);
     EXPECT_EQ(side_move_assigned.syntax_type_handles.front().value, i32.value);
-    EXPECT_EQ(side_move_assigned.sparse_fallbacks.total(), 3U);
+    EXPECT_EQ(side_move_assigned.sparse_fallbacks.total(), 4U);
 
     sema::CheckedModule checked;
     constexpr base::u32 SEMA_TEST_CHECKED_COPY_PART_INDEX = 4;
@@ -4144,6 +4368,7 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     checked.expr_types.push_back(i32);
     checked.prepare_analysis_only_storage(1U);
     checked.expr_expected_types.push_back(i64);
+    checked.expr_owned_use_modes.push_back(sema::OwnedUseMode::owned_copy);
     checked.expr_c_name_ids.push_back(checked_c_name);
     checked.pattern_c_name_ids.push_back(checked_c_name);
     checked.pattern_case_name_ids.insert(3, checked_c_name);

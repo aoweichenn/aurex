@@ -1,9 +1,19 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M6-WP1 资源、值生命周期与访问语义三轮设计审视已完成
+阶段：M6-WP2/WP3 资源分类和 whole-local move analysis 已完成
 
 ## 总体状态
+
+2026-05-31：M6-WP2 和 M6-WP3 已完成第一批资源语义实现。WP2 增加 compiler-owned `Copy`、
+内部 `Discard` / `NeedsDrop` / ownership resource summary、结构化类型分类、stable resource fingerprint
+和 checked dump 中的 deterministic resource summaries；`Drop` 仍然不是用户可写 bound。WP3 增加
+expression owned-use side table、独立 whole-local move analysis 模块、迭代式 CFG/worklist
+initialized / moved / maybe-moved dataflow、move 后重新初始化和 consume-origin diagnostics。当前边界仍然
+明确：partial field move、indexed move-out、consuming pattern payload 和 non-`Copy` `?` payload transfer
+都在正式负样例中拒绝；cleanup obligations、`defer` cleanup composition、IR cleanup elaborator、destructor
+protocol、aggregate/generic drop glue 和完整 borrow checker 尚未实现。下一实现包是 M6-WP4 Cleanup
+Obligations、`defer` 组合和 IR Elaborator。
 
 2026-05-31：M6-WP1 已完成资源、值生命周期与访问语义的三轮设计审视。完整基线记录在
 [Aurex M6 资源、值生命周期与访问语义调研和三轮设计审视基线](m6-resource-access-semantics-design.md)，
@@ -13,7 +23,7 @@ Austral、Carbon、Clang 和相关研究；第二轮固定 Aurex 四维资源模
 和 future `MustConsume`，并选择 whole-local move、CFG-sensitive initialized state、词法 cleanup action
 stack、`defer` 交错和 generic drop glue；第三轮通过 regex、owned container、文件、锁、FFI、覆盖赋值、
 分支、循环、`?`、pattern、partial initialization、自引用、shared ownership cycle 和 future `dyn Trait`
-案例压力测试边界。下一实现包是 M6-WP2 Resource Classification Scaffold。完整 borrow checker 后移到 M7。
+案例压力测试边界。完整 borrow checker 后移到 M7。
 
 2026-05-31：M5 已作为 default trait methods release baseline 收口，建立在已经收口的 M4 trait/protocol baseline
 之上。
@@ -419,7 +429,12 @@ struct literal、enum payload、builtin、generic apply、array/void、operator 
 独立 `build/perf-lto` + `AUREX_STRESS_ENABLE_LTO=ON` 跑 5000 generic、2M AST 和 5000 errors 的
 Release+LTO 发布阈值门。`make perf-release-lto-threshold` 和 `make perf-release-all-threshold`
 保留为同一发布阈值门的兼容别名，不再重复跑普通 Release 与 Release+LTO 两套逻辑；发布 AST RSS 阈值为
-8192 MiB，用来保留高复杂 mixed 源码而不是降级成过渡态 toy case。
+8192 MiB，用来保留高复杂 mixed 源码而不是降级成过渡态 toy case。M6-WP2/WP3 的 5000 mixed generic
+Release+LTO 曲线实测为：1000/2000/3000/4000/5000 实例峰值 RSS 约
+132.5/239.0/348.3/455.0/560.0 MiB，parse 后 RSS 约 77.5/135.0/192.1/250.0/307.0 MiB，
+sema delta 约 53.2/103.9/156.1/204.9/252.9 MiB，端点斜率约 `+106.9 MiB / 1000`
+实例，其中 parse 约 `+57.4 MiB / 1000`、sema 约 `+49.9 MiB / 1000`；因此发布级
+generic RSS 阈值校准到 640 MiB，轻量 100/200 generic gate 仍保留 512 MiB。
 generic function instance 签名、
 generic struct/enum `TypeInfo` 和 checked enum case display 已经把内部 semantic key / TypeHandle
 args 和展示名分离，`--check` 热路径不再为了 checked signature 或泛型类型实例生成

@@ -191,6 +191,33 @@ inline constexpr std::string_view SEMA_RECURSIVE_RETURN_INFER =
 
 inline constexpr std::string_view SEMA_NOT_ALL_PATHS_RETURN = "not all control paths return a value";
 
+inline constexpr std::string_view SEMA_MOVE_PARTIAL_FIELD_UNSUPPORTED =
+    "moving a field out of a move-only value is not supported yet";
+
+inline constexpr std::string_view SEMA_MOVE_INDEXED_ELEMENT_UNSUPPORTED =
+    "moving an indexed element out of a move-only value is not supported yet";
+
+inline constexpr std::string_view SEMA_MOVE_PATTERN_PAYLOAD_UNSUPPORTED =
+    "consuming pattern payloads are not supported yet";
+
+inline constexpr std::string_view SEMA_MOVE_TRY_PAYLOAD_UNSUPPORTED =
+    "try expression transfer of a non-Copy payload is not supported yet";
+
+[[nodiscard]] inline std::string sema_use_of_moved_value_message(const std::string_view name)
+{
+    return "use of moved value `" + std::string(name) + "`";
+}
+
+[[nodiscard]] inline std::string sema_use_of_possibly_moved_value_message(const std::string_view name)
+{
+    return "use of possibly moved value `" + std::string(name) + "`";
+}
+
+[[nodiscard]] inline std::string sema_value_consumed_here_message(const std::string_view name)
+{
+    return "value `" + std::string(name) + "` was consumed here";
+}
+
 inline constexpr std::string_view SEMA_EXPLICIT_GENERIC_CALL_SYNTAX =
     "explicit generic calls use '[...]', for example id[i32](...)";
 

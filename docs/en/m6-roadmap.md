@@ -51,41 +51,47 @@ Risk controls:
 
 ## M6-WP2: Resource Classification Scaffold
 
-Status: pending.
+Status: complete.
 
-Goals:
+Deliverables:
 
-- Add compiler-owned `Copy`.
-- Add internal `Discard` / `NeedsDrop` classification.
-- Propagate structurally through builtins, pointers, references, slices, `str`,
-  tuples, arrays, structs, enums, and generic parameters.
-- Add stable resource fingerprints, checked dumps, and diagnostics.
+- Add compiler-owned `Copy` capability while keeping `Drop` out of user-written
+  bounds.
+- Add the internal four-axis resource summary: `Copy` / `MoveOnly`,
+  `Discard` / `MustConsume`, `Trivial` / `NeedsDrop`, and owned / borrowed /
+  raw / shared ownership.
+- Propagate structurally or conservatively through builtins, pointers,
+  references, slices, `str`, tuples, arrays, structs, enums, generic
+  parameters, associated projections, and opaque structs.
+- Add stable resource fingerprints and deterministic resource summaries to the
+  checked dump.
 - Keep user `Drop` bounds rejected until the destructor-protocol surface lands
   separately.
 
 Acceptance:
 
-- Sema unit tests cover structural classification.
-- Query-key tests cover stable identity.
-- Negative tests cover forged `Copy`, bad aggregate classification, and
-  unsupported surfaces.
-- Full tests, coverage, stress, and query sanitizer stay green.
+- Sema whitebox tests cover structural classification, `Copy` capability, and
+  fingerprints.
+- Checked-dump coverage verifies deterministic resource summaries.
+- Normal repository samples cover the positive `where T: Copy` path, and the
+  old `Copy` rejection negative sample is removed.
+- `Drop` user bounds remain rejected by negative coverage.
 
 ## M6-WP3: Owned Use Modes And Whole-Local Move Analysis
 
-Status: pending.
+Status: complete.
 
-Goals:
+Deliverables:
 
-- Add owned-copy, owned-consume, shared-borrow, mutable-borrow, and place-only
-  expression use modes.
-- Implement initialized / moved / maybe-moved using iterative CFG worklists and
-  block bitsets.
+- Add `owned_copy`, `owned_consume`, `shared_borrow`, `mutable_borrow`, and
+  `place_only` expression-use facts to checked side tables.
+- Add a focused body move analysis module using iterative CFG construction and
+  worklist dataflow for initialized / moved / maybe-moved state.
 - Support reinitialization after move.
 - Point diagnostics at consume origins.
 - Restrict the first release to whole-local moves.
 
-Explicitly reject:
+Explicitly rejected with normal negative samples:
 
 - Partial field moves.
 - Indexed move-out.

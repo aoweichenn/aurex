@@ -1,14 +1,15 @@
 # Introduction
 
 Aurex is a systems-language compiler project. The active design baseline is the
-**M6 resource, value lifetime, and access semantics three-pass design review**.
+**M6 resource, value lifetime, and access semantics implementation baseline**.
 M2 froze the standard library and moved active work back to the language core;
 M3 closed modules, generics, query-backed sema, tooling, incremental syntax,
 and backend reuse; M4 added nominal static traits, explicit trait impls, generic
 trait predicates, static trait method dispatch, associated types, and
 tooling/diagnostic projection; M5 closed default method bodies on that static
-trait model as a release baseline; M6-WP1 now closes the three-pass resource and
-value-lifetime design review before the resource-classification scaffold.
+trait model as a release baseline; M6-WP1 closed the three-pass resource and
+value-lifetime design review, and M6-WP2/WP3 now land resource classification
+and whole-local move analysis before cleanup lowering.
 
 M1 has been discarded. It advanced the standard library, host support,
 build-tool examples, selfhost experiments, and language semantics at the same

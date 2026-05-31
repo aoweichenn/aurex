@@ -68,6 +68,11 @@ void SemanticAnalyzerCore::record_expr_expected_type(const syntax::ExprId expr, 
     this->side_table_store().record_expr_expected_type(expr, expected_type);
 }
 
+void SemanticAnalyzerCore::record_expr_owned_use_mode(const syntax::ExprId expr, const OwnedUseMode mode)
+{
+    this->side_table_store().record_expr_owned_use_mode(expr, mode);
+}
+
 void SemanticAnalyzerCore::record_coercion(
     const syntax::ExprId expr, const TypeHandle from_type, const TypeHandle to_type, const CoercionKind kind)
 {
@@ -89,6 +94,11 @@ TypeHandle SemanticAnalyzerCore::cached_expr_expected_type(const syntax::ExprId 
     return this->side_table_reader().cached_expr_expected_type(expr);
 }
 
+OwnedUseMode SemanticAnalyzerCore::cached_expr_owned_use_mode(const syntax::ExprId expr) const noexcept
+{
+    return this->side_table_reader().cached_expr_owned_use_mode(expr);
+}
+
 TypeHandle SemanticAnalyzerCore::cached_expr_type_for_expected(
     const syntax::ExprId expr, const TypeHandle expected_type) const noexcept
 {
@@ -98,6 +108,11 @@ TypeHandle SemanticAnalyzerCore::cached_expr_type_for_expected(
 TypeHandle SemanticAnalyzerCore::cached_syntax_type(const syntax::TypeId type) const noexcept
 {
     return this->side_table_reader().cached_syntax_type(type);
+}
+
+TypeHandle SemanticAnalyzerCore::cached_stmt_local_type(const syntax::StmtId stmt) const noexcept
+{
+    return this->side_table_reader().cached_stmt_local_type(stmt);
 }
 
 std::string_view SemanticAnalyzerCore::cached_expr_c_name(const syntax::ExprId expr) const noexcept
@@ -123,6 +138,11 @@ SemaTypeTable& SemanticAnalyzerCore::active_expr_intrinsic_types() noexcept
 SemaTypeTable& SemanticAnalyzerCore::active_expr_expected_types() noexcept
 {
     return this->side_table_store().active_expr_expected_types();
+}
+
+SemaOwnedUseModeTable& SemanticAnalyzerCore::active_expr_owned_use_modes() noexcept
+{
+    return this->side_table_store().active_expr_owned_use_modes();
 }
 
 SemaIdentTable& SemanticAnalyzerCore::active_expr_c_name_ids() noexcept

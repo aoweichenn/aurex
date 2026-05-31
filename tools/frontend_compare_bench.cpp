@@ -130,7 +130,7 @@ struct ProcessResult final {
               "fn make_box[T](value: T) -> Box[T] {\n"
               "    return Box[T] { value: value };\n"
               "}\n\n"
-              "fn unwrap_box[T](box: Box[T]) -> T {\n"
+              "fn unwrap_box[T](box: Box[T]) -> T where T: Copy {\n"
               "    return box.value;\n"
               "}\n\n";
     for (std::int64_t index = 0; index < item_count; ++index) {

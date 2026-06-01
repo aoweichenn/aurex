@@ -1,0 +1,25 @@
+module move_defer_exit_reinit;
+
+fn consume[T](value: T) -> void {
+    let borrowed: &T = &value;
+    if ptraddr(borrowed) == 0usize {
+        return;
+    }
+}
+
+fn inspect[T](value: &T) -> void {
+    if ptraddr(value) == 0usize {
+        return;
+    }
+}
+
+fn exercise[T](value: T, replacement: T) -> void {
+    var current: T = value;
+    defer consume(current);
+    inspect(&current);
+    current = replacement;
+}
+
+fn main() -> i32 {
+    return 0;
+}

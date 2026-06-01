@@ -1,0 +1,21 @@
+module move_match_guard_after_move;
+
+fn consume[T](value: T) -> bool {
+    let consumed: T = value;
+    return false;
+}
+
+fn duplicate[T](value: T) -> i32 {
+    var current: T = value;
+    return match true {
+        _ if consume(current) => 1,
+        _ => {
+            let consumed: T = current;
+            0
+        },
+    };
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -4402,6 +4402,37 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_EQ(sema::owned_use_mode_name(static_cast<sema::OwnedUseMode>(99)), "<invalid>");
 }
 
+TEST(CoreUnit, SemanticWhiteBoxBodyMoveAnalysisRecordsOwnedUseModes)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"owned_use_modes"})};
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const ExprId returned_value = push_name(module, "value");
+
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = returned_value;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+    const syntax::StmtId body = push_block(module, {return_stmt_id});
+
+    syntax::ItemNode identity;
+    identity.kind = syntax::ItemKind::fn_decl;
+    identity.name = "identity";
+    identity.params = {syntax::ParamDecl{"value", i32_type, {}}};
+    identity.return_type = i32_type;
+    identity.body = body;
+    const syntax::ItemId identity_id = module.push_item(identity);
+    module.item_modules[identity_id.value] = module_id(0);
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    const auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    const sema::CheckedModule& checked = checked_result.value();
+    ASSERT_LT(returned_value.value, checked.expr_owned_use_modes.size());
+    EXPECT_EQ(checked.expr_owned_use_modes[returned_value.value], sema::OwnedUseMode::owned_copy);
+}
+
 TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
 {
     const IdentId alpha_id{1};

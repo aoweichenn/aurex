@@ -72,6 +72,13 @@ struct MoveState {
 
 using MoveEnvironment = std::unordered_map<IdentId, base::usize, IdentIdHash>;
 
+struct DeferredExpression {
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    MoveEnvironment environment;
+};
+
+using CleanupStack = std::vector<std::vector<DeferredExpression>>;
+
 enum class BuildTaskKind {
     statement_list,
     statement,
@@ -87,8 +94,16 @@ struct BuildTask {
     base::usize continuation = SEMA_MOVE_EXIT_BLOCK;
     base::usize break_target = SEMA_MOVE_EXIT_BLOCK;
     base::usize continue_target = SEMA_MOVE_EXIT_BLOCK;
+    base::usize cleanup_keep_depth = 0;
+    base::usize break_cleanup_depth = 0;
+    base::usize continue_cleanup_depth = 0;
     RequestedUse requested = RequestedUse::owned;
+    RequestedUse completion_requested = RequestedUse::owned;
+    CleanupStack cleanup_scopes;
     MoveEnvironment environment;
+    MoveEnvironment completion_environment;
+    syntax::ExprId completion_expr = syntax::INVALID_EXPR_ID;
+    bool emit_cleanup_on_completion = true;
 };
 
 struct ModeTask {
@@ -169,7 +184,8 @@ public:
         }
 
         this->initialize_cfg_storage();
-        this->push_statement_list(this->function_.body, SEMA_MOVE_ENTRY_BLOCK, SEMA_MOVE_EXIT_BLOCK, environment);
+        this->push_scoped_statement_list(
+            this->function_.body, SEMA_MOVE_ENTRY_BLOCK, SEMA_MOVE_EXIT_BLOCK, environment, CleanupStack{});
         this->build_cfg();
         this->solve_dataflow();
         this->emit_diagnostics();
@@ -356,61 +372,90 @@ private:
                                                                                   : OwnedUseMode::owned_copy;
     }
 
-    void push_statement_list(const syntax::StmtId block, const base::usize start, const base::usize continuation,
-        const MoveEnvironment& environment, const base::usize break_target = SEMA_MOVE_EXIT_BLOCK,
-        const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK, const base::usize statement_index = 0)
+    void push_scoped_statement_list(const syntax::StmtId block, const base::usize start, const base::usize continuation,
+        MoveEnvironment environment, CleanupStack cleanup_scopes, const base::usize break_target = SEMA_MOVE_EXIT_BLOCK,
+        const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK, const base::usize break_cleanup_depth = 0,
+        const base::usize continue_cleanup_depth = 0, const bool emit_cleanup_on_completion = true)
     {
-        this->tasks_.push_back(BuildTask{
-            BuildTaskKind::statement_list,
-            block,
-            syntax::INVALID_EXPR_ID,
-            statement_index,
-            start,
-            continuation,
-            break_target,
-            continue_target,
-            RequestedUse::owned,
-            environment,
-        });
+        const base::usize cleanup_keep_depth = cleanup_scopes.size();
+        cleanup_scopes.emplace_back();
+        this->push_statement_list(block, start, continuation, std::move(environment), std::move(cleanup_scopes),
+            cleanup_keep_depth, break_target, continue_target, break_cleanup_depth, continue_cleanup_depth, 0,
+            emit_cleanup_on_completion);
+    }
+
+    void push_statement_list(const syntax::StmtId block, const base::usize start, const base::usize continuation,
+        MoveEnvironment environment, CleanupStack cleanup_scopes, const base::usize cleanup_keep_depth,
+        const base::usize break_target = SEMA_MOVE_EXIT_BLOCK, const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK,
+        const base::usize break_cleanup_depth = 0, const base::usize continue_cleanup_depth = 0,
+        const base::usize statement_index = 0, const bool emit_cleanup_on_completion = true,
+        const syntax::ExprId completion_expr = syntax::INVALID_EXPR_ID,
+        const RequestedUse completion_requested = RequestedUse::owned, MoveEnvironment completion_environment = {})
+    {
+        BuildTask task;
+        task.kind = BuildTaskKind::statement_list;
+        task.stmt = block;
+        task.statement_index = statement_index;
+        task.start = start;
+        task.continuation = continuation;
+        task.break_target = break_target;
+        task.continue_target = continue_target;
+        task.cleanup_keep_depth = cleanup_keep_depth;
+        task.break_cleanup_depth = break_cleanup_depth;
+        task.continue_cleanup_depth = continue_cleanup_depth;
+        task.completion_requested = completion_requested;
+        task.cleanup_scopes = std::move(cleanup_scopes);
+        task.environment = std::move(environment);
+        task.completion_environment = std::move(completion_environment);
+        task.completion_expr = completion_expr;
+        task.emit_cleanup_on_completion = emit_cleanup_on_completion;
+        this->tasks_.push_back(std::move(task));
     }
 
     void push_statement(const syntax::StmtId stmt, const base::usize start, const base::usize continuation,
-        const MoveEnvironment& environment, const base::usize break_target = SEMA_MOVE_EXIT_BLOCK,
-        const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK)
+        MoveEnvironment environment, CleanupStack cleanup_scopes, const base::usize break_target = SEMA_MOVE_EXIT_BLOCK,
+        const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK, const base::usize break_cleanup_depth = 0,
+        const base::usize continue_cleanup_depth = 0)
     {
-        this->tasks_.push_back(BuildTask{
-            BuildTaskKind::statement,
-            stmt,
-            syntax::INVALID_EXPR_ID,
-            0,
-            start,
-            continuation,
-            break_target,
-            continue_target,
-            RequestedUse::owned,
-            environment,
-        });
+        BuildTask task;
+        task.kind = BuildTaskKind::statement;
+        task.stmt = stmt;
+        task.start = start;
+        task.continuation = continuation;
+        task.break_target = break_target;
+        task.continue_target = continue_target;
+        task.break_cleanup_depth = break_cleanup_depth;
+        task.continue_cleanup_depth = continue_cleanup_depth;
+        task.cleanup_scopes = std::move(cleanup_scopes);
+        task.environment = std::move(environment);
+        this->tasks_.push_back(std::move(task));
     }
 
     void push_expression(const syntax::ExprId expr, const RequestedUse requested, const base::usize start,
-        const base::usize continuation, const MoveEnvironment& environment)
+        const base::usize continuation, MoveEnvironment environment, CleanupStack cleanup_scopes,
+        const base::usize break_target = SEMA_MOVE_EXIT_BLOCK, const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK,
+        const base::usize break_cleanup_depth = 0, const base::usize continue_cleanup_depth = 0)
     {
-        this->tasks_.push_back(BuildTask{
-            BuildTaskKind::expression,
-            syntax::INVALID_STMT_ID,
-            expr,
-            0,
-            start,
-            continuation,
-            SEMA_MOVE_EXIT_BLOCK,
-            SEMA_MOVE_EXIT_BLOCK,
-            requested,
-            environment,
-        });
+        BuildTask task;
+        task.kind = BuildTaskKind::expression;
+        task.expr = expr;
+        task.start = start;
+        task.continuation = continuation;
+        task.break_target = break_target;
+        task.continue_target = continue_target;
+        task.break_cleanup_depth = break_cleanup_depth;
+        task.continue_cleanup_depth = continue_cleanup_depth;
+        task.requested = requested;
+        task.cleanup_scopes = std::move(cleanup_scopes);
+        task.environment = std::move(environment);
+        this->tasks_.push_back(std::move(task));
     }
 
     void push_expression_sequence(const std::vector<std::pair<syntax::ExprId, RequestedUse>>& expressions,
-        const base::usize start, const base::usize continuation, const MoveEnvironment& environment)
+        const base::usize start, const base::usize continuation, const MoveEnvironment& environment,
+        const CleanupStack& cleanup_scopes, const base::usize break_target = SEMA_MOVE_EXIT_BLOCK,
+        const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK, const base::usize break_cleanup_depth = 0,
+        const base::usize continue_cleanup_depth = 0)
     {
         if (expressions.empty()) {
             this->add_edge(start, continuation);
@@ -422,8 +467,47 @@ private:
             boundaries[i] = this->new_block();
         }
         for (base::usize i = expressions.size(); i > 0; --i) {
-            this->push_expression(
-                expressions[i - 1].first, expressions[i - 1].second, boundaries[i - 1], boundaries[i], environment);
+            this->push_expression(expressions[i - 1].first, expressions[i - 1].second, boundaries[i - 1], boundaries[i],
+                environment, cleanup_scopes, break_target, continue_target, break_cleanup_depth,
+                continue_cleanup_depth);
+        }
+    }
+
+    void register_deferred_expression(
+        CleanupStack& cleanup_scopes, const syntax::ExprId expr, const MoveEnvironment& environment) const
+    {
+        if (cleanup_scopes.empty()) {
+            return;
+        }
+        cleanup_scopes.back().push_back(DeferredExpression{expr, environment});
+    }
+
+    void push_cleanup_scopes(const CleanupStack& cleanup_scopes, const base::usize keep_depth, const base::usize start,
+        const base::usize continuation)
+    {
+        const base::usize clamped_keep_depth = std::min(keep_depth, cleanup_scopes.size());
+        std::vector<DeferredExpression> deferred;
+        for (base::usize depth = cleanup_scopes.size(); depth > clamped_keep_depth; --depth) {
+            const std::vector<DeferredExpression>& scope = cleanup_scopes[depth - 1];
+            for (base::usize i = scope.size(); i > 0; --i) {
+                deferred.push_back(scope[i - 1]);
+            }
+        }
+        if (deferred.empty()) {
+            this->add_edge(start, continuation);
+            return;
+        }
+        CleanupStack cleanup_context = cleanup_scopes;
+        cleanup_context.resize(clamped_keep_depth);
+        std::vector<base::usize> boundaries(deferred.size() + 1, continuation);
+        boundaries.front() = start;
+        for (base::usize i = 1; i < deferred.size(); ++i) {
+            boundaries[i] = this->new_block();
+        }
+        for (base::usize i = deferred.size(); i > 0; --i) {
+            const DeferredExpression& action = deferred[i - 1];
+            this->push_expression(action.expr, RequestedUse::owned, boundaries[i - 1], boundaries[i],
+                action.environment, cleanup_context);
         }
     }
 
@@ -513,6 +597,7 @@ private:
         switch (stmt.kind) {
             case syntax::StmtKind::let:
             case syntax::StmtKind::var:
+                this->push_mode_block(tasks, stmt.else_block);
                 if (!this->copy_only_local_declaration(stmt_id, stmt)) {
                     return false;
                 }
@@ -524,6 +609,9 @@ private:
                     stmt.assign_op == syntax::AssignOp::assign ? RequestedUse::place_only : RequestedUse::owned);
                 break;
             case syntax::StmtKind::if_:
+                if (this->pattern_payload_requires_full_move_analysis(stmt.pattern, stmt.condition)) {
+                    return false;
+                }
                 this->push_mode_block(tasks, stmt.else_block);
                 if (syntax::is_valid(stmt.else_if)) {
                     tasks.push_back(ModeTask{
@@ -537,6 +625,9 @@ private:
                 this->push_mode_expression(tasks, stmt.condition, RequestedUse::owned);
                 break;
             case syntax::StmtKind::while_:
+                if (this->pattern_payload_requires_full_move_analysis(stmt.pattern, stmt.condition)) {
+                    return false;
+                }
                 this->push_mode_block(tasks, stmt.body);
                 this->push_mode_expression(tasks, stmt.condition, RequestedUse::owned);
                 break;
@@ -577,7 +668,9 @@ private:
                 break;
             case syntax::StmtKind::break_:
             case syntax::StmtKind::continue_:
+                break;
             case syntax::StmtKind::defer:
+                this->push_mode_expression(tasks, stmt.init, RequestedUse::owned);
                 break;
         }
         return true;
@@ -604,6 +697,7 @@ private:
         if (this->expression_requires_full_move_analysis(expr_id, expr, requested)) {
             return false;
         }
+        this->core_.record_expr_owned_use_mode(expr_id, this->effective_mode(expr_id, requested));
         this->push_mode_expression_children(tasks, expr, requested);
         return true;
     }
@@ -621,6 +715,8 @@ private:
                 return std::ranges::any_of(expr.match_arms, [this](const syntax::MatchArm& arm) {
                     return this->pattern_has_bindings(arm.pattern);
                 });
+            case syntax::ExprKind::if_expr:
+                return this->pattern_payload_requires_full_move_analysis(expr.condition_pattern, expr.condition);
             case syntax::ExprKind::field:
             case syntax::ExprKind::index:
                 return requested == RequestedUse::owned
@@ -629,6 +725,23 @@ private:
                 break;
         }
         return false;
+    }
+
+    [[nodiscard]] bool pattern_payload_requires_full_move_analysis(
+        const syntax::PatternId pattern, const syntax::ExprId value)
+    {
+        return syntax::is_valid(pattern) && this->pattern_has_bindings(pattern)
+            && this->is_tracked_resource_type(this->core_.cached_expr_type(value));
+    }
+
+    void reject_pattern_payload_if_needed(const syntax::PatternId pattern, const syntax::ExprId value,
+        const base::usize block, const base::SourceRange& range)
+    {
+        if (block >= this->blocks_.size() || !this->pattern_payload_requires_full_move_analysis(pattern, value)) {
+            return;
+        }
+        this->blocks_[block].actions.push_back(MoveAction{MoveActionKind::reject_pattern_payload,
+            SEMA_MOVE_INVALID_LOCAL, syntax::INVALID_EXPR_ID, OwnedUseMode::none, range});
     }
 
     void push_mode_expression_children(
@@ -753,31 +866,50 @@ private:
         }
     }
 
+    void complete_statement_list(const BuildTask& task)
+    {
+        if (task.emit_cleanup_on_completion || !syntax::is_valid(task.completion_expr)) {
+            this->push_cleanup_scopes(task.cleanup_scopes, task.cleanup_keep_depth, task.start, task.continuation);
+            return;
+        }
+        const base::usize cleanup = this->new_block();
+        this->push_expression(task.completion_expr, task.completion_requested, task.start, cleanup,
+            task.completion_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
+        this->push_cleanup_scopes(task.cleanup_scopes, task.cleanup_keep_depth, cleanup, task.continuation);
+    }
+
     void build_statement_list(BuildTask task)
     {
         if (!syntax::is_valid(task.stmt) || task.stmt.value >= this->core_.ctx_.module.stmts.size()) {
-            this->add_edge(task.start, task.continuation);
+            this->complete_statement_list(task);
             return;
         }
         const syntax::AstArenaVector<syntax::StmtId>* const statements =
             this->core_.ctx_.module.stmts.block_statements(task.stmt.value);
         if (statements == nullptr || task.statement_index >= statements->size()) {
-            this->add_edge(task.start, task.continuation);
+            this->complete_statement_list(task);
             return;
         }
 
         const syntax::StmtId stmt_id = (*statements)[task.statement_index];
-        const base::usize next = task.statement_index + 1 == statements->size() ? task.continuation : this->new_block();
+        const base::usize next = this->new_block();
         MoveEnvironment next_environment = task.environment;
+        CleanupStack next_cleanup_scopes = task.cleanup_scopes;
         if (syntax::is_valid(stmt_id) && stmt_id.value < this->core_.ctx_.module.stmts.size()) {
             const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
             static_cast<void>(this->declare_plain_local(stmt_id, stmt, next_environment));
+            if (stmt.kind == syntax::StmtKind::defer) {
+                this->register_deferred_expression(next_cleanup_scopes, stmt.init, task.environment);
+            }
         }
-        if (task.statement_index + 1 < statements->size()) {
-            this->push_statement_list(task.stmt, next, task.continuation, next_environment, task.break_target,
-                task.continue_target, task.statement_index + 1);
-        }
-        this->push_statement(stmt_id, task.start, next, task.environment, task.break_target, task.continue_target);
+        this->push_statement_list(task.stmt, next, task.continuation, std::move(next_environment),
+            std::move(next_cleanup_scopes), task.cleanup_keep_depth, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth, task.statement_index + 1,
+            task.emit_cleanup_on_completion, task.completion_expr, task.completion_requested,
+            std::move(task.completion_environment));
+        this->push_statement(stmt_id, task.start, next, std::move(task.environment), std::move(task.cleanup_scopes),
+            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_statement(BuildTask task)
@@ -789,21 +921,9 @@ private:
         const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[task.stmt.value];
         switch (stmt.kind) {
             case syntax::StmtKind::let:
-            case syntax::StmtKind::var: {
-                const base::usize initialized = this->declared_local(task.stmt);
-                const base::usize finish = this->new_block();
-                if (initialized != SEMA_MOVE_INVALID_LOCAL) {
-                    this->blocks_[finish].actions.push_back(MoveAction{MoveActionKind::initialize_local, initialized,
-                        syntax::INVALID_EXPR_ID, OwnedUseMode::none, stmt.range});
-                } else if (syntax::is_valid(stmt.pattern)
-                    && this->is_tracked_resource_type(this->core_.cached_expr_type(stmt.init))) {
-                    this->blocks_[finish].actions.push_back(MoveAction{MoveActionKind::reject_pattern_payload,
-                        SEMA_MOVE_INVALID_LOCAL, syntax::INVALID_EXPR_ID, OwnedUseMode::none, stmt.range});
-                }
-                this->add_edge(finish, task.continuation);
-                this->push_expression(stmt.init, RequestedUse::owned, task.start, finish, task.environment);
+            case syntax::StmtKind::var:
+                this->build_local_declaration(stmt, task);
                 break;
-            }
             case syntax::StmtKind::assign:
                 this->build_assignment(stmt, task);
                 break;
@@ -821,29 +941,60 @@ private:
                 break;
             case syntax::StmtKind::return_:
                 if (syntax::is_valid(stmt.return_value)) {
-                    this->push_expression(
-                        stmt.return_value, RequestedUse::owned, task.start, SEMA_MOVE_EXIT_BLOCK, task.environment);
+                    const base::usize cleanup = this->new_block();
+                    this->push_expression(stmt.return_value, RequestedUse::owned, task.start, cleanup, task.environment,
+                        task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                        task.continue_cleanup_depth);
+                    this->push_cleanup_scopes(task.cleanup_scopes, 0, cleanup, SEMA_MOVE_EXIT_BLOCK);
                 } else {
-                    this->add_edge(task.start, SEMA_MOVE_EXIT_BLOCK);
+                    this->push_cleanup_scopes(task.cleanup_scopes, 0, task.start, SEMA_MOVE_EXIT_BLOCK);
                 }
                 break;
             case syntax::StmtKind::expr:
-                this->push_expression(stmt.init, RequestedUse::owned, task.start, task.continuation, task.environment);
+                this->push_expression(stmt.init, RequestedUse::owned, task.start, task.continuation, task.environment,
+                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                    task.continue_cleanup_depth);
                 break;
             case syntax::StmtKind::block:
-                this->push_statement_list(task.stmt, task.start, task.continuation, task.environment, task.break_target,
-                    task.continue_target);
+                this->push_scoped_statement_list(task.stmt, task.start, task.continuation, task.environment,
+                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                    task.continue_cleanup_depth);
                 break;
             case syntax::StmtKind::break_:
-                this->add_edge(task.start, task.break_target);
+                this->push_cleanup_scopes(task.cleanup_scopes, task.break_cleanup_depth, task.start, task.break_target);
                 break;
             case syntax::StmtKind::continue_:
-                this->add_edge(task.start, task.continue_target);
+                this->push_cleanup_scopes(
+                    task.cleanup_scopes, task.continue_cleanup_depth, task.start, task.continue_target);
                 break;
             case syntax::StmtKind::defer:
                 this->add_edge(task.start, task.continuation);
                 break;
         }
+    }
+
+    void build_local_declaration(const syntax::StmtNode& stmt, const BuildTask& task)
+    {
+        const base::usize finish = this->new_block();
+        const base::usize initialized = this->declared_local(task.stmt);
+        if (initialized != SEMA_MOVE_INVALID_LOCAL) {
+            this->blocks_[finish].actions.push_back(MoveAction{MoveActionKind::initialize_local, initialized,
+                syntax::INVALID_EXPR_ID, OwnedUseMode::none, stmt.range});
+        } else if (syntax::is_valid(stmt.pattern)
+            && this->is_tracked_resource_type(this->core_.cached_expr_type(stmt.init))) {
+            this->blocks_[finish].actions.push_back(MoveAction{MoveActionKind::reject_pattern_payload,
+                SEMA_MOVE_INVALID_LOCAL, syntax::INVALID_EXPR_ID, OwnedUseMode::none, stmt.range});
+        }
+        this->add_edge(finish, task.continuation);
+        if (syntax::is_valid(stmt.pattern) && syntax::is_valid(stmt.else_block)) {
+            const base::usize failure = this->new_block();
+            this->add_edge(finish, failure);
+            this->push_scoped_statement_list(stmt.else_block, failure, task.continuation, task.environment,
+                task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                task.continue_cleanup_depth);
+        }
+        this->push_expression(stmt.init, RequestedUse::owned, task.start, finish, task.environment, task.cleanup_scopes,
+            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_assignment(const syntax::StmtNode& stmt, const BuildTask& task)
@@ -860,7 +1011,8 @@ private:
                 {stmt.lhs, stmt.assign_op == syntax::AssignOp::assign ? RequestedUse::place_only : RequestedUse::owned},
                 {stmt.rhs, RequestedUse::owned},
             },
-            task.start, finish, task.environment);
+            task.start, finish, task.environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_if_statement(const syntax::StmtNode& stmt, const BuildTask& task)
@@ -868,17 +1020,22 @@ private:
         const base::usize condition = this->new_block();
         const base::usize then_entry = this->new_block();
         const base::usize else_entry = this->new_block();
-        this->push_expression(stmt.condition, RequestedUse::owned, task.start, condition, task.environment);
+        this->reject_pattern_payload_if_needed(stmt.pattern, stmt.condition, task.start, stmt.range);
+        this->push_expression(stmt.condition, RequestedUse::owned, task.start, condition, task.environment,
+            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth);
         this->add_edge(condition, then_entry);
         this->add_edge(condition, else_entry);
-        this->push_statement_list(
-            stmt.then_block, then_entry, task.continuation, task.environment, task.break_target, task.continue_target);
+        this->push_scoped_statement_list(stmt.then_block, then_entry, task.continuation, task.environment,
+            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth);
         if (syntax::is_valid(stmt.else_if)) {
-            this->push_statement(
-                stmt.else_if, else_entry, task.continuation, task.environment, task.break_target, task.continue_target);
+            this->push_statement(stmt.else_if, else_entry, task.continuation, task.environment, task.cleanup_scopes,
+                task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
         } else if (syntax::is_valid(stmt.else_block)) {
-            this->push_statement_list(stmt.else_block, else_entry, task.continuation, task.environment,
-                task.break_target, task.continue_target);
+            this->push_scoped_statement_list(stmt.else_block, else_entry, task.continuation, task.environment,
+                task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                task.continue_cleanup_depth);
         } else {
             this->add_edge(else_entry, task.continuation);
         }
@@ -890,15 +1047,23 @@ private:
         const base::usize decision = this->new_block();
         const base::usize body = this->new_block();
         this->add_edge(task.start, condition);
-        this->push_expression(stmt.condition, RequestedUse::owned, condition, decision, task.environment);
+        this->reject_pattern_payload_if_needed(stmt.pattern, stmt.condition, condition, stmt.range);
+        this->push_expression(stmt.condition, RequestedUse::owned, condition, decision, task.environment,
+            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth);
         this->add_edge(decision, body);
         this->add_edge(decision, task.continuation);
-        this->push_statement_list(stmt.body, body, condition, task.environment, task.continuation, condition);
+        const base::usize loop_cleanup_depth = task.cleanup_scopes.size();
+        this->push_scoped_statement_list(stmt.body, body, condition, task.environment, task.cleanup_scopes,
+            task.continuation, condition, loop_cleanup_depth, loop_cleanup_depth);
     }
 
     void build_for_statement(const syntax::StmtNode& stmt, const BuildTask& task)
     {
         MoveEnvironment loop_environment = task.environment;
+        CleanupStack loop_cleanup_scopes = task.cleanup_scopes;
+        const base::usize loop_keep_depth = loop_cleanup_scopes.size();
+        loop_cleanup_scopes.emplace_back();
         if (syntax::is_valid(stmt.for_init) && stmt.for_init.value < this->core_.ctx_.module.stmts.size()) {
             const syntax::StmtNode init = this->core_.ctx_.module.stmts[stmt.for_init.value];
             static_cast<void>(this->declare_plain_local(stmt.for_init, init, loop_environment));
@@ -907,21 +1072,29 @@ private:
         const base::usize decision = this->new_block();
         const base::usize body = this->new_block();
         const base::usize update = this->new_block();
+        const base::usize loop_exit = this->new_block();
+        const base::usize loop_cleanup_depth = loop_cleanup_scopes.size();
         if (syntax::is_valid(stmt.for_init)) {
-            this->push_statement(stmt.for_init, task.start, condition, task.environment, task.continuation, update);
+            this->push_statement(stmt.for_init, task.start, condition, task.environment, loop_cleanup_scopes,
+                task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
         } else {
             this->add_edge(task.start, condition);
         }
         if (syntax::is_valid(stmt.condition)) {
-            this->push_expression(stmt.condition, RequestedUse::owned, condition, decision, loop_environment);
+            this->push_expression(stmt.condition, RequestedUse::owned, condition, decision, loop_environment,
+                loop_cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                task.continue_cleanup_depth);
         } else {
             this->add_edge(condition, decision);
         }
         this->add_edge(decision, body);
-        this->add_edge(decision, task.continuation);
-        this->push_statement_list(stmt.body, body, update, loop_environment, task.continuation, update);
+        this->add_edge(decision, loop_exit);
+        this->push_cleanup_scopes(loop_cleanup_scopes, loop_keep_depth, loop_exit, task.continuation);
+        this->push_scoped_statement_list(stmt.body, body, update, loop_environment, loop_cleanup_scopes, loop_exit,
+            update, loop_cleanup_depth, loop_cleanup_depth);
         if (syntax::is_valid(stmt.for_update)) {
-            this->push_statement(stmt.for_update, update, condition, loop_environment, task.continuation, update);
+            this->push_statement(stmt.for_update, update, condition, loop_environment, loop_cleanup_scopes, loop_exit,
+                update, loop_cleanup_depth, loop_cleanup_depth);
         } else {
             this->add_edge(update, condition);
         }
@@ -929,8 +1102,13 @@ private:
 
     void build_for_range_statement(const syntax::StmtNode& stmt, const BuildTask& task)
     {
+        CleanupStack loop_cleanup_scopes = task.cleanup_scopes;
+        const base::usize loop_keep_depth = loop_cleanup_scopes.size();
+        loop_cleanup_scopes.emplace_back();
+        const base::usize loop_cleanup_depth = loop_cleanup_scopes.size();
         const base::usize header = this->new_block();
         const base::usize body = this->new_block();
+        const base::usize loop_exit = this->new_block();
         std::vector<std::pair<syntax::ExprId, RequestedUse>> bounds;
         if (syntax::is_valid(stmt.range_start)) {
             bounds.emplace_back(stmt.range_start, RequestedUse::owned);
@@ -941,10 +1119,13 @@ private:
         if (syntax::is_valid(stmt.range_step)) {
             bounds.emplace_back(stmt.range_step, RequestedUse::owned);
         }
-        this->push_expression_sequence(bounds, task.start, header, task.environment);
+        this->push_expression_sequence(bounds, task.start, header, task.environment, loop_cleanup_scopes,
+            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
         this->add_edge(header, body);
-        this->add_edge(header, task.continuation);
-        this->push_statement_list(stmt.body, body, header, task.environment, task.continuation, header);
+        this->add_edge(header, loop_exit);
+        this->push_cleanup_scopes(loop_cleanup_scopes, loop_keep_depth, loop_exit, task.continuation);
+        this->push_scoped_statement_list(stmt.body, body, header, task.environment, loop_cleanup_scopes, loop_exit,
+            header, loop_cleanup_depth, loop_cleanup_depth);
     }
 
     void build_expression(BuildTask task)
@@ -955,17 +1136,20 @@ private:
         }
         const SemanticAnalyzerCore::ExprView expr = this->core_.expr_view(task.expr);
         const OwnedUseMode mode = this->effective_mode(task.expr, task.requested);
+        this->core_.record_expr_owned_use_mode(task.expr, mode);
         switch (expr.kind) {
             case syntax::ExprKind::name:
                 this->build_name_expression(task, expr, mode);
                 break;
             case syntax::ExprKind::generic_apply:
-                this->push_expression(
-                    expr.callee, RequestedUse::place_only, task.start, task.continuation, task.environment);
+                this->push_expression(expr.callee, RequestedUse::place_only, task.start, task.continuation,
+                    task.environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                    task.break_cleanup_depth, task.continue_cleanup_depth);
                 break;
             case syntax::ExprKind::unary:
                 this->push_expression(expr.unary_operand, this->unary_operand_use(expr.unary_op), task.start,
-                    task.continuation, task.environment);
+                    task.continuation, task.environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                    task.break_cleanup_depth, task.continue_cleanup_depth);
                 break;
             case syntax::ExprKind::binary:
                 this->build_binary_expression(task, expr);
@@ -995,7 +1179,9 @@ private:
                 for (const syntax::ExprId element : expr.tuple_elements) {
                     elements.emplace_back(element, RequestedUse::owned);
                 }
-                this->push_expression_sequence(elements, task.start, task.continuation, task.environment);
+                this->push_expression_sequence(elements, task.start, task.continuation, task.environment,
+                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                    task.continue_cleanup_depth);
                 break;
             }
             case syntax::ExprKind::struct_literal: {
@@ -1003,7 +1189,9 @@ private:
                 for (const syntax::FieldInit& field : expr.field_inits) {
                     fields.emplace_back(field.value, RequestedUse::owned);
                 }
-                this->push_expression_sequence(fields, task.start, task.continuation, task.environment);
+                this->push_expression_sequence(fields, task.start, task.continuation, task.environment,
+                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                    task.continue_cleanup_depth);
                 break;
             }
             case syntax::ExprKind::field:
@@ -1026,8 +1214,9 @@ private:
             case syntax::ExprKind::str_byte_len:
             case syntax::ExprKind::str_is_valid_utf8:
             case syntax::ExprKind::str_from_utf8_checked:
-                this->push_expression(
-                    expr.cast_expr, RequestedUse::owned, task.start, task.continuation, task.environment);
+                this->push_expression(expr.cast_expr, RequestedUse::owned, task.start, task.continuation,
+                    task.environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                    task.break_cleanup_depth, task.continue_cleanup_depth);
                 break;
             case syntax::ExprKind::invalid:
             case syntax::ExprKind::integer_literal:
@@ -1071,10 +1260,14 @@ private:
         if (expr.binary_op == syntax::BinaryOp::logical_and || expr.binary_op == syntax::BinaryOp::logical_or) {
             const base::usize decision = this->new_block();
             const base::usize rhs = this->new_block();
-            this->push_expression(expr.binary_lhs, RequestedUse::owned, task.start, decision, task.environment);
+            this->push_expression(expr.binary_lhs, RequestedUse::owned, task.start, decision, task.environment,
+                task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                task.continue_cleanup_depth);
             this->add_edge(decision, rhs);
             this->add_edge(decision, task.continuation);
-            this->push_expression(expr.binary_rhs, RequestedUse::owned, rhs, task.continuation, task.environment);
+            this->push_expression(expr.binary_rhs, RequestedUse::owned, rhs, task.continuation, task.environment,
+                task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                task.continue_cleanup_depth);
             return;
         }
         this->push_expression_sequence(
@@ -1082,7 +1275,8 @@ private:
                 {expr.binary_lhs, RequestedUse::owned},
                 {expr.binary_rhs, RequestedUse::owned},
             },
-            task.start, task.continuation, task.environment);
+            task.start, task.continuation, task.environment, task.cleanup_scopes, task.break_target,
+            task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_call_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
@@ -1092,7 +1286,8 @@ private:
         for (const syntax::ExprId arg : expr.args) {
             operands.emplace_back(arg, RequestedUse::owned);
         }
-        this->push_expression_sequence(operands, task.start, task.continuation, task.environment);
+        this->push_expression_sequence(operands, task.start, task.continuation, task.environment, task.cleanup_scopes,
+            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_try_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
@@ -1101,7 +1296,14 @@ private:
             this->blocks_[task.start].actions.push_back(MoveAction{MoveActionKind::reject_try_payload,
                 SEMA_MOVE_INVALID_LOCAL, task.expr, OwnedUseMode::none, expr.range});
         }
-        this->push_expression(expr.try_operand, RequestedUse::owned, task.start, task.continuation, task.environment);
+        const base::usize dispatch = this->new_block();
+        const base::usize failure = this->new_block();
+        this->push_expression(expr.try_operand, RequestedUse::owned, task.start, dispatch, task.environment,
+            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth);
+        this->add_edge(dispatch, task.continuation);
+        this->add_edge(dispatch, failure);
+        this->push_cleanup_scopes(task.cleanup_scopes, 0, failure, SEMA_MOVE_EXIT_BLOCK);
     }
 
     void build_if_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
@@ -1109,25 +1311,36 @@ private:
         const base::usize decision = this->new_block();
         const base::usize then_entry = this->new_block();
         const base::usize else_entry = this->new_block();
-        this->push_expression(expr.condition, RequestedUse::owned, task.start, decision, task.environment);
+        this->reject_pattern_payload_if_needed(expr.condition_pattern, expr.condition, task.start, expr.range);
+        this->push_expression(expr.condition, RequestedUse::owned, task.start, decision, task.environment,
+            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth);
         this->add_edge(decision, then_entry);
         this->add_edge(decision, else_entry);
-        this->push_expression(expr.then_expr, task.requested, then_entry, task.continuation, task.environment);
-        this->push_expression(expr.else_expr, task.requested, else_entry, task.continuation, task.environment);
+        this->push_expression(expr.then_expr, task.requested, then_entry, task.continuation, task.environment,
+            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth);
+        this->push_expression(expr.else_expr, task.requested, else_entry, task.continuation, task.environment,
+            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth);
     }
 
     void build_block_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
     {
-        const base::usize result = this->new_block();
         const MoveEnvironment result_environment = this->block_result_environment(expr.block, task.environment);
-        this->push_statement_list(expr.block, task.start, result, task.environment);
-        this->push_expression(expr.block_result, task.requested, result, task.continuation, result_environment);
+        CleanupStack block_cleanup_scopes = task.cleanup_scopes;
+        const base::usize block_keep_depth = block_cleanup_scopes.size();
+        block_cleanup_scopes.emplace_back();
+        this->push_statement_list(expr.block, task.start, task.continuation, task.environment, block_cleanup_scopes,
+            block_keep_depth, task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth, 0, false, expr.block_result, task.requested, result_environment);
     }
 
     void build_match_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
     {
         const base::usize dispatch = this->new_block();
-        if (this->is_tracked_resource_type(this->core_.cached_expr_type(expr.match_value))) {
+        const TypeHandle match_type = this->core_.cached_expr_type(expr.match_value);
+        if (this->is_tracked_resource_type(match_type)) {
             for (const syntax::MatchArm& arm : expr.match_arms) {
                 if (this->pattern_has_bindings(arm.pattern)) {
                     this->blocks_[task.start].actions.push_back(MoveAction{MoveActionKind::reject_pattern_payload,
@@ -1135,16 +1348,35 @@ private:
                 }
             }
         }
-        this->push_expression(expr.match_value, RequestedUse::owned, task.start, dispatch, task.environment);
-        for (const syntax::MatchArm& arm : expr.match_arms) {
-            const base::usize arm_entry = this->new_block();
-            this->add_edge(dispatch, arm_entry);
+        this->push_expression(expr.match_value, RequestedUse::owned, task.start, dispatch, task.environment,
+            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth);
+        std::vector<base::usize> arm_entries;
+        arm_entries.reserve(expr.match_arms.size());
+        for (base::usize i = 0; i < expr.match_arms.size(); ++i) {
+            arm_entries.push_back(this->new_block());
+            this->add_edge(dispatch, arm_entries.back());
+        }
+        for (base::usize i = 0; i < expr.match_arms.size(); ++i) {
+            const syntax::MatchArm& arm = expr.match_arms[i];
+            const base::usize arm_entry = arm_entries[i];
             if (syntax::is_valid(arm.guard)) {
-                const base::usize value = this->new_block();
-                this->push_expression(arm.guard, RequestedUse::owned, arm_entry, value, task.environment);
-                this->push_expression(arm.value, task.requested, value, task.continuation, task.environment);
+                const base::usize guard_decision = this->new_block();
+                const base::usize value_entry = this->new_block();
+                this->push_expression(arm.guard, RequestedUse::owned, arm_entry, guard_decision, task.environment,
+                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                    task.continue_cleanup_depth);
+                this->add_edge(guard_decision, value_entry);
+                if (i + 1 < arm_entries.size() && this->core_.pattern_is_irrefutable(arm.pattern, match_type)) {
+                    this->add_edge(guard_decision, arm_entries[i + 1]);
+                }
+                this->push_expression(arm.value, task.requested, value_entry, task.continuation, task.environment,
+                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                    task.continue_cleanup_depth);
             } else {
-                this->push_expression(arm.value, task.requested, arm_entry, task.continuation, task.environment);
+                this->push_expression(arm.value, task.requested, arm_entry, task.continuation, task.environment,
+                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                    task.continue_cleanup_depth);
             }
         }
     }
@@ -1161,7 +1393,8 @@ private:
         if (syntax::is_valid(expr.array_repeat_count)) {
             elements.emplace_back(expr.array_repeat_count, RequestedUse::owned);
         }
-        this->push_expression_sequence(elements, task.start, task.continuation, task.environment);
+        this->push_expression_sequence(elements, task.start, task.continuation, task.environment, task.cleanup_scopes,
+            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_field_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
@@ -1171,8 +1404,9 @@ private:
             this->blocks_[task.start].actions.push_back(MoveAction{MoveActionKind::reject_partial_field_move,
                 SEMA_MOVE_INVALID_LOCAL, task.expr, OwnedUseMode::none, expr.range});
         }
-        this->push_expression(
-            expr.object, RequestedUse::initialized_place, task.start, task.continuation, task.environment);
+        this->push_expression(expr.object, RequestedUse::initialized_place, task.start, task.continuation,
+            task.environment, task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth);
     }
 
     void build_index_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
@@ -1187,7 +1421,8 @@ private:
                 {expr.object, RequestedUse::initialized_place},
                 {expr.index, RequestedUse::owned},
             },
-            task.start, task.continuation, task.environment);
+            task.start, task.continuation, task.environment, task.cleanup_scopes, task.break_target,
+            task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_slice_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
@@ -1201,7 +1436,8 @@ private:
         if (syntax::is_valid(expr.slice_end)) {
             operands.emplace_back(expr.slice_end, RequestedUse::owned);
         }
-        this->push_expression_sequence(operands, task.start, task.continuation, task.environment);
+        this->push_expression_sequence(operands, task.start, task.continuation, task.environment, task.cleanup_scopes,
+            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     [[nodiscard]] RequestedUse unary_operand_use(const syntax::UnaryOp op) const noexcept

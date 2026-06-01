@@ -1,0 +1,26 @@
+module move_defer_try_failure_after_move;
+
+enum ResultI32I32: u8 {
+    ok(i32) = 1,
+    err(i32) = 2,
+}
+
+fn consume[T](value: T) -> void {
+}
+
+fn fallible() -> ResultI32I32 {
+    return ResultI32I32.err(7);
+}
+
+fn duplicate[T](value: T, replacement: T) -> ResultI32I32 {
+    var current: T = value;
+    defer consume(current);
+    let consumed: T = current;
+    let ok: i32 = fallible()?;
+    current = replacement;
+    return ResultI32I32.ok(ok);
+}
+
+fn main() -> i32 {
+    return 0;
+}

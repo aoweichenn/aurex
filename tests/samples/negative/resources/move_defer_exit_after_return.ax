@@ -1,0 +1,13 @@
+module move_defer_exit_after_return;
+
+fn consume[T](value: T) -> void {
+}
+
+fn duplicate[T](value: T) -> T {
+    defer consume(value);
+    return value;
+}
+
+fn main() -> i32 {
+    return 0;
+}

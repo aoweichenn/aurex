@@ -1,0 +1,28 @@
+module move_defer_let_else_after_move;
+
+enum MaybeI32 {
+    some(i32),
+    none,
+}
+
+fn consume[T](value: T) -> void {
+}
+
+fn maybe() -> MaybeI32 {
+    return MaybeI32.none;
+}
+
+fn duplicate[T](value: T, replacement: T) -> i32 {
+    var current: T = value;
+    defer consume(current);
+    let consumed: T = current;
+    let .some(inner) = maybe() else {
+        return 0;
+    };
+    current = replacement;
+    return inner;
+}
+
+fn main() -> i32 {
+    return 0;
+}

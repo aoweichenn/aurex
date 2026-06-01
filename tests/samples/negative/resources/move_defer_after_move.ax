@@ -1,0 +1,13 @@
+module move_defer_after_move;
+
+fn consume[T](value: T) -> void {
+}
+
+fn duplicate[T](value: T) -> void {
+    let consumed: T = value;
+    defer consume(value);
+}
+
+fn main() -> i32 {
+    return 0;
+}

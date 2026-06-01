@@ -1,0 +1,32 @@
+module move_pattern_condition_payload;
+
+enum Option[T] {
+    some(T),
+    none,
+}
+
+fn unwrap_if[T](value: Option[T], fallback: T) -> T {
+    if value is .some(inner) {
+        return inner;
+    }
+    return fallback;
+}
+
+fn unwrap_if_expr[T](value: Option[T], fallback: T) -> T {
+    return if value is .some(inner) {
+        inner
+    } else {
+        fallback
+    };
+}
+
+fn unwrap_while[T](value: Option[T], fallback: T) -> T {
+    while value is .some(inner) {
+        return inner;
+    }
+    return fallback;
+}
+
+fn main() -> i32 {
+    return 0;
+}

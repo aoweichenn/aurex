@@ -19,6 +19,7 @@ struct SourceRange {
     usize begin = 0;
     usize end = 0;
 
+    [[nodiscard]] bool well_formed() const noexcept;
     [[nodiscard]] usize length() const noexcept;
     [[nodiscard]] bool empty() const noexcept;
 };
@@ -51,6 +52,7 @@ class SourceManager {
 public:
     [[nodiscard]] SourceId add_source(std::string path, std::string text);
     [[nodiscard]] const SourceFile& get(SourceId id) const noexcept;
+    [[nodiscard]] const SourceFile* try_get(SourceId id) const noexcept;
     [[nodiscard]] std::span<const SourceFile> files() const noexcept;
     [[nodiscard]] std::string_view text(SourceId id) const noexcept;
 

@@ -580,12 +580,25 @@ inspect(borrowed);
 1. checked ID / source range / source manager：统一 checked `u32` ID 分配，SourceManager 增加 `try_get()`，SourceRange 区分 invalid 和 empty，CRLF line extent 清理。
 2. token / AST / `string_view` lifetime：Token 逐步从 raw pointer 借用转向 range/owner，AST/Sema payload 建立 interner/source owner 规则。
 3. cursor / lexer / parser hardening：TokenCursor 非空 EOF invariant、LexerCursor checked add/slice；numeric suffix 白名单和比较链诊断已在阶段二完成，不再作为阶段三重复项。
-4. allocator / arena owner：BumpAllocator checked add/mul/align，空 arena adapter 不再静默退全局堆，IdentifierInterner 禁 move assignment 或 swap 化。
+4. allocator / arena owner：BumpAllocator checked add/mul/align，空 arena adapter 的默认 heap fallback 保持兼容，同时补显式 `heap_backed()` / `strict_empty()` 策略，IdentifierInterner 禁 move assignment 或 swap 化。
 5. API contract：`Result<T>::value/error` 去掉错误 `noexcept` 或改明确 fatal trap；AST reserve / TypeTable copy 等 size 估算加 checked arithmetic。
 6. Query/Sema 并发前置：ResourceSemanticsClassifier lazy mutable cache、Sema `const_cast` read path、`std::function` provider core route、query cycle poisoned policy 和 CompileBudget。
 7. IR/pass/backend hardening：cond_branch rewrite 校验有效 block，verifier gate 继续前置，TargetInfo 后续从 CLI target triple 贯通到 LLVM backend matrix。
 8. module/tooling identity：ModuleIdentity 区分 package、logical path、physical file、source root；tooling stale range helper 统一。
 9. docs/CMake/repo hygiene：顶层 README baseline、LLVM/test/LTO 入口、已跟踪 `.idea` 清理。
+
+阶段三处理结果：
+
+- 已在 `base::integer` 增加 checked `u32` / `usize` add / mul helper，并把 SourceId、syntax AST node/payload id、IdentifierInterner id、Sema TypeHandle/SymbolId、IR Value/Function/Block/Record id、driver ModuleId、QueryNodeId 等核心分配点改成 checked 转换；无法构造 40 亿节点的路径用白盒 helper 覆盖溢出拒绝。
+- `SourceManager` 新增 `try_get()`，`text()` 对 stale source 返回空 view；`SourceRange` 增加 `well_formed()`，`empty()` 不再把反向 range 当空 range，CRLF line extent 会去掉行尾 `\r`；driver JSON/text diagnostics 和 IDE diagnostics 不再对 stale source/range 直接 `get()` 崩溃。
+- Token 文本从裸 `const char* + range.length()` 改为显式 borrowed `std::string_view`，range 继续作为 source identity；TokenCursor 对空 token span 合成 EOF，避免 parser/lossless/test harness 空流 UB；LexerCursor 的 lookahead、advance_bytes、slice/nonempty_slice 都改成边界检查路径。
+- BumpAllocator 补齐 size/alignment/统计 checked arithmetic；BumpAllocatorAdapter 保留默认 heap fallback 以兼容 detached AST materialization，同时新增显式 `heap_backed()` / `strict_empty()` 策略并覆盖 strict-empty 抛错路径；TokenBuffer reserve 和 ExprNodeList touched reserve 的 size 估算也走 checked arithmetic。
+- `Result<T>::value/error/take_value` 去掉错误 `noexcept` 合同；IdentifierInterner move assignment 改成 move-construct + swap 化，避免 arena/container owner 重绑时半更新。
+- ResourceSemanticsClassifier 不再用 `mutable` lazy cache，构造时一次性建立 struct/enum indexes；分类栈里不再复制 component vector。
+- QueryContext 增加 active evaluation cycle poison：provider 即使忽略 reentrant `cycle` 结果并返回 valid output，当前及外层 evaluation 也会失败，不再把循环依赖误标 computed；active poison 栈使用 RAII guard 收口。
+- IR CFG cleanup 只在同目标 cond_branch 的目标 block 有效时降级为 branch；invalid same-target cond_branch 会保留给 verifier output gate 报错。
+- CMake 增加直观 `AUREX_ENABLE_LLVM`，`frontend-minimal`/`frontend-tests` preset 显式关闭 LLVM，普通 Release 不再默认打开 LTO；README 顶层 baseline 更新到 M6，已跟踪 `.idea` 从索引清理并依赖既有 `.gitignore` 保持本地 IDE 状态不入库。
+- 本阶段刻意没有把 typed query route table、完整 CompileBudget、完整 ModuleIdentity/TargetInfo matrix、owned String、partial move、用户 destructor 或完整 borrow checker 塞进 M6；这些仍是 M7/M8 架构项。阶段三完成的是 M6 当前实现能安全收口的 hardening 边界，并对长期项保留明确路线。
 
 阶段三验收：
 

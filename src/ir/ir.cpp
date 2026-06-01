@@ -3,6 +3,15 @@
 #include <utility>
 
 namespace aurex::ir {
+namespace {
+
+constexpr std::string_view IR_VALUE_ID_CONTEXT = "ir value id";
+constexpr std::string_view IR_GLOBAL_CONSTANT_ID_CONTEXT = "ir global constant id";
+constexpr std::string_view IR_FUNCTION_ID_CONTEXT = "ir function id";
+constexpr std::string_view IR_RECORD_ID_CONTEXT = "ir record id";
+constexpr std::string_view IR_BLOCK_ID_CONTEXT = "ir block id";
+
+} // namespace
 
 RecordLayout::RecordLayout() = default;
 
@@ -255,35 +264,35 @@ void Module::ensure_arena()
 
 ValueId add_value(Module& module, const Value& value)
 {
-    const ValueId id{static_cast<base::u32>(module.values.size())};
+    const ValueId id{base::checked_u32(module.values.size(), IR_VALUE_ID_CONTEXT)};
     module.values.push_back(module.clone_value(value));
     return id;
 }
 
 GlobalConstantId add_global_constant(Module& module, const GlobalConstant& constant)
 {
-    const GlobalConstantId id{static_cast<base::u32>(module.constants.size())};
+    const GlobalConstantId id{base::checked_u32(module.constants.size(), IR_GLOBAL_CONSTANT_ID_CONTEXT)};
     module.constants.push_back(constant);
     return id;
 }
 
 FunctionId add_function(Module& module, const Function& function)
 {
-    const FunctionId id{static_cast<base::u32>(module.functions.size())};
+    const FunctionId id{base::checked_u32(module.functions.size(), IR_FUNCTION_ID_CONTEXT)};
     module.functions.push_back(module.clone_function(function));
     return id;
 }
 
 base::u32 add_record(Module& module, const RecordLayout& record)
 {
-    const base::u32 index = static_cast<base::u32>(module.records.size());
+    const base::u32 index = base::checked_u32(module.records.size(), IR_RECORD_ID_CONTEXT);
     module.records.push_back(module.clone_record_layout(record));
     return index;
 }
 
 BlockId add_block(Module& module, Function& function, const std::string_view name)
 {
-    const BlockId id{static_cast<base::u32>(function.blocks.size())};
+    const BlockId id{base::checked_u32(function.blocks.size(), IR_BLOCK_ID_CONTEXT)};
     BasicBlock block = module.make_block();
     block.name = module.intern(name);
     function.blocks.push_back(std::move(block));

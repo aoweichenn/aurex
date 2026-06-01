@@ -323,6 +323,28 @@ TEST(CoreUnit, PassPipelineOptimizesAndReportsVerificationFailures)
         EXPECT_EQ(module.functions[0].blocks[0].terminator.target.value, exit.value);
     }
     {
+        Module module;
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        Function function = make_function(module, "invalid_same_target", i32);
+        FunctionBuilder builder{module, function};
+        const ValueId condition = builder.add(bool_value(module, true));
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {condition};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::cond_branch;
+        function.blocks[entry.value].terminator.condition = condition;
+        function.blocks[entry.value].terminator.then_target = INVALID_BLOCK_ID;
+        function.blocks[entry.value].terminator.else_target = INVALID_BLOCK_ID;
+        append_function(module, function);
+
+        PassPipelineOptions options;
+        options.optimization_level = ir::OptimizationLevel::basic;
+        options.verify_input = false;
+        const auto result = ir::run_pass_pipeline(module, options);
+        ASSERT_FALSE(result);
+        expect_contains_all(result.error().message, {"verifier=output", "then target block id is invalid"});
+        EXPECT_EQ(module.functions[0].blocks[0].terminator.kind, TerminatorKind::cond_branch);
+    }
+    {
         Module module = make_simple_module();
         module.functions[0].blocks[0].terminator.value = INVALID_VALUE_ID;
         PassPipelineOptions options;

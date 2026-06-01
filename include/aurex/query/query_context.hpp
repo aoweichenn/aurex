@@ -95,10 +95,12 @@ private:
     [[nodiscard]] QueryNode& node_for(QueryKey key);
     [[nodiscard]] bool intern_dependency_keys(const std::vector<QueryKey>& dependencies);
     [[nodiscard]] QueryEvaluationResult fail_query(QueryNode& node);
+    void poison_active_evaluations() noexcept;
 
     QueryInterner interner_;
     std::unordered_map<QueryKey, QueryNode, QueryKeyHash> nodes_;
     std::unordered_map<QueryKey, std::vector<QueryKey>, QueryKeyHash> dependents_by_dependency_;
+    std::vector<bool> active_cycle_poison_;
     base::usize dependency_edge_count_ = 0;
     QueryRevision current_revision_ = QUERY_REVISION_INITIAL;
     QueryProviderSet providers_;
@@ -118,7 +120,34 @@ QueryEvaluationResult QueryContext::evaluate_query(
     }
     QueryNode& node = *start.node;
 
+    struct ActiveCyclePoisonFrame final {
+        explicit ActiveCyclePoisonFrame(std::vector<bool>& active_cycle_poison)
+            : active_cycle_poison_(active_cycle_poison)
+        {
+            this->active_cycle_poison_.push_back(false);
+        }
+
+        ActiveCyclePoisonFrame(const ActiveCyclePoisonFrame&) = delete;
+        ActiveCyclePoisonFrame& operator=(const ActiveCyclePoisonFrame&) = delete;
+
+        ~ActiveCyclePoisonFrame()
+        {
+            this->active_cycle_poison_.pop_back();
+        }
+
+        [[nodiscard]] bool poisoned() const
+        {
+            return this->active_cycle_poison_.back();
+        }
+
+        std::vector<bool>& active_cycle_poison_;
+    };
+
+    ActiveCyclePoisonFrame active_cycle_poison{this->active_cycle_poison_};
     std::optional<ProviderOutput> output = std::forward<ProviderCall>(provider_call)();
+    if (active_cycle_poison.poisoned()) {
+        return this->fail_query(node);
+    }
     if (!output || !is_valid(*output) || output->record.key != *expected_key) {
         return this->fail_query(node);
     }

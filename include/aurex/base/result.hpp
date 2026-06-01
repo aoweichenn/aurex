@@ -46,25 +46,25 @@ public:
         return has_value();
     }
 
-    [[nodiscard]] T& value() noexcept
+    [[nodiscard]] T& value()
     {
         assert(has_value());
         return std::get<T>(storage_);
     }
 
-    [[nodiscard]] const T& value() const noexcept
+    [[nodiscard]] const T& value() const
     {
         assert(has_value());
         return std::get<T>(storage_);
     }
 
-    [[nodiscard]] T&& take_value() noexcept
+    [[nodiscard]] T&& take_value()
     {
         assert(has_value());
         return std::move(std::get<T>(storage_));
     }
 
-    [[nodiscard]] const Error& error() const noexcept
+    [[nodiscard]] const Error& error() const
     {
         assert(!has_value());
         return std::get<Error>(storage_);
@@ -104,12 +104,12 @@ public:
         return has_value();
     }
 
-    void value() const noexcept
+    void value() const
     {
         assert(has_value());
     }
 
-    [[nodiscard]] const Error& error() const noexcept
+    [[nodiscard]] const Error& error() const
     {
         assert(!has_value());
         return error_;

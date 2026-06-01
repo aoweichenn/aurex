@@ -1,16 +1,15 @@
-# Aurex M2
+# Aurex M6
 
-Documentation baseline: **M2 language-core-no-std**.
+Documentation baseline: **M6 resource, value-lifetime, cleanup, drop-glue, and tooling baseline**.
 
 Aurex is a small systems-language compiler project written in modern C++20. The
 lexer and parser are handwritten. The AST uses compact IDs and vector storage.
-Stage0 now compiles through Aurex IR -> LLVM IR -> clang by default.
-
-M2 is a deliberate reset after the M1 design track. The M1 standard-library,
-selfhost, and system/build-tool experiments are no longer active in this tree.
-M2 focuses on stabilizing the language core first: syntax, type checking,
-generics, pattern matching, `unsafe` boundaries, Aurex IR, and LLVM/native
-output.
+Stage0 compiles through Aurex IR -> LLVM IR -> clang by default when the LLVM
+backend is enabled. The current M6 line builds on the M2 language-core reset,
+the M3 query/tooling/module baseline, M4 static traits, and M5 default trait
+methods. M6 closes compiler-owned resource classification, whole-local move
+analysis, cleanup lowering, drop glue, and the first tooling projections for
+resource summaries.
 
 ## Quick Start
 
@@ -193,9 +192,8 @@ accepted without requiring a catch-all wildcard.
 
 The previous M1/selfhost/bootstrap experiment has been removed from the active
 tree. Active work is on the C++ Stage0 compiler, Aurex IR, and the LLVM backend.
-A new bootstrap track should wait until the M2 language core has stable module
-isolation, visibility, generics, sum types, pattern matching, `unsafe`,
-non-resource capability/trait/where, and IR contracts.
+A new bootstrap track should wait until the M6 resource baseline is followed by
+the remaining lifetime, module isolation, FFI, and self-hosting contracts.
 
 ## Documentation
 

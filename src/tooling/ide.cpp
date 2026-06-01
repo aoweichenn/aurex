@@ -302,15 +302,19 @@ void mix_lossless_tree(query::StableHashBuilder& builder, const syntax::Lossless
     std::vector<IdeDiagnostic> result;
     result.reserve(diagnostics.events.size());
     for (const query::QueryDiagnosticEvent& diagnostic : diagnostics.events) {
-        const base::SourceFile& file = sources.get(diagnostic.range.source);
+        const base::SourceFile* const file =
+            diagnostic.range.well_formed() ? sources.try_get(diagnostic.range.source) : nullptr;
+        if (file == nullptr) {
+            continue;
+        }
         result.push_back(IdeDiagnostic{
             diagnostic.severity,
             diagnostic.category,
             diagnostic.code,
             diagnostic.range,
-            file.line_column(diagnostic.range.begin),
-            file.line_column(diagnostic.range.end),
-            std::string(file.path()),
+            file->line_column(diagnostic.range.begin),
+            file->line_column(diagnostic.range.end),
+            std::string(file->path()),
             diagnostic.message,
             diagnostic.children,
             ide_diagnostic_owner_stages(diagnostic.category),
@@ -747,11 +751,14 @@ void recover_resolved_fragment_source_part(
 [[nodiscard]] std::optional<std::string_view> source_range_text(
     const base::SourceManager& sources, const base::SourceRange& range) noexcept
 {
-    const std::span<const base::SourceFile> files = sources.files();
-    if (range.source.value >= files.size() || range.begin > range.end) {
+    if (!range.well_formed()) {
         return std::nullopt;
     }
-    const std::string_view text = files[range.source.value].text();
+    const base::SourceFile* const file = sources.try_get(range.source);
+    if (file == nullptr) {
+        return std::nullopt;
+    }
+    const std::string_view text = file->text();
     if (range.end > text.size()) {
         return std::nullopt;
     }

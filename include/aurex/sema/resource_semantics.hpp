@@ -76,7 +76,7 @@ public:
     [[nodiscard]] ResourceSemanticsSummary classify(TypeHandle type) const;
 
 private:
-    void ensure_indexes() const;
+    void build_indexes();
     [[nodiscard]] const StructInfo* indexed_struct_info(TypeHandle type) const;
     [[nodiscard]] std::span<const TypeHandle> indexed_enum_payload_types(TypeHandle type) const;
     [[nodiscard]] std::optional<std::vector<TypeHandle>> structural_components(TypeHandle type) const;
@@ -84,9 +84,8 @@ private:
     const CheckedModule& checked_;
     GenericCopyPredicate generic_copy_predicate_;
     StructuralComponentProvider structural_component_provider_;
-    mutable std::unordered_map<base::u32, const StructInfo*> struct_infos_by_type_;
-    mutable std::unordered_map<base::u32, std::vector<TypeHandle>> enum_payload_types_by_type_;
-    mutable bool indexes_built_ = false;
+    std::unordered_map<base::u32, const StructInfo*> struct_infos_by_type_;
+    std::unordered_map<base::u32, std::vector<TypeHandle>> enum_payload_types_by_type_;
 };
 
 } // namespace aurex::sema

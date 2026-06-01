@@ -143,20 +143,20 @@ struct Token {
     Token() = default;
 
     Token(const TokenKind token_kind, const base::SourceRange token_range, const std::string_view token_text) noexcept
-        : kind(token_kind), range(token_range), text_data_(token_text.empty() ? nullptr : token_text.data())
+        : kind(token_kind), range(token_range), text_(token_text)
     {
     }
 
     [[nodiscard]] std::string_view text() const noexcept
     {
-        if (this->text_data_ == nullptr) {
-            return {};
-        }
-        return std::string_view{this->text_data_, this->range.length()};
+        return this->text_;
     }
 
 private:
-    const char* text_data_ = nullptr;
+    // Token text is a borrowed view into SourceManager-owned source storage or
+    // an explicit test fixture string. The SourceRange remains the stable
+    // source identity for diagnostics and tooling.
+    std::string_view text_;
 };
 
 [[nodiscard]] std::string_view token_kind_name(TokenKind kind) noexcept;

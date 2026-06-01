@@ -109,7 +109,7 @@ void PatternNodeList::push_back(const PatternNode& node)
 
 PatternId PatternNodeList::append(const PatternNode& node)
 {
-    const PatternId id{static_cast<base::u32>(this->headers_.size())};
+    const PatternId id{base::checked_u32(this->headers_.size(), SYNTAX_PATTERN_NODE_ID_CONTEXT)};
     PatternNodeHeader header;
     header.kind = node.kind;
     header.range = node.range;

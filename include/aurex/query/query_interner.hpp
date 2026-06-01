@@ -52,7 +52,7 @@ public:
 private:
     [[nodiscard]] QueryInternedIdentity* identity_for(QueryNodeId id) noexcept;
     [[nodiscard]] bool can_allocate_node_id() const noexcept;
-    [[nodiscard]] QueryNodeId next_node_id() const noexcept;
+    [[nodiscard]] QueryNodeId next_node_id() const;
 
     std::vector<QueryInternedIdentity> identities_;
     std::unordered_map<QueryKey, QueryNodeId, QueryKeyHash> ids_by_key_;

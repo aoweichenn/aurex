@@ -6,6 +6,8 @@
 
 #include <cstdint>
 #include <functional>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -33,6 +35,8 @@ constexpr base::usize BASE_TEST_BUMP_NORMALIZED_ALIGNMENT = 32;
 constexpr base::usize BASE_TEST_BUMP_LARGE_TEXT_BYTES = 4096;
 constexpr base::usize BASE_TEST_BUMP_TOUCHED_RESERVE_BYTES = 256;
 constexpr base::usize BASE_TEST_BUMP_TOUCHED_ALLOC_BYTES = 64;
+constexpr base::usize BASE_TEST_BUMP_HUGE_ALIGNMENT =
+    (std::numeric_limits<base::usize>::max() / 2U) + BASE_TEST_BUMP_ALIGNMENT;
 constexpr char BASE_TEST_BUMP_FILL_CHAR = 'x';
 
 } // namespace
@@ -42,10 +46,12 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult)
     EXPECT_EQ(base::abi::AUREX_INTERNAL_SYMBOL_PREFIX, "m0");
 
     base::SourceRange forward{{7}, 3, 9};
+    EXPECT_TRUE(forward.well_formed());
     EXPECT_EQ(forward.length(), 6U);
     EXPECT_FALSE(forward.empty());
 
     base::SourceRange reversed{{7}, 9, 3};
+    EXPECT_FALSE(reversed.well_formed());
     EXPECT_EQ(reversed.length(), 0U);
     EXPECT_FALSE(reversed.empty());
 
@@ -55,9 +61,12 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult)
 
     base::SourceManager sources;
     const base::SourceId id = sources.add_source("unit.ax", "module unit;");
+    EXPECT_EQ(sources.try_get(id), &sources.get(id));
+    EXPECT_EQ(sources.try_get(base::SourceId{std::numeric_limits<base::u32>::max()}), nullptr);
     EXPECT_EQ(sources.get(id).id().value, id.value);
     EXPECT_EQ(sources.get(id).path(), "unit.ax");
     EXPECT_EQ(sources.text(id), "module unit;");
+    EXPECT_EQ(sources.text(base::SourceId{std::numeric_limits<base::u32>::max()}), "");
     EXPECT_EQ(sources.get(id).line_column(0).line, 1U);
     EXPECT_EQ(sources.get(id).line_column(0).column, 1U);
 
@@ -167,6 +176,25 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult)
     EXPECT_EQ(failed_void.error().code, ErrorCode::internal_error);
 }
 
+TEST(CoreUnit, CheckedIntegerHelpersRejectOverflow)
+{
+    EXPECT_TRUE(base::fits_u32(0U));
+    EXPECT_TRUE(base::fits_u32(base::BASE_U32_MAX_AS_USIZE));
+    EXPECT_FALSE(base::fits_u32(base::BASE_U32_MAX_AS_USIZE + 1U));
+    EXPECT_EQ(
+        base::checked_u32(base::BASE_U32_MAX_AS_USIZE, "unit checked u32"), std::numeric_limits<base::u32>::max());
+    EXPECT_THROW(
+        static_cast<void>(base::checked_u32(base::BASE_U32_MAX_AS_USIZE + 1U, "unit checked u32")), std::length_error);
+    EXPECT_EQ(base::checked_add_usize(2U, 3U, "unit checked add"), 5U);
+    EXPECT_EQ(base::checked_mul_usize(4U, 5U, "unit checked mul"), 20U);
+    EXPECT_THROW(
+        static_cast<void>(base::checked_add_usize(std::numeric_limits<base::usize>::max(), 1U, "unit checked add")),
+        std::length_error);
+    EXPECT_THROW(
+        static_cast<void>(base::checked_mul_usize(std::numeric_limits<base::usize>::max(), 2U, "unit checked mul")),
+        std::length_error);
+}
+
 TEST(CoreUnit, SourceFileLineTableHandlesOffsetsAndExtents)
 {
     base::SourceManager sources;
@@ -196,6 +224,13 @@ TEST(CoreUnit, SourceFileLineTableHandlesOffsetsAndExtents)
     EXPECT_EQ(third.begin, 13U);
     EXPECT_EQ(third.end, 18U);
     EXPECT_EQ(file.text().substr(third.begin, third.end - third.begin), "third");
+
+    const base::SourceId crlf_id = sources.add_source("crlf.ax", "alpha\r\nbeta\r\n");
+    const base::SourceFile& crlf_file = sources.get(crlf_id);
+    const base::SourceLineExtent crlf_first = crlf_file.line_extent(0);
+    EXPECT_EQ(crlf_file.text().substr(crlf_first.begin, crlf_first.end - crlf_first.begin), "alpha");
+    const base::SourceLineExtent crlf_second = crlf_file.line_extent(7);
+    EXPECT_EQ(crlf_file.text().substr(crlf_second.begin, crlf_second.end - crlf_second.begin), "beta");
 }
 
 TEST(CoreUnit, BumpAllocatorCopiesStringsAndResetsWholeArena)
@@ -212,6 +247,7 @@ TEST(CoreUnit, BumpAllocatorCopiesStringsAndResetsWholeArena)
     void* const normalized = arena.allocate(1, BASE_TEST_BUMP_NON_POWER_ALIGNMENT);
     ASSERT_NE(normalized, nullptr);
     EXPECT_EQ(reinterpret_cast<std::uintptr_t>(normalized) % BASE_TEST_BUMP_NORMALIZED_ALIGNMENT, 0U);
+    EXPECT_THROW(static_cast<void>(arena.allocate(1, BASE_TEST_BUMP_HUGE_ALIGNMENT)), std::bad_array_new_length);
 
     const std::string_view hello = arena.copy_string("hello");
     EXPECT_EQ(hello, "hello");
@@ -255,6 +291,11 @@ TEST(CoreUnit, BumpAllocatorMoveTransfersBlocksAndStats)
     EXPECT_GE(assigned.allocated_bytes(), allocated);
     EXPECT_EQ(assigned.copy_string("assigned"), "assigned");
     EXPECT_EQ(moved.allocated_bytes(), 0U);
+
+    base::BumpAllocator* const assigned_alias = &assigned;
+    assigned = std::move(*assigned_alias);
+    EXPECT_GT(assigned.allocated_bytes(), 0U);
+    EXPECT_EQ(assigned.copy_string("self-assigned"), "self-assigned");
 }
 
 TEST(CoreUnit, BumpAllocatorTouchedReservePreallocatesWritableStorage)
@@ -276,6 +317,13 @@ TEST(CoreUnit, BumpAllocatorTouchedReservePreallocatesWritableStorage)
     const base::usize blocks_after_first_alloc = arena.block_count();
     arena.reserve_touched(BASE_TEST_BUMP_TOUCHED_ALLOC_BYTES);
     EXPECT_EQ(arena.block_count(), blocks_after_first_alloc);
+
+    arena.reset();
+    EXPECT_EQ(arena.block_count(), 0U);
+    EXPECT_EQ(arena.used_bytes(), 0U);
+    arena.reserve_touched(BASE_TEST_BUMP_TOUCHED_ALLOC_BYTES);
+    EXPECT_EQ(arena.block_count(), 1U);
+    EXPECT_EQ(arena.used_bytes(), 0U);
 }
 
 TEST(CoreUnit, BumpAllocatorAdapterBacksStandardVectors)
@@ -299,6 +347,13 @@ TEST(CoreUnit, BumpAllocatorAdapterBacksStandardVectors)
     EXPECT_EQ(copied.front(), 1);
     EXPECT_EQ(copied.back(), 3);
     EXPECT_GT(copy_arena.allocated_bytes(), 0U);
+
+    base::BumpVector<int> detached{base::BumpAllocatorAdapter<int>::heap_backed()};
+    detached.push_back(4);
+    EXPECT_EQ(detached.front(), 4);
+
+    base::BumpVector<int> invalid{base::BumpAllocatorAdapter<int>::strict_empty()};
+    EXPECT_THROW(invalid.push_back(5), std::bad_alloc);
 }
 
 TEST(CoreUnit, BumpAllocatorAdapterBacksStandardContainers)

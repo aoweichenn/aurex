@@ -3,10 +3,16 @@
 
 #include <cassert>
 #include <memory>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 
 namespace aurex::sema {
+namespace {
+
+constexpr std::string_view SEMA_SYMBOL_TABLE_ID_CONTEXT = "semantic symbol table id";
+
+} // namespace
 
 SymbolTable::SymbolTable()
     : arena_(std::make_unique<base::BumpAllocator>()), symbols_(make_sema_vector<Symbol>(*this->arena_)),
@@ -81,7 +87,7 @@ base::Result<SymbolId> SymbolTable::insert(Symbol symbol, base::DiagnosticSink& 
         return base::Result<SymbolId>::fail({base::ErrorCode::sema_error, std::string(SEMA_DUPLICATE_SYMBOL)});
     }
 
-    const SymbolId id{static_cast<base::u32>(this->symbols_.size())};
+    const SymbolId id{base::checked_u32(this->symbols_.size(), SEMA_SYMBOL_TABLE_ID_CONTEXT)};
     const IdentId name = symbol.name_id;
     this->symbols_.push_back(symbol);
     this->scopes_.back().emplace(name, id);

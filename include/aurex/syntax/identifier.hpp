@@ -66,6 +66,7 @@ private:
         base::BumpAllocatorAdapter<IdMapEntry>>;
 
     void ensure_storage();
+    void swap(IdentifierInterner& other) noexcept;
 
     std::unique_ptr<base::BumpAllocator> arena_;
     TextVector texts_;

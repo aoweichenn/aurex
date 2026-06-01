@@ -107,7 +107,7 @@ void TypeNodeList::push_back(const TypeNode& node)
 
 TypeId TypeNodeList::append(const TypeNode& node)
 {
-    const TypeId id{static_cast<base::u32>(this->headers_.size())};
+    const TypeId id{base::checked_u32(this->headers_.size(), SYNTAX_TYPE_NODE_ID_CONTEXT)};
     TypeNodeHeader header;
     header.kind = node.kind;
     header.range = node.range;

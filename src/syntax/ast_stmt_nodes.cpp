@@ -119,7 +119,7 @@ void StmtNodeList::push_back(StmtNode node)
 
 StmtId StmtNodeList::append(StmtNode node)
 {
-    const StmtId id{static_cast<base::u32>(this->headers_.size())};
+    const StmtId id{base::checked_u32(this->headers_.size(), SYNTAX_STMT_NODE_ID_CONTEXT)};
     StmtNodeHeader header;
     header.kind = pack_kind(node.kind);
     header.range = node.range;

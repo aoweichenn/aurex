@@ -54,7 +54,7 @@ template <typename T, typename Allocator>
 template <typename T, typename Allocator>
 [[nodiscard]] AstArenaVector<T> copy_detached_ast_vector(const std::vector<T, Allocator>& values)
 {
-    AstArenaVector<T> copy;
+    AstArenaVector<T> copy{base::BumpAllocatorAdapter<T>::heap_backed()};
     copy.reserve(values.size());
     copy.insert(copy.end(), values.begin(), values.end());
     return copy;

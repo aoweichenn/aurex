@@ -24,6 +24,7 @@ constexpr std::string_view SEMA_TRAIT_DEFAULT_INSTANCE_STABLE_PREFIX = "trait-de
 constexpr std::string_view SEMA_TRAIT_DEFAULT_OVERRIDE_SIGNATURE_NOTE =
     "trait method has a default body, but an explicit override must still match the requirement signature";
 constexpr base::usize SEMA_TRAIT_SUBSTITUTION_STACK_INITIAL_CAPACITY = 8;
+constexpr std::string_view SEMA_TRAIT_PREDICATE_ID_CONTEXT = "semantic trait predicate id";
 constexpr base::u64 SEMA_TRAIT_IMPL_COHERENCE_KEY_MARKER = 0x53454d4154524348ULL;
 constexpr base::u64 SEMA_TRAIT_SELF_PREDICATE_KEY_MARKER = 0x53454d4154525346ULL;
 
@@ -481,7 +482,8 @@ base::u32 SemanticAnalyzerCore::TraitAnalyzer::record_trait_self_predicate(
     }
 
     TraitPredicate predicate = this->core_.state_.checked.make_trait_predicate();
-    predicate.index = static_cast<base::u32>(this->core_.state_.checked.trait_predicates.size());
+    predicate.index =
+        base::checked_u32(this->core_.state_.checked.trait_predicates.size(), SEMA_TRAIT_PREDICATE_ID_CONTEXT);
     predicate.kind = TraitPredicateKind::declared_trait;
     predicate.origin = TraitPredicateOrigin::trait_self;
     predicate.subject_type = self_type->second;
@@ -1022,7 +1024,8 @@ base::u32 SemanticAnalyzerCore::TraitAnalyzer::record_trait_impl_predicate(
     const TraitSignature& trait, TraitImplInfo& impl_info, const query::StableFingerprint128 fingerprint) const
 {
     TraitPredicate predicate = this->core_.state_.checked.make_trait_predicate();
-    predicate.index = static_cast<base::u32>(this->core_.state_.checked.trait_predicates.size());
+    predicate.index =
+        base::checked_u32(this->core_.state_.checked.trait_predicates.size(), SEMA_TRAIT_PREDICATE_ID_CONTEXT);
     predicate.kind = TraitPredicateKind::declared_trait;
     predicate.origin = TraitPredicateOrigin::explicit_impl;
     predicate.subject_type = impl_info.self_type;
@@ -1036,8 +1039,9 @@ base::u32 SemanticAnalyzerCore::TraitAnalyzer::record_trait_impl_predicate(
     predicate.item = impl_info.item;
     predicate.range = impl_info.range;
     predicate.part_index = impl_info.part_index;
+    const base::u32 predicate_index = predicate.index;
     this->core_.state_.checked.trait_predicates.push_back(std::move(predicate));
-    return static_cast<base::u32>(this->core_.state_.checked.trait_predicates.size() - 1U);
+    return predicate_index;
 }
 
 void SemanticAnalyzerCore::TraitAnalyzer::record_trait_impl_evidence(const TraitImplInfo& impl_info) const

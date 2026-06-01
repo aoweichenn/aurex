@@ -615,7 +615,7 @@ bool ExprNodeList::retag_block_expr(
 
 ExprId ExprNodeList::append_header(const ExprKind kind, const base::SourceRange& range, const base::u32 payload)
 {
-    const ExprId id{static_cast<base::u32>(this->headers_.size())};
+    const ExprId id{base::checked_u32(this->headers_.size(), SYNTAX_EXPR_NODE_ID_CONTEXT)};
     this->headers_.push_back(ExprNodeHeader{range, payload, kind});
     return id;
 }
@@ -677,34 +677,52 @@ bool ExprNodeList::is_block_payload_kind(const ExprKind kind) const noexcept
     return kind == ExprKind::block_expr || kind == ExprKind::unsafe_block;
 }
 
-base::usize ExprNodeList::allocation_bytes(const base::usize count, const base::usize element_size) noexcept
+base::usize ExprNodeList::allocation_bytes(const base::usize count, const base::usize element_size)
 {
     if (count == 0) {
         return 0;
     }
-    return count * element_size + SYNTAX_AST_ARENA_ALLOCATION_PADDING_BYTES;
+    return base::checked_add_usize(base::checked_mul_usize(count, element_size, SYNTAX_EXPR_NODE_ID_CONTEXT),
+        SYNTAX_AST_ARENA_ALLOCATION_PADDING_BYTES, SYNTAX_EXPR_NODE_ID_CONTEXT);
 }
 
-base::usize ExprNodeList::estimated_arena_bytes(const AstReserveEstimate::Exprs& plan) noexcept
+base::usize ExprNodeList::estimated_arena_bytes(const AstReserveEstimate::Exprs& plan)
 {
     base::usize bytes = allocation_bytes(plan.headers, sizeof(ExprNodeHeader));
-    bytes += allocation_bytes(plan.literals, sizeof(LiteralExprPayload));
-    bytes += allocation_bytes(plan.names, sizeof(NameExprPayload));
-    bytes += allocation_bytes(plan.generic_applies, sizeof(GenericApplyExprPayload));
-    bytes += allocation_bytes(plan.unaries, sizeof(UnaryExprPayload));
-    bytes += allocation_bytes(plan.tries, sizeof(TryExprPayload));
-    bytes += allocation_bytes(plan.binaries, sizeof(BinaryExprPayload));
-    bytes += allocation_bytes(plan.calls, sizeof(CallExprPayload));
-    bytes += allocation_bytes(plan.ifs, sizeof(IfExprPayload));
-    bytes += allocation_bytes(plan.blocks, sizeof(BlockExprPayload));
-    bytes += allocation_bytes(plan.matches, sizeof(MatchExprPayload));
-    bytes += allocation_bytes(plan.arrays, sizeof(ArrayExprPayload));
-    bytes += allocation_bytes(plan.tuples, sizeof(AstArenaVector<ExprId>));
-    bytes += allocation_bytes(plan.fields, sizeof(FieldExprPayload));
-    bytes += allocation_bytes(plan.indexes, sizeof(IndexExprPayload));
-    bytes += allocation_bytes(plan.slices, sizeof(SliceExprPayload));
-    bytes += allocation_bytes(plan.struct_literals, sizeof(StructLiteralExprPayload));
-    bytes += allocation_bytes(plan.casts, sizeof(CastExprPayload));
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.literals, sizeof(LiteralExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.names, sizeof(NameExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.generic_applies, sizeof(GenericApplyExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.unaries, sizeof(UnaryExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.tries, sizeof(TryExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.binaries, sizeof(BinaryExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.calls, sizeof(CallExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes =
+        base::checked_add_usize(bytes, allocation_bytes(plan.ifs, sizeof(IfExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.blocks, sizeof(BlockExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.matches, sizeof(MatchExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.arrays, sizeof(ArrayExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.tuples, sizeof(AstArenaVector<ExprId>)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.fields, sizeof(FieldExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.indexes, sizeof(IndexExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.slices, sizeof(SliceExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.struct_literals, sizeof(StructLiteralExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
+    bytes = base::checked_add_usize(
+        bytes, allocation_bytes(plan.casts, sizeof(CastExprPayload)), SYNTAX_EXPR_NODE_ID_CONTEXT);
     return bytes;
 }
 

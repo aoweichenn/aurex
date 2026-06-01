@@ -27,6 +27,9 @@ constexpr std::string_view SEMA_GENERIC_ABI_GLOBAL_ID_PREFIX = "_k";
 constexpr std::string_view SEMA_GENERIC_ABI_PRIMARY_PREFIX = "_p";
 constexpr std::string_view SEMA_GENERIC_ABI_SECONDARY_PREFIX = "_s";
 constexpr std::string_view SEMA_GENERIC_ABI_BYTE_COUNT_PREFIX = "_n";
+constexpr std::string_view SEMA_GENERIC_PREDICATE_ID_CONTEXT = "semantic generic trait predicate id";
+constexpr std::string_view SEMA_GENERIC_OBLIGATION_ID_CONTEXT = "semantic generic trait obligation id";
+constexpr std::string_view SEMA_GENERIC_PARAM_ENV_ID_CONTEXT = "semantic generic param env id";
 constexpr std::string_view SEMA_CAPABILITY_DROP = "Drop";
 constexpr std::string_view SEMA_GENERIC_PARAM_IDENTITY_MARKER = "generic-param";
 constexpr std::string_view SEMA_GENERIC_TEMPLATE_INCREMENTAL_TAG = "|generic_template";
@@ -685,14 +688,15 @@ base::u32 SemanticAnalyzerCore::GenericAnalyzer::record_generic_trait_predicate(
     const TraitPredicateKind kind, const CapabilityKind capability, const TraitSignature* const trait)
 {
     TraitPredicate predicate = this->core_.state_.checked.make_trait_predicate();
-    predicate.index = static_cast<base::u32>(this->core_.state_.checked.trait_predicates.size());
+    predicate.index =
+        base::checked_u32(this->core_.state_.checked.trait_predicates.size(), SEMA_GENERIC_PREDICATE_ID_CONTEXT);
     predicate.kind = kind;
     predicate.origin = TraitPredicateOrigin::explicit_where;
     predicate.subject_type = this->core_.generic_param_placeholder(info, param_index);
     predicate.subject_param_name_id = constraint.param_name_id;
     predicate.subject_param_identity = param_index < info.param_identities.size() ? info.param_identities[param_index]
                                                                                   : INVALID_GENERIC_PARAM_IDENTITY;
-    predicate.subject_param_index = static_cast<base::u32>(param_index);
+    predicate.subject_param_index = base::checked_u32(param_index, SEMA_GENERIC_PREDICATE_ID_CONTEXT);
     predicate.builtin_capability = capability;
     if (trait != nullptr) {
         predicate.trait_name = this->core_.state_.checked.intern_text(trait->name);
@@ -722,7 +726,8 @@ base::u32 SemanticAnalyzerCore::GenericAnalyzer::record_generic_trait_predicate(
     obligation.item = info.item;
     obligation.range = this->core_.state_.checked.trait_predicates[predicate_index].range;
     obligation.part_index = info.part_index;
-    const base::u32 obligation_index = static_cast<base::u32>(this->core_.state_.checked.trait_obligations.size());
+    const base::u32 obligation_index =
+        base::checked_u32(this->core_.state_.checked.trait_obligations.size(), SEMA_GENERIC_OBLIGATION_ID_CONTEXT);
     this->core_.state_.checked.trait_obligations.push_back(obligation);
     info.obligation_indices.push_back(obligation_index);
 
@@ -768,7 +773,8 @@ void SemanticAnalyzerCore::GenericAnalyzer::record_generic_param_env(
     param_env.predicate_indices = this->core_.state_.checked.copy_index_table(info.predicate_indices);
     param_env.range = item.range;
     param_env.part_index = info.part_index;
-    info.param_env_index = static_cast<base::u32>(this->core_.state_.checked.param_envs.size());
+    info.param_env_index =
+        base::checked_u32(this->core_.state_.checked.param_envs.size(), SEMA_GENERIC_PARAM_ENV_ID_CONTEXT);
     this->core_.state_.checked.param_envs.push_back(std::move(param_env));
 }
 

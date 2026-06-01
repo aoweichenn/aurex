@@ -38,6 +38,7 @@ constexpr unsigned int DRIVER_JSON_NIBBLE_BITS = 4U;
 constexpr unsigned int DRIVER_JSON_LOW_NIBBLE_MASK = 0x0fU;
 constexpr char DRIVER_JSON_HEX_DIGITS[] = "0123456789abcdef";
 constexpr std::string_view DRIVER_JSON_FORMAT = "aurex-diagnostics-v1";
+constexpr std::string_view DRIVER_UNKNOWN_DIAGNOSTIC_PATH = "<unknown>";
 
 [[nodiscard]] bool env_equals(const char* const value, const std::string_view expected) noexcept
 {
@@ -232,14 +233,18 @@ void print_json_labels(std::ostream& out, const base::SourceManager& sources,
     out << "      \"labels\": [\n";
     for (base::usize index = 0; index < labels.size(); ++index) {
         const base::DiagnosticLabel& label = labels[index];
-        const base::SourceFile& file = sources.get(label.range.source);
+        const base::SourceFile* const file = sources.try_get(label.range.source);
         out << "        {\n";
         out << "          ";
         print_json_string_field(out, "style", base::diagnostic_label_style_name(label.style), true);
         out << "          ";
         print_json_string_field(out, "message", label.message, true);
         out << "          \"range\": ";
-        print_json_range_value(out, file, label.range, "          ");
+        if (file == nullptr || !label.range.well_formed()) {
+            out << "null";
+        } else {
+            print_json_range_value(out, *file, label.range, "          ");
+        }
         out << "\n";
         out << "        }";
         if (index + 1 < labels.size()) {
@@ -260,7 +265,7 @@ void print_json_children(std::ostream& out, const base::SourceManager& sources,
     out << "      \"children\": [\n";
     for (base::usize index = 0; index < children.size(); ++index) {
         const base::DiagnosticChild& child = children[index];
-        const base::SourceFile& file = sources.get(child.range.source);
+        const base::SourceFile* const file = sources.try_get(child.range.source);
         out << "        {\n";
         out << "          ";
         print_json_string_field(out, "severity", base::severity_name(child.severity), true);
@@ -271,7 +276,11 @@ void print_json_children(std::ostream& out, const base::SourceManager& sources,
         out << "          ";
         print_json_string_field(out, "message", child.message, true);
         out << "          \"range\": ";
-        print_json_range_value(out, file, child.range, "          ");
+        if (file == nullptr || !child.range.well_formed()) {
+            out << "null";
+        } else {
+            print_json_range_value(out, *file, child.range, "          ");
+        }
         out << "\n";
         out << "        }";
         if (index + 1 < children.size()) {
@@ -300,7 +309,7 @@ void print_json_diagnostic_entry(std::ostream& out, const base::Severity severit
     print_json_string_field(out, "code", base::diagnostic_code_name(code), true);
     out << "      ";
     print_json_string_field(out, "message", message, true);
-    if (file != nullptr && range != nullptr) {
+    if (file != nullptr && range != nullptr && range->well_formed()) {
         print_json_range(out, *file, *range);
     } else {
         print_json_null_range(out);
@@ -325,9 +334,9 @@ void print_json_diagnostics(
     out << "  \"diagnostics\": [\n";
     for (base::usize index = 0; index < count; ++index) {
         const query::QueryDiagnosticEvent& diagnostic = all[index];
-        const base::SourceFile& file = sources.get(diagnostic.range.source);
+        const base::SourceFile* const file = sources.try_get(diagnostic.range.source);
         print_json_diagnostic_entry(out, diagnostic.severity, diagnostic.category, diagnostic.code, diagnostic.message,
-            &file, &diagnostic.range, &sources, diagnostic.labels, diagnostic.children);
+            file, &diagnostic.range, &sources, diagnostic.labels, diagnostic.children);
         if (index + 1 < count) {
             out << ",";
         }
@@ -347,16 +356,24 @@ void print_text_diagnostics(
     const bool color = diagnostic_color_enabled();
     for (base::usize index = 0; index < count; ++index) {
         const query::QueryDiagnosticEvent& diagnostic = all[index];
-        const base::SourceFile& file = sources.get(diagnostic.range.source);
-        const base::LineColumn location = file.line_column(diagnostic.range.begin);
-        out << file.path() << ":" << location.line << ":" << location.column << ": ";
+        const base::SourceFile* const file = sources.try_get(diagnostic.range.source);
+        const base::LineColumn location = file != nullptr && diagnostic.range.well_formed()
+            ? file->line_column(diagnostic.range.begin)
+            : base::LineColumn{};
+        out << (file == nullptr ? DRIVER_UNKNOWN_DIAGNOSTIC_PATH : file->path()) << ":" << location.line << ":"
+            << location.column << ": ";
         print_colored(out, color, severity_color(diagnostic.severity), base::severity_name(diagnostic.severity));
         out << ": " << diagnostic.message << "\n";
-        print_diagnostic_source(out, file, diagnostic, color);
+        if (file != nullptr && diagnostic.range.well_formed()) {
+            print_diagnostic_source(out, *file, diagnostic, color);
+        }
         for (const base::DiagnosticChild& child : diagnostic.children) {
-            const base::SourceFile& child_file = sources.get(child.range.source);
-            const base::LineColumn child_location = child_file.line_column(child.range.begin);
-            out << child_file.path() << ":" << child_location.line << ":" << child_location.column << ": ";
+            const base::SourceFile* const child_file = sources.try_get(child.range.source);
+            const base::LineColumn child_location = child_file != nullptr && child.range.well_formed()
+                ? child_file->line_column(child.range.begin)
+                : base::LineColumn{};
+            out << (child_file == nullptr ? DRIVER_UNKNOWN_DIAGNOSTIC_PATH : child_file->path()) << ":"
+                << child_location.line << ":" << child_location.column << ": ";
             print_colored(out, color, severity_color(child.severity), base::severity_name(child.severity));
             out << ": " << child.message << "\n";
         }

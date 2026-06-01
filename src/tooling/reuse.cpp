@@ -46,11 +46,10 @@ constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
 [[nodiscard]] const base::SourceFile* tooling_source_file_for_range(
     const IdeSnapshot& snapshot, const base::SourceRange range) noexcept
 {
-    const std::span<const base::SourceFile> files = snapshot.sources.files();
-    if (range.source.value >= files.size()) {
+    if (!range.well_formed()) {
         return nullptr;
     }
-    return &files[range.source.value];
+    return snapshot.sources.try_get(range.source);
 }
 
 [[nodiscard]] ToolingTextRange tooling_range_for_snapshot(const IdeSnapshot& snapshot, const base::SourceRange range)
@@ -114,8 +113,7 @@ constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
 
 [[nodiscard]] std::string_view tooling_invalidation_reason(const IdeSemanticFact& fact) noexcept
 {
-    return tooling_semantic_fact_is_body_local(fact) ? TOOLING_REUSE_REASON_BODY_LOCAL
-                                                     : TOOLING_REUSE_REASON_SIGNATURE;
+    return tooling_semantic_fact_is_body_local(fact) ? TOOLING_REUSE_REASON_BODY_LOCAL : TOOLING_REUSE_REASON_SIGNATURE;
 }
 
 [[nodiscard]] std::vector<query::QueryKey> tooling_dependencies_for_record(
@@ -134,7 +132,8 @@ constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
 {
     query::QueryContext context;
     for (const query::QueryRecord& record : snapshot.records) {
-        static_cast<void>(context.seed_completed_record(record, tooling_dependencies_for_record(record, snapshot.dependencies)));
+        static_cast<void>(
+            context.seed_completed_record(record, tooling_dependencies_for_record(record, snapshot.dependencies)));
     }
     return context;
 }
@@ -256,8 +255,7 @@ void tooling_append_reuse_fact(ToolingReusePlan& plan, ToolingReuseFact fact)
     return diff;
 }
 
-void tooling_append_invalidation_roots(
-    ToolingReusePlan& plan, const IdeSnapshot& before, const IdeEditImpact& impact)
+void tooling_append_invalidation_roots(ToolingReusePlan& plan, const IdeSnapshot& before, const IdeEditImpact& impact)
 {
     if (!impact.valid) {
         return;
@@ -284,8 +282,7 @@ void tooling_append_current_facts(ToolingReusePlan& plan, const IdeSnapshot& aft
         const ToolingReuseFactStatus status = tooling_status_for_decision(decision);
         const query::QueryRecordChangeStatus change_status =
             decision == nullptr ? query::QueryRecordChangeStatus::malformed : decision->change_status;
-        tooling_append_reuse_fact(
-            plan, tooling_reuse_fact_from_semantic_fact(after, fact, status, change_status));
+        tooling_append_reuse_fact(plan, tooling_reuse_fact_from_semantic_fact(after, fact, status, change_status));
     }
 }
 
@@ -307,8 +304,7 @@ void tooling_append_invalidated_facts(ToolingReusePlan& plan, const IdeSnapshot&
         return false;
     }
     for (const ToolingInvalidationRoot& root : roots) {
-        if (root.kind != TOOLING_REUSE_KIND_FUNCTION_BODY_SYNTAX
-            && root.kind != TOOLING_REUSE_KIND_TYPE_CHECK_BODY) {
+        if (root.kind != TOOLING_REUSE_KIND_FUNCTION_BODY_SYNTAX && root.kind != TOOLING_REUSE_KIND_TYPE_CHECK_BODY) {
             return false;
         }
     }
@@ -348,8 +344,7 @@ std::string_view tooling_reuse_fact_status_name(const ToolingReuseFactStatus sta
     return TOOLING_REUSE_STATUS_MALFORMED;
 }
 
-ToolingReusePlan tooling_plan_reuse(
-    const IdeSnapshot& before, const IdeSnapshot& after, const IdeEditImpact& impact)
+ToolingReusePlan tooling_plan_reuse(const IdeSnapshot& before, const IdeSnapshot& after, const IdeEditImpact& impact)
 {
     ToolingReusePlan plan;
     plan.valid = before.query.records.empty() || after.query.records.empty() ? false : impact.valid;

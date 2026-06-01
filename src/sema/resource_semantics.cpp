@@ -80,6 +80,7 @@ struct ClassificationFrame {
     TypeHandle type = INVALID_TYPE_HANDLE;
     ClassificationFrameStage stage = ClassificationFrameStage::enter;
     std::vector<TypeHandle> components;
+    base::usize next_component_index = 0;
 };
 
 [[nodiscard]] ResourceSemanticsSummary classify_leaf(const TypeInfo& info) noexcept
@@ -185,13 +186,11 @@ ResourceSemanticsClassifier::ResourceSemanticsClassifier(const CheckedModule& ch
     : checked_(checked), generic_copy_predicate_(std::move(generic_copy_predicate)),
       structural_component_provider_(std::move(structural_component_provider))
 {
+    this->build_indexes();
 }
 
-void ResourceSemanticsClassifier::ensure_indexes() const
+void ResourceSemanticsClassifier::build_indexes()
 {
-    if (this->indexes_built_) {
-        return;
-    }
     this->struct_infos_by_type_.reserve(this->checked_.structs.size());
     for (const auto& entry : this->checked_.structs) {
         if (is_valid(entry.second.type)) {
@@ -207,7 +206,6 @@ void ResourceSemanticsClassifier::ensure_indexes() const
         std::vector<TypeHandle>& payload_types = this->enum_payload_types_by_type_[enum_case.type.value];
         payload_types.insert(payload_types.end(), enum_case.payload_types.begin(), enum_case.payload_types.end());
     }
-    this->indexes_built_ = true;
 }
 
 const StructInfo* ResourceSemanticsClassifier::indexed_struct_info(const TypeHandle type) const
@@ -215,7 +213,6 @@ const StructInfo* ResourceSemanticsClassifier::indexed_struct_info(const TypeHan
     if (!is_valid(type)) {
         return nullptr;
     }
-    this->ensure_indexes();
     const auto found = this->struct_infos_by_type_.find(type.value);
     return found == this->struct_infos_by_type_.end() ? nullptr : found->second;
 }
@@ -225,7 +222,6 @@ std::span<const TypeHandle> ResourceSemanticsClassifier::indexed_enum_payload_ty
     if (!is_valid(type)) {
         return {};
     }
-    this->ensure_indexes();
     const auto found = this->enum_payload_types_by_type_.find(type.value);
     return found == this->enum_payload_types_by_type_.end() ? std::span<const TypeHandle>{}
                                                             : std::span<const TypeHandle>{found->second};
@@ -317,20 +313,27 @@ ResourceSemanticsSummary ResourceSemanticsClassifier::classify(const TypeHandle 
                 continue;
             }
             frame.components = std::move(structural_components.value());
+            frame.next_component_index = 0;
             frame.stage = ClassificationFrameStage::finish;
             active.insert(frame.type.value);
-            const std::vector<TypeHandle> components = frame.components;
-            for (auto component = components.rbegin(); component != components.rend(); ++component) {
-                if (!is_valid(*component) || component->value >= this->checked_.types.size()
-                    || completed.contains(component->value)) {
-                    continue;
-                }
-                if (active.contains(component->value)) {
-                    completed.emplace(component->value, conservative_owned_summary());
-                    continue;
-                }
-                stack.push_back(ClassificationFrame{*component, ClassificationFrameStage::enter, {}});
+            continue;
+        }
+
+        while (frame.next_component_index < frame.components.size()) {
+            const TypeHandle component = frame.components[frame.next_component_index];
+            ++frame.next_component_index;
+            if (!is_valid(component) || component.value >= this->checked_.types.size()
+                || completed.contains(component.value)) {
+                continue;
             }
+            if (active.contains(component.value)) {
+                completed.emplace(component.value, conservative_owned_summary());
+                continue;
+            }
+            stack.push_back(ClassificationFrame{component, ClassificationFrameStage::enter, {}});
+            break;
+        }
+        if (stack.back().stage == ClassificationFrameStage::enter) {
             continue;
         }
 

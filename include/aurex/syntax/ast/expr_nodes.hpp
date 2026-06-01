@@ -11,6 +11,9 @@
 
 namespace aurex::syntax {
 
+inline constexpr std::string_view SYNTAX_EXPR_PAYLOAD_ID_CONTEXT = "syntax expression payload id";
+inline constexpr std::string_view SYNTAX_EXPR_NODE_ID_CONTEXT = "syntax expression node id";
+
 struct LiteralExprPayload {
     std::string_view text;
 };
@@ -393,8 +396,8 @@ private:
     [[nodiscard]] bool is_literal(ExprKind kind) const noexcept;
     [[nodiscard]] bool is_cast_like(ExprKind kind) const noexcept;
     [[nodiscard]] bool is_block_payload_kind(ExprKind kind) const noexcept;
-    [[nodiscard]] static base::usize allocation_bytes(base::usize count, base::usize element_size) noexcept;
-    [[nodiscard]] static base::usize estimated_arena_bytes(const AstReserveEstimate::Exprs& plan) noexcept;
+    [[nodiscard]] static base::usize allocation_bytes(base::usize count, base::usize element_size);
+    [[nodiscard]] static base::usize estimated_arena_bytes(const AstReserveEstimate::Exprs& plan);
     void reserve_payloads(const AstReserveEstimate::Exprs& plan);
 
     template <typename T>
@@ -406,7 +409,7 @@ private:
     template <typename T, typename... Args>
     [[nodiscard]] base::u32 emplace_payload(AstArenaVector<T>& payloads, Args&&... args)
     {
-        const base::u32 index = static_cast<base::u32>(payloads.size());
+        const base::u32 index = base::checked_u32(payloads.size(), SYNTAX_EXPR_PAYLOAD_ID_CONTEXT);
         payloads.emplace_back(std::forward<Args>(args)...);
         return index;
     }

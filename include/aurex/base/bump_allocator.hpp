@@ -55,8 +55,8 @@ private:
         usize alignment = alignof(std::max_align_t);
     };
 
-    [[nodiscard]] static usize align_address(usize address, usize alignment) noexcept;
-    [[nodiscard]] static usize normalize_alignment(usize alignment) noexcept;
+    [[nodiscard]] static usize align_address(usize address, usize alignment);
+    [[nodiscard]] static usize normalize_alignment(usize alignment);
     static void touch_memory(std::byte* data, usize bytes) noexcept;
     void add_block(usize min_capacity, usize alignment, bool touch_pages = false);
 
@@ -79,8 +79,23 @@ public:
     {
     }
 
+    [[nodiscard]] static BumpAllocatorAdapter heap_backed() noexcept
+    {
+        BumpAllocatorAdapter adapter;
+        adapter.allow_heap_fallback_ = true;
+        return adapter;
+    }
+
+    [[nodiscard]] static BumpAllocatorAdapter strict_empty() noexcept
+    {
+        BumpAllocatorAdapter adapter;
+        adapter.allow_heap_fallback_ = false;
+        return adapter;
+    }
+
     template <typename U>
-    BumpAllocatorAdapter(const BumpAllocatorAdapter<U>& other) noexcept : arena_(other.arena_)
+    BumpAllocatorAdapter(const BumpAllocatorAdapter<U>& other) noexcept
+        : arena_(other.arena_), allow_heap_fallback_(other.allow_heap_fallback_)
     {
     }
 
@@ -93,8 +108,11 @@ public:
             throw std::bad_array_new_length();
         }
         const std::size_t bytes = count * sizeof(T);
-        if (this->arena_ == nullptr) {
+        if (this->arena_ == nullptr && this->allow_heap_fallback_) {
             return static_cast<T*>(::operator new(bytes, std::align_val_t{alignof(T)}));
+        }
+        if (this->arena_ == nullptr) {
+            throw std::bad_alloc();
         }
         return static_cast<T*>(this->arena_->allocate(bytes, alignof(T)));
     }
@@ -109,7 +127,7 @@ public:
     template <typename U>
     [[nodiscard]] friend bool operator==(const BumpAllocatorAdapter& lhs, const BumpAllocatorAdapter<U>& rhs) noexcept
     {
-        return lhs.arena_ == rhs.arena_;
+        return lhs.arena_ == rhs.arena_ && lhs.allow_heap_fallback_ == rhs.allow_heap_fallback_;
     }
 
     template <typename U>
@@ -123,6 +141,7 @@ private:
     friend class BumpAllocatorAdapter;
 
     BumpAllocator* arena_ = nullptr;
+    bool allow_heap_fallback_ = true;
 };
 
 template <typename T>

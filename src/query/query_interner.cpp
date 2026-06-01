@@ -14,6 +14,7 @@ namespace {
 }
 
 constexpr base::usize QUERY_INTERNER_MAX_NODE_COUNT = static_cast<base::usize>(std::numeric_limits<base::u32>::max());
+constexpr std::string_view QUERY_INTERNER_NODE_ID_CONTEXT = "query interner node id";
 
 } // namespace
 
@@ -142,10 +143,12 @@ bool QueryInterner::can_allocate_node_id() const noexcept
     return this->identities_.size() < this->max_node_count_;
 }
 
-QueryNodeId QueryInterner::next_node_id() const noexcept
+QueryNodeId QueryInterner::next_node_id() const
 {
     return QueryNodeId{
-        static_cast<base::u32>(this->identities_.size() + QUERY_NODE_ID_FIRST_VALUE),
+        base::checked_u32(base::checked_add_usize(
+                              this->identities_.size(), QUERY_NODE_ID_FIRST_VALUE, QUERY_INTERNER_NODE_ID_CONTEXT),
+            QUERY_INTERNER_NODE_ID_CONTEXT),
     };
 }
 

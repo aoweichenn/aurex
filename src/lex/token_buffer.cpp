@@ -1,8 +1,14 @@
 #include <aurex/lex/token_buffer.hpp>
 
+#include <string_view>
 #include <utility>
 
 namespace aurex::lex {
+namespace {
+
+constexpr std::string_view LEX_TOKEN_BUFFER_RESERVE_CONTEXT = "lexer token buffer reserve";
+
+} // namespace
 
 TokenBuffer::TokenBuffer()
     : arena_(std::make_unique<base::BumpAllocator>()), tokens_(base::BumpAllocatorAdapter<syntax::Token>{*this->arena_})
@@ -42,7 +48,8 @@ TokenBuffer& TokenBuffer::operator=(TokenBuffer&& other) noexcept
 void TokenBuffer::reserve(const base::usize token_count)
 {
     this->ensure_storage();
-    this->arena_->reserve(token_count * sizeof(syntax::Token));
+    this->arena_->reserve(
+        base::checked_mul_usize(token_count, sizeof(syntax::Token), LEX_TOKEN_BUFFER_RESERVE_CONTEXT));
     this->tokens_.reserve(token_count);
 }
 

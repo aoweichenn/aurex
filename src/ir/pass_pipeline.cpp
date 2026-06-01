@@ -14,6 +14,8 @@ namespace {
 using ValueReplacementMap = std::unordered_map<base::u32, ValueId>;
 using BlockMap = std::vector<BlockId>;
 
+constexpr std::string_view IR_PASS_BLOCK_ID_CONTEXT = "ir pass block id";
+
 [[nodiscard]] PreservedAnalyses preserve_module_metadata_analyses() noexcept
 {
     PreservedAnalyses preserved = PreservedAnalyses::none();
@@ -420,7 +422,7 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
         if (!reachable[i]) {
             continue;
         }
-        block_map[i] = BlockId{static_cast<base::u32>(kept.size())};
+        block_map[i] = BlockId{base::checked_u32(kept.size(), IR_PASS_BLOCK_ID_CONTEXT)};
         kept.push_back(std::move(function.blocks[i]));
     }
 
@@ -502,7 +504,8 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
         } else if (block.terminator.kind == TerminatorKind::cond_branch) {
             block.terminator.then_target = redirect_target(block.terminator.then_target, redirects);
             block.terminator.else_target = redirect_target(block.terminator.else_target, redirects);
-            if (block.terminator.then_target.value == block.terminator.else_target.value) {
+            if (is_valid(block.terminator.then_target) && block.terminator.then_target.value < function.blocks.size()
+                && block.terminator.then_target.value == block.terminator.else_target.value) {
                 block.terminator.kind = TerminatorKind::branch;
                 block.terminator.target = block.terminator.then_target;
                 block.terminator.condition = INVALID_VALUE_ID;
@@ -526,7 +529,8 @@ void rewrite_phi_block_refs(Module& module, Function& function, const BlockMap& 
                 continue;
             }
             for (BasicBlock& block : function.blocks) {
-                if (block.terminator.kind == TerminatorKind::cond_branch
+                if (block.terminator.kind == TerminatorKind::cond_branch && is_valid(block.terminator.then_target)
+                    && block.terminator.then_target.value < function.blocks.size()
                     && block.terminator.then_target.value == block.terminator.else_target.value) {
                     block.terminator.kind = TerminatorKind::branch;
                     block.terminator.target = block.terminator.then_target;

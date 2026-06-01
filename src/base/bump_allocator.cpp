@@ -1,6 +1,7 @@
 #include <aurex/base/bump_allocator.hpp>
 
 #include <algorithm>
+#include <limits>
 #include <new>
 #include <utility>
 
@@ -13,6 +14,9 @@ constexpr usize BASE_BUMP_STRING_NUL_BYTES = 1U;
 constexpr usize BASE_BUMP_ALIGNMENT_FLOOR = alignof(std::max_align_t);
 constexpr usize BASE_BUMP_TOUCH_PAGE_BYTES = 4096U;
 constexpr std::byte BASE_BUMP_TOUCH_VALUE{0};
+constexpr std::string_view BASE_BUMP_ALLOCATE_CONTEXT = "bump allocator allocation";
+constexpr std::string_view BASE_BUMP_ALIGN_CONTEXT = "bump allocator alignment";
+constexpr std::string_view BASE_BUMP_STATS_CONTEXT = "bump allocator statistics";
 
 } // namespace
 
@@ -74,21 +78,25 @@ void* BumpAllocator::allocate(const usize size, const usize alignment)
     }
     const usize effective_alignment = normalize_alignment(alignment);
     if (this->blocks_.empty() || this->blocks_.back().alignment < effective_alignment) {
-        this->add_block(size + effective_alignment, effective_alignment);
+        this->add_block(checked_add_usize(size, effective_alignment, BASE_BUMP_ALLOCATE_CONTEXT), effective_alignment);
     }
 
     Block* block = &this->blocks_.back();
     const auto block_base = reinterpret_cast<usize>(block->data);
-    usize aligned = align_address(block_base + block->used, effective_alignment) - block_base;
-    if (aligned + size > block->capacity) {
-        this->add_block(size + effective_alignment, effective_alignment);
+    usize aligned =
+        align_address(checked_add_usize(block_base, block->used, BASE_BUMP_ALLOCATE_CONTEXT), effective_alignment)
+        - block_base;
+    if (aligned > block->capacity || size > block->capacity - aligned) {
+        this->add_block(checked_add_usize(size, effective_alignment, BASE_BUMP_ALLOCATE_CONTEXT), effective_alignment);
         block = &this->blocks_.back();
         const auto new_block_base = reinterpret_cast<usize>(block->data);
-        aligned = align_address(new_block_base + block->used, effective_alignment) - new_block_base;
+        aligned = align_address(
+                      checked_add_usize(new_block_base, block->used, BASE_BUMP_ALLOCATE_CONTEXT), effective_alignment)
+            - new_block_base;
     }
 
     std::byte* const result = block->data + aligned;
-    block->used = aligned + size;
+    block->used = checked_add_usize(aligned, size, BASE_BUMP_ALLOCATE_CONTEXT);
     return result;
 }
 
@@ -97,7 +105,8 @@ std::string_view BumpAllocator::copy_string(const std::string_view text)
     if (text.empty()) {
         return {};
     }
-    char* const storage = static_cast<char*>(this->allocate(text.size() + BASE_BUMP_STRING_NUL_BYTES, alignof(char)));
+    char* const storage = static_cast<char*>(this->allocate(
+        checked_add_usize(text.size(), BASE_BUMP_STRING_NUL_BYTES, BASE_BUMP_ALLOCATE_CONTEXT), alignof(char)));
     std::copy_n(text.data(), text.size(), storage);
     storage[text.size()] = '\0';
     return {storage, text.size()};
@@ -157,13 +166,13 @@ usize BumpAllocator::block_count() const noexcept
     return this->blocks_.size();
 }
 
-usize BumpAllocator::align_address(const usize address, const usize alignment) noexcept
+usize BumpAllocator::align_address(const usize address, const usize alignment)
 {
     const usize remainder = address % alignment;
-    return remainder == 0 ? address : address + (alignment - remainder);
+    return remainder == 0 ? address : checked_add_usize(address, alignment - remainder, BASE_BUMP_ALIGN_CONTEXT);
 }
 
-usize BumpAllocator::normalize_alignment(const usize alignment) noexcept
+usize BumpAllocator::normalize_alignment(const usize alignment)
 {
     const usize normalized = std::max(alignment, BASE_BUMP_ALIGNMENT_FLOOR);
     if ((normalized & (normalized - 1U)) == 0U) {
@@ -171,6 +180,9 @@ usize BumpAllocator::normalize_alignment(const usize alignment) noexcept
     }
     usize power = BASE_BUMP_ALIGNMENT_FLOOR;
     while (power < normalized) {
+        if (power > std::numeric_limits<usize>::max() / 2U) {
+            throw std::bad_array_new_length();
+        }
         power <<= 1U;
     }
     return power;
@@ -197,7 +209,7 @@ void BumpAllocator::add_block(const usize min_capacity, const usize alignment, c
         touch_memory(data, capacity);
     }
     this->blocks_.push_back(Block{data, capacity, block_alignment});
-    this->allocated_bytes_ += capacity;
+    this->allocated_bytes_ = checked_add_usize(this->allocated_bytes_, capacity, BASE_BUMP_STATS_CONTEXT);
 }
 
 } // namespace aurex::base

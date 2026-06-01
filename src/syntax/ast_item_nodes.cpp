@@ -117,7 +117,7 @@ void ItemNodeList::push_back(ItemNode node)
 
 ItemId ItemNodeList::append(ItemNode node)
 {
-    const ItemId id{static_cast<base::u32>(this->headers_.size())};
+    const ItemId id{base::checked_u32(this->headers_.size(), SYNTAX_ITEM_NODE_ID_CONTEXT)};
     ItemNodeHeader header;
     header.kind = pack_kind(node.kind);
     header.range = node.range;

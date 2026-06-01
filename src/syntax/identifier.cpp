@@ -8,6 +8,7 @@ namespace {
 
 constexpr base::u64 SYNTAX_STABLE_HASH_OFFSET = 14695981039346656037ULL;
 constexpr base::u64 SYNTAX_STABLE_HASH_PRIME = 1099511628211ULL;
+constexpr std::string_view SYNTAX_IDENTIFIER_ID_CONTEXT = "syntax identifier id";
 
 } // namespace
 
@@ -48,13 +49,8 @@ IdentifierInterner& IdentifierInterner::operator=(IdentifierInterner&& other) no
     if (this == &other) {
         return *this;
     }
-    this->texts_.clear();
-    this->ids_.clear();
-    this->arena_ = std::move(other.arena_);
-    this->texts_ = std::move(other.texts_);
-    this->ids_ = std::move(other.ids_);
-    other.texts_.clear();
-    other.ids_.clear();
+    IdentifierInterner moved(std::move(other));
+    this->swap(moved);
     return *this;
 }
 
@@ -90,7 +86,7 @@ IdentId IdentifierInterner::intern(const std::string_view text)
     }
 
     this->ensure_storage();
-    const IdentId id{static_cast<base::u32>(this->texts_.size())};
+    const IdentId id{base::checked_u32(this->texts_.size(), SYNTAX_IDENTIFIER_ID_CONTEXT)};
     const std::string_view stable_text = this->arena_->copy_string(text);
     this->texts_.push_back(stable_text);
     this->ids_.emplace(stable_text, id);
@@ -140,6 +136,14 @@ void IdentifierInterner::ensure_storage()
     this->texts_ = TextVector(base::BumpAllocatorAdapter<std::string_view>{*this->arena_});
     this->ids_ =
         IdMap(0, IdentifierTextHash{}, std::equal_to<>{}, base::BumpAllocatorAdapter<IdMapEntry>{*this->arena_});
+}
+
+void IdentifierInterner::swap(IdentifierInterner& other) noexcept
+{
+    using std::swap;
+    swap(this->arena_, other.arena_);
+    this->texts_.swap(other.texts_);
+    this->ids_.swap(other.ids_);
 }
 
 } // namespace aurex::syntax

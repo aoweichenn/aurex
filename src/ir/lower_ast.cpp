@@ -3,6 +3,7 @@
 #include <ir/lower_ast_internal.hpp>
 
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -10,6 +11,8 @@
 namespace aurex::ir::detail {
 
 namespace {
+
+constexpr std::string_view IR_LOWER_TYPE_ID_CONTEXT = "ir lowerer type id";
 
 [[nodiscard]] Linkage item_linkage(const syntax::ItemNode& item) noexcept
 {
@@ -176,14 +179,14 @@ void Lowerer::lower_record_layouts()
                 field.type,
             });
         }
+        const base::u32 record_index = add_record(this->module_, record);
         if (sema::is_valid(record.type)) {
-            this->module_.record_indices[record.type.value] = static_cast<base::u32>(this->module_.records.size());
+            this->module_.record_indices[record.type.value] = record_index;
         }
-        static_cast<void>(add_record(this->module_, record));
     }
 
     for (base::usize i = 0; i < this->module_.types.size(); ++i) {
-        const sema::TypeHandle type{static_cast<base::u32>(i)};
+        const sema::TypeHandle type{base::checked_u32(i, IR_LOWER_TYPE_ID_CONTEXT)};
         const sema::TypeInfo& info = this->module_.types.get(type);
         if (info.kind != sema::TypeKind::tuple || type_contains_generic_param(this->module_.types, type)) {
             continue;
@@ -199,8 +202,7 @@ void Lowerer::lower_record_layouts()
                 info.tuple_elements[field_index],
             });
         }
-        this->module_.record_indices[type.value] = static_cast<base::u32>(this->module_.records.size());
-        static_cast<void>(add_record(this->module_, record));
+        this->module_.record_indices[type.value] = add_record(this->module_, record);
     }
 
     std::unordered_set<base::u32> lowered_enum_types;
@@ -213,10 +215,10 @@ void Lowerer::lower_record_layouts()
             continue;
         }
         RecordLayout record = make_payload_enum_record(this->module_, enum_case.type);
+        const base::u32 record_index = add_record(this->module_, record);
         if (sema::is_valid(record.type)) {
-            this->module_.record_indices[record.type.value] = static_cast<base::u32>(this->module_.records.size());
+            this->module_.record_indices[record.type.value] = record_index;
         }
-        static_cast<void>(add_record(this->module_, record));
     }
 }
 

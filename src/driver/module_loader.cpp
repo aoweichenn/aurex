@@ -21,6 +21,8 @@ namespace aurex::driver {
 
 namespace {
 
+constexpr std::string_view DRIVER_MODULE_ID_CONTEXT = "driver module id";
+
 [[nodiscard]] bool emit_kind_produces_artifact(const EmitKind emit_kind) noexcept
 {
     return emit_kind == EmitKind::ir || emit_kind == EmitKind::llvm_ir || emit_kind == EmitKind::assembly
@@ -314,7 +316,7 @@ base::Result<syntax::ModuleId> ModuleLoader::load_file(const std::filesystem::pa
 
     syntax::ModuleId module_id = module_inserted.first->second.id;
     if (module_inserted.second) {
-        module_id = syntax::ModuleId{static_cast<base::u32>(combined.modules.size())};
+        module_id = syntax::ModuleId{base::checked_u32(combined.modules.size(), DRIVER_MODULE_ID_CONTEXT)};
         module_inserted.first->second.id = module_id;
         syntax::ModuleInfo info;
         info.path = module.module_path;

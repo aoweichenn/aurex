@@ -1,5 +1,6 @@
 #include <aurex/base/diagnostic.hpp>
 #include <aurex/lex/lexer.hpp>
+#include <aurex/lex/lexer_cursor.hpp>
 #include <aurex/syntax/ast_dump.hpp>
 #include <aurex/syntax/token.hpp>
 
@@ -55,6 +56,14 @@ void expect_contains_all(const std::string_view text, const std::vector<std::str
 
 TEST(CoreUnit, LexerTokenBufferUsesBumpArenaStorage)
 {
+    lex::detail::LexerCursor cursor{"abc"};
+    EXPECT_EQ(cursor.peek_at(99U), lex::detail::LEXER_CURSOR_EOF_SENTINEL);
+    cursor.advance_bytes(99U);
+    EXPECT_TRUE(cursor.is_at_end());
+    EXPECT_EQ(cursor.slice(3U, 99U), "");
+    EXPECT_EQ(cursor.slice(4U, 99U), "");
+    EXPECT_EQ(cursor.nonempty_slice(3U, 99U), "");
+
     lex::TokenBuffer buffer;
     buffer.reserve(LEXER_TEST_TOKEN_BUFFER_RESERVE);
     EXPECT_GT(buffer.arena_bytes(), 0U);
@@ -72,6 +81,12 @@ TEST(CoreUnit, LexerTokenBufferUsesBumpArenaStorage)
     const std::span<const Token> converted_span = static_cast<std::span<const Token>>(buffer);
     ASSERT_EQ(converted_span.size(), 2U);
     EXPECT_EQ(converted_span[1].kind, TokenKind::eof);
+    const std::span<const Token> operator_span = buffer.operator std::span<const Token>();
+    ASSERT_EQ(operator_span.size(), 2U);
+    EXPECT_EQ(operator_span[0].text(), "alpha");
+    const std::span<const Token> implicit_span = buffer;
+    ASSERT_EQ(implicit_span.size(), 2U);
+    EXPECT_EQ(implicit_span[0].text(), "alpha");
 
     lex::TokenBuffer copied = buffer;
     ASSERT_EQ(copied.size(), buffer.size());
@@ -86,6 +101,7 @@ TEST(CoreUnit, LexerTokenBufferUsesBumpArenaStorage)
     EXPECT_EQ(std::distance(moved.begin(), moved.end()), 2);
 
     EXPECT_TRUE(buffer.empty());
+    EXPECT_EQ(buffer.arena_bytes(), 0U);
     EXPECT_EQ(buffer.arena_blocks(), 0U);
     buffer.push_back(Token{TokenKind::identifier, {{1}, 0, 4}, "beta"});
     ASSERT_EQ(buffer.size(), 1U);

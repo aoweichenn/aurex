@@ -3543,6 +3543,28 @@ TEST(QueryUnit, QueryContextCachesItemSignatureAndEmitsCompletedRecords)
     EXPECT_EQ(provider_calls, 1U);
 }
 
+TEST(QueryUnit, QueryContextFailsProviderThatIgnoresDetectedCycle)
+{
+    const QueryContextItemSignatureSubject subject =
+        test_item_signature_subject("cycle_poison", QUERY_TEST_PROVIDER_SIGNATURE);
+    const std::optional<query::QueryKey> expected_key = query::item_signature_query_key(subject.def);
+    ASSERT_TRUE(expected_key.has_value());
+
+    query::QueryContext context;
+    context.set_item_signature_provider([&context](const query::ItemSignatureProviderInput& provider_input) {
+        const query::QueryEvaluationResult cycle = context.evaluate_item_signature(provider_input);
+        EXPECT_EQ(cycle.status, query::QueryEvaluationStatus::cycle);
+        return query::provide_item_signature_query(provider_input);
+    });
+
+    const query::QueryEvaluationResult result = context.evaluate_item_signature(subject.input);
+    ASSERT_EQ(result.status, query::QueryEvaluationStatus::failed);
+    ASSERT_NE(result.node, nullptr);
+    EXPECT_EQ(result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(context.completed_records().empty());
+    EXPECT_TRUE(context.dependencies_for(*expected_key).empty());
+}
+
 TEST(QueryUnit, QueryContextTracksRevisionAndReuseStateForComputedCachedAndInvalidatedNodes)
 {
     const QueryContextItemSignatureSubject subject =
@@ -4651,6 +4673,11 @@ TEST(QueryUnit, QueryContextBuildsDeterministicDependencyEdgeTable)
     EXPECT_TRUE(contains_query_dependency_edge(edges, query::QueryDependencyEdge{*first_key, *first_only_dependency}));
     EXPECT_TRUE(contains_query_dependency_edge(edges, query::QueryDependencyEdge{*second_key, *shared_dependency}));
     EXPECT_TRUE(context.dependencies_for(query::QueryKey{}).empty());
+
+    ASSERT_TRUE(context.invalidate(*first_key));
+    EXPECT_EQ(context.dependents_of(*shared_dependency), std::vector<query::QueryKey>{*second_key});
+    EXPECT_TRUE(context.dependents_of(*first_only_dependency).empty());
+    EXPECT_EQ(context.dependency_edge_count(), 1U);
 }
 
 TEST(QueryUnit, QueryContextTracksModuleExportsFailuresAndCycles)
@@ -4746,9 +4773,10 @@ TEST(QueryUnit, QueryContextTracksModuleExportsFailuresAndCycles)
         });
     const query::QueryEvaluationResult cyclic_result = cyclic_context.evaluate_module_exports(input);
     EXPECT_EQ(nested_result.status, query::QueryEvaluationStatus::cycle);
-    ASSERT_EQ(cyclic_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_EQ(cyclic_result.status, query::QueryEvaluationStatus::failed);
     ASSERT_NE(cyclic_result.node, nullptr);
-    EXPECT_EQ(cyclic_result.node->status, query::QueryNodeStatus::done);
+    EXPECT_EQ(cyclic_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(cyclic_context.completed_records().empty());
 }
 
 TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
@@ -4792,6 +4820,7 @@ TEST(QueryUnit, QueryContextSeedsAndInvalidatesCompletedRecordsForCacheReplay)
     ASSERT_TRUE(seeded_node_id.has_value());
     EXPECT_TRUE(query::is_valid(*seeded_node_id));
     EXPECT_EQ(context.find(*seeded_node_id), context.find(*expected_key));
+    EXPECT_EQ(context.find(query::QueryNodeId{}), nullptr);
     EXPECT_TRUE(context.node_id_for(dependency).has_value());
     EXPECT_EQ(context.dependency_edge_count(), 1U);
     EXPECT_EQ(context.dependencies_for(*expected_key), std::vector<query::QueryKey>{dependency});
@@ -5137,9 +5166,10 @@ TEST(QueryUnit, QueryContextTracksGenericInstanceDependenciesFailuresAndCycles)
     const query::QueryEvaluationResult cyclic_result =
         cyclic_context.evaluate_generic_instance_signature(generic_instance_provider_input(subject));
     EXPECT_EQ(nested_result.status, query::QueryEvaluationStatus::cycle);
-    ASSERT_EQ(cyclic_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_EQ(cyclic_result.status, query::QueryEvaluationStatus::failed);
     ASSERT_NE(cyclic_result.node, nullptr);
-    EXPECT_EQ(cyclic_result.node->status, query::QueryNodeStatus::done);
+    EXPECT_EQ(cyclic_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(cyclic_context.completed_records().empty());
 }
 
 TEST(QueryUnit, QueryContextTracksDependenciesFailuresAndCycles)
@@ -5240,9 +5270,10 @@ TEST(QueryUnit, QueryContextTracksDependenciesFailuresAndCycles)
         });
     const query::QueryEvaluationResult cyclic_result = cyclic_context.evaluate_item_signature(subject.input);
     EXPECT_EQ(nested_result.status, query::QueryEvaluationStatus::cycle);
-    ASSERT_EQ(cyclic_result.status, query::QueryEvaluationStatus::computed);
+    ASSERT_EQ(cyclic_result.status, query::QueryEvaluationStatus::failed);
     ASSERT_NE(cyclic_result.node, nullptr);
-    EXPECT_EQ(cyclic_result.node->status, query::QueryNodeStatus::done);
+    EXPECT_EQ(cyclic_result.node->status, query::QueryNodeStatus::failed);
+    EXPECT_TRUE(cyclic_context.completed_records().empty());
 }
 
 TEST(QueryUnit, CanonicalTypeKeyIsStructuralAndHandleFree)

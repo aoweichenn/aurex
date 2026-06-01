@@ -9,6 +9,9 @@
 
 namespace aurex::syntax {
 
+inline constexpr std::string_view SYNTAX_TYPE_PAYLOAD_ID_CONTEXT = "syntax type payload id";
+inline constexpr std::string_view SYNTAX_TYPE_NODE_ID_CONTEXT = "syntax type node id";
+
 struct TypeNodeHeader {
     base::SourceRange range{};
     base::u32 payload = UINT32_MAX;
@@ -125,7 +128,7 @@ private:
     template <typename T>
     [[nodiscard]] base::u32 push_payload(AstArenaVector<T>& payloads, T payload)
     {
-        const base::u32 index = static_cast<base::u32>(payloads.size());
+        const base::u32 index = base::checked_u32(payloads.size(), SYNTAX_TYPE_PAYLOAD_ID_CONTEXT);
         payloads.push_back(std::move(payload));
         return index;
     }

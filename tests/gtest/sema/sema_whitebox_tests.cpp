@@ -96,6 +96,7 @@ constexpr base::u32 SEMA_TEST_INVALID_SEMA_TYPE_KIND_VALUE = 99;
 constexpr base::u32 SEMA_TEST_INVALID_BUILTIN_TYPE_VALUE = 99;
 constexpr base::u32 SEMA_TEST_INVALID_CAPABILITY_KIND_VALUE = 99;
 constexpr base::u32 SEMA_TEST_INVALID_RESOURCE_KIND_VALUE = 99;
+constexpr base::usize SEMA_TEST_RESOURCE_CLASSIFIER_DEEP_CHAIN_LENGTH = 32;
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_ONE = "1";
 constexpr std::string_view SEMA_TEST_IMPORT_ALIAS_ONE = "one";
 constexpr std::string_view SEMA_TEST_CONST_VALUE_NAME = "VALUE";
@@ -3614,6 +3615,10 @@ TEST(CoreUnit, SemanticWhiteBoxResourceSemanticsClassifiesStructuralTypesAndFing
         types.named_struct("resource_semantics.MissingRecord", "resource_semantics_MissingRecord", false);
     const TypeHandle recursive_record =
         types.named_struct("resource_semantics.RecursiveRecord", "resource_semantics_RecursiveRecord", false);
+    const TypeHandle mutual_record_a =
+        types.named_struct("resource_semantics.MutualRecordA", "resource_semantics_MutualRecordA", false);
+    const TypeHandle mutual_record_b =
+        types.named_struct("resource_semantics.MutualRecordB", "resource_semantics_MutualRecordB", false);
     const TypeHandle opaque = types.opaque_struct("resource_semantics.Opaque", "resource_semantics_Opaque");
     const TypeHandle choice = types.named_enum("resource_semantics.Choice", "resource_semantics_Choice");
     const TypeHandle empty_choice =
@@ -3622,6 +3627,11 @@ TEST(CoreUnit, SemanticWhiteBoxResourceSemanticsClassifiesStructuralTypesAndFing
         types.named_enum("resource_semantics.MissingChoice", "resource_semantics_MissingChoice");
     types.set_enum_underlying(choice, i32);
     types.set_enum_underlying(empty_choice, i32);
+    TypeHandle deep_tuple = i32;
+    for (base::usize depth = 0; depth < SEMA_TEST_RESOURCE_CLASSIFIER_DEEP_CHAIN_LENGTH; ++depth) {
+        const std::array<TypeHandle, 1> nested{deep_tuple};
+        deep_tuple = types.tuple(nested);
+    }
 
     const StructInfo& record_info = add_struct_info(analyzer, module_id(0), "Record", record);
     const_cast<StructInfo&>(record_info)
@@ -3645,6 +3655,30 @@ TEST(CoreUnit, SemanticWhiteBoxResourceSemanticsClassifiesStructuralTypesAndFing
             checked.intern_text("resource_semantics_RecursiveRecord_next"),
             module_id(0),
             recursive_record,
+            {},
+            syntax::Visibility::public_,
+            {},
+        });
+    const StructInfo& mutual_record_a_info = add_struct_info(analyzer, module_id(0), "MutualRecordA", mutual_record_a);
+    const_cast<StructInfo&>(mutual_record_a_info)
+        .fields.push_back(StructFieldInfo{
+            checked.intern_text("b"),
+            intern_identifier(analyzer, "b"),
+            checked.intern_text("resource_semantics_MutualRecordA_b"),
+            module_id(0),
+            mutual_record_b,
+            {},
+            syntax::Visibility::public_,
+            {},
+        });
+    const StructInfo& mutual_record_b_info = add_struct_info(analyzer, module_id(0), "MutualRecordB", mutual_record_b);
+    const_cast<StructInfo&>(mutual_record_b_info)
+        .fields.push_back(StructFieldInfo{
+            checked.intern_text("a"),
+            intern_identifier(analyzer, "a"),
+            checked.intern_text("resource_semantics_MutualRecordB_a"),
+            module_id(0),
+            mutual_record_a,
             {},
             syntax::Visibility::public_,
             {},
@@ -3706,6 +3740,7 @@ TEST(CoreUnit, SemanticWhiteBoxResourceSemanticsClassifiesStructuralTypesAndFing
     EXPECT_EQ(resources.classify(array), copy_owned);
     EXPECT_EQ(resources.classify(tuple), copy_owned);
     EXPECT_EQ(resources.classify(empty_tuple), copy_owned);
+    EXPECT_EQ(resources.classify(deep_tuple), copy_owned);
     EXPECT_EQ(resources.classify(param), conservative);
     EXPECT_EQ(resources.classify(projection), conservative);
     EXPECT_EQ(resources.classify(generic_tuple), conservative);
@@ -3714,6 +3749,8 @@ TEST(CoreUnit, SemanticWhiteBoxResourceSemanticsClassifiesStructuralTypesAndFing
     EXPECT_EQ(resources.classify(empty_record), copy_owned);
     EXPECT_EQ(resources.classify(missing_record), conservative);
     EXPECT_EQ(resources.classify(recursive_record), conservative);
+    EXPECT_EQ(resources.classify(mutual_record_a), conservative);
+    EXPECT_EQ(resources.classify(mutual_record_b), conservative);
     EXPECT_EQ(resources.classify(opaque), conservative);
     EXPECT_EQ(resources.classify(choice), conservative);
     EXPECT_EQ(resources.classify(empty_choice), copy_owned);

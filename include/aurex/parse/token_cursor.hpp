@@ -3,13 +3,15 @@
 #include <aurex/base/integer.hpp>
 #include <aurex/syntax/token.hpp>
 
+#include <array>
 #include <span>
 
 namespace aurex::parse {
 
 class TokenCursor final {
 public:
-    explicit TokenCursor(std::span<const syntax::Token> tokens) noexcept : tokens_(tokens)
+    explicit TokenCursor(std::span<const syntax::Token> tokens) noexcept
+        : tokens_(tokens.empty() ? std::span<const syntax::Token>{TOKEN_CURSOR_SYNTHETIC_EOF} : tokens)
     {
     }
 
@@ -95,6 +97,10 @@ public:
     }
 
 private:
+    inline static const std::array<syntax::Token, 1> TOKEN_CURSOR_SYNTHETIC_EOF{
+        syntax::Token{syntax::TokenKind::eof, base::SourceRange{}, std::string_view{}},
+    };
+
     std::span<const syntax::Token> tokens_;
     base::usize current_ = 0;
 };

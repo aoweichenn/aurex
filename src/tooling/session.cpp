@@ -442,11 +442,10 @@ void tooling_attach_syntax_reuse_execution(
 [[nodiscard]] const base::SourceFile* tooling_source_file_for_range(
     const IdeSnapshot& snapshot, const base::SourceRange& range) noexcept
 {
-    const std::span<const base::SourceFile> files = snapshot.sources.files();
-    if (range.source.value >= files.size()) {
+    if (!range.well_formed()) {
         return nullptr;
     }
-    return &files[range.source.value];
+    return snapshot.sources.try_get(range.source);
 }
 
 [[nodiscard]] ToolingTextRange tooling_text_range_for_snapshot(

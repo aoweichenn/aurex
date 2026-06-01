@@ -11,6 +11,7 @@ namespace aurex::sema {
 namespace {
 
 inline constexpr base::u32 SEMA_BUILTIN_TYPE_COUNT = static_cast<base::u32>(BuiltinType::char_) + 1U;
+constexpr std::string_view SEMA_TYPE_TABLE_ID_CONTEXT = "semantic type table id";
 constexpr base::usize SEMA_TYPE_TABLE_INITIAL_CAPACITY = 128;
 constexpr std::string_view SEMA_TYPE_DISPLAY_INVALID_NAME = "<invalid>";
 constexpr std::string_view SEMA_TYPE_DISPLAY_UNKNOWN_NAME = "<unknown>";
@@ -929,7 +930,7 @@ base::usize TypeTable::size() const noexcept
 
 TypeHandle TypeTable::push(TypeInfo info)
 {
-    const TypeHandle handle{static_cast<base::u32>(this->types_.size())};
+    const TypeHandle handle{base::checked_u32(this->types_.size(), SEMA_TYPE_TABLE_ID_CONTEXT)};
     this->types_.push_back(std::move(info));
     return handle;
 }

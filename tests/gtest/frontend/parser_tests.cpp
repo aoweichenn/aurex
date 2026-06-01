@@ -4,6 +4,7 @@
 #include <aurex/parse/parser_item_part.hpp>
 #include <aurex/parse/parser_part_ranges.hpp>
 #include <aurex/parse/recovery.hpp>
+#include <aurex/parse/token_cursor.hpp>
 #include <aurex/syntax/ast_dump.hpp>
 
 #include <parse/bracket_suffix_classifier.hpp>
@@ -254,6 +255,12 @@ private:
 
 TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
 {
+    parse::TokenCursor empty_cursor{std::span<const syntax::Token>{}};
+    EXPECT_TRUE(empty_cursor.is_eof());
+    EXPECT_EQ(empty_cursor.peek().kind, syntax::TokenKind::eof);
+    EXPECT_EQ(empty_cursor.previous().kind, syntax::TokenKind::eof);
+    EXPECT_EQ(empty_cursor.advance().kind, syntax::TokenKind::eof);
+
     constexpr std::string_view source =
         "module parser.dump;\n"
         "pub import c.host;\n"

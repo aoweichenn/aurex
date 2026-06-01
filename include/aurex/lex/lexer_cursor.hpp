@@ -2,7 +2,7 @@
 
 #include <aurex/base/integer.hpp>
 
-#include <cassert>
+#include <algorithm>
 #include <string_view>
 
 namespace aurex::lex::detail {
@@ -59,10 +59,11 @@ public:
 
     [[nodiscard]] char peek_at(const base::usize lookahead) const noexcept
     {
-        const base::usize target = offset_ + lookahead;
-        if (target >= source_text_.size()) {
+        const base::usize remaining = this->remaining_size();
+        if (lookahead >= remaining) {
             return LEXER_CURSOR_EOF_SENTINEL;
         }
+        const base::usize target = offset_ + lookahead;
         return source_text_[target];
     }
 
@@ -73,11 +74,7 @@ public:
 
     [[nodiscard]] char peek_next() const noexcept
     {
-        const base::usize target = offset_ + LEXER_CURSOR_NEXT_LOOKAHEAD;
-        if (target >= source_text_.size()) {
-            return LEXER_CURSOR_EOF_SENTINEL;
-        }
-        return source_text_[target];
+        return peek_at(LEXER_CURSOR_NEXT_LOOKAHEAD);
     }
 
     char advance() noexcept
@@ -92,7 +89,7 @@ public:
 
     void advance_bytes(const base::usize byte_count) noexcept
     {
-        const base::usize remaining = source_text_.size() - offset_;
+        const base::usize remaining = this->remaining_size();
         offset_ += byte_count < remaining ? byte_count : remaining;
     }
 
@@ -107,19 +104,26 @@ public:
 
     [[nodiscard]] std::string_view slice(const base::usize begin, const base::usize end) const noexcept
     {
-        assert(begin <= end);
-        assert(end <= source_text_.size());
+        if (begin > end || begin > source_text_.size()) {
+            return {};
+        }
+        const base::usize clamped_end = std::min(end, source_text_.size());
         if (begin == end) {
             return {};
         }
-        return std::string_view{source_text_.data() + begin, end - begin};
+        return std::string_view{source_text_.data() + begin, clamped_end - begin};
     }
 
     [[nodiscard]] std::string_view nonempty_slice(const base::usize begin, const base::usize end) const noexcept
     {
-        assert(begin < end);
-        assert(end <= source_text_.size());
-        return std::string_view{source_text_.data() + begin, end - begin};
+        if (begin >= end || begin >= source_text_.size()) {
+            return {};
+        }
+        const base::usize clamped_end = std::min(end, source_text_.size());
+        if (begin >= clamped_end) {
+            return {};
+        }
+        return std::string_view{source_text_.data() + begin, clamped_end - begin};
     }
 
     [[nodiscard]] std::string_view current_slice(const base::usize begin) const noexcept

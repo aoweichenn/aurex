@@ -482,6 +482,7 @@ QueryContext::QueryEvaluationStart QueryContext::start_query(const QueryKey key)
         };
     }
     if (node.status == QueryNodeStatus::in_progress) {
+        this->poison_active_evaluations();
         return QueryEvaluationStart{
             &node,
             QueryEvaluationResult{
@@ -602,6 +603,13 @@ QueryEvaluationResult QueryContext::fail_query(QueryNode& node)
         QueryEvaluationStatus::failed,
         &node,
     };
+}
+
+void QueryContext::poison_active_evaluations() noexcept
+{
+    for (base::usize index = 0; index < this->active_cycle_poison_.size(); ++index) {
+        this->active_cycle_poison_[index] = true;
+    }
 }
 
 } // namespace aurex::query

@@ -1,0 +1,11 @@
+module str_return_local;
+
+fn bad() -> str {
+    let bytes: [2]u8 = b"ok";
+    let view: []const u8 = bytes[:];
+    return strfromutf8(view);
+}
+
+fn main() -> i32 {
+    return 0;
+}

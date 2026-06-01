@@ -2,7 +2,6 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <cstddef>
-#include <cstdint>
 #include <limits>
 #include <optional>
 #include <span>
@@ -80,21 +79,23 @@ struct ImportScopeKeyHash {
         && types.same(inner.pointee, types.builtin(BuiltinType::u8));
 }
 
-[[nodiscard]] TypeHandle payload_storage_type(TypeTable& types, const base::u64 size, const base::u64 alignment)
+[[nodiscard]] TypeHandle payload_storage_type(
+    TypeTable& types, const base::u64 size, const base::u64 alignment, const SemanticTargetLayout& target)
 {
     TypeHandle unit = types.builtin(BuiltinType::u8);
-    base::u64 unit_size = 1;
-    if (alignment >= alignof(std::uint64_t)) {
+    base::u64 unit_size = target.i8_size;
+    if (alignment >= target.i64_align) {
         unit = types.builtin(BuiltinType::u64);
-        unit_size = sizeof(std::uint64_t);
-    } else if (alignment >= alignof(std::uint32_t)) {
+        unit_size = target.i64_size;
+    } else if (alignment >= target.i32_align) {
         unit = types.builtin(BuiltinType::u32);
-        unit_size = sizeof(std::uint32_t);
-    } else if (alignment >= alignof(std::uint16_t)) {
+        unit_size = target.i32_size;
+    } else if (alignment >= target.i16_align) {
         unit = types.builtin(BuiltinType::u16);
-        unit_size = sizeof(std::uint16_t);
+        unit_size = target.i16_size;
     }
-    const base::u64 count = std::max<base::u64>(1, (size + unit_size - 1) / unit_size);
+    const base::u64 effective_unit_size = std::max<base::u64>(1, unit_size);
+    const base::u64 count = std::max<base::u64>(1, (size + effective_unit_size - 1) / effective_unit_size);
     return count == 1 ? unit : types.array(count, unit);
 }
 
@@ -708,8 +709,9 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_enum_cases_for_item(con
     }
     if (is_valid(named_enum_type) && is_valid(payload_storage)) {
         this->core_.state_.checked.types.set_enum_payload_layout(named_enum_type,
-            payload_storage_type(this->core_.state_.checked.types, payload_size, payload_align), payload_size,
-            payload_align);
+            payload_storage_type(
+                this->core_.state_.checked.types, payload_size, payload_align, this->core_.ctx_.options.target_layout),
+            payload_size, payload_align);
     }
     if (is_valid(named_enum_type)) {
         this->core_.state_.checked.types.set_record_contains_array(named_enum_type, contains_array_payload);

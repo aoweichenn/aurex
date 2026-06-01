@@ -1,0 +1,21 @@
+module move_borrow_call_alias_after_move;
+
+fn consume[T](value: T) -> void {
+}
+
+fn inspect[T](value: &T) -> void {
+}
+
+fn identity[T](value: &T) -> &T {
+    return value;
+}
+
+fn duplicate[T](value: T) -> void {
+    let borrowed: &T = identity(&value);
+    consume(value);
+    inspect(borrowed);
+}
+
+fn main() -> i32 {
+    return 0;
+}

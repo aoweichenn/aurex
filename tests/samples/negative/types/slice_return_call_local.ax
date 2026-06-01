@@ -1,0 +1,14 @@
+module slice_return_call_local;
+
+fn identity(values: []const u8) -> []const u8 {
+    return values;
+}
+
+fn bad() -> []const u8 {
+    let bytes: [2]u8 = b"ok";
+    return identity(bytes[:]);
+}
+
+fn main() -> i32 {
+    return 0;
+}

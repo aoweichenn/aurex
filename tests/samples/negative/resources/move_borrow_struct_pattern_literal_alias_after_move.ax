@@ -1,0 +1,21 @@
+module move_borrow_struct_pattern_literal_alias_after_move;
+
+struct Holder[T] {
+    borrowed: &T;
+}
+
+fn consume[T](value: T) -> void {
+}
+
+fn inspect[T](value: &T) -> void {
+}
+
+fn duplicate[T](value: T) -> void {
+    let Holder { borrowed } = Holder[T] { borrowed: &value };
+    consume(value);
+    inspect(borrowed);
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -1,0 +1,10 @@
+module strraw_return_strfromutf8_pointer_local;
+
+unsafe fn bad() -> str {
+    let bytes: [2]u8 = b"ok";
+    return strraw(strptr(strfromutf8(bytes[:])), strblen(strfromutf8(bytes[:])));
+}
+
+fn main() -> i32 {
+    return 0;
+}

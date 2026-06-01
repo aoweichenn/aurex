@@ -1,8 +1,6 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
-#include <cstddef>
-#include <cstdint>
 #include <limits>
 #include <optional>
 #include <string>
@@ -1061,36 +1059,37 @@ void SemanticAbiChecker::validate_type_layouts() const
 
 SemanticAnalyzerCore::TypeAbiLayout SemanticAbiChecker::abi_layout(const TypeHandle type) const
 {
-    const auto builtin_layout = [](const BuiltinType builtin) noexcept -> SemanticAnalyzerCore::TypeAbiLayout {
+    const SemanticTargetLayout& target = this->core_.ctx_.options.target_layout;
+    const auto builtin_layout = [&target](const BuiltinType builtin) noexcept -> SemanticAnalyzerCore::TypeAbiLayout {
         switch (builtin) {
             case BuiltinType::void_:
                 return SemanticAnalyzerCore::TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
             case BuiltinType::bool_:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(bool), alignof(bool)};
+                return SemanticAnalyzerCore::TypeAbiLayout{target.bool_size, target.bool_align};
             case BuiltinType::i8:
             case BuiltinType::u8:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(std::uint8_t), alignof(std::uint8_t)};
+                return SemanticAnalyzerCore::TypeAbiLayout{target.i8_size, target.i8_align};
             case BuiltinType::i16:
             case BuiltinType::u16:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(std::uint16_t), alignof(std::uint16_t)};
+                return SemanticAnalyzerCore::TypeAbiLayout{target.i16_size, target.i16_align};
             case BuiltinType::i32:
             case BuiltinType::u32:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(std::uint32_t), alignof(std::uint32_t)};
+                return SemanticAnalyzerCore::TypeAbiLayout{target.i32_size, target.i32_align};
             case BuiltinType::i64:
             case BuiltinType::u64:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(std::uint64_t), alignof(std::uint64_t)};
+                return SemanticAnalyzerCore::TypeAbiLayout{target.i64_size, target.i64_align};
             case BuiltinType::isize:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(std::ptrdiff_t), alignof(std::ptrdiff_t)};
             case BuiltinType::usize:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(std::size_t), alignof(std::size_t)};
+                return SemanticAnalyzerCore::TypeAbiLayout{target.pointer_size, target.pointer_align};
             case BuiltinType::f32:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(float), alignof(float)};
+                return SemanticAnalyzerCore::TypeAbiLayout{target.f32_size, target.f32_align};
             case BuiltinType::f64:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(double), alignof(double)};
+                return SemanticAnalyzerCore::TypeAbiLayout{target.f64_size, target.f64_align};
             case BuiltinType::str:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(void*) + sizeof(std::size_t), alignof(void*)};
+                return SemanticAnalyzerCore::TypeAbiLayout{
+                    target.pointer_size + target.pointer_size, target.pointer_align};
             case BuiltinType::char_:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(std::uint32_t), alignof(std::uint32_t)};
+                return SemanticAnalyzerCore::TypeAbiLayout{target.char_size, target.char_align};
         }
         return SemanticAnalyzerCore::TypeAbiLayout{SEMA_ABI_INVALID_SIZE, SEMA_ABI_MIN_ALIGNMENT};
     };
@@ -1111,11 +1110,12 @@ SemanticAnalyzerCore::TypeAbiLayout SemanticAbiChecker::abi_layout(const TypeHan
                 return builtin_layout(info.builtin);
             case TypeKind::pointer:
             case TypeKind::reference:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(void*), alignof(void*)};
+                return SemanticAnalyzerCore::TypeAbiLayout{target.pointer_size, target.pointer_align};
             case TypeKind::function:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(void*), alignof(void*)};
+                return SemanticAnalyzerCore::TypeAbiLayout{target.pointer_size, target.pointer_align};
             case TypeKind::slice:
-                return SemanticAnalyzerCore::TypeAbiLayout{sizeof(void*) + sizeof(std::size_t), alignof(void*)};
+                return SemanticAnalyzerCore::TypeAbiLayout{
+                    target.pointer_size + target.pointer_size, target.pointer_align};
             case TypeKind::array: {
                 const SemanticAnalyzerCore::TypeAbiLayout element = cached(layouts, info.array_element);
                 return SemanticAnalyzerCore::TypeAbiLayout{

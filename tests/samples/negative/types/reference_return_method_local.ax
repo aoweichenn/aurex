@@ -1,0 +1,20 @@
+module reference_return_method_local;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn borrow(self: &Box) -> &i32 {
+        return &self.value;
+    }
+}
+
+fn bad() -> &i32 {
+    let box: Box = Box { value: 1 };
+    return box.borrow();
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -1,0 +1,13 @@
+module resource_field_assignment;
+
+struct Box[T] {
+    value: T;
+}
+
+fn overwrite[T](box: &mut Box[T], replacement: T) -> void {
+    box.value = replacement;
+}
+
+fn main() -> i32 {
+    return 0;
+}

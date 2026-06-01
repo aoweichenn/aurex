@@ -1,0 +1,10 @@
+module reference_return_index_local;
+
+fn bad() -> &u8 {
+    let bytes: [2]u8 = b"ok";
+    return &bytes[0];
+}
+
+fn main() -> i32 {
+    return 0;
+}

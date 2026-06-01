@@ -1,0 +1,9 @@
+module resource_index_assignment;
+
+fn overwrite[T](values: []mut T, replacement: T) -> void {
+    values[0] = replacement;
+}
+
+fn main() -> i32 {
+    return 0;
+}

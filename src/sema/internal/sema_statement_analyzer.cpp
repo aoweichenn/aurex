@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <optional>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -59,6 +61,20 @@ struct ControlFlowFrame {
         return fallback;
     }
     return module.exprs.range(expr.value);
+}
+
+[[nodiscard]] bool expr_is_projected_or_dereferenced_place(
+    const syntax::AstModule& module, const syntax::ExprId expr) noexcept
+{
+    if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
+        return false;
+    }
+    const syntax::ExprKind kind = module.exprs.kind(expr.value);
+    if (kind == syntax::ExprKind::field || kind == syntax::ExprKind::index) {
+        return true;
+    }
+    const syntax::UnaryExprPayload* const unary = module.exprs.unary_payload(expr.value);
+    return kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::dereference;
 }
 
 [[nodiscard]] bool statement_binary_result_uses_operand_type(const syntax::BinaryOp op) noexcept
@@ -344,6 +360,928 @@ void evaluate_control_flow_if_statement(const syntax::AstModule& module, std::ve
 
 } // namespace
 
+class SemanticAnalyzerCore::BorrowEscapeAnalyzer final {
+public:
+    explicit BorrowEscapeAnalyzer(SemanticAnalyzerCore& core) noexcept : core_(core)
+    {
+    }
+
+    void analyze_function(const syntax::ItemNode& function)
+    {
+        this->scopes_.clear();
+        this->type_borrow_cache_.clear();
+        this->reported_exprs_.clear();
+        this->push_scope();
+        for (const syntax::ParamDecl& param : function.params) {
+            this->bind_storage(param.name_id, BorrowOrigin{param.range, true});
+            this->bind_borrowed_value(param.name_id, {});
+        }
+        std::vector<Task> tasks;
+        tasks.reserve(SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY);
+        this->push_scoped_block(tasks, function.body);
+        this->run_tasks(tasks);
+    }
+
+private:
+    struct BorrowOrigin {
+        base::SourceRange range{};
+        bool present = false;
+    };
+
+    struct BorrowedValueBinding {
+        BorrowOrigin origin{};
+    };
+
+    struct Scope {
+        std::unordered_map<IdentId, BorrowOrigin, IdentIdHash> storage;
+        std::unordered_map<IdentId, BorrowedValueBinding, IdentIdHash> borrowed_values;
+        std::unordered_map<IdentId, BorrowOrigin, IdentIdHash> pointer_values;
+    };
+
+    enum class TaskKind {
+        scoped_block,
+        block_statements,
+        statement,
+        pop_scope,
+    };
+
+    struct Task {
+        TaskKind kind = TaskKind::statement;
+        syntax::StmtId stmt = syntax::INVALID_STMT_ID;
+    };
+
+    void push_scope()
+    {
+        this->scopes_.emplace_back();
+    }
+
+    void pop_scope()
+    {
+        if (!this->scopes_.empty()) {
+            this->scopes_.pop_back();
+        }
+    }
+
+    void bind_storage(const IdentId name, const BorrowOrigin origin)
+    {
+        if (!is_valid(name) || this->scopes_.empty()) {
+            return;
+        }
+        this->scopes_.back().storage[name] = origin;
+    }
+
+    void bind_borrowed_value(const IdentId name, const BorrowOrigin origin)
+    {
+        if (!is_valid(name) || this->scopes_.empty()) {
+            return;
+        }
+        this->scopes_.back().borrowed_values[name] = BorrowedValueBinding{origin};
+    }
+
+    void bind_pointer_value(const IdentId name, const BorrowOrigin origin)
+    {
+        if (!is_valid(name) || this->scopes_.empty()) {
+            return;
+        }
+        this->scopes_.back().pointer_values[name] = origin;
+    }
+
+    void assign_borrowed_value(const IdentId name, const BorrowOrigin origin)
+    {
+        if (!is_valid(name)) {
+            return;
+        }
+        for (auto scope = this->scopes_.rbegin(); scope != this->scopes_.rend(); ++scope) {
+            if (scope->storage.contains(name)) {
+                scope->borrowed_values[name] = BorrowedValueBinding{origin};
+                return;
+            }
+        }
+        this->bind_borrowed_value(name, origin);
+    }
+
+    void assign_pointer_value(const IdentId name, const BorrowOrigin origin)
+    {
+        if (!is_valid(name)) {
+            return;
+        }
+        for (auto scope = this->scopes_.rbegin(); scope != this->scopes_.rend(); ++scope) {
+            if (scope->storage.contains(name)) {
+                scope->pointer_values[name] = origin;
+                return;
+            }
+        }
+        this->bind_pointer_value(name, origin);
+    }
+
+    [[nodiscard]] BorrowOrigin lookup_storage(const IdentId name) const
+    {
+        if (!is_valid(name)) {
+            return {};
+        }
+        for (auto scope = this->scopes_.rbegin(); scope != this->scopes_.rend(); ++scope) {
+            const auto found = scope->storage.find(name);
+            if (found != scope->storage.end()) {
+                return found->second;
+            }
+        }
+        return {};
+    }
+
+    [[nodiscard]] BorrowOrigin lookup_borrowed_value(const IdentId name) const
+    {
+        if (!is_valid(name)) {
+            return {};
+        }
+        for (auto scope = this->scopes_.rbegin(); scope != this->scopes_.rend(); ++scope) {
+            const auto found = scope->borrowed_values.find(name);
+            if (found != scope->borrowed_values.end()) {
+                return found->second.origin;
+            }
+        }
+        return {};
+    }
+
+    [[nodiscard]] BorrowOrigin lookup_pointer_value(const IdentId name) const
+    {
+        if (!is_valid(name)) {
+            return {};
+        }
+        for (auto scope = this->scopes_.rbegin(); scope != this->scopes_.rend(); ++scope) {
+            const auto found = scope->pointer_values.find(name);
+            if (found != scope->pointer_values.end()) {
+                return found->second;
+            }
+        }
+        return {};
+    }
+
+    void push_scoped_block(std::vector<Task>& tasks, const syntax::StmtId block) const
+    {
+        if (!syntax::is_valid(block)) {
+            return;
+        }
+        tasks.push_back(Task{TaskKind::scoped_block, block});
+    }
+
+    void push_statement(std::vector<Task>& tasks, const syntax::StmtId stmt) const
+    {
+        if (!syntax::is_valid(stmt)) {
+            return;
+        }
+        tasks.push_back(Task{TaskKind::statement, stmt});
+    }
+
+    void run_tasks(std::vector<Task>& tasks)
+    {
+        while (!tasks.empty()) {
+            const Task task = tasks.back();
+            tasks.pop_back();
+            switch (task.kind) {
+                case TaskKind::scoped_block:
+                    this->push_scope();
+                    tasks.push_back(Task{TaskKind::pop_scope, syntax::INVALID_STMT_ID});
+                    tasks.push_back(Task{TaskKind::block_statements, task.stmt});
+                    break;
+                case TaskKind::block_statements:
+                    this->push_block_statements(tasks, task.stmt);
+                    break;
+                case TaskKind::statement:
+                    this->analyze_statement(tasks, task.stmt);
+                    break;
+                case TaskKind::pop_scope:
+                    this->pop_scope();
+                    break;
+            }
+        }
+    }
+
+    void push_block_statements(std::vector<Task>& tasks, const syntax::StmtId block) const
+    {
+        if (!syntax::is_valid(block) || block.value >= this->core_.ctx_.module.stmts.size()) {
+            return;
+        }
+        const syntax::AstArenaVector<syntax::StmtId>* const statements =
+            this->core_.ctx_.module.stmts.block_statements(block.value);
+        if (statements == nullptr) {
+            return;
+        }
+        for (base::usize i = statements->size(); i > 0; --i) {
+            this->push_statement(tasks, (*statements)[i - 1]);
+        }
+    }
+
+    void analyze_statement(std::vector<Task>& tasks, const syntax::StmtId stmt_id)
+    {
+        const std::optional<syntax::StmtNode> stmt = statement_node(this->core_.ctx_.module, stmt_id);
+        if (!stmt.has_value()) {
+            return;
+        }
+        switch (stmt->kind) {
+            case syntax::StmtKind::let:
+            case syntax::StmtKind::var:
+                this->analyze_local_declaration(stmt_id, *stmt);
+                this->push_scoped_block(tasks, stmt->else_block);
+                break;
+            case syntax::StmtKind::assign:
+                this->analyze_assignment(*stmt);
+                break;
+            case syntax::StmtKind::if_:
+                this->push_scoped_block(tasks, stmt->else_block);
+                this->push_statement(tasks, stmt->else_if);
+                this->push_scoped_block(tasks, stmt->then_block);
+                break;
+            case syntax::StmtKind::while_:
+                this->push_scoped_block(tasks, stmt->body);
+                break;
+            case syntax::StmtKind::for_:
+                this->push_scope();
+                tasks.push_back(Task{TaskKind::pop_scope, syntax::INVALID_STMT_ID});
+                this->push_statement(tasks, stmt->for_update);
+                this->push_scoped_block(tasks, stmt->body);
+                this->push_statement(tasks, stmt->for_init);
+                break;
+            case syntax::StmtKind::for_range:
+                this->push_scope();
+                tasks.push_back(Task{TaskKind::pop_scope, syntax::INVALID_STMT_ID});
+                this->bind_storage(stmt->name_id, BorrowOrigin{stmt->range, true});
+                this->bind_borrowed_value(stmt->name_id, {});
+                this->push_scoped_block(tasks, stmt->body);
+                break;
+            case syntax::StmtKind::return_:
+                this->report_if_borrowed_local_escape(stmt->return_value);
+                break;
+            case syntax::StmtKind::block:
+                this->push_scoped_block(tasks, stmt_id);
+                break;
+            case syntax::StmtKind::break_:
+            case syntax::StmtKind::continue_:
+            case syntax::StmtKind::defer:
+            case syntax::StmtKind::expr:
+                break;
+        }
+    }
+
+    void analyze_local_declaration(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
+    {
+        const TypeHandle local_type = this->core_.cached_stmt_local_type(stmt_id);
+        if (syntax::is_valid(stmt.pattern)) {
+            this->bind_pattern_storage(stmt.pattern, local_type, stmt.init);
+            return;
+        }
+        if (!is_valid(stmt.name_id)) {
+            return;
+        }
+        const BorrowOrigin origin =
+            this->type_can_contain_borrow(local_type) ? this->borrow_origin(stmt.init) : BorrowOrigin{};
+        const BorrowOrigin pointer_origin =
+            this->core_.state_.checked.types.is_pointer(local_type) ? this->pointer_origin(stmt.init) : BorrowOrigin{};
+        this->bind_storage(stmt.name_id, BorrowOrigin{stmt.range, true});
+        this->bind_borrowed_value(stmt.name_id, origin);
+        this->bind_pointer_value(stmt.name_id, pointer_origin);
+    }
+
+    void analyze_assignment(const syntax::StmtNode& stmt)
+    {
+        const BorrowOrigin origin = this->borrow_origin(stmt.rhs);
+        const IdentId assigned_name = this->unqualified_name_id(stmt.lhs);
+        if (is_valid(assigned_name)) {
+            this->assign_borrowed_value(assigned_name,
+                this->type_can_contain_borrow(this->core_.cached_expr_type(stmt.lhs)) ? origin : BorrowOrigin{});
+            this->assign_pointer_value(assigned_name,
+                this->core_.state_.checked.types.is_pointer(this->core_.cached_expr_type(stmt.lhs))
+                    ? this->pointer_origin(stmt.rhs)
+                    : BorrowOrigin{});
+            return;
+        }
+        if (origin.present) {
+            this->report_escape(stmt.rhs, origin);
+        }
+    }
+
+    struct PatternFrame {
+        syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+        TypeHandle type = INVALID_TYPE_HANDLE;
+        syntax::ExprId source = syntax::INVALID_EXPR_ID;
+    };
+
+    void bind_pattern_storage(const syntax::PatternId pattern, const TypeHandle type, const syntax::ExprId source)
+    {
+        std::vector<PatternFrame> pending{{pattern, type, source}};
+        while (!pending.empty()) {
+            const PatternFrame frame = pending.back();
+            pending.pop_back();
+            if (!syntax::is_valid(frame.pattern) || frame.pattern.value >= this->core_.ctx_.module.patterns.size()) {
+                continue;
+            }
+            const syntax::PatternNode* const node = this->core_.ctx_.module.patterns.ptr(frame.pattern.value);
+            if (node == nullptr) {
+                continue;
+            }
+            switch (node->kind) {
+                case syntax::PatternKind::binding:
+                    this->bind_pattern_binding(*node, frame.type, frame.source);
+                    break;
+                case syntax::PatternKind::tuple:
+                    this->push_tuple_pattern_frames(pending, *node, frame.type, frame.source);
+                    break;
+                case syntax::PatternKind::slice:
+                    this->push_slice_pattern_frames(pending, *node, frame.type, frame.source);
+                    break;
+                case syntax::PatternKind::struct_:
+                    this->push_struct_pattern_frames(pending, *node, frame.type, frame.source);
+                    break;
+                case syntax::PatternKind::enum_case:
+                    this->push_enum_pattern_frames(pending, *node, frame.type, frame.source);
+                    break;
+                case syntax::PatternKind::or_pattern:
+                    for (const syntax::PatternId alternative : node->alternatives) {
+                        pending.push_back(PatternFrame{alternative, frame.type, frame.source});
+                    }
+                    break;
+                case syntax::PatternKind::wildcard:
+                case syntax::PatternKind::literal:
+                case syntax::PatternKind::const_:
+                    break;
+            }
+        }
+    }
+
+    void bind_pattern_binding(const syntax::PatternNode& pattern, const TypeHandle type, const syntax::ExprId source)
+    {
+        this->bind_storage(pattern.binding_name_id, BorrowOrigin{pattern.range, true});
+        this->bind_borrowed_value(pattern.binding_name_id,
+            this->type_can_contain_borrow(type) ? this->borrow_origin(source) : BorrowOrigin{});
+        this->bind_pointer_value(pattern.binding_name_id,
+            this->core_.state_.checked.types.is_pointer(type) ? this->pointer_origin(source) : BorrowOrigin{});
+    }
+
+    void push_tuple_pattern_frames(std::vector<PatternFrame>& pending, const syntax::PatternNode& pattern,
+        const TypeHandle type, const syntax::ExprId source) const
+    {
+        const syntax::AstArenaVector<syntax::ExprId>* const tuple_source =
+            syntax::is_valid(source) && source.value < this->core_.ctx_.module.exprs.size()
+            ? this->core_.ctx_.module.exprs.tuple_elements(source.value)
+            : nullptr;
+        const TypeInfo* const tuple_type =
+            this->core_.state_.checked.types.is_tuple(type) ? &this->core_.state_.checked.types.get(type) : nullptr;
+        for (base::usize index = pattern.elements.size(); index > 0; --index) {
+            const base::usize element_index = index - 1;
+            const TypeHandle element_type = tuple_type != nullptr && element_index < tuple_type->tuple_elements.size()
+                ? tuple_type->tuple_elements[element_index]
+                : INVALID_TYPE_HANDLE;
+            const syntax::ExprId element_source = tuple_source != nullptr && element_index < tuple_source->size()
+                ? (*tuple_source)[element_index]
+                : source;
+            pending.push_back(PatternFrame{pattern.elements[element_index], element_type, element_source});
+        }
+    }
+
+    void push_slice_pattern_frames(std::vector<PatternFrame>& pending, const syntax::PatternNode& pattern,
+        const TypeHandle type, const syntax::ExprId source) const
+    {
+        const syntax::ArrayExprPayload* const array_source =
+            syntax::is_valid(source) && source.value < this->core_.ctx_.module.exprs.size()
+            ? this->core_.ctx_.module.exprs.array_payload(source.value)
+            : nullptr;
+        TypeHandle element_type = INVALID_TYPE_HANDLE;
+        if (is_valid(type) && type.value < this->core_.state_.checked.types.size()) {
+            const TypeInfo& info = this->core_.state_.checked.types.get(type);
+            if (info.kind == TypeKind::array) {
+                element_type = info.array_element;
+            } else if (info.kind == TypeKind::slice) {
+                element_type = info.slice_element;
+            }
+        }
+        for (base::usize index = pattern.elements.size(); index > 0; --index) {
+            const base::usize element_index = index - 1;
+            const syntax::ExprId element_source =
+                array_source != nullptr && element_index < array_source->elements.size()
+                ? array_source->elements[element_index]
+                : source;
+            pending.push_back(PatternFrame{pattern.elements[element_index], element_type, element_source});
+        }
+    }
+
+    void push_struct_pattern_frames(std::vector<PatternFrame>& pending, const syntax::PatternNode& pattern,
+        const TypeHandle type, const syntax::ExprId source) const
+    {
+        const StructInfo* const structure = this->core_.find_struct(type);
+        const syntax::StructLiteralExprPayload* const struct_source =
+            syntax::is_valid(source) && source.value < this->core_.ctx_.module.exprs.size()
+            ? this->core_.ctx_.module.exprs.struct_literal_payload(source.value)
+            : nullptr;
+        for (const syntax::FieldPattern& field : pattern.field_patterns) {
+            const StructFieldInfo* const field_info =
+                structure == nullptr ? nullptr : this->pattern_struct_field(*structure, field.name_id);
+            pending.push_back(PatternFrame{
+                field.pattern,
+                field_info == nullptr ? INVALID_TYPE_HANDLE : field_info->type,
+                struct_field_source(struct_source, field.name_id, source),
+            });
+        }
+    }
+
+    void push_enum_pattern_frames(std::vector<PatternFrame>& pending, const syntax::PatternNode& pattern,
+        const TypeHandle type, const syntax::ExprId source) const
+    {
+        const EnumCaseInfo* const enum_case =
+            this->core_.find_enum_case_by_type_and_case(type, pattern.case_name_id, pattern.case_name);
+        for (base::usize index = pattern.payload_patterns.size(); index > 0; --index) {
+            const base::usize payload_index = index - 1;
+            pending.push_back(PatternFrame{
+                pattern.payload_patterns[payload_index],
+                enum_case == nullptr || payload_index >= enum_case->payload_types.size()
+                    ? INVALID_TYPE_HANDLE
+                    : enum_case->payload_types[payload_index],
+                source,
+            });
+        }
+    }
+
+    [[nodiscard]] syntax::ExprId struct_field_source(const syntax::StructLiteralExprPayload* const source,
+        const IdentId field_name, const syntax::ExprId fallback) const noexcept
+    {
+        if (source == nullptr) {
+            return fallback;
+        }
+        for (const syntax::FieldInit& init : source->field_inits) {
+            if (init.name_id == field_name) {
+                return init.value;
+            }
+        }
+        return fallback;
+    }
+
+    [[nodiscard]] const StructFieldInfo* pattern_struct_field(
+        const StructInfo& structure, const IdentId field_name) const noexcept
+    {
+        for (const StructFieldInfo& field : structure.fields) {
+            if (field.name_id == field_name) {
+                return &field;
+            }
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] IdentId unqualified_name_id(const syntax::ExprId expr) const noexcept
+    {
+        if (!syntax::is_valid(expr) || expr.value >= this->core_.ctx_.module.exprs.size()) {
+            return INVALID_IDENT_ID;
+        }
+        const syntax::NameExprPayload* const name = this->core_.ctx_.module.exprs.name_payload(expr.value);
+        return name != nullptr && name->scope_name.empty() ? name->text_id : INVALID_IDENT_ID;
+    }
+
+    [[nodiscard]] BorrowOrigin borrowed_name_origin(const syntax::ExprId expr) const
+    {
+        return this->lookup_borrowed_value(this->unqualified_name_id(expr));
+    }
+
+    [[nodiscard]] BorrowOrigin pointer_name_origin(const syntax::ExprId expr) const
+    {
+        return this->lookup_pointer_value(this->unqualified_name_id(expr));
+    }
+
+    [[nodiscard]] BorrowOrigin storage_name_origin(const syntax::ExprId expr) const
+    {
+        return this->lookup_storage(this->unqualified_name_id(expr));
+    }
+
+    [[nodiscard]] BorrowOrigin place_storage_origin(const syntax::ExprId expr) const
+    {
+        syntax::ExprId current = expr;
+        bool traversed_projection = false;
+        while (syntax::is_valid(current) && current.value < this->core_.ctx_.module.exprs.size()) {
+            const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(current.value);
+            if (kind == syntax::ExprKind::name) {
+                if (const BorrowOrigin alias = this->borrowed_name_origin(current); alias.present) {
+                    return alias;
+                }
+                if (traversed_projection
+                    && this->core_.state_.checked.types.is_reference(this->core_.cached_expr_type(current))) {
+                    return {};
+                }
+                return this->storage_name_origin(current);
+            }
+            if (const syntax::FieldExprPayload* const field =
+                    this->core_.ctx_.module.exprs.field_payload(current.value);
+                kind == syntax::ExprKind::field && field != nullptr) {
+                traversed_projection = true;
+                current = field->object;
+                continue;
+            }
+            if (const syntax::IndexExprPayload* const index =
+                    this->core_.ctx_.module.exprs.index_payload(current.value);
+                kind == syntax::ExprKind::index && index != nullptr) {
+                traversed_projection = true;
+                current = index->object;
+                continue;
+            }
+            if (const syntax::UnaryExprPayload* const unary =
+                    this->core_.ctx_.module.exprs.unary_payload(current.value);
+                kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::dereference) {
+                return this->borrowed_name_origin(unary->operand);
+            }
+            break;
+        }
+        return {};
+    }
+
+    [[nodiscard]] BorrowOrigin slice_source_origin(const syntax::ExprId expr) const
+    {
+        if (const BorrowOrigin alias = this->borrowed_name_origin(expr); alias.present) {
+            return alias;
+        }
+        const TypeHandle type = this->core_.cached_expr_type(expr);
+        if (this->core_.state_.checked.types.is_array(type)) {
+            return this->place_storage_origin(expr);
+        }
+        return {};
+    }
+
+    [[nodiscard]] BorrowOrigin borrowed_carrier_origin(const syntax::ExprId expr)
+    {
+        std::vector<syntax::ExprId> pending{expr};
+        std::unordered_set<base::u32> visited;
+        while (!pending.empty()) {
+            const syntax::ExprId current = pending.back();
+            pending.pop_back();
+            if (!syntax::is_valid(current) || current.value >= this->core_.ctx_.module.exprs.size()
+                || !visited.insert(current.value).second) {
+                continue;
+            }
+            const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(current.value);
+            if (kind == syntax::ExprKind::name) {
+                if (const BorrowOrigin origin = this->borrowed_name_origin(current); origin.present) {
+                    return origin;
+                }
+                continue;
+            }
+            if (const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(current.value);
+                kind == syntax::ExprKind::call && call != nullptr
+                && this->type_can_contain_borrow(this->core_.cached_expr_type(current))) {
+                if (const BorrowOrigin origin = this->method_receiver_origin(call->callee); origin.present) {
+                    return origin;
+                }
+                for (const syntax::ExprId arg : call->args) {
+                    pending.push_back(arg);
+                }
+                continue;
+            }
+            if (const syntax::SliceExprPayload* const slice =
+                    this->core_.ctx_.module.exprs.slice_payload(current.value);
+                kind == syntax::ExprKind::slice && slice != nullptr) {
+                if (const BorrowOrigin origin = this->slice_source_origin(slice->object); origin.present) {
+                    return origin;
+                }
+                continue;
+            }
+            if (const syntax::CastExprPayload* const cast = this->core_.ctx_.module.exprs.cast_payload(current.value);
+                cast != nullptr && kind == syntax::ExprKind::str_from_utf8_checked) {
+                pending.push_back(cast->expr);
+                continue;
+            }
+            if (const syntax::BlockExprPayload* const block =
+                    this->core_.ctx_.module.exprs.block_payload(current.value);
+                block != nullptr && (kind == syntax::ExprKind::block_expr || kind == syntax::ExprKind::unsafe_block)) {
+                if (const BorrowOrigin origin = this->block_result_borrow_origin(*block); origin.present) {
+                    return origin;
+                }
+            }
+        }
+        return {};
+    }
+
+    [[nodiscard]] BorrowOrigin method_receiver_origin(const syntax::ExprId callee)
+    {
+        syntax::ExprId current = callee;
+        std::unordered_set<base::u32> visited;
+        while (syntax::is_valid(current) && current.value < this->core_.ctx_.module.exprs.size()
+            && visited.insert(current.value).second) {
+            const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(current.value);
+            if (const syntax::GenericApplyExprPayload* const generic =
+                    this->core_.ctx_.module.exprs.generic_apply_payload(current.value);
+                kind == syntax::ExprKind::generic_apply && generic != nullptr) {
+                current = generic->callee;
+                continue;
+            }
+            if (const syntax::FieldExprPayload* const field =
+                    this->core_.ctx_.module.exprs.field_payload(current.value);
+                kind == syntax::ExprKind::field && field != nullptr) {
+                if (const BorrowOrigin origin = this->borrowed_carrier_origin(field->object); origin.present) {
+                    return origin;
+                }
+                return this->place_storage_origin(field->object);
+            }
+            break;
+        }
+        return {};
+    }
+
+    [[nodiscard]] BorrowOrigin pointer_origin(const syntax::ExprId expr)
+    {
+        std::vector<syntax::ExprId> pending{expr};
+        std::unordered_set<base::u32> visited;
+        while (!pending.empty()) {
+            const syntax::ExprId current = pending.back();
+            pending.pop_back();
+            if (!syntax::is_valid(current) || current.value >= this->core_.ctx_.module.exprs.size()
+                || !visited.insert(current.value).second) {
+                continue;
+            }
+            const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(current.value);
+            if (kind == syntax::ExprKind::name) {
+                if (const BorrowOrigin origin = this->pointer_name_origin(current); origin.present) {
+                    return origin;
+                }
+                continue;
+            }
+            if (const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(current.value);
+                kind == syntax::ExprKind::call && call != nullptr) {
+                for (const syntax::ExprId arg : call->args) {
+                    pending.push_back(arg);
+                }
+                pending.push_back(call->callee);
+                continue;
+            }
+            if (const syntax::CastExprPayload* const cast = this->core_.ctx_.module.exprs.cast_payload(current.value);
+                cast != nullptr
+                && (kind == syntax::ExprKind::slice_data || kind == syntax::ExprKind::str_data
+                    || kind == syntax::ExprKind::cast || kind == syntax::ExprKind::pcast
+                    || kind == syntax::ExprKind::bcast || kind == syntax::ExprKind::paddr)) {
+                if (kind == syntax::ExprKind::slice_data || kind == syntax::ExprKind::str_data) {
+                    if (const BorrowOrigin origin = this->borrowed_carrier_origin(cast->expr); origin.present) {
+                        return origin;
+                    }
+                    continue;
+                }
+                pending.push_back(cast->expr);
+                continue;
+            }
+            if (const syntax::BlockExprPayload* const block =
+                    this->core_.ctx_.module.exprs.block_payload(current.value);
+                block != nullptr && (kind == syntax::ExprKind::block_expr || kind == syntax::ExprKind::unsafe_block)) {
+                if (const BorrowOrigin origin = this->block_result_pointer_origin(*block); origin.present) {
+                    return origin;
+                }
+            }
+        }
+        return {};
+    }
+
+    [[nodiscard]] BorrowOrigin borrow_origin(const syntax::ExprId expr)
+    {
+        std::vector<syntax::ExprId> pending{expr};
+        std::unordered_set<base::u32> visited;
+        while (!pending.empty()) {
+            const syntax::ExprId current = pending.back();
+            pending.pop_back();
+            if (!syntax::is_valid(current) || current.value >= this->core_.ctx_.module.exprs.size()
+                || !visited.insert(current.value).second) {
+                continue;
+            }
+            const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(current.value);
+            if (kind != syntax::ExprKind::str_from_bytes_unchecked
+                && !this->type_can_contain_borrow(this->core_.cached_expr_type(current))) {
+                continue;
+            }
+            if (kind == syntax::ExprKind::name) {
+                if (const BorrowOrigin origin = this->borrowed_name_origin(current); origin.present) {
+                    return origin;
+                }
+                continue;
+            }
+            if (const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(current.value);
+                kind == syntax::ExprKind::call && call != nullptr) {
+                if (const BorrowOrigin origin = this->method_receiver_origin(call->callee); origin.present) {
+                    return origin;
+                }
+                for (const syntax::ExprId arg : call->args) {
+                    pending.push_back(arg);
+                }
+                continue;
+            }
+            if (const syntax::UnaryExprPayload* const unary =
+                    this->core_.ctx_.module.exprs.unary_payload(current.value);
+                kind == syntax::ExprKind::unary && unary != nullptr
+                && (unary->op == syntax::UnaryOp::address_of || unary->op == syntax::UnaryOp::address_of_mut)) {
+                if (const BorrowOrigin origin = this->place_storage_origin(unary->operand); origin.present) {
+                    return origin;
+                }
+                continue;
+            }
+            if (const syntax::SliceExprPayload* const slice =
+                    this->core_.ctx_.module.exprs.slice_payload(current.value);
+                kind == syntax::ExprKind::slice && slice != nullptr) {
+                if (const BorrowOrigin origin = this->slice_source_origin(slice->object); origin.present) {
+                    return origin;
+                }
+                continue;
+            }
+            if (const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(current.value);
+                kind == syntax::ExprKind::str_from_bytes_unchecked && call != nullptr && !call->args.empty()) {
+                if (const BorrowOrigin origin = this->pointer_origin(call->args.front()); origin.present) {
+                    return origin;
+                }
+                continue;
+            }
+            if (const syntax::BlockExprPayload* const block =
+                    this->core_.ctx_.module.exprs.block_payload(current.value);
+                block != nullptr && (kind == syntax::ExprKind::block_expr || kind == syntax::ExprKind::unsafe_block)) {
+                if (const BorrowOrigin origin = this->block_result_borrow_origin(*block); origin.present) {
+                    return origin;
+                }
+                continue;
+            }
+            if (this->push_expression_children_for_origin(pending, current, kind)) {
+                continue;
+            }
+        }
+        return {};
+    }
+
+    [[nodiscard]] bool push_expression_children_for_origin(
+        std::vector<syntax::ExprId>& pending, const syntax::ExprId expr, const syntax::ExprKind kind)
+    {
+        if (const syntax::CastExprPayload* const cast = this->core_.ctx_.module.exprs.cast_payload(expr.value);
+            cast != nullptr && kind == syntax::ExprKind::str_from_utf8_checked) {
+            pending.push_back(cast->expr);
+            return true;
+        }
+        if (const syntax::IfExprPayload* const if_expr = this->core_.ctx_.module.exprs.if_payload(expr.value);
+            kind == syntax::ExprKind::if_expr && if_expr != nullptr) {
+            pending.push_back(if_expr->else_expr);
+            pending.push_back(if_expr->then_expr);
+            return true;
+        }
+        if (const syntax::MatchExprPayload* const match = this->core_.ctx_.module.exprs.match_payload(expr.value);
+            kind == syntax::ExprKind::match_expr && match != nullptr) {
+            for (const syntax::MatchArm& arm : match->arms) {
+                pending.push_back(arm.value);
+            }
+            return true;
+        }
+        if (const syntax::ArrayExprPayload* const array = this->core_.ctx_.module.exprs.array_payload(expr.value);
+            kind == syntax::ExprKind::array_literal && array != nullptr) {
+            pending.push_back(array->repeat_value);
+            for (const syntax::ExprId element : array->elements) {
+                pending.push_back(element);
+            }
+            return true;
+        }
+        if (const syntax::AstArenaVector<syntax::ExprId>* const tuple =
+                this->core_.ctx_.module.exprs.tuple_elements(expr.value);
+            kind == syntax::ExprKind::tuple_literal && tuple != nullptr) {
+            for (const syntax::ExprId element : *tuple) {
+                pending.push_back(element);
+            }
+            return true;
+        }
+        if (const syntax::StructLiteralExprPayload* const structure =
+                this->core_.ctx_.module.exprs.struct_literal_payload(expr.value);
+            kind == syntax::ExprKind::struct_literal && structure != nullptr) {
+            for (const syntax::FieldInit& field : structure->field_inits) {
+                pending.push_back(field.value);
+            }
+            return true;
+        }
+        if (const syntax::FieldExprPayload* const field = this->core_.ctx_.module.exprs.field_payload(expr.value);
+            kind == syntax::ExprKind::field && field != nullptr) {
+            pending.push_back(field->object);
+            return true;
+        }
+        if (const syntax::IndexExprPayload* const index = this->core_.ctx_.module.exprs.index_payload(expr.value);
+            kind == syntax::ExprKind::index && index != nullptr) {
+            pending.push_back(index->object);
+            return true;
+        }
+        return false;
+    }
+
+    [[nodiscard]] BorrowOrigin block_result_borrow_origin(const syntax::BlockExprPayload& block)
+    {
+        return this->block_result_origin(block, [this](const syntax::ExprId result) {
+            return this->borrow_origin(result);
+        });
+    }
+
+    [[nodiscard]] BorrowOrigin block_result_pointer_origin(const syntax::BlockExprPayload& block)
+    {
+        return this->block_result_origin(block, [this](const syntax::ExprId result) {
+            return this->pointer_origin(result);
+        });
+    }
+
+    template <typename OriginFn>
+    [[nodiscard]] BorrowOrigin block_result_origin(const syntax::BlockExprPayload& block, OriginFn origin)
+    {
+        this->push_scope();
+        std::vector<Task> tasks;
+        tasks.reserve(SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY);
+        this->push_block_statements(tasks, block.block);
+        this->run_tasks(tasks);
+        const BorrowOrigin result = origin(block.result);
+        this->pop_scope();
+        return result;
+    }
+
+    [[nodiscard]] bool type_can_contain_borrow(const TypeHandle type) const
+    {
+        if (!is_valid(type)) {
+            return false;
+        }
+        const auto cached = this->type_borrow_cache_.find(type.value);
+        if (cached != this->type_borrow_cache_.end()) {
+            return cached->second;
+        }
+
+        bool result = false;
+        std::vector<TypeHandle> pending{type};
+        std::unordered_set<base::u32> visited;
+        while (!pending.empty() && !result) {
+            const TypeHandle current = pending.back();
+            pending.pop_back();
+            if (!is_valid(current) || current.value >= this->core_.state_.checked.types.size()
+                || !visited.insert(current.value).second) {
+                continue;
+            }
+            const TypeInfo& info = this->core_.state_.checked.types.get(current);
+            switch (info.kind) {
+                case TypeKind::builtin:
+                    result = info.builtin == BuiltinType::str;
+                    break;
+                case TypeKind::reference:
+                case TypeKind::slice:
+                    result = true;
+                    break;
+                case TypeKind::generic_param:
+                case TypeKind::associated_projection:
+                    break;
+                case TypeKind::array:
+                    pending.push_back(info.array_element);
+                    break;
+                case TypeKind::tuple:
+                    pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
+                    break;
+                case TypeKind::struct_: {
+                    const StructInfo* const structure = this->core_.find_struct(current);
+                    if (structure != nullptr) {
+                        for (const StructFieldInfo& field : structure->fields) {
+                            pending.push_back(field.type);
+                        }
+                    }
+                    break;
+                }
+                case TypeKind::enum_: {
+                    if (const EnumCaseList* const cases = this->core_.find_enum_cases_by_type(current);
+                        cases != nullptr) {
+                        for (const EnumCaseInfo* const enum_case : *cases) {
+                            if (enum_case != nullptr) {
+                                pending.insert(
+                                    pending.end(), enum_case->payload_types.begin(), enum_case->payload_types.end());
+                            }
+                        }
+                    }
+                    break;
+                }
+                case TypeKind::pointer:
+                case TypeKind::function:
+                case TypeKind::opaque_struct:
+                    break;
+            }
+        }
+        this->type_borrow_cache_[type.value] = result;
+        return result;
+    }
+
+    void report_if_borrowed_local_escape(const syntax::ExprId expr)
+    {
+        if (!this->type_can_contain_borrow(this->core_.cached_expr_type(expr))) {
+            return;
+        }
+        const BorrowOrigin origin = this->borrow_origin(expr);
+        if (origin.present) {
+            this->report_escape(expr, origin);
+        }
+    }
+
+    void report_escape(const syntax::ExprId expr, const BorrowOrigin origin)
+    {
+        if (!origin.present || !syntax::is_valid(expr) || !this->reported_exprs_.insert(expr.value).second) {
+            return;
+        }
+        this->core_.report_general(
+            expr_range_or(this->core_.ctx_.module, expr, origin.range), std::string(SEMA_BORROWED_LOCAL_ESCAPE));
+        this->core_.report_note(origin.range, SemanticDiagnosticKind::general, std::string(SEMA_BORROWED_LOCAL_ORIGIN));
+    }
+
+    SemanticAnalyzerCore& core_;
+    std::vector<Scope> scopes_;
+    mutable std::unordered_map<base::u32, bool> type_borrow_cache_;
+    std::unordered_set<base::u32> reported_exprs_;
+};
+
 struct SemanticAnalyzerCore::FunctionBodyContextScope {
     struct Config {
         syntax::ModuleId module = syntax::INVALID_MODULE_ID;
@@ -467,6 +1405,7 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
         static_cast<void>(inserted);
     }
     this->core_.analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
+    this->core_.analyze_borrow_escapes(function);
     this->core_.analyze_body_moves(function, signature);
     this->core_.state_.names.symbols.pop_scope();
     if (infer_return_type) {
@@ -826,6 +1765,12 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_statement_node(const synta
                 this->core_.report_general(expr_range_or(this->core_.ctx_.module, stmt.lhs, stmt.range),
                     std::string(SEMA_ASSIGNMENT_LHS_WRITABLE));
             }
+            if (stmt.assign_op == syntax::AssignOp::assign
+                && expr_is_projected_or_dereferenced_place(this->core_.ctx_.module, stmt.lhs) && is_valid(lhs)
+                && !this->core_.type_satisfies_capability(lhs, CapabilityKind::copy)) {
+                this->core_.report_unsupported(expr_range_or(this->core_.ctx_.module, stmt.lhs, stmt.range),
+                    std::string(SEMA_RESOURCE_PLACE_ASSIGNMENT_UNSUPPORTED));
+            }
             syntax::BinaryOp binary_op = syntax::BinaryOp::add;
             if (compound_assignment_binary_op(stmt.assign_op, binary_op)) {
                 ExprView binary;
@@ -1112,6 +2057,11 @@ void SemanticAnalyzerCore::analyze_function_body_with_signature(const syntax::It
     const FunctionLookupKey& key, const FunctionSignature& signature, FunctionBodyState& state)
 {
     StatementAnalyzer(*this).analyze_function_body_with_signature(function, key, signature, state);
+}
+
+void SemanticAnalyzerCore::analyze_borrow_escapes(const syntax::ItemNode& function)
+{
+    BorrowEscapeAnalyzer(*this).analyze_function(function);
 }
 
 void SemanticAnalyzerCore::analyze_block(

@@ -1,0 +1,13 @@
+module reference_return_block_alias_local;
+
+fn bad() -> &i32 {
+    let value: i32 = 1;
+    return {
+        let borrowed: &i32 = &value;
+        borrowed
+    };
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -95,6 +95,7 @@ private:
     using CapabilityIdentityMap = SemaMap<GenericParamIdentity, CapabilitySet, GenericParamIdentityHash>;
 
     class BuiltinExpressionAnalyzer;
+    class BorrowEscapeAnalyzer;
     class BodyMoveAnalyzer;
     class ControlExpressionAnalyzer;
     class DeclarationAnalyzer;
@@ -574,6 +575,7 @@ private:
     void analyze_function_body(const syntax::ItemNode& function, syntax::ItemId function_id);
     void analyze_function_body_with_signature(const syntax::ItemNode& function, const FunctionLookupKey& key,
         const FunctionSignature& signature, FunctionBodyState& state);
+    void analyze_borrow_escapes(const syntax::ItemNode& function);
     void analyze_body_moves(const syntax::ItemNode& function, const FunctionSignature& signature);
     void analyze_generic_function_definition(const GenericTemplateInfo& info);
     void analyze_generic_function_body(const syntax::ItemNode& function, const GenericTemplateInfo& info,
@@ -816,6 +818,7 @@ private:
     [[nodiscard]] TypeAbiLayout abi_layout(TypeHandle type) const;
     [[nodiscard]] base::u64 abi_size(TypeHandle type) const;
     [[nodiscard]] base::u64 abi_align(TypeHandle type) const;
+    [[nodiscard]] base::u32 target_pointer_bit_width() const noexcept;
     [[nodiscard]] bool is_integer_literal(syntax::ExprId expr) const noexcept;
     [[nodiscard]] bool is_null_literal(syntax::ExprId expr) const noexcept;
     [[nodiscard]] bool is_null_result_expr(syntax::ExprId expr) const noexcept;

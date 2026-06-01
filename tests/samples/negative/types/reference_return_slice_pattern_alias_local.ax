@@ -1,0 +1,11 @@
+module reference_return_slice_pattern_alias_local;
+
+fn bad() -> &i32 {
+    let value: i32 = 1;
+    let [borrowed] = [&value];
+    return borrowed;
+}
+
+fn main() -> i32 {
+    return 0;
+}

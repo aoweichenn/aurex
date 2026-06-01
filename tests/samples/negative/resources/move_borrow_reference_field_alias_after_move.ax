@@ -1,0 +1,22 @@
+module move_borrow_reference_field_alias_after_move;
+
+struct Box[T] {
+    value: T;
+}
+
+fn consume[T](value: Box[T]) -> void {
+}
+
+fn inspect[T](value: &T) -> void {
+}
+
+fn duplicate[T](box: Box[T]) -> void {
+    let alias: &Box[T] = &box;
+    let borrowed: &T = &alias.value;
+    consume(box);
+    inspect(borrowed);
+}
+
+fn main() -> i32 {
+    return 0;
+}

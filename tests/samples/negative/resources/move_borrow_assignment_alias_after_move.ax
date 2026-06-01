@@ -1,0 +1,18 @@
+module move_borrow_assignment_alias_after_move;
+
+fn consume[T](value: T) -> void {
+}
+
+fn inspect[T](value: &T) -> void {
+}
+
+fn duplicate[T](value: T) -> void {
+    var borrowed: &T = &value;
+    borrowed = &value;
+    consume(value);
+    inspect(borrowed);
+}
+
+fn main() -> i32 {
+    return 0;
+}

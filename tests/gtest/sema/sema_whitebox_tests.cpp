@@ -1160,45 +1160,45 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     EXPECT_EQ(analyzer.abi_align(INVALID_TYPE_HANDLE), SEMA_TEST_ABI_MIN_ALIGNMENT);
     EXPECT_EQ(analyzer.abi_size(void_type), SEMA_TEST_ABI_INVALID_SIZE);
     EXPECT_EQ(analyzer.abi_align(void_type), SEMA_TEST_ABI_MIN_ALIGNMENT);
-    EXPECT_EQ(analyzer.abi_size(bool_type), sizeof(bool));
-    EXPECT_EQ(analyzer.abi_align(bool_type), alignof(bool));
-    EXPECT_EQ(analyzer.abi_size(i8), sizeof(std::uint8_t));
-    EXPECT_EQ(analyzer.abi_size(u8), sizeof(std::uint8_t));
-    EXPECT_EQ(analyzer.abi_size(i16), sizeof(std::uint16_t));
-    EXPECT_EQ(analyzer.abi_size(u16), sizeof(std::uint16_t));
-    EXPECT_EQ(analyzer.abi_size(i32), sizeof(std::uint32_t));
-    EXPECT_EQ(analyzer.abi_size(u32), sizeof(std::uint32_t));
-    EXPECT_EQ(analyzer.abi_size(i64), sizeof(std::uint64_t));
-    EXPECT_EQ(analyzer.abi_size(u64), sizeof(std::uint64_t));
-    EXPECT_EQ(analyzer.abi_size(isize), sizeof(std::ptrdiff_t));
-    EXPECT_EQ(analyzer.abi_size(usize), sizeof(std::size_t));
-    EXPECT_EQ(analyzer.abi_size(f32), sizeof(float));
-    EXPECT_EQ(analyzer.abi_size(f64), sizeof(double));
-    EXPECT_EQ(analyzer.abi_size(str), sizeof(void*) + sizeof(std::size_t));
-    EXPECT_EQ(analyzer.abi_size(char_type), sizeof(std::uint32_t));
+    EXPECT_EQ(analyzer.abi_size(bool_type), sema::SEMA_DEFAULT_TARGET_BOOL_SIZE);
+    EXPECT_EQ(analyzer.abi_align(bool_type), sema::SEMA_DEFAULT_TARGET_BOOL_ALIGN);
+    EXPECT_EQ(analyzer.abi_size(i8), sema::SEMA_DEFAULT_TARGET_I8_SIZE);
+    EXPECT_EQ(analyzer.abi_size(u8), sema::SEMA_DEFAULT_TARGET_I8_SIZE);
+    EXPECT_EQ(analyzer.abi_size(i16), sema::SEMA_DEFAULT_TARGET_I16_SIZE);
+    EXPECT_EQ(analyzer.abi_size(u16), sema::SEMA_DEFAULT_TARGET_I16_SIZE);
+    EXPECT_EQ(analyzer.abi_size(i32), sema::SEMA_DEFAULT_TARGET_I32_SIZE);
+    EXPECT_EQ(analyzer.abi_size(u32), sema::SEMA_DEFAULT_TARGET_I32_SIZE);
+    EXPECT_EQ(analyzer.abi_size(i64), sema::SEMA_DEFAULT_TARGET_I64_SIZE);
+    EXPECT_EQ(analyzer.abi_size(u64), sema::SEMA_DEFAULT_TARGET_I64_SIZE);
+    EXPECT_EQ(analyzer.abi_size(isize), sema::SEMA_DEFAULT_TARGET_POINTER_SIZE);
+    EXPECT_EQ(analyzer.abi_size(usize), sema::SEMA_DEFAULT_TARGET_POINTER_SIZE);
+    EXPECT_EQ(analyzer.abi_size(f32), sema::SEMA_DEFAULT_TARGET_F32_SIZE);
+    EXPECT_EQ(analyzer.abi_size(f64), sema::SEMA_DEFAULT_TARGET_F64_SIZE);
+    EXPECT_EQ(analyzer.abi_size(str), sema::SEMA_DEFAULT_TARGET_POINTER_SIZE + sema::SEMA_DEFAULT_TARGET_POINTER_SIZE);
+    EXPECT_EQ(analyzer.abi_size(char_type), sema::SEMA_DEFAULT_TARGET_CHAR_SIZE);
     const sema::SemanticAnalyzerCore::TypeAbiLayout i32_layout = analyzer.abi_layout(i32);
-    EXPECT_EQ(i32_layout.size, sizeof(std::uint32_t));
-    EXPECT_EQ(i32_layout.align, alignof(std::uint32_t));
-    EXPECT_EQ(analyzer.abi_align(i8), alignof(std::uint8_t));
-    EXPECT_EQ(analyzer.abi_align(i64), alignof(std::uint64_t));
-    EXPECT_EQ(analyzer.abi_align(isize), alignof(std::ptrdiff_t));
-    EXPECT_EQ(analyzer.abi_align(usize), alignof(std::size_t));
-    EXPECT_EQ(analyzer.abi_align(f32), alignof(float));
-    EXPECT_EQ(analyzer.abi_align(f64), alignof(double));
-    EXPECT_EQ(analyzer.abi_align(str), alignof(void*));
-    EXPECT_EQ(analyzer.abi_align(char_type), alignof(std::uint32_t));
-    EXPECT_EQ(analyzer.abi_size(ptr_i32), sizeof(void*));
-    EXPECT_EQ(analyzer.abi_align(ptr_i32), alignof(void*));
-    EXPECT_EQ(analyzer.abi_size(array_i16), SEMA_TEST_SMALL_ARRAY_COUNT * sizeof(std::uint16_t));
-    EXPECT_EQ(analyzer.abi_align(array_i16), alignof(std::uint16_t));
+    EXPECT_EQ(i32_layout.size, sema::SEMA_DEFAULT_TARGET_I32_SIZE);
+    EXPECT_EQ(i32_layout.align, sema::SEMA_DEFAULT_TARGET_I32_ALIGN);
+    EXPECT_EQ(analyzer.abi_align(i8), sema::SEMA_DEFAULT_TARGET_I8_ALIGN);
+    EXPECT_EQ(analyzer.abi_align(i64), sema::SEMA_DEFAULT_TARGET_I64_ALIGN);
+    EXPECT_EQ(analyzer.abi_align(isize), sema::SEMA_DEFAULT_TARGET_POINTER_ALIGN);
+    EXPECT_EQ(analyzer.abi_align(usize), sema::SEMA_DEFAULT_TARGET_POINTER_ALIGN);
+    EXPECT_EQ(analyzer.abi_align(f32), sema::SEMA_DEFAULT_TARGET_F32_ALIGN);
+    EXPECT_EQ(analyzer.abi_align(f64), sema::SEMA_DEFAULT_TARGET_F64_ALIGN);
+    EXPECT_EQ(analyzer.abi_align(str), sema::SEMA_DEFAULT_TARGET_POINTER_ALIGN);
+    EXPECT_EQ(analyzer.abi_align(char_type), sema::SEMA_DEFAULT_TARGET_CHAR_ALIGN);
+    EXPECT_EQ(analyzer.abi_size(ptr_i32), sema::SEMA_DEFAULT_TARGET_POINTER_SIZE);
+    EXPECT_EQ(analyzer.abi_align(ptr_i32), sema::SEMA_DEFAULT_TARGET_POINTER_ALIGN);
+    EXPECT_EQ(analyzer.abi_size(array_i16), SEMA_TEST_SMALL_ARRAY_COUNT * sema::SEMA_DEFAULT_TARGET_I16_SIZE);
+    EXPECT_EQ(analyzer.abi_align(array_i16), sema::SEMA_DEFAULT_TARGET_I16_ALIGN);
     EXPECT_EQ(analyzer.abi_size(missing_struct), SEMA_TEST_ABI_INVALID_SIZE);
     EXPECT_EQ(analyzer.abi_align(missing_struct), SEMA_TEST_ABI_MIN_ALIGNMENT);
     EXPECT_EQ(analyzer.abi_size(record_type), SEMA_TEST_RECORD_ABI_SIZE);
     EXPECT_EQ(analyzer.abi_align(record_type), alignof(std::uint64_t));
-    EXPECT_EQ(analyzer.abi_size(enum_type), sizeof(std::uint16_t));
-    EXPECT_EQ(analyzer.abi_align(enum_type), alignof(std::uint16_t));
-    EXPECT_GT(analyzer.abi_size(payload_enum_type), sizeof(std::uint8_t));
-    EXPECT_EQ(analyzer.abi_align(payload_enum_type), alignof(std::uint64_t));
+    EXPECT_EQ(analyzer.abi_size(enum_type), sema::SEMA_DEFAULT_TARGET_I16_SIZE);
+    EXPECT_EQ(analyzer.abi_align(enum_type), sema::SEMA_DEFAULT_TARGET_I16_ALIGN);
+    EXPECT_GT(analyzer.abi_size(payload_enum_type), sema::SEMA_DEFAULT_TARGET_I8_SIZE);
+    EXPECT_EQ(analyzer.abi_align(payload_enum_type), sema::SEMA_DEFAULT_TARGET_I64_ALIGN);
     EXPECT_EQ(analyzer.abi_size(opaque_type), SEMA_TEST_ABI_INVALID_SIZE);
     EXPECT_EQ(analyzer.abi_align(opaque_type), SEMA_TEST_ABI_MIN_ALIGNMENT);
     static_cast<void>(analyzer.abi_layout(place_record_type));
@@ -1287,6 +1287,33 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     EXPECT_EQ(analyzer.module_name(syntax::INVALID_MODULE_ID), "<unknown>");
     EXPECT_EQ(analyzer.qualified_name(syntax::INVALID_MODULE_ID, "Name"), "Name");
     EXPECT_EQ(analyzer.c_symbol_name(syntax::INVALID_MODULE_ID, "Name"), "Name");
+}
+
+TEST(CoreUnit, SemanticWhiteBoxTargetLayoutControlsPointerSizedIntegerSemantics)
+{
+    constexpr base::u64 SEMA_TEST_32BIT_POINTER_SIZE = 4;
+    constexpr base::u64 SEMA_TEST_32BIT_POINTER_ALIGN = 4;
+
+    syntax::AstModule module;
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle isize = types.builtin(BuiltinType::isize);
+    const TypeHandle usize = types.builtin(BuiltinType::usize);
+    const TypeHandle ref_i32 = types.reference(PointerMutability::const_, types.builtin(BuiltinType::i32));
+    const TypeHandle slice_i32 = types.slice(PointerMutability::const_, types.builtin(BuiltinType::i32));
+
+    analyzer.ctx_.options.target_layout.pointer_size = SEMA_TEST_32BIT_POINTER_SIZE;
+    analyzer.ctx_.options.target_layout.pointer_align = SEMA_TEST_32BIT_POINTER_ALIGN;
+
+    EXPECT_EQ(analyzer.abi_size(isize), SEMA_TEST_32BIT_POINTER_SIZE);
+    EXPECT_EQ(analyzer.abi_size(usize), SEMA_TEST_32BIT_POINTER_SIZE);
+    EXPECT_EQ(analyzer.abi_align(ref_i32), SEMA_TEST_32BIT_POINTER_ALIGN);
+    EXPECT_EQ(analyzer.abi_size(slice_i32), SEMA_TEST_32BIT_POINTER_SIZE + SEMA_TEST_32BIT_POINTER_SIZE);
+    EXPECT_TRUE(analyzer.integer_literal_fits_type(usize, "4294967295usize"));
+    EXPECT_FALSE(analyzer.integer_literal_fits_type(usize, "4294967296usize"));
+    EXPECT_TRUE(analyzer.negative_integer_literal_fits_type(isize, "2147483648isize"));
+    EXPECT_FALSE(analyzer.negative_integer_literal_fits_type(isize, "2147483649isize"));
 }
 
 TEST(CoreUnit, SemanticWhiteBoxVisibilityLatticeAccessAndSurfaceLeaks)

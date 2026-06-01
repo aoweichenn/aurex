@@ -1,0 +1,10 @@
+module reference_mut_return_local;
+
+fn bad() -> &mut i32 {
+    var value: i32 = 1;
+    return &mut value;
+}
+
+fn main() -> i32 {
+    return 0;
+}

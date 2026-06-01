@@ -9,7 +9,6 @@ namespace aurex::sema {
 
 namespace {
 
-constexpr base::u32 SEMA_INTEGER_BITS_PER_BYTE = 8;
 constexpr base::u32 SEMA_I8_BIT_WIDTH = 8;
 constexpr base::u32 SEMA_I16_BIT_WIDTH = 16;
 constexpr base::u32 SEMA_I32_BIT_WIDTH = 32;
@@ -173,7 +172,8 @@ struct IntegerLiteralExpr {
     }
 }
 
-[[nodiscard]] base::u32 integer_bit_width(const TypeTable& types, const TypeHandle type) noexcept
+[[nodiscard]] base::u32 integer_bit_width(
+    const TypeTable& types, const TypeHandle type, const base::u32 target_pointer_bits) noexcept
 {
     if (!types.is_integer(type)) {
         return 0;
@@ -196,9 +196,8 @@ struct IntegerLiteralExpr {
         case BuiltinType::u64:
             return SEMA_I64_BIT_WIDTH;
         case BuiltinType::isize:
-            return static_cast<base::u32>(sizeof(base::isize) * SEMA_INTEGER_BITS_PER_BYTE);
         case BuiltinType::usize:
-            return static_cast<base::u32>(sizeof(base::usize) * SEMA_INTEGER_BITS_PER_BYTE);
+            return target_pointer_bits;
         default:
             return 0;
     }
@@ -372,7 +371,8 @@ void SemanticAnalyzerCore::OperatorExpressionAnalyzer::diagnose_binary_rhs_liter
         return;
     }
 
-    const base::u32 bit_width = integer_bit_width(this->core_.state_.checked.types, lhs);
+    const base::u32 bit_width =
+        integer_bit_width(this->core_.state_.checked.types, lhs, this->core_.target_pointer_bit_width());
     if (rhs_integer_literal.negated && rhs_literal_value != 0) {
         this->core_.report_general(rhs_range, std::string(SEMA_SHIFT_NEGATIVE));
     } else if (!rhs_integer_literal.negated && bit_width != 0 && rhs_literal_value >= bit_width) {
@@ -400,8 +400,8 @@ void SemanticAnalyzerCore::OperatorExpressionAnalyzer::diagnose_signed_binary_li
             expr_literal_text_or_empty(this->core_.ctx_.module, lhs_integer_literal.literal), lhs_literal_value)
         && this->core_.parse_integer_literal_text(
             expr_literal_text_or_empty(this->core_.ctx_.module, rhs_integer_literal.literal), rhs_literal_value)
-        && is_signed_min_integer_literal(
-            lhs_integer_literal, lhs_literal_value, integer_bit_width(this->core_.state_.checked.types, lhs))
+        && is_signed_min_integer_literal(lhs_integer_literal, lhs_literal_value,
+            integer_bit_width(this->core_.state_.checked.types, lhs, this->core_.target_pointer_bit_width()))
         && rhs_integer_literal.negated && rhs_literal_value == 1) {
         this->core_.report_general(expr.range,
             expr.binary_op == syntax::BinaryOp::div ? std::string(SEMA_SIGNED_DIVISION_OVERFLOW)

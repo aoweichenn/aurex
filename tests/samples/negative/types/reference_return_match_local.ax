@@ -1,0 +1,14 @@
+module reference_return_match_local;
+
+fn bad(flag: bool) -> &i32 {
+    let left: i32 = 1;
+    let right: i32 = 2;
+    return match flag {
+        true => &left,
+        false => &right,
+    };
+}
+
+fn main() -> i32 {
+    return 0;
+}

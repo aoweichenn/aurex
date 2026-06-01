@@ -1,0 +1,10 @@
+module slice_return_local;
+
+fn bad() -> []const u8 {
+    let bytes: [2]u8 = b"ok";
+    return bytes[:];
+}
+
+fn main() -> i32 {
+    return 0;
+}

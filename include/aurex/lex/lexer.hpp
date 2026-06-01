@@ -55,8 +55,8 @@ private:
     [[nodiscard]] bool scan_fraction_part(bool& had_error);
     [[nodiscard]] bool scan_exponent_part(bool& had_error);
     void scan_leading_dot_float(base::usize begin);
-    void scan_numeric_suffix();
-    [[nodiscard]] bool scan_integer_suffix();
+    [[nodiscard]] bool scan_numeric_suffix(bool float_literal);
+    [[nodiscard]] bool scan_integer_suffix(bool& had_error);
     void scan_string_body(base::usize begin, syntax::TokenKind token_kind, base::StringLiteralKind literal_kind,
         std::string_view unterminated_message, bool allow_newline = false);
     void scan_string(base::usize begin);

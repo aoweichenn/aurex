@@ -1,0 +1,14 @@
+module reference_return_call_local;
+
+fn identity(value: &i32) -> &i32 {
+    return value;
+}
+
+fn bad() -> &i32 {
+    let value: i32 = 1;
+    return identity(&value);
+}
+
+fn main() -> i32 {
+    return 0;
+}

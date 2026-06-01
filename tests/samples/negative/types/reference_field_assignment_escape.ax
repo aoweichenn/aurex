@@ -1,0 +1,14 @@
+module reference_field_assignment_escape;
+
+struct Holder {
+    value: &i32;
+}
+
+fn store(slot: &mut Holder) -> void {
+    let local: i32 = 1;
+    slot.value = &local;
+}
+
+fn main() -> i32 {
+    return 0;
+}

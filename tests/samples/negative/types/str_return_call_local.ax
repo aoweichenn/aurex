@@ -1,0 +1,14 @@
+module str_return_call_local;
+
+fn identity(text: str) -> str {
+    return text;
+}
+
+fn bad() -> str {
+    let bytes: [2]u8 = b"ok";
+    return identity(strfromutf8(bytes[:]));
+}
+
+fn main() -> i32 {
+    return 0;
+}

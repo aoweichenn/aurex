@@ -1,0 +1,17 @@
+module move_borrow_if_alias_after_move;
+
+fn consume[T](value: T) -> void {
+}
+
+fn inspect[T](value: &T) -> void {
+}
+
+fn duplicate[T](value: T, flag: bool) -> void {
+    let borrowed: &T = if flag { &value } else { &value };
+    consume(value);
+    inspect(borrowed);
+}
+
+fn main() -> i32 {
+    return 0;
+}

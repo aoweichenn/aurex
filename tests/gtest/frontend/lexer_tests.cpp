@@ -559,8 +559,11 @@ TEST(CoreUnit, LexerRejectsNumericLiteralEdgeForms)
 {
     const std::vector<std::pair<std::string_view, std::string_view>> cases{
         {"0xG", "invalid digit in hexadecimal literal"},
+        {"1abc", "invalid integer literal suffix `abc`"},
+        {"1eabc", "invalid integer literal suffix `eabc`"},
         {"1e_", "digit separator must be between digits"},
         {"1e#", "float exponent literal has no digits"},
+        {"1.0u8", "invalid float literal suffix `u8`"},
         {".5_", "digit separator must be between digits"},
     };
 

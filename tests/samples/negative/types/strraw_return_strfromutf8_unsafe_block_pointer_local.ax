@@ -1,0 +1,12 @@
+module strraw_return_strfromutf8_unsafe_block_pointer_local;
+
+unsafe fn bad() -> str {
+    let bytes: [2]u8 = b"ok";
+    return strraw(strptr(unsafe {
+        strfromutf8(bytes[:])
+    }), 2usize);
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -3,6 +3,8 @@
 #include <lex/char_class.hpp>
 #include <lex/lexeme.hpp>
 
+#include <array>
+#include <span>
 #include <string>
 
 namespace aurex::lex {
@@ -24,6 +26,43 @@ enum class NumberScanState {
 [[nodiscard]] bool can_start_integer_suffix(const char c) noexcept
 {
     return c == 'i' || c == 'u';
+}
+
+constexpr std::array LEXER_INTEGER_LITERAL_SUFFIXES = {
+    std::string_view{"i8"},
+    std::string_view{"i16"},
+    std::string_view{"i32"},
+    std::string_view{"i64"},
+    std::string_view{"isize"},
+    std::string_view{"u8"},
+    std::string_view{"u16"},
+    std::string_view{"u32"},
+    std::string_view{"u64"},
+    std::string_view{"usize"},
+};
+
+constexpr std::array LEXER_FLOAT_LITERAL_SUFFIXES = {
+    std::string_view{"f32"},
+    std::string_view{"f64"},
+};
+
+[[nodiscard]] bool suffix_is_one_of(
+    const std::string_view suffix, const std::span<const std::string_view> allowed) noexcept
+{
+    for (const std::string_view candidate : allowed) {
+        if (suffix == candidate) {
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] std::string invalid_suffix_message(const std::string_view suffix, const bool float_literal)
+{
+    std::string message(float_literal ? LEXEME_INVALID_FLOAT_SUFFIX_PREFIX : LEXEME_INVALID_INTEGER_SUFFIX_PREFIX);
+    message.append(suffix);
+    message.append(LEXEME_INVALID_SUFFIX_SUFFIX);
+    return message;
 }
 
 } // namespace
@@ -130,25 +169,33 @@ bool Lexer::scan_fraction_part(bool& had_error)
     return true;
 }
 
-void Lexer::scan_numeric_suffix()
+bool Lexer::scan_numeric_suffix(const bool float_literal)
 {
     if (!is_ident_start(this->peek())) {
-        return;
+        return false;
     }
     const std::string_view remaining = this->cursor_.remaining_text();
     base::usize width = 0;
     while (width < remaining.size() && is_ident_continue(remaining[width])) {
         ++width;
     }
+    const std::string_view suffix{remaining.data(), width};
+    const bool valid_suffix = float_literal ? suffix_is_one_of(suffix, LEXER_FLOAT_LITERAL_SUFFIXES)
+                                            : suffix_is_one_of(suffix, LEXER_INTEGER_LITERAL_SUFFIXES);
+    if (!valid_suffix) {
+        const base::usize begin = this->cursor_.offset();
+        this->report(begin, begin + width, invalid_suffix_message(suffix, float_literal));
+    }
     this->advance_bytes(width);
+    return !valid_suffix;
 }
 
-bool Lexer::scan_integer_suffix()
+bool Lexer::scan_integer_suffix(bool& had_error)
 {
     if (!can_start_integer_suffix(this->peek())) {
         return false;
     }
-    this->scan_numeric_suffix();
+    had_error = this->scan_numeric_suffix(false) || had_error;
     return true;
 }
 
@@ -163,7 +210,7 @@ void Lexer::scan_leading_dot_float(const base::usize begin)
         LEXEME_FLOAT_LITERAL_KIND);
     had_error = digits.had_error;
     static_cast<void>(this->scan_exponent_part(had_error));
-    this->scan_numeric_suffix();
+    had_error = this->scan_numeric_suffix(true) || had_error;
     if (had_error) {
         this->finish_invalid_token(begin, this->cursor_.offset());
         return;
@@ -224,7 +271,7 @@ void Lexer::scan_number()
             },
             LEXEME_INTEGER_LITERAL_KIND);
         had_error = digits.had_error;
-        if (!this->scan_integer_suffix()) {
+        if (!this->scan_integer_suffix(had_error)) {
             had_error = this->scan_invalid_radix_tail_matching(
                             [](const char c) noexcept {
                                 return is_hex_digit(c);
@@ -243,7 +290,7 @@ void Lexer::scan_number()
             },
             LEXEME_INTEGER_LITERAL_KIND);
         had_error = digits.had_error;
-        if (!this->scan_integer_suffix()) {
+        if (!this->scan_integer_suffix(had_error)) {
             had_error = this->scan_invalid_radix_tail_matching(
                             [](const char c) noexcept {
                                 return is_binary_digit(c);
@@ -264,7 +311,7 @@ void Lexer::scan_number()
         if (this->scan_exponent_part(had_error)) {
             state = NumberScanState::EXPONENT;
         }
-        this->scan_numeric_suffix();
+        had_error = this->scan_numeric_suffix(is_float_state(state)) || had_error;
     }
 
     if (had_error) {

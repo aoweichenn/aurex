@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -71,10 +72,12 @@ struct MoveState {
 };
 
 using MoveEnvironment = std::unordered_map<IdentId, base::usize, IdentIdHash>;
+using BorrowEnvironment = std::unordered_map<IdentId, base::usize, IdentIdHash>;
 
 struct DeferredExpression {
     syntax::ExprId expr = syntax::INVALID_EXPR_ID;
     MoveEnvironment environment;
+    BorrowEnvironment borrow_environment;
 };
 
 using CleanupStack = std::vector<std::vector<DeferredExpression>>;
@@ -102,6 +105,8 @@ struct BuildTask {
     CleanupStack cleanup_scopes;
     MoveEnvironment environment;
     MoveEnvironment completion_environment;
+    BorrowEnvironment borrow_environment;
+    BorrowEnvironment completion_borrow_environment;
     syntax::ExprId completion_expr = syntax::INVALID_EXPR_ID;
     bool emit_cleanup_on_completion = true;
 };
@@ -170,13 +175,16 @@ public:
     void run()
     {
         MoveEnvironment environment;
+        BorrowEnvironment borrow_environment;
         environment.reserve(this->function_.params.size());
+        borrow_environment.reserve(this->function_.params.size());
         for (base::usize i = 0; i < this->function_.params.size(); ++i) {
             const syntax::ParamDecl& param = this->function_.params[i];
             const TypeHandle type =
                 i < this->signature_.param_types.size() ? this->signature_.param_types[i] : INVALID_TYPE_HANDLE;
             const base::usize local = this->add_tracked_local(param.name, type, param.range, true);
             this->bind_environment(environment, param.name_id, local);
+            this->bind_borrow_environment(borrow_environment, param.name_id, SEMA_MOVE_INVALID_LOCAL);
         }
 
         if (this->try_record_modes_without_move_state()) {
@@ -184,8 +192,8 @@ public:
         }
 
         this->initialize_cfg_storage();
-        this->push_scoped_statement_list(
-            this->function_.body, SEMA_MOVE_ENTRY_BLOCK, SEMA_MOVE_EXIT_BLOCK, environment, CleanupStack{});
+        this->push_scoped_statement_list(this->function_.body, SEMA_MOVE_ENTRY_BLOCK, SEMA_MOVE_EXIT_BLOCK, environment,
+            borrow_environment, CleanupStack{});
         this->build_cfg();
         this->solve_dataflow();
         this->emit_diagnostics();
@@ -245,6 +253,67 @@ private:
             && !resource_is_copy(this->resource_summary(type));
     }
 
+    [[nodiscard]] bool type_can_contain_borrow(const TypeHandle type) const
+    {
+        if (!is_valid(type)) {
+            return false;
+        }
+        std::vector<TypeHandle> pending{type};
+        std::unordered_set<base::u32> visited;
+        while (!pending.empty()) {
+            const TypeHandle current = pending.back();
+            pending.pop_back();
+            if (!is_valid(current) || current.value >= this->core_.state_.checked.types.size()
+                || !visited.insert(current.value).second) {
+                continue;
+            }
+            const TypeInfo& info = this->core_.state_.checked.types.get(current);
+            switch (info.kind) {
+                case TypeKind::builtin:
+                    if (info.builtin == BuiltinType::str) {
+                        return true;
+                    }
+                    break;
+                case TypeKind::reference:
+                case TypeKind::slice:
+                    return true;
+                case TypeKind::array:
+                    pending.push_back(info.array_element);
+                    break;
+                case TypeKind::tuple:
+                    pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
+                    break;
+                case TypeKind::struct_: {
+                    const StructInfo* const structure = this->core_.find_struct(current);
+                    if (structure != nullptr) {
+                        for (const StructFieldInfo& field : structure->fields) {
+                            pending.push_back(field.type);
+                        }
+                    }
+                    break;
+                }
+                case TypeKind::enum_: {
+                    if (const auto* const cases = this->core_.find_enum_cases_by_type(current); cases != nullptr) {
+                        for (const EnumCaseInfo* const enum_case : *cases) {
+                            if (enum_case != nullptr) {
+                                pending.insert(
+                                    pending.end(), enum_case->payload_types.begin(), enum_case->payload_types.end());
+                            }
+                        }
+                    }
+                    break;
+                }
+                case TypeKind::generic_param:
+                case TypeKind::associated_projection:
+                case TypeKind::pointer:
+                case TypeKind::function:
+                case TypeKind::opaque_struct:
+                    break;
+            }
+        }
+        return false;
+    }
+
     void bind_environment(MoveEnvironment& environment, const IdentId name, const base::usize local) const
     {
         if (!is_valid(name)) {
@@ -259,8 +328,22 @@ private:
         }
     }
 
-    [[nodiscard]] base::usize declare_plain_local(
-        const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, MoveEnvironment& environment)
+    void bind_borrow_environment(BorrowEnvironment& environment, const IdentId name, const base::usize local) const
+    {
+        if (!is_valid(name)) {
+            return;
+        }
+        if (local != SEMA_MOVE_INVALID_LOCAL) {
+            environment[name] = local;
+            return;
+        }
+        if (environment.contains(name)) {
+            environment[name] = SEMA_MOVE_INVALID_LOCAL;
+        }
+    }
+
+    [[nodiscard]] base::usize declare_plain_local(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt,
+        MoveEnvironment& environment, BorrowEnvironment& borrow_environment)
     {
         if (stmt.kind != syntax::StmtKind::let && stmt.kind != syntax::StmtKind::var) {
             return SEMA_MOVE_INVALID_LOCAL;
@@ -269,18 +352,200 @@ private:
             return SEMA_MOVE_INVALID_LOCAL;
         }
         const auto existing = this->declared_locals_.find(stmt_id.value);
+        const TypeHandle local_type = this->core_.cached_stmt_local_type(stmt_id);
+        const base::usize borrowed_origin = this->type_can_contain_borrow(local_type)
+            ? this->borrow_origin_local(stmt.init, environment, borrow_environment)
+            : SEMA_MOVE_INVALID_LOCAL;
         if (existing != this->declared_locals_.end()) {
             this->bind_environment(environment, stmt.name_id, existing->second);
+            this->bind_borrow_environment(borrow_environment, stmt.name_id, borrowed_origin);
             return existing->second;
         }
-        const base::usize local =
-            this->add_tracked_local(stmt.name, this->core_.cached_stmt_local_type(stmt_id), stmt.range, false);
+        const base::usize local = this->add_tracked_local(stmt.name, local_type, stmt.range, false);
         this->declared_locals_.emplace(stmt_id.value, local);
         this->bind_environment(environment, stmt.name_id, local);
+        this->bind_borrow_environment(borrow_environment, stmt.name_id, borrowed_origin);
         return local;
     }
 
-    [[nodiscard]] MoveEnvironment block_result_environment(const syntax::StmtId block, MoveEnvironment environment)
+    struct PatternBorrowFrame {
+        syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+        TypeHandle type = INVALID_TYPE_HANDLE;
+        syntax::ExprId source = syntax::INVALID_EXPR_ID;
+    };
+
+    void declare_pattern_borrow_aliases(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt,
+        const MoveEnvironment& environment, BorrowEnvironment& borrow_environment)
+    {
+        if ((stmt.kind != syntax::StmtKind::let && stmt.kind != syntax::StmtKind::var)
+            || !syntax::is_valid(stmt.pattern)) {
+            return;
+        }
+        std::vector<PatternBorrowFrame> pending{{stmt.pattern, this->core_.cached_stmt_local_type(stmt_id), stmt.init}};
+        while (!pending.empty()) {
+            const PatternBorrowFrame frame = pending.back();
+            pending.pop_back();
+            if (!syntax::is_valid(frame.pattern) || frame.pattern.value >= this->core_.ctx_.module.patterns.size()) {
+                continue;
+            }
+            const syntax::PatternNode* const pattern = this->core_.ctx_.module.patterns.ptr(frame.pattern.value);
+            if (pattern == nullptr) {
+                continue;
+            }
+            switch (pattern->kind) {
+                case syntax::PatternKind::binding:
+                    this->bind_pattern_borrow_alias(
+                        *pattern, frame.type, frame.source, environment, borrow_environment);
+                    break;
+                case syntax::PatternKind::tuple:
+                    this->push_tuple_pattern_borrow_frames(pending, *pattern, frame.type, frame.source);
+                    break;
+                case syntax::PatternKind::slice:
+                    this->push_slice_pattern_borrow_frames(pending, *pattern, frame.type, frame.source);
+                    break;
+                case syntax::PatternKind::struct_:
+                    this->push_struct_pattern_borrow_frames(pending, *pattern, frame.type, frame.source);
+                    break;
+                case syntax::PatternKind::enum_case:
+                    this->push_enum_pattern_borrow_frames(pending, *pattern, frame.type, frame.source);
+                    break;
+                case syntax::PatternKind::or_pattern:
+                    for (const syntax::PatternId alternative : pattern->alternatives) {
+                        pending.push_back(PatternBorrowFrame{alternative, frame.type, frame.source});
+                    }
+                    break;
+                case syntax::PatternKind::wildcard:
+                case syntax::PatternKind::literal:
+                case syntax::PatternKind::const_:
+                    break;
+            }
+        }
+    }
+
+    void bind_pattern_borrow_alias(const syntax::PatternNode& pattern, const TypeHandle type,
+        const syntax::ExprId source, const MoveEnvironment& environment, BorrowEnvironment& borrow_environment)
+    {
+        if (!this->type_can_contain_borrow(type)) {
+            this->bind_borrow_environment(borrow_environment, pattern.binding_name_id, SEMA_MOVE_INVALID_LOCAL);
+            return;
+        }
+        const base::usize origin = this->borrow_origin_local(source, environment, borrow_environment);
+        this->bind_borrow_environment(borrow_environment, pattern.binding_name_id, origin);
+    }
+
+    void push_tuple_pattern_borrow_frames(std::vector<PatternBorrowFrame>& pending, const syntax::PatternNode& pattern,
+        const TypeHandle type, const syntax::ExprId source) const
+    {
+        const syntax::AstArenaVector<syntax::ExprId>* const tuple_source =
+            syntax::is_valid(source) && source.value < this->core_.ctx_.module.exprs.size()
+            ? this->core_.ctx_.module.exprs.tuple_elements(source.value)
+            : nullptr;
+        const TypeInfo* const tuple_type =
+            this->core_.state_.checked.types.is_tuple(type) ? &this->core_.state_.checked.types.get(type) : nullptr;
+        for (base::usize index = pattern.elements.size(); index > 0; --index) {
+            const base::usize element_index = index - 1;
+            pending.push_back(PatternBorrowFrame{
+                pattern.elements[element_index],
+                tuple_type != nullptr && element_index < tuple_type->tuple_elements.size()
+                    ? tuple_type->tuple_elements[element_index]
+                    : INVALID_TYPE_HANDLE,
+                tuple_source != nullptr && element_index < tuple_source->size() ? (*tuple_source)[element_index]
+                                                                                : source,
+            });
+        }
+    }
+
+    void push_slice_pattern_borrow_frames(std::vector<PatternBorrowFrame>& pending, const syntax::PatternNode& pattern,
+        const TypeHandle type, const syntax::ExprId source) const
+    {
+        const syntax::ArrayExprPayload* const array_source =
+            syntax::is_valid(source) && source.value < this->core_.ctx_.module.exprs.size()
+            ? this->core_.ctx_.module.exprs.array_payload(source.value)
+            : nullptr;
+        TypeHandle element_type = INVALID_TYPE_HANDLE;
+        if (is_valid(type) && type.value < this->core_.state_.checked.types.size()) {
+            const TypeInfo& info = this->core_.state_.checked.types.get(type);
+            if (info.kind == TypeKind::array) {
+                element_type = info.array_element;
+            } else if (info.kind == TypeKind::slice) {
+                element_type = info.slice_element;
+            }
+        }
+        for (base::usize index = pattern.elements.size(); index > 0; --index) {
+            const base::usize element_index = index - 1;
+            pending.push_back(PatternBorrowFrame{
+                pattern.elements[element_index],
+                element_type,
+                array_source != nullptr && element_index < array_source->elements.size()
+                    ? array_source->elements[element_index]
+                    : source,
+            });
+        }
+    }
+
+    void push_struct_pattern_borrow_frames(std::vector<PatternBorrowFrame>& pending, const syntax::PatternNode& pattern,
+        const TypeHandle type, const syntax::ExprId source) const
+    {
+        const StructInfo* const structure = this->core_.find_struct(type);
+        const syntax::StructLiteralExprPayload* const struct_source =
+            syntax::is_valid(source) && source.value < this->core_.ctx_.module.exprs.size()
+            ? this->core_.ctx_.module.exprs.struct_literal_payload(source.value)
+            : nullptr;
+        for (const syntax::FieldPattern& field : pattern.field_patterns) {
+            const StructFieldInfo* const field_info =
+                structure == nullptr ? nullptr : this->pattern_struct_field(*structure, field.name_id);
+            pending.push_back(PatternBorrowFrame{
+                field.pattern,
+                field_info == nullptr ? INVALID_TYPE_HANDLE : field_info->type,
+                this->struct_field_source(struct_source, field.name_id, source),
+            });
+        }
+    }
+
+    void push_enum_pattern_borrow_frames(std::vector<PatternBorrowFrame>& pending, const syntax::PatternNode& pattern,
+        const TypeHandle type, const syntax::ExprId source) const
+    {
+        const EnumCaseInfo* const enum_case =
+            this->core_.find_enum_case_by_type_and_case(type, pattern.case_name_id, pattern.case_name);
+        for (base::usize index = pattern.payload_patterns.size(); index > 0; --index) {
+            const base::usize payload_index = index - 1;
+            pending.push_back(PatternBorrowFrame{
+                pattern.payload_patterns[payload_index],
+                enum_case == nullptr || payload_index >= enum_case->payload_types.size()
+                    ? INVALID_TYPE_HANDLE
+                    : enum_case->payload_types[payload_index],
+                source,
+            });
+        }
+    }
+
+    [[nodiscard]] syntax::ExprId struct_field_source(const syntax::StructLiteralExprPayload* const source,
+        const IdentId field_name, const syntax::ExprId fallback) const noexcept
+    {
+        if (source == nullptr) {
+            return fallback;
+        }
+        for (const syntax::FieldInit& init : source->field_inits) {
+            if (init.name_id == field_name) {
+                return init.value;
+            }
+        }
+        return fallback;
+    }
+
+    [[nodiscard]] const StructFieldInfo* pattern_struct_field(
+        const StructInfo& structure, const IdentId field_name) const noexcept
+    {
+        for (const StructFieldInfo& field : structure.fields) {
+            if (field.name_id == field_name) {
+                return &field;
+            }
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] MoveEnvironment block_result_environment(
+        const syntax::StmtId block, MoveEnvironment environment, BorrowEnvironment& borrow_environment)
     {
         if (!syntax::is_valid(block) || block.value >= this->core_.ctx_.module.stmts.size()) {
             return environment;
@@ -294,10 +559,40 @@ private:
             if (!syntax::is_valid(stmt_id) || stmt_id.value >= this->core_.ctx_.module.stmts.size()) {
                 continue;
             }
-            const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
-            static_cast<void>(this->declare_plain_local(stmt_id, stmt, environment));
+            const syntax::StmtNode& stmt = this->core_.ctx_.module.stmts[stmt_id.value];
+            static_cast<void>(this->declare_plain_local(stmt_id, stmt, environment, borrow_environment));
+            this->declare_pattern_borrow_aliases(stmt_id, stmt, environment, borrow_environment);
         }
         return environment;
+    }
+
+    [[nodiscard]] base::usize block_result_borrow_origin(
+        const syntax::BlockExprPayload& block, MoveEnvironment environment, BorrowEnvironment borrow_environment)
+    {
+        if (!syntax::is_valid(block.block) || block.block.value >= this->core_.ctx_.module.stmts.size()) {
+            return this->borrow_origin_local(block.result, environment, borrow_environment);
+        }
+        const syntax::AstArenaVector<syntax::StmtId>* const statements =
+            this->core_.ctx_.module.stmts.block_statements(block.block.value);
+        if (statements == nullptr) {
+            return this->borrow_origin_local(block.result, environment, borrow_environment);
+        }
+        for (const syntax::StmtId stmt_id : *statements) {
+            if (!syntax::is_valid(stmt_id) || stmt_id.value >= this->core_.ctx_.module.stmts.size()) {
+                continue;
+            }
+            const syntax::StmtNode& stmt = this->core_.ctx_.module.stmts[stmt_id.value];
+            if (stmt.kind == syntax::StmtKind::assign) {
+                const MoveEnvironment before_environment = environment;
+                const BorrowEnvironment before_borrow_environment = borrow_environment;
+                this->assign_borrow_alias_if_needed(
+                    stmt, before_environment, before_borrow_environment, borrow_environment);
+                continue;
+            }
+            static_cast<void>(this->declare_plain_local(stmt_id, stmt, environment, borrow_environment));
+            this->declare_pattern_borrow_aliases(stmt_id, stmt, environment, borrow_environment);
+        }
+        return this->borrow_origin_local(block.result, environment, borrow_environment);
     }
 
     [[nodiscard]] ResourceSemanticsSummary resource_summary(const TypeHandle type)
@@ -373,24 +668,26 @@ private:
     }
 
     void push_scoped_statement_list(const syntax::StmtId block, const base::usize start, const base::usize continuation,
-        MoveEnvironment environment, CleanupStack cleanup_scopes, const base::usize break_target = SEMA_MOVE_EXIT_BLOCK,
-        const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK, const base::usize break_cleanup_depth = 0,
-        const base::usize continue_cleanup_depth = 0, const bool emit_cleanup_on_completion = true)
+        MoveEnvironment environment, BorrowEnvironment borrow_environment, CleanupStack cleanup_scopes,
+        const base::usize break_target = SEMA_MOVE_EXIT_BLOCK, const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK,
+        const base::usize break_cleanup_depth = 0, const base::usize continue_cleanup_depth = 0,
+        const bool emit_cleanup_on_completion = true)
     {
         const base::usize cleanup_keep_depth = cleanup_scopes.size();
         cleanup_scopes.emplace_back();
-        this->push_statement_list(block, start, continuation, std::move(environment), std::move(cleanup_scopes),
-            cleanup_keep_depth, break_target, continue_target, break_cleanup_depth, continue_cleanup_depth, 0,
-            emit_cleanup_on_completion);
+        this->push_statement_list(block, start, continuation, std::move(environment), std::move(borrow_environment),
+            std::move(cleanup_scopes), cleanup_keep_depth, break_target, continue_target, break_cleanup_depth,
+            continue_cleanup_depth, 0, emit_cleanup_on_completion);
     }
 
     void push_statement_list(const syntax::StmtId block, const base::usize start, const base::usize continuation,
-        MoveEnvironment environment, CleanupStack cleanup_scopes, const base::usize cleanup_keep_depth,
-        const base::usize break_target = SEMA_MOVE_EXIT_BLOCK, const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK,
-        const base::usize break_cleanup_depth = 0, const base::usize continue_cleanup_depth = 0,
-        const base::usize statement_index = 0, const bool emit_cleanup_on_completion = true,
-        const syntax::ExprId completion_expr = syntax::INVALID_EXPR_ID,
-        const RequestedUse completion_requested = RequestedUse::owned, MoveEnvironment completion_environment = {})
+        MoveEnvironment environment, BorrowEnvironment borrow_environment, CleanupStack cleanup_scopes,
+        const base::usize cleanup_keep_depth, const base::usize break_target = SEMA_MOVE_EXIT_BLOCK,
+        const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK, const base::usize break_cleanup_depth = 0,
+        const base::usize continue_cleanup_depth = 0, const base::usize statement_index = 0,
+        const bool emit_cleanup_on_completion = true, const syntax::ExprId completion_expr = syntax::INVALID_EXPR_ID,
+        const RequestedUse completion_requested = RequestedUse::owned, MoveEnvironment completion_environment = {},
+        BorrowEnvironment completion_borrow_environment = {})
     {
         BuildTask task;
         task.kind = BuildTaskKind::statement_list;
@@ -406,16 +703,18 @@ private:
         task.completion_requested = completion_requested;
         task.cleanup_scopes = std::move(cleanup_scopes);
         task.environment = std::move(environment);
+        task.borrow_environment = std::move(borrow_environment);
         task.completion_environment = std::move(completion_environment);
+        task.completion_borrow_environment = std::move(completion_borrow_environment);
         task.completion_expr = completion_expr;
         task.emit_cleanup_on_completion = emit_cleanup_on_completion;
         this->tasks_.push_back(std::move(task));
     }
 
     void push_statement(const syntax::StmtId stmt, const base::usize start, const base::usize continuation,
-        MoveEnvironment environment, CleanupStack cleanup_scopes, const base::usize break_target = SEMA_MOVE_EXIT_BLOCK,
-        const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK, const base::usize break_cleanup_depth = 0,
-        const base::usize continue_cleanup_depth = 0)
+        MoveEnvironment environment, BorrowEnvironment borrow_environment, CleanupStack cleanup_scopes,
+        const base::usize break_target = SEMA_MOVE_EXIT_BLOCK, const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK,
+        const base::usize break_cleanup_depth = 0, const base::usize continue_cleanup_depth = 0)
     {
         BuildTask task;
         task.kind = BuildTaskKind::statement;
@@ -428,13 +727,15 @@ private:
         task.continue_cleanup_depth = continue_cleanup_depth;
         task.cleanup_scopes = std::move(cleanup_scopes);
         task.environment = std::move(environment);
+        task.borrow_environment = std::move(borrow_environment);
         this->tasks_.push_back(std::move(task));
     }
 
     void push_expression(const syntax::ExprId expr, const RequestedUse requested, const base::usize start,
-        const base::usize continuation, MoveEnvironment environment, CleanupStack cleanup_scopes,
-        const base::usize break_target = SEMA_MOVE_EXIT_BLOCK, const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK,
-        const base::usize break_cleanup_depth = 0, const base::usize continue_cleanup_depth = 0)
+        const base::usize continuation, MoveEnvironment environment, BorrowEnvironment borrow_environment,
+        CleanupStack cleanup_scopes, const base::usize break_target = SEMA_MOVE_EXIT_BLOCK,
+        const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK, const base::usize break_cleanup_depth = 0,
+        const base::usize continue_cleanup_depth = 0)
     {
         BuildTask task;
         task.kind = BuildTaskKind::expression;
@@ -448,14 +749,15 @@ private:
         task.requested = requested;
         task.cleanup_scopes = std::move(cleanup_scopes);
         task.environment = std::move(environment);
+        task.borrow_environment = std::move(borrow_environment);
         this->tasks_.push_back(std::move(task));
     }
 
     void push_expression_sequence(const std::vector<std::pair<syntax::ExprId, RequestedUse>>& expressions,
         const base::usize start, const base::usize continuation, const MoveEnvironment& environment,
-        const CleanupStack& cleanup_scopes, const base::usize break_target = SEMA_MOVE_EXIT_BLOCK,
-        const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK, const base::usize break_cleanup_depth = 0,
-        const base::usize continue_cleanup_depth = 0)
+        const BorrowEnvironment& borrow_environment, const CleanupStack& cleanup_scopes,
+        const base::usize break_target = SEMA_MOVE_EXIT_BLOCK, const base::usize continue_target = SEMA_MOVE_EXIT_BLOCK,
+        const base::usize break_cleanup_depth = 0, const base::usize continue_cleanup_depth = 0)
     {
         if (expressions.empty()) {
             this->add_edge(start, continuation);
@@ -468,18 +770,18 @@ private:
         }
         for (base::usize i = expressions.size(); i > 0; --i) {
             this->push_expression(expressions[i - 1].first, expressions[i - 1].second, boundaries[i - 1], boundaries[i],
-                environment, cleanup_scopes, break_target, continue_target, break_cleanup_depth,
+                environment, borrow_environment, cleanup_scopes, break_target, continue_target, break_cleanup_depth,
                 continue_cleanup_depth);
         }
     }
 
-    void register_deferred_expression(
-        CleanupStack& cleanup_scopes, const syntax::ExprId expr, const MoveEnvironment& environment) const
+    void register_deferred_expression(CleanupStack& cleanup_scopes, const syntax::ExprId expr,
+        const MoveEnvironment& environment, const BorrowEnvironment& borrow_environment) const
     {
         if (cleanup_scopes.empty()) {
             return;
         }
-        cleanup_scopes.back().push_back(DeferredExpression{expr, environment});
+        cleanup_scopes.back().push_back(DeferredExpression{expr, environment, borrow_environment});
     }
 
     void push_cleanup_scopes(const CleanupStack& cleanup_scopes, const base::usize keep_depth, const base::usize start,
@@ -507,7 +809,7 @@ private:
         for (base::usize i = deferred.size(); i > 0; --i) {
             const DeferredExpression& action = deferred[i - 1];
             this->push_expression(action.expr, RequestedUse::owned, boundaries[i - 1], boundaries[i],
-                action.environment, cleanup_context);
+                action.environment, action.borrow_environment, cleanup_context);
         }
     }
 
@@ -593,7 +895,7 @@ private:
         if (!syntax::is_valid(stmt_id) || stmt_id.value >= this->core_.ctx_.module.stmts.size()) {
             return true;
         }
-        const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
+        const syntax::StmtNode& stmt = this->core_.ctx_.module.stmts[stmt_id.value];
         switch (stmt.kind) {
             case syntax::StmtKind::let:
             case syntax::StmtKind::var:
@@ -874,8 +1176,8 @@ private:
         }
         const base::usize cleanup = this->new_block();
         this->push_expression(task.completion_expr, task.completion_requested, task.start, cleanup,
-            task.completion_environment, task.cleanup_scopes, task.break_target, task.continue_target,
-            task.break_cleanup_depth, task.continue_cleanup_depth);
+            task.completion_environment, task.completion_borrow_environment, task.cleanup_scopes, task.break_target,
+            task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
         this->push_cleanup_scopes(task.cleanup_scopes, task.cleanup_keep_depth, cleanup, task.continuation);
     }
 
@@ -895,21 +1197,44 @@ private:
         const syntax::StmtId stmt_id = (*statements)[task.statement_index];
         const base::usize next = this->new_block();
         MoveEnvironment next_environment = task.environment;
+        BorrowEnvironment next_borrow_environment = task.borrow_environment;
         CleanupStack next_cleanup_scopes = task.cleanup_scopes;
         if (syntax::is_valid(stmt_id) && stmt_id.value < this->core_.ctx_.module.stmts.size()) {
-            const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
-            static_cast<void>(this->declare_plain_local(stmt_id, stmt, next_environment));
+            const syntax::StmtNode& stmt = this->core_.ctx_.module.stmts[stmt_id.value];
+            static_cast<void>(this->declare_plain_local(stmt_id, stmt, next_environment, next_borrow_environment));
+            this->declare_pattern_borrow_aliases(stmt_id, stmt, task.environment, next_borrow_environment);
+            this->assign_borrow_alias_if_needed(
+                stmt, task.environment, task.borrow_environment, next_borrow_environment);
             if (stmt.kind == syntax::StmtKind::defer) {
-                this->register_deferred_expression(next_cleanup_scopes, stmt.init, task.environment);
+                this->register_deferred_expression(
+                    next_cleanup_scopes, stmt.init, task.environment, task.borrow_environment);
             }
         }
         this->push_statement_list(task.stmt, next, task.continuation, std::move(next_environment),
-            std::move(next_cleanup_scopes), task.cleanup_keep_depth, task.break_target, task.continue_target,
-            task.break_cleanup_depth, task.continue_cleanup_depth, task.statement_index + 1,
-            task.emit_cleanup_on_completion, task.completion_expr, task.completion_requested,
-            std::move(task.completion_environment));
-        this->push_statement(stmt_id, task.start, next, std::move(task.environment), std::move(task.cleanup_scopes),
-            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
+            std::move(next_borrow_environment), std::move(next_cleanup_scopes), task.cleanup_keep_depth,
+            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth,
+            task.statement_index + 1, task.emit_cleanup_on_completion, task.completion_expr, task.completion_requested,
+            std::move(task.completion_environment), std::move(task.completion_borrow_environment));
+        this->push_statement(stmt_id, task.start, next, std::move(task.environment), std::move(task.borrow_environment),
+            std::move(task.cleanup_scopes), task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth);
+    }
+
+    void assign_borrow_alias_if_needed(const syntax::StmtNode& stmt, const MoveEnvironment& environment,
+        const BorrowEnvironment& borrow_environment, BorrowEnvironment& next_borrow_environment)
+    {
+        if (stmt.kind != syntax::StmtKind::assign || stmt.assign_op != syntax::AssignOp::assign
+            || !this->type_can_contain_borrow(this->core_.cached_expr_type(stmt.lhs)) || !syntax::is_valid(stmt.lhs)
+            || stmt.lhs.value >= this->core_.ctx_.module.exprs.size()
+            || this->core_.ctx_.module.exprs.kind(stmt.lhs.value) != syntax::ExprKind::name) {
+            return;
+        }
+        const syntax::NameExprPayload* const name = this->core_.ctx_.module.exprs.name_payload(stmt.lhs.value);
+        if (name == nullptr || !name->scope_name.empty()) {
+            return;
+        }
+        this->bind_borrow_environment(next_borrow_environment, name->text_id,
+            this->borrow_origin_local(stmt.rhs, environment, borrow_environment));
     }
 
     void build_statement(BuildTask task)
@@ -918,7 +1243,7 @@ private:
             this->add_edge(task.start, task.continuation);
             return;
         }
-        const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[task.stmt.value];
+        const syntax::StmtNode& stmt = this->core_.ctx_.module.stmts[task.stmt.value];
         switch (stmt.kind) {
             case syntax::StmtKind::let:
             case syntax::StmtKind::var:
@@ -943,8 +1268,8 @@ private:
                 if (syntax::is_valid(stmt.return_value)) {
                     const base::usize cleanup = this->new_block();
                     this->push_expression(stmt.return_value, RequestedUse::owned, task.start, cleanup, task.environment,
-                        task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-                        task.continue_cleanup_depth);
+                        task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                        task.break_cleanup_depth, task.continue_cleanup_depth);
                     this->push_cleanup_scopes(task.cleanup_scopes, 0, cleanup, SEMA_MOVE_EXIT_BLOCK);
                 } else {
                     this->push_cleanup_scopes(task.cleanup_scopes, 0, task.start, SEMA_MOVE_EXIT_BLOCK);
@@ -952,13 +1277,13 @@ private:
                 break;
             case syntax::StmtKind::expr:
                 this->push_expression(stmt.init, RequestedUse::owned, task.start, task.continuation, task.environment,
-                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-                    task.continue_cleanup_depth);
+                    task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                    task.break_cleanup_depth, task.continue_cleanup_depth);
                 break;
             case syntax::StmtKind::block:
                 this->push_scoped_statement_list(task.stmt, task.start, task.continuation, task.environment,
-                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-                    task.continue_cleanup_depth);
+                    task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                    task.break_cleanup_depth, task.continue_cleanup_depth);
                 break;
             case syntax::StmtKind::break_:
                 this->push_cleanup_scopes(task.cleanup_scopes, task.break_cleanup_depth, task.start, task.break_target);
@@ -990,11 +1315,12 @@ private:
             const base::usize failure = this->new_block();
             this->add_edge(finish, failure);
             this->push_scoped_statement_list(stmt.else_block, failure, task.continuation, task.environment,
-                task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-                task.continue_cleanup_depth);
+                task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                task.break_cleanup_depth, task.continue_cleanup_depth);
         }
-        this->push_expression(stmt.init, RequestedUse::owned, task.start, finish, task.environment, task.cleanup_scopes,
-            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
+        this->push_expression(stmt.init, RequestedUse::owned, task.start, finish, task.environment,
+            task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_assignment(const syntax::StmtNode& stmt, const BuildTask& task)
@@ -1011,8 +1337,8 @@ private:
                 {stmt.lhs, stmt.assign_op == syntax::AssignOp::assign ? RequestedUse::place_only : RequestedUse::owned},
                 {stmt.rhs, RequestedUse::owned},
             },
-            task.start, finish, task.environment, task.cleanup_scopes, task.break_target, task.continue_target,
-            task.break_cleanup_depth, task.continue_cleanup_depth);
+            task.start, finish, task.environment, task.borrow_environment, task.cleanup_scopes, task.break_target,
+            task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_if_statement(const syntax::StmtNode& stmt, const BuildTask& task)
@@ -1022,20 +1348,21 @@ private:
         const base::usize else_entry = this->new_block();
         this->reject_pattern_payload_if_needed(stmt.pattern, stmt.condition, task.start, stmt.range);
         this->push_expression(stmt.condition, RequestedUse::owned, task.start, condition, task.environment,
-            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-            task.continue_cleanup_depth);
+            task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
         this->add_edge(condition, then_entry);
         this->add_edge(condition, else_entry);
         this->push_scoped_statement_list(stmt.then_block, then_entry, task.continuation, task.environment,
-            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-            task.continue_cleanup_depth);
+            task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
         if (syntax::is_valid(stmt.else_if)) {
-            this->push_statement(stmt.else_if, else_entry, task.continuation, task.environment, task.cleanup_scopes,
-                task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
-        } else if (syntax::is_valid(stmt.else_block)) {
-            this->push_scoped_statement_list(stmt.else_block, else_entry, task.continuation, task.environment,
+            this->push_statement(stmt.else_if, else_entry, task.continuation, task.environment, task.borrow_environment,
                 task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
                 task.continue_cleanup_depth);
+        } else if (syntax::is_valid(stmt.else_block)) {
+            this->push_scoped_statement_list(stmt.else_block, else_entry, task.continuation, task.environment,
+                task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                task.break_cleanup_depth, task.continue_cleanup_depth);
         } else {
             this->add_edge(else_entry, task.continuation);
         }
@@ -1049,24 +1376,26 @@ private:
         this->add_edge(task.start, condition);
         this->reject_pattern_payload_if_needed(stmt.pattern, stmt.condition, condition, stmt.range);
         this->push_expression(stmt.condition, RequestedUse::owned, condition, decision, task.environment,
-            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-            task.continue_cleanup_depth);
+            task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
         this->add_edge(decision, body);
         this->add_edge(decision, task.continuation);
         const base::usize loop_cleanup_depth = task.cleanup_scopes.size();
-        this->push_scoped_statement_list(stmt.body, body, condition, task.environment, task.cleanup_scopes,
-            task.continuation, condition, loop_cleanup_depth, loop_cleanup_depth);
+        this->push_scoped_statement_list(stmt.body, body, condition, task.environment, task.borrow_environment,
+            task.cleanup_scopes, task.continuation, condition, loop_cleanup_depth, loop_cleanup_depth);
     }
 
     void build_for_statement(const syntax::StmtNode& stmt, const BuildTask& task)
     {
         MoveEnvironment loop_environment = task.environment;
+        BorrowEnvironment loop_borrow_environment = task.borrow_environment;
         CleanupStack loop_cleanup_scopes = task.cleanup_scopes;
         const base::usize loop_keep_depth = loop_cleanup_scopes.size();
         loop_cleanup_scopes.emplace_back();
         if (syntax::is_valid(stmt.for_init) && stmt.for_init.value < this->core_.ctx_.module.stmts.size()) {
             const syntax::StmtNode init = this->core_.ctx_.module.stmts[stmt.for_init.value];
-            static_cast<void>(this->declare_plain_local(stmt.for_init, init, loop_environment));
+            static_cast<void>(
+                this->declare_plain_local(stmt.for_init, init, loop_environment, loop_borrow_environment));
         }
         const base::usize condition = this->new_block();
         const base::usize decision = this->new_block();
@@ -1075,26 +1404,27 @@ private:
         const base::usize loop_exit = this->new_block();
         const base::usize loop_cleanup_depth = loop_cleanup_scopes.size();
         if (syntax::is_valid(stmt.for_init)) {
-            this->push_statement(stmt.for_init, task.start, condition, task.environment, loop_cleanup_scopes,
-                task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
+            this->push_statement(stmt.for_init, task.start, condition, task.environment, task.borrow_environment,
+                loop_cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+                task.continue_cleanup_depth);
         } else {
             this->add_edge(task.start, condition);
         }
         if (syntax::is_valid(stmt.condition)) {
             this->push_expression(stmt.condition, RequestedUse::owned, condition, decision, loop_environment,
-                loop_cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-                task.continue_cleanup_depth);
+                loop_borrow_environment, loop_cleanup_scopes, task.break_target, task.continue_target,
+                task.break_cleanup_depth, task.continue_cleanup_depth);
         } else {
             this->add_edge(condition, decision);
         }
         this->add_edge(decision, body);
         this->add_edge(decision, loop_exit);
         this->push_cleanup_scopes(loop_cleanup_scopes, loop_keep_depth, loop_exit, task.continuation);
-        this->push_scoped_statement_list(stmt.body, body, update, loop_environment, loop_cleanup_scopes, loop_exit,
-            update, loop_cleanup_depth, loop_cleanup_depth);
+        this->push_scoped_statement_list(stmt.body, body, update, loop_environment, loop_borrow_environment,
+            loop_cleanup_scopes, loop_exit, update, loop_cleanup_depth, loop_cleanup_depth);
         if (syntax::is_valid(stmt.for_update)) {
-            this->push_statement(stmt.for_update, update, condition, loop_environment, loop_cleanup_scopes, loop_exit,
-                update, loop_cleanup_depth, loop_cleanup_depth);
+            this->push_statement(stmt.for_update, update, condition, loop_environment, loop_borrow_environment,
+                loop_cleanup_scopes, loop_exit, update, loop_cleanup_depth, loop_cleanup_depth);
         } else {
             this->add_edge(update, condition);
         }
@@ -1119,13 +1449,14 @@ private:
         if (syntax::is_valid(stmt.range_step)) {
             bounds.emplace_back(stmt.range_step, RequestedUse::owned);
         }
-        this->push_expression_sequence(bounds, task.start, header, task.environment, loop_cleanup_scopes,
-            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
+        this->push_expression_sequence(bounds, task.start, header, task.environment, task.borrow_environment,
+            loop_cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth);
         this->add_edge(header, body);
         this->add_edge(header, loop_exit);
         this->push_cleanup_scopes(loop_cleanup_scopes, loop_keep_depth, loop_exit, task.continuation);
-        this->push_scoped_statement_list(stmt.body, body, header, task.environment, loop_cleanup_scopes, loop_exit,
-            header, loop_cleanup_depth, loop_cleanup_depth);
+        this->push_scoped_statement_list(stmt.body, body, header, task.environment, task.borrow_environment,
+            loop_cleanup_scopes, loop_exit, header, loop_cleanup_depth, loop_cleanup_depth);
     }
 
     void build_expression(BuildTask task)
@@ -1143,13 +1474,13 @@ private:
                 break;
             case syntax::ExprKind::generic_apply:
                 this->push_expression(expr.callee, RequestedUse::place_only, task.start, task.continuation,
-                    task.environment, task.cleanup_scopes, task.break_target, task.continue_target,
-                    task.break_cleanup_depth, task.continue_cleanup_depth);
+                    task.environment, task.borrow_environment, task.cleanup_scopes, task.break_target,
+                    task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
                 break;
             case syntax::ExprKind::unary:
                 this->push_expression(expr.unary_operand, this->unary_operand_use(expr.unary_op), task.start,
-                    task.continuation, task.environment, task.cleanup_scopes, task.break_target, task.continue_target,
-                    task.break_cleanup_depth, task.continue_cleanup_depth);
+                    task.continuation, task.environment, task.borrow_environment, task.cleanup_scopes,
+                    task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
                 break;
             case syntax::ExprKind::binary:
                 this->build_binary_expression(task, expr);
@@ -1180,8 +1511,8 @@ private:
                     elements.emplace_back(element, RequestedUse::owned);
                 }
                 this->push_expression_sequence(elements, task.start, task.continuation, task.environment,
-                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-                    task.continue_cleanup_depth);
+                    task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                    task.break_cleanup_depth, task.continue_cleanup_depth);
                 break;
             }
             case syntax::ExprKind::struct_literal: {
@@ -1190,8 +1521,8 @@ private:
                     fields.emplace_back(field.value, RequestedUse::owned);
                 }
                 this->push_expression_sequence(fields, task.start, task.continuation, task.environment,
-                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-                    task.continue_cleanup_depth);
+                    task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                    task.break_cleanup_depth, task.continue_cleanup_depth);
                 break;
             }
             case syntax::ExprKind::field:
@@ -1215,8 +1546,8 @@ private:
             case syntax::ExprKind::str_is_valid_utf8:
             case syntax::ExprKind::str_from_utf8_checked:
                 this->push_expression(expr.cast_expr, RequestedUse::owned, task.start, task.continuation,
-                    task.environment, task.cleanup_scopes, task.break_target, task.continue_target,
-                    task.break_cleanup_depth, task.continue_cleanup_depth);
+                    task.environment, task.borrow_environment, task.cleanup_scopes, task.break_target,
+                    task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
                 break;
             case syntax::ExprKind::invalid:
             case syntax::ExprKind::integer_literal:
@@ -1250,6 +1581,16 @@ private:
                     expr.range,
                     task.requested != RequestedUse::place_only,
                 });
+            } else if (const auto borrowed = task.borrow_environment.find(expr.text_id);
+                borrowed != task.borrow_environment.end() && borrowed->second != SEMA_MOVE_INVALID_LOCAL) {
+                this->blocks_[task.start].actions.push_back(MoveAction{
+                    MoveActionKind::use_local,
+                    borrowed->second,
+                    task.expr,
+                    OwnedUseMode::shared_borrow,
+                    expr.range,
+                    task.requested != RequestedUse::place_only,
+                });
             }
         }
         this->add_edge(task.start, task.continuation);
@@ -1261,13 +1602,13 @@ private:
             const base::usize decision = this->new_block();
             const base::usize rhs = this->new_block();
             this->push_expression(expr.binary_lhs, RequestedUse::owned, task.start, decision, task.environment,
-                task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-                task.continue_cleanup_depth);
+                task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                task.break_cleanup_depth, task.continue_cleanup_depth);
             this->add_edge(decision, rhs);
             this->add_edge(decision, task.continuation);
             this->push_expression(expr.binary_rhs, RequestedUse::owned, rhs, task.continuation, task.environment,
-                task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-                task.continue_cleanup_depth);
+                task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                task.break_cleanup_depth, task.continue_cleanup_depth);
             return;
         }
         this->push_expression_sequence(
@@ -1275,8 +1616,8 @@ private:
                 {expr.binary_lhs, RequestedUse::owned},
                 {expr.binary_rhs, RequestedUse::owned},
             },
-            task.start, task.continuation, task.environment, task.cleanup_scopes, task.break_target,
-            task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
+            task.start, task.continuation, task.environment, task.borrow_environment, task.cleanup_scopes,
+            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_call_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
@@ -1286,8 +1627,9 @@ private:
         for (const syntax::ExprId arg : expr.args) {
             operands.emplace_back(arg, RequestedUse::owned);
         }
-        this->push_expression_sequence(operands, task.start, task.continuation, task.environment, task.cleanup_scopes,
-            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
+        this->push_expression_sequence(operands, task.start, task.continuation, task.environment,
+            task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_try_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
@@ -1299,8 +1641,8 @@ private:
         const base::usize dispatch = this->new_block();
         const base::usize failure = this->new_block();
         this->push_expression(expr.try_operand, RequestedUse::owned, task.start, dispatch, task.environment,
-            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-            task.continue_cleanup_depth);
+            task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
         this->add_edge(dispatch, task.continuation);
         this->add_edge(dispatch, failure);
         this->push_cleanup_scopes(task.cleanup_scopes, 0, failure, SEMA_MOVE_EXIT_BLOCK);
@@ -1313,27 +1655,30 @@ private:
         const base::usize else_entry = this->new_block();
         this->reject_pattern_payload_if_needed(expr.condition_pattern, expr.condition, task.start, expr.range);
         this->push_expression(expr.condition, RequestedUse::owned, task.start, decision, task.environment,
-            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-            task.continue_cleanup_depth);
+            task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
         this->add_edge(decision, then_entry);
         this->add_edge(decision, else_entry);
         this->push_expression(expr.then_expr, task.requested, then_entry, task.continuation, task.environment,
-            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-            task.continue_cleanup_depth);
+            task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
         this->push_expression(expr.else_expr, task.requested, else_entry, task.continuation, task.environment,
-            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-            task.continue_cleanup_depth);
+            task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_block_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
     {
-        const MoveEnvironment result_environment = this->block_result_environment(expr.block, task.environment);
+        BorrowEnvironment result_borrow_environment = task.borrow_environment;
+        const MoveEnvironment result_environment =
+            this->block_result_environment(expr.block, task.environment, result_borrow_environment);
         CleanupStack block_cleanup_scopes = task.cleanup_scopes;
         const base::usize block_keep_depth = block_cleanup_scopes.size();
         block_cleanup_scopes.emplace_back();
-        this->push_statement_list(expr.block, task.start, task.continuation, task.environment, block_cleanup_scopes,
-            block_keep_depth, task.break_target, task.continue_target, task.break_cleanup_depth,
-            task.continue_cleanup_depth, 0, false, expr.block_result, task.requested, result_environment);
+        this->push_statement_list(expr.block, task.start, task.continuation, task.environment, task.borrow_environment,
+            block_cleanup_scopes, block_keep_depth, task.break_target, task.continue_target, task.break_cleanup_depth,
+            task.continue_cleanup_depth, 0, false, expr.block_result, task.requested, result_environment,
+            result_borrow_environment);
     }
 
     void build_match_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
@@ -1349,8 +1694,8 @@ private:
             }
         }
         this->push_expression(expr.match_value, RequestedUse::owned, task.start, dispatch, task.environment,
-            task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-            task.continue_cleanup_depth);
+            task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
         std::vector<base::usize> arm_entries;
         arm_entries.reserve(expr.match_arms.size());
         for (base::usize i = 0; i < expr.match_arms.size(); ++i) {
@@ -1364,19 +1709,19 @@ private:
                 const base::usize guard_decision = this->new_block();
                 const base::usize value_entry = this->new_block();
                 this->push_expression(arm.guard, RequestedUse::owned, arm_entry, guard_decision, task.environment,
-                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-                    task.continue_cleanup_depth);
+                    task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                    task.break_cleanup_depth, task.continue_cleanup_depth);
                 this->add_edge(guard_decision, value_entry);
                 if (i + 1 < arm_entries.size() && this->core_.pattern_is_irrefutable(arm.pattern, match_type)) {
                     this->add_edge(guard_decision, arm_entries[i + 1]);
                 }
                 this->push_expression(arm.value, task.requested, value_entry, task.continuation, task.environment,
-                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-                    task.continue_cleanup_depth);
+                    task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                    task.break_cleanup_depth, task.continue_cleanup_depth);
             } else {
                 this->push_expression(arm.value, task.requested, arm_entry, task.continuation, task.environment,
-                    task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-                    task.continue_cleanup_depth);
+                    task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+                    task.break_cleanup_depth, task.continue_cleanup_depth);
             }
         }
     }
@@ -1393,8 +1738,9 @@ private:
         if (syntax::is_valid(expr.array_repeat_count)) {
             elements.emplace_back(expr.array_repeat_count, RequestedUse::owned);
         }
-        this->push_expression_sequence(elements, task.start, task.continuation, task.environment, task.cleanup_scopes,
-            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
+        this->push_expression_sequence(elements, task.start, task.continuation, task.environment,
+            task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_field_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
@@ -1405,8 +1751,8 @@ private:
                 SEMA_MOVE_INVALID_LOCAL, task.expr, OwnedUseMode::none, expr.range});
         }
         this->push_expression(expr.object, RequestedUse::initialized_place, task.start, task.continuation,
-            task.environment, task.cleanup_scopes, task.break_target, task.continue_target, task.break_cleanup_depth,
-            task.continue_cleanup_depth);
+            task.environment, task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_index_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
@@ -1421,8 +1767,8 @@ private:
                 {expr.object, RequestedUse::initialized_place},
                 {expr.index, RequestedUse::owned},
             },
-            task.start, task.continuation, task.environment, task.cleanup_scopes, task.break_target,
-            task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
+            task.start, task.continuation, task.environment, task.borrow_environment, task.cleanup_scopes,
+            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     void build_slice_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
@@ -1436,8 +1782,9 @@ private:
         if (syntax::is_valid(expr.slice_end)) {
             operands.emplace_back(expr.slice_end, RequestedUse::owned);
         }
-        this->push_expression_sequence(operands, task.start, task.continuation, task.environment, task.cleanup_scopes,
-            task.break_target, task.continue_target, task.break_cleanup_depth, task.continue_cleanup_depth);
+        this->push_expression_sequence(operands, task.start, task.continuation, task.environment,
+            task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
+            task.break_cleanup_depth, task.continue_cleanup_depth);
     }
 
     [[nodiscard]] RequestedUse unary_operand_use(const syntax::UnaryOp op) const noexcept
@@ -1455,6 +1802,181 @@ private:
     {
         const auto found = this->declared_locals_.find(stmt.value);
         return found == this->declared_locals_.end() ? SEMA_MOVE_INVALID_LOCAL : found->second;
+    }
+
+    [[nodiscard]] base::usize borrowed_alias_local(
+        const syntax::ExprId expr, const BorrowEnvironment& borrow_environment) const
+    {
+        if (!syntax::is_valid(expr) || expr.value >= this->core_.ctx_.module.exprs.size()
+            || this->core_.ctx_.module.exprs.kind(expr.value) != syntax::ExprKind::name) {
+            return SEMA_MOVE_INVALID_LOCAL;
+        }
+        const syntax::NameExprPayload* const name = this->core_.ctx_.module.exprs.name_payload(expr.value);
+        if (name == nullptr || !name->scope_name.empty()) {
+            return SEMA_MOVE_INVALID_LOCAL;
+        }
+        const auto found = borrow_environment.find(name->text_id);
+        return found == borrow_environment.end() ? SEMA_MOVE_INVALID_LOCAL : found->second;
+    }
+
+    [[nodiscard]] base::usize borrow_origin_place(const syntax::ExprId expr, const MoveEnvironment& environment,
+        const BorrowEnvironment& borrow_environment) const
+    {
+        syntax::ExprId current = expr;
+        while (syntax::is_valid(current) && current.value < this->core_.ctx_.module.exprs.size()) {
+            const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(current.value);
+            if (kind == syntax::ExprKind::name) {
+                if (const base::usize alias = this->borrowed_alias_local(current, borrow_environment);
+                    alias != SEMA_MOVE_INVALID_LOCAL) {
+                    return alias;
+                }
+                const std::optional<base::usize> local = this->whole_local(current, environment);
+                return local.value_or(SEMA_MOVE_INVALID_LOCAL);
+            }
+            if (const syntax::FieldExprPayload* const field =
+                    this->core_.ctx_.module.exprs.field_payload(current.value);
+                kind == syntax::ExprKind::field && field != nullptr) {
+                current = field->object;
+                continue;
+            }
+            if (const syntax::IndexExprPayload* const index =
+                    this->core_.ctx_.module.exprs.index_payload(current.value);
+                kind == syntax::ExprKind::index && index != nullptr) {
+                current = index->object;
+                continue;
+            }
+            if (const syntax::UnaryExprPayload* const unary =
+                    this->core_.ctx_.module.exprs.unary_payload(current.value);
+                kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::dereference) {
+                return this->borrowed_alias_local(unary->operand, borrow_environment);
+            }
+            break;
+        }
+        return SEMA_MOVE_INVALID_LOCAL;
+    }
+
+    [[nodiscard]] base::usize borrow_origin_local(
+        const syntax::ExprId expr, const MoveEnvironment& environment, const BorrowEnvironment& borrow_environment)
+    {
+        std::vector<syntax::ExprId> pending{expr};
+        std::unordered_set<base::u32> visited;
+        while (!pending.empty()) {
+            const syntax::ExprId current = pending.back();
+            pending.pop_back();
+            if (!syntax::is_valid(current) || current.value >= this->core_.ctx_.module.exprs.size()
+                || !visited.insert(current.value).second) {
+                continue;
+            }
+            const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(current.value);
+            if (kind == syntax::ExprKind::name) {
+                if (const base::usize alias = this->borrowed_alias_local(current, borrow_environment);
+                    alias != SEMA_MOVE_INVALID_LOCAL) {
+                    return alias;
+                }
+                continue;
+            }
+            if (const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(current.value);
+                kind == syntax::ExprKind::call && call != nullptr) {
+                if (const base::usize receiver =
+                        this->method_receiver_borrow_origin(call->callee, environment, borrow_environment);
+                    receiver != SEMA_MOVE_INVALID_LOCAL) {
+                    return receiver;
+                }
+                for (const syntax::ExprId arg : call->args) {
+                    pending.push_back(arg);
+                }
+                continue;
+            }
+            if (const syntax::UnaryExprPayload* const unary =
+                    this->core_.ctx_.module.exprs.unary_payload(current.value);
+                kind == syntax::ExprKind::unary && unary != nullptr
+                && (unary->op == syntax::UnaryOp::address_of || unary->op == syntax::UnaryOp::address_of_mut)) {
+                return this->borrow_origin_place(unary->operand, environment, borrow_environment);
+            }
+            if (const syntax::SliceExprPayload* const slice =
+                    this->core_.ctx_.module.exprs.slice_payload(current.value);
+                kind == syntax::ExprKind::slice && slice != nullptr) {
+                return this->borrow_origin_place(slice->object, environment, borrow_environment);
+            }
+            if (const syntax::CastExprPayload* const cast = this->core_.ctx_.module.exprs.cast_payload(current.value);
+                cast != nullptr && kind == syntax::ExprKind::str_from_utf8_checked) {
+                pending.push_back(cast->expr);
+                continue;
+            }
+            if (const syntax::IfExprPayload* const if_expr = this->core_.ctx_.module.exprs.if_payload(current.value);
+                kind == syntax::ExprKind::if_expr && if_expr != nullptr) {
+                pending.push_back(if_expr->else_expr);
+                pending.push_back(if_expr->then_expr);
+                continue;
+            }
+            if (const syntax::MatchExprPayload* const match =
+                    this->core_.ctx_.module.exprs.match_payload(current.value);
+                kind == syntax::ExprKind::match_expr && match != nullptr) {
+                for (const syntax::MatchArm& arm : match->arms) {
+                    pending.push_back(arm.value);
+                }
+                continue;
+            }
+            if (const syntax::BlockExprPayload* const block =
+                    this->core_.ctx_.module.exprs.block_payload(current.value);
+                block != nullptr && (kind == syntax::ExprKind::block_expr || kind == syntax::ExprKind::unsafe_block)) {
+                const base::usize origin = this->block_result_borrow_origin(*block, environment, borrow_environment);
+                if (origin != SEMA_MOVE_INVALID_LOCAL) {
+                    return origin;
+                }
+                continue;
+            }
+            if (const syntax::ArrayExprPayload* const array =
+                    this->core_.ctx_.module.exprs.array_payload(current.value);
+                kind == syntax::ExprKind::array_literal && array != nullptr) {
+                pending.push_back(array->repeat_value);
+                for (const syntax::ExprId element : array->elements) {
+                    pending.push_back(element);
+                }
+                continue;
+            }
+            if (const syntax::AstArenaVector<syntax::ExprId>* const tuple =
+                    this->core_.ctx_.module.exprs.tuple_elements(current.value);
+                kind == syntax::ExprKind::tuple_literal && tuple != nullptr) {
+                for (const syntax::ExprId element : *tuple) {
+                    pending.push_back(element);
+                }
+                continue;
+            }
+            if (const syntax::StructLiteralExprPayload* const structure =
+                    this->core_.ctx_.module.exprs.struct_literal_payload(current.value);
+                kind == syntax::ExprKind::struct_literal && structure != nullptr) {
+                for (const syntax::FieldInit& field : structure->field_inits) {
+                    pending.push_back(field.value);
+                }
+                continue;
+            }
+        }
+        return SEMA_MOVE_INVALID_LOCAL;
+    }
+
+    [[nodiscard]] base::usize method_receiver_borrow_origin(const syntax::ExprId callee,
+        const MoveEnvironment& environment, const BorrowEnvironment& borrow_environment) const
+    {
+        syntax::ExprId current = callee;
+        std::unordered_set<base::u32> visited;
+        while (syntax::is_valid(current) && current.value < this->core_.ctx_.module.exprs.size()
+            && visited.insert(current.value).second) {
+            const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(current.value);
+            if (const syntax::GenericApplyExprPayload* const generic =
+                    this->core_.ctx_.module.exprs.generic_apply_payload(current.value);
+                kind == syntax::ExprKind::generic_apply && generic != nullptr) {
+                current = generic->callee;
+                continue;
+            }
+            if (const syntax::FieldExprPayload* const field =
+                    this->core_.ctx_.module.exprs.field_payload(current.value);
+                kind == syntax::ExprKind::field && field != nullptr) {
+                return this->borrow_origin_place(field->object, environment, borrow_environment);
+            }
+            break;
+        }
+        return SEMA_MOVE_INVALID_LOCAL;
     }
 
     [[nodiscard]] std::optional<base::usize> whole_local(

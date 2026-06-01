@@ -112,7 +112,7 @@ struct PlaceIntegerLiteralExpr {
     }
 }
 
-[[nodiscard]] base::u32 builtin_integer_bits(const BuiltinType type) noexcept
+[[nodiscard]] base::u32 builtin_integer_bits(const BuiltinType type, const base::u32 target_pointer_bits) noexcept
 {
     switch (type) {
         case BuiltinType::i8:
@@ -128,9 +128,8 @@ struct PlaceIntegerLiteralExpr {
         case BuiltinType::u64:
             return std::numeric_limits<std::uint64_t>::digits;
         case BuiltinType::isize:
-            return std::numeric_limits<std::ptrdiff_t>::digits;
         case BuiltinType::usize:
-            return std::numeric_limits<std::size_t>::digits;
+            return target_pointer_bits;
         default:
             return SEMA_INTEGER_LITERAL_INVALID_BITS;
     }
@@ -324,8 +323,8 @@ template <typename Float>
     return result.ec == std::errc{} && result.ptr == end && std::isfinite(value);
 }
 
-[[nodiscard]] bool literal_fits_integer_type(
-    const TypeTable& types, const TypeHandle destination, const std::string_view text) noexcept
+[[nodiscard]] bool literal_fits_integer_type(const TypeTable& types, const TypeHandle destination,
+    const std::string_view text, const base::u32 target_pointer_bits) noexcept
 {
     if (!types.is_integer(destination)) {
         return false;
@@ -338,7 +337,7 @@ template <typename Float>
         }
     }
     const TypeInfo& info = types.get(destination);
-    const base::u32 bits = builtin_integer_bits(info.builtin);
+    const base::u32 bits = builtin_integer_bits(info.builtin, target_pointer_bits);
     if (bits == SEMA_INTEGER_LITERAL_INVALID_BITS) {
         return false;
     }
@@ -359,8 +358,8 @@ template <typename Float>
     return value <= ((base::u64{1} << (bits - 1)) - 1);
 }
 
-[[nodiscard]] bool negative_literal_fits_integer_type(
-    const TypeTable& types, const TypeHandle destination, const std::string_view text) noexcept
+[[nodiscard]] bool negative_literal_fits_integer_type(const TypeTable& types, const TypeHandle destination,
+    const std::string_view text, const base::u32 target_pointer_bits) noexcept
 {
     if (!types.is_integer(destination)) {
         return false;
@@ -373,7 +372,7 @@ template <typename Float>
         }
     }
     const TypeInfo& info = types.get(destination);
-    const base::u32 bits = builtin_integer_bits(info.builtin);
+    const base::u32 bits = builtin_integer_bits(info.builtin, target_pointer_bits);
     if (bits == SEMA_INTEGER_LITERAL_INVALID_BITS || builtin_is_unsigned(info.builtin)) {
         return false;
     }
@@ -460,13 +459,14 @@ bool SemanticAnalyzerCore::parse_integer_literal_text(const std::string_view tex
 bool SemanticAnalyzerCore::integer_literal_fits_type(
     const TypeHandle destination, const std::string_view text) const noexcept
 {
-    return literal_fits_integer_type(this->state_.checked.types, destination, text);
+    return literal_fits_integer_type(this->state_.checked.types, destination, text, this->target_pointer_bit_width());
 }
 
 bool SemanticAnalyzerCore::negative_integer_literal_fits_type(
     const TypeHandle destination, const std::string_view text) const noexcept
 {
-    return negative_literal_fits_integer_type(this->state_.checked.types, destination, text);
+    return negative_literal_fits_integer_type(
+        this->state_.checked.types, destination, text, this->target_pointer_bit_width());
 }
 
 TypeHandle SemanticAnalyzerCore::analyze_integer_literal(const syntax::ExprId expr_id, const std::string_view text,
@@ -607,6 +607,12 @@ base::u64 SemanticAnalyzerCore::abi_size(const TypeHandle type) const
 base::u64 SemanticAnalyzerCore::abi_align(const TypeHandle type) const
 {
     return this->abi_checker().abi_align(type);
+}
+
+base::u32 SemanticAnalyzerCore::target_pointer_bit_width() const noexcept
+{
+    constexpr base::u64 BITS_PER_BYTE = 8;
+    return static_cast<base::u32>(this->ctx_.options.target_layout.pointer_size * BITS_PER_BYTE);
 }
 
 bool SemanticAnalyzerCore::is_integer_literal(const syntax::ExprId expr_id) const noexcept

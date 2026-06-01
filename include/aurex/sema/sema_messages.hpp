@@ -164,6 +164,9 @@ inline constexpr std::string_view SEMA_ASSIGNMENT_TYPE_MISMATCH = "assignment ty
 inline constexpr std::string_view SEMA_ARRAY_ASSIGNMENT_UNSUPPORTED =
     "array or array-containing type cannot be assigned";
 
+inline constexpr std::string_view SEMA_RESOURCE_PLACE_ASSIGNMENT_UNSUPPORTED =
+    "resource field, index, or dereference assignment is not supported yet";
+
 inline constexpr std::string_view SEMA_IF_CONDITION_BOOL = "if condition must be bool";
 
 inline constexpr std::string_view SEMA_WHILE_CONDITION_BOOL = "while condition must be bool";
@@ -192,6 +195,10 @@ inline constexpr std::string_view SEMA_RECURSIVE_RETURN_INFER =
     "cannot infer recursive function return type without an explicit return type";
 
 inline constexpr std::string_view SEMA_NOT_ALL_PATHS_RETURN = "not all control paths return a value";
+
+inline constexpr std::string_view SEMA_BORROWED_LOCAL_ESCAPE = "borrowed local storage cannot escape the function";
+
+inline constexpr std::string_view SEMA_BORROWED_LOCAL_ORIGIN = "borrowed local storage originates here";
 
 inline constexpr std::string_view SEMA_MOVE_PARTIAL_FIELD_UNSUPPORTED =
     "moving a field out of a move-only value is not supported yet";

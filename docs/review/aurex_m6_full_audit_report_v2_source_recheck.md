@@ -556,6 +556,21 @@ inspect(borrowed);
 - 在 origin whole-local 被 consumed 后，拒绝后续使用仍指向该 origin 的 reference local。
 - 至少覆盖 shared borrow、mutable borrow、defer action、return path。
 
+阶段二处理结果：
+
+- 已新增 `BorrowEscapeAnalyzer`，在函数体 Sema 完成后、move analysis 前扫描 typed AST，拒绝当前函数局部/参数 storage 派生的 `&T`、`&mut T`、`[]const T`、`[]mut T`、`strfromutf8(...)` 与 `strraw(...)` 逃逸；返回值可含 concrete borrow carrier 的 call 会保守追踪实参和方法 receiver，避免 `identity(&local)` / `identity(local[:])` 这类 wrapper 绕过。
+- 已扩展 whole-local move analysis：reference local 会记录到 move-only origin，origin 被 consume 后，普通调用、defer cleanup 和 return 表达式里的 alias 使用都会复用现有 `use of moved value` 诊断；`let r = identity(&value)` 这类 call alias 同样会绑定回 origin。
+- 已补 M6 临时禁令：move-only resource 的 field/index/deref 覆盖赋值先在 Sema 拒绝，避免 M6 在没有 place-level cleanup/drop flag 的情况下泄漏旧资源。
+- 已把 numeric suffix 收紧到 lexer 白名单：integer 只接受 `i8/i16/i32/i64/isize/u8/u16/u32/u64/usize`，float 只接受 `f32/f64`，`1abc` 和 `1.0u8` 这类未知 suffix 不再作为宽松 literal 进入 parser/sema。
+- 已把比较/相等运算链设为 non-associative 诊断：`a < b < c`、`a == b == c` 这类链式比较需要改成显式 boolean logic 或加括号。
+- 已补 `SemanticTargetLayout`，Sema ABI layout 和 `isize/usize` bit width 不再直接读宿主机 `sizeof/alignof`；M6 默认仍是当前 native 64-bit layout，完整 CLI target triple 到 LLVM `DataLayout` 的产品化贯通继续留给阶段三。
+- 新增负例覆盖 reference return 全路径（direct、`&mut`、block、block alias、call、if、index、match、method、tuple、struct、tuple/slice/struct pattern alias、param slot、field assignment）、slice/str/strraw borrowed-view return（含 `strraw` pointer alias、pointer pattern alias、`strfromutf8` block / unsafe-block pointer carrier），全套 borrow alias use-after-move（direct、assignment、block、inner block alias、aggregate carrier、call、deref、field、if、index、method、显式泛型 method receiver、name、tuple carrier、tuple/slice/enum pattern alias、reference-field、defer、return、mutable borrow），resource field/index/deref assignment，以及 `chained_comparison` / `chained_equality`；lexer unit 另覆盖 `1abc`、`1eabc` 与 `1.0u8` unknown suffix，sema whitebox 覆盖 32-bit target layout 下 pointer-sized ABI 与 `isize/usize` literal range。
+- 已清理 borrow-origin 遍历中的不可达合法路径：当前 `cast` 只产生 numeric/bool，`ptrcast`/`bitcast` 只产生 raw pointer 或标量，不能合法生成 `&T` / slice / `str` carrier；阶段二只保留 `strfromutf8` 的真实 borrowed carrier 传播。
+- 阶段二最终验证通过：相关定向 `ctest` 通过，`tools/check_coverage.sh -j4` 通过，source totals 为 lines 95.48%、functions 99.01%、regions 95.01%。
+- `[]` generic/index/slice 的现状是已有 `BracketSuffixClassifier` 承担上下文判定和白盒测试，本阶段未发现新的直接崩溃；长期语法去歧义仍属于后续语言表面整理。
+- `strfromutf8` 失败返回空 `str` 是当前文档化合同，本阶段修的是 borrowed-view lifetime 逃逸；`Option`/`Result` 错误通道属于后续核心库/API 设计。
+- 这里仍然不是完整 M7 lifetime/borrow checker：M6 只做保守 escape/use-after-move 阻断；field-level reinitialize、partial move、用户析构、分支敏感 alias merge 以及抽象 generic/associated projection 的完整 lifetime 约束仍归后续阶段。
+
 ### 阶段三：做 M6 hardening 和工业化边界收口
 
 目标：阶段一、二解决直接硬失败和 safe surface 洞之后，再系统处理原 v2 报告中真实但更偏地基工程化的问题。
@@ -564,11 +579,11 @@ inspect(borrowed);
 
 1. checked ID / source range / source manager：统一 checked `u32` ID 分配，SourceManager 增加 `try_get()`，SourceRange 区分 invalid 和 empty，CRLF line extent 清理。
 2. token / AST / `string_view` lifetime：Token 逐步从 raw pointer 借用转向 range/owner，AST/Sema payload 建立 interner/source owner 规则。
-3. cursor / lexer / parser hardening：TokenCursor 非空 EOF invariant、LexerCursor checked add/slice、numeric suffix 白名单和比较链诊断。
+3. cursor / lexer / parser hardening：TokenCursor 非空 EOF invariant、LexerCursor checked add/slice；numeric suffix 白名单和比较链诊断已在阶段二完成，不再作为阶段三重复项。
 4. allocator / arena owner：BumpAllocator checked add/mul/align，空 arena adapter 不再静默退全局堆，IdentifierInterner 禁 move assignment 或 swap 化。
 5. API contract：`Result<T>::value/error` 去掉错误 `noexcept` 或改明确 fatal trap；AST reserve / TypeTable copy 等 size 估算加 checked arithmetic。
 6. Query/Sema 并发前置：ResourceSemanticsClassifier lazy mutable cache、Sema `const_cast` read path、`std::function` provider core route、query cycle poisoned policy 和 CompileBudget。
-7. IR/pass/backend hardening：cond_branch rewrite 校验有效 block，verifier gate 继续前置，TargetInfo 后续贯通 LLVM backend matrix。
+7. IR/pass/backend hardening：cond_branch rewrite 校验有效 block，verifier gate 继续前置，TargetInfo 后续从 CLI target triple 贯通到 LLVM backend matrix。
 8. module/tooling identity：ModuleIdentity 区分 package、logical path、physical file、source root；tooling stale range helper 统一。
 9. docs/CMake/repo hygiene：顶层 README baseline、LLVM/test/LTO 入口、已跟踪 `.idea` 清理。
 
@@ -624,4 +639,4 @@ inspect(borrowed);
 
 它最大的问题，是没有充分对齐当前源码和 M6 文档边界：把已经实现的 `defer` move analysis 说成缺失，把已文档化的字符串 empty fallback 当成实现漏洞，把 M7/M8 的 borrow/drop/partial move 能力压回 M6 P0。
 
-执行建议：不要按原报告的 P0/P1 原样排期。按本复核的三阶段 selfcheck 做 `m6-hardening` 工作包：第一阶段先修 `defer` + `?` 崩溃和 LSP UTF-16 坐标，第二阶段收紧 reference/slice/str borrowed-view 逃逸，第三阶段再系统处理 place-level cleanup、TargetInfo、checked ID/source/arena、LSP parser 和 Query/Sema hardening。
+执行建议：不要按原报告的 P0/P1 原样排期。按本复核的三阶段 selfcheck 做 `m6-hardening` 工作包：第一阶段先修 `defer` + `?` 崩溃和 LSP UTF-16 坐标，第二阶段收紧 reference/slice/str borrowed-view 逃逸、borrow alias use-after-move、resource place overwrite 临时禁令、numeric/comparison 诊断和 Sema target layout hook，第三阶段再系统处理 place-level cleanup、CLI TargetInfo/LLVM DataLayout 贯通、checked ID/source/arena、LSP parser 和 Query/Sema hardening。

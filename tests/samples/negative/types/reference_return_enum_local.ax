@@ -1,0 +1,15 @@
+module reference_return_enum_local;
+
+enum MaybeBorrow {
+    some(&i32),
+    none,
+}
+
+fn bad() -> MaybeBorrow {
+    let value: i32 = 1;
+    return MaybeBorrow.some(&value);
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -1,0 +1,20 @@
+module move_borrow_inner_block_alias_after_move;
+
+fn consume[T](value: T) -> void {
+}
+
+fn inspect[T](value: &T) -> void {
+}
+
+fn duplicate[T](value: T) -> void {
+    let borrowed: &T = {
+        let alias: &T = &value;
+        alias
+    };
+    consume(value);
+    inspect(borrowed);
+}
+
+fn main() -> i32 {
+    return 0;
+}

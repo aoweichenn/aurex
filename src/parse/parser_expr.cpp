@@ -65,6 +65,11 @@ constexpr BinaryOperatorSyntax PARSER_EXPR_BINARY_OPERATORS[] = {
     return static_cast<int>(precedence);
 }
 
+[[nodiscard]] bool is_non_associative_comparison_precedence(const BinaryPrecedence precedence) noexcept
+{
+    return precedence == BinaryPrecedence::EQUALITY || precedence == BinaryPrecedence::COMPARISON;
+}
+
 [[nodiscard]] const BinaryOperatorSyntax* binary_operator_for(const TokenKind kind) noexcept
 {
     for (const BinaryOperatorSyntax& op : PARSER_EXPR_BINARY_OPERATORS) {
@@ -210,7 +215,11 @@ syntax::ExprId ExprParser::parse_binary_expr(const ExprContext context)
 
     operands.push_back(this->parse_unary(context));
     while (const BinaryOperatorSyntax* op = binary_operator_for(this->peek().kind)) {
-        this->advance();
+        const syntax::Token& token = this->advance();
+        if (!operators.empty() && is_non_associative_comparison_precedence(operators.back()->precedence)
+            && is_non_associative_comparison_precedence(op->precedence)) {
+            this->report_at(token, std::string(PARSER_CHAINED_COMPARISON_UNSUPPORTED));
+        }
         while (!operators.empty() && precedence_rank(operators.back()->precedence) >= precedence_rank(op->precedence)) {
             reduce_top_operator();
         }

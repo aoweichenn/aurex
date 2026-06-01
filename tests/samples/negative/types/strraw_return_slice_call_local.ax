@@ -1,0 +1,14 @@
+module strraw_return_slice_call_local;
+
+fn identity(values: []const u8) -> []const u8 {
+    return values;
+}
+
+unsafe fn bad() -> str {
+    let bytes: [2]u8 = b"ok";
+    return strraw(sliceptr(identity(bytes[:])), slicelen(bytes[:]));
+}
+
+fn main() -> i32 {
+    return 0;
+}

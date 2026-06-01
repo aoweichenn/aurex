@@ -1,0 +1,14 @@
+module move_return_borrow_alias_after_move;
+
+fn consume[T](value: T) -> void {
+}
+
+fn address_after_move[T](value: T) -> usize {
+    let borrowed: &T = &value;
+    consume(value);
+    return ptraddr(borrowed);
+}
+
+fn main() -> i32 {
+    return 0;
+}

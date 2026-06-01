@@ -1,0 +1,11 @@
+module strraw_pointer_pattern_alias_return_local;
+
+unsafe fn bad() -> str {
+    let bytes: [2]u8 = b"ok";
+    let [data] = [sliceptr(bytes[:])];
+    return strraw(data, slicelen(bytes[:]));
+}
+
+fn main() -> i32 {
+    return 0;
+}

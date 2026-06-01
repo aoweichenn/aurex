@@ -1,0 +1,11 @@
+module reference_return_param_slot;
+
+type Ref = &i32;
+
+fn bad(value: Ref) -> &Ref {
+    return &value;
+}
+
+fn main() -> i32 {
+    return 0;
+}

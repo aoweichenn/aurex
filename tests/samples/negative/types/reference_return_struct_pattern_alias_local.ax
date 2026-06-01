@@ -1,0 +1,15 @@
+module reference_return_struct_pattern_alias_local;
+
+struct Holder {
+    borrowed: &i32;
+}
+
+fn bad() -> &i32 {
+    let value: i32 = 1;
+    let Holder { borrowed } = Holder { borrowed: &value };
+    return borrowed;
+}
+
+fn main() -> i32 {
+    return 0;
+}

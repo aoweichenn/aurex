@@ -1522,7 +1522,7 @@ TEST(CoreUnit, ParserRecoveryCoversTupleSynchronizationAndFunctionTypeVariadics)
     constexpr std::string_view source = "module parser.tuple_sync_recovery;\n"
                                         "type SizedA = [4usize]i32;\n"
                                         "type SizedB = [0b10u8]u8;\n"
-                                        "type BadSize = [4bad]i32;\n"
+                                        "type BadSize = [18446744073709551616]i32;\n"
                                         "type BadGeneric = Pair[i32 +, bool];\n"
                                         "type BadTuple = (i32, bool +, u8);\n"
                                         "type BadFnA = fn(..., i32) -> i32;\n"
@@ -2979,6 +2979,16 @@ TEST(CoreUnit, ParserCoversAdditionalDiagnosticBranches)
     expect_parse_error("module parser.bad_import;\n"
                        "import c.;\n",
         "expected identifier after '.'");
+    expect_parse_diagnostic("module parser.chained_comparison;\n"
+                            "fn main(a: i32, b: i32, c: i32) -> bool {\n"
+                            "  return a < b < c;\n"
+                            "}\n",
+        "comparison operators are non-associative");
+    expect_parse_diagnostic("module parser.chained_equality;\n"
+                            "fn main(a: i32, b: i32, c: i32) -> bool {\n"
+                            "  return a == b == c;\n"
+                            "}\n",
+        "comparison operators are non-associative");
 }
 
 TEST(CoreUnit, ParserRecoveryPredicateTablesCoverStartAndBoundarySets)

@@ -1,0 +1,22 @@
+module move_borrow_enum_alias_after_move;
+
+enum MaybeBorrow[T] {
+    some(&T),
+    none,
+}
+
+fn consume[T](value: T) -> void {
+}
+
+fn inspect[T](value: MaybeBorrow[T]) -> void {
+}
+
+fn duplicate[T](value: T) -> void {
+    let borrowed: MaybeBorrow[T] = MaybeBorrow[T].some(&value);
+    consume(value);
+    inspect(borrowed);
+}
+
+fn main() -> i32 {
+    return 0;
+}

@@ -1,0 +1,14 @@
+module reference_return_struct_local;
+
+struct Holder {
+    value: &i32;
+}
+
+fn bad() -> Holder {
+    let value: i32 = 1;
+    return Holder { value: &value };
+}
+
+fn main() -> i32 {
+    return 0;
+}

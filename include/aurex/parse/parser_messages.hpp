@@ -318,6 +318,9 @@ inline constexpr std::string_view PARSER_INCREMENT_UNSUPPORTED = "increment oper
 
 inline constexpr std::string_view PARSER_DECREMENT_UNSUPPORTED = "decrement operator is not supported; use '-= 1'";
 
+inline constexpr std::string_view PARSER_CHAINED_COMPARISON_UNSUPPORTED =
+    "comparison operators are non-associative; use explicit boolean logic";
+
 inline constexpr std::string_view PARSER_EXPECT_EXPRESSION_NAME = "expected expression name";
 
 inline constexpr std::string_view PARSER_EXPECT_ITEM_NAME_AFTER_SCOPE = "expected item name after '.'";

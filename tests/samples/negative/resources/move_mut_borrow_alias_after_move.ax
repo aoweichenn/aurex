@@ -1,0 +1,18 @@
+module move_mut_borrow_alias_after_move;
+
+fn consume[T](value: T) -> void {
+}
+
+fn inspect[T](value: &mut T) -> void {
+}
+
+fn duplicate[T](value: T) -> void {
+    var current: T = value;
+    let borrowed: &mut T = &mut current;
+    consume(current);
+    inspect(borrowed);
+}
+
+fn main() -> i32 {
+    return 0;
+}

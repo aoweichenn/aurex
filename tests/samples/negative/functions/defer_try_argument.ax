@@ -1,0 +1,18 @@
+module defer_try_argument;
+
+enum ResultI32I32: u8 {
+    ok(i32) = 1,
+    err(i32) = 2,
+}
+
+fn mark(value: i32) -> void {
+}
+
+fn fail() -> ResultI32I32 {
+    return ResultI32I32.err(5);
+}
+
+fn use() -> ResultI32I32 {
+    defer mark(fail()?);
+    return ResultI32I32.ok(0);
+}

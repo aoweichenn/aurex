@@ -72,10 +72,49 @@ constexpr char LSP_HEADER_COLON = ':';
 constexpr base::usize LSP_HEADER_SEPARATOR_SIZE = 4;
 constexpr base::usize LSP_JSON_UNICODE_ESCAPE_HEX_DIGITS = 4;
 constexpr base::usize LSP_JSON_HEX_NIBBLE_SHIFT = 4;
+constexpr unsigned int LSP_JSON_SURROGATE_SHIFT = 10U;
 constexpr unsigned char LSP_JSON_HEX_NIBBLE_MASK = 0x0FU;
 constexpr int LSP_DECIMAL_DIGIT_COUNT = 10;
 constexpr unsigned int LSP_JSON_CONTROL_LIMIT = 0x20U;
 constexpr unsigned int LSP_JSON_ASCII_LIMIT = 0x7FU;
+constexpr unsigned int LSP_JSON_UTF8_TWO_BYTE_LIMIT = 0x7FFU;
+constexpr unsigned int LSP_JSON_UTF8_THREE_BYTE_LIMIT = 0xFFFFU;
+constexpr unsigned int LSP_UNICODE_HIGH_SURROGATE_MIN = 0xD800U;
+constexpr unsigned int LSP_UNICODE_HIGH_SURROGATE_MAX = 0xDBFFU;
+constexpr unsigned int LSP_UNICODE_LOW_SURROGATE_MIN = 0xDC00U;
+constexpr unsigned int LSP_UNICODE_LOW_SURROGATE_MAX = 0xDFFFU;
+constexpr unsigned int LSP_UNICODE_SUPPLEMENTARY_CODE_POINT_MIN = 0x10000U;
+constexpr unsigned int LSP_UNICODE_MAX_CODE_POINT = 0x10FFFFU;
+constexpr unsigned int LSP_UNICODE_SURROGATE_CODE_POINT_MASK = 0x3FFU;
+constexpr unsigned int LSP_UTF8_CONTINUATION_VALUE_MASK = 0x3FU;
+constexpr unsigned int LSP_UTF8_CONTINUATION_BYTE_TAG = 0x80U;
+constexpr unsigned int LSP_UTF8_CONTINUATION_BYTE_MASK = 0xC0U;
+constexpr unsigned int LSP_UTF8_TWO_BYTE_TAG = 0xC0U;
+constexpr unsigned int LSP_UTF8_THREE_BYTE_TAG = 0xE0U;
+constexpr unsigned int LSP_UTF8_FOUR_BYTE_TAG = 0xF0U;
+constexpr unsigned int LSP_UTF8_TWO_BYTE_LEAD_MIN = 0xC2U;
+constexpr unsigned int LSP_UTF8_TWO_BYTE_LEAD_MAX = 0xDFU;
+constexpr unsigned int LSP_UTF8_THREE_BYTE_LEAD_MIN = 0xE0U;
+constexpr unsigned int LSP_UTF8_THREE_BYTE_LEAD_MAX = 0xEFU;
+constexpr unsigned int LSP_UTF8_SURROGATE_LEAD = 0xEDU;
+constexpr unsigned int LSP_UTF8_FOUR_BYTE_LEAD_MIN = 0xF0U;
+constexpr unsigned int LSP_UTF8_FOUR_BYTE_LEAD_MAX = 0xF4U;
+constexpr unsigned int LSP_UTF8_TWO_BYTE_LEAD_VALUE_MASK = 0x1FU;
+constexpr unsigned int LSP_UTF8_THREE_BYTE_LEAD_VALUE_MASK = 0x0FU;
+constexpr unsigned int LSP_UTF8_FOUR_BYTE_LEAD_VALUE_MASK = 0x07U;
+constexpr unsigned int LSP_UTF8_E0_SECOND_MIN = 0xA0U;
+constexpr unsigned int LSP_UTF8_ED_SECOND_MAX = 0x9FU;
+constexpr unsigned int LSP_UTF8_F0_SECOND_MIN = 0x90U;
+constexpr unsigned int LSP_UTF8_F4_SECOND_MAX = 0x8FU;
+constexpr unsigned int LSP_UTF8_CONTINUATION_SHIFT = 6U;
+constexpr unsigned int LSP_UTF8_TWO_BYTE_SHIFT = 6U;
+constexpr unsigned int LSP_UTF8_THREE_BYTE_SHIFT = 12U;
+constexpr unsigned int LSP_UTF8_FOUR_BYTE_SHIFT = 18U;
+constexpr base::usize LSP_UTF8_TWO_BYTE_LENGTH = 2;
+constexpr base::usize LSP_UTF8_THREE_BYTE_LENGTH = 3;
+constexpr base::usize LSP_UTF8_FOUR_BYTE_LENGTH = 4;
+constexpr base::usize LSP_ONE_BASED_MINIMUM = 1;
+constexpr unsigned int LSP_UTF16_SURROGATE_UNIT_COUNT = 2U;
 constexpr int LSP_ERROR_METHOD_NOT_FOUND = -32601;
 constexpr int LSP_ERROR_INVALID_REQUEST = -32600;
 constexpr int LSP_TEXT_DOCUMENT_SYNC_FULL = 1;
@@ -176,6 +215,9 @@ struct JsonSlice {
             escaped = false;
             continue;
         }
+        if (static_cast<unsigned char>(ch) < LSP_JSON_CONTROL_LIMIT) {
+            return std::nullopt;
+        }
         if (ch == LSP_JSON_ESCAPE) {
             escaped = true;
             continue;
@@ -190,7 +232,11 @@ struct JsonSlice {
 [[nodiscard]] std::optional<base::usize> lsp_json_container_end(
     const std::string_view text, const base::usize begin) noexcept
 {
-    base::usize depth = 0;
+    if (begin >= text.size() || (text[begin] != LSP_JSON_OBJECT_OPEN && text[begin] != LSP_JSON_ARRAY_OPEN)) {
+        return std::nullopt;
+    }
+    std::vector<char> closers;
+    closers.reserve(1U);
     bool in_string = false;
     bool escaped = false;
     for (base::usize index = begin; index < text.size(); ++index) {
@@ -202,6 +248,8 @@ struct JsonSlice {
                 escaped = true;
             } else if (ch == LSP_JSON_QUOTE) {
                 in_string = false;
+            } else if (static_cast<unsigned char>(ch) < LSP_JSON_CONTROL_LIMIT) {
+                return std::nullopt;
             }
             continue;
         }
@@ -209,16 +257,20 @@ struct JsonSlice {
             in_string = true;
             continue;
         }
-        if (ch == LSP_JSON_OBJECT_OPEN || ch == LSP_JSON_ARRAY_OPEN) {
-            ++depth;
+        if (ch == LSP_JSON_OBJECT_OPEN) {
+            closers.push_back(LSP_JSON_OBJECT_CLOSE);
+            continue;
+        }
+        if (ch == LSP_JSON_ARRAY_OPEN) {
+            closers.push_back(LSP_JSON_ARRAY_CLOSE);
             continue;
         }
         if (ch == LSP_JSON_OBJECT_CLOSE || ch == LSP_JSON_ARRAY_CLOSE) {
-            if (depth == 0U) {
+            if (closers.empty() || closers.back() != ch) {
                 return std::nullopt;
             }
-            --depth;
-            if (depth == 0U) {
+            closers.pop_back();
+            if (closers.empty()) {
                 return index + 1U;
             }
         }
@@ -264,6 +316,71 @@ struct JsonSlice {
     return -1;
 }
 
+[[nodiscard]] bool lsp_json_is_high_surrogate(const unsigned int code) noexcept
+{
+    return code >= LSP_UNICODE_HIGH_SURROGATE_MIN && code <= LSP_UNICODE_HIGH_SURROGATE_MAX;
+}
+
+[[nodiscard]] bool lsp_json_is_low_surrogate(const unsigned int code) noexcept
+{
+    return code >= LSP_UNICODE_LOW_SURROGATE_MIN && code <= LSP_UNICODE_LOW_SURROGATE_MAX;
+}
+
+[[nodiscard]] bool lsp_append_utf8_code_point(std::string& out, const unsigned int code)
+{
+    if (code > LSP_UNICODE_MAX_CODE_POINT || lsp_json_is_high_surrogate(code) || lsp_json_is_low_surrogate(code)) {
+        return false;
+    }
+    if (code <= LSP_JSON_ASCII_LIMIT) {
+        out.push_back(static_cast<char>(code));
+        return true;
+    }
+    if (code <= LSP_JSON_UTF8_TWO_BYTE_LIMIT) {
+        out.push_back(static_cast<char>(LSP_UTF8_TWO_BYTE_TAG | (code >> LSP_UTF8_TWO_BYTE_SHIFT)));
+        out.push_back(static_cast<char>(LSP_UTF8_CONTINUATION_BYTE_TAG | (code & LSP_UTF8_CONTINUATION_VALUE_MASK)));
+        return true;
+    }
+    if (code <= LSP_JSON_UTF8_THREE_BYTE_LIMIT) {
+        out.push_back(static_cast<char>(LSP_UTF8_THREE_BYTE_TAG | (code >> LSP_UTF8_THREE_BYTE_SHIFT)));
+        out.push_back(static_cast<char>(LSP_UTF8_CONTINUATION_BYTE_TAG
+            | ((code >> LSP_UTF8_CONTINUATION_SHIFT) & LSP_UTF8_CONTINUATION_VALUE_MASK)));
+        out.push_back(static_cast<char>(LSP_UTF8_CONTINUATION_BYTE_TAG | (code & LSP_UTF8_CONTINUATION_VALUE_MASK)));
+        return true;
+    }
+    out.push_back(static_cast<char>(LSP_UTF8_FOUR_BYTE_TAG | (code >> LSP_UTF8_FOUR_BYTE_SHIFT)));
+    out.push_back(static_cast<char>(
+        LSP_UTF8_CONTINUATION_BYTE_TAG | ((code >> LSP_UTF8_THREE_BYTE_SHIFT) & LSP_UTF8_CONTINUATION_VALUE_MASK)));
+    out.push_back(static_cast<char>(
+        LSP_UTF8_CONTINUATION_BYTE_TAG | ((code >> LSP_UTF8_CONTINUATION_SHIFT) & LSP_UTF8_CONTINUATION_VALUE_MASK)));
+    out.push_back(static_cast<char>(LSP_UTF8_CONTINUATION_BYTE_TAG | (code & LSP_UTF8_CONTINUATION_VALUE_MASK)));
+    return true;
+}
+
+[[nodiscard]] std::optional<unsigned int> lsp_json_read_unicode_escape(
+    const std::string_view value, const base::usize marker)
+{
+    if (marker >= value.size() || value[marker] != 'u' || value.size() - marker <= LSP_JSON_UNICODE_ESCAPE_HEX_DIGITS) {
+        return std::nullopt;
+    }
+    unsigned int code = 0;
+    for (base::usize digit = 0; digit < LSP_JSON_UNICODE_ESCAPE_HEX_DIGITS; ++digit) {
+        const int nibble = lsp_hex_value(value[marker + 1U + digit]);
+        if (nibble < 0) {
+            return std::nullopt;
+        }
+        code = (code << LSP_JSON_HEX_NIBBLE_SHIFT) | static_cast<unsigned int>(nibble);
+    }
+    return code;
+}
+
+[[nodiscard]] unsigned int lsp_json_combine_surrogates(const unsigned int high, const unsigned int low) noexcept
+{
+    return LSP_UNICODE_SUPPLEMENTARY_CODE_POINT_MIN
+        + (((high - LSP_UNICODE_HIGH_SURROGATE_MIN) & LSP_UNICODE_SURROGATE_CODE_POINT_MASK)
+            << LSP_JSON_SURROGATE_SHIFT)
+        + ((low - LSP_UNICODE_LOW_SURROGATE_MIN) & LSP_UNICODE_SURROGATE_CODE_POINT_MASK);
+}
+
 [[nodiscard]] std::optional<std::string> lsp_json_unescape_string(const std::string_view value)
 {
     if (value.size() < 2U || value.front() != LSP_JSON_QUOTE || value.back() != LSP_JSON_QUOTE) {
@@ -274,6 +391,9 @@ struct JsonSlice {
     for (base::usize index = 1U; index + 1U < value.size(); ++index) {
         char ch = value[index];
         if (ch != LSP_JSON_ESCAPE) {
+            if (static_cast<unsigned char>(ch) < LSP_JSON_CONTROL_LIMIT) {
+                return std::nullopt;
+            }
             result.push_back(ch);
             continue;
         }
@@ -304,19 +424,32 @@ struct JsonSlice {
                 result.push_back(LSP_JSON_TAB);
                 break;
             case 'u': {
-                if (index + LSP_JSON_UNICODE_ESCAPE_HEX_DIGITS >= value.size()) {
+                const std::optional<unsigned int> first = lsp_json_read_unicode_escape(value, index);
+                if (!first.has_value()) {
                     return std::nullopt;
                 }
-                unsigned int code = 0;
-                for (base::usize digit = 0; digit < LSP_JSON_UNICODE_ESCAPE_HEX_DIGITS; ++digit) {
-                    const int nibble = lsp_hex_value(value[index + 1U + digit]);
-                    if (nibble < 0) {
+                unsigned int code = *first;
+                if (lsp_json_is_high_surrogate(code)) {
+                    const base::usize low_escape = index + LSP_JSON_UNICODE_ESCAPE_HEX_DIGITS + 1U;
+                    if (low_escape + 1U >= value.size() || value[low_escape] != LSP_JSON_ESCAPE
+                        || value[low_escape + 1U] != 'u') {
                         return std::nullopt;
                     }
-                    code = (code << LSP_JSON_HEX_NIBBLE_SHIFT) | static_cast<unsigned int>(nibble);
+                    const std::optional<unsigned int> low = lsp_json_read_unicode_escape(value, low_escape + 1U);
+                    if (!low.has_value() || !lsp_json_is_low_surrogate(*low)) {
+                        return std::nullopt;
+                    }
+                    code = lsp_json_combine_surrogates(code, *low);
+                    index = low_escape + 1U + LSP_JSON_UNICODE_ESCAPE_HEX_DIGITS;
+                } else {
+                    if (lsp_json_is_low_surrogate(code)) {
+                        return std::nullopt;
+                    }
+                    index += LSP_JSON_UNICODE_ESCAPE_HEX_DIGITS;
                 }
-                result.push_back(code <= LSP_JSON_ASCII_LIMIT ? static_cast<char>(code) : '?');
-                index += LSP_JSON_UNICODE_ESCAPE_HEX_DIGITS;
+                if (!lsp_append_utf8_code_point(result, code)) {
+                    return std::nullopt;
+                }
                 break;
             }
             default:
@@ -505,36 +638,225 @@ void lsp_append_json_escaped(std::string& out, const std::string_view text)
     return out;
 }
 
-[[nodiscard]] base::usize lsp_zero_based(const base::usize one_based) noexcept
+struct LspUtf8CodePoint {
+    unsigned int code = 0;
+    base::usize next = 0;
+};
+
+[[nodiscard]] bool lsp_utf8_is_continuation(const unsigned char ch) noexcept
 {
-    return one_based == 0U ? 0U : one_based - 1U;
+    return (static_cast<unsigned int>(ch) & LSP_UTF8_CONTINUATION_BYTE_MASK) == LSP_UTF8_CONTINUATION_BYTE_TAG;
 }
 
-void lsp_append_position(std::string& out, const base::LineColumn position)
+[[nodiscard]] bool lsp_utf8_continuation_available(
+    const std::string_view text, const base::usize index, const base::usize end) noexcept
 {
-    out.append("{\"line\":");
-    out.append(std::to_string(lsp_zero_based(position.line)));
-    out.append(",\"character\":");
-    out.append(std::to_string(lsp_zero_based(position.column)));
-    out.push_back(LSP_JSON_OBJECT_CLOSE);
+    return index < end && lsp_utf8_is_continuation(static_cast<unsigned char>(text[index]));
 }
 
-void lsp_append_range(std::string& out, const ToolingTextRange& range)
+[[nodiscard]] LspUtf8CodePoint lsp_decode_utf8_code_point(
+    const std::string_view text, const base::usize index, const base::usize end) noexcept
 {
-    out.append("{\"start\":");
-    lsp_append_position(out, range.start);
-    out.append(",\"end\":");
-    lsp_append_position(out, range.end);
-    out.push_back(LSP_JSON_OBJECT_CLOSE);
+    const unsigned int first = static_cast<unsigned char>(text[index]);
+    if (first <= LSP_JSON_ASCII_LIMIT) {
+        return {first, index + 1U};
+    }
+    if (first >= LSP_UTF8_TWO_BYTE_LEAD_MIN && first <= LSP_UTF8_TWO_BYTE_LEAD_MAX
+        && lsp_utf8_continuation_available(text, index + 1U, end)) {
+        const unsigned int second = static_cast<unsigned char>(text[index + 1U]);
+        const unsigned int code = ((first & LSP_UTF8_TWO_BYTE_LEAD_VALUE_MASK) << LSP_UTF8_TWO_BYTE_SHIFT)
+            | (second & LSP_UTF8_CONTINUATION_VALUE_MASK);
+        return {code, index + LSP_UTF8_TWO_BYTE_LENGTH};
+    }
+    if (first >= LSP_UTF8_THREE_BYTE_LEAD_MIN && first <= LSP_UTF8_THREE_BYTE_LEAD_MAX
+        && lsp_utf8_continuation_available(text, index + 1U, end)
+        && lsp_utf8_continuation_available(text, index + 2U, end)) {
+        const unsigned int second = static_cast<unsigned char>(text[index + 1U]);
+        const unsigned int third = static_cast<unsigned char>(text[index + 2U]);
+        const bool valid_second = (first != LSP_UTF8_THREE_BYTE_LEAD_MIN || second >= LSP_UTF8_E0_SECOND_MIN)
+            && (first != LSP_UTF8_SURROGATE_LEAD || second <= LSP_UTF8_ED_SECOND_MAX);
+        if (valid_second) {
+            const unsigned int code = ((first & LSP_UTF8_THREE_BYTE_LEAD_VALUE_MASK) << LSP_UTF8_THREE_BYTE_SHIFT)
+                | ((second & LSP_UTF8_CONTINUATION_VALUE_MASK) << LSP_UTF8_CONTINUATION_SHIFT)
+                | (third & LSP_UTF8_CONTINUATION_VALUE_MASK);
+            return {code, index + LSP_UTF8_THREE_BYTE_LENGTH};
+        }
+    }
+    if (first >= LSP_UTF8_FOUR_BYTE_LEAD_MIN && first <= LSP_UTF8_FOUR_BYTE_LEAD_MAX
+        && lsp_utf8_continuation_available(text, index + 1U, end)
+        && lsp_utf8_continuation_available(text, index + 2U, end)
+        && lsp_utf8_continuation_available(text, index + 3U, end)) {
+        const unsigned int second = static_cast<unsigned char>(text[index + 1U]);
+        const unsigned int third = static_cast<unsigned char>(text[index + 2U]);
+        const unsigned int fourth = static_cast<unsigned char>(text[index + 3U]);
+        const bool valid_second = (first != LSP_UTF8_FOUR_BYTE_LEAD_MIN || second >= LSP_UTF8_F0_SECOND_MIN)
+            && (first != LSP_UTF8_FOUR_BYTE_LEAD_MAX || second <= LSP_UTF8_F4_SECOND_MAX);
+        if (valid_second) {
+            const unsigned int code = ((first & LSP_UTF8_FOUR_BYTE_LEAD_VALUE_MASK) << LSP_UTF8_FOUR_BYTE_SHIFT)
+                | ((second & LSP_UTF8_CONTINUATION_VALUE_MASK) << LSP_UTF8_THREE_BYTE_SHIFT)
+                | ((third & LSP_UTF8_CONTINUATION_VALUE_MASK) << LSP_UTF8_CONTINUATION_SHIFT)
+                | (fourth & LSP_UTF8_CONTINUATION_VALUE_MASK);
+            return {code, index + LSP_UTF8_FOUR_BYTE_LENGTH};
+        }
+    }
+    return {first, index + 1U};
 }
 
-void lsp_append_source_position(std::string& out, const ToolingSourcePosition position)
+[[nodiscard]] base::usize lsp_utf16_units_for_code_point(const unsigned int code) noexcept
+{
+    return code >= LSP_UNICODE_SUPPLEMENTARY_CODE_POINT_MIN ? LSP_UTF16_SURROGATE_UNIT_COUNT : 1U;
+}
+
+struct LspLineBounds {
+    base::usize begin = 0;
+    base::usize end = 0;
+    base::usize line = 0;
+};
+
+[[nodiscard]] LspLineBounds lsp_line_bounds_for_line(
+    const std::string_view text, const base::usize target_line) noexcept
+{
+    base::usize line = 0;
+    base::usize begin = 0;
+    for (base::usize index = 0; index < text.size() && line < target_line; ++index) {
+        if (text[index] == LSP_JSON_NEWLINE) {
+            ++line;
+            begin = index + 1U;
+        }
+    }
+    if (line < target_line) {
+        return {text.size(), text.size(), line};
+    }
+    base::usize end = text.size();
+    for (base::usize index = begin; index < text.size(); ++index) {
+        if (text[index] == LSP_JSON_NEWLINE) {
+            end = index;
+            break;
+        }
+    }
+    return {begin, end, line};
+}
+
+[[nodiscard]] LspLineBounds lsp_line_bounds_for_offset(const std::string_view text, const base::usize offset) noexcept
+{
+    const base::usize clamped = std::min(offset, text.size());
+    base::usize line = 0;
+    base::usize begin = 0;
+    for (base::usize index = 0; index < clamped; ++index) {
+        if (text[index] == LSP_JSON_NEWLINE) {
+            ++line;
+            begin = index + 1U;
+        }
+    }
+    base::usize end = text.size();
+    for (base::usize index = begin; index < text.size(); ++index) {
+        if (text[index] == LSP_JSON_NEWLINE) {
+            end = index;
+            break;
+        }
+    }
+    return {begin, end, line};
+}
+
+[[nodiscard]] base::usize lsp_utf16_character_for_byte_offset(
+    const std::string_view text, const base::usize offset) noexcept
+{
+    const LspLineBounds bounds = lsp_line_bounds_for_offset(text, offset);
+    const base::usize clamped = std::min(offset, bounds.end);
+    base::usize character = 0;
+    for (base::usize index = bounds.begin; index < clamped;) {
+        const LspUtf8CodePoint decoded = lsp_decode_utf8_code_point(text, index, bounds.end);
+        if (decoded.next > clamped) {
+            break;
+        }
+        character += lsp_utf16_units_for_code_point(decoded.code);
+        index = decoded.next;
+    }
+    return character;
+}
+
+[[nodiscard]] ToolingSourcePosition lsp_position_for_byte_offset(
+    const std::string_view text, const base::usize offset) noexcept
+{
+    const LspLineBounds bounds = lsp_line_bounds_for_offset(text, offset);
+    return ToolingSourcePosition{bounds.line, lsp_utf16_character_for_byte_offset(text, offset)};
+}
+
+[[nodiscard]] base::usize lsp_byte_offset_for_utf16_position(
+    const std::string_view text, const ToolingSourcePosition position) noexcept
+{
+    const LspLineBounds bounds = lsp_line_bounds_for_line(text, position.line);
+    if (bounds.begin == text.size() && position.line > bounds.line) {
+        return text.size();
+    }
+    base::usize character = 0;
+    base::usize index = bounds.begin;
+    while (index < bounds.end && character < position.character) {
+        const LspUtf8CodePoint decoded = lsp_decode_utf8_code_point(text, index, bounds.end);
+        const base::usize width = lsp_utf16_units_for_code_point(decoded.code);
+        if (character + width > position.character) {
+            break;
+        }
+        character += width;
+        index = decoded.next;
+    }
+    return index;
+}
+
+[[nodiscard]] ToolingSourcePosition lsp_tooling_position_from_protocol(
+    const ToolingSession& session, const ToolingDocumentId& document, const ToolingSourcePosition position)
+{
+    const std::optional<ToolingDocumentState> state = session.document_state(document);
+    if (!state.has_value()) {
+        return position;
+    }
+    const base::usize offset = lsp_byte_offset_for_utf16_position(state->text, position);
+    return tooling_position_for_offset(state->text, offset);
+}
+
+void lsp_append_position(std::string& out, const ToolingSourcePosition position)
 {
     out.append("{\"line\":");
     out.append(std::to_string(position.line));
     out.append(",\"character\":");
     out.append(std::to_string(position.character));
     out.push_back(LSP_JSON_OBJECT_CLOSE);
+}
+
+void lsp_append_position(std::string& out, const base::LineColumn position)
+{
+    const ToolingSourcePosition zero_based{
+        std::max(position.line, LSP_ONE_BASED_MINIMUM) - LSP_ONE_BASED_MINIMUM,
+        std::max(position.column, LSP_ONE_BASED_MINIMUM) - LSP_ONE_BASED_MINIMUM,
+    };
+    lsp_append_position(out, zero_based);
+}
+
+void lsp_append_range(std::string& out, const ToolingTextRange& range, const std::string* const text)
+{
+    out.append("{\"start\":");
+    if (text != nullptr) {
+        lsp_append_position(out, lsp_position_for_byte_offset(*text, range.range.begin));
+    } else {
+        lsp_append_position(out, range.start);
+    }
+    out.append(",\"end\":");
+    if (text != nullptr) {
+        lsp_append_position(out, lsp_position_for_byte_offset(*text, range.range.end));
+    } else {
+        lsp_append_position(out, range.end);
+    }
+    out.push_back(LSP_JSON_OBJECT_CLOSE);
+}
+
+void lsp_append_source_position(std::string& out, const ToolingSourcePosition position, const std::string* const text)
+{
+    if (text == nullptr) {
+        lsp_append_position(out, position);
+        return;
+    }
+    const base::usize offset = tooling_offset_for_position(*text, position);
+    lsp_append_position(out, lsp_position_for_byte_offset(*text, offset));
 }
 
 [[nodiscard]] int lsp_diagnostic_severity(const base::Severity severity) noexcept
@@ -694,10 +1016,10 @@ void lsp_append_module_part(std::string& out, const IdeModulePartContext& contex
     out.push_back(LSP_JSON_OBJECT_CLOSE);
 }
 
-void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic)
+void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic, const std::string* const text)
 {
     out.append("{\"range\":");
-    lsp_append_range(out, diagnostic.range);
+    lsp_append_range(out, diagnostic.range, text);
     out.append(",\"severity\":");
     out.append(std::to_string(lsp_diagnostic_severity(diagnostic.severity)));
     out.append(",\"code\":");
@@ -718,7 +1040,7 @@ void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic
 }
 
 [[nodiscard]] std::string lsp_publish_diagnostics(
-    const std::string_view uri, const std::vector<ToolingDiagnostic>& diagnostics)
+    const std::string_view uri, const std::vector<ToolingDiagnostic>& diagnostics, const std::string* const text)
 {
     std::string params;
     params.append("{\"uri\":");
@@ -728,7 +1050,7 @@ void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic
         if (index != 0U) {
             params.push_back(LSP_JSON_COMMA);
         }
-        lsp_append_diagnostic(params, diagnostics[index]);
+        lsp_append_diagnostic(params, diagnostics[index], text);
     }
     params.append("]}");
     return lsp_notification(LSP_METHOD_PUBLISH_DIAGNOSTICS, params);
@@ -741,12 +1063,14 @@ void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic
     if (!diagnostics) {
         return {};
     }
-    return {lsp_publish_diagnostics(document.uri, diagnostics.take_value())};
+    const std::optional<ToolingDocumentState> state = session.document_state(document);
+    const std::string* const text = state.has_value() ? &state->text : nullptr;
+    return {lsp_publish_diagnostics(document.uri, diagnostics.take_value(), text)};
 }
 
 [[nodiscard]] std::vector<std::string> lsp_publish_empty_diagnostics(const std::string_view uri)
 {
-    return {lsp_publish_diagnostics(uri, {})};
+    return {lsp_publish_diagnostics(uri, {}, nullptr)};
 }
 
 [[nodiscard]] std::optional<ToolingSourcePosition> lsp_position_from_params(const std::string_view params)
@@ -804,18 +1128,33 @@ void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic
     return lsp_json_string_property(first.text, LSP_PROP_TEXT);
 }
 
-[[nodiscard]] std::string lsp_location_json(const std::string_view uri, const ToolingTextRange& range)
+[[nodiscard]] ToolingDocumentId lsp_document_for_range(
+    const ToolingSession& session, const ToolingDocumentId& fallback, const ToolingTextRange& range)
 {
+    return range.path.empty() ? fallback : tooling_document_id_from_path(range.path, session.project_config());
+}
+
+[[nodiscard]] std::string lsp_uri_for_range(const ToolingDocumentId& fallback, const ToolingTextRange& range)
+{
+    return range.path.empty() ? fallback.uri : tooling_file_uri_from_path(range.path);
+}
+
+[[nodiscard]] std::string lsp_location_json(
+    const ToolingSession& session, const ToolingDocumentId& fallback, const ToolingTextRange& range)
+{
+    const ToolingDocumentId range_document = lsp_document_for_range(session, fallback, range);
+    const std::optional<ToolingDocumentState> state = session.document_state(range_document);
+    const std::string* const text = state.has_value() ? &state->text : nullptr;
     std::string out;
     out.append("{\"uri\":");
-    lsp_append_json_escaped(out, range.path.empty() ? uri : tooling_file_uri_from_path(range.path));
+    lsp_append_json_escaped(out, lsp_uri_for_range(fallback, range));
     out.append(",\"range\":");
-    lsp_append_range(out, range);
+    lsp_append_range(out, range, text);
     out.push_back(LSP_JSON_OBJECT_CLOSE);
     return out;
 }
 
-[[nodiscard]] std::string lsp_hover_result(const ToolingHover& hover)
+[[nodiscard]] std::string lsp_hover_result(const ToolingHover& hover, const std::string* const text)
 {
     std::string out;
     out.append("{\"contents\":{\"kind\":");
@@ -823,7 +1162,7 @@ void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic
     out.append(",\"value\":");
     lsp_append_json_escaped(out, hover.label);
     out.append("},\"range\":");
-    lsp_append_range(out, hover.range);
+    lsp_append_range(out, hover.range, text);
     if (!hover.semantic_fact_key.empty() || !hover.semantic_fact_detail.empty()) {
         out.append(",\"data\":{\"semanticFactKey\":");
         lsp_append_json_escaped(out, hover.semantic_fact_key);
@@ -835,7 +1174,8 @@ void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic
     return out;
 }
 
-[[nodiscard]] std::string lsp_document_symbol_result(const std::vector<ToolingDocumentSymbol>& symbols)
+[[nodiscard]] std::string lsp_document_symbol_result(
+    const std::vector<ToolingDocumentSymbol>& symbols, const std::string* const text)
 {
     std::string out;
     out.push_back(LSP_JSON_ARRAY_OPEN);
@@ -851,9 +1191,9 @@ void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic
         out.append(",\"detail\":");
         lsp_append_json_escaped(out, symbol.detail);
         out.append(",\"range\":");
-        lsp_append_range(out, symbol.range);
+        lsp_append_range(out, symbol.range, text);
         out.append(",\"selectionRange\":");
-        lsp_append_range(out, symbol.selection_range);
+        lsp_append_range(out, symbol.selection_range, text);
         out.append(",\"data\":{\"aurexKind\":");
         lsp_append_json_escaped(out, symbol.kind);
         out.append(",\"stableQueryKey\":");
@@ -886,7 +1226,8 @@ void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic
     return session.is_generation_current(document, version);
 }
 
-[[nodiscard]] std::string lsp_completion_result(const std::vector<ToolingCompletionItem>& completions)
+[[nodiscard]] std::string lsp_completion_result(
+    const std::vector<ToolingCompletionItem>& completions, const std::string* const text)
 {
     std::string out;
     out.append("{\"isIncomplete\":false,\"items\":[");
@@ -902,7 +1243,7 @@ void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic
         out.append(",\"detail\":");
         lsp_append_json_escaped(out, item.detail);
         out.append(",\"textEdit\":{\"range\":");
-        lsp_append_range(out, item.replacement_range);
+        lsp_append_range(out, item.replacement_range, text);
         out.append(",\"newText\":");
         lsp_append_json_escaped(out, item.label);
         out.append("},\"data\":{\"aurexKind\":");
@@ -923,17 +1264,18 @@ void lsp_append_diagnostic(std::string& out, const ToolingDiagnostic& diagnostic
     return out;
 }
 
-void lsp_append_text_edit(std::string& out, const ToolingTextRange& range, const std::string_view new_text)
+void lsp_append_text_edit(
+    std::string& out, const ToolingTextRange& range, const std::string_view new_text, const std::string* const text)
 {
     out.append("{\"range\":");
-    lsp_append_range(out, range);
+    lsp_append_range(out, range, text);
     out.append(",\"newText\":");
     lsp_append_json_escaped(out, new_text);
     out.push_back(LSP_JSON_OBJECT_CLOSE);
 }
 
 template <typename EditRange>
-void lsp_append_workspace_changes(std::string& out, const std::vector<EditRange>& edits)
+void lsp_append_workspace_changes(std::string& out, const ToolingSession& session, const std::vector<EditRange>& edits)
 {
     out.append("{\"changes\":{");
     std::vector<std::string> uris;
@@ -960,21 +1302,34 @@ void lsp_append_workspace_changes(std::string& out, const std::vector<EditRange>
                 out.push_back(LSP_JSON_COMMA);
             }
             first_edit = false;
-            lsp_append_text_edit(out, edit.range, edit.new_text);
+            const std::optional<ToolingDocumentState> state = session.document_state(edit.document);
+            const std::string* const text = state.has_value() ? &state->text : nullptr;
+            lsp_append_text_edit(out, edit.range, edit.new_text, text);
         }
         out.push_back(LSP_JSON_ARRAY_CLOSE);
     }
     out.append("}}");
 }
 
-[[nodiscard]] std::string lsp_rename_result(const ToolingRenamePlan& plan)
+[[nodiscard]] std::string lsp_rename_result(const ToolingSession& session, const ToolingRenamePlan& plan)
 {
     std::string out;
-    lsp_append_workspace_changes(out, plan.edits);
+    lsp_append_workspace_changes(out, session, plan.edits);
     return out;
 }
 
-[[nodiscard]] std::string lsp_semantic_tokens_result(const std::vector<ToolingSemanticToken>& tokens)
+[[nodiscard]] base::usize lsp_semantic_token_length(const ToolingTextRange& range, const std::string& text) noexcept
+{
+    const ToolingSourcePosition start = lsp_position_for_byte_offset(text, range.range.begin);
+    const ToolingSourcePosition end = lsp_position_for_byte_offset(text, range.range.end);
+    if (start.line == end.line && end.character >= start.character) {
+        return end.character - start.character;
+    }
+    return end.character;
+}
+
+[[nodiscard]] std::string lsp_semantic_tokens_result(
+    const std::vector<ToolingSemanticToken>& tokens, const std::string& text)
 {
     std::string out;
     out.append("{\"data\":[");
@@ -985,11 +1340,12 @@ void lsp_append_workspace_changes(std::string& out, const std::vector<EditRange>
             out.push_back(LSP_JSON_COMMA);
         }
         const ToolingSemanticToken& token = tokens[index];
-        const base::usize line = lsp_zero_based(token.range.start.line);
-        const base::usize start = lsp_zero_based(token.range.start.column);
+        const ToolingSourcePosition position = lsp_position_for_byte_offset(text, token.range.range.begin);
+        const base::usize line = position.line;
+        const base::usize start = position.character;
         const base::usize delta_line = index == 0U ? line : line - previous_line;
         const base::usize delta_start = delta_line == 0U ? start - previous_start : start;
-        const base::usize length = token.range.range.length();
+        const base::usize length = lsp_semantic_token_length(token.range, text);
         out.append(std::to_string(delta_line));
         out.push_back(LSP_JSON_COMMA);
         out.append(std::to_string(delta_start));
@@ -1006,7 +1362,8 @@ void lsp_append_workspace_changes(std::string& out, const std::vector<EditRange>
     return out;
 }
 
-[[nodiscard]] std::string lsp_code_action_result(const std::vector<ToolingCodeAction>& actions)
+[[nodiscard]] std::string lsp_code_action_result(
+    const ToolingSession& session, const std::vector<ToolingCodeAction>& actions)
 {
     std::string out;
     out.push_back(LSP_JSON_ARRAY_OPEN);
@@ -1022,7 +1379,7 @@ void lsp_append_workspace_changes(std::string& out, const std::vector<EditRange>
         out.append(",\"isPreferred\":");
         out.append(action.preferred ? "true" : "false");
         out.append(",\"edit\":");
-        lsp_append_workspace_changes(out, action.edits);
+        lsp_append_workspace_changes(out, session, action.edits);
         out.append(",\"data\":");
         lsp_append_json_escaped(out, action.data);
         out.push_back(LSP_JSON_OBJECT_CLOSE);
@@ -1031,7 +1388,8 @@ void lsp_append_workspace_changes(std::string& out, const std::vector<EditRange>
     return out;
 }
 
-[[nodiscard]] std::string lsp_workspace_symbol_result(const std::vector<ToolingWorkspaceSymbol>& symbols)
+[[nodiscard]] std::string lsp_workspace_symbol_result(
+    const ToolingSession& session, const std::vector<ToolingWorkspaceSymbol>& symbols)
 {
     std::string out;
     out.push_back(LSP_JSON_ARRAY_OPEN);
@@ -1045,7 +1403,7 @@ void lsp_append_workspace_changes(std::string& out, const std::vector<EditRange>
         out.append(",\"kind\":");
         out.append(std::to_string(lsp_symbol_kind(symbol.kind)));
         out.append(",\"location\":");
-        out.append(lsp_location_json(symbol.document.uri, symbol.range));
+        out.append(lsp_location_json(session, symbol.document, symbol.range));
         out.append(",\"containerName\":");
         lsp_append_json_escaped(out, symbol.container_name);
         out.append(",\"data\":{\"aurexKind\":");
@@ -1064,7 +1422,8 @@ void lsp_append_workspace_changes(std::string& out, const std::vector<EditRange>
     return out;
 }
 
-[[nodiscard]] std::string lsp_inlay_hint_result(const std::vector<ToolingInlayHint>& hints)
+[[nodiscard]] std::string lsp_inlay_hint_result(
+    const std::vector<ToolingInlayHint>& hints, const std::string* const text)
 {
     std::string out;
     out.push_back(LSP_JSON_ARRAY_OPEN);
@@ -1074,7 +1433,7 @@ void lsp_append_workspace_changes(std::string& out, const std::vector<EditRange>
         }
         const ToolingInlayHint& hint = hints[index];
         out.append("{\"position\":");
-        lsp_append_source_position(out, hint.position);
+        lsp_append_source_position(out, hint.position, text);
         out.append(",\"label\":");
         lsp_append_json_escaped(out, hint.label);
         out.append(",\"kind\":");
@@ -1089,9 +1448,37 @@ void lsp_append_workspace_changes(std::string& out, const std::vector<EditRange>
     return out;
 }
 
-[[nodiscard]] bool lsp_header_name_matches(const std::string_view line, const std::string_view name) noexcept
+[[nodiscard]] std::string_view lsp_trim_header_spaces(const std::string_view value) noexcept
 {
-    return line.size() >= name.size() && line.substr(0, name.size()) == name;
+    base::usize begin = 0;
+    base::usize end = value.size();
+    while (begin < end && (value[begin] == LSP_JSON_SPACE || value[begin] == LSP_JSON_TAB)) {
+        ++begin;
+    }
+    while (end > begin && (value[end - 1U] == LSP_JSON_SPACE || value[end - 1U] == LSP_JSON_TAB)) {
+        --end;
+    }
+    return value.substr(begin, end - begin);
+}
+
+[[nodiscard]] bool lsp_ascii_equal_ignore_case(const char lhs, const char rhs) noexcept
+{
+    if (lhs == rhs) {
+        return true;
+    }
+    if (lhs >= 'A' && lhs <= 'Z') {
+        return static_cast<char>(lhs - 'A' + 'a') == rhs;
+    }
+    if (rhs >= 'A' && rhs <= 'Z') {
+        return lhs == static_cast<char>(rhs - 'A' + 'a');
+    }
+    return false;
+}
+
+[[nodiscard]] bool lsp_header_name_equals(const std::string_view actual, const std::string_view expected) noexcept
+{
+    return actual.size() == expected.size()
+        && std::equal(actual.begin(), actual.end(), expected.begin(), expected.end(), lsp_ascii_equal_ignore_case);
 }
 
 [[nodiscard]] base::Result<base::usize> lsp_parse_content_length(const std::string_view header)
@@ -1101,20 +1488,21 @@ void lsp_append_workspace_changes(std::string& out, const std::vector<EditRange>
         const base::usize line_end = header.find(LSP_LINE_SEPARATOR, search);
         const std::string_view line =
             line_end == std::string_view::npos ? header.substr(search) : header.substr(search, line_end - search);
-        if (lsp_header_name_matches(line, LSP_HEADER_CONTENT_LENGTH)) {
-            const base::usize colon = line.find(LSP_HEADER_COLON);
-            if (colon == std::string_view::npos) {
-                break;
-            }
-            std::string_view number = line.substr(colon + 1U);
-            const base::usize begin = lsp_json_skip_whitespace(number, 0);
-            number = number.substr(begin);
+        const base::usize colon = line.find(LSP_HEADER_COLON);
+        if (colon != std::string_view::npos
+            && lsp_header_name_equals(lsp_trim_header_spaces(line.substr(0, colon)), LSP_HEADER_CONTENT_LENGTH)) {
+            const std::string_view number = lsp_trim_header_spaces(line.substr(colon + 1U));
             base::usize length = 0;
             const auto [ptr, error] = std::from_chars(number.data(), number.data() + number.size(), length);
-            if (error == std::errc{}) {
-                return base::Result<base::usize>::ok(length);
+            if (error != std::errc{} || ptr != number.data() + number.size()) {
+                return base::Result<base::usize>::fail(
+                    {base::ErrorCode::invalid_source, "invalid LSP Content-Length header"});
             }
-            break;
+            if (length > LSP_MAX_MESSAGE_BYTES) {
+                return base::Result<base::usize>::fail(
+                    {base::ErrorCode::invalid_source, "LSP message body is too large"});
+            }
+            return base::Result<base::usize>::ok(length);
         }
         if (line_end == std::string_view::npos) {
             break;
@@ -1142,11 +1530,11 @@ base::Result<std::vector<LspContentMessage>> parse_lsp_content_messages(const st
             return base::Result<std::vector<LspContentMessage>>::fail(content_length.error());
         }
         const base::usize body_begin = header_end + LSP_HEADER_SEPARATOR_SIZE;
-        const base::usize body_end = body_begin + content_length.value();
-        if (body_end > bytes.size()) {
+        if (content_length.value() > bytes.size() - body_begin) {
             return base::Result<std::vector<LspContentMessage>>::fail(
                 {base::ErrorCode::invalid_source, "incomplete LSP body"});
         }
+        const base::usize body_end = body_begin + content_length.value();
         messages.push_back(LspContentMessage{std::string(bytes.substr(body_begin, content_length.value()))});
         cursor = body_end;
     }
@@ -1379,11 +1767,15 @@ std::vector<std::string> LspServer::handle_hover(const std::string_view id, cons
     if (!document.has_value() || !position.has_value()) {
         return {lsp_response(id, LSP_NULL)};
     }
-    base::Result<std::optional<ToolingHover>> hover = this->session_.hover_at_position(*document, *position);
+    const ToolingSourcePosition tooling_position =
+        lsp_tooling_position_from_protocol(this->session_, *document, *position);
+    base::Result<std::optional<ToolingHover>> hover = this->session_.hover_at_position(*document, tooling_position);
     if (!hover || !hover.value().has_value()) {
         return {lsp_response(id, LSP_NULL)};
     }
-    return {lsp_response(id, lsp_hover_result(*hover.value()))};
+    const std::optional<ToolingDocumentState> state = this->session_.document_state(*document);
+    const std::string* const text = state.has_value() ? &state->text : nullptr;
+    return {lsp_response(id, lsp_hover_result(*hover.value(), text))};
 }
 
 std::vector<std::string> LspServer::handle_definition(const std::string_view id, const std::string_view params)
@@ -1393,12 +1785,14 @@ std::vector<std::string> LspServer::handle_definition(const std::string_view id,
     if (!document.has_value() || !position.has_value()) {
         return {lsp_response(id, LSP_NULL)};
     }
+    const ToolingSourcePosition tooling_position =
+        lsp_tooling_position_from_protocol(this->session_, *document, *position);
     base::Result<std::optional<ToolingDefinition>> definition =
-        this->session_.definition_at_position(*document, *position);
+        this->session_.definition_at_position(*document, tooling_position);
     if (!definition || !definition.value().has_value()) {
         return {lsp_response(id, LSP_NULL)};
     }
-    return {lsp_response(id, lsp_location_json(document->uri, definition.value()->range))};
+    return {lsp_response(id, lsp_location_json(this->session_, *document, definition.value()->range))};
 }
 
 std::vector<std::string> LspServer::handle_references(const std::string_view id, const std::string_view params)
@@ -1408,8 +1802,10 @@ std::vector<std::string> LspServer::handle_references(const std::string_view id,
     if (!document.has_value() || !position.has_value()) {
         return {lsp_response(id, "[]")};
     }
+    const ToolingSourcePosition tooling_position =
+        lsp_tooling_position_from_protocol(this->session_, *document, *position);
     base::Result<std::vector<ToolingReference>> references =
-        this->session_.references_at_position(*document, *position);
+        this->session_.references_at_position(*document, tooling_position);
     if (!references) {
         return {lsp_response(id, "[]")};
     }
@@ -1419,7 +1815,7 @@ std::vector<std::string> LspServer::handle_references(const std::string_view id,
         if (index != 0U) {
             result.push_back(LSP_JSON_COMMA);
         }
-        result.append(lsp_location_json(document->uri, references.value()[index].range));
+        result.append(lsp_location_json(this->session_, *document, references.value()[index].range));
     }
     result.push_back(LSP_JSON_ARRAY_CLOSE);
     return {lsp_response(id, result)};
@@ -1435,7 +1831,9 @@ std::vector<std::string> LspServer::handle_document_symbols(const std::string_vi
     if (!symbols) {
         return {lsp_response(id, "[]")};
     }
-    return {lsp_response(id, lsp_document_symbol_result(symbols.value()))};
+    const std::optional<ToolingDocumentState> state = this->session_.document_state(*document);
+    const std::string* const text = state.has_value() ? &state->text : nullptr;
+    return {lsp_response(id, lsp_document_symbol_result(symbols.value(), text))};
 }
 
 std::vector<std::string> LspServer::handle_completion(const std::string_view id, const std::string_view params)
@@ -1449,12 +1847,16 @@ std::vector<std::string> LspServer::handle_completion(const std::string_view id,
     if (!generation.has_value()) {
         return {lsp_response(id, "{\"isIncomplete\":false,\"items\":[]}")};
     }
+    const ToolingSourcePosition tooling_position =
+        lsp_tooling_position_from_protocol(this->session_, *document, *position);
     base::Result<std::vector<ToolingCompletionItem>> completions =
-        this->session_.completion_at_position(*document, *position);
+        this->session_.completion_at_position(*document, tooling_position);
     if (!completions || !lsp_generation_is_current(this->session_, *document, *generation)) {
         return {lsp_response(id, "{\"isIncomplete\":false,\"items\":[]}")};
     }
-    return {lsp_response(id, lsp_completion_result(completions.value()))};
+    const std::optional<ToolingDocumentState> state = this->session_.document_state(*document);
+    const std::string* const text = state.has_value() ? &state->text : nullptr;
+    return {lsp_response(id, lsp_completion_result(completions.value(), text))};
 }
 
 std::vector<std::string> LspServer::handle_rename(const std::string_view id, const std::string_view params)
@@ -1469,11 +1871,13 @@ std::vector<std::string> LspServer::handle_rename(const std::string_view id, con
     if (!generation.has_value()) {
         return {lsp_response(id, LSP_NULL)};
     }
-    base::Result<ToolingRenamePlan> rename = this->session_.rename_at_position(*document, *position, *new_name);
+    const ToolingSourcePosition tooling_position =
+        lsp_tooling_position_from_protocol(this->session_, *document, *position);
+    base::Result<ToolingRenamePlan> rename = this->session_.rename_at_position(*document, tooling_position, *new_name);
     if (!rename || !rename.value().valid || !lsp_generation_is_current(this->session_, *document, *generation)) {
         return {lsp_response(id, LSP_NULL)};
     }
-    return {lsp_response(id, lsp_rename_result(rename.value()))};
+    return {lsp_response(id, lsp_rename_result(this->session_, rename.value()))};
 }
 
 std::vector<std::string> LspServer::handle_semantic_tokens(const std::string_view id, const std::string_view params)
@@ -1490,7 +1894,11 @@ std::vector<std::string> LspServer::handle_semantic_tokens(const std::string_vie
     if (!tokens || !lsp_generation_is_current(this->session_, *document, *generation)) {
         return {lsp_response(id, "{\"data\":[]}")};
     }
-    return {lsp_response(id, lsp_semantic_tokens_result(tokens.value()))};
+    const std::optional<ToolingDocumentState> state = this->session_.document_state(*document);
+    if (!state.has_value()) {
+        return {lsp_response(id, "{\"data\":[]}")};
+    }
+    return {lsp_response(id, lsp_semantic_tokens_result(tokens.value(), state->text))};
 }
 
 std::vector<std::string> LspServer::handle_code_actions(const std::string_view id, const std::string_view params)
@@ -1507,7 +1915,7 @@ std::vector<std::string> LspServer::handle_code_actions(const std::string_view i
     if (!actions || !lsp_generation_is_current(this->session_, *document, *generation)) {
         return {lsp_response(id, "[]")};
     }
-    return {lsp_response(id, lsp_code_action_result(actions.value()))};
+    return {lsp_response(id, lsp_code_action_result(this->session_, actions.value()))};
 }
 
 std::vector<std::string> LspServer::handle_workspace_symbols(const std::string_view id, const std::string_view params)
@@ -1518,7 +1926,7 @@ std::vector<std::string> LspServer::handle_workspace_symbols(const std::string_v
     if (!symbols) {
         return {lsp_response(id, "[]")};
     }
-    return {lsp_response(id, lsp_workspace_symbol_result(symbols.value()))};
+    return {lsp_response(id, lsp_workspace_symbol_result(this->session_, symbols.value()))};
 }
 
 std::vector<std::string> LspServer::handle_inlay_hints(const std::string_view id, const std::string_view params)
@@ -1535,7 +1943,9 @@ std::vector<std::string> LspServer::handle_inlay_hints(const std::string_view id
     if (!hints || !lsp_generation_is_current(this->session_, *document, *generation)) {
         return {lsp_response(id, "[]")};
     }
-    return {lsp_response(id, lsp_inlay_hint_result(hints.value()))};
+    const std::optional<ToolingDocumentState> state = this->session_.document_state(*document);
+    const std::string* const text = state.has_value() ? &state->text : nullptr;
+    return {lsp_response(id, lsp_inlay_hint_result(hints.value(), text))};
 }
 
 } // namespace aurex::tooling

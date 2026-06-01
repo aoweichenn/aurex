@@ -91,6 +91,10 @@ inline constexpr std::string_view LSP_STDIO_OPTION_IMPORT_PATH_SHORT = "-I";
         return base::Result<base::usize>::fail(
             lsp_stdio_error(base::ErrorCode::invalid_source, "invalid LSP Content-Length header"));
     }
+    if (length > LSP_MAX_MESSAGE_BYTES) {
+        return base::Result<base::usize>::fail(
+            lsp_stdio_error(base::ErrorCode::invalid_source, "LSP message body is too large"));
+    }
     return base::Result<base::usize>::ok(length);
 }
 

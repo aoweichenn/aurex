@@ -9,6 +9,11 @@
 
 namespace aurex::tooling {
 
+inline constexpr base::usize LSP_MESSAGE_MAX_MEBIBYTES = 64;
+inline constexpr base::usize LSP_MESSAGE_BYTES_PER_KIBIBYTE = 1024;
+inline constexpr base::usize LSP_MAX_MESSAGE_BYTES =
+    LSP_MESSAGE_MAX_MEBIBYTES * LSP_MESSAGE_BYTES_PER_KIBIBYTE * LSP_MESSAGE_BYTES_PER_KIBIBYTE;
+
 struct LspContentMessage {
     std::string body;
 };

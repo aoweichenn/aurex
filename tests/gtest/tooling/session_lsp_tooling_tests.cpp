@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -123,6 +124,8 @@ constexpr std::string_view TOOLING_LSP_FALLBACK_SYMBOL_URI = "file:///workspace/
 constexpr std::string_view TOOLING_LSP_METHOD_SYMBOL_URI = "file:///workspace/lsp_method_symbols.ax";
 constexpr std::string_view TOOLING_SESSION_TRAIT_URI = "file:///workspace/tooling_traits.ax";
 constexpr std::string_view TOOLING_LSP_ESCAPE_URI = "file:///workspace/lsp_escape.ax";
+constexpr std::string_view TOOLING_LSP_UTF16_URI = "file:///workspace/lsp_utf16.ax";
+constexpr std::string_view TOOLING_LSP_INVALID_UTF8_URI = "file:///workspace/lsp_invalid_utf8.ax";
 constexpr std::string_view TOOLING_LSP_NO_MODULE_URI = "file:///workspace/lsp_no_module.ax";
 constexpr std::string_view TOOLING_WORKSPACE_LEFT_URI = "file:///workspace/workspace_left.ax";
 constexpr std::string_view TOOLING_WORKSPACE_RIGHT_URI = "file:///workspace/workspace_right.ax";
@@ -157,7 +160,27 @@ constexpr unsigned char TOOLING_TEST_PERCENT_DECODE_BYTE = 0xAFU;
 constexpr unsigned char TOOLING_TEST_JSON_CONTROL_LIMIT = 0x20U;
 constexpr base::usize TOOLING_TEST_JSON_HEX_NIBBLE_SHIFT = 4;
 constexpr unsigned char TOOLING_TEST_JSON_HEX_NIBBLE_MASK = 0x0FU;
+constexpr unsigned char TOOLING_TEST_INVALID_UTF8_LEAD_BYTE = 0xC3U;
 constexpr std::string_view TOOLING_TEST_JSON_HEX_DIGITS = "0123456789ABCDEF";
+constexpr std::string_view TOOLING_TEST_UTF8_E_ACUTE = "\xC3\xA9";
+constexpr std::string_view TOOLING_TEST_UTF8_MACRON = "\xC2\xAF";
+constexpr std::string_view TOOLING_TEST_UTF8_GRINNING_FACE = "\xF0\x9F\x98\x80";
+constexpr std::string_view TOOLING_TEST_UTF8_CJK_MIDDLE = "\xE4\xB8\xAD";
+constexpr base::usize TOOLING_LSP_UTF16_VALUE_LINE = 2;
+constexpr base::usize TOOLING_LSP_UTF16_VALUE_CHARACTER = 32;
+constexpr base::usize TOOLING_LSP_UTF16_VALUE_END_CHARACTER = 37;
+constexpr base::usize TOOLING_LSP_UTF16_STRING_LINE = 2;
+constexpr base::usize TOOLING_LSP_UTF16_STRING_CHARACTER = 20;
+constexpr base::usize TOOLING_LSP_UTF16_STRING_LENGTH = 6;
+constexpr base::usize TOOLING_LSP_UTF16_EMOJI_TRAILING_CHARACTER = 23;
+constexpr base::usize TOOLING_LSP_PAST_END_LINE = 99;
+constexpr base::usize TOOLING_LSP_PAST_END_CHARACTER = 0;
+constexpr base::usize TOOLING_LSP_SEMANTIC_TOKEN_FIELD_COUNT = 5;
+constexpr base::usize TOOLING_LSP_SEMANTIC_TOKEN_DELTA_LINE_FIELD = 0;
+constexpr base::usize TOOLING_LSP_SEMANTIC_TOKEN_DELTA_START_FIELD = 1;
+constexpr base::usize TOOLING_LSP_SEMANTIC_TOKEN_LENGTH_FIELD = 2;
+constexpr base::usize TOOLING_LSP_SEMANTIC_TOKEN_TYPE_FIELD = 3;
+constexpr int TOOLING_LSP_SEMANTIC_TOKEN_STRING_TYPE = 18;
 
 [[nodiscard]] tooling::ToolingProjectConfig tooling_project_config(const std::string_view package)
 {
@@ -165,6 +188,33 @@ constexpr std::string_view TOOLING_TEST_JSON_HEX_DIGITS = "0123456789ABCDEF";
     config.root_path = "/workspace";
     config.package_identity = std::string(package);
     return config;
+}
+
+[[nodiscard]] std::string tooling_lsp_utf16_source()
+{
+    std::string source = "module tooling.utf16;\n"
+                         "fn main() -> i32 {\n"
+                         "  let prefix: str = \"";
+    source.append(TOOLING_TEST_UTF8_E_ACUTE);
+    source.append(TOOLING_TEST_UTF8_GRINNING_FACE);
+    source.append(TOOLING_TEST_UTF8_CJK_MIDDLE);
+    source.append("\"; let value = 1;\n"
+                  "  return value;\n"
+                  "}\n");
+    return source;
+}
+
+[[nodiscard]] std::string tooling_lsp_invalid_utf8_source()
+{
+    std::string source = "module tooling.invalid_utf8;\n"
+                         "fn main() -> i32 {\n"
+                         "  let text: str = \"";
+    source.push_back(static_cast<char>(TOOLING_TEST_INVALID_UTF8_LEAD_BYTE));
+    source.push_back('(');
+    source.append("\";\n"
+                  "  return 0;\n"
+                  "}\n");
+    return source;
 }
 
 [[nodiscard]] std::string test_json_string(const std::string_view text)
@@ -278,6 +328,58 @@ constexpr std::string_view TOOLING_TEST_JSON_HEX_DIGITS = "0123456789ABCDEF";
     params += test_json_string(text);
     params += "}]}";
     return params;
+}
+
+[[nodiscard]] std::vector<int> lsp_semantic_token_data_values(const std::string_view response)
+{
+    constexpr std::string_view TOOLING_LSP_DATA_PREFIX = "\"data\":[";
+    std::vector<int> values;
+    base::usize index = response.find(TOOLING_LSP_DATA_PREFIX);
+    if (index == std::string_view::npos) {
+        return values;
+    }
+    index += TOOLING_LSP_DATA_PREFIX.size();
+    while (index < response.size() && response[index] != ']') {
+        if ((response[index] < '0' || response[index] > '9') && response[index] != '-') {
+            ++index;
+            continue;
+        }
+        int value = 0;
+        const char* const begin = response.data() + index;
+        const char* const end = response.data() + response.size();
+        const auto [ptr, error] = std::from_chars(begin, end, value);
+        if (error != std::errc{}) {
+            return {};
+        }
+        values.push_back(value);
+        index = static_cast<base::usize>(ptr - response.data());
+    }
+    return values;
+}
+
+[[nodiscard]] bool lsp_semantic_token_exists(const std::string_view response, const base::usize expected_line,
+    const base::usize expected_start, const base::usize expected_length, const int expected_type)
+{
+    const std::vector<int> values = lsp_semantic_token_data_values(response);
+    base::usize previous_line = 0;
+    base::usize previous_start = 0;
+    for (base::usize index = 0; index + TOOLING_LSP_SEMANTIC_TOKEN_FIELD_COUNT <= values.size();
+        index += TOOLING_LSP_SEMANTIC_TOKEN_FIELD_COUNT) {
+        const base::usize delta_line =
+            static_cast<base::usize>(values[index + TOOLING_LSP_SEMANTIC_TOKEN_DELTA_LINE_FIELD]);
+        const base::usize delta_start =
+            static_cast<base::usize>(values[index + TOOLING_LSP_SEMANTIC_TOKEN_DELTA_START_FIELD]);
+        const base::usize line = index == 0U ? delta_line : previous_line + delta_line;
+        const base::usize start = delta_line == 0U ? previous_start + delta_start : delta_start;
+        const base::usize length = static_cast<base::usize>(values[index + TOOLING_LSP_SEMANTIC_TOKEN_LENGTH_FIELD]);
+        const int type = values[index + TOOLING_LSP_SEMANTIC_TOKEN_TYPE_FIELD];
+        if (line == expected_line && start == expected_start && length == expected_length && type == expected_type) {
+            return true;
+        }
+        previous_line = line;
+        previous_start = start;
+    }
+    return false;
 }
 
 [[nodiscard]] bool contains_symbol_named(
@@ -1767,10 +1869,27 @@ TEST(CoreUnit, LspFramingParsesAndWritesDeterministicContentMessages)
     ASSERT_EQ(extra_header.value().size(), 1U);
     EXPECT_EQ(extra_header.value().front().body, "{}");
 
+    const base::Result<std::vector<tooling::LspContentMessage>> spaced_header =
+        tooling::parse_lsp_content_messages(" \tCONTENT-LENGTH \t: \t2 \t\r\n\r\n{}");
+    ASSERT_TRUE(spaced_header);
+    ASSERT_EQ(spaced_header.value().size(), 1U);
+    EXPECT_EQ(spaced_header.value().front().body, "{}");
+
+    const base::Result<std::vector<tooling::LspContentMessage>> lowercase_header =
+        tooling::parse_lsp_content_messages("content-length: 2\r\n\r\n{}");
+    ASSERT_TRUE(lowercase_header);
+    ASSERT_EQ(lowercase_header.value().size(), 1U);
+    EXPECT_EQ(lowercase_header.value().front().body, "{}");
+
     const base::Result<std::vector<tooling::LspContentMessage>> invalid =
         tooling::parse_lsp_content_messages("Content-Length: 12\r\n\r\n{}");
     EXPECT_FALSE(invalid);
     EXPECT_FALSE(tooling::parse_lsp_content_messages("Content-Length\r\n\r\n{}"));
+    EXPECT_FALSE(tooling::parse_lsp_content_messages("Content-Lengti: 2\r\n\r\n{}"));
+    EXPECT_FALSE(tooling::parse_lsp_content_messages("Content-LengthX: 2\r\n\r\n{}"));
+    EXPECT_FALSE(tooling::parse_lsp_content_messages("Content-Length: 2abc\r\n\r\n{}"));
+    EXPECT_FALSE(tooling::parse_lsp_content_messages(
+        "Content-Length: " + std::to_string(tooling::LSP_MAX_MESSAGE_BYTES + 1U) + "\r\n\r\n{}"));
 }
 
 TEST(CoreUnit, LspStdioParsesOptions)
@@ -2011,6 +2130,10 @@ TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
         default_server.handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"initialize\"}");
     ASSERT_EQ(null_id_initialize.size(), 1U);
     EXPECT_NE(null_id_initialize.front().find("\"id\":null"), std::string::npos);
+    std::vector<std::string> spaced_initialize = default_server.handle_json_message(
+        " \n\t{\r\n  \"jsonrpc\" : \"2.0\",\n  \"id\" : 7,\r\n  \"method\" : \"initialize\",\n  \"params\" : { }\n}");
+    ASSERT_EQ(spaced_initialize.size(), 1U);
+    EXPECT_NE(spaced_initialize.front().find("\"hoverProvider\":true"), std::string::npos);
     EXPECT_TRUE(default_server.handle_json_message("{\"jsonrpc\":\"2.0\"}").empty());
     EXPECT_TRUE(default_server.handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"aurex/unknown\"}").empty());
     EXPECT_TRUE(default_server.handle_json_message("[]").empty());
@@ -2055,6 +2178,48 @@ TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
     const std::string invalid_unicode_escape =
         "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\u00xx\"}";
     responses = server.handle_json_message(invalid_unicode_escape);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    const std::string invalid_short_unicode_escape =
+        "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\u\"}";
+    responses = server.handle_json_message(invalid_short_unicode_escape);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    responses = server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":");
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    responses = server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7");
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    responses =
+        server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"params\":{\"nested\":{},\"method\":\"initialize\"");
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    const std::string invalid_high_surrogate =
+        "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\uD83D\"}";
+    responses = server.handle_json_message(invalid_high_surrogate);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    const std::string invalid_high_surrogate_pair = "{\"jsonrpc\":\"2.0\",\"id\":"
+        + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\uD83D\\u0041\"}";
+    responses = server.handle_json_message(invalid_high_surrogate_pair);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    const std::string invalid_low_surrogate =
+        "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\uDE00\"}";
+    responses = server.handle_json_message(invalid_low_surrogate);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    const std::string bare_control_method =
+        "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\nmethod\"}";
+    responses = server.handle_json_message(bare_control_method);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    responses = server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"params\":{],\"method\":\"initialize\"}");
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    responses = server.handle_json_message(
+        "{\"jsonrpc\":\"2.0\",\"id\":7,\"params\":{\"text\":\"bad\ntext\"},\"method\":\"initialize\"}");
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("-32600"), std::string::npos);
     EXPECT_FALSE(server.session()
@@ -2200,6 +2365,11 @@ TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
     EXPECT_TRUE(server
             .handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\","
                                  "\"params\":{\"textDocument\":{\"uri\":\"file:///workspace/missing.ax\"},"
+                                 "\"contentChanges\":{}}}")
+            .empty());
+    EXPECT_TRUE(server
+            .handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\","
+                                 "\"params\":{\"textDocument\":{\"uri\":\"file:///workspace/missing.ax\"},"
                                  "\"contentChanges\":[{}]}}")
             .empty());
     EXPECT_NE(server
@@ -2238,6 +2408,12 @@ TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
     responses = server.handle_json_message(unicode_open);
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("publishDiagnostics"), std::string::npos);
+    std::string macron_uri = "file:///workspace/non_ascii_";
+    macron_uri.append(TOOLING_TEST_UTF8_MACRON);
+    macron_uri.append(".ax");
+    EXPECT_TRUE(server.session()
+            .document_state(tooling::tooling_document_id_from_uri(macron_uri, server.session().project_config()))
+            .has_value());
     const std::string lowercase_unicode_open =
         "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":"
         "\"file:///workspace/non_ascii_lower_\\u00af.ax\",\"languageId\":\"aurex\",\"version\":1,\"text\":"
@@ -2245,12 +2421,32 @@ TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
     responses = server.handle_json_message(lowercase_unicode_open);
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("publishDiagnostics"), std::string::npos);
+    std::string non_ascii_pair_uri = "file:///workspace/non_ascii_pair_";
+    non_ascii_pair_uri.append(TOOLING_TEST_UTF8_CJK_MIDDLE);
+    non_ascii_pair_uri.append(TOOLING_TEST_UTF8_GRINNING_FACE);
+    non_ascii_pair_uri.append(".ax");
+    const std::string unicode_pair_open =
+        "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":"
+        "\"file:///workspace/non_ascii_pair_\\u4E2D\\uD83D\\uDE00.ax\",\"languageId\":\"aurex\",\"version\":1,"
+        "\"text\":\"module tooling.unicode.pair;\\nfn main() -> i32 { return 0; }\\n\"}}}";
+    responses = server.handle_json_message(unicode_pair_open);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("publishDiagnostics"), std::string::npos);
+    EXPECT_TRUE(server.session()
+            .document_state(
+                tooling::tooling_document_id_from_uri(non_ascii_pair_uri, server.session().project_config()))
+            .has_value());
 
     responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
         did_open_params(TOOLING_LSP_NO_MODULE_URI, TOOLING_SESSION_NO_MODULE_SOURCE, TOOLING_VERSION_ONE)));
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"resolved\":false"), std::string::npos);
     EXPECT_NE(responses.front().find("\"valid\":false"), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_INVALID_UTF8_URI, tooling_lsp_invalid_utf8_source(), TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("valid UTF-8"), std::string::npos);
 
     responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
         did_open_params(TOOLING_LSP_SYMBOL_URI, TOOLING_LSP_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
@@ -2357,6 +2553,16 @@ TEST(CoreUnit, LspServerHandlesLifecycleSyncDiagnosticsAndIdeRequests)
     EXPECT_NE(responses.front().find("\"result\":["), std::string::npos);
     EXPECT_NE(responses.front().find("\"uri\":\"file:///workspace/lsp.ax\""), std::string::npos);
 
+    std::string rename_function_params = text_document_position_params(TOOLING_LSP_URI, call_position);
+    rename_function_params.pop_back();
+    rename_function_params += ",\"newName\":\"sum\"}";
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_RENAME, "textDocument/rename", rename_function_params));
+    ASSERT_EQ(responses.size(), 1U);
+    const base::usize first_sum_edit = responses.front().find("\"newText\":\"sum\"");
+    ASSERT_NE(first_sum_edit, std::string::npos);
+    EXPECT_NE(responses.front().find("\"newText\":\"sum\"", first_sum_edit + 1U), std::string::npos);
+
     responses = server.handle_json_message(
         lsp_request_json(TOOLING_LSP_ID_REFERENCES, "textDocument/references", missing_document_position_params));
     ASSERT_EQ(responses.size(), 1U);
@@ -2364,6 +2570,10 @@ TEST(CoreUnit, LspServerHandlesLifecycleSyncDiagnosticsAndIdeRequests)
 
     responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_NO_PARAMS, "textDocument/hover",
         "{\"textDocument\":{\"uri\":\"file:///workspace/lsp.ax\"},\"position\":{\"line\":-1,\"character\":0}}"));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":null"), std::string::npos);
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_NO_PARAMS, "textDocument/hover",
+        "{\"textDocument\":{\"uri\":\"file:///workspace/lsp.ax\"},\"position\":{\"line\":2abc,\"character\":0}}"));
     ASSERT_EQ(responses.size(), 1U);
     EXPECT_NE(responses.front().find("\"result\":null"), std::string::npos);
 
@@ -2537,6 +2747,66 @@ TEST(CoreUnit, LspServerHandlesLifecycleSyncDiagnosticsAndIdeRequests)
     EXPECT_TRUE(server.shutdown_requested());
     EXPECT_TRUE(server.handle_json_message(lsp_notification_json("exit", "{}")).empty());
     EXPECT_TRUE(server.exited());
+}
+
+TEST(CoreUnit, LspServerUsesUtf16PositionsAtProtocolBoundary)
+{
+    tooling::LspServer server(tooling_project_config(TOOLING_LSP_PACKAGE));
+    const std::string source = tooling_lsp_utf16_source();
+
+    std::vector<std::string> responses = server.handle_json_message(lsp_notification_json(
+        "textDocument/didOpen", did_open_params(TOOLING_LSP_UTF16_URI, source, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"diagnostics\":[]"), std::string::npos);
+
+    const tooling::ToolingSourcePosition value_position{
+        TOOLING_LSP_UTF16_VALUE_LINE,
+        TOOLING_LSP_UTF16_VALUE_CHARACTER,
+    };
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_HOVER, "textDocument/hover",
+        text_document_position_params(TOOLING_LSP_UTF16_URI, value_position)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("identifier `value`"), std::string::npos);
+    EXPECT_NE(responses.front().find("\"character\":" + std::to_string(TOOLING_LSP_UTF16_VALUE_CHARACTER)),
+        std::string::npos);
+    EXPECT_NE(responses.front().find("\"character\":" + std::to_string(TOOLING_LSP_UTF16_VALUE_END_CHARACTER)),
+        std::string::npos);
+
+    std::string rename_params = text_document_position_params(TOOLING_LSP_UTF16_URI, value_position);
+    rename_params.pop_back();
+    rename_params += ",\"newName\":\"total\"}";
+    responses =
+        server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_RENAME, "textDocument/rename", rename_params));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"newText\":\"total\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"character\":" + std::to_string(TOOLING_LSP_UTF16_VALUE_CHARACTER)),
+        std::string::npos);
+    EXPECT_NE(responses.front().find("\"character\":" + std::to_string(TOOLING_LSP_UTF16_VALUE_END_CHARACTER)),
+        std::string::npos);
+
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_SEMANTIC_TOKENS,
+        "textDocument/semanticTokens/full", text_document_params(TOOLING_LSP_UTF16_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_TRUE(lsp_semantic_token_exists(responses.front(), TOOLING_LSP_UTF16_STRING_LINE,
+        TOOLING_LSP_UTF16_STRING_CHARACTER, TOOLING_LSP_UTF16_STRING_LENGTH, TOOLING_LSP_SEMANTIC_TOKEN_STRING_TYPE));
+
+    const tooling::ToolingSourcePosition emoji_trailing_surrogate_position{
+        TOOLING_LSP_UTF16_VALUE_LINE,
+        TOOLING_LSP_UTF16_EMOJI_TRAILING_CHARACTER,
+    };
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_HOVER, "textDocument/hover",
+        text_document_position_params(TOOLING_LSP_UTF16_URI, emoji_trailing_surrogate_position)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":"), std::string::npos);
+
+    const tooling::ToolingSourcePosition past_end_position{
+        TOOLING_LSP_PAST_END_LINE,
+        TOOLING_LSP_PAST_END_CHARACTER,
+    };
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_HOVER, "textDocument/hover",
+        text_document_position_params(TOOLING_LSP_UTF16_URI, past_end_position)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":"), std::string::npos);
 }
 
 } // namespace aurex::test

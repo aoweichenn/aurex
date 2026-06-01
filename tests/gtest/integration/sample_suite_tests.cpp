@@ -53,6 +53,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"const_pattern_non_const_name", "unsupported literal match pattern"},
     {"const_pattern_struct_unsupported", "unsupported literal match pattern"},
     {"const_pattern_type_mismatch", "match pattern for integer or bool value must be a literal or wildcard"},
+    {"defer_try_argument", "defer statement cannot contain try expression"},
     {"duplicate_type_member_enum_case_method",
         "duplicate type member: duplicate_type_member_enum_case_method.Option.some"},
     {"enum_hash_rejected", "does not satisfy capability `Hash`"},
@@ -183,6 +184,7 @@ inline constexpr auto CROSS_STAGE_NEGATIVE_SAMPLES = std::to_array<CrossStageNeg
     {"pattern_matching", "match_expression_missing_case.ax", "match expression is not exhaustive for enum case"},
     {"functions", "unsafe_fn_call_required.ax", "call to unsafe function read_raw requires unsafe context"},
     {"functions", "raw_pointer_method_reference_receiver_rejected.ax", "method receiver type mismatch"},
+    {"functions", "defer_try_argument.ax", "defer statement cannot contain try expression"},
     {"error_handling", "try_result_return_mismatch.ax",
         "try expression on result-like enum requires enclosing function"},
 });

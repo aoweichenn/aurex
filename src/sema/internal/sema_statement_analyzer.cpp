@@ -283,6 +283,26 @@ void evaluate_control_flow_if_statement(const syntax::AstModule& module, std::ve
         || kind == syntax::ExprKind::unsafe_block;
 }
 
+[[nodiscard]] bool source_range_contains(const base::SourceRange& outer, const base::SourceRange& inner) noexcept
+{
+    return outer.source.value == inner.source.value && inner.begin >= outer.begin && inner.end <= outer.end;
+}
+
+[[nodiscard]] bool expr_range_contains_try_expr(const syntax::AstModule& module, const syntax::ExprId root_expr)
+{
+    if (!syntax::is_valid(root_expr) || root_expr.value >= module.exprs.size()) {
+        return false;
+    }
+    const base::SourceRange root_range = module.exprs.range(root_expr.value);
+    for (base::usize index = 0; index < module.exprs.size(); ++index) {
+        if (module.exprs.kind(index) == syntax::ExprKind::try_expr
+            && source_range_contains(root_range, module.exprs.range(index))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 [[nodiscard]] bool compound_assignment_binary_op(const syntax::AssignOp op, syntax::BinaryOp& binary_op) noexcept
 {
     switch (op) {
@@ -934,6 +954,10 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_statement_node(const synta
             if (!syntax::is_valid(stmt.init) || stmt.init.value >= this->core_.ctx_.module.exprs.size()
                 || this->core_.ctx_.module.exprs.kind(stmt.init.value) != syntax::ExprKind::call) {
                 this->core_.report_general(stmt.range, std::string(SEMA_DEFER_CALL));
+                break;
+            }
+            if (expr_range_contains_try_expr(this->core_.ctx_.module, stmt.init)) {
+                this->core_.report_general(stmt.range, std::string(SEMA_DEFER_EARLY_EXIT));
                 break;
             }
             break;

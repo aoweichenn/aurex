@@ -177,6 +177,8 @@ inline constexpr std::string_view SEMA_BREAK_CONTINUE_IN_LOOP = "break and conti
 
 inline constexpr std::string_view SEMA_DEFER_CALL = "defer statement must be a function call";
 
+inline constexpr std::string_view SEMA_DEFER_EARLY_EXIT = "defer statement cannot contain try expression";
+
 inline constexpr std::string_view SEMA_RETURN_TYPE_INFER = "function return type cannot be inferred";
 
 inline constexpr std::string_view SEMA_INFERRED_RETURN_TYPE_MISMATCH = "inferred function return types do not match";

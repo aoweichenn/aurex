@@ -25,7 +25,9 @@ generic parameter hover fallback、LSP stdio server 入口和 release documentat
 下一实现包是 M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking。M7 应以 M6 cleanup 和 resource facts 为输入，
 继续增加 loan origin、projection-aware access conflict、borrowed-return contract 和 lifetime surface。用户
 destructor syntax、custom destructor lowering、aggregate rollback codegen 和完整 borrow checker 都不属于 M6
-baseline。
+baseline。M7 的设计研究基线记录在
+[Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)，执行路线记录在
+[Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 路线图](m7-roadmap.md)。
 
 ## 已收口背景：Post-M5 Design Selection
 

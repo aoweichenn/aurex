@@ -5,6 +5,15 @@
 
 ## 总体状态
 
+2026-06-02：M7 设计研究基线已完成，记录在
+[Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)。
+执行路线记录在
+[Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 路线图](m7-roadmap.md)。该基线选择
+Place/Origin/Loan/Point/BorrowAction/BorrowSummary 作为 M7 内部事实模型，明确 M7a 先做
+CFG-sensitive loan liveness、projection-aware access conflict、borrowed-return contract 和函数摘要，不在第一步暴露完整
+Rust-style lifetime surface，也不把 partial move、用户 destructor、unsafe/raw alias model 或 full Polonius engine
+塞进 M7a。
+
 2026-06-01：M6-WP2 到 M6-WP7 已完成 M6 实现基线。WP2 增加 compiler-owned `Copy`、
 内部 `Discard` / `NeedsDrop` / ownership resource summary、结构化类型分类、stable resource fingerprint
 和 checked dump 中的 deterministic resource summaries；`Drop` 仍然不是用户可写 bound。WP3 增加

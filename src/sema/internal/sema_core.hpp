@@ -96,6 +96,7 @@ private:
 
     class BuiltinExpressionAnalyzer;
     class BorrowEscapeAnalyzer;
+    class BodyFlowAnalyzer;
     class BodyMoveAnalyzer;
     class ControlExpressionAnalyzer;
     class DeclarationAnalyzer;
@@ -577,6 +578,7 @@ private:
         const FunctionSignature& signature, FunctionBodyState& state);
     void analyze_borrow_escapes(const syntax::ItemNode& function);
     void analyze_body_moves(const syntax::ItemNode& function, const FunctionSignature& signature);
+    void collect_body_flow_graph(const syntax::ItemNode& function, const FunctionLookupKey& key);
     void analyze_generic_function_definition(const GenericTemplateInfo& info);
     void analyze_generic_function_body(const syntax::ItemNode& function, const GenericTemplateInfo& info,
         const FunctionSignature& signature, FunctionBodyState& state);

@@ -420,6 +420,92 @@ using TraitEvidenceList = SemaVector<TraitEvidence>;
 using TraitMethodCallBindingList = SemaVector<TraitMethodCallBinding>;
 using ParamEnvList = SemaVector<ParamEnvInfo>;
 
+inline constexpr base::u32 SEMA_BODY_FLOW_INVALID_INDEX = static_cast<base::u32>(-1);
+
+enum class BodyFlowPointKind : base::u8 {
+    entry,
+    exit,
+    statement_entry,
+    statement_exit,
+    expression_entry,
+    expression_exit,
+    sequence,
+    cleanup_scope,
+};
+
+enum class BodyFlowActionKind : base::u8 {
+    read,
+    write,
+    move_candidate,
+    borrow_shared,
+    borrow_mutable,
+    call,
+    return_,
+    branch,
+    cleanup_scope,
+};
+
+enum class BodyFlowPlaceRootKind : base::u8 {
+    none,
+    local,
+    temporary,
+    unknown,
+};
+
+enum class BodyFlowPlaceProjectionKind : base::u8 {
+    field,
+    index,
+    dereference,
+    slice,
+};
+
+struct BodyFlowPlaceProjection {
+    BodyFlowPlaceProjectionKind kind = BodyFlowPlaceProjectionKind::field;
+    IdentId field_name_id = INVALID_IDENT_ID;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+};
+
+struct BodyFlowPlace {
+    BodyFlowPlaceRootKind root_kind = BodyFlowPlaceRootKind::none;
+    IdentId root_name_id = INVALID_IDENT_ID;
+    syntax::ExprId root_expr = syntax::INVALID_EXPR_ID;
+    std::vector<BodyFlowPlaceProjection> projections;
+    base::SourceRange range{};
+};
+
+struct BodyFlowPoint {
+    BodyFlowPointKind kind = BodyFlowPointKind::entry;
+    syntax::StmtId stmt = syntax::INVALID_STMT_ID;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    base::SourceRange range{};
+};
+
+struct BodyFlowEdge {
+    base::u32 from = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 to = SEMA_BODY_FLOW_INVALID_INDEX;
+};
+
+struct BodyFlowAction {
+    BodyFlowActionKind kind = BodyFlowActionKind::read;
+    base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
+    syntax::StmtId stmt = syntax::INVALID_STMT_ID;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    base::SourceRange range{};
+};
+
+struct BodyFlowGraph {
+    FunctionLookupKey function;
+    syntax::StmtId body = syntax::INVALID_STMT_ID;
+    std::vector<BodyFlowPoint> points;
+    std::vector<BodyFlowEdge> edges;
+    std::vector<BodyFlowPlace> places;
+    std::vector<BodyFlowAction> actions;
+    bool collect_only = true;
+};
+
+using BodyFlowGraphMap = SemaMap<FunctionLookupKey, BodyFlowGraph, FunctionLookupKeyHash>;
+
 enum class CoercionKind {
     contextual_integer_literal,
     contextual_float_literal,
@@ -755,6 +841,7 @@ public:
     TraitObligationList trait_obligations;
     TraitEvidenceList trait_evidence;
     TraitMethodCallBindingList trait_method_calls;
+    BodyFlowGraphMap body_flow_graphs;
     ParamEnvList param_envs;
     SemaVector<GenericTemplateSignatureInfo> generic_template_signatures;
     SemaDeque<GenericSideTableLayout> generic_side_table_layouts;

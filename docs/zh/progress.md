@@ -1,9 +1,18 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M6-WP2 到 M6-WP7 资源、cleanup、drop-glue、tooling 和 release closure 已完成
+阶段：M7-WP2 Phase 1 collect-only BodyFlowGraph 已完成
 
 ## 总体状态
+
+2026-06-02：M7 进入实现阶段，M7-WP2 Phase 1 已完成 collect-only BodyFlowGraph facts。`CheckedModule`
+新增 `body_flow_graphs`，按 `FunctionLookupKey` 保存函数体的 point、edge、place 和 action facts；
+`src/sema/internal/sema_body_flow_graph.cpp` / `.hpp` 使用迭代式 task stack 收集 statement/expression
+entry-exit、顺序点、branch、return、call、defer cleanup、read/write/move-candidate 以及 shared/mutable
+borrow action，并提供稳定 dump。函数体分析在现有 borrow escape 与 body move analysis 之后写入这些 facts，
+当前不新增 diagnostics、不替换 `BorrowEscapeAnalyzer`、不改变 M6 move/resource/cleanup 行为。新增白盒测试覆盖
+`&mut source.field` 的 projection place、call/return/cleanup facts、stable dump，以及完整 `analyze()` 路径写入
+`CheckedModule`。
 
 2026-06-02：M7 设计研究基线已完成，记录在
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)。

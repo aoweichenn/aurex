@@ -2,7 +2,7 @@
 
 日期：2026-06-02
 
-状态：M7 设计路线图。完整设计依据见
+状态：M7-WP2 Phase 1 collect-only BodyFlowGraph 已实现。完整设计依据见
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)。
 
 ## 0. M7 总目标
@@ -50,6 +50,18 @@ M7a 不做：
 
 ## 2. M7-WP2：共享 BodyFlowGraph 与 BorrowAction Builder
 
+当前状态：
+
+- Phase 1 已落地 collect-only `BodyFlowGraph` facts：`CheckedModule::body_flow_graphs` 现在按
+  `FunctionLookupKey` 暴露 function body 的 point、edge、place 和 action timeline。
+- 新增 `src/sema/internal/sema_body_flow_graph.cpp` / `.hpp`，使用迭代式 task stack 收集 statement /
+  expression entry-exit、顺序点、branch、return、call、defer cleanup、read/write/move-candidate 和
+  shared/mutable borrow facts。
+- `analyze_function_body_with_signature(...)` 在现有 body check、borrow escape 和 move analysis 之后收集 facts；
+  当前不新增 diagnostics，不替换 `BorrowEscapeAnalyzer`，不改变 M6 move/resource/cleanup 行为。
+- 白盒测试覆盖 projection-aware `&mut source.field` place、call/return/cleanup facts、稳定 dump，以及完整
+  `analyze()` 路径把 collect-only graph 写入 `CheckedModule`。
+
 目标：
 
 - 从 `BodyMoveAnalysis` 当前 CFG/worklist 构建逻辑中抽出共享 body flow skeleton。
@@ -65,10 +77,12 @@ M7a 不做：
 
 验收：
 
-- 现有 move/resource/cleanup tests 全绿。
-- `expr_owned_use_modes` side table 行为不变。
-- CFG action dump 或白盒测试能证明 return/break/continue/`?`/defer cleanup 顺序稳定。
-- shadow fact 生成不改变任何当前 positive/negative 样例结果。
+- Phase 1 已验证：`aurex_frontend_tests` / `aurex_tests` 构建通过，release 全量 `ctest` 12/12 通过，
+  `tools/check_coverage.sh -j4` 通过。
+- Phase 1 已验证：`BodyFlowAnalyzer` 白盒测试覆盖 return、defer cleanup、call、mutable borrow、
+  read/move-candidate 和 projection place dump。
+- 后续 Phase 2 仍需完成：move analysis 与 borrow analysis 共用更完整 CFG action timeline、`?` /
+  break / continue parity matrix、shadow diagnostic mode，以及全量 move/resource/cleanup gates。
 
 ## 3. M7-WP3：Place/Origin/Loan 本地检查
 

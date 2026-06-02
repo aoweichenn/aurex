@@ -1,8 +1,25 @@
 # 版本文档
 
+## M7-WP2 Phase 1 collect-only BodyFlowGraph facts
+
+当前实现阶段是 M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking。M7 设计基线记录在
+[Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)，
+执行路线记录在
+[Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 路线图](m7-roadmap.md)。
+
+M7-WP2 Phase 1 已完成 collect-only BodyFlowGraph facts：`CheckedModule::body_flow_graphs` 按
+`FunctionLookupKey` 保存函数体 point、edge、place 和 action timeline；内部收集器覆盖 statement/expression
+entry-exit、顺序点、branch、return、call、defer cleanup、read/write/move-candidate 以及 shared/mutable
+borrow action，并提供稳定 dump。该阶段只生产事实，不新增 diagnostics，不替换 `BorrowEscapeAnalyzer`，不改变
+M6 move/resource/cleanup 行为。
+
+下一实现包是 diagnostic-shadow local loan checker：在这些 facts 上引入本地 `Place` / `Origin` / `Loan`
+ID 表、loan liveness、projection conflict matrix 和 would-diagnose 记录。只有在 shadow parity 覆盖当前
+borrowed-view 逃逸矩阵后，才进入 enforced diagnostics 和 `BorrowEscapeAnalyzer` 降级/移除讨论。
+
 ## M6-WP2/WP3/WP4/WP5/WP6/WP7 资源、cleanup、drop-glue 与 tooling 基线
 
-当前实现阶段是 M6 Resource And Access Semantics。M6-WP1 已完成三轮设计审视，完整设计基线记录在
+M6 Resource And Access Semantics 已作为 M7 输入基线收口。M6-WP1 已完成三轮设计审视，完整设计基线记录在
 [Aurex M6 资源、值生命周期与访问语义调研和三轮设计审视基线](m6-resource-access-semantics-design.md)，
 执行路线记录在 [M6 资源、值生命周期与访问语义路线图](m6-roadmap.md)。
 

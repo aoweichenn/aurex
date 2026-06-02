@@ -548,6 +548,8 @@ CheckedModule::CheckedModule()
       trait_obligations(make_sema_vector<TraitObligation>(*this->arena_)),
       trait_evidence(make_sema_vector<TraitEvidence>(*this->arena_)),
       trait_method_calls(make_sema_vector<TraitMethodCallBinding>(*this->arena_)),
+      body_flow_graphs(make_sema_map<FunctionLookupKey, BodyFlowGraph, FunctionLookupKeyHash>(
+          *this->arena_, FunctionLookupKeyHash{})),
       param_envs(make_sema_vector<ParamEnvInfo>(*this->arena_)),
       generic_template_signatures(make_sema_vector<GenericTemplateSignatureInfo>(*this->arena_)),
       generic_side_table_layouts(make_sema_deque<GenericSideTableLayout>(*this->arena_)),
@@ -587,7 +589,8 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       type_aliases(std::move(other.type_aliases)), traits(std::move(other.traits)),
       trait_impls(std::move(other.trait_impls)), trait_predicates(std::move(other.trait_predicates)),
       trait_obligations(std::move(other.trait_obligations)), trait_evidence(std::move(other.trait_evidence)),
-      trait_method_calls(std::move(other.trait_method_calls)), param_envs(std::move(other.param_envs)),
+      trait_method_calls(std::move(other.trait_method_calls)), body_flow_graphs(std::move(other.body_flow_graphs)),
+      param_envs(std::move(other.param_envs)),
       generic_template_signatures(std::move(other.generic_template_signatures)),
       generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
       generic_enum_instances(std::move(other.generic_enum_instances)),
@@ -651,6 +654,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->trait_obligations.swap(other.trait_obligations);
     this->trait_evidence.swap(other.trait_evidence);
     this->trait_method_calls.swap(other.trait_method_calls);
+    this->body_flow_graphs.swap(other.body_flow_graphs);
     this->param_envs.swap(other.param_envs);
     this->generic_template_signatures.swap(other.generic_template_signatures);
     this->generic_side_table_layouts.swap(other.generic_side_table_layouts);
@@ -746,6 +750,11 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->trait_method_calls.reserve(other.trait_method_calls.size());
     for (const TraitMethodCallBinding& binding : other.trait_method_calls) {
         this->trait_method_calls.push_back(this->clone_trait_method_call_binding(binding));
+    }
+    this->body_flow_graphs.clear();
+    this->body_flow_graphs.reserve(other.body_flow_graphs.size());
+    for (const auto& entry : other.body_flow_graphs) {
+        this->body_flow_graphs.emplace(entry.first, entry.second);
     }
     this->param_envs.clear();
     this->param_envs.reserve(other.param_envs.size());

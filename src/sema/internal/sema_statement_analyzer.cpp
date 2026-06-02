@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include <sema/internal/sema_body_flow_graph.hpp>
 #include <sema/internal/sema_statement_analyzer.hpp>
 
 namespace aurex::sema {
@@ -1407,6 +1408,7 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
     this->core_.analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
     this->core_.analyze_borrow_escapes(function);
     this->core_.analyze_body_moves(function, signature);
+    this->core_.collect_body_flow_graph(function, key);
     this->core_.state_.names.symbols.pop_scope();
     if (infer_return_type) {
         this->core_.finalize_inferred_return(function, key, return_inference);

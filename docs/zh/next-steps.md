@@ -1,10 +1,25 @@
 # 下一步计划
 
-## 当前最高优先级：M6 Resource And Access Semantics
+## 当前最高优先级：M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking
 
-Post-M5 design selection 已完成。下一阶段正式选择
-[Aurex M6 资源、值生命周期与访问语义调研和三轮设计审视基线](m6-resource-access-semantics-design.md)，
-执行路线记录在 [M6 资源、值生命周期与访问语义路线图](m6-roadmap.md)。
+M7 设计研究基线已完成，记录在
+[Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)，
+执行路线记录在 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 路线图](m7-roadmap.md)。
+
+当前实现状态：M7-WP2 Phase 1 已落地 collect-only `BodyFlowGraph` facts。`CheckedModule::body_flow_graphs`
+现在按 `FunctionLookupKey` 暴露函数体 point、edge、place 和 action timeline；收集器覆盖
+statement/expression entry-exit、顺序点、branch、return、call、defer cleanup、read/write/move-candidate
+以及 shared/mutable borrow action，并提供稳定 dump。该阶段不新增 diagnostics、不替换 `BorrowEscapeAnalyzer`、
+不改变 M6 move/resource/cleanup 行为。
+
+下一实现包是 M7-WP3 / Phase 2 diagnostic-shadow local loan checker：
+
+1. 在现有 BodyFlowGraph facts 上引入本地 `Place` / `Origin` / `Loan` ID 表。
+2. 实现 shared/mutable loan liveness 的 shadow solver，只记录 would-diagnose，不直接改变样例结果。
+3. 把 write/move/drop/reinit/cleanup 与 active loan conflict 对齐到 Phase 1 action timeline。
+4. 建立 projection conflict matrix：same/prefix place 冲突，known struct/tuple field disjoint 放宽，array/slice/index
+   先保守。
+5. 在 parity tests 覆盖现有 borrowed-view escape matrix 前，不移除或降级 `BorrowEscapeAnalyzer`。
 
 M6-WP1 已完成三轮设计审视：
 
@@ -22,12 +37,9 @@ cleanup-action stack lowering、`defer` 组合、drop flag，以及正式 IR `dr
 destructor body identity、stable drop-glue key、target-independent drop-glue planner、IDE resource hover projection、
 generic parameter hover fallback、LSP stdio server 入口和 release documentation closure。
 
-下一实现包是 M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking。M7 应以 M6 cleanup 和 resource facts 为输入，
-继续增加 loan origin、projection-aware access conflict、borrowed-return contract 和 lifetime surface。用户
-destructor syntax、custom destructor lowering、aggregate rollback codegen 和完整 borrow checker 都不属于 M6
-baseline。M7 的设计研究基线记录在
-[Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)，执行路线记录在
-[Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 路线图](m7-roadmap.md)。
+M7 继续以 M6 cleanup 和 resource facts 为输入，增加 loan origin、projection-aware access conflict、
+borrowed-return contract 和 lifetime surface。用户 destructor syntax、custom destructor lowering、
+aggregate rollback codegen 和完整 Rust-style lifetime surface 仍不属于 M7a 第一批落地范围。
 
 ## 已收口背景：Post-M5 Design Selection
 

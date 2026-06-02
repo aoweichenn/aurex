@@ -200,6 +200,11 @@ inline constexpr std::string_view SEMA_BORROWED_LOCAL_ESCAPE = "borrowed local s
 
 inline constexpr std::string_view SEMA_BORROWED_LOCAL_ORIGIN = "borrowed local storage originates here";
 
+inline constexpr std::string_view SEMA_ACTIVE_BORROW_CONFLICT =
+    "borrowed storage cannot be mutated, moved, or exclusively reborrowed while a loan is active";
+
+inline constexpr std::string_view SEMA_ACTIVE_BORROW_CREATED = "loan is created here";
+
 inline constexpr std::string_view SEMA_MOVE_PARTIAL_FIELD_UNSUPPORTED =
     "moving a field out of a move-only value is not supported yet";
 

@@ -1,6 +1,6 @@
 # 版本文档
 
-## M7-WP2 Phase 1 collect-only BodyFlowGraph facts
+## M7-WP3 Phase 2/3 local loan checker facts and diagnostics
 
 当前实现阶段是 M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking。M7 设计基线记录在
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)，
@@ -13,9 +13,16 @@ entry-exit、顺序点、branch、return、call、defer cleanup、read/write/mov
 borrow action，并提供稳定 dump。该阶段只生产事实，不新增 diagnostics，不替换 `BorrowEscapeAnalyzer`，不改变
 M6 move/resource/cleanup 行为。
 
-下一实现包是 diagnostic-shadow local loan checker：在这些 facts 上引入本地 `Place` / `Origin` / `Loan`
-ID 表、loan liveness、projection conflict matrix 和 would-diagnose 记录。只有在 shadow parity 覆盖当前
-borrowed-view 逃逸矩阵后，才进入 enforced diagnostics 和 `BorrowEscapeAnalyzer` 降级/移除讨论。
+M7-WP3 Phase 2/3 已完成本地 local loan checker：`CheckedModule::body_loan_checks` 现在保存
+`Origin` / `Loan` / conflict facts、shadow/enforced diagnostic mode、projection-aware conflict 结果和稳定
+dump。checker 复用 Phase 1 `BodyFlowGraph`，用 carrier-local liveness 支持直接本地 borrow 的 last-use 后写入，
+对 active shared/mutable loan 与 write、owned-consume move、read、shared/mutable borrow 的冲突进行 shadow 记录；
+语义管线已启用 enforced diagnostics，并给出冲突 primary diagnostic 和 loan 创建 note。`move_candidate` 只有在
+M6 `OwnedUseMode::owned_consume` 时才作为 move 冲突，普通 read/copy 不误报。
+
+当前仍不移除 `BorrowEscapeAnalyzer`，也不宣称完成跨函数 borrowed-return contract。下一实现包是 M7-WP4
+`BorrowSummary` 与 borrowed-return contract：生成函数级 summary、参数/返回 origin 依赖、call effect summary，
+并在 parity 覆盖当前 borrowed-view 逃逸矩阵后再讨论 `BorrowEscapeAnalyzer` 降级/移除。
 
 ## M6-WP2/WP3/WP4/WP5/WP6/WP7 资源、cleanup、drop-glue 与 tooling 基线
 

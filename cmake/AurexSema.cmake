@@ -13,6 +13,7 @@ add_library(aurex_sema
     src/sema/internal/name_resolution.cpp
     src/sema/internal/sema_builtin_expression_analyzer.cpp
     src/sema/internal/sema_body_flow_graph.cpp
+    src/sema/internal/sema_body_loan_checker.cpp
     src/sema/internal/sema_body_move_analysis.cpp
     src/sema/internal/sema_control_expression_analyzer.cpp
     src/sema/internal/sema_declaration_analyzer.cpp

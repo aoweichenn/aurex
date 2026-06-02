@@ -63,14 +63,15 @@ fn main() -> i32 {
 
     let pair_unique: &mut Pair = &mut pair;
     set_first(pair_unique, 6);
-    pair.replace_first(7);
-    if pair.first != 7 {
-        return 6;
-    }
     pair_unique.replace_first(8);
     if pair_unique.total() != 11 {
         return 7;
     }
+    pair.replace_first(7);
+    if pair.first != 7 {
+        return 6;
+    }
+    pair.replace_first(8);
 
     let inferred: &i32 = id_ref(shared_again);
     return *inferred + pair.first - 17;

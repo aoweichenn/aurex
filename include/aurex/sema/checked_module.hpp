@@ -506,6 +506,74 @@ struct BodyFlowGraph {
 
 using BodyFlowGraphMap = SemaMap<FunctionLookupKey, BodyFlowGraph, FunctionLookupKeyHash>;
 
+inline constexpr base::u32 SEMA_BODY_LOAN_INVALID_INDEX = static_cast<base::u32>(-1);
+
+enum class BodyLoanKind : base::u8 {
+    shared,
+    mutable_,
+};
+
+enum class BodyLoanOriginKind : base::u8 {
+    none,
+    local,
+    temporary,
+    unknown,
+};
+
+enum class BodyLoanDiagnosticMode : base::u8 {
+    shadow,
+    enforced,
+};
+
+enum class BodyLoanConflictKind : base::u8 {
+    read,
+    write,
+    move,
+    shared_borrow,
+    mutable_borrow,
+};
+
+struct BodyLoanOrigin {
+    BodyLoanOriginKind kind = BodyLoanOriginKind::none;
+    IdentId name_id = INVALID_IDENT_ID;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    base::SourceRange range{};
+};
+
+struct BodyLoan {
+    BodyLoanKind kind = BodyLoanKind::shared;
+    BodyLoanOrigin origin;
+    base::u32 issued_action = SEMA_BODY_LOAN_INVALID_INDEX;
+    base::u32 issued_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
+    IdentId carrier_name_id = INVALID_IDENT_ID;
+    base::u32 carrier_definition_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    syntax::StmtId enclosing_stmt = syntax::INVALID_STMT_ID;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    base::SourceRange range{};
+};
+
+struct BodyLoanConflict {
+    BodyLoanConflictKind kind = BodyLoanConflictKind::write;
+    base::u32 loan = SEMA_BODY_LOAN_INVALID_INDEX;
+    base::u32 action = SEMA_BODY_LOAN_INVALID_INDEX;
+    base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
+    bool diagnostic_emitted = false;
+    base::SourceRange range{};
+};
+
+struct BodyLoanCheckResult {
+    FunctionLookupKey function;
+    BodyLoanDiagnosticMode diagnostic_mode = BodyLoanDiagnosticMode::shadow;
+    std::vector<BodyLoanOrigin> origins;
+    std::vector<BodyLoan> loans;
+    std::vector<BodyLoanConflict> conflicts;
+    bool graph_missing = false;
+};
+
+using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, FunctionLookupKeyHash>;
+
 enum class CoercionKind {
     contextual_integer_literal,
     contextual_float_literal,
@@ -842,6 +910,7 @@ public:
     TraitEvidenceList trait_evidence;
     TraitMethodCallBindingList trait_method_calls;
     BodyFlowGraphMap body_flow_graphs;
+    BodyLoanCheckResultMap body_loan_checks;
     ParamEnvList param_envs;
     SemaVector<GenericTemplateSignatureInfo> generic_template_signatures;
     SemaDeque<GenericSideTableLayout> generic_side_table_layouts;

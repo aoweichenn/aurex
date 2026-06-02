@@ -6,20 +6,23 @@ M7 设计研究基线已完成，记录在
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)，
 执行路线记录在 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 路线图](m7-roadmap.md)。
 
-当前实现状态：M7-WP2 Phase 1 已落地 collect-only `BodyFlowGraph` facts。`CheckedModule::body_flow_graphs`
-现在按 `FunctionLookupKey` 暴露函数体 point、edge、place 和 action timeline；收集器覆盖
-statement/expression entry-exit、顺序点、branch、return、call、defer cleanup、read/write/move-candidate
-以及 shared/mutable borrow action，并提供稳定 dump。该阶段不新增 diagnostics、不替换 `BorrowEscapeAnalyzer`、
-不改变 M6 move/resource/cleanup 行为。
+当前实现状态：M7-WP2 Phase 1 已落地 collect-only `BodyFlowGraph` facts，M7-WP3 Phase 2/3 已落地
+diagnostic-shadow + enforced local loan checker。`CheckedModule::body_flow_graphs` 现在按 `FunctionLookupKey`
+暴露函数体 point、edge、place 和 action timeline；`CheckedModule::body_loan_checks` 保存本地 `Origin` /
+`Loan` / conflict facts、shadow/enforced mode 和稳定 dump。checker 使用 carrier-local liveness 支持直接本地
+borrow 的 last-use 后写入；projection matrix 支持 same/prefix 冲突、known field disjoint 放宽，index/slice/unknown
+保持保守；enforced diagnostics 已接入函数体分析，并输出 conflict primary diagnostic 与 loan creation note。
 
-下一实现包是 M7-WP3 / Phase 2 diagnostic-shadow local loan checker：
+当前仍保留 `BorrowEscapeAnalyzer`：Phase 2/3 只覆盖本地 loan conflict，不替代 borrowed-return contract，也不生成
+跨函数 summary。
 
-1. 在现有 BodyFlowGraph facts 上引入本地 `Place` / `Origin` / `Loan` ID 表。
-2. 实现 shared/mutable loan liveness 的 shadow solver，只记录 would-diagnose，不直接改变样例结果。
-3. 把 write/move/drop/reinit/cleanup 与 active loan conflict 对齐到 Phase 1 action timeline。
-4. 建立 projection conflict matrix：same/prefix place 冲突，known struct/tuple field disjoint 放宽，array/slice/index
-   先保守。
-5. 在 parity tests 覆盖现有 borrowed-view escape matrix 前，不移除或降级 `BorrowEscapeAnalyzer`。
+下一实现包是 M7-WP4 `BorrowSummary` 与 borrowed-return contract：
+
+1. 为当前模块内函数生成 `FunctionBorrowSummary`。
+2. 记录 parameter origin、return origin dependency set、receiver/argument access requirement。
+3. 为 call wrapper、method receiver、block/if/match return 建立 origin 传播。
+4. 对 extern/generic/trait 缺 summary 的 borrowed return 走 conservative unknown 策略。
+5. 在 summary parity 覆盖当前 borrowed-view escape matrix 前，不移除或降级 `BorrowEscapeAnalyzer`。
 
 M6-WP1 已完成三轮设计审视：
 

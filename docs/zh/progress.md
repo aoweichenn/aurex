@@ -1,9 +1,18 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M7-WP2 Phase 1 collect-only BodyFlowGraph 已完成
+阶段：M7-WP3 Phase 2/3 local loan checker 已完成
 
 ## 总体状态
+
+2026-06-02：M7-WP3 Phase 2/3 已完成 diagnostic-shadow + enforced local loan checker。`CheckedModule`
+新增 `body_loan_checks`，按 `FunctionLookupKey` 保存本地 `Origin` / `Loan` / conflict facts、shadow/enforced
+mode 和稳定 dump；`src/sema/internal/sema_body_loan_checker.cpp` / `.hpp` 在 Phase 1 `BodyFlowGraph` 上运行
+deterministic worklist，使用 carrier-local liveness 支持直接本地 borrow 的 last-use 后写入，并用
+projection-aware matrix 检查 active shared/mutable loan 与 write、owned-consume move、read、shared/mutable
+borrow 的冲突。函数体分析已在 body-flow 收集后启用 enforced diagnostics，诊断包含 conflict primary 和 loan
+creation note；`move_candidate` 只有在 M6 `OwnedUseMode::owned_consume` 时才作为 move 冲突。现有
+`BorrowEscapeAnalyzer` 继续保留，M7-WP4 前不声称替代 borrowed-return contract 或跨函数 summary。
 
 2026-06-02：M7 进入实现阶段，M7-WP2 Phase 1 已完成 collect-only BodyFlowGraph facts。`CheckedModule`
 新增 `body_flow_graphs`，按 `FunctionLookupKey` 保存函数体的 point、edge、place 和 action facts；

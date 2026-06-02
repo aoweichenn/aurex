@@ -86,8 +86,7 @@ struct BodyFlowExpressionStep {
 
 class BodyFlowGraphBuilder final {
 public:
-    BodyFlowGraphBuilder(
-        const syntax::AstModule& module, const FunctionLookupKey function, const syntax::StmtId body)
+    BodyFlowGraphBuilder(const syntax::AstModule& module, const FunctionLookupKey function, const syntax::StmtId body)
         : module_(module)
     {
         this->graph_.function = function;
@@ -184,8 +183,8 @@ private:
         this->add_action(kind, point, SEMA_BODY_FLOW_INVALID_INDEX, stmt, expr, range);
     }
 
-    void add_place_action(const BodyFlowActionKind kind, const base::u32 point, const syntax::StmtId stmt,
-        const syntax::ExprId expr)
+    void add_place_action(
+        const BodyFlowActionKind kind, const base::u32 point, const syntax::StmtId stmt, const syntax::ExprId expr)
     {
         const base::u32 place = this->add_place(this->make_place(expr));
         this->add_action(kind, point, place, stmt, expr, expr_range(this->module_, expr));
@@ -245,8 +244,7 @@ private:
         for (base::usize reverse_index = valid_statements.size(); reverse_index > 0; --reverse_index) {
             const base::usize index = reverse_index - 1;
             const base::u32 item_start = index == 0 ? start : boundaries[index - 1];
-            const base::u32 item_continuation =
-                index + 1 == valid_statements.size() ? continuation : boundaries[index];
+            const base::u32 item_continuation = index + 1 == valid_statements.size() ? continuation : boundaries[index];
             this->push_statement(valid_statements[index], item_start, item_continuation);
         }
     }
@@ -297,7 +295,7 @@ private:
                 this->process_local_statement(task.stmt, stmt, entry, exit);
                 break;
             case syntax::StmtKind::assign:
-                this->process_assignment_statement(stmt, entry, exit);
+                this->process_assignment_statement(task.stmt, stmt, entry, exit);
                 break;
             case syntax::StmtKind::if_:
                 this->process_if_statement(stmt, entry, exit, range);
@@ -326,7 +324,8 @@ private:
                 this->push_expression(stmt.init, entry, exit, BodyFlowExprContext::value);
                 break;
             case syntax::StmtKind::block:
-                this->add_point_action(BodyFlowActionKind::cleanup_scope, exit, task.stmt, syntax::INVALID_EXPR_ID, range);
+                this->add_point_action(
+                    BodyFlowActionKind::cleanup_scope, exit, task.stmt, syntax::INVALID_EXPR_ID, range);
                 this->push_statement_sequence(stmt.statements, entry, exit);
                 break;
         }
@@ -350,11 +349,17 @@ private:
         }
     }
 
-    void process_assignment_statement(const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit)
+    void process_assignment_statement(
+        const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit)
     {
         const base::u32 lhs_done = this->new_sequence_point(stmt.range);
-        this->push_expression(stmt.lhs, entry, lhs_done, BodyFlowExprContext::place_write);
-        this->push_expression(stmt.rhs, lhs_done, exit, BodyFlowExprContext::value);
+        const base::u32 rhs_done = this->new_sequence_point(stmt.range);
+        this->push_expression(stmt.lhs, entry, lhs_done, BodyFlowExprContext::place_observe);
+        this->push_expression(stmt.rhs, lhs_done, rhs_done, BodyFlowExprContext::value);
+        if (valid_expr(this->module_, stmt.lhs)) {
+            this->add_place_action(BodyFlowActionKind::write, exit, stmt_id, stmt.lhs);
+        }
+        this->add_edge(rhs_done, exit);
     }
 
     void process_if_statement(
@@ -403,8 +408,8 @@ private:
                 BodyFlowExpressionStep{stmt.range_step, BodyFlowExprContext::value},
             },
             entry, range_done);
-        this->add_point_action(BodyFlowActionKind::branch, range_done, syntax::INVALID_STMT_ID,
-            syntax::INVALID_EXPR_ID, range);
+        this->add_point_action(
+            BodyFlowActionKind::branch, range_done, syntax::INVALID_STMT_ID, syntax::INVALID_EXPR_ID, range);
         this->add_edge(range_done, exit);
         this->push_statement(stmt.body, range_done, range_done);
     }
@@ -448,8 +453,7 @@ private:
         this->add_edge(exit, task.continuation);
 
         if (task.expr_context == BodyFlowExprContext::branch) {
-            this->add_point_action(
-                BodyFlowActionKind::branch, exit, syntax::INVALID_STMT_ID, task.expr, range);
+            this->add_point_action(BodyFlowActionKind::branch, exit, syntax::INVALID_STMT_ID, task.expr, range);
         }
         if (this->record_place_context_action(task.expr, task.expr_context, exit)) {
             this->push_place_operands(task.expr, entry, exit);

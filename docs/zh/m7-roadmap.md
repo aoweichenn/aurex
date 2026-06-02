@@ -2,7 +2,7 @@
 
 日期：2026-06-02
 
-状态：M7-WP2 Phase 1 collect-only BodyFlowGraph 已实现。完整设计依据见
+状态：M7-WP3 Phase 2/3 local loan checker 已实现。完整设计依据见
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)。
 
 ## 0. M7 总目标
@@ -81,10 +81,23 @@ M7a 不做：
   `tools/check_coverage.sh -j4` 通过。
 - Phase 1 已验证：`BodyFlowAnalyzer` 白盒测试覆盖 return、defer cleanup、call、mutable borrow、
   read/move-candidate 和 projection place dump。
-- 后续 Phase 2 仍需完成：move analysis 与 borrow analysis 共用更完整 CFG action timeline、`?` /
-  break / continue parity matrix、shadow diagnostic mode，以及全量 move/resource/cleanup gates。
+- Phase 2/3 已继续在这些 facts 上落地 local loan checker；更完整的 `?` / break / continue parity matrix、
+  cleanup/drop place invalidation 和跨函数 summary 仍归入后续 WP4-WP7。
 
 ## 3. M7-WP3：Place/Origin/Loan 本地检查
+
+当前状态：
+
+- Phase 2 diagnostic-shadow 已落地：`CheckedModule::body_loan_checks` 保存本地 `Origin` / `Loan` /
+  conflict facts、shadow/enforced mode 和稳定 dump。
+- Phase 3 enforced diagnostics 已接入函数体分析：active shared/mutable loan 与 write、owned-consume move、
+  read、shared/mutable borrow 的本地冲突会产生 semantic diagnostic，并附 loan creation note。
+- checker 使用 Phase 1 point/edge 做 deterministic worklist；直接本地 carrier loan 使用后向 liveness 支持
+  last-use 后写入。
+- projection matrix 已覆盖 same/prefix conflict、known field disjoint、index/slice/unknown 保守冲突。
+- `move_candidate` 只有在 M6 `OwnedUseMode::owned_consume` 时才作为 move invalidation，避免普通 read/copy
+  误报。
+- `BorrowEscapeAnalyzer` 仍保留；WP3 不替代 borrowed-return contract，不生成跨函数 summary。
 
 目标：
 
@@ -102,10 +115,11 @@ M7a 不做：
 
 验收：
 
-- 正例：borrow last-use 后允许 write/move。
-- 负例：active shared loan 时 write/move/drop，active mutable loan 时任何冲突访问。
-- cleanup/drop 隐式 action 能触发 borrow conflict。
-- 不依赖 `BorrowEscapeAnalyzer` 新增特判。
+- 已验证：borrow last-use 后允许 write。
+- 已验证：active shared loan 时 write / mutable reborrow 冲突，active mutable loan 时 read / shared borrow 冲突。
+- 已验证：field projection disjoint 可放宽，same/prefix/unknown/temporary conservative roots 有白盒覆盖。
+- 待 WP6/WP7 收口：cleanup/drop 隐式 action 的 place-level invalidation、drop/reinit parity matrix 和 tooling
+  projection。
 
 ## 4. M7-WP4：BorrowSummary 与 Borrowed-Return Contract
 

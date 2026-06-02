@@ -60,6 +60,7 @@ M7a 不做：
 
 - 新增 `SemaBodyFlowGraph`、`SemaBodyPoint`、`SemaBodyAction` 或等价内部模块。
 - 保留现有 `BodyMoveAnalysis` 行为，先做结构抽取，不改变语义。
+- 先提供只读 action/point/place fact dump 或白盒访问入口，用于和现有 M6 行为做 parity 校验。
 - 使用迭代式 task/worklist，不能引入递归遍历。
 
 验收：
@@ -67,6 +68,7 @@ M7a 不做：
 - 现有 move/resource/cleanup tests 全绿。
 - `expr_owned_use_modes` side table 行为不变。
 - CFG action dump 或白盒测试能证明 return/break/continue/`?`/defer cleanup 顺序稳定。
+- shadow fact 生成不改变任何当前 positive/negative 样例结果。
 
 ## 3. M7-WP3：Place/Origin/Loan 本地检查
 
@@ -82,6 +84,7 @@ M7a 不做：
 - `Origin` 覆盖 local、parameter、temporary、static/global、unknown。
 - `Loan` 记录 issued point、kind、place、origin、carrier。
 - active loans 使用 dense bitset 或 small sorted vector，按函数规模选择。
+- 先分 `collect-only`、`diagnostic-shadow`、`enforced` 三步推进，不在第一批 facts 落地时直接替换 M6 现有诊断。
 
 验收：
 
@@ -100,16 +103,19 @@ M7a 不做：
 
 建议实现：
 
-- `FunctionBorrowSummary` 记录 parameter origin、return origin dependency、receiver/argument access requirement。
+- `FunctionBorrowSummary` 记录 parameter origin、return origin dependency set、receiver/argument access requirement。
 - 当前模块内函数由 checker 生成 summary。
 - extern/native/prototype 无 summary 且返回类型可含 borrow 时，走 conservative unknown。
 - generic/trait method 暂按 checked body 或 trait requirement summary；缺 summary 时拒绝 risky borrowed return。
+- inferred return 函数先收集 return carrier facts，再在 return type inference finalized 后固化 summary，或直接用 return
+  expression/carrier type 生成 summary。
 
 验收：
 
 - 正例：返回参数派生 `&T` / slice / `str`。
 - 负例：返回 local/temporary 派生 `&T` / slice / `str`。
 - call wrapper、method receiver、block/if/match return 的 origin 传播稳定。
+- branch/match 多参数来源返回能记录 origin set，不被压成单一 origin。
 - summary fingerprint/query key 有白盒测试。
 
 ## 5. M7-WP5：Projection-Aware Conflict
@@ -168,6 +174,7 @@ M7a 不做：
 - coverage gate 通过。
 - query sanitizer / incremental cache tests 通过。
 - release docs 写清 M7 已支持和仍暂缓的能力。
+- 只有在新 checker parity 覆盖现有 borrowed-view 逃逸负例后，才移除或降级 `BorrowEscapeAnalyzer`。
 
 ## 8. M7 并行工程优化流
 

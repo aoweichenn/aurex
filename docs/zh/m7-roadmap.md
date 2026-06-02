@@ -4,6 +4,9 @@
 
 状态：M7a WP2-WP7 已完成实现收口。完整设计依据见
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)。
+M7b 后续设计已经拆出到
+[Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 设计基线](m7b-borrow-contract-design.md) 和
+[Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 路线图](m7b-roadmap.md)。
 
 ## 0. M7 总目标
 

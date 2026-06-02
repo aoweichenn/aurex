@@ -1,9 +1,19 @@
 # 当前进度文档
 
-版本：0.1.4
-阶段：M7a WP2-WP7 CFG-sensitive borrow facts、summary、query/tooling 与 diagnostics 已收口
+版本：0.1.5
+阶段：M7b Borrow Contract、Reborrow 与 Lifetime Surface 设计基线
 
 ## 总体状态
+
+2026-06-02：M7b 设计基线已固定。M7b 不继续往 M7a 混入新表面，而是把 M7a 的
+`BorrowSummary` / `BodyLoanCheckResult` 事实提升为函数边界 `FunctionBorrowContract`，选择窄 surface
+`@borrow(return = [param, self])`，并把 reborrow parent/child loan、method receiver access、receiver auto-borrow
+two-phase reservation/activation、trait/generic/extern borrowed-return contract 和 `BorrowEscapeAnalyzer` parity
+replacement 作为下一实现包。完整设计见
+[Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 设计基线](m7b-borrow-contract-design.md)，路线图见
+[Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 路线图](m7b-roadmap.md)。M7b 仍不做 full
+Rust-style lifetime generics、full Polonius Datalog、raw pointer alias safe proof、partial move / replace /
+take / swap、`dyn Trait`、async drop 或 generator borrow。
 
 2026-06-02：M7a WP6/WP7 已完成实现收口。`TypeCheckBodyAuthority` 现在混入
 `BorrowSummary` 与 `BodyLoanCheckResult` fingerprint、origin/dependency/loan/conflict count、

@@ -1,5 +1,19 @@
 # 版本文档
 
+## M7b Borrow Contract、Reborrow 与 Lifetime Surface 设计基线
+
+M7b 设计基线已固定，文档入口为
+[Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 设计基线](m7b-borrow-contract-design.md) 和
+[Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 路线图](m7b-roadmap.md)。
+
+M7b 的下一实现包不再扩张 M7a，而是把 M7a 的 `BorrowSummary` / `BodyLoanCheckResult` 内部 facts 提升为函数边界
+`FunctionBorrowContract`，引入窄 surface `@borrow(return = [param, self])`，补齐 trait/generic/extern
+borrowed-return contract、reborrow parent/child loan、method receiver access、receiver auto-borrow two-phase
+reservation/activation，并以 parity matrix 替换或降级 `BorrowEscapeAnalyzer`。
+
+M7b 明确不做 full Rust-style lifetime generics、full Polonius Datalog、raw pointer alias safe proof、partial
+move / replace / take / swap 完整 place-level resource semantics、`dyn Trait`、async drop 或 generator borrow。
+
 ## M7a CFG-sensitive borrow facts release closure
 
 当前实现阶段是 M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking。M7 设计基线记录在

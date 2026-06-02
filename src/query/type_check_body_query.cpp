@@ -58,13 +58,25 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_fingerprint(authority.body_syntax_result.fingerprint);
     builder.mix_u64(authority.signature_result.global_id);
     builder.mix_fingerprint(authority.signature_result.fingerprint);
+    builder.mix_fingerprint(authority.borrow_summary_fingerprint);
+    builder.mix_fingerprint(authority.body_loan_fingerprint);
     builder.mix_u32(authority.expr_side_table_count);
     builder.mix_u32(authority.pattern_side_table_count);
     builder.mix_u32(authority.type_side_table_count);
     builder.mix_u32(authority.stmt_side_table_count);
     builder.mix_u32(authority.coercion_count);
+    builder.mix_u32(authority.borrow_summary_origin_count);
+    builder.mix_u32(authority.borrow_summary_dependency_count);
+    builder.mix_u32(authority.body_loan_count);
+    builder.mix_u32(authority.body_loan_conflict_count);
     builder.mix_bool(authority.retained_side_tables);
     builder.mix_bool(authority.has_diagnostics);
+    builder.mix_bool(authority.has_borrow_summary);
+    builder.mix_bool(authority.has_body_loan_check);
+    builder.mix_bool(authority.borrow_summary_has_unknown_return_origin);
+    builder.mix_bool(authority.borrow_summary_has_local_return_escape);
+    builder.mix_bool(authority.body_loan_graph_missing);
+    builder.mix_bool(authority.body_loan_has_emitted_diagnostics);
     return query_result_fingerprint(builder.finish());
 }
 

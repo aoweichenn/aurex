@@ -58,6 +58,8 @@ enum class IdeSemanticFactKind : base::u8 {
     generic_template_signature,
     function_body_syntax,
     type_check_body,
+    borrow_summary,
+    body_loan_check,
 };
 
 struct IdeSemanticFact {

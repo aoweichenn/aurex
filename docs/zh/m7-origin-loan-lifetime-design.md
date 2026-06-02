@@ -478,16 +478,16 @@ M7-WP5：Projection-aware conflict
 
 M7-WP6：tooling/query/diagnostics
 
-- checked facts side table。
-- IDE hover/diagnostic notes。
-- LSP projection。
-- incremental cache keys。
+- 已完成：borrow summary / body loan check facts 进入 `TypeCheckBodyAuthority` result fingerprint。
+- 已完成：IDE semantic facts 暴露 `borrow_summary` / `body_loan_check`，函数 hover 展示 summary dependency。
+- 已完成：borrow diagnostics 补齐 loan creation、invalidating action 和可定位时的 later carrier use notes。
+- 已完成：CLI incremental-cache 与 IDE snapshot query collection 共用同一份 checked facts。
 
 M7-WP7：release closure
 
-- 文档、样例、negative/positive matrix。
-- full build/ctest/coverage/query/perf gates。
-- 明确 M7 后续：explicit lifetime surface、partial move、user destructor、unsafe alias model。
+- 已完成：文档写清 M7a 已支持能力和暂缓项。
+- 收口验证目标：full build/ctest/coverage/query/perf gates。
+- 已明确 M7 后续：explicit lifetime surface、partial move、user destructor、unsafe alias model。
 
 并行 hardening 任务：
 

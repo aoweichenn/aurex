@@ -11,13 +11,25 @@ struct TypeCheckBodyAuthority {
     QueryResultFingerprint checked_body;
     QueryResultFingerprint body_syntax_result;
     QueryResultFingerprint signature_result;
+    StableFingerprint128 borrow_summary_fingerprint;
+    StableFingerprint128 body_loan_fingerprint;
     base::u32 expr_side_table_count = 0;
     base::u32 pattern_side_table_count = 0;
     base::u32 type_side_table_count = 0;
     base::u32 stmt_side_table_count = 0;
     base::u32 coercion_count = 0;
+    base::u32 borrow_summary_origin_count = 0;
+    base::u32 borrow_summary_dependency_count = 0;
+    base::u32 body_loan_count = 0;
+    base::u32 body_loan_conflict_count = 0;
     bool retained_side_tables = false;
     bool has_diagnostics = false;
+    bool has_borrow_summary = false;
+    bool has_body_loan_check = false;
+    bool borrow_summary_has_unknown_return_origin = false;
+    bool borrow_summary_has_local_return_escape = false;
+    bool body_loan_graph_missing = false;
+    bool body_loan_has_emitted_diagnostics = false;
 };
 
 struct TypeCheckBodyProviderInput {

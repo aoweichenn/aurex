@@ -13,9 +13,14 @@ class SemanticAnalyzerCore::BodyLoanChecker final {
 public:
     explicit BodyLoanChecker(SemanticAnalyzerCore& core) noexcept;
 
+    [[nodiscard]] bool may_need_local_loan_check(const syntax::ItemNode& function) const;
+    void record_empty(const FunctionLookupKey& key, BodyLoanDiagnosticMode mode);
     void check(const syntax::ItemNode& function, const FunctionLookupKey& key, BodyLoanDiagnosticMode mode);
 
 private:
+    [[nodiscard]] bool statement_may_bind_reference_loan(syntax::StmtId stmt) const;
+    [[nodiscard]] bool type_contains_reference(TypeHandle type) const;
+
     SemanticAnalyzerCore& core_;
 };
 

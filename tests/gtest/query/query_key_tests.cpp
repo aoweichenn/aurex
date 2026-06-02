@@ -301,11 +301,11 @@ struct QueryContextBodySubject {
         query::stable_module_id(stable_module_path), query::StableSymbolKind::function, function_name);
     const query::ItemSignatureAuthority signature_authority = test_item_signature_authority(
         function_def, query::stable_incremental_key(stable_function, QUERY_TEST_PROVIDER_SIGNATURE));
-    const query::TypeCheckBodyAuthority type_check_authority{
-        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_TYPE_CHECK_BODY)),
-        syntax_result,
-        query::item_signature_result_fingerprint(signature_authority),
-    };
+    query::TypeCheckBodyAuthority type_check_authority;
+    type_check_authority.checked_body =
+        query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_TYPE_CHECK_BODY));
+    type_check_authority.body_syntax_result = syntax_result;
+    type_check_authority.signature_result = query::item_signature_result_fingerprint(signature_authority);
     return QueryContextBodySubject{
         body,
         syntax_authority,
@@ -3270,6 +3270,20 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
     EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.body));
     EXPECT_EQ(output->result, query::type_check_body_result_fingerprint(subject.type_check_authority));
     EXPECT_EQ(output->record.result, output->result);
+
+    query::TypeCheckBodyAuthority summary_changed_authority = subject.type_check_authority;
+    summary_changed_authority.has_borrow_summary = true;
+    summary_changed_authority.borrow_summary_origin_count = 1;
+    summary_changed_authority.borrow_summary_dependency_count = 1;
+    summary_changed_authority.borrow_summary_fingerprint = query::stable_fingerprint("query-test-borrow-summary");
+    EXPECT_NE(query::type_check_body_result_fingerprint(summary_changed_authority), output->result);
+
+    query::TypeCheckBodyAuthority loan_changed_authority = subject.type_check_authority;
+    loan_changed_authority.has_body_loan_check = true;
+    loan_changed_authority.body_loan_count = 1;
+    loan_changed_authority.body_loan_conflict_count = 1;
+    loan_changed_authority.body_loan_fingerprint = query::stable_fingerprint("query-test-body-loan");
+    EXPECT_NE(query::type_check_body_result_fingerprint(loan_changed_authority), output->result);
 
     query::TypeCheckBodyAuthority invalid_type_authority = subject.type_check_authority;
     invalid_type_authority.checked_body = {};

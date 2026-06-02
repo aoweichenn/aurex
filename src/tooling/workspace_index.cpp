@@ -16,6 +16,8 @@ constexpr std::string_view TOOLING_INDEX_KIND_ITEM_SIGNATURE = "item_signature";
 constexpr std::string_view TOOLING_INDEX_KIND_GENERIC_TEMPLATE_SIGNATURE = "generic_template_signature";
 constexpr std::string_view TOOLING_INDEX_KIND_FUNCTION_BODY_SYNTAX = "function_body_syntax";
 constexpr std::string_view TOOLING_INDEX_KIND_TYPE_CHECK_BODY = "type_check_body";
+constexpr std::string_view TOOLING_INDEX_KIND_BORROW_SUMMARY = "borrow_summary";
+constexpr std::string_view TOOLING_INDEX_KIND_BODY_LOAN_CHECK = "body_loan_check";
 constexpr char TOOLING_INDEX_FACT_IDENTITY_SEPARATOR = '\x1E';
 
 [[nodiscard]] const base::SourceFile* tooling_index_source_file_for_range(
@@ -78,6 +80,10 @@ constexpr char TOOLING_INDEX_FACT_IDENTITY_SEPARATOR = '\x1E';
             return TOOLING_INDEX_KIND_FUNCTION_BODY_SYNTAX;
         case IdeSemanticFactKind::type_check_body:
             return TOOLING_INDEX_KIND_TYPE_CHECK_BODY;
+        case IdeSemanticFactKind::borrow_summary:
+            return TOOLING_INDEX_KIND_BORROW_SUMMARY;
+        case IdeSemanticFactKind::body_loan_check:
+            return TOOLING_INDEX_KIND_BODY_LOAN_CHECK;
     }
     return TOOLING_INDEX_KIND_ITEM_SIGNATURE;
 }

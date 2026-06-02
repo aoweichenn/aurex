@@ -175,6 +175,17 @@ fs::path write_ide_tooling_source(const fs::path& path, const std::string_view t
         });
 }
 
+[[nodiscard]] const tooling::IdeSemanticFact* find_semantic_fact(const tooling::IdeSnapshot& snapshot,
+    const tooling::IdeSemanticFactKind kind, const query::QueryKind query_kind, const std::string_view name)
+{
+    for (const tooling::IdeSemanticFact& fact : snapshot.query.semantic_facts) {
+        if (fact.kind == kind && fact.query.kind == query_kind && fact.name == name && fact.checked) {
+            return &fact;
+        }
+    }
+    return nullptr;
+}
+
 [[nodiscard]] bool has_diagnostic_category(
     const tooling::IdeSnapshot& snapshot, const base::DiagnosticCategory category)
 {
@@ -394,6 +405,39 @@ TEST(CoreUnit, IdeToolingBuildsQueryBackedLosslessSnapshot)
     EXPECT_TRUE(eof_token->valid);
     EXPECT_EQ(eof_token->kind, syntax::TokenKind::eof);
     EXPECT_EQ(eof_token->node, snapshot.lossless.root_id());
+}
+
+TEST(CoreUnit, IdeToolingProjectsBorrowSummaryAndLoanFacts)
+{
+    constexpr std::string_view source = "module ide.borrow_facts;\n"
+                                        "fn id_ref(value: &i32) -> &i32 {\n"
+                                        "  return value;\n"
+                                        "}\n"
+                                        "fn read(value: i32) -> i32 {\n"
+                                        "  let ref_value: &i32 = &value;\n"
+                                        "  return *ref_value;\n"
+                                        "}\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
+    ASSERT_TRUE(snapshot.checked_semantics);
+    EXPECT_FALSE(snapshot.has_errors);
+
+    const tooling::IdeSemanticFact* const summary_fact = find_semantic_fact(
+        snapshot, tooling::IdeSemanticFactKind::borrow_summary, query::QueryKind::type_check_body, "id_ref");
+    ASSERT_NE(summary_fact, nullptr);
+    EXPECT_NE(summary_fact->detail.find("deps=1"), std::string::npos) << summary_fact->detail;
+    EXPECT_NE(summary_fact->detail.find("unknown=false"), std::string::npos) << summary_fact->detail;
+
+    const tooling::IdeSemanticFact* const loan_fact = find_semantic_fact(
+        snapshot, tooling::IdeSemanticFactKind::body_loan_check, query::QueryKind::type_check_body, "read");
+    ASSERT_NE(loan_fact, nullptr);
+    EXPECT_NE(loan_fact->detail.find("loans=1"), std::string::npos) << loan_fact->detail;
+    EXPECT_NE(loan_fact->detail.find("conflicts=0"), std::string::npos) << loan_fact->detail;
+
+    const base::usize id_ref_offset = source.find("id_ref");
+    ASSERT_NE(id_ref_offset, std::string_view::npos);
+    const std::optional<tooling::IdeHoverInfo> hover = tooling::hover_at_offset(snapshot, id_ref_offset);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_NE(hover->label.find("borrow_summary=deps=1"), std::string::npos) << hover->label;
 }
 
 TEST(CoreUnit, IdeToolingRecordsPrimaryModulePartDeclarations)

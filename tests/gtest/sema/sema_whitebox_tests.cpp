@@ -109,11 +109,14 @@ constexpr std::string_view SEMA_TEST_BODY_FLOW_SINK_NAME = "sink";
 constexpr std::string_view SEMA_TEST_BODY_FLOW_BYTES_NAME = "bytes";
 constexpr std::string_view SEMA_TEST_BODY_FLOW_DIRECT_FUNCTION_NAME = "flow_direct";
 constexpr std::string_view SEMA_TEST_BODY_FLOW_INTEGRATED_FUNCTION_NAME = "flow_integrated";
+constexpr std::string_view SEMA_TEST_BODY_FLOW_DISCARD_FUNCTION_NAME = "flow_discard";
+constexpr std::string_view SEMA_TEST_BODY_FLOW_DISCARD_REF_FUNCTION_NAME = "flow_discard_ref";
 constexpr std::string_view SEMA_TEST_BODY_LOAN_MODULE_NAME = "body_loans";
 constexpr std::string_view SEMA_TEST_BODY_LOAN_VALUE_NAME = "value";
 constexpr std::string_view SEMA_TEST_BODY_LOAN_REF_NAME = "ref_value";
 constexpr base::usize SEMA_TEST_BODY_LOAN_RANGE_BEGIN = 10;
 constexpr base::usize SEMA_TEST_BODY_LOAN_RANGE_END = 15;
+constexpr base::usize SEMA_TEST_BODY_LOAN_RANGE_STRIDE = 10;
 constexpr base::u32 SEMA_TEST_BODY_FLOW_OUT_OF_RANGE_NODE = 4096;
 constexpr std::string_view SEMA_TEST_IMPORT_ALIAS_ONE = "one";
 constexpr std::string_view SEMA_TEST_CONST_VALUE_NAME = "VALUE";
@@ -481,6 +484,16 @@ struct GenericAggregateSignatureSnapshot {
     sema::SemanticAnalyzerCore& analyzer, const ModuleId module, const std::string_view name)
 {
     return analyzer.function_lookup_key(module, intern_identifier(analyzer, name));
+}
+
+[[nodiscard]] base::SourceRange body_loan_test_range(const base::usize index) noexcept
+{
+    const base::usize offset = index * SEMA_TEST_BODY_LOAN_RANGE_STRIDE;
+    return base::SourceRange{
+        .source = base::SourceId{SEMA_TEST_ROOT_MODULE_INDEX},
+        .begin = SEMA_TEST_BODY_LOAN_RANGE_BEGIN + offset,
+        .end = SEMA_TEST_BODY_LOAN_RANGE_END + offset,
+    };
 }
 
 [[nodiscard]] sema::FunctionLookupKey semantic_method_key(sema::SemanticAnalyzerCore& analyzer, const ModuleId module,
@@ -3520,6 +3533,101 @@ TEST(CoreUnit, SemanticWhiteBoxAnalyzePopulatesCollectOnlyBodyFlowFacts)
     }));
 }
 
+TEST(CoreUnit, SemanticWhiteBoxAnalyzeCanDiscardRetainedBodyFlowGraphs)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_FLOW_MODULE_NAME})};
+
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const ExprId one = push_integer(module);
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = one;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+
+    const IdentId function_id = module.intern_identifier(SEMA_TEST_BODY_FLOW_DISCARD_FUNCTION_NAME);
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = SEMA_TEST_BODY_FLOW_DISCARD_FUNCTION_NAME;
+    function.name_id = function_id;
+    function.return_type = i32_type;
+    function.body = push_block(module, {return_stmt_id});
+    const syntax::ItemId item = module.push_item(function);
+    module.item_modules[item.value] = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const sema::FunctionLookupKey key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        function_id,
+    };
+    sema::SemanticOptions options;
+    options.retain_body_flow_graphs = false;
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics, options);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+
+    const sema::CheckedModule& checked = checked_result.value();
+    EXPECT_FALSE(checked.body_flow_graphs.contains(key));
+    EXPECT_TRUE(checked.body_loan_checks.contains(key));
+    EXPECT_TRUE(checked.borrow_summaries.contains(key));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxDiscardedBodyFlowStillChecksReferenceLoans)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId ref_i32_type = module.push_type(reference_node(i32_type));
+    const IdentId function_id = module.intern_identifier(SEMA_TEST_BODY_FLOW_DISCARD_REF_FUNCTION_NAME);
+    const ExprId one = push_integer(module);
+    const syntax::StmtId value_stmt =
+        push_local_stmt(module, syntax::StmtKind::var, SEMA_TEST_BODY_LOAN_VALUE_NAME, i32_type, one);
+    const ExprId value_name = push_name(module, SEMA_TEST_BODY_LOAN_VALUE_NAME);
+    const ExprId shared_borrow = push_unary(module, syntax::UnaryOp::address_of, value_name);
+    const syntax::StmtId ref_stmt =
+        push_local_stmt(module, syntax::StmtKind::let, SEMA_TEST_BODY_LOAN_REF_NAME, ref_i32_type, shared_borrow);
+    const ExprId ref_name = push_name(module, SEMA_TEST_BODY_LOAN_REF_NAME);
+    const ExprId deref_ref = push_unary(module, syntax::UnaryOp::dereference, ref_name);
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = deref_ref;
+    const syntax::StmtId return_stmt_id = module.push_stmt(return_stmt);
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = SEMA_TEST_BODY_FLOW_DISCARD_REF_FUNCTION_NAME;
+    function.name_id = function_id;
+    function.return_type = i32_type;
+    function.body = push_block(module, {value_stmt, ref_stmt, return_stmt_id});
+    const syntax::ItemId item = module.push_item(function);
+    module.item_modules[item.value] = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const sema::FunctionLookupKey key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        function_id,
+    };
+    sema::SemanticOptions options;
+    options.retain_body_flow_graphs = false;
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics, options);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+
+    const sema::CheckedModule& checked = checked_result.value();
+    EXPECT_FALSE(checked.body_flow_graphs.contains(key));
+    ASSERT_TRUE(checked.body_loan_checks.contains(key));
+    const sema::BodyLoanCheckResult& result = checked.body_loan_checks.at(key);
+    EXPECT_EQ(result.diagnostic_mode, sema::BodyLoanDiagnosticMode::enforced);
+    EXPECT_EQ(result.loans.size(), 1U);
+    EXPECT_TRUE(result.conflicts.empty());
+    EXPECT_TRUE(checked.borrow_summaries.contains(key));
+}
+
 TEST(CoreUnit, SemanticWhiteBoxBodyLoanKindNamesAndMissingGraphFacts)
 {
     EXPECT_EQ(sema::body_loan_kind_name(sema::BodyLoanKind::shared), "shared");
@@ -3573,11 +3681,28 @@ TEST(CoreUnit, SemanticWhiteBoxBodyLoanKindNamesAndMissingGraphFacts)
     manual_result.origins.push_back(sema::BodyLoanOrigin{});
     manual_result.loans.push_back(sema::BodyLoan{});
     manual_result.conflicts.push_back(sema::BodyLoanConflict{});
+    manual_result.conflicts.front().diagnostic_emitted = true;
     const std::string manual_dump = sema::dump_body_loan_check_result(manual_result);
     EXPECT_NE(manual_dump.find("function=4294967295:4294967295:-"), std::string::npos);
     EXPECT_NE(manual_dump.find("mode=enforced"), std::string::npos);
     EXPECT_NE(manual_dump.find("expr=-"), std::string::npos);
     EXPECT_NE(manual_dump.find("stmt=-"), std::string::npos);
+    EXPECT_NE(manual_dump.find("emitted=true"), std::string::npos);
+    EXPECT_NE(manual_dump.find("later_use=p4294967295"), std::string::npos);
+    EXPECT_NE(manual_dump.find("fingerprint="), std::string::npos);
+    sema::BodyLoanCheckResult range_changed_manual_result = manual_result;
+    range_changed_manual_result.conflicts.front().range = body_loan_test_range(1);
+    range_changed_manual_result.conflicts.front().later_use_range = body_loan_test_range(2);
+    EXPECT_EQ(sema::body_loan_check_fingerprint(manual_result),
+        sema::body_loan_check_fingerprint(range_changed_manual_result));
+    sema::BodyLoanCheckResult later_point_changed_manual_result = manual_result;
+    later_point_changed_manual_result.conflicts.front().later_use_point = 1;
+    EXPECT_NE(sema::body_loan_check_fingerprint(manual_result),
+        sema::body_loan_check_fingerprint(later_point_changed_manual_result));
+    sema::BodyLoanCheckResult changed_manual_result = manual_result;
+    changed_manual_result.conflicts.front().kind = sema::BodyLoanConflictKind::read;
+    EXPECT_NE(
+        sema::body_loan_check_fingerprint(manual_result), sema::body_loan_check_fingerprint(changed_manual_result));
 }
 
 TEST(CoreUnit, SemanticWhiteBoxBodyLoanShadowRecordsActiveSharedWriteConflict)
@@ -3866,6 +3991,329 @@ TEST(CoreUnit, SemanticWhiteBoxBodyLoanManualGraphCoversConservativeRoots)
     EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
 }
 
+TEST(CoreUnit, SemanticWhiteBoxBodyLoanManualGraphCoversProjectionAndStaleEdges)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    const sema::FunctionLookupKey key =
+        semantic_function_key(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "manual_projection_edges");
+    const IdentId value_id = module.intern_identifier(SEMA_TEST_BODY_LOAN_VALUE_NAME);
+    const IdentId field_id = module.intern_identifier(SEMA_TEST_BODY_FLOW_FIELD_NAME);
+
+    sema::BodyFlowGraph graph;
+    graph.function = key;
+    graph.points.push_back(sema::BodyFlowPoint{
+        .range = body_loan_test_range(0),
+    });
+    graph.edges.push_back(sema::BodyFlowEdge{
+        .from = 0,
+        .to = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+    });
+    graph.places.push_back(sema::BodyFlowPlace{
+        .root_kind = sema::BodyFlowPlaceRootKind::local,
+        .root_name_id = value_id,
+        .root_expr = syntax::ExprId{1},
+        .projections = {sema::BodyFlowPlaceProjection{
+            .kind = sema::BodyFlowPlaceProjectionKind::field,
+            .field_name_id = field_id,
+        }},
+        .range = body_loan_test_range(0),
+    });
+    graph.places.push_back(sema::BodyFlowPlace{
+        .root_kind = sema::BodyFlowPlaceRootKind::local,
+        .root_name_id = value_id,
+        .root_expr = syntax::ExprId{1},
+        .projections = {sema::BodyFlowPlaceProjection{
+            .kind = sema::BodyFlowPlaceProjectionKind::index,
+            .expr = syntax::ExprId{2},
+        }},
+        .range = body_loan_test_range(1),
+    });
+    graph.places.push_back(sema::BodyFlowPlace{
+        .root_kind = sema::BodyFlowPlaceRootKind::temporary,
+        .root_expr = syntax::ExprId{3},
+        .projections = {},
+        .range = body_loan_test_range(2),
+    });
+    graph.places.push_back(sema::BodyFlowPlace{
+        .root_kind = sema::BodyFlowPlaceRootKind::temporary,
+        .root_expr = syntax::ExprId{4},
+        .projections = {},
+        .range = body_loan_test_range(3),
+    });
+    graph.places.push_back(sema::BodyFlowPlace{
+        .root_kind = sema::BodyFlowPlaceRootKind::none,
+        .projections = {},
+        .range = body_loan_test_range(4),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = static_cast<sema::BodyFlowActionKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE),
+        .point = 0,
+        .place = 0,
+        .range = body_loan_test_range(0),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::borrow_shared,
+        .point = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+        .place = 0,
+        .range = body_loan_test_range(1),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::borrow_shared,
+        .point = 0,
+        .place = 0,
+        .range = body_loan_test_range(2),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::write,
+        .point = 0,
+        .place = 1,
+        .range = body_loan_test_range(3),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::borrow_shared,
+        .point = 0,
+        .place = 1,
+        .range = body_loan_test_range(4),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::write,
+        .point = 0,
+        .place = 1,
+        .range = body_loan_test_range(5),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::borrow_mutable,
+        .point = 0,
+        .place = 2,
+        .range = body_loan_test_range(6),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::read,
+        .point = 0,
+        .place = 3,
+        .range = body_loan_test_range(7),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::borrow_shared,
+        .point = 0,
+        .place = 4,
+        .range = body_loan_test_range(8),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::write,
+        .point = 0,
+        .place = 4,
+        .range = body_loan_test_range(9),
+    });
+    analyzer.state_.checked.body_flow_graphs[key] = std::move(graph);
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "manual_projection_edges";
+    sema::SemanticAnalyzerCore::BodyLoanChecker(analyzer).check(function, key, sema::BodyLoanDiagnosticMode::shadow);
+    ASSERT_TRUE(analyzer.state_.checked.body_loan_checks.contains(key));
+    const sema::BodyLoanCheckResult& result = analyzer.state_.checked.body_loan_checks.at(key);
+    EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
+        return conflict.kind == sema::BodyLoanConflictKind::write && conflict.place == 1;
+    }));
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBodyLoanLaterUseSearchHandlesRedefinitionAndPriorUse)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const IdentId value_id = module.intern_identifier(SEMA_TEST_BODY_LOAN_VALUE_NAME);
+    const IdentId ref_id = module.intern_identifier(SEMA_TEST_BODY_LOAN_REF_NAME);
+    const ExprId borrowed_value = push_name(module, SEMA_TEST_BODY_LOAN_VALUE_NAME);
+    const ExprId shared_borrow = push_unary(module, syntax::UnaryOp::address_of, borrowed_value);
+    const syntax::StmtId borrow_stmt =
+        push_local_stmt(module, syntax::StmtKind::let, SEMA_TEST_BODY_LOAN_REF_NAME, i32_type, shared_borrow);
+    const syntax::StmtId body = push_block(module, {borrow_stmt});
+    const ExprId direct_ref_use = push_name(module, SEMA_TEST_BODY_LOAN_REF_NAME);
+    const ExprId redefined_ref_use = push_name(module, SEMA_TEST_BODY_LOAN_REF_NAME);
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "later_use_redefinition";
+    function.body = body;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    const sema::FunctionLookupKey key =
+        semantic_function_key(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "later_use_redefinition");
+
+    sema::BodyFlowGraph graph;
+    graph.function = key;
+    graph.body = body;
+    for (base::usize index = 0; index < 5; ++index) {
+        graph.points.push_back(sema::BodyFlowPoint{
+            .stmt = borrow_stmt,
+            .range = body_loan_test_range(index),
+        });
+    }
+    graph.edges.push_back(sema::BodyFlowEdge{.from = 0, .to = 1});
+    graph.edges.push_back(sema::BodyFlowEdge{.from = 1, .to = 2});
+    graph.edges.push_back(sema::BodyFlowEdge{.from = 1, .to = 3});
+    graph.edges.push_back(sema::BodyFlowEdge{.from = 1, .to = 3});
+    graph.edges.push_back(sema::BodyFlowEdge{.from = 3, .to = 4});
+    graph.places.push_back(sema::BodyFlowPlace{
+        .root_kind = sema::BodyFlowPlaceRootKind::local,
+        .root_name_id = ref_id,
+        .projections = {},
+        .range = body_loan_test_range(0),
+    });
+    graph.places.push_back(sema::BodyFlowPlace{
+        .root_kind = sema::BodyFlowPlaceRootKind::local,
+        .root_name_id = value_id,
+        .root_expr = borrowed_value,
+        .projections = {},
+        .range = body_loan_test_range(1),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::write,
+        .point = 0,
+        .place = 0,
+        .stmt = borrow_stmt,
+        .range = body_loan_test_range(0),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::borrow_shared,
+        .point = 0,
+        .place = 1,
+        .stmt = borrow_stmt,
+        .expr = borrowed_value,
+        .range = body_loan_test_range(1),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::write,
+        .point = 1,
+        .place = 1,
+        .range = body_loan_test_range(2),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::write,
+        .point = 3,
+        .place = 0,
+        .range = body_loan_test_range(3),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::read,
+        .point = 2,
+        .place = 0,
+        .expr = direct_ref_use,
+        .range = body_loan_test_range(4),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::read,
+        .point = 4,
+        .place = 0,
+        .expr = redefined_ref_use,
+        .range = body_loan_test_range(5),
+    });
+    analyzer.state_.checked.body_flow_graphs[key] = std::move(graph);
+
+    sema::SemanticAnalyzerCore::BodyLoanChecker(analyzer).check(function, key, sema::BodyLoanDiagnosticMode::shadow);
+    ASSERT_TRUE(analyzer.state_.checked.body_loan_checks.contains(key));
+    const sema::BodyLoanCheckResult& result = analyzer.state_.checked.body_loan_checks.at(key);
+    ASSERT_FALSE(result.conflicts.empty());
+    EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
+        return conflict.later_use_point == 2 && conflict.later_use_range.well_formed();
+    }));
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBodyLoanLaterUseSearchSkipsSamePointPriorUse)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const IdentId value_id = module.intern_identifier(SEMA_TEST_BODY_LOAN_VALUE_NAME);
+    const IdentId ref_id = module.intern_identifier(SEMA_TEST_BODY_LOAN_REF_NAME);
+    const ExprId borrowed_value = push_name(module, SEMA_TEST_BODY_LOAN_VALUE_NAME);
+    const ExprId shared_borrow = push_unary(module, syntax::UnaryOp::address_of, borrowed_value);
+    const syntax::StmtId borrow_stmt =
+        push_local_stmt(module, syntax::StmtKind::let, SEMA_TEST_BODY_LOAN_REF_NAME, i32_type, shared_borrow);
+    const syntax::StmtId body = push_block(module, {borrow_stmt});
+    const ExprId prior_ref_use = push_name(module, SEMA_TEST_BODY_LOAN_REF_NAME);
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "same_point_prior_use";
+    function.body = body;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    const sema::FunctionLookupKey key =
+        semantic_function_key(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "same_point_prior_use");
+
+    sema::BodyFlowGraph graph;
+    graph.function = key;
+    graph.body = body;
+    graph.points.push_back(sema::BodyFlowPoint{.stmt = borrow_stmt, .range = body_loan_test_range(0)});
+    graph.points.push_back(sema::BodyFlowPoint{.stmt = borrow_stmt, .range = body_loan_test_range(1)});
+    graph.edges.push_back(sema::BodyFlowEdge{.from = 0, .to = 1});
+    graph.edges.push_back(sema::BodyFlowEdge{.from = 1, .to = 1});
+    graph.places.push_back(sema::BodyFlowPlace{
+        .root_kind = sema::BodyFlowPlaceRootKind::local,
+        .root_name_id = ref_id,
+        .projections = {},
+        .range = body_loan_test_range(0),
+    });
+    graph.places.push_back(sema::BodyFlowPlace{
+        .root_kind = sema::BodyFlowPlaceRootKind::local,
+        .root_name_id = value_id,
+        .root_expr = borrowed_value,
+        .projections = {},
+        .range = body_loan_test_range(1),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::write,
+        .point = 0,
+        .place = 0,
+        .stmt = borrow_stmt,
+        .range = body_loan_test_range(0),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::borrow_shared,
+        .point = 0,
+        .place = 1,
+        .stmt = borrow_stmt,
+        .expr = borrowed_value,
+        .range = body_loan_test_range(1),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::read,
+        .point = 1,
+        .place = 0,
+        .expr = prior_ref_use,
+        .range = body_loan_test_range(2),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::write,
+        .point = 1,
+        .place = 1,
+        .range = body_loan_test_range(3),
+    });
+    analyzer.state_.checked.body_flow_graphs[key] = std::move(graph);
+
+    sema::SemanticAnalyzerCore::BodyLoanChecker(analyzer).check(function, key, sema::BodyLoanDiagnosticMode::shadow);
+    ASSERT_TRUE(analyzer.state_.checked.body_loan_checks.contains(key));
+    const sema::BodyLoanCheckResult& result = analyzer.state_.checked.body_loan_checks.at(key);
+    ASSERT_FALSE(result.conflicts.empty());
+    EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
+        return conflict.later_use_point == sema::SEMA_BODY_FLOW_INVALID_INDEX;
+    }));
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+}
+
 TEST(CoreUnit, SemanticWhiteBoxBodyLoanRecordsLexicalCleanupStorageConflict)
 {
     syntax::AstModule module;
@@ -3976,10 +4424,11 @@ TEST(CoreUnit, SemanticWhiteBoxBodyLoanEnforcedDeduplicatesDiagnosticSite)
             return conflict.diagnostic_emitted;
         }));
     EXPECT_EQ(emitted_count, 1U);
-    EXPECT_EQ(diagnostics.diagnostics().size(), 2U);
+    EXPECT_EQ(diagnostics.diagnostics().size(), 3U);
     const std::string messages = diagnostic_messages(diagnostics);
     EXPECT_NE(messages.find(sema::SEMA_ACTIVE_BORROW_CONFLICT), std::string::npos);
     EXPECT_NE(messages.find(sema::SEMA_ACTIVE_BORROW_CREATED), std::string::npos);
+    EXPECT_NE(messages.find(sema::SEMA_ACTIVE_BORROW_INVALIDATING_ACTION), std::string::npos);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxAnalyzeEnforcesBodyLoanConflictDiagnostics)
@@ -4040,12 +4489,17 @@ TEST(CoreUnit, SemanticWhiteBoxAnalyzeEnforcesBodyLoanConflictDiagnostics)
     const std::string messages = diagnostic_messages(diagnostics);
     EXPECT_NE(messages.find(sema::SEMA_ACTIVE_BORROW_CONFLICT), std::string::npos);
     EXPECT_NE(messages.find(sema::SEMA_ACTIVE_BORROW_CREATED), std::string::npos);
+    EXPECT_NE(messages.find(sema::SEMA_ACTIVE_BORROW_INVALIDATING_ACTION), std::string::npos);
+    EXPECT_NE(messages.find(sema::SEMA_ACTIVE_BORROW_LATER_CARRIER_USE), std::string::npos);
     ASSERT_TRUE(analyzer.state_.checked.body_loan_checks.contains(key));
     const sema::BodyLoanCheckResult& result = analyzer.state_.checked.body_loan_checks.at(key);
     EXPECT_EQ(result.diagnostic_mode, sema::BodyLoanDiagnosticMode::enforced);
     ASSERT_FALSE(result.conflicts.empty());
     EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
         return conflict.diagnostic_emitted;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
+        return conflict.later_use_point != sema::SEMA_BODY_FLOW_INVALID_INDEX && conflict.later_use_range.well_formed();
     }));
 }
 
@@ -4101,6 +4555,59 @@ TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryRecordsParameterReturnDependency)
     EXPECT_EQ(sema::borrow_summary_origin_kind_name(
                   static_cast<sema::BorrowSummaryOriginKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE)),
         "<invalid>");
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBorrowSummarySkipsBodyWalkForNonBorrowReturn)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId ref_i32_type = module.push_type(reference_node(i32_type));
+    const IdentId function_id = module.intern_identifier("non_borrow_summary");
+    const ExprId one = push_integer(module);
+    const syntax::StmtId value_stmt =
+        push_local_stmt(module, syntax::StmtKind::var, SEMA_TEST_BODY_LOAN_VALUE_NAME, i32_type, one);
+    const ExprId value_name = push_name(module, SEMA_TEST_BODY_LOAN_VALUE_NAME);
+    const ExprId shared_borrow = push_unary(module, syntax::UnaryOp::address_of, value_name);
+    const syntax::StmtId ref_stmt =
+        push_local_stmt(module, syntax::StmtKind::let, SEMA_TEST_BODY_LOAN_REF_NAME, ref_i32_type, shared_borrow);
+    const syntax::StmtId return_stmt = push_return_stmt(module, push_integer(module));
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "non_borrow_summary";
+    function.name_id = function_id;
+    function.return_type = i32_type;
+    function.body = push_block(module, {value_stmt, ref_stmt, return_stmt});
+    const syntax::ItemId item = module.push_item(function);
+    module.item_modules[item.value] = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const sema::FunctionLookupKey key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        function_id,
+    };
+    sema::SemanticOptions options;
+    options.retain_body_flow_graphs = false;
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics, options);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+
+    const sema::CheckedModule& checked = checked_result.value();
+    ASSERT_TRUE(checked.borrow_summaries.contains(key));
+    const sema::FunctionBorrowSummary& summary = checked.borrow_summaries.at(key);
+    EXPECT_FALSE(summary.return_type_can_contain_borrow);
+    EXPECT_FALSE(summary.has_unknown_return_origin);
+    EXPECT_FALSE(summary.has_local_return_escape);
+    EXPECT_TRUE(summary.origins.empty());
+    EXPECT_TRUE(summary.return_origins.empty());
+    EXPECT_NE(summary.fingerprint.byte_count, 0U);
+
+    ASSERT_TRUE(checked.body_loan_checks.contains(key));
+    EXPECT_EQ(checked.body_loan_checks.at(key).loans.size(), 1U);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryPropagatesDirectCallWrapper)
@@ -6632,6 +7139,62 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     ASSERT_EQ(checked_move_assigned.generic_type_alias_instances.size(), 1U);
     EXPECT_EQ(
         checked_move_assigned.generic_type_alias_instances.front().generic_instance_key, checked_generic_instance_key);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxCheckedModuleIndexesCallBindingsByExpr)
+{
+    constexpr base::u32 SEMA_TEST_INDEXED_FUNCTION_CALL_EXPR = 7U;
+    constexpr base::u32 SEMA_TEST_INDEXED_TRAIT_CALL_EXPR = 11U;
+    constexpr base::u32 SEMA_TEST_MANUAL_FUNCTION_CALL_EXPR = 13U;
+    constexpr base::u32 SEMA_TEST_MANUAL_TRAIT_CALL_EXPR = 17U;
+    constexpr base::u32 SEMA_TEST_MISSING_FUNCTION_CALL_EXPR = 19U;
+    constexpr base::u32 SEMA_TEST_MISSING_TRAIT_CALL_EXPR = 23U;
+
+    sema::CheckedModule checked;
+    sema::FunctionCallBinding function_binding = checked.make_function_call_binding();
+    function_binding.call_expr = ExprId{SEMA_TEST_INDEXED_FUNCTION_CALL_EXPR};
+    checked.append_function_call_binding(function_binding);
+    sema::TraitMethodCallBinding trait_binding = checked.make_trait_method_call_binding();
+    trait_binding.call_expr = ExprId{SEMA_TEST_INDEXED_TRAIT_CALL_EXPR};
+    checked.append_trait_method_call_binding(trait_binding);
+
+    ASSERT_NE(checked.function_call_binding_for_expr(ExprId{SEMA_TEST_INDEXED_FUNCTION_CALL_EXPR}), nullptr);
+    EXPECT_EQ(checked.function_call_binding_for_expr(ExprId{SEMA_TEST_INDEXED_FUNCTION_CALL_EXPR})->call_expr.value,
+        SEMA_TEST_INDEXED_FUNCTION_CALL_EXPR);
+    ASSERT_NE(checked.trait_method_call_binding_for_expr(ExprId{SEMA_TEST_INDEXED_TRAIT_CALL_EXPR}), nullptr);
+    EXPECT_EQ(checked.trait_method_call_binding_for_expr(ExprId{SEMA_TEST_INDEXED_TRAIT_CALL_EXPR})->call_expr.value,
+        SEMA_TEST_INDEXED_TRAIT_CALL_EXPR);
+    EXPECT_EQ(checked.function_call_binding_for_expr(syntax::INVALID_EXPR_ID), nullptr);
+    EXPECT_EQ(checked.trait_method_call_binding_for_expr(syntax::INVALID_EXPR_ID), nullptr);
+    EXPECT_EQ(checked.function_call_binding_for_expr(ExprId{SEMA_TEST_MISSING_FUNCTION_CALL_EXPR}), nullptr);
+    EXPECT_EQ(checked.trait_method_call_binding_for_expr(ExprId{SEMA_TEST_MISSING_TRAIT_CALL_EXPR}), nullptr);
+
+    sema::FunctionCallBinding invalid_function_binding = checked.make_function_call_binding();
+    invalid_function_binding.call_expr = syntax::INVALID_EXPR_ID;
+    checked.append_function_call_binding(invalid_function_binding);
+    sema::TraitMethodCallBinding invalid_trait_binding = checked.make_trait_method_call_binding();
+    invalid_trait_binding.call_expr = syntax::INVALID_EXPR_ID;
+    checked.append_trait_method_call_binding(invalid_trait_binding);
+
+    sema::FunctionCallBinding manual_function_binding = checked.make_function_call_binding();
+    manual_function_binding.call_expr = ExprId{SEMA_TEST_MANUAL_FUNCTION_CALL_EXPR};
+    checked.function_calls.push_back(manual_function_binding);
+    sema::TraitMethodCallBinding manual_trait_binding = checked.make_trait_method_call_binding();
+    manual_trait_binding.call_expr = ExprId{SEMA_TEST_MANUAL_TRAIT_CALL_EXPR};
+    checked.trait_method_calls.push_back(manual_trait_binding);
+
+    ASSERT_NE(checked.function_call_binding_for_expr(ExprId{SEMA_TEST_MANUAL_FUNCTION_CALL_EXPR}), nullptr);
+    EXPECT_EQ(checked.function_call_binding_for_expr(ExprId{SEMA_TEST_MANUAL_FUNCTION_CALL_EXPR})->call_expr.value,
+        SEMA_TEST_MANUAL_FUNCTION_CALL_EXPR);
+    ASSERT_NE(checked.trait_method_call_binding_for_expr(ExprId{SEMA_TEST_MANUAL_TRAIT_CALL_EXPR}), nullptr);
+    EXPECT_EQ(checked.trait_method_call_binding_for_expr(ExprId{SEMA_TEST_MANUAL_TRAIT_CALL_EXPR})->call_expr.value,
+        SEMA_TEST_MANUAL_TRAIT_CALL_EXPR);
+    EXPECT_EQ(checked.function_call_binding_for_expr(ExprId{SEMA_TEST_MISSING_FUNCTION_CALL_EXPR}), nullptr);
+    EXPECT_EQ(checked.trait_method_call_binding_for_expr(ExprId{SEMA_TEST_MISSING_TRAIT_CALL_EXPR}), nullptr);
+
+    sema::CheckedModule copied(checked);
+    ASSERT_NE(copied.function_call_binding_for_expr(ExprId{SEMA_TEST_MANUAL_FUNCTION_CALL_EXPR}), nullptr);
+    ASSERT_NE(copied.trait_method_call_binding_for_expr(ExprId{SEMA_TEST_MANUAL_TRAIT_CALL_EXPR}), nullptr);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxSourceNamesBorrowAstInternerAcrossCheckedModuleMoves)

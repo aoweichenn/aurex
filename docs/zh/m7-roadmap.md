@@ -2,7 +2,7 @@
 
 日期：2026-06-02
 
-状态：M7-WP4 `BorrowSummary` 与 M7-WP5 projection/drop/reinit/cleanup matrix 已实现。完整设计依据见
+状态：M7a WP2-WP7 已完成实现收口。完整设计依据见
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)。
 
 ## 0. M7 总目标
@@ -204,6 +204,23 @@ M7a 不做：
 
 ## 6. M7-WP6：Diagnostics、Query、Tooling
 
+当前状态：
+
+- 已把 `BorrowSummary` 与 `BodyLoanCheckResult` 纳入 `TypeCheckBodyAuthority`，type-check-body result
+  fingerprint 现在混入 summary fingerprint、loan-check fingerprint、origin/dependency/loan/conflict count、
+  unknown/local-escape/diagnostic-emitted 等状态位。
+- CLI incremental-cache subject collection 和 IDE snapshot query collection 使用同一份 checked facts，不让
+  tooling / LSP 重新跑 borrow sema。
+- IDE semantic facts 新增 `borrow_summary` 与 `body_loan_check`，都挂在对应 `type_check_body` query 上；
+  fact detail 暴露 dependency count、unknown/local_escape、loan/conflict count、diagnostic mode、conflict reason
+  和 stable fingerprint。
+- 函数 hover 在已有签名信息后追加 `borrow_summary=deps/unknown/local_escape` 摘要；仍不暴露 Rust-style
+  lifetime surface，也不把 raw pointer aliasing 当成 safe proof。
+- enforced borrow diagnostics 现在包含 primary conflict、loan creation note、invalidating action note，并在能从
+  CFG/liveness 找到 carrier 后续使用时补充 later carrier use note；冲突点/range 级 cascade suppression 保持。
+- `dump_checked_module` 现在输出 `body_loan_checks` summary 与 stable fingerprint，和专用
+  `dump_body_loan_check_result(...)` 共用同一份 body-loan fingerprint。
+
 目标：
 
 - borrow checker 的结果进入 checked facts。
@@ -218,12 +235,29 @@ M7a 不做：
 
 验收：
 
-- 负例 diagnostics 不级联刷屏。
-- stale source/range 不崩溃。
-- LSP projection 有 targeted tests。
-- query/cache 复用和失效测试覆盖 summary change。
+- 已验证：负例 diagnostics 保持按冲突点/range 抑制级联，同时补齐 creation / invalidation / later-use notes。
+- 已验证：`body_loan_check_fingerprint(...)` 对 conflict reason、later-use point 等语义事实敏感，
+  但不混入绝对 source range，避免非语义注释/布局变更破坏 type-check-body query 复用；checked dump 仍暴露
+  body loan facts 和诊断 range。
+- 已验证：`TypeCheckBodyAuthority` 的 summary / loan fingerprint 改变会改变 type-check-body result fingerprint。
+- 已验证：IDE semantic facts 暴露 `borrow_summary` / `body_loan_check`，函数 hover 能展示 summary dependency。
+- 已验证：reuse / workspace index 认识新增 fact kind，并把它们归类为 body-local facts。
 
 ## 7. M7-WP7：Release Closure
+
+当前状态：
+
+- M7a release documentation 已写清 WP2-WP7 已支持的 internal fact model、local loan checking、
+  borrowed-return summary、projection/drop/reinit/cleanup matrix、query/cache/tooling projection 和 diagnostics。
+- `BorrowEscapeAnalyzer` 保留。M7a summary 已记录 borrowed-return facts，但在完整 borrowed-view escape parity
+  覆盖前不移除或降级旧 analyzer。
+- M7a 仍明确暂缓完整 Rust-style lifetime surface、full Polonius Datalog engine、raw pointer alias safe proof、
+  user destructor syntax、partial move / replace / take / swap 完整 place-level resource semantics、`dyn Trait`、
+  async drop 和 generator borrow。
+- W7a release performance closure 已完成：普通 `--check` 不再长期保留 full body-flow graph；只有 checked/typed
+  输出和 IDE/tooling 需要时保留 CFG facts。非借用返回函数的 `BorrowSummary` 只生成稳定空 return-dependency
+  summary，不扫描完整函数体；call binding 查找由 `CheckedModule` 维护 expr-id index，避免每个函数重扫全局
+  call binding list。
 
 目标：
 
@@ -231,10 +265,10 @@ M7a 不做：
 
 验收：
 
-- `ctest` 全量通过。
-- coverage gate 通过。
-- query sanitizer / incremental cache tests 通过。
-- release docs 写清 M7 已支持和仍暂缓的能力。
+- 已验证：release 全量 `ctest`、coverage gate、query sanitizer、perf/stress gates、format/diff gate 均通过。
+- 已验证：默认 Release+LTO `perf-release-threshold` 通过；2M mixed AST lane 的 `sema.analyze` 保持秒级，
+  不再出现 W7a body-flow/summary 引入后的 200s 级退化。
+- release docs 已写清 M7a 已支持和仍暂缓的能力。
 - 只有在新 checker parity 覆盖现有 borrowed-view 逃逸负例后，才移除或降级 `BorrowEscapeAnalyzer`。
 
 ## 8. M7 并行工程优化流

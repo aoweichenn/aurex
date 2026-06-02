@@ -223,11 +223,11 @@ struct QueryRobustnessSubject {
 {
     const query::FunctionBodySyntaxAuthority syntax_authority = robustness_function_body_syntax_authority(subject);
     const query::ItemSignatureAuthority signature_authority = robustness_item_signature_authority(subject);
-    return query::TypeCheckBodyAuthority{
-        subject.checked_body,
-        query::function_body_syntax_result_fingerprint(syntax_authority),
-        query::item_signature_result_fingerprint(signature_authority),
-    };
+    query::TypeCheckBodyAuthority authority;
+    authority.checked_body = subject.checked_body;
+    authority.body_syntax_result = query::function_body_syntax_result_fingerprint(syntax_authority);
+    authority.signature_result = query::item_signature_result_fingerprint(signature_authority);
+    return authority;
 }
 
 void append_pipeline_requests_for_subject(

@@ -1,6 +1,6 @@
 # 版本文档
 
-## M7-WP4 BorrowSummary and M7-WP5 conflict matrix
+## M7a CFG-sensitive borrow facts release closure
 
 当前实现阶段是 M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking。M7 设计基线记录在
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)，
@@ -34,9 +34,24 @@ write/reinit/drop/cleanup/move/read/shared-borrow/mutable-borrow 使用同一套
 仍没有显式 user drop syntax，所以 `drop` 已作为 checker action 支持，source-level drop emission 仍等待后续语法或
 lowering 接入。
 
-当前仍不移除 `BorrowEscapeAnalyzer`：WP4 summary 已记录 borrowed-return facts，但旧 borrowed-local escape 诊断继续
-由现有 analyzer 负责。下一实现包是 M7-WP6 diagnostics、query 与 tooling projection，在 parity 覆盖当前
-borrowed-view 逃逸矩阵后再讨论 `BorrowEscapeAnalyzer` 降级/移除。
+M7-WP6 已完成 diagnostics、query 与 tooling projection：`TypeCheckBodyAuthority` 混入 borrow summary / body
+loan check fingerprint、origin/dependency/loan/conflict count 和 unknown/local-escape/diagnostic-emitted 状态位；
+CLI incremental-cache subject collection 与 IDE snapshot query collection 都消费同一份 `CheckedModule`
+facts。IDE semantic facts 新增 `borrow_summary` 与 `body_loan_check`，函数 hover 可展示 summary dependency；
+enforced diagnostics 现在包含 primary conflict、loan creation、invalidating action 和可定位时的 later carrier use
+note，同时保持按冲突点/range 的 cascade suppression。`dump_checked_module` 输出 `body_loan_checks` summary 与
+stable fingerprint。
+
+W7a release closure 已完成性能/内存边界收口：普通 `--check` 路径保留 `BodyLoanCheckResult` 与
+`FunctionBorrowSummary` 等稳定 checked facts，不长期保留 full `BodyFlowGraph`；checked/typed 输出和 IDE/tooling
+仍可保留 CFG facts。非借用返回函数的 summary 构建走 fast path，不扫描完整函数体；direct/trait call binding
+由 `CheckedModule` 维护 expr-id index。release 全量测试、coverage、query sanitizer、perf/stress gate 已验证通过。
+
+M7-WP7 已完成 release closure 文档边界：当前仍不移除 `BorrowEscapeAnalyzer`。WP4/WP6 summary 已记录
+borrowed-return facts，但旧 borrowed-local escape 诊断继续由现有 analyzer 负责；只有在 parity 覆盖当前
+borrowed-view 逃逸矩阵后才讨论降级/移除。M7a 继续明确不做完整 Rust-style lifetime surface、full Polonius
+Datalog engine、raw pointer alias safe proof、user destructor syntax、partial move / replace / take / swap
+完整 place-level resource semantics、`dyn Trait`、async drop 或 generator borrow。
 
 ## M6-WP2/WP3/WP4/WP5/WP6/WP7 资源、cleanup、drop-glue 与 tooling 基线
 

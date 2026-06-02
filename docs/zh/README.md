@@ -1,6 +1,6 @@
 # Aurex 文档
 
-文档基线：**M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究基线**，建立在已经收口的 M2 language-core-no-std、
+文档基线：**M7a CFG-Sensitive Origin、Loan 与 Lifetime Checking 实现收口基线**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
 基线以及 M6 资源、cleanup、drop-glue release baseline 之上。
 

@@ -50,6 +50,8 @@ constexpr std::string_view IDE_SEMANTIC_FACT_ITEM_SIGNATURE = "item_signature";
 constexpr std::string_view IDE_SEMANTIC_FACT_GENERIC_TEMPLATE_SIGNATURE = "generic_template_signature";
 constexpr std::string_view IDE_SEMANTIC_FACT_FUNCTION_BODY_SYNTAX = "function_body_syntax";
 constexpr std::string_view IDE_SEMANTIC_FACT_TYPE_CHECK_BODY = "type_check_body";
+constexpr std::string_view IDE_SEMANTIC_FACT_BORROW_SUMMARY = "borrow_summary";
+constexpr std::string_view IDE_SEMANTIC_FACT_BODY_LOAN_CHECK = "body_loan_check";
 constexpr std::string_view IDE_SYMBOL_KIND_CONST = "const";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM_CASE = "enum_case";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM = "enum";
@@ -90,6 +92,7 @@ constexpr std::string_view IDE_TOKEN_MODIFIER_READONLY = "readonly";
 constexpr std::string_view IDE_INLAY_HINT_KIND_TYPE = "type";
 constexpr std::string_view IDE_DETAIL_TYPE_SEPARATOR = ": ";
 constexpr std::string_view IDE_DETAIL_RESOURCE_SEPARATOR = " resource=";
+constexpr std::string_view IDE_DETAIL_BORROW_SUMMARY_SEPARATOR = " borrow_summary=";
 constexpr std::string_view IDE_PRIMARY_PART_NAME = "<primary>";
 constexpr base::u32 IDE_PRIMARY_PART_INDEX = 0;
 constexpr base::u32 IDE_FIRST_NAMED_PART_INDEX = 1;
@@ -973,6 +976,31 @@ void recover_resolved_fragment_source_part(
     return query::query_result_fingerprint(builder.finish());
 }
 
+[[nodiscard]] std::string borrow_summary_detail(const sema::FunctionBorrowSummary& summary)
+{
+    std::ostringstream label;
+    label << IDE_SEMANTIC_FACT_BORROW_SUMMARY << " origins=" << summary.origins.size()
+          << " deps=" << summary.return_origins.size()
+          << " unknown=" << (summary.has_unknown_return_origin ? "true" : "false")
+          << " local_escape=" << (summary.has_local_return_escape ? "true" : "false")
+          << " fingerprint=" << query::debug_string(summary.fingerprint);
+    return label.str();
+}
+
+[[nodiscard]] std::string body_loan_check_detail(const sema::BodyLoanCheckResult& result)
+{
+    std::ostringstream label;
+    label << IDE_SEMANTIC_FACT_BODY_LOAN_CHECK << " loans=" << result.loans.size()
+          << " conflicts=" << result.conflicts.size()
+          << " mode=" << sema::body_loan_diagnostic_mode_name(result.diagnostic_mode)
+          << " graph_missing=" << (result.graph_missing ? "true" : "false");
+    if (!result.conflicts.empty()) {
+        label << " first_conflict=" << sema::body_loan_conflict_kind_name(result.conflicts.front().kind);
+    }
+    label << " fingerprint=" << query::debug_string(sema::body_loan_check_fingerprint(result));
+    return label.str();
+}
+
 [[nodiscard]] std::optional<base::SourceRange> function_signature_body_range(
     const IdeSnapshot& snapshot, const sema::FunctionSignature& signature) noexcept
 {
@@ -995,7 +1023,8 @@ void recover_resolved_fragment_source_part(
         || result.status == query::QueryEvaluationStatus::cached;
 }
 
-[[nodiscard]] std::string function_detail(const sema::CheckedModule& checked, const sema::FunctionSignature& signature)
+[[nodiscard]] std::string function_detail(const sema::CheckedModule& checked, const sema::FunctionSignature& signature,
+    const sema::FunctionLookupKey* const function_key = nullptr)
 {
     std::ostringstream label;
     const std::string_view kind = signature.is_trait_impl_method
@@ -1009,6 +1038,14 @@ void recover_resolved_fragment_source_part(
         label << checked.types.display_name(signature.param_types[index]);
     }
     label << ") -> " << checked.types.display_name(signature.return_type);
+    if (function_key != nullptr) {
+        if (const auto summary = checked.borrow_summaries.find(*function_key);
+            summary != checked.borrow_summaries.end()) {
+            label << IDE_DETAIL_BORROW_SUMMARY_SEPARATOR << "deps=" << summary->second.return_origins.size()
+                  << ", unknown=" << (summary->second.has_unknown_return_origin ? "true" : "false")
+                  << ", local_escape=" << (summary->second.has_local_return_escape ? "true" : "false");
+        }
+    }
     return label.str();
 }
 
@@ -1245,7 +1282,7 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                 signature.range,
                 std::string(signature.name.view()),
                 std::string(function_symbol_kind(signature)),
-                function_detail(snapshot.checked, signature),
+                function_detail(snapshot.checked, signature, &entry.first),
                 signature.part_index,
                 false,
                 true,
@@ -1617,14 +1654,57 @@ void evaluate_checked_item_signature_queries(
 }
 
 [[nodiscard]] query::TypeCheckBodyAuthority type_check_body_authority(const query::BodyKey key,
-    const query::QueryResultFingerprint body_syntax_result,
-    const query::QueryResultFingerprint signature_result) noexcept
+    const query::QueryResultFingerprint body_syntax_result, const query::QueryResultFingerprint signature_result,
+    const IdeSnapshot& snapshot, const sema::FunctionLookupKey function)
 {
     query::TypeCheckBodyAuthority authority;
     authority.checked_body = type_check_body_checked_result_fingerprint(key, body_syntax_result, signature_result);
     authority.body_syntax_result = body_syntax_result;
     authority.signature_result = signature_result;
+    sema::populate_type_check_body_borrow_authority(authority, snapshot.checked, function);
     return authority;
+}
+
+void push_borrow_summary_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
+    const sema::FunctionSignature& signature, const sema::FunctionLookupKey function, const base::SourceRange range)
+{
+    const auto summary = snapshot.checked.borrow_summaries.find(function);
+    if (summary == snapshot.checked.borrow_summaries.end()) {
+        return;
+    }
+    IdeSemanticFact fact;
+    fact.kind = IdeSemanticFactKind::borrow_summary;
+    fact.query = query_key;
+    fact.definition = body.owner;
+    fact.body = body;
+    fact.range = range;
+    fact.name = std::string(signature.name.view());
+    fact.detail = borrow_summary_detail(summary->second);
+    fact.part_index = signature.part_index;
+    fact.generic_instance = signature.generic_instance_key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
+void push_body_loan_check_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
+    const sema::FunctionSignature& signature, const sema::FunctionLookupKey function, const base::SourceRange range)
+{
+    const auto result = snapshot.checked.body_loan_checks.find(function);
+    if (result == snapshot.checked.body_loan_checks.end()) {
+        return;
+    }
+    IdeSemanticFact fact;
+    fact.kind = IdeSemanticFactKind::body_loan_check;
+    fact.query = query_key;
+    fact.definition = body.owner;
+    fact.body = body;
+    fact.range = range;
+    fact.name = std::string(signature.name.view());
+    fact.detail = body_loan_check_detail(result->second);
+    fact.part_index = signature.part_index;
+    fact.generic_instance = signature.generic_instance_key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
 }
 
 void push_function_body_syntax_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::BodyKey key,
@@ -1664,7 +1744,8 @@ void push_function_body_syntax_fact(query::QueryContext& context, IdeSnapshot& s
 
 void push_type_check_body_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::BodyKey key,
     const query::TypeCheckBodyAuthority& authority, const sema::FunctionSignature& signature,
-    const base::SourceRange range, const IdeIncrementalSnapshotInput& incremental)
+    const sema::FunctionLookupKey function, const base::SourceRange range,
+    const IdeIncrementalSnapshotInput& incremental)
 {
     if (!query::is_valid(key) || !query::is_valid(authority)) {
         return;
@@ -1694,10 +1775,13 @@ void push_type_check_body_fact(query::QueryContext& context, IdeSnapshot& snapsh
     fact.generic_instance = signature.generic_instance_key;
     fact.checked = true;
     snapshot.query.semantic_facts.push_back(std::move(fact));
+    push_borrow_summary_fact(snapshot, *query_key, key, signature, function, range);
+    push_body_loan_check_fact(snapshot, *query_key, key, signature, function, range);
 }
 
 void evaluate_function_body_queries(query::QueryContext& context, IdeSnapshot& snapshot,
-    const sema::FunctionSignature& signature, const IdeIncrementalSnapshotInput& incremental)
+    const sema::FunctionLookupKey function, const sema::FunctionSignature& signature,
+    const IdeIncrementalSnapshotInput& incremental)
 {
     if (!signature.has_definition || signature.has_conflict || !query::is_valid(signature.stable_id)
         || !query::is_valid(signature.incremental_key)) {
@@ -1725,15 +1809,15 @@ void evaluate_function_body_queries(query::QueryContext& context, IdeSnapshot& s
     const query::QueryResultFingerprint syntax_result =
         query::function_body_syntax_result_fingerprint(*syntax_authority);
     const query::TypeCheckBodyAuthority type_check_authority =
-        type_check_body_authority(body, syntax_result, signature_result);
-    push_type_check_body_fact(context, snapshot, body, type_check_authority, signature, *range, incremental);
+        type_check_body_authority(body, syntax_result, signature_result, snapshot, function);
+    push_type_check_body_fact(context, snapshot, body, type_check_authority, signature, function, *range, incremental);
 }
 
 void evaluate_checked_function_body_queries(
     query::QueryContext& context, IdeSnapshot& snapshot, const IdeIncrementalSnapshotInput& incremental)
 {
     for (const auto& entry : snapshot.checked.functions) {
-        evaluate_function_body_queries(context, snapshot, entry.second, incremental);
+        evaluate_function_body_queries(context, snapshot, entry.first, entry.second, incremental);
     }
 }
 
@@ -2138,7 +2222,7 @@ void collect_local_symbols_from_function(
                 signature.range,
                 std::string(signature.name.view()),
                 std::string(function_symbol_kind(signature)),
-                function_detail(snapshot.checked, signature),
+                function_detail(snapshot.checked, signature, &binding.function_key),
                 signature.part_index,
                 false,
                 true,

@@ -32,6 +32,7 @@ namespace {
 {
     sema::SemanticOptions sema_options;
     sema_options.retain_generic_side_tables = emit_kind_requires_ir_lowering(emit_kind) || emit_kind == EmitKind::typed;
+    sema_options.retain_body_flow_graphs = emit_kind == EmitKind::checked || emit_kind == EmitKind::typed;
     sema_options.module_packages.reserve(modules.size());
     sema_options.module_part_keys.reserve(modules.size());
     for (const ModuleRecord& module : modules) {

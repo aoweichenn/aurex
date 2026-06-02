@@ -78,6 +78,11 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::build(
 {
     this->reset(function, key, signature);
     this->bind_parameters();
+    if (!this->summary_.return_type_can_contain_borrow) {
+        this->finalize_summary();
+        this->core_.state_.checked.borrow_summaries[key] = std::move(this->summary_);
+        return;
+    }
     std::vector<Task> tasks;
     tasks.reserve(SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY);
     this->push_scoped_block(tasks, function.body);
@@ -668,23 +673,13 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
 const FunctionCallBinding* SemanticAnalyzerCore::BorrowSummaryBuilder::direct_call_binding(
     const syntax::ExprId call_expr) const noexcept
 {
-    for (const FunctionCallBinding& binding : this->core_.state_.checked.function_calls) {
-        if (binding.call_expr.value == call_expr.value) {
-            return &binding;
-        }
-    }
-    return nullptr;
+    return this->core_.state_.checked.function_call_binding_for_expr(call_expr);
 }
 
 const TraitMethodCallBinding* SemanticAnalyzerCore::BorrowSummaryBuilder::trait_call_binding(
     const syntax::ExprId call_expr) const noexcept
 {
-    for (const TraitMethodCallBinding& binding : this->core_.state_.checked.trait_method_calls) {
-        if (binding.call_expr.value == call_expr.value) {
-            return &binding;
-        }
-    }
-    return nullptr;
+    return this->core_.state_.checked.trait_method_call_binding_for_expr(call_expr);
 }
 
 syntax::ExprId SemanticAnalyzerCore::BorrowSummaryBuilder::call_argument_for_param(const syntax::CallExprPayload& call,
@@ -993,17 +988,11 @@ query::StableFingerprint128 SemanticAnalyzerCore::BorrowSummaryBuilder::fingerpr
         builder.mix_u32(origin.param_index);
         builder.mix_u32(origin.name_id.value);
         builder.mix_u32(origin.expr.value);
-        builder.mix_u32(origin.range.source.value);
-        builder.mix_u64(static_cast<base::u64>(origin.range.begin));
-        builder.mix_u64(static_cast<base::u64>(origin.range.end));
     }
     builder.mix_u64(static_cast<base::u64>(this->summary_.return_origins.size()));
     for (const FunctionBorrowReturnOrigin& dependency : this->summary_.return_origins) {
         builder.mix_u32(dependency.origin_index);
         builder.mix_u32(dependency.return_expr.value);
-        builder.mix_u32(dependency.range.source.value);
-        builder.mix_u64(static_cast<base::u64>(dependency.range.begin));
-        builder.mix_u64(static_cast<base::u64>(dependency.range.end));
     }
     return builder.finish();
 }

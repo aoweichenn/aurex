@@ -1409,8 +1409,15 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
     this->core_.analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
     this->core_.analyze_borrow_escapes(function);
     this->core_.analyze_body_moves(function, signature);
-    this->core_.collect_body_flow_graph(function, key);
-    this->core_.check_body_loans(function, key, BodyLoanDiagnosticMode::enforced);
+    SemanticAnalyzerCore::BodyLoanChecker body_loan_checker(this->core_);
+    const bool collect_body_flow =
+        this->core_.ctx_.options.retain_body_flow_graphs || body_loan_checker.may_need_local_loan_check(function);
+    if (collect_body_flow) {
+        this->core_.collect_body_flow_graph(function, key);
+        this->core_.check_body_loans(function, key, BodyLoanDiagnosticMode::enforced);
+    } else {
+        body_loan_checker.record_empty(key, BodyLoanDiagnosticMode::enforced);
+    }
     this->core_.state_.names.symbols.pop_scope();
     if (infer_return_type) {
         this->core_.finalize_inferred_return(function, key, return_inference);
@@ -1426,6 +1433,9 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
     const auto summary_signature = this->core_.state_.checked.functions.find(key);
     this->core_.build_borrow_summary(function, key,
         summary_signature == this->core_.state_.checked.functions.end() ? signature : summary_signature->second);
+    if (!this->core_.ctx_.options.retain_body_flow_graphs) {
+        this->core_.state_.checked.body_flow_graphs.erase(key);
+    }
     state = FunctionBodyState::analyzed;
 }
 

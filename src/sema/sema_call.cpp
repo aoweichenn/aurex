@@ -661,7 +661,7 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         binding.return_type = resolution.return_type;
         binding.range = callee.range;
         binding.part_index = this->item_part_index(this->state_.flow.current_item);
-        this->state_.checked.trait_method_calls.push_back(std::move(binding));
+        this->state_.checked.append_trait_method_call_binding(std::move(binding));
         return this->record_expr_type(expr_id, resolution.return_type);
     };
 
@@ -822,7 +822,7 @@ void SemanticAnalyzerCore::record_function_call_binding(const syntax::ExprId cal
     binding.receiver_arg_count = receiver_arg_count;
     binding.range = range;
     binding.part_index = this->item_part_index(this->state_.flow.current_item);
-    this->state_.checked.function_calls.push_back(binding);
+    this->state_.checked.append_function_call_binding(std::move(binding));
 }
 
 void SemanticAnalyzerCore::validate_call_arguments(const SemanticAnalyzerCore::ExprView& expr,

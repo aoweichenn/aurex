@@ -1,3 +1,5 @@
+#include <aurex/base/integer.hpp>
+#include <aurex/query/type_check_body_query.hpp>
 #include <aurex/sema/checked_module.hpp>
 #include <aurex/sema/resource_semantics.hpp>
 
@@ -6,6 +8,7 @@
 #include <memory>
 #include <sstream>
 #include <string_view>
+#include <tuple>
 #include <utility>
 
 namespace aurex::sema {
@@ -15,6 +18,8 @@ namespace {
 constexpr std::size_t SEMA_TRAIT_IMPL_HASH_MIX = 0x9e3779b97f4a7c15ULL;
 constexpr base::usize SEMA_TRAIT_IMPL_HASH_LEFT_SHIFT = 6;
 constexpr base::usize SEMA_TRAIT_IMPL_HASH_RIGHT_SHIFT = 2;
+constexpr std::string_view SEMA_TRAIT_METHOD_CALL_BINDING_ID_CONTEXT = "sema trait method call binding id";
+constexpr std::string_view SEMA_FUNCTION_CALL_BINDING_ID_CONTEXT = "sema function call binding id";
 
 [[nodiscard]] std::size_t mix_trait_impl_hash(std::size_t hash, const std::uint64_t value) noexcept
 {
@@ -549,6 +554,8 @@ CheckedModule::CheckedModule()
       trait_evidence(make_sema_vector<TraitEvidence>(*this->arena_)),
       trait_method_calls(make_sema_vector<TraitMethodCallBinding>(*this->arena_)),
       function_calls(make_sema_vector<FunctionCallBinding>(*this->arena_)),
+      trait_method_call_by_expr(make_sema_map<base::u32, base::u32>(*this->arena_)),
+      function_call_by_expr(make_sema_map<base::u32, base::u32>(*this->arena_)),
       borrow_summaries(make_sema_map<FunctionLookupKey, FunctionBorrowSummary, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
       body_flow_graphs(make_sema_map<FunctionLookupKey, BodyFlowGraph, FunctionLookupKeyHash>(
@@ -595,6 +602,8 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       trait_impls(std::move(other.trait_impls)), trait_predicates(std::move(other.trait_predicates)),
       trait_obligations(std::move(other.trait_obligations)), trait_evidence(std::move(other.trait_evidence)),
       trait_method_calls(std::move(other.trait_method_calls)), function_calls(std::move(other.function_calls)),
+      trait_method_call_by_expr(std::move(other.trait_method_call_by_expr)),
+      function_call_by_expr(std::move(other.function_call_by_expr)),
       borrow_summaries(std::move(other.borrow_summaries)), body_flow_graphs(std::move(other.body_flow_graphs)),
       body_loan_checks(std::move(other.body_loan_checks)), param_envs(std::move(other.param_envs)),
       generic_template_signatures(std::move(other.generic_template_signatures)),
@@ -661,6 +670,8 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->trait_evidence.swap(other.trait_evidence);
     this->trait_method_calls.swap(other.trait_method_calls);
     this->function_calls.swap(other.function_calls);
+    this->trait_method_call_by_expr.swap(other.trait_method_call_by_expr);
+    this->function_call_by_expr.swap(other.function_call_by_expr);
     this->borrow_summaries.swap(other.borrow_summaries);
     this->body_flow_graphs.swap(other.body_flow_graphs);
     this->body_loan_checks.swap(other.body_loan_checks);
@@ -756,14 +767,18 @@ void CheckedModule::copy_from(const CheckedModule& other)
         this->trait_evidence.push_back(this->clone_trait_evidence(evidence));
     }
     this->trait_method_calls.clear();
+    this->trait_method_call_by_expr.clear();
     this->trait_method_calls.reserve(other.trait_method_calls.size());
+    this->trait_method_call_by_expr.reserve(other.trait_method_calls.size());
     for (const TraitMethodCallBinding& binding : other.trait_method_calls) {
-        this->trait_method_calls.push_back(this->clone_trait_method_call_binding(binding));
+        this->append_trait_method_call_binding(this->clone_trait_method_call_binding(binding));
     }
     this->function_calls.clear();
+    this->function_call_by_expr.clear();
     this->function_calls.reserve(other.function_calls.size());
+    this->function_call_by_expr.reserve(other.function_calls.size());
     for (const FunctionCallBinding& binding : other.function_calls) {
-        this->function_calls.push_back(this->clone_function_call_binding(binding));
+        this->append_function_call_binding(this->clone_function_call_binding(binding));
     }
     this->borrow_summaries.clear();
     this->borrow_summaries.reserve(other.borrow_summaries.size());
@@ -952,6 +967,68 @@ TraitMethodCallBinding CheckedModule::make_trait_method_call_binding() const
 FunctionCallBinding CheckedModule::make_function_call_binding() const
 {
     return {};
+}
+
+void CheckedModule::append_trait_method_call_binding(TraitMethodCallBinding binding)
+{
+    const syntax::ExprId call_expr = binding.call_expr;
+    const base::u32 index =
+        base::checked_u32(this->trait_method_calls.size(), SEMA_TRAIT_METHOD_CALL_BINDING_ID_CONTEXT);
+    this->trait_method_calls.push_back(std::move(binding));
+    if (syntax::is_valid(call_expr)) {
+        this->trait_method_call_by_expr[call_expr.value] = index;
+    }
+}
+
+void CheckedModule::append_function_call_binding(FunctionCallBinding binding)
+{
+    const syntax::ExprId call_expr = binding.call_expr;
+    const base::u32 index = base::checked_u32(this->function_calls.size(), SEMA_FUNCTION_CALL_BINDING_ID_CONTEXT);
+    this->function_calls.push_back(std::move(binding));
+    if (syntax::is_valid(call_expr)) {
+        this->function_call_by_expr[call_expr.value] = index;
+    }
+}
+
+const TraitMethodCallBinding* CheckedModule::trait_method_call_binding_for_expr(
+    const syntax::ExprId call_expr) const noexcept
+{
+    if (!syntax::is_valid(call_expr)) {
+        return nullptr;
+    }
+    if (const auto found = this->trait_method_call_by_expr.find(call_expr.value);
+        found != this->trait_method_call_by_expr.end() && found->second < this->trait_method_calls.size()) {
+        return &this->trait_method_calls[found->second];
+    }
+    if (this->trait_method_call_by_expr.size() == this->trait_method_calls.size()) {
+        return nullptr;
+    }
+    for (const TraitMethodCallBinding& binding : this->trait_method_calls) {
+        if (binding.call_expr.value == call_expr.value) {
+            return &binding;
+        }
+    }
+    return nullptr;
+}
+
+const FunctionCallBinding* CheckedModule::function_call_binding_for_expr(const syntax::ExprId call_expr) const noexcept
+{
+    if (!syntax::is_valid(call_expr)) {
+        return nullptr;
+    }
+    if (const auto found = this->function_call_by_expr.find(call_expr.value);
+        found != this->function_call_by_expr.end() && found->second < this->function_calls.size()) {
+        return &this->function_calls[found->second];
+    }
+    if (this->function_call_by_expr.size() == this->function_calls.size()) {
+        return nullptr;
+    }
+    for (const FunctionCallBinding& binding : this->function_calls) {
+        if (binding.call_expr.value == call_expr.value) {
+            return &binding;
+        }
+    }
+    return nullptr;
 }
 
 ParamEnvInfo CheckedModule::make_param_env_info() const
@@ -1770,6 +1847,30 @@ void append_type_list(std::ostringstream& out, const CheckedModule& checked, std
 
 } // namespace
 
+void populate_type_check_body_borrow_authority(
+    query::TypeCheckBodyAuthority& authority, const CheckedModule& checked, const FunctionLookupKey function)
+{
+    if (const auto summary = checked.borrow_summaries.find(function); summary != checked.borrow_summaries.end()) {
+        authority.has_borrow_summary = true;
+        authority.borrow_summary_fingerprint = summary->second.fingerprint;
+        authority.borrow_summary_origin_count = static_cast<base::u32>(summary->second.origins.size());
+        authority.borrow_summary_dependency_count = static_cast<base::u32>(summary->second.return_origins.size());
+        authority.borrow_summary_has_unknown_return_origin = summary->second.has_unknown_return_origin;
+        authority.borrow_summary_has_local_return_escape = summary->second.has_local_return_escape;
+    }
+    if (const auto loan = checked.body_loan_checks.find(function); loan != checked.body_loan_checks.end()) {
+        authority.has_body_loan_check = true;
+        authority.body_loan_fingerprint = body_loan_check_fingerprint(loan->second);
+        authority.body_loan_count = static_cast<base::u32>(loan->second.loans.size());
+        authority.body_loan_conflict_count = static_cast<base::u32>(loan->second.conflicts.size());
+        authority.body_loan_graph_missing = loan->second.graph_missing;
+        authority.body_loan_has_emitted_diagnostics =
+            std::ranges::any_of(loan->second.conflicts, [](const BodyLoanConflict& conflict) {
+                return conflict.diagnostic_emitted;
+            });
+    }
+}
+
 std::string struct_display_name(const TypeTable& types, const StructInfo& info)
 {
     return types.display_name(info.name.view(), generic_args_for_type(types, info.type));
@@ -2003,6 +2104,31 @@ std::string dump_checked_module(const CheckedModule& checked)
             << " fingerprint=" << query::debug_string(summary.fingerprint);
         append_part_origin(out, show_parts, summary.part_index);
         out << "\n";
+    }
+
+    std::vector<const BodyLoanCheckResult*> loan_checks;
+    loan_checks.reserve(checked.body_loan_checks.size());
+    for (const auto& entry : checked.body_loan_checks) {
+        loan_checks.push_back(&entry.second);
+    }
+    std::sort(
+        loan_checks.begin(), loan_checks.end(), [](const BodyLoanCheckResult* lhs, const BodyLoanCheckResult* rhs) {
+            return std::tie(lhs->function.module, lhs->function.owner_type, lhs->function.name.value)
+                < std::tie(rhs->function.module, rhs->function.owner_type, rhs->function.name.value);
+        });
+    out << "  body_loan_checks " << loan_checks.size() << "\n";
+    for (const BodyLoanCheckResult* const result_ptr : loan_checks) {
+        const BodyLoanCheckResult& result = *result_ptr;
+        out << "    body_loan_check " << result.function.module << ':' << result.function.owner_type << ':';
+        if (syntax::is_valid(result.function.name)) {
+            out << '#' << result.function.name.value;
+        } else {
+            out << '-';
+        }
+        out << " mode=" << body_loan_diagnostic_mode_name(result.diagnostic_mode) << " loans=" << result.loans.size()
+            << " conflicts=" << result.conflicts.size()
+            << " graph_missing=" << (result.graph_missing ? "true" : "false")
+            << " fingerprint=" << query::debug_string(body_loan_check_fingerprint(result)) << "\n";
     }
 
     out << "  trait_default_method_instances " << checked.trait_default_method_instances.size() << "\n";

@@ -381,13 +381,15 @@ struct PackageIndex {
 }
 
 [[nodiscard]] query::TypeCheckBodyAuthority type_check_body_authority(const query::BodyKey key,
-    const query::QueryResultFingerprint body_syntax_result, const query::QueryResultFingerprint signature_result)
+    const query::QueryResultFingerprint body_syntax_result, const query::QueryResultFingerprint signature_result,
+    const sema::CheckedModule& checked, const sema::FunctionLookupKey function)
 {
-    return query::TypeCheckBodyAuthority{
-        type_check_body_checked_result_fingerprint(key, body_syntax_result, signature_result),
-        body_syntax_result,
-        signature_result,
-    };
+    query::TypeCheckBodyAuthority authority;
+    authority.checked_body = type_check_body_checked_result_fingerprint(key, body_syntax_result, signature_result);
+    authority.body_syntax_result = body_syntax_result;
+    authority.signature_result = signature_result;
+    sema::populate_type_check_body_borrow_authority(authority, checked, function);
+    return authority;
 }
 
 [[nodiscard]] std::optional<base::SourceRange> function_signature_body_range(
@@ -641,7 +643,8 @@ void push_lower_generic_instance_ir_query_subject(std::vector<LowerFunctionIRQue
 }
 
 void push_function_body_query_subjects(std::vector<FunctionBodySyntaxQuerySubject>& syntax_subjects,
-    std::vector<TypeCheckBodyQuerySubject>& type_check_subjects, const sema::FunctionSignature& signature,
+    std::vector<TypeCheckBodyQuerySubject>& type_check_subjects, const sema::CheckedModule& checked,
+    const sema::FunctionLookupKey function, const sema::FunctionSignature& signature,
     const base::SourceManager& sources, const syntax::AstModule* const ast, const PackageIndex& packages)
 {
     if (!signature.has_definition || signature.has_conflict || !query::is_valid(signature.stable_id)
@@ -678,7 +681,7 @@ void push_function_body_query_subjects(std::vector<FunctionBodySyntaxQuerySubjec
     const query::QueryResultFingerprint syntax_result =
         query::function_body_syntax_result_fingerprint(syntax_authority);
     const query::TypeCheckBodyAuthority type_check_authority =
-        type_check_body_authority(key, syntax_result, signature_result);
+        type_check_body_authority(key, syntax_result, signature_result, checked, function);
     if (!query::is_valid(type_check_authority)) {
         return;
     }
@@ -881,7 +884,8 @@ void collect_function_body_query_subjects(const sema::CheckedModule& checked, co
     syntax_subjects.reserve(checked.functions.size());
     type_check_subjects.reserve(checked.functions.size());
     for (const auto& entry : checked.functions) {
-        push_function_body_query_subjects(syntax_subjects, type_check_subjects, entry.second, sources, ast, packages);
+        push_function_body_query_subjects(
+            syntax_subjects, type_check_subjects, checked, entry.first, entry.second, sources, ast, packages);
     }
 }
 

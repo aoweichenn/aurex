@@ -64,6 +64,7 @@ struct SemanticOptions {
     std::vector<std::vector<query::ModulePartKey>> module_part_keys;
     SemanticTargetLayout target_layout;
     bool retain_generic_side_tables = true;
+    bool retain_body_flow_graphs = true;
 };
 
 class SemanticAnalyzer final {

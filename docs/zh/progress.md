@@ -1,9 +1,31 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M7-WP4 BorrowSummary 与 M7-WP5 conflict matrix 已完成
+阶段：M7a WP2-WP7 CFG-sensitive borrow facts、summary、query/tooling 与 diagnostics 已收口
 
 ## 总体状态
+
+2026-06-02：M7a WP6/WP7 已完成实现收口。`TypeCheckBodyAuthority` 现在混入
+`BorrowSummary` 与 `BodyLoanCheckResult` fingerprint、origin/dependency/loan/conflict count、
+unknown/local-escape/diagnostic-emitted 等状态位，CLI incremental-cache subject collection 和 IDE snapshot query
+collection 共用 `CheckedModule` 中的 borrow facts，不让 tooling/LSP 重新跑 borrow sema。IDE semantic facts 新增
+`borrow_summary` 与 `body_loan_check`，fact detail 暴露 dependency count、unknown/local_escape、loan/conflict
+count、diagnostic mode、first conflict reason 和 stable fingerprint；函数 hover 会展示
+`borrow_summary=deps/unknown/local_escape`。enforced borrow diagnostics 现在包含 primary conflict、loan creation
+note、invalidating action note，并在 CFG/liveness 能定位时补充 later carrier use note；按冲突点/range 的 cascade
+suppression 保持。`dump_checked_module` 现在输出 `body_loan_checks` summary 与语义稳定 fingerprint；query/cache
+fingerprint 不混入绝对 source range，诊断 range 仍保留在 checked facts 和 dump 中。
+`BorrowEscapeAnalyzer` 继续保留，只有在新 checker parity 覆盖当前 borrowed-view escape matrix 后才降级或移除。
+M7a 仍不包含完整 Rust-style lifetime surface、full Polonius Datalog engine、raw pointer alias safe proof、
+user destructor syntax、partial move / replace / take / swap 完整 place-level resource semantics、`dyn Trait`、
+async drop 或 generator borrow。
+
+2026-06-02：W7a release 性能与内存收口完成。普通 `--check` 路径只保留 body loan / borrow summary 等稳定
+checked facts，不再长期保留 full `BodyFlowGraph`；checked/typed 输出和 IDE/tooling 仍可保留 CFG facts。函数级
+`BorrowSummary` 对非借用返回类型走 fast path，只生成稳定空 return-dependency summary，不扫描完整函数体；
+direct/trait call binding 查找改由 `CheckedModule` 维护 expr-id index，避免 summary 构建时反复全局线性扫描。
+Release+LTO `perf-release-threshold` 已通过：5000 mixed generic、2M mixed AST、5000 mixed diagnostic 和 query
+graph fuzz 均在阈值内，其中 2M AST lane 的 `sema.analyze` 已从 W7a 收口前的 200s 级风险回到秒级。
 
 2026-06-02：M7-WP4 与 M7-WP5 已完成。`CheckedModule` 新增 `function_calls` 和
 `borrow_summaries`，`src/sema/internal/sema_borrow_summary.cpp` / `.hpp` 在 return type inference、body-flow 和

@@ -1,8 +1,8 @@
 # Aurex 当前语法与特性清单
 
-日期：2026-06-01
-阶段：M6-WP2/WP3/WP4/WP5/WP6/WP7 resource classification、whole-local move analysis、cleanup lowering、drop-glue 和 tooling baseline
-状态：当前实现清单、M6-WP2 到 M6-WP7 完成面与后续非目标
+日期：2026-06-02
+阶段：M7a CFG-sensitive borrow facts、summary、query/tooling 与 diagnostics baseline
+状态：当前实现清单、M7a 完成面与后续非目标
 
 本文记录当前仓库真实支持的 Aurex 语言表面、已具备的高级能力、未完成能力和 M2 下一步基础语法优先级。本文以 `include/aurex/syntax/token.hpp`、`include/aurex/syntax/ast.hpp`、`src/parse/*`、`src/sema/*`、`tests/samples/**` 为准。
 
@@ -12,8 +12,10 @@ M2 当前原则：
 - 标准库不在当前树中，语言样例必须自包含。
 - 语言级 `move(...)`、`noncopy struct` 和旧 use-after-move 追踪已从 M2 基线删除。
 - 当前资源语义以 M6 的 compiler-owned `Copy`、内部 resource summary、whole-local move analysis、cleanup
-  lowering、stable drop-glue identity 和 target-independent drop-glue planner 为入口；用户编写 destructor
-  syntax/body lowering、完整 borrow checker 和 lifetime surface 继续后移。
+  lowering、stable drop-glue identity 和 target-independent drop-glue planner 为入口；M7a 已在其上加入
+  CFG-sensitive local loan checker、borrow summary、query/tooling projection 和 borrow diagnostics。用户编写
+  destructor syntax/body lowering、完整 Rust-style lifetime surface、raw pointer alias safe proof 和 partial move
+  继续后移。
 
 ## 总体判断
 
@@ -777,8 +779,9 @@ p1 | p2 | p3
 13. 普通 `fn main` 入口：无参数或 `(argc: i32, argv: *mut *mut u8)`，返回 `i32` 或 `void`。
 14. M5 nominal static trait：`trait` declaration、显式 `impl Trait for Type`、generic trait predicate、static trait method dispatch、associated type declaration/assignment/projection/equality、trait default method body，以及 IDE/tooling/diagnostics 投影。
 15. M6-WP2/WP3/WP4/WP5/WP6/WP7 资源基线：compiler-owned `Copy`、内部 resource summary、deterministic resource dump、whole-local move analysis、move 后重新初始化、use-after-move diagnostics、cleanup action stack、drop flag、IR `drop` / `drop_if` cleanup 节点、destructor body identity、stable drop-glue key、target-independent drop-glue planner、IDE hover resource summary 和 `aurex-lsp` stdio 入口。
+16. M7a borrow/lifetime 内部事实基线：`BodyFlowGraph`、`BodyLoanCheckResult`、`FunctionBorrowSummary`、projection-aware conflict matrix、direct call borrowed-return summary propagation、borrow summary / loan check query fingerprint、IDE `borrow_summary` / `body_loan_check` semantic facts，以及 primary conflict / loan creation / invalidating action / later carrier use diagnostics。
 
-这些能力说明 Aurex 已经超过“基础表达式语言”。仍需继续收口的是更高阶的抽象边界，例如 `?` 目前已有结构化 Result/Option shape 检查但还没有绑定到未来标准库定义，method receiver 还没有 borrow/lifetime 模型，资源语义已经进入 cleanup lowering 和 drop-glue planning，但用户 destructor syntax/body lowering、partial aggregate rollback codegen 和完整 borrow checker 尚未落地。
+这些能力说明 Aurex 已经超过“基础表达式语言”。仍需继续收口的是更高阶的抽象边界，例如 `?` 目前已有结构化 Result/Option shape 检查但还没有绑定到未来标准库定义，M7a borrow checker 仍保持内部事实与保守语言表面，用户 destructor syntax/body lowering、partial aggregate rollback codegen、完整 Rust-style lifetime surface、raw pointer alias safe proof 和 partial move 尚未落地。
 
 ## 已删除或明确不在 M2 基线的能力
 
@@ -1016,7 +1019,10 @@ let all = bytes[:];
 
 7. safe reference：已补最小 M2 版本
 
-   `&T` / `&mut T`、`&place` / `&mut place`、reference 安全解引用和 `&mut` 可写性检查已落地。当前只做基础类型和值语法，不包含 borrow checker、lifetime、borrowed return 或 alias model；资源语义已完成到 M6-WP7 的分类、whole-local move、cleanup lowering、drop-glue/query/tooling 和 release closure。
+   `&T` / `&mut T`、`&place` / `&mut place`、reference 安全解引用和 `&mut` 可写性检查已落地。M7a 已加入
+   CFG-sensitive local loan checker、borrowed-return `BorrowSummary`、projection-aware conflict、query/tooling
+   projection 和多点 borrow diagnostics；当前仍不暴露完整 Rust-style lifetime surface，不证明 raw pointer alias
+   safe，不实现 partial move / replace / take / swap 的完整 place-level resource semantics。
 
 ### P3：M5 后独立设计流
 

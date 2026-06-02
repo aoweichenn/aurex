@@ -12,6 +12,10 @@
 #include <string>
 #include <vector>
 
+namespace aurex::query {
+struct TypeCheckBodyAuthority;
+} // namespace aurex::query
+
 namespace aurex::sema {
 
 using CNameIdSet = SemaSet<IdentId, IdentIdHash>;
@@ -465,6 +469,7 @@ using TraitObligationList = SemaVector<TraitObligation>;
 using TraitEvidenceList = SemaVector<TraitEvidence>;
 using TraitMethodCallBindingList = SemaVector<TraitMethodCallBinding>;
 using FunctionCallBindingList = SemaVector<FunctionCallBinding>;
+using CallBindingExprIndexMap = SemaMap<base::u32, base::u32>;
 using FunctionBorrowSummaryMap = SemaMap<FunctionLookupKey, FunctionBorrowSummary, FunctionLookupKeyHash>;
 using ParamEnvList = SemaVector<ParamEnvInfo>;
 
@@ -615,6 +620,8 @@ struct BodyLoanConflict {
     base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
     bool diagnostic_emitted = false;
     base::SourceRange range{};
+    base::u32 later_use_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::SourceRange later_use_range{};
 };
 
 struct BodyLoanCheckResult {
@@ -627,6 +634,12 @@ struct BodyLoanCheckResult {
 };
 
 using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, FunctionLookupKeyHash>;
+
+[[nodiscard]] std::string_view body_loan_kind_name(BodyLoanKind kind) noexcept;
+[[nodiscard]] std::string_view body_loan_origin_kind_name(BodyLoanOriginKind kind) noexcept;
+[[nodiscard]] std::string_view body_loan_diagnostic_mode_name(BodyLoanDiagnosticMode mode) noexcept;
+[[nodiscard]] std::string_view body_loan_conflict_kind_name(BodyLoanConflictKind kind) noexcept;
+[[nodiscard]] query::StableFingerprint128 body_loan_check_fingerprint(const BodyLoanCheckResult& result) noexcept;
 
 enum class CoercionKind {
     contextual_integer_literal,
@@ -964,6 +977,8 @@ public:
     TraitEvidenceList trait_evidence;
     TraitMethodCallBindingList trait_method_calls;
     FunctionCallBindingList function_calls;
+    CallBindingExprIndexMap trait_method_call_by_expr;
+    CallBindingExprIndexMap function_call_by_expr;
     FunctionBorrowSummaryMap borrow_summaries;
     BodyFlowGraphMap body_flow_graphs;
     BodyLoanCheckResultMap body_loan_checks;
@@ -1011,6 +1026,11 @@ public:
     [[nodiscard]] TraitEvidence make_trait_evidence() const;
     [[nodiscard]] TraitMethodCallBinding make_trait_method_call_binding() const;
     [[nodiscard]] FunctionCallBinding make_function_call_binding() const;
+    void append_trait_method_call_binding(TraitMethodCallBinding binding);
+    void append_function_call_binding(FunctionCallBinding binding);
+    [[nodiscard]] const TraitMethodCallBinding* trait_method_call_binding_for_expr(
+        syntax::ExprId call_expr) const noexcept;
+    [[nodiscard]] const FunctionCallBinding* function_call_binding_for_expr(syntax::ExprId call_expr) const noexcept;
     [[nodiscard]] ParamEnvInfo make_param_env_info() const;
     [[nodiscard]] GenericTemplateSignatureInfo clone_generic_template_signature_info(
         const GenericTemplateSignatureInfo& other);
@@ -1070,6 +1090,8 @@ private:
 };
 
 [[nodiscard]] std::string dump_checked_module(const CheckedModule& checked);
+void populate_type_check_body_borrow_authority(
+    query::TypeCheckBodyAuthority& authority, const CheckedModule& checked, FunctionLookupKey function);
 [[nodiscard]] std::string struct_display_name(const TypeTable& types, const StructInfo& info);
 [[nodiscard]] std::string enum_display_name(const TypeTable& types, const EnumCaseInfo& info);
 [[nodiscard]] std::string enum_case_display_name(const TypeTable& types, const EnumCaseInfo& info);

@@ -6,26 +6,30 @@ M7 设计研究基线已完成，记录在
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)，
 执行路线记录在 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 路线图](m7-roadmap.md)。
 
-当前实现状态：M7-WP2 Phase 1 已落地 collect-only `BodyFlowGraph` facts，M7-WP3 Phase 2/3 已落地
-diagnostic-shadow + enforced local loan checker，M7-WP4 已落地 `BorrowSummary` 与 direct call binding，M7-WP5
-已补齐 projection/drop/reinit/cleanup conflict matrix。`CheckedModule::body_flow_graphs` 现在按
+当前实现状态：M7a WP2-WP7 已完成实现收口。M7-WP2 Phase 1 已落地 collect-only `BodyFlowGraph` facts，
+M7-WP3 Phase 2/3 已落地 diagnostic-shadow + enforced local loan checker，M7-WP4 已落地
+`BorrowSummary` 与 direct call binding，M7-WP5 已补齐 projection/drop/reinit/cleanup conflict matrix，M7-WP6
+已完成 diagnostics / query / tooling projection，M7-WP7 已完成 release closure。`CheckedModule::body_flow_graphs` 现在按
 `FunctionLookupKey` 暴露函数体 point、edge、place 和 action timeline；`CheckedModule::body_loan_checks`
 保存本地 `Origin` / `Loan` / conflict facts、shadow/enforced mode 和稳定 dump；`CheckedModule::function_calls`
 记录普通函数/泛型函数/方法 direct call binding；`CheckedModule::borrow_summaries` 记录函数级 return origin
 dependency set、unknown/local escape 标志和 stable fingerprint。checker 使用 carrier-local liveness 支持直接本地
 borrow 的 last-use 后写入；projection matrix 支持 same/prefix 冲突、known field disjoint 放宽，index/slice/unknown
 保持保守；整 local assignment 生成 `reinit`，词法 block local cleanup 生成 `cleanup_storage` invalidation。
+`TypeCheckBodyAuthority` 现在混入 borrow summary / body loan check fingerprint、origin/dependency/loan/conflict count
+和 unknown/local-escape/diagnostic-emitted 状态位；CLI incremental-cache 和 IDE snapshot query 都消费同一份 checked
+facts。IDE semantic facts 新增 `borrow_summary` 与 `body_loan_check`，函数 hover 展示 summary dependency；
+enforced diagnostics 现在包含 primary conflict、loan creation、invalidating action 和可定位时的 later carrier use note。
+W7a release 性能收口已完成：普通 `--check` 不长期保留 full body-flow graph，非借用返回函数不扫描完整函数体构建
+borrow summary，direct/trait call binding 使用 expr-id index 查找；release/coverage/query/perf/stress gates 已通过。
 
 当前仍保留 `BorrowEscapeAnalyzer`：WP4 summary 已记录 borrowed-return facts，但旧 borrowed-local escape 诊断仍由
 现有 analyzer 负责。只有在 summary/checker parity 覆盖当前 borrowed-view escape matrix 后，才移除或降级它。
 
-下一实现包是 M7-WP6 diagnostics、query 与 tooling projection：
-
-1. 把 borrow summary / loan conflict facts 接入 query 和 incremental cache result fingerprint。
-2. 丰富 diagnostics：primary conflict、loan creation、later carrier use、invalidating action notes，继续抑制级联。
-3. 给 IDE/LSP 暴露 borrow kind、origin、conflict reason 和 summary dependency，不让 tooling 重跑语义。
-4. 覆盖 stale source/range、summary change invalidation、LSP projection 和 query/cache 复用测试。
-5. 继续保留 M7a 边界：不暴露完整 Rust-style lifetime surface，不把 raw pointer aliasing 当成 safe proof。
+下一实现包不再是 M7a WP6/WP7。M7a 收口后，后续应进入 M7b/M8 设计选择：显式 origin/lifetime surface、
+更细 reborrow/subtyping、method receiver ownership modifiers、trait/generic borrowed-return contract 的公开语法、
+two-phase borrow、unsafe/raw alias model、partial move / replace / take / swap place-level resource semantics 或
+`BorrowEscapeAnalyzer` parity 替换。任何一项都应先做独立设计，不应继续往 M7a 混入新表面。
 
 M6-WP1 已完成三轮设计审视：
 

@@ -205,6 +205,10 @@ inline constexpr std::string_view SEMA_ACTIVE_BORROW_CONFLICT =
 
 inline constexpr std::string_view SEMA_ACTIVE_BORROW_CREATED = "loan is created here";
 
+inline constexpr std::string_view SEMA_ACTIVE_BORROW_INVALIDATING_ACTION = "conflicting access invalidates the loan";
+
+inline constexpr std::string_view SEMA_ACTIVE_BORROW_LATER_CARRIER_USE = "borrow carrier is used later here";
+
 inline constexpr std::string_view SEMA_MOVE_PARTIAL_FIELD_UNSUPPORTED =
     "moving a field out of a move-only value is not supported yet";
 

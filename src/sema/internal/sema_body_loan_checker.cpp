@@ -1,4 +1,5 @@
 #include <aurex/base/integer.hpp>
+#include <aurex/query/stable_hash.hpp>
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
@@ -16,7 +17,9 @@ namespace aurex::sema {
 namespace {
 
 constexpr std::string_view SEMA_BODY_LOAN_ID_CONTEXT = "sema body loan id";
+constexpr std::string_view SEMA_BODY_LOAN_FINGERPRINT_MARKER = "sema.body_loan_check.v1";
 constexpr base::usize SEMA_BODY_LOAN_INITIAL_WORKLIST_CAPACITY = 32;
+constexpr base::usize SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY = 64;
 
 enum class BodyLoanAccessKind : base::u8 {
     read,
@@ -36,6 +39,11 @@ struct BodyLoanActionIndex {
 };
 
 struct BodyLoanDiagnosticSite {
+    base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::SourceRange range{};
+};
+
+struct BodyLoanCarrierUseSite {
     base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
     base::SourceRange range{};
 };
@@ -250,6 +258,29 @@ void append_optional_stmt_id(std::ostringstream& stream, const syntax::StmtId st
 void append_range(std::ostringstream& stream, const base::SourceRange& range)
 {
     stream << range.source.value << ':' << range.begin << ".." << range.end;
+}
+
+void mix_function_key(query::StableHashBuilder& builder, const FunctionLookupKey key) noexcept
+{
+    builder.mix_u32(key.module);
+    builder.mix_u32(key.owner_type);
+    builder.mix_u32(key.name.value);
+}
+
+void mix_origin(query::StableHashBuilder& builder, const BodyLoanOrigin& origin) noexcept
+{
+    builder.mix_u8(static_cast<base::u8>(origin.kind));
+    builder.mix_u32(origin.name_id.value);
+    builder.mix_u32(origin.expr.value);
+}
+
+[[nodiscard]] std::string body_loan_invalidating_action_message(const BodyLoanConflictKind kind)
+{
+    std::string message(SEMA_ACTIVE_BORROW_INVALIDATING_ACTION);
+    message.append(" (");
+    message.append(body_loan_conflict_kind_name(kind));
+    message.push_back(')');
+    return message;
 }
 
 class BodyLoanSolver final {
@@ -663,6 +694,7 @@ private:
         if (!this->seen_conflicts_.insert(key).second) {
             return;
         }
+        const BodyLoanCarrierUseSite later_use = this->find_later_carrier_use(loan_index, action_index, action.point);
         this->result_.conflicts.push_back(BodyLoanConflict{
             .kind = conflict_kind_for_access(access),
             .loan = loan_index,
@@ -671,7 +703,89 @@ private:
             .place = action.place,
             .diagnostic_emitted = false,
             .range = action.range,
+            .later_use_point = later_use.point,
+            .later_use_range = later_use.range,
         });
+    }
+
+    [[nodiscard]] BodyLoanCarrierUseSite find_later_carrier_use(
+        const base::u32 loan_index, const base::u32 action_index, const base::u32 conflict_point) const
+    {
+        if (loan_index >= this->result_.loans.size()) {
+            return {};
+        }
+        const BodyLoan& loan = this->result_.loans[loan_index];
+        if (!syntax::is_valid(loan.carrier_name_id)) {
+            return {};
+        }
+        const bool live_after_conflict = loan_index < this->carrier_live_after_.size()
+            && conflict_point < this->carrier_live_after_[loan_index].size()
+            && this->carrier_live_after_[loan_index][conflict_point];
+        if (!live_after_conflict) {
+            return {};
+        }
+
+        std::vector<bool> visited(this->graph_.points.size(), false);
+        std::vector<base::u32> pending;
+        pending.reserve(SEMA_BODY_LOAN_INITIAL_WORKLIST_CAPACITY);
+        pending.push_back(conflict_point);
+        if (valid_point(this->graph_, conflict_point)) {
+            visited[conflict_point] = true;
+        }
+        while (!pending.empty()) {
+            const base::u32 point = pending.back();
+            pending.pop_back();
+            bool carrier_redefined = false;
+            const std::optional<BodyLoanCarrierUseSite> use = this->find_later_carrier_use_at_point(
+                loan, point, action_index, point == conflict_point, carrier_redefined);
+            if (use.has_value()) {
+                return *use;
+            }
+            if (carrier_redefined || !valid_point(this->graph_, point)) {
+                continue;
+            }
+            for (const base::u32 successor : this->index_.outgoing_points[point]) {
+                if (successor >= visited.size() || visited[successor]) {
+                    continue;
+                }
+                visited[successor] = true;
+                pending.push_back(successor);
+            }
+        }
+        return {};
+    }
+
+    [[nodiscard]] std::optional<BodyLoanCarrierUseSite> find_later_carrier_use_at_point(const BodyLoan& loan,
+        const base::u32 point, const base::u32 action_index, const bool skip_through_action,
+        bool& carrier_redefined) const
+    {
+        carrier_redefined = false;
+        if (!valid_point(this->graph_, point)) {
+            return std::nullopt;
+        }
+        for (const base::u32 candidate_index : this->index_.actions_by_point[point]) {
+            if (skip_through_action && candidate_index <= action_index) {
+                continue;
+            }
+            if (!valid_action(this->graph_, candidate_index)) {
+                continue;
+            }
+            const BodyFlowAction& candidate = this->graph_.actions[candidate_index];
+            if (!this->action_place_has_root(candidate, loan.carrier_name_id)) {
+                continue;
+            }
+            if (action_reads_carrier(candidate, loan.carrier_name_id)) {
+                return BodyLoanCarrierUseSite{
+                    .point = candidate.point,
+                    .range = candidate.range,
+                };
+            }
+            if (action_is_storage_definition(candidate.kind) && candidate.point != loan.carrier_definition_point) {
+                carrier_redefined = true;
+                return std::nullopt;
+            }
+        }
+        return std::nullopt;
     }
 
     [[nodiscard]] bool move_action_consumes_action(const base::u32 action_index) const noexcept
@@ -759,6 +873,45 @@ std::string_view body_loan_conflict_kind_name(const BodyLoanConflictKind kind) n
     return "<invalid>";
 }
 
+query::StableFingerprint128 body_loan_check_fingerprint(const BodyLoanCheckResult& result) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(SEMA_BODY_LOAN_FINGERPRINT_MARKER);
+    mix_function_key(builder, result.function);
+    builder.mix_u8(static_cast<base::u8>(result.diagnostic_mode));
+    builder.mix_bool(result.graph_missing);
+
+    builder.mix_u64(result.origins.size());
+    for (const BodyLoanOrigin& origin : result.origins) {
+        mix_origin(builder, origin);
+    }
+
+    builder.mix_u64(result.loans.size());
+    for (const BodyLoan& loan : result.loans) {
+        builder.mix_u8(static_cast<base::u8>(loan.kind));
+        mix_origin(builder, loan.origin);
+        builder.mix_u32(loan.issued_action);
+        builder.mix_u32(loan.issued_point);
+        builder.mix_u32(loan.place);
+        builder.mix_u32(loan.carrier_name_id.value);
+        builder.mix_u32(loan.carrier_definition_point);
+        builder.mix_u32(loan.enclosing_stmt.value);
+        builder.mix_u32(loan.expr.value);
+    }
+
+    builder.mix_u64(result.conflicts.size());
+    for (const BodyLoanConflict& conflict : result.conflicts) {
+        builder.mix_u8(static_cast<base::u8>(conflict.kind));
+        builder.mix_u32(conflict.loan);
+        builder.mix_u32(conflict.action);
+        builder.mix_u32(conflict.point);
+        builder.mix_u32(conflict.place);
+        builder.mix_bool(conflict.diagnostic_emitted);
+        builder.mix_u32(conflict.later_use_point);
+    }
+    return builder.finish();
+}
+
 std::string dump_body_loan_check_result(const BodyLoanCheckResult& result)
 {
     std::ostringstream stream;
@@ -799,13 +952,161 @@ std::string dump_body_loan_check_result(const BodyLoanCheckResult& result)
                << " action=a" << conflict.action << " point=p" << conflict.point << " place=" << conflict.place
                << " emitted=" << (conflict.diagnostic_emitted ? "true" : "false") << " range=";
         append_range(stream, conflict.range);
+        stream << " later_use=p" << conflict.later_use_point << " range=";
+        append_range(stream, conflict.later_use_range);
         stream << '\n';
     }
+    stream << "fingerprint=" << query::debug_string(body_loan_check_fingerprint(result)) << '\n';
     return stream.str();
 }
 
 SemanticAnalyzerCore::BodyLoanChecker::BodyLoanChecker(SemanticAnalyzerCore& core) noexcept : core_(core)
 {
+}
+
+bool SemanticAnalyzerCore::BodyLoanChecker::type_contains_reference(const TypeHandle type) const
+{
+    if (!is_valid(type)) {
+        return false;
+    }
+    std::vector<TypeHandle> pending;
+    pending.reserve(SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY);
+    std::unordered_set<base::u32> visited;
+    pending.push_back(type);
+    while (!pending.empty()) {
+        const TypeHandle current = pending.back();
+        pending.pop_back();
+        if (!is_valid(current) || current.value >= this->core_.state_.checked.types.size()
+            || !visited.insert(current.value).second) {
+            continue;
+        }
+        const TypeInfo& info = this->core_.state_.checked.types.get(current);
+        switch (info.kind) {
+            case TypeKind::reference:
+                return true;
+            case TypeKind::array:
+                pending.push_back(info.array_element);
+                break;
+            case TypeKind::tuple:
+                pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
+                break;
+            case TypeKind::struct_: {
+                const StructInfo* const structure = this->core_.find_struct(current);
+                if (structure != nullptr) {
+                    for (const StructFieldInfo& field : structure->fields) {
+                        pending.push_back(field.type);
+                    }
+                }
+                break;
+            }
+            case TypeKind::enum_: {
+                const EnumCaseList* const cases = this->core_.find_enum_cases_by_type(current);
+                if (cases != nullptr) {
+                    for (const EnumCaseInfo* const enum_case : *cases) {
+                        if (enum_case != nullptr) {
+                            pending.insert(
+                                pending.end(), enum_case->payload_types.begin(), enum_case->payload_types.end());
+                        }
+                    }
+                }
+                break;
+            }
+            case TypeKind::builtin:
+            case TypeKind::pointer:
+            case TypeKind::slice:
+            case TypeKind::function:
+            case TypeKind::opaque_struct:
+            case TypeKind::generic_param:
+            case TypeKind::associated_projection:
+                break;
+        }
+    }
+    return false;
+}
+
+bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_bind_reference_loan(const syntax::StmtId stmt_id) const
+{
+    if (!valid_stmt(this->core_.ctx_.module, stmt_id)) {
+        return false;
+    }
+    const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
+    switch (stmt.kind) {
+        case syntax::StmtKind::let:
+        case syntax::StmtKind::var:
+            return this->type_contains_reference(this->core_.cached_stmt_local_type(stmt_id))
+                && this->type_contains_reference(this->core_.cached_expr_type(stmt.init));
+        case syntax::StmtKind::assign:
+            return this->type_contains_reference(this->core_.cached_expr_type(stmt.lhs))
+                && this->type_contains_reference(this->core_.cached_expr_type(stmt.rhs));
+        case syntax::StmtKind::if_:
+        case syntax::StmtKind::for_:
+        case syntax::StmtKind::for_range:
+        case syntax::StmtKind::while_:
+        case syntax::StmtKind::break_:
+        case syntax::StmtKind::continue_:
+        case syntax::StmtKind::defer:
+        case syntax::StmtKind::return_:
+        case syntax::StmtKind::expr:
+        case syntax::StmtKind::block:
+            return false;
+    }
+    return false;
+}
+
+bool SemanticAnalyzerCore::BodyLoanChecker::may_need_local_loan_check(const syntax::ItemNode& function) const
+{
+    std::vector<syntax::StmtId> pending;
+    pending.reserve(SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY);
+    pending.push_back(function.body);
+    while (!pending.empty()) {
+        const syntax::StmtId stmt_id = pending.back();
+        pending.pop_back();
+        if (!valid_stmt(this->core_.ctx_.module, stmt_id)) {
+            continue;
+        }
+        if (this->statement_may_bind_reference_loan(stmt_id)) {
+            return true;
+        }
+        const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
+        switch (stmt.kind) {
+            case syntax::StmtKind::if_:
+                pending.push_back(stmt.then_block);
+                pending.push_back(stmt.else_block);
+                pending.push_back(stmt.else_if);
+                break;
+            case syntax::StmtKind::for_:
+                pending.push_back(stmt.for_init);
+                pending.push_back(stmt.for_update);
+                pending.push_back(stmt.body);
+                break;
+            case syntax::StmtKind::for_range:
+            case syntax::StmtKind::while_:
+                pending.push_back(stmt.body);
+                break;
+            case syntax::StmtKind::block:
+                pending.insert(pending.end(), stmt.statements.begin(), stmt.statements.end());
+                break;
+            case syntax::StmtKind::let:
+            case syntax::StmtKind::var:
+            case syntax::StmtKind::assign:
+            case syntax::StmtKind::break_:
+            case syntax::StmtKind::continue_:
+            case syntax::StmtKind::defer:
+            case syntax::StmtKind::return_:
+            case syntax::StmtKind::expr:
+                break;
+        }
+    }
+    return false;
+}
+
+void SemanticAnalyzerCore::BodyLoanChecker::record_empty(
+    const FunctionLookupKey& key, const BodyLoanDiagnosticMode mode)
+{
+    BodyLoanCheckResult result;
+    result.function = key;
+    result.diagnostic_mode = mode;
+    this->core_.state_.checked.body_loan_checks[key] = std::move(result);
 }
 
 void SemanticAnalyzerCore::BodyLoanChecker::check(
@@ -840,6 +1141,12 @@ void SemanticAnalyzerCore::BodyLoanChecker::check(
             this->core_.report_general(conflict.range, std::string(SEMA_ACTIVE_BORROW_CONFLICT));
             this->core_.report_note(
                 loan.range, SemanticDiagnosticKind::general, std::string(SEMA_ACTIVE_BORROW_CREATED));
+            this->core_.report_note(
+                conflict.range, SemanticDiagnosticKind::general, body_loan_invalidating_action_message(conflict.kind));
+            if (valid_point(found->second, conflict.later_use_point)) {
+                this->core_.report_note(conflict.later_use_range, SemanticDiagnosticKind::general,
+                    std::string(SEMA_ACTIVE_BORROW_LATER_CARRIER_USE));
+            }
             conflict.diagnostic_emitted = true;
         }
     }

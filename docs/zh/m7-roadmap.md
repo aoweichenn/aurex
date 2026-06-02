@@ -2,7 +2,7 @@
 
 日期：2026-06-02
 
-状态：M7-WP3 Phase 2/3 local loan checker 已实现。完整设计依据见
+状态：M7-WP4 `BorrowSummary` 与 M7-WP5 projection/drop/reinit/cleanup matrix 已实现。完整设计依据见
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)。
 
 ## 0. M7 总目标
@@ -55,8 +55,8 @@ M7a 不做：
 - Phase 1 已落地 collect-only `BodyFlowGraph` facts：`CheckedModule::body_flow_graphs` 现在按
   `FunctionLookupKey` 暴露 function body 的 point、edge、place 和 action timeline。
 - 新增 `src/sema/internal/sema_body_flow_graph.cpp` / `.hpp`，使用迭代式 task stack 收集 statement /
-  expression entry-exit、顺序点、branch、return、call、defer cleanup、read/write/move-candidate 和
-  shared/mutable borrow facts。
+  expression entry-exit、顺序点、branch、return、call、defer cleanup、read/write/reinit/move-candidate、
+  lexical cleanup-storage 和 shared/mutable borrow facts。
 - `analyze_function_body_with_signature(...)` 在现有 body check、borrow escape 和 move analysis 之后收集 facts；
   当前不新增 diagnostics，不替换 `BorrowEscapeAnalyzer`，不改变 M6 move/resource/cleanup 行为。
 - 白盒测试覆盖 projection-aware `&mut source.field` place、call/return/cleanup facts、稳定 dump，以及完整
@@ -81,8 +81,9 @@ M7a 不做：
   `tools/check_coverage.sh -j4` 通过。
 - Phase 1 已验证：`BodyFlowAnalyzer` 白盒测试覆盖 return、defer cleanup、call、mutable borrow、
   read/move-candidate 和 projection place dump。
-- Phase 2/3 已继续在这些 facts 上落地 local loan checker；更完整的 `?` / break / continue parity matrix、
-  cleanup/drop place invalidation 和跨函数 summary 仍归入后续 WP4-WP7。
+- Phase 2/3 已继续在这些 facts 上落地 local loan checker；WP4/WP5 已补充函数 summary、call binding、
+  reinit/drop/cleanup-storage conflict matrix 和词法 block local cleanup action。更完整的 `?` / break /
+  continue parity matrix 仍归入后续 WP6/WP7。
 
 ## 3. M7-WP3：Place/Origin/Loan 本地检查
 
@@ -94,10 +95,12 @@ M7a 不做：
   read、shared/mutable borrow 的本地冲突会产生 semantic diagnostic，并附 loan creation note。
 - checker 使用 Phase 1 point/edge 做 deterministic worklist；直接本地 carrier loan 使用后向 liveness 支持
   last-use 后写入。
-- projection matrix 已覆盖 same/prefix conflict、known field disjoint、index/slice/unknown 保守冲突。
+- projection matrix 已覆盖 same/prefix conflict、known field disjoint、index/slice/unknown 保守冲突；WP5
+  已把整 local 赋值区分为 `reinit`，并把词法 block local cleanup 转成 `cleanup_storage` invalidation。
 - `move_candidate` 只有在 M6 `OwnedUseMode::owned_consume` 时才作为 move invalidation，避免普通 read/copy
   误报。
-- `BorrowEscapeAnalyzer` 仍保留；WP3 不替代 borrowed-return contract，不生成跨函数 summary。
+- `BorrowEscapeAnalyzer` 仍保留；WP4 已生成 borrowed-return summary facts，但在 parity 覆盖全部旧 escape
+  负例前不降级旧诊断。
 
 目标：
 
@@ -116,12 +119,29 @@ M7a 不做：
 验收：
 
 - 已验证：borrow last-use 后允许 write。
-- 已验证：active shared loan 时 write / mutable reborrow 冲突，active mutable loan 时 read / shared borrow 冲突。
+- 已验证：active shared loan 时 write/reinit/drop/cleanup/mutable reborrow 冲突，active mutable loan 时 read /
+  shared borrow 冲突。
 - 已验证：field projection disjoint 可放宽，same/prefix/unknown/temporary conservative roots 有白盒覆盖。
-- 待 WP6/WP7 收口：cleanup/drop 隐式 action 的 place-level invalidation、drop/reinit parity matrix 和 tooling
-  projection。
+- 已验证：词法 block cleanup-storage 对仍存活 carrier 的本地 loan 产生 cleanup conflict。
+- 待 WP6/WP7 收口：更完整的 early-exit cleanup parity、diagnostics/tooling projection，以及显式 drop 语法或
+  lowering 产生的 source-level drop action。
 
 ## 4. M7-WP4：BorrowSummary 与 Borrowed-Return Contract
+
+当前状态：
+
+- 已新增 `src/sema/internal/sema_borrow_summary.cpp` / `.hpp`，在函数体分析、return type inference、body
+  flow 和 local loan check 之后生成 `CheckedModule::borrow_summaries`。
+- 已新增 `CheckedModule::function_calls` direct call binding；普通函数、泛型函数、普通方法和泛型方法调用会记录
+  `FunctionLookupKey`、return type 和 receiver-argument count，函数值调用保持 conservative unknown。
+- `FunctionBorrowSummary` 记录 return type、parameter/local/temporary origins、return origin dependency set、
+  unknown-return 标志、local/temporary escape 标志和 stable fingerprint。
+- call wrapper 会把 callee summary 的 parameter origin dependency 映射到 caller 实参；callee 缺 summary、
+  raw/unchecked pointer path、callee local/temporary return 都不会被当作安全证明，而是 conservative unknown。
+- generic parameter 与 associated projection 在 M7a 内部按“可能含借用”处理，保证 `fn id[T](x: T) -> T`
+  这类 wrapper 在 `T = &U` 时不会漏掉 parameter-origin dependency。
+- `BorrowEscapeAnalyzer` 暂时继续负责旧 borrowed-local escape 诊断；summary 同步记录 local/temporary escape
+  facts，等 parity 覆盖后再替换。
 
 目标：
 
@@ -140,13 +160,25 @@ M7a 不做：
 
 验收：
 
-- 正例：返回参数派生 `&T` / slice / `str`。
-- 负例：返回 local/temporary 派生 `&T` / slice / `str`。
-- call wrapper、method receiver、block/if/match return 的 origin 传播稳定。
-- branch/match 多参数来源返回能记录 origin set，不被压成单一 origin。
-- summary fingerprint/query key 有白盒测试。
+- 已验证：返回参数派生 `&T` 记录 parameter dependency。
+- 已验证：call wrapper 能通过 direct call binding 传播 callee parameter dependency。
+- 已验证：if branch 多参数来源返回记录 origin set，不被压成单一 origin。
+- 已验证：raw pointer 派生 `str_from_bytes_unchecked` 只记录 unknown，不进入 safe borrowed proof。
+- 已验证：返回 local 派生 borrow 时旧诊断仍触发，summary 记录 local escape fact。
+- 已验证：summary fingerprint 和 stable dump 有白盒测试。
 
 ## 5. M7-WP5：Projection-Aware Conflict
+
+当前状态：
+
+- WP3 已支持 same/prefix conflict、known field disjoint 和 index/slice/unknown conservative roots。
+- WP5 已补充 `BodyFlowActionKind::reinit`、`drop`、`cleanup_storage` 和对应 `BodyLoanConflictKind`。
+- 整 local assignment 生成 `reinit`，field/index/deref assignment 继续生成 `write`，避免 reinit 与 projection write
+  混淆。
+- 词法 block exit 会为直接 local/pattern binding 生成 `cleanup_storage` action；loan checker 用 carrier liveness
+  判断 cleanup 点是否仍有活跃 loan。
+- `drop` 作为 checker matrix action 已支持；当前语言还没有显式 user drop syntax，因此 source-level drop emission
+  仍属于后续语法/lowering 工作。
 
 目标：
 
@@ -164,10 +196,11 @@ M7a 不做：
 
 验收：
 
-- `p.x` 与 `p.y` 可区分。
-- `p.x` 与 `p`、`p.x.y` 与 `p.x` 冲突。
-- `a[i]` 与 `a[j]` M7a 保守冲突，除非后续版本证明常量不同。
-- raw pointer 派生 safe view 绕过必须拒绝。
+- 已验证：`p.x` 与 `p.y` 可区分。
+- 已验证：`p.x` 与 `p`、unknown/temporary conservative roots 冲突。
+- 已验证：`a[i]` / slice / deref M7a 保守冲突，除非后续版本证明常量不同。
+- 已验证：reinit/drop/cleanup action 与 active shared loan 的 conflict matrix。
+- 已验证：raw pointer 派生 safe view 不进入 `BorrowSummary` 的 safe proof。
 
 ## 6. M7-WP6：Diagnostics、Query、Tooling
 

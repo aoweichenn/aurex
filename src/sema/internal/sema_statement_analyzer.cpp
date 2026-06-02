@@ -1423,6 +1423,9 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
         && !this->core_.block_guarantees_return(function.body)) {
         this->core_.report_general(function.range, std::string(SEMA_NOT_ALL_PATHS_RETURN));
     }
+    const auto summary_signature = this->core_.state_.checked.functions.find(key);
+    this->core_.build_borrow_summary(function, key,
+        summary_signature == this->core_.state_.checked.functions.end() ? signature : summary_signature->second);
     state = FunctionBodyState::analyzed;
 }
 

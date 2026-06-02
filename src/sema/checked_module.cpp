@@ -548,6 +548,9 @@ CheckedModule::CheckedModule()
       trait_obligations(make_sema_vector<TraitObligation>(*this->arena_)),
       trait_evidence(make_sema_vector<TraitEvidence>(*this->arena_)),
       trait_method_calls(make_sema_vector<TraitMethodCallBinding>(*this->arena_)),
+      function_calls(make_sema_vector<FunctionCallBinding>(*this->arena_)),
+      borrow_summaries(make_sema_map<FunctionLookupKey, FunctionBorrowSummary, FunctionLookupKeyHash>(
+          *this->arena_, FunctionLookupKeyHash{})),
       body_flow_graphs(make_sema_map<FunctionLookupKey, BodyFlowGraph, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
       body_loan_checks(make_sema_map<FunctionLookupKey, BodyLoanCheckResult, FunctionLookupKeyHash>(
@@ -591,7 +594,8 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       type_aliases(std::move(other.type_aliases)), traits(std::move(other.traits)),
       trait_impls(std::move(other.trait_impls)), trait_predicates(std::move(other.trait_predicates)),
       trait_obligations(std::move(other.trait_obligations)), trait_evidence(std::move(other.trait_evidence)),
-      trait_method_calls(std::move(other.trait_method_calls)), body_flow_graphs(std::move(other.body_flow_graphs)),
+      trait_method_calls(std::move(other.trait_method_calls)), function_calls(std::move(other.function_calls)),
+      borrow_summaries(std::move(other.borrow_summaries)), body_flow_graphs(std::move(other.body_flow_graphs)),
       body_loan_checks(std::move(other.body_loan_checks)), param_envs(std::move(other.param_envs)),
       generic_template_signatures(std::move(other.generic_template_signatures)),
       generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
@@ -656,6 +660,8 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->trait_obligations.swap(other.trait_obligations);
     this->trait_evidence.swap(other.trait_evidence);
     this->trait_method_calls.swap(other.trait_method_calls);
+    this->function_calls.swap(other.function_calls);
+    this->borrow_summaries.swap(other.borrow_summaries);
     this->body_flow_graphs.swap(other.body_flow_graphs);
     this->body_loan_checks.swap(other.body_loan_checks);
     this->param_envs.swap(other.param_envs);
@@ -753,6 +759,16 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->trait_method_calls.reserve(other.trait_method_calls.size());
     for (const TraitMethodCallBinding& binding : other.trait_method_calls) {
         this->trait_method_calls.push_back(this->clone_trait_method_call_binding(binding));
+    }
+    this->function_calls.clear();
+    this->function_calls.reserve(other.function_calls.size());
+    for (const FunctionCallBinding& binding : other.function_calls) {
+        this->function_calls.push_back(this->clone_function_call_binding(binding));
+    }
+    this->borrow_summaries.clear();
+    this->borrow_summaries.reserve(other.borrow_summaries.size());
+    for (const auto& entry : other.borrow_summaries) {
+        this->borrow_summaries.emplace(entry.first, entry.second);
     }
     this->body_flow_graphs.clear();
     this->body_flow_graphs.reserve(other.body_flow_graphs.size());
@@ -929,6 +945,11 @@ TraitEvidence CheckedModule::make_trait_evidence() const
 }
 
 TraitMethodCallBinding CheckedModule::make_trait_method_call_binding() const
+{
+    return {};
+}
+
+FunctionCallBinding CheckedModule::make_function_call_binding() const
 {
     return {};
 }
@@ -1206,6 +1227,11 @@ TraitMethodCallBinding CheckedModule::clone_trait_method_call_binding(const Trai
     TraitMethodCallBinding copy = other;
     copy.method_name = this->intern_text(other.method_name);
     return copy;
+}
+
+FunctionCallBinding CheckedModule::clone_function_call_binding(const FunctionCallBinding& other) const
+{
+    return other;
 }
 
 ParamEnvInfo CheckedModule::clone_param_env_info(const ParamEnvInfo& other)
@@ -1602,6 +1628,16 @@ constexpr base::u32 SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX = 0;
             return true;
         }
     }
+    for (const FunctionCallBinding& binding : checked.function_calls) {
+        if (binding.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
+    for (const auto& entry : checked.borrow_summaries) {
+        if (entry.second.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
     for (const ParamEnvInfo& param_env : checked.param_envs) {
         if (param_env.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
             return true;
@@ -1932,6 +1968,40 @@ std::string dump_checked_module(const CheckedModule& checked)
             out << " requirement=" << binding.requirement_ordinal;
         }
         append_part_origin(out, show_parts, binding.part_index);
+        out << "\n";
+    }
+
+    out << "  function_calls " << checked.function_calls.size() << "\n";
+    for (base::usize index = 0; index < checked.function_calls.size(); ++index) {
+        const FunctionCallBinding& binding = checked.function_calls[index];
+        out << "    function_call #" << index << " expr=e" << binding.call_expr.value << " -> "
+            << binding.function_key.module << ':' << binding.function_key.owner_type << ':';
+        if (syntax::is_valid(binding.function_key.name)) {
+            out << '#' << binding.function_key.name.value;
+        } else {
+            out << '-';
+        }
+        out << " return=" << checked.types.display_name(binding.return_type)
+            << " receiver_args=" << binding.receiver_arg_count;
+        append_part_origin(out, show_parts, binding.part_index);
+        out << "\n";
+    }
+
+    out << "  borrow_summaries " << checked.borrow_summaries.size() << "\n";
+    for (const auto& entry : checked.borrow_summaries) {
+        const FunctionBorrowSummary& summary = entry.second;
+        out << "    borrow_summary " << entry.first.module << ':' << entry.first.owner_type << ':';
+        if (syntax::is_valid(entry.first.name)) {
+            out << '#' << entry.first.name.value;
+        } else {
+            out << '-';
+        }
+        out << " return=" << checked.types.display_name(summary.return_type) << " origins=" << summary.origins.size()
+            << " deps=" << summary.return_origins.size()
+            << " unknown=" << (summary.has_unknown_return_origin ? "true" : "false")
+            << " local_escape=" << (summary.has_local_return_escape ? "true" : "false")
+            << " fingerprint=" << query::debug_string(summary.fingerprint);
+        append_part_origin(out, show_parts, summary.part_index);
         out << "\n";
     }
 

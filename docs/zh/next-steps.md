@@ -7,22 +7,25 @@ M7 设计研究基线已完成，记录在
 执行路线记录在 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 路线图](m7-roadmap.md)。
 
 当前实现状态：M7-WP2 Phase 1 已落地 collect-only `BodyFlowGraph` facts，M7-WP3 Phase 2/3 已落地
-diagnostic-shadow + enforced local loan checker。`CheckedModule::body_flow_graphs` 现在按 `FunctionLookupKey`
-暴露函数体 point、edge、place 和 action timeline；`CheckedModule::body_loan_checks` 保存本地 `Origin` /
-`Loan` / conflict facts、shadow/enforced mode 和稳定 dump。checker 使用 carrier-local liveness 支持直接本地
+diagnostic-shadow + enforced local loan checker，M7-WP4 已落地 `BorrowSummary` 与 direct call binding，M7-WP5
+已补齐 projection/drop/reinit/cleanup conflict matrix。`CheckedModule::body_flow_graphs` 现在按
+`FunctionLookupKey` 暴露函数体 point、edge、place 和 action timeline；`CheckedModule::body_loan_checks`
+保存本地 `Origin` / `Loan` / conflict facts、shadow/enforced mode 和稳定 dump；`CheckedModule::function_calls`
+记录普通函数/泛型函数/方法 direct call binding；`CheckedModule::borrow_summaries` 记录函数级 return origin
+dependency set、unknown/local escape 标志和 stable fingerprint。checker 使用 carrier-local liveness 支持直接本地
 borrow 的 last-use 后写入；projection matrix 支持 same/prefix 冲突、known field disjoint 放宽，index/slice/unknown
-保持保守；enforced diagnostics 已接入函数体分析，并输出 conflict primary diagnostic 与 loan creation note。
+保持保守；整 local assignment 生成 `reinit`，词法 block local cleanup 生成 `cleanup_storage` invalidation。
 
-当前仍保留 `BorrowEscapeAnalyzer`：Phase 2/3 只覆盖本地 loan conflict，不替代 borrowed-return contract，也不生成
-跨函数 summary。
+当前仍保留 `BorrowEscapeAnalyzer`：WP4 summary 已记录 borrowed-return facts，但旧 borrowed-local escape 诊断仍由
+现有 analyzer 负责。只有在 summary/checker parity 覆盖当前 borrowed-view escape matrix 后，才移除或降级它。
 
-下一实现包是 M7-WP4 `BorrowSummary` 与 borrowed-return contract：
+下一实现包是 M7-WP6 diagnostics、query 与 tooling projection：
 
-1. 为当前模块内函数生成 `FunctionBorrowSummary`。
-2. 记录 parameter origin、return origin dependency set、receiver/argument access requirement。
-3. 为 call wrapper、method receiver、block/if/match return 建立 origin 传播。
-4. 对 extern/generic/trait 缺 summary 的 borrowed return 走 conservative unknown 策略。
-5. 在 summary parity 覆盖当前 borrowed-view escape matrix 前，不移除或降级 `BorrowEscapeAnalyzer`。
+1. 把 borrow summary / loan conflict facts 接入 query 和 incremental cache result fingerprint。
+2. 丰富 diagnostics：primary conflict、loan creation、later carrier use、invalidating action notes，继续抑制级联。
+3. 给 IDE/LSP 暴露 borrow kind、origin、conflict reason 和 summary dependency，不让 tooling 重跑语义。
+4. 覆盖 stale source/range、summary change invalidation、LSP projection 和 query/cache 复用测试。
+5. 继续保留 M7a 边界：不暴露完整 Rust-style lifetime surface，不把 raw pointer aliasing 当成 safe proof。
 
 M6-WP1 已完成三轮设计审视：
 

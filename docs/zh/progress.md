@@ -1,9 +1,21 @@
 # 当前进度文档
 
 版本：0.1.4
-阶段：M7-WP3 Phase 2/3 local loan checker 已完成
+阶段：M7-WP4 BorrowSummary 与 M7-WP5 conflict matrix 已完成
 
 ## 总体状态
+
+2026-06-02：M7-WP4 与 M7-WP5 已完成。`CheckedModule` 新增 `function_calls` 和
+`borrow_summaries`，`src/sema/internal/sema_borrow_summary.cpp` / `.hpp` 在 return type inference、body-flow 和
+local loan check 之后生成函数级 `FunctionBorrowSummary`，记录 parameter/local/temporary origins、return origin
+dependency set、unknown-return 标志、local/temporary escape 标志和 stable fingerprint。普通函数、泛型函数、普通方法
+和泛型方法调用会记录 direct call binding，call wrapper 可把 callee parameter dependency 映射到 caller 实参；
+generic parameter 与 associated projection 按可能含借用处理，避免 `T = &U` 的泛型 wrapper 漏掉 parameter-origin
+dependency。函数值调用、callee 缺 summary、raw/unchecked pointer path 和 callee local/temporary return 都走 conservative
+unknown。`BodyFlowGraph` / `BodyLoanChecker` 同步补齐 `reinit`、`drop`、`cleanup_storage` action/conflict matrix：
+整 local assignment 生成 `reinit`，field/index/deref assignment 保持 `write`，词法 block local cleanup 生成
+`cleanup_storage` invalidation，并通过 carrier liveness 检查 cleanup 点是否仍有活跃 loan。`BorrowEscapeAnalyzer`
+继续保留旧 borrowed-local escape 诊断，summary 同步记录 facts，等待后续 parity 后再降级/替换。
 
 2026-06-02：M7-WP3 Phase 2/3 已完成 diagnostic-shadow + enforced local loan checker。`CheckedModule`
 新增 `body_loan_checks`，按 `FunctionLookupKey` 保存本地 `Origin` / `Loan` / conflict facts、shadow/enforced

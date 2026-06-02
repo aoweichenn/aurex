@@ -96,6 +96,7 @@ private:
 
     class BuiltinExpressionAnalyzer;
     class BorrowEscapeAnalyzer;
+    class BorrowSummaryBuilder;
     class BodyFlowAnalyzer;
     class BodyLoanChecker;
     class BodyMoveAnalyzer;
@@ -578,6 +579,8 @@ private:
     void analyze_function_body_with_signature(const syntax::ItemNode& function, const FunctionLookupKey& key,
         const FunctionSignature& signature, FunctionBodyState& state);
     void analyze_borrow_escapes(const syntax::ItemNode& function);
+    void build_borrow_summary(
+        const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
     void analyze_body_moves(const syntax::ItemNode& function, const FunctionSignature& signature);
     void collect_body_flow_graph(const syntax::ItemNode& function, const FunctionLookupKey& key);
     void check_body_loans(const syntax::ItemNode& function, const FunctionLookupKey& key, BodyLoanDiagnosticMode mode);
@@ -680,6 +683,8 @@ private:
         syntax::ExprId expr_id, const ExprView& expr, std::string_view name);
     [[nodiscard]] TypeHandle analyze_explicit_generic_function_call_expr(
         syntax::ExprId expr_id, const ExprView& expr, const ExprView& apply, std::string_view name);
+    void record_function_call_binding(syntax::ExprId call_expr, syntax::ExprId callee_expr,
+        const FunctionSignature& signature, base::u32 receiver_arg_count, const base::SourceRange& range);
     void validate_call_arguments(const ExprView& expr, std::string_view name, std::span<const TypeHandle> param_types,
         base::usize receiver_count, bool is_variadic);
     [[nodiscard]] TypeHandle analyze_try_expr(syntax::ExprId expr_id, const ExprView& expr);

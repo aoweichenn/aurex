@@ -484,6 +484,7 @@ TypeHandle SemanticAnalyzerCore::analyze_explicit_generic_function_call_expr(con
     this->validate_unsafe_call(*signature, callee_range);
     this->record_expr_c_name(expr.callee, signature->c_name);
     this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
+    this->record_function_call_binding(expr_id, expr.callee, *signature, 0, callee_range);
     return this->record_expr_type(expr_id, signature->return_type);
 }
 
@@ -511,6 +512,7 @@ TypeHandle SemanticAnalyzerCore::analyze_explicit_generic_method_call_expr(const
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
         this->validate_call_arguments(expr, name, signature.param_types, receiver_count, signature.is_variadic);
+        this->record_function_call_binding(expr_id, expr.callee, signature, receiver_count, callee.range);
         return this->record_expr_type(expr_id, signature.return_type);
     };
 
@@ -750,6 +752,7 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }
     this->validate_call_arguments(expr, name, signature->param_types, receiver_count, signature->is_variadic);
+    this->record_function_call_binding(expr_id, expr.callee, *signature, receiver_count, callee.range);
     return this->record_expr_type(expr_id, signature->return_type);
 }
 
@@ -788,6 +791,7 @@ TypeHandle SemanticAnalyzerCore::analyze_function_call_expr(const syntax::ExprId
         this->validate_unsafe_call(*signature, callee_range);
         this->record_expr_c_name(expr.callee, signature->c_name);
         this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
+        this->record_function_call_binding(expr_id, expr.callee, *signature, 0, callee_range);
         return this->record_expr_type(expr_id, signature->return_type);
     }
     signature = this->find_function_selector(expr.callee,
@@ -799,7 +803,26 @@ TypeHandle SemanticAnalyzerCore::analyze_function_call_expr(const syntax::ExprId
     this->validate_unsafe_call(*signature, callee_range);
     this->record_expr_c_name(expr.callee, signature->c_name);
     this->validate_call_arguments(expr, name, signature->param_types, 0, signature->is_variadic);
+    this->record_function_call_binding(expr_id, expr.callee, *signature, 0, callee_range);
     return this->record_expr_type(expr_id, signature->return_type);
+}
+
+void SemanticAnalyzerCore::record_function_call_binding(const syntax::ExprId call_expr,
+    const syntax::ExprId callee_expr, const FunctionSignature& signature, const base::u32 receiver_arg_count,
+    const base::SourceRange& range)
+{
+    if (!syntax::is_valid(call_expr) || !sema::is_valid(signature.semantic_key)) {
+        return;
+    }
+    FunctionCallBinding binding = this->state_.checked.make_function_call_binding();
+    binding.call_expr = call_expr;
+    binding.callee_expr = callee_expr;
+    binding.function_key = signature.semantic_key;
+    binding.return_type = signature.return_type;
+    binding.receiver_arg_count = receiver_arg_count;
+    binding.range = range;
+    binding.part_index = this->item_part_index(this->state_.flow.current_item);
+    this->state_.checked.function_calls.push_back(binding);
 }
 
 void SemanticAnalyzerCore::validate_call_arguments(const SemanticAnalyzerCore::ExprView& expr,

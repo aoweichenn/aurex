@@ -11,6 +11,7 @@ add_library(aurex_sema
     src/sema/generic_instance_identity.cpp
     src/sema/checked_module.cpp
     src/sema/internal/name_resolution.cpp
+    src/sema/internal/sema_borrow_summary.cpp
     src/sema/internal/sema_builtin_expression_analyzer.cpp
     src/sema/internal/sema_body_flow_graph.cpp
     src/sema/internal/sema_body_loan_checker.cpp

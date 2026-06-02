@@ -363,6 +363,52 @@ struct TraitMethodCallBinding {
     base::u32 part_index = 0;
 };
 
+struct FunctionCallBinding {
+    syntax::ExprId call_expr = syntax::INVALID_EXPR_ID;
+    syntax::ExprId callee_expr = syntax::INVALID_EXPR_ID;
+    FunctionLookupKey function_key;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
+    base::u32 receiver_arg_count = 0;
+    base::SourceRange range{};
+    base::u32 part_index = 0;
+};
+
+enum class BorrowSummaryOriginKind : base::u8 {
+    none,
+    parameter,
+    local,
+    temporary,
+    unknown,
+};
+
+struct BorrowSummaryOrigin {
+    BorrowSummaryOriginKind kind = BorrowSummaryOriginKind::none;
+    base::u32 param_index = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    IdentId name_id = INVALID_IDENT_ID;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    base::SourceRange range{};
+};
+
+inline constexpr base::u32 SEMA_BORROW_SUMMARY_INVALID_INDEX = static_cast<base::u32>(-1);
+
+struct FunctionBorrowReturnOrigin {
+    base::u32 origin_index = SEMA_BORROW_SUMMARY_INVALID_INDEX;
+    syntax::ExprId return_expr = syntax::INVALID_EXPR_ID;
+    base::SourceRange range{};
+};
+
+struct FunctionBorrowSummary {
+    FunctionLookupKey function;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
+    std::vector<BorrowSummaryOrigin> origins;
+    std::vector<FunctionBorrowReturnOrigin> return_origins;
+    bool return_type_can_contain_borrow = false;
+    bool has_unknown_return_origin = false;
+    bool has_local_return_escape = false;
+    query::StableFingerprint128 fingerprint;
+    base::u32 part_index = 0;
+};
+
 struct ParamEnvInfo {
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
@@ -418,6 +464,8 @@ using TraitPredicateList = SemaVector<TraitPredicate>;
 using TraitObligationList = SemaVector<TraitObligation>;
 using TraitEvidenceList = SemaVector<TraitEvidence>;
 using TraitMethodCallBindingList = SemaVector<TraitMethodCallBinding>;
+using FunctionCallBindingList = SemaVector<FunctionCallBinding>;
+using FunctionBorrowSummaryMap = SemaMap<FunctionLookupKey, FunctionBorrowSummary, FunctionLookupKeyHash>;
 using ParamEnvList = SemaVector<ParamEnvInfo>;
 
 inline constexpr base::u32 SEMA_BODY_FLOW_INVALID_INDEX = static_cast<base::u32>(-1);
@@ -436,13 +484,16 @@ enum class BodyFlowPointKind : base::u8 {
 enum class BodyFlowActionKind : base::u8 {
     read,
     write,
+    reinit,
     move_candidate,
+    drop,
     borrow_shared,
     borrow_mutable,
     call,
     return_,
     branch,
     cleanup_scope,
+    cleanup_storage,
 };
 
 enum class BodyFlowPlaceRootKind : base::u8 {
@@ -528,9 +579,12 @@ enum class BodyLoanDiagnosticMode : base::u8 {
 enum class BodyLoanConflictKind : base::u8 {
     read,
     write,
+    reinit,
     move,
+    drop,
     shared_borrow,
     mutable_borrow,
+    cleanup,
 };
 
 struct BodyLoanOrigin {
@@ -909,6 +963,8 @@ public:
     TraitObligationList trait_obligations;
     TraitEvidenceList trait_evidence;
     TraitMethodCallBindingList trait_method_calls;
+    FunctionCallBindingList function_calls;
+    FunctionBorrowSummaryMap borrow_summaries;
     BodyFlowGraphMap body_flow_graphs;
     BodyLoanCheckResultMap body_loan_checks;
     ParamEnvList param_envs;
@@ -954,6 +1010,7 @@ public:
     [[nodiscard]] TraitObligation make_trait_obligation() const;
     [[nodiscard]] TraitEvidence make_trait_evidence() const;
     [[nodiscard]] TraitMethodCallBinding make_trait_method_call_binding() const;
+    [[nodiscard]] FunctionCallBinding make_function_call_binding() const;
     [[nodiscard]] ParamEnvInfo make_param_env_info() const;
     [[nodiscard]] GenericTemplateSignatureInfo clone_generic_template_signature_info(
         const GenericTemplateSignatureInfo& other);
@@ -976,6 +1033,7 @@ public:
     [[nodiscard]] TraitObligation clone_trait_obligation(const TraitObligation& other) const;
     [[nodiscard]] TraitEvidence clone_trait_evidence(const TraitEvidence& other) const;
     [[nodiscard]] TraitMethodCallBinding clone_trait_method_call_binding(const TraitMethodCallBinding& other);
+    [[nodiscard]] FunctionCallBinding clone_function_call_binding(const FunctionCallBinding& other) const;
     [[nodiscard]] ParamEnvInfo clone_param_env_info(const ParamEnvInfo& other);
     [[nodiscard]] GenericSideTableLayout clone_generic_side_table_layout(const GenericSideTableLayout& other) const;
     [[nodiscard]] GenericEnumInstanceInfo clone_generic_enum_instance(const GenericEnumInstanceInfo& other) const;

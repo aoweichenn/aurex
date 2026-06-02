@@ -23,6 +23,7 @@
 #include <sema/internal/sema_body_flow_graph.hpp>
 #include <sema/internal/sema_body_loan_checker.hpp>
 #include <sema/internal/sema_body_move_analysis.hpp>
+#include <sema/internal/sema_borrow_summary.hpp>
 #include <sema/internal/sema_builtin_expression_analyzer.hpp>
 #include <sema/internal/sema_control_expression_analyzer.hpp>
 #include <sema/internal/sema_core.hpp>
@@ -279,6 +280,16 @@ private:
 {
     syntax::TypeNode node;
     node.kind = syntax::TypeKind::reference;
+    node.pointee = pointee;
+    node.pointer_mutability = mutability;
+    return node;
+}
+
+[[nodiscard]] syntax::TypeNode pointer_node(
+    const TypeId pointee, const syntax::PointerMutability mutability = syntax::PointerMutability::const_)
+{
+    syntax::TypeNode node;
+    node.kind = syntax::TypeKind::pointer;
     node.pointee = pointee;
     node.pointer_mutability = mutability;
     return node;
@@ -725,6 +736,22 @@ void prepare_expr_storage(sema::SemanticAnalyzerCore& analyzer, const syntax::As
     stmt.lhs = lhs;
     stmt.rhs = rhs;
     return module.push_stmt(stmt);
+}
+
+[[nodiscard]] syntax::StmtId push_return_stmt(syntax::AstModule& module, const ExprId value)
+{
+    syntax::StmtNode stmt;
+    stmt.kind = syntax::StmtKind::return_;
+    stmt.return_value = value;
+    return module.push_stmt(stmt);
+}
+
+[[nodiscard]] syntax::ParamDecl push_param_decl(syntax::AstModule& module, const std::string_view name)
+{
+    syntax::ParamDecl param;
+    param.name = name;
+    param.name_id = module.intern_identifier(name);
+    return param;
 }
 
 } // namespace
@@ -3205,13 +3232,16 @@ TEST(CoreUnit, SemanticWhiteBoxBodyFlowCoversEdgeFactsAndKindNames)
         "<invalid>");
     EXPECT_EQ(sema::body_flow_action_kind_name(sema::BodyFlowActionKind::read), "read");
     EXPECT_EQ(sema::body_flow_action_kind_name(sema::BodyFlowActionKind::write), "write");
+    EXPECT_EQ(sema::body_flow_action_kind_name(sema::BodyFlowActionKind::reinit), "reinit");
     EXPECT_EQ(sema::body_flow_action_kind_name(sema::BodyFlowActionKind::move_candidate), "move_candidate");
+    EXPECT_EQ(sema::body_flow_action_kind_name(sema::BodyFlowActionKind::drop), "drop");
     EXPECT_EQ(sema::body_flow_action_kind_name(sema::BodyFlowActionKind::borrow_shared), "borrow_shared");
     EXPECT_EQ(sema::body_flow_action_kind_name(sema::BodyFlowActionKind::borrow_mutable), "borrow_mutable");
     EXPECT_EQ(sema::body_flow_action_kind_name(sema::BodyFlowActionKind::call), "call");
     EXPECT_EQ(sema::body_flow_action_kind_name(sema::BodyFlowActionKind::return_), "return");
     EXPECT_EQ(sema::body_flow_action_kind_name(sema::BodyFlowActionKind::branch), "branch");
     EXPECT_EQ(sema::body_flow_action_kind_name(sema::BodyFlowActionKind::cleanup_scope), "cleanup_scope");
+    EXPECT_EQ(sema::body_flow_action_kind_name(sema::BodyFlowActionKind::cleanup_storage), "cleanup_storage");
     EXPECT_EQ(
         sema::body_flow_action_kind_name(static_cast<sema::BodyFlowActionKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE)),
         "<invalid>");
@@ -3510,9 +3540,12 @@ TEST(CoreUnit, SemanticWhiteBoxBodyLoanKindNamesAndMissingGraphFacts)
         "<invalid>");
     EXPECT_EQ(sema::body_loan_conflict_kind_name(sema::BodyLoanConflictKind::read), "read");
     EXPECT_EQ(sema::body_loan_conflict_kind_name(sema::BodyLoanConflictKind::write), "write");
+    EXPECT_EQ(sema::body_loan_conflict_kind_name(sema::BodyLoanConflictKind::reinit), "reinit");
     EXPECT_EQ(sema::body_loan_conflict_kind_name(sema::BodyLoanConflictKind::move), "move");
+    EXPECT_EQ(sema::body_loan_conflict_kind_name(sema::BodyLoanConflictKind::drop), "drop");
     EXPECT_EQ(sema::body_loan_conflict_kind_name(sema::BodyLoanConflictKind::shared_borrow), "shared_borrow");
     EXPECT_EQ(sema::body_loan_conflict_kind_name(sema::BodyLoanConflictKind::mutable_borrow), "mutable_borrow");
+    EXPECT_EQ(sema::body_loan_conflict_kind_name(sema::BodyLoanConflictKind::cleanup), "cleanup");
     EXPECT_EQ(sema::body_loan_conflict_kind_name(
                   static_cast<sema::BodyLoanConflictKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE)),
         "<invalid>");
@@ -3585,14 +3618,14 @@ TEST(CoreUnit, SemanticWhiteBoxBodyLoanShadowRecordsActiveSharedWriteConflict)
     EXPECT_EQ(result.loans.front().kind, sema::BodyLoanKind::shared);
     EXPECT_TRUE(syntax::is_valid(result.loans.front().carrier_name_id));
     ASSERT_FALSE(result.conflicts.empty());
-    EXPECT_EQ(result.conflicts.front().kind, sema::BodyLoanConflictKind::write);
+    EXPECT_EQ(result.conflicts.front().kind, sema::BodyLoanConflictKind::reinit);
     EXPECT_FALSE(result.conflicts.front().diagnostic_emitted);
     EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
 
     const std::string dump = sema::dump_body_loan_check_result(result);
     EXPECT_NE(dump.find("mode=shadow"), std::string::npos);
     EXPECT_NE(dump.find("shared"), std::string::npos);
-    EXPECT_NE(dump.find("write"), std::string::npos);
+    EXPECT_NE(dump.find("reinit"), std::string::npos);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxBodyLoanAllowsLastUseAndDisjointFieldWrite)
@@ -3768,6 +3801,21 @@ TEST(CoreUnit, SemanticWhiteBoxBodyLoanManualGraphCoversConservativeRoots)
         .place = 1,
     });
     graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::reinit,
+        .point = 0,
+        .place = 0,
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::drop,
+        .point = 0,
+        .place = 0,
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::cleanup_storage,
+        .point = 0,
+        .place = 0,
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
         .kind = sema::BodyFlowActionKind::borrow_mutable,
         .point = 0,
         .place = 2,
@@ -3804,7 +3852,65 @@ TEST(CoreUnit, SemanticWhiteBoxBodyLoanManualGraphCoversConservativeRoots)
         return conflict.kind == sema::BodyLoanConflictKind::write;
     }));
     EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
+        return conflict.kind == sema::BodyLoanConflictKind::reinit;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
+        return conflict.kind == sema::BodyLoanConflictKind::drop;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
+        return conflict.kind == sema::BodyLoanConflictKind::cleanup;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
         return conflict.kind == sema::BodyLoanConflictKind::read;
+    }));
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBodyLoanRecordsLexicalCleanupStorageConflict)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId ref_i32_type = module.push_type(reference_node(i32_type));
+    const syntax::StmtId carrier_decl =
+        push_local_stmt(module, syntax::StmtKind::var, SEMA_TEST_BODY_LOAN_REF_NAME, ref_i32_type);
+    const syntax::StmtId local_decl =
+        push_local_stmt(module, syntax::StmtKind::var, SEMA_TEST_BODY_LOAN_VALUE_NAME, i32_type, push_integer(module));
+    const ExprId borrow_local =
+        push_unary(module, syntax::UnaryOp::address_of, push_name(module, SEMA_TEST_BODY_LOAN_VALUE_NAME));
+    const syntax::StmtId assign_carrier =
+        push_assign_stmt(module, push_name(module, SEMA_TEST_BODY_LOAN_REF_NAME), borrow_local);
+    const syntax::StmtId inner_block = push_block(module, {local_decl, assign_carrier});
+    syntax::StmtNode carrier_use_stmt;
+    carrier_use_stmt.kind = syntax::StmtKind::expr;
+    carrier_use_stmt.init = push_name(module, SEMA_TEST_BODY_LOAN_REF_NAME);
+    const syntax::StmtId carrier_use = module.push_stmt(carrier_use_stmt);
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "cleanup_escape";
+    function.body = push_block(module, {carrier_decl, inner_block, carrier_use});
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    const sema::FunctionLookupKey key =
+        semantic_function_key(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "cleanup_escape");
+    sema::SemanticAnalyzerCore::BodyFlowAnalyzer(analyzer).collect(function, key);
+    ASSERT_TRUE(analyzer.state_.checked.body_flow_graphs.contains(key));
+    const sema::BodyFlowGraph& graph = analyzer.state_.checked.body_flow_graphs.at(key);
+    EXPECT_TRUE(std::ranges::any_of(graph.actions, [](const sema::BodyFlowAction& action) {
+        return action.kind == sema::BodyFlowActionKind::cleanup_storage;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(graph.actions, [](const sema::BodyFlowAction& action) {
+        return action.kind == sema::BodyFlowActionKind::reinit;
+    }));
+
+    sema::SemanticAnalyzerCore::BodyLoanChecker(analyzer).check(function, key, sema::BodyLoanDiagnosticMode::shadow);
+    ASSERT_TRUE(analyzer.state_.checked.body_loan_checks.contains(key));
+    const sema::BodyLoanCheckResult& result = analyzer.state_.checked.body_loan_checks.at(key);
+    EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
+        return conflict.kind == sema::BodyLoanConflictKind::cleanup;
     }));
     EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
 }
@@ -3941,6 +4047,854 @@ TEST(CoreUnit, SemanticWhiteBoxAnalyzeEnforcesBodyLoanConflictDiagnostics)
     EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
         return conflict.diagnostic_emitted;
     }));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryRecordsParameterReturnDependency)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId ref_i32_type = module.push_type(reference_node(i32_type));
+    const IdentId function_id = module.intern_identifier("id_ref");
+    const ExprId value = push_name(module, "value");
+    const syntax::StmtId body = push_block(module, {push_return_stmt(module, value)});
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "id_ref";
+    function.name_id = function_id;
+    function.params = {syntax::ParamDecl{"value", ref_i32_type, {}}};
+    function.return_type = ref_i32_type;
+    function.body = body;
+    const syntax::ItemId item = module.push_item(function);
+    module.item_modules[item.value] = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const sema::FunctionLookupKey key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        function_id,
+    };
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+
+    const sema::CheckedModule& checked = checked_result.value();
+    ASSERT_TRUE(checked.borrow_summaries.contains(key));
+    const sema::FunctionBorrowSummary& summary = checked.borrow_summaries.at(key);
+    EXPECT_TRUE(summary.return_type_can_contain_borrow);
+    EXPECT_FALSE(summary.has_unknown_return_origin);
+    EXPECT_FALSE(summary.has_local_return_escape);
+    ASSERT_EQ(summary.return_origins.size(), 1U);
+    ASSERT_LT(summary.return_origins.front().origin_index, summary.origins.size());
+    const sema::BorrowSummaryOrigin& origin = summary.origins[summary.return_origins.front().origin_index];
+    EXPECT_EQ(origin.kind, sema::BorrowSummaryOriginKind::parameter);
+    EXPECT_EQ(origin.param_index, 0U);
+    EXPECT_NE(summary.fingerprint.byte_count, 0U);
+
+    const std::string dump = sema::dump_function_borrow_summary(summary);
+    EXPECT_NE(dump.find("parameter"), std::string::npos);
+    EXPECT_NE(dump.find("unknown=false"), std::string::npos);
+    EXPECT_EQ(sema::borrow_summary_origin_kind_name(sema::BorrowSummaryOriginKind::parameter), "parameter");
+    EXPECT_EQ(sema::borrow_summary_origin_kind_name(
+                  static_cast<sema::BorrowSummaryOriginKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE)),
+        "<invalid>");
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryPropagatesDirectCallWrapper)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId ref_i32_type = module.push_type(reference_node(i32_type));
+    const IdentId id_ref_id = module.intern_identifier("id_ref");
+    const IdentId wrap_id = module.intern_identifier("wrap_ref");
+
+    syntax::ItemNode id_function;
+    id_function.kind = syntax::ItemKind::fn_decl;
+    id_function.name = "id_ref";
+    id_function.name_id = id_ref_id;
+    id_function.params = {syntax::ParamDecl{"value", ref_i32_type, {}}};
+    id_function.return_type = ref_i32_type;
+    id_function.body = push_block(module, {push_return_stmt(module, push_name(module, "value"))});
+    const syntax::ItemId id_item = module.push_item(id_function);
+    module.item_modules[id_item.value] = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const ExprId call = push_call(module, push_name(module, "id_ref"), {push_name(module, "input")});
+    syntax::ItemNode wrapper;
+    wrapper.kind = syntax::ItemKind::fn_decl;
+    wrapper.name = "wrap_ref";
+    wrapper.name_id = wrap_id;
+    wrapper.params = {syntax::ParamDecl{"input", ref_i32_type, {}}};
+    wrapper.return_type = ref_i32_type;
+    wrapper.body = push_block(module, {push_return_stmt(module, call)});
+    const syntax::ItemId wrapper_item = module.push_item(wrapper);
+    module.item_modules[wrapper_item.value] = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const sema::FunctionLookupKey id_key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        id_ref_id,
+    };
+    const sema::FunctionLookupKey wrapper_key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        wrap_id,
+    };
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+
+    const sema::CheckedModule& checked = checked_result.value();
+    EXPECT_TRUE(checked.borrow_summaries.contains(id_key));
+    ASSERT_TRUE(checked.borrow_summaries.contains(wrapper_key));
+    EXPECT_TRUE(std::ranges::any_of(checked.function_calls, [id_key](const sema::FunctionCallBinding& binding) {
+        return binding.function_key == id_key;
+    }));
+    const sema::FunctionBorrowSummary& summary = checked.borrow_summaries.at(wrapper_key);
+    ASSERT_EQ(summary.return_origins.size(), 1U);
+    ASSERT_LT(summary.return_origins.front().origin_index, summary.origins.size());
+    const sema::BorrowSummaryOrigin& origin = summary.origins[summary.return_origins.front().origin_index];
+    EXPECT_EQ(origin.kind, sema::BorrowSummaryOriginKind::parameter);
+    EXPECT_EQ(origin.param_index, 0U);
+    EXPECT_FALSE(summary.has_unknown_return_origin);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryPropagatesGenericParamWrapper)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const TypeId generic_type = module.push_type(named_node("T"));
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId ref_i32_type = module.push_type(reference_node(i32_type));
+    const IdentId id_ref_id = module.intern_identifier("id_generic_ref");
+    const IdentId wrap_id = module.intern_identifier("wrap_generic_ref");
+
+    syntax::ItemNode id_function;
+    id_function.kind = syntax::ItemKind::fn_decl;
+    id_function.name = "id_generic_ref";
+    id_function.name_id = id_ref_id;
+    id_function.generic_params = {syntax::GenericParamDecl{"T", {}}};
+    id_function.params = {syntax::ParamDecl{"value", generic_type, {}}};
+    id_function.return_type = generic_type;
+    id_function.body = push_block(module, {push_return_stmt(module, push_name(module, "value"))});
+    const syntax::ItemId id_item = module.push_item(id_function);
+    module.item_modules[id_item.value] = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const ExprId generic_callee = push_generic_apply(module, push_name(module, "id_generic_ref"), {ref_i32_type});
+    const ExprId call = push_call(module, generic_callee, {push_name(module, "input")});
+    syntax::ItemNode wrapper;
+    wrapper.kind = syntax::ItemKind::fn_decl;
+    wrapper.name = "wrap_generic_ref";
+    wrapper.name_id = wrap_id;
+    wrapper.params = {syntax::ParamDecl{"input", ref_i32_type, {}}};
+    wrapper.return_type = ref_i32_type;
+    wrapper.body = push_block(module, {push_return_stmt(module, call)});
+    const syntax::ItemId wrapper_item = module.push_item(wrapper);
+    module.item_modules[wrapper_item.value] = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const sema::FunctionLookupKey id_key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        id_ref_id,
+    };
+    const sema::FunctionLookupKey wrapper_key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        wrap_id,
+    };
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+
+    const sema::CheckedModule& checked = checked_result.value();
+    ASSERT_TRUE(checked.borrow_summaries.contains(id_key));
+    const sema::FunctionBorrowSummary& generic_summary = checked.borrow_summaries.at(id_key);
+    EXPECT_TRUE(generic_summary.return_type_can_contain_borrow);
+    ASSERT_EQ(generic_summary.return_origins.size(), 1U);
+    ASSERT_LT(generic_summary.return_origins.front().origin_index, generic_summary.origins.size());
+    EXPECT_EQ(generic_summary.origins[generic_summary.return_origins.front().origin_index].kind,
+        sema::BorrowSummaryOriginKind::parameter);
+
+    ASSERT_TRUE(checked.borrow_summaries.contains(wrapper_key));
+    const sema::FunctionBorrowSummary& wrapper_summary = checked.borrow_summaries.at(wrapper_key);
+    ASSERT_EQ(wrapper_summary.return_origins.size(), 1U);
+    ASSERT_LT(wrapper_summary.return_origins.front().origin_index, wrapper_summary.origins.size());
+    const sema::BorrowSummaryOrigin& origin =
+        wrapper_summary.origins[wrapper_summary.return_origins.front().origin_index];
+    EXPECT_EQ(origin.kind, sema::BorrowSummaryOriginKind::parameter);
+    EXPECT_EQ(origin.param_index, 0U);
+    EXPECT_FALSE(wrapper_summary.has_unknown_return_origin);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryTreatsAssociatedProjectionAsBorrowCarrier)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const IdentId function_id = module.intern_identifier("associated_projection_ref");
+    const ExprId value = push_name(module, "value");
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "associated_projection_ref";
+    function.name_id = function_id;
+    function.params = {push_param_decl(module, "value")};
+    function.body = push_block(module, {push_return_stmt(module, value)});
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle generic =
+        types.generic_param(sema::generic_param_identity_from_text("borrow_summary.Assoc.T"), "T");
+    const TypeHandle associated_projection = types.associated_projection(generic, query::MemberKey{}, "Item");
+
+    analyzer.state_.checked.expr_types.assign(analyzer.ctx_.module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.prepare_analysis_only_storage(analyzer.ctx_.module.exprs.size());
+    static_cast<void>(analyzer.record_expr_type(value, associated_projection));
+
+    const sema::FunctionLookupKey key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        function_id,
+    };
+    FunctionSignature signature;
+    signature.name = analyzer.state_.checked.intern_text("associated_projection_ref");
+    signature.name_id = function_id;
+    signature.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    signature.semantic_key = key;
+    signature.param_types = {associated_projection};
+    signature.return_type = associated_projection;
+
+    sema::SemanticAnalyzerCore::BorrowSummaryBuilder(analyzer).build(function, key, signature);
+    ASSERT_TRUE(analyzer.state_.checked.borrow_summaries.contains(key));
+    const sema::FunctionBorrowSummary& summary = analyzer.state_.checked.borrow_summaries.at(key);
+    EXPECT_TRUE(summary.return_type_can_contain_borrow);
+    ASSERT_EQ(summary.return_origins.size(), 1U);
+    ASSERT_LT(summary.return_origins.front().origin_index, summary.origins.size());
+    const sema::BorrowSummaryOrigin& origin = summary.origins[summary.return_origins.front().origin_index];
+    EXPECT_EQ(origin.kind, sema::BorrowSummaryOriginKind::parameter);
+    EXPECT_EQ(origin.param_index, 0U);
+    EXPECT_FALSE(summary.has_unknown_return_origin);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryRecordsMultiBranchAndRawUnknown)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const TypeId bool_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::bool_));
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId u8_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::u8));
+    const TypeId usize_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::usize));
+    const TypeId ref_i32_type = module.push_type(reference_node(i32_type));
+    const TypeId const_u8_ptr_type = module.push_type(pointer_node(u8_type));
+    const TypeId str_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::str));
+
+    const IdentId choose_id = module.intern_identifier("choose_ref");
+    syntax::StmtNode if_stmt;
+    if_stmt.kind = syntax::StmtKind::if_;
+    if_stmt.condition = push_name(module, "flag");
+    if_stmt.then_block = push_block(module, {push_return_stmt(module, push_name(module, "a"))});
+    if_stmt.else_block = push_block(module, {push_return_stmt(module, push_name(module, "b"))});
+    const syntax::StmtId if_stmt_id = module.push_stmt(if_stmt);
+    syntax::ItemNode choose;
+    choose.kind = syntax::ItemKind::fn_decl;
+    choose.name = "choose_ref";
+    choose.name_id = choose_id;
+    choose.params = {
+        syntax::ParamDecl{"a", ref_i32_type, {}},
+        syntax::ParamDecl{"b", ref_i32_type, {}},
+        syntax::ParamDecl{"flag", bool_type, {}},
+    };
+    choose.return_type = ref_i32_type;
+    choose.body = push_block(module, {if_stmt_id});
+    const syntax::ItemId choose_item = module.push_item(choose);
+    module.item_modules[choose_item.value] = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const IdentId raw_id = module.intern_identifier("raw_str");
+    const ExprId raw_call = module.push_call_expr(syntax::ExprKind::str_from_bytes_unchecked, {},
+        syntax::CallExprPayload{syntax::INVALID_EXPR_ID, {push_name(module, "data"), push_name(module, "len")}});
+    syntax::ItemNode raw_function;
+    raw_function.kind = syntax::ItemKind::fn_decl;
+    raw_function.name = "raw_str";
+    raw_function.name_id = raw_id;
+    raw_function.params = {
+        syntax::ParamDecl{"data", const_u8_ptr_type, {}},
+        syntax::ParamDecl{"len", usize_type, {}},
+    };
+    raw_function.return_type = str_type;
+    raw_function.body = push_block(module, {push_return_stmt(module, raw_call)});
+    raw_function.is_unsafe = true;
+    const syntax::ItemId raw_item = module.push_item(raw_function);
+    module.item_modules[raw_item.value] = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const sema::FunctionLookupKey choose_key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        choose_id,
+    };
+    const sema::FunctionLookupKey raw_key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        raw_id,
+    };
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    ASSERT_TRUE(checked_result) << checked_result.error().message;
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+
+    const sema::CheckedModule& checked = checked_result.value();
+    ASSERT_TRUE(checked.borrow_summaries.contains(choose_key));
+    const sema::FunctionBorrowSummary& choose_summary = checked.borrow_summaries.at(choose_key);
+    ASSERT_EQ(choose_summary.return_origins.size(), 2U);
+    std::vector<base::u32> params;
+    for (const sema::FunctionBorrowReturnOrigin& dependency : choose_summary.return_origins) {
+        ASSERT_LT(dependency.origin_index, choose_summary.origins.size());
+        params.push_back(choose_summary.origins[dependency.origin_index].param_index);
+    }
+    std::ranges::sort(params);
+    EXPECT_EQ(params, (std::vector<base::u32>{0U, 1U}));
+
+    ASSERT_TRUE(checked.borrow_summaries.contains(raw_key));
+    const sema::FunctionBorrowSummary& raw_summary = checked.borrow_summaries.at(raw_key);
+    EXPECT_TRUE(raw_summary.has_unknown_return_origin);
+    EXPECT_TRUE(raw_summary.return_origins.empty());
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryRecordsLocalEscapeFacts)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const TypeId ref_i32_type = module.push_type(reference_node(i32_type));
+    const IdentId function_id = module.intern_identifier("leak_ref");
+    const syntax::StmtId local_stmt =
+        push_local_stmt(module, syntax::StmtKind::var, "local", i32_type, push_integer(module));
+    const ExprId borrow_local = push_unary(module, syntax::UnaryOp::address_of, push_name(module, "local"));
+    const syntax::StmtId body = push_block(module, {local_stmt, push_return_stmt(module, borrow_local)});
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "leak_ref";
+    function.name_id = function_id;
+    function.return_type = ref_i32_type;
+    function.body = body;
+    const syntax::ItemId item = module.push_item(function);
+    module.item_modules[item.value] = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+
+    const sema::FunctionLookupKey key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        function_id,
+    };
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    auto checked_result = analyzer.analyze();
+    EXPECT_FALSE(checked_result);
+    const std::string messages = diagnostic_messages(diagnostics);
+    EXPECT_NE(messages.find(sema::SEMA_BORROWED_LOCAL_ESCAPE), std::string::npos);
+
+    ASSERT_TRUE(analyzer.state_.checked.borrow_summaries.contains(key));
+    const sema::FunctionBorrowSummary& summary = analyzer.state_.checked.borrow_summaries.at(key);
+    EXPECT_TRUE(summary.has_local_return_escape);
+    ASSERT_EQ(summary.return_origins.size(), 1U);
+    ASSERT_LT(summary.return_origins.front().origin_index, summary.origins.size());
+    EXPECT_EQ(summary.origins[summary.return_origins.front().origin_index].kind, sema::BorrowSummaryOriginKind::local);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryCoversPatternProjectionAndDumpEdges)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    syntax::PatternNode left_pattern;
+    left_pattern.kind = syntax::PatternKind::binding;
+    left_pattern.binding_name = "left";
+    const syntax::PatternId left_pattern_id = module.push_pattern(left_pattern);
+
+    syntax::PatternNode right_pattern;
+    right_pattern.kind = syntax::PatternKind::binding;
+    right_pattern.binding_name = "right";
+    const syntax::PatternId right_pattern_id = module.push_pattern(right_pattern);
+
+    syntax::PatternNode tuple_pattern;
+    tuple_pattern.kind = syntax::PatternKind::tuple;
+    tuple_pattern.elements = {left_pattern_id, right_pattern_id};
+    const syntax::PatternId tuple_pattern_id = module.push_pattern(tuple_pattern);
+
+    const ExprId tuple_left = push_name(module, "a");
+    const ExprId tuple_right = push_name(module, "b");
+    const ExprId tuple_source = module.push_tuple_expr({}, std::vector<ExprId>{tuple_left, tuple_right});
+    syntax::StmtNode tuple_decl;
+    tuple_decl.kind = syntax::StmtKind::let;
+    tuple_decl.pattern = tuple_pattern_id;
+    tuple_decl.init = tuple_source;
+    const syntax::StmtId tuple_decl_id = module.push_stmt(tuple_decl);
+
+    const ExprId right_return = push_name(module, "right");
+    const syntax::StmtId right_return_id = push_return_stmt(module, right_return);
+
+    const syntax::StmtId holder_decl =
+        push_local_stmt(module, syntax::StmtKind::let, "holder", syntax::INVALID_TYPE_ID);
+    const ExprId holder_name = push_name(module, "holder");
+    const ExprId holder_field = push_field(module, holder_name, SEMA_TEST_BODY_FLOW_FIELD_NAME);
+    const ExprId borrowed_holder_field = push_unary(module, syntax::UnaryOp::address_of, holder_field);
+    const syntax::StmtId holder_return_id = push_return_stmt(module, borrowed_holder_field);
+
+    const ExprId array_name = push_name(module, "arr");
+    const ExprId array_slice = module.push_slice_expr(
+        {}, syntax::SliceExprPayload{array_name, syntax::INVALID_EXPR_ID, syntax::INVALID_EXPR_ID});
+    const ExprId borrowed_slice = push_unary(module, syntax::UnaryOp::address_of, array_slice);
+    const syntax::StmtId slice_return_id = push_return_stmt(module, borrowed_slice);
+
+    const ExprId raw_name = push_name(module, "raw");
+    const ExprId dereferenced_raw = push_unary(module, syntax::UnaryOp::dereference, raw_name);
+    const ExprId borrowed_raw = push_unary(module, syntax::UnaryOp::address_of, dereferenced_raw);
+    const syntax::StmtId raw_return_id = push_return_stmt(module, borrowed_raw);
+
+    const ExprId temporary_left = push_name(module, "a");
+    const ExprId temporary_right = push_name(module, "b");
+    const ExprId temporary_tuple = module.push_tuple_expr({}, std::vector<ExprId>{temporary_left, temporary_right});
+    const ExprId borrowed_temporary = push_unary(module, syntax::UnaryOp::address_of, temporary_tuple);
+    const syntax::StmtId temporary_return_id = push_return_stmt(module, borrowed_temporary);
+
+    const syntax::StmtId body = push_block(module,
+        {tuple_decl_id, right_return_id, holder_decl, holder_return_id, slice_return_id, raw_return_id,
+            temporary_return_id});
+    const IdentId function_id = module.intern_identifier("borrow_summary_edges");
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "borrow_summary_edges";
+    function.name_id = function_id;
+    function.params = {
+        push_param_decl(module, "a"),
+        push_param_decl(module, "b"),
+        push_param_decl(module, "arr"),
+        push_param_decl(module, "raw"),
+    };
+    function.body = body;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle ref_i32 = types.reference(PointerMutability::const_, i32);
+    const TypeHandle pointer_i32 = types.pointer(PointerMutability::const_, i32);
+    const TypeHandle array_i32 = types.array(SEMA_TEST_SMALL_ARRAY_COUNT, i32);
+    const TypeHandle slice_i32 = types.slice(PointerMutability::const_, i32);
+    const TypeHandle tuple_refs = types.tuple({ref_i32, ref_i32});
+
+    analyzer.state_.checked.expr_types.assign(analyzer.ctx_.module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.prepare_analysis_only_storage(analyzer.ctx_.module.exprs.size());
+    analyzer.state_.checked.stmt_local_types.assign(analyzer.ctx_.module.stmts.size(), INVALID_TYPE_HANDLE);
+    static_cast<void>(analyzer.record_expr_type(tuple_left, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(tuple_right, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(tuple_source, tuple_refs));
+    static_cast<void>(analyzer.record_expr_type(right_return, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(holder_name, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(holder_field, i32));
+    static_cast<void>(analyzer.record_expr_type(borrowed_holder_field, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(array_name, array_i32));
+    static_cast<void>(analyzer.record_expr_type(array_slice, slice_i32));
+    static_cast<void>(analyzer.record_expr_type(borrowed_slice, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(raw_name, pointer_i32));
+    static_cast<void>(analyzer.record_expr_type(dereferenced_raw, i32));
+    static_cast<void>(analyzer.record_expr_type(borrowed_raw, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(temporary_left, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(temporary_right, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(temporary_tuple, tuple_refs));
+    static_cast<void>(analyzer.record_expr_type(borrowed_temporary, ref_i32));
+    analyzer.record_stmt_local_type(tuple_decl_id, tuple_refs);
+    analyzer.record_stmt_local_type(holder_decl, ref_i32);
+
+    const sema::FunctionLookupKey key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        function_id,
+    };
+    FunctionSignature signature;
+    signature.name = analyzer.state_.checked.intern_text("borrow_summary_edges");
+    signature.name_id = function_id;
+    signature.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    signature.semantic_key = key;
+    signature.param_types = {ref_i32, ref_i32, array_i32, pointer_i32};
+    signature.return_type = ref_i32;
+
+    sema::SemanticAnalyzerCore::BorrowSummaryBuilder(analyzer).build(function, key, signature);
+    ASSERT_TRUE(analyzer.state_.checked.borrow_summaries.contains(key));
+    const sema::FunctionBorrowSummary& summary = analyzer.state_.checked.borrow_summaries.at(key);
+    EXPECT_TRUE(summary.has_unknown_return_origin);
+    EXPECT_TRUE(summary.has_local_return_escape);
+    EXPECT_TRUE(std::ranges::any_of(summary.return_origins, [&summary](const sema::FunctionBorrowReturnOrigin& origin) {
+        return origin.origin_index < summary.origins.size()
+            && summary.origins[origin.origin_index].kind == sema::BorrowSummaryOriginKind::parameter
+            && summary.origins[origin.origin_index].param_index == 1U;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(summary.return_origins, [&summary](const sema::FunctionBorrowReturnOrigin& origin) {
+        return origin.origin_index < summary.origins.size()
+            && summary.origins[origin.origin_index].kind == sema::BorrowSummaryOriginKind::parameter
+            && summary.origins[origin.origin_index].param_index == 2U;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(summary.return_origins, [&summary](const sema::FunctionBorrowReturnOrigin& origin) {
+        return origin.origin_index < summary.origins.size()
+            && summary.origins[origin.origin_index].kind == sema::BorrowSummaryOriginKind::temporary;
+    }));
+
+    sema::FunctionBorrowSummary dump_summary;
+    dump_summary.return_type = i32;
+    dump_summary.has_unknown_return_origin = true;
+    dump_summary.has_local_return_escape = true;
+    dump_summary.origins = {
+        sema::BorrowSummaryOrigin{.kind = sema::BorrowSummaryOriginKind::none},
+        sema::BorrowSummaryOrigin{.kind = sema::BorrowSummaryOriginKind::local},
+        sema::BorrowSummaryOrigin{.kind = sema::BorrowSummaryOriginKind::temporary},
+        sema::BorrowSummaryOrigin{.kind = sema::BorrowSummaryOriginKind::unknown},
+    };
+    dump_summary.return_origins = {sema::FunctionBorrowReturnOrigin{.origin_index = 2U}};
+    const std::string dump = sema::dump_function_borrow_summary(dump_summary);
+    EXPECT_NE(dump.find("can_borrow=false"), std::string::npos);
+    EXPECT_NE(dump.find("unknown=true"), std::string::npos);
+    EXPECT_NE(dump.find("local_escape=true"), std::string::npos);
+    EXPECT_NE(dump.find("none"), std::string::npos);
+    EXPECT_NE(dump.find("local"), std::string::npos);
+    EXPECT_NE(dump.find("temporary"), std::string::npos);
+    EXPECT_NE(dump.find("unknown"), std::string::npos);
+    EXPECT_EQ(sema::borrow_summary_origin_kind_name(sema::BorrowSummaryOriginKind::none), "none");
+    EXPECT_EQ(sema::borrow_summary_origin_kind_name(sema::BorrowSummaryOriginKind::local), "local");
+    EXPECT_EQ(sema::borrow_summary_origin_kind_name(sema::BorrowSummaryOriginKind::temporary), "temporary");
+    EXPECT_EQ(sema::borrow_summary_origin_kind_name(sema::BorrowSummaryOriginKind::unknown), "unknown");
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryCoversTraitAndConservativeCallEdges)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const ExprId receiver_for_trait = push_name(module, "receiver");
+    const ExprId trait_callee = push_field(module, receiver_for_trait, "borrow");
+    const ExprId trait_call = push_call(module, trait_callee);
+    const syntax::StmtId trait_return = push_return_stmt(module, trait_call);
+
+    const ExprId receiver_for_missing_trait = push_name(module, "receiver");
+    const ExprId missing_trait_callee = push_field(module, receiver_for_missing_trait, "missing_borrow");
+    const ExprId missing_trait_call = push_call(module, missing_trait_callee);
+    const syntax::StmtId missing_trait_return = push_return_stmt(module, missing_trait_call);
+
+    const ExprId missing_trait_value_arg = push_name(module, "receiver");
+    const ExprId missing_trait_value_callee = push_name(module, "missing_trait_value");
+    const ExprId missing_trait_value_call = push_call(module, missing_trait_value_callee, {missing_trait_value_arg});
+    const syntax::StmtId missing_trait_value_return = push_return_stmt(module, missing_trait_value_call);
+
+    const ExprId direct_missing_arg_callee = push_name(module, "takes_ref");
+    const ExprId direct_missing_arg_call = push_call(module, direct_missing_arg_callee);
+    const syntax::StmtId direct_missing_arg_return = push_return_stmt(module, direct_missing_arg_call);
+
+    const ExprId direct_local_callee = push_name(module, "returns_local");
+    const ExprId direct_local_call = push_call(module, direct_local_callee, {push_name(module, "receiver")});
+    const syntax::StmtId direct_local_return = push_return_stmt(module, direct_local_call);
+
+    const ExprId direct_bad_index_callee = push_name(module, "bad_index");
+    const ExprId direct_bad_index_call = push_call(module, direct_bad_index_callee, {push_name(module, "receiver")});
+    const syntax::StmtId direct_bad_index_return = push_return_stmt(module, direct_bad_index_call);
+
+    const ExprId direct_stale_callee = push_name(module, "stale_nonborrow");
+    const ExprId direct_stale_call = push_call(module, direct_stale_callee, {push_name(module, "receiver")});
+    const syntax::StmtId direct_stale_return = push_return_stmt(module, direct_stale_call);
+
+    const syntax::StmtId body = push_block(module,
+        {trait_return, missing_trait_return, missing_trait_value_return, direct_missing_arg_return, direct_local_return,
+            direct_bad_index_return, direct_stale_return});
+    const IdentId function_id = module.intern_identifier("borrow_summary_calls");
+    const IdentId trait_target_id = module.intern_identifier("trait_target");
+    const IdentId missing_trait_target_id = module.intern_identifier("missing_trait_target");
+    const IdentId missing_trait_value_target_id = module.intern_identifier("missing_trait_value_target");
+    const IdentId direct_param_target_id = module.intern_identifier("direct_param_target");
+    const IdentId direct_local_target_id = module.intern_identifier("direct_local_target");
+    const IdentId direct_bad_index_target_id = module.intern_identifier("direct_bad_index_target");
+    const IdentId direct_stale_target_id = module.intern_identifier("direct_stale_target");
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "borrow_summary_calls";
+    function.name_id = function_id;
+    function.params = {push_param_decl(module, "receiver")};
+    function.body = body;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle ref_i32 = types.reference(PointerMutability::const_, i32);
+
+    analyzer.state_.checked.expr_types.assign(analyzer.ctx_.module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.prepare_analysis_only_storage(analyzer.ctx_.module.exprs.size());
+    analyzer.state_.checked.stmt_local_types.assign(analyzer.ctx_.module.stmts.size(), INVALID_TYPE_HANDLE);
+    static_cast<void>(analyzer.record_expr_type(receiver_for_trait, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(trait_callee, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(trait_call, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(receiver_for_missing_trait, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(missing_trait_callee, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(missing_trait_call, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(missing_trait_value_arg, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(missing_trait_value_callee, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(missing_trait_value_call, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(direct_missing_arg_callee, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(direct_missing_arg_call, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(direct_local_callee, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(direct_local_call, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(direct_bad_index_callee, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(direct_bad_index_call, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(direct_stale_callee, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(direct_stale_call, ref_i32));
+
+    const sema::FunctionLookupKey trait_target{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        trait_target_id,
+    };
+    const sema::FunctionLookupKey missing_trait_target{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        missing_trait_target_id,
+    };
+    const sema::FunctionLookupKey missing_trait_value_target{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        missing_trait_value_target_id,
+    };
+    const sema::FunctionLookupKey direct_param_target{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        direct_param_target_id,
+    };
+    const sema::FunctionLookupKey direct_local_target{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        direct_local_target_id,
+    };
+    const sema::FunctionLookupKey direct_bad_index_target{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        direct_bad_index_target_id,
+    };
+    const sema::FunctionLookupKey direct_stale_target{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        direct_stale_target_id,
+    };
+
+    auto parameter_summary = [&](const sema::FunctionLookupKey key) {
+        sema::FunctionBorrowSummary summary;
+        summary.function = key;
+        summary.return_type = ref_i32;
+        summary.return_type_can_contain_borrow = true;
+        summary.origins.push_back(sema::BorrowSummaryOrigin{
+            .kind = sema::BorrowSummaryOriginKind::parameter,
+            .param_index = 0U,
+            .name_id = analyzer.ctx_.module.intern_identifier("callee_param"),
+        });
+        summary.return_origins.push_back(sema::FunctionBorrowReturnOrigin{.origin_index = 0U});
+        return summary;
+    };
+    analyzer.state_.checked.borrow_summaries[trait_target] = parameter_summary(trait_target);
+    analyzer.state_.checked.borrow_summaries[direct_param_target] = parameter_summary(direct_param_target);
+
+    sema::FunctionBorrowSummary local_summary;
+    local_summary.function = direct_local_target;
+    local_summary.return_type = ref_i32;
+    local_summary.return_type_can_contain_borrow = true;
+    local_summary.origins.push_back(sema::BorrowSummaryOrigin{.kind = sema::BorrowSummaryOriginKind::local});
+    local_summary.return_origins.push_back(sema::FunctionBorrowReturnOrigin{.origin_index = 0U});
+    analyzer.state_.checked.borrow_summaries[direct_local_target] = std::move(local_summary);
+
+    sema::FunctionBorrowSummary bad_index_summary;
+    bad_index_summary.function = direct_bad_index_target;
+    bad_index_summary.return_type = ref_i32;
+    bad_index_summary.return_type_can_contain_borrow = true;
+    bad_index_summary.return_origins.push_back(sema::FunctionBorrowReturnOrigin{.origin_index = 7U});
+    analyzer.state_.checked.borrow_summaries[direct_bad_index_target] = std::move(bad_index_summary);
+
+    sema::TraitMethodCallBinding trait_binding;
+    trait_binding.call_expr = trait_call;
+    trait_binding.callee_expr = trait_callee;
+    trait_binding.function_key = trait_target;
+    trait_binding.receiver_type = ref_i32;
+    trait_binding.return_type = ref_i32;
+    analyzer.state_.checked.trait_method_calls.push_back(trait_binding);
+
+    sema::TraitMethodCallBinding missing_trait_binding;
+    missing_trait_binding.call_expr = missing_trait_call;
+    missing_trait_binding.callee_expr = missing_trait_callee;
+    missing_trait_binding.function_key = missing_trait_target;
+    missing_trait_binding.receiver_type = ref_i32;
+    missing_trait_binding.return_type = ref_i32;
+    analyzer.state_.checked.trait_method_calls.push_back(missing_trait_binding);
+
+    sema::TraitMethodCallBinding missing_trait_value_binding;
+    missing_trait_value_binding.call_expr = missing_trait_value_call;
+    missing_trait_value_binding.callee_expr = missing_trait_value_callee;
+    missing_trait_value_binding.function_key = missing_trait_value_target;
+    missing_trait_value_binding.receiver_type = INVALID_TYPE_HANDLE;
+    missing_trait_value_binding.return_type = i32;
+    analyzer.state_.checked.trait_method_calls.push_back(missing_trait_value_binding);
+    analyzer.state_.checked.function_calls.push_back(sema::FunctionCallBinding{
+        .call_expr = direct_missing_arg_call,
+        .callee_expr = direct_missing_arg_callee,
+        .function_key = direct_param_target,
+        .return_type = ref_i32,
+    });
+    analyzer.state_.checked.function_calls.push_back(sema::FunctionCallBinding{
+        .call_expr = direct_local_call,
+        .callee_expr = direct_local_callee,
+        .function_key = direct_local_target,
+        .return_type = ref_i32,
+    });
+    analyzer.state_.checked.function_calls.push_back(sema::FunctionCallBinding{
+        .call_expr = direct_bad_index_call,
+        .callee_expr = direct_bad_index_callee,
+        .function_key = direct_bad_index_target,
+        .return_type = ref_i32,
+    });
+    analyzer.state_.checked.function_calls.push_back(sema::FunctionCallBinding{
+        .call_expr = direct_stale_call,
+        .callee_expr = direct_stale_callee,
+        .function_key = direct_stale_target,
+        .return_type = i32,
+    });
+
+    const sema::FunctionLookupKey key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        function_id,
+    };
+    FunctionSignature signature;
+    signature.name = analyzer.state_.checked.intern_text("borrow_summary_calls");
+    signature.name_id = function_id;
+    signature.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    signature.semantic_key = key;
+    signature.param_types = {ref_i32};
+    signature.return_type = ref_i32;
+
+    sema::SemanticAnalyzerCore::BorrowSummaryBuilder(analyzer).build(function, key, signature);
+    ASSERT_TRUE(analyzer.state_.checked.borrow_summaries.contains(key));
+    const sema::FunctionBorrowSummary& summary = analyzer.state_.checked.borrow_summaries.at(key);
+    EXPECT_TRUE(summary.has_unknown_return_origin);
+    EXPECT_TRUE(std::ranges::any_of(summary.return_origins, [&summary](const sema::FunctionBorrowReturnOrigin& origin) {
+        return origin.origin_index < summary.origins.size()
+            && summary.origins[origin.origin_index].kind == sema::BorrowSummaryOriginKind::parameter
+            && summary.origins[origin.origin_index].param_index == 0U;
+    }));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryCoversPatternFallbackEdges)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    syntax::PatternNode struct_binding;
+    struct_binding.kind = syntax::PatternKind::binding;
+    struct_binding.binding_name = "field_value";
+    const syntax::PatternId struct_binding_id = module.push_pattern(struct_binding);
+
+    syntax::PatternNode struct_pattern;
+    struct_pattern.kind = syntax::PatternKind::struct_;
+    struct_pattern.struct_name = "MissingStruct";
+    struct_pattern.field_patterns = {syntax::FieldPattern{"wanted", struct_binding_id, {}}};
+    const syntax::PatternId struct_pattern_id = module.push_pattern(struct_pattern);
+
+    syntax::StructLiteralExprPayload struct_payload;
+    struct_payload.name = "MissingStruct";
+    struct_payload.field_inits = {syntax::FieldInit{"other", push_name(module, "source"), {}}};
+    const ExprId struct_source = module.push_struct_literal_expr({}, std::move(struct_payload));
+    syntax::StmtNode struct_decl;
+    struct_decl.kind = syntax::StmtKind::let;
+    struct_decl.pattern = struct_pattern_id;
+    struct_decl.init = struct_source;
+    const syntax::StmtId struct_decl_id = module.push_stmt(struct_decl);
+
+    syntax::PatternNode missing_enum_binding;
+    missing_enum_binding.kind = syntax::PatternKind::binding;
+    missing_enum_binding.binding_name = "missing_payload";
+    const syntax::PatternId missing_enum_binding_id = module.push_pattern(missing_enum_binding);
+
+    syntax::PatternNode missing_enum_pattern;
+    missing_enum_pattern.kind = syntax::PatternKind::enum_case;
+    missing_enum_pattern.case_name = "missing";
+    missing_enum_pattern.payload_patterns = {missing_enum_binding_id};
+    const syntax::PatternId missing_enum_pattern_id = module.push_pattern(missing_enum_pattern);
+    syntax::StmtNode missing_enum_decl;
+    missing_enum_decl.kind = syntax::StmtKind::let;
+    missing_enum_decl.pattern = missing_enum_pattern_id;
+    missing_enum_decl.init = push_name(module, "missing_enum_value");
+    const syntax::StmtId missing_enum_decl_id = module.push_stmt(missing_enum_decl);
+
+    syntax::PatternNode short_enum_binding;
+    short_enum_binding.kind = syntax::PatternKind::binding;
+    short_enum_binding.binding_name = "short_payload";
+    const syntax::PatternId short_enum_binding_id = module.push_pattern(short_enum_binding);
+
+    syntax::PatternNode short_enum_pattern;
+    short_enum_pattern.kind = syntax::PatternKind::enum_case;
+    short_enum_pattern.case_name = "some";
+    short_enum_pattern.payload_patterns = {short_enum_binding_id};
+    const syntax::PatternId short_enum_pattern_id = module.push_pattern(short_enum_pattern);
+    syntax::StmtNode short_enum_decl;
+    short_enum_decl.kind = syntax::StmtKind::let;
+    short_enum_decl.pattern = short_enum_pattern_id;
+    short_enum_decl.init = push_name(module, "short_enum_value");
+    const syntax::StmtId short_enum_decl_id = module.push_stmt(short_enum_decl);
+
+    const syntax::StmtId body = push_block(module, {struct_decl_id, missing_enum_decl_id, short_enum_decl_id});
+    const IdentId function_id = module.intern_identifier("borrow_summary_pattern_fallbacks");
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "borrow_summary_pattern_fallbacks";
+    function.name_id = function_id;
+    function.body = body;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle void_type = types.builtin(BuiltinType::void_);
+    const TypeHandle enum_type = types.named_enum("body_loans.ShortEnum", "ShortEnum");
+    static_cast<void>(add_enum_case(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "ShortEnum_some", "some",
+        enum_type, INVALID_TYPE_HANDLE, {}));
+
+    analyzer.state_.checked.expr_types.assign(analyzer.ctx_.module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.prepare_analysis_only_storage(analyzer.ctx_.module.exprs.size());
+    analyzer.state_.checked.stmt_local_types.assign(analyzer.ctx_.module.stmts.size(), INVALID_TYPE_HANDLE);
+    analyzer.record_stmt_local_type(struct_decl_id, INVALID_TYPE_HANDLE);
+    analyzer.record_stmt_local_type(missing_enum_decl_id, INVALID_TYPE_HANDLE);
+    analyzer.record_stmt_local_type(short_enum_decl_id, enum_type);
+
+    const sema::FunctionLookupKey key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        function_id,
+    };
+    FunctionSignature signature;
+    signature.name = analyzer.state_.checked.intern_text("borrow_summary_pattern_fallbacks");
+    signature.name_id = function_id;
+    signature.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    signature.semantic_key = key;
+    signature.return_type = void_type;
+
+    sema::SemanticAnalyzerCore::BorrowSummaryBuilder(analyzer).build(function, key, signature);
+    ASSERT_TRUE(analyzer.state_.checked.borrow_summaries.contains(key));
+    const sema::FunctionBorrowSummary& summary = analyzer.state_.checked.borrow_summaries.at(key);
+    EXPECT_FALSE(summary.return_type_can_contain_borrow);
+    EXPECT_TRUE(summary.return_origins.empty());
+    EXPECT_FALSE(summary.has_unknown_return_origin);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxGenericInstancesUseLocalDenseSideTables)

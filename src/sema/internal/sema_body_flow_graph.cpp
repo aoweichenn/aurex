@@ -42,6 +42,12 @@ struct BodyFlowExpressionStep {
     BodyFlowExprContext context = BodyFlowExprContext::value;
 };
 
+struct BodyFlowPatternCleanupFrame {
+    syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+    base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
+    syntax::StmtId stmt = syntax::INVALID_STMT_ID;
+};
+
 [[nodiscard]] bool valid_stmt(const syntax::AstModule& module, const syntax::StmtId stmt) noexcept
 {
     return syntax::is_valid(stmt) && stmt.value < module.stmts.size();
@@ -50,6 +56,11 @@ struct BodyFlowExpressionStep {
 [[nodiscard]] bool valid_expr(const syntax::AstModule& module, const syntax::ExprId expr) noexcept
 {
     return syntax::is_valid(expr) && expr.value < module.exprs.size();
+}
+
+[[nodiscard]] bool valid_pattern(const syntax::AstModule& module, const syntax::PatternId pattern) noexcept
+{
+    return syntax::is_valid(pattern) && pattern.value < module.patterns.size();
 }
 
 [[nodiscard]] base::SourceRange stmt_range(const syntax::AstModule& module, const syntax::StmtId stmt) noexcept
@@ -190,6 +201,20 @@ private:
         this->add_action(kind, point, place, stmt, expr, expr_range(this->module_, expr));
     }
 
+    void add_local_storage_action(const BodyFlowActionKind kind, const base::u32 point, const syntax::StmtId stmt,
+        const IdentId name_id, const base::SourceRange& range)
+    {
+        if (!syntax::is_valid(name_id)) {
+            return;
+        }
+        BodyFlowPlace place;
+        place.root_kind = BodyFlowPlaceRootKind::local;
+        place.root_name_id = name_id;
+        place.range = range;
+        const base::u32 place_id = this->add_place(std::move(place));
+        this->add_action(kind, point, place_id, stmt, syntax::INVALID_EXPR_ID, range);
+    }
+
     void push_statement(const syntax::StmtId stmt, const base::u32 start, const base::u32 continuation)
     {
         if (!valid_stmt(this->module_, stmt)) {
@@ -326,6 +351,7 @@ private:
             case syntax::StmtKind::block:
                 this->add_point_action(
                     BodyFlowActionKind::cleanup_scope, exit, task.stmt, syntax::INVALID_EXPR_ID, range);
+                this->add_block_cleanup_storage_actions(stmt, task.stmt, exit);
                 this->push_statement_sequence(stmt.statements, entry, exit);
                 break;
         }
@@ -335,12 +361,7 @@ private:
         const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit)
     {
         if (syntax::is_valid(stmt.name_id)) {
-            BodyFlowPlace place;
-            place.root_kind = BodyFlowPlaceRootKind::local;
-            place.root_name_id = stmt.name_id;
-            place.range = stmt.range;
-            const base::u32 place_id = this->add_place(std::move(place));
-            this->add_action(BodyFlowActionKind::write, exit, place_id, stmt_id, syntax::INVALID_EXPR_ID, stmt.range);
+            this->add_local_storage_action(BodyFlowActionKind::write, exit, stmt_id, stmt.name_id, stmt.range);
         }
         if (syntax::is_valid(stmt.init)) {
             this->push_expression(stmt.init, entry, exit, BodyFlowExprContext::value);
@@ -357,9 +378,84 @@ private:
         this->push_expression(stmt.lhs, entry, lhs_done, BodyFlowExprContext::place_observe);
         this->push_expression(stmt.rhs, lhs_done, rhs_done, BodyFlowExprContext::value);
         if (valid_expr(this->module_, stmt.lhs)) {
-            this->add_place_action(BodyFlowActionKind::write, exit, stmt_id, stmt.lhs);
+            const BodyFlowActionKind write_kind =
+                this->expr_is_direct_local_name(stmt.lhs) ? BodyFlowActionKind::reinit : BodyFlowActionKind::write;
+            this->add_place_action(write_kind, exit, stmt_id, stmt.lhs);
         }
         this->add_edge(rhs_done, exit);
+    }
+
+    void add_block_cleanup_storage_actions(
+        const syntax::StmtNode& block, const syntax::StmtId block_stmt, const base::u32 cleanup_point)
+    {
+        for (const syntax::StmtId stmt_id : block.statements) {
+            if (!valid_stmt(this->module_, stmt_id)) {
+                continue;
+            }
+            const syntax::StmtNode stmt = this->module_.stmts[stmt_id.value];
+            if (stmt.kind != syntax::StmtKind::let && stmt.kind != syntax::StmtKind::var) {
+                continue;
+            }
+            if (syntax::is_valid(stmt.pattern)) {
+                this->add_pattern_cleanup_storage_actions(stmt.pattern, cleanup_point, stmt_id);
+                continue;
+            }
+            this->add_local_storage_action(
+                BodyFlowActionKind::cleanup_storage, cleanup_point, block_stmt, stmt.name_id, stmt.range);
+        }
+    }
+
+    void add_pattern_cleanup_storage_actions(
+        const syntax::PatternId pattern, const base::u32 cleanup_point, const syntax::StmtId stmt_id)
+    {
+        std::vector<BodyFlowPatternCleanupFrame> pending;
+        pending.push_back(BodyFlowPatternCleanupFrame{
+            .pattern = pattern,
+            .point = cleanup_point,
+            .stmt = stmt_id,
+        });
+        while (!pending.empty()) {
+            const BodyFlowPatternCleanupFrame frame = pending.back();
+            pending.pop_back();
+            if (!valid_pattern(this->module_, frame.pattern)) {
+                continue;
+            }
+            const syntax::PatternNode* const node = this->module_.patterns.ptr(frame.pattern.value);
+            if (node == nullptr) {
+                continue;
+            }
+            switch (node->kind) {
+                case syntax::PatternKind::binding:
+                    this->add_local_storage_action(BodyFlowActionKind::cleanup_storage, frame.point, frame.stmt,
+                        node->binding_name_id, node->range);
+                    break;
+                case syntax::PatternKind::tuple:
+                case syntax::PatternKind::slice:
+                    for (const syntax::PatternId element : node->elements) {
+                        pending.push_back(BodyFlowPatternCleanupFrame{element, frame.point, frame.stmt});
+                    }
+                    break;
+                case syntax::PatternKind::struct_:
+                    for (const syntax::FieldPattern& field : node->field_patterns) {
+                        pending.push_back(BodyFlowPatternCleanupFrame{field.pattern, frame.point, frame.stmt});
+                    }
+                    break;
+                case syntax::PatternKind::enum_case:
+                    for (const syntax::PatternId payload : node->payload_patterns) {
+                        pending.push_back(BodyFlowPatternCleanupFrame{payload, frame.point, frame.stmt});
+                    }
+                    break;
+                case syntax::PatternKind::or_pattern:
+                    for (const syntax::PatternId alternative : node->alternatives) {
+                        pending.push_back(BodyFlowPatternCleanupFrame{alternative, frame.point, frame.stmt});
+                    }
+                    break;
+                case syntax::PatternKind::wildcard:
+                case syntax::PatternKind::literal:
+                case syntax::PatternKind::const_:
+                    break;
+            }
+        }
     }
 
     void process_if_statement(
@@ -790,6 +886,15 @@ private:
         return place;
     }
 
+    [[nodiscard]] bool expr_is_direct_local_name(const syntax::ExprId expr) const noexcept
+    {
+        if (!valid_expr(this->module_, expr) || this->module_.exprs.kind(expr.value) != syntax::ExprKind::name) {
+            return false;
+        }
+        const syntax::NameExprPayload* const name = this->module_.exprs.name_payload(expr.value);
+        return name != nullptr && name->scope_name.empty();
+    }
+
     void finish_name_place(
         const syntax::ExprId expr, BodyFlowPlace& place, std::vector<BodyFlowPlaceProjection>& reversed_projections)
     {
@@ -927,8 +1032,12 @@ std::string_view body_flow_action_kind_name(const BodyFlowActionKind kind) noexc
             return "read";
         case BodyFlowActionKind::write:
             return "write";
+        case BodyFlowActionKind::reinit:
+            return "reinit";
         case BodyFlowActionKind::move_candidate:
             return "move_candidate";
+        case BodyFlowActionKind::drop:
+            return "drop";
         case BodyFlowActionKind::borrow_shared:
             return "borrow_shared";
         case BodyFlowActionKind::borrow_mutable:
@@ -941,6 +1050,8 @@ std::string_view body_flow_action_kind_name(const BodyFlowActionKind kind) noexc
             return "branch";
         case BodyFlowActionKind::cleanup_scope:
             return "cleanup_scope";
+        case BodyFlowActionKind::cleanup_storage:
+            return "cleanup_storage";
     }
     return "<invalid>";
 }

@@ -21,9 +21,12 @@ constexpr base::usize SEMA_BODY_LOAN_INITIAL_WORKLIST_CAPACITY = 32;
 enum class BodyLoanAccessKind : base::u8 {
     read,
     write,
+    reinit,
     move,
+    drop,
     shared_borrow,
     mutable_borrow,
+    cleanup,
 };
 
 struct BodyLoanActionIndex {
@@ -67,6 +70,11 @@ struct BodyLoanDiagnosticSite {
     return kind == BodyFlowActionKind::borrow_shared || kind == BodyFlowActionKind::borrow_mutable;
 }
 
+[[nodiscard]] bool action_is_storage_definition(const BodyFlowActionKind kind) noexcept
+{
+    return kind == BodyFlowActionKind::write || kind == BodyFlowActionKind::reinit;
+}
+
 [[nodiscard]] std::optional<BodyLoanAccessKind> access_kind_for_action(const BodyFlowActionKind kind) noexcept
 {
     switch (kind) {
@@ -74,12 +82,18 @@ struct BodyLoanDiagnosticSite {
             return BodyLoanAccessKind::read;
         case BodyFlowActionKind::write:
             return BodyLoanAccessKind::write;
+        case BodyFlowActionKind::reinit:
+            return BodyLoanAccessKind::reinit;
         case BodyFlowActionKind::move_candidate:
             return BodyLoanAccessKind::move;
+        case BodyFlowActionKind::drop:
+            return BodyLoanAccessKind::drop;
         case BodyFlowActionKind::borrow_shared:
             return BodyLoanAccessKind::shared_borrow;
         case BodyFlowActionKind::borrow_mutable:
             return BodyLoanAccessKind::mutable_borrow;
+        case BodyFlowActionKind::cleanup_storage:
+            return BodyLoanAccessKind::cleanup;
         case BodyFlowActionKind::call:
         case BodyFlowActionKind::return_:
         case BodyFlowActionKind::branch:
@@ -96,12 +110,18 @@ struct BodyLoanDiagnosticSite {
             return BodyLoanConflictKind::read;
         case BodyLoanAccessKind::write:
             return BodyLoanConflictKind::write;
+        case BodyLoanAccessKind::reinit:
+            return BodyLoanConflictKind::reinit;
         case BodyLoanAccessKind::move:
             return BodyLoanConflictKind::move;
+        case BodyLoanAccessKind::drop:
+            return BodyLoanConflictKind::drop;
         case BodyLoanAccessKind::shared_borrow:
             return BodyLoanConflictKind::shared_borrow;
         case BodyLoanAccessKind::mutable_borrow:
             return BodyLoanConflictKind::mutable_borrow;
+        case BodyLoanAccessKind::cleanup:
+            return BodyLoanConflictKind::cleanup;
     }
     return BodyLoanConflictKind::write;
 }
@@ -116,8 +136,11 @@ struct BodyLoanDiagnosticSite {
         case BodyLoanAccessKind::shared_borrow:
             return false;
         case BodyLoanAccessKind::write:
+        case BodyLoanAccessKind::reinit:
         case BodyLoanAccessKind::move:
+        case BodyLoanAccessKind::drop:
         case BodyLoanAccessKind::mutable_borrow:
+        case BodyLoanAccessKind::cleanup:
             return true;
     }
     return true;
@@ -435,7 +458,7 @@ private:
         const IdentId carrier_name_id, const syntax::StmtId stmt) const noexcept
     {
         for (const BodyFlowAction& action : this->graph_.actions) {
-            if (action.kind == BodyFlowActionKind::write && action.stmt.value == stmt.value
+            if (action_is_storage_definition(action.kind) && action.stmt.value == stmt.value
                 && this->action_place_has_root(action, carrier_name_id)) {
                 return action.point;
             }
@@ -463,7 +486,7 @@ private:
                 if (action_reads_carrier(action, loan.carrier_name_id)) {
                     uses[action.point] = true;
                 }
-                if (action.kind == BodyFlowActionKind::write && action.point != loan.carrier_definition_point) {
+                if (action_is_storage_definition(action.kind) && action.point != loan.carrier_definition_point) {
                     definitions[action.point] = true;
                 }
             }
@@ -720,12 +743,18 @@ std::string_view body_loan_conflict_kind_name(const BodyLoanConflictKind kind) n
             return "read";
         case BodyLoanConflictKind::write:
             return "write";
+        case BodyLoanConflictKind::reinit:
+            return "reinit";
         case BodyLoanConflictKind::move:
             return "move";
+        case BodyLoanConflictKind::drop:
+            return "drop";
         case BodyLoanConflictKind::shared_borrow:
             return "shared_borrow";
         case BodyLoanConflictKind::mutable_borrow:
             return "mutable_borrow";
+        case BodyLoanConflictKind::cleanup:
+            return "cleanup";
     }
     return "<invalid>";
 }

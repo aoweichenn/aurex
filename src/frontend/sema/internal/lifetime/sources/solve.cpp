@@ -1,10 +1,16 @@
 #include <algorithm>
 #include <tuple>
+#include <vector>
 
 #include <frontend/sema/internal/lifetime/private/lifetime_analysis.hpp>
 
 namespace aurex::sema {
 namespace {
+
+[[nodiscard]] bool valid_body_flow_point(const BodyFlowGraph& graph, const base::u32 point) noexcept
+{
+    return point != SEMA_BODY_FLOW_INVALID_INDEX && point < graph.points.size();
+}
 
 void append_outlives_constraint(std::vector<LifetimeOutlivesConstraint>& constraints, const base::u32 longer,
     const base::u32 shorter, const LifetimeConstraintReason reason, const base::SourceRange& range)
@@ -38,8 +44,16 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::solve()
             return std::tie(lhs.longer_region, lhs.shorter_region, lhs.reason)
                 < std::tie(rhs.longer_region, rhs.shorter_region, rhs.reason);
         });
+    this->facts_.outlives_constraints.erase(
+        std::ranges::unique(this->facts_.outlives_constraints,
+            [](const LifetimeOutlivesConstraint& lhs, const LifetimeOutlivesConstraint& rhs) {
+                return lhs.longer_region == rhs.longer_region && lhs.shorter_region == rhs.shorter_region
+                    && lhs.reason == rhs.reason;
+            }).begin(),
+        this->facts_.outlives_constraints.end());
     this->initialize_outlives_matrix();
     this->close_outlives_matrix();
+    this->collect_body_live_ranges();
     this->facts_.solved = true;
 }
 
@@ -53,6 +67,105 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::initialize_outlives_matrix()
     for (const LifetimeOutlivesConstraint& constraint : this->facts_.outlives_constraints) {
         this->outlives_[constraint.longer_region][constraint.shorter_region] = true;
     }
+}
+
+void SemanticAnalyzerCore::LifetimeAnalyzer::collect_body_live_ranges()
+{
+    const auto found = this->core_.state_.checked.body_flow_graphs.find(this->key_);
+    if (found == this->core_.state_.checked.body_flow_graphs.end() || found->second.points.empty()) {
+        return;
+    }
+
+    const BodyFlowGraph& graph = found->second;
+    const base::u32 first_point = this->first_body_flow_point(graph);
+    const base::u32 last_point = this->last_body_flow_point(graph);
+    const base::u32 point_count = static_cast<base::u32>(graph.points.size());
+    for (base::u32 region = 0; region < this->facts_.regions.size(); ++region) {
+        const LifetimeRegion& info = this->facts_.regions[region];
+        switch (info.kind) {
+            case LifetimeRegionKind::parameter:
+            case LifetimeRegionKind::self:
+            case LifetimeRegionKind::static_:
+            case LifetimeRegionKind::explicit_origin:
+                this->append_live_range(region, first_point, last_point, point_count, info.range);
+                break;
+            case LifetimeRegionKind::inferred:
+            case LifetimeRegionKind::local:
+            case LifetimeRegionKind::temporary:
+            case LifetimeRegionKind::unknown:
+                break;
+        }
+    }
+
+    for (const LifetimeReturnRegion& returned : this->facts_.return_regions) {
+        if (returned.region >= this->facts_.regions.size()) {
+            continue;
+        }
+        const LifetimeRegionKind kind = this->facts_.regions[returned.region].kind;
+        const base::u32 return_point = this->return_body_flow_point(graph, returned.return_expr);
+        const base::u32 anchor = valid_body_flow_point(graph, return_point) ? return_point : last_point;
+        if (kind == LifetimeRegionKind::local || kind == LifetimeRegionKind::temporary
+            || kind == LifetimeRegionKind::unknown || kind == LifetimeRegionKind::inferred) {
+            this->append_live_range(returned.region, anchor, anchor, 1U, returned.range);
+        }
+    }
+}
+
+base::u32 SemanticAnalyzerCore::LifetimeAnalyzer::first_body_flow_point(const BodyFlowGraph& graph) const noexcept
+{
+    for (base::u32 index = 0; index < graph.points.size(); ++index) {
+        if (graph.points[index].kind == BodyFlowPointKind::entry) {
+            return index;
+        }
+    }
+    return graph.points.empty() ? SEMA_BODY_FLOW_INVALID_INDEX : 0U;
+}
+
+base::u32 SemanticAnalyzerCore::LifetimeAnalyzer::last_body_flow_point(const BodyFlowGraph& graph) const noexcept
+{
+    for (base::u32 index = 0; index < graph.points.size(); ++index) {
+        if (graph.points[index].kind == BodyFlowPointKind::exit) {
+            return index;
+        }
+    }
+    return graph.points.empty()
+        ? SEMA_BODY_FLOW_INVALID_INDEX
+        : static_cast<base::u32>(graph.points.size() - 1U);
+}
+
+base::u32 SemanticAnalyzerCore::LifetimeAnalyzer::return_body_flow_point(
+    const BodyFlowGraph& graph, const syntax::ExprId expr) const noexcept
+{
+    base::u32 fallback = SEMA_BODY_FLOW_INVALID_INDEX;
+    for (const BodyFlowAction& action : graph.actions) {
+        if (action.kind != BodyFlowActionKind::return_) {
+            continue;
+        }
+        if (syntax::is_valid(expr) && action.expr.value == expr.value) {
+            return action.point;
+        }
+        if (fallback == SEMA_BODY_FLOW_INVALID_INDEX) {
+            fallback = action.point;
+        }
+    }
+    return fallback;
+}
+
+void SemanticAnalyzerCore::LifetimeAnalyzer::append_live_range(const base::u32 region,
+    const base::u32 first_point, const base::u32 last_point, const base::u32 point_count,
+    const base::SourceRange& range)
+{
+    if (region >= this->facts_.regions.size()
+        || (first_point == SEMA_BODY_FLOW_INVALID_INDEX && last_point == SEMA_BODY_FLOW_INVALID_INDEX)) {
+        return;
+    }
+    this->facts_.live_ranges.push_back(LifetimeRegionLiveRange{
+        .region = region,
+        .first_point = first_point,
+        .last_point = last_point,
+        .point_count = point_count,
+        .range = range,
+    });
 }
 
 void SemanticAnalyzerCore::LifetimeAnalyzer::close_outlives_matrix()

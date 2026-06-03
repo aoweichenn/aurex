@@ -2,6 +2,7 @@
 
 #include <aurex/frontend/sema/checked_module.hpp>
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -27,6 +28,7 @@ private:
     struct Scope {
         std::unordered_map<IdentId, OriginSet, IdentIdHash> storage;
         std::unordered_map<IdentId, OriginSet, IdentIdHash> borrowed_values;
+        std::unordered_map<IdentId, OriginSet, IdentIdHash> pointer_values;
     };
     using ScopeList = std::vector<Scope>;
 
@@ -54,9 +56,12 @@ private:
     void pop_scope();
     void bind_storage(IdentId name, OriginSet origin);
     void bind_borrowed_value(IdentId name, OriginSet origin);
+    void bind_pointer_value(IdentId name, OriginSet origin);
     void assign_borrowed_value(IdentId name, OriginSet origin);
+    void assign_pointer_value(IdentId name, OriginSet origin);
     [[nodiscard]] OriginSet lookup_storage(IdentId name) const;
     [[nodiscard]] OriginSet lookup_borrowed_value(IdentId name) const;
+    [[nodiscard]] OriginSet lookup_pointer_value(IdentId name) const;
     [[nodiscard]] base::u32 append_origin(BorrowSummaryOrigin origin);
     [[nodiscard]] OriginSet parameter_origin(base::usize index, const syntax::ParamDecl& param);
     [[nodiscard]] OriginSet static_origin(const base::SourceRange& range);
@@ -78,7 +83,9 @@ private:
     [[nodiscard]] ScopeList merge_control_flow_scopes(
         const ScopeList& baseline, const std::vector<ScopeList>& branches, bool include_baseline_path);
     void merge_scope_borrowed_values(Scope& target, const Scope& branch);
+    void merge_scope_pointer_values(Scope& target, const Scope& branch);
     void clear_borrowed_values_for_existing_storage(ScopeList& scopes) const;
+    void clear_pointer_values_for_existing_storage(ScopeList& scopes) const;
     void analyze_local_declaration(syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
     void analyze_assignment(const syntax::StmtNode& stmt);
     void bind_pattern_storage(syntax::PatternId pattern, TypeHandle type, syntax::ExprId source);
@@ -97,18 +104,27 @@ private:
         const StructInfo& structure, IdentId field_name) const noexcept;
     [[nodiscard]] IdentId unqualified_name_id(syntax::ExprId expr) const noexcept;
     [[nodiscard]] OriginSet borrowed_name_origin(syntax::ExprId expr) const;
+    [[nodiscard]] OriginSet pointer_name_origin(syntax::ExprId expr) const;
     [[nodiscard]] OriginSet storage_name_origin(syntax::ExprId expr) const;
+    [[nodiscard]] OriginSet borrowed_carrier_origin(syntax::ExprId expr);
+    [[nodiscard]] OriginSet addressed_place_origin(syntax::ExprId expr);
     [[nodiscard]] OriginSet place_storage_origin(syntax::ExprId expr);
     [[nodiscard]] OriginSet slice_source_origin(syntax::ExprId expr);
     [[nodiscard]] OriginSet call_return_origin(syntax::ExprId expr, const syntax::CallExprPayload& call);
+    [[nodiscard]] std::optional<OriginSet> enum_constructor_return_origin(const syntax::CallExprPayload& call);
+    [[nodiscard]] OriginSet pointer_origin(syntax::ExprId expr);
     [[nodiscard]] const FunctionCallBinding* direct_call_binding(syntax::ExprId call_expr) const noexcept;
     [[nodiscard]] const TraitMethodCallBinding* trait_call_binding(syntax::ExprId call_expr) const noexcept;
     [[nodiscard]] syntax::ExprId call_argument_for_param(const syntax::CallExprPayload& call, syntax::ExprId callee,
         base::u32 receiver_arg_count, base::u32 param_index) const;
+    [[nodiscard]] OriginSet call_origin_for_param(const syntax::CallExprPayload& call, syntax::ExprId callee,
+        base::u32 receiver_arg_count, base::u32 param_index, bool receiver_auto_borrow);
     [[nodiscard]] OriginSet map_callee_summary_origins(const FunctionBorrowSummary& callee,
-        const syntax::CallExprPayload& call, syntax::ExprId callee_expr, base::u32 receiver_arg_count);
+        const syntax::CallExprPayload& call, syntax::ExprId callee_expr, base::u32 receiver_arg_count,
+        bool receiver_auto_borrow);
     [[nodiscard]] OriginSet map_callee_contract_origins(const FunctionBorrowContract& callee,
-        const syntax::CallExprPayload& call, syntax::ExprId callee_expr, base::u32 receiver_arg_count);
+        const syntax::CallExprPayload& call, syntax::ExprId callee_expr, base::u32 receiver_arg_count,
+        bool receiver_auto_borrow);
     [[nodiscard]] OriginSet borrow_origin(syntax::ExprId expr);
     [[nodiscard]] bool push_expression_children_for_origin(
         std::vector<syntax::ExprId>& pending, syntax::ExprId expr, syntax::ExprKind kind);

@@ -43,6 +43,7 @@ private:
     [[nodiscard]] bool has_declared_borrow_contract() const noexcept;
     [[nodiscard]] bool has_declared_origin_params() const noexcept;
     [[nodiscard]] bool boundary_requires_explicit_contract() const noexcept;
+    [[nodiscard]] bool function_has_body_flow_graph() const noexcept;
 
     [[nodiscard]] base::u32 add_region(
         LifetimeRegionKind kind, IdentId name_id, std::string_view name, base::u32 param_index,
@@ -61,6 +62,11 @@ private:
     void collect_origin_params();
     void collect_parameter_regions();
     void collect_reference_origin_facts();
+    void collect_signature_type_lifetime_infos();
+    void record_type_lifetime_info(TypeHandle type, LifetimeConstraintReason reason, const base::SourceRange& range);
+    void record_generic_lifetime_predicate(
+        TypeHandle type, std::string_view origin, IdentId origin_id, GenericLifetimePredicateSource source,
+        const base::SourceRange& range);
     void collect_reference_type_constraints(TypeHandle reference_type, base::u32 region,
         LifetimeConstraintReason reason, const base::SourceRange& range);
     void collect_return_regions();
@@ -79,6 +85,12 @@ private:
 
     void solve();
     void initialize_outlives_matrix();
+    void collect_body_live_ranges();
+    [[nodiscard]] base::u32 first_body_flow_point(const BodyFlowGraph& graph) const noexcept;
+    [[nodiscard]] base::u32 last_body_flow_point(const BodyFlowGraph& graph) const noexcept;
+    [[nodiscard]] base::u32 return_body_flow_point(const BodyFlowGraph& graph, syntax::ExprId expr) const noexcept;
+    void append_live_range(base::u32 region, base::u32 first_point, base::u32 last_point,
+        base::u32 point_count, const base::SourceRange& range);
     void close_outlives_matrix();
     [[nodiscard]] bool region_outlives(base::u32 longer, base::u32 shorter) const noexcept;
     void enforce_return_origin_subset();

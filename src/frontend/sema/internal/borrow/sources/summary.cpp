@@ -41,7 +41,7 @@ constexpr base::usize SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY = 32;
 [[nodiscard]] bool same_origin(const BorrowSummaryOrigin& lhs, const BorrowSummaryOrigin& rhs) noexcept
 {
     return lhs.kind == rhs.kind && lhs.param_index == rhs.param_index && lhs.name_id == rhs.name_id
-        && lhs.expr.value == rhs.expr.value && same_range(lhs.range, rhs.range);
+        && lhs.expr.value == rhs.expr.value && lhs.storage_slot == rhs.storage_slot && same_range(lhs.range, rhs.range);
 }
 
 void append_optional_name_id(std::ostringstream& stream, const IdentId name)
@@ -151,6 +151,15 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::bind_borrowed_value(const Ident
     this->scopes_.back().borrowed_values[name] = std::move(origin);
 }
 
+void SemanticAnalyzerCore::BorrowSummaryBuilder::bind_pointer_value(const IdentId name, OriginSet origin)
+{
+    if (!syntax::is_valid(name) || this->scopes_.empty()) {
+        return;
+    }
+    this->sort_unique(origin);
+    this->scopes_.back().pointer_values[name] = std::move(origin);
+}
+
 void SemanticAnalyzerCore::BorrowSummaryBuilder::assign_borrowed_value(const IdentId name, OriginSet origin)
 {
     if (!syntax::is_valid(name)) {
@@ -164,6 +173,21 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::assign_borrowed_value(const Ide
         }
     }
     this->bind_borrowed_value(name, std::move(origin));
+}
+
+void SemanticAnalyzerCore::BorrowSummaryBuilder::assign_pointer_value(const IdentId name, OriginSet origin)
+{
+    if (!syntax::is_valid(name)) {
+        return;
+    }
+    this->sort_unique(origin);
+    for (auto scope = this->scopes_.rbegin(); scope != this->scopes_.rend(); ++scope) {
+        if (scope->storage.contains(name)) {
+            scope->pointer_values[name] = std::move(origin);
+            return;
+        }
+    }
+    this->bind_pointer_value(name, std::move(origin));
 }
 
 SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::BorrowSummaryBuilder::lookup_storage(
@@ -190,6 +214,21 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
     for (auto scope = this->scopes_.rbegin(); scope != this->scopes_.rend(); ++scope) {
         const auto found = scope->borrowed_values.find(name);
         if (found != scope->borrowed_values.end()) {
+            return found->second;
+        }
+    }
+    return {};
+}
+
+SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::BorrowSummaryBuilder::lookup_pointer_value(
+    const IdentId name) const
+{
+    if (!syntax::is_valid(name)) {
+        return {};
+    }
+    for (auto scope = this->scopes_.rbegin(); scope != this->scopes_.rend(); ++scope) {
+        const auto found = scope->pointer_values.find(name);
+        if (found != scope->pointer_values.end()) {
             return found->second;
         }
     }
@@ -489,11 +528,13 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::merge_control_flow_scopes(
     ScopeList merged = baseline;
     if (!include_baseline_path) {
         this->clear_borrowed_values_for_existing_storage(merged);
+        this->clear_pointer_values_for_existing_storage(merged);
     }
     for (const ScopeList& branch : branches) {
         const base::usize scope_count = std::min(merged.size(), branch.size());
         for (base::usize index = 0; index < scope_count; ++index) {
             this->merge_scope_borrowed_values(merged[index], branch[index]);
+            this->merge_scope_pointer_values(merged[index], branch[index]);
         }
     }
     return merged;
@@ -515,11 +556,36 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::merge_scope_borrowed_values(Sco
     }
 }
 
+void SemanticAnalyzerCore::BorrowSummaryBuilder::merge_scope_pointer_values(Scope& target, const Scope& branch)
+{
+    for (const auto& entry : target.storage) {
+        const IdentId name = entry.first;
+        const auto found = branch.pointer_values.find(name);
+        if (found == branch.pointer_values.end()) {
+            continue;
+        }
+        OriginSet current;
+        if (const auto existing = target.pointer_values.find(name); existing != target.pointer_values.end()) {
+            current = existing->second;
+        }
+        target.pointer_values[name] = this->merge(std::move(current), found->second);
+    }
+}
+
 void SemanticAnalyzerCore::BorrowSummaryBuilder::clear_borrowed_values_for_existing_storage(ScopeList& scopes) const
 {
     for (Scope& scope : scopes) {
         for (const auto& entry : scope.storage) {
             scope.borrowed_values[entry.first] = OriginSet{};
+        }
+    }
+}
+
+void SemanticAnalyzerCore::BorrowSummaryBuilder::clear_pointer_values_for_existing_storage(ScopeList& scopes) const
+{
+    for (Scope& scope : scopes) {
+        for (const auto& entry : scope.storage) {
+            scope.pointer_values[entry.first] = OriginSet{};
         }
     }
 }
@@ -538,6 +604,8 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_local_declaration(
     const OriginSet origin = this->type_can_contain_borrow(local_type) ? this->borrow_origin(stmt.init) : OriginSet{};
     this->bind_storage(stmt.name_id, this->local_origin(stmt.name_id, stmt.range, syntax::INVALID_EXPR_ID));
     this->bind_borrowed_value(stmt.name_id, origin);
+    this->bind_pointer_value(stmt.name_id,
+        this->core_.state_.checked.types.is_pointer(local_type) ? this->pointer_origin(stmt.init) : OriginSet{});
 }
 
 void SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_assignment(const syntax::StmtNode& stmt)
@@ -549,6 +617,8 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_assignment(const syntax
     const TypeHandle lhs_type = this->core_.cached_expr_type(stmt.lhs);
     this->assign_borrowed_value(
         assigned_name, this->type_can_contain_borrow(lhs_type) ? this->borrow_origin(stmt.rhs) : OriginSet{});
+    this->assign_pointer_value(assigned_name,
+        this->core_.state_.checked.types.is_pointer(lhs_type) ? this->pointer_origin(stmt.rhs) : OriginSet{});
 }
 
 void SemanticAnalyzerCore::BorrowSummaryBuilder::bind_pattern_storage(
@@ -601,6 +671,8 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::bind_pattern_binding(
         pattern.binding_name_id, this->local_origin(pattern.binding_name_id, pattern.range, syntax::INVALID_EXPR_ID));
     this->bind_borrowed_value(
         pattern.binding_name_id, this->type_can_contain_borrow(type) ? this->borrow_origin(source) : OriginSet{});
+    this->bind_pointer_value(pattern.binding_name_id,
+        this->core_.state_.checked.types.is_pointer(type) ? this->pointer_origin(source) : OriginSet{});
 }
 
 void SemanticAnalyzerCore::BorrowSummaryBuilder::push_tuple_pattern_frames(std::vector<PatternFrame>& pending,
@@ -722,10 +794,81 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
     return this->lookup_borrowed_value(this->unqualified_name_id(expr));
 }
 
+SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::BorrowSummaryBuilder::pointer_name_origin(
+    const syntax::ExprId expr) const
+{
+    return this->lookup_pointer_value(this->unqualified_name_id(expr));
+}
+
 SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::BorrowSummaryBuilder::storage_name_origin(
     const syntax::ExprId expr) const
 {
     return this->lookup_storage(this->unqualified_name_id(expr));
+}
+
+SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet
+SemanticAnalyzerCore::BorrowSummaryBuilder::borrowed_carrier_origin(const syntax::ExprId expr)
+{
+    OriginSet result;
+    std::vector<syntax::ExprId> pending{expr};
+    std::unordered_set<base::u32> visited;
+    while (!pending.empty()) {
+        const syntax::ExprId current = pending.back();
+        pending.pop_back();
+        if (!valid_expr(this->core_.ctx_.module, current) || !visited.insert(current.value).second) {
+            continue;
+        }
+        const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(current.value);
+        if (kind == syntax::ExprKind::name) {
+            result = this->merge(result, this->borrowed_name_origin(current));
+            continue;
+        }
+        if (const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(current.value);
+            call != nullptr && (kind == syntax::ExprKind::call || kind == syntax::ExprKind::str_from_bytes_unchecked)) {
+            result = this->merge(result, this->call_return_origin(current, *call));
+            continue;
+        }
+        if (const syntax::SliceExprPayload* const slice = this->core_.ctx_.module.exprs.slice_payload(current.value);
+            kind == syntax::ExprKind::slice && slice != nullptr) {
+            result = this->merge(result, this->slice_source_origin(slice->object));
+            continue;
+        }
+        if (const syntax::CastExprPayload* const cast = this->core_.ctx_.module.exprs.cast_payload(current.value);
+            cast != nullptr && kind == syntax::ExprKind::str_from_utf8_checked) {
+            pending.push_back(cast->expr);
+            continue;
+        }
+        if (const syntax::BlockExprPayload* const block = this->core_.ctx_.module.exprs.block_payload(current.value);
+            block != nullptr && (kind == syntax::ExprKind::block_expr || kind == syntax::ExprKind::unsafe_block)) {
+            result = this->merge(result, this->block_result_borrow_origin(*block));
+            continue;
+        }
+    }
+    return result;
+}
+
+SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet
+SemanticAnalyzerCore::BorrowSummaryBuilder::addressed_place_origin(const syntax::ExprId expr)
+{
+    if (!valid_expr(this->core_.ctx_.module, expr)) {
+        return {};
+    }
+    if (this->core_.ctx_.module.exprs.kind(expr.value) == syntax::ExprKind::name) {
+        OriginSet origin = this->storage_name_origin(expr);
+        OriginSet storage_origin;
+        storage_origin.unknown = origin.unknown;
+        for (base::u32 origin_index : origin.origins) {
+            if (origin_index < this->summary_.origins.size()) {
+                BorrowSummaryOrigin slot = this->summary_.origins[origin_index];
+                slot.storage_slot = true;
+                storage_origin.origins.push_back(this->append_origin(std::move(slot)));
+                continue;
+            }
+            storage_origin.unknown = true;
+        }
+        return storage_origin;
+    }
+    return this->place_storage_origin(expr);
 }
 
 SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::BorrowSummaryBuilder::place_storage_origin(
@@ -793,23 +936,33 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
     const syntax::ExprId expr, const syntax::CallExprPayload& call)
 {
     if (this->core_.ctx_.module.exprs.kind(expr.value) == syntax::ExprKind::str_from_bytes_unchecked) {
+        if (!call.args.empty()) {
+            OriginSet origin = this->pointer_origin(call.args.front());
+            if (origin.unknown || !origin.origins.empty()) {
+                return origin;
+            }
+        }
         return this->unknown_origin();
+    }
+    if (std::optional<OriginSet> enum_origin = this->enum_constructor_return_origin(call);
+        enum_origin.has_value()) {
+        return *enum_origin;
     }
     if (const FunctionCallBinding* const binding = this->direct_call_binding(expr); binding != nullptr) {
         const auto contract = this->core_.state_.checked.borrow_contracts.find(binding->function_key);
         if (contract != this->core_.state_.checked.borrow_contracts.end()
             && contract->second.source != FunctionBorrowContractSource::inferred) {
             return this->map_callee_contract_origins(
-                contract->second, call, binding->callee_expr, binding->receiver_arg_count);
+                contract->second, call, binding->callee_expr, binding->receiver_arg_count, binding->receiver_auto_borrow);
         }
         const auto summary = this->core_.state_.checked.borrow_summaries.find(binding->function_key);
         if (summary != this->core_.state_.checked.borrow_summaries.end()) {
             return this->map_callee_summary_origins(
-                summary->second, call, binding->callee_expr, binding->receiver_arg_count);
+                summary->second, call, binding->callee_expr, binding->receiver_arg_count, binding->receiver_auto_borrow);
         }
         if (contract != this->core_.state_.checked.borrow_contracts.end()) {
             return this->map_callee_contract_origins(
-                contract->second, call, binding->callee_expr, binding->receiver_arg_count);
+                contract->second, call, binding->callee_expr, binding->receiver_arg_count, binding->receiver_auto_borrow);
         }
         return this->type_can_contain_borrow(binding->return_type) ? this->unknown_origin() : OriginSet{};
     }
@@ -818,18 +971,107 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
         const base::u32 receiver_arg_count = is_valid(binding->receiver_type) ? 1U : 0U;
         if (contract != this->core_.state_.checked.borrow_contracts.end()
             && contract->second.source != FunctionBorrowContractSource::inferred) {
-            return this->map_callee_contract_origins(contract->second, call, binding->callee_expr, receiver_arg_count);
+            return this->map_callee_contract_origins(
+                contract->second, call, binding->callee_expr, receiver_arg_count, binding->receiver_auto_borrow);
         }
         const auto summary = this->core_.state_.checked.borrow_summaries.find(binding->function_key);
         if (summary != this->core_.state_.checked.borrow_summaries.end()) {
-            return this->map_callee_summary_origins(summary->second, call, binding->callee_expr, receiver_arg_count);
+            return this->map_callee_summary_origins(
+                summary->second, call, binding->callee_expr, receiver_arg_count, binding->receiver_auto_borrow);
         }
         if (contract != this->core_.state_.checked.borrow_contracts.end()) {
-            return this->map_callee_contract_origins(contract->second, call, binding->callee_expr, receiver_arg_count);
+            return this->map_callee_contract_origins(
+                contract->second, call, binding->callee_expr, receiver_arg_count, binding->receiver_auto_borrow);
         }
         return this->type_can_contain_borrow(binding->return_type) ? this->unknown_origin() : OriginSet{};
     }
     return this->type_can_contain_borrow(this->core_.cached_expr_type(expr)) ? this->unknown_origin() : OriginSet{};
+}
+
+std::optional<SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet>
+SemanticAnalyzerCore::BorrowSummaryBuilder::enum_constructor_return_origin(const syntax::CallExprPayload& call)
+{
+    const EnumCaseInfo* const enum_case = this->core_.find_enum_constructor(call.callee, false);
+    if (enum_case == nullptr) {
+        return std::nullopt;
+    }
+
+    OriginSet result;
+    const base::usize checked_arg_count = std::min(call.args.size(), enum_case->payload_types.size());
+    for (base::usize index = 0; index < checked_arg_count; ++index) {
+        if (this->type_can_contain_borrow(enum_case->payload_types[index])) {
+            result = this->merge(result, this->borrow_origin(call.args[index]));
+        }
+    }
+    if (this->type_can_contain_borrow(enum_case->type) && call.args.size() > enum_case->payload_types.size()) {
+        result.unknown = true;
+    }
+    return result;
+}
+
+SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::BorrowSummaryBuilder::pointer_origin(
+    const syntax::ExprId expr)
+{
+    enum class PointerOriginTaskKind : base::u8 {
+        expression,
+        pop_scope,
+    };
+    struct PointerOriginTask {
+        PointerOriginTaskKind kind = PointerOriginTaskKind::expression;
+        syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    };
+
+    OriginSet result;
+    std::vector<PointerOriginTask> pending{{PointerOriginTaskKind::expression, expr}};
+    std::unordered_set<base::u32> visited;
+    while (!pending.empty()) {
+        const PointerOriginTask task = pending.back();
+        pending.pop_back();
+        if (task.kind == PointerOriginTaskKind::pop_scope) {
+            this->pop_scope();
+            continue;
+        }
+        const syntax::ExprId current = task.expr;
+        if (!valid_expr(this->core_.ctx_.module, current) || !visited.insert(current.value).second) {
+            continue;
+        }
+        const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(current.value);
+        if (kind == syntax::ExprKind::name) {
+            result = this->merge(result, this->pointer_name_origin(current));
+            continue;
+        }
+        if (const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(current.value);
+            kind == syntax::ExprKind::call && call != nullptr) {
+            for (const syntax::ExprId arg : call->args) {
+                pending.push_back(PointerOriginTask{PointerOriginTaskKind::expression, arg});
+            }
+            pending.push_back(PointerOriginTask{PointerOriginTaskKind::expression, call->callee});
+            continue;
+        }
+        if (const syntax::CastExprPayload* const cast = this->core_.ctx_.module.exprs.cast_payload(current.value);
+            cast != nullptr
+            && (kind == syntax::ExprKind::slice_data || kind == syntax::ExprKind::str_data
+                || kind == syntax::ExprKind::cast || kind == syntax::ExprKind::pcast
+                || kind == syntax::ExprKind::bcast || kind == syntax::ExprKind::paddr)) {
+            if (kind == syntax::ExprKind::slice_data || kind == syntax::ExprKind::str_data) {
+                result = this->merge(result, this->borrowed_carrier_origin(cast->expr));
+                continue;
+            }
+            pending.push_back(PointerOriginTask{PointerOriginTaskKind::expression, cast->expr});
+            continue;
+        }
+        if (const syntax::BlockExprPayload* const block = this->core_.ctx_.module.exprs.block_payload(current.value);
+            block != nullptr && (kind == syntax::ExprKind::block_expr || kind == syntax::ExprKind::unsafe_block)) {
+            this->push_scope();
+            std::vector<Task> tasks;
+            tasks.reserve(SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY);
+            this->push_block_statements(tasks, block->block);
+            this->run_tasks(tasks);
+            pending.push_back(PointerOriginTask{PointerOriginTaskKind::pop_scope, syntax::INVALID_EXPR_ID});
+            pending.push_back(PointerOriginTask{PointerOriginTaskKind::expression, block->result});
+        }
+    }
+    return result;
 }
 
 const FunctionCallBinding* SemanticAnalyzerCore::BorrowSummaryBuilder::direct_call_binding(
@@ -872,8 +1114,24 @@ syntax::ExprId SemanticAnalyzerCore::BorrowSummaryBuilder::call_argument_for_par
 }
 
 SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet
+SemanticAnalyzerCore::BorrowSummaryBuilder::call_origin_for_param(const syntax::CallExprPayload& call,
+    const syntax::ExprId callee, const base::u32 receiver_arg_count, const base::u32 param_index,
+    const bool receiver_auto_borrow)
+{
+    const syntax::ExprId arg = this->call_argument_for_param(call, callee, receiver_arg_count, param_index);
+    if (!valid_expr(this->core_.ctx_.module, arg)) {
+        return this->unknown_origin();
+    }
+    if (receiver_auto_borrow && receiver_arg_count != 0 && param_index < receiver_arg_count) {
+        return this->place_storage_origin(arg);
+    }
+    return this->borrow_origin(arg);
+}
+
+SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet
 SemanticAnalyzerCore::BorrowSummaryBuilder::map_callee_summary_origins(const FunctionBorrowSummary& callee,
-    const syntax::CallExprPayload& call, const syntax::ExprId callee_expr, const base::u32 receiver_arg_count)
+    const syntax::CallExprPayload& call, const syntax::ExprId callee_expr, const base::u32 receiver_arg_count,
+    const bool receiver_auto_borrow)
 {
     OriginSet result;
     result.unknown = callee.has_unknown_return_origin;
@@ -891,20 +1149,17 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::map_callee_summary_origins(const Fun
             result.unknown = true;
             continue;
         }
-        const syntax::ExprId arg =
-            this->call_argument_for_param(call, callee_expr, receiver_arg_count, origin.param_index);
-        if (!valid_expr(this->core_.ctx_.module, arg)) {
-            result.unknown = true;
-            continue;
-        }
-        result = this->merge(result, this->borrow_origin(arg));
+        result = this->merge(result,
+            this->call_origin_for_param(
+                call, callee_expr, receiver_arg_count, origin.param_index, receiver_auto_borrow));
     }
     return result;
 }
 
 SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet
 SemanticAnalyzerCore::BorrowSummaryBuilder::map_callee_contract_origins(const FunctionBorrowContract& callee,
-    const syntax::CallExprPayload& call, const syntax::ExprId callee_expr, const base::u32 receiver_arg_count)
+    const syntax::CallExprPayload& call, const syntax::ExprId callee_expr, const base::u32 receiver_arg_count,
+    const bool receiver_auto_borrow)
 {
     OriginSet result;
     result.unknown = callee.unknown_return_allowed;
@@ -916,13 +1171,9 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::map_callee_contract_origins(const Fu
                     result.unknown = true;
                     break;
                 }
-                const syntax::ExprId arg =
-                    this->call_argument_for_param(call, callee_expr, receiver_arg_count, selector.param_index);
-                if (!valid_expr(this->core_.ctx_.module, arg)) {
-                    result.unknown = true;
-                    break;
-                }
-                result = this->merge(result, this->borrow_origin(arg));
+                result = this->merge(result,
+                    this->call_origin_for_param(
+                        call, callee_expr, receiver_arg_count, selector.param_index, receiver_auto_borrow));
                 break;
             }
             case BorrowContractSelectorKind::static_:
@@ -965,7 +1216,7 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
         if (const syntax::UnaryExprPayload* const unary = this->core_.ctx_.module.exprs.unary_payload(current.value);
             kind == syntax::ExprKind::unary && unary != nullptr
             && (unary->op == syntax::UnaryOp::address_of || unary->op == syntax::UnaryOp::address_of_mut)) {
-            result = this->merge(result, this->place_storage_origin(unary->operand));
+            result = this->merge(result, this->addressed_place_origin(unary->operand));
             continue;
         }
         if (const syntax::SliceExprPayload* const slice = this->core_.ctx_.module.exprs.slice_payload(current.value);
@@ -1143,7 +1394,8 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::record_return_origin(
         const BorrowSummaryOrigin& summary_origin = this->summary_.origins[origin_index];
         this->summary_.has_local_return_escape = this->summary_.has_local_return_escape
             || summary_origin.kind == BorrowSummaryOriginKind::local
-            || summary_origin.kind == BorrowSummaryOriginKind::temporary;
+            || summary_origin.kind == BorrowSummaryOriginKind::temporary
+            || (summary_origin.kind == BorrowSummaryOriginKind::parameter && summary_origin.storage_slot);
         this->summary_.return_origins.push_back(FunctionBorrowReturnOrigin{
             .origin_index = origin_index,
             .return_expr = expr,
@@ -1188,6 +1440,7 @@ query::StableFingerprint128 SemanticAnalyzerCore::BorrowSummaryBuilder::fingerpr
         builder.mix_u32(origin.param_index);
         builder.mix_u32(origin.name_id.value);
         builder.mix_u32(origin.expr.value);
+        builder.mix_bool(origin.storage_slot);
     }
     builder.mix_u64(static_cast<base::u64>(this->summary_.return_origins.size()));
     for (const FunctionBorrowReturnOrigin& dependency : this->summary_.return_origins) {
@@ -1231,7 +1484,8 @@ std::string dump_function_borrow_summary(const FunctionBorrowSummary& summary)
     for (base::usize index = 0; index < summary.origins.size(); ++index) {
         const BorrowSummaryOrigin& origin = summary.origins[index];
         stream << "  o" << index << ' ' << borrow_summary_origin_kind_name(origin.kind)
-               << " param=" << origin.param_index << " name=";
+               << " param=" << origin.param_index << " storage_slot=" << (origin.storage_slot ? "true" : "false")
+               << " name=";
         append_optional_name_id(stream, origin.name_id);
         stream << " expr=";
         append_optional_expr_id(stream, origin.expr);

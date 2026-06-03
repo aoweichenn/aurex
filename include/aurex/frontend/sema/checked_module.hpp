@@ -441,6 +441,7 @@ struct BorrowSummaryOrigin {
     IdentId name_id = INVALID_IDENT_ID;
     syntax::ExprId expr = syntax::INVALID_EXPR_ID;
     base::SourceRange range{};
+    bool storage_slot = false;
 };
 
 inline constexpr base::u32 SEMA_BORROW_SUMMARY_INVALID_INDEX = static_cast<base::u32>(-1);
@@ -515,6 +516,13 @@ enum class LifetimeViolationKind : base::u8 {
 };
 
 inline constexpr base::u32 SEMA_LIFETIME_INVALID_INDEX = static_cast<base::u32>(-1);
+inline constexpr base::u32 SEMA_BODY_FLOW_INVALID_INDEX = static_cast<base::u32>(-1);
+
+enum class GenericLifetimePredicateSource : base::u8 {
+    explicit_origin,
+    inferred_reference,
+    associated_projection,
+};
 
 struct LifetimeRegion {
     LifetimeRegionKind kind = LifetimeRegionKind::inferred;
@@ -535,6 +543,14 @@ struct LifetimeTypeOutlivesConstraint {
     TypeHandle type = INVALID_TYPE_HANDLE;
     base::u32 region = SEMA_LIFETIME_INVALID_INDEX;
     LifetimeConstraintReason reason = LifetimeConstraintReason::reference_type;
+    base::SourceRange range{};
+};
+
+struct LifetimeRegionLiveRange {
+    base::u32 region = SEMA_LIFETIME_INVALID_INDEX;
+    base::u32 first_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 last_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 point_count = 0;
     base::SourceRange range{};
 };
 
@@ -560,10 +576,30 @@ struct FunctionLifetimeFacts {
     std::vector<LifetimeRegion> regions;
     std::vector<LifetimeOutlivesConstraint> outlives_constraints;
     std::vector<LifetimeTypeOutlivesConstraint> type_outlives_constraints;
+    std::vector<LifetimeRegionLiveRange> live_ranges;
     std::vector<LifetimeReturnRegion> return_regions;
     std::vector<LifetimeViolation> violations;
     bool solved = false;
     bool diagnostic_mode_enforced = false;
+    query::StableFingerprint128 fingerprint;
+    base::u32 part_index = 0;
+};
+
+struct TypeLifetimeInfo {
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    std::vector<InternedText> origin_names;
+    bool can_contain_borrow = false;
+    bool has_concrete_borrow_surface = false;
+    query::StableFingerprint128 fingerprint;
+    base::u32 part_index = 0;
+};
+
+struct GenericLifetimePredicate {
+    TypeHandle subject_type = INVALID_TYPE_HANDLE;
+    InternedText origin_name;
+    IdentId origin_name_id = INVALID_IDENT_ID;
+    GenericLifetimePredicateSource source = GenericLifetimePredicateSource::inferred_reference;
+    base::SourceRange range{};
     query::StableFingerprint128 fingerprint;
     base::u32 part_index = 0;
 };
@@ -629,10 +665,10 @@ using FunctionBorrowSummaryMap = SemaMap<FunctionLookupKey, FunctionBorrowSummar
 using FunctionBorrowContractMap = SemaMap<FunctionLookupKey, FunctionBorrowContract, FunctionLookupKeyHash>;
 using LifetimeOriginParamList = SemaVector<LifetimeOriginParamInfo>;
 using ReferenceOriginFactList = SemaVector<ReferenceOriginFact>;
+using TypeLifetimeInfoList = SemaVector<TypeLifetimeInfo>;
+using GenericLifetimePredicateList = SemaVector<GenericLifetimePredicate>;
 using FunctionLifetimeFactsMap = SemaMap<FunctionLookupKey, FunctionLifetimeFacts, FunctionLookupKeyHash>;
 using ParamEnvList = SemaVector<ParamEnvInfo>;
-
-inline constexpr base::u32 SEMA_BODY_FLOW_INVALID_INDEX = static_cast<base::u32>(-1);
 
 enum class BodyFlowPointKind : base::u8 {
     entry,
@@ -823,9 +859,13 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
 [[nodiscard]] std::string_view lifetime_region_kind_name(LifetimeRegionKind kind) noexcept;
 [[nodiscard]] std::string_view lifetime_constraint_reason_name(LifetimeConstraintReason reason) noexcept;
 [[nodiscard]] std::string_view lifetime_violation_kind_name(LifetimeViolationKind kind) noexcept;
+[[nodiscard]] std::string_view generic_lifetime_predicate_source_name(GenericLifetimePredicateSource source) noexcept;
 [[nodiscard]] query::StableFingerprint128 body_loan_check_fingerprint(const BodyLoanCheckResult& result) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_borrow_contract_fingerprint(
     const FunctionBorrowContract& contract) noexcept;
+[[nodiscard]] query::StableFingerprint128 type_lifetime_info_fingerprint(const TypeLifetimeInfo& info) noexcept;
+[[nodiscard]] query::StableFingerprint128 generic_lifetime_predicate_fingerprint(
+    const GenericLifetimePredicate& predicate) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_lifetime_facts_fingerprint(
     const FunctionLifetimeFacts& facts) noexcept;
 [[nodiscard]] std::string dump_function_lifetime_facts(const FunctionLifetimeFacts& facts);
@@ -1172,6 +1212,8 @@ public:
     FunctionBorrowContractMap borrow_contracts;
     LifetimeOriginParamList lifetime_origin_params;
     ReferenceOriginFactList reference_origin_facts;
+    TypeLifetimeInfoList type_lifetime_infos;
+    GenericLifetimePredicateList generic_lifetime_predicates;
     FunctionLifetimeFactsMap lifetime_facts;
     BodyFlowGraphMap body_flow_graphs;
     BodyLoanCheckResultMap body_loan_checks;
@@ -1221,6 +1263,9 @@ public:
     [[nodiscard]] FunctionCallBinding make_function_call_binding() const;
     [[nodiscard]] LifetimeOriginParamInfo clone_lifetime_origin_param(const LifetimeOriginParamInfo& other);
     [[nodiscard]] ReferenceOriginFact clone_reference_origin_fact(const ReferenceOriginFact& other);
+    [[nodiscard]] TypeLifetimeInfo clone_type_lifetime_info(const TypeLifetimeInfo& other);
+    [[nodiscard]] GenericLifetimePredicate clone_generic_lifetime_predicate(
+        const GenericLifetimePredicate& other);
     void append_trait_method_call_binding(TraitMethodCallBinding binding);
     void append_function_call_binding(FunctionCallBinding binding);
     [[nodiscard]] const TraitMethodCallBinding* trait_method_call_binding_for_expr(

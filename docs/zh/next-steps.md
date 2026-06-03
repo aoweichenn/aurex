@@ -41,16 +41,21 @@ enforced diagnostics 现在包含 primary conflict、loan creation、invalidatin
 W7a release 性能收口已完成：普通 `--check` 不长期保留 full body-flow graph，非借用返回函数不扫描完整函数体构建
 borrow summary，direct/trait call binding 使用 expr-id index 查找；release/coverage/query/perf/stress gates 已通过。
 
-当前仍保留 `BorrowEscapeAnalyzer`：M7b summary/contract 已记录 borrowed-return facts，但旧 borrowed-local escape
-诊断仍由现有 analyzer 负责。只有在更大 parity matrix 覆盖当前 borrowed-view escape matrix 后，才移除或降级它。
+M7c-A / M7c-B 当前实现状态：checked lifetime facts、type/generic lifetime predicates、deterministic outlives
+solver、body-flow live-range facts、elision ambiguity、return-origin subset、type-outlives 和 local/temporary escape
+enforcement 已落地。`BorrowSummaryBuilder` 会追踪 `strraw` raw pointer alias 的本地来源，raw-derived local return
+由新 lifetime checker 诊断；unsafe raw pointer parameter helper 仍保守记录 unknown return fact，不把所有 unknown
+proof 当成错误。`BorrowEscapeAnalyzer` 已从 return escape 主路径降级为 storage-only parity guard，继续覆盖
+assignment into escaping struct field 等尚未迁移的存储逃逸矩阵。
 
 M7c/M7d 后续实现按六个大块推进：
 
-1. M7c-A：parser/AST/type system 增加 contextual `origin` 参数、`&[origin] T` / `&mut[origin] T`、origin union 和
-   checked lifetime facts；先 dump/fingerprint，不改变行为。
-2. M7c-B：实现 deterministic worklist/bitset region solver、elision/ambiguity diagnostics、type-outlives 和
-   return-origin subset enforcement，并让 `BorrowEscapeAnalyzer` 进入 shadow parity。
-3. M7c-C：新 checker 接管 borrowed-view escape 主诊断，旧 `BorrowEscapeAnalyzer` 删除或降级；public/prototype/extern/trait
+1. M7c-A：已完成。parser/AST/type system 增加 contextual `origin` 参数、`&[origin] T` / `&mut[origin] T`、
+   origin union 和 checked lifetime facts；dump/fingerprint/whitebox/query/tooling 已覆盖。
+2. M7c-B：已完成。deterministic outlives solver、body-flow live-range facts、elision/ambiguity diagnostics、
+   type-outlives、return-origin subset enforcement 和 return local/raw-derived escape 主诊断已落地；旧 analyzer
+   降级为 storage-only parity guard。
+3. M7c-C：继续推进 borrowed-view storage escape 迁移，旧 `BorrowEscapeAnalyzer` 删除或 debug-only 化；public/prototype/extern/trait
    lifetime contract release policy 收口。
 4. M7d-A：引入 `DropCheckFact` / `DropActionFact`、dropck solver、destructor body safety 和泛型 drop glue
    type-outlives constraints。

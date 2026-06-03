@@ -7,6 +7,9 @@ namespace aurex::sema {
 namespace {
 
 constexpr std::string_view SEMA_LIFETIME_FACTS_FINGERPRINT_MARKER = "sema.lifetime_facts.v1";
+constexpr std::string_view SEMA_TYPE_LIFETIME_INFO_FINGERPRINT_MARKER = "sema.type_lifetime_info.v1";
+constexpr std::string_view SEMA_GENERIC_LIFETIME_PREDICATE_FINGERPRINT_MARKER =
+    "sema.generic_lifetime_predicate.v1";
 
 void mix_function_key(query::StableHashBuilder& builder, const FunctionLookupKey key) noexcept
 {
@@ -103,6 +106,47 @@ std::string_view lifetime_violation_kind_name(const LifetimeViolationKind kind) 
     return "<invalid>";
 }
 
+std::string_view generic_lifetime_predicate_source_name(const GenericLifetimePredicateSource source) noexcept
+{
+    switch (source) {
+        case GenericLifetimePredicateSource::explicit_origin:
+            return "explicit_origin";
+        case GenericLifetimePredicateSource::inferred_reference:
+            return "inferred_reference";
+        case GenericLifetimePredicateSource::associated_projection:
+            return "associated_projection";
+    }
+    return "<invalid>";
+}
+
+query::StableFingerprint128 type_lifetime_info_fingerprint(const TypeLifetimeInfo& info) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(SEMA_TYPE_LIFETIME_INFO_FINGERPRINT_MARKER);
+    builder.mix_u32(info.type.value);
+    builder.mix_bool(info.can_contain_borrow);
+    builder.mix_bool(info.has_concrete_borrow_surface);
+    builder.mix_u32(info.part_index);
+    builder.mix_u64(static_cast<base::u64>(info.origin_names.size()));
+    for (const InternedText origin : info.origin_names) {
+        builder.mix_string(origin.view());
+    }
+    return builder.finish();
+}
+
+query::StableFingerprint128 generic_lifetime_predicate_fingerprint(
+    const GenericLifetimePredicate& predicate) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(SEMA_GENERIC_LIFETIME_PREDICATE_FINGERPRINT_MARKER);
+    builder.mix_u32(predicate.subject_type.value);
+    builder.mix_string(predicate.origin_name.view());
+    builder.mix_u32(predicate.origin_name_id.value);
+    builder.mix_u8(static_cast<base::u8>(predicate.source));
+    builder.mix_u32(predicate.part_index);
+    return builder.finish();
+}
+
 query::StableFingerprint128 function_lifetime_facts_fingerprint(const FunctionLifetimeFacts& facts) noexcept
 {
     query::StableHashBuilder builder;
@@ -131,6 +175,13 @@ query::StableFingerprint128 function_lifetime_facts_fingerprint(const FunctionLi
         builder.mix_u32(constraint.region);
         builder.mix_u8(static_cast<base::u8>(constraint.reason));
     }
+    builder.mix_u64(static_cast<base::u64>(facts.live_ranges.size()));
+    for (const LifetimeRegionLiveRange& live_range : facts.live_ranges) {
+        builder.mix_u32(live_range.region);
+        builder.mix_u32(live_range.first_point);
+        builder.mix_u32(live_range.last_point);
+        builder.mix_u32(live_range.point_count);
+    }
     builder.mix_u64(static_cast<base::u64>(facts.return_regions.size()));
     for (const LifetimeReturnRegion& returned : facts.return_regions) {
         builder.mix_u32(returned.region);
@@ -156,6 +207,7 @@ std::string dump_function_lifetime_facts(const FunctionLifetimeFacts& facts)
     stream << " return_type=" << facts.return_type.value << " regions=" << facts.regions.size()
            << " outlives=" << facts.outlives_constraints.size()
            << " type_outlives=" << facts.type_outlives_constraints.size()
+           << " live_ranges=" << facts.live_ranges.size()
            << " returns=" << facts.return_regions.size() << " violations=" << facts.violations.size()
            << " solved=" << (facts.solved ? "true" : "false")
            << " enforced=" << (facts.diagnostic_mode_enforced ? "true" : "false")
@@ -191,6 +243,15 @@ std::string dump_function_lifetime_facts(const FunctionLifetimeFacts& facts)
         stream << "  t" << index << " type=" << constraint.type.value << " : r" << constraint.region
                << " reason=" << lifetime_constraint_reason_name(constraint.reason) << " range=";
         append_range(stream, constraint.range);
+        stream << '\n';
+    }
+
+    stream << "live_ranges:\n";
+    for (base::usize index = 0; index < facts.live_ranges.size(); ++index) {
+        const LifetimeRegionLiveRange& live_range = facts.live_ranges[index];
+        stream << "  l" << index << " r" << live_range.region << " first=p" << live_range.first_point
+               << " last=p" << live_range.last_point << " points=" << live_range.point_count << " range=";
+        append_range(stream, live_range.range);
         stream << '\n';
     }
 

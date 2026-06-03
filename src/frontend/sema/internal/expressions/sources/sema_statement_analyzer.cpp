@@ -365,7 +365,8 @@ void evaluate_control_flow_if_statement(const syntax::AstModule& module, std::ve
 
 class SemanticAnalyzerCore::BorrowEscapeAnalyzer final {
 public:
-    explicit BorrowEscapeAnalyzer(SemanticAnalyzerCore& core) noexcept : core_(core)
+    explicit BorrowEscapeAnalyzer(SemanticAnalyzerCore& core, const bool include_return_escapes) noexcept
+        : core_(core), include_return_escapes_(include_return_escapes)
     {
     }
 
@@ -612,7 +613,9 @@ private:
                 this->push_scoped_block(tasks, stmt->body);
                 break;
             case syntax::StmtKind::return_:
-                this->report_if_borrowed_local_escape(stmt->return_value);
+                if (this->include_return_escapes_) {
+                    this->report_if_borrowed_local_escape(stmt->return_value);
+                }
                 break;
             case syntax::StmtKind::block:
                 this->push_scoped_block(tasks, stmt_id);
@@ -1283,6 +1286,7 @@ private:
     std::vector<Scope> scopes_;
     mutable std::unordered_map<base::u32, bool> type_borrow_cache_;
     std::unordered_set<base::u32> reported_exprs_;
+    bool include_return_escapes_ = true;
 };
 
 struct SemanticAnalyzerCore::FunctionBodyContextScope {
@@ -1408,11 +1412,10 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
         static_cast<void>(inserted);
     }
     this->core_.analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
-    this->core_.analyze_borrow_escapes(function);
     this->core_.analyze_body_moves(function, signature);
     SemanticAnalyzerCore::BodyLoanChecker body_loan_checker(this->core_);
-    const bool collect_body_flow =
-        this->core_.ctx_.options.retain_body_flow_graphs || body_loan_checker.may_need_local_loan_check(function);
+    const bool collect_body_flow = this->core_.ctx_.options.retain_body_flow_graphs
+        || body_loan_checker.may_need_local_loan_check(function);
     if (collect_body_flow) {
         this->core_.collect_body_flow_graph(function, key);
         this->core_.check_body_loans(function, key, BodyLoanDiagnosticMode::enforced);
@@ -1435,8 +1438,16 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
     const FunctionSignature& finalized_signature =
         summary_signature == this->core_.state_.checked.functions.end() ? signature : summary_signature->second;
     this->core_.build_borrow_summary(function, key, finalized_signature);
+    const auto summary = this->core_.state_.checked.borrow_summaries.find(key);
+    if (summary != this->core_.state_.checked.borrow_summaries.end()
+        && summary->second.return_type_can_contain_borrow
+        && this->core_.state_.checked.body_flow_graphs.find(key)
+            == this->core_.state_.checked.body_flow_graphs.end()) {
+        this->core_.collect_body_flow_graph(function, key);
+    }
     this->core_.check_borrow_contract(function, key, finalized_signature);
     this->core_.analyze_lifetimes(function, key, finalized_signature);
+    this->core_.analyze_borrow_escapes(function, false);
     if (!this->core_.ctx_.options.retain_body_flow_graphs) {
         this->core_.state_.checked.body_flow_graphs.erase(key);
     }
@@ -2080,9 +2091,10 @@ void SemanticAnalyzerCore::analyze_function_body_with_signature(const syntax::It
     StatementAnalyzer(*this).analyze_function_body_with_signature(function, key, signature, state);
 }
 
-void SemanticAnalyzerCore::analyze_borrow_escapes(const syntax::ItemNode& function)
+void SemanticAnalyzerCore::analyze_borrow_escapes(
+    const syntax::ItemNode& function, const bool include_return_escapes)
 {
-    BorrowEscapeAnalyzer(*this).analyze_function(function);
+    BorrowEscapeAnalyzer(*this, include_return_escapes).analyze_function(function);
 }
 
 void SemanticAnalyzerCore::analyze_block(

@@ -1,5 +1,29 @@
 # 版本文档
 
+## M7c-A / M7c-B Lifetime Facts 与 Region Enforcement 实现收口
+
+M7c-A / M7c-B 已完成实现收口，文档入口仍为
+[Aurex M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线](m7c-m7d-complete-borrow-raii-design.md)。
+
+当前实现包括：
+
+- `CheckedModule::lifetime_facts`、`type_lifetime_infos`、`generic_lifetime_predicates`，以及对应 dump、clone、
+  interner rebind 和 stable fingerprint。
+- `FunctionLifetimeFacts` 中的 region、outlives constraint、type-outlives constraint、return region、violation 和
+  body-flow point live-range facts。
+- lifetime collector / solver / enforcer 分层：signature/reference origin facts、`@borrow(...)` 与 inferred
+  `BorrowSummary` 统一映射到 lifetime facts；solver 做确定性 outlives fixed point 与 live-range projection；
+  enforcer 处理 elision ambiguity、return-origin subset、type-outlives 和 local/temporary escape 主诊断。
+- `TypeCheckBodyAuthority` 和 IDE `lifetime_facts` detail 混入 lifetime live-range、type/generic predicate count、
+  local/unknown escape 状态和 lifetime fingerprint。
+- `BorrowSummaryBuilder` 追踪 `strraw` raw pointer alias 的本地来源；raw-derived local return 由新 lifetime checker
+  诊断，unsafe raw pointer parameter helper 仍保守记录 unknown return fact。
+- 旧 `BorrowEscapeAnalyzer` 已从 return escape 主路径降级为 storage-only parity guard，继续覆盖尚未迁移的
+  assignment into escaping field 等存储逃逸场景。
+
+M7c-A/B 仍不声明 M7c-C 范围：public/prototype/extern/trait lifetime release policy、trait impl contract subset
+细化、旧 analyzer 删除、closure capture placeholder 落地和更完整的 borrowed-view escape parity matrix 留给下一阶段。
+
 ## M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线
 
 M7c/M7d 设计基线已固定，文档入口为

@@ -4,6 +4,7 @@
 #include <aurex/frontend/sema/sema.hpp>
 #include <aurex/frontend/sema/sema_messages.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <initializer_list>
@@ -1879,12 +1880,24 @@ TEST(CoreUnit, SemanticWhiteBoxRecordsOriginParamsAndReferenceFacts)
     EXPECT_EQ(origin_fact.origin_name_ids.front(), origin_param.name_id);
     EXPECT_EQ(origin_fact.part_index, SEMA_TEST_ORIGIN_FACT_PART_INDEX);
 
+    EXPECT_GT(checked.type_lifetime_infos.size(), 0U);
+    EXPECT_GT(checked.generic_lifetime_predicates.size(), 0U);
+    const bool has_explicit_predicate = std::ranges::any_of(
+        checked.generic_lifetime_predicates, [](const sema::GenericLifetimePredicate& predicate) {
+            return predicate.source == sema::GenericLifetimePredicateSource::explicit_origin
+                && predicate.origin_name.view() == SEMA_TEST_ORIGIN_FACT_PARAM_NAME;
+        });
+    EXPECT_TRUE(has_explicit_predicate);
+
     const std::string checked_dump = sema::dump_checked_module(checked);
     EXPECT_NE(checked_dump.find("lifetime_origin_params 1"), std::string::npos);
     EXPECT_NE(checked_dump.find("origin_param #0 data ordinal=0"), std::string::npos);
     EXPECT_NE(checked_dump.find("reference_origin_facts 1"), std::string::npos);
     EXPECT_NE(checked_dump.find("reference_origin #0"), std::string::npos);
     EXPECT_NE(checked_dump.find("origins=data"), std::string::npos);
+    EXPECT_NE(checked_dump.find("type_lifetime_infos"), std::string::npos);
+    EXPECT_NE(checked_dump.find("generic_lifetime_predicates"), std::string::npos);
+    EXPECT_NE(checked_dump.find("source=explicit_origin"), std::string::npos);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxLookupsAndMethodReceivers)
@@ -6824,15 +6837,21 @@ TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryCoversPatternFallbackEdges)
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
     sema::TypeTable& types = analyzer.state_.checked.types;
-    const TypeHandle void_type = types.builtin(BuiltinType::void_);
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle ref_i32 = types.reference(PointerMutability::const_, i32);
+    const TypeHandle struct_type = types.named_struct("body_loans.MissingStruct", "MissingStruct", false);
     const TypeHandle enum_type = types.named_enum("body_loans.ShortEnum", "ShortEnum");
+    const StructInfo& struct_info =
+        add_struct_info(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "MissingStruct", struct_type);
+    const_cast<StructInfo&>(struct_info)
+        .fields.push_back(struct_field_info(analyzer, "other", module_id(SEMA_TEST_ROOT_MODULE_INDEX), ref_i32));
     static_cast<void>(add_enum_case(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "ShortEnum_some", "some",
         enum_type, INVALID_TYPE_HANDLE, {}));
 
     analyzer.state_.checked.expr_types.assign(analyzer.ctx_.module.exprs.size(), INVALID_TYPE_HANDLE);
     analyzer.state_.checked.prepare_analysis_only_storage(analyzer.ctx_.module.exprs.size());
     analyzer.state_.checked.stmt_local_types.assign(analyzer.ctx_.module.stmts.size(), INVALID_TYPE_HANDLE);
-    analyzer.record_stmt_local_type(struct_decl_id, INVALID_TYPE_HANDLE);
+    analyzer.record_stmt_local_type(struct_decl_id, struct_type);
     analyzer.record_stmt_local_type(missing_enum_decl_id, INVALID_TYPE_HANDLE);
     analyzer.record_stmt_local_type(short_enum_decl_id, enum_type);
 
@@ -6846,12 +6865,12 @@ TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryCoversPatternFallbackEdges)
     signature.name_id = function_id;
     signature.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
     signature.semantic_key = key;
-    signature.return_type = void_type;
+    signature.return_type = ref_i32;
 
     sema::SemanticAnalyzerCore::BorrowSummaryBuilder(analyzer).build(function, key, signature);
     ASSERT_TRUE(analyzer.state_.checked.borrow_summaries.contains(key));
     const sema::FunctionBorrowSummary& summary = analyzer.state_.checked.borrow_summaries.at(key);
-    EXPECT_FALSE(summary.return_type_can_contain_borrow);
+    EXPECT_TRUE(summary.return_type_can_contain_borrow);
     EXPECT_TRUE(summary.return_origins.empty());
     EXPECT_FALSE(summary.has_unknown_return_origin);
 }

@@ -583,7 +583,7 @@ private:
     void analyze_function_body(const syntax::ItemNode& function, syntax::ItemId function_id);
     void analyze_function_body_with_signature(const syntax::ItemNode& function, const FunctionLookupKey& key,
         const FunctionSignature& signature, FunctionBodyState& state);
-    void analyze_borrow_escapes(const syntax::ItemNode& function);
+    void analyze_borrow_escapes(const syntax::ItemNode& function, bool include_return_escapes);
     void record_declared_borrow_contract(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
     void check_borrow_contract(

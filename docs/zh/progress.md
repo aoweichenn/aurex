@@ -5,6 +5,20 @@
 
 ## 总体状态
 
+2026-06-03：M7c-A / M7c-B 已完成实现收口。parser/AST/type system 的 contextual `origin` 参数、
+`&[origin] T` / `&mut[origin] T` 和 origin union 已进入 checked facts；`CheckedModule` 现在保存
+`FunctionLifetimeFacts`、`TypeLifetimeInfo`、`GenericLifetimePredicate`，checked dump、stable fingerprint、
+`TypeCheckBodyAuthority` 和 IDE `lifetime_facts` detail 已混入 lifetime region、type-outlives、live-range、
+type/generic predicate 和 diagnostics 状态。lifetime analyzer 保持 collector / solver / enforcer 分层：collector
+从 signature、显式 reference origin、`@borrow(...)` / inferred `BorrowSummary` 收集 region/type facts；solver
+用确定性 outlives matrix fixed point 和 body-flow point live-range facts 产出 stable solved facts；enforcer 负责
+elision ambiguity、return-origin subset、type-outlives 和 local/temporary escape 主诊断。`BorrowSummaryBuilder` 现在会
+追踪 `strraw` raw pointer alias 的本地来源，raw-derived local return 由 lifetime checker 诊断为
+`borrowed local storage cannot escape the function`；unsafe raw pointer parameter helper 仍保守记录 unknown return
+fact，不把所有 unknown proof 当成错误。旧 `BorrowEscapeAnalyzer` 已从 return escape 主路径降级为 storage-only
+parity guard，继续覆盖 assignment into escaping struct field 等尚未迁移的存储逃逸矩阵；M7c-C 再处理 public /
+prototype / extern / trait lifetime release policy 与旧 analyzer cleanup。
+
 2026-06-03：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线已固定，记录在
 [Aurex M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线](m7c-m7d-complete-borrow-raii-design.md)。
 新基线明确不照抄 Rust lifetime surface，而是采用 `@borrow(return = [...])` 作为函数边界主 contract，并选择

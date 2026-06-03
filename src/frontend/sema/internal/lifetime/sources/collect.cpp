@@ -106,6 +106,7 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::analyze(const syntax::ItemNode& fun
     this->collect_origin_params();
     this->collect_parameter_regions();
     this->collect_reference_origin_facts();
+    this->collect_signature_type_lifetime_infos();
     this->collect_return_regions();
     this->solve();
     this->enforce_return_origin_subset();
@@ -168,6 +169,12 @@ bool SemanticAnalyzerCore::LifetimeAnalyzer::boundary_requires_explicit_contract
 {
     return syntax::visibility_is_public(this->signature_->visibility) || this->signature_->is_extern_c
         || this->signature_->has_prototype || !this->signature_->has_definition;
+}
+
+bool SemanticAnalyzerCore::LifetimeAnalyzer::function_has_body_flow_graph() const noexcept
+{
+    return this->core_.state_.checked.body_flow_graphs.find(this->key_)
+        != this->core_.state_.checked.body_flow_graphs.end();
 }
 
 base::u32 SemanticAnalyzerCore::LifetimeAnalyzer::add_region(const LifetimeRegionKind kind, const IdentId name_id,
@@ -317,7 +324,93 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::collect_reference_origin_facts()
             const base::u32 region = this->declared_or_unknown_origin(name, name_id, fact.range, true);
             this->collect_reference_type_constraints(
                 fact.semantic_type, region, LifetimeConstraintReason::reference_type, fact.range);
+            this->record_type_lifetime_info(fact.semantic_type, LifetimeConstraintReason::reference_type, fact.range);
+            this->record_generic_lifetime_predicate(
+                fact.semantic_type, name, name_id, GenericLifetimePredicateSource::explicit_origin, fact.range);
         }
+    }
+}
+
+void SemanticAnalyzerCore::LifetimeAnalyzer::collect_signature_type_lifetime_infos()
+{
+    for (base::usize index = 0; index < this->signature_->param_types.size(); ++index) {
+        const base::SourceRange range =
+            index < this->function_->params.size() ? this->function_->params[index].range : this->signature_->range;
+        this->record_type_lifetime_info(
+            this->signature_->param_types[index], LifetimeConstraintReason::reference_type, range);
+    }
+    this->record_type_lifetime_info(
+        this->signature_->return_type, LifetimeConstraintReason::return_type, this->signature_->range);
+}
+
+void SemanticAnalyzerCore::LifetimeAnalyzer::record_type_lifetime_info(
+    const TypeHandle type, const LifetimeConstraintReason reason, const base::SourceRange& range)
+{
+    static_cast<void>(reason);
+    if (!valid_type_handle(this->core_.state_.checked.types, type)) {
+        return;
+    }
+    const TypeInfo& type_info = this->core_.state_.checked.types.get(type);
+    TypeLifetimeInfo info;
+    info.type = type;
+    info.can_contain_borrow = this->type_can_contain_borrow(type);
+    if (!info.can_contain_borrow) {
+        return;
+    }
+    info.has_concrete_borrow_surface = this->type_has_concrete_borrow_surface(type);
+    info.part_index = this->signature_->part_index;
+    std::vector<OriginName> origins = this->origin_names_for_type(type);
+    std::ranges::sort(origins, [](const OriginName& lhs, const OriginName& rhs) {
+        return std::tie(lhs.name, lhs.name_id.value) < std::tie(rhs.name, rhs.name_id.value);
+    });
+    origins.erase(std::ranges::unique(origins, [](const OriginName& lhs, const OriginName& rhs) {
+        return lhs.name == rhs.name && lhs.name_id.value == rhs.name_id.value;
+    }).begin(), origins.end());
+    for (const OriginName& origin : origins) {
+        info.origin_names.push_back(this->core_.state_.checked.intern_text(origin.name));
+        this->record_generic_lifetime_predicate(
+            type, origin.name, origin.name_id, GenericLifetimePredicateSource::explicit_origin, origin.range);
+    }
+    if (info.can_contain_borrow && origins.empty()) {
+        const GenericLifetimePredicateSource source = type_info.kind == TypeKind::associated_projection
+            ? GenericLifetimePredicateSource::associated_projection
+            : GenericLifetimePredicateSource::inferred_reference;
+        this->record_generic_lifetime_predicate(
+            type, SEMA_LIFETIME_UNKNOWN_REGION_NAME, INVALID_IDENT_ID, source, range);
+    }
+    info.fingerprint = type_lifetime_info_fingerprint(info);
+    const auto existing = std::ranges::find_if(this->core_.state_.checked.type_lifetime_infos,
+        [&](const TypeLifetimeInfo& candidate) {
+            return candidate.type.value == info.type.value && candidate.fingerprint == info.fingerprint;
+        });
+    if (existing == this->core_.state_.checked.type_lifetime_infos.end()) {
+        this->core_.state_.checked.type_lifetime_infos.push_back(std::move(info));
+    }
+}
+
+void SemanticAnalyzerCore::LifetimeAnalyzer::record_generic_lifetime_predicate(const TypeHandle type,
+    const std::string_view origin, const IdentId origin_id, const GenericLifetimePredicateSource source,
+    const base::SourceRange& range)
+{
+    if (!valid_type_handle(this->core_.state_.checked.types, type)) {
+        return;
+    }
+    GenericLifetimePredicate predicate;
+    predicate.subject_type = type;
+    predicate.origin_name = this->core_.state_.checked.intern_text(origin);
+    predicate.origin_name_id = origin_id;
+    predicate.source = source;
+    predicate.range = range;
+    predicate.part_index = this->signature_->part_index;
+    predicate.fingerprint = generic_lifetime_predicate_fingerprint(predicate);
+    const auto existing = std::ranges::find_if(this->core_.state_.checked.generic_lifetime_predicates,
+        [&](const GenericLifetimePredicate& candidate) {
+            return candidate.subject_type.value == predicate.subject_type.value
+                && candidate.origin_name.view() == predicate.origin_name.view()
+                && candidate.source == predicate.source;
+        });
+    if (existing == this->core_.state_.checked.generic_lifetime_predicates.end()) {
+        this->core_.state_.checked.generic_lifetime_predicates.push_back(std::move(predicate));
     }
 }
 
@@ -387,9 +480,15 @@ SemanticAnalyzerCore::LifetimeAnalyzer::regions_for_summary_origin(const BorrowS
     RegionSet result;
     switch (origin.kind) {
         case BorrowSummaryOriginKind::parameter:
-            result = this->regions_for_param_type_origin(origin.param_index);
-            if (result.regions.empty()) {
-                result.regions.push_back(this->parameter_region(origin.param_index));
+            if (origin.storage_slot) {
+                result.regions.push_back(this->local_region(origin.name_id, origin.range));
+                this->add_violation(LifetimeViolationKind::local_escape, result.regions.back(),
+                    SEMA_LIFETIME_INVALID_INDEX, INVALID_TYPE_HANDLE, origin.expr, false, origin.range);
+            } else {
+                result = this->regions_for_param_type_origin(origin.param_index);
+                if (result.regions.empty()) {
+                    result.regions.push_back(this->parameter_region(origin.param_index));
+                }
             }
             break;
         case BorrowSummaryOriginKind::static_:
@@ -708,6 +807,19 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::finalize_facts()
     this->facts_.type_outlives_constraints.erase(
         std::ranges::unique(this->facts_.type_outlives_constraints, same_lifetime_type_outlives_constraint).begin(),
         this->facts_.type_outlives_constraints.end());
+
+    std::ranges::sort(this->facts_.live_ranges,
+        [](const LifetimeRegionLiveRange& lhs, const LifetimeRegionLiveRange& rhs) {
+            return std::tie(lhs.region, lhs.first_point, lhs.last_point, lhs.point_count)
+                < std::tie(rhs.region, rhs.first_point, rhs.last_point, rhs.point_count);
+        });
+    this->facts_.live_ranges.erase(
+        std::ranges::unique(this->facts_.live_ranges,
+            [](const LifetimeRegionLiveRange& lhs, const LifetimeRegionLiveRange& rhs) {
+                return lhs.region == rhs.region && lhs.first_point == rhs.first_point
+                    && lhs.last_point == rhs.last_point && lhs.point_count == rhs.point_count;
+            }).begin(),
+        this->facts_.live_ranges.end());
 
     std::ranges::sort(this->facts_.return_regions,
         [](const LifetimeReturnRegion& lhs, const LifetimeReturnRegion& rhs) {

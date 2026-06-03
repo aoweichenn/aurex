@@ -1013,7 +1013,8 @@ void recover_resolved_fragment_source_part(
     std::ostringstream label;
     label << IDE_SEMANTIC_FACT_LIFETIME_FACTS << " regions=" << facts.regions.size()
           << " outlives=" << facts.outlives_constraints.size()
-          << " type_outlives=" << facts.type_outlives_constraints.size() << " returns=" << facts.return_regions.size()
+          << " type_outlives=" << facts.type_outlives_constraints.size()
+          << " live_ranges=" << facts.live_ranges.size() << " returns=" << facts.return_regions.size()
           << " violations=" << facts.violations.size()
           << " diagnostics=" << (has_emitted_diagnostics ? "true" : "false")
           << " fingerprint=" << query::debug_string(sema::function_lifetime_facts_fingerprint(facts));

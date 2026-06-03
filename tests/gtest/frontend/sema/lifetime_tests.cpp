@@ -4,12 +4,14 @@
 #include <aurex/frontend/sema/sema.hpp>
 #include <aurex/frontend/sema/sema_messages.hpp>
 #include <aurex/infrastructure/base/diagnostic.hpp>
+#include <aurex/infrastructure/query/type_check_body_query.hpp>
 
 #include <algorithm>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include <frontend/sema/internal/core/private/sema_core.hpp>
 
@@ -178,6 +180,14 @@ void configure_lifetime_whitebox_harness(LifetimeWhiteboxHarness& harness, const
     });
 }
 
+[[nodiscard]] bool lifetime_facts_has_emitted_violation_kind(
+    const sema::FunctionLifetimeFacts& facts, const sema::LifetimeViolationKind kind) noexcept
+{
+    return std::ranges::any_of(facts.violations, [kind](const sema::LifetimeViolation& violation) {
+        return violation.kind == kind && violation.diagnostic_emitted;
+    });
+}
+
 } // namespace
 
 TEST(CoreUnit, LifetimeFactsNamesFingerprintsAndDumpsAreStable)
@@ -219,6 +229,13 @@ TEST(CoreUnit, LifetimeFactsNamesFingerprintsAndDumpsAreStable)
         .region = 1U,
         .reason = sema::LifetimeConstraintReason::dropck,
         .range = base::SourceRange{LIFETIME_TEST_SOURCE_ID, 27U, 31U},
+    });
+    facts.live_ranges.push_back(sema::LifetimeRegionLiveRange{
+        .region = 1U,
+        .first_point = 2U,
+        .last_point = 7U,
+        .point_count = 4U,
+        .range = base::SourceRange{LIFETIME_TEST_SOURCE_ID, 31U, 32U},
     });
     facts.return_regions.push_back(sema::LifetimeReturnRegion{
         .region = 1U,
@@ -269,6 +286,19 @@ TEST(CoreUnit, LifetimeFactsNamesFingerprintsAndDumpsAreStable)
     EXPECT_EQ(sema::lifetime_violation_kind_name(sema::LifetimeViolationKind::local_escape), "local_escape");
     EXPECT_EQ(sema::lifetime_violation_kind_name(sema::LifetimeViolationKind::unknown_escape), "unknown_escape");
     EXPECT_EQ(sema::lifetime_violation_kind_name(sema::LifetimeViolationKind::type_outlives), "type_outlives");
+    EXPECT_EQ(sema::generic_lifetime_predicate_source_name(sema::GenericLifetimePredicateSource::explicit_origin),
+        "explicit_origin");
+    EXPECT_EQ(sema::generic_lifetime_predicate_source_name(sema::GenericLifetimePredicateSource::inferred_reference),
+        "inferred_reference");
+    EXPECT_EQ(
+        sema::generic_lifetime_predicate_source_name(sema::GenericLifetimePredicateSource::associated_projection),
+        "associated_projection");
+    EXPECT_EQ(sema::lifetime_region_kind_name(static_cast<sema::LifetimeRegionKind>(255U)), "<invalid>");
+    EXPECT_EQ(sema::lifetime_constraint_reason_name(static_cast<sema::LifetimeConstraintReason>(255U)), "<invalid>");
+    EXPECT_EQ(sema::lifetime_violation_kind_name(static_cast<sema::LifetimeViolationKind>(255U)), "<invalid>");
+    EXPECT_EQ(sema::generic_lifetime_predicate_source_name(
+                  static_cast<sema::GenericLifetimePredicateSource>(255U)),
+        "<invalid>");
 
     const query::StableFingerprint128 original = sema::function_lifetime_facts_fingerprint(facts);
     sema::FunctionLifetimeFacts range_changed = facts;
@@ -279,18 +309,46 @@ TEST(CoreUnit, LifetimeFactsNamesFingerprintsAndDumpsAreStable)
     sema::FunctionLifetimeFacts violation_changed = facts;
     violation_changed.violations.front().kind = sema::LifetimeViolationKind::ambiguous_elision;
     EXPECT_NE(sema::function_lifetime_facts_fingerprint(violation_changed), original);
+    sema::FunctionLifetimeFacts live_range_changed = facts;
+    live_range_changed.live_ranges.front().last_point = 8U;
+    EXPECT_NE(sema::function_lifetime_facts_fingerprint(live_range_changed), original);
+
+    sema::TypeLifetimeInfo type_lifetime;
+    type_lifetime.type = sema::TypeHandle{15U};
+    type_lifetime.origin_names.push_back(checked.intern_text("data"));
+    type_lifetime.can_contain_borrow = true;
+    type_lifetime.has_concrete_borrow_surface = true;
+    type_lifetime.part_index = 3U;
+    const query::StableFingerprint128 type_original = sema::type_lifetime_info_fingerprint(type_lifetime);
+    sema::TypeLifetimeInfo type_changed = type_lifetime;
+    type_changed.origin_names.front() = checked.intern_text("other");
+    EXPECT_NE(sema::type_lifetime_info_fingerprint(type_changed), type_original);
+
+    sema::GenericLifetimePredicate predicate;
+    predicate.subject_type = sema::TypeHandle{16U};
+    predicate.origin_name = checked.intern_text("data");
+    predicate.origin_name_id = sema::IdentId{17U};
+    predicate.source = sema::GenericLifetimePredicateSource::explicit_origin;
+    predicate.part_index = 4U;
+    const query::StableFingerprint128 predicate_original =
+        sema::generic_lifetime_predicate_fingerprint(predicate);
+    sema::GenericLifetimePredicate predicate_changed = predicate;
+    predicate_changed.source = sema::GenericLifetimePredicateSource::associated_projection;
+    EXPECT_NE(sema::generic_lifetime_predicate_fingerprint(predicate_changed), predicate_original);
 
     const std::string dump = sema::dump_function_lifetime_facts(facts);
     EXPECT_NE(dump.find("lifetime_facts"), std::string::npos) << dump;
     EXPECT_NE(dump.find("regions=3"), std::string::npos) << dump;
     EXPECT_NE(dump.find("outlives=1"), std::string::npos) << dump;
     EXPECT_NE(dump.find("type_outlives=1"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("live_ranges=1"), std::string::npos) << dump;
     EXPECT_NE(dump.find("returns=1"), std::string::npos) << dump;
     EXPECT_NE(dump.find("violations=2"), std::string::npos) << dump;
     EXPECT_NE(dump.find("name=#5"), std::string::npos) << dump;
     EXPECT_NE(dump.find("name=-"), std::string::npos) << dump;
     EXPECT_NE(dump.find("reason=return_contract"), std::string::npos) << dump;
     EXPECT_NE(dump.find("reason=dropck"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("first=p2"), std::string::npos) << dump;
     EXPECT_NE(dump.find("expr=e9"), std::string::npos) << dump;
     EXPECT_NE(dump.find("fingerprint="), std::string::npos) << dump;
 
@@ -300,6 +358,136 @@ TEST(CoreUnit, LifetimeFactsNamesFingerprintsAndDumpsAreStable)
     const std::string inactive_dump = sema::dump_function_lifetime_facts(inactive);
     EXPECT_NE(inactive_dump.find("solved=false"), std::string::npos) << inactive_dump;
     EXPECT_NE(inactive_dump.find("enforced=false"), std::string::npos) << inactive_dump;
+}
+
+TEST(CoreUnit, LifetimeFactsPopulateTypeCheckBodyAuthorityFlags)
+{
+    sema::CheckedModule checked;
+    const sema::FunctionLookupKey key{1U, sema::SEMA_LOOKUP_INVALID_KEY_PART, sema::IdentId{2U}};
+
+    sema::FunctionBorrowSummary summary;
+    summary.function = key;
+    summary.return_type = sema::TypeHandle{3U};
+    summary.origins.push_back(sema::BorrowSummaryOrigin{.kind = sema::BorrowSummaryOriginKind::local});
+    summary.return_origins.push_back(sema::FunctionBorrowReturnOrigin{.origin_index = 0U});
+    summary.has_unknown_return_origin = true;
+    summary.has_local_return_escape = true;
+    summary.fingerprint = query::stable_fingerprint("lifetime-test-borrow-summary");
+    checked.borrow_summaries[key] = summary;
+
+    sema::FunctionBorrowContract contract;
+    contract.function = key;
+    contract.return_type = sema::TypeHandle{3U};
+    contract.return_selectors.push_back(sema::BorrowContractSelector{
+        .kind = sema::BorrowContractSelectorKind::unknown,
+        .param_index = sema::SEMA_BORROW_SUMMARY_INVALID_INDEX,
+    });
+    contract.unknown_return_allowed = true;
+    contract.has_local_return_escape = true;
+    contract.has_contract_mismatch = true;
+    contract.fingerprint = sema::function_borrow_contract_fingerprint(contract);
+    checked.borrow_contracts[key] = contract;
+
+    sema::FunctionLifetimeFacts facts;
+    facts.function = key;
+    facts.return_type = sema::TypeHandle{3U};
+    sema::LifetimeRegion unknown_region;
+    unknown_region.kind = sema::LifetimeRegionKind::unknown;
+    unknown_region.range = base::SourceRange{LIFETIME_TEST_SOURCE_ID, 1U, 2U};
+    facts.regions.push_back(unknown_region);
+    facts.outlives_constraints.push_back(sema::LifetimeOutlivesConstraint{
+        .longer_region = 0U,
+        .shorter_region = 0U,
+        .reason = sema::LifetimeConstraintReason::declared_origin,
+    });
+    facts.type_outlives_constraints.push_back(sema::LifetimeTypeOutlivesConstraint{
+        .type = sema::TypeHandle{4U},
+        .region = 0U,
+        .reason = sema::LifetimeConstraintReason::reference_type,
+    });
+    facts.live_ranges.push_back(sema::LifetimeRegionLiveRange{
+        .region = 0U,
+        .first_point = 1U,
+        .last_point = 2U,
+        .point_count = 3U,
+    });
+    facts.return_regions.push_back(sema::LifetimeReturnRegion{.region = 0U});
+    facts.violations = {
+        sema::LifetimeViolation{.kind = sema::LifetimeViolationKind::unknown_origin},
+        sema::LifetimeViolation{.kind = sema::LifetimeViolationKind::ambiguous_elision},
+        sema::LifetimeViolation{.kind = sema::LifetimeViolationKind::return_origin_outside_type},
+        sema::LifetimeViolation{.kind = sema::LifetimeViolationKind::local_escape},
+        sema::LifetimeViolation{.kind = sema::LifetimeViolationKind::unknown_escape},
+    };
+    facts.violations.front().diagnostic_emitted = true;
+    facts.fingerprint = sema::function_lifetime_facts_fingerprint(facts);
+    checked.lifetime_facts[key] = facts;
+
+    sema::TypeLifetimeInfo type_lifetime;
+    type_lifetime.type = sema::TypeHandle{3U};
+    checked.type_lifetime_infos.push_back(type_lifetime);
+    sema::GenericLifetimePredicate generic_lifetime;
+    generic_lifetime.subject_type = sema::TypeHandle{3U};
+    checked.generic_lifetime_predicates.push_back(generic_lifetime);
+
+    sema::BodyLoanCheckResult loan;
+    loan.function = key;
+    loan.graph_missing = true;
+    sema::BodyLoan direct_loan;
+    direct_loan.parent_loan = sema::SEMA_BODY_LOAN_INVALID_INDEX;
+    loan.loans.push_back(direct_loan);
+    sema::BodyLoan reborrow;
+    reborrow.parent_loan = 0U;
+    loan.loans.push_back(reborrow);
+    sema::BodyTwoPhaseBorrow two_phase;
+    two_phase.diagnostic_emitted = true;
+    loan.two_phase_borrows.push_back(two_phase);
+    sema::BodyLoanConflict conflict;
+    conflict.diagnostic_emitted = true;
+    loan.conflicts.push_back(conflict);
+    checked.body_loan_checks[key] = loan;
+
+    query::TypeCheckBodyAuthority authority;
+    authority.checked_body = query::query_result_fingerprint(query::stable_fingerprint("checked"));
+    authority.body_syntax_result = query::query_result_fingerprint(query::stable_fingerprint("body"));
+    authority.signature_result = query::query_result_fingerprint(query::stable_fingerprint("signature"));
+
+    sema::populate_type_check_body_borrow_authority(authority, checked, key);
+
+    EXPECT_TRUE(authority.has_borrow_summary);
+    EXPECT_EQ(authority.borrow_summary_origin_count, 1U);
+    EXPECT_EQ(authority.borrow_summary_dependency_count, 1U);
+    EXPECT_TRUE(authority.borrow_summary_has_unknown_return_origin);
+    EXPECT_TRUE(authority.borrow_summary_has_local_return_escape);
+    EXPECT_TRUE(authority.has_borrow_contract);
+    EXPECT_EQ(authority.borrow_contract_selector_count, 1U);
+    EXPECT_TRUE(authority.borrow_contract_unknown_return_allowed);
+    EXPECT_TRUE(authority.borrow_contract_has_local_return_escape);
+    EXPECT_TRUE(authority.borrow_contract_has_mismatch);
+    EXPECT_TRUE(authority.has_lifetime_facts);
+    EXPECT_EQ(authority.lifetime_region_count, 1U);
+    EXPECT_EQ(authority.lifetime_outlives_constraint_count, 1U);
+    EXPECT_EQ(authority.lifetime_type_outlives_constraint_count, 1U);
+    EXPECT_EQ(authority.lifetime_live_range_count, 1U);
+    EXPECT_EQ(authority.lifetime_return_region_count, 1U);
+    EXPECT_EQ(authority.lifetime_violation_count, 5U);
+    EXPECT_EQ(authority.type_lifetime_info_count, 1U);
+    EXPECT_EQ(authority.generic_lifetime_predicate_count, 1U);
+    EXPECT_TRUE(authority.lifetime_has_emitted_diagnostics);
+    EXPECT_TRUE(authority.lifetime_has_unknown_origin);
+    EXPECT_TRUE(authority.lifetime_has_ambiguous_elision);
+    EXPECT_TRUE(authority.lifetime_has_return_origin_mismatch);
+    EXPECT_TRUE(authority.lifetime_has_local_escape);
+    EXPECT_TRUE(authority.lifetime_has_unknown_escape);
+    EXPECT_TRUE(authority.has_body_loan_check);
+    EXPECT_EQ(authority.body_loan_count, 2U);
+    EXPECT_EQ(authority.body_reborrow_count, 1U);
+    EXPECT_EQ(authority.body_two_phase_borrow_count, 1U);
+    EXPECT_EQ(authority.body_loan_conflict_count, 1U);
+    EXPECT_TRUE(authority.body_loan_graph_missing);
+    EXPECT_TRUE(authority.body_loan_has_emitted_diagnostics);
+    EXPECT_TRUE(authority.body_two_phase_has_emitted_diagnostics);
+    EXPECT_TRUE(query::is_valid(query::type_check_body_result_fingerprint(authority)));
 }
 
 TEST(CoreUnit, LifetimeFactsAcceptValidExplicitOrigin)
@@ -316,9 +504,13 @@ TEST(CoreUnit, LifetimeFactsAcceptValidExplicitOrigin)
     EXPECT_EQ(facts->violations.size(), 0U);
     EXPECT_EQ(facts->return_regions.size(), 1U);
     EXPECT_TRUE(lifetime_facts_has_region_kind(*facts, sema::LifetimeRegionKind::explicit_origin));
+    EXPECT_GT(checked.type_lifetime_infos.size(), 0U);
+    EXPECT_GT(checked.generic_lifetime_predicates.size(), 0U);
 
     const std::string checked_dump = sema::dump_checked_module(checked);
     EXPECT_NE(checked_dump.find("lifetime_facts"), std::string::npos) << checked_dump;
+    EXPECT_NE(checked_dump.find("type_lifetime_infos"), std::string::npos) << checked_dump;
+    EXPECT_NE(checked_dump.find("generic_lifetime_predicates"), std::string::npos) << checked_dump;
     EXPECT_NE(checked_dump.find("explicit_origin"), std::string::npos) << checked_dump;
     EXPECT_NE(checked_dump.find("violations=0"), std::string::npos) << checked_dump;
 
@@ -330,6 +522,62 @@ TEST(CoreUnit, LifetimeFactsAcceptValidExplicitOrigin)
     EXPECT_NE(copied_dump.find("reference_origin_facts"), std::string::npos) << copied_dump;
     EXPECT_NE(copied_dump.find("lifetime_facts"), std::string::npos) << copied_dump;
     EXPECT_NE(copied_dump.find("name=data"), std::string::npos) << copied_dump;
+}
+
+TEST(CoreUnit, LifetimeFactsCollectBodyLiveRangesForBorrowedReturn)
+{
+    constexpr std::string_view source = "module lifetime.live_ranges;\n"
+                                        "fn id(value: &i32) -> &i32 {\n"
+                                        "  return value;\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    const sema::CheckedModule checked = analyze_lifetime_source(source);
+    const sema::FunctionLifetimeFacts* const facts = find_lifetime_facts(checked, "id");
+    ASSERT_NE(facts, nullptr);
+    EXPECT_TRUE(facts->solved);
+    EXPECT_GT(facts->live_ranges.size(), 0U);
+
+    const std::string checked_dump = sema::dump_checked_module(checked);
+    EXPECT_NE(checked_dump.find("live_ranges="), std::string::npos) << checked_dump;
+    EXPECT_NE(sema::dump_function_lifetime_facts(*facts).find("live_ranges:"), std::string::npos);
+}
+
+TEST(CoreUnit, LifetimeFactsCollectEnumOrPatternBorrowSummaryOrigins)
+{
+    constexpr std::string_view source = "module lifetime.pattern_summary;\n"
+                                        "enum MaybeBorrow {\n"
+                                        "  some(&i32),\n"
+                                        "  other(&i32),\n"
+                                        "  none,\n"
+                                        "}\n"
+                                        "fn choose(value: &i32, fallback: &i32, flag: bool) -> &i32 {\n"
+                                        "  let .some(borrowed) | .other(borrowed) = if flag {\n"
+                                        "    MaybeBorrow.some(value)\n"
+                                        "  } else {\n"
+                                        "    MaybeBorrow.other(fallback)\n"
+                                        "  } else {\n"
+                                        "    return fallback;\n"
+                                        "  };\n"
+                                        "  return borrowed;\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    const sema::CheckedModule checked = analyze_lifetime_source(source);
+    const sema::FunctionLifetimeFacts* const facts = find_lifetime_facts(checked, "choose");
+    ASSERT_NE(facts, nullptr);
+    EXPECT_TRUE(facts->solved);
+    EXPECT_TRUE(facts->violations.empty());
+    EXPECT_TRUE(lifetime_facts_has_region_kind(*facts, sema::LifetimeRegionKind::parameter));
+    std::vector<base::u32> returned_params;
+    for (const sema::LifetimeReturnRegion& returned : facts->return_regions) {
+        ASSERT_LT(returned.region, facts->regions.size());
+        const sema::LifetimeRegion& region = facts->regions[returned.region];
+        if (region.kind == sema::LifetimeRegionKind::parameter) {
+            returned_params.push_back(region.param_index);
+        }
+    }
+    std::ranges::sort(returned_params);
+    returned_params.erase(std::ranges::unique(returned_params).begin(), returned_params.end());
+    EXPECT_EQ(returned_params, (std::vector<base::u32>{0U, 1U}));
 }
 
 TEST(CoreUnit, LifetimeFactsAcceptExplicitOriginSet)
@@ -372,6 +620,88 @@ TEST(CoreUnit, LifetimeFactsRejectReturnOriginOutsideExplicitReturnType)
                                         "}\n"
                                         "fn main() -> void {}\n";
     expect_lifetime_diagnostic(source, sema::SEMA_LIFETIME_RETURN_OUTSIDE_TYPE);
+}
+
+TEST(CoreUnit, LifetimeFactsDiagnoseReturnedLocalEscape)
+{
+    constexpr std::string_view source = "module lifetime.local_escape;\n"
+                                        "fn bad() -> &i32 {\n"
+                                        "  let value: i32 = 1;\n"
+                                        "  return &value;\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    expect_lifetime_diagnostic(source, sema::SEMA_BORROWED_LOCAL_ESCAPE);
+}
+
+TEST(CoreUnit, LifetimeFactsDiagnoseRawDerivedLocalEscape)
+{
+    constexpr std::string_view source = "module lifetime.raw_escape;\n"
+                                        "unsafe fn bad() -> str {\n"
+                                        "  let bytes: [2]u8 = b\"ok\";\n"
+                                        "  let ptr: *const u8 = sliceptr(bytes[:]);\n"
+                                        "  return strraw(ptr, 2usize);\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    expect_lifetime_diagnostic(source, sema::SEMA_BORROWED_LOCAL_ESCAPE);
+}
+
+TEST(CoreUnit, LifetimeFactsDiagnoseRawDerivedSliceCallLocalEscape)
+{
+    constexpr std::string_view source = "module lifetime.raw_slice_call_escape;\n"
+                                        "fn identity(values: []const u8) -> []const u8 {\n"
+                                        "  return values;\n"
+                                        "}\n"
+                                        "unsafe fn bad() -> str {\n"
+                                        "  let bytes: [2]u8 = b\"ok\";\n"
+                                        "  return strraw(sliceptr(identity(bytes[:])), slicelen(bytes[:]));\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    expect_lifetime_diagnostic(source, sema::SEMA_BORROWED_LOCAL_ESCAPE);
+}
+
+TEST(CoreUnit, LifetimeFactsDiagnoseEnumPayloadLocalEscape)
+{
+    constexpr std::string_view source = "module lifetime.enum_escape;\n"
+                                        "enum MaybeBorrow {\n"
+                                        "  some(&i32),\n"
+                                        "  none,\n"
+                                        "}\n"
+                                        "fn bad() -> MaybeBorrow {\n"
+                                        "  let value: i32 = 1;\n"
+                                        "  return MaybeBorrow.some(&value);\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    expect_lifetime_diagnostic(source, sema::SEMA_BORROWED_LOCAL_ESCAPE);
+}
+
+TEST(CoreUnit, LifetimeFactsDiagnoseMethodReceiverLocalEscape)
+{
+    constexpr std::string_view source = "module lifetime.method_escape;\n"
+                                        "struct Box {\n"
+                                        "  value: i32;\n"
+                                        "}\n"
+                                        "impl Box {\n"
+                                        "  fn borrow(self: &Box) -> &i32 {\n"
+                                        "    return &self.value;\n"
+                                        "  }\n"
+                                        "}\n"
+                                        "fn bad() -> &i32 {\n"
+                                        "  let box: Box = Box { value: 1 };\n"
+                                        "  return box.borrow();\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    expect_lifetime_diagnostic(source, sema::SEMA_BORROWED_LOCAL_ESCAPE);
+}
+
+TEST(CoreUnit, LifetimeFactsDiagnoseParameterSlotLocalEscape)
+{
+    constexpr std::string_view source = "module lifetime.param_slot_escape;\n"
+                                        "type Ref = &i32;\n"
+                                        "fn bad(value: Ref) -> &Ref {\n"
+                                        "  return &value;\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    expect_lifetime_diagnostic(source, sema::SEMA_BORROWED_LOCAL_ESCAPE);
 }
 
 TEST(CoreUnit, LifetimeFactsRejectAmbiguousPublicElision)
@@ -514,6 +844,29 @@ TEST(CoreUnit, LifetimeFactsCollectBorrowSummaryOriginKinds)
         },
     };
     harness.analyzer.state_.checked.borrow_summaries[harness.key] = summary;
+    sema::BodyFlowGraph graph;
+    graph.function = harness.key;
+    graph.points = {
+        sema::BodyFlowPoint{
+            .kind = sema::BodyFlowPointKind::entry,
+            .range = base::SourceRange{LIFETIME_TEST_SOURCE_ID, 41U, 42U},
+        },
+        sema::BodyFlowPoint{
+            .kind = sema::BodyFlowPointKind::sequence,
+            .range = base::SourceRange{LIFETIME_TEST_SOURCE_ID, 42U, 43U},
+        },
+        sema::BodyFlowPoint{
+            .kind = sema::BodyFlowPointKind::exit,
+            .range = base::SourceRange{LIFETIME_TEST_SOURCE_ID, 43U, 44U},
+        },
+    };
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::return_,
+        .point = 1U,
+        .expr = syntax::ExprId{2U},
+        .range = base::SourceRange{LIFETIME_TEST_SOURCE_ID, 44U, 45U},
+    });
+    harness.analyzer.state_.checked.body_flow_graphs[harness.key] = std::move(graph);
 
     harness.analyzer.analyze_lifetimes(harness.function, harness.key, harness.signature);
 
@@ -526,6 +879,14 @@ TEST(CoreUnit, LifetimeFactsCollectBorrowSummaryOriginKinds)
     EXPECT_TRUE(lifetime_facts_has_region_kind(facts->second, sema::LifetimeRegionKind::unknown));
     EXPECT_TRUE(lifetime_facts_has_violation_kind(facts->second, sema::LifetimeViolationKind::local_escape));
     EXPECT_TRUE(lifetime_facts_has_violation_kind(facts->second, sema::LifetimeViolationKind::unknown_escape));
+    EXPECT_TRUE(
+        lifetime_facts_has_emitted_violation_kind(facts->second, sema::LifetimeViolationKind::local_escape));
+    EXPECT_GT(facts->second.live_ranges.size(), 0U);
+    EXPECT_TRUE(std::ranges::any_of(facts->second.live_ranges, [&facts](const sema::LifetimeRegionLiveRange& range) {
+        return range.region < facts->second.regions.size()
+            && facts->second.regions[range.region].kind == sema::LifetimeRegionKind::temporary
+            && range.first_point == 1U && range.last_point == 1U && range.point_count == 1U;
+    }));
 }
 
 TEST(CoreUnit, LifetimeFactsCollectUnknownSummaryFlagWithKnownReturnOrigin)

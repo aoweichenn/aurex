@@ -44,7 +44,14 @@ constexpr std::string_view BACKEND_LLVM_EMIT_DETAIL_FAILED = "failed";
 
 [[nodiscard]] base::Result<std::filesystem::path> write_temporary_llvm_file(const std::string_view text)
 {
-    const std::filesystem::path path = std::filesystem::temp_directory_path()
+    std::error_code temp_error;
+    const std::filesystem::path temp_directory = std::filesystem::temp_directory_path(temp_error);
+    if (temp_error) {
+        return base::Result<std::filesystem::path>::fail(
+            {base::ErrorCode::io_error, std::string(DRIVER_OUTPUT_OPEN_FAILED)});
+    }
+
+    const std::filesystem::path path = temp_directory
         / ("aurex_llvm_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".ll");
     const auto write_result = write_file(path, text);
     if (!write_result) {

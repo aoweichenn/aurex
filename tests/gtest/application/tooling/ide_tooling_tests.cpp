@@ -436,6 +436,7 @@ TEST(CoreUnit, IdeToolingProjectsBorrowSummaryAndLoanFacts)
     const tooling::IdeSemanticFact* const lifetime_fact = find_semantic_fact(
         snapshot, tooling::IdeSemanticFactKind::lifetime_facts, query::QueryKind::type_check_body, "id_ref");
     ASSERT_NE(lifetime_fact, nullptr);
+    EXPECT_NE(lifetime_fact->detail.find("live_ranges="), std::string::npos) << lifetime_fact->detail;
     EXPECT_NE(lifetime_fact->detail.find("returns=1"), std::string::npos) << lifetime_fact->detail;
     EXPECT_NE(lifetime_fact->detail.find("violations=0"), std::string::npos) << lifetime_fact->detail;
 

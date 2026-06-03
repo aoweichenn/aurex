@@ -341,7 +341,7 @@ FunctionBorrowContract SemanticAnalyzerCore::BorrowContractAnalyzer::inferred_co
             continue;
         }
         const BorrowSummaryOrigin& origin = summary.origins[return_origin.origin_index];
-        if (origin.kind == BorrowSummaryOriginKind::parameter) {
+        if (origin.kind == BorrowSummaryOriginKind::parameter && !origin.storage_slot) {
             contract.return_selectors.push_back(this->selector_from_origin(function, origin));
         } else if (origin.kind == BorrowSummaryOriginKind::static_) {
             contract.return_selectors.push_back(BorrowContractSelector{
@@ -358,7 +358,8 @@ FunctionBorrowContract SemanticAnalyzerCore::BorrowContractAnalyzer::inferred_co
                 .name_id = INVALID_IDENT_ID,
                 .range = origin.range,
             });
-        } else if (origin.kind == BorrowSummaryOriginKind::local || origin.kind == BorrowSummaryOriginKind::temporary) {
+        } else if (origin.kind == BorrowSummaryOriginKind::local || origin.kind == BorrowSummaryOriginKind::temporary
+            || (origin.kind == BorrowSummaryOriginKind::parameter && origin.storage_slot)) {
             contract.has_local_return_escape = true;
         }
     }

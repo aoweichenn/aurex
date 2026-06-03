@@ -185,6 +185,13 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::enforce_diagnostics()
                 violation.diagnostic_emitted = true;
                 break;
             case LifetimeViolationKind::local_escape:
+                this->core_.report_general(violation.range, std::string(SEMA_BORROWED_LOCAL_ESCAPE));
+                if (valid_region_index(this->facts_, violation.region)) {
+                    this->core_.report_note(this->facts_.regions[violation.region].range,
+                        SemanticDiagnosticKind::general, std::string(SEMA_BORROWED_LOCAL_ORIGIN));
+                }
+                violation.diagnostic_emitted = true;
+                break;
             case LifetimeViolationKind::unknown_escape:
                 break;
         }

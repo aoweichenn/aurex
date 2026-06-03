@@ -577,6 +577,8 @@ CheckedModule::CheckedModule()
           *this->arena_, FunctionLookupKeyHash{})),
       lifetime_origin_params(make_sema_vector<LifetimeOriginParamInfo>(*this->arena_)),
       reference_origin_facts(make_sema_vector<ReferenceOriginFact>(*this->arena_)),
+      type_lifetime_infos(make_sema_vector<TypeLifetimeInfo>(*this->arena_)),
+      generic_lifetime_predicates(make_sema_vector<GenericLifetimePredicate>(*this->arena_)),
       lifetime_facts(make_sema_map<FunctionLookupKey, FunctionLifetimeFacts, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
       body_flow_graphs(make_sema_map<FunctionLookupKey, BodyFlowGraph, FunctionLookupKeyHash>(
@@ -627,7 +629,10 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       function_call_by_expr(std::move(other.function_call_by_expr)),
       borrow_summaries(std::move(other.borrow_summaries)), borrow_contracts(std::move(other.borrow_contracts)),
       lifetime_origin_params(std::move(other.lifetime_origin_params)),
-      reference_origin_facts(std::move(other.reference_origin_facts)), lifetime_facts(std::move(other.lifetime_facts)),
+      reference_origin_facts(std::move(other.reference_origin_facts)),
+      type_lifetime_infos(std::move(other.type_lifetime_infos)),
+      generic_lifetime_predicates(std::move(other.generic_lifetime_predicates)),
+      lifetime_facts(std::move(other.lifetime_facts)),
       body_flow_graphs(std::move(other.body_flow_graphs)), body_loan_checks(std::move(other.body_loan_checks)),
       param_envs(std::move(other.param_envs)),
       generic_template_signatures(std::move(other.generic_template_signatures)),
@@ -700,6 +705,8 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->borrow_contracts.swap(other.borrow_contracts);
     this->lifetime_origin_params.swap(other.lifetime_origin_params);
     this->reference_origin_facts.swap(other.reference_origin_facts);
+    this->type_lifetime_infos.swap(other.type_lifetime_infos);
+    this->generic_lifetime_predicates.swap(other.generic_lifetime_predicates);
     this->lifetime_facts.swap(other.lifetime_facts);
     this->body_flow_graphs.swap(other.body_flow_graphs);
     this->body_loan_checks.swap(other.body_loan_checks);
@@ -827,6 +834,16 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->reference_origin_facts.reserve(other.reference_origin_facts.size());
     for (const ReferenceOriginFact& fact : other.reference_origin_facts) {
         this->reference_origin_facts.push_back(this->clone_reference_origin_fact(fact));
+    }
+    this->type_lifetime_infos.clear();
+    this->type_lifetime_infos.reserve(other.type_lifetime_infos.size());
+    for (const TypeLifetimeInfo& info : other.type_lifetime_infos) {
+        this->type_lifetime_infos.push_back(this->clone_type_lifetime_info(info));
+    }
+    this->generic_lifetime_predicates.clear();
+    this->generic_lifetime_predicates.reserve(other.generic_lifetime_predicates.size());
+    for (const GenericLifetimePredicate& predicate : other.generic_lifetime_predicates) {
+        this->generic_lifetime_predicates.push_back(this->clone_generic_lifetime_predicate(predicate));
     }
     this->lifetime_facts.clear();
     this->lifetime_facts.reserve(other.lifetime_facts.size());
@@ -1379,6 +1396,25 @@ ReferenceOriginFact CheckedModule::clone_reference_origin_fact(const ReferenceOr
     return copy;
 }
 
+TypeLifetimeInfo CheckedModule::clone_type_lifetime_info(const TypeLifetimeInfo& other)
+{
+    TypeLifetimeInfo copy = other;
+    copy.origin_names.clear();
+    copy.origin_names.reserve(other.origin_names.size());
+    for (const InternedText origin : other.origin_names) {
+        copy.origin_names.push_back(this->intern_text(origin));
+    }
+    return copy;
+}
+
+GenericLifetimePredicate CheckedModule::clone_generic_lifetime_predicate(
+    const GenericLifetimePredicate& other)
+{
+    GenericLifetimePredicate copy = other;
+    copy.origin_name = this->intern_text(other.origin_name);
+    return copy;
+}
+
 FunctionLifetimeFacts CheckedModule::clone_function_lifetime_facts(const FunctionLifetimeFacts& other)
 {
     FunctionLifetimeFacts copy = other;
@@ -1671,6 +1707,14 @@ void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, 
         for (InternedText& origin : fact.origin_names) {
             rebind_interned_text(origin, from, to);
         }
+    }
+    for (TypeLifetimeInfo& info : this->type_lifetime_infos) {
+        for (InternedText& origin : info.origin_names) {
+            rebind_interned_text(origin, from, to);
+        }
+    }
+    for (GenericLifetimePredicate& predicate : this->generic_lifetime_predicates) {
+        rebind_interned_text(predicate.origin_name, from, to);
     }
     for (auto& entry : this->lifetime_facts) {
         for (LifetimeRegion& region : entry.second.regions) {
@@ -1996,8 +2040,12 @@ void populate_type_check_body_borrow_authority(
             static_cast<base::u32>(lifetime->second.outlives_constraints.size());
         authority.lifetime_type_outlives_constraint_count =
             static_cast<base::u32>(lifetime->second.type_outlives_constraints.size());
+        authority.lifetime_live_range_count = static_cast<base::u32>(lifetime->second.live_ranges.size());
         authority.lifetime_return_region_count = static_cast<base::u32>(lifetime->second.return_regions.size());
         authority.lifetime_violation_count = static_cast<base::u32>(lifetime->second.violations.size());
+        authority.type_lifetime_info_count = static_cast<base::u32>(checked.type_lifetime_infos.size());
+        authority.generic_lifetime_predicate_count =
+            static_cast<base::u32>(checked.generic_lifetime_predicates.size());
         authority.lifetime_has_emitted_diagnostics =
             std::ranges::any_of(lifetime->second.violations, [](const LifetimeViolation& violation) {
                 return violation.diagnostic_emitted;
@@ -2013,6 +2061,14 @@ void populate_type_check_body_borrow_authority(
         authority.lifetime_has_return_origin_mismatch =
             std::ranges::any_of(lifetime->second.violations, [](const LifetimeViolation& violation) {
                 return violation.kind == LifetimeViolationKind::return_origin_outside_type;
+            });
+        authority.lifetime_has_local_escape =
+            std::ranges::any_of(lifetime->second.violations, [](const LifetimeViolation& violation) {
+                return violation.kind == LifetimeViolationKind::local_escape;
+            });
+        authority.lifetime_has_unknown_escape =
+            std::ranges::any_of(lifetime->second.violations, [](const LifetimeViolation& violation) {
+                return violation.kind == LifetimeViolationKind::unknown_escape;
             });
     }
     if (const auto loan = checked.body_loan_checks.find(function); loan != checked.body_loan_checks.end()) {
@@ -2341,6 +2397,37 @@ std::string dump_checked_module(const CheckedModule& checked)
         out << "\n";
     }
 
+    out << "  type_lifetime_infos " << checked.type_lifetime_infos.size() << "\n";
+    for (base::usize index = 0; index < checked.type_lifetime_infos.size(); ++index) {
+        const TypeLifetimeInfo& info = checked.type_lifetime_infos[index];
+        out << "    type_lifetime #" << index << " " << checked.types.display_name(info.type)
+            << " can_borrow=" << (info.can_contain_borrow ? "true" : "false")
+            << " concrete=" << (info.has_concrete_borrow_surface ? "true" : "false") << " origins=";
+        if (info.origin_names.empty()) {
+            out << "-";
+        }
+        for (base::usize origin_index = 0; origin_index < info.origin_names.size(); ++origin_index) {
+            if (origin_index != 0) {
+                out << " | ";
+            }
+            out << info.origin_names[origin_index];
+        }
+        out << " fingerprint=" << query::debug_string(type_lifetime_info_fingerprint(info));
+        append_part_origin(out, show_parts, info.part_index);
+        out << "\n";
+    }
+
+    out << "  generic_lifetime_predicates " << checked.generic_lifetime_predicates.size() << "\n";
+    for (base::usize index = 0; index < checked.generic_lifetime_predicates.size(); ++index) {
+        const GenericLifetimePredicate& predicate = checked.generic_lifetime_predicates[index];
+        out << "    generic_lifetime #" << index << " " << checked.types.display_name(predicate.subject_type)
+            << " : " << predicate.origin_name
+            << " source=" << generic_lifetime_predicate_source_name(predicate.source)
+            << " fingerprint=" << query::debug_string(generic_lifetime_predicate_fingerprint(predicate));
+        append_part_origin(out, show_parts, predicate.part_index);
+        out << "\n";
+    }
+
     std::vector<const FunctionLifetimeFacts*> lifetime_facts;
     lifetime_facts.reserve(checked.lifetime_facts.size());
     for (const auto& entry : checked.lifetime_facts) {
@@ -2362,7 +2449,8 @@ std::string dump_checked_module(const CheckedModule& checked)
         }
         out << " return=" << checked.types.display_name(facts.return_type) << " regions=" << facts.regions.size()
             << " outlives=" << facts.outlives_constraints.size()
-            << " type_outlives=" << facts.type_outlives_constraints.size() << " returns=" << facts.return_regions.size()
+            << " type_outlives=" << facts.type_outlives_constraints.size()
+            << " live_ranges=" << facts.live_ranges.size() << " returns=" << facts.return_regions.size()
             << " violations=" << facts.violations.size() << " solved=" << (facts.solved ? "true" : "false")
             << " enforced=" << (facts.diagnostic_mode_enforced ? "true" : "false")
             << " fingerprint=" << query::debug_string(function_lifetime_facts_fingerprint(facts));

@@ -2233,12 +2233,12 @@ TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches)
     }
 
     {
-        const fs::path blocked_tmp = tmp_root() / "native-temp-not-writable";
-        fs::create_directories(blocked_tmp);
-        std::error_code permission_error;
-        fs::permissions(
-            blocked_tmp, fs::perms::owner_read | fs::perms::owner_exec, fs::perm_options::replace, permission_error);
-        ASSERT_FALSE(permission_error) << permission_error.message();
+        const fs::path blocked_tmp = tmp_root() / "native-temp-parent-is-file";
+        {
+            std::ofstream out(blocked_tmp, std::ios::binary);
+            out << "not a directory";
+        }
+        ASSERT_TRUE(fs::is_regular_file(blocked_tmp));
 
         const ScopedEnvironmentVariable tmpdir_guard("TMPDIR", blocked_tmp.string());
         driver::CompilerInvocation invocation;
@@ -2248,8 +2248,6 @@ TEST_F(AurexIntegrationTest, CompilerDriverErrorBranches)
         driver::Compiler compiler(driver::llvm_backend_ir_emitter());
         const auto result = compiler.run(invocation);
 
-        fs::permissions(blocked_tmp, fs::perms::owner_all, fs::perm_options::replace, permission_error);
-        ASSERT_FALSE(permission_error) << permission_error.message();
         ASSERT_FALSE(result);
         EXPECT_EQ(result.error().code, base::ErrorCode::io_error);
         expect_contains(result.error().message, "failed to open output file");

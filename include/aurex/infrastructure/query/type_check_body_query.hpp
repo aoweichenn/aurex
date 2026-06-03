@@ -26,8 +26,11 @@ struct TypeCheckBodyAuthority {
     base::u32 lifetime_region_count = 0;
     base::u32 lifetime_outlives_constraint_count = 0;
     base::u32 lifetime_type_outlives_constraint_count = 0;
+    base::u32 lifetime_live_range_count = 0;
     base::u32 lifetime_return_region_count = 0;
     base::u32 lifetime_violation_count = 0;
+    base::u32 type_lifetime_info_count = 0;
+    base::u32 generic_lifetime_predicate_count = 0;
     base::u32 body_loan_count = 0;
     base::u32 body_reborrow_count = 0;
     base::u32 body_two_phase_borrow_count = 0;
@@ -47,6 +50,8 @@ struct TypeCheckBodyAuthority {
     bool lifetime_has_unknown_origin = false;
     bool lifetime_has_ambiguous_elision = false;
     bool lifetime_has_return_origin_mismatch = false;
+    bool lifetime_has_local_escape = false;
+    bool lifetime_has_unknown_escape = false;
     bool body_loan_graph_missing = false;
     bool body_loan_has_emitted_diagnostics = false;
     bool body_two_phase_has_emitted_diagnostics = false;

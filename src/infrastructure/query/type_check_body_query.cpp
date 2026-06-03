@@ -73,8 +73,11 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_u32(authority.lifetime_region_count);
     builder.mix_u32(authority.lifetime_outlives_constraint_count);
     builder.mix_u32(authority.lifetime_type_outlives_constraint_count);
+    builder.mix_u32(authority.lifetime_live_range_count);
     builder.mix_u32(authority.lifetime_return_region_count);
     builder.mix_u32(authority.lifetime_violation_count);
+    builder.mix_u32(authority.type_lifetime_info_count);
+    builder.mix_u32(authority.generic_lifetime_predicate_count);
     builder.mix_u32(authority.body_loan_count);
     builder.mix_u32(authority.body_reborrow_count);
     builder.mix_u32(authority.body_two_phase_borrow_count);
@@ -94,6 +97,8 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.lifetime_has_unknown_origin);
     builder.mix_bool(authority.lifetime_has_ambiguous_elision);
     builder.mix_bool(authority.lifetime_has_return_origin_mismatch);
+    builder.mix_bool(authority.lifetime_has_local_escape);
+    builder.mix_bool(authority.lifetime_has_unknown_escape);
     builder.mix_bool(authority.body_loan_graph_missing);
     builder.mix_bool(authority.body_loan_has_emitted_diagnostics);
     builder.mix_bool(authority.body_two_phase_has_emitted_diagnostics);

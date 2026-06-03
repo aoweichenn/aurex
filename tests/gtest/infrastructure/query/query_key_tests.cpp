@@ -3296,9 +3296,14 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
     lifetime_changed_authority.lifetime_region_count = 2;
     lifetime_changed_authority.lifetime_outlives_constraint_count = 1;
     lifetime_changed_authority.lifetime_type_outlives_constraint_count = 1;
+    lifetime_changed_authority.lifetime_live_range_count = 1;
     lifetime_changed_authority.lifetime_return_region_count = 1;
     lifetime_changed_authority.lifetime_violation_count = 1;
+    lifetime_changed_authority.type_lifetime_info_count = 1;
+    lifetime_changed_authority.generic_lifetime_predicate_count = 1;
     lifetime_changed_authority.lifetime_has_return_origin_mismatch = true;
+    lifetime_changed_authority.lifetime_has_local_escape = true;
+    lifetime_changed_authority.lifetime_has_unknown_escape = true;
     lifetime_changed_authority.lifetime_fingerprint = query::stable_fingerprint("query-test-lifetime-facts");
     EXPECT_NE(query::type_check_body_result_fingerprint(lifetime_changed_authority), output->result);
 

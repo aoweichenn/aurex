@@ -1,13 +1,13 @@
 ---
 name: compiler-engineering
-description: Use for compiler, programming language, interpreter, static analysis, IR, optimizer, code generation, diagnostics, runtime, self-hosting, and language tooling tasks. Provides deep design and implementation guidance for lexer/parser/AST/sema/type systems/IR/passes/backend/testing, with special awareness of Aurex project modules.
+description: Global mandatory skill for compiler and programming-language work. Load and use for compiler, programming language, interpreter, static analysis, IR, optimizer, code generation, diagnostics, runtime, self-hosting, and language tooling tasks. Provides deep design and implementation guidance for lexer/parser/AST/sema/type systems/IR/passes/backend/testing, with special awareness of Aurex project modules.
 metadata:
   short-description: Compiler and language engineering
 ---
 
 # Compiler Engineering
 
-Use this skill for compiler and programming-language design or implementation work. When C++ code is involved, also follow `cpp-project-standards`.
+This is a global mandatory skill. Use it for compiler and programming-language design or implementation work. When C++ code is involved, also follow `cpp-project-standards`.
 
 ## Project Orientation
 
@@ -21,6 +21,13 @@ For Aurex, start from these module boundaries:
 - `include/aurex/backend`, `src/backend/llvm`: LLVM lowering, runtime ABI, module/function/type/value emission.
 - `include/aurex/driver`, `src/driver`, `src/cli`: compiler orchestration, module loading, toolchain, invocation.
 - `tests/gtest`, `tests/samples`, `examples`, `docs/compiler`, `docs/zh`, `docs/en`: validation, golden/sample behavior, design docs.
+
+Directory decomposition is a first-class compiler invariant. Do not let a module collapse into a flat dumping ground such as `src/<stage>/internal/*.cpp`.
+For any substantial compiler stage, `internal/` may exist only as an implementation root containing responsibility subdirectories; do not add files directly under `internal/`.
+Split by domain and dataflow role, for example `src/sema/internal/borrow/`, `src/sema/internal/lifetime/`, `src/sema/internal/dropck/`,
+`src/sema/internal/place/`, `src/sema/internal/diagnostics/`, `src/sema/internal/pipeline/`, and mirror the same structure in tests where practical.
+Apply the same rule to parser, IR, driver, tooling, and backend internals: use directories for lexer/parser phases, facts, solvers, lowering, passes,
+diagnostics, adapters, and runtime/backend boundaries instead of mixing unrelated files in one folder.
 
 ## Required Workflow
 
@@ -45,6 +52,11 @@ For Aurex, start from these module boundaries:
    - Each stage should either reject invalid input with diagnostics or produce data satisfying explicit invariants for the next stage.
    - Prefer local invariants plus verifier checks over relying on fragile cross-stage assumptions.
    - Avoid making later stages compensate for missing validation in earlier stages unless recovery or better diagnostics require it.
+
+6. **Keep module boundaries decomposed**
+   - Before adding a new compiler file, choose a responsibility subdirectory. If a target `internal/` directory already contains direct files, do not add more direct files there; create or use a role-specific subdirectory.
+   - Prefer fact/collector/solver/enforcer/diagnostic/tooling-adapter splits for analyses. Public headers expose stable facts and thin APIs; scratch worklists, traversal state, and diagnostic assembly stay in private `.cpp` or private subdirectories.
+   - Use Strategy, Builder, Facade, Adapter, or small value-object patterns only when they reduce real coupling or isolate a changing policy. Do not introduce inheritance hierarchies, service locators, global mutable state, or string DSLs to make the design look formal.
 
 ## Stage Guidance
 
@@ -77,6 +89,28 @@ For Aurex, start from these module boundaries:
 - Diagnostics should identify the primary error, relevant notes, and source ranges without cascading noise.
 - Test successful checks, invalid programs, ambiguous lookup, cycles, generic instantiation, pattern exhaustiveness when applicable, and regression cases.
 
+### Aurex M7 Origin, Loan, And Lifetime Work
+
+When working on Aurex M7 borrow/lifetime design or implementation, first read
+`docs/zh/m7-origin-loan-lifetime-design.md`, `docs/zh/m7-roadmap.md`, `docs/zh/next-steps.md`, `docs/zh/version.md`,
+and the current
+`src/sema/internal/sema_body_move_analysis.cpp` / `src/sema/internal/sema_statement_analyzer.cpp` borrow paths.
+
+- Treat M6 resource facts, `OwnedUseMode`, whole-local move analysis, cleanup/drop flags, and drop-glue planning as M7 inputs. Do not reimplement or bypass them.
+- Model the feature around explicit internal facts: `Place`, `Origin`, `Loan`, `Point`, `BorrowAction`, and `BorrowSummary`.
+- Prefer a Polonius-style fact vocabulary with an Aurex-local deterministic worklist/bitset solver before considering a full Datalog engine.
+- M7a should stay conservative at the language surface: do not force Rust-style lifetime parameters until internal function summaries, diagnostics, and tooling facts are stable.
+- Replace tree-scanning borrow escape special cases with CFG-sensitive loan liveness and projection-aware conflict checking. Do not keep adding ad hoc cases to `BorrowEscapeAnalyzer`.
+- Shared and mutable loans must interact with move/write/drop/reinit/cleanup actions. Implicit cleanup drops are borrow-checker actions, not only IR lowering details.
+- Projection conflict must be explicit: same place and prefix places conflict; known disjoint struct/tuple fields may be separated; array/slice/index paths stay conservative until proven otherwise.
+- Function calls need summaries: parameter origins, returned origin dependencies, receiver/argument access requirements, and conservative unknown handling for extern/generic/trait calls without summaries.
+- `BorrowSummary` must support origin dependency sets/subset constraints, not only a single returned origin. Branches, matches, wrappers, and inferred returns can produce multiple candidate origins.
+- For inferred-return functions, collect return-carrier facts before assuming the final signature return type is available; solidify summaries after return inference or from expression/carrier types.
+- Stage M7 enforcement through collect-only facts, diagnostic-shadow mode, and then enforced diagnostics. Do not remove `BorrowEscapeAnalyzer` until parity tests cover the current borrowed-view escape matrix.
+- Keep raw pointer aliasing out of safe borrow proofs. Unsafe/raw alias semantics are a later design layer, not an M7a shortcut.
+- Diagnostics must connect the conflict point to the loan creation point, later carrier use, and invalidating action. Suppress cascades after the primary borrow failure.
+- Use iterative CFG/dataflow algorithms, not recursive traversals, and expose stable checked facts for query/cache/tooling instead of making IDE/LSP recompute borrow semantics.
+
 ### IR And Lowering
 
 - Make IR invariants explicit and enforce them with a verifier.
@@ -105,6 +139,9 @@ For Aurex, start from these module boundaries:
 - Include negative tests for diagnostics and recovery, not only successful programs.
 - For performance-sensitive compiler paths, add or update benchmarks, representative large inputs, or targeted measurement notes.
 - Run relevant build, unit, integration, golden, self-host/bootstrap, and coverage commands available in the project. If a command cannot be run, state the blocker.
+- For static-analysis reports such as Qodana or clang-tidy, first verify the profile, compile database, source filters, generated/build exclusions, and raw-vs-deduplicated counting. Large report counts often come from profile mismatch, missing CMake/bootstrap context, generated or build artifacts, test helper style churn, or repeated diagnostics from headers. Triage by compiler-stage risk before fixing style-only findings.
+- In compiler reports, prioritize findings that can change compiler output or crash behavior: missing returns in backend/lowering switches, maybe-uninitialized semantic or IR views, local stack addresses escaping through context pointers, unreachable lowering/sema branches, unused parse/sema state updates, branch-clone diagnostics, and avoidable copies of AST/IR/type/symbol payloads on hot paths.
+- Treat style-heavy report clusters in large semantic modules as a separate cleanup stream. Repeated redundant qualifiers, const opportunities, elements-view/range-algorithm suggestions, and template argument elision should not displace correctness, lifetime, and output-affecting diagnostics.
 
 ## Design Output Expectations
 

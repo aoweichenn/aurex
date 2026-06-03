@@ -266,8 +266,10 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
         "pub import c.host;\n"
         "extern c {\n"
         "  opaque struct Handle;\n"
-        "  fn puts(s: *const u8) -> i32 @name(\"puts\");\n"
-        "  fn printf(format: *const u8, ...) -> i32 @name(\"printf\");\n"
+        "  @name(\"puts\")\n"
+        "  fn puts(s: *const u8) -> i32;\n"
+        "  @name(\"printf\")\n"
+        "  fn printf(format: *const u8, ...) -> i32;\n"
         "}\n"
         "struct Counter { value: i32; }\n"
         "struct Owner { value: i32; }\n"
@@ -304,7 +306,8 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
         "    return self.value;\n"
         "  }\n"
         "}\n"
-        "export c fn exported(argc: i32, argv: *mut *mut u8) -> i32 @name(\"exported\") {\n"
+        "@name(\"exported\")\n"
+        "export c fn exported(argc: i32, argv: *mut *mut u8) -> i32 {\n"
         "  var i: i32 = 0;\n"
         "  let owner: Owner = Owner { value: 1 };\n"
         "  let copied_owner: Owner = owner;\n"
@@ -671,6 +674,140 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
             "alias usize",
             "pub fn read for File in Reader[File]",
         });
+}
+
+TEST(CoreUnit, ParserAcceptsBorrowContractDecorators)
+{
+    constexpr std::string_view source = "module parser.borrow_contracts;\n"
+                                        "@borrow(return = [left, right])\n"
+                                        "fn choose(left: &i32, right: &i32) -> &i32 {\n"
+                                        "  return left;\n"
+                                        "}\n"
+                                        "trait Viewer {\n"
+                                        "  @borrow(return = [self])\n"
+                                        "  fn view(self: &Self) -> &Self;\n"
+                                        "}\n"
+                                        "extern c {\n"
+                                        "  @borrow(return = [static, unknown])\n"
+                                        "  fn global_view() -> str;\n"
+                                        "}\n"
+                                        "@borrow(return = [value,])\n"
+                                        "fn trailing(value: &i32) -> &i32 {\n"
+                                        "  return value;\n"
+                                        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* const choose = find_item(module, "choose");
+    ASSERT_NE(choose, nullptr);
+    ASSERT_TRUE(choose->borrow_contract.present);
+    ASSERT_EQ(choose->borrow_contract.return_selectors.size(), 2U);
+    EXPECT_EQ(choose->borrow_contract.return_selectors[0].kind, syntax::BorrowContractSelectorKind::parameter);
+    EXPECT_EQ(choose->borrow_contract.return_selectors[0].name, "left");
+    EXPECT_EQ(choose->borrow_contract.return_selectors[1].name, "right");
+
+    const syntax::ItemNode* const viewer = find_item(module, "Viewer");
+    ASSERT_NE(viewer, nullptr);
+    ASSERT_EQ(viewer->trait_items.size(), 1U);
+    const syntax::ItemNode requirement = module.items[viewer->trait_items.front().value];
+    ASSERT_TRUE(requirement.borrow_contract.present);
+    ASSERT_EQ(requirement.borrow_contract.return_selectors.size(), 1U);
+    EXPECT_EQ(requirement.borrow_contract.return_selectors.front().kind, syntax::BorrowContractSelectorKind::self);
+
+    const syntax::ItemNode* const global_view = find_item(module, "global_view");
+    ASSERT_NE(global_view, nullptr);
+    ASSERT_TRUE(global_view->borrow_contract.present);
+    ASSERT_EQ(global_view->borrow_contract.return_selectors.size(), 2U);
+    EXPECT_EQ(global_view->borrow_contract.return_selectors[0].kind, syntax::BorrowContractSelectorKind::static_);
+    EXPECT_EQ(global_view->borrow_contract.return_selectors[1].kind, syntax::BorrowContractSelectorKind::unknown);
+
+    const syntax::ItemNode* const trailing = find_item(module, "trailing");
+    ASSERT_NE(trailing, nullptr);
+    ASSERT_TRUE(trailing->borrow_contract.present);
+    ASSERT_EQ(trailing->borrow_contract.return_selectors.size(), 1U);
+    EXPECT_EQ(trailing->borrow_contract.return_selectors.front().name, "value");
+
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "priv fn choose @borrow(return=[left, right])",
+            "pub fn view prototype @borrow(return=[self])",
+            "priv fn global_view extern_c @borrow(return=[static, unknown])",
+            "priv fn trailing @borrow(return=[value])",
+        });
+}
+
+TEST(CoreUnit, ParserRejectsEmptyBorrowContractSelectorList)
+{
+    expect_parse_diagnostic("module parser.empty_borrow_contract;\n"
+                            "@borrow(return = [])\n"
+                            "fn empty(value: &i32) -> &i32 { return value; }\n",
+        "expected borrow contract selector name");
+}
+
+TEST(CoreUnit, ParserRejectsUnknownFunctionDecoratorWithoutLegacyAbiHint)
+{
+    DiagnosticSink diagnostics;
+    constexpr std::string_view source = "module parser.unknown_function_decorator;\n"
+                                        "@brrow(return = [value])\n"
+                                        "fn view(value: &i32) -> &i32 { return value; }\n";
+    lex::Lexer lexer({6}, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    ASSERT_TRUE(tokens) << tokens.error().message;
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    static_cast<void>(parser.parse_module());
+    ASSERT_TRUE(diagnostics.has_error());
+    EXPECT_TRUE(diagnostics_contain(diagnostics, "expected function decorator 'name' or 'borrow'"));
+    EXPECT_FALSE(diagnostics_contain(diagnostics, "expected ABI decorator 'name'"));
+}
+
+TEST(CoreUnit, ParserRejectsMalformedFunctionDecorators)
+{
+    expect_parse_diagnostic("module parser.duplicate_name_decorator;\n"
+                            "@name(\"one\")\n"
+                            "@name(\"two\")\n"
+                            "fn f() -> i32 { return 0; }\n",
+        "duplicate ABI name decorator");
+    expect_parse_diagnostic("module parser.name_decorator_missing_paren;\n"
+                            "@name \"native\"\n"
+                            "fn f() -> i32 { return 0; }\n",
+        "expected '(' after function decorator");
+    expect_parse_diagnostic("module parser.name_decorator_missing_string;\n"
+                            "@name()\n"
+                            "fn f() -> i32 { return 0; }\n",
+        "expected string literal in ABI name");
+    expect_parse_diagnostic("module parser.unknown_decorator_without_args;\n"
+                            "@trace\n"
+                            "fn f() -> i32 { return 0; }\n",
+        "expected function decorator 'name' or 'borrow'");
+    expect_parse_diagnostic("module parser.borrow_decorator_missing_paren;\n"
+                            "@borrow return = [value])\n"
+                            "fn f(value: &i32) -> &i32 { return value; }\n",
+        "expected '(' after function decorator");
+    expect_parse_diagnostic("module parser.duplicate_borrow_decorator;\n"
+                            "@borrow(return = [value])\n"
+                            "@borrow(return = [value])\n"
+                            "fn f(value: &i32) -> &i32 { return value; }\n",
+        "duplicate borrow contract decorator");
+    expect_parse_diagnostic("module parser.postfix_borrow_decorator;\n"
+                            "fn f(value: &i32) -> &i32 @borrow(return = [value]) { return value; }\n",
+        "function decorators must appear before 'fn'");
+    expect_parse_diagnostic("module parser.duplicate_postfix_borrow_decorator;\n"
+                            "@borrow(return = [value])\n"
+                            "fn f(value: &i32) -> &i32 @borrow(return = [value]) { return value; }\n",
+        "duplicate borrow contract decorator");
+    expect_parse_diagnostic("module parser.borrow_decorator_missing_separator;\n"
+                            "@borrow(return = [left right])\n"
+                            "fn f(left: &i32, right: &i32) -> &i32 { return left; }\n",
+        "expected ',' or ']' after borrow contract selector");
+    expect_parse_diagnostic("module parser.borrow_decorator_syncs_bad_separator;\n"
+                            "@borrow(return = [left +, right])\n"
+                            "fn f(left: &i32, right: &i32) -> &i32 { return left; }\n",
+        "expected ',' or ']' after borrow contract selector");
+    expect_parse_diagnostic("module parser.borrow_decorator_missing_selector_end;\n"
+                            "@borrow(return = [value)\n"
+                            "fn f(value: &i32) -> &i32 { return value; }\n",
+        "expected ']' after borrow contract selector list");
 }
 
 TEST(CoreUnit, ParserAcceptsTraitDefaultMethodBodiesInWp2)
@@ -1535,6 +1672,7 @@ TEST(CoreUnit, ParserRecoveryCoversTupleSynchronizationAndFunctionTypeVariadics)
                                         "type BadFnA = fn(..., i32) -> i32;\n"
                                         "type BadFnB = fn(i32, ..., bool) -> i32;\n"
                                         "type BadFnC = fn(i32 +, bool) -> i32;\n"
+                                        "fn bad_params(value: i32, ..., extra: i32) -> i32 { return value; }\n"
                                         "fn recovered(value: i32) -> i32 {\n"
                                         "  let (only) = value;\n"
                                         "  let missing_repeat = [0;];\n"
@@ -1914,7 +2052,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedAbiAttributeArguments)
 {
     constexpr base::SourceId PARSER_TEST_ABI_ARGUMENT_RECOVERY_SOURCE_ID{17};
     constexpr std::string_view source = "module parser.abi_argument_recovery;\n"
-                                        "extern c { fn puts(s: *const u8) -> i32 @name(\"puts\" @); }\n"
+                                        "extern c { @name(\"puts\" @) fn puts(s: *const u8) -> i32; }\n"
                                         "fn recovered() -> i32 {\n"
                                         "  let broken = ;\n"
                                         "  return 0;\n"
@@ -1935,7 +2073,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedAbiAttributeArguments)
         messages += diagnostic.message;
         messages += '\n';
     }
-    expect_contains(messages, "expected ')' after ABI attribute");
+    expect_contains(messages, "expected ')' after function decorator");
     expect_contains(messages, "expected expression");
 }
 
@@ -2239,7 +2377,8 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedDeclarationDelimiters)
                                         "enum Code: u8 @ { ok = 1, }\n"
                                         "extern c @ {\n"
                                         "  opaque struct Handle @;\n"
-                                        "  fn puts(s: *const u8) -> i32 @name(\"puts\") @;\n"
+                                        "  @name(\"puts\")\n"
+                                        "  fn puts(s: *const u8) -> i32 @name(\"again\");\n"
                                         "}\n"
                                         "impl Pair @ {\n"
                                         "  fn value(self: *const Pair) -> i32 { return 0; }\n"
@@ -2270,7 +2409,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedDeclarationDelimiters)
     expect_contains(messages, "expected '{' after enum base type");
     expect_contains(messages, "expected '{' after 'extern c'");
     expect_contains(messages, "expected ';' after opaque struct declaration");
-    expect_contains(messages, "expected ';' after extern function declaration");
+    expect_contains(messages, "function decorators must appear before 'fn'");
     expect_contains(messages, "expected '{' after impl type");
     expect_contains(messages, "expected ',' or ')' after parameter");
     expect_contains(messages, "expected expression");
@@ -2373,7 +2512,8 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters)
     constexpr base::SourceId PARSER_TEST_OPENING_DELIMITER_RECOVERY_SOURCE_ID{30};
     constexpr std::string_view source = "module parser.opening_delimiter_recovery;\n"
                                         "extern c {\n"
-                                        "  fn puts(s: *const u8) -> i32 @name @(\"puts\");\n"
+                                        "  @name @(\"puts\")\n"
+                                        "  fn puts(s: *const u8) -> i32;\n"
                                         "}\n"
                                         "fn opened @(a: i32) -> i32 { return a; }\n"
                                         "fn recovered(value: i32) -> i32 {\n"
@@ -2398,7 +2538,7 @@ TEST(CoreUnit, ParserRecoveryHandlesMalformedOpeningDelimiters)
         messages += diagnostic.message;
         messages += '\n';
     }
-    expect_contains(messages, "expected '(' after ABI attribute");
+    expect_contains(messages, "expected '(' after function decorator");
     expect_contains(messages, "expected '(' after function name");
     expect_contains(messages, "expected '[' after cast builtin");
     expect_contains(messages, "expected '[' after ptrat");
@@ -2910,7 +3050,7 @@ TEST(CoreUnit, ParserReportsIncompleteExpressionsWithoutCrashing)
 TEST(CoreUnit, ParserCoversAbiNamesAndArrayRadicesDirectly)
 {
     constexpr std::string_view source = "module parser.abi_radix;\n"
-                                        "extern c { fn c_puts(s: *const u8) -> i32 @name(\"puts\"); }\n"
+                                        "extern c { @name(\"puts\") fn c_puts(s: *const u8) -> i32; }\n"
                                         "type BinBytes = [0b1010]u8;\n"
                                         "type HexBytes = [0x2A]u8;\n"
                                         "type DecBytes = [1_000]u8;\n";
@@ -2968,8 +3108,12 @@ TEST(CoreUnit, ParserCoversAdditionalDiagnosticBranches)
                        "type Bad = extern @ c fn(i32) -> i32;\n",
         "expected 'c' after 'extern' in function type");
     expect_parse_error("module parser.bad_abi;\n"
-                       "fn f() -> i32 @wrong(\"x\") { return 0; }\n",
-        "expected ABI attribute 'name'");
+                       "@wrong(\"x\")\n"
+                       "fn f() -> i32 { return 0; }\n",
+        "expected function decorator 'name' or 'borrow'");
+    expect_parse_error("module parser.postfix_decorator;\n"
+                       "fn f() -> i32 @name(\"f\") { return 0; }\n",
+        "function decorators must appear before 'fn'");
     expect_parse_error("module parser.bad_pointer;\n"
                        "type Bad = *i32;\n",
         "expected 'mut' or 'const' after '*'");

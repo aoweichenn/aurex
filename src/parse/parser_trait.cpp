@@ -34,9 +34,13 @@ syntax::ItemId ItemParser::parse_trait_decl()
     trait.where_constraints = std::move(where_constraints);
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
+        ParsedFunctionAttributes function_attributes;
+        this->parse_optional_function_decorators(function_attributes);
         const ParsedVisibility visibility = this->parse_visibility();
+        this->parse_optional_function_decorators(function_attributes);
         const bool is_unsafe = this->check(TokenKind::kw_unsafe);
         if (this->check(TokenKind::kw_type)) {
+            this->report_misplaced_function_decorators(function_attributes);
             const syntax::ItemId associated_type = this->parse_trait_associated_type_decl(visibility);
             if (syntax::is_valid(associated_type)) {
                 trait.trait_items.push_back(associated_type);
@@ -45,13 +49,14 @@ syntax::ItemId ItemParser::parse_trait_decl()
             continue;
         }
         if (!this->check(TokenKind::kw_fn) && !(is_unsafe && this->check_next(TokenKind::kw_fn))) {
+            this->report_misplaced_function_decorators(function_attributes);
             this->report_here(std::string(PARSER_EXPECT_TRAIT_REQUIREMENT));
             this->synchronize(RecoveryContext::item);
             this->reset_panic();
             continue;
         }
 
-        const syntax::ItemId requirement = this->parse_fn_decl(false, false, is_unsafe);
+        const syntax::ItemId requirement = this->parse_fn_decl(false, false, is_unsafe, std::move(function_attributes));
         if (syntax::is_valid(requirement)) {
             syntax::ItemNode requirement_item = this->session_.module.items[requirement.value];
             requirement_item.visibility = trait_requirement_visibility(visibility);

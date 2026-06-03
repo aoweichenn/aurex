@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include <sema/internal/sema_borrow_contract.hpp>
 #include <sema/internal/sema_trait_analyzer.hpp>
 
 namespace aurex::sema {
@@ -719,6 +720,16 @@ TraitMethodRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_requir
     if (is_valid(info.return_type)) {
         this->core_.validate_function_return_type(requirement, info.return_type);
     }
+    const FunctionLookupKey requirement_key{
+        syntax::is_valid(trait.module) ? trait.module.value : SEMA_LOOKUP_INVALID_KEY_PART,
+        SEMA_LOOKUP_INVALID_KEY_PART,
+        requirement.name_id,
+    };
+    info.borrow_contract = SemanticAnalyzerCore::BorrowContractAnalyzer(this->core_)
+                               .resolve_signature_contract(requirement, requirement_key, info.return_type,
+                                   info.param_types, trait.part_index, info.has_default_body);
+    info.has_borrow_contract = requirement.borrow_contract.present
+        || info.borrow_contract.source == FunctionBorrowContractSource::conservative_unknown;
     return info;
 }
 
@@ -1711,7 +1722,45 @@ bool SemanticAnalyzerCore::TraitAnalyzer::trait_impl_method_matches(const TraitM
             return false;
         }
     }
+    if (requirement.has_borrow_contract) {
+        const auto impl_contract = this->core_.state_.checked.borrow_contracts.find(signature.semantic_key);
+        if (impl_contract != this->core_.state_.checked.borrow_contracts.end()
+            && !SemanticAnalyzerCore::BorrowContractAnalyzer(this->core_)
+                .contract_is_subset(impl_contract->second, requirement.borrow_contract)) {
+            return false;
+        }
+    }
     return true;
+}
+
+void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_method_borrow_contract(
+    const TraitSignature& trait, const TraitImplInfo& impl, const TraitImplMethodInfo& method)
+{
+    if (method.origin != TraitImplMethodOrigin::impl_override) {
+        return;
+    }
+    const auto requirement =
+        std::ranges::find_if(trait.requirements, [&method](const TraitMethodRequirement& candidate) {
+            return candidate.ordinal == method.requirement_ordinal;
+        });
+    if (requirement == trait.requirements.end() || !requirement->has_borrow_contract) {
+        return;
+    }
+    const auto impl_contract = this->core_.state_.checked.borrow_contracts.find(method.function_key);
+    if (impl_contract != this->core_.state_.checked.borrow_contracts.end()
+        && SemanticAnalyzerCore::BorrowContractAnalyzer(this->core_)
+            .contract_is_subset(impl_contract->second, requirement->borrow_contract)) {
+        return;
+    }
+
+    base::SourceRange method_range = impl.range;
+    if (syntax::is_valid(method.item) && method.item.value < this->core_.ctx_.module.items.size()) {
+        method_range = this->core_.ctx_.module.items.range(method.item.value);
+    }
+    const base::SourceRange requirement_range = requirement->borrow_contract.range;
+    this->core_.report_general(method_range, std::string(SEMA_BORROW_CONTRACT_MISMATCH));
+    this->core_.report_note(
+        requirement_range, SemanticDiagnosticKind::general, std::string(SEMA_BORROW_CONTRACT_DECLARED_HERE));
 }
 
 void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_block(
@@ -1946,6 +1995,20 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impls()
     }
 }
 
+void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impl_borrow_contracts()
+{
+    for (const auto& entry : this->core_.state_.checked.trait_impls) {
+        const TraitImplInfo& impl = entry.second;
+        const TraitSignature* const trait = this->trait_signature_for_impl(impl);
+        if (trait == nullptr) {
+            continue;
+        }
+        for (const TraitImplMethodInfo& method : impl.methods) {
+            this->validate_trait_impl_method_borrow_contract(*trait, impl, method);
+        }
+    }
+}
+
 void SemanticAnalyzerCore::register_trait_name(const syntax::ItemNode& item, const syntax::ItemId item_id)
 {
     TraitAnalyzer(*this).register_trait_name(item, item_id);
@@ -1959,6 +2022,11 @@ void SemanticAnalyzerCore::register_trait_signatures()
 void SemanticAnalyzerCore::validate_trait_impls()
 {
     TraitAnalyzer(*this).validate_trait_impls();
+}
+
+void SemanticAnalyzerCore::validate_trait_impl_borrow_contracts()
+{
+    TraitAnalyzer(*this).validate_trait_impl_borrow_contracts();
 }
 
 void SemanticAnalyzerCore::analyze_trait_default_method_bodies()

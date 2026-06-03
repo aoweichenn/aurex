@@ -200,6 +200,22 @@ inline constexpr std::string_view SEMA_BORROWED_LOCAL_ESCAPE = "borrowed local s
 
 inline constexpr std::string_view SEMA_BORROWED_LOCAL_ORIGIN = "borrowed local storage originates here";
 
+inline constexpr std::string_view SEMA_BORROW_CONTRACT_REDUNDANT =
+    "borrow contract requires a return type that can contain a borrow";
+
+inline constexpr std::string_view SEMA_BORROW_CONTRACT_UNKNOWN_SELECTOR =
+    "borrow contract return selector does not name a parameter";
+
+inline constexpr std::string_view SEMA_BORROW_CONTRACT_SELF_SELECTOR =
+    "borrow contract 'self' selector requires a first self parameter";
+
+inline constexpr std::string_view SEMA_BORROW_CONTRACT_DUPLICATE_SELECTOR = "duplicate borrow contract return selector";
+
+inline constexpr std::string_view SEMA_BORROW_CONTRACT_MISMATCH =
+    "function body returns a borrow source outside the declared borrow contract";
+
+inline constexpr std::string_view SEMA_BORROW_CONTRACT_DECLARED_HERE = "borrow contract is declared here";
+
 inline constexpr std::string_view SEMA_ACTIVE_BORROW_CONFLICT =
     "borrowed storage cannot be mutated, moved, or exclusively reborrowed while a loan is active";
 
@@ -208,6 +224,18 @@ inline constexpr std::string_view SEMA_ACTIVE_BORROW_CREATED = "loan is created 
 inline constexpr std::string_view SEMA_ACTIVE_BORROW_INVALIDATING_ACTION = "conflicting access invalidates the loan";
 
 inline constexpr std::string_view SEMA_ACTIVE_BORROW_LATER_CARRIER_USE = "borrow carrier is used later here";
+
+inline constexpr std::string_view SEMA_REBORROW_PARENT_USE_CONFLICT =
+    "borrow parent cannot be used while a reborrow is active";
+
+inline constexpr std::string_view SEMA_REBORROW_CHILD_CREATED = "reborrow is created here";
+
+inline constexpr std::string_view SEMA_TWO_PHASE_RECEIVER_CONFLICT =
+    "mutable method receiver reservation cannot be invalidated before call activation";
+
+inline constexpr std::string_view SEMA_TWO_PHASE_RECEIVER_RESERVED = "mutable receiver borrow is reserved here";
+
+inline constexpr std::string_view SEMA_TWO_PHASE_RECEIVER_ACTIVATED = "mutable receiver borrow is activated here";
 
 inline constexpr std::string_view SEMA_MOVE_PARTIAL_FIELD_UNSUPPORTED =
     "moving a field out of a move-only value is not supported yet";

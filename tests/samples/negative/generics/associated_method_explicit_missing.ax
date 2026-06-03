@@ -1,0 +1,9 @@
+module associated_method_explicit_missing;
+
+struct Box {
+    value: i32;
+}
+
+fn main() -> i32 {
+    return Box.missing[i32]();
+}

@@ -123,7 +123,8 @@ def append_ast_mixed_prelude(source: list[str]) -> None:
     source.append(
         "module perf.ast_stress;\n\n"
         "extern c {\n"
-        "    fn observe(value: i32) -> void @name(\"observe\");\n"
+        "    @name(\"observe\")\n"
+        "    fn observe(value: i32) -> void;\n"
         "}\n\n"
         "type BinaryOp = fn(i32, i32) -> i32;\n"
         "type ConstPtr[T] = *const T;\n"

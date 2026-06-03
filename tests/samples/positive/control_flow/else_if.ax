@@ -1,7 +1,8 @@
 module else_if;
 
 extern c {
-    fn puts(s: *const u8) -> i32 @name("puts");
+    @name("puts")
+    fn puts(s: *const u8) -> i32;
 }
 
 fn classify(value: i32) -> i32 {

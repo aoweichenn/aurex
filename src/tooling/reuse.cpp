@@ -16,6 +16,7 @@ constexpr std::string_view TOOLING_REUSE_KIND_GENERIC_TEMPLATE_SIGNATURE = "gene
 constexpr std::string_view TOOLING_REUSE_KIND_FUNCTION_BODY_SYNTAX = "function_body_syntax";
 constexpr std::string_view TOOLING_REUSE_KIND_TYPE_CHECK_BODY = "type_check_body";
 constexpr std::string_view TOOLING_REUSE_KIND_BORROW_SUMMARY = "borrow_summary";
+constexpr std::string_view TOOLING_REUSE_KIND_BORROW_CONTRACT = "borrow_contract";
 constexpr std::string_view TOOLING_REUSE_KIND_BODY_LOAN_CHECK = "body_loan_check";
 constexpr std::string_view TOOLING_REUSE_REASON_BODY_LOCAL = "body-local edit";
 constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
@@ -106,6 +107,8 @@ constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
             return TOOLING_REUSE_KIND_TYPE_CHECK_BODY;
         case IdeSemanticFactKind::borrow_summary:
             return TOOLING_REUSE_KIND_BORROW_SUMMARY;
+        case IdeSemanticFactKind::borrow_contract:
+            return TOOLING_REUSE_KIND_BORROW_CONTRACT;
         case IdeSemanticFactKind::body_loan_check:
             return TOOLING_REUSE_KIND_BODY_LOAN_CHECK;
     }

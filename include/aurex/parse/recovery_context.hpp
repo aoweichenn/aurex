@@ -23,9 +23,9 @@ enum class RecoveryContext {
     enum_case,
     // Function parameter-list opener boundary after a malformed function header.
     parameter_list_start,
-    // ABI attribute argument boundary after a malformed attribute argument.
+    // Function decorator argument boundary after a malformed decorator argument.
     abi_attribute_argument,
-    // ABI attribute argument-list opener boundary after a malformed attribute name.
+    // Function decorator argument-list opener boundary after a malformed decorator name.
     abi_attribute_start,
     // Builtin expression argument boundary after a malformed separator.
     builtin_argument,

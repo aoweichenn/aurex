@@ -48,6 +48,12 @@ struct BodyLoanCarrierUseSite {
     base::SourceRange range{};
 };
 
+struct BodyLoanActionSite {
+    base::u32 action = SEMA_BODY_LOAN_INVALID_INDEX;
+    base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::SourceRange range{};
+};
+
 [[nodiscard]] bool valid_point(const BodyFlowGraph& graph, const base::u32 point) noexcept
 {
     return point != SEMA_BODY_FLOW_INVALID_INDEX && point < graph.points.size();
@@ -102,6 +108,8 @@ struct BodyLoanCarrierUseSite {
             return BodyLoanAccessKind::mutable_borrow;
         case BodyFlowActionKind::cleanup_storage:
             return BodyLoanAccessKind::cleanup;
+        case BodyFlowActionKind::call_receiver_reserve:
+        case BodyFlowActionKind::call_receiver_activate:
         case BodyFlowActionKind::call:
         case BodyFlowActionKind::return_:
         case BodyFlowActionKind::branch:
@@ -203,6 +211,27 @@ struct BodyLoanCarrierUseSite {
         && syntax::is_valid(action.expr);
 }
 
+[[nodiscard]] bool reborrow_parent_access_conflicts(
+    const BodyLoanKind parent_kind, const BodyLoanKind child_kind, const BodyLoanAccessKind access) noexcept
+{
+    if (parent_kind == BodyLoanKind::mutable_ || child_kind == BodyLoanKind::mutable_) {
+        return true;
+    }
+    switch (access) {
+        case BodyLoanAccessKind::read:
+        case BodyLoanAccessKind::shared_borrow:
+            return false;
+        case BodyLoanAccessKind::write:
+        case BodyLoanAccessKind::reinit:
+        case BodyLoanAccessKind::move:
+        case BodyLoanAccessKind::drop:
+        case BodyLoanAccessKind::mutable_borrow:
+        case BodyLoanAccessKind::cleanup:
+            return true;
+    }
+    return true;
+}
+
 [[nodiscard]] bool same_source_range(const base::SourceRange& lhs, const base::SourceRange& rhs) noexcept
 {
     return lhs.source.value == rhs.source.value && lhs.begin == rhs.begin && lhs.end == rhs.end;
@@ -210,7 +239,7 @@ struct BodyLoanCarrierUseSite {
 
 [[nodiscard]] bool same_diagnostic_site(const BodyLoanDiagnosticSite& site, const BodyLoanConflict& conflict) noexcept
 {
-    return site.point == conflict.point && same_source_range(site.range, conflict.range);
+    return same_source_range(site.range, conflict.range);
 }
 
 [[nodiscard]] bool record_reported_diagnostic_site(
@@ -274,6 +303,17 @@ void mix_origin(query::StableHashBuilder& builder, const BodyLoanOrigin& origin)
     builder.mix_u32(origin.expr.value);
 }
 
+void mix_two_phase_borrow(query::StableHashBuilder& builder, const BodyTwoPhaseBorrow& borrow) noexcept
+{
+    builder.mix_u32(borrow.reservation_action);
+    builder.mix_u32(borrow.activation_action);
+    builder.mix_u32(borrow.reservation_point);
+    builder.mix_u32(borrow.activation_point);
+    builder.mix_u32(borrow.place);
+    builder.mix_u32(borrow.call_expr.value);
+    builder.mix_bool(borrow.diagnostic_emitted);
+}
+
 [[nodiscard]] std::string body_loan_invalidating_action_message(const BodyLoanConflictKind kind)
 {
     std::string message(SEMA_ACTIVE_BORROW_INVALIDATING_ACTION);
@@ -281,6 +321,11 @@ void mix_origin(query::StableHashBuilder& builder, const BodyLoanOrigin& origin)
     message.append(body_loan_conflict_kind_name(kind));
     message.push_back(')');
     return message;
+}
+
+[[nodiscard]] bool conflict_is_two_phase(const BodyLoanConflictKind kind) noexcept
+{
+    return kind == BodyLoanConflictKind::two_phase_reservation || kind == BodyLoanConflictKind::two_phase_activation;
 }
 
 class BodyLoanSolver final {
@@ -297,7 +342,10 @@ public:
     {
         this->build_graph_index();
         this->collect_loans();
+        this->bind_reborrow_parents();
+        this->collect_two_phase_borrows();
         this->compute_carrier_liveness();
+        this->check_two_phase_reservations();
         this->propagate_active_loans();
         return std::move(this->result_);
     }
@@ -347,6 +395,119 @@ private:
             this->result_.origins.push_back(loan.origin);
             this->result_.loans.push_back(std::move(loan));
         }
+    }
+
+    void bind_reborrow_parents()
+    {
+        this->effective_loan_places_.clear();
+        this->effective_loan_places_.reserve(this->result_.loans.size());
+        for (base::usize loan_index = 0; loan_index < this->result_.loans.size(); ++loan_index) {
+            BodyLoan& loan = this->result_.loans[loan_index];
+            this->bind_reborrow_parent_for_loan(loan_index, loan);
+        }
+        for (base::usize loan_index = 0; loan_index < this->result_.loans.size(); ++loan_index) {
+            this->effective_loan_places_.push_back(this->make_effective_loan_place(loan_index));
+        }
+    }
+
+    void bind_reborrow_parent_for_loan(const base::usize loan_index, BodyLoan& loan) const
+    {
+        if (!valid_place(this->graph_, loan.place)) {
+            return;
+        }
+        const BodyFlowPlace& place = this->graph_.places[loan.place];
+        if (place.root_kind != BodyFlowPlaceRootKind::local || place.projections.empty()
+            || place.projections.front().kind != BodyFlowPlaceProjectionKind::dereference) {
+            return;
+        }
+        const IdentId carrier = place.root_name_id;
+        if (!syntax::is_valid(carrier)) {
+            return;
+        }
+        base::u32 parent_loan = SEMA_BODY_LOAN_INVALID_INDEX;
+        base::u32 parent_action = 0;
+        for (base::usize candidate_index = 0; candidate_index < this->result_.loans.size(); ++candidate_index) {
+            const BodyLoan& candidate = this->result_.loans[candidate_index];
+            if (candidate_index == loan_index || candidate.issued_action >= loan.issued_action
+                || candidate.carrier_name_id != carrier) {
+                continue;
+            }
+            if (parent_loan == SEMA_BODY_LOAN_INVALID_INDEX || candidate.issued_action > parent_action) {
+                parent_loan = base::checked_u32(candidate_index, SEMA_BODY_LOAN_ID_CONTEXT);
+                parent_action = candidate.issued_action;
+            }
+        }
+        loan.parent_loan = parent_loan;
+    }
+
+    [[nodiscard]] BodyFlowPlace make_effective_loan_place(const base::usize loan_index) const
+    {
+        const BodyLoan& loan = this->result_.loans[loan_index];
+        if (loan.parent_loan == SEMA_BODY_LOAN_INVALID_INDEX || loan.parent_loan >= this->result_.loans.size()
+            || !valid_place(this->graph_, loan.place)) {
+            return valid_place(this->graph_, loan.place) ? this->graph_.places[loan.place] : BodyFlowPlace{};
+        }
+        BodyFlowPlace place = this->loan_effective_place(loan.parent_loan);
+        const BodyFlowPlace& child_place = this->graph_.places[loan.place];
+        if (!child_place.projections.empty()) {
+            place.projections.insert(
+                place.projections.end(), child_place.projections.begin() + 1, child_place.projections.end());
+        }
+        place.range = child_place.range;
+        return place;
+    }
+
+    void collect_two_phase_borrows()
+    {
+        this->two_phase_by_reservation_action_.assign(this->graph_.actions.size(), SEMA_BODY_LOAN_INVALID_INDEX);
+        this->two_phase_by_activation_action_.assign(this->graph_.actions.size(), SEMA_BODY_LOAN_INVALID_INDEX);
+        std::vector<bool> used_activation(this->graph_.actions.size(), false);
+        for (base::usize reservation_index = 0; reservation_index < this->graph_.actions.size(); ++reservation_index) {
+            const BodyFlowAction& reservation = this->graph_.actions[reservation_index];
+            if (reservation.kind != BodyFlowActionKind::call_receiver_reserve
+                || !valid_place(this->graph_, reservation.place)) {
+                continue;
+            }
+            const std::optional<BodyLoanActionSite> activation =
+                this->find_two_phase_activation(reservation, used_activation);
+            if (!activation.has_value()) {
+                continue;
+            }
+            BodyTwoPhaseBorrow borrow;
+            borrow.reservation_action = base::checked_u32(reservation_index, SEMA_BODY_LOAN_ID_CONTEXT);
+            borrow.activation_action = activation->action;
+            borrow.reservation_point = reservation.point;
+            borrow.activation_point = activation->point;
+            borrow.place = reservation.place;
+            borrow.call_expr = reservation.expr;
+            borrow.range = reservation.range;
+            const base::u32 index =
+                base::checked_u32(this->result_.two_phase_borrows.size(), SEMA_BODY_LOAN_ID_CONTEXT);
+            this->result_.two_phase_borrows.push_back(std::move(borrow));
+            this->two_phase_by_reservation_action_[reservation_index] = index;
+            this->two_phase_by_activation_action_[activation->action] = index;
+            used_activation[activation->action] = true;
+        }
+    }
+
+    [[nodiscard]] std::optional<BodyLoanActionSite> find_two_phase_activation(
+        const BodyFlowAction& reservation, const std::vector<bool>& used_activation) const
+    {
+        for (base::usize action_index = 0; action_index < this->graph_.actions.size(); ++action_index) {
+            if (action_index >= used_activation.size() || used_activation[action_index]) {
+                continue;
+            }
+            const BodyFlowAction& action = this->graph_.actions[action_index];
+            if (action.kind == BodyFlowActionKind::call_receiver_activate && action.expr.value == reservation.expr.value
+                && action.place == reservation.place) {
+                return BodyLoanActionSite{
+                    .action = base::checked_u32(action_index, SEMA_BODY_LOAN_ID_CONTEXT),
+                    .point = action.point,
+                    .range = action.range,
+                };
+            }
+        }
+        return std::nullopt;
     }
 
     [[nodiscard]] BodyLoanOrigin make_origin(const BodyFlowPlace& place) const noexcept
@@ -555,6 +716,98 @@ private:
         }
     }
 
+    void check_two_phase_reservations()
+    {
+        for (base::usize two_phase_index = 0; two_phase_index < this->result_.two_phase_borrows.size();
+            ++two_phase_index) {
+            this->check_two_phase_reservation(two_phase_index);
+        }
+    }
+
+    void check_two_phase_reservation(const base::usize two_phase_index)
+    {
+        const BodyTwoPhaseBorrow& borrow = this->result_.two_phase_borrows[two_phase_index];
+        if (!valid_point(this->graph_, borrow.reservation_point)
+            || !valid_action(this->graph_, borrow.activation_action) || !valid_place(this->graph_, borrow.place)) {
+            return;
+        }
+        std::vector<bool> visited(this->graph_.points.size(), false);
+        std::vector<base::u32> pending;
+        pending.reserve(SEMA_BODY_LOAN_INITIAL_WORKLIST_CAPACITY);
+        pending.push_back(borrow.reservation_point);
+        visited[borrow.reservation_point] = true;
+        while (!pending.empty()) {
+            const base::u32 point = pending.back();
+            pending.pop_back();
+            if (this->check_two_phase_reservation_point(two_phase_index, point)) {
+                continue;
+            }
+            for (const base::u32 successor : this->index_.outgoing_points[point]) {
+                if (successor >= visited.size() || visited[successor]) {
+                    continue;
+                }
+                visited[successor] = true;
+                pending.push_back(successor);
+            }
+        }
+    }
+
+    [[nodiscard]] bool check_two_phase_reservation_point(const base::usize two_phase_index, const base::u32 point)
+    {
+        const BodyTwoPhaseBorrow& borrow = this->result_.two_phase_borrows[two_phase_index];
+        if (!valid_point(this->graph_, point)) {
+            return true;
+        }
+        for (const base::u32 action_index : this->index_.actions_by_point[point]) {
+            if (action_index == borrow.activation_action) {
+                return true;
+            }
+            if (!valid_action(this->graph_, action_index) || action_index == borrow.reservation_action) {
+                continue;
+            }
+            const BodyFlowAction& action = this->graph_.actions[action_index];
+            if ((action.kind == BodyFlowActionKind::call_receiver_reserve
+                    || action.kind == BodyFlowActionKind::call_receiver_activate)
+                && valid_place(this->graph_, action.place)
+                && places_conflict(this->graph_.places[borrow.place], this->graph_.places[action.place])) {
+                this->record_two_phase_conflict(
+                    two_phase_index, action_index, action, BodyLoanConflictKind::two_phase_reservation);
+                continue;
+            }
+            std::optional<BodyLoanAccessKind> access = access_kind_for_action(action.kind);
+            if (access == BodyLoanAccessKind::move && !this->move_action_consumes_action(action_index)) {
+                access = std::nullopt;
+            }
+            if (!access.has_value() || !this->two_phase_reservation_access_conflicts(access.value())
+                || !valid_place(this->graph_, action.place)) {
+                continue;
+            }
+            if (!places_conflict(this->graph_.places[borrow.place], this->graph_.places[action.place])) {
+                continue;
+            }
+            this->record_two_phase_conflict(
+                two_phase_index, action_index, action, BodyLoanConflictKind::two_phase_reservation);
+        }
+        return false;
+    }
+
+    [[nodiscard]] bool two_phase_reservation_access_conflicts(const BodyLoanAccessKind access) const noexcept
+    {
+        switch (access) {
+            case BodyLoanAccessKind::read:
+            case BodyLoanAccessKind::shared_borrow:
+                return false;
+            case BodyLoanAccessKind::write:
+            case BodyLoanAccessKind::reinit:
+            case BodyLoanAccessKind::move:
+            case BodyLoanAccessKind::drop:
+            case BodyLoanAccessKind::mutable_borrow:
+            case BodyLoanAccessKind::cleanup:
+                return true;
+        }
+        return true;
+    }
+
     void propagate_active_loans()
     {
         const base::usize point_count = this->graph_.points.size();
@@ -616,6 +869,9 @@ private:
             if (access.has_value() && valid_place(this->graph_, action.place)) {
                 this->check_action_conflicts(action_index, action, access.value(), active);
             }
+            if (action.kind == BodyFlowActionKind::call_receiver_activate && valid_place(this->graph_, action.place)) {
+                this->check_two_phase_activation_conflicts(action_index, action, active);
+            }
             if (action_is_borrow(action.kind)) {
                 this->activate_loan_for_action(action_index, active);
             }
@@ -672,11 +928,16 @@ private:
                 continue;
             }
             const BodyLoan& loan = this->result_.loans[loan_index];
-            if (loan.issued_action == action_index || !loan_conflicts_with_access(loan.kind, access)
-                || !valid_place(this->graph_, loan.place)) {
+            if (loan.issued_action == action_index || !valid_place(this->graph_, loan.place)) {
                 continue;
             }
-            const BodyFlowPlace& loan_place = this->graph_.places[loan.place];
+            if (this->record_reborrow_parent_use_conflict(loan_index, action_index, action, access)) {
+                continue;
+            }
+            if (!loan_conflicts_with_access(loan.kind, access)) {
+                continue;
+            }
+            const BodyFlowPlace& loan_place = this->loan_effective_place(loan_index);
             const BodyFlowPlace& action_place = this->graph_.places[action.place];
             if (!places_conflict(loan_place, action_place)) {
                 continue;
@@ -685,8 +946,76 @@ private:
         }
     }
 
+    [[nodiscard]] bool record_reborrow_parent_use_conflict(const base::u32 loan_index, const base::u32 action_index,
+        const BodyFlowAction& action, const BodyLoanAccessKind access)
+    {
+        if (loan_index >= this->result_.loans.size()) {
+            return false;
+        }
+        const BodyLoan& child = this->result_.loans[loan_index];
+        if (child.parent_loan == SEMA_BODY_LOAN_INVALID_INDEX || child.parent_loan >= this->result_.loans.size()
+            || action.point == child.issued_point) {
+            return false;
+        }
+        const BodyLoan& parent = this->result_.loans[child.parent_loan];
+        if (!this->action_place_has_root(action, parent.carrier_name_id)
+            || !reborrow_parent_access_conflicts(parent.kind, child.kind, access)) {
+            return false;
+        }
+        this->record_loan_conflict(BodyLoanConflictKind::reborrow_parent_use, loan_index, action_index, action);
+        return true;
+    }
+
+    void check_two_phase_activation_conflicts(
+        const base::u32 action_index, const BodyFlowAction& action, const std::vector<base::u32>& active)
+    {
+        const base::u32 two_phase_index = this->two_phase_index_for_activation(action_index);
+        if (two_phase_index == SEMA_BODY_LOAN_INVALID_INDEX) {
+            return;
+        }
+        for (const base::u32 loan_index : active) {
+            if (loan_index >= this->result_.loans.size()
+                || !valid_place(this->graph_, this->result_.loans[loan_index].place)) {
+                continue;
+            }
+            const BodyLoan& loan = this->result_.loans[loan_index];
+            if (!loan_conflicts_with_access(loan.kind, BodyLoanAccessKind::mutable_borrow)) {
+                continue;
+            }
+            const BodyFlowPlace& loan_place = this->loan_effective_place(loan_index);
+            const BodyFlowPlace& action_place = this->graph_.places[action.place];
+            if (!places_conflict(loan_place, action_place)) {
+                continue;
+            }
+            this->record_two_phase_activation_conflict(two_phase_index, loan_index, action_index, action);
+        }
+    }
+
+    [[nodiscard]] const BodyFlowPlace& loan_effective_place(const base::usize loan_index) const noexcept
+    {
+        if (loan_index < this->effective_loan_places_.size()) {
+            return this->effective_loan_places_[loan_index];
+        }
+        const BodyLoan& loan = this->result_.loans[loan_index];
+        return this->graph_.places[loan.place];
+    }
+
+    [[nodiscard]] base::u32 two_phase_index_for_activation(const base::u32 action_index) const noexcept
+    {
+        if (action_index < this->two_phase_by_activation_action_.size()) {
+            return this->two_phase_by_activation_action_[action_index];
+        }
+        return SEMA_BODY_LOAN_INVALID_INDEX;
+    }
+
     void record_conflict(const base::u32 loan_index, const base::u32 action_index, const BodyFlowAction& action,
         const BodyLoanAccessKind access)
+    {
+        this->record_loan_conflict(conflict_kind_for_access(access), loan_index, action_index, action);
+    }
+
+    void record_loan_conflict(const BodyLoanConflictKind kind, const base::u32 loan_index, const base::u32 action_index,
+        const BodyFlowAction& action)
     {
         constexpr std::uint64_t SEMA_BODY_LOAN_CONFLICT_KEY_SHIFT = 32;
         const std::uint64_t key =
@@ -696,7 +1025,7 @@ private:
         }
         const BodyLoanCarrierUseSite later_use = this->find_later_carrier_use(loan_index, action_index, action.point);
         this->result_.conflicts.push_back(BodyLoanConflict{
-            .kind = conflict_kind_for_access(access),
+            .kind = kind,
             .loan = loan_index,
             .action = action_index,
             .point = action.point,
@@ -705,6 +1034,48 @@ private:
             .range = action.range,
             .later_use_point = later_use.point,
             .later_use_range = later_use.range,
+        });
+    }
+
+    void record_two_phase_conflict(const base::usize two_phase_index, const base::u32 action_index,
+        const BodyFlowAction& action, const BodyLoanConflictKind kind)
+    {
+        constexpr std::uint64_t SEMA_BODY_LOAN_CONFLICT_KEY_SHIFT = 32;
+        const std::uint64_t key =
+            (static_cast<std::uint64_t>(two_phase_index) << SEMA_BODY_LOAN_CONFLICT_KEY_SHIFT) | action_index;
+        if (!this->seen_two_phase_conflicts_.insert(key).second) {
+            return;
+        }
+        this->result_.conflicts.push_back(BodyLoanConflict{
+            .kind = kind,
+            .loan = SEMA_BODY_LOAN_INVALID_INDEX,
+            .two_phase_borrow = base::checked_u32(two_phase_index, SEMA_BODY_LOAN_ID_CONTEXT),
+            .action = action_index,
+            .point = action.point,
+            .place = action.place,
+            .diagnostic_emitted = false,
+            .range = action.range,
+        });
+    }
+
+    void record_two_phase_activation_conflict(const base::u32 two_phase_index, const base::u32 loan_index,
+        const base::u32 action_index, const BodyFlowAction& action)
+    {
+        constexpr std::uint64_t SEMA_BODY_LOAN_CONFLICT_KEY_SHIFT = 32;
+        const std::uint64_t key =
+            (static_cast<std::uint64_t>(two_phase_index) << SEMA_BODY_LOAN_CONFLICT_KEY_SHIFT) | action_index;
+        if (!this->seen_two_phase_conflicts_.insert(key).second) {
+            return;
+        }
+        this->result_.conflicts.push_back(BodyLoanConflict{
+            .kind = BodyLoanConflictKind::two_phase_activation,
+            .loan = loan_index,
+            .two_phase_borrow = two_phase_index,
+            .action = action_index,
+            .point = action.point,
+            .place = action.place,
+            .diagnostic_emitted = false,
+            .range = action.range,
         });
     }
 
@@ -808,7 +1179,11 @@ private:
     std::vector<std::vector<bool>> carrier_live_after_;
     std::vector<std::vector<base::u32>> active_in_;
     std::vector<std::vector<base::u32>> active_out_;
+    std::vector<BodyFlowPlace> effective_loan_places_;
+    std::vector<base::u32> two_phase_by_reservation_action_;
+    std::vector<base::u32> two_phase_by_activation_action_;
     std::unordered_set<std::uint64_t> seen_conflicts_;
+    std::unordered_set<std::uint64_t> seen_two_phase_conflicts_;
 };
 
 } // namespace
@@ -869,6 +1244,12 @@ std::string_view body_loan_conflict_kind_name(const BodyLoanConflictKind kind) n
             return "mutable_borrow";
         case BodyLoanConflictKind::cleanup:
             return "cleanup";
+        case BodyLoanConflictKind::reborrow_parent_use:
+            return "reborrow_parent_use";
+        case BodyLoanConflictKind::two_phase_reservation:
+            return "two_phase_reservation";
+        case BodyLoanConflictKind::two_phase_activation:
+            return "two_phase_activation";
     }
     return "<invalid>";
 }
@@ -890,6 +1271,7 @@ query::StableFingerprint128 body_loan_check_fingerprint(const BodyLoanCheckResul
     for (const BodyLoan& loan : result.loans) {
         builder.mix_u8(static_cast<base::u8>(loan.kind));
         mix_origin(builder, loan.origin);
+        builder.mix_u32(loan.parent_loan);
         builder.mix_u32(loan.issued_action);
         builder.mix_u32(loan.issued_point);
         builder.mix_u32(loan.place);
@@ -899,10 +1281,16 @@ query::StableFingerprint128 body_loan_check_fingerprint(const BodyLoanCheckResul
         builder.mix_u32(loan.expr.value);
     }
 
+    builder.mix_u64(result.two_phase_borrows.size());
+    for (const BodyTwoPhaseBorrow& borrow : result.two_phase_borrows) {
+        mix_two_phase_borrow(builder, borrow);
+    }
+
     builder.mix_u64(result.conflicts.size());
     for (const BodyLoanConflict& conflict : result.conflicts) {
         builder.mix_u8(static_cast<base::u8>(conflict.kind));
         builder.mix_u32(conflict.loan);
+        builder.mix_u32(conflict.two_phase_borrow);
         builder.mix_u32(conflict.action);
         builder.mix_u32(conflict.point);
         builder.mix_u32(conflict.place);
@@ -935,8 +1323,13 @@ std::string dump_body_loan_check_result(const BodyLoanCheckResult& result)
     stream << "loans:\n";
     for (base::usize index = 0; index < result.loans.size(); ++index) {
         const BodyLoan& loan = result.loans[index];
-        stream << "  l" << index << ' ' << body_loan_kind_name(loan.kind) << " place=" << loan.place
-               << " issued_action=a" << loan.issued_action << " issued_point=p" << loan.issued_point << " carrier=";
+        stream << "  l" << index << ' ' << body_loan_kind_name(loan.kind) << " place=" << loan.place << " parent=";
+        if (loan.parent_loan == SEMA_BODY_LOAN_INVALID_INDEX) {
+            stream << '-';
+        } else {
+            stream << 'l' << loan.parent_loan;
+        }
+        stream << " issued_action=a" << loan.issued_action << " issued_point=p" << loan.issued_point << " carrier=";
         append_optional_name_id(stream, loan.carrier_name_id);
         stream << " stmt=";
         append_optional_stmt_id(stream, loan.enclosing_stmt);
@@ -945,11 +1338,24 @@ std::string dump_body_loan_check_result(const BodyLoanCheckResult& result)
         stream << '\n';
     }
 
+    stream << "two_phase_borrows:\n";
+    for (base::usize index = 0; index < result.two_phase_borrows.size(); ++index) {
+        const BodyTwoPhaseBorrow& borrow = result.two_phase_borrows[index];
+        stream << "  t" << index << " place=" << borrow.place << " reserve=a" << borrow.reservation_action << "/p"
+               << borrow.reservation_point << " activate=a" << borrow.activation_action << "/p"
+               << borrow.activation_point << " call=";
+        append_optional_expr_id(stream, borrow.call_expr);
+        stream << " emitted=" << (borrow.diagnostic_emitted ? "true" : "false") << " range=";
+        append_range(stream, borrow.range);
+        stream << '\n';
+    }
+
     stream << "conflicts:\n";
     for (base::usize index = 0; index < result.conflicts.size(); ++index) {
         const BodyLoanConflict& conflict = result.conflicts[index];
         stream << "  c" << index << ' ' << body_loan_conflict_kind_name(conflict.kind) << " loan=l" << conflict.loan
-               << " action=a" << conflict.action << " point=p" << conflict.point << " place=" << conflict.place
+               << " two_phase=t" << conflict.two_phase_borrow << " action=a" << conflict.action << " point=p"
+               << conflict.point << " place=" << conflict.place
                << " emitted=" << (conflict.diagnostic_emitted ? "true" : "false") << " range=";
         append_range(stream, conflict.range);
         stream << " later_use=p" << conflict.later_use_point << " range=";
@@ -1053,6 +1459,220 @@ bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_bind_reference_loan(co
     return false;
 }
 
+bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_have_two_phase_receiver(const syntax::StmtId stmt_id) const
+{
+    if (!valid_stmt(this->core_.ctx_.module, stmt_id)) {
+        return false;
+    }
+    const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
+    switch (stmt.kind) {
+        case syntax::StmtKind::let:
+        case syntax::StmtKind::var:
+            return this->expr_may_have_two_phase_receiver(stmt.init);
+        case syntax::StmtKind::assign:
+            return this->expr_may_have_two_phase_receiver(stmt.lhs) || this->expr_may_have_two_phase_receiver(stmt.rhs);
+        case syntax::StmtKind::if_:
+        case syntax::StmtKind::while_:
+            return this->expr_may_have_two_phase_receiver(stmt.condition);
+        case syntax::StmtKind::for_:
+            return this->expr_may_have_two_phase_receiver(stmt.condition);
+        case syntax::StmtKind::for_range:
+            return this->expr_may_have_two_phase_receiver(stmt.range_start)
+                || this->expr_may_have_two_phase_receiver(stmt.range_end)
+                || this->expr_may_have_two_phase_receiver(stmt.range_step);
+        case syntax::StmtKind::defer:
+        case syntax::StmtKind::expr:
+            return this->expr_may_have_two_phase_receiver(stmt.init);
+        case syntax::StmtKind::return_:
+            return this->expr_may_have_two_phase_receiver(stmt.return_value);
+        case syntax::StmtKind::break_:
+        case syntax::StmtKind::continue_:
+        case syntax::StmtKind::block:
+            return false;
+    }
+    return false;
+}
+
+bool SemanticAnalyzerCore::BodyLoanChecker::expr_may_have_two_phase_receiver(const syntax::ExprId expr) const
+{
+    std::vector<syntax::ExprId> pending;
+    pending.push_back(expr);
+    std::unordered_set<base::u32> visited;
+    while (!pending.empty()) {
+        const syntax::ExprId current = pending.back();
+        pending.pop_back();
+        if (!valid_expr(this->core_.ctx_.module, current) || !visited.insert(current.value).second) {
+            continue;
+        }
+        if (const FunctionCallBinding* const binding =
+                this->core_.state_.checked.function_call_binding_for_expr(current);
+            binding != nullptr && binding->receiver_two_phase_eligible) {
+            return true;
+        }
+        if (const TraitMethodCallBinding* const binding =
+                this->core_.state_.checked.trait_method_call_binding_for_expr(current);
+            binding != nullptr && binding->receiver_two_phase_eligible) {
+            return true;
+        }
+        switch (this->core_.ctx_.module.exprs.kind(current.value)) {
+            case syntax::ExprKind::generic_apply: {
+                const syntax::GenericApplyExprPayload* const apply =
+                    this->core_.ctx_.module.exprs.generic_apply_payload(current.value);
+                if (apply != nullptr) {
+                    pending.push_back(apply->callee);
+                }
+                break;
+            }
+            case syntax::ExprKind::unary:
+            case syntax::ExprKind::try_expr:
+            case syntax::ExprKind::cast:
+            case syntax::ExprKind::pcast:
+            case syntax::ExprKind::bcast:
+            case syntax::ExprKind::size_of:
+            case syntax::ExprKind::align_of:
+            case syntax::ExprKind::ptr_addr:
+            case syntax::ExprKind::paddr:
+            case syntax::ExprKind::slice_data:
+            case syntax::ExprKind::slice_len:
+            case syntax::ExprKind::str_data:
+            case syntax::ExprKind::str_byte_len:
+            case syntax::ExprKind::str_is_valid_utf8:
+            case syntax::ExprKind::str_from_utf8_checked: {
+                const syntax::CastExprPayload* const cast = this->core_.ctx_.module.exprs.cast_payload(current.value);
+                const syntax::UnaryExprPayload* const unary =
+                    this->core_.ctx_.module.exprs.unary_payload(current.value);
+                const syntax::TryExprPayload* const try_expr = this->core_.ctx_.module.exprs.try_payload(current.value);
+                if (cast != nullptr) {
+                    pending.push_back(cast->expr);
+                } else if (unary != nullptr) {
+                    pending.push_back(unary->operand);
+                } else if (try_expr != nullptr) {
+                    pending.push_back(try_expr->operand);
+                }
+                break;
+            }
+            case syntax::ExprKind::binary: {
+                const syntax::BinaryExprPayload* const binary =
+                    this->core_.ctx_.module.exprs.binary_payload(current.value);
+                if (binary != nullptr) {
+                    pending.push_back(binary->lhs);
+                    pending.push_back(binary->rhs);
+                }
+                break;
+            }
+            case syntax::ExprKind::call:
+            case syntax::ExprKind::str_from_bytes_unchecked: {
+                const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(current.value);
+                if (call != nullptr) {
+                    pending.push_back(call->callee);
+                    pending.insert(pending.end(), call->args.begin(), call->args.end());
+                }
+                break;
+            }
+            case syntax::ExprKind::field: {
+                const syntax::FieldExprPayload* const field =
+                    this->core_.ctx_.module.exprs.field_payload(current.value);
+                if (field != nullptr) {
+                    pending.push_back(field->object);
+                }
+                break;
+            }
+            case syntax::ExprKind::index: {
+                const syntax::IndexExprPayload* const index =
+                    this->core_.ctx_.module.exprs.index_payload(current.value);
+                if (index != nullptr) {
+                    pending.push_back(index->object);
+                    pending.push_back(index->index);
+                }
+                break;
+            }
+            case syntax::ExprKind::slice: {
+                const syntax::SliceExprPayload* const slice =
+                    this->core_.ctx_.module.exprs.slice_payload(current.value);
+                if (slice != nullptr) {
+                    pending.push_back(slice->object);
+                    pending.push_back(slice->start);
+                    pending.push_back(slice->end);
+                }
+                break;
+            }
+            case syntax::ExprKind::if_expr: {
+                const syntax::IfExprPayload* const if_expr = this->core_.ctx_.module.exprs.if_payload(current.value);
+                if (if_expr != nullptr) {
+                    pending.push_back(if_expr->condition);
+                    pending.push_back(if_expr->then_expr);
+                    pending.push_back(if_expr->else_expr);
+                }
+                break;
+            }
+            case syntax::ExprKind::array_literal: {
+                const syntax::ArrayExprPayload* const array =
+                    this->core_.ctx_.module.exprs.array_payload(current.value);
+                if (array != nullptr) {
+                    pending.insert(pending.end(), array->elements.begin(), array->elements.end());
+                    pending.push_back(array->repeat_value);
+                    pending.push_back(array->repeat_count);
+                }
+                break;
+            }
+            case syntax::ExprKind::tuple_literal: {
+                const syntax::AstArenaVector<syntax::ExprId>* const elements =
+                    this->core_.ctx_.module.exprs.tuple_elements(current.value);
+                if (elements != nullptr) {
+                    pending.insert(pending.end(), elements->begin(), elements->end());
+                }
+                break;
+            }
+            case syntax::ExprKind::struct_literal: {
+                const syntax::StructLiteralExprPayload* const literal =
+                    this->core_.ctx_.module.exprs.struct_literal_payload(current.value);
+                if (literal != nullptr) {
+                    pending.push_back(literal->object);
+                    for (const syntax::FieldInit& init : literal->field_inits) {
+                        pending.push_back(init.value);
+                    }
+                }
+                break;
+            }
+            case syntax::ExprKind::match_expr: {
+                const syntax::MatchExprPayload* const match =
+                    this->core_.ctx_.module.exprs.match_payload(current.value);
+                if (match != nullptr) {
+                    pending.push_back(match->value);
+                    for (const syntax::MatchArm& arm : match->arms) {
+                        pending.push_back(arm.guard);
+                        pending.push_back(arm.value);
+                    }
+                }
+                break;
+            }
+            case syntax::ExprKind::block_expr:
+            case syntax::ExprKind::unsafe_block: {
+                const syntax::BlockExprPayload* const block =
+                    this->core_.ctx_.module.exprs.block_payload(current.value);
+                if (block != nullptr) {
+                    pending.push_back(block->result);
+                }
+                break;
+            }
+            case syntax::ExprKind::invalid:
+            case syntax::ExprKind::integer_literal:
+            case syntax::ExprKind::float_literal:
+            case syntax::ExprKind::bool_literal:
+            case syntax::ExprKind::null_literal:
+            case syntax::ExprKind::string_literal:
+            case syntax::ExprKind::c_string_literal:
+            case syntax::ExprKind::raw_string_literal:
+            case syntax::ExprKind::byte_string_literal:
+            case syntax::ExprKind::byte_literal:
+            case syntax::ExprKind::char_literal:
+            case syntax::ExprKind::name:
+                break;
+        }
+    }
+    return false;
+}
+
 bool SemanticAnalyzerCore::BodyLoanChecker::may_need_local_loan_check(const syntax::ItemNode& function) const
 {
     std::vector<syntax::StmtId> pending;
@@ -1064,7 +1684,7 @@ bool SemanticAnalyzerCore::BodyLoanChecker::may_need_local_loan_check(const synt
         if (!valid_stmt(this->core_.ctx_.module, stmt_id)) {
             continue;
         }
-        if (this->statement_may_bind_reference_loan(stmt_id)) {
+        if (this->statement_may_bind_reference_loan(stmt_id) || this->statement_may_have_two_phase_receiver(stmt_id)) {
             return true;
         }
         const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
@@ -1134,10 +1754,39 @@ void SemanticAnalyzerCore::BodyLoanChecker::check(
         std::vector<BodyLoanDiagnosticSite> reported_sites;
         reported_sites.reserve(result.conflicts.size());
         for (BodyLoanConflict& conflict : result.conflicts) {
-            if (conflict.loan >= result.loans.size() || !record_reported_diagnostic_site(reported_sites, conflict)) {
+            if (!record_reported_diagnostic_site(reported_sites, conflict)) {
+                continue;
+            }
+            if (conflict_is_two_phase(conflict.kind)) {
+                if (conflict.two_phase_borrow >= result.two_phase_borrows.size()) {
+                    continue;
+                }
+                BodyTwoPhaseBorrow& borrow = result.two_phase_borrows[conflict.two_phase_borrow];
+                this->core_.report_general(conflict.range, std::string(SEMA_TWO_PHASE_RECEIVER_CONFLICT));
+                this->core_.report_note(
+                    borrow.range, SemanticDiagnosticKind::general, std::string(SEMA_TWO_PHASE_RECEIVER_RESERVED));
+                if (valid_action(found->second, borrow.activation_action)) {
+                    const BodyFlowAction& activation = found->second.actions[borrow.activation_action];
+                    this->core_.report_note(activation.range, SemanticDiagnosticKind::general,
+                        std::string(SEMA_TWO_PHASE_RECEIVER_ACTIVATED));
+                }
+                borrow.diagnostic_emitted = true;
+                conflict.diagnostic_emitted = true;
+                continue;
+            }
+            if (conflict.loan >= result.loans.size()) {
                 continue;
             }
             const BodyLoan& loan = result.loans[conflict.loan];
+            if (conflict.kind == BodyLoanConflictKind::reborrow_parent_use) {
+                this->core_.report_general(conflict.range, std::string(SEMA_REBORROW_PARENT_USE_CONFLICT));
+                this->core_.report_note(
+                    loan.range, SemanticDiagnosticKind::general, std::string(SEMA_REBORROW_CHILD_CREATED));
+                this->core_.report_note(conflict.range, SemanticDiagnosticKind::general,
+                    body_loan_invalidating_action_message(conflict.kind));
+                conflict.diagnostic_emitted = true;
+                continue;
+            }
             this->core_.report_general(conflict.range, std::string(SEMA_ACTIVE_BORROW_CONFLICT));
             this->core_.report_note(
                 loan.range, SemanticDiagnosticKind::general, std::string(SEMA_ACTIVE_BORROW_CREATED));

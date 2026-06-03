@@ -1,8 +1,8 @@
 # Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 路线图
 
-日期：2026-06-02
+日期：2026-06-03
 
-状态：设计基线。完整设计依据见
+状态：实现收口。完整设计依据见
 [Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 设计基线](m7b-borrow-contract-design.md)。
 
 ## 0. M7b 总目标
@@ -21,6 +21,22 @@ M7b 核心产物：
 - receiver auto-borrow two-phase reservation/activation。
 - `BorrowEscapeAnalyzer` parity replacement。
 - diagnostics、query/cache、IDE/tooling 和 release gate 收口。
+
+当前已落地：
+
+- 函数装饰器式 `@borrow(return = [...])` parser/AST/sema，以及 declared/inferred
+  `FunctionBorrowContract` fingerprint/dump/query 投影。
+- summary-vs-contract subset enforcement，trait requirement / impl borrowed-return contract matching。
+- `BodyLoan::parent_loan` reborrow parent/child model；child loan 的有效 place 会归一到 parent 底层 place，
+  保留 known-disjoint field projection 放宽，并诊断 child 活跃期间的 mutable parent use。
+- method / trait method call binding 记录 `receiver_access`、`receiver_auto_borrow` 和
+  `receiver_two_phase_eligible`。
+- receiver auto-borrow two-phase reservation/activation facts；reservation 期间允许 shared read，拒绝写、
+  move、drop、cleanup、mutable borrow 和 nested mutable receiver reservation；activation 点执行 active loan conflict
+  check。
+- `TypeCheckBodyAuthority` 混入 borrow contract fingerprint、body loan fingerprint、reborrow/two-phase counts 和
+  diagnostics-emitted 状态；IDE semantic fact detail 展示 `borrow_contract`、`body_loan_check`、reborrow/two-phase
+  计数。
 
 M7b 不做：
 
@@ -63,7 +79,7 @@ M7b 不做：
 
 建议实现：
 
-- 复用现有 `@name(...)` 属性位置，不新增 keyword。
+- 复用现有 `@name(...)` 函数声明前装饰器位置，不新增 keyword。
 - AST 增加结构化 `BorrowContractDecl`。
 - parser 只接受 `return = [identifier | self | static | unknown, ...]` 的第一版 grammar。
 - 对返回类型不能含 borrow 的函数报告冗余 contract。
@@ -115,7 +131,7 @@ M7b 不做：
 
 验收：
 
-- trait method `fn view(self: &Self) -> str @borrow(return = [self]);` 正例。
+- trait method `@borrow(return = [self]) fn view(self: &Self) -> str;` 正例。
 - impl 返回其他参数/local/unknown 时拒绝。
 - generic identity/wrapper summary 保持 dependency。
 - associated projection 仍按可能含 borrow 处理。

@@ -1,0 +1,17 @@
+module method_two_phase_nested_mut_receiver;
+
+struct Counter {
+    value: i32;
+}
+
+impl Counter {
+    fn add(self: &mut Counter, delta: i32) -> i32 {
+        self.value = self.value + delta;
+        return self.value;
+    }
+}
+
+fn main() -> i32 {
+    var counter = Counter { value: 1 };
+    return counter.add(counter.add(1));
+}

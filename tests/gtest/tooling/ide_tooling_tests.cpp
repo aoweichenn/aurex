@@ -427,10 +427,18 @@ TEST(CoreUnit, IdeToolingProjectsBorrowSummaryAndLoanFacts)
     EXPECT_NE(summary_fact->detail.find("deps=1"), std::string::npos) << summary_fact->detail;
     EXPECT_NE(summary_fact->detail.find("unknown=false"), std::string::npos) << summary_fact->detail;
 
+    const tooling::IdeSemanticFact* const contract_fact = find_semantic_fact(
+        snapshot, tooling::IdeSemanticFactKind::borrow_contract, query::QueryKind::type_check_body, "id_ref");
+    ASSERT_NE(contract_fact, nullptr);
+    EXPECT_NE(contract_fact->detail.find("source=inferred"), std::string::npos) << contract_fact->detail;
+    EXPECT_NE(contract_fact->detail.find("selectors=1"), std::string::npos) << contract_fact->detail;
+
     const tooling::IdeSemanticFact* const loan_fact = find_semantic_fact(
         snapshot, tooling::IdeSemanticFactKind::body_loan_check, query::QueryKind::type_check_body, "read");
     ASSERT_NE(loan_fact, nullptr);
     EXPECT_NE(loan_fact->detail.find("loans=1"), std::string::npos) << loan_fact->detail;
+    EXPECT_NE(loan_fact->detail.find("reborrows=0"), std::string::npos) << loan_fact->detail;
+    EXPECT_NE(loan_fact->detail.find("two_phase=0"), std::string::npos) << loan_fact->detail;
     EXPECT_NE(loan_fact->detail.find("conflicts=0"), std::string::npos) << loan_fact->detail;
 
     const base::usize id_ref_offset = source.find("id_ref");
@@ -438,6 +446,8 @@ TEST(CoreUnit, IdeToolingProjectsBorrowSummaryAndLoanFacts)
     const std::optional<tooling::IdeHoverInfo> hover = tooling::hover_at_offset(snapshot, id_ref_offset);
     ASSERT_TRUE(hover.has_value());
     EXPECT_NE(hover->label.find("borrow_summary=deps=1"), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("borrow_contract=inferred/selectors=1/unknown=false/mismatch=false"), std::string::npos)
+        << hover->label;
 }
 
 TEST(CoreUnit, IdeToolingRecordsPrimaryModulePartDeclarations)
@@ -1154,7 +1164,7 @@ TEST(CoreUnit, IdeToolingResolvesSupportedTopLevelDefinitionKinds)
                                         "pub struct Point { pub x: i32; }\n"
                                         "enum Mode { fast, slow }\n"
                                         "impl Point { fn read(self: *const Point) -> i32 { return self.x; } }\n"
-                                        "extern c { fn native(value: i32) -> i32 @name(\"native\"); }\n"
+                                        "extern c { @name(\"native\") fn native(value: i32) -> i32; }\n"
                                         "fn use_defs() -> i32 { return answer; }\n";
     tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
     ASSERT_TRUE(snapshot.parsed);

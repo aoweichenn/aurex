@@ -1,0 +1,15 @@
+module associated_method_explicit_non_generic;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn read() -> i32 {
+        return 1;
+    }
+}
+
+fn main() -> i32 {
+    return Box.read[i32]();
+}

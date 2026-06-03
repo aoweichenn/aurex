@@ -466,18 +466,21 @@ fn inferred(value: i32) {
 
 ```aurex
 extern c {
-    fn strlen(text: *const u8) -> usize @name("strlen");
-    fn snprintf(buffer: *mut u8, size: usize, format: *const u8, ...) -> i32 @name("snprintf");
+    @name("strlen")
+    fn strlen(text: *const u8) -> usize;
+    @name("snprintf")
+    fn snprintf(buffer: *mut u8, size: usize, format: *const u8, ...) -> i32;
 }
 
-export c fn aurex_add(a: i32, b: i32) -> i32 @name("aurex_add") {
+@name("aurex_add")
+export c fn aurex_add(a: i32, b: i32) -> i32 {
     return a + b;
 }
 ```
 
 规则：
 
-- `@name("...")` 指定 ABI symbol。
+- `@name("...")` 是函数声明前装饰器，用于指定 ABI symbol。
 - variadic 只支持 `extern c` 函数。
 - C ABI 函数不支持泛型。
 

@@ -1,7 +1,8 @@
 module function_prototype_variadic_mismatch;
 
 extern c {
-    fn printf(format: *const u8, ...) -> i32 @name("printf");
+    @name("printf")
+    fn printf(format: *const u8, ...) -> i32;
 }
 
 fn printf(format: *const u8) -> i32;

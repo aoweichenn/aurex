@@ -1,9 +1,23 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M7b Borrow Contract、Reborrow 与 Lifetime Surface 设计基线
+阶段：M7b Borrow Contract、Reborrow 与 Lifetime Surface 实现收口
 
 ## 总体状态
+
+2026-06-03：M7b WP1-WP7 已完成实现收口。`FunctionBorrowContract` 进入 `CheckedModule`、checked dump、
+query/cache 和 IDE facts；parser/AST/sema 支持函数声明前装饰器式 `@borrow(return = [...])`，并与 trait
+requirement / impl method contract 做 subset matching。summary-vs-contract enforcement 已拒绝 declared contract
+外的 local/temporary/unknown return borrow source。`BodyLoan` 现在记录 reborrow `parent_loan`，child loan 的有效
+place 会归一到 parent 底层 place，child 活跃期间对 mutable parent carrier 的 read/write/reborrow 会报
+`reborrow_parent_use`，known-disjoint field projection 仍可通过。method / trait method call binding 现在记录
+`receiver_access`、`receiver_auto_borrow` 和 `receiver_two_phase_eligible`；body flow 只为语义确认的 mutable
+reference receiver auto-borrow 生成 two-phase reserve/activate action。two-phase reservation 期间允许 shared read，
+拒绝 write/reinit/move/drop/cleanup、mutable borrow 和 nested mutable receiver reservation；activation 点会与活跃
+loan 做完整 mutable conflict check。`TypeCheckBodyAuthority` 现在混入 borrow contract fingerprint、
+body loan fingerprint、reborrow/two-phase counts 和 diagnostics-emitted 状态位；IDE `body_loan_check` detail 展示
+`loans/reborrows/two_phase/conflicts`。`BorrowEscapeAnalyzer` 仍保留为旧 borrowed-local escape 诊断路径，移除需等
+后续更大 parity matrix 专项。
 
 2026-06-02：M7b 设计基线已固定。M7b 不继续往 M7a 混入新表面，而是把 M7a 的
 `BorrowSummary` / `BodyLoanCheckResult` 事实提升为函数边界 `FunctionBorrowContract`，选择窄 surface

@@ -141,7 +141,8 @@ functions declare the smallest local `extern c` boundary:
 
 ```aurex
 extern c {
-    fn puts(text: *const u8) -> i32 @name("puts");
+    @name("puts")
+    fn puts(text: *const u8) -> i32;
 }
 ```
 

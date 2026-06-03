@@ -33,9 +33,13 @@ syntax::ItemId ItemParser::parse_impl_block()
     block.trait_type = trait_type;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
+        ParsedFunctionAttributes function_attributes;
+        this->parse_optional_function_decorators(function_attributes);
         const ParsedVisibility visibility = this->parse_visibility();
+        this->parse_optional_function_decorators(function_attributes);
         const bool is_unsafe = this->check(TokenKind::kw_unsafe);
         if (this->check(TokenKind::kw_type) && syntax::is_valid(trait_type)) {
+            this->report_misplaced_function_decorators(function_attributes);
             const syntax::ItemId associated_type =
                 this->parse_impl_associated_type_decl(visibility, impl_type, trait_type);
             if (syntax::is_valid(associated_type)) {
@@ -45,13 +49,14 @@ syntax::ItemId ItemParser::parse_impl_block()
             continue;
         }
         if (!this->check(TokenKind::kw_fn) && !(is_unsafe && this->check_next(TokenKind::kw_fn))) {
+            this->report_misplaced_function_decorators(function_attributes);
             this->report_here(
                 std::string(syntax::is_valid(trait_type) ? PARSER_EXPECT_IMPL_ITEM : PARSER_EXPECT_IMPL_FN));
             this->synchronize(RecoveryContext::item);
             this->reset_panic();
             continue;
         }
-        const syntax::ItemId method = this->parse_fn_decl(false, false, is_unsafe);
+        const syntax::ItemId method = this->parse_fn_decl(false, false, is_unsafe, std::move(function_attributes));
         if (syntax::is_valid(method)) {
             syntax::ItemNode method_item = this->session_.module.items[method.value];
             method_item.visibility = syntax::is_valid(trait_type) && !visibility.explicit_visibility
@@ -90,18 +95,22 @@ syntax::ItemId ItemParser::parse_extern_block()
     block.is_extern_c = true;
 
     while (!this->is_eof() && !this->check(TokenKind::r_brace)) {
+        ParsedFunctionAttributes function_attributes;
+        this->parse_optional_function_decorators(function_attributes);
         const bool is_unsafe = this->check(TokenKind::kw_unsafe);
         if (this->check(TokenKind::kw_fn) || (is_unsafe && this->check_next(TokenKind::kw_fn))) {
-            const syntax::ItemId item = this->parse_fn_decl(false, true, is_unsafe);
+            const syntax::ItemId item = this->parse_fn_decl(false, true, is_unsafe, std::move(function_attributes));
             if (syntax::is_valid(item)) {
                 block.extern_items.push_back(item);
             }
         } else if (this->check(TokenKind::kw_opaque)) {
+            this->report_misplaced_function_decorators(function_attributes);
             const syntax::ItemId item = this->parse_opaque_struct_decl();
             if (syntax::is_valid(item)) {
                 block.extern_items.push_back(item);
             }
         } else {
+            this->report_misplaced_function_decorators(function_attributes);
             this->report_here(std::string(PARSER_EXPECT_EXTERN_ITEM));
             this->synchronize(RecoveryContext::item);
         }

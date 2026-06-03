@@ -1,8 +1,10 @@
 module function_type_extern_c;
 
 extern c {
-    fn strlen(text: *const u8) -> usize @name("strlen");
-    fn snprintf(buffer: *mut u8, size: usize, format: *const u8, ...) -> i32 @name("snprintf");
+    @name("strlen")
+    fn strlen(text: *const u8) -> usize;
+    @name("snprintf")
+    fn snprintf(buffer: *mut u8, size: usize, format: *const u8, ...) -> i32;
 }
 
 type Strlen = extern c fn(text: *const u8) -> usize;

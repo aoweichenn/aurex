@@ -1,9 +1,12 @@
 #include <aurex/sema/sema_messages.hpp>
 
 #include <algorithm>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include <sema/internal/sema_core.hpp>
 
@@ -35,6 +38,75 @@ constexpr std::string_view SEMA_FUNCTION_VALUE_CALL_NAME = "<function>";
     const syntax::AstModule& module, const syntax::ExprId expr, const base::SourceRange& fallback) noexcept
 {
     return syntax::is_valid(expr) && expr.value < module.exprs.size() ? module.exprs.range(expr.value) : fallback;
+}
+
+[[nodiscard]] bool sema_call_valid_expr(const syntax::AstModule& module, const syntax::ExprId expr) noexcept
+{
+    return syntax::is_valid(expr) && expr.value < module.exprs.size();
+}
+
+[[nodiscard]] std::optional<syntax::ExprId> receiver_expr_for_call_callee(
+    const syntax::AstModule& module, const syntax::ExprId callee)
+{
+    syntax::ExprId current = callee;
+    std::vector<base::u32> visited;
+    while (sema_call_valid_expr(module, current)) {
+        if (std::ranges::find(visited, current.value) != visited.end()) {
+            return std::nullopt;
+        }
+        visited.push_back(current.value);
+        const syntax::ExprKind kind = module.exprs.kind(current.value);
+        if (kind == syntax::ExprKind::generic_apply) {
+            const syntax::GenericApplyExprPayload* const apply = module.exprs.generic_apply_payload(current.value);
+            if (apply == nullptr) {
+                return std::nullopt;
+            }
+            current = apply->callee;
+            continue;
+        }
+        if (kind == syntax::ExprKind::field) {
+            const syntax::FieldExprPayload* const field = module.exprs.field_payload(current.value);
+            return field == nullptr ? std::nullopt : std::optional<syntax::ExprId>{field->object};
+        }
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+struct ReceiverAccessFacts {
+    ReceiverAccessKind access = ReceiverAccessKind::none;
+    bool auto_borrow = false;
+    bool two_phase_eligible = false;
+};
+
+[[nodiscard]] ReceiverAccessFacts receiver_access_facts(const TypeTable& types,
+    const std::span<const TypeHandle> param_types, const base::u32 receiver_arg_count, const TypeHandle receiver_type)
+{
+    if (receiver_arg_count == 0 || param_types.empty() || receiver_arg_count > param_types.size()) {
+        return {};
+    }
+
+    const TypeHandle self_type = param_types.front();
+    if (!is_valid(self_type)) {
+        return {};
+    }
+    if (types.is_pointer(self_type) || types.is_reference(self_type)) {
+        const TypeInfo& self = types.get(self_type);
+        ReceiverAccessFacts facts;
+        facts.access = self.pointer_mutability == PointerMutability::mut ? ReceiverAccessKind::mutable_
+                                                                         : ReceiverAccessKind::shared;
+        const bool receiver_is_indirect = types.is_pointer(receiver_type) || types.is_reference(receiver_type);
+        facts.auto_borrow = is_valid(receiver_type) && !receiver_is_indirect && types.same(self.pointee, receiver_type);
+        facts.two_phase_eligible =
+            facts.auto_borrow && types.is_reference(self_type) && self.pointer_mutability == PointerMutability::mut;
+        return facts;
+    }
+    if (is_valid(receiver_type) && types.same(self_type, receiver_type)) {
+        return ReceiverAccessFacts{
+            .access = ReceiverAccessKind::consuming,
+        };
+    }
+    return {};
 }
 
 } // namespace
@@ -659,6 +731,11 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         binding.receiver_type = receiver_type;
         binding.self_type = owner_type;
         binding.return_type = resolution.return_type;
+        const ReceiverAccessFacts access = receiver_access_facts(
+            this->state_.checked.types, resolution.param_types, static_cast<base::u32>(receiver_count), receiver_type);
+        binding.receiver_access = access.access;
+        binding.receiver_auto_borrow = access.auto_borrow;
+        binding.receiver_two_phase_eligible = access.two_phase_eligible;
         binding.range = callee.range;
         binding.part_index = this->item_part_index(this->state_.flow.current_item);
         this->state_.checked.append_trait_method_call_binding(std::move(binding));
@@ -820,6 +897,14 @@ void SemanticAnalyzerCore::record_function_call_binding(const syntax::ExprId cal
     binding.function_key = signature.semantic_key;
     binding.return_type = signature.return_type;
     binding.receiver_arg_count = receiver_arg_count;
+    const std::optional<syntax::ExprId> receiver_expr = receiver_expr_for_call_callee(this->ctx_.module, callee_expr);
+    const TypeHandle receiver_type =
+        receiver_expr.has_value() ? this->cached_expr_type(*receiver_expr) : INVALID_TYPE_HANDLE;
+    const ReceiverAccessFacts access =
+        receiver_access_facts(this->state_.checked.types, signature.param_types, receiver_arg_count, receiver_type);
+    binding.receiver_access = access.access;
+    binding.receiver_auto_borrow = access.auto_borrow;
+    binding.receiver_two_phase_eligible = access.two_phase_eligible;
     binding.range = range;
     binding.part_index = this->item_part_index(this->state_.flow.current_item);
     this->state_.checked.append_function_call_binding(std::move(binding));

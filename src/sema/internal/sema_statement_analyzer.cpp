@@ -9,6 +9,7 @@
 
 #include <sema/internal/sema_body_flow_graph.hpp>
 #include <sema/internal/sema_body_loan_checker.hpp>
+#include <sema/internal/sema_borrow_contract.hpp>
 #include <sema/internal/sema_statement_analyzer.hpp>
 
 namespace aurex::sema {
@@ -1431,8 +1432,10 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
         this->core_.report_general(function.range, std::string(SEMA_NOT_ALL_PATHS_RETURN));
     }
     const auto summary_signature = this->core_.state_.checked.functions.find(key);
-    this->core_.build_borrow_summary(function, key,
-        summary_signature == this->core_.state_.checked.functions.end() ? signature : summary_signature->second);
+    const FunctionSignature& finalized_signature =
+        summary_signature == this->core_.state_.checked.functions.end() ? signature : summary_signature->second;
+    this->core_.build_borrow_summary(function, key, finalized_signature);
+    this->core_.check_borrow_contract(function, key, finalized_signature);
     if (!this->core_.ctx_.options.retain_body_flow_graphs) {
         this->core_.state_.checked.body_flow_graphs.erase(key);
     }

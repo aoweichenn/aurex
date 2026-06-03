@@ -1,7 +1,6 @@
-#include <aurex/tooling/lsp_stdio.hpp>
-
 #include <aurex/base/integer.hpp>
 #include <aurex/tooling/lsp.hpp>
+#include <aurex/tooling/lsp_stdio.hpp>
 
 #include <algorithm>
 #include <charconv>

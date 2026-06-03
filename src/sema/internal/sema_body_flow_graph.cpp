@@ -97,8 +97,9 @@ struct BodyFlowPatternCleanupFrame {
 
 class BodyFlowGraphBuilder final {
 public:
-    BodyFlowGraphBuilder(const syntax::AstModule& module, const FunctionLookupKey function, const syntax::StmtId body)
-        : module_(module)
+    BodyFlowGraphBuilder(const syntax::AstModule& module, const CheckedModule& checked,
+        const FunctionLookupKey function, const syntax::StmtId body)
+        : module_(module), checked_(checked)
     {
         this->graph_.function = function;
         this->graph_.body = body;
@@ -757,6 +758,24 @@ private:
         const syntax::CallExprPayload& payload = *this->module_.exprs.call_payload(expr.value);
         this->add_point_action(
             BodyFlowActionKind::call, exit, syntax::INVALID_STMT_ID, expr, expr_range(this->module_, expr));
+        const std::optional<syntax::ExprId> receiver = this->receiver_expr_for_call_callee(payload.callee);
+        if (this->call_has_two_phase_receiver(expr) && receiver.has_value() && valid_expr(this->module_, *receiver)) {
+            const base::SourceRange receiver_range = expr_range(this->module_, *receiver);
+            const base::u32 receiver_done = this->new_sequence_point(receiver_range);
+            const base::u32 receiver_place = this->add_place(this->make_place(*receiver));
+            this->add_action(BodyFlowActionKind::call_receiver_reserve, receiver_done, receiver_place,
+                syntax::INVALID_STMT_ID, expr, receiver_range);
+            this->add_action(BodyFlowActionKind::call_receiver_activate, exit, receiver_place, syntax::INVALID_STMT_ID,
+                expr, receiver_range);
+            this->push_expression(payload.callee, entry, receiver_done, BodyFlowExprContext::value);
+            std::vector<BodyFlowExpressionStep> arg_steps;
+            arg_steps.reserve(payload.args.size());
+            for (const syntax::ExprId arg : payload.args) {
+                arg_steps.push_back(BodyFlowExpressionStep{arg, BodyFlowExprContext::value});
+            }
+            this->push_expression_sequence(arg_steps, receiver_done, exit);
+            return;
+        }
         std::vector<BodyFlowExpressionStep> steps;
         steps.reserve(payload.args.size() + 1);
         steps.push_back(BodyFlowExpressionStep{payload.callee, BodyFlowExprContext::value});
@@ -764,6 +783,47 @@ private:
             steps.push_back(BodyFlowExpressionStep{arg, BodyFlowExprContext::value});
         }
         this->push_expression_sequence(steps, entry, exit);
+    }
+
+    [[nodiscard]] bool call_has_two_phase_receiver(const syntax::ExprId call) const noexcept
+    {
+        if (const FunctionCallBinding* const binding = this->checked_.function_call_binding_for_expr(call);
+            binding != nullptr && binding->receiver_two_phase_eligible) {
+            return true;
+        }
+        if (const TraitMethodCallBinding* const binding = this->checked_.trait_method_call_binding_for_expr(call);
+            binding != nullptr && binding->receiver_two_phase_eligible) {
+            return true;
+        }
+        return false;
+    }
+
+    [[nodiscard]] std::optional<syntax::ExprId> receiver_expr_for_call_callee(const syntax::ExprId callee) const
+    {
+        syntax::ExprId current = callee;
+        std::vector<base::u32> visited;
+        while (valid_expr(this->module_, current)) {
+            if (std::ranges::find(visited, current.value) != visited.end()) {
+                return std::nullopt;
+            }
+            visited.push_back(current.value);
+            const syntax::ExprKind kind = this->module_.exprs.kind(current.value);
+            if (kind == syntax::ExprKind::generic_apply) {
+                const syntax::GenericApplyExprPayload* const apply =
+                    this->module_.exprs.generic_apply_payload(current.value);
+                if (apply == nullptr) {
+                    return std::nullopt;
+                }
+                current = apply->callee;
+                continue;
+            }
+            if (kind == syntax::ExprKind::field) {
+                const syntax::FieldExprPayload* const field = this->module_.exprs.field_payload(current.value);
+                return field == nullptr ? std::nullopt : std::optional<syntax::ExprId>{field->object};
+            }
+            return std::nullopt;
+        }
+        return std::nullopt;
     }
 
     void push_if_expression_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
@@ -964,6 +1024,7 @@ private:
     }
 
     const syntax::AstModule& module_;
+    const CheckedModule& checked_;
     BodyFlowGraph graph_;
     std::vector<BodyFlowTask> tasks_;
 };
@@ -1042,6 +1103,10 @@ std::string_view body_flow_action_kind_name(const BodyFlowActionKind kind) noexc
             return "borrow_shared";
         case BodyFlowActionKind::borrow_mutable:
             return "borrow_mutable";
+        case BodyFlowActionKind::call_receiver_reserve:
+            return "call_receiver_reserve";
+        case BodyFlowActionKind::call_receiver_activate:
+            return "call_receiver_activate";
         case BodyFlowActionKind::call:
             return "call";
         case BodyFlowActionKind::return_:
@@ -1163,7 +1228,8 @@ SemanticAnalyzerCore::BodyFlowAnalyzer::BodyFlowAnalyzer(SemanticAnalyzerCore& c
 
 void SemanticAnalyzerCore::BodyFlowAnalyzer::collect(const syntax::ItemNode& function, const FunctionLookupKey& key)
 {
-    BodyFlowGraph graph = BodyFlowGraphBuilder(this->core_.ctx_.module, key, function.body).build();
+    BodyFlowGraph graph =
+        BodyFlowGraphBuilder(this->core_.ctx_.module, this->core_.state_.checked, key, function.body).build();
     this->core_.state_.checked.body_flow_graphs[key] = std::move(graph);
 }
 

@@ -15,6 +15,10 @@ impl Marker {
 }
 
 impl[T] Box[T] {
+    fn keep[U](value: U) -> U {
+        return value;
+    }
+
     fn get(self: &Box[T]) -> T where T: Copy {
         return self.value;
     }
@@ -32,8 +36,11 @@ fn main() -> i32 {
     let owner_value: i32 = box.get();
     let local_value: bool = box.replace(false);
     let explicit_local: i32 = box.replace[i32](10);
+    let box_ref: &Box[i32] = &box;
+    let explicit_ref: i32 = box_ref.replace[i32](11);
+    let associated: i32 = Box[i32].keep[i32](12);
     if explicit && !local_value {
-        return owner_value + inferred + explicit_local - 21;
+        return owner_value + inferred + explicit_local + explicit_ref + associated - 44;
     }
     return 1;
 }

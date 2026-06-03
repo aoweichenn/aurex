@@ -247,6 +247,7 @@ void SemanticAnalysisPipeline::reserve_analysis_storage()
     this->core_.state_.checked.trait_method_calls.reserve(item_counts.items);
     this->core_.state_.checked.function_calls.reserve(item_counts.items);
     this->core_.state_.checked.borrow_summaries.reserve(expected_function_entries);
+    this->core_.state_.checked.borrow_contracts.reserve(expected_function_entries);
     this->core_.state_.checked.param_envs.reserve(item_counts.items);
     this->core_.state_.types.named_types.reserve(item_counts.type_items);
     this->core_.state_.generics.struct_templates.reserve(item_counts.generic_struct_templates);
@@ -338,6 +339,7 @@ void SemanticAnalysisPipeline::run_function_body_phases()
 void SemanticAnalysisPipeline::run_validation_phases()
 {
     SemanticServiceBundle services = this->core_.services();
+    this->core_.validate_trait_impl_borrow_contracts();
     this->core_.analyze_entry_points();
     this->core_.analyze_const_decls();
     this->core_.validate_exported_signature_surfaces();

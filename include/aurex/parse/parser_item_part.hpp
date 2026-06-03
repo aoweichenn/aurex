@@ -3,6 +3,7 @@
 #include <aurex/parse/parser_part_base.hpp>
 
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace aurex::parse {
@@ -10,6 +11,15 @@ namespace aurex::parse {
 struct ParsedVisibility {
     syntax::Visibility visibility = syntax::Visibility::private_;
     bool explicit_visibility = false;
+};
+
+struct ParsedFunctionAttributes {
+    std::string_view abi_name;
+    base::SourceRange abi_name_range{};
+    bool has_abi_name = false;
+    syntax::BorrowContractDecl borrow_contract;
+    base::SourceRange range{};
+    bool present = false;
 };
 
 class ItemParser final : private ParserPartBase {
@@ -61,15 +71,23 @@ private:
     [[nodiscard]] syntax::ItemId parse_impl_block();
     [[nodiscard]] syntax::ItemId parse_extern_block();
     [[nodiscard]] syntax::ItemId parse_opaque_struct_decl();
-    [[nodiscard]] syntax::ItemId parse_fn_decl(bool is_export_c, bool is_extern_c, bool is_unsafe = false);
+    [[nodiscard]] syntax::ItemId parse_fn_decl(
+        bool is_export_c, bool is_extern_c, bool is_unsafe = false, ParsedFunctionAttributes attributes = {});
     void expect_param_list_start(std::string message) const;
     [[nodiscard]] std::vector<syntax::ParamDecl> parse_param_list(bool& is_variadic);
     [[nodiscard]] std::optional<syntax::ParamDecl> parse_param();
     [[nodiscard]] bool recover_param_separator(bool& is_variadic) const;
     [[nodiscard]] syntax::TypeId parse_optional_return_type() const;
-    void parse_optional_abi_name(syntax::ItemNode& item);
+    void parse_optional_function_decorators(ParsedFunctionAttributes& attributes);
+    void parse_function_decorator(ParsedFunctionAttributes& attributes, const syntax::Token& decorator_start);
+    void reject_postfix_function_decorators(syntax::ItemNode& item);
+    void apply_function_attributes(syntax::ItemNode& item, ParsedFunctionAttributes&& attributes) const;
+    void report_misplaced_function_decorators(const ParsedFunctionAttributes& attributes) const;
     void expect_abi_attribute_argument_start() const;
-    void parse_abi_name_argument(syntax::ItemNode& item) const;
+    void parse_abi_name_argument(ParsedFunctionAttributes& attributes, const syntax::Token& decorator_start) const;
+    void parse_borrow_contract_argument(ParsedFunctionAttributes& attributes, const syntax::Token& decorator_start);
+    [[nodiscard]] syntax::BorrowContractSelectorDecl parse_borrow_contract_selector();
+    [[nodiscard]] bool recover_borrow_contract_selector_separator() const;
     void recover_abi_attribute_argument_end() const;
 };
 

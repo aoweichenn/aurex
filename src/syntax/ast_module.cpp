@@ -526,6 +526,9 @@ void AstModule::intern_item_node(ItemNode& node)
     this->intern_field_decls(node.fields);
     this->intern_enum_case_decls(node.enum_cases);
     this->intern_param_decls(node.params);
+    for (BorrowContractSelectorDecl& selector : node.borrow_contract.return_selectors) {
+        this->intern_identifier_text(selector.name, selector.name_id);
+    }
 }
 
 void AstModule::intern_module_metadata()

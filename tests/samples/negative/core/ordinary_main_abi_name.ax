@@ -1,5 +1,6 @@
 module ordinary_main_abi_name;
 
-fn main() -> i32 @name("main") {
+@name("main")
+fn main() -> i32 {
     return 0;
 }

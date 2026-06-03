@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M7b Borrow Contract、Reborrow 与 Lifetime Surface
+## 当前最高优先级：M7c Lifetime Surface / Borrow Parity Closure
 
 M7 设计研究基线已完成，记录在
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)，
@@ -9,13 +9,13 @@ M7b 设计基线已固定在
 [Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 设计基线](m7b-borrow-contract-design.md)，
 执行路线记录在 [Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 路线图](m7b-roadmap.md)。
 
-M7b 选择的下一实现包是：把 M7a 的 `BorrowSummary` / `BodyLoanCheckResult` 内部事实提升为函数边界
-`FunctionBorrowContract`，引入窄 surface `@borrow(return = [param, self])`，补齐 trait/generic/extern borrowed-return
-contract、reborrow parent/child loan、method receiver access、receiver auto-borrow two-phase reservation/activation，并以
-parity matrix 替换或降级 `BorrowEscapeAnalyzer`。M7b 不做 full Rust-style lifetime generics、full Polonius
-Datalog、raw pointer alias safe proof、partial move / replace / take / swap、`dyn Trait`、async drop 或 generator borrow。
+M7b 当前实现状态：M7b WP1-WP7 已完成实现收口。函数边界 `FunctionBorrowContract`、装饰器式
+`@borrow(return = [param, self])`、summary-vs-contract enforcement、trait/generic borrowed-return contract、
+reborrow parent/child loan、method receiver access facts、receiver auto-borrow two-phase reservation/activation、
+query/cache/tooling 投影均已落地。M7b 仍不做 full Rust-style lifetime generics、full Polonius Datalog、
+raw pointer alias safe proof、partial move / replace / take / swap、`dyn Trait`、async drop 或 generator borrow。
 
-当前实现状态：M7a WP2-WP7 已完成实现收口。M7-WP2 Phase 1 已落地 collect-only `BodyFlowGraph` facts，
+M7a WP2-WP7 已完成实现收口。M7-WP2 Phase 1 已落地 collect-only `BodyFlowGraph` facts，
 M7-WP3 Phase 2/3 已落地 diagnostic-shadow + enforced local loan checker，M7-WP4 已落地
 `BorrowSummary` 与 direct call binding，M7-WP5 已补齐 projection/drop/reinit/cleanup conflict matrix，M7-WP6
 已完成 diagnostics / query / tooling projection，M7-WP7 已完成 release closure。`CheckedModule::body_flow_graphs` 现在按
@@ -32,13 +32,20 @@ enforced diagnostics 现在包含 primary conflict、loan creation、invalidatin
 W7a release 性能收口已完成：普通 `--check` 不长期保留 full body-flow graph，非借用返回函数不扫描完整函数体构建
 borrow summary，direct/trait call binding 使用 expr-id index 查找；release/coverage/query/perf/stress gates 已通过。
 
-当前仍保留 `BorrowEscapeAnalyzer`：WP4 summary 已记录 borrowed-return facts，但旧 borrowed-local escape 诊断仍由
-现有 analyzer 负责。只有在 summary/checker parity 覆盖当前 borrowed-view escape matrix 后，才移除或降级它。
+当前仍保留 `BorrowEscapeAnalyzer`：M7b summary/contract 已记录 borrowed-return facts，但旧 borrowed-local escape
+诊断仍由现有 analyzer 负责。只有在更大 parity matrix 覆盖当前 borrowed-view escape matrix 后，才移除或降级它。
 
-下一实现包不再是 M7a WP6/WP7。M7b 已从原候选集中选择 contract surface、reborrow/subtyping、method receiver
-ownership facts、trait/generic borrowed-return contract、receiver two-phase borrow 和 `BorrowEscapeAnalyzer` parity
-替换作为独立阶段。unsafe/raw alias model、partial move / replace / take / swap place-level resource semantics、
-`dyn Trait`、async drop 和 generator borrow 继续后置，不能混进 M7b 第一轮实现。
+M7c 建议优先做三件事：
+
+1. `BorrowEscapeAnalyzer` parity matrix 扩展与替换决策：把 local/temporary/slice/str/raw/assignment/pattern/branch
+   escape 全部与新 summary/contract/loan checker 对齐。
+2. 窄 lifetime surface 设计：只暴露能服务 diagnostics 和 public API contract 的 lifetime notation，不直接引入 full
+   Rust-style lifetime generics。
+3. 参数/receiver reference origin 的 safe proof 扩展：在不引入 full Polonius 的前提下，让 parameter reference
+   reborrow 和 cross-function returned borrow 的 fact 更稳定。
+
+unsafe/raw alias model、partial move / replace / take / swap place-level resource semantics、`dyn Trait`、async drop 和
+generator borrow 继续后置，不能混进 M7c 第一轮 parity closure。
 
 M6-WP1 已完成三轮设计审视：
 

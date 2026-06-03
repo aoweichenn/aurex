@@ -1,7 +1,8 @@
 module variadic_not_last;
 
 extern c {
-    fn bad(..., value: i32) -> i32 @name("bad");
+    @name("bad")
+    fn bad(..., value: i32) -> i32;
 }
 
 fn main() -> i32 {

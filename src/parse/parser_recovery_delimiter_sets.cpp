@@ -28,7 +28,13 @@ bool token_matches_identifier_boundary(const TokenKind kind) noexcept
 bool token_matches_abi_attribute_argument(const TokenKind kind) noexcept
 {
     switch (kind) {
+        case TokenKind::identifier:
+        case TokenKind::kw_return:
         case TokenKind::string_literal:
+        case TokenKind::l_bracket:
+        case TokenKind::r_bracket:
+        case TokenKind::comma:
+        case TokenKind::equal:
         case TokenKind::r_paren:
         case TokenKind::l_brace:
         case TokenKind::semicolon:

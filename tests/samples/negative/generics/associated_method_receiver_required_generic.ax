@@ -1,0 +1,15 @@
+module associated_method_receiver_required_generic;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn id[T](self: &Box, value: T) -> T {
+        return value;
+    }
+}
+
+fn main() -> i32 {
+    return Box.id[i32](1);
+}

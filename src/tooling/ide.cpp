@@ -51,6 +51,7 @@ constexpr std::string_view IDE_SEMANTIC_FACT_GENERIC_TEMPLATE_SIGNATURE = "gener
 constexpr std::string_view IDE_SEMANTIC_FACT_FUNCTION_BODY_SYNTAX = "function_body_syntax";
 constexpr std::string_view IDE_SEMANTIC_FACT_TYPE_CHECK_BODY = "type_check_body";
 constexpr std::string_view IDE_SEMANTIC_FACT_BORROW_SUMMARY = "borrow_summary";
+constexpr std::string_view IDE_SEMANTIC_FACT_BORROW_CONTRACT = "borrow_contract";
 constexpr std::string_view IDE_SEMANTIC_FACT_BODY_LOAN_CHECK = "body_loan_check";
 constexpr std::string_view IDE_SYMBOL_KIND_CONST = "const";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM_CASE = "enum_case";
@@ -93,6 +94,7 @@ constexpr std::string_view IDE_INLAY_HINT_KIND_TYPE = "type";
 constexpr std::string_view IDE_DETAIL_TYPE_SEPARATOR = ": ";
 constexpr std::string_view IDE_DETAIL_RESOURCE_SEPARATOR = " resource=";
 constexpr std::string_view IDE_DETAIL_BORROW_SUMMARY_SEPARATOR = " borrow_summary=";
+constexpr std::string_view IDE_DETAIL_BORROW_CONTRACT_SEPARATOR = " borrow_contract=";
 constexpr std::string_view IDE_PRIMARY_PART_NAME = "<primary>";
 constexpr base::u32 IDE_PRIMARY_PART_INDEX = 0;
 constexpr base::u32 IDE_FIRST_NAMED_PART_INDEX = 1;
@@ -987,11 +989,28 @@ void recover_resolved_fragment_source_part(
     return label.str();
 }
 
-[[nodiscard]] std::string body_loan_check_detail(const sema::BodyLoanCheckResult& result)
+[[nodiscard]] std::string borrow_contract_detail(const sema::FunctionBorrowContract& contract)
 {
     std::ostringstream label;
-    label << IDE_SEMANTIC_FACT_BODY_LOAN_CHECK << " loans=" << result.loans.size()
-          << " conflicts=" << result.conflicts.size()
+    label << IDE_SEMANTIC_FACT_BORROW_CONTRACT
+          << " source=" << sema::function_borrow_contract_source_name(contract.source)
+          << " selectors=" << contract.return_selectors.size()
+          << " unknown=" << (contract.unknown_return_allowed ? "true" : "false")
+          << " local_escape=" << (contract.has_local_return_escape ? "true" : "false")
+          << " mismatch=" << (contract.has_contract_mismatch ? "true" : "false")
+          << " fingerprint=" << query::debug_string(sema::function_borrow_contract_fingerprint(contract));
+    return label.str();
+}
+
+[[nodiscard]] std::string body_loan_check_detail(const sema::BodyLoanCheckResult& result)
+{
+    const base::usize reborrow_count =
+        static_cast<base::usize>(std::ranges::count_if(result.loans, [](const sema::BodyLoan& loan) {
+            return loan.parent_loan != sema::SEMA_BODY_LOAN_INVALID_INDEX;
+        }));
+    std::ostringstream label;
+    label << IDE_SEMANTIC_FACT_BODY_LOAN_CHECK << " loans=" << result.loans.size() << " reborrows=" << reborrow_count
+          << " two_phase=" << result.two_phase_borrows.size() << " conflicts=" << result.conflicts.size()
           << " mode=" << sema::body_loan_diagnostic_mode_name(result.diagnostic_mode)
           << " graph_missing=" << (result.graph_missing ? "true" : "false");
     if (!result.conflicts.empty()) {
@@ -1044,6 +1063,14 @@ void recover_resolved_fragment_source_part(
             label << IDE_DETAIL_BORROW_SUMMARY_SEPARATOR << "deps=" << summary->second.return_origins.size()
                   << ", unknown=" << (summary->second.has_unknown_return_origin ? "true" : "false")
                   << ", local_escape=" << (summary->second.has_local_return_escape ? "true" : "false");
+        }
+        if (const auto contract = checked.borrow_contracts.find(*function_key);
+            contract != checked.borrow_contracts.end()) {
+            label << IDE_DETAIL_BORROW_CONTRACT_SEPARATOR
+                  << sema::function_borrow_contract_source_name(contract->second.source)
+                  << "/selectors=" << contract->second.return_selectors.size()
+                  << "/unknown=" << (contract->second.unknown_return_allowed ? "true" : "false")
+                  << "/mismatch=" << (contract->second.has_contract_mismatch ? "true" : "false");
         }
     }
     return label.str();
@@ -1686,6 +1713,27 @@ void push_borrow_summary_fact(IdeSnapshot& snapshot, const query::QueryKey query
     snapshot.query.semantic_facts.push_back(std::move(fact));
 }
 
+void push_borrow_contract_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
+    const sema::FunctionSignature& signature, const sema::FunctionLookupKey function, const base::SourceRange range)
+{
+    const auto contract = snapshot.checked.borrow_contracts.find(function);
+    if (contract == snapshot.checked.borrow_contracts.end()) {
+        return;
+    }
+    IdeSemanticFact fact;
+    fact.kind = IdeSemanticFactKind::borrow_contract;
+    fact.query = query_key;
+    fact.definition = body.owner;
+    fact.body = body;
+    fact.range = range;
+    fact.name = std::string(signature.name.view());
+    fact.detail = borrow_contract_detail(contract->second);
+    fact.part_index = signature.part_index;
+    fact.generic_instance = signature.generic_instance_key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
 void push_body_loan_check_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
     const sema::FunctionSignature& signature, const sema::FunctionLookupKey function, const base::SourceRange range)
 {
@@ -1776,6 +1824,8 @@ void push_type_check_body_fact(query::QueryContext& context, IdeSnapshot& snapsh
     fact.checked = true;
     snapshot.query.semantic_facts.push_back(std::move(fact));
     push_borrow_summary_fact(snapshot, *query_key, key, signature, function, range);
+    push_borrow_contract_fact(snapshot, *query_key, key, signature, function,
+        item_name_range(snapshot, signature.definition_item, signature.name.view(), signature.range));
     push_body_loan_check_fact(snapshot, *query_key, key, signature, function, range);
 }
 

@@ -15,8 +15,12 @@ using syntax::TokenKind;
 syntax::ItemId ItemParser::parse_item()
 {
     this->reset_panic();
+    ParsedFunctionAttributes function_attributes;
+    this->parse_optional_function_decorators(function_attributes);
     const ParsedVisibility visibility = this->parse_visibility();
+    this->parse_optional_function_decorators(function_attributes);
     if (this->check(TokenKind::kw_const)) {
+        this->report_misplaced_function_decorators(function_attributes);
         const syntax::ItemId id = this->parse_const_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
@@ -24,6 +28,7 @@ syntax::ItemId ItemParser::parse_item()
         return id;
     }
     if (this->check(TokenKind::kw_type)) {
+        this->report_misplaced_function_decorators(function_attributes);
         const syntax::ItemId id = this->parse_type_alias_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
@@ -31,6 +36,7 @@ syntax::ItemId ItemParser::parse_item()
         return id;
     }
     if (this->check(TokenKind::kw_struct)) {
+        this->report_misplaced_function_decorators(function_attributes);
         const syntax::ItemId id = this->parse_struct_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
@@ -38,6 +44,7 @@ syntax::ItemId ItemParser::parse_item()
         return id;
     }
     if (this->check(TokenKind::kw_enum)) {
+        this->report_misplaced_function_decorators(function_attributes);
         const syntax::ItemId id = this->parse_enum_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
@@ -45,6 +52,7 @@ syntax::ItemId ItemParser::parse_item()
         return id;
     }
     if (this->check(TokenKind::kw_trait)) {
+        this->report_misplaced_function_decorators(function_attributes);
         const syntax::ItemId id = this->parse_trait_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
@@ -52,12 +60,14 @@ syntax::ItemId ItemParser::parse_item()
         return id;
     }
     if (this->check(TokenKind::kw_impl)) {
+        this->report_misplaced_function_decorators(function_attributes);
         if (visibility.explicit_visibility && syntax::visibility_is_module_private(visibility.visibility)) {
             this->report_here(std::string(PARSER_IMPL_PRIVATE_UNSUPPORTED));
         }
         return this->parse_impl_block();
     }
     if (this->check(TokenKind::kw_opaque)) {
+        this->report_misplaced_function_decorators(function_attributes);
         const syntax::ItemId id = this->parse_opaque_struct_decl();
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
@@ -65,6 +75,7 @@ syntax::ItemId ItemParser::parse_item()
         return id;
     }
     if (this->check(TokenKind::kw_extern)) {
+        this->report_misplaced_function_decorators(function_attributes);
         if (visibility.explicit_visibility && syntax::visibility_is_module_private(visibility.visibility)) {
             this->report_here(std::string(PARSER_EXTERN_PRIVATE_UNSUPPORTED));
         }
@@ -75,15 +86,17 @@ syntax::ItemId ItemParser::parse_item()
             this->report_here(std::string(PARSER_EXPORT_C_PRIVATE_UNSUPPORTED));
         }
         const syntax::Token& begin = this->advance();
+        const base::usize range_begin =
+            function_attributes.present ? function_attributes.range.begin : begin.range.begin;
         this->expect_contextual_c_keyword(std::string(PARSER_EXPECT_EXPORT_C_KEYWORD));
         const bool is_unsafe = this->check(TokenKind::kw_unsafe);
         if (!this->check(TokenKind::kw_fn) && !(is_unsafe && this->check_next(TokenKind::kw_fn))) {
             this->report_here(std::string(PARSER_EXPECT_EXPORT_C_FN));
             return syntax::INVALID_ITEM_ID;
         }
-        const syntax::ItemId id = this->parse_fn_decl(true, false, is_unsafe);
+        const syntax::ItemId id = this->parse_fn_decl(true, false, is_unsafe, std::move(function_attributes));
         if (syntax::is_valid(id)) {
-            this->session_.module.items.set_range_begin(id.value, begin.range.begin);
+            this->session_.module.items.set_range_begin(id.value, range_begin);
             this->session_.module.items.set_visibility(id.value, syntax::Visibility::public_);
         }
         return id;
@@ -95,20 +108,21 @@ syntax::ItemId ItemParser::parse_item()
             this->synchronize(RecoveryContext::item);
             return syntax::INVALID_ITEM_ID;
         }
-        const syntax::ItemId id = this->parse_fn_decl(false, false, true);
+        const syntax::ItemId id = this->parse_fn_decl(false, false, true, std::move(function_attributes));
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
         }
         return id;
     }
     if (this->check(TokenKind::kw_fn)) {
-        const syntax::ItemId id = this->parse_fn_decl(false, false);
+        const syntax::ItemId id = this->parse_fn_decl(false, false, false, std::move(function_attributes));
         if (syntax::is_valid(id)) {
             this->session_.module.items.set_visibility(id.value, visibility.visibility);
         }
         return id;
     }
 
+    this->report_misplaced_function_decorators(function_attributes);
     this->report_here(std::string(PARSER_EXPECT_ITEM_DECLARATION));
     return syntax::INVALID_ITEM_ID;
 }

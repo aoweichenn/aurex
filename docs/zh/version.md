@@ -1,15 +1,27 @@
 # 版本文档
 
-## M7b Borrow Contract、Reborrow 与 Lifetime Surface 设计基线
+## M7b Borrow Contract、Reborrow 与 Lifetime Surface 实现收口
 
-M7b 设计基线已固定，文档入口为
+M7b WP1-WP7 已完成实现收口，文档入口为
 [Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 设计基线](m7b-borrow-contract-design.md) 和
 [Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 路线图](m7b-roadmap.md)。
 
-M7b 的下一实现包不再扩张 M7a，而是把 M7a 的 `BorrowSummary` / `BodyLoanCheckResult` 内部 facts 提升为函数边界
-`FunctionBorrowContract`，引入窄 surface `@borrow(return = [param, self])`，补齐 trait/generic/extern
-borrowed-return contract、reborrow parent/child loan、method receiver access、receiver auto-borrow two-phase
-reservation/activation，并以 parity matrix 替换或降级 `BorrowEscapeAnalyzer`。
+M7b 已把 M7a 的 `BorrowSummary` / `BodyLoanCheckResult` 内部 facts 提升为函数边界
+`FunctionBorrowContract`，引入函数声明前装饰器式 `@borrow(return = [param, self])`，补齐 trait/generic
+borrowed-return contract、summary-vs-contract enforcement、reborrow parent/child loan、method receiver access、
+receiver auto-borrow two-phase reservation/activation，以及 query/cache/tooling 投影。
+
+当前实现包括：
+
+- `CheckedModule::borrow_contracts`、`FunctionBorrowContract` fingerprint/dump/query 投影。
+- `BodyLoan::parent_loan` reborrow model，child effective place 归一到 parent 底层 place，并保留 known-disjoint
+  field projection 放宽。
+- `FunctionCallBinding` / `TraitMethodCallBinding` 的 `receiver_access`、`receiver_auto_borrow` 和
+  `receiver_two_phase_eligible`。
+- `BodyTwoPhaseBorrow` reserve/activate facts，reservation conflict 与 activation conflict diagnostics。
+- `TypeCheckBodyAuthority` 的 borrow contract/body loan fingerprint、reborrow/two-phase counts 和
+  diagnostics-emitted 状态位。
+- IDE semantic fact detail 中的 `borrow_contract` 与 `body_loan_check loans/reborrows/two_phase/conflicts`。
 
 M7b 明确不做 full Rust-style lifetime generics、full Polonius Datalog、raw pointer alias safe proof、partial
 move / replace / take / swap 完整 place-level resource semantics、`dyn Trait`、async drop 或 generator borrow。

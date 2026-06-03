@@ -165,7 +165,7 @@ TEST_F(AurexIntegrationTest, ModuleLoaderRemapsExpressionPayloadsWithoutFatNodes
         "struct Box { value: i32; }\n"
         "struct Point { x: i32; y: i32; }\n"
         "enum Maybe { some(i32), none, }\n"
-        "extern c { fn c_abs(value: i32) -> i32 @name(\"abs\"); }\n"
+        "extern c { @name(\"abs\") fn c_abs(value: i32) -> i32; }\n"
         "type BinaryOp = fn(i32, i32) -> i32;\n"
         "fn id(value: i32) -> i32 { return value; }\n"
         "fn add(left: i32, right: i32) -> i32 { return left + right; }\n"

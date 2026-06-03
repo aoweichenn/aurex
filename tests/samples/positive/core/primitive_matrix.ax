@@ -1,6 +1,7 @@
 module primitive_matrix;
 
 extern c {
+    @name("observe_scalars")
     fn observe_scalars(
         a: i8,
         b: i16,
@@ -8,7 +9,7 @@ extern c {
         d: f32,
         e: f64,
         s: str
-    ) -> void @name("observe_scalars");
+    ) -> void;
 }
 
 struct Small {

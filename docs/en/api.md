@@ -342,8 +342,10 @@ C ABI is declared with `extern c`:
 
 ```m0
 extern c {
-    fn puts(s: *const u8) -> i32 @name("puts");
-    fn printf(format: *const u8, ...) -> i32 @name("printf");
+    @name("puts")
+    fn puts(s: *const u8) -> i32;
+    @name("printf")
+    fn printf(format: *const u8, ...) -> i32;
 }
 ```
 
@@ -354,7 +356,8 @@ the parameter list. Variadic arguments use C ABI default promotions, for example
 C ABI symbols are exported with `export c fn`:
 
 ```m0
-export c fn plugin_entry() -> i32 @name("plugin_entry") {
+@name("plugin_entry")
+export c fn plugin_entry() -> i32 {
     return 42;
 }
 ```

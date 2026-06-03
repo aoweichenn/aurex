@@ -49,6 +49,21 @@ std::string_view owned_use_mode_name(const OwnedUseMode mode) noexcept
     return "<invalid>";
 }
 
+std::string_view receiver_access_kind_name(const ReceiverAccessKind kind) noexcept
+{
+    switch (kind) {
+        case ReceiverAccessKind::none:
+            return "none";
+        case ReceiverAccessKind::shared:
+            return "shared";
+        case ReceiverAccessKind::mutable_:
+            return "mutable";
+        case ReceiverAccessKind::consuming:
+            return "consuming";
+    }
+    return "<invalid>";
+}
+
 std::size_t TraitImplLookupKeyHash::operator()(const TraitImplLookupKey key) const noexcept
 {
     std::size_t hash = static_cast<std::size_t>(key.trait_module);
@@ -558,6 +573,8 @@ CheckedModule::CheckedModule()
       function_call_by_expr(make_sema_map<base::u32, base::u32>(*this->arena_)),
       borrow_summaries(make_sema_map<FunctionLookupKey, FunctionBorrowSummary, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
+      borrow_contracts(make_sema_map<FunctionLookupKey, FunctionBorrowContract, FunctionLookupKeyHash>(
+          *this->arena_, FunctionLookupKeyHash{})),
       body_flow_graphs(make_sema_map<FunctionLookupKey, BodyFlowGraph, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
       body_loan_checks(make_sema_map<FunctionLookupKey, BodyLoanCheckResult, FunctionLookupKeyHash>(
@@ -604,8 +621,9 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       trait_method_calls(std::move(other.trait_method_calls)), function_calls(std::move(other.function_calls)),
       trait_method_call_by_expr(std::move(other.trait_method_call_by_expr)),
       function_call_by_expr(std::move(other.function_call_by_expr)),
-      borrow_summaries(std::move(other.borrow_summaries)), body_flow_graphs(std::move(other.body_flow_graphs)),
-      body_loan_checks(std::move(other.body_loan_checks)), param_envs(std::move(other.param_envs)),
+      borrow_summaries(std::move(other.borrow_summaries)), borrow_contracts(std::move(other.borrow_contracts)),
+      body_flow_graphs(std::move(other.body_flow_graphs)), body_loan_checks(std::move(other.body_loan_checks)),
+      param_envs(std::move(other.param_envs)),
       generic_template_signatures(std::move(other.generic_template_signatures)),
       generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
       generic_enum_instances(std::move(other.generic_enum_instances)),
@@ -673,6 +691,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->trait_method_call_by_expr.swap(other.trait_method_call_by_expr);
     this->function_call_by_expr.swap(other.function_call_by_expr);
     this->borrow_summaries.swap(other.borrow_summaries);
+    this->borrow_contracts.swap(other.borrow_contracts);
     this->body_flow_graphs.swap(other.body_flow_graphs);
     this->body_loan_checks.swap(other.body_loan_checks);
     this->param_envs.swap(other.param_envs);
@@ -784,6 +803,11 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->borrow_summaries.reserve(other.borrow_summaries.size());
     for (const auto& entry : other.borrow_summaries) {
         this->borrow_summaries.emplace(entry.first, entry.second);
+    }
+    this->borrow_contracts.clear();
+    this->borrow_contracts.reserve(other.borrow_contracts.size());
+    for (const auto& entry : other.borrow_contracts) {
+        this->borrow_contracts.emplace(entry.first, entry.second);
     }
     this->body_flow_graphs.clear();
     this->body_flow_graphs.reserve(other.body_flow_graphs.size());
@@ -1159,8 +1183,10 @@ TraitMethodRequirement CheckedModule::clone_trait_method_requirement(const Trait
     copy.is_variadic = other.is_variadic;
     copy.has_self_param = other.has_self_param;
     copy.has_default_body = other.has_default_body;
+    copy.has_borrow_contract = other.has_borrow_contract;
     copy.visibility = other.visibility;
     copy.stable_key = other.stable_key;
+    copy.borrow_contract = other.borrow_contract;
     copy.ordinal = other.ordinal;
     return copy;
 }
@@ -1845,6 +1871,35 @@ void append_type_list(std::ostringstream& out, const CheckedModule& checked, std
     return checked.types.display_name(predicate.trait_name, predicate.trait_args);
 }
 
+[[nodiscard]] std::string_view checked_borrow_contract_source_name(const FunctionBorrowContractSource source) noexcept
+{
+    switch (source) {
+        case FunctionBorrowContractSource::inferred:
+            return "inferred";
+        case FunctionBorrowContractSource::declared:
+            return "declared";
+        case FunctionBorrowContractSource::conservative_unknown:
+            return "conservative_unknown";
+    }
+    return "<invalid>";
+}
+
+[[nodiscard]] std::string_view checked_borrow_contract_selector_kind_name(
+    const BorrowContractSelectorKind kind) noexcept
+{
+    switch (kind) {
+        case BorrowContractSelectorKind::parameter:
+            return "parameter";
+        case BorrowContractSelectorKind::self:
+            return "self";
+        case BorrowContractSelectorKind::static_:
+            return "static";
+        case BorrowContractSelectorKind::unknown:
+            return "unknown";
+    }
+    return "<invalid>";
+}
+
 } // namespace
 
 void populate_type_check_body_borrow_authority(
@@ -1858,15 +1913,32 @@ void populate_type_check_body_borrow_authority(
         authority.borrow_summary_has_unknown_return_origin = summary->second.has_unknown_return_origin;
         authority.borrow_summary_has_local_return_escape = summary->second.has_local_return_escape;
     }
+    if (const auto contract = checked.borrow_contracts.find(function); contract != checked.borrow_contracts.end()) {
+        authority.has_borrow_contract = true;
+        authority.borrow_contract_fingerprint = contract->second.fingerprint;
+        authority.borrow_contract_selector_count = static_cast<base::u32>(contract->second.return_selectors.size());
+        authority.borrow_contract_unknown_return_allowed = contract->second.unknown_return_allowed;
+        authority.borrow_contract_has_local_return_escape = contract->second.has_local_return_escape;
+        authority.borrow_contract_has_mismatch = contract->second.has_contract_mismatch;
+    }
     if (const auto loan = checked.body_loan_checks.find(function); loan != checked.body_loan_checks.end()) {
         authority.has_body_loan_check = true;
         authority.body_loan_fingerprint = body_loan_check_fingerprint(loan->second);
         authority.body_loan_count = static_cast<base::u32>(loan->second.loans.size());
+        authority.body_reborrow_count =
+            static_cast<base::u32>(std::ranges::count_if(loan->second.loans, [](const BodyLoan& body_loan) {
+                return body_loan.parent_loan != SEMA_BODY_LOAN_INVALID_INDEX;
+            }));
+        authority.body_two_phase_borrow_count = static_cast<base::u32>(loan->second.two_phase_borrows.size());
         authority.body_loan_conflict_count = static_cast<base::u32>(loan->second.conflicts.size());
         authority.body_loan_graph_missing = loan->second.graph_missing;
         authority.body_loan_has_emitted_diagnostics =
             std::ranges::any_of(loan->second.conflicts, [](const BodyLoanConflict& conflict) {
                 return conflict.diagnostic_emitted;
+            });
+        authority.body_two_phase_has_emitted_diagnostics =
+            std::ranges::any_of(loan->second.two_phase_borrows, [](const BodyTwoPhaseBorrow& borrow) {
+                return borrow.diagnostic_emitted;
             });
     }
 }
@@ -1971,6 +2043,11 @@ std::string dump_checked_module(const CheckedModule& checked)
             if (requirement.has_default_body) {
                 out << " default";
             }
+            if (requirement.has_borrow_contract) {
+                out << " borrow_contract=" << checked_borrow_contract_source_name(requirement.borrow_contract.source)
+                    << "/selectors=" << requirement.borrow_contract.return_selectors.size()
+                    << "/unknown=" << (requirement.borrow_contract.unknown_return_allowed ? "true" : "false");
+            }
             out << "\n";
         }
     }
@@ -2068,6 +2145,9 @@ std::string dump_checked_module(const CheckedModule& checked)
         if (binding.requirement_ordinal != SEMA_TRAIT_PREDICATE_INVALID_INDEX) {
             out << " requirement=" << binding.requirement_ordinal;
         }
+        out << " receiver_access=" << receiver_access_kind_name(binding.receiver_access)
+            << " auto_borrow=" << (binding.receiver_auto_borrow ? "true" : "false")
+            << " two_phase=" << (binding.receiver_two_phase_eligible ? "true" : "false");
         append_part_origin(out, show_parts, binding.part_index);
         out << "\n";
     }
@@ -2083,7 +2163,10 @@ std::string dump_checked_module(const CheckedModule& checked)
             out << '-';
         }
         out << " return=" << checked.types.display_name(binding.return_type)
-            << " receiver_args=" << binding.receiver_arg_count;
+            << " receiver_args=" << binding.receiver_arg_count
+            << " receiver_access=" << receiver_access_kind_name(binding.receiver_access)
+            << " auto_borrow=" << (binding.receiver_auto_borrow ? "true" : "false")
+            << " two_phase=" << (binding.receiver_two_phase_eligible ? "true" : "false");
         append_part_origin(out, show_parts, binding.part_index);
         out << "\n";
     }
@@ -2104,6 +2187,38 @@ std::string dump_checked_module(const CheckedModule& checked)
             << " fingerprint=" << query::debug_string(summary.fingerprint);
         append_part_origin(out, show_parts, summary.part_index);
         out << "\n";
+    }
+
+    out << "  borrow_contracts " << checked.borrow_contracts.size() << "\n";
+    for (const auto& entry : checked.borrow_contracts) {
+        const FunctionBorrowContract& contract = entry.second;
+        out << "    borrow_contract " << entry.first.module << ':' << entry.first.owner_type << ':';
+        if (syntax::is_valid(entry.first.name)) {
+            out << '#' << entry.first.name.value;
+        } else {
+            out << '-';
+        }
+        out << " source=" << checked_borrow_contract_source_name(contract.source)
+            << " return=" << checked.types.display_name(contract.return_type)
+            << " selectors=" << contract.return_selectors.size()
+            << " unknown=" << (contract.unknown_return_allowed ? "true" : "false")
+            << " local_escape=" << (contract.has_local_return_escape ? "true" : "false")
+            << " mismatch=" << (contract.has_contract_mismatch ? "true" : "false")
+            << " fingerprint=" << query::debug_string(contract.fingerprint);
+        append_part_origin(out, show_parts, contract.part_index);
+        out << "\n";
+        for (base::usize selector_index = 0; selector_index < contract.return_selectors.size(); ++selector_index) {
+            const BorrowContractSelector& selector = contract.return_selectors[selector_index];
+            out << "      selector #" << selector_index << ' '
+                << checked_borrow_contract_selector_kind_name(selector.kind) << " param=" << selector.param_index
+                << " name=";
+            if (syntax::is_valid(selector.name_id)) {
+                out << '#' << selector.name_id.value;
+            } else {
+                out << '-';
+            }
+            out << "\n";
+        }
     }
 
     std::vector<const BodyLoanCheckResult*> loan_checks;

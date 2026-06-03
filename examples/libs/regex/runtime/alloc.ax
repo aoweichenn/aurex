@@ -1,8 +1,10 @@
 module regex.runtime.alloc;
 
 extern c {
-    fn calloc(count: usize, size: usize) -> *mut void @name("calloc");
-    fn free(ptr: *mut void) -> void @name("free");
+    @name("calloc")
+    fn calloc(count: usize, size: usize) -> *mut void;
+    @name("free")
+    fn free(ptr: *mut void) -> void;
 }
 
 pub fn alloc_zeroed_bytes(count: usize, element_size: usize) -> *mut u8 {

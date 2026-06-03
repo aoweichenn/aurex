@@ -95,6 +95,7 @@ private:
     using CapabilityIdentityMap = SemaMap<GenericParamIdentity, CapabilitySet, GenericParamIdentityHash>;
 
     class BuiltinExpressionAnalyzer;
+    class BorrowContractAnalyzer;
     class BorrowEscapeAnalyzer;
     class BorrowSummaryBuilder;
     class BodyFlowAnalyzer;
@@ -523,6 +524,7 @@ private:
     void register_trait_name(const syntax::ItemNode& item, syntax::ItemId item_id);
     void register_trait_signatures();
     void validate_trait_impls();
+    void validate_trait_impl_borrow_contracts();
     void analyze_trait_default_method_bodies();
     [[nodiscard]] bool is_trait_requirement_item(syntax::ItemId item) const;
     void register_generic_template(const syntax::ItemNode& item, syntax::ItemId item_id);
@@ -579,6 +581,10 @@ private:
     void analyze_function_body_with_signature(const syntax::ItemNode& function, const FunctionLookupKey& key,
         const FunctionSignature& signature, FunctionBodyState& state);
     void analyze_borrow_escapes(const syntax::ItemNode& function);
+    void record_declared_borrow_contract(
+        const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
+    void check_borrow_contract(
+        const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
     void build_borrow_summary(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
     void analyze_body_moves(const syntax::ItemNode& function, const FunctionSignature& signature);

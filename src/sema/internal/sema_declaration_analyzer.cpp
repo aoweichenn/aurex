@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include <sema/internal/sema_borrow_contract.hpp>
 #include <sema/internal/sema_declaration_analyzer.hpp>
 
 namespace aurex::sema {
@@ -862,6 +863,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
                 found != this->core_.state_.checked.functions.end()) {
                 this->core_.index_function_lookup(found->second);
                 this->core_.index_function_value(found->second);
+                this->core_.record_declared_borrow_contract(item, key, found->second);
             }
             if (!item.is_prototype && !item.is_extern_c) {
                 this->core_.state_.functions.definition_items[key] = syntax::ItemId{item_index};

@@ -64,10 +64,6 @@ if(BUILD_TESTING)
     )
     target_link_libraries(aurex_frontend_tests PRIVATE
         GTest::gtest_main
-        aurex_base
-        aurex_lex
-        aurex_parse
-        aurex_sema
         aurex_tooling
     )
     target_include_directories(aurex_frontend_tests PRIVATE
@@ -136,17 +132,20 @@ if(BUILD_TESTING)
         )
         target_link_libraries(aurex_tests PRIVATE
             GTest::gtest_main
-            aurex_base
-            aurex_lex
-            aurex_ir
-            aurex_backend_llvm
-            aurex_driver
             aurex_driver_llvm
             aurex_tooling
+        )
+        # Backend whitebox tests include LLVM headers directly.  The LLVM backend
+        # itself remains a link-only dependency through aurex_driver_llvm.
+        target_compile_definitions(aurex_tests PRIVATE
+            $<TARGET_PROPERTY:aurex_llvm,INTERFACE_COMPILE_DEFINITIONS>
         )
         target_include_directories(aurex_tests PRIVATE
             tests
             src
+        )
+        target_include_directories(aurex_tests SYSTEM PRIVATE
+            $<TARGET_PROPERTY:aurex_llvm,INTERFACE_SYSTEM_INCLUDE_DIRECTORIES>
         )
         target_compile_definitions(aurex_tests PRIVATE
             AUREX_SEMA_WHITEBOX_TESTS=1

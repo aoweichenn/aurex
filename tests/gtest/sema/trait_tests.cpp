@@ -183,6 +183,100 @@ TEST(CoreUnit, TraitSemaRegistryRecordsTraitAndImplFacts)
     EXPECT_EQ(moved.trait_impls.begin()->second.methods.front().name, "read");
 }
 
+TEST(CoreUnit, BorrowContractSemaRecordsDeclaredAndInferredFacts)
+{
+    const std::string_view source = "module borrow_contract_facts;\n"
+                                    "@borrow(return = [left, right])\n"
+                                    "fn choose(left: &i32, right: &i32, take_left: bool) -> &i32 {\n"
+                                    "  if take_left { return left; }\n"
+                                    "  return right;\n"
+                                    "}\n"
+                                    "fn inferred(value: &i32) -> &i32 {\n"
+                                    "  return value;\n"
+                                    "}\n"
+                                    "extern c {\n"
+                                    "  @borrow(return = [value])\n"
+                                    "  fn external_view(value: &i32) -> &i32;\n"
+                                    "  @borrow(return = [static, unknown])\n"
+                                    "  fn external_text() -> str;\n"
+                                    "}\n"
+                                    "fn main() -> i32 { return 0; }\n";
+    const sema::CheckedModule checked = analyze_trait_source(source);
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "borrow_contracts",
+            "source=declared return=&i32 selectors=2 unknown=false local_escape=false mismatch=false",
+            "source=inferred return=&i32 selectors=1 unknown=false local_escape=false mismatch=false",
+            "source=declared return=&i32 selectors=1 unknown=false local_escape=false mismatch=false",
+            "source=declared return=str selectors=2 unknown=true local_escape=false mismatch=false",
+        });
+}
+
+TEST(CoreUnit, BorrowContractSemaRejectsInvalidDeclaredSelectors)
+{
+    expect_trait_source_diagnostic("module borrow_contract_redundant;\n"
+                                   "@borrow(return = [value])\n"
+                                   "fn bad(value: i32) -> i32 { return value; }\n"
+                                   "fn main() -> i32 { return 0; }\n",
+        "borrow contract requires a return type that can contain a borrow");
+    expect_trait_source_diagnostic("module borrow_contract_unknown_selector;\n"
+                                   "@borrow(return = [missing])\n"
+                                   "fn bad(value: &i32) -> &i32 { return value; }\n"
+                                   "fn main() -> i32 { return 0; }\n",
+        "borrow contract return selector does not name a parameter");
+    expect_trait_source_diagnostic("module borrow_contract_self_selector;\n"
+                                   "@borrow(return = [self])\n"
+                                   "fn bad(value: &i32) -> &i32 { return value; }\n"
+                                   "fn main() -> i32 { return 0; }\n",
+        "borrow contract 'self' selector requires a first self parameter");
+    expect_trait_source_diagnostic("module borrow_contract_duplicate_selector;\n"
+                                   "@borrow(return = [value, value])\n"
+                                   "fn bad(value: &i32) -> &i32 { return value; }\n"
+                                   "fn main() -> i32 { return 0; }\n",
+        "duplicate borrow contract return selector");
+}
+
+TEST(CoreUnit, BorrowContractSemaRejectsBodyOutsideDeclaredReturnSources)
+{
+    expect_trait_source_diagnostic("module borrow_contract_mismatch;\n"
+                                   "@borrow(return = [left])\n"
+                                   "fn bad(left: &i32, right: &i32) -> &i32 {\n"
+                                   "  return right;\n"
+                                   "}\n"
+                                   "fn main() -> i32 { return 0; }\n",
+        "function body returns a borrow source outside the declared borrow contract");
+}
+
+TEST(CoreUnit, TraitImplBorrowContractUsesBodyInferredContract)
+{
+    const std::string_view valid = "module trait_borrow_contract_valid;\n"
+                                   "struct Box { value: i32; }\n"
+                                   "trait View {\n"
+                                   "  @borrow(return = [self])\n"
+                                   "  fn view(self: &Self) -> &Self;\n"
+                                   "}\n"
+                                   "impl View for Box {\n"
+                                   "  fn view(self: &Box) -> &Box { return self; }\n"
+                                   "}\n"
+                                   "fn main() -> i32 { return 0; }\n";
+    const sema::CheckedModule checked = analyze_trait_source(valid);
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains(dump, "requirement view(&Self) -> &Self borrow_contract=declared/selectors=1/unknown=false");
+
+    expect_trait_source_diagnostic("module trait_borrow_contract_mismatch;\n"
+                                   "struct Box { value: i32; }\n"
+                                   "trait Pick {\n"
+                                   "  @borrow(return = [self])\n"
+                                   "  fn pick(self: &Self, other: &Self) -> &Self;\n"
+                                   "}\n"
+                                   "impl Pick for Box {\n"
+                                   "  fn pick(self: &Box, other: &Box) -> &Box { return other; }\n"
+                                   "}\n"
+                                   "fn main() -> i32 { return 0; }\n",
+        "function body returns a borrow source outside the declared borrow contract");
+}
+
 TEST(CoreUnit, TraitSemaRegistrySubstitutesCompositeRequirementTypes)
 {
     const std::string_view source = "module trait_registry_composite_whitebox;\n"

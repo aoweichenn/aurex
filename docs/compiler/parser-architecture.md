@@ -114,10 +114,10 @@ Current contexts:
   lists. It stops at `(`, legal parameter starters, signature followers, and
   obvious outer grammar starters so an inserted token before `(` does not
   damage the whole signature.
-- `RecoveryContext::abi_attribute_argument` is used inside ABI attribute
+- `RecoveryContext::abi_attribute_argument` is used inside function decorator
   argument parentheses. It stops at the argument value, `)`, function
   body/prototype boundaries, and obvious outer grammar starters.
-- `RecoveryContext::abi_attribute_start` is used before ABI attribute argument
+- `RecoveryContext::abi_attribute_start` is used before function decorator argument
   parentheses. It stops at `(`, a direct string value for missing-paren
   recovery, signature/body boundaries, and obvious outer grammar starters.
 - `RecoveryContext::builtin_argument` is used inside builtin expression

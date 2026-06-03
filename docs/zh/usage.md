@@ -126,7 +126,8 @@ build/full-llvm/bin/aurexc --import-path tests/samples/imports --emit checked te
 
 ```aurex
 extern c {
-    fn puts(text: *const u8) -> i32 @name("puts");
+    @name("puts")
+    fn puts(text: *const u8) -> i32;
 }
 ```
 

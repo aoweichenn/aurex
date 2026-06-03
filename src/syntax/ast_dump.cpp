@@ -1191,6 +1191,16 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     if (!item.abi_name.empty()) {
         out << " @name=" << item.abi_name;
     }
+    if (item.borrow_contract.present) {
+        out << " @borrow(return=[";
+        for (base::usize i = 0; i < item.borrow_contract.return_selectors.size(); ++i) {
+            if (i != 0) {
+                out << ", ";
+            }
+            out << item.borrow_contract.return_selectors[i].name;
+        }
+        out << "])";
+    }
     out << "\n";
     for (const FieldDecl& field : item.fields) {
         indent(out, depth + 1);

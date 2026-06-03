@@ -1,7 +1,8 @@
 module function_extern_definition_conflict;
 
 extern c {
-    fn value() -> i32 @name("value");
+    @name("value")
+    fn value() -> i32;
 }
 
 fn value() -> i32 {

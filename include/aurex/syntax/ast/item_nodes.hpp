@@ -20,6 +20,26 @@ struct ParamDecl {
     IdentId name_id = INVALID_IDENT_ID;
 };
 
+enum class BorrowContractSelectorKind : base::u8 {
+    parameter,
+    self,
+    static_,
+    unknown,
+};
+
+struct BorrowContractSelectorDecl {
+    BorrowContractSelectorKind kind = BorrowContractSelectorKind::parameter;
+    std::string_view name;
+    IdentId name_id = INVALID_IDENT_ID;
+    base::SourceRange range{};
+};
+
+struct BorrowContractDecl {
+    std::vector<BorrowContractSelectorDecl> return_selectors;
+    base::SourceRange range{};
+    bool present = false;
+};
+
 struct FieldDecl {
     std::string_view name;
     TypeId type = INVALID_TYPE_ID;
@@ -75,6 +95,7 @@ struct ItemNode {
     bool is_prototype = false;
     bool is_trait_default_method = false;
     std::string_view abi_name;
+    BorrowContractDecl borrow_contract;
     std::vector<ItemId> trait_items;
     std::vector<ItemId> extern_items;
     std::vector<ItemId> impl_items;
@@ -146,6 +167,9 @@ struct FunctionItemPayload {
     TypeId impl_type = INVALID_TYPE_ID;
     TypeId trait_type = INVALID_TYPE_ID;
     std::string_view abi_name;
+    AstArenaVector<BorrowContractSelectorDecl> borrow_return_selectors;
+    base::SourceRange borrow_contract_range{};
+    bool has_borrow_contract = false;
 };
 
 struct ExternBlockItemPayload {
@@ -298,6 +322,8 @@ private:
 
     [[nodiscard]] EnumCaseDecl copy_enum_case(const EnumCaseDecl& enum_case);
     [[nodiscard]] EnumCaseDecl copy_or_move_enum_case(EnumCaseDecl&& enum_case);
+    [[nodiscard]] BorrowContractDecl copy_borrow_contract(const BorrowContractDecl& contract);
+    [[nodiscard]] BorrowContractDecl copy_or_move_borrow_contract(BorrowContractDecl&& contract);
 
     template <typename Allocator>
     [[nodiscard]] AstArenaVector<EnumCaseDecl> copy_enum_cases(const std::vector<EnumCaseDecl, Allocator>& cases)

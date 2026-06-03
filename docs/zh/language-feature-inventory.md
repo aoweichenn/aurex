@@ -396,11 +396,14 @@ C FFI：
 ```aurex
 extern c {
     opaque struct FILE;
-    fn puts(s: *const u8) -> i32 @name("puts");
-    fn printf(format: *const u8, ...) -> i32 @name("printf");
+    @name("puts")
+    fn puts(s: *const u8) -> i32;
+    @name("printf")
+    fn printf(format: *const u8, ...) -> i32;
 }
 
-export c fn exported(argc: i32, argv: *mut *mut u8) -> i32 @name("main") {
+@name("main")
+export c fn exported(argc: i32, argv: *mut *mut u8) -> i32 {
     return 0;
 }
 ```
@@ -410,7 +413,7 @@ export c fn exported(argc: i32, argv: *mut *mut u8) -> i32 @name("main") {
 - variadic 只允许 `extern c`。
 - C ABI 函数必须显式返回类型。
 - generic extern/export C 函数不支持。
-- `@name("...")` 只支持 ABI 名称属性。
+- `@name("...")` 是函数声明前 ABI 名称装饰器。
 
 impl / method：
 

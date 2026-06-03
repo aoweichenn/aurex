@@ -1,10 +1,12 @@
 module explicit_abi_duplicate;
 
-fn first() -> i32 @name("same_symbol") {
+@name("same_symbol")
+fn first() -> i32 {
   return 1;
 }
 
-fn second() -> i32 @name("same_symbol") {
+@name("same_symbol")
+fn second() -> i32 {
   return 2;
 }
 

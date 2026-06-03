@@ -169,11 +169,14 @@ fn prototype(a: i32) -> i32;
 
 extern c {
     opaque struct FILE;
-    fn puts(s: *const u8) -> i32 @name("puts");
-    fn printf(format: *const u8, ...) -> i32 @name("printf");
+    @name("puts")
+    fn puts(s: *const u8) -> i32;
+    @name("printf")
+    fn printf(format: *const u8, ...) -> i32;
 }
 
-export c fn exported(argc: i32, argv: *mut *mut u8) -> i32 @name("main") {
+@name("main")
+export c fn exported(argc: i32, argv: *mut *mut u8) -> i32 {
     return 0;
 }
 
@@ -210,12 +213,13 @@ struct User {
 ABI 名称：
 
 ```aurex
-fn internal_name() -> i32 @name("stable_abi_symbol") {
+@name("stable_abi_symbol")
+fn internal_name() -> i32 {
     return 0;
 }
 ```
 
-当前只支持 `@name("...")` 这个 ABI attribute。
+当前只支持 `@name("...")` 这个 ABI decorator。
 
 ### 类型语法
 
@@ -723,7 +727,7 @@ M2 当前值语义：
 - operator overloading。
 - user-defined implicit conversion。
 - macro system。
-- attribute system beyond `@name`.
+- decorator/attribute system beyond `@name`.
 - module package manifest。
 - selective import / namespace export list。
 - `switch` statement；当前用 `match` 表达式。

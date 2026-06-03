@@ -1,6 +1,5 @@
-#include <aurex/sema/drop_glue.hpp>
-
 #include <aurex/sema/checked_module.hpp>
+#include <aurex/sema/drop_glue.hpp>
 
 #include <algorithm>
 #include <optional>
@@ -110,8 +109,8 @@ void append_drop_glue_tuple_actions(std::vector<DropGlueAction>& actions, const 
         const TypeHandle element = info.tuple_elements[element_index];
         if (drop_glue_type_needs_drop(classifier, element)) {
             push_drop_glue_step_actions(actions,
-                make_drop_glue_step(DropGlueStepKind::tuple_element, type, element,
-                    static_cast<base::u32>(element_index), classifier));
+                make_drop_glue_step(
+                    DropGlueStepKind::tuple_element, type, element, static_cast<base::u32>(element_index), classifier));
         }
     }
 }

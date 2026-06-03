@@ -1,11 +1,16 @@
 module variadic_extern_c;
 
 extern c {
-    fn calloc(count: usize, size: usize) -> *mut void @name("calloc");
-    fn free(ptr: *mut void) -> void @name("free");
-    fn c_strlen_abi(text: *const u8) -> usize @name("strlen");
-    fn strcmp(left: *const u8, right: *const u8) -> i32 @name("strcmp");
-    fn snprintf(buffer: *mut u8, size: usize, format: *const u8, ...) -> i32 @name("snprintf");
+    @name("calloc")
+    fn calloc(count: usize, size: usize) -> *mut void;
+    @name("free")
+    fn free(ptr: *mut void) -> void;
+    @name("strlen")
+    fn c_strlen_abi(text: *const u8) -> usize;
+    @name("strcmp")
+    fn strcmp(left: *const u8, right: *const u8) -> i32;
+    @name("snprintf")
+    fn snprintf(buffer: *mut u8, size: usize, format: *const u8, ...) -> i32;
 }
 
 fn alloc_zeroed_bytes(count: usize, size: usize) -> *mut u8 {

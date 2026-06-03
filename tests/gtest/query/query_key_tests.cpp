@@ -3285,6 +3285,12 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
     loan_changed_authority.body_loan_fingerprint = query::stable_fingerprint("query-test-body-loan");
     EXPECT_NE(query::type_check_body_result_fingerprint(loan_changed_authority), output->result);
 
+    query::TypeCheckBodyAuthority contract_changed_authority = subject.type_check_authority;
+    contract_changed_authority.has_borrow_contract = true;
+    contract_changed_authority.borrow_contract_selector_count = 1;
+    contract_changed_authority.borrow_contract_fingerprint = query::stable_fingerprint("query-test-borrow-contract");
+    EXPECT_NE(query::type_check_body_result_fingerprint(contract_changed_authority), output->result);
+
     query::TypeCheckBodyAuthority invalid_type_authority = subject.type_check_authority;
     invalid_type_authority.checked_body = {};
     query::TypeCheckBodyAuthority invalid_body_syntax_authority = subject.type_check_authority;

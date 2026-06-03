@@ -39,6 +39,10 @@ inline constexpr auto SAMPLE_IMPORT_MARKERS = std::to_array<std::string_view>({
 });
 
 inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiagnostic>({
+    {"associated_method_explicit_missing", "unknown method: associated_method_explicit_missing.Box.missing"},
+    {"associated_method_explicit_non_generic", "method associated_method_explicit_non_generic.Box.read is not generic"},
+    {"associated_method_receiver_required_generic",
+        "method requires a receiver: associated_method_receiver_required_generic.Box.id"},
     {"ambiguous_import_alias", "ambiguous import alias: lib"},
     {"ambiguous_import_name", "unknown function: helper"},
     {"array_bool_missing_witness", "match expression over tuple, struct, array, or slice requires an irrefutable arm"},
@@ -90,6 +94,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"method_explicit_non_generic", "method method_explicit_non_generic.Box.read is not generic"},
     {"method_local_arg_unify_failure", "cannot infer generic type argument for call to pick"},
     {"method_local_argument_count", "argument count mismatch"},
+    {"method_local_explicit_mut_receiver_shared", "mutable method receiver requires mutable pointer"},
     {"method_local_explicit_unknown_type", "unknown type: Missing"},
     {"method_local_inference_failure", "cannot infer generic type argument `T` for call to marker"},
     {"method_local_type_arg_count", "too many generic method type arguments for id: expected 1, got 2"},

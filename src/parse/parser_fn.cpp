@@ -2,6 +2,7 @@
 #include <aurex/parse/parser_messages.hpp>
 #include <aurex/parse/recovery.hpp>
 
+#include <algorithm>
 #include <optional>
 #include <utility>
 
@@ -22,9 +23,21 @@ constexpr base::usize PARSER_FN_STRING_DELIMITER_PAIR_SIZE = PARSER_FN_STRING_DE
     return text.substr(PARSER_FN_STRING_DELIMITER_SIZE, text.size() - PARSER_FN_STRING_DELIMITER_PAIR_SIZE);
 }
 
+void include_function_attribute_range(ParsedFunctionAttributes& attributes, const base::SourceRange& range) noexcept
+{
+    if (!attributes.present) {
+        attributes.range = range;
+        attributes.present = true;
+        return;
+    }
+    attributes.range.begin = std::min(attributes.range.begin, range.begin);
+    attributes.range.end = std::max(attributes.range.end, range.end);
+}
+
 } // namespace
 
-syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_extern_c, const bool is_unsafe)
+syntax::ItemId ItemParser::parse_fn_decl(
+    const bool is_export_c, const bool is_extern_c, const bool is_unsafe, ParsedFunctionAttributes attributes)
 {
     base::SourceRange begin_range = this->peek().range;
     if (is_unsafe) {
@@ -34,6 +47,9 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     const syntax::Token& begin = this->expect(TokenKind::kw_fn, std::string(PARSER_EXPECT_FN_KEYWORD));
     if (!is_unsafe) {
         begin_range = begin.range;
+    }
+    if (attributes.present) {
+        begin_range.begin = std::min(begin_range.begin, attributes.range.begin);
     }
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_FN_NAME));
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
@@ -58,7 +74,8 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     item.is_unsafe = is_unsafe;
     item.is_variadic = is_variadic;
 
-    this->parse_optional_abi_name(item);
+    this->apply_function_attributes(item, std::move(attributes));
+    this->reject_postfix_function_decorators(item);
     item.where_constraints = this->parse_optional_where_constraints();
 
     if (is_extern_c) {
@@ -73,6 +90,10 @@ syntax::ItemId ItemParser::parse_fn_decl(const bool is_export_c, const bool is_e
     } else {
         this->report_here(std::string(PARSER_EXPECT_BLOCK));
         item.range = this->merge(begin_range, this->peek().range);
+    }
+    if (item.borrow_contract.present || !item.abi_name.empty()) {
+        item.range.begin = std::min(
+            item.range.begin, item.borrow_contract.present ? item.borrow_contract.range.begin : item.range.begin);
     }
 
     this->reset_panic();
@@ -248,19 +269,81 @@ syntax::TypeId ItemParser::parse_optional_return_type() const
     return this->parse_type();
 }
 
-void ItemParser::parse_optional_abi_name(syntax::ItemNode& item)
+void ItemParser::parse_optional_function_decorators(ParsedFunctionAttributes& attributes)
 {
-    if (!this->match(TokenKind::at)) {
+    while (this->check(TokenKind::at)) {
+        const syntax::Token& decorator_start = this->advance();
+        this->parse_function_decorator(attributes, decorator_start);
+        include_function_attribute_range(attributes, this->merge(decorator_start.range, this->previous().range));
+        this->reset_panic();
+    }
+}
+
+void ItemParser::parse_function_decorator(ParsedFunctionAttributes& attributes, const syntax::Token& decorator_start)
+{
+    const syntax::Token& attr = this->expect_identifier_recovered(std::string(PARSER_EXPECT_FUNCTION_ATTRIBUTE));
+    if (attr.text() == "name") {
+        this->expect_abi_attribute_argument_start();
+        this->parse_abi_name_argument(attributes, decorator_start);
+        this->recover_abi_attribute_argument_end();
         return;
     }
-    const syntax::Token& attr = this->expect_identifier_recovered(std::string(PARSER_EXPECT_ABI_NAME_ATTRIBUTE));
-    if (attr.text() != "name") {
-        this->report_at(attr, std::string(PARSER_EXPECT_ABI_NAME_ATTRIBUTE));
+    if (attr.text() == "borrow") {
+        this->expect_abi_attribute_argument_start();
+        this->parse_borrow_contract_argument(attributes, decorator_start);
+        this->recover_abi_attribute_argument_end();
+        return;
     }
-    this->expect_abi_attribute_argument_start();
-    this->parse_abi_name_argument(item);
-    this->recover_abi_attribute_argument_end();
+    this->report_at(attr, std::string(PARSER_EXPECT_FUNCTION_ATTRIBUTE));
     this->reset_panic();
+    if (this->check(TokenKind::l_paren)) {
+        this->expect_abi_attribute_argument_start();
+    }
+    this->recover_abi_attribute_argument_end();
+}
+
+void ItemParser::reject_postfix_function_decorators(syntax::ItemNode& item)
+{
+    ParsedFunctionAttributes trailing_attributes;
+    while (this->check(TokenKind::at)) {
+        const syntax::Token& decorator_start = this->advance();
+        this->report_at(decorator_start, std::string(PARSER_POSTFIX_FUNCTION_DECORATOR));
+        this->parse_function_decorator(trailing_attributes, decorator_start);
+        this->reset_panic();
+    }
+    if (trailing_attributes.has_abi_name) {
+        if (item.abi_name.empty()) {
+            item.abi_name = trailing_attributes.abi_name;
+        } else {
+            const syntax::Token duplicate{TokenKind::at, trailing_attributes.abi_name_range, {}};
+            this->report_at(duplicate, std::string(PARSER_DUPLICATE_ABI_NAME_ATTRIBUTE));
+        }
+    }
+    if (trailing_attributes.borrow_contract.present) {
+        if (!item.borrow_contract.present) {
+            item.borrow_contract = std::move(trailing_attributes.borrow_contract);
+        } else {
+            const syntax::Token duplicate{TokenKind::at, trailing_attributes.borrow_contract.range, {}};
+            this->report_at(duplicate, std::string(PARSER_DUPLICATE_BORROW_ATTRIBUTE));
+        }
+    }
+}
+
+void ItemParser::apply_function_attributes(syntax::ItemNode& item, ParsedFunctionAttributes&& attributes) const
+{
+    if (attributes.has_abi_name) {
+        item.abi_name = attributes.abi_name;
+    }
+    if (attributes.borrow_contract.present) {
+        item.borrow_contract = std::move(attributes.borrow_contract);
+    }
+}
+
+void ItemParser::report_misplaced_function_decorators(const ParsedFunctionAttributes& attributes) const
+{
+    if (attributes.present) {
+        this->report_at(this->peek(), std::string(PARSER_FUNCTION_DECORATOR_TARGET));
+    }
 }
 
 std::vector<syntax::GenericConstraintDecl> ItemParser::parse_optional_where_constraints()
@@ -414,12 +497,97 @@ void ItemParser::expect_abi_attribute_argument_start() const
         TokenKind::l_paren, std::string(PARSER_EXPECT_ABI_ATTRIBUTE_START), RecoveryContext::abi_attribute_start);
 }
 
-void ItemParser::parse_abi_name_argument(syntax::ItemNode& item) const
+void ItemParser::parse_abi_name_argument(
+    ParsedFunctionAttributes& attributes, const syntax::Token& decorator_start) const
 {
     const syntax::Token& value = this->expect(TokenKind::string_literal, std::string(PARSER_EXPECT_ABI_NAME_STRING));
-    if (value.kind == TokenKind::string_literal) {
-        item.abi_name = unquote_string_literal(value.text());
+    if (attributes.has_abi_name) {
+        this->report_at(decorator_start, std::string(PARSER_DUPLICATE_ABI_NAME_ATTRIBUTE));
     }
+    if (value.kind == TokenKind::string_literal) {
+        if (!attributes.has_abi_name) {
+            attributes.abi_name = unquote_string_literal(value.text());
+            attributes.abi_name_range = this->merge(decorator_start.range, value.range);
+            attributes.has_abi_name = true;
+        }
+    }
+}
+
+void ItemParser::parse_borrow_contract_argument(
+    ParsedFunctionAttributes& attributes, const syntax::Token& decorator_start)
+{
+    if (attributes.borrow_contract.present) {
+        this->report_at(decorator_start, std::string(PARSER_DUPLICATE_BORROW_ATTRIBUTE));
+    }
+
+    const syntax::Token& return_token =
+        this->expect(TokenKind::kw_return, std::string(PARSER_EXPECT_BORROW_ATTRIBUTE_RETURN));
+    this->expect_recovered(
+        TokenKind::equal, std::string(PARSER_EXPECT_BORROW_ATTRIBUTE_EQUAL), RecoveryContext::abi_attribute_argument);
+    this->expect_recovered(TokenKind::l_bracket, std::string(PARSER_EXPECT_BORROW_ATTRIBUTE_SELECTOR_LIST),
+        RecoveryContext::abi_attribute_argument);
+
+    std::vector<syntax::BorrowContractSelectorDecl> selectors;
+    while (!this->is_eof() && !this->check(TokenKind::r_bracket) && !this->check(TokenKind::r_paren)) {
+        selectors.push_back(this->parse_borrow_contract_selector());
+        this->reset_panic();
+        if (!this->recover_borrow_contract_selector_separator()) {
+            break;
+        }
+    }
+    if (selectors.empty()) {
+        this->report_here(std::string(PARSER_EXPECT_BORROW_ATTRIBUTE_SELECTOR));
+    }
+
+    const syntax::Token& end = this->expect_recovered(TokenKind::r_bracket,
+        std::string(PARSER_EXPECT_BORROW_ATTRIBUTE_SELECTOR_LIST_END), RecoveryContext::abi_attribute_argument);
+    if (!attributes.borrow_contract.present) {
+        attributes.borrow_contract.present = true;
+        attributes.borrow_contract.return_selectors = std::move(selectors);
+        attributes.borrow_contract.range =
+            this->merge(decorator_start.range, end.kind == TokenKind::r_bracket ? end.range : return_token.range);
+    }
+}
+
+syntax::BorrowContractSelectorDecl ItemParser::parse_borrow_contract_selector()
+{
+    const syntax::Token& selector =
+        this->expect_identifier_recovered(std::string(PARSER_EXPECT_BORROW_ATTRIBUTE_SELECTOR));
+    syntax::BorrowContractSelectorDecl decl;
+    decl.name = selector.text();
+    decl.range = selector.range;
+    if (selector.text() == "self") {
+        decl.kind = syntax::BorrowContractSelectorKind::self;
+    } else if (selector.text() == "static") {
+        decl.kind = syntax::BorrowContractSelectorKind::static_;
+    } else if (selector.text() == "unknown") {
+        decl.kind = syntax::BorrowContractSelectorKind::unknown;
+    } else {
+        decl.kind = syntax::BorrowContractSelectorKind::parameter;
+    }
+    return decl;
+}
+
+bool ItemParser::recover_borrow_contract_selector_separator() const
+{
+    if (this->check(TokenKind::r_bracket) || this->check(TokenKind::r_paren)) {
+        return false;
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket) && !this->check(TokenKind::r_paren);
+    }
+
+    this->report_here(std::string(PARSER_EXPECT_BORROW_ATTRIBUTE_SELECTOR_SEPARATOR));
+    if (!token_matches_recovery_context(this->peek().kind, RecoveryContext::abi_attribute_argument)) {
+        this->synchronize(RecoveryContext::abi_attribute_argument);
+    }
+    if (this->match(TokenKind::comma)) {
+        this->reset_panic();
+        return !this->check(TokenKind::r_bracket) && !this->check(TokenKind::r_paren);
+    }
+    this->reset_panic();
+    return this->check(TokenKind::identifier);
 }
 
 void ItemParser::recover_abi_attribute_argument_end() const

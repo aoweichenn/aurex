@@ -14,6 +14,7 @@ public:
     void register_trait_name(const syntax::ItemNode& item, syntax::ItemId item_id);
     void register_trait_signatures();
     void validate_trait_impls();
+    void validate_trait_impl_borrow_contracts();
     void analyze_trait_default_method_bodies();
     [[nodiscard]] const TraitSignature* find_trait_in_visible_modules(
         IdentId name_id, std::string_view name, const base::SourceRange& range, bool report_unknown = true);
@@ -110,6 +111,8 @@ private:
     [[nodiscard]] bool trait_impl_method_matches(const TraitMethodRequirement& requirement,
         const FunctionSignature& signature, TypeHandle self_type, std::span<const TypeHandle> trait_args,
         const TraitSignature& trait, std::span<const TraitImplAssociatedTypeInfo> associated_types) const;
+    void validate_trait_impl_method_borrow_contract(
+        const TraitSignature& trait, const TraitImplInfo& impl, const TraitImplMethodInfo& method);
     [[nodiscard]] TypeHandle substitute_requirement_type(TypeHandle type, TypeHandle self_type,
         std::span<const TypeHandle> trait_args, const TraitSignature& trait,
         std::span<const TraitImplAssociatedTypeInfo> associated_types) const;

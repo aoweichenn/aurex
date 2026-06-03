@@ -19,6 +19,8 @@ public:
 
 private:
     [[nodiscard]] bool statement_may_bind_reference_loan(syntax::StmtId stmt) const;
+    [[nodiscard]] bool statement_may_have_two_phase_receiver(syntax::StmtId stmt) const;
+    [[nodiscard]] bool expr_may_have_two_phase_receiver(syntax::ExprId expr) const;
     [[nodiscard]] bool type_contains_reference(TypeHandle type) const;
 
     SemanticAnalyzerCore& core_;

@@ -306,8 +306,10 @@ C ABI 通过 `extern c` 声明：
 
 ```m0
 extern c {
-    fn puts(s: *const u8) -> i32 @name("puts");
-    fn printf(format: *const u8, ...) -> i32 @name("printf");
+    @name("puts")
+    fn puts(s: *const u8) -> i32;
+    @name("printf")
+    fn printf(format: *const u8, ...) -> i32;
 }
 ```
 
@@ -317,7 +319,8 @@ extern c {
 通过 `export c fn` 导出 C ABI 符号：
 
 ```m0
-export c fn plugin_entry() -> i32 @name("plugin_entry") {
+@name("plugin_entry")
+export c fn plugin_entry() -> i32 {
     return 42;
 }
 ```

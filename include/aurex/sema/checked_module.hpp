@@ -166,6 +166,40 @@ struct TypeAliasInfo {
     base::u32 part_index = 0;
 };
 
+enum class BorrowContractSelectorKind : base::u8 {
+    parameter,
+    self,
+    static_,
+    unknown,
+};
+
+enum class FunctionBorrowContractSource : base::u8 {
+    inferred,
+    declared,
+    conservative_unknown,
+};
+
+struct BorrowContractSelector {
+    BorrowContractSelectorKind kind = BorrowContractSelectorKind::parameter;
+    base::u32 param_index = SEMA_TRAIT_PREDICATE_INVALID_INDEX;
+    IdentId name_id = INVALID_IDENT_ID;
+    base::SourceRange range{};
+};
+
+struct FunctionBorrowContract {
+    FunctionLookupKey function;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
+    std::vector<BorrowContractSelector> return_selectors;
+    FunctionBorrowContractSource source = FunctionBorrowContractSource::inferred;
+    bool return_type_can_contain_borrow = false;
+    bool unknown_return_allowed = false;
+    bool has_local_return_escape = false;
+    bool has_contract_mismatch = false;
+    base::SourceRange range{};
+    query::StableFingerprint128 fingerprint;
+    base::u32 part_index = 0;
+};
+
 struct TraitMethodRequirement {
     InternedText name;
     IdentId name_id = INVALID_IDENT_ID;
@@ -179,8 +213,10 @@ struct TraitMethodRequirement {
     bool is_variadic = false;
     bool has_self_param = false;
     bool has_default_body = false;
+    bool has_borrow_contract = false;
     syntax::Visibility visibility = syntax::Visibility::public_;
     StableMemberKey stable_key;
+    FunctionBorrowContract borrow_contract;
     base::u32 ordinal = 0;
 };
 
@@ -347,6 +383,13 @@ struct TraitEvidence {
     base::u32 part_index = 0;
 };
 
+enum class ReceiverAccessKind : base::u8 {
+    none,
+    shared,
+    mutable_,
+    consuming,
+};
+
 struct TraitMethodCallBinding {
     syntax::ExprId call_expr = syntax::INVALID_EXPR_ID;
     syntax::ExprId callee_expr = syntax::INVALID_EXPR_ID;
@@ -363,6 +406,9 @@ struct TraitMethodCallBinding {
     TypeHandle receiver_type = INVALID_TYPE_HANDLE;
     TypeHandle self_type = INVALID_TYPE_HANDLE;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
+    ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
+    bool receiver_auto_borrow = false;
+    bool receiver_two_phase_eligible = false;
     base::SourceRange range{};
     base::u32 part_index = 0;
 };
@@ -373,6 +419,9 @@ struct FunctionCallBinding {
     FunctionLookupKey function_key;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     base::u32 receiver_arg_count = 0;
+    ReceiverAccessKind receiver_access = ReceiverAccessKind::none;
+    bool receiver_auto_borrow = false;
+    bool receiver_two_phase_eligible = false;
     base::SourceRange range{};
     base::u32 part_index = 0;
 };
@@ -471,6 +520,7 @@ using TraitMethodCallBindingList = SemaVector<TraitMethodCallBinding>;
 using FunctionCallBindingList = SemaVector<FunctionCallBinding>;
 using CallBindingExprIndexMap = SemaMap<base::u32, base::u32>;
 using FunctionBorrowSummaryMap = SemaMap<FunctionLookupKey, FunctionBorrowSummary, FunctionLookupKeyHash>;
+using FunctionBorrowContractMap = SemaMap<FunctionLookupKey, FunctionBorrowContract, FunctionLookupKeyHash>;
 using ParamEnvList = SemaVector<ParamEnvInfo>;
 
 inline constexpr base::u32 SEMA_BODY_FLOW_INVALID_INDEX = static_cast<base::u32>(-1);
@@ -494,6 +544,8 @@ enum class BodyFlowActionKind : base::u8 {
     drop,
     borrow_shared,
     borrow_mutable,
+    call_receiver_reserve,
+    call_receiver_activate,
     call,
     return_,
     branch,
@@ -590,6 +642,9 @@ enum class BodyLoanConflictKind : base::u8 {
     shared_borrow,
     mutable_borrow,
     cleanup,
+    reborrow_parent_use,
+    two_phase_reservation,
+    two_phase_activation,
 };
 
 struct BodyLoanOrigin {
@@ -602,6 +657,7 @@ struct BodyLoanOrigin {
 struct BodyLoan {
     BodyLoanKind kind = BodyLoanKind::shared;
     BodyLoanOrigin origin;
+    base::u32 parent_loan = SEMA_BODY_LOAN_INVALID_INDEX;
     base::u32 issued_action = SEMA_BODY_LOAN_INVALID_INDEX;
     base::u32 issued_point = SEMA_BODY_FLOW_INVALID_INDEX;
     base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
@@ -612,9 +668,21 @@ struct BodyLoan {
     base::SourceRange range{};
 };
 
+struct BodyTwoPhaseBorrow {
+    base::u32 reservation_action = SEMA_BODY_LOAN_INVALID_INDEX;
+    base::u32 activation_action = SEMA_BODY_LOAN_INVALID_INDEX;
+    base::u32 reservation_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 activation_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
+    syntax::ExprId call_expr = syntax::INVALID_EXPR_ID;
+    bool diagnostic_emitted = false;
+    base::SourceRange range{};
+};
+
 struct BodyLoanConflict {
     BodyLoanConflictKind kind = BodyLoanConflictKind::write;
     base::u32 loan = SEMA_BODY_LOAN_INVALID_INDEX;
+    base::u32 two_phase_borrow = SEMA_BODY_LOAN_INVALID_INDEX;
     base::u32 action = SEMA_BODY_LOAN_INVALID_INDEX;
     base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
     base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
@@ -629,17 +697,23 @@ struct BodyLoanCheckResult {
     BodyLoanDiagnosticMode diagnostic_mode = BodyLoanDiagnosticMode::shadow;
     std::vector<BodyLoanOrigin> origins;
     std::vector<BodyLoan> loans;
+    std::vector<BodyTwoPhaseBorrow> two_phase_borrows;
     std::vector<BodyLoanConflict> conflicts;
     bool graph_missing = false;
 };
 
 using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, FunctionLookupKeyHash>;
 
+[[nodiscard]] std::string_view receiver_access_kind_name(ReceiverAccessKind kind) noexcept;
 [[nodiscard]] std::string_view body_loan_kind_name(BodyLoanKind kind) noexcept;
 [[nodiscard]] std::string_view body_loan_origin_kind_name(BodyLoanOriginKind kind) noexcept;
 [[nodiscard]] std::string_view body_loan_diagnostic_mode_name(BodyLoanDiagnosticMode mode) noexcept;
 [[nodiscard]] std::string_view body_loan_conflict_kind_name(BodyLoanConflictKind kind) noexcept;
+[[nodiscard]] std::string_view borrow_contract_selector_kind_name(BorrowContractSelectorKind kind) noexcept;
+[[nodiscard]] std::string_view function_borrow_contract_source_name(FunctionBorrowContractSource source) noexcept;
 [[nodiscard]] query::StableFingerprint128 body_loan_check_fingerprint(const BodyLoanCheckResult& result) noexcept;
+[[nodiscard]] query::StableFingerprint128 function_borrow_contract_fingerprint(
+    const FunctionBorrowContract& contract) noexcept;
 
 enum class CoercionKind {
     contextual_integer_literal,
@@ -980,6 +1054,7 @@ public:
     CallBindingExprIndexMap trait_method_call_by_expr;
     CallBindingExprIndexMap function_call_by_expr;
     FunctionBorrowSummaryMap borrow_summaries;
+    FunctionBorrowContractMap borrow_contracts;
     BodyFlowGraphMap body_flow_graphs;
     BodyLoanCheckResultMap body_loan_checks;
     ParamEnvList param_envs;

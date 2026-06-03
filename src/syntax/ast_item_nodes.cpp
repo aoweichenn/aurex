@@ -262,6 +262,24 @@ EnumCaseDecl ItemNodeList::copy_or_move_enum_case(EnumCaseDecl&& enum_case)
     return copy;
 }
 
+BorrowContractDecl ItemNodeList::copy_borrow_contract(const BorrowContractDecl& contract)
+{
+    BorrowContractDecl copy;
+    copy.return_selectors = copy_std_vector(contract.return_selectors);
+    copy.range = contract.range;
+    copy.present = contract.present;
+    return copy;
+}
+
+BorrowContractDecl ItemNodeList::copy_or_move_borrow_contract(BorrowContractDecl&& contract)
+{
+    BorrowContractDecl copy;
+    copy.return_selectors = copy_std_vector(contract.return_selectors);
+    copy.range = contract.range;
+    copy.present = contract.present;
+    return copy;
+}
+
 GenericConstraintDecl ItemNodeList::detach_generic_constraint(const GenericConstraintDecl& constraint) const
 {
     GenericConstraintDecl copy;
@@ -357,6 +375,9 @@ base::u32 ItemNodeList::store_payload(ItemNode node)
                     node.impl_type,
                     node.trait_type,
                     node.abi_name,
+                    this->copy_list(node.borrow_contract.return_selectors),
+                    node.borrow_contract.range,
+                    node.borrow_contract.present,
                 });
         case ItemKind::extern_block:
             return this->push_payload(this->payloads_.extern_blocks,
@@ -458,6 +479,9 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.impl_type = payload.impl_type;
             node.trait_type = payload.trait_type;
             node.abi_name = payload.abi_name;
+            node.borrow_contract.present = payload.has_borrow_contract;
+            node.borrow_contract.range = payload.borrow_contract_range;
+            node.borrow_contract.return_selectors = copy_std_vector(payload.borrow_return_selectors);
             break;
         }
         case ItemKind::extern_block:
@@ -549,6 +573,9 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.impl_type = payload.impl_type;
             node.trait_type = payload.trait_type;
             node.abi_name = payload.abi_name;
+            node.borrow_contract.present = payload.has_borrow_contract;
+            node.borrow_contract.range = payload.borrow_contract_range;
+            node.borrow_contract.return_selectors = copy_std_vector(payload.borrow_return_selectors);
             break;
         }
         case ItemKind::extern_block:

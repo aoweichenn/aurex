@@ -814,7 +814,8 @@ TEST_F(AurexIntegrationTest, MainAndCliRegressions)
 
     const fs::path export_c_main = write_source_file(tmp_root() / "export_c_main.ax",
         "module export_c_main;\n"
-        "export c fn main() -> i32 @name(\"main\") {\n"
+        "@name(\"main\")\n"
+        "export c fn main() -> i32 {\n"
         "  return 0;\n"
         "}\n");
     const std::string llvm_ir = require_success(aurexc() + " --emit=llvm-ir " + q(export_c_main)).output;
@@ -1873,7 +1874,8 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
 
     const fs::path generic_export = write_source_file(tmp_root() / "generic_export.ax",
         "module generic_export;\n"
-        "export c fn id[T](value: T) -> T @name(\"id\") { return value; }\n"
+        "@name(\"id\")\n"
+        "export c fn id[T](value: T) -> T { return value; }\n"
         "fn main() -> i32 { return 0; }\n");
     expect_contains(require_failure(aurexc() + " --check " + q(generic_export)).output,
         "generic functions with C ABI or prototypes are not supported by M2 semantic analysis");
@@ -1882,18 +1884,22 @@ TEST_F(AurexIntegrationTest, M2GenericEdgeCasesAndImports)
         "module generic_method;\n"
         "struct Box { value: i32; }\n"
         "impl Box {\n"
+        "  fn keep[T](value: T) -> T { return value; }\n"
         "  fn id[T](self: &Box, value: T) -> T { return value; }\n"
         "}\n"
         "fn main() -> i32 {\n"
         "  let box: Box = Box { value: 1 };\n"
+        "  let box_ref: &Box = &box;\n"
         "  let flag: bool = box.id[bool](true);\n"
-        "  if flag { return box.id(41) + 1; }\n"
+        "  if flag { return box.id(41) + box_ref.id[i32](1) + Box.keep[i32](1); }\n"
         "  return 1;\n"
         "}\n");
     expect_contains_all(require_success(aurexc() + " --emit=checked " + q(generic_method)).output,
         {
+            "method generic_method.Box.keep[i32] -> i32",
             "method generic_method.Box.id[bool] -> bool",
             "method generic_method.Box.id[i32] -> i32",
+            "receiver_access=shared auto_borrow=false two_phase=false",
         });
 
     const fs::path generic_method_call = write_source_file(tmp_root() / "generic_method_call.ax",

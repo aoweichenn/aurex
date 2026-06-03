@@ -1,0 +1,18 @@
+module method_local_explicit_mut_receiver_shared;
+
+struct Box {
+    value: i32;
+}
+
+impl Box {
+    fn set[T](self: &mut Box, value: T) -> i32 {
+        self.value = 2;
+        return 1;
+    }
+}
+
+fn main() -> i32 {
+    let box: Box = Box { value: 1 };
+    let shared: &Box = &box;
+    return shared.set[i32](1);
+}

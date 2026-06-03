@@ -1,3 +1,5 @@
+#include <aurex/sema/sema_messages.hpp>
+
 #include <support/test_support.hpp>
 
 namespace aurex::test {
@@ -390,6 +392,8 @@ TEST_F(AurexIntegrationTest, MethodsAndAssociatedFunctions)
             "fn method method_calls.Counter.new -> method_calls.Counter",
             "fn method method_calls.Counter.add -> i32",
             "fn method method_calls.Counter.read -> i32",
+            "receiver_access=mutable auto_borrow=true two_phase=true",
+            "receiver_access=shared auto_borrow=true two_phase=false",
         });
 
     const std::string ir = require_success(aurexc() + " --emit=ir " + q(source)).output;
@@ -404,6 +408,28 @@ TEST_F(AurexIntegrationTest, MethodsAndAssociatedFunctions)
         });
 
     require_success(aurexc() + " --emit=llvm-ir " + q(source));
+
+    const fs::path two_phase = positive_sample("functions", "method_two_phase_receiver.ax");
+    const std::string two_phase_checked = require_success(aurexc() + " --emit=checked " + q(two_phase)).output;
+    expect_contains_all(two_phase_checked,
+        {
+            "receiver_access=mutable auto_borrow=true two_phase=true",
+            "receiver_access=shared auto_borrow=true two_phase=false",
+        });
+    require_success(aurexc() + " --check " + q(two_phase));
+
+    const fs::path preborrowed_receiver = positive_sample("types", "reference_basic.ax");
+    const std::string preborrowed_checked =
+        require_success(aurexc() + " --emit=checked " + q(preborrowed_receiver)).output;
+    expect_contains_all(preborrowed_checked,
+        {
+            "receiver_access=mutable auto_borrow=false two_phase=false",
+            "receiver_access=shared auto_borrow=false two_phase=false",
+        });
+
+    const fs::path nested_two_phase = negative_sample("functions", "method_two_phase_nested_mut_receiver.ax");
+    expect_contains(
+        require_failure(aurexc() + " --check " + q(nested_two_phase)).output, sema::SEMA_TWO_PHASE_RECEIVER_CONFLICT);
 
     const fs::path unknown = negative_sample("functions", "unknown_method.ax");
     expect_contains(

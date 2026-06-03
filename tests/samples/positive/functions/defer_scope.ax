@@ -1,9 +1,12 @@
 module defer_scope;
 
 extern c {
-    fn calloc(count: usize, size: usize) -> *mut void @name("calloc");
-    fn free(ptr: *mut void) -> void @name("free");
-    fn strcmp(left: *const u8, right: *const u8) -> i32 @name("strcmp");
+    @name("calloc")
+    fn calloc(count: usize, size: usize) -> *mut void;
+    @name("free")
+    fn free(ptr: *mut void) -> void;
+    @name("strcmp")
+    fn strcmp(left: *const u8, right: *const u8) -> i32;
 }
 
 fn alloc_zeroed_bytes(count: usize, size: usize) -> *mut u8 {

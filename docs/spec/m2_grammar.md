@@ -293,8 +293,8 @@ Rules:
 
 ```ebnf
 FnDecl
-  = [ "unsafe" ] "fn" Identifier [ GenericParams ] "(" [ ParamList ] ")"
-    [ "->" Type ] [ AbiName ] [ WhereClause ] ( Block | ";" ) ;
+  = { FunctionDecorator } [ "unsafe" ] "fn" Identifier [ GenericParams ] "(" [ ParamList ] ")"
+    [ "->" Type ] [ WhereClause ] ( Block | ";" ) ;
 
 ParamList
   = Param { "," Param } [ "," ]
@@ -303,11 +303,25 @@ ParamList
 Param
   = Identifier ":" Type ;
 
+FunctionDecorator
+  = AbiName
+  | BorrowContract ;
+
 AbiName
   = "@name" "(" StringLiteral ")" ;
 
+BorrowContract
+  = "@borrow" "(" "return" "=" "[" BorrowSelector { "," BorrowSelector } "]" ")" ;
+
+BorrowSelector
+  = Identifier
+  | "self"
+  | "static"
+  | "unknown" ;
+
 ExportCFnDecl
-  = "export" "c" FnDecl ;
+  = { FunctionDecorator } "export" "c" [ "unsafe" ] "fn" Identifier [ GenericParams ] "(" [ ParamList ] ")"
+    [ "->" Type ] [ WhereClause ] Block ;
 
 ExternBlock
   = "extern" "c" "{" { ExternItem } "}" ;

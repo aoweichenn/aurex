@@ -248,13 +248,38 @@ inline constexpr std::string_view PARSER_VARIADIC_MARKER_MUST_BE_LAST =
 
 inline constexpr std::string_view PARSER_EXPECT_EXTERN_FN_TERMINATOR = "expected ';' after extern function declaration";
 
-inline constexpr std::string_view PARSER_EXPECT_ABI_NAME_ATTRIBUTE = "expected ABI attribute 'name'";
-
-inline constexpr std::string_view PARSER_EXPECT_ABI_ATTRIBUTE_START = "expected '(' after ABI attribute";
+inline constexpr std::string_view PARSER_EXPECT_ABI_ATTRIBUTE_START = "expected '(' after function decorator";
 
 inline constexpr std::string_view PARSER_EXPECT_ABI_NAME_STRING = "expected string literal in ABI name";
 
-inline constexpr std::string_view PARSER_EXPECT_ABI_ATTRIBUTE_END = "expected ')' after ABI attribute";
+inline constexpr std::string_view PARSER_EXPECT_ABI_ATTRIBUTE_END = "expected ')' after function decorator";
+
+inline constexpr std::string_view PARSER_EXPECT_FUNCTION_ATTRIBUTE = "expected function decorator 'name' or 'borrow'";
+
+inline constexpr std::string_view PARSER_FUNCTION_DECORATOR_TARGET =
+    "function decorators must be placed immediately before a function declaration";
+
+inline constexpr std::string_view PARSER_POSTFIX_FUNCTION_DECORATOR = "function decorators must appear before 'fn'";
+
+inline constexpr std::string_view PARSER_DUPLICATE_ABI_NAME_ATTRIBUTE = "duplicate ABI name decorator";
+
+inline constexpr std::string_view PARSER_EXPECT_BORROW_ATTRIBUTE_RETURN =
+    "expected 'return' in borrow contract decorator";
+
+inline constexpr std::string_view PARSER_EXPECT_BORROW_ATTRIBUTE_EQUAL = "expected '=' after borrow contract return";
+
+inline constexpr std::string_view PARSER_EXPECT_BORROW_ATTRIBUTE_SELECTOR_LIST =
+    "expected '[' before borrow contract selector list";
+
+inline constexpr std::string_view PARSER_EXPECT_BORROW_ATTRIBUTE_SELECTOR = "expected borrow contract selector name";
+
+inline constexpr std::string_view PARSER_EXPECT_BORROW_ATTRIBUTE_SELECTOR_SEPARATOR =
+    "expected ',' or ']' after borrow contract selector";
+
+inline constexpr std::string_view PARSER_EXPECT_BORROW_ATTRIBUTE_SELECTOR_LIST_END =
+    "expected ']' after borrow contract selector list";
+
+inline constexpr std::string_view PARSER_DUPLICATE_BORROW_ATTRIBUTE = "duplicate borrow contract decorator";
 
 inline constexpr std::string_view PARSER_EXPECT_BLOCK = "expected block";
 

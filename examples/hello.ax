@@ -1,7 +1,8 @@
 module hello;
 
 extern c {
-    fn puts(s: *const u8) -> i32 @name("puts");
+    @name("puts")
+    fn puts(s: *const u8) -> i32;
 }
 
 fn main() -> i32 {

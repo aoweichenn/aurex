@@ -59,7 +59,7 @@ def configure() -> None:
 def make_source(function_count: int) -> str:
     functions = [
         "module bench;\n",
-        "extern c { fn puts(s: *const u8) -> i32 @name(\"puts\"); }\n",
+        "extern c { @name(\"puts\") fn puts(s: *const u8) -> i32; }\n",
     ]
     for i in range(function_count):
         name = f"bench_fn_{i}"

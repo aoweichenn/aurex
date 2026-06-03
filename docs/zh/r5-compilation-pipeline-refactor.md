@@ -117,7 +117,7 @@ R5.3 已完成 lowering/backend/阶段契约拆分：
 
 R5.4 已完成 IR verifier / pass manager 第一层：
 
-- 新增 `include/aurex/ir/pass_manager.hpp` 和 `src/ir/pass_manager.cpp`，提供轻量
+- 新增 `include/aurex/midend/ir/pass_manager.hpp` 和 `src/ir/pass_manager.cpp`，提供轻量
   `ModulePassManager`、`ModulePass`、`PassResult`、`PreservedAnalyses`、`VerifierGate` 和
   `PassPipelineRunSummary`。
 - `run_pass_pipeline` 保持兼容旧调用方；新增 `run_pass_pipeline_with_summary` 返回 scheduled/executed pass
@@ -130,7 +130,7 @@ R5.4 已完成 IR verifier / pass manager 第一层：
 
 R5.5 已完成 IR analysis cache / invalidation 第一层：
 
-- 新增 `include/aurex/ir/analysis_manager.hpp` 和 `src/ir/analysis_manager.cpp`，提供轻量
+- 新增 `include/aurex/midend/ir/analysis_manager.hpp` 和 `src/ir/analysis_manager.cpp`，提供轻量
   `ModuleAnalysisManager`。
 - `ModuleAnalysisManager` 惰性构建并缓存 CFG、dominance 和 value-use analysis；缓存绑定当前 `Module`
   地址，切换 module 时自动清空。
@@ -199,7 +199,7 @@ R5.10 已完成 IDE tooling diagnostics 消费阶段目录第一层：
 
 R5.11 已完成阶段目录公开 API 和 metadata 投影收口：
 
-- `pipeline_stage.hpp` 从 `src/driver` 提升到 `include/aurex/driver/pipeline_stage.hpp`，后续 tooling、
+- `pipeline_stage.hpp` 从 `src/driver` 提升到 `include/aurex/infrastructure/pipeline/stage.hpp`，后续 tooling、
   profile viewer 或 LSP adapter 不需要再通过 private `src` include 读取阶段目录。
 - `PipelineStageMetadata` 成为 `PipelineStageRecord` 的轻量只读投影，统一暴露 `id`、`profile_name`、
   input/output、diagnostic ownership 和 cache/query impact。
@@ -244,7 +244,7 @@ R5.13 完成后，R5 core 收口。后续按下面顺序继续：
 
 ## 验收标准
 
-- public API 只扩大到阶段目录只读 metadata 和 profile phase 分类契约；`include/aurex/driver/compiler.hpp`
+- public API 只扩大到阶段目录只读 metadata 和 profile phase 分类契约；`include/aurex/application/driver/compiler.hpp`
   继续保持窄 facade。
 - `Compiler::run` 不再直接持有完整编译流水线细节。
 - 原有 driver、CLI、integration、IR、sema、query 测试全部通过。

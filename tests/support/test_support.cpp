@@ -1,7 +1,7 @@
-#include <aurex/base/integer.hpp>
-#include <aurex/driver/cli.hpp>
-#include <aurex/driver/cli_llvm.hpp>
-#include <aurex/driver/compiler.hpp>
+#include <aurex/application/driver/cli.hpp>
+#include <aurex/application/driver/cli_llvm.hpp>
+#include <aurex/application/driver/compiler.hpp>
+#include <aurex/infrastructure/base/integer.hpp>
 
 #include <support/test_support.hpp>
 

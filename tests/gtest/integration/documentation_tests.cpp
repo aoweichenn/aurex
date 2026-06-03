@@ -166,14 +166,16 @@ TEST_F(AurexIntegrationTest, M6ResourceSemanticsWp2ThroughWp7AreClosed)
 TEST_F(AurexIntegrationTest, M7cM7dDesignDocumentationIsCurrent)
 {
     expect_document_contains("docs/zh/README.md", "M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线");
-    expect_document_contains("docs/zh/progress.md", "阶段：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线");
+    expect_document_contains(
+        "docs/zh/progress.md", "阶段：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线");
     expect_document_contains("docs/zh/version.md", "## M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线");
-    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check");
+    expect_document_contains(
+        "docs/zh/next-steps.md", "当前最高优先级：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check");
     expect_document_contains("docs/zh/m7c-m7d-complete-borrow-raii-design.md", "`&[origin] T` / `&mut[origin] T`");
     expect_document_contains("docs/zh/m7c-m7d-complete-borrow-raii-design.md", "ClosureCaptureFact {");
     expect_document_contains("docs/zh/m7c-m7d-complete-borrow-raii-design.md", "ClosureEnvironmentFact {");
-    expect_document_contains(
-        "docs/zh/m7c-m7d-complete-borrow-raii-design.md", "`src/sema/internal/` 只允许作为 private implementation root");
+    expect_document_contains("docs/zh/m7c-m7d-complete-borrow-raii-design.md",
+        "`src/frontend/sema/internal/` 只允许作为 private implementation root");
 }
 
 } // namespace aurex::test

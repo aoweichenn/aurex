@@ -1,9 +1,9 @@
-#include <aurex/base/diagnostic.hpp>
-#include <aurex/base/integer.hpp>
-#include <aurex/base/source.hpp>
-#include <aurex/lex/lexer.hpp>
-#include <aurex/parse/parser.hpp>
-#include <aurex/sema/sema.hpp>
+#include <aurex/frontend/lex/lexer.hpp>
+#include <aurex/frontend/parse/parser.hpp>
+#include <aurex/frontend/sema/sema.hpp>
+#include <aurex/infrastructure/base/diagnostic.hpp>
+#include <aurex/infrastructure/base/integer.hpp>
+#include <aurex/infrastructure/base/source.hpp>
 
 #include <cstdint>
 #include <string>

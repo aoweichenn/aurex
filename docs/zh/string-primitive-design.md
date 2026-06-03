@@ -311,9 +311,9 @@ FFI 层应有单独类型：
 
 落地文件：
 
-- `include/aurex/base/string_literal.hpp` / `src/base/string_literal.cpp`：共享字符串字面量解码、UTF-8 validation、Unicode scalar validation。
+- `include/aurex/infrastructure/base/string_literal.hpp` / `src/base/string_literal.cpp`：共享字符串字面量解码、UTF-8 validation、Unicode scalar validation。
 - `src/lex/lexer.cpp`：lexer 在产出字符串 token 前执行 escape/UTF-8/C string NUL 诊断。
-- `src/backend/llvm/llvm_backend_util.cpp`：LLVM 后端复用共享解码逻辑，避免 lexer/backend escape 语义分裂。
+- `src/backend/llvm/emission/llvm_backend_util.cpp`：LLVM 后端复用共享解码逻辑，避免 lexer/backend escape 语义分裂。
 - `tests/gtest/frontend/lexer_tests.cpp`、`tests/gtest/backend/llvm_utility_tests.cpp`、`tests/gtest/sema/sema_whitebox_tests.cpp`、`tests/gtest/ir/lower_ast_whitebox_tests.cpp`、`tests/gtest/backend/llvm_constants_tests.cpp`、`tests/samples/positive/types/string_unicode_escape.ax`、`tests/samples/positive/types/literal_system.ax` 和 negative literal samples 覆盖 Phase 1 行为。
 
 ### Phase 2：补上 `unsafe` 边界

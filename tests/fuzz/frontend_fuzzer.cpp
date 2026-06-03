@@ -1,10 +1,10 @@
-#include <aurex/base/diagnostic.hpp>
-#include <aurex/ir/lower_ast.hpp>
-#include <aurex/ir/pass_pipeline.hpp>
-#include <aurex/lex/lexer.hpp>
-#include <aurex/parse/parser.hpp>
-#include <aurex/sema/sema.hpp>
-#include <aurex/syntax/ast_dump.hpp>
+#include <aurex/frontend/lex/lexer.hpp>
+#include <aurex/frontend/parse/parser.hpp>
+#include <aurex/frontend/sema/sema.hpp>
+#include <aurex/frontend/syntax/core/ast_dump.hpp>
+#include <aurex/infrastructure/base/diagnostic.hpp>
+#include <aurex/midend/ir/lower_ast.hpp>
+#include <aurex/midend/ir/pass_pipeline.hpp>
 
 #include <support/randomized_source.hpp>
 

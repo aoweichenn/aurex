@@ -1,5 +1,5 @@
 add_executable(aurexc
-    src/cli/main.cpp
+    src/application/cli/main.cpp
 )
 target_link_libraries(aurexc PRIVATE aurex_driver_llvm)
 

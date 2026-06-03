@@ -61,7 +61,7 @@ fn main() -> i32 {
 
 代码层面的基础事实：
 
-- lexer 已有 `integer_literal` 和 `float_literal`：`include/aurex/syntax/token.hpp`、`src/lex/lexer.cpp`。
+- lexer 已有 `integer_literal` 和 `float_literal`：`include/aurex/frontend/syntax/core/token.hpp`、`src/lex/lexer.cpp`。
 - `f32` / `f64` 类型、浮点字面量和浮点运算已经存在。浮点字面量当前支持 `1.0`、`1e3`、`1.0e-3` 这类基础形式。
 - statement `if` 和 expression `if` 都支持 `else if`。
 - 普通 block statement 和 block expression 已共用 block body 解析规则；expression context 额外要求 final expression。

@@ -9,7 +9,7 @@ PROFDATA="${COVERAGE_DIR}/aurex.profdata"
 ENTRYPOINT_PROFILE_DIR="${COVERAGE_DIR}/entrypoint-profiles"
 ENTRYPOINT_PROFDATA="${COVERAGE_DIR}/aurexc-entrypoint.profdata"
 ENTRYPOINT_SUMMARY="${COVERAGE_DIR}/entrypoint-summary.json"
-ENTRYPOINT_SOURCE="${ROOT}/src/cli/main.cpp"
+ENTRYPOINT_SOURCE="${ROOT}/src/application/cli/main.cpp"
 
 DEFAULT_COVERAGE_THRESHOLD=95
 LINE_THRESHOLD="${AUREX_COVERAGE_LINE_THRESHOLD:-${DEFAULT_COVERAGE_THRESHOLD}}"
@@ -18,7 +18,7 @@ REGION_THRESHOLD="${AUREX_COVERAGE_REGION_THRESHOLD:-${DEFAULT_COVERAGE_THRESHOL
 ENTRYPOINT_LINE_THRESHOLD="${AUREX_COVERAGE_ENTRYPOINT_LINE_THRESHOLD:-${LINE_THRESHOLD}}"
 ENTRYPOINT_FUNCTION_THRESHOLD="${AUREX_COVERAGE_ENTRYPOINT_FUNCTION_THRESHOLD:-${FUNCTION_THRESHOLD}}"
 ENTRYPOINT_REGION_THRESHOLD="${AUREX_COVERAGE_ENTRYPOINT_REGION_THRESHOLD:-${REGION_THRESHOLD}}"
-DEFAULT_FOCUSED_SOURCES="src/parse/parser_postfix.cpp:src/sema/sema_expr.cpp:src/sema/sema_types.cpp:src/sema/internal/sema_builtin_expression_analyzer.cpp:src/sema/internal/sema_control_expression_analyzer.cpp:src/sema/internal/sema_expression_analyzer.cpp:src/sema/internal/sema_generic_analyzer.cpp:src/sema/internal/sema_lookup_indexer.cpp:src/sema/internal/sema_lookup_resolver.cpp:src/sema/internal/sema_operator_expression_analyzer.cpp:src/sema/internal/sema_pattern_match_analyzer.cpp:src/sema/internal/sema_projection_aggregate_expression_analyzer.cpp:src/sema/internal/sema_type_services.cpp"
+DEFAULT_FOCUSED_SOURCES="src/frontend/parse/grammar/parser_postfix.cpp:src/frontend/sema/facade/sema_expr.cpp:src/frontend/sema/facade/sema_types.cpp:src/frontend/sema/internal/expressions/sources/sema_builtin_expression_analyzer.cpp:src/frontend/sema/internal/expressions/sources/sema_control_expression_analyzer.cpp:src/frontend/sema/internal/expressions/sources/sema_expression_analyzer.cpp:src/frontend/sema/internal/declarations/sources/sema_generic_analyzer.cpp:src/frontend/sema/internal/lookup/sources/sema_lookup_indexer.cpp:src/frontend/sema/internal/lookup/sources/sema_lookup_resolver.cpp:src/frontend/sema/internal/expressions/sources/sema_operator_expression_analyzer.cpp:src/frontend/sema/internal/patterns/sources/sema_pattern_match_analyzer.cpp:src/frontend/sema/internal/expressions/sources/sema_projection_aggregate_expression_analyzer.cpp:src/frontend/sema/internal/services/sources/sema_type_services.cpp"
 FOCUSED_SOURCES="${AUREX_COVERAGE_FOCUSED_SOURCES:-${DEFAULT_FOCUSED_SOURCES}}"
 FOCUSED_LINE_THRESHOLD="${AUREX_COVERAGE_FOCUSED_LINE_THRESHOLD:-${LINE_THRESHOLD}}"
 FOCUSED_FUNCTION_THRESHOLD="${AUREX_COVERAGE_FOCUSED_FUNCTION_THRESHOLD:-${FUNCTION_THRESHOLD}}"

@@ -5,8 +5,8 @@
 
 本文基于当前工作区代码与样例整理，重点阅读范围包括：
 
-- `include/aurex/syntax/token.hpp`
-- `include/aurex/syntax/ast.hpp`
+- `include/aurex/frontend/syntax/core/token.hpp`
+- `include/aurex/frontend/syntax/core/ast.hpp`
 - `src/lex/lexer.cpp`
 - `src/parse/parser.cpp`
 - `src/parse/parser_expr.cpp`

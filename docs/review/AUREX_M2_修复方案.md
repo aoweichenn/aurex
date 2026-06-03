@@ -554,12 +554,12 @@ if (this->checked_.types.is_pointer(object)) {
 
 #### 修复方案：Place Projection Chain
 
-**改动文件：** `include/aurex/sema/sema.hpp` + `src/sema/sema_expr.cpp` + `src/sema/sema_stmt.cpp`
+**改动文件：** `include/aurex/frontend/sema/sema.hpp` + `src/sema/sema_expr.cpp` + `src/sema/sema_stmt.cpp`
 
 **Step 1：定义 Projection 类型**
 
 ```cpp
-// include/aurex/sema/sema.hpp — 新增
+// include/aurex/frontend/sema/sema.hpp — 新增
 enum class ProjectionKind : uint8_t {
     DerefReference,      // reference auto-deref
     DerefRawPointer,     // raw pointer deref（需 unsafe）
@@ -698,14 +698,14 @@ let p: *const i32 = unsafe { ptrat[*const i32](ptraddr(&x)) };
 
 #### 修复方案：Bidirectional Type Checking + Coercion Overlay
 
-**当前落地文件：** `include/aurex/sema/checked_module.hpp`、`include/aurex/sema/sema.hpp`、`src/sema/sema_record.cpp`、`src/sema/sema_expr.cpp`、`src/sema/sema_types.cpp`、`src/sema/match.cpp`
+**当前落地文件：** `include/aurex/frontend/sema/checked_module.hpp`、`include/aurex/frontend/sema/sema.hpp`、`src/sema/sema_record.cpp`、`src/sema/sema_expr.cpp`、`src/sema/sema_types.cpp`、`src/sema/match.cpp`
 
 **已落地边界：** `expr_intrinsic_types` 保存表达式自身类型，`expr_types` 保存 contextual final type，`expr_expected_types` 作为 final cache key，`CoercionRecord` 记录 contextual integer/float literal、`null_to_pointer` 和 slice coercion。主模块和 generic instance side table 都同步支持 intrinsic/final，dense 和 sparse fallback 行为一致。IR lowering 继续读取 final `expr_types`，不会被 intrinsic overlay 影响。
 
 **Step 1：定义新类型系统**
 
 ```cpp
-// include/aurex/sema/checked_module.hpp — 新增
+// include/aurex/frontend/sema/checked_module.hpp — 新增
 
 struct ExprIntrinsicInfo {
     TypeHandle intrinsic_type;  // 表达式自身的类型，不依赖上下文
@@ -824,12 +824,12 @@ fn maybe(flag: bool, p: *const i32) -> *const i32 {
 
 #### 修复方案：Return LUB Builder
 
-**改动文件：** `src/sema/sema_stmt.cpp` + `include/aurex/sema/sema.hpp`
+**改动文件：** `src/sema/sema_stmt.cpp` + `include/aurex/frontend/sema/sema.hpp`
 
 **Step 1：定义 ReturnCandidate**
 
 ```cpp
-// include/aurex/sema/sema.hpp — 新增
+// include/aurex/frontend/sema/sema.hpp — 新增
 
 struct ReturnCandidate {
     ExprId value_expr;

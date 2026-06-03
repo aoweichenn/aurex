@@ -4,7 +4,7 @@ if(BUILD_TESTING)
     find_package(GTest REQUIRED)
 
     add_executable(aurex_base_tests
-        tests/gtest/base/base_tests.cpp
+        tests/gtest/infrastructure/base/base_tests.cpp
     )
     target_link_libraries(aurex_base_tests PRIVATE
         GTest::gtest_main
@@ -19,8 +19,8 @@ if(BUILD_TESTING)
     )
 
     add_executable(aurex_query_tests
-        tests/gtest/query/query_key_tests.cpp
-        tests/gtest/query/query_robustness_tests.cpp
+        tests/gtest/infrastructure/query/query_key_tests.cpp
+        tests/gtest/infrastructure/query/query_robustness_tests.cpp
     )
     target_link_libraries(aurex_query_tests PRIVATE
         GTest::gtest_main
@@ -35,7 +35,7 @@ if(BUILD_TESTING)
     )
 
     add_executable(aurex_lexer_tests
-        tests/gtest/frontend/lexer_tests.cpp
+        tests/gtest/frontend/lex/lexer_tests.cpp
     )
     target_link_libraries(aurex_lexer_tests PRIVATE
         GTest::gtest_main
@@ -53,14 +53,14 @@ if(BUILD_TESTING)
     )
 
     add_executable(aurex_frontend_tests
-        tests/gtest/base/base_tests.cpp
-        tests/gtest/frontend/ast_dump_tests.cpp
-        tests/gtest/frontend/lexer_tests.cpp
-        tests/gtest/frontend/lossless_syntax_tests.cpp
-        tests/gtest/frontend/parser_tests.cpp
-        tests/gtest/sema/sema_whitebox_tests.cpp
-        tests/gtest/tooling/ide_tooling_tests.cpp
-        tests/gtest/tooling/session_lsp_tooling_tests.cpp
+        tests/gtest/infrastructure/base/base_tests.cpp
+        tests/gtest/frontend/syntax/ast_dump_tests.cpp
+        tests/gtest/frontend/lex/lexer_tests.cpp
+        tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
+        tests/gtest/frontend/parse/parser_tests.cpp
+        tests/gtest/frontend/sema/sema_whitebox_tests.cpp
+        tests/gtest/application/tooling/ide_tooling_tests.cpp
+        tests/gtest/application/tooling/session_lsp_tooling_tests.cpp
     )
     target_link_libraries(aurex_frontend_tests PRIVATE
         GTest::gtest_main
@@ -86,49 +86,49 @@ if(BUILD_TESTING)
 
         add_executable(aurex_tests
             tests/support/test_support.cpp
-            tests/gtest/backend/llvm_constants_tests.cpp
-            tests/gtest/backend/llvm_runtime_tests.cpp
-            tests/gtest/backend/llvm_types_whitebox_tests.cpp
-            tests/gtest/backend/llvm_utility_tests.cpp
-            tests/gtest/base/base_tests.cpp
-            tests/gtest/driver/cli_argument_tests.cpp
-            tests/gtest/driver/cli_driver_tests.cpp
-            tests/gtest/driver/install_and_import_tests.cpp
-            tests/gtest/driver/native_toolchain_tests.cpp
-            tests/gtest/driver/project_model_tests.cpp
-            tests/gtest/frontend/ast_dump_tests.cpp
-            tests/gtest/frontend/randomized_frontend_tests.cpp
-            tests/gtest/frontend/lexer_tests.cpp
-            tests/gtest/frontend/lossless_syntax_tests.cpp
-            tests/gtest/frontend/parser_tests.cpp
+            tests/gtest/backend/llvm/llvm_constants_tests.cpp
+            tests/gtest/backend/llvm/llvm_runtime_tests.cpp
+            tests/gtest/backend/llvm/llvm_types_whitebox_tests.cpp
+            tests/gtest/backend/llvm/llvm_utility_tests.cpp
+            tests/gtest/infrastructure/base/base_tests.cpp
+            tests/gtest/application/driver/cli_argument_tests.cpp
+            tests/gtest/application/driver/cli_driver_tests.cpp
+            tests/gtest/application/driver/install_and_import_tests.cpp
+            tests/gtest/application/driver/native_toolchain_tests.cpp
+            tests/gtest/application/driver/project_model_tests.cpp
+            tests/gtest/frontend/syntax/ast_dump_tests.cpp
+            tests/gtest/frontend/parse/randomized_frontend_tests.cpp
+            tests/gtest/frontend/lex/lexer_tests.cpp
+            tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
+            tests/gtest/frontend/parse/parser_tests.cpp
             tests/gtest/integration/documentation_tests.cpp
             tests/gtest/integration/examples_tests.cpp
             tests/gtest/integration/native_execution_tests.cpp
             tests/gtest/integration/randomized_integration_tests.cpp
             tests/gtest/integration/regression_tests.cpp
             tests/gtest/integration/sample_suite_tests.cpp
-            tests/gtest/ir/analysis_manager_tests.cpp
-            tests/gtest/ir/ir_dump_tests.cpp
-            tests/gtest/ir/ir_fingerprint_tests.cpp
-            tests/gtest/ir/ir_verifier_edge_tests.cpp
-            tests/gtest/ir/ir_verifier_structural_tests.cpp
-            tests/gtest/ir/lower_ast_whitebox_tests.cpp
-            tests/gtest/ir/pass_pipeline_tests.cpp
-            tests/gtest/ir/type_table_tests.cpp
-            tests/gtest/query/query_key_tests.cpp
-            tests/gtest/query/query_robustness_tests.cpp
-            tests/gtest/sema/block_expression_tests.cpp
-            tests/gtest/sema/error_handling_tests.cpp
-            tests/gtest/sema/functions_tests.cpp
-            tests/gtest/sema/if_expression_tests.cpp
-            tests/gtest/sema/inference_tests.cpp
-            tests/gtest/sema/modules_visibility_tests.cpp
-            tests/gtest/sema/pattern_matching_tests.cpp
-            tests/gtest/sema/sema_whitebox_tests.cpp
-            tests/gtest/sema/trait_tests.cpp
-            tests/gtest/sema/type_alias_tests.cpp
-            tests/gtest/tooling/ide_tooling_tests.cpp
-            tests/gtest/tooling/session_lsp_tooling_tests.cpp
+            tests/gtest/midend/ir/analysis_manager_tests.cpp
+            tests/gtest/midend/ir/ir_dump_tests.cpp
+            tests/gtest/midend/ir/ir_fingerprint_tests.cpp
+            tests/gtest/midend/ir/ir_verifier_edge_tests.cpp
+            tests/gtest/midend/ir/ir_verifier_structural_tests.cpp
+            tests/gtest/midend/ir/lower_ast_whitebox_tests.cpp
+            tests/gtest/midend/ir/pass_pipeline_tests.cpp
+            tests/gtest/midend/ir/type_table_tests.cpp
+            tests/gtest/infrastructure/query/query_key_tests.cpp
+            tests/gtest/infrastructure/query/query_robustness_tests.cpp
+            tests/gtest/frontend/sema/block_expression_tests.cpp
+            tests/gtest/frontend/sema/error_handling_tests.cpp
+            tests/gtest/frontend/sema/functions_tests.cpp
+            tests/gtest/frontend/sema/if_expression_tests.cpp
+            tests/gtest/frontend/sema/inference_tests.cpp
+            tests/gtest/frontend/sema/modules_visibility_tests.cpp
+            tests/gtest/frontend/sema/pattern_matching_tests.cpp
+            tests/gtest/frontend/sema/sema_whitebox_tests.cpp
+            tests/gtest/frontend/sema/trait_tests.cpp
+            tests/gtest/frontend/sema/type_alias_tests.cpp
+            tests/gtest/application/tooling/ide_tooling_tests.cpp
+            tests/gtest/application/tooling/session_lsp_tooling_tests.cpp
         )
         target_link_libraries(aurex_tests PRIVATE
             GTest::gtest_main

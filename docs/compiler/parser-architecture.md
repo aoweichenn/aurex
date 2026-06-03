@@ -29,7 +29,7 @@ the narrowest parser part that owns the relevant grammar surface.
 | `PatternParser` | Match patterns. |
 
 Parser part declarations are split by responsibility under
-`include/aurex/parse/*_part.hpp`. Source files should include the narrowest
+`include/aurex/frontend/parse/*_part.hpp`. Source files should include the narrowest
 part header that declares the class they implement, plus any concrete parser
 part they instantiate directly. `parser_parts.hpp` is only a compatibility
 umbrella for callers that intentionally need every parser part declaration; do

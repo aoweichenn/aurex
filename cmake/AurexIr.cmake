@@ -1,16 +1,16 @@
 add_library(aurex_ir
-    src/ir/analysis_manager.cpp
-    src/ir/enum_layout.cpp
-    src/ir/ir.cpp
-    src/ir/ir_dump.cpp
-    src/ir/ir_fingerprint.cpp
-    src/ir/lower_ast.cpp
-    src/ir/lower_ast_expr.cpp
-    src/ir/lower_ast_match.cpp
-    src/ir/lower_ast_stmt.cpp
-    src/ir/pass_manager.cpp
-    src/ir/pass_pipeline.cpp
-    src/ir/verify.cpp
+    src/midend/ir/core/analysis_manager.cpp
+    src/midend/ir/core/enum_layout.cpp
+    src/midend/ir/core/ir.cpp
+    src/midend/ir/core/ir_dump.cpp
+    src/midend/ir/core/ir_fingerprint.cpp
+    src/midend/ir/lowering/sources/lower_ast.cpp
+    src/midend/ir/lowering/sources/lower_ast_expr.cpp
+    src/midend/ir/lowering/sources/lower_ast_match.cpp
+    src/midend/ir/lowering/sources/lower_ast_stmt.cpp
+    src/midend/ir/passes/pass_manager.cpp
+    src/midend/ir/passes/pass_pipeline.cpp
+    src/midend/ir/verify/verify.cpp
 )
 target_link_libraries(aurex_ir PUBLIC aurex_base aurex_syntax aurex_sema)
 target_include_directories(aurex_ir

@@ -834,7 +834,7 @@ remains a deeper follow-up optimization, not a remaining lossless syntax
 baseline gap.
 The IDE-native engineering entry point is now complete for the current
 acceptance boundary through the new `aurex_tooling` target and
-`include/aurex/tooling/ide.hpp`. `IdeSnapshot` is built for in-memory buffers and
+`include/aurex/application/tooling/ide.hpp`. `IdeSnapshot` is built for in-memory buffers and
 produces the source manager, lossless tree, AST, checked module, structured
 diagnostics, and file/lex/parse/diagnostics query records plus dependency
 edges in one pass. Offset token queries, hover, top-level definition lookup,

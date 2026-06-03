@@ -105,7 +105,7 @@ perl -e 'alarm shift @ARGV; exec @ARGV' 3 build/bin/aurexc --emit=llvm-ir <case.
 
 - `src/sema/sema_expr.cpp`：整数字面量默认直接定为 `i32`。
 - `src/ir/lower_ast_expr.cpp`：literal lowering 未充分使用 expected type。
-- `src/backend/llvm/llvm_backend_value.cpp`：解析失败或溢出没有变成诊断。
+- `src/backend/llvm/emission/llvm_backend_value.cpp`：解析失败或溢出没有变成诊断。
 
 建议：
 
@@ -426,7 +426,7 @@ perl -e 'alarm shift @ARGV; exec @ARGV' 3 build/bin/aurexc --emit=llvm-ir <case.
 根因位置：
 
 - `src/ir/verify.cpp`：当前 verifier 主要检查函数符号重复。
-- `src/backend/llvm/llvm_backend_module.cpp`：LLVM 声明阶段没有强制源语言 ABI 唯一性。
+- `src/backend/llvm/emission/llvm_backend_module.cpp`：LLVM 声明阶段没有强制源语言 ABI 唯一性。
 
 建议：
 
@@ -531,7 +531,7 @@ perl -e 'alarm shift @ARGV; exec @ARGV' 3 build/bin/aurexc --emit=llvm-ir <case.
 根因位置：
 
 - `src/sema/sema_expr.cpp`：一元 `~` 没有限制 operand 类型为整数。
-- `src/backend/llvm/llvm_backend_value.cpp`：后端按 bitwise op 生成 LLVM 指令后失败。
+- `src/backend/llvm/emission/llvm_backend_value.cpp`：后端按 bitwise op 生成 LLVM 指令后失败。
 
 建议：
 
@@ -582,7 +582,7 @@ perl -e 'alarm shift @ARGV; exec @ARGV' 3 build/bin/aurexc --emit=llvm-ir <case.
 根因位置：
 
 - `src/sema/sema_types.cpp`：array ABI size 计算缺少完整溢出检查。
-- `src/backend/llvm/llvm_backend_value.cpp`：`size_of` lowering 信任了错误 layout size。
+- `src/backend/llvm/emission/llvm_backend_value.cpp`：`size_of` lowering 信任了错误 layout size。
 
 建议：
 
@@ -747,7 +747,7 @@ perl -e 'alarm shift @ARGV; exec @ARGV' 3 build/bin/aurexc --emit=llvm-ir <case.
 根因位置：
 
 - `src/sema/sema_types.cpp`：bcast 检查只看 size。
-- `src/backend/llvm/llvm_backend_value.cpp`：lowering 对不同 LLVM value category 支持不完整。
+- `src/backend/llvm/emission/llvm_backend_value.cpp`：lowering 对不同 LLVM value category 支持不完整。
 
 建议：
 
@@ -773,7 +773,7 @@ perl -e 'alarm shift @ARGV; exec @ARGV' 3 build/bin/aurexc --emit=llvm-ir <case.
 根因位置：
 
 - `src/sema/sema_types.cpp`：storage legality 检查没有递归覆盖数组元素。
-- `src/backend/llvm/llvm_backend_types.cpp`：LLVM 没有合法 `[N x void]` 类型。
+- `src/backend/llvm/emission/llvm_backend_types.cpp`：LLVM 没有合法 `[N x void]` 类型。
 
 建议：
 
@@ -805,7 +805,7 @@ perl -e 'alarm shift @ARGV; exec @ARGV' 3 build/bin/aurexc --emit=llvm-ir <case.
 
 - `src/sema/sema_decls.cpp`：结构体字段声明检查没有做递归布局图检测。
 - `src/sema/sema_types.cpp`：ABI size 递归没有 cycle guard。
-- `src/backend/llvm/llvm_backend_types.cpp`：LLVM type 构造对递归 value type 无法闭合。
+- `src/backend/llvm/emission/llvm_backend_types.cpp`：LLVM type 构造对递归 value type 无法闭合。
 
 建议：
 
@@ -1181,7 +1181,7 @@ perl -e 'alarm shift @ARGV; exec @ARGV' 3 build/bin/aurexc --emit=llvm-ir <case.
 
 - `src/sema/sema_decls.cpp`：`is_const_evaluable_expr` 允许 `!`、一元 `-`、`~` 的常量操作数。
 - `src/ir/verify.cpp`：常量 verifier 递归校验 `ValueKind::unary`，并明确拒绝 address/deref 这类运行期一元操作。
-- `src/backend/llvm/llvm_backend_value.cpp`：新增 `emit_constant_unary`，对 bool/integer not、integer negate、float negate 生成 LLVM constant。
+- `src/backend/llvm/emission/llvm_backend_value.cpp`：新增 `emit_constant_unary`，对 bool/integer not、integer negate、float negate 生成 LLVM constant。
 - `src/backend/llvm/llvm_backend_internal.hpp`：声明新增 helper。
 
 回归：
@@ -1433,7 +1433,7 @@ LLVM integer `sdiv/udiv/srem/urem` 对除 0/模 0 是 poison；signed `INT_MIN /
 
 修复：
 
-- `src/backend/llvm/llvm_backend_value.cpp`：
+- `src/backend/llvm/emission/llvm_backend_value.cpp`：
   - 运行时 numeric cast 到 bool 改为和 0 比较。
   - integer 使用 `icmp ne x, 0`。
   - float 使用 `fcmp une x, 0.0`，NaN 按非零处理。
@@ -1457,7 +1457,7 @@ LLVM integer `sdiv/udiv/srem/urem` 对除 0/模 0 是 poison；signed `INT_MIN /
 
 修复：
 
-- `src/backend/llvm/llvm_backend_value.cpp`：float `!=` 从 `CreateFCmpONE` 改为 `CreateFCmpUNE`。
+- `src/backend/llvm/emission/llvm_backend_value.cpp`：float `!=` 从 `CreateFCmpONE` 改为 `CreateFCmpUNE`。
 - float `==` 保持 ordered-equal，`NaN == NaN` 仍为 false。
 
 回归：
@@ -1646,7 +1646,7 @@ import b as beta;
   - 常量 initializer 允许 `ValueKind::binary`。
   - 复用 binary verifier 校验 operand/result 合法性。
   - 递归要求左右操作数也都是 compile-time constant。
-- `src/backend/llvm/llvm_backend_value.cpp`：
+- `src/backend/llvm/emission/llvm_backend_value.cpp`：
   - 新增 `emit_constant_binary`。
   - 使用 LLVM constant fold 生成 integer/float arithmetic、comparison、bitwise constant。
 - `src/backend/llvm/llvm_backend_internal.hpp`：声明新增 helper。

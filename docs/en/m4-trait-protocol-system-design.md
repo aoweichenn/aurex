@@ -52,15 +52,15 @@ M3.9 fixed the architecture that later language work must reuse:
 
 The current code already reserves part of the trait identity model:
 
-- `include/aurex/query/query_key.hpp` contains `DefNamespace::trait_`,
+- `include/aurex/infrastructure/query/query_key.hpp` contains `DefNamespace::trait_`,
   `DefNamespace::impl_`, `DefKind::trait_`, `DefKind::trait_method`,
   `DefKind::associated_type`, `DefKind::associated_const`,
   `MemberKind::trait_method`, `MemberKind::associated_type`,
   `MemberKind::associated_const`, and `BodySlotKind::trait_default_method`.
-- `include/aurex/query/canonical_type_key.hpp` contains
+- `include/aurex/infrastructure/query/canonical_type_key.hpp` contains
   `CanonicalTypeKind::associated_type_projection` and
   `CanonicalTypeKind::trait_object`.
-- `include/aurex/query/generic_instance_key.hpp` has `ParamEnvKey`, which is
+- `include/aurex/infrastructure/query/generic_instance_key.hpp` has `ParamEnvKey`, which is
   the right shape for generic instances checked under predicate environments.
 - Syntax does not yet have `kw_trait`; `ItemKind` has no `trait_decl`;
   `ImplBlockItemPayload` only describes inherent `impl Type { ... }`, not

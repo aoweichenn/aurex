@@ -1,4 +1,4 @@
-#include <aurex/driver/invocation.hpp>
+#include <aurex/application/driver/invocation.hpp>
 
 #include <support/randomized_source.hpp>
 #include <support/test_support.hpp>

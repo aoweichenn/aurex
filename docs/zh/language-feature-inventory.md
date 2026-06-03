@@ -4,7 +4,7 @@
 阶段：M7a CFG-sensitive borrow facts、summary、query/tooling 与 diagnostics baseline
 状态：当前实现清单、M7a 完成面与后续非目标
 
-本文记录当前仓库真实支持的 Aurex 语言表面、已具备的高级能力、未完成能力和 M2 下一步基础语法优先级。本文以 `include/aurex/syntax/token.hpp`、`include/aurex/syntax/ast.hpp`、`src/parse/*`、`src/sema/*`、`tests/samples/**` 为准。
+本文记录当前仓库真实支持的 Aurex 语言表面、已具备的高级能力、未完成能力和 M2 下一步基础语法优先级。本文以 `include/aurex/frontend/syntax/core/token.hpp`、`include/aurex/frontend/syntax/core/ast.hpp`、`src/parse/*`、`src/sema/*`、`tests/samples/**` 为准。
 
 M2 当前原则：
 

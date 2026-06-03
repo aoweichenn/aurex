@@ -1,5 +1,5 @@
 add_library(aurex_pipeline_stage
-    src/driver/pipeline_stage.cpp
+    src/infrastructure/pipeline/stage.cpp
 )
 target_link_libraries(aurex_pipeline_stage PUBLIC
     aurex_base

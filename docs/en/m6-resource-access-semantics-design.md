@@ -41,12 +41,12 @@ foundations for a dedicated resource design:
 
 | Foundation | Current State | Code Entry |
 | --- | --- | --- |
-| Reference and value-type basis | `TypeKind` distinguishes `pointer`, `reference`, `slice`, `str`, aggregates, and generic parameters | `include/aurex/sema/type.hpp` |
+| Reference and value-type basis | `TypeKind` distinguishes `pointer`, `reference`, `slice`, `str`, aggregates, and generic parameters | `include/aurex/frontend/sema/type.hpp` |
 | Safe/raw boundary | `&T` / `&mut T` are separate from raw pointers; `&mut` requires a writable place; raw dereference requires `unsafe` | `src/sema` |
 | Explicit lexical cleanup | `defer` covers normal exit, `return`, `break`, `continue`, and `?` failure paths | `src/ir/lower_ast_stmt.cpp` |
 | Generic capabilities | `Sized`, `Eq`, `Ord`, and `Hash` exist; `Copy` / `Drop` are recognized and rejected explicitly | `src/sema/internal/sema_generic_analyzer.cpp` |
 | Static traits | Nominal traits, explicit impls, associated types, defaults, and static direct calls are complete | M4 / M5 |
-| Stable query identity | `BodySlotKind::destructor_drop`, `GenericParamKind::resource`, and `lifetime` are reserved | `include/aurex/query/query_key.hpp` |
+| Stable query identity | `BodySlotKind::destructor_drop`, `GenericParamKind::resource`, and `lifetime` are reserved | `include/aurex/infrastructure/query/query_key.hpp` |
 | Real resource pressure | The regex library uses many `defer destroy(&mut value)` and manual `free_typed` calls | `examples/libs/regex` |
 
 Current `defer` is not RAII. It cannot identify moved values, express drop

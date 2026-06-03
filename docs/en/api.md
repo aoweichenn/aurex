@@ -134,7 +134,7 @@ pattern/safety/unsupported/capability/internal diagnostics belong to
 The C++ stage directory API is intentionally read-only:
 
 ```cpp
-#include <aurex/driver/pipeline_stage.hpp>
+#include <aurex/infrastructure/pipeline/stage.hpp>
 ```
 
 `PipelineStageRecord` remains the canonical directory row. `PipelineStageMetadata`
@@ -176,8 +176,8 @@ profiler->record(driver::PipelineProfileSubeventId::incremental_cache_query_plan
 Headers:
 
 ```cpp
-#include <aurex/syntax/lossless.hpp>
-#include <aurex/parse/lossless_parse.hpp>
+#include <aurex/frontend/syntax/core/lossless.hpp>
+#include <aurex/frontend/parse/lossless_parse.hpp>
 ```
 
 Core API:
@@ -206,7 +206,7 @@ two immutable lossless trees.
 Header:
 
 ```cpp
-#include <aurex/tooling/ide.hpp>
+#include <aurex/application/tooling/ide.hpp>
 ```
 
 Core API:
@@ -252,9 +252,9 @@ counters together.
 
 Headers:
 
-- `include/aurex/ir/pass_pipeline.hpp`
-- `include/aurex/ir/pass_manager.hpp`
-- `include/aurex/ir/analysis_manager.hpp`
+- `include/aurex/midend/ir/pass_pipeline.hpp`
+- `include/aurex/midend/ir/pass_manager.hpp`
+- `include/aurex/midend/ir/analysis_manager.hpp`
 
 Core API:
 

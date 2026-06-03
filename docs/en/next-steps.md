@@ -237,7 +237,7 @@ is now a lightweight `aurex_pipeline_stage` target shared by driver and
 `aurex_tooling`, and `IdeDiagnostic.owner_stages` carries stage
 id/profile/input/output/diagnostic/cache-query metadata for later LSP/IDE views.
 R5.11 made the stage directory a public read-only API:
-`pipeline_stage.hpp` now lives at `include/aurex/driver/pipeline_stage.hpp`,
+`pipeline_stage.hpp` now lives at `include/aurex/infrastructure/pipeline/stage.hpp`,
 `PipelineStageMetadata` is the shared metadata projection consumed by the
 profile writer and tooling diagnostics, and `aurex_tooling` no longer depends on
 the private `src` include root. The profile JSON and diagnostics JSON protocols

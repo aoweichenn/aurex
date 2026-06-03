@@ -241,7 +241,7 @@ R5.10 已完成 IDE tooling diagnostics 消费阶段目录第一层：`pipeline_
 `IdeDiagnostic.owner_stages` 现在直接携带阶段 id/profile/input/output/diagnostic/cache-query metadata，
 供后续 LSP/IDE 视图使用。
 R5.11 已完成阶段目录公开 API 和 metadata 投影收口：`pipeline_stage.hpp` 已进入
-`include/aurex/driver/pipeline_stage.hpp`，`PipelineStageMetadata` 成为 profile writer、tooling
+`include/aurex/infrastructure/pipeline/stage.hpp`，`PipelineStageMetadata` 成为 profile writer、tooling
 diagnostics 和后续 profile viewer/LSP adapter 可复用的只读阶段 metadata 形状；`aurex_tooling`
 不再依赖 private `src` include root，profile JSON 和 diagnostics JSON 协议保持不变。
 R5.12 已完成 profile 记录入口枚举化：`CompilationProfiler::record` 和 `ScopedCompilationPhase`

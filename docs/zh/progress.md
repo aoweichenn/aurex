@@ -621,7 +621,7 @@ AST range lookup helpers 留在同一个 range reader 聚合点。
 和嵌套 generic continuation 的分类规则；`parser_postfix.cpp` 仍保留参数解析、错误恢复和 AST
 节点构造，不把 index/slice/generic apply 继续拆成低聚合度小文件。
 2026-05-22 sema 开始按“外部不散，内部不耦合”的路线做第一阶段 facade/core 收口：
-`include/aurex/sema/sema.hpp` 已从约 800 行瘦到 39 行，只保留 `SemanticOptions`
+`include/aurex/frontend/sema/sema.hpp` 已从约 800 行瘦到 39 行，只保留 `SemanticOptions`
 和 `SemanticAnalyzer` 稳定入口；旧 analyzer 的内部类型、lookup cache、泛型模板信息、
 表达式 view、pattern/statement helper 和 analyzer 状态先移动到 `src/sema/internal/sema_core.hpp`，
 由 `src/sema/sema_facade.cpp` 通过私有 `Impl` 持有。生产调用方继续只依赖 public facade，
@@ -689,7 +689,7 @@ query-key 侧已经确保 retain-trivia 的 `LexFileKey` fingerprint 使用 triv
 parse result fingerprint 混入 CST 结构，`lossless_tooling` 的 parse provider 依赖对应 retain-trivia
 lex query。完整局部重解析仍属于后续更深优化，不再是 lossless syntax 基线缺口。
 IDE-native 工程入口已经完成当前验收：新增 `aurex_tooling` 目标和
-`include/aurex/tooling/ide.hpp`。`IdeSnapshot` 面向内存 buffer，一次构建统一产出
+`include/aurex/application/tooling/ide.hpp`。`IdeSnapshot` 面向内存 buffer，一次构建统一产出
 source manager、lossless tree、AST、checked module、结构化 diagnostics，以及
 file/lex/parse/diagnostics query records 和 dependency edges；offset token、hover、顶层
 definition、同名 identifier references、checked-backed 的全局查找、AST fallback 的局部参数 /

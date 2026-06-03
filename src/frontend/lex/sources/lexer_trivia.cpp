@@ -1,0 +1,81 @@
+#include <aurex/frontend/lex/lexer.hpp>
+
+#include <string_view>
+
+#include <frontend/lex/private/char_class.hpp>
+#include <frontend/lex/private/lexeme.hpp>
+
+namespace aurex::lex {
+
+void Lexer::skip_trivia()
+{
+    while (!this->is_at_end()) {
+        const std::string_view remaining = this->cursor_.remaining_text();
+        base::usize trivia_width = 0;
+        while (trivia_width < remaining.size() && is_trivia_space(remaining[trivia_width])) {
+            ++trivia_width;
+        }
+        const base::usize trivia_begin = this->cursor_.offset();
+        this->advance_bytes(trivia_width);
+        if (this->options_.emit_trivia_tokens && trivia_width > 0) {
+            this->add_nonempty_token(syntax::TokenKind::whitespace, trivia_begin, this->cursor_.offset());
+            continue;
+        }
+        if (this->peek() == LEXEME_SLASH) {
+            const char next = this->peek_next();
+            if (next == LEXEME_SLASH) {
+                const base::usize comment_begin = this->cursor_.offset();
+                this->scan_line_comment();
+                if (this->options_.emit_trivia_tokens) {
+                    this->add_nonempty_token(syntax::TokenKind::line_comment, comment_begin, this->cursor_.offset());
+                }
+                continue;
+            }
+            if (next == LEXEME_STAR) {
+                const base::usize comment_begin = this->cursor_.offset();
+                this->scan_block_comment();
+                if (this->options_.emit_trivia_tokens && comment_begin < this->cursor_.offset()) {
+                    this->add_nonempty_token(syntax::TokenKind::block_comment, comment_begin, this->cursor_.offset());
+                }
+                continue;
+            }
+        }
+        break;
+    }
+}
+
+void Lexer::scan_line_comment()
+{
+    const std::string_view remaining = this->cursor_.remaining_text();
+    const base::usize line_end = remaining.find(LEXEME_LINE_FEED);
+    if (line_end == std::string_view::npos) {
+        this->advance_bytes(remaining.size());
+        return;
+    }
+    this->advance_bytes(line_end);
+}
+
+void Lexer::scan_block_comment()
+{
+    const base::usize begin = this->cursor_.offset();
+    base::usize depth = 0;
+    while (!this->is_at_end()) {
+        if (this->peek() == LEXEME_SLASH && this->peek_next() == LEXEME_STAR) {
+            this->advance_bytes(LEXEME_BLOCK_COMMENT_PREFIX.size());
+            ++depth;
+            continue;
+        }
+        if (this->peek() == LEXEME_STAR && this->peek_next() == LEXEME_SLASH) {
+            this->advance_bytes(LEXEME_BLOCK_COMMENT_SUFFIX.size());
+            --depth;
+            if (depth == 0) {
+                return;
+            }
+            continue;
+        }
+        this->advance_bytes(LEXEME_SINGLE_BYTE_WIDTH);
+    }
+    this->report_current(begin, LEXEME_UNTERMINATED_BLOCK_COMMENT_MESSAGE);
+}
+
+} // namespace aurex::lex

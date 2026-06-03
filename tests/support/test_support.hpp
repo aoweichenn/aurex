@@ -1,6 +1,6 @@
 #pragma once
 
-#include <aurex/driver/invocation.hpp>
+#include <aurex/application/driver/invocation.hpp>
 
 #include <support/frontend_test_support.hpp>
 

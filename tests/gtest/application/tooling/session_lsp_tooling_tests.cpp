@@ -1,0 +1,2812 @@
+#include <aurex/application/tooling/lsp.hpp>
+#include <aurex/application/tooling/lsp_stdio.hpp>
+#include <aurex/application/tooling/session.hpp>
+#include <aurex/infrastructure/query/query_key.hpp>
+
+#include <algorithm>
+#include <array>
+#include <charconv>
+#include <memory>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include <gtest/gtest.h>
+
+namespace aurex::test {
+namespace {
+
+constexpr std::string_view TOOLING_SESSION_SOURCE = "module tooling.session;\n"
+                                                    "fn add(a: i32, b: i32) -> i32 {\n"
+                                                    "  return a + b;\n"
+                                                    "}\n"
+                                                    "fn main() -> i32 {\n"
+                                                    "  let value = add(1, 2);\n"
+                                                    "  return value;\n"
+                                                    "}\n";
+
+constexpr std::string_view TOOLING_SESSION_INVALID_SOURCE = "module tooling.session;\n"
+                                                            "fn main() -> i32 {\n"
+                                                            "  let value: i32 = true;\n"
+                                                            "  return value;\n"
+                                                            "}\n";
+
+constexpr std::string_view TOOLING_SESSION_NO_MODULE_SOURCE = "module ;\n"
+                                                              "fn main() -> i32 {\n"
+                                                              "  return 0;\n"
+                                                              "}\n";
+
+constexpr std::string_view TOOLING_SESSION_SUGGESTION_SOURCE = "module tooling.suggestion;\n"
+                                                               "fn main() -> i32 {\n"
+                                                               "  let count: i32 = 1;\n"
+                                                               "  return coutn;\n"
+                                                               "}\n";
+
+constexpr std::string_view TOOLING_SESSION_MULTI_SUGGESTION_SOURCE = "module tooling.suggestion;\n"
+                                                                     "fn main() -> i32 {\n"
+                                                                     "  let count: i32 = 1;\n"
+                                                                     "  let total: i32 = 2;\n"
+                                                                     "  return coutn + totla;\n"
+                                                                     "}\n";
+
+constexpr std::string_view TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE = "module tooling.fallback;\n"
+                                                                    "const answer: i32 = 1;\n"
+                                                                    "type Count = i32;\n"
+                                                                    "opaque struct Handle;\n"
+                                                                    "struct Point { x: i32; }\n"
+                                                                    "enum Mode { fast }\n"
+                                                                    "fn main() -> i32 {\n"
+                                                                    "  let value: i32 = true;\n"
+                                                                    "  return value;\n"
+                                                                    "}\n";
+
+constexpr std::string_view TOOLING_LSP_SYMBOL_SOURCE = "module tooling.symbols;\n"
+                                                       "type Count = i32;\n"
+                                                       "enum Mode { fast }\n"
+                                                       "struct Box[T] { value: T; }\n"
+                                                       "fn main() -> i32 { return 0; }\n";
+
+constexpr std::string_view TOOLING_LSP_METHOD_SYMBOL_SOURCE = "module tooling.methods;\n"
+                                                              "struct Counter { value: i32; }\n"
+                                                              "impl Counter {\n"
+                                                              "  fn read(self: &Counter) -> i32 {\n"
+                                                              "    return self.value;\n"
+                                                              "  }\n"
+                                                              "}\n"
+                                                              "fn main() -> i32 {\n"
+                                                              "  let counter = Counter { value: 1 };\n"
+                                                              "  return counter.read();\n"
+                                                              "}\n";
+
+constexpr std::string_view TOOLING_SESSION_TRAIT_SOURCE =
+    "module tooling.traits;\n"
+    "trait Source {\n"
+    "  type Item;\n"
+    "  fn get(self: &Self) -> Self.Item;\n"
+    "}\n"
+    "struct Bytes { value: i32; }\n"
+    "impl Source for Bytes {\n"
+    "  type Item = i32;\n"
+    "  fn get(self: &Bytes) -> i32 { return self.value; }\n"
+    "}\n"
+    "fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {\n"
+    "  return value.get();\n"
+    "}\n"
+    "fn main() -> i32 {\n"
+    "  let bytes = Bytes { value: 7 };\n"
+    "  return read_i32[Bytes](&bytes) - 7;\n"
+    "}\n";
+
+constexpr std::string_view TOOLING_WORKSPACE_LEFT_SOURCE = "module tooling.left;\n"
+                                                           "fn left() -> i32 {\n"
+                                                           "  return 1;\n"
+                                                           "}\n";
+
+constexpr std::string_view TOOLING_WORKSPACE_RIGHT_SOURCE = "module tooling.right;\n"
+                                                            "fn right() -> i32 {\n"
+                                                            "  return 2;\n"
+                                                            "}\n";
+
+constexpr std::string_view TOOLING_WORKSPACE_SYMBOL_SOURCE = "module tooling.index;\n"
+                                                             "enum Mode { fast }\n"
+                                                             "struct Box[T] { value: T; }\n"
+                                                             "fn read(box: Box[i32]) -> i32 {\n"
+                                                             "  return box.value;\n"
+                                                             "}\n";
+
+constexpr std::string_view TOOLING_SESSION_URI = "file:///workspace/tooling_session.ax";
+constexpr std::string_view TOOLING_LSP_URI = "file:///workspace/lsp.ax";
+constexpr std::string_view TOOLING_LSP_SYMBOL_URI = "file:///workspace/lsp_symbols.ax";
+constexpr std::string_view TOOLING_LSP_FALLBACK_SYMBOL_URI = "file:///workspace/lsp_fallback_symbols.ax";
+constexpr std::string_view TOOLING_LSP_METHOD_SYMBOL_URI = "file:///workspace/lsp_method_symbols.ax";
+constexpr std::string_view TOOLING_SESSION_TRAIT_URI = "file:///workspace/tooling_traits.ax";
+constexpr std::string_view TOOLING_LSP_ESCAPE_URI = "file:///workspace/lsp_escape.ax";
+constexpr std::string_view TOOLING_LSP_UTF16_URI = "file:///workspace/lsp_utf16.ax";
+constexpr std::string_view TOOLING_LSP_INVALID_UTF8_URI = "file:///workspace/lsp_invalid_utf8.ax";
+constexpr std::string_view TOOLING_LSP_NO_MODULE_URI = "file:///workspace/lsp_no_module.ax";
+constexpr std::string_view TOOLING_WORKSPACE_LEFT_URI = "file:///workspace/workspace_left.ax";
+constexpr std::string_view TOOLING_WORKSPACE_RIGHT_URI = "file:///workspace/workspace_right.ax";
+constexpr std::string_view TOOLING_WORKSPACE_SYMBOL_URI = "file:///workspace/workspace_symbols.ax";
+constexpr std::string_view TOOLING_SESSION_PACKAGE = "tooling-session-test";
+constexpr std::string_view TOOLING_LSP_PACKAGE = "tooling-lsp-test";
+constexpr std::string_view TOOLING_WORKSPACE_PACKAGE = "tooling-workspace-test";
+constexpr std::string_view TOOLING_MALFORMED_FACT_NAME = "missing-decision";
+constexpr std::string_view TOOLING_RETURN_VALUE_TEXT = "return value";
+constexpr base::i64 TOOLING_VERSION_ONE = 1;
+constexpr base::i64 TOOLING_VERSION_TWO = 2;
+constexpr base::i64 TOOLING_VERSION_THREE = 3;
+constexpr base::i64 TOOLING_VERSION_FOUR = 4;
+constexpr std::array<base::i64, 2> TOOLING_BODY_EDIT_VERSIONS{TOOLING_VERSION_TWO, TOOLING_VERSION_THREE};
+constexpr int TOOLING_LSP_ID_INITIALIZE = 1;
+constexpr int TOOLING_LSP_ID_HOVER = 2;
+constexpr int TOOLING_LSP_ID_DEFINITION = 3;
+constexpr int TOOLING_LSP_ID_REFERENCES = 4;
+constexpr int TOOLING_LSP_ID_SYMBOLS = 5;
+constexpr int TOOLING_LSP_ID_SHUTDOWN = 6;
+constexpr int TOOLING_LSP_ID_NO_PARAMS = 7;
+constexpr int TOOLING_LSP_ID_INVALID_JSON = 8;
+constexpr int TOOLING_LSP_ID_COMPLETION = 9;
+constexpr int TOOLING_LSP_ID_RENAME = 10;
+constexpr int TOOLING_LSP_ID_SEMANTIC_TOKENS = 11;
+constexpr int TOOLING_LSP_ID_CODE_ACTION = 12;
+constexpr int TOOLING_LSP_ID_WORKSPACE_SYMBOL = 13;
+constexpr int TOOLING_LSP_ID_INLAY_HINT = 14;
+constexpr int TOOLING_LSP_ID_UNKNOWN = 99;
+constexpr base::usize TOOLING_TEST_PAST_EOF_OFFSET_DELTA = 10;
+constexpr unsigned char TOOLING_TEST_PERCENT_DECODE_BYTE = 0xAFU;
+constexpr unsigned char TOOLING_TEST_JSON_CONTROL_LIMIT = 0x20U;
+constexpr base::usize TOOLING_TEST_JSON_HEX_NIBBLE_SHIFT = 4;
+constexpr unsigned char TOOLING_TEST_JSON_HEX_NIBBLE_MASK = 0x0FU;
+constexpr unsigned char TOOLING_TEST_INVALID_UTF8_LEAD_BYTE = 0xC3U;
+constexpr std::string_view TOOLING_TEST_JSON_HEX_DIGITS = "0123456789ABCDEF";
+constexpr std::string_view TOOLING_TEST_UTF8_E_ACUTE = "\xC3\xA9";
+constexpr std::string_view TOOLING_TEST_UTF8_MACRON = "\xC2\xAF";
+constexpr std::string_view TOOLING_TEST_UTF8_GRINNING_FACE = "\xF0\x9F\x98\x80";
+constexpr std::string_view TOOLING_TEST_UTF8_CJK_MIDDLE = "\xE4\xB8\xAD";
+constexpr base::usize TOOLING_LSP_UTF16_VALUE_LINE = 2;
+constexpr base::usize TOOLING_LSP_UTF16_VALUE_CHARACTER = 32;
+constexpr base::usize TOOLING_LSP_UTF16_VALUE_END_CHARACTER = 37;
+constexpr base::usize TOOLING_LSP_UTF16_STRING_LINE = 2;
+constexpr base::usize TOOLING_LSP_UTF16_STRING_CHARACTER = 20;
+constexpr base::usize TOOLING_LSP_UTF16_STRING_LENGTH = 6;
+constexpr base::usize TOOLING_LSP_UTF16_EMOJI_TRAILING_CHARACTER = 23;
+constexpr base::usize TOOLING_LSP_PAST_END_LINE = 99;
+constexpr base::usize TOOLING_LSP_PAST_END_CHARACTER = 0;
+constexpr base::usize TOOLING_LSP_SEMANTIC_TOKEN_FIELD_COUNT = 5;
+constexpr base::usize TOOLING_LSP_SEMANTIC_TOKEN_DELTA_LINE_FIELD = 0;
+constexpr base::usize TOOLING_LSP_SEMANTIC_TOKEN_DELTA_START_FIELD = 1;
+constexpr base::usize TOOLING_LSP_SEMANTIC_TOKEN_LENGTH_FIELD = 2;
+constexpr base::usize TOOLING_LSP_SEMANTIC_TOKEN_TYPE_FIELD = 3;
+constexpr int TOOLING_LSP_SEMANTIC_TOKEN_STRING_TYPE = 18;
+
+[[nodiscard]] tooling::ToolingProjectConfig tooling_project_config(const std::string_view package)
+{
+    tooling::ToolingProjectConfig config;
+    config.root_path = "/workspace";
+    config.package_identity = std::string(package);
+    return config;
+}
+
+[[nodiscard]] std::string tooling_lsp_utf16_source()
+{
+    std::string source = "module tooling.utf16;\n"
+                         "fn main() -> i32 {\n"
+                         "  let prefix: str = \"";
+    source.append(TOOLING_TEST_UTF8_E_ACUTE);
+    source.append(TOOLING_TEST_UTF8_GRINNING_FACE);
+    source.append(TOOLING_TEST_UTF8_CJK_MIDDLE);
+    source.append("\"; let value = 1;\n"
+                  "  return value;\n"
+                  "}\n");
+    return source;
+}
+
+[[nodiscard]] std::string tooling_lsp_invalid_utf8_source()
+{
+    std::string source = "module tooling.invalid_utf8;\n"
+                         "fn main() -> i32 {\n"
+                         "  let text: str = \"";
+    source.push_back(static_cast<char>(TOOLING_TEST_INVALID_UTF8_LEAD_BYTE));
+    source.push_back('(');
+    source.append("\";\n"
+                  "  return 0;\n"
+                  "}\n");
+    return source;
+}
+
+[[nodiscard]] std::string test_json_string(const std::string_view text)
+{
+    std::string result;
+    result.push_back('"');
+    for (const unsigned char raw_ch : text) {
+        const char ch = static_cast<char>(raw_ch);
+        switch (ch) {
+            case '"':
+                result.append("\\\"");
+                break;
+            case '\\':
+                result.append("\\\\");
+                break;
+            case '\b':
+                result.append("\\b");
+                break;
+            case '\f':
+                result.append("\\f");
+                break;
+            case '\n':
+                result.append("\\n");
+                break;
+            case '\r':
+                result.append("\\r");
+                break;
+            case '\t':
+                result.append("\\t");
+                break;
+            default:
+                if (raw_ch < TOOLING_TEST_JSON_CONTROL_LIMIT) {
+                    result.append("\\u00");
+                    result.push_back(TOOLING_TEST_JSON_HEX_DIGITS[(raw_ch >> TOOLING_TEST_JSON_HEX_NIBBLE_SHIFT)
+                        & TOOLING_TEST_JSON_HEX_NIBBLE_MASK]);
+                    result.push_back(TOOLING_TEST_JSON_HEX_DIGITS[raw_ch & TOOLING_TEST_JSON_HEX_NIBBLE_MASK]);
+                } else {
+                    result.push_back(ch);
+                }
+                break;
+        }
+    }
+    result.push_back('"');
+    return result;
+}
+
+[[nodiscard]] std::string lsp_request_json(const int id, const std::string_view method, const std::string_view params)
+{
+    std::string request = "{\"jsonrpc\":\"2.0\",\"id\":";
+    request += std::to_string(id);
+    request += ",\"method\":";
+    request += test_json_string(method);
+    request += ",\"params\":";
+    request += params;
+    request += "}";
+    return request;
+}
+
+[[nodiscard]] std::string lsp_notification_json(const std::string_view method, const std::string_view params)
+{
+    std::string notification = "{\"jsonrpc\":\"2.0\",\"method\":";
+    notification += test_json_string(method);
+    notification += ",\"params\":";
+    notification += params;
+    notification += "}";
+    return notification;
+}
+
+[[nodiscard]] std::string text_document_params(const std::string_view uri)
+{
+    std::string params = "{\"textDocument\":{\"uri\":";
+    params += test_json_string(uri);
+    params += "}}";
+    return params;
+}
+
+[[nodiscard]] std::string text_document_position_params(
+    const std::string_view uri, const tooling::ToolingSourcePosition position)
+{
+    std::string params = "{\"textDocument\":{\"uri\":";
+    params += test_json_string(uri);
+    params += "},\"position\":{\"line\":";
+    params += std::to_string(position.line);
+    params += ",\"character\":";
+    params += std::to_string(position.character);
+    params += "}}";
+    return params;
+}
+
+[[nodiscard]] std::string did_open_params(
+    const std::string_view uri, const std::string_view text, const base::i64 version)
+{
+    std::string params = "{\"textDocument\":{\"uri\":";
+    params += test_json_string(uri);
+    params += ",\"languageId\":\"aurex\",\"version\":";
+    params += std::to_string(version);
+    params += ",\"text\":";
+    params += test_json_string(text);
+    params += "}}";
+    return params;
+}
+
+[[nodiscard]] std::string did_change_params(
+    const std::string_view uri, const std::string_view text, const base::i64 version)
+{
+    std::string params = "{\"textDocument\":{\"uri\":";
+    params += test_json_string(uri);
+    params += ",\"version\":";
+    params += std::to_string(version);
+    params += "},\"contentChanges\":[{\"text\":";
+    params += test_json_string(text);
+    params += "}]}";
+    return params;
+}
+
+[[nodiscard]] std::vector<int> lsp_semantic_token_data_values(const std::string_view response)
+{
+    constexpr std::string_view TOOLING_LSP_DATA_PREFIX = "\"data\":[";
+    std::vector<int> values;
+    base::usize index = response.find(TOOLING_LSP_DATA_PREFIX);
+    if (index == std::string_view::npos) {
+        return values;
+    }
+    index += TOOLING_LSP_DATA_PREFIX.size();
+    while (index < response.size() && response[index] != ']') {
+        if ((response[index] < '0' || response[index] > '9') && response[index] != '-') {
+            ++index;
+            continue;
+        }
+        int value = 0;
+        const char* const begin = response.data() + index;
+        const char* const end = response.data() + response.size();
+        const auto [ptr, error] = std::from_chars(begin, end, value);
+        if (error != std::errc{}) {
+            return {};
+        }
+        values.push_back(value);
+        index = static_cast<base::usize>(ptr - response.data());
+    }
+    return values;
+}
+
+[[nodiscard]] bool lsp_semantic_token_exists(const std::string_view response, const base::usize expected_line,
+    const base::usize expected_start, const base::usize expected_length, const int expected_type)
+{
+    const std::vector<int> values = lsp_semantic_token_data_values(response);
+    base::usize previous_line = 0;
+    base::usize previous_start = 0;
+    for (base::usize index = 0; index + TOOLING_LSP_SEMANTIC_TOKEN_FIELD_COUNT <= values.size();
+        index += TOOLING_LSP_SEMANTIC_TOKEN_FIELD_COUNT) {
+        const base::usize delta_line =
+            static_cast<base::usize>(values[index + TOOLING_LSP_SEMANTIC_TOKEN_DELTA_LINE_FIELD]);
+        const base::usize delta_start =
+            static_cast<base::usize>(values[index + TOOLING_LSP_SEMANTIC_TOKEN_DELTA_START_FIELD]);
+        const base::usize line = index == 0U ? delta_line : previous_line + delta_line;
+        const base::usize start = delta_line == 0U ? previous_start + delta_start : delta_start;
+        const base::usize length = static_cast<base::usize>(values[index + TOOLING_LSP_SEMANTIC_TOKEN_LENGTH_FIELD]);
+        const int type = values[index + TOOLING_LSP_SEMANTIC_TOKEN_TYPE_FIELD];
+        if (line == expected_line && start == expected_start && length == expected_length && type == expected_type) {
+            return true;
+        }
+        previous_line = line;
+        previous_start = start;
+    }
+    return false;
+}
+
+[[nodiscard]] bool contains_symbol_named(
+    const std::vector<tooling::ToolingDocumentSymbol>& symbols, const std::string_view name)
+{
+    return std::ranges::any_of(symbols, [name](const tooling::ToolingDocumentSymbol& symbol) {
+        return symbol.name == name;
+    });
+}
+
+[[nodiscard]] bool contains_reuse_fact(const tooling::ToolingReusePlan& plan,
+    const tooling::ToolingReuseFactStatus status, const std::string_view name, const std::string_view kind)
+{
+    return std::ranges::any_of(plan.facts, [status, name, kind](const tooling::ToolingReuseFact& fact) {
+        return fact.status == status && fact.name == name && fact.kind == kind;
+    });
+}
+
+[[nodiscard]] const tooling::ToolingReuseFact* find_reuse_fact(const tooling::ToolingReusePlan& plan,
+    const tooling::ToolingReuseFactStatus status, const std::string_view name, const std::string_view kind)
+{
+    const auto found = std::ranges::find_if(plan.facts, [status, name, kind](const tooling::ToolingReuseFact& fact) {
+        return fact.status == status && fact.name == name && fact.kind == kind;
+    });
+    return found == plan.facts.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] bool contains_invalidation_root(
+    const tooling::ToolingReusePlan& plan, const std::string_view name, const std::string_view kind)
+{
+    return std::ranges::any_of(plan.invalidation_roots, [name, kind](const tooling::ToolingInvalidationRoot& root) {
+        return root.name == name && root.kind == kind;
+    });
+}
+
+[[nodiscard]] const tooling::ToolingDocumentSymbol* find_symbol_named(
+    const std::vector<tooling::ToolingDocumentSymbol>& symbols, const std::string_view name)
+{
+    const auto found = std::ranges::find_if(symbols, [name](const tooling::ToolingDocumentSymbol& symbol) {
+        return symbol.name == name;
+    });
+    return found == symbols.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] const tooling::ToolingIndexedSemanticFact* find_index_fact(
+    const std::vector<tooling::ToolingIndexedSemanticFact>& facts, const std::string_view name,
+    const std::string_view kind)
+{
+    const auto found = std::ranges::find_if(facts, [name, kind](const tooling::ToolingIndexedSemanticFact& fact) {
+        return fact.name == name && fact.kind == kind;
+    });
+    return found == facts.end() ? nullptr : &*found;
+}
+
+} // namespace
+
+TEST(CoreUnit, ToolingSessionManagesVersionedDocumentsAndSnapshotCache)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const project::WorkspaceModel initial_workspace = session.workspace_model();
+    ASSERT_EQ(initial_workspace.projects.size(), 1U);
+    EXPECT_TRUE(initial_workspace.projects.front().open_buffers.empty());
+    EXPECT_EQ(initial_workspace.projects.front().session_kind, project::ProjectSessionKind::tooling);
+    EXPECT_EQ(initial_workspace.projects.front().package_identity, TOOLING_SESSION_PACKAGE);
+    EXPECT_TRUE(query::is_valid(initial_workspace.projects.front().key));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+
+    const base::Result<tooling::ToolingDocumentVersion> opened =
+        session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE);
+    ASSERT_TRUE(opened);
+    EXPECT_EQ(opened.value().client_version, std::optional<base::i64>(TOOLING_VERSION_ONE));
+    EXPECT_TRUE(session.is_open(document));
+    ASSERT_EQ(session.workspace_model().projects.size(), 1U);
+    ASSERT_EQ(session.workspace_model().projects.front().open_buffers.size(), 1U);
+    EXPECT_NE(session.workspace_model().identity, initial_workspace.identity);
+    EXPECT_EQ(session.workspace_model().projects.front().open_buffers.front().uri, TOOLING_SESSION_URI);
+    EXPECT_EQ(session.workspace_model().projects.front().open_buffers.front().generation, opened.value().generation);
+
+    base::Result<tooling::ToolingSnapshotHandle> first_snapshot = session.snapshot(document);
+    ASSERT_TRUE(first_snapshot);
+    EXPECT_EQ(first_snapshot.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::clean_build);
+    EXPECT_FALSE(first_snapshot.value().incremental.used_previous_context);
+    EXPECT_FALSE(first_snapshot.value().incremental.from_cache);
+    EXPECT_FALSE(first_snapshot.value().incremental.input.has_previous_snapshot);
+    EXPECT_EQ(first_snapshot.value().incremental.current_query_records,
+        first_snapshot.value().snapshot->query.records.size());
+    EXPECT_EQ(
+        tooling::tooling_incremental_snapshot_status_name(first_snapshot.value().incremental.status), "clean_build");
+    base::Result<tooling::ToolingSnapshotHandle> reused_snapshot = session.snapshot(document);
+    ASSERT_TRUE(reused_snapshot);
+    EXPECT_EQ(first_snapshot.value().snapshot.get(), reused_snapshot.value().snapshot.get());
+    EXPECT_EQ(reused_snapshot.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::cached_snapshot);
+    EXPECT_TRUE(reused_snapshot.value().incremental.from_cache);
+
+    constexpr std::array<std::string_view, 1> expected_package{TOOLING_SESSION_PACKAGE};
+    EXPECT_EQ(first_snapshot.value().snapshot->query.source_stage.file.package, query::package_key(expected_package));
+    EXPECT_FALSE(first_snapshot.value().snapshot->has_errors);
+
+    const base::Result<tooling::ToolingDocumentVersion> stale_change =
+        session.change_document(document, std::string(TOOLING_SESSION_INVALID_SOURCE), TOOLING_VERSION_ONE);
+    EXPECT_FALSE(stale_change);
+    base::Result<tooling::ToolingSnapshotHandle> after_stale_snapshot = session.snapshot(document);
+    ASSERT_TRUE(after_stale_snapshot);
+    EXPECT_EQ(first_snapshot.value().snapshot.get(), after_stale_snapshot.value().snapshot.get());
+
+    const base::Result<tooling::ToolingDocumentVersion> changed =
+        session.change_document(document, std::string(TOOLING_SESSION_INVALID_SOURCE), TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    EXPECT_EQ(changed.value().client_version, std::optional<base::i64>(TOOLING_VERSION_TWO));
+    ASSERT_EQ(session.workspace_model().projects.front().open_buffers.size(), 1U);
+    EXPECT_EQ(session.workspace_model().projects.front().open_buffers.front().generation, changed.value().generation);
+    EXPECT_EQ(session.workspace_model().projects.front().open_buffers.front().text_size,
+        TOOLING_SESSION_INVALID_SOURCE.size());
+    base::Result<tooling::ToolingSnapshotHandle> changed_snapshot = session.snapshot(document);
+    ASSERT_TRUE(changed_snapshot);
+    EXPECT_NE(first_snapshot.value().snapshot.get(), changed_snapshot.value().snapshot.get());
+    EXPECT_TRUE(changed_snapshot.value().snapshot->has_errors);
+    EXPECT_EQ(changed_snapshot.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::previous_context);
+    EXPECT_TRUE(changed_snapshot.value().incremental.used_previous_context);
+    EXPECT_TRUE(changed_snapshot.value().incremental.input.has_previous_snapshot);
+    EXPECT_TRUE(changed_snapshot.value().incremental.input.previous_document_matches);
+    EXPECT_TRUE(changed_snapshot.value().incremental.input.previous_version_is_older);
+    EXPECT_GT(changed_snapshot.value().incremental.input.previous_query_records, 0U);
+    EXPECT_GT(changed_snapshot.value().incremental.input.previous_semantic_facts, 0U);
+    EXPECT_EQ(changed_snapshot.value().incremental.input.previous_version.client_version,
+        std::optional<base::i64>(TOOLING_VERSION_ONE));
+    EXPECT_EQ(tooling::tooling_incremental_snapshot_status_name(changed_snapshot.value().incremental.status),
+        "previous_context");
+
+    base::Result<std::vector<tooling::ToolingDiagnostic>> diagnostics = session.diagnostics(document);
+    ASSERT_TRUE(diagnostics);
+    EXPECT_TRUE(std::ranges::any_of(diagnostics.value(), [](const tooling::ToolingDiagnostic& diagnostic) {
+        return diagnostic.code == base::DiagnosticCode::semantic_type_mismatch && diagnostic.category_name == "type"
+            && diagnostic.code_name == "SEM0100";
+    }));
+
+    EXPECT_TRUE(session.close_document(document));
+    EXPECT_FALSE(session.is_open(document));
+    ASSERT_EQ(session.workspace_model().projects.size(), 1U);
+    EXPECT_TRUE(session.workspace_model().projects.front().open_buffers.empty());
+    EXPECT_EQ(session.workspace_model().identity, initial_workspace.identity);
+    EXPECT_FALSE(session.snapshot(document));
+}
+
+TEST(CoreUnit, ToolingSessionClassifiesIncrementalSnapshotInputs)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.change_document(document, std::string(TOOLING_SESSION_INVALID_SOURCE), TOOLING_VERSION_TWO));
+
+    base::Result<tooling::ToolingSnapshotHandle> no_previous_snapshot = session.snapshot(document);
+    ASSERT_TRUE(no_previous_snapshot);
+    EXPECT_EQ(no_previous_snapshot.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::clean_build);
+    EXPECT_FALSE(no_previous_snapshot.value().incremental.input.has_previous_snapshot);
+    EXPECT_FALSE(no_previous_snapshot.value().incremental.fallback_reason.empty());
+    EXPECT_EQ(no_previous_snapshot.value().incremental.current_query_records,
+        no_previous_snapshot.value().snapshot->query.records.size());
+    EXPECT_EQ(
+        tooling::tooling_incremental_snapshot_status_name(tooling::ToolingIncrementalSnapshotStatus::cached_snapshot),
+        "cached_snapshot");
+
+    tooling::ToolingIncrementalSnapshotInput input;
+    input.document = document;
+    input.current_version = no_previous_snapshot.value().version;
+    input.has_previous_snapshot = true;
+
+    tooling::ToolingIncrementalSnapshotResult mismatch =
+        tooling::tooling_incremental_snapshot_result(input, *no_previous_snapshot.value().snapshot);
+    EXPECT_EQ(mismatch.status, tooling::ToolingIncrementalSnapshotStatus::rejected_mismatched_previous);
+    EXPECT_FALSE(mismatch.used_previous_context);
+    EXPECT_FALSE(mismatch.fallback_reason.empty());
+    EXPECT_EQ(tooling::tooling_incremental_snapshot_status_name(mismatch.status), "rejected_mismatched_previous");
+
+    input.previous_document_matches = true;
+    tooling::ToolingIncrementalSnapshotResult stale =
+        tooling::tooling_incremental_snapshot_result(input, *no_previous_snapshot.value().snapshot);
+    EXPECT_EQ(stale.status, tooling::ToolingIncrementalSnapshotStatus::rejected_stale_previous);
+    EXPECT_EQ(tooling::tooling_incremental_snapshot_status_name(stale.status), "rejected_stale_previous");
+
+    input.previous_version_is_older = true;
+    input.previous_context_malformed = true;
+    tooling::ToolingIncrementalSnapshotResult malformed =
+        tooling::tooling_incremental_snapshot_result(input, *no_previous_snapshot.value().snapshot);
+    EXPECT_EQ(malformed.status, tooling::ToolingIncrementalSnapshotStatus::rejected_malformed_previous);
+    EXPECT_FALSE(malformed.used_previous_context);
+    EXPECT_EQ(tooling::tooling_incremental_snapshot_status_name(malformed.status), "rejected_malformed_previous");
+
+    input.previous_context_malformed = false;
+    input.previous_query_records = 0U;
+    input.previous_dependency_edges = 1U;
+    tooling::ToolingIncrementalSnapshotResult malformed_shape =
+        tooling::tooling_incremental_snapshot_result(input, *no_previous_snapshot.value().snapshot);
+    EXPECT_EQ(malformed_shape.status, tooling::ToolingIncrementalSnapshotStatus::rejected_malformed_previous);
+
+    input.previous_dependency_edges = 0U;
+    input.previous_query_records = 1U;
+    tooling::ToolingIncrementalSnapshotResult accepted =
+        tooling::tooling_incremental_snapshot_result(input, *no_previous_snapshot.value().snapshot);
+    EXPECT_EQ(accepted.status, tooling::ToolingIncrementalSnapshotStatus::previous_context);
+    EXPECT_TRUE(accepted.used_previous_context);
+    EXPECT_TRUE(accepted.fallback_reason.empty());
+}
+
+TEST(CoreUnit, ToolingSessionProjectsIdeFeaturesWithoutLspTypes)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::usize call_offset = TOOLING_SESSION_SOURCE.find("add(1");
+    ASSERT_NE(call_offset, std::string_view::npos);
+
+    base::Result<std::optional<tooling::ToolingDefinition>> definition =
+        session.definition_at_offset(document, call_offset);
+    ASSERT_TRUE(definition);
+    ASSERT_TRUE(definition.value().has_value());
+    EXPECT_TRUE(definition.value()->valid);
+    EXPECT_EQ(definition.value()->name, "add");
+    EXPECT_EQ(definition.value()->kind, "function");
+    EXPECT_NE(definition.value()->stable_definition_key.find("DefKey"), std::string::npos);
+
+    base::Result<std::optional<tooling::ToolingHover>> hover = session.hover_at_offset(document, call_offset);
+    ASSERT_TRUE(hover);
+    ASSERT_TRUE(hover.value().has_value());
+    EXPECT_TRUE(hover.value()->valid);
+    EXPECT_NE(hover.value()->label.find("identifier `add` -> function"), std::string::npos);
+    EXPECT_NE(hover.value()->semantic_fact_key.find("QueryKey"), std::string::npos);
+    ASSERT_TRUE(hover.value()->definition.has_value());
+    EXPECT_EQ(hover.value()->definition->name, "add");
+
+    base::Result<std::vector<tooling::ToolingReference>> references =
+        session.references_at_offset(document, call_offset);
+    ASSERT_TRUE(references);
+    EXPECT_GE(references.value().size(), 2U);
+    EXPECT_TRUE(std::ranges::any_of(references.value(), [](const tooling::ToolingReference& reference) {
+        return reference.is_definition;
+    }));
+
+    base::Result<std::vector<tooling::ToolingDocumentSymbol>> symbols = session.document_symbols(document);
+    ASSERT_TRUE(symbols);
+    EXPECT_TRUE(contains_symbol_named(symbols.value(), "add"));
+    EXPECT_TRUE(contains_symbol_named(symbols.value(), "main"));
+    EXPECT_TRUE(std::ranges::any_of(symbols.value(), [](const tooling::ToolingDocumentSymbol& symbol) {
+        return symbol.name == "add" && symbol.kind == "function" && symbol.checked
+            && symbol.stable_query_key.find("QueryKey") != std::string::npos;
+    }));
+}
+
+TEST(CoreUnit, ToolingSessionProjectsM37IdeSemanticFeaturesWithoutLspTypes)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    const base::Result<tooling::ToolingDocumentVersion> opened =
+        session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE);
+    ASSERT_TRUE(opened);
+
+    const base::usize return_offset = TOOLING_SESSION_SOURCE.find("return value");
+    ASSERT_NE(return_offset, std::string_view::npos);
+    base::Result<std::vector<tooling::ToolingCompletionItem>> completions =
+        session.completion_at_offset(document, return_offset + std::string_view{"retu"}.size());
+    ASSERT_TRUE(completions);
+    EXPECT_TRUE(std::ranges::any_of(completions.value(), [](const tooling::ToolingCompletionItem& item) {
+        return item.label == "return" && item.kind == "keyword"
+            && item.context == tooling::IdeCompletionContextKind::expression;
+    }));
+
+    const base::usize call_offset = TOOLING_SESSION_SOURCE.find("add(1");
+    ASSERT_NE(call_offset, std::string_view::npos);
+    completions = session.completion_at_offset(document, call_offset + std::string_view{"ad"}.size());
+    ASSERT_TRUE(completions);
+    EXPECT_TRUE(std::ranges::any_of(completions.value(), [](const tooling::ToolingCompletionItem& item) {
+        return item.label == "add" && item.kind == "function" && item.checked && !item.from_workspace;
+    }));
+
+    const base::usize value_offset = TOOLING_SESSION_SOURCE.find("value;");
+    ASSERT_NE(value_offset, std::string_view::npos);
+    base::Result<tooling::ToolingRenamePlan> rename = session.rename_at_offset(document, value_offset, "total");
+    ASSERT_TRUE(rename);
+    EXPECT_TRUE(rename.value().valid);
+    EXPECT_TRUE(rename.value().conflicts.empty());
+    EXPECT_GE(rename.value().edits.size(), 2U);
+    EXPECT_TRUE(std::ranges::all_of(rename.value().edits, [](const tooling::ToolingRenameEdit& edit) {
+        return edit.new_text == "total";
+    }));
+
+    base::Result<tooling::ToolingRenamePlan> conflicting_rename =
+        session.rename_at_offset(document, value_offset, "add");
+    ASSERT_TRUE(conflicting_rename);
+    EXPECT_FALSE(conflicting_rename.value().valid);
+    EXPECT_TRUE(
+        std::ranges::any_of(conflicting_rename.value().conflicts, [](const tooling::ToolingRenameConflict& conflict) {
+            return conflict.name == "add" && conflict.reason.find("conflicts") != std::string::npos;
+        }));
+
+    base::Result<tooling::ToolingRenamePlan> keyword_rename =
+        session.rename_at_offset(document, value_offset, "return");
+    ASSERT_TRUE(keyword_rename);
+    EXPECT_FALSE(keyword_rename.value().valid);
+    EXPECT_TRUE(
+        std::ranges::any_of(keyword_rename.value().conflicts, [](const tooling::ToolingRenameConflict& conflict) {
+            return conflict.name == "return" && conflict.reason.find("reserved") != std::string::npos;
+        }));
+
+    base::Result<tooling::ToolingRenamePlan> invalid_rename = session.rename_at_offset(document, value_offset, "1bad");
+    ASSERT_TRUE(invalid_rename);
+    EXPECT_FALSE(invalid_rename.value().valid);
+    EXPECT_TRUE(
+        std::ranges::any_of(invalid_rename.value().conflicts, [](const tooling::ToolingRenameConflict& conflict) {
+            return conflict.name == "1bad" && conflict.reason.find("identifier") != std::string::npos;
+        }));
+
+    base::Result<tooling::ToolingRenamePlan> invalid_continue_rename =
+        session.rename_at_offset(document, value_offset, "bad-name");
+    ASSERT_TRUE(invalid_continue_rename);
+    EXPECT_FALSE(invalid_continue_rename.value().valid);
+    EXPECT_TRUE(std::ranges::any_of(
+        invalid_continue_rename.value().conflicts, [](const tooling::ToolingRenameConflict& conflict) {
+            return conflict.name == "bad-name" && conflict.reason.find("identifier") != std::string::npos;
+        }));
+
+    base::Result<tooling::ToolingRenamePlan> underscore_rename =
+        session.rename_at_offset(document, value_offset, "_total1");
+    ASSERT_TRUE(underscore_rename);
+    EXPECT_TRUE(underscore_rename.value().valid);
+    EXPECT_TRUE(std::ranges::all_of(underscore_rename.value().edits, [](const tooling::ToolingRenameEdit& edit) {
+        return edit.new_text == "_total1";
+    }));
+
+    base::Result<tooling::ToolingRenamePlan> absent_target_rename =
+        session.rename_at_offset(document, 0U, "module_name");
+    ASSERT_TRUE(absent_target_rename);
+    EXPECT_FALSE(absent_target_rename.value().valid);
+    EXPECT_TRUE(absent_target_rename.value().edits.empty());
+
+    base::Result<std::vector<tooling::ToolingSemanticToken>> semantic_tokens = session.semantic_tokens(document);
+    ASSERT_TRUE(semantic_tokens);
+    EXPECT_TRUE(std::ranges::any_of(semantic_tokens.value(), [](const tooling::ToolingSemanticToken& token) {
+        return token.text == "add" && token.token_type == "function" && token.checked;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(semantic_tokens.value(), [](const tooling::ToolingSemanticToken& token) {
+        return token.text == "return" && token.token_type == "keyword";
+    }));
+
+    base::Result<std::vector<tooling::ToolingInlayHint>> hints = session.inlay_hints(document);
+    ASSERT_TRUE(hints);
+    EXPECT_TRUE(std::ranges::any_of(hints.value(), [](const tooling::ToolingInlayHint& hint) {
+        return hint.label == ": i32" && hint.kind == "type" && hint.checked;
+    }));
+
+    ASSERT_TRUE(session.change_document(document, std::string(TOOLING_SESSION_INVALID_SOURCE), TOOLING_VERSION_TWO));
+    base::Result<std::vector<tooling::ToolingCodeAction>> actions = session.code_actions(document);
+    ASSERT_TRUE(actions);
+    EXPECT_TRUE(actions.value().empty());
+
+    ASSERT_TRUE(
+        session.change_document(document, std::string(TOOLING_SESSION_SUGGESTION_SOURCE), TOOLING_VERSION_THREE));
+    EXPECT_FALSE(session.is_generation_current(document, opened.value()));
+    actions = session.code_actions(document);
+    ASSERT_TRUE(actions);
+    EXPECT_TRUE(std::ranges::any_of(actions.value(), [](const tooling::ToolingCodeAction& action) {
+        return action.title.find("count") != std::string::npos && action.kind == "quickfix" && action.preferred
+            && !action.edits.empty() && action.edits.front().new_text == "count";
+    }));
+    ASSERT_TRUE(
+        session.change_document(document, std::string(TOOLING_SESSION_MULTI_SUGGESTION_SOURCE), TOOLING_VERSION_FOUR));
+    actions = session.code_actions(document);
+    ASSERT_TRUE(actions);
+    EXPECT_GE(actions.value().size(), 2U);
+    EXPECT_TRUE(std::ranges::any_of(actions.value(), [](const tooling::ToolingCodeAction& action) {
+        return action.title.find("count") != std::string::npos && action.edits.front().new_text == "count";
+    }));
+    EXPECT_TRUE(std::ranges::any_of(actions.value(), [](const tooling::ToolingCodeAction& action) {
+        return action.title.find("total") != std::string::npos && action.edits.front().new_text == "total";
+    }));
+
+    const tooling::ToolingDocumentId left_document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_LEFT_URI, session.project_config());
+    const tooling::ToolingDocumentId right_document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_RIGHT_URI, session.project_config());
+    const tooling::ToolingDocumentId symbol_document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(
+        session.open_document(left_document, std::string(TOOLING_WORKSPACE_LEFT_SOURCE), TOOLING_VERSION_THREE));
+    ASSERT_TRUE(
+        session.open_document(right_document, std::string(TOOLING_WORKSPACE_RIGHT_SOURCE), TOOLING_VERSION_FOUR));
+    ASSERT_TRUE(session.open_document(symbol_document, std::string(TOOLING_WORKSPACE_SYMBOL_SOURCE)));
+
+    base::Result<std::vector<tooling::ToolingWorkspaceSymbol>> workspace_symbols = session.workspace_symbols("");
+    ASSERT_TRUE(workspace_symbols);
+    EXPECT_TRUE(std::ranges::any_of(workspace_symbols.value(), [](const tooling::ToolingWorkspaceSymbol& symbol) {
+        return symbol.name == "left" && symbol.kind == "function" && symbol.checked;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(workspace_symbols.value(), [](const tooling::ToolingWorkspaceSymbol& symbol) {
+        return symbol.name == "right" && symbol.kind == "function" && symbol.checked;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(workspace_symbols.value(), [](const tooling::ToolingWorkspaceSymbol& symbol) {
+        return symbol.name == "Box" && symbol.kind == "generic_template" && symbol.checked;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(workspace_symbols.value(), [](const tooling::ToolingWorkspaceSymbol& symbol) {
+        return symbol.name == "fast" && symbol.kind == "enum_case" && symbol.checked;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(workspace_symbols.value(), [](const tooling::ToolingWorkspaceSymbol& symbol) {
+        return symbol.name == "value" && symbol.kind == "struct_field" && symbol.checked;
+    }));
+
+    base::Result<std::vector<tooling::ToolingWorkspaceSymbol>> filtered_symbols = session.workspace_symbols("Box");
+    ASSERT_TRUE(filtered_symbols);
+    EXPECT_TRUE(std::ranges::all_of(filtered_symbols.value(), [](const tooling::ToolingWorkspaceSymbol& symbol) {
+        return symbol.name.find("Box") != std::string::npos || symbol.detail.find("Box") != std::string::npos;
+    }));
+
+    const base::usize left_return_offset = TOOLING_WORKSPACE_LEFT_SOURCE.find("return ");
+    ASSERT_NE(left_return_offset, std::string_view::npos);
+    base::Result<std::vector<tooling::ToolingCompletionItem>> workspace_completions =
+        session.completion_at_offset(left_document, left_return_offset + std::string_view{"return "}.size());
+    ASSERT_TRUE(workspace_completions);
+    EXPECT_TRUE(std::ranges::any_of(workspace_completions.value(), [](const tooling::ToolingCompletionItem& item) {
+        return item.label == "right" && item.kind == "function" && item.from_workspace;
+    }));
+}
+
+TEST(CoreUnit, ToolingSessionProjectsM4TraitToolingWithoutLspTypes)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_TRAIT_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_TRAIT_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::usize trait_bound_offset = TOOLING_SESSION_TRAIT_SOURCE.find("where T: Source");
+    ASSERT_NE(trait_bound_offset, std::string_view::npos);
+    base::Result<std::vector<tooling::ToolingCompletionItem>> completions =
+        session.completion_at_offset(document, trait_bound_offset + std::string_view{"where T: So"}.size());
+    ASSERT_TRUE(completions);
+    EXPECT_TRUE(std::ranges::any_of(completions.value(), [](const tooling::ToolingCompletionItem& item) {
+        return item.label == "Source" && item.kind == "trait" && item.checked
+            && item.context == tooling::IdeCompletionContextKind::trait_bound
+            && item.stable_definition_key.find("DefKey") != std::string::npos;
+    }));
+    EXPECT_TRUE(std::ranges::none_of(completions.value(), [](const tooling::ToolingCompletionItem& item) {
+        return item.kind == "struct" || item.kind == "function";
+    }));
+
+    base::Result<std::vector<tooling::ToolingDocumentSymbol>> symbols = session.document_symbols(document);
+    ASSERT_TRUE(symbols);
+    EXPECT_TRUE(std::ranges::any_of(symbols.value(), [](const tooling::ToolingDocumentSymbol& symbol) {
+        return symbol.name == "Source" && symbol.kind == "trait" && symbol.checked
+            && symbol.stable_definition_key.find("DefKey") != std::string::npos;
+    }));
+
+    const base::usize trait_ast_offset = TOOLING_SESSION_TRAIT_SOURCE.find("trait Source");
+    ASSERT_NE(trait_ast_offset, std::string_view::npos);
+    base::Result<std::optional<tooling::ToolingAstNode>> trait_ast =
+        session.ast_node_at_offset(document, trait_ast_offset);
+    ASSERT_TRUE(trait_ast);
+    ASSERT_TRUE(trait_ast.value().has_value());
+    EXPECT_EQ(trait_ast.value()->kind, tooling::IdeAstNodeKind::item);
+    EXPECT_EQ(trait_ast.value()->name, "Source");
+    EXPECT_EQ(trait_ast.value()->detail, "trait");
+    EXPECT_FALSE(trait_ast.value()->stable_definition_key.empty());
+
+    const base::usize associated_offset = TOOLING_SESSION_TRAIT_SOURCE.find("Item = i32");
+    ASSERT_NE(associated_offset, std::string_view::npos);
+    base::Result<std::optional<tooling::ToolingDefinition>> associated_definition =
+        session.definition_at_offset(document, associated_offset);
+    ASSERT_TRUE(associated_definition);
+    ASSERT_TRUE(associated_definition.value().has_value());
+    EXPECT_EQ(associated_definition.value()->name, "Item");
+    EXPECT_EQ(associated_definition.value()->kind, "associated_type");
+    EXPECT_NE(associated_definition.value()->stable_member_key.find("MemberKey"), std::string::npos);
+
+    const std::vector<tooling::ToolingIndexedSemanticFact> associated_facts =
+        session.workspace_index().members(associated_definition.value()->member);
+    ASSERT_FALSE(associated_facts.empty());
+    EXPECT_NE(find_index_fact(associated_facts, "Item", "item_signature"), nullptr);
+
+    const base::usize impl_method_offset = TOOLING_SESSION_TRAIT_SOURCE.rfind("fn get(self: &Bytes)");
+    ASSERT_NE(impl_method_offset, std::string_view::npos);
+    base::Result<std::optional<tooling::ToolingDefinition>> method_definition =
+        session.definition_at_offset(document, impl_method_offset + std::string_view{"fn "}.size());
+    ASSERT_TRUE(method_definition);
+    ASSERT_TRUE(method_definition.value().has_value());
+    EXPECT_EQ(method_definition.value()->name, "get");
+    EXPECT_EQ(method_definition.value()->kind, "trait_method");
+    EXPECT_NE(method_definition.value()->stable_member_key.find("MemberKey"), std::string::npos);
+
+    const base::usize member_completion_offset = TOOLING_SESSION_TRAIT_SOURCE.find("value.get");
+    ASSERT_NE(member_completion_offset, std::string_view::npos);
+    base::Result<std::vector<tooling::ToolingCompletionItem>> member_completions =
+        session.completion_at_offset(document, member_completion_offset + std::string_view{"value."}.size());
+    ASSERT_TRUE(member_completions);
+    EXPECT_TRUE(std::ranges::any_of(member_completions.value(), [](const tooling::ToolingCompletionItem& item) {
+        return item.label == "Item" && item.kind == "associated_type" && item.checked
+            && item.context == tooling::IdeCompletionContextKind::member
+            && item.stable_member_key.find("MemberKey") != std::string::npos;
+    }));
+
+    base::Result<std::vector<tooling::ToolingSemanticToken>> semantic_tokens = session.semantic_tokens(document);
+    ASSERT_TRUE(semantic_tokens);
+    EXPECT_TRUE(std::ranges::any_of(semantic_tokens.value(), [](const tooling::ToolingSemanticToken& token) {
+        return token.text == "Source" && token.token_type == "interface" && token.checked;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(semantic_tokens.value(), [](const tooling::ToolingSemanticToken& token) {
+        return token.text == "Item" && token.token_type == "type" && token.checked
+            && token.stable_member_key.find("MemberKey") != std::string::npos;
+    }));
+
+    base::Result<tooling::ToolingRenamePlan> rename = session.rename_at_offset(document, associated_offset, "Output");
+    ASSERT_TRUE(rename);
+    EXPECT_TRUE(rename.value().valid);
+    EXPECT_GE(rename.value().edits.size(), 3U);
+    EXPECT_TRUE(std::ranges::all_of(rename.value().edits, [](const tooling::ToolingRenameEdit& edit) {
+        return edit.new_text == "Output";
+    }));
+}
+
+TEST(CoreUnit, ToolingSessionCoversNormalizationFallbacksAndErrorPaths)
+{
+    tooling::ToolingProjectConfig config = tooling_project_config("");
+    config.package_identity.clear();
+    tooling::ToolingSession session(config);
+
+    const std::optional<std::string> localhost_path =
+        tooling::tooling_path_from_file_uri("file://localhost/workspace/space%20file.ax");
+    ASSERT_TRUE(localhost_path.has_value());
+    EXPECT_EQ(*localhost_path, "/workspace/space file.ax");
+    EXPECT_FALSE(tooling::tooling_path_from_file_uri("untitled:buffer").has_value());
+    EXPECT_NE(tooling::tooling_file_uri_from_path("/workspace/space file.ax").find("%20"), std::string::npos);
+    EXPECT_EQ(tooling::tooling_offset_for_position("one\n", tooling::ToolingSourcePosition{4U, 0U}), 4U);
+    EXPECT_EQ(tooling::tooling_position_for_offset("one\n", 40U).line, 1U);
+    EXPECT_EQ(
+        tooling::tooling_document_id_from_path("relative.ax", session.project_config()).path, "/workspace/relative.ax");
+    EXPECT_EQ(tooling::tooling_document_id_from_path("/workspace/colon:name.ax", session.project_config()).uri,
+        "file:///workspace/colon:name.ax");
+    EXPECT_EQ(tooling::tooling_path_from_file_uri("file:///workspace/bad%zz.ax").value(), "/workspace/bad%zz.ax");
+    std::string expected_percent_decoded = "/workspace/";
+    expected_percent_decoded.push_back(static_cast<char>(TOOLING_TEST_PERCENT_DECODE_BYTE));
+    expected_percent_decoded.append(".ax");
+    EXPECT_EQ(tooling::tooling_path_from_file_uri("file:///workspace/%AF.ax").value(), expected_percent_decoded);
+    EXPECT_EQ(tooling::tooling_path_from_file_uri("file:///workspace/%af.ax").value(), expected_percent_decoded);
+
+    tooling::ToolingProjectConfig source_root_config;
+    source_root_config.root_path.clear();
+    source_root_config.source_root = "/workspace/src";
+    source_root_config.package_identity = std::string(TOOLING_SESSION_PACKAGE);
+    source_root_config.import_paths.emplace_back("/workspace/deps");
+    source_root_config.import_paths.emplace_back("relative_deps");
+    tooling::ToolingSession source_root_session(source_root_config);
+    const project::WorkspaceModel source_root_workspace = source_root_session.workspace_model();
+    ASSERT_EQ(source_root_workspace.projects.size(), 1U);
+    EXPECT_EQ(source_root_workspace.projects.front().package_root.generic_string(), "/workspace/src");
+    EXPECT_EQ(source_root_workspace.projects.front().source_root.generic_string(), "/workspace/src");
+    ASSERT_EQ(source_root_workspace.projects.front().import_roots.size(), 2U);
+    EXPECT_NE(source_root_workspace.projects.front().import_roots.front().package_identity.find("tooling-import-root:"),
+        std::string::npos);
+
+    tooling::ToolingProjectConfig relative_source_root_config;
+    relative_source_root_config.root_path = "/workspace";
+    relative_source_root_config.source_root = "src";
+    relative_source_root_config.package_identity = std::string(TOOLING_SESSION_PACKAGE);
+    tooling::ToolingSession relative_source_root_session(relative_source_root_config);
+    const project::WorkspaceModel relative_source_root_workspace = relative_source_root_session.workspace_model();
+    ASSERT_EQ(relative_source_root_workspace.projects.size(), 1U);
+    EXPECT_EQ(relative_source_root_workspace.projects.front().package_root.generic_string(), "/workspace");
+    EXPECT_EQ(relative_source_root_workspace.projects.front().source_root.generic_string(), "/workspace/src");
+
+    tooling::ToolingDocumentId partial_document;
+    partial_document.uri = "file://localhost/workspace/fallback.ax";
+    partial_document.package_identity.clear();
+    partial_document.virtual_buffer_identity.clear();
+
+    const base::Result<tooling::ToolingDocumentVersion> opened =
+        session.open_document(partial_document, std::string(TOOLING_SESSION_SOURCE));
+    ASSERT_TRUE(opened);
+    EXPECT_FALSE(opened.value().client_version.has_value());
+    const std::optional<tooling::ToolingDocumentState> state = session.document_state(partial_document);
+    ASSERT_TRUE(state.has_value());
+    EXPECT_EQ(state->id.package_identity, "ide");
+    EXPECT_EQ(state->id.virtual_buffer_identity, "file://localhost/workspace/fallback.ax");
+    EXPECT_FALSE(session.open_document(partial_document, std::string(TOOLING_SESSION_SOURCE)));
+
+    ASSERT_TRUE(session.change_document(
+        partial_document, std::string(TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE), TOOLING_VERSION_TWO));
+    base::Result<std::vector<tooling::ToolingDocumentSymbol>> fallback_symbols =
+        session.document_symbols(partial_document);
+    ASSERT_TRUE(fallback_symbols);
+    EXPECT_TRUE(contains_symbol_named(fallback_symbols.value(), "answer"));
+    EXPECT_TRUE(contains_symbol_named(fallback_symbols.value(), "Count"));
+    EXPECT_TRUE(contains_symbol_named(fallback_symbols.value(), "Handle"));
+    EXPECT_TRUE(contains_symbol_named(fallback_symbols.value(), "Point"));
+    EXPECT_TRUE(contains_symbol_named(fallback_symbols.value(), "Mode"));
+    EXPECT_TRUE(contains_symbol_named(fallback_symbols.value(), "main"));
+    EXPECT_TRUE(std::ranges::any_of(fallback_symbols.value(), [](const tooling::ToolingDocumentSymbol& symbol) {
+        return symbol.name == "answer" && symbol.kind == "const" && !symbol.checked;
+    }));
+
+    tooling::ToolingDocumentId path_only_document;
+    path_only_document.path = "/workspace/path_only.ax";
+    ASSERT_TRUE(session.open_document(path_only_document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_THREE));
+    const std::optional<tooling::ToolingDocumentState> path_only_state = session.document_state(path_only_document);
+    ASSERT_TRUE(path_only_state.has_value());
+    EXPECT_EQ(path_only_state->id.uri, "file:///workspace/path_only.ax");
+    EXPECT_EQ(path_only_state->id.virtual_buffer_identity, "file:///workspace/path_only.ax");
+
+    tooling::ToolingSession empty_session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    EXPECT_FALSE(empty_session.is_generation_current(partial_document, opened.value()));
+    EXPECT_FALSE(empty_session.document_state(partial_document).has_value());
+    EXPECT_FALSE(empty_session.change_document(partial_document, std::string(TOOLING_SESSION_SOURCE)));
+    EXPECT_FALSE(empty_session.close_document(partial_document));
+    EXPECT_FALSE(empty_session.diagnostics(partial_document));
+    EXPECT_FALSE(empty_session.hover_at_offset(partial_document, 0U));
+    EXPECT_FALSE(empty_session.hover_at_position(partial_document, tooling::ToolingSourcePosition{}));
+    EXPECT_FALSE(empty_session.definition_at_offset(partial_document, 0U));
+    EXPECT_FALSE(empty_session.definition_at_position(partial_document, tooling::ToolingSourcePosition{}));
+    EXPECT_FALSE(empty_session.references_at_offset(partial_document, 0U));
+    EXPECT_FALSE(empty_session.references_at_position(partial_document, tooling::ToolingSourcePosition{}));
+    EXPECT_FALSE(empty_session.document_symbols(partial_document));
+    EXPECT_FALSE(empty_session.completion_at_offset(partial_document, 0U));
+    EXPECT_FALSE(empty_session.completion_at_position(partial_document, tooling::ToolingSourcePosition{}));
+    EXPECT_FALSE(empty_session.rename_at_offset(partial_document, 0U, "renamed"));
+    EXPECT_FALSE(empty_session.rename_at_position(partial_document, tooling::ToolingSourcePosition{}, "renamed"));
+    EXPECT_FALSE(empty_session.semantic_tokens(partial_document));
+    EXPECT_FALSE(empty_session.inlay_hints(partial_document));
+    EXPECT_FALSE(empty_session.code_actions(partial_document));
+}
+
+TEST(CoreUnit, ToolingSessionProjectsAbsentIdeFeaturesAndSuggestionDiagnostics)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::usize past_eof_offset = TOOLING_SESSION_SOURCE.size() + TOOLING_TEST_PAST_EOF_OFFSET_DELTA;
+    base::Result<std::optional<tooling::ToolingHover>> hover = session.hover_at_offset(document, past_eof_offset);
+    ASSERT_TRUE(hover);
+    EXPECT_FALSE(hover.value().has_value());
+
+    base::Result<std::optional<tooling::ToolingDefinition>> definition =
+        session.definition_at_offset(document, past_eof_offset);
+    ASSERT_TRUE(definition);
+    EXPECT_FALSE(definition.value().has_value());
+
+    base::Result<std::vector<tooling::ToolingReference>> references =
+        session.references_at_offset(document, past_eof_offset);
+    ASSERT_TRUE(references);
+    EXPECT_TRUE(references.value().empty());
+
+    ASSERT_TRUE(session.change_document(document, std::string(TOOLING_SESSION_SUGGESTION_SOURCE), TOOLING_VERSION_TWO));
+    base::Result<std::vector<tooling::ToolingDiagnostic>> diagnostics = session.diagnostics(document);
+    ASSERT_TRUE(diagnostics);
+    EXPECT_TRUE(std::ranges::any_of(diagnostics.value(), [](const tooling::ToolingDiagnostic& diagnostic) {
+        return diagnostic.severity == base::Severity::help
+            && diagnostic.message.find("did you mean `count`") != std::string::npos;
+    }));
+}
+
+TEST(CoreUnit, ToolingSessionPlansBodyLocalIncrementalReuse)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.snapshot(document));
+
+    std::string changed_source{TOOLING_SESSION_SOURCE};
+    const base::usize insert_offset = changed_source.find("return value;") + std::string_view{"return value"}.size();
+    ASSERT_NE(insert_offset, std::string::npos);
+    changed_source.insert(insert_offset, " + 0");
+
+    const base::Result<tooling::ToolingDocumentChangeResult> changed =
+        session.change_document_with_reuse_plan(document, changed_source, insert_offset, 0U, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    EXPECT_EQ(changed.value().version.client_version, std::optional<base::i64>(TOOLING_VERSION_TWO));
+    const tooling::ToolingReusePlan& plan = changed.value().reuse_plan;
+    EXPECT_EQ(changed.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::previous_context);
+    ASSERT_NE(changed.value().incremental.reuse_plan, nullptr);
+    EXPECT_TRUE(changed.value().incremental.reuse_execution.executed);
+    EXPECT_TRUE(changed.value().incremental.reuse_execution.body_local);
+    EXPECT_GT(changed.value().incremental.reuse_execution.reused_query_records, 0U);
+    EXPECT_GT(changed.value().incremental.reuse_execution.recomputed_query_records, 0U);
+    EXPECT_GT(changed.value().incremental.reuse_execution.reused_semantic_facts, 0U);
+    EXPECT_GT(changed.value().incremental.reuse_execution.recomputed_semantic_facts, 0U);
+    EXPECT_GT(changed.value().incremental.workspace_update.retained_facts, 0U);
+    EXPECT_GT(changed.value().incremental.workspace_update.replaced_facts, 0U);
+    EXPECT_TRUE(plan.valid);
+    EXPECT_TRUE(plan.impact.valid);
+    EXPECT_TRUE(plan.summary.body_local);
+    EXPECT_GT(plan.summary.unchanged_facts, 0U);
+    EXPECT_GT(plan.summary.recomputed_facts, 0U);
+    EXPECT_EQ(plan.summary.invalidated_facts, 0U);
+    EXPECT_GT(plan.query_plan.summary.changed, 0U);
+    EXPECT_GT(plan.dependencies.unchanged, 0U);
+    EXPECT_EQ(tooling::tooling_reuse_fact_status_name(tooling::ToolingReuseFactStatus::recomputed), "recomputed");
+    EXPECT_TRUE(contains_invalidation_root(plan, "main", "function_body_syntax"));
+    EXPECT_TRUE(contains_invalidation_root(plan, "main", "type_check_body"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "main", "function_body_syntax"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "main", "type_check_body"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "add", "item_signature"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "main", "item_signature"));
+}
+
+TEST(CoreUnit, ToolingSessionReportsInvalidatedFactsForRemovedDefinition)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.snapshot(document));
+
+    const base::usize add_begin = TOOLING_SESSION_SOURCE.find("fn add");
+    const base::usize main_begin = TOOLING_SESSION_SOURCE.find("fn main");
+    ASSERT_NE(add_begin, std::string_view::npos);
+    ASSERT_NE(main_begin, std::string_view::npos);
+    ASSERT_GT(main_begin, add_begin);
+    constexpr std::string_view changed_source = "module tooling.session;\n"
+                                                "fn main() -> i32 {\n"
+                                                "  return 0;\n"
+                                                "}\n";
+
+    const base::Result<tooling::ToolingDocumentChangeResult> changed = session.change_document_with_reuse_plan(
+        document, std::string(changed_source), add_begin, main_begin - add_begin, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    const tooling::ToolingReusePlan& plan = changed.value().reuse_plan;
+    EXPECT_TRUE(changed.value().incremental.reuse_execution.executed);
+    EXPECT_FALSE(changed.value().incremental.reuse_execution.body_local);
+    EXPECT_GT(changed.value().incremental.reuse_execution.invalidated_semantic_facts, 0U);
+    EXPECT_GT(changed.value().incremental.workspace_update.removed_facts, 0U);
+    EXPECT_TRUE(plan.valid);
+    EXPECT_FALSE(plan.summary.body_local);
+    EXPECT_GT(plan.summary.invalidated_facts, 0U);
+    EXPECT_TRUE(contains_invalidation_root(plan, "add", "item_signature"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::invalidated, "add", "item_signature"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::invalidated, "add", "function_body_syntax"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "main", "item_signature"));
+}
+
+TEST(CoreUnit, ToolingSessionPlansGenericTemplateIncrementalReuse)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_WORKSPACE_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_WORKSPACE_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.snapshot(document));
+
+    std::string changed_source{TOOLING_WORKSPACE_SYMBOL_SOURCE};
+    const base::usize return_offset = changed_source.find("return box.value;");
+    ASSERT_NE(return_offset, std::string::npos);
+    const base::usize insert_offset = return_offset + std::string_view{"return box.value"}.size();
+    changed_source.insert(insert_offset, " + 0");
+
+    const base::Result<tooling::ToolingDocumentChangeResult> changed =
+        session.change_document_with_reuse_plan(document, changed_source, insert_offset, 0U, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    const tooling::ToolingReusePlan& plan = changed.value().reuse_plan;
+    EXPECT_TRUE(plan.valid);
+    EXPECT_TRUE(plan.summary.body_local);
+    EXPECT_GT(plan.summary.unchanged_facts, 0U);
+    EXPECT_GT(plan.summary.recomputed_facts, 0U);
+    EXPECT_EQ(tooling::tooling_reuse_fact_status_name(tooling::ToolingReuseFactStatus::invalidated), "invalidated");
+    EXPECT_EQ(tooling::tooling_reuse_fact_status_name(tooling::ToolingReuseFactStatus::malformed), "malformed");
+    EXPECT_TRUE(contains_invalidation_root(plan, "read", "function_body_syntax"));
+    EXPECT_TRUE(contains_invalidation_root(plan, "read", "type_check_body"));
+    EXPECT_TRUE(
+        contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "Box", "generic_template_signature"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::unchanged, "Box", "item_signature"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "read", "function_body_syntax"));
+    EXPECT_TRUE(contains_reuse_fact(plan, tooling::ToolingReuseFactStatus::recomputed, "read", "type_check_body"));
+}
+
+TEST(CoreUnit, ToolingSessionKeepsStableFactsAcrossRepeatedBodyLocalEdits)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.snapshot(document));
+
+    const base::Result<std::vector<tooling::ToolingDocumentSymbol>> initial_symbols =
+        session.document_symbols(document);
+    ASSERT_TRUE(initial_symbols);
+    const tooling::ToolingDocumentSymbol* const initial_add_symbol = find_symbol_named(initial_symbols.value(), "add");
+    ASSERT_NE(initial_add_symbol, nullptr);
+    const std::string stable_add_definition = initial_add_symbol->stable_definition_key;
+    ASSERT_FALSE(stable_add_definition.empty());
+
+    std::string current_source{TOOLING_SESSION_SOURCE};
+    std::string stable_add_body;
+    for (const base::i64 version : TOOLING_BODY_EDIT_VERSIONS) {
+        const base::usize return_value_offset = current_source.find("return value");
+        ASSERT_NE(return_value_offset, std::string::npos);
+        const base::usize insert_offset = return_value_offset + std::string_view{"return value"}.size();
+        current_source.insert(insert_offset, version == TOOLING_VERSION_TWO ? " + 0" : " + 1");
+
+        const base::Result<tooling::ToolingDocumentChangeResult> changed =
+            session.change_document_with_reuse_plan(document, current_source, insert_offset, 0U, version);
+        ASSERT_TRUE(changed);
+        EXPECT_TRUE(changed.value().incremental.reuse_execution.executed);
+        EXPECT_TRUE(changed.value().incremental.reuse_execution.body_local);
+
+        const tooling::ToolingReuseFact* const add_signature = find_reuse_fact(
+            changed.value().reuse_plan, tooling::ToolingReuseFactStatus::unchanged, "add", "item_signature");
+        ASSERT_NE(add_signature, nullptr);
+        EXPECT_EQ(add_signature->stable_definition_key, stable_add_definition);
+
+        const tooling::ToolingReuseFact* const add_body = find_reuse_fact(
+            changed.value().reuse_plan, tooling::ToolingReuseFactStatus::unchanged, "add", "function_body_syntax");
+        ASSERT_NE(add_body, nullptr);
+        ASSERT_FALSE(add_body->stable_body_key.empty());
+        if (stable_add_body.empty()) {
+            stable_add_body = add_body->stable_body_key;
+        }
+        EXPECT_EQ(add_body->stable_body_key, stable_add_body);
+
+        const base::Result<std::vector<tooling::ToolingDocumentSymbol>> symbols = session.document_symbols(document);
+        ASSERT_TRUE(symbols);
+        const tooling::ToolingDocumentSymbol* const current_add_symbol = find_symbol_named(symbols.value(), "add");
+        ASSERT_NE(current_add_symbol, nullptr);
+        EXPECT_EQ(current_add_symbol->stable_definition_key, stable_add_definition);
+    }
+}
+
+TEST(CoreUnit, ToolingSessionRangeEditReportsSyntaxReuseAndStableAstBody)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.snapshot(document));
+
+    const base::usize function_offset = TOOLING_SESSION_SOURCE.find("fn main");
+    ASSERT_NE(function_offset, std::string_view::npos);
+    const base::Result<std::optional<tooling::ToolingAstNode>> item_ast =
+        session.ast_node_at_offset(document, function_offset);
+    ASSERT_TRUE(item_ast);
+    ASSERT_TRUE(item_ast.value().has_value());
+    EXPECT_EQ(item_ast.value()->kind, tooling::IdeAstNodeKind::item);
+    EXPECT_FALSE(item_ast.value()->stable_definition_key.empty());
+
+    const base::usize return_value_offset = TOOLING_SESSION_SOURCE.find("return value");
+    ASSERT_NE(return_value_offset, std::string_view::npos);
+    const base::Result<std::optional<tooling::ToolingAstNode>> before_ast =
+        session.ast_node_at_offset(document, return_value_offset);
+    ASSERT_TRUE(before_ast);
+    ASSERT_TRUE(before_ast.value().has_value());
+    ASSERT_EQ(before_ast.value()->kind, tooling::IdeAstNodeKind::function_body);
+    ASSERT_FALSE(before_ast.value()->stable_definition_key.empty());
+    ASSERT_FALSE(before_ast.value()->stable_body_key.empty());
+    const std::string stable_main_definition = before_ast.value()->stable_definition_key;
+    const std::string stable_main_body = before_ast.value()->stable_body_key;
+
+    tooling::ToolingDocumentTextEdit edit;
+    edit.begin = return_value_offset + std::string_view{"return value"}.size();
+    edit.removed_length = 0U;
+    edit.inserted_text = " + 0";
+    const base::Result<tooling::ToolingDocumentChangeResult> changed =
+        session.change_document_range_with_reuse_plan(document, edit, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    EXPECT_EQ(changed.value().applied_edit.begin, edit.begin);
+    EXPECT_EQ(changed.value().applied_edit.removed_length, edit.removed_length);
+    EXPECT_EQ(changed.value().applied_edit.inserted_text, edit.inserted_text);
+    EXPECT_TRUE(changed.value().edit_impact.valid);
+    EXPECT_EQ(changed.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::previous_context);
+    EXPECT_TRUE(changed.value().incremental.syntax_reuse.executed);
+    EXPECT_GT(changed.value().incremental.syntax_reuse.reused_nodes, 0U);
+    EXPECT_GT(changed.value().incremental.syntax_reuse.recomputed_nodes, 0U);
+    EXPECT_GT(changed.value().incremental.syntax_reuse.invalidated_nodes, 0U);
+    EXPECT_GT(changed.value().incremental.syntax_reuse.current_nodes, 0U);
+
+    const std::optional<tooling::ToolingDocumentState> state = session.document_state(document);
+    ASSERT_TRUE(state.has_value());
+    EXPECT_NE(state->text.find("return value + 0;"), std::string::npos);
+    const base::Result<std::optional<tooling::ToolingAstNode>> after_ast =
+        session.ast_node_at_offset(document, return_value_offset);
+    ASSERT_TRUE(after_ast);
+    ASSERT_TRUE(after_ast.value().has_value());
+    EXPECT_EQ(after_ast.value()->kind, tooling::IdeAstNodeKind::function_body);
+    EXPECT_EQ(after_ast.value()->stable_definition_key, stable_main_definition);
+    EXPECT_EQ(after_ast.value()->stable_body_key, stable_main_body);
+
+    tooling::ToolingDocumentTextEdit invalid_edit;
+    invalid_edit.begin = state->text.size() + 1U;
+    EXPECT_FALSE(session.change_document_range(document, invalid_edit, TOOLING_VERSION_THREE));
+}
+
+TEST(CoreUnit, ToolingSessionAppliesRangeEditWithoutReusePlan)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(session.snapshot(document));
+
+    tooling::ToolingDocumentTextEdit edit;
+    const base::usize return_value_offset = TOOLING_SESSION_SOURCE.find("return value");
+    ASSERT_NE(return_value_offset, std::string_view::npos);
+    edit.begin = return_value_offset + std::string_view{"return value"}.size();
+    edit.inserted_text = " + 1";
+    const base::Result<tooling::ToolingDocumentVersion> changed =
+        session.change_document_range(document, edit, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    EXPECT_EQ(changed.value().client_version, std::optional<base::i64>(TOOLING_VERSION_TWO));
+
+    const std::optional<tooling::ToolingDocumentState> state = session.document_state(document);
+    ASSERT_TRUE(state.has_value());
+    EXPECT_NE(state->text.find("return value + 1;"), std::string::npos);
+    const base::Result<tooling::ToolingSnapshotHandle> snapshot = session.snapshot(document);
+    ASSERT_TRUE(snapshot);
+    EXPECT_EQ(snapshot.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::previous_context);
+    EXPECT_TRUE(snapshot.value().incremental.syntax_reuse.executed);
+    EXPECT_GT(snapshot.value().incremental.syntax_reuse.reused_nodes, 0U);
+}
+
+TEST(CoreUnit, ToolingSessionRangeEditHandlesColdStateAndFailureEdges)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+
+    tooling::ToolingDocumentTextEdit unopened_edit;
+    unopened_edit.begin = 0U;
+    unopened_edit.inserted_text = "\n";
+    EXPECT_FALSE(session.change_document_range(document, unopened_edit, TOOLING_VERSION_ONE));
+    EXPECT_FALSE(session.change_document_range_with_reuse_plan(document, unopened_edit, TOOLING_VERSION_ONE));
+    EXPECT_FALSE(session.ast_node_at_offset(document, 0U));
+    EXPECT_FALSE(session.ast_node_at_position(document, tooling::ToolingSourcePosition{}));
+
+    tooling::IdeSnapshot unparsed_snapshot;
+    EXPECT_FALSE(tooling::ast_node_at_offset(unparsed_snapshot, 0U).has_value());
+
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    const base::Result<tooling::ToolingDocumentVersion> cold_change =
+        session.change_document_range(document, unopened_edit, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(cold_change);
+    base::Result<tooling::ToolingSnapshotHandle> cold_snapshot = session.snapshot(document);
+    ASSERT_TRUE(cold_snapshot);
+    EXPECT_EQ(cold_snapshot.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::clean_build);
+    EXPECT_FALSE(cold_snapshot.value().incremental.syntax_reuse.executed);
+
+    const base::Result<std::optional<tooling::ToolingAstNode>> module_gap = session.ast_node_at_offset(document, 0U);
+    ASSERT_TRUE(module_gap);
+    EXPECT_FALSE(module_gap.value().has_value());
+
+    const std::optional<tooling::ToolingDocumentState> state = session.document_state(document);
+    ASSERT_TRUE(state.has_value());
+    const base::usize return_value_offset = state->text.find(TOOLING_RETURN_VALUE_TEXT);
+    ASSERT_NE(return_value_offset, std::string::npos);
+
+    tooling::ToolingDocumentTextEdit body_edit;
+    body_edit.begin = return_value_offset + TOOLING_RETURN_VALUE_TEXT.size();
+    body_edit.inserted_text = " + 2";
+    EXPECT_FALSE(session.change_document_range(document, body_edit, TOOLING_VERSION_TWO));
+    EXPECT_FALSE(session.change_document_range_with_reuse_plan(document, body_edit, TOOLING_VERSION_TWO));
+
+    tooling::ToolingDocumentTextEdit invalid_edit;
+    invalid_edit.begin = state->text.size() + TOOLING_TEST_PAST_EOF_OFFSET_DELTA;
+    const base::Result<tooling::ToolingDocumentChangeResult> invalid_with_reuse =
+        session.change_document_range_with_reuse_plan(document, invalid_edit, TOOLING_VERSION_FOUR);
+    EXPECT_FALSE(invalid_with_reuse);
+
+    tooling::ToolingDocumentTextEdit over_remove_edit;
+    over_remove_edit.begin = state->text.size();
+    over_remove_edit.removed_length = 1U;
+    EXPECT_FALSE(session.change_document_range_with_reuse_plan(document, over_remove_edit, TOOLING_VERSION_FOUR));
+
+    const std::optional<tooling::ToolingDocumentState> unchanged_state = session.document_state(document);
+    ASSERT_TRUE(unchanged_state.has_value());
+    EXPECT_EQ(unchanged_state->version.client_version, std::optional<base::i64>(TOOLING_VERSION_TWO));
+    EXPECT_EQ(unchanged_state->text, state->text);
+}
+
+TEST(CoreUnit, ToolingSessionAstNodeProjectsNonDefiningImplItem)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_LSP_METHOD_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_LSP_METHOD_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::usize impl_offset = TOOLING_LSP_METHOD_SYMBOL_SOURCE.find("impl Counter");
+    ASSERT_NE(impl_offset, std::string_view::npos);
+    const base::Result<std::optional<tooling::ToolingAstNode>> impl_ast =
+        session.ast_node_at_offset(document, impl_offset);
+    ASSERT_TRUE(impl_ast);
+    ASSERT_TRUE(impl_ast.value().has_value());
+    EXPECT_EQ(impl_ast.value()->kind, tooling::IdeAstNodeKind::item);
+    EXPECT_EQ(impl_ast.value()->detail, "item");
+    EXPECT_TRUE(impl_ast.value()->stable_definition_key.empty());
+    EXPECT_FALSE(impl_ast.value()->valid);
+}
+
+TEST(CoreUnit, ToolingSessionAstNodeProjectsStableTopLevelItemKinds)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_LSP_FALLBACK_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(
+        session.open_document(document, std::string(TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+
+    struct ExpectedAstItem {
+        std::string_view needle;
+        std::string_view name;
+        std::string_view detail;
+    };
+    constexpr std::array<ExpectedAstItem, 5> EXPECTED_ITEMS{{
+        {"const answer", "answer", "const"},
+        {"type Count", "Count", "type_alias"},
+        {"opaque struct Handle", "Handle", "opaque_struct"},
+        {"struct Point", "Point", "struct"},
+        {"enum Mode", "Mode", "enum"},
+    }};
+
+    for (const ExpectedAstItem& expected : EXPECTED_ITEMS) {
+        const base::usize offset = TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE.find(expected.needle);
+        ASSERT_NE(offset, std::string_view::npos);
+        const base::Result<std::optional<tooling::ToolingAstNode>> ast_node =
+            session.ast_node_at_offset(document, offset);
+        ASSERT_TRUE(ast_node);
+        ASSERT_TRUE(ast_node.value().has_value());
+        EXPECT_EQ(ast_node.value()->kind, tooling::IdeAstNodeKind::item);
+        EXPECT_EQ(ast_node.value()->name, expected.name);
+        EXPECT_EQ(ast_node.value()->detail, expected.detail);
+        EXPECT_FALSE(ast_node.value()->stable_definition_key.empty());
+        EXPECT_TRUE(ast_node.value()->valid);
+    }
+}
+
+TEST(CoreUnit, ToolingSessionFullTextReusePlanHandlesFailureEdges)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+
+    EXPECT_FALSE(session.change_document_with_reuse_plan(
+        document, std::string(TOOLING_SESSION_SOURCE), 0U, 0U, TOOLING_VERSION_ONE));
+
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+    EXPECT_FALSE(session.change_document_with_reuse_plan(
+        document, std::string(TOOLING_SESSION_INVALID_SOURCE), 0U, 0U, TOOLING_VERSION_ONE));
+
+    const base::usize invalid_edit_begin = TOOLING_SESSION_SOURCE.size() + TOOLING_TEST_PAST_EOF_OFFSET_DELTA;
+    const base::Result<tooling::ToolingDocumentChangeResult> changed = session.change_document_with_reuse_plan(
+        document, std::string(TOOLING_SESSION_SOURCE), invalid_edit_begin, 0U, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    EXPECT_EQ(changed.value().applied_edit.begin, invalid_edit_begin);
+    EXPECT_TRUE(changed.value().applied_edit.inserted_text.empty());
+    EXPECT_TRUE(changed.value().edit_impact.valid);
+    EXPECT_EQ(changed.value().version.client_version, std::optional<base::i64>(TOOLING_VERSION_TWO));
+}
+
+TEST(CoreUnit, ToolingSessionTracksAddedDependenciesAndEmptyReusePlan)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::Result<tooling::ToolingSnapshotHandle> handle = session.snapshot(document);
+    ASSERT_TRUE(handle);
+    ASSERT_GE(handle.value().snapshot->query.records.size(), 2U);
+
+    tooling::IdeSnapshot before = *handle.value().snapshot;
+    tooling::IdeSnapshot after = before;
+    const query::QueryKey extra_dependency = query::query_key(before.query.records.front().key.kind,
+        before.query.records.front().key.payload, static_cast<base::u16>(before.query.records.front().key.schema + 1U));
+    const query::QueryDependencyEdge extra_edge{before.query.records.front().key, extra_dependency};
+    after.query.dependencies.push_back(extra_edge);
+
+    const base::usize edit_offset = TOOLING_SESSION_SOURCE.find("return value;");
+    ASSERT_NE(edit_offset, std::string_view::npos);
+    const tooling::IdeEditImpact impact = tooling::edit_impact_for_range(before, edit_offset, 0U);
+    const tooling::ToolingReusePlan plan = tooling::tooling_plan_reuse(before, after, impact);
+    EXPECT_TRUE(plan.valid);
+    EXPECT_GT(plan.dependencies.added, 0U);
+    EXPECT_TRUE(plan.dependencies.unchanged > 0U);
+    EXPECT_EQ(tooling::tooling_reuse_fact_status_name(tooling::ToolingReuseFactStatus::unchanged), "unchanged");
+
+    tooling::IdeSnapshot added_tail_before = before;
+    tooling::IdeSnapshot added_tail_after = before;
+    added_tail_before.query.dependencies.clear();
+    added_tail_after.query.dependencies.clear();
+    added_tail_after.query.dependencies.push_back(extra_edge);
+    const tooling::ToolingReusePlan added_tail_plan =
+        tooling::tooling_plan_reuse(added_tail_before, added_tail_after, impact);
+    EXPECT_TRUE(added_tail_plan.valid);
+    EXPECT_EQ(added_tail_plan.dependencies.added, 1U);
+    EXPECT_EQ(added_tail_plan.dependencies.removed, 0U);
+
+    tooling::IdeSnapshot removed_tail_before = before;
+    tooling::IdeSnapshot removed_tail_after = before;
+    removed_tail_before.query.dependencies.clear();
+    removed_tail_after.query.dependencies.clear();
+    removed_tail_before.query.dependencies.push_back(extra_edge);
+    const tooling::ToolingReusePlan removed_tail_plan =
+        tooling::tooling_plan_reuse(removed_tail_before, removed_tail_after, impact);
+    EXPECT_TRUE(removed_tail_plan.valid);
+    EXPECT_EQ(removed_tail_plan.dependencies.added, 0U);
+    EXPECT_EQ(removed_tail_plan.dependencies.removed, 1U);
+
+    ASSERT_FALSE(before.query.semantic_facts.empty());
+    tooling::IdeSnapshot malformed_after = before;
+    tooling::IdeSemanticFact malformed_fact = malformed_after.query.semantic_facts.front();
+    malformed_fact.kind = tooling::IdeSemanticFactKind::item_signature;
+    malformed_fact.query = extra_dependency;
+    malformed_fact.name = std::string(TOOLING_MALFORMED_FACT_NAME);
+    malformed_after.query.semantic_facts.push_back(std::move(malformed_fact));
+    const tooling::ToolingReusePlan malformed_plan = tooling::tooling_plan_reuse(before, malformed_after, impact);
+    EXPECT_TRUE(malformed_plan.valid);
+    EXPECT_GT(malformed_plan.summary.malformed_facts, 0U);
+    EXPECT_TRUE(contains_reuse_fact(
+        malformed_plan, tooling::ToolingReuseFactStatus::malformed, TOOLING_MALFORMED_FACT_NAME, "item_signature"));
+
+    const tooling::ToolingReusePlan empty_plan =
+        tooling::tooling_plan_reuse(tooling::IdeSnapshot{}, tooling::IdeSnapshot{}, tooling::IdeEditImpact{});
+    EXPECT_FALSE(empty_plan.valid);
+}
+
+TEST(CoreUnit, ToolingSessionProjectsMemberDefinitionsReferencesAndNoModuleIndex)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_WORKSPACE_PACKAGE));
+    const tooling::ToolingDocumentId symbol_document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(
+        session.open_document(symbol_document, std::string(TOOLING_WORKSPACE_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::usize access_offset = TOOLING_WORKSPACE_SYMBOL_SOURCE.find("box.value");
+    ASSERT_NE(access_offset, std::string_view::npos);
+    const base::usize field_offset = TOOLING_WORKSPACE_SYMBOL_SOURCE.find("value", access_offset);
+    ASSERT_NE(field_offset, std::string_view::npos);
+
+    const base::Result<std::optional<tooling::ToolingDefinition>> definition =
+        session.definition_at_offset(symbol_document, field_offset);
+    ASSERT_TRUE(definition);
+    ASSERT_TRUE(definition.value().has_value());
+    EXPECT_TRUE(definition.value()->valid);
+    EXPECT_EQ(definition.value()->name, "value");
+    EXPECT_EQ(definition.value()->kind, "struct_field");
+    EXPECT_TRUE(query::is_valid(definition.value()->member));
+    EXPECT_NE(definition.value()->stable_member_key.find("MemberKey"), std::string::npos);
+    EXPECT_NE(definition.value()->stable_definition_key.find("DefKey"), std::string::npos);
+
+    const std::vector<tooling::ToolingIndexedSemanticFact> member_facts =
+        session.workspace_index().members(definition.value()->member);
+    ASSERT_FALSE(member_facts.empty());
+    EXPECT_NE(find_index_fact(member_facts, "value", "item_signature"), nullptr);
+
+    const base::Result<std::vector<tooling::ToolingReference>> references =
+        session.references_at_offset(symbol_document, field_offset);
+    ASSERT_TRUE(references);
+    EXPECT_TRUE(std::ranges::any_of(references.value(), [](const tooling::ToolingReference& reference) {
+        return reference.name == "value" && reference.is_definition;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(references.value(), [](const tooling::ToolingReference& reference) {
+        return reference.name == "value" && !reference.is_definition;
+    }));
+
+    const base::Result<tooling::ToolingSnapshotHandle> symbol_snapshot = session.snapshot(symbol_document);
+    ASSERT_TRUE(symbol_snapshot);
+    tooling::IdeSnapshot no_module_snapshot = *symbol_snapshot.value().snapshot;
+    no_module_snapshot.ast.module_path.parts.clear();
+    tooling::ToolingWorkspaceSemanticIndex no_module_index;
+    no_module_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        symbol_snapshot.value().document,
+        symbol_snapshot.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(no_module_snapshot)),
+        {},
+    });
+    const tooling::ToolingWorkspaceIndexStats no_module_stats = no_module_index.stats();
+    EXPECT_EQ(no_module_stats.documents, 1U);
+    EXPECT_GT(no_module_stats.facts, 0U);
+    EXPECT_GT(no_module_stats.definitions, 0U);
+    EXPECT_GT(no_module_stats.members, 0U);
+    EXPECT_GT(no_module_stats.generic_instances, 0U);
+    EXPECT_FALSE(no_module_index.all_facts().empty());
+}
+
+TEST(CoreUnit, ToolingWorkspaceIndexHandlesInvalidAndFallbackStableSymbols)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_WORKSPACE_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_WORKSPACE_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::Result<tooling::ToolingSnapshotHandle> handle = session.snapshot(document);
+    ASSERT_TRUE(handle);
+
+    tooling::ToolingWorkspaceSemanticIndex invalid_index;
+    tooling::IdeSnapshot invalid_snapshot = *handle.value().snapshot;
+    invalid_snapshot.ast.module_path.parts.clear();
+    ASSERT_FALSE(invalid_snapshot.checked.enum_cases.empty());
+    invalid_snapshot.checked.enum_cases.begin()->second.stable_case_key.kind = query::StableSymbolKind::invalid;
+    invalid_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        handle.value().document,
+        handle.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(invalid_snapshot)),
+        {},
+    });
+    const tooling::ToolingWorkspaceIndexStats invalid_stats = invalid_index.stats();
+    EXPECT_EQ(invalid_stats.documents, 1U);
+    EXPECT_GT(invalid_stats.facts, 0U);
+    EXPECT_GT(invalid_stats.definitions, 0U);
+    EXPECT_GT(invalid_stats.members, 0U);
+    EXPECT_GT(invalid_stats.generic_instances, 0U);
+    EXPECT_FALSE(invalid_index.all_facts().empty());
+
+    tooling::ToolingWorkspaceSemanticIndex malformed_fact_index;
+    tooling::IdeSnapshot malformed_fact_snapshot = *handle.value().snapshot;
+    ASSERT_FALSE(malformed_fact_snapshot.query.semantic_facts.empty());
+    const base::u32 invalid_source_id = static_cast<base::u32>(malformed_fact_snapshot.sources.files().size());
+    malformed_fact_snapshot.query.semantic_facts.front().range.source.value = invalid_source_id;
+    tooling::IdeSemanticFact invalid_query_fact = malformed_fact_snapshot.query.semantic_facts.front();
+    invalid_query_fact.query = {};
+    malformed_fact_snapshot.query.semantic_facts.push_back(std::move(invalid_query_fact));
+    malformed_fact_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        handle.value().document,
+        handle.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(malformed_fact_snapshot)),
+        {},
+    });
+    const std::vector<tooling::ToolingIndexedSemanticFact> malformed_input_facts =
+        malformed_fact_index.facts_for_document(handle.value().document);
+    ASSERT_FALSE(malformed_input_facts.empty());
+    EXPECT_TRUE(std::ranges::any_of(malformed_input_facts, [](const tooling::ToolingIndexedSemanticFact& fact) {
+        return fact.range.path.empty();
+    }));
+
+    tooling::ToolingWorkspaceSemanticIndex fallback_index;
+    tooling::IdeSnapshot fallback_snapshot = *handle.value().snapshot;
+    fallback_snapshot.ast.module_path.parts.clear();
+    ASSERT_FALSE(fallback_snapshot.checked.enum_cases.empty());
+    sema::EnumCaseInfo& fallback_case = fallback_snapshot.checked.enum_cases.begin()->second;
+    fallback_case.stable_id = {};
+    fallback_case.case_name = sema::intern_text(fallback_snapshot.ast.identifiers, "missing_fast");
+    fallback_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        handle.value().document,
+        handle.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(fallback_snapshot)),
+        {},
+    });
+    const tooling::ToolingWorkspaceIndexStats fallback_stats = fallback_index.stats();
+    EXPECT_EQ(fallback_stats.documents, 1U);
+    EXPECT_GT(fallback_stats.facts, 0U);
+    EXPECT_GT(fallback_stats.definitions, 0U);
+    EXPECT_GT(fallback_stats.members, 0U);
+    EXPECT_GT(fallback_stats.generic_instances, 0U);
+    EXPECT_FALSE(fallback_index.all_facts().empty());
+
+    tooling::ToolingWorkspaceSemanticIndex invalid_field_index;
+    tooling::IdeSnapshot invalid_field_snapshot = *handle.value().snapshot;
+    ASSERT_FALSE(invalid_field_snapshot.checked.structs.empty());
+    sema::StructInfo& invalid_field_struct = invalid_field_snapshot.checked.structs.begin()->second;
+    ASSERT_FALSE(invalid_field_struct.fields.empty());
+    invalid_field_struct.fields.front().stable_key.kind = query::StableSymbolKind::invalid;
+    invalid_field_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        handle.value().document,
+        handle.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(invalid_field_snapshot)),
+        {},
+    });
+    const tooling::ToolingWorkspaceIndexStats invalid_field_stats = invalid_field_index.stats();
+    EXPECT_EQ(invalid_field_stats.documents, 1U);
+    EXPECT_GT(invalid_field_stats.facts, 0U);
+    EXPECT_GT(invalid_field_stats.definitions, 0U);
+    EXPECT_GT(invalid_field_stats.members, 0U);
+
+    tooling::ToolingWorkspaceSemanticIndex trait_member_kind_index;
+    tooling::IdeSnapshot trait_member_kind_snapshot = *handle.value().snapshot;
+    ASSERT_FALSE(trait_member_kind_snapshot.checked.structs.empty());
+    sema::StructInfo& trait_member_kind_struct = trait_member_kind_snapshot.checked.structs.begin()->second;
+    ASSERT_FALSE(trait_member_kind_struct.fields.empty());
+    trait_member_kind_struct.fields.front().stable_key.kind = query::StableSymbolKind::method;
+    trait_member_kind_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        handle.value().document,
+        handle.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(trait_member_kind_snapshot)),
+        {},
+    });
+    const tooling::ToolingWorkspaceIndexStats trait_member_kind_stats = trait_member_kind_index.stats();
+    EXPECT_EQ(trait_member_kind_stats.documents, 1U);
+    EXPECT_GT(trait_member_kind_stats.facts, 0U);
+    EXPECT_GT(trait_member_kind_stats.members, 0U);
+
+    tooling::ToolingWorkspaceSemanticIndex associated_member_kind_index;
+    tooling::IdeSnapshot associated_member_kind_snapshot = *handle.value().snapshot;
+    ASSERT_FALSE(associated_member_kind_snapshot.checked.structs.empty());
+    sema::StructInfo& associated_member_kind_struct = associated_member_kind_snapshot.checked.structs.begin()->second;
+    ASSERT_FALSE(associated_member_kind_struct.fields.empty());
+    associated_member_kind_struct.fields.front().stable_key.kind = query::StableSymbolKind::type;
+    associated_member_kind_index.index_snapshot(tooling::ToolingSnapshotHandle{
+        handle.value().document,
+        handle.value().version,
+        std::make_shared<tooling::IdeSnapshot>(std::move(associated_member_kind_snapshot)),
+        {},
+    });
+    const tooling::ToolingWorkspaceIndexStats associated_member_kind_stats = associated_member_kind_index.stats();
+    EXPECT_EQ(associated_member_kind_stats.documents, 1U);
+    EXPECT_GT(associated_member_kind_stats.facts, 0U);
+    EXPECT_GT(associated_member_kind_stats.members, 0U);
+}
+
+TEST(CoreUnit, ToolingSessionMaintainsWorkspaceSemanticIndex)
+{
+    tooling::ToolingWorkspaceSemanticIndex empty_index;
+    empty_index.index_snapshot(tooling::ToolingSnapshotHandle{});
+    empty_index.clear();
+    EXPECT_TRUE(empty_index.all_facts().empty());
+
+    tooling::ToolingSession session(tooling_project_config(TOOLING_WORKSPACE_PACKAGE));
+    const tooling::ToolingDocumentId left_document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_LEFT_URI, session.project_config());
+    const tooling::ToolingDocumentId right_document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_RIGHT_URI, session.project_config());
+    const tooling::ToolingDocumentId symbol_document =
+        tooling::tooling_document_id_from_uri(TOOLING_WORKSPACE_SYMBOL_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(left_document, std::string(TOOLING_WORKSPACE_LEFT_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(
+        session.open_document(right_document, std::string(TOOLING_WORKSPACE_RIGHT_SOURCE), TOOLING_VERSION_ONE));
+    ASSERT_TRUE(
+        session.open_document(symbol_document, std::string(TOOLING_WORKSPACE_SYMBOL_SOURCE), TOOLING_VERSION_ONE));
+
+    ASSERT_TRUE(session.snapshot(left_document));
+    ASSERT_TRUE(session.snapshot(right_document));
+    ASSERT_TRUE(session.snapshot(symbol_document));
+    tooling::ToolingWorkspaceIndexStats stats = session.workspace_index().stats();
+    EXPECT_EQ(stats.documents, 3U);
+    EXPECT_GE(stats.facts, 6U);
+    EXPECT_GE(stats.definitions, 6U);
+    EXPECT_GT(stats.members, 0U);
+    EXPECT_GE(stats.bodies, 4U);
+    EXPECT_GT(stats.generic_instances, 0U);
+    EXPECT_TRUE(session.workspace_index().members(query::MemberKey{}).empty());
+    EXPECT_TRUE(session.workspace_index().generic_instances(query::GenericInstanceKey{}).empty());
+    EXPECT_TRUE(session.workspace_index()
+            .facts_for_document(
+                tooling::tooling_document_id_from_uri("file:///workspace/missing_index.ax", session.project_config()))
+            .empty());
+
+    base::Result<std::vector<tooling::ToolingDocumentSymbol>> left_symbols = session.document_symbols(left_document);
+    ASSERT_TRUE(left_symbols);
+    const tooling::ToolingDocumentSymbol* const left_symbol = find_symbol_named(left_symbols.value(), "left");
+    ASSERT_NE(left_symbol, nullptr);
+    const std::vector<tooling::ToolingIndexedSemanticFact> left_definitions =
+        session.workspace_index().definitions(left_symbol->definition);
+    ASSERT_FALSE(left_definitions.empty());
+    EXPECT_NE(find_index_fact(left_definitions, "left", "item_signature"), nullptr);
+
+    const std::vector<tooling::ToolingIndexedSemanticFact> left_facts = session.workspace_index().all_facts();
+    const tooling::ToolingIndexedSemanticFact* const left_body =
+        find_index_fact(left_facts, "left", "function_body_syntax");
+    ASSERT_NE(left_body, nullptr);
+    EXPECT_FALSE(session.workspace_index().bodies(left_body->body).empty());
+    EXPECT_TRUE(session.workspace_index().definitions(query::DefKey{}).empty());
+    EXPECT_TRUE(session.workspace_index().bodies(query::BodyKey{}).empty());
+
+    const std::vector<tooling::ToolingIndexedSemanticFact> symbol_facts =
+        session.workspace_index().facts_for_document(symbol_document);
+    const tooling::ToolingIndexedSemanticFact* const field_fact =
+        find_index_fact(symbol_facts, "value", "item_signature");
+    ASSERT_NE(field_fact, nullptr);
+    ASSERT_TRUE(query::is_valid(field_fact->member));
+    const std::vector<tooling::ToolingIndexedSemanticFact> member_facts =
+        session.workspace_index().members(field_fact->member);
+    EXPECT_NE(find_index_fact(member_facts, "value", "item_signature"), nullptr);
+
+    const tooling::ToolingIndexedSemanticFact* const generic_fact =
+        find_index_fact(symbol_facts, "Box", "item_signature");
+    ASSERT_NE(generic_fact, nullptr);
+    ASSERT_TRUE(query::is_valid(generic_fact->generic_instance));
+    const std::vector<tooling::ToolingIndexedSemanticFact> generic_facts =
+        session.workspace_index().generic_instances(generic_fact->generic_instance);
+    EXPECT_NE(find_index_fact(generic_facts, "Box", "item_signature"), nullptr);
+
+    constexpr std::string_view changed_left = "module tooling.left;\n"
+                                              "fn left() -> i32 {\n"
+                                              "  return 10;\n"
+                                              "}\n";
+    ASSERT_TRUE(session.change_document(left_document, std::string(changed_left), TOOLING_VERSION_TWO));
+    EXPECT_EQ(session.workspace_index().stats().documents, 2U);
+    ASSERT_TRUE(session.snapshot(left_document));
+    EXPECT_EQ(session.workspace_index().stats().documents, 3U);
+
+    ASSERT_TRUE(session.close_document(right_document));
+    EXPECT_EQ(session.workspace_index().stats().documents, 2U);
+    EXPECT_TRUE(session.workspace_index().facts_for_document(right_document).empty());
+}
+
+TEST(CoreUnit, ToolingWorkspaceIndexReportsIncrementalUpdateStats)
+{
+    tooling::ToolingSession session(tooling_project_config(TOOLING_SESSION_PACKAGE));
+    const tooling::ToolingDocumentId document =
+        tooling::tooling_document_id_from_uri(TOOLING_SESSION_URI, session.project_config());
+    ASSERT_TRUE(session.open_document(document, std::string(TOOLING_SESSION_SOURCE), TOOLING_VERSION_ONE));
+
+    const base::Result<tooling::ToolingSnapshotHandle> initial = session.snapshot(document);
+    ASSERT_TRUE(initial);
+    EXPECT_TRUE(initial.value().incremental.workspace_update.updated);
+    EXPECT_EQ(initial.value().incremental.workspace_update.previous_document_facts, 0U);
+    EXPECT_GT(initial.value().incremental.workspace_update.inserted_facts, 0U);
+    const std::vector<tooling::ToolingIndexedSemanticFact> initial_indexed =
+        session.workspace_index().facts_for_document(document);
+    ASSERT_FALSE(initial_indexed.empty());
+
+    std::vector<tooling::ToolingIndexedSemanticFact> synthetic_previous;
+    tooling::ToolingIndexedSemanticFact body_identity;
+    body_identity.document = document;
+    body_identity.version = initial.value().version;
+    body_identity.kind = "function_body_syntax";
+    body_identity.name = "body_identity";
+    body_identity.stable_body_key = "BodyKey(synthetic)";
+    synthetic_previous.push_back(body_identity);
+    tooling::ToolingIndexedSemanticFact definition_identity;
+    definition_identity.document = document;
+    definition_identity.version = initial.value().version;
+    definition_identity.kind = "item_signature";
+    definition_identity.name = "definition_identity";
+    definition_identity.stable_definition_key = "DefKey(synthetic)";
+    synthetic_previous.push_back(definition_identity);
+    tooling::ToolingIndexedSemanticFact generic_identity;
+    generic_identity.document = document;
+    generic_identity.version = initial.value().version;
+    generic_identity.kind = "item_signature";
+    generic_identity.name = "generic_identity";
+    generic_identity.stable_generic_instance_key = "GenericInstanceKey(synthetic)";
+    synthetic_previous.push_back(generic_identity);
+    tooling::ToolingIndexedSemanticFact range_identity;
+    range_identity.document = document;
+    range_identity.version = initial.value().version;
+    range_identity.kind = "item_signature";
+    range_identity.name = "range_identity";
+    range_identity.range = initial_indexed.front().range;
+    synthetic_previous.push_back(range_identity);
+    tooling::ToolingWorkspaceSemanticIndex synthetic_index;
+    const tooling::ToolingWorkspaceIndexUpdateStats synthetic_stats =
+        synthetic_index.update_snapshot(initial.value(), synthetic_previous);
+    EXPECT_GE(synthetic_stats.removed_facts, synthetic_previous.size());
+
+    std::string changed_source{TOOLING_SESSION_SOURCE};
+    const base::usize return_value_offset = changed_source.find("return value");
+    ASSERT_NE(return_value_offset, std::string::npos);
+    const base::usize insert_offset = return_value_offset + std::string_view{"return value"}.size();
+    changed_source.insert(insert_offset, " + 0");
+    const base::Result<tooling::ToolingDocumentChangeResult> changed =
+        session.change_document_with_reuse_plan(document, changed_source, insert_offset, 0U, TOOLING_VERSION_TWO);
+    ASSERT_TRUE(changed);
+    EXPECT_TRUE(changed.value().incremental.workspace_update.updated);
+    EXPECT_GT(changed.value().incremental.workspace_update.retained_facts, 0U);
+    EXPECT_GT(changed.value().incremental.workspace_update.replaced_facts, 0U);
+    EXPECT_EQ(changed.value().incremental.workspace_update.removed_facts, 0U);
+
+    const std::vector<tooling::ToolingIndexedSemanticFact> indexed =
+        session.workspace_index().facts_for_document(document);
+    ASSERT_FALSE(indexed.empty());
+    EXPECT_TRUE(std::ranges::all_of(indexed, [](const tooling::ToolingIndexedSemanticFact& fact) {
+        return fact.version.client_version == std::optional<base::i64>(TOOLING_VERSION_TWO);
+    }));
+
+    const base::Result<tooling::ToolingSnapshotHandle> cached = session.snapshot(document);
+    ASSERT_TRUE(cached);
+    EXPECT_EQ(cached.value().incremental.status, tooling::ToolingIncrementalSnapshotStatus::cached_snapshot);
+    EXPECT_TRUE(cached.value().incremental.workspace_update.updated);
+    EXPECT_EQ(cached.value().incremental.workspace_update.retained_facts, indexed.size());
+    EXPECT_EQ(cached.value().incremental.workspace_update.inserted_facts, 0U);
+    EXPECT_EQ(cached.value().incremental.workspace_update.replaced_facts, 0U);
+    EXPECT_EQ(cached.value().incremental.workspace_update.removed_facts, 0U);
+}
+
+TEST(CoreUnit, LspFramingParsesAndWritesDeterministicContentMessages)
+{
+    const std::string body = lsp_request_json(TOOLING_LSP_ID_INITIALIZE, "initialize", "{}");
+    const std::string frame = tooling::write_lsp_content_message(body);
+    EXPECT_NE(frame.find("Content-Length: "), std::string::npos);
+    EXPECT_NE(frame.find("\r\n\r\n"), std::string::npos);
+
+    const base::Result<std::vector<tooling::LspContentMessage>> parsed =
+        tooling::parse_lsp_content_messages(frame + frame);
+    ASSERT_TRUE(parsed);
+    ASSERT_EQ(parsed.value().size(), 2U);
+    EXPECT_EQ(parsed.value()[0].body, body);
+    EXPECT_EQ(parsed.value()[1].body, body);
+
+    const base::Result<std::vector<tooling::LspContentMessage>> extra_header =
+        tooling::parse_lsp_content_messages("Content-Type: application/vscode-jsonrpc\r\nContent-Length: 2\r\n\r\n{}");
+    ASSERT_TRUE(extra_header);
+    ASSERT_EQ(extra_header.value().size(), 1U);
+    EXPECT_EQ(extra_header.value().front().body, "{}");
+
+    const base::Result<std::vector<tooling::LspContentMessage>> spaced_header =
+        tooling::parse_lsp_content_messages(" \tCONTENT-LENGTH \t: \t2 \t\r\n\r\n{}");
+    ASSERT_TRUE(spaced_header);
+    ASSERT_EQ(spaced_header.value().size(), 1U);
+    EXPECT_EQ(spaced_header.value().front().body, "{}");
+
+    const base::Result<std::vector<tooling::LspContentMessage>> lowercase_header =
+        tooling::parse_lsp_content_messages("content-length: 2\r\n\r\n{}");
+    ASSERT_TRUE(lowercase_header);
+    ASSERT_EQ(lowercase_header.value().size(), 1U);
+    EXPECT_EQ(lowercase_header.value().front().body, "{}");
+
+    const base::Result<std::vector<tooling::LspContentMessage>> invalid =
+        tooling::parse_lsp_content_messages("Content-Length: 12\r\n\r\n{}");
+    EXPECT_FALSE(invalid);
+    EXPECT_FALSE(tooling::parse_lsp_content_messages("Content-Length\r\n\r\n{}"));
+    EXPECT_FALSE(tooling::parse_lsp_content_messages("Content-Lengti: 2\r\n\r\n{}"));
+    EXPECT_FALSE(tooling::parse_lsp_content_messages("Content-LengthX: 2\r\n\r\n{}"));
+    EXPECT_FALSE(tooling::parse_lsp_content_messages("Content-Length: 2abc\r\n\r\n{}"));
+    EXPECT_FALSE(tooling::parse_lsp_content_messages(
+        "Content-Length: " + std::to_string(tooling::LSP_MAX_MESSAGE_BYTES + 1U) + "\r\n\r\n{}"));
+}
+
+TEST(CoreUnit, LspStdioParsesOptions)
+{
+    const std::array<std::string_view, 10> arguments{
+        "aurex-lsp",
+        "--root",
+        "/workspace",
+        "--source-root",
+        "src",
+        "--package",
+        "tooling-lsp-stdio-test",
+        "-I",
+        "deps",
+        "--help",
+    };
+
+    base::Result<tooling::LspStdioOptions> options = tooling::parse_lsp_stdio_arguments(arguments);
+    ASSERT_TRUE(options) << options.error().message;
+    EXPECT_TRUE(options.value().help);
+    EXPECT_EQ(options.value().config.root_path, "/workspace");
+    EXPECT_EQ(options.value().config.source_root, "src");
+    EXPECT_EQ(options.value().config.package_identity, "tooling-lsp-stdio-test");
+    ASSERT_EQ(options.value().config.import_paths.size(), 1U);
+    EXPECT_EQ(options.value().config.import_paths.front(), "deps");
+}
+
+TEST(CoreUnit, LspStdioRejectsMissingOptionValue)
+{
+    const std::array<std::string_view, 2> arguments{"aurex-lsp", "--root"};
+
+    base::Result<tooling::LspStdioOptions> options = tooling::parse_lsp_stdio_arguments(arguments);
+    ASSERT_FALSE(options);
+    EXPECT_EQ(options.error().code, base::ErrorCode::invalid_source);
+    EXPECT_NE(options.error().message.find("missing value"), std::string::npos);
+}
+
+TEST(CoreUnit, LspStdioCoversHelpAndRuntimeErrorPaths)
+{
+    class FailingBuffer final : public std::stringbuf {
+    protected:
+        int overflow(int) override
+        {
+            return traits_type::eof();
+        }
+    };
+
+    {
+        std::ostringstream output;
+        tooling::print_lsp_stdio_usage(output, "");
+        EXPECT_NE(output.str().find("usage: aurex-lsp"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 2> arguments{"aurex-lsp", "--help"};
+        std::istringstream input;
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 0);
+        EXPECT_NE(output.str().find("usage: aurex-lsp"), std::string::npos);
+        EXPECT_TRUE(error.str().empty());
+    }
+    {
+        const std::array<std::string_view, 2> arguments{"aurex-lsp", "-h"};
+        std::istringstream input;
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 0);
+        EXPECT_NE(output.str().find("usage: aurex-lsp"), std::string::npos);
+        EXPECT_TRUE(error.str().empty());
+    }
+    {
+        const std::array<std::string_view, 2> arguments{"aurex-lsp", "--bad-option"};
+        std::istringstream input;
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 2);
+        EXPECT_TRUE(output.str().empty());
+        EXPECT_NE(error.str().find("unknown LSP option"), std::string::npos);
+        EXPECT_NE(error.str().find("usage: aurex-lsp"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Content-Type: application/vscode-jsonrpc\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_TRUE(output.str().empty());
+        EXPECT_NE(error.str().find("missing LSP Content-Length header"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("content-lengxh: 2\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_TRUE(output.str().empty());
+        EXPECT_NE(error.str().find("missing LSP Content-Length header"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("content-length: bad\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_NE(error.str().find("invalid LSP Content-Length header"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Content-Length: 12x\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_NE(error.str().find("invalid LSP Content-Length header"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Content-Length: 18446744073709551615\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_NE(error.str().find("LSP message body is too large"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Content-Length: 10\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_NE(error.str().find("unexpected EOF while reading LSP body"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Content-Length: 2\r\n");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_NE(error.str().find("unexpected EOF while reading LSP headers"), std::string::npos);
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input;
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 0);
+        EXPECT_TRUE(output.str().empty());
+        EXPECT_TRUE(error.str().empty());
+    }
+    {
+        const std::array<std::string_view, 0> arguments{};
+        std::istringstream input;
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 0);
+        EXPECT_TRUE(output.str().empty());
+        EXPECT_TRUE(error.str().empty());
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Content-Length:\t2\r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 0);
+        EXPECT_TRUE(output.str().empty());
+        EXPECT_TRUE(error.str().empty());
+    }
+    {
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input("Ignored-Header\r\nCONTENT-LENGTH: 2\t \r\n\r\n{}");
+        std::ostringstream output;
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 0);
+        EXPECT_TRUE(error.str().empty());
+    }
+    {
+        const std::string initialize =
+            tooling::write_lsp_content_message(lsp_request_json(TOOLING_LSP_ID_INITIALIZE, "initialize", "{}"));
+        const std::array<std::string_view, 1> arguments{"aurex-lsp"};
+        std::istringstream input(initialize);
+        FailingBuffer buffer;
+        std::ostream output(&buffer);
+        std::ostringstream error;
+
+        EXPECT_EQ(tooling::run_lsp_stdio(arguments, input, output, error), 1);
+        EXPECT_NE(error.str().find("failed to write LSP response"), std::string::npos);
+    }
+}
+
+TEST(CoreUnit, LspStdioRunsServerLoop)
+{
+    const std::string initialize =
+        tooling::write_lsp_content_message(lsp_request_json(TOOLING_LSP_ID_INITIALIZE, "initialize", "{}"));
+    const std::string initialized = tooling::write_lsp_content_message(lsp_notification_json("initialized", "{}"));
+    const std::string exit = tooling::write_lsp_content_message(lsp_notification_json("exit", "{}"));
+    std::istringstream input(initialize + initialized + exit);
+    std::ostringstream output;
+    std::ostringstream error;
+    const std::array<std::string_view, 7> arguments{
+        "aurex-lsp",
+        "--root",
+        "/workspace",
+        "--package",
+        "tooling-lsp-stdio-test",
+        "--import-path",
+        "/workspace/deps",
+    };
+
+    const int exit_code = tooling::run_lsp_stdio(arguments, input, output, error);
+    EXPECT_EQ(exit_code, 0) << error.str();
+    EXPECT_TRUE(error.str().empty());
+    base::Result<std::vector<tooling::LspContentMessage>> messages = tooling::parse_lsp_content_messages(output.str());
+    ASSERT_TRUE(messages) << messages.error().message;
+    ASSERT_EQ(messages.value().size(), 1U);
+    EXPECT_NE(messages.value().front().body.find("\"hoverProvider\":true"), std::string::npos);
+    EXPECT_NE(messages.value().front().body.find("\"inlayHintProvider\":true"), std::string::npos);
+}
+
+TEST(CoreUnit, LspServerCoversErrorPathsFramedDispatchAndEscapedJson)
+{
+    tooling::LspServer default_server;
+    const tooling::LspServer& const_default_server = default_server;
+    EXPECT_FALSE(default_server.initialized());
+    EXPECT_EQ(&default_server.session(), &const_default_server.session());
+    std::vector<std::string> null_id_initialize =
+        default_server.handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"initialize\"}");
+    ASSERT_EQ(null_id_initialize.size(), 1U);
+    EXPECT_NE(null_id_initialize.front().find("\"id\":null"), std::string::npos);
+    std::vector<std::string> spaced_initialize = default_server.handle_json_message(
+        " \n\t{\r\n  \"jsonrpc\" : \"2.0\",\n  \"id\" : 7,\r\n  \"method\" : \"initialize\",\n  \"params\" : { }\n}");
+    ASSERT_EQ(spaced_initialize.size(), 1U);
+    EXPECT_NE(spaced_initialize.front().find("\"hoverProvider\":true"), std::string::npos);
+    EXPECT_TRUE(default_server.handle_json_message("{\"jsonrpc\":\"2.0\"}").empty());
+    EXPECT_TRUE(default_server.handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"aurex/unknown\"}").empty());
+    EXPECT_TRUE(default_server.handle_json_message("[]").empty());
+    EXPECT_TRUE(default_server.handle_json_message("{method:\"initialize\"}").empty());
+    EXPECT_TRUE(default_server.handle_json_message("{\"method\" \"initialize\"}").empty());
+    EXPECT_TRUE(default_server.handle_json_message("{\"method\":}").empty());
+    EXPECT_TRUE(default_server.handle_json_message("{\"method\":\"unterminated}").empty());
+    EXPECT_TRUE(default_server.handle_json_message("{\"bad\\q\":1}").empty());
+    std::vector<std::string> malformed_method =
+        default_server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":1}");
+    ASSERT_EQ(malformed_method.size(), 1U);
+    EXPECT_NE(malformed_method.front().find("-32600"), std::string::npos);
+
+    tooling::LspServer framed_server(tooling_project_config(TOOLING_LSP_PACKAGE));
+    const std::string framed_initialize = tooling::write_lsp_content_message(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initializ\\u0065\",\"params\":{}}");
+    const std::string framed_initialized =
+        tooling::write_lsp_content_message(lsp_notification_json("initialized", "{}"));
+    base::Result<std::string> framed = framed_server.handle_framed_messages(framed_initialize + framed_initialized);
+    ASSERT_TRUE(framed);
+    EXPECT_NE(framed.value().find("Content-Length:"), std::string::npos);
+    EXPECT_NE(framed.value().find("\"hoverProvider\":true"), std::string::npos);
+    EXPECT_TRUE(framed_server.initialized());
+    EXPECT_FALSE(framed_server.handle_framed_messages("Content-Length: nope\r\n\r\n{}"));
+    EXPECT_FALSE(tooling::parse_lsp_content_messages("Content-Type: application/vscode-jsonrpc\r\n\r\n{}"));
+    EXPECT_FALSE(tooling::parse_lsp_content_messages("Content-Length: 2"));
+
+    tooling::LspServer server(tooling_project_config(TOOLING_LSP_PACKAGE));
+    std::vector<std::string> responses = server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":99}");
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_UNKNOWN, "aurex/unknown", "{}"));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32601"), std::string::npos);
+    EXPECT_TRUE(server.handle_json_message(lsp_notification_json("$/cancelRequest", "{}")).empty());
+    const std::string invalid_short_escape =
+        "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\q\"}";
+    responses = server.handle_json_message(invalid_short_escape);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    const std::string invalid_unicode_escape =
+        "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\u00xx\"}";
+    responses = server.handle_json_message(invalid_unicode_escape);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    const std::string invalid_short_unicode_escape =
+        "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\u\"}";
+    responses = server.handle_json_message(invalid_short_unicode_escape);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    responses = server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":");
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    responses = server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7");
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    responses =
+        server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"params\":{\"nested\":{},\"method\":\"initialize\"");
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    const std::string invalid_high_surrogate =
+        "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\uD83D\"}";
+    responses = server.handle_json_message(invalid_high_surrogate);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    const std::string invalid_high_surrogate_pair = "{\"jsonrpc\":\"2.0\",\"id\":"
+        + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\uD83D\\u0041\"}";
+    responses = server.handle_json_message(invalid_high_surrogate_pair);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    const std::string invalid_low_surrogate =
+        "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\\uDE00\"}";
+    responses = server.handle_json_message(invalid_low_surrogate);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    const std::string bare_control_method =
+        "{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(TOOLING_LSP_ID_INVALID_JSON) + ",\"method\":\"bad\nmethod\"}";
+    responses = server.handle_json_message(bare_control_method);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    responses = server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"params\":{],\"method\":\"initialize\"}");
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    responses = server.handle_json_message(
+        "{\"jsonrpc\":\"2.0\",\"id\":7,\"params\":{\"text\":\"bad\ntext\"},\"method\":\"initialize\"}");
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("-32600"), std::string::npos);
+    EXPECT_FALSE(server.session()
+            .document_state(tooling::tooling_document_id_from_uri(
+                "file:///workspace/missing.ax", server.session().project_config()))
+            .has_value());
+
+    EXPECT_TRUE(server.handle_json_message(lsp_notification_json("textDocument/didOpen", "{}")).empty());
+    EXPECT_TRUE(server.handle_json_message(lsp_notification_json("textDocument/didChange", "{}")).empty());
+    EXPECT_TRUE(server.handle_json_message(lsp_notification_json("textDocument/didClose", "{}")).empty());
+    EXPECT_NE(server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_HOVER, "textDocument/hover", "{}"))
+                  .front()
+                  .find("\"result\":null"),
+        std::string::npos);
+    EXPECT_NE(
+        server
+            .handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/definition\",\"params\":{}}")
+            .front()
+            .find("\"result\":null"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_REFERENCES, "textDocument/references", "{}"))
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", "{}"))
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/hover\"}")
+                  .front()
+                  .find("\"result\":null"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/definition\"}")
+                  .front()
+                  .find("\"result\":null"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/references\"}")
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/documentSymbol\"}")
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/completion\"}")
+                  .front()
+                  .find("\"items\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/rename\"}")
+                  .front()
+                  .find("\"result\":null"),
+        std::string::npos);
+    EXPECT_NE(
+        server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/semanticTokens/full\"}")
+            .front()
+            .find("\"data\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/codeAction\"}")
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"workspace/symbol\"}")
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/inlayHint\"}")
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_COMPLETION, "textDocument/completion", "{}"))
+                  .front()
+                  .find("\"items\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_RENAME, "textDocument/rename", "{}"))
+                  .front()
+                  .find("\"result\":null"),
+        std::string::npos);
+    EXPECT_NE(server
+                  .handle_json_message(
+                      lsp_request_json(TOOLING_LSP_ID_SEMANTIC_TOKENS, "textDocument/semanticTokens/full", "{}"))
+                  .front()
+                  .find("\"data\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_CODE_ACTION, "textDocument/codeAction", "{}"))
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_WORKSPACE_SYMBOL, "workspace/symbol", "{}"))
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    EXPECT_NE(server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_INLAY_HINT, "textDocument/inlayHint", "{}"))
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    const std::string missing_lsp_position =
+        text_document_position_params("file:///workspace/missing.ax", tooling::ToolingSourcePosition{});
+    EXPECT_NE(server
+                  .handle_json_message(
+                      lsp_request_json(TOOLING_LSP_ID_COMPLETION, "textDocument/completion", missing_lsp_position))
+                  .front()
+                  .find("\"items\":[]"),
+        std::string::npos);
+    std::string missing_rename_params = missing_lsp_position;
+    missing_rename_params.pop_back();
+    missing_rename_params += ",\"newName\":\"renamed\"}";
+    EXPECT_NE(
+        server
+            .handle_json_message(lsp_request_json(TOOLING_LSP_ID_RENAME, "textDocument/rename", missing_rename_params))
+            .front()
+            .find("\"result\":null"),
+        std::string::npos);
+    EXPECT_NE(server
+                  .handle_json_message(lsp_request_json(TOOLING_LSP_ID_SEMANTIC_TOKENS,
+                      "textDocument/semanticTokens/full", text_document_params("file:///workspace/missing.ax")))
+                  .front()
+                  .find("\"data\":[]"),
+        std::string::npos);
+    EXPECT_NE(server
+                  .handle_json_message(lsp_request_json(TOOLING_LSP_ID_CODE_ACTION, "textDocument/codeAction",
+                      text_document_params("file:///workspace/missing.ax")))
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    EXPECT_NE(server
+                  .handle_json_message(lsp_request_json(TOOLING_LSP_ID_INLAY_HINT, "textDocument/inlayHint",
+                      text_document_params("file:///workspace/missing.ax")))
+                  .front()
+                  .find("\"result\":[]"),
+        std::string::npos);
+    EXPECT_TRUE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\"}").empty());
+    EXPECT_TRUE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\"}").empty());
+    EXPECT_TRUE(server.handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didClose\"}").empty());
+    EXPECT_TRUE(server
+            .handle_json_message(
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{}}}")
+            .empty());
+    EXPECT_TRUE(server
+            .handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\","
+                                 "\"params\":{\"textDocument\":{\"uri\":\"file:///workspace/missing.ax\"},"
+                                 "\"contentChanges\":[]}}")
+            .empty());
+    EXPECT_TRUE(server
+            .handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\","
+                                 "\"params\":{\"textDocument\":{\"uri\":\"file:///workspace/missing.ax\"},"
+                                 "\"contentChanges\":{}}}")
+            .empty());
+    EXPECT_TRUE(server
+            .handle_json_message("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\","
+                                 "\"params\":{\"textDocument\":{\"uri\":\"file:///workspace/missing.ax\"},"
+                                 "\"contentChanges\":[{}]}}")
+            .empty());
+    EXPECT_NE(server
+                  .handle_json_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"textDocument/hover\","
+                                       "\"params\":{\"textDocument\":{\"uri\":\"file:///workspace/missing.ax\"},"
+                                       "\"position\":{\"line\":0}}}")
+                  .front()
+                  .find("\"result\":null"),
+        std::string::npos);
+
+    const std::string escaped_open =
+        "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":"
+        + test_json_string(TOOLING_LSP_ESCAPE_URI)
+        + ",\"languageId\":\"aurex\",\"version\":1,\"text\":\"module tooling.symbols;\\n"
+          "type Count = i32;\\n"
+          "enum Mode { fast }\\n"
+          "struct Box[T] { value: T; }\\n"
+          "fn main() -> i32 { return 0; }\\n"
+          "// quote: \\\" slash: \\/ backslash: \\\\ tab:\\t return:\\r form:\\f backspace:\\b unicode:\\u0041\\n\"}}}";
+    responses = server.handle_json_message(escaped_open);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("publishDiagnostics"), std::string::npos);
+    EXPECT_TRUE(server.handle_json_message(escaped_open).empty());
+
+    const std::string escaped_output_uri =
+        std::string("file:///workspace/lsp_output_\"quote\\slash\n\t\b\f\r") + static_cast<char>(1) + ".ax";
+    responses = server.handle_json_message(lsp_notification_json(
+        "textDocument/didOpen", did_open_params(escaped_output_uri, TOOLING_SESSION_SOURCE, TOOLING_VERSION_THREE)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\\\"quote\\\\slash\\n\\t\\b\\f\\r\\u0001.ax"), std::string::npos);
+
+    const std::string unicode_open =
+        "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":"
+        "\"file:///workspace/non_ascii_\\u00AF.ax\",\"languageId\":\"aurex\",\"version\":\"bad\",\"text\":"
+        "\"module tooling.unicode;\\nfn main() -> i32 { return 0; }\\n\"}}}";
+    responses = server.handle_json_message(unicode_open);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("publishDiagnostics"), std::string::npos);
+    std::string macron_uri = "file:///workspace/non_ascii_";
+    macron_uri.append(TOOLING_TEST_UTF8_MACRON);
+    macron_uri.append(".ax");
+    EXPECT_TRUE(server.session()
+            .document_state(tooling::tooling_document_id_from_uri(macron_uri, server.session().project_config()))
+            .has_value());
+    const std::string lowercase_unicode_open =
+        "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":"
+        "\"file:///workspace/non_ascii_lower_\\u00af.ax\",\"languageId\":\"aurex\",\"version\":1,\"text\":"
+        "\"module tooling.unicode.lower;\\nfn main() -> i32 { return 0; }\\n\"}}}";
+    responses = server.handle_json_message(lowercase_unicode_open);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("publishDiagnostics"), std::string::npos);
+    std::string non_ascii_pair_uri = "file:///workspace/non_ascii_pair_";
+    non_ascii_pair_uri.append(TOOLING_TEST_UTF8_CJK_MIDDLE);
+    non_ascii_pair_uri.append(TOOLING_TEST_UTF8_GRINNING_FACE);
+    non_ascii_pair_uri.append(".ax");
+    const std::string unicode_pair_open =
+        "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":"
+        "\"file:///workspace/non_ascii_pair_\\u4E2D\\uD83D\\uDE00.ax\",\"languageId\":\"aurex\",\"version\":1,"
+        "\"text\":\"module tooling.unicode.pair;\\nfn main() -> i32 { return 0; }\\n\"}}}";
+    responses = server.handle_json_message(unicode_pair_open);
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("publishDiagnostics"), std::string::npos);
+    EXPECT_TRUE(server.session()
+            .document_state(
+                tooling::tooling_document_id_from_uri(non_ascii_pair_uri, server.session().project_config()))
+            .has_value());
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_NO_MODULE_URI, TOOLING_SESSION_NO_MODULE_SOURCE, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"resolved\":false"), std::string::npos);
+    EXPECT_NE(responses.front().find("\"valid\":false"), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_INVALID_UTF8_URI, tooling_lsp_invalid_utf8_source(), TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("valid UTF-8"), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_SYMBOL_URI, TOOLING_LSP_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_TRUE(server
+            .handle_json_message(lsp_notification_json("textDocument/didChange",
+                did_change_params(TOOLING_LSP_SYMBOL_URI, TOOLING_LSP_SYMBOL_SOURCE, TOOLING_VERSION_ONE)))
+            .empty());
+
+    responses = server.handle_json_message(lsp_request_json(
+        TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_LSP_SYMBOL_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"generic_template\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"enum_case\""), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_FALLBACK_SYMBOL_URI, TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    responses = server.handle_json_message(lsp_request_json(
+        TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_LSP_FALLBACK_SYMBOL_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"const\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"struct\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"opaque_struct\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"enum\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"checked\":false"), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_METHOD_SYMBOL_URI, TOOLING_LSP_METHOD_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    responses = server.handle_json_message(lsp_request_json(
+        TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_LSP_METHOD_SYMBOL_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"method\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"struct\""), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_SESSION_TRAIT_URI, TOOLING_SESSION_TRAIT_SOURCE, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    responses = server.handle_json_message(lsp_request_json(
+        TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_SESSION_TRAIT_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"trait\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"name\":\"Source\""), std::string::npos);
+}
+
+TEST(CoreUnit, LspServerHandlesLifecycleSyncDiagnosticsAndIdeRequests)
+{
+    tooling::LspServer server(tooling_project_config(TOOLING_LSP_PACKAGE));
+
+    std::vector<std::string> responses =
+        server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_INITIALIZE, "initialize", "{}"));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"hoverProvider\":true"), std::string::npos);
+    EXPECT_NE(responses.front().find("\"documentSymbolProvider\":true"), std::string::npos);
+    EXPECT_NE(responses.front().find("\"completionProvider\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"renameProvider\":true"), std::string::npos);
+    EXPECT_NE(responses.front().find("\"semanticTokensProvider\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"codeActionProvider\":true"), std::string::npos);
+    EXPECT_NE(responses.front().find("\"workspaceSymbolProvider\":true"), std::string::npos);
+    EXPECT_NE(responses.front().find("\"inlayHintProvider\":true"), std::string::npos);
+
+    EXPECT_TRUE(server.handle_json_message(lsp_notification_json("initialized", "{}")).empty());
+    EXPECT_TRUE(server.initialized());
+
+    responses = server.handle_json_message(lsp_notification_json(
+        "textDocument/didOpen", did_open_params(TOOLING_LSP_URI, TOOLING_SESSION_SOURCE, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"method\":\"textDocument/publishDiagnostics\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"diagnostics\":[]"), std::string::npos);
+
+    const base::usize call_offset = TOOLING_SESSION_SOURCE.find("add(1");
+    ASSERT_NE(call_offset, std::string_view::npos);
+    const tooling::ToolingSourcePosition call_position =
+        tooling::tooling_position_for_offset(TOOLING_SESSION_SOURCE, call_offset);
+
+    responses = server.handle_json_message(lsp_request_json(
+        TOOLING_LSP_ID_HOVER, "textDocument/hover", text_document_position_params(TOOLING_LSP_URI, call_position)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("identifier `add` -> function"), std::string::npos);
+    EXPECT_NE(responses.front().find("semanticFactKey"), std::string::npos);
+
+    const std::string missing_document_position_params =
+        text_document_position_params("file:///workspace/not_open.ax", call_position);
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_HOVER, "textDocument/hover", missing_document_position_params));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":null"), std::string::npos);
+
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_DEFINITION, "textDocument/definition",
+        text_document_position_params(TOOLING_LSP_URI, call_position)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"uri\":\"file:///workspace/lsp.ax\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"range\""), std::string::npos);
+
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_DEFINITION, "textDocument/definition", missing_document_position_params));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":null"), std::string::npos);
+
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_REFERENCES, "textDocument/references",
+        text_document_position_params(TOOLING_LSP_URI, call_position)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":["), std::string::npos);
+    EXPECT_NE(responses.front().find("\"uri\":\"file:///workspace/lsp.ax\""), std::string::npos);
+
+    std::string rename_function_params = text_document_position_params(TOOLING_LSP_URI, call_position);
+    rename_function_params.pop_back();
+    rename_function_params += ",\"newName\":\"sum\"}";
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_RENAME, "textDocument/rename", rename_function_params));
+    ASSERT_EQ(responses.size(), 1U);
+    const base::usize first_sum_edit = responses.front().find("\"newText\":\"sum\"");
+    ASSERT_NE(first_sum_edit, std::string::npos);
+    EXPECT_NE(responses.front().find("\"newText\":\"sum\"", first_sum_edit + 1U), std::string::npos);
+
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_REFERENCES, "textDocument/references", missing_document_position_params));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":[]"), std::string::npos);
+
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_NO_PARAMS, "textDocument/hover",
+        "{\"textDocument\":{\"uri\":\"file:///workspace/lsp.ax\"},\"position\":{\"line\":-1,\"character\":0}}"));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":null"), std::string::npos);
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_NO_PARAMS, "textDocument/hover",
+        "{\"textDocument\":{\"uri\":\"file:///workspace/lsp.ax\"},\"position\":{\"line\":2abc,\"character\":0}}"));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":null"), std::string::npos);
+
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_LSP_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"name\":\"add\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"function\""), std::string::npos);
+
+    const tooling::ToolingSourcePosition completion_position =
+        tooling::tooling_position_for_offset(TOOLING_SESSION_SOURCE, call_offset + std::string_view{"ad"}.size());
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_COMPLETION, "textDocument/completion",
+        text_document_position_params(TOOLING_LSP_URI, completion_position)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"label\":\"add\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"isIncomplete\":false"), std::string::npos);
+
+    const base::usize return_offset = TOOLING_SESSION_SOURCE.find("return value");
+    ASSERT_NE(return_offset, std::string_view::npos);
+    const tooling::ToolingSourcePosition keyword_completion_position =
+        tooling::tooling_position_for_offset(TOOLING_SESSION_SOURCE, return_offset);
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_COMPLETION, "textDocument/completion",
+        text_document_position_params(TOOLING_LSP_URI, keyword_completion_position)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"label\":\"return\""), std::string::npos);
+
+    const base::usize value_offset = TOOLING_SESSION_SOURCE.find("value;");
+    ASSERT_NE(value_offset, std::string_view::npos);
+    const tooling::ToolingSourcePosition value_position =
+        tooling::tooling_position_for_offset(TOOLING_SESSION_SOURCE, value_offset);
+    const tooling::ToolingSourcePosition local_completion_position =
+        tooling::tooling_position_for_offset(TOOLING_SESSION_SOURCE, value_offset + std::string_view{"va"}.size());
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_COMPLETION, "textDocument/completion",
+        text_document_position_params(TOOLING_LSP_URI, local_completion_position)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"label\":\"value\""), std::string::npos);
+
+    std::string rename_params = text_document_position_params(TOOLING_LSP_URI, value_position);
+    rename_params.pop_back();
+    rename_params += ",\"newName\":\"total\"}";
+    responses =
+        server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_RENAME, "textDocument/rename", rename_params));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"changes\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"newText\":\"total\""), std::string::npos);
+
+    responses = server.handle_json_message(lsp_request_json(
+        TOOLING_LSP_ID_SEMANTIC_TOKENS, "textDocument/semanticTokens/full", text_document_params(TOOLING_LSP_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"data\":["), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_SYMBOL_URI, TOOLING_LSP_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_SEMANTIC_TOKENS,
+        "textDocument/semanticTokens/full", text_document_params(TOOLING_LSP_SYMBOL_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"data\":["), std::string::npos);
+
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_INLAY_HINT, "textDocument/inlayHint", text_document_params(TOOLING_LSP_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"label\":\": i32\""), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_FALLBACK_SYMBOL_URI, TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    const base::usize fallback_return_offset = TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE.find("return value");
+    ASSERT_NE(fallback_return_offset, std::string_view::npos);
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_COMPLETION, "textDocument/completion",
+        text_document_position_params(TOOLING_LSP_FALLBACK_SYMBOL_URI,
+            tooling::tooling_position_for_offset(TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE, fallback_return_offset))));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"label\":\"answer\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"label\":\"Count\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"label\":\"Point\""), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_LSP_METHOD_SYMBOL_URI, TOOLING_LSP_METHOD_SYMBOL_SOURCE, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    const base::usize member_completion_offset = TOOLING_LSP_METHOD_SYMBOL_SOURCE.find("counter.read");
+    ASSERT_NE(member_completion_offset, std::string_view::npos);
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_COMPLETION, "textDocument/completion",
+        text_document_position_params(TOOLING_LSP_METHOD_SYMBOL_URI,
+            tooling::tooling_position_for_offset(
+                TOOLING_LSP_METHOD_SYMBOL_SOURCE, member_completion_offset + std::string_view{"counter."}.size()))));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"label\":\"read\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"label\":\"value\""), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didOpen",
+        did_open_params(TOOLING_SESSION_TRAIT_URI, TOOLING_SESSION_TRAIT_SOURCE, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    const base::usize trait_completion_offset = TOOLING_SESSION_TRAIT_SOURCE.find("where T: Source");
+    ASSERT_NE(trait_completion_offset, std::string_view::npos);
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_COMPLETION, "textDocument/completion",
+        text_document_position_params(TOOLING_SESSION_TRAIT_URI,
+            tooling::tooling_position_for_offset(
+                TOOLING_SESSION_TRAIT_SOURCE, trait_completion_offset + std::string_view{"where T: So"}.size()))));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"label\":\"Source\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"trait\""), std::string::npos);
+
+    const base::usize trait_member_completion_offset = TOOLING_SESSION_TRAIT_SOURCE.find("value.get");
+    ASSERT_NE(trait_member_completion_offset, std::string_view::npos);
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_COMPLETION, "textDocument/completion",
+        text_document_position_params(TOOLING_SESSION_TRAIT_URI,
+            tooling::tooling_position_for_offset(
+                TOOLING_SESSION_TRAIT_SOURCE, trait_member_completion_offset + std::string_view{"value."}.size()))));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"label\":\"Item\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"associated_type\""), std::string::npos);
+
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_WORKSPACE_SYMBOL, "workspace/symbol", "{\"query\":\"add\"}"));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"name\":\"add\""), std::string::npos);
+
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_WORKSPACE_SYMBOL, "workspace/symbol", "{\"query\":\"value\"}"));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"aurexKind\":\"struct_field\""), std::string::npos);
+
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_WORKSPACE_SYMBOL, "workspace/symbol", "{\"query\":\"\"}"));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"name\":\"add\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"name\":\"read\""), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didChange",
+        did_change_params(TOOLING_LSP_URI, TOOLING_SESSION_INVALID_SOURCE, TOOLING_VERSION_TWO)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"method\":\"textDocument/publishDiagnostics\""), std::string::npos);
+    EXPECT_NE(responses.front().find("SEM0100"), std::string::npos);
+    EXPECT_NE(responses.front().find("\"ownerStages\""), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didChange",
+        did_change_params(TOOLING_LSP_URI, TOOLING_SESSION_SUGGESTION_SOURCE, TOOLING_VERSION_THREE)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"severity\":4"), std::string::npos);
+    EXPECT_NE(responses.front().find("did you mean `count`"), std::string::npos);
+
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_CODE_ACTION, "textDocument/codeAction", text_document_params(TOOLING_LSP_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("Replace with `count`"), std::string::npos);
+    EXPECT_NE(responses.front().find("\"newText\":\"count\""), std::string::npos);
+
+    responses = server.handle_json_message(lsp_notification_json("textDocument/didChange",
+        did_change_params(TOOLING_LSP_URI, TOOLING_SESSION_MULTI_SUGGESTION_SOURCE, TOOLING_VERSION_FOUR)));
+    ASSERT_EQ(responses.size(), 1U);
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_CODE_ACTION, "textDocument/codeAction", text_document_params(TOOLING_LSP_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("Replace with `count`"), std::string::npos);
+    EXPECT_NE(responses.front().find("Replace with `total`"), std::string::npos);
+
+    responses = server.handle_json_message(
+        lsp_notification_json("textDocument/didClose", text_document_params(TOOLING_LSP_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"diagnostics\":[]"), std::string::npos);
+
+    responses = server.handle_json_message(
+        lsp_request_json(TOOLING_LSP_ID_SYMBOLS, "textDocument/documentSymbol", text_document_params(TOOLING_LSP_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":[]"), std::string::npos);
+
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_SHUTDOWN, "shutdown", "{}"));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":null"), std::string::npos);
+    EXPECT_TRUE(server.shutdown_requested());
+    EXPECT_TRUE(server.handle_json_message(lsp_notification_json("exit", "{}")).empty());
+    EXPECT_TRUE(server.exited());
+}
+
+TEST(CoreUnit, LspServerUsesUtf16PositionsAtProtocolBoundary)
+{
+    tooling::LspServer server(tooling_project_config(TOOLING_LSP_PACKAGE));
+    const std::string source = tooling_lsp_utf16_source();
+
+    std::vector<std::string> responses = server.handle_json_message(lsp_notification_json(
+        "textDocument/didOpen", did_open_params(TOOLING_LSP_UTF16_URI, source, TOOLING_VERSION_ONE)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"diagnostics\":[]"), std::string::npos);
+
+    const tooling::ToolingSourcePosition value_position{
+        TOOLING_LSP_UTF16_VALUE_LINE,
+        TOOLING_LSP_UTF16_VALUE_CHARACTER,
+    };
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_HOVER, "textDocument/hover",
+        text_document_position_params(TOOLING_LSP_UTF16_URI, value_position)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("identifier `value`"), std::string::npos);
+    EXPECT_NE(responses.front().find("\"character\":" + std::to_string(TOOLING_LSP_UTF16_VALUE_CHARACTER)),
+        std::string::npos);
+    EXPECT_NE(responses.front().find("\"character\":" + std::to_string(TOOLING_LSP_UTF16_VALUE_END_CHARACTER)),
+        std::string::npos);
+
+    std::string rename_params = text_document_position_params(TOOLING_LSP_UTF16_URI, value_position);
+    rename_params.pop_back();
+    rename_params += ",\"newName\":\"total\"}";
+    responses =
+        server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_RENAME, "textDocument/rename", rename_params));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"newText\":\"total\""), std::string::npos);
+    EXPECT_NE(responses.front().find("\"character\":" + std::to_string(TOOLING_LSP_UTF16_VALUE_CHARACTER)),
+        std::string::npos);
+    EXPECT_NE(responses.front().find("\"character\":" + std::to_string(TOOLING_LSP_UTF16_VALUE_END_CHARACTER)),
+        std::string::npos);
+
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_SEMANTIC_TOKENS,
+        "textDocument/semanticTokens/full", text_document_params(TOOLING_LSP_UTF16_URI)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_TRUE(lsp_semantic_token_exists(responses.front(), TOOLING_LSP_UTF16_STRING_LINE,
+        TOOLING_LSP_UTF16_STRING_CHARACTER, TOOLING_LSP_UTF16_STRING_LENGTH, TOOLING_LSP_SEMANTIC_TOKEN_STRING_TYPE));
+
+    const tooling::ToolingSourcePosition emoji_trailing_surrogate_position{
+        TOOLING_LSP_UTF16_VALUE_LINE,
+        TOOLING_LSP_UTF16_EMOJI_TRAILING_CHARACTER,
+    };
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_HOVER, "textDocument/hover",
+        text_document_position_params(TOOLING_LSP_UTF16_URI, emoji_trailing_surrogate_position)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":"), std::string::npos);
+
+    const tooling::ToolingSourcePosition past_end_position{
+        TOOLING_LSP_PAST_END_LINE,
+        TOOLING_LSP_PAST_END_CHARACTER,
+    };
+    responses = server.handle_json_message(lsp_request_json(TOOLING_LSP_ID_HOVER, "textDocument/hover",
+        text_document_position_params(TOOLING_LSP_UTF16_URI, past_end_position)));
+    ASSERT_EQ(responses.size(), 1U);
+    EXPECT_NE(responses.front().find("\"result\":"), std::string::npos);
+}
+
+} // namespace aurex::test

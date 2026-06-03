@@ -34,12 +34,12 @@ M3.9 已经固定了后续语言特性必须复用的架构边界：
 
 当前代码中，trait 相关身份已经部分预留：
 
-- `include/aurex/query/query_key.hpp` 已有 `DefNamespace::trait_`、`DefNamespace::impl_`、`DefKind::trait_`、
+- `include/aurex/infrastructure/query/query_key.hpp` 已有 `DefNamespace::trait_`、`DefNamespace::impl_`、`DefKind::trait_`、
   `DefKind::trait_method`、`DefKind::associated_type`、`DefKind::associated_const`、`MemberKind::trait_method`、
   `MemberKind::associated_type`、`MemberKind::associated_const` 和 `BodySlotKind::trait_default_method`。
-- `include/aurex/query/canonical_type_key.hpp` 已有 `CanonicalTypeKind::associated_type_projection` 和
+- `include/aurex/infrastructure/query/canonical_type_key.hpp` 已有 `CanonicalTypeKind::associated_type_projection` 和
   `CanonicalTypeKind::trait_object`。
-- `include/aurex/query/generic_instance_key.hpp` 中的 `ParamEnvKey` 已经为“泛型实例在某个约束环境下成立”预留了位置。
+- `include/aurex/infrastructure/query/generic_instance_key.hpp` 中的 `ParamEnvKey` 已经为“泛型实例在某个约束环境下成立”预留了位置。
 - 语法层目前没有 `kw_trait`，`ItemKind` 没有 `trait_decl`，`ImplBlockItemPayload` 只描述 inherent `impl Type { ... }`，
   还没有 `impl Trait for Type { ... }`。
 - parser 的 `where T: Eq + Hash` 当前解析为 `GenericConstraintDecl.capability_names`。

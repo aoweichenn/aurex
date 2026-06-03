@@ -457,8 +457,9 @@ M7c/M7d 的最大工程风险不是“规则不够多”，而是把 lifetime、
 
 ### 5.1 推荐模块拆分
 
-硬规则：`src/sema/internal/` 只允许作为 private implementation root，下面不能直接放 `.cpp` / `.hpp` 文件。新实现必须按职责建
-子目录；现有 direct files 是历史债，M7c/M7d 不继续扩大。
+硬规则：`src/frontend/sema/internal/` 只允许作为 private implementation root，下面不能直接放 `.cpp` / `.hpp` 文件。
+新实现必须按职责建子目录；同一职责层级内的 private header 和实现源文件继续拆到 `private/`、`sources/`，不要在同层混放
+`.hpp` 与 `.cpp`。现有 direct files 是历史债，M7c/M7d 不继续扩大。
 
 ```text
 src/sema/internal/lifetime/facts.*
@@ -508,7 +509,7 @@ src/tooling/*
   只投影 CheckedModule facts，不直接调用 lifetime/dropck solver。
 ```
 
-`include/aurex/sema/checked_module.hpp` 只能暴露稳定、可 fingerprint、可 query 的数据形状。复杂算法 helper、worklist state、
+`include/aurex/frontend/sema/checked_module.hpp` 只能暴露稳定、可 fingerprint、可 query 的数据形状。复杂算法 helper、worklist state、
 bitset scratch、diagnostic assembly 不进 public header，避免把实现细节变成 ABI/API 耦合。
 
 这条目录规则不只适用于 sema。后续 parser、IR、driver、tooling、backend 只要出现 `internal/` 或类似私有实现目录，都必须把文件按

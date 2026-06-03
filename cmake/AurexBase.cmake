@@ -1,8 +1,8 @@
 add_library(aurex_base
-    src/base/bump_allocator.cpp
-    src/base/source.cpp
-    src/base/diagnostic.cpp
-    src/base/string_literal.cpp
-    src/base/text.cpp
+    src/infrastructure/base/bump_allocator.cpp
+    src/infrastructure/base/source.cpp
+    src/infrastructure/base/diagnostic.cpp
+    src/infrastructure/base/string_literal.cpp
+    src/infrastructure/base/text.cpp
 )
 target_include_directories(aurex_base PUBLIC include)

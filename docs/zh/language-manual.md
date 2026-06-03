@@ -5,7 +5,7 @@
 状态：按当前仓库实现编写的使用者语法说明，不描述尚未落地的未来功能。
 
 本文说明当前 Aurex 能写什么、怎么写、哪些地方会被拒绝。语法以 `docs/spec/m2_grammar.md`、M5 release
-baseline、`include/aurex/syntax/token.hpp`、`src/parse/*`、`src/sema/*`、`tests/samples/**` 和 `examples/**`
+baseline、`include/aurex/frontend/syntax/core/token.hpp`、`src/parse/*`、`src/sema/*`、`tests/samples/**` 和 `examples/**`
 的当前实现为准。
 
 ## 1. 最小完整程序

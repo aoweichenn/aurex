@@ -1,10 +1,10 @@
 add_library(aurex_tooling
-    src/tooling/ide.cpp
-    src/tooling/lsp.cpp
-    src/tooling/lsp_stdio.cpp
-    src/tooling/reuse.cpp
-    src/tooling/session.cpp
-    src/tooling/workspace_index.cpp
+    src/application/tooling/ide/ide.cpp
+    src/application/tooling/lsp/lsp.cpp
+    src/application/tooling/lsp/lsp_stdio.cpp
+    src/application/tooling/session/reuse.cpp
+    src/application/tooling/session/session.cpp
+    src/application/tooling/session/workspace_index.cpp
 )
 target_link_libraries(aurex_tooling PUBLIC
     aurex_base
@@ -19,7 +19,7 @@ target_link_libraries(aurex_tooling PUBLIC
 target_include_directories(aurex_tooling PUBLIC include)
 
 add_executable(aurex-lsp
-    src/cli/lsp_main.cpp
+    src/application/cli/lsp_main.cpp
 )
 target_link_libraries(aurex-lsp PRIVATE aurex_tooling)
 

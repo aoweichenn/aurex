@@ -1,9 +1,9 @@
 #pragma once
 
-#include <aurex/base/result.hpp>
-#include <aurex/ir/ir.hpp>
-#include <aurex/ir/pass_pipeline.hpp>
-#include <aurex/sema/type.hpp>
+#include <aurex/frontend/sema/type.hpp>
+#include <aurex/infrastructure/base/result.hpp>
+#include <aurex/midend/ir/ir.hpp>
+#include <aurex/midend/ir/pass_pipeline.hpp>
 
 #include <support/test_support.hpp>
 

@@ -28,6 +28,7 @@ private:
         std::unordered_map<IdentId, OriginSet, IdentIdHash> storage;
         std::unordered_map<IdentId, OriginSet, IdentIdHash> borrowed_values;
     };
+    using ScopeList = std::vector<Scope>;
 
     enum class TaskKind : base::u8 {
         scoped_block,
@@ -58,6 +59,7 @@ private:
     [[nodiscard]] OriginSet lookup_borrowed_value(IdentId name) const;
     [[nodiscard]] base::u32 append_origin(BorrowSummaryOrigin origin);
     [[nodiscard]] OriginSet parameter_origin(base::usize index, const syntax::ParamDecl& param);
+    [[nodiscard]] OriginSet static_origin(const base::SourceRange& range);
     [[nodiscard]] OriginSet local_origin(IdentId name, const base::SourceRange& range, syntax::ExprId expr);
     [[nodiscard]] OriginSet temporary_origin(syntax::ExprId expr);
     [[nodiscard]] OriginSet unknown_origin() const;
@@ -68,6 +70,15 @@ private:
     void run_tasks(std::vector<Task>& tasks);
     void push_block_statements(std::vector<Task>& tasks, syntax::StmtId block) const;
     void analyze_statement(std::vector<Task>& tasks, syntax::StmtId stmt);
+    void analyze_if_statement(std::vector<Task>& tasks, const syntax::StmtNode& stmt);
+    void analyze_while_statement(std::vector<Task>& tasks, const syntax::StmtNode& stmt);
+    void analyze_for_statement(std::vector<Task>& tasks, const syntax::StmtNode& stmt);
+    void analyze_for_range_statement(std::vector<Task>& tasks, const syntax::StmtNode& stmt);
+    [[nodiscard]] ScopeList analyze_tasks_from_scopes(const ScopeList& baseline, std::vector<Task> tasks);
+    [[nodiscard]] ScopeList merge_control_flow_scopes(
+        const ScopeList& baseline, const std::vector<ScopeList>& branches, bool include_baseline_path);
+    void merge_scope_borrowed_values(Scope& target, const Scope& branch);
+    void clear_borrowed_values_for_existing_storage(ScopeList& scopes) const;
     void analyze_local_declaration(syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
     void analyze_assignment(const syntax::StmtNode& stmt);
     void bind_pattern_storage(syntax::PatternId pattern, TypeHandle type, syntax::ExprId source);
@@ -95,6 +106,8 @@ private:
     [[nodiscard]] syntax::ExprId call_argument_for_param(const syntax::CallExprPayload& call, syntax::ExprId callee,
         base::u32 receiver_arg_count, base::u32 param_index) const;
     [[nodiscard]] OriginSet map_callee_summary_origins(const FunctionBorrowSummary& callee,
+        const syntax::CallExprPayload& call, syntax::ExprId callee_expr, base::u32 receiver_arg_count);
+    [[nodiscard]] OriginSet map_callee_contract_origins(const FunctionBorrowContract& callee,
         const syntax::CallExprPayload& call, syntax::ExprId callee_expr, base::u32 receiver_arg_count);
     [[nodiscard]] OriginSet borrow_origin(syntax::ExprId expr);
     [[nodiscard]] bool push_expression_children_for_origin(

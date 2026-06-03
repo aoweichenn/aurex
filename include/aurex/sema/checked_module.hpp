@@ -429,6 +429,7 @@ struct FunctionCallBinding {
 enum class BorrowSummaryOriginKind : base::u8 {
     none,
     parameter,
+    static_,
     local,
     temporary,
     unknown,

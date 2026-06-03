@@ -209,6 +209,9 @@ inline constexpr std::string_view SEMA_BORROW_CONTRACT_UNKNOWN_SELECTOR =
 inline constexpr std::string_view SEMA_BORROW_CONTRACT_SELF_SELECTOR =
     "borrow contract 'self' selector requires a first self parameter";
 
+inline constexpr std::string_view SEMA_BORROW_CONTRACT_NON_BORROWING_SELECTOR =
+    "borrow contract return selector must name a parameter that can carry a borrow";
+
 inline constexpr std::string_view SEMA_BORROW_CONTRACT_DUPLICATE_SELECTOR = "duplicate borrow contract return selector";
 
 inline constexpr std::string_view SEMA_BORROW_CONTRACT_MISMATCH =

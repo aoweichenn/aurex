@@ -343,6 +343,13 @@ FunctionBorrowContract SemanticAnalyzerCore::BorrowContractAnalyzer::inferred_co
         const BorrowSummaryOrigin& origin = summary.origins[return_origin.origin_index];
         if (origin.kind == BorrowSummaryOriginKind::parameter) {
             contract.return_selectors.push_back(this->selector_from_origin(function, origin));
+        } else if (origin.kind == BorrowSummaryOriginKind::static_) {
+            contract.return_selectors.push_back(BorrowContractSelector{
+                .kind = BorrowContractSelectorKind::static_,
+                .param_index = SEMA_BORROW_SUMMARY_INVALID_INDEX,
+                .name_id = INVALID_IDENT_ID,
+                .range = origin.range,
+            });
         } else if (origin.kind == BorrowSummaryOriginKind::unknown) {
             contract.unknown_return_allowed = true;
             contract.return_selectors.push_back(BorrowContractSelector{
@@ -375,6 +382,9 @@ BorrowContractSelector SemanticAnalyzerCore::BorrowContractAnalyzer::selector_fr
                     .range = decl.range,
                 };
             }
+            if (param_types.empty() || !this->type_can_contain_borrow(param_types.front())) {
+                this->core_.report_general(decl.range, std::string(SEMA_BORROW_CONTRACT_NON_BORROWING_SELECTOR));
+            }
             return BorrowContractSelector{
                 .kind = BorrowContractSelectorKind::self,
                 .param_index = 0,
@@ -401,6 +411,9 @@ BorrowContractSelector SemanticAnalyzerCore::BorrowContractAnalyzer::selector_fr
 
     for (base::usize index = 0; index < function.params.size() && index < param_types.size(); ++index) {
         if (function.params[index].name_id == decl.name_id) {
+            if (!this->type_can_contain_borrow(param_types[index])) {
+                this->core_.report_general(decl.range, std::string(SEMA_BORROW_CONTRACT_NON_BORROWING_SELECTOR));
+            }
             return BorrowContractSelector{
                 .kind = BorrowContractSelectorKind::parameter,
                 .param_index = base::checked_u32(index, "sema borrow contract parameter index"),
@@ -445,8 +458,7 @@ bool SemanticAnalyzerCore::BorrowContractAnalyzer::selector_matches(
     if (declared.kind == BorrowContractSelectorKind::self || inferred.kind == BorrowContractSelectorKind::self) {
         return declared.param_index == inferred.param_index && declared.param_index == 0;
     }
-    return declared.kind == inferred.kind && declared.param_index == inferred.param_index
-        && declared.name_id == inferred.name_id;
+    return declared.kind == inferred.kind && declared.param_index == inferred.param_index;
 }
 
 bool SemanticAnalyzerCore::BorrowContractAnalyzer::contract_contains_selector(

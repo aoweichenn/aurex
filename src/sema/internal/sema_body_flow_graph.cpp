@@ -4,6 +4,7 @@
 #include <optional>
 #include <sstream>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -570,6 +571,9 @@ private:
         if (task.expr_context != BodyFlowExprContext::place_observe) {
             this->record_value_place_actions(task.expr, exit);
         }
+        if (task.expr_context == BodyFlowExprContext::value || task.expr_context == BodyFlowExprContext::branch) {
+            this->record_borrowed_view_result_actions(task.expr, kind, exit);
+        }
         this->push_expression_children(task.expr, kind, entry, exit);
     }
 
@@ -767,6 +771,7 @@ private:
                 syntax::INVALID_STMT_ID, expr, receiver_range);
             this->add_action(BodyFlowActionKind::call_receiver_activate, exit, receiver_place, syntax::INVALID_STMT_ID,
                 expr, receiver_range);
+            this->record_call_return_borrow_actions(expr, payload, exit);
             this->push_expression(payload.callee, entry, receiver_done, BodyFlowExprContext::value);
             std::vector<BodyFlowExpressionStep> arg_steps;
             arg_steps.reserve(payload.args.size());
@@ -776,6 +781,7 @@ private:
             this->push_expression_sequence(arg_steps, receiver_done, exit);
             return;
         }
+        this->record_call_return_borrow_actions(expr, payload, exit);
         std::vector<BodyFlowExpressionStep> steps;
         steps.reserve(payload.args.size() + 1);
         steps.push_back(BodyFlowExpressionStep{payload.callee, BodyFlowExprContext::value});
@@ -796,6 +802,342 @@ private:
             return true;
         }
         return false;
+    }
+
+    void record_borrowed_view_result_actions(
+        const syntax::ExprId expr, const syntax::ExprKind kind, const base::u32 point)
+    {
+        if (const syntax::SliceExprPayload* const slice = this->module_.exprs.slice_payload(expr.value);
+            kind == syntax::ExprKind::slice && slice != nullptr) {
+            this->add_return_borrow_action(this->borrow_action_for_result(expr), point, expr, slice->object);
+            return;
+        }
+        if (const syntax::CastExprPayload* const cast = this->module_.exprs.cast_payload(expr.value);
+            kind == syntax::ExprKind::str_from_utf8_checked && cast != nullptr) {
+            this->add_return_borrow_action(BodyFlowActionKind::borrow_shared, point, expr, cast->expr);
+        }
+    }
+
+    void record_call_return_borrow_actions(
+        const syntax::ExprId expr, const syntax::CallExprPayload& payload, const base::u32 point)
+    {
+        if (this->module_.exprs.kind(expr.value) != syntax::ExprKind::call) {
+            return;
+        }
+        if (const FunctionCallBinding* const binding = this->checked_.function_call_binding_for_expr(expr);
+            binding != nullptr) {
+            if (const auto contract = this->checked_.borrow_contracts.find(binding->function_key);
+                contract != this->checked_.borrow_contracts.end()
+                && contract->second.source != FunctionBorrowContractSource::inferred) {
+                this->record_contract_return_borrow_actions(
+                    contract->second, payload, binding->callee_expr, binding->receiver_arg_count, expr, point);
+                return;
+            }
+            if (const auto summary = this->checked_.borrow_summaries.find(binding->function_key);
+                summary != this->checked_.borrow_summaries.end()) {
+                this->record_summary_return_borrow_actions(
+                    summary->second, payload, binding->callee_expr, binding->receiver_arg_count, expr, point);
+                return;
+            }
+            if (const auto contract = this->checked_.borrow_contracts.find(binding->function_key);
+                contract != this->checked_.borrow_contracts.end()) {
+                this->record_contract_return_borrow_actions(
+                    contract->second, payload, binding->callee_expr, binding->receiver_arg_count, expr, point);
+                return;
+            }
+            if (this->type_can_contain_borrow(binding->return_type)) {
+                this->record_unknown_return_borrow_actions(
+                    payload, binding->callee_expr, binding->receiver_arg_count, expr, point);
+            }
+            return;
+        }
+        if (const TraitMethodCallBinding* const binding = this->checked_.trait_method_call_binding_for_expr(expr);
+            binding != nullptr) {
+            const base::u32 receiver_arg_count = is_valid(binding->receiver_type) ? 1U : 0U;
+            if (const auto contract = this->checked_.borrow_contracts.find(binding->function_key);
+                contract != this->checked_.borrow_contracts.end()
+                && contract->second.source != FunctionBorrowContractSource::inferred) {
+                this->record_contract_return_borrow_actions(
+                    contract->second, payload, binding->callee_expr, receiver_arg_count, expr, point);
+                return;
+            }
+            if (const auto summary = this->checked_.borrow_summaries.find(binding->function_key);
+                summary != this->checked_.borrow_summaries.end()) {
+                this->record_summary_return_borrow_actions(
+                    summary->second, payload, binding->callee_expr, receiver_arg_count, expr, point);
+                return;
+            }
+            if (const auto contract = this->checked_.borrow_contracts.find(binding->function_key);
+                contract != this->checked_.borrow_contracts.end()) {
+                this->record_contract_return_borrow_actions(
+                    contract->second, payload, binding->callee_expr, receiver_arg_count, expr, point);
+                return;
+            }
+            if (this->type_can_contain_borrow(binding->return_type)) {
+                this->record_unknown_return_borrow_actions(
+                    payload, binding->callee_expr, receiver_arg_count, expr, point);
+            }
+        }
+    }
+
+    void record_summary_return_borrow_actions(const FunctionBorrowSummary& summary,
+        const syntax::CallExprPayload& payload, const syntax::ExprId callee, const base::u32 receiver_arg_count,
+        const syntax::ExprId call_expr, const base::u32 point)
+    {
+        bool recorded_unknown = false;
+        const auto record_unknown = [&]() {
+            if (recorded_unknown) {
+                return;
+            }
+            this->record_unknown_return_borrow_actions(payload, callee, receiver_arg_count, call_expr, point);
+            recorded_unknown = true;
+        };
+        if (summary.has_unknown_return_origin) {
+            record_unknown();
+        }
+        for (const FunctionBorrowReturnOrigin& dependency : summary.return_origins) {
+            if (dependency.origin_index >= summary.origins.size()) {
+                record_unknown();
+                continue;
+            }
+            const BorrowSummaryOrigin& origin = summary.origins[dependency.origin_index];
+            if (origin.kind == BorrowSummaryOriginKind::parameter) {
+                this->record_param_return_borrow_action(
+                    payload, callee, receiver_arg_count, origin.param_index, call_expr, point);
+            } else if (origin.kind != BorrowSummaryOriginKind::static_) {
+                record_unknown();
+            }
+        }
+    }
+
+    void record_contract_return_borrow_actions(const FunctionBorrowContract& contract,
+        const syntax::CallExprPayload& payload, const syntax::ExprId callee, const base::u32 receiver_arg_count,
+        const syntax::ExprId call_expr, const base::u32 point)
+    {
+        if (contract.unknown_return_allowed) {
+            this->record_unknown_return_borrow_actions(payload, callee, receiver_arg_count, call_expr, point);
+            return;
+        }
+        for (const BorrowContractSelector& selector : contract.return_selectors) {
+            switch (selector.kind) {
+                case BorrowContractSelectorKind::parameter:
+                case BorrowContractSelectorKind::self:
+                    this->record_param_return_borrow_action(
+                        payload, callee, receiver_arg_count, selector.param_index, call_expr, point);
+                    break;
+                case BorrowContractSelectorKind::static_:
+                    break;
+                case BorrowContractSelectorKind::unknown:
+                    this->record_unknown_return_borrow_actions(payload, callee, receiver_arg_count, call_expr, point);
+                    return;
+            }
+        }
+    }
+
+    void record_param_return_borrow_action(const syntax::CallExprPayload& payload, const syntax::ExprId callee,
+        const base::u32 receiver_arg_count, const base::u32 param_index, const syntax::ExprId call_expr,
+        const base::u32 point)
+    {
+        if (param_index == SEMA_BORROW_SUMMARY_INVALID_INDEX) {
+            return;
+        }
+        const syntax::ExprId source = this->call_argument_for_param(payload, callee, receiver_arg_count, param_index);
+        this->add_return_borrow_action(this->borrow_action_for_result(call_expr), point, call_expr, source);
+    }
+
+    void record_unknown_return_borrow_actions(const syntax::CallExprPayload& payload, const syntax::ExprId callee,
+        const base::u32 receiver_arg_count, const syntax::ExprId call_expr, const base::u32 point)
+    {
+        this->add_unknown_return_borrow_action(this->borrow_action_for_result(call_expr), point, call_expr);
+        std::unordered_set<base::u32> recorded_sources;
+        const base::u32 parameter_count =
+            receiver_arg_count + base::checked_u32(payload.args.size(), SEMA_BODY_FLOW_PLACE_ID_CONTEXT);
+        for (base::u32 param_index = 0; param_index < parameter_count; ++param_index) {
+            const syntax::ExprId source =
+                this->call_argument_for_param(payload, callee, receiver_arg_count, param_index);
+            if (!this->expr_can_be_conservative_return_source(source)
+                || !recorded_sources.insert(source.value).second) {
+                continue;
+            }
+            this->add_return_borrow_action(this->borrow_action_for_result(call_expr), point, call_expr, source);
+        }
+    }
+
+    [[nodiscard]] bool expr_can_be_conservative_return_source(const syntax::ExprId expr) const
+    {
+        if (!valid_expr(this->module_, expr)) {
+            return false;
+        }
+        if (this->address_of_operand(expr).has_value()) {
+            return true;
+        }
+        return this->type_can_contain_borrow(this->cached_expr_type(expr));
+    }
+
+    void add_unknown_return_borrow_action(
+        const BodyFlowActionKind kind, const base::u32 point, const syntax::ExprId result_expr)
+    {
+        if (!valid_expr(this->module_, result_expr)) {
+            return;
+        }
+        BodyFlowPlace place;
+        place.root_kind = BodyFlowPlaceRootKind::unknown;
+        place.root_expr = result_expr;
+        place.range = expr_range(this->module_, result_expr);
+        const base::u32 place_id = this->add_place(std::move(place));
+        this->add_action(
+            kind, point, place_id, syntax::INVALID_STMT_ID, result_expr, expr_range(this->module_, result_expr));
+    }
+
+    [[nodiscard]] syntax::ExprId call_argument_for_param(const syntax::CallExprPayload& payload,
+        const syntax::ExprId callee, const base::u32 receiver_arg_count, const base::u32 param_index) const
+    {
+        if (receiver_arg_count != 0 && param_index < receiver_arg_count) {
+            const std::optional<syntax::ExprId> receiver = this->receiver_expr_for_call_callee(callee);
+            return receiver.has_value() ? *receiver : syntax::INVALID_EXPR_ID;
+        }
+        const base::u32 arg_index = param_index - receiver_arg_count;
+        return arg_index < payload.args.size() ? payload.args[arg_index] : syntax::INVALID_EXPR_ID;
+    }
+
+    void add_return_borrow_action(const BodyFlowActionKind kind, const base::u32 point,
+        const syntax::ExprId result_expr, const syntax::ExprId source_expr)
+    {
+        if (!valid_expr(this->module_, result_expr) || !valid_expr(this->module_, source_expr)) {
+            return;
+        }
+        const base::u32 place = this->add_place(this->make_borrow_source_place(source_expr));
+        this->add_action(
+            kind, point, place, syntax::INVALID_STMT_ID, result_expr, expr_range(this->module_, result_expr));
+    }
+
+    [[nodiscard]] BodyFlowActionKind borrow_action_for_result(const syntax::ExprId expr) const noexcept
+    {
+        const TypeHandle type = this->cached_expr_type(expr);
+        if (!is_valid(type) || type.value >= this->checked_.types.size()) {
+            return BodyFlowActionKind::borrow_shared;
+        }
+        const TypeInfo& info = this->checked_.types.get(type);
+        if ((info.kind == TypeKind::reference && info.pointer_mutability == PointerMutability::mut)
+            || (info.kind == TypeKind::slice && info.slice_mutability == PointerMutability::mut)) {
+            return BodyFlowActionKind::borrow_mutable;
+        }
+        return BodyFlowActionKind::borrow_shared;
+    }
+
+    [[nodiscard]] BodyFlowPlace make_borrow_source_place(const syntax::ExprId source_expr)
+    {
+        if (const std::optional<syntax::ExprId> operand = this->address_of_operand(source_expr); operand.has_value()) {
+            return this->make_place(*operand);
+        }
+        BodyFlowPlace place = this->make_place(source_expr);
+        if (this->expr_is_indirect_borrow_carrier(source_expr)) {
+            place.projections.push_back(BodyFlowPlaceProjection{
+                .kind = BodyFlowPlaceProjectionKind::dereference,
+                .expr = source_expr,
+            });
+        }
+        return place;
+    }
+
+    [[nodiscard]] bool expr_is_indirect_borrow_carrier(const syntax::ExprId expr) const noexcept
+    {
+        const TypeHandle type = this->cached_expr_type(expr);
+        if (!is_valid(type) || type.value >= this->checked_.types.size()) {
+            return false;
+        }
+        const TypeInfo& info = this->checked_.types.get(type);
+        return info.kind == TypeKind::reference || info.kind == TypeKind::slice
+            || (info.kind == TypeKind::builtin && info.builtin == BuiltinType::str);
+    }
+
+    [[nodiscard]] TypeHandle cached_expr_type(const syntax::ExprId expr) const noexcept
+    {
+        return valid_expr(this->module_, expr) && expr.value < this->checked_.expr_types.size()
+            ? this->checked_.expr_types[expr.value]
+            : INVALID_TYPE_HANDLE;
+    }
+
+    [[nodiscard]] const StructInfo* find_struct(const TypeHandle type) const noexcept
+    {
+        for (const auto& entry : this->checked_.structs) {
+            if (entry.second.type.value == type.value) {
+                return &entry.second;
+            }
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] bool type_can_contain_borrow(const TypeHandle type) const
+    {
+        if (!is_valid(type)) {
+            return false;
+        }
+        std::vector<TypeHandle> pending{type};
+        std::unordered_set<base::u32> visited;
+        while (!pending.empty()) {
+            const TypeHandle current = pending.back();
+            pending.pop_back();
+            if (!is_valid(current) || current.value >= this->checked_.types.size()
+                || !visited.insert(current.value).second) {
+                continue;
+            }
+            const TypeInfo& info = this->checked_.types.get(current);
+            switch (info.kind) {
+                case TypeKind::builtin:
+                    if (info.builtin == BuiltinType::str) {
+                        return true;
+                    }
+                    break;
+                case TypeKind::reference:
+                case TypeKind::slice:
+                case TypeKind::generic_param:
+                case TypeKind::associated_projection:
+                    return true;
+                case TypeKind::array:
+                    pending.push_back(info.array_element);
+                    break;
+                case TypeKind::tuple:
+                    pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
+                    break;
+                case TypeKind::struct_: {
+                    const StructInfo* const structure = this->find_struct(current);
+                    if (structure != nullptr) {
+                        for (const StructFieldInfo& field : structure->fields) {
+                            pending.push_back(field.type);
+                        }
+                    }
+                    break;
+                }
+                case TypeKind::enum_: {
+                    for (const auto& entry : this->checked_.enum_cases) {
+                        const EnumCaseInfo& enum_case = entry.second;
+                        if (enum_case.type.value == current.value) {
+                            pending.insert(
+                                pending.end(), enum_case.payload_types.begin(), enum_case.payload_types.end());
+                        }
+                    }
+                    break;
+                }
+                case TypeKind::pointer:
+                case TypeKind::function:
+                case TypeKind::opaque_struct:
+                    break;
+            }
+        }
+        return false;
+    }
+
+    [[nodiscard]] std::optional<syntax::ExprId> address_of_operand(const syntax::ExprId expr) const noexcept
+    {
+        if (!valid_expr(this->module_, expr) || this->module_.exprs.kind(expr.value) != syntax::ExprKind::unary) {
+            return std::nullopt;
+        }
+        const syntax::UnaryExprPayload* const unary = this->module_.exprs.unary_payload(expr.value);
+        if (unary == nullptr || !unary_is_address_of(unary->op)) {
+            return std::nullopt;
+        }
+        return unary->operand;
     }
 
     [[nodiscard]] std::optional<syntax::ExprId> receiver_expr_for_call_callee(const syntax::ExprId callee) const

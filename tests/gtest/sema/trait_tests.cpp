@@ -230,6 +230,13 @@ TEST(CoreUnit, BorrowContractSemaRejectsInvalidDeclaredSelectors)
                                    "fn bad(value: &i32) -> &i32 { return value; }\n"
                                    "fn main() -> i32 { return 0; }\n",
         "borrow contract 'self' selector requires a first self parameter");
+    expect_trait_source_diagnostic("module borrow_contract_non_borrowing_selector;\n"
+                                   "extern c {\n"
+                                   "  @borrow(return = [value])\n"
+                                   "  fn bad(value: i32) -> &i32;\n"
+                                   "}\n"
+                                   "fn main() -> i32 { return 0; }\n",
+        "borrow contract return selector must name a parameter that can carry a borrow");
     expect_trait_source_diagnostic("module borrow_contract_duplicate_selector;\n"
                                    "@borrow(return = [value, value])\n"
                                    "fn bad(value: &i32) -> &i32 { return value; }\n"
@@ -263,6 +270,19 @@ TEST(CoreUnit, TraitImplBorrowContractUsesBodyInferredContract)
     const sema::CheckedModule checked = analyze_trait_source(valid);
     const std::string dump = sema::dump_checked_module(checked);
     expect_contains(dump, "requirement view(&Self) -> &Self borrow_contract=declared/selectors=1/unknown=false");
+
+    const std::string_view renamed_param = "module trait_borrow_contract_param_rename;\n"
+                                           "struct Box { value: i32; }\n"
+                                           "trait Pick {\n"
+                                           "  @borrow(return = [other])\n"
+                                           "  fn pick(self: &Self, other: &Self) -> &Self;\n"
+                                           "}\n"
+                                           "impl Pick for Box {\n"
+                                           "  fn pick(self: &Box, rhs: &Box) -> &Box { return rhs; }\n"
+                                           "}\n"
+                                           "fn main() -> i32 { return 0; }\n";
+    const sema::CheckedModule renamed_checked = analyze_trait_source(renamed_param);
+    EXPECT_FALSE(renamed_checked.trait_impls.empty());
 
     expect_trait_source_diagnostic("module trait_borrow_contract_mismatch;\n"
                                    "struct Box { value: i32; }\n"

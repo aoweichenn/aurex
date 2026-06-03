@@ -222,6 +222,20 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
     return origin;
 }
 
+SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::BorrowSummaryBuilder::static_origin(
+    const base::SourceRange& range)
+{
+    OriginSet origin;
+    origin.origins.push_back(this->append_origin(BorrowSummaryOrigin{
+        .kind = BorrowSummaryOriginKind::static_,
+        .param_index = SEMA_BORROW_SUMMARY_INVALID_INDEX,
+        .name_id = INVALID_IDENT_ID,
+        .expr = syntax::INVALID_EXPR_ID,
+        .range = range,
+    }));
+    return origin;
+}
+
 SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::BorrowSummaryBuilder::local_origin(
     const IdentId name, const base::SourceRange& range, const syntax::ExprId expr)
 {
@@ -345,26 +359,16 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_statement(
             this->analyze_assignment(stmt);
             break;
         case syntax::StmtKind::if_:
-            this->push_scoped_block(tasks, stmt.else_block);
-            this->push_statement(tasks, stmt.else_if);
-            this->push_scoped_block(tasks, stmt.then_block);
+            this->analyze_if_statement(tasks, stmt);
             break;
         case syntax::StmtKind::while_:
-            this->push_scoped_block(tasks, stmt.body);
+            this->analyze_while_statement(tasks, stmt);
             break;
         case syntax::StmtKind::for_:
-            this->push_scope();
-            tasks.push_back(Task{TaskKind::pop_scope, syntax::INVALID_STMT_ID});
-            this->push_statement(tasks, stmt.for_update);
-            this->push_scoped_block(tasks, stmt.body);
-            this->push_statement(tasks, stmt.for_init);
+            this->analyze_for_statement(tasks, stmt);
             break;
         case syntax::StmtKind::for_range:
-            this->push_scope();
-            tasks.push_back(Task{TaskKind::pop_scope, syntax::INVALID_STMT_ID});
-            this->bind_storage(stmt.name_id, this->local_origin(stmt.name_id, stmt.range, syntax::INVALID_EXPR_ID));
-            this->bind_borrowed_value(stmt.name_id, {});
-            this->push_scoped_block(tasks, stmt.body);
+            this->analyze_for_range_statement(tasks, stmt);
             break;
         case syntax::StmtKind::return_:
             this->record_return_origin(stmt.return_value, stmt.range);
@@ -377,6 +381,146 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_statement(
         case syntax::StmtKind::defer:
         case syntax::StmtKind::expr:
             break;
+    }
+}
+
+void SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_if_statement(
+    std::vector<Task>& tasks, const syntax::StmtNode& stmt)
+{
+    (void)tasks;
+    const ScopeList baseline = this->scopes_;
+    std::vector<ScopeList> branches;
+    branches.reserve(3);
+    if (syntax::is_valid(stmt.then_block)) {
+        std::vector<Task> branch_tasks;
+        branch_tasks.reserve(SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY);
+        this->push_scoped_block(branch_tasks, stmt.then_block);
+        branches.push_back(this->analyze_tasks_from_scopes(baseline, std::move(branch_tasks)));
+    }
+    if (syntax::is_valid(stmt.else_block)) {
+        std::vector<Task> branch_tasks;
+        branch_tasks.reserve(SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY);
+        this->push_scoped_block(branch_tasks, stmt.else_block);
+        branches.push_back(this->analyze_tasks_from_scopes(baseline, std::move(branch_tasks)));
+    }
+    if (syntax::is_valid(stmt.else_if)) {
+        std::vector<Task> branch_tasks;
+        branch_tasks.reserve(SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY);
+        this->push_statement(branch_tasks, stmt.else_if);
+        branches.push_back(this->analyze_tasks_from_scopes(baseline, std::move(branch_tasks)));
+    }
+    const bool include_fallthrough_path = !syntax::is_valid(stmt.else_block) && !syntax::is_valid(stmt.else_if);
+    this->scopes_ = this->merge_control_flow_scopes(baseline, branches, include_fallthrough_path);
+}
+
+void SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_while_statement(
+    std::vector<Task>& tasks, const syntax::StmtNode& stmt)
+{
+    (void)tasks;
+    const ScopeList baseline = this->scopes_;
+    std::vector<ScopeList> branches;
+    branches.reserve(1);
+    if (syntax::is_valid(stmt.body)) {
+        std::vector<Task> body_tasks;
+        body_tasks.reserve(SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY);
+        this->push_scoped_block(body_tasks, stmt.body);
+        branches.push_back(this->analyze_tasks_from_scopes(baseline, std::move(body_tasks)));
+    }
+    this->scopes_ = this->merge_control_flow_scopes(baseline, branches, true);
+}
+
+void SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_for_statement(
+    std::vector<Task>& tasks, const syntax::StmtNode& stmt)
+{
+    (void)tasks;
+    this->push_scope();
+    std::vector<Task> init_tasks;
+    init_tasks.reserve(SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY);
+    this->push_statement(init_tasks, stmt.for_init);
+    this->run_tasks(init_tasks);
+
+    const ScopeList loop_baseline = this->scopes_;
+    std::vector<Task> iteration_tasks;
+    iteration_tasks.reserve(SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY);
+    this->push_statement(iteration_tasks, stmt.for_update);
+    this->push_scoped_block(iteration_tasks, stmt.body);
+    std::vector<ScopeList> branches;
+    branches.reserve(1);
+    branches.push_back(this->analyze_tasks_from_scopes(loop_baseline, std::move(iteration_tasks)));
+    this->scopes_ = this->merge_control_flow_scopes(loop_baseline, branches, true);
+    this->pop_scope();
+}
+
+void SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_for_range_statement(
+    std::vector<Task>& tasks, const syntax::StmtNode& stmt)
+{
+    (void)tasks;
+    this->push_scope();
+    this->bind_storage(stmt.name_id, this->local_origin(stmt.name_id, stmt.range, syntax::INVALID_EXPR_ID));
+    this->bind_borrowed_value(stmt.name_id, {});
+
+    const ScopeList loop_baseline = this->scopes_;
+    std::vector<Task> body_tasks;
+    body_tasks.reserve(SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY);
+    this->push_scoped_block(body_tasks, stmt.body);
+    std::vector<ScopeList> branches;
+    branches.reserve(1);
+    branches.push_back(this->analyze_tasks_from_scopes(loop_baseline, std::move(body_tasks)));
+    this->scopes_ = this->merge_control_flow_scopes(loop_baseline, branches, true);
+    this->pop_scope();
+}
+
+SemanticAnalyzerCore::BorrowSummaryBuilder::ScopeList
+SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_tasks_from_scopes(
+    const ScopeList& baseline, std::vector<Task> tasks)
+{
+    ScopeList saved = std::move(this->scopes_);
+    this->scopes_ = baseline;
+    this->run_tasks(tasks);
+    ScopeList result = this->scopes_;
+    this->scopes_ = std::move(saved);
+    return result;
+}
+
+SemanticAnalyzerCore::BorrowSummaryBuilder::ScopeList
+SemanticAnalyzerCore::BorrowSummaryBuilder::merge_control_flow_scopes(
+    const ScopeList& baseline, const std::vector<ScopeList>& branches, const bool include_baseline_path)
+{
+    ScopeList merged = baseline;
+    if (!include_baseline_path) {
+        this->clear_borrowed_values_for_existing_storage(merged);
+    }
+    for (const ScopeList& branch : branches) {
+        const base::usize scope_count = std::min(merged.size(), branch.size());
+        for (base::usize index = 0; index < scope_count; ++index) {
+            this->merge_scope_borrowed_values(merged[index], branch[index]);
+        }
+    }
+    return merged;
+}
+
+void SemanticAnalyzerCore::BorrowSummaryBuilder::merge_scope_borrowed_values(Scope& target, const Scope& branch)
+{
+    for (const auto& entry : target.storage) {
+        const IdentId name = entry.first;
+        const auto found = branch.borrowed_values.find(name);
+        if (found == branch.borrowed_values.end()) {
+            continue;
+        }
+        OriginSet current;
+        if (const auto existing = target.borrowed_values.find(name); existing != target.borrowed_values.end()) {
+            current = existing->second;
+        }
+        target.borrowed_values[name] = this->merge(std::move(current), found->second);
+    }
+}
+
+void SemanticAnalyzerCore::BorrowSummaryBuilder::clear_borrowed_values_for_existing_storage(ScopeList& scopes) const
+{
+    for (Scope& scope : scopes) {
+        for (const auto& entry : scope.storage) {
+            scope.borrowed_values[entry.first] = OriginSet{};
+        }
     }
 }
 
@@ -652,18 +796,36 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
         return this->unknown_origin();
     }
     if (const FunctionCallBinding* const binding = this->direct_call_binding(expr); binding != nullptr) {
+        const auto contract = this->core_.state_.checked.borrow_contracts.find(binding->function_key);
+        if (contract != this->core_.state_.checked.borrow_contracts.end()
+            && contract->second.source != FunctionBorrowContractSource::inferred) {
+            return this->map_callee_contract_origins(
+                contract->second, call, binding->callee_expr, binding->receiver_arg_count);
+        }
         const auto summary = this->core_.state_.checked.borrow_summaries.find(binding->function_key);
         if (summary != this->core_.state_.checked.borrow_summaries.end()) {
             return this->map_callee_summary_origins(
                 summary->second, call, binding->callee_expr, binding->receiver_arg_count);
         }
+        if (contract != this->core_.state_.checked.borrow_contracts.end()) {
+            return this->map_callee_contract_origins(
+                contract->second, call, binding->callee_expr, binding->receiver_arg_count);
+        }
         return this->type_can_contain_borrow(binding->return_type) ? this->unknown_origin() : OriginSet{};
     }
     if (const TraitMethodCallBinding* const binding = this->trait_call_binding(expr); binding != nullptr) {
-        const auto summary = this->core_.state_.checked.borrow_summaries.find(binding->function_key);
+        const auto contract = this->core_.state_.checked.borrow_contracts.find(binding->function_key);
         const base::u32 receiver_arg_count = is_valid(binding->receiver_type) ? 1U : 0U;
+        if (contract != this->core_.state_.checked.borrow_contracts.end()
+            && contract->second.source != FunctionBorrowContractSource::inferred) {
+            return this->map_callee_contract_origins(contract->second, call, binding->callee_expr, receiver_arg_count);
+        }
+        const auto summary = this->core_.state_.checked.borrow_summaries.find(binding->function_key);
         if (summary != this->core_.state_.checked.borrow_summaries.end()) {
             return this->map_callee_summary_origins(summary->second, call, binding->callee_expr, receiver_arg_count);
+        }
+        if (contract != this->core_.state_.checked.borrow_contracts.end()) {
+            return this->map_callee_contract_origins(contract->second, call, binding->callee_expr, receiver_arg_count);
         }
         return this->type_can_contain_borrow(binding->return_type) ? this->unknown_origin() : OriginSet{};
     }
@@ -721,6 +883,10 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::map_callee_summary_origins(const Fun
             continue;
         }
         const BorrowSummaryOrigin& origin = callee.origins[dependency.origin_index];
+        if (origin.kind == BorrowSummaryOriginKind::static_) {
+            result = this->merge(result, this->static_origin(origin.range));
+            continue;
+        }
         if (origin.kind != BorrowSummaryOriginKind::parameter) {
             result.unknown = true;
             continue;
@@ -732,6 +898,40 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::map_callee_summary_origins(const Fun
             continue;
         }
         result = this->merge(result, this->borrow_origin(arg));
+    }
+    return result;
+}
+
+SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet
+SemanticAnalyzerCore::BorrowSummaryBuilder::map_callee_contract_origins(const FunctionBorrowContract& callee,
+    const syntax::CallExprPayload& call, const syntax::ExprId callee_expr, const base::u32 receiver_arg_count)
+{
+    OriginSet result;
+    result.unknown = callee.unknown_return_allowed;
+    for (const BorrowContractSelector& selector : callee.return_selectors) {
+        switch (selector.kind) {
+            case BorrowContractSelectorKind::parameter:
+            case BorrowContractSelectorKind::self: {
+                if (selector.param_index == SEMA_BORROW_SUMMARY_INVALID_INDEX) {
+                    result.unknown = true;
+                    break;
+                }
+                const syntax::ExprId arg =
+                    this->call_argument_for_param(call, callee_expr, receiver_arg_count, selector.param_index);
+                if (!valid_expr(this->core_.ctx_.module, arg)) {
+                    result.unknown = true;
+                    break;
+                }
+                result = this->merge(result, this->borrow_origin(arg));
+                break;
+            }
+            case BorrowContractSelectorKind::static_:
+                result = this->merge(result, this->static_origin(selector.range));
+                break;
+            case BorrowContractSelectorKind::unknown:
+                result.unknown = true;
+                break;
+        }
     }
     return result;
 }
@@ -1004,6 +1204,8 @@ std::string_view borrow_summary_origin_kind_name(const BorrowSummaryOriginKind k
             return "none";
         case BorrowSummaryOriginKind::parameter:
             return "parameter";
+        case BorrowSummaryOriginKind::static_:
+            return "static";
         case BorrowSummaryOriginKind::local:
             return "local";
         case BorrowSummaryOriginKind::temporary:

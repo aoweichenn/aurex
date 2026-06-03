@@ -79,6 +79,239 @@ struct BodyLoanActionSite {
     return syntax::is_valid(stmt) && stmt.value < module.stmts.size();
 }
 
+void push_precheck_expr(
+    std::vector<syntax::ExprId>& pending, const syntax::AstModule& module, const syntax::ExprId expr)
+{
+    if (valid_expr(module, expr)) {
+        pending.push_back(expr);
+    }
+}
+
+void push_precheck_stmt(
+    std::vector<syntax::StmtId>& pending, const syntax::AstModule& module, const syntax::StmtId stmt)
+{
+    if (valid_stmt(module, stmt)) {
+        pending.push_back(stmt);
+    }
+}
+
+void push_precheck_block_statements(
+    std::vector<syntax::StmtId>& pending, const syntax::AstModule& module, const syntax::StmtId block)
+{
+    if (!valid_stmt(module, block)) {
+        return;
+    }
+    const syntax::AstArenaVector<syntax::StmtId>* const statements = module.stmts.block_statements(block.value);
+    if (statements == nullptr) {
+        return;
+    }
+    pending.insert(pending.end(), statements->begin(), statements->end());
+}
+
+void push_precheck_statement_children(const syntax::AstModule& module, const syntax::StmtNode& stmt,
+    std::vector<syntax::ExprId>& pending_exprs, std::vector<syntax::StmtId>& pending_stmts)
+{
+    switch (stmt.kind) {
+        case syntax::StmtKind::let:
+        case syntax::StmtKind::var:
+            push_precheck_expr(pending_exprs, module, stmt.init);
+            push_precheck_stmt(pending_stmts, module, stmt.else_block);
+            break;
+        case syntax::StmtKind::assign:
+            push_precheck_expr(pending_exprs, module, stmt.lhs);
+            push_precheck_expr(pending_exprs, module, stmt.rhs);
+            break;
+        case syntax::StmtKind::if_:
+            push_precheck_expr(pending_exprs, module, stmt.condition);
+            push_precheck_stmt(pending_stmts, module, stmt.then_block);
+            push_precheck_stmt(pending_stmts, module, stmt.else_block);
+            push_precheck_stmt(pending_stmts, module, stmt.else_if);
+            break;
+        case syntax::StmtKind::for_:
+            push_precheck_stmt(pending_stmts, module, stmt.for_init);
+            push_precheck_expr(pending_exprs, module, stmt.condition);
+            push_precheck_stmt(pending_stmts, module, stmt.body);
+            push_precheck_stmt(pending_stmts, module, stmt.for_update);
+            break;
+        case syntax::StmtKind::for_range:
+            push_precheck_expr(pending_exprs, module, stmt.range_start);
+            push_precheck_expr(pending_exprs, module, stmt.range_end);
+            push_precheck_expr(pending_exprs, module, stmt.range_step);
+            push_precheck_stmt(pending_stmts, module, stmt.body);
+            break;
+        case syntax::StmtKind::while_:
+            push_precheck_expr(pending_exprs, module, stmt.condition);
+            push_precheck_stmt(pending_stmts, module, stmt.body);
+            break;
+        case syntax::StmtKind::defer:
+        case syntax::StmtKind::expr:
+            push_precheck_expr(pending_exprs, module, stmt.init);
+            break;
+        case syntax::StmtKind::return_:
+            push_precheck_expr(pending_exprs, module, stmt.return_value);
+            break;
+        case syntax::StmtKind::block:
+            pending_stmts.insert(pending_stmts.end(), stmt.statements.begin(), stmt.statements.end());
+            break;
+        case syntax::StmtKind::break_:
+        case syntax::StmtKind::continue_:
+            break;
+    }
+}
+
+void push_precheck_expression_children(const syntax::AstModule& module, const syntax::ExprId expr,
+    std::vector<syntax::ExprId>& pending_exprs, std::vector<syntax::StmtId>& pending_stmts)
+{
+    if (!valid_expr(module, expr)) {
+        return;
+    }
+    switch (module.exprs.kind(expr.value)) {
+        case syntax::ExprKind::generic_apply: {
+            const syntax::GenericApplyExprPayload* const apply = module.exprs.generic_apply_payload(expr.value);
+            if (apply != nullptr) {
+                push_precheck_expr(pending_exprs, module, apply->callee);
+            }
+            break;
+        }
+        case syntax::ExprKind::unary:
+        case syntax::ExprKind::try_expr:
+        case syntax::ExprKind::cast:
+        case syntax::ExprKind::pcast:
+        case syntax::ExprKind::bcast:
+        case syntax::ExprKind::size_of:
+        case syntax::ExprKind::align_of:
+        case syntax::ExprKind::ptr_addr:
+        case syntax::ExprKind::paddr:
+        case syntax::ExprKind::slice_data:
+        case syntax::ExprKind::slice_len:
+        case syntax::ExprKind::str_data:
+        case syntax::ExprKind::str_byte_len:
+        case syntax::ExprKind::str_is_valid_utf8:
+        case syntax::ExprKind::str_from_utf8_checked: {
+            const syntax::CastExprPayload* const cast = module.exprs.cast_payload(expr.value);
+            const syntax::UnaryExprPayload* const unary = module.exprs.unary_payload(expr.value);
+            const syntax::TryExprPayload* const try_expr = module.exprs.try_payload(expr.value);
+            if (cast != nullptr) {
+                push_precheck_expr(pending_exprs, module, cast->expr);
+            } else if (unary != nullptr) {
+                push_precheck_expr(pending_exprs, module, unary->operand);
+            } else if (try_expr != nullptr) {
+                push_precheck_expr(pending_exprs, module, try_expr->operand);
+            }
+            break;
+        }
+        case syntax::ExprKind::binary: {
+            const syntax::BinaryExprPayload* const binary = module.exprs.binary_payload(expr.value);
+            if (binary != nullptr) {
+                push_precheck_expr(pending_exprs, module, binary->lhs);
+                push_precheck_expr(pending_exprs, module, binary->rhs);
+            }
+            break;
+        }
+        case syntax::ExprKind::call:
+        case syntax::ExprKind::str_from_bytes_unchecked: {
+            const syntax::CallExprPayload* const call = module.exprs.call_payload(expr.value);
+            if (call != nullptr) {
+                push_precheck_expr(pending_exprs, module, call->callee);
+                pending_exprs.insert(pending_exprs.end(), call->args.begin(), call->args.end());
+            }
+            break;
+        }
+        case syntax::ExprKind::field: {
+            const syntax::FieldExprPayload* const field = module.exprs.field_payload(expr.value);
+            if (field != nullptr) {
+                push_precheck_expr(pending_exprs, module, field->object);
+            }
+            break;
+        }
+        case syntax::ExprKind::index: {
+            const syntax::IndexExprPayload* const index = module.exprs.index_payload(expr.value);
+            if (index != nullptr) {
+                push_precheck_expr(pending_exprs, module, index->object);
+                push_precheck_expr(pending_exprs, module, index->index);
+            }
+            break;
+        }
+        case syntax::ExprKind::slice: {
+            const syntax::SliceExprPayload* const slice = module.exprs.slice_payload(expr.value);
+            if (slice != nullptr) {
+                push_precheck_expr(pending_exprs, module, slice->object);
+                push_precheck_expr(pending_exprs, module, slice->start);
+                push_precheck_expr(pending_exprs, module, slice->end);
+            }
+            break;
+        }
+        case syntax::ExprKind::if_expr: {
+            const syntax::IfExprPayload* const if_expr = module.exprs.if_payload(expr.value);
+            if (if_expr != nullptr) {
+                push_precheck_expr(pending_exprs, module, if_expr->condition);
+                push_precheck_expr(pending_exprs, module, if_expr->then_expr);
+                push_precheck_expr(pending_exprs, module, if_expr->else_expr);
+            }
+            break;
+        }
+        case syntax::ExprKind::array_literal: {
+            const syntax::ArrayExprPayload* const array = module.exprs.array_payload(expr.value);
+            if (array != nullptr) {
+                pending_exprs.insert(pending_exprs.end(), array->elements.begin(), array->elements.end());
+                push_precheck_expr(pending_exprs, module, array->repeat_value);
+                push_precheck_expr(pending_exprs, module, array->repeat_count);
+            }
+            break;
+        }
+        case syntax::ExprKind::tuple_literal: {
+            const syntax::AstArenaVector<syntax::ExprId>* const elements = module.exprs.tuple_elements(expr.value);
+            if (elements != nullptr) {
+                pending_exprs.insert(pending_exprs.end(), elements->begin(), elements->end());
+            }
+            break;
+        }
+        case syntax::ExprKind::struct_literal: {
+            const syntax::StructLiteralExprPayload* const literal = module.exprs.struct_literal_payload(expr.value);
+            if (literal != nullptr) {
+                push_precheck_expr(pending_exprs, module, literal->object);
+                for (const syntax::FieldInit& init : literal->field_inits) {
+                    push_precheck_expr(pending_exprs, module, init.value);
+                }
+            }
+            break;
+        }
+        case syntax::ExprKind::match_expr: {
+            const syntax::MatchExprPayload* const match = module.exprs.match_payload(expr.value);
+            if (match != nullptr) {
+                push_precheck_expr(pending_exprs, module, match->value);
+                for (const syntax::MatchArm& arm : match->arms) {
+                    push_precheck_expr(pending_exprs, module, arm.guard);
+                    push_precheck_expr(pending_exprs, module, arm.value);
+                }
+            }
+            break;
+        }
+        case syntax::ExprKind::block_expr:
+        case syntax::ExprKind::unsafe_block: {
+            const syntax::BlockExprPayload* const block = module.exprs.block_payload(expr.value);
+            if (block != nullptr) {
+                push_precheck_block_statements(pending_stmts, module, block->block);
+                push_precheck_expr(pending_exprs, module, block->result);
+            }
+            break;
+        }
+        case syntax::ExprKind::invalid:
+        case syntax::ExprKind::integer_literal:
+        case syntax::ExprKind::float_literal:
+        case syntax::ExprKind::bool_literal:
+        case syntax::ExprKind::null_literal:
+        case syntax::ExprKind::string_literal:
+        case syntax::ExprKind::c_string_literal:
+        case syntax::ExprKind::raw_string_literal:
+        case syntax::ExprKind::byte_string_literal:
+        case syntax::ExprKind::byte_literal:
+        case syntax::ExprKind::char_literal:
+        case syntax::ExprKind::name:
+            break;
+    }
+}
+
 [[nodiscard]] bool action_is_borrow(const BodyFlowActionKind kind) noexcept
 {
     return kind == BodyFlowActionKind::borrow_shared || kind == BodyFlowActionKind::borrow_mutable;
@@ -205,16 +438,11 @@ struct BodyLoanActionSite {
     return true;
 }
 
-[[nodiscard]] bool action_reads_carrier(const BodyFlowAction& action, const IdentId carrier_name_id) noexcept
-{
-    return syntax::is_valid(carrier_name_id) && action.kind == BodyFlowActionKind::read
-        && syntax::is_valid(action.expr);
-}
-
 [[nodiscard]] bool reborrow_parent_access_conflicts(
     const BodyLoanKind parent_kind, const BodyLoanKind child_kind, const BodyLoanAccessKind access) noexcept
 {
-    if (parent_kind == BodyLoanKind::mutable_ || child_kind == BodyLoanKind::mutable_) {
+    static_cast<void>(parent_kind);
+    if (child_kind == BodyLoanKind::mutable_) {
         return true;
     }
     switch (access) {
@@ -331,8 +559,10 @@ void mix_two_phase_borrow(query::StableHashBuilder& builder, const BodyTwoPhaseB
 class BodyLoanSolver final {
 public:
     BodyLoanSolver(const syntax::AstModule& module, const syntax::ItemNode& function, const FunctionLookupKey key,
-        const BodyFlowGraph& graph, std::vector<bool> move_action_consumes, const BodyLoanDiagnosticMode mode)
-        : module_(module), function_(function), graph_(graph), move_action_consumes_(std::move(move_action_consumes))
+        const CheckedModule& checked, const BodyFlowGraph& graph, std::vector<bool> move_action_consumes,
+        const BodyLoanDiagnosticMode mode)
+        : module_(module), function_(function), checked_(checked), graph_(graph),
+          move_action_consumes_(std::move(move_action_consumes))
     {
         this->result_.function = key;
         this->result_.diagnostic_mode = mode;
@@ -354,8 +584,10 @@ private:
     void build_graph_index()
     {
         this->index_.actions_by_point.assign(this->graph_.points.size(), {});
+        this->read_action_observes_reference_.assign(this->graph_.actions.size(), false);
         for (base::usize action_index = 0; action_index < this->graph_.actions.size(); ++action_index) {
             const BodyFlowAction& action = this->graph_.actions[action_index];
+            this->read_action_observes_reference_[action_index] = this->read_action_observes_reference(action);
             if (!valid_point(this->graph_, action.point)) {
                 continue;
             }
@@ -443,6 +675,14 @@ private:
     [[nodiscard]] BodyFlowPlace make_effective_loan_place(const base::usize loan_index) const
     {
         const BodyLoan& loan = this->result_.loans[loan_index];
+        if (valid_place(this->graph_, loan.place)) {
+            const BodyFlowPlace& loan_place = this->graph_.places[loan.place];
+            if (loan_place.root_kind == BodyFlowPlaceRootKind::unknown && syntax::is_valid(loan.carrier_name_id)) {
+                BodyFlowPlace non_local_unknown;
+                non_local_unknown.range = loan_place.range;
+                return non_local_unknown;
+            }
+        }
         if (loan.parent_loan == SEMA_BODY_LOAN_INVALID_INDEX || loan.parent_loan >= this->result_.loans.size()
             || !valid_place(this->graph_, loan.place)) {
             return valid_place(this->graph_, loan.place) ? this->graph_.places[loan.place] : BodyFlowPlace{};
@@ -556,7 +796,7 @@ private:
             if (!valid_stmt(this->module_, stmt)) {
                 continue;
             }
-            const syntax::StmtNode node = this->module_.stmts[stmt.value];
+            const syntax::StmtNode& node = this->module_.stmts[stmt.value];
             if (this->bind_carrier_from_statement(loan, stmt, node)) {
                 return;
             }
@@ -569,7 +809,8 @@ private:
     {
         const syntax::ExprId local_init_borrow = this->direct_address_operand(node.init);
         if ((node.kind == syntax::StmtKind::let || node.kind == syntax::StmtKind::var) && syntax::is_valid(node.name_id)
-            && syntax::is_valid(local_init_borrow) && local_init_borrow.value == loan.expr.value) {
+            && ((syntax::is_valid(local_init_borrow) && local_init_borrow.value == loan.expr.value)
+                || this->expr_result_contains_loan(node.init, loan))) {
             loan.carrier_name_id = node.name_id;
             loan.enclosing_stmt = stmt;
             loan.carrier_definition_point = this->find_carrier_definition_point(loan.carrier_name_id, stmt);
@@ -586,7 +827,128 @@ private:
                 return true;
             }
         }
+        if (node.kind == syntax::StmtKind::assign && this->expr_is_loan_result(node.rhs, loan)) {
+            const IdentId lhs = this->direct_name_id(node.lhs);
+            if (syntax::is_valid(lhs)) {
+                loan.carrier_name_id = lhs;
+                loan.enclosing_stmt = stmt;
+                loan.carrier_definition_point = this->find_carrier_definition_point(loan.carrier_name_id, stmt);
+                return true;
+            }
+        }
+        if (node.kind == syntax::StmtKind::assign && this->expr_result_contains_loan(node.rhs, loan)) {
+            const IdentId lhs = this->place_root_name_id(node.lhs);
+            if (syntax::is_valid(lhs)) {
+                loan.carrier_name_id = lhs;
+                loan.enclosing_stmt = stmt;
+                loan.carrier_definition_point = this->find_carrier_definition_point(loan.carrier_name_id, stmt);
+                return true;
+            }
+        }
         return false;
+    }
+
+    [[nodiscard]] bool expr_is_loan_result(const syntax::ExprId expr, const BodyLoan& loan) const noexcept
+    {
+        return syntax::is_valid(expr) && syntax::is_valid(loan.expr) && expr.value == loan.expr.value;
+    }
+
+    [[nodiscard]] bool expr_result_contains_loan(const syntax::ExprId expr, const BodyLoan& loan) const
+    {
+        if (!valid_expr(this->module_, expr) || !valid_expr(this->module_, loan.expr)) {
+            return false;
+        }
+        std::vector<syntax::ExprId> pending{expr};
+        std::unordered_set<base::u32> visited;
+        while (!pending.empty()) {
+            const syntax::ExprId current = pending.back();
+            pending.pop_back();
+            if (!valid_expr(this->module_, current) || !visited.insert(current.value).second) {
+                continue;
+            }
+            if (this->expr_is_loan_result(current, loan)) {
+                return true;
+            }
+            const syntax::ExprId borrowed_operand = this->direct_address_operand(current);
+            if (syntax::is_valid(borrowed_operand) && borrowed_operand.value == loan.expr.value) {
+                return true;
+            }
+            if (!this->type_contains_reference(this->cached_expr_type(current))) {
+                continue;
+            }
+            this->push_value_result_children(pending, current);
+        }
+        return false;
+    }
+
+    void push_value_result_children(std::vector<syntax::ExprId>& pending, const syntax::ExprId expr) const
+    {
+        const syntax::ExprKind kind = this->module_.exprs.kind(expr.value);
+        if (const syntax::CastExprPayload* const cast = this->module_.exprs.cast_payload(expr.value); cast != nullptr
+            && (kind == syntax::ExprKind::cast || kind == syntax::ExprKind::pcast || kind == syntax::ExprKind::bcast
+                || kind == syntax::ExprKind::str_from_utf8_checked)) {
+            pending.push_back(cast->expr);
+            return;
+        }
+        if (const syntax::TryExprPayload* const try_expr = this->module_.exprs.try_payload(expr.value);
+            kind == syntax::ExprKind::try_expr && try_expr != nullptr) {
+            pending.push_back(try_expr->operand);
+            return;
+        }
+        if (const syntax::IfExprPayload* const if_expr = this->module_.exprs.if_payload(expr.value);
+            kind == syntax::ExprKind::if_expr && if_expr != nullptr) {
+            pending.push_back(if_expr->else_expr);
+            pending.push_back(if_expr->then_expr);
+            return;
+        }
+        if (const syntax::MatchExprPayload* const match = this->module_.exprs.match_payload(expr.value);
+            kind == syntax::ExprKind::match_expr && match != nullptr) {
+            for (const syntax::MatchArm& arm : match->arms) {
+                pending.push_back(arm.value);
+            }
+            return;
+        }
+        if (const syntax::ArrayExprPayload* const array = this->module_.exprs.array_payload(expr.value);
+            kind == syntax::ExprKind::array_literal && array != nullptr) {
+            pending.push_back(array->repeat_value);
+            for (const syntax::ExprId element : array->elements) {
+                pending.push_back(element);
+            }
+            return;
+        }
+        if (const syntax::AstArenaVector<syntax::ExprId>* const tuple = this->module_.exprs.tuple_elements(expr.value);
+            kind == syntax::ExprKind::tuple_literal && tuple != nullptr) {
+            pending.insert(pending.end(), tuple->begin(), tuple->end());
+            return;
+        }
+        if (const syntax::StructLiteralExprPayload* const literal =
+                this->module_.exprs.struct_literal_payload(expr.value);
+            kind == syntax::ExprKind::struct_literal && literal != nullptr) {
+            for (const syntax::FieldInit& field : literal->field_inits) {
+                pending.push_back(field.value);
+            }
+            return;
+        }
+        if (const syntax::BlockExprPayload* const block = this->module_.exprs.block_payload(expr.value);
+            block != nullptr && (kind == syntax::ExprKind::block_expr || kind == syntax::ExprKind::unsafe_block)) {
+            pending.push_back(block->result);
+            return;
+        }
+        if (const syntax::FieldExprPayload* const field = this->module_.exprs.field_payload(expr.value);
+            kind == syntax::ExprKind::field && field != nullptr) {
+            pending.push_back(field->object);
+            return;
+        }
+        if (const syntax::IndexExprPayload* const index = this->module_.exprs.index_payload(expr.value);
+            kind == syntax::ExprKind::index && index != nullptr) {
+            pending.push_back(index->object);
+            return;
+        }
+        if (const syntax::SliceExprPayload* const slice = this->module_.exprs.slice_payload(expr.value);
+            kind == syntax::ExprKind::slice && slice != nullptr) {
+            pending.push_back(slice->object);
+            return;
+        }
     }
 
     void push_child_statements(const syntax::StmtNode& node, std::vector<syntax::StmtId>& pending) const
@@ -646,6 +1008,40 @@ private:
         return name->text_id;
     }
 
+    [[nodiscard]] IdentId place_root_name_id(const syntax::ExprId expr) const noexcept
+    {
+        syntax::ExprId current = expr;
+        std::unordered_set<base::u32> visited;
+        while (valid_expr(this->module_, current) && visited.insert(current.value).second) {
+            const syntax::ExprKind kind = this->module_.exprs.kind(current.value);
+            if (kind == syntax::ExprKind::name) {
+                return this->direct_name_id(current);
+            }
+            if (const syntax::FieldExprPayload* const field = this->module_.exprs.field_payload(current.value);
+                kind == syntax::ExprKind::field && field != nullptr) {
+                current = field->object;
+                continue;
+            }
+            if (const syntax::IndexExprPayload* const index = this->module_.exprs.index_payload(current.value);
+                kind == syntax::ExprKind::index && index != nullptr) {
+                current = index->object;
+                continue;
+            }
+            if (const syntax::SliceExprPayload* const slice = this->module_.exprs.slice_payload(current.value);
+                kind == syntax::ExprKind::slice && slice != nullptr) {
+                current = slice->object;
+                continue;
+            }
+            if (const syntax::UnaryExprPayload* const unary = this->module_.exprs.unary_payload(current.value);
+                kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::dereference) {
+                current = unary->operand;
+                continue;
+            }
+            break;
+        }
+        return INVALID_IDENT_ID;
+    }
+
     [[nodiscard]] base::u32 find_carrier_definition_point(
         const IdentId carrier_name_id, const syntax::StmtId stmt) const noexcept
     {
@@ -675,10 +1071,11 @@ private:
                     || !this->action_place_has_root(action, loan.carrier_name_id)) {
                     continue;
                 }
-                if (action_reads_carrier(action, loan.carrier_name_id)) {
+                if (this->action_reads_carrier(action_index, action, loan.carrier_name_id)) {
                     uses[action.point] = true;
                 }
-                if (action_is_storage_definition(action.kind) && action.point != loan.carrier_definition_point) {
+                if (this->action_defines_whole_carrier(action, loan.carrier_name_id)
+                    && action.point != loan.carrier_definition_point) {
                     definitions[action.point] = true;
                 }
             }
@@ -693,6 +1090,44 @@ private:
         }
         const BodyFlowPlace& place = this->graph_.places[action.place];
         return place.root_kind == BodyFlowPlaceRootKind::local && place.root_name_id == name_id;
+    }
+
+    [[nodiscard]] bool action_defines_whole_carrier(const BodyFlowAction& action, const IdentId name_id) const noexcept
+    {
+        if (!action_is_storage_definition(action.kind) || !valid_place(this->graph_, action.place)) {
+            return false;
+        }
+        const BodyFlowPlace& place = this->graph_.places[action.place];
+        return place.root_kind == BodyFlowPlaceRootKind::local && place.root_name_id == name_id
+            && place.projections.empty();
+    }
+
+    [[nodiscard]] bool action_reads_carrier(
+        const base::u32 action_index, const BodyFlowAction& action, const IdentId carrier_name_id) const noexcept
+    {
+        return syntax::is_valid(carrier_name_id) && action_index < this->read_action_observes_reference_.size()
+            && this->read_action_observes_reference_[action_index] && syntax::is_valid(action.expr);
+    }
+
+    [[nodiscard]] bool read_action_observes_reference(const BodyFlowAction& action) const
+    {
+        if (action.kind != BodyFlowActionKind::read) {
+            return false;
+        }
+        const TypeHandle expr_type = this->cached_expr_type(action.expr);
+        if (!is_valid(expr_type)) {
+            return syntax::is_valid(action.expr);
+        }
+        if (this->type_contains_reference(expr_type)) {
+            return true;
+        }
+        if (!valid_place(this->graph_, action.place)) {
+            return false;
+        }
+        const BodyFlowPlace& place = this->graph_.places[action.place];
+        return std::ranges::any_of(place.projections, [](const BodyFlowPlaceProjection& projection) {
+            return projection.kind == BodyFlowPlaceProjectionKind::dereference;
+        });
     }
 
     void solve_live_after_for_loan(
@@ -931,6 +1366,9 @@ private:
             if (loan.issued_action == action_index || !valid_place(this->graph_, loan.place)) {
                 continue;
             }
+            if (this->action_defines_loan_carrier(action, loan)) {
+                continue;
+            }
             if (this->record_reborrow_parent_use_conflict(loan_index, action_index, action, access)) {
                 continue;
             }
@@ -944,6 +1382,12 @@ private:
             }
             this->record_conflict(loan_index, action_index, action, access);
         }
+    }
+
+    [[nodiscard]] bool action_defines_loan_carrier(const BodyFlowAction& action, const BodyLoan& loan) const noexcept
+    {
+        return action.point == loan.carrier_definition_point
+            && this->action_defines_whole_carrier(action, loan.carrier_name_id);
     }
 
     [[nodiscard]] bool record_reborrow_parent_use_conflict(const base::u32 loan_index, const base::u32 action_index,
@@ -1145,18 +1589,98 @@ private:
             if (!this->action_place_has_root(candidate, loan.carrier_name_id)) {
                 continue;
             }
-            if (action_reads_carrier(candidate, loan.carrier_name_id)) {
+            if (this->action_reads_carrier(candidate_index, candidate, loan.carrier_name_id)) {
                 return BodyLoanCarrierUseSite{
                     .point = candidate.point,
                     .range = candidate.range,
                 };
             }
-            if (action_is_storage_definition(candidate.kind) && candidate.point != loan.carrier_definition_point) {
+            if (this->action_defines_whole_carrier(candidate, loan.carrier_name_id)
+                && candidate.point != loan.carrier_definition_point) {
                 carrier_redefined = true;
                 return std::nullopt;
             }
         }
         return std::nullopt;
+    }
+
+    [[nodiscard]] TypeHandle cached_expr_type(const syntax::ExprId expr) const noexcept
+    {
+        return valid_expr(this->module_, expr) && expr.value < this->checked_.expr_types.size()
+            ? this->checked_.expr_types[expr.value]
+            : INVALID_TYPE_HANDLE;
+    }
+
+    [[nodiscard]] const StructInfo* find_struct(const TypeHandle type) const noexcept
+    {
+        for (const auto& entry : this->checked_.structs) {
+            if (entry.second.type.value == type.value) {
+                return &entry.second;
+            }
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] bool type_contains_reference(const TypeHandle type) const
+    {
+        if (!is_valid(type)) {
+            return false;
+        }
+        std::vector<TypeHandle> pending;
+        pending.reserve(SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY);
+        std::unordered_set<base::u32> visited;
+        pending.push_back(type);
+        while (!pending.empty()) {
+            const TypeHandle current = pending.back();
+            pending.pop_back();
+            if (!is_valid(current) || current.value >= this->checked_.types.size()
+                || !visited.insert(current.value).second) {
+                continue;
+            }
+            const TypeInfo& info = this->checked_.types.get(current);
+            switch (info.kind) {
+                case TypeKind::builtin:
+                    if (info.builtin == BuiltinType::str) {
+                        return true;
+                    }
+                    break;
+                case TypeKind::reference:
+                case TypeKind::slice:
+                case TypeKind::generic_param:
+                case TypeKind::associated_projection:
+                    return true;
+                case TypeKind::array:
+                    pending.push_back(info.array_element);
+                    break;
+                case TypeKind::tuple:
+                    pending.insert(pending.end(), info.tuple_elements.begin(), info.tuple_elements.end());
+                    break;
+                case TypeKind::struct_: {
+                    const StructInfo* const structure = this->find_struct(current);
+                    if (structure != nullptr) {
+                        for (const StructFieldInfo& field : structure->fields) {
+                            pending.push_back(field.type);
+                        }
+                    }
+                    break;
+                }
+                case TypeKind::enum_: {
+                    for (const auto& entry : this->checked_.enum_cases) {
+                        const EnumCaseInfo& enum_case = entry.second;
+                        if (enum_case.type.value == current.value) {
+                            pending.insert(
+                                pending.end(), enum_case.payload_types.begin(), enum_case.payload_types.end());
+                        }
+                    }
+                    break;
+                }
+                case TypeKind::pointer:
+                case TypeKind::function:
+                case TypeKind::opaque_struct:
+                    break;
+            }
+        }
+        return false;
     }
 
     [[nodiscard]] bool move_action_consumes_action(const base::u32 action_index) const noexcept
@@ -1172,10 +1696,12 @@ private:
 
     const syntax::AstModule& module_;
     const syntax::ItemNode& function_;
+    const CheckedModule& checked_;
     const BodyFlowGraph& graph_;
     std::vector<bool> move_action_consumes_;
     BodyLoanCheckResult result_;
     BodyLoanActionIndex index_;
+    std::vector<bool> read_action_observes_reference_;
     std::vector<std::vector<bool>> carrier_live_after_;
     std::vector<std::vector<base::u32>> active_in_;
     std::vector<std::vector<base::u32>> active_out_;
@@ -1388,7 +1914,15 @@ bool SemanticAnalyzerCore::BodyLoanChecker::type_contains_reference(const TypeHa
         }
         const TypeInfo& info = this->core_.state_.checked.types.get(current);
         switch (info.kind) {
+            case TypeKind::builtin:
+                if (info.builtin == BuiltinType::str) {
+                    return true;
+                }
+                break;
             case TypeKind::reference:
+            case TypeKind::slice:
+            case TypeKind::generic_param:
+            case TypeKind::associated_projection:
                 return true;
             case TypeKind::array:
                 pending.push_back(info.array_element);
@@ -1417,13 +1951,9 @@ bool SemanticAnalyzerCore::BodyLoanChecker::type_contains_reference(const TypeHa
                 }
                 break;
             }
-            case TypeKind::builtin:
             case TypeKind::pointer:
-            case TypeKind::slice:
             case TypeKind::function:
             case TypeKind::opaque_struct:
-            case TypeKind::generic_param:
-            case TypeKind::associated_projection:
                 break;
         }
     }
@@ -1431,6 +1961,45 @@ bool SemanticAnalyzerCore::BodyLoanChecker::type_contains_reference(const TypeHa
 }
 
 bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_bind_reference_loan(const syntax::StmtId stmt_id) const
+{
+    if (!valid_stmt(this->core_.ctx_.module, stmt_id)) {
+        return false;
+    }
+    if (this->statement_may_bind_reference_loan_shallow(stmt_id)) {
+        return true;
+    }
+    const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
+    switch (stmt.kind) {
+        case syntax::StmtKind::let:
+        case syntax::StmtKind::var:
+            return this->expr_may_contain_reference_loan_statement(stmt.init);
+        case syntax::StmtKind::assign:
+            return this->expr_may_contain_reference_loan_statement(stmt.lhs)
+                || this->expr_may_contain_reference_loan_statement(stmt.rhs);
+        case syntax::StmtKind::if_:
+        case syntax::StmtKind::while_:
+            return this->expr_may_contain_reference_loan_statement(stmt.condition);
+        case syntax::StmtKind::for_:
+            return this->expr_may_contain_reference_loan_statement(stmt.condition);
+        case syntax::StmtKind::for_range:
+            return this->expr_may_contain_reference_loan_statement(stmt.range_start)
+                || this->expr_may_contain_reference_loan_statement(stmt.range_end)
+                || this->expr_may_contain_reference_loan_statement(stmt.range_step);
+        case syntax::StmtKind::defer:
+        case syntax::StmtKind::expr:
+            return this->expr_may_contain_reference_loan_statement(stmt.init);
+        case syntax::StmtKind::return_:
+            return this->expr_may_contain_reference_loan_statement(stmt.return_value);
+        case syntax::StmtKind::break_:
+        case syntax::StmtKind::continue_:
+        case syntax::StmtKind::block:
+            return false;
+    }
+    return false;
+}
+
+bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_bind_reference_loan_shallow(
+    const syntax::StmtId stmt_id) const
 {
     if (!valid_stmt(this->core_.ctx_.module, stmt_id)) {
         return false;
@@ -1495,13 +2064,27 @@ bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_have_two_phase_receive
 
 bool SemanticAnalyzerCore::BodyLoanChecker::expr_may_have_two_phase_receiver(const syntax::ExprId expr) const
 {
-    std::vector<syntax::ExprId> pending;
-    pending.push_back(expr);
-    std::unordered_set<base::u32> visited;
-    while (!pending.empty()) {
-        const syntax::ExprId current = pending.back();
-        pending.pop_back();
-        if (!valid_expr(this->core_.ctx_.module, current) || !visited.insert(current.value).second) {
+    std::vector<syntax::ExprId> pending_exprs;
+    pending_exprs.reserve(SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY);
+    push_precheck_expr(pending_exprs, this->core_.ctx_.module, expr);
+    std::vector<syntax::StmtId> pending_stmts;
+    pending_stmts.reserve(SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY);
+    std::unordered_set<base::u32> visited_exprs;
+    std::unordered_set<base::u32> visited_stmts;
+    while (!pending_exprs.empty() || !pending_stmts.empty()) {
+        if (!pending_stmts.empty()) {
+            const syntax::StmtId stmt_id = pending_stmts.back();
+            pending_stmts.pop_back();
+            if (!valid_stmt(this->core_.ctx_.module, stmt_id) || !visited_stmts.insert(stmt_id.value).second) {
+                continue;
+            }
+            push_precheck_statement_children(
+                this->core_.ctx_.module, this->core_.ctx_.module.stmts[stmt_id.value], pending_exprs, pending_stmts);
+            continue;
+        }
+        const syntax::ExprId current = pending_exprs.back();
+        pending_exprs.pop_back();
+        if (!valid_expr(this->core_.ctx_.module, current) || !visited_exprs.insert(current.value).second) {
             continue;
         }
         if (const FunctionCallBinding* const binding =
@@ -1514,161 +2097,40 @@ bool SemanticAnalyzerCore::BodyLoanChecker::expr_may_have_two_phase_receiver(con
             binding != nullptr && binding->receiver_two_phase_eligible) {
             return true;
         }
-        switch (this->core_.ctx_.module.exprs.kind(current.value)) {
-            case syntax::ExprKind::generic_apply: {
-                const syntax::GenericApplyExprPayload* const apply =
-                    this->core_.ctx_.module.exprs.generic_apply_payload(current.value);
-                if (apply != nullptr) {
-                    pending.push_back(apply->callee);
-                }
-                break;
+        push_precheck_expression_children(this->core_.ctx_.module, current, pending_exprs, pending_stmts);
+    }
+    return false;
+}
+
+bool SemanticAnalyzerCore::BodyLoanChecker::expr_may_contain_reference_loan_statement(const syntax::ExprId expr) const
+{
+    std::vector<syntax::ExprId> pending_exprs;
+    pending_exprs.reserve(SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY);
+    push_precheck_expr(pending_exprs, this->core_.ctx_.module, expr);
+    std::vector<syntax::StmtId> pending_stmts;
+    pending_stmts.reserve(SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY);
+    std::unordered_set<base::u32> visited_exprs;
+    std::unordered_set<base::u32> visited_stmts;
+    while (!pending_exprs.empty() || !pending_stmts.empty()) {
+        if (!pending_stmts.empty()) {
+            const syntax::StmtId stmt_id = pending_stmts.back();
+            pending_stmts.pop_back();
+            if (!valid_stmt(this->core_.ctx_.module, stmt_id) || !visited_stmts.insert(stmt_id.value).second) {
+                continue;
             }
-            case syntax::ExprKind::unary:
-            case syntax::ExprKind::try_expr:
-            case syntax::ExprKind::cast:
-            case syntax::ExprKind::pcast:
-            case syntax::ExprKind::bcast:
-            case syntax::ExprKind::size_of:
-            case syntax::ExprKind::align_of:
-            case syntax::ExprKind::ptr_addr:
-            case syntax::ExprKind::paddr:
-            case syntax::ExprKind::slice_data:
-            case syntax::ExprKind::slice_len:
-            case syntax::ExprKind::str_data:
-            case syntax::ExprKind::str_byte_len:
-            case syntax::ExprKind::str_is_valid_utf8:
-            case syntax::ExprKind::str_from_utf8_checked: {
-                const syntax::CastExprPayload* const cast = this->core_.ctx_.module.exprs.cast_payload(current.value);
-                const syntax::UnaryExprPayload* const unary =
-                    this->core_.ctx_.module.exprs.unary_payload(current.value);
-                const syntax::TryExprPayload* const try_expr = this->core_.ctx_.module.exprs.try_payload(current.value);
-                if (cast != nullptr) {
-                    pending.push_back(cast->expr);
-                } else if (unary != nullptr) {
-                    pending.push_back(unary->operand);
-                } else if (try_expr != nullptr) {
-                    pending.push_back(try_expr->operand);
-                }
-                break;
+            if (this->statement_may_bind_reference_loan_shallow(stmt_id)) {
+                return true;
             }
-            case syntax::ExprKind::binary: {
-                const syntax::BinaryExprPayload* const binary =
-                    this->core_.ctx_.module.exprs.binary_payload(current.value);
-                if (binary != nullptr) {
-                    pending.push_back(binary->lhs);
-                    pending.push_back(binary->rhs);
-                }
-                break;
-            }
-            case syntax::ExprKind::call:
-            case syntax::ExprKind::str_from_bytes_unchecked: {
-                const syntax::CallExprPayload* const call = this->core_.ctx_.module.exprs.call_payload(current.value);
-                if (call != nullptr) {
-                    pending.push_back(call->callee);
-                    pending.insert(pending.end(), call->args.begin(), call->args.end());
-                }
-                break;
-            }
-            case syntax::ExprKind::field: {
-                const syntax::FieldExprPayload* const field =
-                    this->core_.ctx_.module.exprs.field_payload(current.value);
-                if (field != nullptr) {
-                    pending.push_back(field->object);
-                }
-                break;
-            }
-            case syntax::ExprKind::index: {
-                const syntax::IndexExprPayload* const index =
-                    this->core_.ctx_.module.exprs.index_payload(current.value);
-                if (index != nullptr) {
-                    pending.push_back(index->object);
-                    pending.push_back(index->index);
-                }
-                break;
-            }
-            case syntax::ExprKind::slice: {
-                const syntax::SliceExprPayload* const slice =
-                    this->core_.ctx_.module.exprs.slice_payload(current.value);
-                if (slice != nullptr) {
-                    pending.push_back(slice->object);
-                    pending.push_back(slice->start);
-                    pending.push_back(slice->end);
-                }
-                break;
-            }
-            case syntax::ExprKind::if_expr: {
-                const syntax::IfExprPayload* const if_expr = this->core_.ctx_.module.exprs.if_payload(current.value);
-                if (if_expr != nullptr) {
-                    pending.push_back(if_expr->condition);
-                    pending.push_back(if_expr->then_expr);
-                    pending.push_back(if_expr->else_expr);
-                }
-                break;
-            }
-            case syntax::ExprKind::array_literal: {
-                const syntax::ArrayExprPayload* const array =
-                    this->core_.ctx_.module.exprs.array_payload(current.value);
-                if (array != nullptr) {
-                    pending.insert(pending.end(), array->elements.begin(), array->elements.end());
-                    pending.push_back(array->repeat_value);
-                    pending.push_back(array->repeat_count);
-                }
-                break;
-            }
-            case syntax::ExprKind::tuple_literal: {
-                const syntax::AstArenaVector<syntax::ExprId>* const elements =
-                    this->core_.ctx_.module.exprs.tuple_elements(current.value);
-                if (elements != nullptr) {
-                    pending.insert(pending.end(), elements->begin(), elements->end());
-                }
-                break;
-            }
-            case syntax::ExprKind::struct_literal: {
-                const syntax::StructLiteralExprPayload* const literal =
-                    this->core_.ctx_.module.exprs.struct_literal_payload(current.value);
-                if (literal != nullptr) {
-                    pending.push_back(literal->object);
-                    for (const syntax::FieldInit& init : literal->field_inits) {
-                        pending.push_back(init.value);
-                    }
-                }
-                break;
-            }
-            case syntax::ExprKind::match_expr: {
-                const syntax::MatchExprPayload* const match =
-                    this->core_.ctx_.module.exprs.match_payload(current.value);
-                if (match != nullptr) {
-                    pending.push_back(match->value);
-                    for (const syntax::MatchArm& arm : match->arms) {
-                        pending.push_back(arm.guard);
-                        pending.push_back(arm.value);
-                    }
-                }
-                break;
-            }
-            case syntax::ExprKind::block_expr:
-            case syntax::ExprKind::unsafe_block: {
-                const syntax::BlockExprPayload* const block =
-                    this->core_.ctx_.module.exprs.block_payload(current.value);
-                if (block != nullptr) {
-                    pending.push_back(block->result);
-                }
-                break;
-            }
-            case syntax::ExprKind::invalid:
-            case syntax::ExprKind::integer_literal:
-            case syntax::ExprKind::float_literal:
-            case syntax::ExprKind::bool_literal:
-            case syntax::ExprKind::null_literal:
-            case syntax::ExprKind::string_literal:
-            case syntax::ExprKind::c_string_literal:
-            case syntax::ExprKind::raw_string_literal:
-            case syntax::ExprKind::byte_string_literal:
-            case syntax::ExprKind::byte_literal:
-            case syntax::ExprKind::char_literal:
-            case syntax::ExprKind::name:
-                break;
+            push_precheck_statement_children(
+                this->core_.ctx_.module, this->core_.ctx_.module.stmts[stmt_id.value], pending_exprs, pending_stmts);
+            continue;
         }
+        const syntax::ExprId current = pending_exprs.back();
+        pending_exprs.pop_back();
+        if (!valid_expr(this->core_.ctx_.module, current) || !visited_exprs.insert(current.value).second) {
+            continue;
+        }
+        push_precheck_expression_children(this->core_.ctx_.module, current, pending_exprs, pending_stmts);
     }
     return false;
 }
@@ -1689,6 +2151,10 @@ bool SemanticAnalyzerCore::BodyLoanChecker::may_need_local_loan_check(const synt
         }
         const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
         switch (stmt.kind) {
+            case syntax::StmtKind::let:
+            case syntax::StmtKind::var:
+                pending.push_back(stmt.else_block);
+                break;
             case syntax::StmtKind::if_:
                 pending.push_back(stmt.then_block);
                 pending.push_back(stmt.else_block);
@@ -1706,8 +2172,6 @@ bool SemanticAnalyzerCore::BodyLoanChecker::may_need_local_loan_check(const synt
             case syntax::StmtKind::block:
                 pending.insert(pending.end(), stmt.statements.begin(), stmt.statements.end());
                 break;
-            case syntax::StmtKind::let:
-            case syntax::StmtKind::var:
             case syntax::StmtKind::assign:
             case syntax::StmtKind::break_:
             case syntax::StmtKind::continue_:
@@ -1747,9 +2211,9 @@ void SemanticAnalyzerCore::BodyLoanChecker::check(
         move_action_consumes[action_index] = action.kind == BodyFlowActionKind::move_candidate
             && this->core_.cached_expr_owned_use_mode(action.expr) == OwnedUseMode::owned_consume;
     }
-    BodyLoanCheckResult result =
-        BodyLoanSolver(this->core_.ctx_.module, function, key, found->second, std::move(move_action_consumes), mode)
-            .run();
+    BodyLoanCheckResult result = BodyLoanSolver(this->core_.ctx_.module, function, key, this->core_.state_.checked,
+        found->second, std::move(move_action_consumes), mode)
+                                     .run();
     if (mode == BodyLoanDiagnosticMode::enforced) {
         std::vector<BodyLoanDiagnosticSite> reported_sites;
         reported_sites.reserve(result.conflicts.size());

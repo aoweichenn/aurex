@@ -2,7 +2,35 @@
 
 #include <support/test_support.hpp>
 
+#include <fstream>
+
 namespace aurex::test {
+namespace {
+
+[[nodiscard]] fs::path write_m7b_regression_source(const std::string_view name, const std::string_view source)
+{
+    const fs::path dir = tmp_root() / "m7b-regressions";
+    fs::create_directories(dir);
+    const fs::path path = dir / (std::string(name) + ".ax");
+    std::ofstream out(path);
+    out << source;
+    return path;
+}
+
+void expect_m7b_check_success(const std::string_view name, const std::string_view source)
+{
+    const fs::path path = write_m7b_regression_source(name, source);
+    require_success(aurexc() + " --check " + q(path));
+}
+
+void expect_m7b_check_failure(
+    const std::string_view name, const std::string_view source, const std::string_view diagnostic)
+{
+    const fs::path path = write_m7b_regression_source(name, source);
+    expect_contains(require_failure(aurexc() + " --check " + q(path)).output, diagnostic);
+}
+
+} // namespace
 
 TEST_F(AurexIntegrationTest, FunctionPrototypes)
 {
@@ -458,6 +486,243 @@ TEST_F(AurexIntegrationTest, MethodsAndAssociatedFunctions)
     const fs::path receiver_not_place = negative_sample("functions", "method_receiver_not_place.ax");
     expect_contains(require_failure(aurexc() + " --check " + q(receiver_not_place)).output,
         "method receiver must be a place expression");
+}
+
+TEST_F(AurexIntegrationTest, M7bBorrowContractsUseDeclaredCalleeBoundaries)
+{
+    expect_m7b_check_success("extern_contract_call",
+        "module m7b.extern_contract_call;\n"
+        "extern c {\n"
+        "  @borrow(return = [value])\n"
+        "  fn ext(value: &i32) -> &i32;\n"
+        "}\n"
+        "@borrow(return = [value])\n"
+        "fn wrap(value: &i32) -> &i32 { return ext(value); }\n"
+        "fn main() -> void {}\n");
+
+    expect_m7b_check_success("forward_declared_contract",
+        "module m7b.forward_declared_contract;\n"
+        "@borrow(return = [value])\n"
+        "fn wrap(value: &i32) -> &i32 { return id(value); }\n"
+        "@borrow(return = [value])\n"
+        "fn id(value: &i32) -> &i32 { return value; }\n"
+        "fn main() -> void {}\n");
+
+    expect_m7b_check_failure("branch_assignment_contract_too_narrow",
+        "module m7b.branch_assignment_contract_too_narrow;\n"
+        "@borrow(return = [right])\n"
+        "fn choose(left: &i32, right: &i32, take_left: bool) -> &i32 {\n"
+        "  var result: &i32 = left;\n"
+        "  if !take_left { result = right; }\n"
+        "  return result;\n"
+        "}\n"
+        "fn main() -> void {}\n",
+        sema::SEMA_BORROW_CONTRACT_MISMATCH);
+}
+
+TEST_F(AurexIntegrationTest, M7bReturnedBorrowViewsParticipateInLocalLoanChecking)
+{
+    expect_m7b_check_failure("call_return_local_alias",
+        "module m7b.call_return_local_alias;\n"
+        "@borrow(return = [value])\n"
+        "fn id(value: &i32) -> &i32 { return value; }\n"
+        "fn main() -> void {\n"
+        "  var value: i32 = 1;\n"
+        "  let ref: &i32 = id(&value);\n"
+        "  value = 2;\n"
+        "  let _: i32 = *ref;\n"
+        "}\n",
+        sema::SEMA_ACTIVE_BORROW_CONFLICT);
+
+    expect_m7b_check_failure("slice_alias_write",
+        "module m7b.slice_alias_write;\n"
+        "fn main() -> void {\n"
+        "  var values: [3]i32 = [1, 2, 3];\n"
+        "  let slice: []const i32 = values[:];\n"
+        "  values[0] = 9;\n"
+        "  let _: i32 = slice[0];\n"
+        "}\n",
+        sema::SEMA_ACTIVE_BORROW_CONFLICT);
+
+    expect_m7b_check_failure("strfromutf8_alias_write",
+        "module m7b.strfromutf8_alias_write;\n"
+        "fn main() -> void {\n"
+        "  var bytes: [2]u8 = [65, 66];\n"
+        "  let text: str = strfromutf8(bytes[:]);\n"
+        "  bytes[0] = 67;\n"
+        "  let _: usize = strblen(text);\n"
+        "}\n",
+        sema::SEMA_ACTIVE_BORROW_CONFLICT);
+
+    expect_m7b_check_failure("extern_unknown_return_alias_write",
+        "module m7b.extern_unknown_return_alias_write;\n"
+        "extern c {\n"
+        "  fn ext(value: &i32) -> &i32;\n"
+        "}\n"
+        "fn main() -> void {\n"
+        "  var value: i32 = 1;\n"
+        "  let ref: &i32 = ext(&value);\n"
+        "  value = 2;\n"
+        "  let _: i32 = *ref;\n"
+        "}\n",
+        sema::SEMA_ACTIVE_BORROW_CONFLICT);
+
+    expect_m7b_check_failure("declared_unknown_return_alias_write",
+        "module m7b.declared_unknown_return_alias_write;\n"
+        "extern c {\n"
+        "  @borrow(return = [unknown])\n"
+        "  fn ext(value: &i32) -> &i32;\n"
+        "}\n"
+        "fn main() -> void {\n"
+        "  var value: i32 = 1;\n"
+        "  let ref: &i32 = ext(&value);\n"
+        "  value = 2;\n"
+        "  let _: i32 = *ref;\n"
+        "}\n",
+        sema::SEMA_ACTIVE_BORROW_CONFLICT);
+
+    expect_m7b_check_success("unknown_return_allows_unrelated_local_write",
+        "module m7b.unknown_return_allows_unrelated_local_write;\n"
+        "extern c {\n"
+        "  @borrow(return = [unknown])\n"
+        "  fn ext(value: &i32) -> &i32;\n"
+        "}\n"
+        "fn main() -> void {\n"
+        "  var value: i32 = 1;\n"
+        "  let ref: &i32 = ext(&value);\n"
+        "  var other: i32 = 2;\n"
+        "  other = 3;\n"
+        "  let _: i32 = *ref;\n"
+        "}\n");
+
+    expect_m7b_check_failure("inferred_unknown_wrapper_alias_write",
+        "module m7b.inferred_unknown_wrapper_alias_write;\n"
+        "extern c {\n"
+        "  fn ext(value: &i32) -> &i32;\n"
+        "}\n"
+        "fn wrap(value: &i32) -> &i32 { return ext(value); }\n"
+        "fn main() -> void {\n"
+        "  var value: i32 = 1;\n"
+        "  let ref: &i32 = wrap(&value);\n"
+        "  value = 2;\n"
+        "  let _: i32 = *ref;\n"
+        "}\n",
+        sema::SEMA_ACTIVE_BORROW_CONFLICT);
+
+    expect_m7b_check_failure("declared_param_wrapper_alias_write",
+        "module m7b.declared_param_wrapper_alias_write;\n"
+        "extern c {\n"
+        "  @borrow(return = [value])\n"
+        "  fn ext(value: &i32) -> &i32;\n"
+        "}\n"
+        "fn wrap(value: &i32) -> &i32 { return ext(value); }\n"
+        "fn main() -> void {\n"
+        "  var value: i32 = 1;\n"
+        "  let ref: &i32 = wrap(&value);\n"
+        "  value = 2;\n"
+        "  let _: i32 = *ref;\n"
+        "}\n",
+        sema::SEMA_ACTIVE_BORROW_CONFLICT);
+
+    expect_m7b_check_failure("declared_unknown_wrapper_alias_write",
+        "module m7b.declared_unknown_wrapper_alias_write;\n"
+        "extern c {\n"
+        "  @borrow(return = [unknown])\n"
+        "  fn ext(value: &i32) -> &i32;\n"
+        "}\n"
+        "fn wrap(value: &i32) -> &i32 { return ext(value); }\n"
+        "fn main() -> void {\n"
+        "  var value: i32 = 1;\n"
+        "  let ref: &i32 = wrap(&value);\n"
+        "  value = 2;\n"
+        "  let _: i32 = *ref;\n"
+        "}\n",
+        sema::SEMA_ACTIVE_BORROW_CONFLICT);
+
+    expect_m7b_check_success("aggregate_unknown_tag_write_allows_source_use",
+        "module m7b.aggregate_unknown_tag_write_allows_source_use;\n"
+        "struct Holder { borrowed: &i32; tag: i32; }\n"
+        "extern c {\n"
+        "  @borrow(return = [unknown])\n"
+        "  fn ext(value: &i32) -> &i32;\n"
+        "}\n"
+        "fn main() -> void {\n"
+        "  var value: i32 = 1;\n"
+        "  var holder: Holder = Holder { borrowed: ext(&value), tag: 1 };\n"
+        "  holder.tag = 2;\n"
+        "  let _: i32 = *holder.borrowed;\n"
+        "}\n");
+
+    expect_m7b_check_success("declared_static_return_allows_source_write",
+        "module m7b.declared_static_return_allows_source_write;\n"
+        "extern c {\n"
+        "  @borrow(return = [static])\n"
+        "  fn ext(value: &i32) -> &i32;\n"
+        "}\n"
+        "fn main() -> void {\n"
+        "  var value: i32 = 1;\n"
+        "  let ref: &i32 = ext(&value);\n"
+        "  value = 2;\n"
+        "  let _: i32 = *ref;\n"
+        "}\n");
+
+    expect_m7b_check_success("declared_static_wrapper_allows_source_write",
+        "module m7b.declared_static_wrapper_allows_source_write;\n"
+        "extern c {\n"
+        "  @borrow(return = [static])\n"
+        "  fn ext(value: &i32) -> &i32;\n"
+        "}\n"
+        "fn wrap(value: &i32) -> &i32 { return ext(value); }\n"
+        "fn main() -> void {\n"
+        "  var value: i32 = 1;\n"
+        "  let ref: &i32 = wrap(&value);\n"
+        "  value = 2;\n"
+        "  let _: i32 = *ref;\n"
+        "}\n");
+
+    expect_m7b_check_failure("aggregate_return_alias_write",
+        "module m7b.aggregate_return_alias_write;\n"
+        "struct Holder { borrowed: &i32; tag: i32; }\n"
+        "@borrow(return = [value])\n"
+        "fn id(value: &i32) -> &i32 { return value; }\n"
+        "fn main() -> void {\n"
+        "  var value: i32 = 1;\n"
+        "  let holder: Holder = Holder { borrowed: id(&value), tag: 1 };\n"
+        "  value = 2;\n"
+        "  let _: i32 = *holder.borrowed;\n"
+        "}\n",
+        sema::SEMA_ACTIVE_BORROW_CONFLICT);
+
+    expect_m7b_check_success("aggregate_unread_borrow_allows_source_write",
+        "module m7b.aggregate_unread_borrow_allows_source_write;\n"
+        "struct Holder { borrowed: &i32; tag: i32; }\n"
+        "@borrow(return = [value])\n"
+        "fn id(value: &i32) -> &i32 { return value; }\n"
+        "fn main() -> void {\n"
+        "  var value: i32 = 1;\n"
+        "  let holder: Holder = Holder { borrowed: id(&value), tag: 1 };\n"
+        "  value = 2;\n"
+        "  let _: i32 = holder.tag;\n"
+        "}\n");
+}
+
+TEST_F(AurexIntegrationTest, M7bBlockExpressionPrecheckScansInternalStatements)
+{
+    expect_m7b_check_failure("block_expr_precheck",
+        "module m7b.block_expr_precheck;\n"
+        "struct Bag { value: i32 }\n"
+        "impl Bag {\n"
+        "  fn len(self: &Bag) -> i32 { return self.value; }\n"
+        "  fn set(self: &mut Bag, value: i32) -> void { self.value = value; }\n"
+        "}\n"
+        "fn main() -> void {\n"
+        "  var bag: Bag = Bag { value: 1 };\n"
+        "  let _: i32 = {\n"
+        "    bag.set({ bag.value = 2; 3 });\n"
+        "    0\n"
+        "  };\n"
+        "}\n",
+        sema::SEMA_TWO_PHASE_RECEIVER_CONFLICT);
 }
 
 } // namespace aurex::test

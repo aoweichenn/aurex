@@ -42,6 +42,11 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m5-release-baseline.md",
         "docs/zh/m6-roadmap.md",
         "docs/zh/m6-resource-access-semantics-design.md",
+        "docs/zh/m7-origin-loan-lifetime-design.md",
+        "docs/zh/m7-roadmap.md",
+        "docs/zh/m7b-borrow-contract-design.md",
+        "docs/zh/m7b-roadmap.md",
+        "docs/zh/m7c-m7d-complete-borrow-raii-design.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -128,10 +133,9 @@ TEST_F(AurexIntegrationTest, M6ResourceSemanticsWp2ThroughWp7AreClosed)
     expect_document_contains("docs/zh/README.md", "M6 资源、值生命周期与访问语义路线图");
     expect_document_contains("docs/en/progress.md",
         "Stage: M6-WP2 through M6-WP7 resource, cleanup, drop-glue, tooling, and release closure complete");
-    expect_document_contains(
-        "docs/zh/progress.md", "阶段：M6-WP2 到 M6-WP7 资源、cleanup、drop-glue、tooling 和 release closure 已完成");
+    expect_document_contains("docs/zh/progress.md", "M6-WP2 到 M6-WP7 已完成 M6 实现基线");
     expect_document_contains("docs/en/next-steps.md", "Current Highest Priority: M6 Resource And Access Semantics");
-    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M6 Resource And Access Semantics");
+    expect_document_contains("docs/zh/next-steps.md", "M6-WP2 到 M6-WP7 已完成 M6 实现基线");
     expect_document_contains(
         "docs/en/version.md", "M6-WP2/WP3/WP4/WP5/WP6/WP7 Resource, Cleanup, Drop-Glue, And Tooling Baseline");
     expect_document_contains(
@@ -152,12 +156,24 @@ TEST_F(AurexIntegrationTest, M6ResourceSemanticsWp2ThroughWp7AreClosed)
     expect_document_contains("docs/en/m6-roadmap.md", "M6-WP7: Release Closure And M7 Entry");
     expect_document_contains("docs/zh/m6-roadmap.md", "M6-WP7：Release Closure 和 M7 入口");
     expect_document_contains("docs/en/next-steps.md", "The next implementation package is M7 CFG-Sensitive");
-    expect_document_contains(
-        "docs/zh/next-steps.md", "下一实现包是 M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking");
+    expect_document_contains("docs/zh/next-steps.md", "M7 继续以 M6 cleanup 和 resource facts 为输入");
     expect_document_contains("docs/en/m6-resource-access-semantics-design.md", "`NeedsDrop`");
     expect_document_contains("docs/zh/m6-resource-access-semantics-design.md", "`NeedsDrop`");
     expect_document_contains("docs/en/m6-resource-access-semantics-design.md", "Third Review Pass: User Cases");
     expect_document_contains("docs/zh/m6-resource-access-semantics-design.md", "第三轮审视：用户案例");
+}
+
+TEST_F(AurexIntegrationTest, M7cM7dDesignDocumentationIsCurrent)
+{
+    expect_document_contains("docs/zh/README.md", "M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线");
+    expect_document_contains("docs/zh/progress.md", "阶段：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线");
+    expect_document_contains("docs/zh/version.md", "## M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线");
+    expect_document_contains("docs/zh/next-steps.md", "当前最高优先级：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check");
+    expect_document_contains("docs/zh/m7c-m7d-complete-borrow-raii-design.md", "`&[origin] T` / `&mut[origin] T`");
+    expect_document_contains("docs/zh/m7c-m7d-complete-borrow-raii-design.md", "ClosureCaptureFact {");
+    expect_document_contains("docs/zh/m7c-m7d-complete-borrow-raii-design.md", "ClosureEnvironmentFact {");
+    expect_document_contains(
+        "docs/zh/m7c-m7d-complete-borrow-raii-design.md", "`src/sema/internal/` 只允许作为 private implementation root");
 }
 
 } // namespace aurex::test

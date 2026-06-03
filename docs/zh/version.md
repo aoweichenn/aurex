@@ -1,5 +1,27 @@
 # 版本文档
 
+## M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线
+
+M7c/M7d 设计基线已固定，文档入口为
+[Aurex M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线](m7c-m7d-complete-borrow-raii-design.md)。
+
+该基线建立在 M6 resource/drop facts、M7a `BodyFlowGraph` / `BodyLoanCheckResult` / `BorrowSummary` 和 M7b
+`FunctionBorrowContract` / reborrow / two-phase receiver 之上。后续 M7c 目标是完整 safe borrow 与 lifetime core：
+contextual `origin` 参数、`&[origin] T` / `&mut[origin] T`、origin union、region solver、type-outlives、
+trait/generic lifetime predicates 和 `BorrowEscapeAnalyzer` 退场。M7d 目标是 RAII/dropck 地基：dropck facts、
+destructor body safety、generic drop glue type-outlives、place-level resource state、partial move/reinit/drop flag
+以及 RAII user surface。
+
+语法决策：不采用 Rust apostrophe lifetime，也不新增 `ref[...] T` 作为 source surface。显式 origin 绑定到现有引用前缀：
+`&[data] T` 表示 shared borrowed view，`&mut[data] T` 表示 mutable borrowed view，`&[left | right] T`
+表示 origin union。函数边界继续优先使用 `@borrow(return = [...])`。
+该语法只在 type context 中解析，不占用未来 lambda/closure 的表达式语法空间。完整 closure/lambda capture 后续独立设计；
+M7c/M7d 只预留 `ClosureCaptureFact` / `ClosureEnvironmentFact` 与 dropck/place-state 复用路线。
+
+工程决策：`src/sema/internal/` 以后只作为 private implementation root，不再直接新增文件；M7c/M7d 新代码必须按
+`borrow/`、`lifetime/`、`dropck/`、`place/`、`diagnostics/`、`pipeline/` 等职责拆子目录。其他 compiler stage
+同样遵守该解耦规则。全局 `compiler-engineering` 与 `cpp-project-standards` skill 已同步该约束。
+
 ## M7b Borrow Contract、Reborrow 与 Lifetime Surface 实现收口
 
 M7b WP1-WP7 已完成实现收口，文档入口为

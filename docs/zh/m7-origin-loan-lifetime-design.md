@@ -374,17 +374,25 @@ M7a：
 - 参数 derived return 可以通过推断和 checked summary 通过。
 - local/temporary derived return 继续拒绝，但诊断应该更精确。
 
-M7b/M8 候选 surface：
+M7b/M8 候选 surface 曾考虑 Rust-style lifetime 参数；该方向已被后续 M7c/M7d 设计否决，原因是 apostrophe
+lifetime 视觉噪声高、和 Aurex 现有 `@borrow` contract 重叠，并且会把用户带入 Rust 心智模型。后续显式 origin
+surface 采用 contextual `origin` 参数和 `&[origin] T` / `&mut[origin] T` reference prefix：
 
 ```text
-fn first['a](xs: 'a []const T) -> 'a &T;
-fn view['a](bytes: 'a []const u8) -> 'a str;
+struct View[T, origin data] {
+    item: &[data] T;
+}
+
+fn first[T, origin data](xs: &[data] []const T) -> &[data] T;
+fn view[T, origin data](bytes: &[data] []const u8) -> str;
 fn consume(handle: consuming File);
 fn inspect(value: borrowing T);
 fn update(value: inout T);
 ```
 
-注意：上面只是 surface 候选，不是 M7a 语法承诺。M7a 要先固定内部 `OriginParam` 和 summary，否则过早设计语法会把实现锁死。
+注意：上面仍不是 M7a 语法承诺。M7a 已经先固定内部 `OriginParam` 和 summary；正式语法入口以后续
+[Aurex M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线](m7c-m7d-complete-borrow-raii-design.md)
+为准。
 
 ## 7. 诊断策略
 

@@ -1,9 +1,22 @@
 # 当前进度文档
 
 版本：0.1.5
-阶段：M7b Borrow Contract、Reborrow 与 Lifetime Surface 实现收口
+阶段：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线
 
 ## 总体状态
+
+2026-06-03：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线已固定，记录在
+[Aurex M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线](m7c-m7d-complete-borrow-raii-design.md)。
+新基线明确不照抄 Rust lifetime surface，而是采用 `@borrow(return = [...])` 作为函数边界主 contract，并选择
+`&[origin] T` / `&mut[origin] T` 作为显式 origin-qualified reference type；该语法沿用 Aurex 现有 `&T` /
+`&mut T`，避免 Rust apostrophe lifetime、避免新增 `ref` 关键字，并与 `Name[T]` 泛型、`[]const T` slice、
+`[16]T` 数组保持无歧义。该语法只在 type context 中解析，不占用未来 lambda/closure 的表达式语法空间；完整
+closure/lambda capture 后续独立设计，但 M7c facts 预留 `ClosureCaptureFact` / `ClosureEnvironmentFact`。
+设计同时把 M7c/M7d 拆为 M7c-A/B/C lifetime facts + region solver + old analyzer replacement，以及 M7d-A/B/C
+dropck + place-level resource state + RAII surface。实现架构新增硬约束：
+`src/sema/internal/` 只能作为 private implementation root，不再直接新增文件；M7c/M7d 新代码必须按
+`borrow/`、`lifetime/`、`dropck/`、`place/`、`diagnostics/`、`pipeline/` 等职责拆子目录，其他 compiler stage
+同样执行。全局 `compiler-engineering` 和 `cpp-project-standards` skill 已同步该目录解耦规则。
 
 2026-06-03：M7b WP1-WP7 已完成实现收口。`FunctionBorrowContract` 进入 `CheckedModule`、checked dump、
 query/cache 和 IDE facts；parser/AST/sema 支持函数声明前装饰器式 `@borrow(return = [...])`，并与 trait

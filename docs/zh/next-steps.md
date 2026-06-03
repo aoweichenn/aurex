@@ -1,6 +1,6 @@
 # 下一步计划
 
-## 当前最高优先级：M7c Lifetime Surface / Borrow Parity Closure
+## 当前最高优先级：M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check
 
 M7 设计研究基线已完成，记录在
 [Aurex M7 CFG-Sensitive Origin、Loan 与 Lifetime Checking 设计研究](m7-origin-loan-lifetime-design.md)，
@@ -8,6 +8,15 @@ M7 设计研究基线已完成，记录在
 M7b 设计基线已固定在
 [Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 设计基线](m7b-borrow-contract-design.md)，
 执行路线记录在 [Aurex M7b Borrow Contract、Reborrow 与 Lifetime Surface 路线图](m7b-roadmap.md)。
+M7c/M7d 新设计基线已固定在
+[Aurex M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线](m7c-m7d-complete-borrow-raii-design.md)。
+
+M7c/M7d 不照抄 Rust。新基线选择 Rust 级安全底线、Mojo/Hylo 式低噪声 origin surface、C++/Swift 式 RAII 工程性和
+Aurex facts-first 工具链模型。显式 origin 语法采用 `&[origin] T` / `&mut[origin] T`，不采用 Rust apostrophe lifetime；
+函数边界继续优先使用 `@borrow(return = [...])`。该写法沿用现有 `&T` / `&mut T`，避免新增 `ref` 关键字，且与
+`Name[T]` 泛型、`[]const T` slice、`[16]T` 数组没有解析歧义。
+该语法只在 type context 中解析，不占用未来 lambda/closure 的表达式语法空间；M7c/M7d 只预留
+`ClosureCaptureFact` / `ClosureEnvironmentFact` 事实形状，不在本阶段实现完整 closure。
 
 M7b 当前实现状态：M7b WP1-WP7 已完成实现收口。函数边界 `FunctionBorrowContract`、装饰器式
 `@borrow(return = [param, self])`、summary-vs-contract enforcement、trait/generic borrowed-return contract、
@@ -35,17 +44,29 @@ borrow summary，direct/trait call binding 使用 expr-id index 查找；release
 当前仍保留 `BorrowEscapeAnalyzer`：M7b summary/contract 已记录 borrowed-return facts，但旧 borrowed-local escape
 诊断仍由现有 analyzer 负责。只有在更大 parity matrix 覆盖当前 borrowed-view escape matrix 后，才移除或降级它。
 
-M7c 建议优先做三件事：
+M7c/M7d 后续实现按六个大块推进：
 
-1. `BorrowEscapeAnalyzer` parity matrix 扩展与替换决策：把 local/temporary/slice/str/raw/assignment/pattern/branch
-   escape 全部与新 summary/contract/loan checker 对齐。
-2. 窄 lifetime surface 设计：只暴露能服务 diagnostics 和 public API contract 的 lifetime notation，不直接引入 full
-   Rust-style lifetime generics。
-3. 参数/receiver reference origin 的 safe proof 扩展：在不引入 full Polonius 的前提下，让 parameter reference
-   reborrow 和 cross-function returned borrow 的 fact 更稳定。
+1. M7c-A：parser/AST/type system 增加 contextual `origin` 参数、`&[origin] T` / `&mut[origin] T`、origin union 和
+   checked lifetime facts；先 dump/fingerprint，不改变行为。
+2. M7c-B：实现 deterministic worklist/bitset region solver、elision/ambiguity diagnostics、type-outlives 和
+   return-origin subset enforcement，并让 `BorrowEscapeAnalyzer` 进入 shadow parity。
+3. M7c-C：新 checker 接管 borrowed-view escape 主诊断，旧 `BorrowEscapeAnalyzer` 删除或降级；public/prototype/extern/trait
+   lifetime contract release policy 收口。
+4. M7d-A：引入 `DropCheckFact` / `DropActionFact`、dropck solver、destructor body safety 和泛型 drop glue
+   type-outlives constraints。
+5. M7d-B：实现 place-level resource state，覆盖 field/tuple partial move、reinit、drop flag、replace/take/swap
+   compiler-known primitives，并让 lowering 消费 sema drop facts。
+6. M7d-C：收口 RAII user surface、Drop/deinit 语义、IDE/tooling projection、IR verifier 和 release gates。
 
-unsafe/raw alias model、partial move / replace / take / swap place-level resource semantics、`dyn Trait`、async drop 和
-generator borrow 继续后置，不能混进 M7c 第一轮 parity closure。
+实现架构必须低耦合：lifetime fact collector、region solver、enforcer、dropck facts、place-state analyzer、RAII surface
+checker 和 tooling adapter 分模块维护；`src/sema/internal/` 只能作为 private implementation root，下面不再直接新增文件，
+必须按 `borrow/`、`lifetime/`、`dropck/`、`place/`、`diagnostics/`、`pipeline/` 等职责拆子目录。其他 compiler stage
+也遵守同一规则。public header 只暴露 stable checked facts。Strategy/Builder/Facade/Adapter 只在隔离策略、稳定 pass
+入口或 DTO 投影时使用，不引入大型 inheritance hierarchy、service locator、global mutable state 或字符串 DSL。
+
+M7c/M7d 仍不做完整 lambda/closure capture、HRTB、full variance、`dyn Trait` object lifetime bound、async/generator borrow、full Polonius
+Datalog runtime、Stacked-Borrows-level unsafe alias semantics、interior mutability proof、并发 data-race capability、
+future `MustConsume`、array/slice 精确 disjoint proof 或 self-referential/pinning/address-stability。
 
 M6-WP1 已完成三轮设计审视：
 

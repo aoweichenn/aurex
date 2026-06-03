@@ -577,6 +577,8 @@ CheckedModule::CheckedModule()
           *this->arena_, FunctionLookupKeyHash{})),
       lifetime_origin_params(make_sema_vector<LifetimeOriginParamInfo>(*this->arena_)),
       reference_origin_facts(make_sema_vector<ReferenceOriginFact>(*this->arena_)),
+      lifetime_facts(make_sema_map<FunctionLookupKey, FunctionLifetimeFacts, FunctionLookupKeyHash>(
+          *this->arena_, FunctionLookupKeyHash{})),
       body_flow_graphs(make_sema_map<FunctionLookupKey, BodyFlowGraph, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
       body_loan_checks(make_sema_map<FunctionLookupKey, BodyLoanCheckResult, FunctionLookupKeyHash>(
@@ -625,7 +627,7 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       function_call_by_expr(std::move(other.function_call_by_expr)),
       borrow_summaries(std::move(other.borrow_summaries)), borrow_contracts(std::move(other.borrow_contracts)),
       lifetime_origin_params(std::move(other.lifetime_origin_params)),
-      reference_origin_facts(std::move(other.reference_origin_facts)),
+      reference_origin_facts(std::move(other.reference_origin_facts)), lifetime_facts(std::move(other.lifetime_facts)),
       body_flow_graphs(std::move(other.body_flow_graphs)), body_loan_checks(std::move(other.body_loan_checks)),
       param_envs(std::move(other.param_envs)),
       generic_template_signatures(std::move(other.generic_template_signatures)),
@@ -698,6 +700,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->borrow_contracts.swap(other.borrow_contracts);
     this->lifetime_origin_params.swap(other.lifetime_origin_params);
     this->reference_origin_facts.swap(other.reference_origin_facts);
+    this->lifetime_facts.swap(other.lifetime_facts);
     this->body_flow_graphs.swap(other.body_flow_graphs);
     this->body_loan_checks.swap(other.body_loan_checks);
     this->param_envs.swap(other.param_envs);
@@ -824,6 +827,11 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->reference_origin_facts.reserve(other.reference_origin_facts.size());
     for (const ReferenceOriginFact& fact : other.reference_origin_facts) {
         this->reference_origin_facts.push_back(this->clone_reference_origin_fact(fact));
+    }
+    this->lifetime_facts.clear();
+    this->lifetime_facts.reserve(other.lifetime_facts.size());
+    for (const auto& entry : other.lifetime_facts) {
+        this->lifetime_facts.emplace(entry.first, this->clone_function_lifetime_facts(entry.second));
     }
     this->body_flow_graphs.clear();
     this->body_flow_graphs.reserve(other.body_flow_graphs.size());
@@ -1371,6 +1379,18 @@ ReferenceOriginFact CheckedModule::clone_reference_origin_fact(const ReferenceOr
     return copy;
 }
 
+FunctionLifetimeFacts CheckedModule::clone_function_lifetime_facts(const FunctionLifetimeFacts& other)
+{
+    FunctionLifetimeFacts copy = other;
+    copy.regions.clear();
+    copy.regions.reserve(other.regions.size());
+    for (LifetimeRegion region : other.regions) {
+        region.name = this->intern_text(region.name);
+        copy.regions.push_back(region);
+    }
+    return copy;
+}
+
 ParamEnvInfo CheckedModule::clone_param_env_info(const ParamEnvInfo& other)
 {
     ParamEnvInfo copy = this->make_param_env_info();
@@ -1650,6 +1670,11 @@ void CheckedModule::rebind_interned_texts(const IdentifierInterner* const from, 
     for (ReferenceOriginFact& fact : this->reference_origin_facts) {
         for (InternedText& origin : fact.origin_names) {
             rebind_interned_text(origin, from, to);
+        }
+    }
+    for (auto& entry : this->lifetime_facts) {
+        for (LifetimeRegion& region : entry.second.regions) {
+            rebind_interned_text(region.name, from, to);
         }
     }
     for (ParamEnvInfo& param_env : this->param_envs) {
@@ -1962,6 +1987,33 @@ void populate_type_check_body_borrow_authority(
         authority.borrow_contract_unknown_return_allowed = contract->second.unknown_return_allowed;
         authority.borrow_contract_has_local_return_escape = contract->second.has_local_return_escape;
         authority.borrow_contract_has_mismatch = contract->second.has_contract_mismatch;
+    }
+    if (const auto lifetime = checked.lifetime_facts.find(function); lifetime != checked.lifetime_facts.end()) {
+        authority.has_lifetime_facts = true;
+        authority.lifetime_fingerprint = function_lifetime_facts_fingerprint(lifetime->second);
+        authority.lifetime_region_count = static_cast<base::u32>(lifetime->second.regions.size());
+        authority.lifetime_outlives_constraint_count =
+            static_cast<base::u32>(lifetime->second.outlives_constraints.size());
+        authority.lifetime_type_outlives_constraint_count =
+            static_cast<base::u32>(lifetime->second.type_outlives_constraints.size());
+        authority.lifetime_return_region_count = static_cast<base::u32>(lifetime->second.return_regions.size());
+        authority.lifetime_violation_count = static_cast<base::u32>(lifetime->second.violations.size());
+        authority.lifetime_has_emitted_diagnostics =
+            std::ranges::any_of(lifetime->second.violations, [](const LifetimeViolation& violation) {
+                return violation.diagnostic_emitted;
+            });
+        authority.lifetime_has_unknown_origin =
+            std::ranges::any_of(lifetime->second.violations, [](const LifetimeViolation& violation) {
+                return violation.kind == LifetimeViolationKind::unknown_origin;
+            });
+        authority.lifetime_has_ambiguous_elision =
+            std::ranges::any_of(lifetime->second.violations, [](const LifetimeViolation& violation) {
+                return violation.kind == LifetimeViolationKind::ambiguous_elision;
+            });
+        authority.lifetime_has_return_origin_mismatch =
+            std::ranges::any_of(lifetime->second.violations, [](const LifetimeViolation& violation) {
+                return violation.kind == LifetimeViolationKind::return_origin_outside_type;
+            });
     }
     if (const auto loan = checked.body_loan_checks.find(function); loan != checked.body_loan_checks.end()) {
         authority.has_body_loan_check = true;
@@ -2287,6 +2339,54 @@ std::string dump_checked_module(const CheckedModule& checked)
         }
         append_part_origin(out, show_parts, fact.part_index);
         out << "\n";
+    }
+
+    std::vector<const FunctionLifetimeFacts*> lifetime_facts;
+    lifetime_facts.reserve(checked.lifetime_facts.size());
+    for (const auto& entry : checked.lifetime_facts) {
+        lifetime_facts.push_back(&entry.second);
+    }
+    std::sort(lifetime_facts.begin(), lifetime_facts.end(),
+        [](const FunctionLifetimeFacts* lhs, const FunctionLifetimeFacts* rhs) {
+            return std::tie(lhs->function.module, lhs->function.owner_type, lhs->function.name.value)
+                < std::tie(rhs->function.module, rhs->function.owner_type, rhs->function.name.value);
+        });
+    out << "  lifetime_facts " << lifetime_facts.size() << "\n";
+    for (const FunctionLifetimeFacts* const facts_ptr : lifetime_facts) {
+        const FunctionLifetimeFacts& facts = *facts_ptr;
+        out << "    lifetime_fact " << facts.function.module << ':' << facts.function.owner_type << ':';
+        if (syntax::is_valid(facts.function.name)) {
+            out << '#' << facts.function.name.value;
+        } else {
+            out << '-';
+        }
+        out << " return=" << checked.types.display_name(facts.return_type) << " regions=" << facts.regions.size()
+            << " outlives=" << facts.outlives_constraints.size()
+            << " type_outlives=" << facts.type_outlives_constraints.size() << " returns=" << facts.return_regions.size()
+            << " violations=" << facts.violations.size() << " solved=" << (facts.solved ? "true" : "false")
+            << " enforced=" << (facts.diagnostic_mode_enforced ? "true" : "false")
+            << " fingerprint=" << query::debug_string(function_lifetime_facts_fingerprint(facts));
+        append_part_origin(out, show_parts, facts.part_index);
+        out << "\n";
+        for (base::usize region_index = 0; region_index < facts.regions.size(); ++region_index) {
+            const LifetimeRegion& region = facts.regions[region_index];
+            out << "      region #" << region_index << ' ' << lifetime_region_kind_name(region.kind)
+                << " param=" << region.param_index << " name=";
+            if (!region.name.empty()) {
+                out << region.name;
+            } else if (syntax::is_valid(region.name_id)) {
+                out << '#' << region.name_id.value;
+            } else {
+                out << '-';
+            }
+            out << "\n";
+        }
+        for (base::usize violation_index = 0; violation_index < facts.violations.size(); ++violation_index) {
+            const LifetimeViolation& violation = facts.violations[violation_index];
+            out << "      violation #" << violation_index << ' ' << lifetime_violation_kind_name(violation.kind)
+                << " region=" << violation.region << " related=" << violation.related_region
+                << " emitted=" << (violation.diagnostic_emitted ? "true" : "false") << "\n";
+        }
     }
 
     std::vector<const BodyLoanCheckResult*> loan_checks;

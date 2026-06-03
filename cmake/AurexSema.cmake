@@ -13,6 +13,10 @@ add_library(aurex_sema
     src/frontend/sema/internal/core/sources/name_resolution.cpp
     src/frontend/sema/internal/borrow/sources/contract.cpp
     src/frontend/sema/internal/borrow/sources/summary.cpp
+    src/frontend/sema/internal/lifetime/sources/facts.cpp
+    src/frontend/sema/internal/lifetime/sources/collect.cpp
+    src/frontend/sema/internal/lifetime/sources/solve.cpp
+    src/frontend/sema/internal/lifetime/sources/enforce.cpp
     src/frontend/sema/internal/expressions/sources/sema_builtin_expression_analyzer.cpp
     src/frontend/sema/internal/borrow/sources/flow_graph.cpp
     src/frontend/sema/internal/borrow/sources/loan_checker.cpp

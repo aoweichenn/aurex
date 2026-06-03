@@ -433,6 +433,12 @@ TEST(CoreUnit, IdeToolingProjectsBorrowSummaryAndLoanFacts)
     EXPECT_NE(contract_fact->detail.find("source=inferred"), std::string::npos) << contract_fact->detail;
     EXPECT_NE(contract_fact->detail.find("selectors=1"), std::string::npos) << contract_fact->detail;
 
+    const tooling::IdeSemanticFact* const lifetime_fact = find_semantic_fact(
+        snapshot, tooling::IdeSemanticFactKind::lifetime_facts, query::QueryKind::type_check_body, "id_ref");
+    ASSERT_NE(lifetime_fact, nullptr);
+    EXPECT_NE(lifetime_fact->detail.find("returns=1"), std::string::npos) << lifetime_fact->detail;
+    EXPECT_NE(lifetime_fact->detail.find("violations=0"), std::string::npos) << lifetime_fact->detail;
+
     const tooling::IdeSemanticFact* const loan_fact = find_semantic_fact(
         snapshot, tooling::IdeSemanticFactKind::body_loan_check, query::QueryKind::type_check_body, "read");
     ASSERT_NE(loan_fact, nullptr);
@@ -448,6 +454,8 @@ TEST(CoreUnit, IdeToolingProjectsBorrowSummaryAndLoanFacts)
     EXPECT_NE(hover->label.find("borrow_summary=deps=1"), std::string::npos) << hover->label;
     EXPECT_NE(hover->label.find("borrow_contract=inferred/selectors=1/unknown=false/mismatch=false"), std::string::npos)
         << hover->label;
+    EXPECT_NE(hover->label.find("lifetime=regions="), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("/returns=1/violations=0"), std::string::npos) << hover->label;
 }
 
 TEST(CoreUnit, IdeToolingRecordsPrimaryModulePartDeclarations)

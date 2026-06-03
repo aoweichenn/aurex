@@ -1436,6 +1436,7 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
         summary_signature == this->core_.state_.checked.functions.end() ? signature : summary_signature->second;
     this->core_.build_borrow_summary(function, key, finalized_signature);
     this->core_.check_borrow_contract(function, key, finalized_signature);
+    this->core_.analyze_lifetimes(function, key, finalized_signature);
     if (!this->core_.ctx_.options.retain_body_flow_graphs) {
         this->core_.state_.checked.body_flow_graphs.erase(key);
     }

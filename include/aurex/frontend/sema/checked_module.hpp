@@ -484,6 +484,90 @@ struct ReferenceOriginFact {
     base::u32 part_index = 0;
 };
 
+enum class LifetimeRegionKind : base::u8 {
+    parameter,
+    self,
+    static_,
+    explicit_origin,
+    inferred,
+    local,
+    temporary,
+    unknown,
+};
+
+enum class LifetimeConstraintReason : base::u8 {
+    declared_origin,
+    reference_type,
+    return_contract,
+    return_type,
+    call,
+    reborrow,
+    dropck,
+};
+
+enum class LifetimeViolationKind : base::u8 {
+    unknown_origin,
+    ambiguous_elision,
+    return_origin_outside_type,
+    local_escape,
+    unknown_escape,
+    type_outlives,
+};
+
+inline constexpr base::u32 SEMA_LIFETIME_INVALID_INDEX = static_cast<base::u32>(-1);
+
+struct LifetimeRegion {
+    LifetimeRegionKind kind = LifetimeRegionKind::inferred;
+    IdentId name_id = INVALID_IDENT_ID;
+    InternedText name;
+    base::u32 param_index = SEMA_LIFETIME_INVALID_INDEX;
+    base::SourceRange range{};
+};
+
+struct LifetimeOutlivesConstraint {
+    base::u32 longer_region = SEMA_LIFETIME_INVALID_INDEX;
+    base::u32 shorter_region = SEMA_LIFETIME_INVALID_INDEX;
+    LifetimeConstraintReason reason = LifetimeConstraintReason::return_contract;
+    base::SourceRange range{};
+};
+
+struct LifetimeTypeOutlivesConstraint {
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    base::u32 region = SEMA_LIFETIME_INVALID_INDEX;
+    LifetimeConstraintReason reason = LifetimeConstraintReason::reference_type;
+    base::SourceRange range{};
+};
+
+struct LifetimeReturnRegion {
+    base::u32 region = SEMA_LIFETIME_INVALID_INDEX;
+    syntax::ExprId return_expr = syntax::INVALID_EXPR_ID;
+    base::SourceRange range{};
+};
+
+struct LifetimeViolation {
+    LifetimeViolationKind kind = LifetimeViolationKind::type_outlives;
+    base::u32 region = SEMA_LIFETIME_INVALID_INDEX;
+    base::u32 related_region = SEMA_LIFETIME_INVALID_INDEX;
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    bool diagnostic_emitted = false;
+    base::SourceRange range{};
+};
+
+struct FunctionLifetimeFacts {
+    FunctionLookupKey function;
+    TypeHandle return_type = INVALID_TYPE_HANDLE;
+    std::vector<LifetimeRegion> regions;
+    std::vector<LifetimeOutlivesConstraint> outlives_constraints;
+    std::vector<LifetimeTypeOutlivesConstraint> type_outlives_constraints;
+    std::vector<LifetimeReturnRegion> return_regions;
+    std::vector<LifetimeViolation> violations;
+    bool solved = false;
+    bool diagnostic_mode_enforced = false;
+    query::StableFingerprint128 fingerprint;
+    base::u32 part_index = 0;
+};
+
 struct ParamEnvInfo {
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
@@ -545,6 +629,7 @@ using FunctionBorrowSummaryMap = SemaMap<FunctionLookupKey, FunctionBorrowSummar
 using FunctionBorrowContractMap = SemaMap<FunctionLookupKey, FunctionBorrowContract, FunctionLookupKeyHash>;
 using LifetimeOriginParamList = SemaVector<LifetimeOriginParamInfo>;
 using ReferenceOriginFactList = SemaVector<ReferenceOriginFact>;
+using FunctionLifetimeFactsMap = SemaMap<FunctionLookupKey, FunctionLifetimeFacts, FunctionLookupKeyHash>;
 using ParamEnvList = SemaVector<ParamEnvInfo>;
 
 inline constexpr base::u32 SEMA_BODY_FLOW_INVALID_INDEX = static_cast<base::u32>(-1);
@@ -735,9 +820,15 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
 [[nodiscard]] std::string_view body_loan_conflict_kind_name(BodyLoanConflictKind kind) noexcept;
 [[nodiscard]] std::string_view borrow_contract_selector_kind_name(BorrowContractSelectorKind kind) noexcept;
 [[nodiscard]] std::string_view function_borrow_contract_source_name(FunctionBorrowContractSource source) noexcept;
+[[nodiscard]] std::string_view lifetime_region_kind_name(LifetimeRegionKind kind) noexcept;
+[[nodiscard]] std::string_view lifetime_constraint_reason_name(LifetimeConstraintReason reason) noexcept;
+[[nodiscard]] std::string_view lifetime_violation_kind_name(LifetimeViolationKind kind) noexcept;
 [[nodiscard]] query::StableFingerprint128 body_loan_check_fingerprint(const BodyLoanCheckResult& result) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_borrow_contract_fingerprint(
     const FunctionBorrowContract& contract) noexcept;
+[[nodiscard]] query::StableFingerprint128 function_lifetime_facts_fingerprint(
+    const FunctionLifetimeFacts& facts) noexcept;
+[[nodiscard]] std::string dump_function_lifetime_facts(const FunctionLifetimeFacts& facts);
 
 enum class CoercionKind {
     contextual_integer_literal,
@@ -1081,6 +1172,7 @@ public:
     FunctionBorrowContractMap borrow_contracts;
     LifetimeOriginParamList lifetime_origin_params;
     ReferenceOriginFactList reference_origin_facts;
+    FunctionLifetimeFactsMap lifetime_facts;
     BodyFlowGraphMap body_flow_graphs;
     BodyLoanCheckResultMap body_loan_checks;
     ParamEnvList param_envs;
@@ -1142,6 +1234,7 @@ public:
     [[nodiscard]] base::usize append_generic_side_table_layout(const GenericSideTableLocalLayoutView& layout);
     [[nodiscard]] const GenericSideTableLayout* generic_side_table_layout(base::usize index) const noexcept;
     [[nodiscard]] FunctionSignature clone_function_signature(const FunctionSignature& other);
+    [[nodiscard]] FunctionLifetimeFacts clone_function_lifetime_facts(const FunctionLifetimeFacts& other);
     [[nodiscard]] StructInfo clone_struct_info(const StructInfo& other);
     [[nodiscard]] EnumCaseInfo clone_enum_case_info(const EnumCaseInfo& other);
     [[nodiscard]] TraitMethodRequirement clone_trait_method_requirement(const TraitMethodRequirement& other);

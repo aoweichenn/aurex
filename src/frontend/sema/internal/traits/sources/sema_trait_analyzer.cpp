@@ -757,6 +757,31 @@ TraitMethodRequirement SemanticAnalyzerCore::TraitAnalyzer::resolve_trait_requir
                                    info.param_types, trait.part_index, info.has_default_body);
     info.has_borrow_contract = requirement.borrow_contract.present
         || info.borrow_contract.source == FunctionBorrowContractSource::conservative_unknown;
+    if (info.has_borrow_contract) {
+        this->core_.state_.checked.borrow_contracts[requirement_key] = info.borrow_contract;
+    }
+    if (!info.has_default_body) {
+        FunctionSignature signature = this->core_.state_.checked.make_function_signature();
+        signature.name = this->core_.state_.checked.intern_text(info.name);
+        signature.name_id = info.name_id;
+        signature.semantic_key = requirement_key;
+        signature.module = info.module;
+        signature.trait_module = trait.module;
+        signature.trait_name_id = trait.name_id;
+        signature.return_type = info.return_type;
+        signature.param_types = this->core_.state_.checked.copy_type_handle_list(info.param_types);
+        signature.range = info.range;
+        signature.is_unsafe = info.is_unsafe;
+        signature.is_variadic = info.is_variadic;
+        signature.has_prototype = true;
+        signature.has_definition = false;
+        signature.is_method = true;
+        signature.has_self_param = info.has_self_param;
+        signature.visibility = info.visibility;
+        signature.prototype_item = requirement_id;
+        signature.part_index = this->core_.item_part_index(requirement_id);
+        this->core_.analyze_signature_lifetimes(requirement, requirement_key, signature);
+    }
     return info;
 }
 

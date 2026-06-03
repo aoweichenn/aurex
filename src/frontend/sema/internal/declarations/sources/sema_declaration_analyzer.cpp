@@ -868,6 +868,9 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::register_value_names()
                 this->core_.index_function_lookup(found->second);
                 this->core_.index_function_value(found->second);
                 this->core_.record_declared_borrow_contract(item, key, found->second);
+                if (item.is_prototype || item.is_extern_c || !syntax::is_valid(item.body)) {
+                    this->core_.analyze_signature_lifetimes(item, key, found->second);
+                }
             }
             if (!item.is_prototype && !item.is_extern_c) {
                 this->core_.state_.functions.definition_items[key] = syntax::ItemId{item_index};

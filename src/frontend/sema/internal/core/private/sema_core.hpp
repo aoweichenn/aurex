@@ -105,6 +105,7 @@ private:
     class DeclarationAnalyzer;
     class ExpressionAnalyzer;
     class GenericAnalyzer;
+    class LifetimeAnalyzer;
     class LookupIndexer;
     class LookupResolver;
     class OperatorExpressionAnalyzer;
@@ -586,6 +587,10 @@ private:
     void record_declared_borrow_contract(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
     void check_borrow_contract(
+        const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
+    void analyze_signature_lifetimes(
+        const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
+    void analyze_lifetimes(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
     void build_borrow_summary(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);

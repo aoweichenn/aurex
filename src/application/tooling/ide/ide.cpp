@@ -52,6 +52,7 @@ constexpr std::string_view IDE_SEMANTIC_FACT_FUNCTION_BODY_SYNTAX = "function_bo
 constexpr std::string_view IDE_SEMANTIC_FACT_TYPE_CHECK_BODY = "type_check_body";
 constexpr std::string_view IDE_SEMANTIC_FACT_BORROW_SUMMARY = "borrow_summary";
 constexpr std::string_view IDE_SEMANTIC_FACT_BORROW_CONTRACT = "borrow_contract";
+constexpr std::string_view IDE_SEMANTIC_FACT_LIFETIME_FACTS = "lifetime_facts";
 constexpr std::string_view IDE_SEMANTIC_FACT_BODY_LOAN_CHECK = "body_loan_check";
 constexpr std::string_view IDE_SYMBOL_KIND_CONST = "const";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM_CASE = "enum_case";
@@ -95,6 +96,7 @@ constexpr std::string_view IDE_DETAIL_TYPE_SEPARATOR = ": ";
 constexpr std::string_view IDE_DETAIL_RESOURCE_SEPARATOR = " resource=";
 constexpr std::string_view IDE_DETAIL_BORROW_SUMMARY_SEPARATOR = " borrow_summary=";
 constexpr std::string_view IDE_DETAIL_BORROW_CONTRACT_SEPARATOR = " borrow_contract=";
+constexpr std::string_view IDE_DETAIL_LIFETIME_SEPARATOR = " lifetime=";
 constexpr std::string_view IDE_PRIMARY_PART_NAME = "<primary>";
 constexpr base::u32 IDE_PRIMARY_PART_INDEX = 0;
 constexpr base::u32 IDE_FIRST_NAMED_PART_INDEX = 1;
@@ -1002,6 +1004,22 @@ void recover_resolved_fragment_source_part(
     return label.str();
 }
 
+[[nodiscard]] std::string lifetime_facts_detail(const sema::FunctionLifetimeFacts& facts)
+{
+    const bool has_emitted_diagnostics =
+        std::ranges::any_of(facts.violations, [](const sema::LifetimeViolation& violation) {
+            return violation.diagnostic_emitted;
+        });
+    std::ostringstream label;
+    label << IDE_SEMANTIC_FACT_LIFETIME_FACTS << " regions=" << facts.regions.size()
+          << " outlives=" << facts.outlives_constraints.size()
+          << " type_outlives=" << facts.type_outlives_constraints.size() << " returns=" << facts.return_regions.size()
+          << " violations=" << facts.violations.size()
+          << " diagnostics=" << (has_emitted_diagnostics ? "true" : "false")
+          << " fingerprint=" << query::debug_string(sema::function_lifetime_facts_fingerprint(facts));
+    return label.str();
+}
+
 [[nodiscard]] std::string body_loan_check_detail(const sema::BodyLoanCheckResult& result)
 {
     const base::usize reborrow_count =
@@ -1071,6 +1089,12 @@ void recover_resolved_fragment_source_part(
                   << "/selectors=" << contract->second.return_selectors.size()
                   << "/unknown=" << (contract->second.unknown_return_allowed ? "true" : "false")
                   << "/mismatch=" << (contract->second.has_contract_mismatch ? "true" : "false");
+        }
+        if (const auto lifetime = checked.lifetime_facts.find(*function_key);
+            lifetime != checked.lifetime_facts.end()) {
+            label << IDE_DETAIL_LIFETIME_SEPARATOR << "regions=" << lifetime->second.regions.size()
+                  << "/returns=" << lifetime->second.return_regions.size()
+                  << "/violations=" << lifetime->second.violations.size();
         }
     }
     return label.str();
@@ -1734,6 +1758,27 @@ void push_borrow_contract_fact(IdeSnapshot& snapshot, const query::QueryKey quer
     snapshot.query.semantic_facts.push_back(std::move(fact));
 }
 
+void push_lifetime_facts_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
+    const sema::FunctionSignature& signature, const sema::FunctionLookupKey function, const base::SourceRange range)
+{
+    const auto facts = snapshot.checked.lifetime_facts.find(function);
+    if (facts == snapshot.checked.lifetime_facts.end()) {
+        return;
+    }
+    IdeSemanticFact fact;
+    fact.kind = IdeSemanticFactKind::lifetime_facts;
+    fact.query = query_key;
+    fact.definition = body.owner;
+    fact.body = body;
+    fact.range = range;
+    fact.name = std::string(signature.name.view());
+    fact.detail = lifetime_facts_detail(facts->second);
+    fact.part_index = signature.part_index;
+    fact.generic_instance = signature.generic_instance_key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
 void push_body_loan_check_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
     const sema::FunctionSignature& signature, const sema::FunctionLookupKey function, const base::SourceRange range)
 {
@@ -1826,6 +1871,7 @@ void push_type_check_body_fact(query::QueryContext& context, IdeSnapshot& snapsh
     push_borrow_summary_fact(snapshot, *query_key, key, signature, function, range);
     push_borrow_contract_fact(snapshot, *query_key, key, signature, function,
         item_name_range(snapshot, signature.definition_item, signature.name.view(), signature.range));
+    push_lifetime_facts_fact(snapshot, *query_key, key, signature, function, range);
     push_body_loan_check_fact(snapshot, *query_key, key, signature, function, range);
 }
 

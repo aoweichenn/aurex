@@ -60,6 +60,7 @@ enum class IdeSemanticFactKind : base::u8 {
     type_check_body,
     borrow_summary,
     borrow_contract,
+    lifetime_facts,
     body_loan_check,
 };
 

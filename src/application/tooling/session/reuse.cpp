@@ -17,6 +17,7 @@ constexpr std::string_view TOOLING_REUSE_KIND_FUNCTION_BODY_SYNTAX = "function_b
 constexpr std::string_view TOOLING_REUSE_KIND_TYPE_CHECK_BODY = "type_check_body";
 constexpr std::string_view TOOLING_REUSE_KIND_BORROW_SUMMARY = "borrow_summary";
 constexpr std::string_view TOOLING_REUSE_KIND_BORROW_CONTRACT = "borrow_contract";
+constexpr std::string_view TOOLING_REUSE_KIND_LIFETIME_FACTS = "lifetime_facts";
 constexpr std::string_view TOOLING_REUSE_KIND_BODY_LOAN_CHECK = "body_loan_check";
 constexpr std::string_view TOOLING_REUSE_REASON_BODY_LOCAL = "body-local edit";
 constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
@@ -109,6 +110,8 @@ constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
             return TOOLING_REUSE_KIND_BORROW_SUMMARY;
         case IdeSemanticFactKind::borrow_contract:
             return TOOLING_REUSE_KIND_BORROW_CONTRACT;
+        case IdeSemanticFactKind::lifetime_facts:
+            return TOOLING_REUSE_KIND_LIFETIME_FACTS;
         case IdeSemanticFactKind::body_loan_check:
             return TOOLING_REUSE_KIND_BODY_LOAN_CHECK;
     }
@@ -118,7 +121,8 @@ constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
 [[nodiscard]] bool tooling_semantic_fact_is_body_local(const IdeSemanticFact& fact) noexcept
 {
     return fact.kind == IdeSemanticFactKind::function_body_syntax || fact.kind == IdeSemanticFactKind::type_check_body
-        || fact.kind == IdeSemanticFactKind::borrow_summary || fact.kind == IdeSemanticFactKind::body_loan_check;
+        || fact.kind == IdeSemanticFactKind::borrow_summary || fact.kind == IdeSemanticFactKind::lifetime_facts
+        || fact.kind == IdeSemanticFactKind::body_loan_check;
 }
 
 [[nodiscard]] std::string_view tooling_invalidation_reason(const IdeSemanticFact& fact) noexcept
@@ -316,7 +320,8 @@ void tooling_append_invalidated_facts(ToolingReusePlan& plan, const IdeSnapshot&
     }
     for (const ToolingInvalidationRoot& root : roots) {
         if (root.kind != TOOLING_REUSE_KIND_FUNCTION_BODY_SYNTAX && root.kind != TOOLING_REUSE_KIND_TYPE_CHECK_BODY
-            && root.kind != TOOLING_REUSE_KIND_BORROW_SUMMARY && root.kind != TOOLING_REUSE_KIND_BODY_LOAN_CHECK) {
+            && root.kind != TOOLING_REUSE_KIND_BORROW_SUMMARY && root.kind != TOOLING_REUSE_KIND_LIFETIME_FACTS
+            && root.kind != TOOLING_REUSE_KIND_BODY_LOAN_CHECK) {
             return false;
         }
     }

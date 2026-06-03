@@ -60,6 +60,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_fingerprint(authority.signature_result.fingerprint);
     builder.mix_fingerprint(authority.borrow_summary_fingerprint);
     builder.mix_fingerprint(authority.borrow_contract_fingerprint);
+    builder.mix_fingerprint(authority.lifetime_fingerprint);
     builder.mix_fingerprint(authority.body_loan_fingerprint);
     builder.mix_u32(authority.expr_side_table_count);
     builder.mix_u32(authority.pattern_side_table_count);
@@ -69,6 +70,11 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_u32(authority.borrow_summary_origin_count);
     builder.mix_u32(authority.borrow_summary_dependency_count);
     builder.mix_u32(authority.borrow_contract_selector_count);
+    builder.mix_u32(authority.lifetime_region_count);
+    builder.mix_u32(authority.lifetime_outlives_constraint_count);
+    builder.mix_u32(authority.lifetime_type_outlives_constraint_count);
+    builder.mix_u32(authority.lifetime_return_region_count);
+    builder.mix_u32(authority.lifetime_violation_count);
     builder.mix_u32(authority.body_loan_count);
     builder.mix_u32(authority.body_reborrow_count);
     builder.mix_u32(authority.body_two_phase_borrow_count);
@@ -77,12 +83,17 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.has_diagnostics);
     builder.mix_bool(authority.has_borrow_summary);
     builder.mix_bool(authority.has_borrow_contract);
+    builder.mix_bool(authority.has_lifetime_facts);
     builder.mix_bool(authority.has_body_loan_check);
     builder.mix_bool(authority.borrow_summary_has_unknown_return_origin);
     builder.mix_bool(authority.borrow_summary_has_local_return_escape);
     builder.mix_bool(authority.borrow_contract_unknown_return_allowed);
     builder.mix_bool(authority.borrow_contract_has_local_return_escape);
     builder.mix_bool(authority.borrow_contract_has_mismatch);
+    builder.mix_bool(authority.lifetime_has_emitted_diagnostics);
+    builder.mix_bool(authority.lifetime_has_unknown_origin);
+    builder.mix_bool(authority.lifetime_has_ambiguous_elision);
+    builder.mix_bool(authority.lifetime_has_return_origin_mismatch);
     builder.mix_bool(authority.body_loan_graph_missing);
     builder.mix_bool(authority.body_loan_has_emitted_diagnostics);
     builder.mix_bool(authority.body_two_phase_has_emitted_diagnostics);

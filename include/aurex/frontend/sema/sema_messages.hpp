@@ -219,6 +219,20 @@ inline constexpr std::string_view SEMA_BORROW_CONTRACT_MISMATCH =
 
 inline constexpr std::string_view SEMA_BORROW_CONTRACT_DECLARED_HERE = "borrow contract is declared here";
 
+inline constexpr std::string_view SEMA_LIFETIME_UNKNOWN_ORIGIN = "lifetime origin is not declared in this scope";
+
+inline constexpr std::string_view SEMA_LIFETIME_ORIGIN_DECLARED_HERE = "lifetime origin is declared here";
+
+inline constexpr std::string_view SEMA_LIFETIME_ELISION_AMBIGUOUS =
+    "borrowed return lifetime is ambiguous; declare @borrow(...) or an explicit return origin";
+
+inline constexpr std::string_view SEMA_LIFETIME_RETURN_OUTSIDE_TYPE =
+    "returned borrow source is outside the explicit return origin set";
+
+inline constexpr std::string_view SEMA_LIFETIME_TYPE_OUTLIVES = "borrowed type does not outlive the required origin";
+
+inline constexpr std::string_view SEMA_LIFETIME_CONSTRAINT_NOTE = "lifetime requirement is introduced here";
+
 inline constexpr std::string_view SEMA_ACTIVE_BORROW_CONFLICT =
     "borrowed storage cannot be mutated, moved, or exclusively reborrowed while a loan is active";
 

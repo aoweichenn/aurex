@@ -3291,6 +3291,17 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
     contract_changed_authority.borrow_contract_fingerprint = query::stable_fingerprint("query-test-borrow-contract");
     EXPECT_NE(query::type_check_body_result_fingerprint(contract_changed_authority), output->result);
 
+    query::TypeCheckBodyAuthority lifetime_changed_authority = subject.type_check_authority;
+    lifetime_changed_authority.has_lifetime_facts = true;
+    lifetime_changed_authority.lifetime_region_count = 2;
+    lifetime_changed_authority.lifetime_outlives_constraint_count = 1;
+    lifetime_changed_authority.lifetime_type_outlives_constraint_count = 1;
+    lifetime_changed_authority.lifetime_return_region_count = 1;
+    lifetime_changed_authority.lifetime_violation_count = 1;
+    lifetime_changed_authority.lifetime_has_return_origin_mismatch = true;
+    lifetime_changed_authority.lifetime_fingerprint = query::stable_fingerprint("query-test-lifetime-facts");
+    EXPECT_NE(query::type_check_body_result_fingerprint(lifetime_changed_authority), output->result);
+
     query::TypeCheckBodyAuthority invalid_type_authority = subject.type_check_authority;
     invalid_type_authority.checked_body = {};
     query::TypeCheckBodyAuthority invalid_body_syntax_authority = subject.type_check_authority;

@@ -592,6 +592,74 @@ struct FunctionLifetimeFacts {
     base::u32 part_index = 0;
 };
 
+enum class DropCheckActionKind : base::u8 {
+    lexical_cleanup,
+    overwrite,
+    early_exit,
+    explicit_drop,
+    defer_cleanup,
+};
+
+enum class DropCheckViolationKind : base::u8 {
+    borrowed_drop,
+    borrowed_field_dangling,
+    generic_type_outlives,
+    destructor_escape,
+    drop_glue_missing,
+};
+
+inline constexpr base::u32 SEMA_DROP_CHECK_INVALID_ACTION_INDEX = static_cast<base::u32>(-1);
+
+struct DropCheckRequiredOutlives {
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    base::u32 region = SEMA_LIFETIME_INVALID_INDEX;
+    LifetimeConstraintReason reason = LifetimeConstraintReason::dropck;
+    base::SourceRange range{};
+};
+
+struct DropCheckFact {
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    FunctionLookupKey destructor_function;
+    std::vector<DropCheckRequiredOutlives> required_outlives;
+    query::StableFingerprint128 drop_glue_fingerprint;
+    query::StableFingerprint128 fingerprint;
+    bool may_observe_fields = true;
+    bool may_move_fields = false;
+};
+
+struct DropActionFact {
+    DropCheckActionKind kind = DropCheckActionKind::lexical_cleanup;
+    base::u32 action = SEMA_DROP_CHECK_INVALID_ACTION_INDEX;
+    base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    query::StableFingerprint128 destructor_key;
+    base::SourceRange range{};
+};
+
+struct DropCheckViolation {
+    DropCheckViolationKind kind = DropCheckViolationKind::generic_type_outlives;
+    base::u32 action = SEMA_DROP_CHECK_INVALID_ACTION_INDEX;
+    base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    base::u32 region = SEMA_LIFETIME_INVALID_INDEX;
+    bool diagnostic_emitted = false;
+    base::SourceRange range{};
+};
+
+struct FunctionDropCheckFacts {
+    FunctionLookupKey function;
+    std::vector<DropCheckFact> facts;
+    std::vector<DropActionFact> actions;
+    std::vector<DropCheckViolation> violations;
+    bool solved = false;
+    bool diagnostic_mode_enforced = false;
+    bool graph_missing = false;
+    query::StableFingerprint128 fingerprint;
+    base::u32 part_index = 0;
+};
+
 struct TypeLifetimeInfo {
     TypeHandle type = INVALID_TYPE_HANDLE;
     std::vector<InternedText> origin_names;
@@ -675,6 +743,7 @@ using ReferenceOriginFactList = SemaVector<ReferenceOriginFact>;
 using TypeLifetimeInfoList = SemaVector<TypeLifetimeInfo>;
 using GenericLifetimePredicateList = SemaVector<GenericLifetimePredicate>;
 using FunctionLifetimeFactsMap = SemaMap<FunctionLookupKey, FunctionLifetimeFacts, FunctionLookupKeyHash>;
+using FunctionDropCheckFactsMap = SemaMap<FunctionLookupKey, FunctionDropCheckFacts, FunctionLookupKeyHash>;
 using ParamEnvList = SemaVector<ParamEnvInfo>;
 
 enum class BodyFlowPointKind : base::u8 {
@@ -867,6 +936,9 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
 [[nodiscard]] std::string_view lifetime_constraint_reason_name(LifetimeConstraintReason reason) noexcept;
 [[nodiscard]] std::string_view lifetime_violation_kind_name(LifetimeViolationKind kind) noexcept;
 [[nodiscard]] std::string_view generic_lifetime_predicate_source_name(GenericLifetimePredicateSource source) noexcept;
+[[nodiscard]] std::string_view drop_check_action_kind_name(DropCheckActionKind kind) noexcept;
+[[nodiscard]] std::string_view drop_check_violation_kind_name(DropCheckViolationKind kind) noexcept;
+[[nodiscard]] std::string_view drop_check_violation_message(DropCheckViolationKind kind) noexcept;
 [[nodiscard]] query::StableFingerprint128 body_loan_check_fingerprint(const BodyLoanCheckResult& result) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_borrow_contract_fingerprint(
     const FunctionBorrowContract& contract) noexcept;
@@ -875,7 +947,11 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
     const GenericLifetimePredicate& predicate) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_lifetime_facts_fingerprint(
     const FunctionLifetimeFacts& facts) noexcept;
+[[nodiscard]] query::StableFingerprint128 drop_check_fact_fingerprint(const DropCheckFact& fact) noexcept;
+[[nodiscard]] query::StableFingerprint128 function_drop_check_facts_fingerprint(
+    const FunctionDropCheckFacts& facts) noexcept;
 [[nodiscard]] std::string dump_function_lifetime_facts(const FunctionLifetimeFacts& facts);
+[[nodiscard]] std::string dump_function_drop_check_facts(const FunctionDropCheckFacts& facts);
 
 enum class CoercionKind {
     contextual_integer_literal,
@@ -1222,6 +1298,7 @@ public:
     TypeLifetimeInfoList type_lifetime_infos;
     GenericLifetimePredicateList generic_lifetime_predicates;
     FunctionLifetimeFactsMap lifetime_facts;
+    FunctionDropCheckFactsMap dropck_facts;
     BodyFlowGraphMap body_flow_graphs;
     BodyLoanCheckResultMap body_loan_checks;
     ParamEnvList param_envs;
@@ -1287,6 +1364,7 @@ public:
     [[nodiscard]] const GenericSideTableLayout* generic_side_table_layout(base::usize index) const noexcept;
     [[nodiscard]] FunctionSignature clone_function_signature(const FunctionSignature& other);
     [[nodiscard]] FunctionLifetimeFacts clone_function_lifetime_facts(const FunctionLifetimeFacts& other);
+    [[nodiscard]] FunctionDropCheckFacts clone_function_drop_check_facts(const FunctionDropCheckFacts& other);
     [[nodiscard]] StructInfo clone_struct_info(const StructInfo& other);
     [[nodiscard]] EnumCaseInfo clone_enum_case_info(const EnumCaseInfo& other);
     [[nodiscard]] TraitMethodRequirement clone_trait_method_requirement(const TraitMethodRequirement& other);

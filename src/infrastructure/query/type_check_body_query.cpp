@@ -61,6 +61,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_fingerprint(authority.borrow_summary_fingerprint);
     builder.mix_fingerprint(authority.borrow_contract_fingerprint);
     builder.mix_fingerprint(authority.lifetime_fingerprint);
+    builder.mix_fingerprint(authority.dropck_fingerprint);
     builder.mix_fingerprint(authority.body_loan_fingerprint);
     builder.mix_u64(authority.expr_side_table_count);
     builder.mix_u64(authority.pattern_side_table_count);
@@ -79,6 +80,10 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_u64(authority.lifetime_violation_count);
     builder.mix_u64(authority.type_lifetime_info_count);
     builder.mix_u64(authority.generic_lifetime_predicate_count);
+    builder.mix_u64(authority.dropck_fact_count);
+    builder.mix_u64(authority.dropck_action_count);
+    builder.mix_u64(authority.dropck_required_outlives_count);
+    builder.mix_u64(authority.dropck_violation_count);
     builder.mix_u64(authority.body_loan_count);
     builder.mix_u64(authority.body_reborrow_count);
     builder.mix_u64(authority.body_two_phase_borrow_count);
@@ -88,6 +93,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.has_borrow_summary);
     builder.mix_bool(authority.has_borrow_contract);
     builder.mix_bool(authority.has_lifetime_facts);
+    builder.mix_bool(authority.has_dropck_facts);
     builder.mix_bool(authority.has_body_loan_check);
     builder.mix_bool(authority.borrow_summary_has_unknown_return_origin);
     builder.mix_bool(authority.borrow_summary_has_local_return_escape);
@@ -101,6 +107,11 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.lifetime_has_return_origin_mismatch);
     builder.mix_bool(authority.lifetime_has_local_escape);
     builder.mix_bool(authority.lifetime_has_unknown_escape);
+    builder.mix_bool(authority.dropck_graph_missing);
+    builder.mix_bool(authority.dropck_has_emitted_diagnostics);
+    builder.mix_bool(authority.dropck_has_generic_type_outlives);
+    builder.mix_bool(authority.dropck_has_borrowed_drop);
+    builder.mix_bool(authority.dropck_has_drop_glue_missing);
     builder.mix_bool(authority.body_loan_graph_missing);
     builder.mix_bool(authority.body_loan_has_emitted_diagnostics);
     builder.mix_bool(authority.body_two_phase_has_emitted_diagnostics);

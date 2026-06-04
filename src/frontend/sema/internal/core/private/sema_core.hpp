@@ -101,6 +101,7 @@ private:
     class BorrowSummaryBuilder;
     class BodyFlowAnalyzer;
     class BodyLoanChecker;
+    class DropCheckAnalyzer;
     class BodyMoveAnalyzer;
     class ControlExpressionAnalyzer;
     class DeclarationAnalyzer;
@@ -645,6 +646,8 @@ private:
     void analyze_signature_lifetimes(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
     void analyze_lifetimes(
+        const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
+    void analyze_dropck(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
     void build_borrow_summary(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);

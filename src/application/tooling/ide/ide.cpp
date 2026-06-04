@@ -53,6 +53,7 @@ constexpr std::string_view IDE_SEMANTIC_FACT_TYPE_CHECK_BODY = "type_check_body"
 constexpr std::string_view IDE_SEMANTIC_FACT_BORROW_SUMMARY = "borrow_summary";
 constexpr std::string_view IDE_SEMANTIC_FACT_BORROW_CONTRACT = "borrow_contract";
 constexpr std::string_view IDE_SEMANTIC_FACT_LIFETIME_FACTS = "lifetime_facts";
+constexpr std::string_view IDE_SEMANTIC_FACT_DROPCK_FACTS = "dropck_facts";
 constexpr std::string_view IDE_SEMANTIC_FACT_BODY_LOAN_CHECK = "body_loan_check";
 constexpr std::string_view IDE_SYMBOL_KIND_CONST = "const";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM_CASE = "enum_case";
@@ -1032,6 +1033,27 @@ void recover_resolved_fragment_source_part(
     return label.str();
 }
 
+[[nodiscard]] std::string dropck_facts_detail(const sema::FunctionDropCheckFacts& facts)
+{
+    const bool has_emitted_diagnostics =
+        std::ranges::any_of(facts.violations, [](const sema::DropCheckViolation& violation) {
+            return violation.diagnostic_emitted;
+        });
+    base::u64 required_outlives_count = 0;
+    for (const sema::DropCheckFact& fact : facts.facts) {
+        required_outlives_count += static_cast<base::u64>(fact.required_outlives.size());
+    }
+    std::ostringstream label;
+    label << IDE_SEMANTIC_FACT_DROPCK_FACTS << " facts=" << facts.facts.size()
+          << " actions=" << facts.actions.size()
+          << " required_outlives=" << required_outlives_count
+          << " violations=" << facts.violations.size()
+          << " diagnostics=" << (has_emitted_diagnostics ? "true" : "false")
+          << " graph_missing=" << (facts.graph_missing ? "true" : "false")
+          << " fingerprint=" << query::debug_string(sema::function_drop_check_facts_fingerprint(facts));
+    return label.str();
+}
+
 [[nodiscard]] std::string body_loan_check_detail(const sema::BodyLoanCheckResult& result)
 {
     const base::usize reborrow_count =
@@ -1118,6 +1140,16 @@ void recover_resolved_fragment_source_part(
                   << "/violations=" << lifetime->second.violations.size()
                   << "/local_escapes=" << local_escape_count
                   << "/unknown_escapes=" << unknown_escape_count;
+        }
+        if (const auto dropck = checked.dropck_facts.find(*function_key); dropck != checked.dropck_facts.end()) {
+            base::u64 required_outlives_count = 0;
+            for (const sema::DropCheckFact& fact : dropck->second.facts) {
+                required_outlives_count += static_cast<base::u64>(fact.required_outlives.size());
+            }
+            label << " dropck=facts=" << dropck->second.facts.size()
+                  << "/actions=" << dropck->second.actions.size()
+                  << "/required_outlives=" << required_outlives_count
+                  << "/violations=" << dropck->second.violations.size();
         }
     }
     return label.str();
@@ -1802,6 +1834,27 @@ void push_lifetime_facts_fact(IdeSnapshot& snapshot, const query::QueryKey query
     snapshot.query.semantic_facts.push_back(std::move(fact));
 }
 
+void push_dropck_facts_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
+    const sema::FunctionSignature& signature, const sema::FunctionLookupKey function, const base::SourceRange range)
+{
+    const auto facts = snapshot.checked.dropck_facts.find(function);
+    if (facts == snapshot.checked.dropck_facts.end()) {
+        return;
+    }
+    IdeSemanticFact fact;
+    fact.kind = IdeSemanticFactKind::dropck_facts;
+    fact.query = query_key;
+    fact.definition = body.owner;
+    fact.body = body;
+    fact.range = range;
+    fact.name = std::string(signature.name.view());
+    fact.detail = dropck_facts_detail(facts->second);
+    fact.part_index = signature.part_index;
+    fact.generic_instance = signature.generic_instance_key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
 void push_body_loan_check_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
     const sema::FunctionSignature& signature, const sema::FunctionLookupKey function, const base::SourceRange range)
 {
@@ -1895,6 +1948,7 @@ void push_type_check_body_fact(query::QueryContext& context, IdeSnapshot& snapsh
     push_borrow_contract_fact(snapshot, *query_key, key, signature, function,
         item_name_range(snapshot, signature.definition_item, signature.name.view(), signature.range));
     push_lifetime_facts_fact(snapshot, *query_key, key, signature, function, range);
+    push_dropck_facts_fact(snapshot, *query_key, key, signature, function, range);
     push_body_loan_check_fact(snapshot, *query_key, key, signature, function, range);
 }
 

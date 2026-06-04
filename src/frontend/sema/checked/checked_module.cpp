@@ -581,6 +581,8 @@ CheckedModule::CheckedModule()
       generic_lifetime_predicates(make_sema_vector<GenericLifetimePredicate>(*this->arena_)),
       lifetime_facts(make_sema_map<FunctionLookupKey, FunctionLifetimeFacts, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
+      dropck_facts(make_sema_map<FunctionLookupKey, FunctionDropCheckFacts, FunctionLookupKeyHash>(
+          *this->arena_, FunctionLookupKeyHash{})),
       body_flow_graphs(make_sema_map<FunctionLookupKey, BodyFlowGraph, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
       body_loan_checks(make_sema_map<FunctionLookupKey, BodyLoanCheckResult, FunctionLookupKeyHash>(
@@ -633,6 +635,7 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       type_lifetime_infos(std::move(other.type_lifetime_infos)),
       generic_lifetime_predicates(std::move(other.generic_lifetime_predicates)),
       lifetime_facts(std::move(other.lifetime_facts)),
+      dropck_facts(std::move(other.dropck_facts)),
       body_flow_graphs(std::move(other.body_flow_graphs)), body_loan_checks(std::move(other.body_loan_checks)),
       param_envs(std::move(other.param_envs)),
       generic_template_signatures(std::move(other.generic_template_signatures)),
@@ -708,6 +711,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->type_lifetime_infos.swap(other.type_lifetime_infos);
     this->generic_lifetime_predicates.swap(other.generic_lifetime_predicates);
     this->lifetime_facts.swap(other.lifetime_facts);
+    this->dropck_facts.swap(other.dropck_facts);
     this->body_flow_graphs.swap(other.body_flow_graphs);
     this->body_loan_checks.swap(other.body_loan_checks);
     this->param_envs.swap(other.param_envs);
@@ -849,6 +853,11 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->lifetime_facts.reserve(other.lifetime_facts.size());
     for (const auto& entry : other.lifetime_facts) {
         this->lifetime_facts.emplace(entry.first, this->clone_function_lifetime_facts(entry.second));
+    }
+    this->dropck_facts.clear();
+    this->dropck_facts.reserve(other.dropck_facts.size());
+    for (const auto& entry : other.dropck_facts) {
+        this->dropck_facts.emplace(entry.first, this->clone_function_drop_check_facts(entry.second));
     }
     this->body_flow_graphs.clear();
     this->body_flow_graphs.reserve(other.body_flow_graphs.size());
@@ -1425,6 +1434,11 @@ FunctionLifetimeFacts CheckedModule::clone_function_lifetime_facts(const Functio
         copy.regions.push_back(region);
     }
     return copy;
+}
+
+FunctionDropCheckFacts CheckedModule::clone_function_drop_check_facts(const FunctionDropCheckFacts& other)
+{
+    return other;
 }
 
 ParamEnvInfo CheckedModule::clone_param_env_info(const ParamEnvInfo& other)
@@ -2074,6 +2088,34 @@ void populate_type_check_body_borrow_authority(
                 return violation.kind == LifetimeViolationKind::unknown_escape;
             });
     }
+    if (const auto dropck = checked.dropck_facts.find(function); dropck != checked.dropck_facts.end()) {
+        authority.has_dropck_facts = true;
+        authority.dropck_fingerprint = function_drop_check_facts_fingerprint(dropck->second);
+        authority.dropck_fact_count = static_cast<base::u64>(dropck->second.facts.size());
+        authority.dropck_action_count = static_cast<base::u64>(dropck->second.actions.size());
+        authority.dropck_required_outlives_count = 0;
+        for (const DropCheckFact& fact : dropck->second.facts) {
+            authority.dropck_required_outlives_count += static_cast<base::u64>(fact.required_outlives.size());
+        }
+        authority.dropck_violation_count = static_cast<base::u64>(dropck->second.violations.size());
+        authority.dropck_graph_missing = dropck->second.graph_missing;
+        authority.dropck_has_emitted_diagnostics =
+            std::ranges::any_of(dropck->second.violations, [](const DropCheckViolation& violation) {
+                return violation.diagnostic_emitted;
+            });
+        authority.dropck_has_generic_type_outlives =
+            std::ranges::any_of(dropck->second.violations, [](const DropCheckViolation& violation) {
+                return violation.kind == DropCheckViolationKind::generic_type_outlives;
+            });
+        authority.dropck_has_borrowed_drop =
+            std::ranges::any_of(dropck->second.violations, [](const DropCheckViolation& violation) {
+                return violation.kind == DropCheckViolationKind::borrowed_drop;
+            });
+        authority.dropck_has_drop_glue_missing =
+            std::ranges::any_of(dropck->second.violations, [](const DropCheckViolation& violation) {
+                return violation.kind == DropCheckViolationKind::drop_glue_missing;
+            });
+    }
     if (const auto loan = checked.body_loan_checks.find(function); loan != checked.body_loan_checks.end()) {
         authority.has_body_loan_check = true;
         authority.body_loan_fingerprint = body_loan_check_fingerprint(loan->second);
@@ -2477,6 +2519,52 @@ std::string dump_checked_module(const CheckedModule& checked)
             const LifetimeViolation& violation = facts.violations[violation_index];
             out << "      violation #" << violation_index << ' ' << lifetime_violation_kind_name(violation.kind)
                 << " region=" << violation.region << " related=" << violation.related_region
+                << " emitted=" << (violation.diagnostic_emitted ? "true" : "false") << "\n";
+        }
+    }
+
+    std::vector<const FunctionDropCheckFacts*> dropck_facts;
+    dropck_facts.reserve(checked.dropck_facts.size());
+    for (const auto& entry : checked.dropck_facts) {
+        dropck_facts.push_back(&entry.second);
+    }
+    std::sort(dropck_facts.begin(), dropck_facts.end(),
+        [](const FunctionDropCheckFacts* lhs, const FunctionDropCheckFacts* rhs) {
+            return std::tie(lhs->function.module, lhs->function.owner_type, lhs->function.name.value)
+                < std::tie(rhs->function.module, rhs->function.owner_type, rhs->function.name.value);
+        });
+    out << "  dropck_facts " << dropck_facts.size() << "\n";
+    for (const FunctionDropCheckFacts* const facts_ptr : dropck_facts) {
+        const FunctionDropCheckFacts& facts = *facts_ptr;
+        out << "    dropck_fact " << facts.function.module << ':' << facts.function.owner_type << ':';
+        if (syntax::is_valid(facts.function.name)) {
+            out << '#' << facts.function.name.value;
+        } else {
+            out << '-';
+        }
+        base::u64 required_outlives_count = 0;
+        for (const DropCheckFact& fact : facts.facts) {
+            required_outlives_count += static_cast<base::u64>(fact.required_outlives.size());
+        }
+        out << " facts=" << facts.facts.size() << " actions=" << facts.actions.size()
+            << " required_outlives=" << required_outlives_count << " violations=" << facts.violations.size()
+            << " solved=" << (facts.solved ? "true" : "false")
+            << " enforced=" << (facts.diagnostic_mode_enforced ? "true" : "false")
+            << " graph_missing=" << (facts.graph_missing ? "true" : "false")
+            << " fingerprint=" << query::debug_string(function_drop_check_facts_fingerprint(facts));
+        append_part_origin(out, show_parts, facts.part_index);
+        out << "\n";
+        for (base::usize action_index = 0; action_index < facts.actions.size(); ++action_index) {
+            const DropActionFact& action = facts.actions[action_index];
+            out << "      action #" << action_index << ' ' << drop_check_action_kind_name(action.kind)
+                << " flow=" << action.action << " point=" << action.point << " place=" << action.place
+                << " type=" << checked.types.display_name(action.type) << "\n";
+        }
+        for (base::usize violation_index = 0; violation_index < facts.violations.size(); ++violation_index) {
+            const DropCheckViolation& violation = facts.violations[violation_index];
+            out << "      violation #" << violation_index << ' ' << drop_check_violation_kind_name(violation.kind)
+                << " action=" << violation.action << " point=" << violation.point
+                << " region=" << violation.region
                 << " emitted=" << (violation.diagnostic_emitted ? "true" : "false") << "\n";
         }
     }

@@ -1656,6 +1656,7 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
     }
     this->core_.check_borrow_contract(function, key, finalized_signature);
     this->core_.analyze_lifetimes(function, key, finalized_signature);
+    this->core_.analyze_dropck(function, key, finalized_signature);
     const auto storage_escape_summary = this->core_.state_.checked.borrow_summaries.find(key);
     const bool needs_storage_escape_guard = storage_escape_summary == this->core_.state_.checked.borrow_summaries.end()
         || (storage_escape_summary->second.storage_escapes.empty()

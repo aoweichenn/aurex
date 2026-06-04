@@ -61,6 +61,7 @@ enum class IdeSemanticFactKind : base::u8 {
     borrow_summary,
     borrow_contract,
     lifetime_facts,
+    dropck_facts,
     body_loan_check,
 };
 

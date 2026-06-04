@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include <frontend/sema/internal/borrow/private/summary.hpp>
 #include <frontend/sema/internal/core/private/sema_core.hpp>
 
 #include <gtest/gtest.h>
@@ -103,6 +104,46 @@ struct LifetimeWhiteboxHarness {
         output += '\n';
     }
     return output;
+}
+
+[[nodiscard]] std::string lifetime_diagnostic_messages(const base::DiagnosticSink& diagnostics)
+{
+    std::string output;
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        output += diagnostic.message;
+        output += '\n';
+    }
+    return output;
+}
+
+[[nodiscard]] base::usize count_substring_occurrences(
+    const std::string_view text, const std::string_view needle) noexcept
+{
+    if (needle.empty()) {
+        return 0;
+    }
+    base::usize count = 0;
+    base::usize offset = 0;
+    while (offset < text.size()) {
+        const base::usize found = text.find(needle, offset);
+        if (found == std::string_view::npos) {
+            break;
+        }
+        ++count;
+        offset = found + needle.size();
+    }
+    return count;
+}
+
+[[nodiscard]] std::optional<sema::FunctionLookupKey> find_function_key(
+    const sema::CheckedModule& checked, const std::string_view function_name)
+{
+    for (const auto& entry : checked.functions) {
+        if (entry.second.name.view() == function_name) {
+            return entry.first;
+        }
+    }
+    return std::nullopt;
 }
 
 [[nodiscard]] const sema::FunctionLifetimeFacts* find_lifetime_facts(
@@ -372,6 +413,11 @@ TEST(CoreUnit, LifetimeFactsPopulateTypeCheckBodyAuthorityFlags)
     summary.return_origins.push_back(sema::FunctionBorrowReturnOrigin{.origin_index = 0U});
     summary.has_unknown_return_origin = true;
     summary.has_local_return_escape = true;
+    summary.storage_escapes.push_back(sema::FunctionBorrowStorageEscape{
+        .origin_index = 0U,
+        .stored_expr = syntax::ExprId{6U},
+        .range = base::SourceRange{LIFETIME_TEST_SOURCE_ID, 6U, 12U},
+    });
     summary.fingerprint = query::stable_fingerprint("lifetime-test-borrow-summary");
     checked.borrow_summaries[key] = summary;
 
@@ -457,8 +503,10 @@ TEST(CoreUnit, LifetimeFactsPopulateTypeCheckBodyAuthorityFlags)
     EXPECT_TRUE(authority.has_borrow_summary);
     EXPECT_EQ(authority.borrow_summary_origin_count, 1U);
     EXPECT_EQ(authority.borrow_summary_dependency_count, 1U);
+    EXPECT_EQ(authority.borrow_summary_storage_escape_count, 1U);
     EXPECT_TRUE(authority.borrow_summary_has_unknown_return_origin);
     EXPECT_TRUE(authority.borrow_summary_has_local_return_escape);
+    EXPECT_TRUE(authority.borrow_summary_has_storage_escape);
     EXPECT_TRUE(authority.has_borrow_contract);
     EXPECT_EQ(authority.borrow_contract_selector_count, 1U);
     EXPECT_TRUE(authority.borrow_contract_unknown_return_allowed);
@@ -631,6 +679,51 @@ TEST(CoreUnit, LifetimeFactsDiagnoseReturnedLocalEscape)
                                         "}\n"
                                         "fn main() -> void {}\n";
     expect_lifetime_diagnostic(source, sema::SEMA_BORROWED_LOCAL_ESCAPE);
+}
+
+TEST(CoreUnit, LifetimeFactsDiagnoseStorageEscapeFromBorrowSummary)
+{
+    constexpr std::string_view source = "module lifetime.storage_escape;\n"
+                                        "struct Holder {\n"
+                                        "  value: &i32;\n"
+                                        "}\n"
+                                        "fn store(slot: &mut Holder) -> void {\n"
+                                        "  let local: i32 = 1;\n"
+                                        "  slot.value = &local;\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    syntax::AstModule module = parse_lifetime_source(source);
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    const auto result = analyzer.analyze();
+    EXPECT_FALSE(result);
+
+    const std::string messages = lifetime_diagnostic_messages(diagnostics);
+    EXPECT_EQ(count_substring_occurrences(messages, sema::SEMA_BORROWED_LOCAL_ESCAPE), 1U) << messages;
+
+    const std::optional<sema::FunctionLookupKey> store_key = find_function_key(analyzer.state_.checked, "store");
+    ASSERT_TRUE(store_key.has_value());
+    ASSERT_TRUE(analyzer.state_.checked.borrow_summaries.contains(*store_key));
+    const sema::FunctionBorrowSummary& summary = analyzer.state_.checked.borrow_summaries.at(*store_key);
+    EXPECT_FALSE(summary.return_type_can_contain_borrow);
+    EXPECT_TRUE(summary.return_origins.empty());
+    ASSERT_EQ(summary.storage_escapes.size(), 1U);
+    ASSERT_LT(summary.storage_escapes.front().origin_index, summary.origins.size());
+    const sema::BorrowSummaryOrigin& origin = summary.origins[summary.storage_escapes.front().origin_index];
+    EXPECT_EQ(origin.kind, sema::BorrowSummaryOriginKind::local);
+    EXPECT_TRUE(origin.storage_slot);
+
+    const auto facts = analyzer.state_.checked.lifetime_facts.find(*store_key);
+    ASSERT_NE(facts, analyzer.state_.checked.lifetime_facts.end());
+    EXPECT_TRUE(lifetime_facts_has_violation_kind(facts->second, sema::LifetimeViolationKind::local_escape));
+    EXPECT_TRUE(
+        lifetime_facts_has_emitted_violation_kind(facts->second, sema::LifetimeViolationKind::local_escape));
+
+    const std::string checked_dump = sema::dump_checked_module(analyzer.state_.checked);
+    EXPECT_NE(checked_dump.find("storage_escapes=1"), std::string::npos) << checked_dump;
+    const std::string summary_dump = sema::dump_function_borrow_summary(summary);
+    EXPECT_NE(summary_dump.find("storage_escapes:"), std::string::npos) << summary_dump;
+    EXPECT_NE(summary_dump.find("s0 origin=o"), std::string::npos) << summary_dump;
 }
 
 TEST(CoreUnit, LifetimeFactsDiagnoseRawDerivedLocalEscape)

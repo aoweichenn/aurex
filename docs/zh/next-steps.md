@@ -48,6 +48,14 @@ enforcement 已落地。`BorrowSummaryBuilder` 会追踪 `strraw` raw pointer al
 proof 当成错误。`BorrowEscapeAnalyzer` 已从 return escape 主路径降级为 storage-only parity guard，继续覆盖
 assignment into escaping struct field 等尚未迁移的存储逃逸矩阵。
 
+M7c-C 当前实现状态：核心 storage escape 迁移和性能收口已完成。`FunctionBorrowSummary::storage_escapes`
+记录 non-name storage assignment 中逃逸到外部 storage 的 borrowed origin，lifetime collector/enforcer 将其统一映射到
+`local_escape` / `unknown_escape` 主诊断；query/cache、checked dump、IDE semantic fact 和 hover 均暴露
+`storage_escapes` / `local_escapes` / `unknown_escapes`。旧 `BorrowEscapeAnalyzer` 只在 summary 缺失或无
+storage escape 且 body 有候选 non-name assignment 时作为窄 fallback guard 运行。M7c 热点性能已实测收口：
+storage escape `sema.analyze` 3-run median 500/1000/2000/4000 条为 50.701 / 100.202 / 204.232 / 419.745 ms；
+`gprof` 确认旧的 `BodyLoanSolver::expr_result_contains_loan` 二次热点已消失。
+
 M7c/M7d 后续实现按六个大块推进：
 
 1. M7c-A：已完成。parser/AST/type system 增加 contextual `origin` 参数、`&[origin] T` / `&mut[origin] T`、
@@ -55,8 +63,8 @@ M7c/M7d 后续实现按六个大块推进：
 2. M7c-B：已完成。deterministic outlives solver、body-flow live-range facts、elision/ambiguity diagnostics、
    type-outlives、return-origin subset enforcement 和 return local/raw-derived escape 主诊断已落地；旧 analyzer
    降级为 storage-only parity guard。
-3. M7c-C：继续推进 borrowed-view storage escape 迁移，旧 `BorrowEscapeAnalyzer` 删除或 debug-only 化；public/prototype/extern/trait
-   lifetime contract release policy 收口。
+3. M7c-C：核心已完成。后续只保留 analyzer 删除/debug-only 化的更大 parity 清理，以及 public/prototype/extern/trait
+   lifetime policy 的发布文档化，不再阻塞 storage escape 主事实链。
 4. M7d-A：引入 `DropCheckFact` / `DropActionFact`、dropck solver、destructor body safety 和泛型 drop glue
    type-outlives constraints。
 5. M7d-B：实现 place-level resource state，覆盖 field/tuple partial move、reinit、drop flag、replace/take/swap

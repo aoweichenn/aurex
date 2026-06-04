@@ -11,6 +11,7 @@
 #include <aurex/frontend/syntax/core/ast.hpp>
 #include <aurex/infrastructure/base/diagnostic.hpp>
 #include <aurex/infrastructure/base/result.hpp>
+#include <aurex/infrastructure/query/stable_hash.hpp>
 
 #include <cstddef>
 #include <memory>
@@ -498,6 +499,50 @@ private:
         SemaMap<base::u32, ModuleIdList> export_modules_cache;
     };
 
+    struct TypeLifetimeInfoIndexKey {
+        base::u32 type = INVALID_TYPE_HANDLE.value;
+        query::StableFingerprint128 fingerprint;
+
+        [[nodiscard]] friend bool operator==(
+            const TypeLifetimeInfoIndexKey& lhs, const TypeLifetimeInfoIndexKey& rhs) noexcept = default;
+    };
+
+    struct TypeLifetimeInfoIndexKeyHash {
+        [[nodiscard]] std::size_t operator()(const TypeLifetimeInfoIndexKey& key) const noexcept
+        {
+            query::StableHashBuilder builder;
+            builder.mix_u32(key.type);
+            builder.mix_fingerprint(key.fingerprint);
+            return query::stable_hash_value(builder.finish());
+        }
+    };
+
+    struct GenericLifetimePredicateIndexKey {
+        base::u32 subject_type = INVALID_TYPE_HANDLE.value;
+        std::string origin_name;
+        base::u8 source = 0;
+
+        [[nodiscard]] friend bool operator==(
+            const GenericLifetimePredicateIndexKey& lhs, const GenericLifetimePredicateIndexKey& rhs) noexcept =
+            default;
+    };
+
+    struct GenericLifetimePredicateIndexKeyHash {
+        [[nodiscard]] std::size_t operator()(const GenericLifetimePredicateIndexKey& key) const noexcept
+        {
+            query::StableHashBuilder builder;
+            builder.mix_u32(key.subject_type);
+            builder.mix_string(key.origin_name);
+            builder.mix_u8(key.source);
+            return query::stable_hash_value(builder.finish());
+        }
+    };
+
+    struct LifetimeIndexState {
+        std::unordered_set<TypeLifetimeInfoIndexKey, TypeLifetimeInfoIndexKeyHash> type_infos;
+        std::unordered_set<GenericLifetimePredicateIndexKey, GenericLifetimePredicateIndexKeyHash> generic_predicates;
+    };
+
     struct TypeAbiLayout {
         base::u64 size = SEMA_TYPE_ABI_INVALID_SIZE;
         base::u64 align = SEMA_TYPE_ABI_MIN_ALIGNMENT;
@@ -518,6 +563,7 @@ private:
         FunctionState functions;
         TraitState traits;
         mutable ModuleState modules;
+        LifetimeIndexState lifetime_indexes;
         FlowState flow;
     };
 

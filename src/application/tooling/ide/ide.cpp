@@ -985,6 +985,7 @@ void recover_resolved_fragment_source_part(
     std::ostringstream label;
     label << IDE_SEMANTIC_FACT_BORROW_SUMMARY << " origins=" << summary.origins.size()
           << " deps=" << summary.return_origins.size()
+          << " storage_escapes=" << summary.storage_escapes.size()
           << " unknown=" << (summary.has_unknown_return_origin ? "true" : "false")
           << " local_escape=" << (summary.has_local_return_escape ? "true" : "false")
           << " fingerprint=" << query::debug_string(summary.fingerprint);
@@ -1010,12 +1011,22 @@ void recover_resolved_fragment_source_part(
         std::ranges::any_of(facts.violations, [](const sema::LifetimeViolation& violation) {
             return violation.diagnostic_emitted;
         });
+    const base::usize local_escape_count =
+        static_cast<base::usize>(std::ranges::count_if(facts.violations, [](const sema::LifetimeViolation& violation) {
+            return violation.kind == sema::LifetimeViolationKind::local_escape;
+        }));
+    const base::usize unknown_escape_count =
+        static_cast<base::usize>(std::ranges::count_if(facts.violations, [](const sema::LifetimeViolation& violation) {
+            return violation.kind == sema::LifetimeViolationKind::unknown_escape;
+        }));
     std::ostringstream label;
     label << IDE_SEMANTIC_FACT_LIFETIME_FACTS << " regions=" << facts.regions.size()
           << " outlives=" << facts.outlives_constraints.size()
           << " type_outlives=" << facts.type_outlives_constraints.size()
           << " live_ranges=" << facts.live_ranges.size() << " returns=" << facts.return_regions.size()
           << " violations=" << facts.violations.size()
+          << " local_escapes=" << local_escape_count
+          << " unknown_escapes=" << unknown_escape_count
           << " diagnostics=" << (has_emitted_diagnostics ? "true" : "false")
           << " fingerprint=" << query::debug_string(sema::function_lifetime_facts_fingerprint(facts));
     return label.str();
@@ -1080,6 +1091,7 @@ void recover_resolved_fragment_source_part(
         if (const auto summary = checked.borrow_summaries.find(*function_key);
             summary != checked.borrow_summaries.end()) {
             label << IDE_DETAIL_BORROW_SUMMARY_SEPARATOR << "deps=" << summary->second.return_origins.size()
+                  << ", storage_escapes=" << summary->second.storage_escapes.size()
                   << ", unknown=" << (summary->second.has_unknown_return_origin ? "true" : "false")
                   << ", local_escape=" << (summary->second.has_local_return_escape ? "true" : "false");
         }
@@ -1093,9 +1105,19 @@ void recover_resolved_fragment_source_part(
         }
         if (const auto lifetime = checked.lifetime_facts.find(*function_key);
             lifetime != checked.lifetime_facts.end()) {
+            const base::usize local_escape_count = static_cast<base::usize>(
+                std::ranges::count_if(lifetime->second.violations, [](const sema::LifetimeViolation& violation) {
+                    return violation.kind == sema::LifetimeViolationKind::local_escape;
+                }));
+            const base::usize unknown_escape_count = static_cast<base::usize>(
+                std::ranges::count_if(lifetime->second.violations, [](const sema::LifetimeViolation& violation) {
+                    return violation.kind == sema::LifetimeViolationKind::unknown_escape;
+                }));
             label << IDE_DETAIL_LIFETIME_SEPARATOR << "regions=" << lifetime->second.regions.size()
                   << "/returns=" << lifetime->second.return_regions.size()
-                  << "/violations=" << lifetime->second.violations.size();
+                  << "/violations=" << lifetime->second.violations.size()
+                  << "/local_escapes=" << local_escape_count
+                  << "/unknown_escapes=" << unknown_escape_count;
         }
     }
     return label.str();

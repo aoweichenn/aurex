@@ -12,6 +12,16 @@ namespace {
 
 constexpr std::string_view SEMA_BORROW_SUMMARY_ID_CONTEXT = "sema borrow summary id";
 constexpr base::usize SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY = 32;
+constexpr std::size_t SEMA_BORROW_SUMMARY_HASH_MIX = 0x9e3779b97f4a7c15ULL;
+constexpr base::usize SEMA_BORROW_SUMMARY_HASH_LEFT_SHIFT = 6;
+constexpr base::usize SEMA_BORROW_SUMMARY_HASH_RIGHT_SHIFT = 2;
+
+[[nodiscard]] std::size_t mix_borrow_summary_hash(std::size_t hash, const base::u64 value) noexcept
+{
+    hash ^= static_cast<std::size_t>(value) + SEMA_BORROW_SUMMARY_HASH_MIX
+        + (hash << SEMA_BORROW_SUMMARY_HASH_LEFT_SHIFT) + (hash >> SEMA_BORROW_SUMMARY_HASH_RIGHT_SHIFT);
+    return hash;
+}
 
 [[nodiscard]] bool valid_stmt(const syntax::AstModule& module, const syntax::StmtId stmt) noexcept
 {
@@ -38,10 +48,17 @@ constexpr base::usize SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY = 32;
     return lhs.source.value == rhs.source.value && lhs.begin == rhs.begin && lhs.end == rhs.end;
 }
 
-[[nodiscard]] bool same_origin(const BorrowSummaryOrigin& lhs, const BorrowSummaryOrigin& rhs) noexcept
+[[nodiscard]] bool same_storage_escape(
+    const FunctionBorrowStorageEscape& lhs, const FunctionBorrowStorageEscape& rhs) noexcept
 {
-    return lhs.kind == rhs.kind && lhs.param_index == rhs.param_index && lhs.name_id == rhs.name_id
-        && lhs.expr.value == rhs.expr.value && lhs.storage_slot == rhs.storage_slot && same_range(lhs.range, rhs.range);
+    return lhs.origin_index == rhs.origin_index && lhs.stored_expr.value == rhs.stored_expr.value
+        && same_range(lhs.range, rhs.range);
+}
+
+[[nodiscard]] bool summary_origin_is_local_escape_source(const BorrowSummaryOrigin& origin) noexcept
+{
+    return origin.kind == BorrowSummaryOriginKind::local || origin.kind == BorrowSummaryOriginKind::temporary
+        || (origin.kind == BorrowSummaryOriginKind::parameter && origin.storage_slot);
 }
 
 void append_optional_name_id(std::ostringstream& stream, const IdentId name)
@@ -73,16 +90,25 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::BorrowSummaryBuilder(SemanticAnalyze
 {
 }
 
+std::size_t SemanticAnalyzerCore::BorrowSummaryBuilder::OriginKeyHash::operator()(
+    const OriginKey& key) const noexcept
+{
+    std::size_t hash = static_cast<std::size_t>(key.kind);
+    hash = mix_borrow_summary_hash(hash, key.param_index);
+    hash = mix_borrow_summary_hash(hash, key.name_id);
+    hash = mix_borrow_summary_hash(hash, key.expr);
+    hash = mix_borrow_summary_hash(hash, key.storage_slot ? 1U : 0U);
+    hash = mix_borrow_summary_hash(hash, key.source);
+    hash = mix_borrow_summary_hash(hash, key.range_begin);
+    hash = mix_borrow_summary_hash(hash, key.range_end);
+    return hash;
+}
+
 void SemanticAnalyzerCore::BorrowSummaryBuilder::build(
     const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature)
 {
     this->reset(function, key, signature);
     this->bind_parameters();
-    if (!this->summary_.return_type_can_contain_borrow) {
-        this->finalize_summary();
-        this->core_.state_.checked.borrow_summaries[key] = std::move(this->summary_);
-        return;
-    }
     std::vector<Task> tasks;
     tasks.reserve(SEMA_BORROW_SUMMARY_INITIAL_TASK_CAPACITY);
     this->push_scoped_block(tasks, function.body);
@@ -102,6 +128,8 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::reset(
     this->summary_.return_type_can_contain_borrow = this->type_can_contain_borrow(signature.return_type);
     this->summary_.part_index = signature.part_index;
     this->scopes_.clear();
+    this->origin_lookup_.clear();
+    this->origin_lookup_.reserve(function.params.size());
     this->type_borrow_cache_.clear();
     this->push_scope();
 }
@@ -235,15 +263,30 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
     return {};
 }
 
+SemanticAnalyzerCore::BorrowSummaryBuilder::OriginKey
+SemanticAnalyzerCore::BorrowSummaryBuilder::origin_key(const BorrowSummaryOrigin& origin) noexcept
+{
+    return OriginKey{
+        .kind = static_cast<base::u8>(origin.kind),
+        .param_index = origin.param_index,
+        .name_id = origin.name_id.value,
+        .expr = origin.expr.value,
+        .storage_slot = origin.storage_slot,
+        .source = origin.range.source.value,
+        .range_begin = origin.range.begin,
+        .range_end = origin.range.end,
+    };
+}
+
 base::u32 SemanticAnalyzerCore::BorrowSummaryBuilder::append_origin(BorrowSummaryOrigin origin)
 {
-    for (base::usize index = 0; index < this->summary_.origins.size(); ++index) {
-        if (same_origin(this->summary_.origins[index], origin)) {
-            return base::checked_u32(index, SEMA_BORROW_SUMMARY_ID_CONTEXT);
-        }
+    const OriginKey key = this->origin_key(origin);
+    if (const auto found = this->origin_lookup_.find(key); found != this->origin_lookup_.end()) {
+        return found->second;
     }
     const base::u32 index = base::checked_u32(this->summary_.origins.size(), SEMA_BORROW_SUMMARY_ID_CONTEXT);
     this->summary_.origins.push_back(std::move(origin));
+    this->origin_lookup_.emplace(key, index);
     return index;
 }
 
@@ -321,6 +364,9 @@ SemanticAnalyzerCore::BorrowSummaryBuilder::OriginSet SemanticAnalyzerCore::Borr
 
 void SemanticAnalyzerCore::BorrowSummaryBuilder::sort_unique(OriginSet& origin) const
 {
+    if (origin.origins.size() < 2U) {
+        return;
+    }
     std::ranges::sort(origin.origins);
     origin.origins.erase(std::ranges::unique(origin.origins).begin(), origin.origins.end());
 }
@@ -611,14 +657,33 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_local_declaration(
 void SemanticAnalyzerCore::BorrowSummaryBuilder::analyze_assignment(const syntax::StmtNode& stmt)
 {
     const IdentId assigned_name = this->unqualified_name_id(stmt.lhs);
+    const TypeHandle lhs_type = this->core_.cached_expr_type(stmt.lhs);
+    const OriginSet borrowed_origin =
+        this->type_can_contain_borrow(lhs_type) ? this->borrow_origin(stmt.rhs) : OriginSet{};
     if (!syntax::is_valid(assigned_name)) {
+        this->record_storage_escape(borrowed_origin, stmt.rhs, stmt.range);
         return;
     }
-    const TypeHandle lhs_type = this->core_.cached_expr_type(stmt.lhs);
-    this->assign_borrowed_value(
-        assigned_name, this->type_can_contain_borrow(lhs_type) ? this->borrow_origin(stmt.rhs) : OriginSet{});
+    this->assign_borrowed_value(assigned_name, borrowed_origin);
     this->assign_pointer_value(assigned_name,
         this->core_.state_.checked.types.is_pointer(lhs_type) ? this->pointer_origin(stmt.rhs) : OriginSet{});
+}
+
+void SemanticAnalyzerCore::BorrowSummaryBuilder::record_storage_escape(
+    OriginSet origin, const syntax::ExprId expr, const base::SourceRange& range)
+{
+    this->sort_unique(origin);
+    for (const base::u32 origin_index : origin.origins) {
+        if (origin_index >= this->summary_.origins.size()
+            || !summary_origin_is_local_escape_source(this->summary_.origins[origin_index])) {
+            continue;
+        }
+        this->summary_.storage_escapes.push_back(FunctionBorrowStorageEscape{
+            .origin_index = origin_index,
+            .stored_expr = expr,
+            .range = valid_expr(this->core_.ctx_.module, expr) ? expr_range(this->core_.ctx_.module, expr) : range,
+        });
+    }
 }
 
 void SemanticAnalyzerCore::BorrowSummaryBuilder::bind_pattern_storage(
@@ -1421,6 +1486,22 @@ void SemanticAnalyzerCore::BorrowSummaryBuilder::finalize_summary()
             })
             .begin(),
         this->summary_.return_origins.end());
+
+    std::ranges::sort(this->summary_.storage_escapes,
+        [](const FunctionBorrowStorageEscape& lhs, const FunctionBorrowStorageEscape& rhs) {
+            return std::tie(lhs.origin_index, lhs.stored_expr.value, lhs.range.source.value, lhs.range.begin,
+                       lhs.range.end)
+                < std::tie(rhs.origin_index, rhs.stored_expr.value, rhs.range.source.value, rhs.range.begin,
+                    rhs.range.end);
+        });
+    this->summary_.storage_escapes.erase(
+        std::ranges::unique(this->summary_.storage_escapes, same_storage_escape).begin(),
+        this->summary_.storage_escapes.end());
+    if (!this->summary_.return_type_can_contain_borrow && this->summary_.return_origins.empty()
+        && this->summary_.storage_escapes.empty() && !this->summary_.has_unknown_return_origin
+        && !this->summary_.has_local_return_escape) {
+        this->summary_.origins.clear();
+    }
     this->summary_.fingerprint = this->fingerprint_summary();
 }
 
@@ -1446,6 +1527,11 @@ query::StableFingerprint128 SemanticAnalyzerCore::BorrowSummaryBuilder::fingerpr
     for (const FunctionBorrowReturnOrigin& dependency : this->summary_.return_origins) {
         builder.mix_u32(dependency.origin_index);
         builder.mix_u32(dependency.return_expr.value);
+    }
+    builder.mix_u64(static_cast<base::u64>(this->summary_.storage_escapes.size()));
+    for (const FunctionBorrowStorageEscape& escape : this->summary_.storage_escapes) {
+        builder.mix_u32(escape.origin_index);
+        builder.mix_u32(escape.stored_expr.value);
     }
     return builder.finish();
 }
@@ -1501,6 +1587,16 @@ std::string dump_function_borrow_summary(const FunctionBorrowSummary& summary)
         append_optional_expr_id(stream, dependency.return_expr);
         stream << " range=";
         append_range(stream, dependency.range);
+        stream << '\n';
+    }
+
+    stream << "storage_escapes:\n";
+    for (base::usize index = 0; index < summary.storage_escapes.size(); ++index) {
+        const FunctionBorrowStorageEscape& escape = summary.storage_escapes[index];
+        stream << "  s" << index << " origin=o" << escape.origin_index << " expr=";
+        append_optional_expr_id(stream, escape.stored_expr);
+        stream << " range=";
+        append_range(stream, escape.range);
         stream << '\n';
     }
     return stream.str();

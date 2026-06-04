@@ -1,5 +1,32 @@
 # 版本文档
 
+## M7c-C Storage Escape 与性能收口
+
+M7c-C 的核心 storage escape 迁移和性能收口已完成，文档入口仍为
+[Aurex M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线](m7c-m7d-complete-borrow-raii-design.md)。
+
+当前新增实现包括：
+
+- `FunctionBorrowSummary::storage_escapes`，用于记录 non-name storage assignment 中逃逸到外部 storage 的
+  borrowed origin。
+- lifetime collector 将 borrow summary storage escape 映射为 `local_escape` / `unknown_escape` violation，
+  由 lifetime enforcer 统一发出主诊断。
+- `TypeCheckBodyAuthority`、query fingerprint、checked dump、borrow summary dump、IDE semantic fact 和 hover
+  暴露 storage escape / local escape / unknown escape 状态。
+- 旧 `BorrowEscapeAnalyzer` 只在 summary 缺失或 summary 无 storage escape 且 body 有候选 non-name assignment
+  时作为窄 fallback guard 运行，避免 summary/lifetime 主路径与旧 analyzer 重复报错。
+- borrow summary、lifetime 和 body loan hot path 的 O(n²) 扫描已改为 hash index、sparse graph/cache 或
+  per-action/per-carrier queue：origin 去重、lifetime duplicate facts、lifetime violation、outlives reachability、
+  body-loan carrier binding、reborrow parent 绑定和 two-phase activation matching 均已收口。
+
+本地实际性能数据使用 `aurexc --profile-output`、`cmake -E time` wall-time spot-check 和 `gprof` 采集。
+`build/full-llvm-fedora` 当前配置下，storage escape 压测 `sema.analyze` 3-run median 为：500 条
+50.701 ms，1000 条 100.202 ms，2000 条 204.232 ms，4000 条 419.745 ms。优化前同类 500/1000/2000
+条为
+323.151 / 1007.543 / 4821.837 ms。更新后的 `gprof` 2000 条报告确认旧热点
+`BodyLoanSolver::expr_result_contains_loan` 已不再出现在热点调用列表，`BodyLoanSolver::type_contains_reference`
+调用数为 4000 次，随输入规模线性增长。
+
 ## M7c-A / M7c-B Lifetime Facts 与 Region Enforcement 实现收口
 
 M7c-A / M7c-B 已完成实现收口，文档入口仍为

@@ -7,6 +7,7 @@
 #include <optional>
 #include <sstream>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -20,6 +21,9 @@ constexpr std::string_view SEMA_BODY_LOAN_ID_CONTEXT = "sema body loan id";
 constexpr std::string_view SEMA_BODY_LOAN_FINGERPRINT_MARKER = "sema.body_loan_check.v1";
 constexpr base::usize SEMA_BODY_LOAN_INITIAL_WORKLIST_CAPACITY = 32;
 constexpr base::usize SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY = 64;
+constexpr base::u8 SEMA_BODY_LOAN_TYPE_REF_CACHE_UNKNOWN = 0;
+constexpr base::u8 SEMA_BODY_LOAN_TYPE_REF_CACHE_FALSE = 1;
+constexpr base::u8 SEMA_BODY_LOAN_TYPE_REF_CACHE_TRUE = 2;
 
 enum class BodyLoanAccessKind : base::u8 {
     read,
@@ -52,6 +56,63 @@ struct BodyLoanActionSite {
     base::u32 action = SEMA_BODY_LOAN_INVALID_INDEX;
     base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
     base::SourceRange range{};
+};
+
+struct BodyLoanLatestCarrierLoan {
+    base::u32 loan = SEMA_BODY_LOAN_INVALID_INDEX;
+    base::u32 issued_action = SEMA_BODY_LOAN_INVALID_INDEX;
+};
+
+struct BodyLoanCarrierBinding {
+    IdentId carrier_name_id = INVALID_IDENT_ID;
+    syntax::StmtId enclosing_stmt = syntax::INVALID_STMT_ID;
+    base::u32 carrier_definition_point = SEMA_BODY_FLOW_INVALID_INDEX;
+};
+
+struct BodyLoanCarrierDefinitionKey {
+    base::u32 name_id = INVALID_IDENT_ID.value;
+    base::u32 stmt = syntax::INVALID_STMT_ID.value;
+
+    [[nodiscard]] friend bool operator==(
+        const BodyLoanCarrierDefinitionKey& lhs, const BodyLoanCarrierDefinitionKey& rhs) noexcept = default;
+};
+
+struct BodyLoanCarrierDefinitionKeyHash {
+    [[nodiscard]] std::size_t operator()(const BodyLoanCarrierDefinitionKey& key) const noexcept
+    {
+        query::StableHashBuilder builder;
+        builder.mix_u32(key.name_id);
+        builder.mix_u32(key.stmt);
+        return query::stable_hash_value(builder.finish());
+    }
+};
+
+struct BodyLoanCarrierLivenessActions {
+    std::vector<base::u32> use_points;
+    std::vector<base::u32> definition_points;
+};
+
+struct BodyLoanTwoPhaseActivationKey {
+    base::u32 expr = syntax::INVALID_EXPR_ID.value;
+    base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
+
+    [[nodiscard]] friend bool operator==(
+        const BodyLoanTwoPhaseActivationKey& lhs, const BodyLoanTwoPhaseActivationKey& rhs) noexcept = default;
+};
+
+struct BodyLoanTwoPhaseActivationKeyHash {
+    [[nodiscard]] std::size_t operator()(const BodyLoanTwoPhaseActivationKey& key) const noexcept
+    {
+        query::StableHashBuilder builder;
+        builder.mix_u32(key.expr);
+        builder.mix_u32(key.place);
+        return query::stable_hash_value(builder.finish());
+    }
+};
+
+struct BodyLoanTwoPhaseActivationQueue {
+    std::vector<BodyLoanActionSite> activations;
+    base::usize next = 0;
 };
 
 [[nodiscard]] bool valid_point(const BodyFlowGraph& graph, const base::u32 point) noexcept
@@ -571,6 +632,7 @@ public:
     [[nodiscard]] BodyLoanCheckResult run()
     {
         this->build_graph_index();
+        this->build_carrier_indexes();
         this->collect_loans();
         this->bind_reborrow_parents();
         this->collect_two_phase_borrows();
@@ -606,8 +668,139 @@ private:
         }
     }
 
+    void build_carrier_indexes()
+    {
+        this->carrier_definition_points_.clear();
+        this->direct_carrier_by_borrow_operand_.clear();
+        this->indexed_carrier_by_loan_expr_.clear();
+        this->build_carrier_definition_index();
+        this->build_direct_carrier_binding_index();
+        this->build_result_carrier_binding_index();
+    }
+
+    void build_carrier_definition_index()
+    {
+        this->carrier_definition_points_.reserve(this->graph_.actions.size());
+        for (const BodyFlowAction& action : this->graph_.actions) {
+            if (!action_is_storage_definition(action.kind) || !valid_place(this->graph_, action.place)
+                || !syntax::is_valid(action.stmt)) {
+                continue;
+            }
+            const BodyFlowPlace& place = this->graph_.places[action.place];
+            if (place.root_kind != BodyFlowPlaceRootKind::local || !syntax::is_valid(place.root_name_id)
+                || !place.projections.empty()) {
+                continue;
+            }
+            this->carrier_definition_points_.try_emplace(
+                BodyLoanCarrierDefinitionKey{
+                    .name_id = place.root_name_id.value,
+                    .stmt = action.stmt.value,
+                },
+                action.point);
+        }
+    }
+
+    void build_direct_carrier_binding_index()
+    {
+        std::vector<syntax::StmtId> pending{this->function_.body};
+        while (!pending.empty()) {
+            const syntax::StmtId stmt = pending.back();
+            pending.pop_back();
+            if (!valid_stmt(this->module_, stmt)) {
+                continue;
+            }
+            const syntax::StmtNode& node = this->module_.stmts[stmt.value];
+            this->index_direct_carrier_binding_from_statement(stmt, node);
+            this->push_child_statements(node, pending);
+        }
+    }
+
+    void index_direct_carrier_binding_from_statement(const syntax::StmtId stmt, const syntax::StmtNode& node)
+    {
+        if ((node.kind == syntax::StmtKind::let || node.kind == syntax::StmtKind::var)
+            && syntax::is_valid(node.name_id)) {
+            this->index_direct_carrier_binding(this->direct_address_operand(node.init), node.name_id, stmt);
+            return;
+        }
+        if (node.kind != syntax::StmtKind::assign) {
+            return;
+        }
+        const IdentId lhs = this->direct_name_id(node.lhs);
+        if (syntax::is_valid(lhs)) {
+            this->index_direct_carrier_binding(this->direct_address_operand(node.rhs), lhs, stmt);
+        }
+    }
+
+    void index_direct_carrier_binding(
+        const syntax::ExprId borrowed_operand, const IdentId carrier_name_id, const syntax::StmtId stmt)
+    {
+        if (!valid_expr(this->module_, borrowed_operand) || !syntax::is_valid(carrier_name_id)) {
+            return;
+        }
+        this->direct_carrier_by_borrow_operand_.try_emplace(
+            borrowed_operand.value,
+            BodyLoanCarrierBinding{
+                .carrier_name_id = carrier_name_id,
+                .enclosing_stmt = stmt,
+                .carrier_definition_point = this->find_carrier_definition_point(carrier_name_id, stmt),
+            });
+    }
+
+    void build_result_carrier_binding_index()
+    {
+        std::vector<syntax::StmtId> pending{this->function_.body};
+        while (!pending.empty()) {
+            const syntax::StmtId stmt = pending.back();
+            pending.pop_back();
+            if (!valid_stmt(this->module_, stmt)) {
+                continue;
+            }
+            const syntax::StmtNode& node = this->module_.stmts[stmt.value];
+            this->index_result_carrier_binding_from_statement(stmt, node);
+            this->push_child_statements(node, pending);
+        }
+    }
+
+    void index_result_carrier_binding_from_statement(const syntax::StmtId stmt, const syntax::StmtNode& node)
+    {
+        if ((node.kind == syntax::StmtKind::let || node.kind == syntax::StmtKind::var)
+            && syntax::is_valid(node.name_id)) {
+            this->index_result_carrier_binding(node.init, node.name_id, stmt);
+            return;
+        }
+        if (node.kind != syntax::StmtKind::assign) {
+            return;
+        }
+        const IdentId carrier_name_id = this->place_root_name_id(node.lhs);
+        if (syntax::is_valid(carrier_name_id)) {
+            this->index_result_carrier_binding(node.rhs, carrier_name_id, stmt);
+        }
+    }
+
+    void index_result_carrier_binding(
+        const syntax::ExprId result_expr, const IdentId carrier_name_id, const syntax::StmtId stmt)
+    {
+        if (!valid_expr(this->module_, result_expr) || !syntax::is_valid(carrier_name_id)) {
+            return;
+        }
+        std::vector<base::u32> loan_exprs;
+        this->collect_result_loan_exprs(result_expr, loan_exprs);
+        if (loan_exprs.empty()) {
+            return;
+        }
+        const BodyLoanCarrierBinding binding{
+            .carrier_name_id = carrier_name_id,
+            .enclosing_stmt = stmt,
+            .carrier_definition_point = this->find_carrier_definition_point(carrier_name_id, stmt),
+        };
+        for (const base::u32 loan_expr : loan_exprs) {
+            this->indexed_carrier_by_loan_expr_.try_emplace(loan_expr, binding);
+        }
+    }
+
     void collect_loans()
     {
+        this->loan_by_issued_action_.assign(this->graph_.actions.size(), SEMA_BODY_LOAN_INVALID_INDEX);
         for (base::usize action_index = 0; action_index < this->graph_.actions.size(); ++action_index) {
             const BodyFlowAction& action = this->graph_.actions[action_index];
             if (!action_is_borrow(action.kind) || !valid_place(this->graph_, action.place)) {
@@ -625,6 +818,11 @@ private:
             loan.range = action.range;
             this->bind_carrier(loan);
             this->result_.origins.push_back(loan.origin);
+            const base::u32 loan_index =
+                base::checked_u32(this->result_.loans.size(), SEMA_BODY_LOAN_ID_CONTEXT);
+            if (action_index < this->loan_by_issued_action_.size()) {
+                this->loan_by_issued_action_[action_index] = loan_index;
+            }
             this->result_.loans.push_back(std::move(loan));
         }
     }
@@ -633,16 +831,25 @@ private:
     {
         this->effective_loan_places_.clear();
         this->effective_loan_places_.reserve(this->result_.loans.size());
+        std::unordered_map<IdentId, BodyLoanLatestCarrierLoan, IdentIdHash> latest_loan_by_carrier;
+        latest_loan_by_carrier.reserve(this->result_.loans.size());
         for (base::usize loan_index = 0; loan_index < this->result_.loans.size(); ++loan_index) {
             BodyLoan& loan = this->result_.loans[loan_index];
-            this->bind_reborrow_parent_for_loan(loan_index, loan);
+            this->bind_reborrow_parent_for_loan(loan, latest_loan_by_carrier);
+            if (syntax::is_valid(loan.carrier_name_id)) {
+                latest_loan_by_carrier[loan.carrier_name_id] = BodyLoanLatestCarrierLoan{
+                    .loan = base::checked_u32(loan_index, SEMA_BODY_LOAN_ID_CONTEXT),
+                    .issued_action = loan.issued_action,
+                };
+            }
         }
         for (base::usize loan_index = 0; loan_index < this->result_.loans.size(); ++loan_index) {
             this->effective_loan_places_.push_back(this->make_effective_loan_place(loan_index));
         }
     }
 
-    void bind_reborrow_parent_for_loan(const base::usize loan_index, BodyLoan& loan) const
+    void bind_reborrow_parent_for_loan(BodyLoan& loan,
+        const std::unordered_map<IdentId, BodyLoanLatestCarrierLoan, IdentIdHash>& latest_loan_by_carrier) const
     {
         if (!valid_place(this->graph_, loan.place)) {
             return;
@@ -656,20 +863,11 @@ private:
         if (!syntax::is_valid(carrier)) {
             return;
         }
-        base::u32 parent_loan = SEMA_BODY_LOAN_INVALID_INDEX;
-        base::u32 parent_action = 0;
-        for (base::usize candidate_index = 0; candidate_index < this->result_.loans.size(); ++candidate_index) {
-            const BodyLoan& candidate = this->result_.loans[candidate_index];
-            if (candidate_index == loan_index || candidate.issued_action >= loan.issued_action
-                || candidate.carrier_name_id != carrier) {
-                continue;
-            }
-            if (parent_loan == SEMA_BODY_LOAN_INVALID_INDEX || candidate.issued_action > parent_action) {
-                parent_loan = base::checked_u32(candidate_index, SEMA_BODY_LOAN_ID_CONTEXT);
-                parent_action = candidate.issued_action;
-            }
+        const auto parent = latest_loan_by_carrier.find(carrier);
+        if (parent == latest_loan_by_carrier.end() || parent->second.issued_action >= loan.issued_action) {
+            return;
         }
-        loan.parent_loan = parent_loan;
+        loan.parent_loan = parent->second.loan;
     }
 
     [[nodiscard]] BodyFlowPlace make_effective_loan_place(const base::usize loan_index) const
@@ -701,7 +899,9 @@ private:
     {
         this->two_phase_by_reservation_action_.assign(this->graph_.actions.size(), SEMA_BODY_LOAN_INVALID_INDEX);
         this->two_phase_by_activation_action_.assign(this->graph_.actions.size(), SEMA_BODY_LOAN_INVALID_INDEX);
-        std::vector<bool> used_activation(this->graph_.actions.size(), false);
+        std::unordered_map<BodyLoanTwoPhaseActivationKey, BodyLoanTwoPhaseActivationQueue,
+            BodyLoanTwoPhaseActivationKeyHash>
+            activations = this->collect_two_phase_activation_index();
         for (base::usize reservation_index = 0; reservation_index < this->graph_.actions.size(); ++reservation_index) {
             const BodyFlowAction& reservation = this->graph_.actions[reservation_index];
             if (reservation.kind != BodyFlowActionKind::call_receiver_reserve
@@ -709,7 +909,7 @@ private:
                 continue;
             }
             const std::optional<BodyLoanActionSite> activation =
-                this->find_two_phase_activation(reservation, used_activation);
+                this->take_two_phase_activation(activations, reservation);
             if (!activation.has_value()) {
                 continue;
             }
@@ -726,28 +926,51 @@ private:
             this->result_.two_phase_borrows.push_back(std::move(borrow));
             this->two_phase_by_reservation_action_[reservation_index] = index;
             this->two_phase_by_activation_action_[activation->action] = index;
-            used_activation[activation->action] = true;
         }
     }
 
-    [[nodiscard]] std::optional<BodyLoanActionSite> find_two_phase_activation(
-        const BodyFlowAction& reservation, const std::vector<bool>& used_activation) const
+    [[nodiscard]] std::unordered_map<BodyLoanTwoPhaseActivationKey, BodyLoanTwoPhaseActivationQueue,
+        BodyLoanTwoPhaseActivationKeyHash>
+    collect_two_phase_activation_index() const
     {
+        std::unordered_map<BodyLoanTwoPhaseActivationKey, BodyLoanTwoPhaseActivationQueue,
+            BodyLoanTwoPhaseActivationKeyHash>
+            activations;
+        activations.reserve(this->graph_.actions.size());
         for (base::usize action_index = 0; action_index < this->graph_.actions.size(); ++action_index) {
-            if (action_index >= used_activation.size() || used_activation[action_index]) {
+            const BodyFlowAction& action = this->graph_.actions[action_index];
+            if (action.kind != BodyFlowActionKind::call_receiver_activate || !valid_place(this->graph_, action.place)) {
                 continue;
             }
-            const BodyFlowAction& action = this->graph_.actions[action_index];
-            if (action.kind == BodyFlowActionKind::call_receiver_activate && action.expr.value == reservation.expr.value
-                && action.place == reservation.place) {
-                return BodyLoanActionSite{
-                    .action = base::checked_u32(action_index, SEMA_BODY_LOAN_ID_CONTEXT),
-                    .point = action.point,
-                    .range = action.range,
-                };
-            }
+            BodyLoanTwoPhaseActivationQueue& queue = activations[BodyLoanTwoPhaseActivationKey{
+                .expr = action.expr.value,
+                .place = action.place,
+            }];
+            queue.activations.push_back(BodyLoanActionSite{
+                .action = base::checked_u32(action_index, SEMA_BODY_LOAN_ID_CONTEXT),
+                .point = action.point,
+                .range = action.range,
+            });
         }
-        return std::nullopt;
+        return activations;
+    }
+
+    [[nodiscard]] std::optional<BodyLoanActionSite> take_two_phase_activation(
+        std::unordered_map<BodyLoanTwoPhaseActivationKey, BodyLoanTwoPhaseActivationQueue,
+            BodyLoanTwoPhaseActivationKeyHash>& activations,
+        const BodyFlowAction& reservation) const
+    {
+        const auto found = activations.find(BodyLoanTwoPhaseActivationKey{
+            .expr = reservation.expr.value,
+            .place = reservation.place,
+        });
+        if (found == activations.end() || found->second.next >= found->second.activations.size()) {
+            return std::nullopt;
+        }
+        BodyLoanTwoPhaseActivationQueue& queue = found->second;
+        const BodyLoanActionSite activation = queue.activations[queue.next];
+        ++queue.next;
+        return activation;
     }
 
     [[nodiscard]] BodyLoanOrigin make_origin(const BodyFlowPlace& place) const noexcept
@@ -788,6 +1011,22 @@ private:
 
     void bind_carrier(BodyLoan& loan) const
     {
+        if (syntax::is_valid(loan.expr)) {
+            const auto direct = this->direct_carrier_by_borrow_operand_.find(loan.expr.value);
+            if (direct != this->direct_carrier_by_borrow_operand_.end()) {
+                loan.carrier_name_id = direct->second.carrier_name_id;
+                loan.enclosing_stmt = direct->second.enclosing_stmt;
+                loan.carrier_definition_point = direct->second.carrier_definition_point;
+                return;
+            }
+            const auto indexed = this->indexed_carrier_by_loan_expr_.find(loan.expr.value);
+            if (indexed != this->indexed_carrier_by_loan_expr_.end()) {
+                loan.carrier_name_id = indexed->second.carrier_name_id;
+                loan.enclosing_stmt = indexed->second.enclosing_stmt;
+                loan.carrier_definition_point = indexed->second.carrier_definition_point;
+                return;
+            }
+        }
         std::vector<syntax::StmtId> pending;
         pending.push_back(this->function_.body);
         while (!pending.empty()) {
@@ -846,6 +1085,29 @@ private:
             }
         }
         return false;
+    }
+
+    void collect_result_loan_exprs(const syntax::ExprId expr, std::vector<base::u32>& loan_exprs) const
+    {
+        std::vector<syntax::ExprId> pending{expr};
+        std::unordered_set<base::u32> visited;
+        while (!pending.empty()) {
+            const syntax::ExprId current = pending.back();
+            pending.pop_back();
+            if (!valid_expr(this->module_, current) || !visited.insert(current.value).second) {
+                continue;
+            }
+            loan_exprs.push_back(current.value);
+            const syntax::ExprId borrowed_operand = this->direct_address_operand(current);
+            if (syntax::is_valid(borrowed_operand)) {
+                loan_exprs.push_back(borrowed_operand.value);
+            }
+            if (!this->type_contains_reference(this->cached_expr_type(current))) {
+                continue;
+            }
+            this->push_value_result_children(pending, current);
+        }
+        this->sort_unique(loan_exprs);
     }
 
     [[nodiscard]] bool expr_is_loan_result(const syntax::ExprId expr, const BodyLoan& loan) const noexcept
@@ -1045,11 +1307,15 @@ private:
     [[nodiscard]] base::u32 find_carrier_definition_point(
         const IdentId carrier_name_id, const syntax::StmtId stmt) const noexcept
     {
-        for (const BodyFlowAction& action : this->graph_.actions) {
-            if (action_is_storage_definition(action.kind) && action.stmt.value == stmt.value
-                && this->action_place_has_root(action, carrier_name_id)) {
-                return action.point;
-            }
+        if (!syntax::is_valid(carrier_name_id) || !syntax::is_valid(stmt)) {
+            return SEMA_BODY_FLOW_INVALID_INDEX;
+        }
+        const auto found = this->carrier_definition_points_.find(BodyLoanCarrierDefinitionKey{
+            .name_id = carrier_name_id.value,
+            .stmt = stmt.value,
+        });
+        if (found != this->carrier_definition_points_.end()) {
+            return found->second;
         }
         return SEMA_BODY_FLOW_INVALID_INDEX;
     }
@@ -1058,29 +1324,57 @@ private:
     {
         this->carrier_live_after_.assign(
             this->result_.loans.size(), std::vector<bool>(this->graph_.points.size(), false));
+        const std::unordered_map<IdentId, BodyLoanCarrierLivenessActions, IdentIdHash> carrier_actions =
+            this->collect_carrier_liveness_actions();
         for (base::usize loan_index = 0; loan_index < this->result_.loans.size(); ++loan_index) {
             const BodyLoan& loan = this->result_.loans[loan_index];
             if (!syntax::is_valid(loan.carrier_name_id)) {
                 continue;
             }
+            const auto actions = carrier_actions.find(loan.carrier_name_id);
+            if (actions == carrier_actions.end() || actions->second.use_points.empty()) {
+                continue;
+            }
             std::vector<bool> uses(this->graph_.points.size(), false);
             std::vector<bool> definitions(this->graph_.points.size(), false);
-            for (base::usize action_index = 0; action_index < this->graph_.actions.size(); ++action_index) {
-                const BodyFlowAction& action = this->graph_.actions[action_index];
-                if (!valid_point(this->graph_, action.point)
-                    || !this->action_place_has_root(action, loan.carrier_name_id)) {
-                    continue;
+            for (const base::u32 point : actions->second.use_points) {
+                if (valid_point(this->graph_, point)) {
+                    uses[point] = true;
                 }
-                if (this->action_reads_carrier(action_index, action, loan.carrier_name_id)) {
-                    uses[action.point] = true;
-                }
-                if (this->action_defines_whole_carrier(action, loan.carrier_name_id)
-                    && action.point != loan.carrier_definition_point) {
-                    definitions[action.point] = true;
+            }
+            for (const base::u32 point : actions->second.definition_points) {
+                if (valid_point(this->graph_, point) && point != loan.carrier_definition_point) {
+                    definitions[point] = true;
                 }
             }
             this->solve_live_after_for_loan(loan_index, uses, definitions);
         }
+    }
+
+    [[nodiscard]] std::unordered_map<IdentId, BodyLoanCarrierLivenessActions, IdentIdHash>
+    collect_carrier_liveness_actions() const
+    {
+        std::unordered_map<IdentId, BodyLoanCarrierLivenessActions, IdentIdHash> result;
+        result.reserve(this->result_.loans.size());
+        for (base::usize action_index = 0; action_index < this->graph_.actions.size(); ++action_index) {
+            const BodyFlowAction& action = this->graph_.actions[action_index];
+            if (!valid_point(this->graph_, action.point) || !valid_place(this->graph_, action.place)) {
+                continue;
+            }
+            const BodyFlowPlace& place = this->graph_.places[action.place];
+            if (place.root_kind != BodyFlowPlaceRootKind::local || !syntax::is_valid(place.root_name_id)) {
+                continue;
+            }
+            BodyLoanCarrierLivenessActions& actions = result[place.root_name_id];
+            if (this->action_reads_carrier(
+                    base::checked_u32(action_index, SEMA_BODY_LOAN_ID_CONTEXT), action, place.root_name_id)) {
+                actions.use_points.push_back(action.point);
+            }
+            if (action_is_storage_definition(action.kind) && place.projections.empty()) {
+                actions.definition_points.push_back(action.point);
+            }
+        }
+        return result;
     }
 
     [[nodiscard]] bool action_place_has_root(const BodyFlowAction& action, const IdentId name_id) const noexcept
@@ -1125,9 +1419,38 @@ private:
             return false;
         }
         const BodyFlowPlace& place = this->graph_.places[action.place];
+        if (this->type_is_direct_borrow_carrier(this->cached_expr_type(place.root_expr))) {
+            return true;
+        }
         return std::ranges::any_of(place.projections, [](const BodyFlowPlaceProjection& projection) {
             return projection.kind == BodyFlowPlaceProjectionKind::dereference;
         });
+    }
+
+    [[nodiscard]] bool type_is_direct_borrow_carrier(const TypeHandle type) const noexcept
+    {
+        if (!is_valid(type) || type.value >= this->checked_.types.size()) {
+            return false;
+        }
+        const TypeInfo& info = this->checked_.types.get(type);
+        switch (info.kind) {
+            case TypeKind::builtin:
+                return info.builtin == BuiltinType::str;
+            case TypeKind::reference:
+            case TypeKind::slice:
+            case TypeKind::generic_param:
+            case TypeKind::associated_projection:
+                return true;
+            case TypeKind::array:
+            case TypeKind::tuple:
+            case TypeKind::struct_:
+            case TypeKind::enum_:
+            case TypeKind::pointer:
+            case TypeKind::function:
+            case TypeKind::opaque_struct:
+                return false;
+        }
+        return false;
     }
 
     void solve_live_after_for_loan(
@@ -1316,12 +1639,12 @@ private:
 
     void activate_loan_for_action(const base::u32 action_index, std::vector<base::u32>& active) const
     {
-        for (base::usize loan_index = 0; loan_index < this->result_.loans.size(); ++loan_index) {
-            if (this->result_.loans[loan_index].issued_action != action_index) {
-                continue;
-            }
-            active.push_back(base::checked_u32(loan_index, SEMA_BODY_LOAN_ID_CONTEXT));
+        if (action_index >= this->loan_by_issued_action_.size()) {
             return;
+        }
+        const base::u32 loan_index = this->loan_by_issued_action_[action_index];
+        if (loan_index != SEMA_BODY_LOAN_INVALID_INDEX) {
+            active.push_back(loan_index);
         }
     }
 
@@ -1626,6 +1949,25 @@ private:
         if (!is_valid(type)) {
             return false;
         }
+        if (type.value < this->type_contains_reference_cache_.size()) {
+            const base::u8 cached = this->type_contains_reference_cache_[type.value];
+            if (cached == SEMA_BODY_LOAN_TYPE_REF_CACHE_TRUE) {
+                return true;
+            }
+            if (cached == SEMA_BODY_LOAN_TYPE_REF_CACHE_FALSE) {
+                return false;
+            }
+        }
+        const bool result = this->compute_type_contains_reference(type);
+        if (type.value < this->type_contains_reference_cache_.size()) {
+            this->type_contains_reference_cache_[type.value] =
+                result ? SEMA_BODY_LOAN_TYPE_REF_CACHE_TRUE : SEMA_BODY_LOAN_TYPE_REF_CACHE_FALSE;
+        }
+        return result;
+    }
+
+    [[nodiscard]] bool compute_type_contains_reference(const TypeHandle type) const
+    {
         std::vector<TypeHandle> pending;
         pending.reserve(SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY);
         std::unordered_set<base::u32> visited;
@@ -1636,6 +1978,15 @@ private:
             if (!is_valid(current) || current.value >= this->checked_.types.size()
                 || !visited.insert(current.value).second) {
                 continue;
+            }
+            if (current.value < this->type_contains_reference_cache_.size()) {
+                const base::u8 cached = this->type_contains_reference_cache_[current.value];
+                if (cached == SEMA_BODY_LOAN_TYPE_REF_CACHE_TRUE) {
+                    return true;
+                }
+                if (cached == SEMA_BODY_LOAN_TYPE_REF_CACHE_FALSE) {
+                    continue;
+                }
             }
             const TypeInfo& info = this->checked_.types.get(current);
             switch (info.kind) {
@@ -1702,10 +2053,17 @@ private:
     BodyLoanCheckResult result_;
     BodyLoanActionIndex index_;
     std::vector<bool> read_action_observes_reference_;
+    std::unordered_map<BodyLoanCarrierDefinitionKey, base::u32, BodyLoanCarrierDefinitionKeyHash>
+        carrier_definition_points_;
+    std::unordered_map<base::u32, BodyLoanCarrierBinding> direct_carrier_by_borrow_operand_;
+    std::unordered_map<base::u32, BodyLoanCarrierBinding> indexed_carrier_by_loan_expr_;
+    std::vector<base::u32> loan_by_issued_action_;
     std::vector<std::vector<bool>> carrier_live_after_;
     std::vector<std::vector<base::u32>> active_in_;
     std::vector<std::vector<base::u32>> active_out_;
     std::vector<BodyFlowPlace> effective_loan_places_;
+    mutable std::vector<base::u8> type_contains_reference_cache_ =
+        std::vector<base::u8>(checked_.types.size(), SEMA_BODY_LOAN_TYPE_REF_CACHE_UNKNOWN);
     std::vector<base::u32> two_phase_by_reservation_action_;
     std::vector<base::u32> two_phase_by_activation_action_;
     std::unordered_set<std::uint64_t> seen_conflicts_;

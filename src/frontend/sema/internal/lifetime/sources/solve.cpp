@@ -7,6 +7,8 @@
 namespace aurex::sema {
 namespace {
 
+constexpr base::usize SEMA_LIFETIME_REACHABILITY_INITIAL_STACK_CAPACITY = 32;
+
 [[nodiscard]] bool valid_body_flow_point(const BodyFlowGraph& graph, const base::u32 point) noexcept
 {
     return point != SEMA_BODY_FLOW_INVALID_INDEX && point < graph.points.size();
@@ -51,21 +53,27 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::solve()
                     && lhs.reason == rhs.reason;
             }).begin(),
         this->facts_.outlives_constraints.end());
-    this->initialize_outlives_matrix();
-    this->close_outlives_matrix();
+    this->initialize_outlives_graph();
     this->collect_body_live_ranges();
     this->facts_.solved = true;
 }
 
-void SemanticAnalyzerCore::LifetimeAnalyzer::initialize_outlives_matrix()
+void SemanticAnalyzerCore::LifetimeAnalyzer::initialize_outlives_graph()
 {
     const base::usize region_count = this->facts_.regions.size();
-    this->outlives_.assign(region_count, std::vector<bool>(region_count, false));
-    for (base::usize index = 0; index < region_count; ++index) {
-        this->outlives_[index][index] = true;
-    }
+    this->outlives_successors_.assign(region_count, {});
+    this->outlives_reachability_cache_.assign(region_count, {});
+    this->outlives_reachability_cached_.assign(region_count, false);
     for (const LifetimeOutlivesConstraint& constraint : this->facts_.outlives_constraints) {
-        this->outlives_[constraint.longer_region][constraint.shorter_region] = true;
+        if (constraint.longer_region >= region_count || constraint.shorter_region >= region_count
+            || constraint.longer_region == constraint.shorter_region) {
+            continue;
+        }
+        this->outlives_successors_[constraint.longer_region].push_back(constraint.shorter_region);
+    }
+    for (std::vector<base::u32>& successors : this->outlives_successors_) {
+        std::ranges::sort(successors);
+        successors.erase(std::ranges::unique(successors).begin(), successors.end());
     }
 }
 
@@ -168,26 +176,49 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::append_live_range(const base::u32 r
     });
 }
 
-void SemanticAnalyzerCore::LifetimeAnalyzer::close_outlives_matrix()
+void SemanticAnalyzerCore::LifetimeAnalyzer::cache_outlives_reachability(const base::u32 longer)
 {
-    const base::usize region_count = this->outlives_.size();
-    for (base::usize middle = 0; middle < region_count; ++middle) {
-        for (base::usize longer = 0; longer < region_count; ++longer) {
-            if (!this->outlives_[longer][middle]) {
+    if (longer >= this->outlives_successors_.size() || longer >= this->outlives_reachability_cache_.size()
+        || longer >= this->outlives_reachability_cached_.size()) {
+        return;
+    }
+    std::vector<bool>& reachable = this->outlives_reachability_cache_[longer];
+    reachable.assign(this->outlives_successors_.size(), false);
+    std::vector<base::u32> pending;
+    pending.reserve(SEMA_LIFETIME_REACHABILITY_INITIAL_STACK_CAPACITY);
+    pending.push_back(longer);
+    reachable[longer] = true;
+    while (!pending.empty()) {
+        const base::u32 current = pending.back();
+        pending.pop_back();
+        if (current >= this->outlives_successors_.size()) {
+            continue;
+        }
+        for (const base::u32 successor : this->outlives_successors_[current]) {
+            if (successor >= reachable.size() || reachable[successor]) {
                 continue;
             }
-            for (base::usize shorter = 0; shorter < region_count; ++shorter) {
-                this->outlives_[longer][shorter] = this->outlives_[longer][shorter]
-                    || this->outlives_[middle][shorter];
-            }
+            reachable[successor] = true;
+            pending.push_back(successor);
         }
     }
+    this->outlives_reachability_cached_[longer] = true;
 }
 
-bool SemanticAnalyzerCore::LifetimeAnalyzer::region_outlives(
-    const base::u32 longer, const base::u32 shorter) const noexcept
+bool SemanticAnalyzerCore::LifetimeAnalyzer::region_outlives(const base::u32 longer, const base::u32 shorter)
 {
-    return this->outlives_[longer][shorter];
+    if (longer == shorter) {
+        return true;
+    }
+    if (longer >= this->outlives_successors_.size() || shorter >= this->outlives_successors_.size()) {
+        return false;
+    }
+    if (longer >= this->outlives_reachability_cached_.size() || !this->outlives_reachability_cached_[longer]) {
+        this->cache_outlives_reachability(longer);
+    }
+    return longer < this->outlives_reachability_cache_.size()
+        && shorter < this->outlives_reachability_cache_[longer].size()
+        && this->outlives_reachability_cache_[longer][shorter];
 }
 
 } // namespace aurex::sema

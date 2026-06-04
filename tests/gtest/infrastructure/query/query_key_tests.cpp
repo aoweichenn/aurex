@@ -3275,6 +3275,8 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
     summary_changed_authority.has_borrow_summary = true;
     summary_changed_authority.borrow_summary_origin_count = 1;
     summary_changed_authority.borrow_summary_dependency_count = 1;
+    summary_changed_authority.borrow_summary_storage_escape_count = 1;
+    summary_changed_authority.borrow_summary_has_storage_escape = true;
     summary_changed_authority.borrow_summary_fingerprint = query::stable_fingerprint("query-test-borrow-summary");
     EXPECT_NE(query::type_check_body_result_fingerprint(summary_changed_authority), output->result);
 

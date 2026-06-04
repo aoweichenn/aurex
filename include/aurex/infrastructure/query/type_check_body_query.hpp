@@ -22,6 +22,7 @@ struct TypeCheckBodyAuthority {
     base::u32 coercion_count = 0;
     base::u32 borrow_summary_origin_count = 0;
     base::u32 borrow_summary_dependency_count = 0;
+    base::u32 borrow_summary_storage_escape_count = 0;
     base::u32 borrow_contract_selector_count = 0;
     base::u32 lifetime_region_count = 0;
     base::u32 lifetime_outlives_constraint_count = 0;
@@ -43,6 +44,7 @@ struct TypeCheckBodyAuthority {
     bool has_body_loan_check = false;
     bool borrow_summary_has_unknown_return_origin = false;
     bool borrow_summary_has_local_return_escape = false;
+    bool borrow_summary_has_storage_escape = false;
     bool borrow_contract_unknown_return_allowed = false;
     bool borrow_contract_has_local_return_escape = false;
     bool borrow_contract_has_mismatch = false;

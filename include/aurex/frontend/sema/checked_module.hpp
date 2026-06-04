@@ -452,11 +452,18 @@ struct FunctionBorrowReturnOrigin {
     base::SourceRange range{};
 };
 
+struct FunctionBorrowStorageEscape {
+    base::u32 origin_index = SEMA_BORROW_SUMMARY_INVALID_INDEX;
+    syntax::ExprId stored_expr = syntax::INVALID_EXPR_ID;
+    base::SourceRange range{};
+};
+
 struct FunctionBorrowSummary {
     FunctionLookupKey function;
     TypeHandle return_type = INVALID_TYPE_HANDLE;
     std::vector<BorrowSummaryOrigin> origins;
     std::vector<FunctionBorrowReturnOrigin> return_origins;
+    std::vector<FunctionBorrowStorageEscape> storage_escapes;
     bool return_type_can_contain_borrow = false;
     bool has_unknown_return_origin = false;
     bool has_local_return_escape = false;

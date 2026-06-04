@@ -5925,7 +5925,7 @@ TEST(CoreUnit, SemanticWhiteBoxBorrowContractChecksMalformedInferredOrigins)
     EXPECT_FALSE(checked.unknown_return_allowed);
 }
 
-TEST(CoreUnit, SemanticWhiteBoxBorrowSummarySkipsBodyWalkForNonBorrowReturn)
+TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryKeepsNonBorrowReturnSummaryCompact)
 {
     syntax::AstModule module;
     module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
@@ -5976,6 +5976,75 @@ TEST(CoreUnit, SemanticWhiteBoxBorrowSummarySkipsBodyWalkForNonBorrowReturn)
 
     ASSERT_TRUE(checked.body_loan_checks.contains(key));
     EXPECT_EQ(checked.body_loan_checks.at(key).loans.size(), 1U);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryRecordsStorageEscapeForNonBorrowReturn)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_LOAN_MODULE_NAME})};
+
+    const TypeId i32_type = module.push_type(primitive_node(syntax::PrimitiveTypeKind::i32));
+    const IdentId function_id = module.intern_identifier("non_borrow_storage_escape");
+    const syntax::StmtId local_stmt =
+        push_local_stmt(module, syntax::StmtKind::var, "local", i32_type, push_integer(module));
+    const ExprId slot_name = push_name(module, "slot");
+    const ExprId slot_field = push_field(module, slot_name, SEMA_TEST_BODY_FLOW_FIELD_NAME);
+    const ExprId local_name = push_name(module, "local");
+    const ExprId borrow_local = push_unary(module, syntax::UnaryOp::address_of, local_name);
+    const syntax::StmtId assign_stmt = push_assign_stmt(module, slot_field, borrow_local);
+    const syntax::StmtId return_stmt = push_return_stmt(module, push_integer(module));
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "non_borrow_storage_escape";
+    function.name_id = function_id;
+    function.params = {push_param_decl(module, "slot")};
+    function.return_type = i32_type;
+    function.body = push_block(module, {local_stmt, assign_stmt, return_stmt});
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(std::move(module), diagnostics);
+    prepare_expr_storage(analyzer, analyzer.ctx_.module);
+    analyzer.state_.checked.stmt_local_types.assign(analyzer.ctx_.module.stmts.size(), INVALID_TYPE_HANDLE);
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle ref_i32 = types.reference(PointerMutability::const_, i32);
+    static_cast<void>(analyzer.record_expr_type(slot_name, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(slot_field, ref_i32));
+    static_cast<void>(analyzer.record_expr_type(local_name, i32));
+    static_cast<void>(analyzer.record_expr_type(borrow_local, ref_i32));
+    analyzer.record_stmt_local_type(local_stmt, i32);
+
+    const sema::FunctionLookupKey key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        function_id,
+    };
+    FunctionSignature signature;
+    signature.name = analyzer.state_.checked.intern_text("non_borrow_storage_escape");
+    signature.name_id = function_id;
+    signature.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    signature.semantic_key = key;
+    signature.param_types = {ref_i32};
+    signature.return_type = i32;
+
+    sema::SemanticAnalyzerCore::BorrowSummaryBuilder(analyzer).build(function, key, signature);
+
+    ASSERT_TRUE(analyzer.state_.checked.borrow_summaries.contains(key));
+    const sema::FunctionBorrowSummary& summary = analyzer.state_.checked.borrow_summaries.at(key);
+    EXPECT_FALSE(summary.return_type_can_contain_borrow);
+    EXPECT_TRUE(summary.return_origins.empty());
+    ASSERT_EQ(summary.storage_escapes.size(), 1U);
+    ASSERT_LT(summary.storage_escapes.front().origin_index, summary.origins.size());
+    EXPECT_EQ(summary.origins[summary.storage_escapes.front().origin_index].kind,
+        sema::BorrowSummaryOriginKind::local);
+    EXPECT_TRUE(summary.origins[summary.storage_escapes.front().origin_index].storage_slot);
+    EXPECT_NE(summary.fingerprint.byte_count, 0U);
+
+    const std::string dump = sema::dump_function_borrow_summary(summary);
+    EXPECT_NE(dump.find("can_borrow=false"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("storage_escapes:"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("s0 origin=o"), std::string::npos) << dump;
 }
 
 TEST(CoreUnit, SemanticWhiteBoxBorrowSummaryPropagatesDirectCallWrapper)

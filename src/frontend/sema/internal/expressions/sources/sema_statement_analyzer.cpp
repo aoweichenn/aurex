@@ -80,6 +80,92 @@ struct ControlFlowFrame {
     return kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::dereference;
 }
 
+[[nodiscard]] bool expr_is_unqualified_name(const syntax::AstModule& module, const syntax::ExprId expr) noexcept
+{
+    if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
+        return false;
+    }
+    const syntax::NameExprPayload* const name = module.exprs.name_payload(expr.value);
+    return name != nullptr && name->scope_name.empty();
+}
+
+[[nodiscard]] bool body_may_need_storage_escape_guard(const syntax::AstModule& module, const syntax::StmtId root)
+{
+    std::vector<syntax::StmtId> pending;
+    pending.reserve(SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY);
+    if (syntax::is_valid(root)) {
+        pending.push_back(root);
+    }
+    while (!pending.empty()) {
+        const syntax::StmtId stmt_id = pending.back();
+        pending.pop_back();
+        const std::optional<syntax::StmtNode> stmt = statement_node(module, stmt_id);
+        if (!stmt.has_value()) {
+            continue;
+        }
+        switch (stmt->kind) {
+            case syntax::StmtKind::assign:
+                if (syntax::is_valid(stmt->lhs) && !expr_is_unqualified_name(module, stmt->lhs)) {
+                    return true;
+                }
+                break;
+            case syntax::StmtKind::let:
+            case syntax::StmtKind::var:
+                if (syntax::is_valid(stmt->else_block)) {
+                    pending.push_back(stmt->else_block);
+                }
+                break;
+            case syntax::StmtKind::if_:
+                if (syntax::is_valid(stmt->then_block)) {
+                    pending.push_back(stmt->then_block);
+                }
+                if (syntax::is_valid(stmt->else_if)) {
+                    pending.push_back(stmt->else_if);
+                }
+                if (syntax::is_valid(stmt->else_block)) {
+                    pending.push_back(stmt->else_block);
+                }
+                break;
+            case syntax::StmtKind::while_:
+            case syntax::StmtKind::for_range:
+                if (syntax::is_valid(stmt->body)) {
+                    pending.push_back(stmt->body);
+                }
+                break;
+            case syntax::StmtKind::for_:
+                if (syntax::is_valid(stmt->for_init)) {
+                    pending.push_back(stmt->for_init);
+                }
+                if (syntax::is_valid(stmt->body)) {
+                    pending.push_back(stmt->body);
+                }
+                if (syntax::is_valid(stmt->for_update)) {
+                    pending.push_back(stmt->for_update);
+                }
+                break;
+            case syntax::StmtKind::block: {
+                const syntax::AstArenaVector<syntax::StmtId>* const statements =
+                    module.stmts.block_statements(stmt_id.value);
+                if (statements != nullptr) {
+                    for (const syntax::StmtId child : *statements) {
+                        if (syntax::is_valid(child)) {
+                            pending.push_back(child);
+                        }
+                    }
+                }
+                break;
+            }
+            case syntax::StmtKind::return_:
+            case syntax::StmtKind::break_:
+            case syntax::StmtKind::continue_:
+            case syntax::StmtKind::defer:
+            case syntax::StmtKind::expr:
+                break;
+        }
+    }
+    return false;
+}
+
 [[nodiscard]] bool statement_binary_result_uses_operand_type(const syntax::BinaryOp op) noexcept
 {
     switch (op) {
@@ -1447,7 +1533,13 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
     }
     this->core_.check_borrow_contract(function, key, finalized_signature);
     this->core_.analyze_lifetimes(function, key, finalized_signature);
-    this->core_.analyze_borrow_escapes(function, false);
+    const auto storage_escape_summary = this->core_.state_.checked.borrow_summaries.find(key);
+    const bool needs_storage_escape_guard = storage_escape_summary == this->core_.state_.checked.borrow_summaries.end()
+        || (storage_escape_summary->second.storage_escapes.empty()
+            && body_may_need_storage_escape_guard(this->core_.ctx_.module, function.body));
+    if (needs_storage_escape_guard) {
+        this->core_.analyze_borrow_escapes(function, false);
+    }
     if (!this->core_.ctx_.options.retain_body_flow_graphs) {
         this->core_.state_.checked.body_flow_graphs.erase(key);
     }

@@ -34,6 +34,20 @@ private:
         base::SourceRange range{};
     };
 
+    struct ViolationKey {
+        LifetimeViolationKind kind = LifetimeViolationKind::unknown_origin;
+        base::u32 region = SEMA_LIFETIME_INVALID_INDEX;
+        base::u32 related_region = SEMA_LIFETIME_INVALID_INDEX;
+        base::u32 type = INVALID_TYPE_HANDLE.value;
+        base::u32 expr = syntax::INVALID_EXPR_ID.value;
+
+        [[nodiscard]] friend bool operator==(const ViolationKey& lhs, const ViolationKey& rhs) noexcept = default;
+    };
+
+    struct ViolationKeyHash {
+        [[nodiscard]] std::size_t operator()(const ViolationKey& key) const noexcept;
+    };
+
     void analyze(const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature,
         bool include_body_facts);
     void reset(const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature,
@@ -72,6 +86,9 @@ private:
     void collect_return_regions();
     void collect_return_regions_from_summary(const FunctionBorrowSummary& summary);
     void collect_return_regions_from_contract(const FunctionBorrowContract& contract);
+    void collect_storage_escape_regions();
+    void collect_storage_escape_region(
+        const FunctionBorrowSummary& summary, const FunctionBorrowStorageEscape& escape);
     [[nodiscard]] bool return_regions_contain_unknown() const noexcept;
     void append_unknown_return_region(syntax::ExprId expr, const base::SourceRange& range);
     [[nodiscard]] RegionSet regions_for_summary_origin(const BorrowSummaryOrigin& origin);
@@ -84,15 +101,15 @@ private:
     void append_return_region(base::u32 region, syntax::ExprId expr, const base::SourceRange& range);
 
     void solve();
-    void initialize_outlives_matrix();
+    void initialize_outlives_graph();
     void collect_body_live_ranges();
     [[nodiscard]] base::u32 first_body_flow_point(const BodyFlowGraph& graph) const noexcept;
     [[nodiscard]] base::u32 last_body_flow_point(const BodyFlowGraph& graph) const noexcept;
     [[nodiscard]] base::u32 return_body_flow_point(const BodyFlowGraph& graph, syntax::ExprId expr) const noexcept;
     void append_live_range(base::u32 region, base::u32 first_point, base::u32 last_point,
         base::u32 point_count, const base::SourceRange& range);
-    void close_outlives_matrix();
-    [[nodiscard]] bool region_outlives(base::u32 longer, base::u32 shorter) const noexcept;
+    void cache_outlives_reachability(base::u32 longer);
+    [[nodiscard]] bool region_outlives(base::u32 longer, base::u32 shorter);
     void enforce_return_origin_subset();
     void enforce_ambiguous_elision();
     void enforce_type_outlives();
@@ -110,7 +127,12 @@ private:
     std::unordered_map<std::string, base::u32> declared_origin_regions_;
     std::unordered_map<std::string, base::u32> region_lookup_;
     std::vector<base::u32> parameter_regions_;
-    std::vector<std::vector<bool>> outlives_;
+    std::vector<std::vector<base::u32>> outlives_successors_;
+    std::vector<std::vector<bool>> outlives_reachability_cache_;
+    std::vector<bool> outlives_reachability_cached_;
+    std::unordered_map<ViolationKey, base::usize, ViolationKeyHash> violation_lookup_;
+    mutable std::unordered_map<base::u32, bool> type_borrow_cache_;
+    mutable std::unordered_map<base::u32, bool> concrete_borrow_surface_cache_;
     bool include_body_facts_ = false;
 };
 

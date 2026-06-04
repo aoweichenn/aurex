@@ -2021,8 +2021,11 @@ void populate_type_check_body_borrow_authority(
         authority.borrow_summary_fingerprint = summary->second.fingerprint;
         authority.borrow_summary_origin_count = static_cast<base::u32>(summary->second.origins.size());
         authority.borrow_summary_dependency_count = static_cast<base::u32>(summary->second.return_origins.size());
+        authority.borrow_summary_storage_escape_count =
+            static_cast<base::u32>(summary->second.storage_escapes.size());
         authority.borrow_summary_has_unknown_return_origin = summary->second.has_unknown_return_origin;
         authority.borrow_summary_has_local_return_escape = summary->second.has_local_return_escape;
+        authority.borrow_summary_has_storage_escape = !summary->second.storage_escapes.empty();
     }
     if (const auto contract = checked.borrow_contracts.find(function); contract != checked.borrow_contracts.end()) {
         authority.has_borrow_contract = true;
@@ -2332,6 +2335,7 @@ std::string dump_checked_module(const CheckedModule& checked)
         }
         out << " return=" << checked.types.display_name(summary.return_type) << " origins=" << summary.origins.size()
             << " deps=" << summary.return_origins.size()
+            << " storage_escapes=" << summary.storage_escapes.size()
             << " unknown=" << (summary.has_unknown_return_origin ? "true" : "false")
             << " local_escape=" << (summary.has_local_return_escape ? "true" : "false")
             << " fingerprint=" << query::debug_string(summary.fingerprint);

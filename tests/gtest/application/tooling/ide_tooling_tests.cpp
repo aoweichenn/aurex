@@ -425,6 +425,7 @@ TEST(CoreUnit, IdeToolingProjectsBorrowSummaryAndLoanFacts)
         snapshot, tooling::IdeSemanticFactKind::borrow_summary, query::QueryKind::type_check_body, "id_ref");
     ASSERT_NE(summary_fact, nullptr);
     EXPECT_NE(summary_fact->detail.find("deps=1"), std::string::npos) << summary_fact->detail;
+    EXPECT_NE(summary_fact->detail.find("storage_escapes=0"), std::string::npos) << summary_fact->detail;
     EXPECT_NE(summary_fact->detail.find("unknown=false"), std::string::npos) << summary_fact->detail;
 
     const tooling::IdeSemanticFact* const contract_fact = find_semantic_fact(
@@ -439,6 +440,8 @@ TEST(CoreUnit, IdeToolingProjectsBorrowSummaryAndLoanFacts)
     EXPECT_NE(lifetime_fact->detail.find("live_ranges="), std::string::npos) << lifetime_fact->detail;
     EXPECT_NE(lifetime_fact->detail.find("returns=1"), std::string::npos) << lifetime_fact->detail;
     EXPECT_NE(lifetime_fact->detail.find("violations=0"), std::string::npos) << lifetime_fact->detail;
+    EXPECT_NE(lifetime_fact->detail.find("local_escapes=0"), std::string::npos) << lifetime_fact->detail;
+    EXPECT_NE(lifetime_fact->detail.find("unknown_escapes=0"), std::string::npos) << lifetime_fact->detail;
 
     const tooling::IdeSemanticFact* const loan_fact = find_semantic_fact(
         snapshot, tooling::IdeSemanticFactKind::body_loan_check, query::QueryKind::type_check_body, "read");
@@ -453,10 +456,12 @@ TEST(CoreUnit, IdeToolingProjectsBorrowSummaryAndLoanFacts)
     const std::optional<tooling::IdeHoverInfo> hover = tooling::hover_at_offset(snapshot, id_ref_offset);
     ASSERT_TRUE(hover.has_value());
     EXPECT_NE(hover->label.find("borrow_summary=deps=1"), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("storage_escapes=0"), std::string::npos) << hover->label;
     EXPECT_NE(hover->label.find("borrow_contract=inferred/selectors=1/unknown=false/mismatch=false"), std::string::npos)
         << hover->label;
     EXPECT_NE(hover->label.find("lifetime=regions="), std::string::npos) << hover->label;
-    EXPECT_NE(hover->label.find("/returns=1/violations=0"), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("/returns=1/violations=0/local_escapes=0/unknown_escapes=0"), std::string::npos)
+        << hover->label;
 }
 
 TEST(CoreUnit, IdeToolingRecordsPrimaryModulePartDeclarations)

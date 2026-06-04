@@ -2,6 +2,7 @@
 
 #include <aurex/frontend/sema/checked_module.hpp>
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -23,6 +24,23 @@ private:
     struct OriginSet {
         std::vector<base::u32> origins;
         bool unknown = false;
+    };
+
+    struct OriginKey {
+        base::u8 kind = 0;
+        base::u32 param_index = SEMA_BORROW_SUMMARY_INVALID_INDEX;
+        base::u32 name_id = INVALID_IDENT_ID.value;
+        base::u32 expr = syntax::INVALID_EXPR_ID.value;
+        bool storage_slot = false;
+        base::u64 source = 0;
+        base::u64 range_begin = 0;
+        base::u64 range_end = 0;
+
+        [[nodiscard]] friend bool operator==(const OriginKey& lhs, const OriginKey& rhs) noexcept = default;
+    };
+
+    struct OriginKeyHash {
+        [[nodiscard]] std::size_t operator()(const OriginKey& key) const noexcept;
     };
 
     struct Scope {
@@ -62,6 +80,7 @@ private:
     [[nodiscard]] OriginSet lookup_storage(IdentId name) const;
     [[nodiscard]] OriginSet lookup_borrowed_value(IdentId name) const;
     [[nodiscard]] OriginSet lookup_pointer_value(IdentId name) const;
+    [[nodiscard]] static OriginKey origin_key(const BorrowSummaryOrigin& origin) noexcept;
     [[nodiscard]] base::u32 append_origin(BorrowSummaryOrigin origin);
     [[nodiscard]] OriginSet parameter_origin(base::usize index, const syntax::ParamDecl& param);
     [[nodiscard]] OriginSet static_origin(const base::SourceRange& range);
@@ -88,6 +107,7 @@ private:
     void clear_pointer_values_for_existing_storage(ScopeList& scopes) const;
     void analyze_local_declaration(syntax::StmtId stmt_id, const syntax::StmtNode& stmt);
     void analyze_assignment(const syntax::StmtNode& stmt);
+    void record_storage_escape(OriginSet origin, syntax::ExprId expr, const base::SourceRange& range);
     void bind_pattern_storage(syntax::PatternId pattern, TypeHandle type, syntax::ExprId source);
     void bind_pattern_binding(const syntax::PatternNode& pattern, TypeHandle type, syntax::ExprId source);
     void push_tuple_pattern_frames(std::vector<PatternFrame>& pending, const syntax::PatternNode& pattern,
@@ -139,6 +159,7 @@ private:
     const FunctionSignature* signature_ = nullptr;
     FunctionBorrowSummary summary_;
     std::vector<Scope> scopes_;
+    std::unordered_map<OriginKey, base::u32, OriginKeyHash> origin_lookup_;
     mutable std::unordered_map<base::u32, bool> type_borrow_cache_;
 };
 

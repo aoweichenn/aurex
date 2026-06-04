@@ -69,6 +69,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_u32(authority.coercion_count);
     builder.mix_u32(authority.borrow_summary_origin_count);
     builder.mix_u32(authority.borrow_summary_dependency_count);
+    builder.mix_u32(authority.borrow_summary_storage_escape_count);
     builder.mix_u32(authority.borrow_contract_selector_count);
     builder.mix_u32(authority.lifetime_region_count);
     builder.mix_u32(authority.lifetime_outlives_constraint_count);
@@ -90,6 +91,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.has_body_loan_check);
     builder.mix_bool(authority.borrow_summary_has_unknown_return_origin);
     builder.mix_bool(authority.borrow_summary_has_local_return_escape);
+    builder.mix_bool(authority.borrow_summary_has_storage_escape);
     builder.mix_bool(authority.borrow_contract_unknown_return_allowed);
     builder.mix_bool(authority.borrow_contract_has_local_return_escape);
     builder.mix_bool(authority.borrow_contract_has_mismatch);

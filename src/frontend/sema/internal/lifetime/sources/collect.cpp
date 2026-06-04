@@ -87,6 +87,18 @@ SemanticAnalyzerCore::LifetimeAnalyzer::LifetimeAnalyzer(SemanticAnalyzerCore& c
 {
 }
 
+std::size_t SemanticAnalyzerCore::LifetimeAnalyzer::ViolationKeyHash::operator()(
+    const ViolationKey& key) const noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_u8(static_cast<base::u8>(key.kind));
+    builder.mix_u32(key.region);
+    builder.mix_u32(key.related_region);
+    builder.mix_u32(key.type);
+    builder.mix_u32(key.expr);
+    return query::stable_hash_value(builder.finish());
+}
+
 void SemanticAnalyzerCore::LifetimeAnalyzer::analyze_signature(
     const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature)
 {
@@ -108,6 +120,7 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::analyze(const syntax::ItemNode& fun
     this->collect_reference_origin_facts();
     this->collect_signature_type_lifetime_infos();
     this->collect_return_regions();
+    this->collect_storage_escape_regions();
     this->solve();
     this->enforce_return_origin_subset();
     this->enforce_ambiguous_elision();
@@ -127,7 +140,12 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::reset(const syntax::ItemNode& funct
     this->declared_origin_regions_.clear();
     this->region_lookup_.clear();
     this->parameter_regions_.assign(signature.param_types.size(), SEMA_LIFETIME_INVALID_INDEX);
-    this->outlives_.clear();
+    this->outlives_successors_.clear();
+    this->outlives_reachability_cache_.clear();
+    this->outlives_reachability_cached_.clear();
+    this->violation_lookup_.clear();
+    this->type_borrow_cache_.clear();
+    this->concrete_borrow_surface_cache_.clear();
     this->facts_ = FunctionLifetimeFacts{};
     this->facts_.function = key;
     this->facts_.return_type = signature.return_type;
@@ -379,11 +397,11 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::record_type_lifetime_info(
             type, SEMA_LIFETIME_UNKNOWN_REGION_NAME, INVALID_IDENT_ID, source, range);
     }
     info.fingerprint = type_lifetime_info_fingerprint(info);
-    const auto existing = std::ranges::find_if(this->core_.state_.checked.type_lifetime_infos,
-        [&](const TypeLifetimeInfo& candidate) {
-            return candidate.type.value == info.type.value && candidate.fingerprint == info.fingerprint;
-        });
-    if (existing == this->core_.state_.checked.type_lifetime_infos.end()) {
+    SemanticAnalyzerCore::TypeLifetimeInfoIndexKey key{
+        .type = info.type.value,
+        .fingerprint = info.fingerprint,
+    };
+    if (this->core_.state_.lifetime_indexes.type_infos.insert(key).second) {
         this->core_.state_.checked.type_lifetime_infos.push_back(std::move(info));
     }
 }
@@ -403,13 +421,12 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::record_generic_lifetime_predicate(c
     predicate.range = range;
     predicate.part_index = this->signature_->part_index;
     predicate.fingerprint = generic_lifetime_predicate_fingerprint(predicate);
-    const auto existing = std::ranges::find_if(this->core_.state_.checked.generic_lifetime_predicates,
-        [&](const GenericLifetimePredicate& candidate) {
-            return candidate.subject_type.value == predicate.subject_type.value
-                && candidate.origin_name.view() == predicate.origin_name.view()
-                && candidate.source == predicate.source;
-        });
-    if (existing == this->core_.state_.checked.generic_lifetime_predicates.end()) {
+    SemanticAnalyzerCore::GenericLifetimePredicateIndexKey key{
+        .subject_type = predicate.subject_type.value,
+        .origin_name = std::string(predicate.origin_name.view()),
+        .source = static_cast<base::u8>(predicate.source),
+    };
+    if (this->core_.state_.lifetime_indexes.generic_predicates.insert(std::move(key)).second) {
         this->core_.state_.checked.generic_lifetime_predicates.push_back(std::move(predicate));
     }
 }
@@ -471,6 +488,59 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::collect_return_regions_from_contrac
     }
     if (contract.unknown_return_allowed && contract.return_selectors.empty()) {
         this->append_return_region(this->unknown_region(contract.range), syntax::INVALID_EXPR_ID, contract.range);
+    }
+}
+
+void SemanticAnalyzerCore::LifetimeAnalyzer::collect_storage_escape_regions()
+{
+    if (!this->include_body_facts_) {
+        return;
+    }
+    const auto summary = this->core_.state_.checked.borrow_summaries.find(this->key_);
+    if (summary == this->core_.state_.checked.borrow_summaries.end()) {
+        return;
+    }
+    for (const FunctionBorrowStorageEscape& escape : summary->second.storage_escapes) {
+        this->collect_storage_escape_region(summary->second, escape);
+    }
+}
+
+void SemanticAnalyzerCore::LifetimeAnalyzer::collect_storage_escape_region(
+    const FunctionBorrowSummary& summary, const FunctionBorrowStorageEscape& escape)
+{
+    if (escape.origin_index >= summary.origins.size()) {
+        return;
+    }
+    const BorrowSummaryOrigin& origin = summary.origins[escape.origin_index];
+    switch (origin.kind) {
+        case BorrowSummaryOriginKind::local: {
+            const base::u32 region = this->local_region(origin.name_id, origin.range);
+            this->add_violation(LifetimeViolationKind::local_escape, region, SEMA_LIFETIME_INVALID_INDEX,
+                INVALID_TYPE_HANDLE, escape.stored_expr, false, escape.range);
+            break;
+        }
+        case BorrowSummaryOriginKind::temporary: {
+            const base::u32 region = this->temporary_region(origin.range);
+            this->add_violation(LifetimeViolationKind::local_escape, region, SEMA_LIFETIME_INVALID_INDEX,
+                INVALID_TYPE_HANDLE, escape.stored_expr, false, escape.range);
+            break;
+        }
+        case BorrowSummaryOriginKind::parameter:
+            if (origin.storage_slot) {
+                const base::u32 region = this->local_region(origin.name_id, origin.range);
+                this->add_violation(LifetimeViolationKind::local_escape, region, SEMA_LIFETIME_INVALID_INDEX,
+                    INVALID_TYPE_HANDLE, escape.stored_expr, false, escape.range);
+            }
+            break;
+        case BorrowSummaryOriginKind::unknown: {
+            const base::u32 region = this->unknown_region(origin.range);
+            this->add_violation(LifetimeViolationKind::unknown_escape, region, SEMA_LIFETIME_INVALID_INDEX,
+                INVALID_TYPE_HANDLE, escape.stored_expr, false, escape.range);
+            break;
+        }
+        case BorrowSummaryOriginKind::none:
+        case BorrowSummaryOriginKind::static_:
+            break;
     }
 }
 
@@ -662,6 +732,9 @@ bool SemanticAnalyzerCore::LifetimeAnalyzer::type_can_contain_borrow(const TypeH
     if (!valid_type_handle(types, type)) {
         return false;
     }
+    if (const auto cached = this->type_borrow_cache_.find(type.value); cached != this->type_borrow_cache_.end()) {
+        return cached->second;
+    }
 
     std::vector<TypeHandle> pending;
     std::unordered_set<base::u32> visited;
@@ -678,6 +751,7 @@ bool SemanticAnalyzerCore::LifetimeAnalyzer::type_can_contain_borrow(const TypeH
         switch (info.kind) {
             case TypeKind::builtin:
                 if (info.builtin == BuiltinType::str) {
+                    this->type_borrow_cache_[type.value] = true;
                     return true;
                 }
                 break;
@@ -685,6 +759,7 @@ bool SemanticAnalyzerCore::LifetimeAnalyzer::type_can_contain_borrow(const TypeH
             case TypeKind::slice:
             case TypeKind::generic_param:
             case TypeKind::associated_projection:
+                this->type_borrow_cache_[type.value] = true;
                 return true;
             case TypeKind::array:
                 pending.push_back(info.array_element);
@@ -720,12 +795,20 @@ bool SemanticAnalyzerCore::LifetimeAnalyzer::type_can_contain_borrow(const TypeH
                 break;
         }
     }
+    this->type_borrow_cache_[type.value] = false;
     return false;
 }
 
 bool SemanticAnalyzerCore::LifetimeAnalyzer::type_has_concrete_borrow_surface(const TypeHandle type) const
 {
     const TypeTable& types = this->core_.state_.checked.types;
+    if (!valid_type_handle(types, type)) {
+        return false;
+    }
+    if (const auto cached = this->concrete_borrow_surface_cache_.find(type.value);
+        cached != this->concrete_borrow_surface_cache_.end()) {
+        return cached->second;
+    }
 
     std::vector<TypeHandle> pending;
     std::unordered_set<base::u32> visited;
@@ -742,11 +825,13 @@ bool SemanticAnalyzerCore::LifetimeAnalyzer::type_has_concrete_borrow_surface(co
         switch (info.kind) {
             case TypeKind::builtin:
                 if (info.builtin == BuiltinType::str) {
+                    this->concrete_borrow_surface_cache_[type.value] = true;
                     return true;
                 }
                 break;
             case TypeKind::reference:
             case TypeKind::slice:
+                this->concrete_borrow_surface_cache_[type.value] = true;
                 return true;
             case TypeKind::array:
                 pending.push_back(info.array_element);
@@ -784,6 +869,7 @@ bool SemanticAnalyzerCore::LifetimeAnalyzer::type_has_concrete_borrow_surface(co
                 break;
         }
     }
+    this->concrete_borrow_surface_cache_[type.value] = false;
     return false;
 }
 

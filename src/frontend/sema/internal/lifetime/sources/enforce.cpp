@@ -34,14 +34,6 @@ namespace {
     });
 }
 
-[[nodiscard]] bool lifetime_violation_same_identity(
-    const LifetimeViolation& lhs, const LifetimeViolationKind kind, const base::u32 region,
-    const base::u32 related_region, const TypeHandle type, const syntax::ExprId expr) noexcept
-{
-    return lhs.kind == kind && lhs.region == region && lhs.related_region == related_region
-        && lhs.type.value == type.value && lhs.expr.value == expr.value;
-}
-
 } // namespace
 
 void SemanticAnalyzerCore::LifetimeAnalyzer::enforce_return_origin_subset()
@@ -202,13 +194,20 @@ void SemanticAnalyzerCore::LifetimeAnalyzer::add_violation(const LifetimeViolati
     const base::u32 related_region, const TypeHandle type, const syntax::ExprId expr,
     const bool diagnostic_emitted, const base::SourceRange& range)
 {
-    const auto existing = std::ranges::find_if(this->facts_.violations, [&](const LifetimeViolation& violation) {
-        return lifetime_violation_same_identity(violation, kind, region, related_region, type, expr);
-    });
-    if (existing != this->facts_.violations.end()) {
-        existing->diagnostic_emitted = existing->diagnostic_emitted || diagnostic_emitted;
+    const ViolationKey key{
+        .kind = kind,
+        .region = region,
+        .related_region = related_region,
+        .type = type.value,
+        .expr = expr.value,
+    };
+    if (const auto existing = this->violation_lookup_.find(key); existing != this->violation_lookup_.end()
+        && existing->second < this->facts_.violations.size()) {
+        LifetimeViolation& violation = this->facts_.violations[existing->second];
+        violation.diagnostic_emitted = violation.diagnostic_emitted || diagnostic_emitted;
         return;
     }
+    this->violation_lookup_.emplace(key, this->facts_.violations.size());
     this->facts_.violations.push_back(LifetimeViolation{
         .kind = kind,
         .region = region,

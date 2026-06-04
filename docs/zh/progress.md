@@ -5,6 +5,28 @@
 
 ## 总体状态
 
+2026-06-04：M7c-C storage escape 事实链与性能收口完成。`FunctionBorrowSummary` 新增
+`storage_escapes`，summary builder 会把非 name storage assignment 中来自 local / temporary /
+parameter-storage origin 的 borrowed value 记录为稳定事实；lifetime collector 会把这些 storage escape 映射为
+`local_escape` / `unknown_escape` violation，并由 lifetime enforcer 发出主诊断。`TypeCheckBodyAuthority`、
+checked dump、query fingerprint、IDE semantic fact 和 hover 现在都暴露 `storage_escapes`、`local_escapes` 和
+`unknown_escapes`。旧 `BorrowEscapeAnalyzer` 不再负责 summary 已覆盖的 return/storage 主路径，只在 summary
+缺失或无 storage escape 且 body 存在候选 non-name assignment 时作为窄 parity guard 运行，避免重复诊断。
+
+同日完成 M7c 热点 O(n²) 收口：borrow summary origin 去重改为 hash lookup；lifetime duplicate facts /
+violation 去重改为 hash index；lifetime outlives 从 dense transitive matrix 改为 sparse successor + per-region
+reachability cache；body loan checker 增加 carrier definition/result binding index、issued-action loan index、
+type-contains-reference cache、reborrow parent 最新 carrier index 和 two-phase activation queue，移除 storage
+escape 压测中的全 body / 全 loan 反复扫描。实际性能使用 `aurexc --profile-output`、`cmake -E time` wall-time
+spot-check 和 `gprof` 在本机 `build/full-llvm-fedora` / `build/gprof-m7c` 上验证：当前 storage escape
+`sema.analyze` 3-run median 500/1000/2000/4000 条分别为 50.701 / 100.202 / 204.232 / 419.745 ms；
+优化前同类 500/1000/2000 条为
+323.151 / 1007.543 / 4821.837 ms。更新后的 `gprof` 2000 条报告中，旧热点
+`BodyLoanSolver::expr_result_contains_loan` 不再出现在热点调用列表，solver 内 `type_contains_reference` 为 4000
+次，随输入规模线性增长。代表性 6-case 3-run median：sample negative sema 1.469 ms，summary_1000
+79.936 ms，summary_2000 159.321 ms，storage_escape_1000 100.569 ms，plain_1000 32.087 ms，plain_2000
+62.695 ms。
+
 2026-06-03：M7c-A / M7c-B 已完成实现收口。parser/AST/type system 的 contextual `origin` 参数、
 `&[origin] T` / `&mut[origin] T` 和 origin union 已进入 checked facts；`CheckedModule` 现在保存
 `FunctionLifetimeFacts`、`TypeLifetimeInfo`、`GenericLifetimePredicate`，checked dump、stable fingerprint、

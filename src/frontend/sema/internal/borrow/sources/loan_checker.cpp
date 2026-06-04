@@ -2318,7 +2318,7 @@ bool SemanticAnalyzerCore::BodyLoanChecker::type_contains_reference(const TypeHa
     return false;
 }
 
-bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_bind_reference_loan(const syntax::StmtId stmt_id) const
+bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_need_local_loan_check(const syntax::StmtId stmt_id) const
 {
     if (!valid_stmt(this->core_.ctx_.module, stmt_id)) {
         return false;
@@ -2326,28 +2326,28 @@ bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_bind_reference_loan(co
     if (this->statement_may_bind_reference_loan_shallow(stmt_id)) {
         return true;
     }
-    const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
+    const syntax::StmtNode& stmt = this->core_.ctx_.module.stmts[stmt_id.value];
     switch (stmt.kind) {
         case syntax::StmtKind::let:
         case syntax::StmtKind::var:
-            return this->expr_may_contain_reference_loan_statement(stmt.init);
+            return this->expr_may_need_local_loan_check(stmt.init);
         case syntax::StmtKind::assign:
-            return this->expr_may_contain_reference_loan_statement(stmt.lhs)
-                || this->expr_may_contain_reference_loan_statement(stmt.rhs);
+            return this->expr_may_need_local_loan_check(stmt.lhs)
+                || this->expr_may_need_local_loan_check(stmt.rhs);
         case syntax::StmtKind::if_:
         case syntax::StmtKind::while_:
-            return this->expr_may_contain_reference_loan_statement(stmt.condition);
+            return this->expr_may_need_local_loan_check(stmt.condition);
         case syntax::StmtKind::for_:
-            return this->expr_may_contain_reference_loan_statement(stmt.condition);
+            return this->expr_may_need_local_loan_check(stmt.condition);
         case syntax::StmtKind::for_range:
-            return this->expr_may_contain_reference_loan_statement(stmt.range_start)
-                || this->expr_may_contain_reference_loan_statement(stmt.range_end)
-                || this->expr_may_contain_reference_loan_statement(stmt.range_step);
+            return this->expr_may_need_local_loan_check(stmt.range_start)
+                || this->expr_may_need_local_loan_check(stmt.range_end)
+                || this->expr_may_need_local_loan_check(stmt.range_step);
         case syntax::StmtKind::defer:
         case syntax::StmtKind::expr:
-            return this->expr_may_contain_reference_loan_statement(stmt.init);
+            return this->expr_may_need_local_loan_check(stmt.init);
         case syntax::StmtKind::return_:
-            return this->expr_may_contain_reference_loan_statement(stmt.return_value);
+            return this->expr_may_need_local_loan_check(stmt.return_value);
         case syntax::StmtKind::break_:
         case syntax::StmtKind::continue_:
         case syntax::StmtKind::block:
@@ -2362,7 +2362,7 @@ bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_bind_reference_loan_sh
     if (!valid_stmt(this->core_.ctx_.module, stmt_id)) {
         return false;
     }
-    const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
+    const syntax::StmtNode& stmt = this->core_.ctx_.module.stmts[stmt_id.value];
     switch (stmt.kind) {
         case syntax::StmtKind::let:
         case syntax::StmtKind::var:
@@ -2386,81 +2386,7 @@ bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_bind_reference_loan_sh
     return false;
 }
 
-bool SemanticAnalyzerCore::BodyLoanChecker::statement_may_have_two_phase_receiver(const syntax::StmtId stmt_id) const
-{
-    if (!valid_stmt(this->core_.ctx_.module, stmt_id)) {
-        return false;
-    }
-    const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
-    switch (stmt.kind) {
-        case syntax::StmtKind::let:
-        case syntax::StmtKind::var:
-            return this->expr_may_have_two_phase_receiver(stmt.init);
-        case syntax::StmtKind::assign:
-            return this->expr_may_have_two_phase_receiver(stmt.lhs) || this->expr_may_have_two_phase_receiver(stmt.rhs);
-        case syntax::StmtKind::if_:
-        case syntax::StmtKind::while_:
-            return this->expr_may_have_two_phase_receiver(stmt.condition);
-        case syntax::StmtKind::for_:
-            return this->expr_may_have_two_phase_receiver(stmt.condition);
-        case syntax::StmtKind::for_range:
-            return this->expr_may_have_two_phase_receiver(stmt.range_start)
-                || this->expr_may_have_two_phase_receiver(stmt.range_end)
-                || this->expr_may_have_two_phase_receiver(stmt.range_step);
-        case syntax::StmtKind::defer:
-        case syntax::StmtKind::expr:
-            return this->expr_may_have_two_phase_receiver(stmt.init);
-        case syntax::StmtKind::return_:
-            return this->expr_may_have_two_phase_receiver(stmt.return_value);
-        case syntax::StmtKind::break_:
-        case syntax::StmtKind::continue_:
-        case syntax::StmtKind::block:
-            return false;
-    }
-    return false;
-}
-
-bool SemanticAnalyzerCore::BodyLoanChecker::expr_may_have_two_phase_receiver(const syntax::ExprId expr) const
-{
-    std::vector<syntax::ExprId> pending_exprs;
-    pending_exprs.reserve(SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY);
-    push_precheck_expr(pending_exprs, this->core_.ctx_.module, expr);
-    std::vector<syntax::StmtId> pending_stmts;
-    pending_stmts.reserve(SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY);
-    std::unordered_set<base::u32> visited_exprs;
-    std::unordered_set<base::u32> visited_stmts;
-    while (!pending_exprs.empty() || !pending_stmts.empty()) {
-        if (!pending_stmts.empty()) {
-            const syntax::StmtId stmt_id = pending_stmts.back();
-            pending_stmts.pop_back();
-            if (!valid_stmt(this->core_.ctx_.module, stmt_id) || !visited_stmts.insert(stmt_id.value).second) {
-                continue;
-            }
-            push_precheck_statement_children(
-                this->core_.ctx_.module, this->core_.ctx_.module.stmts[stmt_id.value], pending_exprs, pending_stmts);
-            continue;
-        }
-        const syntax::ExprId current = pending_exprs.back();
-        pending_exprs.pop_back();
-        if (!valid_expr(this->core_.ctx_.module, current) || !visited_exprs.insert(current.value).second) {
-            continue;
-        }
-        if (const FunctionCallBinding* const binding =
-                this->core_.state_.checked.function_call_binding_for_expr(current);
-            binding != nullptr && binding->receiver_two_phase_eligible) {
-            return true;
-        }
-        if (const TraitMethodCallBinding* const binding =
-                this->core_.state_.checked.trait_method_call_binding_for_expr(current);
-            binding != nullptr && binding->receiver_two_phase_eligible) {
-            return true;
-        }
-        push_precheck_expression_children(this->core_.ctx_.module, current, pending_exprs, pending_stmts);
-    }
-    return false;
-}
-
-bool SemanticAnalyzerCore::BodyLoanChecker::expr_may_contain_reference_loan_statement(const syntax::ExprId expr) const
+bool SemanticAnalyzerCore::BodyLoanChecker::expr_may_need_local_loan_check(const syntax::ExprId expr) const
 {
     std::vector<syntax::ExprId> pending_exprs;
     pending_exprs.reserve(SEMA_BODY_LOAN_PRECHECK_INITIAL_STACK_CAPACITY);
@@ -2488,6 +2414,16 @@ bool SemanticAnalyzerCore::BodyLoanChecker::expr_may_contain_reference_loan_stat
         if (!valid_expr(this->core_.ctx_.module, current) || !visited_exprs.insert(current.value).second) {
             continue;
         }
+        if (const FunctionCallBinding* const binding =
+                this->core_.state_.checked.function_call_binding_for_expr(current);
+            binding != nullptr && binding->receiver_two_phase_eligible) {
+            return true;
+        }
+        if (const TraitMethodCallBinding* const binding =
+                this->core_.state_.checked.trait_method_call_binding_for_expr(current);
+            binding != nullptr && binding->receiver_two_phase_eligible) {
+            return true;
+        }
         push_precheck_expression_children(this->core_.ctx_.module, current, pending_exprs, pending_stmts);
     }
     return false;
@@ -2504,10 +2440,10 @@ bool SemanticAnalyzerCore::BodyLoanChecker::may_need_local_loan_check(const synt
         if (!valid_stmt(this->core_.ctx_.module, stmt_id)) {
             continue;
         }
-        if (this->statement_may_bind_reference_loan(stmt_id) || this->statement_may_have_two_phase_receiver(stmt_id)) {
+        if (this->statement_may_need_local_loan_check(stmt_id)) {
             return true;
         }
-        const syntax::StmtNode stmt = this->core_.ctx_.module.stmts[stmt_id.value];
+        const syntax::StmtNode& stmt = this->core_.ctx_.module.stmts[stmt_id.value];
         switch (stmt.kind) {
             case syntax::StmtKind::let:
             case syntax::StmtKind::var:

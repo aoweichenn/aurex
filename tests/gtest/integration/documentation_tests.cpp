@@ -47,6 +47,7 @@ TEST_F(AurexIntegrationTest, DocumentationLayoutIsStable)
         "docs/zh/m7b-borrow-contract-design.md",
         "docs/zh/m7b-roadmap.md",
         "docs/zh/m7c-m7d-complete-borrow-raii-design.md",
+        "docs/zh/m7-hardening-performance-closure.md",
         "docs/en/README.md",
         "docs/en/architecture.md",
         "docs/en/requirements.md",
@@ -176,6 +177,11 @@ TEST_F(AurexIntegrationTest, M7cM7dDesignDocumentationIsCurrent)
     expect_document_contains("docs/zh/m7c-m7d-complete-borrow-raii-design.md", "ClosureEnvironmentFact {");
     expect_document_contains("docs/zh/m7c-m7d-complete-borrow-raii-design.md",
         "`src/frontend/sema/internal/` 只允许作为 private implementation root");
+    expect_document_contains("docs/zh/README.md", "M7 Hardening Performance Closure");
+    expect_document_contains("docs/zh/version.md", "## M7 Hardening Performance Closure");
+    expect_document_contains("docs/zh/next-steps.md", "M7 hardening performance closure 也已完成");
+    expect_document_contains("docs/zh/m7-hardening-performance-closure.md", "`u32/i32` 审计");
+    expect_document_contains("docs/zh/m7-hardening-performance-closure.md", "tools/m7_hardening_perf.py");
 }
 
 } // namespace aurex::test

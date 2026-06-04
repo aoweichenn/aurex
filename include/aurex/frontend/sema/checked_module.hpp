@@ -1158,10 +1158,10 @@ struct TraitDefaultMethodInstanceBodyView {
 struct NormalizedAstOverlay {
     // Sema normalizes the caller-owned AST in place. The checked module keeps
     // only normalization bounds/flags, never an owning AST snapshot.
-    base::usize original_expr_count = 0;
-    base::usize original_type_count = 0;
-    base::usize final_expr_count = 0;
-    base::usize final_type_count = 0;
+    base::u64 original_expr_count = 0;
+    base::u64 original_type_count = 0;
+    base::u64 final_expr_count = 0;
+    base::u64 final_type_count = 0;
     bool parser_only_module_contract_added = false;
 
     [[nodiscard]] bool added_syntax_nodes() const noexcept

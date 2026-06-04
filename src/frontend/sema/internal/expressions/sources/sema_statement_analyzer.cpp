@@ -23,10 +23,18 @@ namespace {
 constexpr base::usize SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY = 16;
 constexpr base::usize SEMA_CONTROL_FLOW_FIRST_CHILD_INDEX = 0;
 constexpr base::usize SEMA_FOR_RANGE_MAX_OPERAND_COUNT = 3;
+constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_UNKNOWN = 0;
+constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_FALSE = 1;
+constexpr base::u8 SEMA_CONTROL_FLOW_CACHE_TRUE = 2;
 
 enum class ControlFlowQuery {
     guarantees_return,
     may_fallthrough,
+};
+
+enum class ControlFlowCacheKind {
+    statement,
+    block,
 };
 
 enum class ControlFlowFrameKind {
@@ -44,9 +52,15 @@ enum class ControlFlowIfStage {
 
 struct ControlFlowFrame {
     ControlFlowFrameKind kind = ControlFlowFrameKind::statement;
+    ControlFlowCacheKind cache_kind = ControlFlowCacheKind::statement;
     syntax::StmtId stmt = syntax::INVALID_STMT_ID;
     base::usize next_child = SEMA_CONTROL_FLOW_FIRST_CHILD_INDEX;
     ControlFlowIfStage if_stage = ControlFlowIfStage::evaluate_then;
+};
+
+struct ControlFlowQueryCaches {
+    std::vector<base::u8>& statements;
+    std::vector<base::u8>& blocks;
 };
 
 [[nodiscard]] std::optional<syntax::StmtNode> statement_node(const syntax::AstModule& module, const syntax::StmtId stmt)
@@ -239,15 +253,74 @@ struct ControlFlowFrame {
     return false;
 }
 
-void finish_control_flow_frame(std::vector<ControlFlowFrame>& stack, const ControlFlowQuery query, const bool result,
-    bool& has_result, bool& final_result)
+[[nodiscard]] bool control_flow_cache_key_is_valid(
+    const syntax::AstModule& module, const syntax::StmtId stmt) noexcept
 {
-    stack.pop_back();
+    return syntax::is_valid(stmt) && stmt.value < module.stmts.size();
+}
+
+[[nodiscard]] std::vector<base::u8>& control_flow_cache_bucket(
+    ControlFlowQueryCaches& caches, const ControlFlowCacheKind kind) noexcept
+{
+    return kind == ControlFlowCacheKind::block ? caches.blocks : caches.statements;
+}
+
+[[nodiscard]] const std::vector<base::u8>& control_flow_cache_bucket(
+    const ControlFlowQueryCaches& caches, const ControlFlowCacheKind kind) noexcept
+{
+    return kind == ControlFlowCacheKind::block ? caches.blocks : caches.statements;
+}
+
+[[nodiscard]] std::optional<bool> read_control_flow_cache(
+    const syntax::AstModule& module, const ControlFlowQueryCaches& caches, const ControlFlowCacheKind kind,
+    const syntax::StmtId stmt) noexcept
+{
+    if (!control_flow_cache_key_is_valid(module, stmt)) {
+        return std::nullopt;
+    }
+    const std::vector<base::u8>& cache = control_flow_cache_bucket(caches, kind);
+    if (stmt.value >= cache.size()) {
+        return std::nullopt;
+    }
+    const base::u8 value = cache[stmt.value];
+    if (value == SEMA_CONTROL_FLOW_CACHE_TRUE) {
+        return true;
+    }
+    if (value == SEMA_CONTROL_FLOW_CACHE_FALSE) {
+        return false;
+    }
+    return std::nullopt;
+}
+
+void write_control_flow_cache(const syntax::AstModule& module, ControlFlowQueryCaches& caches,
+    const ControlFlowCacheKind kind, const syntax::StmtId stmt, const bool result)
+{
+    if (!control_flow_cache_key_is_valid(module, stmt)) {
+        return;
+    }
+    std::vector<base::u8>& cache = control_flow_cache_bucket(caches, kind);
+    if (cache.size() < module.stmts.size()) {
+        cache.resize(module.stmts.size(), SEMA_CONTROL_FLOW_CACHE_UNKNOWN);
+    }
+    cache[stmt.value] = result ? SEMA_CONTROL_FLOW_CACHE_TRUE : SEMA_CONTROL_FLOW_CACHE_FALSE;
+}
+
+void cache_control_flow_frame_result(const syntax::AstModule& module, ControlFlowQueryCaches& caches,
+    const ControlFlowFrame& frame, const bool result)
+{
+    write_control_flow_cache(module, caches, frame.cache_kind, frame.stmt, result);
+}
+
+void propagate_control_flow_result(const syntax::AstModule& module, std::vector<ControlFlowFrame>& stack,
+    ControlFlowQueryCaches& caches, const ControlFlowQuery query, const bool result, bool& has_result,
+    bool& final_result)
+{
     while (!stack.empty()) {
         ControlFlowFrame& parent = stack.back();
         switch (parent.kind) {
             case ControlFlowFrameKind::block:
                 if (block_short_circuits(query, result)) {
+                    cache_control_flow_frame_result(module, caches, parent, result);
                     stack.pop_back();
                     continue;
                 }
@@ -256,6 +329,7 @@ void finish_control_flow_frame(std::vector<ControlFlowFrame>& stack, const Contr
             case ControlFlowFrameKind::if_statement:
                 if (parent.if_stage == ControlFlowIfStage::after_then) {
                     if (if_then_short_circuits(query, result)) {
+                        cache_control_flow_frame_result(module, caches, parent, result);
                         stack.pop_back();
                         continue;
                     }
@@ -263,6 +337,7 @@ void finish_control_flow_frame(std::vector<ControlFlowFrame>& stack, const Contr
                     return;
                 }
                 if (parent.if_stage == ControlFlowIfStage::after_alternate) {
+                    cache_control_flow_frame_result(module, caches, parent, result);
                     stack.pop_back();
                     continue;
                 }
@@ -275,12 +350,22 @@ void finish_control_flow_frame(std::vector<ControlFlowFrame>& stack, const Contr
     final_result = result;
 }
 
+void finish_control_flow_frame(std::vector<ControlFlowFrame>& stack, const ControlFlowQuery query, const bool result,
+    const syntax::AstModule& module, ControlFlowQueryCaches& caches, bool& has_result, bool& final_result)
+{
+    const ControlFlowFrame frame = stack.back();
+    cache_control_flow_frame_result(module, caches, frame, result);
+    stack.pop_back();
+    propagate_control_flow_result(module, stack, caches, query, result, has_result, final_result);
+}
+
 void evaluate_control_flow_statement(const syntax::AstModule& module, std::vector<ControlFlowFrame>& stack,
-    const ControlFlowQuery query, bool& has_result, bool& final_result)
+    ControlFlowQueryCaches& caches, const ControlFlowQuery query, bool& has_result, bool& final_result)
 {
     ControlFlowFrame& frame = stack.back();
     if (!syntax::is_valid(frame.stmt) || frame.stmt.value >= module.stmts.size()) {
-        finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+        finish_control_flow_frame(
+            stack, query, default_control_flow_result(query), module, caches, has_result, final_result);
         return;
     }
     const syntax::StmtKind kind = module.stmts.kind(frame.stmt.value);
@@ -288,7 +373,8 @@ void evaluate_control_flow_statement(const syntax::AstModule& module, std::vecto
         case syntax::StmtKind::return_:
         case syntax::StmtKind::break_:
         case syntax::StmtKind::continue_:
-            finish_control_flow_frame(stack, query, abrupt_stmt_result(query, kind), has_result, final_result);
+            finish_control_flow_frame(
+                stack, query, abrupt_stmt_result(query, kind), module, caches, has_result, final_result);
             break;
         case syntax::StmtKind::block:
             frame.kind = ControlFlowFrameKind::block;
@@ -299,17 +385,19 @@ void evaluate_control_flow_statement(const syntax::AstModule& module, std::vecto
             frame.if_stage = ControlFlowIfStage::evaluate_then;
             break;
         default:
-            finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+            finish_control_flow_frame(
+                stack, query, default_control_flow_result(query), module, caches, has_result, final_result);
             break;
     }
 }
 
 void evaluate_control_flow_block(const syntax::AstModule& module, std::vector<ControlFlowFrame>& stack,
-    const ControlFlowQuery query, bool& has_result, bool& final_result)
+    ControlFlowQueryCaches& caches, const ControlFlowQuery query, bool& has_result, bool& final_result)
 {
     ControlFlowFrame& frame = stack.back();
     if (!syntax::is_valid(frame.stmt) || frame.stmt.value >= module.stmts.size()) {
-        finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+        finish_control_flow_frame(
+            stack, query, default_control_flow_result(query), module, caches, has_result, final_result);
         return;
     }
     const syntax::AstArenaVector<syntax::StmtId>* const statements = module.stmts.block_statements(frame.stmt.value);
@@ -318,59 +406,94 @@ void evaluate_control_flow_block(const syntax::AstModule& module, std::vector<Co
         return;
     }
     if (frame.next_child >= statements->size()) {
-        finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+        finish_control_flow_frame(
+            stack, query, default_control_flow_result(query), module, caches, has_result, final_result);
         return;
     }
-    stack.push_back(ControlFlowFrame{ControlFlowFrameKind::statement, (*statements)[frame.next_child]});
+    const syntax::StmtId child = (*statements)[frame.next_child];
+    if (const std::optional<bool> cached =
+            read_control_flow_cache(module, caches, ControlFlowCacheKind::statement, child);
+        cached.has_value()) {
+        propagate_control_flow_result(module, stack, caches, query, *cached, has_result, final_result);
+        return;
+    }
+    stack.push_back(ControlFlowFrame{ControlFlowFrameKind::statement, ControlFlowCacheKind::statement, child});
 }
 
 void evaluate_control_flow_if_statement(const syntax::AstModule& module, std::vector<ControlFlowFrame>& stack,
-    const ControlFlowQuery query, bool& has_result, bool& final_result)
+    ControlFlowQueryCaches& caches, const ControlFlowQuery query, bool& has_result, bool& final_result)
 {
     ControlFlowFrame& frame = stack.back();
     const std::optional<syntax::StmtNode> node = statement_node(module, frame.stmt);
     if (!node.has_value() || node->kind != syntax::StmtKind::if_) {
-        finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+        finish_control_flow_frame(
+            stack, query, default_control_flow_result(query), module, caches, has_result, final_result);
         return;
     }
     if (frame.if_stage == ControlFlowIfStage::evaluate_then) {
         frame.if_stage = ControlFlowIfStage::after_then;
-        stack.push_back(ControlFlowFrame{ControlFlowFrameKind::block, node->then_block});
+        if (const std::optional<bool> cached =
+                read_control_flow_cache(module, caches, ControlFlowCacheKind::block, node->then_block);
+            cached.has_value()) {
+            propagate_control_flow_result(module, stack, caches, query, *cached, has_result, final_result);
+            return;
+        }
+        stack.push_back(ControlFlowFrame{ControlFlowFrameKind::block, ControlFlowCacheKind::block, node->then_block});
         return;
     }
     if (frame.if_stage == ControlFlowIfStage::evaluate_alternate) {
         frame.if_stage = ControlFlowIfStage::after_alternate;
         if (syntax::is_valid(node->else_block)) {
-            stack.push_back(ControlFlowFrame{ControlFlowFrameKind::block, node->else_block});
+            if (const std::optional<bool> cached =
+                    read_control_flow_cache(module, caches, ControlFlowCacheKind::block, node->else_block);
+                cached.has_value()) {
+                propagate_control_flow_result(module, stack, caches, query, *cached, has_result, final_result);
+                return;
+            }
+            stack.push_back(
+                ControlFlowFrame{ControlFlowFrameKind::block, ControlFlowCacheKind::block, node->else_block});
             return;
         }
         if (syntax::is_valid(node->else_if)) {
-            stack.push_back(ControlFlowFrame{ControlFlowFrameKind::statement, node->else_if});
+            if (const std::optional<bool> cached =
+                    read_control_flow_cache(module, caches, ControlFlowCacheKind::statement, node->else_if);
+                cached.has_value()) {
+                propagate_control_flow_result(module, stack, caches, query, *cached, has_result, final_result);
+                return;
+            }
+            stack.push_back(
+                ControlFlowFrame{ControlFlowFrameKind::statement, ControlFlowCacheKind::statement, node->else_if});
             return;
         }
-        finish_control_flow_frame(stack, query, default_control_flow_result(query), has_result, final_result);
+        finish_control_flow_frame(
+            stack, query, default_control_flow_result(query), module, caches, has_result, final_result);
     }
 }
 
 [[nodiscard]] bool evaluate_control_flow(const syntax::AstModule& module, const syntax::StmtId stmt,
-    const ControlFlowFrameKind root_kind, const ControlFlowQuery query)
+    const ControlFlowFrameKind root_kind, const ControlFlowCacheKind root_cache_kind, const ControlFlowQuery query,
+    ControlFlowQueryCaches caches)
 {
+    if (const std::optional<bool> cached = read_control_flow_cache(module, caches, root_cache_kind, stmt);
+        cached.has_value()) {
+        return *cached;
+    }
     std::vector<ControlFlowFrame> stack;
     stack.reserve(SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY);
-    stack.push_back(ControlFlowFrame{root_kind, stmt});
+    stack.push_back(ControlFlowFrame{root_kind, root_cache_kind, stmt});
 
     bool has_result = false;
     bool final_result = default_control_flow_result(query);
     while (!has_result && !stack.empty()) {
         switch (stack.back().kind) {
             case ControlFlowFrameKind::statement:
-                evaluate_control_flow_statement(module, stack, query, has_result, final_result);
+                evaluate_control_flow_statement(module, stack, caches, query, has_result, final_result);
                 break;
             case ControlFlowFrameKind::block:
-                evaluate_control_flow_block(module, stack, query, has_result, final_result);
+                evaluate_control_flow_block(module, stack, caches, query, has_result, final_result);
                 break;
             case ControlFlowFrameKind::if_statement:
-                evaluate_control_flow_if_statement(module, stack, query, has_result, final_result);
+                evaluate_control_flow_if_statement(module, stack, caches, query, has_result, final_result);
                 break;
         }
     }
@@ -2035,26 +2158,42 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_statement_node(const synta
 
 bool SemanticAnalyzerCore::StatementAnalyzer::block_guarantees_return(const syntax::StmtId block_id) const
 {
-    return evaluate_control_flow(
-        this->core_.ctx_.module, block_id, ControlFlowFrameKind::block, ControlFlowQuery::guarantees_return);
+    return evaluate_control_flow(this->core_.ctx_.module, block_id, ControlFlowFrameKind::block,
+        ControlFlowCacheKind::block, ControlFlowQuery::guarantees_return,
+        ControlFlowQueryCaches{
+            this->core_.state_.control_flow_queries.stmt_guarantees_return,
+            this->core_.state_.control_flow_queries.block_guarantees_return,
+        });
 }
 
 bool SemanticAnalyzerCore::StatementAnalyzer::stmt_guarantees_return(const syntax::StmtId stmt_id) const
 {
-    return evaluate_control_flow(
-        this->core_.ctx_.module, stmt_id, ControlFlowFrameKind::statement, ControlFlowQuery::guarantees_return);
+    return evaluate_control_flow(this->core_.ctx_.module, stmt_id, ControlFlowFrameKind::statement,
+        ControlFlowCacheKind::statement, ControlFlowQuery::guarantees_return,
+        ControlFlowQueryCaches{
+            this->core_.state_.control_flow_queries.stmt_guarantees_return,
+            this->core_.state_.control_flow_queries.block_guarantees_return,
+        });
 }
 
 bool SemanticAnalyzerCore::StatementAnalyzer::block_may_fallthrough(const syntax::StmtId block_id) const
 {
-    return evaluate_control_flow(
-        this->core_.ctx_.module, block_id, ControlFlowFrameKind::block, ControlFlowQuery::may_fallthrough);
+    return evaluate_control_flow(this->core_.ctx_.module, block_id, ControlFlowFrameKind::block,
+        ControlFlowCacheKind::block, ControlFlowQuery::may_fallthrough,
+        ControlFlowQueryCaches{
+            this->core_.state_.control_flow_queries.stmt_may_fallthrough,
+            this->core_.state_.control_flow_queries.block_may_fallthrough,
+        });
 }
 
 bool SemanticAnalyzerCore::StatementAnalyzer::stmt_may_fallthrough(const syntax::StmtId stmt_id) const
 {
-    return evaluate_control_flow(
-        this->core_.ctx_.module, stmt_id, ControlFlowFrameKind::statement, ControlFlowQuery::may_fallthrough);
+    return evaluate_control_flow(this->core_.ctx_.module, stmt_id, ControlFlowFrameKind::statement,
+        ControlFlowCacheKind::statement, ControlFlowQuery::may_fallthrough,
+        ControlFlowQueryCaches{
+            this->core_.state_.control_flow_queries.stmt_may_fallthrough,
+            this->core_.state_.control_flow_queries.block_may_fallthrough,
+        });
 }
 
 void SemanticAnalyzerCore::StatementAnalyzer::record_inferred_return(

@@ -187,6 +187,13 @@ private:
         bool in_const_initializer = false;
     };
 
+    struct ControlFlowQueryCache {
+        std::vector<base::u8> block_guarantees_return;
+        std::vector<base::u8> stmt_guarantees_return;
+        std::vector<base::u8> block_may_fallthrough;
+        std::vector<base::u8> stmt_may_fallthrough;
+    };
+
     struct GenericState {
         explicit GenericState(base::BumpAllocator& arena)
             : struct_templates(make_sema_map<ModuleLookupKey, GenericTemplateInfo, ModuleLookupKeyHash>(
@@ -565,6 +572,7 @@ private:
         mutable ModuleState modules;
         LifetimeIndexState lifetime_indexes;
         FlowState flow;
+        mutable ControlFlowQueryCache control_flow_queries;
     };
 
     void register_type_names();

@@ -102,6 +102,7 @@ constexpr base::u32 SEMA_TEST_INVALID_BUILTIN_TYPE_VALUE = 99;
 constexpr base::u32 SEMA_TEST_INVALID_CAPABILITY_KIND_VALUE = 99;
 constexpr base::u32 SEMA_TEST_INVALID_RESOURCE_KIND_VALUE = 99;
 constexpr base::usize SEMA_TEST_RESOURCE_CLASSIFIER_DEEP_CHAIN_LENGTH = 32;
+constexpr base::u8 SEMA_TEST_CONTROL_FLOW_CACHE_UNKNOWN = 0;
 constexpr std::string_view SEMA_TEST_INTEGER_LITERAL_ONE = "1";
 constexpr std::string_view SEMA_TEST_BODY_FLOW_MODULE_NAME = "body_flow";
 constexpr std::string_view SEMA_TEST_BODY_FLOW_SOURCE_NAME = "source";
@@ -8859,6 +8860,8 @@ TEST(CoreUnit, SemanticWhiteBoxParserOnlyModuleContractIsNormalized)
     static_assert(std::is_same_v<TypeFunctionParams, sema::TypeHandleList>);
     static_assert(std::is_same_v<TypeGenericArgs, sema::TypeHandleList>);
     static_assert(std::is_same_v<decltype(sema::CheckedModule{}.normalized_ast), sema::NormalizedAstOverlay>);
+    static_assert(std::is_same_v<decltype(sema::NormalizedAstOverlay{}.original_expr_count), base::u64>);
+    static_assert(std::is_same_v<decltype(sema::NormalizedAstOverlay{}.final_type_count), base::u64>);
     static_assert(sizeof(sema::NormalizedAstOverlay) < sizeof(syntax::AstModule));
 
     syntax::AstModule module;
@@ -9831,6 +9834,29 @@ TEST(CoreUnit, SemanticWhiteBoxStatementControlFlowQueries)
     EXPECT_TRUE(analyzer.stmt_may_fallthrough(partial_if_stmt));
     EXPECT_TRUE(analyzer.stmt_may_fallthrough(missing_else_if_stmt));
     EXPECT_TRUE(analyzer.block_may_fallthrough(fallthrough_block));
+
+    const auto cached_value = [](const std::vector<base::u8>& cache, const syntax::StmtId stmt) {
+        return stmt.value < cache.size() ? cache[stmt.value] : SEMA_TEST_CONTROL_FLOW_CACHE_UNKNOWN;
+    };
+    EXPECT_EQ(analyzer.state_.control_flow_queries.block_guarantees_return.size(), module.stmts.size());
+    EXPECT_EQ(analyzer.state_.control_flow_queries.stmt_guarantees_return.size(), module.stmts.size());
+    EXPECT_EQ(analyzer.state_.control_flow_queries.block_may_fallthrough.size(), module.stmts.size());
+    EXPECT_EQ(analyzer.state_.control_flow_queries.stmt_may_fallthrough.size(), module.stmts.size());
+    EXPECT_NE(cached_value(analyzer.state_.control_flow_queries.block_guarantees_return, mixed_block),
+        SEMA_TEST_CONTROL_FLOW_CACHE_UNKNOWN);
+    EXPECT_NE(cached_value(analyzer.state_.control_flow_queries.stmt_guarantees_return, full_if_stmt),
+        SEMA_TEST_CONTROL_FLOW_CACHE_UNKNOWN);
+    EXPECT_NE(cached_value(analyzer.state_.control_flow_queries.block_may_fallthrough, fallthrough_block),
+        SEMA_TEST_CONTROL_FLOW_CACHE_UNKNOWN);
+    EXPECT_NE(cached_value(analyzer.state_.control_flow_queries.stmt_may_fallthrough, partial_if_stmt),
+        SEMA_TEST_CONTROL_FLOW_CACHE_UNKNOWN);
+
+    const base::usize guarantee_cache_size = analyzer.state_.control_flow_queries.stmt_guarantees_return.size();
+    const base::usize fallthrough_cache_size = analyzer.state_.control_flow_queries.block_may_fallthrough.size();
+    EXPECT_TRUE(analyzer.stmt_guarantees_return(full_if_stmt));
+    EXPECT_TRUE(analyzer.block_may_fallthrough(fallthrough_block));
+    EXPECT_EQ(analyzer.state_.control_flow_queries.stmt_guarantees_return.size(), guarantee_cache_size);
+    EXPECT_EQ(analyzer.state_.control_flow_queries.block_may_fallthrough.size(), fallthrough_cache_size);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxIterativeTypeLayoutEdges)

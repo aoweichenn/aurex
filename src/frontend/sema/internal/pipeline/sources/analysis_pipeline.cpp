@@ -194,8 +194,10 @@ base::Result<CheckedModule> SemanticAnalysisPipeline::run()
 
 bool SemanticAnalysisPipeline::prepare_analysis_session()
 {
-    this->core_.state_.checked.normalized_ast.original_expr_count = this->core_.ctx_.module.exprs.size();
-    this->core_.state_.checked.normalized_ast.original_type_count = this->core_.ctx_.module.types.size();
+    this->core_.state_.checked.normalized_ast.original_expr_count =
+        static_cast<base::u64>(this->core_.ctx_.module.exprs.size());
+    this->core_.state_.checked.normalized_ast.original_type_count =
+        static_cast<base::u64>(this->core_.ctx_.module.types.size());
     if (!this->core_.ctx_.module.identifiers_ready()) {
         this->core_.ctx_.module.intern_identifiers();
     }
@@ -353,8 +355,10 @@ base::Result<CheckedModule> SemanticAnalysisPipeline::finish_analysis()
     if (this->core_.ctx_.diagnostics.has_error()) {
         return base::Result<CheckedModule>::fail({base::ErrorCode::sema_error, std::string(SEMA_ANALYSIS_FAILED)});
     }
-    this->core_.state_.checked.normalized_ast.final_expr_count = this->core_.ctx_.module.exprs.size();
-    this->core_.state_.checked.normalized_ast.final_type_count = this->core_.ctx_.module.types.size();
+    this->core_.state_.checked.normalized_ast.final_expr_count =
+        static_cast<base::u64>(this->core_.ctx_.module.exprs.size());
+    this->core_.state_.checked.normalized_ast.final_type_count =
+        static_cast<base::u64>(this->core_.ctx_.module.types.size());
     this->core_.state_.checked.release_analysis_only_storage();
     return base::Result<CheckedModule>::ok(std::move(this->core_.state_.checked));
 }

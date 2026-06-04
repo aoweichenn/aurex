@@ -1,5 +1,23 @@
 # 版本文档
 
+## M7 Hardening Performance Closure
+
+M7c/M7d 进入下一阶段前的硬化闭环已完成，记录在
+[M7 Hardening Performance Closure](m7-hardening-performance-closure.md)。
+
+本轮收口内容包括：
+
+- 剩余 `u32/i32/usize` 审计：query authority 与 checked semantic count 保持/扩展到 `u64`；
+  `NormalizedAstOverlay` 计数从 `usize` 改为 `u64`；AST/IR/sema handle、stable key schema、lifetime/body-flow
+  index 和 bounded 小域 index 保持 `u32`，作为未来独立 schema migration 处理。
+- statement control-flow query 结果按 `StmtId` 四路缓存，并缓存子语句/子块结果；body-loan local-check precheck
+  从两次表达式子树扫描合并为一次扫描。
+- 新增 `tools/m7_hardening_perf.py`，统一 Google Benchmark、hyperfine 和 `/usr/bin/time -v` 输出。
+- 同机同命令 Release benchmark 对照基线提交 `eef0c25b`，broad frontend case 均在当前容器噪声范围内，无可见回退；
+  `SemaAstBulk/4096` 当前 CPU time 为约 `20.352 ms`，4x statement 规模约 `4.35x`。
+- `perf` 已安装但当前容器 `perf stat` 不可用，因此本轮不把 PMU counter 作为 gate；hyperfine 和
+  `/usr/bin/time -v` 已写入 `build/m7_hardening_perf/summary.md`。
+
 ## M7c-C Storage Escape 与性能收口
 
 M7c-C 的核心 storage escape 迁移和性能收口已完成，文档入口仍为

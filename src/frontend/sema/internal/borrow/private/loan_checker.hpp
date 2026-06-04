@@ -18,11 +18,9 @@ public:
     void check(const syntax::ItemNode& function, const FunctionLookupKey& key, BodyLoanDiagnosticMode mode);
 
 private:
-    [[nodiscard]] bool statement_may_bind_reference_loan(syntax::StmtId stmt) const;
+    [[nodiscard]] bool statement_may_need_local_loan_check(syntax::StmtId stmt) const;
     [[nodiscard]] bool statement_may_bind_reference_loan_shallow(syntax::StmtId stmt) const;
-    [[nodiscard]] bool statement_may_have_two_phase_receiver(syntax::StmtId stmt) const;
-    [[nodiscard]] bool expr_may_have_two_phase_receiver(syntax::ExprId expr) const;
-    [[nodiscard]] bool expr_may_contain_reference_loan_statement(syntax::ExprId expr) const;
+    [[nodiscard]] bool expr_may_need_local_loan_check(syntax::ExprId expr) const;
     [[nodiscard]] bool type_contains_reference(TypeHandle type) const;
 
     SemanticAnalyzerCore& core_;

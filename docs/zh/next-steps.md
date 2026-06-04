@@ -56,6 +56,13 @@ storage escape 且 body 有候选 non-name assignment 时作为窄 fallback guar
 storage escape `sema.analyze` 3-run median 500/1000/2000/4000 条为 50.701 / 100.202 / 204.232 / 419.745 ms；
 `gprof` 确认旧的 `BodyLoanSolver::expr_result_contains_loan` 二次热点已消失。
 
+M7 hardening performance closure 也已完成，记录在
+[M7 Hardening Performance Closure](m7-hardening-performance-closure.md)。当前新增 statement control-flow query
+cache、body-loan precheck 单次表达式遍历、`NormalizedAstOverlay` `u64` 计数和 `tools/m7_hardening_perf.py`。
+同机同命令 Release benchmark 对照基线提交 `eef0c25b`，broad frontend case 无可见回退；`SemaAstBulk/4096`
+当前 CPU time 约 `20.352 ms`，4x statement 规模约 `4.35x`。剩余 `u32` 主要是 handle、index、stable key schema
+或 bounded 小域，后续若宽化必须作为独立 schema migration。
+
 M7c/M7d 后续实现按六个大块推进：
 
 1. M7c-A：已完成。parser/AST/type system 增加 contextual `origin` 参数、`&[origin] T` / `&mut[origin] T`、

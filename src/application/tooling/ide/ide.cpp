@@ -54,6 +54,7 @@ constexpr std::string_view IDE_SEMANTIC_FACT_BORROW_SUMMARY = "borrow_summary";
 constexpr std::string_view IDE_SEMANTIC_FACT_BORROW_CONTRACT = "borrow_contract";
 constexpr std::string_view IDE_SEMANTIC_FACT_LIFETIME_FACTS = "lifetime_facts";
 constexpr std::string_view IDE_SEMANTIC_FACT_DROPCK_FACTS = "dropck_facts";
+constexpr std::string_view IDE_SEMANTIC_FACT_PLACE_STATE = "place_state";
 constexpr std::string_view IDE_SEMANTIC_FACT_BODY_LOAN_CHECK = "body_loan_check";
 constexpr std::string_view IDE_SYMBOL_KIND_CONST = "const";
 constexpr std::string_view IDE_SYMBOL_KIND_ENUM_CASE = "enum_case";
@@ -98,6 +99,7 @@ constexpr std::string_view IDE_DETAIL_RESOURCE_SEPARATOR = " resource=";
 constexpr std::string_view IDE_DETAIL_BORROW_SUMMARY_SEPARATOR = " borrow_summary=";
 constexpr std::string_view IDE_DETAIL_BORROW_CONTRACT_SEPARATOR = " borrow_contract=";
 constexpr std::string_view IDE_DETAIL_LIFETIME_SEPARATOR = " lifetime=";
+constexpr std::string_view IDE_DETAIL_PLACE_STATE_SEPARATOR = " place_state=";
 constexpr std::string_view IDE_PRIMARY_PART_NAME = "<primary>";
 constexpr base::u32 IDE_PRIMARY_PART_INDEX = 0;
 constexpr base::u32 IDE_FIRST_NAMED_PART_INDEX = 1;
@@ -1054,6 +1056,37 @@ void recover_resolved_fragment_source_part(
     return label.str();
 }
 
+[[nodiscard]] std::string place_state_detail(const sema::FunctionPlaceStateFacts& facts)
+{
+    const base::u64 partial_count =
+        static_cast<base::u64>(std::ranges::count_if(facts.places, [](const sema::PlaceStateFact& fact) {
+            return fact.has_partial_projection;
+        }));
+    const base::u64 move_place_count =
+        static_cast<base::u64>(std::ranges::count_if(facts.places, [](const sema::PlaceStateFact& fact) {
+            return fact.move_candidate_count != 0;
+        }));
+    const base::u64 drop_place_count =
+        static_cast<base::u64>(std::ranges::count_if(facts.places, [](const sema::PlaceStateFact& fact) {
+            return fact.drop_count != 0 || fact.cleanup_count != 0 || fact.drop_state == sema::PlaceStateDropState::dropped;
+        }));
+    const base::u64 borrow_event_count =
+        static_cast<base::u64>(std::ranges::count_if(facts.events, [](const sema::PlaceStateEvent& event) {
+            return event.kind == sema::PlaceStateEventKind::borrow_shared
+                || event.kind == sema::PlaceStateEventKind::borrow_mutable;
+        }));
+    std::ostringstream label;
+    label << IDE_SEMANTIC_FACT_PLACE_STATE << " places=" << facts.places.size()
+          << " events=" << facts.events.size()
+          << " partials=" << partial_count
+          << " moves=" << move_place_count
+          << " drops=" << drop_place_count
+          << " borrows=" << borrow_event_count
+          << " graph_missing=" << (facts.graph_missing ? "true" : "false")
+          << " fingerprint=" << query::debug_string(sema::function_place_state_facts_fingerprint(facts));
+    return label.str();
+}
+
 [[nodiscard]] std::string body_loan_check_detail(const sema::BodyLoanCheckResult& result)
 {
     const base::usize reborrow_count =
@@ -1150,6 +1183,16 @@ void recover_resolved_fragment_source_part(
                   << "/actions=" << dropck->second.actions.size()
                   << "/required_outlives=" << required_outlives_count
                   << "/violations=" << dropck->second.violations.size();
+        }
+        if (const auto place_state = checked.place_state_facts.find(*function_key);
+            place_state != checked.place_state_facts.end()) {
+            const base::u64 partial_count = static_cast<base::u64>(
+                std::ranges::count_if(place_state->second.places, [](const sema::PlaceStateFact& fact) {
+                    return fact.has_partial_projection;
+                }));
+            label << IDE_DETAIL_PLACE_STATE_SEPARATOR << "places=" << place_state->second.places.size()
+                  << "/events=" << place_state->second.events.size()
+                  << "/partials=" << partial_count;
         }
     }
     return label.str();
@@ -1855,6 +1898,27 @@ void push_dropck_facts_fact(IdeSnapshot& snapshot, const query::QueryKey query_k
     snapshot.query.semantic_facts.push_back(std::move(fact));
 }
 
+void push_place_state_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
+    const sema::FunctionSignature& signature, const sema::FunctionLookupKey function, const base::SourceRange range)
+{
+    const auto facts = snapshot.checked.place_state_facts.find(function);
+    if (facts == snapshot.checked.place_state_facts.end()) {
+        return;
+    }
+    IdeSemanticFact fact;
+    fact.kind = IdeSemanticFactKind::place_state;
+    fact.query = query_key;
+    fact.definition = body.owner;
+    fact.body = body;
+    fact.range = range;
+    fact.name = std::string(signature.name.view());
+    fact.detail = place_state_detail(facts->second);
+    fact.part_index = signature.part_index;
+    fact.generic_instance = signature.generic_instance_key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
 void push_body_loan_check_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
     const sema::FunctionSignature& signature, const sema::FunctionLookupKey function, const base::SourceRange range)
 {
@@ -1949,6 +2013,7 @@ void push_type_check_body_fact(query::QueryContext& context, IdeSnapshot& snapsh
         item_name_range(snapshot, signature.definition_item, signature.name.view(), signature.range));
     push_lifetime_facts_fact(snapshot, *query_key, key, signature, function, range);
     push_dropck_facts_fact(snapshot, *query_key, key, signature, function, range);
+    push_place_state_fact(snapshot, *query_key, key, signature, function, range);
     push_body_loan_check_fact(snapshot, *query_key, key, signature, function, range);
 }
 

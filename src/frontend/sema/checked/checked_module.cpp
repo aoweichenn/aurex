@@ -585,6 +585,8 @@ CheckedModule::CheckedModule()
           *this->arena_, FunctionLookupKeyHash{})),
       body_flow_graphs(make_sema_map<FunctionLookupKey, BodyFlowGraph, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
+      place_state_facts(make_sema_map<FunctionLookupKey, FunctionPlaceStateFacts, FunctionLookupKeyHash>(
+          *this->arena_, FunctionLookupKeyHash{})),
       body_loan_checks(make_sema_map<FunctionLookupKey, BodyLoanCheckResult, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
       param_envs(make_sema_vector<ParamEnvInfo>(*this->arena_)),
@@ -636,7 +638,8 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       generic_lifetime_predicates(std::move(other.generic_lifetime_predicates)),
       lifetime_facts(std::move(other.lifetime_facts)),
       dropck_facts(std::move(other.dropck_facts)),
-      body_flow_graphs(std::move(other.body_flow_graphs)), body_loan_checks(std::move(other.body_loan_checks)),
+      body_flow_graphs(std::move(other.body_flow_graphs)),
+      place_state_facts(std::move(other.place_state_facts)), body_loan_checks(std::move(other.body_loan_checks)),
       param_envs(std::move(other.param_envs)),
       generic_template_signatures(std::move(other.generic_template_signatures)),
       generic_side_table_layouts(std::move(other.generic_side_table_layouts)),
@@ -713,6 +716,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->lifetime_facts.swap(other.lifetime_facts);
     this->dropck_facts.swap(other.dropck_facts);
     this->body_flow_graphs.swap(other.body_flow_graphs);
+    this->place_state_facts.swap(other.place_state_facts);
     this->body_loan_checks.swap(other.body_loan_checks);
     this->param_envs.swap(other.param_envs);
     this->generic_template_signatures.swap(other.generic_template_signatures);
@@ -863,6 +867,11 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->body_flow_graphs.reserve(other.body_flow_graphs.size());
     for (const auto& entry : other.body_flow_graphs) {
         this->body_flow_graphs.emplace(entry.first, entry.second);
+    }
+    this->place_state_facts.clear();
+    this->place_state_facts.reserve(other.place_state_facts.size());
+    for (const auto& entry : other.place_state_facts) {
+        this->place_state_facts.emplace(entry.first, this->clone_function_place_state_facts(entry.second));
     }
     this->body_loan_checks.clear();
     this->body_loan_checks.reserve(other.body_loan_checks.size());
@@ -1437,6 +1446,11 @@ FunctionLifetimeFacts CheckedModule::clone_function_lifetime_facts(const Functio
 }
 
 FunctionDropCheckFacts CheckedModule::clone_function_drop_check_facts(const FunctionDropCheckFacts& other)
+{
+    return other;
+}
+
+FunctionPlaceStateFacts CheckedModule::clone_function_place_state_facts(const FunctionPlaceStateFacts& other)
 {
     return other;
 }
@@ -2124,6 +2138,35 @@ void populate_type_check_body_borrow_authority(
                 return violation.kind == DropCheckViolationKind::drop_glue_missing;
             });
     }
+    if (const auto place_state = checked.place_state_facts.find(function);
+        place_state != checked.place_state_facts.end()) {
+        authority.has_place_state_facts = true;
+        authority.place_state_fingerprint = function_place_state_facts_fingerprint(place_state->second);
+        authority.place_state_place_count = static_cast<base::u64>(place_state->second.places.size());
+        authority.place_state_event_count = static_cast<base::u64>(place_state->second.events.size());
+        authority.place_state_partial_projection_count =
+            static_cast<base::u64>(std::ranges::count_if(place_state->second.places, [](const PlaceStateFact& fact) {
+                return fact.has_partial_projection;
+            }));
+        authority.place_state_drop_place_count =
+            static_cast<base::u64>(std::ranges::count_if(place_state->second.places, [](const PlaceStateFact& fact) {
+                return fact.drop_count != 0 || fact.cleanup_count != 0 || fact.drop_state == PlaceStateDropState::dropped;
+            }));
+        authority.place_state_move_candidate_count =
+            static_cast<base::u64>(std::ranges::count_if(place_state->second.places, [](const PlaceStateFact& fact) {
+                return fact.move_candidate_count != 0;
+            }));
+        authority.place_state_borrow_event_count =
+            static_cast<base::u64>(std::ranges::count_if(place_state->second.events, [](const PlaceStateEvent& event) {
+                return event.kind == PlaceStateEventKind::borrow_shared
+                    || event.kind == PlaceStateEventKind::borrow_mutable;
+            }));
+        authority.place_state_graph_missing = place_state->second.graph_missing;
+        authority.place_state_has_partial_projection = authority.place_state_partial_projection_count != 0;
+        authority.place_state_has_drop_action = authority.place_state_drop_place_count != 0;
+        authority.place_state_has_move_candidate = authority.place_state_move_candidate_count != 0;
+        authority.place_state_has_borrow = authority.place_state_borrow_event_count != 0;
+    }
     if (const auto loan = checked.body_loan_checks.find(function); loan != checked.body_loan_checks.end()) {
         authority.has_body_loan_check = true;
         authority.body_loan_fingerprint = body_loan_check_fingerprint(loan->second);
@@ -2574,6 +2617,64 @@ std::string dump_checked_module(const CheckedModule& checked)
                 << " action=" << violation.action << " point=" << violation.point
                 << " region=" << violation.region
                 << " emitted=" << (violation.diagnostic_emitted ? "true" : "false") << "\n";
+        }
+    }
+
+    std::vector<const FunctionPlaceStateFacts*> place_state_facts;
+    place_state_facts.reserve(checked.place_state_facts.size());
+    for (const auto& entry : checked.place_state_facts) {
+        place_state_facts.push_back(&entry.second);
+    }
+    std::sort(place_state_facts.begin(), place_state_facts.end(),
+        [](const FunctionPlaceStateFacts* lhs, const FunctionPlaceStateFacts* rhs) {
+            return std::tie(lhs->function.module, lhs->function.owner_type, lhs->function.name.value)
+                < std::tie(rhs->function.module, rhs->function.owner_type, rhs->function.name.value);
+        });
+    out << "  place_state_facts " << place_state_facts.size() << "\n";
+    for (const FunctionPlaceStateFacts* const facts_ptr : place_state_facts) {
+        const FunctionPlaceStateFacts& facts = *facts_ptr;
+        out << "    place_state " << facts.function.module << ':' << facts.function.owner_type << ':';
+        if (syntax::is_valid(facts.function.name)) {
+            out << '#' << facts.function.name.value;
+        } else {
+            out << '-';
+        }
+        const base::u64 partial_count =
+            static_cast<base::u64>(std::ranges::count_if(facts.places, [](const PlaceStateFact& fact) {
+                return fact.has_partial_projection;
+            }));
+        const base::u64 borrow_event_count =
+            static_cast<base::u64>(std::ranges::count_if(facts.events, [](const PlaceStateEvent& event) {
+                return event.kind == PlaceStateEventKind::borrow_shared
+                    || event.kind == PlaceStateEventKind::borrow_mutable;
+            }));
+        out << " places=" << facts.places.size() << " events=" << facts.events.size()
+            << " partials=" << partial_count << " borrows=" << borrow_event_count
+            << " solved=" << (facts.solved ? "true" : "false")
+            << " graph_missing=" << (facts.graph_missing ? "true" : "false")
+            << " fingerprint=" << query::debug_string(function_place_state_facts_fingerprint(facts));
+        append_part_origin(out, show_parts, facts.part_index);
+        out << "\n";
+        for (base::usize place_index = 0; place_index < facts.places.size(); ++place_index) {
+            const PlaceStateFact& fact = facts.places[place_index];
+            out << "      place #" << place_index << " id=" << fact.place
+                << " root=" << body_flow_place_root_kind_name(fact.root_kind)
+                << " type=" << checked.types.display_name(fact.type)
+                << " projections=" << fact.projection_count
+                << " init=" << place_state_initialization_name(fact.initialization)
+                << " move=" << place_state_move_state_name(fact.move_state)
+                << " drop=" << place_state_drop_state_name(fact.drop_state)
+                << " needs_drop=" << (fact.needs_drop ? "true" : "false")
+                << " reads=" << fact.read_count << " writes=" << fact.write_count
+                << " reinits=" << fact.reinit_count << " moves=" << fact.move_candidate_count
+                << " drops=" << fact.drop_count << " cleanups=" << fact.cleanup_count
+                << " borrows=" << fact.borrow_count << "\n";
+        }
+        for (base::usize event_index = 0; event_index < facts.events.size(); ++event_index) {
+            const PlaceStateEvent& event = facts.events[event_index];
+            out << "      event #" << event_index << ' ' << place_state_event_kind_name(event.kind)
+                << " place=" << event.place << " action=" << event.action << " point=" << event.point
+                << " type=" << checked.types.display_name(event.type) << "\n";
         }
     }
 

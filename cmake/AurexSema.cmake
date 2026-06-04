@@ -25,6 +25,7 @@ add_library(aurex_sema
     src/frontend/sema/internal/borrow/sources/flow_graph.cpp
     src/frontend/sema/internal/borrow/sources/loan_checker.cpp
     src/frontend/sema/internal/place/sources/move_analysis.cpp
+    src/frontend/sema/internal/place/sources/place_state.cpp
     src/frontend/sema/internal/expressions/sources/sema_control_expression_analyzer.cpp
     src/frontend/sema/internal/declarations/sources/sema_declaration_analyzer.cpp
     src/frontend/sema/internal/diagnostics/sources/sema_diagnostics.cpp

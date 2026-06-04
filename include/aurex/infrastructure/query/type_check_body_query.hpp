@@ -15,6 +15,7 @@ struct TypeCheckBodyAuthority {
     StableFingerprint128 borrow_contract_fingerprint;
     StableFingerprint128 lifetime_fingerprint;
     StableFingerprint128 dropck_fingerprint;
+    StableFingerprint128 place_state_fingerprint;
     StableFingerprint128 body_loan_fingerprint;
     base::u64 expr_side_table_count = 0;
     base::u64 pattern_side_table_count = 0;
@@ -37,6 +38,12 @@ struct TypeCheckBodyAuthority {
     base::u64 dropck_action_count = 0;
     base::u64 dropck_required_outlives_count = 0;
     base::u64 dropck_violation_count = 0;
+    base::u64 place_state_place_count = 0;
+    base::u64 place_state_event_count = 0;
+    base::u64 place_state_partial_projection_count = 0;
+    base::u64 place_state_drop_place_count = 0;
+    base::u64 place_state_move_candidate_count = 0;
+    base::u64 place_state_borrow_event_count = 0;
     base::u64 body_loan_count = 0;
     base::u64 body_reborrow_count = 0;
     base::u64 body_two_phase_borrow_count = 0;
@@ -47,6 +54,7 @@ struct TypeCheckBodyAuthority {
     bool has_borrow_contract = false;
     bool has_lifetime_facts = false;
     bool has_dropck_facts = false;
+    bool has_place_state_facts = false;
     bool has_body_loan_check = false;
     bool borrow_summary_has_unknown_return_origin = false;
     bool borrow_summary_has_local_return_escape = false;
@@ -67,6 +75,11 @@ struct TypeCheckBodyAuthority {
     bool dropck_has_borrowed_field_dangling = false;
     bool dropck_has_destructor_escape = false;
     bool dropck_has_drop_glue_missing = false;
+    bool place_state_graph_missing = false;
+    bool place_state_has_partial_projection = false;
+    bool place_state_has_drop_action = false;
+    bool place_state_has_move_candidate = false;
+    bool place_state_has_borrow = false;
     bool body_loan_graph_missing = false;
     bool body_loan_has_emitted_diagnostics = false;
     bool body_two_phase_has_emitted_diagnostics = false;

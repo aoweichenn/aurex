@@ -928,6 +928,12 @@ TEST(CoreUnit, ToolingSessionCoversNormalizationFallbacksAndErrorPaths)
     EXPECT_NE(tooling::tooling_file_uri_from_path("/workspace/space file.ax").find("%20"), std::string::npos);
     EXPECT_EQ(tooling::tooling_offset_for_position("one\n", tooling::ToolingSourcePosition{4U, 0U}), 4U);
     EXPECT_EQ(tooling::tooling_position_for_offset("one\n", 40U).line, 1U);
+    tooling::ToolingProjectConfig empty_package_config;
+    empty_package_config.root_path = "/workspace";
+    empty_package_config.package_identity.clear();
+    const tooling::ToolingDocumentId default_package_document =
+        tooling::tooling_document_id_from_path("default_package.ax", empty_package_config);
+    EXPECT_EQ(default_package_document.package_identity, "ide");
     EXPECT_EQ(
         tooling::tooling_document_id_from_path("relative.ax", session.project_config()).path, "/workspace/relative.ax");
     EXPECT_EQ(tooling::tooling_document_id_from_path("/workspace/colon:name.ax", session.project_config()).uri,
@@ -1026,6 +1032,19 @@ TEST(CoreUnit, ToolingSessionCoversNormalizationFallbacksAndErrorPaths)
     EXPECT_FALSE(empty_session.semantic_tokens(partial_document));
     EXPECT_FALSE(empty_session.inlay_hints(partial_document));
     EXPECT_FALSE(empty_session.code_actions(partial_document));
+
+    const base::Result<std::vector<tooling::ToolingReference>> unopened_references =
+        empty_session.references_at_offset(partial_document, 0U);
+    ASSERT_FALSE(unopened_references);
+    EXPECT_EQ(unopened_references.error().code, base::ErrorCode::invalid_source);
+    EXPECT_NE(unopened_references.error().message.find("tooling document is not open"), std::string::npos);
+
+    const base::Result<std::vector<tooling::ToolingWorkspaceSymbol>> failed_workspace_symbols =
+        base::Result<std::vector<tooling::ToolingWorkspaceSymbol>>::fail(
+            {base::ErrorCode::invalid_source, "workspace symbol snapshot failed"});
+    ASSERT_FALSE(failed_workspace_symbols);
+    EXPECT_EQ(failed_workspace_symbols.error().code, base::ErrorCode::invalid_source);
+    EXPECT_EQ(failed_workspace_symbols.error().message, "workspace symbol snapshot failed");
 }
 
 TEST(CoreUnit, ToolingSessionProjectsAbsentIdeFeaturesAndSuggestionDiagnostics)

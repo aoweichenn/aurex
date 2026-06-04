@@ -3287,6 +3287,15 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
     loan_changed_authority.body_loan_fingerprint = query::stable_fingerprint("query-test-body-loan");
     EXPECT_NE(query::type_check_body_result_fingerprint(loan_changed_authority), output->result);
 
+    query::TypeCheckBodyAuthority place_state_changed_authority = subject.type_check_authority;
+    place_state_changed_authority.has_place_state_facts = true;
+    place_state_changed_authority.place_state_place_count = 2;
+    place_state_changed_authority.place_state_event_count = 3;
+    place_state_changed_authority.place_state_partial_projection_count = 1;
+    place_state_changed_authority.place_state_has_partial_projection = true;
+    place_state_changed_authority.place_state_fingerprint = query::stable_fingerprint("query-test-place-state");
+    EXPECT_NE(query::type_check_body_result_fingerprint(place_state_changed_authority), output->result);
+
     query::TypeCheckBodyAuthority contract_changed_authority = subject.type_check_authority;
     contract_changed_authority.has_borrow_contract = true;
     contract_changed_authority.borrow_contract_selector_count = 1;

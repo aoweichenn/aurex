@@ -831,6 +831,83 @@ struct BodyFlowGraph {
 
 using BodyFlowGraphMap = SemaMap<FunctionLookupKey, BodyFlowGraph, FunctionLookupKeyHash>;
 
+enum class PlaceStateInitialization : base::u8 {
+    unknown,
+    initialized,
+    maybe_initialized,
+    uninitialized,
+};
+
+enum class PlaceStateMoveState : base::u8 {
+    none,
+    move_candidate,
+    maybe_moved,
+};
+
+enum class PlaceStateDropState : base::u8 {
+    none,
+    drop_pending,
+    dropped,
+};
+
+enum class PlaceStateEventKind : base::u8 {
+    read,
+    write,
+    reinit,
+    move_candidate,
+    drop,
+    cleanup,
+    borrow_shared,
+    borrow_mutable,
+};
+
+struct PlaceStateEvent {
+    PlaceStateEventKind kind = PlaceStateEventKind::read;
+    base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 action = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    base::SourceRange range{};
+};
+
+struct PlaceStateFact {
+    base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
+    BodyFlowPlaceRootKind root_kind = BodyFlowPlaceRootKind::none;
+    IdentId root_name_id = INVALID_IDENT_ID;
+    syntax::ExprId root_expr = syntax::INVALID_EXPR_ID;
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    base::u64 projection_count = 0;
+    base::u32 first_action_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 last_action_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 last_write_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 last_move_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 last_drop_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u64 read_count = 0;
+    base::u64 write_count = 0;
+    base::u64 reinit_count = 0;
+    base::u64 move_candidate_count = 0;
+    base::u64 drop_count = 0;
+    base::u64 cleanup_count = 0;
+    base::u64 borrow_count = 0;
+    PlaceStateInitialization initialization = PlaceStateInitialization::unknown;
+    PlaceStateMoveState move_state = PlaceStateMoveState::none;
+    PlaceStateDropState drop_state = PlaceStateDropState::none;
+    bool needs_drop = false;
+    bool has_partial_projection = false;
+};
+
+struct FunctionPlaceStateFacts {
+    FunctionLookupKey function;
+    std::vector<PlaceStateFact> places;
+    std::vector<PlaceStateEvent> events;
+    query::StableFingerprint128 fingerprint;
+    bool graph_missing = false;
+    bool solved = false;
+    base::u32 part_index = 0;
+};
+
+using FunctionPlaceStateFactsMap = SemaMap<FunctionLookupKey, FunctionPlaceStateFacts, FunctionLookupKeyHash>;
+
 inline constexpr base::u32 SEMA_BODY_LOAN_INVALID_INDEX = static_cast<base::u32>(-1);
 
 enum class BodyLoanKind : base::u8 {
@@ -926,6 +1003,10 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
 [[nodiscard]] std::string_view body_loan_origin_kind_name(BodyLoanOriginKind kind) noexcept;
 [[nodiscard]] std::string_view body_loan_diagnostic_mode_name(BodyLoanDiagnosticMode mode) noexcept;
 [[nodiscard]] std::string_view body_loan_conflict_kind_name(BodyLoanConflictKind kind) noexcept;
+[[nodiscard]] std::string_view body_flow_point_kind_name(BodyFlowPointKind kind) noexcept;
+[[nodiscard]] std::string_view body_flow_action_kind_name(BodyFlowActionKind kind) noexcept;
+[[nodiscard]] std::string_view body_flow_place_root_kind_name(BodyFlowPlaceRootKind kind) noexcept;
+[[nodiscard]] std::string_view body_flow_place_projection_kind_name(BodyFlowPlaceProjectionKind kind) noexcept;
 [[nodiscard]] std::string_view borrow_contract_selector_kind_name(BorrowContractSelectorKind kind) noexcept;
 [[nodiscard]] std::string_view function_borrow_contract_source_name(FunctionBorrowContractSource source) noexcept;
 [[nodiscard]] std::string_view lifetime_region_kind_name(LifetimeRegionKind kind) noexcept;
@@ -935,6 +1016,10 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
 [[nodiscard]] std::string_view drop_check_action_kind_name(DropCheckActionKind kind) noexcept;
 [[nodiscard]] std::string_view drop_check_violation_kind_name(DropCheckViolationKind kind) noexcept;
 [[nodiscard]] std::string_view drop_check_violation_message(DropCheckViolationKind kind) noexcept;
+[[nodiscard]] std::string_view place_state_initialization_name(PlaceStateInitialization state) noexcept;
+[[nodiscard]] std::string_view place_state_move_state_name(PlaceStateMoveState state) noexcept;
+[[nodiscard]] std::string_view place_state_drop_state_name(PlaceStateDropState state) noexcept;
+[[nodiscard]] std::string_view place_state_event_kind_name(PlaceStateEventKind kind) noexcept;
 [[nodiscard]] query::StableFingerprint128 body_loan_check_fingerprint(const BodyLoanCheckResult& result) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_borrow_contract_fingerprint(
     const FunctionBorrowContract& contract) noexcept;
@@ -946,8 +1031,11 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
 [[nodiscard]] query::StableFingerprint128 drop_check_fact_fingerprint(const DropCheckFact& fact) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_drop_check_facts_fingerprint(
     const FunctionDropCheckFacts& facts) noexcept;
+[[nodiscard]] query::StableFingerprint128 function_place_state_facts_fingerprint(
+    const FunctionPlaceStateFacts& facts) noexcept;
 [[nodiscard]] std::string dump_function_lifetime_facts(const FunctionLifetimeFacts& facts);
 [[nodiscard]] std::string dump_function_drop_check_facts(const FunctionDropCheckFacts& facts);
+[[nodiscard]] std::string dump_function_place_state_facts(const FunctionPlaceStateFacts& facts);
 
 enum class CoercionKind {
     contextual_integer_literal,
@@ -1284,6 +1372,7 @@ public:
     FunctionLifetimeFactsMap lifetime_facts;
     FunctionDropCheckFactsMap dropck_facts;
     BodyFlowGraphMap body_flow_graphs;
+    FunctionPlaceStateFactsMap place_state_facts;
     BodyLoanCheckResultMap body_loan_checks;
     ParamEnvList param_envs;
     SemaVector<GenericTemplateSignatureInfo> generic_template_signatures;
@@ -1349,6 +1438,7 @@ public:
     [[nodiscard]] FunctionSignature clone_function_signature(const FunctionSignature& other);
     [[nodiscard]] FunctionLifetimeFacts clone_function_lifetime_facts(const FunctionLifetimeFacts& other);
     [[nodiscard]] FunctionDropCheckFacts clone_function_drop_check_facts(const FunctionDropCheckFacts& other);
+    [[nodiscard]] FunctionPlaceStateFacts clone_function_place_state_facts(const FunctionPlaceStateFacts& other);
     [[nodiscard]] StructInfo clone_struct_info(const StructInfo& other);
     [[nodiscard]] EnumCaseInfo clone_enum_case_info(const EnumCaseInfo& other);
     [[nodiscard]] TraitMethodRequirement clone_trait_method_requirement(const TraitMethodRequirement& other);

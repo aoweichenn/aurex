@@ -173,6 +173,12 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult)
     EXPECT_EQ(failed.error().code, ErrorCode::io_error);
     EXPECT_EQ(failed.error().message, "missing");
 
+    auto failed_bool = base::Result<bool>::fail({ErrorCode::invalid_source, "closed"});
+    ASSERT_FALSE(failed_bool);
+    EXPECT_FALSE(failed_bool.has_value());
+    EXPECT_EQ(failed_bool.error().code, ErrorCode::invalid_source);
+    EXPECT_EQ(failed_bool.error().message, "closed");
+
     auto ok_void = base::Result<void>::ok();
     EXPECT_TRUE(ok_void);
     EXPECT_TRUE(ok_void.has_value());

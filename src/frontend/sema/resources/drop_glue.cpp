@@ -118,10 +118,8 @@ void append_drop_glue_tuple_actions(std::vector<DropGlueAction>& actions, const 
 void append_drop_glue_array_actions(std::vector<DropGlueAction>& actions, const TypeInfo& info, const TypeHandle type,
     const ResourceSemanticsClassifier& classifier)
 {
-    if (drop_glue_type_needs_drop(classifier, info.array_element)) {
-        push_drop_glue_step_actions(
-            actions, make_drop_glue_step(DropGlueStepKind::array_element, type, info.array_element, 0, classifier));
-    }
+    push_drop_glue_step_actions(
+        actions, make_drop_glue_step(DropGlueStepKind::array_element, type, info.array_element, 0, classifier));
 }
 
 void append_drop_glue_enum_actions(std::vector<DropGlueAction>& actions, const CheckedModule& checked,
@@ -142,40 +140,26 @@ void append_drop_glue_actions_for_type(std::vector<DropGlueAction>& stack, const
     const TypeHandle type, const TypeInfo& info, const ResourceSemanticsClassifier& classifier)
 {
     std::vector<DropGlueAction> actions;
-    switch (info.kind) {
-        case TypeKind::struct_:
-            append_drop_glue_struct_actions(actions, checked, type, classifier);
-            break;
-        case TypeKind::tuple:
-            append_drop_glue_tuple_actions(actions, info, type, classifier);
-            break;
-        case TypeKind::array:
-            append_drop_glue_array_actions(actions, info, type, classifier);
-            break;
-        case TypeKind::enum_:
-            append_drop_glue_enum_actions(actions, checked, type, classifier);
-            break;
-        case TypeKind::generic_param:
-        case TypeKind::associated_projection:
-            actions.push_back(DropGlueAction{
-                DropGlueActionKind::emit_step,
-                INVALID_TYPE_HANDLE,
-                make_drop_glue_step(DropGlueStepKind::generic_value, type, type, 0, classifier),
-            });
-            break;
-        case TypeKind::opaque_struct:
-            actions.push_back(DropGlueAction{
-                DropGlueActionKind::emit_step,
-                INVALID_TYPE_HANDLE,
-                make_drop_glue_step(DropGlueStepKind::opaque_value, type, type, 0, classifier),
-            });
-            break;
-        case TypeKind::builtin:
-        case TypeKind::pointer:
-        case TypeKind::reference:
-        case TypeKind::slice:
-        case TypeKind::function:
-            break;
+    if (info.kind == TypeKind::struct_) {
+        append_drop_glue_struct_actions(actions, checked, type, classifier);
+    } else if (info.kind == TypeKind::tuple) {
+        append_drop_glue_tuple_actions(actions, info, type, classifier);
+    } else if (info.kind == TypeKind::array) {
+        append_drop_glue_array_actions(actions, info, type, classifier);
+    } else if (info.kind == TypeKind::enum_) {
+        append_drop_glue_enum_actions(actions, checked, type, classifier);
+    } else if (info.kind == TypeKind::generic_param || info.kind == TypeKind::associated_projection) {
+        actions.push_back(DropGlueAction{
+            DropGlueActionKind::emit_step,
+            INVALID_TYPE_HANDLE,
+            make_drop_glue_step(DropGlueStepKind::generic_value, type, type, 0, classifier),
+        });
+    } else if (info.kind == TypeKind::opaque_struct) {
+        actions.push_back(DropGlueAction{
+            DropGlueActionKind::emit_step,
+            INVALID_TYPE_HANDLE,
+            make_drop_glue_step(DropGlueStepKind::opaque_value, type, type, 0, classifier),
+        });
     }
     for (base::usize index = actions.size(); index > 0; --index) {
         stack.push_back(actions[index - 1U]);

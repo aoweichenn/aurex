@@ -108,6 +108,7 @@ public:
     class LookupResolver;
     class OperatorExpressionAnalyzer;
     class PatternMatchAnalyzer;
+    class PlaceStateAnalyzer;
     class ProjectionAggregateExpressionAnalyzer;
     class StatementAnalyzer;
     class TraitAnalyzer;
@@ -644,6 +645,8 @@ public:
     void analyze_lifetimes(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
     void analyze_dropck(
+        const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
+    void analyze_place_states(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
     void build_borrow_summary(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);

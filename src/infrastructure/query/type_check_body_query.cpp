@@ -8,7 +8,7 @@
 namespace aurex::query {
 namespace {
 
-constexpr std::string_view QUERY_TYPE_CHECK_BODY_AUTHORITY_MARKER = "query.type_check_body.authority.v1";
+constexpr std::string_view QUERY_TYPE_CHECK_BODY_AUTHORITY_MARKER = "query.type_check_body.authority.v2";
 
 } // namespace
 
@@ -62,6 +62,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_fingerprint(authority.borrow_contract_fingerprint);
     builder.mix_fingerprint(authority.lifetime_fingerprint);
     builder.mix_fingerprint(authority.dropck_fingerprint);
+    builder.mix_fingerprint(authority.place_state_fingerprint);
     builder.mix_fingerprint(authority.body_loan_fingerprint);
     builder.mix_u64(authority.expr_side_table_count);
     builder.mix_u64(authority.pattern_side_table_count);
@@ -84,6 +85,12 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_u64(authority.dropck_action_count);
     builder.mix_u64(authority.dropck_required_outlives_count);
     builder.mix_u64(authority.dropck_violation_count);
+    builder.mix_u64(authority.place_state_place_count);
+    builder.mix_u64(authority.place_state_event_count);
+    builder.mix_u64(authority.place_state_partial_projection_count);
+    builder.mix_u64(authority.place_state_drop_place_count);
+    builder.mix_u64(authority.place_state_move_candidate_count);
+    builder.mix_u64(authority.place_state_borrow_event_count);
     builder.mix_u64(authority.body_loan_count);
     builder.mix_u64(authority.body_reborrow_count);
     builder.mix_u64(authority.body_two_phase_borrow_count);
@@ -94,6 +101,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.has_borrow_contract);
     builder.mix_bool(authority.has_lifetime_facts);
     builder.mix_bool(authority.has_dropck_facts);
+    builder.mix_bool(authority.has_place_state_facts);
     builder.mix_bool(authority.has_body_loan_check);
     builder.mix_bool(authority.borrow_summary_has_unknown_return_origin);
     builder.mix_bool(authority.borrow_summary_has_local_return_escape);
@@ -114,6 +122,11 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.dropck_has_borrowed_field_dangling);
     builder.mix_bool(authority.dropck_has_destructor_escape);
     builder.mix_bool(authority.dropck_has_drop_glue_missing);
+    builder.mix_bool(authority.place_state_graph_missing);
+    builder.mix_bool(authority.place_state_has_partial_projection);
+    builder.mix_bool(authority.place_state_has_drop_action);
+    builder.mix_bool(authority.place_state_has_move_candidate);
+    builder.mix_bool(authority.place_state_has_borrow);
     builder.mix_bool(authority.body_loan_graph_missing);
     builder.mix_bool(authority.body_loan_has_emitted_diagnostics);
     builder.mix_bool(authority.body_two_phase_has_emitted_diagnostics);

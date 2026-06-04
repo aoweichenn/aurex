@@ -71,6 +71,11 @@ struct ControlFlowQueryCaches {
     return module.stmts[stmt.value];
 }
 
+[[nodiscard]] bool statement_valid_expr(const syntax::AstModule& module, const syntax::ExprId expr) noexcept
+{
+    return syntax::is_valid(expr) && expr.value < module.exprs.size();
+}
+
 [[nodiscard]] base::SourceRange expr_range_or(
     const syntax::AstModule& module, const syntax::ExprId expr, const base::SourceRange& fallback) noexcept
 {
@@ -92,6 +97,170 @@ struct ControlFlowQueryCaches {
     }
     const syntax::UnaryExprPayload* const unary = module.exprs.unary_payload(expr.value);
     return kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::dereference;
+}
+
+void push_storage_escape_guard_expr(
+    std::vector<syntax::ExprId>& pending, const syntax::AstModule& module, const syntax::ExprId expr)
+{
+    if (statement_valid_expr(module, expr)) {
+        pending.push_back(expr);
+    }
+}
+
+[[nodiscard]] bool expr_may_produce_storage_escape_carrier(
+    const syntax::AstModule& module, const syntax::ExprId expr)
+{
+    std::vector<syntax::ExprId> pending;
+    pending.reserve(SEMA_STATEMENT_TRAVERSAL_INITIAL_STACK_CAPACITY);
+    push_storage_escape_guard_expr(pending, module, expr);
+    while (!pending.empty()) {
+        const syntax::ExprId current = pending.back();
+        pending.pop_back();
+        if (!statement_valid_expr(module, current)) {
+            continue;
+        }
+        const syntax::ExprKind kind = module.exprs.kind(current.value);
+        switch (kind) {
+            case syntax::ExprKind::unary: {
+                const syntax::UnaryExprPayload* const unary = module.exprs.unary_payload(current.value);
+                if (unary == nullptr) {
+                    break;
+                }
+                if (unary->op == syntax::UnaryOp::address_of || unary->op == syntax::UnaryOp::address_of_mut
+                    || unary->op == syntax::UnaryOp::dereference) {
+                    return true;
+                }
+                push_storage_escape_guard_expr(pending, module, unary->operand);
+                break;
+            }
+            case syntax::ExprKind::call:
+            case syntax::ExprKind::ptr_addr:
+            case syntax::ExprKind::paddr:
+            case syntax::ExprKind::slice:
+            case syntax::ExprKind::slice_data:
+            case syntax::ExprKind::str_data:
+            case syntax::ExprKind::str_from_utf8_checked:
+            case syntax::ExprKind::str_from_bytes_unchecked:
+                return true;
+            case syntax::ExprKind::generic_apply: {
+                const syntax::GenericApplyExprPayload* const apply = module.exprs.generic_apply_payload(current.value);
+                if (apply != nullptr) {
+                    push_storage_escape_guard_expr(pending, module, apply->callee);
+                }
+                break;
+            }
+            case syntax::ExprKind::binary: {
+                const syntax::BinaryExprPayload* const binary = module.exprs.binary_payload(current.value);
+                if (binary != nullptr) {
+                    push_storage_escape_guard_expr(pending, module, binary->lhs);
+                    push_storage_escape_guard_expr(pending, module, binary->rhs);
+                }
+                break;
+            }
+            case syntax::ExprKind::try_expr:
+            case syntax::ExprKind::cast:
+            case syntax::ExprKind::pcast:
+            case syntax::ExprKind::bcast:
+            case syntax::ExprKind::size_of:
+            case syntax::ExprKind::align_of: {
+                const syntax::CastExprPayload* const cast = module.exprs.cast_payload(current.value);
+                const syntax::TryExprPayload* const try_expr = module.exprs.try_payload(current.value);
+                if (cast != nullptr) {
+                    push_storage_escape_guard_expr(pending, module, cast->expr);
+                } else if (try_expr != nullptr) {
+                    push_storage_escape_guard_expr(pending, module, try_expr->operand);
+                }
+                break;
+            }
+            case syntax::ExprKind::if_expr: {
+                const syntax::IfExprPayload* const if_expr = module.exprs.if_payload(current.value);
+                if (if_expr != nullptr) {
+                    push_storage_escape_guard_expr(pending, module, if_expr->then_expr);
+                    push_storage_escape_guard_expr(pending, module, if_expr->else_expr);
+                }
+                break;
+            }
+            case syntax::ExprKind::block_expr:
+            case syntax::ExprKind::unsafe_block: {
+                const syntax::BlockExprPayload* const block = module.exprs.block_payload(current.value);
+                if (block != nullptr) {
+                    push_storage_escape_guard_expr(pending, module, block->result);
+                }
+                break;
+            }
+            case syntax::ExprKind::match_expr: {
+                const syntax::MatchExprPayload* const match = module.exprs.match_payload(current.value);
+                if (match != nullptr) {
+                    for (const syntax::MatchArm& arm : match->arms) {
+                        push_storage_escape_guard_expr(pending, module, arm.value);
+                    }
+                }
+                break;
+            }
+            case syntax::ExprKind::array_literal: {
+                const syntax::ArrayExprPayload* const array = module.exprs.array_payload(current.value);
+                if (array != nullptr) {
+                    push_storage_escape_guard_expr(pending, module, array->repeat_value);
+                    for (const syntax::ExprId element : array->elements) {
+                        push_storage_escape_guard_expr(pending, module, element);
+                    }
+                }
+                break;
+            }
+            case syntax::ExprKind::tuple_literal: {
+                const syntax::AstArenaVector<syntax::ExprId>* const tuple =
+                    module.exprs.tuple_elements(current.value);
+                if (tuple != nullptr) {
+                    for (const syntax::ExprId element : *tuple) {
+                        push_storage_escape_guard_expr(pending, module, element);
+                    }
+                }
+                break;
+            }
+            case syntax::ExprKind::struct_literal: {
+                const syntax::StructLiteralExprPayload* const structure =
+                    module.exprs.struct_literal_payload(current.value);
+                if (structure != nullptr) {
+                    for (const syntax::FieldInit& field : structure->field_inits) {
+                        push_storage_escape_guard_expr(pending, module, field.value);
+                    }
+                }
+                break;
+            }
+            case syntax::ExprKind::field: {
+                const syntax::FieldExprPayload* const field = module.exprs.field_payload(current.value);
+                if (field != nullptr) {
+                    push_storage_escape_guard_expr(pending, module, field->object);
+                }
+                break;
+            }
+            case syntax::ExprKind::index: {
+                const syntax::IndexExprPayload* const index = module.exprs.index_payload(current.value);
+                if (index != nullptr) {
+                    push_storage_escape_guard_expr(pending, module, index->object);
+                    push_storage_escape_guard_expr(pending, module, index->index);
+                }
+                break;
+            }
+            case syntax::ExprKind::integer_literal:
+            case syntax::ExprKind::float_literal:
+            case syntax::ExprKind::bool_literal:
+            case syntax::ExprKind::null_literal:
+            case syntax::ExprKind::string_literal:
+            case syntax::ExprKind::c_string_literal:
+            case syntax::ExprKind::raw_string_literal:
+            case syntax::ExprKind::byte_string_literal:
+            case syntax::ExprKind::byte_literal:
+            case syntax::ExprKind::char_literal:
+            case syntax::ExprKind::name:
+            case syntax::ExprKind::invalid:
+            case syntax::ExprKind::slice_len:
+            case syntax::ExprKind::str_byte_len:
+            case syntax::ExprKind::str_is_valid_utf8:
+                break;
+        }
+    }
+    return false;
 }
 
 [[nodiscard]] bool expr_is_unqualified_name(const syntax::AstModule& module, const syntax::ExprId expr) noexcept
@@ -119,7 +288,8 @@ struct ControlFlowQueryCaches {
         }
         switch (stmt->kind) {
             case syntax::StmtKind::assign:
-                if (syntax::is_valid(stmt->lhs) && !expr_is_unqualified_name(module, stmt->lhs)) {
+                if (syntax::is_valid(stmt->lhs) && !expr_is_unqualified_name(module, stmt->lhs)
+                    && expr_may_produce_storage_escape_carrier(module, stmt->rhs)) {
                     return true;
                 }
                 break;
@@ -1657,6 +1827,7 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
     this->core_.check_borrow_contract(function, key, finalized_signature);
     this->core_.analyze_lifetimes(function, key, finalized_signature);
     this->core_.analyze_dropck(function, key, finalized_signature);
+    this->core_.analyze_place_states(function, key, finalized_signature);
     const auto storage_escape_summary = this->core_.state_.checked.borrow_summaries.find(key);
     const bool needs_storage_escape_guard = storage_escape_summary == this->core_.state_.checked.borrow_summaries.end()
         || (storage_escape_summary->second.storage_escapes.empty()

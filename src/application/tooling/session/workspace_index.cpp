@@ -20,6 +20,7 @@ constexpr std::string_view TOOLING_INDEX_KIND_BORROW_SUMMARY = "borrow_summary";
 constexpr std::string_view TOOLING_INDEX_KIND_BORROW_CONTRACT = "borrow_contract";
 constexpr std::string_view TOOLING_INDEX_KIND_LIFETIME_FACTS = "lifetime_facts";
 constexpr std::string_view TOOLING_INDEX_KIND_DROPCK_FACTS = "dropck_facts";
+constexpr std::string_view TOOLING_INDEX_KIND_PLACE_STATE = "place_state";
 constexpr std::string_view TOOLING_INDEX_KIND_BODY_LOAN_CHECK = "body_loan_check";
 constexpr char TOOLING_INDEX_FACT_IDENTITY_SEPARATOR = '\x1E';
 
@@ -91,6 +92,8 @@ constexpr char TOOLING_INDEX_FACT_IDENTITY_SEPARATOR = '\x1E';
             return TOOLING_INDEX_KIND_LIFETIME_FACTS;
         case IdeSemanticFactKind::dropck_facts:
             return TOOLING_INDEX_KIND_DROPCK_FACTS;
+        case IdeSemanticFactKind::place_state:
+            return TOOLING_INDEX_KIND_PLACE_STATE;
         case IdeSemanticFactKind::body_loan_check:
             return TOOLING_INDEX_KIND_BODY_LOAN_CHECK;
     }

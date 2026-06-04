@@ -1,17 +1,65 @@
-# Aurex 语言语法说明书
+# Aurex 语言参考手册
 
 日期：2026-06-04
 阶段：M7c-A / M7c-B lifetime facts 与 region enforcement 实现收口，建立在 M7b borrow contract、M7a
 CFG-sensitive loan facts、M6 resource semantics、M5 default trait methods、M4 trait/protocol、M3 module/generic
 和 M2 language core 基线之上。
-状态：按当前仓库实现编写的官方语言说明书，不描述尚未落地的未来功能。
+状态：按当前仓库实现编写的官方语言参考手册，不描述尚未落地的未来功能。
 
 本文说明当前 Aurex 能写什么、怎么写、哪些地方会被拒绝。语法以
 `include/aurex/frontend/syntax/core/token.hpp`、`include/aurex/frontend/syntax/ast/*`、
 `src/frontend/parse/grammar/*`、`src/frontend/sema/internal/*`、`tests/samples/**`、`tests/gtest/frontend/**` 和
 `examples/**` 的当前实现为准。`docs/spec/m2_grammar.md` 是早期 M2 语法冻结文档；遇到差异时，以本文和当前源码为准。
 
-## 1. 最小完整程序
+## 前言：范围、记号和当前能力
+
+本手册是当前仓库的语言参考，不是未来路线图。它描述编译器已经能解析、检查、降低并在测试矩阵中覆盖的语言表面；
+设计文档中仍处于规划、shadow mode 或后续方向的内容不会被写成已支持语法。
+
+语法块采用近似 EBNF 的说明方式：
+
+```text
+Name          = production
+"keyword"     表示必须出现的关键字或标点
+Identifier    表示词法标识符
+A?            表示 A 可选
+A*            表示 A 可重复零次或多次
+A+            表示 A 可重复一次或多次
+A | B         表示二选一
+```
+
+代码块使用 `aurex` 标注时表示可按当前语法书写的 Aurex 源码片段；使用 `text` 标注时表示语法形式或 token 列表。
+
+当前 Aurex 已经可以做这些事：
+
+- 编译包含 `main` 的可执行程序，入口支持 `fn main() -> i32` 和 `fn main() -> void`。
+- 编写多模块工程，使用 `module`、`import`、`pub import`、`pub use`、`pub(package)`、module part 和 package source-root。
+- 定义 scalar、raw pointer、safe reference、array、slice、tuple、function pointer、struct、opaque struct、ADT enum 和 type alias。
+- 使用 private return type inference、函数原型、C ABI `extern c` / `export c fn`、variadic extern C、`@name` ABI symbol 和 `@borrow` contract。
+- 编写 `let` / `var`、pattern binding、let-else、if/while/for/range-for、match、block expression、try `?`、defer 和 unsafe block。
+- 使用泛型函数、泛型类型、泛型 impl、method-local impl 泛型、`where` capability、nominal static trait、default trait method、associated type 和 associated-type equality。
+- 使用 safe borrowed view：`&T`、`&mut T`、显式 origin reference、borrowed slice 和 `str`，并获得当前 CFG-sensitive local loan checking、borrow summary 和 lifetime/origin 诊断。
+- 使用 M6/M7 resource semantics：非 `Copy` 值的 move 检查、reinit、cleanup/drop-glue 规划、`Copy` capability 和 defer/cleanup 交错检查。
+- 使用语言内建：数值 cast、pointer/address builtin、slice builtin、UTF-8 string builtin、`sizeof` 和 `alignof`。
+- 通过 C FFI 和 unsafe raw pointer 实现底层库。仓库中的 `examples/libs/regex` 已经使用当前语言写出多模块正则库，并覆盖编译、执行、资源预算和错误路径。
+
+当前仍不是语言能力的内容：
+
+- 没有标准库级拥有型 `String`、容器库、RAII 用户 destructor 语法或用户可写 `Drop` bound。
+- 没有 package manager、workspace、dependency resolver、lockfile、glob import/use 或通用 selective import。
+- 没有 trait object、dynamic dispatch trait object、generic associated type、associated const、specialization、const generic 或 `<T>` 风格泛型。
+- 没有 closure capture、async/generator、语言级线程/atomic/concurrency memory model；可以通过 C FFI 调用外部并发 API，但 safe borrow checker 只为当前语言的本地控制流和函数 summary 建模。
+- 没有完整 Rust-style apostrophe lifetime surface、full Polonius Datalog、raw pointer alias safe proof、partial field move 和 indexed move-out。
+
+## 1. 程序结构和入口
+
+完整源文件由 module header、可选 module preamble 和 item 序列组成：
+
+```text
+SourceFile     = ModuleHeader ModulePreamble* Item*
+ModuleHeader   = "module" ModulePath ("part" Identifier)? ";"
+ModulePreamble = PartDecl | ImportDecl | UseDecl
+```
 
 ```aurex
 module hello;
@@ -28,7 +76,10 @@ fn main() -> i32 {
 - 语句以 `;` 结束，块用 `{ ... }`。
 - 私有普通函数可以推导返回类型；`pub fn`、`extern c fn`、`export c fn` 和函数原型必须显式写返回类型。
 
-## 2. 词法
+## 2. 词法和 token
+
+词法阶段把 UTF-8 源码按 ASCII 标识符、关键字、字面量、注释和标点 token 切分。语义阶段仍允许字符串和
+`char` 使用 Unicode 内容，但标识符本身当前固定为 ASCII 形式。
 
 ### 2.1 关键字
 
@@ -80,11 +131,14 @@ Identifier = [A-Za-z_][A-Za-z0-9_]*
 
 注意：
 
-- `::`、`++`、`--` 会被词法器识别，但 M2 源码语法不支持这些写法，解析或语义阶段会诊断。
+- `::`、`++`、`--` 会被词法器识别，但当前源码语法不支持这些写法，解析或语义阶段会诊断。
 - 泛型使用 `[]`，不使用 `< >`。
 - 模块、类型、字段、方法、枚举 case 都使用 `.` 选择，不使用 `::`。
 
 ## 3. 字面量
+
+字面量是可直接出现在表达式或 const initializer 中的源代码值。当前实现覆盖整数、浮点、布尔、空指针、
+UTF-8 字符串、C 字符串、raw string、byte string、byte literal 和 Unicode scalar `char`。
 
 ### 3.1 整数
 
@@ -153,7 +207,16 @@ null
 
 ## 4. 模块、导入和可见性
 
-### 4.1 模块声明
+模块系统负责源文件归属、跨文件查找、package 边界和 public surface。当前实现支持 primary module、module part、
+普通导入、module re-export、selective item re-export 和 package visibility；它不是 package manager。
+
+### 4.1 模块声明和 part 文件
+
+```text
+ModulePath   = Identifier ("." Identifier)*
+ModuleHeader = "module" ModulePath ("part" Identifier)? ";"
+PartDecl     = "part" Identifier ";"
+```
 
 ```aurex
 module app.main;
@@ -188,6 +251,14 @@ fn helper() -> i32 {
 - `part` 是上下文标记，不是全局关键字；普通函数、参数和局部变量仍可命名为 `part`。
 
 ### 4.2 导入
+
+导入把一个可见模块绑定到当前模块的 alias。未限定名字不会自动搜索导入模块；跨模块调用通常写成
+`alias.name`。
+
+```text
+ImportDecl = Visibility? "import" ModulePath ("as" Identifier)? ";"
+UseDecl    = ("pub" | "pub" "(" "package" ")") "use" ModulePath "." Identifier ("as" Identifier)? ";"
+```
 
 ```aurex
 import common.status;
@@ -236,6 +307,12 @@ pub(package) use common.status.PackageStatus as PackageStatus;
 
 ### 4.3 可见性
 
+可见性是 item、field、method 和 import 的 public surface 规则。Aurex 默认 private，导出 API 必须显式标注。
+
+```text
+Visibility = "pub" | "priv" | "pub" "(" "package" ")"
+```
+
 ```aurex
 pub fn api() -> i32 { return 1; }
 pub(package) fn package_api() -> i32 { return 2; }
@@ -259,7 +336,31 @@ pub struct PublicBox {
 - `pub(crate)`、`pub(in path)` 和其他 scoped visibility 当前不支持。
 - `export c fn` 是对外 ABI 符号，不能作为 private API。
 
-## 5. 类型语法
+## 5. 类型系统和类型语法
+
+类型语法描述值的存储形态、借用形态、函数 ABI 形态和泛型实例形态。语义分析会拒绝无效 storage type、
+不完整 opaque value、非法 ABI 类型和不满足能力约束的类型。
+
+```text
+Type              = PrimitiveType
+                  | NamedType
+                  | PointerType
+                  | ReferenceType
+                  | ArrayType
+                  | SliceType
+                  | TupleType
+                  | FunctionType
+NamedType         = ModulePath ("[" Type ("," Type)* ","? "]")?
+PointerType       = "*" ("const" | "mut") Type
+ReferenceType     = "&" "mut"? OriginQualifier? Type
+OriginQualifier   = "[" Identifier ("|" Identifier)* "]"
+ArrayType         = "[" IntegerLiteral "]" Type
+SliceType         = "[]" ("const" | "mut") Type
+TupleType         = "(" Type "," ")" | "(" Type "," Type ("," Type)* ","? ")"
+FunctionType      = "unsafe"? ("extern" "c")? "fn" "(" FunctionTypeParams? ")" "->" Type
+FunctionTypeParams = FunctionTypeParam ("," FunctionTypeParam)* ("," "...")? | "..."
+FunctionTypeParam = (Identifier ":")? Type
+```
 
 ### 5.1 基础类型
 
@@ -273,6 +374,8 @@ str char
 `str` 是借用的 UTF-8 文本值，当前 ABI 表示为数据指针加 byte length。它不是拥有型 `String`。
 
 ### 5.2 命名类型和泛型类型参数
+
+命名类型可以是当前模块类型、导入模块类型、泛型参数或 associated type projection。泛型实参使用 `[]`。
 
 ```aurex
 Point
@@ -290,6 +393,8 @@ common.status.Health
 
 ### 5.3 Raw pointer
 
+Raw pointer 是 unsafe/FFI 边界类型。它能表达地址和可变性，但不参与 safe borrow 证明。
+
 ```aurex
 *const i32
 *mut i32
@@ -303,6 +408,9 @@ common.status.Health
 - `*i32` 不是合法类型。
 
 ### 5.4 Safe reference
+
+Safe reference 是当前 borrow/lifetime 系统建模的主要借用类型。共享引用 `&T` 可读，唯一引用 `&mut T`
+可写；显式 origin qualifier 用于把函数签名中的 borrowed view 来源写成可检查 contract。
 
 ```aurex
 &i32
@@ -343,6 +451,8 @@ fn write(value: &mut i32, replacement: i32) -> void {
 
 ### 5.5 数组和 slice
 
+数组拥有固定长度元素存储；slice 是 borrowed fat value，只携带 data pointer 和 element count。
+
 ```aurex
 [4]i32
 []const i32
@@ -367,6 +477,8 @@ let middle: []const i32 = values[1:3];
 
 ### 5.6 Tuple
 
+Tuple 是结构化值类型，当前主要用于返回多个值和 pattern 解构。
+
 ```aurex
 (i32, bool)
 (i32,)
@@ -383,10 +495,12 @@ let (value, flag) = pair;
 
 - `(A, B)` 是二元 tuple。
 - `(A,)` 是一元 tuple。
-- `()` 暂不属于 M2。
+- `()` 当前不是合法 tuple 类型。
 - 匿名 tuple 不能用 `value.0` 或 `value.first` 访问字段；需要解构或使用 named struct。
 
 ### 5.7 函数类型
+
+函数类型表示非捕获函数指针。它不是 closure 类型，也不保存环境。
 
 ```aurex
 fn(i32, i32) -> i32
@@ -402,9 +516,30 @@ unsafe extern c fn(*const u8) -> i32
 - `extern c fn` 使用 C ABI。
 - variadic `...` 只支持 `extern c`。
 
-## 6. 顶层 item
+## 6. 声明 item
+
+item 是模块级或容器级声明。顶层 item 构成模块 API；trait、impl、extern block 内部也包含受限制的 item
+子集。
+
+```text
+Item = ConstDecl
+     | TypeAlias
+     | StructDecl
+     | EnumDecl
+     | TraitDecl
+     | ImplBlock
+     | ExternBlock
+     | FunctionDecl
+     | ExportCFunction
+```
 
 ### 6.1 常量
+
+常量声明创建模块级 compile-time value。当前 const 不是完整 comptime 系统。
+
+```text
+ConstDecl = Visibility? "const" Identifier ":" Type "=" Expr ";"
+```
 
 ```aurex
 const ANSWER: i32 = 42;
@@ -414,6 +549,12 @@ const TEXT: str = "ok";
 当前 const initializer 支持字面量、部分标量运算、struct/enum 常量等已落地路径，但不是完整 comptime。
 
 ### 6.2 类型别名
+
+类型别名给类型表达式命名；别名可以泛型化，也可以带 `where` 约束。
+
+```text
+TypeAlias = Visibility? "type" Identifier GenericParams? WhereClause? "=" Type ";"
+```
 
 ```aurex
 type Count = i32;
@@ -428,6 +569,13 @@ type Ptr[T] where T: Sized = *const T;
 ```
 
 ### 6.3 Struct
+
+Struct 是 named field product type。字段有独立可见性，默认 private。
+
+```text
+StructDecl  = Visibility? "struct" Identifier GenericParams? WhereClause? "{" StructField* "}"
+StructField = Visibility? Identifier ":" Type ";"
+```
 
 ```aurex
 struct Point {
@@ -448,6 +596,8 @@ struct Box[T] {
 
 ### 6.4 Opaque struct
 
+Opaque struct 用于 FFI 或隐藏布局类型。它只能通过 pointer/reference 这类间接形式使用。
+
 ```aurex
 extern c {
     opaque struct FILE;
@@ -457,6 +607,13 @@ extern c {
 opaque struct 只能通过指针使用，不能按值构造、取 `sizeof` 或访问字段。
 
 ### 6.5 Enum
+
+Enum 是 nominal ADT。case 属于 enum 类型命名空间，可以有 payload，也可以作为 C-like tag 值。
+
+```text
+EnumDecl = Visibility? "enum" Identifier GenericParams? WhereClause? (":" IntegerType)? "{" EnumCase* "}"
+EnumCase = Identifier ("(" Type ("," Type)* ","? ")")? ("=" IntegerLiteral)? ","
+```
 
 ```aurex
 enum OptionI32 {
@@ -484,6 +641,15 @@ enum Result[T] {
 
 ### 6.6 Function
 
+函数声明定义可调用实体。Aurex 允许 private 普通函数推导返回类型，但 public/ABI/prototype surface 必须显式写返回类型。
+
+```text
+FunctionDecl = FunctionDecorator* Visibility? "unsafe"? "fn" Identifier GenericParams?
+               "(" ParamList? ")" ("->" Type)? WhereClause? (Block | ";")
+ParamList    = Param ("," Param)* ","?
+Param        = Identifier ":" Type
+```
+
 ```aurex
 fn add(a: i32, b: i32) -> i32 {
     return a + b;
@@ -506,6 +672,19 @@ fn inferred(value: i32) {
 - 函数原型用 `;` 结束，定义用 block。
 
 ### 6.7 Extern C 和 Export C
+
+`extern c` 声明外部 C ABI 符号；`export c fn` 定义从 Aurex 导出的 C ABI 符号。ABI symbol 可用
+`@name` 指定。
+
+```text
+ExternBlock     = "extern" "c" "{" ExternItem* "}"
+ExternItem      = FunctionDecorator* "unsafe"? "fn" Identifier "(" ExternParamList? ")" "->" Type ";"
+ExternParamList = Param ("," Param)* ("," "...")? | "..."
+ExportCFunction = FunctionDecorator* "export" "c" "unsafe"? "fn" Identifier "(" ParamList? ")" "->" Type Block
+FunctionDecorator = "@" "name" "(" StringLiteral ")"
+                  | "@" "borrow" "(" "return" "=" "[" BorrowSelector ("," BorrowSelector)* ","? "]" ")"
+BorrowSelector = Identifier | "self" | "static" | "unknown"
+```
 
 ```aurex
 extern c {
@@ -559,6 +738,13 @@ selector 规则：
 
 ### 6.8 Impl 和方法
 
+`impl` 把方法和 associated type 实现绑定到 named type，或把 trait conformance 显式绑定到类型。
+
+```text
+ImplBlock = "impl" GenericParams? Type ("for" Type)? WhereClause? "{" ImplItem* "}"
+ImplItem  = FunctionDecl | TypeAlias
+```
+
 ```aurex
 struct Counter {
     value: i32;
@@ -586,7 +772,34 @@ impl Counter {
 
 ## 7. 语句
 
+语句构成函数体的控制流和副作用。当前语句系统覆盖局部绑定、pattern binding、赋值、条件、循环、
+scope cleanup、early return 和 unsafe block。赋值不是表达式。
+
+```text
+Stmt = LetStmt
+     | VarStmt
+     | AssignStmt
+     | IfStmt
+     | WhileStmt
+     | ForStmt
+     | ForRangeStmt
+     | BreakStmt
+     | ContinueStmt
+     | ReturnStmt
+     | DeferStmt
+     | UnsafeBlock
+     | ExprStmt
+     | Block
+```
+
 ### 7.1 局部变量
+
+局部绑定分为不可重新赋值的 `let` 和可重新赋值的 `var`。两者都可以显式写类型，也可以从 initializer 推导。
+
+```text
+LetStmt = "let" Pattern (":" Type)? "=" Expr ("else" Block)? ";"
+VarStmt = "var" Pattern (":" Type)? "=" Expr ("else" Block)? ";"
+```
 
 ```aurex
 let value: i32 = 1;
@@ -602,6 +815,8 @@ var count: i32 = 0;
 
 ### 7.2 Pattern 局部绑定和 let-else
 
+局部绑定左侧可以是 pattern。refutable pattern 必须配合 `else`，并且 `else` block 必须发散或提前退出。
+
 ```aurex
 let (left, right) = pair;
 
@@ -616,6 +831,13 @@ let .some(value) = option else {
 - 有 `else` 时可用 refutable pattern，但 `else` block 不能 fall through。
 
 ### 7.3 赋值和复合赋值
+
+赋值目标必须是可写 place，例如 `var` 局部、可写字段、可写索引、`&mut` 解引用或 unsafe raw pointer projection。
+
+```text
+AssignStmt = Expr AssignOp Expr ";"
+AssignOp   = "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "<<=" | ">>=" | "&=" | "^=" | "|="
+```
 
 ```aurex
 value = 1;
@@ -633,6 +855,12 @@ value <<= 1;
 
 ### 7.4 If statement
 
+Statement-form `if` 控制执行路径，不产生表达式值；没有 `else` 时只在条件为真时执行 then block。
+
+```text
+IfStmt = "if" Expr ("is" Pattern)? Block ("else" (IfStmt | Block))?
+```
+
 ```aurex
 if value > 0 {
     return 1;
@@ -646,6 +874,12 @@ if value > 0 {
 statement-form `if` 可以没有 `else`。
 
 ### 7.5 While
+
+`while` 重复执行 block，直到条件为 false。条件也可以带 `is Pattern` 做 pattern condition。
+
+```text
+WhileStmt = "while" Expr ("is" Pattern)? Block
+```
 
 ```aurex
 while i < 10 {
@@ -663,6 +897,14 @@ while current is .next(value) {
 
 ### 7.6 C-style for
 
+C-style `for` 提供 init、condition、update 三段控制。init 和 update 是语句位置，condition 是表达式位置。
+
+```text
+ForStmt = "for" ForInit? ";" Expr? ";" ForUpdate? Block
+ForInit = LetStmt | VarStmt | AssignStmt | ExprStmt
+ForUpdate = AssignStmt | ExprStmt
+```
+
 ```aurex
 for var i: i32 = 0; i < 10; i += 1 {
     sum += i;
@@ -674,6 +916,12 @@ for ; ; {
 ```
 
 ### 7.7 Range for
+
+Range for 是当前内建的整数 range 循环语法，不是通用 iterator protocol。
+
+```text
+ForRangeStmt = "for" Identifier "in" "range" "(" Expr ("," Expr ("," Expr)?)? ")" Block
+```
 
 ```aurex
 for i in range(4) {
@@ -694,9 +942,19 @@ for i in range(1, 6, 2) {
 - `range(end)` 从 0 到 end，不含 end。
 - `range(start, end)` 不含 end。
 - `range(start, end, step)` 使用显式步长。
-- 这不是通用 iterator 语法；`for x in values {}` 不属于 M2。
+- 这不是通用 iterator 语法；`for x in values {}` 当前不支持。
 
 ### 7.8 Break、continue、return、defer
+
+`break`、`continue` 和 `return` 是控制流提前退出。`defer` 注册 scope exit 时执行的 call expression，并参与
+move/borrow/cleanup 检查。
+
+```text
+BreakStmt    = "break" ";"
+ContinueStmt = "continue" ";"
+ReturnStmt   = "return" Expr? ";"
+DeferStmt    = "defer" CallExpr ";"
+```
 
 ```aurex
 break;
@@ -709,6 +967,12 @@ defer cleanup();
 `defer` 后面必须是 call expression。
 
 ### 7.9 Unsafe block
+
+Unsafe block 在局部范围内打开 unsafe context。它不会关闭类型检查、borrow summary 或 move analysis；它只允许执行明确标记为 unsafe 的操作。
+
+```text
+UnsafeBlock = "unsafe" Block
+```
 
 ```aurex
 unsafe {
@@ -724,7 +988,27 @@ unsafe block 可作为语句，也可作为带 tail expression 的表达式。
 
 ## 8. 表达式
 
+表达式产生值或 place。当前表达式系统支持字面量、名字、函数调用、方法调用、字段/索引/slice、aggregate literal、
+block/if/match/try、一元和二元操作、泛型调用以及语言内建。
+
+```text
+Expr = IfExpr
+     | MatchExpr
+     | BinaryExpr
+     | UnaryExpr
+     | PostfixExpr
+     | PrimaryExpr
+     | TryExpr
+```
+
 ### 8.1 字面量、名字、调用
+
+名字表达式按当前作用域和可见模块解析。函数名可以作为非捕获函数指针值传递。
+
+```text
+CallExpr = Expr "(" (Expr ("," Expr)* ","?)? ")"
+NameExpr = Identifier ("." Identifier)*
+```
 
 ```aurex
 let a = 1;
@@ -742,6 +1026,12 @@ let value = op(41);
 
 ### 8.2 泛型调用
 
+泛型调用在 callee 后写显式类型实参。当前没有 turbofish 或 `<T>` 风格调用。
+
+```text
+GenericApply = Expr "[" Type ("," Type)* ","? "]"
+```
+
 ```aurex
 fn id[T](value: T) -> T {
     return value;
@@ -753,6 +1043,14 @@ let value = id[i32](1);
 显式泛型调用使用 `name[T](...)` 或 `module.name[T](...)`。`name::[T](...)` 不支持。
 
 ### 8.3 字段、方法、索引、slice
+
+`.` 同时用于模块成员、字段、方法和 enum case 选择；`[]` 用于索引和 slice range。
+
+```text
+FieldExpr = Expr "." Identifier
+IndexExpr = Expr "[" Expr "]"
+SliceExpr = Expr "[" Expr? ":" Expr? "]"
+```
 
 ```aurex
 point.x
@@ -774,6 +1072,15 @@ text[start:end]
 
 ### 8.4 Array、tuple、struct literal
 
+Aggregate literal 构造结构化值。struct literal 使用字段名，array literal 可以列举元素或使用 repeat 形式。
+
+```text
+ArrayLiteral  = "[" Expr ("," Expr)* ","? "]" | "[" Expr ";" Expr "]"
+TupleLiteral  = "(" Expr "," ")" | "(" Expr "," Expr ("," Expr)* ","? ")"
+StructLiteral = Type "{" FieldInit ("," FieldInit)* ","? "}"
+FieldInit     = Identifier ":" Expr
+```
+
 ```aurex
 let values = [1, 2, 3];
 let zeroes: [4]u8 = [0; 4];
@@ -785,6 +1092,12 @@ let box = Box[i32] { value: 42 };
 
 ### 8.5 Block expression
 
+Block 可以作为表达式。最后一个没有分号的表达式是 block value；普通语句不产生 block value。
+
+```text
+Block = "{" Stmt* Expr? "}"
+```
+
 ```aurex
 let value = {
     let base = 40;
@@ -795,6 +1108,12 @@ let value = {
 最后一个无分号表达式是 block 的值。空 block 或只有语句的 block 在需要值的位置会被拒绝。
 
 ### 8.6 If expression
+
+Expression-form `if` 必须覆盖 false 分支，并且两个分支必须能形成兼容结果类型。
+
+```text
+IfExpr = "if" Expr ("is" Pattern)? Block "else" (IfExpr | Block)
+```
 
 ```aurex
 let sign = if value < 0 {
@@ -808,6 +1127,14 @@ expression-form `if` 必须有 `else`，两个分支类型必须兼容。
 
 ### 8.7 Match expression
 
+`match` 根据 pattern 选择 arm。当前实现支持 enum、标量 literal、tuple、struct、array/slice pattern，
+并做已实现范围内的穷尽性和 unreachable arm 检查。
+
+```text
+MatchExpr = "match" Expr "{" MatchArm* "}"
+MatchArm  = Pattern ("if" Expr)? "=>" Expr ","
+```
+
 ```aurex
 let score = match choice {
     .yes => 1,
@@ -818,6 +1145,12 @@ let score = match choice {
 match 支持 enum、bool/integer literal、tuple/struct/array/slice 等 pattern。语义分析会做一定范围的 exhaustiveness 和 unreachable arm 检查。
 
 ### 8.8 Try expression
+
+`?` 是 enum shape 驱动的 early return 表达式。它不依赖 enum 名字，只依赖 result-like 或 option-like 结构。
+
+```text
+TryExpr = Expr "?"
+```
 
 ```aurex
 let parsed = parse_digit(value)?;
@@ -831,6 +1164,8 @@ let parsed = parse_digit(value)?;
 enum 名字不特殊，形状才重要。
 
 ## 9. 操作符
+
+操作符语法由 parser 的 precedence 表定义。当前没有用户自定义操作符，也没有操作符重载语法；trait 能力只用于已实现的 builtin capability 和 trait predicate 检查。
 
 常用二元操作：
 
@@ -866,9 +1201,10 @@ enum 名字不特殊，形状才重要。
 - `*raw_pointer` 要求 unsafe；`*reference` 是 safe projection。
 - 不支持 `++` / `--`。
 
-## 10. 内建函数和内建操作
+## 10. 语言内建
 
-当前内建函数不是普通库函数，而是 parser/semantic/IR/backend 共同支持的语言内建。建议把它们当作语法的一部分。
+本章列出的名字是语言内建，不是普通模块函数。它们由 parser、semantic analysis、IR 和 backend 共同识别，因此可以使用类型实参形式如
+`sizeof[T]`、`ptrat[*mut i32](addr)`。
 
 | 写法 | 安全性 | 结果 | 说明 |
 | --- | --- | --- | --- |
@@ -925,7 +1261,32 @@ fn pointer_roundtrip(value: &mut i32) -> *mut i32 {
 
 ## 11. Pattern
 
+Pattern 用于 `let`/`var` 绑定、let-else、`while value is pattern`、`if value is pattern` 和 `match` arm。
+Pattern 可以绑定名字、匹配 literal/const、解构 tuple/struct/slice 和匹配 enum case。
+
+```text
+Pattern = OrPattern
+OrPattern = PatternAtom ("|" PatternAtom)*
+PatternAtom = "_"
+            | Identifier
+            | Literal
+            | "const" Identifier
+            | "." Identifier PayloadPattern?
+            | Type "." Identifier PayloadPattern?
+            | TuplePattern
+            | StructPattern
+            | SlicePattern
+PayloadPattern = "(" Pattern ("," Pattern)* ","? ")"
+TuplePattern   = "(" Pattern "," ")" | "(" Pattern "," Pattern ("," Pattern)* ","? ")"
+StructPattern  = Type "{" StructPatternField ("," StructPatternField)* ","? "}"
+StructPatternField = Identifier | Identifier ":" Pattern
+SlicePattern   = "[" SlicePatternElement ("," SlicePatternElement)* ","? "]"
+SlicePatternElement = Pattern | ".."
+```
+
 ### 11.1 基础 pattern
+
+基础 pattern 包括 wildcard、binding、literal 和 const pattern。
 
 ```aurex
 _
@@ -942,6 +1303,8 @@ const ANSWER
 - 常量 pattern 使用 `const NAME`，当前主要用于整数和 bool 常量。
 
 ### 11.2 Enum case pattern
+
+Enum case pattern 可以省略 enum 类型前缀，前提是被匹配值的 enum 类型已知。
 
 ```aurex
 match option {
@@ -962,6 +1325,8 @@ match option {
 - 不支持裸 `some(value)`。
 
 ### 11.3 Tuple、struct、slice pattern
+
+解构 pattern 会在语义阶段校验被匹配类型、字段存在性、payload arity 和绑定类型。
 
 ```aurex
 let (left, right) = pair;
@@ -985,6 +1350,8 @@ match values {
 
 ### 11.4 Or-pattern 和 guard
 
+Or-pattern 合并多个 pattern 分支；guard 是 arm 级别的额外布尔条件。
+
 ```aurex
 match value {
     1 | 2 => true,
@@ -1000,7 +1367,22 @@ match packet {
 
 Or-pattern 每个分支若绑定名字，必须绑定相同名字和类型。
 
-## 12. 泛型和 where
+## 12. 泛型、trait 和 where
+
+泛型系统支持类型参数、origin 参数、泛型函数、泛型类型、泛型 impl、method-local impl 泛型和 `where` 子句。
+Trait 是 nominal static trait，不是 structural interface，也不是 trait object。
+
+```text
+GenericParams = "[" GenericParam ("," GenericParam)* ","? "]"
+GenericParam  = Identifier | "origin" Identifier
+WhereClause   = "where" WherePredicate ("," WherePredicate)* ","?
+WherePredicate = Identifier ":" Capability ("+" Capability)*
+Capability    = Identifier AssociatedTypeEquality?
+AssociatedTypeEquality = "[" Identifier "=" Type "]"
+TraitDecl     = Visibility? "trait" Identifier GenericParams? WhereClause? "{" TraitItem* "}"
+TraitItem     = TypeAlias | FunctionDecl
+TraitImpl     = "impl" GenericParams? Type "for" Type WhereClause? "{" ImplItem* "}"
+```
 
 ```aurex
 fn id[T](value: T) -> T {
@@ -1135,6 +1517,9 @@ Trait 规则：
 
 ## 13. Borrow、lifetime 和资源语义
 
+本章描述当前已经生效的 ownership/borrow/lifetime 规则。Aurex 现在有可用的 safe reference 和本地 loan checking，
+但用户表面仍比 Rust lifetime 语法窄；显式来源主要通过 origin-qualified reference 和 `@borrow` contract 表达。
+
 当前 Aurex 已经有 safe reference、borrowed slice、`str` borrowed view、函数级 borrow summary、显式
 `@borrow` contract、显式 origin-qualified reference type、region facts、local loan checker 和 whole-local move
 analysis。它们是当前语言的一部分，但仍保持比 Rust 更窄的用户表面。
@@ -1225,6 +1610,9 @@ fn reinitialize[T](value: T, replacement: T) -> T {
 
 ## 14. Unsafe 边界
 
+Unsafe 是对特定操作的显式权限，不是关闭编译器检查的模式。Unsafe block 或 `unsafe fn` 允许 raw pointer
+解引用、raw projection、unsafe builtin 和 unsafe function call，但类型、ABI、move、borrow 和 lifetime 检查仍继续运行。
+
 需要 unsafe context 的操作：
 
 - raw pointer 解引用：`*ptr`
@@ -1267,6 +1655,8 @@ fn call_raw(value: *const i32) -> i32 {
 
 ## 15. 当前明确不支持的语法
 
+下列写法不是“还没写进本手册”，而是当前 parser 或 semantic analysis 会拒绝的语言表面。它们可以作为读者迁移代码时的快速排错矩阵。
+
 ```aurex
 *i32                 // pointer 必须写 *const / *mut
 []i32                // slice 必须写 []const / []mut
@@ -1286,7 +1676,10 @@ text[0]              // str 不支持单 index
 value++              // 不支持自增
 ```
 
-## 16. 可直接运行的正则库案例
+## 16. 当前工程表达能力：正则库案例
+
+本章不是正则语法规范，而是说明当前 Aurex 已经能承载的工程规模：多模块 facade、内部实现拆分、FFI 分配、unsafe
+raw pointer、resource cleanup、match、泛型别名、method、函数指针和字符串内建。
 
 仓库现在包含一个用当前 Aurex 语言写的多模块编译型正则库。它不是 `text`
 子模块，而是独立的 `regex` 模块目录：
@@ -1395,7 +1788,9 @@ fn main() -> i32 {
 - pattern、program、capture 和 VM workspace 都有显式上限，超出分别返回 `pattern_too_large`、`program_too_large`、`capture_too_large` 或 `workspace_too_large`。
 - 没有标准库 RAII，`compile` 得到的 `Regex` 必须手动 `destroy` 或 `defer destroy`；`Captures` 必须手动 `destroy_captures`。
 
-## 17. 内建函数测试位置
+## 17. 规范对应的测试入口
+
+本手册中的语言面主要由 parser、sema、integration sample 和 examples 测试覆盖。下面列出和内建函数、正则库案例最直接相关的入口。
 
 内建函数集中运行样例位于：
 

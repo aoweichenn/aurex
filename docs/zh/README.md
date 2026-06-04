@@ -12,7 +12,7 @@ borrow contract / reborrow / two-phase receiver 实现收口基线之上。
 - [架构设计文档](architecture.md)
 - [运行流程文档](runtime-flow.md)
 - [API 接口文档](api.md)
-- [Aurex 语言语法说明书](language-manual.md)
+- [Aurex 语言参考手册](language-manual.md)
 - [Aurex 正则库语法和实现说明](regex.md)
 - [Aurex 正则库工业化现状报告](regex-industrial-report.md)
 - [字符串基础类型设计草案](string-primitive-design.md)

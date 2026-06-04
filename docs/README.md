@@ -17,7 +17,7 @@ language they were written in.
 - [架构设计文档](zh/architecture.md)
 - [运行流程文档](zh/runtime-flow.md)
 - [API 接口文档](zh/api.md)
-- [Aurex 语言语法说明书](zh/language-manual.md)
+- [Aurex 语言参考手册](zh/language-manual.md)
 - [Aurex 正则库语法和实现说明](zh/regex.md)
 - [字符串基础类型设计草案](zh/string-primitive-design.md)
 - [Aurex 基础语法地基评估](zh/basic-syntax-foundation-review.md)

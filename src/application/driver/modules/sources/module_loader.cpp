@@ -70,6 +70,41 @@ inline constexpr std::string_view MODULE_LOADER_PRIMARY_PART_KEY_NAME = "<primar
     };
 }
 
+[[nodiscard]] std::optional<std::filesystem::path> infer_source_root_from_module_path(
+    const syntax::ModulePath& module_path, const std::filesystem::path& primary_path)
+{
+    const std::filesystem::path relative = syntax::module_path_to_relative_file(module_path).lexically_normal();
+    const std::filesystem::path canonical = module_loader_canonical_or_absolute(primary_path).lexically_normal();
+    auto canonical_part = canonical.end();
+    auto relative_part = relative.end();
+    while (relative_part != relative.begin()) {
+        if (canonical_part == canonical.begin()) {
+            return std::nullopt;
+        }
+        --canonical_part;
+        --relative_part;
+        if (*canonical_part != *relative_part) {
+            return std::nullopt;
+        }
+    }
+
+    std::filesystem::path root;
+    for (auto part = canonical.begin(); part != canonical_part; ++part) {
+        root /= *part;
+    }
+    return root.empty() ? std::optional<std::filesystem::path>{} : module_loader_canonical_or_absolute(root);
+}
+
+[[nodiscard]] std::optional<std::filesystem::path> import_resolution_source_root(
+    const syntax::ModulePath& module_path, const std::filesystem::path& canonical,
+    const std::optional<std::filesystem::path>& package_source_root)
+{
+    if (package_source_root.has_value()) {
+        return package_source_root;
+    }
+    return infer_source_root_from_module_path(module_path, canonical);
+}
+
 void ensure_module_record_source_root_topology(std::vector<ModuleRecord>& records, const syntax::ModuleId module_id,
     const std::optional<std::filesystem::path>& source_root, const std::filesystem::path& primary_path)
 {
@@ -380,9 +415,11 @@ base::Result<void> ModuleLoader::resolve_imports_for_file(const syntax::AstModul
     std::vector<syntax::ResolvedImport>& direct_imports, const PackageLoadContext& package_context)
 {
     direct_imports.reserve(direct_imports.size() + module.imports.size());
+    const std::optional<std::filesystem::path> source_root =
+        import_resolution_source_root(module.module_path, canonical, package_context.source_root);
     for (const syntax::ImportDecl& import : module.imports) {
         const ImportFileResolution resolution =
-            resolve_import_file(import.path, canonical.parent_path(), package_context.source_root, this->import_paths_);
+            resolve_import_file(import.path, canonical.parent_path(), source_root, this->import_paths_);
         if (resolution.matching_candidates.empty()) {
             return report_import_resolution_failure(
                 this->diagnostics_, import.path, format_import_candidates(resolution.searched_candidates));
@@ -417,9 +454,11 @@ base::Result<void> ModuleLoader::resolve_reexports_for_file(const syntax::AstMod
     std::vector<syntax::ResolvedUse>& direct_reexports, const PackageLoadContext& package_context)
 {
     direct_reexports.reserve(direct_reexports.size() + module.reexports.size());
+    const std::optional<std::filesystem::path> source_root =
+        import_resolution_source_root(module.module_path, canonical, package_context.source_root);
     for (const syntax::UseDecl& use : module.reexports) {
         const ImportFileResolution resolution = resolve_import_file(
-            use.module_path, canonical.parent_path(), package_context.source_root, this->import_paths_);
+            use.module_path, canonical.parent_path(), source_root, this->import_paths_);
         if (resolution.matching_candidates.empty()) {
             return report_import_resolution_failure(
                 this->diagnostics_, use.module_path, format_import_candidates(resolution.searched_candidates));

@@ -657,6 +657,33 @@ private:
         return components;
     }
 
+    [[nodiscard]] bool field_name_matches(const StructFieldInfo& field, const SemanticAnalyzerCore::ExprView& expr) const
+        noexcept
+    {
+        if (is_valid(expr.field_name_id) && field.name_id == expr.field_name_id) {
+            return true;
+        }
+        return field.name == expr.field_name;
+    }
+
+    [[nodiscard]] bool field_move_can_consume_whole_object(const SemanticAnalyzerCore::ExprView& expr) const
+    {
+        const TypeHandle object_type = this->core_.cached_expr_type(expr.object);
+        if (!is_valid(object_type) || object_type.value >= this->core_.state_.checked.types.size()) {
+            return false;
+        }
+        const TypeInfo& object_info = this->core_.state_.checked.types.get(object_type);
+        if (object_info.kind != TypeKind::struct_) {
+            return false;
+        }
+        const auto found = this->core_.state_.types.struct_infos_by_type.find(object_type.value);
+        if (found == this->core_.state_.types.struct_infos_by_type.end() || found->second == nullptr) {
+            return false;
+        }
+        const std::span<const StructFieldInfo> fields = found->second->fields;
+        return fields.size() == 1 && this->field_name_matches(fields.front(), expr);
+    }
+
     [[nodiscard]] OwnedUseMode effective_mode(const syntax::ExprId expr, const RequestedUse requested)
     {
         const OwnedUseMode direct = requested_use_mode(requested);
@@ -1745,12 +1772,15 @@ private:
 
     void build_field_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
     {
-        if (task.requested == RequestedUse::owned
-            && this->is_tracked_resource_type(this->core_.cached_expr_type(task.expr))) {
+        const bool moves_tracked_field = task.requested == RequestedUse::owned
+            && this->is_tracked_resource_type(this->core_.cached_expr_type(task.expr));
+        const bool consume_whole_object = moves_tracked_field && this->field_move_can_consume_whole_object(expr);
+        if (moves_tracked_field && !consume_whole_object) {
             this->blocks_[task.start].actions.push_back(MoveAction{MoveActionKind::reject_partial_field_move,
                 SEMA_MOVE_INVALID_LOCAL, task.expr, OwnedUseMode::none, expr.range});
         }
-        this->push_expression(expr.object, RequestedUse::initialized_place, task.start, task.continuation,
+        const RequestedUse object_use = consume_whole_object ? RequestedUse::owned : RequestedUse::initialized_place;
+        this->push_expression(expr.object, object_use, task.start, task.continuation,
             task.environment, task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
             task.break_cleanup_depth, task.continue_cleanup_depth);
     }

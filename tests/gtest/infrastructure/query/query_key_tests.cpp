@@ -43,8 +43,8 @@ constexpr base::u32 QUERY_TEST_DISAMBIGUATOR = 1;
 constexpr base::u32 QUERY_TEST_GENERIC_PARAM_INDEX = 0;
 constexpr base::u32 QUERY_TEST_STABLE_ORDINAL = 0;
 constexpr base::u8 QUERY_TEST_PUBLIC_VISIBILITY_RANK = 2;
-constexpr base::u32 QUERY_TEST_VALUE_COMPONENT_COUNT = 1;
-constexpr base::u32 QUERY_TEST_GENERIC_PARAM_COUNT = 0;
+constexpr base::u64 QUERY_TEST_VALUE_COMPONENT_COUNT = 1;
+constexpr base::u64 QUERY_TEST_GENERIC_PARAM_COUNT = 0;
 constexpr base::u64 QUERY_TEST_BODY_RANGE_BEGIN = 1;
 constexpr base::u64 QUERY_TEST_BODY_RANGE_END = 42;
 constexpr base::u64 QUERY_TEST_ARRAY_COUNT = 4;
@@ -134,8 +134,8 @@ constexpr std::string_view QUERY_TEST_DIAGNOSTICS = "diagnostics:empty";
 }
 
 [[nodiscard]] query::GenericTemplateSignatureAuthority test_template_signature_authority(
-    const query::DefKey template_def, const query::IncrementalKey signature, const base::u32 param_count = 1,
-    const base::u32 constraint_count = 0)
+    const query::DefKey template_def, const query::IncrementalKey signature, const base::u64 param_count = 1,
+    const base::u64 constraint_count = 0)
 {
     return query::GenericTemplateSignatureAuthority{
         signature,
@@ -174,11 +174,11 @@ constexpr std::string_view QUERY_TEST_DIAGNOSTICS = "diagnostics:empty";
         signature,
         kind,
         QUERY_TEST_PUBLIC_VISIBILITY_RANK,
-        static_cast<base::u32>(key.type_args.size()),
-        static_cast<base::u32>(key.const_args.size()),
-        key.param_env.predicate_count,
+        static_cast<base::u64>(key.type_args.size()),
+        static_cast<base::u64>(key.const_args.size()),
+        static_cast<base::u64>(key.param_env.predicate_count),
         1,
-        static_cast<base::u32>(key.type_args.size()),
+        static_cast<base::u64>(key.type_args.size()),
         true,
         false,
         false,

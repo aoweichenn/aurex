@@ -2019,10 +2019,10 @@ void populate_type_check_body_borrow_authority(
     if (const auto summary = checked.borrow_summaries.find(function); summary != checked.borrow_summaries.end()) {
         authority.has_borrow_summary = true;
         authority.borrow_summary_fingerprint = summary->second.fingerprint;
-        authority.borrow_summary_origin_count = static_cast<base::u32>(summary->second.origins.size());
-        authority.borrow_summary_dependency_count = static_cast<base::u32>(summary->second.return_origins.size());
+        authority.borrow_summary_origin_count = static_cast<base::u64>(summary->second.origins.size());
+        authority.borrow_summary_dependency_count = static_cast<base::u64>(summary->second.return_origins.size());
         authority.borrow_summary_storage_escape_count =
-            static_cast<base::u32>(summary->second.storage_escapes.size());
+            static_cast<base::u64>(summary->second.storage_escapes.size());
         authority.borrow_summary_has_unknown_return_origin = summary->second.has_unknown_return_origin;
         authority.borrow_summary_has_local_return_escape = summary->second.has_local_return_escape;
         authority.borrow_summary_has_storage_escape = !summary->second.storage_escapes.empty();
@@ -2030,7 +2030,7 @@ void populate_type_check_body_borrow_authority(
     if (const auto contract = checked.borrow_contracts.find(function); contract != checked.borrow_contracts.end()) {
         authority.has_borrow_contract = true;
         authority.borrow_contract_fingerprint = contract->second.fingerprint;
-        authority.borrow_contract_selector_count = static_cast<base::u32>(contract->second.return_selectors.size());
+        authority.borrow_contract_selector_count = static_cast<base::u64>(contract->second.return_selectors.size());
         authority.borrow_contract_unknown_return_allowed = contract->second.unknown_return_allowed;
         authority.borrow_contract_has_local_return_escape = contract->second.has_local_return_escape;
         authority.borrow_contract_has_mismatch = contract->second.has_contract_mismatch;
@@ -2038,17 +2038,17 @@ void populate_type_check_body_borrow_authority(
     if (const auto lifetime = checked.lifetime_facts.find(function); lifetime != checked.lifetime_facts.end()) {
         authority.has_lifetime_facts = true;
         authority.lifetime_fingerprint = function_lifetime_facts_fingerprint(lifetime->second);
-        authority.lifetime_region_count = static_cast<base::u32>(lifetime->second.regions.size());
+        authority.lifetime_region_count = static_cast<base::u64>(lifetime->second.regions.size());
         authority.lifetime_outlives_constraint_count =
-            static_cast<base::u32>(lifetime->second.outlives_constraints.size());
+            static_cast<base::u64>(lifetime->second.outlives_constraints.size());
         authority.lifetime_type_outlives_constraint_count =
-            static_cast<base::u32>(lifetime->second.type_outlives_constraints.size());
-        authority.lifetime_live_range_count = static_cast<base::u32>(lifetime->second.live_ranges.size());
-        authority.lifetime_return_region_count = static_cast<base::u32>(lifetime->second.return_regions.size());
-        authority.lifetime_violation_count = static_cast<base::u32>(lifetime->second.violations.size());
-        authority.type_lifetime_info_count = static_cast<base::u32>(checked.type_lifetime_infos.size());
+            static_cast<base::u64>(lifetime->second.type_outlives_constraints.size());
+        authority.lifetime_live_range_count = static_cast<base::u64>(lifetime->second.live_ranges.size());
+        authority.lifetime_return_region_count = static_cast<base::u64>(lifetime->second.return_regions.size());
+        authority.lifetime_violation_count = static_cast<base::u64>(lifetime->second.violations.size());
+        authority.type_lifetime_info_count = static_cast<base::u64>(checked.type_lifetime_infos.size());
         authority.generic_lifetime_predicate_count =
-            static_cast<base::u32>(checked.generic_lifetime_predicates.size());
+            static_cast<base::u64>(checked.generic_lifetime_predicates.size());
         authority.lifetime_has_emitted_diagnostics =
             std::ranges::any_of(lifetime->second.violations, [](const LifetimeViolation& violation) {
                 return violation.diagnostic_emitted;
@@ -2077,13 +2077,13 @@ void populate_type_check_body_borrow_authority(
     if (const auto loan = checked.body_loan_checks.find(function); loan != checked.body_loan_checks.end()) {
         authority.has_body_loan_check = true;
         authority.body_loan_fingerprint = body_loan_check_fingerprint(loan->second);
-        authority.body_loan_count = static_cast<base::u32>(loan->second.loans.size());
+        authority.body_loan_count = static_cast<base::u64>(loan->second.loans.size());
         authority.body_reborrow_count =
-            static_cast<base::u32>(std::ranges::count_if(loan->second.loans, [](const BodyLoan& body_loan) {
+            static_cast<base::u64>(std::ranges::count_if(loan->second.loans, [](const BodyLoan& body_loan) {
                 return body_loan.parent_loan != SEMA_BODY_LOAN_INVALID_INDEX;
             }));
-        authority.body_two_phase_borrow_count = static_cast<base::u32>(loan->second.two_phase_borrows.size());
-        authority.body_loan_conflict_count = static_cast<base::u32>(loan->second.conflicts.size());
+        authority.body_two_phase_borrow_count = static_cast<base::u64>(loan->second.two_phase_borrows.size());
+        authority.body_loan_conflict_count = static_cast<base::u64>(loan->second.conflicts.size());
         authority.body_loan_graph_missing = loan->second.graph_missing;
         authority.body_loan_has_emitted_diagnostics =
             std::ranges::any_of(loan->second.conflicts, [](const BodyLoanConflict& conflict) {

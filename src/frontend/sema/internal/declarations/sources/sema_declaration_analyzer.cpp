@@ -187,6 +187,20 @@ struct AbiSymbolInfo {
     return std::string(signature.name);
 }
 
+[[nodiscard]] std::string struct_field_surface_name(
+    const TypeTable& types, const StructInfo& info, const StructFieldInfo& field)
+{
+    return types.display_name(info.type) + "." + std::string(field.name);
+}
+
+[[nodiscard]] std::string enum_case_surface_name(const TypeTable& types, const EnumCaseInfo& info)
+{
+    std::string display = types.display_name(info.type);
+    display += "_";
+    display += info.case_name.view();
+    return display;
+}
+
 [[nodiscard]] std::optional<TypeHandle> cached_checked_syntax_type(
     const CheckedModule& checked, const syntax::TypeId type) noexcept
 {
@@ -990,7 +1004,7 @@ SemanticAnalyzerCore::DeclarationAnalyzer::restricted_type_exposed_by_surface_ty
                 if (const StructInfo* const struct_info = this->core_.find_struct(current);
                     struct_info != nullptr && !policy.can_expose_type(surface_visibility, struct_info->visibility)) {
                     return ExportSurfaceRestrictedType{
-                        struct_display_name(this->core_.state_.checked.types, *struct_info),
+                        this->core_.state_.checked.types.display_name(current),
                         {},
                         struct_info->visibility,
                     };
@@ -1006,7 +1020,7 @@ SemanticAnalyzerCore::DeclarationAnalyzer::restricted_type_exposed_by_surface_ty
                     const EnumCaseInfo& enum_case = *found->second.front();
                     if (!policy.can_expose_type(surface_visibility, enum_case.visibility)) {
                         return ExportSurfaceRestrictedType{
-                            enum_display_name(this->core_.state_.checked.types, enum_case),
+                            this->core_.state_.checked.types.display_name(current),
                             enum_case.range,
                             enum_case.visibility,
                         };
@@ -1088,13 +1102,13 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_exported_signature_surf
         if (!visibility_has_export_surface(info.visibility)) {
             continue;
         }
-        const std::string struct_name = struct_display_name(this->core_.state_.checked.types, info);
         for (const StructFieldInfo& field : info.fields) {
             const syntax::Visibility field_surface = syntax::effective_visibility(info.visibility, field.visibility);
             if (!visibility_has_export_surface(field_surface)) {
                 continue;
             }
-            const std::string field_name = struct_name + "." + std::string(field.name);
+            const std::string field_name =
+                struct_field_surface_name(this->core_.state_.checked.types, info, field);
             report_if_restricted(field_surface, "struct field", field_name, field.type, field.range);
         }
     }
@@ -1104,7 +1118,7 @@ void SemanticAnalyzerCore::DeclarationAnalyzer::validate_exported_signature_surf
         if (!visibility_has_export_surface(info.visibility)) {
             continue;
         }
-        const std::string case_name = enum_case_display_name(this->core_.state_.checked.types, info);
+        const std::string case_name = enum_case_surface_name(this->core_.state_.checked.types, info);
         for (const TypeHandle payload_type : info.payload_types) {
             report_if_restricted(info.visibility, "enum case", case_name, payload_type, info.range);
         }

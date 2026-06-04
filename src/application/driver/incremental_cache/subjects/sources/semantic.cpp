@@ -192,8 +192,8 @@ struct PackageIndex {
     query::ItemSignatureAuthority authority = item_signature_authority_base(signature.stable_id,
         signature.incremental_key, signature.module, signature.part_index, query::DefNamespace::value,
         function_signature_def_kind(signature), signature.visibility, packages);
-    authority.value_component_count = static_cast<base::u32>(signature.param_types.size());
-    authority.generic_param_count = static_cast<base::u32>(signature.generic_args.size());
+    authority.value_component_count = static_cast<base::u64>(signature.param_types.size());
+    authority.generic_param_count = static_cast<base::u64>(signature.generic_args.size());
     authority.has_return_type = sema::is_valid(signature.return_type);
     authority.has_receiver_type = sema::is_valid(signature.method_owner_type) || signature.has_self_param;
     authority.is_unsafe = signature.is_unsafe;
@@ -207,8 +207,8 @@ struct PackageIndex {
 {
     query::ItemSignatureAuthority authority = item_signature_authority_base(info.stable_id, info.incremental_key,
         info.module, info.part_index, query::DefNamespace::type, query::DefKind::struct_, info.visibility, packages);
-    authority.value_component_count = static_cast<base::u32>(info.fields.size());
-    authority.generic_param_count = static_cast<base::u32>(info.generic_instance_key.type_args.size());
+    authority.value_component_count = static_cast<base::u64>(info.fields.size());
+    authority.generic_param_count = static_cast<base::u64>(info.generic_instance_key.type_args.size());
     authority.has_return_type = sema::is_valid(info.type);
     authority.has_definition = !info.is_opaque;
     return authority;
@@ -219,8 +219,8 @@ struct PackageIndex {
 {
     query::ItemSignatureAuthority authority = item_signature_authority_base(info.stable_id, info.incremental_key,
         info.module, info.part_index, query::DefNamespace::value, query::DefKind::enum_case, info.visibility, packages);
-    authority.value_component_count = static_cast<base::u32>(info.payload_types.size());
-    authority.generic_param_count = static_cast<base::u32>(info.generic_instance_key.type_args.size());
+    authority.value_component_count = static_cast<base::u64>(info.payload_types.size());
+    authority.generic_param_count = static_cast<base::u64>(info.generic_instance_key.type_args.size());
     authority.has_return_type = sema::is_valid(info.type);
     authority.has_definition = true;
     return authority;
@@ -265,9 +265,9 @@ struct PackageIndex {
         incremental_key,
         kind,
         0,
-        static_cast<base::u32>(key.type_args.size()),
-        static_cast<base::u32>(key.const_args.size()),
-        key.param_env.predicate_count,
+        static_cast<base::u64>(key.type_args.size()),
+        static_cast<base::u64>(key.const_args.size()),
+        static_cast<base::u64>(key.param_env.predicate_count),
     };
 }
 
@@ -277,8 +277,8 @@ struct PackageIndex {
     query::GenericInstanceSignatureAuthority authority = generic_instance_signature_authority_base(
         key, signature.incremental_key, generic_function_signature_kind(signature));
     authority.visibility_rank = syntax::visibility_rank(signature.visibility);
-    authority.value_param_count = static_cast<base::u32>(signature.param_types.size());
-    authority.generic_param_count = static_cast<base::u32>(signature.generic_args.size());
+    authority.value_param_count = static_cast<base::u64>(signature.param_types.size());
+    authority.generic_param_count = static_cast<base::u64>(signature.generic_args.size());
     authority.has_return_type = sema::is_valid(signature.return_type);
     authority.has_receiver_type = sema::is_valid(signature.method_owner_type) || signature.has_self_param;
     authority.is_unsafe = signature.is_unsafe;
@@ -293,8 +293,8 @@ struct PackageIndex {
     query::GenericInstanceSignatureAuthority authority = generic_instance_signature_authority_base(
         key, info.incremental_key, query::GenericInstanceSignatureKind::struct_);
     authority.visibility_rank = syntax::visibility_rank(info.visibility);
-    authority.value_param_count = static_cast<base::u32>(info.fields.size());
-    authority.generic_param_count = static_cast<base::u32>(key.type_args.size());
+    authority.value_param_count = static_cast<base::u64>(info.fields.size());
+    authority.generic_param_count = static_cast<base::u64>(key.type_args.size());
     authority.has_return_type = sema::is_valid(info.type);
     return authority;
 }
@@ -304,7 +304,7 @@ struct PackageIndex {
 {
     query::GenericInstanceSignatureAuthority authority = generic_instance_signature_authority_base(
         instance.generic_instance_key, instance.incremental_key, query::GenericInstanceSignatureKind::enum_);
-    authority.generic_param_count = static_cast<base::u32>(instance.generic_instance_key.type_args.size());
+    authority.generic_param_count = static_cast<base::u64>(instance.generic_instance_key.type_args.size());
     authority.has_return_type = sema::is_valid(instance.type);
     return authority;
 }
@@ -314,7 +314,7 @@ struct PackageIndex {
 {
     query::GenericInstanceSignatureAuthority authority = generic_instance_signature_authority_base(
         instance.generic_instance_key, instance.incremental_key, query::GenericInstanceSignatureKind::type_alias);
-    authority.generic_param_count = static_cast<base::u32>(instance.generic_instance_key.type_args.size());
+    authority.generic_param_count = static_cast<base::u64>(instance.generic_instance_key.type_args.size());
     authority.has_return_type = sema::is_valid(instance.resolved_type);
     return authority;
 }
@@ -443,9 +443,9 @@ struct PackageIndex {
     return query::query_result_fingerprint(builder.finish());
 }
 
-[[nodiscard]] base::u32 side_table_entry_count(const sema::GenericNodeSpan span, const sema::SemaIndexTable& ids)
+[[nodiscard]] base::u64 side_table_entry_count(const sema::GenericNodeSpan span, const sema::SemaIndexTable& ids)
 {
-    return ids.empty() ? span.count : static_cast<base::u32>(ids.size());
+    return ids.empty() ? span.count : static_cast<base::u64>(ids.size());
 }
 
 [[nodiscard]] query::GenericInstanceBodyAuthority generic_instance_body_authority(
@@ -458,19 +458,19 @@ struct PackageIndex {
         query::generic_instance_signature_result_fingerprint(signature_authority);
     const sema::GenericSideTables& side_tables = instance.side_tables;
     const sema::GenericSideTableLayout* const layout = side_tables.layout;
-    const base::u32 expr_count = layout == nullptr
+    const base::u64 expr_count = layout == nullptr
         ? side_table_entry_count(side_tables.expr_span, side_tables.expr_node_ids)
         : side_table_entry_count(layout->expr_span, layout->expr_node_ids);
-    const base::u32 pattern_count = layout == nullptr
+    const base::u64 pattern_count = layout == nullptr
         ? side_table_entry_count(side_tables.pattern_span, side_tables.pattern_node_ids)
         : side_table_entry_count(layout->pattern_span, layout->pattern_node_ids);
-    const base::u32 type_count = layout == nullptr
+    const base::u64 type_count = layout == nullptr
         ? side_table_entry_count(side_tables.type_span, side_tables.type_node_ids)
         : side_table_entry_count(layout->type_span, layout->type_node_ids);
-    const base::u32 stmt_count = layout == nullptr
+    const base::u64 stmt_count = layout == nullptr
         ? side_table_entry_count(side_tables.stmt_span, side_tables.stmt_node_ids)
         : side_table_entry_count(layout->stmt_span, layout->stmt_node_ids);
-    const base::u32 fallback_count = static_cast<base::u32>(side_tables.sparse_fallbacks.total());
+    const base::u64 fallback_count = static_cast<base::u64>(side_tables.sparse_fallbacks.total());
     return query::GenericInstanceBodyAuthority{
         checked_body,
         signature_result,

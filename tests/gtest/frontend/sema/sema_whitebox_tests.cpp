@@ -1543,7 +1543,8 @@ TEST(CoreUnit, SemanticWhiteBoxVisibilityLatticeAccessAndSurfaceLeaks)
     analyzer.validate_exported_signature_surfaces();
     const std::string messages = diagnostic_messages(diagnostics);
     EXPECT_NE(
-        messages.find("public function `leaks_package` exposes package-visible type `PackageOnly`"), std::string::npos);
+        messages.find("public function `leaks_package` exposes package-visible type `root.PackageOnly`"),
+        std::string::npos);
 
     base::DiagnosticSink package_diagnostics;
     sema::SemanticAnalyzerCore package_analyzer(module, package_diagnostics);
@@ -1560,14 +1561,14 @@ TEST(CoreUnit, SemanticWhiteBoxVisibilityLatticeAccessAndSurfaceLeaks)
 
     package_analyzer.validate_exported_signature_surfaces();
     const std::string package_messages = diagnostic_messages(package_diagnostics);
-    EXPECT_NE(package_messages.find("package-visible function `leaks_private` exposes private type `PrivateOnly`"),
+    EXPECT_NE(package_messages.find("package-visible function `leaks_private` exposes private type `root.PrivateOnly`"),
         std::string::npos);
 
     const std::optional<sema::SemanticAnalyzerCore::DeclarationAnalyzer::ExportSurfaceRestrictedType> package_leak =
         sema::SemanticAnalyzerCore::DeclarationAnalyzer(package_analyzer)
             .restricted_type_exposed_by_surface_type(private_type, syntax::Visibility::package_);
     ASSERT_TRUE(package_leak.has_value());
-    EXPECT_EQ(package_leak->name, "PrivateOnly");
+    EXPECT_EQ(package_leak->name, "root.PrivateOnly");
     EXPECT_EQ(package_leak->visibility, syntax::Visibility::private_);
 }
 

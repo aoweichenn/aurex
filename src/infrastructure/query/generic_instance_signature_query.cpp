@@ -27,9 +27,9 @@ constexpr base::u8 QUERY_GENERIC_INSTANCE_SIGNATURE_MAX_VISIBILITY_RANK = 2;
     return false;
 }
 
-[[nodiscard]] bool size_matches_u32(const base::u32 expected, const std::size_t actual) noexcept
+[[nodiscard]] bool size_matches_u64(const base::u64 expected, const std::size_t actual) noexcept
 {
-    return static_cast<std::size_t>(expected) == actual;
+    return static_cast<base::u64>(actual) == expected;
 }
 
 } // namespace
@@ -51,8 +51,8 @@ bool is_valid(const GenericInstanceSignatureAuthority& authority) noexcept
 bool is_valid(const GenericInstanceSignatureProviderInput& input) noexcept
 {
     return input.key != nullptr && is_valid(*input.key) && is_valid(input.authority)
-        && size_matches_u32(input.authority.type_arg_count, input.key->type_args.size())
-        && size_matches_u32(input.authority.const_arg_count, input.key->const_args.size())
+        && size_matches_u64(input.authority.type_arg_count, input.key->type_args.size())
+        && size_matches_u64(input.authority.const_arg_count, input.key->const_args.size())
         && input.authority.param_env_predicate_count == input.key->param_env.predicate_count;
 }
 
@@ -81,11 +81,11 @@ QueryResultFingerprint generic_instance_signature_result_fingerprint(
     builder.mix_fingerprint(stable_key_fingerprint(authority.signature));
     builder.mix_u8(static_cast<base::u8>(authority.kind));
     builder.mix_u8(authority.visibility_rank);
-    builder.mix_u32(authority.type_arg_count);
-    builder.mix_u32(authority.const_arg_count);
-    builder.mix_u32(authority.param_env_predicate_count);
-    builder.mix_u32(authority.value_param_count);
-    builder.mix_u32(authority.generic_param_count);
+    builder.mix_u64(authority.type_arg_count);
+    builder.mix_u64(authority.const_arg_count);
+    builder.mix_u64(authority.param_env_predicate_count);
+    builder.mix_u64(authority.value_param_count);
+    builder.mix_u64(authority.generic_param_count);
     builder.mix_bool(authority.has_return_type);
     builder.mix_bool(authority.has_receiver_type);
     builder.mix_bool(authority.is_unsafe);

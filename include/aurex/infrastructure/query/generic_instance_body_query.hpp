@@ -10,11 +10,11 @@ namespace aurex::query {
 struct GenericInstanceBodyAuthority {
     QueryResultFingerprint checked_body;
     QueryResultFingerprint signature_result;
-    base::u32 expr_side_table_count = 0;
-    base::u32 pattern_side_table_count = 0;
-    base::u32 type_side_table_count = 0;
-    base::u32 stmt_side_table_count = 0;
-    base::u32 sparse_fallback_count = 0;
+    base::u64 expr_side_table_count = 0;
+    base::u64 pattern_side_table_count = 0;
+    base::u64 type_side_table_count = 0;
+    base::u64 stmt_side_table_count = 0;
+    base::u64 sparse_fallback_count = 0;
     bool retained_side_tables = false;
     bool local_dense_side_tables = false;
     bool sparse_side_tables = false;

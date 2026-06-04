@@ -631,8 +631,8 @@ struct GenericTemplateSignatureInfo {
     StableDefId stable_id;
     IncrementalKey incremental_key;
     query::DefNamespace name_space = query::DefNamespace::value;
-    base::u32 param_count = 0;
-    base::u32 constraint_count = 0;
+    base::u64 param_count = 0;
+    base::u64 constraint_count = 0;
     base::u32 part_index = 0;
 };
 

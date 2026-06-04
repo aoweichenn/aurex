@@ -1463,8 +1463,8 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
 {
     query::ItemSignatureAuthority authority = item_signature_authority_base(snapshot, signature.incremental_key,
         signature.part_index, query::DefNamespace::value, function_signature_def_kind(signature), signature.visibility);
-    authority.value_component_count = static_cast<base::u32>(signature.param_types.size());
-    authority.generic_param_count = static_cast<base::u32>(signature.generic_args.size());
+    authority.value_component_count = static_cast<base::u64>(signature.param_types.size());
+    authority.generic_param_count = static_cast<base::u64>(signature.generic_args.size());
     authority.has_return_type = sema::is_valid(signature.return_type);
     authority.has_receiver_type = sema::is_valid(signature.method_owner_type) || signature.has_self_param;
     authority.is_unsafe = signature.is_unsafe;
@@ -1478,8 +1478,8 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
 {
     query::ItemSignatureAuthority authority = item_signature_authority_base(snapshot, info.incremental_key,
         info.part_index, query::DefNamespace::type, query::DefKind::struct_, info.visibility);
-    authority.value_component_count = static_cast<base::u32>(info.fields.size());
-    authority.generic_param_count = static_cast<base::u32>(info.generic_instance_key.type_args.size());
+    authority.value_component_count = static_cast<base::u64>(info.fields.size());
+    authority.generic_param_count = static_cast<base::u64>(info.generic_instance_key.type_args.size());
     authority.has_return_type = sema::is_valid(info.type);
     authority.has_definition = !info.is_opaque;
     return authority;
@@ -1490,8 +1490,8 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
 {
     query::ItemSignatureAuthority authority = item_signature_authority_base(snapshot, info.incremental_key,
         info.part_index, query::DefNamespace::value, query::DefKind::enum_case, info.visibility);
-    authority.value_component_count = static_cast<base::u32>(info.payload_types.size());
-    authority.generic_param_count = static_cast<base::u32>(info.generic_instance_key.type_args.size());
+    authority.value_component_count = static_cast<base::u64>(info.payload_types.size());
+    authority.generic_param_count = static_cast<base::u64>(info.generic_instance_key.type_args.size());
     authority.has_return_type = sema::is_valid(info.type);
     authority.has_definition = true;
     return authority;
@@ -1513,8 +1513,8 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
 {
     query::ItemSignatureAuthority authority = item_signature_authority_base(snapshot, trait.incremental_key,
         trait.part_index, query::DefNamespace::trait_, query::DefKind::trait_, trait.visibility);
-    authority.value_component_count = static_cast<base::u32>(trait.associated_types.size() + trait.requirements.size());
-    authority.generic_param_count = static_cast<base::u32>(trait.generic_params.size());
+    authority.value_component_count = static_cast<base::u64>(trait.associated_types.size() + trait.requirements.size());
+    authority.generic_param_count = static_cast<base::u64>(trait.generic_params.size());
     authority.has_definition = true;
     return authority;
 }

@@ -155,6 +155,12 @@ if(BUILD_TESTING)
             AUREX_TEST_BINARY_DIR=\"${CMAKE_BINARY_DIR}\"
             AUREX_TEST_CMAKE_COMMAND=\"${CMAKE_COMMAND}\"
         )
+        if(TARGET aurexc)
+            add_dependencies(aurex_tests aurexc)
+        endif()
+        if(TARGET aurex-lsp)
+            add_dependencies(aurex_tests aurex-lsp)
+        endif()
         set_target_properties(aurex_tests PROPERTIES
             BUILD_RPATH "$<TARGET_FILE_DIR:GTest::gtest_main>"
         )

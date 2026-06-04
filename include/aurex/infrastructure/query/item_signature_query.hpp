@@ -13,8 +13,8 @@ struct ItemSignatureAuthority {
     DefNamespace name_space = DefNamespace::value;
     DefKind kind = DefKind::invalid;
     base::u8 visibility_rank = 0;
-    base::u32 value_component_count = 0;
-    base::u32 generic_param_count = 0;
+    base::u64 value_component_count = 0;
+    base::u64 generic_param_count = 0;
     bool has_return_type = false;
     bool has_receiver_type = false;
     bool is_unsafe = false;

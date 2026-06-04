@@ -85,8 +85,8 @@ QueryResultFingerprint item_signature_result_fingerprint(const ItemSignatureAuth
     builder.mix_u8(static_cast<base::u8>(authority.name_space));
     builder.mix_u8(static_cast<base::u8>(authority.kind));
     builder.mix_u8(authority.visibility_rank);
-    builder.mix_u32(authority.value_component_count);
-    builder.mix_u32(authority.generic_param_count);
+    builder.mix_u64(authority.value_component_count);
+    builder.mix_u64(authority.generic_param_count);
     builder.mix_bool(authority.has_return_type);
     builder.mix_bool(authority.has_receiver_type);
     builder.mix_bool(authority.is_unsafe);

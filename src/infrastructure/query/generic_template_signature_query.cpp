@@ -59,8 +59,8 @@ QueryResultFingerprint generic_template_signature_result_fingerprint(
     builder.mix_fingerprint(stable_key_fingerprint(authority.module_part));
     builder.mix_u8(static_cast<base::u8>(authority.name_space));
     builder.mix_u8(authority.visibility_rank);
-    builder.mix_u32(authority.param_count);
-    builder.mix_u32(authority.constraint_count);
+    builder.mix_u64(authority.param_count);
+    builder.mix_u64(authority.constraint_count);
     return query_result_fingerprint(builder.finish());
 }
 

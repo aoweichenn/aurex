@@ -1304,14 +1304,14 @@ std::string SemanticAnalyzerCore::GenericAnalyzer::generic_template_incremental_
 void SemanticAnalyzerCore::GenericAnalyzer::record_generic_template_signature(
     const GenericTemplateInfo& info, const query::DefNamespace name_space)
 {
-    base::u32 constraint_count = static_cast<base::u32>(info.predicate_indices.size());
+    base::u64 constraint_count = static_cast<base::u64>(info.predicate_indices.size());
     if (constraint_count == 0) {
         for (const IdentId param_id : info.params) {
             const auto found = info.constraints.find(param_id);
             if (found == info.constraints.end()) {
                 continue;
             }
-            constraint_count += static_cast<base::u32>(found->second.size());
+            constraint_count += static_cast<base::u64>(found->second.size());
         }
     }
     this->core_.state_.checked.generic_template_signatures.push_back(GenericTemplateSignatureInfo{
@@ -1322,7 +1322,7 @@ void SemanticAnalyzerCore::GenericAnalyzer::record_generic_template_signature(
         info.stable_id,
         info.incremental_key,
         name_space,
-        static_cast<base::u32>(info.params.size()),
+        static_cast<base::u64>(info.params.size()),
         constraint_count,
         info.part_index,
     });

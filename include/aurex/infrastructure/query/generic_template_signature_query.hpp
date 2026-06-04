@@ -12,8 +12,8 @@ struct GenericTemplateSignatureAuthority {
     ModulePartKey module_part;
     DefNamespace name_space = DefNamespace::value;
     base::u8 visibility_rank = 0;
-    base::u32 param_count = 0;
-    base::u32 constraint_count = 0;
+    base::u64 param_count = 0;
+    base::u64 constraint_count = 0;
 };
 
 struct GenericTemplateSignatureProviderInput {

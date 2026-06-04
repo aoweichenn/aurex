@@ -54,11 +54,11 @@ QueryResultFingerprint generic_instance_body_result_fingerprint(const GenericIns
     builder.mix_fingerprint(authority.checked_body.fingerprint);
     builder.mix_u64(authority.signature_result.global_id);
     builder.mix_fingerprint(authority.signature_result.fingerprint);
-    builder.mix_u32(authority.expr_side_table_count);
-    builder.mix_u32(authority.pattern_side_table_count);
-    builder.mix_u32(authority.type_side_table_count);
-    builder.mix_u32(authority.stmt_side_table_count);
-    builder.mix_u32(authority.sparse_fallback_count);
+    builder.mix_u64(authority.expr_side_table_count);
+    builder.mix_u64(authority.pattern_side_table_count);
+    builder.mix_u64(authority.type_side_table_count);
+    builder.mix_u64(authority.stmt_side_table_count);
+    builder.mix_u64(authority.sparse_fallback_count);
     builder.mix_bool(authority.retained_side_tables);
     builder.mix_bool(authority.local_dense_side_tables);
     builder.mix_bool(authority.sparse_side_tables);

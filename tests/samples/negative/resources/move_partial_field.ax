@@ -2,6 +2,7 @@ module move_partial_field;
 
 struct Box[T] {
     value: T;
+    tag: i32;
 }
 
 fn unwrap[T](box: Box[T]) -> T {

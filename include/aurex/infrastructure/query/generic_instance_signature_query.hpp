@@ -20,11 +20,11 @@ struct GenericInstanceSignatureAuthority {
     IncrementalKey signature;
     GenericInstanceSignatureKind kind = GenericInstanceSignatureKind::invalid;
     base::u8 visibility_rank = 0;
-    base::u32 type_arg_count = 0;
-    base::u32 const_arg_count = 0;
-    base::u32 param_env_predicate_count = 0;
-    base::u32 value_param_count = 0;
-    base::u32 generic_param_count = 0;
+    base::u64 type_arg_count = 0;
+    base::u64 const_arg_count = 0;
+    base::u64 param_env_predicate_count = 0;
+    base::u64 value_param_count = 0;
+    base::u64 generic_param_count = 0;
     bool has_return_type = false;
     bool has_receiver_type = false;
     bool is_unsafe = false;

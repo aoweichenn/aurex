@@ -293,20 +293,7 @@ private:
         return this->copy_list(values);
     }
 
-    [[nodiscard]] GenericConstraintDecl copy_generic_constraint(const GenericConstraintDecl& constraint);
     [[nodiscard]] GenericConstraintDecl copy_or_move_generic_constraint(GenericConstraintDecl&& constraint);
-
-    template <typename Allocator>
-    [[nodiscard]] AstArenaVector<GenericConstraintDecl> copy_generic_constraints(
-        const std::vector<GenericConstraintDecl, Allocator>& constraints)
-    {
-        AstArenaVector<GenericConstraintDecl> copy = make_ast_arena_vector<GenericConstraintDecl>(*this->arena_);
-        copy.reserve(constraints.size());
-        for (const GenericConstraintDecl& constraint : constraints) {
-            copy.push_back(this->copy_generic_constraint(constraint));
-        }
-        return copy;
-    }
 
     template <typename Allocator>
     [[nodiscard]] AstArenaVector<GenericConstraintDecl> copy_or_move_generic_constraints(
@@ -320,21 +307,8 @@ private:
         return copy;
     }
 
-    [[nodiscard]] EnumCaseDecl copy_enum_case(const EnumCaseDecl& enum_case);
     [[nodiscard]] EnumCaseDecl copy_or_move_enum_case(EnumCaseDecl&& enum_case);
-    [[nodiscard]] BorrowContractDecl copy_borrow_contract(const BorrowContractDecl& contract);
     [[nodiscard]] BorrowContractDecl copy_or_move_borrow_contract(BorrowContractDecl&& contract);
-
-    template <typename Allocator>
-    [[nodiscard]] AstArenaVector<EnumCaseDecl> copy_enum_cases(const std::vector<EnumCaseDecl, Allocator>& cases)
-    {
-        AstArenaVector<EnumCaseDecl> copy = make_ast_arena_vector<EnumCaseDecl>(*this->arena_);
-        copy.reserve(cases.size());
-        for (const EnumCaseDecl& enum_case : cases) {
-            copy.push_back(this->copy_enum_case(enum_case));
-        }
-        return copy;
-    }
 
     template <typename Allocator>
     [[nodiscard]] AstArenaVector<EnumCaseDecl> copy_or_move_enum_cases(std::vector<EnumCaseDecl, Allocator>&& cases)

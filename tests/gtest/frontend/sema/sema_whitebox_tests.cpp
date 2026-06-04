@@ -48,6 +48,24 @@
 #include <frontend/sema/internal/services/private/sema_type_services.hpp>
 
 namespace aurex::test {
+
+struct TypeTableTestAccess {
+    [[nodiscard]] static sema::SemaVector<sema::TypeInfo>& entries(sema::TypeTable& types) noexcept
+    {
+        return types.types_;
+    }
+
+    [[nodiscard]] static const sema::SemaVector<sema::TypeInfo>& entries(const sema::TypeTable& types) noexcept
+    {
+        return types.types_;
+    }
+
+    [[nodiscard]] static sema::TypeHandle push(sema::TypeTable& types, sema::TypeInfo info)
+    {
+        return types.push(std::move(info));
+    }
+};
+
 namespace {
 
 using base::DiagnosticCategory;
@@ -1117,7 +1135,7 @@ TEST(CoreUnit, CanonicalTypeBuilderMapsAssociatedProjectionTypes)
         query::canonical_associated_type_projection(query::canonical_generic_param(type_param_key), item_member);
     EXPECT_EQ(key.value(), expected);
 
-    types.types_[projection.value].associated_member = query::MemberKey{};
+    TypeTableTestAccess::entries(types)[projection.value].associated_member = query::MemberKey{};
     base::Result<query::CanonicalTypeKey> invalid_member = sema::build_canonical_type_key(types, projection, resolver);
     EXPECT_FALSE(invalid_member.has_value());
     EXPECT_NE(invalid_member.error().message.find("unresolved associated type member"), std::string::npos);
@@ -1170,38 +1188,38 @@ TEST(CoreUnit, CanonicalTypeBuilderRejectsUnresolvedOrInvalidTypes)
     EXPECT_FALSE(unknown_child.has_value());
     EXPECT_NE(unknown_child.error().message.find("unknown type handle"), std::string::npos);
 
-    types.types_[i32.value].builtin = SEMA_TEST_INVALID_BUILTIN_TYPE;
+    TypeTableTestAccess::entries(types)[i32.value].builtin = SEMA_TEST_INVALID_BUILTIN_TYPE;
     base::Result<query::CanonicalTypeKey> unsupported_builtin = sema::build_canonical_type_key(types, i32, resolver);
     EXPECT_FALSE(unsupported_builtin.has_value());
     EXPECT_NE(unsupported_builtin.error().message.find("unsupported builtin type"), std::string::npos);
-    types.types_[i32.value].builtin = BuiltinType::i32;
+    TypeTableTestAccess::entries(types)[i32.value].builtin = BuiltinType::i32;
 
-    types.types_[pointer_i32.value].pointer_mutability = SEMA_TEST_INVALID_POINTER_MUTABILITY;
+    TypeTableTestAccess::entries(types)[pointer_i32.value].pointer_mutability = SEMA_TEST_INVALID_POINTER_MUTABILITY;
     base::Result<query::CanonicalTypeKey> unsupported_pointer_mutability =
         sema::build_canonical_type_key(types, pointer_i32, resolver);
     EXPECT_FALSE(unsupported_pointer_mutability.has_value());
     EXPECT_NE(unsupported_pointer_mutability.error().message.find("unsupported pointer mutability"), std::string::npos);
 
-    types.types_[reference_i32.value].pointer_mutability = SEMA_TEST_INVALID_POINTER_MUTABILITY;
+    TypeTableTestAccess::entries(types)[reference_i32.value].pointer_mutability = SEMA_TEST_INVALID_POINTER_MUTABILITY;
     base::Result<query::CanonicalTypeKey> unsupported_reference_mutability =
         sema::build_canonical_type_key(types, reference_i32, resolver);
     EXPECT_FALSE(unsupported_reference_mutability.has_value());
     EXPECT_NE(
         unsupported_reference_mutability.error().message.find("unsupported pointer mutability"), std::string::npos);
 
-    types.types_[slice_i32.value].slice_mutability = SEMA_TEST_INVALID_POINTER_MUTABILITY;
+    TypeTableTestAccess::entries(types)[slice_i32.value].slice_mutability = SEMA_TEST_INVALID_POINTER_MUTABILITY;
     base::Result<query::CanonicalTypeKey> unsupported_slice_mutability =
         sema::build_canonical_type_key(types, slice_i32, resolver);
     EXPECT_FALSE(unsupported_slice_mutability.has_value());
     EXPECT_NE(unsupported_slice_mutability.error().message.find("unsupported pointer mutability"), std::string::npos);
 
-    types.types_[function_i32.value].function_call_conv = SEMA_TEST_INVALID_FUNCTION_CALL_CONV;
+    TypeTableTestAccess::entries(types)[function_i32.value].function_call_conv = SEMA_TEST_INVALID_FUNCTION_CALL_CONV;
     base::Result<query::CanonicalTypeKey> unsupported_call_conv =
         sema::build_canonical_type_key(types, function_i32, resolver);
     EXPECT_FALSE(unsupported_call_conv.has_value());
     EXPECT_NE(unsupported_call_conv.error().message.find("unsupported function call convention"), std::string::npos);
 
-    types.types_[i32.value].kind = SEMA_TEST_INVALID_TYPE_KIND;
+    TypeTableTestAccess::entries(types)[i32.value].kind = SEMA_TEST_INVALID_TYPE_KIND;
     base::Result<query::CanonicalTypeKey> unsupported = sema::build_canonical_type_key(types, i32, resolver);
     EXPECT_FALSE(unsupported.has_value());
     EXPECT_NE(unsupported.error().message.find("unsupported type kind"), std::string::npos);
@@ -1825,6 +1843,13 @@ TEST(CoreUnit, SemanticWhiteBoxCheckedDumpCoversPrimaryOnlyAndTemplateNamespaces
         info.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
         template_checked.generic_template_signatures.push_back(info);
     }
+    sema::GenericTemplateSignatureInfo unknown_template;
+    unknown_template.name = template_checked.intern_text("TemplateUnknown");
+    unknown_template.name_id = unknown_template.name.id;
+    unknown_template.name_space = static_cast<query::DefNamespace>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE);
+    unknown_template.param_count = namespaces.size();
+    unknown_template.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    template_checked.generic_template_signatures.push_back(unknown_template);
 
     const std::string template_dump = sema::dump_checked_module(template_checked);
     EXPECT_NE(template_dump.find("template value Template0 params=0 @part=1"), std::string::npos);
@@ -1832,6 +1857,281 @@ TEST(CoreUnit, SemanticWhiteBoxCheckedDumpCoversPrimaryOnlyAndTemplateNamespaces
     EXPECT_NE(template_dump.find("template trait Template2 params=2 @part=1"), std::string::npos);
     EXPECT_NE(template_dump.find("template impl Template3 params=3 @part=1"), std::string::npos);
     EXPECT_NE(template_dump.find("template synthetic Template4 params=4 @part=1"), std::string::npos);
+    EXPECT_NE(template_dump.find("template unknown TemplateUnknown params=5 @part=1"), std::string::npos);
+
+    sema::CheckedModule trait_checked;
+    const TypeHandle trait_i32 = trait_checked.types.builtin(BuiltinType::i32);
+    const sema::InternedText reader_name = trait_checked.intern_text("Reader");
+    const sema::InternedText item_name = trait_checked.intern_text("Item");
+    const sema::InternedText read_name = trait_checked.intern_text("read");
+    const sema::InternedText fallback_name = trait_checked.intern_text("fallback");
+
+    sema::TraitSignature trait = trait_checked.make_trait_signature();
+    trait.name = reader_name;
+    trait.name_id = reader_name.id;
+    trait.visibility = syntax::Visibility::private_;
+    trait.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    trait.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    trait.generic_params.push_back(reader_name.id);
+    trait.generic_params.push_back(item_name.id);
+
+    sema::TraitAssociatedTypeRequirement associated_type =
+        trait_checked.make_trait_associated_type_requirement();
+    associated_type.name = item_name;
+    associated_type.name_id = item_name.id;
+    trait.associated_types.push_back(associated_type);
+
+    sema::TraitMethodRequirement requirement = trait_checked.make_trait_method_requirement();
+    requirement.name = read_name;
+    requirement.name_id = read_name.id;
+    requirement.return_type = trait_i32;
+    requirement.param_types.push_back(trait_i32);
+    requirement.is_unsafe = true;
+    requirement.is_variadic = true;
+    requirement.has_default_body = true;
+    requirement.has_borrow_contract = true;
+    requirement.borrow_contract.source = sema::FunctionBorrowContractSource::declared;
+    requirement.borrow_contract.unknown_return_allowed = true;
+    requirement.borrow_contract.return_selectors.push_back(sema::BorrowContractSelector{
+        .kind = sema::BorrowContractSelectorKind::parameter,
+        .param_index = 0U,
+        .name_id = read_name.id,
+        .range = {},
+    });
+    trait.requirements.push_back(requirement);
+
+    const sema::ModuleLookupKey reader_key{SEMA_TEST_ROOT_MODULE_INDEX, reader_name.id};
+    trait_checked.traits.emplace(reader_key, std::move(trait));
+
+    sema::TraitImplInfo trait_impl = trait_checked.make_trait_impl_info();
+    trait_impl.trait_name = reader_name;
+    trait_impl.trait_name_id = reader_name.id;
+    trait_impl.trait_module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    trait_impl.self_type = trait_i32;
+    trait_impl.module = module_id(SEMA_TEST_ROOT_MODULE_INDEX);
+    trait_impl.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    trait_impl.key = sema::TraitImplLookupKey{SEMA_TEST_ROOT_MODULE_INDEX, reader_name.id, trait_i32.value, {}};
+
+    sema::TraitImplAssociatedTypeInfo associated_impl = trait_checked.make_trait_impl_associated_type_info();
+    associated_impl.name = item_name;
+    associated_impl.name_id = item_name.id;
+    associated_impl.value_type = trait_i32;
+    associated_impl.requirement_ordinal = 0U;
+    trait_impl.associated_types.push_back(associated_impl);
+
+    sema::TraitImplMethodInfo override_method = trait_checked.make_trait_impl_method_info();
+    override_method.name = read_name;
+    override_method.name_id = read_name.id;
+    override_method.requirement_ordinal = 0U;
+    override_method.origin = sema::TraitImplMethodOrigin::impl_override;
+    trait_impl.methods.push_back(override_method);
+
+    sema::TraitImplMethodInfo default_method = trait_checked.make_trait_impl_method_info();
+    default_method.name = fallback_name;
+    default_method.name_id = fallback_name.id;
+    default_method.requirement_ordinal = 1U;
+    default_method.origin = sema::TraitImplMethodOrigin::trait_default;
+    trait_impl.methods.push_back(default_method);
+
+    sema::TraitImplMethodInfo invalid_origin_method = trait_checked.make_trait_impl_method_info();
+    invalid_origin_method.name = trait_checked.intern_text("invalid_origin");
+    invalid_origin_method.name_id = invalid_origin_method.name.id;
+    invalid_origin_method.requirement_ordinal = 2U;
+    invalid_origin_method.origin =
+        static_cast<sema::TraitImplMethodOrigin>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE);
+    trait_impl.methods.push_back(invalid_origin_method);
+
+    trait_checked.trait_impls.emplace(trait_impl.key, std::move(trait_impl));
+
+    const std::string trait_dump = sema::dump_checked_module(trait_checked);
+    EXPECT_NE(trait_dump.find("trait priv Reader[T0, T1] params=2 associated_types=1 requirements=1 @part=1"),
+        std::string::npos);
+    EXPECT_NE(trait_dump.find("assoc_type Item"), std::string::npos);
+    EXPECT_NE(trait_dump.find(
+                  "requirement unsafe read(i32) -> i32 variadic default borrow_contract=declared/selectors=1/unknown=true"),
+        std::string::npos);
+    EXPECT_NE(trait_dump.find("impl Reader for i32 associated_types=1 methods=3 @part=1"), std::string::npos);
+    EXPECT_NE(trait_dump.find("assoc_type Item = i32 requirement=0"), std::string::npos);
+    EXPECT_NE(trait_dump.find("method read requirement=0 origin=impl_override"), std::string::npos);
+    EXPECT_NE(trait_dump.find("method fallback requirement=1 origin=trait_default"), std::string::npos);
+    EXPECT_NE(trait_dump.find("method invalid_origin requirement=2 origin=impl_override"), std::string::npos);
+
+    sema::CheckedModule fallback_checked;
+    const TypeHandle fallback_i32 = fallback_checked.types.builtin(BuiltinType::i32);
+    const TypeHandle fallback_struct_type =
+        fallback_checked.types.named_struct("DumpStruct", "DumpStruct", false);
+    const TypeHandle fallback_enum_type = fallback_checked.types.named_enum("DumpEnum", "DumpEnum");
+    const sema::InternedText predicate_trait = fallback_checked.intern_text("DumpTrait");
+    const sema::InternedText function_name = fallback_checked.intern_text("dump_function");
+    const std::string invalid_lookup_key = std::to_string(SEMA_TEST_ROOT_MODULE_INDEX) + ":"
+        + std::to_string(sema::SEMA_LOOKUP_INVALID_KEY_PART) + ":-";
+    const sema::FunctionLookupKey invalid_function_key{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        sema::INVALID_IDENT_ID,
+    };
+
+    sema::TraitPredicate predicate = fallback_checked.make_trait_predicate();
+    predicate.index = 0U;
+    predicate.kind = static_cast<sema::TraitPredicateKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE);
+    predicate.origin = static_cast<sema::TraitPredicateOrigin>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE);
+    predicate.subject_type = fallback_i32;
+    predicate.trait_name = predicate_trait;
+    predicate.trait_name_id = predicate_trait.id;
+    predicate.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    fallback_checked.trait_predicates.push_back(predicate);
+
+    sema::TraitEvidence evidence = fallback_checked.make_trait_evidence();
+    evidence.kind = static_cast<sema::TraitEvidenceKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE);
+    evidence.predicate_index = 0U;
+    fallback_checked.trait_evidence.push_back(evidence);
+
+    sema::TraitMethodCallBinding trait_call = fallback_checked.make_trait_method_call_binding();
+    trait_call.dispatch = static_cast<sema::TraitMethodDispatchKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE);
+    trait_call.self_type = fallback_i32;
+    trait_call.return_type = fallback_i32;
+    trait_call.receiver_access = static_cast<sema::ReceiverAccessKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE);
+    trait_call.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    fallback_checked.append_trait_method_call_binding(trait_call);
+
+    sema::FunctionCallBinding function_call = fallback_checked.make_function_call_binding();
+    function_call.call_expr = ExprId{SEMA_TEST_PATTERN_FIRST_INDEX};
+    function_call.function_key = invalid_function_key;
+    function_call.return_type = fallback_i32;
+    function_call.receiver_access = sema::ReceiverAccessKind::shared;
+    function_call.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    fallback_checked.append_function_call_binding(function_call);
+
+    sema::FunctionBorrowSummary borrow_summary;
+    borrow_summary.function = invalid_function_key;
+    borrow_summary.return_type = fallback_i32;
+    borrow_summary.has_unknown_return_origin = true;
+    borrow_summary.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    fallback_checked.borrow_summaries.emplace(invalid_function_key, borrow_summary);
+
+    sema::FunctionBorrowContract borrow_contract;
+    borrow_contract.function = invalid_function_key;
+    borrow_contract.return_type = fallback_i32;
+    borrow_contract.source =
+        static_cast<sema::FunctionBorrowContractSource>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE);
+    borrow_contract.unknown_return_allowed = true;
+    borrow_contract.has_contract_mismatch = true;
+    borrow_contract.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    borrow_contract.return_selectors.push_back(sema::BorrowContractSelector{
+        .kind = static_cast<sema::BorrowContractSelectorKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE),
+        .param_index = SEMA_TEST_PATTERN_FIRST_INDEX,
+        .name_id = sema::INVALID_IDENT_ID,
+        .range = {},
+    });
+    fallback_checked.borrow_contracts.emplace(invalid_function_key, borrow_contract);
+
+    sema::ReferenceOriginFact reference_origin;
+    reference_origin.syntax_type = TypeId{SEMA_TEST_PATTERN_FIRST_INDEX};
+    reference_origin.semantic_type = fallback_i32;
+    reference_origin.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    fallback_checked.reference_origin_facts.push_back(reference_origin);
+
+    sema::TypeLifetimeInfo type_lifetime;
+    type_lifetime.type = fallback_i32;
+    type_lifetime.can_contain_borrow = true;
+    type_lifetime.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    fallback_checked.type_lifetime_infos.push_back(type_lifetime);
+
+    sema::FunctionLifetimeFacts lifetime_facts;
+    lifetime_facts.function = invalid_function_key;
+    lifetime_facts.return_type = fallback_i32;
+    lifetime_facts.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    lifetime_facts.regions.push_back(sema::LifetimeRegion{
+        .kind = sema::LifetimeRegionKind::inferred,
+        .name_id = function_name.id,
+        .name = {},
+        .param_index = SEMA_TEST_PATTERN_FIRST_INDEX,
+        .range = {},
+    });
+    lifetime_facts.regions.push_back(sema::LifetimeRegion{
+        .kind = sema::LifetimeRegionKind::unknown,
+        .name_id = sema::INVALID_IDENT_ID,
+        .name = {},
+        .param_index = SEMA_TEST_PATTERN_SECOND_INDEX,
+        .range = {},
+    });
+    fallback_checked.lifetime_facts.emplace(invalid_function_key, lifetime_facts);
+
+    sema::FunctionDropCheckFacts dropck_facts;
+    dropck_facts.function = invalid_function_key;
+    dropck_facts.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    dropck_facts.graph_missing = true;
+    fallback_checked.dropck_facts.emplace(invalid_function_key, dropck_facts);
+
+    sema::BodyLoanCheckResult loan_result;
+    loan_result.function = invalid_function_key;
+    loan_result.diagnostic_mode = sema::BodyLoanDiagnosticMode::enforced;
+    loan_result.graph_missing = true;
+    fallback_checked.body_loan_checks.emplace(invalid_function_key, loan_result);
+
+    sema::ParamEnvInfo param_env = fallback_checked.make_param_env_info();
+    param_env.owner_name = fallback_checked.intern_text("DumpParamEnv");
+    param_env.owner_name_id = param_env.owner_name.id;
+    param_env.predicate_indices.push_back(SEMA_TEST_PATTERN_FIRST_INDEX);
+    param_env.part_index = SEMA_TEST_TEMPLATE_PART_INDEX;
+    fallback_checked.param_envs.push_back(param_env);
+
+    FunctionSignature export_signature = fallback_checked.make_function_signature();
+    export_signature.name = function_name;
+    export_signature.name_id = function_name.id;
+    export_signature.c_name = function_name;
+    export_signature.return_type = fallback_i32;
+    export_signature.is_export_c = true;
+    export_signature.semantic_key = sema::FunctionLookupKey{
+        SEMA_TEST_ROOT_MODULE_INDEX,
+        sema::SEMA_LOOKUP_INVALID_KEY_PART,
+        function_name.id,
+    };
+    fallback_checked.functions.emplace(export_signature.semantic_key, std::move(export_signature));
+
+    StructInfo opaque_struct = fallback_checked.make_struct_info();
+    opaque_struct.name = fallback_checked.intern_text("DumpStruct");
+    opaque_struct.name_id = opaque_struct.name.id;
+    opaque_struct.c_name = opaque_struct.name;
+    opaque_struct.type = fallback_struct_type;
+    opaque_struct.is_opaque = true;
+    fallback_checked.structs.emplace(
+        sema::ModuleLookupKey{SEMA_TEST_ROOT_MODULE_INDEX, opaque_struct.name_id}, std::move(opaque_struct));
+
+    EnumCaseInfo payload_case = fallback_checked.make_enum_case_info();
+    payload_case.enum_name = fallback_checked.intern_text("DumpEnum");
+    payload_case.case_name = fallback_checked.intern_text("single");
+    payload_case.name = payload_case.case_name;
+    payload_case.name_id = payload_case.case_name.id;
+    payload_case.c_name = fallback_checked.intern_text("DumpEnum_single");
+    payload_case.type = fallback_enum_type;
+    payload_case.payload_type = fallback_i32;
+    fallback_checked.enum_cases.emplace(
+        sema::ModuleLookupKey{SEMA_TEST_ROOT_MODULE_INDEX, payload_case.name_id}, std::move(payload_case));
+
+    const std::string fallback_dump = sema::dump_checked_module(fallback_checked);
+    EXPECT_NE(fallback_dump.find("predicate #0 trait i32: DumpTrait origin=where @part=1"), std::string::npos);
+    EXPECT_NE(fallback_dump.find("evidence #0 param_env predicate=0"), std::string::npos);
+    EXPECT_NE(fallback_dump.find("trait_call #0 param_env i32.<invalid> -> i32"), std::string::npos);
+    EXPECT_NE(fallback_dump.find("receiver_access=<invalid>"), std::string::npos);
+    EXPECT_NE(fallback_dump.find("function_call #0 expr=e0 -> " + invalid_lookup_key), std::string::npos);
+    EXPECT_NE(fallback_dump.find("borrow_summary " + invalid_lookup_key), std::string::npos);
+    EXPECT_NE(fallback_dump.find("borrow_contract " + invalid_lookup_key + " source=<invalid>"),
+        std::string::npos);
+    EXPECT_NE(fallback_dump.find("selector #0 <invalid> param=0 name=-"), std::string::npos);
+    EXPECT_NE(fallback_dump.find("reference_origin #0 t0 i32 origins=- @part=1"), std::string::npos);
+    EXPECT_NE(fallback_dump.find("type_lifetime #0 i32 can_borrow=true concrete=false origins=-"),
+        std::string::npos);
+    EXPECT_NE(fallback_dump.find("lifetime_fact " + invalid_lookup_key), std::string::npos);
+    EXPECT_NE(fallback_dump.find("region #0 inferred param=0 name=#"), std::string::npos);
+    EXPECT_NE(fallback_dump.find("region #1 unknown param=1 name=-"), std::string::npos);
+    EXPECT_NE(fallback_dump.find("dropck_fact " + invalid_lookup_key), std::string::npos);
+    EXPECT_NE(fallback_dump.find("body_loan_check " + invalid_lookup_key + " mode=enforced"),
+        std::string::npos);
+    EXPECT_NE(fallback_dump.find("param_env DumpParamEnv predicates=1"), std::string::npos);
+    EXPECT_NE(fallback_dump.find("fn dump_function -> i32 export_c"), std::string::npos);
+    EXPECT_NE(fallback_dump.find("struct DumpStruct opaque @part=0 fields=0"), std::string::npos);
+    EXPECT_NE(fallback_dump.find("case DumpEnum_single : DumpEnum(i32)"), std::string::npos);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxRecordsOriginParamsAndReferenceFacts)
@@ -9173,6 +9473,12 @@ TEST(CoreUnit, SemanticWhiteBoxRecordSideTableDenseAndSparseEdges)
     EXPECT_EQ(sema::owned_use_mode_name(sema::OwnedUseMode::mutable_borrow), "mutable_borrow");
     EXPECT_EQ(sema::owned_use_mode_name(sema::OwnedUseMode::place_only), "place_only");
     EXPECT_EQ(sema::owned_use_mode_name(static_cast<sema::OwnedUseMode>(99)), "<invalid>");
+    EXPECT_EQ(sema::receiver_access_kind_name(sema::ReceiverAccessKind::none), "none");
+    EXPECT_EQ(sema::receiver_access_kind_name(sema::ReceiverAccessKind::shared), "shared");
+    EXPECT_EQ(sema::receiver_access_kind_name(sema::ReceiverAccessKind::mutable_), "mutable");
+    EXPECT_EQ(sema::receiver_access_kind_name(sema::ReceiverAccessKind::consuming), "consuming");
+    EXPECT_EQ(sema::receiver_access_kind_name(static_cast<sema::ReceiverAccessKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE)),
+        "<invalid>");
 }
 
 TEST(CoreUnit, SemanticWhiteBoxBodyMoveAnalysisRecordsOwnedUseModes)
@@ -9219,7 +9525,8 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     EXPECT_EQ(const_empty_pattern_names.find(0), const_empty_pattern_names.end());
     EXPECT_EQ(empty_pattern_names.arena_blocks(), 0U);
     empty_pattern_names.reserve(0);
-    sema::CNameIdSet empty_pattern_bucket = empty_pattern_names.make_bucket();
+    sema::PatternCaseNameTable source_empty_pattern_names;
+    const sema::CNameIdSet& empty_pattern_bucket = source_empty_pattern_names[0];
     empty_pattern_names.merge(0, empty_pattern_bucket);
     EXPECT_FALSE(empty_pattern_names.contains(0));
 
@@ -9280,7 +9587,6 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     EXPECT_TRUE(side_tables.expr_expected_types.empty());
     EXPECT_TRUE(side_tables.sparse_expr_expected_types.empty());
     EXPECT_TRUE(side_tables.pattern_case_name_ids.empty());
-    EXPECT_EQ(side_tables.analysis_arena_, nullptr);
     side_tables.prepare_analysis_only_storage(1U);
     side_tables.expr_expected_types.push_back(i64);
     side_tables.sparse_expr_expected_types.emplace(5U, i64);
@@ -9477,7 +9783,6 @@ TEST(CoreUnit, SemanticWhiteBoxArenaBackedSemaStorageCopiesAndMoves)
     checked.release_analysis_only_storage();
     EXPECT_TRUE(checked.expr_expected_types.empty());
     EXPECT_TRUE(checked.pattern_case_name_ids.empty());
-    EXPECT_EQ(checked.analysis_arena_, nullptr);
     ASSERT_FALSE(checked.generic_function_instances.empty());
     EXPECT_TRUE(checked.generic_function_instances.front().side_tables.expr_expected_types.empty());
     EXPECT_TRUE(checked.generic_function_instances.front().side_tables.pattern_case_name_ids.empty());
@@ -10803,7 +11108,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypeResolverAndAbiFocusedEdges)
     sema::TypeInfo invalid_builtin_info;
     invalid_builtin_info.kind = TypeKind::builtin;
     invalid_builtin_info.builtin = static_cast<BuiltinType>(SEMA_TEST_INVALID_BUILTIN_TYPE_VALUE);
-    const TypeHandle invalid_builtin = types.push(invalid_builtin_info);
+    const TypeHandle invalid_builtin = TypeTableTestAccess::push(types, invalid_builtin_info);
     EXPECT_FALSE(analyzer.integer_literal_fits_type(invalid_builtin, SEMA_TEST_INTEGER_LITERAL_ONE));
     const sema::SemanticAnalyzerCore::TypeAbiLayout invalid_builtin_layout = analyzer.abi_layout(invalid_builtin);
     EXPECT_EQ(invalid_builtin_layout.size, SEMA_TEST_ABI_INVALID_SIZE);
@@ -10811,7 +11116,7 @@ TEST(CoreUnit, SemanticWhiteBoxTypeResolverAndAbiFocusedEdges)
 
     sema::TypeInfo invalid_kind_info;
     invalid_kind_info.kind = static_cast<TypeKind>(SEMA_TEST_INVALID_SEMA_TYPE_KIND_VALUE);
-    const TypeHandle invalid_kind = types.push(invalid_kind_info);
+    const TypeHandle invalid_kind = TypeTableTestAccess::push(types, invalid_kind_info);
     EXPECT_EQ(analyzer.abi_size(invalid_kind), SEMA_TEST_ABI_INVALID_SIZE);
 
     const TypeHandle stale_struct_type = types.named_struct("StaleStruct", "StaleStruct", false);
@@ -11540,17 +11845,17 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks)
 {
     sema::TypeTable builtin_table;
     const TypeHandle builtin_type = builtin_table.builtin(BuiltinType::i32);
-    ASSERT_LT(builtin_type.value, builtin_table.types_.size());
-    builtin_table.types_[builtin_type.value].builtin = SEMA_TEST_INVALID_BUILTIN_TYPE;
+    ASSERT_LT(builtin_type.value, TypeTableTestAccess::entries(builtin_table).size());
+    TypeTableTestAccess::entries(builtin_table)[builtin_type.value].builtin = SEMA_TEST_INVALID_BUILTIN_TYPE;
     EXPECT_EQ(builtin_table.display_name(builtin_type), SEMA_TEST_UNKNOWN_TYPE_DISPLAY);
 
     sema::TypeTable kind_table;
     const TypeHandle kind_type = kind_table.builtin(BuiltinType::i32);
-    ASSERT_LT(kind_type.value, kind_table.types_.size());
-    kind_table.types_[kind_type.value].kind = SEMA_TEST_INVALID_TYPE_KIND;
+    ASSERT_LT(kind_type.value, TypeTableTestAccess::entries(kind_table).size());
+    TypeTableTestAccess::entries(kind_table)[kind_type.value].kind = SEMA_TEST_INVALID_TYPE_KIND;
     EXPECT_EQ(kind_table.display_name(kind_type), SEMA_TEST_UNKNOWN_TYPE_DISPLAY);
 
-    const TypeHandle out_of_range_type{static_cast<base::u32>(kind_table.types_.size())};
+    const TypeHandle out_of_range_type{static_cast<base::u32>(TypeTableTestAccess::entries(kind_table).size())};
     EXPECT_FALSE(kind_table.is_integer(out_of_range_type));
     EXPECT_FALSE(kind_table.is_float(out_of_range_type));
     EXPECT_FALSE(kind_table.is_bool(out_of_range_type));
@@ -11600,25 +11905,45 @@ TEST(CoreUnit, SemanticWhiteBoxTypeTableUnknownDisplayFallbacks)
     const TypeHandle bool_type = storage_table.builtin(BuiltinType::bool_);
     const TypeHandle pointer = storage_table.pointer(PointerMutability::const_, i32);
     const TypeHandle reference = storage_table.reference(PointerMutability::mut, bool_type);
+    const std::array<std::string_view, 2> empty_origin_names{"", ""};
+    const TypeHandle empty_origin_reference =
+        storage_table.reference(PointerMutability::const_, i32, empty_origin_names);
+    const TypeHandle plain_reference = storage_table.reference(PointerMutability::const_, i32);
     const TypeHandle array = storage_table.array(4, i32);
     const TypeHandle slice = storage_table.slice(PointerMutability::const_, i32);
     const TypeHandle tuple = storage_table.tuple({i32, bool_type});
     const TypeHandle function = storage_table.function(sema::FunctionCallConv::aurex, false, {i32, pointer}, bool_type);
+    const TypeHandle unnamed_struct = storage_table.named_struct("NoCName", "", false);
     const std::array<TypeHandle, 1> span_function_params{i32};
     const TypeHandle span_function = storage_table.function(
         sema::FunctionCallConv::aurex, true, std::span<const TypeHandle>(span_function_params), bool_type);
     const TypeHandle generic = storage_table.generic_param(sema::generic_param_identity_from_text("test.T"), "T");
     EXPECT_FALSE(is_valid(storage_table.generic_param(sema::INVALID_GENERIC_PARAM_IDENTITY, "Invalid")));
+    sema::TypeInfo invalid_generic_info;
+    invalid_generic_info.kind = TypeKind::generic_param;
+    invalid_generic_info.generic_identity = sema::INVALID_GENERIC_PARAM_IDENTITY;
+    const TypeHandle invalid_generic = TypeTableTestAccess::push(storage_table, invalid_generic_info);
+    EXPECT_LT(invalid_generic.value, TypeTableTestAccess::entries(storage_table).size());
     storage_table.set_generic_instance(tuple, "tuple.origin", {generic});
     storage_table.set_record_contains_array(tuple, true);
     storage_table.set_enum_underlying(function, i32);
     storage_table.set_enum_payload_layout(function, array, 8, 4);
+    EXPECT_EQ(empty_origin_reference.value, plain_reference.value);
+    EXPECT_EQ(storage_table.display_name("Plain", std::span<const TypeHandle>{}), "Plain");
+    EXPECT_EQ(storage_table.c_name(unnamed_struct), "NoCName");
+
+    sema::TypeTable* const storage_table_alias = &storage_table;
+    storage_table = *storage_table_alias;
+    EXPECT_TRUE(storage_table.is_tuple(tuple));
+    storage_table = std::move(*storage_table_alias);
+    EXPECT_TRUE(storage_table.is_function(function));
 
     sema::TypeTable copied_table(storage_table);
     EXPECT_EQ(copied_table.display_name(pointer), "*const i32");
     EXPECT_TRUE(copied_table.is_reference(reference));
     EXPECT_TRUE(copied_table.is_slice(slice));
     EXPECT_TRUE(copied_table.is_function(span_function));
+    EXPECT_LT(invalid_generic.value, TypeTableTestAccess::entries(copied_table).size());
     sema::TypeTable assigned_table;
     assigned_table = storage_table;
     EXPECT_TRUE(assigned_table.contains_array(tuple));
@@ -11874,6 +12199,17 @@ TEST(CoreUnit, SymbolTableCoversLookupsScopeRemovalAndInvalidIds)
             diagnostics);
     ASSERT_TRUE(shadowed_outer_inserted) << shadowed_outer_inserted.error().message;
     EXPECT_NE(symbols.find(outer_id), nullptr);
+    const IdentId empty_name_id = identifiers.intern("empty_symbol");
+    const auto empty_name_inserted =
+        symbols.insert(symbol(SymbolKind::local, "empty_symbol", module_id(0), INVALID_TYPE_HANDLE, false,
+                           syntax::Visibility::public_, empty_name_id),
+            diagnostics);
+    ASSERT_TRUE(empty_name_inserted) << empty_name_inserted.error().message;
+    std::vector<std::string_view> visible_names;
+    symbols.append_visible_names(visible_names);
+    EXPECT_EQ(
+        std::count(visible_names.begin(), visible_names.end(), SEMA_TEST_SYMBOL_OUTER_NAME), static_cast<std::ptrdiff_t>(1));
+    EXPECT_EQ(std::find(visible_names.begin(), visible_names.end(), "empty_symbol"), visible_names.end());
 
     sema::SymbolTable copied_symbols(symbols);
     EXPECT_NE(copied_symbols.find(inner_id), nullptr);

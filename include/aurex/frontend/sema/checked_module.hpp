@@ -91,11 +91,7 @@ public:
     [[nodiscard]] base::usize arena_bytes() const noexcept;
     [[nodiscard]] base::usize arena_blocks() const noexcept;
 
-#if defined(AUREX_SEMA_WHITEBOX_TESTS)
-public:
-#else
 private:
-#endif
     [[nodiscard]] CNameIdSet make_bucket();
     void ensure_storage();
     void swap(PatternCaseNameTable& other) noexcept;
@@ -1047,11 +1043,7 @@ struct GenericSideTableLocalLayoutView {
 };
 
 struct GenericSideTables {
-#if defined(AUREX_SEMA_WHITEBOX_TESTS)
-public:
-#else
 private:
-#endif
     std::unique_ptr<base::BumpAllocator> arena_;
     std::unique_ptr<base::BumpAllocator> analysis_arena_;
 
@@ -1132,11 +1124,7 @@ public:
             : SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX;
     }
 
-#if defined(AUREX_SEMA_WHITEBOX_TESTS)
-public:
-#else
 private:
-#endif
     [[nodiscard]] GenericNodeSpan active_expr_span() const noexcept
     {
         return this->layout == nullptr ? this->expr_span : this->layout->expr_span;
@@ -1247,11 +1235,7 @@ struct NormalizedAstOverlay {
 };
 
 struct CheckedModule {
-#if defined(AUREX_SEMA_WHITEBOX_TESTS)
-public:
-#else
 private:
-#endif
     std::unique_ptr<base::BumpAllocator> arena_;
     std::unique_ptr<base::BumpAllocator> analysis_arena_;
 
@@ -1404,11 +1388,7 @@ public:
     [[nodiscard]] base::usize arena_bytes() const noexcept;
     [[nodiscard]] base::usize arena_blocks() const noexcept;
 
-#if defined(AUREX_SEMA_WHITEBOX_TESTS)
-public:
-#else
 private:
-#endif
     void swap(CheckedModule& other) noexcept;
     void copy_from(const CheckedModule& other);
     void rebind_interned_texts(const IdentifierInterner* from, const IdentifierInterner& to) noexcept;

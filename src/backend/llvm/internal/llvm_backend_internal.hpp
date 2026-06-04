@@ -59,7 +59,6 @@ public:
 
     [[nodiscard]] base::Result<LlvmIrOutput> run();
 
-private:
     [[nodiscard]] base::Result<void> configure_target();
     void declare_records();
     void declare_constants();

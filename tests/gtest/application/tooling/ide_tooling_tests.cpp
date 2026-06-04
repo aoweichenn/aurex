@@ -186,6 +186,17 @@ fs::path write_ide_tooling_source(const fs::path& path, const std::string_view t
     return nullptr;
 }
 
+[[nodiscard]] std::optional<sema::FunctionLookupKey> find_function_key(
+    const sema::CheckedModule& checked, const std::string_view name)
+{
+    for (const auto& entry : checked.functions) {
+        if (entry.second.name.view() == name) {
+            return entry.first;
+        }
+    }
+    return std::nullopt;
+}
+
 [[nodiscard]] bool has_diagnostic_category(
     const tooling::IdeSnapshot& snapshot, const base::DiagnosticCategory category)
 {
@@ -208,7 +219,16 @@ fs::path write_ide_tooling_source(const fs::path& path, const std::string_view t
     return std::ranges::any_of(
         snapshot.diagnostics, [category, profile_name](const tooling::IdeDiagnostic& diagnostic) {
             return diagnostic.category == category && diagnostic_has_owner_stage_profile(diagnostic, profile_name);
-        });
+    });
+}
+
+[[nodiscard]] bool has_semantic_token(
+    const std::vector<tooling::IdeSemanticToken>& tokens, const std::string_view text,
+    const std::string_view token_type)
+{
+    return std::ranges::any_of(tokens, [text, token_type](const tooling::IdeSemanticToken& token) {
+        return token.text == text && token.token_type == token_type;
+    });
 }
 
 void expect_definition_kind(const tooling::IdeSnapshot& snapshot, const std::string_view source,
@@ -462,6 +482,155 @@ TEST(CoreUnit, IdeToolingProjectsBorrowSummaryAndLoanFacts)
     EXPECT_NE(hover->label.find("lifetime=regions="), std::string::npos) << hover->label;
     EXPECT_NE(hover->label.find("/returns=1/violations=0/local_escapes=0/unknown_escapes=0"), std::string::npos)
         << hover->label;
+}
+
+TEST(CoreUnit, IdeToolingProjectsDeclaredUnknownBorrowBoundaryFacts)
+{
+    constexpr std::string_view source = "module ide.unknown_borrow_facts;\n"
+                                        "extern c {\n"
+                                        "  @borrow(return = [unknown])\n"
+                                        "  fn ext(value: &i32) -> &i32;\n"
+                                        "}\n"
+                                        "@borrow(return = [unknown])\n"
+                                        "fn wrap(value: &i32) -> &i32 {\n"
+                                        "  return ext(value);\n"
+                                        "}\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
+    ASSERT_TRUE(snapshot.checked_semantics);
+    EXPECT_FALSE(snapshot.has_errors);
+
+    const tooling::IdeSemanticFact* const summary_fact = find_semantic_fact(
+        snapshot, tooling::IdeSemanticFactKind::borrow_summary, query::QueryKind::type_check_body, "wrap");
+    ASSERT_NE(summary_fact, nullptr);
+    EXPECT_NE(summary_fact->detail.find("unknown=true"), std::string::npos) << summary_fact->detail;
+    EXPECT_NE(summary_fact->detail.find("local_escape=false"), std::string::npos) << summary_fact->detail;
+
+    const tooling::IdeSemanticFact* const contract_fact = find_semantic_fact(
+        snapshot, tooling::IdeSemanticFactKind::borrow_contract, query::QueryKind::type_check_body, "wrap");
+    ASSERT_NE(contract_fact, nullptr);
+    EXPECT_NE(contract_fact->detail.find("source=declared"), std::string::npos) << contract_fact->detail;
+    EXPECT_NE(contract_fact->detail.find("unknown=true"), std::string::npos) << contract_fact->detail;
+    EXPECT_NE(contract_fact->detail.find("mismatch=false"), std::string::npos) << contract_fact->detail;
+
+    const base::usize wrap_offset = source.find("wrap(value");
+    ASSERT_NE(wrap_offset, std::string_view::npos);
+    const std::optional<tooling::IdeHoverInfo> hover = tooling::hover_at_offset(snapshot, wrap_offset);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_NE(hover->label.find("borrow_summary=deps="), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("unknown=true"), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("borrow_contract=declared/selectors=1/unknown=true/mismatch=false"),
+        std::string::npos)
+        << hover->label;
+}
+
+TEST(CoreUnit, IdeToolingHoverReflectsCheckedBorrowLifetimeAndDropFactDetails)
+{
+    const tooling::IdeSnapshot base_snapshot = tooling::build_ide_snapshot(request_for(IDE_TOOLING_SOURCE));
+    tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(
+        "module ide.hover_facts;\n"
+        "fn id_ref(value: &i32) -> &i32 {\n"
+        "  return value;\n"
+        "}\n"
+        "fn main() -> void {}\n"));
+    ASSERT_TRUE(snapshot.checked_semantics);
+    EXPECT_FALSE(snapshot.has_errors);
+    EXPECT_TRUE(base_snapshot.checked_semantics);
+
+    const std::optional<sema::FunctionLookupKey> key = find_function_key(snapshot.checked, "id_ref");
+    ASSERT_TRUE(key.has_value());
+    sema::FunctionBorrowSummary& summary = snapshot.checked.borrow_summaries[*key];
+    summary.function = *key;
+    summary.has_unknown_return_origin = true;
+    summary.has_local_return_escape = true;
+    summary.storage_escapes.push_back(sema::FunctionBorrowStorageEscape{});
+
+    sema::FunctionBorrowContract& contract = snapshot.checked.borrow_contracts[*key];
+    contract.function = *key;
+    contract.source = sema::FunctionBorrowContractSource::declared;
+    contract.return_selectors.push_back(sema::BorrowContractSelector{
+        .kind = sema::BorrowContractSelectorKind::unknown,
+        .param_index = sema::SEMA_BORROW_SUMMARY_INVALID_INDEX,
+    });
+    contract.unknown_return_allowed = true;
+    contract.has_contract_mismatch = true;
+
+    sema::FunctionLifetimeFacts& lifetime = snapshot.checked.lifetime_facts[*key];
+    lifetime.function = *key;
+    sema::LifetimeRegion local_region;
+    local_region.kind = sema::LifetimeRegionKind::local;
+    lifetime.regions.push_back(local_region);
+    lifetime.return_regions.push_back(sema::LifetimeReturnRegion{.region = 0U});
+    lifetime.violations.push_back(sema::LifetimeViolation{
+        .kind = sema::LifetimeViolationKind::local_escape,
+        .region = 0U,
+        .diagnostic_emitted = true,
+    });
+    lifetime.violations.push_back(sema::LifetimeViolation{
+        .kind = sema::LifetimeViolationKind::unknown_escape,
+        .region = 0U,
+        .diagnostic_emitted = true,
+    });
+
+    sema::DropCheckFact drop_fact;
+    drop_fact.required_outlives.push_back(sema::DropCheckRequiredOutlives{
+        .reason = sema::LifetimeConstraintReason::dropck,
+    });
+    sema::FunctionDropCheckFacts& dropck = snapshot.checked.dropck_facts[*key];
+    dropck.function = *key;
+    dropck.facts.push_back(std::move(drop_fact));
+    dropck.actions.push_back(sema::DropActionFact{});
+    dropck.violations.push_back(sema::DropCheckViolation{
+        .kind = sema::DropCheckViolationKind::generic_type_outlives,
+        .diagnostic_emitted = true,
+    });
+
+    constexpr std::string_view source = "module ide.hover_facts;\n"
+                                        "fn id_ref(value: &i32) -> &i32 {\n"
+                                        "  return value;\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    const base::usize id_ref_offset = source.find("id_ref");
+    ASSERT_NE(id_ref_offset, std::string_view::npos);
+    const std::optional<tooling::IdeHoverInfo> hover = tooling::hover_at_offset(snapshot, id_ref_offset);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_NE(hover->label.find("storage_escapes=1"), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("unknown=true"), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("local_escape=true"), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("borrow_contract=declared/selectors="), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("/unknown=true/mismatch=true"), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("lifetime=regions="), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("/violations=2/local_escapes=1/unknown_escapes=1"), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("dropck=facts=1/actions=1/required_outlives=1/violations=1"), std::string::npos)
+        << hover->label;
+}
+
+TEST(CoreUnit, IdeToolingReferencesAstFallbackSymbolsWithoutCheckedKeys)
+{
+    tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(IDE_TOOLING_SOURCE));
+    ASSERT_TRUE(snapshot.parsed);
+    ASSERT_TRUE(snapshot.checked_semantics);
+
+    snapshot.checked_semantics = false;
+    snapshot.checked = sema::CheckedModule{};
+    snapshot.query.source_stage = {};
+
+    const base::usize call_offset = IDE_TOOLING_SOURCE.find("add(1");
+    ASSERT_NE(call_offset, std::string_view::npos);
+    const std::optional<tooling::IdeDefinition> definition = tooling::definition_at_offset(snapshot, call_offset);
+    ASSERT_TRUE(definition.has_value());
+    EXPECT_TRUE(definition->valid);
+    EXPECT_EQ(definition->name, "add");
+    EXPECT_EQ(definition->kind, "function");
+    EXPECT_FALSE(query::is_valid(definition->key));
+
+    const std::vector<tooling::IdeReference> references = tooling::references_at_offset(snapshot, call_offset);
+    ASSERT_GE(references.size(), 2U);
+    EXPECT_TRUE(std::ranges::any_of(references, [](const tooling::IdeReference& reference) {
+        return reference.name == "add" && reference.is_definition;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(references, [](const tooling::IdeReference& reference) {
+        return reference.name == "add" && !reference.is_definition;
+    }));
 }
 
 TEST(CoreUnit, IdeToolingRecordsPrimaryModulePartDeclarations)
@@ -791,6 +960,62 @@ TEST(CoreUnit, IdeToolingServesCompletionSemanticTokensAndInlayHints)
     EXPECT_TRUE(std::ranges::none_of(explicit_hints, [](const tooling::IdeInlayHint& hint) {
         return hint.label == ": i32";
     }));
+}
+
+TEST(CoreUnit, IdeToolingClassifiesLexicalSemanticTokenSurface)
+{
+    constexpr std::string_view source = "module ide.token_surface;\n"
+                                        "// line comment\n"
+                                        "/* block comment */\n"
+                                        "void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char\n"
+                                        "123 1.5 \"text\" c\"ffi\" r\"raw\" b\"bytes\" b'a' 'z'\n"
+                                        "() {} [] , . ; : :: ... + - * / % ^ << >> | & ~ ! = == != < <= > >= ? @\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
+    ASSERT_TRUE(snapshot.lexed);
+
+    const std::vector<tooling::IdeSemanticToken> tokens = tooling::semantic_tokens(snapshot);
+    struct ExpectedToken {
+        std::string_view text;
+        std::string_view token_type;
+    };
+    constexpr std::array<ExpectedToken, 31> EXPECTED_TOKENS{{
+        {"// line comment", "comment"},
+        {"/* block comment */", "comment"},
+        {"module", "keyword"},
+        {"void", "type"},
+        {"bool", "type"},
+        {"i8", "type"},
+        {"u8", "type"},
+        {"i16", "type"},
+        {"u16", "type"},
+        {"i32", "type"},
+        {"u32", "type"},
+        {"i64", "type"},
+        {"u64", "type"},
+        {"isize", "type"},
+        {"usize", "type"},
+        {"f32", "type"},
+        {"f64", "type"},
+        {"str", "type"},
+        {"char", "type"},
+        {"123", "number"},
+        {"1.5", "number"},
+        {"\"text\"", "string"},
+        {"c\"ffi\"", "string"},
+        {"r\"raw\"", "string"},
+        {"b\"bytes\"", "string"},
+        {"b'a'", "string"},
+        {"'z'", "string"},
+        {"(", "punctuation"},
+        {"::", "punctuation"},
+        {"...", "punctuation"},
+        {"+", "operator"},
+    }};
+
+    for (const ExpectedToken& expected : EXPECTED_TOKENS) {
+        SCOPED_TRACE(std::string(expected.text));
+        EXPECT_TRUE(has_semantic_token(tokens, expected.text, expected.token_type));
+    }
 }
 
 TEST(CoreUnit, IdeToolingExposesM4TraitFactsForWp7)
@@ -1191,6 +1416,9 @@ TEST(CoreUnit, IdeToolingResolvesSupportedTopLevelDefinitionKinds)
     expect_definition_kind(snapshot, source, "Mode", "enum", query::DefKind::enum_);
     expect_definition_kind(snapshot, source, "use_defs", "function", query::DefKind::function);
 
+    const std::vector<tooling::IdeSemanticToken> tokens = tooling::semantic_tokens(snapshot);
+    EXPECT_TRUE(has_semantic_token(tokens, "Handle", "type"));
+
     snapshot.ast.module_path.parts.clear();
     expect_definition_kind(snapshot, source, "answer", "const", query::DefKind::const_);
 
@@ -1232,6 +1460,19 @@ TEST(CoreUnit, IdeToolingReturnsStructuredDiagnosticsForInvalidSource)
         return diagnostic.category == base::DiagnosticCategory::type
             && diagnostic.code == base::DiagnosticCode::semantic_type_mismatch && diagnostic.start.line == 3U
             && diagnostic.path == "/workspace/ide_snapshot.ax";
+    }));
+    const auto type_mismatch = std::ranges::find_if(snapshot.diagnostics, [](const tooling::IdeDiagnostic& diagnostic) {
+        return diagnostic.category == base::DiagnosticCategory::type
+            && diagnostic.code == base::DiagnosticCode::semantic_type_mismatch;
+    });
+    ASSERT_NE(type_mismatch, snapshot.diagnostics.end());
+    ASSERT_GE(type_mismatch->children.size(), 2U);
+    EXPECT_TRUE(std::ranges::any_of(type_mismatch->children, [](const base::DiagnosticChild& child) {
+        return child.severity == base::Severity::note
+            && child.message.find("expected type: i32") != std::string::npos;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(type_mismatch->children, [](const base::DiagnosticChild& child) {
+        return child.severity == base::Severity::note && child.message.find("actual type: bool") != std::string::npos;
     }));
     EXPECT_TRUE(
         has_diagnostic_owner_stage_profile(snapshot, base::DiagnosticCategory::type, IDE_TOOLING_STAGE_SEMA_ANALYZE));

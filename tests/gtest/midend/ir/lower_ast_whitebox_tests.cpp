@@ -9,16 +9,7 @@
 #include <utility>
 #include <vector>
 
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wkeyword-macro"
-#endif
-#define private public
 #include <midend/ir/lowering/private/lower_ast_internal.hpp>
-#undef private
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
 
 #include <gtest/gtest.h>
 

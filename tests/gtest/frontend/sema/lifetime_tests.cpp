@@ -229,6 +229,39 @@ void configure_lifetime_whitebox_harness(LifetimeWhiteboxHarness& harness, const
     });
 }
 
+[[nodiscard]] bool dropck_facts_has_violation_kind(
+    const sema::FunctionDropCheckFacts& facts, const sema::DropCheckViolationKind kind) noexcept
+{
+    return std::ranges::any_of(facts.violations, [kind](const sema::DropCheckViolation& violation) {
+        return violation.kind == kind;
+    });
+}
+
+[[nodiscard]] bool dropck_facts_has_required_outlives(const sema::FunctionDropCheckFacts& facts) noexcept
+{
+    return std::ranges::any_of(facts.facts, [](const sema::DropCheckFact& fact) {
+        return std::ranges::any_of(fact.required_outlives, [](const sema::DropCheckRequiredOutlives& required) {
+            return required.reason == sema::LifetimeConstraintReason::dropck;
+        });
+    });
+}
+
+[[nodiscard]] std::optional<sema::FunctionLookupKey> find_generic_template_function_key(
+    const sema::CheckedModule& checked, const std::string_view function_name)
+{
+    for (const sema::GenericTemplateSignatureInfo& signature : checked.generic_template_signatures) {
+        if (signature.name.view() == function_name && signature.name_space == query::DefNamespace::value
+            && syntax::is_valid(signature.module) && sema::is_valid(signature.name_id)) {
+            return sema::FunctionLookupKey{
+                signature.module.value,
+                sema::SEMA_LOOKUP_INVALID_KEY_PART,
+                signature.name_id,
+            };
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 TEST(CoreUnit, LifetimeFactsNamesFingerprintsAndDumpsAreStable)
@@ -649,6 +682,113 @@ TEST(CoreUnit, LifetimeFactsAcceptExplicitOriginSet)
     EXPECT_NE(dump.find("returns=2"), std::string::npos) << dump;
 }
 
+TEST(CoreUnit, DropCheckFactsCollectSourceLevelGenericStructuralOutlives)
+{
+    constexpr std::string_view source = "module lifetime.dropck_source_ok;\n"
+                                        "fn keep_alive[T, origin data](view: &[data] i32, payload: T) -> void {\n"
+                                        "  let holder: ((&[data] i32, T), i32) = ((view, payload), 0);\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    const sema::CheckedModule checked = analyze_lifetime_source(source);
+    const std::optional<sema::FunctionLookupKey> key = find_generic_template_function_key(checked, "keep_alive");
+    ASSERT_TRUE(key.has_value());
+
+    const auto dropck_entry = checked.dropck_facts.find(*key);
+    ASSERT_NE(dropck_entry, checked.dropck_facts.end());
+    const sema::FunctionDropCheckFacts* const dropck = &dropck_entry->second;
+
+    const auto lifetime_entry = checked.lifetime_facts.find(*key);
+    ASSERT_NE(lifetime_entry, checked.lifetime_facts.end());
+    const sema::FunctionLifetimeFacts* const lifetime = &lifetime_entry->second;
+    EXPECT_TRUE(lifetime->solved);
+    EXPECT_TRUE(lifetime->violations.empty());
+    EXPECT_TRUE(lifetime_facts_has_region_kind(*lifetime, sema::LifetimeRegionKind::explicit_origin));
+
+    EXPECT_TRUE(dropck->solved);
+    EXPECT_TRUE(dropck->diagnostic_mode_enforced);
+    EXPECT_FALSE(dropck->graph_missing);
+    EXPECT_FALSE(dropck_facts_has_violation_kind(*dropck, sema::DropCheckViolationKind::borrowed_field_dangling));
+    ASSERT_FALSE(dropck->actions.empty());
+    ASSERT_FALSE(dropck->facts.empty());
+    EXPECT_TRUE(dropck_facts_has_required_outlives(*dropck));
+    EXPECT_TRUE(std::ranges::any_of(lifetime->type_outlives_constraints,
+        [](const sema::LifetimeTypeOutlivesConstraint& constraint) {
+            return constraint.reason == sema::LifetimeConstraintReason::dropck;
+        }));
+
+    const std::string checked_dump = sema::dump_checked_module(checked);
+    EXPECT_NE(checked_dump.find("dropck_facts"), std::string::npos) << checked_dump;
+    EXPECT_NE(checked_dump.find("required_outlives="), std::string::npos) << checked_dump;
+    EXPECT_NE(checked_dump.find("template priv value keep_alive params=1"), std::string::npos) << checked_dump;
+}
+
+TEST(CoreUnit, DropCheckFactsDiagnoseSourceLevelDanglingBorrowedField)
+{
+    constexpr std::string_view source = "module lifetime.dropck_source_bad;\n"
+                                        "fn bad[T](view: &[missing] i32, payload: T) -> void {\n"
+                                        "  let holder: ((&[missing] i32, T), i32) = ((view, payload), 0);\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    const std::string output = analyze_lifetime_source_failure(source);
+    EXPECT_NE(output.find(sema::SEMA_LIFETIME_UNKNOWN_ORIGIN), std::string::npos) << output;
+    EXPECT_NE(output.find("drop check rejected destructor access to a borrowed field"), std::string::npos) << output;
+}
+
+TEST(CoreUnit, DropCheckAuthorityFingerprintsBorrowedFieldAndDestructorEscapes)
+{
+    sema::CheckedModule checked;
+    const sema::FunctionLookupKey key{1U, sema::SEMA_LOOKUP_INVALID_KEY_PART, sema::IdentId{2U}};
+
+    sema::FunctionDropCheckFacts facts;
+    facts.function = key;
+    facts.solved = true;
+    facts.diagnostic_mode_enforced = true;
+    facts.violations.push_back(sema::DropCheckViolation{
+        .kind = sema::DropCheckViolationKind::borrowed_field_dangling,
+        .action = 0U,
+        .point = 1U,
+        .place = 2U,
+        .type = sema::TypeHandle{3U},
+        .region = 4U,
+        .diagnostic_emitted = true,
+        .range = base::SourceRange{LIFETIME_TEST_SOURCE_ID, 10U, 20U},
+    });
+    facts.violations.push_back(sema::DropCheckViolation{
+        .kind = sema::DropCheckViolationKind::destructor_escape,
+        .action = 1U,
+        .point = 2U,
+        .place = 3U,
+        .type = sema::TypeHandle{4U},
+        .region = 5U,
+        .diagnostic_emitted = false,
+        .range = base::SourceRange{LIFETIME_TEST_SOURCE_ID, 21U, 30U},
+    });
+    facts.fingerprint = sema::function_drop_check_facts_fingerprint(facts);
+    checked.dropck_facts[key] = facts;
+
+    query::TypeCheckBodyAuthority authority;
+    authority.checked_body = query::query_result_fingerprint(query::stable_fingerprint("checked-body"));
+    authority.body_syntax_result = query::query_result_fingerprint(query::stable_fingerprint("body-syntax"));
+    authority.signature_result = query::query_result_fingerprint(query::stable_fingerprint("signature"));
+    sema::populate_type_check_body_borrow_authority(authority, checked, key);
+    ASSERT_TRUE(query::is_valid(authority));
+    EXPECT_TRUE(authority.has_dropck_facts);
+    EXPECT_EQ(authority.dropck_violation_count, 2U);
+    EXPECT_TRUE(authority.dropck_has_borrowed_field_dangling);
+    EXPECT_TRUE(authority.dropck_has_destructor_escape);
+    EXPECT_TRUE(authority.dropck_has_emitted_diagnostics);
+    ASSERT_TRUE(query::is_valid(query::type_check_body_result_fingerprint(authority)));
+
+    query::TypeCheckBodyAuthority changed = authority;
+    changed.dropck_has_borrowed_field_dangling = false;
+    EXPECT_NE(query::type_check_body_result_fingerprint(authority),
+        query::type_check_body_result_fingerprint(changed));
+    changed = authority;
+    changed.dropck_has_destructor_escape = false;
+    EXPECT_NE(query::type_check_body_result_fingerprint(authority),
+        query::type_check_body_result_fingerprint(changed));
+}
+
 TEST(CoreUnit, LifetimeFactsRejectUnknownExplicitOrigin)
 {
     constexpr std::string_view source = "module lifetime.unknown;\n"
@@ -724,6 +864,53 @@ TEST(CoreUnit, LifetimeFactsDiagnoseStorageEscapeFromBorrowSummary)
     const std::string summary_dump = sema::dump_function_borrow_summary(summary);
     EXPECT_NE(summary_dump.find("storage_escapes:"), std::string::npos) << summary_dump;
     EXPECT_NE(summary_dump.find("s0 origin=o"), std::string::npos) << summary_dump;
+}
+
+TEST(CoreUnit, LifetimeFactsDiagnosePatternAliasStorageEscapes)
+{
+    constexpr std::string_view source = "module lifetime.pattern_storage_escape;\n"
+                                        "struct Holder {\n"
+                                        "  value: &i32;\n"
+                                        "}\n"
+                                        "struct Pair {\n"
+                                        "  left: &i32;\n"
+                                        "  right: &i32;\n"
+                                        "}\n"
+                                        "enum MaybeBorrow {\n"
+                                        "  some(&i32),\n"
+                                        "  other(&i32),\n"
+                                        "  none,\n"
+                                        "}\n"
+                                        "fn tuple_bad(slot: &mut Holder) -> void {\n"
+                                        "  let local: i32 = 1;\n"
+                                        "  let (borrowed,) = (&local,);\n"
+                                        "  slot.value = borrowed;\n"
+                                        "}\n"
+                                        "fn slice_bad(slot: &mut Holder) -> void {\n"
+                                        "  let local: i32 = 1;\n"
+                                        "  let [borrowed] = [&local];\n"
+                                        "  slot.value = borrowed;\n"
+                                        "}\n"
+                                        "fn struct_bad(slot: &mut Holder) -> void {\n"
+                                        "  let local: i32 = 1;\n"
+                                        "  let Pair { left: borrowed, right: _ } = Pair { left: &local, right: &local };\n"
+                                        "  slot.value = borrowed;\n"
+                                        "}\n"
+                                        "fn enum_bad(slot: &mut Holder, flag: bool) -> void {\n"
+                                        "  let local: i32 = 1;\n"
+                                        "  let maybe: MaybeBorrow = if flag {\n"
+                                        "    MaybeBorrow.some(&local)\n"
+                                        "  } else {\n"
+                                        "    MaybeBorrow.other(&local)\n"
+                                        "  };\n"
+                                        "  let .some(borrowed) | .other(borrowed) = maybe else {\n"
+                                        "    return;\n"
+                                        "  };\n"
+                                        "  slot.value = borrowed;\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    const std::string output = analyze_lifetime_source_failure(source);
+    EXPECT_GE(count_substring_occurrences(output, sema::SEMA_BORROWED_LOCAL_ESCAPE), 4U) << output;
 }
 
 TEST(CoreUnit, LifetimeFactsDiagnoseRawDerivedLocalEscape)

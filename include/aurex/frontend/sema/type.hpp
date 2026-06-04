@@ -13,6 +13,10 @@
 #include <string_view>
 #include <vector>
 
+namespace aurex::test {
+struct TypeTableTestAccess;
+} // namespace aurex::test
+
 namespace aurex::sema {
 
 struct TypeHandle {
@@ -104,6 +108,8 @@ struct TypeInfo {
 };
 
 class TypeTable final {
+    friend struct ::aurex::test::TypeTableTestAccess;
+
 public:
     TypeTable();
     TypeTable(const TypeTable& other);
@@ -172,11 +178,7 @@ public:
     [[nodiscard]] const TypeInfo& get(TypeHandle handle) const noexcept;
     [[nodiscard]] base::usize size() const noexcept;
 
-#if defined(AUREX_SEMA_WHITEBOX_TESTS)
-public:
-#else
 private:
-#endif
     struct PointerKey {
         base::u32 pointee = TypeHandle::INVALID_VALUE;
         PointerMutability mutability = PointerMutability::const_;

@@ -661,9 +661,8 @@ AST range lookup helpers 留在同一个 range reader 聚合点。
 和 `SemanticAnalyzer` 稳定入口；旧 analyzer 的内部类型、lookup cache、泛型模板信息、
 表达式 view、pattern/statement helper 和 analyzer 状态先移动到 `src/sema/internal/sema_core.hpp`，
 由 `src/sema/sema_facade.cpp` 通过私有 `Impl` 持有。生产调用方继续只依赖 public facade，
-sema 实现和白盒测试才显式包含 `<sema/internal/sema_core.hpp>`；白盒测试改为
-`AUREX_SEMA_WHITEBOX_TESTS` opt-in 内部访问，不再用 `#define private public` 打开 public
-`sema.hpp`。这一步只建立稳定外部入口和内部 core 边界，不改变 sema 算法；后续在 `SemaState`
+sema 实现和内部测试才显式包含 `<sema/internal/sema_core.hpp>`；测试不再通过预处理器开关打开生产类型的私有区。
+这一步只建立稳定外部入口和内部 core 边界，不改变 sema 算法；后续在 `SemaState`
 稳定后再引入 NameResolver / TypeResolver / GenericEngine / FunctionChecker /
 ExprChecker / StmtChecker / PatternChecker 等中等粒度 domain service。同步把
 `FunctionBodyContextScope` 的 7 参数构造器收束为具名 `Config`，继续执行新增或重构函数参数不超过

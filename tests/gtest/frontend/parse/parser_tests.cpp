@@ -19,18 +19,7 @@
 #include <vector>
 
 #include <frontend/parse/support/private/bracket_suffix_classifier.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wkeyword-macro"
-#endif
-#define private public
-#include <aurex/frontend/parse/parser_postfix_expr_part.hpp>
-#undef private
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
-
+#include <frontend/parse/support/private/type_arg_expr_converter.hpp>
 #include <frontend/parse/recovery/private/parser_recovery_sets.hpp>
 
 namespace aurex::test {
@@ -144,9 +133,10 @@ public:
     using parse::ParserPartRangeReader::type_range_or;
 };
 
-class ParserPostfixProbe final {
+class TypeArgExprConverterProbe final {
 public:
-    explicit ParserPostfixProbe(parse::Parser& parser) noexcept : reader_(parser), postfix_(parser)
+    explicit TypeArgExprConverterProbe(parse::Parser& parser) noexcept
+        : reader_(parser), converter_(parser), classifier_(parser)
     {
     }
 
@@ -157,30 +147,24 @@ public:
 
     [[nodiscard]] bool type_like(const syntax::ExprId expr)
     {
-        return this->postfix_.bracket_arg_expr_is_type_like(expr);
+        return this->classifier_.arg_expr_is_type_like(expr);
     }
 
     [[nodiscard]] syntax::TypeId convert_type_arg(const syntax::ExprId expr, const bool report_errors)
     {
-        return this->postfix_.bracket_arg_expr_to_type(expr, report_errors);
-    }
-
-    [[nodiscard]] parse::BracketSuffixDecision classify_bracket_suffix(const syntax::ExprId base,
-        const std::span<const parse::PostfixExprParser::BracketArg> args, const bool has_type_only_arg,
-        const parse::ExprContext context)
-    {
-        return this->postfix_.classify_bracket_suffix(base, args, has_type_only_arg, context);
+        return this->converter_.convert(expr, report_errors);
     }
 
     [[nodiscard]] syntax::TypeId append_selector(
         const syntax::TypeId base, const std::string_view name, const bool report_errors)
     {
-        return this->postfix_.append_type_selector(base, name, base::SourceRange{}, report_errors);
+        return this->converter_.append_selector(base, name, base::SourceRange{}, report_errors);
     }
 
 private:
     ParserPartRangeReaderProbe reader_;
-    parse::PostfixExprParser postfix_;
+    parse::TypeArgExprConverter converter_;
+    parse::BracketSuffixClassifier classifier_;
 };
 
 class BracketSuffixClassifierProbe final {
@@ -261,6 +245,30 @@ TEST(CoreUnit, ParserAndAstDumpCoverLowLevelSyntaxBranches)
     EXPECT_EQ(empty_cursor.peek().kind, syntax::TokenKind::eof);
     EXPECT_EQ(empty_cursor.previous().kind, syntax::TokenKind::eof);
     EXPECT_EQ(empty_cursor.advance().kind, syntax::TokenKind::eof);
+
+    const std::array<syntax::Token, 2> cursor_tokens{
+        syntax::Token{syntax::TokenKind::identifier, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 0U, 5U}, "value"},
+        syntax::Token{syntax::TokenKind::eof, base::SourceRange{PARSER_TEST_PROBE_SOURCE_ID, 5U, 5U}, ""},
+    };
+    parse::TokenCursor cursor{std::span<const syntax::Token>{cursor_tokens}};
+    EXPECT_FALSE(cursor.is_eof());
+    EXPECT_EQ(cursor.tokens().size(), 2U);
+    EXPECT_EQ(cursor.position(), 0U);
+    EXPECT_TRUE(cursor.check(syntax::TokenKind::identifier));
+    EXPECT_TRUE(cursor.check_next(syntax::TokenKind::eof));
+    EXPECT_EQ(cursor.peek_at(0U).kind, syntax::TokenKind::identifier);
+    EXPECT_EQ(cursor.peek_at(2U).kind, syntax::TokenKind::eof);
+    const base::usize cursor_mark = cursor.mark();
+    EXPECT_TRUE(cursor.match(syntax::TokenKind::identifier));
+    EXPECT_EQ(cursor.previous().kind, syntax::TokenKind::identifier);
+    EXPECT_TRUE(cursor.is_eof());
+    EXPECT_FALSE(cursor.check_next(syntax::TokenKind::identifier));
+    cursor.rewind(cursor_mark);
+    EXPECT_EQ(cursor.position(), 0U);
+    EXPECT_EQ(cursor.advance().kind, syntax::TokenKind::identifier);
+    cursor.rewind(99U);
+    EXPECT_EQ(cursor.position(), 1U);
+    EXPECT_EQ(cursor.peek().kind, syntax::TokenKind::eof);
 
     constexpr std::string_view source =
         "module parser.dump;\n"
@@ -674,7 +682,28 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
             "pub type_alias Item for File in Reader[File]",
             "alias usize",
             "pub fn read for File in Reader[File]",
-        });
+    });
+}
+
+TEST(CoreUnit, ParserPreservesTraitAssociatedTypeTargetsForSemaDiagnostics)
+{
+    constexpr std::string_view source = "module parser.trait_associated_type_target;\n"
+                                        "trait Source {\n"
+                                        "  type Item = i32;\n"
+                                        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* const trait_item = find_item(module, "Source");
+    ASSERT_NE(trait_item, nullptr);
+    ASSERT_EQ(trait_item->trait_items.size(), 1U);
+
+    const syntax::ItemNode associated_type = module.items[trait_item->trait_items.front().value];
+    EXPECT_EQ(associated_type.kind, syntax::ItemKind::type_alias);
+    EXPECT_EQ(associated_type.name, "Item");
+    ASSERT_TRUE(syntax::is_valid(associated_type.alias_type));
+    const syntax::TypeNode& target = module.types[associated_type.alias_type.value];
+    EXPECT_EQ(target.kind, syntax::TypeKind::primitive);
+    EXPECT_EQ(target.primitive, syntax::PrimitiveTypeKind::i32);
 }
 
 TEST(CoreUnit, ParserAcceptsBorrowContractDecorators)
@@ -3028,6 +3057,13 @@ TEST(CoreUnit, ParserReportsMalformedForRangeSyntax)
                        "  return 0;\n"
                        "}\n",
         "expected '(' after range");
+    expect_parse_error("module parser.for_range_empty_args;\n"
+                       "fn main() -> i32 {\n"
+                       "  for i in range() {\n"
+                       "  }\n"
+                       "  return 0;\n"
+                       "}\n",
+        "range expects 1 to 3 arguments");
     expect_parse_error("module parser.for_range_too_many_args;\n"
                        "fn main() -> i32 {\n"
                        "  for i in range(0, 3, 1, 1) {\n"
@@ -3827,12 +3863,12 @@ TEST(CoreUnit, ParserConvertsDeepSelectorGenericArgWithOverflowStorage)
     EXPECT_EQ(type.name, "B");
 }
 
-TEST(CoreUnit, ParserPostfixWhiteBoxRejectsInvalidTypeLikeExpressions)
+TEST(CoreUnit, TypeArgExprConverterRejectsInvalidTypeLikeExpressions)
 {
     std::vector<syntax::Token> tokens = probe_tokens();
     DiagnosticSink diagnostics;
     parse::Parser parser(tokens, diagnostics);
-    ParserPostfixProbe probe(parser);
+    TypeArgExprConverterProbe probe(parser);
     syntax::AstModule& module = probe.module();
 
     const syntax::ExprId empty_name = module.push_name_expr({}, "");
@@ -3868,16 +3904,8 @@ TEST(CoreUnit, BracketSuffixClassifierOwnsTypeArgumentContextDecisions)
 
     const syntax::ExprId value = module.push_name_expr({}, "Value");
     const syntax::ExprId lower_value = module.push_name_expr({}, "value");
-    const std::array<parse::PostfixExprParser::BracketArg, 1> type_like_args{parse::PostfixExprParser::BracketArg{
-        value,
-        syntax::INVALID_TYPE_ID,
-        {},
-    }};
-    const std::array<parse::PostfixExprParser::BracketArg, 1> expr_like_args{parse::PostfixExprParser::BracketArg{
-        lower_value,
-        syntax::INVALID_TYPE_ID,
-        {},
-    }};
+    const std::array<syntax::ExprId, 1> type_like_args{value};
+    const std::array<syntax::ExprId, 1> expr_like_args{lower_value};
 
     const parse::BracketSuffixDecision generic_call = probe.classify_after_expr(parse::BracketSuffixClassificationInput{
         .base = value,
@@ -3902,8 +3930,8 @@ TEST(CoreUnit, BracketSuffixClassifierOwnsTypeArgumentContextDecisions)
     EXPECT_FALSE(rejected_call.base_is_type_like);
     EXPECT_FALSE(rejected_call.args_are_type_like);
 
-    EXPECT_TRUE(probe.arg_expr_is_type_like(type_like_args.front().expr));
-    EXPECT_FALSE(probe.arg_expr_is_type_like(expr_like_args.front().expr));
+    EXPECT_TRUE(probe.arg_expr_is_type_like(type_like_args.front()));
+    EXPECT_FALSE(probe.arg_expr_is_type_like(expr_like_args.front()));
 }
 
 TEST(CoreUnit, BracketSuffixClassifierKeepsIndexWhenSelectorIsValueLike)
@@ -3950,12 +3978,12 @@ TEST(CoreUnit, BracketSuffixClassifierRecognizesTypeOnlyStartsAndEmptyGenericCon
     EXPECT_TRUE(type_probe.arg_starts_type_only());
 }
 
-TEST(CoreUnit, ParserPostfixWhiteBoxConvertsScopedNamesAndRejectsBadSelectors)
+TEST(CoreUnit, TypeArgExprConverterConvertsScopedNamesAndRejectsBadSelectors)
 {
     std::vector<syntax::Token> tokens = probe_tokens();
     DiagnosticSink diagnostics;
     parse::Parser parser(tokens, diagnostics);
-    ParserPostfixProbe probe(parser);
+    TypeArgExprConverterProbe probe(parser);
     syntax::AstModule& module = probe.module();
 
     const syntax::ExprId scoped_name = module.push_name_expr({}, "pkg", {}, "Thing");

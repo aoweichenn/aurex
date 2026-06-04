@@ -58,6 +58,10 @@ constexpr std::string_view TOOLING_SESSION_FALLBACK_SYMBOL_SOURCE = "module tool
                                                                     "opaque struct Handle;\n"
                                                                     "struct Point { x: i32; }\n"
                                                                     "enum Mode { fast }\n"
+                                                                    "trait Reader { fn read(self: &Self) -> i32; }\n"
+                                                                    "impl Point {\n"
+                                                                    "  fn read(self: &Point) -> i32 { return self.x; }\n"
+                                                                    "}\n"
                                                                     "fn main() -> i32 {\n"
                                                                     "  let value: i32 = true;\n"
                                                                     "  return value;\n"
@@ -512,9 +516,19 @@ TEST(CoreUnit, ToolingSessionManagesVersionedDocumentsAndSnapshotCache)
 
     base::Result<std::vector<tooling::ToolingDiagnostic>> diagnostics = session.diagnostics(document);
     ASSERT_TRUE(diagnostics);
-    EXPECT_TRUE(std::ranges::any_of(diagnostics.value(), [](const tooling::ToolingDiagnostic& diagnostic) {
+    const auto type_mismatch = std::ranges::find_if(diagnostics.value(), [](const tooling::ToolingDiagnostic& diagnostic) {
         return diagnostic.code == base::DiagnosticCode::semantic_type_mismatch && diagnostic.category_name == "type"
             && diagnostic.code_name == "SEM0100";
+    });
+    ASSERT_NE(type_mismatch, diagnostics.value().end());
+    ASSERT_GE(type_mismatch->children.size(), 2U);
+    EXPECT_TRUE(std::ranges::any_of(type_mismatch->children, [](const tooling::ToolingDiagnosticChild& child) {
+        return child.severity == base::Severity::note && child.category_name == "type" && child.code_name == "SEM0100"
+            && child.message.find("expected type: i32") != std::string::npos;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(type_mismatch->children, [](const tooling::ToolingDiagnosticChild& child) {
+        return child.severity == base::Severity::note && child.category_name == "type" && child.code_name == "SEM0100"
+            && child.message.find("actual type: bool") != std::string::npos;
     }));
 
     EXPECT_TRUE(session.close_document(document));
@@ -975,9 +989,13 @@ TEST(CoreUnit, ToolingSessionCoversNormalizationFallbacksAndErrorPaths)
     EXPECT_TRUE(contains_symbol_named(fallback_symbols.value(), "Handle"));
     EXPECT_TRUE(contains_symbol_named(fallback_symbols.value(), "Point"));
     EXPECT_TRUE(contains_symbol_named(fallback_symbols.value(), "Mode"));
+    EXPECT_TRUE(contains_symbol_named(fallback_symbols.value(), "Reader"));
     EXPECT_TRUE(contains_symbol_named(fallback_symbols.value(), "main"));
     EXPECT_TRUE(std::ranges::any_of(fallback_symbols.value(), [](const tooling::ToolingDocumentSymbol& symbol) {
         return symbol.name == "answer" && symbol.kind == "const" && !symbol.checked;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(fallback_symbols.value(), [](const tooling::ToolingDocumentSymbol& symbol) {
+        return symbol.name == "Reader" && symbol.kind == "trait" && !symbol.checked;
     }));
 
     tooling::ToolingDocumentId path_only_document;
@@ -1387,12 +1405,13 @@ TEST(CoreUnit, ToolingSessionAstNodeProjectsStableTopLevelItemKinds)
         std::string_view name;
         std::string_view detail;
     };
-    constexpr std::array<ExpectedAstItem, 5> EXPECTED_ITEMS{{
+    constexpr std::array<ExpectedAstItem, 6> EXPECTED_ITEMS{{
         {"const answer", "answer", "const"},
         {"type Count", "Count", "type_alias"},
         {"opaque struct Handle", "Handle", "opaque_struct"},
         {"struct Point", "Point", "struct"},
         {"enum Mode", "Mode", "enum"},
+        {"trait Reader", "Reader", "trait"},
     }};
 
     for (const ExpectedAstItem& expected : EXPECTED_ITEMS) {

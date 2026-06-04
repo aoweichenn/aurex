@@ -111,6 +111,8 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.dropck_has_emitted_diagnostics);
     builder.mix_bool(authority.dropck_has_generic_type_outlives);
     builder.mix_bool(authority.dropck_has_borrowed_drop);
+    builder.mix_bool(authority.dropck_has_borrowed_field_dangling);
+    builder.mix_bool(authority.dropck_has_destructor_escape);
     builder.mix_bool(authority.dropck_has_drop_glue_missing);
     builder.mix_bool(authority.body_loan_graph_missing);
     builder.mix_bool(authority.body_loan_has_emitted_diagnostics);

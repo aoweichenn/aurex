@@ -174,6 +174,10 @@ syntax::ItemId ItemParser::parse_trait_associated_type_decl(const ParsedVisibili
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_TYPE_ALIAS_NAME));
     std::vector<syntax::GenericParamDecl> generic_params = this->parse_optional_generic_params();
     std::vector<syntax::GenericConstraintDecl> where_constraints = this->parse_optional_where_constraints();
+    syntax::TypeId target = syntax::INVALID_TYPE_ID;
+    if (this->match(TokenKind::equal)) {
+        target = this->parse_type();
+    }
     const syntax::Token& end =
         this->expect_item_terminator(std::string(PARSER_EXPECT_TRAIT_ASSOCIATED_TYPE_TERMINATOR));
 
@@ -183,6 +187,7 @@ syntax::ItemId ItemParser::parse_trait_associated_type_decl(const ParsedVisibili
     item.name = name.text();
     item.generic_params = std::move(generic_params);
     item.where_constraints = std::move(where_constraints);
+    item.alias_type = target;
     item.visibility = visibility.explicit_visibility ? visibility.visibility : syntax::Visibility::public_;
     this->reset_panic();
     return this->session_.module.push_item(std::move(item));

@@ -131,14 +131,7 @@ base::u32 SemanticAnalyzerCore::LifetimeAnalyzer::first_body_flow_point(const Bo
 
 base::u32 SemanticAnalyzerCore::LifetimeAnalyzer::last_body_flow_point(const BodyFlowGraph& graph) const noexcept
 {
-    for (base::u32 index = 0; index < graph.points.size(); ++index) {
-        if (graph.points[index].kind == BodyFlowPointKind::exit) {
-            return index;
-        }
-    }
-    return graph.points.empty()
-        ? SEMA_BODY_FLOW_INVALID_INDEX
-        : static_cast<base::u32>(graph.points.size() - 1U);
+    return graph.points.empty() ? SEMA_BODY_FLOW_INVALID_INDEX : static_cast<base::u32>(graph.points.size() - 1U);
 }
 
 base::u32 SemanticAnalyzerCore::LifetimeAnalyzer::return_body_flow_point(

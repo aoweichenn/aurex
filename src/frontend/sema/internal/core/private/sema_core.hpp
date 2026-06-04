@@ -70,11 +70,7 @@ public:
 
     [[nodiscard]] base::Result<CheckedModule> analyze();
 
-#if defined(AUREX_SEMA_WHITEBOX_TESTS)
 public:
-#else
-private:
-#endif
     enum class FunctionBodyState {
         not_started,
         analyzing,

@@ -58,8 +58,10 @@ if(BUILD_TESTING)
         tests/gtest/frontend/lex/lexer_tests.cpp
         tests/gtest/frontend/syntax/lossless_syntax_tests.cpp
         tests/gtest/frontend/parse/parser_tests.cpp
+        tests/gtest/frontend/sema/identifier_tests.cpp
         tests/gtest/frontend/sema/lifetime_tests.cpp
         tests/gtest/frontend/sema/sema_whitebox_tests.cpp
+        tests/gtest/frontend/sema/statement_tests.cpp
         tests/gtest/application/tooling/ide_tooling_tests.cpp
         tests/gtest/application/tooling/session_lsp_tooling_tests.cpp
     )
@@ -70,9 +72,6 @@ if(BUILD_TESTING)
     target_include_directories(aurex_frontend_tests PRIVATE
         tests
         src
-    )
-    target_compile_definitions(aurex_frontend_tests PRIVATE
-        AUREX_SEMA_WHITEBOX_TESTS=1
     )
     set_target_properties(aurex_frontend_tests PROPERTIES
         BUILD_RPATH "$<TARGET_FILE_DIR:GTest::gtest_main>"
@@ -121,12 +120,14 @@ if(BUILD_TESTING)
             tests/gtest/frontend/sema/block_expression_tests.cpp
             tests/gtest/frontend/sema/error_handling_tests.cpp
             tests/gtest/frontend/sema/functions_tests.cpp
+            tests/gtest/frontend/sema/identifier_tests.cpp
             tests/gtest/frontend/sema/if_expression_tests.cpp
             tests/gtest/frontend/sema/inference_tests.cpp
             tests/gtest/frontend/sema/lifetime_tests.cpp
             tests/gtest/frontend/sema/modules_visibility_tests.cpp
             tests/gtest/frontend/sema/pattern_matching_tests.cpp
             tests/gtest/frontend/sema/sema_whitebox_tests.cpp
+            tests/gtest/frontend/sema/statement_tests.cpp
             tests/gtest/frontend/sema/trait_tests.cpp
             tests/gtest/frontend/sema/type_alias_tests.cpp
             tests/gtest/application/tooling/ide_tooling_tests.cpp
@@ -150,7 +151,6 @@ if(BUILD_TESTING)
             $<TARGET_PROPERTY:aurex_llvm,INTERFACE_SYSTEM_INCLUDE_DIRECTORIES>
         )
         target_compile_definitions(aurex_tests PRIVATE
-            AUREX_SEMA_WHITEBOX_TESTS=1
             AUREX_TEST_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"
             AUREX_TEST_BINARY_DIR=\"${CMAKE_BINARY_DIR}\"
             AUREX_TEST_CMAKE_COMMAND=\"${CMAKE_COMMAND}\"
@@ -190,6 +190,9 @@ if(BUILD_TESTING)
         aurex_add_gtest(aurex_tests_pattern_and_types
             "AurexIntegrationTest.MatchExpression:AurexIntegrationTest.EnumPayloadAndMatchBinding:AurexIntegrationTest.MatchWildcardAndScopedCases:AurexIntegrationTest.StructuralMatchExhaustiveness:AurexIntegrationTest.MatchOrPattern:AurexIntegrationTest.PatternRemainingSliceLetElseAndBindingOr:AurexIntegrationTest.MatchLiteralPattern:AurexIntegrationTest.MatchGuard:AurexIntegrationTest.LayoutAlignment:AurexIntegrationTest.TypeAlias"
         )
+        aurex_add_gtest(aurex_tests_visibility_borrow_remaining
+            "AurexIntegrationTest.ExportedSignatureSurfacesRejectPrivateTypes:AurexIntegrationTest.M2NestedGenericInstantiationRegressions:AurexIntegrationTest.M7bBlockExpressionPrecheckScansInternalStatements:AurexIntegrationTest.M7bBorrowContractsUseDeclaredCalleeBoundaries:AurexIntegrationTest.M7bReturnedBorrowViewsParticipateInLocalLoanChecking:AurexIntegrationTest.M7dBorrowEscapeFallbackCoversPatternStorageGuard:AurexIntegrationTest.ModulePartImportsDoNotLeakAcrossPrimaryOrParts:AurexIntegrationTest.ModulePartPrivateItemsStayHiddenFromExternalModules:AurexIntegrationTest.ModulePartPublicImportsDoNotBecomeModuleReexports:AurexIntegrationTest.ModulePartsSharePrivateModuleSurface:AurexIntegrationTest.ModulePartsUsePartLocalImportsAndSharedItems:AurexIntegrationTest.PackageVisibilityControlsPackageReexports:AurexIntegrationTest.PackageVisibilityControlsPackageSurface:AurexIntegrationTest.PackageVisibilitySurfaceLeaksUseVisibilityAwareDiagnostics:AurexIntegrationTest.PublicMethodsOnPrivateTypesAreNotExportedSurfaces:AurexIntegrationTest.SelectiveUseReexport:AurexIntegrationTest.SelectiveUseReexportGenericItems:AurexIntegrationTest.TraitImplRegistrySamples"
+        )
         add_test(
             NAME aurex_tests_sample_suite_positive
             COMMAND aurex_tests --gtest_color=auto --gtest_filter=AurexIntegrationTest.SampleSuite_Positive*
@@ -205,6 +208,7 @@ if(BUILD_TESTING)
             aurex_tests_functions
             aurex_tests_control_and_modules
             aurex_tests_pattern_and_types
+            aurex_tests_visibility_borrow_remaining
             PROPERTIES
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         )

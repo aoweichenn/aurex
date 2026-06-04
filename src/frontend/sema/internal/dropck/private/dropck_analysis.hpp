@@ -99,6 +99,10 @@ private:
         TypeHandle type, base::u32 region, const base::SourceRange& range);
     void build_active_region_index(const BodyFlowGraph& graph);
     [[nodiscard]] std::span<const base::u32> active_regions_at_point(base::u32 point) const noexcept;
+    void build_lifetime_region_origin_index();
+    [[nodiscard]] std::span<const base::u32> concrete_origin_regions_for_type(TypeHandle type) const;
+    void enforce_destructor_observed_borrow_safety(
+        const DropActionFact& action, const DropGluePlan& plan, std::span<const base::u32> active_regions);
 
     SemanticAnalyzerCore& core_;
     const FunctionSignature* signature_ = nullptr;
@@ -111,6 +115,8 @@ private:
     std::unordered_set<TypeOutlivesKey, TypeOutlivesKeyHash> emitted_type_outlives_;
     std::unordered_set<DropCheckViolationKey, DropCheckViolationKeyHash> violation_dedupe_;
     std::unordered_map<base::u32, std::vector<base::u32>> active_regions_by_point_;
+    std::unordered_map<std::string_view, base::u32> lifetime_region_by_origin_name_;
+    mutable std::unordered_map<base::u32, std::vector<base::u32>> concrete_origin_regions_by_type_;
 };
 
 [[nodiscard]] std::string_view drop_check_action_kind_name(DropCheckActionKind kind) noexcept;

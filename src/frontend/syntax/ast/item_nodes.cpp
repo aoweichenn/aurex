@@ -210,20 +210,6 @@ base::u8 ItemNodeList::pack_flags(const ItemNode& node) noexcept
     return flags;
 }
 
-GenericConstraintDecl ItemNodeList::copy_generic_constraint(const GenericConstraintDecl& constraint)
-{
-    GenericConstraintDecl copy;
-    copy.param_name = constraint.param_name;
-    copy.param_range = constraint.param_range;
-    copy.capability_names = this->copy_list(constraint.capability_names);
-    copy.capability_ranges = this->copy_list(constraint.capability_ranges);
-    copy.capability_associated_constraints = constraint.capability_associated_constraints;
-    copy.range = constraint.range;
-    copy.param_name_id = constraint.param_name_id;
-    copy.capability_name_ids = this->copy_list(constraint.capability_name_ids);
-    return copy;
-}
-
 GenericConstraintDecl ItemNodeList::copy_or_move_generic_constraint(GenericConstraintDecl&& constraint)
 {
     GenericConstraintDecl copy;
@@ -238,18 +224,6 @@ GenericConstraintDecl ItemNodeList::copy_or_move_generic_constraint(GenericConst
     return copy;
 }
 
-EnumCaseDecl ItemNodeList::copy_enum_case(const EnumCaseDecl& enum_case)
-{
-    EnumCaseDecl copy;
-    copy.name = enum_case.name;
-    copy.payload_type = enum_case.payload_type;
-    copy.payload_types = this->copy_list(enum_case.payload_types);
-    copy.value_text = enum_case.value_text;
-    copy.range = enum_case.range;
-    copy.name_id = enum_case.name_id;
-    return copy;
-}
-
 EnumCaseDecl ItemNodeList::copy_or_move_enum_case(EnumCaseDecl&& enum_case)
 {
     EnumCaseDecl copy;
@@ -259,15 +233,6 @@ EnumCaseDecl ItemNodeList::copy_or_move_enum_case(EnumCaseDecl&& enum_case)
     copy.value_text = enum_case.value_text;
     copy.range = enum_case.range;
     copy.name_id = enum_case.name_id;
-    return copy;
-}
-
-BorrowContractDecl ItemNodeList::copy_borrow_contract(const BorrowContractDecl& contract)
-{
-    BorrowContractDecl copy;
-    copy.return_selectors = copy_std_vector(contract.return_selectors);
-    copy.range = contract.range;
-    copy.present = contract.present;
     return copy;
 }
 

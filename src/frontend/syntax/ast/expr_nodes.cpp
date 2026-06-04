@@ -757,122 +757,90 @@ void ExprNodeList::copy_append_from(const ExprNodeList& other, const base::usize
     }
     if (this->is_literal(kind)) {
         const LiteralExprPayload* const payload = other.literal_payload(index);
-        static_cast<void>(this->append_literal(kind, range, payload != nullptr ? payload->text : std::string_view{}));
+        static_cast<void>(this->append_literal(kind, range, payload->text));
         return;
     }
     switch (kind) {
         case ExprKind::name: {
             const NameExprPayload* const payload = other.name_payload(index);
-            static_cast<void>(payload == nullptr
-                    ? this->append_name(range, {}, {}, {}, INVALID_IDENT_ID, INVALID_IDENT_ID, std::vector<TypeId>{})
-                    : this->append_name(range, payload->scope_name, payload->scope_range, payload->text,
-                          payload->scope_name_id, payload->text_id, copy_std_vector(payload->type_args)));
+            static_cast<void>(this->append_name(range, payload->scope_name, payload->scope_range, payload->text,
+                payload->scope_name_id, payload->text_id, copy_std_vector(payload->type_args)));
             break;
         }
         case ExprKind::generic_apply: {
             const GenericApplyExprPayload* const payload = other.generic_apply_payload(index);
-            static_cast<void>(payload == nullptr
-                    ? this->append_generic_apply(range, INVALID_EXPR_ID, std::vector<TypeId>{})
-                    : this->append_generic_apply(range, payload->callee, copy_std_vector(payload->type_args)));
+            static_cast<void>(this->append_generic_apply(range, payload->callee, copy_std_vector(payload->type_args)));
             break;
         }
         case ExprKind::unary: {
             const UnaryExprPayload* const payload = other.unary_payload(index);
-            if (payload == nullptr) {
-                static_cast<void>(this->append_unary(ExprKind::unary, range, UnaryOp::logical_not, INVALID_EXPR_ID));
-            } else {
-                static_cast<void>(this->append_unary(ExprKind::unary, range, payload->op, payload->operand));
-            }
+            static_cast<void>(this->append_unary(ExprKind::unary, range, payload->op, payload->operand));
             break;
         }
         case ExprKind::try_expr: {
             const TryExprPayload* const payload = other.try_payload(index);
-            if (payload == nullptr) {
-                static_cast<void>(this->append_try(range, INVALID_EXPR_ID));
-            } else {
-                static_cast<void>(this->append_try(range, payload->operand));
-            }
+            static_cast<void>(this->append_try(range, payload->operand));
             break;
         }
         case ExprKind::binary: {
             const BinaryExprPayload* const payload = other.binary_payload(index);
-            static_cast<void>(payload == nullptr
-                    ? this->append_binary(range, BinaryOp::add, INVALID_EXPR_ID, INVALID_EXPR_ID)
-                    : this->append_binary(range, payload->op, payload->lhs, payload->rhs));
+            static_cast<void>(this->append_binary(range, payload->op, payload->lhs, payload->rhs));
             break;
         }
         case ExprKind::call:
         case ExprKind::str_from_bytes_unchecked: {
             const CallExprPayload* const payload = other.call_payload(index);
-            static_cast<void>(payload == nullptr
-                    ? this->append_call(kind, range, INVALID_EXPR_ID, std::vector<ExprId>{})
-                    : this->append_call(kind, range, payload->callee, copy_std_vector(payload->args)));
+            static_cast<void>(this->append_call(kind, range, payload->callee, copy_std_vector(payload->args)));
             break;
         }
         case ExprKind::if_expr: {
             const IfExprPayload* const payload = other.if_payload(index);
-            static_cast<void>(payload == nullptr
-                    ? this->append_if(range, INVALID_EXPR_ID, INVALID_PATTERN_ID, INVALID_EXPR_ID, INVALID_EXPR_ID)
-                    : this->append_if(range, payload->condition, payload->condition_pattern, payload->then_expr,
-                          payload->else_expr));
+            static_cast<void>(this->append_if(
+                range, payload->condition, payload->condition_pattern, payload->then_expr, payload->else_expr));
             break;
         }
         case ExprKind::block_expr:
         case ExprKind::unsafe_block: {
             const BlockExprPayload* const payload = other.block_payload(index);
-            static_cast<void>(payload == nullptr ? this->append_block(kind, range, INVALID_STMT_ID, INVALID_EXPR_ID)
-                                                 : this->append_block(kind, range, payload->block, payload->result));
+            static_cast<void>(this->append_block(kind, range, payload->block, payload->result));
             break;
         }
         case ExprKind::match_expr: {
             const MatchExprPayload* const payload = other.match_payload(index);
-            static_cast<void>(payload == nullptr
-                    ? this->append_match(range, INVALID_EXPR_ID, std::vector<MatchArm>{})
-                    : this->append_match(range, payload->value, copy_std_vector(payload->arms)));
+            static_cast<void>(this->append_match(range, payload->value, copy_std_vector(payload->arms)));
             break;
         }
         case ExprKind::array_literal: {
             const ArrayExprPayload* const payload = other.array_payload(index);
-            static_cast<void>(payload == nullptr
-                    ? this->append_array(range, std::vector<ExprId>{}, INVALID_EXPR_ID, INVALID_EXPR_ID)
-                    : this->append_array(
-                          range, copy_std_vector(payload->elements), payload->repeat_value, payload->repeat_count));
+            static_cast<void>(this->append_array(
+                range, copy_std_vector(payload->elements), payload->repeat_value, payload->repeat_count));
             break;
         }
         case ExprKind::tuple_literal: {
             const AstArenaVector<ExprId>* const payload = other.tuple_elements(index);
-            static_cast<void>(
-                this->append_tuple(range, payload == nullptr ? std::vector<ExprId>{} : copy_std_vector(*payload)));
+            static_cast<void>(this->append_tuple(range, copy_std_vector(*payload)));
             break;
         }
         case ExprKind::field: {
             const FieldExprPayload* const payload = other.field_payload(index);
-            static_cast<void>(payload == nullptr
-                    ? this->append_field(range, INVALID_EXPR_ID, {}, INVALID_IDENT_ID)
-                    : this->append_field(range, payload->object, payload->field_name, payload->field_name_id));
+            static_cast<void>(this->append_field(range, payload->object, payload->field_name, payload->field_name_id));
             break;
         }
         case ExprKind::index: {
             const IndexExprPayload* const payload = other.index_payload(index);
-            static_cast<void>(payload == nullptr ? this->append_index(range, INVALID_EXPR_ID, INVALID_EXPR_ID)
-                                                 : this->append_index(range, payload->object, payload->index));
+            static_cast<void>(this->append_index(range, payload->object, payload->index));
             break;
         }
         case ExprKind::slice: {
             const SliceExprPayload* const payload = other.slice_payload(index);
-            static_cast<void>(payload == nullptr
-                    ? this->append_slice(range, INVALID_EXPR_ID, INVALID_EXPR_ID, INVALID_EXPR_ID)
-                    : this->append_slice(range, payload->object, payload->start, payload->end));
+            static_cast<void>(this->append_slice(range, payload->object, payload->start, payload->end));
             break;
         }
         case ExprKind::struct_literal: {
             const StructLiteralExprPayload* const payload = other.struct_literal_payload(index);
-            static_cast<void>(payload == nullptr
-                    ? this->append_struct_literal(range, INVALID_EXPR_ID, {}, {}, {}, INVALID_IDENT_ID,
-                          INVALID_IDENT_ID, std::vector<TypeId>{}, std::vector<FieldInit>{})
-                    : this->append_struct_literal(range, payload->object, payload->scope_name, payload->scope_range,
-                          payload->name, payload->scope_name_id, payload->name_id, copy_std_vector(payload->type_args),
-                          copy_std_vector(payload->field_inits)));
+            static_cast<void>(this->append_struct_literal(range, payload->object, payload->scope_name,
+                payload->scope_range, payload->name, payload->scope_name_id, payload->name_id,
+                copy_std_vector(payload->type_args), copy_std_vector(payload->field_inits)));
             break;
         }
         case ExprKind::cast:
@@ -889,8 +857,7 @@ void ExprNodeList::copy_append_from(const ExprNodeList& other, const base::usize
         case ExprKind::str_is_valid_utf8:
         case ExprKind::str_from_utf8_checked: {
             const CastExprPayload* const payload = other.cast_payload(index);
-            static_cast<void>(payload == nullptr ? this->append_cast_like(kind, range, INVALID_TYPE_ID, INVALID_EXPR_ID)
-                                                 : this->append_cast_like(kind, range, payload->type, payload->expr));
+            static_cast<void>(this->append_cast_like(kind, range, payload->type, payload->expr));
             break;
         }
         default:

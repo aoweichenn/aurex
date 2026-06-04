@@ -123,9 +123,6 @@ struct TypeDisplayTask {
 
 void push_generic_arg_display_tasks(std::vector<TypeDisplayTask>& pending, const std::span<const TypeHandle> args)
 {
-    if (args.empty()) {
-        return;
-    }
     pending.push_back(TypeDisplayTask{
         TypeDisplayTaskKind::text,
         INVALID_TYPE_HANDLE,

@@ -96,6 +96,8 @@ void SemanticAnalyzerCore::DropCheckAnalyzer::reset(
     this->emitted_type_outlives_.clear();
     this->violation_dedupe_.clear();
     this->active_regions_by_point_.clear();
+    this->lifetime_region_by_origin_name_.clear();
+    this->concrete_origin_regions_by_type_.clear();
 }
 
 void SemanticAnalyzerCore::DropCheckAnalyzer::collect(const syntax::ItemNode& function)

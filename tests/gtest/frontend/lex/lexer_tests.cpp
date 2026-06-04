@@ -56,6 +56,29 @@ void expect_contains_all(const std::string_view text, const std::vector<std::str
 
 TEST(CoreUnit, LexerTokenBufferUsesBumpArenaStorage)
 {
+    lex::detail::LexerCursor prefix_cursor{"abc"};
+    EXPECT_EQ(prefix_cursor.source_size(), 3U);
+    EXPECT_EQ(prefix_cursor.remaining_size(), 3U);
+    EXPECT_EQ(prefix_cursor.remaining_text(), "abc");
+    EXPECT_EQ(prefix_cursor.offset(), 0U);
+    EXPECT_TRUE(prefix_cursor.starts_with(""));
+    EXPECT_TRUE(prefix_cursor.starts_with("ab"));
+    EXPECT_FALSE(prefix_cursor.starts_with("abcd"));
+    EXPECT_FALSE(prefix_cursor.starts_with("ac"));
+    EXPECT_EQ(prefix_cursor.peek(), 'a');
+    EXPECT_EQ(prefix_cursor.peek_next(), 'b');
+    EXPECT_EQ(prefix_cursor.advance(), 'a');
+    EXPECT_TRUE(prefix_cursor.match('b'));
+    EXPECT_FALSE(prefix_cursor.match('b'));
+    EXPECT_EQ(prefix_cursor.current_slice(0U), "ab");
+    EXPECT_EQ(prefix_cursor.peek_next(), lex::detail::LEXER_CURSOR_EOF_SENTINEL);
+    EXPECT_EQ(prefix_cursor.advance(), 'c');
+    EXPECT_EQ(prefix_cursor.advance(), lex::detail::LEXER_CURSOR_EOF_SENTINEL);
+    EXPECT_EQ(prefix_cursor.remaining_text(), "");
+    EXPECT_FALSE(prefix_cursor.match('c'));
+    EXPECT_EQ(prefix_cursor.slice(2U, 1U), "");
+    EXPECT_EQ(prefix_cursor.nonempty_slice(2U, 99U), "c");
+
     lex::detail::LexerCursor cursor{"abc"};
     EXPECT_EQ(cursor.peek_at(99U), lex::detail::LEXER_CURSOR_EOF_SENTINEL);
     cursor.advance_bytes(99U);

@@ -13,16 +13,7 @@
 #include <llvm/IR/Type.h>
 #include <llvm/Target/TargetMachine.h>
 
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wkeyword-macro"
-#endif
-#define private public
 #include <backend/llvm/internal/llvm_backend_internal.hpp>
-#undef private
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
 
 #include <gtest/gtest.h>
 #include <gtest/support/ir_test_helpers.hpp>

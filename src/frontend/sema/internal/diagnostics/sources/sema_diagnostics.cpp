@@ -121,7 +121,27 @@ void SemanticDiagnosticReporter::report_help(
 void SemanticDiagnosticReporter::report_type_mismatch(
     const base::SourceRange& range, std::string message, const TypeHandle expected, const TypeHandle actual) const
 {
-    this->report(range, SemanticDiagnosticKind::type_mismatch, std::move(message));
+    const SemanticDiagnosticMetadata metadata = semantic_diagnostic_metadata(SemanticDiagnosticKind::type_mismatch);
+    const SemanticDiagnosticMetadata secondary_metadata =
+        semantic_secondary_diagnostic_metadata(SemanticDiagnosticKind::type_mismatch);
+    std::vector<base::DiagnosticChild> children;
+    if (is_valid(expected)) {
+        children.push_back(base::diagnostic_note(range, sema_expected_type_note_message(this->types_.display_name(expected)),
+            secondary_metadata.category, secondary_metadata.code));
+    }
+    if (is_valid(actual)) {
+        children.push_back(base::diagnostic_note(range, sema_actual_type_note_message(this->types_.display_name(actual)),
+            secondary_metadata.category, secondary_metadata.code));
+    }
+    this->diagnostics_.push(base::Diagnostic{
+        base::Severity::error,
+        range,
+        std::move(message),
+        metadata.category,
+        metadata.code,
+        {},
+        std::move(children),
+    });
     if (is_valid(expected)) {
         this->report_note(range, SemanticDiagnosticKind::type_mismatch,
             sema_expected_type_note_message(this->types_.display_name(expected)));

@@ -64,6 +64,8 @@ struct TypeCheckBodyAuthority {
     bool dropck_has_emitted_diagnostics = false;
     bool dropck_has_generic_type_outlives = false;
     bool dropck_has_borrowed_drop = false;
+    bool dropck_has_borrowed_field_dangling = false;
+    bool dropck_has_destructor_escape = false;
     bool dropck_has_drop_glue_missing = false;
     bool body_loan_graph_missing = false;
     bool body_loan_has_emitted_diagnostics = false;

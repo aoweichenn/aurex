@@ -125,7 +125,6 @@ public:
 
     [[nodiscard]] Module lower();
 
-private:
     struct ExprView {
         syntax::ExprKind kind = syntax::ExprKind::invalid;
         base::SourceRange range{};

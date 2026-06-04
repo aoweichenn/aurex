@@ -163,16 +163,23 @@ TEST(CoreUnit, BaseDiagnosticsSourcesAndResult)
 
     auto ok_int = base::Result<int>::ok(11);
     ASSERT_TRUE(ok_int);
+    EXPECT_TRUE(ok_int.has_value());
     EXPECT_EQ(ok_int.value(), 11);
+    EXPECT_EQ(std::as_const(ok_int).value(), 11);
+    EXPECT_EQ(ok_int.take_value(), 11);
     auto failed = base::Result<int>::fail({ErrorCode::io_error, "missing"});
     ASSERT_FALSE(failed);
+    EXPECT_FALSE(failed.has_value());
     EXPECT_EQ(failed.error().code, ErrorCode::io_error);
     EXPECT_EQ(failed.error().message, "missing");
 
     auto ok_void = base::Result<void>::ok();
     EXPECT_TRUE(ok_void);
+    EXPECT_TRUE(ok_void.has_value());
+    ok_void.value();
     auto failed_void = base::Result<void>::fail({ErrorCode::internal_error, "bad"});
     ASSERT_FALSE(failed_void);
+    EXPECT_FALSE(failed_void.has_value());
     EXPECT_EQ(failed_void.error().code, ErrorCode::internal_error);
 }
 

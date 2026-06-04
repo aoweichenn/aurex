@@ -972,6 +972,23 @@ TEST(CoreUnit, TraitSemaRegistryRejectsBoundaryCases)
             "generic associated types are not supported",
         },
         {
+            "module trait_associated_type_requirement_target_whitebox;\n"
+            "trait Source {\n"
+            "  type Item = i32;\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "trait associated type requirement must not have a target type",
+        },
+        {
+            "module trait_impl_target_not_named_inprocess_whitebox;\n"
+            "struct File { value: i32; }\n"
+            "impl *const File for File {\n"
+            "  fn read(self: &File) -> i32 { return self.value; }\n"
+            "}\n"
+            "fn main() -> i32 { return 0; }\n",
+            "trait impl target must be a named trait",
+        },
+        {
             "module trait_associated_type_impl_generic_unsupported_whitebox;\n"
             "trait Source { type Item; }\n"
             "struct Bytes { value: i32; }\n"

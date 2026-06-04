@@ -1,5 +1,7 @@
 #include <aurex/frontend/syntax/core/ast_dump.hpp>
+#include <aurex/frontend/syntax/core/module.hpp>
 #include <aurex/frontend/syntax/core/token.hpp>
+#include <aurex/infrastructure/base/abi.hpp>
 
 #include <support/frontend_test_support.hpp>
 
@@ -58,6 +60,501 @@ TEST(CoreUnit, AstStorageUsesCompactHeaders)
     EXPECT_LT(sizeof(syntax::PatternNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::PatternNode));
     EXPECT_LT(sizeof(syntax::StmtNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::StmtNode));
     EXPECT_LT(sizeof(syntax::ItemNodeHeader) * AST_FAT_NODE_HEADER_RATIO, sizeof(syntax::ItemNode));
+}
+
+TEST(CoreUnit, SyntaxModuleHelpersCoverPathMismatchAndManglePunctuation)
+{
+    syntax::ModulePath empty_path;
+    EXPECT_EQ(syntax::module_path_to_string(empty_path), "");
+    EXPECT_EQ(syntax::module_path_to_relative_file(empty_path).generic_string(), ".ax");
+
+    syntax::ModulePath core_path;
+    core_path.parts = {"core", "mem"};
+    syntax::ModulePath same_core_path;
+    same_core_path.parts = {"core", "mem"};
+    syntax::ModulePath short_core_path;
+    short_core_path.parts = {"core"};
+    syntax::ModulePath mismatched_core_path;
+    mismatched_core_path.parts = {"core", "io"};
+
+    EXPECT_EQ(syntax::module_path_to_string(core_path), "core.mem");
+    EXPECT_EQ(syntax::module_path_to_relative_file(core_path).generic_string(), "core/mem.ax");
+    EXPECT_TRUE(syntax::module_paths_equal(core_path, same_core_path));
+    EXPECT_FALSE(syntax::module_paths_equal(core_path, short_core_path));
+    EXPECT_FALSE(syntax::module_paths_equal(core_path, mismatched_core_path));
+
+    syntax::ModulePath punctuation_path;
+    punctuation_path.parts = {"core", "Mem9", "io!"};
+    const std::string expected_mangled =
+        std::string(base::abi::AUREX_INTERNAL_SYMBOL_PREFIX) + "_core_Mem9_io__run_A9_";
+    EXPECT_EQ(syntax::mangle_c_symbol(punctuation_path, "run-A9{"), expected_mangled);
+}
+
+TEST(CoreUnit, AstItemNodeListCopiesAndMovesEveryPayloadKind)
+{
+    syntax::ItemNodeList items;
+    items.reserve(10U);
+    const base::SourceRange range{base::SourceId{1U}, 10U, 20U};
+
+    auto make_constraint = [&items, range](const std::string_view param_name) {
+        syntax::GenericConstraintDecl constraint;
+        constraint.param_name = param_name;
+        constraint.param_range = range;
+        constraint.range = range;
+        constraint.param_name_id = syntax::IdentId{1U};
+        constraint.capability_names = items.make_list<std::string_view>();
+        constraint.capability_names.push_back("Reader");
+        constraint.capability_ranges = items.make_list<base::SourceRange>();
+        constraint.capability_ranges.push_back(range);
+        syntax::AssociatedTypeConstraintDecl associated;
+        associated.name = "Item";
+        associated.name_range = range;
+        associated.value_type = syntax::TypeId{2U};
+        associated.range = range;
+        associated.name_id = syntax::IdentId{2U};
+        constraint.capability_associated_constraints.push_back({associated});
+        constraint.capability_name_ids = items.make_list<syntax::IdentId>();
+        constraint.capability_name_ids.push_back(syntax::IdentId{3U});
+        return constraint;
+    };
+
+    auto make_enum_case = [&items, range](const std::string_view name) {
+        syntax::EnumCaseDecl enum_case;
+        enum_case.name = name;
+        enum_case.payload_type = syntax::TypeId{3U};
+        enum_case.payload_types = items.make_list<syntax::TypeId>();
+        enum_case.payload_types.push_back(syntax::TypeId{4U});
+        enum_case.value_text = "7";
+        enum_case.range = range;
+        enum_case.name_id = syntax::IdentId{4U};
+        return enum_case;
+    };
+
+    syntax::ItemNode const_item;
+    const_item.kind = syntax::ItemKind::const_decl;
+    const_item.name = "ANSWER";
+    const_item.name_id = syntax::IdentId{5U};
+    const_item.const_type = syntax::TypeId{5U};
+    const_item.const_value = syntax::ExprId{6U};
+    const_item.range = range;
+    const syntax::ItemId const_id = items.append(const_item);
+
+    syntax::ItemNode alias_item;
+    alias_item.kind = syntax::ItemKind::type_alias;
+    alias_item.name = "Alias";
+    alias_item.generic_params.push_back(syntax::GenericParamDecl{"T", range, syntax::IdentId{6U}});
+    alias_item.where_constraints.push_back(make_constraint("T"));
+    alias_item.alias_type = syntax::TypeId{7U};
+    alias_item.impl_type = syntax::TypeId{8U};
+    alias_item.trait_type = syntax::TypeId{9U};
+    alias_item.range = range;
+    const syntax::ItemId alias_id = items.append(alias_item);
+
+    syntax::ItemNode struct_item;
+    struct_item.kind = syntax::ItemKind::struct_decl;
+    struct_item.name = "Box";
+    struct_item.generic_params.push_back(syntax::GenericParamDecl{"T", range, syntax::IdentId{7U}});
+    struct_item.where_constraints.push_back(make_constraint("T"));
+    struct_item.fields.push_back(syntax::FieldDecl{"value", syntax::TypeId{10U}, range, syntax::Visibility::public_});
+    struct_item.range = range;
+    const syntax::ItemId struct_id = items.append(struct_item);
+
+    syntax::ItemNode enum_item;
+    enum_item.kind = syntax::ItemKind::enum_decl;
+    enum_item.name = "Choice";
+    enum_item.generic_params.push_back(syntax::GenericParamDecl{"T", range, syntax::IdentId{8U}});
+    enum_item.where_constraints.push_back(make_constraint("T"));
+    enum_item.enum_base_type = syntax::TypeId{11U};
+    enum_item.enum_cases.push_back(make_enum_case("some"));
+    enum_item.range = range;
+    const syntax::ItemId enum_id = items.append(enum_item);
+
+    syntax::ItemNode opaque_item;
+    opaque_item.kind = syntax::ItemKind::opaque_struct_decl;
+    opaque_item.name = "Handle";
+    opaque_item.name_id = syntax::IdentId{9U};
+    opaque_item.range = range;
+    const syntax::ItemId opaque_id = items.append(opaque_item);
+
+    syntax::ItemNode trait_item;
+    trait_item.kind = syntax::ItemKind::trait_decl;
+    trait_item.name = "Reader";
+    trait_item.generic_params.push_back(syntax::GenericParamDecl{"T", range, syntax::IdentId{10U}});
+    trait_item.where_constraints.push_back(make_constraint("T"));
+    trait_item.trait_items.push_back(const_id);
+    trait_item.range = range;
+    const syntax::ItemId trait_id = items.append(trait_item);
+
+    syntax::ItemNode function_item;
+    function_item.kind = syntax::ItemKind::fn_decl;
+    function_item.name = "read";
+    function_item.generic_params.push_back(syntax::GenericParamDecl{"T", range, syntax::IdentId{11U}});
+    function_item.where_constraints.push_back(make_constraint("T"));
+    function_item.params.push_back(syntax::ParamDecl{"value", syntax::TypeId{12U}, range, syntax::IdentId{12U}});
+    function_item.return_type = syntax::TypeId{13U};
+    function_item.body = syntax::StmtId{14U};
+    function_item.impl_type = syntax::TypeId{15U};
+    function_item.trait_type = syntax::TypeId{16U};
+    function_item.abi_name = "abi_read";
+    function_item.borrow_contract.present = true;
+    function_item.borrow_contract.range = range;
+    function_item.borrow_contract.return_selectors.push_back(syntax::BorrowContractSelectorDecl{
+        syntax::BorrowContractSelectorKind::parameter,
+        "value",
+        syntax::IdentId{13U},
+        range,
+    });
+    function_item.is_export_c = true;
+    function_item.is_extern_c = true;
+    function_item.is_unsafe = true;
+    function_item.is_variadic = true;
+    function_item.is_prototype = true;
+    function_item.is_trait_default_method = true;
+    function_item.range = range;
+    const syntax::ItemId function_id = items.append(function_item);
+
+    syntax::ItemNode extern_item;
+    extern_item.kind = syntax::ItemKind::extern_block;
+    extern_item.extern_items.push_back(function_id);
+    extern_item.range = range;
+    const syntax::ItemId extern_id = items.append(extern_item);
+
+    syntax::ItemNode impl_item;
+    impl_item.kind = syntax::ItemKind::impl_block;
+    impl_item.generic_params.push_back(syntax::GenericParamDecl{"T", range, syntax::IdentId{14U}});
+    impl_item.where_constraints.push_back(make_constraint("T"));
+    impl_item.impl_type = syntax::TypeId{17U};
+    impl_item.trait_type = syntax::TypeId{18U};
+    impl_item.impl_items.push_back(function_id);
+    impl_item.range = range;
+    const syntax::ItemId impl_id = items.append(impl_item);
+
+    syntax::ItemNode unknown_item;
+    unknown_item.kind = static_cast<syntax::ItemKind>(99);
+    unknown_item.name = "unknown";
+    unknown_item.range = range;
+    const syntax::ItemId unknown_id = items.append(unknown_item);
+
+    ASSERT_EQ(items.size(), 10U);
+    const syntax::ItemNodeList copied(items);
+    EXPECT_EQ(copied[const_id.value].name, "ANSWER");
+    EXPECT_EQ(copied[alias_id.value].where_constraints.front().capability_names.front(), "Reader");
+    EXPECT_EQ(copied[struct_id.value].fields.front().name, "value");
+    EXPECT_EQ(copied[enum_id.value].enum_cases.front().payload_types.front().value, 4U);
+    EXPECT_EQ(copied[opaque_id.value].name, "Handle");
+    EXPECT_EQ(copied[trait_id.value].trait_items.front().value, const_id.value);
+    EXPECT_TRUE(copied[function_id.value].borrow_contract.present);
+    EXPECT_EQ(copied[extern_id.value].extern_items.front().value, function_id.value);
+    EXPECT_EQ(copied[impl_id.value].impl_items.front().value, function_id.value);
+    EXPECT_EQ(copied[unknown_id.value].name, "unknown");
+
+    const syntax::ItemNode* const materialized_opaque = copied.ptr(opaque_id.value);
+    ASSERT_NE(materialized_opaque, nullptr);
+    EXPECT_EQ(materialized_opaque->name, "Handle");
+    EXPECT_EQ(copied.ptr(copied.size()), nullptr);
+
+    syntax::ItemNodeList moved(copied);
+    EXPECT_EQ(moved.take(const_id.value).name, "ANSWER");
+    const base::SourceRange moved_constraint_range =
+        moved.take(alias_id.value).where_constraints.front().capability_ranges.front();
+    EXPECT_EQ(moved_constraint_range.source.value, range.source.value);
+    EXPECT_EQ(moved_constraint_range.begin, range.begin);
+    EXPECT_EQ(moved_constraint_range.end, range.end);
+    EXPECT_EQ(moved.take(struct_id.value).fields.front().visibility, syntax::Visibility::public_);
+    EXPECT_EQ(moved.take(enum_id.value).enum_cases.front().name, "some");
+    EXPECT_EQ(moved.take(opaque_id.value).name_id, syntax::IdentId{9U});
+    EXPECT_EQ(moved.take(trait_id.value).trait_items.front().value, const_id.value);
+    EXPECT_TRUE(moved.take(function_id.value).is_trait_default_method);
+    EXPECT_EQ(moved.take(extern_id.value).extern_items.front().value, function_id.value);
+    EXPECT_EQ(moved.take(impl_id.value).impl_type.value, 17U);
+    EXPECT_EQ(moved.take(unknown_id.value).name, "unknown");
+}
+
+TEST(CoreUnit, AstTypeNodeListCopiesAndMovesEveryPayloadKind)
+{
+    syntax::TypeNodeList types;
+    types.reserve(9U);
+    const base::SourceRange range{base::SourceId{2U}, 30U, 40U};
+
+    syntax::TypeNode primitive_type;
+    primitive_type.kind = syntax::TypeKind::primitive;
+    primitive_type.primitive = syntax::PrimitiveTypeKind::i64;
+    primitive_type.range = range;
+    const syntax::TypeId primitive_id = types.append(primitive_type);
+
+    syntax::TypeNode named_type;
+    named_type.kind = syntax::TypeKind::named;
+    named_type.scope_name = "core";
+    named_type.scope_range = range;
+    named_type.scope_parts = {"core", "mem"};
+    named_type.name = "Buffer";
+    named_type.scope_name_id = syntax::IdentId{1U};
+    named_type.scope_part_ids = {syntax::IdentId{1U}, syntax::IdentId{2U}};
+    named_type.name_id = syntax::IdentId{3U};
+    named_type.type_args = {syntax::TypeId{1U}, syntax::TypeId{2U}};
+    named_type.range = range;
+    const syntax::TypeId named_id = types.append(named_type);
+
+    syntax::TypeNode pointer_type;
+    pointer_type.kind = syntax::TypeKind::pointer;
+    pointer_type.pointer_mutability = syntax::PointerMutability::mut;
+    pointer_type.pointee = named_id;
+    pointer_type.range = range;
+    const syntax::TypeId pointer_id = types.append(pointer_type);
+
+    syntax::TypeNode reference_type;
+    reference_type.kind = syntax::TypeKind::reference;
+    reference_type.pointer_mutability = syntax::PointerMutability::const_;
+    reference_type.pointee = named_id;
+    reference_type.reference_origin.names = {"caller", "value"};
+    reference_type.reference_origin.name_ids = {syntax::IdentId{4U}, syntax::IdentId{5U}};
+    reference_type.reference_origin.ranges = {range, range};
+    reference_type.reference_origin.range = range;
+    reference_type.reference_origin.explicit_ = true;
+    reference_type.range = range;
+    const syntax::TypeId reference_id = types.append(reference_type);
+
+    syntax::TypeNode array_type;
+    array_type.kind = syntax::TypeKind::array;
+    array_type.array_count = 64U;
+    array_type.array_element = primitive_id;
+    array_type.range = range;
+    const syntax::TypeId array_id = types.append(array_type);
+
+    syntax::TypeNode slice_type;
+    slice_type.kind = syntax::TypeKind::slice;
+    slice_type.slice_mutability = syntax::PointerMutability::mut;
+    slice_type.slice_element = primitive_id;
+    slice_type.range = range;
+    const syntax::TypeId slice_id = types.append(slice_type);
+
+    syntax::TypeNode tuple_type;
+    tuple_type.kind = syntax::TypeKind::tuple;
+    tuple_type.tuple_elements = {primitive_id, named_id, pointer_id};
+    tuple_type.range = range;
+    const syntax::TypeId tuple_id = types.append(tuple_type);
+
+    syntax::TypeNode function_type;
+    function_type.kind = syntax::TypeKind::function;
+    function_type.function_call_conv = syntax::FunctionCallConv::c;
+    function_type.function_is_unsafe = true;
+    function_type.function_is_variadic = true;
+    function_type.function_params = {pointer_id, reference_id};
+    function_type.function_return = array_id;
+    function_type.range = range;
+    const syntax::TypeId function_id = types.append(function_type);
+
+    syntax::TypeNode unknown_type;
+    unknown_type.kind = static_cast<syntax::TypeKind>(99);
+    unknown_type.range = range;
+    const syntax::TypeId unknown_id = types.append(unknown_type);
+
+    ASSERT_EQ(types.size(), 9U);
+    const syntax::TypeNodeList copied(types);
+    EXPECT_EQ(copied[primitive_id.value].primitive, syntax::PrimitiveTypeKind::i64);
+    EXPECT_EQ(copied[named_id.value].scope_parts.back(), "mem");
+    EXPECT_EQ(copied[named_id.value].type_args.back().value, 2U);
+    EXPECT_EQ(copied[pointer_id.value].pointer_mutability, syntax::PointerMutability::mut);
+    EXPECT_EQ(copied[pointer_id.value].pointee.value, named_id.value);
+    EXPECT_TRUE(copied[reference_id.value].reference_origin.explicit_);
+    EXPECT_EQ(copied[reference_id.value].reference_origin.names.front(), "caller");
+    EXPECT_EQ(copied[array_id.value].array_count, 64U);
+    EXPECT_EQ(copied[slice_id.value].slice_mutability, syntax::PointerMutability::mut);
+    EXPECT_EQ(copied[tuple_id.value].tuple_elements.back().value, pointer_id.value);
+    EXPECT_TRUE(copied[function_id.value].function_is_unsafe);
+    EXPECT_TRUE(copied[function_id.value].function_is_variadic);
+    EXPECT_EQ(copied[function_id.value].function_params.front().value, pointer_id.value);
+    EXPECT_EQ(copied[unknown_id.value].kind, static_cast<syntax::TypeKind>(99));
+    EXPECT_EQ(copied[unknown_id.value].range.begin, range.begin);
+
+    syntax::TypeNodeList assigned;
+    assigned = types;
+    EXPECT_EQ(assigned.size(), types.size());
+    EXPECT_EQ(assigned[function_id.value].function_return.value, array_id.value);
+
+    syntax::TypeNodeList moved(copied);
+    EXPECT_EQ(moved.take(primitive_id.value).primitive, syntax::PrimitiveTypeKind::i64);
+    EXPECT_EQ(moved.take(named_id.value).scope_name_id.value, 1U);
+    EXPECT_EQ(moved.take(pointer_id.value).pointee.value, named_id.value);
+    EXPECT_EQ(moved.take(reference_id.value).reference_origin.name_ids.back().value, 5U);
+    EXPECT_EQ(moved.take(array_id.value).array_element.value, primitive_id.value);
+    EXPECT_EQ(moved.take(slice_id.value).slice_element.value, primitive_id.value);
+    EXPECT_EQ(moved.take(tuple_id.value).tuple_elements.front().value, primitive_id.value);
+    EXPECT_EQ(moved.take(function_id.value).function_call_conv, syntax::FunctionCallConv::c);
+    EXPECT_EQ(moved.take(unknown_id.value).kind, static_cast<syntax::TypeKind>(99));
+
+    syntax::TypeNode replacement_type;
+    replacement_type.kind = syntax::TypeKind::pointer;
+    replacement_type.pointer_mutability = syntax::PointerMutability::const_;
+    replacement_type.pointee = function_id;
+    assigned.set(primitive_id.value, replacement_type);
+    EXPECT_EQ(assigned[primitive_id.value].kind, syntax::TypeKind::pointer);
+    EXPECT_EQ(assigned[primitive_id.value].pointee.value, function_id.value);
+}
+
+TEST(CoreUnit, AstStmtNodeListCopiesAndMovesLoopAndFallbackPayloads)
+{
+    syntax::StmtNodeList stmts;
+    stmts.reserve(14U);
+    const base::SourceRange range{base::SourceId{3U}, 50U, 60U};
+
+    syntax::StmtNode let_stmt;
+    let_stmt.kind = syntax::StmtKind::let;
+    let_stmt.name = "value";
+    let_stmt.name_id = syntax::IdentId{1U};
+    let_stmt.pattern = syntax::PatternId{2U};
+    let_stmt.declared_type = syntax::TypeId{3U};
+    let_stmt.init = syntax::ExprId{4U};
+    let_stmt.else_block = syntax::StmtId{5U};
+    let_stmt.range = range;
+    const syntax::StmtId let_id = stmts.append(let_stmt);
+
+    syntax::StmtNode var_stmt = let_stmt;
+    var_stmt.kind = syntax::StmtKind::var;
+    var_stmt.name = "slot";
+    var_stmt.name_id = syntax::IdentId{6U};
+    const syntax::StmtId var_id = stmts.append(var_stmt);
+
+    syntax::StmtNode assign_stmt;
+    assign_stmt.kind = syntax::StmtKind::assign;
+    assign_stmt.assign_op = syntax::AssignOp::add;
+    assign_stmt.lhs = syntax::ExprId{7U};
+    assign_stmt.rhs = syntax::ExprId{8U};
+    assign_stmt.range = range;
+    const syntax::StmtId assign_id = stmts.append(assign_stmt);
+
+    syntax::StmtNode if_stmt;
+    if_stmt.kind = syntax::StmtKind::if_;
+    if_stmt.condition = syntax::ExprId{9U};
+    if_stmt.pattern = syntax::PatternId{10U};
+    if_stmt.then_block = syntax::StmtId{11U};
+    if_stmt.else_block = syntax::StmtId{12U};
+    if_stmt.else_if = syntax::StmtId{13U};
+    if_stmt.range = range;
+    const syntax::StmtId if_id = stmts.append(if_stmt);
+
+    syntax::StmtNode for_stmt;
+    for_stmt.kind = syntax::StmtKind::for_;
+    for_stmt.for_init = syntax::StmtId{14U};
+    for_stmt.condition = syntax::ExprId{15U};
+    for_stmt.for_update = syntax::StmtId{16U};
+    for_stmt.body = syntax::StmtId{17U};
+    for_stmt.range = range;
+    const syntax::StmtId for_id = stmts.append(for_stmt);
+
+    syntax::StmtNode for_range_stmt;
+    for_range_stmt.kind = syntax::StmtKind::for_range;
+    for_range_stmt.name = "item";
+    for_range_stmt.name_id = syntax::IdentId{18U};
+    for_range_stmt.range_start = syntax::ExprId{19U};
+    for_range_stmt.range_end = syntax::ExprId{20U};
+    for_range_stmt.range_step = syntax::ExprId{21U};
+    for_range_stmt.body = syntax::StmtId{22U};
+    for_range_stmt.range = range;
+    const syntax::StmtId for_range_id = stmts.append(for_range_stmt);
+
+    syntax::StmtNode while_stmt;
+    while_stmt.kind = syntax::StmtKind::while_;
+    while_stmt.condition = syntax::ExprId{23U};
+    while_stmt.pattern = syntax::PatternId{24U};
+    while_stmt.body = syntax::StmtId{25U};
+    while_stmt.range = range;
+    const syntax::StmtId while_id = stmts.append(while_stmt);
+
+    syntax::StmtNode break_stmt;
+    break_stmt.kind = syntax::StmtKind::break_;
+    break_stmt.range = range;
+    const syntax::StmtId break_id = stmts.append(break_stmt);
+
+    syntax::StmtNode continue_stmt;
+    continue_stmt.kind = syntax::StmtKind::continue_;
+    continue_stmt.range = range;
+    const syntax::StmtId continue_id = stmts.append(continue_stmt);
+
+    syntax::StmtNode defer_stmt;
+    defer_stmt.kind = syntax::StmtKind::defer;
+    defer_stmt.init = syntax::ExprId{26U};
+    defer_stmt.range = range;
+    const syntax::StmtId defer_id = stmts.append(defer_stmt);
+
+    syntax::StmtNode return_stmt;
+    return_stmt.kind = syntax::StmtKind::return_;
+    return_stmt.return_value = syntax::ExprId{27U};
+    return_stmt.range = range;
+    const syntax::StmtId return_id = stmts.append(return_stmt);
+
+    syntax::StmtNode expr_stmt;
+    expr_stmt.kind = syntax::StmtKind::expr;
+    expr_stmt.init = syntax::ExprId{28U};
+    expr_stmt.range = range;
+    const syntax::StmtId expr_id = stmts.append(expr_stmt);
+
+    syntax::StmtNode block_stmt;
+    block_stmt.kind = syntax::StmtKind::block;
+    block_stmt.statements = {let_id, var_id, expr_id};
+    block_stmt.range = range;
+    const syntax::StmtId block_id = stmts.append(block_stmt);
+
+    syntax::StmtNode unknown_stmt;
+    unknown_stmt.kind = static_cast<syntax::StmtKind>(99);
+    unknown_stmt.name = "unknown";
+    unknown_stmt.init = syntax::ExprId{29U};
+    unknown_stmt.range = range;
+    const syntax::StmtId unknown_id = stmts.append(unknown_stmt);
+
+    ASSERT_EQ(stmts.size(), 14U);
+    EXPECT_EQ(stmts.block_statements(expr_id.value), nullptr);
+    ASSERT_NE(stmts.block_statements(block_id.value), nullptr);
+    EXPECT_EQ(stmts.block_statements(block_id.value)->back().value, expr_id.value);
+
+    const syntax::StmtNodeList copied(stmts);
+    EXPECT_EQ(copied[let_id.value].name, "value");
+    EXPECT_EQ(copied[var_id.value].name_id.value, 6U);
+    EXPECT_EQ(copied[assign_id.value].assign_op, syntax::AssignOp::add);
+    EXPECT_EQ(copied[if_id.value].else_if.value, 13U);
+    EXPECT_EQ(copied[for_id.value].for_update.value, 16U);
+    EXPECT_EQ(copied[for_range_id.value].range_step.value, 21U);
+    EXPECT_EQ(copied[while_id.value].body.value, 25U);
+    EXPECT_EQ(copied[break_id.value].kind, syntax::StmtKind::break_);
+    EXPECT_EQ(copied[continue_id.value].kind, syntax::StmtKind::continue_);
+    EXPECT_EQ(copied[defer_id.value].init.value, 26U);
+    EXPECT_EQ(copied[return_id.value].return_value.value, 27U);
+    EXPECT_EQ(copied[expr_id.value].init.value, 28U);
+    EXPECT_EQ(copied[block_id.value].statements.front().value, let_id.value);
+    EXPECT_EQ(copied[unknown_id.value].name, "unknown");
+    EXPECT_EQ(copied[unknown_id.value].kind, static_cast<syntax::StmtKind>(99));
+
+    syntax::StmtNodeList assigned;
+    assigned = stmts;
+    EXPECT_EQ(assigned.size(), stmts.size());
+    EXPECT_EQ(assigned[for_id.value].body.value, 17U);
+
+    syntax::StmtNodeList moved(copied);
+    EXPECT_EQ(moved.take(let_id.value).declared_type.value, 3U);
+    EXPECT_EQ(moved.take(var_id.value).name, "slot");
+    EXPECT_EQ(moved.take(assign_id.value).lhs.value, 7U);
+    EXPECT_EQ(moved.take(if_id.value).then_block.value, 11U);
+    EXPECT_EQ(moved.take(for_id.value).for_init.value, 14U);
+    EXPECT_EQ(moved.take(for_range_id.value).name_id.value, 18U);
+    EXPECT_EQ(moved.take(while_id.value).pattern.value, 24U);
+    EXPECT_EQ(moved.take(break_id.value).kind, syntax::StmtKind::break_);
+    EXPECT_EQ(moved.take(continue_id.value).kind, syntax::StmtKind::continue_);
+    EXPECT_EQ(moved.take(defer_id.value).init.value, 26U);
+    EXPECT_EQ(moved.take(return_id.value).return_value.value, 27U);
+    EXPECT_EQ(moved.take(expr_id.value).init.value, 28U);
+    EXPECT_EQ(moved.take(block_id.value).statements.back().value, expr_id.value);
+    EXPECT_EQ(moved.take(unknown_id.value).name, "unknown");
+
+    const base::SourceRange updated_range{base::SourceId{4U}, 70U, 90U};
+    assigned.set_range(let_id.value, updated_range);
+    EXPECT_EQ(assigned.range(let_id.value).begin, updated_range.begin);
+
+    syntax::StmtNode replacement_stmt;
+    replacement_stmt.kind = syntax::StmtKind::return_;
+    replacement_stmt.return_value = syntax::ExprId{30U};
+    assigned.set(var_id.value, replacement_stmt);
+    EXPECT_EQ(assigned[var_id.value].kind, syntax::StmtKind::return_);
+    EXPECT_EQ(assigned[var_id.value].return_value.value, 30U);
 }
 
 TEST(CoreUnit, AstModuleInternsNativeIdentifierIdsAcrossNodesAndMetadata)
@@ -663,6 +1160,80 @@ TEST(CoreUnit, ItemNodeListSelfAssignmentAndMovedFromArenaQueriesAreStable)
     EXPECT_EQ(moved_items[0].return_type.value, 2U);
 }
 
+TEST(CoreUnit, ExprPatternAndStmtNodeListsSelfAssignmentAndMovedFromArenaQueriesAreStable)
+{
+    syntax::NameExprPayload name;
+    name.text = "stable";
+    name.type_args = {syntax::TypeId{1}, syntax::TypeId{2}};
+    syntax::ExprNodeList exprs;
+    const syntax::ExprId name_id = exprs.append_name({}, name);
+    syntax::ExprNodeList* const exprs_alias = &exprs;
+    exprs = *exprs_alias;
+    ASSERT_EQ(exprs.size(), 1U);
+    EXPECT_EQ(exprs.kind(name_id.value), syntax::ExprKind::name);
+    ASSERT_NE(exprs.name_payload(name_id.value), nullptr);
+    EXPECT_EQ(exprs.name_payload(name_id.value)->type_args.back().value, 2U);
+
+    exprs = std::move(*exprs_alias);
+    ASSERT_EQ(exprs.size(), 1U);
+    ASSERT_NE(exprs.name_payload(name_id.value), nullptr);
+    EXPECT_EQ(exprs.name_payload(name_id.value)->text, "stable");
+
+    syntax::ExprNodeList moved_exprs(std::move(exprs));
+    EXPECT_EQ(exprs.arena_bytes(), 0U);
+    EXPECT_EQ(exprs.arena_used_bytes(), 0U);
+    EXPECT_EQ(exprs.arena_blocks(), 0U);
+    ASSERT_EQ(moved_exprs.size(), 1U);
+    ASSERT_NE(moved_exprs.name_payload(name_id.value), nullptr);
+    EXPECT_EQ(moved_exprs.name_payload(name_id.value)->type_args.front().value, 1U);
+
+    syntax::PatternNode tuple_pattern;
+    tuple_pattern.kind = syntax::PatternKind::tuple;
+    tuple_pattern.elements = {syntax::PatternId{3}, syntax::PatternId{4}};
+    syntax::PatternNodeList patterns;
+    const syntax::PatternId tuple_pattern_id = patterns.append(tuple_pattern);
+    syntax::PatternNodeList* const patterns_alias = &patterns;
+    patterns = *patterns_alias;
+    ASSERT_EQ(patterns.size(), 1U);
+    EXPECT_EQ(patterns.kind(tuple_pattern_id.value), syntax::PatternKind::tuple);
+    EXPECT_EQ(patterns[tuple_pattern_id.value].elements.back().value, 4U);
+    EXPECT_EQ(patterns.ptr(patterns.size()), nullptr);
+
+    patterns = std::move(*patterns_alias);
+    ASSERT_EQ(patterns.size(), 1U);
+    EXPECT_EQ(patterns[tuple_pattern_id.value].elements.front().value, 3U);
+
+    syntax::PatternNodeList moved_patterns(std::move(patterns));
+    EXPECT_EQ(patterns.arena_bytes(), 0U);
+    EXPECT_EQ(patterns.arena_used_bytes(), 0U);
+    EXPECT_EQ(patterns.arena_blocks(), 0U);
+    ASSERT_EQ(moved_patterns.size(), 1U);
+    EXPECT_EQ(moved_patterns[tuple_pattern_id.value].kind, syntax::PatternKind::tuple);
+
+    syntax::StmtNode block_stmt;
+    block_stmt.kind = syntax::StmtKind::block;
+    block_stmt.statements = {syntax::StmtId{5}, syntax::StmtId{6}};
+    syntax::StmtNodeList stmts;
+    const syntax::StmtId block_stmt_id = stmts.append(block_stmt);
+    syntax::StmtNodeList* const stmts_alias = &stmts;
+    stmts = *stmts_alias;
+    ASSERT_EQ(stmts.size(), 1U);
+    EXPECT_EQ(stmts.kind(block_stmt_id.value), syntax::StmtKind::block);
+    ASSERT_NE(stmts.block_statements(block_stmt_id.value), nullptr);
+    EXPECT_EQ(stmts.block_statements(block_stmt_id.value)->back().value, 6U);
+
+    stmts = std::move(*stmts_alias);
+    ASSERT_EQ(stmts.size(), 1U);
+    EXPECT_EQ(stmts[block_stmt_id.value].statements.front().value, 5U);
+
+    syntax::StmtNodeList moved_stmts(std::move(stmts));
+    EXPECT_EQ(stmts.arena_bytes(), 0U);
+    EXPECT_EQ(stmts.arena_used_bytes(), 0U);
+    EXPECT_EQ(stmts.arena_blocks(), 0U);
+    ASSERT_EQ(moved_stmts.size(), 1U);
+    EXPECT_EQ(moved_stmts[block_stmt_id.value].kind, syntax::StmtKind::block);
+}
+
 TEST(CoreUnit, AstModuleReserveEstimatePreTouchesExpressionArena)
 {
     constexpr base::usize ESTIMATED_EXPR_COUNT = 128;
@@ -707,7 +1278,7 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads)
             syntax::UnaryOp::numeric_negate,
             literal_id,
         });
-    const syntax::ExprId try_id = exprs.append_try({}, unary_id);
+    const syntax::ExprId try_id = exprs.append_try({}, syntax::TryExprPayload{unary_id});
 
     const syntax::ExprId binary_id = exprs.append_binary({},
         syntax::BinaryExprPayload{
@@ -889,6 +1460,10 @@ TEST(CoreUnit, ExprNodeListPayloadAccessorsExposeCompactPayloads)
     EXPECT_EQ(exprs.kind(binary_id.value), syntax::ExprKind::binary);
     EXPECT_EQ(exprs.name_payload(literal_id.value), nullptr);
     const syntax::ExprNodeList& const_exprs = exprs;
+    EXPECT_EQ(const_exprs.generic_apply_payload(literal_id.value), nullptr);
+    EXPECT_EQ(exprs.try_payload(literal_id.value), nullptr);
+    EXPECT_EQ(exprs.binary_payload(literal_id.value), nullptr);
+    EXPECT_EQ(const_exprs.call_payload(literal_id.value), nullptr);
     EXPECT_EQ(const_exprs.literal_payload(MISSING_EXPR_INDEX), nullptr);
     EXPECT_EQ(const_exprs.name_payload(MISSING_EXPR_INDEX), nullptr);
     EXPECT_EQ(exprs.name_payload(MISSING_EXPR_INDEX), nullptr);
@@ -1098,6 +1673,37 @@ TEST(CoreUnit, AstModuleExpressionWrapperMutatorsDelegateToNodeStorage)
     module.set_struct_literal_expr(struct_slot.value, SET_RANGE, struct_payload);
     ASSERT_NE(module.exprs.struct_literal_payload(struct_slot.value), nullptr);
     EXPECT_EQ(module.exprs.struct_literal_payload(struct_slot.value)->name, "Record");
+
+    const syntax::ExprId scalar_unary_slot = append_slot();
+    module.set_unary_expr(
+        scalar_unary_slot.value, syntax::ExprKind::unary, SET_RANGE, syntax::UnaryOp::logical_not, literal_id);
+    ASSERT_NE(module.exprs.unary_payload(scalar_unary_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.unary_payload(scalar_unary_slot.value)->operand.value, literal_id.value);
+
+    const syntax::ExprId scalar_try_slot = append_slot();
+    module.set_try_expr(scalar_try_slot.value, SET_RANGE, literal_id);
+    ASSERT_NE(module.exprs.try_payload(scalar_try_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.try_payload(scalar_try_slot.value)->operand.value, literal_id.value);
+
+    const syntax::ExprId scalar_field_slot = append_slot();
+    module.set_field_expr(scalar_field_slot.value, SET_RANGE, literal_id, "scalar_field");
+    ASSERT_NE(module.exprs.field_payload(scalar_field_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.field_payload(scalar_field_slot.value)->field_name, "scalar_field");
+    EXPECT_TRUE(syntax::is_valid(module.find_identifier("scalar_field")));
+
+    const syntax::ExprId scalar_index_slot = append_slot();
+    module.set_index_expr(scalar_index_slot.value, SET_RANGE, literal_id, pushed_try);
+    ASSERT_NE(module.exprs.index_payload(scalar_index_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.index_payload(scalar_index_slot.value)->index.value, pushed_try.value);
+
+    const syntax::ExprId scalar_slice_slot = append_slot();
+    module.set_slice_expr(scalar_slice_slot.value, SET_RANGE, literal_id, pushed_try, pushed_block);
+    ASSERT_NE(module.exprs.slice_payload(scalar_slice_slot.value), nullptr);
+    EXPECT_EQ(module.exprs.slice_payload(scalar_slice_slot.value)->end.value, pushed_block.value);
+
+    syntax::AstModule* const module_alias = &module;
+    module = *module_alias;
+    EXPECT_EQ(module.exprs.size(), scalar_slice_slot.value + 1U);
 }
 
 TEST(CoreUnit, ExprNodeListCopyPreservesEveryCompactExpressionPayload)
@@ -1140,6 +1746,8 @@ TEST(CoreUnit, ExprNodeListCopyPreservesEveryCompactExpressionPayload)
         std::vector<syntax::FieldInit>{
             syntax::FieldInit{"left", literal_id, COPY_RANGE, syntax::IdentId{9}},
         });
+    const syntax::ExprId unknown_call_kind_id = exprs.append_call(
+        static_cast<syntax::ExprKind>(99), COPY_RANGE, literal_id, std::vector<syntax::ExprId>{literal_id});
 
     std::vector<syntax::ExprId> cast_ids;
     for (const syntax::ExprKind kind : {
@@ -1203,6 +1811,7 @@ TEST(CoreUnit, ExprNodeListCopyPreservesEveryCompactExpressionPayload)
     EXPECT_EQ(copied_view.slice_payload(slice_id.value)->end.value, binary_id.value);
     ASSERT_NE(copied_view.struct_literal_payload(struct_id.value), nullptr);
     EXPECT_EQ(copied_view.struct_literal_payload(struct_id.value)->field_inits.front().name, "left");
+    EXPECT_EQ(copied_view.kind(unknown_call_kind_id.value), syntax::ExprKind::invalid);
     for (const syntax::ExprId cast_id : cast_ids) {
         ASSERT_NE(copied_view.cast_payload(cast_id.value), nullptr);
         EXPECT_EQ(copied_view.cast_payload(cast_id.value)->type.value, COPY_TYPE_ID);

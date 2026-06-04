@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <span>
+#include <string_view>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -14,6 +16,9 @@ struct DropCheckRegionEvent {
     base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
     base::u32 region = SEMA_LIFETIME_INVALID_INDEX;
 };
+
+constexpr std::string_view SEMA_DROPCK_ORIGIN_KEY_SEPARATOR = " | ";
+constexpr base::usize SEMA_DROPCK_ORIGIN_TYPE_STACK_INITIAL_CAPACITY = 32;
 
 [[nodiscard]] bool region_event_less(const DropCheckRegionEvent lhs, const DropCheckRegionEvent rhs) noexcept
 {
@@ -35,6 +40,44 @@ struct DropCheckRegionEvent {
         || kind == BodyLoanConflictKind::reinit;
 }
 
+void append_origin_key_regions(const std::string_view key,
+    const std::unordered_map<std::string_view, base::u32>& lifetime_region_by_origin_name,
+    std::vector<base::u32>& regions)
+{
+    base::usize begin = 0;
+    while (begin <= key.size()) {
+        const base::usize separator = key.find(SEMA_DROPCK_ORIGIN_KEY_SEPARATOR, begin);
+        const base::usize end = separator == std::string_view::npos ? key.size() : separator;
+        const std::string_view name = key.substr(begin, end - begin);
+        if (!name.empty()) {
+            if (const auto found = lifetime_region_by_origin_name.find(name);
+                found != lifetime_region_by_origin_name.end()) {
+                regions.push_back(found->second);
+            }
+        }
+        if (separator == std::string_view::npos) {
+            break;
+        }
+        begin = separator + SEMA_DROPCK_ORIGIN_KEY_SEPARATOR.size();
+    }
+}
+
+[[nodiscard]] bool drop_glue_step_observes_structural_borrows(const DropGlueStepKind kind) noexcept
+{
+    switch (kind) {
+        case DropGlueStepKind::struct_field:
+        case DropGlueStepKind::tuple_element:
+        case DropGlueStepKind::array_element:
+        case DropGlueStepKind::enum_payload:
+            return true;
+        case DropGlueStepKind::custom_destructor:
+        case DropGlueStepKind::generic_value:
+        case DropGlueStepKind::opaque_value:
+            return false;
+    }
+    return false;
+}
+
 } // namespace
 
 void SemanticAnalyzerCore::DropCheckAnalyzer::solve()
@@ -43,6 +86,7 @@ void SemanticAnalyzerCore::DropCheckAnalyzer::solve()
     if (graph != nullptr) {
         this->build_active_region_index(*graph);
     }
+    this->build_lifetime_region_origin_index();
 
     if (FunctionLifetimeFacts* const lifetime = this->mutable_lifetime_facts(); lifetime != nullptr) {
         for (const LifetimeTypeOutlivesConstraint& constraint : lifetime->type_outlives_constraints) {
@@ -90,6 +134,7 @@ void SemanticAnalyzerCore::DropCheckAnalyzer::solve()
         }
         const DropGlueCacheEntry& glue = this->cached_drop_glue(action.type);
         std::span<const base::u32> active_regions = this->active_regions_at_point(action.point);
+        this->enforce_destructor_observed_borrow_safety(action, glue.plan, active_regions);
         if (active_regions.empty()) {
             continue;
         }
@@ -163,6 +208,122 @@ bool SemanticAnalyzerCore::DropCheckAnalyzer::append_violation(const DropCheckVi
         .range = action.range,
     });
     return true;
+}
+
+void SemanticAnalyzerCore::DropCheckAnalyzer::build_lifetime_region_origin_index()
+{
+    this->lifetime_region_by_origin_name_.clear();
+    const FunctionLifetimeFacts* const lifetime = this->lifetime_facts();
+    if (lifetime == nullptr || lifetime->regions.empty()) {
+        return;
+    }
+    this->lifetime_region_by_origin_name_.reserve(lifetime->regions.size());
+    for (base::usize index = 0; index < lifetime->regions.size(); ++index) {
+        const LifetimeRegion& region = lifetime->regions[index];
+        if (region.kind == LifetimeRegionKind::static_ || region.name.empty()) {
+            continue;
+        }
+        this->lifetime_region_by_origin_name_.emplace(region.name.view(), static_cast<base::u32>(index));
+    }
+    this->concrete_origin_regions_by_type_.clear();
+}
+
+std::span<const base::u32> SemanticAnalyzerCore::DropCheckAnalyzer::concrete_origin_regions_for_type(
+    const TypeHandle type) const
+{
+    if (!this->valid_type(type) || this->lifetime_region_by_origin_name_.empty()) {
+        return {};
+    }
+    if (const auto cached = this->concrete_origin_regions_by_type_.find(type.value);
+        cached != this->concrete_origin_regions_by_type_.end()) {
+        return std::span<const base::u32>(cached->second);
+    }
+
+    std::vector<base::u32> regions;
+    std::vector<TypeFrame> pending;
+    std::unordered_set<base::u32> visited;
+    pending.reserve(SEMA_DROPCK_ORIGIN_TYPE_STACK_INITIAL_CAPACITY);
+    visited.reserve(SEMA_DROPCK_ORIGIN_TYPE_STACK_INITIAL_CAPACITY);
+    pending.push_back(TypeFrame{type});
+    while (!pending.empty()) {
+        const TypeFrame frame = pending.back();
+        pending.pop_back();
+        if (!this->valid_type(frame.type) || !visited.insert(frame.type.value).second) {
+            continue;
+        }
+        const TypeInfo& info = this->core_.state_.checked.types.get(frame.type);
+        switch (info.kind) {
+            case TypeKind::reference:
+                append_origin_key_regions(info.reference_origin_key.view(), this->lifetime_region_by_origin_name_,
+                    regions);
+                pending.push_back(TypeFrame{info.pointee});
+                break;
+            case TypeKind::array:
+                pending.push_back(TypeFrame{info.array_element});
+                break;
+            case TypeKind::slice:
+                pending.push_back(TypeFrame{info.slice_element});
+                break;
+            case TypeKind::tuple:
+                for (const TypeHandle element : info.tuple_elements) {
+                    pending.push_back(TypeFrame{element});
+                }
+                break;
+            case TypeKind::function:
+                for (const TypeHandle param : info.function_params) {
+                    pending.push_back(TypeFrame{param});
+                }
+                pending.push_back(TypeFrame{info.function_return});
+                break;
+            case TypeKind::struct_:
+                if (const StructInfo* const structure = this->core_.find_struct(frame.type); structure != nullptr) {
+                    for (const StructFieldInfo& field : structure->fields) {
+                        pending.push_back(TypeFrame{field.type});
+                    }
+                }
+                break;
+            case TypeKind::enum_:
+                if (const EnumCaseList* const cases = this->core_.find_enum_cases_by_type(frame.type);
+                    cases != nullptr) {
+                    for (const EnumCaseInfo* const enum_case : *cases) {
+                        if (enum_case == nullptr) {
+                            continue;
+                        }
+                        for (const TypeHandle payload : enum_case->payload_types) {
+                            pending.push_back(TypeFrame{payload});
+                        }
+                    }
+                }
+                break;
+            case TypeKind::builtin:
+            case TypeKind::pointer:
+            case TypeKind::opaque_struct:
+            case TypeKind::generic_param:
+            case TypeKind::associated_projection:
+                break;
+        }
+    }
+
+    std::ranges::sort(regions);
+    regions.erase(std::ranges::unique(regions).begin(), regions.end());
+    const auto inserted = this->concrete_origin_regions_by_type_.emplace(type.value, std::move(regions));
+    return std::span<const base::u32>(inserted.first->second);
+}
+
+void SemanticAnalyzerCore::DropCheckAnalyzer::enforce_destructor_observed_borrow_safety(
+    const DropActionFact& action, const DropGluePlan& plan, const std::span<const base::u32> active_regions)
+{
+    for (const DropGlueStep& step : plan.steps) {
+        if (!drop_glue_step_observes_structural_borrows(step.kind)) {
+            continue;
+        }
+        for (const base::u32 region : this->concrete_origin_regions_for_type(step.value_type)) {
+            if (!std::ranges::binary_search(active_regions, region)) {
+                static_cast<void>(
+                    this->append_violation(DropCheckViolationKind::borrowed_field_dangling, action, region));
+            }
+        }
+    }
 }
 
 bool SemanticAnalyzerCore::DropCheckAnalyzer::append_lifetime_type_outlives(

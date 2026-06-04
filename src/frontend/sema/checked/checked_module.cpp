@@ -2111,6 +2111,14 @@ void populate_type_check_body_borrow_authority(
             std::ranges::any_of(dropck->second.violations, [](const DropCheckViolation& violation) {
                 return violation.kind == DropCheckViolationKind::borrowed_drop;
             });
+        authority.dropck_has_borrowed_field_dangling =
+            std::ranges::any_of(dropck->second.violations, [](const DropCheckViolation& violation) {
+                return violation.kind == DropCheckViolationKind::borrowed_field_dangling;
+            });
+        authority.dropck_has_destructor_escape =
+            std::ranges::any_of(dropck->second.violations, [](const DropCheckViolation& violation) {
+                return violation.kind == DropCheckViolationKind::destructor_escape;
+            });
         authority.dropck_has_drop_glue_missing =
             std::ranges::any_of(dropck->second.violations, [](const DropCheckViolation& violation) {
                 return violation.kind == DropCheckViolationKind::drop_glue_missing;

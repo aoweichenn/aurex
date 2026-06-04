@@ -1,12 +1,15 @@
 # Aurex 语言语法说明书
 
-日期：2026-05-31
-阶段：M5 default trait methods release baseline
-状态：按当前仓库实现编写的使用者语法说明，不描述尚未落地的未来功能。
+日期：2026-06-04
+阶段：M7c-A / M7c-B lifetime facts 与 region enforcement 实现收口，建立在 M7b borrow contract、M7a
+CFG-sensitive loan facts、M6 resource semantics、M5 default trait methods、M4 trait/protocol、M3 module/generic
+和 M2 language core 基线之上。
+状态：按当前仓库实现编写的官方语言说明书，不描述尚未落地的未来功能。
 
-本文说明当前 Aurex 能写什么、怎么写、哪些地方会被拒绝。语法以 `docs/spec/m2_grammar.md`、M5 release
-baseline、`include/aurex/frontend/syntax/core/token.hpp`、`src/parse/*`、`src/sema/*`、`tests/samples/**` 和 `examples/**`
-的当前实现为准。
+本文说明当前 Aurex 能写什么、怎么写、哪些地方会被拒绝。语法以
+`include/aurex/frontend/syntax/core/token.hpp`、`include/aurex/frontend/syntax/ast/*`、
+`src/frontend/parse/grammar/*`、`src/frontend/sema/internal/*`、`tests/samples/**`、`tests/gtest/frontend/**` 和
+`examples/**` 的当前实现为准。`docs/spec/m2_grammar.md` 是早期 M2 语法冻结文档；遇到差异时，以本文和当前源码为准。
 
 ## 1. 最小完整程序
 
@@ -33,7 +36,7 @@ fn main() -> i32 {
 
 ```text
 module import as pub priv extern export unsafe
-fn struct opaque enum const type impl where
+fn struct opaque enum trait const type impl where
 match let var if else for in is while break continue defer return
 true false null
 void bool i8 u8 i16 u16 i32 u32 i64 u64 isize usize f32 f64 str char
@@ -42,7 +45,9 @@ cast ptrcast bitcast sizeof alignof ptraddr ptrat
 sliceptr slicelen strptr strblen strvalid strfromutf8 strraw
 ```
 
-`c` 不是全局关键字。它只在 `extern c`、`export c fn` 和 `extern c fn(...) -> T` 这类 ABI 语法中作为上下文标记；在参数名、局部名、函数名和模块路径中仍可作为普通标识符。
+`c`、`part`、`use` 和 `origin` 不是全局关键字。`c` 只在 `extern c`、`export c fn` 和
+`extern c fn(...) -> T` 这类 ABI 语法中作为上下文标记；`part`、`use` 和 `origin`
+只在各自语法位置作为上下文标记。在参数名、局部名、函数名和模块路径中，它们仍可作为普通标识符。
 
 ### 2.2 标识符
 
@@ -156,6 +161,32 @@ module app.main;
 
 模块路径用 `.` 分隔。导入其他模块时，编译器会在当前文件相对目录和命令行 `-I` import path 下查找。
 
+Primary module 文件还可以在 `module path;` 之后、import 和 item 之前声明 part 文件：
+
+```aurex
+module app.parser;
+
+part lexer;
+part grammar;
+```
+
+对应的 part 文件使用同一个 module path，并在 module header 里写 part 名：
+
+```aurex
+module app.parser part lexer;
+
+fn helper() -> i32 {
+    return 1;
+}
+```
+
+规则：
+
+- `part name;` 只能写在 primary module 的 `module` 声明之后、import/use/item 之前。
+- part 文件不能声明 nested part list。
+- part 文件不能声明 selective re-export；`pub use` / `pub(package) use` 只能写在 primary module 文件的 import/re-export 区域。
+- `part` 是上下文标记，不是全局关键字；普通函数、参数和局部变量仍可命名为 `part`。
+
 ### 4.2 导入
 
 ```aurex
@@ -188,7 +219,7 @@ pub(package) use common.status.PackageStatus as PackageStatus;
 - `as Alias` 会改变 facade 暴露名，不改变目标 item 的定义身份。
 - `pub(package) use` 只在同一 `PackageKey` 内可见。
 - `pub use` 只能写在 primary module 的 import/re-export 区域，不能写在 part 文件或 item 之后。
-- 当前不支持 glob use、bare `use` 或 `priv use`。
+- 当前不支持 glob use、bare `use` 或 `priv use`；`use` 是上下文标记，不是全局关键字。
 
 - `PackageKey` 可由 CLI `--package` 指定；如果未指定，driver 会从输入文件所在目录向上识别
   `aurex.toml` 的 `[package] name/version` 作为 package identity。manifest 可选
@@ -278,6 +309,9 @@ common.status.Health
 &mut i32
 &Pair
 &mut Pair
+&[data] i32
+&mut [data] i32
+&[left | right] i32
 ```
 
 示例：
@@ -295,8 +329,17 @@ fn write(value: &mut i32, replacement: i32) -> void {
 规则：
 
 - `&T` 是共享引用，`&mut T` 是可写引用。
-- 当前有 reference 类型和基本可写性检查，但没有 borrow checker、lifetime、alias model。
+- `&[origin] T` / `&mut [origin] T` 是带显式 origin 的引用类型。origin 名称在泛型参数列表中用
+  `origin name` 声明，例如 `fn id[origin data](value: &[data] i32) -> &[data] i32`。
+- `&[left | right] T` 表示返回或存储的 borrowed view 可能来自多个 origin。`|` 只在 reference
+  origin qualifier 中表示 origin union；不要把它理解为 trait bound。
+- `&T` / `&mut T` 没有显式 origin 时，语义分析会按函数签名、`@borrow` contract、函数体 summary 和 elision
+  规则推导 region facts；public/prototype/extern 边界上含多个候选输入 origin 的 borrowed return 会被诊断为歧义。
 - `&mut place` 要求 `place` 可写。
+- `&mut T` 可赋给 `&T`；反向不允许。
+- reference pointee 必须是有效 storage type；`&void` 和 opaque value reference 会被拒绝。
+- raw pointer 不参与 safe borrow 证明；从 raw pointer 或 unchecked string path 派生的 borrowed return 会保守记录为
+  unknown 或在本地来源可定位时诊断本地借用逃逸。
 
 ### 5.5 数组和 slice
 
@@ -481,8 +524,38 @@ export c fn aurex_add(a: i32, b: i32) -> i32 {
 规则：
 
 - `@name("...")` 是函数声明前装饰器，用于指定 ABI symbol。
+- `@borrow(return = [...])` 也是函数声明前装饰器，用于声明 borrowed return 的来源。它可用于普通函数、原型、
+  `extern c` 函数、trait requirement 和 impl method。
 - variadic 只支持 `extern c` 函数。
 - C ABI 函数不支持泛型。
+
+Borrow contract 写法：
+
+```aurex
+@borrow(return = [value])
+fn view(value: &i32) -> &i32 {
+    return value;
+}
+
+trait Reader {
+    @borrow(return = [self])
+    fn item(self: &Self) -> &Self;
+}
+
+extern c {
+    @borrow(return = [static, unknown])
+    fn global_view() -> &i32;
+}
+```
+
+selector 规则：
+
+- selector 可以是参数名、`self`、`static` 或 `unknown`。
+- `self` 表示 receiver 来源；只有函数第一个参数命名为 `self` 时才有意义。
+- `static` 表示返回 borrowed view 来自静态存储。
+- `unknown` 表示外部或 unsafe 边界无法证明具体来源；它会保守影响调用方 lifetime/borrow facts。
+- selector 列表不能为空；重复 selector 或声明与函数体 summary 不一致时会诊断。
+- postfix decorator 会被解析但诊断；推荐始终把 `@name` / `@borrow` 写在函数声明之前。
 
 ### 6.8 Impl 和方法
 
@@ -508,7 +581,8 @@ impl Counter {
 - impl target 必须解析为 named struct、enum 或 opaque struct。
 - receiver 参数必须是第一个参数，并命名为 `self`。
 - 泛型 impl 支持 `impl[T] Box[T] { ... }` 这种 owner 泛型。
-- method-local 独立泛型目前不支持。
+- method-local 独立泛型已支持，例如 `fn id[U](self: &Box[T], value: U) -> U`。trait requirement
+  里的 method-local 泛型仍会被拒绝；trait 的泛型参数应写在 trait 自身或外层 impl 上。
 
 ## 7. 语句
 
@@ -946,14 +1020,49 @@ impl[T] Box[T] {
     fn get(self: &Box[T]) -> T {
         return self.value;
     }
+
+    fn echo[U](self: &Box[T], value: U) -> U {
+        return value;
+    }
+}
+
+fn view[origin data](value: &[data] i32) -> &[data] i32 {
+    return value;
+}
+
+fn pick[origin left, origin right](
+    left: &[left] i32,
+    right: &[right] i32,
+    choose_left: bool,
+) -> &[left | right] i32 {
+    return if choose_left { left } else { right };
 }
 ```
 
-`where` 当前支持内建非资源 capability 和 M5 nominal static trait predicate：
+泛型参数列表使用 `[]`，可以混合普通类型参数和上下文 `origin` 参数：
+
+```text
+GenericParams = "[" GenericParam ("," GenericParam)* ","? "]"
+GenericParam  = Identifier | "origin" Identifier
+```
+
+规则：
+
+- 普通 `Identifier` 声明类型参数。
+- `origin Identifier` 声明 lifetime/origin 参数，只能用于 reference origin qualifier，例如 `&[data] T`。
+- `origin` 是上下文标记，不是全局关键字。
+- 泛型参数列表不能为空；`fn f[]`、`struct Box[]`、`Box[]` 和 `id[](...)` 都会被拒绝。
+- inline bound 不支持；`fn f[T: Copy](...)` 会被拒绝，约束必须写在 `where` 子句。
+
+`where` 当前支持 compiler-owned builtin capability 和 nominal static trait predicate：
 
 ```aurex
 fn same[T](left: T, right: T) -> bool where T: Eq {
     return left == right;
+}
+
+fn duplicate[T](value: T) -> (T, T) where T: Copy {
+    return (value, value);
 }
 ```
 
@@ -963,6 +1072,7 @@ fn same[T](left: T, right: T) -> bool where T: Eq {
 - `Eq`
 - `Ord`
 - `Hash`
+- `Copy`
 - 用户定义 `trait`
 - 显式 `impl Trait for Type`
 - trait method requirement
@@ -999,7 +1109,7 @@ fn read_i32[T](value: &T) -> i32 where T: Source[Item = i32] {
 }
 ```
 
-M5 trait 规则：
+Trait 规则：
 
 - trait 是 nominal identity，不按方法形状做 structural conformance。
 - conformance 必须显式写成 `impl Trait for Type`。
@@ -1009,18 +1119,111 @@ M5 trait 规则：
 - 显式 override 必须在 `Self`、trait args 和 associated type output 替换后匹配 requirement 签名。
 - associated type 是 impl output，不作为 impl selection input。
 - `Self.Item` shorthand 只在当前 trait bounds 中 associated type 名称唯一或 equality 可归一化时使用。
+- `Copy` 是 compiler-owned capability，用资源语义分类判定；标量、raw pointer、reference、slice、函数指针和只含
+  `Copy` 组件的结构化类型可满足。generic parameter 只有显式 `where T: Copy` 后才按 `Copy` 使用。
+- `Drop` 仍不是用户可写 bound；`where T: Drop` 会被诊断为资源 capability 暂不支持。
 
 暂不支持：
 
 - const generic
 - trait object
-- `Copy` / `Drop` 资源能力
+- 用户 `Drop` bound、用户 destructor 语法和 custom destructor body lowering
 - generic associated type
 - associated const
 - specialization
 - `<T>` 风格泛型
 
-## 13. Unsafe 边界
+## 13. Borrow、lifetime 和资源语义
+
+当前 Aurex 已经有 safe reference、borrowed slice、`str` borrowed view、函数级 borrow summary、显式
+`@borrow` contract、显式 origin-qualified reference type、region facts、local loan checker 和 whole-local move
+analysis。它们是当前语言的一部分，但仍保持比 Rust 更窄的用户表面。
+
+### 13.1 Borrowed view 类型
+
+下列类型可以携带 borrow/lifetime 来源：
+
+- `&T` / `&mut T`
+- `&[origin] T` / `&mut [origin] T`
+- `[]const T` / `[]mut T`
+- `str`
+- 包含上述类型的 struct、enum、tuple、array、函数返回类型或 associated projection
+
+示例：
+
+```aurex
+struct View[origin data] {
+    item: &[data] i32;
+}
+
+@borrow(return = [value])
+fn identity(value: &i32) -> &i32 {
+    return value;
+}
+```
+
+函数体有定义时，编译器会收集 returned borrow origins。原型、extern C、trait requirement
+或 public borrowed-return 边界若无法从签名唯一推导来源，需要用显式 origin 或 `@borrow(return = [...])`
+把 contract 写清楚。
+
+### 13.2 Local loan checking
+
+编译器会按 CFG 收集 borrow action，并检查活跃 shared/mutable loan 与后续 read/write/move/drop/reinit/cleanup
+的冲突。
+
+```aurex
+fn bad[T](value: T) -> void {
+    let borrowed: &T = &value;
+    let consumed: T = value;  // move
+    inspect(borrowed);        // 诊断：borrowed carrier 在 move 后仍被使用
+}
+```
+
+当前 checker 支持：
+
+- shared borrow、mutable borrow、reborrow 和 two-phase mutable receiver auto-borrow facts。
+- projection-aware conflict：同一 place 或 prefix place 冲突；已知 disjoint struct field 可分开处理。
+- local/reinit/drop/cleanup invalidation；`defer` 和隐式 cleanup 都进入检查。
+- borrowed local/temporary escape 诊断；从 `strraw` raw pointer path 派生且能追踪到本地存储的 return 也会诊断。
+- 函数调用会使用 callee borrow summary 或 `@borrow` contract；函数值调用和未知外部来源保守记录 unknown。
+
+仍不支持或仍保守处理：
+
+- 完整 Rust-style lifetime surface 和 apostrophe lifetime 语法。
+- safe proof for raw pointer aliasing。
+- 用户 destructor syntax、custom destructor lowering 和完整 RAII user surface。
+- partial field move、indexed move-out、consuming pattern payload 和 non-`Copy` `?` payload transfer。
+- full Polonius Datalog、`dyn Trait`、async/generator borrow。
+
+### 13.3 Move、Copy 和 cleanup
+
+资源语义按 compiler-owned summary 分类：
+
+- `Copy`：可重复读取或按值复制。
+- `MoveOnly`：按值使用会 consume 原位置，之后使用原位置会诊断，除非重新初始化。
+- `Discard` / `MustConsume`：当前用户表面主要暴露 discard；must-consume 仍是后续方向。
+- `Trivial` / `NeedsDrop`：用于 compiler cleanup/drop-glue 规划。
+- `OwnedValue` / `BorrowedView` / `RawPointer`：区分拥有值、借用视图和 raw pointer。
+
+示例：
+
+```aurex
+fn duplicate[T](value: T) -> (T, T) where T: Copy {
+    return (value, value);
+}
+
+fn reinitialize[T](value: T, replacement: T) -> T {
+    var current: T = value;
+    let consumed: T = current;
+    current = replacement;
+    return current;
+}
+```
+
+`defer` 与 compiler cleanup 交错执行；`return`、`break`、`continue` 和 `?` early return 都会触发相应 cleanup
+路径。当前没有用户可写 destructor 语法，拥有型资源库仍需要手动 API 配合 `defer` 释放。
+
+## 14. Unsafe 边界
 
 需要 unsafe context 的操作：
 
@@ -1062,7 +1265,7 @@ fn call_raw(value: *const i32) -> i32 {
 }
 ```
 
-## 14. 当前明确不支持的语法
+## 15. 当前明确不支持的语法
 
 ```aurex
 *i32                 // pointer 必须写 *const / *mut
@@ -1076,12 +1279,14 @@ let () = value;
 foo::bar             // selector 不用 ::
 id::[i32](1)
 fn add[T: Add](a: T, b: T) -> T { return a; }
+trait Reader { fn read[T](self: &Self, value: T) -> i32; }
+where T: Drop
 for value in values {}
 text[0]              // str 不支持单 index
 value++              // 不支持自增
 ```
 
-## 15. 可直接运行的正则库案例
+## 16. 可直接运行的正则库案例
 
 仓库现在包含一个用当前 Aurex 语言写的多模块编译型正则库。它不是 `text`
 子模块，而是独立的 `regex` 模块目录：
@@ -1190,7 +1395,7 @@ fn main() -> i32 {
 - pattern、program、capture 和 VM workspace 都有显式上限，超出分别返回 `pattern_too_large`、`program_too_large`、`capture_too_large` 或 `workspace_too_large`。
 - 没有标准库 RAII，`compile` 得到的 `Regex` 必须手动 `destroy` 或 `defer destroy`；`Captures` 必须手动 `destroy_captures`。
 
-## 16. 内建函数测试位置
+## 17. 内建函数测试位置
 
 内建函数集中运行样例位于：
 

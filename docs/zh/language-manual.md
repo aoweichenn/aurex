@@ -1580,7 +1580,83 @@ fn bad[T](value: T) -> void {
 - partial field move、indexed move-out、consuming pattern payload 和 non-`Copy` `?` payload transfer。
 - full Polonius Datalog、`dyn Trait`、async/generator borrow。
 
-### 13.3 Move、Copy 和 cleanup
+### 13.3 当前借用权系统实现水平
+
+当前 Aurex 的借用权系统是一个窄表面、CFG-sensitive、safe-borrow-only 的语义分析系统。它已经接入函数体
+semantic analysis 主路径，并以 enforced diagnostic 方式报告错误；它不是只为 IDE 或 checked dump 记录 facts。
+
+实现分层如下：
+
+1. Typed expression 和 statement analysis 先确定类型、可写 place、调用绑定、receiver auto-borrow 和 `OwnedUseMode`。
+2. Move analysis 按 whole-local 数据流判定 `Copy` 读取、非 `Copy` consume、move 后使用和重新初始化。
+3. Body flow graph 把函数体展开成 CFG point、edge、place 和 action。action 包括 read、write、reinit、
+   move candidate、shared borrow、mutable borrow、call returned borrow、two-phase receiver reservation /
+   activation、return、cleanup scope 和 cleanup storage。
+4. Body loan checker 从 borrow action 生成 `shared` / `mutable` loan，计算 borrowed carrier 的 CFG last-use
+   liveness，并检查 active loan 与后续访问的冲突。
+5. Borrow summary 和 `@borrow` contract 把函数返回 borrowed view 的来源传递到调用方；调用方会把 returned
+   borrow 重新转成本地 loan。
+6. Lifetime analyzer 收集 origin/region、return region、storage escape、type-outlives 和 live-range facts，并对
+   return 来源、歧义 elision、本地逃逸和 type outlives 约束发诊断。
+7. Drop check 使用 body loan conflict、drop-glue plan 和 lifetime live ranges 检查 cleanup、overwrite、early
+   exit 和 dropck outlives 交互。
+
+当前已经强制检查的核心规则：
+
+- `&place` 创建 shared loan；`&mut place` 创建 mutable loan。
+- shared loan 活跃时允许读取和再次 shared borrow；禁止写入、reinit、move、drop、mutable borrow 和 cleanup。
+- mutable loan 活跃时按独占借用处理，会与后续 read/write/reinit/move/drop/shared borrow/mutable borrow/cleanup 冲突。
+- 短借用按 borrowed carrier 的 CFG last-use 结束；最后一次使用之后再写原 place 可以通过。
+- move candidate 只有在对应表达式的 `OwnedUseMode` 是 `owned_consume` 时才作为 move invalidation；普通
+  `Copy` 读取不会被误当成 move。
+- 函数调用返回 borrowed view 时，编译器会使用 callee borrow summary 或 `@borrow` contract，在调用点为返回值
+  发出本地 loan。
+- extern/prototype/unknown borrowed return 会走 conservative unknown path：返回值本身记录 unknown loan，并把可疑参数来源保守纳入检查。
+- slice、`strfromutf8` 和包含 reference/slice/`str` 的 struct、enum、tuple、array 会作为 borrow carrier 参与检查。
+- `defer`、scope cleanup、return、reinit/overwrite 和 drop-glue 相关 action 会进入 borrow/dropck 交互。
+
+当前 place 精度：
+
+| Place 形态 | 当前处理 |
+| --- | --- |
+| 不同 local root | 不冲突 |
+| 同一 local root | 冲突，除非已知 projection 不相交 |
+| struct field | 已知不同字段可以分开处理 |
+| prefix place | 冲突，例如借用 `value.field` 后写 `value` |
+| array index | 保守冲突；不证明 `values[0]` 和 `values[1]` 不相交 |
+| slice range | 保守冲突；不做区间 disjoint proof |
+| dereference / reborrow | 有 parent/child loan；复杂 alias 仍保守 |
+| qualified 或 unknown root | 保守处理 |
+| raw pointer | 不进入 safe borrow proof |
+
+当前 reborrow 和 two-phase 水平：
+
+- 对局部 borrowed carrier 的 reborrow 有 parent/child loan 模型。
+- child loan 活跃时使用 mutable parent carrier 会产生 reborrow parent-use conflict。
+- mutable receiver auto-borrow 有 two-phase reservation/activation；reservation 期间允许不破坏 receiver place 的读取，
+  activation 时执行 mutable borrow 冲突检查。
+- 这不是完整 Rust reborrow/lifetime subtyping；raw pointer reborrow、closure/generator 捕获和复杂跨函数 reborrow
+  proof 仍不属于当前能力。
+
+当前 lifetime/region 水平：
+
+- 支持 `origin name` 参数、origin-qualified reference、`@borrow(return = [...])` 和函数体 inferred summary。
+- 支持 parameter、self、static、explicit origin、local、temporary、unknown 等 region facts。
+- 支持 return origin subset、ambiguous elision、local/temporary escape 和 type-outlives diagnostics。
+- 当前求解不是 full Polonius Datalog；没有完整 origin subset closure、HRTB、variance 或 Rust-style apostrophe lifetime surface。
+
+当前 drop/cleanup 水平：
+
+- cleanup storage、reinit/overwrite、return early-exit 和 defer cleanup 都可以形成 dropck action。
+- body loan checker 已经报告的 drop/reinit/cleanup conflict 会进入 dropck facts。
+- dropck 会根据 active lifetime regions 为 drop-glue 相关类型生成 `T: outlives(region)` 约束。
+- 用户 destructor 语法、用户可写 `Drop` bound 和 custom destructor body lowering 仍不是当前语言能力。
+
+因此，Aurex 当前的借用权系统可描述为：已经可用的 CFG-sensitive local loan checker，带跨函数 borrowed-return
+summary/contract 传播，并与 whole-local move analysis、cleanup 和 dropck facts 协同；它还不是完整 Rust borrow checker
+复刻，也不提供 raw pointer alias safe proof、partial move、完整 lifetime generics 或用户级 RAII `Drop` surface。
+
+### 13.4 Move、Copy 和 cleanup
 
 资源语义按 compiler-owned summary 分类：
 

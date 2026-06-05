@@ -85,6 +85,10 @@ private:
     [[nodiscard]] TypeHandle projected_type(TypeHandle current, const BodyFlowPlaceProjection& projection) const;
     [[nodiscard]] std::optional<DropCheckActionKind> action_kind(BodyFlowActionKind kind) const noexcept;
     [[nodiscard]] const DropGlueCacheEntry& cached_drop_glue(TypeHandle type);
+    [[nodiscard]] const DropGlueStep* custom_destructor_step_for_type(
+        const DropGluePlan& plan, TypeHandle type) const noexcept;
+    [[nodiscard]] query::StableFingerprint128 destructor_key_for_plan(
+        TypeHandle type, const DropGluePlan& plan) const;
     [[nodiscard]] bool type_can_contain_borrow(TypeHandle type) const;
     [[nodiscard]] bool valid_type(TypeHandle type) const noexcept;
 

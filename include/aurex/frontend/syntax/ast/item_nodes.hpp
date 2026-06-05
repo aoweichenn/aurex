@@ -18,6 +18,7 @@ struct ParamDecl {
     TypeId type = INVALID_TYPE_ID;
     base::SourceRange range{};
     IdentId name_id = INVALID_IDENT_ID;
+    bool is_deinit = false;
 };
 
 enum class BorrowContractSelectorKind : base::u8 {

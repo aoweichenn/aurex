@@ -131,7 +131,7 @@ void SemanticAnalyzerCore::DropCheckAnalyzer::collect(const syntax::ItemNode& fu
         }
 
         const DropGlueCacheEntry& cache = this->cached_drop_glue(type);
-        const query::StableFingerprint128 destructor_key = cache.plan.fingerprint;
+        const query::StableFingerprint128 destructor_key = this->destructor_key_for_plan(type, cache.plan);
         this->append_drop_action(*kind, static_cast<base::u32>(action_index), action, type, destructor_key);
         if (drop_glue_plan_needs_drop(cache.plan)) {
             this->append_drop_fact(type, cache.plan);
@@ -495,6 +495,30 @@ SemanticAnalyzerCore::DropCheckAnalyzer::cached_drop_glue(const TypeHandle type)
     return inserted.first->second;
 }
 
+const DropGlueStep* SemanticAnalyzerCore::DropCheckAnalyzer::custom_destructor_step_for_type(
+    const DropGluePlan& plan, const TypeHandle type) const noexcept
+{
+    for (const DropGlueStep& step : plan.steps) {
+        if (step.kind == DropGlueStepKind::custom_destructor && step.owner_type.value == type.value
+            && step.value_type.value == type.value) {
+            return &step;
+        }
+    }
+    return nullptr;
+}
+
+query::StableFingerprint128 SemanticAnalyzerCore::DropCheckAnalyzer::destructor_key_for_plan(
+    const TypeHandle type, const DropGluePlan& plan) const
+{
+    if (this->custom_destructor_step_for_type(plan, type) != nullptr) {
+        const auto found = this->core_.state_.checked.destructors.find(type.value);
+        if (found != this->core_.state_.checked.destructors.end()) {
+            return found->second.fingerprint;
+        }
+    }
+    return plan.fingerprint;
+}
+
 bool SemanticAnalyzerCore::DropCheckAnalyzer::type_can_contain_borrow(const TypeHandle type) const
 {
     if (!this->valid_type(type)) {
@@ -597,9 +621,10 @@ void SemanticAnalyzerCore::DropCheckAnalyzer::append_drop_fact(const TypeHandle 
     }
     const base::usize index = this->facts_.facts.size();
     this->fact_by_type_.emplace(type.value, index);
+    const DropGlueStep* const custom_step = this->custom_destructor_step_for_type(plan, type);
     this->facts_.facts.push_back(DropCheckFact{
         .type = type,
-        .destructor_function = {},
+        .destructor_function = custom_step == nullptr ? FunctionLookupKey{} : custom_step->destructor_function,
         .required_outlives = {},
         .drop_glue_fingerprint = plan.fingerprint,
         .fingerprint = {},

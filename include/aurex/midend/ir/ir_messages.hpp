@@ -50,6 +50,8 @@ inline constexpr std::string_view IR_VERIFY_DROP_RESULT_VOID = "drop result must
 
 inline constexpr std::string_view IR_VERIFY_DROP_TARGET_TYPE = "drop target type mismatch";
 
+inline constexpr std::string_view IR_VERIFY_DROP_TARGET_MUTABLE = "drop target must be mutable";
+
 inline constexpr std::string_view IR_VERIFY_DROP_IF_CONDITION_BOOL = "conditional drop flag must be bool";
 
 inline constexpr std::string_view IR_VERIFY_CAST_RESULT_TARGET = "cast result type must match cast target type";

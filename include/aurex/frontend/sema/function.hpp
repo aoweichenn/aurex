@@ -38,6 +38,7 @@ struct FunctionSignature {
     bool has_self_param = false;
     bool is_trait_impl_method = false;
     bool is_trait_default_method_instance = false;
+    bool is_destructor = false;
     syntax::Visibility visibility = syntax::Visibility::public_;
     syntax::ItemId prototype_item = syntax::INVALID_ITEM_ID;
     syntax::ItemId definition_item = syntax::INVALID_ITEM_ID;

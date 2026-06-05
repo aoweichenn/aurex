@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace aurex::sema {
@@ -77,6 +78,7 @@ public:
 
 private:
     void build_indexes();
+    [[nodiscard]] bool has_custom_destructor(TypeHandle type) const noexcept;
     [[nodiscard]] const StructInfo* indexed_struct_info(TypeHandle type) const;
     [[nodiscard]] std::span<const TypeHandle> indexed_enum_payload_types(TypeHandle type) const;
     [[nodiscard]] std::optional<std::vector<TypeHandle>> structural_components(TypeHandle type) const;
@@ -86,6 +88,7 @@ private:
     StructuralComponentProvider structural_component_provider_;
     std::unordered_map<base::u32, const StructInfo*> struct_infos_by_type_;
     std::unordered_map<base::u32, std::vector<TypeHandle>> enum_payload_types_by_type_;
+    std::unordered_set<base::u32> custom_destructor_types_;
 };
 
 } // namespace aurex::sema

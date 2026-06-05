@@ -1,5 +1,6 @@
 #pragma once
 
+#include <aurex/frontend/sema/function.hpp>
 #include <aurex/frontend/sema/resource_semantics.hpp>
 #include <aurex/frontend/sema/type.hpp>
 #include <aurex/infrastructure/base/result.hpp>
@@ -13,13 +14,13 @@ namespace aurex::sema {
 struct CheckedModule;
 
 enum class DropGlueStepKind : base::u8 {
-    custom_destructor,
     struct_field,
     tuple_element,
     array_element,
     enum_payload,
     generic_value,
     opaque_value,
+    custom_destructor,
 };
 
 struct DropGlueStep {
@@ -28,6 +29,7 @@ struct DropGlueStep {
     TypeHandle value_type = INVALID_TYPE_HANDLE;
     base::u32 ordinal = 0;
     ResourceSemanticsSummary resource;
+    FunctionLookupKey destructor_function;
 };
 
 struct DropGluePlan {

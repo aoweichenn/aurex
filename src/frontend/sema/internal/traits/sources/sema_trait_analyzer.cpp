@@ -24,6 +24,7 @@ constexpr std::string_view SEMA_TRAIT_DEFAULT_INSTANCE_KEY_PREFIX = "trait_defau
 constexpr std::string_view SEMA_TRAIT_DEFAULT_INSTANCE_STABLE_PREFIX = "trait-default:";
 constexpr std::string_view SEMA_TRAIT_DEFAULT_OVERRIDE_SIGNATURE_NOTE =
     "trait method has a default body, but an explicit override must still match the requirement signature";
+constexpr std::string_view SEMA_RESERVED_DROP_TRAIT_NAME = "Drop";
 constexpr base::usize SEMA_TRAIT_SUBSTITUTION_STACK_INITIAL_CAPACITY = 8;
 constexpr std::string_view SEMA_TRAIT_PREDICATE_ID_CONTEXT = "semantic trait predicate id";
 constexpr base::u64 SEMA_TRAIT_IMPL_COHERENCE_KEY_MARKER = 0x53454d4154524348ULL;
@@ -354,6 +355,10 @@ void SemanticAnalyzerCore::TraitAnalyzer::mark_trait_requirements(const syntax::
 void SemanticAnalyzerCore::TraitAnalyzer::register_trait_name(
     const syntax::ItemNode& item, const syntax::ItemId item_id)
 {
+    if (item.name == SEMA_RESERVED_DROP_TRAIT_NAME) {
+        this->core_.report_general(item.range, std::string(SEMA_DROP_TRAIT_RESERVED));
+        return;
+    }
     this->mark_trait_requirements(item);
     const syntax::ModuleId owner = this->core_.item_module(item_id);
     const ModuleLookupKey key = this->core_.module_lookup_key(owner, item.name_id);
@@ -2042,6 +2047,9 @@ void SemanticAnalyzerCore::TraitAnalyzer::validate_trait_impls()
     for (base::u32 item_index = 0; item_index < this->core_.ctx_.module.items.size(); ++item_index) {
         const syntax::ItemNode item = this->core_.ctx_.module.items[item_index];
         if (item.kind == syntax::ItemKind::impl_block && syntax::is_valid(item.trait_type)) {
+            if (this->core_.is_destructor_impl_block(item)) {
+                continue;
+            }
             this->validate_trait_impl_block(item, syntax::ItemId{item_index});
         }
     }

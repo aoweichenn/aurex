@@ -1240,6 +1240,9 @@ void recover_resolved_fragment_source_part(
         label << ": " << checked.types.display_name(type);
         const sema::ResourceSemanticsSummary resource = sema::ResourceSemanticsClassifier(checked).classify(type);
         label << IDE_DETAIL_RESOURCE_SEPARATOR << sema::resource_semantics_debug_string(resource);
+        if (checked.destructors.contains(type.value)) {
+            label << " destructor=custom";
+        }
     }
     return label.str();
 }

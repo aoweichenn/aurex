@@ -56,6 +56,11 @@ storage escape 且 body 有候选 non-name assignment 时作为窄 fallback guar
 storage escape `sema.analyze` 3-run median 500/1000/2000/4000 条为 50.701 / 100.202 / 204.232 / 419.745 ms；
 `gprof` 确认旧的 `BodyLoanSolver::expr_result_contains_loan` 二次热点已消失。
 
+M7d-C 当前实现状态：窄 RAII user surface 已完成。`impl Drop for T { fn drop(self: deinit T) -> void { ... } }`
+进入 parser/AST、reserved sema surface、`CheckedModule::destructors`、checked dump、resource classifier、
+drop-glue、dropck、query authority、IR verifier 和 IDE hover。当前只声明 semantic/checking/tooling closure；
+backend custom destructor call lowering 尚未实现，真实运行时释放副作用仍需显式 release API 或 `defer`。
+
 M7 hardening performance closure 也已完成，记录在
 [M7 Hardening Performance Closure](m7-hardening-performance-closure.md)。当前新增 statement control-flow query
 cache、body-loan precheck 单次表达式遍历、`NormalizedAstOverlay` `u64` 计数和 `tools/m7_hardening_perf.py`。
@@ -77,7 +82,8 @@ M7c/M7d 后续实现按六个大块推进：
 5. M7d-B：struct field 子集已完成。本地 owned struct field partial move/reinit、字段级 cleanup/drop flag、
    generic side-table body-flow 类型读取和 lowering 字段 drop flag 已落地；tuple partial move、indexed move-out、
    borrowed/reference field overwrite、replace/take/swap compiler-known primitives 仍是后续项。
-6. M7d-C：收口 RAII user surface、Drop/deinit 语义、IDE/tooling projection、IR verifier 和 release gates。
+6. M7d-C：已完成。窄 `Drop` / `deinit` semantic surface、IDE/tooling projection、IR verifier 和 release gates
+   已接入；backend custom destructor call lowering 仍是后续独立实现包。
 
 实现架构必须低耦合：lifetime fact collector、region solver、enforcer、dropck facts、place-state analyzer、RAII surface
 checker 和 tooling adapter 分模块维护；`src/sema/internal/` 只能作为 private implementation root，下面不再直接新增文件，
@@ -106,8 +112,14 @@ destructor body identity、stable drop-glue key、target-independent drop-glue p
 generic parameter hover fallback、LSP stdio server 入口和 release documentation closure。
 
 M7 继续以 M6 cleanup 和 resource facts 为输入，增加 loan origin、projection-aware access conflict、
-borrowed-return contract 和 lifetime surface。用户 destructor syntax、custom destructor lowering、
-aggregate rollback codegen 和完整 Rust-style lifetime surface 仍不属于 M7a 第一批落地范围。
+borrowed-return contract 和 lifetime surface。M7d-C 已补上窄 `impl Drop` / `deinit` semantic surface；
+backend custom destructor call lowering、aggregate rollback codegen 和完整 Rust-style lifetime surface 仍是后续
+独立工作。
+
+M7d-C 之后最直接的工程入口是 RAII runtime lowering：从 checked `DestructorInfo` 和 drop-glue
+`custom_destructor` step 出发，在 IR lowering 中生成稳定 direct call 或专用 drop-call node，再让 LLVM backend
+按 ABI 发出实际 destructor call，并补齐执行顺序、嵌套 structural drop、异常/early-exit 策略、样例和 execution tests。
+另一个并行候选是标准库级拥有型资源封装，但它应建立在 runtime lowering 可执行之后。
 
 ## 已收口背景：Post-M5 Design Selection
 

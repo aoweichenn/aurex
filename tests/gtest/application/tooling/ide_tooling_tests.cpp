@@ -788,6 +788,29 @@ TEST(CoreUnit, IdeToolingHoverExposesMoveOnlyNeedsDropResources)
     EXPECT_NE(hover->label.find("resource=MoveOnly/Discard/NeedsDrop/OwnedValue"), std::string::npos) << hover->label;
 }
 
+TEST(CoreUnit, IdeToolingHoverMarksCustomDestructorResources)
+{
+    constexpr std::string_view SOURCE = "module ide.drop_resource;\n"
+                                        "struct File { fd: i32; }\n"
+                                        "impl Drop for File {\n"
+                                        "  fn drop(self: deinit File) -> void {}\n"
+                                        "}\n"
+                                        "fn use_file(value: File) -> void {}\n"
+                                        "fn main() -> void {}\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(SOURCE));
+    ASSERT_TRUE(snapshot.checked_semantics);
+    EXPECT_FALSE(snapshot.has_errors);
+
+    const base::usize value_offset = SOURCE.find("value: File");
+    ASSERT_NE(value_offset, std::string_view::npos);
+    const std::optional<tooling::IdeHoverInfo> hover = tooling::hover_at_offset(snapshot, value_offset);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_NE(hover->label.find("identifier `value` -> parameter"), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("resource=MoveOnly/Discard/NeedsDrop/OwnedValue"), std::string::npos)
+        << hover->label;
+    EXPECT_NE(hover->label.find("destructor=custom"), std::string::npos) << hover->label;
+}
+
 TEST(CoreUnit, IdeToolingServesCompletionSemanticTokensAndInlayHints)
 {
     const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(IDE_TOOLING_SOURCE));

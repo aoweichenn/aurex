@@ -617,7 +617,9 @@ impl Drop for File {
 - destructor 中不能显式调用导致同一 object 递归 drop 的 API，第一版用保守诊断限制。
 - destructor 不能 fail unless language 后续有明确 unwind/abort cleanup 模型；M7d 第一版按 non-throwing/drop-no-fail 设计。
 
-如果现有语法暂不适合引入 `deinit`，实现可先只做 internal destructor body identity 和 dropck facts，用户表面放到 M7d-B。
+当前 M7d-C 已采用该窄 surface：`deinit` 是参数冒号后的 contextual 修饰符，只在 Drop self 参数位置有语义；
+`Drop` 是 compiler-owned reserved destructor surface，不作为普通用户 trait 或 generic bound 暴露。backend custom
+destructor call lowering 仍未完成，因此该阶段先收口 semantic/checking/tooling facts。
 
 ### 6.3 Dropck facts
 
@@ -803,10 +805,18 @@ M7c/M7d 不承诺“一次超过 Rust 所有功能”，但可以在几个核心
 
 交付：
 
-- `Drop` / `deinit self` 或等价 destructor surface。
-- docs/language manual/examples。
-- IDE hover 显示 resource/drop/lifetime facts。
-- IR verifier 和 query authority 收口。
+- 已完成：`Drop` / `deinit self` 窄 destructor surface，语法为
+  `impl Drop for T { fn drop(self: deinit T) -> void { ... } }`。
+- 已完成：`Drop` reserved surface 诊断，拒绝 `trait Drop`、qualified/type-arg Drop surface、generic Drop impl、
+  associated type、额外方法、borrow contract、unsafe/extern/export/variadic Drop method 和非法 self/return type。
+- 已完成：`CheckedModule::destructors`、`FunctionSignature::is_destructor`、checked dump、clone/copy 和 stable
+  fingerprint。
+- 已完成：resource classifier、drop-glue `custom_destructor` step、dropck destructor facts、query authority 和
+  IDE hover `destructor=custom`。
+- 已完成：IR verifier 对 immutable drop target 的拒绝。
+- 已完成：docs/language manual/version/progress/next-steps 更新。
+- 未完成：backend custom destructor call lowering；当前 `drop` / `drop_if` 仍是 backend cleanup marker。
+- 未完成：用户可写 `Drop` bound、generic Drop impl、trait-object Drop dispatch、async/unwind-aware drop 和标准库拥有型资源封装。
 
 验收：
 

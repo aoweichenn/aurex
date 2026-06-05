@@ -191,6 +191,11 @@ ResourceSemanticsClassifier::ResourceSemanticsClassifier(const CheckedModule& ch
 
 void ResourceSemanticsClassifier::build_indexes()
 {
+    this->custom_destructor_types_.reserve(this->checked_.destructors.size());
+    for (const auto& entry : this->checked_.destructors) {
+        this->custom_destructor_types_.insert(entry.first);
+    }
+
     this->struct_infos_by_type_.reserve(this->checked_.structs.size());
     for (const auto& entry : this->checked_.structs) {
         if (is_valid(entry.second.type)) {
@@ -206,6 +211,11 @@ void ResourceSemanticsClassifier::build_indexes()
         std::vector<TypeHandle>& payload_types = this->enum_payload_types_by_type_[enum_case.type.value];
         payload_types.insert(payload_types.end(), enum_case.payload_types.begin(), enum_case.payload_types.end());
     }
+}
+
+bool ResourceSemanticsClassifier::has_custom_destructor(const TypeHandle type) const noexcept
+{
+    return is_valid(type) && this->custom_destructor_types_.contains(type.value);
 }
 
 const StructInfo* ResourceSemanticsClassifier::indexed_struct_info(const TypeHandle type) const
@@ -271,6 +281,9 @@ ResourceSemanticsSummary ResourceSemanticsClassifier::classify(const TypeHandle 
     if (!is_valid(type) || type.value >= this->checked_.types.size()) {
         return conservative_owned_summary();
     }
+    if (this->has_custom_destructor(type)) {
+        return conservative_owned_summary();
+    }
     const TypeInfo& root_info = this->checked_.types.get(type);
     if (!is_structural_type(root_info)) {
         ResourceSemanticsSummary summary = classify_leaf(root_info);
@@ -295,6 +308,11 @@ ResourceSemanticsSummary ResourceSemanticsClassifier::classify(const TypeHandle 
         }
         const TypeInfo& info = this->checked_.types.get(frame.type);
         if (frame.stage == ClassificationFrameStage::enter) {
+            if (this->has_custom_destructor(frame.type)) {
+                completed.emplace(frame.type.value, conservative_owned_summary());
+                stack.pop_back();
+                continue;
+            }
             if (!is_structural_type(info)) {
                 ResourceSemanticsSummary summary = classify_leaf(info);
                 if (info.kind == TypeKind::generic_param && this->generic_copy_predicate_

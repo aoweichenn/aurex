@@ -78,6 +78,44 @@ inline constexpr std::string_view SEMA_TRAIT_IMPL_GENERIC_UNSUPPORTED =
 inline constexpr std::string_view SEMA_ASSOCIATED_TYPE_GENERIC_UNSUPPORTED =
     "generic associated types are not supported by M4-WP6 semantic analysis";
 
+inline constexpr std::string_view SEMA_DROP_TRAIT_RESERVED =
+    "Drop is a reserved destructor trait and cannot be declared by user code";
+
+inline constexpr std::string_view SEMA_DROP_IMPL_TRAIT_SURFACE =
+    "Drop impl must use unqualified Drop without type arguments";
+
+inline constexpr std::string_view SEMA_DROP_IMPL_GENERIC_UNSUPPORTED =
+    "generic Drop impl blocks are not supported";
+
+inline constexpr std::string_view SEMA_DROP_IMPL_TARGET =
+    "Drop impl target must be a named struct, enum, or opaque struct";
+
+inline constexpr std::string_view SEMA_DROP_IMPL_DUPLICATE = "duplicate Drop impl for type";
+
+inline constexpr std::string_view SEMA_DROP_IMPL_METHOD_REQUIRED = "Drop impl must define fn drop";
+
+inline constexpr std::string_view SEMA_DROP_IMPL_SINGLE_METHOD = "Drop impl must define exactly one method";
+
+inline constexpr std::string_view SEMA_DROP_METHOD_NAME = "Drop impl method must be named drop";
+
+inline constexpr std::string_view SEMA_DROP_METHOD_SIGNATURE =
+    "Drop method signature must be fn drop(self: deinit T) -> void";
+
+inline constexpr std::string_view SEMA_DROP_METHOD_SELF_DEINIT = "Drop method self parameter must be marked deinit";
+
+inline constexpr std::string_view SEMA_DROP_METHOD_SELF_TYPE =
+    "Drop method self parameter must be the impl type by value";
+
+inline constexpr std::string_view SEMA_DROP_METHOD_RETURN_VOID = "Drop method must explicitly return void";
+
+inline constexpr std::string_view SEMA_DROP_METHOD_BODY_REQUIRED = "Drop method must have a body";
+
+inline constexpr std::string_view SEMA_DROP_METHOD_BORROW_CONTRACT_UNSUPPORTED =
+    "borrow contracts are not supported on Drop methods";
+
+inline constexpr std::string_view SEMA_DROP_ASSOCIATED_TYPE_UNSUPPORTED =
+    "associated types are not supported in Drop impls";
+
 inline constexpr std::string_view SEMA_C_ABI_RETURN_TYPE_EXPLICIT = "C ABI function return type must be explicit";
 
 inline constexpr std::string_view SEMA_PROTOTYPE_RETURN_TYPE_EXPLICIT =

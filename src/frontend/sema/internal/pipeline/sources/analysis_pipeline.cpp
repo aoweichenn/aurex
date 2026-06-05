@@ -304,6 +304,7 @@ void SemanticAnalysisPipeline::run_declaration_phases()
     this->core_.analyze_struct_properties();
     this->core_.register_trait_signatures();
     this->core_.register_value_names();
+    this->core_.validate_destructor_impls();
     this->core_.validate_trait_impls();
     this->core_.validate_module_namespace_conflicts();
     this->core_.validate_function_prototypes();

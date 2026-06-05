@@ -18,6 +18,8 @@ struct TypeCheckBodyAuthority;
 
 namespace aurex::sema {
 
+struct CheckedModule;
+
 using CNameIdSet = SemaSet<IdentId, IdentIdHash>;
 using SemaTypeTable = SemaVector<TypeHandle>;
 using SemaIdentTable = SemaVector<IdentId>;
@@ -656,6 +658,17 @@ struct FunctionDropCheckFacts {
     base::u32 part_index = 0;
 };
 
+struct DestructorInfo {
+    syntax::ModuleId module = syntax::INVALID_MODULE_ID;
+    syntax::ItemId impl_item = syntax::INVALID_ITEM_ID;
+    syntax::ItemId method_item = syntax::INVALID_ITEM_ID;
+    TypeHandle self_type = INVALID_TYPE_HANDLE;
+    FunctionLookupKey function_key;
+    base::SourceRange range{};
+    query::StableFingerprint128 fingerprint;
+    base::u32 part_index = 0;
+};
+
 struct TypeLifetimeInfo {
     TypeHandle type = INVALID_TYPE_HANDLE;
     std::vector<InternedText> origin_names;
@@ -740,6 +753,7 @@ using TypeLifetimeInfoList = SemaVector<TypeLifetimeInfo>;
 using GenericLifetimePredicateList = SemaVector<GenericLifetimePredicate>;
 using FunctionLifetimeFactsMap = SemaMap<FunctionLookupKey, FunctionLifetimeFacts, FunctionLookupKeyHash>;
 using FunctionDropCheckFactsMap = SemaMap<FunctionLookupKey, FunctionDropCheckFacts, FunctionLookupKeyHash>;
+using CheckedDestructorMap = SemaMap<base::u32, DestructorInfo>;
 using ParamEnvList = SemaVector<ParamEnvInfo>;
 
 enum class BodyFlowPointKind : base::u8 {
@@ -1062,6 +1076,8 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
 [[nodiscard]] query::StableFingerprint128 drop_check_fact_fingerprint(const DropCheckFact& fact) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_drop_check_facts_fingerprint(
     const FunctionDropCheckFacts& facts) noexcept;
+[[nodiscard]] query::StableFingerprint128 destructor_info_fingerprint(const DestructorInfo& info) noexcept;
+[[nodiscard]] query::StableFingerprint128 checked_destructors_fingerprint(const CheckedModule& checked) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_place_state_facts_fingerprint(
     const FunctionPlaceStateFacts& facts) noexcept;
 [[nodiscard]] std::string dump_function_lifetime_facts(const FunctionLifetimeFacts& facts);
@@ -1402,6 +1418,7 @@ public:
     GenericLifetimePredicateList generic_lifetime_predicates;
     FunctionLifetimeFactsMap lifetime_facts;
     FunctionDropCheckFactsMap dropck_facts;
+    CheckedDestructorMap destructors;
     BodyFlowGraphMap body_flow_graphs;
     FunctionPlaceStateFactsMap place_state_facts;
     BodyLoanCheckResultMap body_loan_checks;
@@ -1469,6 +1486,7 @@ public:
     [[nodiscard]] FunctionSignature clone_function_signature(const FunctionSignature& other);
     [[nodiscard]] FunctionLifetimeFacts clone_function_lifetime_facts(const FunctionLifetimeFacts& other);
     [[nodiscard]] FunctionDropCheckFacts clone_function_drop_check_facts(const FunctionDropCheckFacts& other);
+    [[nodiscard]] DestructorInfo clone_destructor_info(const DestructorInfo& other) const;
     [[nodiscard]] FunctionPlaceStateFacts clone_function_place_state_facts(const FunctionPlaceStateFacts& other);
     [[nodiscard]] StructInfo clone_struct_info(const StructInfo& other);
     [[nodiscard]] EnumCaseInfo clone_enum_case_info(const EnumCaseInfo& other);

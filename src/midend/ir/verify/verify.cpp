@@ -559,6 +559,11 @@ private:
             sema::is_valid(target) && !this->module_.types.same(target, value.target_type)) {
             this->fail(std::string(IR_VERIFY_DROP_TARGET_TYPE));
         }
+        if (const Value* object = this->get(value.object); object != nullptr
+            && (this->module_.types.is_pointer(object->type) || this->module_.types.is_reference(object->type))
+            && this->module_.types.get(object->type).pointer_mutability != sema::PointerMutability::mut) {
+            this->fail(std::string(IR_VERIFY_DROP_TARGET_MUTABLE));
+        }
         if (conditional) {
             this->verify_value_type(value.lhs, this->module_.types.builtin(sema::BuiltinType::bool_), "drop flag");
         }

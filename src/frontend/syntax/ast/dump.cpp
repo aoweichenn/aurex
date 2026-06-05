@@ -1242,7 +1242,11 @@ void dump_item(std::ostringstream& out, const AstModule& module, const ItemId id
     }
     for (const ParamDecl& param : item.params) {
         indent(out, depth + 1);
-        out << "param " << param.name << " : " << type_label(module, param.type) << "\n";
+        out << "param " << param.name << " : ";
+        if (param.is_deinit) {
+            out << "deinit ";
+        }
+        out << type_label(module, param.type) << "\n";
     }
     if (is_valid(item.return_type)) {
         indent(out, depth + 1);

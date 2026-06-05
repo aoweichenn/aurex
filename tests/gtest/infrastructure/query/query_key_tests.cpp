@@ -3337,6 +3337,12 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
     lifetime_changed_authority.lifetime_fingerprint = query::stable_fingerprint("query-test-lifetime-facts");
     EXPECT_NE(query::type_check_body_result_fingerprint(lifetime_changed_authority), output->result);
 
+    query::TypeCheckBodyAuthority destructor_changed_authority = subject.type_check_authority;
+    destructor_changed_authority.has_destructor_facts = true;
+    destructor_changed_authority.destructor_count = 1;
+    destructor_changed_authority.destructor_fingerprint = query::stable_fingerprint("query-test-destructors");
+    EXPECT_NE(query::type_check_body_result_fingerprint(destructor_changed_authority), output->result);
+
     query::TypeCheckBodyAuthority invalid_type_authority = subject.type_check_authority;
     invalid_type_authority.checked_body = {};
     query::TypeCheckBodyAuthority invalid_body_syntax_authority = subject.type_check_authority;

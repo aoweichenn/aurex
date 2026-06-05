@@ -110,6 +110,7 @@ public:
     class PatternMatchAnalyzer;
     class PlaceStateAnalyzer;
     class ProjectionAggregateExpressionAnalyzer;
+    class RaiiAnalyzer;
     class StatementAnalyzer;
     class TraitAnalyzer;
 
@@ -576,8 +577,10 @@ public:
     void register_type_names();
     void register_trait_name(const syntax::ItemNode& item, syntax::ItemId item_id);
     void register_trait_signatures();
+    void validate_destructor_impls();
     void validate_trait_impls();
     void validate_trait_impl_borrow_contracts();
+    [[nodiscard]] bool is_destructor_impl_block(const syntax::ItemNode& item) const;
     void analyze_trait_default_method_bodies();
     [[nodiscard]] bool is_trait_requirement_item(syntax::ItemId item) const;
     void register_generic_template(const syntax::ItemNode& item, syntax::ItemId item_id);

@@ -183,6 +183,213 @@ TEST(CoreUnit, TraitSemaRegistryRecordsTraitAndImplFacts)
     EXPECT_EQ(moved.trait_impls.begin()->second.methods.front().name, "read");
 }
 
+TEST(CoreUnit, DropSemaRegistersReservedDestructorImpl)
+{
+    const std::string_view source = "module drop_valid_whitebox;\n"
+                                    "struct File { fd: i32; }\n"
+                                    "fn observe(value: i32) -> void {}\n"
+                                    "impl Drop for File {\n"
+                                    "  fn drop(self: deinit File) -> void { observe(self.fd); }\n"
+                                    "}\n"
+                                    "fn main() -> void {}\n";
+
+    const TraitAnalysisWithAst analysis = analyze_trait_source_with_ast(source);
+    const sema::CheckedModule& checked = analysis.checked;
+    ASSERT_EQ(checked.destructors.size(), 1U);
+    EXPECT_TRUE(checked.traits.empty());
+    EXPECT_TRUE(checked.trait_impls.empty());
+
+    const sema::DestructorInfo& destructor = checked.destructors.begin()->second;
+    EXPECT_EQ(checked.types.display_name(destructor.self_type), "drop_valid_whitebox.File");
+    ASSERT_TRUE(syntax::is_valid(destructor.impl_item));
+    ASSERT_TRUE(syntax::is_valid(destructor.method_item));
+    ASSERT_LT(destructor.impl_item.value, analysis.module.items.size());
+    ASSERT_LT(destructor.method_item.value, analysis.module.items.size());
+    const syntax::ItemNode impl_item = analysis.module.items[destructor.impl_item.value];
+    const syntax::ItemNode method_item = analysis.module.items[destructor.method_item.value];
+    ASSERT_EQ(impl_item.kind, syntax::ItemKind::impl_block);
+    ASSERT_EQ(method_item.kind, syntax::ItemKind::fn_decl);
+    EXPECT_EQ(method_item.name, "drop");
+    bool impl_contains_method = false;
+    for (const syntax::ItemId impl_child : impl_item.impl_items) {
+        impl_contains_method = impl_contains_method || impl_child.value == destructor.method_item.value;
+    }
+    EXPECT_TRUE(impl_contains_method);
+    EXPECT_NE(destructor.fingerprint.byte_count, 0U);
+
+    const auto function = checked.functions.find(destructor.function_key);
+    ASSERT_NE(function, checked.functions.end());
+    EXPECT_TRUE(function->second.is_destructor);
+    EXPECT_EQ(function->second.name, "drop");
+    ASSERT_EQ(function->second.param_types.size(), 1U);
+    EXPECT_TRUE(checked.types.same(function->second.param_types.front(), destructor.self_type));
+    EXPECT_TRUE(checked.types.is_void(function->second.return_type));
+
+    const std::string dump = sema::dump_checked_module(checked);
+    expect_contains_all(dump,
+        {
+            "traits 0",
+            "trait_impls 0",
+            "destructors 1",
+            "destructor drop_valid_whitebox.File ->",
+            "fn method drop_valid_whitebox.File.drop -> void",
+            "destructor",
+        });
+
+    sema::CheckedModule copied = checked;
+    ASSERT_EQ(copied.destructors.size(), 1U);
+    EXPECT_EQ(copied.destructors.begin()->second.fingerprint, destructor.fingerprint);
+    EXPECT_EQ(sema::checked_destructors_fingerprint(copied), sema::checked_destructors_fingerprint(checked));
+}
+
+TEST(CoreUnit, DropSemaRejectsUnsupportedDestructorSurfaces)
+{
+    const std::vector<std::pair<std::string_view, std::string_view>> cases{
+        {
+            "module drop_reserved_trait_whitebox;\n"
+            "trait Drop {}\n"
+            "fn main() -> void {}\n",
+            "Drop is a reserved destructor trait and cannot be declared by user code",
+        },
+        {
+            "module drop_missing_deinit_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "impl Drop for File {\n"
+            "  fn drop(self: File) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "Drop method self parameter must be marked deinit",
+        },
+        {
+            "module drop_wrong_self_name_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "impl Drop for File {\n"
+            "  fn drop(value: deinit File) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "Drop method signature must be fn drop(self: deinit T) -> void",
+        },
+        {
+            "module drop_pointer_self_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "impl Drop for File {\n"
+            "  fn drop(self: deinit *mut File) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "Drop method self parameter must be the impl type by value",
+        },
+        {
+            "module drop_wrong_self_type_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "struct Other { fd: i32; }\n"
+            "impl Drop for File {\n"
+            "  fn drop(self: deinit Other) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "Drop method self parameter must be the impl type by value",
+        },
+        {
+            "module drop_nonvoid_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "impl Drop for File {\n"
+            "  fn drop(self: deinit File) -> i32 { return 0; }\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "Drop method must explicitly return void",
+        },
+        {
+            "module drop_duplicate_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "impl Drop for File {\n"
+            "  fn drop(self: deinit File) -> void {}\n"
+            "}\n"
+            "impl Drop for File {\n"
+            "  fn drop(self: deinit File) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "duplicate Drop impl for type",
+        },
+        {
+            "module drop_generic_impl_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "impl[T] Drop for File {\n"
+            "  fn drop(self: deinit File) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "generic Drop impl blocks are not supported",
+        },
+        {
+            "module drop_associated_type_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "impl Drop for File {\n"
+            "  type Item = i32;\n"
+            "  fn drop(self: deinit File) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "associated types are not supported in Drop impls",
+        },
+        {
+            "module drop_extra_method_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "impl Drop for File {\n"
+            "  fn drop(self: deinit File) -> void {}\n"
+            "  fn close(self: File) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "Drop impl must define exactly one method",
+        },
+        {
+            "module drop_wrong_method_name_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "impl Drop for File {\n"
+            "  fn close(self: deinit File) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "Drop impl method must be named drop",
+        },
+        {
+            "module drop_borrow_contract_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "impl Drop for File {\n"
+            "  @borrow(return = [self])\n"
+            "  fn drop(self: deinit File) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "borrow contracts are not supported on Drop methods",
+        },
+        {
+            "module drop_scoped_surface_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "impl pkg.Drop for File {\n"
+            "  fn drop(self: deinit File) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "Drop impl must use unqualified Drop without type arguments",
+        },
+        {
+            "module drop_type_args_surface_whitebox;\n"
+            "struct File { fd: i32; }\n"
+            "impl Drop[i32] for File {\n"
+            "  fn drop(self: deinit File) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "Drop impl must use unqualified Drop without type arguments",
+        },
+        {
+            "module drop_builtin_target_whitebox;\n"
+            "impl Drop for i32 {\n"
+            "  fn drop(self: deinit i32) -> void {}\n"
+            "}\n"
+            "fn main() -> void {}\n",
+            "Drop impl target must be a named struct, enum, or opaque struct",
+        },
+    };
+
+    for (const auto& [source, diagnostic] : cases) {
+        expect_trait_source_diagnostic(source, diagnostic);
+    }
+}
+
 TEST(CoreUnit, BorrowContractSemaRecordsDeclaredAndInferredFacts)
 {
     const std::string_view source = "module borrow_contract_facts;\n"

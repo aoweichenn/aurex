@@ -1,6 +1,33 @@
 #include <gtest/frontend/sema/sema_whitebox_test_support.hpp>
 
 namespace aurex::test {
+namespace {
+
+[[nodiscard]] sema::DestructorInfo add_custom_destructor_info(sema::SemanticAnalyzerCore& analyzer,
+    const ModuleId module, const std::string_view function_name, const TypeHandle type,
+    const base::u32 part_index = 0)
+{
+    sema::CheckedModule& checked = analyzer.state_.checked;
+    const TypeHandle void_type = checked.types.builtin(BuiltinType::void_);
+    FunctionSignature signature =
+        function_signature(function_name, module, void_type, intern_identifier(analyzer, function_name), checked);
+    signature.param_types = {type};
+    signature.has_definition = true;
+    signature.is_destructor = true;
+    signature.part_index = part_index;
+    const sema::FunctionLookupKey function = add_function(analyzer, std::move(signature));
+
+    sema::DestructorInfo info;
+    info.module = module;
+    info.self_type = type;
+    info.function_key = function;
+    info.part_index = part_index;
+    info.fingerprint = sema::destructor_info_fingerprint(info);
+    checked.destructors.emplace(type.value, info);
+    return info;
+}
+
+} // namespace
 
 TEST(CoreUnit, SemanticWhiteBoxResourceSemanticsClassifiesStructuralTypesAndFingerprints)
 {
@@ -30,6 +57,8 @@ TEST(CoreUnit, SemanticWhiteBoxResourceSemanticsClassifiesStructuralTypesAndFing
     const TypeHandle record = types.named_struct("resource_semantics.Record", "resource_semantics_Record", false);
     const TypeHandle empty_record =
         types.named_struct("resource_semantics.EmptyRecord", "resource_semantics_EmptyRecord", false);
+    const TypeHandle custom_empty_record =
+        types.named_struct("resource_semantics.CustomEmptyRecord", "resource_semantics_CustomEmptyRecord", false);
     const TypeHandle missing_record =
         types.named_struct("resource_semantics.MissingRecord", "resource_semantics_MissingRecord", false);
     const TypeHandle recursive_record =
@@ -63,8 +92,11 @@ TEST(CoreUnit, SemanticWhiteBoxResourceSemanticsClassifiesStructuralTypesAndFing
             {},
             syntax::Visibility::public_,
             {},
-        });
+    });
     static_cast<void>(add_struct_info(analyzer, module_id(0), "EmptyRecord", empty_record));
+    static_cast<void>(add_struct_info(analyzer, module_id(0), "CustomEmptyRecord", custom_empty_record));
+    static_cast<void>(
+        add_custom_destructor_info(analyzer, module_id(0), "drop_custom_empty_record", custom_empty_record));
     const StructInfo& recursive_record_info =
         add_struct_info(analyzer, module_id(0), "RecursiveRecord", recursive_record);
     const_cast<StructInfo&>(recursive_record_info)
@@ -166,6 +198,7 @@ TEST(CoreUnit, SemanticWhiteBoxResourceSemanticsClassifiesStructuralTypesAndFing
     EXPECT_EQ(resources.classify(invalid_tuple), conservative);
     EXPECT_EQ(resources.classify(record), conservative);
     EXPECT_EQ(resources.classify(empty_record), copy_owned);
+    EXPECT_EQ(resources.classify(custom_empty_record), conservative);
     EXPECT_EQ(resources.classify(missing_record), conservative);
     EXPECT_EQ(resources.classify(recursive_record), conservative);
     EXPECT_EQ(resources.classify(mutual_record_a), conservative);
@@ -286,6 +319,59 @@ TEST(CoreUnit, SemanticWhiteBoxDropGluePlansStructuralGenericAndOpaqueCleanup)
     EXPECT_TRUE(trivial_plan.value().steps.empty());
     EXPECT_FALSE(sema::build_drop_glue_plan(checked, INVALID_TYPE_HANDLE));
 }
+
+TEST(CoreUnit, SemanticWhiteBoxDropGlueEmitsCustomDestructorBeforeStructuralChildren)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"drop_glue_custom"})};
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    sema::CheckedModule& checked = analyzer.state_.checked;
+    sema::TypeTable& types = checked.types;
+    const sema::GenericParamIdentity param_identity = sema::generic_param_identity_from_text("drop_glue_custom.T");
+    const TypeHandle param = types.generic_param(param_identity, SEMA_TEST_GENERIC_PARAM_NAME);
+    const TypeHandle record = types.named_struct("drop_glue_custom.Record", "drop_glue_custom_Record", false);
+
+    const StructInfo& record_info = add_struct_info(analyzer, module_id(0), "Record", record);
+    const_cast<StructInfo&>(record_info)
+        .fields.push_back(StructFieldInfo{
+            checked.intern_text("owned"),
+            intern_identifier(analyzer, "owned"),
+            checked.intern_text("drop_glue_custom_Record_owned"),
+            module_id(0),
+            param,
+            {},
+            syntax::Visibility::public_,
+            {},
+        });
+    const sema::DestructorInfo destructor =
+        add_custom_destructor_info(analyzer, module_id(0), "drop_record", record);
+
+    base::Result<sema::DropGluePlan> plan = sema::build_drop_glue_plan(checked, record);
+    ASSERT_TRUE(plan) << plan.error().message;
+    EXPECT_TRUE(sema::drop_glue_plan_needs_drop(plan.value()));
+    ASSERT_EQ(plan.value().steps.size(), 3U);
+    EXPECT_EQ(plan.value().steps[0].kind, sema::DropGlueStepKind::custom_destructor);
+    EXPECT_EQ(plan.value().steps[0].owner_type.value, record.value);
+    EXPECT_EQ(plan.value().steps[0].value_type.value, record.value);
+    EXPECT_EQ(plan.value().steps[0].destructor_function, destructor.function_key);
+    EXPECT_TRUE(sema::resource_needs_drop(plan.value().steps[0].resource));
+    EXPECT_EQ(plan.value().steps[1].kind, sema::DropGlueStepKind::struct_field);
+    EXPECT_EQ(plan.value().steps[1].owner_type.value, record.value);
+    EXPECT_EQ(plan.value().steps[1].value_type.value, param.value);
+    EXPECT_EQ(plan.value().steps[1].destructor_function, sema::FunctionLookupKey{});
+    EXPECT_EQ(plan.value().steps[2].kind, sema::DropGlueStepKind::generic_value);
+    EXPECT_EQ(plan.value().steps[2].owner_type.value, param.value);
+
+    sema::CheckedModule structural_only = checked;
+    structural_only.destructors.clear();
+    base::Result<sema::DropGluePlan> structural_plan = sema::build_drop_glue_plan(structural_only, record);
+    ASSERT_TRUE(structural_plan) << structural_plan.error().message;
+    ASSERT_FALSE(structural_plan.value().steps.empty());
+    EXPECT_EQ(structural_plan.value().steps.front().kind, sema::DropGlueStepKind::struct_field);
+    EXPECT_NE(structural_plan.value().fingerprint, plan.value().fingerprint);
+}
+
 TEST(CoreUnit, SemanticWhiteBoxDropGlueCoversMissingRecursiveEnumAndInvalidEdges)
 {
     syntax::AstModule module;
@@ -689,6 +775,192 @@ TEST(CoreUnit, SemanticWhiteBoxDropCheckAnalyzerRecordsActionsOutlivesAndBorrowe
     EXPECT_NE(messages.find("drop check rejected dropping storage"), std::string::npos);
     EXPECT_EQ(messages.find("drop check rejected generic drop glue"), std::string::npos);
 }
+
+TEST(CoreUnit, SemanticWhiteBoxDropCheckAnalyzerUsesCustomDestructorFacts)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"dropck_custom"})};
+    const IdentId value_id = module.intern_identifier(SEMA_TEST_BODY_LOAN_VALUE_NAME);
+    const IdentId function_id = module.intern_identifier("dropck_custom_value");
+    const IdentId wrapper_value_id = module.intern_identifier("wrapper");
+    const IdentId wrapper_function_id = module.intern_identifier("dropck_custom_wrapper");
+    const TypeId record_type = module.push_type(named_node("Record"));
+    const TypeId wrapper_type = module.push_type(named_node("Wrapper"));
+
+    syntax::ParamDecl param_decl;
+    param_decl.name = SEMA_TEST_BODY_LOAN_VALUE_NAME;
+    param_decl.type = record_type;
+    param_decl.range = body_loan_test_range(0);
+    param_decl.name_id = value_id;
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "dropck_custom_value";
+    function.name_id = function_id;
+    function.params = {param_decl};
+
+    syntax::ParamDecl wrapper_param_decl;
+    wrapper_param_decl.name = "wrapper";
+    wrapper_param_decl.type = wrapper_type;
+    wrapper_param_decl.range = body_loan_test_range(3);
+    wrapper_param_decl.name_id = wrapper_value_id;
+    syntax::ItemNode wrapper_function;
+    wrapper_function.kind = syntax::ItemKind::fn_decl;
+    wrapper_function.name = "dropck_custom_wrapper";
+    wrapper_function.name_id = wrapper_function_id;
+    wrapper_function.params = {wrapper_param_decl};
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    sema::CheckedModule& checked = analyzer.state_.checked;
+    sema::TypeTable& types = checked.types;
+    const TypeHandle void_type = types.builtin(BuiltinType::void_);
+    const TypeHandle record = types.named_struct("dropck_custom.Record", "dropck_custom_Record", false);
+    const TypeHandle wrapper = types.named_struct("dropck_custom.Wrapper", "dropck_custom_Wrapper", false);
+    static_cast<void>(add_struct_info(analyzer, module_id(0), "Record", record));
+    const StructInfo& wrapper_info = add_struct_info(analyzer, module_id(0), "Wrapper", wrapper);
+    const_cast<StructInfo&>(wrapper_info)
+        .fields.push_back(StructFieldInfo{
+            checked.intern_text("inner"),
+            intern_identifier(analyzer, "inner"),
+            checked.intern_text("dropck_custom_Wrapper_inner"),
+            module_id(0),
+            record,
+            {},
+            syntax::Visibility::public_,
+            {},
+        });
+    const sema::DestructorInfo destructor =
+        add_custom_destructor_info(analyzer, module_id(0), "drop_record", record);
+    const sema::FunctionLookupKey key =
+        semantic_function_key(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "dropck_custom_value");
+    const sema::FunctionLookupKey wrapper_key =
+        semantic_function_key(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "dropck_custom_wrapper");
+
+    FunctionSignature signature = function_signature(
+        "dropck_custom_value", module_id(SEMA_TEST_ROOT_MODULE_INDEX), void_type, function_id, checked);
+    signature.semantic_key = key;
+    signature.param_types = {record};
+    signature.has_definition = true;
+    FunctionSignature wrapper_signature = function_signature(
+        "dropck_custom_wrapper", module_id(SEMA_TEST_ROOT_MODULE_INDEX), void_type, wrapper_function_id, checked);
+    wrapper_signature.semantic_key = wrapper_key;
+    wrapper_signature.param_types = {wrapper};
+    wrapper_signature.has_definition = true;
+
+    sema::BodyFlowGraph graph;
+    graph.function = key;
+    graph.points.push_back(sema::BodyFlowPoint{
+        .kind = sema::BodyFlowPointKind::entry,
+        .range = body_loan_test_range(0),
+    });
+    graph.points.push_back(sema::BodyFlowPoint{
+        .kind = sema::BodyFlowPointKind::cleanup_scope,
+        .range = body_loan_test_range(1),
+    });
+    graph.points.push_back(sema::BodyFlowPoint{
+        .kind = sema::BodyFlowPointKind::exit,
+        .range = body_loan_test_range(2),
+    });
+    graph.edges.push_back(sema::BodyFlowEdge{.from = 0U, .to = 1U});
+    graph.edges.push_back(sema::BodyFlowEdge{.from = 1U, .to = 2U});
+    graph.places.push_back(body_loan_local_place(value_id, syntax::INVALID_EXPR_ID, 0));
+    graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::cleanup_storage,
+        .point = 1U,
+        .place = 0U,
+        .range = body_loan_test_range(1),
+    });
+    checked.body_flow_graphs[key] = std::move(graph);
+
+    sema::BodyFlowGraph wrapper_graph;
+    wrapper_graph.function = wrapper_key;
+    wrapper_graph.points.push_back(sema::BodyFlowPoint{
+        .kind = sema::BodyFlowPointKind::entry,
+        .range = body_loan_test_range(3),
+    });
+    wrapper_graph.points.push_back(sema::BodyFlowPoint{
+        .kind = sema::BodyFlowPointKind::cleanup_scope,
+        .range = body_loan_test_range(4),
+    });
+    wrapper_graph.points.push_back(sema::BodyFlowPoint{
+        .kind = sema::BodyFlowPointKind::exit,
+        .range = body_loan_test_range(5),
+    });
+    wrapper_graph.edges.push_back(sema::BodyFlowEdge{.from = 0U, .to = 1U});
+    wrapper_graph.edges.push_back(sema::BodyFlowEdge{.from = 1U, .to = 2U});
+    wrapper_graph.places.push_back(body_loan_local_place(wrapper_value_id, syntax::INVALID_EXPR_ID, 0));
+    wrapper_graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::cleanup_storage,
+        .point = 1U,
+        .place = 0U,
+        .range = body_loan_test_range(4),
+    });
+    checked.body_flow_graphs[wrapper_key] = std::move(wrapper_graph);
+
+    sema::SemanticAnalyzerCore::DropCheckAnalyzer(analyzer).analyze(function, key, signature);
+    sema::SemanticAnalyzerCore::DropCheckAnalyzer(analyzer).analyze(wrapper_function, wrapper_key, wrapper_signature);
+
+    ASSERT_TRUE(checked.dropck_facts.contains(key));
+    const sema::FunctionDropCheckFacts& facts = checked.dropck_facts.at(key);
+    EXPECT_TRUE(facts.solved);
+    ASSERT_EQ(facts.actions.size(), 1U);
+    EXPECT_EQ(facts.actions.front().destructor_key, destructor.fingerprint);
+    ASSERT_EQ(facts.facts.size(), 1U);
+    EXPECT_EQ(facts.facts.front().type.value, record.value);
+    EXPECT_EQ(facts.facts.front().destructor_function, destructor.function_key);
+    EXPECT_NE(facts.facts.front().drop_glue_fingerprint, destructor.fingerprint);
+    EXPECT_TRUE(facts.facts.front().may_observe_fields);
+    EXPECT_TRUE(facts.violations.empty());
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+
+    const base::Result<sema::DropGluePlan> wrapper_plan = sema::build_drop_glue_plan(checked, wrapper);
+    ASSERT_TRUE(wrapper_plan) << wrapper_plan.error().message;
+    ASSERT_FALSE(wrapper_plan.value().steps.empty());
+    EXPECT_EQ(wrapper_plan.value().steps.front().kind, sema::DropGlueStepKind::struct_field);
+    ASSERT_TRUE(checked.dropck_facts.contains(wrapper_key));
+    const sema::FunctionDropCheckFacts& wrapper_facts = checked.dropck_facts.at(wrapper_key);
+    ASSERT_EQ(wrapper_facts.actions.size(), 1U);
+    EXPECT_EQ(wrapper_facts.actions.front().destructor_key, wrapper_plan.value().fingerprint);
+    ASSERT_EQ(wrapper_facts.facts.size(), 1U);
+    EXPECT_EQ(wrapper_facts.facts.front().type.value, wrapper.value);
+    EXPECT_EQ(wrapper_facts.facts.front().drop_glue_fingerprint, wrapper_plan.value().fingerprint);
+    EXPECT_EQ(wrapper_facts.facts.front().destructor_function, sema::FunctionLookupKey{});
+    EXPECT_TRUE(wrapper_facts.violations.empty());
+
+    sema::CheckedModule copy = checked;
+    ASSERT_TRUE(copy.destructors.contains(record.value));
+    EXPECT_EQ(copy.destructors.at(record.value).function_key, destructor.function_key);
+    EXPECT_EQ(sema::checked_destructors_fingerprint(copy), sema::checked_destructors_fingerprint(checked));
+
+    sema::CheckedModule changed = checked;
+    changed.destructors.at(record.value).part_index = 7U;
+    changed.destructors.at(record.value).fingerprint =
+        sema::destructor_info_fingerprint(changed.destructors.at(record.value));
+    EXPECT_NE(sema::checked_destructors_fingerprint(changed), sema::checked_destructors_fingerprint(checked));
+
+    const std::string dump = sema::dump_checked_module(checked);
+    EXPECT_NE(dump.find("destructors 1"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("destructor dropck_custom.Record ->"), std::string::npos) << dump;
+
+    query::TypeCheckBodyAuthority authority;
+    authority.checked_body = query::query_result_fingerprint(query::stable_fingerprint("dropck.custom.checked"));
+    authority.body_syntax_result = query::query_result_fingerprint(query::stable_fingerprint("dropck.custom.body"));
+    authority.signature_result = query::query_result_fingerprint(query::stable_fingerprint("dropck.custom.signature"));
+    sema::populate_type_check_body_borrow_authority(authority, checked, key);
+
+    EXPECT_TRUE(authority.has_destructor_facts);
+    EXPECT_EQ(authority.destructor_count, 1U);
+    EXPECT_EQ(authority.destructor_fingerprint, sema::checked_destructors_fingerprint(checked));
+    const query::QueryResultFingerprint authority_fingerprint = query::type_check_body_result_fingerprint(authority);
+    EXPECT_TRUE(query::is_valid(authority_fingerprint));
+
+    query::TypeCheckBodyAuthority without_destructors = authority;
+    without_destructors.has_destructor_facts = false;
+    without_destructors.destructor_count = 0U;
+    without_destructors.destructor_fingerprint = {};
+    EXPECT_NE(query::type_check_body_result_fingerprint(without_destructors), authority_fingerprint);
+}
+
 TEST(CoreUnit, SemanticWhiteBoxDropCheckAnalyzerRecordsMissingGraphForLoanConflict)
 {
     syntax::AstModule module;

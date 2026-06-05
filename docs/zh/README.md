@@ -2,8 +2,10 @@
 
 文档基线：**M7c/M7d Complete Borrow、Lifetime 与 RAII Drop Check 设计基线**，建立在已经收口的 M2 language-core-no-std、
 M2.5 frontend-foundation、M3 query-backed/module/generic、M4 trait/protocol 和 M5 default trait methods
-基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts 实现收口基线以及 M7b
-borrow contract / reborrow / two-phase receiver 实现收口基线之上。
+基线、M6 资源/cleanup/drop-glue release baseline、M7a CFG-sensitive borrow facts、M7b borrow contract /
+reborrow / two-phase receiver、M7c lifetime/storage escape、M7d-B struct field place-state 以及 M7d-C RAII
+user surface 实现收口基线之上。M7 Hardening Performance Closure 也已完成；当前仍未完成的是 backend custom
+destructor call lowering 和更完整的 RAII runtime integration。
 
 本目录提供中文文档集。文档按主题组织，不再按 `0.1.0`、`0.1.1` 等小版本拆分零散变更说明。
 

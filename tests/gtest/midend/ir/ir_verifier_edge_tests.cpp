@@ -303,4 +303,64 @@ TEST(CoreUnit, IrVerifierReportsRuntimeShapeErrors)
         });
 }
 
+TEST(CoreUnit, IrVerifierRejectsImmutableDropTargets)
+{
+    Module module;
+    const TypeHandle void_type = builtin(module, BuiltinType::void_);
+    const TypeHandle i32 = builtin(module, BuiltinType::i32);
+    const TypeHandle bool_type = builtin(module, BuiltinType::bool_);
+    const TypeHandle const_ptr_i32 = ptr(module, PointerMutability::const_, i32);
+    const TypeHandle const_ref_i32 = module.types.reference(PointerMutability::const_, i32);
+
+    Function function = make_function(module, "immutable_drop_targets", void_type);
+    FunctionBuilder builder{module, function};
+
+    Value ptr_param = module.make_value();
+    ptr_param.kind = ValueKind::param;
+    ptr_param.type = const_ptr_i32;
+    const ValueId ptr_param_id = builder.add(ptr_param);
+
+    Value ref_param = module.make_value();
+    ref_param.kind = ValueKind::param;
+    ref_param.type = const_ref_i32;
+    const ValueId ref_param_id = builder.add(ref_param);
+
+    Value flag_param = module.make_value();
+    flag_param.kind = ValueKind::param;
+    flag_param.type = bool_type;
+    const ValueId flag_param_id = builder.add(flag_param);
+
+    function.signature_params.push_back(function_param(module, "ptr", const_ptr_i32));
+    function.signature_params.push_back(function_param(module, "ref", const_ref_i32));
+    function.signature_params.push_back(function_param(module, "flag", bool_type));
+    function.param_values.push_back(ptr_param_id);
+    function.param_values.push_back(ref_param_id);
+    function.param_values.push_back(flag_param_id);
+
+    Value drop = module.make_value();
+    drop.kind = ValueKind::drop;
+    drop.type = void_type;
+    drop.object = ptr_param_id;
+    drop.target_type = i32;
+    const ValueId drop_id = builder.add(drop);
+
+    Value drop_if = module.make_value();
+    drop_if.kind = ValueKind::drop_if;
+    drop_if.type = void_type;
+    drop_if.lhs = flag_param_id;
+    drop_if.object = ref_param_id;
+    drop_if.target_type = i32;
+    const ValueId drop_if_id = builder.add(drop_if);
+
+    const BlockId entry = builder.block("entry");
+    function.blocks[entry.value].values = {ptr_param_id, ref_param_id, flag_param_id, drop_id, drop_if_id};
+    function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+    append_function(module, function);
+
+    const auto verify = ir::verify_module(module);
+    ASSERT_FALSE(verify);
+    EXPECT_NE(verify.error().message.find("drop target must be mutable"), std::string::npos)
+        << verify.error().message;
+}
+
 } // namespace aurex::test

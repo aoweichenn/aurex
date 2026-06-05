@@ -668,6 +668,28 @@ TEST(CoreUnit, ParserAcceptsTraitDeclarationsAndTraitImplScaffolding)
     });
 }
 
+TEST(CoreUnit, ParserAcceptsDeinitParametersForDropSurface)
+{
+    constexpr std::string_view source = "module parser.deinit;\n"
+                                        "struct File { fd: i32; }\n"
+                                        "impl Drop for File {\n"
+                                        "  fn drop(self: deinit File) -> void {}\n"
+                                        "}\n";
+    const syntax::AstModule module = parse_success(source);
+
+    const syntax::ItemNode* const drop = find_item(module, "drop");
+    ASSERT_NE(drop, nullptr);
+    ASSERT_EQ(drop->params.size(), 1U);
+    EXPECT_EQ(drop->params.front().name, "self");
+    EXPECT_TRUE(drop->params.front().is_deinit);
+    ASSERT_TRUE(syntax::is_valid(drop->params.front().type));
+    EXPECT_EQ(module.types[drop->params.front().type.value].kind, syntax::TypeKind::named);
+    EXPECT_EQ(module.types[drop->params.front().type.value].name, "File");
+
+    const std::string ast = syntax::dump_ast(module);
+    EXPECT_NE(ast.find("param self : deinit File"), std::string::npos) << ast;
+}
+
 TEST(CoreUnit, ParserPreservesTraitAssociatedTypeTargetsForSemaDiagnostics)
 {
     constexpr std::string_view source = "module parser.trait_associated_type_target;\n"

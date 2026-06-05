@@ -15,6 +15,7 @@ using syntax::TokenKind;
 constexpr base::usize PARSER_FN_STRING_DELIMITER_SIZE = 1;
 constexpr base::usize PARSER_FN_STRING_DELIMITER_PAIR_SIZE = PARSER_FN_STRING_DELIMITER_SIZE * 2;
 constexpr std::string_view PARSER_FN_CONTEXTUAL_ORIGIN = "origin";
+constexpr std::string_view PARSER_FN_CONTEXTUAL_DEINIT = "deinit";
 
 [[nodiscard]] std::string_view unquote_string_literal(const std::string_view text) noexcept
 {
@@ -237,6 +238,11 @@ std::optional<syntax::ParamDecl> ItemParser::parse_param()
 {
     const syntax::Token& name = this->expect_identifier_recovered(std::string(PARSER_EXPECT_PARAMETER_NAME));
     this->expect_type_annotation_colon(std::string(PARSER_EXPECT_PARAMETER_TYPE_COLON));
+    bool is_deinit = false;
+    if (this->check(TokenKind::identifier) && this->peek().text() == PARSER_FN_CONTEXTUAL_DEINIT) {
+        static_cast<void>(this->advance());
+        is_deinit = true;
+    }
     const syntax::TypeId type = this->parse_type();
     if (name.kind != TokenKind::identifier) {
         return std::nullopt;
@@ -245,6 +251,8 @@ std::optional<syntax::ParamDecl> ItemParser::parse_param()
         name.text(),
         type,
         this->merge(name.range, this->type_range_or(type, name.range)),
+        syntax::INVALID_IDENT_ID,
+        is_deinit,
     };
 }
 

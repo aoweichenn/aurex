@@ -1,6 +1,7 @@
 #include <aurex/frontend/sema/checked_module.hpp>
 #include <aurex/frontend/sema/resource_semantics.hpp>
 #include <aurex/infrastructure/base/integer.hpp>
+#include <aurex/infrastructure/query/stable_hash.hpp>
 #include <aurex/infrastructure/query/type_check_body_query.hpp>
 
 #include <algorithm>
@@ -20,12 +21,21 @@ constexpr base::usize SEMA_TRAIT_IMPL_HASH_LEFT_SHIFT = 6;
 constexpr base::usize SEMA_TRAIT_IMPL_HASH_RIGHT_SHIFT = 2;
 constexpr std::string_view SEMA_TRAIT_METHOD_CALL_BINDING_ID_CONTEXT = "sema trait method call binding id";
 constexpr std::string_view SEMA_FUNCTION_CALL_BINDING_ID_CONTEXT = "sema function call binding id";
+constexpr std::string_view SEMA_DESTRUCTOR_INFO_FINGERPRINT_MARKER = "sema.destructor.info.v1";
+constexpr std::string_view SEMA_DESTRUCTORS_FINGERPRINT_MARKER = "sema.destructors.v1";
 
 [[nodiscard]] std::size_t mix_trait_impl_hash(std::size_t hash, const std::uint64_t value) noexcept
 {
     hash ^= static_cast<std::size_t>(value) + SEMA_TRAIT_IMPL_HASH_MIX + (hash << SEMA_TRAIT_IMPL_HASH_LEFT_SHIFT)
         + (hash >> SEMA_TRAIT_IMPL_HASH_RIGHT_SHIFT);
     return hash;
+}
+
+void mix_function_lookup_key(query::StableHashBuilder& builder, const FunctionLookupKey key) noexcept
+{
+    builder.mix_u32(key.module);
+    builder.mix_u32(key.owner_type);
+    builder.mix_u32(key.name.value);
 }
 
 } // namespace
@@ -586,6 +596,7 @@ CheckedModule::CheckedModule()
           *this->arena_, FunctionLookupKeyHash{})),
       dropck_facts(make_sema_map<FunctionLookupKey, FunctionDropCheckFacts, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
+      destructors(make_sema_map<base::u32, DestructorInfo>(*this->arena_)),
       body_flow_graphs(make_sema_map<FunctionLookupKey, BodyFlowGraph, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
       place_state_facts(make_sema_map<FunctionLookupKey, FunctionPlaceStateFacts, FunctionLookupKeyHash>(
@@ -641,6 +652,7 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       generic_lifetime_predicates(std::move(other.generic_lifetime_predicates)),
       lifetime_facts(std::move(other.lifetime_facts)),
       dropck_facts(std::move(other.dropck_facts)),
+      destructors(std::move(other.destructors)),
       body_flow_graphs(std::move(other.body_flow_graphs)),
       place_state_facts(std::move(other.place_state_facts)), body_loan_checks(std::move(other.body_loan_checks)),
       param_envs(std::move(other.param_envs)),
@@ -718,6 +730,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->generic_lifetime_predicates.swap(other.generic_lifetime_predicates);
     this->lifetime_facts.swap(other.lifetime_facts);
     this->dropck_facts.swap(other.dropck_facts);
+    this->destructors.swap(other.destructors);
     this->body_flow_graphs.swap(other.body_flow_graphs);
     this->place_state_facts.swap(other.place_state_facts);
     this->body_loan_checks.swap(other.body_loan_checks);
@@ -865,6 +878,11 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->dropck_facts.reserve(other.dropck_facts.size());
     for (const auto& entry : other.dropck_facts) {
         this->dropck_facts.emplace(entry.first, this->clone_function_drop_check_facts(entry.second));
+    }
+    this->destructors.clear();
+    this->destructors.reserve(other.destructors.size());
+    for (const auto& entry : other.destructors) {
+        this->destructors.emplace(entry.first, this->clone_destructor_info(entry.second));
     }
     this->body_flow_graphs.clear();
     this->body_flow_graphs.reserve(other.body_flow_graphs.size());
@@ -1180,6 +1198,7 @@ FunctionSignature CheckedModule::clone_function_signature(const FunctionSignatur
     copy.has_self_param = other.has_self_param;
     copy.is_trait_impl_method = other.is_trait_impl_method;
     copy.is_trait_default_method_instance = other.is_trait_default_method_instance;
+    copy.is_destructor = other.is_destructor;
     copy.visibility = other.visibility;
     copy.prototype_item = other.prototype_item;
     copy.definition_item = other.definition_item;
@@ -1451,6 +1470,44 @@ FunctionLifetimeFacts CheckedModule::clone_function_lifetime_facts(const Functio
 FunctionDropCheckFacts CheckedModule::clone_function_drop_check_facts(const FunctionDropCheckFacts& other)
 {
     return other;
+}
+
+DestructorInfo CheckedModule::clone_destructor_info(const DestructorInfo& other) const
+{
+    return other;
+}
+
+query::StableFingerprint128 destructor_info_fingerprint(const DestructorInfo& info) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(SEMA_DESTRUCTOR_INFO_FINGERPRINT_MARKER);
+    builder.mix_u32(info.module.value);
+    builder.mix_u32(info.impl_item.value);
+    builder.mix_u32(info.method_item.value);
+    builder.mix_u32(info.self_type.value);
+    mix_function_lookup_key(builder, info.function_key);
+    builder.mix_u32(info.part_index);
+    return builder.finish();
+}
+
+query::StableFingerprint128 checked_destructors_fingerprint(const CheckedModule& checked) noexcept
+{
+    std::vector<const DestructorInfo*> destructors;
+    destructors.reserve(checked.destructors.size());
+    for (const auto& entry : checked.destructors) {
+        destructors.push_back(&entry.second);
+    }
+    std::sort(destructors.begin(), destructors.end(), [](const DestructorInfo* lhs, const DestructorInfo* rhs) {
+        return lhs->self_type.value < rhs->self_type.value;
+    });
+
+    query::StableHashBuilder builder;
+    builder.mix_string(SEMA_DESTRUCTORS_FINGERPRINT_MARKER);
+    builder.mix_u64(static_cast<base::u64>(destructors.size()));
+    for (const DestructorInfo* const info : destructors) {
+        builder.mix_fingerprint(destructor_info_fingerprint(*info));
+    }
+    return builder.finish();
 }
 
 FunctionPlaceStateFacts CheckedModule::clone_function_place_state_facts(const FunctionPlaceStateFacts& other)
@@ -1883,6 +1940,11 @@ constexpr base::u32 SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX = 0;
             return true;
         }
     }
+    for (const auto& entry : checked.destructors) {
+        if (entry.second.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
     for (const ParamEnvInfo& param_env : checked.param_envs) {
         if (param_env.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
             return true;
@@ -2047,6 +2109,11 @@ void append_type_list(std::ostringstream& out, const CheckedModule& checked, std
 void populate_type_check_body_borrow_authority(
     query::TypeCheckBodyAuthority& authority, const CheckedModule& checked, const FunctionLookupKey function)
 {
+    authority.destructor_count = static_cast<base::u64>(checked.destructors.size());
+    if (!checked.destructors.empty()) {
+        authority.has_destructor_facts = true;
+        authority.destructor_fingerprint = checked_destructors_fingerprint(checked);
+    }
     if (const auto summary = checked.borrow_summaries.find(function); summary != checked.borrow_summaries.end()) {
         authority.has_borrow_summary = true;
         authority.borrow_summary_fingerprint = summary->second.fingerprint;
@@ -2489,6 +2556,29 @@ std::string dump_checked_module(const CheckedModule& checked)
         }
     }
 
+    std::vector<const DestructorInfo*> destructors;
+    destructors.reserve(checked.destructors.size());
+    for (const auto& entry : checked.destructors) {
+        destructors.push_back(&entry.second);
+    }
+    std::sort(destructors.begin(), destructors.end(), [](const DestructorInfo* lhs, const DestructorInfo* rhs) {
+        return lhs->self_type.value < rhs->self_type.value;
+    });
+    out << "  destructors " << destructors.size() << "\n";
+    for (const DestructorInfo* const info_ptr : destructors) {
+        const DestructorInfo& info = *info_ptr;
+        out << "    destructor " << checked.types.display_name(info.self_type) << " -> " << info.function_key.module
+            << ':' << info.function_key.owner_type << ':';
+        if (syntax::is_valid(info.function_key.name)) {
+            out << '#' << info.function_key.name.value;
+        } else {
+            out << '-';
+        }
+        out << " fingerprint=" << query::debug_string(destructor_info_fingerprint(info));
+        append_part_origin(out, show_parts, info.part_index);
+        out << "\n";
+    }
+
     out << "  lifetime_origin_params " << checked.lifetime_origin_params.size() << "\n";
     for (base::usize index = 0; index < checked.lifetime_origin_params.size(); ++index) {
         const LifetimeOriginParamInfo& origin = checked.lifetime_origin_params[index];
@@ -2815,6 +2905,9 @@ std::string dump_checked_module(const CheckedModule& checked)
         }
         if (fn.is_export_c) {
             out << " export_c";
+        }
+        if (fn.is_destructor) {
+            out << " destructor";
         }
         append_part_origin(out, show_parts, fn.part_index);
         out << "\n";

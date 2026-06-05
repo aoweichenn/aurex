@@ -8,7 +8,7 @@
 namespace aurex::query {
 namespace {
 
-constexpr std::string_view QUERY_TYPE_CHECK_BODY_AUTHORITY_MARKER = "query.type_check_body.authority.v3";
+constexpr std::string_view QUERY_TYPE_CHECK_BODY_AUTHORITY_MARKER = "query.type_check_body.authority.v4";
 
 } // namespace
 
@@ -64,6 +64,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_fingerprint(authority.dropck_fingerprint);
     builder.mix_fingerprint(authority.place_state_fingerprint);
     builder.mix_fingerprint(authority.body_loan_fingerprint);
+    builder.mix_fingerprint(authority.destructor_fingerprint);
     builder.mix_u64(authority.expr_side_table_count);
     builder.mix_u64(authority.pattern_side_table_count);
     builder.mix_u64(authority.type_side_table_count);
@@ -99,6 +100,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_u64(authority.body_reborrow_count);
     builder.mix_u64(authority.body_two_phase_borrow_count);
     builder.mix_u64(authority.body_loan_conflict_count);
+    builder.mix_u64(authority.destructor_count);
     builder.mix_bool(authority.retained_side_tables);
     builder.mix_bool(authority.has_diagnostics);
     builder.mix_bool(authority.has_borrow_summary);
@@ -107,6 +109,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.has_dropck_facts);
     builder.mix_bool(authority.has_place_state_facts);
     builder.mix_bool(authority.has_body_loan_check);
+    builder.mix_bool(authority.has_destructor_facts);
     builder.mix_bool(authority.borrow_summary_has_unknown_return_origin);
     builder.mix_bool(authority.borrow_summary_has_local_return_escape);
     builder.mix_bool(authority.borrow_summary_has_storage_escape);

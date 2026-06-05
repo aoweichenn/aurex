@@ -60,6 +60,15 @@ struct DropGlueAction {
     return resource_needs_drop(classifier.classify(type));
 }
 
+[[nodiscard]] const DestructorInfo* drop_glue_destructor_info(const CheckedModule& checked, const TypeHandle type)
+{
+    if (!is_valid(type)) {
+        return nullptr;
+    }
+    const auto found = checked.destructors.find(type.value);
+    return found == checked.destructors.end() ? nullptr : &found->second;
+}
+
 [[nodiscard]] DropGlueStep make_drop_glue_step(const DropGlueStepKind kind, const TypeHandle owner_type,
     const TypeHandle value_type, const base::u32 ordinal, const ResourceSemanticsClassifier& classifier)
 {
@@ -69,7 +78,17 @@ struct DropGlueAction {
         value_type,
         ordinal,
         classifier.classify(value_type),
+        {},
     };
+}
+
+[[nodiscard]] DropGlueStep make_custom_destructor_step(
+    const TypeHandle type, const ResourceSemanticsClassifier& classifier, const DestructorInfo& destructor)
+{
+    DropGlueStep step =
+        make_drop_glue_step(DropGlueStepKind::custom_destructor, type, type, 0, classifier);
+    step.destructor_function = destructor.function_key;
+    return step;
 }
 
 void push_drop_glue_step_actions(std::vector<DropGlueAction>& actions, const DropGlueStep& step)
@@ -140,6 +159,13 @@ void append_drop_glue_actions_for_type(std::vector<DropGlueAction>& stack, const
     const TypeHandle type, const TypeInfo& info, const ResourceSemanticsClassifier& classifier)
 {
     std::vector<DropGlueAction> actions;
+    if (const DestructorInfo* const destructor = drop_glue_destructor_info(checked, type); destructor != nullptr) {
+        actions.push_back(DropGlueAction{
+            DropGlueActionKind::emit_step,
+            INVALID_TYPE_HANDLE,
+            make_custom_destructor_step(type, classifier, *destructor),
+        });
+    }
     if (info.kind == TypeKind::struct_) {
         append_drop_glue_struct_actions(actions, checked, type, classifier);
     } else if (info.kind == TypeKind::tuple) {
@@ -179,6 +205,9 @@ void append_drop_glue_actions_for_type(std::vector<DropGlueAction>& stack, const
         builder.mix_u32(step.value_type.value);
         builder.mix_u32(step.ordinal);
         builder.mix_fingerprint(resource_semantics_fingerprint(step.resource));
+        builder.mix_u32(step.destructor_function.module);
+        builder.mix_u32(step.destructor_function.owner_type);
+        builder.mix_u32(step.destructor_function.name.value);
     }
     return builder.finish();
 }

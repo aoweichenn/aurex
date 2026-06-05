@@ -30,6 +30,10 @@ namespace {
 std::atomic<std::uint64_t> test_run_counter{0};
 fs::path current_test_run_root;
 
+constexpr std::string_view TEST_NATIVE_CACHE_DIR_NAME = "native-cache";
+constexpr std::string_view TEST_NATIVE_CACHE_PROCESS_PREFIX = "pid_";
+constexpr std::string_view TEST_NATIVE_CACHE_ARTIFACT_PREFIX = "artifact_";
+
 struct TestContext {
     fs::path source_root = fs::path(AUREX_TEST_SOURCE_DIR);
     fs::path build_root = fs::path(AUREX_TEST_BINARY_DIR);
@@ -528,6 +532,13 @@ void append_path_list_identity(std::string& key, const std::vector<fs::path>& pa
     }
 }
 
+[[nodiscard]] fs::path native_output_cache_dir()
+{
+    const auto pid = static_cast<unsigned long long>(::getpid());
+    return work_root() / std::string(TEST_NATIVE_CACHE_DIR_NAME)
+        / (std::string(TEST_NATIVE_CACHE_PROCESS_PREFIX) + std::to_string(pid));
+}
+
 [[nodiscard]] std::optional<std::string> compiler_cache_key(const driver::CompilerInvocation& invocation)
 {
     if (!invocation.incremental_cache_path.empty()) {
@@ -662,9 +673,9 @@ void remember_native_output(
         if (context.native_output_cache.find(cache_key) != context.native_output_cache.end()) {
             return;
         }
-        const fs::path cache_dir = work_root() / "native-cache";
+        const fs::path cache_dir = native_output_cache_dir();
         cache_path = cache_dir
-            / ("artifact_" + std::to_string(context.native_output_cache_counter++)
+            / (std::string(TEST_NATIVE_CACHE_ARTIFACT_PREFIX) + std::to_string(context.native_output_cache_counter++)
                 + invocation.output_path.extension().string());
     }
 

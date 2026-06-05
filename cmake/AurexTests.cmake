@@ -61,6 +61,12 @@ if(BUILD_TESTING)
         tests/gtest/frontend/sema/identifier_tests.cpp
         tests/gtest/frontend/sema/lifetime_tests.cpp
         tests/gtest/frontend/sema/place_state_tests.cpp
+        tests/gtest/frontend/sema/sema_borrow_whitebox_tests.cpp
+        tests/gtest/frontend/sema/sema_expressions_patterns_whitebox_tests.cpp
+        tests/gtest/frontend/sema/sema_generics_whitebox_tests.cpp
+        tests/gtest/frontend/sema/sema_lookup_modules_whitebox_tests.cpp
+        tests/gtest/frontend/sema/sema_resources_dropck_whitebox_tests.cpp
+        tests/gtest/frontend/sema/sema_types_whitebox_tests.cpp
         tests/gtest/frontend/sema/sema_whitebox_tests.cpp
         tests/gtest/frontend/sema/statement_tests.cpp
         tests/gtest/application/tooling/ide_tooling_tests.cpp
@@ -128,6 +134,12 @@ if(BUILD_TESTING)
             tests/gtest/frontend/sema/place_state_tests.cpp
             tests/gtest/frontend/sema/modules_visibility_tests.cpp
             tests/gtest/frontend/sema/pattern_matching_tests.cpp
+            tests/gtest/frontend/sema/sema_borrow_whitebox_tests.cpp
+            tests/gtest/frontend/sema/sema_expressions_patterns_whitebox_tests.cpp
+            tests/gtest/frontend/sema/sema_generics_whitebox_tests.cpp
+            tests/gtest/frontend/sema/sema_lookup_modules_whitebox_tests.cpp
+            tests/gtest/frontend/sema/sema_resources_dropck_whitebox_tests.cpp
+            tests/gtest/frontend/sema/sema_types_whitebox_tests.cpp
             tests/gtest/frontend/sema/sema_whitebox_tests.cpp
             tests/gtest/frontend/sema/statement_tests.cpp
             tests/gtest/frontend/sema/trait_tests.cpp

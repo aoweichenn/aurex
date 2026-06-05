@@ -618,8 +618,8 @@ impl Drop for File {
 - destructor 不能 fail unless language 后续有明确 unwind/abort cleanup 模型；M7d 第一版按 non-throwing/drop-no-fail 设计。
 
 当前 M7d-C 已采用该窄 surface：`deinit` 是参数冒号后的 contextual 修饰符，只在 Drop self 参数位置有语义；
-`Drop` 是 compiler-owned reserved destructor surface，不作为普通用户 trait 或 generic bound 暴露。backend custom
-destructor call lowering 仍未完成，因此该阶段先收口 semantic/checking/tooling facts。
+`Drop` 是 compiler-owned reserved destructor surface，不作为普通用户 trait 或 generic bound 暴露。M7d-C 当时
+先收口 semantic/checking/tooling facts；M7d-D 后续已补上静态 custom destructor direct-call lowering。
 
 ### 6.3 Dropck facts
 
@@ -814,8 +814,13 @@ M7c/M7d 不承诺“一次超过 Rust 所有功能”，但可以在几个核心
 - 已完成：resource classifier、drop-glue `custom_destructor` step、dropck destructor facts、query authority 和
   IDE hover `destructor=custom`。
 - 已完成：IR verifier 对 immutable drop target 的拒绝。
+- 已完成：IR lowering 将静态 custom destructor 降成普通 direct `call`；drop flag guarded path、overwrite、
+  early-exit 和 scope cleanup 均能触发真实 destructor call。
+- 已完成：带 custom destructor 且含 droppable 字段的 struct cleanup 顺序，根 destructor 先于字段 cleanup；
+  `self: deinit T` 参数不再注册普通 lexical cleanup。
+- 已完成：LLVM backend 通过现有 call emission 输出 destructor call；`drop` / `drop_if` marker 仍保留为
+  target-independent cleanup marker。
 - 已完成：docs/language manual/version/progress/next-steps 更新。
-- 未完成：backend custom destructor call lowering；当前 `drop` / `drop_if` 仍是 backend cleanup marker。
 - 未完成：用户可写 `Drop` bound、generic Drop impl、trait-object Drop dispatch、async/unwind-aware drop 和标准库拥有型资源封装。
 
 验收：

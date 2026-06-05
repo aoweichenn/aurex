@@ -1,3 +1,5 @@
+#include <aurex/midend/ir/enum_layout.hpp>
+
 #include <algorithm>
 #include <optional>
 #include <string>
@@ -12,6 +14,20 @@ namespace {
 
 constexpr std::string_view IR_FOR_RANGE_ZERO_LITERAL = "0";
 constexpr std::string_view IR_FOR_RANGE_ONE_LITERAL = "1";
+constexpr std::string_view IR_DROP_FLAG_VALUE_NAME = "drop.flag";
+constexpr std::string_view IR_DROP_THEN_BLOCK_PREFIX = "drop.then";
+constexpr std::string_view IR_DROP_JOIN_BLOCK_PREFIX = "drop.join";
+constexpr std::string_view IR_DROP_ARRAY_INDEX_NAME = "drop.index";
+constexpr std::string_view IR_DROP_ENUM_TAG_NAME = "drop.tag";
+constexpr std::string_view IR_DROP_ENUM_PAYLOAD_PREFIX = "drop.payload.";
+constexpr char IR_DROP_TUPLE_FIELD_PREFIX[] = "";
+
+struct DropGlueFrame {
+    ValueId address = INVALID_VALUE_ID;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
+    IrTextId name = INVALID_IR_TEXT_ID;
+    bool emit_self = true;
+};
 
 [[nodiscard]] BinaryOp map_compound_assignment(const syntax::AssignOp op) noexcept
 {
@@ -40,6 +56,11 @@ constexpr std::string_view IR_FOR_RANGE_ONE_LITERAL = "1";
             return BinaryOp::add;
     }
     return BinaryOp::add;
+}
+
+[[nodiscard]] bool is_deinit_self_param(const syntax::ParamDecl& param, const base::usize index) noexcept
+{
+    return index == 0U && param.is_deinit && param.name == "self";
 }
 
 } // namespace
@@ -83,7 +104,9 @@ void Lowerer::lower_function_body(const FunctionId function_id, const FunctionBo
             .is_mutable = false,
             .field_cleanups = {},
         };
-        this->register_local_cleanup(binding, param.name);
+        if (!is_deinit_self_param(param, i)) {
+            this->register_local_cleanup(binding, param.name);
+        }
         this->bind_local(param.name_id, binding);
         this->append_store(slot_id, param_id);
     }
@@ -617,7 +640,291 @@ void Lowerer::append_cleanup_flag_store(const ValueId flag, const bool initializ
     this->append_store(flag, this->append_bool_literal(initialized));
 }
 
-void Lowerer::append_cleanup_drop(const ValueId slot, const sema::TypeHandle type, const IrTextId name)
+const sema::DestructorInfo* Lowerer::custom_destructor_info(const sema::TypeHandle type) const noexcept
+{
+    if (!sema::is_valid(type)) {
+        return nullptr;
+    }
+    const auto found = this->checked_.destructors.find(type.value);
+    return found == this->checked_.destructors.end() ? nullptr : &found->second;
+}
+
+CallTarget Lowerer::destructor_call_target(const sema::DestructorInfo& destructor)
+{
+    const auto signature = this->checked_.functions.find(destructor.function_key);
+    if (signature == this->checked_.functions.end() || signature->second.c_name.empty()) {
+        return {};
+    }
+    const IrTextId symbol = this->module_.intern(signature->second.c_name.view());
+    const auto function = this->function_symbols_.find(symbol);
+    if (function == this->function_symbols_.end()) {
+        return CallTarget{INVALID_FUNCTION_ID, symbol};
+    }
+    return CallTarget{function->second, symbol};
+}
+
+bool Lowerer::type_may_emit_runtime_drop(const sema::TypeHandle type, const CleanupDropMode mode)
+{
+    if (!sema::is_valid(type) || type.value >= this->module_.types.size()) {
+        return false;
+    }
+
+    std::vector<sema::TypeHandle> pending;
+    std::vector<base::u32> visited;
+    pending.push_back(type);
+    while (!pending.empty()) {
+        const sema::TypeHandle current = pending.back();
+        pending.pop_back();
+        if (!sema::is_valid(current) || current.value >= this->module_.types.size()
+            || std::ranges::find(visited, current.value) != visited.end()) {
+            continue;
+        }
+        visited.push_back(current.value);
+
+        if (this->custom_destructor_info(current) != nullptr) {
+            return true;
+        }
+        if (mode == CleanupDropMode::custom_destructor_only) {
+            continue;
+        }
+
+        const sema::TypeInfo& info = this->module_.types.get(current);
+        switch (info.kind) {
+            case sema::TypeKind::struct_: {
+                const sema::StructInfo* const struct_info = this->struct_info_for_type(current);
+                if (struct_info == nullptr) {
+                    break;
+                }
+                for (const sema::StructFieldInfo& field : struct_info->fields) {
+                    if (this->cleanup_required(field.type)) {
+                        pending.push_back(field.type);
+                    }
+                }
+                break;
+            }
+            case sema::TypeKind::tuple:
+                for (const sema::TypeHandle element : info.tuple_elements) {
+                    if (this->cleanup_required(element)) {
+                        pending.push_back(element);
+                    }
+                }
+                break;
+            case sema::TypeKind::array:
+                if (info.array_count != 0U && this->cleanup_required(info.array_element)) {
+                    pending.push_back(info.array_element);
+                }
+                break;
+            case sema::TypeKind::enum_:
+                for (const auto& entry : this->checked_.enum_cases) {
+                    const sema::EnumCaseInfo& enum_case = entry.second;
+                    if (enum_case.type.value == current.value && this->cleanup_required(enum_case.payload_type)) {
+                        pending.push_back(enum_case.payload_type);
+                    }
+                }
+                break;
+            case sema::TypeKind::builtin:
+            case sema::TypeKind::pointer:
+            case sema::TypeKind::reference:
+            case sema::TypeKind::slice:
+            case sema::TypeKind::function:
+            case sema::TypeKind::generic_param:
+            case sema::TypeKind::associated_projection:
+            case sema::TypeKind::opaque_struct:
+                break;
+        }
+    }
+    return false;
+}
+
+bool Lowerer::append_custom_destructor_call(
+    const ValueId slot, const sema::TypeHandle type, const IrTextId name)
+{
+    const sema::DestructorInfo* const destructor = this->custom_destructor_info(type);
+    if (destructor == nullptr) {
+        return false;
+    }
+    const CallTarget target = this->destructor_call_target(*destructor);
+    if (!is_valid(target.function) || target.function.value >= this->module_.functions.size()) {
+        return false;
+    }
+    const sema::TypeHandle param_type = this->call_param_type(target.function, 0U);
+    const ValueId self_value = this->coerce_value(this->append_load(slot, type, name), param_type);
+
+    Value call = this->module_.make_value();
+    call.kind = ValueKind::call;
+    call.type = this->module_.types.builtin(sema::BuiltinType::void_);
+    call.name = target.symbol;
+    call.call_target = target.function;
+    call.args.push_back(self_value);
+    static_cast<void>(this->append_value(call));
+    return true;
+}
+
+bool Lowerer::append_runtime_drop_glue(
+    const ValueId slot, const sema::TypeHandle type, const IrTextId name, const CleanupDropMode mode)
+{
+    if (!is_valid(slot) || !sema::is_valid(type) || type.value >= this->module_.types.size()) {
+        return false;
+    }
+
+    bool emitted = this->append_custom_destructor_call(slot, type, name);
+    if (mode == CleanupDropMode::custom_destructor_only) {
+        return emitted;
+    }
+
+    struct EnumPayloadDrop {
+        const sema::EnumCaseInfo* enum_case = nullptr;
+        ValueId payload_address = INVALID_VALUE_ID;
+    };
+
+    std::vector<DropGlueFrame> pending;
+    pending.push_back(DropGlueFrame{slot, type, name, false});
+    while (!pending.empty()) {
+        const DropGlueFrame frame = pending.back();
+        pending.pop_back();
+        if (!sema::is_valid(frame.type) || frame.type.value >= this->module_.types.size()) {
+            continue;
+        }
+
+        if (frame.emit_self) {
+            emitted = this->append_custom_destructor_call(frame.address, frame.type, frame.name) || emitted;
+        }
+
+        const sema::TypeInfo& info = this->module_.types.get(frame.type);
+        switch (info.kind) {
+            case sema::TypeKind::struct_: {
+                const sema::StructInfo* const struct_info = this->struct_info_for_type(frame.type);
+                if (struct_info == nullptr) {
+                    break;
+                }
+                for (const sema::StructFieldInfo& field : struct_info->fields) {
+                    if (!this->cleanup_required(field.type)) {
+                        continue;
+                    }
+                    const IrTextId field_name = this->module_.intern(field.name);
+                    const ValueId field_address =
+                        this->append_field_address(frame.address, field_name, field.type, sema::PointerMutability::mut);
+                    pending.push_back(DropGlueFrame{field_address, field.type, field_name, true});
+                }
+                break;
+            }
+            case sema::TypeKind::tuple:
+                for (base::usize index = 0; index < info.tuple_elements.size(); ++index) {
+                    const sema::TypeHandle element_type = info.tuple_elements[index];
+                    if (!this->cleanup_required(element_type)) {
+                        continue;
+                    }
+                    const IrTextId element_name =
+                        this->module_.intern(std::string(IR_DROP_TUPLE_FIELD_PREFIX) + std::to_string(index));
+                    const ValueId element_address =
+                        this->append_field_address(frame.address, element_name, element_type, sema::PointerMutability::mut);
+                    pending.push_back(DropGlueFrame{element_address, element_type, element_name, true});
+                }
+                break;
+            case sema::TypeKind::array:
+                if (info.array_count == 0U || !this->cleanup_required(info.array_element)) {
+                    break;
+                }
+                for (base::u64 element_index = 0; element_index < info.array_count; ++element_index) {
+                    const ValueId index_value = this->append_integer_literal(
+                        std::to_string(element_index), this->module_.types.builtin(sema::BuiltinType::usize));
+                    Value element = this->module_.make_value();
+                    element.kind = ValueKind::index_addr;
+                    element.type = this->module_.types.pointer(sema::PointerMutability::mut, info.array_element);
+                    element.name = this->module_.intern(IR_DROP_ARRAY_INDEX_NAME);
+                    element.object = frame.address;
+                    element.index = index_value;
+                    pending.push_back(
+                        DropGlueFrame{this->append_value(element), info.array_element, element.name, true});
+                }
+                break;
+            case sema::TypeKind::enum_: {
+                if (!is_payload_enum(this->module_.types, frame.type)) {
+                    break;
+                }
+                const sema::TypeHandle tag_type = enum_tag_type(this->module_.types, frame.type);
+                const ValueId tag = this->append_load(this->enum_field_addr(
+                                                          frame.address, this->module_.intern(IR_ENUM_TAG_FIELD_NAME)),
+                    tag_type, this->module_.intern(IR_DROP_ENUM_TAG_NAME));
+                const ValueId payload_storage =
+                    this->enum_field_addr(frame.address, this->module_.intern(IR_ENUM_PAYLOAD_FIELD_NAME));
+                std::vector<EnumPayloadDrop> payload_drops;
+                for (const auto& entry : this->checked_.enum_cases) {
+                    const sema::EnumCaseInfo& enum_case = entry.second;
+                    if (enum_case.type.value != frame.type.value || !this->cleanup_required(enum_case.payload_type)
+                        || !this->type_may_emit_runtime_drop(enum_case.payload_type, CleanupDropMode::full)) {
+                        continue;
+                    }
+                    Value cast = this->module_.make_value();
+                    cast.kind = ValueKind::cast;
+                    cast.type = this->module_.types.pointer(sema::PointerMutability::mut, enum_case.payload_type);
+                    cast.target_type = cast.type;
+                    cast.lhs = payload_storage;
+                    cast.cast_kind = CastKind::pointer;
+                    payload_drops.push_back(EnumPayloadDrop{&enum_case, this->append_value(cast)});
+                }
+                std::ranges::sort(payload_drops, [](const EnumPayloadDrop& lhs, const EnumPayloadDrop& rhs) {
+                    return lhs.enum_case->c_name.view() < rhs.enum_case->c_name.view();
+                });
+                for (const EnumPayloadDrop& payload : payload_drops) {
+                    Value equals = this->module_.make_value();
+                    equals.kind = ValueKind::binary;
+                    equals.type = this->module_.types.builtin(sema::BuiltinType::bool_);
+                    equals.binary_op = BinaryOp::equal;
+                    equals.lhs = tag;
+                    equals.rhs = this->append_enum_tag_literal(payload.enum_case->c_name, tag_type);
+                    const ValueId condition = this->append_value(equals);
+                    this->append_conditional_runtime_drop(condition, payload.payload_address,
+                        payload.enum_case->payload_type,
+                        this->module_.intern(
+                            std::string(IR_DROP_ENUM_PAYLOAD_PREFIX) + std::string(payload.enum_case->case_name)),
+                        CleanupDropMode::full);
+                    emitted = true;
+                }
+                break;
+            }
+            case sema::TypeKind::builtin:
+            case sema::TypeKind::pointer:
+            case sema::TypeKind::reference:
+            case sema::TypeKind::slice:
+            case sema::TypeKind::function:
+            case sema::TypeKind::generic_param:
+            case sema::TypeKind::associated_projection:
+            case sema::TypeKind::opaque_struct:
+                break;
+        }
+    }
+    return emitted;
+}
+
+void Lowerer::append_conditional_runtime_drop(const ValueId condition, const ValueId slot,
+    const sema::TypeHandle type, const IrTextId name, const CleanupDropMode mode)
+{
+    if (!is_valid(condition) || !is_valid(slot) || !this->type_may_emit_runtime_drop(type, mode)
+        || this->current_function_ == nullptr || this->has_terminator(this->current_block_)) {
+        return;
+    }
+
+    const BlockId then_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_DROP_THEN_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+    const BlockId join_block = add_block(this->module_, *this->current_function_,
+        std::string(IR_DROP_JOIN_BLOCK_PREFIX) + std::to_string(this->current_function_->blocks.size()));
+
+    Terminator branch;
+    branch.kind = TerminatorKind::cond_branch;
+    branch.condition = condition;
+    branch.then_target = then_block;
+    branch.else_target = join_block;
+    this->set_terminator(this->current_block_, branch);
+
+    this->current_block_ = then_block;
+    static_cast<void>(this->append_runtime_drop_glue(slot, type, name, mode));
+    this->append_branch_if_open(join_block);
+    this->current_block_ = join_block;
+}
+
+void Lowerer::append_cleanup_drop(
+    const ValueId slot, const sema::TypeHandle type, const IrTextId name, const CleanupDropMode mode)
 {
     if (!is_valid(slot) || !sema::is_valid(type)) {
         return;
@@ -629,16 +936,18 @@ void Lowerer::append_cleanup_drop(const ValueId slot, const sema::TypeHandle typ
     drop.target_type = type;
     drop.name = name;
     static_cast<void>(this->append_value(drop));
+    static_cast<void>(this->append_runtime_drop_glue(slot, type, name, mode));
 }
 
 void Lowerer::append_cleanup_drop_if(
-    const ValueId slot, const ValueId flag, const sema::TypeHandle type, const IrTextId name)
+    const ValueId slot, const ValueId flag, const sema::TypeHandle type, const IrTextId name,
+    const CleanupDropMode mode)
 {
     if (!is_valid(slot) || !is_valid(flag) || !sema::is_valid(type)) {
         return;
     }
     const ValueId initialized = this->append_load(
-        flag, this->module_.types.builtin(sema::BuiltinType::bool_), this->module_.intern("drop.flag"));
+        flag, this->module_.types.builtin(sema::BuiltinType::bool_), this->module_.intern(IR_DROP_FLAG_VALUE_NAME));
     Value drop = this->module_.make_value();
     drop.kind = ValueKind::drop_if;
     drop.type = this->module_.types.builtin(sema::BuiltinType::void_);
@@ -647,6 +956,7 @@ void Lowerer::append_cleanup_drop_if(
     drop.target_type = type;
     drop.name = name;
     static_cast<void>(this->append_value(drop));
+    this->append_conditional_runtime_drop(initialized, slot, type, name, mode);
     this->append_cleanup_flag_store(flag, false);
 }
 
@@ -655,7 +965,23 @@ void Lowerer::register_local_cleanup(LocalBinding& binding, const std::string_vi
     if (!this->cleanup_required(binding.type) || this->cleanup_scopes_.empty()) {
         return;
     }
-    if (this->register_structured_local_cleanup(binding, name)) {
+    const bool registered_structural = this->register_structured_local_cleanup(binding, name);
+    const bool has_custom_destructor = this->custom_destructor_info(binding.type) != nullptr;
+    if (has_custom_destructor) {
+        binding.cleanup_flag = this->append_cleanup_flag(name);
+        this->append_cleanup_flag_store(binding.cleanup_flag, true);
+        this->cleanup_scopes_.back().push_back(CleanupAction{
+            CleanupActionKind::drop_local,
+            binding.slot,
+            binding.cleanup_flag,
+            binding.type,
+            syntax::INVALID_EXPR_ID,
+            this->module_.intern(name),
+            registered_structural ? CleanupDropMode::custom_destructor_only : CleanupDropMode::full,
+        });
+        return;
+    }
+    if (registered_structural) {
         return;
     }
     binding.cleanup_flag = this->append_cleanup_flag(name);
@@ -667,6 +993,7 @@ void Lowerer::register_local_cleanup(LocalBinding& binding, const std::string_vi
         binding.type,
         syntax::INVALID_EXPR_ID,
         this->module_.intern(name),
+        CleanupDropMode::full,
     });
 }
 
@@ -713,7 +1040,8 @@ bool Lowerer::append_structured_cleanup_bindings(LocalBinding& binding, const Va
 }
 
 void Lowerer::append_cleanup_binding(LocalBinding& binding, const ValueId address, const ValueId flag,
-    const sema::TypeHandle type, const IrTextId name, const std::vector<CleanupProjection>& projections)
+    const sema::TypeHandle type, const IrTextId name, const std::vector<CleanupProjection>& projections,
+    const CleanupDropMode mode)
 {
     binding.field_cleanups.push_back(CleanupBinding{
         address,
@@ -721,6 +1049,7 @@ void Lowerer::append_cleanup_binding(LocalBinding& binding, const ValueId addres
         type,
         name,
         projections,
+        mode,
     });
     this->cleanup_scopes_.back().push_back(CleanupAction{
         CleanupActionKind::drop_local,
@@ -729,7 +1058,27 @@ void Lowerer::append_cleanup_binding(LocalBinding& binding, const ValueId addres
         type,
         syntax::INVALID_EXPR_ID,
         name,
+        mode,
     });
+}
+
+void Lowerer::append_root_cleanup_flag_from_fields(const LocalBinding& binding)
+{
+    if (!is_valid(binding.cleanup_flag) || binding.field_cleanups.empty()) {
+        return;
+    }
+    ValueId all_initialized = INVALID_VALUE_ID;
+    const sema::TypeHandle bool_type = this->module_.types.builtin(sema::BuiltinType::bool_);
+    for (const CleanupBinding& cleanup : binding.field_cleanups) {
+        const ValueId initialized =
+            this->append_load(cleanup.flag, bool_type, this->module_.intern(IR_DROP_FLAG_VALUE_NAME));
+        all_initialized = is_valid(all_initialized)
+            ? this->append_binary_value(BinaryOp::logical_and, bool_type, all_initialized, initialized)
+            : initialized;
+    }
+    if (is_valid(all_initialized)) {
+        this->append_store(binding.cleanup_flag, all_initialized);
+    }
 }
 
 ValueId Lowerer::append_field_address(const ValueId object, const IrTextId field_name,
@@ -774,16 +1123,17 @@ bool Lowerer::cleanup_binding_has_prefix(
 
 void Lowerer::append_local_cleanup_drop_if(const LocalBinding& binding)
 {
+    if (is_valid(binding.cleanup_flag)) {
+        this->append_cleanup_drop_if(binding.slot, binding.cleanup_flag, binding.type,
+            this->module_.values[binding.slot.value].name,
+            binding.field_cleanups.empty() ? CleanupDropMode::full : CleanupDropMode::custom_destructor_only);
+    }
     if (!binding.field_cleanups.empty()) {
         for (base::usize index = binding.field_cleanups.size(); index > 0; --index) {
             const CleanupBinding& cleanup = binding.field_cleanups[index - 1U];
-            this->append_cleanup_drop_if(cleanup.address, cleanup.flag, cleanup.type, cleanup.name);
+            this->append_cleanup_drop_if(cleanup.address, cleanup.flag, cleanup.type, cleanup.name, cleanup.drop_mode);
         }
         return;
-    }
-    if (is_valid(binding.cleanup_flag)) {
-        this->append_cleanup_drop_if(
-            binding.slot, binding.cleanup_flag, binding.type, this->module_.values[binding.slot.value].name);
     }
 }
 
@@ -804,7 +1154,7 @@ void Lowerer::append_place_cleanup_drop_if(const syntax::ExprId expr_id)
     for (base::usize index = binding->field_cleanups.size(); index > 0; --index) {
         const CleanupBinding& cleanup = binding->field_cleanups[index - 1U];
         if (this->cleanup_binding_has_prefix(cleanup, path->projections)) {
-            this->append_cleanup_drop_if(cleanup.address, cleanup.flag, cleanup.type, cleanup.name);
+            this->append_cleanup_drop_if(cleanup.address, cleanup.flag, cleanup.type, cleanup.name, cleanup.drop_mode);
         }
     }
 }
@@ -821,13 +1171,13 @@ void Lowerer::mark_place_initialized(const syntax::ExprId expr_id)
     }
     LocalBinding& binding = found->second;
     if (path->projections.empty()) {
+        this->append_cleanup_flag_store(binding.cleanup_flag, true);
         if (!binding.field_cleanups.empty()) {
             for (const CleanupBinding& cleanup : binding.field_cleanups) {
                 this->append_cleanup_flag_store(cleanup.flag, true);
             }
             return;
         }
-        this->append_cleanup_flag_store(binding.cleanup_flag, true);
         return;
     }
     for (const CleanupBinding& cleanup : binding.field_cleanups) {
@@ -835,6 +1185,7 @@ void Lowerer::mark_place_initialized(const syntax::ExprId expr_id)
             this->append_cleanup_flag_store(cleanup.flag, true);
         }
     }
+    this->append_root_cleanup_flag_from_fields(binding);
 }
 
 void Lowerer::mark_local_moved(const sema::IdentId name_id)
@@ -844,13 +1195,13 @@ void Lowerer::mark_local_moved(const sema::IdentId name_id)
         return;
     }
     LocalBinding& binding = found->second;
+    this->append_cleanup_flag_store(binding.cleanup_flag, false);
     if (!binding.field_cleanups.empty()) {
         for (const CleanupBinding& cleanup : binding.field_cleanups) {
             this->append_cleanup_flag_store(cleanup.flag, false);
         }
         return;
     }
-    this->append_cleanup_flag_store(binding.cleanup_flag, false);
 }
 
 void Lowerer::mark_expr_place_moved(const syntax::ExprId expr_id)
@@ -875,6 +1226,7 @@ void Lowerer::mark_expr_place_moved(const syntax::ExprId expr_id)
             this->append_cleanup_flag_store(cleanup.flag, false);
         }
     }
+    this->append_cleanup_flag_store(found->second.cleanup_flag, false);
 }
 
 void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
@@ -965,10 +1317,10 @@ void Lowerer::emit_cleanup_scopes(const base::usize keep_depth)
                 continue;
             }
             if (is_valid(action.flag)) {
-                this->append_cleanup_drop_if(action.slot, action.flag, action.type, action.name);
+                this->append_cleanup_drop_if(action.slot, action.flag, action.type, action.name, action.drop_mode);
                 continue;
             }
-            this->append_cleanup_drop(action.slot, action.type, action.name);
+            this->append_cleanup_drop(action.slot, action.type, action.name, action.drop_mode);
         }
         --depth;
     }

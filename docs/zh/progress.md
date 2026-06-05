@@ -5,6 +5,19 @@
 
 ## 总体状态
 
+2026-06-05：M7d-D RAII runtime lowering 与 execution closure 已完成实现收口。lowerer 现在会从 checked
+`DestructorInfo` / `FunctionSignature::c_name` 解析 custom destructor 的 IR `FunctionId`，在 cleanup exit、
+overwrite、early-exit 和 drop flag guarded path 上生成普通 direct `call`；LLVM backend 复用现有 call emission
+发出真实 destructor call。`drop` / `drop_if` 仍保留为 target-independent cleanup marker，marker 自身在 LLVM
+backend 仍是 no-op；真实运行时副作用来自 lowering 额外生成的 call。
+
+M7d-D 同时修正了带 custom destructor 且含 droppable 字段的 struct local：根 custom destructor 使用独立根
+drop flag，并在字段 cleanup 之前运行；字段级 drop flag 继续支持本地 field partial move/reinit。`self: deinit T`
+参数不会再注册普通 lexical cleanup，避免 destructor body 退出时递归/重复 drop 自己。当前 runtime lowering 覆盖
+静态可解析 custom destructor、struct/tuple/array 已知子对象和 active enum payload 的 custom destructor 展开；
+generic/associated/opaque cleanup、`Drop` bound、generic Drop impl、trait-object Drop dispatch、async/unwind-aware
+drop、panic cleanup ABI 和标准库拥有型资源封装继续后移。
+
 2026-06-05：M7d-C RAII user surface 与 release closure 已完成实现收口。当前 parser/AST 接受
 `fn drop(self: deinit T) -> void` 的 contextual `deinit` 参数修饰符；sema 将 `Drop` 作为 compiler-owned
 reserved destructor surface 处理，允许窄 `impl Drop for T`，并拒绝 `trait Drop`、qualified/type-arg
@@ -16,9 +29,9 @@ clone/copy、stable fingerprint、resource classifier、drop-glue plan、dropck 
 IR verifier 和 IDE hover 均已接入。带 custom destructor 的类型按 conservative owned resource 处理；
 drop-glue 会先生成 `custom_destructor` step，再展开结构字段或泛型/opaque cleanup；dropck action 使用
 destructor info fingerprint，drop facts 记录 destructor function；IDE hover 展示 `destructor=custom`。
-当前重要边界也已固定：backend custom destructor call lowering 尚未实现，LLVM backend 的 `drop` / `drop_if`
-仍是 cleanup marker。因此需要真实运行时释放副作用的代码仍要显式调用 release API 或使用 `defer`；用户可写
-`Drop` bound、generic Drop impl、trait-object Drop dispatch、async/unwind-aware drop 和标准库拥有型资源封装继续后移。
+M7d-C 当时只声明 semantic/checking/tooling closure；M7d-D 已补上静态 custom destructor 的 runtime direct-call
+lowering。用户可写 `Drop` bound、generic Drop impl、trait-object Drop dispatch、async/unwind-aware drop 和标准库
+拥有型资源封装继续后移。
 
 2026-06-05：M7d-B struct field place-state 子集已完成实现收口。当前代码允许本地 owned struct field
 partial move 和 field reinit，例如 `let moved: T = current.left; current.left = replacement;`；body-flow 会把 field
@@ -118,8 +131,8 @@ fingerprint 不混入绝对 source range，诊断 range 仍保留在 checked fac
 `BorrowEscapeAnalyzer` 继续保留，只有在新 checker parity 覆盖当前 borrowed-view escape matrix 后才降级或移除。
 M7a 仍不包含完整 Rust-style lifetime surface、full Polonius Datalog engine、raw pointer alias safe proof、
 用户级析构器语法、partial move / replace / take / swap 完整 place-level resource semantics、`dyn Trait`、
-async drop 或 generator borrow。M7d-C 后续已补上窄 `impl Drop` / `deinit` semantic surface；backend custom
-destructor call lowering 仍未完成。
+async drop 或 generator borrow。M7d-C 后续已补上窄 `impl Drop` / `deinit` semantic surface；M7d-D 后续已补上
+静态 custom destructor call lowering。
 
 2026-06-02：W7a release 性能与内存收口完成。普通 `--check` 路径只保留 body loan / borrow summary 等稳定
 checked facts，不再长期保留 full `BodyFlowGraph`；checked/typed 输出和 IDE/tooling 仍可保留 CFG facts。函数级
@@ -180,7 +193,7 @@ target-independent drop-glue planner、IDE resource hover projection、generic p
 当前边界仍然
 明确：当时 partial field move、indexed move-out、consuming pattern payload 和 non-`Copy` `?` payload transfer
 都在正式负样例中拒绝；M7d-B 后续已补上本地 owned struct field partial move/reinit/drop flag 子集，M7d-C
-后续已补上窄 `impl Drop` / `deinit` semantic surface。backend custom destructor call lowering、
+后续已补上窄 `impl Drop` / `deinit` semantic surface，M7d-D 后续已补上静态 custom destructor call lowering。
 aggregate rollback codegen 和完整 borrow checker 在该历史节点尚未实现。
 
 2026-05-31：M6-WP1 已完成资源、值生命周期与访问语义的三轮设计审视。完整基线记录在

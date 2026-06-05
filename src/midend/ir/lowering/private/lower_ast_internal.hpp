@@ -57,12 +57,18 @@ struct CleanupProjection {
     IrTextId field_name = INVALID_IR_TEXT_ID;
 };
 
+enum class CleanupDropMode {
+    full,
+    custom_destructor_only,
+};
+
 struct CleanupBinding {
     ValueId address = INVALID_VALUE_ID;
     ValueId flag = INVALID_VALUE_ID;
     sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
     IrTextId name = INVALID_IR_TEXT_ID;
     std::vector<CleanupProjection> projections;
+    CleanupDropMode drop_mode = CleanupDropMode::full;
 };
 
 struct LocalBinding {
@@ -102,6 +108,7 @@ struct CleanupAction {
     sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
     syntax::ExprId defer_expr = syntax::INVALID_EXPR_ID;
     IrTextId name = INVALID_IR_TEXT_ID;
+    CleanupDropMode drop_mode = CleanupDropMode::full;
 };
 
 struct PendingConstant {
@@ -264,14 +271,27 @@ public:
     [[nodiscard]] ValueId append_bool_literal(bool value);
     [[nodiscard]] ValueId append_cleanup_flag(std::string_view name);
     void append_cleanup_flag_store(ValueId flag, bool initialized);
-    void append_cleanup_drop(ValueId slot, sema::TypeHandle type, IrTextId name);
-    void append_cleanup_drop_if(ValueId slot, ValueId flag, sema::TypeHandle type, IrTextId name);
+    [[nodiscard]] const sema::DestructorInfo* custom_destructor_info(sema::TypeHandle type) const noexcept;
+    [[nodiscard]] CallTarget destructor_call_target(const sema::DestructorInfo& destructor);
+    [[nodiscard]] bool type_may_emit_runtime_drop(sema::TypeHandle type, CleanupDropMode mode);
+    [[nodiscard]] bool append_custom_destructor_call(ValueId slot, sema::TypeHandle type, IrTextId name);
+    [[nodiscard]] bool append_runtime_drop_glue(
+        ValueId slot, sema::TypeHandle type, IrTextId name, CleanupDropMode mode);
+    void append_conditional_runtime_drop(
+        ValueId condition, ValueId slot, sema::TypeHandle type, IrTextId name, CleanupDropMode mode);
+    void append_cleanup_drop(
+        ValueId slot, sema::TypeHandle type, IrTextId name, CleanupDropMode mode = CleanupDropMode::full);
+    void append_cleanup_drop_if(
+        ValueId slot, ValueId flag, sema::TypeHandle type, IrTextId name,
+        CleanupDropMode mode = CleanupDropMode::full);
     void register_local_cleanup(LocalBinding& binding, std::string_view name);
     [[nodiscard]] bool register_structured_local_cleanup(LocalBinding& binding, std::string_view name);
     [[nodiscard]] bool append_structured_cleanup_bindings(LocalBinding& binding, ValueId address, sema::TypeHandle type,
         std::vector<CleanupProjection>& projections, std::string_view name);
     void append_cleanup_binding(LocalBinding& binding, ValueId address, ValueId flag, sema::TypeHandle type,
-        IrTextId name, const std::vector<CleanupProjection>& projections);
+        IrTextId name, const std::vector<CleanupProjection>& projections,
+        CleanupDropMode mode = CleanupDropMode::full);
+    void append_root_cleanup_flag_from_fields(const LocalBinding& binding);
     [[nodiscard]] ValueId append_field_address(
         ValueId object, IrTextId field_name, sema::TypeHandle field_type, sema::PointerMutability mutability);
     [[nodiscard]] bool cleanup_projection_matches(

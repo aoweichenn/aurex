@@ -1,3 +1,7 @@
+#include <aurex/backend/llvm_backend.hpp>
+#include <aurex/frontend/lex/lexer.hpp>
+#include <aurex/frontend/parse/parser.hpp>
+#include <aurex/frontend/sema/sema.hpp>
 #include <aurex/infrastructure/query/query_key.hpp>
 #include <aurex/midend/ir/ir_dump.hpp>
 #include <aurex/midend/ir/lower_ast.hpp>
@@ -37,6 +41,8 @@ using ir::detail::Lowerer;
 using sema::BuiltinType;
 using sema::CheckedModule;
 using sema::EnumCaseInfo;
+using sema::FunctionLookupKey;
+using sema::FunctionSignature;
 using sema::INVALID_TYPE_HANDLE;
 using sema::PointerMutability;
 using sema::TypeHandle;
@@ -44,6 +50,10 @@ using syntax::ExprId;
 using syntax::ExprKind;
 using syntax::StmtId;
 using syntax::TypeId;
+
+constexpr std::string_view LOWER_AST_GENERIC_TEST_MODULE = "lower_ast_generic";
+constexpr std::string_view LOWER_AST_GENERIC_TEST_FUNCTION = "id";
+constexpr base::SourceId LOWER_AST_RAII_TEST_SOURCE_ID{808};
 
 [[nodiscard]] ExprId push_name(syntax::AstModule& ast, const std::string_view text)
 {
@@ -70,8 +80,6 @@ using syntax::TypeId;
 
 [[nodiscard]] query::GenericInstanceKey test_generic_instance_key()
 {
-    constexpr std::string_view LOWER_AST_GENERIC_TEST_MODULE = "lower_ast_generic";
-    constexpr std::string_view LOWER_AST_GENERIC_TEST_FUNCTION = "id";
     const std::array<std::string_view, 1> module_path{LOWER_AST_GENERIC_TEST_MODULE};
     const std::array<std::string_view, 1> def_path{LOWER_AST_GENERIC_TEST_FUNCTION};
     const query::PackageKey package = query::package_key(std::span<const std::string_view>{});
@@ -81,6 +89,54 @@ using syntax::TypeId;
     const std::array<query::CanonicalTypeKey, 1> args{query::canonical_builtin(query::BuiltinTypeKey::i32)};
     return query::generic_instance_key(def, args, std::span<const query::StableFingerprint128>{},
         query::param_env_key(std::span<const std::string_view>{}));
+}
+
+[[nodiscard]] syntax::AstModule parse_lower_ast_source(const std::string_view source)
+{
+    base::DiagnosticSink diagnostics;
+    lex::Lexer lexer(LOWER_AST_RAII_TEST_SOURCE_ID, source, diagnostics);
+    auto tokens = lexer.tokenize();
+    if (!tokens) {
+        ADD_FAILURE() << tokens.error().message;
+        return {};
+    }
+
+    parse::Parser parser(tokens.value(), diagnostics);
+    auto parsed = parser.parse_module();
+    if (!parsed) {
+        ADD_FAILURE() << parsed.error().message;
+        return {};
+    }
+    if (diagnostics.has_error()) {
+        for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+            ADD_FAILURE() << diagnostic.message;
+        }
+        return {};
+    }
+    return parsed.take_value();
+}
+
+struct LowerAstAnalysis {
+    syntax::AstModule ast;
+    CheckedModule checked;
+};
+
+[[nodiscard]] LowerAstAnalysis analyze_lower_ast_source(const std::string_view source)
+{
+    LowerAstAnalysis analysis;
+    analysis.ast = parse_lower_ast_source(source);
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(analysis.ast, diagnostics);
+    auto checked = analyzer.analyze();
+    if (!checked) {
+        for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+            ADD_FAILURE() << diagnostic.message;
+        }
+        ADD_FAILURE() << checked.error().message;
+        return analysis;
+    }
+    analysis.checked = checked.take_value();
+    return analysis;
 }
 
 void set_expr_type(CheckedModule& checked, const ExprId expr, const TypeHandle type)
@@ -195,6 +251,79 @@ void add_struct_info(CheckedModule& checked, syntax::AstModule& ast, const std::
         });
     }
     checked.structs.emplace(sema::ModuleLookupKey{0U, info.name_id}, std::move(info));
+}
+
+[[nodiscard]] FunctionLookupKey add_destructor_signature(
+    CheckedModule& checked, syntax::AstModule& ast, const TypeHandle self_type, const std::string_view symbol)
+{
+    const sema::IdentId drop_name = ast.intern_identifier("drop");
+    FunctionLookupKey key{0U, self_type.value, drop_name};
+    FunctionSignature signature = checked.make_function_signature();
+    signature.name = checked.intern_text("drop");
+    signature.name_id = drop_name;
+    signature.semantic_key = key;
+    signature.c_name = checked.intern_text(symbol);
+    signature.module = syntax::ModuleId{0U};
+    signature.method_owner_type = self_type;
+    signature.return_type = checked.types.builtin(BuiltinType::void_);
+    signature.param_types = checked.make_type_handle_list();
+    signature.param_types.push_back(self_type);
+    signature.is_method = true;
+    signature.has_self_param = true;
+    signature.is_trait_impl_method = true;
+    signature.is_destructor = true;
+    checked.functions.emplace(key, std::move(signature));
+
+    sema::DestructorInfo destructor;
+    destructor.module = syntax::ModuleId{0U};
+    destructor.self_type = self_type;
+    destructor.function_key = key;
+    destructor.fingerprint = sema::destructor_info_fingerprint(destructor);
+    checked.destructors.emplace(self_type.value, destructor);
+    return key;
+}
+
+void add_enum_case_info(CheckedModule& checked, syntax::AstModule& ast, const std::string_view enum_name,
+    const std::string_view case_name, const TypeHandle enum_type, const TypeHandle payload_type,
+    const std::string_view c_name, const std::string_view value_text)
+{
+    EnumCaseInfo info = checked.make_enum_case_info();
+    info.name = checked.intern_text(case_name);
+    info.name_id = ast.intern_identifier(case_name);
+    info.c_name = checked.intern_text(c_name);
+    info.module = syntax::ModuleId{0U};
+    info.type = enum_type;
+    info.payload_type = payload_type;
+    if (sema::is_valid(payload_type)) {
+        info.payload_types.push_back(payload_type);
+    }
+    info.value_text = checked.intern_text(value_text);
+    info.enum_name = checked.intern_text(enum_name);
+    info.case_name = checked.intern_text(case_name);
+    info.case_name_id = info.name_id;
+    checked.enum_cases.emplace(sema::ModuleLookupKey{0U, info.name_id}, std::move(info));
+}
+
+[[nodiscard]] FunctionId add_ir_destructor_function(
+    Lowerer& lowerer, const TypeHandle self_type, const std::string_view symbol)
+{
+    Function destructor = lowerer.module_.make_function();
+    destructor.name = lowerer.module_.intern("drop");
+    destructor.symbol = lowerer.module_.intern(symbol);
+    destructor.return_type = lowerer.module_.types.builtin(BuiltinType::void_);
+    destructor.signature_params.push_back(ir::FunctionParam{lowerer.module_.intern("self"), self_type});
+    Value self_param = lowerer.module_.make_value();
+    self_param.kind = ValueKind::param;
+    self_param.name = lowerer.module_.intern("self");
+    self_param.type = self_type;
+    const ValueId self_param_id = add_value(lowerer.module_, self_param);
+    destructor.param_values.push_back(self_param_id);
+    const BlockId entry = add_block(lowerer.module_, destructor, "entry");
+    destructor.blocks[entry.value].values.push_back(self_param_id);
+    destructor.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+    const FunctionId id = add_function(lowerer.module_, destructor);
+    lowerer.function_symbols_[lowerer.module_.functions[id.value].symbol] = id;
+    return id;
 }
 
 [[nodiscard]] FunctionId prepare_current_function(
@@ -628,6 +757,300 @@ TEST(CoreUnit, LowerAstWhiteBoxCleanupStackDropsNeedsDropParametersOnImplicitRet
     EXPECT_NE(dump.find("alloca drop.flag.value"), std::string::npos);
     EXPECT_NE(dump.find("drop_if"), std::string::npos);
     EXPECT_NE(dump.find("as T"), std::string::npos);
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxCustomDestructorLowersToRuntimeCallAndLlvm)
+{
+    const std::string_view source = "module lower_raii_runtime;\n"
+                                    "struct File { fd: i32; }\n"
+                                    "impl Drop for File {\n"
+                                    "  fn drop(self: deinit File) -> void {}\n"
+                                    "}\n"
+                                    "fn run(value: File) -> void {}\n"
+                                    "fn main() -> void {}\n";
+
+    LowerAstAnalysis analysis = analyze_lower_ast_source(source);
+    auto lowered = ir::lower_ast(analysis.ast, analysis.checked);
+    ASSERT_TRUE(lowered) << lowered.error().message;
+    const base::Result<void> verified = ir::verify_module(lowered.value());
+    ASSERT_TRUE(verified) << verified.error().message;
+
+    base::usize destructor_call_count = 0;
+    base::usize destructor_self_cleanup_count = 0;
+    for (const Value& value : lowered.value().values) {
+        if (value.kind == ValueKind::call && lowered.value().text(value.name).find("drop") != std::string_view::npos) {
+            ++destructor_call_count;
+            ASSERT_EQ(value.args.size(), 1U);
+            ASSERT_LT(value.args.front().value, lowered.value().values.size());
+            EXPECT_EQ(lowered.value().values[value.args.front().value].kind, ValueKind::load);
+        }
+        if (value.kind == ValueKind::drop_if && is_valid(value.object)
+            && value.object.value < lowered.value().values.size()
+            && lowered.value().text(lowered.value().values[value.object.value].name) == "self") {
+            ++destructor_self_cleanup_count;
+        }
+    }
+    EXPECT_EQ(destructor_call_count, 1U);
+    EXPECT_EQ(destructor_self_cleanup_count, 0U);
+
+    auto llvm_ir = backend::emit_llvm_ir({&lowered.value(), "lower_raii_runtime"});
+    ASSERT_TRUE(llvm_ir) << llvm_ir.error().message;
+    EXPECT_NE(llvm_ir.value().text.find("call void @"), std::string::npos) << llvm_ir.value().text;
+    EXPECT_NE(llvm_ir.value().text.find("drop"), std::string::npos) << llvm_ir.value().text;
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxCustomDestructorRootRunsBeforeFieldCleanup)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle field_type = checked.types.generic_param("Field");
+    const TypeHandle box_type = checked.types.named_struct("Box", "Box", false);
+    const TypeHandle void_type = checked.types.builtin(BuiltinType::void_);
+    add_struct_info(checked, ast, "Box", box_type, {{"inner", field_type}});
+    static_cast<void>(add_destructor_signature(checked, ast, box_type, "drop_box"));
+
+    const sema::IdentId value_name = ast.intern_identifier("value");
+    const StmtId body = push_block(ast, {});
+    syntax::ItemNode function_item;
+    function_item.kind = syntax::ItemKind::fn_decl;
+    function_item.name = "cleanup_custom_box";
+    function_item.name_id = ast.intern_identifier("cleanup_custom_box");
+    function_item.params = {syntax::ParamDecl{"value", syntax::INVALID_TYPE_ID, {}, value_name}};
+    function_item.return_type = syntax::INVALID_TYPE_ID;
+    function_item.body = body;
+
+    Lowerer lowerer(ast, checked);
+    lowerer.lower_record_layouts();
+    static_cast<void>(add_ir_destructor_function(lowerer, box_type, "drop_box"));
+    Function function = lowerer.module_.make_function();
+    function.name = lowerer.module_.intern("cleanup_custom_box");
+    function.symbol = lowerer.module_.intern("cleanup_custom_box");
+    function.return_type = void_type;
+    function.signature_params.push_back(ir::FunctionParam{lowerer.module_.intern("value"), box_type});
+    const FunctionId function_id = add_function(lowerer.module_, function);
+
+    lowerer.lower_function_body(function_id, Lowerer::FunctionBodyView{function_item.params, body});
+
+    const base::Result<void> verified = ir::verify_module(lowerer.module_);
+    ASSERT_TRUE(verified) << verified.error().message;
+
+    base::usize root_drop_if_index = lowerer.module_.values.size();
+    base::usize field_drop_if_index = lowerer.module_.values.size();
+    base::usize root_call_index = lowerer.module_.values.size();
+    base::usize field_drop_count = 0;
+    for (base::usize index = 0; index < lowerer.module_.values.size(); ++index) {
+        const Value& value = lowerer.module_.values[index];
+        if (value.kind == ValueKind::drop_if && is_valid(value.object)
+            && value.object.value < lowerer.module_.values.size()) {
+            const std::string_view object_name = lowerer.module_.text(lowerer.module_.values[value.object.value].name);
+            if (object_name == "value") {
+                root_drop_if_index = index;
+                EXPECT_EQ(value.target_type.value, box_type.value);
+            } else if (lowerer.module_.text(value.name) == "inner") {
+                field_drop_if_index = index;
+                ++field_drop_count;
+            }
+        }
+        if (value.kind == ValueKind::call && lowerer.module_.text(value.name) == "drop_box") {
+            root_call_index = index;
+        }
+    }
+
+    ASSERT_LT(root_drop_if_index, lowerer.module_.values.size());
+    ASSERT_LT(field_drop_if_index, lowerer.module_.values.size());
+    ASSERT_LT(root_call_index, lowerer.module_.values.size());
+    EXPECT_LT(root_drop_if_index, field_drop_if_index);
+    EXPECT_LT(root_drop_if_index, root_call_index);
+    EXPECT_EQ(field_drop_count, 1U);
+
+    const std::string dump = ir::dump_module(lowerer.module_);
+    EXPECT_NE(dump.find("alloca drop.flag.value"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("alloca drop.flag.value.inner"), std::string::npos) << dump;
+    EXPECT_EQ(count_occurrences(dump, "call drop_box"), 1U) << dump;
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxRuntimeDropTypeProbeCoversStructuralShapes)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle resource_type = checked.types.named_struct("Resource", "Resource", false);
+    const TypeHandle wrapper_type = checked.types.named_struct("Wrapper", "Wrapper", false);
+    const TypeHandle tuple_type = checked.types.tuple({checked.types.builtin(BuiltinType::i32), resource_type});
+    const TypeHandle array_type = checked.types.array(2U, resource_type);
+    const TypeHandle enum_type = checked.types.named_enum("Choice", "Choice");
+    const TypeHandle i32 = checked.types.builtin(BuiltinType::i32);
+    checked.types.set_enum_underlying(enum_type, i32);
+    checked.types.set_enum_payload_layout(enum_type, resource_type, 8U, 4U);
+    add_struct_info(checked, ast, "Resource", resource_type, {});
+    add_struct_info(checked, ast, "Wrapper", wrapper_type, {{"trivial", i32}, {"resource", resource_type}});
+    static_cast<void>(add_destructor_signature(checked, ast, resource_type, "drop_resource"));
+    add_enum_case_info(checked, ast, "Choice", "some", enum_type, resource_type, "Choice_some", "1");
+    add_enum_case_info(checked, ast, "Choice", "none", enum_type, INVALID_TYPE_HANDLE, "Choice_none", "0");
+
+    Lowerer lowerer(ast, checked);
+    lowerer.lower_record_layouts();
+
+    EXPECT_FALSE(lowerer.type_may_emit_runtime_drop(INVALID_TYPE_HANDLE, ir::detail::CleanupDropMode::full));
+    EXPECT_TRUE(lowerer.type_may_emit_runtime_drop(resource_type, ir::detail::CleanupDropMode::custom_destructor_only));
+    EXPECT_FALSE(lowerer.type_may_emit_runtime_drop(wrapper_type, ir::detail::CleanupDropMode::custom_destructor_only));
+    EXPECT_TRUE(lowerer.type_may_emit_runtime_drop(wrapper_type, ir::detail::CleanupDropMode::full));
+    EXPECT_TRUE(lowerer.type_may_emit_runtime_drop(tuple_type, ir::detail::CleanupDropMode::full));
+    EXPECT_TRUE(lowerer.type_may_emit_runtime_drop(array_type, ir::detail::CleanupDropMode::full));
+    EXPECT_TRUE(lowerer.type_may_emit_runtime_drop(enum_type, ir::detail::CleanupDropMode::full));
+    EXPECT_FALSE(
+        lowerer.type_may_emit_runtime_drop(checked.types.builtin(BuiltinType::bool_), ir::detail::CleanupDropMode::full));
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxRuntimeDropGlueExpandsStructTupleArrayAndEnumPayloads)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle resource_type = checked.types.named_struct("RuntimeResource", "RuntimeResource", false);
+    const TypeHandle struct_type = checked.types.named_struct("RuntimeBox", "RuntimeBox", false);
+    const TypeHandle tuple_type = checked.types.tuple({resource_type, resource_type});
+    const TypeHandle array_type = checked.types.array(2U, resource_type);
+    const TypeHandle enum_type = checked.types.named_enum("RuntimeChoice", "RuntimeChoice");
+    const TypeHandle i32 = checked.types.builtin(BuiltinType::i32);
+    const TypeHandle void_type = checked.types.builtin(BuiltinType::void_);
+
+    checked.types.set_enum_underlying(enum_type, i32);
+    checked.types.set_enum_payload_layout(enum_type, resource_type, 8U, 4U);
+    add_struct_info(checked, ast, "RuntimeResource", resource_type, {});
+    add_struct_info(checked, ast, "RuntimeBox", struct_type, {{"head", resource_type}, {"tail", i32}});
+    static_cast<void>(add_destructor_signature(checked, ast, resource_type, "drop_runtime_resource"));
+    add_enum_case_info(checked, ast, "RuntimeChoice", "some", enum_type, resource_type, "RuntimeChoice_some", "1");
+    add_enum_case_info(checked, ast, "RuntimeChoice", "none", enum_type, INVALID_TYPE_HANDLE, "RuntimeChoice_none", "0");
+
+    Lowerer lowerer(ast, checked);
+    lowerer.lower_record_layouts();
+    lowerer.index_enum_cases();
+    static_cast<void>(add_ir_destructor_function(lowerer, resource_type, "drop_runtime_resource"));
+    static_cast<void>(prepare_current_function(lowerer, "runtime_drop_shapes", void_type));
+
+    const ValueId struct_slot = append_alloca(lowerer, "box", struct_type);
+    const ValueId tuple_slot = append_alloca(lowerer, "tuple", tuple_type);
+    const ValueId array_slot = append_alloca(lowerer, "array", array_type);
+    const ValueId enum_slot = append_alloca(lowerer, "choice", enum_type);
+    const ir::IrTextId box_name = lowerer.module_.intern("box");
+    const ir::IrTextId tuple_name = lowerer.module_.intern("tuple");
+    const ir::IrTextId array_name = lowerer.module_.intern("array");
+    const ir::IrTextId enum_name = lowerer.module_.intern("choice");
+
+    EXPECT_TRUE(lowerer.append_runtime_drop_glue(
+        struct_slot, struct_type, box_name, ir::detail::CleanupDropMode::full));
+    EXPECT_TRUE(lowerer.append_runtime_drop_glue(
+        tuple_slot, tuple_type, tuple_name, ir::detail::CleanupDropMode::full));
+    EXPECT_TRUE(lowerer.append_runtime_drop_glue(
+        array_slot, array_type, array_name, ir::detail::CleanupDropMode::full));
+    EXPECT_TRUE(lowerer.append_runtime_drop_glue(
+        enum_slot, enum_type, enum_name, ir::detail::CleanupDropMode::full));
+    Terminator return_term;
+    return_term.kind = TerminatorKind::return_;
+    lowerer.set_terminator(lowerer.current_block_, return_term);
+
+    const base::Result<void> verified = ir::verify_module(lowerer.module_);
+    ASSERT_TRUE(verified) << verified.error().message;
+
+    base::usize destructor_call_count = 0;
+    base::usize index_addr_count = 0;
+    base::usize enum_tag_load_count = 0;
+    base::usize enum_payload_cast_count = 0;
+    base::usize conditional_drop_branch_count = 0;
+    for (const Value& value : lowerer.module_.values) {
+        if (value.kind == ValueKind::call && lowerer.module_.text(value.name) == "drop_runtime_resource") {
+            ++destructor_call_count;
+        } else if (value.kind == ValueKind::index_addr && lowerer.module_.text(value.name) == "drop.index") {
+            ++index_addr_count;
+        } else if (value.kind == ValueKind::load && lowerer.module_.text(value.name) == "drop.tag") {
+            ++enum_tag_load_count;
+        } else if (value.kind == ValueKind::cast && lowerer.module_.types.same(value.target_type,
+                   lowerer.module_.types.pointer(PointerMutability::mut, resource_type))) {
+            ++enum_payload_cast_count;
+        }
+    }
+    for (const ir::BasicBlock& block : lowerer.current_function_->blocks) {
+        if (block.terminator.kind == TerminatorKind::cond_branch) {
+            ++conditional_drop_branch_count;
+        }
+    }
+
+    EXPECT_EQ(destructor_call_count, 6U);
+    EXPECT_EQ(index_addr_count, 2U);
+    EXPECT_EQ(enum_tag_load_count, 1U);
+    EXPECT_GE(enum_payload_cast_count, 1U);
+    EXPECT_GE(conditional_drop_branch_count, 1U);
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxRootCleanupFlagRecomputesFromFieldFlags)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle resource_type = checked.types.generic_param("Field");
+    const TypeHandle box_type = checked.types.named_struct("FlagBox", "FlagBox", false);
+    const TypeHandle void_type = checked.types.builtin(BuiltinType::void_);
+    const sema::IdentId value_name = ast.intern_identifier("value");
+    const ExprId value = push_name(ast, "value");
+    const ExprId value_left = push_field(ast, value, "left");
+    set_expr_type(checked, value, box_type);
+    set_expr_type(checked, value_left, resource_type);
+
+    add_struct_info(checked, ast, "FlagBox", box_type, {{"left", resource_type}, {"right", resource_type}});
+    static_cast<void>(add_destructor_signature(checked, ast, box_type, "drop_flag_box"));
+
+    Lowerer lowerer(ast, checked);
+    lowerer.lower_record_layouts();
+    lowerer.cleanup_scopes_.push_back({});
+    static_cast<void>(prepare_current_function(lowerer, "root_flag_recompute", void_type));
+
+    const ValueId slot = append_alloca(lowerer, "value", box_type);
+    ir::detail::LocalBinding binding{
+        .slot = slot,
+        .cleanup_flag = INVALID_VALUE_ID,
+        .type = box_type,
+        .is_mutable = true,
+        .field_cleanups = {},
+    };
+    lowerer.register_local_cleanup(binding, "value");
+    lowerer.locals_.emplace(value_name, binding);
+
+    lowerer.mark_place_initialized(value_left);
+
+    base::usize root_flag_store_count = 0;
+    base::usize root_flag_and_count = 0;
+    base::usize field_flag_load_count = 0;
+    for (const Value& value_node : lowerer.module_.values) {
+        if (value_node.kind == ValueKind::binary && value_node.binary_op == BinaryOp::logical_and) {
+            ++root_flag_and_count;
+            continue;
+        }
+        if (value_node.kind == ValueKind::load && is_valid(value_node.object)
+            && value_node.object.value < lowerer.module_.values.size()) {
+            const Value& target = lowerer.module_.values[value_node.object.value];
+            if (target.kind == ValueKind::alloca
+                && lowerer.module_.text(target.name).find("drop.flag.value.") == 0U) {
+                ++field_flag_load_count;
+            }
+            continue;
+        }
+        if (value_node.kind != ValueKind::store || !is_valid(value_node.object)
+            || value_node.object.value >= lowerer.module_.values.size()) {
+            continue;
+        }
+        const Value& target = lowerer.module_.values[value_node.object.value];
+        if (target.kind == ValueKind::alloca && lowerer.module_.text(target.name) == "drop.flag.value") {
+            ++root_flag_store_count;
+        }
+    }
+
+    EXPECT_GE(root_flag_store_count, 2U);
+    EXPECT_GE(field_flag_load_count, 2U);
+    EXPECT_GE(root_flag_and_count, 1U);
+    const std::string dump = ir::dump_module(lowerer.module_);
+    EXPECT_NE(dump.find("and"), std::string::npos) << dump;
 }
 
 TEST(CoreUnit, LowerAstWhiteBoxCleanupStackInterleavesDeferredActionsAndDrops)

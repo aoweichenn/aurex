@@ -72,10 +72,11 @@ M7c/M7d 后续实现按六个大块推进：
    降级为 storage-only parity guard。
 3. M7c-C：核心已完成。后续只保留 analyzer 删除/debug-only 化的更大 parity 清理，以及 public/prototype/extern/trait
    lifetime policy 的发布文档化，不再阻塞 storage escape 主事实链。
-4. M7d-A：引入 `DropCheckFact` / `DropActionFact`、dropck solver、destructor body safety 和泛型 drop glue
-   type-outlives constraints。
-5. M7d-B：实现 place-level resource state，覆盖 field/tuple partial move、reinit、drop flag、replace/take/swap
-   compiler-known primitives，并让 lowering 消费 sema drop facts。
+4. M7d-A：已完成当前事实链。`DropCheckFact` / `DropActionFact`、dropck solver、destructor body safety 和泛型
+   drop glue type-outlives constraints 已落地。
+5. M7d-B：struct field 子集已完成。本地 owned struct field partial move/reinit、字段级 cleanup/drop flag、
+   generic side-table body-flow 类型读取和 lowering 字段 drop flag 已落地；tuple partial move、indexed move-out、
+   borrowed/reference field overwrite、replace/take/swap compiler-known primitives 仍是后续项。
 6. M7d-C：收口 RAII user surface、Drop/deinit 语义、IDE/tooling projection、IR verifier 和 release gates。
 
 实现架构必须低耦合：lifetime fact collector、region solver、enforcer、dropck facts、place-state analyzer、RAII surface

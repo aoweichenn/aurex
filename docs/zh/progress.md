@@ -5,6 +5,18 @@
 
 ## 总体状态
 
+2026-06-05：M7d-B struct field place-state 子集已完成实现收口。当前代码允许本地 owned struct field
+partial move 和 field reinit，例如 `let moved: T = current.left; current.left = replacement;`；body-flow 会把 field
+assignment 记为 `reinit`，并为 droppable struct fields 生成 projected `cleanup_storage`。generic template
+body-flow 会读取 generic side table 的 expr/local 类型，因此 `Box[T]` 字段 cleanup 能看到字段类型。IR lowering
+为 droppable struct fields 建立字段级 drop flag，在 field move-out 后关闭对应 flag，在 field reinit 后重新打开，
+cleanup 只 drop 仍 initialized 的字段。place-state 还修正了 owned generic return summary 的解释：`id[T](value) -> T`
+这类返回 owned `T` 的 summary 仍保留给 borrow/lifetime checker，但不会在 place-state 中被误当成对 moved 实参的借用。
+
+当前 M7d-B 剩余边界明确保守：tuple `.0` / `.1` source surface 仍由 parser 拒绝，所以 tuple partial move 未落地；
+indexed move-out、consuming pattern payload、non-`Copy` `?` payload transfer 仍拒绝；通过 borrowed/reference base 的
+resource field overwrite 仍拒绝；`replace` / `take` / `swap` 还没有 compiler-known primitive 或标准库 intrinsic。
+
 2026-06-04：M7c-C storage escape 事实链与性能收口完成。`FunctionBorrowSummary` 新增
 `storage_escapes`，summary builder 会把非 name storage assignment 中来自 local / temporary /
 parameter-storage origin 的 borrowed value 记录为稳定事实；lifetime collector 会把这些 storage escape 映射为

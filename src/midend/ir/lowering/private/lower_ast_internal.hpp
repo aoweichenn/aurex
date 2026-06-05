@@ -42,11 +42,35 @@ struct PlaceAddress {
     bool is_mutable = true;
 };
 
+struct LocalPlaceProjection {
+    sema::IdentId field_name_id = sema::INVALID_IDENT_ID;
+    std::string_view field_name;
+};
+
+struct LocalPlacePath {
+    sema::IdentId root_name_id = sema::INVALID_IDENT_ID;
+    std::vector<LocalPlaceProjection> projections;
+};
+
+struct CleanupProjection {
+    sema::IdentId field_name_id = sema::INVALID_IDENT_ID;
+    IrTextId field_name = INVALID_IR_TEXT_ID;
+};
+
+struct CleanupBinding {
+    ValueId address = INVALID_VALUE_ID;
+    ValueId flag = INVALID_VALUE_ID;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
+    IrTextId name = INVALID_IR_TEXT_ID;
+    std::vector<CleanupProjection> projections;
+};
+
 struct LocalBinding {
     ValueId slot = INVALID_VALUE_ID;
     ValueId cleanup_flag = INVALID_VALUE_ID;
     sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
     bool is_mutable = false;
+    std::vector<CleanupBinding> field_cleanups;
 };
 
 struct LocalScopeFrame {
@@ -234,13 +258,31 @@ public:
     [[nodiscard]] bool cleanup_required(sema::TypeHandle type);
     [[nodiscard]] sema::OwnedUseMode expr_owned_use_mode(syntax::ExprId expr) const noexcept;
     [[nodiscard]] const LocalBinding* local_binding_for_name_expr(syntax::ExprId expr_id) const noexcept;
+    [[nodiscard]] std::optional<LocalPlacePath> local_place_path(syntax::ExprId expr_id) const;
+    [[nodiscard]] const LocalBinding* local_binding_for_place_path(const LocalPlacePath& path) const noexcept;
+    [[nodiscard]] const sema::StructInfo* struct_info_for_type(sema::TypeHandle type) const noexcept;
     [[nodiscard]] ValueId append_bool_literal(bool value);
     [[nodiscard]] ValueId append_cleanup_flag(std::string_view name);
     void append_cleanup_flag_store(ValueId flag, bool initialized);
     void append_cleanup_drop(ValueId slot, sema::TypeHandle type, IrTextId name);
     void append_cleanup_drop_if(ValueId slot, ValueId flag, sema::TypeHandle type, IrTextId name);
     void register_local_cleanup(LocalBinding& binding, std::string_view name);
+    [[nodiscard]] bool register_structured_local_cleanup(LocalBinding& binding, std::string_view name);
+    [[nodiscard]] bool append_structured_cleanup_bindings(LocalBinding& binding, ValueId address, sema::TypeHandle type,
+        std::vector<CleanupProjection>& projections, std::string_view name);
+    void append_cleanup_binding(LocalBinding& binding, ValueId address, ValueId flag, sema::TypeHandle type,
+        IrTextId name, const std::vector<CleanupProjection>& projections);
+    [[nodiscard]] ValueId append_field_address(
+        ValueId object, IrTextId field_name, sema::TypeHandle field_type, sema::PointerMutability mutability);
+    [[nodiscard]] bool cleanup_projection_matches(
+        const CleanupProjection& cleanup, const LocalPlaceProjection& place) const noexcept;
+    [[nodiscard]] bool cleanup_binding_has_prefix(
+        const CleanupBinding& binding, std::span<const LocalPlaceProjection> projections) const noexcept;
+    void append_local_cleanup_drop_if(const LocalBinding& binding);
+    void append_place_cleanup_drop_if(syntax::ExprId expr_id);
+    void mark_place_initialized(syntax::ExprId expr_id);
     void mark_local_moved(sema::IdentId name_id);
+    void mark_expr_place_moved(syntax::ExprId expr_id);
     [[nodiscard]] ValueId append_load(ValueId address, sema::TypeHandle value_type, IrTextId name = INVALID_IR_TEXT_ID);
     [[nodiscard]] ValueId enum_field_addr(ValueId object, IrTextId field_name);
     void bind_pattern_locals(syntax::PatternId pattern, ValueId source_address, sema::TypeHandle source_type);

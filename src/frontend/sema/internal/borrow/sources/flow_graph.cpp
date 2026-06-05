@@ -1,3 +1,4 @@
+#include <aurex/frontend/sema/resource_semantics.hpp>
 #include <aurex/infrastructure/base/integer.hpp>
 
 #include <algorithm>
@@ -99,8 +100,8 @@ struct BodyFlowPatternCleanupFrame {
 class BodyFlowGraphBuilder final {
 public:
     BodyFlowGraphBuilder(const syntax::AstModule& module, const CheckedModule& checked,
-        const FunctionLookupKey function, const syntax::StmtId body)
-        : module_(module), checked_(checked)
+        const FunctionLookupKey function, const syntax::StmtId body, const GenericSideTables* const side_tables)
+        : module_(module), checked_(checked), resources_(checked), side_tables_(side_tables)
     {
         this->graph_.function = function;
         this->graph_.body = body;
@@ -212,6 +213,22 @@ private:
         BodyFlowPlace place;
         place.root_kind = BodyFlowPlaceRootKind::local;
         place.root_name_id = name_id;
+        place.range = range;
+        const base::u32 place_id = this->add_place(std::move(place));
+        this->add_action(kind, point, place_id, stmt, syntax::INVALID_EXPR_ID, range);
+    }
+
+    void add_local_projected_storage_action(const BodyFlowActionKind kind, const base::u32 point,
+        const syntax::StmtId stmt, const IdentId name_id, std::vector<BodyFlowPlaceProjection> projections,
+        const base::SourceRange& range)
+    {
+        if (!syntax::is_valid(name_id) || projections.empty()) {
+            return;
+        }
+        BodyFlowPlace place;
+        place.root_kind = BodyFlowPlaceRootKind::local;
+        place.root_name_id = name_id;
+        place.projections = std::move(projections);
         place.range = range;
         const base::u32 place_id = this->add_place(std::move(place));
         this->add_action(kind, point, place_id, stmt, syntax::INVALID_EXPR_ID, range);
@@ -380,11 +397,18 @@ private:
         this->push_expression(stmt.lhs, entry, lhs_done, BodyFlowExprContext::place_observe);
         this->push_expression(stmt.rhs, lhs_done, rhs_done, BodyFlowExprContext::value);
         if (valid_expr(this->module_, stmt.lhs)) {
-            const BodyFlowActionKind write_kind =
-                this->expr_is_direct_local_name(stmt.lhs) ? BodyFlowActionKind::reinit : BodyFlowActionKind::write;
+            const BodyFlowActionKind write_kind = this->assignment_write_kind(stmt.lhs);
             this->add_place_action(write_kind, exit, stmt_id, stmt.lhs);
         }
         this->add_edge(rhs_done, exit);
+    }
+
+    [[nodiscard]] BodyFlowActionKind assignment_write_kind(const syntax::ExprId lhs) const noexcept
+    {
+        if (this->expr_is_direct_local_name(lhs) || this->expr_is_field_projection(lhs)) {
+            return BodyFlowActionKind::reinit;
+        }
+        return BodyFlowActionKind::write;
     }
 
     void add_block_cleanup_storage_actions(
@@ -402,9 +426,54 @@ private:
                 this->add_pattern_cleanup_storage_actions(stmt.pattern, cleanup_point, stmt_id);
                 continue;
             }
-            this->add_local_storage_action(
-                BodyFlowActionKind::cleanup_storage, cleanup_point, block_stmt, stmt.name_id, stmt.range);
+            this->add_local_cleanup_storage_actions(stmt, cleanup_point, block_stmt, stmt_id);
         }
+    }
+
+    void add_local_cleanup_storage_actions(const syntax::StmtNode& stmt, const base::u32 cleanup_point,
+        const syntax::StmtId block_stmt, const syntax::StmtId local_stmt)
+    {
+        if (!syntax::is_valid(stmt.name_id)) {
+            return;
+        }
+        std::vector<BodyFlowPlaceProjection> projections;
+        if (this->add_struct_field_cleanup_storage_actions(stmt.name_id, this->cached_stmt_local_type(local_stmt),
+                cleanup_point, block_stmt, stmt.range, projections)) {
+            return;
+        }
+        this->add_local_storage_action(
+            BodyFlowActionKind::cleanup_storage, cleanup_point, block_stmt, stmt.name_id, stmt.range);
+    }
+
+    [[nodiscard]] bool add_struct_field_cleanup_storage_actions(const IdentId root_name, const TypeHandle type,
+        const base::u32 cleanup_point, const syntax::StmtId block_stmt, const base::SourceRange& range,
+        std::vector<BodyFlowPlaceProjection>& projections)
+    {
+        const StructInfo* const structure = this->find_struct(type);
+        if (structure == nullptr || structure->fields.empty()) {
+            return false;
+        }
+
+        bool added = false;
+        for (const StructFieldInfo& field : structure->fields) {
+            if (!this->type_needs_drop(field.type)) {
+                continue;
+            }
+            projections.push_back(BodyFlowPlaceProjection{
+                .kind = BodyFlowPlaceProjectionKind::field,
+                .field_name_id = field.name_id,
+                .expr = syntax::INVALID_EXPR_ID,
+            });
+            const bool nested = this->add_struct_field_cleanup_storage_actions(
+                root_name, field.type, cleanup_point, block_stmt, range, projections);
+            if (!nested) {
+                this->add_local_projected_storage_action(
+                    BodyFlowActionKind::cleanup_storage, cleanup_point, block_stmt, root_name, projections, range);
+            }
+            projections.pop_back();
+            added = true;
+        }
+        return added;
     }
 
     void add_pattern_cleanup_storage_actions(
@@ -1053,8 +1122,43 @@ private:
 
     [[nodiscard]] TypeHandle cached_expr_type(const syntax::ExprId expr) const noexcept
     {
+        if (this->side_tables_ != nullptr) {
+            if (this->side_tables_->sparse) {
+                const base::usize local_index = this->side_tables_->local_expr_index(expr);
+                if (local_index != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
+                    && local_index < this->side_tables_->expr_types.size()) {
+                    return this->side_tables_->expr_types[local_index];
+                }
+                const auto found = this->side_tables_->sparse_expr_types.find(expr.value);
+                return found == this->side_tables_->sparse_expr_types.end() ? INVALID_TYPE_HANDLE : found->second;
+            }
+            return syntax::is_valid(expr) && expr.value < this->side_tables_->expr_types.size()
+                ? this->side_tables_->expr_types[expr.value]
+                : INVALID_TYPE_HANDLE;
+        }
         return valid_expr(this->module_, expr) && expr.value < this->checked_.expr_types.size()
             ? this->checked_.expr_types[expr.value]
+            : INVALID_TYPE_HANDLE;
+    }
+
+    [[nodiscard]] TypeHandle cached_stmt_local_type(const syntax::StmtId stmt) const noexcept
+    {
+        if (this->side_tables_ != nullptr) {
+            if (this->side_tables_->sparse) {
+                const base::usize local_index = this->side_tables_->local_stmt_index(stmt);
+                if (local_index != SEMA_GENERIC_SIDE_TABLE_MISSING_INDEX
+                    && local_index < this->side_tables_->stmt_local_types.size()) {
+                    return this->side_tables_->stmt_local_types[local_index];
+                }
+                const auto found = this->side_tables_->sparse_stmt_local_types.find(stmt.value);
+                return found == this->side_tables_->sparse_stmt_local_types.end() ? INVALID_TYPE_HANDLE : found->second;
+            }
+            return valid_stmt(this->module_, stmt) && stmt.value < this->side_tables_->stmt_local_types.size()
+                ? this->side_tables_->stmt_local_types[stmt.value]
+                : INVALID_TYPE_HANDLE;
+        }
+        return valid_stmt(this->module_, stmt) && stmt.value < this->checked_.stmt_local_types.size()
+            ? this->checked_.stmt_local_types[stmt.value]
             : INVALID_TYPE_HANDLE;
     }
 
@@ -1066,6 +1170,12 @@ private:
             }
         }
         return nullptr;
+    }
+
+    [[nodiscard]] bool type_needs_drop(const TypeHandle type) const
+    {
+        return is_valid(type) && type.value < this->checked_.types.size()
+            && resource_needs_drop(this->resources_.classify(type));
     }
 
     [[nodiscard]] bool type_can_contain_borrow(const TypeHandle type) const
@@ -1297,6 +1407,11 @@ private:
         return name != nullptr && name->scope_name.empty();
     }
 
+    [[nodiscard]] bool expr_is_field_projection(const syntax::ExprId expr) const noexcept
+    {
+        return valid_expr(this->module_, expr) && this->module_.exprs.kind(expr.value) == syntax::ExprKind::field;
+    }
+
     void finish_name_place(
         const syntax::ExprId expr, BodyFlowPlace& place, std::vector<BodyFlowPlaceProjection>& reversed_projections)
     {
@@ -1367,6 +1482,8 @@ private:
 
     const syntax::AstModule& module_;
     const CheckedModule& checked_;
+    ResourceSemanticsClassifier resources_;
+    const GenericSideTables* side_tables_ = nullptr;
     BodyFlowGraph graph_;
     std::vector<BodyFlowTask> tasks_;
 };
@@ -1570,8 +1687,9 @@ SemanticAnalyzerCore::BodyFlowAnalyzer::BodyFlowAnalyzer(SemanticAnalyzerCore& c
 
 void SemanticAnalyzerCore::BodyFlowAnalyzer::collect(const syntax::ItemNode& function, const FunctionLookupKey& key)
 {
-    BodyFlowGraph graph =
-        BodyFlowGraphBuilder(this->core_.ctx_.module, this->core_.state_.checked, key, function.body).build();
+    BodyFlowGraph graph = BodyFlowGraphBuilder(this->core_.ctx_.module, this->core_.state_.checked, key, function.body,
+        this->core_.state_.flow.current_side_tables.side_tables)
+                              .build();
     this->core_.state_.checked.body_flow_graphs[key] = std::move(graph);
 }
 

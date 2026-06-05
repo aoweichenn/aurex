@@ -782,17 +782,22 @@ M7c/M7d 不承诺“一次超过 Rust 所有功能”，但可以在几个核心
 
 交付：
 
-- place state dataflow。
-- field/tuple partial move、reinit、drop flags。
-- `replace` / `take` / `swap` compiler-known primitives。
-- lowering 消费 sema drop facts，不重新推断。
+- 已完成：place state dataflow。
+- 已完成：本地 owned struct field partial move、field reinit 和字段级 cleanup/drop flags。
+- 已完成：generic template body-flow 读取 generic side table 类型，struct field cleanup 不再丢失 `Box[T]` 字段类型。
+- 已完成：lowering 为 struct droppable fields 建立字段级 drop flag，并在 field move/reinit/cleanup 时更新。
+- 未完成：tuple partial move；当前 `.0` / `.1` source surface 仍由 parser 拒绝。
+- 未完成：indexed move-out 和 array/slice/index 精确 disjoint proof。
+- 未完成：`replace` / `take` / `swap` compiler-known primitives。
+- 未完成：通过 borrowed/reference base 的 resource field overwrite。
 
 验收：
 
-- partial field move 后只 drop initialized fields。
-- moved field 使用报错，reinit 后通过。
-- overwrite old resource 先 drop old value。
-- known-disjoint field borrow/move/drop 不误冲突。
+- 已通过：partial field move 后只 drop initialized fields。
+- 已通过：moved field 使用报错，field reinit 后通过。
+- 已通过：known-disjoint struct fields 的 cleanup/drop flag 不互相污染。
+- 未通过/未实现：borrowed/reference field overwrite 的 old resource drop proof。
+- 未通过/未实现：tuple/index partial move 和 `replace` / `take` / `swap`。
 
 ### M7d-C：RAII user surface 与 release closure
 

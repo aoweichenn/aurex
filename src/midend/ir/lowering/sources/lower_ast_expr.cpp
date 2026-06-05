@@ -814,7 +814,9 @@ ValueId Lowerer::lower_load_expr(const syntax::ExprId expr_id)
     value.kind = ValueKind::load;
     value.type = this->expr_type(expr_id);
     value.object = this->lower_place_address(expr_id).address;
-    return this->append_value(value);
+    const ValueId result = this->append_value(value);
+    this->mark_expr_place_moved(expr_id);
+    return result;
 }
 
 ValueId Lowerer::lower_struct_literal_expr(const syntax::ExprId expr_id, const ExprView& expr)
@@ -927,12 +929,11 @@ PlaceAddress Lowerer::lower_place_address(const syntax::ExprId expr_id)
         const PlaceAddress object = this->lower_object_place_or_value(expr.object);
         const sema::PointerMutability mutability =
             object.is_mutable ? sema::PointerMutability::mut : sema::PointerMutability::const_;
-        Value value = this->module_.make_value();
-        value.kind = ValueKind::field_addr;
-        value.type = this->module_.types.pointer(mutability, this->expr_type(expr_id));
-        value.name = this->module_.intern(expr.field_name);
-        value.object = object.address;
-        return PlaceAddress{this->append_value(value), object.is_mutable};
+        return PlaceAddress{
+            this->append_field_address(
+                object.address, this->module_.intern(expr.field_name), this->expr_type(expr_id), mutability),
+            object.is_mutable,
+        };
     }
     if (expr.kind == syntax::ExprKind::index) {
         const sema::TypeHandle object_type = this->expr_type(expr.object);

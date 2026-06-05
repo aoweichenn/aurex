@@ -33,7 +33,6 @@ enum class RequestedUse {
 enum class MoveActionKind {
     use_local,
     initialize_local,
-    reject_partial_field_move,
     reject_indexed_move,
     reject_pattern_payload,
     reject_try_payload,
@@ -1046,10 +1045,11 @@ private:
                 });
             case syntax::ExprKind::if_expr:
                 return this->pattern_payload_requires_full_move_analysis(expr.condition_pattern, expr.condition);
-            case syntax::ExprKind::field:
             case syntax::ExprKind::index:
                 return requested == RequestedUse::owned
                     && this->is_tracked_resource_type(this->core_.cached_expr_type(expr_id));
+            case syntax::ExprKind::field:
+                return false;
             default:
                 break;
         }
@@ -1775,10 +1775,6 @@ private:
         const bool moves_tracked_field = task.requested == RequestedUse::owned
             && this->is_tracked_resource_type(this->core_.cached_expr_type(task.expr));
         const bool consume_whole_object = moves_tracked_field && this->field_move_can_consume_whole_object(expr);
-        if (moves_tracked_field && !consume_whole_object) {
-            this->blocks_[task.start].actions.push_back(MoveAction{MoveActionKind::reject_partial_field_move,
-                SEMA_MOVE_INVALID_LOCAL, task.expr, OwnedUseMode::none, expr.range});
-        }
         const RequestedUse object_use = consume_whole_object ? RequestedUse::owned : RequestedUse::initialized_place;
         this->push_expression(expr.object, object_use, task.start, task.continuation,
             task.environment, task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
@@ -2194,9 +2190,6 @@ private:
     void report_rejection(const MoveAction& action) const
     {
         switch (action.kind) {
-            case MoveActionKind::reject_partial_field_move:
-                this->core_.report_unsupported(action.range, std::string(SEMA_MOVE_PARTIAL_FIELD_UNSUPPORTED));
-                break;
             case MoveActionKind::reject_indexed_move:
                 this->core_.report_unsupported(action.range, std::string(SEMA_MOVE_INDEXED_ELEMENT_UNSUPPORTED));
                 break;

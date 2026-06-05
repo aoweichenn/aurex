@@ -10,5 +10,6 @@ fn unwrap[T](box: Box[T]) -> T {
 }
 
 fn main() -> i32 {
-    return 0;
+    let wrapped: Box[i32] = Box[i32] { value: 41, tag: 1 };
+    return unwrap(wrapped) + 1 - 42;
 }

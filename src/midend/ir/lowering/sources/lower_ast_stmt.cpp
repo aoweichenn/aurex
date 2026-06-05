@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -74,7 +76,13 @@ void Lowerer::lower_function_body(const FunctionId function_id, const FunctionBo
         slot.name = this->module_.intern(param.name);
         slot.type = this->module_.types.pointer(sema::PointerMutability::mut, param_value.type);
         const ValueId slot_id = this->append_value(slot);
-        LocalBinding binding{slot_id, INVALID_VALUE_ID, param_type, false};
+        LocalBinding binding{
+            .slot = slot_id,
+            .cleanup_flag = INVALID_VALUE_ID,
+            .type = param_type,
+            .is_mutable = false,
+            .field_cleanups = {},
+        };
         this->register_local_cleanup(binding, param.name);
         this->bind_local(param.name_id, binding);
         this->append_store(slot_id, param_id);
@@ -214,7 +222,13 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id)
             slot.name = this->module_.intern(stmt.name);
             slot.type = module_.types.pointer(sema::PointerMutability::mut, local_type);
             const ValueId slot_id = append_value(slot);
-            LocalBinding binding{slot_id, INVALID_VALUE_ID, local_type, stmt.kind == syntax::StmtKind::var};
+            LocalBinding binding{
+                .slot = slot_id,
+                .cleanup_flag = INVALID_VALUE_ID,
+                .type = local_type,
+                .is_mutable = stmt.kind == syntax::StmtKind::var,
+                .field_cleanups = {},
+            };
             append_store(slot_id, lower_expr(stmt.init, local_type));
             this->register_local_cleanup(binding, stmt.name);
             this->bind_local(stmt.name_id, binding);
@@ -234,16 +248,9 @@ void Lowerer::lower_stmt(const syntax::StmtId stmt_id)
                 value.rhs = source;
                 source = this->append_value(value);
             }
-            if (const LocalBinding* const binding = this->local_binding_for_name_expr(stmt.lhs);
-                binding != nullptr && is_valid(binding->cleanup_flag)) {
-                this->append_cleanup_drop_if(binding->slot, binding->cleanup_flag, binding->type,
-                    this->module_.values[binding->slot.value].name);
-            }
+            this->append_place_cleanup_drop_if(stmt.lhs);
             this->append_store(target, source);
-            if (const LocalBinding* const binding = this->local_binding_for_name_expr(stmt.lhs);
-                binding != nullptr && is_valid(binding->cleanup_flag)) {
-                this->append_cleanup_flag_store(binding->cleanup_flag, true);
-            }
+            this->mark_place_initialized(stmt.lhs);
             break;
         }
         case syntax::StmtKind::if_:
@@ -529,6 +536,60 @@ const LocalBinding* Lowerer::local_binding_for_name_expr(const syntax::ExprId ex
     return found == this->locals_.end() ? nullptr : &found->second;
 }
 
+std::optional<LocalPlacePath> Lowerer::local_place_path(const syntax::ExprId expr_id) const
+{
+    if (!syntax::is_valid(expr_id)) {
+        return std::nullopt;
+    }
+    syntax::ExprId current = expr_id;
+    std::vector<LocalPlaceProjection> reversed;
+    while (syntax::is_valid(current) && current.value < this->ast_.exprs.size()) {
+        const syntax::ExprKind kind = this->ast_.exprs.kind(current.value);
+        if (kind == syntax::ExprKind::name) {
+            const syntax::NameExprPayload* const name = this->ast_.exprs.name_payload(current.value);
+            if (name == nullptr || !name->scope_name.empty()) {
+                return std::nullopt;
+            }
+            std::ranges::reverse(reversed);
+            return LocalPlacePath{name->text_id, std::move(reversed)};
+        }
+        if (kind == syntax::ExprKind::field) {
+            const syntax::FieldExprPayload* const field = this->ast_.exprs.field_payload(current.value);
+            if (field == nullptr) {
+                return std::nullopt;
+            }
+            reversed.push_back(LocalPlaceProjection{field->field_name_id, field->field_name});
+            current = field->object;
+            continue;
+        }
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+const LocalBinding* Lowerer::local_binding_for_place_path(const LocalPlacePath& path) const noexcept
+{
+    if (!sema::is_valid(path.root_name_id)) {
+        return nullptr;
+    }
+    const auto found = this->locals_.find(path.root_name_id);
+    return found == this->locals_.end() ? nullptr : &found->second;
+}
+
+const sema::StructInfo* Lowerer::struct_info_for_type(const sema::TypeHandle type) const noexcept
+{
+    if (!sema::is_valid(type)) {
+        return nullptr;
+    }
+    for (const auto& entry : this->checked_.structs) {
+        const sema::StructInfo& info = entry.second;
+        if (this->module_.types.same(info.type, type)) {
+            return &info;
+        }
+    }
+    return nullptr;
+}
+
 ValueId Lowerer::append_bool_literal(const bool value)
 {
     Value literal = this->module_.make_value();
@@ -594,6 +655,9 @@ void Lowerer::register_local_cleanup(LocalBinding& binding, const std::string_vi
     if (!this->cleanup_required(binding.type) || this->cleanup_scopes_.empty()) {
         return;
     }
+    if (this->register_structured_local_cleanup(binding, name)) {
+        return;
+    }
     binding.cleanup_flag = this->append_cleanup_flag(name);
     this->append_cleanup_flag_store(binding.cleanup_flag, true);
     this->cleanup_scopes_.back().push_back(CleanupAction{
@@ -606,13 +670,211 @@ void Lowerer::register_local_cleanup(LocalBinding& binding, const std::string_vi
     });
 }
 
+bool Lowerer::register_structured_local_cleanup(LocalBinding& binding, const std::string_view name)
+{
+    if (!is_valid(binding.slot) || this->struct_info_for_type(binding.type) == nullptr) {
+        return false;
+    }
+    std::vector<CleanupProjection> projections;
+    const bool registered =
+        this->append_structured_cleanup_bindings(binding, binding.slot, binding.type, projections, name);
+    return registered && !binding.field_cleanups.empty();
+}
+
+bool Lowerer::append_structured_cleanup_bindings(LocalBinding& binding, const ValueId address,
+    const sema::TypeHandle type, std::vector<CleanupProjection>& projections, const std::string_view name)
+{
+    const sema::StructInfo* const info = this->struct_info_for_type(type);
+    if (info == nullptr || info->fields.empty()) {
+        return false;
+    }
+
+    bool registered_any = false;
+    for (const sema::StructFieldInfo& field : info->fields) {
+        if (!this->cleanup_required(field.type)) {
+            continue;
+        }
+        const IrTextId field_name = this->module_.intern(field.name);
+        const ValueId field_address =
+            this->append_field_address(address, field_name, field.type, sema::PointerMutability::mut);
+        projections.push_back(CleanupProjection{field.name_id, field_name});
+        const bool nested_registered =
+            this->append_structured_cleanup_bindings(binding, field_address, field.type, projections, name);
+        if (!nested_registered) {
+            const std::string flag_name = std::string(name) + "." + std::string(field.name);
+            const ValueId flag = this->append_cleanup_flag(flag_name);
+            this->append_cleanup_flag_store(flag, true);
+            this->append_cleanup_binding(binding, field_address, flag, field.type, field_name, projections);
+        }
+        projections.pop_back();
+        registered_any = true;
+    }
+    return registered_any;
+}
+
+void Lowerer::append_cleanup_binding(LocalBinding& binding, const ValueId address, const ValueId flag,
+    const sema::TypeHandle type, const IrTextId name, const std::vector<CleanupProjection>& projections)
+{
+    binding.field_cleanups.push_back(CleanupBinding{
+        address,
+        flag,
+        type,
+        name,
+        projections,
+    });
+    this->cleanup_scopes_.back().push_back(CleanupAction{
+        CleanupActionKind::drop_local,
+        address,
+        flag,
+        type,
+        syntax::INVALID_EXPR_ID,
+        name,
+    });
+}
+
+ValueId Lowerer::append_field_address(const ValueId object, const IrTextId field_name,
+    const sema::TypeHandle field_type, const sema::PointerMutability mutability)
+{
+    if (!is_valid(object) || !sema::is_valid(field_type)) {
+        return INVALID_VALUE_ID;
+    }
+    Value value = this->module_.make_value();
+    value.kind = ValueKind::field_addr;
+    value.type = this->module_.types.pointer(mutability, field_type);
+    value.name = field_name;
+    value.object = object;
+    return this->append_value(value);
+}
+
+bool Lowerer::cleanup_projection_matches(
+    const CleanupProjection& cleanup, const LocalPlaceProjection& place) const noexcept
+{
+    if (sema::is_valid(cleanup.field_name_id) && sema::is_valid(place.field_name_id)) {
+        return cleanup.field_name_id == place.field_name_id;
+    }
+    return cleanup.field_name != INVALID_IR_TEXT_ID && this->module_.text(cleanup.field_name) == place.field_name;
+}
+
+bool Lowerer::cleanup_binding_has_prefix(
+    const CleanupBinding& binding, const std::span<const LocalPlaceProjection> projections) const noexcept
+{
+    if (projections.empty()) {
+        return true;
+    }
+    if (binding.projections.size() < projections.size()) {
+        return false;
+    }
+    for (base::usize index = 0; index < projections.size(); ++index) {
+        if (!this->cleanup_projection_matches(binding.projections[index], projections[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void Lowerer::append_local_cleanup_drop_if(const LocalBinding& binding)
+{
+    if (!binding.field_cleanups.empty()) {
+        for (base::usize index = binding.field_cleanups.size(); index > 0; --index) {
+            const CleanupBinding& cleanup = binding.field_cleanups[index - 1U];
+            this->append_cleanup_drop_if(cleanup.address, cleanup.flag, cleanup.type, cleanup.name);
+        }
+        return;
+    }
+    if (is_valid(binding.cleanup_flag)) {
+        this->append_cleanup_drop_if(
+            binding.slot, binding.cleanup_flag, binding.type, this->module_.values[binding.slot.value].name);
+    }
+}
+
+void Lowerer::append_place_cleanup_drop_if(const syntax::ExprId expr_id)
+{
+    const std::optional<LocalPlacePath> path = this->local_place_path(expr_id);
+    if (!path.has_value()) {
+        return;
+    }
+    const LocalBinding* const binding = this->local_binding_for_place_path(*path);
+    if (binding == nullptr) {
+        return;
+    }
+    if (path->projections.empty()) {
+        this->append_local_cleanup_drop_if(*binding);
+        return;
+    }
+    for (base::usize index = binding->field_cleanups.size(); index > 0; --index) {
+        const CleanupBinding& cleanup = binding->field_cleanups[index - 1U];
+        if (this->cleanup_binding_has_prefix(cleanup, path->projections)) {
+            this->append_cleanup_drop_if(cleanup.address, cleanup.flag, cleanup.type, cleanup.name);
+        }
+    }
+}
+
+void Lowerer::mark_place_initialized(const syntax::ExprId expr_id)
+{
+    const std::optional<LocalPlacePath> path = this->local_place_path(expr_id);
+    if (!path.has_value()) {
+        return;
+    }
+    const auto found = this->locals_.find(path->root_name_id);
+    if (found == this->locals_.end()) {
+        return;
+    }
+    LocalBinding& binding = found->second;
+    if (path->projections.empty()) {
+        if (!binding.field_cleanups.empty()) {
+            for (const CleanupBinding& cleanup : binding.field_cleanups) {
+                this->append_cleanup_flag_store(cleanup.flag, true);
+            }
+            return;
+        }
+        this->append_cleanup_flag_store(binding.cleanup_flag, true);
+        return;
+    }
+    for (const CleanupBinding& cleanup : binding.field_cleanups) {
+        if (this->cleanup_binding_has_prefix(cleanup, path->projections)) {
+            this->append_cleanup_flag_store(cleanup.flag, true);
+        }
+    }
+}
+
 void Lowerer::mark_local_moved(const sema::IdentId name_id)
 {
     const auto found = this->locals_.find(name_id);
     if (found == this->locals_.end()) {
         return;
     }
-    this->append_cleanup_flag_store(found->second.cleanup_flag, false);
+    LocalBinding& binding = found->second;
+    if (!binding.field_cleanups.empty()) {
+        for (const CleanupBinding& cleanup : binding.field_cleanups) {
+            this->append_cleanup_flag_store(cleanup.flag, false);
+        }
+        return;
+    }
+    this->append_cleanup_flag_store(binding.cleanup_flag, false);
+}
+
+void Lowerer::mark_expr_place_moved(const syntax::ExprId expr_id)
+{
+    if (this->expr_owned_use_mode(expr_id) != sema::OwnedUseMode::owned_consume) {
+        return;
+    }
+    const std::optional<LocalPlacePath> path = this->local_place_path(expr_id);
+    if (!path.has_value()) {
+        return;
+    }
+    if (path->projections.empty()) {
+        this->mark_local_moved(path->root_name_id);
+        return;
+    }
+    const auto found = this->locals_.find(path->root_name_id);
+    if (found == this->locals_.end()) {
+        return;
+    }
+    for (const CleanupBinding& cleanup : found->second.field_cleanups) {
+        if (this->cleanup_binding_has_prefix(cleanup, path->projections)) {
+            this->append_cleanup_flag_store(cleanup.flag, false);
+        }
+    }
 }
 
 void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt)
@@ -661,7 +923,14 @@ void Lowerer::lower_for_range(const syntax::StmtId stmt_id, const syntax::StmtNo
     const IrTextId loop_name = this->module_.intern(stmt.name);
     const ValueId loop_value = this->append_load(cursor_slot, range_type, loop_name);
     const ValueId loop_slot = this->append_temp_alloca(stmt.name, range_type);
-    this->bind_local(stmt.name_id, LocalBinding{loop_slot, INVALID_VALUE_ID, range_type, false});
+    this->bind_local(stmt.name_id,
+        LocalBinding{
+            .slot = loop_slot,
+            .cleanup_flag = INVALID_VALUE_ID,
+            .type = range_type,
+            .is_mutable = false,
+            .field_cleanups = {},
+        });
     this->append_store(loop_slot, loop_value);
     this->lower_block(stmt.body);
     this->append_branch_if_open(update_block);

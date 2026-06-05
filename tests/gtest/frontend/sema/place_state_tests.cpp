@@ -13,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -52,6 +53,55 @@ constexpr std::string_view PLACE_STATE_RETAIN_FALSE_SOURCE =
     "fn main() -> i32 {\n"
     "  return reinitialize[i32](1, 2);\n"
     "}\n";
+
+constexpr std::string_view PLACE_STATE_PARTIAL_FIELD_SOURCE =
+    "module place_state_partial_field;\n"
+    "struct Box[T] {\n"
+    "  left: T;\n"
+    "  right: T;\n"
+    "}\n"
+    "fn consume_left[T](box: Box[T]) -> T {\n"
+    "  return box.left;\n"
+    "}\n"
+    "fn reinit_left[T](box: Box[T], replacement: T) -> Box[T] {\n"
+    "  var current: Box[T] = box;\n"
+    "  let moved: T = current.left;\n"
+    "  current.left = replacement;\n"
+    "  return current;\n"
+    "}\n"
+    "fn main() -> i32 {\n"
+    "  return 0;\n"
+    "}\n";
+
+constexpr std::string_view PLACE_STATE_REFERENCE_FIELD_ASSIGNMENT_SOURCE =
+    "module place_state_reference_field_assignment;\n"
+    "struct Box[T] {\n"
+    "  value: T;\n"
+    "}\n"
+    "fn overwrite[T](box: &mut Box[T], replacement: T) -> void {\n"
+    "  box.value = replacement;\n"
+    "}\n"
+    "fn main() -> i32 {\n"
+    "  return 0;\n"
+    "}\n";
+
+constexpr std::string_view PLACE_STATE_GENERIC_RETURN_SOURCE = "module place_state_generic_return;\n"
+                                                               "struct Holder[T] {\n"
+                                                               "  value: T;\n"
+                                                               "}\n"
+                                                               "fn id[T](value: T) -> T {\n"
+                                                               "  return value;\n"
+                                                               "}\n"
+                                                               "fn make_holder[T](value: T) -> Holder[T] {\n"
+                                                               "  return Holder[T] { value: id(value) };\n"
+                                                               "}\n"
+                                                               "fn unwrap_holder[T](holder: Holder[T]) -> T {\n"
+                                                               "  return id(holder.value);\n"
+                                                               "}\n"
+                                                               "fn main() -> i32 {\n"
+                                                               "  let holder = make_holder(7);\n"
+                                                               "  return unwrap_holder(holder) - id[i32](7);\n"
+                                                               "}\n";
 
 [[nodiscard]] syntax::AstModule parse_place_state_source(const std::string_view source)
 {
@@ -97,12 +147,41 @@ constexpr std::string_view PLACE_STATE_RETAIN_FALSE_SOURCE =
     return result.take_value();
 }
 
+[[nodiscard]] std::vector<std::string> analyze_place_state_failure_messages(const std::string_view source)
+{
+    syntax::AstModule module = parse_place_state_source(source);
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzer analyzer(std::move(module), diagnostics, {});
+    auto result = analyzer.analyze();
+    if (result) {
+        ADD_FAILURE() << "expected semantic analysis to fail";
+    }
+    std::vector<std::string> messages;
+    messages.reserve(diagnostics.diagnostics().size() + 1U);
+    for (const base::Diagnostic& diagnostic : diagnostics.diagnostics()) {
+        messages.push_back(diagnostic.message);
+    }
+    if (!result) {
+        messages.push_back(result.error().message);
+    }
+    return messages;
+}
+
 [[nodiscard]] std::optional<sema::FunctionLookupKey> find_place_state_function(
     const sema::CheckedModule& checked, const std::string_view name)
 {
     for (const auto& entry : checked.functions) {
         if (entry.second.name.view() == name) {
             return entry.first;
+        }
+    }
+    for (const sema::GenericTemplateSignatureInfo& signature : checked.generic_template_signatures) {
+        if (signature.name_space == query::DefNamespace::value && signature.name.view() == name) {
+            return sema::FunctionLookupKey{
+                signature.module.value,
+                sema::SEMA_LOOKUP_INVALID_KEY_PART,
+                signature.name_id,
+            };
         }
     }
     return std::nullopt;
@@ -250,6 +329,15 @@ struct PlaceStateGraphHarness {
     });
 }
 
+[[nodiscard]] bool place_state_has_partial_event(
+    const sema::FunctionPlaceStateFacts& facts, const sema::PlaceStateEventKind kind)
+{
+    return std::ranges::any_of(facts.events, [&facts, kind](const sema::PlaceStateEvent& event) {
+        return event.kind == kind && event.place < facts.places.size()
+            && facts.places[event.place].has_partial_projection;
+    });
+}
+
 } // namespace
 
 TEST(CoreUnit, PlaceStateFactsCollectProjectionBorrowAndMoveEvents)
@@ -264,13 +352,78 @@ TEST(CoreUnit, PlaceStateFactsCollectProjectionBorrowAndMoveEvents)
     EXPECT_GT(facts->fingerprint.byte_count, 0U);
 
     EXPECT_TRUE(std::ranges::any_of(facts->places, [](const sema::PlaceStateFact& fact) {
-        return fact.has_partial_projection && fact.write_count != 0;
+        return fact.has_partial_projection && (fact.write_count != 0U || fact.reinit_count != 0U);
     }));
     EXPECT_TRUE(std::ranges::any_of(facts->events, [](const sema::PlaceStateEvent& event) {
         return event.kind == sema::PlaceStateEventKind::borrow_shared;
     }));
     EXPECT_TRUE(std::ranges::any_of(facts->events, [](const sema::PlaceStateEvent& event) {
         return event.kind == sema::PlaceStateEventKind::read || event.kind == sema::PlaceStateEventKind::move_candidate;
+    }));
+}
+
+TEST(CoreUnit, PlaceStateFactsAllowStructFieldMoveAndReinitFromSource)
+{
+    const sema::CheckedModule checked = analyze_place_state_source(PLACE_STATE_PARTIAL_FIELD_SOURCE);
+
+    const sema::FunctionPlaceStateFacts* const consume_facts = find_place_state_facts(checked, "consume_left");
+    ASSERT_NE(consume_facts, nullptr);
+    EXPECT_TRUE(consume_facts->solved);
+    EXPECT_TRUE(consume_facts->violations.empty());
+    EXPECT_TRUE(place_state_has_partial_event(*consume_facts, sema::PlaceStateEventKind::move_candidate));
+    EXPECT_TRUE(std::ranges::any_of(consume_facts->places, [](const sema::PlaceStateFact& fact) {
+        return fact.has_partial_projection && fact.partial_move_count != 0U;
+    }));
+
+    const sema::FunctionPlaceStateFacts* const reinit_facts = find_place_state_facts(checked, "reinit_left");
+    ASSERT_NE(reinit_facts, nullptr);
+    EXPECT_TRUE(reinit_facts->solved);
+    EXPECT_TRUE(reinit_facts->violations.empty());
+    EXPECT_TRUE(place_state_has_partial_event(*reinit_facts, sema::PlaceStateEventKind::move_candidate));
+    EXPECT_TRUE(place_state_has_partial_event(*reinit_facts, sema::PlaceStateEventKind::reinit));
+    EXPECT_TRUE(place_state_has_partial_event(*reinit_facts, sema::PlaceStateEventKind::cleanup));
+    EXPECT_TRUE(std::ranges::any_of(reinit_facts->places, [](const sema::PlaceStateFact& fact) {
+        return fact.has_partial_projection && fact.partial_move_count != 0U;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(reinit_facts->places, [](const sema::PlaceStateFact& fact) {
+        return fact.has_partial_projection && fact.reinit_count != 0U;
+    }));
+}
+
+TEST(CoreUnit, PlaceStateFactsKeepReferenceFieldResourceOverwriteUnsupported)
+{
+    const std::vector<std::string> messages =
+        analyze_place_state_failure_messages(PLACE_STATE_REFERENCE_FIELD_ASSIGNMENT_SOURCE);
+
+    EXPECT_TRUE(std::ranges::any_of(messages, [](const std::string& message) {
+        return std::string_view{message} == sema::SEMA_RESOURCE_PLACE_ASSIGNMENT_UNSUPPORTED;
+    })) << (messages.empty() ? std::string{"<no diagnostics>"} : messages.front());
+}
+
+TEST(CoreUnit, PlaceStateFactsIgnoreOwnedGenericReturnBorrowSummary)
+{
+    const sema::CheckedModule checked = analyze_place_state_source(PLACE_STATE_GENERIC_RETURN_SOURCE);
+
+    const sema::FunctionPlaceStateFacts* const make_facts = find_place_state_facts(checked, "make_holder");
+    ASSERT_NE(make_facts, nullptr);
+    EXPECT_TRUE(make_facts->solved);
+    EXPECT_TRUE(make_facts->violations.empty());
+    EXPECT_TRUE(std::ranges::any_of(make_facts->events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::move_candidate;
+    }));
+    EXPECT_FALSE(std::ranges::any_of(make_facts->events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::borrow_shared
+            || event.kind == sema::PlaceStateEventKind::borrow_mutable;
+    }));
+
+    const sema::FunctionPlaceStateFacts* const unwrap_facts = find_place_state_facts(checked, "unwrap_holder");
+    ASSERT_NE(unwrap_facts, nullptr);
+    EXPECT_TRUE(unwrap_facts->solved);
+    EXPECT_TRUE(unwrap_facts->violations.empty());
+    EXPECT_TRUE(place_state_has_partial_event(*unwrap_facts, sema::PlaceStateEventKind::move_candidate));
+    EXPECT_FALSE(std::ranges::any_of(unwrap_facts->events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::borrow_shared
+            || event.kind == sema::PlaceStateEventKind::borrow_mutable;
     }));
 }
 

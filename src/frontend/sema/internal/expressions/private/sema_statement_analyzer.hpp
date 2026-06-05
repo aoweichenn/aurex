@@ -45,6 +45,10 @@ public:
     void ensure_function_return_known(const FunctionSignature& signature, const base::SourceRange& use_range);
 
 private:
+    [[nodiscard]] bool resource_assignment_requires_unsupported_diagnostic(
+        syntax::ExprId lhs, TypeHandle lhs_type) const;
+    [[nodiscard]] bool is_owned_local_field_assignment(syntax::ExprId lhs) const;
+
     SemanticAnalyzerCore& core_;
 };
 

@@ -41,6 +41,11 @@ private:
     [[nodiscard]] TypeHandle place_type(const BodyFlowGraph& graph, const BodyFlowPlace& place) const;
     [[nodiscard]] TypeHandle projected_type(TypeHandle current, const BodyFlowPlaceProjection& projection) const;
     [[nodiscard]] std::optional<PlaceStateEventKind> event_kind(BodyFlowActionKind kind) const noexcept;
+    [[nodiscard]] std::optional<PlaceStateEventKind> event_kind_for_action(
+        const BodyFlowGraph& graph, const BodyFlowAction& action) const;
+    [[nodiscard]] bool action_borrow_is_place_state_event(
+        const BodyFlowGraph& graph, const BodyFlowAction& action) const;
+    [[nodiscard]] bool expr_type_is_definite_borrow_carrier(syntax::ExprId expr) const;
     [[nodiscard]] bool type_needs_drop(TypeHandle type);
     [[nodiscard]] bool valid_type(TypeHandle type) const noexcept;
     [[nodiscard]] bool is_parameter_name(IdentId name) const noexcept;

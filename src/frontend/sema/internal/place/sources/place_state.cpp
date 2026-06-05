@@ -1103,6 +1103,47 @@ std::optional<PlaceStateEventKind> SemanticAnalyzerCore::PlaceStateAnalyzer::eve
     return std::nullopt;
 }
 
+std::optional<PlaceStateEventKind> SemanticAnalyzerCore::PlaceStateAnalyzer::event_kind_for_action(
+    const BodyFlowGraph& graph, const BodyFlowAction& action) const
+{
+    const std::optional<PlaceStateEventKind> kind = this->event_kind(action.kind);
+    if (!kind.has_value()) {
+        return std::nullopt;
+    }
+    if ((*kind == PlaceStateEventKind::borrow_shared || *kind == PlaceStateEventKind::borrow_mutable)
+        && !this->action_borrow_is_place_state_event(graph, action)) {
+        return std::nullopt;
+    }
+    return kind;
+}
+
+bool SemanticAnalyzerCore::PlaceStateAnalyzer::action_borrow_is_place_state_event(
+    const BodyFlowGraph&, const BodyFlowAction& action) const
+{
+    if (action.kind != BodyFlowActionKind::borrow_shared && action.kind != BodyFlowActionKind::borrow_mutable) {
+        return true;
+    }
+    if (!valid_expr(this->core_.ctx_.module, action.expr)) {
+        return true;
+    }
+    const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(action.expr.value);
+    if (kind != syntax::ExprKind::call && kind != syntax::ExprKind::str_from_bytes_unchecked) {
+        return true;
+    }
+    return this->expr_type_is_definite_borrow_carrier(action.expr);
+}
+
+bool SemanticAnalyzerCore::PlaceStateAnalyzer::expr_type_is_definite_borrow_carrier(const syntax::ExprId expr) const
+{
+    const TypeHandle type = this->core_.cached_expr_type(expr);
+    if (!this->valid_type(type)) {
+        return false;
+    }
+    const TypeInfo& info = this->core_.state_.checked.types.get(type);
+    return info.kind == TypeKind::reference || info.kind == TypeKind::slice
+        || (info.kind == TypeKind::builtin && info.builtin == BuiltinType::str);
+}
+
 bool SemanticAnalyzerCore::PlaceStateAnalyzer::type_needs_drop(const TypeHandle type)
 {
     if (!this->valid_type(type)) {
@@ -1191,7 +1232,7 @@ void SemanticAnalyzerCore::PlaceStateAnalyzer::collect_action_events(const BodyF
         if (fact_place == SEMA_BODY_FLOW_INVALID_INDEX || fact_place >= this->facts_.places.size()) {
             continue;
         }
-        const std::optional<PlaceStateEventKind> kind = this->event_kind(action.kind);
+        const std::optional<PlaceStateEventKind> kind = this->event_kind_for_action(graph, action);
         if (!kind.has_value()) {
             continue;
         }
@@ -1584,7 +1625,7 @@ void SemanticAnalyzerCore::PlaceStateAnalyzer::solve_place_states(const BodyFlow
         if (place == SEMA_BODY_FLOW_INVALID_INDEX || place >= state.size()) {
             return;
         }
-        const std::optional<PlaceStateEventKind> event = this->event_kind(action.kind);
+        const std::optional<PlaceStateEventKind> event = this->event_kind_for_action(graph, action);
         if (!event.has_value()) {
             return;
         }

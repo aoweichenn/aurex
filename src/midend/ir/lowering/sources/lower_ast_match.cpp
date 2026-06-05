@@ -854,8 +854,14 @@ void Lowerer::collect_pattern_binding_slots(const syntax::PatternId pattern_id, 
                     break;
                 }
                 const ValueId slot = this->append_temp_alloca(pattern->binding_name, frame.type);
-                this->bind_local(
-                    pattern->binding_name_id, LocalBinding{slot, INVALID_VALUE_ID, frame.type, is_mutable});
+                this->bind_local(pattern->binding_name_id,
+                    LocalBinding{
+                        .slot = slot,
+                        .cleanup_flag = INVALID_VALUE_ID,
+                        .type = frame.type,
+                        .is_mutable = is_mutable,
+                        .field_cleanups = {},
+                    });
                 slots.emplace(pattern->binding_name_id,
                     PatternBindingSlot{
                         this->module_.intern(pattern->binding_name), pattern->binding_name_id, slot, frame.type});

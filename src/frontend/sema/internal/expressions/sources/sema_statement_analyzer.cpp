@@ -85,18 +85,24 @@ struct ControlFlowQueryCaches {
     return module.exprs.range(expr.value);
 }
 
-[[nodiscard]] bool expr_is_projected_or_dereferenced_place(
+[[nodiscard]] bool expr_is_indexed_or_dereferenced_place(
     const syntax::AstModule& module, const syntax::ExprId expr) noexcept
 {
     if (!syntax::is_valid(expr) || expr.value >= module.exprs.size()) {
         return false;
     }
     const syntax::ExprKind kind = module.exprs.kind(expr.value);
-    if (kind == syntax::ExprKind::field || kind == syntax::ExprKind::index) {
+    if (kind == syntax::ExprKind::index) {
         return true;
     }
     const syntax::UnaryExprPayload* const unary = module.exprs.unary_payload(expr.value);
     return kind == syntax::ExprKind::unary && unary != nullptr && unary->op == syntax::UnaryOp::dereference;
+}
+
+[[nodiscard]] bool expr_is_field_place(const syntax::AstModule& module, const syntax::ExprId expr) noexcept
+{
+    return syntax::is_valid(expr) && expr.value < module.exprs.size()
+        && module.exprs.kind(expr.value) == syntax::ExprKind::field;
 }
 
 void push_storage_escape_guard_expr(
@@ -1879,6 +1885,48 @@ TypeHandle SemanticAnalyzerCore::StatementAnalyzer::analyze_assignment_target(co
     return this->core_.record_expr_type(expr_id, symbol->type);
 }
 
+bool SemanticAnalyzerCore::StatementAnalyzer::resource_assignment_requires_unsupported_diagnostic(
+    const syntax::ExprId lhs, const TypeHandle lhs_type) const
+{
+    if (!syntax::is_valid(lhs) || !is_valid(lhs_type)
+        || this->core_.type_satisfies_capability(lhs_type, CapabilityKind::copy)) {
+        return false;
+    }
+    if (expr_is_indexed_or_dereferenced_place(this->core_.ctx_.module, lhs)) {
+        return true;
+    }
+    return expr_is_field_place(this->core_.ctx_.module, lhs) && !this->is_owned_local_field_assignment(lhs);
+}
+
+bool SemanticAnalyzerCore::StatementAnalyzer::is_owned_local_field_assignment(const syntax::ExprId lhs) const
+{
+    syntax::ExprId current = lhs;
+    bool saw_field = false;
+    while (syntax::is_valid(current) && current.value < this->core_.ctx_.module.exprs.size()) {
+        const syntax::ExprKind kind = this->core_.ctx_.module.exprs.kind(current.value);
+        if (kind == syntax::ExprKind::field) {
+            const syntax::FieldExprPayload* const field = this->core_.ctx_.module.exprs.field_payload(current.value);
+            if (field == nullptr) {
+                return false;
+            }
+            const TypeHandle object_type = this->core_.cached_expr_type(field->object);
+            if (!is_valid(object_type) || this->core_.state_.checked.types.is_pointer(object_type)
+                || this->core_.state_.checked.types.is_reference(object_type)) {
+                return false;
+            }
+            saw_field = true;
+            current = field->object;
+            continue;
+        }
+        if (kind == syntax::ExprKind::name) {
+            const syntax::NameExprPayload* const name = this->core_.ctx_.module.exprs.name_payload(current.value);
+            return saw_field && name != nullptr && name->scope_name.empty();
+        }
+        return false;
+    }
+    return false;
+}
+
 void SemanticAnalyzerCore::StatementAnalyzer::analyze_stmt(
     const syntax::StmtId stmt_id, const TypeHandle expected_return, ReturnTypeInference* const return_inference)
 {
@@ -2187,8 +2235,7 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_statement_node(const synta
                     std::string(SEMA_ASSIGNMENT_LHS_WRITABLE));
             }
             if (stmt.assign_op == syntax::AssignOp::assign
-                && expr_is_projected_or_dereferenced_place(this->core_.ctx_.module, stmt.lhs) && is_valid(lhs)
-                && !this->core_.type_satisfies_capability(lhs, CapabilityKind::copy)) {
+                && this->resource_assignment_requires_unsupported_diagnostic(stmt.lhs, lhs)) {
                 this->core_.report_unsupported(expr_range_or(this->core_.ctx_.module, stmt.lhs, stmt.range),
                     std::string(SEMA_RESOURCE_PLACE_ASSIGNMENT_UNSUPPORTED));
             }

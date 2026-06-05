@@ -101,7 +101,6 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"method_local_where_unsatisfied", "type f64 does not satisfy capability `Eq`"},
     {"move_indexed_element", "moving an indexed element out of a move-only value is not supported yet"},
     {"move_match_guard_after_move", "use of possibly moved value `current`"},
-    {"move_partial_field", "moving a field out of a move-only value is not supported yet"},
     {"move_pattern_payload", "consuming pattern payloads are not supported yet"},
     {"move_pattern_condition_payload", "consuming pattern payloads are not supported yet"},
     {"move_try_payload", "try expression transfer of a non-Copy payload is not supported yet"},

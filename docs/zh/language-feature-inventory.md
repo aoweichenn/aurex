@@ -783,8 +783,10 @@ p1 | p2 | p3
 14. M5 nominal static trait：`trait` declaration、显式 `impl Trait for Type`、generic trait predicate、static trait method dispatch、associated type declaration/assignment/projection/equality、trait default method body，以及 IDE/tooling/diagnostics 投影。
 15. M6-WP2/WP3/WP4/WP5/WP6/WP7 资源基线：compiler-owned `Copy`、内部 resource summary、deterministic resource dump、whole-local move analysis、move 后重新初始化、use-after-move diagnostics、cleanup action stack、drop flag、IR `drop` / `drop_if` cleanup 节点、destructor body identity、stable drop-glue key、target-independent drop-glue planner、IDE hover resource summary 和 `aurex-lsp` stdio 入口。
 16. M7a borrow/lifetime 内部事实基线：`BodyFlowGraph`、`BodyLoanCheckResult`、`FunctionBorrowSummary`、projection-aware conflict matrix、direct call borrowed-return summary propagation、borrow summary / loan check query fingerprint、IDE `borrow_summary` / `body_loan_check` semantic facts，以及 primary conflict / loan creation / invalidating action / later carrier use diagnostics。
+17. M7c lifetime/dropck facts：origin-qualified reference、lifetime facts、deterministic outlives solver、return-origin subset、storage escape、type-outlives、dropck facts 和 IDE/query projection。
+18. M7d-B struct field place-state 子集：本地 owned struct field partial move/reinit、字段级 cleanup/drop flag、generic template body-flow 类型读取、IR lowering 字段 drop flag，以及 owned generic return summary 与 place-state 的分层处理。
 
-这些能力说明 Aurex 已经超过“基础表达式语言”。仍需继续收口的是更高阶的抽象边界，例如 `?` 目前已有结构化 Result/Option shape 检查但还没有绑定到未来标准库定义，M7a borrow checker 仍保持内部事实与保守语言表面，用户 destructor syntax/body lowering、partial aggregate rollback codegen、完整 Rust-style lifetime surface、raw pointer alias safe proof 和 partial move 尚未落地。
+这些能力说明 Aurex 已经超过“基础表达式语言”。仍需继续收口的是更高阶的抽象边界，例如 `?` 目前已有结构化 Result/Option shape 检查但还没有绑定到未来标准库定义；用户 destructor syntax/body lowering、partial aggregate rollback codegen、完整 Rust-style lifetime surface、raw pointer alias safe proof、tuple/index partial move 和 replace/take/swap primitives 尚未落地。
 
 ## 已删除或明确不在 M2 基线的能力
 
@@ -819,10 +821,12 @@ compiler-owned `Copy`、内部 resource summary、whole-local move analysis、cl
 ### 资源与安全未完成
 
 - 用户 destructor syntax / custom destructor lowering / partial aggregate rollback codegen。
-- borrow checker。
-- lifetime / region。
-- partial move / field move-out。
-- aliasing model。
+- 完整 Rust-style lifetime surface、HRTB、variance 和 full Polonius Datalog。
+- raw pointer alias safe proof。
+- tuple partial move、indexed move-out、pattern payload move 和 non-`Copy` `?` payload transfer。
+- borrowed/reference base 的 resource field overwrite。
+- `replace` / `take` / `swap` compiler-known primitives。
+- unsafe/concurrency aliasing model。
 - owned resource API 约束。
 
 ### 表达式与 pattern 未完成
@@ -1024,8 +1028,9 @@ let all = bytes[:];
 
    `&T` / `&mut T`、`&place` / `&mut place`、reference 安全解引用和 `&mut` 可写性检查已落地。M7a 已加入
    CFG-sensitive local loan checker、borrowed-return `BorrowSummary`、projection-aware conflict、query/tooling
-   projection 和多点 borrow diagnostics；当前仍不暴露完整 Rust-style lifetime surface，不证明 raw pointer alias
-   safe，不实现 partial move / replace / take / swap 的完整 place-level resource semantics。
+   projection 和多点 borrow diagnostics；M7c 已加入 lifetime/dropck facts，M7d-B 已加入本地 owned struct field
+   partial move/reinit/drop flag 子集；当前仍不暴露完整 Rust-style lifetime surface，不证明 raw pointer alias safe，
+   不实现 tuple/index partial move 或 replace/take/swap 的完整 place-level resource semantics。
 
 ### P3：M5 后独立设计流
 

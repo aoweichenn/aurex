@@ -291,13 +291,13 @@ template <typename Enum>
     if (!read_marker(reader, QUERY_PARSER_CONFIG_KEY_MARKER)) {
         return std::nullopt;
     }
-    std::optional<std::string_view> lex_config = read_lex_config_key_slice(reader);
+    const std::optional<std::string_view> lex_config = read_lex_config_key_slice(reader);
     base::u32 schema = 0;
     if (!lex_config.has_value() || !reader.read_u32(schema) || schema != QUERY_PARSER_CONFIG_SCHEMA_VERSION
         || !read_bool_value(reader) || !read_bool_value(reader) || !read_nonzero_u64(reader)) {
         return std::nullopt;
     }
-    return lex_config;
+    return *lex_config;
 }
 
 [[nodiscard]] bool skip_package_key(StableKeyReader& reader) noexcept

@@ -1305,18 +1305,6 @@ private:
         }
     }
 
-    void verify_pointer_value(const ValueId value_id, const std::string& context)
-    {
-        const Value* value = this->get(value_id);
-        if (value == nullptr) {
-            this->fail(ir_verify_value_id_message(context));
-            return;
-        }
-        if (!this->module_.types.is_pointer(value->type)) {
-            this->fail(ir_verify_not_pointer_message(context));
-        }
-    }
-
     void verify_pointer_like_value(const ValueId value_id, const std::string& context)
     {
         const Value* value = this->get(value_id);

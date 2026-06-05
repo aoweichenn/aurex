@@ -91,7 +91,7 @@ base::Result<std::string> read_text_file(const std::filesystem::path& path)
 
     const FileCacheKey key{key_path};
     {
-        std::lock_guard lock(file_cache_mutex);
+        std::lock_guard<std::mutex> lock(file_cache_mutex);
         if (const auto found = file_cache.find(key);
             found != file_cache.end() && found->second.size == size && found->second.modified == modified) {
             return base::Result<std::string>::ok(found->second.text);
@@ -105,7 +105,7 @@ base::Result<std::string> read_text_file(const std::filesystem::path& path)
 
     std::string text = read_result.take_value();
     {
-        std::lock_guard lock(file_cache_mutex);
+        std::lock_guard<std::mutex> lock(file_cache_mutex);
         file_cache[key] = FileCacheEntry{
             modified,
             size,
@@ -117,7 +117,7 @@ base::Result<std::string> read_text_file(const std::filesystem::path& path)
 
 void clear_file_cache()
 {
-    std::lock_guard lock(file_cache_mutex);
+    std::lock_guard<std::mutex> lock(file_cache_mutex);
     file_cache.clear();
 }
 

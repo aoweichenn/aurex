@@ -4,6 +4,7 @@
 #include <aurex/frontend/sema/checked_module.hpp>
 #include <aurex/frontend/sema/drop_glue.hpp>
 #include <aurex/frontend/sema/sema.hpp>
+#include <aurex/frontend/sema/sema_messages.hpp>
 #include <aurex/infrastructure/base/diagnostic.hpp>
 #include <aurex/infrastructure/query/stable_hash.hpp>
 #include <aurex/infrastructure/query/type_check_body_query.hpp>
@@ -15,10 +16,18 @@
 
 #include <gtest/gtest.h>
 
+#include <frontend/sema/internal/core/private/sema_core.hpp>
+
 namespace aurex::test {
 namespace {
 
 constexpr base::SourceId PLACE_STATE_TEST_SOURCE_ID{811};
+constexpr syntax::ModuleId PLACE_STATE_TEST_MODULE_ID{0U};
+constexpr syntax::ItemId PLACE_STATE_TEST_ITEM_ID{0U};
+constexpr sema::IdentId PLACE_STATE_TEST_FUNCTION_NAME_ID{97U};
+constexpr sema::IdentId PLACE_STATE_TEST_VALUE_NAME_ID{98U};
+constexpr sema::IdentId PLACE_STATE_TEST_FIELD_NAME_ID{99U};
+constexpr syntax::ExprId PLACE_STATE_TEST_MOVE_EXPR_ID{0U};
 constexpr std::string_view PLACE_STATE_TEST_SOURCE =
     "module place.state;\n"
     "struct Pair {\n"
@@ -32,6 +41,17 @@ constexpr std::string_view PLACE_STATE_TEST_SOURCE =
     "  return *borrowed;\n"
     "}\n"
     "fn main() -> void {}\n";
+
+constexpr std::string_view PLACE_STATE_RETAIN_FALSE_SOURCE =
+    "module place_state_retain_false;\n"
+    "fn reinitialize[T](value: T, replacement: T) -> T {\n"
+    "  var current: T = value;\n"
+    "  current = replacement;\n"
+    "  return current;\n"
+    "}\n"
+    "fn main() -> i32 {\n"
+    "  return reinitialize[i32](1, 2);\n"
+    "}\n";
 
 [[nodiscard]] syntax::AstModule parse_place_state_source(const std::string_view source)
 {
@@ -58,12 +78,13 @@ constexpr std::string_view PLACE_STATE_TEST_SOURCE =
     return parsed.take_value();
 }
 
-[[nodiscard]] sema::CheckedModule analyze_place_state_source(const std::string_view source)
+[[nodiscard]] sema::CheckedModule analyze_place_state_source(
+    const std::string_view source, const bool retain_body_flow_graphs = true)
 {
     syntax::AstModule module = parse_place_state_source(source);
     base::DiagnosticSink diagnostics;
     sema::SemanticOptions options;
-    options.retain_body_flow_graphs = true;
+    options.retain_body_flow_graphs = retain_body_flow_graphs;
     sema::SemanticAnalyzer analyzer(std::move(module), diagnostics, options);
     auto result = analyzer.analyze();
     if (!result) {
@@ -129,6 +150,106 @@ constexpr std::string_view PLACE_STATE_TEST_SOURCE =
     return nullptr;
 }
 
+struct PlaceStateGraphHarness {
+    syntax::AstModule module;
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer;
+    syntax::ItemNode function;
+    sema::FunctionSignature signature;
+    sema::FunctionLookupKey key;
+    sema::TypeHandle resource_type = sema::INVALID_TYPE_HANDLE;
+
+    PlaceStateGraphHarness() noexcept : analyzer(module, diagnostics)
+    {
+        this->key = sema::FunctionLookupKey{
+            PLACE_STATE_TEST_MODULE_ID.value,
+            sema::SEMA_LOOKUP_INVALID_KEY_PART,
+            PLACE_STATE_TEST_FUNCTION_NAME_ID,
+        };
+        this->resource_type = this->analyzer.state_.checked.types.opaque_struct(
+            "place_state.Resource", "place_state_Resource");
+
+        this->function.kind = syntax::ItemKind::fn_decl;
+        this->function.name = "place_state_graph_subject";
+        this->function.name_id = PLACE_STATE_TEST_FUNCTION_NAME_ID;
+        this->function.range = base::SourceRange{PLACE_STATE_TEST_SOURCE_ID, 1U, 20U};
+        this->function.visibility = syntax::Visibility::private_;
+        this->function.params.push_back(syntax::ParamDecl{
+            .name = "value",
+            .type = syntax::INVALID_TYPE_ID,
+            .range = base::SourceRange{PLACE_STATE_TEST_SOURCE_ID, 21U, 26U},
+            .name_id = PLACE_STATE_TEST_VALUE_NAME_ID,
+        });
+
+        this->signature.name = this->analyzer.state_.checked.intern_text("place_state_graph_subject");
+        this->signature.name_id = PLACE_STATE_TEST_FUNCTION_NAME_ID;
+        this->signature.semantic_key = this->key;
+        this->signature.module = PLACE_STATE_TEST_MODULE_ID;
+        this->signature.return_type = this->analyzer.state_.checked.types.builtin(sema::BuiltinType::void_);
+        this->signature.param_types.push_back(this->resource_type);
+        this->signature.range = this->function.range;
+        this->signature.visibility = syntax::Visibility::private_;
+        this->signature.has_definition = true;
+        this->signature.definition_item = PLACE_STATE_TEST_ITEM_ID;
+    }
+};
+
+[[nodiscard]] sema::BodyFlowPoint place_state_graph_point(const sema::BodyFlowPointKind kind, const base::u32 offset)
+{
+    return sema::BodyFlowPoint{
+        .kind = kind,
+        .range = base::SourceRange{PLACE_STATE_TEST_SOURCE_ID, offset, offset + 1U},
+    };
+}
+
+[[nodiscard]] sema::BodyFlowPlace place_state_graph_local_place()
+{
+    return sema::BodyFlowPlace{
+        .root_kind = sema::BodyFlowPlaceRootKind::local,
+        .root_name_id = PLACE_STATE_TEST_VALUE_NAME_ID,
+        .projections = {},
+        .range = base::SourceRange{PLACE_STATE_TEST_SOURCE_ID, 30U, 35U},
+    };
+}
+
+[[nodiscard]] sema::BodyFlowPlace place_state_graph_field_place()
+{
+    sema::BodyFlowPlace place = place_state_graph_local_place();
+    place.projections.push_back(sema::BodyFlowPlaceProjection{
+        .kind = sema::BodyFlowPlaceProjectionKind::field,
+        .field_name_id = PLACE_STATE_TEST_FIELD_NAME_ID,
+    });
+    return place;
+}
+
+[[nodiscard]] sema::BodyFlowAction place_state_graph_action(const sema::BodyFlowActionKind kind, const base::u32 point,
+    const base::u32 place, const base::u32 offset, const syntax::ExprId expr = syntax::INVALID_EXPR_ID)
+{
+    return sema::BodyFlowAction{
+        .kind = kind,
+        .point = point,
+        .place = place,
+        .expr = expr,
+        .range = base::SourceRange{PLACE_STATE_TEST_SOURCE_ID, offset, offset + 1U},
+    };
+}
+
+[[nodiscard]] bool place_state_has_violation(
+    const sema::FunctionPlaceStateFacts& facts, const sema::PlaceStateViolationKind kind)
+{
+    return std::ranges::any_of(facts.violations, [kind](const sema::PlaceStateViolation& violation) {
+        return violation.kind == kind;
+    });
+}
+
+[[nodiscard]] bool place_state_emitted_message(
+    const base::DiagnosticSink& diagnostics, const std::string_view message)
+{
+    return std::ranges::any_of(diagnostics.diagnostics(), [message](const base::Diagnostic& diagnostic) {
+        return diagnostic.message == message;
+    });
+}
+
 } // namespace
 
 TEST(CoreUnit, PlaceStateFactsCollectProjectionBorrowAndMoveEvents)
@@ -163,12 +284,19 @@ TEST(CoreUnit, PlaceStateFactsDumpAndCheckedModuleDumpExposeStableFacts)
     EXPECT_NE(fact_dump.find("place_state_facts function="), std::string::npos) << fact_dump;
     EXPECT_NE(fact_dump.find("places:"), std::string::npos) << fact_dump;
     EXPECT_NE(fact_dump.find("events:"), std::string::npos) << fact_dump;
+    EXPECT_NE(fact_dump.find("violations:"), std::string::npos) << fact_dump;
+    EXPECT_NE(fact_dump.find("enforced=true"), std::string::npos) << fact_dump;
+    EXPECT_NE(fact_dump.find("drop_flag_live="), std::string::npos) << fact_dump;
     EXPECT_NE(fact_dump.find("borrow_shared"), std::string::npos) << fact_dump;
 
     const std::string checked_dump = sema::dump_checked_module(checked);
     EXPECT_NE(checked_dump.find("place_state_facts"), std::string::npos) << checked_dump;
     EXPECT_NE(checked_dump.find("place_state "), std::string::npos) << checked_dump;
     EXPECT_NE(checked_dump.find("partials="), std::string::npos) << checked_dump;
+    EXPECT_NE(checked_dump.find("partial_moves="), std::string::npos) << checked_dump;
+    EXPECT_NE(checked_dump.find("violations="), std::string::npos) << checked_dump;
+    EXPECT_NE(checked_dump.find("diagnostics="), std::string::npos) << checked_dump;
+    EXPECT_NE(checked_dump.find("enforced=true"), std::string::npos) << checked_dump;
     EXPECT_NE(checked_dump.find("event #"), std::string::npos) << checked_dump;
 }
 
@@ -178,6 +306,7 @@ TEST(CoreUnit, PlaceStateFactsDumpCoversMissingGraphAndDropFacts)
     facts.function = sema::FunctionLookupKey{7U, sema::SEMA_LOOKUP_INVALID_KEY_PART, sema::INVALID_IDENT_ID};
     facts.graph_missing = true;
     facts.solved = false;
+    facts.diagnostic_mode_enforced = true;
     facts.part_index = 3U;
     facts.places.push_back(sema::PlaceStateFact{
         .place = 0U,
@@ -237,6 +366,17 @@ TEST(CoreUnit, PlaceStateFactsDumpCoversMissingGraphAndDropFacts)
         .type = sema::TypeHandle{4U},
         .range = base::SourceRange{PLACE_STATE_TEST_SOURCE_ID, 4U, 9U},
     });
+    facts.violations.push_back(sema::PlaceStateViolation{
+        .kind = sema::PlaceStateViolationKind::use_after_move,
+        .place = 0U,
+        .action = 2U,
+        .point = 12U,
+        .related_place = 0U,
+        .related_action = 1U,
+        .diagnostic_emitted = true,
+        .range = base::SourceRange{PLACE_STATE_TEST_SOURCE_ID, 4U, 9U},
+        .related_range = base::SourceRange{PLACE_STATE_TEST_SOURCE_ID, 2U, 3U},
+    });
 
     const query::StableFingerprint128 before = sema::function_place_state_facts_fingerprint(facts);
     facts.fingerprint = before;
@@ -246,10 +386,15 @@ TEST(CoreUnit, PlaceStateFactsDumpCoversMissingGraphAndDropFacts)
     EXPECT_EQ(sema::place_state_event_kind_name(sema::PlaceStateEventKind::drop), "drop");
     EXPECT_NE(dump.find("function=7:"), std::string::npos) << dump;
     EXPECT_NE(dump.find(":- places=2"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("violations=1"), std::string::npos) << dump;
     EXPECT_NE(dump.find("solved=false"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("enforced=true"), std::string::npos) << dump;
     EXPECT_NE(dump.find("graph_missing=true"), std::string::npos) << dump;
     EXPECT_NE(dump.find("needs_drop=true"), std::string::npos) << dump;
     EXPECT_NE(dump.find("partial=false"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("drop_flag_live="), std::string::npos) << dump;
+    EXPECT_NE(dump.find("violations:"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("v0 use_after_move"), std::string::npos) << dump;
     EXPECT_NE(dump.find("drop place=0"), std::string::npos) << dump;
 
     sema::FunctionPlaceStateFacts checked_dump_facts = facts;
@@ -265,9 +410,11 @@ TEST(CoreUnit, PlaceStateFactsDumpCoversMissingGraphAndDropFacts)
     EXPECT_NE(checked_dump.find("place_state 7:"), std::string::npos) << checked_dump;
     EXPECT_NE(checked_dump.find(":- places=2"), std::string::npos) << checked_dump;
     EXPECT_NE(checked_dump.find("solved=false"), std::string::npos) << checked_dump;
+    EXPECT_NE(checked_dump.find("enforced=true"), std::string::npos) << checked_dump;
     EXPECT_NE(checked_dump.find("graph_missing=true"), std::string::npos) << checked_dump;
     EXPECT_NE(checked_dump.find("type=<invalid>"), std::string::npos) << checked_dump;
     EXPECT_NE(checked_dump.find("event #0 drop"), std::string::npos) << checked_dump;
+    EXPECT_NE(checked_dump.find("violation #0 use_after_move"), std::string::npos) << checked_dump;
 
     facts.events.front().point += 1U;
     EXPECT_NE(sema::function_place_state_facts_fingerprint(facts), before);
@@ -288,12 +435,444 @@ TEST(CoreUnit, PlaceStateFactsPopulateTypeCheckBodyAuthority)
     EXPECT_GT(authority.place_state_partial_projection_count, 0U);
     EXPECT_TRUE(authority.place_state_has_partial_projection);
     EXPECT_TRUE(authority.place_state_has_borrow);
+    EXPECT_EQ(authority.place_state_partial_move_count, 0U);
+    EXPECT_EQ(authority.place_state_skipped_drop_count, 0U);
+    EXPECT_EQ(authority.place_state_violation_count, 0U);
+    EXPECT_EQ(authority.place_state_emitted_diagnostic_count, 0U);
+    EXPECT_FALSE(authority.place_state_has_partial_move);
+    EXPECT_FALSE(authority.place_state_has_skipped_drop);
+    EXPECT_FALSE(authority.place_state_has_violation);
+    EXPECT_FALSE(authority.place_state_has_emitted_diagnostics);
     EXPECT_GT(authority.place_state_fingerprint.byte_count, 0U);
 
     const query::QueryResultFingerprint baseline = query::type_check_body_result_fingerprint(authority);
     query::TypeCheckBodyAuthority changed = authority;
     changed.place_state_event_count += 1U;
     EXPECT_NE(query::type_check_body_result_fingerprint(changed), baseline);
+
+    query::TypeCheckBodyAuthority b2_changed = authority;
+    b2_changed.place_state_partial_move_count = 1U;
+    b2_changed.place_state_skipped_drop_count = 1U;
+    b2_changed.place_state_violation_count = 1U;
+    b2_changed.place_state_emitted_diagnostic_count = 1U;
+    b2_changed.place_state_has_partial_move = true;
+    b2_changed.place_state_has_skipped_drop = true;
+    b2_changed.place_state_has_violation = true;
+    b2_changed.place_state_has_emitted_diagnostics = true;
+    EXPECT_NE(query::type_check_body_result_fingerprint(b2_changed), baseline);
+}
+
+TEST(CoreUnit, PlaceStateFactsRetainFalsePrecheckCollectsResourceMoves)
+{
+    const sema::CheckedModule checked = analyze_place_state_source(PLACE_STATE_RETAIN_FALSE_SOURCE, false);
+    const std::optional<sema::FunctionLookupKey> key = find_place_state_function(checked, "reinitialize");
+    ASSERT_TRUE(key.has_value());
+
+    const auto facts = checked.place_state_facts.find(*key);
+    ASSERT_NE(facts, checked.place_state_facts.end());
+    EXPECT_TRUE(facts->second.solved);
+    EXPECT_FALSE(facts->second.graph_missing);
+    EXPECT_GT(facts->second.places.size(), 0U);
+    EXPECT_GT(facts->second.events.size(), 0U);
+    EXPECT_FALSE(checked.body_flow_graphs.contains(*key));
+}
+
+TEST(CoreUnit, PlaceStateFactsEnforceDropAfterDropAndUseAfterDrop)
+{
+    PlaceStateGraphHarness harness;
+    sema::BodyFlowGraph graph;
+    graph.function = harness.key;
+    graph.points = {
+        place_state_graph_point(sema::BodyFlowPointKind::entry, 40U),
+        place_state_graph_point(sema::BodyFlowPointKind::exit, 41U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 42U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 43U),
+    };
+    graph.edges = {
+        sema::BodyFlowEdge{.from = 0U, .to = 2U},
+        sema::BodyFlowEdge{.from = 2U, .to = 3U},
+        sema::BodyFlowEdge{.from = 3U, .to = 1U},
+    };
+    graph.places.push_back(place_state_graph_local_place());
+    graph.actions = {
+        place_state_graph_action(sema::BodyFlowActionKind::drop, 2U, 0U, 44U),
+        place_state_graph_action(sema::BodyFlowActionKind::read, 3U, 0U, 45U),
+        place_state_graph_action(sema::BodyFlowActionKind::drop, 3U, 0U, 46U),
+    };
+    harness.analyzer.state_.checked.body_flow_graphs[harness.key] = std::move(graph);
+
+    harness.analyzer.analyze_place_states(harness.function, harness.key, harness.signature);
+
+    const auto facts = harness.analyzer.state_.checked.place_state_facts.find(harness.key);
+    ASSERT_NE(facts, harness.analyzer.state_.checked.place_state_facts.end());
+    EXPECT_TRUE(facts->second.solved);
+    EXPECT_TRUE(facts->second.diagnostic_mode_enforced);
+    EXPECT_TRUE(place_state_has_violation(facts->second, sema::PlaceStateViolationKind::use_after_move));
+    EXPECT_TRUE(place_state_has_violation(facts->second, sema::PlaceStateViolationKind::double_drop));
+    EXPECT_TRUE(place_state_emitted_message(harness.diagnostics, sema::SEMA_PLACE_STATE_USE_AFTER_MOVE));
+    EXPECT_TRUE(place_state_emitted_message(harness.diagnostics, sema::SEMA_PLACE_STATE_DOUBLE_DROP));
+    EXPECT_TRUE(std::ranges::any_of(facts->second.events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::drop;
+    }));
+}
+
+TEST(CoreUnit, PlaceStateFactsEnforcePartialMoveWholePlaceAccess)
+{
+    PlaceStateGraphHarness harness;
+    sema::BodyFlowGraph graph;
+    graph.function = harness.key;
+    graph.points = {
+        place_state_graph_point(sema::BodyFlowPointKind::entry, 50U),
+        place_state_graph_point(sema::BodyFlowPointKind::exit, 51U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 52U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 53U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 54U),
+    };
+    graph.edges = {
+        sema::BodyFlowEdge{.from = 0U, .to = 2U},
+        sema::BodyFlowEdge{.from = 2U, .to = 3U},
+        sema::BodyFlowEdge{.from = 3U, .to = 4U},
+        sema::BodyFlowEdge{.from = 4U, .to = 1U},
+    };
+    graph.places.push_back(place_state_graph_local_place());
+    graph.places.push_back(place_state_graph_field_place());
+    graph.actions = {
+        place_state_graph_action(sema::BodyFlowActionKind::drop, 2U, 1U, 55U),
+        place_state_graph_action(sema::BodyFlowActionKind::read, 3U, 0U, 56U),
+        place_state_graph_action(sema::BodyFlowActionKind::drop, 4U, 0U, 57U),
+    };
+    harness.analyzer.state_.checked.body_flow_graphs[harness.key] = std::move(graph);
+
+    harness.analyzer.analyze_place_states(harness.function, harness.key, harness.signature);
+
+    const auto facts = harness.analyzer.state_.checked.place_state_facts.find(harness.key);
+    ASSERT_NE(facts, harness.analyzer.state_.checked.place_state_facts.end());
+    EXPECT_TRUE(place_state_has_violation(facts->second, sema::PlaceStateViolationKind::use_after_partial_move));
+    EXPECT_TRUE(place_state_has_violation(facts->second, sema::PlaceStateViolationKind::drop_after_partial_move));
+    EXPECT_TRUE(place_state_emitted_message(harness.diagnostics, sema::SEMA_PLACE_STATE_USE_AFTER_PARTIAL_MOVE));
+    EXPECT_TRUE(place_state_emitted_message(harness.diagnostics, sema::SEMA_PLACE_STATE_DROP_AFTER_PARTIAL_MOVE));
+    EXPECT_TRUE(std::ranges::any_of(facts->second.places, [](const sema::PlaceStateFact& fact) {
+        return fact.is_partially_moved || fact.last_partial_move_point != sema::SEMA_BODY_FLOW_INVALID_INDEX;
+    }));
+}
+
+TEST(CoreUnit, PlaceStateFactsEnforceDropAfterMove)
+{
+    PlaceStateGraphHarness harness;
+    harness.analyzer.record_expr_owned_use_mode(PLACE_STATE_TEST_MOVE_EXPR_ID, sema::OwnedUseMode::owned_consume);
+
+    sema::BodyFlowGraph graph;
+    graph.function = harness.key;
+    graph.points = {
+        place_state_graph_point(sema::BodyFlowPointKind::entry, 60U),
+        place_state_graph_point(sema::BodyFlowPointKind::exit, 61U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 62U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 63U),
+    };
+    graph.edges = {
+        sema::BodyFlowEdge{.from = 0U, .to = 2U},
+        sema::BodyFlowEdge{.from = 2U, .to = 3U},
+        sema::BodyFlowEdge{.from = 3U, .to = 1U},
+    };
+    graph.places.push_back(place_state_graph_local_place());
+    graph.actions = {
+        place_state_graph_action(
+            sema::BodyFlowActionKind::move_candidate, 2U, 0U, 64U, PLACE_STATE_TEST_MOVE_EXPR_ID),
+        place_state_graph_action(sema::BodyFlowActionKind::drop, 3U, 0U, 65U),
+    };
+    harness.analyzer.state_.checked.body_flow_graphs[harness.key] = std::move(graph);
+
+    harness.analyzer.analyze_place_states(harness.function, harness.key, harness.signature);
+
+    const auto facts = harness.analyzer.state_.checked.place_state_facts.find(harness.key);
+    ASSERT_NE(facts, harness.analyzer.state_.checked.place_state_facts.end());
+    EXPECT_TRUE(place_state_has_violation(facts->second, sema::PlaceStateViolationKind::drop_after_move));
+    EXPECT_TRUE(place_state_emitted_message(harness.diagnostics, sema::SEMA_PLACE_STATE_DROP_AFTER_MOVE));
+    EXPECT_TRUE(place_state_emitted_message(harness.diagnostics, sema::SEMA_PLACE_STATE_MOVE_OCCURRED));
+}
+
+TEST(CoreUnit, PlaceStateFactsEnforceMaybeUninitializedAfterMoveJoin)
+{
+    PlaceStateGraphHarness harness;
+    harness.analyzer.record_expr_owned_use_mode(PLACE_STATE_TEST_MOVE_EXPR_ID, sema::OwnedUseMode::owned_consume);
+
+    sema::BodyFlowGraph graph;
+    graph.function = harness.key;
+    graph.points = {
+        place_state_graph_point(sema::BodyFlowPointKind::entry, 70U),
+        place_state_graph_point(sema::BodyFlowPointKind::exit, 71U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 72U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 73U),
+    };
+    graph.edges = {
+        sema::BodyFlowEdge{.from = 0U, .to = 2U},
+        sema::BodyFlowEdge{.from = 0U, .to = 3U},
+        sema::BodyFlowEdge{.from = 2U, .to = 3U},
+        sema::BodyFlowEdge{.from = 3U, .to = 1U},
+    };
+    graph.places.push_back(place_state_graph_local_place());
+    graph.actions = {
+        place_state_graph_action(
+            sema::BodyFlowActionKind::move_candidate, 2U, 0U, 74U, PLACE_STATE_TEST_MOVE_EXPR_ID),
+        place_state_graph_action(sema::BodyFlowActionKind::read, 3U, 0U, 75U),
+    };
+    harness.analyzer.state_.checked.body_flow_graphs[harness.key] = std::move(graph);
+
+    harness.analyzer.analyze_place_states(harness.function, harness.key, harness.signature);
+
+    const auto facts = harness.analyzer.state_.checked.place_state_facts.find(harness.key);
+    ASSERT_NE(facts, harness.analyzer.state_.checked.place_state_facts.end());
+    EXPECT_TRUE(place_state_has_violation(facts->second, sema::PlaceStateViolationKind::maybe_uninitialized_use));
+    EXPECT_TRUE(place_state_emitted_message(harness.diagnostics, sema::SEMA_PLACE_STATE_MAYBE_UNINITIALIZED_USE));
+    EXPECT_TRUE(place_state_emitted_message(harness.diagnostics, sema::SEMA_PLACE_STATE_MOVE_OCCURRED));
+}
+
+TEST(CoreUnit, PlaceStateFactsEnforceBorrowAfterPartialMove)
+{
+    PlaceStateGraphHarness harness;
+    sema::BodyFlowGraph graph;
+    graph.function = harness.key;
+    graph.points = {
+        place_state_graph_point(sema::BodyFlowPointKind::entry, 80U),
+        place_state_graph_point(sema::BodyFlowPointKind::exit, 81U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 82U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 83U),
+    };
+    graph.edges = {
+        sema::BodyFlowEdge{.from = 0U, .to = 2U},
+        sema::BodyFlowEdge{.from = 2U, .to = 3U},
+        sema::BodyFlowEdge{.from = 3U, .to = 1U},
+    };
+    graph.places.push_back(place_state_graph_local_place());
+    graph.places.push_back(place_state_graph_field_place());
+    graph.actions = {
+        place_state_graph_action(sema::BodyFlowActionKind::drop, 2U, 1U, 84U),
+        place_state_graph_action(sema::BodyFlowActionKind::borrow_shared, 3U, 0U, 85U),
+    };
+    harness.analyzer.state_.checked.body_flow_graphs[harness.key] = std::move(graph);
+
+    harness.analyzer.analyze_place_states(harness.function, harness.key, harness.signature);
+
+    const auto facts = harness.analyzer.state_.checked.place_state_facts.find(harness.key);
+    ASSERT_NE(facts, harness.analyzer.state_.checked.place_state_facts.end());
+    EXPECT_TRUE(place_state_has_violation(facts->second, sema::PlaceStateViolationKind::use_after_partial_move));
+    EXPECT_TRUE(place_state_emitted_message(harness.diagnostics, sema::SEMA_PLACE_STATE_USE_AFTER_PARTIAL_MOVE));
+    EXPECT_TRUE(std::ranges::any_of(facts->second.events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::borrow_shared;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(facts->second.violations, [](const sema::PlaceStateViolation& violation) {
+        return violation.kind == sema::PlaceStateViolationKind::use_after_partial_move && violation.diagnostic_emitted;
+    }));
+}
+
+TEST(CoreUnit, PlaceStateFactsSkipCleanupAfterMoveWithoutLiveDropFlag)
+{
+    PlaceStateGraphHarness harness;
+    harness.analyzer.record_expr_owned_use_mode(PLACE_STATE_TEST_MOVE_EXPR_ID, sema::OwnedUseMode::owned_consume);
+
+    sema::BodyFlowGraph graph;
+    graph.function = harness.key;
+    graph.points = {
+        place_state_graph_point(sema::BodyFlowPointKind::entry, 90U),
+        place_state_graph_point(sema::BodyFlowPointKind::exit, 91U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 92U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 93U),
+    };
+    graph.edges = {
+        sema::BodyFlowEdge{.from = 0U, .to = 2U},
+        sema::BodyFlowEdge{.from = 2U, .to = 3U},
+        sema::BodyFlowEdge{.from = 3U, .to = 1U},
+    };
+    graph.places.push_back(place_state_graph_local_place());
+    graph.actions = {
+        place_state_graph_action(
+            sema::BodyFlowActionKind::move_candidate, 2U, 0U, 94U, PLACE_STATE_TEST_MOVE_EXPR_ID),
+        place_state_graph_action(sema::BodyFlowActionKind::cleanup_storage, 3U, 0U, 95U),
+    };
+    harness.analyzer.state_.checked.body_flow_graphs[harness.key] = std::move(graph);
+
+    harness.analyzer.analyze_place_states(harness.function, harness.key, harness.signature);
+
+    const auto facts = harness.analyzer.state_.checked.place_state_facts.find(harness.key);
+    ASSERT_NE(facts, harness.analyzer.state_.checked.place_state_facts.end());
+    ASSERT_FALSE(facts->second.places.empty());
+    EXPECT_TRUE(facts->second.violations.empty());
+    EXPECT_EQ(facts->second.places.front().cleanup_count, 1U);
+    EXPECT_EQ(facts->second.places.front().skipped_drop_count, 1U);
+    EXPECT_EQ(facts->second.places.front().drop_state, sema::PlaceStateDropState::none);
+    EXPECT_FALSE(facts->second.places.front().drop_flag_live);
+    EXPECT_TRUE(std::ranges::any_of(facts->second.events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::cleanup;
+    }));
+}
+
+TEST(CoreUnit, PlaceStateFactsMarkMissingGraphWhenResourceSignatureNeedsCheck)
+{
+    PlaceStateGraphHarness harness;
+
+    harness.analyzer.analyze_place_states(harness.function, harness.key, harness.signature);
+
+    const auto facts = harness.analyzer.state_.checked.place_state_facts.find(harness.key);
+    ASSERT_NE(facts, harness.analyzer.state_.checked.place_state_facts.end());
+    EXPECT_TRUE(facts->second.graph_missing);
+    EXPECT_FALSE(facts->second.solved);
+    EXPECT_TRUE(facts->second.places.empty());
+    EXPECT_TRUE(facts->second.events.empty());
+    EXPECT_GT(facts->second.fingerprint.byte_count, 0U);
+}
+
+TEST(CoreUnit, PlaceStateFactsSkipControlActionsAndMapCleanupAndMutableBorrows)
+{
+    PlaceStateGraphHarness harness;
+    sema::BodyFlowGraph graph;
+    graph.function = harness.key;
+    graph.points = {
+        place_state_graph_point(sema::BodyFlowPointKind::entry, 100U),
+        place_state_graph_point(sema::BodyFlowPointKind::exit, 101U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 102U),
+    };
+    graph.edges = {
+        sema::BodyFlowEdge{.from = 0U, .to = 2U},
+        sema::BodyFlowEdge{.from = 2U, .to = 1U},
+    };
+    graph.places.push_back(place_state_graph_local_place());
+    graph.actions = {
+        place_state_graph_action(sema::BodyFlowActionKind::call, 2U, 0U, 103U),
+        place_state_graph_action(sema::BodyFlowActionKind::return_, 2U, 0U, 104U),
+        place_state_graph_action(sema::BodyFlowActionKind::branch, 2U, 0U, 105U),
+        place_state_graph_action(sema::BodyFlowActionKind::read, 2U, 7U, 106U),
+        place_state_graph_action(sema::BodyFlowActionKind::cleanup_scope, 2U, 0U, 107U),
+        place_state_graph_action(sema::BodyFlowActionKind::borrow_mutable, 2U, 0U, 108U),
+        place_state_graph_action(sema::BodyFlowActionKind::call_receiver_reserve, 2U, 0U, 109U),
+        place_state_graph_action(sema::BodyFlowActionKind::call_receiver_activate, 2U, 0U, 110U),
+    };
+    harness.analyzer.state_.checked.body_flow_graphs[harness.key] = std::move(graph);
+
+    harness.analyzer.analyze_place_states(harness.function, harness.key, harness.signature);
+
+    const auto facts = harness.analyzer.state_.checked.place_state_facts.find(harness.key);
+    ASSERT_NE(facts, harness.analyzer.state_.checked.place_state_facts.end());
+    EXPECT_TRUE(facts->second.solved);
+    EXPECT_EQ(facts->second.events.size(), 4U);
+    EXPECT_TRUE(std::ranges::any_of(facts->second.events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::cleanup;
+    }));
+    const base::usize mutable_borrow_count =
+        static_cast<base::usize>(std::ranges::count_if(facts->second.events, [](const sema::PlaceStateEvent& event) {
+            return event.kind == sema::PlaceStateEventKind::borrow_mutable;
+        }));
+    EXPECT_EQ(mutable_borrow_count, 3U);
+}
+
+TEST(CoreUnit, PlaceStateFactsReinitializePartialDropRestoresWholePlace)
+{
+    PlaceStateGraphHarness harness;
+    sema::BodyFlowGraph graph;
+    graph.function = harness.key;
+    graph.points = {
+        place_state_graph_point(sema::BodyFlowPointKind::entry, 120U),
+        place_state_graph_point(sema::BodyFlowPointKind::exit, 121U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 122U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 123U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 124U),
+    };
+    graph.edges = {
+        sema::BodyFlowEdge{.from = 0U, .to = 2U},
+        sema::BodyFlowEdge{.from = 2U, .to = 3U},
+        sema::BodyFlowEdge{.from = 3U, .to = 4U},
+        sema::BodyFlowEdge{.from = 4U, .to = 1U},
+    };
+    graph.places.push_back(place_state_graph_local_place());
+    graph.places.push_back(place_state_graph_field_place());
+    graph.actions = {
+        place_state_graph_action(sema::BodyFlowActionKind::drop, 2U, 1U, 125U),
+        place_state_graph_action(sema::BodyFlowActionKind::reinit, 3U, 1U, 126U),
+        place_state_graph_action(sema::BodyFlowActionKind::read, 4U, 0U, 127U),
+    };
+    harness.analyzer.state_.checked.body_flow_graphs[harness.key] = std::move(graph);
+
+    harness.analyzer.analyze_place_states(harness.function, harness.key, harness.signature);
+
+    const auto facts = harness.analyzer.state_.checked.place_state_facts.find(harness.key);
+    ASSERT_NE(facts, harness.analyzer.state_.checked.place_state_facts.end());
+    ASSERT_GE(facts->second.places.size(), 2U);
+    EXPECT_TRUE(facts->second.violations.empty());
+    EXPECT_FALSE(facts->second.places[0].is_partially_moved);
+    EXPECT_EQ(facts->second.places[0].move_state, sema::PlaceStateMoveState::none);
+    EXPECT_TRUE(std::ranges::any_of(facts->second.events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::reinit;
+    }));
+}
+
+TEST(CoreUnit, PlaceStateFactsMergeNonConsumingMoveCandidatesAtJoin)
+{
+    PlaceStateGraphHarness harness;
+    sema::BodyFlowGraph graph;
+    graph.function = harness.key;
+    graph.points = {
+        place_state_graph_point(sema::BodyFlowPointKind::entry, 130U),
+        place_state_graph_point(sema::BodyFlowPointKind::exit, 131U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 132U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 133U),
+    };
+    graph.edges = {
+        sema::BodyFlowEdge{.from = 0U, .to = 2U},
+        sema::BodyFlowEdge{.from = 0U, .to = 3U},
+        sema::BodyFlowEdge{.from = 2U, .to = 3U},
+        sema::BodyFlowEdge{.from = 3U, .to = 1U},
+    };
+    graph.places.push_back(place_state_graph_local_place());
+    graph.actions = {
+        place_state_graph_action(sema::BodyFlowActionKind::move_candidate, 2U, 0U, 134U),
+        place_state_graph_action(sema::BodyFlowActionKind::read, 3U, 0U, 135U),
+    };
+    harness.analyzer.state_.checked.body_flow_graphs[harness.key] = std::move(graph);
+
+    harness.analyzer.analyze_place_states(harness.function, harness.key, harness.signature);
+
+    const auto facts = harness.analyzer.state_.checked.place_state_facts.find(harness.key);
+    ASSERT_NE(facts, harness.analyzer.state_.checked.place_state_facts.end());
+    EXPECT_TRUE(facts->second.violations.empty());
+    EXPECT_TRUE(std::ranges::any_of(facts->second.events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::move_candidate;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(facts->second.places, [](const sema::PlaceStateFact& fact) {
+        return fact.move_candidate_count == 1U;
+    }));
+}
+
+TEST(CoreUnit, PlaceStateFactsReadUnknownLocalBecomesMaybeInitialized)
+{
+    PlaceStateGraphHarness harness;
+    sema::BodyFlowPlace unknown_local = place_state_graph_local_place();
+    unknown_local.root_name_id = PLACE_STATE_TEST_FIELD_NAME_ID;
+
+    sema::BodyFlowGraph graph;
+    graph.function = harness.key;
+    graph.points = {
+        place_state_graph_point(sema::BodyFlowPointKind::entry, 140U),
+        place_state_graph_point(sema::BodyFlowPointKind::exit, 141U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 142U),
+    };
+    graph.edges = {
+        sema::BodyFlowEdge{.from = 0U, .to = 2U},
+        sema::BodyFlowEdge{.from = 2U, .to = 1U},
+    };
+    graph.places.push_back(unknown_local);
+    graph.actions = {
+        place_state_graph_action(sema::BodyFlowActionKind::read, 2U, 0U, 143U),
+    };
+    harness.analyzer.state_.checked.body_flow_graphs[harness.key] = std::move(graph);
+
+    harness.analyzer.analyze_place_states(harness.function, harness.key, harness.signature);
+
+    const auto facts = harness.analyzer.state_.checked.place_state_facts.find(harness.key);
+    ASSERT_NE(facts, harness.analyzer.state_.checked.place_state_facts.end());
+    ASSERT_FALSE(facts->second.places.empty());
+    EXPECT_EQ(facts->second.places.front().read_count, 1U);
+    EXPECT_TRUE(std::ranges::any_of(facts->second.events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::read;
+    }));
 }
 
 TEST(CoreUnit, PlaceStateFactsCopyMoveAndIdeProjectionPreserveFacts)
@@ -322,24 +901,70 @@ TEST(CoreUnit, PlaceStateFactsCopyMoveAndIdeProjectionPreserveFacts)
     EXPECT_NE(ide_fact->detail.find("place_state places="), std::string::npos) << ide_fact->detail;
     EXPECT_NE(ide_fact->detail.find("events="), std::string::npos) << ide_fact->detail;
     EXPECT_NE(ide_fact->detail.find("partials="), std::string::npos) << ide_fact->detail;
+    EXPECT_NE(ide_fact->detail.find("partial_moves="), std::string::npos) << ide_fact->detail;
+    EXPECT_NE(ide_fact->detail.find("violations="), std::string::npos) << ide_fact->detail;
+    EXPECT_NE(ide_fact->detail.find("diagnostics="), std::string::npos) << ide_fact->detail;
+    EXPECT_NE(ide_fact->detail.find("enforced="), std::string::npos) << ide_fact->detail;
 
     const base::usize offset = PLACE_STATE_TEST_SOURCE.find("place_state_subject");
     ASSERT_NE(offset, std::string_view::npos);
     const std::optional<tooling::IdeHoverInfo> hover = tooling::hover_at_offset(snapshot, offset);
     ASSERT_TRUE(hover.has_value());
     EXPECT_NE(hover->label.find("place_state=places="), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("/partial_moves="), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("/violations="), std::string::npos) << hover->label;
 }
 
 TEST(CoreUnit, PlaceStateEnumNameFallbacksAreStable)
 {
     EXPECT_EQ(sema::place_state_initialization_name(sema::PlaceStateInitialization::unknown), "unknown");
+    EXPECT_EQ(sema::place_state_initialization_name(sema::PlaceStateInitialization::initialized), "initialized");
+    EXPECT_EQ(
+        sema::place_state_initialization_name(sema::PlaceStateInitialization::maybe_initialized), "maybe_initialized");
+    EXPECT_EQ(sema::place_state_initialization_name(sema::PlaceStateInitialization::uninitialized), "uninitialized");
+    EXPECT_EQ(sema::place_state_move_state_name(sema::PlaceStateMoveState::none), "none");
+    EXPECT_EQ(sema::place_state_move_state_name(sema::PlaceStateMoveState::move_candidate), "move_candidate");
     EXPECT_EQ(sema::place_state_move_state_name(sema::PlaceStateMoveState::maybe_moved), "maybe_moved");
+    EXPECT_EQ(sema::place_state_drop_state_name(sema::PlaceStateDropState::none), "none");
+    EXPECT_EQ(sema::place_state_drop_state_name(sema::PlaceStateDropState::drop_pending), "drop_pending");
     EXPECT_EQ(sema::place_state_drop_state_name(sema::PlaceStateDropState::dropped), "dropped");
+    EXPECT_EQ(sema::place_state_event_kind_name(sema::PlaceStateEventKind::read), "read");
+    EXPECT_EQ(sema::place_state_event_kind_name(sema::PlaceStateEventKind::write), "write");
+    EXPECT_EQ(sema::place_state_event_kind_name(sema::PlaceStateEventKind::reinit), "reinit");
+    EXPECT_EQ(sema::place_state_event_kind_name(sema::PlaceStateEventKind::move_candidate), "move_candidate");
+    EXPECT_EQ(sema::place_state_event_kind_name(sema::PlaceStateEventKind::drop), "drop");
     EXPECT_EQ(sema::place_state_event_kind_name(sema::PlaceStateEventKind::cleanup), "cleanup");
+    EXPECT_EQ(sema::place_state_event_kind_name(sema::PlaceStateEventKind::borrow_shared), "borrow_shared");
+    EXPECT_EQ(sema::place_state_event_kind_name(sema::PlaceStateEventKind::borrow_mutable), "borrow_mutable");
+    EXPECT_EQ(sema::place_state_violation_kind_name(sema::PlaceStateViolationKind::use_after_move), "use_after_move");
+    EXPECT_EQ(sema::place_state_violation_kind_name(sema::PlaceStateViolationKind::maybe_uninitialized_use),
+        "maybe_uninitialized_use");
+    EXPECT_EQ(sema::place_state_violation_kind_name(sema::PlaceStateViolationKind::use_after_partial_move),
+        "use_after_partial_move");
+    EXPECT_EQ(
+        sema::place_state_violation_kind_name(sema::PlaceStateViolationKind::drop_after_move), "drop_after_move");
+    EXPECT_EQ(sema::place_state_violation_kind_name(sema::PlaceStateViolationKind::drop_after_partial_move),
+        "drop_after_partial_move");
+    EXPECT_EQ(sema::place_state_violation_kind_name(sema::PlaceStateViolationKind::double_drop), "double_drop");
+    EXPECT_EQ(sema::place_state_violation_message(sema::PlaceStateViolationKind::use_after_move),
+        sema::SEMA_PLACE_STATE_USE_AFTER_MOVE);
+    EXPECT_EQ(sema::place_state_violation_message(sema::PlaceStateViolationKind::maybe_uninitialized_use),
+        sema::SEMA_PLACE_STATE_MAYBE_UNINITIALIZED_USE);
+    EXPECT_EQ(sema::place_state_violation_message(sema::PlaceStateViolationKind::use_after_partial_move),
+        sema::SEMA_PLACE_STATE_USE_AFTER_PARTIAL_MOVE);
+    EXPECT_EQ(sema::place_state_violation_message(sema::PlaceStateViolationKind::drop_after_move),
+        sema::SEMA_PLACE_STATE_DROP_AFTER_MOVE);
+    EXPECT_EQ(sema::place_state_violation_message(sema::PlaceStateViolationKind::drop_after_partial_move),
+        sema::SEMA_PLACE_STATE_DROP_AFTER_PARTIAL_MOVE);
+    EXPECT_EQ(
+        sema::place_state_violation_message(sema::PlaceStateViolationKind::double_drop), sema::SEMA_PLACE_STATE_DOUBLE_DROP);
     EXPECT_EQ(sema::place_state_initialization_name(static_cast<sema::PlaceStateInitialization>(255U)), "<invalid>");
     EXPECT_EQ(sema::place_state_move_state_name(static_cast<sema::PlaceStateMoveState>(255U)), "<invalid>");
     EXPECT_EQ(sema::place_state_drop_state_name(static_cast<sema::PlaceStateDropState>(255U)), "<invalid>");
     EXPECT_EQ(sema::place_state_event_kind_name(static_cast<sema::PlaceStateEventKind>(255U)), "<invalid>");
+    EXPECT_EQ(sema::place_state_violation_kind_name(static_cast<sema::PlaceStateViolationKind>(255U)), "<invalid>");
+    EXPECT_EQ(sema::place_state_violation_message(static_cast<sema::PlaceStateViolationKind>(255U)),
+        sema::SEMA_PLACE_STATE_USE_AFTER_MOVE);
 }
 
 TEST(CoreUnit, DropGluePublicResultErrorIsStableForInvalidRoot)

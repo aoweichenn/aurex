@@ -380,6 +380,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
     const ItemNodeHeader& header = this->headers_[index];
     ItemNode node;
     this->load_header(header, node);
+    bool loaded_known_payload = false;
     switch (node.kind) {
         case ItemKind::const_decl: {
             const ConstItemPayload& payload = this->payloads_.consts[header.payload];
@@ -387,6 +388,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.name_id = payload.name_id;
             node.const_type = payload.type;
             node.const_value = payload.value;
+            loaded_known_payload = true;
             break;
         }
         case ItemKind::type_alias: {
@@ -398,6 +400,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.alias_type = payload.target;
             node.impl_type = payload.impl_type;
             node.trait_type = payload.trait_type;
+            loaded_known_payload = true;
             break;
         }
         case ItemKind::struct_decl: {
@@ -407,6 +410,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.fields = copy_std_vector(payload.fields);
+            loaded_known_payload = true;
             break;
         }
         case ItemKind::enum_decl: {
@@ -417,11 +421,13 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.enum_base_type = payload.base_type;
             node.enum_cases = this->detach_enum_cases(payload.cases);
+            loaded_known_payload = true;
             break;
         }
         case ItemKind::opaque_struct_decl:
             node.name = this->payloads_.opaque_structs[header.payload].name;
             node.name_id = this->payloads_.opaque_structs[header.payload].name_id;
+            loaded_known_payload = true;
             break;
         case ItemKind::trait_decl: {
             const TraitItemPayload& payload = this->payloads_.traits[header.payload];
@@ -430,6 +436,7 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.trait_items = copy_std_vector(payload.items);
+            loaded_known_payload = true;
             break;
         }
         case ItemKind::fn_decl: {
@@ -447,10 +454,12 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.borrow_contract.present = payload.has_borrow_contract;
             node.borrow_contract.range = payload.borrow_contract_range;
             node.borrow_contract.return_selectors = copy_std_vector(payload.borrow_return_selectors);
+            loaded_known_payload = true;
             break;
         }
         case ItemKind::extern_block:
             node.extern_items = copy_std_vector(this->payloads_.extern_blocks[header.payload].items);
+            loaded_known_payload = true;
             break;
         case ItemKind::impl_block: {
             const ImplBlockItemPayload& payload = this->payloads_.impl_blocks[header.payload];
@@ -459,12 +468,13 @@ ItemNode ItemNodeList::load(const base::usize index) const
             node.impl_type = payload.impl_type;
             node.trait_type = payload.trait_type;
             node.impl_items = copy_std_vector(payload.items);
+            loaded_known_payload = true;
             break;
         }
-        default:
-            node = this->payloads_.unknowns[header.payload];
-            this->load_header(header, node);
-            break;
+    }
+    if (!loaded_known_payload) {
+        node = this->payloads_.unknowns[header.payload];
+        this->load_header(header, node);
     }
     return node;
 }
@@ -474,6 +484,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
     const ItemNodeHeader& header = this->headers_[index];
     ItemNode node;
     this->load_header(header, node);
+    bool loaded_known_payload = false;
     switch (node.kind) {
         case ItemKind::const_decl: {
             const ConstItemPayload& payload = this->payloads_.consts[header.payload];
@@ -481,6 +492,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.name_id = payload.name_id;
             node.const_type = payload.type;
             node.const_value = payload.value;
+            loaded_known_payload = true;
             break;
         }
         case ItemKind::type_alias: {
@@ -492,6 +504,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.alias_type = payload.target;
             node.impl_type = payload.impl_type;
             node.trait_type = payload.trait_type;
+            loaded_known_payload = true;
             break;
         }
         case ItemKind::struct_decl: {
@@ -501,6 +514,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.fields = copy_std_vector(payload.fields);
+            loaded_known_payload = true;
             break;
         }
         case ItemKind::enum_decl: {
@@ -511,11 +525,13 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.enum_base_type = payload.base_type;
             node.enum_cases = this->detach_enum_cases(payload.cases);
+            loaded_known_payload = true;
             break;
         }
         case ItemKind::opaque_struct_decl:
             node.name = this->payloads_.opaque_structs[header.payload].name;
             node.name_id = this->payloads_.opaque_structs[header.payload].name_id;
+            loaded_known_payload = true;
             break;
         case ItemKind::trait_decl: {
             TraitItemPayload& payload = this->payloads_.traits[header.payload];
@@ -524,6 +540,7 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.generic_params = copy_std_vector(payload.generic_params);
             node.where_constraints = this->detach_generic_constraints(payload.where_constraints);
             node.trait_items = copy_std_vector(payload.items);
+            loaded_known_payload = true;
             break;
         }
         case ItemKind::fn_decl: {
@@ -541,10 +558,12 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.borrow_contract.present = payload.has_borrow_contract;
             node.borrow_contract.range = payload.borrow_contract_range;
             node.borrow_contract.return_selectors = copy_std_vector(payload.borrow_return_selectors);
+            loaded_known_payload = true;
             break;
         }
         case ItemKind::extern_block:
             node.extern_items = copy_std_vector(this->payloads_.extern_blocks[header.payload].items);
+            loaded_known_payload = true;
             break;
         case ItemKind::impl_block: {
             ImplBlockItemPayload& payload = this->payloads_.impl_blocks[header.payload];
@@ -553,12 +572,13 @@ ItemNode ItemNodeList::load_moved(const base::usize index)
             node.impl_type = payload.impl_type;
             node.trait_type = payload.trait_type;
             node.impl_items = copy_std_vector(payload.items);
+            loaded_known_payload = true;
             break;
         }
-        default:
-            node = std::move(this->payloads_.unknowns[header.payload]);
-            this->load_header(header, node);
-            break;
+    }
+    if (!loaded_known_payload) {
+        node = std::move(this->payloads_.unknowns[header.payload]);
+        this->load_header(header, node);
     }
     return node;
 }

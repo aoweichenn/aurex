@@ -51,10 +51,7 @@ namespace {
     if (dependency.key.kind == QueryKind::type_check_body) {
         return stable_body_keys_match(dependent.stable_key_bytes, dependency.stable_key_bytes);
     }
-    if (dependency.key.kind == QueryKind::generic_instance_body) {
-        return stable_generic_instance_keys_match(dependent.stable_key_bytes, dependency.stable_key_bytes);
-    }
-    return false;
+    return stable_generic_instance_keys_match(dependent.stable_key_bytes, dependency.stable_key_bytes);
 }
 
 [[nodiscard]] bool query_dependency_edge_stable_identity_is_valid(
@@ -83,31 +80,21 @@ namespace {
                 return stable_key_has_module_key_layout(dependent_key)
                     && stable_key_has_project_key_layout(dependency_key);
             }
-            if (dependency.key.kind == QueryKind::module_part) {
-                return stable_module_graph_depends_on_module_part(dependent_key, dependency_key);
-            }
-            return false;
+            return stable_module_graph_depends_on_module_part(dependent_key, dependency_key);
         case QueryKind::item_list:
             return stable_module_keys_match(dependent_key, dependency_key);
         case QueryKind::module_exports:
             if (dependency.key.kind == QueryKind::item_list) {
                 return stable_module_keys_match(dependent_key, dependency_key);
             }
-            if (dependency.key.kind == QueryKind::module_exports) {
-                return stable_key_has_module_key_layout(dependent_key)
-                    && stable_key_has_module_key_layout(dependency_key);
-            }
-            return false;
+            return stable_key_has_module_key_layout(dependent_key)
+                && stable_key_has_module_key_layout(dependency_key);
         case QueryKind::module_package_exports:
             if (dependency.key.kind == QueryKind::item_list) {
                 return stable_module_keys_match(dependent_key, dependency_key);
             }
-            if (dependency.key.kind == QueryKind::module_exports
-                || dependency.key.kind == QueryKind::module_package_exports) {
-                return stable_key_has_module_key_layout(dependent_key)
-                    && stable_key_has_module_key_layout(dependency_key);
-            }
-            return false;
+            return stable_key_has_module_key_layout(dependent_key)
+                && stable_key_has_module_key_layout(dependency_key);
         case QueryKind::generic_instance_body:
             return stable_generic_instance_keys_match(dependent_key, dependency_key);
         case QueryKind::item_signature:
@@ -124,11 +111,10 @@ namespace {
             if (dependency.key.kind == QueryKind::function_body_syntax) {
                 return stable_body_keys_match(dependent_key, dependency_key);
             }
-            if (dependency.key.kind == QueryKind::item_signature) {
+            {
                 const std::optional<DecodedBodyKeyIdentity> identity = decode_body_key_identity(dependent_key);
                 return identity.has_value() && identity->owner == dependency_key;
             }
-            return false;
         case QueryKind::lower_function_ir:
             return lower_function_ir_dependency_identity_is_valid(dependent, dependency);
         case QueryKind::diagnostics:

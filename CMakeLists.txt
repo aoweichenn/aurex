@@ -20,6 +20,8 @@ if(AUREX_FRONTEND_ONLY)
     set(AUREX_ENABLE_LLVM OFF CACHE BOOL "Build the LLVM backend, native driver, and CLI targets" FORCE)
 endif()
 option(AUREX_ENABLE_LTO "Build Aurex targets with interprocedural/link-time optimization" OFF)
+option(AUREX_ENABLE_STRICT_WARNINGS "Build Aurex project targets with strict Clang/GCC warning diagnostics" ON)
+option(AUREX_WARNINGS_AS_ERRORS "Treat Aurex project target warnings as errors" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

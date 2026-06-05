@@ -44,6 +44,10 @@ struct TypeCheckBodyAuthority {
     base::u64 place_state_drop_place_count = 0;
     base::u64 place_state_move_candidate_count = 0;
     base::u64 place_state_borrow_event_count = 0;
+    base::u64 place_state_partial_move_count = 0;
+    base::u64 place_state_skipped_drop_count = 0;
+    base::u64 place_state_violation_count = 0;
+    base::u64 place_state_emitted_diagnostic_count = 0;
     base::u64 body_loan_count = 0;
     base::u64 body_reborrow_count = 0;
     base::u64 body_two_phase_borrow_count = 0;
@@ -80,6 +84,10 @@ struct TypeCheckBodyAuthority {
     bool place_state_has_drop_action = false;
     bool place_state_has_move_candidate = false;
     bool place_state_has_borrow = false;
+    bool place_state_has_partial_move = false;
+    bool place_state_has_skipped_drop = false;
+    bool place_state_has_violation = false;
+    bool place_state_has_emitted_diagnostics = false;
     bool body_loan_graph_missing = false;
     bool body_loan_has_emitted_diagnostics = false;
     bool body_two_phase_has_emitted_diagnostics = false;

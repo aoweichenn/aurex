@@ -136,24 +136,23 @@ void mix_lossless_parse_result(
 }
 
 [[nodiscard]] std::optional<SourceStageQueryRecords> source_stage_query_records_for_text(
-    const std::filesystem::path& path, std::string text, const query::PackageKey package)
+    const std::filesystem::path& path, std::string text, const query::PackageKey package,
+    const query::QuerySourceStageMode mode)
 {
     base::SourceManager sources;
     const base::SourceId source_id = sources.add_source(path.string(), std::move(text));
     const base::SourceFile& file = sources.get(source_id);
     const query::FileKey file_key = source_file_key(file, package);
-    const query::LexConfigKey lex_config = query::lex_config_key();
-    const query::ParserConfigKey parser_config = query::parser_config_key(lex_config);
-    const query::LexFileKey lex_key = query::lex_file_key(file_key, lex_config);
-    const query::ParseFileKey parse_key = query::parse_file_key(file_key, parser_config);
-    if (!query::is_valid(file_key) || !query::is_valid(lex_key) || !query::is_valid(parse_key)) {
+    const std::optional<query::QuerySourceStageKeys> keys = query::query_source_stage_keys(file_key, mode);
+    if (!keys.has_value()) {
         return std::nullopt;
     }
 
-    const query::QueryResultFingerprint lex_result = lex_file_result_fingerprint(lex_key, file);
-    const query::QueryResultFingerprint parse_result = parse_file_result_fingerprint(parse_key, lex_result, file);
-    std::optional<query::QueryRecord> lex_record = query::lex_file_query_record(lex_key, lex_result);
-    std::optional<query::QueryRecord> parse_record = query::parse_file_query_record(parse_key, parse_result);
+    const query::QueryResultFingerprint lex_result = lex_file_result_fingerprint(keys->lex_file, file);
+    const query::QueryResultFingerprint parse_result =
+        parse_file_result_fingerprint(keys->parse_file, lex_result, file);
+    std::optional<query::QueryRecord> lex_record = query::lex_file_query_record(keys->lex_file, lex_result);
+    std::optional<query::QueryRecord> parse_record = query::parse_file_query_record(keys->parse_file, parse_result);
     if (!lex_record || !parse_record) {
         return std::nullopt;
     }
@@ -189,20 +188,19 @@ void mix_lossless_parse_result(
 }
 
 void push_source_file_query_subjects(
-    QuerySubjectCollection& collection, const base::SourceFile& file, const query::PackageKey package)
+    QuerySubjectCollection& collection, const base::SourceFile& file, const query::PackageKey package,
+    const query::QuerySourceStageMode mode)
 {
     const query::FileKey file_key = source_file_key(file, package);
-    const query::LexConfigKey lex_config = query::lex_config_key();
-    const query::ParserConfigKey parser_config = query::parser_config_key(lex_config);
-    const query::LexFileKey lex_key = query::lex_file_key(file_key, lex_config);
-    const query::ParseFileKey parse_key = query::parse_file_key(file_key, parser_config);
-    if (!query::is_valid(file_key) || !query::is_valid(lex_key) || !query::is_valid(parse_key)) {
+    const std::optional<query::QuerySourceStageKeys> keys = query::query_source_stage_keys(file_key, mode);
+    if (!keys.has_value()) {
         return;
     }
 
     const query::QueryResultFingerprint content_result = file_content_result_fingerprint(file_key, file.text());
-    const query::QueryResultFingerprint lex_result = lex_file_result_fingerprint(lex_key, file);
-    const query::QueryResultFingerprint parse_result = parse_file_result_fingerprint(parse_key, lex_result, file);
+    const query::QueryResultFingerprint lex_result = lex_file_result_fingerprint(keys->lex_file, file);
+    const query::QueryResultFingerprint parse_result =
+        parse_file_result_fingerprint(keys->parse_file, lex_result, file);
     if (!query::is_valid(content_result) || !query::is_valid(lex_result) || !query::is_valid(parse_result)) {
         return;
     }
@@ -212,11 +210,11 @@ void push_source_file_query_subjects(
         content_result,
     });
     collection.lex_files.push_back(LexFileQuerySubject{
-        lex_key,
+        keys->lex_file,
         lex_result,
     });
     collection.parse_files.push_back(ParseFileQuerySubject{
-        parse_key,
+        keys->parse_file,
         parse_result,
     });
 }
@@ -224,17 +222,18 @@ void push_source_file_query_subjects(
 } // namespace
 
 [[nodiscard]] std::optional<SourceStageQueryRecords> source_stage_query_records_for_file(
-    const std::filesystem::path& path, const query::PackageKey package)
+    const std::filesystem::path& path, const query::PackageKey package, const query::QuerySourceStageMode mode)
 {
     std::optional<std::string> text = read_file_for_fingerprint(path);
     if (!text) {
         return std::nullopt;
     }
-    return source_stage_query_records_for_text(path, std::move(*text), package);
+    return source_stage_query_records_for_text(path, std::move(*text), package, mode);
 }
 
 void collect_source_file_query_subjects(
-    QuerySubjectCollection& collection, const base::SourceManager& sources, const std::span<const ModuleRecord> modules)
+    QuerySubjectCollection& collection, const base::SourceManager& sources, const std::span<const ModuleRecord> modules,
+    const query::QuerySourceStageMode mode)
 {
     const std::span<const base::SourceFile> files = sources.files();
     const std::unordered_map<std::string, query::PackageKey> source_packages = source_package_index(modules);
@@ -242,7 +241,7 @@ void collect_source_file_query_subjects(
     collection.lex_files.reserve(files.size());
     collection.parse_files.reserve(files.size());
     for (const base::SourceFile& file : files) {
-        push_source_file_query_subjects(collection, file, source_package_for_file(source_packages, file));
+        push_source_file_query_subjects(collection, file, source_package_for_file(source_packages, file), mode);
     }
 }
 

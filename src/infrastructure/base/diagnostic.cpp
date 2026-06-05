@@ -13,27 +13,32 @@ namespace {
 
 } // namespace
 
-DiagnosticLabel::DiagnosticLabel(SourceRange range, std::string message, const DiagnosticLabelStyle style)
-    : range(range), message(std::move(message)), style(style)
+DiagnosticLabel::DiagnosticLabel(
+    SourceRange label_range, std::string label_message, const DiagnosticLabelStyle label_style)
+    : range(label_range), message(std::move(label_message)), style(label_style)
 {
 }
 
-DiagnosticChild::DiagnosticChild(const Severity severity, SourceRange range, std::string message,
-    const DiagnosticCategory category, const DiagnosticCode code)
-    : severity(severity), range(range), message(std::move(message)), category(category), code(code)
+DiagnosticChild::DiagnosticChild(const Severity child_severity, SourceRange child_range, std::string child_message,
+    const DiagnosticCategory child_category, const DiagnosticCode child_code)
+    : severity(child_severity), range(child_range), message(std::move(child_message)), category(child_category),
+      code(child_code)
 {
 }
 
-Diagnostic::Diagnostic(const Severity severity, SourceRange range, std::string message,
-    const DiagnosticCategory category, const DiagnosticCode code)
-    : severity(severity), range(range), message(std::move(message)), category(category), code(code)
+Diagnostic::Diagnostic(const Severity diagnostic_severity, SourceRange diagnostic_range, std::string diagnostic_message,
+    const DiagnosticCategory diagnostic_category, const DiagnosticCode diagnostic_code)
+    : severity(diagnostic_severity), range(diagnostic_range), message(std::move(diagnostic_message)),
+      category(diagnostic_category), code(diagnostic_code)
 {
 }
 
-Diagnostic::Diagnostic(Severity severity, SourceRange range, std::string message, DiagnosticCategory category,
-    DiagnosticCode code, std::vector<DiagnosticLabel> labels, std::vector<DiagnosticChild> children)
-    : severity(severity), range(range), message(std::move(message)), category(category), code(code),
-      labels(std::move(labels)), children(std::move(children))
+Diagnostic::Diagnostic(Severity diagnostic_severity, SourceRange diagnostic_range, std::string diagnostic_message,
+    DiagnosticCategory diagnostic_category, DiagnosticCode diagnostic_code, std::vector<DiagnosticLabel> diagnostic_labels,
+    std::vector<DiagnosticChild> diagnostic_children)
+    : severity(diagnostic_severity), range(diagnostic_range), message(std::move(diagnostic_message)),
+      category(diagnostic_category), code(diagnostic_code), labels(std::move(diagnostic_labels)),
+      children(std::move(diagnostic_children))
 {
 }
 

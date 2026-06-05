@@ -480,25 +480,23 @@ void AstModule::intern_struct_literal_payload(StructLiteralExprPayload& payload)
 
 void AstModule::intern_expr_payload(const base::usize index)
 {
-    switch (this->exprs.kind(index)) {
-        case ExprKind::name:
-            if (NameExprPayload* const payload = this->exprs.name_payload(index); payload != nullptr) {
-                this->intern_name_expr_payload(*payload);
-            }
-            break;
-        case ExprKind::field:
-            if (FieldExprPayload* const payload = this->exprs.field_payload(index); payload != nullptr) {
-                this->intern_identifier_text(payload->field_name, payload->field_name_id);
-            }
-            break;
-        case ExprKind::struct_literal:
-            if (StructLiteralExprPayload* const payload = this->exprs.struct_literal_payload(index);
-                payload != nullptr) {
-                this->intern_struct_literal_payload(*payload);
-            }
-            break;
-        default:
-            break;
+    const ExprKind kind = this->exprs.kind(index);
+    if (kind == ExprKind::name) {
+        if (NameExprPayload* const payload = this->exprs.name_payload(index); payload != nullptr) {
+            this->intern_name_expr_payload(*payload);
+        }
+        return;
+    }
+    if (kind == ExprKind::field) {
+        if (FieldExprPayload* const payload = this->exprs.field_payload(index); payload != nullptr) {
+            this->intern_identifier_text(payload->field_name, payload->field_name_id);
+        }
+        return;
+    }
+    if (kind == ExprKind::struct_literal) {
+        if (StructLiteralExprPayload* const payload = this->exprs.struct_literal_payload(index); payload != nullptr) {
+            this->intern_struct_literal_payload(*payload);
+        }
     }
 }
 

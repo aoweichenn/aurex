@@ -171,7 +171,7 @@ syntax::TypeId TypeArgExprConverter::convert(const syntax::ExprId expr, const bo
     }
 
     if (!failed && syntax::is_valid(converted)) {
-        return converted;
+        return syntax::TypeId{converted.value};
     }
 
     if (report_errors) {

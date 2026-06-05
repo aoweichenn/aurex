@@ -355,9 +355,8 @@ template <typename T, typename Allocator>
             expr = remap_expr(expr, map);
             return destination.push_cast_like_expr(kind, range, type, expr);
         }
-        default:
-            return destination.push_invalid_expr(range);
     }
+    return destination.push_invalid_expr(range);
 }
 
 void remap_pattern_node(syntax::PatternNode& node, const IdMap& map)

@@ -14,7 +14,8 @@
 namespace aurex::driver::incremental_cache_detail {
 
 void collect_source_file_query_subjects(
-    QuerySubjectCollection& collection, const base::SourceManager& sources, std::span<const ModuleRecord> modules);
+    QuerySubjectCollection& collection, const base::SourceManager& sources, std::span<const ModuleRecord> modules,
+    query::QuerySourceStageMode mode = query::QuerySourceStageMode::semantic);
 void collect_project_graph_query_subjects(
     QuerySubjectCollection& collection, const project::ProjectModel& model, std::span<const ModuleRecord> modules);
 

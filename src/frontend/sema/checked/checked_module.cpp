@@ -363,24 +363,27 @@ void GenericSideTables::configure_local_dense(
     });
 }
 
-void GenericSideTables::configure_local_dense(const GenericSideTableLocalLayoutView& layout)
+void GenericSideTables::configure_local_dense(const GenericSideTableLocalLayoutView& local_layout)
 {
     this->sparse = true;
     this->local_dense = true;
-    this->expr_span = layout.expr_span;
-    this->pattern_span = layout.pattern_span;
-    this->type_span = layout.type_span;
-    this->stmt_span = layout.stmt_span;
+    this->expr_span = local_layout.expr_span;
+    this->pattern_span = local_layout.pattern_span;
+    this->type_span = local_layout.type_span;
+    this->stmt_span = local_layout.stmt_span;
     this->layout = nullptr;
-    this->expr_node_ids.assign(layout.expr_node_ids.begin(), layout.expr_node_ids.end());
-    this->pattern_node_ids.assign(layout.pattern_node_ids.begin(), layout.pattern_node_ids.end());
-    this->type_node_ids.assign(layout.type_node_ids.begin(), layout.type_node_ids.end());
-    this->stmt_node_ids.assign(layout.stmt_node_ids.begin(), layout.stmt_node_ids.end());
-    const base::usize expr_count = this->expr_node_ids.empty() ? layout.expr_span.count : this->expr_node_ids.size();
+    this->expr_node_ids.assign(local_layout.expr_node_ids.begin(), local_layout.expr_node_ids.end());
+    this->pattern_node_ids.assign(local_layout.pattern_node_ids.begin(), local_layout.pattern_node_ids.end());
+    this->type_node_ids.assign(local_layout.type_node_ids.begin(), local_layout.type_node_ids.end());
+    this->stmt_node_ids.assign(local_layout.stmt_node_ids.begin(), local_layout.stmt_node_ids.end());
+    const base::usize expr_count =
+        this->expr_node_ids.empty() ? local_layout.expr_span.count : this->expr_node_ids.size();
     const base::usize pattern_count =
-        this->pattern_node_ids.empty() ? layout.pattern_span.count : this->pattern_node_ids.size();
-    const base::usize type_count = this->type_node_ids.empty() ? layout.type_span.count : this->type_node_ids.size();
-    const base::usize stmt_count = this->stmt_node_ids.empty() ? layout.stmt_span.count : this->stmt_node_ids.size();
+        this->pattern_node_ids.empty() ? local_layout.pattern_span.count : this->pattern_node_ids.size();
+    const base::usize type_count =
+        this->type_node_ids.empty() ? local_layout.type_span.count : this->type_node_ids.size();
+    const base::usize stmt_count =
+        this->stmt_node_ids.empty() ? local_layout.stmt_span.count : this->stmt_node_ids.size();
     this->expr_intrinsic_types.assign(expr_count, INVALID_TYPE_HANDLE);
     this->expr_types.assign(expr_count, INVALID_TYPE_HANDLE);
     this->expr_owned_use_modes.clear();
@@ -2161,11 +2164,29 @@ void populate_type_check_body_borrow_authority(
                 return event.kind == PlaceStateEventKind::borrow_shared
                     || event.kind == PlaceStateEventKind::borrow_mutable;
             }));
+        authority.place_state_partial_move_count =
+            static_cast<base::u64>(std::ranges::count_if(place_state->second.places, [](const PlaceStateFact& fact) {
+                return fact.partial_move_count != 0 || fact.is_partially_moved;
+            }));
+        authority.place_state_skipped_drop_count =
+            static_cast<base::u64>(std::ranges::count_if(place_state->second.places, [](const PlaceStateFact& fact) {
+                return fact.skipped_drop_count != 0;
+            }));
+        authority.place_state_violation_count = static_cast<base::u64>(place_state->second.violations.size());
+        authority.place_state_emitted_diagnostic_count =
+            static_cast<base::u64>(std::ranges::count_if(
+                place_state->second.violations, [](const PlaceStateViolation& violation) {
+                    return violation.diagnostic_emitted;
+                }));
         authority.place_state_graph_missing = place_state->second.graph_missing;
         authority.place_state_has_partial_projection = authority.place_state_partial_projection_count != 0;
         authority.place_state_has_drop_action = authority.place_state_drop_place_count != 0;
         authority.place_state_has_move_candidate = authority.place_state_move_candidate_count != 0;
         authority.place_state_has_borrow = authority.place_state_borrow_event_count != 0;
+        authority.place_state_has_partial_move = authority.place_state_partial_move_count != 0;
+        authority.place_state_has_skipped_drop = authority.place_state_skipped_drop_count != 0;
+        authority.place_state_has_violation = authority.place_state_violation_count != 0;
+        authority.place_state_has_emitted_diagnostics = authority.place_state_emitted_diagnostic_count != 0;
     }
     if (const auto loan = checked.body_loan_checks.find(function); loan != checked.body_loan_checks.end()) {
         authority.has_body_loan_check = true;
@@ -2648,9 +2669,21 @@ std::string dump_checked_module(const CheckedModule& checked)
                 return event.kind == PlaceStateEventKind::borrow_shared
                     || event.kind == PlaceStateEventKind::borrow_mutable;
             }));
+        const base::u64 partial_move_count =
+            static_cast<base::u64>(std::ranges::count_if(facts.places, [](const PlaceStateFact& fact) {
+                return fact.partial_move_count != 0 || fact.is_partially_moved;
+            }));
+        const base::u64 emitted_violation_count =
+            static_cast<base::u64>(std::ranges::count_if(facts.violations, [](const PlaceStateViolation& violation) {
+                return violation.diagnostic_emitted;
+            }));
         out << " places=" << facts.places.size() << " events=" << facts.events.size()
             << " partials=" << partial_count << " borrows=" << borrow_event_count
+            << " partial_moves=" << partial_move_count
+            << " violations=" << facts.violations.size()
+            << " diagnostics=" << emitted_violation_count
             << " solved=" << (facts.solved ? "true" : "false")
+            << " enforced=" << (facts.diagnostic_mode_enforced ? "true" : "false")
             << " graph_missing=" << (facts.graph_missing ? "true" : "false")
             << " fingerprint=" << query::debug_string(function_place_state_facts_fingerprint(facts));
         append_part_origin(out, show_parts, facts.part_index);
@@ -2665,16 +2698,26 @@ std::string dump_checked_module(const CheckedModule& checked)
                 << " move=" << place_state_move_state_name(fact.move_state)
                 << " drop=" << place_state_drop_state_name(fact.drop_state)
                 << " needs_drop=" << (fact.needs_drop ? "true" : "false")
+                << " partial_moved=" << (fact.is_partially_moved ? "true" : "false")
+                << " drop_flag_live=" << (fact.drop_flag_live ? "true" : "false")
                 << " reads=" << fact.read_count << " writes=" << fact.write_count
                 << " reinits=" << fact.reinit_count << " moves=" << fact.move_candidate_count
                 << " drops=" << fact.drop_count << " cleanups=" << fact.cleanup_count
-                << " borrows=" << fact.borrow_count << "\n";
+                << " borrows=" << fact.borrow_count
+                << " partial_moves=" << fact.partial_move_count
+                << " skipped_drops=" << fact.skipped_drop_count << "\n";
         }
         for (base::usize event_index = 0; event_index < facts.events.size(); ++event_index) {
             const PlaceStateEvent& event = facts.events[event_index];
             out << "      event #" << event_index << ' ' << place_state_event_kind_name(event.kind)
                 << " place=" << event.place << " action=" << event.action << " point=" << event.point
                 << " type=" << checked.types.display_name(event.type) << "\n";
+        }
+        for (base::usize violation_index = 0; violation_index < facts.violations.size(); ++violation_index) {
+            const PlaceStateViolation& violation = facts.violations[violation_index];
+            out << "      violation #" << violation_index << ' ' << place_state_violation_kind_name(violation.kind)
+                << " place=" << violation.place << " action=" << violation.action << " point=" << violation.point
+                << " emitted=" << (violation.diagnostic_emitted ? "true" : "false") << "\n";
         }
     }
 

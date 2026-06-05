@@ -1,5 +1,224 @@
+include(CheckCXXCompilerFlag)
+
+function(aurex_add_supported_warning target flag)
+    string(MAKE_C_IDENTIFIER "AUREX_HAS_CXX_WARNING_${flag}" cache_key)
+    check_cxx_compiler_flag("${flag}" "${cache_key}")
+    if(${cache_key})
+        target_compile_options(${target} PRIVATE "${flag}")
+    endif()
+endfunction()
+
 function(aurex_enable_warnings)
     foreach(target IN LISTS ARGN)
-        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(${target} PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+
+        if(AUREX_ENABLE_STRICT_WARNINGS)
+            if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+                set(AUREX_STRICT_WARNING_FLAGS
+                    -Weverything
+                    -Wno-c++98-compat
+                    -Wno-c++98-compat-pedantic
+                    -Wno-exit-time-destructors
+                    -Wno-global-constructors
+                    -Wno-missing-prototypes
+                    -Wno-nrvo
+                    -Wno-padded
+                    -Wno-pre-c++14-compat
+                    -Wno-pre-c++17-compat
+                    -Wno-pre-c++20-compat
+                    -Wno-switch-default
+                    -Wno-switch-enum
+                    -Wno-unsafe-buffer-usage
+                    -Wno-weak-vtables
+                    -Wabstract-final-class
+                    -Walloca
+                    -Warray-bounds
+                    -Warray-bounds-pointer-arithmetic
+                    -Wassign-enum
+                    -Wbad-function-cast
+                    -Wbitfield-enum-conversion
+                    -Wbool-conversion
+                    -Wcast-align
+                    -Wcast-function-type
+                    -Wcast-function-type-strict
+                    -Wcast-qual
+                    -Wchar-subscripts
+                    -Wclass-varargs
+                    -Wcomma
+                    -Wconditional-type-mismatch
+                    -Wconditional-uninitialized
+                    -Wconsumed
+                    -Wconversion
+                    -Wcovered-switch-default
+                    -Wctad-maybe-unsupported
+                    -Wdate-time
+                    -Wdelete-non-abstract-non-virtual-dtor
+                    -Wdeprecated
+                    -Wdeprecated-copy
+                    -Wdeprecated-copy-dtor
+                    -Wdeprecated-dynamic-exception-spec
+                    -Wdeprecated-enum-enum-conversion
+                    -Wdeprecated-enum-float-conversion
+                    -Wdocumentation
+                    -Wdocumentation-pedantic
+                    -Wdocumentation-unknown-command
+                    -Wdouble-promotion
+                    -Wduplicate-enum
+                    -Wduplicate-method-arg
+                    -Wduplicate-method-match
+                    -Wdynamic-exception-spec
+                    -Wextra-parens
+                    -Wextra-semi
+                    -Wextra-semi-stmt
+                    -Wextra-tokens
+                    -Wfixed-enum-extension
+                    -Wfloat-equal
+                    -Wformat=2
+                    -Wformat-nonliteral
+                    -Wformat-security
+                    -Wheader-hygiene
+                    -Widiomatic-parentheses
+                    -Wimplicit-fallthrough
+                    -Wimplicit-int-conversion
+                    -Wimplicit-int-float-conversion
+                    -Wimplicit-retain-self
+                    -Winfinite-recursion
+                    -Winconsistent-missing-destructor-override
+                    -Wloop-analysis
+                    -Wmethod-signatures
+                    -Wmismatched-tags
+                    -Wmissing-field-initializers
+                    -Wmissing-noreturn
+                    -Wmissing-variable-declarations
+                    -Wmove
+                    -Wnewline-eof
+                    -Wnon-virtual-dtor
+                    -Wnonportable-system-include-path
+                    -Wnull-dereference
+                    -Wnullable-to-nonnull-conversion
+                    -Wold-style-cast
+                    -Woverloaded-virtual
+                    -Wpacked
+                    -Wpointer-arith
+                    -Wrange-loop-bind-reference
+                    -Wrange-loop-analysis
+                    -Wredundant-parens
+                    -Wredundant-move
+                    -Wreserved-identifier
+                    -Wreserved-user-defined-literal
+                    -Wself-assign
+                    -Wself-move
+                    -Wshadow-all
+                    -Wshorten-64-to-32
+                    -Wshift-sign-overflow
+                    -Wsign-conversion
+                    -Wsometimes-uninitialized
+                    -Wstatic-self-init
+                    -Wstring-conversion
+                    -Wsuggest-destructor-override
+                    -Wsuggest-override
+                    -Wtautological-compare
+                    -Wthread-safety
+                    -Wthread-safety-beta
+                    -Wthread-safety-negative
+                    -Wunguarded-availability
+                    -Wundefined-reinterpret-cast
+                    -Wundef
+                    -Wunreachable-code
+                    -Wunreachable-code-aggressive
+                    -Wused-but-marked-unused
+                    -Wvector-conversion
+                    -Wvla
+                    -Wwrite-strings
+                    -Wzero-as-null-pointer-constant
+                )
+            elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+                set(AUREX_STRICT_WARNING_FLAGS
+                    -Waggressive-loop-optimizations
+                    -Waligned-new=all
+                    -Walloca
+                    -Walloc-zero
+                    -Warith-conversion
+                    -Warray-bounds=2
+                    -Wattribute-alias=2
+                    -Wbidi-chars=any
+                    -Wbool-compare
+                    -Wbool-operation
+                    -Wcast-function-type
+                    -Wcast-align=strict
+                    -Wcast-qual
+                    -Wcatch-value=3
+                    -Wconversion
+                    -Wdate-time
+                    -Wdelete-non-virtual-dtor
+                    -Wdisabled-optimization
+                    -Wduplicated-branches
+                    -Wduplicated-cond
+                    -Wextra-semi
+                    -Wfloat-equal
+                    -Wformat=2
+                    -Wformat-overflow=2
+                    -Wformat-security
+                    -Wformat-signedness
+                    -Wformat-truncation=2
+                    -Winfinite-recursion
+                    -Winit-self
+                    -Winvalid-pch
+                    -Wimplicit-fallthrough=5
+                    -Wlogical-op
+                    -Wmissing-include-dirs
+                    -Wmissing-declarations
+                    -Wmissing-noreturn
+                    -Wmultistatement-macros
+                    -Wnon-virtual-dtor
+                    -Wnull-dereference
+                    -Wodr
+                    -Wold-style-cast
+                    -Woverloaded-virtual
+                    -Wpacked
+                    -Wplacement-new=2
+                    -Wpointer-arith
+                    -Wredundant-move
+                    -Wredundant-decls
+                    -Wrestrict
+                    -Wshift-overflow=2
+                    -Wshadow=global
+                    -Wsign-conversion
+                    -Wsign-promo
+                    -Wstack-protector
+                    -Wstrict-null-sentinel
+                    -Wstrict-overflow=2
+                    -Wstringop-overflow=4
+                    -Wstringop-truncation
+                    -Wsuggest-final-methods
+                    -Wsuggest-final-types
+                    -Wsuggest-override
+                    -Wswitch-unreachable
+                    -Wsync-nand
+                    -Wtrampolines
+                    -Wundef
+                    -Wuninitialized
+                    -Wunsafe-loop-optimizations
+                    -Wuseless-cast
+                    -Wvla
+                    -Wwrite-strings
+                    -Wzero-as-null-pointer-constant
+                )
+            else()
+                set(AUREX_STRICT_WARNING_FLAGS)
+            endif()
+
+            foreach(flag IN LISTS AUREX_STRICT_WARNING_FLAGS)
+                aurex_add_supported_warning(${target} "${flag}")
+            endforeach()
+        endif()
+
+        if(AUREX_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE -Werror)
+        endif()
     endforeach()
 endfunction()

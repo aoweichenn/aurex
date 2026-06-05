@@ -280,14 +280,7 @@ std::string_view token_kind_name(const TokenKind kind) noexcept
 
 bool is_trivia_token(const TokenKind kind) noexcept
 {
-    switch (kind) {
-        case TokenKind::whitespace:
-        case TokenKind::line_comment:
-        case TokenKind::block_comment:
-            return true;
-        default:
-            return false;
-    }
+    return kind == TokenKind::whitespace || kind == TokenKind::line_comment || kind == TokenKind::block_comment;
 }
 
 namespace {

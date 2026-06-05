@@ -2381,26 +2381,26 @@ TEST(CoreUnit, SemanticWhiteBoxModuleVisibilityResolverEdges)
     analyzer.state_.modules.visible_modules_cache.clear();
     const auto& visible = analyzer.visible_modules(module_id(SEMA_TEST_ROOT_MODULE_INDEX));
     EXPECT_NE(std::find_if(visible.begin(), visible.end(),
-                  [](const syntax::ModuleId module) {
-                      return module.value == SEMA_TEST_MISSING_MODULE_INDEX;
+                  [](const syntax::ModuleId candidate_module) {
+                      return candidate_module.value == SEMA_TEST_MISSING_MODULE_INDEX;
                   }),
         visible.end());
     EXPECT_NE(std::find_if(visible.begin(), visible.end(),
-                  [](const syntax::ModuleId module) {
-                      return module.value == SEMA_TEST_CORE_MODULE_INDEX;
+                  [](const syntax::ModuleId candidate_module) {
+                      return candidate_module.value == SEMA_TEST_CORE_MODULE_INDEX;
                   }),
         visible.end());
     const auto& public_exports = analyzer.module_export_modules(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX));
     EXPECT_EQ(std::find_if(public_exports.begin(), public_exports.end(),
-                  [](const syntax::ModuleId module) {
-                      return module.value == SEMA_TEST_CORE_MODULE_INDEX;
+                  [](const syntax::ModuleId candidate_module) {
+                      return candidate_module.value == SEMA_TEST_CORE_MODULE_INDEX;
                   }),
         public_exports.end());
     const auto accessible_exports =
         analyzer.accessible_module_export_modules(module_id(SEMA_TEST_LIB_ONE_MODULE_INDEX));
     EXPECT_NE(std::find_if(accessible_exports.begin(), accessible_exports.end(),
-                  [](const syntax::ModuleId module) {
-                      return module.value == SEMA_TEST_CORE_MODULE_INDEX;
+                  [](const syntax::ModuleId candidate_module) {
+                      return candidate_module.value == SEMA_TEST_CORE_MODULE_INDEX;
                   }),
         accessible_exports.end());
     EXPECT_FALSE(analyzer.visible_root_module_name_exists("ghost"));

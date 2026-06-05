@@ -14,7 +14,7 @@ namespace aurex::sema {
 
 namespace {
 
-constexpr base::usize SEMA_RECEIVER_ARGUMENT_COUNT = 1;
+constexpr base::u32 SEMA_RECEIVER_ARGUMENT_COUNT = 1;
 constexpr std::string_view SEMA_FUNCTION_VALUE_CALL_NAME = "<function>";
 
 [[nodiscard]] std::string module_selector_path_name(const std::vector<std::string_view>& parts)
@@ -579,7 +579,7 @@ TypeHandle SemanticAnalyzerCore::analyze_explicit_generic_method_call_expr(const
         this->ensure_function_return_known(signature, callee.range);
         this->validate_unsafe_call(signature, callee.range);
         this->record_expr_c_name(expr.callee, signature.c_name);
-        const base::usize receiver_count = has_receiver ? SEMA_RECEIVER_ARGUMENT_COUNT : 0;
+        const base::u32 receiver_count = has_receiver ? SEMA_RECEIVER_ARGUMENT_COUNT : 0;
         if (!receiver_valid || signature.param_types.size() < receiver_count) {
             return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
         }
@@ -698,7 +698,7 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
             this->record_expr_c_name(expr.callee, call_signature->c_name);
         }
         this->validate_unsafe_call(*call_signature, callee.range);
-        const base::usize receiver_count = has_receiver ? SEMA_RECEIVER_ARGUMENT_COUNT : 0;
+        const base::u32 receiver_count = has_receiver ? SEMA_RECEIVER_ARGUMENT_COUNT : 0;
         const bool trait_receiver_valid =
             !has_receiver || this->method_receiver_matches(*call_signature, receiver_type, callee.object);
         if (!trait_receiver_valid || resolution.param_types.size() < receiver_count) {
@@ -732,7 +732,7 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
         binding.self_type = owner_type;
         binding.return_type = resolution.return_type;
         const ReceiverAccessFacts access = receiver_access_facts(
-            this->state_.checked.types, resolution.param_types, static_cast<base::u32>(receiver_count), receiver_type);
+            this->state_.checked.types, resolution.param_types, receiver_count, receiver_type);
         binding.receiver_access = access.access;
         binding.receiver_auto_borrow = access.auto_borrow;
         binding.receiver_two_phase_eligible = access.two_phase_eligible;
@@ -824,7 +824,7 @@ TypeHandle SemanticAnalyzerCore::analyze_field_call_expr(const syntax::ExprId ex
     this->ensure_function_return_known(*signature, callee.range);
     this->validate_unsafe_call(*signature, callee.range);
     this->record_expr_c_name(expr.callee, signature->c_name);
-    const base::usize receiver_count = has_receiver ? SEMA_RECEIVER_ARGUMENT_COUNT : 0;
+    const base::u32 receiver_count = has_receiver ? SEMA_RECEIVER_ARGUMENT_COUNT : 0;
     if (!receiver_valid || signature->param_types.size() < receiver_count) {
         return this->record_expr_type(expr_id, INVALID_TYPE_HANDLE);
     }

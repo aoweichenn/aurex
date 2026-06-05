@@ -8,7 +8,7 @@
 namespace aurex::query {
 namespace {
 
-constexpr std::string_view QUERY_TYPE_CHECK_BODY_AUTHORITY_MARKER = "query.type_check_body.authority.v2";
+constexpr std::string_view QUERY_TYPE_CHECK_BODY_AUTHORITY_MARKER = "query.type_check_body.authority.v3";
 
 } // namespace
 
@@ -91,6 +91,10 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_u64(authority.place_state_drop_place_count);
     builder.mix_u64(authority.place_state_move_candidate_count);
     builder.mix_u64(authority.place_state_borrow_event_count);
+    builder.mix_u64(authority.place_state_partial_move_count);
+    builder.mix_u64(authority.place_state_skipped_drop_count);
+    builder.mix_u64(authority.place_state_violation_count);
+    builder.mix_u64(authority.place_state_emitted_diagnostic_count);
     builder.mix_u64(authority.body_loan_count);
     builder.mix_u64(authority.body_reborrow_count);
     builder.mix_u64(authority.body_two_phase_borrow_count);
@@ -127,6 +131,10 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.place_state_has_drop_action);
     builder.mix_bool(authority.place_state_has_move_candidate);
     builder.mix_bool(authority.place_state_has_borrow);
+    builder.mix_bool(authority.place_state_has_partial_move);
+    builder.mix_bool(authority.place_state_has_skipped_drop);
+    builder.mix_bool(authority.place_state_has_violation);
+    builder.mix_bool(authority.place_state_has_emitted_diagnostics);
     builder.mix_bool(authority.body_loan_graph_missing);
     builder.mix_bool(authority.body_loan_has_emitted_diagnostics);
     builder.mix_bool(authority.body_two_phase_has_emitted_diagnostics);

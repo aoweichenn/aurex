@@ -581,13 +581,13 @@ void assign_node_ids(SemaIndexTable& target, const std::vector<base::u32>& sourc
 } // namespace
 
 struct SemanticAnalyzerCore::GenericAnalysisScope {
-    GenericAnalysisScope(SemanticAnalyzerCore& analyzer, const syntax::ModuleId module,
+    GenericAnalysisScope(SemanticAnalyzerCore& owner_analyzer, const syntax::ModuleId module,
         GenericContext* const generic_context, GenericSideTables* const side_tables = nullptr,
         const bool cache_syntax_types = false, const syntax::ItemId item = syntax::INVALID_ITEM_ID)
-        : analyzer(analyzer), previous_module(analyzer.state_.flow.current_module),
-          previous_item(analyzer.state_.flow.current_item),
-          previous_generic_context(analyzer.state_.flow.current_generic_context),
-          previous_side_tables(analyzer.state_.flow.current_side_tables)
+        : analyzer(owner_analyzer), previous_module(owner_analyzer.state_.flow.current_module),
+          previous_item(owner_analyzer.state_.flow.current_item),
+          previous_generic_context(owner_analyzer.state_.flow.current_generic_context),
+          previous_side_tables(owner_analyzer.state_.flow.current_side_tables)
     {
         this->analyzer.state_.flow.current_module = module;
         if (syntax::is_valid(item)) {

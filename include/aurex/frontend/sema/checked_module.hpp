@@ -861,6 +861,15 @@ enum class PlaceStateEventKind : base::u8 {
     borrow_mutable,
 };
 
+enum class PlaceStateViolationKind : base::u8 {
+    use_after_move,
+    maybe_uninitialized_use,
+    use_after_partial_move,
+    drop_after_move,
+    drop_after_partial_move,
+    double_drop,
+};
+
 struct PlaceStateEvent {
     PlaceStateEventKind kind = PlaceStateEventKind::read;
     base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
@@ -889,20 +898,40 @@ struct PlaceStateFact {
     base::u64 drop_count = 0;
     base::u64 cleanup_count = 0;
     base::u64 borrow_count = 0;
+    base::u64 partial_move_count = 0;
+    base::u64 skipped_drop_count = 0;
     PlaceStateInitialization initialization = PlaceStateInitialization::unknown;
     PlaceStateMoveState move_state = PlaceStateMoveState::none;
     PlaceStateDropState drop_state = PlaceStateDropState::none;
+    base::u32 last_partial_move_point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 last_reinit_point = SEMA_BODY_FLOW_INVALID_INDEX;
     bool needs_drop = false;
     bool has_partial_projection = false;
+    bool is_partially_moved = false;
+    bool drop_flag_live = false;
+};
+
+struct PlaceStateViolation {
+    PlaceStateViolationKind kind = PlaceStateViolationKind::use_after_move;
+    base::u32 place = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 action = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 related_place = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 related_action = SEMA_BODY_FLOW_INVALID_INDEX;
+    bool diagnostic_emitted = false;
+    base::SourceRange range{};
+    base::SourceRange related_range{};
 };
 
 struct FunctionPlaceStateFacts {
     FunctionLookupKey function;
     std::vector<PlaceStateFact> places;
     std::vector<PlaceStateEvent> events;
+    std::vector<PlaceStateViolation> violations;
     query::StableFingerprint128 fingerprint;
     bool graph_missing = false;
     bool solved = false;
+    bool diagnostic_mode_enforced = false;
     base::u32 part_index = 0;
 };
 
@@ -1020,6 +1049,8 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
 [[nodiscard]] std::string_view place_state_move_state_name(PlaceStateMoveState state) noexcept;
 [[nodiscard]] std::string_view place_state_drop_state_name(PlaceStateDropState state) noexcept;
 [[nodiscard]] std::string_view place_state_event_kind_name(PlaceStateEventKind kind) noexcept;
+[[nodiscard]] std::string_view place_state_violation_kind_name(PlaceStateViolationKind kind) noexcept;
+[[nodiscard]] std::string_view place_state_violation_message(PlaceStateViolationKind kind) noexcept;
 [[nodiscard]] query::StableFingerprint128 body_loan_check_fingerprint(const BodyLoanCheckResult& result) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_borrow_contract_fingerprint(
     const FunctionBorrowContract& contract) noexcept;
@@ -1178,7 +1209,7 @@ public:
     void record_sparse_fallback(GenericSparseFallbackKind kind) noexcept;
     void configure_local_dense(
         GenericNodeSpan expr, GenericNodeSpan pattern, GenericNodeSpan type, GenericNodeSpan stmt);
-    void configure_local_dense(const GenericSideTableLocalLayoutView& layout);
+    void configure_local_dense(const GenericSideTableLocalLayoutView& local_layout);
     void configure_local_dense(const GenericSideTableLayout& shared_layout);
     void bind_local_dense_layout(const GenericSideTableLayout& shared_layout) noexcept;
     void prepare_analysis_only_storage(base::usize expr_count);

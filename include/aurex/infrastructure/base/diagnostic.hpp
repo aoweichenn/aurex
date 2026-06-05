@@ -60,7 +60,8 @@ enum class DiagnosticLabelStyle {
 
 struct DiagnosticLabel {
     DiagnosticLabel() = default;
-    DiagnosticLabel(SourceRange range, std::string message, DiagnosticLabelStyle style = DiagnosticLabelStyle::primary);
+    DiagnosticLabel(
+        SourceRange label_range, std::string label_message, DiagnosticLabelStyle label_style = DiagnosticLabelStyle::primary);
 
     SourceRange range{};
     std::string message;
@@ -69,8 +70,8 @@ struct DiagnosticLabel {
 
 struct DiagnosticChild {
     DiagnosticChild() = default;
-    DiagnosticChild(Severity severity, SourceRange range, std::string message,
-        DiagnosticCategory category = DiagnosticCategory::general, DiagnosticCode code = DiagnosticCode::none);
+    DiagnosticChild(Severity child_severity, SourceRange child_range, std::string child_message,
+        DiagnosticCategory child_category = DiagnosticCategory::general, DiagnosticCode child_code = DiagnosticCode::none);
 
     Severity severity = Severity::note;
     SourceRange range{};
@@ -81,10 +82,12 @@ struct DiagnosticChild {
 
 struct Diagnostic {
     Diagnostic() = default;
-    Diagnostic(Severity severity, SourceRange range, std::string message,
-        DiagnosticCategory category = DiagnosticCategory::general, DiagnosticCode code = DiagnosticCode::none);
-    Diagnostic(Severity severity, SourceRange range, std::string message, DiagnosticCategory category,
-        DiagnosticCode code, std::vector<DiagnosticLabel> labels, std::vector<DiagnosticChild> children = {});
+    Diagnostic(Severity diagnostic_severity, SourceRange diagnostic_range, std::string diagnostic_message,
+        DiagnosticCategory diagnostic_category = DiagnosticCategory::general,
+        DiagnosticCode diagnostic_code = DiagnosticCode::none);
+    Diagnostic(Severity diagnostic_severity, SourceRange diagnostic_range, std::string diagnostic_message,
+        DiagnosticCategory diagnostic_category, DiagnosticCode diagnostic_code,
+        std::vector<DiagnosticLabel> diagnostic_labels, std::vector<DiagnosticChild> diagnostic_children = {});
 
     Severity severity = Severity::error;
     SourceRange range{};

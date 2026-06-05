@@ -52,10 +52,14 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 [[nodiscard]] bool parse_usize(const std::string_view text, base::usize& value) noexcept
 {
     base::u64 parsed = 0;
-    if (!parse_u64(text, parsed) || parsed > std::numeric_limits<base::usize>::max()) {
+    if (!parse_u64(text, parsed)) {
         return false;
     }
-    value = static_cast<base::usize>(parsed);
+    const base::usize narrowed = static_cast<base::usize>(parsed);
+    if (static_cast<base::u64>(narrowed) != parsed) {
+        return false;
+    }
+    value = narrowed;
     return true;
 }
 
@@ -290,13 +294,13 @@ void append_hex_string(std::ostream& out, const std::string_view value)
 
     SourceFingerprintRecord record;
     base::u64 size = 0;
-    if (!parse_u64(fields[INCREMENTAL_CACHE_SOURCE_SIZE_FIELD], size) || size > std::numeric_limits<base::usize>::max()
+    if (!parse_u64(fields[INCREMENTAL_CACHE_SOURCE_SIZE_FIELD], size)
         || !parse_u64(fields[INCREMENTAL_CACHE_SOURCE_PRIMARY_FIELD], record.fingerprint.primary)
         || !parse_u64(fields[INCREMENTAL_CACHE_SOURCE_SECONDARY_FIELD], record.fingerprint.secondary)
         || !parse_u32(fields[INCREMENTAL_CACHE_SOURCE_BYTES_FIELD], record.fingerprint.byte_count)) {
         return false;
     }
-    record.size = static_cast<base::usize>(size);
+    record.size = size;
 
     const std::optional<std::filesystem::path> path = decode_path(fields[INCREMENTAL_CACHE_SOURCE_PATH_FIELD]);
     if (!path) {
@@ -735,7 +739,7 @@ struct QueryKeyFieldLayout {
     }
     return SourceFingerprintRecord{
         canonical_or_absolute(path),
-        text->size(),
+        static_cast<base::u64>(text->size()),
         fingerprint_text(*text),
         default_cache_package_key(),
     };
@@ -812,7 +816,7 @@ struct QueryKeyFieldLayout {
         const std::filesystem::path path(file.path());
         records.push_back(SourceFingerprintRecord{
             canonical_or_absolute(path),
-            file.text().size(),
+            static_cast<base::u64>(file.text().size()),
             fingerprint_text(file.text()),
             source_package_for_path(source_packages, path),
         });

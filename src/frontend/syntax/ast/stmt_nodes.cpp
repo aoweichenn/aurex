@@ -238,6 +238,7 @@ StmtNode StmtNodeList::load(const base::usize index) const
     const StmtNodeHeader& header = this->headers_[index];
     StmtNode node;
     this->load_header(header, node);
+    bool loaded_known_payload = false;
     switch (node.kind) {
         case StmtKind::let:
         case StmtKind::var: {
@@ -248,6 +249,7 @@ StmtNode StmtNodeList::load(const base::usize index) const
             node.declared_type = payload.declared_type;
             node.init = payload.init;
             node.else_block = payload.else_block;
+            loaded_known_payload = true;
             break;
         }
         case StmtKind::assign: {
@@ -255,6 +257,7 @@ StmtNode StmtNodeList::load(const base::usize index) const
             node.assign_op = payload.op;
             node.lhs = payload.lhs;
             node.rhs = payload.rhs;
+            loaded_known_payload = true;
             break;
         }
         case StmtKind::if_: {
@@ -264,6 +267,7 @@ StmtNode StmtNodeList::load(const base::usize index) const
             node.then_block = payload.then_block;
             node.else_block = payload.else_block;
             node.else_if = payload.else_if;
+            loaded_known_payload = true;
             break;
         }
         case StmtKind::for_: {
@@ -272,6 +276,7 @@ StmtNode StmtNodeList::load(const base::usize index) const
             node.condition = payload.condition;
             node.for_update = payload.update;
             node.body = payload.body;
+            loaded_known_payload = true;
             break;
         }
         case StmtKind::for_range: {
@@ -282,6 +287,7 @@ StmtNode StmtNodeList::load(const base::usize index) const
             node.range_end = payload.end;
             node.range_step = payload.step;
             node.body = payload.body;
+            loaded_known_payload = true;
             break;
         }
         case StmtKind::while_: {
@@ -289,27 +295,33 @@ StmtNode StmtNodeList::load(const base::usize index) const
             node.condition = payload.condition;
             node.pattern = payload.pattern;
             node.body = payload.body;
+            loaded_known_payload = true;
             break;
         }
         case StmtKind::expr:
             node.init = this->payloads_.exprs[header.payload].value;
+            loaded_known_payload = true;
             break;
         case StmtKind::defer:
             node.init = this->payloads_.defers[header.payload].value;
+            loaded_known_payload = true;
             break;
         case StmtKind::return_:
             node.return_value = this->payloads_.returns[header.payload].value;
+            loaded_known_payload = true;
             break;
         case StmtKind::block:
             node.statements = copy_std_vector(this->payloads_.blocks[header.payload]);
+            loaded_known_payload = true;
             break;
         case StmtKind::break_:
         case StmtKind::continue_:
+            loaded_known_payload = true;
             break;
-        default:
-            node = this->payloads_.unknowns[header.payload];
-            this->load_header(header, node);
-            break;
+    }
+    if (!loaded_known_payload) {
+        node = this->payloads_.unknowns[header.payload];
+        this->load_header(header, node);
     }
     return node;
 }
@@ -319,6 +331,7 @@ StmtNode StmtNodeList::load_moved(const base::usize index)
     const StmtNodeHeader& header = this->headers_[index];
     StmtNode node;
     this->load_header(header, node);
+    bool loaded_known_payload = false;
     switch (node.kind) {
         case StmtKind::let:
         case StmtKind::var: {
@@ -329,6 +342,7 @@ StmtNode StmtNodeList::load_moved(const base::usize index)
             node.declared_type = payload.declared_type;
             node.init = payload.init;
             node.else_block = payload.else_block;
+            loaded_known_payload = true;
             break;
         }
         case StmtKind::assign: {
@@ -336,6 +350,7 @@ StmtNode StmtNodeList::load_moved(const base::usize index)
             node.assign_op = payload.op;
             node.lhs = payload.lhs;
             node.rhs = payload.rhs;
+            loaded_known_payload = true;
             break;
         }
         case StmtKind::if_: {
@@ -345,6 +360,7 @@ StmtNode StmtNodeList::load_moved(const base::usize index)
             node.then_block = payload.then_block;
             node.else_block = payload.else_block;
             node.else_if = payload.else_if;
+            loaded_known_payload = true;
             break;
         }
         case StmtKind::for_: {
@@ -353,6 +369,7 @@ StmtNode StmtNodeList::load_moved(const base::usize index)
             node.condition = payload.condition;
             node.for_update = payload.update;
             node.body = payload.body;
+            loaded_known_payload = true;
             break;
         }
         case StmtKind::for_range: {
@@ -363,6 +380,7 @@ StmtNode StmtNodeList::load_moved(const base::usize index)
             node.range_end = payload.end;
             node.range_step = payload.step;
             node.body = payload.body;
+            loaded_known_payload = true;
             break;
         }
         case StmtKind::while_: {
@@ -370,27 +388,33 @@ StmtNode StmtNodeList::load_moved(const base::usize index)
             node.condition = payload.condition;
             node.pattern = payload.pattern;
             node.body = payload.body;
+            loaded_known_payload = true;
             break;
         }
         case StmtKind::expr:
             node.init = this->payloads_.exprs[header.payload].value;
+            loaded_known_payload = true;
             break;
         case StmtKind::defer:
             node.init = this->payloads_.defers[header.payload].value;
+            loaded_known_payload = true;
             break;
         case StmtKind::return_:
             node.return_value = this->payloads_.returns[header.payload].value;
+            loaded_known_payload = true;
             break;
         case StmtKind::block:
             node.statements = copy_std_vector(this->payloads_.blocks[header.payload]);
+            loaded_known_payload = true;
             break;
         case StmtKind::break_:
         case StmtKind::continue_:
+            loaded_known_payload = true;
             break;
-        default:
-            node = std::move(this->payloads_.unknowns[header.payload]);
-            this->load_header(header, node);
-            break;
+    }
+    if (!loaded_known_payload) {
+        node = std::move(this->payloads_.unknowns[header.payload]);
+        this->load_header(header, node);
     }
     return node;
 }

@@ -254,6 +254,26 @@ inline constexpr std::string_view SEMA_TWO_PHASE_RECEIVER_RESERVED = "mutable re
 
 inline constexpr std::string_view SEMA_TWO_PHASE_RECEIVER_ACTIVATED = "mutable receiver borrow is activated here";
 
+inline constexpr std::string_view SEMA_PLACE_STATE_USE_AFTER_MOVE =
+    "place cannot be used after it was moved or dropped";
+
+inline constexpr std::string_view SEMA_PLACE_STATE_MAYBE_UNINITIALIZED_USE =
+    "place may be uninitialized on this control-flow path";
+
+inline constexpr std::string_view SEMA_PLACE_STATE_USE_AFTER_PARTIAL_MOVE =
+    "whole value cannot be used while one of its tracked parts may be moved";
+
+inline constexpr std::string_view SEMA_PLACE_STATE_DROP_AFTER_MOVE =
+    "moved storage cannot be explicitly dropped again";
+
+inline constexpr std::string_view SEMA_PLACE_STATE_DROP_AFTER_PARTIAL_MOVE =
+    "whole value cannot be explicitly dropped while one of its tracked parts may be moved";
+
+inline constexpr std::string_view SEMA_PLACE_STATE_DOUBLE_DROP =
+    "storage cannot be explicitly dropped twice";
+
+inline constexpr std::string_view SEMA_PLACE_STATE_MOVE_OCCURRED = "tracked move occurs here";
+
 inline constexpr std::string_view SEMA_MOVE_PARTIAL_FIELD_UNSUPPORTED =
     "moving a field out of a move-only value is not supported yet";
 

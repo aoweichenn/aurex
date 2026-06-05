@@ -585,7 +585,8 @@ TEST(QueryUnit, QueryReplayIndexRejectsDeterministicChaosMutations)
     query::QueryReplaySnapshot missing_dependency_node = snapshot;
     const base::usize graph_node_index = replay_node_index_for_key(missing_dependency_node, first_graph_key);
     ASSERT_LT(graph_node_index, missing_dependency_node.nodes.size());
-    missing_dependency_node.nodes.erase(missing_dependency_node.nodes.begin() + graph_node_index);
+    const auto graph_node_offset = static_cast<std::vector<query::QueryReplayNode>::difference_type>(graph_node_index);
+    missing_dependency_node.nodes.erase(missing_dependency_node.nodes.begin() + graph_node_offset);
     EXPECT_FALSE(query::QueryReplayIndex::build(std::move(missing_dependency_node)).has_value());
 
     query::QueryReplaySnapshot wrong_kind_edge = snapshot;

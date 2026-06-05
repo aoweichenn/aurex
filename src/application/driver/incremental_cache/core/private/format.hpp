@@ -145,7 +145,7 @@ constexpr char INCREMENTAL_CACHE_MODULE_NAME_SEPARATOR = '.';
 
 struct SourceFingerprintRecord {
     std::filesystem::path path;
-    base::usize size = 0;
+    base::u64 size = 0;
     sema::StableFingerprint128 fingerprint;
     query::PackageKey package;
 };

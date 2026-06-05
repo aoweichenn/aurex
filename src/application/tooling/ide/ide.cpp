@@ -152,13 +152,14 @@ struct ItemDefinitionMetadata {
 };
 
 struct IdeSymbol {
-    IdeSymbol() = default;
-    IdeSymbol(query::DefKey key, base::SourceRange range, base::SourceRange scope_range, std::string name,
-        std::string kind, std::string detail, base::u32 part_index, bool local, bool checked,
-        query::MemberKey member = {}, query::GenericInstanceKey generic_instance = {})
-        : key(key), range(range), scope_range(scope_range), name(std::move(name)), kind(std::move(kind)),
-          detail(std::move(detail)), part_index(part_index), local(local), checked(checked), member(member),
-          generic_instance(std::move(generic_instance))
+    IdeSymbol(query::DefKey symbol_key, base::SourceRange symbol_range, base::SourceRange symbol_scope_range,
+        std::string symbol_name, std::string symbol_kind, std::string symbol_detail, base::u32 symbol_part_index,
+        bool is_local, bool is_checked, query::MemberKey symbol_member = {},
+        query::GenericInstanceKey symbol_generic_instance = {})
+        : key(symbol_key), range(symbol_range), scope_range(symbol_scope_range), name(std::move(symbol_name)),
+          kind(std::move(symbol_kind)), detail(std::move(symbol_detail)), part_index(symbol_part_index),
+          local(is_local), checked(is_checked), member(symbol_member),
+          generic_instance(std::move(symbol_generic_instance))
     {
     }
 
@@ -1075,6 +1076,14 @@ void recover_resolved_fragment_source_part(
             return event.kind == sema::PlaceStateEventKind::borrow_shared
                 || event.kind == sema::PlaceStateEventKind::borrow_mutable;
         }));
+    const base::u64 partial_move_count =
+        static_cast<base::u64>(std::ranges::count_if(facts.places, [](const sema::PlaceStateFact& fact) {
+            return fact.partial_move_count != 0 || fact.is_partially_moved;
+        }));
+    const base::u64 emitted_violation_count =
+        static_cast<base::u64>(std::ranges::count_if(facts.violations, [](const sema::PlaceStateViolation& violation) {
+            return violation.diagnostic_emitted;
+        }));
     std::ostringstream label;
     label << IDE_SEMANTIC_FACT_PLACE_STATE << " places=" << facts.places.size()
           << " events=" << facts.events.size()
@@ -1082,6 +1091,10 @@ void recover_resolved_fragment_source_part(
           << " moves=" << move_place_count
           << " drops=" << drop_place_count
           << " borrows=" << borrow_event_count
+          << " partial_moves=" << partial_move_count
+          << " violations=" << facts.violations.size()
+          << " diagnostics=" << emitted_violation_count
+          << " enforced=" << (facts.diagnostic_mode_enforced ? "true" : "false")
           << " graph_missing=" << (facts.graph_missing ? "true" : "false")
           << " fingerprint=" << query::debug_string(sema::function_place_state_facts_fingerprint(facts));
     return label.str();
@@ -1190,9 +1203,21 @@ void recover_resolved_fragment_source_part(
                 std::ranges::count_if(place_state->second.places, [](const sema::PlaceStateFact& fact) {
                     return fact.has_partial_projection;
                 }));
+            const base::u64 partial_move_count = static_cast<base::u64>(
+                std::ranges::count_if(place_state->second.places, [](const sema::PlaceStateFact& fact) {
+                    return fact.partial_move_count != 0 || fact.is_partially_moved;
+                }));
+            const base::u64 emitted_violation_count = static_cast<base::u64>(
+                std::ranges::count_if(place_state->second.violations, [](const sema::PlaceStateViolation& violation) {
+                    return violation.diagnostic_emitted;
+                }));
             label << IDE_DETAIL_PLACE_STATE_SEPARATOR << "places=" << place_state->second.places.size()
                   << "/events=" << place_state->second.events.size()
-                  << "/partials=" << partial_count;
+                  << "/partials=" << partial_count
+                  << "/partial_moves=" << partial_move_count
+                  << "/violations=" << place_state->second.violations.size()
+                  << "/diagnostics=" << emitted_violation_count
+                  << "/enforced=" << (place_state->second.diagnostic_mode_enforced ? "true" : "false");
         }
     }
     return label.str();

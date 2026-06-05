@@ -118,7 +118,27 @@ struct TypeDisplayTask {
         case BuiltinType::char_:
             return "char";
     }
-    return "<unknown>";
+    return std::string(SEMA_TYPE_DISPLAY_UNKNOWN_NAME);
+}
+
+[[nodiscard]] bool is_known_type_kind(const TypeKind kind) noexcept
+{
+    switch (kind) {
+        case TypeKind::builtin:
+        case TypeKind::pointer:
+        case TypeKind::reference:
+        case TypeKind::array:
+        case TypeKind::slice:
+        case TypeKind::tuple:
+        case TypeKind::function:
+        case TypeKind::struct_:
+        case TypeKind::enum_:
+        case TypeKind::opaque_struct:
+        case TypeKind::generic_param:
+        case TypeKind::associated_projection:
+            return true;
+    }
+    return false;
 }
 
 void push_generic_arg_display_tasks(std::vector<TypeDisplayTask>& pending, const std::span<const TypeHandle> args)
@@ -799,6 +819,10 @@ std::string TypeTable::display_name(const TypeHandle type) const
             continue;
         }
         const TypeInfo& info = this->types_[current.value];
+        if (!is_known_type_kind(info.kind)) {
+            name.append(SEMA_TYPE_DISPLAY_UNKNOWN_NAME);
+            continue;
+        }
         switch (info.kind) {
             case TypeKind::builtin:
                 name += builtin_display_name(info.builtin);
@@ -931,9 +955,6 @@ std::string TypeTable::display_name(const TypeHandle type) const
                     std::string(SEMA_TYPE_DISPLAY_ASSOCIATED_PROJECTION_SEPARATOR),
                 });
                 pending.push_back(TypeDisplayTask{TypeDisplayTaskKind::type, info.associated_base, {}});
-                break;
-            default:
-                name.append(SEMA_TYPE_DISPLAY_UNKNOWN_NAME);
                 break;
         }
     }

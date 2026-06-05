@@ -302,11 +302,11 @@ public:
     [[nodiscard]] RecordLayout clone_record_layout(const RecordLayout& other);
 
     template <typename T>
-    [[nodiscard]] IrVector<T> copy_vector(const std::span<const T> values)
+    [[nodiscard]] IrVector<T> copy_vector(const std::span<const T> source_values)
     {
         IrVector<T> copy = this->make_vector<T>();
-        copy.reserve(values.size());
-        copy.insert(copy.end(), values.begin(), values.end());
+        copy.reserve(source_values.size());
+        copy.insert(copy.end(), source_values.begin(), source_values.end());
         return copy;
     }
 

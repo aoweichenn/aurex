@@ -303,13 +303,13 @@ private:
 };
 
 struct SemanticAnalyzerCore::TraitAnalyzer::TraitAnalysisScope {
-    TraitAnalysisScope(SemanticAnalyzerCore& analyzer, const syntax::ModuleId module, const syntax::ItemId item,
+    TraitAnalysisScope(SemanticAnalyzerCore& owner_analyzer, const syntax::ModuleId module, const syntax::ItemId item,
         GenericContext* const generic_context = nullptr, GenericSideTables* const side_tables = nullptr,
         const bool cache_syntax_types = false)
-        : analyzer(analyzer), previous_module(analyzer.state_.flow.current_module),
-          previous_item(analyzer.state_.flow.current_item),
-          previous_generic_context(analyzer.state_.flow.current_generic_context),
-          previous_side_tables(analyzer.state_.flow.current_side_tables)
+        : analyzer(owner_analyzer), previous_module(owner_analyzer.state_.flow.current_module),
+          previous_item(owner_analyzer.state_.flow.current_item),
+          previous_generic_context(owner_analyzer.state_.flow.current_generic_context),
+          previous_side_tables(owner_analyzer.state_.flow.current_side_tables)
     {
         this->analyzer.state_.flow.current_module = module;
         this->analyzer.state_.flow.current_item = item;

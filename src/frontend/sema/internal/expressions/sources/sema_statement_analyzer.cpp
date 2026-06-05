@@ -1679,14 +1679,14 @@ struct SemanticAnalyzerCore::FunctionBodyContextScope {
         SymbolTable symbols;
     };
 
-    FunctionBodyContextScope(SemanticAnalyzerCore& analyzer, Config config)
-        : analyzer(analyzer), previous_module(analyzer.state_.flow.current_module),
-          previous_item(analyzer.state_.flow.current_item),
-          previous_function_return_type(analyzer.state_.flow.current_function_return_type),
-          previous_return_inference(analyzer.state_.flow.current_return_inference),
-          previous_loop_depth(analyzer.state_.flow.loop_depth),
-          previous_unsafe_context_depth(analyzer.state_.flow.unsafe_context_depth),
-          previous_symbols(std::move(analyzer.state_.names.symbols))
+    FunctionBodyContextScope(SemanticAnalyzerCore& owner_analyzer, Config config)
+        : analyzer(owner_analyzer), previous_module(owner_analyzer.state_.flow.current_module),
+          previous_item(owner_analyzer.state_.flow.current_item),
+          previous_function_return_type(owner_analyzer.state_.flow.current_function_return_type),
+          previous_return_inference(owner_analyzer.state_.flow.current_return_inference),
+          previous_loop_depth(owner_analyzer.state_.flow.loop_depth),
+          previous_unsafe_context_depth(owner_analyzer.state_.flow.unsafe_context_depth),
+          previous_symbols(std::move(owner_analyzer.state_.names.symbols))
     {
         this->analyzer.state_.flow.current_module = config.module;
         this->analyzer.state_.flow.current_item =
@@ -1793,8 +1793,10 @@ void SemanticAnalyzerCore::StatementAnalyzer::analyze_function_body_with_signatu
     this->core_.analyze_block(function.body, expected_return, infer_return_type ? &return_inference : nullptr);
     this->core_.analyze_body_moves(function, signature);
     SemanticAnalyzerCore::BodyLoanChecker body_loan_checker(this->core_);
-    const bool collect_body_flow = this->core_.ctx_.options.retain_body_flow_graphs
-        || body_loan_checker.may_need_local_loan_check(function);
+    const bool may_need_body_loan_check = body_loan_checker.may_need_local_loan_check(function);
+    const bool may_need_place_state_check = this->core_.may_need_place_state_check(function, signature);
+    const bool collect_body_flow =
+        this->core_.ctx_.options.retain_body_flow_graphs || may_need_body_loan_check || may_need_place_state_check;
     if (collect_body_flow) {
         this->core_.collect_body_flow_graph(function, key);
         this->core_.check_body_loans(function, key, BodyLoanDiagnosticMode::enforced);

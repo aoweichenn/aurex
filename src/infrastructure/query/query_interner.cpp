@@ -63,11 +63,11 @@ std::optional<QueryNodeId> QueryInterner::intern_record(const QueryRecord& recor
         return std::nullopt;
     }
 
-    std::optional<QueryNodeId> id = this->intern_key(record.key);
+    const std::optional<QueryNodeId> id = this->intern_key(record.key);
     if (!id.has_value() || !this->bind_record(*id, record)) {
         return std::nullopt;
     }
-    return id;
+    return *id;
 }
 
 bool QueryInterner::bind_record(const QueryNodeId id, const QueryRecord& record)

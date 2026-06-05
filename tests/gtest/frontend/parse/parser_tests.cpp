@@ -121,11 +121,6 @@ public:
         return this->session_.module;
     }
 
-    const syntax::Token& advance_token()
-    {
-        return this->advance();
-    }
-
     using parse::ParserPartRangeReader::expr_range_or;
     using parse::ParserPartRangeReader::merge;
     using parse::ParserPartRangeReader::pattern_range_or;
@@ -196,18 +191,6 @@ public:
     [[nodiscard]] parse::BracketSuffixDecision classify_empty_suffix() const noexcept
     {
         return this->classifier_.classify_empty_suffix();
-    }
-
-    void advance_token()
-    {
-        static_cast<void>(this->reader_.advance_token());
-    }
-
-    void advance_tokens(const base::usize count)
-    {
-        for (base::usize index = 0; index < count; ++index) {
-            this->advance_token();
-        }
     }
 
 private:

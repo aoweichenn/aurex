@@ -633,43 +633,19 @@ bool ExprNodeList::payload_available(const base::usize index) const noexcept
 
 bool ExprNodeList::is_literal(const ExprKind kind) const noexcept
 {
-    switch (kind) {
-        case ExprKind::integer_literal:
-        case ExprKind::float_literal:
-        case ExprKind::bool_literal:
-        case ExprKind::null_literal:
-        case ExprKind::string_literal:
-        case ExprKind::c_string_literal:
-        case ExprKind::raw_string_literal:
-        case ExprKind::byte_string_literal:
-        case ExprKind::byte_literal:
-        case ExprKind::char_literal:
-            return true;
-        default:
-            return false;
-    }
+    return kind == ExprKind::integer_literal || kind == ExprKind::float_literal || kind == ExprKind::bool_literal
+        || kind == ExprKind::null_literal || kind == ExprKind::string_literal || kind == ExprKind::c_string_literal
+        || kind == ExprKind::raw_string_literal || kind == ExprKind::byte_string_literal
+        || kind == ExprKind::byte_literal || kind == ExprKind::char_literal;
 }
 
 bool ExprNodeList::is_cast_like(const ExprKind kind) const noexcept
 {
-    switch (kind) {
-        case ExprKind::cast:
-        case ExprKind::pcast:
-        case ExprKind::bcast:
-        case ExprKind::size_of:
-        case ExprKind::align_of:
-        case ExprKind::ptr_addr:
-        case ExprKind::paddr:
-        case ExprKind::slice_data:
-        case ExprKind::slice_len:
-        case ExprKind::str_data:
-        case ExprKind::str_byte_len:
-        case ExprKind::str_is_valid_utf8:
-        case ExprKind::str_from_utf8_checked:
-            return true;
-        default:
-            return false;
-    }
+    return kind == ExprKind::cast || kind == ExprKind::pcast || kind == ExprKind::bcast
+        || kind == ExprKind::size_of || kind == ExprKind::align_of || kind == ExprKind::ptr_addr
+        || kind == ExprKind::paddr || kind == ExprKind::slice_data || kind == ExprKind::slice_len
+        || kind == ExprKind::str_data || kind == ExprKind::str_byte_len || kind == ExprKind::str_is_valid_utf8
+        || kind == ExprKind::str_from_utf8_checked;
 }
 
 bool ExprNodeList::is_block_payload_kind(const ExprKind kind) const noexcept
@@ -765,83 +741,83 @@ void ExprNodeList::copy_append_from(const ExprNodeList& other, const base::usize
             const NameExprPayload* const payload = other.name_payload(index);
             static_cast<void>(this->append_name(range, payload->scope_name, payload->scope_range, payload->text,
                 payload->scope_name_id, payload->text_id, copy_std_vector(payload->type_args)));
-            break;
+            return;
         }
         case ExprKind::generic_apply: {
             const GenericApplyExprPayload* const payload = other.generic_apply_payload(index);
             static_cast<void>(this->append_generic_apply(range, payload->callee, copy_std_vector(payload->type_args)));
-            break;
+            return;
         }
         case ExprKind::unary: {
             const UnaryExprPayload* const payload = other.unary_payload(index);
             static_cast<void>(this->append_unary(ExprKind::unary, range, payload->op, payload->operand));
-            break;
+            return;
         }
         case ExprKind::try_expr: {
             const TryExprPayload* const payload = other.try_payload(index);
             static_cast<void>(this->append_try(range, payload->operand));
-            break;
+            return;
         }
         case ExprKind::binary: {
             const BinaryExprPayload* const payload = other.binary_payload(index);
             static_cast<void>(this->append_binary(range, payload->op, payload->lhs, payload->rhs));
-            break;
+            return;
         }
         case ExprKind::call:
         case ExprKind::str_from_bytes_unchecked: {
             const CallExprPayload* const payload = other.call_payload(index);
             static_cast<void>(this->append_call(kind, range, payload->callee, copy_std_vector(payload->args)));
-            break;
+            return;
         }
         case ExprKind::if_expr: {
             const IfExprPayload* const payload = other.if_payload(index);
             static_cast<void>(this->append_if(
                 range, payload->condition, payload->condition_pattern, payload->then_expr, payload->else_expr));
-            break;
+            return;
         }
         case ExprKind::block_expr:
         case ExprKind::unsafe_block: {
             const BlockExprPayload* const payload = other.block_payload(index);
             static_cast<void>(this->append_block(kind, range, payload->block, payload->result));
-            break;
+            return;
         }
         case ExprKind::match_expr: {
             const MatchExprPayload* const payload = other.match_payload(index);
             static_cast<void>(this->append_match(range, payload->value, copy_std_vector(payload->arms)));
-            break;
+            return;
         }
         case ExprKind::array_literal: {
             const ArrayExprPayload* const payload = other.array_payload(index);
             static_cast<void>(this->append_array(
                 range, copy_std_vector(payload->elements), payload->repeat_value, payload->repeat_count));
-            break;
+            return;
         }
         case ExprKind::tuple_literal: {
             const AstArenaVector<ExprId>* const payload = other.tuple_elements(index);
             static_cast<void>(this->append_tuple(range, copy_std_vector(*payload)));
-            break;
+            return;
         }
         case ExprKind::field: {
             const FieldExprPayload* const payload = other.field_payload(index);
             static_cast<void>(this->append_field(range, payload->object, payload->field_name, payload->field_name_id));
-            break;
+            return;
         }
         case ExprKind::index: {
             const IndexExprPayload* const payload = other.index_payload(index);
             static_cast<void>(this->append_index(range, payload->object, payload->index));
-            break;
+            return;
         }
         case ExprKind::slice: {
             const SliceExprPayload* const payload = other.slice_payload(index);
             static_cast<void>(this->append_slice(range, payload->object, payload->start, payload->end));
-            break;
+            return;
         }
         case ExprKind::struct_literal: {
             const StructLiteralExprPayload* const payload = other.struct_literal_payload(index);
             static_cast<void>(this->append_struct_literal(range, payload->object, payload->scope_name,
                 payload->scope_range, payload->name, payload->scope_name_id, payload->name_id,
                 copy_std_vector(payload->type_args), copy_std_vector(payload->field_inits)));
-            break;
+            return;
         }
         case ExprKind::cast:
         case ExprKind::pcast:
@@ -858,12 +834,22 @@ void ExprNodeList::copy_append_from(const ExprNodeList& other, const base::usize
         case ExprKind::str_from_utf8_checked: {
             const CastExprPayload* const payload = other.cast_payload(index);
             static_cast<void>(this->append_cast_like(kind, range, payload->type, payload->expr));
-            break;
+            return;
         }
-        default:
-            static_cast<void>(this->append_invalid(range));
+        case ExprKind::invalid:
+        case ExprKind::integer_literal:
+        case ExprKind::float_literal:
+        case ExprKind::bool_literal:
+        case ExprKind::null_literal:
+        case ExprKind::string_literal:
+        case ExprKind::c_string_literal:
+        case ExprKind::raw_string_literal:
+        case ExprKind::byte_string_literal:
+        case ExprKind::byte_literal:
+        case ExprKind::char_literal:
             break;
     }
+    static_cast<void>(this->append_invalid(range));
 }
 
 void ExprNodeList::copy_from(const ExprNodeList& other)

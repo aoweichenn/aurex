@@ -408,7 +408,7 @@ struct CacheTestQueryResultFingerprint {
 {
     constexpr char LOWER_HEX_FIRST = 'a';
     constexpr char LOWER_HEX_LAST = 'f';
-    constexpr char HEX_CASE_OFFSET = 'A' - 'a';
+    constexpr int HEX_CASE_OFFSET = 'A' - 'a';
     for (char& ch : encoded) {
         if (ch >= LOWER_HEX_FIRST && ch <= LOWER_HEX_LAST) {
             ch = static_cast<char>(ch + HEX_CASE_OFFSET);

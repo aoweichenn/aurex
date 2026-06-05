@@ -3292,9 +3292,28 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
     place_state_changed_authority.place_state_place_count = 2;
     place_state_changed_authority.place_state_event_count = 3;
     place_state_changed_authority.place_state_partial_projection_count = 1;
+    place_state_changed_authority.place_state_partial_move_count = 1;
+    place_state_changed_authority.place_state_skipped_drop_count = 1;
+    place_state_changed_authority.place_state_violation_count = 1;
+    place_state_changed_authority.place_state_emitted_diagnostic_count = 1;
     place_state_changed_authority.place_state_has_partial_projection = true;
+    place_state_changed_authority.place_state_has_partial_move = true;
+    place_state_changed_authority.place_state_has_skipped_drop = true;
+    place_state_changed_authority.place_state_has_violation = true;
+    place_state_changed_authority.place_state_has_emitted_diagnostics = true;
     place_state_changed_authority.place_state_fingerprint = query::stable_fingerprint("query-test-place-state");
     EXPECT_NE(query::type_check_body_result_fingerprint(place_state_changed_authority), output->result);
+
+    query::TypeCheckBodyAuthority place_state_b2_changed_authority = subject.type_check_authority;
+    place_state_b2_changed_authority.place_state_partial_move_count = 1;
+    place_state_b2_changed_authority.place_state_skipped_drop_count = 1;
+    place_state_b2_changed_authority.place_state_violation_count = 1;
+    place_state_b2_changed_authority.place_state_emitted_diagnostic_count = 1;
+    place_state_b2_changed_authority.place_state_has_partial_move = true;
+    place_state_b2_changed_authority.place_state_has_skipped_drop = true;
+    place_state_b2_changed_authority.place_state_has_violation = true;
+    place_state_b2_changed_authority.place_state_has_emitted_diagnostics = true;
+    EXPECT_NE(query::type_check_body_result_fingerprint(place_state_b2_changed_authority), output->result);
 
     query::TypeCheckBodyAuthority contract_changed_authority = subject.type_check_authority;
     contract_changed_authority.has_borrow_contract = true;
@@ -4650,19 +4669,19 @@ TEST(QueryUnit, QueryContextBuildsDeterministicDependencyEdgeTable)
 
     query::QueryContext context;
     context.set_lower_function_ir_provider(
-        [&first_subject, shared_dependency = *shared_dependency, first_only_dependency = *first_only_dependency](
+        [&first_subject, shared_dependency_key = *shared_dependency, first_only_dependency_key = *first_only_dependency](
             const query::LowerFunctionIRProviderInput& provider_input) {
             std::optional<query::LowerFunctionIRProviderOutput> output =
                 query::provide_lower_function_ir_query(provider_input);
             if (output && provider_input.key == first_subject.body) {
                 output->dependencies = {
-                    first_only_dependency,
-                    shared_dependency,
-                    shared_dependency,
+                    first_only_dependency_key,
+                    shared_dependency_key,
+                    shared_dependency_key,
                 };
             } else if (output) {
                 output->dependencies = {
-                    shared_dependency,
+                    shared_dependency_key,
                 };
             }
             return output;

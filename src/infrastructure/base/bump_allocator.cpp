@@ -20,8 +20,9 @@ constexpr std::string_view BASE_BUMP_STATS_CONTEXT = "bump allocator statistics"
 
 } // namespace
 
-BumpAllocator::Block::Block(std::byte* const data, const usize capacity, const usize alignment) noexcept
-    : data(data), capacity(capacity), alignment(alignment)
+BumpAllocator::Block::Block(
+    std::byte* const block_data, const usize block_capacity, const usize block_alignment) noexcept
+    : data(block_data), capacity(block_capacity), alignment(block_alignment)
 {
 }
 

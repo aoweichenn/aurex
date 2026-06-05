@@ -648,6 +648,8 @@ public:
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
     void analyze_place_states(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
+    [[nodiscard]] bool may_need_place_state_check(
+        const syntax::ItemNode& function, const FunctionSignature& signature);
     void build_borrow_summary(
         const syntax::ItemNode& function, const FunctionLookupKey& key, const FunctionSignature& signature);
     void analyze_body_moves(const syntax::ItemNode& function, const FunctionSignature& signature);

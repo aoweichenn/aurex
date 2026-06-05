@@ -577,7 +577,7 @@ void append_path_list_identity(std::string& key, const std::vector<fs::path>& pa
     }
 
     TestContext& context = test_context();
-    std::lock_guard lock(context.compiler_cache_mutex);
+    std::lock_guard<std::mutex> lock(context.compiler_cache_mutex);
     if (const auto found = context.compiler_result_cache.find(cache_key);
         found != context.compiler_result_cache.end()) {
         return found->second;
@@ -623,7 +623,7 @@ void append_path_list_identity(std::string& key, const std::vector<fs::path>& pa
     fs::path cached_output;
     {
         TestContext& context = test_context();
-        std::lock_guard lock(context.compiler_cache_mutex);
+        std::lock_guard<std::mutex> lock(context.compiler_cache_mutex);
         if (const auto found = context.native_output_cache.find(cache_key);
             found != context.native_output_cache.end()) {
             cached_output = found->second;
@@ -643,7 +643,7 @@ void remember_compiler_result(
     }
 
     TestContext& context = test_context();
-    std::lock_guard lock(context.compiler_cache_mutex);
+    std::lock_guard<std::mutex> lock(context.compiler_cache_mutex);
     context.compiler_result_cache.emplace(cache_key, result);
 }
 
@@ -658,7 +658,7 @@ void remember_native_output(
     TestContext& context = test_context();
     fs::path cache_path;
     {
-        std::lock_guard lock(context.compiler_cache_mutex);
+        std::lock_guard<std::mutex> lock(context.compiler_cache_mutex);
         if (context.native_output_cache.find(cache_key) != context.native_output_cache.end()) {
             return;
         }
@@ -674,7 +674,7 @@ void remember_native_output(
         return;
     }
 
-    std::lock_guard lock(context.compiler_cache_mutex);
+    std::lock_guard<std::mutex> lock(context.compiler_cache_mutex);
     context.native_output_cache.emplace(cache_key, cache_path);
 }
 
@@ -788,7 +788,7 @@ std::vector<fs::path> sorted_files(const fs::path& dir, const std::string_view e
     TestContext& context = test_context();
     const std::string cache_key = dir.string() + "\n" + std::string(extension);
     {
-        std::lock_guard lock(context.files_mutex);
+        std::lock_guard<std::mutex> lock(context.files_mutex);
         if (const auto found = context.sorted_files_cache.find(cache_key); found != context.sorted_files_cache.end()) {
             return found->second;
         }
@@ -802,7 +802,7 @@ std::vector<fs::path> sorted_files(const fs::path& dir, const std::string_view e
     }
     std::sort(files.begin(), files.end());
     {
-        std::lock_guard lock(context.files_mutex);
+        std::lock_guard<std::mutex> lock(context.files_mutex);
         context.sorted_files_cache.emplace(cache_key, files);
     }
     return files;

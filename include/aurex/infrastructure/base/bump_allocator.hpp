@@ -40,7 +40,7 @@ public:
 private:
     struct Block {
         Block() = default;
-        Block(std::byte* data, usize capacity, usize alignment) noexcept;
+        Block(std::byte* block_data, usize block_capacity, usize block_alignment) noexcept;
         Block(const Block&) = delete;
         Block& operator=(const Block&) = delete;
         Block(Block&& other) noexcept;

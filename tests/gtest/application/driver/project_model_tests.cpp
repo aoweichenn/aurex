@@ -312,6 +312,36 @@ TEST_F(AurexIntegrationTest, ModuleLoaderProjectModelSkipsInvalidProjectGraphSub
     EXPECT_FALSE(cache_detail::collect_item_list_query_subjects(invalid_module_span, checked, nullptr).empty());
 }
 
+TEST_F(AurexIntegrationTest, IncrementalCacheSourceStageRecordsSupportLosslessToolingMode)
+{
+    namespace cache_detail = driver::incremental_cache_detail;
+
+    const fs::path work = tmp_root() / "project-model-source-stage-lossless";
+    const fs::path source = work / "main.ax";
+    write_project_model_test_file(source,
+        "module project_model_source_stage_lossless;\n"
+        "// trivia is part of the lossless tooling fingerprint\n"
+        "fn main() -> i32 { return 1; }\n");
+
+    const query::PackageKey package = project_model_test_package(PROJECT_MODEL_ROOT_PACKAGE);
+    const std::optional<cache_detail::SourceStageQueryRecords> semantic_records =
+        cache_detail::source_stage_query_records_for_file(source, package);
+    const std::optional<cache_detail::SourceStageQueryRecords> lossless_records =
+        cache_detail::source_stage_query_records_for_file(
+            source, package, query::QuerySourceStageMode::lossless_tooling);
+
+    ASSERT_TRUE(semantic_records.has_value());
+    ASSERT_TRUE(lossless_records.has_value());
+    EXPECT_EQ(semantic_records->lex_file.key.kind, query::QueryKind::lex_file);
+    EXPECT_EQ(lossless_records->lex_file.key.kind, query::QueryKind::lex_file);
+    EXPECT_EQ(semantic_records->parse_file.key.kind, query::QueryKind::parse_file);
+    EXPECT_EQ(lossless_records->parse_file.key.kind, query::QueryKind::parse_file);
+    EXPECT_NE(semantic_records->lex_file.stable_key_bytes, lossless_records->lex_file.stable_key_bytes);
+    EXPECT_NE(semantic_records->parse_file.stable_key_bytes, lossless_records->parse_file.stable_key_bytes);
+    EXPECT_NE(semantic_records->lex_file.result, lossless_records->lex_file.result);
+    EXPECT_NE(semantic_records->parse_file.result, lossless_records->parse_file.result);
+}
+
 TEST_F(AurexIntegrationTest, ModuleLoaderProjectModelNoPruningCacheRejectsChangedSourceAfterProjectInputsMatch)
 {
     driver::clear_file_cache();

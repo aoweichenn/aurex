@@ -29,6 +29,7 @@ using ir::Function;
 using ir::FunctionId;
 using ir::INVALID_BLOCK_ID;
 using ir::INVALID_FUNCTION_ID;
+using ir::INVALID_IR_TEXT_ID;
 using ir::INVALID_VALUE_ID;
 using ir::is_valid;
 using ir::Linkage;
@@ -53,6 +54,8 @@ using syntax::TypeId;
 
 constexpr std::string_view LOWER_AST_GENERIC_TEST_MODULE = "lower_ast_generic";
 constexpr std::string_view LOWER_AST_GENERIC_TEST_FUNCTION = "id";
+constexpr std::string_view LOWER_AST_ROLLBACK_FLAG_ALLOCA = "drop.flag.aggregate.rollback";
+constexpr std::string_view LOWER_AST_ROLLBACK_ARRAY_FIELD_PREFIX = "aggregate.rollback.";
 constexpr base::SourceId LOWER_AST_RAII_TEST_SOURCE_ID{808};
 
 [[nodiscard]] ExprId push_name(syntax::AstModule& ast, const std::string_view text)
@@ -347,6 +350,19 @@ void add_enum_case_info(CheckedModule& checked, syntax::AstModule& ast, const st
     slot.name = lowerer.module_.intern(name);
     slot.type = lowerer.module_.types.pointer(PointerMutability::mut, value_type);
     return lowerer.append_value(slot);
+}
+
+[[nodiscard]] base::usize count_named_values(
+    const Lowerer& lowerer, const ValueKind kind, const std::string_view name, const base::usize first_value)
+{
+    base::usize count = 0;
+    for (base::usize index = first_value; index < lowerer.module_.values.size(); ++index) {
+        const Value& value = lowerer.module_.values[index];
+        if (value.kind == kind && lowerer.module_.text(value.name) == name) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 } // namespace
@@ -1509,6 +1525,118 @@ TEST(CoreUnit, LowerAstWhiteBoxStructuredCleanupRegistrationCoversNestedAndTrivi
     EXPECT_FALSE(is_valid(detached_binding.cleanup_flag));
     EXPECT_TRUE(detached_binding.field_cleanups.empty());
     EXPECT_TRUE(empty_scope_lowerer.cleanup_scopes_.empty());
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxAggregateRollbackHelperGuardsAndCleanupScope)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle i32 = checked.types.builtin(BuiltinType::i32);
+    const TypeHandle resource_type = checked.types.generic_param("RollbackResource");
+    const TypeHandle record_type = checked.types.named_struct("RollbackRecord", "RollbackRecord", false);
+    const TypeHandle resource_array_type = checked.types.array(2U, resource_type);
+    const TypeHandle scalar_array_type = checked.types.array(2U, i32);
+    const TypeHandle void_type = checked.types.builtin(BuiltinType::void_);
+    add_struct_info(checked, ast, "RollbackRecord", record_type, {{"plain", i32}, {"owned", resource_type}});
+
+    const ExprId plain = push_integer(ast, "11");
+    const ExprId other_plain = push_integer(ast, "12");
+    const ExprId owned = push_name(ast, "owned_source");
+    set_expr_type(checked, plain, i32);
+    set_expr_type(checked, other_plain, i32);
+    set_expr_type(checked, owned, resource_type);
+
+    Lowerer lowerer(ast, checked);
+    lowerer.lower_record_layouts();
+
+    const std::array<ir::detail::AggregateElementInit, 2> record_elements{{
+        {lowerer.module_.intern("plain"), plain, i32},
+        {lowerer.module_.intern("owned"), owned, resource_type},
+    }};
+    const std::array<ir::detail::AggregateElementInit, 2> scalar_array_elements{{
+        {INVALID_IR_TEXT_ID, plain, i32},
+        {INVALID_IR_TEXT_ID, other_plain, i32},
+    }};
+    const std::array<ir::detail::AggregateElementInit, 2> resource_array_elements{{
+        {INVALID_IR_TEXT_ID, owned, resource_type},
+        {INVALID_IR_TEXT_ID, owned, resource_type},
+    }};
+
+    EXPECT_FALSE(lowerer.aggregate_needs_rollback(record_type, record_elements));
+    EXPECT_FALSE(lowerer.aggregate_needs_rollback(record_type, std::span<const ir::detail::AggregateElementInit>{}));
+
+    const ValueId invalid_record =
+        lowerer.lower_record_aggregate_with_rollback(INVALID_TYPE_HANDLE, record_elements, "invalid.record");
+    ASSERT_TRUE(is_valid(invalid_record));
+    ASSERT_LT(invalid_record.value, lowerer.module_.values.size());
+    EXPECT_EQ(lowerer.module_.values[invalid_record.value].kind, ValueKind::aggregate);
+    EXPECT_FALSE(sema::is_valid(lowerer.module_.values[invalid_record.value].type));
+
+    static_cast<void>(prepare_current_function(lowerer, "aggregate_rollback_edges", void_type));
+    const ValueId owned_slot = append_alloca(lowerer, "owned_source", resource_type);
+    lowerer.locals_.emplace(ast.find_identifier("owned_source"),
+        ir::detail::LocalBinding{
+            .slot = owned_slot,
+            .cleanup_flag = INVALID_VALUE_ID,
+            .type = resource_type,
+            .is_mutable = false,
+            .field_cleanups = {},
+        });
+
+    EXPECT_TRUE(lowerer.aggregate_needs_rollback(record_type, record_elements));
+    EXPECT_FALSE(lowerer.aggregate_needs_rollback(INVALID_TYPE_HANDLE, record_elements));
+    EXPECT_FALSE(lowerer.aggregate_needs_rollback(scalar_array_type, scalar_array_elements));
+    lowerer.lowering_constant_initializer_ = true;
+    EXPECT_FALSE(lowerer.aggregate_needs_rollback(record_type, record_elements));
+    lowerer.lowering_constant_initializer_ = false;
+
+    const base::usize no_scope_first_value = lowerer.module_.values.size();
+    const ValueId no_scope_result =
+        lowerer.lower_record_aggregate_with_rollback(record_type, record_elements, "record.no.scope");
+    EXPECT_TRUE(is_valid(no_scope_result));
+    EXPECT_EQ(count_named_values(lowerer, ValueKind::alloca, LOWER_AST_ROLLBACK_FLAG_ALLOCA, no_scope_first_value), 0U);
+
+    lowerer.cleanup_scopes_.push_back({});
+    const base::usize scoped_first_value = lowerer.module_.values.size();
+    const ValueId scoped_record =
+        lowerer.lower_record_aggregate_with_rollback(record_type, record_elements, "record.with.scope");
+    EXPECT_TRUE(is_valid(scoped_record));
+    ASSERT_FALSE(lowerer.cleanup_scopes_.empty());
+    EXPECT_TRUE(lowerer.cleanup_scopes_.back().empty());
+    EXPECT_EQ(count_named_values(lowerer, ValueKind::alloca, LOWER_AST_ROLLBACK_FLAG_ALLOCA, scoped_first_value), 1U);
+
+    const ValueId fallback_array =
+        lowerer.lower_array_aggregate_with_rollback(record_type, record_elements, "array.fallback");
+    EXPECT_TRUE(is_valid(fallback_array));
+    EXPECT_TRUE(lowerer.cleanup_scopes_.back().empty());
+
+    const base::usize scalar_array_first_value = lowerer.module_.values.size();
+    const ValueId scalar_array =
+        lowerer.lower_array_aggregate_with_rollback(scalar_array_type, scalar_array_elements, "array.scalar");
+    EXPECT_TRUE(is_valid(scalar_array));
+    EXPECT_EQ(
+        count_named_values(lowerer, ValueKind::alloca, LOWER_AST_ROLLBACK_FLAG_ALLOCA, scalar_array_first_value), 0U);
+
+    const base::usize resource_array_first_value = lowerer.module_.values.size();
+    const ValueId resource_array =
+        lowerer.lower_array_aggregate_with_rollback(resource_array_type, resource_array_elements, "array.resource");
+    EXPECT_TRUE(is_valid(resource_array));
+    EXPECT_EQ(
+        count_named_values(lowerer, ValueKind::index_addr, LOWER_AST_ROLLBACK_ARRAY_FIELD_PREFIX, resource_array_first_value),
+        0U);
+    EXPECT_EQ(count_named_values(lowerer, ValueKind::index_addr, "aggregate.rollback.0", resource_array_first_value), 1U);
+    EXPECT_EQ(count_named_values(lowerer, ValueKind::index_addr, "aggregate.rollback.1", resource_array_first_value), 1U);
+    EXPECT_TRUE(lowerer.cleanup_scopes_.back().empty());
+
+    Terminator ret;
+    ret.kind = TerminatorKind::return_;
+    lowerer.set_terminator(lowerer.current_block_, ret);
+    EXPECT_FALSE(lowerer.aggregate_needs_rollback(record_type, record_elements));
+    const ValueId terminated_record =
+        lowerer.lower_record_aggregate_with_rollback(record_type, record_elements, "record.terminated");
+    EXPECT_EQ(terminated_record.value, INVALID_VALUE_ID.value);
+    EXPECT_TRUE(lowerer.cleanup_scopes_.back().empty());
 }
 
 TEST(CoreUnit, LowerAstWhiteBoxStatementGuardsAndFallbackCleanupActions)

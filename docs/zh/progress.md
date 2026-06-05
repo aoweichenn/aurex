@@ -5,6 +5,18 @@
 
 ## 总体状态
 
+2026-06-05：M7d-E aggregate rollback codegen closure 已完成实现收口。本阶段只补编译器 lowering，
+不实现任何标准库。lowerer 现在会在函数体内对含 droppable 元素的 struct literal、tuple literal、array literal
+和多 payload enum synthetic record payload 走 staged aggregate lowering：先为 aggregate 分配临时 slot，逐元素
+求值并写入；每个 droppable 元素只有在求值成功且写入后才注册 rollback drop flag。后续元素表达式如果通过
+`return` 等路径提前终止，已有 cleanup stack 会在 early-exit cleanup 中发出 `drop_if` marker，并通过 M7d-D
+的 runtime drop lowering 调用静态可解析 custom destructor，从而只清理已经初始化成功的元素。
+
+M7d-E 保持保守边界：global/constant initializer、无 droppable 元素的 scalar aggregate 和普通 scalar aggregate
+仍保持原 lightweight `ValueKind::aggregate` 路径；本阶段不解锁标准库级拥有型资源封装、不支持用户可写 `Drop`
+bound、generic Drop impl、trait-object Drop dispatch、generic/opaque Drop ABI、async/unwind-aware drop、panic
+cleanup ABI、non-`Copy` `?` payload transfer、tuple `.0` partial move 或 indexed move-out。
+
 2026-06-05：M7d-D RAII runtime lowering 与 execution closure 已完成实现收口。lowerer 现在会从 checked
 `DestructorInfo` / `FunctionSignature::c_name` 解析 custom destructor 的 IR `FunctionId`，在 cleanup exit、
 overwrite、early-exit 和 drop flag guarded path 上生成普通 direct `call`；LLVM backend 复用现有 call emission

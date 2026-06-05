@@ -11,6 +11,30 @@ namespace {
 
 constexpr base::usize IR_METHOD_RECEIVER_PARAM_COUNT = 1;
 constexpr base::usize IR_STR_FROM_BYTES_UNCHECKED_ARG_COUNT = 2;
+constexpr std::string_view IR_AGGREGATE_ROLLBACK_FLAG_NAME = "aggregate.rollback";
+constexpr std::string_view IR_AGGREGATE_ROLLBACK_LOAD_NAME = "aggregate.rollback.result";
+constexpr std::string_view IR_AGGREGATE_ROLLBACK_ARRAY_FIELD_PREFIX = "aggregate.rollback.";
+
+struct RollbackCleanupScope {
+    std::vector<std::vector<CleanupAction>>* scopes = nullptr;
+    base::usize index = 0;
+    base::usize base = 0;
+
+    ~RollbackCleanupScope()
+    {
+        if (this->scopes != nullptr && this->index < this->scopes->size()) {
+            (*this->scopes)[this->index].resize(this->base);
+        }
+    }
+
+    [[nodiscard]] std::vector<CleanupAction>* current() const noexcept
+    {
+        if (this->scopes == nullptr || this->index >= this->scopes->size()) {
+            return nullptr;
+        }
+        return &(*this->scopes)[this->index];
+    }
+};
 
 template <typename T, typename Allocator>
 [[nodiscard]] std::span<const T> readonly_span(const std::vector<T, Allocator>& values) noexcept
@@ -675,6 +699,19 @@ ValueId Lowerer::lower_array_literal_expr(const syntax::ExprId expr_id, const Ex
         return this->append_value(value);
     }
 
+    std::vector<AggregateElementInit> elements;
+    elements.reserve(expr.array_elements.size());
+    for (const syntax::ExprId element : expr.array_elements) {
+        elements.push_back(AggregateElementInit{
+            INVALID_IR_TEXT_ID,
+            element,
+            array.array_element,
+        });
+    }
+    if (this->aggregate_needs_rollback(value.type, elements)) {
+        return this->lower_array_aggregate_with_rollback(value.type, elements, "array.literal");
+    }
+
     value.elements.reserve(expr.array_elements.size());
     for (const syntax::ExprId element : expr.array_elements) {
         value.elements.push_back(
@@ -694,6 +731,19 @@ ValueId Lowerer::lower_tuple_literal_expr(const syntax::ExprId expr_id, const Ex
 
     const sema::TypeInfo& tuple = this->module_.types.get(value.type);
     const base::usize count = std::min(tuple.tuple_elements.size(), expr.tuple_elements.size());
+    std::vector<AggregateElementInit> elements;
+    elements.reserve(count);
+    for (base::usize i = 0; i < count; ++i) {
+        elements.push_back(AggregateElementInit{
+            this->module_.intern(std::to_string(i)),
+            expr.tuple_elements[i],
+            tuple.tuple_elements[i],
+        });
+    }
+    if (this->aggregate_needs_rollback(value.type, elements)) {
+        return this->lower_record_aggregate_with_rollback(value.type, elements, "tuple.literal");
+    }
+
     value.fields.reserve(count);
     for (base::usize i = 0; i < count; ++i) {
         const sema::TypeHandle element_type = tuple.tuple_elements[i];
@@ -824,14 +874,154 @@ ValueId Lowerer::lower_struct_literal_expr(const syntax::ExprId expr_id, const E
     Value value = this->module_.make_value();
     value.kind = ValueKind::aggregate;
     value.type = this->expr_type(expr_id);
+    std::vector<AggregateElementInit> elements;
+    elements.reserve(expr.field_inits.size());
     for (const syntax::FieldInit& init : expr.field_inits) {
-        const sema::TypeHandle field_type = this->aggregate_field_type(value.type, init.name);
-        value.fields.push_back(FieldValue{
+        elements.push_back(AggregateElementInit{
             this->module_.intern(init.name),
-            this->coerce_value(this->lower_expr(init.value, field_type), field_type),
+            init.value,
+            this->aggregate_field_type(value.type, init.name),
+        });
+    }
+    if (this->aggregate_needs_rollback(value.type, elements)) {
+        return this->lower_record_aggregate_with_rollback(
+            value.type, elements, expr.text.empty() ? "struct.literal" : expr.text);
+    }
+    for (const AggregateElementInit& init : elements) {
+        value.fields.push_back(FieldValue{
+            init.name,
+            this->coerce_value(this->lower_expr(init.expr, init.type), init.type),
         });
     }
     return this->append_value(value);
+}
+
+bool Lowerer::aggregate_needs_rollback(
+    const sema::TypeHandle aggregate_type, const std::span<const AggregateElementInit> elements)
+{
+    if (this->lowering_constant_initializer_ || this->has_terminator(this->current_block_)
+        || !sema::is_valid(aggregate_type) || elements.empty()) {
+        return false;
+    }
+    for (const AggregateElementInit& element : elements) {
+        if (this->cleanup_required(element.type)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+ValueId Lowerer::lower_record_aggregate_with_rollback(const sema::TypeHandle aggregate_type,
+    const std::span<const AggregateElementInit> elements, const std::string_view name)
+{
+    if (!sema::is_valid(aggregate_type)) {
+        Value invalid = this->module_.make_value();
+        invalid.kind = ValueKind::aggregate;
+        invalid.type = aggregate_type;
+        return this->append_value(invalid);
+    }
+    if (this->has_terminator(this->current_block_)) {
+        return INVALID_VALUE_ID;
+    }
+
+    const ValueId aggregate_slot = this->append_temp_alloca(name, aggregate_type);
+    RollbackCleanupScope rollback{
+        this->cleanup_scopes_.empty() ? nullptr : &this->cleanup_scopes_,
+        this->cleanup_scopes_.empty() ? 0U : this->cleanup_scopes_.size() - 1U,
+        this->cleanup_scopes_.empty() ? 0U : this->cleanup_scopes_.back().size(),
+    };
+    for (const AggregateElementInit& element : elements) {
+        const ValueId field_address =
+            this->append_field_address(aggregate_slot, element.name, element.type, sema::PointerMutability::mut);
+        std::vector<CleanupAction>* const rollback_scope = rollback.current();
+        if (this->cleanup_required(element.type) && rollback_scope != nullptr) {
+            const ValueId lowered =
+                this->coerce_value(this->lower_expr(element.expr, element.type), element.type);
+            if (this->has_terminator(this->current_block_)) {
+                return INVALID_VALUE_ID;
+            }
+            const ValueId flag = this->append_cleanup_flag(IR_AGGREGATE_ROLLBACK_FLAG_NAME);
+            this->append_cleanup_flag_store(flag, false);
+            rollback_scope->push_back(CleanupAction{
+                CleanupActionKind::drop_local,
+                field_address,
+                flag,
+                element.type,
+                syntax::INVALID_EXPR_ID,
+                element.name,
+                CleanupDropMode::full,
+            });
+            this->append_store(field_address, lowered);
+            this->append_cleanup_flag_store(flag, true);
+            continue;
+        }
+        const ValueId lowered = this->coerce_value(this->lower_expr(element.expr, element.type), element.type);
+        if (this->has_terminator(this->current_block_)) {
+            return INVALID_VALUE_ID;
+        }
+        this->append_store(field_address, lowered);
+    }
+    return this->append_load(aggregate_slot, aggregate_type, this->module_.intern(IR_AGGREGATE_ROLLBACK_LOAD_NAME));
+}
+
+ValueId Lowerer::lower_array_aggregate_with_rollback(const sema::TypeHandle aggregate_type,
+    const std::span<const AggregateElementInit> elements, const std::string_view name)
+{
+    if (!sema::is_valid(aggregate_type) || !this->module_.types.is_array(aggregate_type)) {
+        return this->lower_record_aggregate_with_rollback(aggregate_type, elements, name);
+    }
+    if (this->has_terminator(this->current_block_)) {
+        return INVALID_VALUE_ID;
+    }
+    const sema::TypeInfo& array = this->module_.types.get(aggregate_type);
+    const ValueId aggregate_slot = this->append_temp_alloca(name, aggregate_type);
+    RollbackCleanupScope rollback{
+        this->cleanup_scopes_.empty() ? nullptr : &this->cleanup_scopes_,
+        this->cleanup_scopes_.empty() ? 0U : this->cleanup_scopes_.size() - 1U,
+        this->cleanup_scopes_.empty() ? 0U : this->cleanup_scopes_.back().size(),
+    };
+    const base::usize count = std::min(static_cast<base::usize>(array.array_count), elements.size());
+    for (base::usize index = 0; index < count; ++index) {
+        const AggregateElementInit& element = elements[index];
+        const ValueId index_value = this->append_integer_literal(
+            std::to_string(index), this->module_.types.builtin(sema::BuiltinType::usize));
+        Value element_address = this->module_.make_value();
+        element_address.kind = ValueKind::index_addr;
+        element_address.type = this->module_.types.pointer(sema::PointerMutability::mut, array.array_element);
+        element_address.name =
+            this->module_.intern(std::string(IR_AGGREGATE_ROLLBACK_ARRAY_FIELD_PREFIX) + std::to_string(index));
+        element_address.object = aggregate_slot;
+        element_address.index = index_value;
+        const ValueId address = this->append_value(element_address);
+        std::vector<CleanupAction>* const rollback_scope = rollback.current();
+        if (this->cleanup_required(element.type) && rollback_scope != nullptr) {
+            const ValueId lowered =
+                this->coerce_value(this->lower_expr(element.expr, element.type), element.type);
+            if (this->has_terminator(this->current_block_)) {
+                return INVALID_VALUE_ID;
+            }
+            const ValueId flag = this->append_cleanup_flag(IR_AGGREGATE_ROLLBACK_FLAG_NAME);
+            this->append_cleanup_flag_store(flag, false);
+            rollback_scope->push_back(CleanupAction{
+                CleanupActionKind::drop_local,
+                address,
+                flag,
+                element.type,
+                syntax::INVALID_EXPR_ID,
+                element_address.name,
+                CleanupDropMode::full,
+            });
+            this->append_store(address, lowered);
+            this->append_cleanup_flag_store(flag, true);
+            continue;
+        }
+        const ValueId lowered = this->coerce_value(this->lower_expr(element.expr, element.type), element.type);
+        if (this->has_terminator(this->current_block_)) {
+            return INVALID_VALUE_ID;
+        }
+        this->append_store(address, lowered);
+    }
+    return this->append_load(aggregate_slot, aggregate_type, this->module_.intern(IR_AGGREGATE_ROLLBACK_LOAD_NAME));
 }
 
 ValueId Lowerer::lower_cast_expr(const syntax::ExprId expr_id, const ExprView& expr)

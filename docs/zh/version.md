@@ -1,5 +1,30 @@
 # 版本文档
 
+## M7d-E Aggregate Rollback Codegen Closure
+
+M7d-E 已完成 compiler-only aggregate rollback lowering 收口。本阶段不实现标准库，也不引入任何库级
+owned resource wrapper；新增能力只发生在 IR lowering：当函数体中构造含 droppable 元素的 aggregate 时，
+lowerer 会为部分初始化状态生成临时 storage 和 rollback cleanup action，保证后续元素求值提前终止时已经初始化
+成功的元素会被清理。
+
+当前新增实现包括：
+
+- struct literal、tuple literal、array literal 和多 payload enum synthetic record payload 会在需要 rollback 时
+  走 staged aggregate lowering。
+- 每个 droppable 元素先完成表达式求值；只有当前 block 未被 `return` 等 terminator 关闭后，lowerer 才创建
+  rollback drop flag、注册临时 cleanup action、store 元素值并把 flag 置为 initialized。
+- 后续元素求值如果触发 early-exit，已有 cleanup stack 会发出 `drop_if` marker；M7d-D 已接入的 runtime
+  drop lowering 会在 marker 旁生成静态 custom destructor direct call。
+- 成功构造完整 aggregate 后，rollback cleanup action 会从当前 cleanup scope 中撤销，避免正常路径和后续
+  local cleanup 重复 drop 临时元素。
+- global/constant initializer、无 droppable 元素的 aggregate 和普通 scalar aggregate 仍保持 lightweight
+  `ValueKind::aggregate` 路径，不引入临时 storage。
+
+当前仍保守的边界：标准库拥有型资源封装、用户可写 `Drop` bound、generic Drop impl、trait-object Drop
+dispatch、generic/opaque Drop ABI、async/unwind-aware drop、panic cleanup ABI、non-`Copy` `?` payload transfer、
+tuple `.0` partial move、indexed move-out、array repeat resource rollback 和 replace/take/swap primitive 仍是后续
+独立工作。
+
 ## M7d-D RAII Runtime Lowering 与 Execution Closure
 
 M7d-D 已完成 RAII runtime lowering 的第一版闭环。当前实现沿用 M7d-C 的窄 `Drop` surface 和
@@ -23,7 +48,8 @@ direct `call`，LLVM backend 通过现有 call emission 生成真实调用。
   generic/associated/opaque cleanup 仍只保留 marker，不凭空生成未知 ABI 调用。
 
 当前仍保守的边界：`Drop` bound、generic Drop impl、trait-object Drop dispatch、async/unwind-aware drop、
-panic cleanup ABI、标准库拥有型资源封装和通用 aggregate rollback codegen 仍是后续设计项。LLVM backend 中
+panic cleanup ABI 和标准库拥有型资源封装仍是后续设计项；通用 aggregate rollback codegen 已由 M7d-E 补上
+compiler-only 子集。LLVM backend 中
 `drop` / `drop_if` marker 本身仍是 no-op；M7d-D 的 runtime 行为来自 lowering 阶段额外生成的普通 call。
 
 ## M7d-C RAII User Surface 与 Release Closure

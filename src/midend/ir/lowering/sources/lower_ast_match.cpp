@@ -701,6 +701,19 @@ ValueId Lowerer::lower_enum_constructor_call(const sema::EnumCaseInfo& enum_case
     aggregate.kind = ValueKind::aggregate;
     aggregate.type = enum_case.payload_type;
     const base::usize field_count = std::min(expr.args.size(), enum_case.payload_types.size());
+    std::vector<AggregateElementInit> elements;
+    elements.reserve(field_count);
+    for (base::usize i = 0; i < field_count; ++i) {
+        elements.push_back(AggregateElementInit{
+            this->module_.intern(std::string(IR_ENUM_SYNTHETIC_PAYLOAD_FIELD_PREFIX) + std::to_string(i)),
+            expr.args[i],
+            enum_case.payload_types[i],
+        });
+    }
+    if (this->aggregate_needs_rollback(enum_case.payload_type, elements)) {
+        return this->append_enum_constructor(
+            enum_case, this->lower_record_aggregate_with_rollback(enum_case.payload_type, elements, "enum.payload"));
+    }
     aggregate.fields.reserve(field_count);
     for (base::usize i = 0; i < field_count; ++i) {
         const ValueId value =

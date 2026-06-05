@@ -111,6 +111,12 @@ struct CleanupAction {
     CleanupDropMode drop_mode = CleanupDropMode::full;
 };
 
+struct AggregateElementInit {
+    IrTextId name = INVALID_IR_TEXT_ID;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
+};
+
 struct PendingConstant {
     GlobalConstantId id = INVALID_GLOBAL_CONSTANT_ID;
     syntax::ExprId initializer = syntax::INVALID_EXPR_ID;
@@ -326,6 +332,12 @@ public:
         syntax::ExprId expr_id, const ExprView& expr, sema::TypeHandle callee_type);
     [[nodiscard]] ValueId lower_array_literal_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_tuple_literal_expr(syntax::ExprId expr_id, const ExprView& expr);
+    [[nodiscard]] ValueId lower_record_aggregate_with_rollback(
+        sema::TypeHandle aggregate_type, std::span<const AggregateElementInit> elements, std::string_view name);
+    [[nodiscard]] ValueId lower_array_aggregate_with_rollback(
+        sema::TypeHandle aggregate_type, std::span<const AggregateElementInit> elements, std::string_view name);
+    [[nodiscard]] bool aggregate_needs_rollback(
+        sema::TypeHandle aggregate_type, std::span<const AggregateElementInit> elements);
     [[nodiscard]] ValueId lower_slice_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_str_slice_expr(syntax::ExprId expr_id, const ExprView& expr);
     [[nodiscard]] ValueId lower_load_expr(syntax::ExprId expr_id);

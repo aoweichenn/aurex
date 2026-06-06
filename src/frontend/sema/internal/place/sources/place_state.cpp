@@ -17,7 +17,7 @@ namespace aurex::sema {
 namespace {
 
 constexpr std::string_view SEMA_PLACE_STATE_ID_CONTEXT = "sema place state id";
-constexpr std::string_view SEMA_PLACE_STATE_FACTS_FINGERPRINT_MARKER = "sema.place_state.facts.v2";
+constexpr std::string_view SEMA_PLACE_STATE_FACTS_FINGERPRINT_MARKER = "sema.place_state.facts.v3";
 constexpr base::usize SEMA_PLACE_STATE_STATEMENT_STACK_INITIAL_CAPACITY = 32;
 constexpr base::usize SEMA_PLACE_STATE_PATTERN_STACK_INITIAL_CAPACITY = 16;
 constexpr base::usize SEMA_PLACE_STATE_PRECHECK_STACK_INITIAL_CAPACITY = 64;
@@ -154,12 +154,32 @@ void push_precheck_stmt(
 
 [[nodiscard]] PlaceStateProjectionKey projection_key(const BodyFlowPlaceProjection& projection) noexcept
 {
-    return PlaceStateProjectionKey{
+    PlaceStateProjectionKey key{
         .kind = projection.kind,
-        .field_name = projection.field_name_id.value,
-        .element_index = projection.element_index,
-        .expr = projection.expr.value,
     };
+    switch (projection.kind) {
+        case BodyFlowPlaceProjectionKind::field:
+            key.field_name = projection.field_name_id.value;
+            break;
+        case BodyFlowPlaceProjectionKind::tuple_element:
+            key.element_index = projection.element_index;
+            break;
+        case BodyFlowPlaceProjectionKind::index:
+        case BodyFlowPlaceProjectionKind::slice:
+        case BodyFlowPlaceProjectionKind::dereference:
+            break;
+    }
+    return key;
+}
+
+[[nodiscard]] base::u32 normalized_root_expr(const BodyFlowPlace& place) noexcept
+{
+    return place.root_kind == BodyFlowPlaceRootKind::temporary ? place.root_expr.value : syntax::INVALID_EXPR_ID.value;
+}
+
+[[nodiscard]] syntax::ExprId normalized_fact_root_expr(const BodyFlowPlace& place) noexcept
+{
+    return place.root_kind == BodyFlowPlaceRootKind::temporary ? place.root_expr : syntax::INVALID_EXPR_ID;
 }
 
 [[nodiscard]] PlaceStatePlaceKey place_key_for_prefix(
@@ -168,7 +188,7 @@ void push_precheck_stmt(
     PlaceStatePlaceKey key;
     key.root_kind = place.root_kind;
     key.root_name = place.root_name_id.value;
-    key.root_expr = place.root_expr.value;
+    key.root_expr = normalized_root_expr(place);
     key.projections.reserve(projection_count);
     for (base::usize index = 0; index < projection_count && index < place.projections.size(); ++index) {
         key.projections.push_back(projection_key(place.projections[index]));
@@ -1211,7 +1231,7 @@ void SemanticAnalyzerCore::PlaceStateAnalyzer::collect_place_facts(const BodyFlo
             fact.place = new_place;
             fact.root_kind = prefix.root_kind;
             fact.root_name_id = prefix.root_name_id;
-            fact.root_expr = prefix.root_expr;
+            fact.root_expr = normalized_fact_root_expr(prefix);
             fact.type = type;
             fact.projection_count = static_cast<base::u64>(projection_count);
             fact.initialization =

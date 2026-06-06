@@ -84,6 +84,13 @@ target type kind 的匹配关系。missing structural metadata 和 recursive dro
 unknown cleanup 当前仍保持 marker-only，不生成未知 runtime ABI call；LLVM backend 中 `drop` / `drop_if`
 marker 本身仍是 no-op，静态 custom destructor direct call lowering 沿用 M7d-D。
 
+M7d-H 当前实现状态：index / slice place-state conservative closure 已完成 compiler-only 收口。place-state 的
+semantic place identity 不再用本地 root AST `ExprId` 或 index/slice projection expr id 区分同一 storage；
+本地 root 归并到 name，field 归并到 `field_name_id`，tuple 归并到 `element_index`，index/slice/deref 保守归并。
+place-state facts schema 已升级到 `sema.place_state.facts.v3`；borrow checker 明确测试了不同 index expr 的同 root
+冲突；IR lowering 的 local cleanup place path 已能识别 index/slice projection，并对 index/slice 只做同类保守
+prefix matching。当前仍不实现 indexed move-out、array/slice/index 精确 disjoint proof 或任何标准库资源封装。
+
 M7 hardening performance closure 也已完成，记录在
 [M7 Hardening Performance Closure](m7-hardening-performance-closure.md)。当前新增 statement control-flow query
 cache、body-loan precheck 单次表达式遍历、`NormalizedAstOverlay` `u64` 计数和 `tools/m7_hardening_perf.py`。
@@ -117,6 +124,9 @@ M7c/M7d 后续实现按以下大块推进：
 10. M7d-G：已完成。generic / associated / opaque / unknown cleanup marker ABI policy 已正式化，IR
     cleanup marker 的 policy 已接入 verifier、dump、clone/copy、fingerprint 和 lowering；marker-only unknown
     ABI 仍不生成 runtime call，标准库资源封装不在本阶段。
+11. M7d-H：已完成。index / slice place-state conservative closure 已正式化；本地 place identity 和 index/slice
+    projection 不再因 AST expr id 被误拆分，borrow/place-state/lowering cleanup path 均保持 same-root conservative
+    may-alias，标准库资源封装不在本阶段。
 
 实现架构必须低耦合：lifetime fact collector、region solver、enforcer、dropck facts、place-state analyzer、RAII surface
 checker 和 tooling adapter 分模块维护；`src/sema/internal/` 只能作为 private implementation root，下面不再直接新增文件，
@@ -150,8 +160,9 @@ borrowed-return contract 和 lifetime surface。M7d-C 已补上窄 `impl Drop` /
 拥有型资源封装、trait-object Drop dispatch、async/unwind-aware drop 和完整 Rust-style lifetime surface 仍是后续
 独立工作。
 
-M7d-G 之后本阶段不要把标准库作为工程入口。generic/opaque cleanup marker 的 ABI 策略已经正式化；最直接的
-compiler-only 候选是继续补 index/slice place-state gap 或收口 cleanup-marker query/tooling 消费面。
+M7d-H 之后本阶段不要把标准库作为工程入口。generic/opaque cleanup marker ABI 策略和 index/slice place-state
+保守闭包都已正式化；最直接的 compiler-only 候选是收口 cleanup-marker query/tooling 消费面、或继续处理
+consuming pattern payload / non-`Copy` `?` payload transfer 的编译器诊断与事实链。
 `Drop` bound、generic Drop surface、trait-object dispatch 和标准库资源 API 都应等 capability、dynamic ABI 与
 标准库阶段边界稳定后再作为独立阶段推进。
 

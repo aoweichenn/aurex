@@ -1738,6 +1738,89 @@ TEST(CoreUnit, LowerAstWhiteBoxTupleElementCleanupPlaceEdges)
     EXPECT_GT(second_drop_count, 0U);
 }
 
+TEST(CoreUnit, LowerAstWhiteBoxIndexAndSliceCleanupPlaceEdgesAreConservative)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle resource_type = checked.types.generic_param("T");
+    const TypeHandle array_type = checked.types.array(4U, resource_type);
+    const TypeHandle slice_type = checked.types.slice(PointerMutability::const_, resource_type);
+
+    const ExprId slot = push_name(ast, "slot");
+    const ExprId first_index = push_integer(ast, "0");
+    const ExprId second_index = push_integer(ast, "1");
+    const ExprId slot_first = ast.push_index_expr({}, slot, first_index);
+    const ExprId slot_second = ast.push_index_expr({}, slot, second_index);
+    const ExprId slot_slice = ast.push_slice_expr({}, slot, first_index, second_index);
+    const ExprId slot_first_field = push_field(ast, slot_first, "value");
+    set_expr_type(checked, slot, array_type);
+    set_expr_type(checked, first_index, checked.types.builtin(BuiltinType::usize));
+    set_expr_type(checked, second_index, checked.types.builtin(BuiltinType::usize));
+    set_expr_type(checked, slot_first, resource_type);
+    set_expr_type(checked, slot_second, resource_type);
+    set_expr_type(checked, slot_slice, slice_type);
+    set_expr_type(checked, slot_first_field, resource_type);
+
+    Lowerer lowerer(ast, checked);
+    const ir::detail::CleanupBinding index_cleanup{
+        .projections = {ir::detail::CleanupProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::index,
+        }},
+    };
+    const ir::detail::CleanupBinding slice_cleanup{
+        .projections = {ir::detail::CleanupProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::slice,
+        }},
+    };
+    const ir::detail::CleanupBinding field_cleanup{
+        .projections = {ir::detail::CleanupProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::field,
+            .field_name = lowerer.module_.intern("value"),
+        }},
+    };
+    const ir::detail::CleanupBinding index_field_cleanup{
+        .projections = {
+            ir::detail::CleanupProjection{
+                .kind = ir::detail::LocalPlaceProjectionKind::index,
+            },
+            ir::detail::CleanupProjection{
+                .kind = ir::detail::LocalPlaceProjectionKind::field,
+                .field_name = lowerer.module_.intern("value"),
+            },
+        },
+    };
+
+    const std::optional<ir::detail::LocalPlacePath> first_path = lowerer.local_place_path(slot_first);
+    ASSERT_TRUE(first_path.has_value());
+    ASSERT_EQ(first_path->projections.size(), 1U);
+    EXPECT_EQ(first_path->projections.front().kind, ir::detail::LocalPlaceProjectionKind::index);
+
+    const std::optional<ir::detail::LocalPlacePath> second_path = lowerer.local_place_path(slot_second);
+    ASSERT_TRUE(second_path.has_value());
+    ASSERT_EQ(second_path->projections.size(), 1U);
+    EXPECT_EQ(second_path->projections.front().kind, ir::detail::LocalPlaceProjectionKind::index);
+    EXPECT_TRUE(lowerer.cleanup_binding_has_prefix(index_cleanup, first_path->projections));
+    EXPECT_TRUE(lowerer.cleanup_binding_has_prefix(index_cleanup, second_path->projections));
+
+    const std::optional<ir::detail::LocalPlacePath> slice_path = lowerer.local_place_path(slot_slice);
+    ASSERT_TRUE(slice_path.has_value());
+    ASSERT_EQ(slice_path->projections.size(), 1U);
+    EXPECT_EQ(slice_path->projections.front().kind, ir::detail::LocalPlaceProjectionKind::slice);
+    EXPECT_TRUE(lowerer.cleanup_binding_has_prefix(slice_cleanup, slice_path->projections));
+    EXPECT_FALSE(lowerer.cleanup_binding_has_prefix(index_cleanup, slice_path->projections));
+    EXPECT_FALSE(lowerer.cleanup_binding_has_prefix(slice_cleanup, first_path->projections));
+    EXPECT_FALSE(lowerer.cleanup_binding_has_prefix(field_cleanup, first_path->projections));
+
+    const std::optional<ir::detail::LocalPlacePath> nested_path = lowerer.local_place_path(slot_first_field);
+    ASSERT_TRUE(nested_path.has_value());
+    ASSERT_EQ(nested_path->projections.size(), 2U);
+    EXPECT_EQ(nested_path->projections[0].kind, ir::detail::LocalPlaceProjectionKind::index);
+    EXPECT_EQ(nested_path->projections[1].kind, ir::detail::LocalPlaceProjectionKind::field);
+    EXPECT_TRUE(lowerer.cleanup_binding_has_prefix(index_field_cleanup, first_path->projections));
+    EXPECT_TRUE(lowerer.cleanup_binding_has_prefix(index_field_cleanup, nested_path->projections));
+}
+
 TEST(CoreUnit, LowerAstWhiteBoxStructuredCleanupRegistrationCoversNestedAndTrivialFields)
 {
     syntax::AstModule ast;

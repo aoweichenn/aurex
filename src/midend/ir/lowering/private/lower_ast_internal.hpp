@@ -45,6 +45,8 @@ struct PlaceAddress {
 enum class LocalPlaceProjectionKind : base::u8 {
     field,
     tuple_element,
+    index,
+    slice,
 };
 
 struct LocalPlaceProjection {

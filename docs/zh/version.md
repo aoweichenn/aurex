@@ -1,5 +1,41 @@
 # 版本文档
 
+## M7d-H Index / Slice Place-State Conservative Closure
+
+M7d-H 已完成 compiler-only index / slice place-state 保守闭包。本阶段继续不实现标准库，也不引入任何库级
+owned resource wrapper；新增能力只发生在 BodyFlow place identity、place-state facts、borrow checker 回归测试和
+IR lowering cleanup place path 内部。
+
+当前新增实现包括：
+
+- place-state 的 semantic place identity 不再把本地 root 的 AST `ExprId` 当成不同 storage；同一个 local /
+  parameter 的不同语法出现点会归并到同一个 root place。temporary root 仍保留 `root_expr`，避免不同临时值被误合并。
+- field projection identity 只使用 `field_name_id`，tuple projection identity 只使用 `element_index`；index、slice
+  和 dereference projection 不使用具体表达式 id 做精确区分，符合当前 M7d 对 array/slice/index 的 conservative
+  may-alias 策略。
+- place-state facts fingerprint schema 升级到 `sema.place_state.facts.v3`，避免旧缓存把 expr-id-sensitive facts
+  当成新的 conservative facts 复用。
+- BodyLoan checker 原有 projection conflict 规则继续保持：same/prefix 冲突、已知 struct field / tuple element
+  disjoint 可放宽，index/slice/dereference/unknown projection 保守冲突；白盒测试显式覆盖不同 index expr 仍冲突。
+- BodyFlow 的 return cleanup 链现在按已注册前缀构造：`return` 只清理执行到该点前已经进入作用域的 local/defer，
+  return 后未执行的 local 声明和 defer 注册不会被误加入该 return path。
+- IR lowering 的 `LocalPlaceProjectionKind` 增加 `index` 和 `slice`，`local_place_path` 现在能识别
+  `local[index]`、`local[start:end]` 以及 `local[index].field` 这类本地 place path。cleanup prefix matching
+  对 index/slice 只做同类保守匹配，不尝试证明不同下标或不同 slice range disjoint。
+
+当前能做的事情：
+
+- 本地 struct field 和 tuple element 的 partial move / reinit / cleanup drop flag 仍按 M7d-B/M7d-F 的精确规则工作。
+- 本地 array/slice/index projection 在 borrow、place-state 和 lowering cleanup path 中不会被错误拆成互不相干的
+  精确子 place；`a[i]` 与 `a[j]` 在当前阶段按 may-alias 处理。
+- tracked resource 的 indexed move-out 仍由 move analysis 保守拒绝；resource index assignment 仍由 sema 报
+  unsupported，避免在没有 per-element ownership/drop proof 时泄漏或双 drop。
+
+当前仍保守的边界：标准库拥有型资源封装、用户可写 `Drop` bound、generic Drop impl、trait-object Drop
+dispatch、dynamic destructor ABI、async/unwind-aware drop、panic cleanup ABI、non-`Copy` `?` payload transfer、
+indexed move-out、array/slice/index 精确 disjoint proof、consuming pattern payload、array repeat resource rollback
+和 replace/take/swap primitive 仍是后续独立工作。
+
 ## M7d-G Generic / Opaque Cleanup Marker ABI Closure
 
 M7d-G 已完成 compiler-only cleanup marker ABI policy 正式化。本阶段继续不实现标准库，也不引入任何库级

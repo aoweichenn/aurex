@@ -614,6 +614,34 @@ std::optional<LocalPlacePath> Lowerer::local_place_path(const syntax::ExprId exp
             current = field->object;
             continue;
         }
+        if (kind == syntax::ExprKind::index) {
+            const syntax::IndexExprPayload* const index = this->ast_.exprs.index_payload(current.value);
+            if (index == nullptr) {
+                return std::nullopt;
+            }
+            reversed.push_back(LocalPlaceProjection{
+                .kind = LocalPlaceProjectionKind::index,
+                .field_name_id = sema::INVALID_IDENT_ID,
+                .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+                .field_name = {},
+            });
+            current = index->object;
+            continue;
+        }
+        if (kind == syntax::ExprKind::slice) {
+            const syntax::SliceExprPayload* const slice = this->ast_.exprs.slice_payload(current.value);
+            if (slice == nullptr) {
+                return std::nullopt;
+            }
+            reversed.push_back(LocalPlaceProjection{
+                .kind = LocalPlaceProjectionKind::slice,
+                .field_name_id = sema::INVALID_IDENT_ID,
+                .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+                .field_name = {},
+            });
+            current = slice->object;
+            continue;
+        }
         return std::nullopt;
     }
     return std::nullopt;
@@ -1274,6 +1302,9 @@ bool Lowerer::cleanup_projection_matches(
 {
     if (cleanup.kind != place.kind) {
         return false;
+    }
+    if (cleanup.kind == LocalPlaceProjectionKind::index || cleanup.kind == LocalPlaceProjectionKind::slice) {
+        return true;
     }
     if (cleanup.kind == LocalPlaceProjectionKind::tuple_element) {
         return cleanup.element_index != sema::SEMA_BODY_FLOW_INVALID_INDEX

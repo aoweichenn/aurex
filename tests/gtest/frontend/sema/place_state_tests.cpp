@@ -118,6 +118,42 @@ constexpr std::string_view PLACE_STATE_GENERIC_RETURN_SOURCE = "module place_sta
                                                                "  return unwrap_holder(holder) - id[i32](7);\n"
                                                                "}\n";
 
+constexpr std::string_view PLACE_STATE_DEFER_EXIT_REINIT_SOURCE =
+    "module place_state_defer_exit_reinit;\n"
+    "fn consume[T](value: T) -> void {\n"
+    "  let borrowed: &T = &value;\n"
+    "  if ptraddr(borrowed) == 0usize {\n"
+    "    return;\n"
+    "  }\n"
+    "}\n"
+    "fn inspect[T](value: &T) -> void {\n"
+    "  if ptraddr(value) == 0usize {\n"
+    "    return;\n"
+    "  }\n"
+    "}\n"
+    "fn exercise[T](value: T, replacement: T) -> void {\n"
+    "  var current: T = value;\n"
+    "  defer consume(current);\n"
+    "  inspect(&current);\n"
+    "  current = replacement;\n"
+    "}\n"
+    "fn main() -> i32 {\n"
+    "  return 0;\n"
+    "}\n";
+
+constexpr std::string_view PLACE_STATE_BRANCH_RETURN_REINIT_SOURCE =
+    "module place_state_branch_return_reinit;\n"
+    "fn borrow_then_return[T](value: T) -> T {\n"
+    "  let borrowed: &T = &value;\n"
+    "  if ptraddr(borrowed) == 0usize {\n"
+    "    return value;\n"
+    "  }\n"
+    "  return value;\n"
+    "}\n"
+    "fn main() -> i32 {\n"
+    "  return 0;\n"
+    "}\n";
+
 [[nodiscard]] syntax::AstModule parse_place_state_source(const std::string_view source)
 {
     base::DiagnosticSink diagnostics;
@@ -316,6 +352,18 @@ struct PlaceStateGraphHarness {
     return place;
 }
 
+[[nodiscard]] sema::BodyFlowPlace place_state_graph_index_place(
+    const syntax::ExprId root_expr, const syntax::ExprId index_expr)
+{
+    sema::BodyFlowPlace place = place_state_graph_local_place();
+    place.root_expr = root_expr;
+    place.projections.push_back(sema::BodyFlowPlaceProjection{
+        .kind = sema::BodyFlowPlaceProjectionKind::index,
+        .expr = index_expr,
+    });
+    return place;
+}
+
 [[nodiscard]] sema::BodyFlowAction place_state_graph_action(const sema::BodyFlowActionKind kind, const base::u32 point,
     const base::u32 place, const base::u32 offset, const syntax::ExprId expr = syntax::INVALID_EXPR_ID)
 {
@@ -477,6 +525,43 @@ TEST(CoreUnit, PlaceStateFactsIgnoreOwnedGenericReturnBorrowSummary)
     EXPECT_FALSE(std::ranges::any_of(unwrap_facts->events, [](const sema::PlaceStateEvent& event) {
         return event.kind == sema::PlaceStateEventKind::borrow_shared
             || event.kind == sema::PlaceStateEventKind::borrow_mutable;
+    }));
+}
+
+TEST(CoreUnit, PlaceStateFactsTreatDeferAsExitCleanupAfterReinit)
+{
+    const sema::CheckedModule checked = analyze_place_state_source(PLACE_STATE_DEFER_EXIT_REINIT_SOURCE);
+
+    const sema::FunctionPlaceStateFacts* const facts = find_place_state_facts(checked, "exercise");
+    ASSERT_NE(facts, nullptr);
+    EXPECT_TRUE(facts->solved);
+    EXPECT_TRUE(facts->violations.empty());
+    EXPECT_FALSE(place_state_has_violation(*facts, sema::PlaceStateViolationKind::use_after_move));
+    EXPECT_TRUE(std::ranges::any_of(facts->events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::borrow_shared;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(facts->events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::reinit;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(facts->events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::move_candidate;
+    }));
+}
+
+TEST(CoreUnit, PlaceStateFactsDoNotJoinReturnPathIntoLaterSiblingStatements)
+{
+    const sema::CheckedModule checked = analyze_place_state_source(PLACE_STATE_BRANCH_RETURN_REINIT_SOURCE);
+
+    const sema::FunctionPlaceStateFacts* const facts = find_place_state_facts(checked, "borrow_then_return");
+    ASSERT_NE(facts, nullptr);
+    EXPECT_TRUE(facts->solved);
+    EXPECT_TRUE(facts->violations.empty());
+    EXPECT_FALSE(place_state_has_violation(*facts, sema::PlaceStateViolationKind::maybe_uninitialized_use));
+    EXPECT_TRUE(std::ranges::any_of(facts->events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::borrow_shared;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(facts->events, [](const sema::PlaceStateEvent& event) {
+        return event.kind == sema::PlaceStateEventKind::move_candidate;
     }));
 }
 
@@ -869,6 +954,47 @@ TEST(CoreUnit, PlaceStateFactsEnforceBorrowAfterPartialMove)
     EXPECT_TRUE(std::ranges::any_of(facts->second.violations, [](const sema::PlaceStateViolation& violation) {
         return violation.kind == sema::PlaceStateViolationKind::use_after_partial_move && violation.diagnostic_emitted;
     }));
+}
+
+TEST(CoreUnit, PlaceStateFactsNormalizeIndexedProjectionAliases)
+{
+    PlaceStateGraphHarness harness;
+    const sema::TypeHandle array_type = harness.analyzer.state_.checked.types.array(2U, harness.resource_type);
+    harness.signature.param_types.front() = array_type;
+    harness.analyzer.state_.checked.expr_owned_use_modes.resize(8U, sema::OwnedUseMode::none);
+    harness.analyzer.record_expr_owned_use_mode(syntax::ExprId{2U}, sema::OwnedUseMode::owned_consume);
+
+    sema::BodyFlowGraph graph;
+    graph.function = harness.key;
+    graph.points = {
+        place_state_graph_point(sema::BodyFlowPointKind::entry, 86U),
+        place_state_graph_point(sema::BodyFlowPointKind::exit, 87U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 88U),
+        place_state_graph_point(sema::BodyFlowPointKind::sequence, 89U),
+    };
+    graph.edges = {
+        sema::BodyFlowEdge{.from = 0U, .to = 2U},
+        sema::BodyFlowEdge{.from = 2U, .to = 3U},
+        sema::BodyFlowEdge{.from = 3U, .to = 1U},
+    };
+    graph.places.push_back(place_state_graph_index_place(syntax::ExprId{1U}, syntax::ExprId{4U}));
+    graph.places.push_back(place_state_graph_index_place(syntax::ExprId{3U}, syntax::ExprId{5U}));
+    graph.actions = {
+        place_state_graph_action(sema::BodyFlowActionKind::move_candidate, 2U, 0U, 90U, syntax::ExprId{2U}),
+        place_state_graph_action(sema::BodyFlowActionKind::read, 3U, 1U, 91U),
+    };
+    harness.analyzer.state_.checked.body_flow_graphs[harness.key] = std::move(graph);
+
+    harness.analyzer.analyze_place_states(harness.function, harness.key, harness.signature);
+
+    const auto facts = harness.analyzer.state_.checked.place_state_facts.find(harness.key);
+    ASSERT_NE(facts, harness.analyzer.state_.checked.place_state_facts.end());
+    ASSERT_EQ(facts->second.places.size(), 2U);
+    EXPECT_TRUE(place_state_has_violation(facts->second, sema::PlaceStateViolationKind::use_after_move));
+    EXPECT_TRUE(place_state_emitted_message(harness.diagnostics, sema::SEMA_PLACE_STATE_USE_AFTER_MOVE));
+    EXPECT_EQ(facts->second.places[1].move_candidate_count, 1U);
+    EXPECT_EQ(facts->second.places[1].read_count, 1U);
+    EXPECT_TRUE(facts->second.places[1].has_partial_projection);
 }
 
 TEST(CoreUnit, PlaceStateFactsSkipCleanupAfterMoveWithoutLiveDropFlag)

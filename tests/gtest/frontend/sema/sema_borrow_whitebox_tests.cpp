@@ -1,6 +1,89 @@
 #include <gtest/frontend/sema/sema_whitebox_test_support.hpp>
 
 namespace aurex::test {
+namespace {
+
+[[nodiscard]] bool body_flow_has_path(
+    const sema::BodyFlowGraph& graph, const base::u32 from, const base::u32 to)
+{
+    if (from >= graph.points.size() || to >= graph.points.size()) {
+        return false;
+    }
+    if (from == to) {
+        return true;
+    }
+
+    std::vector<bool> visited(graph.points.size(), false);
+    std::vector<base::u32> pending;
+    pending.push_back(from);
+    visited[from] = true;
+    while (!pending.empty()) {
+        const base::u32 point = pending.back();
+        pending.pop_back();
+        for (const sema::BodyFlowEdge& edge : graph.edges) {
+            if (edge.from != point || edge.to >= graph.points.size() || visited[edge.to]) {
+                continue;
+            }
+            if (edge.to == to) {
+                return true;
+            }
+            visited[edge.to] = true;
+            pending.push_back(edge.to);
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] std::optional<base::u32> body_flow_point_for_kind(
+    const sema::BodyFlowGraph& graph, const sema::BodyFlowPointKind kind)
+{
+    for (base::usize index = 0; index < graph.points.size(); ++index) {
+        if (graph.points[index].kind == kind) {
+            return base::checked_u32(index, "test body flow point");
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<base::u32> body_flow_point_for_stmt(
+    const sema::BodyFlowGraph& graph, const sema::BodyFlowPointKind kind, const syntax::StmtId stmt)
+{
+    for (base::usize index = 0; index < graph.points.size(); ++index) {
+        const sema::BodyFlowPoint& point = graph.points[index];
+        if (point.kind == kind && point.stmt.value == stmt.value) {
+            return base::checked_u32(index, "test body flow point");
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<base::u32> body_flow_cleanup_point_for(
+    const sema::BodyFlowGraph& graph, const IdentId name_id)
+{
+    for (const sema::BodyFlowAction& action : graph.actions) {
+        if (action.kind != sema::BodyFlowActionKind::cleanup_storage || action.place >= graph.places.size()) {
+            continue;
+        }
+        const sema::BodyFlowPlace& place = graph.places[action.place];
+        if (place.root_kind == sema::BodyFlowPlaceRootKind::local && place.root_name_id == name_id) {
+            return action.point;
+        }
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<base::u32> body_flow_action_point_for_expr(
+    const sema::BodyFlowGraph& graph, const sema::BodyFlowActionKind kind, const ExprId expr)
+{
+    for (const sema::BodyFlowAction& action : graph.actions) {
+        if (action.kind == kind && action.expr.value == expr.value) {
+            return action.point;
+        }
+    }
+    return std::nullopt;
+}
+
+} // namespace
 
 TEST(CoreUnit, SemanticWhiteBoxBodyFlowCollectsProjectionBorrowAndStableDump)
 {
@@ -77,6 +160,338 @@ TEST(CoreUnit, SemanticWhiteBoxBodyFlowCollectsProjectionBorrowAndStableDump)
     EXPECT_NE(dump.find("cleanup_scope"), std::string::npos);
     EXPECT_NE(dump.find("return"), std::string::npos);
     EXPECT_NE(dump.find("field("), std::string::npos);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBodyFlowRunsBlockCleanupInReverseRegistrationOrder)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_FLOW_MODULE_NAME})};
+
+    const ExprId first_init = push_integer(module);
+    const syntax::StmtId first_stmt =
+        push_local_stmt(module, syntax::StmtKind::var, "first", syntax::INVALID_TYPE_ID, first_init);
+    const ExprId sink = push_name(module, SEMA_TEST_BODY_FLOW_SINK_NAME);
+    const ExprId source = push_name(module, SEMA_TEST_BODY_FLOW_SOURCE_NAME);
+    const ExprId deferred_call = push_call(module, sink, {source});
+    syntax::StmtNode defer_stmt;
+    defer_stmt.kind = syntax::StmtKind::defer;
+    defer_stmt.init = deferred_call;
+    const syntax::StmtId defer_stmt_id = module.push_stmt(defer_stmt);
+    const ExprId second_init = push_integer(module);
+    const syntax::StmtId second_stmt =
+        push_local_stmt(module, syntax::StmtKind::var, "second", syntax::INVALID_TYPE_ID, second_init);
+    const syntax::StmtId body = push_block(module, {first_stmt, defer_stmt_id, second_stmt});
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "flow_cleanup_order";
+    function.body = body;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    const sema::FunctionLookupKey key =
+        semantic_function_key(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "flow_cleanup_order");
+    sema::SemanticAnalyzerCore::BodyFlowAnalyzer(analyzer).collect(function, key);
+
+    ASSERT_TRUE(analyzer.state_.checked.body_flow_graphs.contains(key));
+    const sema::BodyFlowGraph& graph = analyzer.state_.checked.body_flow_graphs.at(key);
+    const std::string dump = sema::dump_body_flow_graph(graph);
+    const auto action_point_for = [&graph](const sema::BodyFlowActionKind kind,
+                                      const ExprId expr) -> std::optional<base::u32> {
+        for (const sema::BodyFlowAction& action : graph.actions) {
+            if (action.kind == kind && action.expr.value == expr.value) {
+                return action.point;
+            }
+        }
+        return std::nullopt;
+    };
+
+    const std::optional<base::u32> first_cleanup =
+        body_flow_cleanup_point_for(graph, module.intern_identifier("first"));
+    const std::optional<base::u32> second_cleanup =
+        body_flow_cleanup_point_for(graph, module.intern_identifier("second"));
+    const std::optional<base::u32> defer_cleanup =
+        action_point_for(sema::BodyFlowActionKind::cleanup_scope, deferred_call);
+    const std::optional<base::u32> deferred_call_point =
+        action_point_for(sema::BodyFlowActionKind::call, deferred_call);
+    ASSERT_TRUE(first_cleanup.has_value()) << dump;
+    ASSERT_TRUE(second_cleanup.has_value()) << dump;
+    ASSERT_TRUE(defer_cleanup.has_value()) << dump;
+    ASSERT_TRUE(deferred_call_point.has_value()) << dump;
+
+    EXPECT_TRUE(body_flow_has_path(graph, *second_cleanup, *defer_cleanup)) << dump;
+    EXPECT_TRUE(body_flow_has_path(graph, *defer_cleanup, *deferred_call_point)) << dump;
+    EXPECT_TRUE(body_flow_has_path(graph, *deferred_call_point, *first_cleanup)) << dump;
+
+    const auto defer_exit = std::ranges::find_if(graph.points, [defer_stmt_id](const sema::BodyFlowPoint& point) {
+        return point.kind == sema::BodyFlowPointKind::statement_exit && point.stmt.value == defer_stmt_id.value;
+    });
+    ASSERT_NE(defer_exit, graph.points.end()) << dump;
+    const base::u32 defer_exit_point = base::checked_u32(
+        static_cast<base::usize>(std::distance(graph.points.begin(), defer_exit)), "test body flow point");
+    EXPECT_FALSE(std::ranges::any_of(graph.actions, [defer_exit_point](const sema::BodyFlowAction& action) {
+        return action.point == defer_exit_point
+            && (action.kind == sema::BodyFlowActionKind::call
+                || action.kind == sema::BodyFlowActionKind::read
+                || action.kind == sema::BodyFlowActionKind::move_candidate);
+    })) << dump;
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBodyFlowReturnCleanupDoesNotFallThroughFullyReturningIf)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_FLOW_MODULE_NAME})};
+
+    const syntax::StmtId tracked_stmt =
+        push_local_stmt(module, syntax::StmtKind::var, "tracked", syntax::INVALID_TYPE_ID, push_integer(module));
+    const syntax::StmtId then_return = push_return_stmt(module, push_name(module, "then_value"));
+    const syntax::StmtId else_return = push_return_stmt(module, push_name(module, "else_value"));
+
+    syntax::StmtNode if_stmt;
+    if_stmt.kind = syntax::StmtKind::if_;
+    if_stmt.condition = push_bool(module, "true");
+    if_stmt.then_block = push_block(module, {then_return});
+    if_stmt.else_block = push_block(module, {else_return});
+    const syntax::StmtId if_stmt_id = module.push_stmt(if_stmt);
+
+    syntax::StmtNode after_stmt;
+    after_stmt.kind = syntax::StmtKind::expr;
+    after_stmt.init = push_name(module, "after_return");
+    const syntax::StmtId after_stmt_id = module.push_stmt(after_stmt);
+    const syntax::StmtId body = push_block(module, {tracked_stmt, if_stmt_id, after_stmt_id});
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "flow_full_return_if_cleanup";
+    function.body = body;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    const sema::FunctionLookupKey key =
+        semantic_function_key(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "flow_full_return_if_cleanup");
+    sema::SemanticAnalyzerCore::BodyFlowAnalyzer(analyzer).collect(function, key);
+
+    ASSERT_TRUE(analyzer.state_.checked.body_flow_graphs.contains(key));
+    const sema::BodyFlowGraph& graph = analyzer.state_.checked.body_flow_graphs.at(key);
+    const std::string dump = sema::dump_body_flow_graph(graph);
+    const std::optional<base::u32> entry = body_flow_point_for_kind(graph, sema::BodyFlowPointKind::entry);
+    const std::optional<base::u32> after_entry =
+        body_flow_point_for_stmt(graph, sema::BodyFlowPointKind::statement_entry, after_stmt_id);
+    const std::optional<base::u32> tracked_cleanup =
+        body_flow_cleanup_point_for(graph, module.intern_identifier("tracked"));
+    ASSERT_TRUE(entry.has_value()) << dump;
+    ASSERT_TRUE(after_entry.has_value()) << dump;
+    ASSERT_TRUE(tracked_cleanup.has_value()) << dump;
+
+    EXPECT_FALSE(body_flow_has_path(graph, *entry, *after_entry)) << dump;
+    for (const sema::BodyFlowAction& action : graph.actions) {
+        if (action.kind == sema::BodyFlowActionKind::return_) {
+            EXPECT_TRUE(body_flow_has_path(graph, action.point, *tracked_cleanup)) << dump;
+            EXPECT_FALSE(body_flow_has_path(graph, action.point, *after_entry)) << dump;
+        }
+    }
+    EXPECT_EQ(std::ranges::count_if(graph.actions, [](const sema::BodyFlowAction& action) {
+        return action.kind == sema::BodyFlowActionKind::return_;
+    }), 2);
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBodyFlowReturnCleanupFollowsFullyReturningElseIf)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_FLOW_MODULE_NAME})};
+
+    const syntax::StmtId tracked_stmt =
+        push_local_stmt(module, syntax::StmtKind::var, "tracked", syntax::INVALID_TYPE_ID, push_integer(module));
+
+    syntax::StmtNode else_if_stmt;
+    else_if_stmt.kind = syntax::StmtKind::if_;
+    else_if_stmt.condition = push_bool(module, "false");
+    else_if_stmt.then_block = push_block(module, {push_return_stmt(module, push_name(module, "else_if_then"))});
+    else_if_stmt.else_block = push_block(module, {push_return_stmt(module, push_name(module, "else_if_else"))});
+    const syntax::StmtId else_if_stmt_id = module.push_stmt(else_if_stmt);
+
+    syntax::StmtNode if_stmt;
+    if_stmt.kind = syntax::StmtKind::if_;
+    if_stmt.condition = push_bool(module, "true");
+    if_stmt.then_block = push_block(module, {push_return_stmt(module, push_name(module, "then_value"))});
+    if_stmt.else_if = else_if_stmt_id;
+    const syntax::StmtId if_stmt_id = module.push_stmt(if_stmt);
+
+    syntax::StmtNode after_stmt;
+    after_stmt.kind = syntax::StmtKind::expr;
+    after_stmt.init = push_name(module, "after_else_if_return");
+    const syntax::StmtId after_stmt_id = module.push_stmt(after_stmt);
+    const syntax::StmtId body = push_block(module, {tracked_stmt, if_stmt_id, after_stmt_id});
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "flow_else_if_return_cleanup";
+    function.body = body;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    const sema::FunctionLookupKey key =
+        semantic_function_key(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "flow_else_if_return_cleanup");
+    sema::SemanticAnalyzerCore::BodyFlowAnalyzer(analyzer).collect(function, key);
+
+    ASSERT_TRUE(analyzer.state_.checked.body_flow_graphs.contains(key));
+    const sema::BodyFlowGraph& graph = analyzer.state_.checked.body_flow_graphs.at(key);
+    const std::string dump = sema::dump_body_flow_graph(graph);
+    const std::optional<base::u32> entry = body_flow_point_for_kind(graph, sema::BodyFlowPointKind::entry);
+    const std::optional<base::u32> after_entry =
+        body_flow_point_for_stmt(graph, sema::BodyFlowPointKind::statement_entry, after_stmt_id);
+    const std::optional<base::u32> tracked_cleanup =
+        body_flow_cleanup_point_for(graph, module.intern_identifier("tracked"));
+    ASSERT_TRUE(entry.has_value()) << dump;
+    ASSERT_TRUE(after_entry.has_value()) << dump;
+    ASSERT_TRUE(tracked_cleanup.has_value()) << dump;
+
+    EXPECT_FALSE(body_flow_has_path(graph, *entry, *after_entry)) << dump;
+    for (const sema::BodyFlowAction& action : graph.actions) {
+        if (action.kind == sema::BodyFlowActionKind::return_) {
+            EXPECT_TRUE(body_flow_has_path(graph, action.point, *tracked_cleanup)) << dump;
+            EXPECT_FALSE(body_flow_has_path(graph, action.point, *after_entry)) << dump;
+        }
+    }
+    EXPECT_EQ(std::ranges::count_if(graph.actions, [](const sema::BodyFlowAction& action) {
+        return action.kind == sema::BodyFlowActionKind::return_;
+    }), 3);
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBodyFlowReturnCleanupScansForRangeBody)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_FLOW_MODULE_NAME})};
+
+    const syntax::StmtId tracked_stmt =
+        push_local_stmt(module, syntax::StmtKind::var, "tracked", syntax::INVALID_TYPE_ID, push_integer(module));
+
+    syntax::StmtNode for_range_stmt;
+    for_range_stmt.kind = syntax::StmtKind::for_range;
+    for_range_stmt.name = "item";
+    for_range_stmt.name_id = module.intern_identifier("item");
+    for_range_stmt.range_start = push_integer_text(module, "0");
+    for_range_stmt.range_end = push_integer_text(module, "3");
+    for_range_stmt.body = push_block(module, {push_return_stmt(module, push_name(module, "loop_value"))});
+    const syntax::StmtId for_range_stmt_id = module.push_stmt(for_range_stmt);
+
+    syntax::StmtNode after_stmt;
+    after_stmt.kind = syntax::StmtKind::expr;
+    after_stmt.init = push_name(module, "after_for_range");
+    const syntax::StmtId after_stmt_id = module.push_stmt(after_stmt);
+    const syntax::StmtId body = push_block(module, {tracked_stmt, for_range_stmt_id, after_stmt_id});
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "flow_for_range_return_cleanup";
+    function.body = body;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    const sema::FunctionLookupKey key =
+        semantic_function_key(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "flow_for_range_return_cleanup");
+    sema::SemanticAnalyzerCore::BodyFlowAnalyzer(analyzer).collect(function, key);
+
+    ASSERT_TRUE(analyzer.state_.checked.body_flow_graphs.contains(key));
+    const sema::BodyFlowGraph& graph = analyzer.state_.checked.body_flow_graphs.at(key);
+    const std::string dump = sema::dump_body_flow_graph(graph);
+    const std::optional<base::u32> entry = body_flow_point_for_kind(graph, sema::BodyFlowPointKind::entry);
+    const std::optional<base::u32> after_entry =
+        body_flow_point_for_stmt(graph, sema::BodyFlowPointKind::statement_entry, after_stmt_id);
+    const IdentId tracked_name_id = module.intern_identifier("tracked");
+    ASSERT_TRUE(entry.has_value()) << dump;
+    ASSERT_TRUE(after_entry.has_value()) << dump;
+    ASSERT_TRUE(body_flow_cleanup_point_for(graph, tracked_name_id).has_value()) << dump;
+
+    EXPECT_TRUE(body_flow_has_path(graph, *entry, *after_entry)) << dump;
+    const auto return_action = std::ranges::find_if(graph.actions, [](const sema::BodyFlowAction& action) {
+        return action.kind == sema::BodyFlowActionKind::return_;
+    });
+    ASSERT_NE(return_action, graph.actions.end()) << dump;
+    EXPECT_TRUE(std::ranges::any_of(graph.actions, [&graph, tracked_name_id, return_action](const sema::BodyFlowAction& action) {
+        if (action.kind != sema::BodyFlowActionKind::cleanup_storage || action.place >= graph.places.size()) {
+            return false;
+        }
+        const sema::BodyFlowPlace& place = graph.places[action.place];
+        return place.root_kind == sema::BodyFlowPlaceRootKind::local && place.root_name_id == tracked_name_id
+            && body_flow_has_path(graph, return_action->point, action.point);
+    })) << dump;
+    EXPECT_FALSE(body_flow_has_path(graph, return_action->point, *after_entry)) << dump;
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxBodyFlowReturnCleanupUsesRegisteredPrefixOnly)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({SEMA_TEST_BODY_FLOW_MODULE_NAME})};
+
+    const syntax::StmtId before_stmt =
+        push_local_stmt(module, syntax::StmtKind::var, "before", syntax::INVALID_TYPE_ID, push_integer(module));
+
+    const ExprId sink = push_name(module, SEMA_TEST_BODY_FLOW_SINK_NAME);
+    const ExprId before_defer_call = push_call(module, sink, {push_name(module, "before_source")});
+    syntax::StmtNode before_defer_stmt;
+    before_defer_stmt.kind = syntax::StmtKind::defer;
+    before_defer_stmt.init = before_defer_call;
+    const syntax::StmtId before_defer_stmt_id = module.push_stmt(before_defer_stmt);
+
+    const syntax::StmtId return_stmt = push_return_stmt(module, push_name(module, "result"));
+    const syntax::StmtId future_stmt =
+        push_local_stmt(module, syntax::StmtKind::var, "future", syntax::INVALID_TYPE_ID, push_integer(module));
+
+    const ExprId future_defer_call = push_call(module, sink, {push_name(module, "future_source")});
+    syntax::StmtNode future_defer_stmt;
+    future_defer_stmt.kind = syntax::StmtKind::defer;
+    future_defer_stmt.init = future_defer_call;
+    const syntax::StmtId future_defer_stmt_id = module.push_stmt(future_defer_stmt);
+    const syntax::StmtId body =
+        push_block(module, {before_stmt, before_defer_stmt_id, return_stmt, future_stmt, future_defer_stmt_id});
+
+    syntax::ItemNode function;
+    function.kind = syntax::ItemKind::fn_decl;
+    function.name = "flow_return_registered_prefix_cleanup";
+    function.body = body;
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    const sema::FunctionLookupKey key =
+        semantic_function_key(analyzer, module_id(SEMA_TEST_ROOT_MODULE_INDEX), "flow_return_registered_prefix_cleanup");
+    sema::SemanticAnalyzerCore::BodyFlowAnalyzer(analyzer).collect(function, key);
+
+    ASSERT_TRUE(analyzer.state_.checked.body_flow_graphs.contains(key));
+    const sema::BodyFlowGraph& graph = analyzer.state_.checked.body_flow_graphs.at(key);
+    const std::string dump = sema::dump_body_flow_graph(graph);
+    const auto return_action = std::ranges::find_if(graph.actions, [](const sema::BodyFlowAction& action) {
+        return action.kind == sema::BodyFlowActionKind::return_;
+    });
+    ASSERT_NE(return_action, graph.actions.end()) << dump;
+
+    const std::optional<base::u32> before_cleanup =
+        body_flow_cleanup_point_for(graph, module.intern_identifier("before"));
+    const std::optional<base::u32> future_cleanup =
+        body_flow_cleanup_point_for(graph, module.intern_identifier("future"));
+    const std::optional<base::u32> before_defer_cleanup =
+        body_flow_action_point_for_expr(graph, sema::BodyFlowActionKind::cleanup_scope, before_defer_call);
+    const std::optional<base::u32> before_defer_call_point =
+        body_flow_action_point_for_expr(graph, sema::BodyFlowActionKind::call, before_defer_call);
+    const std::optional<base::u32> future_defer_cleanup =
+        body_flow_action_point_for_expr(graph, sema::BodyFlowActionKind::cleanup_scope, future_defer_call);
+    const std::optional<base::u32> future_defer_call_point =
+        body_flow_action_point_for_expr(graph, sema::BodyFlowActionKind::call, future_defer_call);
+    ASSERT_TRUE(before_cleanup.has_value()) << dump;
+    ASSERT_TRUE(before_defer_cleanup.has_value()) << dump;
+    ASSERT_TRUE(before_defer_call_point.has_value()) << dump;
+
+    EXPECT_TRUE(body_flow_has_path(graph, return_action->point, *before_defer_cleanup)) << dump;
+    EXPECT_TRUE(body_flow_has_path(graph, *before_defer_cleanup, *before_defer_call_point)) << dump;
+    EXPECT_TRUE(body_flow_has_path(graph, *before_defer_call_point, *before_cleanup)) << dump;
+    EXPECT_FALSE(future_cleanup.has_value()) << dump;
+    EXPECT_FALSE(future_defer_cleanup.has_value()) << dump;
+    EXPECT_FALSE(future_defer_call_point.has_value()) << dump;
+    EXPECT_TRUE(diagnostics.diagnostics().empty()) << diagnostic_messages(diagnostics);
 }
 
 TEST(CoreUnit, SemanticWhiteBoxBodyFlowCollectsTupleElementProjection)
@@ -2066,6 +2481,16 @@ TEST(CoreUnit, SemanticWhiteBoxBodyLoanManualGraphCoversProjectionAndStaleEdges)
         }},
         .range = body_loan_test_range(6),
     });
+    graph.places.push_back(sema::BodyFlowPlace{
+        .root_kind = sema::BodyFlowPlaceRootKind::local,
+        .root_name_id = value_id,
+        .root_expr = syntax::ExprId{6},
+        .projections = {sema::BodyFlowPlaceProjection{
+            .kind = sema::BodyFlowPlaceProjectionKind::index,
+            .expr = syntax::ExprId{7},
+        }},
+        .range = body_loan_test_range(7),
+    });
     graph.actions.push_back(sema::BodyFlowAction{
         .kind = static_cast<sema::BodyFlowActionKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE),
         .point = 0,
@@ -2103,40 +2528,46 @@ TEST(CoreUnit, SemanticWhiteBoxBodyLoanManualGraphCoversProjectionAndStaleEdges)
         .range = body_loan_test_range(5),
     });
     graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::write,
+        .point = 0,
+        .place = 7,
+        .range = body_loan_test_range(6),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
         .kind = sema::BodyFlowActionKind::borrow_mutable,
         .point = 0,
         .place = 2,
-        .range = body_loan_test_range(6),
+        .range = body_loan_test_range(7),
     });
     graph.actions.push_back(sema::BodyFlowAction{
         .kind = sema::BodyFlowActionKind::read,
         .point = 0,
         .place = 3,
-        .range = body_loan_test_range(7),
-    });
-    graph.actions.push_back(sema::BodyFlowAction{
-        .kind = sema::BodyFlowActionKind::borrow_shared,
-        .point = 0,
-        .place = 4,
         .range = body_loan_test_range(8),
     });
     graph.actions.push_back(sema::BodyFlowAction{
-        .kind = sema::BodyFlowActionKind::write,
+        .kind = sema::BodyFlowActionKind::borrow_shared,
         .point = 0,
         .place = 4,
         .range = body_loan_test_range(9),
     });
     graph.actions.push_back(sema::BodyFlowAction{
+        .kind = sema::BodyFlowActionKind::write,
+        .point = 0,
+        .place = 4,
+        .range = body_loan_test_range(10),
+    });
+    graph.actions.push_back(sema::BodyFlowAction{
         .kind = sema::BodyFlowActionKind::borrow_shared,
         .point = 0,
         .place = 5,
-        .range = body_loan_test_range(10),
+        .range = body_loan_test_range(11),
     });
     graph.actions.push_back(sema::BodyFlowAction{
         .kind = sema::BodyFlowActionKind::write,
         .point = 0,
         .place = 6,
-        .range = body_loan_test_range(11),
+        .range = body_loan_test_range(12),
     });
     analyzer.state_.checked.body_flow_graphs[key] = std::move(graph);
 
@@ -2148,6 +2579,9 @@ TEST(CoreUnit, SemanticWhiteBoxBodyLoanManualGraphCoversProjectionAndStaleEdges)
     const sema::BodyLoanCheckResult& result = analyzer.state_.checked.body_loan_checks.at(key);
     EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
         return conflict.kind == sema::BodyLoanConflictKind::write && conflict.place == 1;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
+        return conflict.kind == sema::BodyLoanConflictKind::write && conflict.place == 7;
     }));
     EXPECT_FALSE(std::ranges::any_of(result.conflicts, [](const sema::BodyLoanConflict& conflict) {
         return conflict.place == 6;

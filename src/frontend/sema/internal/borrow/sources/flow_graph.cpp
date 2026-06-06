@@ -18,6 +18,9 @@ namespace {
 constexpr std::string_view SEMA_BODY_FLOW_POINT_ID_CONTEXT = "sema body flow point id";
 constexpr std::string_view SEMA_BODY_FLOW_PLACE_ID_CONTEXT = "sema body flow place id";
 constexpr base::usize SEMA_BODY_FLOW_INITIAL_TASK_CAPACITY = 64;
+constexpr base::usize SEMA_BODY_FLOW_CLEANUP_ITEM_INITIAL_CAPACITY = 8;
+constexpr base::usize SEMA_BODY_FLOW_CONTROL_STACK_INITIAL_CAPACITY = 16;
+constexpr base::usize SEMA_BODY_FLOW_FIRST_CHILD_INDEX = 0;
 constexpr int SEMA_BODY_FLOW_TUPLE_FIELD_DECIMAL_BASE = 10;
 
 enum class BodyFlowTaskKind : base::u8 {
@@ -29,7 +32,6 @@ enum class BodyFlowExprContext : base::u8 {
     value,
     branch,
     place_observe,
-    place_write,
 };
 
 struct BodyFlowTask {
@@ -38,6 +40,7 @@ struct BodyFlowTask {
     syntax::ExprId expr = syntax::INVALID_EXPR_ID;
     base::u32 start = SEMA_BODY_FLOW_INVALID_INDEX;
     base::u32 continuation = SEMA_BODY_FLOW_INVALID_INDEX;
+    base::u32 return_continuation = SEMA_BODY_FLOW_INVALID_INDEX;
     BodyFlowExprContext expr_context = BodyFlowExprContext::value;
 };
 
@@ -48,13 +51,44 @@ struct BodyFlowExpressionStep {
 
 struct BodyFlowPatternCleanupFrame {
     syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
-    base::u32 point = SEMA_BODY_FLOW_INVALID_INDEX;
     syntax::StmtId stmt = syntax::INVALID_STMT_ID;
 };
 
 struct BodyFlowStructuredCleanupFrame {
     TypeHandle type = INVALID_TYPE_HANDLE;
     std::vector<BodyFlowPlaceProjection> projections;
+};
+
+enum class BodyFlowCleanupItemKind : base::u8 {
+    defer_expression,
+    storage,
+};
+
+enum class BodyFlowReturnFrameKind : base::u8 {
+    statement,
+    block,
+    if_statement,
+};
+
+enum class BodyFlowReturnIfStage : base::u8 {
+    evaluate_then,
+    after_then,
+    after_alternate,
+};
+
+struct BodyFlowCleanupItem {
+    BodyFlowCleanupItemKind kind = BodyFlowCleanupItemKind::storage;
+    syntax::StmtId stmt = syntax::INVALID_STMT_ID;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    BodyFlowPlace place;
+    base::SourceRange range{};
+};
+
+struct BodyFlowReturnFrame {
+    BodyFlowReturnFrameKind kind = BodyFlowReturnFrameKind::statement;
+    syntax::StmtId stmt = syntax::INVALID_STMT_ID;
+    base::usize next_child = SEMA_BODY_FLOW_FIRST_CHILD_INDEX;
+    BodyFlowReturnIfStage if_stage = BodyFlowReturnIfStage::evaluate_then;
 };
 
 [[nodiscard]] bool valid_stmt(const syntax::AstModule& module, const syntax::StmtId stmt) noexcept
@@ -137,7 +171,7 @@ public:
         const base::u32 exit = this->new_point(
             BodyFlowPointKind::exit, syntax::INVALID_STMT_ID, syntax::INVALID_EXPR_ID, base::SourceRange{});
         if (valid_stmt(this->module_, this->graph_.body)) {
-            this->push_statement(this->graph_.body, entry, exit);
+            this->push_statement(this->graph_.body, entry, exit, exit);
             this->run_tasks();
         } else {
             this->add_edge(entry, exit);
@@ -240,23 +274,8 @@ private:
         this->add_action(kind, point, place_id, stmt, syntax::INVALID_EXPR_ID, range);
     }
 
-    void add_local_projected_storage_action(const BodyFlowActionKind kind, const base::u32 point,
-        const syntax::StmtId stmt, const IdentId name_id, std::vector<BodyFlowPlaceProjection> projections,
-        const base::SourceRange& range)
-    {
-        if (!syntax::is_valid(name_id) || projections.empty()) {
-            return;
-        }
-        BodyFlowPlace place;
-        place.root_kind = BodyFlowPlaceRootKind::local;
-        place.root_name_id = name_id;
-        place.projections = std::move(projections);
-        place.range = range;
-        const base::u32 place_id = this->add_place(std::move(place));
-        this->add_action(kind, point, place_id, stmt, syntax::INVALID_EXPR_ID, range);
-    }
-
-    void push_statement(const syntax::StmtId stmt, const base::u32 start, const base::u32 continuation)
+    void push_statement(const syntax::StmtId stmt, const base::u32 start, const base::u32 continuation,
+        const base::u32 return_continuation)
     {
         if (!valid_stmt(this->module_, stmt)) {
             this->add_edge(start, continuation);
@@ -267,11 +286,12 @@ private:
             .stmt = stmt,
             .start = start,
             .continuation = continuation,
+            .return_continuation = return_continuation,
         });
     }
 
     void push_expression(const syntax::ExprId expr, const base::u32 start, const base::u32 continuation,
-        const BodyFlowExprContext context)
+        const BodyFlowExprContext context, const base::u32 return_continuation)
     {
         if (!valid_expr(this->module_, expr)) {
             this->add_edge(start, continuation);
@@ -282,12 +302,13 @@ private:
             .expr = expr,
             .start = start,
             .continuation = continuation,
+            .return_continuation = return_continuation,
             .expr_context = context,
         });
     }
 
-    void push_statement_sequence(
-        const std::vector<syntax::StmtId>& statements, const base::u32 start, const base::u32 continuation)
+    void push_statement_sequence(const std::vector<syntax::StmtId>& statements, const base::u32 start,
+        const base::u32 continuation, const base::u32 return_continuation)
     {
         std::vector<syntax::StmtId> valid_statements;
         valid_statements.reserve(statements.size());
@@ -311,12 +332,13 @@ private:
             const base::usize index = reverse_index - 1;
             const base::u32 item_start = index == 0 ? start : boundaries[index - 1];
             const base::u32 item_continuation = index + 1 == valid_statements.size() ? continuation : boundaries[index];
-            this->push_statement(valid_statements[index], item_start, item_continuation);
+            this->push_statement(valid_statements[index], item_start, item_continuation, return_continuation);
         }
     }
 
     void push_expression_sequence(
-        const std::vector<BodyFlowExpressionStep>& steps, const base::u32 start, const base::u32 continuation)
+        const std::vector<BodyFlowExpressionStep>& steps, const base::u32 start, const base::u32 continuation,
+        const base::u32 return_continuation)
     {
         std::vector<BodyFlowExpressionStep> valid_steps;
         valid_steps.reserve(steps.size());
@@ -340,134 +362,641 @@ private:
             const base::usize index = reverse_index - 1;
             const base::u32 item_start = index == 0 ? start : boundaries[index - 1];
             const base::u32 item_continuation = index + 1 == valid_steps.size() ? continuation : boundaries[index];
-            this->push_expression(valid_steps[index].expr, item_start, item_continuation, valid_steps[index].context);
+            this->push_expression(
+                valid_steps[index].expr, item_start, item_continuation, valid_steps[index].context, return_continuation);
         }
     }
 
-    void process_statement(const BodyFlowTask& task)
+    void push_block_statement_sequence(const syntax::StmtId block_stmt, const syntax::StmtNode& block,
+        const base::u32 start, const base::u32 continuation, const base::u32 return_continuation)
     {
-        const syntax::StmtNode stmt = this->module_.stmts[task.stmt.value];
-        const base::SourceRange range = stmt_range(this->module_, task.stmt);
-        const base::u32 entry =
-            this->new_point(BodyFlowPointKind::statement_entry, task.stmt, syntax::INVALID_EXPR_ID, range);
-        const base::u32 exit =
-            this->new_point(BodyFlowPointKind::statement_exit, task.stmt, syntax::INVALID_EXPR_ID, range);
-        this->add_edge(task.start, entry);
-        this->add_edge(exit, task.continuation);
+        std::vector<syntax::StmtId> valid_statements;
+        valid_statements.reserve(block.statements.size());
+        for (const syntax::StmtId stmt : block.statements) {
+            if (valid_stmt(this->module_, stmt)) {
+                valid_statements.push_back(stmt);
+            }
+        }
+        if (valid_statements.empty()) {
+            this->add_edge(start, continuation);
+            return;
+        }
 
+        std::vector<base::u32> boundaries;
+        boundaries.reserve(valid_statements.size());
+        for (base::usize index = 1; index < valid_statements.size(); ++index) {
+            boundaries.push_back(this->new_sequence_point(stmt_range(this->module_, valid_statements[index])));
+        }
+
+        std::vector<base::u32> return_continuations(valid_statements.size(), return_continuation);
+        std::vector<BodyFlowCleanupItem> registered_cleanup_items;
+        registered_cleanup_items.reserve(
+            std::min<base::usize>(valid_statements.size(), SEMA_BODY_FLOW_CLEANUP_ITEM_INITIAL_CAPACITY));
+        base::usize cached_cleanup_count = 0;
+        base::u32 cached_cleanup_continuation = SEMA_BODY_FLOW_INVALID_INDEX;
+        for (base::usize index = 0; index < valid_statements.size(); ++index) {
+            const syntax::StmtId stmt = valid_statements[index];
+            if (!registered_cleanup_items.empty() && this->statement_contains_return(stmt)) {
+                if (cached_cleanup_continuation == SEMA_BODY_FLOW_INVALID_INDEX
+                    || cached_cleanup_count != registered_cleanup_items.size()) {
+                    cached_cleanup_count = registered_cleanup_items.size();
+                    cached_cleanup_continuation = this->new_sequence_point(stmt_range(this->module_, stmt));
+                    this->push_cleanup_item_sequence(
+                        registered_cleanup_items, cached_cleanup_continuation, return_continuation,
+                        return_continuation);
+                }
+                return_continuations[index] = cached_cleanup_continuation;
+            }
+            this->collect_statement_cleanup_items(registered_cleanup_items, block_stmt, stmt);
+        }
+
+        for (base::usize reverse_index = valid_statements.size(); reverse_index > 0; --reverse_index) {
+            const base::usize index = reverse_index - 1;
+            const base::u32 item_start = index == 0 ? start : boundaries[index - 1];
+            const base::u32 item_continuation = index + 1 == valid_statements.size() ? continuation : boundaries[index];
+            this->push_statement(
+                valid_statements[index], item_start, item_continuation, return_continuations[index]);
+        }
+    }
+
+    [[nodiscard]] std::vector<BodyFlowCleanupItem> collect_block_cleanup_items(
+        const syntax::StmtId block_stmt, const syntax::StmtNode& block)
+    {
+        std::vector<BodyFlowCleanupItem> items;
+        items.reserve(std::min<base::usize>(block.statements.size(), SEMA_BODY_FLOW_CLEANUP_ITEM_INITIAL_CAPACITY));
+        for (const syntax::StmtId stmt_id : block.statements) {
+            this->collect_statement_cleanup_items(items, block_stmt, stmt_id);
+        }
+        return items;
+    }
+
+    void collect_statement_cleanup_items(
+        std::vector<BodyFlowCleanupItem>& items, const syntax::StmtId block_stmt, const syntax::StmtId stmt_id)
+    {
+        if (!valid_stmt(this->module_, stmt_id)) {
+            return;
+        }
+        const syntax::StmtNode& stmt = this->module_.stmts[stmt_id.value];
+        if (stmt.kind == syntax::StmtKind::defer) {
+            if (valid_expr(this->module_, stmt.init)) {
+                items.push_back(BodyFlowCleanupItem{
+                    .kind = BodyFlowCleanupItemKind::defer_expression,
+                    .stmt = stmt_id,
+                    .expr = stmt.init,
+                    .place = {},
+                    .range = stmt_range(this->module_, stmt_id),
+                });
+            }
+            return;
+        }
+        if (stmt.kind != syntax::StmtKind::let && stmt.kind != syntax::StmtKind::var) {
+            return;
+        }
+        if (syntax::is_valid(stmt.pattern)) {
+            this->collect_pattern_cleanup_storage_items(items, stmt.pattern, stmt_id);
+            return;
+        }
+        this->collect_local_cleanup_storage_items(items, stmt, block_stmt, stmt_id);
+    }
+
+    [[nodiscard]] bool statement_contains_return(const syntax::StmtId stmt_id) const
+    {
+        std::vector<syntax::StmtId> pending;
+        std::vector<syntax::ExprId> pending_exprs;
+        pending.reserve(SEMA_BODY_FLOW_CONTROL_STACK_INITIAL_CAPACITY);
+        pending_exprs.reserve(SEMA_BODY_FLOW_CONTROL_STACK_INITIAL_CAPACITY);
+        this->push_return_scan_stmt(pending, stmt_id);
+        while (!pending.empty() || !pending_exprs.empty()) {
+            while (!pending.empty()) {
+                const syntax::StmtId current = pending.back();
+                pending.pop_back();
+                if (this->scan_statement_for_return(current, pending, pending_exprs)) {
+                    return true;
+                }
+            }
+            if (pending_exprs.empty()) {
+                continue;
+            }
+            const syntax::ExprId expr = pending_exprs.back();
+            pending_exprs.pop_back();
+            if (this->scan_expression_for_return(expr, pending, pending_exprs)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    [[nodiscard]] bool scan_statement_for_return(const syntax::StmtId stmt_id,
+        std::vector<syntax::StmtId>& pending_stmts, std::vector<syntax::ExprId>& pending_exprs) const
+    {
+        if (!valid_stmt(this->module_, stmt_id)) {
+            return false;
+        }
+        const syntax::StmtNode& stmt = this->module_.stmts[stmt_id.value];
         switch (stmt.kind) {
+            case syntax::StmtKind::return_:
+                return true;
             case syntax::StmtKind::let:
             case syntax::StmtKind::var:
-                this->process_local_statement(task.stmt, stmt, entry, exit);
+                this->push_return_scan_expr(pending_exprs, stmt.init);
+                this->push_return_scan_stmt(pending_stmts, stmt.else_block);
                 break;
             case syntax::StmtKind::assign:
-                this->process_assignment_statement(task.stmt, stmt, entry, exit);
+                this->push_return_scan_expr(pending_exprs, stmt.lhs);
+                this->push_return_scan_expr(pending_exprs, stmt.rhs);
                 break;
             case syntax::StmtKind::if_:
-                this->process_if_statement(stmt, entry, exit, range);
+                this->push_return_scan_expr(pending_exprs, stmt.condition);
+                this->push_return_scan_stmt(pending_stmts, stmt.then_block);
+                this->push_return_scan_stmt(pending_stmts, stmt.else_block);
+                this->push_return_scan_stmt(pending_stmts, stmt.else_if);
                 break;
             case syntax::StmtKind::for_:
-                this->process_for_statement(stmt, entry, exit, range);
+                this->push_return_scan_stmt(pending_stmts, stmt.for_init);
+                this->push_return_scan_expr(pending_exprs, stmt.condition);
+                this->push_return_scan_stmt(pending_stmts, stmt.body);
+                this->push_return_scan_stmt(pending_stmts, stmt.for_update);
                 break;
             case syntax::StmtKind::for_range:
-                this->process_for_range_statement(stmt, entry, exit, range);
+                this->push_return_scan_expr(pending_exprs, stmt.range_start);
+                this->push_return_scan_expr(pending_exprs, stmt.range_end);
+                this->push_return_scan_expr(pending_exprs, stmt.range_step);
+                this->push_return_scan_stmt(pending_stmts, stmt.body);
                 break;
             case syntax::StmtKind::while_:
-                this->process_while_statement(stmt, entry, exit, range);
+                this->push_return_scan_expr(pending_exprs, stmt.condition);
+                this->push_return_scan_stmt(pending_stmts, stmt.body);
+                break;
+            case syntax::StmtKind::expr:
+                this->push_return_scan_expr(pending_exprs, stmt.init);
+                break;
+            case syntax::StmtKind::block:
+                pending_stmts.insert(pending_stmts.end(), stmt.statements.begin(), stmt.statements.end());
                 break;
             case syntax::StmtKind::break_:
             case syntax::StmtKind::continue_:
-                this->add_point_action(BodyFlowActionKind::branch, exit, task.stmt, syntax::INVALID_EXPR_ID, range);
-                this->add_edge(entry, exit);
-                break;
             case syntax::StmtKind::defer:
-                this->process_defer_statement(task.stmt, stmt, entry, exit, range);
                 break;
-            case syntax::StmtKind::return_:
-                this->process_return_statement(task.stmt, stmt, entry, exit, range);
+        }
+        return false;
+    }
+
+    [[nodiscard]] bool scan_expression_for_return(const syntax::ExprId expr_id,
+        std::vector<syntax::StmtId>& pending_stmts, std::vector<syntax::ExprId>& pending_exprs) const
+    {
+        if (!valid_expr(this->module_, expr_id)) {
+            return false;
+        }
+        switch (this->module_.exprs.kind(expr_id.value)) {
+            case syntax::ExprKind::generic_apply: {
+                const syntax::GenericApplyExprPayload* const payload =
+                    this->module_.exprs.generic_apply_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_expr(pending_exprs, payload->callee);
+                }
                 break;
-            case syntax::StmtKind::expr:
-                this->push_expression(stmt.init, entry, exit, BodyFlowExprContext::value);
+            }
+            case syntax::ExprKind::unary: {
+                const syntax::UnaryExprPayload* const payload = this->module_.exprs.unary_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_expr(pending_exprs, payload->operand);
+                }
                 break;
-            case syntax::StmtKind::block:
-                this->add_point_action(
-                    BodyFlowActionKind::cleanup_scope, exit, task.stmt, syntax::INVALID_EXPR_ID, range);
-                this->add_block_cleanup_storage_actions(stmt, task.stmt, exit);
-                this->push_statement_sequence(stmt.statements, entry, exit);
+            }
+            case syntax::ExprKind::try_expr: {
+                const syntax::TryExprPayload* const payload = this->module_.exprs.try_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_expr(pending_exprs, payload->operand);
+                }
                 break;
+            }
+            case syntax::ExprKind::binary: {
+                const syntax::BinaryExprPayload* const payload = this->module_.exprs.binary_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_expr(pending_exprs, payload->lhs);
+                    this->push_return_scan_expr(pending_exprs, payload->rhs);
+                }
+                break;
+            }
+            case syntax::ExprKind::call:
+            case syntax::ExprKind::str_from_bytes_unchecked: {
+                const syntax::CallExprPayload* const payload = this->module_.exprs.call_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_expr(pending_exprs, payload->callee);
+                    for (const syntax::ExprId arg : payload->args) {
+                        this->push_return_scan_expr(pending_exprs, arg);
+                    }
+                }
+                break;
+            }
+            case syntax::ExprKind::if_expr: {
+                const syntax::IfExprPayload* const payload = this->module_.exprs.if_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_expr(pending_exprs, payload->condition);
+                    this->push_return_scan_expr(pending_exprs, payload->then_expr);
+                    this->push_return_scan_expr(pending_exprs, payload->else_expr);
+                }
+                break;
+            }
+            case syntax::ExprKind::block_expr:
+            case syntax::ExprKind::unsafe_block: {
+                const syntax::BlockExprPayload* const payload = this->module_.exprs.block_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_stmt(pending_stmts, payload->block);
+                    this->push_return_scan_expr(pending_exprs, payload->result);
+                }
+                break;
+            }
+            case syntax::ExprKind::match_expr: {
+                const syntax::MatchExprPayload* const payload = this->module_.exprs.match_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_expr(pending_exprs, payload->value);
+                    for (const syntax::MatchArm& arm : payload->arms) {
+                        this->push_return_scan_expr(pending_exprs, arm.guard);
+                        this->push_return_scan_expr(pending_exprs, arm.value);
+                    }
+                }
+                break;
+            }
+            case syntax::ExprKind::array_literal: {
+                const syntax::ArrayExprPayload* const payload = this->module_.exprs.array_payload(expr_id.value);
+                if (payload != nullptr) {
+                    for (const syntax::ExprId element : payload->elements) {
+                        this->push_return_scan_expr(pending_exprs, element);
+                    }
+                    this->push_return_scan_expr(pending_exprs, payload->repeat_value);
+                    this->push_return_scan_expr(pending_exprs, payload->repeat_count);
+                }
+                break;
+            }
+            case syntax::ExprKind::tuple_literal: {
+                const syntax::AstArenaVector<syntax::ExprId>* const elements =
+                    this->module_.exprs.tuple_elements(expr_id.value);
+                if (elements != nullptr) {
+                    for (const syntax::ExprId element : *elements) {
+                        this->push_return_scan_expr(pending_exprs, element);
+                    }
+                }
+                break;
+            }
+            case syntax::ExprKind::field: {
+                const syntax::FieldExprPayload* const payload = this->module_.exprs.field_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_expr(pending_exprs, payload->object);
+                }
+                break;
+            }
+            case syntax::ExprKind::index: {
+                const syntax::IndexExprPayload* const payload = this->module_.exprs.index_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_expr(pending_exprs, payload->object);
+                    this->push_return_scan_expr(pending_exprs, payload->index);
+                }
+                break;
+            }
+            case syntax::ExprKind::slice: {
+                const syntax::SliceExprPayload* const payload = this->module_.exprs.slice_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_expr(pending_exprs, payload->object);
+                    this->push_return_scan_expr(pending_exprs, payload->start);
+                    this->push_return_scan_expr(pending_exprs, payload->end);
+                }
+                break;
+            }
+            case syntax::ExprKind::struct_literal: {
+                const syntax::StructLiteralExprPayload* const payload =
+                    this->module_.exprs.struct_literal_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_expr(pending_exprs, payload->object);
+                    for (const syntax::FieldInit& field : payload->field_inits) {
+                        this->push_return_scan_expr(pending_exprs, field.value);
+                    }
+                }
+                break;
+            }
+            case syntax::ExprKind::cast:
+            case syntax::ExprKind::pcast:
+            case syntax::ExprKind::bcast:
+            case syntax::ExprKind::size_of:
+            case syntax::ExprKind::align_of:
+            case syntax::ExprKind::ptr_addr:
+            case syntax::ExprKind::paddr:
+            case syntax::ExprKind::slice_data:
+            case syntax::ExprKind::slice_len:
+            case syntax::ExprKind::str_data:
+            case syntax::ExprKind::str_byte_len:
+            case syntax::ExprKind::str_is_valid_utf8:
+            case syntax::ExprKind::str_from_utf8_checked: {
+                const syntax::CastExprPayload* const payload = this->module_.exprs.cast_payload(expr_id.value);
+                if (payload != nullptr) {
+                    this->push_return_scan_expr(pending_exprs, payload->expr);
+                }
+                break;
+            }
+            case syntax::ExprKind::invalid:
+            case syntax::ExprKind::integer_literal:
+            case syntax::ExprKind::float_literal:
+            case syntax::ExprKind::bool_literal:
+            case syntax::ExprKind::null_literal:
+            case syntax::ExprKind::string_literal:
+            case syntax::ExprKind::c_string_literal:
+            case syntax::ExprKind::raw_string_literal:
+            case syntax::ExprKind::byte_string_literal:
+            case syntax::ExprKind::byte_literal:
+            case syntax::ExprKind::char_literal:
+            case syntax::ExprKind::name:
+                break;
+        }
+        return false;
+    }
+
+    void push_return_scan_stmt(std::vector<syntax::StmtId>& pending, const syntax::StmtId stmt) const
+    {
+        if (valid_stmt(this->module_, stmt)) {
+            pending.push_back(stmt);
         }
     }
 
-    void process_local_statement(
-        const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit)
+    void push_return_scan_expr(std::vector<syntax::ExprId>& pending, const syntax::ExprId expr) const
     {
-        if (syntax::is_valid(stmt.name_id)) {
-            this->add_local_storage_action(BodyFlowActionKind::write, exit, stmt_id, stmt.name_id, stmt.range);
-        }
-        if (syntax::is_valid(stmt.init)) {
-            this->push_expression(stmt.init, entry, exit, BodyFlowExprContext::value);
-        } else {
-            this->add_edge(entry, exit);
+        if (valid_expr(this->module_, expr)) {
+            pending.push_back(expr);
         }
     }
 
-    void process_assignment_statement(
-        const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit)
+    [[nodiscard]] bool statement_may_fallthrough(const syntax::StmtId stmt_id) const
     {
-        const base::u32 lhs_done = this->new_sequence_point(stmt.range);
-        const base::u32 rhs_done = this->new_sequence_point(stmt.range);
-        this->push_expression(stmt.lhs, entry, lhs_done, BodyFlowExprContext::place_observe);
-        this->push_expression(stmt.rhs, lhs_done, rhs_done, BodyFlowExprContext::value);
-        if (valid_expr(this->module_, stmt.lhs)) {
-            const BodyFlowActionKind write_kind = this->assignment_write_kind(stmt.lhs);
-            this->add_place_action(write_kind, exit, stmt_id, stmt.lhs);
+        if (!valid_stmt(this->module_, stmt_id)) {
+            return true;
         }
-        this->add_edge(rhs_done, exit);
+        std::vector<BodyFlowReturnFrame> stack;
+        stack.reserve(SEMA_BODY_FLOW_CONTROL_STACK_INITIAL_CAPACITY);
+        stack.push_back(BodyFlowReturnFrame{
+            .kind = BodyFlowReturnFrameKind::statement,
+            .stmt = stmt_id,
+        });
+
+        bool has_result = false;
+        bool final_result = true;
+        while (!has_result && !stack.empty()) {
+            switch (stack.back().kind) {
+                case BodyFlowReturnFrameKind::statement:
+                    this->evaluate_statement_fallthrough_frame(stack, has_result, final_result);
+                    break;
+                case BodyFlowReturnFrameKind::block:
+                    this->evaluate_block_fallthrough_frame(stack, has_result, final_result);
+                    break;
+                case BodyFlowReturnFrameKind::if_statement:
+                    this->evaluate_if_fallthrough_frame(stack, has_result, final_result);
+                    break;
+            }
+        }
+        return final_result;
     }
 
-    [[nodiscard]] BodyFlowActionKind assignment_write_kind(const syntax::ExprId lhs) const noexcept
+    [[nodiscard]] bool block_may_fallthrough(const syntax::StmtNode& block) const
     {
-        if (this->expr_is_direct_local_name(lhs) || this->expr_is_field_projection(lhs)) {
-            return BodyFlowActionKind::reinit;
-        }
-        return BodyFlowActionKind::write;
-    }
-
-    void add_block_cleanup_storage_actions(
-        const syntax::StmtNode& block, const syntax::StmtId block_stmt, const base::u32 cleanup_point)
-    {
+        std::vector<BodyFlowReturnFrame> stack;
+        stack.reserve(SEMA_BODY_FLOW_CONTROL_STACK_INITIAL_CAPACITY);
         for (const syntax::StmtId stmt_id : block.statements) {
             if (!valid_stmt(this->module_, stmt_id)) {
                 continue;
             }
-            const syntax::StmtNode stmt = this->module_.stmts[stmt_id.value];
-            if (stmt.kind != syntax::StmtKind::let && stmt.kind != syntax::StmtKind::var) {
-                continue;
+            if (!this->statement_may_fallthrough(stmt_id)) {
+                return false;
             }
-            if (syntax::is_valid(stmt.pattern)) {
-                this->add_pattern_cleanup_storage_actions(stmt.pattern, cleanup_point, stmt_id);
-                continue;
-            }
-            this->add_local_cleanup_storage_actions(stmt, cleanup_point, block_stmt, stmt_id);
+        }
+        return true;
+    }
+
+    void evaluate_statement_fallthrough_frame(
+        std::vector<BodyFlowReturnFrame>& stack, bool& has_result, bool& final_result) const
+    {
+        BodyFlowReturnFrame& frame = stack.back();
+        if (!valid_stmt(this->module_, frame.stmt)) {
+            this->finish_fallthrough_frame(stack, true, has_result, final_result);
+            return;
+        }
+        const syntax::StmtNode& stmt = this->module_.stmts[frame.stmt.value];
+        switch (stmt.kind) {
+            case syntax::StmtKind::return_:
+            case syntax::StmtKind::break_:
+            case syntax::StmtKind::continue_:
+                this->finish_fallthrough_frame(stack, false, has_result, final_result);
+                break;
+            case syntax::StmtKind::block:
+                frame.kind = BodyFlowReturnFrameKind::block;
+                frame.next_child = SEMA_BODY_FLOW_FIRST_CHILD_INDEX;
+                break;
+            case syntax::StmtKind::if_:
+                frame.kind = BodyFlowReturnFrameKind::if_statement;
+                frame.if_stage = BodyFlowReturnIfStage::evaluate_then;
+                break;
+            case syntax::StmtKind::let:
+            case syntax::StmtKind::var:
+            case syntax::StmtKind::assign:
+            case syntax::StmtKind::for_:
+            case syntax::StmtKind::for_range:
+            case syntax::StmtKind::while_:
+            case syntax::StmtKind::defer:
+            case syntax::StmtKind::expr:
+                this->finish_fallthrough_frame(stack, true, has_result, final_result);
+                break;
         }
     }
 
-    void add_local_cleanup_storage_actions(const syntax::StmtNode& stmt, const base::u32 cleanup_point,
+    void evaluate_block_fallthrough_frame(
+        std::vector<BodyFlowReturnFrame>& stack, bool& has_result, bool& final_result) const
+    {
+        BodyFlowReturnFrame& frame = stack.back();
+        if (!valid_stmt(this->module_, frame.stmt)) {
+            this->finish_fallthrough_frame(stack, true, has_result, final_result);
+            return;
+        }
+        const syntax::AstArenaVector<syntax::StmtId>* const statements =
+            this->module_.stmts.block_statements(frame.stmt.value);
+        if (statements == nullptr) {
+            frame.kind = BodyFlowReturnFrameKind::statement;
+            return;
+        }
+        if (frame.next_child >= statements->size()) {
+            this->finish_fallthrough_frame(stack, true, has_result, final_result);
+            return;
+        }
+        const syntax::StmtId child = (*statements)[frame.next_child];
+        stack.push_back(BodyFlowReturnFrame{
+            .kind = BodyFlowReturnFrameKind::statement,
+            .stmt = child,
+        });
+    }
+
+    void evaluate_if_fallthrough_frame(
+        std::vector<BodyFlowReturnFrame>& stack, bool& has_result, bool& final_result) const
+    {
+        BodyFlowReturnFrame& frame = stack.back();
+        if (!valid_stmt(this->module_, frame.stmt)) {
+            this->finish_fallthrough_frame(stack, true, has_result, final_result);
+            return;
+        }
+        const syntax::StmtNode& stmt = this->module_.stmts[frame.stmt.value];
+        if (stmt.kind != syntax::StmtKind::if_) {
+            this->finish_fallthrough_frame(stack, true, has_result, final_result);
+            return;
+        }
+        if (frame.if_stage == BodyFlowReturnIfStage::evaluate_then) {
+            frame.if_stage = BodyFlowReturnIfStage::after_then;
+            stack.push_back(BodyFlowReturnFrame{
+                .kind = BodyFlowReturnFrameKind::block,
+                .stmt = stmt.then_block,
+            });
+            return;
+        }
+    }
+
+    void finish_fallthrough_frame(
+        std::vector<BodyFlowReturnFrame>& stack, const bool result, bool& has_result, bool& final_result) const
+    {
+        stack.pop_back();
+        while (!stack.empty()) {
+            BodyFlowReturnFrame& parent = stack.back();
+            switch (parent.kind) {
+                case BodyFlowReturnFrameKind::statement:
+                    return;
+                case BodyFlowReturnFrameKind::block:
+                    if (result) {
+                        ++parent.next_child;
+                        return;
+                    }
+                    stack.pop_back();
+                    continue;
+                case BodyFlowReturnFrameKind::if_statement:
+                    if (parent.if_stage == BodyFlowReturnIfStage::after_then) {
+                        if (result) {
+                            this->finish_fallthrough_frame(stack, true, has_result, final_result);
+                            return;
+                        }
+                        const syntax::StmtNode& stmt = this->module_.stmts[parent.stmt.value];
+                        parent.if_stage = BodyFlowReturnIfStage::after_alternate;
+                        if (valid_stmt(this->module_, stmt.else_block)) {
+                            stack.push_back(BodyFlowReturnFrame{
+                                .kind = BodyFlowReturnFrameKind::block,
+                                .stmt = stmt.else_block,
+                            });
+                            return;
+                        }
+                        if (valid_stmt(this->module_, stmt.else_if)) {
+                            stack.push_back(BodyFlowReturnFrame{
+                                .kind = BodyFlowReturnFrameKind::statement,
+                                .stmt = stmt.else_if,
+                            });
+                            return;
+                        }
+                        this->finish_fallthrough_frame(stack, true, has_result, final_result);
+                        return;
+                    }
+                    if (parent.if_stage == BodyFlowReturnIfStage::after_alternate) {
+                        stack.pop_back();
+                        continue;
+                    }
+                    return;
+            }
+        }
+        has_result = true;
+        final_result = result;
+    }
+
+    void push_cleanup_item_sequence(std::vector<BodyFlowCleanupItem> items, const base::u32 start,
+        const base::u32 continuation, const base::u32 return_continuation)
+    {
+        std::vector<base::usize> execution_order;
+        execution_order.reserve(items.size());
+        for (base::usize item_index = items.size(); item_index > 0; --item_index) {
+            execution_order.push_back(item_index - 1U);
+        }
+
+        std::vector<base::u32> cleanup_points;
+        cleanup_points.reserve(execution_order.size());
+        for (const base::usize item_index : execution_order) {
+            BodyFlowCleanupItem& item = items[item_index];
+            const base::u32 point = item.kind == BodyFlowCleanupItemKind::defer_expression
+                ? this->new_cleanup_point(item.stmt, item.range)
+                : this->new_sequence_point(item.range);
+            if (item.kind == BodyFlowCleanupItemKind::defer_expression) {
+                this->add_point_action(BodyFlowActionKind::cleanup_scope, point, item.stmt, item.expr, item.range);
+            } else {
+                const base::u32 place = this->add_place(std::move(item.place));
+                this->add_action(
+                    BodyFlowActionKind::cleanup_storage, point, place, item.stmt, syntax::INVALID_EXPR_ID, item.range);
+            }
+            cleanup_points.push_back(point);
+        }
+
+        this->add_edge(start, cleanup_points.front());
+        for (base::usize cleanup_index = 0; cleanup_index < cleanup_points.size(); ++cleanup_index) {
+            const base::usize item_index = execution_order[cleanup_index];
+            const base::u32 item_continuation = cleanup_index + 1U == cleanup_points.size()
+                ? continuation
+                : cleanup_points[cleanup_index + 1U];
+            if (items[item_index].kind == BodyFlowCleanupItemKind::defer_expression) {
+                this->push_expression(items[item_index].expr, cleanup_points[cleanup_index], item_continuation,
+                    BodyFlowExprContext::value, return_continuation);
+                continue;
+            }
+            this->add_edge(cleanup_points[cleanup_index], item_continuation);
+        }
+    }
+
+    void collect_local_storage_cleanup_item(std::vector<BodyFlowCleanupItem>& items, const syntax::StmtId stmt,
+        const IdentId name_id, const base::SourceRange& range)
+    {
+        if (!syntax::is_valid(name_id)) {
+            return;
+        }
+        BodyFlowPlace place;
+        place.root_kind = BodyFlowPlaceRootKind::local;
+        place.root_name_id = name_id;
+        place.range = range;
+        items.push_back(BodyFlowCleanupItem{
+            .kind = BodyFlowCleanupItemKind::storage,
+            .stmt = stmt,
+            .place = std::move(place),
+            .range = range,
+        });
+    }
+
+    void collect_local_projected_storage_cleanup_item(std::vector<BodyFlowCleanupItem>& items,
+        const syntax::StmtId stmt, const IdentId name_id, std::vector<BodyFlowPlaceProjection> projections,
+        const base::SourceRange& range)
+    {
+        BodyFlowPlace place;
+        place.root_kind = BodyFlowPlaceRootKind::local;
+        place.root_name_id = name_id;
+        place.projections = std::move(projections);
+        place.range = range;
+        items.push_back(BodyFlowCleanupItem{
+            .kind = BodyFlowCleanupItemKind::storage,
+            .stmt = stmt,
+            .place = std::move(place),
+            .range = range,
+        });
+    }
+
+    void collect_local_cleanup_storage_items(std::vector<BodyFlowCleanupItem>& items, const syntax::StmtNode& stmt,
         const syntax::StmtId block_stmt, const syntax::StmtId local_stmt)
     {
         if (!syntax::is_valid(stmt.name_id)) {
             return;
         }
-        if (this->add_structured_cleanup_storage_actions(
-                stmt.name_id, this->cached_stmt_local_type(local_stmt), cleanup_point, block_stmt, stmt.range)) {
+        if (this->collect_structured_cleanup_storage_items(
+                items, stmt.name_id, this->cached_stmt_local_type(local_stmt), block_stmt, stmt.range)) {
             return;
         }
-        this->add_local_storage_action(
-            BodyFlowActionKind::cleanup_storage, cleanup_point, block_stmt, stmt.name_id, stmt.range);
+        this->collect_local_storage_cleanup_item(items, block_stmt, stmt.name_id, stmt.range);
     }
 
-    [[nodiscard]] bool add_structured_cleanup_storage_actions(const IdentId root_name, const TypeHandle type,
-        const base::u32 cleanup_point, const syntax::StmtId block_stmt, const base::SourceRange& range)
+    [[nodiscard]] bool collect_structured_cleanup_storage_items(std::vector<BodyFlowCleanupItem>& items,
+        const IdentId root_name, const TypeHandle type, const syntax::StmtId block_stmt,
+        const base::SourceRange& range)
     {
         bool expanded_any = false;
         std::vector<BodyFlowStructuredCleanupFrame> pending;
@@ -495,11 +1024,167 @@ private:
             }
 
             if (!frame.projections.empty()) {
-                this->add_local_projected_storage_action(
-                    BodyFlowActionKind::cleanup_storage, cleanup_point, block_stmt, root_name, frame.projections, range);
+                this->collect_local_projected_storage_cleanup_item(
+                    items, block_stmt, root_name, std::move(frame.projections), range);
             }
         }
         return expanded_any;
+    }
+
+    void collect_pattern_cleanup_storage_items(
+        std::vector<BodyFlowCleanupItem>& items, const syntax::PatternId pattern, const syntax::StmtId stmt_id)
+    {
+        std::vector<BodyFlowPatternCleanupFrame> pending;
+        pending.push_back(BodyFlowPatternCleanupFrame{.pattern = pattern, .stmt = stmt_id});
+        while (!pending.empty()) {
+            const BodyFlowPatternCleanupFrame frame = pending.back();
+            pending.pop_back();
+            if (!valid_pattern(this->module_, frame.pattern)) {
+                continue;
+            }
+            const syntax::PatternNode* const node = this->module_.patterns.ptr(frame.pattern.value);
+            if (node == nullptr) {
+                continue;
+            }
+            switch (node->kind) {
+                case syntax::PatternKind::binding:
+                    this->collect_local_storage_cleanup_item(items, frame.stmt, node->binding_name_id, node->range);
+                    break;
+                case syntax::PatternKind::tuple:
+                case syntax::PatternKind::slice:
+                    for (const syntax::PatternId element : node->elements) {
+                        pending.push_back(BodyFlowPatternCleanupFrame{.pattern = element, .stmt = frame.stmt});
+                    }
+                    break;
+                case syntax::PatternKind::struct_:
+                    for (const syntax::FieldPattern& field : node->field_patterns) {
+                        pending.push_back(BodyFlowPatternCleanupFrame{.pattern = field.pattern, .stmt = frame.stmt});
+                    }
+                    break;
+                case syntax::PatternKind::enum_case:
+                    for (const syntax::PatternId payload : node->payload_patterns) {
+                        pending.push_back(BodyFlowPatternCleanupFrame{.pattern = payload, .stmt = frame.stmt});
+                    }
+                    break;
+                case syntax::PatternKind::or_pattern:
+                    for (const syntax::PatternId alternative : node->alternatives) {
+                        pending.push_back(BodyFlowPatternCleanupFrame{.pattern = alternative, .stmt = frame.stmt});
+                    }
+                    break;
+                case syntax::PatternKind::wildcard:
+                case syntax::PatternKind::literal:
+                case syntax::PatternKind::const_:
+                    break;
+            }
+        }
+    }
+
+    void process_statement(const BodyFlowTask& task)
+    {
+        const syntax::StmtNode stmt = this->module_.stmts[task.stmt.value];
+        const base::SourceRange range = stmt_range(this->module_, task.stmt);
+        const base::u32 entry =
+            this->new_point(BodyFlowPointKind::statement_entry, task.stmt, syntax::INVALID_EXPR_ID, range);
+        const base::u32 exit =
+            this->new_point(BodyFlowPointKind::statement_exit, task.stmt, syntax::INVALID_EXPR_ID, range);
+        this->add_edge(task.start, entry);
+        if (stmt.kind != syntax::StmtKind::return_) {
+            this->add_edge(exit, task.continuation);
+        }
+
+        switch (stmt.kind) {
+            case syntax::StmtKind::let:
+            case syntax::StmtKind::var:
+                this->process_local_statement(task.stmt, stmt, entry, exit, task.return_continuation);
+                break;
+            case syntax::StmtKind::assign:
+                this->process_assignment_statement(task.stmt, stmt, entry, exit, task.return_continuation);
+                break;
+            case syntax::StmtKind::if_:
+                this->process_if_statement(stmt, entry, exit, task.return_continuation, range);
+                break;
+            case syntax::StmtKind::for_:
+                this->process_for_statement(stmt, entry, exit, task.return_continuation, range);
+                break;
+            case syntax::StmtKind::for_range:
+                this->process_for_range_statement(stmt, entry, exit, task.return_continuation, range);
+                break;
+            case syntax::StmtKind::while_:
+                this->process_while_statement(stmt, entry, exit, task.return_continuation, range);
+                break;
+            case syntax::StmtKind::break_:
+            case syntax::StmtKind::continue_:
+                this->add_point_action(BodyFlowActionKind::branch, exit, task.stmt, syntax::INVALID_EXPR_ID, range);
+                this->add_edge(entry, exit);
+                break;
+            case syntax::StmtKind::defer:
+                this->process_defer_statement(task.stmt, stmt, entry, exit, range);
+                break;
+            case syntax::StmtKind::return_:
+                this->process_return_statement(task.stmt, stmt, entry, task.return_continuation, range);
+                break;
+            case syntax::StmtKind::expr:
+                this->push_expression(stmt.init, entry, exit, BodyFlowExprContext::value, task.return_continuation);
+                break;
+            case syntax::StmtKind::block:
+                this->process_block_statement(task.stmt, stmt, entry, exit, task.return_continuation, range);
+                break;
+        }
+    }
+
+    void process_block_statement(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const base::u32 entry,
+        const base::u32 exit, const base::u32 return_continuation, const base::SourceRange& range)
+    {
+        this->add_point_action(BodyFlowActionKind::cleanup_scope, exit, stmt_id, syntax::INVALID_EXPR_ID, range);
+
+        std::vector<BodyFlowCleanupItem> cleanup_items = this->collect_block_cleanup_items(stmt_id, stmt);
+        if (cleanup_items.empty()) {
+            this->push_statement_sequence(stmt.statements, entry, exit, return_continuation);
+            return;
+        }
+
+        const base::u32 cleanup_start = this->new_sequence_point(range);
+        this->push_block_statement_sequence(stmt_id, stmt, entry, cleanup_start, return_continuation);
+        if (this->block_may_fallthrough(stmt)) {
+            this->push_cleanup_item_sequence(cleanup_items, cleanup_start, exit, return_continuation);
+        }
+    }
+
+    void process_local_statement(
+        const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit,
+        const base::u32 return_continuation)
+    {
+        if (syntax::is_valid(stmt.name_id)) {
+            this->add_local_storage_action(BodyFlowActionKind::write, exit, stmt_id, stmt.name_id, stmt.range);
+        }
+        if (syntax::is_valid(stmt.init)) {
+            this->push_expression(stmt.init, entry, exit, BodyFlowExprContext::value, return_continuation);
+        } else {
+            this->add_edge(entry, exit);
+        }
+    }
+
+    void process_assignment_statement(
+        const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit,
+        const base::u32 return_continuation)
+    {
+        const base::u32 lhs_done = this->new_sequence_point(stmt.range);
+        const base::u32 rhs_done = this->new_sequence_point(stmt.range);
+        this->push_expression(stmt.lhs, entry, lhs_done, BodyFlowExprContext::place_observe, return_continuation);
+        this->push_expression(stmt.rhs, lhs_done, rhs_done, BodyFlowExprContext::value, return_continuation);
+        if (valid_expr(this->module_, stmt.lhs)) {
+            const BodyFlowActionKind write_kind = this->assignment_write_kind(stmt.lhs);
+            this->add_place_action(write_kind, exit, stmt_id, stmt.lhs);
+        }
+        this->add_edge(rhs_done, exit);
+    }
+
+    [[nodiscard]] BodyFlowActionKind assignment_write_kind(const syntax::ExprId lhs) const noexcept
+    {
+        if (this->expr_is_direct_local_name(lhs) || this->expr_is_field_projection(lhs)) {
+            return BodyFlowActionKind::reinit;
+        }
+        return BodyFlowActionKind::write;
     }
 
     [[nodiscard]] bool push_tuple_element_cleanup_storage_actions(const BodyFlowStructuredCleanupFrame& frame,
@@ -554,72 +1239,19 @@ private:
         return pushed_any;
     }
 
-    void add_pattern_cleanup_storage_actions(
-        const syntax::PatternId pattern, const base::u32 cleanup_point, const syntax::StmtId stmt_id)
-    {
-        std::vector<BodyFlowPatternCleanupFrame> pending;
-        pending.push_back(BodyFlowPatternCleanupFrame{
-            .pattern = pattern,
-            .point = cleanup_point,
-            .stmt = stmt_id,
-        });
-        while (!pending.empty()) {
-            const BodyFlowPatternCleanupFrame frame = pending.back();
-            pending.pop_back();
-            if (!valid_pattern(this->module_, frame.pattern)) {
-                continue;
-            }
-            const syntax::PatternNode* const node = this->module_.patterns.ptr(frame.pattern.value);
-            if (node == nullptr) {
-                continue;
-            }
-            switch (node->kind) {
-                case syntax::PatternKind::binding:
-                    this->add_local_storage_action(BodyFlowActionKind::cleanup_storage, frame.point, frame.stmt,
-                        node->binding_name_id, node->range);
-                    break;
-                case syntax::PatternKind::tuple:
-                case syntax::PatternKind::slice:
-                    for (const syntax::PatternId element : node->elements) {
-                        pending.push_back(BodyFlowPatternCleanupFrame{element, frame.point, frame.stmt});
-                    }
-                    break;
-                case syntax::PatternKind::struct_:
-                    for (const syntax::FieldPattern& field : node->field_patterns) {
-                        pending.push_back(BodyFlowPatternCleanupFrame{field.pattern, frame.point, frame.stmt});
-                    }
-                    break;
-                case syntax::PatternKind::enum_case:
-                    for (const syntax::PatternId payload : node->payload_patterns) {
-                        pending.push_back(BodyFlowPatternCleanupFrame{payload, frame.point, frame.stmt});
-                    }
-                    break;
-                case syntax::PatternKind::or_pattern:
-                    for (const syntax::PatternId alternative : node->alternatives) {
-                        pending.push_back(BodyFlowPatternCleanupFrame{alternative, frame.point, frame.stmt});
-                    }
-                    break;
-                case syntax::PatternKind::wildcard:
-                case syntax::PatternKind::literal:
-                case syntax::PatternKind::const_:
-                    break;
-            }
-        }
-    }
-
-    void process_if_statement(
-        const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit, const base::SourceRange& range)
+    void process_if_statement(const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit,
+        const base::u32 return_continuation, const base::SourceRange& range)
     {
         const base::u32 condition_done = this->new_sequence_point(range);
-        this->push_expression(stmt.condition, entry, condition_done, BodyFlowExprContext::branch);
+        this->push_expression(stmt.condition, entry, condition_done, BodyFlowExprContext::branch, return_continuation);
         if (valid_stmt(this->module_, stmt.then_block)) {
-            this->push_statement(stmt.then_block, condition_done, exit);
+            this->push_statement(stmt.then_block, condition_done, exit, return_continuation);
         }
         if (valid_stmt(this->module_, stmt.else_block)) {
-            this->push_statement(stmt.else_block, condition_done, exit);
+            this->push_statement(stmt.else_block, condition_done, exit, return_continuation);
         }
         if (valid_stmt(this->module_, stmt.else_if)) {
-            this->push_statement(stmt.else_if, condition_done, exit);
+            this->push_statement(stmt.else_if, condition_done, exit, return_continuation);
         }
         if (!valid_stmt(this->module_, stmt.then_block) && !valid_stmt(this->module_, stmt.else_block)
             && !valid_stmt(this->module_, stmt.else_if)) {
@@ -629,21 +1261,22 @@ private:
         }
     }
 
-    void process_for_statement(
-        const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit, const base::SourceRange& range)
+    void process_for_statement(const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit,
+        const base::u32 return_continuation, const base::SourceRange& range)
     {
         const base::u32 init_done = this->new_sequence_point(range);
         const base::u32 condition_done = this->new_sequence_point(range);
         const base::u32 body_done = this->new_sequence_point(range);
-        this->push_statement(stmt.for_init, entry, init_done);
-        this->push_expression(stmt.condition, init_done, condition_done, BodyFlowExprContext::branch);
+        this->push_statement(stmt.for_init, entry, init_done, return_continuation);
+        this->push_expression(
+            stmt.condition, init_done, condition_done, BodyFlowExprContext::branch, return_continuation);
         this->add_edge(condition_done, exit);
-        this->push_statement(stmt.body, condition_done, body_done);
-        this->push_statement(stmt.for_update, body_done, init_done);
+        this->push_statement(stmt.body, condition_done, body_done, return_continuation);
+        this->push_statement(stmt.for_update, body_done, init_done, return_continuation);
     }
 
-    void process_for_range_statement(
-        const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit, const base::SourceRange& range)
+    void process_for_range_statement(const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit,
+        const base::u32 return_continuation, const base::SourceRange& range)
     {
         const base::u32 range_done = this->new_sequence_point(range);
         this->push_expression_sequence(
@@ -652,36 +1285,36 @@ private:
                 BodyFlowExpressionStep{stmt.range_end, BodyFlowExprContext::value},
                 BodyFlowExpressionStep{stmt.range_step, BodyFlowExprContext::value},
             },
-            entry, range_done);
+            entry, range_done, return_continuation);
         this->add_point_action(
             BodyFlowActionKind::branch, range_done, syntax::INVALID_STMT_ID, syntax::INVALID_EXPR_ID, range);
         this->add_edge(range_done, exit);
-        this->push_statement(stmt.body, range_done, range_done);
+        this->push_statement(stmt.body, range_done, range_done, return_continuation);
     }
 
-    void process_while_statement(
-        const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit, const base::SourceRange& range)
+    void process_while_statement(const syntax::StmtNode& stmt, const base::u32 entry, const base::u32 exit,
+        const base::u32 return_continuation, const base::SourceRange& range)
     {
         const base::u32 condition_done = this->new_sequence_point(range);
-        this->push_expression(stmt.condition, entry, condition_done, BodyFlowExprContext::branch);
+        this->push_expression(stmt.condition, entry, condition_done, BodyFlowExprContext::branch, return_continuation);
         this->add_edge(condition_done, exit);
-        this->push_statement(stmt.body, condition_done, entry);
+        this->push_statement(stmt.body, condition_done, entry, return_continuation);
     }
 
     void process_defer_statement(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const base::u32 entry,
         const base::u32 exit, const base::SourceRange& range)
     {
-        const base::u32 cleanup = this->new_cleanup_point(stmt_id, range);
-        this->add_point_action(BodyFlowActionKind::cleanup_scope, cleanup, stmt_id, stmt.init, range);
-        this->push_expression(stmt.init, entry, cleanup, BodyFlowExprContext::value);
-        this->add_edge(cleanup, exit);
+        static_cast<void>(stmt_id);
+        static_cast<void>(stmt);
+        static_cast<void>(range);
+        this->add_edge(entry, exit);
     }
 
     void process_return_statement(const syntax::StmtId stmt_id, const syntax::StmtNode& stmt, const base::u32 entry,
         const base::u32 exit, const base::SourceRange& range)
     {
         const base::u32 return_point = this->new_sequence_point(range);
-        this->push_expression(stmt.return_value, entry, return_point, BodyFlowExprContext::value);
+        this->push_expression(stmt.return_value, entry, return_point, BodyFlowExprContext::value, exit);
         this->add_point_action(BodyFlowActionKind::return_, return_point, stmt_id, stmt.return_value, range);
         this->add_edge(return_point, exit);
     }
@@ -700,8 +1333,8 @@ private:
         if (task.expr_context == BodyFlowExprContext::branch) {
             this->add_point_action(BodyFlowActionKind::branch, exit, syntax::INVALID_STMT_ID, task.expr, range);
         }
-        if (this->record_place_context_action(task.expr, task.expr_context, exit)) {
-            this->push_place_operands(task.expr, entry, exit);
+        if (this->record_place_context_action(task.expr, task.expr_context)) {
+            this->push_place_operands(task.expr, entry, exit, task.return_continuation);
             return;
         }
 
@@ -711,7 +1344,7 @@ private:
                 ? BodyFlowActionKind::borrow_mutable
                 : BodyFlowActionKind::borrow_shared;
             this->add_place_action(action, exit, syntax::INVALID_STMT_ID, unary->operand);
-            this->push_place_operands(unary->operand, entry, exit);
+            this->push_place_operands(unary->operand, entry, exit, task.return_continuation);
             return;
         }
 
@@ -721,16 +1354,12 @@ private:
         if (task.expr_context == BodyFlowExprContext::value || task.expr_context == BodyFlowExprContext::branch) {
             this->record_borrowed_view_result_actions(task.expr, kind, exit);
         }
-        this->push_expression_children(task.expr, kind, entry, exit);
+        this->push_expression_children(task.expr, kind, entry, exit, task.return_continuation);
     }
 
-    [[nodiscard]] bool record_place_context_action(
-        const syntax::ExprId expr, const BodyFlowExprContext context, const base::u32 point)
+    [[nodiscard]] bool record_place_context_action(const syntax::ExprId expr, const BodyFlowExprContext context)
     {
         switch (context) {
-            case BodyFlowExprContext::place_write:
-                this->add_place_action(BodyFlowActionKind::write, point, syntax::INVALID_STMT_ID, expr);
-                return true;
             case BodyFlowExprContext::place_observe:
                 return expr_is_place_like(this->module_, expr);
             case BodyFlowExprContext::branch:
@@ -749,7 +1378,8 @@ private:
         this->add_place_action(BodyFlowActionKind::move_candidate, point, syntax::INVALID_STMT_ID, expr);
     }
 
-    void push_place_operands(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_place_operands(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         if (!valid_expr(this->module_, expr)) {
             this->add_edge(entry, exit);
@@ -758,7 +1388,8 @@ private:
         switch (this->module_.exprs.kind(expr.value)) {
             case syntax::ExprKind::field: {
                 const syntax::FieldExprPayload& field = *this->module_.exprs.field_payload(expr.value);
-                this->push_expression(field.object, entry, exit, BodyFlowExprContext::place_observe);
+                this->push_expression(
+                    field.object, entry, exit, BodyFlowExprContext::place_observe, return_continuation);
                 return;
             }
             case syntax::ExprKind::index: {
@@ -768,7 +1399,7 @@ private:
                         BodyFlowExpressionStep{index.object, BodyFlowExprContext::place_observe},
                         BodyFlowExpressionStep{index.index, BodyFlowExprContext::value},
                     },
-                    entry, exit);
+                    entry, exit, return_continuation);
                 return;
             }
             case syntax::ExprKind::slice: {
@@ -779,13 +1410,13 @@ private:
                         BodyFlowExpressionStep{slice.start, BodyFlowExprContext::value},
                         BodyFlowExpressionStep{slice.end, BodyFlowExprContext::value},
                     },
-                    entry, exit);
+                    entry, exit, return_continuation);
                 return;
             }
             case syntax::ExprKind::unary: {
                 const syntax::UnaryExprPayload& unary = *this->module_.exprs.unary_payload(expr.value);
                 if (unary.op == syntax::UnaryOp::dereference) {
-                    this->push_expression(unary.operand, entry, exit, BodyFlowExprContext::value);
+                    this->push_expression(unary.operand, entry, exit, BodyFlowExprContext::value, return_continuation);
                     return;
                 }
                 break;
@@ -796,49 +1427,49 @@ private:
         this->add_edge(entry, exit);
     }
 
-    void push_expression_children(
-        const syntax::ExprId expr, const syntax::ExprKind kind, const base::u32 entry, const base::u32 exit)
+    void push_expression_children(const syntax::ExprId expr, const syntax::ExprKind kind, const base::u32 entry,
+        const base::u32 exit, const base::u32 return_continuation)
     {
         if (expr_is_place_like(this->module_, expr)) {
-            this->push_place_operands(expr, entry, exit);
+            this->push_place_operands(expr, entry, exit, return_continuation);
             return;
         }
 
         switch (kind) {
             case syntax::ExprKind::generic_apply:
-                this->push_generic_apply_children(expr, entry, exit);
+                this->push_generic_apply_children(expr, entry, exit, return_continuation);
                 break;
             case syntax::ExprKind::unary:
-                this->push_unary_children(expr, entry, exit);
+                this->push_unary_children(expr, entry, exit, return_continuation);
                 break;
             case syntax::ExprKind::try_expr:
-                this->push_try_children(expr, entry, exit);
+                this->push_try_children(expr, entry, exit, return_continuation);
                 break;
             case syntax::ExprKind::binary:
-                this->push_binary_children(expr, entry, exit);
+                this->push_binary_children(expr, entry, exit, return_continuation);
                 break;
             case syntax::ExprKind::call:
             case syntax::ExprKind::str_from_bytes_unchecked:
-                this->push_call_children(expr, entry, exit);
+                this->push_call_children(expr, entry, exit, return_continuation);
                 break;
             case syntax::ExprKind::if_expr:
-                this->push_if_expression_children(expr, entry, exit);
+                this->push_if_expression_children(expr, entry, exit, return_continuation);
                 break;
             case syntax::ExprKind::block_expr:
             case syntax::ExprKind::unsafe_block:
-                this->push_block_expression_children(expr, entry, exit);
+                this->push_block_expression_children(expr, entry, exit, return_continuation);
                 break;
             case syntax::ExprKind::match_expr:
-                this->push_match_expression_children(expr, entry, exit);
+                this->push_match_expression_children(expr, entry, exit, return_continuation);
                 break;
             case syntax::ExprKind::array_literal:
-                this->push_array_children(expr, entry, exit);
+                this->push_array_children(expr, entry, exit, return_continuation);
                 break;
             case syntax::ExprKind::tuple_literal:
-                this->push_tuple_children(expr, entry, exit);
+                this->push_tuple_children(expr, entry, exit, return_continuation);
                 break;
             case syntax::ExprKind::struct_literal:
-                this->push_struct_literal_children(expr, entry, exit);
+                this->push_struct_literal_children(expr, entry, exit, return_continuation);
                 break;
             case syntax::ExprKind::cast:
             case syntax::ExprKind::pcast:
@@ -853,7 +1484,7 @@ private:
             case syntax::ExprKind::str_byte_len:
             case syntax::ExprKind::str_is_valid_utf8:
             case syntax::ExprKind::str_from_utf8_checked:
-                this->push_cast_like_children(expr, entry, exit);
+                this->push_cast_like_children(expr, entry, exit, return_continuation);
                 break;
             case syntax::ExprKind::invalid:
             case syntax::ExprKind::integer_literal:
@@ -875,25 +1506,29 @@ private:
         }
     }
 
-    void push_generic_apply_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_generic_apply_children(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::GenericApplyExprPayload& payload = *this->module_.exprs.generic_apply_payload(expr.value);
-        this->push_expression(payload.callee, entry, exit, BodyFlowExprContext::value);
+        this->push_expression(payload.callee, entry, exit, BodyFlowExprContext::value, return_continuation);
     }
 
-    void push_unary_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_unary_children(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::UnaryExprPayload& payload = *this->module_.exprs.unary_payload(expr.value);
-        this->push_expression(payload.operand, entry, exit, BodyFlowExprContext::value);
+        this->push_expression(payload.operand, entry, exit, BodyFlowExprContext::value, return_continuation);
     }
 
-    void push_try_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_try_children(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::TryExprPayload& payload = *this->module_.exprs.try_payload(expr.value);
-        this->push_expression(payload.operand, entry, exit, BodyFlowExprContext::value);
+        this->push_expression(payload.operand, entry, exit, BodyFlowExprContext::value, return_continuation);
     }
 
-    void push_binary_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_binary_children(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::BinaryExprPayload& payload = *this->module_.exprs.binary_payload(expr.value);
         this->push_expression_sequence(
@@ -901,10 +1536,11 @@ private:
                 BodyFlowExpressionStep{payload.lhs, BodyFlowExprContext::value},
                 BodyFlowExpressionStep{payload.rhs, BodyFlowExprContext::value},
             },
-            entry, exit);
+            entry, exit, return_continuation);
     }
 
-    void push_call_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_call_children(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::CallExprPayload& payload = *this->module_.exprs.call_payload(expr.value);
         this->add_point_action(
@@ -919,13 +1555,13 @@ private:
             this->add_action(BodyFlowActionKind::call_receiver_activate, exit, receiver_place, syntax::INVALID_STMT_ID,
                 expr, receiver_range);
             this->record_call_return_borrow_actions(expr, payload, exit);
-            this->push_expression(payload.callee, entry, receiver_done, BodyFlowExprContext::value);
+            this->push_expression(payload.callee, entry, receiver_done, BodyFlowExprContext::value, return_continuation);
             std::vector<BodyFlowExpressionStep> arg_steps;
             arg_steps.reserve(payload.args.size());
             for (const syntax::ExprId arg : payload.args) {
                 arg_steps.push_back(BodyFlowExpressionStep{arg, BodyFlowExprContext::value});
             }
-            this->push_expression_sequence(arg_steps, receiver_done, exit);
+            this->push_expression_sequence(arg_steps, receiver_done, exit, return_continuation);
             return;
         }
         this->record_call_return_borrow_actions(expr, payload, exit);
@@ -935,7 +1571,7 @@ private:
         for (const syntax::ExprId arg : payload.args) {
             steps.push_back(BodyFlowExpressionStep{arg, BodyFlowExprContext::value});
         }
-        this->push_expression_sequence(steps, entry, exit);
+        this->push_expression_sequence(steps, entry, exit, return_continuation);
     }
 
     [[nodiscard]] bool call_has_two_phase_receiver(const syntax::ExprId call) const noexcept
@@ -1356,40 +1992,44 @@ private:
         return std::nullopt;
     }
 
-    void push_if_expression_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_if_expression_children(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::IfExprPayload& payload = *this->module_.exprs.if_payload(expr.value);
         const base::u32 condition_done = this->new_sequence_point(expr_range(this->module_, expr));
-        this->push_expression(payload.condition, entry, condition_done, BodyFlowExprContext::branch);
-        this->push_expression(payload.then_expr, condition_done, exit, BodyFlowExprContext::value);
-        this->push_expression(payload.else_expr, condition_done, exit, BodyFlowExprContext::value);
+        this->push_expression(payload.condition, entry, condition_done, BodyFlowExprContext::branch, return_continuation);
+        this->push_expression(payload.then_expr, condition_done, exit, BodyFlowExprContext::value, return_continuation);
+        this->push_expression(payload.else_expr, condition_done, exit, BodyFlowExprContext::value, return_continuation);
     }
 
-    void push_block_expression_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_block_expression_children(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::BlockExprPayload& payload = *this->module_.exprs.block_payload(expr.value);
         const base::u32 block_done = this->new_sequence_point(expr_range(this->module_, expr));
-        this->push_statement(payload.block, entry, block_done);
-        this->push_expression(payload.result, block_done, exit, BodyFlowExprContext::value);
+        this->push_statement(payload.block, entry, block_done, return_continuation);
+        this->push_expression(payload.result, block_done, exit, BodyFlowExprContext::value, return_continuation);
     }
 
-    void push_match_expression_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_match_expression_children(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::MatchExprPayload& payload = *this->module_.exprs.match_payload(expr.value);
         const base::u32 value_done = this->new_sequence_point(expr_range(this->module_, expr));
-        this->push_expression(payload.value, entry, value_done, BodyFlowExprContext::branch);
+        this->push_expression(payload.value, entry, value_done, BodyFlowExprContext::branch, return_continuation);
         if (payload.arms.empty()) {
             this->add_edge(value_done, exit);
             return;
         }
         for (const syntax::MatchArm& arm : payload.arms) {
             const base::u32 guard_done = this->new_sequence_point(arm.range);
-            this->push_expression(arm.guard, value_done, guard_done, BodyFlowExprContext::branch);
-            this->push_expression(arm.value, guard_done, exit, BodyFlowExprContext::value);
+            this->push_expression(arm.guard, value_done, guard_done, BodyFlowExprContext::branch, return_continuation);
+            this->push_expression(arm.value, guard_done, exit, BodyFlowExprContext::value, return_continuation);
         }
     }
 
-    void push_array_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_array_children(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::ArrayExprPayload& payload = *this->module_.exprs.array_payload(expr.value);
         std::vector<BodyFlowExpressionStep> steps;
@@ -1399,10 +2039,11 @@ private:
         }
         steps.push_back(BodyFlowExpressionStep{payload.repeat_value, BodyFlowExprContext::value});
         steps.push_back(BodyFlowExpressionStep{payload.repeat_count, BodyFlowExprContext::value});
-        this->push_expression_sequence(steps, entry, exit);
+        this->push_expression_sequence(steps, entry, exit, return_continuation);
     }
 
-    void push_tuple_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_tuple_children(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::AstArenaVector<syntax::ExprId>& elements = *this->module_.exprs.tuple_elements(expr.value);
         std::vector<BodyFlowExpressionStep> steps;
@@ -1410,10 +2051,11 @@ private:
         for (const syntax::ExprId element : elements) {
             steps.push_back(BodyFlowExpressionStep{element, BodyFlowExprContext::value});
         }
-        this->push_expression_sequence(steps, entry, exit);
+        this->push_expression_sequence(steps, entry, exit, return_continuation);
     }
 
-    void push_struct_literal_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_struct_literal_children(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::StructLiteralExprPayload& payload = *this->module_.exprs.struct_literal_payload(expr.value);
         std::vector<BodyFlowExpressionStep> steps;
@@ -1422,13 +2064,14 @@ private:
         for (const syntax::FieldInit& field : payload.field_inits) {
             steps.push_back(BodyFlowExpressionStep{field.value, BodyFlowExprContext::value});
         }
-        this->push_expression_sequence(steps, entry, exit);
+        this->push_expression_sequence(steps, entry, exit, return_continuation);
     }
 
-    void push_cast_like_children(const syntax::ExprId expr, const base::u32 entry, const base::u32 exit)
+    void push_cast_like_children(
+        const syntax::ExprId expr, const base::u32 entry, const base::u32 exit, const base::u32 return_continuation)
     {
         const syntax::CastExprPayload& payload = *this->module_.exprs.cast_payload(expr.value);
-        this->push_expression(payload.expr, entry, exit, BodyFlowExprContext::value);
+        this->push_expression(payload.expr, entry, exit, BodyFlowExprContext::value, return_continuation);
     }
 
     [[nodiscard]] BodyFlowPlace make_place(const syntax::ExprId expr)

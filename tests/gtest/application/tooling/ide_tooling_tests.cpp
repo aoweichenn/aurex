@@ -485,6 +485,45 @@ TEST(CoreUnit, IdeToolingProjectsBorrowSummaryAndLoanFacts)
         << hover->label;
 }
 
+TEST(CoreUnit, IdeToolingProjectsCleanupMarkerFactsWhenIrFactsAreEnabled)
+{
+    constexpr std::string_view source = "module ide.cleanup_marker_facts;\n"
+                                        "struct File { fd: i32; }\n"
+                                        "impl Drop for File {\n"
+                                        "  fn drop(self: deinit File) -> void {}\n"
+                                        "}\n"
+                                        "fn consume(value: File) -> void {}\n"
+                                        "fn main() -> void {}\n";
+    const tooling::IdeSnapshot snapshot = tooling::build_ide_snapshot(request_for(source));
+    ASSERT_TRUE(snapshot.checked_semantics);
+    EXPECT_FALSE(snapshot.has_errors);
+
+    if (snapshot.cleanup_marker_facts.empty()) {
+        EXPECT_FALSE(has_semantic_fact_kind(snapshot, tooling::IdeSemanticFactKind::cleanup_marker_facts,
+            query::QueryKind::lower_function_ir, "consume"));
+        return;
+    }
+
+    EXPECT_TRUE(has_record_kind(snapshot, query::QueryKind::lower_function_ir));
+    EXPECT_TRUE(has_dependency_kind(snapshot, query::QueryKind::lower_function_ir, query::QueryKind::type_check_body));
+    const tooling::IdeSemanticFact* const cleanup_fact = find_semantic_fact(
+        snapshot, tooling::IdeSemanticFactKind::cleanup_marker_facts, query::QueryKind::lower_function_ir, "consume");
+    ASSERT_NE(cleanup_fact, nullptr);
+    EXPECT_NE(cleanup_fact->detail.find("cleanup_marker_facts markers="), std::string::npos)
+        << cleanup_fact->detail;
+    EXPECT_NE(cleanup_fact->detail.find("static_custom_destructor="), std::string::npos)
+        << cleanup_fact->detail;
+    EXPECT_NE(cleanup_fact->detail.find("fingerprint="), std::string::npos)
+        << cleanup_fact->detail;
+
+    const base::usize consume_offset = source.find("consume");
+    ASSERT_NE(consume_offset, std::string_view::npos);
+    const std::optional<tooling::IdeHoverInfo> hover = tooling::hover_at_offset(snapshot, consume_offset);
+    ASSERT_TRUE(hover.has_value());
+    EXPECT_NE(hover->label.find("cleanup_markers=count="), std::string::npos) << hover->label;
+    EXPECT_NE(hover->label.find("/first_policy="), std::string::npos) << hover->label;
+}
+
 TEST(CoreUnit, IdeToolingProjectsDeclaredUnknownBorrowBoundaryFacts)
 {
     constexpr std::string_view source = "module ide.unknown_borrow_facts;\n"

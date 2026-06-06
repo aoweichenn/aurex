@@ -66,6 +66,8 @@ constexpr base::u64 QUERY_TEST_LEGACY_INCREMENTAL_GLOBAL_ID = 0x55dd4e219a7521c0
 constexpr base::u32 QUERY_TEST_LEGACY_EMPTY_MODULE_PATH_BYTES = 8;
 constexpr base::u32 QUERY_TEST_LEGACY_DOTTED_MODULE_PATH_BYTES = 28;
 constexpr base::u32 QUERY_TEST_UNKNOWN_NODE_ID = 999;
+constexpr base::u8 QUERY_TEST_INVALID_CLEANUP_MARKER_KIND = 240;
+constexpr base::u8 QUERY_TEST_INVALID_CLEANUP_MARKER_POLICY = 241;
 constexpr base::usize QUERY_TEST_LIMITED_INTERNER_CAPACITY = 1;
 constexpr std::string_view QUERY_TEST_PROVIDER_SIGNATURE = "signature:i32";
 constexpr std::string_view QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE = "signature:mismatched-provider-output";
@@ -213,6 +215,108 @@ struct QueryContextBodySubject {
     query::TypeCheckBodyAuthority type_check_authority;
     query::QueryResultFingerprint lowered_ir;
 };
+
+[[nodiscard]] query::FunctionCleanupMarkerFacts query_test_cleanup_marker_facts(
+    const std::string_view symbol = "test_cleanup")
+{
+    query::FunctionCleanupMarkerFacts facts;
+    facts.symbol = std::string(symbol);
+    query::record_cleanup_marker_fact(facts,
+        query::CleanupMarkerFact{
+            query::CleanupMarkerKind::drop_if,
+            query::CleanupMarkerPolicy::generic_marker_only,
+            5U,
+            3U,
+            4U,
+            7U,
+            "T",
+        });
+    facts.fingerprint = query::function_cleanup_marker_facts_fingerprint(facts);
+    return facts;
+}
+
+TEST(QueryUnit, CleanupMarkerFactsExposePolicyNamesCountsAndFallbacks)
+{
+    EXPECT_EQ(query::cleanup_marker_kind_name(query::CleanupMarkerKind::drop), "drop");
+    EXPECT_EQ(query::cleanup_marker_kind_name(query::CleanupMarkerKind::drop_if), "drop_if");
+    EXPECT_EQ(query::cleanup_marker_kind_name(
+                  static_cast<query::CleanupMarkerKind>(QUERY_TEST_INVALID_CLEANUP_MARKER_KIND)),
+        "invalid");
+
+    const std::array<std::pair<query::CleanupMarkerPolicy, std::string_view>, 7> policies{{
+        {query::CleanupMarkerPolicy::none, "none"},
+        {query::CleanupMarkerPolicy::structural_static, "structural_static"},
+        {query::CleanupMarkerPolicy::generic_marker_only, "generic_marker_only"},
+        {query::CleanupMarkerPolicy::associated_projection_marker_only, "associated_projection_marker_only"},
+        {query::CleanupMarkerPolicy::opaque_marker_only, "opaque_marker_only"},
+        {query::CleanupMarkerPolicy::unknown_marker_only, "unknown_marker_only"},
+        {query::CleanupMarkerPolicy::static_custom_destructor, "static_custom_destructor"},
+    }};
+
+    query::FunctionCleanupMarkerFacts facts;
+    facts.symbol = "all_cleanup_policies";
+    for (base::usize index = 0; index < policies.size(); ++index) {
+        const auto& [policy, name] = policies[index];
+        EXPECT_TRUE(query::is_valid(policy));
+        EXPECT_EQ(query::cleanup_marker_policy_name(policy), name);
+        query::record_cleanup_marker_fact(facts,
+            query::CleanupMarkerFact{
+                index % 2U == 0U ? query::CleanupMarkerKind::drop : query::CleanupMarkerKind::drop_if,
+                policy,
+                static_cast<base::u32>(index + 1U),
+                static_cast<base::u32>(index + 10U),
+                static_cast<base::u32>(index + 20U),
+                static_cast<base::u32>(index + 30U),
+                index == 0U ? std::string{} : std::string{name},
+            });
+    }
+
+    EXPECT_EQ(facts.summary.drop_count, 4U);
+    EXPECT_EQ(facts.summary.drop_if_count, 3U);
+    EXPECT_EQ(facts.summary.none_count, 1U);
+    EXPECT_EQ(facts.summary.structural_static_count, 1U);
+    EXPECT_EQ(facts.summary.generic_marker_only_count, 1U);
+    EXPECT_EQ(facts.summary.associated_projection_marker_only_count, 1U);
+    EXPECT_EQ(facts.summary.opaque_marker_only_count, 1U);
+    EXPECT_EQ(facts.summary.unknown_marker_only_count, 1U);
+    EXPECT_EQ(facts.summary.static_custom_destructor_count, 1U);
+
+    const std::string summary = query::summarize_function_cleanup_marker_facts(facts);
+    EXPECT_NE(summary.find("markers=7"), std::string::npos);
+    EXPECT_NE(summary.find("first_policy=none"), std::string::npos);
+    const std::string dump = query::dump_function_cleanup_marker_facts(facts);
+    EXPECT_NE(dump.find("function=all_cleanup_policies"), std::string::npos);
+    EXPECT_NE(dump.find("target_type=30 policy=none"), std::string::npos);
+    EXPECT_NE(dump.find("target_type=31/structural_static"), std::string::npos);
+
+    const query::FunctionCleanupMarkerFacts empty;
+    EXPECT_NE(query::summarize_function_cleanup_marker_facts(empty).find("markers=0"), std::string::npos);
+    EXPECT_NE(query::dump_function_cleanup_marker_facts(empty).find("function=<anonymous>"), std::string::npos);
+
+    const query::CleanupMarkerPolicy invalid_policy =
+        static_cast<query::CleanupMarkerPolicy>(QUERY_TEST_INVALID_CLEANUP_MARKER_POLICY);
+    EXPECT_FALSE(query::is_valid(invalid_policy));
+    EXPECT_EQ(query::cleanup_marker_policy_name(invalid_policy), "invalid");
+
+    query::FunctionCleanupMarkerFacts invalid_facts;
+    query::record_cleanup_marker_fact(invalid_facts,
+        query::CleanupMarkerFact{
+            query::CleanupMarkerKind::drop,
+            invalid_policy,
+            1U,
+            0U,
+            0U,
+            0U,
+            {},
+        });
+    EXPECT_EQ(invalid_facts.summary.drop_count, 1U);
+    EXPECT_EQ(invalid_facts.summary.none_count, 0U);
+    EXPECT_NE(query::dump_function_cleanup_marker_facts(invalid_facts).find("policy=invalid"), std::string::npos);
+    EXPECT_NE(query::function_cleanup_marker_facts_fingerprint(invalid_facts),
+        query::function_cleanup_marker_facts_fingerprint(empty));
+    EXPECT_FALSE(query::is_valid(
+        query::lower_function_ir_result_fingerprint(query::QueryResultFingerprint{}, invalid_facts)));
+}
 
 [[nodiscard]] QueryContextItemSignatureSubject test_item_signature_subject(
     const std::string_view def_name, const std::string_view signature)
@@ -1742,8 +1846,16 @@ TEST(QueryUnit, QueryExecutorEvaluatesOwnedRequestsOnDemand)
         query::QueryRequest{query::FunctionBodySyntaxProviderInput{body_subject.body, body_subject.syntax_authority}},
         query::QueryRequest{query::TypeCheckBodyProviderInput{body_subject.body, body_subject.type_check_authority}},
         query::QueryRequest{query::GenericInstanceBodyQueryRequest{generic_subject.key, generic_body_input.authority}},
-        query::QueryRequest{query::LowerFunctionIRProviderInput{body_subject.body, body_subject.lowered_ir}},
-        query::QueryRequest{query::LowerGenericInstanceIRQueryRequest{generic_subject.key, body_subject.lowered_ir}},
+        query::QueryRequest{query::LowerFunctionIRProviderInput{
+            body_subject.body,
+            body_subject.lowered_ir,
+            query::FunctionCleanupMarkerFacts{},
+        }},
+        query::QueryRequest{query::LowerGenericInstanceIRQueryRequest{
+            generic_subject.key,
+            body_subject.lowered_ir,
+            query::FunctionCleanupMarkerFacts{},
+        }},
         query::QueryRequest{query::DiagnosticsProviderInput{*item_query, test_query_result(QUERY_TEST_DIAGNOSTICS)}},
     };
 
@@ -3403,6 +3515,7 @@ TEST(QueryUnit, LowerFunctionIRProviderBuildsRecordAndTypeCheckDependency)
     const query::LowerFunctionIRProviderInput input{
         subject.body,
         subject.lowered_ir,
+        query::FunctionCleanupMarkerFacts{},
     };
     ASSERT_TRUE(query::is_valid(input));
     const std::optional<query::LowerFunctionIRProviderOutput> output = query::provide_lower_function_ir_query(input);
@@ -3414,16 +3527,17 @@ TEST(QueryUnit, LowerFunctionIRProviderBuildsRecordAndTypeCheckDependency)
     EXPECT_EQ(output->record.key, *expected_key);
     EXPECT_EQ(output->record.key.kind, query::QueryKind::lower_function_ir);
     EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.body));
-    EXPECT_EQ(output->result, subject.lowered_ir);
+    EXPECT_EQ(output->result, query::lower_function_ir_result_fingerprint(subject.lowered_ir, input.cleanup_markers));
     EXPECT_EQ(output->record.result, output->result);
+    EXPECT_TRUE(output->cleanup_markers.markers.empty());
 
     EXPECT_FALSE(query::lower_function_ir_query_key(query::BodyKey{}).has_value());
     EXPECT_FALSE(query::is_valid(query::LowerFunctionIRProviderInput{}));
     EXPECT_FALSE(query::provide_lower_function_ir_query(
-        query::LowerFunctionIRProviderInput{query::BodyKey{}, subject.lowered_ir})
+        query::LowerFunctionIRProviderInput{query::BodyKey{}, subject.lowered_ir, query::FunctionCleanupMarkerFacts{}})
             .has_value());
     EXPECT_FALSE(query::provide_lower_function_ir_query(
-        query::LowerFunctionIRProviderInput{subject.body, query::QueryResultFingerprint{}})
+        query::LowerFunctionIRProviderInput{subject.body, query::QueryResultFingerprint{}, query::FunctionCleanupMarkerFacts{}})
             .has_value());
     EXPECT_FALSE(query::is_valid(query::LowerFunctionIRProviderOutput{}));
 
@@ -3435,6 +3549,20 @@ TEST(QueryUnit, LowerFunctionIRProviderBuildsRecordAndTypeCheckDependency)
     mismatched_result_output.result =
         query::query_result_fingerprint(query::stable_fingerprint(QUERY_TEST_PROVIDER_MISMATCHED_SIGNATURE));
     EXPECT_FALSE(query::is_valid(mismatched_result_output));
+
+    query::LowerFunctionIRProviderInput cleanup_input = input;
+    cleanup_input.cleanup_markers = query_test_cleanup_marker_facts("test_compute");
+    const std::optional<query::LowerFunctionIRProviderOutput> cleanup_output =
+        query::provide_lower_function_ir_query(cleanup_input);
+    ASSERT_TRUE(cleanup_output.has_value());
+    EXPECT_TRUE(query::is_valid(*cleanup_output));
+    EXPECT_EQ(cleanup_output->cleanup_markers.summary.drop_if_count, 1U);
+    EXPECT_NE(cleanup_output->result, output->result);
+    EXPECT_NE(query::summarize_function_cleanup_marker_facts(cleanup_output->cleanup_markers).find(
+                  "generic_marker_only=1"),
+        std::string::npos);
+    EXPECT_NE(query::dump_function_cleanup_marker_facts(cleanup_output->cleanup_markers).find("drop_if"),
+        std::string::npos);
 }
 
 TEST(QueryUnit, LowerGenericInstanceIRProviderBuildsRecordAndGenericBodyDependency)
@@ -3449,6 +3577,7 @@ TEST(QueryUnit, LowerGenericInstanceIRProviderBuildsRecordAndGenericBodyDependen
     const query::LowerGenericInstanceIRProviderInput input{
         &subject.key,
         lowered_ir,
+        query::FunctionCleanupMarkerFacts{},
     };
     ASSERT_TRUE(query::is_valid(input));
     const std::optional<query::LowerGenericInstanceIRProviderOutput> output =
@@ -3461,17 +3590,21 @@ TEST(QueryUnit, LowerGenericInstanceIRProviderBuildsRecordAndGenericBodyDependen
     EXPECT_EQ(output->record.key, *expected_key);
     EXPECT_EQ(output->record.key.kind, query::QueryKind::lower_function_ir);
     EXPECT_EQ(output->record.stable_key_bytes, query::stable_serialize(subject.key));
-    EXPECT_EQ(output->result, lowered_ir);
+    EXPECT_EQ(output->result, query::lower_function_ir_result_fingerprint(lowered_ir, input.cleanup_markers));
     EXPECT_EQ(output->record.result, output->result);
 
     const query::GenericInstanceKey invalid_key;
     EXPECT_FALSE(query::lower_generic_instance_ir_query_key(query::GenericInstanceKey{}).has_value());
     EXPECT_FALSE(query::is_valid(query::LowerGenericInstanceIRProviderInput{}));
     EXPECT_FALSE(query::provide_lower_generic_instance_ir_query(
-        query::LowerGenericInstanceIRProviderInput{&invalid_key, lowered_ir})
+        query::LowerGenericInstanceIRProviderInput{&invalid_key, lowered_ir, query::FunctionCleanupMarkerFacts{}})
             .has_value());
     EXPECT_FALSE(query::provide_lower_generic_instance_ir_query(
-        query::LowerGenericInstanceIRProviderInput{&subject.key, query::QueryResultFingerprint{}})
+        query::LowerGenericInstanceIRProviderInput{
+            &subject.key,
+            query::QueryResultFingerprint{},
+            query::FunctionCleanupMarkerFacts{},
+        })
             .has_value());
     EXPECT_FALSE(query::is_valid(query::LowerGenericInstanceIRProviderOutput{}));
 
@@ -4237,6 +4370,7 @@ TEST(QueryUnit, QueryContextCachesLowerFunctionIRAndRecordsTypeCheckDependency)
     const query::LowerFunctionIRProviderInput input{
         subject.body,
         subject.lowered_ir,
+        query::FunctionCleanupMarkerFacts{},
     };
     const query::QueryEvaluationResult first = context.evaluate_lower_function_ir(input);
     ASSERT_EQ(first.status, query::QueryEvaluationStatus::computed);
@@ -4267,7 +4401,7 @@ TEST(QueryUnit, QueryContextTracksLowerFunctionIRFailuresAndProviderFallbacks)
 
     query::QueryContext invalid_input_context;
     const query::QueryEvaluationResult invalid_key_result = invalid_input_context.evaluate_lower_function_ir(
-        query::LowerFunctionIRProviderInput{query::BodyKey{}, subject.lowered_ir});
+        query::LowerFunctionIRProviderInput{query::BodyKey{}, subject.lowered_ir, query::FunctionCleanupMarkerFacts{}});
     EXPECT_EQ(invalid_key_result.status, query::QueryEvaluationStatus::failed);
     EXPECT_EQ(invalid_key_result.node, nullptr);
 
@@ -4279,6 +4413,7 @@ TEST(QueryUnit, QueryContextTracksLowerFunctionIRFailuresAndProviderFallbacks)
     const query::LowerFunctionIRProviderInput input{
         subject.body,
         subject.lowered_ir,
+        query::FunctionCleanupMarkerFacts{},
     };
     const query::QueryEvaluationResult failed_result = failing_context.evaluate_lower_function_ir(input);
     ASSERT_EQ(failed_result.status, query::QueryEvaluationStatus::failed);
@@ -4296,7 +4431,11 @@ TEST(QueryUnit, QueryContextTracksLowerFunctionIRFailuresAndProviderFallbacks)
     query::QueryContext wrong_key_context;
     wrong_key_context.set_lower_function_ir_provider([&other_subject](const query::LowerFunctionIRProviderInput&) {
         return query::provide_lower_function_ir_query(
-            query::LowerFunctionIRProviderInput{other_subject.body, other_subject.lowered_ir});
+            query::LowerFunctionIRProviderInput{
+                other_subject.body,
+                other_subject.lowered_ir,
+                query::FunctionCleanupMarkerFacts{},
+            });
     });
     const query::QueryEvaluationResult wrong_key_result = wrong_key_context.evaluate_lower_function_ir(input);
     ASSERT_EQ(wrong_key_result.status, query::QueryEvaluationStatus::failed);
@@ -4495,6 +4634,7 @@ TEST(QueryUnit, QueryContextCachesLowerGenericInstanceIRAndRecordsGenericBodyDep
     const query::LowerGenericInstanceIRProviderInput input{
         &subject.key,
         lowered_ir,
+        query::FunctionCleanupMarkerFacts{},
     };
     const query::QueryEvaluationResult first = context.evaluate_lower_generic_instance_ir(input);
     ASSERT_EQ(first.status, query::QueryEvaluationStatus::computed);
@@ -4529,12 +4669,12 @@ TEST(QueryUnit, QueryContextTracksLowerGenericInstanceIRFailuresAndProviderFallb
 
     query::QueryContext invalid_input_context;
     const query::QueryEvaluationResult null_key_result = invalid_input_context.evaluate_lower_generic_instance_ir(
-        query::LowerGenericInstanceIRProviderInput{nullptr, lowered_ir});
+        query::LowerGenericInstanceIRProviderInput{nullptr, lowered_ir, query::FunctionCleanupMarkerFacts{}});
     EXPECT_EQ(null_key_result.status, query::QueryEvaluationStatus::failed);
     EXPECT_EQ(null_key_result.node, nullptr);
     const query::GenericInstanceKey invalid_key;
     const query::QueryEvaluationResult invalid_key_result = invalid_input_context.evaluate_lower_generic_instance_ir(
-        query::LowerGenericInstanceIRProviderInput{&invalid_key, lowered_ir});
+        query::LowerGenericInstanceIRProviderInput{&invalid_key, lowered_ir, query::FunctionCleanupMarkerFacts{}});
     EXPECT_EQ(invalid_key_result.status, query::QueryEvaluationStatus::failed);
     EXPECT_EQ(invalid_key_result.node, nullptr);
 
@@ -4547,6 +4687,7 @@ TEST(QueryUnit, QueryContextTracksLowerGenericInstanceIRFailuresAndProviderFallb
     const query::LowerGenericInstanceIRProviderInput input{
         &subject.key,
         lowered_ir,
+        query::FunctionCleanupMarkerFacts{},
     };
     const query::QueryEvaluationResult failed_result = failing_context.evaluate_lower_generic_instance_ir(input);
     ASSERT_EQ(failed_result.status, query::QueryEvaluationStatus::failed);
@@ -4567,6 +4708,7 @@ TEST(QueryUnit, QueryContextTracksLowerGenericInstanceIRFailuresAndProviderFallb
             return query::provide_lower_generic_instance_ir_query(query::LowerGenericInstanceIRProviderInput{
                 &other_subject.key,
                 lowered_ir,
+                query::FunctionCleanupMarkerFacts{},
             });
         });
     const query::QueryEvaluationResult wrong_key_result = wrong_key_context.evaluate_lower_generic_instance_ir(input);
@@ -4708,10 +4850,18 @@ TEST(QueryUnit, QueryContextBuildsDeterministicDependencyEdgeTable)
         });
 
     const query::QueryEvaluationResult first_result = context.evaluate_lower_function_ir(
-        query::LowerFunctionIRProviderInput{first_subject.body, first_subject.lowered_ir});
+        query::LowerFunctionIRProviderInput{
+            first_subject.body,
+            first_subject.lowered_ir,
+            query::FunctionCleanupMarkerFacts{},
+        });
     ASSERT_EQ(first_result.status, query::QueryEvaluationStatus::computed);
     const query::QueryEvaluationResult second_result = context.evaluate_lower_function_ir(
-        query::LowerFunctionIRProviderInput{second_subject.body, second_subject.lowered_ir});
+        query::LowerFunctionIRProviderInput{
+            second_subject.body,
+            second_subject.lowered_ir,
+            query::FunctionCleanupMarkerFacts{},
+        });
     ASSERT_EQ(second_result.status, query::QueryEvaluationStatus::computed);
 
     std::vector<query::QueryKey> expected_first_dependencies{

@@ -16,6 +16,10 @@ target_link_libraries(aurex_tooling PUBLIC
     aurex_sema
     aurex_syntax
 )
+if(TARGET aurex_ir)
+    target_link_libraries(aurex_tooling PRIVATE aurex_ir)
+    target_compile_definitions(aurex_tooling PRIVATE AUREX_TOOLING_ENABLE_IR_FACTS=1)
+endif()
 target_include_directories(aurex_tooling PUBLIC include)
 
 add_executable(aurex-lsp

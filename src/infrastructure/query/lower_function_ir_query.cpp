@@ -2,10 +2,13 @@
 #include <aurex/infrastructure/query/lower_function_ir_query.hpp>
 #include <aurex/infrastructure/query/type_check_body_query.hpp>
 
+#include <string_view>
 #include <utility>
 
 namespace aurex::query {
 namespace {
+
+constexpr std::string_view QUERY_LOWER_FUNCTION_IR_RESULT_MARKER = "query.lower_function_ir.result.v2";
 
 [[nodiscard]] bool is_valid_lower_function_ir_output(
     const QueryRecord& record, const QueryResultFingerprint result) noexcept
@@ -64,21 +67,46 @@ bool is_valid(const LowerGenericInstanceIRProviderOutput& output) noexcept
         && dependencies_are_valid(output.dependencies);
 }
 
+QueryResultFingerprint lower_function_ir_result_fingerprint(
+    const QueryResultFingerprint ir, const FunctionCleanupMarkerFacts& cleanup_markers) noexcept
+{
+    if (!is_valid(ir)) {
+        return {};
+    }
+    StableHashBuilder builder;
+    builder.mix_string(QUERY_LOWER_FUNCTION_IR_RESULT_MARKER);
+    builder.mix_u64(ir.global_id);
+    builder.mix_fingerprint(ir.fingerprint);
+    builder.mix_fingerprint(function_cleanup_marker_facts_fingerprint(cleanup_markers));
+    builder.mix_u64(cleanup_markers.markers.size());
+    builder.mix_u64(cleanup_markers.summary.drop_count);
+    builder.mix_u64(cleanup_markers.summary.drop_if_count);
+    builder.mix_u64(cleanup_markers.summary.structural_static_count);
+    builder.mix_u64(cleanup_markers.summary.generic_marker_only_count);
+    builder.mix_u64(cleanup_markers.summary.associated_projection_marker_only_count);
+    builder.mix_u64(cleanup_markers.summary.opaque_marker_only_count);
+    builder.mix_u64(cleanup_markers.summary.unknown_marker_only_count);
+    builder.mix_u64(cleanup_markers.summary.static_custom_destructor_count);
+    return query_result_fingerprint(builder.finish());
+}
+
 std::optional<LowerFunctionIRProviderOutput> provide_lower_function_ir_query(const LowerFunctionIRProviderInput& input)
 {
     if (!is_valid(input)) {
         return std::nullopt;
     }
 
-    std::optional<QueryRecord> record = lower_function_ir_query_record(input.key, input.ir);
+    const QueryResultFingerprint result = lower_function_ir_result_fingerprint(input.ir, input.cleanup_markers);
+    std::optional<QueryRecord> record = lower_function_ir_query_record(input.key, result);
     std::vector<QueryKey> dependencies;
     if (const std::optional<QueryKey> type_check_key = type_check_body_query_key(input.key)) {
         dependencies.push_back(*type_check_key);
     }
     return LowerFunctionIRProviderOutput{
         std::move(*record),
-        input.ir,
+        result,
         std::move(dependencies),
+        input.cleanup_markers,
     };
 }
 
@@ -89,15 +117,17 @@ std::optional<LowerGenericInstanceIRProviderOutput> provide_lower_generic_instan
         return std::nullopt;
     }
 
-    std::optional<QueryRecord> record = lower_generic_instance_ir_query_record(*input.key, input.ir);
+    const QueryResultFingerprint result = lower_function_ir_result_fingerprint(input.ir, input.cleanup_markers);
+    std::optional<QueryRecord> record = lower_generic_instance_ir_query_record(*input.key, result);
     std::vector<QueryKey> dependencies;
     if (const std::optional<QueryKey> generic_body_key = generic_instance_body_query_key(*input.key)) {
         dependencies.push_back(*generic_body_key);
     }
     return LowerGenericInstanceIRProviderOutput{
         std::move(*record),
-        input.ir,
+        result,
         std::move(dependencies),
+        input.cleanup_markers,
     };
 }
 

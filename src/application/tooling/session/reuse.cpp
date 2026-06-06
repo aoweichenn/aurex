@@ -22,6 +22,7 @@ constexpr std::string_view TOOLING_REUSE_KIND_LIFETIME_FACTS = "lifetime_facts";
 constexpr std::string_view TOOLING_REUSE_KIND_DROPCK_FACTS = "dropck_facts";
 constexpr std::string_view TOOLING_REUSE_KIND_PLACE_STATE = "place_state";
 constexpr std::string_view TOOLING_REUSE_KIND_BODY_LOAN_CHECK = "body_loan_check";
+constexpr std::string_view TOOLING_REUSE_KIND_CLEANUP_MARKER_FACTS = "cleanup_marker_facts";
 constexpr std::string_view TOOLING_REUSE_REASON_BODY_LOCAL = "body-local edit";
 constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
 
@@ -123,6 +124,8 @@ constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
             return TOOLING_REUSE_KIND_PLACE_STATE;
         case IdeSemanticFactKind::body_loan_check:
             return TOOLING_REUSE_KIND_BODY_LOAN_CHECK;
+        case IdeSemanticFactKind::cleanup_marker_facts:
+            return TOOLING_REUSE_KIND_CLEANUP_MARKER_FACTS;
     }
     return TOOLING_REUSE_KIND_ITEM_SIGNATURE;
 }
@@ -134,7 +137,8 @@ constexpr std::string_view TOOLING_REUSE_REASON_SIGNATURE = "signature edit";
         || fact.kind == IdeSemanticFactKind::move_rejection_facts
         || fact.kind == IdeSemanticFactKind::lifetime_facts
         || fact.kind == IdeSemanticFactKind::dropck_facts || fact.kind == IdeSemanticFactKind::place_state
-        || fact.kind == IdeSemanticFactKind::body_loan_check;
+        || fact.kind == IdeSemanticFactKind::body_loan_check
+        || fact.kind == IdeSemanticFactKind::cleanup_marker_facts;
 }
 
 [[nodiscard]] std::string_view tooling_invalidation_reason(const IdeSemanticFact& fact) noexcept
@@ -336,7 +340,8 @@ void tooling_append_invalidated_facts(ToolingReusePlan& plan, const IdeSnapshot&
             && root.kind != TOOLING_REUSE_KIND_MOVE_REJECTION_FACTS
             && root.kind != TOOLING_REUSE_KIND_LIFETIME_FACTS
             && root.kind != TOOLING_REUSE_KIND_DROPCK_FACTS && root.kind != TOOLING_REUSE_KIND_PLACE_STATE
-            && root.kind != TOOLING_REUSE_KIND_BODY_LOAN_CHECK) {
+            && root.kind != TOOLING_REUSE_KIND_BODY_LOAN_CHECK
+            && root.kind != TOOLING_REUSE_KIND_CLEANUP_MARKER_FACTS) {
             return false;
         }
     }

@@ -12,11 +12,17 @@
 #include <aurex/infrastructure/query/generic_template_signature_query.hpp>
 #include <aurex/infrastructure/query/item_list_query.hpp>
 #include <aurex/infrastructure/query/item_signature_query.hpp>
+#include <aurex/infrastructure/query/lower_function_ir_query.hpp>
 #include <aurex/infrastructure/query/module_exports_query.hpp>
 #include <aurex/infrastructure/query/module_graph_query.hpp>
 #include <aurex/infrastructure/query/module_part_query.hpp>
 #include <aurex/infrastructure/query/stable_hash.hpp>
 #include <aurex/infrastructure/query/type_check_body_query.hpp>
+
+#if defined(AUREX_TOOLING_ENABLE_IR_FACTS)
+#include <aurex/midend/ir/ir_cleanup_marker_facts.hpp>
+#include <aurex/midend/ir/lower_ast.hpp>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -43,6 +49,7 @@ constexpr std::string_view IDE_MODULE_EXPORTS_RESULT_MARKER = "module-exports:v1
 constexpr std::string_view IDE_ITEM_LIST_RESULT_MARKER = "item-list:v1";
 constexpr std::string_view IDE_FUNCTION_BODY_SYNTAX_RESULT_MARKER = "function-body-syntax:v1";
 constexpr std::string_view IDE_TYPE_CHECK_BODY_RESULT_MARKER = "type-check-body:v1";
+constexpr std::string_view IDE_LOWER_FUNCTION_IR_RESULT_MARKER = "lower-function-ir:v1";
 constexpr std::string_view IDE_PARSE_SKIPPED_MARKER = "parse-skipped";
 constexpr std::string_view IDE_HOVER_IDENTIFIER_PREFIX = "identifier ";
 constexpr std::string_view IDE_HOVER_TOKEN_PREFIX = "token ";
@@ -101,6 +108,7 @@ constexpr std::string_view IDE_DETAIL_BORROW_CONTRACT_SEPARATOR = " borrow_contr
 constexpr std::string_view IDE_DETAIL_MOVE_REJECTION_SEPARATOR = " move_rejections=";
 constexpr std::string_view IDE_DETAIL_LIFETIME_SEPARATOR = " lifetime=";
 constexpr std::string_view IDE_DETAIL_PLACE_STATE_SEPARATOR = " place_state=";
+constexpr std::string_view IDE_DETAIL_CLEANUP_MARKER_SEPARATOR = " cleanup_markers=";
 constexpr std::string_view IDE_PRIMARY_PART_NAME = "<primary>";
 constexpr base::u32 IDE_PRIMARY_PART_INDEX = 0;
 constexpr base::u32 IDE_FIRST_NAMED_PART_INDEX = 1;
@@ -985,6 +993,19 @@ void recover_resolved_fragment_source_part(
     return query::query_result_fingerprint(builder.finish());
 }
 
+[[nodiscard]] query::QueryResultFingerprint lower_function_ir_input_fingerprint(const query::BodyKey key,
+    const query::QueryResultFingerprint type_check_result, const query::FunctionCleanupMarkerFacts& facts)
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(IDE_LOWER_FUNCTION_IR_RESULT_MARKER);
+    builder.mix_fingerprint(query::stable_key_fingerprint(key));
+    builder.mix_u64(type_check_result.global_id);
+    builder.mix_fingerprint(type_check_result.fingerprint);
+    builder.mix_string(facts.symbol);
+    builder.mix_fingerprint(query::function_cleanup_marker_facts_fingerprint(facts));
+    return query::query_result_fingerprint(builder.finish());
+}
+
 [[nodiscard]] std::string borrow_summary_detail(const sema::FunctionBorrowSummary& summary)
 {
     std::ostringstream label;
@@ -1119,6 +1140,22 @@ void recover_resolved_fragment_source_part(
     return label.str();
 }
 
+[[nodiscard]] const query::FunctionCleanupMarkerFacts* cleanup_marker_facts_for_symbol(
+    const IdeSnapshot& snapshot, const std::string_view symbol) noexcept
+{
+    for (const query::FunctionCleanupMarkerFacts& facts : snapshot.cleanup_marker_facts) {
+        if (facts.symbol == symbol) {
+            return &facts;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] std::string cleanup_marker_facts_detail(const query::FunctionCleanupMarkerFacts& facts)
+{
+    return query::summarize_function_cleanup_marker_facts(facts);
+}
+
 [[nodiscard]] std::optional<base::SourceRange> function_signature_body_range(
     const IdeSnapshot& snapshot, const sema::FunctionSignature& signature) noexcept
 {
@@ -1141,9 +1178,10 @@ void recover_resolved_fragment_source_part(
         || result.status == query::QueryEvaluationStatus::cached;
 }
 
-[[nodiscard]] std::string function_detail(const sema::CheckedModule& checked, const sema::FunctionSignature& signature,
+[[nodiscard]] std::string function_detail(const IdeSnapshot& snapshot, const sema::FunctionSignature& signature,
     const sema::FunctionLookupKey* const function_key = nullptr)
 {
+    const sema::CheckedModule& checked = snapshot.checked;
     std::ostringstream label;
     const std::string_view kind = signature.is_trait_impl_method
         ? IDE_SYMBOL_KIND_IMPL_METHOD
@@ -1225,6 +1263,16 @@ void recover_resolved_fragment_source_part(
             label << IDE_DETAIL_MOVE_REJECTION_SEPARATOR << "count=" << move_rejections->second.rejections.size();
             if (!move_rejections->second.rejections.empty()) {
                 label << "/first=" << sema::move_rejection_kind_name(move_rejections->second.rejections.front().kind);
+            }
+        }
+        if (const query::FunctionCleanupMarkerFacts* const cleanup =
+                cleanup_marker_facts_for_symbol(snapshot, signature.c_name.view());
+            cleanup != nullptr && !cleanup->markers.empty()) {
+            label << IDE_DETAIL_CLEANUP_MARKER_SEPARATOR << "count=" << cleanup->markers.size()
+                  << "/drop=" << cleanup->summary.drop_count
+                  << "/drop_if=" << cleanup->summary.drop_if_count;
+            if (!cleanup->markers.empty()) {
+                label << "/first_policy=" << query::cleanup_marker_policy_name(cleanup->markers.front().policy);
             }
         }
     }
@@ -1467,7 +1515,7 @@ void push_checked_global_symbols(const IdeSnapshot& snapshot, SymbolIndex& index
                 signature.range,
                 std::string(signature.name.view()),
                 std::string(function_symbol_kind(signature)),
-                function_detail(snapshot.checked, signature, &entry.first),
+                function_detail(snapshot, signature, &entry.first),
                 signature.part_index,
                 false,
                 true,
@@ -1997,6 +2045,28 @@ void push_body_loan_check_fact(IdeSnapshot& snapshot, const query::QueryKey quer
     snapshot.query.semantic_facts.push_back(std::move(fact));
 }
 
+void push_cleanup_marker_facts_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
+    const sema::FunctionSignature& signature, const base::SourceRange range)
+{
+    const query::FunctionCleanupMarkerFacts* const facts =
+        cleanup_marker_facts_for_symbol(snapshot, signature.c_name.view());
+    if (facts == nullptr || facts->markers.empty()) {
+        return;
+    }
+    IdeSemanticFact fact;
+    fact.kind = IdeSemanticFactKind::cleanup_marker_facts;
+    fact.query = query_key;
+    fact.definition = body.owner;
+    fact.body = body;
+    fact.range = range;
+    fact.name = std::string(signature.name.view());
+    fact.detail = cleanup_marker_facts_detail(*facts);
+    fact.part_index = signature.part_index;
+    fact.generic_instance = signature.generic_instance_key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
 void push_function_body_syntax_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::BodyKey key,
     const query::FunctionBodySyntaxAuthority& authority, const sema::FunctionSignature& signature,
     const base::SourceRange range, const IdeIncrementalSnapshotInput& incremental)
@@ -2075,6 +2145,33 @@ void push_type_check_body_fact(query::QueryContext& context, IdeSnapshot& snapsh
     push_body_loan_check_fact(snapshot, *query_key, key, signature, function, range);
 }
 
+void push_lower_function_ir_fact(query::QueryContext& context, IdeSnapshot& snapshot, const query::BodyKey key,
+    const sema::FunctionSignature& signature, const query::QueryResultFingerprint type_check_result,
+    const base::SourceRange range, const IdeIncrementalSnapshotInput& incremental)
+{
+    const query::FunctionCleanupMarkerFacts* const facts =
+        cleanup_marker_facts_for_symbol(snapshot, signature.c_name.view());
+    if (facts == nullptr || facts->markers.empty() || !query::is_valid(type_check_result)) {
+        return;
+    }
+    const query::QueryResultFingerprint ir_input = lower_function_ir_input_fingerprint(key, type_check_result, *facts);
+    const query::QueryResultFingerprint ir_result = query::lower_function_ir_result_fingerprint(ir_input, *facts);
+    seed_reusable_query_record(context, incremental, query::lower_function_ir_query_record(key, ir_result));
+    const query::QueryEvaluationResult result = context.evaluate_lower_function_ir(query::LowerFunctionIRProviderInput{
+        key,
+        ir_input,
+        *facts,
+    });
+    if (!query_evaluation_completed(result)) {
+        return;
+    }
+    const std::optional<query::QueryKey> query_key = query::lower_function_ir_query_key(key);
+    if (!query_key.has_value()) {
+        return;
+    }
+    push_cleanup_marker_facts_fact(snapshot, *query_key, key, signature, range);
+}
+
 void evaluate_function_body_queries(query::QueryContext& context, IdeSnapshot& snapshot,
     const sema::FunctionLookupKey function, const sema::FunctionSignature& signature,
     const IdeIncrementalSnapshotInput& incremental)
@@ -2107,6 +2204,8 @@ void evaluate_function_body_queries(query::QueryContext& context, IdeSnapshot& s
     const query::TypeCheckBodyAuthority type_check_authority =
         type_check_body_authority(body, syntax_result, signature_result, snapshot, function);
     push_type_check_body_fact(context, snapshot, body, type_check_authority, signature, function, *range, incremental);
+    push_lower_function_ir_fact(context, snapshot, body, signature,
+        query::type_check_body_result_fingerprint(type_check_authority), *range, incremental);
 }
 
 void evaluate_checked_function_body_queries(
@@ -2173,6 +2272,25 @@ void evaluate_semantic_queries(IdeSnapshot& snapshot, const IdeIncrementalSnapsh
     }
     append_semantic_query_surface(snapshot, context);
 }
+
+#if defined(AUREX_TOOLING_ENABLE_IR_FACTS)
+void populate_cleanup_marker_facts(IdeSnapshot& snapshot)
+{
+    if (!snapshot.checked_semantics) {
+        return;
+    }
+    auto lowered = ir::lower_ast(snapshot.ast, snapshot.checked);
+    if (!lowered) {
+        return;
+    }
+    snapshot.cleanup_marker_facts = ir::function_cleanup_marker_facts(lowered.value());
+}
+#else
+void populate_cleanup_marker_facts(IdeSnapshot& snapshot)
+{
+    static_cast<void>(snapshot);
+}
+#endif
 
 void push_ast_global_symbol(const IdeSnapshot& snapshot, SymbolIndex& index, const syntax::ItemNode& item)
 {
@@ -2518,7 +2636,7 @@ void collect_local_symbols_from_function(
                 signature.range,
                 std::string(signature.name.view()),
                 std::string(function_symbol_kind(signature)),
-                function_detail(snapshot.checked, signature, &binding.function_key),
+                function_detail(snapshot, signature, &binding.function_key),
                 signature.part_index,
                 false,
                 true,
@@ -3055,6 +3173,7 @@ void build_ide_snapshot_into(
             if (checked) {
                 snapshot.checked_semantics = true;
                 snapshot.checked = checked.take_value();
+                populate_cleanup_marker_facts(snapshot);
             }
         } else {
             parse_result = parse_result_fingerprint(snapshot.lossless, snapshot.parsed, diagnostics.diagnostics());

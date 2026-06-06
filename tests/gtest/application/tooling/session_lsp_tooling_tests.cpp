@@ -1,6 +1,7 @@
 #include <aurex/application/tooling/lsp.hpp>
 #include <aurex/application/tooling/lsp_stdio.hpp>
 #include <aurex/application/tooling/session.hpp>
+#include <aurex/infrastructure/query/lower_function_ir_query.hpp>
 #include <aurex/infrastructure/query/query_key.hpp>
 
 #include <algorithm>
@@ -141,6 +142,10 @@ constexpr std::string_view TOOLING_MALFORMED_FACT_NAME = "missing-decision";
 constexpr std::string_view TOOLING_MOVE_REJECTION_FACT_NAME = "move_rejection_probe";
 constexpr std::string_view TOOLING_MOVE_REJECTION_FACT_KIND = "move_rejection_facts";
 constexpr std::string_view TOOLING_MOVE_REJECTION_FACT_DETAIL = "move_rejection_facts rejections=1 first=try_payload";
+constexpr std::string_view TOOLING_CLEANUP_MARKER_FACT_NAME = "cleanup_marker_probe";
+constexpr std::string_view TOOLING_CLEANUP_MARKER_FACT_KIND = "cleanup_marker_facts";
+constexpr std::string_view TOOLING_CLEANUP_MARKER_FACT_DETAIL =
+    "cleanup_marker_facts markers=1 drop_if=1 first_policy=generic_marker_only";
 constexpr std::string_view TOOLING_RETURN_VALUE_TEXT = "return value";
 constexpr base::i64 TOOLING_VERSION_ONE = 1;
 constexpr base::i64 TOOLING_VERSION_TWO = 2;
@@ -424,6 +429,39 @@ constexpr int TOOLING_LSP_SEMANTIC_TOKEN_STRING_TYPE = 18;
     fact.detail = std::string(TOOLING_MOVE_REJECTION_FACT_DETAIL);
     fact.checked = true;
     return fact;
+}
+
+[[nodiscard]] tooling::IdeSemanticFact cleanup_marker_semantic_fact(
+    const tooling::IdeSemanticFact& seed, const base::SourceRange range)
+{
+    tooling::IdeSemanticFact fact = seed;
+    fact.kind = tooling::IdeSemanticFactKind::cleanup_marker_facts;
+    const std::optional<query::QueryKey> lower_query = query::lower_function_ir_query_key(fact.body);
+    if (lower_query.has_value()) {
+        fact.query = *lower_query;
+    }
+    fact.range = range;
+    fact.name = std::string(TOOLING_CLEANUP_MARKER_FACT_NAME);
+    fact.detail = std::string(TOOLING_CLEANUP_MARKER_FACT_DETAIL);
+    fact.checked = true;
+    return fact;
+}
+
+[[nodiscard]] const tooling::IdeSemanticFact* first_body_semantic_fact(
+    const std::vector<tooling::IdeSemanticFact>& facts) noexcept
+{
+    const auto found = std::ranges::find_if(facts, [](const tooling::IdeSemanticFact& fact) {
+        return query::is_valid(fact.body);
+    });
+    return found == facts.end() ? nullptr : &*found;
+}
+
+void append_cleanup_marker_query_record(tooling::IdeSnapshot& snapshot, const tooling::IdeSemanticFact& fact,
+    const query::QueryResultFingerprint result)
+{
+    const std::optional<query::QueryRecord> record = query::lower_function_ir_query_record(fact.body, result);
+    ASSERT_TRUE(record.has_value());
+    snapshot.query.records.push_back(*record);
 }
 
 [[nodiscard]] bool contains_invalidation_root(
@@ -1564,6 +1602,26 @@ TEST(CoreUnit, ToolingSessionTracksAddedDependenciesAndEmptyReusePlan)
     EXPECT_TRUE(contains_reuse_fact(move_fact_plan, tooling::ToolingReuseFactStatus::unchanged,
         TOOLING_MOVE_REJECTION_FACT_NAME, TOOLING_MOVE_REJECTION_FACT_KIND));
 
+    tooling::IdeSnapshot cleanup_fact_before = before;
+    tooling::IdeSnapshot cleanup_fact_after = before;
+    const tooling::IdeSemanticFact* const cleanup_seed = first_body_semantic_fact(before.query.semantic_facts);
+    ASSERT_NE(cleanup_seed, nullptr);
+    tooling::IdeSemanticFact cleanup_fact = cleanup_marker_semantic_fact(*cleanup_seed, impact.range);
+    ASSERT_TRUE(cleanup_fact.range.well_formed());
+    ASSERT_TRUE(query::is_valid(cleanup_fact.query));
+    append_cleanup_marker_query_record(cleanup_fact_before, cleanup_fact, before.query.records.front().result);
+    append_cleanup_marker_query_record(cleanup_fact_after, cleanup_fact, before.query.records.front().result);
+    cleanup_fact_before.query.semantic_facts.push_back(cleanup_fact);
+    cleanup_fact_after.query.semantic_facts.push_back(std::move(cleanup_fact));
+    const tooling::ToolingReusePlan cleanup_fact_plan =
+        tooling::tooling_plan_reuse(cleanup_fact_before, cleanup_fact_after, impact);
+    EXPECT_TRUE(cleanup_fact_plan.valid);
+    EXPECT_TRUE(cleanup_fact_plan.summary.body_local);
+    EXPECT_TRUE(contains_invalidation_root(
+        cleanup_fact_plan, TOOLING_CLEANUP_MARKER_FACT_NAME, TOOLING_CLEANUP_MARKER_FACT_KIND));
+    EXPECT_TRUE(contains_reuse_fact(cleanup_fact_plan, tooling::ToolingReuseFactStatus::unchanged,
+        TOOLING_CLEANUP_MARKER_FACT_NAME, TOOLING_CLEANUP_MARKER_FACT_KIND));
+
     const tooling::ToolingReusePlan empty_plan =
         tooling::tooling_plan_reuse(tooling::IdeSnapshot{}, tooling::IdeSnapshot{}, tooling::IdeEditImpact{});
     EXPECT_FALSE(empty_plan.valid);
@@ -1856,8 +1914,8 @@ TEST(CoreUnit, ToolingWorkspaceIndexReportsIncrementalUpdateStats)
 
     ASSERT_FALSE(initial.value().snapshot->query.semantic_facts.empty());
     tooling::IdeSnapshot move_fact_snapshot = *initial.value().snapshot;
-    move_fact_snapshot.query.semantic_facts.push_back(
-        move_rejection_semantic_fact(initial.value().snapshot->query.semantic_facts.front(), initial_indexed.front().range.range));
+    move_fact_snapshot.query.semantic_facts.push_back(move_rejection_semantic_fact(
+        initial.value().snapshot->query.semantic_facts.front(), initial_indexed.front().range.range));
     tooling::ToolingSnapshotHandle move_fact_handle = initial.value();
     move_fact_handle.snapshot = std::make_shared<tooling::IdeSnapshot>(std::move(move_fact_snapshot));
     tooling::ToolingWorkspaceSemanticIndex move_fact_index;
@@ -1869,6 +1927,25 @@ TEST(CoreUnit, ToolingWorkspaceIndexReportsIncrementalUpdateStats)
     EXPECT_TRUE(std::ranges::any_of(move_fact_indexed, [](const tooling::ToolingIndexedSemanticFact& fact) {
         return fact.kind == TOOLING_MOVE_REJECTION_FACT_KIND && fact.name == TOOLING_MOVE_REJECTION_FACT_NAME
             && fact.detail == TOOLING_MOVE_REJECTION_FACT_DETAIL;
+    }));
+
+    tooling::IdeSnapshot cleanup_fact_snapshot = *initial.value().snapshot;
+    const tooling::IdeSemanticFact* const cleanup_seed =
+        first_body_semantic_fact(initial.value().snapshot->query.semantic_facts);
+    ASSERT_NE(cleanup_seed, nullptr);
+    cleanup_fact_snapshot.query.semantic_facts.push_back(
+        cleanup_marker_semantic_fact(*cleanup_seed, initial_indexed.front().range.range));
+    tooling::ToolingSnapshotHandle cleanup_fact_handle = initial.value();
+    cleanup_fact_handle.snapshot = std::make_shared<tooling::IdeSnapshot>(std::move(cleanup_fact_snapshot));
+    tooling::ToolingWorkspaceSemanticIndex cleanup_fact_index;
+    const tooling::ToolingWorkspaceIndexUpdateStats cleanup_fact_stats =
+        cleanup_fact_index.update_snapshot(cleanup_fact_handle);
+    EXPECT_TRUE(cleanup_fact_stats.updated);
+    const std::vector<tooling::ToolingIndexedSemanticFact> cleanup_fact_indexed =
+        cleanup_fact_index.facts_for_document(document);
+    EXPECT_TRUE(std::ranges::any_of(cleanup_fact_indexed, [](const tooling::ToolingIndexedSemanticFact& fact) {
+        return fact.kind == TOOLING_CLEANUP_MARKER_FACT_KIND && fact.name == TOOLING_CLEANUP_MARKER_FACT_NAME
+            && fact.detail == TOOLING_CLEANUP_MARKER_FACT_DETAIL;
     }));
 
     std::vector<tooling::ToolingIndexedSemanticFact> synthetic_previous;

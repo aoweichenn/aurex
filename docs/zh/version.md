@@ -1,5 +1,51 @@
 # 版本文档
 
+## M7d-J Cleanup Marker Query / Tooling Consumption Closure
+
+M7d-J 已完成 compiler-only cleanup marker query / tooling 消费面收口。本阶段继续不实现标准库，也不引入任何
+库级 owned resource wrapper；新增能力只发生在 IR cleanup marker facts、query/cache result、driver incremental
+cache subject、IDE/tooling semantic fact 和测试覆盖内部。语言行为不放宽：generic / associated / opaque /
+unknown cleanup 仍保持 marker-only，consuming pattern payload、non-`Copy` `?` payload transfer 和 indexed
+move-out 仍按当前规则拒绝。
+
+当前新增实现包括：
+
+- query 层新增稳定 DTO：`CleanupMarkerKind`、`CleanupMarkerPolicy`、`CleanupMarkerFact`、
+  `CleanupMarkerSummary` 和 `FunctionCleanupMarkerFacts`。这些 facts 有稳定 fingerprint、summary 和 dump，
+  工具链可以消费 facts 而不依赖 IR 内部结构。
+- IR 层新增 cleanup marker facts 提取器：`function_cleanup_marker_facts(...)`、
+  `function_cleanup_marker_facts_by_symbol(...)` 和 `query_cleanup_marker_policy(...)`。提取器按函数 value
+  closure 收集 `drop` / `drop_if` marker，记录 value id、object、condition、target type 和 cleanup ABI policy。
+- `lower_function_ir` / generic lower IR query 的 provider input/output 现在携带 `FunctionCleanupMarkerFacts`；
+  query result fingerprint 使用 raw lowered IR fingerprint 加 cleanup marker facts fingerprint 和 summary count
+  共同生成，避免 cleanup ABI 事实变化被 cache 误复用。
+- driver incremental cache 的 lower-IR subject 分离 raw IR input fingerprint、final query result fingerprint 和
+  cleanup marker facts；调度 provider 时传入 facts，而不是把 final result 当 raw IR input 二次混入。
+- tooling full build 下 `aurex_tooling` 可选择性链接 `aurex_ir` 并启用 `AUREX_TOOLING_ENABLE_IR_FACTS`，
+  IDE snapshot 会在 sema 成功后临时 lower IR 并填充 `snapshot.cleanup_marker_facts`；frontend-only build 不链接
+  IR target，facts 为空且行为保持兼容。
+- IDE semantic facts 新增 `cleanup_marker_facts` kind，并把该 fact 关联到 `lower_function_ir` query；
+  workspace index 和 session reuse invalidation 识别该 fact 为 body-local / indexable；函数 hover 在存在 facts
+  时显示 `cleanup_markers=count=...`。
+- 覆盖率补齐到新增代码自身：`cleanup_marker_facts.cpp` region 100%，`lower_function_ir_query.cpp` region 100%，
+  `ir_cleanup_marker_facts.cpp` region 95.89%；全量 coverage gate 的 source lines/functions/regions 均达到 95% 门槛。
+
+当前能做的事情：
+
+- 编译器能把 M7d-G 之后 IR `drop` / `drop_if` marker 上的 cleanup ABI policy 稳定投影给 query/cache/IDE，
+  不需要 IDE/LSP 重新扫描 IR dump 字符串或重新推导 lowering 行为。
+- lower-IR query cache 能感知 cleanup marker policy、数量和分类变化；generic/opaque/associated/unknown marker-only
+  事实改变时，query result 会正确失效。
+- tooling full build 能在函数 hover、semantic facts、workspace index 和 reuse plan 中消费 cleanup marker facts；
+  frontend-only build 仍保持轻量，不强制引入 IR 依赖。
+- 这为后续 dynamic Drop ABI、generic cleanup runtime ABI 或 payload transfer 语义提供事实面，但当前不生成任何未知
+  runtime destructor 调用。
+
+当前仍保守的边界：本阶段不实现标准库 API，不实现标准库拥有型资源封装，不实现用户可写 `Drop` bound、generic
+Drop impl、trait-object Drop dispatch、dynamic destructor ABI、async/unwind-aware drop 或 panic cleanup ABI；
+也不实现 consuming pattern payload transfer、non-`Copy` `?` payload transfer、indexed move-out、array/slice/index
+精确 disjoint proof、array repeat resource rollback 或 replace/take/swap primitive。
+
 ## M7d-I Move Rejection Facts Closure
 
 M7d-I 已完成 compiler-only move rejection facts 收口。本阶段继续不实现标准库，也不引入任何库级 owned

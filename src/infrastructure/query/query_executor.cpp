@@ -192,6 +192,7 @@ struct QueryEvaluateVisitor {
         return this->context.evaluate_lower_generic_instance_ir(LowerGenericInstanceIRProviderInput{
             &request.key,
             request.ir,
+            request.cleanup_markers,
         });
     }
 

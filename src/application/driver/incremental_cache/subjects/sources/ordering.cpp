@@ -162,7 +162,8 @@ void evaluate_lower_function_ir_query_subject(query::QueryContext& context, cons
         case LowerFunctionIRSubjectKind::body: {
             const query::LowerFunctionIRProviderInput input{
                 subject.body,
-                subject.result,
+                subject.ir,
+                subject.cleanup_markers,
             };
             static_cast<void>(context.evaluate_lower_function_ir(input));
             return;
@@ -170,7 +171,8 @@ void evaluate_lower_function_ir_query_subject(query::QueryContext& context, cons
         case LowerFunctionIRSubjectKind::generic_instance: {
             const query::LowerGenericInstanceIRProviderInput input{
                 subject.generic_instance,
-                subject.result,
+                subject.ir,
+                subject.cleanup_markers,
             };
             static_cast<void>(context.evaluate_lower_generic_instance_ir(input));
             return;

@@ -197,7 +197,9 @@ struct LowerFunctionIRQuerySubject {
     LowerFunctionIRSubjectKind kind = LowerFunctionIRSubjectKind::body;
     query::BodyKey body;
     const query::GenericInstanceKey* generic_instance = nullptr;
+    query::QueryResultFingerprint ir;
     query::QueryResultFingerprint result;
+    query::FunctionCleanupMarkerFacts cleanup_markers;
 };
 
 struct DiagnosticsQuerySubject {

@@ -69,11 +69,38 @@ struct DropGlueAction {
     return found == checked.destructors.end() ? nullptr : &found->second;
 }
 
+[[nodiscard]] DropGlueAbiPolicy drop_glue_step_policy(const DropGlueStepKind kind, const TypeHandle value_type,
+    const TypeTable& types) noexcept
+{
+    switch (kind) {
+        case DropGlueStepKind::generic_value:
+            if (is_valid(value_type) && value_type.value < types.size()
+                && types.get(value_type).kind == TypeKind::associated_projection) {
+                return DropGlueAbiPolicy::associated_projection_marker_only;
+            }
+            return DropGlueAbiPolicy::generic_marker_only;
+        case DropGlueStepKind::opaque_value:
+            return DropGlueAbiPolicy::opaque_marker_only;
+        case DropGlueStepKind::unknown_value:
+            return DropGlueAbiPolicy::unknown_marker_only;
+        case DropGlueStepKind::custom_destructor:
+            return DropGlueAbiPolicy::static_custom_destructor;
+        case DropGlueStepKind::struct_field:
+        case DropGlueStepKind::tuple_element:
+        case DropGlueStepKind::array_element:
+        case DropGlueStepKind::enum_payload:
+            return DropGlueAbiPolicy::structural_static;
+    }
+    return DropGlueAbiPolicy::unknown_marker_only;
+}
+
 [[nodiscard]] DropGlueStep make_drop_glue_step(const DropGlueStepKind kind, const TypeHandle owner_type,
-    const TypeHandle value_type, const base::u32 ordinal, const ResourceSemanticsClassifier& classifier)
+    const TypeHandle value_type, const base::u32 ordinal, const ResourceSemanticsClassifier& classifier,
+    const TypeTable& types)
 {
     return DropGlueStep{
         kind,
+        drop_glue_step_policy(kind, value_type, types),
         owner_type,
         value_type,
         ordinal,
@@ -83,10 +110,11 @@ struct DropGlueAction {
 }
 
 [[nodiscard]] DropGlueStep make_custom_destructor_step(
-    const TypeHandle type, const ResourceSemanticsClassifier& classifier, const DestructorInfo& destructor)
+    const TypeHandle type, const ResourceSemanticsClassifier& classifier, const TypeTable& types,
+    const DestructorInfo& destructor)
 {
     DropGlueStep step =
-        make_drop_glue_step(DropGlueStepKind::custom_destructor, type, type, 0, classifier);
+        make_drop_glue_step(DropGlueStepKind::custom_destructor, type, type, 0, classifier, types);
     step.destructor_function = destructor.function_key;
     return step;
 }
@@ -105,7 +133,7 @@ void append_drop_glue_struct_actions(std::vector<DropGlueAction>& actions, const
         actions.push_back(DropGlueAction{
             DropGlueActionKind::emit_step,
             INVALID_TYPE_HANDLE,
-            make_drop_glue_step(DropGlueStepKind::opaque_value, type, type, 0, classifier),
+            make_drop_glue_step(DropGlueStepKind::unknown_value, type, type, 0, classifier, checked.types),
         });
         return;
     }
@@ -115,13 +143,14 @@ void append_drop_glue_struct_actions(std::vector<DropGlueAction>& actions, const
         if (drop_glue_type_needs_drop(classifier, field_type)) {
             push_drop_glue_step_actions(actions,
                 make_drop_glue_step(
-                    DropGlueStepKind::struct_field, type, field_type, static_cast<base::u32>(field_index), classifier));
+                    DropGlueStepKind::struct_field, type, field_type, static_cast<base::u32>(field_index), classifier,
+                    checked.types));
         }
     }
 }
 
-void append_drop_glue_tuple_actions(std::vector<DropGlueAction>& actions, const TypeInfo& info, const TypeHandle type,
-    const ResourceSemanticsClassifier& classifier)
+void append_drop_glue_tuple_actions(std::vector<DropGlueAction>& actions, const CheckedModule& checked,
+    const TypeInfo& info, const TypeHandle type, const ResourceSemanticsClassifier& classifier)
 {
     for (base::usize index = 0; index < info.tuple_elements.size(); ++index) {
         const base::usize element_index = info.tuple_elements.size() - index - 1U;
@@ -129,16 +158,18 @@ void append_drop_glue_tuple_actions(std::vector<DropGlueAction>& actions, const 
         if (drop_glue_type_needs_drop(classifier, element)) {
             push_drop_glue_step_actions(actions,
                 make_drop_glue_step(
-                    DropGlueStepKind::tuple_element, type, element, static_cast<base::u32>(element_index), classifier));
+                    DropGlueStepKind::tuple_element, type, element, static_cast<base::u32>(element_index), classifier,
+                    checked.types));
         }
     }
 }
 
-void append_drop_glue_array_actions(std::vector<DropGlueAction>& actions, const TypeInfo& info, const TypeHandle type,
-    const ResourceSemanticsClassifier& classifier)
+void append_drop_glue_array_actions(std::vector<DropGlueAction>& actions, const CheckedModule& checked,
+    const TypeInfo& info, const TypeHandle type, const ResourceSemanticsClassifier& classifier)
 {
     push_drop_glue_step_actions(
-        actions, make_drop_glue_step(DropGlueStepKind::array_element, type, info.array_element, 0, classifier));
+        actions,
+        make_drop_glue_step(DropGlueStepKind::array_element, type, info.array_element, 0, classifier, checked.types));
 }
 
 void append_drop_glue_enum_actions(std::vector<DropGlueAction>& actions, const CheckedModule& checked,
@@ -150,7 +181,8 @@ void append_drop_glue_enum_actions(std::vector<DropGlueAction>& actions, const C
         if (drop_glue_type_needs_drop(classifier, payload)) {
             push_drop_glue_step_actions(actions,
                 make_drop_glue_step(
-                    DropGlueStepKind::enum_payload, type, payload, static_cast<base::u32>(index), classifier));
+                    DropGlueStepKind::enum_payload, type, payload, static_cast<base::u32>(index), classifier,
+                    checked.types));
         }
     }
 }
@@ -163,28 +195,28 @@ void append_drop_glue_actions_for_type(std::vector<DropGlueAction>& stack, const
         actions.push_back(DropGlueAction{
             DropGlueActionKind::emit_step,
             INVALID_TYPE_HANDLE,
-            make_custom_destructor_step(type, classifier, *destructor),
+            make_custom_destructor_step(type, classifier, checked.types, *destructor),
         });
     }
     if (info.kind == TypeKind::struct_) {
         append_drop_glue_struct_actions(actions, checked, type, classifier);
     } else if (info.kind == TypeKind::tuple) {
-        append_drop_glue_tuple_actions(actions, info, type, classifier);
+        append_drop_glue_tuple_actions(actions, checked, info, type, classifier);
     } else if (info.kind == TypeKind::array) {
-        append_drop_glue_array_actions(actions, info, type, classifier);
+        append_drop_glue_array_actions(actions, checked, info, type, classifier);
     } else if (info.kind == TypeKind::enum_) {
         append_drop_glue_enum_actions(actions, checked, type, classifier);
     } else if (info.kind == TypeKind::generic_param || info.kind == TypeKind::associated_projection) {
         actions.push_back(DropGlueAction{
             DropGlueActionKind::emit_step,
             INVALID_TYPE_HANDLE,
-            make_drop_glue_step(DropGlueStepKind::generic_value, type, type, 0, classifier),
+            make_drop_glue_step(DropGlueStepKind::generic_value, type, type, 0, classifier, checked.types),
         });
     } else if (info.kind == TypeKind::opaque_struct) {
         actions.push_back(DropGlueAction{
             DropGlueActionKind::emit_step,
             INVALID_TYPE_HANDLE,
-            make_drop_glue_step(DropGlueStepKind::opaque_value, type, type, 0, classifier),
+            make_drop_glue_step(DropGlueStepKind::opaque_value, type, type, 0, classifier, checked.types),
         });
     }
     for (base::usize index = actions.size(); index > 0; --index) {
@@ -201,6 +233,7 @@ void append_drop_glue_actions_for_type(std::vector<DropGlueAction>& stack, const
     builder.mix_u64(plan.steps.size());
     for (const DropGlueStep& step : plan.steps) {
         builder.mix_u8(static_cast<base::u8>(step.kind));
+        builder.mix_u8(static_cast<base::u8>(step.abi_policy));
         builder.mix_u32(step.owner_type.value);
         builder.mix_u32(step.value_type.value);
         builder.mix_u32(step.ordinal);
@@ -231,6 +264,27 @@ std::string_view drop_glue_step_kind_name(const DropGlueStepKind kind) noexcept
             return "generic_value";
         case DropGlueStepKind::opaque_value:
             return "opaque_value";
+        case DropGlueStepKind::unknown_value:
+            return "unknown_value";
+    }
+    return "invalid";
+}
+
+std::string_view drop_glue_abi_policy_name(const DropGlueAbiPolicy policy) noexcept
+{
+    switch (policy) {
+        case DropGlueAbiPolicy::structural_static:
+            return "structural_static";
+        case DropGlueAbiPolicy::generic_marker_only:
+            return "generic_marker_only";
+        case DropGlueAbiPolicy::associated_projection_marker_only:
+            return "associated_projection_marker_only";
+        case DropGlueAbiPolicy::opaque_marker_only:
+            return "opaque_marker_only";
+        case DropGlueAbiPolicy::unknown_marker_only:
+            return "unknown_marker_only";
+        case DropGlueAbiPolicy::static_custom_destructor:
+            return "static_custom_destructor";
     }
     return "invalid";
 }
@@ -279,7 +333,8 @@ base::Result<DropGluePlan> build_drop_glue_plan(const CheckedModule& checked, co
         }
         if (active.contains(action.type.value)) {
             plan.steps.push_back(
-                make_drop_glue_step(DropGlueStepKind::generic_value, action.type, action.type, 0, classifier));
+                make_drop_glue_step(DropGlueStepKind::unknown_value, action.type, action.type, 0, classifier,
+                    checked.types));
             continue;
         }
         const TypeInfo& info = checked.types.get(action.type);

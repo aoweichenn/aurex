@@ -51,4 +51,39 @@ TEST(CoreUnit, IrFingerprintsSeparateFunctionLayoutAndLlvmEmissionUnits)
     EXPECT_FALSE(ir::function_ir_unit_fingerprint_by_symbol(module, "missing").has_value());
 }
 
+TEST(CoreUnit, IrFingerprintIncludesCleanupAbiPolicy)
+{
+    Module module;
+    const TypeHandle void_type = builtin(module, BuiltinType::void_);
+    const TypeHandle generic = module.types.generic_param(sema::generic_param_identity_from_text("fp.T"), "T");
+    const TypeHandle generic_ptr = ptr(module, PointerMutability::mut, generic);
+
+    Function function = make_function(module, "cleanup_policy", void_type);
+    FunctionBuilder builder{module, function};
+    Value slot = module.make_value();
+    slot.kind = ValueKind::param;
+    slot.type = generic_ptr;
+    const ValueId slot_id = builder.add(slot);
+    function.signature_params.push_back(function_param(module, "slot", generic_ptr));
+    function.param_values.push_back(slot_id);
+
+    Value drop = module.make_value();
+    drop.kind = ValueKind::drop;
+    drop.type = void_type;
+    drop.object = slot_id;
+    drop.target_type = generic;
+    drop.cleanup_policy = CleanupAbiPolicy::generic_marker_only;
+    const ValueId drop_id = builder.add(drop);
+
+    const BlockId entry = builder.block("entry");
+    function.blocks[entry.value].values = {slot_id, drop_id};
+    function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+    append_function(module, function);
+
+    const query::QueryResultFingerprint before = ir::function_ir_unit_fingerprint(module, module.functions.front());
+    module.values[drop_id.value].cleanup_policy = CleanupAbiPolicy::unknown_marker_only;
+    const query::QueryResultFingerprint after = ir::function_ir_unit_fingerprint(module, module.functions.front());
+    EXPECT_NE(before, after);
+}
+
 } // namespace aurex::test

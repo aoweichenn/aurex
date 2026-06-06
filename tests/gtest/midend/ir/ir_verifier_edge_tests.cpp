@@ -1,6 +1,10 @@
+#include <aurex/infrastructure/query/query_key.hpp>
 #include <aurex/midend/ir/verify.hpp>
 
+#include <array>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include <gtest/support/ir_test_helpers.hpp>
 
@@ -342,6 +346,7 @@ TEST(CoreUnit, IrVerifierRejectsImmutableDropTargets)
     drop.type = void_type;
     drop.object = ptr_param_id;
     drop.target_type = i32;
+    drop.cleanup_policy = CleanupAbiPolicy::unknown_marker_only;
     const ValueId drop_id = builder.add(drop);
 
     Value drop_if = module.make_value();
@@ -350,6 +355,7 @@ TEST(CoreUnit, IrVerifierRejectsImmutableDropTargets)
     drop_if.lhs = flag_param_id;
     drop_if.object = ref_param_id;
     drop_if.target_type = i32;
+    drop_if.cleanup_policy = CleanupAbiPolicy::unknown_marker_only;
     const ValueId drop_if_id = builder.add(drop_if);
 
     const BlockId entry = builder.block("entry");
@@ -361,6 +367,231 @@ TEST(CoreUnit, IrVerifierRejectsImmutableDropTargets)
     ASSERT_FALSE(verify);
     EXPECT_NE(verify.error().message.find("drop target must be mutable"), std::string::npos)
         << verify.error().message;
+}
+
+TEST(CoreUnit, IrVerifierChecksCleanupAbiPolicy)
+{
+    {
+        Module module;
+        const TypeHandle void_type = builtin(module, BuiltinType::void_);
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
+        Function function = make_function(module, "missing_policy", void_type);
+        FunctionBuilder builder{module, function};
+
+        Value slot = module.make_value();
+        slot.kind = ValueKind::param;
+        slot.type = ptr_i32;
+        const ValueId slot_id = builder.add(slot);
+        function.signature_params.push_back(function_param(module, "slot", ptr_i32));
+        function.param_values.push_back(slot_id);
+
+        Value drop = module.make_value();
+        drop.kind = ValueKind::drop;
+        drop.type = void_type;
+        drop.object = slot_id;
+        drop.target_type = i32;
+        const ValueId drop_id = builder.add(drop);
+
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {slot_id, drop_id};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        append_function(module, function);
+        expect_error_contains(ir::verify_module(module), "drop cleanup ABI policy is required");
+    }
+    {
+        Module module;
+        const TypeHandle void_type = builtin(module, BuiltinType::void_);
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        Function function = make_function(module, "policy_on_non_drop", void_type);
+        FunctionBuilder builder{module, function};
+
+        Value literal = integer_value(module, i32, "1");
+        literal.cleanup_policy = CleanupAbiPolicy::generic_marker_only;
+        const ValueId literal_id = builder.add(literal);
+
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {literal_id};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        append_function(module, function);
+        expect_error_contains(ir::verify_module(module), "cleanup ABI policy is only valid on drop markers");
+    }
+    {
+        Module module;
+        const TypeHandle void_type = builtin(module, BuiltinType::void_);
+        const TypeHandle generic = module.types.generic_param(sema::generic_param_identity_from_text("ir_policy.T"), "T");
+        const TypeHandle associated =
+            module.types.associated_projection(generic, query::MemberKey{}, "Item");
+        const TypeHandle opaque = module.types.opaque_struct("ir_policy.Opaque", "ir_policy_Opaque");
+        const TypeHandle record = module.types.named_struct("ir_policy.Record", "ir_policy_Record", false);
+        const TypeHandle ptr_generic = ptr(module, PointerMutability::mut, generic);
+        const TypeHandle ptr_associated = ptr(module, PointerMutability::mut, associated);
+        const TypeHandle ptr_opaque = ptr(module, PointerMutability::mut, opaque);
+        const TypeHandle ptr_record = ptr(module, PointerMutability::mut, record);
+        const TypeHandle ptr_record_destructor = ptr(module, PointerMutability::mut, record);
+
+        Function function = make_function(module, "valid_policies", void_type);
+        FunctionBuilder builder{module, function};
+        const std::array<TypeHandle, 5> pointer_types{
+            ptr_generic, ptr_associated, ptr_opaque, ptr_record, ptr_record_destructor};
+        std::vector<ValueId> values;
+        for (base::usize index = 0; index < pointer_types.size(); ++index) {
+            Value param = module.make_value();
+            param.kind = ValueKind::param;
+            param.type = pointer_types[index];
+            const ValueId param_id = builder.add(param);
+            values.push_back(param_id);
+            const std::string param_name = "p" + std::to_string(index);
+            function.signature_params.push_back(function_param(module, param_name, pointer_types[index]));
+            function.param_values.push_back(param_id);
+        }
+
+        Value flag = bool_value(module, true);
+        const ValueId flag_id = builder.add(flag);
+        values.push_back(flag_id);
+
+        const std::array<std::pair<TypeHandle, CleanupAbiPolicy>, 5> drops{{
+            {generic, CleanupAbiPolicy::generic_marker_only},
+            {associated, CleanupAbiPolicy::associated_projection_marker_only},
+            {opaque, CleanupAbiPolicy::opaque_marker_only},
+            {record, CleanupAbiPolicy::structural_static},
+            {record, CleanupAbiPolicy::static_custom_destructor},
+        }};
+        for (base::usize index = 0; index < drops.size(); ++index) {
+            Value drop = module.make_value();
+            drop.kind = index == 0 ? ValueKind::drop_if : ValueKind::drop;
+            drop.type = void_type;
+            drop.object = values[index];
+            drop.lhs = index == 0 ? flag_id : INVALID_VALUE_ID;
+            drop.target_type = drops[index].first;
+            drop.cleanup_policy = drops[index].second;
+            values.push_back(builder.add(drop));
+        }
+
+        const BlockId entry = builder.block("entry");
+        assign_ir_vector(function.blocks[entry.value].values, values);
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        append_function(module, function);
+        const base::Result<void> verified = ir::verify_module(module);
+        ASSERT_TRUE(verified) << verified.error().message;
+    }
+    {
+        Module module;
+        const TypeHandle void_type = builtin(module, BuiltinType::void_);
+        const TypeHandle unknown_type{999U};
+        const TypeHandle ptr_unknown = ptr(module, PointerMutability::mut, unknown_type);
+        Function function = make_function(module, "unknown_policy_for_unknown_target", void_type);
+        FunctionBuilder builder{module, function};
+
+        Value slot = module.make_value();
+        slot.kind = ValueKind::param;
+        slot.type = ptr_unknown;
+        const ValueId slot_id = builder.add(slot);
+        function.signature_params.push_back(function_param(module, "slot", ptr_unknown));
+        function.param_values.push_back(slot_id);
+
+        Value drop = module.make_value();
+        drop.kind = ValueKind::drop;
+        drop.type = void_type;
+        drop.object = slot_id;
+        drop.target_type = unknown_type;
+        drop.cleanup_policy = CleanupAbiPolicy::unknown_marker_only;
+        const ValueId drop_id = builder.add(drop);
+
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {slot_id, drop_id};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        append_function(module, function);
+        const base::Result<void> verified = ir::verify_module(module);
+        ASSERT_TRUE(verified) << verified.error().message;
+    }
+    {
+        Module module;
+        const TypeHandle void_type = builtin(module, BuiltinType::void_);
+        const TypeHandle unknown_type{999U};
+        const TypeHandle ptr_unknown = ptr(module, PointerMutability::mut, unknown_type);
+        Function function = make_function(module, "generic_policy_for_unknown_target", void_type);
+        FunctionBuilder builder{module, function};
+
+        Value slot = module.make_value();
+        slot.kind = ValueKind::param;
+        slot.type = ptr_unknown;
+        const ValueId slot_id = builder.add(slot);
+        function.signature_params.push_back(function_param(module, "slot", ptr_unknown));
+        function.param_values.push_back(slot_id);
+
+        Value drop = module.make_value();
+        drop.kind = ValueKind::drop;
+        drop.type = void_type;
+        drop.object = slot_id;
+        drop.target_type = unknown_type;
+        drop.cleanup_policy = CleanupAbiPolicy::generic_marker_only;
+        const ValueId drop_id = builder.add(drop);
+
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {slot_id, drop_id};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        append_function(module, function);
+        expect_error_contains(ir::verify_module(module), "drop cleanup ABI policy does not match target type");
+    }
+    {
+        Module module;
+        const TypeHandle void_type = builtin(module, BuiltinType::void_);
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
+        Function function = make_function(module, "structural_policy_for_scalar_target", void_type);
+        FunctionBuilder builder{module, function};
+
+        Value slot = module.make_value();
+        slot.kind = ValueKind::param;
+        slot.type = ptr_i32;
+        const ValueId slot_id = builder.add(slot);
+        function.signature_params.push_back(function_param(module, "slot", ptr_i32));
+        function.param_values.push_back(slot_id);
+
+        Value drop = module.make_value();
+        drop.kind = ValueKind::drop;
+        drop.type = void_type;
+        drop.object = slot_id;
+        drop.target_type = i32;
+        drop.cleanup_policy = CleanupAbiPolicy::static_custom_destructor;
+        const ValueId drop_id = builder.add(drop);
+
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {slot_id, drop_id};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        append_function(module, function);
+        expect_error_contains(ir::verify_module(module), "drop cleanup ABI policy does not match target type");
+    }
+    {
+        Module module;
+        const TypeHandle void_type = builtin(module, BuiltinType::void_);
+        const TypeHandle i32 = builtin(module, BuiltinType::i32);
+        const TypeHandle ptr_i32 = ptr(module, PointerMutability::mut, i32);
+        Function function = make_function(module, "mismatched_policy", void_type);
+        FunctionBuilder builder{module, function};
+
+        Value slot = module.make_value();
+        slot.kind = ValueKind::param;
+        slot.type = ptr_i32;
+        const ValueId slot_id = builder.add(slot);
+        function.signature_params.push_back(function_param(module, "slot", ptr_i32));
+        function.param_values.push_back(slot_id);
+
+        Value drop = module.make_value();
+        drop.kind = ValueKind::drop;
+        drop.type = void_type;
+        drop.object = slot_id;
+        drop.target_type = i32;
+        drop.cleanup_policy = CleanupAbiPolicy::generic_marker_only;
+        const ValueId drop_id = builder.add(drop);
+
+        const BlockId entry = builder.block("entry");
+        function.blocks[entry.value].values = {slot_id, drop_id};
+        function.blocks[entry.value].terminator.kind = TerminatorKind::return_;
+        append_function(module, function);
+        expect_error_contains(ir::verify_module(module), "drop cleanup ABI policy does not match target type");
+    }
 }
 
 } // namespace aurex::test

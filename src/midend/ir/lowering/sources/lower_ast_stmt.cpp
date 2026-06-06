@@ -789,6 +789,41 @@ bool Lowerer::type_may_emit_runtime_drop(const sema::TypeHandle type, const Clea
     return false;
 }
 
+CleanupAbiPolicy Lowerer::cleanup_abi_policy(const sema::TypeHandle type, const CleanupDropMode mode) const
+{
+    if (!sema::is_valid(type) || type.value >= this->module_.types.size()) {
+        return CleanupAbiPolicy::unknown_marker_only;
+    }
+    if (this->custom_destructor_info(type) != nullptr) {
+        return CleanupAbiPolicy::static_custom_destructor;
+    }
+    if (mode == CleanupDropMode::custom_destructor_only) {
+        return CleanupAbiPolicy::unknown_marker_only;
+    }
+
+    const sema::TypeInfo& info = this->module_.types.get(type);
+    switch (info.kind) {
+        case sema::TypeKind::generic_param:
+            return CleanupAbiPolicy::generic_marker_only;
+        case sema::TypeKind::associated_projection:
+            return CleanupAbiPolicy::associated_projection_marker_only;
+        case sema::TypeKind::opaque_struct:
+            return CleanupAbiPolicy::opaque_marker_only;
+        case sema::TypeKind::struct_:
+        case sema::TypeKind::enum_:
+        case sema::TypeKind::tuple:
+        case sema::TypeKind::array:
+            return CleanupAbiPolicy::structural_static;
+        case sema::TypeKind::builtin:
+        case sema::TypeKind::pointer:
+        case sema::TypeKind::reference:
+        case sema::TypeKind::slice:
+        case sema::TypeKind::function:
+            return CleanupAbiPolicy::unknown_marker_only;
+    }
+    return CleanupAbiPolicy::unknown_marker_only;
+}
+
 bool Lowerer::append_custom_destructor_call(
     const ValueId slot, const sema::TypeHandle type, const IrTextId name)
 {
@@ -988,6 +1023,7 @@ void Lowerer::append_cleanup_drop(
     drop.object = slot;
     drop.target_type = type;
     drop.name = name;
+    drop.cleanup_policy = this->cleanup_abi_policy(type, mode);
     static_cast<void>(this->append_value(drop));
     static_cast<void>(this->append_runtime_drop_glue(slot, type, name, mode));
 }
@@ -1008,6 +1044,7 @@ void Lowerer::append_cleanup_drop_if(
     drop.lhs = initialized;
     drop.target_type = type;
     drop.name = name;
+    drop.cleanup_policy = this->cleanup_abi_policy(type, mode);
     static_cast<void>(this->append_value(drop));
     this->append_conditional_runtime_drop(initialized, slot, type, name, mode);
     this->append_cleanup_flag_store(flag, false);

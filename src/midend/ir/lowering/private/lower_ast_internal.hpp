@@ -299,6 +299,7 @@ public:
     [[nodiscard]] const sema::DestructorInfo* custom_destructor_info(sema::TypeHandle type) const noexcept;
     [[nodiscard]] CallTarget destructor_call_target(const sema::DestructorInfo& destructor);
     [[nodiscard]] bool type_may_emit_runtime_drop(sema::TypeHandle type, CleanupDropMode mode);
+    [[nodiscard]] CleanupAbiPolicy cleanup_abi_policy(sema::TypeHandle type, CleanupDropMode mode) const;
     [[nodiscard]] bool append_custom_destructor_call(ValueId slot, sema::TypeHandle type, IrTextId name);
     [[nodiscard]] bool append_runtime_drop_glue(
         ValueId slot, sema::TypeHandle type, IrTextId name, CleanupDropMode mode);

@@ -275,11 +275,13 @@ void dump_value(std::ostream& out, const Module& module, const Function& functio
             out << ")";
             break;
         case ValueKind::drop:
-            out << "drop " << value_ref(value.object) << " as " << module.types.display_name(value.target_type);
+            out << "drop " << value_ref(value.object) << " as " << module.types.display_name(value.target_type)
+                << " abi(" << cleanup_abi_policy_name(value.cleanup_policy) << ")";
             break;
         case ValueKind::drop_if:
             out << "drop_if " << value_ref(value.lhs) << ", " << value_ref(value.object) << " as "
-                << module.types.display_name(value.target_type);
+                << module.types.display_name(value.target_type) << " abi("
+                << cleanup_abi_policy_name(value.cleanup_policy) << ")";
             break;
     }
     out << "\n";

@@ -1,5 +1,33 @@
 # 版本文档
 
+## M7d-G Generic / Opaque Cleanup Marker ABI Closure
+
+M7d-G 已完成 compiler-only cleanup marker ABI policy 正式化。本阶段继续不实现标准库，也不引入任何库级
+owned resource wrapper；新增能力只发生在 sema drop-glue planner、IR cleanup marker、IR verifier、dump、
+fingerprint 和 lowering 内部。
+
+当前新增实现包括：
+
+- sema drop-glue step 增加 `DropGlueAbiPolicy`，把 structural static cleanup、generic marker-only、
+  associated-projection marker-only、opaque marker-only、unknown marker-only 和 static custom destructor
+  明确区分。
+- missing structural metadata 和 recursive drop-glue cycle 不再伪装成 `opaque_value`，而是记录为
+  `unknown_value` + `unknown_marker_only`，避免后续 ABI 设计把未知结构误判为真正 opaque type。
+- IR `drop` / `drop_if` marker 增加 `CleanupAbiPolicy` 字段；所有 lowering 生成的 cleanup marker 都会携带
+  policy，IR dump 输出 `abi(...)`，IR fingerprint 混入 policy，clone/copy 会保留该事实。
+- IR verifier 拒绝没有 cleanup ABI policy 的 `drop` / `drop_if`，拒绝非 drop value 携带 cleanup policy，
+  并校验 marker policy 与 target type kind 匹配：generic、associated projection、opaque 和 structural/static
+  marker 不再只能靠名字或注释区分。
+- lowering 仍只为静态可解析 custom destructor 生成普通 direct `call`；generic、associated projection、opaque
+  和 unknown cleanup 当前均保持 marker-only，不生成未知 runtime ABI 调用。
+- LLVM backend 行为不变：`drop` / `drop_if` marker 本身仍是 no-op，真实析构副作用继续来自 M7d-D 已有的
+  direct call lowering。
+
+当前仍保守的边界：标准库拥有型资源封装、用户可写 `Drop` bound、generic Drop impl、trait-object Drop
+dispatch、dynamic destructor ABI、async/unwind-aware drop、panic cleanup ABI、non-`Copy` `?` payload transfer、
+indexed move-out、array/slice/index 精确 disjoint proof、consuming pattern payload、array repeat resource rollback
+和 replace/take/swap primitive 仍是后续独立工作。
+
 ## M7d-F Tuple / Index Place-State Closure
 
 M7d-F 已完成 compiler-only tuple numeric field 与 tuple element place-state closure。本阶段继续不实现标准库，

@@ -73,6 +73,7 @@ void append_origin_key_regions(const std::string_view key,
         case DropGlueStepKind::custom_destructor:
         case DropGlueStepKind::generic_value:
         case DropGlueStepKind::opaque_value:
+        case DropGlueStepKind::unknown_value:
             return false;
     }
     return false;

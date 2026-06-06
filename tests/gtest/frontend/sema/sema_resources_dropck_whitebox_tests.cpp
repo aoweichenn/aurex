@@ -295,13 +295,18 @@ TEST(CoreUnit, SemanticWhiteBoxDropGluePlansStructuralGenericAndOpaqueCleanup)
     EXPECT_TRUE(sema::drop_glue_plan_needs_drop(record_plan.value()));
     ASSERT_EQ(record_plan.value().steps.size(), 4U);
     EXPECT_EQ(record_plan.value().steps[0].kind, sema::DropGlueStepKind::struct_field);
+    EXPECT_EQ(record_plan.value().steps[0].abi_policy, sema::DropGlueAbiPolicy::structural_static);
     EXPECT_EQ(record_plan.value().steps[0].ordinal, 1U);
     EXPECT_EQ(record_plan.value().steps[1].kind, sema::DropGlueStepKind::array_element);
+    EXPECT_EQ(record_plan.value().steps[1].abi_policy, sema::DropGlueAbiPolicy::structural_static);
     EXPECT_EQ(record_plan.value().steps[2].kind, sema::DropGlueStepKind::tuple_element);
+    EXPECT_EQ(record_plan.value().steps[2].abi_policy, sema::DropGlueAbiPolicy::structural_static);
     EXPECT_EQ(record_plan.value().steps[2].ordinal, 1U);
     EXPECT_EQ(record_plan.value().steps[3].kind, sema::DropGlueStepKind::generic_value);
+    EXPECT_EQ(record_plan.value().steps[3].abi_policy, sema::DropGlueAbiPolicy::generic_marker_only);
     EXPECT_NE(record_plan.value().fingerprint.byte_count, 0U);
     EXPECT_EQ(sema::drop_glue_step_kind_name(record_plan.value().steps[0].kind), "struct_field");
+    EXPECT_EQ(sema::drop_glue_abi_policy_name(record_plan.value().steps[3].abi_policy), "generic_marker_only");
 
     base::Result<sema::DropGluePlan> enum_plan = sema::build_drop_glue_plan(checked, choice);
     ASSERT_TRUE(enum_plan) << enum_plan.error().message;
@@ -312,6 +317,7 @@ TEST(CoreUnit, SemanticWhiteBoxDropGluePlansStructuralGenericAndOpaqueCleanup)
     ASSERT_TRUE(opaque_plan) << opaque_plan.error().message;
     ASSERT_EQ(opaque_plan.value().steps.size(), 1U);
     EXPECT_EQ(opaque_plan.value().steps.front().kind, sema::DropGlueStepKind::opaque_value);
+    EXPECT_EQ(opaque_plan.value().steps.front().abi_policy, sema::DropGlueAbiPolicy::opaque_marker_only);
 
     base::Result<sema::DropGluePlan> trivial_plan = sema::build_drop_glue_plan(checked, i32);
     ASSERT_TRUE(trivial_plan) << trivial_plan.error().message;
@@ -352,15 +358,18 @@ TEST(CoreUnit, SemanticWhiteBoxDropGlueEmitsCustomDestructorBeforeStructuralChil
     EXPECT_TRUE(sema::drop_glue_plan_needs_drop(plan.value()));
     ASSERT_EQ(plan.value().steps.size(), 3U);
     EXPECT_EQ(plan.value().steps[0].kind, sema::DropGlueStepKind::custom_destructor);
+    EXPECT_EQ(plan.value().steps[0].abi_policy, sema::DropGlueAbiPolicy::static_custom_destructor);
     EXPECT_EQ(plan.value().steps[0].owner_type.value, record.value);
     EXPECT_EQ(plan.value().steps[0].value_type.value, record.value);
     EXPECT_EQ(plan.value().steps[0].destructor_function, destructor.function_key);
     EXPECT_TRUE(sema::resource_needs_drop(plan.value().steps[0].resource));
     EXPECT_EQ(plan.value().steps[1].kind, sema::DropGlueStepKind::struct_field);
+    EXPECT_EQ(plan.value().steps[1].abi_policy, sema::DropGlueAbiPolicy::structural_static);
     EXPECT_EQ(plan.value().steps[1].owner_type.value, record.value);
     EXPECT_EQ(plan.value().steps[1].value_type.value, param.value);
     EXPECT_EQ(plan.value().steps[1].destructor_function, sema::FunctionLookupKey{});
     EXPECT_EQ(plan.value().steps[2].kind, sema::DropGlueStepKind::generic_value);
+    EXPECT_EQ(plan.value().steps[2].abi_policy, sema::DropGlueAbiPolicy::generic_marker_only);
     EXPECT_EQ(plan.value().steps[2].owner_type.value, param.value);
 
     sema::CheckedModule structural_only = checked;
@@ -413,13 +422,15 @@ TEST(CoreUnit, SemanticWhiteBoxDropGlueCoversMissingRecursiveEnumAndInvalidEdges
     base::Result<sema::DropGluePlan> missing_record_plan = sema::build_drop_glue_plan(checked, missing_record);
     ASSERT_TRUE(missing_record_plan) << missing_record_plan.error().message;
     ASSERT_EQ(missing_record_plan.value().steps.size(), 1U);
-    EXPECT_EQ(missing_record_plan.value().steps.front().kind, sema::DropGlueStepKind::opaque_value);
+    EXPECT_EQ(missing_record_plan.value().steps.front().kind, sema::DropGlueStepKind::unknown_value);
+    EXPECT_EQ(missing_record_plan.value().steps.front().abi_policy, sema::DropGlueAbiPolicy::unknown_marker_only);
 
     base::Result<sema::DropGluePlan> recursive_plan = sema::build_drop_glue_plan(checked, recursive_record);
     ASSERT_TRUE(recursive_plan) << recursive_plan.error().message;
     ASSERT_EQ(recursive_plan.value().steps.size(), 2U);
     EXPECT_EQ(recursive_plan.value().steps[0].kind, sema::DropGlueStepKind::struct_field);
-    EXPECT_EQ(recursive_plan.value().steps[1].kind, sema::DropGlueStepKind::generic_value);
+    EXPECT_EQ(recursive_plan.value().steps[1].kind, sema::DropGlueStepKind::unknown_value);
+    EXPECT_EQ(recursive_plan.value().steps[1].abi_policy, sema::DropGlueAbiPolicy::unknown_marker_only);
 
     base::Result<sema::DropGluePlan> empty_enum_plan = sema::build_drop_glue_plan(checked, empty_choice);
     ASSERT_TRUE(empty_enum_plan) << empty_enum_plan.error().message;
@@ -440,6 +451,8 @@ TEST(CoreUnit, SemanticWhiteBoxDropGlueCoversMissingRecursiveEnumAndInvalidEdges
     ASSERT_TRUE(associated_plan) << associated_plan.error().message;
     ASSERT_EQ(associated_plan.value().steps.size(), 1U);
     EXPECT_EQ(associated_plan.value().steps.front().kind, sema::DropGlueStepKind::generic_value);
+    EXPECT_EQ(associated_plan.value().steps.front().abi_policy,
+        sema::DropGlueAbiPolicy::associated_projection_marker_only);
 
     EXPECT_EQ(sema::drop_glue_step_kind_name(sema::DropGlueStepKind::custom_destructor), "custom_destructor");
     EXPECT_EQ(sema::drop_glue_step_kind_name(sema::DropGlueStepKind::tuple_element), "tuple_element");
@@ -447,8 +460,21 @@ TEST(CoreUnit, SemanticWhiteBoxDropGlueCoversMissingRecursiveEnumAndInvalidEdges
     EXPECT_EQ(sema::drop_glue_step_kind_name(sema::DropGlueStepKind::enum_payload), "enum_payload");
     EXPECT_EQ(sema::drop_glue_step_kind_name(sema::DropGlueStepKind::generic_value), "generic_value");
     EXPECT_EQ(sema::drop_glue_step_kind_name(sema::DropGlueStepKind::opaque_value), "opaque_value");
+    EXPECT_EQ(sema::drop_glue_step_kind_name(sema::DropGlueStepKind::unknown_value), "unknown_value");
+    EXPECT_EQ(sema::drop_glue_abi_policy_name(sema::DropGlueAbiPolicy::structural_static), "structural_static");
+    EXPECT_EQ(sema::drop_glue_abi_policy_name(sema::DropGlueAbiPolicy::generic_marker_only), "generic_marker_only");
+    EXPECT_EQ(sema::drop_glue_abi_policy_name(sema::DropGlueAbiPolicy::associated_projection_marker_only),
+        "associated_projection_marker_only");
+    EXPECT_EQ(sema::drop_glue_abi_policy_name(sema::DropGlueAbiPolicy::opaque_marker_only), "opaque_marker_only");
+    EXPECT_EQ(sema::drop_glue_abi_policy_name(sema::DropGlueAbiPolicy::unknown_marker_only), "unknown_marker_only");
+    EXPECT_EQ(
+        sema::drop_glue_abi_policy_name(sema::DropGlueAbiPolicy::static_custom_destructor),
+        "static_custom_destructor");
     EXPECT_EQ(
         sema::drop_glue_step_kind_name(static_cast<sema::DropGlueStepKind>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE)),
+        "invalid");
+    EXPECT_EQ(sema::drop_glue_abi_policy_name(
+                  static_cast<sema::DropGlueAbiPolicy>(SEMA_TEST_INVALID_RESOURCE_KIND_VALUE)),
         "invalid");
     EXPECT_FALSE(sema::build_drop_glue_plan(
         checked, TypeHandle{static_cast<base::u32>(types.size() + SEMA_TEST_MISSING_MODULE_INDEX)}));

@@ -20,11 +20,22 @@ enum class DropGlueStepKind : base::u8 {
     enum_payload,
     generic_value,
     opaque_value,
+    unknown_value,
     custom_destructor,
+};
+
+enum class DropGlueAbiPolicy : base::u8 {
+    structural_static,
+    generic_marker_only,
+    associated_projection_marker_only,
+    opaque_marker_only,
+    unknown_marker_only,
+    static_custom_destructor,
 };
 
 struct DropGlueStep {
     DropGlueStepKind kind = DropGlueStepKind::generic_value;
+    DropGlueAbiPolicy abi_policy = DropGlueAbiPolicy::generic_marker_only;
     TypeHandle owner_type = INVALID_TYPE_HANDLE;
     TypeHandle value_type = INVALID_TYPE_HANDLE;
     base::u32 ordinal = 0;
@@ -40,6 +51,7 @@ struct DropGluePlan {
 };
 
 [[nodiscard]] std::string_view drop_glue_step_kind_name(DropGlueStepKind kind) noexcept;
+[[nodiscard]] std::string_view drop_glue_abi_policy_name(DropGlueAbiPolicy policy) noexcept;
 [[nodiscard]] bool drop_glue_plan_needs_drop(const DropGluePlan& plan) noexcept;
 [[nodiscard]] base::Result<DropGluePlan> build_drop_glue_plan(const CheckedModule& checked, TypeHandle root);
 

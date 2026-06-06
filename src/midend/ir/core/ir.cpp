@@ -13,6 +13,27 @@ constexpr std::string_view IR_BLOCK_ID_CONTEXT = "ir block id";
 
 } // namespace
 
+std::string_view cleanup_abi_policy_name(const CleanupAbiPolicy policy) noexcept
+{
+    switch (policy) {
+        case CleanupAbiPolicy::none:
+            return "none";
+        case CleanupAbiPolicy::structural_static:
+            return "structural_static";
+        case CleanupAbiPolicy::generic_marker_only:
+            return "generic_marker_only";
+        case CleanupAbiPolicy::associated_projection_marker_only:
+            return "associated_projection_marker_only";
+        case CleanupAbiPolicy::opaque_marker_only:
+            return "opaque_marker_only";
+        case CleanupAbiPolicy::unknown_marker_only:
+            return "unknown_marker_only";
+        case CleanupAbiPolicy::static_custom_destructor:
+            return "static_custom_destructor";
+    }
+    return "invalid";
+}
+
 RecordLayout::RecordLayout() = default;
 
 RecordLayout::RecordLayout(base::BumpAllocator& arena) : fields(base::BumpAllocatorAdapter<RecordField>{arena})
@@ -145,6 +166,7 @@ Value Module::clone_value(const Value& other)
     copy.binary_op = other.binary_op;
     copy.cast_kind = other.cast_kind;
     copy.target_type = other.target_type;
+    copy.cleanup_policy = other.cleanup_policy;
     return copy;
 }
 

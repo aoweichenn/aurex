@@ -394,6 +394,10 @@ private:
             this->fail(std::string(IR_VERIFY_INVALID_VALUE_IN_BLOCK));
             return;
         }
+        if (value->kind != ValueKind::drop && value->kind != ValueKind::drop_if
+            && value->cleanup_policy != CleanupAbiPolicy::none) {
+            this->fail(std::string(IR_VERIFY_DROP_CLEANUP_POLICY_NON_DROP));
+        }
 
         switch (value->kind) {
             case ValueKind::param:
@@ -564,8 +568,53 @@ private:
             && this->module_.types.get(object->type).pointer_mutability != sema::PointerMutability::mut) {
             this->fail(std::string(IR_VERIFY_DROP_TARGET_MUTABLE));
         }
+        this->verify_drop_cleanup_policy(value);
         if (conditional) {
             this->verify_value_type(value.lhs, this->module_.types.builtin(sema::BuiltinType::bool_), "drop flag");
+        }
+    }
+
+    void verify_drop_cleanup_policy(const Value& value)
+    {
+        if (value.cleanup_policy == CleanupAbiPolicy::none) {
+            this->fail(std::string(IR_VERIFY_DROP_CLEANUP_POLICY_REQUIRED));
+            return;
+        }
+        if (!sema::is_valid(value.target_type) || value.target_type.value >= this->module_.types.size()) {
+            if (value.cleanup_policy != CleanupAbiPolicy::unknown_marker_only) {
+                this->fail(std::string(IR_VERIFY_DROP_CLEANUP_POLICY_TARGET));
+            }
+            return;
+        }
+
+        const sema::TypeKind kind = this->module_.types.get(value.target_type).kind;
+        switch (value.cleanup_policy) {
+            case CleanupAbiPolicy::structural_static:
+            case CleanupAbiPolicy::static_custom_destructor:
+                if (kind != sema::TypeKind::struct_ && kind != sema::TypeKind::enum_
+                    && kind != sema::TypeKind::tuple && kind != sema::TypeKind::array) {
+                    this->fail(std::string(IR_VERIFY_DROP_CLEANUP_POLICY_TARGET));
+                }
+                break;
+            case CleanupAbiPolicy::generic_marker_only:
+                if (kind != sema::TypeKind::generic_param) {
+                    this->fail(std::string(IR_VERIFY_DROP_CLEANUP_POLICY_TARGET));
+                }
+                break;
+            case CleanupAbiPolicy::associated_projection_marker_only:
+                if (kind != sema::TypeKind::associated_projection) {
+                    this->fail(std::string(IR_VERIFY_DROP_CLEANUP_POLICY_TARGET));
+                }
+                break;
+            case CleanupAbiPolicy::opaque_marker_only:
+                if (kind != sema::TypeKind::opaque_struct) {
+                    this->fail(std::string(IR_VERIFY_DROP_CLEANUP_POLICY_TARGET));
+                }
+                break;
+            case CleanupAbiPolicy::unknown_marker_only:
+                break;
+            case CleanupAbiPolicy::none:
+                break;
         }
     }
 

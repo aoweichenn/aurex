@@ -156,6 +156,18 @@ enum class CastKind {
     paddr,
 };
 
+enum class CleanupAbiPolicy {
+    none,
+    structural_static,
+    generic_marker_only,
+    associated_projection_marker_only,
+    opaque_marker_only,
+    unknown_marker_only,
+    static_custom_destructor,
+};
+
+[[nodiscard]] std::string_view cleanup_abi_policy_name(CleanupAbiPolicy policy) noexcept;
+
 struct FieldValue {
     IrTextId name = INVALID_IR_TEXT_ID;
     ValueId value = INVALID_VALUE_ID;
@@ -216,6 +228,7 @@ struct Value {
     BinaryOp binary_op = BinaryOp::add;
     CastKind cast_kind = CastKind::numeric;
     sema::TypeHandle target_type = sema::INVALID_TYPE_HANDLE;
+    CleanupAbiPolicy cleanup_policy = CleanupAbiPolicy::none;
 };
 
 enum class TerminatorKind {

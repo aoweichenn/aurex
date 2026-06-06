@@ -206,7 +206,9 @@ TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads)
         IR_MODULE_COPY_TEST_RECORD_RESERVE, IR_MODULE_COPY_TEST_CONSTANT_RESERVE);
 
     const TypeHandle i32 = builtin(module, BuiltinType::i32);
+    const TypeHandle void_type = builtin(module, BuiltinType::void_);
     const TypeHandle record_type = module.types.named_struct("copy.Pair", "copy_Pair", false);
+    const TypeHandle ptr_record = ptr(module, PointerMutability::mut, record_type);
     const IrTextId payload_text = text_id(module, "payload");
     EXPECT_TRUE(module.has_text(payload_text));
     EXPECT_EQ(module.find_text("payload").value, payload_text.value);
@@ -226,6 +228,21 @@ TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads)
     aggregate.incoming.push_back(PhiInput{BlockId{IR_MODULE_COPY_TEST_ENTRY_INDEX}, literal_id});
     aggregate.elements.push_back(literal_id);
     const ValueId aggregate_id = add_value(module, aggregate);
+
+    Value slot = module.make_value();
+    slot.kind = ValueKind::alloca;
+    slot.type = ptr_record;
+    slot.target_type = record_type;
+    set_name(module, slot, "slot");
+    const ValueId slot_id = add_value(module, slot);
+
+    Value drop = module.make_value();
+    drop.kind = ValueKind::drop;
+    drop.type = void_type;
+    drop.object = slot_id;
+    drop.target_type = record_type;
+    drop.cleanup_policy = CleanupAbiPolicy::structural_static;
+    const ValueId drop_id = add_value(module, drop);
 
     RecordLayout record = record_layout(module, record_type, "copy.Pair", "copy_Pair", false);
     record.fields.push_back(record_field(module, "left", i32));
@@ -258,6 +275,7 @@ TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads)
     EXPECT_EQ(copied.text(copied.values[aggregate_id.value].fields.front().name), "left");
     EXPECT_EQ(copied.values[aggregate_id.value].incoming.front().predecessor.value, entry.value);
     EXPECT_EQ(copied.values[aggregate_id.value].elements.front().value, literal_id.value);
+    EXPECT_EQ(copied.values[drop_id.value].cleanup_policy, CleanupAbiPolicy::structural_static);
     ASSERT_EQ(copied.records.size(), 1U);
     EXPECT_EQ(copied.text(copied.records.front().name), "copy.Pair");
     EXPECT_EQ(copied.text(copied.records.front().fields.front().name), "left");
@@ -276,6 +294,7 @@ TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads)
     assigned = assigned_alias;
     EXPECT_EQ(assigned.text(assigned.functions.front().symbol), "test_copy");
     EXPECT_EQ(assigned.text(assigned.records.front().symbol), "copy_Pair");
+    EXPECT_EQ(assigned.values[drop_id.value].cleanup_policy, CleanupAbiPolicy::structural_static);
 
     Module moved(std::move(assigned));
     EXPECT_EQ(moved.text(moved.values[aggregate_id.value].fields.front().name), "left");
@@ -286,6 +305,7 @@ TEST(CoreUnit, IrModuleArenaBackedCopyMovePreservesInternedPayloads)
     move_assigned = std::move(move_assigned_alias);
     EXPECT_EQ(move_assigned.text(move_assigned.constants[constant_id.value].name), "global");
     EXPECT_EQ(move_assigned.functions.front().blocks.front().terminator.value.value, aggregate_id.value);
+    EXPECT_EQ(move_assigned.values[drop_id.value].cleanup_policy, CleanupAbiPolicy::structural_static);
 }
 
 TEST(CoreUnit, TypeTableBuiltinDisplayNamesAndPredicates)

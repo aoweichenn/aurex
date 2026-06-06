@@ -25,6 +25,9 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames)
     const TypeHandle slice_u8 = module.types.slice(PointerMutability::const_, u8);
     const TypeHandle slice_i32 = module.types.slice(PointerMutability::mut, i32);
     const TypeHandle callback_type = module.types.function(sema::FunctionCallConv::aurex, false, {i32}, i32);
+    const TypeHandle generic_type =
+        module.types.generic_param(sema::generic_param_identity_from_text("dump.T"), "T");
+    const TypeHandle generic_ptr = ptr(module, PointerMutability::mut, generic_type);
     const TypeHandle str_type = builtin(module, BuiltinType::str);
     const TypeHandle record_type = module.types.named_struct("dump.Record", "dump_Record", false);
     const TypeHandle opaque_type = module.types.opaque_struct("dump.Opaque", "dump_Opaque");
@@ -50,6 +53,10 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames)
     pointer.kind = ValueKind::null_literal;
     pointer.type = ptr_i32;
     const ValueId ptr_value = builder.add(pointer);
+    Value generic_pointer = module.make_value();
+    generic_pointer.kind = ValueKind::null_literal;
+    generic_pointer.type = generic_ptr;
+    const ValueId generic_ptr_value = builder.add(generic_pointer);
 
     Value string_value = module.make_value();
     string_value.kind = ValueKind::string_literal;
@@ -143,6 +150,7 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames)
         len,
         flag,
         ptr_value,
+        generic_ptr_value,
         text,
         string_data,
         string_byte_len,
@@ -209,6 +217,23 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames)
     ptraddr.lhs = ptr_value;
     values.push_back(builder.add(ptraddr));
 
+    Value generic_drop = module.make_value();
+    generic_drop.kind = ValueKind::drop;
+    generic_drop.type = void_type;
+    generic_drop.object = generic_ptr_value;
+    generic_drop.target_type = generic_type;
+    generic_drop.cleanup_policy = CleanupAbiPolicy::generic_marker_only;
+    values.push_back(builder.add(generic_drop));
+
+    Value structural_drop_if = module.make_value();
+    structural_drop_if.kind = ValueKind::drop_if;
+    structural_drop_if.type = void_type;
+    structural_drop_if.lhs = flag;
+    structural_drop_if.object = ptr_value;
+    structural_drop_if.target_type = i32;
+    structural_drop_if.cleanup_policy = CleanupAbiPolicy::unknown_marker_only;
+    values.push_back(builder.add(structural_drop_if));
+
     const BlockId entry = builder.block("entry");
     const BlockId dead = builder.block("dead");
     assign_ir_vector(function.blocks[entry.value].values, values);
@@ -256,6 +281,10 @@ TEST(CoreUnit, IrDumpCoversFallbackLabelsAndOperatorNames)
             "bitcast",
             "ptrat",
             "ptraddr",
+            "drop %",
+            "drop_if %",
+            "abi(generic_marker_only)",
+            "abi(unknown_marker_only)",
             "unreachable",
             "br ^invalid",
         });

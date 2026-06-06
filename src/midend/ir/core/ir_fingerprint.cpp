@@ -245,6 +245,7 @@ void mix_value(query::StableHashBuilder& builder, const Module& module, const Va
     builder.mix_u8(static_cast<base::u8>(value.binary_op));
     builder.mix_u8(static_cast<base::u8>(value.cast_kind));
     mix_type(builder, module, value.target_type);
+    builder.mix_u8(static_cast<base::u8>(value.cleanup_policy));
 
     builder.mix_u64(value.args.size());
     for (const ValueId arg : value.args) {

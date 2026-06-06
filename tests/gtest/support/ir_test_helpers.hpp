@@ -25,6 +25,7 @@ using ir::BasicBlock;
 using ir::BinaryOp;
 using ir::BlockId;
 using ir::CastKind;
+using ir::CleanupAbiPolicy;
 using ir::FieldValue;
 using ir::Function;
 using ir::FunctionId;

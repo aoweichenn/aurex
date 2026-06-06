@@ -54,6 +54,14 @@ inline constexpr std::string_view IR_VERIFY_DROP_TARGET_MUTABLE = "drop target m
 
 inline constexpr std::string_view IR_VERIFY_DROP_IF_CONDITION_BOOL = "conditional drop flag must be bool";
 
+inline constexpr std::string_view IR_VERIFY_DROP_CLEANUP_POLICY_REQUIRED = "drop cleanup ABI policy is required";
+
+inline constexpr std::string_view IR_VERIFY_DROP_CLEANUP_POLICY_TARGET =
+    "drop cleanup ABI policy does not match target type";
+
+inline constexpr std::string_view IR_VERIFY_DROP_CLEANUP_POLICY_NON_DROP =
+    "cleanup ABI policy is only valid on drop markers";
+
 inline constexpr std::string_view IR_VERIFY_CAST_RESULT_TARGET = "cast result type must match cast target type";
 
 inline constexpr std::string_view IR_VERIFY_UNARY_OPERAND_INVALID = "unary operand type is invalid";

@@ -25,6 +25,7 @@ using ir::add_block;
 using ir::add_function;
 using ir::BinaryOp;
 using ir::BlockId;
+using ir::CleanupAbiPolicy;
 using ir::Function;
 using ir::FunctionId;
 using ir::INVALID_BLOCK_ID;
@@ -57,6 +58,7 @@ constexpr std::string_view LOWER_AST_GENERIC_TEST_FUNCTION = "id";
 constexpr std::string_view LOWER_AST_ROLLBACK_FLAG_ALLOCA = "drop.flag.aggregate.rollback";
 constexpr std::string_view LOWER_AST_ROLLBACK_ARRAY_FIELD_PREFIX = "aggregate.rollback.";
 constexpr base::SourceId LOWER_AST_RAII_TEST_SOURCE_ID{808};
+constexpr base::u8 LOWER_AST_INVALID_CLEANUP_POLICY_VALUE = 240U;
 
 [[nodiscard]] ExprId push_name(syntax::AstModule& ast, const std::string_view text)
 {
@@ -773,6 +775,15 @@ TEST(CoreUnit, LowerAstWhiteBoxCleanupStackDropsNeedsDropParametersOnImplicitRet
     EXPECT_NE(dump.find("alloca drop.flag.value"), std::string::npos);
     EXPECT_NE(dump.find("drop_if"), std::string::npos);
     EXPECT_NE(dump.find("as T"), std::string::npos);
+    EXPECT_NE(dump.find("abi(generic_marker_only)"), std::string::npos);
+    bool saw_generic_cleanup_policy = false;
+    for (const Value& value : lowerer.module_.values) {
+        if (value.kind == ValueKind::drop_if && lowerer.module_.types.same(value.target_type, resource_type)) {
+            saw_generic_cleanup_policy = true;
+            EXPECT_EQ(value.cleanup_policy, CleanupAbiPolicy::generic_marker_only);
+        }
+    }
+    EXPECT_TRUE(saw_generic_cleanup_policy);
 }
 
 TEST(CoreUnit, LowerAstWhiteBoxCustomDestructorLowersToRuntimeCallAndLlvm)
@@ -863,8 +874,10 @@ TEST(CoreUnit, LowerAstWhiteBoxCustomDestructorRootRunsBeforeFieldCleanup)
             if (object_name == "value") {
                 root_drop_if_index = index;
                 EXPECT_EQ(value.target_type.value, box_type.value);
+                EXPECT_EQ(value.cleanup_policy, CleanupAbiPolicy::static_custom_destructor);
             } else if (lowerer.module_.text(value.name) == "inner") {
                 field_drop_if_index = index;
+                EXPECT_EQ(value.cleanup_policy, CleanupAbiPolicy::generic_marker_only);
                 ++field_drop_count;
             }
         }
@@ -940,6 +953,73 @@ TEST(CoreUnit, LowerAstWhiteBoxRuntimeDropTypeProbeCoversStructuralShapes)
 
     checked.functions.at(drop_key).c_name = sema::InternedText{};
     EXPECT_EQ(lowerer.destructor_call_target(wrapper_destructor).function.value, INVALID_FUNCTION_ID.value);
+}
+
+TEST(CoreUnit, LowerAstWhiteBoxCleanupAbiPolicyClassifiesMarkerKinds)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle generic =
+        checked.types.generic_param(sema::generic_param_identity_from_text("cleanup_policy.T"), "T");
+    const TypeHandle associated = checked.types.associated_projection(generic, query::MemberKey{}, "Item");
+    const TypeHandle opaque = checked.types.opaque_struct("cleanup_policy.Opaque", "cleanup_policy_Opaque");
+    const TypeHandle record = checked.types.named_struct("cleanup_policy.Record", "cleanup_policy_Record", false);
+    const TypeHandle i32 = checked.types.builtin(BuiltinType::i32);
+    const TypeHandle bool_type = checked.types.builtin(BuiltinType::bool_);
+    const TypeHandle pointer = checked.types.pointer(PointerMutability::mut, i32);
+    const TypeHandle reference = checked.types.reference(PointerMutability::const_, i32);
+    const TypeHandle slice = checked.types.slice(PointerMutability::const_, i32);
+    const TypeHandle function_type =
+        checked.types.function(sema::FunctionCallConv::aurex, false, false, std::span<const TypeHandle>{}, i32);
+    const TypeHandle enum_type = checked.types.named_enum("cleanup_policy.Enum", "cleanup_policy_Enum");
+    const TypeHandle array = checked.types.array(2U, generic);
+    const TypeHandle tuple = checked.types.tuple({i32, generic});
+    checked.types.set_enum_underlying(enum_type, i32);
+    add_struct_info(checked, ast, "Record", record, {{"value", generic}});
+    static_cast<void>(add_destructor_signature(checked, ast, record, "drop_record"));
+
+    Lowerer lowerer(ast, checked);
+    lowerer.lower_record_layouts();
+
+    EXPECT_EQ(lowerer.cleanup_abi_policy(generic, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::generic_marker_only);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(associated, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::associated_projection_marker_only);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(opaque, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::opaque_marker_only);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(tuple, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::structural_static);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(enum_type, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::structural_static);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(array, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::structural_static);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(record, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::static_custom_destructor);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(bool_type, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::unknown_marker_only);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(pointer, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::unknown_marker_only);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(reference, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::unknown_marker_only);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(slice, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::unknown_marker_only);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(function_type, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::unknown_marker_only);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(tuple, ir::detail::CleanupDropMode::custom_destructor_only),
+        CleanupAbiPolicy::unknown_marker_only);
+    EXPECT_EQ(lowerer.cleanup_abi_policy(INVALID_TYPE_HANDLE, ir::detail::CleanupDropMode::full),
+        CleanupAbiPolicy::unknown_marker_only);
+    EXPECT_EQ(ir::cleanup_abi_policy_name(CleanupAbiPolicy::none), "none");
+    EXPECT_EQ(ir::cleanup_abi_policy_name(CleanupAbiPolicy::structural_static), "structural_static");
+    EXPECT_EQ(ir::cleanup_abi_policy_name(CleanupAbiPolicy::generic_marker_only), "generic_marker_only");
+    EXPECT_EQ(ir::cleanup_abi_policy_name(CleanupAbiPolicy::associated_projection_marker_only),
+        "associated_projection_marker_only");
+    EXPECT_EQ(ir::cleanup_abi_policy_name(CleanupAbiPolicy::opaque_marker_only), "opaque_marker_only");
+    EXPECT_EQ(ir::cleanup_abi_policy_name(CleanupAbiPolicy::unknown_marker_only), "unknown_marker_only");
+    EXPECT_EQ(ir::cleanup_abi_policy_name(CleanupAbiPolicy::static_custom_destructor), "static_custom_destructor");
+    EXPECT_EQ(ir::cleanup_abi_policy_name(static_cast<CleanupAbiPolicy>(LOWER_AST_INVALID_CLEANUP_POLICY_VALUE)),
+        "invalid");
 }
 
 TEST(CoreUnit, LowerAstWhiteBoxRuntimeDropGlueExpandsStructTupleArrayAndEnumPayloads)

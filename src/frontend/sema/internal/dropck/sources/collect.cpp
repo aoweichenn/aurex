@@ -427,6 +427,11 @@ TypeHandle SemanticAnalyzerCore::DropCheckAnalyzer::projected_type(
                 return field == nullptr ? INVALID_TYPE_HANDLE : field->type;
             }
             return INVALID_TYPE_HANDLE;
+        case BodyFlowPlaceProjectionKind::tuple_element:
+            if (info.kind == TypeKind::tuple && projection.element_index < info.tuple_elements.size()) {
+                return info.tuple_elements[projection.element_index];
+            }
+            return INVALID_TYPE_HANDLE;
         case BodyFlowPlaceProjectionKind::index:
             if (info.kind == TypeKind::array) {
                 return info.array_element;

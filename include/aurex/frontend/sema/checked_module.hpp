@@ -793,6 +793,7 @@ enum class BodyFlowPlaceRootKind : base::u8 {
 
 enum class BodyFlowPlaceProjectionKind : base::u8 {
     field,
+    tuple_element,
     index,
     dereference,
     slice,
@@ -801,6 +802,7 @@ enum class BodyFlowPlaceProjectionKind : base::u8 {
 struct BodyFlowPlaceProjection {
     BodyFlowPlaceProjectionKind kind = BodyFlowPlaceProjectionKind::field;
     IdentId field_name_id = INVALID_IDENT_ID;
+    base::u32 element_index = SEMA_BODY_FLOW_INVALID_INDEX;
     syntax::ExprId expr = syntax::INVALID_EXPR_ID;
 };
 

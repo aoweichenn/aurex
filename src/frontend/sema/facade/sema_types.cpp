@@ -57,6 +57,7 @@ constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_U64 = "u64";
 constexpr std::string_view SEMA_INTEGER_LITERAL_SUFFIX_USIZE = "usize";
 constexpr std::string_view SEMA_FLOAT_LITERAL_SUFFIX_F32 = "f32";
 constexpr std::string_view SEMA_FLOAT_LITERAL_SUFFIX_F64 = "f64";
+constexpr int SEMA_TUPLE_FIELD_INDEX_DECIMAL_BASE = 10;
 
 struct IntegerLiteralParts {
     std::string_view digits;
@@ -72,6 +73,35 @@ struct PlaceIntegerLiteralExpr {
     syntax::ExprId literal = syntax::INVALID_EXPR_ID;
     bool negated = false;
 };
+
+struct TupleFieldIndexParse {
+    bool numeric = false;
+    bool in_range = false;
+    base::u64 value = 0;
+};
+
+[[nodiscard]] bool is_decimal_digit(const char c) noexcept
+{
+    return c >= '0' && c <= '9';
+}
+
+[[nodiscard]] TupleFieldIndexParse parse_tuple_field_index(const std::string_view field_name) noexcept
+{
+    if (field_name.empty()) {
+        return {};
+    }
+    if (!std::ranges::all_of(field_name, is_decimal_digit)) {
+        return {};
+    }
+    base::u64 value = 0;
+    const char* const begin = field_name.data();
+    const char* const end = begin + field_name.size();
+    const auto result = std::from_chars(begin, end, value, SEMA_TUPLE_FIELD_INDEX_DECIMAL_BASE);
+    if (result.ec != std::errc{} || result.ptr != end) {
+        return TupleFieldIndexParse{.numeric = true};
+    }
+    return TupleFieldIndexParse{.numeric = true, .in_range = true, .value = value};
+}
 
 [[nodiscard]] PlaceIntegerLiteralExpr place_integer_literal_expr(
     const syntax::AstModule& module, const syntax::ExprId candidate) noexcept
@@ -760,8 +790,20 @@ SemanticAnalyzerCore::PlaceInfo SemanticAnalyzerCore::analyze_place_info(
                 object_type = reference.pointee;
             }
             if (this->state_.checked.types.is_tuple(object_type)) {
-                if (emit_diagnostics) {
-                    this->report_unsupported(projection_range, std::string(SEMA_TUPLE_FIELD_ACCESS_UNSUPPORTED));
+                const TypeInfo& tuple = this->state_.checked.types.get(object_type);
+                const TupleFieldIndexParse field_index = parse_tuple_field_index(field_name);
+                if (!field_index.numeric) {
+                    if (emit_diagnostics) {
+                        this->report_general(projection_range, std::string(SEMA_TUPLE_FIELD_ACCESS_NUMERIC));
+                    }
+                } else if (!field_index.in_range || field_index.value >= tuple.tuple_elements.size()) {
+                    if (emit_diagnostics) {
+                        this->report_general(projection_range, std::string(SEMA_TUPLE_FIELD_ACCESS_OUT_OF_RANGE));
+                    }
+                } else {
+                    output_type = tuple.tuple_elements[static_cast<base::usize>(field_index.value)];
+                    output_is_place = projection_is_indirect || place.is_place;
+                    output_is_writable = output_is_place && output_is_writable;
                 }
             } else if (const StructInfo* info = this->find_struct(object_type); info != nullptr && !info->is_opaque) {
                 bool saw_field = false;

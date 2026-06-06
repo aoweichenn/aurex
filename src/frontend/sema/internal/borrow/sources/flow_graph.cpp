@@ -2,6 +2,7 @@
 #include <aurex/infrastructure/base/integer.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <optional>
 #include <sstream>
 #include <string_view>
@@ -17,6 +18,7 @@ namespace {
 constexpr std::string_view SEMA_BODY_FLOW_POINT_ID_CONTEXT = "sema body flow point id";
 constexpr std::string_view SEMA_BODY_FLOW_PLACE_ID_CONTEXT = "sema body flow place id";
 constexpr base::usize SEMA_BODY_FLOW_INITIAL_TASK_CAPACITY = 64;
+constexpr int SEMA_BODY_FLOW_TUPLE_FIELD_DECIMAL_BASE = 10;
 
 enum class BodyFlowTaskKind : base::u8 {
     statement,
@@ -50,6 +52,11 @@ struct BodyFlowPatternCleanupFrame {
     syntax::StmtId stmt = syntax::INVALID_STMT_ID;
 };
 
+struct BodyFlowStructuredCleanupFrame {
+    TypeHandle type = INVALID_TYPE_HANDLE;
+    std::vector<BodyFlowPlaceProjection> projections;
+};
+
 [[nodiscard]] bool valid_stmt(const syntax::AstModule& module, const syntax::StmtId stmt) noexcept
 {
     return syntax::is_valid(stmt) && stmt.value < module.stmts.size();
@@ -73,6 +80,21 @@ struct BodyFlowPatternCleanupFrame {
 [[nodiscard]] base::SourceRange expr_range(const syntax::AstModule& module, const syntax::ExprId expr) noexcept
 {
     return valid_expr(module, expr) ? module.exprs.range(expr.value) : base::SourceRange{};
+}
+
+[[nodiscard]] std::optional<base::u32> parse_tuple_projection_index(const std::string_view field_name) noexcept
+{
+    if (field_name.empty()) {
+        return std::nullopt;
+    }
+    base::u32 value = 0;
+    const char* const begin = field_name.data();
+    const char* const end = begin + field_name.size();
+    const auto result = std::from_chars(begin, end, value, SEMA_BODY_FLOW_TUPLE_FIELD_DECIMAL_BASE);
+    if (result.ec != std::errc{} || result.ptr != end) {
+        return std::nullopt;
+    }
+    return value;
 }
 
 [[nodiscard]] bool unary_is_address_of(const syntax::UnaryOp op) noexcept
@@ -436,44 +458,100 @@ private:
         if (!syntax::is_valid(stmt.name_id)) {
             return;
         }
-        std::vector<BodyFlowPlaceProjection> projections;
-        if (this->add_struct_field_cleanup_storage_actions(stmt.name_id, this->cached_stmt_local_type(local_stmt),
-                cleanup_point, block_stmt, stmt.range, projections)) {
+        if (this->add_structured_cleanup_storage_actions(
+                stmt.name_id, this->cached_stmt_local_type(local_stmt), cleanup_point, block_stmt, stmt.range)) {
             return;
         }
         this->add_local_storage_action(
             BodyFlowActionKind::cleanup_storage, cleanup_point, block_stmt, stmt.name_id, stmt.range);
     }
 
-    [[nodiscard]] bool add_struct_field_cleanup_storage_actions(const IdentId root_name, const TypeHandle type,
-        const base::u32 cleanup_point, const syntax::StmtId block_stmt, const base::SourceRange& range,
-        std::vector<BodyFlowPlaceProjection>& projections)
+    [[nodiscard]] bool add_structured_cleanup_storage_actions(const IdentId root_name, const TypeHandle type,
+        const base::u32 cleanup_point, const syntax::StmtId block_stmt, const base::SourceRange& range)
     {
-        const StructInfo* const structure = this->find_struct(type);
-        if (structure == nullptr || structure->fields.empty()) {
-            return false;
-        }
+        bool expanded_any = false;
+        std::vector<BodyFlowStructuredCleanupFrame> pending;
+        pending.push_back(BodyFlowStructuredCleanupFrame{
+            .type = type,
+            .projections = {},
+        });
 
-        bool added = false;
-        for (const StructFieldInfo& field : structure->fields) {
+        while (!pending.empty()) {
+            BodyFlowStructuredCleanupFrame frame = std::move(pending.back());
+            pending.pop_back();
+            if (!is_valid(frame.type) || frame.type.value >= this->checked_.types.size()) {
+                continue;
+            }
+            const TypeInfo& info = this->checked_.types.get(frame.type);
+            if (info.kind == TypeKind::tuple) {
+                expanded_any = this->push_tuple_element_cleanup_storage_actions(frame, pending) || expanded_any;
+                continue;
+            }
+            const StructInfo* const structure = this->find_struct(frame.type);
+            if (structure != nullptr && !structure->fields.empty()) {
+                expanded_any = this->push_struct_field_cleanup_storage_actions(*structure, frame, pending)
+                    || expanded_any;
+                continue;
+            }
+
+            if (!frame.projections.empty()) {
+                this->add_local_projected_storage_action(
+                    BodyFlowActionKind::cleanup_storage, cleanup_point, block_stmt, root_name, frame.projections, range);
+            }
+        }
+        return expanded_any;
+    }
+
+    [[nodiscard]] bool push_tuple_element_cleanup_storage_actions(const BodyFlowStructuredCleanupFrame& frame,
+        std::vector<BodyFlowStructuredCleanupFrame>& pending) const
+    {
+        const TypeInfo& tuple = this->checked_.types.get(frame.type);
+        bool pushed_any = false;
+        for (base::usize index = tuple.tuple_elements.size(); index > 0; --index) {
+            const base::usize element_index = index - 1U;
+            const TypeHandle element_type = tuple.tuple_elements[element_index];
+            if (!this->type_needs_drop(element_type)) {
+                continue;
+            }
+            BodyFlowStructuredCleanupFrame child{
+                .type = element_type,
+                .projections = frame.projections,
+            };
+            child.projections.push_back(BodyFlowPlaceProjection{
+                .kind = BodyFlowPlaceProjectionKind::tuple_element,
+                .field_name_id = INVALID_IDENT_ID,
+                .element_index = base::checked_u32(element_index, SEMA_BODY_FLOW_PLACE_ID_CONTEXT),
+                .expr = syntax::INVALID_EXPR_ID,
+            });
+            pending.push_back(std::move(child));
+            pushed_any = true;
+        }
+        return pushed_any;
+    }
+
+    [[nodiscard]] bool push_struct_field_cleanup_storage_actions(const StructInfo& structure,
+        const BodyFlowStructuredCleanupFrame& frame, std::vector<BodyFlowStructuredCleanupFrame>& pending) const
+    {
+        bool pushed_any = false;
+        for (base::usize index = structure.fields.size(); index > 0; --index) {
+            const StructFieldInfo& field = structure.fields[index - 1U];
             if (!this->type_needs_drop(field.type)) {
                 continue;
             }
-            projections.push_back(BodyFlowPlaceProjection{
+            BodyFlowStructuredCleanupFrame child{
+                .type = field.type,
+                .projections = frame.projections,
+            };
+            child.projections.push_back(BodyFlowPlaceProjection{
                 .kind = BodyFlowPlaceProjectionKind::field,
                 .field_name_id = field.name_id,
+                .element_index = SEMA_BODY_FLOW_INVALID_INDEX,
                 .expr = syntax::INVALID_EXPR_ID,
             });
-            const bool nested = this->add_struct_field_cleanup_storage_actions(
-                root_name, field.type, cleanup_point, block_stmt, range, projections);
-            if (!nested) {
-                this->add_local_projected_storage_action(
-                    BodyFlowActionKind::cleanup_storage, cleanup_point, block_stmt, root_name, projections, range);
-            }
-            projections.pop_back();
-            added = true;
+            pending.push_back(std::move(child));
+            pushed_any = true;
         }
-        return added;
+        return pushed_any;
     }
 
     void add_pattern_cleanup_storage_actions(
@@ -1430,9 +1508,25 @@ private:
         const syntax::ExprId expr, std::vector<BodyFlowPlaceProjection>& reversed_projections)
     {
         const syntax::FieldExprPayload& payload = *this->module_.exprs.field_payload(expr.value);
+        const TypeHandle object_type = this->cached_expr_type(payload.object);
+        if (is_valid(object_type) && object_type.value < this->checked_.types.size()) {
+            const TypeInfo& info = this->checked_.types.get(object_type);
+            const std::optional<base::u32> element_index = parse_tuple_projection_index(payload.field_name);
+            if (info.kind == TypeKind::tuple && element_index.has_value()
+                && *element_index < info.tuple_elements.size()) {
+                reversed_projections.push_back(BodyFlowPlaceProjection{
+                    .kind = BodyFlowPlaceProjectionKind::tuple_element,
+                    .field_name_id = INVALID_IDENT_ID,
+                    .element_index = *element_index,
+                    .expr = expr,
+                });
+                return payload.object;
+            }
+        }
         reversed_projections.push_back(BodyFlowPlaceProjection{
             .kind = BodyFlowPlaceProjectionKind::field,
             .field_name_id = this->resolve_name_id(payload.field_name_id, payload.field_name),
+            .element_index = SEMA_BODY_FLOW_INVALID_INDEX,
             .expr = expr,
         });
         return payload.object;
@@ -1600,6 +1694,8 @@ std::string_view body_flow_place_projection_kind_name(const BodyFlowPlaceProject
     switch (kind) {
         case BodyFlowPlaceProjectionKind::field:
             return "field";
+        case BodyFlowPlaceProjectionKind::tuple_element:
+            return "tuple_element";
         case BodyFlowPlaceProjectionKind::index:
             return "index";
         case BodyFlowPlaceProjectionKind::dereference:
@@ -1650,6 +1746,12 @@ std::string dump_body_flow_graph(const BodyFlowGraph& graph)
             for (const BodyFlowPlaceProjection& projection : place.projections) {
                 stream << ' ' << body_flow_place_projection_kind_name(projection.kind) << '(';
                 append_optional_name_id(stream, projection.field_name_id);
+                stream << ',';
+                if (projection.element_index == SEMA_BODY_FLOW_INVALID_INDEX) {
+                    stream << '-';
+                } else {
+                    stream << projection.element_index;
+                }
                 stream << ',';
                 append_optional_expr_id(stream, projection.expr);
                 stream << ')';

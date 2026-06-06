@@ -42,8 +42,15 @@ struct PlaceAddress {
     bool is_mutable = true;
 };
 
+enum class LocalPlaceProjectionKind : base::u8 {
+    field,
+    tuple_element,
+};
+
 struct LocalPlaceProjection {
+    LocalPlaceProjectionKind kind = LocalPlaceProjectionKind::field;
     sema::IdentId field_name_id = sema::INVALID_IDENT_ID;
+    base::u32 element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX;
     std::string_view field_name;
 };
 
@@ -53,8 +60,18 @@ struct LocalPlacePath {
 };
 
 struct CleanupProjection {
+    LocalPlaceProjectionKind kind = LocalPlaceProjectionKind::field;
     sema::IdentId field_name_id = sema::INVALID_IDENT_ID;
+    base::u32 element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX;
     IrTextId field_name = INVALID_IR_TEXT_ID;
+};
+
+struct StructuredCleanupFrame {
+    ValueId address = INVALID_VALUE_ID;
+    sema::TypeHandle type = sema::INVALID_TYPE_HANDLE;
+    std::string flag_name;
+    IrTextId name = INVALID_IR_TEXT_ID;
+    std::vector<CleanupProjection> projections;
 };
 
 enum class CleanupDropMode {
@@ -272,6 +289,8 @@ public:
     [[nodiscard]] sema::OwnedUseMode expr_owned_use_mode(syntax::ExprId expr) const noexcept;
     [[nodiscard]] const LocalBinding* local_binding_for_name_expr(syntax::ExprId expr_id) const noexcept;
     [[nodiscard]] std::optional<LocalPlacePath> local_place_path(syntax::ExprId expr_id) const;
+    [[nodiscard]] LocalPlaceProjection local_place_projection_for_field_expr(
+        const syntax::FieldExprPayload& field) const;
     [[nodiscard]] const LocalBinding* local_binding_for_place_path(const LocalPlacePath& path) const noexcept;
     [[nodiscard]] const sema::StructInfo* struct_info_for_type(sema::TypeHandle type) const noexcept;
     [[nodiscard]] ValueId append_bool_literal(bool value);
@@ -293,7 +312,9 @@ public:
     void register_local_cleanup(LocalBinding& binding, std::string_view name);
     [[nodiscard]] bool register_structured_local_cleanup(LocalBinding& binding, std::string_view name);
     [[nodiscard]] bool append_structured_cleanup_bindings(LocalBinding& binding, ValueId address, sema::TypeHandle type,
-        std::vector<CleanupProjection>& projections, std::string_view name);
+        const std::vector<CleanupProjection>& projections, std::string_view name);
+    [[nodiscard]] bool push_structured_cleanup_children(
+        const StructuredCleanupFrame& frame, std::vector<StructuredCleanupFrame>& pending);
     void append_cleanup_binding(LocalBinding& binding, ValueId address, ValueId flag, sema::TypeHandle type,
         IrTextId name, const std::vector<CleanupProjection>& projections,
         CleanupDropMode mode = CleanupDropMode::full);

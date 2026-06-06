@@ -476,9 +476,10 @@ See [M2.5 Roadmap](m2.5-roadmap.md) for the current frontend-foundation plan and
 6. Tuple and pattern boundary
 
    Tuple basics are now in M2: `(A, B)` / `(A,)` types, `(a, b)` / `(a,)`
-   literals, and tuple destructuring in `let` / `var` and patterns. Anonymous
-   tuples do not support `.0` / `.1` or `.first` / `.second`; use a named
-   struct when field access is required. Pattern ergonomics now include tuple
+   literals, numeric tuple field access such as `.0` / `.1`, and tuple
+   destructuring in `let` / `var` and patterns. Anonymous named tuple fields
+   such as `.first` / `.second` are rejected; use a named struct when named
+   fields are required. Pattern ergonomics now include tuple
    match patterns, slice
    patterns, struct patterns, nested enum payload destructuring, local
    struct/slice/enum destructuring, binding or-pattern alternatives with

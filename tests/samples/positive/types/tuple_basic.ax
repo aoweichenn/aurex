@@ -24,6 +24,8 @@ fn as_const_ptr(value: &i32) -> *const i32 {
 
 fn main() -> i32 {
     let pair: (i32, bool) = make_pair(4);
+    let direct_first: i32 = pair.0;
+    let direct_second: bool = pair . 1;
     let (x, ok) = pair;
     let (_, flag) = pair;
     var (mutable_count, mutable_flag) = pair;
@@ -42,7 +44,7 @@ fn main() -> i32 {
     let ((left_value, left_ok), (single_value,)) = nested;
     let inferred = first(pair);
 
-    if x == 4 && ok && flag && mutable_count == 4 && mutable_flag &&
+    if direct_first == 4 && direct_second && x == 4 && ok && flag && mutable_count == 4 && mutable_flag &&
         triple_value == 4 && triple_ok && triple_byte == 7u8 && complex_func(0) == 1 &&
         array_values[0] == 1u8 && array_count == 3 &&
         left_value == 4 && left_ok && single_value == 4 && inferred == 4 && second(pair) {

@@ -1,6 +1,7 @@
 #include <aurex/midend/ir/enum_layout.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -21,6 +22,8 @@ constexpr std::string_view IR_DROP_ARRAY_INDEX_NAME = "drop.index";
 constexpr std::string_view IR_DROP_ENUM_TAG_NAME = "drop.tag";
 constexpr std::string_view IR_DROP_ENUM_PAYLOAD_PREFIX = "drop.payload.";
 constexpr char IR_DROP_TUPLE_FIELD_PREFIX[] = "";
+constexpr int IR_LOCAL_PLACE_TUPLE_FIELD_DECIMAL_BASE = 10;
+constexpr std::string_view IR_LOCAL_PLACE_TUPLE_FIELD_INDEX_CONTEXT = "ir local place tuple field index";
 
 struct DropGlueFrame {
     ValueId address = INVALID_VALUE_ID;
@@ -61,6 +64,32 @@ struct DropGlueFrame {
 [[nodiscard]] bool is_deinit_self_param(const syntax::ParamDecl& param, const base::usize index) noexcept
 {
     return index == 0U && param.is_deinit && param.name == "self";
+}
+
+[[nodiscard]] std::optional<base::u32> parse_local_place_tuple_field_index(const std::string_view field_name) noexcept
+{
+    if (field_name.empty()) {
+        return std::nullopt;
+    }
+    base::u32 value = 0;
+    const char* const begin = field_name.data();
+    const char* const end = begin + field_name.size();
+    const auto result = std::from_chars(begin, end, value, IR_LOCAL_PLACE_TUPLE_FIELD_DECIMAL_BASE);
+    if (result.ec != std::errc{} || result.ptr != end) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+[[nodiscard]] std::string tuple_field_name(const base::usize index)
+{
+    return std::to_string(index);
+}
+
+[[nodiscard]] std::string cleanup_child_flag_name(
+    const std::string_view parent, const std::string_view field_name)
+{
+    return std::string(parent) + "." + std::string(field_name);
 }
 
 } // namespace
@@ -581,13 +610,37 @@ std::optional<LocalPlacePath> Lowerer::local_place_path(const syntax::ExprId exp
             if (field == nullptr) {
                 return std::nullopt;
             }
-            reversed.push_back(LocalPlaceProjection{field->field_name_id, field->field_name});
+            reversed.push_back(this->local_place_projection_for_field_expr(*field));
             current = field->object;
             continue;
         }
         return std::nullopt;
     }
     return std::nullopt;
+}
+
+LocalPlaceProjection Lowerer::local_place_projection_for_field_expr(const syntax::FieldExprPayload& field) const
+{
+    const sema::TypeHandle object_type = this->expr_type(field.object);
+    if (sema::is_valid(object_type) && object_type.value < this->module_.types.size()
+        && this->module_.types.is_tuple(object_type)) {
+        const sema::TypeInfo& tuple = this->module_.types.get(object_type);
+        const std::optional<base::u32> element_index = parse_local_place_tuple_field_index(field.field_name);
+        if (element_index.has_value() && *element_index < tuple.tuple_elements.size()) {
+            return LocalPlaceProjection{
+                .kind = LocalPlaceProjectionKind::tuple_element,
+                .field_name_id = sema::INVALID_IDENT_ID,
+                .element_index = *element_index,
+                .field_name = field.field_name,
+            };
+        }
+    }
+    return LocalPlaceProjection{
+        .kind = LocalPlaceProjectionKind::field,
+        .field_name_id = field.field_name_id,
+        .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+        .field_name = field.field_name,
+    };
 }
 
 const LocalBinding* Lowerer::local_binding_for_place_path(const LocalPlacePath& path) const noexcept
@@ -999,44 +1052,128 @@ void Lowerer::register_local_cleanup(LocalBinding& binding, const std::string_vi
 
 bool Lowerer::register_structured_local_cleanup(LocalBinding& binding, const std::string_view name)
 {
-    if (!is_valid(binding.slot) || this->struct_info_for_type(binding.type) == nullptr) {
+    if (!is_valid(binding.slot)) {
         return false;
     }
-    std::vector<CleanupProjection> projections;
+    const std::vector<CleanupProjection> projections;
     const bool registered =
         this->append_structured_cleanup_bindings(binding, binding.slot, binding.type, projections, name);
     return registered && !binding.field_cleanups.empty();
 }
 
 bool Lowerer::append_structured_cleanup_bindings(LocalBinding& binding, const ValueId address,
-    const sema::TypeHandle type, std::vector<CleanupProjection>& projections, const std::string_view name)
+    const sema::TypeHandle type, const std::vector<CleanupProjection>& projections, const std::string_view name)
 {
-    const sema::StructInfo* const info = this->struct_info_for_type(type);
-    if (info == nullptr || info->fields.empty()) {
+    if (!is_valid(address) || !sema::is_valid(type)) {
         return false;
     }
 
-    bool registered_any = false;
-    for (const sema::StructFieldInfo& field : info->fields) {
+    bool expanded_any = false;
+    std::vector<StructuredCleanupFrame> pending;
+    pending.push_back(StructuredCleanupFrame{
+        .address = address,
+        .type = type,
+        .flag_name = std::string(name),
+        .name = INVALID_IR_TEXT_ID,
+        .projections = projections,
+    });
+
+    while (!pending.empty()) {
+        StructuredCleanupFrame frame = std::move(pending.back());
+        pending.pop_back();
+        if (!is_valid(frame.address) || !sema::is_valid(frame.type) || frame.type.value >= this->module_.types.size()) {
+            continue;
+        }
+        if (this->push_structured_cleanup_children(frame, pending)) {
+            expanded_any = true;
+            continue;
+        }
+        if (!frame.projections.empty()) {
+            const IrTextId cleanup_name =
+                frame.name == INVALID_IR_TEXT_ID ? this->module_.intern(frame.flag_name) : frame.name;
+            const ValueId flag = this->append_cleanup_flag(frame.flag_name);
+            this->append_cleanup_flag_store(flag, true);
+            this->append_cleanup_binding(
+                binding, frame.address, flag, frame.type, cleanup_name, frame.projections);
+        }
+    }
+    return expanded_any;
+}
+
+bool Lowerer::push_structured_cleanup_children(
+    const StructuredCleanupFrame& frame, std::vector<StructuredCleanupFrame>& pending)
+{
+    if (!sema::is_valid(frame.type) || frame.type.value >= this->module_.types.size()) {
+        return false;
+    }
+    const sema::TypeInfo& info = this->module_.types.get(frame.type);
+    if (info.kind == sema::TypeKind::tuple) {
+        bool pushed_any = false;
+        for (base::usize index = info.tuple_elements.size(); index > 0; --index) {
+            const base::usize element_index = index - 1U;
+            const sema::TypeHandle element_type = info.tuple_elements[element_index];
+            if (!this->cleanup_required(element_type)) {
+                continue;
+            }
+            const std::string field_name_text = tuple_field_name(element_index);
+            const IrTextId field_name = this->module_.intern(field_name_text);
+            const ValueId field_address =
+                this->append_field_address(frame.address, field_name, element_type, sema::PointerMutability::mut);
+            if (!is_valid(field_address)) {
+                continue;
+            }
+            StructuredCleanupFrame child{
+                .address = field_address,
+                .type = element_type,
+                .flag_name = cleanup_child_flag_name(frame.flag_name, field_name_text),
+                .name = field_name,
+                .projections = frame.projections,
+            };
+            child.projections.push_back(CleanupProjection{
+                .kind = LocalPlaceProjectionKind::tuple_element,
+                .field_name_id = sema::INVALID_IDENT_ID,
+                .element_index = base::checked_u32(element_index, IR_LOCAL_PLACE_TUPLE_FIELD_INDEX_CONTEXT),
+                .field_name = field_name,
+            });
+            pending.push_back(std::move(child));
+            pushed_any = true;
+        }
+        return pushed_any;
+    }
+
+    const sema::StructInfo* const struct_info = this->struct_info_for_type(frame.type);
+    if (struct_info == nullptr || struct_info->fields.empty()) {
+        return false;
+    }
+    bool pushed_any = false;
+    for (base::usize index = struct_info->fields.size(); index > 0; --index) {
+        const sema::StructFieldInfo& field = struct_info->fields[index - 1U];
         if (!this->cleanup_required(field.type)) {
             continue;
         }
         const IrTextId field_name = this->module_.intern(field.name);
         const ValueId field_address =
-            this->append_field_address(address, field_name, field.type, sema::PointerMutability::mut);
-        projections.push_back(CleanupProjection{field.name_id, field_name});
-        const bool nested_registered =
-            this->append_structured_cleanup_bindings(binding, field_address, field.type, projections, name);
-        if (!nested_registered) {
-            const std::string flag_name = std::string(name) + "." + std::string(field.name);
-            const ValueId flag = this->append_cleanup_flag(flag_name);
-            this->append_cleanup_flag_store(flag, true);
-            this->append_cleanup_binding(binding, field_address, flag, field.type, field_name, projections);
+            this->append_field_address(frame.address, field_name, field.type, sema::PointerMutability::mut);
+        if (!is_valid(field_address)) {
+            continue;
         }
-        projections.pop_back();
-        registered_any = true;
+        StructuredCleanupFrame child{
+            .address = field_address,
+            .type = field.type,
+            .flag_name = cleanup_child_flag_name(frame.flag_name, field.name),
+            .name = field_name,
+            .projections = frame.projections,
+        };
+        child.projections.push_back(CleanupProjection{
+            .kind = LocalPlaceProjectionKind::field,
+            .field_name_id = field.name_id,
+            .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+            .field_name = field_name,
+        });
+        pending.push_back(std::move(child));
+        pushed_any = true;
     }
-    return registered_any;
+    return pushed_any;
 }
 
 void Lowerer::append_cleanup_binding(LocalBinding& binding, const ValueId address, const ValueId flag,
@@ -1044,21 +1181,21 @@ void Lowerer::append_cleanup_binding(LocalBinding& binding, const ValueId addres
     const CleanupDropMode mode)
 {
     binding.field_cleanups.push_back(CleanupBinding{
-        address,
-        flag,
-        type,
-        name,
-        projections,
-        mode,
+        .address = address,
+        .flag = flag,
+        .type = type,
+        .name = name,
+        .projections = projections,
+        .drop_mode = mode,
     });
     this->cleanup_scopes_.back().push_back(CleanupAction{
-        CleanupActionKind::drop_local,
-        address,
-        flag,
-        type,
-        syntax::INVALID_EXPR_ID,
-        name,
-        mode,
+        .kind = CleanupActionKind::drop_local,
+        .slot = address,
+        .flag = flag,
+        .type = type,
+        .defer_expr = syntax::INVALID_EXPR_ID,
+        .name = name,
+        .drop_mode = mode,
     });
 }
 
@@ -1098,6 +1235,14 @@ ValueId Lowerer::append_field_address(const ValueId object, const IrTextId field
 bool Lowerer::cleanup_projection_matches(
     const CleanupProjection& cleanup, const LocalPlaceProjection& place) const noexcept
 {
+    if (cleanup.kind != place.kind) {
+        return false;
+    }
+    if (cleanup.kind == LocalPlaceProjectionKind::tuple_element) {
+        return cleanup.element_index != sema::SEMA_BODY_FLOW_INVALID_INDEX
+            && place.element_index != sema::SEMA_BODY_FLOW_INVALID_INDEX
+            && cleanup.element_index == place.element_index;
+    }
     if (sema::is_valid(cleanup.field_name_id) && sema::is_valid(place.field_name_id)) {
         return cleanup.field_name_id == place.field_name_id;
     }

@@ -2,6 +2,7 @@
 #include <aurex/frontend/sema/sema_messages.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <deque>
 #include <optional>
 #include <span>
@@ -21,6 +22,7 @@ constexpr base::usize SEMA_MOVE_ENTRY_BLOCK = 0;
 constexpr base::usize SEMA_MOVE_EXIT_BLOCK = 1;
 constexpr base::usize SEMA_MOVE_INITIAL_BLOCK_CAPACITY = 16;
 constexpr base::usize SEMA_MOVE_INITIAL_TASK_CAPACITY = 32;
+constexpr int SEMA_MOVE_TUPLE_FIELD_DECIMAL_BASE = 10;
 
 enum class RequestedUse {
     owned,
@@ -120,6 +122,21 @@ struct ModeTask {
 [[nodiscard]] bool same_range(const base::SourceRange& lhs, const base::SourceRange& rhs) noexcept
 {
     return lhs.source.value == rhs.source.value && lhs.begin == rhs.begin && lhs.end == rhs.end;
+}
+
+[[nodiscard]] std::optional<base::u32> parse_move_tuple_field_index(const std::string_view field_name) noexcept
+{
+    if (field_name.empty()) {
+        return std::nullopt;
+    }
+    base::u32 value = 0;
+    const char* const begin = field_name.data();
+    const char* const end = begin + field_name.size();
+    const auto result = std::from_chars(begin, end, value, SEMA_MOVE_TUPLE_FIELD_DECIMAL_BASE);
+    if (result.ec != std::errc{} || result.ptr != end) {
+        return std::nullopt;
+    }
+    return value;
 }
 
 [[nodiscard]] bool same_state(const MoveState& lhs, const MoveState& rhs) noexcept
@@ -672,15 +689,19 @@ private:
             return false;
         }
         const TypeInfo& object_info = this->core_.state_.checked.types.get(object_type);
-        if (object_info.kind != TypeKind::struct_) {
-            return false;
+        if (object_info.kind == TypeKind::tuple) {
+            const std::optional<base::u32> field_index = parse_move_tuple_field_index(expr.field_name);
+            return object_info.tuple_elements.size() == 1U && field_index.has_value() && *field_index == 0U;
         }
-        const auto found = this->core_.state_.types.struct_infos_by_type.find(object_type.value);
-        if (found == this->core_.state_.types.struct_infos_by_type.end() || found->second == nullptr) {
-            return false;
+        if (object_info.kind == TypeKind::struct_) {
+            const auto found = this->core_.state_.types.struct_infos_by_type.find(object_type.value);
+            if (found == this->core_.state_.types.struct_infos_by_type.end() || found->second == nullptr) {
+                return false;
+            }
+            const std::span<const StructFieldInfo> fields = found->second->fields;
+            return fields.size() == 1 && this->field_name_matches(fields.front(), expr);
         }
-        const std::span<const StructFieldInfo> fields = found->second->fields;
-        return fields.size() == 1 && this->field_name_matches(fields.front(), expr);
+        return false;
     }
 
     [[nodiscard]] OwnedUseMode effective_mode(const syntax::ExprId expr, const RequestedUse requested)

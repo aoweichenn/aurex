@@ -88,6 +88,8 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
         "match expression over tuple, struct, array, or slice requires an irrefutable arm"},
     {"tuple_bool_wildcard_tail_missing_witness",
         "match expression over tuple, struct, array, or slice requires an irrefutable arm"},
+    {"tuple_field_named_access", "tuple field access requires a numeric field"},
+    {"tuple_field_out_of_range", "tuple field index is out of range"},
     {"tuple_open_domain_bool_missing_witness",
         "match expression over tuple, struct, array, or slice requires an irrefutable arm"},
     {"method_abi_collision", "duplicate ABI symbol"},

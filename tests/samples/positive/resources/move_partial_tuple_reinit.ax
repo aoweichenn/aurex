@@ -1,0 +1,14 @@
+module move_partial_tuple_reinit;
+
+fn replace_first[T](pair: (T, T), replacement: T) -> (T, T) {
+    var current: (T, T) = pair;
+    let moved: T = current.0;
+    current.0 = replacement;
+    return current;
+}
+
+fn main() -> i32 {
+    let first: (i32, i32) = (40, 2);
+    let second: (i32, i32) = replace_first(first, 41);
+    return second.0 + second.1 - 43;
+}

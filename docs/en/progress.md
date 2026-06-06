@@ -559,8 +559,9 @@ notes are design input only, not current progress.
 - Fixed array value syntax: array literals `[1, 2, 3]` and repeat literals
   `[0; 128]`, including const, struct-field, IR, LLVM, and native paths.
 - Tuple basics: tuple types `(A, B)` / `(A,)`, tuple literals `(a, b)` /
-  `(a,)`, and tuple destructuring in local `let` / `var` declarations and
-  patterns. Anonymous tuple field access is intentionally rejected.
+  `(a,)`, numeric tuple field access such as `value.0` / `value . 1`, and
+  tuple destructuring in local `let` / `var` declarations and patterns.
+  Anonymous named tuple fields such as `.first` are intentionally rejected.
 - ADT-first enum basics, including automatic tags, explicit C-like repr enums,
   generic enums, and multi-field payload destructuring in patterns.
 - Minimal non-resource generic constraints through `where`, with built-in

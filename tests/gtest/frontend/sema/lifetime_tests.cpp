@@ -731,7 +731,33 @@ TEST(CoreUnit, DropCheckFactsDiagnoseSourceLevelDanglingBorrowedField)
                                         "fn main() -> void {}\n";
     const std::string output = analyze_lifetime_source_failure(source);
     EXPECT_NE(output.find(sema::SEMA_LIFETIME_UNKNOWN_ORIGIN), std::string::npos) << output;
-    EXPECT_NE(output.find("drop check rejected destructor access to a borrowed field"), std::string::npos) << output;
+    EXPECT_EQ(output.find("drop check rejected destructor access to a borrowed field"), std::string::npos) << output;
+}
+
+TEST(CoreUnit, DropCheckFactsKeepTupleSiblingBorrowedFieldSeparateFromGenericCleanup)
+{
+    constexpr std::string_view source = "module lifetime.dropck_tuple_precise;\n"
+                                        "fn keep_alive[T, origin data](view: &[data] i32, payload: T) -> void {\n"
+                                        "  let holder: ((&[data] i32, T), i32) = ((view, payload), 0);\n"
+                                        "}\n"
+                                        "fn main() -> void {}\n";
+    const sema::CheckedModule checked = analyze_lifetime_source(source);
+    const std::optional<sema::FunctionLookupKey> key = find_generic_template_function_key(checked, "keep_alive");
+    ASSERT_TRUE(key.has_value());
+    const auto dropck_entry = checked.dropck_facts.find(*key);
+    ASSERT_NE(dropck_entry, checked.dropck_facts.end());
+
+    const sema::FunctionDropCheckFacts& dropck = dropck_entry->second;
+    EXPECT_TRUE(dropck.solved);
+    EXPECT_FALSE(dropck_facts_has_violation_kind(dropck, sema::DropCheckViolationKind::borrowed_field_dangling));
+    EXPECT_TRUE(dropck_facts_has_required_outlives(dropck));
+
+    const auto lifetime_entry = checked.lifetime_facts.find(*key);
+    ASSERT_NE(lifetime_entry, checked.lifetime_facts.end());
+    EXPECT_TRUE(std::ranges::any_of(lifetime_entry->second.type_outlives_constraints,
+        [](const sema::LifetimeTypeOutlivesConstraint& constraint) {
+            return constraint.reason == sema::LifetimeConstraintReason::dropck;
+        }));
 }
 
 TEST(CoreUnit, DropCheckAuthorityFingerprintsBorrowedFieldAndDestructorEscapes)

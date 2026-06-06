@@ -465,6 +465,10 @@ void push_precheck_expression_children(const syntax::AstModule& module, const sy
         return !syntax::is_valid(lhs.field_name_id) || !syntax::is_valid(rhs.field_name_id)
             || lhs.field_name_id == rhs.field_name_id;
     }
+    if (lhs.kind == BodyFlowPlaceProjectionKind::tuple_element) {
+        return lhs.element_index == SEMA_BODY_FLOW_INVALID_INDEX || rhs.element_index == SEMA_BODY_FLOW_INVALID_INDEX
+            || lhs.element_index == rhs.element_index;
+    }
     return true;
 }
 

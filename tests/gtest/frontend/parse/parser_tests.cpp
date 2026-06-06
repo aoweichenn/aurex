@@ -1745,20 +1745,25 @@ TEST(CoreUnit, ParserRecoveryCoversTupleSynchronizationAndFunctionTypeVariadics)
     expect_contains(messages, "variadic marker must be last in parameter list");
 }
 
-TEST(CoreUnit, ParserRejectsNumericTupleFieldAccess)
+TEST(CoreUnit, ParserAcceptsNumericTupleFieldAccess)
 {
-    expect_parse_error("module parser.numeric_tuple_field_boundary;\n"
-                       "fn main() -> i32 {\n"
-                       "  let pair = (1, false);\n"
-                       "  return pair.0;\n"
-                       "}\n",
-        "tuple fields are not directly accessible; destructure the tuple or use a named struct");
-    expect_parse_error("module parser.spaced_numeric_tuple_field_boundary;\n"
-                       "fn main() -> i32 {\n"
-                       "  let pair = (1, false);\n"
-                       "  return pair . 0;\n"
-                       "}\n",
-        "tuple fields are not directly accessible; destructure the tuple or use a named struct");
+    constexpr std::string_view source = "module parser.numeric_tuple_field_boundary;\n"
+                                        "fn compact() -> i32 {\n"
+                                        "  let pair = (1, false);\n"
+                                        "  return pair.0;\n"
+                                        "}\n"
+                                        "fn spaced() -> i32 {\n"
+                                        "  let pair = (1, false);\n"
+                                        "  return pair . 0;\n"
+                                        "}\n";
+    const syntax::AstModule module = parse_success(source);
+    const std::string ast = syntax::dump_ast(module);
+    expect_contains_all(ast,
+        {
+            "fn compact",
+            "fn spaced",
+            "field .0",
+        });
 }
 
 TEST(CoreUnit, ParserDoesNotTreatSuffixedFloatAsTupleField)

@@ -1,6 +1,0 @@
-module tuple_field_spaced_numeric_access;
-
-fn main() -> i32 {
-    let pair = (1, false);
-    return pair . 0;
-}

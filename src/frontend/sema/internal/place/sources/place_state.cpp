@@ -37,6 +37,7 @@ enum class PlaceStateAccessKind : base::u8 {
 struct PlaceStateProjectionKey {
     BodyFlowPlaceProjectionKind kind = BodyFlowPlaceProjectionKind::field;
     base::u32 field_name = INVALID_IDENT_ID.value;
+    base::u32 element_index = SEMA_BODY_FLOW_INVALID_INDEX;
     base::u32 expr = syntax::INVALID_EXPR_ID.value;
 
     [[nodiscard]] friend bool operator==(
@@ -64,6 +65,7 @@ struct PlaceStatePlaceKeyHash {
         for (const PlaceStateProjectionKey& projection : key.projections) {
             builder.mix_u8(static_cast<base::u8>(projection.kind));
             builder.mix_u32(projection.field_name);
+            builder.mix_u32(projection.element_index);
             builder.mix_u32(projection.expr);
         }
         return query::stable_hash_value(builder.finish());
@@ -155,6 +157,7 @@ void push_precheck_stmt(
     return PlaceStateProjectionKey{
         .kind = projection.kind,
         .field_name = projection.field_name_id.value,
+        .element_index = projection.element_index,
         .expr = projection.expr.value,
     };
 }
@@ -1045,6 +1048,11 @@ TypeHandle SemanticAnalyzerCore::PlaceStateAnalyzer::projected_type(
             if (const StructInfo* const structure = this->core_.find_struct(current); structure != nullptr) {
                 const StructFieldInfo* const field = find_struct_field(*structure, projection.field_name_id);
                 return field == nullptr ? INVALID_TYPE_HANDLE : field->type;
+            }
+            return INVALID_TYPE_HANDLE;
+        case BodyFlowPlaceProjectionKind::tuple_element:
+            if (info.kind == TypeKind::tuple && projection.element_index < info.tuple_elements.size()) {
+                return info.tuple_elements[projection.element_index];
             }
             return INVALID_TYPE_HANDLE;
         case BodyFlowPlaceProjectionKind::index:

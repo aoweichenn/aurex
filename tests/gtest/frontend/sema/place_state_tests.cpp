@@ -73,6 +73,21 @@ constexpr std::string_view PLACE_STATE_PARTIAL_FIELD_SOURCE =
     "  return 0;\n"
     "}\n";
 
+constexpr std::string_view PLACE_STATE_PARTIAL_TUPLE_SOURCE =
+    "module place_state_partial_tuple;\n"
+    "fn consume_first[T](pair: (T, T)) -> T {\n"
+    "  return pair.0;\n"
+    "}\n"
+    "fn reinit_first[T](pair: (T, T), replacement: T) -> (T, T) {\n"
+    "  var current: (T, T) = pair;\n"
+    "  let moved: T = current.0;\n"
+    "  current.0 = replacement;\n"
+    "  return current;\n"
+    "}\n"
+    "fn main() -> i32 {\n"
+    "  return 0;\n"
+    "}\n";
+
 constexpr std::string_view PLACE_STATE_REFERENCE_FIELD_ASSIGNMENT_SOURCE =
     "module place_state_reference_field_assignment;\n"
     "struct Box[T] {\n"
@@ -387,6 +402,44 @@ TEST(CoreUnit, PlaceStateFactsAllowStructFieldMoveAndReinitFromSource)
     }));
     EXPECT_TRUE(std::ranges::any_of(reinit_facts->places, [](const sema::PlaceStateFact& fact) {
         return fact.has_partial_projection && fact.reinit_count != 0U;
+    }));
+}
+
+TEST(CoreUnit, PlaceStateFactsAllowTupleElementMoveAndReinitFromSource)
+{
+    const sema::CheckedModule checked = analyze_place_state_source(PLACE_STATE_PARTIAL_TUPLE_SOURCE);
+
+    const sema::FunctionPlaceStateFacts* const consume_facts = find_place_state_facts(checked, "consume_first");
+    ASSERT_NE(consume_facts, nullptr);
+    EXPECT_TRUE(consume_facts->solved);
+    EXPECT_TRUE(consume_facts->violations.empty());
+    EXPECT_TRUE(place_state_has_partial_event(*consume_facts, sema::PlaceStateEventKind::move_candidate));
+    EXPECT_TRUE(std::ranges::any_of(consume_facts->places, [](const sema::PlaceStateFact& fact) {
+        return fact.has_partial_projection && fact.partial_move_count != 0U;
+    }));
+
+    const sema::FunctionPlaceStateFacts* const reinit_facts = find_place_state_facts(checked, "reinit_first");
+    ASSERT_NE(reinit_facts, nullptr);
+    EXPECT_TRUE(reinit_facts->solved);
+    EXPECT_TRUE(reinit_facts->violations.empty());
+    EXPECT_TRUE(place_state_has_partial_event(*reinit_facts, sema::PlaceStateEventKind::move_candidate));
+    EXPECT_TRUE(place_state_has_partial_event(*reinit_facts, sema::PlaceStateEventKind::reinit));
+    EXPECT_TRUE(place_state_has_partial_event(*reinit_facts, sema::PlaceStateEventKind::cleanup));
+    EXPECT_TRUE(std::ranges::any_of(reinit_facts->places, [](const sema::PlaceStateFact& fact) {
+        return fact.has_partial_projection && fact.partial_move_count != 0U;
+    }));
+    EXPECT_TRUE(std::ranges::any_of(reinit_facts->places, [](const sema::PlaceStateFact& fact) {
+        return fact.has_partial_projection && fact.reinit_count != 0U;
+    }));
+
+    const std::optional<sema::FunctionLookupKey> key = find_place_state_function(checked, "reinit_first");
+    ASSERT_TRUE(key.has_value());
+    const auto graph = checked.body_flow_graphs.find(*key);
+    ASSERT_NE(graph, checked.body_flow_graphs.end());
+    EXPECT_TRUE(std::ranges::any_of(graph->second.places, [](const sema::BodyFlowPlace& place) {
+        return !place.projections.empty()
+            && place.projections.front().kind == sema::BodyFlowPlaceProjectionKind::tuple_element
+            && place.projections.front().element_index == 0U;
     }));
 }
 

@@ -296,6 +296,12 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     const ExprId not_id = push_unary(module, syntax::UnaryOp::logical_not, ptr_expr);
     const ExprId array_ref_expr = push_name(module, "array_ref");
     const ExprId array_ref_index_id = module.push_index_expr({}, syntax::IndexExprPayload{array_ref_expr, index_arg});
+    const ExprId tuple_expr = push_name(module, "tuple_value");
+    const ExprId tuple_first_id = push_field(module, tuple_expr, "0");
+    const ExprId tuple_second_id = push_field(module, tuple_expr, "1");
+    const ExprId tuple_named_id = push_field(module, tuple_expr, "first");
+    const ExprId tuple_out_of_range_id = push_field(module, tuple_expr, "2");
+    const ExprId tuple_overflow_id = push_field(module, tuple_expr, "999999999999999999999999999999999");
 
     base::DiagnosticSink diagnostics;
     sema::SemanticAnalyzerCore analyzer(module, diagnostics);
@@ -335,6 +341,7 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     const TypeHandle array_void = types.array(SEMA_TEST_INVALID_ARRAY_COUNT, void_type);
     const TypeHandle array_opaque = types.array(SEMA_TEST_INVALID_ARRAY_COUNT, opaque_type);
     const TypeHandle overflowing_array = types.array(SEMA_TEST_LAYOUT_MAX_ARRAY_COUNT, array_i16);
+    const TypeHandle tuple_type = types.tuple({i32, bool_type});
     const TypeHandle place_record_type = types.named_struct("root.PlaceRecord", "root_PlaceRecord", false);
     const TypeHandle ptr_place_record = types.pointer(PointerMutability::mut, place_record_type);
     const TypeHandle ref_nested_array_i16 = types.reference(PointerMutability::mut, nested_array_i16);
@@ -448,6 +455,8 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     EXPECT_TRUE(analyzer.state_.names.symbols.insert(
         indexed_symbol(analyzer, SymbolKind::local, "array_ref", module_id(0), ref_nested_array_i16, true),
         diagnostics));
+    EXPECT_TRUE(analyzer.state_.names.symbols.insert(
+        indexed_symbol(analyzer, SymbolKind::local, "tuple_value", module_id(0), tuple_type, true), diagnostics));
     static_cast<void>(add_global_value(analyzer, module_id(1), "shared", i32, SymbolKind::local, true));
 
     EXPECT_TRUE(analyzer.is_place_expr(value_expr));
@@ -457,6 +466,8 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     EXPECT_TRUE(analyzer.is_place_expr(index_id));
     EXPECT_TRUE(analyzer.is_place_expr(nested_value_field_id));
     EXPECT_TRUE(analyzer.is_place_expr(nested_value_index_id));
+    EXPECT_TRUE(analyzer.is_place_expr(tuple_first_id));
+    EXPECT_TRUE(analyzer.is_place_expr(tuple_second_id));
     EXPECT_TRUE(analyzer.is_place_expr(deref_id));
     EXPECT_FALSE(analyzer.is_place_expr(not_id));
     EXPECT_FALSE(analyzer.is_place_expr(syntax::INVALID_EXPR_ID));
@@ -469,6 +480,8 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     EXPECT_TRUE(analyzer.is_writable_place(value_index_id));
     EXPECT_TRUE(analyzer.is_writable_place(nested_value_field_id));
     EXPECT_TRUE(analyzer.is_writable_place(nested_value_index_id));
+    EXPECT_TRUE(analyzer.is_writable_place(tuple_first_id));
+    EXPECT_TRUE(analyzer.is_writable_place(tuple_second_id));
     EXPECT_TRUE(analyzer.is_writable_place(array_ref_index_id));
     EXPECT_TRUE(analyzer.is_writable_place(deref_id));
     EXPECT_FALSE(analyzer.is_writable_place(not_id));
@@ -476,7 +489,24 @@ TEST(CoreUnit, SemanticWhiteBoxLayoutPlacesAndModules)
     const sema::SemanticAnalyzerCore::PlaceInfo invalid_deref_place =
         analyzer.analyze_place_info(invalid_deref_id, true);
     EXPECT_FALSE(invalid_deref_place.is_place);
+    const sema::SemanticAnalyzerCore::PlaceInfo tuple_first_place =
+        analyzer.analyze_place_info(tuple_first_id, false);
+    EXPECT_EQ(tuple_first_place.type.value, i32.value);
+    EXPECT_TRUE(tuple_first_place.is_place);
+    EXPECT_TRUE(tuple_first_place.is_writable);
+    const sema::SemanticAnalyzerCore::PlaceInfo tuple_second_place =
+        analyzer.analyze_place_info(tuple_second_id, false);
+    EXPECT_EQ(tuple_second_place.type.value, bool_type.value);
+    EXPECT_TRUE(tuple_second_place.is_place);
+    EXPECT_TRUE(tuple_second_place.is_writable);
+    static_cast<void>(analyzer.analyze_place_info(tuple_named_id, true));
+    static_cast<void>(analyzer.analyze_place_info(tuple_out_of_range_id, true));
+    static_cast<void>(analyzer.analyze_place_info(tuple_overflow_id, true));
     EXPECT_FALSE(diagnostics.diagnostics().empty());
+    const std::string diagnostic_output = diagnostic_messages(diagnostics);
+    EXPECT_NE(diagnostic_output.find(sema::SEMA_TUPLE_FIELD_ACCESS_NUMERIC), std::string::npos) << diagnostic_output;
+    EXPECT_NE(diagnostic_output.find(sema::SEMA_TUPLE_FIELD_ACCESS_OUT_OF_RANGE), std::string::npos)
+        << diagnostic_output;
 
     analyzer.state_.flow.current_module = syntax::INVALID_MODULE_ID;
     EXPECT_FALSE(syntax::is_valid(analyzer.resolve_import_alias("missing", {})));

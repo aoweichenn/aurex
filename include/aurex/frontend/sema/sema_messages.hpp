@@ -449,8 +449,8 @@ inline constexpr std::string_view SEMA_TUPLE_LITERAL_ELEMENT_TYPE_MISMATCH = "tu
 
 inline constexpr std::string_view SEMA_TUPLE_LITERAL_STORAGE = "tuple literal type is not valid storage";
 
-inline constexpr std::string_view SEMA_TUPLE_FIELD_ACCESS_UNSUPPORTED =
-    "tuple fields are not directly accessible; destructure the tuple or use a named struct";
+inline constexpr std::string_view SEMA_TUPLE_FIELD_ACCESS_NUMERIC = "tuple field access requires a numeric field";
+inline constexpr std::string_view SEMA_TUPLE_FIELD_ACCESS_OUT_OF_RANGE = "tuple field index is out of range";
 
 inline constexpr std::string_view SEMA_TUPLE_DESTRUCTURE_TYPE = "tuple destructuring requires a tuple value";
 

@@ -64,7 +64,7 @@ std::optional<syntax::ExprId> PostfixExprParser::parse_next_suffix(const syntax:
         return this->parse_rejected_legacy_scope_suffix(base, this->peek().range);
     }
     if (is_leading_dot_numeric_field_token(this->peek())) {
-        return this->parse_rejected_numeric_tuple_field_suffix(base, this->peek().range);
+        return this->parse_numeric_tuple_field_suffix(base, this->peek().range);
     }
     if (this->match(TokenKind::l_paren)) {
         return this->parse_call_suffix(base, context);
@@ -276,11 +276,24 @@ bool PostfixExprParser::recover_bracket_arg_separator()
 syntax::ExprId PostfixExprParser::parse_field_suffix(const syntax::ExprId base)
 {
     if (this->check(TokenKind::integer_literal)) {
-        return this->parse_rejected_numeric_tuple_field_suffix(base, this->peek().range);
+        return this->parse_numeric_tuple_field_suffix(base, this->peek().range);
     }
     const syntax::Token& field = this->expect_identifier_recovered(std::string(PARSER_EXPECT_FIELD_AFTER_DOT));
     return this->session_.module.push_field_expr(
         this->merge(this->expr_range_or(base, field.range), field.range), base, field.text());
+}
+
+syntax::ExprId PostfixExprParser::parse_numeric_tuple_field_suffix(
+    const syntax::ExprId base, const base::SourceRange& fallback_range)
+{
+    const syntax::Token& field = this->advance();
+    std::string_view field_name = field.text();
+    if (field.kind == TokenKind::float_literal && field_name.size() > PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH
+        && field_name.front() == PARSER_TUPLE_FIELD_DOT) {
+        field_name.remove_prefix(PARSER_TUPLE_FIELD_DOT_PREFIX_LENGTH);
+    }
+    const base::SourceRange range = this->merge(fallback_range, field.range);
+    return this->session_.module.push_field_expr(this->merge(this->expr_range_or(base, range), range), base, field_name);
 }
 
 syntax::ExprId PostfixExprParser::parse_rejected_legacy_scope_suffix(
@@ -349,15 +362,6 @@ bool PostfixExprParser::recover_struct_field_separator()
     }
     this->reset_panic();
     return token_starts_struct_field(this->peek().kind);
-}
-
-syntax::ExprId PostfixExprParser::parse_rejected_numeric_tuple_field_suffix(
-    const syntax::ExprId base, const base::SourceRange& fallback_range)
-{
-    const syntax::Token& field = this->advance();
-    this->report_at(field, std::string(PARSER_TUPLE_FIELD_ACCESS_UNSUPPORTED));
-    const base::SourceRange range = this->merge(fallback_range, field.range);
-    return this->session_.module.push_invalid_expr(this->merge(this->expr_range_or(base, range), range));
 }
 
 const syntax::Token& PostfixExprParser::expect_index_suffix_end(const syntax::Token& opening)

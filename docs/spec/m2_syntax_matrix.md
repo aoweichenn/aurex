@@ -83,8 +83,8 @@ This matrix records whether a syntax position is supported by current M2.
 | Expr | `(1, true)` | yes | Tuple literal, type inferred from elements unless expected type is present |
 | Expr | `(1,)` | yes | One-element tuple literal uses a trailing comma |
 | Expr | `()` | no | Empty tuple literal is not part of M2 |
-| Expr | `pair.0` | no | Anonymous tuple elements are accessed by destructuring, not field syntax |
-| Expr | `pair.first` where `pair` is a tuple | no | Use a named struct for field access |
+| Expr | `pair.0` | yes | Anonymous tuple elements are accessed by numeric field syntax |
+| Expr | `pair.first` where `pair` is a tuple | no | Use a named struct for named field access |
 | Expr | `Point { x: 1 }` | yes | Struct literal |
 | Expr | `Box[i32] { value: 1 }` | yes | Generic struct literal |
 | Expr | `[1, 2, 3]` | yes | Array literal |

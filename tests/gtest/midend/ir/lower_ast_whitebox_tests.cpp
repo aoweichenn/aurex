@@ -893,10 +893,13 @@ TEST(CoreUnit, LowerAstWhiteBoxRuntimeDropTypeProbeCoversStructuralShapes)
 
     const TypeHandle resource_type = checked.types.named_struct("Resource", "Resource", false);
     const TypeHandle wrapper_type = checked.types.named_struct("Wrapper", "Wrapper", false);
-    const TypeHandle tuple_type = checked.types.tuple({checked.types.builtin(BuiltinType::i32), resource_type});
-    const TypeHandle array_type = checked.types.array(2U, resource_type);
-    const TypeHandle enum_type = checked.types.named_enum("Choice", "Choice");
     const TypeHandle i32 = checked.types.builtin(BuiltinType::i32);
+    const TypeHandle tuple_type = checked.types.tuple({i32, resource_type});
+    const TypeHandle trivial_tuple_type = checked.types.tuple({i32, checked.types.builtin(BuiltinType::bool_)});
+    const TypeHandle array_type = checked.types.array(2U, resource_type);
+    const TypeHandle empty_array_type = checked.types.array(0U, resource_type);
+    const TypeHandle scalar_array_type = checked.types.array(2U, i32);
+    const TypeHandle enum_type = checked.types.named_enum("Choice", "Choice");
     checked.types.set_enum_underlying(enum_type, i32);
     checked.types.set_enum_payload_layout(enum_type, resource_type, 8U, 4U);
     add_struct_info(checked, ast, "Resource", resource_type, {});
@@ -909,6 +912,11 @@ TEST(CoreUnit, LowerAstWhiteBoxRuntimeDropTypeProbeCoversStructuralShapes)
     lowerer.lower_record_layouts();
 
     EXPECT_FALSE(lowerer.type_may_emit_runtime_drop(INVALID_TYPE_HANDLE, ir::detail::CleanupDropMode::full));
+    EXPECT_FALSE(lowerer.type_may_emit_runtime_drop(
+        TypeHandle{999U}, ir::detail::CleanupDropMode::full));
+    EXPECT_FALSE(lowerer.type_may_emit_runtime_drop(trivial_tuple_type, ir::detail::CleanupDropMode::full));
+    EXPECT_FALSE(lowerer.type_may_emit_runtime_drop(empty_array_type, ir::detail::CleanupDropMode::full));
+    EXPECT_FALSE(lowerer.type_may_emit_runtime_drop(scalar_array_type, ir::detail::CleanupDropMode::full));
     EXPECT_TRUE(lowerer.type_may_emit_runtime_drop(resource_type, ir::detail::CleanupDropMode::custom_destructor_only));
     EXPECT_FALSE(lowerer.type_may_emit_runtime_drop(wrapper_type, ir::detail::CleanupDropMode::custom_destructor_only));
     EXPECT_TRUE(lowerer.type_may_emit_runtime_drop(wrapper_type, ir::detail::CleanupDropMode::full));
@@ -917,6 +925,21 @@ TEST(CoreUnit, LowerAstWhiteBoxRuntimeDropTypeProbeCoversStructuralShapes)
     EXPECT_TRUE(lowerer.type_may_emit_runtime_drop(enum_type, ir::detail::CleanupDropMode::full));
     EXPECT_FALSE(
         lowerer.type_may_emit_runtime_drop(checked.types.builtin(BuiltinType::bool_), ir::detail::CleanupDropMode::full));
+
+    const sema::IdentId missing_drop_name = ast.intern_identifier("missing_drop");
+    sema::DestructorInfo missing_signature_destructor;
+    missing_signature_destructor.self_type = wrapper_type;
+    missing_signature_destructor.function_key = sema::FunctionLookupKey{0U, wrapper_type.value, missing_drop_name};
+    EXPECT_EQ(lowerer.destructor_call_target(missing_signature_destructor).function.value, INVALID_FUNCTION_ID.value);
+
+    const FunctionLookupKey drop_key = add_destructor_signature(checked, ast, wrapper_type, "drop_wrapper");
+    const sema::DestructorInfo& wrapper_destructor = checked.destructors.at(wrapper_type.value);
+    const ir::detail::CallTarget unresolved_drop = lowerer.destructor_call_target(wrapper_destructor);
+    EXPECT_EQ(unresolved_drop.function.value, INVALID_FUNCTION_ID.value);
+    EXPECT_EQ(lowerer.module_.text(unresolved_drop.symbol), "drop_wrapper");
+
+    checked.functions.at(drop_key).c_name = sema::InternedText{};
+    EXPECT_EQ(lowerer.destructor_call_target(wrapper_destructor).function.value, INVALID_FUNCTION_ID.value);
 }
 
 TEST(CoreUnit, LowerAstWhiteBoxRuntimeDropGlueExpandsStructTupleArrayAndEnumPayloads)
@@ -926,10 +949,12 @@ TEST(CoreUnit, LowerAstWhiteBoxRuntimeDropGlueExpandsStructTupleArrayAndEnumPayl
 
     const TypeHandle resource_type = checked.types.named_struct("RuntimeResource", "RuntimeResource", false);
     const TypeHandle struct_type = checked.types.named_struct("RuntimeBox", "RuntimeBox", false);
-    const TypeHandle tuple_type = checked.types.tuple({resource_type, resource_type});
-    const TypeHandle array_type = checked.types.array(2U, resource_type);
-    const TypeHandle enum_type = checked.types.named_enum("RuntimeChoice", "RuntimeChoice");
     const TypeHandle i32 = checked.types.builtin(BuiltinType::i32);
+    const TypeHandle tuple_type = checked.types.tuple({resource_type, resource_type});
+    const TypeHandle trivial_tuple_type = checked.types.tuple({i32, checked.types.builtin(BuiltinType::bool_)});
+    const TypeHandle array_type = checked.types.array(2U, resource_type);
+    const TypeHandle empty_array_type = checked.types.array(0U, resource_type);
+    const TypeHandle enum_type = checked.types.named_enum("RuntimeChoice", "RuntimeChoice");
     const TypeHandle void_type = checked.types.builtin(BuiltinType::void_);
 
     checked.types.set_enum_underlying(enum_type, i32);
@@ -950,11 +975,23 @@ TEST(CoreUnit, LowerAstWhiteBoxRuntimeDropGlueExpandsStructTupleArrayAndEnumPayl
     const ValueId tuple_slot = append_alloca(lowerer, "tuple", tuple_type);
     const ValueId array_slot = append_alloca(lowerer, "array", array_type);
     const ValueId enum_slot = append_alloca(lowerer, "choice", enum_type);
+    const ValueId trivial_tuple_slot = append_alloca(lowerer, "trivial_tuple", trivial_tuple_type);
+    const ValueId empty_array_slot = append_alloca(lowerer, "empty_array", empty_array_type);
     const ir::IrTextId box_name = lowerer.module_.intern("box");
     const ir::IrTextId tuple_name = lowerer.module_.intern("tuple");
     const ir::IrTextId array_name = lowerer.module_.intern("array");
     const ir::IrTextId enum_name = lowerer.module_.intern("choice");
+    const ir::IrTextId trivial_tuple_name = lowerer.module_.intern("trivial_tuple");
+    const ir::IrTextId empty_array_name = lowerer.module_.intern("empty_array");
 
+    EXPECT_FALSE(lowerer.append_runtime_drop_glue(
+        INVALID_VALUE_ID, struct_type, box_name, ir::detail::CleanupDropMode::full));
+    EXPECT_FALSE(lowerer.append_runtime_drop_glue(
+        struct_slot, TypeHandle{999U}, box_name, ir::detail::CleanupDropMode::full));
+    EXPECT_FALSE(lowerer.append_runtime_drop_glue(
+        trivial_tuple_slot, trivial_tuple_type, trivial_tuple_name, ir::detail::CleanupDropMode::full));
+    EXPECT_FALSE(lowerer.append_runtime_drop_glue(
+        empty_array_slot, empty_array_type, empty_array_name, ir::detail::CleanupDropMode::full));
     EXPECT_TRUE(lowerer.append_runtime_drop_glue(
         struct_slot, struct_type, box_name, ir::detail::CleanupDropMode::full));
     EXPECT_TRUE(lowerer.append_runtime_drop_glue(
@@ -1351,14 +1388,24 @@ TEST(CoreUnit, LowerAstWhiteBoxCleanupPlaceHelpersCoverDropFlagEdges)
         .flag = left_flag,
         .type = resource_type,
         .name = left_ir_name,
-        .projections = {ir::detail::CleanupProjection{left_name, left_ir_name}},
+        .projections = {ir::detail::CleanupProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::field,
+            .field_name_id = left_name,
+            .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+            .field_name = left_ir_name,
+        }},
     };
     ir::detail::CleanupBinding right_cleanup{
         .address = right_address,
         .flag = right_flag,
         .type = resource_type,
         .name = right_ir_name,
-        .projections = {ir::detail::CleanupProjection{right_name, right_ir_name}},
+        .projections = {ir::detail::CleanupProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::field,
+            .field_name_id = right_name,
+            .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+            .field_name = right_ir_name,
+        }},
     };
     lowerer.locals_.emplace(slot_name,
         ir::detail::LocalBinding{
@@ -1373,6 +1420,7 @@ TEST(CoreUnit, LowerAstWhiteBoxCleanupPlaceHelpersCoverDropFlagEdges)
     EXPECT_EQ(lowerer.local_binding_for_name_expr(syntax::INVALID_EXPR_ID), nullptr);
     EXPECT_EQ(lowerer.local_binding_for_name_expr(integer), nullptr);
     EXPECT_EQ(lowerer.local_binding_for_name_expr(scoped_slot), nullptr);
+    EXPECT_EQ(lowerer.local_binding_for_name_expr(missing), nullptr);
     EXPECT_FALSE(lowerer.local_place_path(syntax::INVALID_EXPR_ID).has_value());
     EXPECT_FALSE(lowerer.local_place_path(ExprId{999}).has_value());
     EXPECT_FALSE(lowerer.local_place_path(scoped_slot).has_value());
@@ -1385,12 +1433,46 @@ TEST(CoreUnit, LowerAstWhiteBoxCleanupPlaceHelpersCoverDropFlagEdges)
     ASSERT_EQ(field_path->projections.size(), 1U);
     EXPECT_TRUE(lowerer.cleanup_binding_has_prefix(left_cleanup, {}));
     const std::array<ir::detail::LocalPlaceProjection, 2> longer_path{
-        ir::detail::LocalPlaceProjection{left_name, "left"},
-        ir::detail::LocalPlaceProjection{right_name, "right"},
+        ir::detail::LocalPlaceProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::field,
+            .field_name_id = left_name,
+            .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+            .field_name = "left",
+        },
+        ir::detail::LocalPlaceProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::field,
+            .field_name_id = right_name,
+            .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+            .field_name = "right",
+        },
     };
     EXPECT_FALSE(lowerer.cleanup_binding_has_prefix(left_cleanup, longer_path));
-    EXPECT_TRUE(lowerer.cleanup_projection_matches(ir::detail::CleanupProjection{sema::INVALID_IDENT_ID, left_ir_name},
-        ir::detail::LocalPlaceProjection{sema::INVALID_IDENT_ID, "left"}));
+    EXPECT_TRUE(lowerer.cleanup_projection_matches(
+        ir::detail::CleanupProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::field,
+            .field_name_id = sema::INVALID_IDENT_ID,
+            .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+            .field_name = left_ir_name,
+        },
+        ir::detail::LocalPlaceProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::field,
+            .field_name_id = sema::INVALID_IDENT_ID,
+            .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+            .field_name = "left",
+        }));
+    EXPECT_FALSE(lowerer.cleanup_projection_matches(
+        ir::detail::CleanupProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::field,
+            .field_name_id = sema::INVALID_IDENT_ID,
+            .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+            .field_name = left_ir_name,
+        },
+        ir::detail::LocalPlaceProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::tuple_element,
+            .field_name_id = sema::INVALID_IDENT_ID,
+            .element_index = 0U,
+            .field_name = "0",
+        }));
 
     const base::usize values_before_invalid_drop = lowerer.module_.values.size();
     lowerer.append_cleanup_drop(INVALID_VALUE_ID, resource_type, left_ir_name);
@@ -1449,6 +1531,133 @@ TEST(CoreUnit, LowerAstWhiteBoxCleanupPlaceHelpersCoverDropFlagEdges)
     EXPECT_GE(left_true_store_count, 1U);
 }
 
+TEST(CoreUnit, LowerAstWhiteBoxTupleElementCleanupPlaceEdges)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle resource_type = checked.types.generic_param("T");
+    const TypeHandle tuple_type = checked.types.tuple({resource_type, resource_type});
+    const TypeHandle void_type = checked.types.builtin(BuiltinType::void_);
+    const sema::IdentId slot_name = ast.intern_identifier("slot");
+
+    const ExprId slot = push_name(ast, "slot");
+    const ExprId slot_first = push_field(ast, slot, "0");
+    const ExprId slot_second = push_field(ast, slot, "1");
+    const ExprId slot_named = push_field(ast, slot, "first");
+    const ExprId slot_huge_index = push_field(ast, slot, "4294967296");
+    set_expr_type(checked, slot, tuple_type);
+    set_expr_type(checked, slot_first, resource_type);
+    set_expr_type(checked, slot_second, resource_type);
+    set_expr_type(checked, slot_named, resource_type);
+    set_expr_type(checked, slot_huge_index, resource_type);
+    set_expr_owned_use_mode(checked, slot_first, sema::OwnedUseMode::owned_consume);
+
+    Lowerer lowerer(ast, checked);
+    static_cast<void>(prepare_current_function(lowerer, "tuple_cleanup_place_edges", void_type));
+    lowerer.cleanup_scopes_.push_back({});
+
+    const ValueId tuple_slot = append_alloca(lowerer, "slot", tuple_type);
+    ir::detail::LocalBinding tuple_binding{
+        .slot = tuple_slot,
+        .cleanup_flag = INVALID_VALUE_ID,
+        .type = tuple_type,
+        .is_mutable = true,
+        .field_cleanups = {},
+    };
+    ASSERT_TRUE(lowerer.register_structured_local_cleanup(tuple_binding, "slot"));
+    ASSERT_EQ(tuple_binding.field_cleanups.size(), 2U);
+    ASSERT_EQ(tuple_binding.field_cleanups[0].projections.size(), 1U);
+    ASSERT_EQ(tuple_binding.field_cleanups[1].projections.size(), 1U);
+    EXPECT_EQ(tuple_binding.field_cleanups[0].projections[0].kind, ir::detail::LocalPlaceProjectionKind::tuple_element);
+    EXPECT_EQ(tuple_binding.field_cleanups[0].projections[0].element_index, 0U);
+    EXPECT_EQ(tuple_binding.field_cleanups[1].projections[0].kind, ir::detail::LocalPlaceProjectionKind::tuple_element);
+    EXPECT_EQ(tuple_binding.field_cleanups[1].projections[0].element_index, 1U);
+    EXPECT_EQ(lowerer.module_.text(tuple_binding.field_cleanups[0].name), "0");
+    EXPECT_EQ(lowerer.module_.text(tuple_binding.field_cleanups[1].name), "1");
+
+    lowerer.locals_.emplace(slot_name, tuple_binding);
+    const std::optional<ir::detail::LocalPlacePath> first_path = lowerer.local_place_path(slot_first);
+    ASSERT_TRUE(first_path.has_value());
+    ASSERT_EQ(first_path->projections.size(), 1U);
+    EXPECT_EQ(first_path->projections.front().kind, ir::detail::LocalPlaceProjectionKind::tuple_element);
+    EXPECT_EQ(first_path->projections.front().element_index, 0U);
+    EXPECT_TRUE(lowerer.cleanup_binding_has_prefix(tuple_binding.field_cleanups[0], first_path->projections));
+    EXPECT_FALSE(lowerer.cleanup_binding_has_prefix(tuple_binding.field_cleanups[1], first_path->projections));
+
+    const std::optional<ir::detail::LocalPlacePath> named_path = lowerer.local_place_path(slot_named);
+    ASSERT_TRUE(named_path.has_value());
+    ASSERT_EQ(named_path->projections.size(), 1U);
+    EXPECT_EQ(named_path->projections.front().kind, ir::detail::LocalPlaceProjectionKind::field);
+    EXPECT_EQ(named_path->projections.front().element_index, sema::SEMA_BODY_FLOW_INVALID_INDEX);
+    EXPECT_EQ(named_path->projections.front().field_name, "first");
+
+    const std::optional<ir::detail::LocalPlacePath> huge_index_path = lowerer.local_place_path(slot_huge_index);
+    ASSERT_TRUE(huge_index_path.has_value());
+    ASSERT_EQ(huge_index_path->projections.size(), 1U);
+    EXPECT_EQ(huge_index_path->projections.front().kind, ir::detail::LocalPlaceProjectionKind::field);
+    EXPECT_EQ(huge_index_path->projections.front().element_index, sema::SEMA_BODY_FLOW_INVALID_INDEX);
+    EXPECT_EQ(huge_index_path->projections.front().field_name, "4294967296");
+
+    EXPECT_FALSE(lowerer.cleanup_projection_matches(
+        ir::detail::CleanupProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::tuple_element,
+            .field_name_id = sema::INVALID_IDENT_ID,
+            .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+            .field_name = lowerer.module_.intern("0"),
+        },
+        first_path->projections.front()));
+    EXPECT_FALSE(lowerer.cleanup_projection_matches(
+        ir::detail::CleanupProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::tuple_element,
+            .field_name_id = sema::INVALID_IDENT_ID,
+            .element_index = 0U,
+            .field_name = lowerer.module_.intern("0"),
+        },
+        ir::detail::LocalPlaceProjection{
+            .kind = ir::detail::LocalPlaceProjectionKind::tuple_element,
+            .field_name_id = sema::INVALID_IDENT_ID,
+            .element_index = sema::SEMA_BODY_FLOW_INVALID_INDEX,
+            .field_name = "0",
+        }));
+
+    tuple_binding.cleanup_flag = lowerer.append_cleanup_flag("slot.root");
+    lowerer.append_local_cleanup_drop_if(tuple_binding);
+
+    lowerer.mark_expr_place_moved(slot_first);
+    lowerer.mark_place_initialized(slot_first);
+    lowerer.append_place_cleanup_drop_if(slot_second);
+
+    base::usize first_false_store_count = 0;
+    base::usize first_true_store_count = 0;
+    base::usize second_drop_count = 0;
+    for (const Value& value : lowerer.module_.values) {
+        if (value.kind == ValueKind::drop_if && lowerer.module_.text(value.name) == "1") {
+            ++second_drop_count;
+            continue;
+        }
+        if (value.kind != ValueKind::store || !is_valid(value.object) || !is_valid(value.lhs)
+            || value.object.value >= lowerer.module_.values.size()
+            || value.lhs.value >= lowerer.module_.values.size()) {
+            continue;
+        }
+        const Value& target = lowerer.module_.values[value.object.value];
+        const Value& source = lowerer.module_.values[value.lhs.value];
+        if (target.kind != ValueKind::alloca || source.kind != ValueKind::bool_literal
+            || lowerer.module_.text(target.name) != "drop.flag.slot.0") {
+            continue;
+        }
+        if (lowerer.module_.text(source.text) == "false") {
+            ++first_false_store_count;
+        } else if (lowerer.module_.text(source.text) == "true") {
+            ++first_true_store_count;
+        }
+    }
+    EXPECT_GT(first_false_store_count, 0U);
+    EXPECT_GT(first_true_store_count, 1U);
+    EXPECT_GT(second_drop_count, 0U);
+}
+
 TEST(CoreUnit, LowerAstWhiteBoxStructuredCleanupRegistrationCoversNestedAndTrivialFields)
 {
     syntax::AstModule ast;
@@ -1459,6 +1668,7 @@ TEST(CoreUnit, LowerAstWhiteBoxStructuredCleanupRegistrationCoversNestedAndTrivi
     const TypeHandle inner_type = checked.types.named_struct("Inner", "Inner", false);
     const TypeHandle outer_type = checked.types.named_struct("Outer", "Outer", false);
     const TypeHandle plain_type = checked.types.named_struct("Plain", "Plain", false);
+    const TypeHandle tuple_type = checked.types.tuple({i32, inner_type});
     const TypeHandle void_type = checked.types.builtin(BuiltinType::void_);
     add_struct_info(checked, ast, "Inner", inner_type, {{"value", resource_type}});
     add_struct_info(checked, ast, "Outer", outer_type, {{"owned", inner_type}, {"trivial", i32}});
@@ -1481,6 +1691,61 @@ TEST(CoreUnit, LowerAstWhiteBoxStructuredCleanupRegistrationCoversNestedAndTrivi
     ASSERT_EQ(outer_binding.field_cleanups.front().projections.size(), 2U);
     EXPECT_EQ(lowerer.module_.text(outer_binding.field_cleanups.front().projections[0].field_name), "owned");
     EXPECT_EQ(lowerer.module_.text(outer_binding.field_cleanups.front().projections[1].field_name), "value");
+
+    const ValueId tuple_slot = append_alloca(lowerer, "tuple", tuple_type);
+    ir::detail::LocalBinding tuple_binding{
+        .slot = tuple_slot,
+        .cleanup_flag = INVALID_VALUE_ID,
+        .type = tuple_type,
+        .is_mutable = true,
+        .field_cleanups = {},
+    };
+    ASSERT_TRUE(lowerer.register_structured_local_cleanup(tuple_binding, "tuple"));
+    ASSERT_EQ(tuple_binding.field_cleanups.size(), 1U);
+    ASSERT_EQ(tuple_binding.field_cleanups.front().projections.size(), 2U);
+    EXPECT_EQ(tuple_binding.field_cleanups.front().projections[0].kind,
+        ir::detail::LocalPlaceProjectionKind::tuple_element);
+    EXPECT_EQ(tuple_binding.field_cleanups.front().projections[0].element_index, 1U);
+    EXPECT_EQ(tuple_binding.field_cleanups.front().projections[1].kind, ir::detail::LocalPlaceProjectionKind::field);
+    EXPECT_EQ(lowerer.module_.text(tuple_binding.field_cleanups.front().projections[1].field_name), "value");
+
+    const std::vector<ir::detail::CleanupProjection> no_cleanup_projections;
+    EXPECT_FALSE(lowerer.append_structured_cleanup_bindings(
+        tuple_binding, INVALID_VALUE_ID, tuple_type, no_cleanup_projections, "invalid.address"));
+    EXPECT_FALSE(lowerer.append_structured_cleanup_bindings(
+        tuple_binding, tuple_slot, INVALID_TYPE_HANDLE, no_cleanup_projections, "invalid.type"));
+
+    std::vector<ir::detail::StructuredCleanupFrame> pending_cleanup_frames;
+    EXPECT_FALSE(lowerer.push_structured_cleanup_children(
+        ir::detail::StructuredCleanupFrame{
+            .address = tuple_slot,
+            .type = INVALID_TYPE_HANDLE,
+            .flag_name = "invalid.type",
+            .name = INVALID_IR_TEXT_ID,
+            .projections = {},
+        },
+        pending_cleanup_frames));
+    EXPECT_TRUE(pending_cleanup_frames.empty());
+    EXPECT_FALSE(lowerer.push_structured_cleanup_children(
+        ir::detail::StructuredCleanupFrame{
+            .address = INVALID_VALUE_ID,
+            .type = tuple_type,
+            .flag_name = "invalid.tuple.address",
+            .name = INVALID_IR_TEXT_ID,
+            .projections = {},
+        },
+        pending_cleanup_frames));
+    EXPECT_TRUE(pending_cleanup_frames.empty());
+    EXPECT_FALSE(lowerer.push_structured_cleanup_children(
+        ir::detail::StructuredCleanupFrame{
+            .address = INVALID_VALUE_ID,
+            .type = inner_type,
+            .flag_name = "invalid.struct.address",
+            .name = INVALID_IR_TEXT_ID,
+            .projections = {},
+        },
+        pending_cleanup_frames));
+    EXPECT_TRUE(pending_cleanup_frames.empty());
 
     const ValueId plain_slot = append_alloca(lowerer, "plain", plain_type);
     ir::detail::LocalBinding plain_binding{

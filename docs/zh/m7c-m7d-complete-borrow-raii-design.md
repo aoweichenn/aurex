@@ -786,9 +786,10 @@ M7c/M7d 不承诺“一次超过 Rust 所有功能”，但可以在几个核心
 
 - 已完成：place state dataflow。
 - 已完成：本地 owned struct field partial move、field reinit 和字段级 cleanup/drop flags。
+- 已完成：本地 owned tuple element partial move、tuple element reinit 和元素级 cleanup/drop flags。
+- 已完成：tuple numeric field source surface、tuple element projection 和不同 tuple element borrow disjoint proof。
 - 已完成：generic template body-flow 读取 generic side table 类型，struct field cleanup 不再丢失 `Box[T]` 字段类型。
-- 已完成：lowering 为 struct droppable fields 建立字段级 drop flag，并在 field move/reinit/cleanup 时更新。
-- 未完成：tuple partial move；当前 `.0` / `.1` source surface 仍由 parser 拒绝。
+- 已完成：lowering 为 struct droppable fields 和 tuple droppable elements 建立字段/元素级 drop flag，并在 field/element move/reinit/cleanup 时更新。
 - 未完成：indexed move-out 和 array/slice/index 精确 disjoint proof。
 - 未完成：`replace` / `take` / `swap` compiler-known primitives。
 - 未完成：通过 borrowed/reference base 的 resource field overwrite。
@@ -798,8 +799,10 @@ M7c/M7d 不承诺“一次超过 Rust 所有功能”，但可以在几个核心
 - 已通过：partial field move 后只 drop initialized fields。
 - 已通过：moved field 使用报错，field reinit 后通过。
 - 已通过：known-disjoint struct fields 的 cleanup/drop flag 不互相污染。
+- 已通过：partial tuple element move/reinit 后只 drop initialized elements。
+- 已通过：known-disjoint tuple elements 的 borrow conflict 和 cleanup/drop flag 不互相污染。
 - 未通过/未实现：borrowed/reference field overwrite 的 old resource drop proof。
-- 未通过/未实现：tuple/index partial move 和 `replace` / `take` / `swap`。
+- 未通过/未实现：indexed move-out、array/slice/index 精确 disjoint proof 和 `replace` / `take` / `swap`。
 
 ### M7d-C：RAII user surface 与 release closure
 

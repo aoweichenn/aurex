@@ -25,8 +25,8 @@ isolated language-core validation:
   `where` capabilities / trait predicates.
 - Nominal static traits, explicit `impl Trait for Type`, static trait method
   dispatch, the first associated type model, and trait default method bodies.
-- Tuple types, tuple literals, and tuple destructuring. Anonymous tuple field
-  access is intentionally rejected.
+- Tuple types, tuple literals, numeric tuple field access, and tuple
+  destructuring. Anonymous named tuple fields are intentionally rejected.
 - Pattern matching, multi-field enum payload destructuring, guards, and
   or-patterns.
 - `if` expressions, block expressions, `while`, `for`, `break`, and `continue`.

@@ -50,6 +50,10 @@ struct MoveAction {
     MoveActionKind kind = MoveActionKind::use_local;
     base::usize local = SEMA_MOVE_INVALID_LOCAL;
     syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    syntax::StmtId stmt = syntax::INVALID_STMT_ID;
+    syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+    TypeHandle tracked_type = INVALID_TYPE_HANDLE;
+    query::StableFingerprint128 resource_fingerprint;
     OwnedUseMode mode = OwnedUseMode::none;
     base::SourceRange range{};
     bool requires_initialized = true;
@@ -190,6 +194,7 @@ public:
 
     void run()
     {
+        this->reset_move_rejection_facts();
         MoveEnvironment environment;
         BorrowEnvironment borrow_environment;
         environment.reserve(this->function_.params.size());
@@ -213,6 +218,7 @@ public:
         this->build_cfg();
         this->solve_dataflow();
         this->emit_diagnostics();
+        this->commit_move_rejection_facts();
     }
 
 private:
@@ -261,6 +267,25 @@ private:
     {
         return this->is_tracked_resource_type(type) ? this->add_local(name, type, range, parameter)
                                                     : SEMA_MOVE_INVALID_LOCAL;
+    }
+
+    void reset_move_rejection_facts()
+    {
+        this->move_rejections_ = {};
+        this->move_rejections_.function = this->signature_.semantic_key;
+        this->move_rejections_.part_index = this->signature_.part_index;
+        if (is_valid(this->signature_.semantic_key)) {
+            this->core_.state_.checked.move_rejection_facts.erase(this->signature_.semantic_key);
+        }
+    }
+
+    void commit_move_rejection_facts()
+    {
+        if (!is_valid(this->move_rejections_.function) || this->move_rejections_.rejections.empty()) {
+            return;
+        }
+        this->move_rejections_.fingerprint = function_move_rejection_facts_fingerprint(this->move_rejections_);
+        this->core_.state_.checked.move_rejection_facts[this->move_rejections_.function] = this->move_rejections_;
     }
 
     [[nodiscard]] bool is_tracked_resource_type(const TypeHandle type)
@@ -623,6 +648,55 @@ private:
         const ResourceSemanticsSummary summary = this->resources_.classify(type);
         this->resource_cache_.emplace(type.value, summary);
         return summary;
+    }
+
+    void push_initialize_action(
+        const base::usize block, const base::usize local, const syntax::ExprId expr, const base::SourceRange& range)
+    {
+        if (block >= this->blocks_.size()) {
+            return;
+        }
+        MoveAction action;
+        action.kind = MoveActionKind::initialize_local;
+        action.local = local;
+        action.expr = expr;
+        action.range = range;
+        this->blocks_[block].actions.push_back(action);
+    }
+
+    void push_use_action(const base::usize block, const base::usize local, const syntax::ExprId expr,
+        const OwnedUseMode mode, const base::SourceRange& range, const bool requires_initialized)
+    {
+        if (block >= this->blocks_.size()) {
+            return;
+        }
+        MoveAction action;
+        action.kind = MoveActionKind::use_local;
+        action.local = local;
+        action.expr = expr;
+        action.mode = mode;
+        action.range = range;
+        action.requires_initialized = requires_initialized;
+        this->blocks_[block].actions.push_back(action);
+    }
+
+    void push_rejection_action(const base::usize block, const MoveActionKind kind, const syntax::ExprId expr,
+        const syntax::StmtId stmt, const syntax::PatternId pattern, const TypeHandle tracked_type,
+        const base::SourceRange& range)
+    {
+        if (block >= this->blocks_.size()) {
+            return;
+        }
+        MoveAction action;
+        action.kind = kind;
+        action.expr = expr;
+        action.stmt = stmt;
+        action.pattern = pattern;
+        action.tracked_type = tracked_type;
+        action.resource_fingerprint = resource_semantics_fingerprint(this->resource_summary(tracked_type));
+        action.range = range;
+        action.requires_initialized = false;
+        this->blocks_[block].actions.push_back(action);
     }
 
     [[nodiscard]] std::optional<std::vector<TypeHandle>> shared_structural_components(const TypeHandle type) const
@@ -1085,13 +1159,14 @@ private:
     }
 
     void reject_pattern_payload_if_needed(const syntax::PatternId pattern, const syntax::ExprId value,
-        const base::usize block, const base::SourceRange& range)
+        const base::usize block, const base::SourceRange& range, const syntax::StmtId stmt = syntax::INVALID_STMT_ID,
+        const syntax::ExprId expr = syntax::INVALID_EXPR_ID)
     {
         if (block >= this->blocks_.size() || !this->pattern_payload_requires_full_move_analysis(pattern, value)) {
             return;
         }
-        this->blocks_[block].actions.push_back(MoveAction{MoveActionKind::reject_pattern_payload,
-            SEMA_MOVE_INVALID_LOCAL, syntax::INVALID_EXPR_ID, OwnedUseMode::none, range});
+        this->push_rejection_action(block, MoveActionKind::reject_pattern_payload, expr, stmt, pattern,
+            this->core_.cached_expr_type(value), range);
     }
 
     void push_mode_expression_children(
@@ -1351,12 +1426,11 @@ private:
         const base::usize finish = this->new_block();
         const base::usize initialized = this->declared_local(task.stmt);
         if (initialized != SEMA_MOVE_INVALID_LOCAL) {
-            this->blocks_[finish].actions.push_back(MoveAction{MoveActionKind::initialize_local, initialized,
-                syntax::INVALID_EXPR_ID, OwnedUseMode::none, stmt.range});
+            this->push_initialize_action(finish, initialized, syntax::INVALID_EXPR_ID, stmt.range);
         } else if (syntax::is_valid(stmt.pattern)
             && this->is_tracked_resource_type(this->core_.cached_expr_type(stmt.init))) {
-            this->blocks_[finish].actions.push_back(MoveAction{MoveActionKind::reject_pattern_payload,
-                SEMA_MOVE_INVALID_LOCAL, syntax::INVALID_EXPR_ID, OwnedUseMode::none, stmt.range});
+            this->push_rejection_action(finish, MoveActionKind::reject_pattern_payload, stmt.init, task.stmt,
+                stmt.pattern, this->core_.cached_expr_type(stmt.init), stmt.range);
         }
         this->add_edge(finish, task.continuation);
         if (syntax::is_valid(stmt.pattern) && syntax::is_valid(stmt.else_block)) {
@@ -1376,8 +1450,7 @@ private:
         const base::usize finish = this->new_block();
         const std::optional<base::usize> whole_local = this->whole_local(stmt.lhs, task.environment);
         if (whole_local.has_value()) {
-            this->blocks_[finish].actions.push_back(MoveAction{MoveActionKind::initialize_local, *whole_local,
-                syntax::INVALID_EXPR_ID, OwnedUseMode::none, stmt.range});
+            this->push_initialize_action(finish, *whole_local, syntax::INVALID_EXPR_ID, stmt.range);
         }
         this->add_edge(finish, task.continuation);
         this->push_expression_sequence(
@@ -1394,7 +1467,7 @@ private:
         const base::usize condition = this->new_block();
         const base::usize then_entry = this->new_block();
         const base::usize else_entry = this->new_block();
-        this->reject_pattern_payload_if_needed(stmt.pattern, stmt.condition, task.start, stmt.range);
+        this->reject_pattern_payload_if_needed(stmt.pattern, stmt.condition, task.start, stmt.range, task.stmt);
         this->push_expression(stmt.condition, RequestedUse::owned, task.start, condition, task.environment,
             task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
             task.break_cleanup_depth, task.continue_cleanup_depth);
@@ -1422,7 +1495,7 @@ private:
         const base::usize decision = this->new_block();
         const base::usize body = this->new_block();
         this->add_edge(task.start, condition);
-        this->reject_pattern_payload_if_needed(stmt.pattern, stmt.condition, condition, stmt.range);
+        this->reject_pattern_payload_if_needed(stmt.pattern, stmt.condition, condition, stmt.range, task.stmt);
         this->push_expression(stmt.condition, RequestedUse::owned, condition, decision, task.environment,
             task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
             task.break_cleanup_depth, task.continue_cleanup_depth);
@@ -1621,24 +1694,12 @@ private:
         if (expr.scope_name.empty()) {
             const auto found = task.environment.find(expr.text_id);
             if (found != task.environment.end() && found->second != SEMA_MOVE_INVALID_LOCAL) {
-                this->blocks_[task.start].actions.push_back(MoveAction{
-                    MoveActionKind::use_local,
-                    found->second,
-                    task.expr,
-                    mode,
-                    expr.range,
-                    task.requested != RequestedUse::place_only,
-                });
+                this->push_use_action(task.start, found->second, task.expr, mode, expr.range,
+                    task.requested != RequestedUse::place_only);
             } else if (const auto borrowed = task.borrow_environment.find(expr.text_id);
                 borrowed != task.borrow_environment.end() && borrowed->second != SEMA_MOVE_INVALID_LOCAL) {
-                this->blocks_[task.start].actions.push_back(MoveAction{
-                    MoveActionKind::use_local,
-                    borrowed->second,
-                    task.expr,
-                    OwnedUseMode::shared_borrow,
-                    expr.range,
-                    task.requested != RequestedUse::place_only,
-                });
+                this->push_use_action(task.start, borrowed->second, task.expr, OwnedUseMode::shared_borrow, expr.range,
+                    task.requested != RequestedUse::place_only);
             }
         }
         this->add_edge(task.start, task.continuation);
@@ -1682,9 +1743,10 @@ private:
 
     void build_try_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
     {
-        if (this->is_tracked_resource_type(this->core_.cached_expr_type(expr.try_operand))) {
-            this->blocks_[task.start].actions.push_back(MoveAction{MoveActionKind::reject_try_payload,
-                SEMA_MOVE_INVALID_LOCAL, task.expr, OwnedUseMode::none, expr.range});
+        const TypeHandle operand_type = this->core_.cached_expr_type(expr.try_operand);
+        if (this->is_tracked_resource_type(operand_type)) {
+            this->push_rejection_action(task.start, MoveActionKind::reject_try_payload, task.expr,
+                syntax::INVALID_STMT_ID, syntax::INVALID_PATTERN_ID, operand_type, expr.range);
         }
         const base::usize dispatch = this->new_block();
         const base::usize failure = this->new_block();
@@ -1701,7 +1763,8 @@ private:
         const base::usize decision = this->new_block();
         const base::usize then_entry = this->new_block();
         const base::usize else_entry = this->new_block();
-        this->reject_pattern_payload_if_needed(expr.condition_pattern, expr.condition, task.start, expr.range);
+        this->reject_pattern_payload_if_needed(
+            expr.condition_pattern, expr.condition, task.start, expr.range, syntax::INVALID_STMT_ID, task.expr);
         this->push_expression(expr.condition, RequestedUse::owned, task.start, decision, task.environment,
             task.borrow_environment, task.cleanup_scopes, task.break_target, task.continue_target,
             task.break_cleanup_depth, task.continue_cleanup_depth);
@@ -1736,8 +1799,8 @@ private:
         if (this->is_tracked_resource_type(match_type)) {
             for (const syntax::MatchArm& arm : expr.match_arms) {
                 if (this->pattern_has_bindings(arm.pattern)) {
-                    this->blocks_[task.start].actions.push_back(MoveAction{MoveActionKind::reject_pattern_payload,
-                        SEMA_MOVE_INVALID_LOCAL, syntax::INVALID_EXPR_ID, OwnedUseMode::none, arm.range});
+                    this->push_rejection_action(task.start, MoveActionKind::reject_pattern_payload, task.expr,
+                        syntax::INVALID_STMT_ID, arm.pattern, match_type, arm.range);
                 }
             }
         }
@@ -1804,10 +1867,11 @@ private:
 
     void build_index_expression(const BuildTask& task, const SemanticAnalyzerCore::ExprView& expr)
     {
+        const TypeHandle indexed_type = this->core_.cached_expr_type(task.expr);
         if (task.requested == RequestedUse::owned
-            && this->is_tracked_resource_type(this->core_.cached_expr_type(task.expr))) {
-            this->blocks_[task.start].actions.push_back(MoveAction{MoveActionKind::reject_indexed_move,
-                SEMA_MOVE_INVALID_LOCAL, task.expr, OwnedUseMode::none, expr.range});
+            && this->is_tracked_resource_type(indexed_type)) {
+            this->push_rejection_action(task.start, MoveActionKind::reject_indexed_move, task.expr,
+                syntax::INVALID_STMT_ID, syntax::INVALID_PATTERN_ID, indexed_type, expr.range);
         }
         this->push_expression_sequence(
             {
@@ -2112,7 +2176,7 @@ private:
         return state.value_or(this->initial_state());
     }
 
-    void apply_action(MoveState& state, const MoveAction& action, const bool report) const
+    void apply_action(MoveState& state, const MoveAction& action, const bool report)
     {
         if (action.kind == MoveActionKind::initialize_local) {
             if (action.local < state.definitely_initialized.size()) {
@@ -2183,7 +2247,7 @@ private:
         }
     }
 
-    void emit_diagnostics() const
+    void emit_diagnostics()
     {
         for (base::usize block = 0; block < this->blocks_.size(); ++block) {
             if (!this->reachable_[block]) {
@@ -2208,17 +2272,20 @@ private:
         }
     }
 
-    void report_rejection(const MoveAction& action) const
+    void report_rejection(const MoveAction& action)
     {
         switch (action.kind) {
             case MoveActionKind::reject_indexed_move:
                 this->core_.report_unsupported(action.range, std::string(SEMA_MOVE_INDEXED_ELEMENT_UNSUPPORTED));
+                this->record_rejection_fact(action, MoveRejectionKind::indexed_element);
                 break;
             case MoveActionKind::reject_pattern_payload:
                 this->core_.report_unsupported(action.range, std::string(SEMA_MOVE_PATTERN_PAYLOAD_UNSUPPORTED));
+                this->record_rejection_fact(action, MoveRejectionKind::pattern_payload);
                 break;
             case MoveActionKind::reject_try_payload:
                 this->core_.report_unsupported(action.range, std::string(SEMA_MOVE_TRY_PAYLOAD_UNSUPPORTED));
+                this->record_rejection_fact(action, MoveRejectionKind::try_payload);
                 break;
             case MoveActionKind::use_local:
             case MoveActionKind::initialize_local:
@@ -2226,11 +2293,26 @@ private:
         }
     }
 
+    void record_rejection_fact(const MoveAction& action, const MoveRejectionKind kind)
+    {
+        MoveRejectionFact fact;
+        fact.kind = kind;
+        fact.expr = action.expr;
+        fact.stmt = action.stmt;
+        fact.pattern = action.pattern;
+        fact.tracked_type = action.tracked_type;
+        fact.resource_fingerprint = action.resource_fingerprint;
+        fact.diagnostic_emitted = true;
+        fact.range = action.range;
+        this->move_rejections_.rejections.push_back(fact);
+    }
+
     SemanticAnalyzerCore& core_;
     const syntax::ItemNode& function_;
     const FunctionSignature& signature_;
     ResourceSemanticsClassifier resources_;
     std::unordered_map<base::u32, ResourceSemanticsSummary> resource_cache_;
+    FunctionMoveRejectionFacts move_rejections_;
     std::unordered_map<base::u32, base::usize> declared_locals_;
     std::vector<MoveLocal> locals_;
     std::vector<bool> parameter_locals_;

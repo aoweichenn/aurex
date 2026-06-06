@@ -1,4 +1,5 @@
 #include <aurex/application/tooling/ide.hpp>
+#include <aurex/infrastructure/query/stable_hash.hpp>
 
 #include <algorithm>
 #include <array>
@@ -584,6 +585,16 @@ TEST(CoreUnit, IdeToolingHoverReflectsCheckedBorrowLifetimeAndDropFactDetails)
         .diagnostic_emitted = true,
     });
 
+    sema::FunctionMoveRejectionFacts& move_rejections = snapshot.checked.move_rejection_facts[*key];
+    move_rejections.function = *key;
+    move_rejections.rejections.push_back(sema::MoveRejectionFact{
+        .kind = sema::MoveRejectionKind::try_payload,
+        .tracked_type = snapshot.checked.types.builtin(sema::BuiltinType::i32),
+        .resource_fingerprint = query::stable_fingerprint("ide-hover-move-rejection"),
+        .diagnostic_emitted = true,
+    });
+    move_rejections.fingerprint = sema::function_move_rejection_facts_fingerprint(move_rejections);
+
     constexpr std::string_view source = "module ide.hover_facts;\n"
                                         "fn id_ref(value: &i32) -> &i32 {\n"
                                         "  return value;\n"
@@ -602,6 +613,7 @@ TEST(CoreUnit, IdeToolingHoverReflectsCheckedBorrowLifetimeAndDropFactDetails)
     EXPECT_NE(hover->label.find("/violations=2/local_escapes=1/unknown_escapes=1"), std::string::npos) << hover->label;
     EXPECT_NE(hover->label.find("dropck=facts=1/actions=1/required_outlives=1/violations=1"), std::string::npos)
         << hover->label;
+    EXPECT_NE(hover->label.find("move_rejections=count=1/first=try_payload"), std::string::npos) << hover->label;
 }
 
 TEST(CoreUnit, IdeToolingReferencesAstFallbackSymbolsWithoutCheckedKeys)

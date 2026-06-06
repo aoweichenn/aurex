@@ -23,6 +23,7 @@ constexpr std::string_view SEMA_TRAIT_METHOD_CALL_BINDING_ID_CONTEXT = "sema tra
 constexpr std::string_view SEMA_FUNCTION_CALL_BINDING_ID_CONTEXT = "sema function call binding id";
 constexpr std::string_view SEMA_DESTRUCTOR_INFO_FINGERPRINT_MARKER = "sema.destructor.info.v1";
 constexpr std::string_view SEMA_DESTRUCTORS_FINGERPRINT_MARKER = "sema.destructors.v1";
+constexpr std::string_view SEMA_MOVE_REJECTION_FACTS_FINGERPRINT_MARKER = "sema.move_rejection.facts.v1";
 
 [[nodiscard]] std::size_t mix_trait_impl_hash(std::size_t hash, const std::uint64_t value) noexcept
 {
@@ -588,6 +589,8 @@ CheckedModule::CheckedModule()
           *this->arena_, FunctionLookupKeyHash{})),
       borrow_contracts(make_sema_map<FunctionLookupKey, FunctionBorrowContract, FunctionLookupKeyHash>(
           *this->arena_, FunctionLookupKeyHash{})),
+      move_rejection_facts(make_sema_map<FunctionLookupKey, FunctionMoveRejectionFacts, FunctionLookupKeyHash>(
+          *this->arena_, FunctionLookupKeyHash{})),
       lifetime_origin_params(make_sema_vector<LifetimeOriginParamInfo>(*this->arena_)),
       reference_origin_facts(make_sema_vector<ReferenceOriginFact>(*this->arena_)),
       type_lifetime_infos(make_sema_vector<TypeLifetimeInfo>(*this->arena_)),
@@ -646,6 +649,7 @@ CheckedModule::CheckedModule(CheckedModule&& other) noexcept
       trait_method_call_by_expr(std::move(other.trait_method_call_by_expr)),
       function_call_by_expr(std::move(other.function_call_by_expr)),
       borrow_summaries(std::move(other.borrow_summaries)), borrow_contracts(std::move(other.borrow_contracts)),
+      move_rejection_facts(std::move(other.move_rejection_facts)),
       lifetime_origin_params(std::move(other.lifetime_origin_params)),
       reference_origin_facts(std::move(other.reference_origin_facts)),
       type_lifetime_infos(std::move(other.type_lifetime_infos)),
@@ -724,6 +728,7 @@ void CheckedModule::swap(CheckedModule& other) noexcept
     this->function_call_by_expr.swap(other.function_call_by_expr);
     this->borrow_summaries.swap(other.borrow_summaries);
     this->borrow_contracts.swap(other.borrow_contracts);
+    this->move_rejection_facts.swap(other.move_rejection_facts);
     this->lifetime_origin_params.swap(other.lifetime_origin_params);
     this->reference_origin_facts.swap(other.reference_origin_facts);
     this->type_lifetime_infos.swap(other.type_lifetime_infos);
@@ -848,6 +853,11 @@ void CheckedModule::copy_from(const CheckedModule& other)
     this->borrow_contracts.reserve(other.borrow_contracts.size());
     for (const auto& entry : other.borrow_contracts) {
         this->borrow_contracts.emplace(entry.first, entry.second);
+    }
+    this->move_rejection_facts.clear();
+    this->move_rejection_facts.reserve(other.move_rejection_facts.size());
+    for (const auto& entry : other.move_rejection_facts) {
+        this->move_rejection_facts.emplace(entry.first, this->clone_function_move_rejection_facts(entry.second));
     }
     this->lifetime_origin_params.clear();
     this->lifetime_origin_params.reserve(other.lifetime_origin_params.size());
@@ -1472,6 +1482,102 @@ FunctionDropCheckFacts CheckedModule::clone_function_drop_check_facts(const Func
     return other;
 }
 
+FunctionMoveRejectionFacts CheckedModule::clone_function_move_rejection_facts(
+    const FunctionMoveRejectionFacts& other) const
+{
+    return other;
+}
+
+std::string_view move_rejection_kind_name(const MoveRejectionKind kind) noexcept
+{
+    switch (kind) {
+        case MoveRejectionKind::indexed_element:
+            return "indexed_element";
+        case MoveRejectionKind::pattern_payload:
+            return "pattern_payload";
+        case MoveRejectionKind::try_payload:
+            return "try_payload";
+    }
+    return "<invalid>";
+}
+
+query::StableFingerprint128 function_move_rejection_facts_fingerprint(
+    const FunctionMoveRejectionFacts& facts) noexcept
+{
+    query::StableHashBuilder builder;
+    builder.mix_string(SEMA_MOVE_REJECTION_FACTS_FINGERPRINT_MARKER);
+    mix_function_lookup_key(builder, facts.function);
+    builder.mix_u32(facts.part_index);
+    builder.mix_u64(static_cast<base::u64>(facts.rejections.size()));
+    for (const MoveRejectionFact& rejection : facts.rejections) {
+        builder.mix_u8(static_cast<base::u8>(rejection.kind));
+        builder.mix_u32(rejection.expr.value);
+        builder.mix_u32(rejection.stmt.value);
+        builder.mix_u32(rejection.pattern.value);
+        builder.mix_u32(rejection.tracked_type.value);
+        builder.mix_fingerprint(rejection.resource_fingerprint);
+        builder.mix_bool(rejection.diagnostic_emitted);
+    }
+    return builder.finish();
+}
+
+std::string summarize_function_move_rejection_facts(const FunctionMoveRejectionFacts& facts)
+{
+    base::u64 pattern_payload_count = 0;
+    base::u64 try_payload_count = 0;
+    base::u64 indexed_element_count = 0;
+    base::u64 emitted_count = 0;
+    for (const MoveRejectionFact& rejection : facts.rejections) {
+        if (rejection.diagnostic_emitted) {
+            ++emitted_count;
+        }
+        switch (rejection.kind) {
+            case MoveRejectionKind::indexed_element:
+                ++indexed_element_count;
+                break;
+            case MoveRejectionKind::pattern_payload:
+                ++pattern_payload_count;
+                break;
+            case MoveRejectionKind::try_payload:
+                ++try_payload_count;
+                break;
+        }
+    }
+
+    std::ostringstream label;
+    label << "move_rejection_facts rejections=" << facts.rejections.size()
+          << " pattern_payload=" << pattern_payload_count
+          << " try_payload=" << try_payload_count
+          << " indexed_element=" << indexed_element_count
+          << " diagnostics=" << emitted_count
+          << " fingerprint=" << query::debug_string(function_move_rejection_facts_fingerprint(facts));
+    return label.str();
+}
+
+std::string dump_function_move_rejection_facts(const FunctionMoveRejectionFacts& facts)
+{
+    std::ostringstream stream;
+    stream << "move_rejection_facts function=" << facts.function.module << ':' << facts.function.owner_type << ':';
+    if (syntax::is_valid(facts.function.name)) {
+        stream << '#' << facts.function.name.value;
+    } else {
+        stream << '-';
+    }
+    stream << " rejections=" << facts.rejections.size()
+           << " fingerprint=" << query::debug_string(function_move_rejection_facts_fingerprint(facts)) << '\n';
+    for (base::usize index = 0; index < facts.rejections.size(); ++index) {
+        const MoveRejectionFact& rejection = facts.rejections[index];
+        stream << "  r" << index << ' ' << move_rejection_kind_name(rejection.kind)
+               << " expr=e" << rejection.expr.value
+               << " stmt=s" << rejection.stmt.value
+               << " pattern=p" << rejection.pattern.value
+               << " tracked_type=" << rejection.tracked_type.value
+               << " emitted=" << (rejection.diagnostic_emitted ? "true" : "false")
+               << " resource=" << query::debug_string(rejection.resource_fingerprint) << '\n';
+    }
+    return stream.str();
+}
+
 DestructorInfo CheckedModule::clone_destructor_info(const DestructorInfo& other) const
 {
     return other;
@@ -1940,6 +2046,11 @@ constexpr base::u32 SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX = 0;
             return true;
         }
     }
+    for (const auto& entry : checked.move_rejection_facts) {
+        if (entry.second.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
+            return true;
+        }
+    }
     for (const auto& entry : checked.destructors) {
         if (entry.second.part_index != SEMA_CHECKED_DUMP_PRIMARY_PART_INDEX) {
             return true;
@@ -2132,6 +2243,30 @@ void populate_type_check_body_borrow_authority(
         authority.borrow_contract_unknown_return_allowed = contract->second.unknown_return_allowed;
         authority.borrow_contract_has_local_return_escape = contract->second.has_local_return_escape;
         authority.borrow_contract_has_mismatch = contract->second.has_contract_mismatch;
+    }
+    if (const auto move_rejections = checked.move_rejection_facts.find(function);
+        move_rejections != checked.move_rejection_facts.end()) {
+        authority.has_move_rejection_facts = true;
+        authority.move_rejection_fingerprint = function_move_rejection_facts_fingerprint(move_rejections->second);
+        authority.move_rejection_count = static_cast<base::u64>(move_rejections->second.rejections.size());
+        for (const MoveRejectionFact& rejection : move_rejections->second.rejections) {
+            authority.move_rejection_has_emitted_diagnostics =
+                authority.move_rejection_has_emitted_diagnostics || rejection.diagnostic_emitted;
+            switch (rejection.kind) {
+                case MoveRejectionKind::indexed_element:
+                    ++authority.move_rejection_indexed_element_count;
+                    authority.move_rejection_has_indexed_element = true;
+                    break;
+                case MoveRejectionKind::pattern_payload:
+                    ++authority.move_rejection_pattern_payload_count;
+                    authority.move_rejection_has_pattern_payload = true;
+                    break;
+                case MoveRejectionKind::try_payload:
+                    ++authority.move_rejection_try_payload_count;
+                    authority.move_rejection_has_try_payload = true;
+                    break;
+            }
+        }
     }
     if (const auto lifetime = checked.lifetime_facts.find(function); lifetime != checked.lifetime_facts.end()) {
         authority.has_lifetime_facts = true;
@@ -2553,6 +2688,41 @@ std::string dump_checked_module(const CheckedModule& checked)
                 out << '-';
             }
             out << "\n";
+        }
+    }
+
+    std::vector<const FunctionMoveRejectionFacts*> move_rejection_facts;
+    move_rejection_facts.reserve(checked.move_rejection_facts.size());
+    for (const auto& entry : checked.move_rejection_facts) {
+        move_rejection_facts.push_back(&entry.second);
+    }
+    std::sort(move_rejection_facts.begin(), move_rejection_facts.end(),
+        [](const FunctionMoveRejectionFacts* lhs, const FunctionMoveRejectionFacts* rhs) {
+            return std::tie(lhs->function.module, lhs->function.owner_type, lhs->function.name.value)
+                < std::tie(rhs->function.module, rhs->function.owner_type, rhs->function.name.value);
+        });
+    out << "  move_rejection_facts " << move_rejection_facts.size() << "\n";
+    for (const FunctionMoveRejectionFacts* const facts_ptr : move_rejection_facts) {
+        const FunctionMoveRejectionFacts& facts = *facts_ptr;
+        out << "    move_rejection_fact " << facts.function.module << ':' << facts.function.owner_type << ':';
+        if (syntax::is_valid(facts.function.name)) {
+            out << '#' << facts.function.name.value;
+        } else {
+            out << '-';
+        }
+        out << " rejections=" << facts.rejections.size()
+            << " fingerprint=" << query::debug_string(function_move_rejection_facts_fingerprint(facts));
+        append_part_origin(out, show_parts, facts.part_index);
+        out << "\n";
+        for (base::usize rejection_index = 0; rejection_index < facts.rejections.size(); ++rejection_index) {
+            const MoveRejectionFact& rejection = facts.rejections[rejection_index];
+            out << "      rejection #" << rejection_index << ' ' << move_rejection_kind_name(rejection.kind)
+                << " expr=e" << rejection.expr.value
+                << " stmt=s" << rejection.stmt.value
+                << " pattern=p" << rejection.pattern.value
+                << " tracked_type=" << checked.types.display_name(rejection.tracked_type)
+                << " resource=" << query::debug_string(rejection.resource_fingerprint)
+                << " emitted=" << (rejection.diagnostic_emitted ? "true" : "false") << "\n";
         }
     }
 

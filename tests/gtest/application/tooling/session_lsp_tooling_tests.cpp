@@ -138,6 +138,9 @@ constexpr std::string_view TOOLING_SESSION_PACKAGE = "tooling-session-test";
 constexpr std::string_view TOOLING_LSP_PACKAGE = "tooling-lsp-test";
 constexpr std::string_view TOOLING_WORKSPACE_PACKAGE = "tooling-workspace-test";
 constexpr std::string_view TOOLING_MALFORMED_FACT_NAME = "missing-decision";
+constexpr std::string_view TOOLING_MOVE_REJECTION_FACT_NAME = "move_rejection_probe";
+constexpr std::string_view TOOLING_MOVE_REJECTION_FACT_KIND = "move_rejection_facts";
+constexpr std::string_view TOOLING_MOVE_REJECTION_FACT_DETAIL = "move_rejection_facts rejections=1 first=try_payload";
 constexpr std::string_view TOOLING_RETURN_VALUE_TEXT = "return value";
 constexpr base::i64 TOOLING_VERSION_ONE = 1;
 constexpr base::i64 TOOLING_VERSION_TWO = 2;
@@ -409,6 +412,18 @@ constexpr int TOOLING_LSP_SEMANTIC_TOKEN_STRING_TYPE = 18;
         return fact.status == status && fact.name == name && fact.kind == kind;
     });
     return found == plan.facts.end() ? nullptr : &*found;
+}
+
+[[nodiscard]] tooling::IdeSemanticFact move_rejection_semantic_fact(
+    const tooling::IdeSemanticFact& seed, const base::SourceRange range)
+{
+    tooling::IdeSemanticFact fact = seed;
+    fact.kind = tooling::IdeSemanticFactKind::move_rejection_facts;
+    fact.range = range;
+    fact.name = std::string(TOOLING_MOVE_REJECTION_FACT_NAME);
+    fact.detail = std::string(TOOLING_MOVE_REJECTION_FACT_DETAIL);
+    fact.checked = true;
+    return fact;
 }
 
 [[nodiscard]] bool contains_invalidation_root(
@@ -1533,6 +1548,22 @@ TEST(CoreUnit, ToolingSessionTracksAddedDependenciesAndEmptyReusePlan)
     EXPECT_TRUE(contains_reuse_fact(
         malformed_plan, tooling::ToolingReuseFactStatus::malformed, TOOLING_MALFORMED_FACT_NAME, "item_signature"));
 
+    ASSERT_FALSE(before.query.semantic_facts.empty());
+    tooling::IdeSnapshot move_fact_before = before;
+    tooling::IdeSnapshot move_fact_after = before;
+    tooling::IdeSemanticFact move_fact = move_rejection_semantic_fact(before.query.semantic_facts.front(), impact.range);
+    ASSERT_TRUE(move_fact.range.well_formed());
+    move_fact_before.query.semantic_facts.push_back(move_fact);
+    move_fact_after.query.semantic_facts.push_back(std::move(move_fact));
+    const tooling::ToolingReusePlan move_fact_plan =
+        tooling::tooling_plan_reuse(move_fact_before, move_fact_after, impact);
+    EXPECT_TRUE(move_fact_plan.valid);
+    EXPECT_TRUE(move_fact_plan.summary.body_local);
+    EXPECT_TRUE(contains_invalidation_root(
+        move_fact_plan, TOOLING_MOVE_REJECTION_FACT_NAME, TOOLING_MOVE_REJECTION_FACT_KIND));
+    EXPECT_TRUE(contains_reuse_fact(move_fact_plan, tooling::ToolingReuseFactStatus::unchanged,
+        TOOLING_MOVE_REJECTION_FACT_NAME, TOOLING_MOVE_REJECTION_FACT_KIND));
+
     const tooling::ToolingReusePlan empty_plan =
         tooling::tooling_plan_reuse(tooling::IdeSnapshot{}, tooling::IdeSnapshot{}, tooling::IdeEditImpact{});
     EXPECT_FALSE(empty_plan.valid);
@@ -1822,6 +1853,23 @@ TEST(CoreUnit, ToolingWorkspaceIndexReportsIncrementalUpdateStats)
     const std::vector<tooling::ToolingIndexedSemanticFact> initial_indexed =
         session.workspace_index().facts_for_document(document);
     ASSERT_FALSE(initial_indexed.empty());
+
+    ASSERT_FALSE(initial.value().snapshot->query.semantic_facts.empty());
+    tooling::IdeSnapshot move_fact_snapshot = *initial.value().snapshot;
+    move_fact_snapshot.query.semantic_facts.push_back(
+        move_rejection_semantic_fact(initial.value().snapshot->query.semantic_facts.front(), initial_indexed.front().range.range));
+    tooling::ToolingSnapshotHandle move_fact_handle = initial.value();
+    move_fact_handle.snapshot = std::make_shared<tooling::IdeSnapshot>(std::move(move_fact_snapshot));
+    tooling::ToolingWorkspaceSemanticIndex move_fact_index;
+    const tooling::ToolingWorkspaceIndexUpdateStats move_fact_stats =
+        move_fact_index.update_snapshot(move_fact_handle);
+    EXPECT_TRUE(move_fact_stats.updated);
+    const std::vector<tooling::ToolingIndexedSemanticFact> move_fact_indexed =
+        move_fact_index.facts_for_document(document);
+    EXPECT_TRUE(std::ranges::any_of(move_fact_indexed, [](const tooling::ToolingIndexedSemanticFact& fact) {
+        return fact.kind == TOOLING_MOVE_REJECTION_FACT_KIND && fact.name == TOOLING_MOVE_REJECTION_FACT_NAME
+            && fact.detail == TOOLING_MOVE_REJECTION_FACT_DETAIL;
+    }));
 
     std::vector<tooling::ToolingIndexedSemanticFact> synthetic_previous;
     tooling::ToolingIndexedSemanticFact body_identity;

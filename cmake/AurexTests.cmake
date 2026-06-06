@@ -60,6 +60,7 @@ if(BUILD_TESTING)
         tests/gtest/frontend/parse/parser_tests.cpp
         tests/gtest/frontend/sema/identifier_tests.cpp
         tests/gtest/frontend/sema/lifetime_tests.cpp
+        tests/gtest/frontend/sema/move_rejection_facts_tests.cpp
         tests/gtest/frontend/sema/place_state_tests.cpp
         tests/gtest/frontend/sema/sema_borrow_whitebox_tests.cpp
         tests/gtest/frontend/sema/sema_expressions_patterns_whitebox_tests.cpp
@@ -132,6 +133,7 @@ if(BUILD_TESTING)
             tests/gtest/frontend/sema/if_expression_tests.cpp
             tests/gtest/frontend/sema/inference_tests.cpp
             tests/gtest/frontend/sema/lifetime_tests.cpp
+            tests/gtest/frontend/sema/move_rejection_facts_tests.cpp
             tests/gtest/frontend/sema/place_state_tests.cpp
             tests/gtest/frontend/sema/modules_visibility_tests.cpp
             tests/gtest/frontend/sema/pattern_matching_tests.cpp

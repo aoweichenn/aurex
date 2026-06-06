@@ -13,6 +13,7 @@ struct TypeCheckBodyAuthority {
     QueryResultFingerprint signature_result;
     StableFingerprint128 borrow_summary_fingerprint;
     StableFingerprint128 borrow_contract_fingerprint;
+    StableFingerprint128 move_rejection_fingerprint;
     StableFingerprint128 lifetime_fingerprint;
     StableFingerprint128 dropck_fingerprint;
     StableFingerprint128 place_state_fingerprint;
@@ -27,6 +28,10 @@ struct TypeCheckBodyAuthority {
     base::u64 borrow_summary_dependency_count = 0;
     base::u64 borrow_summary_storage_escape_count = 0;
     base::u64 borrow_contract_selector_count = 0;
+    base::u64 move_rejection_count = 0;
+    base::u64 move_rejection_pattern_payload_count = 0;
+    base::u64 move_rejection_try_payload_count = 0;
+    base::u64 move_rejection_indexed_element_count = 0;
     base::u64 lifetime_region_count = 0;
     base::u64 lifetime_outlives_constraint_count = 0;
     base::u64 lifetime_type_outlives_constraint_count = 0;
@@ -58,6 +63,7 @@ struct TypeCheckBodyAuthority {
     bool has_diagnostics = false;
     bool has_borrow_summary = false;
     bool has_borrow_contract = false;
+    bool has_move_rejection_facts = false;
     bool has_lifetime_facts = false;
     bool has_dropck_facts = false;
     bool has_place_state_facts = false;
@@ -69,6 +75,10 @@ struct TypeCheckBodyAuthority {
     bool borrow_contract_unknown_return_allowed = false;
     bool borrow_contract_has_local_return_escape = false;
     bool borrow_contract_has_mismatch = false;
+    bool move_rejection_has_pattern_payload = false;
+    bool move_rejection_has_try_payload = false;
+    bool move_rejection_has_indexed_element = false;
+    bool move_rejection_has_emitted_diagnostics = false;
     bool lifetime_has_emitted_diagnostics = false;
     bool lifetime_has_unknown_origin = false;
     bool lifetime_has_ambiguous_elision = false;

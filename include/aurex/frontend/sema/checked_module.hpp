@@ -469,6 +469,30 @@ struct FunctionBorrowSummary {
     base::u32 part_index = 0;
 };
 
+enum class MoveRejectionKind : base::u8 {
+    indexed_element,
+    pattern_payload,
+    try_payload,
+};
+
+struct MoveRejectionFact {
+    MoveRejectionKind kind = MoveRejectionKind::indexed_element;
+    syntax::ExprId expr = syntax::INVALID_EXPR_ID;
+    syntax::StmtId stmt = syntax::INVALID_STMT_ID;
+    syntax::PatternId pattern = syntax::INVALID_PATTERN_ID;
+    TypeHandle tracked_type = INVALID_TYPE_HANDLE;
+    query::StableFingerprint128 resource_fingerprint;
+    bool diagnostic_emitted = false;
+    base::SourceRange range{};
+};
+
+struct FunctionMoveRejectionFacts {
+    FunctionLookupKey function;
+    std::vector<MoveRejectionFact> rejections;
+    query::StableFingerprint128 fingerprint;
+    base::u32 part_index = 0;
+};
+
 struct LifetimeOriginParamInfo {
     syntax::ModuleId module = syntax::INVALID_MODULE_ID;
     syntax::ItemId item = syntax::INVALID_ITEM_ID;
@@ -747,6 +771,7 @@ using FunctionCallBindingList = SemaVector<FunctionCallBinding>;
 using CallBindingExprIndexMap = SemaMap<base::u32, base::u32>;
 using FunctionBorrowSummaryMap = SemaMap<FunctionLookupKey, FunctionBorrowSummary, FunctionLookupKeyHash>;
 using FunctionBorrowContractMap = SemaMap<FunctionLookupKey, FunctionBorrowContract, FunctionLookupKeyHash>;
+using FunctionMoveRejectionFactsMap = SemaMap<FunctionLookupKey, FunctionMoveRejectionFacts, FunctionLookupKeyHash>;
 using LifetimeOriginParamList = SemaVector<LifetimeOriginParamInfo>;
 using ReferenceOriginFactList = SemaVector<ReferenceOriginFact>;
 using TypeLifetimeInfoList = SemaVector<TypeLifetimeInfo>;
@@ -1054,6 +1079,7 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
 [[nodiscard]] std::string_view body_flow_place_projection_kind_name(BodyFlowPlaceProjectionKind kind) noexcept;
 [[nodiscard]] std::string_view borrow_contract_selector_kind_name(BorrowContractSelectorKind kind) noexcept;
 [[nodiscard]] std::string_view function_borrow_contract_source_name(FunctionBorrowContractSource source) noexcept;
+[[nodiscard]] std::string_view move_rejection_kind_name(MoveRejectionKind kind) noexcept;
 [[nodiscard]] std::string_view lifetime_region_kind_name(LifetimeRegionKind kind) noexcept;
 [[nodiscard]] std::string_view lifetime_constraint_reason_name(LifetimeConstraintReason reason) noexcept;
 [[nodiscard]] std::string_view lifetime_violation_kind_name(LifetimeViolationKind kind) noexcept;
@@ -1070,6 +1096,8 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
 [[nodiscard]] query::StableFingerprint128 body_loan_check_fingerprint(const BodyLoanCheckResult& result) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_borrow_contract_fingerprint(
     const FunctionBorrowContract& contract) noexcept;
+[[nodiscard]] query::StableFingerprint128 function_move_rejection_facts_fingerprint(
+    const FunctionMoveRejectionFacts& facts) noexcept;
 [[nodiscard]] query::StableFingerprint128 type_lifetime_info_fingerprint(const TypeLifetimeInfo& info) noexcept;
 [[nodiscard]] query::StableFingerprint128 generic_lifetime_predicate_fingerprint(
     const GenericLifetimePredicate& predicate) noexcept;
@@ -1082,6 +1110,8 @@ using BodyLoanCheckResultMap = SemaMap<FunctionLookupKey, BodyLoanCheckResult, F
 [[nodiscard]] query::StableFingerprint128 checked_destructors_fingerprint(const CheckedModule& checked) noexcept;
 [[nodiscard]] query::StableFingerprint128 function_place_state_facts_fingerprint(
     const FunctionPlaceStateFacts& facts) noexcept;
+[[nodiscard]] std::string summarize_function_move_rejection_facts(const FunctionMoveRejectionFacts& facts);
+[[nodiscard]] std::string dump_function_move_rejection_facts(const FunctionMoveRejectionFacts& facts);
 [[nodiscard]] std::string dump_function_lifetime_facts(const FunctionLifetimeFacts& facts);
 [[nodiscard]] std::string dump_function_drop_check_facts(const FunctionDropCheckFacts& facts);
 [[nodiscard]] std::string dump_function_place_state_facts(const FunctionPlaceStateFacts& facts);
@@ -1414,6 +1444,7 @@ public:
     CallBindingExprIndexMap function_call_by_expr;
     FunctionBorrowSummaryMap borrow_summaries;
     FunctionBorrowContractMap borrow_contracts;
+    FunctionMoveRejectionFactsMap move_rejection_facts;
     LifetimeOriginParamList lifetime_origin_params;
     ReferenceOriginFactList reference_origin_facts;
     TypeLifetimeInfoList type_lifetime_infos;
@@ -1486,6 +1517,8 @@ public:
     [[nodiscard]] base::usize append_generic_side_table_layout(const GenericSideTableLocalLayoutView& layout);
     [[nodiscard]] const GenericSideTableLayout* generic_side_table_layout(base::usize index) const noexcept;
     [[nodiscard]] FunctionSignature clone_function_signature(const FunctionSignature& other);
+    [[nodiscard]] FunctionMoveRejectionFacts clone_function_move_rejection_facts(
+        const FunctionMoveRejectionFacts& other) const;
     [[nodiscard]] FunctionLifetimeFacts clone_function_lifetime_facts(const FunctionLifetimeFacts& other);
     [[nodiscard]] FunctionDropCheckFacts clone_function_drop_check_facts(const FunctionDropCheckFacts& other);
     [[nodiscard]] DestructorInfo clone_destructor_info(const DestructorInfo& other) const;

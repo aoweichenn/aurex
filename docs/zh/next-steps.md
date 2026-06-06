@@ -91,6 +91,14 @@ place-state facts schema 已升级到 `sema.place_state.facts.v3`；borrow check
 冲突；IR lowering 的 local cleanup place path 已能识别 index/slice projection，并对 index/slice 只做同类保守
 prefix matching。当前仍不实现 indexed move-out、array/slice/index 精确 disjoint proof 或任何标准库资源封装。
 
+M7d-I 当前实现状态：move rejection facts closure 已完成 compiler-only 收口。`CheckedModule::move_rejection_facts`
+记录 move analysis 已实际发出 unsupported diagnostic 的 `pattern_payload`、`try_payload` 和 `indexed_element`
+拒绝事实，并保存关联 expr/stmt/pattern、tracked type、resource fingerprint、诊断状态和稳定 fingerprint。
+`TypeCheckBodyAuthority`、checked dump、IDE semantic fact、hover、workspace index 和 reuse invalidation 都已接入该
+事实链；白盒测试覆盖 match arm payload、struct pattern payload、if / if-expr / while condition payload、`?`
+payload 和 indexed move-out。当前语言行为不放宽：consuming pattern payload、non-`Copy` `?` payload transfer
+和 indexed move-out 仍拒绝，本阶段仍不实现任何标准库资源封装。
+
 M7 hardening performance closure 也已完成，记录在
 [M7 Hardening Performance Closure](m7-hardening-performance-closure.md)。当前新增 statement control-flow query
 cache、body-loan precheck 单次表达式遍历、`NormalizedAstOverlay` `u64` 计数和 `tools/m7_hardening_perf.py`。
@@ -127,6 +135,9 @@ M7c/M7d 后续实现按以下大块推进：
 11. M7d-H：已完成。index / slice place-state conservative closure 已正式化；本地 place identity 和 index/slice
     projection 不再因 AST expr id 被误拆分，borrow/place-state/lowering cleanup path 均保持 same-root conservative
     may-alias，标准库资源封装不在本阶段。
+12. M7d-I：已完成。move rejection facts 已正式化；pattern payload、try payload 和 indexed element move
+    rejection 现在进入 checked facts、query authority、dump 和 IDE/tooling。该步骤只记录当前拒绝事实，不实现
+    consuming pattern payload、non-`Copy` `?` payload transfer 或 indexed move-out。
 
 实现架构必须低耦合：lifetime fact collector、region solver、enforcer、dropck facts、place-state analyzer、RAII surface
 checker 和 tooling adapter 分模块维护；`src/sema/internal/` 只能作为 private implementation root，下面不再直接新增文件，
@@ -136,7 +147,8 @@ checker 和 tooling adapter 分模块维护；`src/sema/internal/` 只能作为 
 
 M7c/M7d 仍不做完整 lambda/closure capture、HRTB、full variance、`dyn Trait` object lifetime bound、async/generator borrow、full Polonius
 Datalog runtime、Stacked-Borrows-level unsafe alias semantics、interior mutability proof、并发 data-race capability、
-future `MustConsume`、array/slice 精确 disjoint proof 或 self-referential/pinning/address-stability。
+future `MustConsume`、consuming pattern payload transfer、non-`Copy` `?` payload transfer、indexed move-out、
+array/slice 精确 disjoint proof 或 self-referential/pinning/address-stability。
 
 M6-WP1 已完成三轮设计审视：
 
@@ -160,9 +172,10 @@ borrowed-return contract 和 lifetime surface。M7d-C 已补上窄 `impl Drop` /
 拥有型资源封装、trait-object Drop dispatch、async/unwind-aware drop 和完整 Rust-style lifetime surface 仍是后续
 独立工作。
 
-M7d-H 之后本阶段不要把标准库作为工程入口。generic/opaque cleanup marker ABI 策略和 index/slice place-state
-保守闭包都已正式化；最直接的 compiler-only 候选是收口 cleanup-marker query/tooling 消费面、或继续处理
-consuming pattern payload / non-`Copy` `?` payload transfer 的编译器诊断与事实链。
+M7d-I 之后本阶段不要把标准库作为工程入口。generic/opaque cleanup marker ABI 策略、index/slice place-state
+保守闭包和 move rejection facts 都已正式化；下一步 compiler-only 候选应继续围绕 facts/query/tooling/IR
+闭环推进，例如 cleanup-marker query/tooling 消费面、array repeat resource rollback、或为未来 consuming
+pattern / non-`Copy` `?` payload 真正转移语义设计更精确的 payload fact，但不要在当前阶段引入标准库 API。
 `Drop` bound、generic Drop surface、trait-object dispatch 和标准库资源 API 都应等 capability、dynamic ABI 与
 标准库阶段边界稳定后再作为独立阶段推进。
 

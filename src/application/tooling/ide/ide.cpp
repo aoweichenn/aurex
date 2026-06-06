@@ -98,6 +98,7 @@ constexpr std::string_view IDE_DETAIL_TYPE_SEPARATOR = ": ";
 constexpr std::string_view IDE_DETAIL_RESOURCE_SEPARATOR = " resource=";
 constexpr std::string_view IDE_DETAIL_BORROW_SUMMARY_SEPARATOR = " borrow_summary=";
 constexpr std::string_view IDE_DETAIL_BORROW_CONTRACT_SEPARATOR = " borrow_contract=";
+constexpr std::string_view IDE_DETAIL_MOVE_REJECTION_SEPARATOR = " move_rejections=";
 constexpr std::string_view IDE_DETAIL_LIFETIME_SEPARATOR = " lifetime=";
 constexpr std::string_view IDE_DETAIL_PLACE_STATE_SEPARATOR = " place_state=";
 constexpr std::string_view IDE_PRIMARY_PART_NAME = "<primary>";
@@ -1219,6 +1220,13 @@ void recover_resolved_fragment_source_part(
                   << "/diagnostics=" << emitted_violation_count
                   << "/enforced=" << (place_state->second.diagnostic_mode_enforced ? "true" : "false");
         }
+        if (const auto move_rejections = checked.move_rejection_facts.find(*function_key);
+            move_rejections != checked.move_rejection_facts.end()) {
+            label << IDE_DETAIL_MOVE_REJECTION_SEPARATOR << "count=" << move_rejections->second.rejections.size();
+            if (!move_rejections->second.rejections.empty()) {
+                label << "/first=" << sema::move_rejection_kind_name(move_rejections->second.rejections.front().kind);
+            }
+        }
     }
     return label.str();
 }
@@ -1905,6 +1913,27 @@ void push_lifetime_facts_fact(IdeSnapshot& snapshot, const query::QueryKey query
     snapshot.query.semantic_facts.push_back(std::move(fact));
 }
 
+void push_move_rejection_facts_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
+    const sema::FunctionSignature& signature, const sema::FunctionLookupKey function, const base::SourceRange range)
+{
+    const auto facts = snapshot.checked.move_rejection_facts.find(function);
+    if (facts == snapshot.checked.move_rejection_facts.end()) {
+        return;
+    }
+    IdeSemanticFact fact;
+    fact.kind = IdeSemanticFactKind::move_rejection_facts;
+    fact.query = query_key;
+    fact.definition = body.owner;
+    fact.body = body;
+    fact.range = range;
+    fact.name = std::string(signature.name.view());
+    fact.detail = sema::summarize_function_move_rejection_facts(facts->second);
+    fact.part_index = signature.part_index;
+    fact.generic_instance = signature.generic_instance_key;
+    fact.checked = true;
+    snapshot.query.semantic_facts.push_back(std::move(fact));
+}
+
 void push_dropck_facts_fact(IdeSnapshot& snapshot, const query::QueryKey query_key, const query::BodyKey body,
     const sema::FunctionSignature& signature, const sema::FunctionLookupKey function, const base::SourceRange range)
 {
@@ -2039,6 +2068,7 @@ void push_type_check_body_fact(query::QueryContext& context, IdeSnapshot& snapsh
     push_borrow_summary_fact(snapshot, *query_key, key, signature, function, range);
     push_borrow_contract_fact(snapshot, *query_key, key, signature, function,
         item_name_range(snapshot, signature.definition_item, signature.name.view(), signature.range));
+    push_move_rejection_facts_fact(snapshot, *query_key, key, signature, function, range);
     push_lifetime_facts_fact(snapshot, *query_key, key, signature, function, range);
     push_dropck_facts_fact(snapshot, *query_key, key, signature, function, range);
     push_place_state_fact(snapshot, *query_key, key, signature, function, range);

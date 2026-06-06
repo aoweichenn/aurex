@@ -1,5 +1,42 @@
 # 版本文档
 
+## M7d-I Move Rejection Facts Closure
+
+M7d-I 已完成 compiler-only move rejection facts 收口。本阶段继续不实现标准库，也不引入任何库级 owned
+resource wrapper；新增能力只发生在 sema move analysis、checked facts、query/cache authority、IDE/tooling
+投影和白盒测试内部。语言行为不放宽：consuming pattern payload、non-`Copy` `?` payload transfer 和
+indexed move-out 仍按当前规则拒绝。
+
+当前新增实现包括：
+
+- `CheckedModule::move_rejection_facts` 按函数记录当前 move analysis 实际发出的三类 unsupported 事实：
+  `pattern_payload`、`try_payload` 和 `indexed_element`。事实包含关联 `expr`、`stmt`、`pattern`、当前用于资源判定的
+  `tracked_type`、resource fingerprint、诊断是否已发出和 source range。
+- move analysis 只在 reachable action 真实发出 unsupported diagnostic 时记录事实；不可达路径不会凭空产生
+  checked fact，避免 query/tooling 与用户可见诊断不一致。
+- `FunctionMoveRejectionFacts` 增加稳定 fingerprint、dump 和 checked-module copy/move 支持；checked dump 新增
+  `move_rejection_facts` 段，便于后续调试 consuming pattern / try payload 的事实链。
+- `TypeCheckBodyAuthority` 混入 move rejection fingerprint、总数、三类分类计数和 emitted-diagnostic 状态位；
+  type-check body query result 会随这些 compiler facts 改变而失效。
+- IDE semantic facts 新增 `move_rejection_facts` kind，workspace index / reuse invalidation 认识该 fact；
+  函数 hover 在存在 facts 时显示 `move_rejections=count=.../first=...`。
+- 新增 `move_rejection_facts_tests.cpp`，避免继续扩大既有资源/dropck 巨型测试文件；测试覆盖 match arm payload、
+  struct pattern payload、if / if-expr / while condition payload、`?` payload 和 indexed move-out 三类拒绝事实。
+
+当前能做的事情：
+
+- 编译器能把“为什么当前拒绝这个 non-`Copy` pattern / `?` / index move”的事实稳定暴露给 checked dump、query
+  authority 和 IDE/tooling，而不是只留下字符串诊断。
+- 后续如果真正实现 payload transfer，可以用同一事实面验证从“拒绝”到“接受”的语义迁移，不需要 IDE/LSP 重新扫描
+  AST 或重新推导 move analysis。
+- 当前 diagnostic 与 fact 一致：只有已发出的 unsupported diagnostic 会进入 `move_rejection_facts`。
+
+当前仍保守的边界：本阶段不实现 consuming pattern payload 的真实 move/reinit/drop 语义，不实现 non-`Copy`
+`?` ok/some payload transfer，不实现 indexed move-out 或 array/slice/index 精确 per-element ownership proof；
+标准库拥有型资源封装、用户可写 `Drop` bound、generic Drop impl、trait-object Drop dispatch、dynamic destructor
+ABI、async/unwind-aware drop、panic cleanup ABI、array repeat resource rollback 和 replace/take/swap primitive
+仍是后续独立工作。
+
 ## M7d-H Index / Slice Place-State Conservative Closure
 
 M7d-H 已完成 compiler-only index / slice place-state 保守闭包。本阶段继续不实现标准库，也不引入任何库级

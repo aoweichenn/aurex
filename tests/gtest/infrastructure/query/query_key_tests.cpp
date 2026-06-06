@@ -3321,6 +3321,20 @@ TEST(QueryUnit, TypeCheckBodyProviderBuildsRecordAndBodyDependencies)
     contract_changed_authority.borrow_contract_fingerprint = query::stable_fingerprint("query-test-borrow-contract");
     EXPECT_NE(query::type_check_body_result_fingerprint(contract_changed_authority), output->result);
 
+    query::TypeCheckBodyAuthority move_rejection_changed_authority = subject.type_check_authority;
+    move_rejection_changed_authority.has_move_rejection_facts = true;
+    move_rejection_changed_authority.move_rejection_count = 3;
+    move_rejection_changed_authority.move_rejection_pattern_payload_count = 1;
+    move_rejection_changed_authority.move_rejection_try_payload_count = 1;
+    move_rejection_changed_authority.move_rejection_indexed_element_count = 1;
+    move_rejection_changed_authority.move_rejection_has_pattern_payload = true;
+    move_rejection_changed_authority.move_rejection_has_try_payload = true;
+    move_rejection_changed_authority.move_rejection_has_indexed_element = true;
+    move_rejection_changed_authority.move_rejection_has_emitted_diagnostics = true;
+    move_rejection_changed_authority.move_rejection_fingerprint =
+        query::stable_fingerprint("query-test-move-rejections");
+    EXPECT_NE(query::type_check_body_result_fingerprint(move_rejection_changed_authority), output->result);
+
     query::TypeCheckBodyAuthority lifetime_changed_authority = subject.type_check_authority;
     lifetime_changed_authority.has_lifetime_facts = true;
     lifetime_changed_authority.lifetime_region_count = 2;

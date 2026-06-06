@@ -8,7 +8,7 @@
 namespace aurex::query {
 namespace {
 
-constexpr std::string_view QUERY_TYPE_CHECK_BODY_AUTHORITY_MARKER = "query.type_check_body.authority.v4";
+constexpr std::string_view QUERY_TYPE_CHECK_BODY_AUTHORITY_MARKER = "query.type_check_body.authority.v5";
 
 } // namespace
 
@@ -60,6 +60,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_fingerprint(authority.signature_result.fingerprint);
     builder.mix_fingerprint(authority.borrow_summary_fingerprint);
     builder.mix_fingerprint(authority.borrow_contract_fingerprint);
+    builder.mix_fingerprint(authority.move_rejection_fingerprint);
     builder.mix_fingerprint(authority.lifetime_fingerprint);
     builder.mix_fingerprint(authority.dropck_fingerprint);
     builder.mix_fingerprint(authority.place_state_fingerprint);
@@ -74,6 +75,10 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_u64(authority.borrow_summary_dependency_count);
     builder.mix_u64(authority.borrow_summary_storage_escape_count);
     builder.mix_u64(authority.borrow_contract_selector_count);
+    builder.mix_u64(authority.move_rejection_count);
+    builder.mix_u64(authority.move_rejection_pattern_payload_count);
+    builder.mix_u64(authority.move_rejection_try_payload_count);
+    builder.mix_u64(authority.move_rejection_indexed_element_count);
     builder.mix_u64(authority.lifetime_region_count);
     builder.mix_u64(authority.lifetime_outlives_constraint_count);
     builder.mix_u64(authority.lifetime_type_outlives_constraint_count);
@@ -105,6 +110,7 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.has_diagnostics);
     builder.mix_bool(authority.has_borrow_summary);
     builder.mix_bool(authority.has_borrow_contract);
+    builder.mix_bool(authority.has_move_rejection_facts);
     builder.mix_bool(authority.has_lifetime_facts);
     builder.mix_bool(authority.has_dropck_facts);
     builder.mix_bool(authority.has_place_state_facts);
@@ -116,6 +122,10 @@ QueryResultFingerprint type_check_body_result_fingerprint(const TypeCheckBodyAut
     builder.mix_bool(authority.borrow_contract_unknown_return_allowed);
     builder.mix_bool(authority.borrow_contract_has_local_return_escape);
     builder.mix_bool(authority.borrow_contract_has_mismatch);
+    builder.mix_bool(authority.move_rejection_has_pattern_payload);
+    builder.mix_bool(authority.move_rejection_has_try_payload);
+    builder.mix_bool(authority.move_rejection_has_indexed_element);
+    builder.mix_bool(authority.move_rejection_has_emitted_diagnostics);
     builder.mix_bool(authority.lifetime_has_emitted_diagnostics);
     builder.mix_bool(authority.lifetime_has_unknown_origin);
     builder.mix_bool(authority.lifetime_has_ambiguous_elision);

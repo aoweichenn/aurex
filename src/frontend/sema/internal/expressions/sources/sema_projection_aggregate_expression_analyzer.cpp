@@ -316,9 +316,16 @@ TypeHandle SemanticAnalyzerCore::ProjectionAggregateExpressionAnalyzer::analyze_
 
     if (is_repeat_literal) {
         const TypeHandle actual = this->core_.analyze_expr(expr.array_repeat_value, element_type);
-        if (!this->core_.can_assign(element_type, actual, expr.array_repeat_value)) {
+        const bool repeat_value_assignable = this->core_.can_assign(element_type, actual, expr.array_repeat_value);
+        if (!repeat_value_assignable) {
             this->core_.report_type_mismatch(
                 expr.range, std::string(SEMA_ARRAY_REPEAT_TYPE_MISMATCH), element_type, actual);
+        }
+        if (repeat_value_assignable && count_known && literal_count > 1
+            && !this->core_.type_satisfies_capability(element_type, CapabilityKind::copy)) {
+            this->core_.report_general(
+                expr_range_or(this->core_.ctx_.module, expr.array_repeat_value, expr.range),
+                std::string(SEMA_ARRAY_REPEAT_COPY_REQUIRED));
         }
     } else {
         for (const syntax::ExprId element : expr.array_elements) {

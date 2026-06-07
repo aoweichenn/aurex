@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <frontend/sema/internal/borrow/private/flow_graph.hpp>
+#include <frontend/sema/internal/core/private/sema_array_repeat_semantics.hpp>
 
 namespace aurex::sema {
 namespace {
@@ -624,7 +625,10 @@ private:
                     for (const syntax::ExprId element : payload->elements) {
                         this->push_return_scan_expr(pending_exprs, element);
                     }
-                    this->push_return_scan_expr(pending_exprs, payload->repeat_value);
+                    if (array_repeat_value_should_be_visited(array_repeat_runtime_semantics(
+                            this->module_, this->checked_.types, this->cached_expr_type(expr_id), expr_id))) {
+                        this->push_return_scan_expr(pending_exprs, payload->repeat_value);
+                    }
                     this->push_return_scan_expr(pending_exprs, payload->repeat_count);
                 }
                 break;
@@ -2037,7 +2041,10 @@ private:
         for (const syntax::ExprId element : payload.elements) {
             steps.push_back(BodyFlowExpressionStep{element, BodyFlowExprContext::value});
         }
-        steps.push_back(BodyFlowExpressionStep{payload.repeat_value, BodyFlowExprContext::value});
+        if (array_repeat_value_should_be_visited(array_repeat_runtime_semantics(
+                this->module_, this->checked_.types, this->cached_expr_type(expr), expr))) {
+            steps.push_back(BodyFlowExpressionStep{payload.repeat_value, BodyFlowExprContext::value});
+        }
         steps.push_back(BodyFlowExpressionStep{payload.repeat_count, BodyFlowExprContext::value});
         this->push_expression_sequence(steps, entry, exit, return_continuation);
     }

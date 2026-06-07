@@ -1,0 +1,18 @@
+module array_repeat_zero_resource;
+
+struct File {
+    fd: i32;
+}
+
+impl Drop for File {
+    fn drop(self: deinit File) -> void {}
+}
+
+fn make_file() -> File {
+    return File { fd: 1 };
+}
+
+fn main() -> i32 {
+    let files: [0]File = [make_file(); 0];
+    return 0;
+}

@@ -12,6 +12,7 @@
 #include <utility>
 
 #include <frontend/sema/internal/place/private/place_state.hpp>
+#include <frontend/sema/internal/core/private/sema_array_repeat_semantics.hpp>
 
 namespace aurex::sema {
 namespace {
@@ -745,7 +746,11 @@ bool SemanticAnalyzerCore::PlaceStateAnalyzer::may_need_check(
                 const syntax::ArrayExprPayload* const array = module.exprs.array_payload(expr.value);
                 if (array != nullptr) {
                     pending_exprs.insert(pending_exprs.end(), array->elements.begin(), array->elements.end());
-                    push_precheck_expr(pending_exprs, module, array->repeat_value);
+                    if (array_repeat_value_should_be_visited(array_repeat_runtime_semantics(
+                            this->core_.ctx_.module, this->core_.state_.checked.types,
+                            this->core_.cached_expr_type(expr), expr))) {
+                        push_precheck_expr(pending_exprs, module, array->repeat_value);
+                    }
                     push_precheck_expr(pending_exprs, module, array->repeat_count);
                 }
                 break;

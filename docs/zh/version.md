@@ -1,5 +1,43 @@
 # 版本文档
 
+## M7d-K Array Repeat Resource Safety Closure
+
+M7d-K 已完成 compiler-only array repeat resource safety 收口。本阶段继续不实现标准库，也不引入 `Clone`、
+owned resource wrapper、generic Drop surface 或任何库级资源 API；新增能力只发生在 Sema array repeat
+规则、ownership/borrow/place-state 运行期遍历语义、IR lowering 防御和测试覆盖内部。核心语义是：`[expr; N]`
+不能在没有复制/克隆构造语义时隐式复制非 `Copy` 资源。
+
+当前新增实现包括：
+
+- Sema 对 repeat array literal 增加资源规则：`[expr; 0]` 与 `[expr; 1]` 不要求 `expr` 的元素类型是
+  `Copy`；`[expr; N]` 且 `N > 1` 时，元素类型必须满足 compiler-owned `Copy` capability，否则诊断
+  `array repeat value must be Copy when repeated more than once`。
+- `[expr; 0]` 仍会按元素类型上下文对 `expr` 做类型检查，避免无效表达式从零长度 repeat 中漏过；但运行期
+  ownership/move/borrow/place-state/flow traversal 不把 repeat value 当作会求值或会 consume 的表达式。
+- `[expr; 1]` 按一次普通 owned value transfer 处理，允许非 `Copy` 资源进入长度为 1 的数组。
+- move analysis、place-state precheck、body-flow return scan、loan checker origin traversal、borrow summary 和
+  storage escape origin traversal 都使用同一个 checked array repeat runtime helper，避免不同分析阶段对
+  zero-repeat value 的运行期语义分叉。
+- IR lowering 对 repeat literal 保持防御：长度为 0 时只生成空 aggregate；若非法的非 `Copy` 多元素 repeat
+  绕过 Sema 到达 lowering，只生成空 aggregate placeholder，不复制同一个 owned `ValueId`。
+- 覆盖新增 positive samples：单元素非 `Copy` 资源 repeat、零长度非 `Copy` 资源 repeat；新增 negative sample：
+  非 `Copy` 资源多元素 repeat。白盒测试覆盖 Sema copy 需求、零长度运行期跳过、IR lowering 防御和 sample
+  suite 诊断。
+
+当前能做的事情：
+
+- `let files: [0]File = [make_file(); 0];` 可以通过：`make_file()` 类型检查为 `File`，但运行期不被求值，
+  不产生 move/borrow/cleanup 消费。
+- `let files: [1]File = [make_file(); 1];` 可以通过：`make_file()` 被求值一次，数组持有一个 `File`。
+- `let values: [4]i32 = [0; 4];` 继续按 `Copy` 标量 repeat 生成数组值。
+- `let files: [2]File = [make_file(); 2];` 会在 Sema 阶段拒绝，避免在没有 Clone/fill constructor/rollback
+  构造协议时隐式复制同一个资源值。
+
+当前仍保守的边界：本阶段不实现标准库 API，不实现 `Clone`、array fill constructor、非 `Copy` 多元素 repeat
+构造、用户可写 `Drop` bound、generic Drop impl、trait-object Drop dispatch、dynamic destructor ABI、
+async/unwind-aware drop 或 panic cleanup ABI；也不实现 consuming pattern payload transfer、non-`Copy` `?`
+payload transfer、indexed move-out、array/slice/index 精确 disjoint proof 或 replace/take/swap primitive。
+
 ## M7d-J Cleanup Marker Query / Tooling Consumption Closure
 
 M7d-J 已完成 compiler-only cleanup marker query / tooling 消费面收口。本阶段继续不实现标准库，也不引入任何

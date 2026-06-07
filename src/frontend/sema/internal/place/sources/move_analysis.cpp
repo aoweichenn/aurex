@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <frontend/sema/internal/place/private/move_analysis.hpp>
+#include <frontend/sema/internal/core/private/sema_array_repeat_semantics.hpp>
 
 namespace aurex::sema {
 namespace {
@@ -1121,7 +1122,7 @@ private:
             return false;
         }
         this->core_.record_expr_owned_use_mode(expr_id, this->effective_mode(expr_id, requested));
-        this->push_mode_expression_children(tasks, expr, requested);
+        this->push_mode_expression_children(tasks, expr_id, expr, requested);
         return true;
     }
 
@@ -1169,8 +1170,8 @@ private:
             this->core_.cached_expr_type(value), range);
     }
 
-    void push_mode_expression_children(
-        std::vector<ModeTask>& tasks, const SemanticAnalyzerCore::ExprView& expr, const RequestedUse requested)
+    void push_mode_expression_children(std::vector<ModeTask>& tasks, const syntax::ExprId expr_id,
+        const SemanticAnalyzerCore::ExprView& expr, const RequestedUse requested)
     {
         switch (expr.kind) {
             case syntax::ExprKind::name:
@@ -1215,7 +1216,11 @@ private:
                 break;
             case syntax::ExprKind::array_literal:
                 this->push_mode_expression(tasks, expr.array_repeat_count, RequestedUse::owned);
-                this->push_mode_expression(tasks, expr.array_repeat_value, RequestedUse::owned);
+                if (array_repeat_value_should_be_visited(array_repeat_runtime_semantics(
+                        this->core_.ctx_.module, this->core_.state_.checked.types,
+                        this->core_.cached_expr_type(expr_id), expr_id))) {
+                    this->push_mode_expression(tasks, expr.array_repeat_value, RequestedUse::owned);
+                }
                 for (base::usize i = expr.array_elements.size(); i > 0; --i) {
                     this->push_mode_expression(tasks, expr.array_elements[i - 1], RequestedUse::owned);
                 }
@@ -1843,7 +1848,9 @@ private:
         for (const syntax::ExprId element : expr.array_elements) {
             elements.emplace_back(element, RequestedUse::owned);
         }
-        if (syntax::is_valid(expr.array_repeat_value)) {
+        if (array_repeat_value_should_be_visited(array_repeat_runtime_semantics(
+                this->core_.ctx_.module, this->core_.state_.checked.types, this->core_.cached_expr_type(task.expr),
+                task.expr))) {
             elements.emplace_back(expr.array_repeat_value, RequestedUse::owned);
         }
         if (syntax::is_valid(expr.array_repeat_count)) {
@@ -2040,7 +2047,10 @@ private:
             if (const syntax::ArrayExprPayload* const array =
                     this->core_.ctx_.module.exprs.array_payload(current.value);
                 kind == syntax::ExprKind::array_literal && array != nullptr) {
-                pending.push_back(array->repeat_value);
+                if (array_repeat_value_should_be_visited(array_repeat_runtime_semantics(this->core_.ctx_.module,
+                        this->core_.state_.checked.types, this->core_.cached_expr_type(current), current))) {
+                    pending.push_back(array->repeat_value);
+                }
                 for (const syntax::ExprId element : array->elements) {
                     pending.push_back(element);
                 }

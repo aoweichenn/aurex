@@ -1,5 +1,7 @@
 #include <gtest/frontend/sema/sema_whitebox_test_support.hpp>
 
+#include <frontend/sema/internal/core/private/sema_array_repeat_semantics.hpp>
+
 namespace aurex::test {
 
 TEST(CoreUnit, SemanticWhiteBoxStringBuiltinExpressions)
@@ -149,6 +151,278 @@ TEST(CoreUnit, SemanticWhiteBoxArrayLiteralEdges)
         expected_array));
     EXPECT_TRUE(diagnostics.has_error());
 }
+
+TEST(CoreUnit, SemanticWhiteBoxFieldExprRejectsNonEnumCaseScopeType)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId record_name = push_name(module, "Record");
+    const ExprId record_case = push_field(module, record_name, "case");
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    prepare_expr_storage(analyzer, module);
+    analyzer.state_.flow.current_module = module_id(0);
+
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle record_type = types.named_struct("Record", "Record", false);
+    static_cast<void>(add_struct_info(analyzer, module_id(0), "Record", record_type));
+
+    const TypeHandle result = analyzer.analyze_field_expr(record_case, analyzer.expr_view(record_case),
+        INVALID_TYPE_HANDLE);
+    EXPECT_FALSE(is_valid(result));
+    ASSERT_TRUE(diagnostics.has_error());
+    EXPECT_EQ(diagnostics.diagnostics().back().message, std::string(sema::SEMA_ENUM_CASE_SCOPE_TYPE));
+    EXPECT_FALSE(is_valid(analyzer.state_.checked.expr_types[record_case.value]));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxTupleLiteralUsesExpectedElementWhenIntrinsicIsAbsent)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId null_value = module.push_literal_expr(syntax::ExprKind::null_literal, {}, "null");
+    const ExprId tuple = module.push_tuple_expr({}, std::vector<ExprId>{null_value});
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    prepare_expr_storage(analyzer, module);
+    analyzer.state_.flow.current_module = module_id(0);
+
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle pointer_i32 = types.pointer(PointerMutability::const_, i32);
+    const TypeHandle expected_tuple = types.tuple(std::vector<TypeHandle>{pointer_i32});
+
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_tuple_literal_expr(tuple, analyzer.expr_view(tuple), expected_tuple), expected_tuple));
+    EXPECT_FALSE(diagnostics.has_error());
+    EXPECT_FALSE(is_valid(analyzer.cached_expr_intrinsic_type(null_value)));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_type(null_value), pointer_i32));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_intrinsic_type(tuple), expected_tuple));
+    EXPECT_TRUE(types.same(analyzer.cached_expr_type(tuple), expected_tuple));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxArrayRepeatResourceRequiresCopyOnlyForMultipleElements)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId repeated_resource = push_name(module, "file");
+    const ExprId repeated_count = push_integer_text(module, "2");
+    const ExprId repeated_array = module.push_array_expr({},
+        syntax::ArrayExprPayload{
+            {},
+            repeated_resource,
+            repeated_count,
+        });
+    const ExprId single_resource = push_name(module, "single");
+    const ExprId single_count = push_integer_text(module, "1");
+    const ExprId single_array = module.push_array_expr({},
+        syntax::ArrayExprPayload{
+            {},
+            single_resource,
+            single_count,
+        });
+    const ExprId zero_resource = push_name(module, "zero");
+    const ExprId zero_count = push_integer_text(module, "0");
+    const ExprId zero_array = module.push_array_expr({},
+        syntax::ArrayExprPayload{
+            {},
+            zero_resource,
+            zero_count,
+        });
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_intrinsic_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_expected_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.flow.current_module = module_id(0);
+
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle file_type = types.named_struct("array_repeat.File", "array_repeat_File", false);
+    const TypeHandle void_type = types.builtin(BuiltinType::void_);
+    static_cast<void>(add_struct_info(analyzer, module_id(0), "File", file_type));
+    FunctionSignature destructor =
+        function_signature("drop_file", module_id(0), void_type, intern_identifier(analyzer, "drop_file"),
+            analyzer.state_.checked);
+    destructor.param_types.push_back(file_type);
+    destructor.has_definition = true;
+    destructor.is_destructor = true;
+    const sema::FunctionLookupKey destructor_key = add_function(analyzer, std::move(destructor));
+    sema::DestructorInfo destructor_info;
+    destructor_info.module = module_id(0);
+    destructor_info.self_type = file_type;
+    destructor_info.function_key = destructor_key;
+    destructor_info.fingerprint = sema::destructor_info_fingerprint(destructor_info);
+    analyzer.state_.checked.destructors.emplace(file_type.value, destructor_info);
+
+    static_cast<void>(
+        add_global_value(analyzer, module_id(0), "file", file_type, SymbolKind::local));
+    static_cast<void>(
+        add_global_value(analyzer, module_id(0), "single", file_type, SymbolKind::local));
+    static_cast<void>(
+        add_global_value(analyzer, module_id(0), "zero", file_type, SymbolKind::local));
+
+    const TypeHandle repeated_array_type = types.array(2U, file_type);
+    const TypeHandle single_array_type = types.array(1U, file_type);
+    const TypeHandle zero_array_type = types.array(0U, file_type);
+
+    const base::usize diagnostics_before_repeat = diagnostics.diagnostics().size();
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_array_literal_expr(repeated_array, analyzer.expr_view(repeated_array), repeated_array_type),
+        repeated_array_type));
+    ASSERT_GT(diagnostics.diagnostics().size(), diagnostics_before_repeat);
+    EXPECT_EQ(diagnostics.diagnostics().back().message, std::string(sema::SEMA_ARRAY_REPEAT_COPY_REQUIRED));
+
+    const base::usize diagnostics_before_single = diagnostics.diagnostics().size();
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_array_literal_expr(single_array, analyzer.expr_view(single_array), single_array_type),
+        single_array_type));
+    EXPECT_EQ(diagnostics.diagnostics().size(), diagnostics_before_single);
+
+    const base::usize diagnostics_before_zero = diagnostics.diagnostics().size();
+    EXPECT_TRUE(types.same(
+        analyzer.analyze_array_literal_expr(zero_array, analyzer.expr_view(zero_array), zero_array_type),
+        zero_array_type));
+    EXPECT_EQ(diagnostics.diagnostics().size(), diagnostics_before_zero);
+}
+
+TEST(CoreUnit, SemanticWhiteBoxArrayRepeatRuntimeSemanticsEdges)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    sema::TypeTable types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle repeat_two_type = types.array(2U, i32);
+    const TypeHandle repeat_zero_type = types.array(0U, i32);
+
+    const ExprId element = push_integer_text(module, "1");
+    const ExprId plain_array = module.push_array_expr({},
+        syntax::ArrayExprPayload{
+            {element},
+            syntax::INVALID_EXPR_ID,
+            syntax::INVALID_EXPR_ID,
+        });
+    const ExprId repeat_count = push_integer_text(module, "2");
+    const ExprId repeat_array = module.push_array_expr({},
+        syntax::ArrayExprPayload{
+            {},
+            element,
+            repeat_count,
+        });
+
+    const sema::ArrayRepeatRuntimeSemantics invalid_expr = sema::array_repeat_runtime_semantics(
+        module, types, repeat_two_type, syntax::INVALID_EXPR_ID);
+    EXPECT_FALSE(invalid_expr.has_repeat_value);
+    EXPECT_FALSE(sema::array_repeat_value_should_be_visited(invalid_expr));
+
+    const sema::ArrayRepeatRuntimeSemantics non_repeat =
+        sema::array_repeat_runtime_semantics(module, types, repeat_two_type, plain_array);
+    EXPECT_FALSE(non_repeat.has_repeat_value);
+    EXPECT_FALSE(sema::array_repeat_value_should_be_visited(non_repeat));
+
+    const sema::ArrayRepeatRuntimeSemantics invalid_type =
+        sema::array_repeat_runtime_semantics(module, types, INVALID_TYPE_HANDLE, repeat_array);
+    EXPECT_TRUE(invalid_type.has_repeat_value);
+    EXPECT_FALSE(invalid_type.count_known);
+    EXPECT_TRUE(invalid_type.value_is_evaluated);
+    EXPECT_TRUE(sema::array_repeat_value_should_be_visited(invalid_type));
+
+    const sema::ArrayRepeatRuntimeSemantics non_array_type =
+        sema::array_repeat_runtime_semantics(module, types, i32, repeat_array);
+    EXPECT_TRUE(non_array_type.has_repeat_value);
+    EXPECT_FALSE(non_array_type.count_known);
+    EXPECT_TRUE(non_array_type.value_is_evaluated);
+    EXPECT_TRUE(sema::array_repeat_value_should_be_visited(non_array_type));
+
+    const sema::ArrayRepeatRuntimeSemantics zero_repeat =
+        sema::array_repeat_runtime_semantics(module, types, repeat_zero_type, repeat_array);
+    EXPECT_TRUE(zero_repeat.has_repeat_value);
+    EXPECT_TRUE(zero_repeat.count_known);
+    EXPECT_EQ(zero_repeat.count, 0U);
+    EXPECT_FALSE(zero_repeat.value_is_evaluated);
+    EXPECT_FALSE(sema::array_repeat_value_should_be_visited(zero_repeat));
+
+    const sema::ArrayRepeatRuntimeSemantics nonzero_repeat =
+        sema::array_repeat_runtime_semantics(module, types, repeat_two_type, repeat_array);
+    EXPECT_TRUE(nonzero_repeat.has_repeat_value);
+    EXPECT_TRUE(nonzero_repeat.count_known);
+    EXPECT_EQ(nonzero_repeat.count, 2U);
+    EXPECT_TRUE(nonzero_repeat.value_is_evaluated);
+    EXPECT_TRUE(sema::array_repeat_value_should_be_visited(nonzero_repeat));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxArrayRepeatInvalidCountWithoutExpectedTypeRecordsInvalid)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId repeat_value = push_integer_text(module, "1");
+    const ExprId repeat_count = push_bool(module, "true");
+    const ExprId repeat_array = module.push_array_expr({},
+        syntax::ArrayExprPayload{
+            {},
+            repeat_value,
+            repeat_count,
+        });
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_intrinsic_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_expected_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.flow.current_module = module_id(0);
+
+    const TypeHandle result =
+        analyzer.analyze_array_literal_expr(repeat_array, analyzer.expr_view(repeat_array), INVALID_TYPE_HANDLE);
+    EXPECT_FALSE(is_valid(result));
+    ASSERT_TRUE(diagnostics.has_error());
+    EXPECT_EQ(diagnostics.diagnostics().front().message, std::string(sema::SEMA_ARRAY_REPEAT_INTEGER));
+    EXPECT_FALSE(is_valid(analyzer.state_.checked.expr_intrinsic_types[repeat_array.value]));
+    EXPECT_FALSE(is_valid(analyzer.state_.checked.expr_types[repeat_array.value]));
+}
+
+TEST(CoreUnit, SemanticWhiteBoxArrayRepeatInvalidCountWithExpectedTypeKeepsExpectedType)
+{
+    syntax::AstModule module;
+    module.modules = {module_info({"root"})};
+
+    const ExprId repeat_value = push_integer_text(module, "1");
+    const ExprId repeat_count = push_bool(module, "false");
+    const ExprId repeat_array = module.push_array_expr({},
+        syntax::ArrayExprPayload{
+            {},
+            repeat_value,
+            repeat_count,
+        });
+
+    base::DiagnosticSink diagnostics;
+    sema::SemanticAnalyzerCore analyzer(module, diagnostics);
+    analyzer.state_.checked.expr_intrinsic_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_expected_types.assign(module.exprs.size(), INVALID_TYPE_HANDLE);
+    analyzer.state_.checked.expr_c_name_ids.assign(module.exprs.size(), sema::INVALID_IDENT_ID);
+    analyzer.state_.flow.current_module = module_id(0);
+
+    sema::TypeTable& types = analyzer.state_.checked.types;
+    const TypeHandle i32 = types.builtin(BuiltinType::i32);
+    const TypeHandle expected_array = types.array(2U, i32);
+
+    const TypeHandle result =
+        analyzer.analyze_array_literal_expr(repeat_array, analyzer.expr_view(repeat_array), expected_array);
+    EXPECT_TRUE(types.same(result, expected_array));
+    ASSERT_TRUE(diagnostics.has_error());
+    EXPECT_EQ(diagnostics.diagnostics().front().message, std::string(sema::SEMA_ARRAY_REPEAT_INTEGER));
+    EXPECT_FALSE(is_valid(analyzer.state_.checked.expr_intrinsic_types[repeat_array.value]));
+    EXPECT_TRUE(types.same(analyzer.state_.checked.expr_types[repeat_array.value], expected_array));
+}
+
 TEST(CoreUnit, SemanticWhiteBoxExpectedTypeSensitiveExprCache)
 {
     syntax::AstModule module;

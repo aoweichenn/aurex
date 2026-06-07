@@ -630,6 +630,122 @@ TEST(CoreUnit, LowerAstWhiteBoxStringBuiltins)
     EXPECT_EQ(lowerer.module_.values[char_value.value].kind, ValueKind::char_literal);
 }
 
+TEST(CoreUnit, LowerAstWhiteBoxArrayRepeatResourceEdges)
+{
+    syntax::AstModule ast;
+    CheckedModule checked;
+
+    const TypeHandle i32 = checked.types.builtin(BuiltinType::i32);
+    const TypeHandle copy_array = checked.types.array(3U, i32);
+    const TypeHandle zero_copy_array = checked.types.array(0U, i32);
+    const TypeHandle resource_type = checked.types.named_struct("repeat.File", "repeat_File", false);
+    const TypeHandle resource_array = checked.types.array(2U, resource_type);
+    add_struct_info(checked, ast, "File", resource_type, {});
+    static_cast<void>(add_destructor_signature(checked, ast, resource_type, "drop_file"));
+
+    const ExprId copy_value = push_integer(ast, "7");
+    const ExprId copy_count = push_integer(ast, "3");
+    const ExprId copy_repeat = ast.push_array_expr({},
+        syntax::ArrayExprPayload{
+            {},
+            copy_value,
+            copy_count,
+        });
+    const ExprId zero_value = push_integer(ast, "9");
+    const ExprId zero_count = push_integer(ast, "0");
+    const ExprId zero_repeat = ast.push_array_expr({},
+        syntax::ArrayExprPayload{
+            {},
+            zero_value,
+            zero_count,
+        });
+    const ExprId resource_value = push_name(ast, "file");
+    const ExprId resource_count = push_integer(ast, "2");
+    const ExprId resource_repeat = ast.push_array_expr({},
+        syntax::ArrayExprPayload{
+            {},
+            resource_value,
+            resource_count,
+        });
+    const ExprId invalid_type_repeat_value = push_integer(ast, "5");
+    const ExprId invalid_type_repeat_count = push_integer(ast, "2");
+    const ExprId invalid_type_repeat = ast.push_array_expr({},
+        syntax::ArrayExprPayload{
+            {},
+            invalid_type_repeat_value,
+            invalid_type_repeat_count,
+        });
+    const ExprId scalar_typed_repeat_value = push_integer(ast, "6");
+    const ExprId scalar_typed_repeat_count = push_integer(ast, "2");
+    const ExprId scalar_typed_repeat = ast.push_array_expr({},
+        syntax::ArrayExprPayload{
+            {},
+            scalar_typed_repeat_value,
+            scalar_typed_repeat_count,
+        });
+
+    set_expr_type(checked, copy_value, i32);
+    set_expr_type(checked, copy_count, i32);
+    set_expr_type(checked, copy_repeat, copy_array);
+    set_expr_type(checked, zero_value, i32);
+    set_expr_type(checked, zero_count, i32);
+    set_expr_type(checked, zero_repeat, zero_copy_array);
+    set_expr_type(checked, resource_value, resource_type);
+    set_expr_type(checked, resource_count, i32);
+    set_expr_type(checked, resource_repeat, resource_array);
+    set_expr_type(checked, scalar_typed_repeat_value, i32);
+    set_expr_type(checked, scalar_typed_repeat_count, i32);
+    set_expr_type(checked, scalar_typed_repeat, i32);
+
+    Lowerer lowerer(ast, checked);
+    const ValueId copy_aggregate = lowerer.lower_expr(copy_repeat);
+    ASSERT_TRUE(is_valid(copy_aggregate));
+    ASSERT_LT(copy_aggregate.value, lowerer.module_.values.size());
+    const Value& copy_value_ir = lowerer.module_.values[copy_aggregate.value];
+    EXPECT_EQ(copy_value_ir.kind, ValueKind::aggregate);
+    ASSERT_EQ(copy_value_ir.elements.size(), 3U);
+    EXPECT_EQ(copy_value_ir.elements[0].value, copy_value_ir.elements[1].value);
+    EXPECT_EQ(copy_value_ir.elements[1].value, copy_value_ir.elements[2].value);
+
+    const base::usize before_zero = lowerer.module_.values.size();
+    const ValueId zero_aggregate = lowerer.lower_expr(zero_repeat);
+    ASSERT_TRUE(is_valid(zero_aggregate));
+    ASSERT_LT(zero_aggregate.value, lowerer.module_.values.size());
+    const Value& zero_value_ir = lowerer.module_.values[zero_aggregate.value];
+    EXPECT_EQ(zero_value_ir.kind, ValueKind::aggregate);
+    EXPECT_TRUE(zero_value_ir.elements.empty());
+    EXPECT_EQ(lowerer.module_.values.size(), before_zero + 1U);
+
+    const base::usize before_resource = lowerer.module_.values.size();
+    const ValueId resource_aggregate = lowerer.lower_expr(resource_repeat);
+    ASSERT_TRUE(is_valid(resource_aggregate));
+    ASSERT_LT(resource_aggregate.value, lowerer.module_.values.size());
+    const Value& resource_value_ir = lowerer.module_.values[resource_aggregate.value];
+    EXPECT_EQ(resource_value_ir.kind, ValueKind::aggregate);
+    EXPECT_TRUE(resource_value_ir.elements.empty());
+    EXPECT_EQ(lowerer.module_.values.size(), before_resource + 1U);
+
+    const base::usize before_invalid_type = lowerer.module_.values.size();
+    const ValueId invalid_type_aggregate = lowerer.lower_expr(invalid_type_repeat);
+    ASSERT_TRUE(is_valid(invalid_type_aggregate));
+    ASSERT_LT(invalid_type_aggregate.value, lowerer.module_.values.size());
+    const Value& invalid_type_value_ir = lowerer.module_.values[invalid_type_aggregate.value];
+    EXPECT_EQ(invalid_type_value_ir.kind, ValueKind::aggregate);
+    EXPECT_FALSE(sema::is_valid(invalid_type_value_ir.type));
+    EXPECT_TRUE(invalid_type_value_ir.elements.empty());
+    EXPECT_EQ(lowerer.module_.values.size(), before_invalid_type + 1U);
+
+    const base::usize before_scalar_typed = lowerer.module_.values.size();
+    const ValueId scalar_typed_aggregate = lowerer.lower_expr(scalar_typed_repeat);
+    ASSERT_TRUE(is_valid(scalar_typed_aggregate));
+    ASSERT_LT(scalar_typed_aggregate.value, lowerer.module_.values.size());
+    const Value& scalar_typed_value_ir = lowerer.module_.values[scalar_typed_aggregate.value];
+    EXPECT_EQ(scalar_typed_value_ir.kind, ValueKind::aggregate);
+    EXPECT_TRUE(checked.types.same(scalar_typed_value_ir.type, i32));
+    EXPECT_TRUE(scalar_typed_value_ir.elements.empty());
+    EXPECT_EQ(lowerer.module_.values.size(), before_scalar_typed + 1U);
+}
+
 TEST(CoreUnit, LowerAstWhiteBoxDeclarationFallbacks)
 {
     syntax::AstModule ast;

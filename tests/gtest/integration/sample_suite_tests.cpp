@@ -48,6 +48,7 @@ inline constexpr auto EXPECTED_NEGATIVE_DIAGNOSTICS = std::to_array<ExpectedDiag
     {"array_bool_missing_witness", "match expression over tuple, struct, array, or slice requires an irrefutable arm"},
     {"array_constant_index_out_of_bounds", "array constant index is out of bounds"},
     {"array_literal_empty_infer", "empty array literal requires an array type context"},
+    {"array_repeat_non_copy", "array repeat value must be Copy when repeated more than once"},
     {"array_slice_bound_out_of_bounds", "array constant slice bound is out of bounds"},
     {"array_slice_bounds_order", "array constant slice start exceeds end"},
     {"bare_enum_case_constructor", "unknown function: some"},

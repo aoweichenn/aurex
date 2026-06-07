@@ -437,6 +437,9 @@ inline constexpr std::string_view SEMA_ARRAY_ELEMENT_INFER = "array literal elem
 
 inline constexpr std::string_view SEMA_ARRAY_REPEAT_TYPE_MISMATCH = "array repeat value type mismatch";
 
+inline constexpr std::string_view SEMA_ARRAY_REPEAT_COPY_REQUIRED =
+    "array repeat value must be Copy when repeated more than once";
+
 inline constexpr std::string_view SEMA_ARRAY_LITERAL_STORAGE = "array literal type is not valid storage";
 
 inline constexpr std::string_view SEMA_ARRAY_LITERAL_ELEMENT_TYPE_MISMATCH = "array literal element type mismatch";

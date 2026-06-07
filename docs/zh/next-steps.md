@@ -108,6 +108,14 @@ IDE snapshot、semantic fact、hover、workspace index 和 session reuse invalid
 destructor ABI call；consuming pattern payload、non-`Copy` `?` payload transfer、indexed move-out 和标准库资源
 封装仍不属于本阶段。
 
+M7d-K 当前实现状态：array repeat resource safety closure 已完成 compiler-only 收口。`[expr; 0]` 仍会类型检查
+repeat value，但运行期 ownership/move/borrow/place-state/flow traversal 与 IR lowering 不把 value 当作会求值或会
+consume 的表达式；`[expr; 1]` 允许非 `Copy` 资源被转移一次；`[expr; N]` 且 `N > 1` 要求元素类型满足
+compiler-owned `Copy` capability，否则 Sema 报 `array repeat value must be Copy when repeated more than once`。
+IR lowering 对非法非 `Copy` 多元素 repeat 保留防御性 empty aggregate placeholder，避免同一个 owned `ValueId`
+被重复写入 aggregate。当前不实现 `Clone`、array fill constructor、非 `Copy` 多元素 repeat 构造、标准库资源
+封装或任何标准库 API。
+
 M7 hardening performance closure 也已完成，记录在
 [M7 Hardening Performance Closure](m7-hardening-performance-closure.md)。当前新增 statement control-flow query
 cache、body-loan precheck 单次表达式遍历、`NormalizedAstOverlay` `u64` 计数和 `tools/m7_hardening_perf.py`。
@@ -151,6 +159,10 @@ M7c/M7d 后续实现按以下大块推进：
     DTO、lower-IR query result、incremental cache、IDE semantic fact、hover、workspace index 和 reuse plan。
     该步骤只完成 compiler facts/query/tooling 消费面，不实现 dynamic Drop ABI、generic cleanup runtime ABI、payload
     transfer 或标准库资源 API。
+14. M7d-K：已完成。array repeat resource safety 已正式化；零长度 repeat 的 value 只做类型检查、不做运行期
+    求值/consume；单元素 repeat 允许非 `Copy` 资源转移一次；多元素 repeat 要求 `Copy` 并拒绝非 `Copy`
+    resource。该步骤只完成当前 repeat 语义安全闭包，不实现 `Clone`、array fill constructor、非 `Copy` 多元素
+    构造或标准库资源 API。
 
 实现架构必须低耦合：lifetime fact collector、region solver、enforcer、dropck facts、place-state analyzer、RAII surface
 checker 和 tooling adapter 分模块维护；`src/sema/internal/` 只能作为 private implementation root，下面不再直接新增文件，
@@ -185,12 +197,12 @@ borrowed-return contract 和 lifetime surface。M7d-C 已补上窄 `impl Drop` /
 拥有型资源封装、trait-object Drop dispatch、async/unwind-aware drop 和完整 Rust-style lifetime surface 仍是后续
 独立工作。
 
-M7d-J 之后本阶段不要把标准库作为工程入口。generic/associated/opaque cleanup marker ABI 策略、index/slice
-place-state 保守闭包、move rejection facts 和 cleanup marker query/tooling 消费面都已正式化；下一步
-compiler-only 候选应继续围绕 facts/query/tooling/IR 闭环推进。最合适的后续入口是 array repeat resource
-rollback：它能补齐 `[expr; N]` 对 droppable/non-`Copy` 元素的初始化次数、失败路径、rollback cleanup 和 drop
-flag 事实，不需要引入任何标准库 API。另一个候选是为未来 consuming pattern / non-`Copy` `?` payload 真正转移
-语义设计更精确的 payload fact，但当前阶段仍只应做 compiler facts，不做标准库入口。
+M7d-K 之后本阶段不要把标准库作为工程入口。generic/associated/opaque cleanup marker ABI 策略、index/slice
+place-state 保守闭包、move rejection facts、cleanup marker query/tooling 消费面和 array repeat resource safety
+都已正式化；M7 剩余工作应优先做 release/documentation/coverage final gate、已实现 facts 的一致性检查和
+post-M7 规划。未来如果要支持非 `Copy` 多元素 repeat，必须先设计 `Clone`/array fill constructor/逐元素构造与
+rollback 语义，不能在当前阶段通过标准库 wrapper 绕过。为未来 consuming pattern / non-`Copy` `?` payload 真正转移
+语义设计更精确 payload fact 可以作为 post-M7 compiler-only 议题，但当前阶段仍不做标准库入口。
 `Drop` bound、generic Drop surface、trait-object dispatch 和标准库资源 API 都应等 capability、dynamic ABI 与
 标准库阶段边界稳定后再作为独立阶段推进。
 

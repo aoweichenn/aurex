@@ -10,6 +10,7 @@
 #include <frontend/sema/internal/borrow/private/contract.hpp>
 #include <frontend/sema/internal/borrow/private/flow_graph.hpp>
 #include <frontend/sema/internal/borrow/private/loan_checker.hpp>
+#include <frontend/sema/internal/core/private/sema_array_repeat_semantics.hpp>
 #include <frontend/sema/internal/expressions/private/sema_statement_analyzer.hpp>
 
 namespace aurex::sema {
@@ -1515,7 +1516,10 @@ private:
         }
         if (const syntax::ArrayExprPayload* const array = this->core_.ctx_.module.exprs.array_payload(expr.value);
             kind == syntax::ExprKind::array_literal && array != nullptr) {
-            pending.push_back(array->repeat_value);
+            if (array_repeat_value_should_be_visited(array_repeat_runtime_semantics(this->core_.ctx_.module,
+                    this->core_.state_.checked.types, this->core_.cached_expr_type(expr), expr))) {
+                pending.push_back(array->repeat_value);
+            }
             for (const syntax::ExprId element : array->elements) {
                 pending.push_back(element);
             }

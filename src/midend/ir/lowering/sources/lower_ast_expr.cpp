@@ -690,6 +690,9 @@ ValueId Lowerer::lower_array_literal_expr(const syntax::ExprId expr_id, const Ex
         if (array.array_count == 0) {
             return this->append_value(value);
         }
+        if (array.array_count > 1 && !sema::resource_is_copy(this->resource_summary(array.array_element))) {
+            return this->append_value(value);
+        }
         const ValueId repeated =
             this->coerce_value(this->lower_expr(expr.array_repeat_value, array.array_element), array.array_element);
         value.elements.reserve(static_cast<base::usize>(array.array_count));
